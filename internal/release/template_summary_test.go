@@ -117,6 +117,22 @@ func (w *summaryWalker) walk(n parse.Node) {
 		w.checkRange(n)
 		w.walk(n.List)
 		w.walk(n.ElseList)
+	case *parse.TemplateNode:
+		w.checkTemplate(n)
+	}
+}
+
+// checkTemplate flags `{{ template "name" pipe }}` invocations whose
+// pipe carries .Params.summary into the named sub-template. The
+// sub-template lives in another tree (visited separately via the
+// treeSet walk), but its body sees the piped value bound to `.`
+// rather than to .Params.summary — the scanner cannot follow that
+// rebinding, the same problem `with` has. Forbidding summary as a
+// template argument keeps the contract explicit at the call site.
+func (w *summaryWalker) checkTemplate(n *parse.TemplateNode) {
+	if pipeReferencesSummary(n.Pipe) {
+		w.add(n.Pos, "`template` invocation passes .Params.summary as the sub-template's dot — "+
+			"the sub-template cannot be scanned through the rebinding; render the summary in this template instead")
 	}
 }
 
@@ -497,6 +513,41 @@ func TestScanSummaryViolations_QualifiedFieldAccess(t *testing.T) {
 			"Page-qualified through RenderString",
 			`{{ .RenderString (dict) .Page.Params.summary }}`,
 			0,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := scanSummaryViolations("file.html", tc.template)
+			require.NoError(t, err)
+			assert.Len(t, got, tc.wantCount, "violations: %+v", got)
+		})
+	}
+}
+
+// TestScanSummaryViolations_TemplateInvocation pins that passing
+// .Params.summary into a `{{ template "name" .Params.summary }}`
+// invocation is flagged. The sub-template's body sees the value
+// bound to `.`, which the scanner cannot follow back to the field.
+func TestScanSummaryViolations_TemplateInvocation(t *testing.T) {
+	cases := []struct {
+		name      string
+		template  string
+		wantCount int
+	}{
+		{
+			"template passes summary as dot",
+			`{{ define "foo" }}{{ . }}{{ end }}{{ template "foo" .Params.summary }}`,
+			1,
+		},
+		{
+			"template passes unrelated value",
+			`{{ define "foo" }}{{ . }}{{ end }}{{ template "foo" .Site.Title }}`,
+			0,
+		},
+		{
+			"block with summary as pipe",
+			`{{ block "main" .Params.summary }}{{ . }}{{ end }}`,
+			1,
 		},
 	}
 	for _, tc := range cases {
