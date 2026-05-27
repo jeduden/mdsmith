@@ -14,18 +14,15 @@ allowed-tools: >-
   Bash(git fetch:*), Bash(git show:*), Bash(git branch:*),
   Bash(git checkout:*), Bash(git commit:*),
   Bash(git push:*), Bash(git rev-parse:*), Bash(sleep:*),
-  mcp__github__list_pull_requests,
-  mcp__github__search_pull_requests,
-  mcp__github__create_pull_request,
+  Bash(gh pr:*), Bash(gh api:*),
   AskUserQuestion
 argument-hint: "[plan number]"
 ---
 
-Surface the next plan to start. Read
-[PLAN.md](../../../PLAN.md) from `origin/main`.
-Cross-reference existing branches and open PRs. Ask the
-user which plan to pick. Create the branch and open a
-draft PR.
+Surface the next plan to start. Read `PLAN.md` from
+`origin/main`. Cross-reference existing branches and
+open PRs. Ask the user which plan to pick. Create the
+branch and open a draft PR.
 
 All paths below are relative to the repository root.
 
@@ -83,17 +80,20 @@ side — `plan-102-…`, `feature/plan-102`, `102_…`. Do
 
 Then pull open PRs:
 
-Call `mcp__github__list_pull_requests` with
-`owner=jeduden`, `repo=mdsmith`, `state=open`,
-`perPage=100`. The repo's open-PR count is well under
-100 today; if a response ever fills the page (`length
-== 100`), paginate with `page=2,3,…` until a short
-page returns. For each PR, derive plan ids from:
+```bash
+gh pr list --repo jeduden/mdsmith --state open --limit 100 \
+  --json number,title,headRefName,body
+```
 
-- `\bPlan[ -]?(\d+)\b` (case-insensitive) on the title
-- `plan/(\d+)_` on the body
-- `plan-(\d+)-` on the head branch (the convention
-  this skill itself creates, with the same non-digit
+The repo's open-PR count is well under 100 today. If
+the response ever fills the page (length == 100),
+raise `--limit` and rerun. For each PR in the JSON,
+derive plan ids from:
+
+- `\bPlan[ -]?(\d+)\b` (case-insensitive) on `.title`
+- `plan/(\d+)_` on `.body`
+- `plan-(\d+)-` on `.headRefName` (the convention this
+  skill itself creates, with the same non-digit
   boundary on the trailing side so `1020` doesn't
   match `102`)
 
@@ -138,14 +138,18 @@ sweep for closed PRs that referenced this plan — they
 catch abandoned attempts and the rare case where a
 plan is actually merged but PLAN.md is stale.
 
-Call `mcp__github__search_pull_requests` with
-`owner=jeduden`, `repo=mdsmith`, and query
-`"Plan <id>:" in:title state:closed`.
+Call:
+
+```bash
+gh pr list --repo jeduden/mdsmith \
+  --search '"Plan <id>:" in:title is:closed' \
+  --json number,title,closedAt,mergedAt
+```
 
 The colon in the title pattern keeps `Plan 102` from
 also matching `Plan 1020`.
 
-For each hit, read `pull_request.merged_at`:
+For each hit, read `.mergedAt`:
 
 - **non-null → merged.** Surprising. The plan is
   actually done but PLAN.md still says `🔲`. Stop.
@@ -153,7 +157,7 @@ For each hit, read `pull_request.merged_at`:
   and suggest fixing the catalog instead of starting
   fresh work.
 - **null → closed unmerged.** An abandoned attempt.
-  Show PR number, title, and `closed_at`. Use
+  Show PR number, title, and `closedAt`. Use
   `AskUserQuestion`: "PR #N was closed unmerged on
   <date>. Start fresh anyway, or skip this plan and
   pick another?" Honour the user's choice.
@@ -199,22 +203,21 @@ Title format: `Plan <id>: <title>` — matches the existing
 convention (`Plan 200: move docs/ embed out of
 internal/lsp/hover.go`).
 
-Use `mcp__github__create_pull_request` with:
+Use a HEREDOC for the body so newlines stay intact:
 
-- `owner=jeduden`, `repo=mdsmith`
-- `title="Plan <id>: <title>"`
-- `head="plan-<id>-<slug>"`
-- `base="main"`
-- `draft=true`
-- `body` — short:
+```bash
+gh pr create --repo jeduden/mdsmith --draft \
+  --base main --head plan-<id>-<slug> \
+  --title "Plan <id>: <title>" \
+  --body "$(cat <<'EOF'
+Draft PR for [plan/<id>_<slug>.md](plan/<id>_<slug>.md).
 
-  ```text
-  Draft PR for [plan/<id>_<slug>.md](plan/<id>_<slug>.md).
-
-  Status will move 🔲 → 🔳 in PLAN.md once the first real
-  commit lands. Marking ready for review when the
-  acceptance criteria are checked off.
-  ```
+Status will move 🔲 → 🔳 in PLAN.md once the first real
+commit lands. Marking ready for review when the
+acceptance criteria are checked off.
+EOF
+)"
+```
 
 Report the PR URL back to the user and stop. They can
 run `/pr-fixup` once real changes are pushed.
@@ -231,7 +234,7 @@ run `/pr-fixup` once real changes are pushed.
 - **`origin/main` may be stale.** Always fetch first.
   Step 1 does this, but if you re-run later parts of the
   workflow, re-fetch.
-- **Empty start commit.** Step 5 makes an empty commit
+- **Empty start commit.** Step 6 makes an empty commit
   so the draft PR has something to point at. Do not
   amend it — keep it as the marker that work began, and
   stack real commits on top.
