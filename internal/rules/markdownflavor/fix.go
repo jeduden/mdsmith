@@ -144,10 +144,16 @@ func delimiterPairEdits(n ast.Node, markerLen int) []markdown.Edit {
 
 // taskCheckBoxEdits removes the "[X]" run plus a single trailing
 // space when present. Per the plan, the bullet itself is preserved.
-// The dual parser places every TaskCheckBox at the start of a
-// TextBlock so block.Lines().At(0).Start always points at '['; we
-// still guard against a nil block ancestor (degenerate orphan node)
-// and an empty Lines list so a malformed AST cannot panic the fix.
+//
+// Relies on the goldmark task-list parser's invariant: it always
+// wraps a TaskCheckBox in a TextBlock whose first Lines() segment
+// starts at the '['. NearestBlockAncestor returns that TextBlock,
+// so block.Lines().At(0).Start indexes the bracket. If a hand-built
+// AST violates the invariant — TextBlock has empty Lines so
+// NearestBlockAncestor returns the enclosing ListItem instead —
+// start would point at the bullet ('- ') and start+3 would silently
+// delete the wrong bytes. The fix declines via the block==nil /
+// empty-Lines guards rather than producing corrupt output.
 func taskCheckBoxEdits(f *lint.File, n *extast.TaskCheckBox) []markdown.Edit {
 	block := flavor.NearestBlockAncestor(n)
 	if block == nil {

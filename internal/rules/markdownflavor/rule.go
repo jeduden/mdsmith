@@ -170,18 +170,15 @@ func (r *Rule) fixGitHubAlerts(f *lint.File) []byte {
 		if !flavor.IsGitHubAlert(bq, f.Source) {
 			return ast.WalkContinue, nil
 		}
-		// flavor.IsGitHubAlert validates the (Paragraph, non-empty Lines)
-		// shape, but the assertion + At(0) couple us to that contract
-		// across a package boundary. Re-check locally so a future relax
-		// of IsGitHubAlert cannot turn this walk into a panic.
-		para, ok := bq.FirstChild().(*ast.Paragraph)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
+		// flavor.IsGitHubAlert is the only authority on whether the
+		// (Paragraph, non-empty Lines) invariants hold; if it returns
+		// true the assertion + At(0) below cannot panic. A defensive
+		// local re-check would only mask a future contract break by
+		// silently skipping the fix while Check still flagged the
+		// alert — worse than a clear panic. The contract is locked by
+		// the rule's existing fix tests.
+		para := bq.FirstChild().(*ast.Paragraph)
 		lines := para.Lines()
-		if lines == nil || lines.Len() == 0 {
-			return ast.WalkContinue, nil
-		}
 		seg := lines.At(0)
 		markerLine, _ := flavor.LineCol(f.Source, seg.Start)
 		skip[markerLine] = true

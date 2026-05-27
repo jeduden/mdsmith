@@ -113,4 +113,55 @@ func TestSplice(t *testing.T) {
 		}
 		assert.Equal(t, "> abxycd", string(Splice(body, edits)))
 	})
+
+}
+
+// TestSpliceInvariantViolation pins the contract Splice's docstring
+// promises: edits must be ascending, non-overlapping, well-formed
+// (End >= Start), and within body bounds. Every violation surfaces
+// as a descriptive panic at the entry point rather than as an
+// opaque slice-bounds-out-of-range crash during the build loop.
+func TestSpliceInvariantViolation(t *testing.T) {
+	t.Run("overlapping edits panic with a descriptive message", func(t *testing.T) {
+		body := []byte("0123456789")
+		assert.PanicsWithValue(t,
+			"markdown.Splice: edits must be ascending and "+
+				"non-overlapping; edit 1 {Start:6, End:12} "+
+				"overlaps previous edit ending at 10",
+			func() {
+				Splice(body, []Edit{
+					{Start: 5, End: 10},
+					{Start: 6, End: 12},
+				})
+			})
+	})
+
+	t.Run("descending edits panic with the same overlap message", func(t *testing.T) {
+		body := []byte("0123456789")
+		assert.PanicsWithValue(t,
+			"markdown.Splice: edits must be ascending and "+
+				"non-overlapping; edit 1 {Start:0, End:2} "+
+				"overlaps previous edit ending at 5",
+			func() {
+				Splice(body, []Edit{
+					{Start: 3, End: 5},
+					{Start: 0, End: 2},
+				})
+			})
+	})
+
+	t.Run("End < Start panics", func(t *testing.T) {
+		body := []byte("0123456789")
+		assert.PanicsWithValue(t,
+			"markdown.Splice: edit 0 has End<Start ({Start:5, End:3})",
+			func() { Splice(body, []Edit{{Start: 5, End: 3}}) })
+	})
+
+	t.Run("edit exceeding body length panics", func(t *testing.T) {
+		body := []byte("short")
+		assert.PanicsWithValue(t,
+			"markdown.Splice: edit 0 {Start:0, End:99} "+
+				"exceeds body length 5",
+			func() { Splice(body, []Edit{{Start: 0, End: 99}}) })
+	})
 }

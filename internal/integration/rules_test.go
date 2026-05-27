@@ -107,21 +107,23 @@ type fixtureFrontMatter struct {
 // markdown content. Returns settings, diagnostics, and content.
 // requireDiagnostics makes the function fail the test when no front
 // matter is found; use this for bad fixtures that must declare
-// expected diagnostics.
+// expected diagnostics. A misspelled key (e.g. dropping a letter
+// from "diagnostics") or an empty `---\n---\n` block is reported
+// as a missing-diagnostics failure rather than silently treated
+// as "no front matter."
 func parseFixtureFrontMatter(
 	t *testing.T, data []byte, requireDiagnostics bool,
 ) (map[string]any, []expectedDiag, []byte) {
 	t.Helper()
 
 	var fm fixtureFrontMatter
-	content, err := lint.UnmarshalFrontMatter(data, &fm)
+	content, hadFM, err := lint.UnmarshalFrontMatter(data, &fm)
 	if err != nil {
 		t.Fatalf("decoding front matter: %v", err)
 	}
-	if fm.Diagnostics == nil && fm.Settings == nil {
-		// lint.UnmarshalFrontMatter returns the original bytes when no
-		// front matter exists; treat that as "no diagnostics declared".
-		require.False(t, requireDiagnostics, "bad fixture is missing front matter with expected diagnostics")
+	if !hadFM {
+		require.False(t, requireDiagnostics,
+			"bad fixture is missing front matter with expected diagnostics")
 		return nil, nil, content
 	}
 	if requireDiagnostics && len(fm.Diagnostics) == 0 {
