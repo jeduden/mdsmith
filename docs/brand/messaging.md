@@ -51,11 +51,12 @@ pipelines.
 
 ## VS Code
 
-Inline Markdown diagnostics with lightbulb quick fixes,
-optional fix-on-save, cross-file navigation, and palette
-commands for init, fix-all, and the Git merge driver. The
-`.vsix` bundles the mdsmith binary, so no separate install
-is needed.
+Keep your Markdown neat and consistent — inline
+diagnostics with lightbulb quick fixes, optional
+fix-on-save, cross-file navigation, and palette commands
+for init, fix-all, and the Git merge driver. The `.vsix`
+bundles the mdsmith binary, so no separate install is
+needed.
 
 ## VS Code overview
 
