@@ -16,7 +16,6 @@ allowed-tools: >-
   Bash(git push:*), Bash(git rev-parse:*),
   mcp__github__list_pull_requests,
   mcp__github__create_pull_request,
-  mcp__github__search_pull_requests,
   AskUserQuestion
 argument-hint: "[plan number]"
 ---
@@ -65,9 +64,9 @@ is one of:
 
 Skip the `<?catalog?>` directive markers — only parse the
 table rows. The catalog has duplicate plan ids in a few
-places (two `121` rows, two `153`s, two `156`s) — all
-completed today, but if a duplicate id ever surfaces as
-`🔲`, ask which file the user means rather than guessing.
+places (two `121` rows, two `153`s, two `156`s). If a
+duplicate id ever surfaces as `🔲`, ask which file the
+user means rather than guessing — the slug disambiguates.
 
 ### 2. List branches and cross-reference open PRs
 
@@ -84,10 +83,17 @@ Then pull open PRs:
 
 Call `mcp__github__list_pull_requests` with
 `owner=jeduden`, `repo=mdsmith`, `state=open`,
-`perPage=100`. For each PR, derive plan ids from:
+`perPage=100`. The repo's open-PR count is well under
+100 today; if a response ever fills the page (`length
+== 100`), paginate with `page=2,3,…` until a short
+page returns. For each PR, derive plan ids from:
 
 - `\bPlan[ -]?(\d+)\b` (case-insensitive) on the title
-- `plan/(\d+)_` on the body or the head branch
+- `plan/(\d+)_` on the body
+- `plan-(\d+)-` on the head branch (the convention
+  this skill itself creates, with the same non-digit
+  boundary on the trailing side so `1020` doesn't
+  match `102`)
 
 Annotate each non-completed plan with any matching PR.
 
@@ -154,8 +160,7 @@ git push -u origin plan-<id>-<slug>
 ```
 
 If the push fails with a network error, retry up to four
-times with 2s / 4s / 8s / 16s backoff (per the
-[git operations policy](../../../CLAUDE.md)).
+times with 2s / 4s / 8s / 16s exponential backoff.
 
 ### 6. Open the draft PR
 
@@ -190,9 +195,8 @@ run `/pr-fixup` once real changes are pushed.
   also match a `plan-1020-…` branch. This applies both
   to the branch scan and to the PR title scan.
 - **Duplicate plan ids exist.** Two `121`s, two `153`s,
-  two `156`s — all completed today. If a duplicate id
-  ever surfaces as `🔲`, ask which file the user means.
-  The slug disambiguates.
+  two `156`s. If a duplicate id ever surfaces as `🔲`,
+  ask which file the user means. The slug disambiguates.
 - **`origin/main` may be stale.** Always fetch first.
   Step 1 does this, but if you re-run later parts of the
   workflow, re-fetch.
