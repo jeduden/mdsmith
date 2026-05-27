@@ -185,27 +185,37 @@ Cross-document parses are independent; the
    that construct a Runner without setting the
    field must keep passing (nil cache = always
    parse).
-3. Wire `s.parseCache` into the LSP `Server`
+3. Add a contract test in `internal/engine/` that
+   runs the same corpus through `RunSource` with
+   `ParseCache` nil and with `ParseCache`
+   installed, asserting byte-equal diagnostics.
+4. Wire `s.parseCache` into the LSP `Server`
    alongside `s.runCache`. Pass the document
    version on the RunSource call (extend
    RunSource signature, or introduce
    `RunSourceWithVersion` to avoid churning the
    existing surface — pick whichever keeps
    non-LSP callers untouched).
-4. Add invalidation calls in `didChange`,
+5. Add invalidation calls in `didChange`,
    `didClose`, and `didChangeWatchedFiles`
    handlers next to the existing
    `runCache.Invalidate` calls.
-5. Extend [internal/lsp/bench_test.go](../internal/lsp/bench_test.go)
+6. Add an integration test in `internal/lsp/`
+   that walks didOpen → runLint → didChange →
+   runLint and asserts the second pass produces
+   diagnostics matching the edited text (no stale
+   results served from a cached pre-edit parse).
+7. Extend [internal/lsp/bench_test.go](../internal/lsp/bench_test.go)
    with a "warm cache" variant of
    `BenchmarkLatency1kLines` and
    `BenchmarkLatency5kLines` — the second
    RunSource call on the same document version
    must skip the parse and complete faster.
-6. Record measured warm-cache latency in this
-   plan and tighten the LSP p95 budgets in the
-   bench file accordingly (or note why the
-   warm-cache path is informational only).
+8. Tighten the warm-cache benchmark's `budget`
+   to the measured p95 (with ~3-5 × headroom
+   matching the cold path's sizing rule) so the
+   ≥ 20 % improvement is gated, not advisory.
+   Record the measured number in this plan.
 
 ## Risk
 

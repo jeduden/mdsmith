@@ -38,36 +38,29 @@ parse 29.3 % / check 70.7 %). The remaining lever
 inside the check slice is **walks that did not need
 to happen**.
 
-74 rule files reference `ast.Walk` or `f.AST`. A
-spot-check of the candidates suggests at least three
-shapes that don't need the tree:
+74 rule files reference `ast.Walk` or `f.AST`. Three
+shapes don't need the tree:
 
-- **Pure substring scans.** Rules that look for a
-  fixed byte pattern anywhere in the document
-  (trailing whitespace, hard tabs, BOM, specific
-  characters) can scan `f.Lines` with
-  `bytes.IndexByte` or `bytes.Contains`. The walk
-  visits every node only to call `seg.Value(source)`
-  and run the same substring search per leaf.
-- **Line-level structural patterns.** Rules that
-  check the *first byte(s)* of a line (heading-style
-  by `#` count, list-marker style, fence delimiter
-  style) read information the AST extracts from the
-  same line. A regex on `f.Lines[i]` reaches it
-  without the walk — and skips code-block content,
-  which the AST already skipped, by tracking fence
-  state inline.
-- **Front-matter-only rules.** Rules that read only
-  `f.FrontMatter` and ignore the body never need
-  AST.
+- **Pure substring scans** — fixed byte patterns
+  (trailing whitespace, hard tabs, BOM). Scan
+  `f.Lines` with `bytes.IndexByte`/`bytes.Contains`;
+  the walk only existed to call `seg.Value(source)`
+  and run the same scan per leaf.
+- **Line-level structural patterns** — heading
+  style, list-marker style, fence-delimiter style.
+  A regex on `f.Lines[i]` reaches them; code-block
+  content is skipped by tracking fence state.
+- **Front-matter-only rules** — read `f.FrontMatter`
+  and ignore the body.
 
-Rules that **must** keep the AST fall in four
-buckets. Link rules read `*ast.Link` for target vs
-label. TOC, duplicate-heading, and single-H1 read
-heading levels across the document. List-nesting
-and blockquote-depth rules read structural
-relationships. Inline emphasis rules read span
-boundaries the lexer recovered.
+Rules that **must** keep the AST cover four
+patterns. Link rules read `*ast.Link` target and
+label. Heading-scoped rules (TOC, duplicate-
+heading, single-H1) need heading levels across
+the document. List-nesting and blockquote-depth
+rules need structural relationships. Inline
+emphasis rules need the span boundaries the lexer
+recovered.
 
 ### The code-block-skipping side effect
 
@@ -262,7 +255,15 @@ rule, so the manifest stays accurate.
    `f.ProseRanges()`, one commit per rule.
 5. Run `BenchmarkCheckCorpusLarge` after each
    conversion; record cumulative wall-time and
-   allocs delta.
+   allocs delta. After Category A lands, tighten
+   `BenchmarkCheckCorpusLarge`'s `Time` and
+   `Allocs` budgets in
+   [bench_test.go](../internal/engine/bench_test.go)
+   to the measured new ceiling (with the same
+   ~15-20 % headroom the existing budgets use) so
+   the wall-time and alloc gates actually enforce
+   the improvement rather than passing under the
+   loose post-196 budgets.
 6. Land the regression gate from phase three.
 7. Update the perf guide at
    [high-performance-go.md](../docs/development/high-performance-go.md)
@@ -271,43 +272,42 @@ rule, so the manifest stays accurate.
 
 ## Risk
 
-The code-block-skipping side effect is the
-biggest hazard. A rule may *appear* Lines-only on
-audit fixtures, then break when a real document
-puts the pattern inside a fence or code span. The
-phase-one perturbation probe is the defense. A
-rule whose diagnostics change when only the
-code-block content changes is routed to Category
+Code-block skipping is the biggest hazard. A rule
+may *appear* Lines-only on audit fixtures and
+break when a real document puts the pattern
+inside a fence or code span. The phase-one
+perturbation probe routes such rules to Category
 B, where the AST projection owns the skipping.
 
-The projection's memory cost is the second
-hazard. One `[]Range` per file lives until the
-file goes out of scope. The slice must land
-within the per-file allocation budget — route it
-through plan 198's arena and verify
-`BenchmarkCheckCorpusLarge` median allocs/op
-stays at or below 255 k.
+Projection memory is the second hazard. One
+`[]Range` per file lives until the file goes out
+of scope. Route the allocation through plan 198's
+arena; verify `BenchmarkCheckCorpusLarge` median
+allocs/op stays at or below 255 k.
 
 Node-derived positions may differ from the
-projected-range path. The fixture-parity check
-gates byte-equal column numbers — any drift
-forces revert or a plan amendment.
+projection. The fixture-parity check gates byte-
+equal column numbers; any drift forces revert or
+amendment.
 
 ## Acceptance Criteria
 
 - [ ] `internal/integration/rule_walk_audit_test.go`
       lands with the initial classification
       manifest checked in.
-- [ ] At least the three highest-impact Lines-only
+- [ ] At least the three highest-impact Category A
       candidates are converted, with their fixtures
       green and the audit manifest updated.
 - [ ] `BenchmarkCheckCorpusLarge` p95 wall time
       improves by ≥ 5 % vs the post-198 baseline
       (237 ms → ≤ 225 ms), or the plan documents
       why the measured gain is smaller and adjusts
-      the target.
+      the target. The new ceiling is encoded in
+      `bench_test.go`'s `Time` budget.
 - [ ] `BenchmarkCheckCorpusLarge` median allocs/op
-      does not regress vs 255 k post-198 baseline.
+      does not regress vs 255 k post-198 baseline,
+      and the bench file's `Allocs` budget is
+      tightened to reflect the new floor.
 - [ ] A converted rule that regresses to reading
       `f.AST` fails the audit test.
 - [ ] All tests pass: `go test ./...`
