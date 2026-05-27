@@ -110,17 +110,16 @@ The client exposes:
 
 Methods the plugin sends or receives:
 
-| Direction | Method                            | Why               |
-| --------- | --------------------------------- | ----------------- |
-| → server  | `initialize`                      | Handshake         |
-| → server  | `textDocument/didOpen`            | Buffer opened     |
-| → server  | `textDocument/didChange`          | Debounced edit    |
-| → server  | `textDocument/didSave`            | Triggers fix      |
-| → server  | `textDocument/didClose`           | Buffer closed     |
-| → server  | `textDocument/codeAction`         | Quick fixes       |
-| → server  | `workspace/executeCommand`        | Run `fixAll`      |
-| ← server  | `textDocument/publishDiagnostics` | Squiggles         |
-| ← server  | `window/showMessage`              | `new Notice(...)` |
+| Direction | Method                            | Why                                      |
+| --------- | --------------------------------- | ---------------------------------------- |
+| → server  | `initialize`                      | Handshake                                |
+| → server  | `textDocument/didOpen`            | Buffer opened                            |
+| → server  | `textDocument/didChange`          | Debounced edit                           |
+| → server  | `textDocument/didSave`            | Triggers fix                             |
+| → server  | `textDocument/didClose`           | Buffer closed                            |
+| → server  | `textDocument/codeAction`         | Quick fixes plus `source.fixAll.mdsmith` |
+| ← server  | `textDocument/publishDiagnostics` | Squiggles                                |
+| ← server  | `window/showMessage`              | `new Notice(...)`                        |
 
 Hover, completion, rename, and navigation are
 deferred. Obsidian exposes those through different
@@ -157,10 +156,10 @@ Obsidian has no lightbulb. Three surfaces stand in:
    diagnostic on the cursor line registers a
    transient `mdsmith: Fix — {code}` command. The
    set clears on cursor move.
-3. The `mdsmith: Fix file` command. It runs
-   `workspace/executeCommand` with the `fixAll`
-   command id. The returned `WorkspaceEdit`
-   applies to the active buffer.
+3. The `mdsmith: Fix file` command. It sends
+   `textDocument/codeAction` filtered to kind
+   `source.fixAll.mdsmith` and applies the
+   returned `WorkspaceEdit` — mirroring VS Code.
 
 `fixOnSave` (off by default) debounces
 `vault.on('modify')` and triggers `Fix file` 200 ms
