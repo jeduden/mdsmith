@@ -13,7 +13,8 @@ user-invocable: true
 allowed-tools: >-
   Bash(git fetch:*), Bash(git show:*), Bash(git branch:*),
   Bash(git checkout:*), Bash(git commit:*),
-  Bash(git push:*), Bash(git rev-parse:*), Bash(sleep:*),
+  Bash(git push:*), Bash(git rev-parse:*),
+  Bash(git remote:*), Bash(sleep:*),
   Bash(gh pr:*), Bash(gh api:*),
   AskUserQuestion
 argument-hint: "[plan number]"
@@ -32,6 +33,29 @@ Run when the user wants to start fresh work and needs to
 know which plans are unclaimed. If the user already named
 a specific plan number, validate it (steps 1–2) then jump
 to step 5.
+
+## Prerequisites
+
+This skill assumes the clone tracks `jeduden/mdsmith`
+directly and the user has push access to it. The PR
+queries (steps 2 and 5) and the PR-create call
+(step 7) all target that repo by name, while the push
+in step 6 goes to `origin`. If `origin` is a fork,
+those two ends don't line up and `gh pr create` fails
+because the head branch never reaches the target.
+
+Verify before continuing:
+
+```bash
+git remote get-url origin
+```
+
+The URL must match `jeduden/mdsmith` (`.git` suffix
+optional, SSH or HTTPS both fine). If it points at a
+fork, stop and tell the user. A fork-based workflow
+would need `gh pr create --head <fork-owner>:<branch>`
+and consistent fork-vs-upstream split throughout — out
+of scope here.
 
 ## Steps
 
