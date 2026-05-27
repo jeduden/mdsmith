@@ -68,9 +68,10 @@ Mostly no. Default Prettier and default mdsmith line
 up: both target 80 columns and both indent with two
 spaces. Prettier's default `proseWrap: "preserve"`
 (which controls paragraph reflow only) leaves alone
-the line breaks mdsmith's `line-length` rule sized in
-place. mdsmith does not normalize list markers by
-default and does not auto-wrap paragraphs, so
+existing line breaks that keep mdsmith's
+`line-length` rule passing — mdsmith only checks line
+length, it does not wrap paragraphs. mdsmith also
+does not normalize list markers by default, so
 Prettier owns those rewrites without contention.
 
 One value to keep aligned: Prettier's `printWidth`
@@ -109,12 +110,13 @@ xargs -0 npx prettier --write -- < "$tmp"
 xargs -0 git add -- < "$tmp"
 ```
 
-POSIX sh. The NUL-delimited file list lives in a
-temp file because POSIX command substitution strips
-NUL bytes from `$(...)`, which would break the
-filenames-with-spaces guarantee. The hook exits
-early on an empty stage so neither tool falls back
-to a full-repo rewrite.
+POSIX sh syntax; requires `git` and an `xargs` that
+supports `-0` (GNU, BSD, and busybox all do). The
+NUL-delimited file list lives in a temp file because
+POSIX command substitution strips NUL bytes from
+`$(...)`, which would break the filenames-with-spaces
+guarantee. The hook exits early on an empty stage so
+neither tool falls back to a full-repo rewrite.
 
 ## CI check
 
