@@ -2,6 +2,6 @@
 docs/research/benchmarks/data/*.json — do not edit by hand. Re-run
 the harness (run.sh) and `mdsmith fix` to refresh. -->
 One static Go binary checks 523 Markdown files in about
-0.5 s. That is roughly 7x faster than Node markdownlint.
+0.4 s. That is roughly 8x faster than Node markdownlint.
 It does more per file than the Rust linters; closing the rest of
 that gap is active work.
