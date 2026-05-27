@@ -17,7 +17,12 @@
       </nav>
       <div class="docs-prose">
         <h1>{{ .Title }}</h1>
-        {{ with .Params.summary }}<p class="lead">{{ . }}</p>{{ end }}
+        {{- /* Inline render so inline markup (code spans, links)
+               in the front-matter summary lands as HTML rather than
+               literal backticks. display=inline avoids nesting a
+               block <p> inside this wrapping <p>. Mirrors
+               feature-grid.html's summary render. */ -}}
+        {{ if .Params.summary }}<p class="lead">{{ .RenderString (dict "display" "inline") .Params.summary }}</p>{{ end }}
         {{ partial "link-rules.html" . }}
       </div>
     </article>

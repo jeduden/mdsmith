@@ -17,7 +17,12 @@
       </nav>
       <div class="docs-prose">
         <h1>{{ .Title }}</h1>
-        {{ with .Params.summary }}<p class="lead">{{ . }}</p>{{ end }}
+        {{- /* Inline render so inline markup (code spans, links)
+               in the front-matter summary lands as HTML rather than
+               literal backticks. display=inline avoids nesting a
+               block <p> inside this wrapping <p>. Mirrors
+               feature-grid.html's summary render. */ -}}
+        {{ if .Params.summary }}<p class="lead">{{ .RenderString (dict "display" "inline") .Params.summary }}</p>{{ end }}
         {{ partial "link-rules.html" . }}
 
         {{- /* Auto-rendered section index: only emitted when the
@@ -33,7 +38,7 @@
               {{ range . }}
                 <section class="docs-index-group">
                   <h2><a href="{{ .RelPermalink }}">{{ .Title }}</a></h2>
-                  {{ with .Params.summary }}<p class="docs-index-summary">{{ . }}</p>{{ end }}
+                  {{ if .Params.summary }}<p class="docs-index-summary">{{ .RenderString (dict "display" "inline") .Params.summary }}</p>{{ end }}
                   <ul class="docs-index-list">
                     {{- /* .RegularPages, not .Pages: Hugo's .Pages
                            is the union of .RegularPages and
@@ -42,7 +47,7 @@
                            subsection twice (once as a page row,
                            once as the "— more pages" row). */ -}}
                     {{ range .RegularPages.ByWeight }}
-                      <li><a href="{{ .RelPermalink }}">{{ .Title }}</a>{{ with .Params.summary }} <span class="docs-index-desc">— {{ . }}</span>{{ end }}</li>
+                      <li><a href="{{ .RelPermalink }}">{{ .Title }}</a>{{ if .Params.summary }} <span class="docs-index-desc">— {{ .RenderString (dict "display" "inline") .Params.summary }}</span>{{ end }}</li>
                     {{ end }}
                     {{ range .Sections.ByWeight }}
                       <li><a href="{{ .RelPermalink }}">{{ .Title }}</a> <span class="docs-index-desc">— more pages</span></li>
@@ -63,7 +68,7 @@
           {{ with .RegularPages.ByWeight }}
             <ul class="docs-index-list docs-index-flat">
               {{ range . }}
-                <li><a href="{{ .RelPermalink }}">{{ .Title }}</a>{{ with .Params.summary }} <span class="docs-index-desc">— {{ . }}</span>{{ end }}</li>
+                <li><a href="{{ .RelPermalink }}">{{ .Title }}</a>{{ if .Params.summary }} <span class="docs-index-desc">— {{ .RenderString (dict "display" "inline") .Params.summary }}</span>{{ end }}</li>
               {{ end }}
             </ul>
           {{ end }}

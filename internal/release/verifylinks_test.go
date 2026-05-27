@@ -27,6 +27,8 @@ func goodSite(t *testing.T, prefix string) string {
 		`<a href="`+prefix+`/rules/mds020-required-structure/">rule</a>`)
 	writeFile(t, filepath.Join(root, "rules", "mds001", "index.html"),
 		`<a href="`+prefix+`/rules/mds021/">sibling rule</a>`)
+	writeFile(t, filepath.Join(root, "guides", "progressive-disclosure", "index.html"),
+		`<p class="lead">Use <code>&lt;?catalog?&gt;</code> with a per-file <code>summary</code></p>`)
 	writeFile(t, filepath.Join(root, "index.html"), `<p>home</p>`)
 	return root
 }
@@ -56,6 +58,8 @@ func TestVerifyWebsiteLinks_AcceptsUnquotedHref(t *testing.T) {
 		`<a href=/rules/mds020-required-structure/>rule</a>`)
 	writeFile(t, filepath.Join(root, "rules", "mds001", "index.html"),
 		`<a href=/rules/mds021/>sibling</a>`)
+	writeFile(t, filepath.Join(root, "guides", "progressive-disclosure", "index.html"),
+		`<p class=lead>Use <code>&lt;?catalog?&gt;</code> summary</p>`)
 	require.NoError(t, VerifyWebsiteLinks(root, ""))
 }
 
@@ -86,6 +90,23 @@ func TestVerifyWebsiteLinks_FailsOnLeakedREADMEHref(t *testing.T) {
 	err := VerifyWebsiteLinks(root, "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "README.md")
+}
+
+// TestVerifyWebsiteLinks_FailsOnLiteralBackticksInLead pins the
+// summary-rendering check. A summary front-matter value that
+// contains code spans must be rendered through .RenderString so
+// the backticks become <code> tags; a regression to raw `{{ . }}`
+// emission ships literal backticks. Overwriting the lead-with-code
+// fixture (the only file in goodSite that satisfies the probe) with
+// a backtick-only lead removes every <code>-bearing lead from the
+// tree, so the wantAnyMatch probe should fail.
+func TestVerifyWebsiteLinks_FailsOnLiteralBackticksInLead(t *testing.T) {
+	root := goodSite(t, "")
+	writeFile(t, filepath.Join(root, "guides", "progressive-disclosure", "index.html"),
+		"<p class=\"lead\">Use `&lt;?catalog?&gt;` with a per-file `summary`</p>")
+	err := VerifyWebsiteLinks(root, "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "summary front-matter")
 }
 
 func TestVerifyWebsiteLinks_FailsOnQuotedREADMEHref(t *testing.T) {

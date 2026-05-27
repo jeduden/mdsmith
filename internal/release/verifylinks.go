@@ -137,6 +137,23 @@ func websiteLinkProbes(prefix string) []linkProbe {
 			wantNoMatch: regexp.MustCompile(`(?i)href=(?:"data:|data:)`),
 			recursive:   true,
 		},
+		{
+			// The lead/summary <p> elements in single.html and
+			// list.html render the front-matter `summary` field
+			// through .RenderString so inline markup — code
+			// spans, links — lands as HTML. Without that, a
+			// summary like "Use `<?catalog?>` ..." ships with
+			// literal backticks instead of <code> tags. At least
+			// one rendered page (progressive-disclosure has
+			// code-spanned summary text) must carry the rendered
+			// form; if every lead is plain text, the templates
+			// have regressed to raw {{ . }}.
+			name: "summary front-matter renders inline markdown as <code>",
+			path: ".",
+			wantAnyMatch: regexp.MustCompile(
+				`<p class="?lead"?>[^<]*<code>`),
+			recursive: true,
+		},
 	}
 }
 
