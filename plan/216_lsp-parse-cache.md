@@ -8,7 +8,7 @@ summary: >-
   The LSP re-parses the active document on every
   textDocument/didChange. Parse is ~30 % of CPU on
   the corpus benchmark; a per-document cache keyed
-  by `(absPath, version)` returns the cached
+  by `(path, version)` returns the cached
   `*lint.File` when the document text has not
   changed between the runLint trigger and the
   RunSource call. Mirrors the existing RunCache
@@ -19,8 +19,13 @@ summary: >-
 
 ## Goal
 
-Add a parse cache keyed by `(absPath, version)`.
-On hit, return the cached `*lint.File`. The cache
+Add a parse cache keyed by `(path, version)`. The
+path is the same string the LSP currently passes to
+`engine.Runner.RunSource` — workspace-relative,
+produced by `workspaceRelative(root, doc.path)` in
+[server.go](../internal/lsp/server.go) so
+ignore/kind/override matching stays correct. On
+hit, return the cached `*lint.File`. The cache
 lives on the LSP `Server`. It has the same
 lifetime as the existing
 [runCache](../internal/lsp/server.go). The runLint
@@ -76,7 +81,7 @@ the old entry on their own.
 // internal/lint/parsecache.go (new file)
 type ParseCache struct {
     mu      sync.Mutex
-    entries map[string]parseCacheEntry // key: absPath
+    entries map[string]parseCacheEntry // key: path
 }
 
 type parseCacheEntry struct {
@@ -85,22 +90,23 @@ type parseCacheEntry struct {
 }
 ```
 
-The map is keyed by `absPath`. Each entry carries
-the version it was parsed at. A `Get(absPath, v)`
-hit requires both: the entry exists and its
-stored version equals `v`. So the lookup pair is
-`(absPath, version)`, but the cache only retains
-one entry per path — the most recent version. An
-LSP edit monotonically increments the version, so
-a stored older entry is always dead on the next
-miss.
+The map is keyed by the same path string the LSP
+hands to `RunSource` (workspace-relative). Each
+entry carries the version it was parsed at. A
+`Get(path, v)` hit requires both: the entry exists
+and its stored version equals `v`. So the lookup
+pair is `(path, version)`, but the cache only
+retains one entry per path — the most recent
+version. An LSP edit monotonically increments the
+version, so a stored older entry is always dead on
+the next miss.
 
 Lookup signature:
 
 ```go
-func (c *ParseCache) Get(absPath string, version int) (*File, bool)
-func (c *ParseCache) Put(absPath string, version int, f *File)
-func (c *ParseCache) Invalidate(absPath string)
+func (c *ParseCache) Get(path string, version int) (*File, bool)
+func (c *ParseCache) Put(path string, version int, f *File)
+func (c *ParseCache) Invalidate(path string)
 ```
 
 ### Wire-in
@@ -146,20 +152,25 @@ it does not single-flight overlapping `runLint`
 calls: a second timer can fire while a prior
 `runLint` for the same URI is still executing. The
 cache tolerates that without single-flight
-semantics. Two concurrent `Get(path, v)` calls
-both miss, both parse, and both call `Put` — the
-mutex serializes the writes and the later one
-overwrites with an equivalent `*File`. The cost is
-a wasted parse, not a correctness bug. Cross-
-document parses are independent; the `*lint.File`
-is not shared across paths.
+semantics. `Put(path, v, f)` only writes when the
+slot is empty or `v >= existing.version`; an older
+parse landing after a newer one is dropped on the
+floor. That keeps the cache effective across edits
+that overlap their predecessor's parse. Two
+concurrent parses of the same `(path, v)` both
+land, the later overwriting with an equivalent
+`*File` — a wasted parse, not a correctness bug.
+Cross-document parses are independent; the
+`*lint.File` is not shared across paths.
 
 ## Tasks
 
 1. Add `internal/lint/parsecache.go` with the
    struct, methods, and unit tests covering Get
-   miss, hit, version-mismatch miss, and
-   Invalidate.
+   miss, hit, version-mismatch miss, Invalidate,
+   and the stale-Put rejection (Put with version
+   below an existing entry leaves the entry
+   untouched).
 2. Add `engine.Runner.ParseCache` field and the
    `RunSource` hit/miss branching. Existing tests
    that construct a Runner without setting the
