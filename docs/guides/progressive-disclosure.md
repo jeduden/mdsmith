@@ -196,7 +196,7 @@ for the full parameter reference.
 ### A file is missing `summary`
 
 `{summary}` resolves to an empty string and the row
-becomes `- []( path/to/file.md)`. Fix with a schema
+becomes `- [](path/to/file.md)`. Fix with a schema
 that requires the field. Declare a kind for the
 indexed tree, point a `required-structure` schema at
 it, and list `summary` as required front matter:
@@ -277,13 +277,6 @@ joined comma-separated field maintained alongside
 the structured one), or generate the catalog body
 from a Go helper that walks the structured field
 itself.
-
-A planned `row-expr` parameter — a CUE expression
-evaluator on the same scope `where` uses — unlocks
-`strings.Join`, ternaries, and list comprehensions
-inside `row`. That is the upcoming shape for richer
-projection; the `{field}` placeholder syntax stays
-as the zero-config default.
 
 ### Generated index conflicts on merge
 
