@@ -15,6 +15,7 @@ allowed-tools: >-
   Bash(git checkout:*), Bash(git commit:*),
   Bash(git push:*), Bash(git rev-parse:*),
   mcp__github__list_pull_requests,
+  mcp__github__search_pull_requests,
   mcp__github__create_pull_request,
   AskUserQuestion
 argument-hint: "[plan number]"
@@ -129,7 +130,36 @@ build subcommand`.
 If the user picks "Other," accept a plan number from
 free-text and run the same validation.
 
-### 5. Create the branch
+### 5. Check for closed PRs on this plan
+
+Step 2 only sees open PRs. Before creating the branch,
+sweep for closed PRs that referenced this plan — they
+catch abandoned attempts and the rare case where a
+plan is actually merged but PLAN.md is stale.
+
+Call `mcp__github__search_pull_requests` with
+`owner=jeduden`, `repo=mdsmith`, and query
+`"Plan <id>:" in:title state:closed`.
+
+The colon in the title pattern keeps `Plan 102` from
+also matching `Plan 1020`.
+
+For each hit, read `pull_request.merged_at`:
+
+- **non-null → merged.** Surprising. The plan is
+  actually done but PLAN.md still says `🔲`. Stop.
+  Tell the user the PR number, title, and merge date,
+  and suggest fixing the catalog instead of starting
+  fresh work.
+- **null → closed unmerged.** An abandoned attempt.
+  Show PR number, title, and `closed_at`. Use
+  `AskUserQuestion`: "PR #N was closed unmerged on
+  <date>. Start fresh anyway, or skip this plan and
+  pick another?" Honour the user's choice.
+
+If no hits, proceed.
+
+### 6. Create the branch
 
 Branch name: `plan-<id>-<slug>`, where `<slug>` is the
 plan filename with the leading `<id>_` and trailing
@@ -162,7 +192,7 @@ git push -u origin plan-<id>-<slug>
 If the push fails with a network error, retry up to four
 times with 2s / 4s / 8s / 16s exponential backoff.
 
-### 6. Open the draft PR
+### 7. Open the draft PR
 
 Title format: `Plan <id>: <title>` — matches the existing
 convention (`Plan 200: move docs/ embed out of
