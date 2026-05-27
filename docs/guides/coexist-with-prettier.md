@@ -102,7 +102,7 @@ this script at `.husky/pre-commit` (under husky) or
 `.git/hooks/pre-commit` (plain Git hooks):
 
 ```sh
-tmp=$(mktemp) || exit 1
+tmp=$(mktemp "${TMPDIR:-/tmp}/mdsmith-prettier.XXXXXX") || exit 1
 trap 'rm -f "$tmp"' EXIT INT TERM
 git diff --cached --name-only --diff-filter=ACMR -z -- '*.md' > "$tmp"
 [ -s "$tmp" ] || exit 0
