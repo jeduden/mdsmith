@@ -109,6 +109,44 @@ func TestVerifyWebsiteLinks_FailsOnLiteralBackticksInLead(t *testing.T) {
 	assert.Contains(t, err.Error(), "summary front-matter")
 }
 
+// TestVerifyWebsiteLinks_LeadProbe_AcceptsLooseHTMLShapes pins
+// the loosened lead/code regex against the shapes a real renderer
+// (or future template tweak) can produce: extra classes alongside
+// `lead`, unquoted class values, intervening inline tags before
+// the <code>, and additional <p> attributes. Each variant lives in
+// its own file so the wantAnyMatch probe sees exactly one matching
+// shape per case.
+func TestVerifyWebsiteLinks_LeadProbe_AcceptsLooseHTMLShapes(t *testing.T) {
+	cases := map[string]string{
+		"extra classes":          `<p class="lead big">Use <code>x</code></p>`,
+		"unquoted class":         `<p class=lead>Use <code>x</code></p>`,
+		"attrs before class":     `<p id="hero" class="lead">Use <code>x</code></p>`,
+		"inline tag before code": `<p class="lead"><a href="/x">link</a> uses <code>x</code></p>`,
+	}
+	for name, html := range cases {
+		t.Run(name, func(t *testing.T) {
+			root := goodSite(t, "")
+			writeFile(t, filepath.Join(root, "guides", "progressive-disclosure", "index.html"), html)
+			require.NoError(t, VerifyWebsiteLinks(root, ""))
+		})
+	}
+}
+
+// TestVerifyWebsiteLinks_LeadProbe_RejectsCodeOutsideLead pins the
+// anchor: <code> must sit inside the lead <p>, not in a sibling
+// element. The negative match guards against a regex that lazily
+// matches across <p> boundaries (e.g. `(?s)<p ...lead...>.*?<code>`).
+func TestVerifyWebsiteLinks_LeadProbe_RejectsCodeOutsideLead(t *testing.T) {
+	root := goodSite(t, "")
+	// Overwrite the only goodSite file that satisfies the probe
+	// so the negative case is the lone candidate.
+	writeFile(t, filepath.Join(root, "guides", "progressive-disclosure", "index.html"),
+		`<p class="lead">Plain text</p><p>foo <code>bar</code></p>`)
+	err := VerifyWebsiteLinks(root, "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "summary front-matter")
+}
+
 func TestVerifyWebsiteLinks_FailsOnQuotedREADMEHref(t *testing.T) {
 	// The quoted form must be caught too — the original
 	// inline-shell regex (`href=[^"]*README\.md`) could not

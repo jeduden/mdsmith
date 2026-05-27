@@ -148,10 +148,20 @@ func websiteLinkProbes(prefix string) []linkProbe {
 			// code-spanned summary text) must carry the rendered
 			// form; if every lead is plain text, the templates
 			// have regressed to raw {{ . }}.
+			//
+			// The regex tolerates: extra <p> attributes, extra
+			// classes alongside `lead` (quoted or unquoted),
+			// and arbitrary inline tags between the opening
+			// <p> and the <code> — `[^<]|<[^/]|</[^p]|</p[^>]`
+			// matches any byte that does not close the <p>,
+			// so `<p class=lead><a>x</a> <code>y</code></p>`
+			// still satisfies the probe but `<p class=lead>x</p>
+			// <code>y</code>` (code in a sibling) does not.
 			name: "summary front-matter renders inline markdown as <code>",
 			path: ".",
 			wantAnyMatch: regexp.MustCompile(
-				`<p class="?lead"?>[^<]*<code>`),
+				`<p[^>]*\bclass=["']?[^"'>]*\blead\b[^"'>]*["']?[^>]*>` +
+					`(?:[^<]|<[^/]|</[^p]|</p[^>])*<code\b`),
 			recursive: true,
 		},
 	}
