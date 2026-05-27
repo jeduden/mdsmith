@@ -316,7 +316,11 @@ func TestSummaryFrontMatterRenderedThroughRenderString(t *testing.T) {
 		if info.IsDir() || filepath.Ext(path) != ".html" {
 			return nil
 		}
-		rel, _ := filepath.Rel(layoutsDir, path)
+		rel, relErr := filepath.Rel(layoutsDir, path)
+		if relErr != nil {
+			ioErrors = append(ioErrors, fmt.Sprintf("rel %s: %v", path, relErr))
+			return nil
+		}
 		data, readErr := os.ReadFile(path)
 		if readErr != nil {
 			ioErrors = append(ioErrors, fmt.Sprintf("read %s: %v", path, readErr))
