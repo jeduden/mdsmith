@@ -355,6 +355,7 @@ func TestSummaryFrontMatterRenderedThroughRenderString(t *testing.T) {
 
 	var violations []summaryViolation
 	var ioErrors []string
+	scanned := 0
 	require.NoError(t, filepath.Walk(layoutsDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			ioErrors = append(ioErrors, fmt.Sprintf("walk %s: %v", path, err))
@@ -379,6 +380,7 @@ func TestSummaryFrontMatterRenderedThroughRenderString(t *testing.T) {
 			return nil
 		}
 		violations = append(violations, got...)
+		scanned++
 		return nil
 	}))
 
@@ -388,6 +390,11 @@ func TestSummaryFrontMatterRenderedThroughRenderString(t *testing.T) {
 	}
 	assert.Empty(t, formatted)
 	assert.Empty(t, ioErrors, "filesystem errors during scan")
+	// Guard against the test passing vacuously if website/layouts/
+	// ever disappears or the walker is misconfigured: at least the
+	// `_default/baseof.html` + four page-rendering layouts must
+	// have been scanned.
+	assert.GreaterOrEqual(t, scanned, 5, "expected to scan at least 5 .html files; got %d", scanned)
 }
 
 // TestScanSummaryViolations_TableDriven enumerates every safe and
@@ -568,6 +575,12 @@ func TestScanSummaryViolations_MultiLineWith(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	assert.Contains(t, got[0].Why, "with")
+	// The reported line points at the pipe (`.Params.summary` on
+	// line 3), not the `{{ with` opener on line 2. text/template
+	// sets the node's Pos to the start of the pipe — more
+	// diagnostic for the reader because it identifies the
+	// offending operand rather than the action delimiter.
+	assert.Equal(t, 3, got[0].Line)
 }
 
 // TestScanSummaryViolations_CRLFAction pins that CRLF line endings
