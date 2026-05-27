@@ -76,7 +76,7 @@ row: "- [{summary}](../{filename})"
 - [Rename a heading and every workspace anchor link that points at it is rewritten in one atomic edit. Link-reference labels rename with their uses. A colliding slug fails loudly instead of silently breaking cross-file links.](../docs/features/rename.md)
 - [On `mdsmith fix`, `<?toc?>` rebuilds a heading TOC, `<?catalog?>` generates an index from front matter, and `<?include?>` splices in another file. A Git merge driver auto-resolves conflicts inside those blocks.](../docs/features/self-maintaining-sections.md)
 - [Cap file, section, and token-budget size; enforce reading grade and sentence count; flag verbatim copy-paste across files.](../docs/features/size-and-readability.md)
-- [Add `mdsmith fix` before `prettier --write` in the same pre-commit hook. mdsmith does not require changing your Prettier config.](../docs/guides/coexist-with-prettier.md)
+- [Run mdsmith alongside Prettier by ordering `mdsmith fix` before `prettier --write` in the same pre-commit hook.](../docs/guides/coexist-with-prettier.md)
 - [Vale owns brand voice and prose style; remark owns Markdown AST transformations; mdsmith owns formatting, cross-file integrity, and generated sections. They sit side by side in CI without overlap.](../docs/guides/coexist-with-vale-and-remark.md)
 - [How to use the build directive to declare artifact outputs, keep generated bodies in sync, and configure user-declared recipes.](../docs/guides/directives/build.md)
 - [How to use schemas, require, and allow-empty-section to validate headings, front matter, and filenames.](../docs/guides/directives/enforcing-structure.md)
