@@ -82,6 +82,7 @@ row: "- [{summary}]({filename})"
 - [Every channel that ships the mdsmith binary, the VS Code extension, or the Claude Code plugin — npm, PyPI, asdf, mise, the GitHub release, the Visual Studio Marketplace plus Open VSX, and the in-repository Claude Code marketplace — and which channel to pick for which workflow.](docs/guides/install.md)
 - [Trade-offs and threshold guidance for readability, structure, length, and token budgets.](docs/guides/metrics-tradeoffs.md)
 - [Move a project from markdownlint-cli or markdownlint-cli2 to mdsmith — the rule mapping, the config rewrite, and the markdownlint rules mdsmith does not implement yet.](docs/guides/migrate-from-markdownlint.md)
+- [Use `<?catalog?>` with a per-file `summary` front matter field to emit a one-line index of a directory, so AI coding agents read a few thousand tokens of metadata up front and only `Read` the files a task actually touches.](docs/guides/progressive-disclosure.md)
 - [Declare a document-structure schema inline on a kind or in a proto.md file, validate headings and front matter, and tighten rule config per section.](docs/guides/schemas.md)
 - [CLI commands, flags, exit codes, and output format.](docs/reference/cli.md)
 - [List workspace links that point at a file.](docs/reference/cli/backlinks.md)
@@ -115,9 +116,7 @@ row: "- [{summary}]({filename})"
 - Any change follows Red/Green TDD: failing test, then pass, then commit
 - Keep commits small and focused on one change
 - Run `mdsmith check .` before committing; all markdown must pass
-- Never modify `.mdsmith.yml` (linter configuration) without
-  explicit user consent — this includes rule settings,
-  overrides, ignore patterns, and file-length limits
+- Never modify `.mdsmith.yml` (linter configuration) without explicit user consent — this includes rule settings, overrides, ignore patterns, and file-length limits
 
 ## PR Workflow
 
