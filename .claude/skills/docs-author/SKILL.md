@@ -206,11 +206,20 @@ One page, one type.
 ### fragments
 
 1. Read the file. Classify the type.
-2. Derive `title:` and `summary:` from the body
-   using the per-type formula.
-3. Print three link-text candidates and one
+2. Read the file's resolved kind via `mdsmith
+   kinds resolve <path>` (or read the kind body)
+   to learn which front-matter keys its schema
+   declares.
+3. Derive `summary:` for every page using the
+   per-type formula. Derive a body H1 candidate
+   using the per-type title formula. Emit
+   `title:` only when the kind schema declares
+   it; emit `command:` for the `cli-command`
+   kind.
+4. Print three link-text candidates and one
    hover blurb (≤120 chars).
-4. Patch the front matter if the user accepts.
+5. Patch the front matter if the user accepts;
+   set or rewrite the H1 separately if needed.
 
 ## Fragment formulas
 
@@ -250,9 +259,19 @@ Rules that apply to every type:
 - No marketing adjectives (powerful, seamless,
   comprehensive, robust, …).
 
-### `title` / H1
+### Page title — the body H1
 
-The H1 and the `title` front matter agree.
+mdsmith docs carry the page title as the first
+body H1 and keep only `summary` in front matter
+(see `internal/release/syncdocs.go`, which lifts
+the H1 into `title:` when syncing to Hugo). So
+`title:` front matter is only emitted when a
+kind's schema declares it (e.g. CLI reference
+pages use `command:` instead; some legacy pages
+carry `title:`). The body H1 is the default
+surface for the title.
+
+The H1 still follows a per-type formula:
 
 - **Tutorial**: activity-framed verb phrase.
 - **How-to**: bare-infinitive verb phrase.
@@ -356,11 +375,16 @@ Rewriting rules:
 
 ## Project conventions to respect
 
-- **Front matter.** Most pages carry `title` and
-  `summary`. CLI reference pages use `command` and
-  `summary` (per the `cli-command` kind schema).
-  Plan files also carry `status`. Do not invent
-  new keys without a schema entry.
+- **Front matter.** Every page carries `summary`.
+  The page title lives in the body H1 by default;
+  the release pipeline lifts it into `title:` when
+  syncing to Hugo (`internal/release/syncdocs.go`).
+  A page emits `title:` in front matter only when
+  its kind schema declares it. CLI reference
+  pages use `command` + `summary` (the
+  `cli-command` kind). Plan files also carry
+  `status`. Do not invent new keys without a
+  schema entry.
 - **Voice from CLAUDE.md.** Descriptions name
   *what data must satisfy what condition*. Name
   the inputs (front matter fields, glob, heading
