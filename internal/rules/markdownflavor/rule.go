@@ -12,6 +12,7 @@ package markdownflavor
 import (
 	"bytes"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/yuin/goldmark/ast"
@@ -49,9 +50,18 @@ func (r *Rule) Category() string { return "structural" }
 // EnabledByDefault implements rule.Defaultable. MDS034 is opt-in.
 func (r *Rule) EnabledByDefault() bool { return false }
 
-// ApplySettings implements rule.Configurable.
+// ApplySettings implements rule.Configurable. Keys are processed in
+// sorted order so the error reported for multiple unknown settings is
+// deterministic across runs (Go's map iteration order is randomised,
+// which would otherwise produce flaky fixture goldens).
 func (r *Rule) ApplySettings(settings map[string]any) error {
-	for k, v := range settings {
+	keys := make([]string, 0, len(settings))
+	for k := range settings {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		v := settings[k]
 		switch k {
 		case "flavor":
 			s, ok := v.(string)
@@ -160,8 +170,18 @@ func (r *Rule) fixGitHubAlerts(f *lint.File) []byte {
 		if !flavor.IsGitHubAlert(bq, f.Source) {
 			return ast.WalkContinue, nil
 		}
-		para := bq.FirstChild().(*ast.Paragraph)
+		// flavor.IsGitHubAlert validates the (Paragraph, non-empty Lines)
+		// shape, but the assertion + At(0) couple us to that contract
+		// across a package boundary. Re-check locally so a future relax
+		// of IsGitHubAlert cannot turn this walk into a panic.
+		para, ok := bq.FirstChild().(*ast.Paragraph)
+		if !ok {
+			return ast.WalkContinue, nil
+		}
 		lines := para.Lines()
+		if lines == nil || lines.Len() == 0 {
+			return ast.WalkContinue, nil
+		}
 		seg := lines.At(0)
 		markerLine, _ := flavor.LineCol(f.Source, seg.Start)
 		skip[markerLine] = true

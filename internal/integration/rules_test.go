@@ -11,7 +11,6 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
-	"github.com/jeduden/mdsmith/internal/yamlutil"
 
 	_ "github.com/jeduden/mdsmith/internal/rules/ambiguousemphasis"
 	_ "github.com/jeduden/mdsmith/internal/rules/atxheadingwhitespace"
@@ -114,23 +113,17 @@ func parseFixtureFrontMatter(
 ) (map[string]any, []expectedDiag, []byte) {
 	t.Helper()
 
-	prefix, content := lint.StripFrontMatter(data)
-	if prefix == nil {
-		require.False(t, requireDiagnostics, "bad fixture is missing front matter with expected diagnostics")
-		return nil, nil, data
-	}
-
-	// lint.StripFrontMatter returns the prefix including its --- fences;
-	// trim them so the remainder is plain YAML.
-	delim := []byte("---\n")
-	body := bytes.TrimPrefix(prefix, delim)
-	body = bytes.TrimSuffix(body, delim)
-
 	var fm fixtureFrontMatter
-	if err := yamlutil.UnmarshalSafe(body, &fm); err != nil {
+	content, err := lint.UnmarshalFrontMatter(data, &fm)
+	if err != nil {
 		t.Fatalf("decoding front matter: %v", err)
 	}
-
+	if fm.Diagnostics == nil && fm.Settings == nil {
+		// lint.UnmarshalFrontMatter returns the original bytes when no
+		// front matter exists; treat that as "no diagnostics declared".
+		require.False(t, requireDiagnostics, "bad fixture is missing front matter with expected diagnostics")
+		return nil, nil, content
+	}
 	if requireDiagnostics && len(fm.Diagnostics) == 0 {
 		t.Fatal("bad fixture front matter must contain a non-empty diagnostics key")
 	}

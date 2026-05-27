@@ -14,7 +14,7 @@ import (
 // negative offset to 0 so callers that subtract past the start of
 // source still get a valid (1, 1) position.
 func TestLineColClampsNegativeOffset(t *testing.T) {
-	line, col := lineCol([]byte("hello\nworld\n"), -5)
+	line, col := LineCol([]byte("hello\nworld\n"), -5)
 	assert.Equal(t, 1, line)
 	assert.Equal(t, 1, col)
 }
@@ -24,7 +24,7 @@ func TestLineColClampsNegativeOffset(t *testing.T) {
 // look one byte past EOF still get a valid position.
 func TestLineColClampsOversizedOffset(t *testing.T) {
 	src := []byte("hello\nworld\n")
-	line, col := lineCol(src, len(src)+10)
+	line, col := LineCol(src, len(src)+10)
 	assert.Equal(t, 3, line)
 	assert.Equal(t, 1, col)
 }
@@ -76,13 +76,14 @@ func TestFindHeadingIDIgnoresAttributesWithoutID(t *testing.T) {
 }
 
 // TestTaskCheckBoxFindingOrphan exercises the defensive fallback in
-// taskCheckBoxFinding when the node has no block ancestor — which
-// only happens if the AST was hand-constructed rather than produced
-// by goldmark. The fallback returns (1, 1).
+// inlineExtFinding (which now handles TaskCheckBox alongside other
+// segment-less inline extensions) when the node has no block ancestor
+// — which only happens if the AST was hand-constructed rather than
+// produced by goldmark. The fallback returns (1, 1).
 func TestTaskCheckBoxFindingOrphan(t *testing.T) {
 	source := []byte("body\n")
 	orphan := extast.NewTaskCheckBox(true)
-	got := taskCheckBoxFinding(source, orphan)
+	got := inlineExtFinding(source, orphan, FeatureTaskLists)
 	assert.Equal(t, FeatureTaskLists, got.Feature)
 	assert.Equal(t, 1, got.Line)
 	assert.Equal(t, 1, got.Column)
@@ -139,11 +140,11 @@ func TestNearestBlockAncestor(t *testing.T) {
 		link := extast.NewFootnoteLink(1)
 		p.AppendChild(p, em)
 		em.AppendChild(em, link)
-		assert.Same(t, ast.Node(p), nearestBlockAncestor(link))
+		assert.Same(t, ast.Node(p), NearestBlockAncestor(link))
 	})
 
 	t.Run("returns nil for orphan node", func(t *testing.T) {
-		assert.Nil(t, nearestBlockAncestor(extast.NewFootnoteLink(1)))
+		assert.Nil(t, NearestBlockAncestor(extast.NewFootnoteLink(1)))
 	})
 }
 
@@ -298,4 +299,32 @@ func TestFindHeadingIDPublicWrapsMissID(t *testing.T) {
 	hx, ok := FindHeadingID([]byte("# plain\n"), h)
 	assert.False(t, ok)
 	assert.Equal(t, HeadingIDExtra{}, hx)
+}
+
+// TestFindHeadingIDNilHeadingReturnsFalse exercises the public-API
+// nil guard: a nil *ast.Heading must yield (zero, false) rather
+// than panic on Attributes().
+func TestFindHeadingIDNilHeadingReturnsFalse(t *testing.T) {
+	hx, ok := FindHeadingID([]byte("# h\n"), nil)
+	assert.False(t, ok)
+	assert.Equal(t, HeadingIDExtra{}, hx)
+}
+
+// TestIsGitHubAlertHandlesEdgeCases pins the defensive branches of
+// IsGitHubAlert: nil blockquote, missing-paragraph first child, and
+// a paragraph with empty Lines all return false rather than panic.
+func TestIsGitHubAlertHandlesEdgeCases(t *testing.T) {
+	t.Run("nil blockquote", func(t *testing.T) {
+		assert.False(t, IsGitHubAlert(nil, []byte("> [!NOTE]\n")))
+	})
+
+	t.Run("paragraph with empty lines", func(t *testing.T) {
+		// Hand-construct a blockquote whose first child is a paragraph
+		// with no Lines appended — IsGitHubAlert must short-circuit on
+		// the lines.Len()==0 guard rather than calling At(0).
+		bq := ast.NewBlockquote()
+		para := ast.NewParagraph() // Lines() is empty by default
+		bq.AppendChild(bq, para)
+		assert.False(t, IsGitHubAlert(bq, []byte("body\n")))
+	})
 }

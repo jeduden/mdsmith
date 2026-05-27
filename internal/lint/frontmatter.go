@@ -17,6 +17,26 @@ func StripFrontMatter(source []byte) (prefix, content []byte) {
 	return markdown.StripFrontMatter(source)
 }
 
+// UnmarshalFrontMatter strips the leading YAML front matter block off
+// source, decodes it into v via yamlutil.UnmarshalSafe, and returns
+// the body with the block removed. body equals source when there is
+// no front matter; in that case v is left untouched and err is nil.
+// Centralises the "---\n" delimiter trim that several call sites
+// were repeating after StripFrontMatter.
+func UnmarshalFrontMatter(source []byte, v any) (body []byte, err error) {
+	prefix, content := markdown.StripFrontMatter(source)
+	if prefix == nil {
+		return content, nil
+	}
+	delim := []byte("---\n")
+	yamlBody := bytes.TrimPrefix(prefix, delim)
+	yamlBody = bytes.TrimSuffix(yamlBody, delim)
+	if err := yamlutil.UnmarshalSafe(yamlBody, v); err != nil {
+		return content, err
+	}
+	return content, nil
+}
+
 // CountLines returns the number of newline-terminated lines in b,
 // forwarded from pkg/markdown.
 func CountLines(b []byte) int {

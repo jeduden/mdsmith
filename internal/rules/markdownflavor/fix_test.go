@@ -174,17 +174,6 @@ func TestRuleDualNodeEditsSupportedFeaturesReturnNil(t *testing.T) {
 	assert.Nil(t, r.dualNodeEdits(nil, &ext.SubscriptNode{}))
 }
 
-// TestApplyEditsHandlesAdjacentEdits guards the single-pass build in
-// applyEdits: adjacent edits (e.g. an opening and closing delimiter
-// of a strikethrough) must compose into a contiguous output without
-// dropping or duplicating bytes between them.
-func TestApplyEditsHandlesAdjacentEdits(t *testing.T) {
-	src := []byte("ab~~xy~~cd")
-	edits := []edit{
-		{start: 2, end: 4},                     // opening "~~"
-		{start: 6, end: 8},                     // closing "~~"
-		{start: 0, end: 0, repl: []byte("> ")}, // pure insertion at start
-	}
-	got := applyEdits(src, edits)
-	assert.Equal(t, "> abxycd", string(got))
-}
+// Splice's single-pass behaviour (adjacent edits, pure insertion,
+// replacement bytes) is exercised in pkg/markdown's TestSplice; the
+// rule layer just feeds edits into markdown.Splice.

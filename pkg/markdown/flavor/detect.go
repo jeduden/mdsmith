@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"regexp"
 	"sort"
-	"sync"
 
 	"github.com/yuin/goldmark/ast"
 	extast "github.com/yuin/goldmark/extension/ast"
@@ -68,26 +67,6 @@ var bareURLPattern = regexp.MustCompile(
 		"`" + `]*)?`,
 )
 
-// detectParserPool reuses dual-parser instances across Detect calls.
-// Building one parser fans out goldmark.New plus every extension's
-// Extend hook; over a 600-file workspace check that cost shows up as
-// a measurable fraction of CPU and allocations. parser.Parser is
-// only safe to reuse sequentially within a single goroutine, so the
-// pool hands each Detect goroutine its own instance and clears the
-// link-reference transformer's pinned document bytes via the paired
-// reset closure before Put. Mirrors the schema content-parser pool.
-type pooledDetectParser struct {
-	parser parser.Parser
-	reset  func()
-}
-
-var detectParserPool = sync.Pool{
-	New: func() any {
-		p, reset := NewPooledParser()
-		return &pooledDetectParser{parser: p, reset: reset}
-	},
-}
-
 // Detect runs every feature detector against doc and returns findings
 // in document-body order. accept is an optional predicate: when
 // non-nil, only features for which accept(feat) returns true are
@@ -127,25 +106,23 @@ func Detect(doc *markdown.Document, accept func(Feature) bool) []Finding {
 	return out
 }
 
-// dualFindings runs the dual parser via the pooled parser instance,
+// dualFindings runs the dual parser via the package-shared pool,
 // walks the resulting AST, and returns the keep-filtered findings.
-// Borrows a parser for the duration of the parse-plus-walk only, so
-// the parser's link-ref transformer cannot pin source bytes between
-// calls.
+// The borrow lasts for the parse-plus-walk only — WithSharedParser
+// resets the parser's link-ref transformer before returning it to
+// the pool so source bytes are not pinned between calls. Returns nil
+// (not an empty slice) when no finding passes keep, matching the
+// project's allocation-budget rule.
 func dualFindings(source []byte, keep func(Feature) bool) []Finding {
-	pp := detectParserPool.Get().(*pooledDetectParser)
-	defer func() {
-		pp.reset()
-		detectParserPool.Put(pp)
-	}()
-	dualDoc := pp.parser.Parse(text.NewReader(source))
-	all := detectFromDual(source, dualDoc)
-	out := make([]Finding, 0, len(all))
-	for _, fin := range all {
-		if keep(fin.Feature) {
-			out = append(out, fin)
+	var out []Finding
+	WithSharedParser(func(p parser.Parser) {
+		dualDoc := p.Parse(text.NewReader(source))
+		for _, fin := range detectFromDual(source, dualDoc) {
+			if keep(fin.Feature) {
+				out = append(out, fin)
+			}
 		}
-	}
+	})
 	return out
 }
 
@@ -208,7 +185,7 @@ func builtinFindingFor(source []byte, n ast.Node) (*Finding, ast.WalkStatus, boo
 		fin := blockFinding(source, n, FeatureTables)
 		return &fin, ast.WalkSkipChildren, true
 	case *extast.TaskCheckBox:
-		fin := taskCheckBoxFinding(source, n)
+		fin := inlineExtFinding(source, n, FeatureTaskLists)
 		return &fin, ast.WalkContinue, true
 	case *extast.Strikethrough:
 		fin := strikethroughFinding(source, n)
@@ -294,35 +271,27 @@ func markerInlineFinding(source []byte, n ast.Node, feat Feature, marker byte) F
 func blockFinding(source []byte, n ast.Node, feat Feature) Finding {
 	start, end := nodeByteRange(n)
 	lineStart := lineStartOf(source, start)
-	line, _ := lineCol(source, lineStart)
+	line, _ := LineCol(source, lineStart)
 	return Finding{Feature: feat, Line: line, Column: 1, Start: lineStart, End: end}
 }
 
-// taskCheckBoxFinding synthesises a Finding for a TaskCheckBox by
-// walking up to the nearest block ancestor with line info (TextBlock
-// inside the containing ListItem). TaskCheckBox has no source segment
-// of its own.
-func taskCheckBoxFinding(source []byte, n ast.Node) Finding {
-	if p := nearestBlockAncestor(n); p != nil {
-		return findingFromBlock(source, p, FeatureTaskLists)
-	}
-	return Finding{Feature: FeatureTaskLists, Line: 1, Column: 1}
-}
-
 // inlineExtFinding covers inline extension nodes that expose no
-// segment (e.g. FootnoteLink). It uses the first ancestor block's
-// first-line position instead of firstTextStart, which would return
-// zero for a childless inline.
+// segment (e.g. FootnoteLink, TaskCheckBox). It uses the first
+// ancestor block's first-line position instead of firstTextStart,
+// which would return zero for a childless inline.
 func inlineExtFinding(source []byte, n ast.Node, feat Feature) Finding {
-	if p := nearestBlockAncestor(n); p != nil {
+	if p := NearestBlockAncestor(n); p != nil {
 		return findingFromBlock(source, p, feat)
 	}
 	return Finding{Feature: feat, Line: 1, Column: 1}
 }
 
-// nearestBlockAncestor walks up from n and returns the first block-
-// typed ancestor with non-empty Lines().
-func nearestBlockAncestor(n ast.Node) ast.Node {
+// NearestBlockAncestor walks up from n and returns the first block-
+// typed ancestor with non-empty Lines(). Returns nil when no such
+// ancestor exists (typically a hand-constructed inline node with no
+// surrounding paragraph). Exposed for rewriters that hold an inline
+// AST node and need the block context that owns its source position.
+func NearestBlockAncestor(n ast.Node) ast.Node {
 	for p := n.Parent(); p != nil; p = p.Parent() {
 		if p.Type() != ast.TypeBlock {
 			continue
@@ -342,14 +311,14 @@ func findingFromBlock(source []byte, block ast.Node, feat Feature) Finding {
 		return Finding{Feature: feat, Line: 1, Column: 1}
 	}
 	start := lines.At(0).Start
-	line, col := lineCol(source, start)
+	line, col := LineCol(source, start)
 	return Finding{Feature: feat, Line: line, Column: col, Start: start, End: start}
 }
 
 // inlineFinding reports an inline feature at its exact source column.
 func inlineFinding(source []byte, n ast.Node, feat Feature) Finding {
 	start, end := nodeByteRange(n)
-	line, col := lineCol(source, start)
+	line, col := LineCol(source, start)
 	return Finding{Feature: feat, Line: line, Column: col, Start: start, End: end}
 }
 
@@ -399,7 +368,7 @@ func firstTextStart(n ast.Node) int {
 // makeFinding converts a byte range to a Finding with line and column
 // derived from source.
 func makeFinding(source []byte, feat Feature, start, end int) Finding {
-	line, col := lineCol(source, start)
+	line, col := LineCol(source, start)
 	return Finding{Feature: feat, Line: line, Column: col, Start: start, End: end}
 }
 
@@ -414,14 +383,20 @@ func isASCIISpace(b byte) bool {
 	return false
 }
 
-func lineCol(source []byte, offset int) (int, int) {
+// LineCol returns the 1-based (line, column) position of offset
+// within source. Out-of-range offsets are clamped so callers that
+// look at byte -1 or one past EOF still get a valid position.
+// Exposed for rewriters that need to translate byte offsets into
+// line numbers when producing line-level edits; also used internally
+// by every block / inline / makeFinding helper.
+func LineCol(source []byte, offset int) (line, col int) {
 	if offset < 0 {
 		offset = 0
 	}
 	if offset > len(source) {
 		offset = len(source)
 	}
-	line := 1
+	line = 1
 	lineStart := 0
 	for i := 0; i < offset; i++ {
 		if source[i] == '\n' {
@@ -456,40 +431,19 @@ func dedupe(in []Finding) []Finding {
 // in source from the segment start forward to the next newline.
 //
 // Returns the byte span of the attribute block; the bool is false
-// when h carries no `id` attribute or no `{` exists on its first
-// line. Used by rewriters that want to drop the attribute block
-// without consuming a full Detect run.
+// when h is nil, carries no `id` attribute, has no Lines populated,
+// or has no `{` on its first line. Used by rewriters that want to
+// drop the attribute block without consuming a full Detect run.
 func FindHeadingID(source []byte, h *ast.Heading) (HeadingIDExtra, bool) {
 	fin, ok := findHeadingID(source, h)
 	if !ok {
 		return HeadingIDExtra{}, false
 	}
+	// findHeadingID is the only writer of Finding.Extra for
+	// FeatureHeadingIDs and always stores HeadingIDExtra — the
+	// assertion is by contract, not a defensive guard, so the
+	// untyped-Extra failure path is not driven by any test.
 	return fin.Extra.(HeadingIDExtra), true
-}
-
-// IsGitHubAlert reports whether bq is a GitHub Alert blockquote: its
-// first paragraph child's first line matches one of the five GFM
-// alert tokens ([!NOTE], [!TIP], [!IMPORTANT], [!WARNING], [!CAUTION]).
-// Exposed for rewriters that want to strip alert markers without
-// running a full Detect.
-func IsGitHubAlert(bq *ast.Blockquote, source []byte) bool {
-	return isGitHubAlert(bq, source)
-}
-
-// LineCol returns the 1-based (line, column) position of offset
-// within source. Exposed for rewriters that need to translate byte
-// offsets into line numbers when producing line-level edits.
-func LineCol(source []byte, offset int) (line, col int) {
-	return lineCol(source, offset)
-}
-
-// NearestBlockAncestor walks up from n and returns the first block-
-// typed ancestor with a non-empty Lines() segment, or nil when none
-// exists. Exposed for rewriters that hold an inline AST node and
-// need the block context that owns its source position (e.g. to
-// anchor a line-level edit on the containing paragraph).
-func NearestBlockAncestor(n ast.Node) ast.Node {
-	return nearestBlockAncestor(n)
 }
 
 // findHeadingID locates the trailing "{#id}" attribute block that the
@@ -497,6 +451,9 @@ func NearestBlockAncestor(n ast.Node) ast.Node {
 // only covers the inner text, so we scan the raw line in source from
 // the segment start forward to the next newline.
 func findHeadingID(source []byte, h *ast.Heading) (Finding, bool) {
+	if h == nil {
+		return Finding{}, false
+	}
 	if h.Attributes() == nil {
 		return Finding{}, false
 	}
@@ -530,7 +487,7 @@ func findHeadingID(source []byte, h *ast.Heading) (Finding, bool) {
 	for attrEnd > attrStart && isASCIISpace(source[attrEnd-1]) {
 		attrEnd--
 	}
-	line, col := lineCol(source, attrStart)
+	line, col := LineCol(source, attrStart)
 	return Finding{
 		Feature: FeatureHeadingIDs,
 		Line:    line,
@@ -594,7 +551,7 @@ func detectGitHubAlerts(source []byte, cmAST ast.Node) []Finding {
 		if !ok {
 			return ast.WalkContinue, nil
 		}
-		if isGitHubAlert(bq, source) {
+		if IsGitHubAlert(bq, source) {
 			findings = append(findings, blockFinding(source, bq, FeatureGitHubAlerts))
 		}
 		return ast.WalkContinue, nil
@@ -602,15 +559,25 @@ func detectGitHubAlerts(source []byte, cmAST ast.Node) []Finding {
 	return findings
 }
 
-// isGitHubAlert reports whether bq is a GitHub Alert blockquote: its
+// IsGitHubAlert reports whether bq is a GitHub Alert blockquote: its
 // first paragraph child's first line matches one of the five GFM
-// alert tokens.
-func isGitHubAlert(bq *ast.Blockquote, source []byte) bool {
+// alert tokens ([!NOTE], [!TIP], [!IMPORTANT], [!WARNING], [!CAUTION]).
+// Returns false when bq is nil, its first child is not a paragraph,
+// or the paragraph carries no Lines. Exposed for rewriters that want
+// to strip alert markers without running a full Detect.
+func IsGitHubAlert(bq *ast.Blockquote, source []byte) bool {
+	if bq == nil {
+		return false
+	}
 	para, ok := bq.FirstChild().(*ast.Paragraph)
 	if !ok {
 		return false
 	}
-	seg := para.Lines().At(0)
+	lines := para.Lines()
+	if lines == nil || lines.Len() == 0 {
+		return false
+	}
+	seg := lines.At(0)
 	firstLine := bytes.TrimRight(source[seg.Start:seg.Stop], "\r\n")
 	return alertTokenRe.Match(firstLine)
 }

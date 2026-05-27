@@ -71,7 +71,7 @@ func TestParseContext(t *testing.T) {
 func TestSplice(t *testing.T) {
 	t.Run("removes ascending non-overlapping spans", func(t *testing.T) {
 		body := []byte("0123456789")
-		got := Splice(body, []Edit{{1, 3}, {5, 7}})
+		got := Splice(body, []Edit{{Start: 1, End: 3}, {Start: 5, End: 7}})
 		assert.Equal(t, "034789", string(got))
 	})
 
@@ -82,12 +82,35 @@ func TestSplice(t *testing.T) {
 
 	t.Run("does not mutate the source slice", func(t *testing.T) {
 		body := []byte("abcdef")
-		_ = Splice(body, []Edit{{0, 2}})
+		_ = Splice(body, []Edit{{Start: 0, End: 2}})
 		assert.Equal(t, "abcdef", string(body))
 	})
 
 	t.Run("spans covering the whole body yield empty output", func(t *testing.T) {
 		body := []byte("gone")
-		assert.Equal(t, "", string(Splice(body, []Edit{{0, 4}})))
+		assert.Equal(t, "", string(Splice(body, []Edit{{Start: 0, End: 4}})))
+	})
+
+	t.Run("Repl bytes are spliced in at the edit position", func(t *testing.T) {
+		// Wraps "url" in angle brackets at offset 4..7 of the body —
+		// the rule-side bare-URL fix shape — and verifies that the
+		// surrounding text is preserved untouched.
+		body := []byte("see url here")
+		edits := []Edit{{Start: 4, End: 7, Repl: []byte("<url>")}}
+		assert.Equal(t, "see <url> here", string(Splice(body, edits)))
+	})
+
+	t.Run("Repl handles adjacent edits in one pass", func(t *testing.T) {
+		// Two zero-byte deletions adjacent to a pure insertion at the
+		// start guard the cursor advancement: prev = e.End, and after
+		// appending Repl the loop must continue from the next edit's
+		// Start without dropping or duplicating bytes between them.
+		body := []byte("ab~~xy~~cd")
+		edits := []Edit{
+			{Start: 0, End: 0, Repl: []byte("> ")}, // pure insertion
+			{Start: 2, End: 4},                     // opening "~~"
+			{Start: 6, End: 8},                     // closing "~~"
+		}
+		assert.Equal(t, "> abxycd", string(Splice(body, edits)))
 	})
 }

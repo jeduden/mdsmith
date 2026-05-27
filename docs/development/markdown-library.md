@@ -230,9 +230,11 @@ The stable surface:
   `Flavor` type and constants, the `Feature`
   type and constants, `AllFeatures`, `Supports`,
   `ParseFlavor`, the `Finding` and
-  `HeadingIDExtra` shapes, `Detect`, the four
-  `NewParser*` / `NewPooledParser*`
-  constructors, and the small rewriter helpers
+  `HeadingIDExtra` shapes, `Detect`, the
+  `NewPooledParser` / `NewPooledParserWith`
+  constructors, the `WithSharedParser` callback
+  for borrowing from the package-shared pool,
+  and the small rewriter helpers
   (`FindHeadingID`, `IsGitHubAlert`, `LineCol`,
   `NearestBlockAncestor`).
 - Sub-package `pkg/markdown/flavor/ext`: the

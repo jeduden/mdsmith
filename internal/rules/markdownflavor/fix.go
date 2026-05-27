@@ -5,6 +5,7 @@ import (
 
 	"github.com/yuin/goldmark/ast"
 	extast "github.com/yuin/goldmark/extension/ast"
+	gparser "github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -13,32 +14,24 @@ import (
 	"github.com/jeduden/mdsmith/pkg/markdown/flavor/ext"
 )
 
-// edit describes a single byte-range substitution to apply to source.
-// applyEdits assumes non-overlapping spans and rewrites the buffer in
-// one pass.
-type edit struct {
-	start, end int
-	repl       []byte
-}
-
 // fixByteRangeFeatures collects edits for the six byte-range features
 // (heading IDs, strikethrough, task lists, superscript, subscript, and
 // bare-URL autolinks) and returns the rewritten source. Features that
-// the configured flavor accepts are skipped. The function returns the
-// source unchanged when no edit applies.
+// the configured flavor accepts are skipped. Returns f.Source unchanged
+// when no edit applies.
 func (r *Rule) fixByteRangeFeatures(f *lint.File) []byte {
-	var edits []edit
+	var edits []markdown.Edit
 
 	if r.needsAnyDualFix() {
-		dualParser, reset := flavor.NewPooledParser()
-		defer reset()
-		doc := dualParser.Parse(text.NewReader(f.Source))
-		_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-			if !entering {
+		flavor.WithSharedParser(func(p gparser.Parser) {
+			doc := p.Parse(text.NewReader(f.Source))
+			_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+				if !entering {
+					return ast.WalkContinue, nil
+				}
+				edits = append(edits, r.dualNodeEdits(f, n)...)
 				return ast.WalkContinue, nil
-			}
-			edits = append(edits, r.dualNodeEdits(f, n)...)
-			return ast.WalkContinue, nil
+			})
 		})
 	}
 
@@ -55,7 +48,14 @@ func (r *Rule) fixByteRangeFeatures(f *lint.File) []byte {
 	if len(edits) == 0 {
 		return f.Source
 	}
-	return applyEdits(f.Source, edits)
+	// markdown.Splice expects ascending, non-overlapping edits; the
+	// detection layer never produces overlapping fixes, but a dual-AST
+	// walk and a bare-URL pass merged here can land out of source order,
+	// so sort before handing off.
+	sort.SliceStable(edits, func(i, j int) bool {
+		return edits[i].Start < edits[j].Start
+	})
+	return markdown.Splice(f.Source, edits)
 }
 
 // needsAnyDualFix reports whether any dual-parser fixable feature is
@@ -78,7 +78,7 @@ func (r *Rule) needsAnyDualFix() bool {
 // dualNodeEdits returns the edits to remove an unsupported feature
 // produced from a dual-parser AST node. Returns nil when the node is
 // either supported or not a fixable feature.
-func (r *Rule) dualNodeEdits(f *lint.File, n ast.Node) []edit {
+func (r *Rule) dualNodeEdits(f *lint.File, n ast.Node) []markdown.Edit {
 	switch node := n.(type) {
 	case *ast.Heading:
 		if flavor.Supports(r.Flavor, flavor.FeatureHeadingIDs) {
@@ -112,7 +112,7 @@ func (r *Rule) dualNodeEdits(f *lint.File, n ast.Node) []edit {
 // headingIDEdits returns the edit that drops a "{#id}" attribute block
 // plus any whitespace separating it from the heading text. Returns nil
 // when the heading carries no id attribute.
-func headingIDEdits(f *lint.File, h *ast.Heading) []edit {
+func headingIDEdits(f *lint.File, h *ast.Heading) []markdown.Edit {
 	hx, ok := flavor.FindHeadingID(f.Source, h)
 	if !ok {
 		return nil
@@ -121,7 +121,7 @@ func headingIDEdits(f *lint.File, h *ast.Heading) []edit {
 	for start > 0 && (f.Source[start-1] == ' ' || f.Source[start-1] == '\t') {
 		start--
 	}
-	return []edit{{start: start, end: hx.AttrEnd}}
+	return []markdown.Edit{{Start: start, End: hx.AttrEnd}}
 }
 
 // delimiterPairEdits returns edits removing the opening and closing
@@ -131,62 +131,48 @@ func headingIDEdits(f *lint.File, h *ast.Heading) []edit {
 // markup like `~~*bold*~~` or a softbreak inside the wrapper, where
 // reconstructing each child's own marker span is brittle. The fix
 // declines and the diagnostic remains for the user to resolve.
-func delimiterPairEdits(n ast.Node, markerLen int) []edit {
+func delimiterPairEdits(n ast.Node, markerLen int) []markdown.Edit {
 	t, ok := n.FirstChild().(*ast.Text)
 	if !ok || t.NextSibling() != nil {
 		return nil
 	}
-	return []edit{
-		{start: t.Segment.Start - markerLen, end: t.Segment.Start},
-		{start: t.Segment.Stop, end: t.Segment.Stop + markerLen},
+	return []markdown.Edit{
+		{Start: t.Segment.Start - markerLen, End: t.Segment.Start},
+		{Start: t.Segment.Stop, End: t.Segment.Stop + markerLen},
 	}
 }
 
 // taskCheckBoxEdits removes the "[X]" run plus a single trailing
 // space when present. Per the plan, the bullet itself is preserved.
 // The dual parser places every TaskCheckBox at the start of a
-// TextBlock so block.Lines().At(0).Start always points at '['.
-func taskCheckBoxEdits(f *lint.File, n *extast.TaskCheckBox) []edit {
+// TextBlock so block.Lines().At(0).Start always points at '['; we
+// still guard against a nil block ancestor (degenerate orphan node)
+// and an empty Lines list so a malformed AST cannot panic the fix.
+func taskCheckBoxEdits(f *lint.File, n *extast.TaskCheckBox) []markdown.Edit {
 	block := flavor.NearestBlockAncestor(n)
-	start := block.Lines().At(0).Start
+	if block == nil {
+		return nil
+	}
+	lines := block.Lines()
+	if lines == nil || lines.Len() == 0 {
+		return nil
+	}
+	start := lines.At(0).Start
 	end := start + 3
 	if end < len(f.Source) && f.Source[end] == ' ' {
 		end++
 	}
-	return []edit{{start: start, end: end}}
+	return []markdown.Edit{{Start: start, End: end}}
 }
 
 // wrapBareURL wraps a bare URL in angle brackets so the renderer
 // treats it as a CommonMark autolink. The detector reports a precise
 // span via fin.Start / fin.End.
-func wrapBareURL(source []byte, fin flavor.Finding) edit {
+func wrapBareURL(source []byte, fin flavor.Finding) markdown.Edit {
 	url := source[fin.Start:fin.End]
 	repl := make([]byte, 0, len(url)+2)
 	repl = append(repl, '<')
 	repl = append(repl, url...)
 	repl = append(repl, '>')
-	return edit{start: fin.Start, end: fin.End, repl: repl}
-}
-
-// applyEdits rewrites src by appending unchanged spans and replacement
-// bytes in a single pass. Edits are sorted by ascending start offset;
-// the detection layer never produces overlapping edits for the
-// features we fix, so applyEdits assumes non-overlapping spans.
-func applyEdits(src []byte, edits []edit) []byte {
-	sort.SliceStable(edits, func(i, j int) bool {
-		return edits[i].start < edits[j].start
-	})
-	size := len(src)
-	for _, e := range edits {
-		size += len(e.repl) - (e.end - e.start)
-	}
-	out := make([]byte, 0, size)
-	cursor := 0
-	for _, e := range edits {
-		out = append(out, src[cursor:e.start]...)
-		out = append(out, e.repl...)
-		cursor = e.end
-	}
-	out = append(out, src[cursor:]...)
-	return out
+	return markdown.Edit{Start: fin.Start, End: fin.End, Repl: repl}
 }

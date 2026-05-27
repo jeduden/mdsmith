@@ -10,8 +10,9 @@ package flavor_test
 import (
 	"testing"
 
+	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/parser"
+	gparser "github.com/yuin/goldmark/parser"
 
 	"github.com/jeduden/mdsmith/pkg/markdown"
 	"github.com/jeduden/mdsmith/pkg/markdown/flavor"
@@ -85,38 +86,39 @@ func TestContract_FindingShape(t *testing.T) {
 	_ = hx.AttrEnd
 }
 
-// TestContract_DetectSignature pins Detect's signature: it takes a
-// *markdown.Document and an accept predicate; it returns []Finding.
-// A nil predicate accepts every feature.
-// detectSig pins the Detect function's signature at package init
-// time. A signature change would break the type assertion below.
-var detectSig func(*markdown.Document, func(flavor.Feature) bool) []flavor.Finding = flavor.Detect
+// Signature pins at package scope: a constructor signature change
+// breaks the build at these assignments. staticcheck's "could omit
+// type" quick-fix rule is suppressed for package-level vars where
+// the explicit type is the contract.
+var (
+	_                  func(*markdown.Document, func(flavor.Feature) bool) []flavor.Finding = flavor.Detect
+	_                  func() (gparser.Parser, func())                                      = flavor.NewPooledParser
+	_                  func(...goldmark.Extender) (gparser.Parser, func())                  = flavor.NewPooledParserWith
+	withSharedParserFn func(func(gparser.Parser))                                           = flavor.WithSharedParser
 
-func TestContract_DetectSignature(t *testing.T) {
+	// Public rewriter helpers: same idea, pinned by signature.
+	_ func([]byte, *ast.Heading) (flavor.HeadingIDExtra, bool) = flavor.FindHeadingID
+	_ func(*ast.Blockquote, []byte) bool                       = flavor.IsGitHubAlert
+	_ func([]byte, int) (int, int)                             = flavor.LineCol
+	_ func(ast.Node) ast.Node                                  = flavor.NearestBlockAncestor
+)
+
+// TestContract_DetectAndParserPinsAreCallable exercises the
+// signature-pinned variables at runtime so a compile-time pin alone
+// cannot mask a panic on the happy path.
+func TestContract_DetectAndParserPinsAreCallable(t *testing.T) {
 	doc := markdown.Parse([]byte("# h\n"))
-	_ = detectSig(doc, nil)
-	_ = detectSig(doc, func(f flavor.Feature) bool { return f == flavor.FeatureTables })
-}
+	_ = flavor.Detect(doc, nil)
+	_ = flavor.Detect(doc, func(f flavor.Feature) bool { return f == flavor.FeatureTables })
 
-// TestContract_ParserConstructors pins the four constructor signatures:
-//
-//   - NewParser() parser.Parser
-//   - NewParserWith(...goldmark.Extender) parser.Parser
-//   - NewPooledParser() (parser.Parser, func())
-//   - NewPooledParserWith(...goldmark.Extender) (parser.Parser, func())
-func TestContract_ParserConstructors(t *testing.T) {
-	var p parser.Parser
-	p = flavor.NewParser()
-	_ = p
-	p = flavor.NewParserWith()
-	_ = p
-	var reset func()
-	p, reset = flavor.NewPooledParser()
-	_ = p
+	p, reset := flavor.NewPooledParser()
 	reset()
-	p, reset = flavor.NewPooledParserWith()
 	_ = p
-	reset()
+	p2, reset2 := flavor.NewPooledParserWith()
+	reset2()
+	_ = p2
+
+	withSharedParserFn(func(p gparser.Parser) { _ = p })
 }
 
 // TestContract_Rewriters covers the small surface needed by external

@@ -7,52 +7,53 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/yuin/goldmark/ast"
 	extast "github.com/yuin/goldmark/extension/ast"
+	gparser "github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
 
 	"github.com/jeduden/mdsmith/pkg/markdown"
 )
 
-func TestNewParserDetectsTables(t *testing.T) {
+func TestNewPooledParserDetectsTables(t *testing.T) {
 	src := []byte("| a | b |\n| - | - |\n| 1 | 2 |\n")
 	doc := parseSource(t, src)
 	assert.True(t, containsKind(doc, extast.KindTable),
 		"expected table node in dual-parser AST")
 }
 
-func TestNewParserDetectsStrikethrough(t *testing.T) {
+func TestNewPooledParserDetectsStrikethrough(t *testing.T) {
 	src := []byte("hello ~~world~~\n")
 	doc := parseSource(t, src)
 	assert.True(t, containsKind(doc, extast.KindStrikethrough),
 		"expected strikethrough node in dual-parser AST")
 }
 
-func TestNewParserDetectsTaskList(t *testing.T) {
+func TestNewPooledParserDetectsTaskList(t *testing.T) {
 	src := []byte("- [ ] todo\n- [x] done\n")
 	doc := parseSource(t, src)
 	assert.True(t, containsKind(doc, extast.KindTaskCheckBox),
 		"expected task-list checkbox node in dual-parser AST")
 }
 
-func TestNewParserDetectsFootnote(t *testing.T) {
+func TestNewPooledParserDetectsFootnote(t *testing.T) {
 	src := []byte("A paragraph.[^1]\n\n[^1]: footnote body\n")
 	doc := parseSource(t, src)
 	assert.True(t, containsKind(doc, extast.KindFootnoteLink),
 		"expected footnote link node in dual-parser AST")
 }
 
-func TestNewParserDetectsDefinitionList(t *testing.T) {
+func TestNewPooledParserDetectsDefinitionList(t *testing.T) {
 	src := []byte("term\n:   definition\n")
 	doc := parseSource(t, src)
 	assert.True(t, containsKind(doc, extast.KindDefinitionList),
 		"expected definition-list node in dual-parser AST")
 }
 
-// TestNewParserRecognisesPIBlocks guards that the dual parser uses
-// the same processing-instruction block parser as pkg/markdown's
+// TestNewPooledParserRecognisesPIBlocks guards that the dual parser
+// uses the same processing-instruction block parser as pkg/markdown's
 // canonical parser so table / list markup embedded inside a
 // <?include ... ?> block is not detected as real document markup by
 // MDS034.
-func TestNewParserRecognisesPIBlocks(t *testing.T) {
+func TestNewPooledParserRecognisesPIBlocks(t *testing.T) {
 	src := []byte("<?include\nfile: x.md\n?>\n")
 	doc := parseSource(t, src)
 	found := false
@@ -70,7 +71,7 @@ func TestNewParserRecognisesPIBlocks(t *testing.T) {
 		"expected ProcessingInstruction node in dual-parser AST")
 }
 
-func TestNewParserDetectsHeadingAttribute(t *testing.T) {
+func TestNewPooledParserDetectsHeadingAttribute(t *testing.T) {
 	src := []byte("# Heading {#custom-id}\n")
 	doc := parseSource(t, src)
 	// The heading attribute parser stores {#id} as an attribute on the
@@ -91,12 +92,13 @@ func TestNewParserDetectsHeadingAttribute(t *testing.T) {
 	assert.True(t, found, "expected heading id attribute in dual-parser AST")
 }
 
-// TestNewParserWithCustomExtensions exercises the parameterised
+// TestNewPooledParserWithCustomExtensions exercises the parameterised
 // constructor: passing only the Table extension produces a parser
 // that recognises tables but not strikethrough.
-func TestNewParserWithCustomExtensions(t *testing.T) {
+func TestNewPooledParserWithCustomExtensions(t *testing.T) {
 	src := []byte("hello ~~world~~\n\n| a | b |\n| - | - |\n| 1 | 2 |\n")
-	p := NewParserWith()
+	p, reset := NewPooledParserWith()
+	defer reset()
 	doc := p.Parse(text.NewReader(src))
 	require.NotNil(t, doc)
 	assert.False(t, containsKind(doc, extast.KindTable),
@@ -119,13 +121,32 @@ func TestNewPooledParserResetIsCallable(t *testing.T) {
 	require.NotNil(t, doc2)
 }
 
-// parseSource invokes NewParser().Parse on the given source and
+// TestWithSharedParser exercises the package pool callback: the
+// parser borrowed inside fn must be usable, and consecutive calls
+// must produce independent ASTs (no shared state across borrows).
+func TestWithSharedParser(t *testing.T) {
+	var firstAST, secondAST ast.Node
+	WithSharedParser(func(p gparser.Parser) {
+		firstAST = p.Parse(text.NewReader([]byte("# first\n")))
+	})
+	WithSharedParser(func(p gparser.Parser) {
+		secondAST = p.Parse(text.NewReader([]byte("# second\n")))
+	})
+	require.NotNil(t, firstAST)
+	require.NotNil(t, secondAST)
+	assert.NotSame(t, firstAST, secondAST,
+		"each borrow must produce its own AST root")
+}
+
+// parseSource borrows the package-shared parser, parses src, and
 // returns the resulting document node. Helper shared by parser
 // detection tests.
 func parseSource(t *testing.T, src []byte) ast.Node {
 	t.Helper()
-	p := NewParser()
-	doc := p.Parse(text.NewReader(src))
+	var doc ast.Node
+	WithSharedParser(func(p gparser.Parser) {
+		doc = p.Parse(text.NewReader(src))
+	})
 	require.NotNil(t, doc)
 	return doc
 }
