@@ -32,83 +32,139 @@ func installTestProjector(t *testing.T, cfgPath string) {
 	SetExtractProjector(func(
 		host *lint.File, readFS fs.FS, targetFile string, data []byte,
 	) (any, error) {
-		cfg, err := config.Load(cfgPath)
-		if err != nil {
-			return nil, err
-		}
-		var fmKinds []string
-		var fmFields map[string]any
-		if prefix, _ := lint.StripFrontMatter(data); len(prefix) > 0 {
-			fmFields, err = lint.ParseFrontMatterFields(prefix)
-			if err != nil {
-				return nil, fmt.Errorf(
-					"parsing frontmatter of %q: %w", targetFile, err)
-			}
-			if raw, ok := fmFields["kinds"]; ok {
-				if v, ok := raw.([]any); ok {
-					for _, item := range v {
-						if s, ok := item.(string); ok {
-							fmKinds = append(fmKinds, s)
-						}
-					}
+		return runTestProjection(cfgPath, host, readFS, targetFile, data)
+	})
+	t.Cleanup(func() { SetExtractProjector(nil) })
+}
+
+// runTestProjection mirrors cmd/mdsmith's projectIncludeExtract
+// well enough to drive the include rule's `extract:` integration
+// tests. Split out of installTestProjector so each step (config
+// load, frontmatter decode, schema compose, validate, extract)
+// stays focused and the gocognit budget on the wiring closure
+// stays small.
+func runTestProjection(
+	cfgPath string,
+	host *lint.File, readFS fs.FS, targetFile string, data []byte,
+) (any, error) {
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		return nil, err
+	}
+	fmKinds, fmFields, err := testDecodeFrontMatter(data, targetFile)
+	if err != nil {
+		return nil, err
+	}
+	rsSettings, err := testResolveRsSettings(cfg, targetFile, fmKinds, fmFields)
+	if err != nil {
+		return nil, err
+	}
+	tf, sch, err := testComposeTargetSchema(
+		host, readFS, targetFile, data, rsSettings)
+	if err != nil {
+		return nil, err
+	}
+	if err := testValidateAgainstSchema(tf, sch, fmFields); err != nil {
+		return nil, err
+	}
+	mt := schema.BuildMatchTree(tf, sch, fmFields)
+	tree, diags := extract.Extract(tf, sch, mt)
+	if len(diags) > 0 {
+		return nil, fmt.Errorf(
+			"projection failed for %q: %s",
+			targetFile, diags[0].Message)
+	}
+	return tree, nil
+}
+
+func testDecodeFrontMatter(
+	data []byte, targetFile string,
+) ([]string, map[string]any, error) {
+	prefix, _ := lint.StripFrontMatter(data)
+	if len(prefix) == 0 {
+		return nil, nil, nil
+	}
+	fields, err := lint.ParseFrontMatterFields(prefix)
+	if err != nil {
+		return nil, nil, fmt.Errorf(
+			"parsing frontmatter of %q: %w", targetFile, err)
+	}
+	var kinds []string
+	if raw, ok := fields["kinds"]; ok {
+		if v, ok := raw.([]any); ok {
+			for _, item := range v {
+				if s, ok := item.(string); ok {
+					kinds = append(kinds, s)
 				}
 			}
 		}
-		res := config.ResolveFile(cfg, targetFile, fmKinds, fmFields)
-		if len(res.Kinds) == 0 {
-			return nil, fmt.Errorf(
-				"%q has no resolved kind; cannot project a typed value",
-				targetFile)
-		}
-		rr, ok := res.Rules["required-structure"]
-		if !ok || !rr.Final.Enabled {
-			return nil, fmt.Errorf(
-				"required-structure is disabled for %q; "+
-					"no schema to project against", targetFile)
-		}
-		tf, err := lint.NewFileFromSource(targetFile, data, host.StripFrontMatter)
-		if err != nil {
-			return nil, fmt.Errorf("parsing %q: %w", targetFile, err)
-		}
-		tf.MaxInputBytes = host.MaxInputBytes
-		tf.FS = readFS
-		tf.RootFS = host.RootFS
-		tf.RootDir = host.RootDir
+	}
+	return kinds, fields, nil
+}
 
-		rsRule := &requiredstructure.Rule{}
-		if rr.Final.Settings != nil {
-			if err := rsRule.ApplySettings(rr.Final.Settings); err != nil {
-				return nil, fmt.Errorf(
-					"loading schema config for %q: %w", targetFile, err)
-			}
+func testResolveRsSettings(
+	cfg *config.Config, targetFile string,
+	fmKinds []string, fmFields map[string]any,
+) (map[string]any, error) {
+	res := config.ResolveFile(cfg, targetFile, fmKinds, fmFields)
+	if len(res.Kinds) == 0 {
+		return nil, fmt.Errorf(
+			"%q has no resolved kind; cannot project a typed value",
+			targetFile)
+	}
+	rr, ok := res.Rules["required-structure"]
+	if !ok || !rr.Final.Enabled {
+		return nil, fmt.Errorf(
+			"required-structure is disabled for %q; "+
+				"no schema to project against", targetFile)
+	}
+	return rr.Final.Settings, nil
+}
+
+func testComposeTargetSchema(
+	host *lint.File, readFS fs.FS, targetFile string, data []byte,
+	rsSettings map[string]any,
+) (*lint.File, *schema.Schema, error) {
+	tf, err := lint.NewFileFromSource(targetFile, data, host.StripFrontMatter)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parsing %q: %w", targetFile, err)
+	}
+	tf.MaxInputBytes = host.MaxInputBytes
+	tf.FS = readFS
+	tf.RootFS = host.RootFS
+	tf.RootDir = host.RootDir
+
+	rsRule := &requiredstructure.Rule{}
+	if rsSettings != nil {
+		if err := rsRule.ApplySettings(rsSettings); err != nil {
+			return nil, nil, fmt.Errorf(
+				"loading schema config for %q: %w", targetFile, err)
 		}
-		sch, err := rsRule.ComposedSchema(tf)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"composing schema for %q: %w", targetFile, err)
-		}
-		if sch == nil || sch.IsEmpty() {
-			return nil, fmt.Errorf(
-				"%q declares no schema to extract against", targetFile)
-		}
-		mkDiag := func(file string, line int, msg string) lint.Diagnostic {
-			return lint.Diagnostic{File: file, Line: line, Message: msg}
-		}
-		if vd := schema.Validate(tf, sch, fmFields, false, mkDiag); len(vd) > 0 {
-			return nil, fmt.Errorf(
-				"target file does not conform to its schema: %s",
-				vd[0].Message)
-		}
-		mt := schema.BuildMatchTree(tf, sch, fmFields)
-		tree, diags := extract.Extract(tf, sch, mt)
-		if len(diags) > 0 {
-			return nil, fmt.Errorf(
-				"projection failed for %q: %s",
-				targetFile, diags[0].Message)
-		}
-		return tree, nil
-	})
-	t.Cleanup(func() { SetExtractProjector(nil) })
+	}
+	sch, err := rsRule.ComposedSchema(tf)
+	if err != nil {
+		return nil, nil, fmt.Errorf(
+			"composing schema for %q: %w", targetFile, err)
+	}
+	if sch == nil || sch.IsEmpty() {
+		return nil, nil, fmt.Errorf(
+			"%q declares no schema to extract against", targetFile)
+	}
+	return tf, sch, nil
+}
+
+func testValidateAgainstSchema(
+	tf *lint.File, sch *schema.Schema, fmFields map[string]any,
+) error {
+	mkDiag := func(file string, line int, msg string) lint.Diagnostic {
+		return lint.Diagnostic{File: file, Line: line, Message: msg}
+	}
+	if vd := schema.Validate(tf, sch, fmFields, false, mkDiag); len(vd) > 0 {
+		return fmt.Errorf(
+			"target file does not conform to its schema: %s",
+			vd[0].Message)
+	}
+	return nil
 }
 
 // minimalMessagingCfg seeds a temp project with a messaging-style
@@ -187,7 +243,7 @@ func newHostFile(t *testing.T, root, hostRel, src string) *lint.File {
 
 func TestCheck_ExtractParagraphSection(t *testing.T) {
 	root, hostRel := setupMessagingProject(t)
-	installTestProjector(t,filepath.Join(root, ".mdsmith.yml"))
+	installTestProjector(t, filepath.Join(root, ".mdsmith.yml"))
 	src := "<?include\nfile: message.md\nextract: tagline.text\n?>\n" +
 		"Markdown, fast.\n<?/include?>\n"
 	f := newHostFile(t, root, hostRel, src)
@@ -201,7 +257,7 @@ func TestCheck_ExtractObjectWithSingleContentKey(t *testing.T) {
 	// `extract: tagline` (without `.text`) splices the paragraph
 	// because the wrapper carries a single recognised content key.
 	root, hostRel := setupMessagingProject(t)
-	installTestProjector(t,filepath.Join(root, ".mdsmith.yml"))
+	installTestProjector(t, filepath.Join(root, ".mdsmith.yml"))
 	src := "<?include\nfile: message.md\nextract: tagline\n?>\n" +
 		"Markdown, fast.\n<?/include?>\n"
 	f := newHostFile(t, root, hostRel, src)
@@ -213,7 +269,7 @@ func TestCheck_ExtractObjectWithSingleContentKey(t *testing.T) {
 
 func TestCheck_ExtractCodeBlock(t *testing.T) {
 	root, hostRel := setupMessagingProject(t)
-	installTestProjector(t,filepath.Join(root, ".mdsmith.yml"))
+	installTestProjector(t, filepath.Join(root, ".mdsmith.yml"))
 	src := "<?include\nfile: message.md\nextract: headline.code\n?>\n" +
 		"Mark*down*, smithed.\n<?/include?>\n"
 	f := newHostFile(t, root, hostRel, src)
@@ -225,7 +281,7 @@ func TestCheck_ExtractCodeBlock(t *testing.T) {
 
 func TestCheck_ExtractFrontmatterScalar(t *testing.T) {
 	root, hostRel := setupMessagingProject(t)
-	installTestProjector(t,filepath.Join(root, ".mdsmith.yml"))
+	installTestProjector(t, filepath.Join(root, ".mdsmith.yml"))
 	src := "<?include\nfile: message.md\nextract: frontmatter.title\n?>\n" +
 		"Mdsmith\n<?/include?>\n"
 	f := newHostFile(t, root, hostRel, src)
@@ -241,7 +297,7 @@ func TestCheck_ExtractFrontmatterScalar(t *testing.T) {
 
 func TestCheck_ExtractMissingPath(t *testing.T) {
 	root, hostRel := setupMessagingProject(t)
-	installTestProjector(t,filepath.Join(root, ".mdsmith.yml"))
+	installTestProjector(t, filepath.Join(root, ".mdsmith.yml"))
 	src := "<?include\nfile: message.md\nextract: nope.x\n?>\n" +
 		"old\n<?/include?>\n"
 	f := newHostFile(t, root, hostRel, src)
@@ -264,7 +320,7 @@ func TestCheck_ExtractOnFileWithNoKind(t *testing.T) {
 	src := "<?include\nfile: untyped.md\nextract: text\n?>\n" +
 		"old\n<?/include?>\n"
 	f := newHostFile(t, dir, "host.md", src)
-	installTestProjector(t,cfgPath)
+	installTestProjector(t, cfgPath)
 
 	r := &Rule{}
 	diags := r.Check(f)
@@ -315,7 +371,7 @@ func TestCheck_ExtractWithoutProjector(t *testing.T) {
 
 func TestFix_ExtractParagraphSection(t *testing.T) {
 	root, hostRel := setupMessagingProject(t)
-	installTestProjector(t,filepath.Join(root, ".mdsmith.yml"))
+	installTestProjector(t, filepath.Join(root, ".mdsmith.yml"))
 	src := "<?include\nfile: message.md\nextract: tagline.text\n?>\n" +
 		"stale\n<?/include?>\n"
 	f := newHostFile(t, root, hostRel, src)
@@ -330,7 +386,7 @@ func TestFix_ExtractParagraphSection(t *testing.T) {
 func TestFix_ExtractRoundTripStable(t *testing.T) {
 	// Running fix twice should be byte-stable.
 	root, hostRel := setupMessagingProject(t)
-	installTestProjector(t,filepath.Join(root, ".mdsmith.yml"))
+	installTestProjector(t, filepath.Join(root, ".mdsmith.yml"))
 	src := "<?include\nfile: message.md\nextract: tagline.text\n?>\n" +
 		"stale\n<?/include?>\n"
 	f := newHostFile(t, root, hostRel, src)

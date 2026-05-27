@@ -53,12 +53,45 @@ func projectIncludeExtract(
 	if err != nil {
 		return nil, fmt.Errorf("loading config: %w", err)
 	}
-
 	fmKinds, fmFields, err := decodeTargetFrontMatter(data, targetFile)
 	if err != nil {
 		return nil, err
 	}
+	rsSettings, err := resolveRequiredStructureSettings(
+		cfg, targetFile, fmKinds, fmFields)
+	if err != nil {
+		return nil, err
+	}
+	tf, err := buildTargetFile(host, readFS, targetFile, data)
+	if err != nil {
+		return nil, err
+	}
+	sch, err := composeTargetSchema(tf, targetFile, rsSettings)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateTargetAgainstSchema(tf, sch, fmFields); err != nil {
+		return nil, err
+	}
+	mt := schema.BuildMatchTree(tf, sch, fmFields)
+	tree, diags := extract.Extract(tf, sch, mt)
+	if len(diags) > 0 {
+		return nil, fmt.Errorf(
+			"projection failed for %q: %s",
+			targetFile, diags[0].Message)
+	}
+	return tree, nil
+}
 
+// resolveRequiredStructureSettings looks up the kind set for
+// targetFile and returns the required-structure settings the
+// projector should apply to its private rule instance. An empty
+// kind set or a disabled required-structure surfaces as an error
+// — both block projection at the same point CLI extract would.
+func resolveRequiredStructureSettings(
+	cfg *config.Config, targetFile string,
+	fmKinds []string, fmFields map[string]any,
+) (map[string]any, error) {
 	res := config.ResolveFile(cfg, targetFile, fmKinds, fmFields)
 	if len(res.Kinds) == 0 {
 		return nil, fmt.Errorf(
@@ -71,7 +104,16 @@ func projectIncludeExtract(
 			"required-structure is disabled for %q; "+
 				"no schema to project against", targetFile)
 	}
+	return rr.Final.Settings, nil
+}
 
+// buildTargetFile parses data as Markdown the same way the engine
+// would, with the host's strip-frontmatter / max-input-bytes /
+// FS settings copied over so the projection sees the same
+// coordinate system the rest of the lint uses.
+func buildTargetFile(
+	host *lint.File, readFS fs.FS, targetFile string, data []byte,
+) (*lint.File, error) {
 	tf, err := lint.NewFileFromSource(targetFile, data, host.StripFrontMatter)
 	if err != nil {
 		return nil, fmt.Errorf("parsing %q: %w", targetFile, err)
@@ -80,10 +122,19 @@ func projectIncludeExtract(
 	tf.FS = readFS
 	tf.RootFS = host.RootFS
 	tf.RootDir = host.RootDir
+	return tf, nil
+}
 
+// composeTargetSchema builds the composed schema MDS020 would
+// validate tf against. A nil schema means the kind declares no
+// schema sources, which is a hard error here — there is nothing to
+// project against.
+func composeTargetSchema(
+	tf *lint.File, targetFile string, rsSettings map[string]any,
+) (*schema.Schema, error) {
 	rsRule := &requiredstructure.Rule{}
-	if rr.Final.Settings != nil {
-		if err := rsRule.ApplySettings(rr.Final.Settings); err != nil {
+	if rsSettings != nil {
+		if err := rsRule.ApplySettings(rsSettings); err != nil {
 			return nil, fmt.Errorf(
 				"loading schema config for %q: %w", targetFile, err)
 		}
@@ -97,29 +148,26 @@ func projectIncludeExtract(
 		return nil, fmt.Errorf(
 			"%q declares no schema to extract against", targetFile)
 	}
+	return sch, nil
+}
 
-	// Gate projection on a clean schema validation: a non-conformant
-	// target would produce a partial / lossy projection that the
-	// caller cannot rely on. Bubble the underlying diagnostic up
-	// so the include error points at the same root cause `mdsmith
-	// check` would surface for the target.
+// validateTargetAgainstSchema gates projection on a clean schema
+// validation. A non-conformant target would produce a partial /
+// lossy projection; bubble the underlying diagnostic up so the
+// include error points at the same root cause `mdsmith check`
+// would surface for the target.
+func validateTargetAgainstSchema(
+	tf *lint.File, sch *schema.Schema, fmFields map[string]any,
+) error {
 	mkDiag := func(file string, line int, msg string) lint.Diagnostic {
 		return lint.Diagnostic{File: file, Line: line, Message: msg}
 	}
 	if vd := schema.Validate(tf, sch, fmFields, false, mkDiag); len(vd) > 0 {
-		return nil, fmt.Errorf(
+		return fmt.Errorf(
 			"target file does not conform to its schema: %s",
 			vd[0].Message)
 	}
-
-	mt := schema.BuildMatchTree(tf, sch, fmFields)
-	tree, diags := extract.Extract(tf, sch, mt)
-	if len(diags) > 0 {
-		return nil, fmt.Errorf(
-			"projection failed for %q: %s",
-			targetFile, diags[0].Message)
-	}
-	return tree, nil
+	return nil
 }
 
 // decodeTargetFrontMatter returns the frontmatter kinds list and
