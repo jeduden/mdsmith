@@ -7,9 +7,10 @@ import (
 )
 
 // BenchmarkDetectReusesPool exercises the dual-parser code path
-// repeatedly to confirm the sync.Pool inside Detect avoids
-// rebuilding the goldmark parser per call. Each iteration parses a
-// small document that triggers the dual pass.
+// repeatedly to confirm the package-shared sync.Pool (borrowed via
+// WithSharedParser from dualFindings) avoids rebuilding the
+// goldmark parser per call. Each iteration parses a small document
+// that triggers the dual pass.
 func BenchmarkDetectReusesPool(b *testing.B) {
 	src := []byte("# Title {#top}\n\n" +
 		"- [ ] task\n\n" +
