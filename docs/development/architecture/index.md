@@ -97,13 +97,35 @@ cmd/mdsmith              internal/lsp
                          surface; public,
                          imports no
                          internal/ package)
+                        └─> pkg/markdown/flavor
+                            (extended-syntax
+                             parsers, the
+                             Flavor / Feature
+                             support model,
+                             and Detect;
+                             public,
+                             imports no
+                             internal/ package)
+                            └─> pkg/markdown/flavor/ext
+                                (the five
+                                 custom
+                                 extensions)
 ```
 
-`pkg/markdown` sits at the bottom: the
+`pkg/markdown` sits at the bottom. It
+owns the canonical CommonMark + PI
 parse path. `internal/lint` and
-`internal/release` depend on it; it
-depends on nothing in the tree. It is
-also a public cross-system surface — see
+`internal/release` depend on it. It
+depends on nothing in the tree.
+
+The `flavor` sub-package adds the
+extended-syntax parsers. It owns every
+custom goldmark parser in the tree.
+The MDS034 rule and the schema engine
+both build on it.
+
+Both packages are public surfaces.
+For details see
 [cross-system contracts](cross-system.md)
 and [Public Markdown Library](../markdown-library.md).
 

@@ -8,7 +8,9 @@ import (
 	"github.com/yuin/goldmark/text"
 
 	"github.com/jeduden/mdsmith/internal/lint"
-	"github.com/jeduden/mdsmith/internal/rules/markdownflavor/ext"
+	"github.com/jeduden/mdsmith/pkg/markdown"
+	"github.com/jeduden/mdsmith/pkg/markdown/flavor"
+	"github.com/jeduden/mdsmith/pkg/markdown/flavor/ext"
 )
 
 // edit describes a single byte-range substitution to apply to source.
@@ -28,7 +30,9 @@ func (r *Rule) fixByteRangeFeatures(f *lint.File) []byte {
 	var edits []edit
 
 	if r.needsAnyDualFix() {
-		doc := Parser().Parser().Parse(text.NewReader(f.Source))
+		dualParser, reset := flavor.NewPooledParser()
+		defer reset()
+		doc := dualParser.Parse(text.NewReader(f.Source))
 		_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 			if !entering {
 				return ast.WalkContinue, nil
@@ -38,8 +42,9 @@ func (r *Rule) fixByteRangeFeatures(f *lint.File) []byte {
 		})
 	}
 
-	if !Supports(r.Flavor, FeatureBareURLAutolinks) {
-		for _, fin := range detectBareURLs(f) {
+	if !flavor.Supports(r.Flavor, flavor.FeatureBareURLAutolinks) {
+		doc := &markdown.Document{Body: f.Source, AST: f.AST}
+		for _, fin := range flavor.Detect(doc, onlyAccept(flavor.FeatureBareURLAutolinks)) {
 			edits = append(edits, wrapBareURL(f.Source, fin))
 		}
 	}
@@ -50,16 +55,23 @@ func (r *Rule) fixByteRangeFeatures(f *lint.File) []byte {
 	return applyEdits(f.Source, edits)
 }
 
+// onlyAccept returns an accept predicate that admits only feat. Used
+// by Fix when re-running detection for a single feature.
+func onlyAccept(feat flavor.Feature) func(flavor.Feature) bool {
+	return func(f flavor.Feature) bool { return f == feat }
+}
+
 // needsAnyDualFix reports whether any dual-parser fixable feature is
 // unsupported by the configured flavor. Skips the dual re-parse for
-// flavors that accept every dual feature (e.g. convention.FlavorAny,
-// convention.FlavorPandoc).
+// flavors that accept every dual feature (e.g. flavor.FlavorAny,
+// flavor.FlavorPandoc).
 func (r *Rule) needsAnyDualFix() bool {
-	for _, feat := range []Feature{
-		FeatureHeadingIDs, FeatureStrikethrough, FeatureTaskLists,
-		FeatureSuperscript, FeatureSubscript,
+	for _, feat := range []flavor.Feature{
+		flavor.FeatureHeadingIDs, flavor.FeatureStrikethrough,
+		flavor.FeatureTaskLists, flavor.FeatureSuperscript,
+		flavor.FeatureSubscript,
 	} {
-		if !Supports(r.Flavor, feat) {
+		if !flavor.Supports(r.Flavor, feat) {
 			return true
 		}
 	}
@@ -72,27 +84,27 @@ func (r *Rule) needsAnyDualFix() bool {
 func (r *Rule) dualNodeEdits(f *lint.File, n ast.Node) []edit {
 	switch node := n.(type) {
 	case *ast.Heading:
-		if Supports(r.Flavor, FeatureHeadingIDs) {
+		if flavor.Supports(r.Flavor, flavor.FeatureHeadingIDs) {
 			return nil
 		}
 		return headingIDEdits(f, node)
 	case *extast.Strikethrough:
-		if Supports(r.Flavor, FeatureStrikethrough) {
+		if flavor.Supports(r.Flavor, flavor.FeatureStrikethrough) {
 			return nil
 		}
 		return delimiterPairEdits(node, len("~~"))
 	case *extast.TaskCheckBox:
-		if Supports(r.Flavor, FeatureTaskLists) {
+		if flavor.Supports(r.Flavor, flavor.FeatureTaskLists) {
 			return nil
 		}
 		return taskCheckBoxEdits(f, node)
 	case *ext.SuperscriptNode:
-		if Supports(r.Flavor, FeatureSuperscript) {
+		if flavor.Supports(r.Flavor, flavor.FeatureSuperscript) {
 			return nil
 		}
 		return delimiterPairEdits(node, len("^"))
 	case *ext.SubscriptNode:
-		if Supports(r.Flavor, FeatureSubscript) {
+		if flavor.Supports(r.Flavor, flavor.FeatureSubscript) {
 			return nil
 		}
 		return delimiterPairEdits(node, len("~"))
@@ -102,14 +114,12 @@ func (r *Rule) dualNodeEdits(f *lint.File, n ast.Node) []edit {
 
 // headingIDEdits returns the edit that drops a "{#id}" attribute block
 // plus any whitespace separating it from the heading text. Returns nil
-// when the heading carries no id attribute. findHeadingID always stores
-// a HeadingIDExtra in fin.Extra, so the type assertion is unchecked.
+// when the heading carries no id attribute.
 func headingIDEdits(f *lint.File, h *ast.Heading) []edit {
-	fin, ok := findHeadingID(f, h)
+	hx, ok := flavor.FindHeadingID(f.Source, h)
 	if !ok {
 		return nil
 	}
-	hx := fin.Extra.(HeadingIDExtra)
 	start := hx.AttrStart
 	for start > 0 && (f.Source[start-1] == ' ' || f.Source[start-1] == '\t') {
 		start--
@@ -149,10 +159,25 @@ func taskCheckBoxEdits(f *lint.File, n *extast.TaskCheckBox) []edit {
 	return []edit{{start: start, end: end}}
 }
 
-// wrapBareURL wraps a bare URL in angle brackets so the renderer treats
-// it as a CommonMark autolink. The detector reports a precise span via
-// fin.Start / fin.End.
-func wrapBareURL(source []byte, fin Finding) edit {
+// nearestBlockAncestor walks up from n and returns the first block-
+// typed ancestor with non-empty Lines(). Mirrors the helper in
+// pkg/markdown/flavor; duplicated here to keep that helper internal.
+func nearestBlockAncestor(n ast.Node) ast.Node {
+	for p := n.Parent(); p != nil; p = p.Parent() {
+		if p.Type() != ast.TypeBlock {
+			continue
+		}
+		if lines := p.Lines(); lines != nil && lines.Len() > 0 {
+			return p
+		}
+	}
+	return nil
+}
+
+// wrapBareURL wraps a bare URL in angle brackets so the renderer
+// treats it as a CommonMark autolink. The detector reports a precise
+// span via fin.Start / fin.End.
+func wrapBareURL(source []byte, fin flavor.Finding) edit {
 	url := source[fin.Start:fin.End]
 	repl := make([]byte, 0, len(url)+2)
 	repl = append(repl, '<')

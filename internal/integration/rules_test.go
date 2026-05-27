@@ -11,10 +11,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
-	"github.com/yuin/goldmark"
-	"github.com/yuin/goldmark/parser"
-	"github.com/yuin/goldmark/text"
-	"go.abhg.dev/goldmark/frontmatter"
+	"github.com/jeduden/mdsmith/internal/yamlutil"
 
 	_ "github.com/jeduden/mdsmith/internal/rules/ambiguousemphasis"
 	_ "github.com/jeduden/mdsmith/internal/rules/atxheadingwhitespace"
@@ -106,28 +103,31 @@ type fixtureFrontMatter struct {
 	Diagnostics []expectedDiag `yaml:"diagnostics"`
 }
 
-// parseFixtureFrontMatter extracts YAML front matter from markdown using
-// goldmark-frontmatter, then strips it from the raw bytes so lint.NewFile
-// receives plain markdown content. Returns settings, diagnostics, and content.
-// requireDiagnostics makes the function fail the test when no front matter
-// is found; use this for bad fixtures that must declare expected diagnostics.
+// parseFixtureFrontMatter extracts YAML front matter from markdown,
+// then strips it from the raw bytes so lint.NewFile receives plain
+// markdown content. Returns settings, diagnostics, and content.
+// requireDiagnostics makes the function fail the test when no front
+// matter is found; use this for bad fixtures that must declare
+// expected diagnostics.
 func parseFixtureFrontMatter(
 	t *testing.T, data []byte, requireDiagnostics bool,
 ) (map[string]any, []expectedDiag, []byte) {
 	t.Helper()
 
-	md := goldmark.New(goldmark.WithExtensions(&frontmatter.Extender{}))
-	ctx := parser.NewContext()
-	md.Parser().Parse(text.NewReader(data), parser.WithContext(ctx))
-
-	d := frontmatter.Get(ctx)
-	if d == nil {
+	prefix, content := lint.StripFrontMatter(data)
+	if prefix == nil {
 		require.False(t, requireDiagnostics, "bad fixture is missing front matter with expected diagnostics")
 		return nil, nil, data
 	}
 
+	// lint.StripFrontMatter returns the prefix including its --- fences;
+	// trim them so the remainder is plain YAML.
+	delim := []byte("---\n")
+	body := bytes.TrimPrefix(prefix, delim)
+	body = bytes.TrimSuffix(body, delim)
+
 	var fm fixtureFrontMatter
-	if err := d.Decode(&fm); err != nil {
+	if err := yamlutil.UnmarshalSafe(body, &fm); err != nil {
 		t.Fatalf("decoding front matter: %v", err)
 	}
 
@@ -146,8 +146,6 @@ func parseFixtureFrontMatter(
 				i)
 		}
 	}
-
-	_, content := lint.StripFrontMatter(data)
 
 	return fm.Settings, fm.Diagnostics, content
 }

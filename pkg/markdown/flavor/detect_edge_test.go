@@ -1,20 +1,17 @@
-package markdownflavor
+package flavor
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/yuin/goldmark/ast"
 	extast "github.com/yuin/goldmark/extension/ast"
 	"github.com/yuin/goldmark/text"
-
-	"github.com/jeduden/mdsmith/internal/lint"
 )
 
 // TestLineColClampsNegativeOffset exercises the guard that clamps a
 // negative offset to 0 so callers that subtract past the start of
-// f.Source still get a valid (1, 1) position.
+// source still get a valid (1, 1) position.
 func TestLineColClampsNegativeOffset(t *testing.T) {
 	line, col := lineCol([]byte("hello\nworld\n"), -5)
 	assert.Equal(t, 1, line)
@@ -52,11 +49,10 @@ func TestLineStartOfMidLine(t *testing.T) {
 // sentinel return path when no Text node can be found under n.
 func TestFirstTextStartReturnsNegativeForEmptySubtree(t *testing.T) {
 	// An empty file has no children.
-	f := mkFile(t, "\n")
-	root := f.AST
+	doc := mkDoc(t, "\n")
 	// A *real* ast.Document has no Text descendants, so
 	// firstTextStart returns -1 for it.
-	assert.Equal(t, -1, firstTextStart(root))
+	assert.Equal(t, -1, firstTextStart(doc.AST))
 }
 
 // TestFindHeadingIDIgnoresHeadingWithoutAttribute confirms that a
@@ -83,10 +79,9 @@ func TestFindHeadingIDIgnoresAttributesWithoutID(t *testing.T) {
 // only happens if the AST was hand-constructed rather than produced
 // by goldmark. The fallback returns (1, 1).
 func TestTaskCheckBoxFindingOrphan(t *testing.T) {
-	f, err := lint.NewFile("t.md", []byte("body\n"))
-	require.NoError(t, err)
+	source := []byte("body\n")
 	orphan := extast.NewTaskCheckBox(true)
-	got := taskCheckBoxFinding(f, orphan)
+	got := taskCheckBoxFinding(source, orphan)
 	assert.Equal(t, FeatureTaskLists, got.Feature)
 	assert.Equal(t, 1, got.Line)
 	assert.Equal(t, 1, got.Column)
@@ -94,10 +89,9 @@ func TestTaskCheckBoxFindingOrphan(t *testing.T) {
 
 // TestInlineExtFindingOrphan is the same test for inlineExtFinding.
 func TestInlineExtFindingOrphan(t *testing.T) {
-	f, err := lint.NewFile("t.md", []byte("body\n"))
-	require.NoError(t, err)
+	source := []byte("body\n")
 	orphan := extast.NewFootnoteLink(7)
-	got := inlineExtFinding(f, orphan, FeatureFootnotes)
+	got := inlineExtFinding(source, orphan, FeatureFootnotes)
 	assert.Equal(t, FeatureFootnotes, got.Feature)
 	assert.Equal(t, 1, got.Line)
 	assert.Equal(t, 1, got.Column)
@@ -107,10 +101,9 @@ func TestInlineExtFindingOrphan(t *testing.T) {
 // short-circuit: a freshly-constructed block with no Lines appended
 // falls back to (1, 1).
 func TestFindingFromBlockNoLines(t *testing.T) {
-	f, err := lint.NewFile("t.md", []byte("body\n"))
-	require.NoError(t, err)
+	source := []byte("body\n")
 	block := ast.NewParagraph() // no Lines appended
-	got := findingFromBlock(f, block, FeatureTables)
+	got := findingFromBlock(source, block, FeatureTables)
 	assert.Equal(t, FeatureTables, got.Feature)
 	assert.Equal(t, 1, got.Line)
 	assert.Equal(t, 1, got.Column)
@@ -154,11 +147,9 @@ func TestNearestBlockAncestorSkipsNonBlockAncestors(t *testing.T) {
 // Heading, so we synthesise a Heading with the id attribute set
 // but no Lines appended.
 func TestFindHeadingIDHandlesMissingLines(t *testing.T) {
-	f, err := lint.NewFile("t.md", []byte("# Heading {#top}\n"))
-	require.NoError(t, err)
 	h := ast.NewHeading(1)
 	h.SetAttributeString("id", []byte("top"))
-	_, ok := findHeadingID(f, h)
+	_, ok := findHeadingID([]byte("# Heading {#top}\n"), h)
 	assert.False(t, ok,
 		"findHeadingID must return ok=false when Lines is empty")
 }
@@ -168,12 +159,10 @@ func TestFindHeadingIDHandlesMissingLines(t *testing.T) {
 // source line contains no `{`. The parser ordinarily does not
 // produce such a node; we construct one directly.
 func TestFindHeadingIDHandlesNoOpeningBrace(t *testing.T) {
-	f, err := lint.NewFile("t.md", []byte("# plain heading\n"))
-	require.NoError(t, err)
 	h := ast.NewHeading(1)
 	h.SetAttributeString("id", []byte("top"))
 	h.Lines().Append(text.NewSegment(2, 15))
-	_, ok := findHeadingID(f, h)
+	_, ok := findHeadingID([]byte("# plain heading\n"), h)
 	assert.False(t, ok,
 		"findHeadingID must return ok=false when source line contains no '{'")
 }

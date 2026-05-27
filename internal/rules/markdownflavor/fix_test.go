@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/jeduden/mdsmith/internal/rules/markdownflavor/ext"
+	"github.com/jeduden/mdsmith/pkg/markdown/flavor/ext"
 )
 
 // fixWith parses src into a *lint.File, applies the configured rule's

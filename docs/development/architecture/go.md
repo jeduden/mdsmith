@@ -52,9 +52,9 @@ question. The current production set:
 - `internal/lsp` — speak the Language
   Server Protocol; consumes the engine.
 - `pkg/markdown` — the one goldmark
-  parser config and the byte-exact
-  producer. Public; see
-  [Public Markdown Library](../markdown-library.md).
+  parse/produce surface (CommonMark+PI);
+  `pkg/markdown/flavor` adds extensions.
+  Public; see [Public Markdown Library](../markdown-library.md).
 - `internal/mdtext` — walk an
   already-parsed AST (slugging, TOC,
   plain-text). `pkg/markdown` produces

@@ -7,7 +7,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
-	"github.com/yuin/goldmark"
+	"github.com/jeduden/mdsmith/pkg/markdown/flavor"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
 	extast "github.com/yuin/goldmark/extension/ast"
@@ -96,37 +96,16 @@ type contentPooledParser struct {
 
 var contentParserPool = sync.Pool{
 	New: func() any {
-		// Build the paragraph-transformer list ourselves so we
-		// can locate the link-ref transformer and capture a
-		// Reset closure for it; goldmark.New + md.Parser() don't
-		// expose installed transformers, so we'd otherwise have
-		// no handle to clear the pool's pinned source bytes
-		// between Get/Put.
-		defaults := parser.DefaultParagraphTransformers()
-		var resetter func()
-		for _, pv := range defaults {
-			if r, ok := pv.Value.(interface {
-				parser.ParagraphTransformer
-				Reset()
-			}); ok {
-				resetter = r.Reset
-				break
-			}
-		}
-		md := goldmark.New(
-			goldmark.WithExtensions(extension.Table),
-			goldmark.WithParserOptions(
-				parser.WithBlockParsers(lint.PIBlockParserPrioritized()),
-				parser.WithParagraphTransformers(defaults...),
-			),
-		)
-		// resetter is guaranteed non-nil: goldmark's
-		// DefaultParagraphTransformers always includes the
-		// link-reference transformer, which satisfies the
-		// Reset interface above.  If that invariant ever
-		// breaks, parseWithTableExt's nil-call will surface
-		// the failure loudly on the next parse.
-		return &contentPooledParser{parser: md.Parser(), reset: resetter}
+		// The schema content walker only needs the Table extension
+		// to detect *extast.Table nodes; extra extensions (footnote,
+		// definition list, etc.) would introduce new top-level block
+		// shapes that the walker's nodeMatchesKind would reject.
+		// NewPooledParserWith is the single goldmark.New call site
+		// in the tree (see pkg/markdown/flavor/parser.go); the
+		// returned reset closure clears the link-reference
+		// transformer's retained bytes before each Put.
+		p, reset := flavor.NewPooledParserWith(extension.Table)
+		return &contentPooledParser{parser: p, reset: reset}
 	},
 }
 

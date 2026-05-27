@@ -1,4 +1,4 @@
-package convention
+package flavor
 
 import (
 	"testing"

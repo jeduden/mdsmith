@@ -75,10 +75,17 @@ that matter:
   extension. The closing `---` is matched only
   at the start of a line. So a `---` row inside
   a YAML block scalar does not end it early.
-- **CommonMark only.** The canonical parser
-  enables no GFM extensions. Tables,
-  strikethrough, and the rest are composed
-  separately by the MDS034 flavor detector.
+- **CommonMark by default, extensions in
+  `pkg/markdown/flavor`.** The canonical parser
+  at `markdown.NewParser` enables no GFM
+  extensions. The `pkg/markdown/flavor`
+  sub-package adds GFM tables, strikethrough,
+  task lists, footnotes, definition lists, the
+  heading-ID attribute parser, and five
+  custom extensions (superscript, subscript,
+  math block, math inline, abbreviations). Use
+  `flavor.NewParser` (or `flavor.NewParserWith`
+  for a subset) to opt in.
 - **Byte-stability contract.** `Splice` output
   is pinned byte-for-byte (see the policy
   below). goldmark gives no such cross-version
@@ -213,12 +220,25 @@ the changelog.
 The stable surface:
 
 - `Parse` and `Document` (its fields).
-- `ParseContext`, `NewParser`.
+- `ParseContext`, `NewParser`, `NewPooledParser`.
 - `StripFrontMatter`, `CountLines`.
 - `Splice` and `Edit` (its fields).
 - `ProcessingInstruction` (its exported fields
   and methods), `KindProcessingInstruction`,
   `NewPIBlockParser`, `PIBlockParserPrioritized`.
+- Sub-package `pkg/markdown/flavor`: the
+  `Flavor` type and constants, the `Feature`
+  type and constants, `AllFeatures`, `Supports`,
+  `ParseFlavor`, the `Finding` and
+  `HeadingIDExtra` shapes, `Detect`, the four
+  `NewParser*` / `NewPooledParser*`
+  constructors, and the small rewriter helpers
+  (`FindHeadingID`, `IsGitHubAlert`, `LineCol`).
+- Sub-package `pkg/markdown/flavor/ext`: the
+  five custom extension Extender singletons
+  (`Superscript`, `Subscript`, `MathBlock`,
+  `MathInline`, `Abbreviation`) and their node
+  kinds.
 
 Policy:
 

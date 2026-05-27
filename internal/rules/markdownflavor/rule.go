@@ -1,3 +1,12 @@
+// Package markdownflavor implements MDS034, which validates Markdown
+// against a declared target flavor (commonmark, gfm, goldmark,
+// pandoc, phpextra, multimarkdown, myst, or any) and flags syntax
+// the target renderer will not understand. The Flavor identity, the
+// Feature support model, the dual-parser configuration, and the
+// public detection entry point all live in pkg/markdown/flavor; this
+// package is the rule adapter that maps config and convention into a
+// flavor.Detect call and then maps flavor.Finding into engine
+// diagnostics and fix bytes.
 package markdownflavor
 
 import (
@@ -10,6 +19,8 @@ import (
 	"github.com/jeduden/mdsmith/internal/convention"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/pkg/markdown"
+	"github.com/jeduden/mdsmith/pkg/markdown/flavor"
 )
 
 func init() {
@@ -74,19 +85,23 @@ func (r *Rule) DefaultSettings() map[string]any {
 	}
 }
 
-// Check implements rule.Rule.
+// Check implements rule.Rule. It runs flavor.Detect with an accept
+// predicate that admits only features the configured flavor rejects,
+// then maps each resulting Finding into one engine diagnostic.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	if !r.Flavor.IsValid() {
 		return nil
 	}
-	// Only ask detectors about features this flavor rejects. Detectors
-	// like the bare-URL regex scan then skip large files entirely when
-	// the flavor (gfm, goldmark) accepts them.
-	unsupported := func(feat Feature) bool {
-		return !Supports(r.Flavor, feat)
+	unsupported := func(feat flavor.Feature) bool {
+		return !flavor.Supports(r.Flavor, feat)
 	}
-	var diags []lint.Diagnostic
-	for _, found := range DetectFiltered(f, unsupported) {
+	doc := &markdown.Document{Body: f.Source, AST: f.AST}
+	findings := flavor.Detect(doc, unsupported)
+	if len(findings) == 0 {
+		return nil
+	}
+	diags := make([]lint.Diagnostic, 0, len(findings))
+	for _, found := range findings {
 		diags = append(diags, lint.Diagnostic{
 			File:     f.Path,
 			Line:     found.Line,
@@ -114,7 +129,7 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		return f.Source
 	}
 	current := f
-	if !Supports(r.Flavor, FeatureGitHubAlerts) {
+	if !flavor.Supports(r.Flavor, flavor.FeatureGitHubAlerts) {
 		stripped := r.fixGitHubAlerts(f)
 		if !bytes.Equal(stripped, f.Source) {
 			reparsed, err := lint.NewFile(f.Path, stripped)
@@ -142,13 +157,13 @@ func (r *Rule) fixGitHubAlerts(f *lint.File) []byte {
 		if !ok {
 			return ast.WalkContinue, nil
 		}
-		if !isGitHubAlert(bq, f.Source) {
+		if !flavor.IsGitHubAlert(bq, f.Source) {
 			return ast.WalkContinue, nil
 		}
 		para := bq.FirstChild().(*ast.Paragraph)
 		lines := para.Lines()
 		seg := lines.At(0)
-		markerLine, _ := lineCol(f.Source, seg.Start)
+		markerLine, _ := flavor.LineCol(f.Source, seg.Start)
 		skip[markerLine] = true
 
 		// Remaining lines of the first paragraph may use lazy continuation
@@ -156,7 +171,7 @@ func (r *Rule) fixGitHubAlerts(f *lint.File) []byte {
 		// would no longer be inside a blockquote, so re-add the prefix.
 		for i := 1; i < lines.Len(); i++ {
 			contSeg := lines.At(i)
-			contLine, _ := lineCol(f.Source, contSeg.Start)
+			contLine, _ := flavor.LineCol(f.Source, contSeg.Start)
 			raw := strings.TrimLeft(string(f.Lines[contLine-1]), " \t")
 			if !strings.HasPrefix(raw, ">") {
 				addPrefix[contLine] = true

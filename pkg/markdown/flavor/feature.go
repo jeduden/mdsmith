@@ -1,12 +1,4 @@
-// Package markdownflavor implements MDS034, which validates Markdown
-// against a declared target flavor (commonmark, gfm, goldmark,
-// pandoc, phpextra, multimarkdown, myst, or any) and flags syntax
-// the target renderer will not understand. The Flavor type itself,
-// along with the convention bundles that select it, lives in
-// internal/convention; this package consumes those data shapes.
-package markdownflavor
-
-import "github.com/jeduden/mdsmith/internal/convention"
+package flavor
 
 // Feature identifies one Markdown syntax feature whose support varies
 // across flavors.
@@ -86,23 +78,23 @@ func (f Feature) Name() string {
 // lists, strikethrough, and bare-URL autolinks. The goldmark flavor
 // further adds heading IDs. Pandoc, PHP Markdown Extra, MultiMarkdown,
 // and MyST each pick a different combination of the optional
-// features; convention.FlavorAny is handled specially in Supports.
-var support = map[convention.Flavor]map[Feature]bool{
-	convention.FlavorGFM: {
+// features; FlavorAny is handled specially in Supports.
+var support = map[Flavor]map[Feature]bool{
+	FlavorGFM: {
 		FeatureTables:           true,
 		FeatureTaskLists:        true,
 		FeatureStrikethrough:    true,
 		FeatureBareURLAutolinks: true,
 		FeatureGitHubAlerts:     true,
 	},
-	convention.FlavorGoldmark: {
+	FlavorGoldmark: {
 		FeatureTables:           true,
 		FeatureTaskLists:        true,
 		FeatureStrikethrough:    true,
 		FeatureBareURLAutolinks: true,
 		FeatureHeadingIDs:       true,
 	},
-	convention.FlavorPandoc: {
+	FlavorPandoc: {
 		FeatureTables:           true,
 		FeatureTaskLists:        true,
 		FeatureStrikethrough:    true,
@@ -115,14 +107,14 @@ var support = map[convention.Flavor]map[Feature]bool{
 		FeatureMathBlock:        true,
 		FeatureMathInline:       true,
 	},
-	convention.FlavorPHPExtra: {
+	FlavorPHPExtra: {
 		FeatureTables:          true,
 		FeatureFootnotes:       true,
 		FeatureDefinitionLists: true,
 		FeatureHeadingIDs:      true,
 		FeatureAbbreviations:   true,
 	},
-	convention.FlavorMultiMarkdown: {
+	FlavorMultiMarkdown: {
 		FeatureTables:          true,
 		FeatureFootnotes:       true,
 		FeatureDefinitionLists: true,
@@ -131,7 +123,7 @@ var support = map[convention.Flavor]map[Feature]bool{
 		FeatureMathBlock:       true,
 		FeatureMathInline:      true,
 	},
-	convention.FlavorMyST: {
+	FlavorMyST: {
 		FeatureTables:          true,
 		FeatureStrikethrough:   true,
 		FeatureFootnotes:       true,
@@ -143,10 +135,10 @@ var support = map[convention.Flavor]map[Feature]bool{
 }
 
 // Supports reports whether the flavor accepts the given feature.
-// convention.FlavorAny accepts every feature; other flavors consult
-// the support table.
-func Supports(f convention.Flavor, feat Feature) bool {
-	if f == convention.FlavorAny {
+// FlavorAny accepts every feature; other flavors consult the support
+// table.
+func Supports(f Flavor, feat Feature) bool {
+	if f == FlavorAny {
 		return true
 	}
 	return support[f][feat]
