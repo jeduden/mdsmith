@@ -1,10 +1,9 @@
 ---
 title: Coexist with Prettier
 summary: >-
-  mdsmith works alongside an existing Prettier setup.
-  Keep the Prettier config and run `mdsmith fix`
-  before `prettier --write` in the same pre-commit
-  hook.
+  Add `mdsmith fix` before `prettier --write` in the
+  same pre-commit hook. mdsmith does not require
+  changing your Prettier config.
 ---
 # Coexist with Prettier
 
@@ -54,29 +53,33 @@ configure:
 
 The two tools overlap on GFM table padding and
 list-item indentation. Both rewrite those bytes, so
-order matters. Prettier's table formatter produces
-the same column widths mdsmith's `table-format` rule
-does; once Prettier runs last on those constructs, a
-second pass changes nothing.
+order matters. With both tools at default settings,
+Prettier's table formatter produces the same column
+widths mdsmith's `table-format` rule does, so once
+Prettier runs last on those constructs, a second
+pass changes nothing. Customizing `table-format`
+(`pad`, `separator-style`, `style`) can break that
+convergence; check those settings first if a stable
+hook starts producing diffs.
 
 ## Do you need to change your Prettier config?
 
-Mostly no. Default Prettier and default mdsmith
-align: both target 80 columns, both indent with two
-spaces, both normalize unordered list markers to `-`.
-Prettier's default `proseWrap: "preserve"` leaves the
-line breaks mdsmith's `line-length` rule sized in
-place; `proseWrap` controls paragraph reflow, not
-table layout.
+Mostly no. Default Prettier and default mdsmith line
+up: both target 80 columns and both indent with two
+spaces. Prettier's default `proseWrap: "preserve"`
+(which controls paragraph reflow only) leaves alone
+the line breaks mdsmith's `line-length` rule sized in
+place. mdsmith does not normalize list markers by
+default and does not auto-wrap paragraphs, so
+Prettier owns those rewrites without contention.
 
-Two exceptions:
-
-- If `line-length.max` is above 80, raise Prettier's
-  `printWidth` to the same number. Otherwise Prettier
-  rewraps lines mdsmith still considers within
-  budget and every commit produces churn.
-- If `list-marker-style` (MDS045, opt-in) is enabled,
-  set `style: dash` to match Prettier's default.
+One value to keep aligned: Prettier's `printWidth`
+and mdsmith's `line-length.max`. Both default to 80.
+If `printWidth` exceeds `line-length.max`, Prettier
+may merge wrapped lines into ones mdsmith then flags
+as too long — and mdsmith does not auto-fix line
+length, so the rewrap would have to be manual. Keep
+the two values equal.
 
 ## Generated sections
 
@@ -91,21 +94,27 @@ hand-edit content between `<?directive?>` and
 
 ## Plain Git hook
 
-For projects not on `husky` / `lint-staged`, the same
-ordering works in a hand-written `.husky/pre-commit`:
+Without `lint-staged`, write the hook by hand. Place
+this script at `.husky/pre-commit` (under husky) or
+`.git/hooks/pre-commit` (plain Git hooks):
 
 ```sh
-list=$(git diff --cached --name-only --diff-filter=ACMR -z -- '*.md')
-[ -z "$list" ] && exit 0
-printf '%s' "$list" | xargs -0 mdsmith fix --
-printf '%s' "$list" | xargs -0 git add --
-printf '%s' "$list" | xargs -0 npx prettier --write --
-printf '%s' "$list" | xargs -0 git add --
+tmp=$(mktemp) || exit 1
+trap 'rm -f "$tmp"' EXIT INT TERM
+git diff --cached --name-only --diff-filter=ACMR -z -- '*.md' > "$tmp"
+[ -s "$tmp" ] || exit 0
+xargs -0 mdsmith fix -- < "$tmp"
+xargs -0 git add -- < "$tmp"
+xargs -0 npx prettier --write -- < "$tmp"
+xargs -0 git add -- < "$tmp"
 ```
 
-POSIX sh; NUL-delimited so filenames with spaces
-survive; exits early on an empty stage so neither
-tool falls back to a full-repo rewrite.
+POSIX sh. The NUL-delimited file list lives in a
+temp file because POSIX command substitution strips
+NUL bytes from `$(...)`, which would break the
+filenames-with-spaces guarantee. The hook exits
+early on an empty stage so neither tool falls back
+to a full-repo rewrite.
 
 ## CI check
 
