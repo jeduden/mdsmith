@@ -219,7 +219,11 @@ func TestRunVerifyWebsiteLinksHappyPath(t *testing.T) {
 	st := filepath.Join(root, "reference", "schema-types", "index.html")
 	rule := filepath.Join(root, "rules", "mds001", "index.html")
 	lead := filepath.Join(root, "guides", "progressive-disclosure", "index.html")
-	for _, dir := range []string{filepath.Dir(mq), filepath.Dir(aa), filepath.Dir(st), filepath.Dir(rule), filepath.Dir(lead)} {
+	dirs := []string{
+		filepath.Dir(mq), filepath.Dir(aa), filepath.Dir(st),
+		filepath.Dir(rule), filepath.Dir(lead),
+	}
+	for _, dir := range dirs {
 		require.NoError(t, os.MkdirAll(dir, 0o755))
 	}
 	require.NoError(t, os.WriteFile(mq,
