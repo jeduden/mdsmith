@@ -37,8 +37,10 @@ All paths below are relative to the repository root.
 ## When to use
 
 Run when the user wants to start fresh work. If the
-user already named a specific plan number, validate
-it (steps 1–3) then jump to step 6.
+user already named a specific plan number, do not
+skip ahead — step 5 still runs that id through the
+full status/branch/PR/dependency validation before
+the workflow moves on to step 6.
 
 ## Prerequisites
 
@@ -160,11 +162,20 @@ Run one `git show` per non-completed plan. The line
 is `depends-on: [146, 147]` (inline YAML); parse the
 integers between the brackets.
 
-Build two maps from the results:
+Build two maps from the results. Key plan records by
+filename, not by id — the catalog has duplicate plan
+ids and two plans sharing an id must not collapse to
+one node:
 
-- `deps[id]` → the list of plan ids this plan needs.
-- `dependents[id]` → count of other `🔲`/`🔳` plans
-  whose `deps[*]` includes this id.
+- `deps[filename]` → list of plan ids this plan
+  needs.
+- `dependents[id]` → count of plan-files whose
+  `deps` includes this id. A single id may resolve
+  to multiple filenames when duplicates exist; the
+  dependents count sums every plan-file that points
+  at that id, regardless of which duplicate they
+  meant. That's the safe direction — a dep is "met"
+  only when every plan sharing that id is `✅`.
 
 Skip the duplicate-id problem by reading by filename
 (you already have it from PLAN.md). If a plan's
@@ -218,8 +229,12 @@ important** when a plan fits both:
 
 Take the top 2 from each bucket for the menu. If one
 bucket has fewer than 2, fill from the other while
-keeping each bucket's internal order. Cap the menu
-at 4 options.
+keeping each bucket's internal order. Cap the
+`options` array you pass to `AskUserQuestion` at 4 —
+that is the tool's hard limit. The tool then renders
+an "Other" choice automatically on top of those, so
+the user always has a free-text fallback; you do not
+add it to `options` yourself.
 
 Use `AskUserQuestion` with each option labeled like:
 
@@ -230,8 +245,9 @@ Use `AskUserQuestion` with each option labeled like:
 Include the model tag so the user sees which model
 the implementation Agent will spawn at.)
 
-If the user picks "Other," accept a plan number from
-free-text and run the same dep-check validation.
+If the user picks the auto-rendered "Other," accept a
+plan number from free-text and run the same dep-check
+validation.
 
 If after filtering there's only one available plan,
 ask a yes/no `Start plan N now?` instead of a menu.
