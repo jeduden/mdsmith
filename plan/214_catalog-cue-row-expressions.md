@@ -1,7 +1,7 @@
 ---
 id: 214
 title: "MDS019 catalog: CUE-expression row templates"
-status: "🔲"
+status: "🔳"
 summary: >-
   Let `<?catalog?>` row/header/footer templates be CUE
   expressions evaluated against frontmatter, in addition
@@ -91,11 +91,12 @@ capability for free.
    string. Reuse the loader the [catalog parser][parse]
    already uses for `where:`.
 
-2. **New catalog parameters.** Add `row-expr:`,
-   `header-expr:`, `footer-expr:`. Each is mutually
-   exclusive with its placeholder-style sibling. Setting
-   both forms for the same slot is an MDS019
-   diagnostic. Document each parameter in the
+2. **New catalog parameter.** Add `row-expr:`, mutually
+   exclusive with `row:`. Setting both is an MDS019
+   diagnostic. `header:`/`footer:` stay placeholder-only:
+   they are emitted as literal text today (no
+   per-file scope), so a CUE-expression form would be
+   ahead of demand. Document `row-expr:` in the
    [catalog README][catdoc].
 
 3. **Diagnostics.** Surface CUE evaluation errors on
@@ -123,9 +124,10 @@ capability for free.
 
 ## Acceptance Criteria
 
-- [ ] `row-expr:`, `header-expr:`, `footer-expr:`
-  parameters parse and evaluate as CUE against the
-  matched file's frontmatter.
+- [ ] The `row-expr:` parameter parses and evaluates
+  as CUE against the matched file's frontmatter, with
+  every identifier-safe frontmatter key bound at the
+  expression's top-level scope.
 - [ ] Setting both `row:` and `row-expr:` on the same
   directive emits an MDS019 diagnostic on the opening
   line.

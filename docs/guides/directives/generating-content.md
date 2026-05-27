@@ -57,6 +57,42 @@ row: "| {id} | [{title}]({filename}) |"
 <?/catalog?>
 ```
 
+### Templates over list-typed fields
+
+`{field}` placeholders can only reach scalar
+front-matter values. When a row needs to project a
+list — multiple authors per file, multiple peer-linter
+mappings on a rule README, multiple tags — switch
+from `row:` to `row-expr:`. The value is a CUE
+expression evaluated against the matched file's front
+matter; every identifier-safe key is bound at
+top-level scope, and the expression must return a
+string.
+
+```markdown
+<?catalog
+glob: "internal/rules/MDS*/README.md"
+where: 'category: "heading"'
+sort: id
+row-expr: |
+  "| \(id) | " +
+  strings.Join(
+    [for m in markdownlint {
+      "\(m.id) \([if m.default {"✅"}, if !m.default {"⚪"}][0]) \(m.name)"
+    }],
+    ", "
+  ) + " |"
+?>
+<?/catalog?>
+```
+
+`strings.Join` and the rest of `strings.*` are
+preimported. CUE has no infix ternary; pick between
+two values with the `[if cond {a}, if !cond {b}][0]`
+list-comprehension idiom. `row` and `row-expr` are
+mutually exclusive on the same directive; `columns:`
+width constraints only apply to `row`.
+
 ### Multiple glob patterns
 
 `glob` accepts a YAML list to collect files from

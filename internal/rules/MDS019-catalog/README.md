@@ -27,15 +27,21 @@ otherwise.
 
 ### Parameters
 
-| Parameter | Required | Default | Description                       |
-| --------- | -------- | ------- | --------------------------------- |
-| `glob`    | yes      | --      | Relative file glob                |
-| `sort`    | no       | `path`  | Sort key                          |
-| `where`   | no       | --      | CUE filter on parsed front matter |
+| Parameter  | Required | Default | Description                         |
+| ---------- | -------- | ------- | ----------------------------------- |
+| `glob`     | yes      | --      | Relative file glob                  |
+| `sort`     | no       | `path`  | Sort key                            |
+| `where`    | no       | --      | CUE filter on parsed front matter   |
+| `row`      | no       | --      | Placeholder-style per-file template |
+| `row-expr` | no       | --      | CUE expression per-file template    |
+| `header`   | no       | --      | Literal text emitted above the rows |
+| `footer`   | no       | --      | Literal text emitted below the rows |
+| `empty`    | no       | --      | Literal text when no files match    |
+| `columns`  | no       | --      | Column width/wrapping (placeholder) |
 
-| Parameter | Required | Default | Description           |
-| --------- | -------- | ------- | --------------------- |
-| `columns` | no       | --      | Column width/wrapping |
+`row` and `row-expr` are mutually exclusive; setting both
+on the same directive emits an MDS019 diagnostic. Either
+form (or neither, for minimal mode) is allowed.
 
 The `glob` accepts a single string or a YAML list of
 strings. It supports `*`, `?`, `[...]`, `**`, and `{a,b}`
@@ -151,11 +157,36 @@ Failure modes:
 - Field exists but its type does not match -> file is
   excluded.
 
+### CUE-expression rows via `row-expr`
+
+`row` interpolates `{field}` placeholders for scalar
+fields. To project a list-typed field, use `row-expr`.
+The value is a CUE expression evaluated against the
+matched file's front matter. Every identifier-safe key
+is bound at top-level scope. The expression must return
+a string.
+
+```yaml
+row-expr: |
+  strings.Join(
+    [for m in markdownlint {
+      "\(m.id) \([if m.default {"✅"}, if !m.default {"⚪"}][0]) \(m.name)"
+    }],
+    ", "
+  )
+```
+
+`strings.Join` is preimported. CUE has no infix ternary;
+pick between two strings with the `[ ... ][0]`
+list-comprehension idiom above. `row` and `row-expr` are
+mutually exclusive. `columns:` only applies to `row`.
+
 ### Minimal mode
 
-Without `row`, `header`, or `footer`, the directive outputs
-a bullet list: `- [<basename>](<relative-path>)`. Front
-matter is only read when the sort key needs it.
+Without `row`, `row-expr`, `header`, or `footer`, the
+directive outputs a bullet list:
+`- [<basename>](<relative-path>)`. Front matter is only
+read when the sort key needs it.
 
 ### Rendering logic
 
@@ -236,6 +267,8 @@ row: "[{filename}]({filename})"
 | Empty sort         | `...empty "sort" value`                                                  |
 | Invalid sort       | `...invalid sort value`                                                  |
 | Invalid `where`    | `...has invalid "where" expression`                                      |
+| Invalid `row-expr` | `...has invalid "row-expr" expression` (or empty)                        |
+| `row` + `row-expr` | `...sets both "row" and "row-expr"; choose one`                          |
 
 All messages above are prefixed with
 `generated section directive`. Column is always 1.
@@ -287,14 +320,12 @@ pairs, line endings, template errors).
 ## Pattern
 
 The bad pattern is a hand-maintained list of
-links to sibling files. The good pattern is the
-same content rewritten as a `<?catalog?>`
-directive. The canonical source files live in
-[pattern/bad/](pattern/bad/) and
-[pattern/good/](pattern/good/); the snippets
-below mirror those files for quick reference.
-The markdown-audit skill reads the folders
-directly.
+sibling links; the good pattern is the same
+content rewritten as a `<?catalog?>` directive.
+Canonical files: [pattern/bad/](pattern/bad/),
+[pattern/good/](pattern/good/). Snippets below
+mirror them; the markdown-audit skill reads the
+folders directly.
 
 ### Without the directive
 

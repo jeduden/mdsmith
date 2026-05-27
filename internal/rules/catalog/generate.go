@@ -1,10 +1,12 @@
 package catalog
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
+	"github.com/jeduden/mdsmith/internal/cuetemplate"
 	"github.com/jeduden/mdsmith/internal/fieldinterp"
 )
 
@@ -23,17 +25,35 @@ type fileEntry struct {
 // terminated by \n; if the value already ends with \n, no extra is added.
 // If columns config is provided, column constraints (truncation/wrapping)
 // are applied to table rows after template expansion.
+//
+// The row may be authored as either a placeholder-style `row:`
+// (resolved by fieldinterp.Interpolate) or a CUE expression
+// `row-expr:` (compiled once via cuetemplate, evaluated against
+// each entry's frontmatter map). validateCatalogDirective rejects
+// directives that set both forms before this function runs.
 func renderTemplate(params map[string]string, entries []fileEntry, columns ...map[string]columnConfig) (string, error) {
 	var buf strings.Builder
 
 	header := params["header"]
 	row := params["row"]
+	rowExpr := strings.TrimSpace(params["row-expr"])
 	footer := params["footer"]
 
-	// Build column map from the row template if we have column constraints.
+	var rowTpl *cuetemplate.Template
+	if rowExpr != "" {
+		var err error
+		rowTpl, err = cuetemplate.Compile(rowExpr)
+		if err != nil {
+			return "", fmt.Errorf("compiling row-expr: %w", err)
+		}
+	}
+
+	// Column constraints are keyed off the placeholder-form row; a
+	// CUE-expression row carries no `{field}` columns so column
+	// truncation/wrapping does not apply.
 	var cols map[string]columnConfig
 	var colMap map[int]string
-	if len(columns) > 0 && columns[0] != nil && len(columns[0]) > 0 {
+	if rowTpl == nil && len(columns) > 0 && columns[0] != nil && len(columns[0]) > 0 {
 		cols = columns[0]
 		colMap = buildColumnMap(row)
 	}
@@ -43,9 +63,18 @@ func renderTemplate(params map[string]string, entries []fileEntry, columns ...ma
 	}
 
 	for _, entry := range entries {
-		rendered := fieldinterp.Interpolate(row, entry.fields)
+		var rendered string
+		if rowTpl != nil {
+			r, err := rowTpl.Render(entry.fields)
+			if err != nil {
+				return "", fmt.Errorf("rendering row-expr: %w", err)
+			}
+			rendered = r
+		} else {
+			rendered = fieldinterp.Interpolate(row, entry.fields)
+		}
 
-		// Apply column constraints to table rows.
+		// Apply column constraints to placeholder-form rows.
 		if cols != nil && colMap != nil {
 			rendered = applyColumnConstraints(rendered, cols, colMap)
 		}

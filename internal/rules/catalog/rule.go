@@ -12,6 +12,7 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
+	"github.com/jeduden/mdsmith/internal/cuetemplate"
 	"github.com/jeduden/mdsmith/internal/fieldinterp"
 	"github.com/jeduden/mdsmith/internal/globpath"
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -127,7 +128,7 @@ func (r *Rule) Generate(f *lint.File, filePath string, line int,
 		return "", diags
 	}
 
-	_, hasRow := params["row"]
+	hasRow := hasRowTemplate(params)
 	content, err := renderCatalogContent(params, entries, cols, hasRow)
 	if err != nil {
 		return "", []lint.Diagnostic{makeDiag(filePath, line,
@@ -179,25 +180,25 @@ func (r *Rule) DefaultSettings() map[string]any {
 	}
 }
 
+// hasRowTemplate reports whether the directive declared any
+// per-file row template — either the placeholder-style `row:`
+// or the CUE-expression `row-expr:`. Most catalog paths gate
+// "do we render per-file" on this question.
+func hasRowTemplate(params map[string]string) bool {
+	_, hasRow := params["row"]
+	_, hasRowExpr := params["row-expr"]
+	return hasRow || hasRowExpr
+}
+
 // validateCatalogDirective validates parameters specific to the catalog directive.
 func validateCatalogDirective(
 	filePath string, line int,
 	params map[string]string,
 	columns map[string]gensection.ColumnConfig,
 ) []lint.Diagnostic {
-	_, hasRow := params["row"]
-	_, hasHeader := params["header"]
-	_, hasFooter := params["footer"]
-
-	if (hasHeader || hasFooter) && !hasRow {
-		return []lint.Diagnostic{makeDiag(filePath, line,
-			`generated section template missing required "row" key`)}
+	if diags := validateRowParams(filePath, line, params); len(diags) > 0 {
+		return diags
 	}
-	if hasRow && strings.TrimSpace(params["row"]) == "" {
-		return []lint.Diagnostic{makeDiag(filePath, line,
-			`generated section directive has empty "row" value`)}
-	}
-
 	if diags := validateGlob(filePath, line, params); len(diags) > 0 {
 		return diags
 	}
@@ -212,16 +213,70 @@ func validateCatalogDirective(
 	if sortVal, hasSort := params["sort"]; hasSort {
 		diags = append(diags, validateSort(filePath, line, sortVal)...)
 	}
-	if hasRow {
-		if err := parseRowTemplate(params["row"]); err != nil {
-			diags = append(diags, makeDiag(filePath, line,
-				fmt.Sprintf("generated section has invalid template: %v", err)))
-		}
-	}
+	diags = append(diags, validateRowExpressions(filePath, line, params)...)
 	if whereExpr := strings.TrimSpace(params["where"]); whereExpr != "" {
 		if _, err := query.Compile(whereExpr); err != nil {
 			diags = append(diags, makeDiag(filePath, line,
 				fmt.Sprintf(`generated section directive has invalid "where" expression: %v`, err)))
+		}
+	}
+	return diags
+}
+
+// validateRowParams checks the presence/exclusivity/emptiness
+// rules for the `row:` and `row-expr:` parameters and the
+// header/footer dependency on having some row form declared.
+// A non-empty result is a hard failure that short-circuits
+// later validation, matching the previous inline behaviour.
+func validateRowParams(
+	filePath string, line int, params map[string]string,
+) []lint.Diagnostic {
+	_, hasRow := params["row"]
+	_, hasRowExpr := params["row-expr"]
+	_, hasHeader := params["header"]
+	_, hasFooter := params["footer"]
+
+	if hasRow && hasRowExpr {
+		return []lint.Diagnostic{makeDiag(filePath, line,
+			`generated section directive sets both "row" and "row-expr"; choose one`)}
+	}
+	if (hasHeader || hasFooter) && !hasRow && !hasRowExpr {
+		return []lint.Diagnostic{makeDiag(filePath, line,
+			`generated section template missing required "row" key`)}
+	}
+	if hasRow && strings.TrimSpace(params["row"]) == "" {
+		return []lint.Diagnostic{makeDiag(filePath, line,
+			`generated section directive has empty "row" value`)}
+	}
+	if hasRowExpr && strings.TrimSpace(params["row-expr"]) == "" {
+		return []lint.Diagnostic{makeDiag(filePath, line,
+			`generated section directive has empty "row-expr" value`)}
+	}
+	return nil
+}
+
+// validateRowExpressions returns diagnostics for malformed
+// `row:` placeholder templates and `row-expr:` CUE
+// expressions. Presence/exclusivity is already enforced by
+// validateRowParams, so at most one of the two paths runs
+// per directive.
+func validateRowExpressions(
+	filePath string, line int, params map[string]string,
+) []lint.Diagnostic {
+	var diags []lint.Diagnostic
+	if row, hasRow := params["row"]; hasRow {
+		if err := parseRowTemplate(row); err != nil {
+			diags = append(diags, makeDiag(filePath, line,
+				fmt.Sprintf("generated section has invalid template: %v", err)))
+		}
+	}
+	if rowExpr, hasRowExpr := params["row-expr"]; hasRowExpr {
+		if _, err := cuetemplate.Compile(
+			strings.TrimSpace(rowExpr)); err != nil {
+			diags = append(diags, makeDiag(filePath, line,
+				fmt.Sprintf(
+					`generated section directive has invalid "row-expr" expression: %v`,
+					err)))
 		}
 	}
 	return diags
@@ -678,7 +733,7 @@ func buildCatalogEntries(
 	files := resolveGlobMatchesFrom(res, f, params)
 
 	sortKey, descending, numeric := parseSort(params)
-	_, hasRow := params["row"]
+	hasRow := hasRowTemplate(params)
 	whereExpr := strings.TrimSpace(params["where"])
 	needFM := hasRow || whereExpr != "" || (sortKey != "path" && sortKey != "filename")
 

@@ -4378,3 +4378,120 @@ row: "- [{title}]({filename})"
 	diags := r.Check(f)
 	expectDiags(t, diags, 0)
 }
+
+// =====================================================================
+// row-expr: CUE expression rows
+// =====================================================================
+
+func TestRowExpr_RendersListComprehensionAndJoin(t *testing.T) {
+	// A row-expr that projects a list-typed frontmatter field
+	// via strings.Join produces the same body as a hand-written
+	// table row. The directive body is in sync, so Check emits
+	// no diagnostics.
+	src := "<?catalog\n" +
+		"glob: \"docs/*.md\"\n" +
+		"sort: id\n" +
+		"row-expr: 'strings.Join([for m in markdownlint {\"\\(m.id) \\(m.name)\"}], \", \")'\n" +
+		"?>\n" +
+		"MD018 no-missing-space-atx, MD019 no-multiple-space-atx\n" +
+		"<?/catalog?>\n"
+	mapFS := fstest.MapFS{
+		"docs/a.md": {Data: []byte(
+			"---\n" +
+				"id: MDS064\n" +
+				"markdownlint:\n" +
+				"  - id: MD018\n" +
+				"    name: no-missing-space-atx\n" +
+				"  - id: MD019\n" +
+				"    name: no-multiple-space-atx\n" +
+				"---\n# A\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestRowExpr_BothRowAndRowExprIsDiag(t *testing.T) {
+	// Setting both placeholder-form `row:` and CUE-form
+	// `row-expr:` is a configuration mistake; emit a diagnostic
+	// on the directive's opening line so the author knows to
+	// choose one.
+	src := `<?catalog
+glob: "docs/*.md"
+row: "- [{title}]({filename})"
+row-expr: '"\(title)"'
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/a.md": {Data: []byte("---\ntitle: A\n---\n# A\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	require.NotEmpty(t, diags)
+	var found bool
+	for _, d := range diags {
+		if strings.Contains(d.Message, `both "row" and "row-expr"`) {
+			found = true
+			assert.Equal(t, 1, d.Line)
+			break
+		}
+	}
+	assert.True(t, found, "expected mutual-exclusion diagnostic; got %v", diags)
+}
+
+func TestRowExpr_InvalidCUEEmitsDiag(t *testing.T) {
+	// A syntactically invalid CUE expression in row-expr surfaces
+	// as a diagnostic on the directive's opening line, matching
+	// the where: invalid-expression pattern.
+	src := `<?catalog
+glob: "docs/*.md"
+row-expr: 'strings.Join([for x in'
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/a.md": {Data: []byte("---\ntitle: A\n---\n# A\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	require.NotEmpty(t, diags)
+	var found bool
+	for _, d := range diags {
+		if strings.Contains(d.Message, `invalid "row-expr" expression`) {
+			found = true
+			assert.Equal(t, 1, d.Line)
+			break
+		}
+	}
+	assert.True(t, found, "expected invalid row-expr diagnostic; got %v", diags)
+}
+
+func TestRowExpr_EmptyValueIsDiag(t *testing.T) {
+	// An empty row-expr is rejected by validation, parallel to
+	// the empty-row check.
+	src := `<?catalog
+glob: "docs/*.md"
+row-expr: ""
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/a.md": {Data: []byte("---\ntitle: A\n---\n# A\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	require.NotEmpty(t, diags)
+	var found bool
+	for _, d := range diags {
+		if strings.Contains(d.Message, `empty "row-expr" value`) {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "expected empty-row-expr diagnostic; got %v", diags)
+}
