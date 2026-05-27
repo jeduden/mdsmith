@@ -1,23 +1,22 @@
 ---
 title: Coexist with Prettier
 summary: >-
-  If your project already runs Prettier on Markdown,
-  mdsmith slots in alongside it: keep your Prettier
-  config, run `mdsmith fix` before `prettier --write`
-  in the same pre-commit hook, and the two tools
-  converge on the same bytes.
+  mdsmith works alongside an existing Prettier setup.
+  Keep the Prettier config and run `mdsmith fix`
+  before `prettier --write` in the same pre-commit
+  hook.
 ---
 # Coexist with Prettier
 
-You already run Prettier on your Markdown and do not
-want to give it up — mdsmith does not ask you to. Add
-`mdsmith fix` to your pre-commit hook *before*
-`prettier --write` and the two tools settle on the
-same bytes. Prettier keeps the final say on paragraph
-wrapping and table layout; mdsmith handles the
-formatting rules Prettier does not touch, plus
-generated sections, cross-file links, and readability
-budgets.
+If your project already runs Prettier on Markdown,
+adding mdsmith does not require changing the Prettier
+setup. Run `mdsmith fix` before `prettier --write`
+in the same pre-commit hook. A second run of either
+tool then produces no diff. Prettier handles
+paragraph wrapping and the final table layout;
+mdsmith handles the formatting rules Prettier does
+not touch, plus generated sections, cross-file
+links, and readability budgets.
 
 ## Quick start
 
@@ -32,17 +31,13 @@ budgets.
 }
 ```
 
-That is the minimum: mdsmith first, Prettier last, in
-one `lint-staged` array. A second run of either tool
-produces zero diffs. The rest of this page is for
-when something looks off — which tool to blame, what
-to set in Prettier, and the one edge case around
-generated content.
+mdsmith first, Prettier last, in one `lint-staged`
+array.
 
 ## Which tool owns what
 
-When a check fails or a fixer rewrites something you
-did not expect, this table points you at the tool to
+When a check fails or a fixer rewrites something
+unexpected, the table below shows which tool to
 configure:
 
 | Concern                              | Owner    |
@@ -57,49 +52,46 @@ configure:
 | Cross-file link and anchor integrity | mdsmith  |
 | Readability budgets                  | mdsmith  |
 
-The only place the two overlap is GFM table padding
-and list-item indentation — both tools rewrite those
-bytes, which is why the ordering rule exists.
-Prettier runs last on those constructs and its
-formatter happens to produce the same column widths
-mdsmith's `table-format` does, so the second pass is
-a no-op.
+The two tools overlap on GFM table padding and
+list-item indentation. Both rewrite those bytes, so
+order matters. Prettier's table formatter produces
+the same column widths mdsmith's `table-format` rule
+does; once Prettier runs last on those constructs, a
+second pass changes nothing.
 
 ## Do you need to change your Prettier config?
 
-Mostly no. Default Prettier and default mdsmith line
-up out of the box: both target 80 columns, both
-indent with two spaces, both normalize unordered list
-markers to `-`, and Prettier's `proseWrap: "preserve"`
-(its default) leaves alone the line breaks mdsmith's
-`line-length` rule already sized — `proseWrap`
-controls paragraph reflow, not table layout.
+Mostly no. Default Prettier and default mdsmith
+align: both target 80 columns, both indent with two
+spaces, both normalize unordered list markers to `-`.
+Prettier's default `proseWrap: "preserve"` leaves the
+line breaks mdsmith's `line-length` rule sized in
+place; `proseWrap` controls paragraph reflow, not
+table layout.
 
-Two cases worth checking:
+Two exceptions:
 
-- If you have raised mdsmith's `line-length.max` past
-  80, raise Prettier's `printWidth` to the same
-  number. Otherwise Prettier will rewrap lines
-  mdsmith still considers within budget and you will
-  see churn on every commit.
-- If you have enabled mdsmith's `list-marker-style`
-  (MDS045, opt-in), set `style: dash` so it agrees
-  with Prettier's default `-` marker.
+- If `line-length.max` is above 80, raise Prettier's
+  `printWidth` to the same number. Otherwise Prettier
+  rewraps lines mdsmith still considers within
+  budget and every commit produces churn.
+- If `list-marker-style` (MDS045, opt-in) is enabled,
+  set `style: dash` to match Prettier's default.
 
-## What about generated sections?
+## Generated sections
 
 Prettier does not parse mdsmith's `<?...?>` directive
 markers and may rewrap text inside generated bodies.
-If a Prettier-induced rewrap shows up in your diffs,
-add the affected files to `.prettierignore`.
-Generated bodies regenerate from the directive source
-on the next `mdsmith fix`, so the worst case is a
-one-commit round-trip. Never hand-edit content
-between `<?directive?>` and `<?/directive?>` markers.
+Add affected files to `.prettierignore` if that
+shows up in diffs. Generated bodies regenerate from
+the directive source on the next `mdsmith fix`, so
+the worst case is a one-commit round-trip. Never
+hand-edit content between `<?directive?>` and
+`<?/directive?>` markers.
 
 ## Plain Git hook
 
-If you are not on `husky` / `lint-staged`, the same
+For projects not on `husky` / `lint-staged`, the same
 ordering works in a hand-written `.husky/pre-commit`:
 
 ```sh
@@ -126,17 +118,16 @@ Both tools have read-only modes for CI:
   run: mdsmith check .
 ```
 
-Order does not matter here — both jobs only report
-violations. Run them in parallel.
+Order does not matter here. Both jobs only report
+violations; run them in parallel.
 
-## Could you simplify by dropping one?
+## When to drop mdsmith
 
-You almost certainly want to keep Prettier — it owns
-paragraph re-wrap, which mdsmith deliberately does
-not do. The real question is whether you need
-mdsmith.
+Keep Prettier. It owns paragraph re-wrap, which
+mdsmith does not implement. The question is whether
+the project needs mdsmith.
 
-Keep mdsmith if your repo relies on any of:
+Keep mdsmith if the repo relies on any of:
 
 - Generated sections (`<?catalog?>`, `<?include?>`,
   `<?toc?>`, `<?build?>`).
@@ -144,8 +135,8 @@ Keep mdsmith if your repo relies on any of:
 - Per-file kinds, schemas, or readability budgets.
 - Release-gating on Markdown metrics.
 
-Drop mdsmith if you have none of those and your only
-need is wrap-and-tidy on prose — Prettier alone
+Drop mdsmith if none of those apply and the only
+formatting need is paragraph wrapping. Prettier
 covers that.
 
 ## See also
