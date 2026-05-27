@@ -18,7 +18,7 @@ mado:
   - id: MD026
     name: no-trailing-punctuation
     default: true
-panache: null
+panache: []
 ---
 # MDS017: no-trailing-punctuation-in-heading
 

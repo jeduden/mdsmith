@@ -20,7 +20,7 @@ mado:
   - id: MD030
     name: list-marker-space
     default: true
-panache: null
+panache: []
 ---
 # MDS061: list-marker-space
 

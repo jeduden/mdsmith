@@ -6,10 +6,10 @@ description: Keep toc generated heading lists in sync with document headings.
 category: directive
 nature: directive
 maintainability: null
-markdownlint: null
-rumdl: null
-mado: null
-panache: null
+markdownlint: []
+rumdl: []
+mado: []
+panache: []
 ---
 # MDS038: toc
 

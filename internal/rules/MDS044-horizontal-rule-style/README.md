@@ -20,7 +20,7 @@ mado:
   - id: MD035
     name: hr-style
     default: true
-panache: null
+panache: []
 ---
 # MDS044: horizontal-rule-style
 

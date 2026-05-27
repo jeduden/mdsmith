@@ -18,7 +18,7 @@ mado:
   - id: MD022
     name: blanks-around-headings
     default: true
-panache: null
+panache: []
 ---
 # MDS013: blank-line-around-headings
 

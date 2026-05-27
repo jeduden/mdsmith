@@ -6,10 +6,10 @@ description: Paragraphs must not contain any configured substring.
 category: prose
 nature: content
 maintainability: null
-markdownlint: null
-rumdl: null
-mado: null
-panache: null
+markdownlint: []
+rumdl: []
+mado: []
+panache: []
 ---
 # MDS056: forbidden-text
 

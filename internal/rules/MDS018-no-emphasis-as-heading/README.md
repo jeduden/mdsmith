@@ -18,7 +18,7 @@ mado:
   - id: MD036
     name: no-emphasis-as-heading
     default: true
-panache: null
+panache: []
 ---
 # MDS018: no-emphasis-as-heading
 

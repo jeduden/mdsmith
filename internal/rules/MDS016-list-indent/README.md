@@ -30,7 +30,7 @@ mado:
   - id: MD007
     name: ul-indent
     default: false
-panache: null
+panache: []
 ---
 # MDS016: list-indent
 

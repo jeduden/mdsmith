@@ -14,7 +14,7 @@ rumdl:
   - id: MD051
     name: link-fragments
     default: true
-mado: null
+mado: []
 panache:
   - id: undefined-anchor
     name: undefined-anchor

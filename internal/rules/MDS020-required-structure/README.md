@@ -17,8 +17,8 @@ rumdl:
   - id: MD043
     name: required-headings
     default: true
-mado: null
-panache: null
+mado: []
+panache: []
 ---
 # MDS020: required-structure
 

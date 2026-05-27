@@ -18,7 +18,7 @@ mado:
   - id: MD039
     name: no-space-in-links
     default: true
-panache: null
+panache: []
 ---
 # MDS049: no-space-in-link-text
 

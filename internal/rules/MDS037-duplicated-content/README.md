@@ -9,10 +9,10 @@ maintainability:
   signal: repeated paragraphs or sections with the same content
   fix: extract shared text with `<?include?>` or refactor so one canonical source remains
   for-diagnostic: true
-markdownlint: null
-rumdl: null
-mado: null
-panache: null
+markdownlint: []
+rumdl: []
+mado: []
+panache: []
 ---
 # MDS037: duplicated-content
 

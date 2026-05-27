@@ -6,10 +6,10 @@ description: Section length must not exceed per-level, per-heading, word, or par
 category: heading
 nature: content
 maintainability: null
-markdownlint: null
-rumdl: null
-mado: null
-panache: null
+markdownlint: []
+rumdl: []
+mado: []
+panache: []
 ---
 # MDS036: max-section-length
 

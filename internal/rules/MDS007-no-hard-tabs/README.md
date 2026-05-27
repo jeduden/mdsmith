@@ -18,7 +18,7 @@ mado:
   - id: MD010
     name: no-hard-tabs
     default: true
-panache: null
+panache: []
 ---
 # MDS007: no-hard-tabs
 

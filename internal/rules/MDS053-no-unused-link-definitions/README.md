@@ -16,7 +16,7 @@ rumdl:
   - id: MD053
     name: link-image-definitions
     default: true
-mado: null
+mado: []
 panache:
   - id: duplicate-reference-labels
     name: duplicate-reference-labels

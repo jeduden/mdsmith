@@ -18,7 +18,7 @@ mado:
   - id: MD031
     name: blanks-around-fences
     default: true
-panache: null
+panache: []
 ---
 # MDS015: blank-line-around-fenced-code
 

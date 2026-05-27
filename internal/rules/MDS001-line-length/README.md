@@ -18,7 +18,7 @@ mado:
   - id: MD013
     name: line-length
     default: true
-panache: null
+panache: []
 ---
 # MDS001: line-length
 

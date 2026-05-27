@@ -18,7 +18,7 @@ mado:
   - id: MD025
     name: single-h1
     default: true
-panache: null
+panache: []
 ---
 # MDS051: single-h1
 

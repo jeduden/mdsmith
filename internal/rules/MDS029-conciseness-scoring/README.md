@@ -6,10 +6,10 @@ description: Paragraph conciseness score must not fall below a threshold.
 category: prose
 nature: content
 maintainability: null
-markdownlint: null
-rumdl: null
-mado: null
-panache: null
+markdownlint: []
+rumdl: []
+mado: []
+panache: []
 ---
 # MDS029: conciseness-scoring
 

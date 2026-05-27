@@ -16,8 +16,8 @@ rumdl:
   - id: MD059
     name: link-text
     default: true
-mado: null
-panache: null
+mado: []
+panache: []
 ---
 # MDS063: descriptive-link-text
 

@@ -18,7 +18,7 @@ mado:
   - id: MD029
     name: ol-prefix
     default: true
-panache: null
+panache: []
 ---
 # MDS046: ordered-list-numbering
 

@@ -14,7 +14,7 @@ rumdl:
   - id: MD052
     name: reference-links-images
     default: true
-mado: null
+mado: []
 panache:
   - id: undefined-references
     name: undefined-references

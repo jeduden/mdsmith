@@ -18,7 +18,7 @@ mado:
   - id: MD003
     name: heading-style
     default: false
-panache: null
+panache: []
 ---
 # MDS002: heading-style
 

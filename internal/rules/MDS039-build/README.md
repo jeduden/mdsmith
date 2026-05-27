@@ -8,10 +8,10 @@ description: >-
 category: directive
 nature: directive
 maintainability: null
-markdownlint: null
-rumdl: null
-mado: null
-panache: null
+markdownlint: []
+rumdl: []
+mado: []
+panache: []
 ---
 # MDS039: build
 

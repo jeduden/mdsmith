@@ -18,7 +18,7 @@ mado:
   - id: MD009
     name: no-trailing-spaces
     default: true
-panache: null
+panache: []
 ---
 # MDS006: no-trailing-spaces
 

@@ -23,8 +23,8 @@ rumdl:
   - id: MD050
     name: strong-style
     default: true
-mado: null
-panache: null
+mado: []
+panache: []
 ---
 # MDS042: emphasis-style
 

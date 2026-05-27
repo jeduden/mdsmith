@@ -18,7 +18,7 @@ mado:
   - id: MD034
     name: no-bare-urls
     default: true
-panache: null
+panache: []
 ---
 # MDS012: no-bare-urls
 

@@ -29,7 +29,7 @@ mado:
   - id: MD028
     name: no-blanks-blockquote
     default: true
-panache: null
+panache: []
 ---
 # MDS059: blockquote-whitespace
 

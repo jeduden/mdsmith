@@ -14,8 +14,8 @@ rumdl:
   - id: MD045
     name: no-alt-text
     default: true
-mado: null
-panache: null
+mado: []
+panache: []
 ---
 # MDS032: no-empty-alt-text
 

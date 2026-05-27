@@ -18,7 +18,7 @@ mado:
   - id: MD040
     name: fenced-code-language
     default: true
-panache: null
+panache: []
 ---
 # MDS011: fenced-code-language
 

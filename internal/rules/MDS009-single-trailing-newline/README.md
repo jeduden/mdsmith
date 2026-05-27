@@ -18,7 +18,7 @@ mado:
   - id: MD047
     name: single-trailing-newline
     default: true
-panache: null
+panache: []
 ---
 # MDS009: single-trailing-newline
 

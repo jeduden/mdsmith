@@ -18,7 +18,7 @@ mado:
   - id: MD041
     name: first-line-h1
     default: true
-panache: null
+panache: []
 ---
 # MDS004: first-line-heading
 

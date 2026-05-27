@@ -18,7 +18,7 @@ mado:
   - id: MD004
     name: ul-style
     default: true
-panache: null
+panache: []
 ---
 # MDS045: list-marker-style
 

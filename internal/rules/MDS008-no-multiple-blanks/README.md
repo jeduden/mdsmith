@@ -18,7 +18,7 @@ mado:
   - id: MD012
     name: no-multiple-blanks
     default: true
-panache: null
+panache: []
 ---
 # MDS008: no-multiple-blanks
 

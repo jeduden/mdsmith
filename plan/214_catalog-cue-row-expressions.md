@@ -122,6 +122,18 @@ capability for free.
    `coverage-matrix-drift` job in [`ci.yml`][ci].
    `mdsmith check` (via MDS019) is the new drift gate.
 
+   First explored end-to-end on the heading category.
+   The feature produces the correct row shape: id link,
+   four peer cells, status emoji per entry, comma-join
+   across multi-entry peer lists.
+
+   Three follow-on changes were needed: schema
+   `| null` → `[]` (done); `partial` field required
+   not optional, so the row-expr reads `m.partial`
+   without `_|_` guards; and the `row-expr` source
+   line-broken to satisfy MDS001. Migration is staged
+   across commits; the page swap is the terminal step.
+
 ## Acceptance Criteria
 
 - [ ] The `row-expr:` parameter parses and evaluates

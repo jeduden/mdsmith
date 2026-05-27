@@ -6,10 +6,10 @@ description: Flag links whose path, extension, or inline-vs-reference form devia
 category: link
 nature: style
 maintainability: null
-markdownlint: null
-rumdl: null
-mado: null
-panache: null
+markdownlint: []
+rumdl: []
+mado: []
+panache: []
 ---
 # MDS068: link-style
 

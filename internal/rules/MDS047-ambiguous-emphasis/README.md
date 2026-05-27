@@ -18,7 +18,7 @@ mado:
   - id: MD037
     name: no-space-in-emphasis
     default: true
-panache: null
+panache: []
 ---
 # MDS047: ambiguous-emphasis
 

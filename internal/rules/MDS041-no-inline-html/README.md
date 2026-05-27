@@ -20,7 +20,7 @@ mado:
   - id: MD033
     name: no-inline-html
     default: true
-panache: null
+panache: []
 ---
 # MDS041: no-inline-html
 

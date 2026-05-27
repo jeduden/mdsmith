@@ -14,8 +14,8 @@ rumdl:
   - id: MD048
     name: code-fence-style
     default: true
-mado: null
-panache: null
+mado: []
+panache: []
 ---
 # MDS010: fenced-code-style
 

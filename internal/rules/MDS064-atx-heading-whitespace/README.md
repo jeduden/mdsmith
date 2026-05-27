@@ -57,7 +57,7 @@ mado:
   - id: MD023
     name: heading-start-left
     default: true
-panache: null
+panache: []
 ---
 # MDS064: atx-heading-whitespace
 

@@ -28,8 +28,8 @@ rumdl:
   - id: MD058
     name: table-spacing
     default: true
-mado: null
-panache: null
+mado: []
+panache: []
 ---
 # MDS025: table-format
 

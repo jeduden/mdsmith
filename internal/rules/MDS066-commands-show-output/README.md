@@ -20,7 +20,7 @@ mado:
   - id: MD014
     name: commands-show-output
     default: true
-panache: null
+panache: []
 ---
 # MDS066: commands-show-output
 

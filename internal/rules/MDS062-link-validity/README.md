@@ -23,8 +23,8 @@ rumdl:
   - id: MD042
     name: no-empty-links
     default: true
-mado: null
-panache: null
+mado: []
+panache: []
 ---
 # MDS062: link-validity
 

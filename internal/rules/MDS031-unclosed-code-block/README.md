@@ -6,10 +6,10 @@ description: Fenced code blocks must have a closing fence delimiter.
 category: code
 nature: structure
 maintainability: null
-markdownlint: null
-rumdl: null
-mado: null
-panache: null
+markdownlint: []
+rumdl: []
+mado: []
+panache: []
 ---
 # MDS031: unclosed-code-block
 

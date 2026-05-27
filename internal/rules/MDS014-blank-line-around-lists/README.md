@@ -18,7 +18,7 @@ mado:
   - id: MD032
     name: blanks-around-lists
     default: false
-panache: null
+panache: []
 ---
 # MDS014: blank-line-around-lists
 

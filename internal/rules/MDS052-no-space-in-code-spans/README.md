@@ -18,7 +18,7 @@ mado:
   - id: MD038
     name: no-space-in-code
     default: true
-panache: null
+panache: []
 ---
 # MDS052: no-space-in-code-spans
 

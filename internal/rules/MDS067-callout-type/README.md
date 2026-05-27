@@ -6,10 +6,10 @@ description: Validate Obsidian callout types against an allowed set.
 category: structural
 nature: structure
 maintainability: null
-markdownlint: null
-rumdl: null
-mado: null
-panache: null
+markdownlint: []
+rumdl: []
+mado: []
+panache: []
 ---
 # MDS067: callout-type
 

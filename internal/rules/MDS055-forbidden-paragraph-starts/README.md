@@ -6,10 +6,10 @@ description: Paragraphs must not begin with any configured prefix.
 category: prose
 nature: content
 maintainability: null
-markdownlint: null
-rumdl: null
-mado: null
-panache: null
+markdownlint: []
+rumdl: []
+mado: []
+panache: []
 ---
 # MDS055: forbidden-paragraph-starts
 

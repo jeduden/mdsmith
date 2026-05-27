@@ -20,7 +20,7 @@ mado:
   - id: MD046
     name: code-block-style
     default: true
-panache: null
+panache: []
 ---
 # MDS065: code-block-style
 

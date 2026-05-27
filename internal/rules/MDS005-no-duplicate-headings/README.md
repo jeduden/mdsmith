@@ -18,7 +18,7 @@ mado:
   - id: MD024
     name: no-duplicate-heading
     default: true
-panache: null
+panache: []
 ---
 # MDS005: no-duplicate-headings
 
