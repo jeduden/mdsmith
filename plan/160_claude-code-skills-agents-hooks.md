@@ -1,7 +1,7 @@
 ---
 id: 160
 title: Claude Code plugin extensions — skills, agents, hooks
-status: "🔳"
+status: "✅"
 model: sonnet
 depends-on: [161]
 summary: >-
@@ -274,14 +274,14 @@ without auto-installing.
 
 ## Acceptance Criteria
 
-- [ ] `/plugin install mdsmith-skills@mdsmith`,
+- [x] `/plugin install mdsmith-skills@mdsmith`,
       `mdsmith-reviewer@mdsmith`, and
       `mdsmith-autofix@mdsmith` each succeed
       after `/reload-plugins`.
-- [ ] `/mdsmith-fix`, `/mdsmith-kinds`, and
+- [x] `/mdsmith-fix`, `/mdsmith-kinds`, and
       `/mdsmith-check` each run their matching
       `mdsmith` subcommand and surface output.
-- [ ] `markdown-reviewer` produces a structured
+- [x] `markdown-reviewer` produces a structured
       review summary on a sample Markdown PR;
       it pulls rule-backed patterns via
       `mdsmith help patterns` (no hard-coded
@@ -292,12 +292,12 @@ without auto-installing.
       missing `.mdsmith.yml`, similar files
       without a kind, kind without
       `path-pattern`).
-- [ ] After Edit/Write/MultiEdit on a `.md`
+- [x] After Edit/Write/MultiEdit on a `.md`
       file, `mdsmith fix` runs on it. Verified
       with an absolute path under a workspace
       containing `[`, `*`, or `?` — `mdsmith`
       must receive the workspace-relative path.
-- [ ] `claude plugin validate` passes on each
+- [x] `claude plugin validate` passes on each
       new manifest; `mdsmith kinds resolve`
       reports `skill` for audit and
       `mdsmith-skills` SKILL.md files.
