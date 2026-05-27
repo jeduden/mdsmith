@@ -13,7 +13,7 @@ user-invocable: true
 allowed-tools: >-
   Bash(git fetch:*), Bash(git show:*), Bash(git branch:*),
   Bash(git checkout:*), Bash(git commit:*),
-  Bash(git push:*), Bash(git rev-parse:*),
+  Bash(git push:*), Bash(git rev-parse:*), Bash(sleep:*),
   mcp__github__list_pull_requests,
   mcp__github__search_pull_requests,
   mcp__github__create_pull_request,
@@ -22,9 +22,10 @@ argument-hint: "[plan number]"
 ---
 
 Surface the next plan to start. Read
-[PLAN.md on origin/main](../../../PLAN.md). Cross-reference
-existing branches and open PRs. Ask the user which plan to
-pick. Create the branch and open a draft PR.
+[PLAN.md](../../../PLAN.md) from `origin/main`.
+Cross-reference existing branches and open PRs. Ask the
+user which plan to pick. Create the branch and open a
+draft PR.
 
 All paths below are relative to the repository root.
 
