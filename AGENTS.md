@@ -93,7 +93,6 @@ row: "- [{summary}]({filename})"
 - [When a Markdown file's payload is prose, put it in the body under H2 sections — not in YAML frontmatter. `mdsmith extract` projects body structure into a JSON tree the same way it projects frontmatter, so the file stays editable as Markdown.](docs/guides/extract-markdown-as-data.md)
 - [How to declare file kinds, assign files to them, and read the merged rule config that results.](docs/guides/file-kinds.md)
 - [User guides for mdsmith directives, structure enforcement, and migration.](docs/guides/index.md)
-- [Decide whether to declare a kind inline in `.mdsmith.yml` or as its own file under `.mdsmith/kinds/`. Selection criteria and the rules that separate the two forms.](docs/guides/inline-vs-file-kinds.md)
 - [Every channel that ships the mdsmith binary, the VS Code extension, or the Claude Code plugin — npm, PyPI, asdf, mise, the GitHub release, the Visual Studio Marketplace plus Open VSX, and the in-repository Claude Code marketplace — and which channel to pick for which workflow.](docs/guides/install.md)
 - [Trade-offs and threshold guidance for readability, structure, length, and token budgets.](docs/guides/metrics-tradeoffs.md)
 - [Move a project from markdownlint-cli or markdownlint-cli2 to mdsmith — the rule mapping, the config rewrite, and the markdownlint rules mdsmith does not implement yet.](docs/guides/migrate-from-markdownlint.md)
