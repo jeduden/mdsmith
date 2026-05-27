@@ -490,6 +490,10 @@ kinds:
           bind: vscode-description
           content:
             - { kind: paragraph, required: true }
+        - heading: { regex: '^VS Code overview$' }
+          bind: vscode-overview
+          content:
+            - { kind: paragraph, required: true }
         - heading: { regex: '^Claude Code LSP$' }
           bind: claude-code-lsp-description
           content:

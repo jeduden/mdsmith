@@ -44,6 +44,10 @@ const messagingKindCfg = `kinds:
           bind: vscode-description
           content:
             - { kind: paragraph, required: true }
+        - heading: { regex: '^VS Code overview$' }
+          bind: vscode-overview
+          content:
+            - { kind: paragraph, required: true }
         - heading: { regex: '^Claude Code LSP$' }
           bind: claude-code-lsp-description
           content:
@@ -88,6 +92,10 @@ Tagline text.
 
 VS Code description.
 
+## VS Code overview
+
+VS Code overview.
+
 ## Claude Code LSP
 
 Claude Code LSP description.
@@ -120,6 +128,7 @@ var expectedMessagingSections = []string{
 	"lead",
 	"tagline",
 	"vscode-description",
+	"vscode-overview",
 	"claude-code-lsp-description",
 	"claude-code-skills-description",
 	"claude-code-audit-description",

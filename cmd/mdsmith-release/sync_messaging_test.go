@@ -48,6 +48,7 @@ func fixtureMessaging() *release.Messaging {
 		Lead:                        "LEAD",
 		Tagline:                     "TAG",
 		VSCodeDescription:           "VSC",
+		VSCodeOverview:              "VSC-OVERVIEW",
 		ClaudeCodeLSPDescription:    "LSP",
 		ClaudeCodeSkillsDescription: "SKILLS",
 		ClaudeCodeAuditDescription:  "AUDIT",

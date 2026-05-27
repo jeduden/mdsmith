@@ -28,6 +28,7 @@ func sampleMessaging() *Messaging {
 		Lead:                        "lead paragraph",
 		Tagline:                     "the tagline",
 		VSCodeDescription:           "vscode desc",
+		VSCodeOverview:              "vscode overview text",
 		ClaudeCodeLSPDescription:    "claude lsp desc",
 		ClaudeCodeSkillsDescription: "claude skills desc",
 		ClaudeCodeAuditDescription:  "claude audit desc",

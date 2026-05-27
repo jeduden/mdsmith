@@ -31,6 +31,7 @@ const fullMessagingJSON = `{
   "lead": { "text": "Lead text." },
   "tagline": { "text": "Tagline text." },
   "vscode-description": { "text": "VS Code description." },
+  "vscode-overview": { "text": "VS Code overview." },
   "claude-code-lsp-description": { "text": "LSP description." },
   "claude-code-skills-description": { "text": "Skills description." },
   "claude-code-audit-description": { "text": "Audit description." }
@@ -55,6 +56,7 @@ func TestLoadMessaging_DecodesAllFields(t *testing.T) {
 	assert.Equal(t, "Lead text.", m.Lead)
 	assert.Equal(t, "Tagline text.", m.Tagline)
 	assert.Equal(t, "VS Code description.", m.VSCodeDescription)
+	assert.Equal(t, "VS Code overview.", m.VSCodeOverview)
 	assert.Equal(t, "LSP description.", m.ClaudeCodeLSPDescription)
 	assert.Equal(t, "Skills description.", m.ClaudeCodeSkillsDescription)
 	assert.Equal(t, "Audit description.", m.ClaudeCodeAuditDescription)
@@ -68,7 +70,7 @@ func TestLoadMessaging_EmptyFieldFails(t *testing.T) {
 	msg := err.Error()
 	for _, want := range []string{
 		"eyebrow", "headline-pre", "headline-em", "headline-post",
-		"lead", "tagline", "vscode-description",
+		"lead", "tagline", "vscode-description", "vscode-overview",
 		"claude-code-lsp-description", "claude-code-skills-description",
 		"claude-code-audit-description",
 	} {
@@ -89,6 +91,7 @@ func TestLoadMessaging_WhitespaceOnlyFieldFails(t *testing.T) {
 		"lead":      {"text": "   \t\n"},
 		"tagline":   {"text": "tg"},
 		"vscode-description":             {"text": "v"},
+		"vscode-overview":                {"text": "vo"},
 		"claude-code-lsp-description":    {"text": "l"},
 		"claude-code-skills-description": {"text": "sk"},
 		"claude-code-audit-description":  {"text": "a"}
@@ -185,6 +188,7 @@ func TestLoadMessaging_HeadlineParseError(t *testing.T) {
 		"lead":      {"text": "l"},
 		"tagline":   {"text": "tg"},
 		"vscode-description":             {"text": "v"},
+		"vscode-overview":                {"text": "vo"},
 		"claude-code-lsp-description":    {"text": "lsp"},
 		"claude-code-skills-description": {"text": "sk"},
 		"claude-code-audit-description":  {"text": "a"}

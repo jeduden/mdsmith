@@ -44,6 +44,7 @@ type Messaging struct {
 	Lead                        string
 	Tagline                     string
 	VSCodeDescription           string
+	VSCodeOverview              string
 	ClaudeCodeLSPDescription    string
 	ClaudeCodeSkillsDescription string
 	ClaudeCodeAuditDescription  string
@@ -93,6 +94,7 @@ func LoadMessaging(root string) (*Messaging, error) {
 		Lead:                        doc.Lead.Text,
 		Tagline:                     doc.Tagline.Text,
 		VSCodeDescription:           doc.VSCodeDescription.Text,
+		VSCodeOverview:              doc.VSCodeOverview.Text,
 		ClaudeCodeLSPDescription:    doc.ClaudeCodeLSPDescription.Text,
 		ClaudeCodeSkillsDescription: doc.ClaudeCodeSkillsDescription.Text,
 		ClaudeCodeAuditDescription:  doc.ClaudeCodeAuditDescription.Text,
@@ -187,6 +189,7 @@ type messagingDoc struct {
 	Lead                        sectionText `json:"lead"`
 	Tagline                     sectionText `json:"tagline"`
 	VSCodeDescription           sectionText `json:"vscode-description"`
+	VSCodeOverview              sectionText `json:"vscode-overview"`
 	ClaudeCodeLSPDescription    sectionText `json:"claude-code-lsp-description"`
 	ClaudeCodeSkillsDescription sectionText `json:"claude-code-skills-description"`
 	ClaudeCodeAuditDescription  sectionText `json:"claude-code-audit-description"`
@@ -217,6 +220,7 @@ func (m *Messaging) Validate() error {
 		{"lead", m.Lead},
 		{"tagline", m.Tagline},
 		{"vscode-description", m.VSCodeDescription},
+		{"vscode-overview", m.VSCodeOverview},
 		{"claude-code-lsp-description", m.ClaudeCodeLSPDescription},
 		{"claude-code-skills-description", m.ClaudeCodeSkillsDescription},
 		{"claude-code-audit-description", m.ClaudeCodeAuditDescription},
