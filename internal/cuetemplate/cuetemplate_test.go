@@ -132,24 +132,36 @@ func TestTemplate_Render_NilFrontMatter(t *testing.T) {
 	assert.Equal(t, "literal", got)
 }
 
-// TestTemplate_Render_NonIdentifierKeySilentlyDropped pins
-// the limitation that frontmatter keys outside the CUE
-// identifier shape (`^[A-Za-z][A-Za-z0-9_]*$`) cannot be
-// referenced by bare name in an expression. Keys that fail
-// the check are still emitted in quoted form so they remain
-// valid CUE syntax — but a bare reference to them produces
-// an unresolved-reference error. Callers should ensure the
-// frontmatter keys they need at template scope are
-// identifier-shaped.
-func TestTemplate_Render_NonIdentifierKeySilentlyDropped(t *testing.T) {
-	tpl, err := Compile(`"\(id)"`)
+// TestTemplate_Render_NonIdentifierKeyReachableViaFM pins
+// the model for non-identifier-named frontmatter keys: they
+// have no top-level alias (CUE syntax forbids one), but the
+// `fm` struct exposes every key under its quoted name so
+// `fm["my-key"]` selects it.
+func TestTemplate_Render_NonIdentifierKeyReachableViaFM(t *testing.T) {
+	tpl, err := Compile(`fm["markdownlint-cell"]`)
 	require.NoError(t, err)
 	got, err := tpl.Render(map[string]any{
 		"id":                "MDS001",
 		"markdownlint-cell": "MD013 line-length",
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "MDS001", got)
+	assert.Equal(t, "MD013 line-length", got)
+}
+
+// TestTemplate_Render_StringsKeyDoesNotShadowImport keeps
+// the `strings` package usable from row-expr even when a
+// matched file's front matter happens to declare a key
+// named `strings`. The frontmatter value is reachable
+// through fm.strings.
+func TestTemplate_Render_StringsKeyDoesNotShadowImport(t *testing.T) {
+	tpl, err := Compile(`strings.Join([fm.strings, fm.id], "-")`)
+	require.NoError(t, err)
+	got, err := tpl.Render(map[string]any{
+		"id":      "MDS001",
+		"strings": "a literal value",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "a literal value-MDS001", got)
 }
 
 // TestTemplate_Render_CUEKeywordKeyIsQuoted ensures a

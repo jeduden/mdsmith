@@ -10,19 +10,30 @@
 // (\(x)), list comprehension ([for m in xs {...}]),
 // list-comprehension conditionals
 // ([if cond {x}, if !cond {y}][0]), and the standard library
-// (e.g. strings.Join). All frontmatter fields are visible at
-// the top-level scope, so an expression body like
+// (e.g. strings.Join).
 //
-//	"\(id) - \(name)"
+// Scope. Each Render call emits a CUE source file with three
+// layers visible to the user expression:
 //
-// resolves \(id) and \(name) against the corresponding
-// frontmatter keys.
+//   - The full frontmatter map under the `fm` field. Reference
+//     any key via `fm.id` (identifier-safe names) or
+//     `fm["my-key"]` (any name, including hyphens and dots).
+//   - Top-level aliases for each frontmatter key whose name is
+//     a valid CUE identifier and does not collide with a
+//     reserved keyword or the `strings` import. So
+//     "\(id)" works the same as "\(fm.id)".
+//   - The `strings` standard-library package, preimported.
+//     A frontmatter key named `strings` is reachable via
+//     `fm.strings` only; the bare `strings` identifier always
+//     resolves to the import so `strings.Join(...)` keeps
+//     working regardless of frontmatter contents.
 package cuetemplate
 
 import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"sort"
 
 	"cuelang.org/go/cue"
 	"cuelang.org/go/cue/cuecontext"
@@ -30,27 +41,21 @@ import (
 )
 
 // identRE matches a frontmatter key safe to emit as a bare
-// CUE identifier. Keys that fail the match are emitted in
-// quoted form ("my-key": ...); the user can still reach them
-// via CUE's quoted-label reference syntax (\("my-key")).
+// CUE identifier alias at the file's top-level scope.
 var identRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
 
-// cueKeywords are reserved CUE identifiers that cannot appear
-// as bare labels. A frontmatter key whose name collides with
-// one of these is emitted in quoted form so the generated CUE
-// source stays syntactically valid; the user must reach those
-// fields via CUE's quoted-label reference syntax.
-var cueKeywords = map[string]bool{
+// reservedAliases lists names that must not be aliased at the
+// file's top-level scope. CUE keywords are syntactically
+// reserved; `strings` is reserved because it is the
+// preimported package and shadowing it would break
+// `strings.Join` in user expressions. Frontmatter keys that
+// collide with these are still reachable through the `fm`
+// struct (e.g. `fm.strings`).
+var reservedAliases = map[string]bool{
 	"package": true, "import": true, "for": true, "in": true,
 	"if": true, "let": true, "true": true, "false": true,
-	"null": true, "_": true,
-}
-
-// isBareLabel reports whether k can be emitted as a bare CUE
-// identifier — it must match identRE and must not collide
-// with a reserved keyword.
-func isBareLabel(k string) bool {
-	return identRE.MatchString(k) && !cueKeywords[k]
+	"null": true, "_": true, "strings": true,
+	outField: true, "fm": true,
 }
 
 // outField is the synthetic field name used to hold the
@@ -59,6 +64,11 @@ func isBareLabel(k string) bool {
 // deliberately unlikely to collide with a real frontmatter
 // key.
 const outField = "mdsmithTemplateOut"
+
+// fmField is the name of the struct that holds the full
+// frontmatter map, indexable by any key (including those that
+// are not valid CUE identifiers).
+const fmField = "fm"
 
 // Template is a syntactically validated CUE expression body,
 // ready to evaluate against successive frontmatter maps.
@@ -81,10 +91,11 @@ func Compile(expr string) (*Template, error) {
 	return &Template{expr: expr}, nil
 }
 
-// Render evaluates the compiled expression with fm exposed at
-// the top-level scope and returns the result as a string. The
-// result must be a CUE string; any other concrete type is an
-// error.
+// Render evaluates the compiled expression against fm and
+// returns the result as a string. fm is exposed both as the
+// `fm` struct and as top-level aliases for each
+// identifier-safe non-reserved key. The result must be a
+// concrete CUE string; any other shape is an error.
 func (t *Template) Render(fm map[string]any) (string, error) {
 	if fm == nil {
 		fm = map[string]any{}
@@ -108,37 +119,46 @@ func (t *Template) Render(fm map[string]any) (string, error) {
 	return s, nil
 }
 
-// buildSource assembles the CUE source: a strings import with
-// a sink field that satisfies "imported and not used", one
-// top-level field per frontmatter key, and the synthetic
-// outField holding the user's expression. Frontmatter values
-// are encoded via JSON (a syntactic subset of CUE) so nested
-// lists and maps reach the expression scope unchanged.
+// buildSource assembles the CUE source. The user's expression
+// runs in a scope with:
+//
+//   - `import "strings"` and a sink field so the import is
+//     "used".
+//   - `fm: { ... }` carrying the full frontmatter as JSON.
+//   - One top-level alias `<key>: fm.<key>` per
+//     identifier-safe non-reserved frontmatter key, so a
+//     row-expr can write `\(id)` instead of `\(fm.id)`.
+//   - The synthetic outField holding the user's expression.
 //
 // JSON marshalling is infallible for the value shapes
-// produced by the YAML frontmatter loader (string, bool,
-// int, float, nil, slices, and maps of those), so any
-// encoding failure here would indicate a programming bug
-// upstream and the panic is the correct response.
+// produced by the YAML frontmatter loader, so any encoding
+// failure indicates a programming bug upstream and the panic
+// is the correct response.
 func buildSource(fm map[string]any, expr string) string {
+	fmJSON, err := json.Marshal(fm)
+	if err != nil {
+		panic(fmt.Errorf("cuetemplate: encoding frontmatter: %w", err))
+	}
 	var src []byte
 	src = append(src, []byte(
 		"import \"strings\"\n\n"+
 			"_strings_used: strings.Join([], \"\")\n")...)
-	for k, v := range fm {
-		jb, err := json.Marshal(v)
-		if err != nil {
-			panic(fmt.Errorf("cuetemplate: encoding frontmatter %q: %w", k, err))
+	src = append(src, []byte(fmField+": ")...)
+	src = append(src, fmJSON...)
+	src = append(src, '\n')
+	// Emit top-level aliases in a stable order so the generated
+	// source is byte-deterministic across runs.
+	keys := make([]string, 0, len(fm))
+	for k := range fm {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if !identRE.MatchString(k) || reservedAliases[k] {
+			continue
 		}
-		var label string
-		if isBareLabel(k) {
-			label = k
-		} else {
-			label = fmt.Sprintf("%q", k)
-		}
-		src = append(src, []byte(label+": ")...)
-		src = append(src, jb...)
-		src = append(src, '\n')
+		src = append(src, []byte(fmt.Sprintf("%s: %s.%s\n",
+			k, fmField, k))...)
 	}
 	src = append(src, []byte(fmt.Sprintf("%s: %s\n",
 		outField, expr))...)
