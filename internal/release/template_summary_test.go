@@ -50,11 +50,22 @@ type summaryViolation struct {
 func scanSummaryViolations(path, content string) ([]summaryViolation, error) {
 	tree := parse.New(path)
 	tree.Mode = parse.SkipFuncCheck
-	if _, err := tree.Parse(content, "{{", "}}", map[string]*parse.Tree{}); err != nil {
-		return nil, fmt.Errorf("parse: %w", err)
+	treeSet := map[string]*parse.Tree{}
+	if _, err := tree.Parse(content, "{{", "}}", treeSet); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	w := &summaryWalker{path: path, content: content}
-	w.walk(tree.Root)
+	// Hugo layouts use `{{ define "main" }}...{{ end }}` blocks; the
+	// body of each define is parsed into a separate tree in treeSet,
+	// so walking only `tree.Root` would miss every define's content.
+	// Iterate every tree the parser produced. The wrapping tree
+	// (`treeSet[path]`) is also visited but contains only the text
+	// fragments outside the defines (typically just whitespace).
+	for _, t := range treeSet {
+		if t != nil && t.Root != nil {
+			w.walk(t.Root)
+		}
+	}
 	return w.violations, nil
 }
 
@@ -148,26 +159,44 @@ func (w *summaryWalker) checkRange(n *parse.RangeNode) {
 	}
 }
 
-// fieldIsSummary reports whether a FieldNode references
-// `.Params.summary` (or a subfield like `.Params.summary.HTML`).
-// Case-insensitive on `Params` and `summary` because Hugo's Params
-// is a case-insensitive map.
-func fieldIsSummary(f *parse.FieldNode) bool {
-	if len(f.Ident) < 2 {
-		return false
+// identsReferenceSummary reports whether the given identifier
+// chain ends with — or contains — `Params.summary`. Matches the
+// bare form `.Params.summary`, qualified receivers like
+// `.Page.Params.summary`, and the dollar-context variant
+// `$.Params.summary`. Subfield access like `.Params.summary.HTML`
+// is accepted (the chain still passes through Params.summary).
+// Comparison is case-insensitive because Hugo's Params map looks
+// up keys case-insensitively.
+func identsReferenceSummary(idents []string) bool {
+	for i := 0; i+1 < len(idents); i++ {
+		if strings.EqualFold(idents[i], "Params") &&
+			strings.EqualFold(idents[i+1], "summary") {
+			return true
+		}
 	}
-	return strings.EqualFold(f.Ident[0], "Params") &&
-		strings.EqualFold(f.Ident[1], "summary")
+	return false
+}
+
+// fieldIsSummary reports whether a FieldNode references
+// `.Params.summary` (or a qualified/subfield variant). See
+// identsReferenceSummary for the matching rule.
+func fieldIsSummary(f *parse.FieldNode) bool {
+	return identsReferenceSummary(f.Ident)
 }
 
 // chainIsSummary reports whether a ChainNode references
-// `.Params.summary` via a dollar-context base, e.g. `$.Params.summary`.
+// `.Params.summary` via a chained access (e.g. via a parenthesised
+// receiver).
 func chainIsSummary(c *parse.ChainNode) bool {
-	if len(c.Field) < 2 {
-		return false
-	}
-	return strings.EqualFold(c.Field[0], "Params") &&
-		strings.EqualFold(c.Field[1], "summary")
+	return identsReferenceSummary(c.Field)
+}
+
+// variableIsSummary reports whether a VariableNode references
+// `.Params.summary` — for example, the dollar-context form
+// `$.Params.summary` parses as a VariableNode with Ident `["$",
+// "Params", "summary"]`.
+func variableIsSummary(v *parse.VariableNode) bool {
+	return identsReferenceSummary(v.Ident)
 }
 
 // pipeReferencesSummary returns true if any FieldNode/ChainNode
@@ -200,6 +229,8 @@ func argReferencesSummary(arg parse.Node) bool {
 		return fieldIsSummary(n)
 	case *parse.ChainNode:
 		return chainIsSummary(n)
+	case *parse.VariableNode:
+		return variableIsSummary(n)
 	case *parse.PipeNode:
 		return pipeReferencesSummary(n)
 	}
@@ -416,6 +447,63 @@ func TestScanSummaryViolations_TableDriven(t *testing.T) {
 				t.Fatalf("template %q: want %d violations, got %d:\n  %s",
 					tc.template, tc.wantCount, len(got), strings.Join(lines, "\n  "))
 			}
+		})
+	}
+}
+
+// TestScanSummaryViolations_DefineBlock pins that violations
+// inside `{{ define "name" }}...{{ end }}` blocks are caught.
+// Hugo layouts (single.html, list.html, index.html, rule/single.html)
+// wrap their entire content in `{{ define "main" }}` — the parser
+// stores the define body in a separate tree in treeSet, not in
+// `tree.Root`. A walker that only visits `tree.Root` silently
+// passes over the actual layout body.
+func TestScanSummaryViolations_DefineBlock(t *testing.T) {
+	content := `{{ define "main" }}
+<p>{{ with .Params.summary }}<span>{{ . }}</span>{{ end }}</p>
+{{ end }}`
+	got, err := scanSummaryViolations("page.html", content)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Contains(t, got[0].Why, "with")
+}
+
+// TestScanSummaryViolations_QualifiedFieldAccess pins detection
+// of summary references that don't start with `.Params`:
+// `$.Params.summary` (VariableNode), `.Page.Params.summary`
+// (FieldNode with leading qualifier).
+func TestScanSummaryViolations_QualifiedFieldAccess(t *testing.T) {
+	cases := []struct {
+		name      string
+		template  string
+		wantCount int
+	}{
+		{
+			"dollar-context value reference",
+			`{{ $.Params.summary }}`,
+			1,
+		},
+		{
+			"dollar-context piped to RenderString",
+			`{{ $.Params.summary | .RenderString }}`,
+			0,
+		},
+		{
+			"Page-qualified bare",
+			`{{ .Page.Params.summary }}`,
+			1,
+		},
+		{
+			"Page-qualified through RenderString",
+			`{{ .RenderString (dict) .Page.Params.summary }}`,
+			0,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := scanSummaryViolations("file.html", tc.template)
+			require.NoError(t, err)
+			assert.Len(t, got, tc.wantCount, "violations: %+v", got)
 		})
 	}
 }
