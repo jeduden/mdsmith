@@ -85,10 +85,15 @@ type parseCacheEntry struct {
 }
 ```
 
-The cache stores at most one entry per `absPath` —
-the most recent version. An LSP edit
-monotonically increments the version, so a stored
-older entry is always dead on the next miss.
+The map is keyed by `absPath`. Each entry carries
+the version it was parsed at. A `Get(absPath, v)`
+hit requires both: the entry exists and its
+stored version equals `v`. So the lookup pair is
+`(absPath, version)`, but the cache only retains
+one entry per path — the most recent version. An
+LSP edit monotonically increments the version, so
+a stored older entry is always dead on the next
+miss.
 
 Lookup signature:
 
@@ -136,12 +141,18 @@ parsed.
 
 ### Concurrency
 
-The LSP serializes runLint per document through
-the debounce timer, so two parses of the same
-`(path, version)` never race. Cross-document
-parses can run concurrently and the cache mutex
-serializes their map writes; the `*lint.File`
-itself is not shared across paths.
+The debounce timer collapses bursts of edits, but
+it does not single-flight overlapping `runLint`
+calls: a second timer can fire while a prior
+`runLint` for the same URI is still executing. The
+cache tolerates that without single-flight
+semantics. Two concurrent `Get(path, v)` calls
+both miss, both parse, and both call `Put` — the
+mutex serializes the writes and the later one
+overwrites with an equivalent `*File`. The cost is
+a wasted parse, not a correctness bug. Cross-
+document parses are independent; the `*lint.File`
+is not shared across paths.
 
 ## Tasks
 

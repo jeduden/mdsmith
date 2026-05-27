@@ -78,8 +78,8 @@ boundaries the lexer recovered.
   unless two converted rules share more than five
   lines of scan logic.
 - Rewriting NodeChecker rules. Their walk is shared
-  via the multiplex pass
-  ([internal/engine/check.go:98](../internal/engine/check.go))
+  via the multiplex pass in
+  [internal/engine/check.go](../internal/engine/check.go)
   and per-rule walk cost is already amortized.
   Standalone `Check`-implementing rules are the
   target.
@@ -92,16 +92,28 @@ Three phases.
 
 A single PR adds
 `internal/integration/rule_walk_audit_test.go`. It
-walks every registered rule and classifies it:
+walks every registered rule and classifies it. The
+detector cannot wrap `f.AST` (it is an exported
+field on `lint.File`, not a method, so reads cannot
+be intercepted). Instead the harness runs each rule
+against a fixture set twice: once normally, once
+with `f.AST` set to nil. The classification:
 
-1. **Lines-only candidate** — Check never touches
-   `f.AST` (verified by a test double that panics
-   on access) and produces the same diagnostics
-   against a fixture set as the AST version.
-2. **AST-required** — Check accesses `f.AST` or
-   `ast.Walk`.
-3. **Hybrid** — Check uses both. Convert later, if
+1. **Lines-only candidate** — the nil-AST run
+   produces identical diagnostics to the normal
+   run (and does not panic).
+2. **AST-required** — the nil-AST run panics on
+   the nil dereference or produces different
+   diagnostics.
+3. **Hybrid** — the nil-AST run succeeds but emits
+   a different diagnostic set. Convert later, if
    ever; not in scope.
+
+A static check complements the runtime probe. It
+uses `go/packages` over `internal/rules/`. The
+check records which rule packages reference
+`ast.Walk` or `f.AST`. The manifest carries both
+signals.
 
 The audit emits a JSON manifest. The path is
 `internal/integration/testdata/rule_walk_audit.json`.
@@ -135,9 +147,9 @@ rule, so the manifest stays accurate.
 
 ## Tasks
 
-1. Implement the AST-access detector (a
-   `lint.File` wrapper that panics on `AST()` read)
-   and the audit harness. Land the initial
+1. Implement the audit harness — the nil-AST
+   runtime probe plus the `go/packages` static
+   scan over `internal/rules/`. Land the initial
    manifest.
 2. Pick the three highest-allocating Lines-only
    candidates from the manifest and convert them
