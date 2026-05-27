@@ -1,7 +1,7 @@
 ---
 id: 208
 title: Kind-per-file config under `.mdsmith/kinds/`
-status: "🔳"
+status: "✅"
 model: opus
 depends-on: [146, 135]
 summary: >-
