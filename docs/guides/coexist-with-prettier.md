@@ -15,13 +15,13 @@ Under both tools' defaults, a second pass produces
 no diff.
 
 Prettier owns the final table layout. mdsmith owns
-the formatting rules Prettier does not touch
-(heading style, fenced-code style, bare URLs,
-trailing whitespace) plus generated sections,
-cross-file links, and readability budgets.
-Paragraph wrapping is manual under default
-Prettier; only `proseWrap: "always"` makes Prettier
-wrap for you.
+the formatting rules Prettier does not touch:
+heading style, fenced-code style and language,
+bare URLs, and trailing whitespace. mdsmith also
+owns generated sections, cross-file links, and
+readability budgets. Paragraph wrapping is manual
+under default Prettier. Only `proseWrap: "always"`
+makes Prettier wrap for you.
 
 ## Quick start
 
@@ -59,40 +59,39 @@ configure:
 | Readability budgets                         | mdsmith  |
 
 The two tools overlap on GFM table padding and
-list-item indentation; with `proseWrap: "always"`
+list-item indentation. With `proseWrap: "always"`,
 they also overlap on paragraph wrapping. Both
-rewrite those bytes, so order matters. With both
-tools at default settings, Prettier's table
-formatter produces the same column widths
-mdsmith's `table-format` rule does for plain ASCII
-tables. Edge cases — header alignment markers
-(`:---:`), double-width characters (CJK, emoji),
-or code spans containing pipes — can format
-differently between the two tools and produce
-oscillating diffs. Customizing `table-format`
+rewrite those bytes, so order matters.
+
+With both tools at default settings, Prettier's
+table formatter matches mdsmith's `table-format`
+rule for plain ASCII tables. Edge cases can
+differ: header alignment markers (`:---:`),
+double-width characters (CJK, emoji), or code
+spans containing pipes. Customizing `table-format`
 (`pad`, `separator-style`, `style`) also breaks
-that convergence.
+the convergence.
 
 ## Do you need to change your Prettier config?
 
 No, unless you change `proseWrap` from its default.
 
-Prettier and mdsmith defaults align: both target 80
-columns (`printWidth` / `rules.line-length.max` in
-`.mdsmith.yml`), both use two-space indents
-(`tabWidth` / `rules.list-indent.spaces`), and
+Prettier and mdsmith defaults align. Both target
+80 columns (`printWidth` and `rules.line-length.max`
+in `.mdsmith.yml`). Both indent with two spaces
+(`tabWidth` and `rules.list-indent.spaces`).
 Prettier's default `proseWrap: "preserve"` leaves
 existing line breaks alone. mdsmith's `line-length`
 rule reports long lines but does not rewrap them.
-At defaults, neither tool reflows paragraphs — long
+At defaults, neither tool reflows paragraphs. Long
 lines are yours to wrap by hand.
 
 If you set `proseWrap: "always"`, Prettier rewraps
 paragraphs to `printWidth`. Keep `printWidth` no
-larger than `rules.line-length.max` (both default
-to 80), or Prettier produces lines mdsmith then
-flags as too long, and mdsmith cannot auto-fix
-them.
+larger than `rules.line-length.max`; both default
+to 80. Otherwise Prettier wraps lines past
+mdsmith's limit, and mdsmith cannot auto-fix them.
+You would have to wrap them by hand.
 
 ## Generated sections
 
@@ -104,10 +103,10 @@ leaves the content inside generated bodies alone.
 If you set `proseWrap: "always"` and see Prettier
 rewrap inside generated bodies, add the affected
 files to `.prettierignore`. The next `mdsmith fix`
-regenerates the body from the directive source
-anyway, so the worst case is a one-commit
-round-trip. Never hand-edit content between
-`<?directive?>` and `<?/directive?>` markers.
+regenerates the body from the directive source.
+The worst case is a one-commit round-trip. Never
+hand-edit content between `<?directive?>` and
+`<?/directive?>` markers.
 
 ## Plain Git hook
 
@@ -132,31 +131,32 @@ xargs -0 git add -- < "$tmp"
 
 POSIX shell syntax with two near-universal
 extensions: `mktemp` and `xargs -0`. Linux, macOS,
-BSD, and busybox all support both. The NUL-
-delimited file list lives in a temp file because
+BSD, and busybox all support both.
+
+The NUL-delimited file list lives in a temp file.
 POSIX command substitution strips NUL bytes from
 `$(...)`, which would break the filenames-with-
-spaces guarantee. `set -e` aborts the commit if
-any step fails. The split `trap` cleans up the
-temp file on every exit and exits with 130 on
-Ctrl+C / SIGTERM so the user can interrupt the
-hook.
+spaces guarantee. `set -e` aborts the commit on
+the first failed step. The split `trap` cleans up
+the temp file on every exit. On Ctrl+C or SIGTERM,
+the trap also exits with 130, so the user can
+interrupt the hook.
 
 Two caveats this hook does not handle:
 
-- **Partial staging via `git add -p`.** The final
-  `git add -- "$file"` stages the entire working
-  tree of each `.md` file, including hunks the
-  user deliberately did not stage. Use
-  `lint-staged` (which stashes unstaged hunks)
-  if partial-staging matters to your workflow.
-- **`npx prettier` first-run install.** `npx`
-  fetches Prettier from the npm registry if it is
-  not already in `node_modules`. Pre-install
-  Prettier (or hard-code the path to your project
-  binary) to avoid a network lookup on first run
-  and to keep the hook working in offline / air-
-  gapped CI.
+- Partial staging via `git add -p` is not
+  preserved. The final `git add -- "$file"` stages
+  the entire working tree of each `.md` file. Any
+  hunks the user did not stage get pushed into the
+  index. Use `lint-staged` (which stashes unstaged
+  hunks) if partial-staging matters to your
+  workflow.
+- `npx prettier` fetches Prettier from the npm
+  registry if it is not already in `node_modules`.
+  Pre-install Prettier locally, or hard-code the
+  path to your project binary. This avoids a
+  network lookup on first run and keeps the hook
+  working in offline or air-gapped CI.
 
 ## CI check
 
