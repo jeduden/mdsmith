@@ -36,14 +36,43 @@ func TestInstallIncludeExtractProjector_EmptyPathClearsProjector(t *testing.T) {
 }
 
 // TestInstallIncludeExtractProjector_NonEmptyPathDoesNotPanic exercises
-// the non-empty install branch. The installed closure delegates to
+// the non-empty install branch. The installed projector delegates to
 // projectIncludeExtract, which is fully covered by the
 // TestProjectIncludeExtract_* tests below.
 func TestInstallIncludeExtractProjector_NonEmptyPathDoesNotPanic(t *testing.T) {
 	t.Cleanup(func() { include.SetExtractProjector(nil) })
 	installIncludeExtractProjector("/tmp/does-not-need-to-exist.yml")
-	// No assertion beyond "did not panic"; the closure body is the
+	// No assertion beyond "did not panic"; the projector body is the
 	// single call to projectIncludeExtract, covered separately.
+}
+
+// TestProductionExtractProjector_ReadsActiveCfgPath exercises the
+// named projector function the install wires up. It re-runs the
+// success path of TestProjectIncludeExtract_SuccessTopLevelText
+// through the projector closure-equivalent so that branch coverage
+// stops registering the wiring as untouched.
+func TestProductionExtractProjector_ReadsActiveCfgPath(t *testing.T) {
+	dir := chdirToConfig(t, includeExtractTestCfg)
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
+	writeFixture(t, dir, "docs/brand/messaging.md", messagingFixtureForInclude)
+
+	prev := includeExtractCfgPath
+	includeExtractCfgPath = cfgPath
+	t.Cleanup(func() { includeExtractCfgPath = prev })
+
+	host, err := lint.NewFileFromSource("README.md", []byte("# x\n"), false)
+	require.NoError(t, err)
+
+	tree, err := productionExtractProjector(
+		host, dirFSForInclude(dir),
+		"docs/brand/messaging.md",
+		[]byte(messagingFixtureForInclude))
+	require.NoError(t, err)
+	root, ok := tree.(map[string]any)
+	require.True(t, ok)
+	tagline, ok := root["tagline"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "Tagline text.", tagline["text"])
 }
 
 // =====================================================================

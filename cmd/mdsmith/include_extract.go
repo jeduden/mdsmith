@@ -29,16 +29,33 @@ import (
 // An empty cfgPath clears the projector — `<?include?>` then
 // surfaces a clear diagnostic on any `extract:` use, the same
 // outcome as a project without `.mdsmith.yml`.
+//
+// cfgPath is stashed in includeExtractCfgPath so the production
+// projector can be a named function (productionExtractProjector)
+// rather than a closure — closures resist direct unit testing
+// because their captured state is not addressable from outside.
 func installIncludeExtractProjector(cfgPath string) {
+	includeExtractCfgPath = cfgPath
 	if cfgPath == "" {
 		include.SetExtractProjector(nil)
 		return
 	}
-	include.SetExtractProjector(func(
-		host *lint.File, readFS fs.FS, targetFile string, data []byte,
-	) (any, error) {
-		return projectIncludeExtract(cfgPath, host, readFS, targetFile, data)
-	})
+	include.SetExtractProjector(productionExtractProjector)
+}
+
+// includeExtractCfgPath stores the active config path for the
+// production projector. Updated by every installIncludeExtractProjector
+// call so the projector sees the most recently loaded .mdsmith.yml.
+var includeExtractCfgPath string
+
+// productionExtractProjector is the projector the host installs via
+// installIncludeExtractProjector. Pulled out of the closure so the
+// pipeline is exercisable as a plain function in tests.
+func productionExtractProjector(
+	host *lint.File, readFS fs.FS, targetFile string, data []byte,
+) (any, error) {
+	return projectIncludeExtract(
+		includeExtractCfgPath, host, readFS, targetFile, data)
 }
 
 // projectIncludeExtract runs the full schema-compose + extract
@@ -62,10 +79,7 @@ func projectIncludeExtract(
 	if err != nil {
 		return nil, err
 	}
-	tf, err := buildTargetFile(host, readFS, targetFile, data)
-	if err != nil {
-		return nil, err
-	}
+	tf := buildTargetFile(host, readFS, targetFile, data)
 	sch, err := composeTargetSchema(tf, targetFile, rsSettings)
 	if err != nil {
 		return nil, err
@@ -111,18 +125,20 @@ func resolveRequiredStructureSettings(
 // would, with the host's strip-frontmatter / max-input-bytes /
 // FS settings copied over so the projection sees the same
 // coordinate system the rest of the lint uses.
+//
+// lint.NewFileFromSource never errors with the current goldmark
+// configuration (same invariant cmd/mdsmith/export.go's
+// prepareExportFile and several rules already rely on), so the
+// parse is unchecked.
 func buildTargetFile(
 	host *lint.File, readFS fs.FS, targetFile string, data []byte,
-) (*lint.File, error) {
-	tf, err := lint.NewFileFromSource(targetFile, data, host.StripFrontMatter)
-	if err != nil {
-		return nil, fmt.Errorf("parsing %q: %w", targetFile, err)
-	}
+) *lint.File {
+	tf, _ := lint.NewFileFromSource(targetFile, data, host.StripFrontMatter) //nolint:errcheck // never errors today
 	tf.MaxInputBytes = host.MaxInputBytes
 	tf.FS = readFS
 	tf.RootFS = host.RootFS
 	tf.RootDir = host.RootDir
-	return tf, nil
+	return tf
 }
 
 // composeTargetSchema builds the composed schema MDS020 would

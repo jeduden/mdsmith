@@ -130,6 +130,20 @@ func TestWalkExtractPath_SingleNonContentKey(t *testing.T) {
 	assert.Contains(t, err.Error(), "not a recognised content key")
 }
 
+func TestWalkExtractPath_MultiKeyWithExactlyOneContentKey(t *testing.T) {
+	// Two keys; only one is a content key. pickContentKey returns
+	// the content value rather than the ambiguous-object error.
+	data := map[string]any{
+		"section": map[string]any{
+			"slug": "intro",
+			"text": "Hello",
+		},
+	}
+	v, err := walkExtractPath(data, "section")
+	require.NoError(t, err)
+	assert.Equal(t, "Hello", v)
+}
+
 // =====================================================================
 // projectExtractValue: wraps walkExtractPath with the host projector
 // =====================================================================
