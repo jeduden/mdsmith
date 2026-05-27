@@ -111,21 +111,20 @@ described below.
 
 ### Phase zero — project prose ranges from the AST
 
-The parse already classifies every byte of the
-source. We expose that classification as a flat
-slice on `lint.File`:
+The parse already classifies every byte. Expose
+that classification as a flat slice on
+`lint.File`:
 
 ```go
 // internal/lint/file.go
-type Range struct{ Start, End int } // byte offsets into f.Source
+type Range struct{ Start, End int } // f.Source byte offsets
 
-// ProseRanges returns the source byte ranges that
-// fall inside prose nodes — Paragraph, Heading,
-// ListItem text, Blockquote text — explicitly
-// excluding the spans of FencedCodeBlock,
-// CodeBlock, HTMLBlock, CodeSpan, AutoLink, and
-// inline HTML. Computed once per file from
-// f.AST; the result is memoized.
+// ProseRanges returns byte ranges inside prose
+// nodes (Paragraph, Heading, ListItem text,
+// Blockquote text), excluding the spans of
+// FencedCodeBlock, CodeBlock, HTMLBlock,
+// CodeSpan, AutoLink, and inline HTML. Computed
+// once per file from f.AST; memoized.
 func (f *File) ProseRanges() []Range
 ```
 
@@ -151,12 +150,11 @@ in plan 198's arena as one slab grow.
   is local; no shared helper layer is introduced
   unless two converted rules share more than five
   lines of scan logic.
-- Rewriting NodeChecker rules. Their walk is shared
-  via the multiplex pass in
-  [internal/engine/check.go](../internal/engine/check.go)
-  and per-rule walk cost is already amortized.
-  Standalone `Check`-implementing rules are the
-  target.
+- Rewriting NodeChecker rules. Their walk is
+  shared via the multiplex pass in
+  [check.go](../internal/engine/check.go); cost
+  is already amortized. Target standalone
+  `Check`-implementing rules.
 
 ## Approach
 
@@ -215,17 +213,14 @@ For each candidate, in its own commit:
    containing the pattern the rule looks for. The
    converted rule must agree with the AST version
    byte-for-byte on those.
-2. Rewrite Check. A Category A rewrite uses a
-   direct `f.Lines` scan with `bytes` helpers, no
-   skip logic, regex compiled at package scope. A
-   Category B rewrite calls `f.ProseRanges()` and
-   scans only the byte ranges it returns. Per-rule
-   code that re-implements fence or HTML detection
-   is **not** allowed — the projection is the
-   single owner of that classification. If a rule
-   needs a span the projection does not yet emit
-   (e.g. table-cell text), extend the projection,
-   not the rule.
+2. Rewrite Check. Category A uses a direct
+   `f.Lines` scan with `bytes` helpers — no skip
+   logic, regex compiled at package scope.
+   Category B calls `f.ProseRanges()` and scans
+   only the byte ranges it returns. Per-rule
+   re-implementation of fence or HTML detection
+   is **not** allowed; extend the projection if
+   a rule needs a span it does not yet emit.
 3. Confirm the rule's `bad/` and `good/` fixtures
    under `internal/rules/MDS###-*/` still pass.
 4. Re-run the allocation-budget test at
@@ -245,14 +240,20 @@ rule, so the manifest stays accurate.
 1. Implement the audit harness (nil-AST probe,
    code-block-perturbation probe, `go/packages`
    static scan) and land the initial manifest
-   with each rule classified A, B, AST-required,
-   or hybrid.
+   classifying each rule A / B / AST-required /
+   hybrid.
 2. Add `(f *File).ProseRanges()` with the AST
-   projection. Memoize via `sync.Once`. Unit
-   tests cover Paragraph, Heading, ListItem,
-   Blockquote text, and the exclusions
-   (FencedCodeBlock, CodeBlock, HTMLBlock,
-   CodeSpan, AutoLink, inline HTML).
+   projection. Memoize via the `atomic.Bool +
+   sync.Mutex` pattern that `newlineOffsets` and
+   `codeBlockLines` use in
+   [file.go](../internal/lint/file.go) — not
+   `sync.Once`, because the closure box that
+   `once.Do(func(){...})` allocates is too costly
+   on the per-File hot path. Unit tests cover
+   Paragraph, Heading, ListItem, Blockquote text,
+   and the exclusions (FencedCodeBlock,
+   CodeBlock, HTMLBlock, CodeSpan, AutoLink,
+   inline HTML).
 3. Convert the three highest-allocating Category
    A candidates, one commit per rule.
 4. Convert Category B candidates against
@@ -278,19 +279,17 @@ code-block content changes is routed to Category
 B, where the AST projection owns the skipping.
 
 The projection's memory cost is the second
-hazard. One `[]Range` per file, eagerly allocated
-on first access, lives until the file goes out of
-scope. The slice must land within the per-file
-allocation budget. Mitigation: route the
-allocation through plan 198's arena and verify
-under `BenchmarkCheckCorpusLarge` that median
-allocs/op stays at or below 255 k.
+hazard. One `[]Range` per file lives until the
+file goes out of scope. The slice must land
+within the per-file allocation budget — route it
+through plan 198's arena and verify
+`BenchmarkCheckCorpusLarge` median allocs/op
+stays at or below 255 k.
 
 Node-derived positions may differ from the
-projected-range path. The fixture-parity
-assertion catches drift. It checks byte-equal
-column numbers. Any drift forces revert or a
-deliberate plan amendment.
+projected-range path. The fixture-parity check
+gates byte-equal column numbers — any drift
+forces revert or a plan amendment.
 
 ## Acceptance Criteria
 

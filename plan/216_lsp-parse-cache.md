@@ -128,11 +128,19 @@ one ParseCache at startup, alongside the existing
 the RunSource call.
 
 Three handlers drop the entry for the affected
-path. The didChange handler reacts to edits. The
-didClose handler reacts to buffer close. The
-watched-files handler reacts to disk edits. The
-didOpen path needs no drop. The version starts
+path. didChange reacts to edits, didClose to
+buffer close, watched-files to disk edits.
+didOpen needs no drop because the version starts
 fresh.
+
+**Invalidation must use the cache's
+workspace-relative key**:
+`workspaceRelative(root, absPath)`. Handlers hold
+absolute paths. Each site maps to relative form
+before calling `parseCache.Invalidate`. A literal
+"call next to runCache.Invalidate" would leak
+stale entries. runCache takes absPath. parseCache
+does not.
 
 ### Arena interaction
 
