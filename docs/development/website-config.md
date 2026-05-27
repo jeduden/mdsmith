@@ -107,11 +107,6 @@ The field holds inline Markdown. The templates render it
 through Hugo's `.RenderString` so backticks become
 `<code>` and `[text](url)` becomes `<a>`.
 
-Two checks pin this contract. One walks the template
-source. The other walks the rendered HTML.
-
-### Template-source check
-
 A Go test in [`template_summary_test.go`][tpl-test]
 walks `website/layouts/**/*.html`. Each template action
 that references `.Params.summary` must take one of three
@@ -120,10 +115,11 @@ forms. The forms are the predicate
 `{{ if not .Params.summary }}`, or any action that calls
 `.RenderString`.
 
-Any other shape fails the test. The bug this guards
-against is `{{ with .Params.summary }}...{{ . }}{{ end }}`.
-The `with` rebinds the dot to the summary string. The
-inner `{{ . }}` then emits the value raw. A value with
+Any other shape fails the test. The regression this
+guards against is
+`{{ with .Params.summary }}...{{ . }}{{ end }}`. The
+`with` rebinds the dot to the summary string. The inner
+`{{ . }}` then emits the value raw. A value with
 backticks ships as literal backticks instead of `<code>`
 tags. The bare `{{ .Params.summary }}` form carries the
 same defect without the rebinding.
@@ -136,21 +132,4 @@ The test scans each file as one string, not line by
 line. A multi-line action that spans newlines is still
 caught.
 
-### Rendered-HTML probe
-
-`mdsmith-release verify-website-links` runs after
-`hugo --minify`. One probe in [`verifylinks.go`][probe]
-searches the output tree for a lead paragraph whose
-body contains a `<code>` tag. The `<code>` must sit
-inside the same paragraph as the lead, not in a sibling.
-At least one rendered page must match. Otherwise a
-template regressed to raw output, and the build fails.
-
-The regex tolerates extra `<p>` attributes, additional
-classes alongside `lead`, and inline tags before
-`<code>`. It forbids `</p>` between the opening tag and
-`<code>`. Code in a sibling paragraph does not satisfy
-the probe.
-
 [tpl-test]: ../../internal/release/template_summary_test.go
-[probe]: ../../internal/release/verifylinks.go

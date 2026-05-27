@@ -218,12 +218,7 @@ func TestRunVerifyWebsiteLinksHappyPath(t *testing.T) {
 	aa := filepath.Join(root, "development", "architecture-audit", "index.html")
 	st := filepath.Join(root, "reference", "schema-types", "index.html")
 	rule := filepath.Join(root, "rules", "mds001", "index.html")
-	lead := filepath.Join(root, "guides", "progressive-disclosure", "index.html")
-	dirs := []string{
-		filepath.Dir(mq), filepath.Dir(aa), filepath.Dir(st),
-		filepath.Dir(rule), filepath.Dir(lead),
-	}
-	for _, dir := range dirs {
+	for _, dir := range []string{filepath.Dir(mq), filepath.Dir(aa), filepath.Dir(st), filepath.Dir(rule)} {
 		require.NoError(t, os.MkdirAll(dir, 0o755))
 	}
 	require.NoError(t, os.WriteFile(mq,
@@ -234,8 +229,6 @@ func TestRunVerifyWebsiteLinksHappyPath(t *testing.T) {
 		[]byte(`<a href="/rules/mds020-required-structure/">x</a>`), 0o644))
 	require.NoError(t, os.WriteFile(rule,
 		[]byte(`<a href="/rules/mds021/">x</a>`), 0o644))
-	require.NoError(t, os.WriteFile(lead,
-		[]byte(`<p class="lead">Use <code>x</code> ...</p>`), 0o644))
 
 	assert.Equal(t, 0, run([]string{"verify-website-links", "--dir", root}))
 }

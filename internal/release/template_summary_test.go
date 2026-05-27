@@ -16,13 +16,13 @@ import (
 // TestSummaryFrontMatterRenderedThroughRenderString pins the
 // invariant that every reference to `.Params.summary` in Hugo
 // templates either checks presence (`{{ if .Params.summary }}`)
-// or renders through `.RenderString`. The bug fixed in
-// claude/dazzling-archimedes-8sUqZ was a `{{ with .Params.summary
-// }}<p>{{ . }}</p>{{ end }}` pattern that rebound `.` to the
-// summary string and emitted it verbatim, so a value with
-// backticks shipped with literal backticks instead of <code>
-// tags. Forbidding the rebinding (`with`) and bare output forms
-// makes the bug unauthorable.
+// or renders through `.RenderString`. The regression this guards
+// against is `{{ with .Params.summary }}<p>{{ . }}</p>{{ end }}`:
+// `with` rebinds `.` to the summary string, and `{{ . }}` then
+// emits the value raw — so a summary like "Use `<?catalog?>`..."
+// ships with literal backticks instead of <code> tags. Forbidding
+// the rebinding (`with`) and bare output forms makes the bug
+// unauthorable.
 //
 // The scan operates on the whole file rather than line by line,
 // so a multi-line template action like `{{ with\n  .Params.summary
@@ -77,8 +77,7 @@ func TestSummaryFrontMatterRenderedThroughRenderString(t *testing.T) {
 		"every .Params.summary reference outside baseof.html must be "+
 			"an `if .Params.summary` predicate or use .RenderString; "+
 			"a bare `with .Params.summary` rebinds `.` and lets the "+
-			"value ship as raw text (the bug fixed in "+
-			"PR claude/dazzling-archimedes-8sUqZ)")
+			"value ship as raw text instead of rendered Markdown")
 }
 
 // TestSummaryFrontMatterCheck_DetectsMultiLineWith pins the
