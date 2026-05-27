@@ -44,7 +44,10 @@ func (r *Rule) fixByteRangeFeatures(f *lint.File) []byte {
 
 	if !flavor.Supports(r.Flavor, flavor.FeatureBareURLAutolinks) {
 		doc := &markdown.Document{Body: f.Source, AST: f.AST}
-		for _, fin := range flavor.Detect(doc, onlyAccept(flavor.FeatureBareURLAutolinks)) {
+		acceptBareURLs := func(feat flavor.Feature) bool {
+			return feat == flavor.FeatureBareURLAutolinks
+		}
+		for _, fin := range flavor.Detect(doc, acceptBareURLs) {
 			edits = append(edits, wrapBareURL(f.Source, fin))
 		}
 	}
@@ -53,12 +56,6 @@ func (r *Rule) fixByteRangeFeatures(f *lint.File) []byte {
 		return f.Source
 	}
 	return applyEdits(f.Source, edits)
-}
-
-// onlyAccept returns an accept predicate that admits only feat. Used
-// by Fix when re-running detection for a single feature.
-func onlyAccept(feat flavor.Feature) func(flavor.Feature) bool {
-	return func(f flavor.Feature) bool { return f == feat }
 }
 
 // needsAnyDualFix reports whether any dual-parser fixable feature is

@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"regexp"
 	"sort"
+	"sync"
 
 	"github.com/yuin/goldmark/ast"
 	extast "github.com/yuin/goldmark/extension/ast"
+	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
 
 	"github.com/jeduden/mdsmith/pkg/markdown"
@@ -66,6 +68,26 @@ var bareURLPattern = regexp.MustCompile(
 		"`" + `]*)?`,
 )
 
+// detectParserPool reuses dual-parser instances across Detect calls.
+// Building one parser fans out goldmark.New plus every extension's
+// Extend hook; over a 600-file workspace check that cost shows up as
+// a measurable fraction of CPU and allocations. parser.Parser is
+// only safe to reuse sequentially within a single goroutine, so the
+// pool hands each Detect goroutine its own instance and clears the
+// link-reference transformer's pinned document bytes via the paired
+// reset closure before Put. Mirrors the schema content-parser pool.
+type pooledDetectParser struct {
+	parser parser.Parser
+	reset  func()
+}
+
+var detectParserPool = sync.Pool{
+	New: func() any {
+		p, reset := NewPooledParser()
+		return &pooledDetectParser{parser: p, reset: reset}
+	},
+}
+
 // Detect runs every feature detector against doc and returns findings
 // in document-body order. accept is an optional predicate: when
 // non-nil, only features for which accept(feat) returns true are
@@ -88,14 +110,7 @@ func Detect(doc *markdown.Document, accept func(Feature) bool) []Finding {
 	var out []Finding
 
 	if anyDualFeatureAccepted(keep) {
-		dualParser, reset := NewPooledParser()
-		defer reset()
-		dualDoc := dualParser.Parse(text.NewReader(source))
-		for _, fin := range detectFromDual(source, dualDoc) {
-			if keep(fin.Feature) {
-				out = append(out, fin)
-			}
-		}
+		out = append(out, dualFindings(source, keep)...)
 	}
 
 	if keep(FeatureBareURLAutolinks) {
@@ -109,6 +124,28 @@ func Detect(doc *markdown.Document, accept func(Feature) bool) []Finding {
 	sort.SliceStable(out, func(i, j int) bool {
 		return out[i].Start < out[j].Start
 	})
+	return out
+}
+
+// dualFindings runs the dual parser via the pooled parser instance,
+// walks the resulting AST, and returns the keep-filtered findings.
+// Borrows a parser for the duration of the parse-plus-walk only, so
+// the parser's link-ref transformer cannot pin source bytes between
+// calls.
+func dualFindings(source []byte, keep func(Feature) bool) []Finding {
+	pp := detectParserPool.Get().(*pooledDetectParser)
+	defer func() {
+		pp.reset()
+		detectParserPool.Put(pp)
+	}()
+	dualDoc := pp.parser.Parse(text.NewReader(source))
+	all := detectFromDual(source, dualDoc)
+	out := make([]Finding, 0, len(all))
+	for _, fin := range all {
+		if keep(fin.Feature) {
+			out = append(out, fin)
+		}
+	}
 	return out
 }
 
