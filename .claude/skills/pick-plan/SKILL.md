@@ -62,8 +62,12 @@ of scope here.
 ### 1. Read PLAN.md from `origin/main`
 
 ```bash
-git fetch --quiet origin main
+git fetch --quiet --prune origin
 ```
+
+This refreshes every remote-tracking ref. Step 2's
+branch scan then sees newly pushed plan branches and
+forgets deleted ones. `origin/main` updates in passing.
 
 ```bash
 git show origin/main:PLAN.md
@@ -227,20 +231,21 @@ Title format: `Plan <id>: <title>` — matches the existing
 convention (`Plan 200: move docs/ embed out of
 internal/lsp/hover.go`).
 
-Use a HEREDOC for the body so newlines stay intact:
+Pipe the body in via `--body-file -` so `gh` is the
+only command in the call (no `$(cat ...)` subshell
+that the allowlist could trip on):
 
 ```bash
 gh pr create --repo jeduden/mdsmith --draft \
   --base main --head plan-<id>-<slug> \
   --title "Plan <id>: <title>" \
-  --body "$(cat <<'EOF'
+  --body-file - <<'EOF'
 Draft PR for [plan/<id>_<slug>.md](plan/<id>_<slug>.md).
 
 Status will move 🔲 → 🔳 in PLAN.md once the first real
 commit lands. Marking ready for review when the
 acceptance criteria are checked off.
 EOF
-)"
 ```
 
 Report the PR URL back to the user and stop. They can
