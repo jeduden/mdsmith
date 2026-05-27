@@ -91,6 +91,14 @@ func installTestProjector(t *testing.T, cfgPath string) {
 			return nil, fmt.Errorf(
 				"%q declares no schema to extract against", targetFile)
 		}
+		mkDiag := func(file string, line int, msg string) lint.Diagnostic {
+			return lint.Diagnostic{File: file, Line: line, Message: msg}
+		}
+		if vd := schema.Validate(tf, sch, fmFields, false, mkDiag); len(vd) > 0 {
+			return nil, fmt.Errorf(
+				"target file does not conform to its schema: %s",
+				vd[0].Message)
+		}
 		mt := schema.BuildMatchTree(tf, sch, fmFields)
 		tree, diags := extract.Extract(tf, sch, mt)
 		if len(diags) > 0 {
@@ -262,6 +270,28 @@ func TestCheck_ExtractOnFileWithNoKind(t *testing.T) {
 	diags := r.Check(f)
 	require.NotEmpty(t, diags)
 	assert.Contains(t, diags[0].Message, "no resolved kind")
+}
+
+func TestCheck_ExtractTargetFailsSchema(t *testing.T) {
+	// When the target file is non-conformant against its kind's
+	// schema, the directive should surface a schema-level
+	// diagnostic rather than projecting partial data.
+	root, hostRel := setupMessagingProject(t)
+	installTestProjector(t, filepath.Join(root, ".mdsmith.yml"))
+	// Overwrite message.md with a non-conformant body (no Tagline).
+	require.NoError(t, os.WriteFile(filepath.Join(root, "message.md"),
+		[]byte("---\ntitle: Mdsmith\n---\n# Mdsmith\n\n## Headline\n\n"+
+			"```markdown\nMark*down*, smithed.\n```\n"), 0o644))
+	src := "<?include\nfile: message.md\nextract: tagline.text\n?>\n" +
+		"old\n<?/include?>\n"
+	f := newHostFile(t, root, hostRel, src)
+
+	r := &Rule{}
+	diags := r.Check(f)
+	require.NotEmpty(t, diags)
+	// The diagnostic should reference the schema mismatch.
+	assert.Contains(t, diags[0].Message,
+		"target file does not conform to its schema")
 }
 
 func TestCheck_ExtractWithoutProjector(t *testing.T) {

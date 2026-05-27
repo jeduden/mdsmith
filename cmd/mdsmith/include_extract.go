@@ -98,6 +98,20 @@ func projectIncludeExtract(
 			"%q declares no schema to extract against", targetFile)
 	}
 
+	// Gate projection on a clean schema validation: a non-conformant
+	// target would produce a partial / lossy projection that the
+	// caller cannot rely on. Bubble the underlying diagnostic up
+	// so the include error points at the same root cause `mdsmith
+	// check` would surface for the target.
+	mkDiag := func(file string, line int, msg string) lint.Diagnostic {
+		return lint.Diagnostic{File: file, Line: line, Message: msg}
+	}
+	if vd := schema.Validate(tf, sch, fmFields, false, mkDiag); len(vd) > 0 {
+		return nil, fmt.Errorf(
+			"target file does not conform to its schema: %s",
+			vd[0].Message)
+	}
+
 	mt := schema.BuildMatchTree(tf, sch, fmFields)
 	tree, diags := extract.Extract(tf, sch, mt)
 	if len(diags) > 0 {
