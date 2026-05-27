@@ -130,17 +130,19 @@ func (f *File) ProseRanges() []Range
 
 One AST walk emits the slice. Every Category B
 rule scans the ranges with `bytes` helpers and
-never walks the AST itself. The projection **is**
-goldmark's classification — read from the AST,
-not re-derived from `f.Lines` — so divergence
-from goldmark is impossible by construction. No
-parallel parser, no equivalence corpus, no
-benchmark gate.
+never walks the AST itself. Deriving the
+projection from `f.AST` rather than
+re-implementing from `f.Lines` eliminates the
+parallel-parser class of divergence. Bugs in
+the projection walk itself can still diverge —
+missed node type, wrong byte boundary — and the
+fixture parity tests below gate that. No parallel
+parser, no equivalence corpus, no benchmark gate.
 
-Cost: one AST walk plus a `[]Range` per file. The
-walk amortizes across every Category B rule (each
-one walks the tree itself today); the slice lands
-in plan 198's arena as one slab grow.
+Cost: one AST walk plus a `[]Range` per file.
+Amortizes across every Category B rule (each
+walks the tree itself today); the slice lands
+in plan 198's arena as a single slab growth.
 
 ## Non-Goals
 
@@ -244,16 +246,16 @@ rule, so the manifest stays accurate.
    hybrid.
 2. Add `(f *File).ProseRanges()` with the AST
    projection. Memoize via the `atomic.Bool +
-   sync.Mutex` pattern that `newlineOffsets` and
+   sync.Mutex` pattern `newlineOffsets` and
    `codeBlockLines` use in
-   [file.go](../internal/lint/file.go) — not
-   `sync.Once`, because the closure box that
-   `once.Do(func(){...})` allocates is too costly
-   on the per-File hot path. Unit tests cover
-   Paragraph, Heading, ListItem, Blockquote text,
-   and the exclusions (FencedCodeBlock,
-   CodeBlock, HTMLBlock, CodeSpan, AutoLink,
-   inline HTML).
+   [file.go](../internal/lint/file.go); the
+   field comments there explain why `sync.Once`
+   was rejected for per-File caches in this
+   codebase. The projection inherits that
+   constraint. Unit tests cover Paragraph,
+   Heading, ListItem, Blockquote text, and the
+   exclusions (FencedCodeBlock, CodeBlock,
+   HTMLBlock, CodeSpan, AutoLink, inline HTML).
 3. Convert the three highest-allocating Category
    A candidates, one commit per rule.
 4. Convert Category B candidates against

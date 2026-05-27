@@ -19,10 +19,11 @@ summary: >-
 
 ## Goal
 
-Add a parse cache keyed by `(path, version)`. The
-path is the same string the LSP currently passes to
-`engine.Runner.RunSource` — workspace-relative,
-produced by `workspaceRelative(root, doc.path)` in
+Add a per-path parse cache, validated by version
+on lookup. The path is the same string the LSP
+currently passes to `engine.Runner.RunSource` —
+workspace-relative, produced by
+`workspaceRelative(root, doc.path)` in
 [server.go](../internal/lsp/server.go) so
 ignore/kind/override matching stays correct. On
 hit, return the cached `*lint.File`. The cache
@@ -94,12 +95,12 @@ The map is keyed by the same path string the LSP
 hands to `RunSource` (workspace-relative). Each
 entry carries the version it was parsed at. A
 `Get(path, v)` hit requires both: the entry exists
-and its stored version equals `v`. So the lookup
-pair is `(path, version)`, but the cache only
-retains one entry per path — the most recent
-version. An LSP edit monotonically increments the
-version, so a stored older entry is always dead on
-the next miss.
+and its stored version equals `v`. Lookup
+semantics are `(path, version)`; the storage
+layout is one entry per path — no composite key,
+no nested map. An LSP edit monotonically
+increments the version, so a stored older entry
+is always dead on the next miss.
 
 Lookup signature:
 
@@ -193,8 +194,8 @@ Cross-document parses are independent; the
    non-LSP callers untouched).
 4. Add invalidation calls in `didChange`,
    `didClose`, and `didChangeWatchedFiles`
-   handlers next to the existing `runCache.
-   Invalidate` calls.
+   handlers next to the existing
+   `runCache.Invalidate` calls.
 5. Extend [internal/lsp/bench_test.go](../internal/lsp/bench_test.go)
    with a "warm cache" variant of
    `BenchmarkLatency1kLines` and
