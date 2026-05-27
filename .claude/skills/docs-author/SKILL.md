@@ -117,8 +117,7 @@ One page, one type.
   outcome → next steps.
 - **Banned**: explanation of why; API
   exhaustiveness; alternative paths.
-- **Home**: `docs/guides/` (mdsmith does not
-  separate `tutorials/` from `guides/` today).
+- **Home**: `docs/tutorials/`.
 
 ### How-to guide — task-oriented (application × action)
 
@@ -357,10 +356,11 @@ Rewriting rules:
 
 ## Project conventions to respect
 
-- **Front matter.** Every page carries `title`
-  and `summary`. Plan files also carry
-  `status:`. Do not invent new keys without a
-  schema entry.
+- **Front matter.** Most pages carry `title` and
+  `summary`. CLI reference pages use `command` and
+  `summary` (per the `cli-command` kind schema).
+  Plan files also carry `status`. Do not invent
+  new keys without a schema entry.
 - **Voice from CLAUDE.md.** Descriptions name
   *what data must satisfy what condition*. Name
   the inputs (front matter fields, glob, heading
