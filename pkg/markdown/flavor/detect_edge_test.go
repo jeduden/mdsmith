@@ -121,25 +121,121 @@ func TestNodeByteRangeClampsNegativeStart(t *testing.T) {
 	assert.Equal(t, 0, end)
 }
 
-// TestNearestBlockAncestorSkipsNonBlockAncestors exercises the
-// "parent is not a block" branch in nearestBlockAncestor: when we
-// walk through an inline ancestor on the way up, the helper skips
-// it and keeps climbing.
-func TestNearestBlockAncestorSkipsNonBlockAncestors(t *testing.T) {
-	// Build: Paragraph (block, has Lines) → Emphasis (inline) →
-	// FootnoteLink (inline). Walking up from the FootnoteLink must
-	// skip Emphasis and return the Paragraph.
-	p := ast.NewParagraph()
-	// Append a line so findingFromBlock can resolve a position
-	// later (not needed here, but keeps the block well-formed).
-	p.Lines().Append(text.NewSegment(0, 1))
-	em := ast.NewEmphasis(1)
-	link := extast.NewFootnoteLink(1)
-	p.AppendChild(p, em)
-	em.AppendChild(em, link)
+// TestNearestBlockAncestor exercises the "parent is not a block"
+// branch in nearestBlockAncestor: when the walk encounters an
+// inline ancestor on the way up, the helper skips it and keeps
+// climbing. Also covers the nil-parent return when an orphan node
+// has no ancestor at all.
+func TestNearestBlockAncestor(t *testing.T) {
+	t.Run("skips non-block ancestors", func(t *testing.T) {
+		// Paragraph (block, has Lines) → Emphasis (inline) →
+		// FootnoteLink (inline). Walking up from the FootnoteLink must
+		// skip Emphasis and return the Paragraph.
+		p := ast.NewParagraph()
+		// Append a line so findingFromBlock can resolve a position
+		// later (not needed here, but keeps the block well-formed).
+		p.Lines().Append(text.NewSegment(0, 1))
+		em := ast.NewEmphasis(1)
+		link := extast.NewFootnoteLink(1)
+		p.AppendChild(p, em)
+		em.AppendChild(em, link)
+		assert.Same(t, ast.Node(p), nearestBlockAncestor(link))
+	})
 
-	got := nearestBlockAncestor(link)
-	assert.Same(t, ast.Node(p), got)
+	t.Run("returns nil for orphan node", func(t *testing.T) {
+		assert.Nil(t, nearestBlockAncestor(extast.NewFootnoteLink(1)))
+	})
+}
+
+// TestNearestBlockAncestorPublic is the dedicated unit test for the
+// public NearestBlockAncestor wrapper. The wrapper delegates to the
+// unexported helper, so this confirms the surface forwards without
+// re-implementing the walk.
+func TestNearestBlockAncestorPublic(t *testing.T) {
+	p := ast.NewParagraph()
+	p.Lines().Append(text.NewSegment(0, 1))
+	link := extast.NewFootnoteLink(1)
+	p.AppendChild(p, link)
+	assert.Same(t, ast.Node(p), NearestBlockAncestor(link))
+	assert.Nil(t, NearestBlockAncestor(extast.NewFootnoteLink(1)))
+}
+
+// TestIsGitHubAlertPublic exercises the public IsGitHubAlert wrapper
+// on both branches of the underlying isGitHubAlert helper: a
+// well-formed alert blockquote returns true; a blockquote whose
+// first child is not a paragraph returns false.
+func TestIsGitHubAlertPublic(t *testing.T) {
+	t.Run("recognises alert blockquote", func(t *testing.T) {
+		src := []byte("> [!NOTE]\n> body\n")
+		root := mkDoc(t, string(src))
+		var bq *ast.Blockquote
+		_ = ast.Walk(root.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+			if !entering {
+				return ast.WalkContinue, nil
+			}
+			if b, ok := n.(*ast.Blockquote); ok {
+				bq = b
+				return ast.WalkStop, nil
+			}
+			return ast.WalkContinue, nil
+		})
+		require.NotNil(t, bq, "expected the CommonMark parse to produce a *ast.Blockquote")
+		assert.True(t, IsGitHubAlert(bq, src))
+	})
+
+	t.Run("rejects non-paragraph first child", func(t *testing.T) {
+		// A blockquote whose first child is a heading short-circuits
+		// the type assertion inside isGitHubAlert.
+		src := []byte("> # heading\n")
+		root := mkDoc(t, string(src))
+		var bq *ast.Blockquote
+		_ = ast.Walk(root.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+			if !entering {
+				return ast.WalkContinue, nil
+			}
+			if b, ok := n.(*ast.Blockquote); ok {
+				bq = b
+				return ast.WalkStop, nil
+			}
+			return ast.WalkContinue, nil
+		})
+		require.NotNil(t, bq)
+		assert.False(t, IsGitHubAlert(bq, src))
+	})
+}
+
+// TestLineColPublic is the dedicated unit test for the public
+// LineCol wrapper. The contract test exercises the call shape; this
+// test pins the documented "1-based" semantics on real input.
+func TestLineColPublic(t *testing.T) {
+	src := []byte("hello\nworld\n")
+	line, col := LineCol(src, 6) // start of "world"
+	assert.Equal(t, 2, line)
+	assert.Equal(t, 1, col)
+}
+
+// TestDualFindings exercises the pooled-parser helper extracted from
+// Detect. The accept predicate must filter findings at the helper's
+// own seam — a keep callback that rejects FeatureTables must not
+// emit a Tables finding even though the dual AST contains a Table.
+func TestDualFindings(t *testing.T) {
+	src := []byte("| a | b |\n| - | - |\n| 1 | 2 |\n\n~~old~~\n")
+	rejectTables := func(feat Feature) bool {
+		return feat != FeatureTables
+	}
+	got := dualFindings(src, rejectTables)
+	for _, f := range got {
+		assert.NotEqual(t, FeatureTables, f.Feature,
+			"keep predicate must suppress FeatureTables findings")
+	}
+	// Strikethrough is still kept, so the helper still does real work.
+	found := false
+	for _, f := range got {
+		if f.Feature == FeatureStrikethrough {
+			found = true
+		}
+	}
+	assert.True(t, found, "expected at least one Strikethrough finding")
 }
 
 // TestFindHeadingIDHandlesMissingLines exercises the

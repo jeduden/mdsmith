@@ -147,28 +147,13 @@ func delimiterPairEdits(n ast.Node, markerLen int) []edit {
 // The dual parser places every TaskCheckBox at the start of a
 // TextBlock so block.Lines().At(0).Start always points at '['.
 func taskCheckBoxEdits(f *lint.File, n *extast.TaskCheckBox) []edit {
-	block := nearestBlockAncestor(n)
+	block := flavor.NearestBlockAncestor(n)
 	start := block.Lines().At(0).Start
 	end := start + 3
 	if end < len(f.Source) && f.Source[end] == ' ' {
 		end++
 	}
 	return []edit{{start: start, end: end}}
-}
-
-// nearestBlockAncestor walks up from n and returns the first block-
-// typed ancestor with non-empty Lines(). Mirrors the helper in
-// pkg/markdown/flavor; duplicated here to keep that helper internal.
-func nearestBlockAncestor(n ast.Node) ast.Node {
-	for p := n.Parent(); p != nil; p = p.Parent() {
-		if p.Type() != ast.TypeBlock {
-			continue
-		}
-		if lines := p.Lines(); lines != nil && lines.Len() > 0 {
-			return p
-		}
-	}
-	return nil
 }
 
 // wrapBareURL wraps a bare URL in angle brackets so the renderer

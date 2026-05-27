@@ -483,6 +483,15 @@ func LineCol(source []byte, offset int) (line, col int) {
 	return lineCol(source, offset)
 }
 
+// NearestBlockAncestor walks up from n and returns the first block-
+// typed ancestor with a non-empty Lines() segment, or nil when none
+// exists. Exposed for rewriters that hold an inline AST node and
+// need the block context that owns its source position (e.g. to
+// anchor a line-level edit on the containing paragraph).
+func NearestBlockAncestor(n ast.Node) ast.Node {
+	return nearestBlockAncestor(n)
+}
+
 // findHeadingID locates the trailing "{#id}" attribute block that the
 // goldmark attribute parser consumed. The Heading node's Lines segment
 // only covers the inner text, so we scan the raw line in source from

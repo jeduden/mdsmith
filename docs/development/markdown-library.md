@@ -233,7 +233,8 @@ The stable surface:
   `HeadingIDExtra` shapes, `Detect`, the four
   `NewParser*` / `NewPooledParser*`
   constructors, and the small rewriter helpers
-  (`FindHeadingID`, `IsGitHubAlert`, `LineCol`).
+  (`FindHeadingID`, `IsGitHubAlert`, `LineCol`,
+  `NearestBlockAncestor`).
 - Sub-package `pkg/markdown/flavor/ext`: the
   five custom extension Extender singletons
   (`Superscript`, `Subscript`, `MathBlock`,

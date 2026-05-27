@@ -120,13 +120,14 @@ func TestContract_ParserConstructors(t *testing.T) {
 }
 
 // TestContract_Rewriters covers the small surface needed by external
-// rewriters: FindHeadingID, IsGitHubAlert, LineCol.
+// rewriters: FindHeadingID, IsGitHubAlert, LineCol, NearestBlockAncestor.
 func TestContract_Rewriters(t *testing.T) {
 	source := []byte("# h\n")
 	h := ast.NewHeading(1)
 	_, _ = flavor.FindHeadingID(source, h)
 	_ = flavor.IsGitHubAlert(ast.NewBlockquote(), source)
 	_, _ = flavor.LineCol(source, 0)
+	_ = flavor.NearestBlockAncestor(h)
 }
 
 // TestContract_ExtensionExtenders pins the five custom extension
