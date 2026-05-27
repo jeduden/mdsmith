@@ -57,6 +57,17 @@ would need `gh pr create --head <fork-owner>:<branch>`
 and consistent fork-vs-upstream split throughout — out
 of scope here.
 
+## Before you run commands
+
+Run each fenced Bash block as its own Bash call. Do
+not chain commands with `&&`, do not pipe into them,
+and do not prefix them with inline shell variable
+assignments (`VAR=x cmd`). Allowed-tools matching
+checks the command prefix, so anything that changes
+the leading token (subshells, pipes, `VAR=…` prefixes)
+can cause an otherwise-allowed `git` or `gh` command
+to get blocked.
+
 ## Steps
 
 ### 1. Read PLAN.md from `origin/main`
@@ -103,8 +114,10 @@ git branch -a --format=%(refname:short)
 
 For each `🔳` and `🔲` plan, look for branches whose name
 contains the plan id with a non-digit boundary on each
-side — `plan-102-…`, `feature/plan-102`, `102_…`. Do
-**not** treat `1020` or `2102` as a hit for plan 102.
+side — `(^|[^0-9])<id>([^0-9]|$)`. Examples that
+match plan 102: `plan-102-build-subcommand`,
+`feature/plan-102`, `102_build-subcommand`. Examples
+that must **not** match: `plan-1020-…`, `2102-…`.
 
 Then pull open PRs:
 
@@ -188,7 +201,7 @@ For each hit, read `.mergedAt`:
   Show PR number, title, and `closedAt`. Use
   `AskUserQuestion`: "PR #N was closed unmerged on
   <date>. Start fresh anyway, or skip this plan and
-  pick another?" Honour the user's choice.
+  pick another?" Honor the user's choice.
 
 If no hits, proceed.
 
