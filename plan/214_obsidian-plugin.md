@@ -243,11 +243,11 @@ Mention the artifact in [github-releases.md][gh].
    the `loadData`/`saveData` round-trip, and the
    restart-on-change for `binaryPath` and
    `configPath`.
-7. Wire `main.ts`. `onload` spawns the server,
+7. [x] Wire `main.ts`. `onload` spawns the server,
    registers the CM6 extension, the diagnostics
    view, the commands, and the settings tab.
    `onunload` cleans up.
-8. Add `styles.css` for severity underlines and
+8. [x] Add `styles.css` for severity underlines and
    tooltip styling.
 9. Add a `.github/workflows/` step that builds the
    plugin and uploads the zip as a release
