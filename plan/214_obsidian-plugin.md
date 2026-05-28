@@ -239,7 +239,7 @@ Mention the artifact in [github-releases.md][gh].
    commands from active diagnostics, the
    `Fix file` command via `executeCommand`, and the
    debounced `vault.on('modify')` handler.
-6. Implement `settings.ts`. Wire the five controls,
+6. [x] Implement `settings.ts`. Wire the five controls,
    the `loadData`/`saveData` round-trip, and the
    restart-on-change for `binaryPath` and
    `configPath`.
