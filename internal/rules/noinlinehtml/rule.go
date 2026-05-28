@@ -175,7 +175,6 @@ func (r *Rule) diag(f *lint.File, offset int, display string) lint.Diagnostic {
 	}
 }
 
-
 var tagNameRe = regexp.MustCompile(`(?i)</?([a-zA-Z][a-zA-Z0-9-]*)`)
 var closingTagRe = regexp.MustCompile(`(?i)^<\s*/[a-zA-Z]`)
 
