@@ -224,7 +224,7 @@ Mention the artifact in [github-releases.md][gh].
    `isDesktopOnly: true`, `build.ts`, a stub
    `src/main.ts` extending `Plugin`, and a
    `README.md` that passes default rules.
-2. Implement `lsp-client.ts`. Cover framing,
+2. [x] Implement `lsp-client.ts`. Cover framing,
    request correlation, notification fan-out, and
    the `initialize`/`shutdown` cycle. Unit-test
    against an in-process `Duplex`.
