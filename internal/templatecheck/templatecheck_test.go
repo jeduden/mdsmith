@@ -3,10 +3,90 @@ package templatecheck
 import (
 	"strings"
 	"testing"
+	"text/template/parse"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestHelpers_DefensiveBranches exercises the nil-pipe and
+// empty-ident guards in the unexported helpers. These branches
+// are not reachable through real Hugo AST input (the parser never
+// emits a nil pipe or a zero-length Ident slice), but they guard
+// callers that pass synthetic nodes — and the project's coverage
+// gate requires every branch to be driven.
+func TestHelpers_DefensiveBranches(t *testing.T) {
+	t.Run("pipeReferencesSummary handles nil", func(t *testing.T) {
+		assert.False(t, pipeReferencesSummary(nil))
+	})
+	t.Run("pipeAssignsSummary handles nil", func(t *testing.T) {
+		assert.False(t, pipeAssignsSummary(nil))
+	})
+	t.Run("pipeOutputsSummaryViaRenderString handles nil", func(t *testing.T) {
+		assert.False(t, pipeOutputsSummaryViaRenderString(nil))
+	})
+	t.Run("pipeOutputsSummaryViaRenderString handles empty Cmds", func(t *testing.T) {
+		assert.False(t, pipeOutputsSummaryViaRenderString(&parse.PipeNode{}))
+	})
+	t.Run("cmdIsRenderString handles empty Args", func(t *testing.T) {
+		assert.False(t, cmdIsRenderString(&parse.CommandNode{}))
+	})
+	t.Run("cmdIsRenderString handles FieldNode with empty Ident", func(t *testing.T) {
+		cmd := &parse.CommandNode{Args: []parse.Node{&parse.FieldNode{}}}
+		assert.False(t, cmdIsRenderString(cmd))
+	})
+	t.Run("cmdIsRenderString handles ChainNode with empty Field", func(t *testing.T) {
+		cmd := &parse.CommandNode{Args: []parse.Node{&parse.ChainNode{}}}
+		assert.False(t, cmdIsRenderString(cmd))
+	})
+	t.Run("cmdIsRenderString handles VariableNode with empty Ident", func(t *testing.T) {
+		cmd := &parse.CommandNode{Args: []parse.Node{&parse.VariableNode{}}}
+		assert.False(t, cmdIsRenderString(cmd))
+	})
+	t.Run("argReferencesSummary returns false for unknown node type", func(t *testing.T) {
+		assert.False(t, argReferencesSummary(&parse.StringNode{}))
+	})
+	t.Run("walker.lineOf clamps positions past end of content", func(t *testing.T) {
+		w := &walker{content: "a\nb"}
+		// pos == 100 (past content end) gets clamped to len(content)=3,
+		// which lands on the second line.
+		assert.Equal(t, 2, w.lineOf(parse.Pos(100)))
+	})
+	t.Run("walk handles nil ListNode through interface", func(t *testing.T) {
+		w := &walker{path: "x", content: ""}
+		// IfNode without else has ElseList == nil *ListNode; the walk
+		// path receives that as a non-nil parse.Node interface wrapping
+		// a nil pointer and must not panic.
+		var nilList *parse.ListNode
+		w.walk(nilList)
+		assert.Empty(t, w.violations)
+	})
+	t.Run("walk handles nil interface", func(t *testing.T) {
+		w := &walker{path: "x", content: ""}
+		// Literal nil — the parse.Node interface itself is nil. The
+		// outer `if n == nil` short-circuits before the type switch.
+		w.walk(nil)
+		assert.Empty(t, w.violations)
+	})
+	t.Run("argReferencesSummary ChainNode whose Field carries Params.summary", func(t *testing.T) {
+		// `{{ (.X).Params.summary }}` — the trailing field chain
+		// itself contains Params.summary; chainIsSummary returns
+		// true without needing to recurse into the receiver.
+		got, err := Scan("file.html", `{{ (.X).Params.summary }}`)
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+	})
+	t.Run("pipeOutputsSummaryViaRenderString summary in later stage Args[1:]", func(t *testing.T) {
+		// `{{ .X | someFunc .Params.summary | .RenderString }}` —
+		// summary arrives via a positional arg to a non-RenderString
+		// middle stage, not as the pipe head. The output-tracking
+		// loop's else-branch must set summaryFlowing so the
+		// terminating .RenderString stage returns true.
+		got, err := Scan("file.html", `{{ .X | someFunc .Params.summary | .RenderString }}`)
+		require.NoError(t, err)
+		assert.Empty(t, got)
+	})
+}
 
 // TestScan_TableDriven enumerates every safe and unsafe shape the
 // AST classifier recognises. Each entry is a full template body
