@@ -232,7 +232,7 @@ effective kinds:
 
 ## Choose inline or file-based
 
-Both forms accept the same `KindBody` and
+Both forms accept the same body keys and
 produce identical diagnostics. Pick per kind
 based on edit history, body size, and how
 reviewers read the diff.
@@ -253,7 +253,8 @@ Inline is the default. Keep a kind inline when:
   helps a reader follow the wiring.
 - The project has fewer than six kinds. The
   review cost of one extra file per kind
-  outweighs the history isolation.
+  outweighs the gain of isolating each kind's
+  edit history.
 
 ### When to lift a kind into its own file
 
@@ -265,9 +266,10 @@ when:
   unrelated config history.
 - A reviewer should see which kind changed from
   the file list alone. A PR touching
-  `.mdsmith/kinds/<name>.yaml` names itself. A
-  PR touching `.mdsmith.yml` forces the reviewer
-  to open the diff to find which kind moved.
+  `.mdsmith/kinds/<name>.yaml` carries the kind
+  name in its path. A PR touching `.mdsmith.yml`
+  forces the reviewer to open the diff to find
+  which kind moved.
 - The kind body is large. A long frontmatter
   schema and many rule overrides bloat the
   inline view of every other kind.
@@ -275,15 +277,12 @@ when:
   standalone file is cleaner than excising a
   named block from a shared `.mdsmith.yml`.
 
-See [Split a kind into its own file](#split-a-kind-into-its-own-file)
-for the mechanics.
+See [Kind files reference](../reference/kind-files.md)
+for layout details and the basename rule.
 
 ## Split a kind into its own file
 
-When a project's `kinds:` block has grown large
-enough that one kind's edits dirty the same
-`.mdsmith.yml` as every other config change, lift
-the kind into a standalone file under
+Lift the kind into a standalone file under
 `.mdsmith/kinds/<name>.yaml`. The basename is the
 kind's name; the body is identical to the inline
 `kinds.<name>:` body.
