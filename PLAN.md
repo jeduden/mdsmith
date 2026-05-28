@@ -111,7 +111,7 @@ footer: |
 | 182 | ✅     | sonnet | [Code block convention rules](plan/182_code-block-conventions.md)                                                                       |
 | 183 | ✅     | sonnet | [Skip DedupeDiagnostics via an audited rule.RepoScoped marker](plan/183_dedupe-diagnostics-repo-scoped-skip.md)                         |
 | 184 | ✅     | opus   | [Automate the cross-tool benchmark on merge to main and publish numbers to the assets branch](plan/184_release-benchmark-automation.md) |
-| 185 | 🔳     |        | [Expose extended-syntax parsers and the flavor model in pkg/markdown](plan/185_public-markdown-flavor-library.md)                       |
+| 185 | ✅     |        | [Expose extended-syntax parsers and the flavor model in pkg/markdown](plan/185_public-markdown-flavor-library.md)                       |
 | 186 | ✅     |        | [Centralize UTF-16 column helpers in internal/mdtext](plan/186_arch-fix-utf16-centralize.md)                                            |
 | 187 | ✅     | opus   | [Neutral-corpus engine lever — shared AST walk and Punkt cost](plan/187_neutral-corpus-engine-lever.md)                                 |
 | 188 | 🔲     | opus   | [Regex-over-source rules — inventory and AST-resident replacements](plan/188_regex-vs-ast-inventory.md)                                 |

@@ -1,7 +1,7 @@
 ---
 id: 185
 title: 'Expose extended-syntax parsers and the flavor model in pkg/markdown'
-status: "🔳"
+status: "✅"
 summary: >-
   Promote every custom goldmark parser
   (the five extensions) and the flavor
