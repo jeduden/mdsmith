@@ -187,6 +187,99 @@ instead.
 
 [mdcov]: ../markdownlint-coverage/README.md
 
+### Apples-to-apples rule sets
+
+The parity claim above hinges on which rules each
+configuration runs. For the full mdsmith-to-peer rule
+mapping (markdownlint, rumdl, mado, panache,
+obsidian-linter) with each peer's upstream
+default-enabled state, see the
+[peer-linter coverage matrix](../markdownlint-coverage/README.md)
+— generated from rule front matter, so it stays in
+sync with the actual ruleset. This subsection adds the
+benchmark-specific layer: which rules `mdsmith` (full)
+runs and which `mdsmith-parity` disables via
+[`bench-parity.mdsmith.yml`](bench-parity.mdsmith.yml).
+
+| Configuration       | Rule class                                               |
+| ------------------- | -------------------------------------------------------- |
+| `mdsmith` (full)    | every default-enabled MDS rule                           |
+| `mdsmith-parity`    | same set minus the 24 rules listed below                 |
+| `mado`              | see the coverage matrix `mado` column                    |
+| `rumdl`             | see the coverage matrix `rumdl` column                   |
+| `panache`           | distinct rule IDs — see coverage matrix `panache` column |
+| `markdownlint-cli2` | canonical markdownlint rule set                          |
+
+#### Rules `mdsmith-parity` disables
+
+`bench-parity.mdsmith.yml` explicitly disables 24
+rules — 22 mdsmith-only, plus MDS020 and MDS027, which
+carry markdownlint analogs but cover them at higher
+fidelity (see [Residual asymmetries](#residual-asymmetries)).
+The 12 rows marked **default** are the real `mdsmith`
+(full) → `mdsmith-parity` delta — they would run in
+default mdsmith but not in parity. The 12 rows marked
+**opt-in** would not run in default mdsmith either; the
+parity config disables them defensively so a
+user-supplied config cannot accidentally enable them
+during a parity run.
+
+| MDS rule                                                                                                         | What it adds                      | default in mdsmith |
+| ---------------------------------------------------------------------------------------------------------------- | --------------------------------- | ------------------ |
+| [MDS019 catalog](../../../internal/rules/MDS019-catalog/README.md)                                               | generated index from front matter | default            |
+| [MDS020 required-structure](../../../internal/rules/MDS020-required-structure/README.md)                         | CUE schema beyond MD043           | default            |
+| [MDS021 include](../../../internal/rules/MDS021-include/README.md)                                               | spliced, synced file inclusion    | default            |
+| [MDS022 max-file-length](../../../internal/rules/MDS022-max-file-length/README.md)                               | file size budget                  | default            |
+| [MDS023 paragraph-readability](../../../internal/rules/MDS023-paragraph-readability/README.md)                   | ARI grade limit                   | default            |
+| [MDS024 paragraph-structure](../../../internal/rules/MDS024-paragraph-structure/README.md)                       | sentence/word limits              | opt-in             |
+| [MDS026 table-readability](../../../internal/rules/MDS026-table-readability/README.md)                           | width/row heuristics              | default            |
+| [MDS027 cross-file-reference-integrity](../../../internal/rules/MDS027-cross-file-reference-integrity/README.md) | whole-repo link graph             | default            |
+| [MDS028 token-budget](../../../internal/rules/MDS028-token-budget/README.md)                                     | LLM context budget                | default            |
+| [MDS029 conciseness-scoring](../../../internal/rules/MDS029-conciseness-scoring/README.md)                       | prose density (experimental)      | opt-in             |
+| [MDS030 empty-section-body](../../../internal/rules/MDS030-empty-section-body/README.md)                         | no empty sections                 | default            |
+| [MDS033 directory-structure](../../../internal/rules/MDS033-directory-structure/README.md)                       | where files may live              | opt-in             |
+| [MDS035 toc-directive](../../../internal/rules/MDS035-toc-directive/README.md)                                   | flag stray TOC tokens             | opt-in             |
+| [MDS036 max-section-length](../../../internal/rules/MDS036-max-section-length/README.md)                         | per-section size                  | opt-in             |
+| [MDS037 duplicated-content](../../../internal/rules/MDS037-duplicated-content/README.md)                         | copy-paste across files           | opt-in             |
+| [MDS038 toc](../../../internal/rules/MDS038-toc/README.md)                                                       | generated heading TOC             | default            |
+| [MDS039 build](../../../internal/rules/MDS039-build/README.md)                                                   | artifact-in-sync directive        | default            |
+| [MDS040 recipe-safety](../../../internal/rules/MDS040-recipe-safety/README.md)                                   | shell-safety on build recipes     | default            |
+| [MDS043 no-reference-style](../../../internal/rules/MDS043-no-reference-style/README.md)                         | forbid reference links            | opt-in             |
+| [MDS048 git-hook-sync](../../../internal/rules/MDS048-git-hook-sync/README.md)                                   | merge-driver / hook install state | opt-in             |
+| [MDS055 forbidden-paragraph-starts](../../../internal/rules/MDS055-forbidden-paragraph-starts/README.md)         | banned opening phrases            | opt-in             |
+| [MDS056 forbidden-text](../../../internal/rules/MDS056-forbidden-text/README.md)                                 | banned substrings                 | opt-in             |
+| [MDS057 required-text-patterns](../../../internal/rules/MDS057-required-text-patterns/README.md)                 | mandated patterns                 | opt-in             |
+| [MDS058 required-mentions](../../../internal/rules/MDS058-required-mentions/README.md)                           | mandated references               | opt-in             |
+
+#### Residual asymmetries
+
+A handful of edge cases the parity profile is honest
+about, not a complete level playing field.
+
+- MD043 required-headings → MDS020 required-structure
+  (CUE schema) and MD051 link-fragments → MDS027
+  cross-file-reference-integrity (whole-repo link
+  graph): mdsmith implements both at higher fidelity
+  than the peer markdownlint rule, so `mdsmith-parity`
+  disables them rather than claim parity at higher
+  fidelity. They show up in the table above.
+- MD054 link-image-style is covered only by the opt-in
+  [MDS068 link-style](../../../internal/rules/MDS068-link-style/README.md)
+  (a partial cover), which is off by default and not
+  enabled in parity. So rumdl and markdownlint, which
+  both ship MD054, do marginally more than
+  `mdsmith-parity` on that rule.
+- Three mdsmith-only rules (no markdownlint analog) are
+  **not** in the parity disable list:
+  [MDS031 unclosed-code-block](../../../internal/rules/MDS031-unclosed-code-block/README.md)
+  (default, kept on as a cheap structural check),
+  [MDS034 markdown-flavor](../../../internal/rules/MDS034-markdown-flavor/README.md),
+  and
+  [MDS067 callout-type](../../../internal/rules/MDS067-callout-type/README.md)
+  (opt-in, rely on default-off). A user config that
+  enables MDS034 or MDS067 would slip through
+  `mdsmith-parity`.
+
 ### Fairness note on panache
 
 panache benchmarks itself on a small, Pandoc/Quarto-heavy
