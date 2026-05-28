@@ -180,10 +180,10 @@ Cross-document parses are independent; the
    and the stale-Put rejection (Put with version
    below an existing entry leaves the entry
    untouched).
-2. Add `engine.Runner.ParseCache` field and the
-   `RunSource` hit/miss branching. Existing tests
-   that construct a Runner without setting the
-   field must keep passing (nil cache = always
+2. [x] Add `engine.Runner.ParseCache` field and
+   the `RunSource` hit/miss branching. Existing
+   tests that construct a Runner without setting
+   the field must keep passing (nil cache = always
    parse).
 3. Add a contract test in `internal/engine/` that
    runs the same corpus through `RunSource` with
