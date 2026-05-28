@@ -158,6 +158,12 @@ Forbidden forms:
 - `{{ range .Params.summary }}` — ranging over a
   string iterates rune-by-rune and emits each code
   point as an integer.
+- `{{ template "name" .Params.summary }}` and
+  `{{ block "name" .Params.summary }}` — these pass
+  the summary as the sub-template's dot. The
+  sub-template lives in a separate parse tree; the
+  scanner cannot follow the rebinding across the
+  boundary.
 - The bare `{{ .Params.summary }}` action.
 - Variable assignment in any context — `{{ $s := .Params.summary }}`,
   `{{ if $s := .Params.summary }}`,

@@ -61,11 +61,13 @@ func TestSummaryFrontMatterRenderedThroughRenderString(t *testing.T) {
 	for _, v := range violations {
 		formatted = append(formatted, fmt.Sprintf("%s:%d: %s", v.Path, v.Line, v.Why))
 	}
-	assert.Empty(t, formatted)
+	assert.Empty(t, formatted, "summary front-matter rendering violations")
 	assert.Empty(t, ioErrors, "filesystem errors during scan")
 	// Guard against the test passing vacuously if website/layouts/
-	// ever disappears or the walker is misconfigured: at least the
-	// `_default/baseof.html` + four page-rendering layouts must
-	// have been scanned.
-	assert.GreaterOrEqual(t, scanned, 5, "expected to scan at least 5 .html files; got %d", scanned)
+	// ever disappears or the walker is misconfigured. The tree
+	// currently holds 24 .html files (_default/, partials/,
+	// shortcodes/, _markup/, rule/, index.html); set the floor at
+	// 20 to catch a catastrophic regression while leaving headroom
+	// for legitimate template cleanup.
+	assert.GreaterOrEqual(t, scanned, 20, "expected to scan at least 20 .html files; got %d", scanned)
 }

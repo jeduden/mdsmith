@@ -113,6 +113,13 @@ func (w *walker) walk(n parse.Node) {
 	}
 	switch n := n.(type) {
 	case *parse.ListNode:
+		// IfNode.ElseList / WithNode.ElseList / RangeNode.ElseList
+		// are *parse.ListNode pointers that are nil when no `else`
+		// clause is present. A nil typed pointer wrapped in a
+		// non-nil interface bypasses the outer `if n == nil` guard,
+		// so this inner check is what saves us from dereferencing
+		// it. Removing it would re-introduce a panic in every
+		// `{{ if ... }}...{{ end }}` template without an else.
 		if n == nil {
 			return
 		}
@@ -206,8 +213,39 @@ func identsReferenceSummary(idents []string) bool {
 }
 
 func fieldIsSummary(f *parse.FieldNode) bool       { return identsReferenceSummary(f.Ident) }
-func chainIsSummary(c *parse.ChainNode) bool       { return identsReferenceSummary(c.Field) }
 func variableIsSummary(v *parse.VariableNode) bool { return identsReferenceSummary(v.Ident) }
+
+// chainIsSummary checks whether a ChainNode flattens to a chain
+// containing `Params.summary` — including the boundary case
+// `(.Params).summary` where the adjacency straddles the receiver
+// and the trailing Field list (receiver ends with `Params`, Field
+// starts with `summary`). Without the flatten step the trailing
+// Field `[summary]` alone has no `Params`-`summary` pair.
+func chainIsSummary(c *parse.ChainNode) bool {
+	return identsReferenceSummary(append(tailIdents(c.Node), c.Field...))
+}
+
+// tailIdents extracts the terminal identifier chain of a chain
+// receiver. For FieldNode it's the Ident slice. For a ChainNode
+// receiver it recurses and concatenates. For a PipeNode wrapping
+// a single expression in parens — the common `(...)` receiver
+// shape — it unwraps to the wrapped node. Returns nil for shapes
+// the flattener cannot trace (multi-cmd pipes, function calls);
+// callers that need to scan those fall back to
+// pipeReferencesSummary, which handles arbitrary arg nesting.
+func tailIdents(n parse.Node) []string {
+	switch x := n.(type) {
+	case *parse.FieldNode:
+		return x.Ident
+	case *parse.ChainNode:
+		return append(tailIdents(x.Node), x.Field...)
+	case *parse.PipeNode:
+		if len(x.Cmds) == 1 && len(x.Cmds[0].Args) == 1 {
+			return tailIdents(x.Cmds[0].Args[0])
+		}
+	}
+	return nil
+}
 
 func pipeReferencesSummary(p *parse.PipeNode) bool {
 	if p == nil {
@@ -253,15 +291,22 @@ func argReferencesSummary(arg parse.Node) bool {
 
 // pipeAssignsSummary returns true if the pipe — or any sub-pipe
 // nested inside one of its command args — declares variables
-// whose right-hand value references the summary. The recursion
-// catches forms like `{{ .RenderString (dict) ($s := .Params.summary) }}`
-// where the binding hides in a sub-pipeline arg and the outer
-// pipe's Decl is empty.
+// whose right-hand value is the raw summary. An assignment whose
+// right-hand pipe routes summary through `.RenderString` first
+// is safe: the bound name holds rendered HTML (a `template.HTML`
+// value Hugo emits without re-escaping), so a later `{{ $s }}`
+// ships the rendered output, not the raw Markdown.
+//
+// The recursion catches forms like
+// `{{ .RenderString (dict) ($s := .Params.summary) }}` where the
+// binding hides in a sub-pipeline arg and the outer pipe's Decl
+// is empty.
 func pipeAssignsSummary(p *parse.PipeNode) bool {
 	if p == nil {
 		return false
 	}
-	if len(p.Decl) > 0 && pipeReferencesSummary(p) {
+	if len(p.Decl) > 0 && pipeReferencesSummary(p) &&
+		!pipeOutputsSummaryViaRenderString(p) {
 		return true
 	}
 	for _, c := range p.Cmds {
@@ -327,6 +372,13 @@ func pipeOutputsSummaryViaRenderString(p *parse.PipeNode) bool {
 // (multi-Ident FieldNode), the dollar-context `$.RenderString`
 // (VariableNode with Ident `["$", "RenderString"]`), and chain
 // receivers (ChainNode).
+//
+// Comparison is intentionally case-sensitive (`== "RenderString"`),
+// not case-insensitive as elsewhere in this file. Hugo's
+// `.RenderString` is a Go method on the Page receiver; Go reflects
+// methods by exact name and would not dispatch `.renderstring` to
+// it. The Params map, by contrast, is a case-insensitive lookup —
+// that's why identsReferenceSummary uses EqualFold.
 func cmdIsRenderString(c *parse.CommandNode) bool {
 	if len(c.Args) == 0 {
 		return false

@@ -215,6 +215,76 @@ func TestScan_ChainReceiver(t *testing.T) {
 	require.Len(t, got, 1)
 }
 
+// TestScan_ChainBoundary pins the boundary case where the
+// `Params`/`summary` adjacency straddles the chain receiver and
+// the trailing field list. Receiver ends with `Params`, Field
+// starts with `summary` — neither half alone has the pair, but
+// the flattened chain does. Also exercises nested ChainNode
+// receivers and the fallback recurse when tailIdents cannot
+// trace a complex receiver.
+func TestScan_ChainBoundary(t *testing.T) {
+	cases := []struct {
+		name      string
+		template  string
+		wantCount int
+	}{
+		{"params receiver dot summary bare", `{{ (.Params).summary }}`, 1},
+		{"params receiver dot summary rendered", `{{ .RenderString (dict) (.Params).summary }}`, 0},
+		// Nested ChainNode receiver: tailIdents recurses through
+		// each chain level and stitches the Idents into one slice.
+		{"nested chain with boundary", `{{ ((.A).Params).summary }}`, 1},
+		// Function-call receiver — tailIdents returns nil (multi-arg
+		// command); argReferencesSummary's fallback recurse into
+		// n.Node via pipeReferencesSummary catches the summary buried
+		// inside the printf args.
+		{"function-call receiver", `{{ (printf "%s" .Params.summary).Field }}`, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := Scan("file.html", tc.template)
+			require.NoError(t, err)
+			assert.Len(t, got, tc.wantCount, "violations: %+v", got)
+		})
+	}
+}
+
+// TestScan_VarAssignWithRender pins that an assignment whose
+// right-hand pipe routes summary through `.RenderString` is
+// SAFE. The bound name holds rendered HTML (template.HTML),
+// not raw Markdown — Hugo emits template.HTML without
+// re-escaping, so a later `{{ $s }}` ships rendered output.
+// Only assignments of the raw value are flagged.
+func TestScan_VarAssignWithRender(t *testing.T) {
+	cases := []struct {
+		name      string
+		template  string
+		wantCount int
+	}{
+		{
+			"var := raw summary is flagged",
+			`{{ $s := .Params.summary }}{{ $s }}`,
+			1,
+		},
+		{
+			"var := rendered summary is safe",
+			`{{ $s := .RenderString (dict) .Params.summary }}{{ $s }}`,
+			0,
+		},
+		{
+			"if-var := rendered summary is safe",
+			`{{ if $s := .RenderString (dict) .Params.summary }}{{ $s }}{{ end }}`,
+			0,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := Scan("file.html", tc.template)
+			require.NoError(t, err)
+			assert.Len(t, got, tc.wantCount, "violations: %+v", got)
+		})
+	}
+}
+
 // TestScan_SubPipeVarAssign pins detection of variable assignment
 // hidden inside a sub-pipeline argument:
 // `{{ .RenderString (dict) ($s := .Params.summary) }}` —
