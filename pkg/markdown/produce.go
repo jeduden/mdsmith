@@ -42,6 +42,11 @@ func Splice(body []byte, edits []Edit) []byte {
 	// an opaque slice-bounds panic during the build loop below.
 	prevEnd := 0
 	for i, e := range edits {
+		if e.Start < 0 {
+			panic(fmt.Sprintf(
+				"markdown.Splice: edit %d has negative Start "+
+					"({Start:%d, End:%d})", i, e.Start, e.End))
+		}
 		if e.Start < prevEnd {
 			panic(fmt.Sprintf(
 				"markdown.Splice: edits must be ascending and "+

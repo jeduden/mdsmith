@@ -310,6 +310,61 @@ func TestFindHeadingIDNilHeadingReturnsFalse(t *testing.T) {
 	assert.Equal(t, HeadingIDExtra{}, hx)
 }
 
+// TestIsGitHubAlertContractPostcondition pins the documented
+// postcondition: IsGitHubAlert returns true ⇒ bq.FirstChild() is
+// *ast.Paragraph and Paragraph.Lines.Len() > 0. The rule's
+// fixGitHubAlerts trusts this postcondition (its bq.FirstChild()
+// type assertion + lines.At(0) are unguarded), so a future refactor
+// that relaxes IsGitHubAlert without updating the call site would
+// panic in production. Driving the contract from a corpus of
+// representative blockquotes — alert and non-alert, well-formed and
+// degenerate — catches the drift here instead.
+func TestIsGitHubAlertContractPostcondition(t *testing.T) {
+	corpus := []string{
+		"> [!NOTE]\n> body\n",
+		"> [!TIP]\n> body\n",
+		"> [!IMPORTANT]\n> body\n",
+		"> [!WARNING]\n> body\n",
+		"> [!CAUTION]\n> body\n",
+		"> [!NOTE]\n> first\n> second\n",
+		"> [!NOTE]\n", // marker only, no continuation
+		"> plain paragraph\n",
+		"> # heading not paragraph\n",
+		"plain paragraph\n",
+		"```\nfenced\n```\n",
+		"> [!note]\n> case-sensitive miss\n",
+	}
+	for _, src := range corpus {
+		t.Run(src, func(t *testing.T) {
+			doc := mkDoc(t, src)
+			_ = ast.Walk(doc.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+				if !entering {
+					return ast.WalkContinue, nil
+				}
+				bq, ok := n.(*ast.Blockquote)
+				if !ok {
+					return ast.WalkContinue, nil
+				}
+				if !IsGitHubAlert(bq, []byte(src)) {
+					return ast.WalkContinue, nil
+				}
+				// Postcondition: the rule's fixGitHubAlerts trusts
+				// these two invariants — keep them locked.
+				para, ok := bq.FirstChild().(*ast.Paragraph)
+				require.True(t, ok,
+					"IsGitHubAlert returned true but bq.FirstChild() is %T",
+					bq.FirstChild())
+				lines := para.Lines()
+				require.NotNil(t, lines,
+					"IsGitHubAlert returned true but Paragraph.Lines() is nil")
+				require.Greater(t, lines.Len(), 0,
+					"IsGitHubAlert returned true but Paragraph has empty Lines")
+				return ast.WalkContinue, nil
+			})
+		})
+	}
+}
+
 // TestIsGitHubAlertHandlesEdgeCases pins the defensive branches of
 // IsGitHubAlert: nil blockquote, missing-paragraph first child, and
 // a paragraph with empty Lines all return false rather than panic.

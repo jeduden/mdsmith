@@ -157,6 +157,18 @@ func TestSpliceInvariantViolation(t *testing.T) {
 			func() { Splice(body, []Edit{{Start: 5, End: 3}}) })
 	})
 
+	t.Run("negative Start panics with a dedicated message", func(t *testing.T) {
+		// Caller produces an edit with a negative offset (typically a
+		// buggy producer subtracting past 0). Without this check the
+		// generic overlap message ("overlaps previous edit ending at 0")
+		// would fire and mislead the debugger toward a non-existent
+		// previous edit; the dedicated message names the actual fault.
+		body := []byte("0123456789")
+		assert.PanicsWithValue(t,
+			"markdown.Splice: edit 0 has negative Start ({Start:-1, End:5})",
+			func() { Splice(body, []Edit{{Start: -1, End: 5}}) })
+	})
+
 	t.Run("edit exceeding body length panics", func(t *testing.T) {
 		body := []byte("short")
 		assert.PanicsWithValue(t,
