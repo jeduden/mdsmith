@@ -21,7 +21,7 @@ tokenizer added by commit `a1aa6c5`. Its
 only importer is
 [internal/mdtext](../internal/mdtext/).
 
-The SRP table in
+The SRP bullet list in
 [`go.md`](../docs/development/architecture/go.md)
 lists core packages but omits it. One
 line added there anchors the rule that
