@@ -140,7 +140,7 @@ footer: |
 | 212 | 🔲     | opus   | [`mdsmith extract` projects paragraph inline spans as data](plan/212_extract-inline-spans.md)                                           |
 | 213 | 🔲     | opus   | [Built-in `no-llm-tells` convention with append-mode forbidden lists](plan/213_anti-slop-convention.md)                                 |
 | 214 | 🔳     | sonnet | [MDS019 catalog: CUE-expression row templates](plan/214_catalog-cue-row-expressions.md)                                                 |
-| 214 | 🔲     | opus   | [Obsidian plugin via hand-rolled LSP bridge](plan/214_obsidian-plugin.md)                                                               |
+| 214 | 🔳     | opus   | [Obsidian plugin via hand-rolled LSP bridge](plan/214_obsidian-plugin.md)                                                               |
 | 215 | 🔲     | opus   | [Audit AST-walking rules and rewrite the ones that only need f.Lines](plan/215_lines-only-rule-audit.md)                                |
 | 215 | 🔲     | opus   | [WASM mdsmith for mobile Obsidian](plan/215_obsidian-wasm-mobile.md)                                                                    |
 | 216 | 🔲     | opus   | [Per-document parse cache for the LSP, keyed by version](plan/216_lsp-parse-cache.md)                                                   |

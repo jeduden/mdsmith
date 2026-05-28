@@ -1,7 +1,7 @@
 ---
 id: 214
 title: Obsidian plugin via hand-rolled LSP bridge
-status: "🔲"
+status: "🔳"
 model: opus
 summary: >-
   Ship a desktop-only Obsidian plugin under
