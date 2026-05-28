@@ -185,6 +185,37 @@ describe("Wiring.stop", () => {
   });
 });
 
+describe("Wiring.notifyDidChangeWatchedFiles", () => {
+  test("forwards a watched-file change event to the server", async () => {
+    const { client, serverIn } = makeServerPair();
+    const wiring = new Wiring({
+      client,
+      killChild: () => {},
+      rootUri: "file:///vault",
+      onPublishDiagnostics: () => {},
+    });
+    const sent: Buffer[] = [];
+    serverIn.on("data", (b) => sent.push(b));
+    // Type 2 = Changed per the LSP FileChangeType enum.
+    wiring.notifyDidChangeWatchedFiles([
+      { uri: "file:///vault/.mdsmith.yml", type: 2 },
+    ]);
+    await tick();
+    const body = Buffer.concat(sent)
+      .toString("utf8")
+      .split("Content-Length: ")
+      .filter(Boolean)[0]
+      .split("\r\n\r\n")
+      .slice(1)
+      .join("\r\n\r\n");
+    const notif = JSON.parse(body);
+    expect(notif.method).toBe("workspace/didChangeWatchedFiles");
+    expect(notif.params.changes).toEqual([
+      { uri: "file:///vault/.mdsmith.yml", type: 2 },
+    ]);
+  });
+});
+
 describe("Wiring document tracking", () => {
   test("notifyDidOpen sends textDocument/didOpen with text", async () => {
     const { client, serverIn } = makeServerPair();

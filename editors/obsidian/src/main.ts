@@ -273,7 +273,17 @@ export default class MdsmithPlugin extends Plugin {
     }
     this.registerEvent(
       this.app.vault.on("modify", (file) => {
-        if (!file || (file as TFile).extension !== "md") return;
+        if (!file) return;
+        // .mdsmith.yml edits trigger a workspace re-lint via
+        // workspace/didChangeWatchedFiles so the server picks up
+        // the new config without a plugin restart.
+        if ((file as TFile).name === ".mdsmith.yml" && this.wiring) {
+          this.wiring.notifyDidChangeWatchedFiles([
+            { uri: this.fileUri(file as TFile), type: 2 },
+          ]);
+          return;
+        }
+        if ((file as TFile).extension !== "md") return;
         if (!this.wiring) return;
         const uri = this.fileUri(file as TFile);
         // Resync line palette commands on every modification so the

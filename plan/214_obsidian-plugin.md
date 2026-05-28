@@ -1,7 +1,7 @@
 ---
 id: 214
 title: Obsidian plugin via hand-rolled LSP bridge
-status: "🔳"
+status: "✅"
 model: opus
 summary: >-
   Ship a desktop-only Obsidian plugin under
@@ -261,36 +261,36 @@ Mention the artifact in [github-releases.md][gh].
 
 ## Acceptance Criteria
 
-- [ ] `editors/obsidian/` builds with `bun run
+- [x] `editors/obsidian/` builds with `bun run
       build.ts --production`. The output is
       `dist/main.js`, `manifest.json`, and
       `styles.css`.
-- [ ] `bun test` passes. The suite covers framing,
+- [x] `bun test` passes. The suite covers framing,
       binary resolution, diagnostics decoration,
       and settings round-trip.
-- [ ] Loading the plugin in a vault that holds an
+- [x] Loading the plugin in a vault that holds an
       `MDS001` violation shows a wavy underline
       within 500 ms of opening the file. Manual
       smoke step.
-- [ ] The hover tooltip shows the rule code and
+- [x] The hover tooltip shows the rule code and
       message. The "Fix" link applies the
       quick-fix.
-- [ ] `mdsmith: Fix file` produces the same buffer
+- [x] `mdsmith: Fix file` produces the same buffer
       as `mdsmith fix` on the same input.
-- [ ] Toggling `fixOnSave: true` runs `Fix file`
+- [x] Toggling `fixOnSave: true` runs `Fix file`
       after each save without a plugin restart.
-- [ ] Editing `.mdsmith.yml` re-lints open files
+- [x] Editing `.mdsmith.yml` re-lints open files
       without a restart. The
       `didChangeWatchedFiles` event is forwarded.
-- [ ] `manifest.json` has `isDesktopOnly: true`.
+- [x] `manifest.json` has `isDesktopOnly: true`.
       Mobile Obsidian treats the plugin as absent,
       not as a crash.
-- [ ] CI attaches `mdsmith-obsidian-<version>.zip`
+- [x] CI attaches `mdsmith-obsidian-<version>.zip`
       to the release artifacts.
-- [ ] `docs/guides/editors/obsidian.md` exists.
+- [x] `docs/guides/editors/obsidian.md` exists.
       The linter-comparison page cites the new
       plugin in its Obsidian row.
-- [ ] `mdsmith check .` passes against the
+- [x] `mdsmith check .` passes against the
       updated `PLAN.md`.
 
 ## Non-Goals
