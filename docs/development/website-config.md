@@ -107,15 +107,22 @@ The field holds inline Markdown. Templates render it
 through Hugo's `.RenderString` so backticks become
 `<code>` and `[text](url)` becomes `<a>`.
 
-A Go test in [`template_summary_test.go`][tpl-test]
-walks `website/layouts/**/*.html`. The scanner parses
-each template with Go's `text/template/parse` package
-(in `SkipFuncCheck` mode so undefined Hugo helpers
-do not error) and walks the AST. Every reference to
-`.Params.summary` is classified by its node context.
-No regex tokenizing, no exemption list — comments,
-string literals, and CRLF line endings are handled
-by the parser.
+The classifier lives in
+[`internal/templatecheck`][tpl-check]. It exports
+`Scan(path, content)`. The function parses each
+template with Go's `text/template/parse` package.
+`SkipFuncCheck` mode is set so undefined Hugo
+helpers do not error. The walker then visits the AST
+and classifies each `.Params.summary` reference by
+node context.
+
+The integration test in
+[`internal/release/template_summary_test.go`][tpl-test]
+walks `website/layouts/**/*.html` and calls
+`templatecheck.Scan` on each file. No regex
+tokenising. No exemption list. Comments, string
+literals, and CRLF line endings are handled by the
+parser.
 
 Safe forms:
 
@@ -176,7 +183,8 @@ The rule applies only to `.Params.summary` today. If
 other front-matter scalars (e.g. `lead`, `eyebrow`,
 `tagline`) gain inline-Markdown content in the future,
 extend the AST classifier in
-[`template_summary_test.go`][tpl-test] to accept the
+[`internal/templatecheck`][tpl-check] to accept the
 new field name set.
 
+[tpl-check]: ../../internal/templatecheck/templatecheck.go
 [tpl-test]: ../../internal/release/template_summary_test.go
