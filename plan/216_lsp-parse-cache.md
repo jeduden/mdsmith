@@ -189,18 +189,17 @@ Cross-document parses are independent; the
    that runs the same corpus through `RunSource`
    with `ParseCache` nil and with `ParseCache`
    installed, asserting byte-equal diagnostics.
-4. Wire `s.parseCache` into the LSP `Server`
+4. [x] Wire `s.parseCache` into the LSP `Server`
    alongside `s.runCache`. Pass the document
-   version on the RunSource call (extend
-   RunSource signature, or introduce
-   `RunSourceWithVersion` to avoid churning the
-   existing surface — pick whichever keeps
-   non-LSP callers untouched).
-5. Add invalidation calls in `didChange`,
+   version on the RunSource call — introduced
+   `RunSourceWithVersion` so non-LSP callers
+   (stdin / mdsmith check) keep `RunSource`
+   unchanged.
+5. [x] Add invalidation calls in `didChange`,
    `didClose`, and `didChangeWatchedFiles`
    handlers next to the existing
    `runCache.Invalidate` calls.
-6. Add an integration test in `internal/lsp/`
+6. [x] Add an integration test in `internal/lsp/`
    that walks didOpen → runLint → didChange →
    runLint and asserts the second pass produces
    diagnostics matching the edited text (no stale

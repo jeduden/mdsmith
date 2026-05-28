@@ -86,6 +86,15 @@ type Server struct {
 	// dropped — the next runLint that reaches that path re-reads
 	// from disk.
 	runCache *lint.RunCache
+	// parseCache memoizes the parsed *lint.File for the active
+	// buffer, keyed by (workspace-relative path, textDocument
+	// version). runLint passes doc.version into RunSourceWithVersion;
+	// on hit the engine skips lint.NewFileFromSource. didChange,
+	// didClose, and didChangeWatchedFiles call Invalidate on the
+	// affected path's relative key so a stale entry never serves a
+	// post-edit lint. didOpen needs no drop — the version starts
+	// fresh and no entry exists yet.
+	parseCache *lint.ParseCache
 }
 
 // userSettings mirrors the subset of `mdsmith.*` VS Code keys the
@@ -167,6 +176,7 @@ func New(opts Options) *Server {
 		pendingResp:    make(map[string]chan rpcResponse),
 		diags:          make(map[string][]Diagnostic),
 		runCache:       lint.NewRunCache(),
+		parseCache:     lint.NewParseCache(),
 	}
 }
 
@@ -519,6 +529,7 @@ func (s *Server) handleDidChange(ctx context.Context, raw json.RawMessage) {
 	s.docs.set(p.TextDocument.URI, doc)
 	s.indexUpdate(doc.path, doc.text)
 	s.invalidateCachedRead(doc.path)
+	s.invalidateParseCache(doc.path)
 	s.scheduleLint(p.TextDocument.URI, lintTriggerChange)
 }
 
@@ -570,6 +581,10 @@ func (s *Server) handleDidClose(raw json.RawMessage) {
 	// watcher path will catch the deletion if it lands separately.
 	if doc != nil {
 		s.indexReloadFromDisk(doc.path)
+		// Drop the per-document parse cache entry: the buffer is
+		// gone, and a reopen will land at version 1 again so any
+		// surviving entry would only waste memory until evicted.
+		s.invalidateParseCache(doc.path)
 	}
 	// Clear cached diagnostics and squiggles on close.
 	s.diagsMu.Lock()
@@ -639,6 +654,15 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 		// the buffer, because the file the catalog rule would read
 		// next has changed underneath us.
 		s.invalidateCachedRead(path)
+		// The parse cache is keyed off the active buffer's
+		// workspace-relative path. When a watched file is also open
+		// in the editor, didChange has already (or will) bump the
+		// version — but if the on-disk edit lands while the buffer
+		// is open at the same content, the cached *File would still
+		// reflect the pre-disk-edit text. Invalidate eagerly to be
+		// safe; the next runLint pays one parse rather than serving
+		// stale results.
+		s.invalidateParseCache(path)
 		// Skip files the editor currently has open as a buffer — the
 		// watcher event would otherwise overwrite the live edits with
 		// the stale on-disk content, and symbol navigation would
@@ -660,6 +684,25 @@ func (s *Server) invalidateCachedRead(path string) {
 		return
 	}
 	s.runCache.Invalidate(path)
+}
+
+// invalidateParseCache drops the parse cache's entry for the
+// document at absPath. The parse cache is keyed by the workspace-
+// relative path RunSourceWithVersion sees, so this method resolves
+// absPath against the current workspace root before delegating to
+// the cache. A nil cache or empty path is a no-op so callers do
+// not need to guard their call sites.
+//
+// Used by didChange (edits bump the version, so the prior entry is
+// already dead; this drops it promptly), didClose (buffer gone),
+// and didChangeWatchedFiles (on-disk content changed underneath the
+// editor).
+func (s *Server) invalidateParseCache(absPath string) {
+	if s.parseCache == nil || absPath == "" {
+		return
+	}
+	_, _, root := s.snapshotConfig()
+	s.parseCache.Invalidate(workspaceRelative(root, absPath))
 }
 
 // openDocPaths returns the set of filesystem paths currently held as
@@ -903,8 +946,14 @@ func (s *Server) runLint(uri string) {
 		// call s.runCache.Invalidate so an edited file's cached read
 		// is dropped before the next pass.
 		RunCache: s.runCache,
+		// Per-document parse cache, keyed by (relPath, doc.version).
+		// On hit the engine skips lint.NewFileFromSource and reuses
+		// the cached *lint.File. didChange / didClose /
+		// didChangeWatchedFiles invalidate the entry via
+		// s.invalidateParseCache(relPath).
+		ParseCache: s.parseCache,
 	}
-	res := r.RunSource(relPath, doc.text)
+	res := r.RunSourceWithVersion(relPath, doc.text, doc.version)
 	// engine.RunSource is CPU-bound and can run for hundreds of
 	// milliseconds on large buffers. The client may have requested
 	// shutdown/exit while we were busy; if so, drop everything we
