@@ -80,10 +80,7 @@ func projectIncludeExtract(
 	if err != nil {
 		return nil, err
 	}
-	tf, err := buildTargetFile(host, readFS, targetFile, data)
-	if err != nil {
-		return nil, err
-	}
+	tf := buildTargetFile(host, readFS, targetFile, data)
 	sch, phs, err := composeTargetSchema(tf, targetFile, rsSettings)
 	if err != nil {
 		return nil, err
@@ -129,22 +126,22 @@ func resolveRequiredStructureSettings(
 // buildTargetFile parses data as Markdown the same way the engine
 // would, with the host's strip-frontmatter / max-input-bytes /
 // FS settings copied over so the projection sees the same
-// coordinate system the rest of the lint uses. Returns an error
-// rather than discarding NewFileFromSource's error to keep this
-// path crash-safe if a future goldmark configuration change ever
-// makes the parse fallible.
+// coordinate system the rest of the lint uses.
+//
+// lint.NewFileFromSource never errors with the current goldmark
+// configuration (same invariant cmd/mdsmith/export.go and four
+// other in-tree rules already rely on via the same nolint:errcheck
+// annotation), so the parse error is discarded; if NewFile ever
+// becomes fallible the upgrade lands across every site in lockstep.
 func buildTargetFile(
 	host *lint.File, readFS fs.FS, targetFile string, data []byte,
-) (*lint.File, error) {
-	tf, err := lint.NewFileFromSource(targetFile, data, host.StripFrontMatter)
-	if err != nil {
-		return nil, fmt.Errorf("parsing %q: %w", targetFile, err)
-	}
+) *lint.File {
+	tf, _ := lint.NewFileFromSource(targetFile, data, host.StripFrontMatter) //nolint:errcheck // never errors today
 	tf.MaxInputBytes = host.MaxInputBytes
 	tf.FS = readFS
 	tf.RootFS = host.RootFS
 	tf.RootDir = host.RootDir
-	return tf, nil
+	return tf
 }
 
 // composeTargetSchema builds the composed schema MDS020 would

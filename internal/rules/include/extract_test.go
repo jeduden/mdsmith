@@ -250,3 +250,51 @@ func TestFormatExtractValue_UnsupportedType(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported type")
 }
+
+// TestFormatExtractValue_ListOfMapsBubblesError makes sure the
+// per-item recursion propagates the inner map-leaf error with a
+// "list item N" prefix instead of silently swallowing it. Drives
+// the case where formatExtractValue recurses on a slice whose
+// entries are themselves rejected leaf types.
+func TestFormatExtractValue_ListOfMapsBubblesError(t *testing.T) {
+	_, err := formatExtractValue([]any{
+		"first",
+		map[string]any{"k": "v"},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "list item 1")
+	assert.Contains(t, err.Error(), "leaf is an object")
+}
+
+// TestProjectExtractValue_MapLeafBubblesError drives the
+// projectExtractValue error site that wraps formatExtractValue's
+// error with the resolvedFile + dottedPath context. We feed a
+// projector that returns a tree whose path resolves to a map leaf
+// — formatExtractValue then refuses to splice the map and the
+// wrapper makes the diagnostic actionable.
+func TestProjectExtractValue_MapLeafBubblesError(t *testing.T) {
+	prev := projectExtract
+	t.Cleanup(func() { SetExtractProjector(prev) })
+	SetExtractProjector(func(
+		_ *lint.File, _ fs.FS, _ string, _ []byte,
+	) (any, error) {
+		// "text" is a content key, so walkExtractPath unwraps via
+		// pickContentKey and hands formatExtractValue the inner map
+		// (which it then refuses).
+		return map[string]any{
+			"section": map[string]any{
+				"text": map[string]any{"a": 1, "b": 2},
+			},
+		}, nil
+	})
+
+	host, err := lint.NewFileFromSource("README.md", []byte("# x\n"), false)
+	require.NoError(t, err)
+
+	_, err = projectExtractValue(
+		host, fstest.MapFS{}, "docs/target.md",
+		[]byte(""), "section")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `extract "docs/target.md" at "section"`)
+	assert.Contains(t, err.Error(), "leaf is an object")
+}
