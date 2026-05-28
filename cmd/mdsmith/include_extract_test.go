@@ -7,6 +7,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rules/include"
 	"github.com/stretchr/testify/assert"
@@ -224,6 +225,142 @@ func TestProjectIncludeExtract_SchemaValidationDiagnosticBubbles(t *testing.T) {
 		"docs/brand/messaging.md", []byte(broken))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "does not conform")
+}
+
+// =====================================================================
+// resolveRequiredStructureSettings: defensive paths for future
+// configurations whose effective Rules map either lacks
+// required-structure entirely or carries it as disabled.
+// =====================================================================
+
+// TestResolveRequiredStructureSettings_RuleMissingFromEffective
+// constructs a Config whose kind body carries no Rules entry at all,
+// so ResolveFile's effective rule map omits "required-structure".
+// Today, the in-tree config loader registers a default for every
+// known rule, but if a future loader change ever pruned undeclared
+// rules we want the helper to keep failing loudly instead of feeding
+// a nil rule into composeTargetSchema.
+func TestResolveRequiredStructureSettings_RuleMissingFromEffective(t *testing.T) {
+	cfg := &config.Config{
+		Kinds: map[string]config.KindBody{
+			"bare": {},
+		},
+		KindAssignment: []config.KindAssignmentEntry{
+			{Glob: []string{"docs/brand/messaging.md"}, Kinds: []string{"bare"}},
+		},
+	}
+	_, err := resolveRequiredStructureSettings(
+		cfg, "docs/brand/messaging.md", nil, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "required-structure is disabled")
+}
+
+// TestResolveRequiredStructureSettings_RuleExplicitlyDisabled covers
+// the second half of the `!ok || !Enabled` branch: the rule resolves
+// but its Final.Enabled is false. Reachable today when a kind body
+// declares `rules.required-structure: false` and no inline schema is
+// present to flip the implicit enable. The helper must refuse rather
+// than hand a disabled rule to ComposedSchema.
+func TestResolveRequiredStructureSettings_RuleExplicitlyDisabled(t *testing.T) {
+	cfg := &config.Config{
+		Kinds: map[string]config.KindBody{
+			"bare": {
+				Rules: map[string]config.RuleCfg{
+					"required-structure": {Enabled: false},
+				},
+			},
+		},
+		KindAssignment: []config.KindAssignmentEntry{
+			{Glob: []string{"docs/brand/messaging.md"}, Kinds: []string{"bare"}},
+		},
+	}
+	_, err := resolveRequiredStructureSettings(
+		cfg, "docs/brand/messaging.md", nil, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "required-structure is disabled")
+}
+
+// =====================================================================
+// composeTargetSchema: error paths for malformed rsSettings that
+// might leak past config.Load in a future regression.
+// =====================================================================
+
+// TestComposeTargetSchema_ApplySettingsError exercises the
+// rsRule.ApplySettings(rsSettings) error branch by passing a
+// path-patterns value of the wrong type. parsePathPatterns rejects
+// non-list / non-string-list inputs, so the helper bubbles a
+// "loading schema config" error rather than silently composing an
+// empty schema. Today config.Load type-checks this; a future loader
+// regression that ever forwarded a raw int would still fail loudly.
+func TestComposeTargetSchema_ApplySettingsError(t *testing.T) {
+	tf, err := lint.NewFileFromSource("docs/x.md", []byte("# x\n"), false)
+	require.NoError(t, err)
+
+	_, err = composeTargetSchema(tf, "docs/x.md", map[string]any{
+		"path-patterns": 42, // not a list-of-strings
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "loading schema config")
+}
+
+// TestComposeTargetSchema_ComposedSchemaError exercises the
+// rsRule.ComposedSchema(tf) error branch. We hand the rule a
+// schema-file reference that ApplySettings accepts at the string
+// level but ComposedSchema rejects when it tries to read the file
+// from the lint.File's FS — the file does not exist. Defensive
+// against a future change that ever forwards an unresolved schema
+// reference past the loader's existence check.
+func TestComposeTargetSchema_ComposedSchemaError(t *testing.T) {
+	tf, err := lint.NewFileFromSource("docs/x.md", []byte("# x\n"), false)
+	require.NoError(t, err)
+	tf.FS = fstest.MapFS{} // no schema file present
+
+	_, err = composeTargetSchema(tf, "docs/x.md", map[string]any{
+		"schema": "schemas/missing.md",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "composing schema")
+}
+
+// =====================================================================
+// projectIncludeExtract: extract.Extract diag bubbling.
+// =====================================================================
+
+// TestProjectIncludeExtract_ExtractCollisionBubbles drives the
+// "projection failed" branch using a duplicate-table-column-header
+// case: schema.Validate today permits the duplicate column heading
+// because table-shape validation only checks the section's content
+// kind, but extract.Extract refuses because the row-object keys
+// would collide silently.
+func TestProjectIncludeExtract_ExtractCollisionBubbles(t *testing.T) {
+	cfg := `kinds:
+  table-kind:
+    schema:
+      sections:
+        - heading: null
+        - heading: { regex: '^Table$' }
+          content:
+            - { kind: table, required: true }
+kind-assignment:
+  - glob: ["docs/x.md"]
+    kinds: [table-kind]
+`
+	dir := chdirToConfig(t, cfg)
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
+
+	// Table with two columns named "Name" — extract.Extract flags
+	// this as a duplicate-column-header collision because row-object
+	// keys would silently overwrite.
+	doc := "# x\n\n## Table\n\n| Name | Name |\n|------|------|\n| a    | b    |\n"
+
+	host, err := lint.NewFileFromSource("README.md", []byte("# x\n"), false)
+	require.NoError(t, err)
+
+	_, err = projectIncludeExtract(
+		cfgPath, host, dirFSForInclude(dir),
+		"docs/x.md", []byte(doc))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "projection failed")
 }
 
 // =====================================================================
