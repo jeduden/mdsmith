@@ -231,7 +231,7 @@ Mention the artifact in [github-releases.md][gh].
 3. [x] Implement `binary.ts`. Load the `@mdsmith/cli`
    shim. Fall back to setting, then `$PATH`. Match
    the test surface of the VS Code module.
-4. Implement `diagnostics.ts`. Add the CM6
+4. [x] Implement `diagnostics.ts`. Add the CM6
    `StateField`, the effect type, and a
    `hoverTooltip` provider rendering code, message,
    and a Fix link.

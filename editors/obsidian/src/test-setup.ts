@@ -12,6 +12,143 @@
 
 import { mock } from "bun:test";
 
+// Minimal DOM stub for renderTooltip and any future component that
+// builds DOM nodes. The plugin's UI runs in the Electron renderer
+// where document is the real browser DOM, but bun's default test
+// runtime has no DOM. Implement just the surface our code touches:
+// createElement (returns a node with className, textContent, append-
+// Child, querySelector, dispatchEvent), and addEventListener +
+// click + querySelector resolution. This is dramatically smaller
+// than pulling in jsdom or happy-dom for a handful of unit tests.
+
+interface FakeEvent {
+  defaultPrevented: boolean;
+  preventDefault(): void;
+}
+
+interface FakeNode {
+  nodeName: string;
+  className: string;
+  textContent: string;
+  children: FakeNode[];
+  parent: FakeNode | null;
+  attrs: Record<string, string>;
+  listeners: Record<string, Array<(e: FakeEvent) => void>>;
+}
+
+function makeNode(name: string): FakeNode {
+  return {
+    nodeName: name.toUpperCase(),
+    className: "",
+    textContent: "",
+    children: [],
+    parent: null,
+    attrs: {},
+    listeners: {},
+  };
+}
+
+function walk(node: FakeNode): FakeNode[] {
+  const out: FakeNode[] = [];
+  const stack = [...node.children];
+  while (stack.length > 0) {
+    const n = stack.shift() as FakeNode;
+    out.push(n);
+    stack.unshift(...n.children);
+  }
+  return out;
+}
+
+function decorate(node: FakeNode): FakeNode & {
+  appendChild(child: FakeNode): FakeNode;
+  addEventListener(name: string, cb: (e: FakeEvent) => void): void;
+  click(): void;
+  querySelector(sel: string): (FakeNode & { click(): void }) | null;
+  dispatchEvent(name: string): void;
+  readonly textContent: string;
+} {
+  const d = node as unknown as FakeNode & {
+    appendChild(child: FakeNode): FakeNode;
+    addEventListener(name: string, cb: (e: FakeEvent) => void): void;
+    click(): void;
+    querySelector(sel: string): (FakeNode & { click(): void }) | null;
+    dispatchEvent(name: string): void;
+  };
+  // Replace the prototype textContent (a plain string set/get) with
+  // a getter that returns the node's own text plus every descendant's
+  // text concatenated, matching DOM's read behavior. Assignment still
+  // hits the underlying field so `node.textContent = "x"` works.
+  const ownText = { value: "" };
+  // Stash the previously-set value, then redefine the property.
+  ownText.value = node.textContent ?? "";
+  node.textContent = ""; // clear the plain field slot
+  Object.defineProperty(node, "textContent", {
+    get() {
+      const parts: string[] = [ownText.value];
+      for (const c of walk(node)) {
+        const v = (c as unknown as { _ownText?: { value: string } })._ownText;
+        if (v) parts.push(v.value);
+      }
+      return parts.join("");
+    },
+    set(v: string) {
+      ownText.value = String(v ?? "");
+    },
+    configurable: true,
+  });
+  (node as unknown as { _ownText: { value: string } })._ownText = ownText;
+  d.appendChild = (child: FakeNode) => {
+    child.parent = node;
+    node.children.push(child);
+    return child;
+  };
+  d.addEventListener = (name: string, cb: (e: FakeEvent) => void) => {
+    (node.listeners[name] ??= []).push(cb);
+  };
+  d.click = () => {
+    const list = node.listeners["click"] ?? [];
+    const ev: FakeEvent = {
+      defaultPrevented: false,
+      preventDefault() {
+        this.defaultPrevented = true;
+      },
+    };
+    for (const l of list) l(ev);
+  };
+  d.dispatchEvent = (name: string) => {
+    const list = node.listeners[name] ?? [];
+    const ev: FakeEvent = {
+      defaultPrevented: false,
+      preventDefault() {
+        this.defaultPrevented = true;
+      },
+    };
+    for (const l of list) l(ev);
+  };
+  d.querySelector = (sel: string) => {
+    // Support only ".class" selectors — the only form our tests use.
+    if (!sel.startsWith(".")) return null;
+    const cls = sel.slice(1);
+    for (const child of walk(node)) {
+      const classes = child.className.split(/\s+/);
+      if (classes.includes(cls)) {
+        return decorate(child);
+      }
+    }
+    return null;
+  };
+  return d;
+}
+
+const docStub = {
+  createElement(name: string) {
+    return decorate(makeNode(name));
+  },
+};
+
+(globalThis as unknown as { document: typeof docStub }).document = docStub;
+(globalThis as unknown as { HTMLElement: unknown }).HTMLElement = class {};
+
 // Plugin: Obsidian's base class. Test subjects extend it and call
 // `addCommand`, `registerEvent`, `loadData`, `saveData`, etc. The
 // stub mirrors that shape so a `new MdsmithPlugin()` works in unit
