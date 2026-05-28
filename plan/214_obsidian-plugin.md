@@ -249,7 +249,7 @@ Mention the artifact in [github-releases.md][gh].
    `onunload` cleans up.
 8. [x] Add `styles.css` for severity underlines and
    tooltip styling.
-9. Add a `.github/workflows/` step that builds the
+9. [x] Add a `.github/workflows/` step that builds the
    plugin and uploads the zip as a release
    artifact, mirroring the existing `vscode` job.
 10. Write `docs/guides/editors/obsidian.md`.

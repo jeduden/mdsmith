@@ -256,6 +256,89 @@ jobs:
           name: mdsmith-vscode-extension
           path: editors/vscode/mdsmith-*.vsix
 
+  obsidian:
+    # Mirrors the vscode job: depend on `build` for the binaries,
+    # reuse `mdsmith-release build-npm` to assemble the per-platform
+    # tree, then point editors/obsidian/build.ts at it via
+    # MDSMITH_OBSIDIAN_PLATFORM_DIR. Output is one zip per release,
+    # attached as both a job artifact and (via the `release` job's
+    # `mdsmith-*` glob) a release asset.
+    needs: [build]
+    runs-on: ubuntu-latest
+    env:
+      MDSMITH_OBSIDIAN_PLATFORM_DIR: ${{ github.workspace }}/npm/dist
+    if: *release_repo_trigger_ok
+    # No publisher tokens for Obsidian — the chosen channel is GitHub
+    # Releases (see plan/214). The `release` environment is still
+    # required so reviewer rules apply to every release-producing job.
+    environment: release
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-bun
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Stamp tracked manifests with the tag
+        env:
+          VERSION: ${{ env.VERSION }}
+        # Stamp rewrites editors/obsidian/package.json (the @mdsmith/
+        # cli optionalDependency the release-time `bun install` chases)
+        # and editors/obsidian/manifest.json (the version Obsidian's
+        # community catalog UI reads).
+        run: go run ./cmd/mdsmith-release stamp "${VERSION#v}"
+      - name: Download release artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Build platform packages
+        # Reuse the npm generator so the Obsidian zip carries the exact
+        # same per-platform binaries the npm and .vsix channels ship.
+        # Output lands in npm/dist/<target>/bin/, which
+        # MDSMITH_OBSIDIAN_PLATFORM_DIR points build.ts at.
+        run: go run ./cmd/mdsmith-release build-npm artifacts npm/dist
+      - name: Install plugin dependencies
+        working-directory: editors/obsidian
+        # `--ignore-scripts` blocks postinstall/preinstall hooks from
+        # every dep in the resolved tree (same threat model as the
+        # vscode job). No --frozen-lockfile because the Stamp step
+        # just rewrote the @mdsmith/cli optionalDependency.
+        run: bun install --ignore-scripts
+      - name: Run plugin unit tests
+        working-directory: editors/obsidian
+        run: bun test
+      - name: Compile plugin
+        working-directory: editors/obsidian
+        run: bun run build.ts --production
+      - name: Package zip
+        env:
+          VERSION: ${{ env.VERSION }}
+        working-directory: editors/obsidian
+        run: |
+          ver="${VERSION#v}"
+          # Stage the three files Obsidian loads plus the bundled
+          # binaries under a versioned top-level directory so the
+          # extracted layout matches what the docs tell users to drop
+          # into <vault>/.obsidian/plugins/mdsmith/. The release zip
+          # gets the `mdsmith-obsidian-<ver>.zip` name so the `release`
+          # job's `mdsmith-*` glob picks it up alongside the binaries
+          # and the .vsix.
+          staging="mdsmith-${ver}"
+          rm -rf "$staging" "mdsmith-obsidian-${ver}.zip"
+          mkdir -p "$staging"
+          cp dist/main.js dist/manifest.json dist/styles.css "$staging/"
+          if [ -d dist/cli ]; then
+            cp -R dist/cli "$staging/cli"
+          fi
+          (cd "$staging" && zip -r "../mdsmith-obsidian-${ver}.zip" .)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mdsmith-obsidian-plugin
+          path: editors/obsidian/mdsmith-obsidian-*.zip
+
   npm:
     needs: [build]
     runs-on: ubuntu-latest
@@ -388,7 +471,7 @@ jobs:
           packages-dir: python/dist
 
   release:
-    needs: [build, vscode]
+    needs: [build, vscode, obsidian]
     runs-on: ubuntu-latest
     # See docs/development/release.md for the rationale on `if:`,
     # `environment:`, and the OIDC + attestations permission set.

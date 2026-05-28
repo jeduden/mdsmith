@@ -77,6 +77,15 @@ type Manifest struct {
 func (t *Toolkit) TrackedManifests(root string) []Manifest {
 	out := []Manifest{
 		{filepath.Join(root, "editors", "vscode", "package.json"), ManifestJSON, []string{"@mdsmith/cli"}},
+		// The Obsidian plugin pins @mdsmith/cli the same way the VS
+		// Code extension does so the release-time `bun install` pulls
+		// the just-published binary into node_modules and build.ts
+		// stages it under dist/cli/. The plugin's manifest.json — the
+		// file Obsidian itself reads — carries the version stamp the
+		// catalog UI displays; Stamp rewrites it through the standard
+		// JSON regex.
+		{filepath.Join(root, "editors", "obsidian", "package.json"), ManifestJSON, []string{"@mdsmith/cli"}},
+		{filepath.Join(root, "editors", "obsidian", "manifest.json"), ManifestJSON, nil},
 		{filepath.Join(root, "npm", "mdsmith", "package.json"), ManifestJSON, PlatformPackages},
 	}
 	platformsDir := filepath.Join(root, "npm", "platforms")

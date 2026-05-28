@@ -330,6 +330,19 @@ func writeFixture(t *testing.T, root string) {
   }
 }
 `,
+		"editors/obsidian/package.json": `{
+  "name": "mdsmith-obsidian",
+  "version": "0.0.0-dev",
+  "optionalDependencies": {
+    "@mdsmith/cli": "0.0.0-dev"
+  }
+}
+`,
+		"editors/obsidian/manifest.json": `{
+  "id": "mdsmith",
+  "version": "0.0.0-dev"
+}
+`,
 		"npm/mdsmith/package.json": `{
   "name": "@mdsmith/cli",
   "version": "0.0.0-dev",
