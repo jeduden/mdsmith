@@ -1373,3 +1373,24 @@ func TestValidateIndex_AbsolutePathSurfaces(t *testing.T) {
 	require.Len(t, diags, 1)
 	assert.Contains(t, diags[0].Message, "must be relative")
 }
+
+// TestCrossRefRECache_BoundsGrowth mirrors TestMatcherCache_BoundsGrowth:
+// the bounded cross-reference regex cache must not exceed crossRefRECacheCap
+// entries even when filled with more unique patterns than the cap.
+func TestCrossRefRECache_BoundsGrowth(t *testing.T) {
+	crossRefRECacheMu.Lock()
+	crossRefRECacheMap = make(map[string]*regexp.Regexp, crossRefRECacheCap)
+	crossRefRECacheLen = 0
+	crossRefRECacheMu.Unlock()
+
+	for i := 0; i < crossRefRECacheCap+5; i++ {
+		_, err := compileCrossRefRE(fmt.Sprintf("pattern-%d", i))
+		require.NoError(t, err)
+	}
+
+	crossRefRECacheMu.Lock()
+	size := crossRefRECacheLen
+	crossRefRECacheMu.Unlock()
+	assert.LessOrEqual(t, size, crossRefRECacheCap,
+		"cross-reference regex cache must stay within the configured cap")
+}

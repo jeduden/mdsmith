@@ -11,25 +11,45 @@ import (
 	"github.com/yuin/goldmark/ast"
 )
 
-// crossRefRECache caches compiled cross-reference regexes by pattern string.
-// Cross-reference patterns come from schema config and are stable for the
-// process lifetime, so a process-scoped cache avoids recompiling the same NFA
-// once per file.
-var crossRefRECache sync.Map // map[string]*regexp.Regexp
+// crossRefRECacheCap bounds the process-scoped compiled cross-reference regex
+// cache, matching the matcherCacheCap policy in matcher.go. When the cap is
+// reached, the map is reset — a deliberate eviction that trades recompilation
+// on the next hit for a bounded memory footprint in long-running LSP sessions.
+const crossRefRECacheCap = 1024
+
+var (
+	crossRefRECacheMu  sync.Mutex
+	crossRefRECacheMap = make(map[string]*regexp.Regexp, crossRefRECacheCap)
+	crossRefRECacheLen int
+)
 
 // compileCrossRefRE returns a cached *regexp.Regexp for pattern, compiling it
 // on the first successful call. Failed compilations are not cached; every call
 // with an invalid pattern string recompiles and returns the error.
 func compileCrossRefRE(pattern string) (*regexp.Regexp, error) {
-	if v, ok := crossRefRECache.Load(pattern); ok {
-		return v.(*regexp.Regexp), nil
+	crossRefRECacheMu.Lock()
+	if v, ok := crossRefRECacheMap[pattern]; ok {
+		crossRefRECacheMu.Unlock()
+		return v, nil
 	}
+	crossRefRECacheMu.Unlock()
+
 	re, err := regexp.Compile(pattern)
 	if err != nil {
 		return nil, err
 	}
-	actual, _ := crossRefRECache.LoadOrStore(pattern, re)
-	return actual.(*regexp.Regexp), nil
+
+	crossRefRECacheMu.Lock()
+	if crossRefRECacheLen >= crossRefRECacheCap {
+		crossRefRECacheMap = make(map[string]*regexp.Regexp, crossRefRECacheCap)
+		crossRefRECacheLen = 0
+	}
+	if _, exists := crossRefRECacheMap[pattern]; !exists {
+		crossRefRECacheLen++
+	}
+	crossRefRECacheMap[pattern] = re
+	crossRefRECacheMu.Unlock()
+	return re, nil
 }
 
 // ValidateCrossReferences walks the document's inline text nodes and,

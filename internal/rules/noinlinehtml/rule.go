@@ -160,7 +160,7 @@ func (r *Rule) cachedAllowSet(f *lint.File) map[string]bool {
 }
 
 func (r *Rule) diag(f *lint.File, offset int, display string) lint.Diagnostic {
-	line, col := lineColOfOffset(f.Source, offset)
+	line, col := f.LineOfOffset(offset), f.ColumnOfOffset(offset)
 	return lint.Diagnostic{
 		File:     f.Path,
 		Line:     line,
@@ -172,19 +172,6 @@ func (r *Rule) diag(f *lint.File, offset int, display string) lint.Diagnostic {
 	}
 }
 
-// lineColOfOffset converts a byte offset in source to 1-based line and column numbers.
-func lineColOfOffset(source []byte, offset int) (line, col int) {
-	line = 1
-	lineStart := 0
-	for i := 0; i < offset && i < len(source); i++ {
-		if source[i] == '\n' {
-			line++
-			lineStart = i + 1
-		}
-	}
-	col = offset - lineStart + 1
-	return
-}
 
 var tagNameRe = regexp.MustCompile(`(?i)</?([a-zA-Z][a-zA-Z0-9-]*)`)
 var closingTagRe = regexp.MustCompile(`(?i)^<\s*/[a-zA-Z]`)
