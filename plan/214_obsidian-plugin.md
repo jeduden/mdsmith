@@ -228,7 +228,7 @@ Mention the artifact in [github-releases.md][gh].
    request correlation, notification fan-out, and
    the `initialize`/`shutdown` cycle. Unit-test
    against an in-process `Duplex`.
-3. Implement `binary.ts`. Load the `@mdsmith/cli`
+3. [x] Implement `binary.ts`. Load the `@mdsmith/cli`
    shim. Fall back to setting, then `$PATH`. Match
    the test surface of the VS Code module.
 4. Implement `diagnostics.ts`. Add the CM6
