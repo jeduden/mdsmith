@@ -34,14 +34,13 @@ they answer.
   pattern matching. Consumed today only
   by `files.go` inside `internal/lint`.
 - `limits.go` — `ReadFileLimited` and
-  `DefaultMaxInputBytes`. Already
-  imported by 6 files outside
-  `internal/lint` (`cmd/mdsmith/main.go`,
-  `mergedriver.go`, `extract.go`,
-  `kinds.go`, `rename.go`,
-  `internal/engine`). It answers "read a
-  file up to a byte cap" — a general I/O
-  concern, not a lint concern.
+  `DefaultMaxInputBytes`. Imported by
+  17+ files across `cmd/mdsmith/` and
+  `internal/` (engine, fix, githooks,
+  lsp, metrics, rules, schema, …). It
+  answers "read a file up to a byte cap"
+  — a general I/O concern, not a lint
+  concern.
 - `pi.go` + `pi_parser.go` — goldmark
   processing-instruction block parser.
   Consumed by `file.go` and
@@ -61,8 +60,8 @@ they answer.
    Move `limits.go` contents there.
    Write `TestReadLimited` and
    `TestDefaultMaxInputBytes` unit
-   tests. Update all 6 external import
-   sites.
+   tests. Update all callers across
+   `cmd/` and `internal/`.
 3. Create `internal/pi` package.
    Move `pi.go` and `pi_parser.go`
    contents there. Write
@@ -80,12 +79,14 @@ they answer.
   `TestNewPatternSet` and
   `TestPatternSet_Match` unit tests.
 - [ ] `internal/readlimit` package with
-  `TestReadLimited` unit test.
+  `TestReadLimited` and
+  `TestDefaultMaxInputBytes` unit tests.
   `ReadFileLimited` and
   `DefaultMaxInputBytes` removed from
   `internal/lint`.
 - [ ] `internal/pi` package with
-  `TestPI_Parse` unit test.
+  `TestPI_Parse` and
+  `TestPIBlockParser_*` unit tests.
   `pi.go` and `pi_parser.go` removed
   from `internal/lint`.
 - [ ] `internal/lint` contains only
