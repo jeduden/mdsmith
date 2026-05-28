@@ -101,6 +101,14 @@ Standard style rules stay at their defaults so an
 Obsidian vault behaves like a GFM project unless the
 team layers more rules on top.
 
+Pair this convention with the mdsmith Obsidian
+plugin (see the [install guide][obsidian-guide]).
+The plugin spawns `mdsmith lsp` on desktop. It
+renders the diagnostics inline in Obsidian's
+CodeMirror 6 editor.
+
+[obsidian-guide]: ../guides/editors/obsidian.md
+
 ### `plain`
 
 Markdown that survives `cat`. The rendered output

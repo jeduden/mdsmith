@@ -252,11 +252,11 @@ Mention the artifact in [github-releases.md][gh].
 9. [x] Add a `.github/workflows/` step that builds the
    plugin and uploads the zip as a release
    artifact, mirroring the existing `vscode` job.
-10. Write `docs/guides/editors/obsidian.md`.
+10. [x] Write `docs/guides/editors/obsidian.md`.
     Update the conventions reference, the
     linter-comparison page, and the GitHub
     Releases page.
-11. Run `mdsmith fix .` and confirm `mdsmith check
+11. [x] Run `mdsmith fix .` and confirm `mdsmith check
     .` passes against the updated `PLAN.md`.
 
 ## Acceptance Criteria

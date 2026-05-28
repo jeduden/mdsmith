@@ -218,14 +218,22 @@ the same `.md` files.
 | ------------------ | --------------------------------- | ------------------------------------ |
 | Purpose            | Note-taking editor                | Linter / fixer                       |
 | Linting            | Community plugin only             | Built-in, CI-ready                   |
+| Editor integration | First-party plugin (this repo)    | LSP via the bundled plugin           |
 | Wikilinks          | Native (`[[Page]]`)               | Validated by [MDS027][mds027]        |
 | Callouts           | Native (`> [!note]`)              | Validated by [MDS067][mds067]        |
 | Front matter       | YAML or Dataview inline (`key::`) | YAML only (inline not recognized)    |
 | Agent friendliness | Editor-centric, manual saves      | Direct file access, no editor needed |
 
-Pin `convention: obsidian` (see the
-[conventions reference][conventions]) to enable both
-checks with one config line.
+The mdsmith Obsidian plugin
+([install guide][obsidian-guide]) ships as a zip on
+each GitHub release. It spawns `mdsmith lsp` over
+stdio. It renders diagnostics inline in Obsidian's
+CodeMirror 6 editor. Pair the plugin with
+`convention: obsidian` (see the
+[conventions reference][conventions]) to enable
+the Obsidian ruleset.
+
+[obsidian-guide]: ../guides/editors/obsidian.md
 
 The wikilink check resolves `[[Page]]` against every
 workspace file by stem. Matching is case-insensitive
