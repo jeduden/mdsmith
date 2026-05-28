@@ -10,8 +10,19 @@
          then `description` if a page sets one, falling back to
          the site-wide description. Without the summary branch
          every page would inherit the site-level description
-         because the kind schema standardizes on `summary`. */ -}}
-  <meta name="description" content="{{ with .Description }}{{ . }}{{ else with .Params.summary }}{{ . }}{{ else with .Params.description }}{{ . }}{{ else }}{{ .Site.Params.description }}{{ end }}">
+         because the kind schema standardizes on `summary`.
+
+         Each source holds inline Markdown — `code spans`, links —
+         so every branch renders through .RenderString then strips
+         the resulting HTML with plainify. Meta-attribute content
+         cannot carry HTML; without the pipeline backticks would
+         ship verbatim and SEO snippets would show literal Markdown
+         punctuation. The chain uses `if`/`else if` rather than
+         `with` so each branch references its source field
+         explicitly — the template_summary_test scanner can verify
+         each branch passes the value through .RenderString without
+         the dot-rebinding ambiguity `with` would introduce. */ -}}
+  <meta name="description" content="{{ if .Description }}{{ $.RenderString (dict "display" "inline") .Description | plainify }}{{ else if .Params.summary }}{{ $.RenderString (dict "display" "inline") .Params.summary | plainify }}{{ else if .Params.description }}{{ $.RenderString (dict "display" "inline") .Params.description | plainify }}{{ else }}{{ $.RenderString (dict "display" "inline") .Site.Params.description | plainify }}{{ end }}">
   <link rel="icon" type="image/svg+xml" href="{{ "img/logo-mark.svg" | relURL }}">
   {{- /* Mark the document as JS-capable before CSS applies so
          the mobile docs-nav collapse is scoped to `html.js`.
