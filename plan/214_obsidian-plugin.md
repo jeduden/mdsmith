@@ -18,9 +18,10 @@ depends-on: [121, 168]
 
 Replaced by two plans:
 
-- [Plan 215](215_obsidian-wasm-runtime.md) —
-  the mdsmith WASM build target and the
-  `Workspace` abstraction.
+- [Plan 215](215_engine-api-wasm.md) — the
+  mdsmith public engine API
+  (`pkg/mdsmith.Session`) and its WASM
+  bindings.
 - [Plan 217](217_obsidian-plugin.md) — the
   Obsidian plugin shell that consumes the
   WASM runtime.

@@ -24,9 +24,11 @@ link applies the matching quick-fix.
 Fix-on-save runs `fixAll` on the active
 buffer.
 
-[Plan 215](215_obsidian-wasm-runtime.md)
-provides the lint engine. This plan ships
-the plugin shell that hosts it.
+[Plan 215](215_engine-api-wasm.md) provides
+the lint engine — `pkg/mdsmith.Session` in Go,
+mirrored as `globalThis.mdsmith.createSession`
+in WASM. This plan ships the plugin shell that
+hosts a session.
 
 ## Background
 
@@ -294,6 +296,6 @@ artifact.
 
 ## See also
 
-- [Plan 215: WASM build target](215_obsidian-wasm-runtime.md)
+- [Plan 215: engine API and WASM bindings](215_engine-api-wasm.md)
 - [Plan 168: Obsidian convention](168_obsidian-markdown-support.md)
 - [Plan 214: hand-rolled LSP bridge (⛔)](214_obsidian-plugin.md)
