@@ -48,7 +48,7 @@ only `internal/mdtext` may import it.
 ## Acceptance Criteria
 
 - [ ] `internal/punkt` appears in the SRP
-  table in `go.md`, after
+  bullet list in `go.md`, after
   `internal/mdtext`.
 - [ ] Entry states what it answers and
   that only `internal/mdtext` imports it.
