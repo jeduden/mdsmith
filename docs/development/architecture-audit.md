@@ -302,6 +302,6 @@ sentence-tokenizer fork into
 package answers "segment text into
 sentences". The SRP bullet list in
 go.md lists the core packages but omits
-helper. [plan/218][218] adds it.
+this helper. [plan/218][218] adds it.
 
 [218]: ../../plan/218_arch-fix-punkt-layering.md

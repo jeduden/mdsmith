@@ -34,8 +34,8 @@ they answer.
   pattern matching. Consumed by `files.go`
   inside `internal/lint`, plus five
   external callers: `cmd/mdsmith/export.go`,
-  `internal/discovery`, `internal/engine`,
-  `internal/fix`, and
+  `internal/discovery/discovery.go`,
+  `internal/engine`, `internal/fix`, and
   `internal/rules/catalog`.
 - `limits.go` — `ReadFileLimited`,
   `ReadFSFileLimited`, and
@@ -48,7 +48,7 @@ they answer.
   concern.
 - `pi.go` + `pi_parser.go` — goldmark
   processing-instruction block parser.
-  Consumed by `file.go` inside
+  Consumed by `codeblocks.go` inside
   `internal/lint`, and directly by
   `internal/schema` (two files),
   `internal/archetype`, `internal/lsp`,
@@ -65,7 +65,7 @@ they answer.
    Update `internal/lint/files.go` plus
    five external callers:
    `cmd/mdsmith/export.go`,
-   `internal/discovery`,
+   `internal/discovery/discovery.go`,
    `internal/engine/runner.go`,
    `internal/fix/fix.go`, and
    `internal/rules/catalog/rule.go`.
@@ -82,8 +82,9 @@ they answer.
    contents there. Write
    `TestPI_Parse` and
    `TestPIBlockParser_*` unit tests.
-   Update `internal/lint/file.go` and
-   all direct callers: `internal/schema`
+   Update `internal/lint/codeblocks.go`
+   and all direct callers:
+   `internal/schema`
    (two files), `internal/archetype`,
    `internal/lsp`, `internal/export`,
    `internal/linkgraph`, `internal/index`,
