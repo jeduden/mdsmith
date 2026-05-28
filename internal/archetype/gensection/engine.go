@@ -120,9 +120,6 @@ func ExtractContent(f *lint.File, mp MarkerPair) string {
 		buf.Write(f.Lines[i])
 		buf.WriteByte('\n')
 	}
-	if buf.Len() == 0 {
-		return ""
-	}
 	return buf.String()
 }
 
