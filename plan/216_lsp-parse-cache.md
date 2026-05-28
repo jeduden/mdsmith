@@ -1,7 +1,7 @@
 ---
 id: 216
 title: Per-document parse cache for the LSP, keyed by version
-status: "🔲"
+status: "🔳"
 model: opus
 depends-on: [198]
 summary: >-
@@ -174,7 +174,7 @@ Cross-document parses are independent; the
 
 ## Tasks
 
-1. Add `internal/lint/parsecache.go` with the
+1. [x] Add `internal/lint/parsecache.go` with the
    struct, methods, and unit tests covering Get
    miss, hit, version-mismatch miss, Invalidate,
    and the stale-Put rejection (Put with version
