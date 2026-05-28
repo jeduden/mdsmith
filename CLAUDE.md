@@ -24,6 +24,7 @@ row: "- [{summary}]({filename})"
 - [How the placeholder vocabulary lets rules treat template tokens as opaque rather than flagging them as content violations.](docs/background/concepts/placeholder-grammar.md)
 - [The mental model behind mdsmith — how flavor, rule, convention, and kind relate, how generated sections work, the placeholder grammar, and how it compares to other Markdown linters.](docs/background/index.md)
 - [How mdsmith compares to other Markdown linters.](docs/background/markdown-linters.md)
+- [How to wire a new peer Markdown linter into mdsmith's comparison docs, the per-rule coverage matrix, and the benchmark page.](docs/development/add-peer-linter.md)
 - [Running log of SOLID and clean-architecture findings on origin/main. The solid-architecture skill (audit mode) appends here; blockers are also filed as plans.](docs/development/architecture-audit.md)
 - [Checklist for sweeping origin/main for SOLID and boundary violations. Records findings in the audit log; schedules blockers as new plan files.](docs/development/architecture/audit-checklist.md)
 - [External-surface contracts: LSP, CLI, .mdsmith.yml, generated markers, plugin manifest, distribution shims. Public APIs.](docs/development/architecture/cross-system.md)
@@ -171,6 +172,7 @@ glob:
 sort: title
 row: "- [{title}](docs/development/{filename})"
 ?>
+- [Adding a peer linter](docs/development/add-peer-linter.md)
 - [Architecture audit log](docs/development/architecture-audit.md)
 - [Architecture principles](docs/development/architecture/index.md)
 - [Coverage Gate](docs/development/coverage.md)

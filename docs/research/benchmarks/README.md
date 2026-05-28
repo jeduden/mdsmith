@@ -162,6 +162,31 @@ Pick mado or rumdl for raw markdownlint-rule throughput;
 pick mdsmith when the cross-file graph, readability budgets,
 and self-maintaining sections are the point.
 
+### Why obsidian-linter is not benchmarked
+
+obsidian-linter is an Obsidian plugin, not a static
+CLI binary. Its core linter (`src/rules-runner.ts`)
+takes a markdown string and returns a transformed
+string, so a headless Node wrapper is buildable.
+Two reasons it stays out of the table:
+
+- Every other tool here is an ahead-of-time
+  binary. A bundled Node entrypoint would compare
+  cold-start plus esbuild output against AOT
+  binaries — apples to oranges, and the asymmetry
+  would dominate the number.
+- All 65 obsidian-linter rules ship with
+  `enabled: false` (the plugin's `BooleanOption`
+  default), so "obsidian-linter on its defaults"
+  is a no-op run. The benchmark has no neutral
+  rule set to point it at.
+
+The rule-by-rule mapping against the other linters
+lives in the [peer-linter coverage matrix][mdcov]
+instead.
+
+[mdcov]: ../markdownlint-coverage/README.md
+
 ### Fairness note on panache
 
 panache benchmarks itself on a small, Pandoc/Quarto-heavy

@@ -92,6 +92,8 @@ overrides:
           - code-blocks
           - tables
           - urls
+      max-file-length:
+        max: 400
       blank-line-around-lists: false
   - glob: [".claude/skills/*/SKILL.md",
             "editors/claude-code-*/skills/*/SKILL.md",
