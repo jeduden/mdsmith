@@ -458,6 +458,36 @@ func TestParseInline_CrossRefErrors(t *testing.T) {
 	}
 }
 
+// TestParseInline_CrossRefInvalidRegexRejected verifies that invalid regex
+// patterns in cross-reference entries are caught at parse time
+// (parseCrossRefEntry compiles them eagerly) rather than on the first document
+// check. This exercises the two new error paths added when regex pre-compilation
+// was introduced (Fix 4 of the high-performance-go audit).
+func TestParseInline_CrossRefInvalidRegexRejected(t *testing.T) {
+	t.Run("invalid pattern regex", func(t *testing.T) {
+		_, err := ParseInline(map[string]any{
+			"cross-references": []any{
+				map[string]any{"pattern": "[unterminated", "must-match": "Step {n}"},
+			},
+		}, "test")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid pattern")
+	})
+	t.Run("invalid skip-lines-matching regex", func(t *testing.T) {
+		_, err := ParseInline(map[string]any{
+			"cross-references": []any{
+				map[string]any{
+					"pattern":             `\bStep (\d+)\b`,
+					"must-match":          "Step {n}",
+					"skip-lines-matching": "[bogus",
+				},
+			},
+		}, "test")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid skip-lines-matching")
+	})
+}
+
 func TestParseInline_AcronymsErrors(t *testing.T) {
 	cases := []struct {
 		name string
@@ -631,13 +661,13 @@ func TestResolveCrossRefPlaceholder_EdgeCases(t *testing.T) {
 
 func TestHasParenExpansion_EdgeCases(t *testing.T) {
 	// Missing close-paren.
-	assert.False(t, hasParenExpansion("FOO (no close", 3))
+	assert.False(t, hasParenExpansion([]byte("FOO (no close"), 3))
 	// Empty parens.
-	assert.False(t, hasParenExpansion("FOO ()", 3))
+	assert.False(t, hasParenExpansion([]byte("FOO ()"), 3))
 	// Valid expansion.
-	assert.True(t, hasParenExpansion("FOO (Bar Baz)", 3))
+	assert.True(t, hasParenExpansion([]byte("FOO (Bar Baz)"), 3))
 	// Not a paren at all.
-	assert.False(t, hasParenExpansion("FOO bar", 3))
+	assert.False(t, hasParenExpansion([]byte("FOO bar"), 3))
 }
 
 func TestAcronyms_AppliesWithEmptyScope(t *testing.T) {

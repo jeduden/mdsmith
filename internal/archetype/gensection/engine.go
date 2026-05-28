@@ -1,6 +1,7 @@
 package gensection
 
 import (
+	"bytes"
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -108,18 +109,18 @@ func (e *Engine) generateContent(f *lint.File, mp MarkerPair) (string, bool) {
 }
 
 // ExtractContent returns the content between markers as a string.
+// It avoids the double allocation of the previous []string + strings.Join
+// pattern by writing directly into a bytes.Buffer.
 func ExtractContent(f *lint.File, mp MarkerPair) string {
 	if mp.ContentFrom > mp.ContentTo {
 		return ""
 	}
-	var lines []string
+	var buf bytes.Buffer
 	for i := mp.ContentFrom - 1; i <= mp.ContentTo-1 && i < len(f.Lines); i++ {
-		lines = append(lines, string(f.Lines[i]))
+		buf.Write(f.Lines[i])
+		buf.WriteByte('\n')
 	}
-	if len(lines) == 0 {
-		return ""
-	}
-	return strings.Join(lines, "\n") + "\n"
+	return buf.String()
 }
 
 // ReplaceContent replaces the content between markers with new content.

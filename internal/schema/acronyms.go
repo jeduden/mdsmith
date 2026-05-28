@@ -1,9 +1,9 @@
 package schema
 
 import (
+	"bytes"
 	"fmt"
 	"regexp"
-	"strings"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 )
@@ -179,15 +179,19 @@ func checkAcronymsInRange(
 		if headingLines[ln] {
 			continue
 		}
-		raw := string(f.Lines[ln-1])
-		matches := acronymToken.FindAllStringIndex(raw, -1)
+		// Use the raw []byte slice directly to avoid a whole-line string
+		// allocation on every non-heading line. FindAllIndex accepts []byte;
+		// we only convert the matched token (a much smaller slice) and the
+		// line itself (only when hasParenExpansion needs it).
+		lineBytes := f.Lines[ln-1]
+		matches := acronymToken.FindAllIndex(lineBytes, -1)
 		for _, m := range matches {
-			tok := raw[m[0]:m[1]]
+			tok := string(lineBytes[m[0]:m[1]])
 			if known[tok] || seen[tok] {
 				continue
 			}
 			seen[tok] = true
-			if hasParenExpansion(raw, m[1]) {
+			if hasParenExpansion(lineBytes, m[1]) {
 				continue
 			}
 			diags = append(diags, mkDiag(f.Path, ln,
@@ -205,16 +209,19 @@ func checkAcronymsInRange(
 // opening paren is tolerated — prose styles vary on this point
 // and the rule is interested in whether an expansion is present,
 // not in punctuation pedantry.
-func hasParenExpansion(line string, offset int) bool {
+//
+// line is the raw []byte of the source line; passing bytes avoids
+// a full-line string allocation in the hot acronym-checking loop.
+func hasParenExpansion(line []byte, offset int) bool {
 	rest := line[offset:]
-	rest = strings.TrimLeft(rest, " ")
-	if !strings.HasPrefix(rest, "(") {
+	rest = bytes.TrimLeft(rest, " ")
+	if len(rest) == 0 || rest[0] != '(' {
 		return false
 	}
-	closeIdx := strings.IndexByte(rest, ')')
+	closeIdx := bytes.IndexByte(rest, ')')
 	if closeIdx < 2 {
 		return false
 	}
-	inside := strings.TrimSpace(rest[1:closeIdx])
-	return inside != ""
+	inside := bytes.TrimSpace(rest[1:closeIdx])
+	return len(inside) != 0
 }

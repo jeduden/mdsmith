@@ -25,16 +25,24 @@ func ValidateCrossReferences(
 	texts := collectTextNodes(f)
 	var diags []lint.Diagnostic
 	for _, cr := range sch.CrossReferences {
-		re, err := regexp.Compile(cr.Pattern)
-		if err != nil {
-			diags = append(diags, mkDiag(f.Path, 1,
-				fmt.Sprintf(
-					"cross-references: invalid pattern %q: %v",
-					cr.Pattern, err)))
-			continue
+		// Use pre-compiled regex from parse time; fall back to compiling on
+		// demand for CrossRef values constructed outside parseCrossRefEntry
+		// (e.g. in tests or compose paths).
+		re := cr.compiledRE
+		if re == nil {
+			var err error
+			re, err = regexp.Compile(cr.Pattern)
+			if err != nil {
+				diags = append(diags, mkDiag(f.Path, 1,
+					fmt.Sprintf(
+						"cross-references: invalid pattern %q: %v",
+						cr.Pattern, err)))
+				continue
+			}
 		}
-		var skipRE *regexp.Regexp
-		if cr.SkipLinesMatching != "" {
+		skipRE := cr.compiledSkipRE
+		if skipRE == nil && cr.SkipLinesMatching != "" {
+			var err error
 			skipRE, err = regexp.Compile(cr.SkipLinesMatching)
 			if err != nil {
 				diags = append(diags, mkDiag(f.Path, 1,

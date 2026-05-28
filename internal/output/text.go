@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -126,7 +127,7 @@ func (f *TextFormatter) formatSnippet(w io.Writer, d lint.Diagnostic) error {
 	}
 
 	maxLineNum := d.SourceStartLine + len(d.SourceLines) - 1
-	gutterWidth := len(fmt.Sprintf("%d", maxLineNum))
+	gutterWidth := len(strconv.Itoa(maxLineNum))
 
 	for i, line := range d.SourceLines {
 		lineNum := d.SourceStartLine + i

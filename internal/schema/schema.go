@@ -21,6 +21,8 @@
 // docs/reference/section-schema.md for the full grammar.
 package schema
 
+import "regexp"
+
 // SectionWildcard is the literal text the file-based parser
 // recognises in a proto.md heading row (`## ...`) as a positional
 // slot — a heading run that matches any text zero or more times.
@@ -136,6 +138,15 @@ type CrossRef struct {
 	Pattern           string
 	MustMatch         string
 	SkipLinesMatching string
+
+	// compiledRE and compiledSkipRE cache regexp.Compile(Pattern) and
+	// regexp.Compile(SkipLinesMatching) respectively. They are set once
+	// by parseCrossRefEntry at schema parse time so ValidateCrossReferences
+	// and buildCrossRefGraph never recompile the same NFA on every document.
+	// Nil means the pattern has not been compiled yet; callers fall back to
+	// compiling on demand.
+	compiledRE     *regexp.Regexp
+	compiledSkipRE *regexp.Regexp
 }
 
 // AcronymRule configures first-use acronym detection. KnownSafe is

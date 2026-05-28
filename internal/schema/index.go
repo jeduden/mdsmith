@@ -530,14 +530,21 @@ func buildCrossRefGraph(f *lint.File, sch *Schema) (map[string]string, error) {
 	}
 	texts := collectTextNodes(f)
 	for _, cr := range sch.CrossReferences {
-		re, err := regexp.Compile(cr.Pattern)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"index cross-ref-graph: invalid pattern %q: %w",
-				cr.Pattern, err)
+		// Use pre-compiled regex from parse time; fall back to compiling on
+		// demand for CrossRef values constructed outside parseCrossRefEntry.
+		re := cr.compiledRE
+		if re == nil {
+			var err error
+			re, err = regexp.Compile(cr.Pattern)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"index cross-ref-graph: invalid pattern %q: %w",
+					cr.Pattern, err)
+			}
 		}
-		var skipRE *regexp.Regexp
-		if cr.SkipLinesMatching != "" {
+		skipRE := cr.compiledSkipRE
+		if skipRE == nil && cr.SkipLinesMatching != "" {
+			var err error
 			skipRE, err = regexp.Compile(cr.SkipLinesMatching)
 			if err != nil {
 				return nil, fmt.Errorf(

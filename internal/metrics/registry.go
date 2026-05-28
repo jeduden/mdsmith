@@ -212,7 +212,7 @@ func matches(def Definition, query string) bool {
 	if q == "" {
 		return false
 	}
-	return strings.EqualFold(def.ID, q) || def.Name == strings.ToLower(q)
+	return strings.EqualFold(def.ID, q) || strings.EqualFold(def.Name, q)
 }
 
 func unknownMetricErr(scope Scope, name string) error {
