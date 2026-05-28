@@ -1,27 +1,25 @@
-package markdownflavor
+package flavor
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/jeduden/mdsmith/internal/convention"
 )
 
 // assertSupports checks every feature in the supported set is
-// accepted by flavor and every feature not in that set is rejected.
-func assertSupports(t *testing.T, f convention.Flavor, supported ...Feature) {
+// accepted by fl and every feature not in that set is rejected.
+func assertSupports(t *testing.T, fl Flavor, supported ...Feature) {
 	t.Helper()
 	want := map[Feature]bool{}
 	for _, feat := range supported {
 		want[feat] = true
 	}
 	for _, feat := range AllFeatures() {
-		got := Supports(f, feat)
+		got := Supports(fl, feat)
 		assert.Equal(t, want[feat], got,
 			"flavor %s feature %s: want=%v got=%v",
-			f.String(), feat.Name(), want[feat], got)
+			fl.String(), feat.Name(), want[feat], got)
 	}
 }
 
@@ -30,27 +28,27 @@ func TestFeatureNameUnknownIsEmpty(t *testing.T) {
 }
 
 func TestFeatureSupportCommonMark(t *testing.T) {
-	assertSupports(t, convention.FlavorCommonMark)
+	assertSupports(t, FlavorCommonMark)
 }
 
 func TestFeatureSupportGFM(t *testing.T) {
-	assertSupports(t, convention.FlavorGFM,
+	assertSupports(t, FlavorGFM,
 		FeatureTables, FeatureTaskLists, FeatureStrikethrough,
 		FeatureBareURLAutolinks, FeatureGitHubAlerts)
 }
 
 func TestFeatureSupportGoldmark(t *testing.T) {
-	assertSupports(t, convention.FlavorGoldmark,
+	assertSupports(t, FlavorGoldmark,
 		FeatureTables, FeatureTaskLists, FeatureStrikethrough,
 		FeatureBareURLAutolinks, FeatureHeadingIDs)
 }
 
 func TestFeatureSupportAny(t *testing.T) {
-	assertSupports(t, convention.FlavorAny, AllFeatures()...)
+	assertSupports(t, FlavorAny, AllFeatures()...)
 }
 
 func TestFeatureSupportPandoc(t *testing.T) {
-	assertSupports(t, convention.FlavorPandoc,
+	assertSupports(t, FlavorPandoc,
 		FeatureTables, FeatureTaskLists, FeatureStrikethrough,
 		FeatureBareURLAutolinks, FeatureFootnotes, FeatureDefinitionLists,
 		FeatureHeadingIDs, FeatureSuperscript, FeatureSubscript,
@@ -58,20 +56,20 @@ func TestFeatureSupportPandoc(t *testing.T) {
 }
 
 func TestFeatureSupportPHPExtra(t *testing.T) {
-	assertSupports(t, convention.FlavorPHPExtra,
+	assertSupports(t, FlavorPHPExtra,
 		FeatureTables, FeatureFootnotes, FeatureDefinitionLists,
 		FeatureHeadingIDs, FeatureAbbreviations)
 }
 
 func TestFeatureSupportMultiMarkdown(t *testing.T) {
-	assertSupports(t, convention.FlavorMultiMarkdown,
+	assertSupports(t, FlavorMultiMarkdown,
 		FeatureTables, FeatureFootnotes, FeatureDefinitionLists,
 		FeatureHeadingIDs, FeatureAbbreviations,
 		FeatureMathBlock, FeatureMathInline)
 }
 
 func TestFeatureSupportMyST(t *testing.T) {
-	assertSupports(t, convention.FlavorMyST,
+	assertSupports(t, FlavorMyST,
 		FeatureTables, FeatureStrikethrough, FeatureFootnotes,
 		FeatureDefinitionLists, FeatureHeadingIDs,
 		FeatureMathBlock, FeatureMathInline)

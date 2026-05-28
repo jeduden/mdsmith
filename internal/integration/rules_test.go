@@ -11,10 +11,6 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
-	"github.com/yuin/goldmark"
-	"github.com/yuin/goldmark/parser"
-	"github.com/yuin/goldmark/text"
-	"go.abhg.dev/goldmark/frontmatter"
 
 	_ "github.com/jeduden/mdsmith/internal/rules/ambiguousemphasis"
 	_ "github.com/jeduden/mdsmith/internal/rules/atxheadingwhitespace"
@@ -106,31 +102,30 @@ type fixtureFrontMatter struct {
 	Diagnostics []expectedDiag `yaml:"diagnostics"`
 }
 
-// parseFixtureFrontMatter extracts YAML front matter from markdown using
-// goldmark-frontmatter, then strips it from the raw bytes so lint.NewFile
-// receives plain markdown content. Returns settings, diagnostics, and content.
-// requireDiagnostics makes the function fail the test when no front matter
-// is found; use this for bad fixtures that must declare expected diagnostics.
+// parseFixtureFrontMatter extracts YAML front matter from markdown,
+// then strips it from the raw bytes so lint.NewFile receives plain
+// markdown content. Returns settings, diagnostics, and content.
+// requireDiagnostics makes the function fail the test when no front
+// matter is found; use this for bad fixtures that must declare
+// expected diagnostics. A misspelled key (e.g. dropping a letter
+// from "diagnostics") or an empty `---\n---\n` block is reported
+// as a missing-diagnostics failure rather than silently treated
+// as "no front matter."
 func parseFixtureFrontMatter(
 	t *testing.T, data []byte, requireDiagnostics bool,
 ) (map[string]any, []expectedDiag, []byte) {
 	t.Helper()
 
-	md := goldmark.New(goldmark.WithExtensions(&frontmatter.Extender{}))
-	ctx := parser.NewContext()
-	md.Parser().Parse(text.NewReader(data), parser.WithContext(ctx))
-
-	d := frontmatter.Get(ctx)
-	if d == nil {
-		require.False(t, requireDiagnostics, "bad fixture is missing front matter with expected diagnostics")
-		return nil, nil, data
-	}
-
 	var fm fixtureFrontMatter
-	if err := d.Decode(&fm); err != nil {
+	content, hadFM, err := lint.UnmarshalFrontMatter(data, &fm)
+	if err != nil {
 		t.Fatalf("decoding front matter: %v", err)
 	}
-
+	if !hadFM {
+		require.False(t, requireDiagnostics,
+			"bad fixture is missing front matter with expected diagnostics")
+		return nil, nil, content
+	}
 	if requireDiagnostics && len(fm.Diagnostics) == 0 {
 		t.Fatal("bad fixture front matter must contain a non-empty diagnostics key")
 	}
@@ -146,8 +141,6 @@ func parseFixtureFrontMatter(
 				i)
 		}
 	}
-
-	_, content := lint.StripFrontMatter(data)
 
 	return fm.Settings, fm.Diagnostics, content
 }

@@ -5,8 +5,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/yuin/goldmark/ast"
+	extast "github.com/yuin/goldmark/extension/ast"
+	"github.com/yuin/goldmark/text"
 
-	"github.com/jeduden/mdsmith/internal/rules/markdownflavor/ext"
+	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/pkg/markdown/flavor/ext"
 )
 
 // fixWith parses src into a *lint.File, applies the configured rule's
@@ -174,17 +178,57 @@ func TestRuleDualNodeEditsSupportedFeaturesReturnNil(t *testing.T) {
 	assert.Nil(t, r.dualNodeEdits(nil, &ext.SubscriptNode{}))
 }
 
-// TestApplyEditsHandlesAdjacentEdits guards the single-pass build in
-// applyEdits: adjacent edits (e.g. an opening and closing delimiter
-// of a strikethrough) must compose into a contiguous output without
-// dropping or duplicating bytes between them.
-func TestApplyEditsHandlesAdjacentEdits(t *testing.T) {
-	src := []byte("ab~~xy~~cd")
-	edits := []edit{
-		{start: 2, end: 4},                     // opening "~~"
-		{start: 6, end: 8},                     // closing "~~"
-		{start: 0, end: 0, repl: []byte("> ")}, // pure insertion at start
-	}
-	got := applyEdits(src, edits)
-	assert.Equal(t, "> abxycd", string(got))
+// TestTaskCheckBoxEditsDeclinesOnNonBracketStart hand-constructs an
+// AST that breaks the goldmark task-list invariant — a TaskCheckBox
+// whose NearestBlockAncestor returns a block starting at a non-'['
+// byte (here a bare paragraph). The guard must decline rather than
+// silently delete the wrong three bytes; this is the F5 case the
+// per-node Lines-empty check missed.
+func TestTaskCheckBoxEditsDeclinesOnNonBracketStart(t *testing.T) {
+	// Source where offset 0 is 'p', not '['; NearestBlockAncestor's
+	// returned block.Lines().At(0).Start will point at 'p'.
+	src := []byte("plain paragraph text\n")
+	f, err := lint.NewFile("t.md", src)
+	require.NoError(t, err)
+
+	para := ast.NewParagraph()
+	para.Lines().Append(text.NewSegment(0, len(src)-1))
+	cb := extast.NewTaskCheckBox(true)
+	para.AppendChild(para, cb)
+
+	got := taskCheckBoxEdits(f, cb)
+	assert.Nil(t, got,
+		"taskCheckBoxEdits must decline when Lines.At(0) is not at '['")
 }
+
+// TestTaskCheckBoxEditsDeclinesOnNilBlock exercises the block==nil
+// guard with a TaskCheckBox that has no parent at all.
+func TestTaskCheckBoxEditsDeclinesOnNilBlock(t *testing.T) {
+	src := []byte("- [ ] task\n")
+	f, err := lint.NewFile("t.md", src)
+	require.NoError(t, err)
+	orphan := extast.NewTaskCheckBox(true)
+	assert.Nil(t, taskCheckBoxEdits(f, orphan))
+}
+
+// TestTaskCheckBoxEditsDeclinesWhenBracketRunsPastEOF guards the
+// end > len(source) branch: a TaskCheckBox at offset len-1 (last
+// byte is '[' with no body after it) cannot produce a 3-byte edit.
+func TestTaskCheckBoxEditsDeclinesWhenBracketRunsPastEOF(t *testing.T) {
+	// Two bytes: "[\n" — start points at '['; start+3 exceeds the
+	// 2-byte body. The fix must decline rather than build an edit
+	// whose End is past EOF (which markdown.Splice would panic on).
+	src := []byte("[\n")
+	f, err := lint.NewFile("t.md", src)
+	require.NoError(t, err)
+	para := ast.NewParagraph()
+	para.Lines().Append(text.NewSegment(0, len(src)))
+	cb := extast.NewTaskCheckBox(true)
+	para.AppendChild(para, cb)
+
+	assert.Nil(t, taskCheckBoxEdits(f, cb))
+}
+
+// Splice's single-pass behaviour (adjacent edits, pure insertion,
+// replacement bytes) is exercised in pkg/markdown's TestSplice; the
+// rule layer just feeds edits into markdown.Splice.

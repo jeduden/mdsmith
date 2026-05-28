@@ -1,7 +1,7 @@
 ---
 id: 185
 title: 'Expose extended-syntax parsers and the flavor model in pkg/markdown'
-status: "🔲"
+status: "✅"
 summary: >-
   Promote every custom goldmark parser
   (the five extensions) and the flavor
@@ -62,7 +62,7 @@ and an `ASTTransformer`. Only two owners
 match. The PI block parser already lives
 in [pkg/markdown](../pkg/markdown); 163
 moved it. The five extensions under
-[internal/rules/markdownflavor/ext](../internal/rules/markdownflavor/ext)
+[pkg/markdown/flavor/ext](../pkg/markdown/flavor/ext)
 are the rest, and no others exist.
 Moving those five empties the tree of
 custom parsers outside the public
@@ -71,7 +71,7 @@ package.
 Boundary facts shape the design:
 
 - The five extensions under
-  [internal/rules/markdownflavor/ext](../internal/rules/markdownflavor/ext)
+  [pkg/markdown/flavor/ext](../pkg/markdown/flavor/ext)
   import only goldmark. They have no
   `internal/` dependency.
 - The `Feature` enum and the
@@ -101,7 +101,7 @@ sync-docs.
 
 ## Tasks
 
-1. [ ] Decide the package shape. Add a
+1. [x] Decide the package shape. Add a
    sub-package `pkg/markdown/flavor`. It
    holds the extensions, the `Feature`
    model, the support table, and
@@ -113,7 +113,7 @@ sync-docs.
    does this document use, and which
    flavors accept them". Record the
    rejected flat layout.
-2. [ ] Move every custom goldmark parser
+2. [x] Move every custom goldmark parser
    into `pkg/markdown/flavor`. That is
    all five extensions: superscript,
    subscript, math block, inline math,
@@ -121,14 +121,14 @@ sync-docs.
    extension also registers an
    `ASTTransformer`; move it whole. Move
    their unit tests from
-   [internal/rules/markdownflavor/ext](../internal/rules/markdownflavor/ext)
+   [pkg/markdown/flavor/ext](../pkg/markdown/flavor/ext)
    too. They import only goldmark, so no
    dependency direction changes. The PI
    parser already sits in
    [pkg/markdown](../pkg/markdown) from
    163, so this leaves no custom parser
    outside the public package.
-3. [ ] Move the `Flavor` identity out of
+3. [x] Move the `Flavor` identity out of
    [internal/convention](../internal/convention).
    Move the `Feature` and `support`
    model out of the rule. Put both in
@@ -138,7 +138,7 @@ sync-docs.
    [internal/config](../internal/config)
    is unchanged. The dependency points
    convention to flavor only.
-4. [ ] Build the public detector
+4. [x] Build the public detector
    `Detect(doc *markdown.Document, accept
    func(Feature) bool) []Finding`. Define
    the public `Finding` and
@@ -147,24 +147,24 @@ sync-docs.
    [pkg/markdown](../pkg/markdown) free of
    any [internal/lint](../internal/lint)
    import.
-5. [ ] Reduce
+5. [x] Reduce
    [internal/rules/markdownflavor](../internal/rules/markdownflavor)
    to a rule adapter. It maps config and
    convention in. It maps `flavor.Finding`
    to diagnostics and fixes out. The
    `rule.Rule` and `rule.FixableRule`
    contract does not change.
-6. [ ] Migrate
+6. [x] Migrate
    [internal/schema](../internal/schema)
    `validate_content.go` and the rule's
    `parser.go` onto the public
    constructor. Leave no `goldmark.New(`
    under `internal/`.
-7. [ ] Add a contract test that locks the
+7. [x] Add a contract test that locks the
    `pkg/markdown/flavor` API shape. A new
    external surface ships with a contract
    test.
-8. [ ] Update the docs this scope
+8. [x] Update the docs this scope
    contradicts. Fix the
    [library doc](../docs/development/markdown-library.md)
    "CommonMark only" text and its
@@ -177,21 +177,21 @@ sync-docs.
 
 ## Acceptance Criteria
 
-- [ ] `pkg/markdown/flavor` exposes the
+- [x] `pkg/markdown/flavor` exposes the
   five extension constructors, the
   `Flavor` and `Feature` model, and
   `Detect`. The compatibility policy
   documents it. Verifies ISP and OCP.
-- [ ] No package under
+- [x] No package under
   [pkg/markdown](../pkg/markdown) imports
   `internal/`. The check
   `grep -r mdsmith/internal pkg/markdown`
   is empty. Verifies DIP.
-- [ ] One goldmark config remains, under
+- [x] One goldmark config remains, under
   [pkg/markdown](../pkg/markdown). No
   `goldmark.New(` exists under
   `internal/`.
-- [ ] No `ast.NewNodeKind`, goldmark
+- [x] No `ast.NewNodeKind`, goldmark
   `Extend` method, or custom
   `parser.BlockParser`,
   `parser.InlineParser`, or
@@ -200,21 +200,21 @@ sync-docs.
   parser lives in
   [pkg/markdown](../pkg/markdown).
   Verifies SRP and DIP.
-- [ ] [internal/convention](../internal/convention)
+- [x] [internal/convention](../internal/convention)
   and the rule define no own `Flavor` or
   `Feature` type. Both depend inward.
   Verifies DIP and SRP.
-- [ ] MDS034 diagnostics, `--fix`
+- [x] MDS034 diagnostics, `--fix`
   output, and
   [internal/schema](../internal/schema)
   validation are byte-identical before
   and after. Table tests pin this.
   Verifies Liskov.
-- [ ] Every moved or new function ships
+- [x] Every moved or new function ships
   its dedicated unit test. A contract
   test locks the `pkg/markdown/flavor`
   shape. Verifies the test pyramid.
-- [ ] The
+- [x] The
   [library doc](../docs/development/markdown-library.md),
   [cross-system](../docs/development/architecture/cross-system.md),
   and
@@ -222,8 +222,8 @@ sync-docs.
   no longer say "CommonMark only". The
   boundary and versioning entries cover
   the flavor surface.
-- [ ] All tests pass: `go test ./...`.
-- [ ] `go tool golangci-lint run`
+- [x] All tests pass: `go test ./...`.
+- [x] `go tool golangci-lint run`
   reports no issues.
-- [ ] `mdsmith check .` passes. The
+- [x] `mdsmith check .` passes. The
   coverage gate holds.

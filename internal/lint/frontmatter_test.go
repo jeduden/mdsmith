@@ -75,6 +75,68 @@ func TestParseFrontMatterKinds(t *testing.T) {
 	}
 }
 
+func TestUnmarshalFrontMatter(t *testing.T) {
+	type fixture struct {
+		Title       string         `yaml:"title"`
+		Diagnostics []string       `yaml:"diagnostics"`
+		Settings    map[string]any `yaml:"settings"`
+	}
+
+	t.Run("populates v and signals hadFrontMatter for a valid block", func(t *testing.T) {
+		src := []byte("---\ntitle: hi\n---\n\nbody\n")
+		var fm fixture
+		body, hadFM, err := UnmarshalFrontMatter(src, &fm)
+		require.NoError(t, err)
+		assert.True(t, hadFM, "valid front matter must report hadFrontMatter=true")
+		assert.Equal(t, "hi", fm.Title)
+		assert.Equal(t, "\nbody\n", string(body))
+	})
+
+	t.Run("hadFrontMatter is false when source has no front matter", func(t *testing.T) {
+		src := []byte("body only\n")
+		var fm fixture
+		body, hadFM, err := UnmarshalFrontMatter(src, &fm)
+		require.NoError(t, err)
+		assert.False(t, hadFM)
+		assert.Equal(t, "", fm.Title)
+		assert.Equal(t, "body only\n", string(body))
+	})
+
+	t.Run("hadFrontMatter is true for an empty fences-only block", func(t *testing.T) {
+		// Distinguishing "no FM" from "empty FM" matters for callers
+		// that want to enforce schema (the integration fixture loader
+		// uses this to refuse silently-malformed bad fixtures).
+		src := []byte("---\n---\n\nbody\n")
+		var fm fixture
+		_, hadFM, err := UnmarshalFrontMatter(src, &fm)
+		require.NoError(t, err)
+		assert.True(t, hadFM, "empty fences are still a front-matter block")
+	})
+
+	t.Run("hadFrontMatter is true when FM has unrecognised keys", func(t *testing.T) {
+		// An unknown key (e.g. a misspelling of "diagnostics" or a
+		// schema-mismatched field) decodes into nothing on the target
+		// struct, but the FM block is still present. Callers that
+		// confuse "v is zero" with "no FM" would silently accept a
+		// malformed fixture; hadFrontMatter prevents that.
+		src := []byte("---\nunknown_key: oops\n---\n\nbody\n")
+		var fm fixture
+		_, hadFM, err := UnmarshalFrontMatter(src, &fm)
+		require.NoError(t, err)
+		assert.True(t, hadFM)
+		assert.Nil(t, fm.Diagnostics, "unknown key does not populate the field")
+	})
+
+	t.Run("propagates yaml errors and still returns hadFrontMatter=true", func(t *testing.T) {
+		// Anchors are rejected by yamlutil.UnmarshalSafe.
+		src := []byte("---\nx: &a foo\ny: *a\n---\n\nbody\n")
+		var fm fixture
+		_, hadFM, err := UnmarshalFrontMatter(src, &fm)
+		require.Error(t, err)
+		assert.True(t, hadFM, "decode failure still saw a FM block")
+	})
+}
+
 func TestParseFrontMatterFields(t *testing.T) {
 	t.Run("returns parsed mapping", func(t *testing.T) {
 		prefix, _ := StripFrontMatter([]byte("---\nstatus: open\nid: 7\n---\n# H\n"))

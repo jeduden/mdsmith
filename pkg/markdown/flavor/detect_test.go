@@ -1,4 +1,4 @@
-package markdownflavor
+package flavor
 
 import (
 	"testing"
@@ -6,19 +6,22 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/pkg/markdown"
 )
 
-func mkFile(t *testing.T, src string) *lint.File {
+// mkDoc parses src with the canonical CommonMark + PI parser and
+// returns the resulting Document. Used by detection tests that need
+// a Document to feed flavor.Detect.
+func mkDoc(t *testing.T, src string) *markdown.Document {
 	t.Helper()
-	f, err := lint.NewFile("test.md", []byte(src))
-	require.NoError(t, err)
-	return f
+	return markdown.Parse([]byte(src))
 }
 
+// findings runs Detect over the parsed document with the all-accept
+// predicate (nil). Returned slice is in document order.
 func findings(t *testing.T, src string) []Finding {
 	t.Helper()
-	return Detect(mkFile(t, src))
+	return Detect(mkDoc(t, src), nil)
 }
 
 func hasFeature(fs []Finding, feat Feature) bool {
@@ -146,6 +149,11 @@ func TestDetectEmptyDocument(t *testing.T) {
 	assert.Empty(t, fs)
 }
 
+// TestDetectNilDocReturnsNil guards the nil-input branch.
+func TestDetectNilDocReturnsNil(t *testing.T) {
+	assert.Nil(t, Detect(nil, nil))
+}
+
 func TestDetectSuperscript(t *testing.T) {
 	fs := findings(t, "E = mc^2^\n")
 	require.True(t, hasFeature(fs, FeatureSuperscript))
@@ -181,10 +189,7 @@ func TestDetectPlainCommonMark(t *testing.T) {
 // TestDetectFilteredSkipsBareURLs exercises the skip path for the
 // bare-URL regex scan: when the caller rejects
 // FeatureBareURLAutolinks, detectBareURLs must not run even though
-// other features (here strikethrough) are still accepted. The scenario
-// is narrower than any specific flavor; Rule.Check under flavor: gfm or
-// goldmark passes a different predicate (!flavor.Supports) that would
-// also reject the strikethrough branch.
+// other features (here strikethrough) are still accepted.
 func TestDetectFilteredSkipsBareURLs(t *testing.T) {
 	src := "See https://example.com for details.\n\n~~old~~\n"
 	// Reject bare-URL autolinks; keep every other feature so the
@@ -193,7 +198,7 @@ func TestDetectFilteredSkipsBareURLs(t *testing.T) {
 	accept := func(feat Feature) bool {
 		return feat != FeatureBareURLAutolinks
 	}
-	fs := DetectFiltered(mkFile(t, src), accept)
+	fs := Detect(mkDoc(t, src), accept)
 	for _, f := range fs {
 		assert.NotEqual(t, FeatureBareURLAutolinks, f.Feature,
 			"bare-URL findings must be suppressed when caller skips them")
@@ -203,15 +208,15 @@ func TestDetectFilteredSkipsBareURLs(t *testing.T) {
 }
 
 // TestDetectFilteredSkipsDualParseWhenAllSupported verifies that
-// DetectFiltered avoids the goldmark re-parse entirely when every
-// feature the dual pass could emit is accepted by the caller.
+// Detect avoids the goldmark re-parse entirely when every feature the
+// dual pass could emit is accepted by the caller.
 func TestDetectFilteredSkipsDualParseWhenAllSupported(t *testing.T) {
 	src := "# Title {#id}\n\n| a |\n| - |\n| 1 |\n\n~~x~~ and [^1]\n\n[^1]: note\n"
 	// Accept every dual-parser feature; ask only for bare URLs.
 	accept := func(feat Feature) bool {
 		return feat == FeatureBareURLAutolinks
 	}
-	fs := DetectFiltered(mkFile(t, src), accept)
+	fs := Detect(mkDoc(t, src), accept)
 	for _, f := range fs {
 		assert.Equal(t, FeatureBareURLAutolinks, f.Feature,
 			"dual-parser features must be suppressed when all are accepted")

@@ -71,7 +71,7 @@ func TestParseContext(t *testing.T) {
 func TestSplice(t *testing.T) {
 	t.Run("removes ascending non-overlapping spans", func(t *testing.T) {
 		body := []byte("0123456789")
-		got := Splice(body, []Edit{{1, 3}, {5, 7}})
+		got := Splice(body, []Edit{{Start: 1, End: 3}, {Start: 5, End: 7}})
 		assert.Equal(t, "034789", string(got))
 	})
 
@@ -82,12 +82,98 @@ func TestSplice(t *testing.T) {
 
 	t.Run("does not mutate the source slice", func(t *testing.T) {
 		body := []byte("abcdef")
-		_ = Splice(body, []Edit{{0, 2}})
+		_ = Splice(body, []Edit{{Start: 0, End: 2}})
 		assert.Equal(t, "abcdef", string(body))
 	})
 
 	t.Run("spans covering the whole body yield empty output", func(t *testing.T) {
 		body := []byte("gone")
-		assert.Equal(t, "", string(Splice(body, []Edit{{0, 4}})))
+		assert.Equal(t, "", string(Splice(body, []Edit{{Start: 0, End: 4}})))
+	})
+
+	t.Run("Repl bytes are spliced in at the edit position", func(t *testing.T) {
+		// Wraps "url" in angle brackets at offset 4..7 of the body —
+		// the rule-side bare-URL fix shape — and verifies that the
+		// surrounding text is preserved untouched.
+		body := []byte("see url here")
+		edits := []Edit{{Start: 4, End: 7, Repl: []byte("<url>")}}
+		assert.Equal(t, "see <url> here", string(Splice(body, edits)))
+	})
+
+	t.Run("Repl handles adjacent edits in one pass", func(t *testing.T) {
+		// Two zero-byte deletions adjacent to a pure insertion at the
+		// start guard the cursor advancement: prev = e.End, and after
+		// appending Repl the loop must continue from the next edit's
+		// Start without dropping or duplicating bytes between them.
+		body := []byte("ab~~xy~~cd")
+		edits := []Edit{
+			{Start: 0, End: 0, Repl: []byte("> ")}, // pure insertion
+			{Start: 2, End: 4},                     // opening "~~"
+			{Start: 6, End: 8},                     // closing "~~"
+		}
+		assert.Equal(t, "> abxycd", string(Splice(body, edits)))
+	})
+
+}
+
+// TestSpliceInvariantViolation pins the contract Splice's docstring
+// promises: edits must be ascending, non-overlapping, well-formed
+// (End >= Start), and within body bounds. Every violation surfaces
+// as a descriptive panic at the entry point rather than as an
+// opaque slice-bounds-out-of-range crash during the build loop.
+func TestSpliceInvariantViolation(t *testing.T) {
+	t.Run("overlapping edits panic with a descriptive message", func(t *testing.T) {
+		body := []byte("0123456789")
+		assert.PanicsWithValue(t,
+			"markdown.Splice: edits must be ascending and "+
+				"non-overlapping; edit 1 {Start:6, End:12} "+
+				"overlaps previous edit ending at 10",
+			func() {
+				Splice(body, []Edit{
+					{Start: 5, End: 10},
+					{Start: 6, End: 12},
+				})
+			})
+	})
+
+	t.Run("descending edits panic with the same overlap message", func(t *testing.T) {
+		body := []byte("0123456789")
+		assert.PanicsWithValue(t,
+			"markdown.Splice: edits must be ascending and "+
+				"non-overlapping; edit 1 {Start:0, End:2} "+
+				"overlaps previous edit ending at 5",
+			func() {
+				Splice(body, []Edit{
+					{Start: 3, End: 5},
+					{Start: 0, End: 2},
+				})
+			})
+	})
+
+	t.Run("End < Start panics", func(t *testing.T) {
+		body := []byte("0123456789")
+		assert.PanicsWithValue(t,
+			"markdown.Splice: edit 0 has End<Start ({Start:5, End:3})",
+			func() { Splice(body, []Edit{{Start: 5, End: 3}}) })
+	})
+
+	t.Run("negative Start panics with a dedicated message", func(t *testing.T) {
+		// Caller produces an edit with a negative offset (typically a
+		// buggy producer subtracting past 0). Without this check the
+		// generic overlap message ("overlaps previous edit ending at 0")
+		// would fire and mislead the debugger toward a non-existent
+		// previous edit; the dedicated message names the actual fault.
+		body := []byte("0123456789")
+		assert.PanicsWithValue(t,
+			"markdown.Splice: edit 0 has negative Start ({Start:-1, End:5})",
+			func() { Splice(body, []Edit{{Start: -1, End: 5}}) })
+	})
+
+	t.Run("edit exceeding body length panics", func(t *testing.T) {
+		body := []byte("short")
+		assert.PanicsWithValue(t,
+			"markdown.Splice: edit 0 {Start:0, End:99} "+
+				"exceeds body length 5",
+			func() { Splice(body, []Edit{{Start: 0, End: 99}}) })
 	})
 }

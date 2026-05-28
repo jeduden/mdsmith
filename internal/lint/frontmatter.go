@@ -17,6 +17,30 @@ func StripFrontMatter(source []byte) (prefix, content []byte) {
 	return markdown.StripFrontMatter(source)
 }
 
+// UnmarshalFrontMatter strips the leading YAML front matter block off
+// source, decodes it into v via yamlutil.UnmarshalSafe, and returns
+// the body with the block removed. hadFrontMatter reports whether
+// source had a front-matter block; it is false (and v is left
+// untouched) when source had none, true otherwise. Callers that need
+// to distinguish "no front matter" from "front matter with no
+// recognised keys" (typos, schema mismatch) use hadFrontMatter rather
+// than inspecting v's zero state, which conflates the two.
+// Centralises the "---\n" delimiter trim that several call sites
+// were repeating after StripFrontMatter.
+func UnmarshalFrontMatter(source []byte, v any) (body []byte, hadFrontMatter bool, err error) {
+	prefix, content := markdown.StripFrontMatter(source)
+	if prefix == nil {
+		return content, false, nil
+	}
+	delim := []byte("---\n")
+	yamlBody := bytes.TrimPrefix(prefix, delim)
+	yamlBody = bytes.TrimSuffix(yamlBody, delim)
+	if err := yamlutil.UnmarshalSafe(yamlBody, v); err != nil {
+		return content, true, err
+	}
+	return content, true, nil
+}
+
 // CountLines returns the number of newline-terminated lines in b,
 // forwarded from pkg/markdown.
 func CountLines(b []byte) int {

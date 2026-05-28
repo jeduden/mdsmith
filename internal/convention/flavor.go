@@ -1,101 +1,41 @@
-// Package convention owns the convention and flavor data shapes
-// independent of any rule. A convention pairs a Markdown flavor with
-// a table of rule presets; the config loader consults this package
-// at load time so a top-level `convention:` selection becomes a base
-// layer beneath the user's own rule config. Rule packages (notably
+// Package convention owns the convention data shape (a Markdown
+// flavor paired with a table of rule presets) independent of any
+// rule. A convention pairs a Markdown flavor with a table of rule
+// presets; the config loader consults this package at load time so a
+// top-level `convention:` selection becomes a base layer beneath the
+// user's own rule config. Rule packages (notably
 // internal/rules/markdownflavor) consume these data shapes — they do
 // not own them — which keeps internal/config from importing a rule.
+//
+// The Flavor identity itself lives in pkg/markdown/flavor; this
+// package re-exports it via type and constant aliases so existing
+// callers under internal/ keep importing convention.Flavor.
 package convention
 
-// Flavor identifies a target Markdown flavor.
-type Flavor int
+import "github.com/jeduden/mdsmith/pkg/markdown/flavor"
 
-// Flavor constants. The zero value is intentionally invalid so that
-// unparsed settings are caught.
+// Flavor is an alias for pkg/markdown/flavor.Flavor; convention.Flavor
+// and flavor.Flavor name the same underlying type.
+type Flavor = flavor.Flavor
+
+// Flavor constants are re-exported from pkg/markdown/flavor so that
+// existing callers (internal/config, the markdown-flavor rule, the
+// convention table below) keep working with the convention.Flavor*
+// names. Add a new flavor by extending the canonical list in
+// pkg/markdown/flavor and adding one alias here.
 const (
-	flavorInvalid Flavor = iota
-	FlavorCommonMark
-	FlavorGFM
-	FlavorGoldmark
-	// FlavorAny accepts every tracked feature. Useful when the
-	// document is destined for an unknown or permissive renderer and
-	// the user wants to disable flavor reporting without disabling
-	// the rule.
-	FlavorAny
-	// FlavorPandoc is Pandoc's default markdown dialect. Accepts
-	// GFM's four features plus footnotes, definition lists, heading
-	// IDs, superscript, subscript, math block, and inline math;
-	// rejects abbreviations (a non-default Pandoc extension).
-	FlavorPandoc
-	// FlavorPHPExtra is PHP Markdown Extra. Accepts tables,
-	// footnotes, definition lists, heading IDs, and abbreviations;
-	// rejects GFM's task lists, strikethrough, bare-URL autolinks,
-	// and every math / sub/superscript feature.
-	FlavorPHPExtra
-	// FlavorMultiMarkdown extends PHP Markdown Extra with math
-	// block and inline math. Like PHP Extra, rejects GFM task lists,
-	// strikethrough, bare-URL autolinks, and sub/superscript.
-	FlavorMultiMarkdown
-	// FlavorMyST is the MyST flavor used by the Sphinx documentation
-	// toolchain. Accepts tables, strikethrough, footnotes,
-	// definition lists, heading IDs, math block, and inline math;
-	// rejects GFM task lists, bare-URL autolinks, sub/superscript,
-	// and abbreviations.
-	FlavorMyST
+	FlavorCommonMark    = flavor.FlavorCommonMark
+	FlavorGFM           = flavor.FlavorGFM
+	FlavorGoldmark      = flavor.FlavorGoldmark
+	FlavorAny           = flavor.FlavorAny
+	FlavorPandoc        = flavor.FlavorPandoc
+	FlavorPHPExtra      = flavor.FlavorPHPExtra
+	FlavorMultiMarkdown = flavor.FlavorMultiMarkdown
+	FlavorMyST          = flavor.FlavorMyST
 )
 
-// IsValid reports whether f names a recognised flavor. The zero
-// value (reserved for "unparsed/unset") and any out-of-range integer
-// cast to Flavor both return false. Implemented in terms of String
-// so the two stay in lock-step: every recognised flavor has a name,
-// and adding a new constant only requires updating the switch in
-// String.
-func (f Flavor) IsValid() bool { return f.String() != "" }
-
-// String returns the canonical lowercase name of the flavor.
-func (f Flavor) String() string {
-	switch f {
-	case FlavorCommonMark:
-		return "commonmark"
-	case FlavorGFM:
-		return "gfm"
-	case FlavorGoldmark:
-		return "goldmark"
-	case FlavorAny:
-		return "any"
-	case FlavorPandoc:
-		return "pandoc"
-	case FlavorPHPExtra:
-		return "phpextra"
-	case FlavorMultiMarkdown:
-		return "multimarkdown"
-	case FlavorMyST:
-		return "myst"
-	}
-	return ""
-}
-
-// ParseFlavor converts a config string into a Flavor. The match is
-// case-sensitive to reject typos like "GFM" that would otherwise
-// silently validate against the wrong flavor.
+// ParseFlavor delegates to pkg/markdown/flavor.ParseFlavor so callers
+// that already import internal/convention do not need a second import.
 func ParseFlavor(s string) (Flavor, bool) {
-	switch s {
-	case "commonmark":
-		return FlavorCommonMark, true
-	case "gfm":
-		return FlavorGFM, true
-	case "goldmark":
-		return FlavorGoldmark, true
-	case "any":
-		return FlavorAny, true
-	case "pandoc":
-		return FlavorPandoc, true
-	case "phpextra":
-		return FlavorPHPExtra, true
-	case "multimarkdown":
-		return FlavorMultiMarkdown, true
-	case "myst":
-		return FlavorMyST, true
-	}
-	return 0, false
+	return flavor.ParseFlavor(s)
 }

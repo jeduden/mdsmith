@@ -29,22 +29,23 @@ the contract. The surface's own spec
 steps) lives where the table's "Spec
 doc" column says.
 
-| Boundary                              | Owner in repo                                        | Spec doc                                                                        | Consumers                                                  |
-| ------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| LSP wire protocol                     | `internal/lsp`                                       | [CLI reference: `lsp`](../../reference/cli/lsp.md)                              | VS Code extension, other editors                           |
-| CLI flags + exit codes                | `cmd/mdsmith`                                        | [CLI reference](../../reference/cli.md)                                         | shell scripts, CI, git hooks                               |
-| `.mdsmith.yml` schema                 | `internal/config`                                    | [Conventions](../../reference/conventions.md)                                   | every project using mdsmith                                |
-| `.mdsmith/kinds/` directory           | `internal/config`                                    | [Kind files](../../reference/kind-files.md)                                     | every project using mdsmith                                |
-| Generated section markers             | `internal/archetype/gensection`                      | [Generated sections](../../background/concepts/generated-section.md)            | every project's Markdown files                             |
-| Claude plugin manifest (published)    | `editors/claude-code/.claude-plugin/plugin.json`     | [Install: Claude plugin](../../guides/install.md)                               | end users via Claude Code marketplace                      |
-| Claude plugin manifest (contributors) | `editors/claude-code-dev/.claude-plugin/plugin.json` | [editors/claude-code-dev/README.md](../../../editors/claude-code-dev/README.md) | mdsmith contributors                                       |
-| Claude marketplace listing            | `.claude-plugin/marketplace.json`                    | [Install: Claude plugin](../../guides/install.md)                               | Claude Code marketplace                                    |
-| Claude skill definitions              | `.claude/skills/*/SKILL.md`                          | [proto](../../../.claude/skills/proto.md)                                       | Claude Code sessions                                       |
-| npm package shim                      | `npm/mdsmith/`                                       | [Install: npm](../../guides/install.md)                                         | Node users                                                 |
-| PyPI wheel shim                       | `python/`                                            | [Install: PyPI](../../guides/install.md)                                        | Python users                                               |
-| asdf / mise plugin                    | external repos                                       | [Install: asdf / mise](../../guides/install.md)                                 | language-tool users                                        |
-| VS Code `contributes`                 | `editors/vscode/package.json`                        | [VS Code integration](../../guides/editors/vscode.md)                           | the extension host                                         |
-| Public Markdown library               | `pkg/markdown`                                       | [Public Markdown Library](../markdown-library.md)                               | `internal/lint`, `internal/release`, external Go importers |
+| Boundary                              | Owner in repo                                        | Spec doc                                                                        | Consumers                                                                 |
+| ------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| LSP wire protocol                     | `internal/lsp`                                       | [CLI reference: `lsp`](../../reference/cli/lsp.md)                              | VS Code extension, other editors                                          |
+| CLI flags + exit codes                | `cmd/mdsmith`                                        | [CLI reference](../../reference/cli.md)                                         | shell scripts, CI, git hooks                                              |
+| `.mdsmith.yml` schema                 | `internal/config`                                    | [Conventions](../../reference/conventions.md)                                   | every project using mdsmith                                               |
+| `.mdsmith/kinds/` directory           | `internal/config`                                    | [Kind files](../../reference/kind-files.md)                                     | every project using mdsmith                                               |
+| Generated section markers             | `internal/archetype/gensection`                      | [Generated sections](../../background/concepts/generated-section.md)            | every project's Markdown files                                            |
+| Claude plugin manifest (published)    | `editors/claude-code/.claude-plugin/plugin.json`     | [Install: Claude plugin](../../guides/install.md)                               | end users via Claude Code marketplace                                     |
+| Claude plugin manifest (contributors) | `editors/claude-code-dev/.claude-plugin/plugin.json` | [editors/claude-code-dev/README.md](../../../editors/claude-code-dev/README.md) | mdsmith contributors                                                      |
+| Claude marketplace listing            | `.claude-plugin/marketplace.json`                    | [Install: Claude plugin](../../guides/install.md)                               | Claude Code marketplace                                                   |
+| Claude skill definitions              | `.claude/skills/*/SKILL.md`                          | [proto](../../../.claude/skills/proto.md)                                       | Claude Code sessions                                                      |
+| npm package shim                      | `npm/mdsmith/`                                       | [Install: npm](../../guides/install.md)                                         | Node users                                                                |
+| PyPI wheel shim                       | `python/`                                            | [Install: PyPI](../../guides/install.md)                                        | Python users                                                              |
+| asdf / mise plugin                    | external repos                                       | [Install: asdf / mise](../../guides/install.md)                                 | language-tool users                                                       |
+| VS Code `contributes`                 | `editors/vscode/package.json`                        | [VS Code integration](../../guides/editors/vscode.md)                           | the extension host                                                        |
+| Public Markdown library               | `pkg/markdown`                                       | [Public Markdown Library](../markdown-library.md)                               | `internal/lint`, `internal/release`, external Go importers                |
+| Public flavor library                 | `pkg/markdown/flavor`                                | [Public Markdown Library](../markdown-library.md)                               | `internal/rules/markdownflavor`, `internal/schema`, external Go importers |
 
 Treat each surface as a public API.
 mdsmith is at major 0 today, so strict
@@ -166,7 +167,15 @@ doc says how the rule applies to it.
   shape `Parse` returns is a break for
   this surface. `Splice` output is
   byte-exact and pinned by the sync-docs
-  golden corpus. Full policy in
+  golden corpus. The
+  **`pkg/markdown/flavor` sub-package**
+  follows the same policy and ships the
+  extended-syntax parsers (tables,
+  strikethrough, task lists, footnotes,
+  definition lists, heading IDs, plus
+  five custom extensions) and the
+  Flavor / Feature support model.
+  Full policy in
   [Public Markdown Library](../markdown-library.md).
 
 ## Common violations to flag
