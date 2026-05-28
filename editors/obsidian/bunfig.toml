@@ -1,0 +1,7 @@
+[test]
+# Load the stub `obsidian` and CodeMirror 6 modules before any test
+# file imports the plugin source. Without this preload, tests cannot
+# import src/main.ts (which `import { Plugin } from "obsidian"`)
+# because the real `obsidian` package is only available inside the
+# host and is not installed as a dependency in CI.
+preload = ["./src/test-setup.ts"]

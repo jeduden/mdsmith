@@ -1,0 +1,11 @@
+{
+  "id": "mdsmith",
+  "name": "mdsmith",
+  "version": "0.0.0-dev",
+  "minAppVersion": "1.5.0",
+  "description": "Markdown linter, formatter, and data extractor. Inline diagnostics, quick fixes, and fix-on-save backed by the bundled mdsmith LSP server.",
+  "author": "jeduden",
+  "authorUrl": "https://github.com/jeduden/mdsmith",
+  "fundingUrl": "https://github.com/sponsors/jeduden",
+  "isDesktopOnly": true
+}

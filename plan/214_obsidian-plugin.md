@@ -219,7 +219,7 @@ Mention the artifact in [github-releases.md][gh].
 
 ## Tasks
 
-1. Scaffold `editors/obsidian/`: `package.json`,
+1. [x] Scaffold `editors/obsidian/`: `package.json`,
    `tsconfig.json`, `manifest.json` with
    `isDesktopOnly: true`, `build.ts`, a stub
    `src/main.ts` extending `Plugin`, and a

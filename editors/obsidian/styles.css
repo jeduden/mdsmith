@@ -1,0 +1,53 @@
+/*
+ * mdsmith for Obsidian — diagnostic decorations and tooltip styles.
+ *
+ * The CodeMirror 6 layer in src/diagnostics.ts applies these classes
+ * to ranges with active diagnostics. Severities follow the LSP scale
+ * (1 = error, 2 = warning, 3 = info, 4 = hint).
+ */
+
+.mdsmith-diagnostic {
+  text-decoration: underline wavy;
+  text-decoration-skip-ink: none;
+  text-underline-offset: 0.2em;
+}
+
+.mdsmith-diagnostic-error {
+  text-decoration-color: var(--text-error, #e06c75);
+}
+
+.mdsmith-diagnostic-warning {
+  text-decoration-color: var(--text-warning, #d19a66);
+}
+
+.mdsmith-diagnostic-info {
+  text-decoration-color: var(--text-accent, #61afef);
+}
+
+.mdsmith-diagnostic-hint {
+  text-decoration-color: var(--text-muted, #9ca3af);
+}
+
+.mdsmith-tooltip {
+  background-color: var(--background-secondary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 0.5em 0.75em;
+  max-width: 32em;
+  font-size: var(--font-ui-small);
+}
+
+.mdsmith-tooltip-code {
+  font-family: var(--font-monospace);
+  color: var(--text-muted);
+  margin-right: 0.5em;
+}
+
+.mdsmith-tooltip-fix {
+  display: inline-block;
+  margin-top: 0.5em;
+  color: var(--interactive-accent);
+  cursor: pointer;
+  text-decoration: underline;
+}
