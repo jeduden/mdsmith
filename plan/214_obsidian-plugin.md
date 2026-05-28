@@ -235,7 +235,7 @@ Mention the artifact in [github-releases.md][gh].
    `StateField`, the effect type, and a
    `hoverTooltip` provider rendering code, message,
    and a Fix link.
-5. Implement `actions.ts`. Add per-line palette
+5. [x] Implement `actions.ts`. Add per-line palette
    commands from active diagnostics, the
    `Fix file` command via `executeCommand`, and the
    debounced `vault.on('modify')` handler.
