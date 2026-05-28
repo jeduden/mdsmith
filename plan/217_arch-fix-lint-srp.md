@@ -31,9 +31,14 @@ they answer.
 ## Background
 
 - `gitignore.go` (278 lines) — gitignore
-  pattern matching. Consumed today only
-  by `files.go` inside `internal/lint`.
-- `limits.go` — `ReadFileLimited` and
+  pattern matching. Consumed by `files.go`
+  inside `internal/lint`, plus five
+  external callers: `cmd/mdsmith/export.go`,
+  `internal/discovery`, `internal/engine`,
+  `internal/fix`, and
+  `internal/rules/catalog`.
+- `limits.go` — `ReadFileLimited`,
+  `ReadFSFileLimited`, and
   `DefaultMaxInputBytes`. Imported by
   17+ files across `cmd/mdsmith/` and
   `internal/` (engine, fix, githooks,
@@ -43,10 +48,13 @@ they answer.
   concern.
 - `pi.go` + `pi_parser.go` — goldmark
   processing-instruction block parser.
-  Consumed by `file.go` and
-  `runcache.go` inside `internal/lint`,
-  plus by `internal/schema` indirectly
-  via `lint.RunCache`.
+  Consumed by `file.go` inside
+  `internal/lint`, and directly by
+  `internal/schema` (two files),
+  `internal/archetype`, `internal/lsp`,
+  `internal/export`, `internal/linkgraph`,
+  `internal/index`, and several rule
+  packages.
 
 ## Tasks
 
@@ -54,11 +62,18 @@ they answer.
    Move `gitignore.go` contents there.
    Write `TestNewPatternSet` and
    `TestPatternSet_Match` unit tests.
-   Update the single import site in
-   `internal/lint/files.go`.
+   Update `internal/lint/files.go` plus
+   five external callers:
+   `cmd/mdsmith/export.go`,
+   `internal/discovery`,
+   `internal/engine/runner.go`,
+   `internal/fix/fix.go`, and
+   `internal/rules/catalog/rule.go`.
 2. Create `internal/readlimit` package.
-   Move `limits.go` contents there.
-   Write `TestReadLimited` and
+   Move `limits.go` contents there
+   (`ReadFileLimited`, `ReadFSFileLimited`,
+   `DefaultMaxInputBytes`). Write
+   `TestReadLimited` and
    `TestDefaultMaxInputBytes` unit
    tests. Update all callers across
    `cmd/` and `internal/`.
@@ -67,9 +82,14 @@ they answer.
    contents there. Write
    `TestPI_Parse` and
    `TestPIBlockParser_*` unit tests.
-   Update import sites in
-   `internal/lint/file.go` and
-   `internal/lint/runcache.go`.
+   Update `internal/lint/file.go` and
+   all direct callers: `internal/schema`
+   (two files), `internal/archetype`,
+   `internal/lsp`, `internal/export`,
+   `internal/linkgraph`, `internal/index`,
+   and all rule packages that import PI
+   types (run `grep -r lint\.PI` to
+   enumerate them).
 4. Run `go test ./...` and
    `go tool golangci-lint run`.
 
@@ -81,9 +101,9 @@ they answer.
 - [ ] `internal/readlimit` package with
   `TestReadLimited` and
   `TestDefaultMaxInputBytes` unit tests.
-  `ReadFileLimited` and
-  `DefaultMaxInputBytes` removed from
-  `internal/lint`.
+  `ReadFileLimited`, `ReadFSFileLimited`,
+  and `DefaultMaxInputBytes` removed
+  from `internal/lint`.
 - [ ] `internal/pi` package with
   `TestPI_Parse` and
   `TestPIBlockParser_*` unit tests.

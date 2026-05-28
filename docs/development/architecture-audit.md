@@ -283,7 +283,7 @@ parsing, and YAML safety. YAML safety
 migrated to `internal/yamlutil` since
 then. Three concerns remain: `gitignore.go`
 (278 lines), `limits.go`
-(`ReadFileLimited` is imported by 6
+(`ReadFileLimited` is imported by 17+
 files outside `internal/lint`), and
 `pi.go` + `pi_parser.go`. No plan was
 ever filed — [plan/217][217] schedules
@@ -300,8 +300,8 @@ sentence-tokenizer fork into
 `internal/punkt`. Only
 `internal/mdtext` imports it. The
 package answers "segment text into
-sentences". The SRP table in go.md
-lists the core packages but omits this
+sentences". The SRP bullet list in
+go.md lists the core packages but omits
 helper. [plan/218][218] adds it.
 
 [218]: ../../plan/218_arch-fix-punkt-layering.md
