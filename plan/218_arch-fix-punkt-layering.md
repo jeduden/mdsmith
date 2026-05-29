@@ -1,7 +1,7 @@
 ---
 id: 218
 title: Add internal/punkt to the architecture layering map
-status: "🔲"
+status: "✅"
 summary: >-
   internal/punkt was vendored in commit a1aa6c5 as
   an allocation-clean Punkt sentence tokenizer,
@@ -47,10 +47,10 @@ only `internal/mdtext` may import it.
 
 ## Acceptance Criteria
 
-- [ ] `internal/punkt` appears in the SRP
+- [x] `internal/punkt` appears in the SRP
   bullet list in `go.md`, after
   `internal/mdtext`.
-- [ ] Entry states what it answers and
+- [x] Entry states what it answers and
   that only `internal/mdtext` imports it.
-- [ ] `go run ./cmd/mdsmith check .`
+- [x] `go run ./cmd/mdsmith check .`
   passes.
