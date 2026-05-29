@@ -1,7 +1,7 @@
 ---
 id: 215
 title: mdsmith public engine API and WASM bindings
-status: "🔲"
+status: "🔳"
 model: opus
 summary: >-
   Design `pkg/mdsmith` — a public Go engine API
@@ -226,7 +226,7 @@ asserts the result matches the native CLI.
 
 ## Tasks
 
-1. Doc-only commit sketching `pkg/mdsmith` —
+1. ✅ Doc-only commit sketching `pkg/mdsmith` —
    `Session`, `SessionOptions`, `Workspace`,
    the capability list, method signatures.
    Iterate before implementation.
