@@ -120,6 +120,16 @@ func dispatch(cmd, root string, rest []string) int {
 		return runBench(root, rest)
 	case "pull-site-assets":
 		return runPullSiteAssets(root, rest)
+	default:
+		return dispatchGenerators(cmd, root, rest)
+	}
+}
+
+// dispatchGenerators routes the doc-generation subcommands, split
+// from dispatch so each routing function stays short. Unknown
+// commands fall through to the usage error here.
+func dispatchGenerators(cmd, root string, rest []string) int {
+	switch cmd {
 	case "sync-messaging":
 		return runSyncMessaging(root, rest)
 	case "sync-coverage-matrix":
