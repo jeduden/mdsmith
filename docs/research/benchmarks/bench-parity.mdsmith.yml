@@ -1,55 +1,28 @@
 # Apples-to-apples benchmark profile.
 #
-# The default cross-tool run lets every tool use its own default
-# rule set, so mdsmith pays for cross-file integrity, readability,
-# token budget, and generated-section work that mado / rumdl /
-# markdownlint-cli2 do not do at all. This profile disables exactly
-# those mdsmith-only rules — the ones with no markdownlint analog —
-# so the remaining set is the structural style rules every tool in
-# the comparison actually shares (MDS001-018, 031-032, 041-047,
-# 049-054 all map to an MDxxx; see docs/background/markdown-linters.md).
+# The default cross-tool run lets every tool use its own default rule
+# set, so mdsmith pays for cross-file integrity, readability, token
+# budget, and generated-section work that mado / rumdl /
+# markdownlint-cli2 do not do at all. This profile selects the built-in
+# `parity` convention, which disables exactly those mdsmith-only rules —
+# the ones with no markdownlint analog — so the remaining set is the
+# structural style rules every tool in the comparison actually shares
+# (MDS001-018, 031-032, 041-047, 049-054 all map to an MDxxx; see
+# docs/background/markdown-linters.md).
 #
-# It is one-sided on purpose: it does NOT also disable the MD rules
-# that rumdl / markdownlint implement but mdsmith does not, so in
-# this profile the other tools may still do marginally more per
+# The convention (internal/convention/convention.go) is the single
+# source of truth for that rule set: this file only selects it, so the
+# benchmark and the convention can never drift, and the disabled-rule
+# table in the conventions reference and the benchmark page is
+# generated from the same convention (`mdsmith-release
+# sync-parity-rules`). Add or drop a rule there and all three move
+# together.
+#
+# It is one-sided on purpose: the convention does NOT also disable the
+# MD rules that rumdl / markdownlint implement but mdsmith does not, so
+# in this profile the other tools may still do marginally more per
 # file. Read "mdsmith-parity" as a conservative (upper-bound) figure
 # for mdsmith's relative speed on the shared rule class, not a claim
 # that the rule sets are byte-for-byte identical.
-#
-# Config deep-merges over built-in defaults, so only the disables
-# are listed; every structural rule keeps its default behavior.
 front-matter: true
-
-rules:
-  # Cross-file graph + workspace walk (no markdownlint analog).
-  cross-file-reference-integrity: false
-  # Readability / structure / budget metrics (no analog).
-  paragraph-readability: false
-  paragraph-structure: false
-  token-budget: false
-  conciseness-scoring: false
-  duplicated-content: false
-  # Generated-section directives (no analog).
-  catalog: false
-  include: false
-  required-structure: false
-  build: false
-  recipe-safety: false
-  toc: false
-  toc-directive: false
-  git-hook-sync: false
-  # Project-layout / size policies (no analog).
-  directory-structure: false
-  max-file-length: false
-  max-section-length: false
-  empty-section-body: false
-  # Repo-specific content policies (no analog).
-  forbidden-paragraph-starts: false
-  forbidden-text: false
-  required-text-patterns: false
-  required-mentions: false
-  # mdsmith-only style rule with no markdownlint counterpart.
-  no-reference-style: false
-  # Table readability heuristic (markdownlint table rules differ
-  # in kind; excluded to avoid claiming false parity).
-  table-readability: false
+convention: parity
