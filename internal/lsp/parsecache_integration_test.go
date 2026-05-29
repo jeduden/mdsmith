@@ -2,9 +2,12 @@ package lsp
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -106,4 +109,44 @@ func TestParseCache_DidCloseDropsEntry(t *testing.T) {
 
 	_, ok = h.srv.parseCache.Get("/workspace/close.md", 1)
 	assert.False(t, ok, "didClose must drop the parse cache entry")
+}
+
+// TestParseCache_ReloadConfigClearsOnRootChange pins that the parse
+// cache is flushed when reloadConfig picks a different .mdsmith.yml.
+// snapshotConfig derives the workspace root from configPath, and
+// every cache key is relative to that root; when the path moves, the
+// previously stored keys belong to a stale root and must be cleared
+// so a subsequent runLint cannot miss an invalidate it issued against
+// the new key.
+func TestParseCache_ReloadConfigClearsOnRootChange(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+
+	// Seed two distinct config directories on disk so reloadConfig
+	// can flip between them via the settings override.
+	dirA := t.TempDir()
+	dirB := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dirA, ".mdsmith.yml"), []byte("{}\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dirB, ".mdsmith.yml"), []byte("{}\n"), 0o600))
+
+	// Point reloadConfig at dirA's config and let it land.
+	h.srv.settingsMu.Lock()
+	h.srv.settings.ConfigPath = filepath.Join(dirA, ".mdsmith.yml")
+	h.srv.settingsMu.Unlock()
+	h.srv.reloadConfig()
+
+	// Warm the cache with a synthetic entry keyed off dirA.
+	f, err := lint.NewFileFromSource("docs/foo.md", []byte("# Hi\n"), false)
+	require.NoError(t, err)
+	h.srv.parseCache.Put("docs/foo.md", 1, f)
+
+	// Flip the override to dirB and reload. configPath changes, so
+	// reloadConfig must call parseCache.InvalidateAll.
+	h.srv.settingsMu.Lock()
+	h.srv.settings.ConfigPath = filepath.Join(dirB, ".mdsmith.yml")
+	h.srv.settingsMu.Unlock()
+	h.srv.reloadConfig()
+
+	_, ok := h.srv.parseCache.Get("docs/foo.md", 1)
+	assert.False(t, ok, "config-path change must drop every parse cache entry")
 }

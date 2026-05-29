@@ -480,6 +480,58 @@ func (r *Runner) runSource(path string, source []byte, version int, useParseCach
 		res.Errors = append(res.Errors, fmt.Errorf("parsing %q: %w", path, err))
 		return res
 	}
+
+	fmKinds, fmFields, err := r.parseFrontMatter(path, f.FrontMatter)
+	if err != nil {
+		res.Errors = append(res.Errors, err)
+		return res
+	}
+
+	r.runSourceCheckRules(res, f, path, fmKinds, fmFields)
+	sortDiagnostics(res.Diagnostics)
+	return res
+}
+
+// parseForSource resolves the *lint.File for an in-memory source.
+// When useParseCache is true and r.ParseCache holds an entry at
+// (path, version), the cached *File is returned and the parse is
+// skipped. Otherwise lint.NewFileFromSource is called, the Runner-
+// derived fields (MaxInputBytes, RunCache, FS, RootDir, gitignore
+// hook, generated-section ranges) are populated, and the result is
+// stored at (path, version) for the next call.
+//
+// Populating those fields before the Put keeps the cached *File
+// effectively immutable from each caller's perspective: a concurrent
+// Get returns a *File whose per-call state was set exactly once by
+// the goroutine that did the parse, so two LSP requests for the same
+// (path, version) cannot race on field writes. The stale-Put
+// rejection inside ParseCache.Put keeps an older parse landing late
+// from clobbering a newer cached value or re-filling a just-cleared
+// slot.
+func (r *Runner) parseForSource(path string, source []byte, version int, useParseCache bool) (*lint.File, error) {
+	if useParseCache && r.ParseCache != nil {
+		if f, ok := r.ParseCache.Get(path, version); ok {
+			return f, nil
+		}
+	}
+	f, err := lint.NewFileFromSource(path, source, r.StripFrontMatter)
+	if err != nil {
+		return f, err
+	}
+	r.populateFileFields(f, path)
+	if useParseCache && r.ParseCache != nil {
+		r.ParseCache.Put(path, version, f)
+	}
+	return f, nil
+}
+
+// populateFileFields sets the Runner-derived state on f that
+// downstream checks rely on: MaxInputBytes, RunCache, FS, RootDir,
+// the lazy gitignore hook, and the generated-section ranges.
+// Factored out of runSource so parseForSource can call it once
+// before the *File is published to the parse cache — see that
+// method's comment for the racing-readers argument.
+func (r *Runner) populateFileFields(f *lint.File, path string) {
 	f.MaxInputBytes = r.MaxInputBytes
 	f.RunCache = r.runCacheForCall()
 	if r.SourceFS != nil {
@@ -506,36 +558,7 @@ func (r *Runner) runSource(path string, source []byte, version int, useParseCach
 			return r.cachedGitignore(gd)
 		}
 	}
-
-	fmKinds, fmFields, err := r.parseFrontMatter(path, f.FrontMatter)
-	if err != nil {
-		res.Errors = append(res.Errors, err)
-		return res
-	}
-
-	r.runSourceCheckRules(res, f, path, fmKinds, fmFields)
-	sortDiagnostics(res.Diagnostics)
-	return res
-}
-
-// parseForSource resolves the *lint.File for an in-memory source.
-// When useParseCache is true and r.ParseCache holds an entry at
-// (path, version), the cached *File is returned and the parse is
-// skipped. Otherwise lint.NewFileFromSource is called and the result
-// stored at (path, version) for the next call. The stale-Put
-// rejection inside ParseCache.Put keeps an older parse landing late
-// from clobbering a newer cached value.
-func (r *Runner) parseForSource(path string, source []byte, version int, useParseCache bool) (*lint.File, error) {
-	if useParseCache && r.ParseCache != nil {
-		if f, ok := r.ParseCache.Get(path, version); ok {
-			return f, nil
-		}
-	}
-	f, err := lint.NewFileFromSource(path, source, r.StripFrontMatter)
-	if err == nil && useParseCache && r.ParseCache != nil {
-		r.ParseCache.Put(path, version, f)
-	}
-	return f, err
+	f.GeneratedRanges = gensection.FindAllGeneratedRanges(f)
 }
 
 // runSourceCheckRules wraps the post-parse check pipeline for
@@ -546,7 +569,9 @@ func (r *Runner) runSourceCheckRules(
 	res *Result, f *lint.File, path string,
 	fmKinds []string, fmFields map[string]any,
 ) {
-	f.GeneratedRanges = gensection.FindAllGeneratedRanges(f)
+	// f.GeneratedRanges and all other Runner-derived fields are now
+	// populated once by parseForSource before the cache Put, so this
+	// path no longer mutates f and concurrent cache hits do not race.
 	effective := r.effectiveWithCategories(path, fmKinds, fmFields)
 	mdRules := r.markdownRules()
 	r.logRules(mdRules, effective)

@@ -1538,9 +1538,20 @@ func (s *Server) reloadConfig() {
 	cfg, cfgPath, loadErr := s.resolveConfig(override)
 
 	s.configMu.Lock()
+	pathChanged := s.configPath != cfgPath
 	s.config = cfg
 	s.configPath = cfgPath
 	s.configMu.Unlock()
+
+	if pathChanged {
+		// snapshotConfig derives the workspace root from configPath;
+		// every parse cache key is workspace-relative to that root.
+		// When the config path moves (initial load, watched-file
+		// change, settings update) the existing keys belong to the
+		// previous root, so the cache must be cleared before the
+		// next runLint computes new ones.
+		s.parseCache.InvalidateAll()
+	}
 
 	if loadErr != "" {
 		s.logger.Printf("config: %s", loadErr)
