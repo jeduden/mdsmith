@@ -9,12 +9,7 @@ import (
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/lint"
-	"github.com/jeduden/mdsmith/internal/rule"
 )
-
-func init() {
-	rule.Register(&Rule{})
-}
 
 // shellInterpreters is the set of first-token values that indicate a shell
 // interpreter.

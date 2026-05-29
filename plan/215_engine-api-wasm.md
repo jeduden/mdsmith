@@ -242,7 +242,7 @@ asserts the result matches the native CLI.
    to `NewSession`. The LSP server uses one
    session per workspace and invalidates on
    `didChange` / `didChangeWatchedFiles`.
-5. Move the recipesafety `init` registration to
+5. ✅ Move the recipesafety `init` registration to
    a `//go:build !wasm` file. Native unaffected;
    WASM omits MDS040.
 6. Add `cmd/mdsmith-wasm/main.go`. Register
