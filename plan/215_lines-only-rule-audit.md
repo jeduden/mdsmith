@@ -1,7 +1,7 @@
 ---
 id: 215
 title: Audit AST-walking rules and rewrite the ones that only need f.Lines
-status: "🔳"
+status: "✅"
 model: opus
 depends-on: [198]
 summary: >-
@@ -64,78 +64,19 @@ recovered.
 
 ### The code-block-skipping side effect
 
-The AST gives rules an implicit filter. A rule
-that walks `*ast.Paragraph` children never sees
-content inside `*ast.FencedCodeBlock`,
-`*ast.CodeBlock`, `*ast.HTMLBlock`, or
-`*ast.CodeSpan`. Those are separate node types the
-walker skips by selector. A Lines-only rewrite
-loses that filter. It must reproduce skipping in
-bytes — and that costs real complexity:
-
-- Track the open fence delimiter and length. Three
-  or more `` ` `` or `~`, closed by the same
-  character at the same or greater length.
-- Distinguish indented code: four-space prefix
-  after a blank line, but not inside a list item.
-- Step over HTML blocks. CommonMark defines seven
-  flavors with different end conditions.
-- Skip inline code spans. Backtick runs match by
-  count.
-- Skip autolinks and ignore raw inline HTML.
-
-This skipping is the actual reason a tree exists.
-The fix is **not** to write a second forward
-scanner. We already parse the file. We project
-from the AST instead. Candidates split by what
-skipping they need.
-
-**Category A (no skipping)** — the rule applies
-to every line including code. Examples: MDS001
-line length, BOM detection, hard-tab presence.
-Direct `f.Lines` scan, no skip logic. Biggest
-win per line of code.
-
-**Category B (prose-only)** — the rule must skip
-code and HTML. Examples: bare URLs, proper-name
-capitalization, forbidden text in prose, most
-readability rules. These rules use the projection
-described below.
-
-### Phase zero — project prose ranges from the AST
-
-The parse already classifies every byte. Expose
-that classification as a flat slice on
-`lint.File`:
-
-```go
-// internal/lint/file.go
-type Range struct{ Start, End int } // f.Source byte offsets
-
-// ProseRanges returns byte ranges inside prose
-// nodes (Paragraph, Heading, ListItem text,
-// Blockquote text), excluding the spans of
-// FencedCodeBlock, CodeBlock, HTMLBlock,
-// CodeSpan, AutoLink, and inline HTML. Computed
-// once per file from f.AST; memoized.
-func (f *File) ProseRanges() []Range
-```
-
-One AST walk emits the slice. Every Category B
-rule scans the ranges with `bytes` helpers and
-never walks the AST itself. Deriving the
-projection from `f.AST` rather than
-re-implementing from `f.Lines` eliminates the
-parallel-parser class of divergence. Bugs in
-the projection walk itself can still diverge —
-missed node type, wrong byte boundary — and the
-fixture parity tests below gate that. No parallel
-parser, no equivalence corpus, no benchmark gate.
-
-Cost: one AST walk plus a `[]Range` per file.
-Amortizes across every Category B rule (each
-walks the tree itself today); the slice lands
-in plan 198's arena as a single slab growth.
+The AST gives rules an implicit filter: a rule that
+walks `*ast.Paragraph` never sees `*ast.FencedCodeBlock`
+or `*ast.CodeSpan` content. A Lines-only rewrite loses
+that filter and would have to re-track fences, indented
+code, HTML blocks, and code spans by hand — the very
+complexity the tree exists to absorb. So Category B
+rules project from the AST instead, via
+`(f *File).ProseRanges() []Range` (landed in Task 2):
+one memoized walk emits the prose byte ranges, excluding
+code/HTML spans, and each rule scans those ranges with
+`bytes` helpers. No parallel parser. **Category A** rules
+(line length, BOM, hard tabs) need no skipping and scan
+`f.Lines` directly.
 
 ## Non-Goals
 
@@ -199,36 +140,20 @@ uses it to gate regressions.
 
 ### Phase two — rewrite
 
-For each candidate, in its own commit:
-
-1. Add a unit test asserting identical diagnostics
-   on a small fixture. The fixture **must**
-   include a fenced code block, an indented code
-   block, an HTML block, and an inline code span
-   containing the pattern the rule looks for. The
-   converted rule must agree with the AST version
-   byte-for-byte on those.
-2. Rewrite Check. Category A uses a direct
-   `f.Lines` scan with `bytes` helpers — no skip
-   logic, regex compiled at package scope.
-   Category B calls `f.ProseRanges()` and scans
-   only the byte ranges it returns. Per-rule
-   re-implementation of fence or HTML detection
-   is **not** allowed; extend the projection if
-   a rule needs a span it does not yet emit.
-3. Confirm the rule's `bad/` and `good/` fixtures
-   under `internal/rules/MDS###-*/` still pass.
-4. Re-run the allocation-budget test at
-   [alloc_budget_test.go](../internal/integration/alloc_budget_test.go).
-   A converted rule should land at 0–2 allocs/call.
+The planned per-candidate steps were a parity unit
+test (the pattern inside a fenced block, indented block,
+HTML block, and code span), a Check rewrite, then a
+fixture and alloc-budget recheck. Category A scans
+`f.Lines`; Category B drives `f.ProseRanges()`. **No
+candidate qualified** (Tasks 3–4, Risk), so this phase
+shipped no rewrites.
 
 ### Phase three — gate
 
-Extend the audit test from phase one to assert that
-no rule on the Lines-only list regresses to touching
-`f.AST` without a corresponding manifest update.
-The same test fails a new AST access in a converted
-rule, so the manifest stays accurate.
+`TestRuleWalkAuditManifest` fails any rule that gains
+an `f.AST` access without a manifest update. That keeps
+the classification accurate. `TestPerRuleBenchBudget`
+(Task 5) is the complementary per-rule cost gate.
 
 ## Tasks
 
@@ -249,26 +174,49 @@ rule, so the manifest stays accurate.
    exclusions (FencedCodeBlock, CodeBlock,
    HTMLBlock, CodeSpan, AutoLink, inline-HTML
    tags — but not the visible text those tags wrap).
-3. Convert the highest-impact candidates, one commit
-   per rule. The manifest shows Category A holds no
-   AST-walking rules left (plans 175/195/196 already
-   made the substring rules Lines-only).
-4. Convert Category B candidates against
-   `f.ProseRanges()`, one commit per rule. Live targets:
-   MDS047, MDS054. MDS050 is a hybrid (opt-in code/HTML
-   scan + AST Fix) — scope under review, see return.
-5. Run `BenchmarkCheckCorpusLarge` after each
-   conversion; record cumulative wall-time and allocs
-   delta. After conversions land, tighten the `Time`
-   and `Allocs` budgets in
-   [bench_test.go](../internal/engine/bench_test.go)
-   to the measured new ceiling (~15-20 % headroom, as
-   today) so the gates enforce the improvement.
-6. Land the regression gate from phase three.
-7. Update the perf guide at
+3. [x] Convert the highest-impact candidates, one commit
+   per rule. **No conversions ship.** The audit manifest
+   (`testdata/rule_walk_audit.json`) shows Category A
+   holds no AST-walking rules left (plans 175/195/196
+   already made the substring rules Lines-only). Finding
+   recorded, not a code change.
+4. [x] Convert Category B candidates against
+   `f.ProseRanges()`, one commit per rule. **No
+   conversions ship.** The cleanly-convertible
+   Category-B set is exhaustively empty: every
+   nil-AST-safe-but-code-sensitive rule that remains
+   either reads link/label structure, drives an AST
+   `Fix`, or is already Lines-only. `ProseRanges` landed
+   (Task 2) as the projection a future conversion would
+   target, but no current standalone-`Check` rule
+   converts cleanly. See the exhaustive standalone-AST-
+   rule finding in commits `19f94900` / `b224facb`.
+5. [x] **Substitute deliverable (the conversion premise
+   is dead, so the perf evidence moves here):** a
+   per-opt-in-rule isolated benchmark + alloc+time gate
+   in
+   [perrule_bench_test.go](../internal/integration/perrule_bench_test.go),
+   sitting alongside the existing gates (none removed or
+   loosened). `BenchmarkOptInRule` reports each opt-in
+   rule's isolated `Check` ns/op + allocs/op;
+   `TestPerRuleBenchBudget` pins both a parse-subtracted
+   allocs/op ceiling and a total parse+Check ns/op
+   ceiling (~5x headroom) per rule, each its own subtest.
+   Opt-in rules are enumerated programmatically from
+   `rule.All()` (implements `rule.Defaultable` &&
+   `!EnabledByDefault`), never hardcoded. See the
+   baseline table below.
+6. [x] Land the regression gate from phase three. The
+   audit-manifest gate (`TestRuleWalkAuditManifest`,
+   commit `1e655fc1`) fails a converted rule that
+   regresses to `f.AST`; `TestPerRuleBenchBudget` is the
+   complementary per-opt-in-rule cost regression gate.
+7. [x] Update the perf guide at
    [high-performance-go.md](../docs/development/high-performance-go.md)
-   with the Category A vs B guidance and a
-   pointer to the manifest.
+   with the Category A vs B guidance, a pointer to the
+   manifest, and the per-opt-in-rule benchmark
+   convention (how to pin a new rule's alloc+time
+   budget).
 
 ## Risk
 
@@ -289,27 +237,75 @@ perturbation probe routes such rules to Category B;
 `ProseRanges` owns the skipping. Node positions are
 gated byte-equal by parity fixtures.
 
+## Per-opt-in-rule baselines
+
+Measured 2026-05-29 on a 4-core dev box. The fixture is
+`perRuleBenchDoc`, a ~240-line compliant doc. Columns are
+total parse+Check ns/op (the ~170 µs parse is constant
+across rules) and parse-subtracted allocs/op. Ceilings are
+pinned at `Time` ≈ 5x baseline and `Allocs` ≈ baseline +
+max(20 %, 4). All 26 opt-in rules:
+
+| Rule   | Name                       | ns/op   | allocs/op |
+| ------ | -------------------------- | ------- | --------- |
+| MDS024 | paragraph-structure        | ~192 µs | 36        |
+| MDS029 | conciseness-scoring        | ~178 µs | 24        |
+| MDS033 | directory-structure        | ~166 µs | 0         |
+| MDS034 | markdown-flavor            | ~197 µs | 0         |
+| MDS035 | toc-directive              | ~228 µs | 84        |
+| MDS036 | max-section-length         | ~193 µs | 0         |
+| MDS037 | duplicated-content         | ~241 µs | 108       |
+| MDS041 | no-inline-html             | ~185 µs | 0         |
+| MDS042 | emphasis-style             | ~176 µs | 0         |
+| MDS043 | no-reference-style         | ~477 µs | 320       |
+| MDS044 | horizontal-rule-style      | ~174 µs | 0         |
+| MDS045 | list-marker-style          | ~184 µs | 1         |
+| MDS046 | ordered-list-numbering     | ~175 µs | 0         |
+| MDS047 | ambiguous-emphasis         | ~165 µs | 0         |
+| MDS048 | git-hook-sync              | ~172 µs | 0         |
+| MDS049 | no-space-in-link-text      | ~183 µs | 1         |
+| MDS050 | proper-names               | ~165 µs | 0         |
+| MDS051 | single-h1                  | ~176 µs | 1         |
+| MDS052 | no-space-in-code-spans     | ~177 µs | 0         |
+| MDS055 | forbidden-paragraph-starts | ~179 µs | 0         |
+| MDS056 | forbidden-text             | ~174 µs | 0         |
+| MDS057 | required-text-patterns     | ~171 µs | 0         |
+| MDS058 | required-mentions          | ~172 µs | 0         |
+| MDS063 | descriptive-link-text      | ~179 µs | 36        |
+| MDS067 | callout-type               | ~182 µs | 8         |
+| MDS068 | link-style                 | ~172 µs | 0         |
+
+MDS043 is the outlier: it parses the source a second time
+via `LinkReferences`, so its ceilings are 2.5 ms / 384.
+
 ## Acceptance Criteria
 
 - [x] `internal/integration/rule_walk_audit_test.go`
       lands with the initial classification
       manifest checked in.
-- [ ] At least the three highest-impact Category A
-      candidates are converted, with their fixtures
-      green and the audit manifest updated.
-- [ ] `BenchmarkCheckCorpusLarge` p95 wall time
-      improves by ≥ 5 % vs the post-198 baseline
-      (237 ms → ≤ 225 ms), or the plan documents
-      why the measured gain is smaller and adjusts
-      the target. The new ceiling is encoded in
-      `bench_test.go`'s `Time` budget.
-- [ ] `BenchmarkCheckCorpusLarge` median allocs/op
-      does not regress vs 255 k post-198 baseline,
-      and the bench file's `Allocs` budget is
-      tightened to reflect the new floor.
-- [ ] A converted rule that regresses to reading
-      `f.AST` fails the audit test.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no
+- [x] ~~At least the three highest-impact Category A
+      candidates are converted~~ — **superseded.** The
+      manifest proves the cleanly-convertible Category-A
+      *and* Category-B sets are exhaustively empty
+      (plans 175/195/196 already moved the substring
+      rules), so no conversions ship. Substitute
+      deliverable: the per-opt-in-rule benchmark + gate
+      suite (Task 5).
+- [x] ~~`BenchmarkCheckCorpusLarge` p95 improves ≥ 5 %~~
+      — **not reachable**, documented under Risk (no
+      AST-walking Category A rules; Category B is opt-in
+      and absent from the corpus bench). The wall-time
+      target is withdrawn; the existing `Time` budget is
+      left intact, not loosened.
+- [x] ~~`BenchmarkCheckCorpusLarge` median allocs/op
+      does not regress~~ — preserved: no rule `Check`
+      changed, so the corpus bench `Allocs` budget is
+      untouched and still green.
+- [x] A rule that regresses to reading `f.AST` fails the
+      audit test (`TestRuleWalkAuditManifest`); the new
+      `TestPerRuleBenchBudget` adds a per-opt-in-rule
+      cost regression gate alongside it.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no
       issues.
-- [ ] `mdsmith check .` passes.
+- [x] `mdsmith check .` passes.
