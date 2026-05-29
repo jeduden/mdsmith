@@ -71,21 +71,21 @@ await session.check(uri, source);
 await session.fix(uri, source);
 ```
 
-The wrapper exposes that session through a thin
-typed facade so the rest of the plugin does not
-import the WASM module directly. On vault
-changes the wrapper calls
-`session.invalidate(uri)` so the parse-AST and
-`ReadFile` caches re-fetch on the next call. On
-unload it calls `session.dispose()`.
+The wrapper exposes `check`, `fix`, `invalidate`,
+and `dispose` through a thin typed facade so the
+rest of the plugin never imports the WASM module
+directly. On unload it calls `session.dispose()`.
 
 `workspace.ts` keeps the same flat
 `Map<string, string>` snapshot. The wrapper
-materializes it into the session at construction
-and updates the in-process map on each
-`'modify'` / `'create'` / `'delete'` event,
-followed by a `session.invalidate(uri)` for the
-affected URI. Each fan-out is debounced 200 ms.
+materializes it into the session at construction.
+Because the session's `MemWorkspace` is built
+once, a vault edit must push the new bytes: on
+`'modify'` / `'create'` the wrapper calls
+`session.invalidate(uri, content)`, and on
+`'delete'` it calls `session.invalidate(uri)`
+with no content to drop the file. Each fan-out is
+debounced 200 ms.
 
 ### Diagnostics in CodeMirror 6
 
@@ -205,16 +205,15 @@ artifact.
    `WebAssembly.instantiate`. Construct one
    `mdsmith.Session` per vault from the
    workspace snapshot and the config YAML.
-   Expose `session.check`, `session.fix`, and
-   `session.invalidate` through a typed
-   facade. Cover with `bun test`.
+   Expose `session.check`, `session.fix`,
+   `session.invalidate`, and `session.dispose`
+   through a typed facade. Cover with `bun test`.
 3. Implement `workspace.ts`. Snapshot
-   `app.vault.getMarkdownFiles()`. Update on
-   `'modify'`, `'create'`, `'delete'` with a
-   200 ms debounce, then fire
-   `session.invalidate(uri)` for each
-   affected URI so the parse-AST and
-   `ReadFile` caches refresh.
+   `app.vault.getMarkdownFiles()`. On `'modify'`
+   / `'create'` fire
+   `session.invalidate(uri, content)`; on
+   `'delete'` fire `session.invalidate(uri)`.
+   Debounce each fan-out 200 ms.
 4. Implement `diagnostics.ts`. Add the
    CM6 `StateField`, the effect type, and
    a `hoverTooltip` provider rendering
