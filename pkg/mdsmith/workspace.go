@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
@@ -83,8 +84,9 @@ func (w OSWorkspace) FS() fs.FS {
 // write lock. Glob is a linear scan of the key set, so the lint hot
 // loop must not call it per file.
 type MemWorkspace struct {
-	mu    sync.RWMutex
-	files map[string][]byte
+	mu        sync.RWMutex
+	files     map[string][]byte
+	globCalls atomic.Int64
 }
 
 // NewMemWorkspace returns a MemWorkspace seeded with files. The input
@@ -113,8 +115,12 @@ func (w *MemWorkspace) ReadFile(p string) ([]byte, error) {
 }
 
 // Glob returns the keys matching the doublestar pattern, sorted. It is
-// a linear scan over every stored path.
+// a linear scan over every stored path, so it must not be called per
+// file in the lint hot loop — the engine globs through the FS view
+// instead. GlobCalls exposes the call count for the benchmark that
+// guards this.
 func (w *MemWorkspace) Glob(pattern string) ([]string, error) {
+	w.globCalls.Add(1)
 	pat := path.Clean(filepath.ToSlash(pattern))
 	w.mu.RLock()
 	defer w.mu.RUnlock()
@@ -130,6 +136,13 @@ func (w *MemWorkspace) Glob(pattern string) ([]string, error) {
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+// GlobCalls returns how many times Glob has been called on this
+// workspace. It is a benchmark/test seam used to assert the lint hot
+// loop never calls the linear Glob per file.
+func (w *MemWorkspace) GlobCalls() int64 {
+	return w.globCalls.Load()
 }
 
 // Set stores data (cloned) at p, overwriting any existing entry.
