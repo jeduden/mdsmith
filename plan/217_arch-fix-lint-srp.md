@@ -90,13 +90,14 @@ they answer.
   outside `internal/lint/`. Verify with:
 
   ```sh
-  grep -r 'lint\.GitignoreMatcher\
-  |lint\.NewGitignoreMatcher\
-  |lint\.ReadFileLimited\
-  |lint\.ReadFSFileLimited\
-  |lint\.DefaultMaxInputBytes\
-  |lint\.ProcessingInstruction\
-  |lint\.PIBlockParser' \
+  grep -r \
+    -e 'lint\.GitignoreMatcher' \
+    -e 'lint\.NewGitignoreMatcher' \
+    -e 'lint\.ReadFileLimited' \
+    -e 'lint\.ReadFSFileLimited' \
+    -e 'lint\.DefaultMaxInputBytes' \
+    -e 'lint\.ProcessingInstruction' \
+    -e 'lint\.PIBlockParser' \
     cmd/ internal/ | grep -v internal/lint/
   ```
 
