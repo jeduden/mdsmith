@@ -90,6 +90,24 @@ type Runner struct {
 	// — install a shared instance so it survives across runLint
 	// calls and call its Invalidate seam on document edits.
 	RunCache *lint.RunCache
+	// ParseCache memoizes the parsed *lint.File for an in-memory
+	// document so RunSourceWithVersion can skip lint.NewFileFromSource
+	// when a prior call at the same (path, version) already parsed
+	// the buffer. Opt-in: only the LSP installs one (per-buffer
+	// version bumps invalidate stale entries; non-LSP callers that
+	// re-use a Runner without a monotonic version key would observe
+	// stale results, so leave this nil for them). RunSource (no
+	// version) ignores this field and always parses.
+	//
+	// Pairs with RunCache. populateFileFields stores the per-call
+	// RunCache on the parsed *File before publishing it to the cache,
+	// so a cache hit reuses that same RunCache pointer. Every Runner
+	// that shares one ParseCache MUST also share one RunCache (the
+	// LSP wires both off the server). A second Runner with a different
+	// RunCache would see the first Runner's cached reads through the
+	// hit, and that RunCache's Invalidate seam would be the one
+	// driving correctness — easy to get wrong, so don't mix.
+	ParseCache *lint.ParseCache
 }
 
 // fileOutcome is one file's contribution to a run. Workers fill a
@@ -410,6 +428,33 @@ func DedupeDiagnostics(diags []lint.Diagnostic) []lint.Diagnostic {
 // When SourceFS is nil (the stdin case), FS stays nil and rules that
 // require it short-circuit just as they did before.
 func (r *Runner) RunSource(path string, source []byte) *Result {
+	// noParseCacheVersion routes RunSource through the shared body
+	// with a sentinel that suppresses ParseCache use. RunSource has
+	// no version coordinate and cannot key the cache safely, so even
+	// when r.ParseCache is non-nil this path stays cold.
+	return r.runSource(path, source, 0, false)
+}
+
+// RunSourceWithVersion is the LSP-facing entry point. It mirrors
+// RunSource but accepts the textDocument/version coordinate the
+// editor maintains for the buffer. When r.ParseCache is installed,
+// it serves a *lint.File from the cache at (path, version) and skips
+// lint.NewFileFromSource; otherwise it parses fresh and stores the
+// result for the next call.
+//
+// Non-LSP callers that already use RunSource keep their existing
+// signature. New callers that have a version coordinate but no
+// cache installed can pass version anyway — it is ignored when
+// r.ParseCache is nil.
+func (r *Runner) RunSourceWithVersion(path string, source []byte, version int) *Result {
+	return r.runSource(path, source, version, true)
+}
+
+// runSource carries the shared RunSource / RunSourceWithVersion
+// body. useParseCache gates the ParseCache lookup so the version-
+// less RunSource entry cannot accidentally serve a *File parsed for
+// some other LSP edit cycle.
+func (r *Runner) runSource(path string, source []byte, version int, useParseCache bool) *Result {
 	res := &Result{FilesChecked: 1}
 
 	// Run config-target rules once before processing the in-memory source,
@@ -439,11 +484,62 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 
 	r.log().Printf("file: %s", path)
 
-	f, err := lint.NewFileFromSource(path, source, r.StripFrontMatter)
+	f, err := r.parseForSource(path, source, version, useParseCache)
 	if err != nil {
 		res.Errors = append(res.Errors, fmt.Errorf("parsing %q: %w", path, err))
 		return res
 	}
+
+	fmKinds, fmFields, err := r.parseFrontMatter(path, f.FrontMatter)
+	if err != nil {
+		res.Errors = append(res.Errors, err)
+		return res
+	}
+
+	r.runSourceCheckRules(res, f, path, fmKinds, fmFields)
+	sortDiagnostics(res.Diagnostics)
+	return res
+}
+
+// parseForSource resolves the *lint.File for an in-memory source.
+// When useParseCache is true and r.ParseCache holds an entry at
+// (path, version), the cached *File is returned and the parse is
+// skipped. Otherwise lint.NewFileFromSource is called, the Runner-
+// derived fields (MaxInputBytes, RunCache, FS, RootDir, gitignore
+// hook, generated-section ranges) are populated, and the result is
+// stored at (path, version) for the next call.
+//
+// Populating those fields before the Put keeps the cached *File
+// effectively immutable from each caller's perspective: a concurrent
+// Get returns a *File whose per-call state was set exactly once by
+// the goroutine that did the parse, so two LSP requests for the same
+// (path, version) cannot race on field writes. The stale-Put
+// rejection inside ParseCache.Put keeps an older parse landing late
+// from clobbering a newer cached value or re-filling a just-cleared
+// slot.
+func (r *Runner) parseForSource(path string, source []byte, version int, useParseCache bool) (*lint.File, error) {
+	if useParseCache && r.ParseCache != nil {
+		if f, ok := r.ParseCache.Get(path, version); ok {
+			return f, nil
+		}
+	}
+	f, err := lint.NewFileFromSource(path, source, r.StripFrontMatter)
+	if err == nil {
+		r.populateFileFields(f, path)
+		if useParseCache && r.ParseCache != nil {
+			r.ParseCache.Put(path, version, f)
+		}
+	}
+	return f, err
+}
+
+// populateFileFields sets the Runner-derived state on f that
+// downstream checks rely on: MaxInputBytes, RunCache, FS, RootDir,
+// the lazy gitignore hook, and the generated-section ranges.
+// Factored out of runSource so parseForSource can call it once
+// before the *File is published to the parse cache — see that
+// method's comment for the racing-readers argument.
+func (r *Runner) populateFileFields(f *lint.File, path string) {
 	f.MaxInputBytes = r.MaxInputBytes
 	f.RunCache = r.runCacheForCall()
 	if r.SourceFS != nil {
@@ -470,16 +566,7 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 			return r.cachedGitignore(gd)
 		}
 	}
-
-	fmKinds, fmFields, err := r.parseFrontMatter(path, f.FrontMatter)
-	if err != nil {
-		res.Errors = append(res.Errors, err)
-		return res
-	}
-
-	r.runSourceCheckRules(res, f, path, fmKinds, fmFields)
-	sortDiagnostics(res.Diagnostics)
-	return res
+	f.GeneratedRanges = gensection.FindAllGeneratedRanges(f)
 }
 
 // runSourceCheckRules wraps the post-parse check pipeline for
@@ -490,7 +577,9 @@ func (r *Runner) runSourceCheckRules(
 	res *Result, f *lint.File, path string,
 	fmKinds []string, fmFields map[string]any,
 ) {
-	f.GeneratedRanges = gensection.FindAllGeneratedRanges(f)
+	// f.GeneratedRanges and all other Runner-derived fields are now
+	// populated once by parseForSource before the cache Put, so this
+	// path no longer mutates f and concurrent cache hits do not race.
 	effective := r.effectiveWithCategories(path, fmKinds, fmFields)
 	mdRules := r.markdownRules()
 	r.logRules(mdRules, effective)
