@@ -146,5 +146,6 @@ footer: |
 | 216 | ✅     | opus   | [Per-document parse cache for the LSP, keyed by version](plan/216_lsp-parse-cache.md)                                                   |
 | 217 | 🔲     | opus   | [Obsidian plugin (WASM runtime)](plan/217_obsidian-plugin.md)                                                                           |
 | 218 | ✅     | sonnet | [Finish MD054 link-image-style coverage in MDS068](plan/218_finish-md054-link-image-style.md)                                           |
+| 218 | 🔲     | opus   | [WASM size reduction — CUE-free engine path and tinygo support](plan/218_wasm-size-reduction.md)                                        |
 | 219 | 🔲     | opus   | [Multiplexed AST walk to close the parity gap to mado](plan/219_multiplexed-ast-walk.md)                                                |
 <?/catalog?>

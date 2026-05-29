@@ -87,29 +87,11 @@ js.Global().Set("mdsmith", js.ValueOf(map[string]any{
 }))
 ```
 
-The session returned by `createSession` carries
-each Go method one-to-one:
-
-```ts
-declare const mdsmith: {
-  createSession(opts: SessionOptions): Promise<Session>;
-  version: string;
-};
-
-interface Session {
-  check(uri: string, src: string): Promise<Diagnostic[]>;
-  fix(uri: string, src: string): Promise<FixResult>;
-  kinds(uri: string): Promise<KindResolution>;
-  capabilities(): string[];
-  invalidate(uri: string, content?: string): void;
-  dispose(): void;
-}
-
-interface SessionOptions {
-  workspace: Record<string, string>;
-  configYAML: string;
-}
-```
+`createSession` returns a session that mirrors each Go method
+one-to-one. The methods are `check`, `fix`, `kinds`,
+`capabilities`, `invalidate`, and `dispose`. The full TypeScript
+shape lives in the
+[engine-api concept page](../docs/background/concepts/engine-api.md).
 
 JS method names match the Go names; JS string
 arguments cross as Go `[]byte` while URIs stay
@@ -266,14 +248,19 @@ asserts the result matches the native CLI.
       plus `Workspace` with `OSWorkspace` and
       `MemWorkspace`. `cmd/mdsmith` and
       `internal/lsp` use `NewSession`; no
-      `os.ReadFile` survives outside
-      `pkg/mdsmith` and `cmd/`.
+      `os.ReadFile` on the engine's read paths
+      survives outside `pkg/mdsmith` and `cmd/`
+      (native-only tooling — release, corpus,
+      git-hook rules — may still read disk).
 - [ ] `cmd/mdsmith-wasm/` builds with
-      `GOOS=js GOARCH=wasm` and with `tinygo`,
-      exporting `globalThis.mdsmith.createSession`
-      and `globalThis.mdsmith.version`. A test
+      `GOOS=js GOARCH=wasm`, exporting
+      `globalThis.mdsmith.createSession` and
+      `globalThis.mdsmith.version`. A test
       asserts the JS session method set matches
       the Go `Session` method set name-for-name.
+      tinygo is deferred to
+      [plan 218](218_wasm-size-reduction.md); it
+      cannot compile the engine today.
 - [ ] `Capabilities()` returns method names
       (never rule IDs) and returns the same
       list in Go and JS for the same build.
@@ -286,9 +273,14 @@ asserts the result matches the native CLI.
       `Check` sees the new bytes; the workspace
       bench shows no per-file `Glob`.
 - [ ] Smoke test: WASM `check` matches native
-      CLI on an in-memory fixture.
-- [ ] Standard Go WASM ≤ 18 MB; `tinygo` ≤
-      8 MB. Completion note records which ships.
+      CLI on an in-memory fixture, and runs in
+      CI (the `wasm` job, with Node) so it gates.
+- [ ] The standard-Go WASM artifact ships
+      (~38 MB / 8.2 MB gzipped); a size-regression
+      test guards it at ≤ 42 MiB raw / 9 MiB
+      gzipped. The ≤ 18 MB and `tinygo` ≤ 8 MB
+      budgets are deferred to
+      [plan 218](218_wasm-size-reduction.md).
 - [ ] `docs/background/concepts/engine-api.md`
       exists. `mdsmith check .`, `go test ./...`,
       and `go tool golangci-lint run` all pass.
