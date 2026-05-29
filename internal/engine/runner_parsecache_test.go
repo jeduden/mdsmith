@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/config"
@@ -112,6 +113,24 @@ func TestRunSource_NilCacheIsCold(t *testing.T) {
 	}
 
 	res := r.RunSource("docs/foo.md", []byte("# Title\n"))
+	require.Empty(t, res.Errors)
+	require.Len(t, res.Diagnostics, 1)
+}
+
+// TestRunSource_AbsPathWiresGitignoreFromFileDir pins the
+// no-RootDir branch in populateFileFields: when the Runner has no
+// RootDir and the caller hands in an absolute path, the gitignore
+// hook anchors at filepath.Dir(path) so a stdin-style absolute
+// caller still gets a gitignore matcher rooted alongside the file.
+func TestRunSource_AbsPathWiresGitignoreFromFileDir(t *testing.T) {
+	cfg := &config.Config{Rules: map[string]config.RuleCfg{"mock-rule": {Enabled: true}}}
+	r := &Runner{
+		Config: cfg,
+		Rules:  []rule.Rule{&countingRule{id: "MDS999", name: "mock-rule"}},
+	}
+
+	absPath := filepath.Join(t.TempDir(), "foo.md")
+	res := r.RunSource(absPath, []byte("# Title\n"))
 	require.Empty(t, res.Errors)
 	require.Len(t, res.Diagnostics, 1)
 }

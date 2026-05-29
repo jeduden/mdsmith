@@ -131,6 +131,24 @@ func TestParseCache_PutNewerVersionEvictsOlder(t *testing.T) {
 	assert.Nil(t, got)
 }
 
+// TestParseCache_InvalidateAbsentPathNoOp pins that Invalidating a
+// path that has never been Put leaves the cache untouched, and that
+// a subsequent Put at any version takes the slot. Without an entry
+// to seed a watermark, there is no version threshold to remember.
+func TestParseCache_InvalidateAbsentPathNoOp(t *testing.T) {
+	c := NewParseCache()
+
+	c.Invalidate("docs/never-stored.md")
+
+	fresh, err := NewFileFromSource("docs/never-stored.md", []byte("# Fresh\n"), false)
+	require.NoError(t, err)
+	c.Put("docs/never-stored.md", 1, fresh)
+
+	got, ok := c.Get("docs/never-stored.md", 1)
+	require.True(t, ok)
+	assert.Same(t, fresh, got)
+}
+
 // TestParseCache_StalePutAfterInvalidateRejected pins the LSP race:
 // a slow parse for version V cannot re-insert a *File for the slot
 // that Invalidate just cleared. Without the tombstone watermark the

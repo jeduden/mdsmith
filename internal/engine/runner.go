@@ -515,14 +515,13 @@ func (r *Runner) parseForSource(path string, source []byte, version int, usePars
 		}
 	}
 	f, err := lint.NewFileFromSource(path, source, r.StripFrontMatter)
-	if err != nil {
-		return f, err
+	if err == nil {
+		r.populateFileFields(f, path)
+		if useParseCache && r.ParseCache != nil {
+			r.ParseCache.Put(path, version, f)
+		}
 	}
-	r.populateFileFields(f, path)
-	if useParseCache && r.ParseCache != nil {
-		r.ParseCache.Put(path, version, f)
-	}
-	return f, nil
+	return f, err
 }
 
 // populateFileFields sets the Runner-derived state on f that
