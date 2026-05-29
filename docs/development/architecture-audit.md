@@ -235,11 +235,12 @@ never import `internal/lsp`.
 
 `cue/types` not in layering map — [plan/206][206].
 
-## Audit 2026-05-24 (range: 41e61a5..91c15ca)
+## Audit 2026-05-24 (range: e8b3d04..91c15ca)
 
-SHA `41e61a5e` is not in this local
-clone (checkout starts at `e8b3d04`).
-The effective sweep covered 58 commits,
+SHA `41e61a5e` (nominal audit-from) was
+not in this local clone; checkout
+started at `e8b3d04`. The effective
+sweep covered 58 commits,
 `e8b3d04` through `91c15ca`. Of the Go
 and TypeScript files touched, 3 plans
 from the 2026-05-19 audit closed (200,

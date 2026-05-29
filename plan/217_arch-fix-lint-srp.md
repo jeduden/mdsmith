@@ -112,7 +112,12 @@ they answer.
   from `internal/lint`.
 - [ ] `internal/lint` contains only
   `File`, `Diagnostic`, lint-local
-  helpers, and the run cache.
+  helpers, and the run cache (RunCache
+  may import `internal/pi`; that is
+  expected).
+- [ ] `grep -r "internal/lint" cmd/ internal/ | grep -v internal/lint/`
+  returns no hits for the moved symbols
+  (`gitignore`, `readlimit`, PI types).
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool golangci-lint run`
   reports no issues.
