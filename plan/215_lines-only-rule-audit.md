@@ -1,7 +1,7 @@
 ---
 id: 215
 title: Audit AST-walking rules and rewrite the ones that only need f.Lines
-status: "🔲"
+status: "🔳"
 model: opus
 depends-on: [198]
 summary: >-
@@ -232,11 +232,11 @@ rule, so the manifest stays accurate.
 
 ## Tasks
 
-1. Implement the audit harness (nil-AST probe,
-   code-block-perturbation probe, `go/packages`
-   static scan) and land the initial manifest
-   classifying each rule A / B / AST-required /
-   hybrid.
+1. [x] Audit harness (nil-AST probe, code-block-
+   perturbation probe, `go/packages` static scan) plus
+   the initial manifest. In `rule_walk_audit_test.go`;
+   manifest `testdata/rule_walk_audit.json`. Probes
+   drive each rule against its own `bad/` fixtures.
 2. Add `(f *File).ProseRanges()` with the AST
    projection. Memoize via the `atomic.Bool +
    sync.Mutex` pattern `newlineOffsets` and
@@ -292,7 +292,7 @@ amendment.
 
 ## Acceptance Criteria
 
-- [ ] `internal/integration/rule_walk_audit_test.go`
+- [x] `internal/integration/rule_walk_audit_test.go`
       lands with the initial classification
       manifest checked in.
 - [ ] At least the three highest-impact Category A
