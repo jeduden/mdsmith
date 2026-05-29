@@ -92,7 +92,12 @@ they answer.
    types (run
    `grep -r 'lint\.ProcessingInstruction\|lint\.PIBlockParser' cmd/ internal/`
    to enumerate them).
-4. Run `go test ./...` and
+4. Add SRP bullet entries to
+   `docs/development/architecture/go.md`
+   for each new package, following the
+   pattern established by `internal/punkt`
+   in [plan/218](218_arch-fix-punkt-layering.md).
+5. Run `go test ./...` and
    `go tool golangci-lint run`.
 
 ## Acceptance Criteria
@@ -118,12 +123,17 @@ they answer.
   expected).
 - [ ] No stale callers of moved symbols remain
   outside `internal/lint/`: grep `cmd/` and
-  `internal/` for `lint.PatternSet`,
+  `internal/` for `lint.GitignoreMatcher`,
+  `lint.NewGitignoreMatcher`,
   `lint.ReadFileLimited`,
   `lint.ReadFSFileLimited`,
   `lint.DefaultMaxInputBytes`,
   `lint.ProcessingInstruction`,
   `lint.PIBlockParser` — zero results.
+- [ ] `docs/development/architecture/go.md`
+  lists `internal/gitignore`,
+  `internal/readlimit`, and
+  `internal/pi` in the SRP section.
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool golangci-lint run`
   reports no issues.
