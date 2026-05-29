@@ -89,8 +89,9 @@ they answer.
    `internal/lsp`, `internal/export`,
    `internal/linkgraph`, `internal/index`,
    and all rule packages that import PI
-   types (run `grep -r lint\.PI` to
-   enumerate them).
+   types (run
+   `grep -r 'lint\.ProcessingInstruction\|lint\.PIBlockParser' cmd/ internal/`
+   to enumerate them).
 4. Run `go test ./...` and
    `go tool golangci-lint run`.
 
@@ -115,9 +116,14 @@ they answer.
   helpers, and the run cache (RunCache
   may import `internal/pi`; that is
   expected).
-- [ ] `grep -r "internal/lint" cmd/ internal/ | grep -v internal/lint/`
-  returns no hits for the moved symbols
-  (`gitignore`, `readlimit`, PI types).
+- [ ] No stale callers of moved symbols remain
+  outside `internal/lint/`: grep `cmd/` and
+  `internal/` for `lint.PatternSet`,
+  `lint.ReadFileLimited`,
+  `lint.ReadFSFileLimited`,
+  `lint.DefaultMaxInputBytes`,
+  `lint.ProcessingInstruction`,
+  `lint.PIBlockParser` — zero results.
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool golangci-lint run`
   reports no issues.
