@@ -100,6 +100,7 @@ func TestSubcommandHelpExitsZero(t *testing.T) {
 		"sync-docs", "build-website", "verify-website-links",
 		"sync-messaging",
 		"sync-coverage-matrix",
+		"sync-parity-rules",
 	} {
 		assert.Equal(t, 0, run([]string{sub, "--help"}), "%s --help", sub)
 	}
@@ -113,6 +114,7 @@ func TestSubcommandRejectsUnknownFlag(t *testing.T) {
 		"sync-docs", "build-website", "verify-website-links",
 		"sync-messaging",
 		"sync-coverage-matrix",
+		"sync-parity-rules",
 	} {
 		assert.Equal(t, 2, run([]string{sub, "--bogus"}), "%s --bogus", sub)
 	}

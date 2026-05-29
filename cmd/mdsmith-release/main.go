@@ -62,6 +62,8 @@ Commands:
   sync-messaging [--check]        Propagate docs/brand/messaging.md into every tracked surface (or check drift).
   sync-coverage-matrix [--check]  Regenerate the peer-linter coverage matrix from rule front matter
                                   (or check drift).
+  sync-parity-rules [--check]     Regenerate the parity-convention disabled-rules fragment
+                                  (or check drift).
 `
 
 func main() {
@@ -122,6 +124,8 @@ func dispatch(cmd, root string, rest []string) int {
 		return runSyncMessaging(root, rest)
 	case "sync-coverage-matrix":
 		return runSyncCoverageMatrix(root, rest)
+	case "sync-parity-rules":
+		return runSyncParityRules(root, rest)
 	default:
 		fmt.Fprintf(os.Stderr, "mdsmith-release: unknown command %q\n%s", cmd, usageText)
 		return 2
