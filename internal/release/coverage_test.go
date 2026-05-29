@@ -244,6 +244,24 @@ func TestRenderPeerCell_FormatsAllStates(t *testing.T) {
 		}))
 }
 
+// TestRenderPeerCell_CollapsesWhenIDEqualsName verifies that when a
+// peer's rule ID and name are identical — the obsidian-linter and
+// panache convention — the cell renders the token once rather than
+// duplicating it (e.g. "consecutive-blank-lines ⚪", not
+// "consecutive-blank-lines ⚪ consecutive-blank-lines"). The
+// "(partial)" suffix still appends after the collapsed form.
+func TestRenderPeerCell_CollapsesWhenIDEqualsName(t *testing.T) {
+	assert.Equal(t, "consecutive-blank-lines ⚪",
+		renderPeerCell([]rules.RuleMapping{{ID: "consecutive-blank-lines",
+			Name: "consecutive-blank-lines", Default: false}}))
+	assert.Equal(t, "undefined-anchor ✅",
+		renderPeerCell([]rules.RuleMapping{{ID: "undefined-anchor",
+			Name: "undefined-anchor", Default: true}}))
+	assert.Equal(t, "headings-start-line ⚪ (partial)",
+		renderPeerCell([]rules.RuleMapping{{ID: "headings-start-line",
+			Name: "headings-start-line", Default: false, Partial: true}}))
+}
+
 // TestGroupByCategory_BucketsByCategoryAndSortsByID groups rules
 // under their `category:` key and sorts each bucket by ID so the
 // rendered page has a stable per-row order.

@@ -240,7 +240,15 @@ func renderPeerCell(ms []rules.RuleMapping) string {
 		if !m.Default {
 			mark = "⚪"
 		}
-		part := fmt.Sprintf("%s %s %s", m.ID, mark, m.Name)
+		// obsidian-linter and panache name their rules with a
+		// single slug, so the README sets id == name. Collapse to
+		// one token instead of repeating it as "slug ✅ slug".
+		var part string
+		if m.ID == m.Name {
+			part = fmt.Sprintf("%s %s", m.ID, mark)
+		} else {
+			part = fmt.Sprintf("%s %s %s", m.ID, mark, m.Name)
+		}
 		if m.Partial {
 			part += " (partial)"
 		}
