@@ -44,39 +44,48 @@ through anything but the Vault API. WASM
 sidesteps all three.
 
 [Plan 214](214_obsidian-plugin.md) was an
-earlier draft that spawned `mdsmith lsp` as
-a subprocess and hand-rolled a JSON-RPC
-client. Desktop-only. Plan 215 and this
-plan replace it. Salvageable code from the
-214 branch (`diagnostics.ts`, settings tab,
-code-action wiring, styles, build shell)
-may be cherry-picked.
+earlier draft that spawned `mdsmith lsp` as a
+subprocess. Plans 215 and 217 replace it.
+Salvageable code from that branch
+(`diagnostics.ts`, settings tab, code actions,
+styles, build shell) may be cherry-picked.
 
 ## Design
 
 ### Runtime
 
 `editors/obsidian/src/wasm-runtime.ts`
-instantiates the WASM module from plan 215
-and exposes a thin typed wrapper:
+instantiates the WASM module from plan 215 and
+holds a single
+[`mdsmith.Session`](215_engine-api-wasm.md#wasm-bindings-cmdmdsmith-wasm)
+for the vault:
 
 ```ts
-export interface Runtime {
-  check(uri: string, source: string,
-        workspace: Record<string, string>):
-    Promise<Diagnostic[]>;
-  fix(uri: string, source: string,
-      workspace: Record<string, string>):
-    Promise<{ output: string;
-              edits: TextEdit[] }>;
-}
+const session = await mdsmith.createSession({
+  workspace: workspaceSnapshot.toRecord(),
+  configYAML: await loadConfig(),
+});
+
+// Per-file operations call methods on the session
+await session.check(uri, source);
+await session.fix(uri, source);
 ```
 
-`workspace.ts` snapshots
-`app.vault.getMarkdownFiles()` at startup
-and keeps a `Map<string, string>`. It
-updates on `'modify'`, `'create'`, and
-`'delete'` with a 200 ms debounce.
+The wrapper exposes that session through a thin
+typed facade so the rest of the plugin does not
+import the WASM module directly. On vault
+changes the wrapper calls
+`session.invalidate(uri)` so the parse-AST and
+`ReadFile` caches re-fetch on the next call. On
+unload it calls `session.dispose()`.
+
+`workspace.ts` keeps the same flat
+`Map<string, string>` snapshot. The wrapper
+materializes it into the session at construction
+and updates the in-process map on each
+`'modify'` / `'create'` / `'delete'` event,
+followed by a `session.invalidate(uri)` for the
+affected URI. Each fan-out is debounced 200 ms.
 
 ### Diagnostics in CodeMirror 6
 
@@ -92,8 +101,8 @@ the message. The tooltip footer carries a
 code-action flow as the palette command.
 
 A "mdsmith Diagnostics" [`ItemView`][iv]
-lists every workspace diagnostic in a
-sortable table. A click jumps to source.
+lists every workspace diagnostic in a sortable
+table; click jumps to source.
 
 [cm6]: https://codemirror.net/
 [iv]: https://docs.obsidian.md/Plugins/User+interface/Views
@@ -107,8 +116,8 @@ Three command surfaces:
    diagnostic on the cursor line registers
    a transient `mdsmith: Fix — {code}`
    command. The set clears on cursor move.
-3. The `mdsmith: Fix file` command. Calls
-   `runtime.fix()` and applies the
+3. The `mdsmith: Fix file` command awaits
+   `session.fix(uri, source)` and applies the
    returned edits.
 
 `fixOnSave` (off by default) debounces
@@ -124,40 +133,35 @@ Three command surfaces:
 | `fixOnSave`  | `false`    | Run `fixAll` after save |
 
 Settings round-trip via `loadData` and
-`saveData`. Changing `configPath` triggers
-a runtime restart.
+`saveData`. Changing `configPath` calls
+`session.dispose()` and creates a fresh session
+with the new config; plan 215 does not expose
+an in-place reconfigure.
 
 ### Lifecycle
 
-`onload` does five things in order. It
-reads settings. It loads the WASM bundle.
-It builds the workspace snapshot. It
-registers the CM6 extension, the commands,
-and the diagnostics view. It attaches
-vault listeners.
+`onload` runs in order. Read settings. Load the
+WASM bundle. Build the workspace snapshot. Call
+`mdsmith.createSession({workspace, configYAML})`
+once. Register the CM6 extension, the commands,
+the diagnostics view, and the vault listeners.
 
-`onunload` disposes the runtime, removes
+`onunload` calls `session.dispose()`, removes
 the listeners, and clears the views. A
-`mdsmith: Restart runtime` command
-re-instantiates the WASM module after a
-config change.
+`mdsmith: Restart session` command runs the
+same `dispose + createSession` flow used on
+config changes.
 
 ### Budgets
 
-- Cold start `check` on a 1000-line file:
-  ≤ 1 s on desktop, ≤ 2 s on a modern iPad.
-- Steady-state `check`: ≤ 150 ms on every
-  platform.
-- Release zip
-  (`main.js` + `manifest.json` +
-  `styles.css` + `mdsmith.wasm` +
-  `wasm_exec.js`): ≤ 25 MB. If WASM pushes
-  the zip past 25 MB, fetch it via
-  [`requestUrl`][ru] on first run and
-  cache the bytes.
+- Cold-start `check` on a 1000-line file:
+  ≤ 1 s desktop, ≤ 2 s on a modern iPad.
+- Steady-state `check`: ≤ 150 ms everywhere.
+- Release zip ≤ 25 MB. If WASM pushes past
+  25 MB, fetch it via [`requestUrl`][ru] on
+  first run and cache the bytes.
 
-Benchmark numbers come from
-`wasm-runtime.bench.ts`.
+Benchmarks come from `wasm-runtime.bench.ts`.
 
 [ru]: https://docs.obsidian.md/Reference/TypeScript+API/requestUrl
 
@@ -196,15 +200,21 @@ artifact.
    `manifest.json` (no `isDesktopOnly`),
    `build.ts`, stub `src/main.ts`,
    `README.md`.
-2. Implement `wasm-runtime.ts`.
-   Instantiate the plan-215 WASM via
-   `WebAssembly.instantiate`. Marshal
-   workspace snapshots in and diagnostics
-   out. Cover with `bun test`.
+2. Implement `wasm-runtime.ts`. Instantiate
+   the plan-215 WASM via
+   `WebAssembly.instantiate`. Construct one
+   `mdsmith.Session` per vault from the
+   workspace snapshot and the config YAML.
+   Expose `session.check`, `session.fix`, and
+   `session.invalidate` through a typed
+   facade. Cover with `bun test`.
 3. Implement `workspace.ts`. Snapshot
-   `app.vault.getMarkdownFiles()`. Update
-   on `'modify'`, `'create'`, `'delete'`
-   with a 200 ms debounce.
+   `app.vault.getMarkdownFiles()`. Update on
+   `'modify'`, `'create'`, `'delete'` with a
+   200 ms debounce, then fire
+   `session.invalidate(uri)` for each
+   affected URI so the parse-AST and
+   `ReadFile` caches refresh.
 4. Implement `diagnostics.ts`. Add the
    CM6 `StateField`, the effect type, and
    a `hoverTooltip` provider rendering

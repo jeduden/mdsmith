@@ -38,9 +38,11 @@ code that plan 217 can reuse. The list:
 actions, the styles, and the build shell.
 Drop `lsp-client.ts` and `binary.ts`.
 
-See the original plan body in git history
-(`git show <pre-supersede-sha>:plan/214_obsidian-plugin.md`)
-for the design notes that informed plan 217.
+Its design notes informed plan 217. The
+original plan body lives in git history under
+the parent of the supersede commit. Run
+`git log -p -1 -- plan/214_obsidian-plugin.md`
+to find that revision.
 
 ## Goal
 

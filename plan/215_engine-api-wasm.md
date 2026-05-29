@@ -17,29 +17,26 @@ depends-on: [163]
 
 ## Goal
 
-Give every consumer — the CLI, the LSP server,
-the Obsidian plugin from
-[plan 217](217_obsidian-plugin.md), future
-website playgrounds — one Go API for the lint
-engine. Mirror it in JavaScript via WebAssembly
-so JS hosts call the same method names with the
-same shapes.
+One Go API for the mdsmith engine. Used by the
+CLI, the LSP server, and the Obsidian plugin
+from [plan 217](217_obsidian-plugin.md).
+Mirrored in JavaScript via WebAssembly with the
+same method names and shapes.
 
 ## Background
 
 mdsmith's engine lives under `internal/` today.
-`cmd/mdsmith/` and `internal/lsp/` each re-derive
-their own plumbing — load config, compile rules,
-walk files. No public Go surface mirrors in JS.
-[Plan 163](163_public-markdown-library.md)
-extracted `pkg/markdown`. This plan extends the
+`cmd/mdsmith/` and `internal/lsp/` re-derive
+their own plumbing. No public Go surface mirrors
+in JS. [Plan 163](163_public-markdown-library.md)
+extracted `pkg/markdown`; this plan extends the
 same pattern to the engine.
 
-WebAssembly under `GOOS=js GOARCH=wasm` has no
-filesystem, no subprocess, no threads. The 10 MB
-Go runtime is the size cost. `tinygo` trims to
-5–8 MB; the build target builds both and the
-completion note records which ships.
+`GOOS=js GOARCH=wasm` has no filesystem, no
+subprocess, no threads. The 10 MB Go runtime is
+the size cost. `tinygo` trims to 5–8 MB; the
+build target builds both and the completion
+note records which ships.
 
 ## Design
 
@@ -117,9 +114,15 @@ interface SessionOptions {
 ```
 
 JS method names match Go method names. JS string
-arguments map to Go `[]byte`; URIs stay strings
-on both sides. New Go methods appear on the JS
-side in the same release.
+arguments map to Go `[]byte` at the boundary;
+URIs stay strings on both sides. Diagnostic
+range columns are UTF-16 code units (LSP
+default); the Go side measures them once and
+the WASM bridge passes them through unchanged.
+Go methods that return `(T, error)` map to a
+`Promise<T>` that rejects with `new Error(msg)`
+on the Go error string. New Go methods appear
+on the JS side in the same release.
 
 ### Open namespace and capabilities
 
@@ -138,62 +141,71 @@ if (session.capabilities().includes("extract")) {
 }
 ```
 
-Each build advertises what it supports. Native
-includes `mds040`; WASM does not. Future plans
-add `extract`, `query`, `deps`, `rename`,
-`hover`, `completion` to both sides without
-rearranging existing methods. Each new method
-declares itself once in Go (a method on
-`Session`) and once in JS (a property on the
-proxied session). No central registry.
+The list contains method names — never rule
+IDs. A WASM build that lacks (say) the future
+`rename` method omits it here. Future plans add
+`extract`, `query`, `deps`, `rename`, `hover`,
+`completion` to both sides without rearranging
+existing methods. Each new method declares
+itself once on Go's `Session` and once on the
+proxied JS session. No central registry.
 
 ### Caching
 
 The session owns three caches, all
 session-scoped:
 
-- Parsed AST (`pkg/markdown.Document`), keyed by
-  URI + content hash. Cleared by
-  `Invalidate(uri)`.
-- Compiled config, built once at `NewSession`
-  and rebuilt on the explicit restart hook.
+- Parsed AST: one entry per URI, holding the
+  last `(content-hash, *markdown.Document)`
+  pair. Reused when the next `Check` on the
+  same URI presents the same content. Cleared
+  by `Invalidate(uri)` so old entries don't
+  accumulate.
+- Compiled config: built once at `NewSession`.
+  Config changes require `Dispose()` plus a
+  new `NewSession` — there is no in-place
+  reconfigure.
 - Workspace `ReadFile` results, keyed by path.
   Cleared on workspace deltas via `Invalidate`.
 
 The first `Check` parses; later `Check` and
-`Fix` calls on the same source skip parse. Plan
-217's steady-state targets depend on this.
+`Fix` on the same source skip parse. Plan 217's
+steady-state targets depend on this.
 
 ### Workspace abstraction
 
 `pkg/mdsmith.Workspace` replaces every
-`os.ReadFile` site in `internal/`. Two
-implementations:
-
-- `OSWorkspace` — wraps `os.ReadFile` and
-  `filepath.Glob`. Native build.
-- `MemWorkspace` — backed by
-  `map[string][]byte`. WASM build, and native
-  tests.
+`os.ReadFile` site in `internal/`. `OSWorkspace`
+wraps `os.ReadFile` and `filepath.Glob` for the
+native build. `MemWorkspace`, backed by
+`map[string][]byte`, drives the WASM build and
+native tests. At WASM session construction the
+JS `workspace: Record<string, string>` map
+becomes a `MemWorkspace` once;
+`Invalidate(uri)` is the only path for callers
+to flush a cached file.
 
 `MemWorkspace.Glob` is a linear key filter; the
-hot loop must not call it per file.
+hot loop must not call it per file. A benchmark
+fixture asserts the rule registry stays clear of
+per-file `Glob` calls under `MemWorkspace`.
 
 ### MDS040 and build tag
 
-MDS040 (recipe shell scanning) needs real shell
-access. A build tag gates it out of the WASM
-build, and `Capabilities()` omits `mds040` so
-callers surface a notice instead of silently
-dropping diagnostics.
+`internal/rules/recipesafety` (MDS040) needs
+real shell access. A `//go:build !wasm`
+directive on its registration excludes it from
+the rule registry under WASM. `check` runs the
+remaining rules; a single notice in
+`docs/background/concepts/engine-api.md` names
+the rule as out of scope on WASM.
 
 ### Build and smoke test
 
-`cmd/mdsmith-wasm/build.sh` runs `go build
--trimpath -ldflags="-s -w"` against
-`GOOS=js GOARCH=wasm` and copies `wasm_exec.js`
-from `$(go env GOROOT)/lib/wasm/`. A second
-target builds with `tinygo`. Both artifacts
+`cmd/mdsmith-wasm/build.sh` runs the trimmed
+`go build` against `GOOS=js GOARCH=wasm` and
+copies `wasm_exec.js` from `$(go env GOROOT)`.
+A second target uses `tinygo`. Both artifacts
 land under `cmd/mdsmith-wasm/dist/` for plan
 217.
 
@@ -208,52 +220,47 @@ the native CLI.
 
 ### Bundle size
 
-- Standard Go WASM trimmed: ≤ 18 MB.
-- `tinygo` WASM trimmed: ≤ 8 MB.
-
-Build records both numbers in the completion
-note.
+Standard Go WASM trimmed: ≤ 18 MB. `tinygo`:
+≤ 8 MB. Build records both numbers in the
+completion note.
 
 ### Docs
 
-A new background page covers `pkg/mdsmith`.
-Topics: the session shape. The cache model. The
-open-namespace pattern. The WASM constraints.
+`docs/background/concepts/engine-api.md` covers
+the session shape, the cache model, the
+open-namespace pattern, and WASM constraints.
 
 ## Tasks
 
-1. Doc-only commit sketching the `pkg/mdsmith`
-   surface: `Session`, `SessionOptions`,
-   `Workspace`, the capability list, the method
-   signatures. Iterate before implementation.
-2. Introduce `pkg/mdsmith.Workspace` with
+1. Doc-only commit sketching `pkg/mdsmith` —
+   `Session`, `SessionOptions`, `Workspace`,
+   the capability list, method signatures.
+   Iterate before implementation.
+2. Add `pkg/mdsmith.Workspace` with
    `OSWorkspace` and `MemWorkspace`. Refactor
    every `os.ReadFile` site in `internal/` to
-   take a `Workspace`. Tests stay green; one
-   new test runs the same path against
+   take a `Workspace`. Add a test against
    `MemWorkspace`.
-3. Build the `Session` type and wire the
-   parse-AST and config caches. Each method is
-   a thin shim over `internal/engine` and
-   `internal/fix`.
-4. Refactor `cmd/mdsmith/` and `internal/lsp/`
-   to use `NewSession`. The LSP server reuses
-   one session per workspace and invalidates
-   on `didChange` and `didChangeWatchedFiles`.
-5. Add the build tag that gates MDS040 out of
-   the WASM build.
+3. Build the `Session` type with parse-AST and
+   config caches. Each method is a thin shim
+   over `internal/engine` and `internal/fix`.
+4. Migrate `cmd/mdsmith/` and `internal/lsp/`
+   to `NewSession`. The LSP server uses one
+   session per workspace and invalidates on
+   `didChange` / `didChangeWatchedFiles`.
+5. Add `//go:build !wasm` on the recipesafety
+   rule's `init`. Native unaffected.
 6. Add `cmd/mdsmith-wasm/main.go`. Register
    `globalThis.mdsmith.createSession` and
-   `globalThis.mdsmith.version`.
-7. Write the build target. Produce both the
-   standard Go and `tinygo` artifacts. Record
-   the smaller correct one.
-8. Smoke test: WASM `session.check` matches
-   native CLI for an in-memory fixture.
-9. Write
+   `globalThis.mdsmith.version`. Build with
+   both `go` and `tinygo`; record the smaller
+   correct artifact.
+7. Smoke test: WASM `session.check` matches
+   the native CLI on an in-memory fixture.
+8. Write
    `docs/background/concepts/engine-api.md`.
-10. Run `mdsmith fix .` and confirm
-    `mdsmith check .` passes.
+9. Run `mdsmith fix .` and confirm
+   `mdsmith check .` passes.
 
 ## Acceptance Criteria
 
@@ -261,35 +268,30 @@ open-namespace pattern. The WASM constraints.
       `NewSession`, `Check`, `Fix`, `Kinds`,
       `Capabilities`, `Invalidate`, `Dispose`,
       plus `Workspace` with `OSWorkspace` and
-      `MemWorkspace`.
-- [ ] `cmd/mdsmith` and `internal/lsp` use
-      `mdsmith.NewSession`. No `os.ReadFile`
-      survives outside `pkg/mdsmith` and
-      `cmd/`.
+      `MemWorkspace`. `cmd/mdsmith` and
+      `internal/lsp` use `NewSession`; no
+      `os.ReadFile` survives outside
+      `pkg/mdsmith` and `cmd/`.
 - [ ] `cmd/mdsmith-wasm/` builds with
-      `GOOS=js GOARCH=wasm` and with `tinygo`.
-      The artifact exports
-      `globalThis.mdsmith.createSession` and
-      `globalThis.mdsmith.version`.
-- [ ] The JS session method set matches the Go
-      `Session` method set name-for-name. A
-      test asserts both.
-- [ ] `Capabilities()` returns the same list
-      in Go and JS for the same build. Native
-      lists `mds040`; WASM does not.
+      `GOOS=js GOARCH=wasm` and with `tinygo`,
+      exporting `globalThis.mdsmith.createSession`
+      and `globalThis.mdsmith.version`. A test
+      asserts the JS session method set matches
+      the Go `Session` method set name-for-name.
+- [ ] `Capabilities()` returns method names
+      (never rule IDs) and returns the same
+      list in Go and JS for the same build.
 - [ ] Repeated `Check(uri, source)` on the
       same source-hash reuses the parsed AST.
       Bench shows steady-state under half the
       cold-start time.
 - [ ] Smoke test: WASM `check` matches native
       CLI on an in-memory fixture.
-- [ ] Standard Go WASM trimmed ≤ 18 MB;
-      `tinygo` WASM trimmed ≤ 8 MB. Completion
-      note records which toolchain ships.
+- [ ] Standard Go WASM ≤ 18 MB; `tinygo` ≤
+      8 MB. Completion note records which ships.
 - [ ] `docs/background/concepts/engine-api.md`
-      exists.
-- [ ] `mdsmith check .`, `go test ./...`, and
-      `go tool golangci-lint run` all pass.
+      exists. `mdsmith check .`, `go test ./...`,
+      and `go tool golangci-lint run` all pass.
 
 ## Non-Goals
 
@@ -297,12 +299,10 @@ open-namespace pattern. The WASM constraints.
   [plan 217](217_obsidian-plugin.md).
 - New methods beyond `check`, `fix`, `kinds`.
   Open namespace lets future plans add
-  `extract`, `query`, `deps`, `rename`,
-  `hover`, `completion` without changing this
-  plan.
+  `extract`, `query`, `deps`, `rename`, `hover`,
+  `completion` without changing this plan.
 - WASM builds for `npm`, `pip`, or other
-  channels. The artifact targets in-process JS
-  hosts.
+  channels — the artifact targets in-process JS.
 - Recipe execution under WASM.
 - A standalone WASM playground on the website.
 
