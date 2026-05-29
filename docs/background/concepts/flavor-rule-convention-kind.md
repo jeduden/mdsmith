@@ -49,13 +49,15 @@ A convention is a named bundle that pairs a flavor
 with a set of rule presets. Selecting a convention
 applies both: MDS034 runs against the named flavor,
 and the named rule presets are applied as a base
-layer beneath the user's own rule config. Three
+layer beneath the user's own rule config. Five
 built-in conventions ship today: `portable`,
-`github`, `plain`. User-defined conventions are
-deferred to [plan 113](../../../plan/113_user-defined-profiles.md);
-in this codebase, conventions live in the binary,
-not in `.mdsmith.yml`. See
-[conventions.md](../../reference/conventions.md).
+`github`, `obsidian`, `parity`, and `plain`. The
+`parity` convention disables the mdsmith-only rules
+so `mdsmith check` runs the markdownlint-compatible
+class that mado and rumdl also run. A project can
+also define its own in `.mdsmith.yml`
+([plan 113](../../../plan/113_user-defined-profiles.md)).
+See [conventions.md](../../reference/conventions.md).
 
 ### Kind
 
