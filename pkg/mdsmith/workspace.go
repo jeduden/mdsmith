@@ -257,7 +257,7 @@ func (m memFS) dirEntries(dir string) []fs.DirEntry {
 		}
 		if rest != "" && !seen[rest] {
 			seen[rest] = true
-			ents = append(ents, memDirEntry{name: rest, dir: false})
+			ents = append(ents, memDirEntry{name: rest, size: int64(len(m[key])), dir: false})
 		}
 	}
 	sort.Slice(ents, func(i, j int) bool { return ents[i].Name() < ents[j].Name() })
@@ -333,6 +333,7 @@ func (d *memDir) ReadDir(n int) ([]fs.DirEntry, error) {
 // memDirEntry is an fs.DirEntry for an in-memory file or directory.
 type memDirEntry struct {
 	name string
+	size int64
 	dir  bool
 }
 
@@ -345,7 +346,9 @@ func (e memDirEntry) Type() fs.FileMode {
 	return 0
 }
 func (e memDirEntry) Info() (fs.FileInfo, error) {
-	return memFileInfo{name: e.name, dir: e.dir}, nil
+	// memDirEntry and memFileInfo share an identical field layout, so
+	// the conversion copies name/size/dir across one-for-one.
+	return memFileInfo(e), nil
 }
 
 // memFileInfo is an fs.FileInfo for an in-memory file or directory.

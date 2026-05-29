@@ -249,17 +249,21 @@ func (s *Session) frontMatterFor(uri string) ([]string, map[string]any, error) {
 		// error so Kinds works for unsaved buffers.
 		return nil, nil, nil //nolint:nilerr // intentional: missing file means empty front matter
 	}
-	f, err := lint.NewFileFromSource(uri, source, frontMatterEnabled(s.cfg))
-	if err != nil {
-		return nil, nil, err
+	// Extract the front-matter block directly. lint.StripFrontMatter is
+	// the same extraction NewFileFromSource performs; the full document
+	// parse it also does is not needed here, and skipping it avoids a
+	// never-failing error branch (NewFile does not return errors).
+	var fm []byte
+	if frontMatterEnabled(s.cfg) {
+		fm, _ = lint.StripFrontMatter(source)
 	}
-	fmKinds, err := lint.ParseFrontMatterKinds(f.FrontMatter)
+	fmKinds, err := lint.ParseFrontMatterKinds(fm)
 	if err != nil {
 		return nil, nil, err
 	}
 	var fmFields map[string]any
 	if config.NeedsFieldsForFile(s.cfg, uri) {
-		fmFields, err = lint.ParseFrontMatterFields(f.FrontMatter)
+		fmFields, err = lint.ParseFrontMatterFields(fm)
 		if err != nil {
 			return nil, nil, err
 		}
