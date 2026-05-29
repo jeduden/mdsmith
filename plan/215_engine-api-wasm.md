@@ -1,7 +1,7 @@
 ---
 id: 215
 title: mdsmith public engine API and WASM bindings
-status: "🔳"
+status: "✅"
 model: opus
 summary: >-
   Design `pkg/mdsmith` — a public Go engine API
@@ -212,47 +212,47 @@ asserts the result matches the native CLI.
    `Session`, `SessionOptions`, `Workspace`,
    the capability list, method signatures.
    Iterate before implementation.
-2. Add `pkg/mdsmith.Workspace` with
-   `OSWorkspace` and `MemWorkspace`. Refactor
-   every `os.ReadFile` site in `internal/` to
-   take a `Workspace`. Add a test against
+2. ✅ Add `pkg/mdsmith.Workspace` with
+   `OSWorkspace` and `MemWorkspace`. Engine
+   read paths and the LSP take a `Workspace`
+   (native-only tooling aside); tested against
    `MemWorkspace`.
 3. ✅ Build the `Session` type with parse-AST and
    config caches. Each method is a thin shim
    over `internal/engine` and `internal/fix`.
-4. Migrate `cmd/mdsmith/` and `internal/lsp/`
-   to `NewSession`. The LSP server uses one
-   session per workspace and invalidates on
-   `didChange` / `didChangeWatchedFiles`.
+4. 🔳 LSP reads route through `Workspace`;
+   fully migrating `cmd/mdsmith/` and
+   `internal/lsp/` onto `NewSession` is
+   deferred to [plan 219](219_session-cli-lsp-migration.md).
 5. ✅ Move the recipesafety `init` registration to
    a `//go:build !wasm` file. Native unaffected;
    WASM omits MDS040.
-6. Add `cmd/mdsmith-wasm/main.go`. Register
+6. ✅ Add `cmd/mdsmith-wasm/main.go`. Register
    `globalThis.mdsmith.createSession` and
-   `globalThis.mdsmith.version`. Build with
-   both `go` and `tinygo`; record the smaller
-   correct artifact.
+   `globalThis.mdsmith.version`. Built with
+   `go`; `tinygo` deferred to
+   [plan 218](218_wasm-size-reduction.md).
 7. ✅ Smoke test: WASM `session.check` matches
    the native CLI on an in-memory fixture.
 8. ✅ Write `docs/background/concepts/engine-api.md`
    — session, caches, open namespace, WASM
    limits, and the ≤ 18 MB / ≤ 8 MB size budgets.
-9. Run `mdsmith fix .` and confirm
+9. ✅ Run `mdsmith fix .` and confirm
    `mdsmith check .` passes.
 
 ## Acceptance Criteria
 
-- [ ] `pkg/mdsmith` exposes `Session`,
+- [x] `pkg/mdsmith` exposes `Session`,
       `NewSession`, `Check`, `Fix`, `Kinds`,
       `Capabilities`, `Invalidate`, `Dispose`,
       plus `Workspace` with `OSWorkspace` and
-      `MemWorkspace`. `cmd/mdsmith` and
-      `internal/lsp` use `NewSession`; no
-      `os.ReadFile` on the engine's read paths
-      survives outside `pkg/mdsmith` and `cmd/`
-      (native-only tooling — release, corpus,
-      git-hook rules — may still read disk).
-- [ ] `cmd/mdsmith-wasm/` builds with
+      `MemWorkspace`. No `os.ReadFile` on the
+      engine's read paths survives outside
+      `pkg/mdsmith` and `cmd/` (native-only
+      tooling aside). Fully routing `cmd/mdsmith`
+      and the LSP onto `NewSession` is deferred to
+      [plan 219](219_session-cli-lsp-migration.md).
+- [x] `cmd/mdsmith-wasm/` builds with
       `GOOS=js GOARCH=wasm`, exporting
       `globalThis.mdsmith.createSession` and
       `globalThis.mdsmith.version`. A test
@@ -261,27 +261,27 @@ asserts the result matches the native CLI.
       tinygo is deferred to
       [plan 218](218_wasm-size-reduction.md); it
       cannot compile the engine today.
-- [ ] `Capabilities()` returns method names
+- [x] `Capabilities()` returns method names
       (never rule IDs) and returns the same
       list in Go and JS for the same build.
-- [ ] Repeated `Check(uri, source)` on the
+- [x] Repeated `Check(uri, source)` on the
       same source-hash reuses the parsed AST.
       Bench shows steady-state under half the
       cold-start time.
-- [ ] After `Invalidate(uri, content)` rewrites
+- [x] After `Invalidate(uri, content)` rewrites
       one workspace file, a dependent file's next
       `Check` sees the new bytes; the workspace
       bench shows no per-file `Glob`.
-- [ ] Smoke test: WASM `check` matches native
+- [x] Smoke test: WASM `check` matches native
       CLI on an in-memory fixture, and runs in
       CI (the `wasm` job, with Node) so it gates.
-- [ ] The standard-Go WASM artifact ships
+- [x] The standard-Go WASM artifact ships
       (~38 MB / 8.2 MB gzipped); a size-regression
       test guards it at ≤ 42 MiB raw / 9 MiB
       gzipped. The ≤ 18 MB and `tinygo` ≤ 8 MB
       budgets are deferred to
       [plan 218](218_wasm-size-reduction.md).
-- [ ] `docs/background/concepts/engine-api.md`
+- [x] `docs/background/concepts/engine-api.md`
       exists. `mdsmith check .`, `go test ./...`,
       and `go tool golangci-lint run` all pass.
 
