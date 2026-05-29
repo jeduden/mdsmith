@@ -252,7 +252,7 @@ asserts the result matches the native CLI.
    correct artifact.
 7. ✅ Smoke test: WASM `session.check` matches
    the native CLI on an in-memory fixture.
-8. Write `docs/background/concepts/engine-api.md`
+8. ✅ Write `docs/background/concepts/engine-api.md`
    — session, caches, open namespace, WASM
    limits, and the ≤ 18 MB / ≤ 8 MB size budgets.
 9. Run `mdsmith fix .` and confirm
