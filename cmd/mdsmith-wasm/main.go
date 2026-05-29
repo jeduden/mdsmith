@@ -75,7 +75,7 @@ func createSession(_ js.Value, args []js.Value) any {
 			reject(jsError(err.Error()))
 			return
 		}
-		resolve(newSessionProxy(sess, ws))
+		resolve(newSessionProxy(sess))
 	})
 }
 
@@ -103,7 +103,7 @@ func workspaceFromJS(v js.Value) map[string][]byte {
 // Session. Method names match the Go method names exactly; the WASM
 // smoke test and a native test assert the set equals
 // pkg/mdsmith.Session's capability list.
-func newSessionProxy(sess *mdsmith.Session, ws *mdsmith.MemWorkspace) js.Value {
+func newSessionProxy(sess *mdsmith.Session) js.Value {
 	return js.ValueOf(map[string]any{
 		"check": js.FuncOf(func(_ js.Value, args []js.Value) any {
 			return newPromise(func(resolve, reject func(any)) {
@@ -116,6 +116,11 @@ func newSessionProxy(sess *mdsmith.Session, ws *mdsmith.MemWorkspace) js.Value {
 				if err != nil {
 					reject(jsError(err.Error()))
 					return
+				}
+				// A nil Go slice marshals to JSON null, but the check()
+				// contract is Diagnostic[]; normalise a clean file to [].
+				if diags == nil {
+					diags = []mdsmith.Diagnostic{}
 				}
 				resolve(toJS(diags))
 			})
@@ -131,6 +136,10 @@ func newSessionProxy(sess *mdsmith.Session, ws *mdsmith.MemWorkspace) js.Value {
 				if err != nil {
 					reject(jsError(err.Error()))
 					return
+				}
+				// Same nil-slice→null guard for the result's diagnostics.
+				if res.Diagnostics == nil {
+					res.Diagnostics = []mdsmith.Diagnostic{}
 				}
 				resolve(toJS(res))
 			})

@@ -56,6 +56,17 @@ async function main() {
 
   const caps = session.capabilities();
   const diags = await session.check("index.md", indexSrc);
+
+  // A clean document must resolve to an array, not null: a nil Go slice
+  // marshalled straight through would become JSON null and break a JS
+  // caller doing array operations on the result.
+  const cleanDiags = await session.check("clean.md", "# Clean\n\nA tidy paragraph.\n");
+  if (!Array.isArray(cleanDiags)) {
+    throw new Error(
+      `check on a clean file returned ${cleanDiags === null ? "null" : typeof cleanDiags}, want an array`,
+    );
+  }
+
   session.dispose();
 
   const out = {
