@@ -8,6 +8,9 @@ coverage_*.out
 /.tmp/
 docs/research/conciseness/spikes/wasm-embedded-inference/classifier.wasm
 internal/rules/concisenessscoring/wasmclassifier/classifier.wasm
+# WASM engine build outputs (cmd/mdsmith-wasm/build.sh); rebuilt on
+# demand for plan 217, never committed.
+cmd/mdsmith-wasm/dist/
 e2e-cover/
 unit.cov
 merged.cov
