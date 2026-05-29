@@ -62,6 +62,12 @@ func TestContainsBodyToken(t *testing.T) {
 			want:   true,
 		},
 		{
+			name:   "heading-question with unicode whitespace (NBSP)",
+			text:   " ? ",
+			tokens: []string{placeholders.HeadingQuestion},
+			want:   true,
+		},
+		{
 			name:   "heading-question not a partial match",
 			text:   "What?",
 			tokens: []string{placeholders.HeadingQuestion},
