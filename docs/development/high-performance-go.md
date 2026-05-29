@@ -16,17 +16,11 @@ accidental O(n) rescan inside a rule turns a 0.8 s run into
 several seconds. This page is the contributor playbook for
 keeping that path fast.
 
-The per-rule ≤ 10 alloc ceiling and the tiered CI gates
-live elsewhere:
-
-- [Allocation Budget](index.md#allocation-budget) — the
-  rule and how to verify it.
-- [Markdown linter benchmark](../research/benchmarks/README.md)
-  — corpus benchmarks, gates, and the
-  `profile.sh` / `MDSMITH_CPUPROFILE` workflow.
-
-This page is the methodology behind those budgets and the
-patterns that keep us inside them.
+This page is the methodology behind the project's budgets.
+The ≤ 10 alloc ceiling lives in
+[Allocation Budget](index.md#allocation-budget). The corpus
+gates and `MDSMITH_CPUPROFILE` workflow live in the
+[benchmark notes](../research/benchmarks/README.md).
 
 ## Process
 
@@ -72,6 +66,24 @@ to the code. Pin its budget inline with `b.Fatalf` on
 overshoot, as `BenchmarkRule_MDS024` does. CI then catches
 the next slip on its own.
 
+Opt-in rules (those returning
+`EnabledByDefault() == false`) skip `BenchmarkCheckCorpus*`,
+so `perrule_bench_test.go` is their only time gate. It pins
+each a `perRuleBenchBudget` row — `Time` near 5× the logged
+baseline, `Allocs` near baseline plus `max(20%, 4)`.
+`optInRules` finds new opt-in rules from `rule.All()`, so
+the gate fails with "no pinned budget" until you add the
+row. It times parse+Check together: parse dwarfs Check, but
+constant parse cost lets the sum still catch a regression.
+Allocs stay the tight gate (subtracted, deterministic).
+
+To decide whether a rule needs the AST,
+`testdata/rule_walk_audit.json` records each rule's class
+(plan 215). **Category A** rules scan `f.Lines` with no
+AST. **Category B** rules drive `f.ProseRanges()` instead
+of re-implementing fences. **AST-required** rules keep the
+tree. No AST-walking rule is cleanly Category A today.
+
 ### Which profile answers which question
 
 | Profile | Source                               | Question                          |
@@ -116,15 +128,11 @@ nothing; the heap costs an alloc plus future GC scan.
 ### Profile-guided optimization
 
 PGO has been GA since Go 1.21 and lands 2–14% wins on real
-binaries. For mdsmith:
-
-1. Run `mdsmith check` over a representative corpus with
-   `MDSMITH_CPUPROFILE=cmd/mdsmith/default.pgo`.
-2. `go build` picks the file up automatically.
-3. Refresh after major rule changes.
-
-Worth it for release builds; not worth it for one-off
-debug builds.
+binaries. Run `mdsmith check` over a representative corpus
+with `MDSMITH_CPUPROFILE=cmd/mdsmith/default.pgo`; `go
+build` then picks the file up automatically. Refresh after
+major rule changes. Worth it for release builds, not for
+one-off debug builds.
 
 ## Patterns to apply
 
@@ -256,36 +264,28 @@ Inspect with `go build -gcflags="-m=2"` and look for
 
 ## Patterns to avoid
 
-| Avoid                                | Why                                                                            | Use instead                                                     |
-| ------------------------------------ | ------------------------------------------------------------------------------ | --------------------------------------------------------------- |
-| `fmt.Sprintf("%d", n)` in hot paths  | reflection, ~3× slower                                                         | `strconv.Itoa(n)`                                               |
-| `s + s2 + s3` in a loop              | repeated concatenation allocates a new backing array per iteration (quadratic) | `strings.Builder` with `Grow`                                   |
-| `append` growing without `make`      | doubling-copy cost                                                             | pre-size with known cap                                         |
-| `defer` in a tight loop              | in-loop `defer` falls off the open-coded fast path                             | hoist or inline cleanup                                         |
-| return `[]T{}` for "no result"       | non-uniform with project convention; the empty literal allocates if it escapes | return `nil`                                                    |
-| `any` / `interface{}` in hot paths   | boxing forces heap copy; defeats devirtualization                              | concrete types, or generics                                     |
-| `reflect` in hot paths               | type-info walks, allocations                                                   | code-gen or hand-roll                                           |
-| `regexp` for a literal               | NFA build + walk                                                               | `bytes.Contains` / `strings.HasPrefix`                          |
-| goroutine-per-item                   | scheduler & memory pressure                                                    | `errgroup.SetLimit(n)`                                          |
-| channel for one shared variable      | scheduler hop, allocations                                                     | `sync.Mutex` or atomic                                          |
-| copying a `sync.Mutex`               | silent lock breakage                                                           | pass `*Mutex`; `go vet` catches some                            |
-| `defer mu.Unlock()` in tiny section  | defer cost dwarfs the body                                                     | inline unlock when no panic path                                |
-| `log.Printf` per item in a hot loop  | format + lock + I/O                                                            | sample, or batch outside the loop                               |
-| `time.Now()` in a tight loop         | wall + monotonic read each call                                                | read once, use `time.Since`                                     |
-| `os.ReadFile` on huge inputs         | one giant alloc, all resident                                                  | `bufio.Reader` (or `bufio.Scanner` with `Scanner.Buffer` tuned) |
-| `context.Background()` deep in calls | loses cancellation                                                             | propagate caller's `ctx`                                        |
+Every [Patterns to apply](#patterns-to-apply) rule has an
+inverse anti-pattern. Reaching for `fmt.Sprintf`, `+` in a
+loop, an un-`make`d `append`, `[]T{}`, `any`, `regexp` for
+a literal, goroutine-per-item, or a channel for one
+variable are the obvious ones. A few more are below.
+
+| Avoid                                | Why                                | Use instead                        |
+| ------------------------------------ | ---------------------------------- | ---------------------------------- |
+| `defer` in a tight loop              | falls off the open-coded fast path | hoist or inline cleanup            |
+| `reflect` in hot paths               | type-info walks, allocations       | code-gen or hand-roll              |
+| `log.Printf` per item in a hot loop  | format + lock + I/O                | sample, or batch outside the loop  |
+| `time.Now()` in a tight loop         | wall + monotonic read each call    | read once, use `time.Since`        |
+| `os.ReadFile` on huge inputs         | one giant alloc, all resident      | `bufio.Reader` with a tuned buffer |
+| `context.Background()` deep in calls | loses cancellation                 | propagate caller's `ctx`           |
 
 ## Tooling
 
-- **`go tool golangci-lint run`** — the project's lint
-  gate. Consider enabling `perfsprint`, `prealloc`, and
-  gocritic's performance group on top of what
-  `.golangci.yml` already runs.
-- **`benchstat`** for "this is faster" claims.
-- **`go.uber.org/goleak`** to assert no leftover
-  goroutines in tests.
-- **`go tool pprof -base=old.prof new.prof`** to diff
-  profiles before and after a change.
+See [Process](#process) for the `benchstat`, `pprof`, and
+`goleak` workflow. `go tool golangci-lint run` is the lint
+gate. Its `perfsprint`, `prealloc`, and gocritic
+performance group are worth enabling on top of
+`.golangci.yml`.
 
 ## References
 
