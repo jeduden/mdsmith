@@ -113,10 +113,15 @@ func optInRules() []rule.Rule {
 // offsets) start cold, matching what the engine sees in production
 // (one File per Check). The FS and RunCache are wired so cross-file
 // rules reach their real work.
-func perRuleBenchMakeFile(tb testing.TB, src []byte, mapFS fstest.MapFS) func(name string) *lint.File {
+func perRuleBenchMakeFile(tb testing.TB, src []byte, mapFS fstest.MapFS) func() *lint.File {
 	tb.Helper()
-	return func(name string) *lint.File {
-		f, err := lint.NewFile(name, src)
+	return func() *lint.File {
+		// Always "doc.md": the name the FS maps to src and the name
+		// TestPerRuleBenchDocCompliant verifies, so the gate measures the
+		// exact file proven diagnostic-free. A filename- or FS-presence-
+		// sensitive rule (e.g. directory-structure) then cannot diverge
+		// between the compliance guard and the measured baseline.
+		f, err := lint.NewFile("doc.md", src)
 		require.NoError(tb, err)
 		f.FS = mapFS
 		f.RootDir = "."
@@ -136,14 +141,14 @@ func perRuleAllocs(tb testing.TB, r rule.Rule, src []byte, mapFS fstest.MapFS) f
 	// Warm: prime package-level singletons (regex compile, tokenizer
 	// init) the first Check would otherwise charge to the measured
 	// frame.
-	_ = r.Check(makeFile("warm.md"))
+	_ = r.Check(makeFile())
 
 	const runs = 100
 	parse := testing.AllocsPerRun(runs, func() {
-		_ = makeFile("parse.md")
+		_ = makeFile()
 	})
 	full := testing.AllocsPerRun(runs, func() {
-		f := makeFile("check.md")
+		f := makeFile()
 		_ = r.Check(f)
 	})
 	delta := full - parse
@@ -169,10 +174,10 @@ func perRuleAllocs(tb testing.TB, r rule.Rule, src []byte, mapFS fstest.MapFS) f
 func perRuleCheckNsPerOp(tb testing.TB, r rule.Rule, src []byte, mapFS fstest.MapFS) int64 {
 	tb.Helper()
 	makeFile := perRuleBenchMakeFile(tb, src, mapFS)
-	_ = r.Check(makeFile("warm.md")) // warm once before measuring
+	_ = r.Check(makeFile()) // warm once before measuring
 	res := testing.Benchmark(func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			f := makeFile("b.md")
+			f := makeFile()
 			_ = r.Check(f)
 		}
 	})
@@ -263,7 +268,7 @@ func TestPerRuleBenchDocCompliant(t *testing.T) {
 	for _, r := range all {
 		r := r
 		t.Run(r.ID()+"_"+r.Name(), func(t *testing.T) {
-			ds := r.Check(makeFile("doc.md"))
+			ds := r.Check(makeFile())
 			if len(ds) != 0 {
 				t.Fatalf("%s (%s) fires %d diagnostic(s) on perRuleBenchDoc "+
 					"(first: %q at line %d); the per-rule bench doc must stay "+
@@ -356,11 +361,11 @@ func BenchmarkOptInRule(b *testing.B) {
 		r := r
 		b.Run(r.ID()+"_"+r.Name(), func(b *testing.B) {
 			makeFile := perRuleBenchMakeFile(b, src, mapFS)
-			_ = r.Check(makeFile("warm.md"))
+			_ = r.Check(makeFile())
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				f := makeFile("b.md")
+				f := makeFile()
 				_ = r.Check(f)
 			}
 		})
