@@ -30,110 +30,78 @@ they answer.
 
 ## Background
 
-- `gitignore.go` (278 lines) — gitignore
-  pattern matching. Consumed by `files.go`
-  inside `internal/lint`, plus five
-  external callers: `cmd/mdsmith/export.go`,
-  `internal/discovery/discovery.go`,
-  `internal/engine`, `internal/fix`, and
-  `internal/rules/catalog`.
+- `gitignore.go` — gitignore pattern
+  matching. Move to `internal/gitignore`.
 - `limits.go` — `ReadFileLimited`,
   `ReadFSFileLimited`, and
-  `DefaultMaxInputBytes`. Imported by
-  17+ files across `cmd/mdsmith/` and
-  `internal/` (engine, fix, githooks,
-  lsp, metrics, rules, schema, …). It
-  answers "read a file up to a byte cap"
-  — a general I/O concern, not a lint
-  concern.
+  `DefaultMaxInputBytes`. Answers "read
+  a file up to a byte cap" — a general
+  I/O concern. Move to
+  `internal/readlimit`.
 - `pi.go` + `pi_parser.go` — goldmark
   processing-instruction block parser.
-  Consumed by `codeblocks.go` inside
-  `internal/lint`, and directly by
-  `internal/schema` (two files),
-  `internal/archetype`, `internal/lsp`,
-  `internal/export`, `internal/linkgraph`,
-  `internal/index`, and several rule
-  packages.
+  Move to `internal/pi`.
 
 ## Tasks
 
-1. Create `internal/gitignore` package.
-   Move `gitignore.go` contents there.
-   Write `TestNewPatternSet` and
-   `TestPatternSet_Match` unit tests.
-   Update `internal/lint/files.go` plus
-   five external callers:
-   `cmd/mdsmith/export.go`,
-   `internal/discovery/discovery.go`,
-   `internal/engine/runner.go`,
-   `internal/fix/fix.go`, and
-   `internal/rules/catalog/rule.go`.
-2. Create `internal/readlimit` package.
-   Move `limits.go` contents there
-   (`ReadFileLimited`, `ReadFSFileLimited`,
-   `DefaultMaxInputBytes`). Write
-   `TestReadLimited` and
-   `TestDefaultMaxInputBytes` unit
-   tests. Update all callers across
-   `cmd/` and `internal/`.
-3. Create `internal/pi` package.
-   Move `pi.go` and `pi_parser.go`
-   contents there. Write
-   `TestPI_Parse` and
+1. Create `internal/gitignore`. Move
+   `gitignore.go` contents there. Write
+   `TestNewGitignoreMatcher` and
+   `TestGitignoreMatcher_IsIgnored` unit
+   tests. Update all callers.
+2. Create `internal/readlimit`. Move
+   `limits.go` contents there. Write
+   `TestReadFileLimited` and
+   `TestDefaultMaxInputBytes` unit tests.
+   Update all callers.
+3. Create `internal/pi`. Move `pi.go`
+   and `pi_parser.go` contents there.
+   Write `TestPI_Parse` and
    `TestPIBlockParser_*` unit tests.
-   Update `internal/lint/codeblocks.go`
-   and all direct callers:
-   `internal/schema`
-   (two files), `internal/archetype`,
-   `internal/lsp`, `internal/export`,
-   `internal/linkgraph`, `internal/index`,
-   and all rule packages that import PI
-   types (run
-   `grep -r 'lint\.ProcessingInstruction\|lint\.PIBlockParser' cmd/ internal/`
-   to enumerate them).
+   Update all callers.
 4. Add SRP bullet entries to
    `docs/development/architecture/go.md`
-   for each new package, following the
-   pattern established by `internal/punkt`
-   in [plan/218](218_arch-fix-punkt-layering.md).
+   for `internal/gitignore`,
+   `internal/readlimit`, and
+   `internal/pi`.
 5. Run `go test ./...` and
    `go tool golangci-lint run`.
 
 ## Acceptance Criteria
 
-- [ ] `internal/gitignore` package with
-  `TestNewPatternSet` and
-  `TestPatternSet_Match` unit tests.
-- [ ] `internal/readlimit` package with
-  `TestReadLimited` and
-  `TestDefaultMaxInputBytes` unit tests.
+- [ ] `internal/gitignore` package exists
+  with `TestNewGitignoreMatcher` and
+  `TestGitignoreMatcher_IsIgnored`.
+- [ ] `internal/readlimit` package exists
+  with `TestReadFileLimited` and
+  `TestDefaultMaxInputBytes`.
   `ReadFileLimited`, `ReadFSFileLimited`,
   and `DefaultMaxInputBytes` removed
   from `internal/lint`.
-- [ ] `internal/pi` package with
+- [ ] `internal/pi` package exists with
   `TestPI_Parse` and
-  `TestPIBlockParser_*` unit tests.
+  `TestPIBlockParser_*` tests.
   `pi.go` and `pi_parser.go` removed
   from `internal/lint`.
 - [ ] `internal/lint` contains only
   `File`, `Diagnostic`, lint-local
-  helpers, and the run cache (RunCache
-  may import `internal/pi`; that is
-  expected).
-- [ ] No stale callers of moved symbols remain
-  outside `internal/lint/`: grep `cmd/` and
-  `internal/` for `lint.GitignoreMatcher`,
-  `lint.NewGitignoreMatcher`,
-  `lint.ReadFileLimited`,
-  `lint.ReadFSFileLimited`,
-  `lint.DefaultMaxInputBytes`,
-  `lint.ProcessingInstruction`,
-  `lint.PIBlockParser` — zero results.
+  helpers, and the run cache.
+- [ ] Zero stale callers of moved symbols
+  outside `internal/lint/`. Verify with:
+
+  ```sh
+  grep -r 'lint\.GitignoreMatcher\
+  |lint\.NewGitignoreMatcher\
+  |lint\.ReadFileLimited\
+  |lint\.ReadFSFileLimited\
+  |lint\.DefaultMaxInputBytes\
+  |lint\.ProcessingInstruction\
+  |lint\.PIBlockParser' \
+    cmd/ internal/ | grep -v internal/lint/
+  ```
+
 - [ ] `docs/development/architecture/go.md`
-  lists `internal/gitignore`,
-  `internal/readlimit`, and
-  `internal/pi` in the SRP section.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run`
-  reports no issues.
+  lists all three new packages in the
+  SRP section.
+- [ ] `go test ./...` passes.
+- [ ] `go tool golangci-lint run` clean.
