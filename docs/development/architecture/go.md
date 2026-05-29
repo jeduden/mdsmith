@@ -49,7 +49,7 @@ question. The current production set:
   front-matter keys, reverse edges);
   queried by the LSP, schema, and the
   rename / deps surfaces.
-- `internal/lsp` — LSP server; consumes the engine.
+- `internal/lsp` — LSP server (top layer).
 - `pkg/markdown` — the one goldmark
   parse/produce surface (CommonMark+PI);
   `pkg/markdown/flavor` adds extensions.

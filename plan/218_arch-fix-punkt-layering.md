@@ -34,10 +34,9 @@ only `internal/mdtext` may import it.
    after the `internal/mdtext` entry:
 
    ```markdown
-   - `internal/punkt` — segment a byte
-     sequence into sentences (vendored
-     Punkt fork); imported only by
-     `internal/mdtext`.
+   - `internal/punkt` — sentence segmenter
+     (vendored Punkt); only
+     `internal/mdtext` imports it.
    ```
 
 2. Run `go run ./cmd/mdsmith fix .`
