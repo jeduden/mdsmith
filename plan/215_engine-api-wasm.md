@@ -235,7 +235,7 @@ asserts the result matches the native CLI.
    every `os.ReadFile` site in `internal/` to
    take a `Workspace`. Add a test against
    `MemWorkspace`.
-3. Build the `Session` type with parse-AST and
+3. ✅ Build the `Session` type with parse-AST and
    config caches. Each method is a thin shim
    over `internal/engine` and `internal/fix`.
 4. Migrate `cmd/mdsmith/` and `internal/lsp/`
