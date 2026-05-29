@@ -144,6 +144,22 @@ func rootDirOf(ws Workspace) string {
 	return ""
 }
 
+// newRunner builds the engine.Runner shared by Check and by Fix's
+// post-fix re-lint, so both paths lint with identical configuration.
+// SourceFS is snapshotted per call, so a workspace edit applied through
+// Invalidate is visible to the next operation.
+func (s *Session) newRunner() *engine.Runner {
+	return &engine.Runner{
+		Config:           s.cfg,
+		Rules:            s.rules,
+		StripFrontMatter: frontMatterEnabled(s.cfg),
+		RootDir:          s.rootDir,
+		MaxInputBytes:    s.maxBytes,
+		SourceFS:         s.ws.FS(),
+		ConfigPath:       s.cfgPath,
+	}
+}
+
 // Check lints source (the in-memory bytes for uri) and returns its
 // diagnostics. A repeated Check on the same (uri, source) reuses the
 // cached parse. uri is workspace-relative — config ignore, kind, and
@@ -160,16 +176,7 @@ func (s *Session) Check(uri string, source []byte) ([]Diagnostic, error) {
 	s.parses++
 	s.mu.Unlock()
 
-	r := &engine.Runner{
-		Config:           s.cfg,
-		Rules:            s.rules,
-		StripFrontMatter: frontMatterEnabled(s.cfg),
-		RootDir:          s.rootDir,
-		MaxInputBytes:    s.maxBytes,
-		SourceFS:         s.ws.FS(),
-		ConfigPath:       s.cfgPath,
-	}
-	res := r.RunSource(uri, source)
+	res := s.newRunner().RunSource(uri, source)
 	diags := toDiagnostics(res.Diagnostics)
 
 	s.mu.Lock()
@@ -206,16 +213,7 @@ func (s *Session) Fix(uri string, source []byte) (FixResult, error) {
 	// that survive the fix (non-fixable rules, unfixable violations).
 	// This does not poison the Check cache: the fixed bytes hash
 	// differently, and a later Check on them reuses the entry.
-	r := &engine.Runner{
-		Config:           s.cfg,
-		Rules:            s.rules,
-		StripFrontMatter: frontMatterEnabled(s.cfg),
-		RootDir:          s.rootDir,
-		MaxInputBytes:    s.maxBytes,
-		SourceFS:         s.ws.FS(),
-		ConfigPath:       s.cfgPath,
-	}
-	res := r.RunSource(uri, fixed)
+	res := s.newRunner().RunSource(uri, fixed)
 
 	return FixResult{
 		Source:      string(fixed),
@@ -287,11 +285,18 @@ func capabilityList() []string {
 	return []string{"check", "fix", "kinds"}
 }
 
-// Invalidate drops the cached parse for uri. With a content argument it
-// also rewrites uri in the workspace (when the workspace is a
-// MemWorkspace) before flushing, so the next cross-file Check reads the
-// new bytes; an OSWorkspace ignores content and re-reads disk. A
-// no-content call on a MemWorkspace deletes the file (it was removed).
+// Invalidate signals that uri changed. With a content argument it
+// rewrites uri in the workspace (when the workspace is a MemWorkspace)
+// so the next cross-file Check reads the new bytes; an OSWorkspace
+// ignores content and re-reads disk. A no-content call on a
+// MemWorkspace deletes the file (it was removed).
+//
+// It then drops every cached Check result, not only uri's: a changed
+// file can affect any file that reads it through a cross-file rule
+// (catalog, include, links), and the session keeps no dependency graph,
+// so serving a cached dependent could return a stale result. The parse
+// reuse the cache buys is a within-session optimisation; correctness
+// after an edit wins.
 func (s *Session) Invalidate(uri string, content ...[]byte) {
 	if mw, ok := s.ws.(*MemWorkspace); ok {
 		switch {
@@ -302,7 +307,7 @@ func (s *Session) Invalidate(uri string, content ...[]byte) {
 		}
 	}
 	s.mu.Lock()
-	delete(s.checkCache, uri)
+	clear(s.checkCache)
 	s.mu.Unlock()
 }
 

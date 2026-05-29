@@ -279,3 +279,39 @@ func TestKindsFieldsParseError(t *testing.T) {
 		t.Fatal("Kinds: expected a ParseFrontMatterFields error for sequence front matter, got nil")
 	}
 }
+
+// TestInvalidateClearsDependentCache verifies Invalidating one file
+// drops the cached Check result of OTHER files too. A cross-file rule
+// (here a catalog) means any file can depend on the changed one, and
+// the session tracks no dependency graph, so a stale dependent must not
+// be served. Observed via the parse counter: the index must re-parse
+// after the file its catalog projects is invalidated.
+func TestInvalidateClearsDependentCache(t *testing.T) {
+	files := map[string][]byte{
+		"docs/one.md": []byte("---\nsummary: First\n---\n# One\n\nBody paragraph.\n"),
+	}
+	s := newTestSession(t, "", files)
+	index := []byte("# Index\n\n<?catalog\nglob:\n  - \"docs/*.md\"\n" +
+		"row: \"- [{summary}](docs/{filename})\"\n?>\n<?/catalog?>\n")
+
+	if _, err := s.Check("index.md", index); err != nil {
+		t.Fatalf("Check 1: %v", err)
+	}
+	first := s.parseCount()
+	if _, err := s.Check("index.md", index); err != nil {
+		t.Fatalf("Check 2: %v", err)
+	}
+	if s.parseCount() != first {
+		t.Fatal("expected a cache hit on the second Check of the index")
+	}
+
+	// Invalidate a DIFFERENT file the index's catalog depends on.
+	s.Invalidate("docs/one.md", []byte("---\nsummary: Second\n---\n# One\n\nBody paragraph.\n"))
+
+	if _, err := s.Check("index.md", index); err != nil {
+		t.Fatalf("Check 3: %v", err)
+	}
+	if s.parseCount() <= first {
+		t.Fatal("index Check served a stale cached result after its catalog dependency changed via Invalidate")
+	}
+}

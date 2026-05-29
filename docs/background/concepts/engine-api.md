@@ -112,12 +112,14 @@ The session owns three caches, all session-scoped:
   reconfigure.
 - **Workspace `ReadFile` results.** Keyed by path.
 
-`Invalidate(uri)` drops the cached parse and `ReadFile` bytes for
-`uri`. With a `content` argument it also rewrites that file in a
-`MemWorkspace` before flushing, so the next cross-file `Check` reads
-the new bytes — without it, an edit to file B leaves file A's view of B
-stale. `OSWorkspace` ignores `content` and re-reads disk; a
-no-`content` call on a `MemWorkspace` deletes the entry (file removed).
+`Invalidate(uri)` signals that `uri` changed. With a `content` argument
+it rewrites that file in a `MemWorkspace`, so the next cross-file
+`Check` reads the new bytes. `OSWorkspace` ignores `content` and
+re-reads disk; a no-`content` call on a `MemWorkspace` deletes the
+entry (file removed). Invalidate then drops every cached `Check`
+result, not only `uri`'s. A changed file can feed any other through a
+cross-file rule (catalog, include, links), and the session keeps no
+dependency graph, so a stale dependent must never be served.
 
 ## WASM bindings
 
