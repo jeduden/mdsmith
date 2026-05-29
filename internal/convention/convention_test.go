@@ -199,5 +199,54 @@ func TestNamesSorted(t *testing.T) {
 	names := Names()
 	assert.True(t, sort.StringsAreSorted(names),
 		"Names should return a sorted slice; got %v", names)
-	assert.ElementsMatch(t, []string{"github", "obsidian", "plain", "portable"}, names)
+	assert.ElementsMatch(t, []string{"github", "obsidian", "parity", "plain", "portable"}, names)
+}
+
+// parityDisabledRules is the canonical set of rules the built-in
+// `parity` convention turns off so mdsmith's work class matches the
+// markdownlint-compatible tools (mado, rumdl). It mirrors the 24
+// rules historically listed in
+// docs/research/benchmarks/bench-parity.mdsmith.yml.
+var parityDisabledRules = []string{
+	"catalog",
+	"include",
+	"required-structure",
+	"max-file-length",
+	"paragraph-readability",
+	"paragraph-structure",
+	"table-readability",
+	"cross-file-reference-integrity",
+	"token-budget",
+	"conciseness-scoring",
+	"empty-section-body",
+	"directory-structure",
+	"toc-directive",
+	"max-section-length",
+	"duplicated-content",
+	"toc",
+	"build",
+	"recipe-safety",
+	"no-reference-style",
+	"git-hook-sync",
+	"forbidden-paragraph-starts",
+	"forbidden-text",
+	"required-text-patterns",
+	"required-mentions",
+}
+
+func TestParityConventionDisablesMarkdownlintExtras(t *testing.T) {
+	c, err := Lookup("parity", nil)
+	require.NoError(t, err)
+	require.Equal(t, "parity", c.Name)
+
+	// Every parity rule must be present and explicitly disabled.
+	for _, name := range parityDisabledRules {
+		p, ok := c.Rules[name]
+		assert.True(t, ok, "parity must mention rule %q", name)
+		assert.False(t, p.Enabled, "parity must disable rule %q", name)
+	}
+	// And it must disable exactly that set — no more, no fewer — so the
+	// convention stays the single source of truth for the parity class.
+	assert.Len(t, c.Rules, len(parityDisabledRules),
+		"parity rule count drifted from parityDisabledRules")
 }

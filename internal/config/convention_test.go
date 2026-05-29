@@ -12,6 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/jeduden/mdsmith/internal/convention"
+
 	// Register rules so rule.ByName lookups resolve while the
 	// convention mechanism is exercised.
 	_ "github.com/jeduden/mdsmith/internal/rules/emphasisstyle"
@@ -254,6 +256,50 @@ func TestApplyConvention_NilCfg(t *testing.T) {
 	assert.NoError(t, applyConvention(nil))
 }
 
+// TestEffectiveRules_ParityConventionDisablesExtras proves the
+// `parity` convention drives the effective config down to the
+// markdownlint-compatible rule class: every rule it names is off,
+// including rules enabled by default, while markdownlint-class rules
+// it does not name stay on. This is the "a convention disables a
+// default-on rule" path, which no built-in convention exercised
+// before parity.
+func TestEffectiveRules_ParityConventionDisablesExtras(t *testing.T) {
+	loaded := &Config{Convention: "parity"}
+	require.NoError(t, applyConvention(loaded))
+	cfg := Merge(Defaults(), loaded)
+	got := Effective(cfg, "doc.md", nil, nil)
+
+	conv, err := convention.Lookup("parity", nil)
+	require.NoError(t, err)
+	// Every parity rule registered in this build is disabled in the
+	// effective config (opt-in rules absent from this test binary's
+	// registry are simply skipped).
+	for name := range conv.Rules {
+		if rc, ok := got[name]; ok {
+			assert.False(t, rc.Enabled,
+				"parity must disable %q in effective config", name)
+		}
+	}
+
+	// Spot-check the default-on extras so the disable-a-default-on-rule
+	// path is genuinely exercised, not just opt-in no-ops.
+	for _, name := range []string{
+		"catalog", "cross-file-reference-integrity", "token-budget",
+		"paragraph-readability", "max-file-length", "required-structure",
+	} {
+		rc, ok := got[name]
+		require.True(t, ok, "default-on rule %q must be present", name)
+		assert.False(t, rc.Enabled, "parity must disable default-on rule %q", name)
+	}
+
+	// Markdownlint-class rules parity does not name stay enabled.
+	for _, name := range []string{"line-length", "heading-style", "no-bare-urls"} {
+		rc, ok := got[name]
+		require.True(t, ok, "rule %q must be present", name)
+		assert.True(t, rc.Enabled, "parity must leave %q enabled", name)
+	}
+}
+
 func TestApplyConvention_MarkdownFlavorWithoutFlavorKey(t *testing.T) {
 	// Cover the stringSetting "key not in map" branch: the user
 	// sets the markdown-flavor rule but does not provide a flavor.
@@ -407,7 +453,7 @@ func TestApplyConvention_UserConvention_Valid(t *testing.T) {
 }
 
 func TestApplyConvention_UserConvention_ReservedName(t *testing.T) {
-	for _, reserved := range []string{"portable", "github", "plain"} {
+	for _, reserved := range []string{"portable", "github", "plain", "parity"} {
 		t.Run(reserved, func(t *testing.T) {
 			cfg := &Config{
 				Conventions: map[string]UserConvention{

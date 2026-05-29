@@ -179,6 +179,65 @@ var conventions = map[string]Convention{
 			},
 		},
 	},
+	// parity restricts mdsmith to the markdownlint-compatible rule
+	// class — the structural style rules the Rust markdownlint ports
+	// (mado, rumdl) also run — by turning off every mdsmith-only rule:
+	// the cross-file link graph, the readability / structure / token
+	// budgets, the generated-section directives, the project-layout and
+	// size policies, and the repo-specific content policies. MDS020 and
+	// MDS027 are disabled too: they carry markdownlint analogs (MD043,
+	// MD051) but cover them at higher fidelity, so parity drops them
+	// rather than claim a like-for-like match.
+	//
+	// This is the source of truth for the parity class:
+	// docs/research/benchmarks/bench-parity.mdsmith.yml selects it, and
+	// the disabled-rule table in the conventions reference and the
+	// benchmark page is generated from it
+	// (`mdsmith-release sync-parity-rules`). A rule added here flows to
+	// all three with no hand edit.
+	//
+	// Flavor is gfm — mado and rumdl target GFM — but parity does not
+	// enable markdown-flavor (MDS034 stays opt-in), so the flavor only
+	// matters if the user also sets rules.markdown-flavor.flavor, which
+	// must then agree.
+	"parity": {
+		Name:   "parity",
+		Flavor: FlavorGFM,
+		Rules: map[string]RulePreset{
+			// Cross-file graph + workspace walk (no markdownlint analog).
+			"cross-file-reference-integrity": {Enabled: false},
+			// Readability / structure / budget metrics (no analog).
+			"paragraph-readability": {Enabled: false},
+			"paragraph-structure":   {Enabled: false},
+			"token-budget":          {Enabled: false},
+			"conciseness-scoring":   {Enabled: false},
+			"duplicated-content":    {Enabled: false},
+			// Generated-section directives (no analog).
+			"catalog":            {Enabled: false},
+			"include":            {Enabled: false},
+			"required-structure": {Enabled: false},
+			"build":              {Enabled: false},
+			"recipe-safety":      {Enabled: false},
+			"toc":                {Enabled: false},
+			"toc-directive":      {Enabled: false},
+			"git-hook-sync":      {Enabled: false},
+			// Project-layout / size policies (no analog).
+			"directory-structure": {Enabled: false},
+			"max-file-length":     {Enabled: false},
+			"max-section-length":  {Enabled: false},
+			"empty-section-body":  {Enabled: false},
+			// Repo-specific content policies (no analog).
+			"forbidden-paragraph-starts": {Enabled: false},
+			"forbidden-text":             {Enabled: false},
+			"required-text-patterns":     {Enabled: false},
+			"required-mentions":          {Enabled: false},
+			// mdsmith-only style rule with no markdownlint counterpart.
+			"no-reference-style": {Enabled: false},
+			// Table readability heuristic (markdownlint's table rules
+			// differ in kind; excluded to avoid claiming false parity).
+			"table-readability": {Enabled: false},
+		},
+	},
 }
 
 // Lookup returns the convention with the given name. It first checks
