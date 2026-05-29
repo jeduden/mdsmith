@@ -103,7 +103,9 @@ func TestSessionCheckNoPerFileGlob(t *testing.T) {
 	}
 
 	if n := ws.GlobCalls(); n != 0 {
-		t.Fatalf("MemWorkspace.Glob called %d times during cross-file Check; the engine must glob through the FS view, not Workspace.Glob", n)
+		t.Fatalf("MemWorkspace.Glob called %d times during cross-file "+
+			"Check; the engine must glob through the FS view, not "+
+			"Workspace.Glob", n)
 	}
 }
 
