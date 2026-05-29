@@ -391,6 +391,32 @@ jobs:
           MDSMITH_VSIX_E2E: "1"
         run: bun test ./src/e2e/vsix.e2e.ts
 
+  # Plan 215: the mdsmith engine compiled to WebAssembly. The smoke
+  # test (cmd/mdsmith-wasm/smoke_test.go) builds the artifact and runs
+  # it through a Node harness, asserting `session.check` matches the
+  # native engine on an in-memory fixture. It SKIPS when node is absent,
+  # so it must run in a job that installs node or it never gates. The
+  # same `go test` run also enforces the artifact size budget
+  # (size_test.go, a regression guard at the real ~38 MB / 8 MB-gzipped
+  # size) and the Go↔JS method-set parity (methods_test.go). tinygo is
+  # intentionally not built — it cannot compile the engine today; the
+  # CUE-free, under-budget path is follow-up work (see
+  # docs/background/concepts/engine-api.md and plan/218).
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22"
+      - name: WASM smoke test, size budget, and method-set parity
+        run: go test ./cmd/mdsmith-wasm/...
+
   test:
     runs-on: ubuntu-latest
     permissions:
