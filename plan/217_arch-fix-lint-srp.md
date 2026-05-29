@@ -85,22 +85,9 @@ they answer.
   from `internal/lint`.
 - [ ] `internal/lint` contains only
   `File`, `Diagnostic`, lint-local
-  helpers, and the run cache.
-- [ ] Zero stale callers of moved symbols
-  outside `internal/lint/`. Verify with:
-
-  ```sh
-  grep -r \
-    -e 'lint\.GitignoreMatcher' \
-    -e 'lint\.NewGitignoreMatcher' \
-    -e 'lint\.ReadFileLimited' \
-    -e 'lint\.ReadFSFileLimited' \
-    -e 'lint\.DefaultMaxInputBytes' \
-    -e 'lint\.ProcessingInstruction' \
-    -e 'lint\.PIBlockParser' \
-    cmd/ internal/ | grep -v internal/lint/
-  ```
-
+  helpers, and the run cache. The four
+  moved files no longer exist under
+  `internal/lint/`.
 - [ ] `docs/development/architecture/go.md`
   lists all three new packages in the
   SRP section.
