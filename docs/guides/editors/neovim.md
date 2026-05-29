@@ -15,10 +15,11 @@ do in VS Code — without an extra plugin.
 ## Prerequisites
 
 - Neovim 0.10 or later (built-in `vim.lsp.start` API).
-- A `mdsmith` binary on `$PATH`. Install via the
-  [Quick start](../install.md#quick-start-cli-only) above,
-  or any of the channels in the
-  [install guide](../install.md).
+- A `mdsmith` binary on `$PATH`. The LSP server is this
+  binary's `lsp` subcommand, not a separate download —
+  install it via the
+  [Quick start](../install.md#quick-start-cli-only) or any
+  other channel in the [install guide](../install.md).
 
 ## Minimal config
 
@@ -39,29 +40,31 @@ vim.api.nvim_create_autocmd("FileType", {
 
 That's the whole integration. Opening a Markdown buffer
 spawns one `mdsmith lsp` subprocess per workspace, scoped
-to the nearest `.mdsmith.yml` or `.git` directory.
+to the nearest `.mdsmith.yml` or `.git` directory. On
+Neovim 0.11 or later, the declarative form below replaces
+this autocmd.
 
-## With nvim-lspconfig
+## Neovim 0.11+ with `vim.lsp.config`
 
-If you use `nvim-lspconfig`, declare a custom server:
+On Neovim 0.11 or later, register the server declaratively
+instead of writing the autocmd above:
 
 ```lua
-local lspconfig = require("lspconfig")
-local configs = require("lspconfig.configs")
+vim.lsp.config("mdsmith", {
+  cmd = { "mdsmith", "lsp" },
+  filetypes = { "markdown" },
+  root_markers = { ".mdsmith.yml", ".git" },
+})
 
-if not configs.mdsmith then
-  configs.mdsmith = {
-    default_config = {
-      cmd = { "mdsmith", "lsp" },
-      filetypes = { "markdown" },
-      root_dir = lspconfig.util.root_pattern(".mdsmith.yml", ".git"),
-      settings = {},
-    },
-  }
-end
-
-lspconfig.mdsmith.setup({})
+vim.lsp.enable("mdsmith")
 ```
+
+`vim.lsp.enable` attaches the server the next time you open
+a Markdown buffer, scoped to the nearest `.mdsmith.yml` or
+`.git` directory. No plugin is required — `vim.lsp.config`
+and `vim.lsp.enable` are built in. nvim-lspconfig 2.0
+registers custom servers through the same two calls, so
+the snippet works whether or not you load it.
 
 ## Fix on save
 

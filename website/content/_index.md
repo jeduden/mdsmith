@@ -28,11 +28,6 @@ install:
     prompt: "$"
     cmd: "code --install-extension"
     args: "jeduden.mdsmith"
-  - id: neovim
-    label: "neovim"
-    prompt: "$"
-    cmd: "mdsmith lsp"
-    args: ""
   - id: claude
     label: "claude code"
     prompt: "/"
