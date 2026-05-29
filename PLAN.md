@@ -144,5 +144,7 @@ footer: |
 | 215 | 🔲     | opus   | [mdsmith public engine API and WASM bindings](plan/215_engine-api-wasm.md)                                                              |
 | 215 | 🔲     | opus   | [Audit AST-walking rules and rewrite the ones that only need f.Lines](plan/215_lines-only-rule-audit.md)                                |
 | 216 | ✅     | opus   | [Per-document parse cache for the LSP, keyed by version](plan/216_lsp-parse-cache.md)                                                   |
+| 217 | 🔲     |        | [Split internal/lint along question lines](plan/217_arch-fix-lint-srp.md)                                                               |
 | 217 | 🔲     | opus   | [Obsidian plugin (WASM runtime)](plan/217_obsidian-plugin.md)                                                                           |
+| 218 | ✅     |        | [Add internal/punkt to the architecture layering map](plan/218_arch-fix-punkt-layering.md)                                              |
 <?/catalog?>

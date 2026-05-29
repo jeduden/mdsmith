@@ -49,8 +49,7 @@ question. The current production set:
   front-matter keys, reverse edges);
   queried by the LSP, schema, and the
   rename / deps surfaces.
-- `internal/lsp` — speak the Language
-  Server Protocol; consumes the engine.
+- `internal/lsp` — LSP server (top layer).
 - `pkg/markdown` — the one goldmark
   parse/produce surface (CommonMark+PI);
   `pkg/markdown/flavor` adds extensions.
@@ -59,8 +58,9 @@ question. The current production set:
   already-parsed AST (slugging, TOC,
   plain-text). `pkg/markdown` produces
   the node it walks.
-- `internal/rule` — interfaces for rules
-  and fixes (the ports package).
+- `internal/punkt` — sentence segmenter
+  (vendored Punkt); only `internal/mdtext` imports it.
+- `internal/rule` — Rule and FixableRule ports.
 - `internal/rules/<rule-name>/` — one Go
   rule per package, e.g.
   `internal/rules/linelength/`. Docs and
