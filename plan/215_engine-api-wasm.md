@@ -250,7 +250,7 @@ asserts the result matches the native CLI.
    `globalThis.mdsmith.version`. Build with
    both `go` and `tinygo`; record the smaller
    correct artifact.
-7. Smoke test: WASM `session.check` matches
+7. ✅ Smoke test: WASM `session.check` matches
    the native CLI on an in-memory fixture.
 8. Write `docs/background/concepts/engine-api.md`
    — session, caches, open namespace, WASM
