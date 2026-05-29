@@ -56,8 +56,8 @@ they answer.
    Update all callers.
 3. Create `internal/pi`. Move `pi.go`
    and `pi_parser.go` contents there.
-   Write `TestPI_Parse` and
-   `TestPIBlockParser_*` unit tests.
+   Write `TestPIBlockParserPrioritized`
+   and `TestPIBlockParser_*` unit tests.
    Update all callers.
 4. Add SRP bullet entries to
    `docs/development/architecture/go.md`
@@ -79,7 +79,7 @@ they answer.
   and `DefaultMaxInputBytes` removed
   from `internal/lint`.
 - [ ] `internal/pi` package exists with
-  `TestPI_Parse` and
+  `TestPIBlockParserPrioritized` and
   `TestPIBlockParser_*` tests.
   `pi.go` and `pi_parser.go` removed
   from `internal/lint`.
