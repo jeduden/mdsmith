@@ -45,6 +45,23 @@ reporting success. The `fatal:` comes afterward, from the hook's
 `set -e` staging loop. See
 [BuildHookScript](../internal/githooks/githooks.go).
 
+## Invocation model (load-bearing)
+
+The queue runs `git merge --no-commit`, then invokes the hook
+standalone, then runs a separate `git commit`. The hook's `git
+add` lands in the index that the later `git commit` reads, so
+staging reaches the merge commit. This matches the regression test
+at
+[githooks_unix_test.go](../internal/githooks/githooks_unix_test.go).
+
+Experiment confirms this is load-bearing. Under `git merge`
+auto-commit, git finalizes the merge tree before the hook runs, so
+the hook's staging is dropped from the commit and left dirty in the
+worktree. Under the `--no-commit` model, the same staging is
+captured. So every task below assumes the `--no-commit` model, and
+that assumption is itself a constraint the action must keep: if it
+ever switches to auto-commit, staging breaks even today.
+
 ## Design
 
 Mutating the git index is an orchestration job, not a linter job.
@@ -73,13 +90,16 @@ Each piece gets one responsibility:
    message on a persistent lock. Update
    [HookMatchesCanonical](../internal/githooks/githooks.go) and
    the golden fixtures.
-3. Remove the in-process `git add` from MDS048
-   ([StageGitattributes](../internal/githooks/githooks.go) and its
-   caller in
-   [githooksync](../internal/rules/githooksync/rule.go)) so
-   `mdsmith fix` creates no `.git/index.lock`. Extend the hook to
-   stage `.gitattributes` alongside `*.md`. Adjust MDS048's
-   diagnostics and tests.
+3. In one atomic change, remove the in-process `git add` from
+   MDS048 ([StageGitattributes](../internal/githooks/githooks.go)
+   and its caller in
+   [githooksync](../internal/rules/githooksync/rule.go)) **and**
+   extend the hook's staging loop to add `.gitattributes` next to
+   `*.md` / `*.markdown`. These two halves must ship together:
+   experiment shows removing the in-process `git add` while the
+   hook still stages only `*.md` drops the regenerated
+   `.gitattributes` from the merge commit and leaves it dirty in
+   the worktree. Adjust MDS048's diagnostics and tests.
 4. Update the
    [pre-merge-commit reference](../docs/reference/cli/pre-merge-commit.md).
 
@@ -94,6 +114,10 @@ Each piece gets one responsibility:
       not create.
 - [ ] `HookMatchesCanonical` recognizes the updated template, and
       `pre-merge-commit status` reports no drift.
+- [ ] Integration: after a `--no-commit` merge, run the hook, then
+      commit. The merge commit captures both the regenerated
+      `.gitattributes` and the fixed `*.md`, and the worktree is
+      clean. This proves task 3's two halves keep the queue whole.
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool golangci-lint run` reports no issues.
 
@@ -105,6 +129,12 @@ modified but unstaged, and the hook stages it during merges. The
 alternative is to keep staging in MDS048 and only harden both
 call sites. The centralized design is recommended; confirm before
 implementing.
+
+Tasks 1 and 3 are interdependent. Experiment confirms task 3
+keeps the queue working only if the hook is extended to stage
+`.gitattributes` in the same change. It also holds only under the
+`--no-commit` model task 1 must preserve. Removing the in-process
+`git add` alone breaks the queue.
 
 ## See also
 
