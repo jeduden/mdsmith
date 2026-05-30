@@ -250,19 +250,22 @@ func autolinkPosition(f *lint.File, n *ast.AutoLink) (int, int) {
 	if len(url) == 0 {
 		return 1, 1
 	}
-	// Find the nearest block ancestor whose Lines() gives us a source
-	// range to search within.
+	pat := append([]byte{'<'}, url...)
+	// Walk up to the nearest block ancestor for a source range to
+	// search. Lines() panics on inline nodes, so skip any ancestor
+	// that is not a block (emphasis, link text, the document root).
 	for p := n.Parent(); p != nil; p = p.Parent() {
-		lines := p.Lines()
-		if lines == nil || lines.Len() == 0 {
+		if p.Type() != ast.TypeBlock {
 			continue
 		}
-		// Search each line for `<` followed by the URL.
+		// Search each source line for `<` followed by the URL. A block
+		// with no lines, or a URL that does not appear verbatim (e.g.
+		// an email autolink whose URL() is mailto:-prefixed), falls
+		// through to the (1,1) fallback below.
+		lines := p.Lines()
 		for i := range lines.Len() {
 			seg := lines.At(i)
-			lineBytes := seg.Value(f.Source)
-			idx := bytes.Index(lineBytes, append([]byte{'<'}, url...))
-			if idx >= 0 {
+			if idx := bytes.Index(seg.Value(f.Source), pat); idx >= 0 {
 				off := seg.Start + idx
 				return f.LineOfOffset(off), f.ColumnOfOffset(off)
 			}

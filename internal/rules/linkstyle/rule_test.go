@@ -3,6 +3,9 @@ package linkstyle
 import (
 	"testing"
 
+	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/text"
+
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/lint"
 
@@ -319,6 +322,9 @@ func invalidApplyCases() []applyErrCase {
 		{"links unknown key", linksWith(map[string]any{"unknown": true}), "unknown links setting"},
 		{"links.external-skip not a list", linksWith(map[string]any{"external-skip": 42}), "links.external-skip"},
 		{"links.style.path non-string", styleWith(map[string]any{"path": 42}), "links.style.path"},
+		{"links.style.extension non-string",
+			styleWith(map[string]any{"extension": 42}), "links.style.extension"},
+		{"links.style.form non-string", styleWith(map[string]any{"form": 42}), "links.style.form"},
 	}
 }
 
@@ -667,6 +673,126 @@ func TestCheck_LinkImageStyle_IndependentOfFormAxis(t *testing.T) {
 	}}}
 	diags := r.Check(f)
 	require.Len(t, diags, 2, "form and link-image-style axes must emit separate diagnostics")
+}
+
+// --- link-image-style: allowed paths and position-resolution edges ---
+
+// TestCheck_LinkImageStyle_ActiveAllowsAllForms exercises the
+// "allowed" return paths of linkImageStyleMsg: with the axis active
+// and every toggle true, the walk must visit each link/image form
+// (inline, full, collapsed, shortcut, autolink, image) and emit
+// nothing.
+func TestCheck_LinkImageStyle_ActiveAllowsAllForms(t *testing.T) {
+	src := "# Doc\n\n" +
+		"Autolink <https://example.com>.\n\n" +
+		"Inline [text](target.md).\n\n" +
+		"Full [text][label].\n\n" +
+		"Collapsed [label][].\n\n" +
+		"Shortcut [label].\n\n" +
+		"Image ![alt](img.png).\n\n" +
+		"[label]: target.md\n"
+	f := newFile(t, src)
+	r := &Rule{Links: LinksConfig{Style: StyleConfig{
+		LinkImageStyle: LinkImageStyleConfig{
+			Active:   true,
+			Autolink: true, Inline: true, Full: true,
+			Collapsed: true, Shortcut: true, InlineImage: true,
+		},
+	}}}
+	assert.Empty(t, r.Check(f), "active axis with every toggle allowed must stay silent")
+}
+
+// TestCheck_LinkImageStyle_NilFileReturnsNil locks in the AST-walk
+// guard: a nil file or a file with a nil AST must short-circuit
+// rather than panic.
+func TestCheck_LinkImageStyle_NilFileReturnsNil(t *testing.T) {
+	r := &Rule{}
+	assert.Nil(t, r.checkLinkImageStyle(nil))
+	assert.Nil(t, r.checkLinkImageStyle(&lint.File{}))
+}
+
+// TestCheck_LinkImageStyle_AutolinkInsideEmphasis covers the position
+// search skipping an inline parent: emphasis carries no source lines,
+// so autolinkPosition must walk past it and find the autolink on the
+// enclosing block (line 3).
+func TestCheck_LinkImageStyle_AutolinkInsideEmphasis(t *testing.T) {
+	src := "# Doc\n\nText *<https://example.com>* more.\n"
+	f := newFile(t, src)
+	r := &Rule{Links: LinksConfig{Style: StyleConfig{
+		LinkImageStyle: LinkImageStyleConfig{
+			Active: true, Autolink: false,
+			Inline: true, Full: true, Collapsed: true, Shortcut: true, InlineImage: true,
+		},
+	}}}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "autolink")
+	assert.Equal(t, 3, diags[0].Line, "autolink line resolves via the block ancestor")
+}
+
+// TestCheck_LinkImageStyle_ForbidEmailAutolink verifies an email
+// autolink is flagged and positioned at its `<`. The fork's URL()
+// returns the bare address (no mailto: prefix), so the source search
+// matches and resolves the real position rather than falling back.
+func TestCheck_LinkImageStyle_ForbidEmailAutolink(t *testing.T) {
+	src := "# Doc\n\nMail <user@example.com> now.\n"
+	f := newFile(t, src)
+	r := &Rule{Links: LinksConfig{Style: StyleConfig{
+		LinkImageStyle: LinkImageStyleConfig{
+			Active: true, Autolink: false,
+			Inline: true, Full: true, Collapsed: true, Shortcut: true, InlineImage: true,
+		},
+	}}}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "autolink")
+	assert.Equal(t, 3, diags[0].Line)
+	assert.Equal(t, 6, diags[0].Column, "position resolves to the `<` of the autolink")
+}
+
+// TestCheck_LinkImageStyle_EmptyAltImagePositionFallback covers
+// linkNodePosition's no-text-child fallback: an image with empty alt
+// has no Text descendant, so the position falls back to (1,1).
+func TestCheck_LinkImageStyle_EmptyAltImagePositionFallback(t *testing.T) {
+	src := "# Doc\n\n![](img.png)\n"
+	f := newFile(t, src)
+	r := &Rule{Links: LinksConfig{Style: StyleConfig{
+		LinkImageStyle: LinkImageStyleConfig{
+			Active:   true,
+			Autolink: true, Inline: true, Full: true, Collapsed: true, Shortcut: true,
+			InlineImage: false,
+		},
+	}}}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "inline-image")
+	assert.Equal(t, 1, diags[0].Line)
+	assert.Equal(t, 1, diags[0].Column)
+}
+
+// TestAutolinkPosition_EmptyURL covers the empty-URL guard. The
+// parser never yields an autolink with an empty URL, so the node is
+// constructed directly; the function must return the (1,1) fallback
+// without searching the source.
+func TestAutolinkPosition_EmptyURL(t *testing.T) {
+	f := newFile(t, "# Doc\n\nbody\n")
+	al := ast.NewAutoLink(ast.AutoLinkURL, ast.NewTextSegment(text.NewSegment(0, 0)))
+	line, col := autolinkPosition(f, al)
+	assert.Equal(t, 1, line)
+	assert.Equal(t, 1, col)
+}
+
+// TestAutolinkPosition_NotFoundFallsBack covers the fallback when the
+// URL is absent from the block ancestor's source lines. The parser
+// always emits an autolink whose `<url>` appears verbatim, so the node
+// is constructed with an empty-lines block parent to drive the path.
+func TestAutolinkPosition_NotFoundFallsBack(t *testing.T) {
+	f := newFile(t, "# Doc\n\nbody\n")
+	al := ast.NewAutoLink(ast.AutoLinkURL, ast.NewTextSegment(text.NewSegment(0, 4)))
+	al.SetParent(ast.NewParagraph()) // block ancestor with no source lines
+	line, col := autolinkPosition(f, al)
+	assert.Equal(t, 1, line)
+	assert.Equal(t, 1, col)
 }
 
 func newFile(t *testing.T, src string) *lint.File {
