@@ -224,6 +224,11 @@ type perRuleBudget struct {
 // fails TestPerRuleBenchBudget (see the "no pinned budget" subtest),
 // so a newly-added opt-in rule must be pinned here as part of the
 // change that adds it.
+// MDS043's Allocs ceiling is set per goldmark build axis in init()
+// below, from mds043AllocCeiling (384 on the arena build in
+// goldmark_arena_test.go, 784 under -tags goldmark_upstream in
+// goldmark_upstream_test.go). The map literal holds the arena value so
+// the column stays numeric; init() overrides it on the non-arena axis.
 var perRuleBenchBudget = map[string]perRuleBudget{
 	"MDS024": {Time: 1000 * time.Microsecond, Allocs: 44},  // paragraph-structure: base ~192us / 36 allocs
 	"MDS029": {Time: 1000 * time.Microsecond, Allocs: 30},  // conciseness-scoring: base ~178us / 24 allocs
@@ -234,7 +239,7 @@ var perRuleBenchBudget = map[string]perRuleBudget{
 	"MDS037": {Time: 1250 * time.Microsecond, Allocs: 130}, // duplicated-content: base ~241us / 108 allocs
 	"MDS041": {Time: 1000 * time.Microsecond, Allocs: 4},   // no-inline-html: base ~185us / 0 allocs
 	"MDS042": {Time: 1000 * time.Microsecond, Allocs: 4},   // emphasis-style: base ~176us / 0 allocs
-	"MDS043": {Time: 2500 * time.Microsecond, Allocs: 384}, // no-reference-style: base ~477us / 320 allocs (2nd parse)
+	"MDS043": {Time: 2500 * time.Microsecond, Allocs: 384}, // no-reference-style: base ~320 (2nd parse)
 	"MDS044": {Time: 1000 * time.Microsecond, Allocs: 4},   // horizontal-rule-style: base ~174us / 0 allocs
 	"MDS045": {Time: 1000 * time.Microsecond, Allocs: 6},   // list-marker-style: base ~184us / 1 alloc
 	"MDS046": {Time: 1000 * time.Microsecond, Allocs: 4},   // ordered-list-numbering: base ~175us / 0 allocs
@@ -251,6 +256,17 @@ var perRuleBenchBudget = map[string]perRuleBudget{
 	"MDS063": {Time: 1000 * time.Microsecond, Allocs: 44},  // descriptive-link-text: base ~179us / 36 allocs
 	"MDS067": {Time: 1000 * time.Microsecond, Allocs: 12},  // callout-type: base ~182us / 8 allocs
 	"MDS068": {Time: 1000 * time.Microsecond, Allocs: 4},   // link-style: base ~172us / 0 allocs
+}
+
+// init pins MDS043's allocs ceiling to the active goldmark build axis.
+// mds043AllocCeiling is 384 on the default arena build and 784 under
+// -tags goldmark_upstream (see goldmark_arena_test.go); the map literal
+// above carries the arena value, so this only differs on the non-arena
+// axis.
+func init() {
+	b := perRuleBenchBudget["MDS043"]
+	b.Allocs = mds043AllocCeiling
+	perRuleBenchBudget["MDS043"] = b
 }
 
 // TestPerRuleBenchDocCompliant guards the invariant perRuleBenchDoc
