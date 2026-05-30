@@ -486,9 +486,8 @@ the broadest set. The full rule-by-rule mapping lives in the
 [markdownlint coverage matrix][mdcov]: every markdownlint
 `MDxxx`, the mdsmith rule that covers it or the plan that
 schedules it, and the mdsmith-only rules. As of 2026-05
-mdsmith implements 51 of 52 active markdownlint rules (49
-fully, 2 partial); the only outstanding rule is MD054,
-scheduled in plan 172.
+mdsmith implements all 52 active markdownlint rules (50
+fully, 2 partial).
 
 ### Rust Markdown linters (rumdl, mado, panache)
 
@@ -903,14 +902,16 @@ items most relevant to this comparison are:
   lifecycle hooks. This will close part of the gap
   with Hugo: deriving artifacts from Markdown sources
   without leaving the linter.
-- **Closing rule gaps with markdownlint** — only MD054
-  remains unimplemented, scheduled in
-  [plan 172](../../plan/172_link-style-rule-and-config.md).
-  MDS025 (`table-format`) covers MD055, MD056, and MD058
-  (MD056 flag-only); MDS062 (`link-validity`) covers MD011 and
-  MD042; MDS064 (`atx-heading-whitespace`) covers MD018-MD021
-  and MD023; MDS063 (`descriptive-link-text`) covers MD059;
-  MDS065 (`code-block-style`) covers MD046 and MDS066
+- **markdownlint rule coverage** — mdsmith now implements
+  all 52 active markdownlint rules. MDS068 (`link-style`)
+  covers MD054 (link-image-style) via the
+  `links.style.link-image-style` six-toggle axis, completing
+  coverage. MDS025 (`table-format`) covers MD055, MD056,
+  and MD058 (MD056 flag-only); MDS062 (`link-validity`)
+  covers MD011 and MD042; MDS064 (`atx-heading-whitespace`)
+  covers MD018-MD021 and MD023; MDS063
+  (`descriptive-link-text`) covers MD059; MDS065
+  (`code-block-style`) covers MD046; MDS066
   (`commands-show-output`) covers MD014. The [coverage
   matrix][mdcov] tracks each.
 - **User-defined Markdown conventions**

@@ -86,7 +86,7 @@ row: "| [{id}]({filename}) | `{name}` | {category} | {status} | {description} |"
 | [MDS065](MDS065-code-block-style/README.md)                   | `code-block-style`                   | code          | ready     | Code blocks must use a single delimiter — fenced or four-space indented — consistently across the file.                                            |
 | [MDS066](MDS066-commands-show-output/README.md)               | `commands-show-output`               | code          | ready     | A fenced code block whose every non-blank line begins with `$ ` and shows no output must drop the prompt.                                          |
 | [MDS067](MDS067-callout-type/README.md)                       | `callout-type`                       | structural    | ready     | Validate Obsidian callout types against an allowed set.                                                                                            |
-| [MDS068](MDS068-link-style/README.md)                         | `link-style`                         | link          | ready     | Flag links whose path, extension, or inline-vs-reference form deviates from the project's declared `links.style` policy.                           |
+| [MDS068](MDS068-link-style/README.md)                         | `link-style`                         | link          | ready     | Flag links and images whose path, extension, form, or link-image-style deviates from the project's declared `links.style` policy.                  |
 <?/catalog?>
 
 ## Directive rules

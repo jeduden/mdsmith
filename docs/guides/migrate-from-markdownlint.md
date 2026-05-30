@@ -3,11 +3,11 @@ title: Migrating from markdownlint
 summary: >-
   Move a project from markdownlint-cli or markdownlint-cli2
   to mdsmith — the rule mapping, the config rewrite, and
-  the markdownlint rules mdsmith does not implement yet.
+  the markdownlint-to-mdsmith rule correspondence.
 ---
 # Migrating from markdownlint
 
-mdsmith covers most of the markdownlint rule set under
+mdsmith covers all 52 active markdownlint rules under
 different IDs. The CLI shape is similar (`mdsmith check
 .` mirrors `markdownlint .`), the auto-fix story is
 strictly broader, and the config moves from
@@ -64,33 +64,33 @@ override.
 
 ## Rule mapping (high traffic)
 
-| markdownlint | mdsmith                              | Notes                          |
-| ------------ | ------------------------------------ | ------------------------------ |
-| MD001        | `heading-increment`                  | Same semantics                 |
-| MD003        | `heading-style`                      | atx / setext discriminator     |
-| MD004        | `list-marker-style`                  | `*` / `-` / `+`                |
-| MD007        | `list-indent`                        | Spaces per nesting level       |
-| MD009        | `no-trailing-spaces`                 | Same                           |
-| MD010        | `no-hard-tabs`                       | Same                           |
-| MD012        | `no-multiple-blanks`                 | `max:` argument                |
-| MD013        | `line-length`                        | `max:` + exclusion lists       |
-| MD018-MD020  | `atx-heading-whitespace`             | Unified into one rule          |
-| MD022        | `blank-line-around-headings`         | Same                           |
-| MD024        | `no-duplicate-headings`              | `siblings-only:` flag          |
-| MD025        | `single-h1`                          | One top-level heading per file |
-| MD026        | `no-trailing-punctuation-in-heading` | Same                           |
-| MD031        | `blank-line-around-fenced-code`      | Same                           |
-| MD032        | `blank-line-around-lists`            | Same                           |
-| MD033        | `no-inline-html`                     | Allow-list argument            |
-| MD034        | `no-bare-urls`                       | Same                           |
-| MD040        | `fenced-code-language`               | Same                           |
-| MD041        | `first-line-heading`                 | `level:` argument              |
-| MD046        | `fenced-code-style`                  | backtick / tilde               |
-| MD047        | `single-trailing-newline`            | Same                           |
+| markdownlint | mdsmith                              | Notes                                                                 |
+| ------------ | ------------------------------------ | --------------------------------------------------------------------- |
+| MD001        | `heading-increment`                  | Same semantics                                                        |
+| MD003        | `heading-style`                      | atx / setext discriminator                                            |
+| MD004        | `list-marker-style`                  | `*` / `-` / `+`                                                       |
+| MD007        | `list-indent`                        | Spaces per nesting level                                              |
+| MD009        | `no-trailing-spaces`                 | Same                                                                  |
+| MD010        | `no-hard-tabs`                       | Same                                                                  |
+| MD012        | `no-multiple-blanks`                 | `max:` argument                                                       |
+| MD013        | `line-length`                        | `max:` + exclusion lists                                              |
+| MD018-MD020  | `atx-heading-whitespace`             | Unified into one rule                                                 |
+| MD022        | `blank-line-around-headings`         | Same                                                                  |
+| MD024        | `no-duplicate-headings`              | `siblings-only:` flag                                                 |
+| MD025        | `single-h1`                          | One top-level heading per file                                        |
+| MD026        | `no-trailing-punctuation-in-heading` | Same                                                                  |
+| MD031        | `blank-line-around-fenced-code`      | Same                                                                  |
+| MD032        | `blank-line-around-lists`            | Same                                                                  |
+| MD033        | `no-inline-html`                     | Allow-list argument                                                   |
+| MD034        | `no-bare-urls`                       | Same                                                                  |
+| MD040        | `fenced-code-language`               | Same                                                                  |
+| MD041        | `first-line-heading`                 | `level:` argument                                                     |
+| MD046        | `fenced-code-style`                  | backtick / tilde                                                      |
+| MD047        | `single-trailing-newline`            | Same                                                                  |
+| MD054        | `link-style` (opt-in)                | `links.style.link-image-style` six-toggle map; all default to allowed |
 
 See [linter comparison](../background/markdown-linters.md)
-for the full coverage table and the rules that have no
-mdsmith equivalent yet.
+for the full coverage table.
 
 ## Run both in parallel for one PR
 

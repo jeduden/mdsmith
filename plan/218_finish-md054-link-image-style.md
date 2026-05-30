@@ -1,7 +1,7 @@
 ---
 id: 218
 title: Finish MD054 link-image-style coverage in MDS068
-status: "🔳"
+status: "✅"
 model: sonnet
 depends-on: [172]
 summary: >-
@@ -92,19 +92,19 @@ also lists MD054 as not-yet-covered; that row updates here.
 
 ## Acceptance Criteria
 
-- [ ] MDS068 classifies all six MD054 styles for both links
+- [x] MDS068 classifies all six MD054 styles for both links
       and images, with a per-style allow/forbid toggle.
-- [ ] An enabled-but-unconfigured MD054 axis emits no
+- [x] An enabled-but-unconfigured MD054 axis emits no
       diagnostics (matches markdownlint defaults).
-- [ ] The MDS068 README no longer marks MD054 `partial`,
+- [x] The MDS068 README no longer marks MD054 `partial`,
       and `sync-coverage-matrix --check` is clean.
-- [ ] The
+- [x] The
       [markdown-linters comparison](../docs/background/markdown-linters.md)
       no longer lists MD054 as outstanding.
-- [ ] Per-style `good/`/`bad/` fixtures and unit tests
+- [x] Per-style `good/`/`bad/` fixtures and unit tests
       cover every toggle.
-- [ ] `mdsmith check .` passes.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] `mdsmith check .` passes.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
 
 [md054]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md054.md
