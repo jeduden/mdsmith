@@ -200,19 +200,23 @@ type perRuleBudget struct {
 // derived from (4-core dev box, 2026-05-29, total parse+Check on
 // perRuleBenchDoc).
 //
-// Headroom philosophy (mirrors BenchmarkCheckCorpus*'s ~15-20% alloc /
-// ~3-5x time sizing):
+// Headroom philosophy (the alloc gate is tight; the time gate is a
+// deliberately loose, flake-resistant backstop):
 //
-//   - Time ceiling ≈ 5x the measured baseline so CI jitter and a
-//     slower runner do not flake, but a real Check-time regression
-//     (an added per-line pass, a lost early-exit) still trips it. The
-//     parse floor is constant, so even a cheap rule's regression
-//     shows. Floored at 1ms; MDS043 keeps 2.5ms because it parses the
-//     source a second time via LinkReferences.
-//   - Allocs ceiling = baseline + max(20%, 4) allocs, deterministic.
-//     Allocations are CPU-independent, so this is the tight gate that
-//     catches an algorithmic regression (extra parse, lost memo,
-//     escaped closure) the wall-time budget would have to budge for.
+//   - Time ceiling: a generous CI-aware backstop — 3ms for every rule
+//     (6ms for MDS043, which parses the source twice via LinkReferences),
+//     i.e. ~12-15x the measured dev-box baseline. GitHub's shared
+//     runners run several times slower and noisier than the dev box the
+//     baselines were measured on, so the original ~5x-of-dev-box ceiling
+//     left too little margin and flaked; 12-15x keeps a >=3x cushion even
+//     on a 4x-slower runner. The time gate is therefore COARSE — it
+//     catches a catastrophic Check-time regression (an O(n^2) blow-up, a
+//     runaway re-parse) but not a subtle one. That subtle job belongs to
+//     the alloc gate below.
+//   - Allocs ceiling = baseline + max(20%, 4) allocs. Deterministic and
+//     CPU-independent (testing.AllocsPerRun counts mallocs, not time), so
+//     it does NOT flake across runners — it stays tight and is the real
+//     regression sensor (extra parse, lost memo, escaped closure).
 //
 // Updating an entry: when a legitimate cost change lands (a rule
 // gains a feature that adds real work), re-measure with
@@ -309,7 +313,8 @@ func TestPerRuleBenchBudget(t *testing.T) {
 				t.Fatalf("%s (%s) is opt-in but has no pinned budget in "+
 					"perRuleBenchBudget. Add an entry: measure its baseline "+
 					"with `go test -run TestPerRuleBenchBudget -v "+
-					"./internal/integration/` and pin Time ≈ 5x and Allocs ≈ "+
+					"./internal/integration/` and pin a generous CI-aware Time "+
+					"(3ms is ~12x a ~250us baseline) and Allocs ≈ "+
 					"baseline + max(20%%, 4).", r.ID(), r.Name())
 			}
 
@@ -330,11 +335,12 @@ func TestPerRuleBenchBudget(t *testing.T) {
 				"(ceilings: %v, %.0f)",
 				r.ID(), r.Name(), got, allocs, budget.Time, budget.Allocs)
 			if got > budget.Time {
-				t.Fatalf("%s (%s) total parse+Check %v exceeds pinned ceiling "+
-					"%v (~5x baseline). A real Check-time regression is "+
-					"suspected; the constant parse floor means a cheap rule's "+
-					"regression still shows here. If the cost is justified, "+
-					"raise this rule's Time entry in perRuleBenchBudget.",
+				t.Fatalf("%s (%s) total parse+Check %v exceeds its generous "+
+					"CI-aware ceiling %v (~12-15x the dev-box baseline). The "+
+					"time gate is a coarse backstop, so this points at a "+
+					"catastrophic Check-time regression (an O(n^2) blow-up or "+
+					"runaway re-parse), not a subtle one. If the cost is truly "+
+					"justified, raise this rule's Time in perRuleBenchBudget.",
 					r.ID(), r.Name(), got, budget.Time)
 			}
 		})
