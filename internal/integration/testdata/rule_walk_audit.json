@@ -733,7 +733,7 @@
     "code_block_sensitive": false,
     "fired": true,
     "is_node_checker": false,
-    "uses_ast_walk": false,
-    "reads_file_ast": false
+    "uses_ast_walk": true,
+    "reads_file_ast": true
   }
 ]

@@ -431,6 +431,244 @@ func TestApplySettings_NormalizesAnyToEmptyString(t *testing.T) {
 		"`form: any` must normalize to \"\" so Check's fast path applies")
 }
 
+// --- link-image-style axis (MD054 parity) ---
+
+// TestApplySettings_LinkImageStyle_Parses verifies that every MD054
+// toggle name is accepted by ApplySettings.
+func TestApplySettings_LinkImageStyle_Parses(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(styleWith(map[string]any{
+		"link-image-style": map[string]any{
+			"autolink":     false,
+			"inline":       true,
+			"full":         true,
+			"collapsed":    true,
+			"shortcut":     true,
+			"inline-image": true,
+		},
+	}))
+	require.NoError(t, err)
+	lis := r.Links.Style.LinkImageStyle
+	assert.False(t, lis.Autolink, "autolink=false must be stored")
+	assert.True(t, lis.Inline, "inline=true must be stored")
+	assert.True(t, lis.Full, "full=true must be stored")
+	assert.True(t, lis.Collapsed, "collapsed=true must be stored")
+	assert.True(t, lis.Shortcut, "shortcut=true must be stored")
+	assert.True(t, lis.InlineImage, "inline-image=true must be stored")
+}
+
+// TestApplySettings_LinkImageStyle_DefaultsAllowsEverything confirms
+// that a rule enabled with no link-image-style config emits no
+// diagnostics — matches markdownlint's default behaviour.
+func TestApplySettings_LinkImageStyle_DefaultsAllowsEverything(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(r.DefaultSettings()))
+
+	src := "# Doc\n\n" +
+		"Autolink: <https://example.com>.\n\n" +
+		"Inline: [text](target.md).\n\n" +
+		"Full: [text][label].\n\n" +
+		"Collapsed: [label][].\n\n" +
+		"Shortcut: [label].\n\n" +
+		"Image: ![alt](img.png).\n\n" +
+		"[label]: target.md\n"
+	f := newFile(t, src)
+	assert.Empty(t, r.Check(f), "default settings must not flag any link or image style")
+}
+
+// TestCheck_LinkImageStyle_ForbidAutolink verifies that autolink:false
+// flags <url> nodes.
+func TestCheck_LinkImageStyle_ForbidAutolink(t *testing.T) {
+	src := "# Doc\n\nSee <https://example.com>.\n"
+	f := newFile(t, src)
+	r := &Rule{Links: LinksConfig{Style: StyleConfig{
+		LinkImageStyle: LinkImageStyleConfig{
+			Active:   true,
+			Autolink: false,
+			Inline:   true, Full: true, Collapsed: true, Shortcut: true, InlineImage: true,
+		},
+	}}}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "autolink")
+	assert.Equal(t, "MDS068", diags[0].RuleID)
+}
+
+// TestCheck_LinkImageStyle_AllowAutolink verifies that autolink:true
+// passes <url> nodes.
+func TestCheck_LinkImageStyle_AllowAutolink(t *testing.T) {
+	src := "# Doc\n\nSee <https://example.com>.\n"
+	f := newFile(t, src)
+	r := &Rule{Links: LinksConfig{Style: StyleConfig{
+		LinkImageStyle: LinkImageStyleConfig{
+			Active:   true,
+			Autolink: true,
+			Inline:   true, Full: true, Collapsed: true, Shortcut: true, InlineImage: true,
+		},
+	}}}
+	diags := r.Check(f)
+	assert.Empty(t, diags)
+}
+
+// TestCheck_LinkImageStyle_ForbidInline verifies that inline:false
+// flags [text](url) inline links.
+func TestCheck_LinkImageStyle_ForbidInline(t *testing.T) {
+	src := "# Doc\n\nSee [text](target.md).\n"
+	f := newFile(t, src)
+	r := &Rule{Links: LinksConfig{Style: StyleConfig{
+		LinkImageStyle: LinkImageStyleConfig{
+			Active:   true,
+			Autolink: true,
+			Inline:   false,
+			Full:     true, Collapsed: true, Shortcut: true, InlineImage: true,
+		},
+	}}}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "inline")
+}
+
+// TestCheck_LinkImageStyle_ForbidFull verifies that full:false flags
+// [text][label] full reference links.
+func TestCheck_LinkImageStyle_ForbidFull(t *testing.T) {
+	src := "# Doc\n\nSee [text][label].\n\n[label]: target.md\n"
+	f := newFile(t, src)
+	r := &Rule{Links: LinksConfig{Style: StyleConfig{
+		LinkImageStyle: LinkImageStyleConfig{
+			Active:   true,
+			Autolink: true, Inline: true,
+			Full:      false,
+			Collapsed: true, Shortcut: true, InlineImage: true,
+		},
+	}}}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "full")
+}
+
+// TestCheck_LinkImageStyle_ForbidCollapsed verifies that collapsed:false
+// flags [label][] collapsed reference links.
+func TestCheck_LinkImageStyle_ForbidCollapsed(t *testing.T) {
+	src := "# Doc\n\nSee [label][].\n\n[label]: target.md\n"
+	f := newFile(t, src)
+	r := &Rule{Links: LinksConfig{Style: StyleConfig{
+		LinkImageStyle: LinkImageStyleConfig{
+			Active:   true,
+			Autolink: true, Inline: true, Full: true,
+			Collapsed: false,
+			Shortcut:  true, InlineImage: true,
+		},
+	}}}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "collapsed")
+}
+
+// TestCheck_LinkImageStyle_ForbidShortcut verifies that shortcut:false
+// flags [label] shortcut reference links.
+func TestCheck_LinkImageStyle_ForbidShortcut(t *testing.T) {
+	src := "# Doc\n\nSee [label].\n\n[label]: target.md\n"
+	f := newFile(t, src)
+	r := &Rule{Links: LinksConfig{Style: StyleConfig{
+		LinkImageStyle: LinkImageStyleConfig{
+			Active:   true,
+			Autolink: true, Inline: true, Full: true, Collapsed: true,
+			Shortcut:    false,
+			InlineImage: true,
+		},
+	}}}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "shortcut")
+}
+
+// TestCheck_LinkImageStyle_ForbidInlineImage verifies that
+// inline-image:false flags ![alt](src) inline images.
+func TestCheck_LinkImageStyle_ForbidInlineImage(t *testing.T) {
+	src := "# Doc\n\n![alt](img.png)\n"
+	f := newFile(t, src)
+	r := &Rule{Links: LinksConfig{Style: StyleConfig{
+		LinkImageStyle: LinkImageStyleConfig{
+			Active:   true,
+			Autolink: true, Inline: true, Full: true, Collapsed: true, Shortcut: true,
+			InlineImage: false,
+		},
+	}}}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "inline-image")
+}
+
+// TestCheck_LinkImageStyle_InactiveWhenNotConfigured verifies that
+// when link-image-style is not configured (Active=false), no
+// diagnostics are emitted even for links that would otherwise fail.
+func TestCheck_LinkImageStyle_InactiveWhenNotConfigured(t *testing.T) {
+	src := "# Doc\n\nSee <https://example.com>.\n"
+	f := newFile(t, src)
+	r := &Rule{} // Active defaults to false
+	diags := r.Check(f)
+	assert.Empty(t, diags)
+}
+
+// TestApplySettings_LinkImageStyle_BadValue verifies that a non-bool
+// toggle value returns an error.
+func TestApplySettings_LinkImageStyle_BadValue(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(styleWith(map[string]any{
+		"link-image-style": map[string]any{
+			"inline": "yes",
+		},
+	}))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "inline")
+}
+
+// TestApplySettings_LinkImageStyle_UnknownKey verifies that an
+// unrecognised toggle name returns an error.
+func TestApplySettings_LinkImageStyle_UnknownKey(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(styleWith(map[string]any{
+		"link-image-style": map[string]any{
+			"unknown-toggle": true,
+		},
+	}))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown")
+}
+
+// TestApplySettings_LinkImageStyle_NotAMap verifies that a non-map
+// value for link-image-style returns an error.
+func TestApplySettings_LinkImageStyle_NotAMap(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(styleWith(map[string]any{
+		"link-image-style": "all",
+	}))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "link-image-style")
+}
+
+// TestCheck_LinkImageStyle_IndependentOfFormAxis verifies that the
+// new link-image-style axis and the legacy form axis are independent.
+// Both can be active simultaneously; violations are separate.
+func TestCheck_LinkImageStyle_IndependentOfFormAxis(t *testing.T) {
+	src := "# Doc\n\nSee [text][label].\n\n[label]: target.md\n"
+	f := newFile(t, src)
+	// form: inline forbids reference-style links (old axis).
+	// link-image-style: full=false also forbids [text][label] (new axis).
+	// Two separate diagnostics should be emitted.
+	r := &Rule{Links: LinksConfig{Style: StyleConfig{
+		Form: "inline",
+		LinkImageStyle: LinkImageStyleConfig{
+			Active:   true,
+			Autolink: true, Inline: true,
+			Full:      false,
+			Collapsed: true, Shortcut: true, InlineImage: true,
+		},
+	}}}
+	diags := r.Check(f)
+	require.Len(t, diags, 2, "form and link-image-style axes must emit separate diagnostics")
+}
+
 func newFile(t *testing.T, src string) *lint.File {
 	t.Helper()
 	f, err := lint.NewFile("doc.md", []byte(src))

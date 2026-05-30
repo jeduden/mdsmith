@@ -1,7 +1,7 @@
 ---
 id: 218
 title: Finish MD054 link-image-style coverage in MDS068
-status: "🔲"
+status: "🔳"
 model: sonnet
 depends-on: [172]
 summary: >-

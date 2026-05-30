@@ -9,6 +9,8 @@ import (
 	"path"
 	"strings"
 
+	"github.com/yuin/goldmark/ast"
+
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -27,13 +29,40 @@ type LinksConfig struct {
 	ExternalSkip []string
 }
 
-// StyleConfig captures the three policy axes the rule enforces.
-// Empty strings mean "no check" so users can enable one axis without
-// committing to all three.
+// StyleConfig captures the policy axes the rule enforces.
+// Empty strings mean "no check" for the string axes; LinkImageStyle.Active
+// false means the MD054 axis is inactive. Users can enable one axis
+// without committing to all others.
 type StyleConfig struct {
-	Path      string // "relative" | "absolute" | ""
-	Extension string // "keep" | "strip" | ""
-	Form      string // "inline" | "reference" | "any" | ""
+	Path           string // "relative" | "absolute" | ""
+	Extension      string // "keep" | "strip" | ""
+	Form           string // "inline" | "reference" | "any" | ""
+	LinkImageStyle LinkImageStyleConfig
+}
+
+// LinkImageStyleConfig holds the six MD054 link/image style toggles.
+// Active is set to true when the user explicitly configures this axis
+// via links.style.link-image-style; false means the axis is inactive
+// so no diagnostics are emitted regardless of toggle values.
+//
+// Each toggle is true (allow) or false (forbid). When Active is true
+// and a toggle is false the corresponding link/image form is forbidden.
+// Default for all six toggles when Active is true is true (allow), so
+// an enabled-but-unconfigured axis is a no-op, matching markdownlint.
+//
+// Design choice: `form` (the legacy three-value string) and this axis
+// are kept independent. Both can be active simultaneously. `form` was
+// the original coarse-grained axis; link-image-style is the full MD054
+// replacement. Users who have already configured `form` are not forced
+// to migrate — both checks run and produce separate diagnostics.
+type LinkImageStyleConfig struct {
+	Active      bool
+	Autolink    bool // <https://x>
+	Inline      bool // [t](u)
+	Full        bool // [t][label]
+	Collapsed   bool // [t][]
+	Shortcut    bool // [t]
+	InlineImage bool // ![alt](src)
 }
 
 // Rule flags links whose style deviates from the declared policy.
@@ -60,12 +89,19 @@ const (
 	msgExtStripFmt   = "link target has a markdown extension; style.extension=strip forbids .md and .markdown"
 	msgFormInline    = "reference-style link; style.form=inline requires inline form [text](url)"
 	msgFormReference = "inline link; style.form=reference requires reference form [text][label]"
+
+	msgLISAutolink    = "autolink style forbidden; link-image-style.autolink=false"
+	msgLISInline      = "inline style forbidden; link-image-style.inline=false"
+	msgLISFull        = "full reference style forbidden; link-image-style.full=false"
+	msgLISCollapsed   = "collapsed reference style forbidden; link-image-style.collapsed=false"
+	msgLISShortcut    = "shortcut reference style forbidden; link-image-style.shortcut=false"
+	msgLISInlineImage = "inline-image style forbidden; link-image-style.inline-image=false"
 )
 
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	style := r.Links.Style
-	if style.Path == "" && style.Extension == "" && style.Form == "" {
+	if style.Path == "" && style.Extension == "" && style.Form == "" && !style.LinkImageStyle.Active {
 		return nil
 	}
 
@@ -75,6 +111,16 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	}
 	for _, link := range linkgraph.ExtractRefLinkTargets(f) {
 		diags = append(diags, r.checkOne(f, link, true)...)
+	}
+
+	// The link-image-style axis needs direct AST walking for nodes
+	// not covered by the linkgraph extractors:
+	//   - autolinks (ast.AutoLink): not emitted by ExtractLinks
+	//   - reference sub-forms (full/collapsed/shortcut): ExtractRefLinkTargets
+	//     resolves the destination but drops the Reference sub-form
+	//   - inline images (ast.Image): not included in link checks above
+	if style.LinkImageStyle.Active {
+		diags = append(diags, r.checkLinkImageStyle(f)...)
 	}
 	return diags
 }
@@ -101,6 +147,134 @@ func (r *Rule) checkOne(f *lint.File, link linkgraph.Link, isRef bool) []lint.Di
 		diags = append(diags, diag(f, link, r, msg))
 	}
 	return diags
+}
+
+// checkLinkImageStyle walks the AST and emits a diagnostic for every
+// link or image whose style is forbidden by the link-image-style axis.
+// It covers autolinks, all three reference sub-forms, inline links,
+// and inline images — the full set of MD054 styles.
+func (r *Rule) checkLinkImageStyle(f *lint.File) []lint.Diagnostic {
+	if f == nil || f.AST == nil {
+		return nil
+	}
+	lis := r.Links.Style.LinkImageStyle
+	var diags []lint.Diagnostic
+	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		switch node := n.(type) {
+		case *ast.AutoLink:
+			if !lis.Autolink {
+				line, col := autolinkPosition(f, node)
+				diags = append(diags, lint.Diagnostic{
+					File:     f.Path,
+					Line:     line,
+					Column:   col,
+					RuleID:   r.ID(),
+					RuleName: r.Name(),
+					Severity: lint.Warning,
+					Message:  msgLISAutolink,
+				})
+			}
+		case *ast.Link:
+			msg := linkImageStyleMsg(lis, node)
+			if msg != "" {
+				line, col := linkNodePosition(f, node)
+				diags = append(diags, lint.Diagnostic{
+					File:     f.Path,
+					Line:     line,
+					Column:   col,
+					RuleID:   r.ID(),
+					RuleName: r.Name(),
+					Severity: lint.Warning,
+					Message:  msg,
+				})
+			}
+		case *ast.Image:
+			if !lis.InlineImage {
+				line, col := linkNodePosition(f, node)
+				diags = append(diags, lint.Diagnostic{
+					File:     f.Path,
+					Line:     line,
+					Column:   col,
+					RuleID:   r.ID(),
+					RuleName: r.Name(),
+					Severity: lint.Warning,
+					Message:  msgLISInlineImage,
+				})
+			}
+		}
+		return ast.WalkContinue, nil
+	})
+	return diags
+}
+
+// linkImageStyleMsg returns the forbidden-style message for a Link
+// node, or "" if the node's form is allowed.
+func linkImageStyleMsg(lis LinkImageStyleConfig, l *ast.Link) string {
+	if l.Reference == nil {
+		// Inline link: [text](url)
+		if !lis.Inline {
+			return msgLISInline
+		}
+		return ""
+	}
+	switch l.Reference.Type {
+	case ast.ReferenceLinkFull:
+		if !lis.Full {
+			return msgLISFull
+		}
+	case ast.ReferenceLinkCollapsed:
+		if !lis.Collapsed {
+			return msgLISCollapsed
+		}
+	case ast.ReferenceLinkShortcut:
+		if !lis.Shortcut {
+			return msgLISShortcut
+		}
+	}
+	return ""
+}
+
+// autolinkPosition returns the 1-based line and column of an AutoLink
+// node in body-relative coordinates.
+func autolinkPosition(f *lint.File, n *ast.AutoLink) (int, int) {
+	// AutoLink is a leaf; walk to find its value text segment.
+	var offset int
+	_ = ast.Walk(n, func(cur ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		if t, ok := cur.(*ast.Text); ok {
+			offset = t.Segment.Start
+			return ast.WalkStop, nil
+		}
+		return ast.WalkContinue, nil
+	})
+	return f.LineOfOffset(offset), f.ColumnOfOffset(offset)
+}
+
+// linkNodePosition returns the 1-based line and column of a link or
+// image node by locating its first text child, in body-relative
+// coordinates.
+func linkNodePosition(f *lint.File, n ast.Node) (int, int) {
+	offset := -1
+	_ = ast.Walk(n, func(cur ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		if t, ok := cur.(*ast.Text); ok {
+			if offset == -1 || t.Segment.Start < offset {
+				offset = t.Segment.Start
+			}
+		}
+		return ast.WalkContinue, nil
+	})
+	if offset < 0 {
+		return 1, 1
+	}
+	return f.LineOfOffset(offset), f.ColumnOfOffset(offset)
 }
 
 // checkPath returns a diagnostic message when the configured path
@@ -242,22 +416,30 @@ func (r *Rule) applyLinks(m map[string]any) error {
 
 func (r *Rule) applyStyle(m map[string]any) error {
 	for k, v := range m {
-		s, ok := v.(string)
-		if !ok {
-			return fmt.Errorf("link-style: links.style.%s must be a string, got %T", k, v)
-		}
 		switch k {
 		case "path":
+			s, ok := v.(string)
+			if !ok {
+				return fmt.Errorf("link-style: links.style.path must be a string, got %T", v)
+			}
 			if err := validatePathStyle(s); err != nil {
 				return err
 			}
 			r.Links.Style.Path = s
 		case "extension":
+			s, ok := v.(string)
+			if !ok {
+				return fmt.Errorf("link-style: links.style.extension must be a string, got %T", v)
+			}
 			if err := validateExtensionStyle(s); err != nil {
 				return err
 			}
 			r.Links.Style.Extension = s
 		case "form":
+			s, ok := v.(string)
+			if !ok {
+				return fmt.Errorf("link-style: links.style.form must be a string, got %T", v)
+			}
 			if err := validateFormStyle(s); err != nil {
 				return err
 			}
@@ -268,10 +450,61 @@ func (r *Rule) applyStyle(m map[string]any) error {
 				s = ""
 			}
 			r.Links.Style.Form = s
+		case "link-image-style":
+			lism, ok := v.(map[string]any)
+			if !ok {
+				return fmt.Errorf("link-style: links.style.link-image-style must be a map, got %T", v)
+			}
+			if err := r.applyLinkImageStyle(lism); err != nil {
+				return err
+			}
 		default:
 			return fmt.Errorf("link-style: unknown links.style setting %q", k)
 		}
 	}
+	return nil
+}
+
+// applyLinkImageStyle parses the six MD054 boolean toggles. Calling
+// this method even with an empty map marks the axis Active so the
+// defaults (all allowed) take effect — matching markdownlint which
+// emits nothing when MD054 is enabled with defaults.
+func (r *Rule) applyLinkImageStyle(m map[string]any) error {
+	// Start with all-allowed defaults; mark the axis active.
+	lis := LinkImageStyleConfig{
+		Active:      true,
+		Autolink:    true,
+		Inline:      true,
+		Full:        true,
+		Collapsed:   true,
+		Shortcut:    true,
+		InlineImage: true,
+	}
+	for k, v := range m {
+		b, ok := v.(bool)
+		if !ok {
+			return fmt.Errorf(
+				"link-style: links.style.link-image-style.%s must be a bool, got %T", k, v)
+		}
+		switch k {
+		case "autolink":
+			lis.Autolink = b
+		case "inline":
+			lis.Inline = b
+		case "full":
+			lis.Full = b
+		case "collapsed":
+			lis.Collapsed = b
+		case "shortcut":
+			lis.Shortcut = b
+		case "inline-image":
+			lis.InlineImage = b
+		default:
+			return fmt.Errorf(
+				"link-style: unknown links.style.link-image-style key %q", k)
+		}
+	}
+	r.Links.Style.LinkImageStyle = lis
 	return nil
 }
 
