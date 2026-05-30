@@ -5,6 +5,7 @@
 package linkstyle
 
 import (
+	"bytes"
 	"fmt"
 	"path"
 	"strings"
@@ -239,20 +240,36 @@ func linkImageStyleMsg(lis LinkImageStyleConfig, l *ast.Link) string {
 
 // autolinkPosition returns the 1-based line and column of an AutoLink
 // node in body-relative coordinates.
+//
+// AutoLink stores its URL text in a private field (not a child node),
+// so ast.Walk cannot find its position. Instead we locate the nearest
+// block ancestor with a Lines() set and search its source bytes for
+// the `<url>` pattern to find the `<` offset.
 func autolinkPosition(f *lint.File, n *ast.AutoLink) (int, int) {
-	// AutoLink is a leaf; walk to find its value text segment.
-	var offset int
-	_ = ast.Walk(n, func(cur ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
+	url := n.URL(f.Source)
+	if len(url) == 0 {
+		return 1, 1
+	}
+	// Find the nearest block ancestor whose Lines() gives us a source
+	// range to search within.
+	for p := n.Parent(); p != nil; p = p.Parent() {
+		lines := p.Lines()
+		if lines == nil || lines.Len() == 0 {
+			continue
 		}
-		if t, ok := cur.(*ast.Text); ok {
-			offset = t.Segment.Start
-			return ast.WalkStop, nil
+		// Search each line for `<` followed by the URL.
+		for i := range lines.Len() {
+			seg := lines.At(i)
+			lineBytes := seg.Value(f.Source)
+			idx := bytes.Index(lineBytes, append([]byte{'<'}, url...))
+			if idx >= 0 {
+				off := seg.Start + idx
+				return f.LineOfOffset(off), f.ColumnOfOffset(off)
+			}
 		}
-		return ast.WalkContinue, nil
-	})
-	return f.LineOfOffset(offset), f.ColumnOfOffset(offset)
+		break
+	}
+	return 1, 1
 }
 
 // linkNodePosition returns the 1-based line and column of a link or
