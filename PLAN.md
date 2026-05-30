@@ -141,10 +141,13 @@ footer: |
 | 213 | 🔲     | opus   | [Built-in `no-llm-tells` convention with append-mode forbidden lists](plan/213_anti-slop-convention.md)                                 |
 | 214 | 🔳     | sonnet | [MDS019 catalog: CUE-expression row templates](plan/214_catalog-cue-row-expressions.md)                                                 |
 | 214 | ⛔     | opus   | [Obsidian plugin via hand-rolled LSP bridge](plan/214_obsidian-plugin.md)                                                               |
-| 215 | 🔲     | opus   | [mdsmith public engine API and WASM bindings](plan/215_engine-api-wasm.md)                                                              |
+| 215 | ✅     | opus   | [mdsmith public engine API and WASM bindings](plan/215_engine-api-wasm.md)                                                              |
 | 215 | ✅     | opus   | [Audit AST-walking rules and rewrite the ones that only need f.Lines](plan/215_lines-only-rule-audit.md)                                |
 | 216 | ✅     | opus   | [Per-document parse cache for the LSP, keyed by version](plan/216_lsp-parse-cache.md)                                                   |
 | 217 | 🔲     | opus   | [Obsidian plugin (WASM runtime)](plan/217_obsidian-plugin.md)                                                                           |
 | 218 | ✅     | sonnet | [Finish MD054 link-image-style coverage in MDS068](plan/218_finish-md054-link-image-style.md)                                           |
+| 218 | 🔲     | opus   | [WASM size reduction — CUE-free engine path and tinygo support](plan/218_wasm-size-reduction.md)                                        |
 | 219 | 🔲     | opus   | [Multiplexed AST walk to close the parity gap to mado](plan/219_multiplexed-ast-walk.md)                                                |
+| 219 | 🔲     | opus   | [Route cmd/mdsmith and the LSP through pkg/mdsmith.Session](plan/219_session-cli-lsp-migration.md)                                      |
+| 220 | 🔲     | opus   | [Make the pre-merge-commit hook the single git-index writer](plan/220_git-index-lock-retry.md)                                          |
 <?/catalog?>

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/url"
-	"os"
 	"path"
 	"path/filepath"
 	"sort"
@@ -17,7 +16,16 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
+	mdsmith "github.com/jeduden/mdsmith/pkg/mdsmith"
 )
+
+// symbolWorkspace is the pkg/mdsmith.Workspace the symbol index reads
+// through. Plan 215 routes every filesystem read in internal/lsp via
+// this seam rather than a direct disk read, so the LSP shares the
+// engine's filesystem abstraction. A root-less OSWorkspace reads the
+// absolute, workspace-guarded paths the callers pass exactly as a
+// direct host read did.
+var symbolWorkspace mdsmith.Workspace = mdsmith.OSWorkspace{}
 
 // ensureIndex returns the workspace symbol index, building it on
 // first call. Build walks the workspace using the same discovery
@@ -76,7 +84,7 @@ func (s *Server) ensureIndex() *index.Index {
 func (s *Server) buildIndexFromDisk(idx *index.Index, cfg *config.Config, root string, files []string) {
 	for _, rel := range files {
 		abs := filepath.Join(root, filepath.FromSlash(rel))
-		data, err := os.ReadFile(abs) //nolint:gosec // workspace-rooted, glob-validated
+		data, err := symbolWorkspace.ReadFile(abs) // workspace-rooted, glob-validated
 		if err != nil {
 			continue
 		}
@@ -210,7 +218,7 @@ func (s *Server) indexReloadFromDisk(absOrRel string) {
 		idx.Remove(index.NormalizePath(rel))
 		return
 	}
-	data, err := os.ReadFile(abs) //nolint:gosec // workspace-root + extension guarded above
+	data, err := symbolWorkspace.ReadFile(abs) // workspace-root + extension guarded above
 	if err != nil {
 		idx.Remove(index.NormalizePath(rel))
 		return
@@ -348,10 +356,10 @@ func (s *Server) workspaceURI(rel string) string {
 // When the URI is not already an open buffer, the on-disk read is
 // guarded against three concerns: the path must resolve inside the
 // configured workspace root, it must have a Markdown extension, and
-// the read goes through os.ReadFile only after both checks. Without
-// those gates, a client could request `documentSymbol` /
-// `definition` for arbitrary local files and exfiltrate their
-// outlines through the response.
+// the workspace read runs only after both checks. Without those
+// gates, a client could request `documentSymbol` / `definition` for
+// arbitrary local files and exfiltrate their outlines through the
+// response.
 func (s *Server) docTextOrFile(uri string) ([]byte, string, bool) {
 	if doc, ok := s.docs.get(uri); ok {
 		_, _, root := s.snapshotConfig()
@@ -370,7 +378,7 @@ func (s *Server) docTextOrFile(uri string) ([]byte, string, bool) {
 	if !isMarkdownExt(p) {
 		return nil, rel, false
 	}
-	data, err := os.ReadFile(p) //nolint:gosec // workspace-root guarded; .md/.markdown only
+	data, err := symbolWorkspace.ReadFile(p) // workspace-root guarded; .md/.markdown only
 	if err != nil {
 		return nil, rel, false
 	}

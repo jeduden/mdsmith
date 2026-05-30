@@ -24,7 +24,25 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading config file: %w", err)
 	}
+	return loadFromBytes(data, path, true)
+}
 
+// ParseBytes parses config from an in-memory YAML byte slice, running
+// the same convention/validation pipeline as Load but reading no disk:
+// disk-based kind-file discovery (`.mdsmith/kinds/`) is skipped because
+// an in-memory config carries every kind inline. It is the entry point
+// the public engine session uses for an inline `configYAML` (the WASM
+// path), mirroring how the `-c` flag's file text is processed. Empty
+// input yields a usable, mostly-default Config.
+func ParseBytes(data []byte) (*Config, error) {
+	return loadFromBytes(data, "", false)
+}
+
+// loadFromBytes is the shared parse pipeline behind Load and
+// ParseBytes. sourcePath tags inline kinds for provenance and anchors
+// disk kind-file discovery; mergeKinds gates that disk read so the
+// in-memory path stays filesystem-free.
+func loadFromBytes(data []byte, sourcePath string, mergeKinds bool) (*Config, error) {
 	// Catch non-string `convention:` values before UnmarshalSafe
 	// silently coerces them into the string field.
 	if err := validateConventionScalar(data); err != nil {
@@ -68,12 +86,14 @@ func Load(path string) (*Config, error) {
 	// discoverKinds so a collision diagnostic can quote both
 	// sources verbatim.
 	for name, body := range cfg.Kinds {
-		body.SourcePath = path
+		body.SourcePath = sourcePath
 		cfg.Kinds[name] = body
 	}
 
-	if err := mergeKindFiles(&cfg, path); err != nil {
-		return nil, fmt.Errorf("loading kind files: %w", err)
+	if mergeKinds {
+		if err := mergeKindFiles(&cfg, sourcePath); err != nil {
+			return nil, fmt.Errorf("loading kind files: %w", err)
+		}
 	}
 
 	if err := ValidateKinds(&cfg); err != nil {
