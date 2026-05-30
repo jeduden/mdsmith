@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/convention"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -55,9 +56,10 @@ rules:
 	assert.Equal(t, "commonmark", dc.body.Flavor)
 	assert.Equal(t, 72, dc.body.Rules["line-length"].Settings["max"])
 	assert.True(t, dc.body.Rules["no-bare-urls"].Enabled)
-	assert.Equal(t,
-		filepath.Join(dir, ".mdsmith", "conventions", "portable-strict.yaml"),
-		dc.sourcePath)
+	wantPath := filepath.Join(dir, ".mdsmith", "conventions", "portable-strict.yaml")
+	assert.Equal(t, wantPath, dc.sourcePath)
+	assert.Equal(t, wantPath, dc.body.SourcePath,
+		"body.SourcePath is the field that flows into cfg.Conventions")
 }
 
 // TestDiscoverConventions_AcceptsBothExtensions covers the
@@ -274,6 +276,35 @@ conventions:
 	assert.Equal(t, cfgPath, cfg.Conventions["our-team"].SourcePath)
 }
 
+// TestLoad_InlineAndFileConventionsCoexist verifies that a
+// non-colliding inline convention and a file convention both
+// survive the merge, each carrying its own SourcePath. The file
+// uses a `.yml` extension so the end-to-end merge is also
+// exercised through Load for that extension (the other Load-level
+// tests use `.yaml`).
+func TestLoad_InlineAndFileConventionsCoexist(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(
+		filepath.Join(dir, ".mdsmith", "conventions"), 0o755))
+	filePath := filepath.Join(dir, ".mdsmith", "conventions", "team-b.yml")
+	require.NoError(t, os.WriteFile(filePath, []byte("flavor: gfm\n"), 0o644))
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(`
+conventions:
+  team-a:
+    flavor: commonmark
+`), 0o644))
+
+	cfg, err := Load(cfgPath)
+	require.NoError(t, err)
+	require.Contains(t, cfg.Conventions, "team-a")
+	require.Contains(t, cfg.Conventions, "team-b")
+	assert.Equal(t, "commonmark", cfg.Conventions["team-a"].Flavor)
+	assert.Equal(t, "gfm", cfg.Conventions["team-b"].Flavor)
+	assert.Equal(t, cfgPath, cfg.Conventions["team-a"].SourcePath)
+	assert.Equal(t, filePath, cfg.Conventions["team-b"].SourcePath)
+}
+
 // TestLoad_ConventionFileInlineCollision pins the dual-source
 // error. The same convention name in both a file and inline must
 // error naming both sources so the user can resolve the
@@ -304,7 +335,10 @@ conventions:
 // (portable, github, plain, …) must error naming the file
 // (acceptance criterion #4).
 func TestLoad_ConventionFileBuiltinCollision(t *testing.T) {
-	for _, builtin := range []string{"portable", "github", "plain"} {
+	// Iterate the real built-in set rather than a hardcoded subset
+	// so a drift in convention.Names() — e.g. a newly added built-in
+	// like `obsidian` or `parity` — is covered automatically.
+	for _, builtin := range convention.Names() {
 		t.Run(builtin, func(t *testing.T) {
 			dir := t.TempDir()
 			require.NoError(t, os.MkdirAll(

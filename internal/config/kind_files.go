@@ -149,7 +149,7 @@ func mergeKindFiles(cfg *Config, cfgPath string) error {
 // parseKindFile reads one kind file and decodes it into a
 // KindBody with strict (KnownFields) decoding so a typo in a
 // top-level key surfaces as a config error rather than being
-// silently dropped. UnmarshalSafe handles anchor/alias rejection
+// silently dropped. RejectYAMLAliases handles anchor/alias rejection
 // before the strict decode runs.
 func parseKindFile(path string) (KindBody, error) {
 	data, err := os.ReadFile(path) //nolint:gosec // path is built from workspace + kindFilesDir
