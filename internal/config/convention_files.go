@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"sort"
 
+	"github.com/jeduden/mdsmith/internal/convention"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 	"gopkg.in/yaml.v3"
 )
@@ -106,6 +107,54 @@ func discoverConventions(workspaceDir string) (map[string]discoveredConvention, 
 		result[base] = discoveredConvention{body: body, sourcePath: path}
 	}
 	return result, nil
+}
+
+// mergeConventionFiles discovers file-defined conventions under the
+// workspace root (parent of cfgPath) and merges them into
+// cfg.Conventions. Two collisions are config errors, each naming the
+// offending file so the user can resolve it:
+//
+//   - A name colliding between a file convention and an inline
+//     convention names both sources — the two do not merge (a merged
+//     convention would defeat the "read one file to know one
+//     convention" property this plan ships).
+//   - A name colliding with a built-in convention (portable, github,
+//     plain, …) names the file and reports the name as reserved.
+//
+// Load is the only caller and always supplies a non-empty cfgPath, so
+// no defensive guard is needed for that.
+func mergeConventionFiles(cfg *Config, cfgPath string) error {
+	discovered, err := discoverConventions(filepath.Dir(cfgPath))
+	if err != nil {
+		return err
+	}
+	if len(discovered) == 0 {
+		return nil
+	}
+
+	reserved := make(map[string]bool, len(convention.Names()))
+	for _, name := range convention.Names() {
+		reserved[name] = true
+	}
+
+	if cfg.Conventions == nil {
+		cfg.Conventions = make(map[string]UserConvention, len(discovered))
+	}
+	for name, dc := range discovered {
+		if reserved[name] {
+			return fmt.Errorf(
+				"convention %q in %s: name is reserved by a built-in convention",
+				name, dc.sourcePath)
+		}
+		if existing, clash := cfg.Conventions[name]; clash {
+			return fmt.Errorf(
+				"convention %q is declared both inline in %s and in %s; "+
+					"keep one source",
+				name, existing.SourcePath, dc.sourcePath)
+		}
+		cfg.Conventions[name] = dc.body
+	}
+	return nil
 }
 
 // parseConventionFile reads one convention file and decodes it into a

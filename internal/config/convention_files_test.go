@@ -229,3 +229,139 @@ func TestDiscoverConventions_RejectsPathIsFile(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), ".mdsmith/conventions")
 }
+
+// TestLoad_ConventionFileMergesIntoConfig verifies the
+// end-to-end load path: a file convention merges into
+// cfg.Conventions, keyed by basename, with its SourcePath set.
+func TestLoad_ConventionFileMergesIntoConfig(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(
+		filepath.Join(dir, ".mdsmith", "conventions"), 0o755))
+	convPath := filepath.Join(dir, ".mdsmith", "conventions", "portable-strict.yaml")
+	require.NoError(t, os.WriteFile(convPath,
+		[]byte("flavor: commonmark\nrules:\n  line-length:\n    max: 72\n"), 0o644))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith.yml"),
+		[]byte("rules: {}\n"), 0o644))
+
+	cfg, err := Load(filepath.Join(dir, ".mdsmith.yml"))
+	require.NoError(t, err)
+	require.Contains(t, cfg.Conventions, "portable-strict")
+	assert.Equal(t, "commonmark", cfg.Conventions["portable-strict"].Flavor)
+	assert.Equal(t, 72,
+		cfg.Conventions["portable-strict"].Rules["line-length"].Settings["max"])
+	assert.Equal(t, convPath, cfg.Conventions["portable-strict"].SourcePath)
+}
+
+// TestLoad_InlineConventionCarriesConfigPath ensures inline
+// conventions also get a SourcePath — the `.mdsmith.yml` path —
+// so provenance can attribute either source uniformly.
+func TestLoad_InlineConventionCarriesConfigPath(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(`
+conventions:
+  our-team:
+    flavor: gfm
+    rules:
+      line-length:
+        max: 100
+`), 0o644))
+
+	cfg, err := Load(cfgPath)
+	require.NoError(t, err)
+	require.Contains(t, cfg.Conventions, "our-team")
+	assert.Equal(t, cfgPath, cfg.Conventions["our-team"].SourcePath)
+}
+
+// TestLoad_ConventionFileInlineCollision pins the dual-source
+// error. The same convention name in both a file and inline must
+// error naming both sources so the user can resolve the
+// ambiguity (acceptance criterion #2).
+func TestLoad_ConventionFileInlineCollision(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(
+		filepath.Join(dir, ".mdsmith", "conventions"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith", "conventions", "our-team.yaml"),
+		[]byte("flavor: commonmark\n"), 0o644))
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(`
+conventions:
+  our-team:
+    flavor: gfm
+`), 0o644))
+
+	_, err := Load(cfgPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "our-team")
+	assert.Contains(t, err.Error(), ".mdsmith.yml")
+	assert.Contains(t, err.Error(), "our-team.yaml")
+}
+
+// TestLoad_ConventionFileBuiltinCollision pins the built-in
+// collision error. A file convention named like a built-in
+// (portable, github, plain, …) must error naming the file
+// (acceptance criterion #4).
+func TestLoad_ConventionFileBuiltinCollision(t *testing.T) {
+	for _, builtin := range []string{"portable", "github", "plain"} {
+		t.Run(builtin, func(t *testing.T) {
+			dir := t.TempDir()
+			require.NoError(t, os.MkdirAll(
+				filepath.Join(dir, ".mdsmith", "conventions"), 0o755))
+			require.NoError(t, os.WriteFile(
+				filepath.Join(dir, ".mdsmith", "conventions", builtin+".yaml"),
+				[]byte("flavor: gfm\n"), 0o644))
+			require.NoError(t, os.WriteFile(
+				filepath.Join(dir, ".mdsmith.yml"), []byte("rules: {}\n"), 0o644))
+
+			_, err := Load(filepath.Join(dir, ".mdsmith.yml"))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), builtin)
+			assert.Contains(t, err.Error(), "reserved")
+			assert.Contains(t, err.Error(), builtin+".yaml")
+		})
+	}
+}
+
+// TestLoad_PropagatesConventionFileDiscoveryError pins the
+// error-propagation path: when discoverConventions returns an
+// error, Load wraps it and aborts rather than continuing with a
+// partial conventions map.
+func TestLoad_PropagatesConventionFileDiscoveryError(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(
+		filepath.Join(dir, ".mdsmith", "conventions"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith", "conventions", "BadName.yaml"),
+		[]byte("flavor: commonmark\n"), 0o644))
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte("rules: {}\n"), 0o644))
+
+	_, err := Load(cfgPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "loading convention files")
+	assert.Contains(t, err.Error(), "BadName.yaml")
+}
+
+// TestLoad_ConventionFileSelectable confirms a file convention
+// can be selected via the top-level `convention:` key and that
+// its preset lands in ConventionPreset.
+func TestLoad_ConventionFileSelectable(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(
+		filepath.Join(dir, ".mdsmith", "conventions"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith", "conventions", "our-team.yaml"),
+		[]byte("flavor: gfm\nrules:\n  markdown-flavor:\n    flavor: gfm\n"), 0o644))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith.yml"),
+		[]byte("convention: our-team\n"), 0o644))
+
+	cfg, err := Load(filepath.Join(dir, ".mdsmith.yml"))
+	require.NoError(t, err)
+	require.NotNil(t, cfg.ConventionPreset)
+	mf, ok := cfg.ConventionPreset["markdown-flavor"]
+	require.True(t, ok)
+	assert.Equal(t, "gfm", mf.Settings["flavor"])
+}

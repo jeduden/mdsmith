@@ -96,6 +96,21 @@ func loadFromBytes(data []byte, sourcePath string, mergeKinds bool) (*Config, er
 		}
 	}
 
+	// Tag every inline convention with the loaded config path so
+	// provenance can attribute a user convention uniformly whether it
+	// came from `.mdsmith.yml` or a file under
+	// `.mdsmith/conventions/` (plan 209). The tag runs before
+	// mergeConventionFiles so a collision diagnostic can quote both
+	// sources verbatim.
+	for name, uc := range cfg.Conventions {
+		uc.SourcePath = path
+		cfg.Conventions[name] = uc
+	}
+
+	if err := mergeConventionFiles(&cfg, path); err != nil {
+		return nil, fmt.Errorf("loading convention files: %w", err)
+	}
+
 	if err := ValidateKinds(&cfg); err != nil {
 		return nil, fmt.Errorf("validating config: %w", err)
 	}
