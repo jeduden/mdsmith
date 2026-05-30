@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -548,4 +549,96 @@ kinds:
 	_, err := Load(filepath.Join(dir, ".mdsmith.yml"))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cycle")
+}
+
+// TestDiscoverKinds_RejectsSymlink pins the symlink guard: a
+// symlinked entry under `.mdsmith/kinds/` is a config error rather
+// than being silently followed off the workspace.
+func TestDiscoverKinds_RejectsSymlink(t *testing.T) {
+	dir := t.TempDir()
+	kindsDir := filepath.Join(dir, ".mdsmith", "kinds")
+	require.NoError(t, os.MkdirAll(kindsDir, 0o755))
+	target := filepath.Join(dir, "target.yaml")
+	require.NoError(t, os.WriteFile(target, []byte("rules: {}\n"), 0o644))
+	require.NoError(t, os.Symlink(target, filepath.Join(kindsDir, "link.yaml")))
+
+	_, err := discoverKinds(dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "symlink")
+	assert.Contains(t, err.Error(), "link.yaml")
+}
+
+// TestDiscoverKinds_AcceptsUppercaseExtension pins the
+// case-insensitive extension match: a `.YAML` file is loaded, not
+// silently skipped.
+func TestDiscoverKinds_AcceptsUppercaseExtension(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".mdsmith", "kinds"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith", "kinds", "foo.YAML"),
+		[]byte("rules: {}\n"), 0o644))
+
+	got, err := discoverKinds(dir)
+	require.NoError(t, err)
+	assert.Contains(t, got, "foo")
+}
+
+// TestDiscoverKinds_RejectsEmptyFile pins that an empty or
+// comments-only file errors with a clear "empty kind file" message
+// rather than the bare "EOF" the YAML decoder returns.
+func TestDiscoverKinds_RejectsEmptyFile(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".mdsmith", "kinds"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith", "kinds", "stub.yaml"),
+		[]byte("# placeholder, fill in later\n"), 0o644))
+
+	_, err := discoverKinds(dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "empty kind file")
+	assert.Contains(t, err.Error(), "stub.yaml")
+	assert.NotContains(t, err.Error(), "EOF")
+}
+
+// TestDiscoverKinds_RejectsOversizeFile pins the size cap: a kind
+// file larger than maxConfigBytes errors instead of being read
+// unbounded into memory.
+func TestDiscoverKinds_RejectsOversizeFile(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".mdsmith", "kinds"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith", "kinds", "big.yaml"),
+		bytes.Repeat([]byte("a"), int(maxConfigBytes)+1), 0o644))
+
+	_, err := discoverKinds(dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "big.yaml")
+	assert.Contains(t, err.Error(), "too large")
+}
+
+// TestLoad_KindFileCollisionIsDeterministic pins that when two file
+// kinds both collide with inline kinds, the error names the
+// lexicographically-first one — alpha before bravo — every run, not
+// whichever the map happens to yield.
+func TestLoad_KindFileCollisionIsDeterministic(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".mdsmith", "kinds"), 0o755))
+	for _, n := range []string{"alpha", "bravo"} {
+		require.NoError(t, os.WriteFile(
+			filepath.Join(dir, ".mdsmith", "kinds", n+".yaml"),
+			[]byte("rules: {}\n"), 0o644))
+	}
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(`
+kinds:
+  alpha:
+    rules: {}
+  bravo:
+    rules: {}
+`), 0o644))
+
+	_, err := Load(cfgPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "alpha")
+	assert.NotContains(t, err.Error(), "bravo")
 }
