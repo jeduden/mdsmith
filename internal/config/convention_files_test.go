@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -398,4 +399,113 @@ func TestLoad_ConventionFileSelectable(t *testing.T) {
 	mf, ok := cfg.ConventionPreset["markdown-flavor"]
 	require.True(t, ok)
 	assert.Equal(t, "gfm", mf.Settings["flavor"])
+}
+
+// TestDiscoverConventions_RejectsSymlink pins the symlink guard: a
+// symlinked entry under `.mdsmith/conventions/` is a config error
+// rather than being silently followed off the workspace.
+func TestDiscoverConventions_RejectsSymlink(t *testing.T) {
+	dir := t.TempDir()
+	convDir := filepath.Join(dir, ".mdsmith", "conventions")
+	require.NoError(t, os.MkdirAll(convDir, 0o755))
+	target := filepath.Join(dir, "target.yaml")
+	require.NoError(t, os.WriteFile(target, []byte("flavor: gfm\n"), 0o644))
+	require.NoError(t, os.Symlink(target, filepath.Join(convDir, "link.yaml")))
+
+	_, err := discoverConventions(dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "symlink")
+	assert.Contains(t, err.Error(), "link.yaml")
+}
+
+// TestDiscoverConventions_AcceptsUppercaseExtension pins the
+// case-insensitive extension match: a `.YAML` file is loaded, not
+// silently skipped.
+func TestDiscoverConventions_AcceptsUppercaseExtension(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(
+		filepath.Join(dir, ".mdsmith", "conventions"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith", "conventions", "foo.YAML"),
+		[]byte("flavor: gfm\n"), 0o644))
+
+	got, err := discoverConventions(dir)
+	require.NoError(t, err)
+	assert.Contains(t, got, "foo")
+}
+
+// TestDiscoverConventions_RejectsEmptyFile pins that an empty or
+// comments-only file errors with a clear "empty convention file"
+// message rather than the bare "EOF" the YAML decoder returns.
+func TestDiscoverConventions_RejectsEmptyFile(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(
+		filepath.Join(dir, ".mdsmith", "conventions"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith", "conventions", "stub.yaml"),
+		[]byte("# placeholder, fill in later\n"), 0o644))
+
+	_, err := discoverConventions(dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "empty convention file")
+	assert.Contains(t, err.Error(), "stub.yaml")
+	assert.NotContains(t, err.Error(), "EOF")
+}
+
+// TestDiscoverConventions_RejectsOversizeFile pins the size cap: a
+// convention file larger than maxConfigBytes errors instead of being
+// read unbounded into memory.
+func TestDiscoverConventions_RejectsOversizeFile(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(
+		filepath.Join(dir, ".mdsmith", "conventions"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith", "conventions", "big.yaml"),
+		bytes.Repeat([]byte("a"), int(maxConfigBytes)+1), 0o644))
+
+	_, err := discoverConventions(dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "big.yaml")
+	assert.Contains(t, err.Error(), "too large")
+}
+
+// TestLoad_RejectsEmptyConventionFile confirms an empty convention
+// file aborts Load with the clear "empty convention file" message
+// wrapped under "loading convention files", not a bare "EOF".
+func TestLoad_RejectsEmptyConventionFile(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(
+		filepath.Join(dir, ".mdsmith", "conventions"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith", "conventions", "stub.yaml"),
+		[]byte(""), 0o644))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith.yml"), []byte("rules: {}\n"), 0o644))
+
+	_, err := Load(filepath.Join(dir, ".mdsmith.yml"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "empty convention file")
+	assert.Contains(t, err.Error(), "stub.yaml")
+}
+
+// TestLoad_ConventionFileCollisionIsDeterministic pins that when two
+// file conventions both collide (here both reserved built-in names),
+// the error names the lexicographically-first one — github before
+// obsidian — every run, not whichever the map happens to yield.
+func TestLoad_ConventionFileCollisionIsDeterministic(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(
+		filepath.Join(dir, ".mdsmith", "conventions"), 0o755))
+	for _, n := range []string{"github", "obsidian"} {
+		require.NoError(t, os.WriteFile(
+			filepath.Join(dir, ".mdsmith", "conventions", n+".yaml"),
+			[]byte("flavor: gfm\n"), 0o644))
+	}
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith.yml"), []byte("rules: {}\n"), 0o644))
+
+	_, err := Load(filepath.Join(dir, ".mdsmith.yml"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "github")
+	assert.NotContains(t, err.Error(), "obsidian")
 }

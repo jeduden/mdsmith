@@ -2,11 +2,14 @@ package config
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/jeduden/mdsmith/internal/convention"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
@@ -45,7 +48,7 @@ type discoveredConvention struct {
 // Errors fired (each names the offending file so the user can jump
 // straight to it):
 //   - basename does not match `[a-z][a-z0-9-]*`
-//   - a subdirectory exists under `.mdsmith/conventions/`
+//   - a subdirectory or symlink exists under `.mdsmith/conventions/`
 //   - the same basename appears as both `.yaml` and `.yml`
 //   - the YAML body has a top-level key outside UserConvention
 //
@@ -75,13 +78,27 @@ func discoverConventions(workspaceDir string) (map[string]discoveredConvention, 
 
 	for _, entry := range entries {
 		name := entry.Name()
+		// Reject symlinks outright: a symlink reports IsDir()==false
+		// from lstat, so without this guard a symlinked directory
+		// would slip past the subdirectory check below and a symlinked
+		// file would be read off the workspace by parseConventionFile.
+		if entry.Type()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf(
+				"%s: symlinks are not allowed (found %q)",
+				conventionFilesDir, name)
+		}
 		if entry.IsDir() {
 			return nil, fmt.Errorf(
 				"%s: subdirectories are not allowed (found %q)",
 				conventionFilesDir, name)
 		}
+		// Match `.yaml`/`.yml` case-insensitively so a `.YAML` file is
+		// not silently skipped (surprising on case-insensitive
+		// filesystems where it denotes the same path as `.yaml`).
 		ext := filepath.Ext(name)
-		if ext != ".yaml" && ext != ".yml" {
+		switch strings.ToLower(ext) {
+		case ".yaml", ".yml":
+		default:
 			continue
 		}
 		base := name[:len(name)-len(ext)]
@@ -151,7 +168,16 @@ func mergeConventionFiles(cfg *Config, cfgPath string) error {
 	if cfg.Conventions == nil {
 		cfg.Conventions = make(map[string]UserConvention, len(discovered))
 	}
-	for name, dc := range discovered {
+	// Iterate in sorted name order so that when more than one file
+	// convention is in conflict, the reported error is deterministic
+	// across runs instead of depending on map iteration order.
+	names := make([]string, 0, len(discovered))
+	for name := range discovered {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		dc := discovered[name]
 		if reserved[name] {
 			return fmt.Errorf(
 				"convention %q in %s: name is reserved by a built-in convention",
@@ -174,7 +200,10 @@ func mergeConventionFiles(cfg *Config, cfgPath string) error {
 // dropped. RejectYAMLAliases handles anchor/alias rejection before the
 // strict decode runs.
 func parseConventionFile(path string) (UserConvention, error) {
-	data, err := os.ReadFile(path) //nolint:gosec // path is built from workspace + conventionFilesDir
+	// readLimitedConfig caps the read at maxConfigBytes (1 MB), the
+	// same guard `.mdsmith.yml` gets — a convention file should never
+	// be large, and an unbounded os.ReadFile is a needless OOM surface.
+	data, err := readLimitedConfig(path)
 	if err != nil {
 		return UserConvention{}, fmt.Errorf("reading %s: %w", path, err)
 	}
@@ -185,6 +214,14 @@ func parseConventionFile(path string) (UserConvention, error) {
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
 	if err := dec.Decode(&body); err != nil {
+		// An empty, whitespace-only, or comments-only file decodes to
+		// io.EOF (no YAML node). A convention with no body can't be
+		// validated downstream (applyConvention requires a flavor), so
+		// report it clearly instead of surfacing the decoder's bare
+		// "EOF".
+		if errors.Is(err, io.EOF) {
+			return UserConvention{}, fmt.Errorf("%s: empty convention file", path)
+		}
 		return UserConvention{}, fmt.Errorf("parsing %s: %w", path, err)
 	}
 	return body, nil
