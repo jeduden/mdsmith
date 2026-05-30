@@ -158,9 +158,15 @@ func perRuleAllocs(tb testing.TB, r rule.Rule, src []byte, mapFS fstest.MapFS) f
 	return delta
 }
 
-// perRuleCheckNsPerOp returns a stable total parse+Check ns/op for one
-// rule, using testing.Benchmark to auto-dial iterations until the
-// timing settles.
+// perRuleCheckNsPerOp returns a CI-stable total parse+Check ns/op for
+// one rule: the MINIMUM per-op wall time over several fixed-size
+// repetitions, not the average testing.Benchmark reports. The minimum
+// is the right gate quantity on a shared CI runner — a noisy
+// neighbour, scheduler preemption, or a GC pause only ever ADDS time,
+// so the least-contended repetition is the closest estimate of the
+// rule's true cost and a transient spike cannot inflate it. Gating the
+// average flaked the gate: MDS035 measured 1.33ms on a contended CI
+// runner against a ~0.2ms uncontended cost (it clocks ~0.18ms locally).
 //
 // The gate times parse+Check TOGETHER rather than the parse-subtracted
 // Check delta on purpose. On this corpus the goldmark parse (~170µs)
@@ -169,22 +175,34 @@ func perRuleAllocs(tb testing.TB, r rule.Rule, src []byte, mapFS fstest.MapFS) f
 // — useless as a gate quantity. Parse cost is constant across every
 // opt-in rule (same doc, same factory), so a Check regression still
 // pushes the COMBINED number past the rule's pinned ceiling, while the
-// constant parse floor keeps the measurement stable. This is the
-// "gate a single stable measurement" fallback the plan calls for.
+// constant parse floor keeps the measurement stable.
 func perRuleCheckNsPerOp(tb testing.TB, r rule.Rule, src []byte, mapFS fstest.MapFS) int64 {
 	tb.Helper()
 	makeFile := perRuleBenchMakeFile(tb, src, mapFS)
 	_ = r.Check(makeFile()) // warm once before measuring
-	res := testing.Benchmark(func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+	// Each repetition times a fixed batch of parse+Check ops. iters
+	// keeps a batch long enough (~tens of ms) to amortize per-call
+	// setup and stay well above timer resolution; repeats gives
+	// several short, independent windows so at least one lands in a
+	// quiet scheduling slot even on a contended runner. Return the
+	// minimum ns/op across the windows.
+	const (
+		iters   = 100
+		repeats = 12
+	)
+	var best int64
+	for i := 0; i < repeats; i++ {
+		start := time.Now()
+		for j := 0; j < iters; j++ {
 			f := makeFile()
 			_ = r.Check(f)
 		}
-	})
-	if res.N == 0 {
-		return 0
+		nsPerOp := time.Since(start).Nanoseconds() / iters
+		if i == 0 || nsPerOp < best {
+			best = nsPerOp
+		}
 	}
-	return res.NsPerOp()
+	return best
 }
 
 // perRuleBudget pairs the two hard per-rule gates: total parse+Check
@@ -203,12 +221,14 @@ type perRuleBudget struct {
 // Headroom philosophy (mirrors BenchmarkCheckCorpus*'s ~15-20% alloc /
 // ~3-5x time sizing):
 //
-//   - Time ceiling ≈ 5x the measured baseline so CI jitter and a
-//     slower runner do not flake, but a real Check-time regression
-//     (an added per-line pass, a lost early-exit) still trips it. The
-//     parse floor is constant, so even a cheap rule's regression
-//     shows. Floored at 1ms; MDS043 keeps 2.5ms because it parses the
-//     source a second time via LinkReferences.
+//   - Time ceiling ≈ 5x the measured baseline. perRuleCheckNsPerOp
+//     gates the MINIMUM ns/op over repetitions, not the average, so a
+//     slower runner and ordinary CI jitter stay well under the
+//     ceiling, while a real Check-time regression (an added per-line
+//     pass, a lost early-exit) still trips it. The parse floor is
+//     constant, so even a cheap rule's regression shows. Floored at
+//     1ms; MDS043 keeps 2.5ms because it parses the source a second
+//     time via LinkReferences.
 //   - Allocs ceiling = baseline + max(20%, 4) allocs, deterministic.
 //     Allocations are CPU-independent, so this is the tight gate that
 //     catches an algorithmic regression (extra parse, lost memo,
