@@ -1332,11 +1332,14 @@ func collectBodySyncPoints(
 		}
 		if currentHeading >= 0 && trimmed != "" {
 			fields := fieldinterp.Fields(trimmed)
-			for _, f := range fields {
-				syncPoints[currentHeading] = append(
-					syncPoints[currentHeading],
-					syncPoint{Field: f, InBody: true, BodyText: trimmed, compiled: buildFieldPattern(trimmed)},
-				)
+			if len(fields) > 0 {
+				compiled := buildFieldPattern(trimmed)
+				for _, f := range fields {
+					syncPoints[currentHeading] = append(
+						syncPoints[currentHeading],
+						syncPoint{Field: f, InBody: true, BodyText: trimmed, compiled: compiled},
+					)
+				}
 			}
 		}
 	}

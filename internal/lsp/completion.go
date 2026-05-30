@@ -52,7 +52,7 @@ func (s *Server) completionItems(ctx index.CompletionContext, rel string, idx *i
 		return s.anchorItems(rel, ctx.Prefix, idx, true)
 	case index.CompletionAnchorOtherFile:
 		if ctx.TargetFile == "" {
-			return []completionItem{}
+			return nil
 		}
 		return s.anchorItems(ctx.TargetFile, ctx.Prefix, idx, false)
 	case index.CompletionRefLabel:
@@ -62,7 +62,16 @@ func (s *Server) completionItems(ctx index.CompletionContext, rel string, idx *i
 	case index.CompletionDirectivePath:
 		return s.directivePathItems(rel, ctx.Prefix, idx)
 	}
-	return []completionItem{}
+	return nil
+}
+
+// hasPrefixFold reports whether s begins with prefixLower (already lowercased),
+// case-insensitively and without allocating.
+func hasPrefixFold(s, prefixLower string) bool {
+	if len(s) < len(prefixLower) {
+		return false
+	}
+	return strings.EqualFold(s[:len(prefixLower)], prefixLower)
 }
 
 // anchorItems returns completion items for heading anchors in the given file.
@@ -71,7 +80,7 @@ func (s *Server) completionItems(ctx index.CompletionContext, rel string, idx *i
 func (s *Server) anchorItems(file, prefix string, idx *index.Index, sameFile bool) []completionItem {
 	fe, ok := idx.File(file)
 	if !ok {
-		return []completionItem{}
+		return nil
 	}
 	prefixLower := strings.ToLower(prefix)
 	var items []completionItem
@@ -79,7 +88,7 @@ func (s *Server) anchorItems(file, prefix string, idx *index.Index, sameFile boo
 		if sym.Kind != index.SymbolHeading || sym.Anchor == "" {
 			continue
 		}
-		if !strings.HasPrefix(strings.ToLower(sym.Anchor), prefixLower) {
+		if !hasPrefixFold(sym.Anchor, prefixLower) {
 			continue
 		}
 		sortPfx := "b"
@@ -103,7 +112,7 @@ func (s *Server) anchorItems(file, prefix string, idx *index.Index, sameFile boo
 func (s *Server) refLabelItems(file, prefix string, idx *index.Index) []completionItem {
 	fe, ok := idx.File(file)
 	if !ok {
-		return []completionItem{}
+		return nil
 	}
 	prefixLower := strings.ToLower(prefix)
 	var items []completionItem
@@ -111,7 +120,7 @@ func (s *Server) refLabelItems(file, prefix string, idx *index.Index) []completi
 		if sym.Kind != index.SymbolLinkRef {
 			continue
 		}
-		if !strings.HasPrefix(strings.ToLower(sym.Anchor), prefixLower) {
+		if !hasPrefixFold(sym.Anchor, prefixLower) {
 			continue
 		}
 		items = append(items, completionItem{
@@ -128,12 +137,12 @@ func (s *Server) refLabelItems(file, prefix string, idx *index.Index) []completi
 func (s *Server) kindItems(prefix string) []completionItem {
 	cfg, _, _ := s.snapshotConfig()
 	if cfg == nil {
-		return []completionItem{}
+		return nil
 	}
 	prefixLower := strings.ToLower(prefix)
 	var items []completionItem
 	for k := range cfg.Kinds {
-		if !strings.HasPrefix(strings.ToLower(k), prefixLower) {
+		if !hasPrefixFold(k, prefixLower) {
 			continue
 		}
 		items = append(items, completionItem{
@@ -168,7 +177,7 @@ func (s *Server) directivePathItems(rel, prefix string, idx *index.Index) []comp
 	var items []completionItem
 	for _, f := range files {
 		relF := relFromDir(dir, f)
-		if !strings.HasPrefix(strings.ToLower(relF), prefixLower) {
+		if !hasPrefixFold(relF, prefixLower) {
 			continue
 		}
 		label := relF

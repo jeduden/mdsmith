@@ -470,7 +470,7 @@ func phraseMarker(phrase string) string {
 
 func dedupeSorted(values []string) []string {
 	if len(values) == 0 {
-		return []string{}
+		return nil
 	}
 	seen := map[string]struct{}{}
 	out := make([]string, 0, len(values))
