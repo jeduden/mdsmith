@@ -1,140 +1,157 @@
 ---
 id: 220
-title: Make merge-time staging robust against index-lock contention
+title: Make the pre-merge-commit hook the single git-index writer
 status: "🔲"
 model: opus
 summary: >-
-  The merge queue bounces with `git add` failing on
-  `.git/index.lock: File exists`. The lock is stale, left by a
-  killed merge attempt, so retry is futile. Fix the root cause in
-  the merge-queue orchestration, make the pre-merge-commit hook
-  lock-aware without stealing locks, and stop MDS048's `fix` from
-  mutating the git index in-process.
+  The merge queue bounces when the pre-merge-commit hook's `git
+  add` fails on `.git/index.lock: File exists`. The action source
+  rules out a concurrent or killed process, so the trigger is still
+  under investigation. Regardless, MDS048 does an in-process `git
+  add` that no linter should. Make the hook the single stager and
+  remove MDS048's index mutation.
 depends-on: []
 ---
-# Make merge-time staging robust against index-lock contention
+# Make the pre-merge-commit hook the single git-index writer
 
 ## Goal
 
 Stop the merge queue from bouncing on a `.git/index.lock`
-failure. Fix the stale-lock root cause. Make every mdsmith piece
-behave correctly around a locked index.
+failure. Remove the in-process `git add` that `mdsmith fix` should
+never perform. Leave one git-index writer: the hook.
 
-## Root cause
+## Symptom
 
-The queue error is a `git add` that hits an existing
-`.git/index.lock`. Local experiments establish the mechanism:
+The queue error is the pre-merge-commit hook's `git add` failing.
+It exits 128 with `fatal: Unable to create '.git/index.lock':
+File exists`. The action reports it as `pre-merge-commit hook
+failed (exit 128)`.
 
-- A plain `git merge` runs the `pre-merge-commit` hook with **no**
-  lock held; the hook's `git add` succeeds. The hook is correct
-  for local developers, and the failure does not reproduce on a
-  normal merge.
-- A **stale** `.git/index.lock` reproduces the exact queue error.
-  Three retries all fail identically. Only removing the lock
-  clears it. So retry-with-backoff cannot fix a stale lock.
-
-The lock is stale, not live. The merge-queue action bisects a
-failing batch by killing merge attempts. A process killed
-mid-index-write leaves `.git/index.lock` behind in the shared
-checkout. Later attempts in that run then fail deterministically.
-The action labels this "transient" and retries, but nothing
-clears the lock, so it never converges.
-
-The `stats: ... fixed=3 ... unfixed=0` in the error is mdsmith
-reporting success. The `fatal:` comes afterward, from the hook's
-`set -e` staging loop. See
+The `stats: ... fixed=3 ... unfixed=0` in the same message is
+mdsmith reporting a successful `fix`. The `fatal:` comes
+afterward, from the hook's `set -e` staging loop. See
 [BuildHookScript](../internal/githooks/githooks.go).
 
-## Invocation model (load-bearing)
+A local experiment reproduces the error. A `git add` that hits a
+pre-existing `.git/index.lock` fails with this exact message. It
+fails the same way on retry. It recovers only when the lock is
+removed.
 
-The queue runs `git merge --no-commit`, then invokes the hook
-standalone, then runs a separate `git commit`. The hook's `git
-add` lands in the index that the later `git commit` reads, so
-staging reaches the merge commit. This matches the regression test
-at
-[githooks_unix_test.go](../internal/githooks/githooks_unix_test.go).
+## What the cause is NOT
 
-Experiment confirms this is load-bearing. Under `git merge`
-auto-commit, git finalizes the merge tree before the hook runs, so
-the hook's staging is dropped from the commit and left dirty in the
-worktree. Under the `--no-commit` model, the same staging is
-captured. So every task below assumes the `--no-commit` model, and
-that assumption is itself a constraint the action must keep: if it
-ever switches to auto-commit, staging breaks even today.
+An earlier draft blamed the merge-queue action. It supposedly
+killed merge attempts and left a stale lock in a shared checkout.
+Reading the action source at the pinned `v0.7.8` disproves that:
+
+- The action has no process-killing code. There is no `kill`,
+  `SIGKILL`, `SIGTERM`, or `AbortController` anywhere in it.
+- Bisect re-dispatches the workflow. Each attempt is a fresh run
+  with a fresh `actions/checkout`. No checkout is shared across
+  attempts.
+- Batch PRs merge in a sequential `await` loop. The workflow's
+  `concurrency` group keeps runs from overlapping.
+- The action never stages. Its flow is `git merge --no-ff
+  --no-commit`, then invoke the hook, then `git commit -m`.
+
+So no concurrent or killed process holds the lock.
+
+## Leading hypothesis
+
+The lock must arise inside one sequential run. The prime suspect
+is mdsmith's own index writer. MDS048 (`git-hook-sync`) runs an
+in-process `git add -- .gitattributes` during `mdsmith fix`. See
+[StageGitattributes](../internal/githooks/githooks.go) and its
+caller in [githooksync](../internal/rules/githooksync/rule.go).
+
+This is unconfirmed as the trigger. The exact cause needs the
+failed run logs or a local repro (see Open questions). The fix
+below stands on design grounds regardless of the trigger.
 
 ## Design
 
-Mutating the git index is an orchestration job, not a linter job.
-Each piece gets one responsibility:
+Mutating the git index is orchestration, not linting. Today two
+mdsmith writers touch the index during a merge: the hook's staging
+loop and MDS048's in-process `git add`. The fix leaves one writer.
 
-- **merge-queue-action** owns process lifecycle, so it owns lock
-  cleanup. It must isolate each merge attempt and never leave a
-  stale lock.
-- **The pre-merge-commit hook** stages fixed files into the merge
-  commit. It runs while git has paused, so the index is free in
-  the normal path. It must tolerate a brief live lock, never steal
-  a lock it does not own, and fail clearly on a persistent lock.
-- **MDS048** should write `.gitattributes` as a pure content
-  transform. Staging it belongs to the hook, not to a `fix` rule.
+- The pre-merge-commit hook is the only mdsmith component that
+  stages. It runs after `git merge --no-commit`, while git has
+  paused, so the index is free in the normal path.
+- MDS048 writes `.gitattributes` as a pure content transform. It
+  performs no `git add`. The hook stages `.gitattributes`.
 
 ## Tasks
 
-1. **(merge-queue-action — separate repo, owner-implemented.)**
-   Run each merge attempt in a throwaway `git worktree` or clone,
-   and remove `.git/index.lock` when an attempt is killed or times
-   out, so a killed bisection step cannot poison sibling attempts.
-2. Make the hook's staging loop in
-   [BuildHookScript](../internal/githooks/githooks.go) lock-aware:
-   bounded retry with backoff for a transient lock, never delete a
-   lock it did not create, and exit with a clear "index locked"
-   message on a persistent lock. Update
-   [HookMatchesCanonical](../internal/githooks/githooks.go) and
-   the golden fixtures.
-3. In one atomic change, remove the in-process `git add` from
+1. In one atomic change, remove the in-process `git add` from
    MDS048 ([StageGitattributes](../internal/githooks/githooks.go)
    and its caller in
-   [githooksync](../internal/rules/githooksync/rule.go)) **and**
-   extend the hook's staging loop to add `.gitattributes` next to
-   `*.md` / `*.markdown`. These two halves must ship together:
-   experiment shows removing the in-process `git add` while the
-   hook still stages only `*.md` drops the regenerated
-   `.gitattributes` from the merge commit and leaves it dirty in
-   the worktree. Adjust MDS048's diagnostics and tests.
-4. Update the
+   [githooksync](../internal/rules/githooksync/rule.go)). Extend
+   the hook's staging loop in
+   [BuildHookScript](../internal/githooks/githooks.go) to add
+   `.gitattributes` beside `*.md` / `*.markdown`. Ship both halves
+   together. Experiment shows that removing the in-process `git
+   add` while the hook stages only `*.md` drops the regenerated
+   `.gitattributes` from the merge commit. Update
+   [HookMatchesCanonical](../internal/githooks/githooks.go) and the
+   golden fixtures. Adjust MDS048's diagnostics and tests.
+2. Harden the hook's staging loop against a transient lock. Use
+   bounded retry with backoff. Never delete a lock it did not
+   create. Exit with a clear "index locked" message on a
+   persistent lock. This is defensive; no concurrent writer is
+   known.
+3. Update the
    [pre-merge-commit reference](../docs/reference/cli/pre-merge-commit.md).
 
 ## Acceptance Criteria
 
-- [ ] `mdsmith fix` creates no `.git/index.lock`: MDS048 performs
-      no in-process git index mutation.
+- [ ] `mdsmith fix` performs no in-process git index mutation:
+      MDS048 does no `git add`.
+- [ ] The hook stages `.gitattributes` beside `*.md` /
+      `*.markdown`, so a merge that regenerates `.gitattributes`
+      still captures it.
 - [ ] A transient lock that clears within the retry window is
-      staged successfully (driven with a fake `git`).
+      staged successfully, driven with a fake `git`.
 - [ ] A persistent lock makes the hook exit with a clear "index
-      locked" message, and the hook never removes a lock it did
-      not create.
-- [ ] `HookMatchesCanonical` recognizes the updated template, and
+      locked" message. The hook never removes a lock it did not
+      create.
+- [ ] `HookMatchesCanonical` recognizes the updated template.
       `pre-merge-commit status` reports no drift.
 - [ ] Integration: after a `--no-commit` merge, run the hook, then
       commit. The merge commit captures both the regenerated
-      `.gitattributes` and the fixed `*.md`, and the worktree is
-      clean. This proves task 3's two halves keep the queue whole.
+      `.gitattributes` and the fixed `*.md`. The worktree is clean.
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool golangci-lint run` reports no issues.
 
+## Invocation model
+
+The queue runs `git merge --no-commit`, then the hook, then a
+separate `git commit`. Confirmed in
+[gitops.ts](https://github.com/jeduden/merge-queue-action) and the
+regression test at
+[githooks_unix_test.go](../internal/githooks/githooks_unix_test.go).
+
+Experiment shows this split is load-bearing. Under `git merge`
+auto-commit, git finalizes the merge tree before the hook runs.
+The hook's staging is then dropped from the commit. Under the
+`--no-commit` model, the same staging is captured. So the fix
+assumes the `--no-commit` model. If the action ever switches to
+auto-commit, staging breaks even today.
+
+## Open questions
+
+- The exact lock trigger is unconfirmed. The source rules out a
+  concurrent or killed process. Confirm whether MDS048's
+  in-process `git add` creates the lock, or whether an earlier job
+  step does. The failed run logs (`actions/runs/26667938542`,
+  `26677854302`) would settle it.
+
 ## Open decision
 
-Task 3 changes MDS048's behavior: today its `fix` auto-stages
-`.gitattributes`; afterward a manual `mdsmith fix` leaves it
+Task 1 changes MDS048's behavior. Today its `fix` auto-stages
+`.gitattributes`. Afterward a manual `mdsmith fix` leaves it
 modified but unstaged, and the hook stages it during merges. The
-alternative is to keep staging in MDS048 and only harden both
-call sites. The centralized design is recommended; confirm before
+alternative keeps staging in MDS048 and only hardens the call
+site. The single-writer design is recommended. Confirm before
 implementing.
-
-Tasks 1 and 3 are interdependent. Experiment confirms task 3
-keeps the queue working only if the hook is extended to stage
-`.gitattributes` in the same change. It also holds only under the
-`--no-commit` model task 1 must preserve. Removing the in-process
-`git add` alone breaks the queue.
 
 ## See also
 
