@@ -189,3 +189,48 @@ func TestSessionCheckCrossFileMemWorkspace(t *testing.T) {
 		t.Fatalf("Check: expected MDS019 (catalog out of date) reading docs/*.md from MemWorkspace, got %+v", diags)
 	}
 }
+
+// TestSessionCheckResultIsolatedFromCache verifies the slice Check
+// returns does not alias the cached slice, so a caller mutating its
+// result cannot poison a later Check on the same (uri, source).
+func TestSessionCheckResultIsolatedFromCache(t *testing.T) {
+	s := newTestSession(t, "rules:\n  no-trailing-spaces: true\n", nil)
+	src := []byte("# Title\n\ntrailing   \n")
+
+	first, err := s.Check("a.md", src)
+	if err != nil {
+		t.Fatalf("Check 1: %v", err)
+	}
+	if len(first) == 0 {
+		t.Fatal("Check 1: expected at least one diagnostic")
+	}
+	// Mutate the caller's copy: clobber a field and attempt an in-place
+	// grow into any spare capacity of the backing array.
+	first[0].Message = "POISONED"
+	_ = append(first[:len(first):len(first)], Diagnostic{Message: "EXTRA"})
+
+	second, err := s.Check("a.md", src)
+	if err != nil {
+		t.Fatalf("Check 2: %v", err)
+	}
+	if len(second) == 0 {
+		t.Fatal("Check 2: expected the cached diagnostic to survive")
+	}
+	if second[0].Message == "POISONED" {
+		t.Fatal("Check 2: cached diagnostic was mutated by the first caller (slice aliases the cache)")
+	}
+}
+
+// TestSessionCheckAfterDisposeNoPanic verifies that a Check racing or
+// following Dispose does not panic with a nil-map write. Dispose nils
+// the cache; Check must not blindly assign into it.
+func TestSessionCheckAfterDisposeNoPanic(t *testing.T) {
+	s := newTestSession(t, "", nil)
+	s.Dispose()
+
+	// Must not panic ("assignment to entry in nil map"). The result is
+	// best-effort after Dispose; we only require no crash.
+	if _, err := s.Check("a.md", []byte("# Title\n\nBody paragraph here.\n")); err != nil {
+		t.Fatalf("Check after Dispose: unexpected error: %v", err)
+	}
+}

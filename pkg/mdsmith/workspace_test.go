@@ -183,6 +183,35 @@ func TestMemWorkspaceFSSnapshotIsStable(t *testing.T) {
 	}
 }
 
+// TestMemFSGlobDoublestar verifies the fs.GlobFS view honours
+// doublestar `**` semantics, matching MemWorkspace.Glob and the rest of
+// mdsmith rather than the weaker stdlib path.Match (which does not cross
+// directory separators on `**`).
+func TestMemFSGlobDoublestar(t *testing.T) {
+	ws := NewMemWorkspace(map[string][]byte{
+		"docs/guide/intro.md": []byte("a"),
+		"docs/top.md":         []byte("b"),
+		"other/x.md":          []byte("c"),
+	})
+	fsys, ok := ws.FS().(fs.GlobFS)
+	if !ok {
+		t.Fatal("MemWorkspace.FS() must implement fs.GlobFS")
+	}
+
+	got, err := fsys.Glob("docs/**/*.md")
+	if err != nil {
+		t.Fatalf("Glob: %v", err)
+	}
+	sort.Strings(got)
+	// doublestar `**` matches zero-or-more segments, so it spans the
+	// nested docs/guide/intro.md (which stdlib path.Match would miss) and
+	// the top-level docs/top.md, but never escapes to other/x.md.
+	want := []string{"docs/guide/intro.md", "docs/top.md"}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("memFS.Glob(\"docs/**/*.md\") = %v, want %v (doublestar ** must cross directories, stay under docs/)", got, want)
+	}
+}
+
 // Workspace is satisfied by both implementations.
 var (
 	_ Workspace = OSWorkspace{}

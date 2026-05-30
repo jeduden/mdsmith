@@ -169,7 +169,10 @@ func (s *Session) Check(uri string, source []byte) ([]Diagnostic, error) {
 
 	s.mu.Lock()
 	if c, ok := s.checkCache[uri]; ok && c.hash == h {
-		diags := c.diags
+		// Return a clone, not the cached slice: a caller that mutates or
+		// appends to its result must not poison the cache for the next
+		// Check on the same (uri, source).
+		diags := cloneDiagnostics(c.diags)
 		s.mu.Unlock()
 		return diags, nil
 	}
@@ -180,7 +183,14 @@ func (s *Session) Check(uri string, source []byte) ([]Diagnostic, error) {
 	diags := toDiagnostics(res.Diagnostics)
 
 	s.mu.Lock()
-	s.checkCache[uri] = cachedCheck{hash: h, diags: diags}
+	// checkCache is nil after Dispose. Guard the write so a Check that
+	// races or follows Dispose degrades to "no caching" instead of a
+	// nil-map-write panic (which, holding s.mu here, would also wedge any
+	// concurrent Dispose waiting on the lock). Store a clone so the
+	// caller's returned slice never aliases the cache's backing array.
+	if s.checkCache != nil {
+		s.checkCache[uri] = cachedCheck{hash: h, diags: cloneDiagnostics(diags)}
+	}
 	s.mu.Unlock()
 
 	if err := firstError(res.Errors); err != nil {
@@ -348,4 +358,20 @@ func firstError(errs []error) error {
 		return nil
 	}
 	return errs[0]
+}
+
+// cloneDiagnostics returns a shallow copy of the slice so a caller
+// cannot append into or overwrite the cache's backing array. The
+// Diagnostic elements are copied by value; their inner slices
+// (SourceLines) and pointer (Explanation) are shared, which is safe
+// because callers treat results as read-only and the engine never
+// mutates a diagnostic after producing it. nil maps to nil so the
+// public no-diagnostics contract (nil, not []) is preserved.
+func cloneDiagnostics(in []Diagnostic) []Diagnostic {
+	if in == nil {
+		return nil
+	}
+	out := make([]Diagnostic, len(in))
+	copy(out, in)
+	return out
 }

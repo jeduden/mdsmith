@@ -208,7 +208,12 @@ func (m memFS) ReadFile(name string) ([]byte, error) {
 func (m memFS) Glob(pattern string) ([]string, error) {
 	var out []string
 	for key := range m {
-		ok, err := path.Match(pattern, key)
+		// doublestar.Match (not stdlib path.Match) so the fs.GlobFS view
+		// honours `**` and brace alternatives, matching MemWorkspace.Glob
+		// and every other glob surface in mdsmith. stdlib path.Match does
+		// not cross `/` on `*`/`**`, so a `docs/**/x.md` pattern would
+		// silently miss nested files.
+		ok, err := doublestar.Match(pattern, key)
 		if err != nil {
 			return nil, err
 		}
