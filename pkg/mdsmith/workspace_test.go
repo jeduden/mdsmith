@@ -208,7 +208,8 @@ func TestMemFSGlobDoublestar(t *testing.T) {
 	// the top-level docs/top.md, but never escapes to other/x.md.
 	want := []string{"docs/guide/intro.md", "docs/top.md"}
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
-		t.Fatalf("memFS.Glob(\"docs/**/*.md\") = %v, want %v (doublestar ** must cross directories, stay under docs/)", got, want)
+		// ** must cross into docs/guide/ yet stay under docs/.
+		t.Fatalf("memFS.Glob(%q) = %v, want %v", "docs/**/*.md", got, want)
 	}
 }
 
