@@ -37,35 +37,54 @@ pre-existing `.git/index.lock` fails with this exact message. It
 fails the same way on retry. It recovers only when the lock is
 removed.
 
+## Log evidence
+
+The failed run (`actions/runs/26677854302`) settles the cause:
+
+- It was **not** a bisect run. The inputs were `bisect: false`,
+  `batch_prs: 423` — a single-PR batch. Nothing was killed.
+- A normal content merge ran (auto-merging `CLAUDE.md`,
+  `AGENTS.md`, `PLAN.md`, `.github/copilot-instructions.md`), then
+  the hook ran.
+- `mdsmith fix` reported success: `checked=387 fixed=3 unfixed=0`.
+  The `fatal: index.lock` came after.
+- The lock was stale, not held by a live process. The action's own
+  cleanup then failed on it too: `git merge --abort` exited 128
+  and `git reset` could not reset the index. A live process would
+  have released its lock on exit.
+
+So the lock outlived `mdsmith fix` and wedged the repo. mdsmith is
+the only git-index writer in that window.
+
 ## What the cause is NOT
 
 An earlier draft blamed the merge-queue action. It supposedly
-killed merge attempts and left a stale lock in a shared checkout.
-Reading the action source at the pinned `v0.7.8` disproves that:
+killed a merge attempt and left a stale lock in a shared checkout.
+The run log and the action source at `v0.7.8` both disprove it:
 
-- The action has no process-killing code. There is no `kill`,
-  `SIGKILL`, `SIGTERM`, or `AbortController` anywhere in it.
-- Bisect re-dispatches the workflow. Each attempt is a fresh run
-  with a fresh `actions/checkout`. No checkout is shared across
-  attempts.
-- Batch PRs merge in a sequential `await` loop. The workflow's
-  `concurrency` group keeps runs from overlapping.
+- The log shows `bisect: false`. No bisection ran, nothing killed.
+- The action has no process-killing code (`kill`, `SIGKILL`,
+  `SIGTERM`, `AbortController`).
+- Bisect, when it does run, re-dispatches a fresh workflow with a
+  fresh `actions/checkout`. No checkout is shared.
 - The action never stages. Its flow is `git merge --no-ff
-  --no-commit`, then invoke the hook, then `git commit -m`.
+  --no-commit`, then the hook, then `git commit -m`.
 
-So no concurrent or killed process holds the lock.
+## Cause
 
-## Leading hypothesis
-
-The lock must arise inside one sequential run. The prime suspect
-is mdsmith's own index writer. MDS048 (`git-hook-sync`) runs an
-in-process `git add -- .gitattributes` during `mdsmith fix`. See
+The lock arises inside mdsmith's own hook execution. mdsmith has
+two git-index writers during a merge. MDS048 (`git-hook-sync`)
+runs an in-process `git add -- .gitattributes` during `mdsmith
+fix`; see
 [StageGitattributes](../internal/githooks/githooks.go) and its
 caller in [githooksync](../internal/rules/githooksync/rule.go).
+The hook's own staging loop then runs `git add`.
 
-This is unconfirmed as the trigger. The exact cause needs the
-failed run logs or a local repro (see Open questions). The fix
-below stands on design grounds regardless of the trigger.
+The log cannot order the two `git add` calls: the action captures
+all hook stderr as one block. It does not need to. The fix removes
+MDS048's in-process `git add`, leaving the hook as the single
+writer. That eliminates the double-writer condition whichever
+writer was at fault.
 
 ## Design
 
@@ -138,11 +157,12 @@ auto-commit, staging breaks even today.
 
 ## Open questions
 
-- The exact lock trigger is unconfirmed. The source rules out a
-  concurrent or killed process. Confirm whether MDS048's
-  in-process `git add` creates the lock, or whether an earlier job
-  step does. The failed run logs (`actions/runs/26667938542`,
-  `26677854302`) would settle it.
+- The exact sub-mechanism is unconfirmed: whether MDS048's
+  in-process `git add` leaves a stale lock, or collides with the
+  hook's staging loop. The log localizes the bug to mdsmith but
+  cannot order the two `git add` calls. A local repro that installs
+  the real hook and runs the merge would pin it. The fix does not
+  depend on the answer.
 
 ## Open decision
 
