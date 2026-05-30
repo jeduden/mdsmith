@@ -1,7 +1,7 @@
 ---
 id: 209
 title: Convention-per-file config under `.mdsmith/conventions/`
-status: "🔲"
+status: "🔳"
 model: opus
 depends-on: [208, 113]
 summary: >-

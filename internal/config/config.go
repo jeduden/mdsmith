@@ -25,9 +25,11 @@ var ValidCategories = []string{
 // discovery when no file arguments are given on the command line.
 var DefaultFiles = []string{"**/*.md", "**/*.markdown"}
 
-// UserConvention is a user-defined convention bundle declared in the
-// top-level `conventions:` block in .mdsmith.yml. It has the same
-// { flavor, rules } shape as the built-in convention table.
+// UserConvention is a user-defined convention bundle declared either
+// inline under the top-level `conventions:` block in .mdsmith.yml or
+// in a standalone file under `.mdsmith/conventions/<name>.yaml` (plan
+// 209). It has the same { flavor, rules } shape as the built-in
+// convention table.
 type UserConvention struct {
 	// Flavor is the Markdown flavor MDS034 should validate against
 	// (e.g. "commonmark", "gfm", "goldmark").
@@ -35,6 +37,14 @@ type UserConvention struct {
 	// Rules maps rule names to their presets, using the same schema
 	// as the top-level `rules:` block.
 	Rules map[string]RuleCfg `yaml:"rules,omitempty"`
+
+	// SourcePath is the workspace-absolute path of the file that
+	// defined this convention — either `.mdsmith.yml` for inline
+	// conventions or `.mdsmith/conventions/<name>.{yaml,yml}` for
+	// file-defined conventions (plan 209). Not serialized to YAML;
+	// populated by Load. Provenance surfaces it on the convention
+	// layer; CLI resolve/why prints it next to the layer.
+	SourcePath string `yaml:"-"`
 }
 
 // Config is the top-level configuration.
