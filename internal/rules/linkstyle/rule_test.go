@@ -455,6 +455,7 @@ func TestApplySettings_LinkImageStyle_Parses(t *testing.T) {
 	}))
 	require.NoError(t, err)
 	lis := r.Links.Style.LinkImageStyle
+	assert.True(t, lis.Active, "configuring link-image-style must mark the axis Active")
 	assert.False(t, lis.Autolink, "autolink=false must be stored")
 	assert.True(t, lis.Inline, "inline=true must be stored")
 	assert.True(t, lis.Full, "full=true must be stored")
@@ -531,7 +532,9 @@ func TestCheck_LinkImageStyle_ForbidInline(t *testing.T) {
 	}}}
 	diags := r.Check(f)
 	require.Len(t, diags, 1)
-	assert.Contains(t, diags[0].Message, "inline")
+	// "inline style forbidden" — not "inline-image style forbidden" —
+	// so an isImage routing inversion for links would be caught.
+	assert.Contains(t, diags[0].Message, "inline style forbidden")
 }
 
 // TestCheck_LinkImageStyle_ForbidFull verifies that full:false flags
