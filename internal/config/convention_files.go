@@ -109,7 +109,8 @@ func discoverConventions(workspaceDir string) (map[string]discoveredConvention, 
 	return result, nil
 }
 
-// mergeConventionFiles discovers file-defined conventions under the
+// mergeConventionFiles tags every inline convention with cfgPath for
+// provenance, then discovers file-defined conventions under the
 // workspace root (parent of cfgPath) and merges them into
 // cfg.Conventions. Two collisions are config errors, each naming the
 // offending file so the user can resolve it:
@@ -124,6 +125,16 @@ func discoverConventions(workspaceDir string) (map[string]discoveredConvention, 
 // Load is the only caller and always supplies a non-empty cfgPath, so
 // no defensive guard is needed for that.
 func mergeConventionFiles(cfg *Config, cfgPath string) error {
+	// Tag every inline convention with cfgPath so provenance
+	// attributes a user convention uniformly whether it came from
+	// `.mdsmith.yml` or a file under `.mdsmith/conventions/`. This
+	// runs before the file merge so a collision diagnostic can quote
+	// both sources verbatim.
+	for name, uc := range cfg.Conventions {
+		uc.SourcePath = cfgPath
+		cfg.Conventions[name] = uc
+	}
+
 	discovered, err := discoverConventions(filepath.Dir(cfgPath))
 	if err != nil {
 		return err

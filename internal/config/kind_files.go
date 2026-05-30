@@ -105,7 +105,8 @@ func discoverKinds(workspaceDir string) (map[string]discoveredKind, error) {
 	return result, nil
 }
 
-// mergeKindFiles discovers file-defined kinds under the
+// mergeKindFiles tags every inline kind with cfgPath for
+// provenance, then discovers file-defined kinds under the
 // workspace root (parent of cfgPath) and merges them into
 // cfg.Kinds. A name colliding between a file kind and an inline
 // kind is a config error naming both sources — the two do not
@@ -114,6 +115,15 @@ func discoverKinds(workspaceDir string) (map[string]discoveredKind, error) {
 // and always supplies a non-empty cfgPath, so no defensive
 // guard is needed for that.
 func mergeKindFiles(cfg *Config, cfgPath string) error {
+	// Tag every inline kind with cfgPath so provenance attributes
+	// kinds uniformly whether they came from `.mdsmith.yml` or a file
+	// under `.mdsmith/kinds/`. This runs before the file merge so a
+	// collision diagnostic can quote both sources verbatim.
+	for name, body := range cfg.Kinds {
+		body.SourcePath = cfgPath
+		cfg.Kinds[name] = body
+	}
+
 	discovered, err := discoverKinds(filepath.Dir(cfgPath))
 	if err != nil {
 		return err
