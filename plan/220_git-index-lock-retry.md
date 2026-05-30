@@ -1,93 +1,110 @@
 ---
 id: 220
-title: Make mdsmith's git staging tolerate transient index.lock contention
+title: Make merge-time staging robust against index-lock contention
 status: "🔲"
-model: sonnet
+model: opus
 summary: >-
-  MDS048 and the pre-merge-commit hook both run `git add`
-  without retrying, so a concurrent holder of `.git/index.lock`
-  makes the staging `git add` exit 128 and aborts the merge.
-  Add bounded retry-with-backoff on `index.lock` contention to
-  both the in-process stage and the generated hook's staging
-  loop.
+  The merge queue bounces with `git add` failing on
+  `.git/index.lock: File exists`. The lock is stale, left by a
+  killed merge attempt, so retry is futile. Fix the root cause in
+  the merge-queue orchestration, make the pre-merge-commit hook
+  lock-aware without stealing locks, and stop MDS048's `fix` from
+  mutating the git index in-process.
 depends-on: []
 ---
-# Make mdsmith's git staging tolerate transient index.lock contention
+# Make merge-time staging robust against index-lock contention
 
 ## Goal
 
-Stop a transient `.git/index.lock: File exists` race from aborting
-a `mdsmith fix`-driven merge. Retry mdsmith's own `git add` calls
-instead of failing the first time the index is briefly locked.
+Stop the merge queue from bouncing on a `.git/index.lock`
+failure. Fix the stale-lock root cause. Make every mdsmith piece
+behave correctly around a locked index.
 
-## Background
+## Root cause
 
-The merge queue repeatedly bounced a PR with:
+The queue error is a `git add` that hits an existing
+`.git/index.lock`. Local experiments establish the mechanism:
 
-```text
-pre-merge-commit hook failed (exit 128): stats: checked=387
-fixed=3 failures=3 unfixed=0 fatal: Unable to create
-'.../.git/index.lock': File exists.
-```
+- A plain `git merge` runs the `pre-merge-commit` hook with **no**
+  lock held; the hook's `git add` succeeds. The hook is correct
+  for local developers, and the failure does not reproduce on a
+  normal merge.
+- A **stale** `.git/index.lock` reproduces the exact queue error.
+  Three retries all fail identically. Only removing the lock
+  clears it. So retry-with-backoff cannot fix a stale lock.
 
-mdsmith mutates the git index in two places during the
-pre-merge-commit flow, and neither retries when the index is
-locked:
+The lock is stale, not live. The merge-queue action bisects a
+failing batch by killing merge attempts. A process killed
+mid-index-write leaves `.git/index.lock` behind in the shared
+checkout. Later attempts in that run then fail deterministically.
+The action labels this "transient" and retries, but nothing
+clears the lock, so it never converges.
 
-1. In-process, MDS048 (`git-hook-sync`) stages the regenerated
-   `.gitattributes`. [`stage`](../internal/rules/githooksync/rule.go)
-   calls
-   [`githooks.StageGitattributes`](../internal/githooks/githooks.go),
-   which runs `git add -- .gitattributes` once and records any
-   error.
-2. The generated hook script itself stages every fixed markdown
-   file. [`BuildHookScript`](../internal/githooks/githooks.go)
-   emits a `git add -- "$f"` loop under `set -e`, so one `git add`
-   that fails with `index.lock: File exists` exits 128 and aborts
-   the merge commit. That is the exit-128 seen in the queue.
+The `stats: ... fixed=3 ... unfixed=0` in the error is mdsmith
+reporting success. The `fatal:` comes afterward, from the hook's
+`set -e` staging loop. See
+[BuildHookScript](../internal/githooks/githooks.go).
 
-`index.lock: File exists` means another process briefly held the
-index lock. The competing holder is not identified from this
-repository. It may be the merge-queue batch harness or git's own
-merge bookkeeping. So the fix targets the part mdsmith owns:
-tolerate a short-lived lock rather than fail on first contact.
+## Design
 
-This is independent of the engine-API work; it ships here because
-the contention is what is blocking the current PR from merging.
+Mutating the git index is an orchestration job, not a linter job.
+Each piece gets one responsibility:
+
+- **merge-queue-action** owns process lifecycle, so it owns lock
+  cleanup. It must isolate each merge attempt and never leave a
+  stale lock.
+- **The pre-merge-commit hook** stages fixed files into the merge
+  commit. It runs while git has paused, so the index is free in
+  the normal path. It must tolerate a brief live lock, never steal
+  a lock it does not own, and fail clearly on a persistent lock.
+- **MDS048** should write `.gitattributes` as a pure content
+  transform. Staging it belongs to the hook, not to a `fix` rule.
 
 ## Tasks
 
-1. Add a bounded retry helper for `git add` that retries only when
-   git's stderr names `index.lock` (e.g. up to 5 attempts with
-   short backoff), and returns the original error otherwise. Drive
-   it red/green with a fake `git` that fails once then succeeds.
-2. Route
-   [`StageGitattributes`](../internal/githooks/githooks.go) through
-   the helper, preserving its `CombinedOutput` error text so
-   MDS048's staging diagnostic stays actionable.
-3. Make the generated hook's staging loop in
-   [`BuildHookScript`](../internal/githooks/githooks.go) retry a
-   locked `git add` instead of letting `set -e` abort the merge,
-   and update
-   [`HookMatchesCanonical`](../internal/githooks/githooks.go) plus
-   the drift fixtures so the new template is recognized as
-   in-sync.
+1. **(merge-queue-action — separate repo, owner-implemented.)**
+   Run each merge attempt in a throwaway `git worktree` or clone,
+   and remove `.git/index.lock` when an attempt is killed or times
+   out, so a killed bisection step cannot poison sibling attempts.
+2. Make the hook's staging loop in
+   [BuildHookScript](../internal/githooks/githooks.go) lock-aware:
+   bounded retry with backoff for a transient lock, never delete a
+   lock it did not create, and exit with a clear "index locked"
+   message on a persistent lock. Update
+   [HookMatchesCanonical](../internal/githooks/githooks.go) and
+   the golden fixtures.
+3. Remove the in-process `git add` from MDS048
+   ([StageGitattributes](../internal/githooks/githooks.go) and its
+   caller in
+   [githooksync](../internal/rules/githooksync/rule.go)) so
+   `mdsmith fix` creates no `.git/index.lock`. Extend the hook to
+   stage `.gitattributes` alongside `*.md`. Adjust MDS048's
+   diagnostics and tests.
 4. Update the
-   [pre-merge-commit reference](../docs/reference/cli/pre-merge-commit.md)
-   to note the lock-retry behavior.
+   [pre-merge-commit reference](../docs/reference/cli/pre-merge-commit.md).
 
 ## Acceptance Criteria
 
-- [ ] A `git add` that fails once with `index.lock: File exists`
-      and then succeeds is retried and reported as success by both
-      the in-process stage and the generated hook loop.
-- [ ] A `git add` that fails for any other reason is not retried
-      and surfaces git's stderr unchanged.
-- [ ] `HookMatchesCanonical` recognizes the updated hook template,
-      and `pre-merge-commit status` reports no drift for a freshly
-      installed hook.
+- [ ] `mdsmith fix` creates no `.git/index.lock`: MDS048 performs
+      no in-process git index mutation.
+- [ ] A transient lock that clears within the retry window is
+      staged successfully (driven with a fake `git`).
+- [ ] A persistent lock makes the hook exit with a clear "index
+      locked" message, and the hook never removes a lock it did
+      not create.
+- [ ] `HookMatchesCanonical` recognizes the updated template, and
+      `pre-merge-commit status` reports no drift.
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool golangci-lint run` reports no issues.
+
+## Open decision
+
+Task 3 changes MDS048's behavior: today its `fix` auto-stages
+`.gitattributes`; afterward a manual `mdsmith fix` leaves it
+modified but unstaged, and the hook stages it during merges. The
+alternative is to keep staging in MDS048 and only harden both
+call sites. The centralized design is recommended; confirm before
+implementing.
 
 ## See also
 

@@ -149,5 +149,5 @@ footer: |
 | 218 | 🔲     | opus   | [WASM size reduction — CUE-free engine path and tinygo support](plan/218_wasm-size-reduction.md)                                        |
 | 219 | 🔲     | opus   | [Multiplexed AST walk to close the parity gap to mado](plan/219_multiplexed-ast-walk.md)                                                |
 | 219 | 🔲     | opus   | [Route cmd/mdsmith and the LSP through pkg/mdsmith.Session](plan/219_session-cli-lsp-migration.md)                                      |
-| 220 | 🔲     | sonnet | [Make mdsmith's git staging tolerate transient index.lock contention](plan/220_git-index-lock-retry.md)                                 |
+| 220 | 🔲     | opus   | [Make merge-time staging robust against index-lock contention](plan/220_git-index-lock-retry.md)                                        |
 <?/catalog?>
