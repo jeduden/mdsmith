@@ -143,7 +143,7 @@ loop. Both are kept; both are hardened against a transient lock.
       non-zero). Neither writer removes a lock it did not create.
 - [x] `HookMatchesCanonical` recognizes the updated template.
       `pre-merge-commit status` reports no drift.
-- [ ] Integration: after a `--no-commit` merge, run the hook, then
+- [x] Integration: after a `--no-commit` merge, run the hook, then
       commit. The merge commit captures both the regenerated
       `.gitattributes` and the fixed `*.md`. The worktree is clean.
 - [ ] All tests pass: `go test ./...`

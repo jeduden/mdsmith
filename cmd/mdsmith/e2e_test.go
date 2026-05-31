@@ -1699,6 +1699,131 @@ func TestE2E_MergeDriver_FileOrderingRace_Resolved(t *testing.T) {
 		"check after merge must pass; stderr:\n%s", stderr)
 }
 
+// TestE2E_PreMergeCommit_NoCommitMergeCapturesBoth exercises the
+// invocation model the merge queue uses: `git merge --no-ff
+// --no-commit`, then the pre-merge-commit hook, then a separate `git
+// commit`. It is the plan-220 integration acceptance criterion.
+//
+// The repo carries a deliberately stale .gitattributes managed block
+// (missing the canonical *.markdown include) and a PLAN.md whose
+// catalog has not yet been regenerated for a newly merged plan file.
+// The hook's single `mdsmith fix .` then has real work on two fronts:
+// MDS048 rewrites .gitattributes and stages it (its in-process staging
+// is kept, not dropped), and the catalog rule regenerates PLAN.md
+// (staged by the hook's own hardened staging loop). The resulting
+// merge commit must capture both, and the worktree must be clean.
+//
+// The branches are arranged so the merge has no PLAN.md/.gitattributes
+// conflict: `theirs` adds plan/02.md without regenerating PLAN.md, and
+// `ours` touches only an unrelated file. That keeps the per-file merge
+// driver from pre-regenerating .gitattributes in the worktree, so the
+// stale managed block survives to hook time and MDS048 has a genuine
+// correction to stage — the realistic shape of the queue bug.
+func TestE2E_PreMergeCommit_NoCommitMergeCapturesBoth(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	dir := t.TempDir()
+	gitInit(t, dir)
+
+	writeFixture(t, dir, ".mdsmith.yml",
+		"rules:\n  catalog: true\n  include: true\n  git-hook-sync: true\n")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "plan"), 0o755))
+	writeFixture(t, dir, "plan/01.md", fmt.Sprintf(planTmpl, 1, 1, "🔲", 1))
+	writeFixture(t, dir, "PLAN.md", planMdTmpl)
+
+	// Install the merge driver + hook (this canonicalises .gitattributes
+	// in the working tree), then seed the catalog body so PLAN.md is
+	// clean for plan 1.
+	_, stderr, code := runBinaryInDir(t, dir, "", "merge-driver", "install")
+	require.Equal(t, 0, code, "install failed: %s", stderr)
+	_, stderr, code = runBinaryInDir(t, dir, "", "fix", "PLAN.md")
+	require.Equal(t, 0, code, "seed fix failed: %s", stderr)
+
+	// Commit a deliberately stale managed block (drop the *.markdown
+	// include) directly via git, with no later `mdsmith fix` to
+	// re-canonicalise it, so the stale block is what every branch
+	// inherits and what reaches the merge.
+	staleAttrs := "# BEGIN mdsmith merge-driver\n" +
+		"*.md merge=mdsmith\n" +
+		"# END mdsmith merge-driver\n"
+	writeFixture(t, dir, ".gitattributes", staleAttrs)
+	gitCommit(t, dir, "seed (stale .gitattributes)")
+	seedSHA := strings.TrimSpace(gitInDir(t, dir, "rev-parse", "HEAD"))
+
+	// theirs: add plan/02.md but leave PLAN.md's catalog stale, so the
+	// merge does not touch PLAN.md (no conflict, no driver run) yet the
+	// post-merge catalog is out of date — work for the hook's fix.
+	gitInDir(t, dir, "checkout", "-q", "-b", "theirs", seedSHA)
+	writeFixture(t, dir, "plan/02.md", fmt.Sprintf(planTmpl, 2, 2, "🔲", 2))
+	gitInDir(t, dir, "add", "plan/02.md")
+	gitInDir(t, dir, "-c", "commit.gpgsign=false", "commit", "-q", "-m",
+		"add plan 2 (catalog intentionally not regenerated)")
+
+	// ours: an unrelated change so the merge is a real --no-ff merge
+	// with no overlap on PLAN.md or .gitattributes.
+	gitInDir(t, dir, "checkout", "-q", "-b", "ours", seedSHA)
+	writeFixture(t, dir, "NOTES.txt", "note\n")
+	gitInDir(t, dir, "add", "NOTES.txt")
+	gitInDir(t, dir, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "ours note")
+
+	// Step 1: `git merge --no-ff --no-commit`, leaving the commit
+	// uncreated, exactly as the merge-queue action does.
+	out, err := exec.Command("git", "-C", dir,
+		"-c", "commit.gpgsign=false",
+		"merge", "--no-ff", "--no-commit", "theirs").CombinedOutput()
+	// A clean --no-commit merge exits non-zero ("stopped before
+	// committing as requested"); only a real conflict is a failure.
+	if err != nil {
+		require.NotContains(t, string(out), "CONFLICT",
+			"merge must apply cleanly with no conflict: %s", out)
+	}
+
+	// Precondition: the stale block survived to hook time (the driver
+	// did not pre-regenerate it), so MDS048 has a real correction.
+	preHookAttrs, readErr := os.ReadFile(filepath.Join(dir, ".gitattributes"))
+	require.NoError(t, readErr)
+	require.NotContains(t, string(preHookAttrs), "*.markdown merge=mdsmith",
+		"the stale .gitattributes must survive to hook time for this test "+
+			"to exercise MDS048's regeneration; got:\n%s", preHookAttrs)
+
+	// Step 2: run the installed hook, exactly as the action does.
+	hookPath := filepath.Join(gitHooksDir(t, dir), "pre-merge-commit")
+	hookCmd := exec.Command(hookPath)
+	hookCmd.Dir = dir
+	hookOut, hookErr := hookCmd.CombinedOutput()
+	require.NoErrorf(t, hookErr, "pre-merge-commit hook failed: %s", hookOut)
+
+	// Step 3: create the merge commit.
+	out, err = exec.Command("git", "-C", dir,
+		"-c", "commit.gpgsign=false",
+		"commit", "--no-edit").CombinedOutput()
+	require.NoErrorf(t, err, "git commit (merge) failed: %s", out)
+
+	// The merge commit's tree must contain both the regenerated
+	// .gitattributes (now including the previously missing *.markdown
+	// line, staged by MDS048) and the regenerated PLAN.md catalog (now
+	// listing plan 2, staged by the hook's staging loop).
+	committedAttrs := gitInDir(t, dir, "show", "HEAD:.gitattributes")
+	assert.Contains(t, committedAttrs, "*.markdown merge=mdsmith",
+		"merge commit must capture the regenerated .gitattributes "+
+			"(the *.markdown include MDS048 added); got:\n%s",
+		committedAttrs)
+
+	committedPlan := gitInDir(t, dir, "show", "HEAD:PLAN.md")
+	assert.Regexp(t, `\| 1 +\|`, committedPlan,
+		"merge commit's PLAN.md must list plan 1; got:\n%s", committedPlan)
+	assert.Regexp(t, `\| 2 +\|`, committedPlan,
+		"merge commit's PLAN.md must list the merged plan 2 (catalog "+
+			"regenerated by the hook); got:\n%s", committedPlan)
+
+	// The worktree must be clean: every regenerated file the hook
+	// touched is committed, nothing left modified or untracked.
+	status := gitInDir(t, dir, "status", "--porcelain")
+	assert.Empty(t, strings.TrimSpace(status),
+		"worktree must be clean after the hook+commit flow; git status:\n%s", status)
+}
+
 // gitInit initializes a git repo with isolated user/sign config so
 // commits succeed on machines that have global signing turned on.
 func gitInit(t *testing.T, dir string) {
