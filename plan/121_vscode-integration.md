@@ -127,7 +127,7 @@ Settings the extension contributes:
 | ---------------------- | ----------- | ------------------------------------- |
 | `mdsmith.path`         | `"mdsmith"` | Binary path; resolved against `$PATH` |
 | `mdsmith.config`       | `""`        | Override `-c` config path             |
-| `mdsmith.run`          | `"onSave"`  | `onType`, `onSave`, or `off`          |
+| `mdsmith.run`          | `"onType"`  | `onType`, `onSave`, or `off`          |
 | `mdsmith.fixOnSave`    | `false`     | Wires `source.fixAll.mdsmith` on save |
 | `mdsmith.trace.server` | `"off"`     | LSP trace verbosity                   |
 
@@ -135,7 +135,7 @@ Settings the extension contributes:
 it to spawn the server. The server pulls only
 `mdsmith.config`, `mdsmith.run`, and
 `mdsmith.trace.server`. The `mdsmith.run` default
-is `onSave`. Live linting per keystroke is opt-in.
+is `onType`; `onSave` and `off` are opt-in.
 
 Document selector: `markdown` and `*.markdown` files.
 Activation event: `onLanguage:markdown`. The
@@ -166,8 +166,8 @@ buffer so config edits take effect immediately.
   150 ms on a 1 000-line file and under 500 ms on a
   5 000-line file, measured end-to-end (`didChange`
   to `publishDiagnostics`). The benchmark drives
-  the perf task; missing it blocks the default flip
-  to `onType`.
+  the perf task and guards the latency budget for
+  the `onType` default.
 
 ### Distribution
 
