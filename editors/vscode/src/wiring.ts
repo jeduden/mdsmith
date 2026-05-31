@@ -178,6 +178,24 @@ function candidateLabel(c: BinaryCandidate): string {
   }
 }
 
+// Run modes for `mdsmith.run`. Mirror the enum declared in
+// package.json and the runMode constants in the Go server
+// (internal/lsp/server.go): onType lints live as you type, onSave
+// lints only on save, and off disables mdsmith entirely.
+export const RUN_ON_TYPE = "onType";
+export const RUN_ON_SAVE = "onSave";
+export const RUN_OFF = "off";
+
+// shouldFixOnSave decides whether the willSave handler runs the
+// whole-file fix. `mdsmith.fixOnSave` is subordinate to `mdsmith.run`:
+// when run is "off" mdsmith is inert, so a save must not rewrite the
+// buffer even if fixOnSave was left on — matching the server, which
+// publishes no diagnostics in off mode. onType and onSave both allow
+// fix-on-save when fixOnSave is enabled.
+export function shouldFixOnSave(run: string, fixOnSave: boolean): boolean {
+  return fixOnSave && run !== RUN_OFF;
+}
+
 // Minimal shapes of the bits of vscode.CodeAction / WorkspaceEdit /
 // Uri / TextEdit we touch when filtering fixAll edits. Defining them
 // here lets tests drive the pure pipeline without importing `vscode`.
