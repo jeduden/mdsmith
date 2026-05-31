@@ -19,7 +19,9 @@ import {
   collectFixAllEdits,
   forwardMdsmithConfigChange,
   notifyConfigChangeToClient,
-  startupErrorMessage
+  shouldFixOnSave,
+  startupErrorMessage,
+  RUN_ON_TYPE
 } from "./wiring";
 import { findBinaryCandidates, resolveBinary } from "./binary";
 import { runFixWorkspace } from "./commands/fix-workspace";
@@ -48,13 +50,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   registerPaletteCommands(context);
 
-  // Wire fix-on-save once. The handler reads the setting on every
-  // save so toggling the option does not require a restart.
+  // Wire fix-on-save once. The handler reads both settings on every
+  // save so toggling either option does not require a restart.
+  // fixOnSave is gated by mdsmith.run: when run is "off" mdsmith is
+  // inert, so a save must not rewrite the buffer even if fixOnSave was
+  // left on (shouldFixOnSave centralizes that rule).
   context.subscriptions.push(
     vscode.workspace.onWillSaveTextDocument((event) => {
       if (event.document.languageId !== "markdown") return;
-      const fixOnSave = vscode.workspace.getConfiguration("mdsmith").get<boolean>("fixOnSave", false);
-      if (!fixOnSave) return;
+      const cfg = vscode.workspace.getConfiguration("mdsmith");
+      const run = cfg.get<string>("run", RUN_ON_TYPE);
+      const fixOnSave = cfg.get<boolean>("fixOnSave", false);
+      if (!shouldFixOnSave(run, fixOnSave)) return;
       event.waitUntil(
         vscode.commands.executeCommand(
           "vscode.executeCodeActionProvider",

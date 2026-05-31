@@ -19,6 +19,7 @@ import {
   collectFixAllEdits,
   forwardMdsmithConfigChange,
   notifyConfigChangeToClient,
+  shouldFixOnSave,
   startupErrorMessage,
   type CodeActionLike,
   type FileSystemWatcherLike,
@@ -342,6 +343,26 @@ describe("notifyConfigChangeToClient", () => {
     // Bun would surface an unhandledRejection and fail the test here.
     await new Promise((r) => setTimeout(r, 0));
     expect(f.sends()).toBe(1);
+  });
+});
+
+describe("shouldFixOnSave", () => {
+  test("fixes on save when fixOnSave is on and run is not off", () => {
+    expect(shouldFixOnSave("onType", true)).toBe(true);
+    expect(shouldFixOnSave("onSave", true)).toBe(true);
+  });
+
+  test("never fixes when run is off, even if fixOnSave is on", () => {
+    // run=off is the master switch: mdsmith is inert, so a save must
+    // not rewrite the buffer. Mirrors the server publishing no
+    // diagnostics in off mode.
+    expect(shouldFixOnSave("off", true)).toBe(false);
+  });
+
+  test("never fixes when fixOnSave is off, whatever the run mode", () => {
+    expect(shouldFixOnSave("onType", false)).toBe(false);
+    expect(shouldFixOnSave("onSave", false)).toBe(false);
+    expect(shouldFixOnSave("off", false)).toBe(false);
   });
 });
 
