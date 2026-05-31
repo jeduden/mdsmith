@@ -129,7 +129,7 @@ loop. Both are kept; both are hardened against a transient lock.
    message on a persistent lock. Update
    [HookMatchesCanonical](../internal/githooks/githooks.go) and the
    golden fixtures.
-3. [ ] Update the
+3. [x] Update the
    [pre-merge-commit reference](../docs/reference/cli/pre-merge-commit.md).
 
 ## Acceptance Criteria
