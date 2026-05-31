@@ -11,6 +11,15 @@ Manage a Git `pre-merge-commit` hook that runs
 commit is created. Modified `.md` / `.markdown` files are
 re-staged automatically.
 
+A concurrent git process can briefly hold
+`.git/index.lock`. When `git add` fails for that reason,
+the hook retries with a bounded backoff. A transient
+lock no longer aborts the merge. The hook never deletes
+a lock it did not create. If the lock outlasts the
+retries, the hook prints `index locked` and exits
+non-zero, so the merge stops instead of committing a
+partially staged tree.
+
 ```text
 mdsmith pre-merge-commit <subcommand> [args]
 ```
