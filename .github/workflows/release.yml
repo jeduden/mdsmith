@@ -388,7 +388,13 @@ jobs:
           packages-dir: python/dist
 
   release:
-    needs: [build, vscode]
+    # `flatpak` joins `build`/`vscode` here so the .flatpak bundle it
+    # produces is downloaded with the other artifacts and uploaded to
+    # the draft before it freezes. The bundle is named with the
+    # `mdsmith-` prefix, so the checksum, SLSA attestation, and cosign
+    # steps below cover it via the same `mdsmith-*` glob as the raw
+    # binaries — no release-job changes beyond this dependency.
+    needs: [build, vscode, flatpak]
     runs-on: ubuntu-latest
     # See docs/development/release.md for the rationale on `if:`,
     # `environment:`, and the OIDC + attestations permission set.
@@ -497,6 +503,95 @@ jobs:
           RELEASE_TAG: ${{ env.VERSION }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: go run ./cmd/mdsmith-release publish-release
+
+  # Build the self-hosted .flatpak bundle. Like `vscode`, this chains
+  # off `build` (not `release`) and hands its artifact to the `release`
+  # job, which attaches `mdsmith-x86_64.flatpak` to the draft before it
+  # freezes — uploading to an immutable, already-published release is
+  # rejected. The bundle is built from the freshly built x86_64 binary
+  # via flatpak-builder, so it needs no published download URL. x86_64
+  # only: flatpak-builder targets the runner's native arch and
+  # cross-building aarch64 under emulation is not worth it for this
+  # channel (aarch64 Linux uses the binary, npm, or PyPI channels).
+  # The job carries no secrets, so it runs without the `release`
+  # environment gate. See docs/development/release-channels/flatpak.md.
+  flatpak:
+    needs: [build]
+    runs-on: ubuntu-latest
+    # Bound the heavy steps (apt install + ~hundreds-of-MB Flathub
+    # runtime pull + flatpak-builder) so a stuck download cannot hold
+    # the release-gating job to the 6h default.
+    timeout-minutes: 20
+    if: *release_repo_trigger_ok
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Download release artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Stage manifest and binaries
+        # build-flatpak writes the flatpak-builder manifest and copies
+        # the Linux binaries it references (via local `path:` sources)
+        # into flatpak-build/, so the bundle builds without a release
+        # download URL.
+        run: go run ./cmd/mdsmith-release build-flatpak artifacts flatpak-build
+      - name: Install flatpak-builder and the freedesktop runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          # Ubuntu 24.04 restricts unprivileged user namespaces via
+          # AppArmor, which blocks the bubblewrap sandbox that
+          # flatpak-builder and `flatpak run` rely on. Re-enable it on
+          # the runner (best-effort: the knob is absent on older
+          # kernels, where the restriction does not exist).
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          flatpak remote-add --user --if-not-exists \
+            flathub https://flathub.org/repo/flathub.flatpakrepo
+      - name: Build the bundle
+        # flatpak-builder pulls the org.freedesktop 24.08 Platform/SDK
+        # from flathub, builds the app into a local OSTree repo, and
+        # build-bundle packs it into a single file. --runtime-repo
+        # records flathub so `flatpak install ./mdsmith-x86_64.flatpak`
+        # can offer the runtime if the host lacks it.
+        # --disable-rofiles-fuse avoids the rofiles-fuse mount, which is
+        # fragile under the runner's restricted FUSE.
+        run: |
+          flatpak-builder --user --install-deps-from=flathub \
+            --disable-rofiles-fuse --force-clean --repo=flatpak-repo \
+            flatpak-build-dir flatpak-build/io.github.jeduden.mdsmith.yml
+          flatpak build-bundle \
+            --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
+            flatpak-repo mdsmith-x86_64.flatpak io.github.jeduden.mdsmith
+      - name: Verify the bundle installs and reports the right version
+        # No other job exercises this channel (smoke-test runs in
+        # flatpak-less containers), so confirm the bundle installs and
+        # `mdsmith version` matches the tag before it ships. A broken
+        # bundle fails the job — and, since `release` needs it, blocks
+        # the release rather than shipping a dud asset.
+        env:
+          VERSION: ${{ env.VERSION }}
+        run: |
+          flatpak install --user -y ./mdsmith-x86_64.flatpak
+          # Take the last stdout line so a first-run portal/sandbox
+          # notice cannot break the exact-match check.
+          got=$(flatpak run io.github.jeduden.mdsmith version | tail -n1)
+          want="mdsmith ${VERSION}"
+          if [ "$got" != "$want" ]; then
+            echo "flatpak bundle version mismatch: got '$got', want '$want'" >&2
+            exit 1
+          fi
+          echo "flatpak bundle: $got"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mdsmith-flatpak-bundle
+          path: mdsmith-x86_64.flatpak
 
   smoke-test:
     # Wait until every channel is on the new version before checking
