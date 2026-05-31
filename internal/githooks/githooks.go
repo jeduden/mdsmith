@@ -965,6 +965,41 @@ func HasMdsmithMergeDriver(repoRoot string) bool {
 	return strings.TrimSpace(string(out)) != ""
 }
 
+// stagingHelperShellFunc is the POSIX `mdsmith_git_add` function the
+// hook uses to stage one path with index.lock-aware retry. It is kept
+// as a package-level constant so BuildHookScript stays short and so
+// the retry policy lives in one readable block. The function backs off
+// with `sleep 0.1 2>/dev/null || sleep 1` (fast on coreutils that
+// honor fractional sleep, portable elsewhere), bounds the retries, and
+// on a persistent lock prints `index locked` and exits the hook
+// non-zero. It never deletes `.git/index.lock` — only waits for the
+// holder to release it.
+const stagingHelperShellFunc = "# Stage one path, retrying a transient .git/index.lock with\n" +
+	"# bounded backoff. Never removes a lock it did not create; a\n" +
+	"# persistent lock exits non-zero with a clear message.\n" +
+	"mdsmith_git_add() {\n" +
+	"  _attempt=0\n" +
+	"  while :; do\n" +
+	"    _err=$(git add -- \"$1\" 2>&1)\n" +
+	"    _status=$?\n" +
+	"    [ \"$_status\" -eq 0 ] && return 0\n" +
+	"    case \"$_err\" in\n" +
+	"      *index.lock*\"File exists\"*)\n" +
+	"        if [ \"$_attempt\" -ge 5 ]; then\n" +
+	"          echo \"mdsmith pre-merge-commit hook: index locked: $_err\" >&2\n" +
+	"          exit 1\n" +
+	"        fi\n" +
+	"        _attempt=$((_attempt + 1))\n" +
+	"        sleep 0.1 2>/dev/null || sleep 1\n" +
+	"        ;;\n" +
+	"      *)\n" +
+	"        echo \"$_err\" >&2\n" +
+	"        exit \"$_status\"\n" +
+	"        ;;\n" +
+	"    esac\n" +
+	"  done\n" +
+	"}\n"
+
 // BuildHookScript returns the canonical pre-merge-commit hook
 // content. The script runs `mdsmith fix` once on the entire repo
 // after git resolves every per-file merge, so generated sections
@@ -1026,31 +1061,7 @@ func BuildHookScript(exe string) string {
 		"# marked with merge=mdsmith in .gitattributes.\n" +
 		"set -e\n" +
 		"cd \"$(git rev-parse --show-toplevel)\"\n" +
-		"# Stage one path, retrying a transient .git/index.lock with\n" +
-		"# bounded backoff. Never removes a lock it did not create; a\n" +
-		"# persistent lock exits non-zero with a clear message.\n" +
-		"mdsmith_git_add() {\n" +
-		"  _attempt=0\n" +
-		"  while :; do\n" +
-		"    _err=$(git add -- \"$1\" 2>&1)\n" +
-		"    _status=$?\n" +
-		"    [ \"$_status\" -eq 0 ] && return 0\n" +
-		"    case \"$_err\" in\n" +
-		"      *index.lock*\"File exists\"*)\n" +
-		"        if [ \"$_attempt\" -ge 5 ]; then\n" +
-		"          echo \"mdsmith pre-merge-commit hook: index locked: $_err\" >&2\n" +
-		"          exit 1\n" +
-		"        fi\n" +
-		"        _attempt=$((_attempt + 1))\n" +
-		"        sleep 0.1 2>/dev/null || sleep 1\n" +
-		"        ;;\n" +
-		"      *)\n" +
-		"        echo \"$_err\" >&2\n" +
-		"        exit \"$_status\"\n" +
-		"        ;;\n" +
-		"    esac\n" +
-		"  done\n" +
-		"}\n" +
+		stagingHelperShellFunc +
 		"# `set +e` around the fix invocation so we can capture its\n" +
 		"# raw exit code. `if ! cmd; then status=$?; ...` looks\n" +
 		"# tempting, but POSIX `! cmd` returns the logical NOT of\n" +
