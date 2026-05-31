@@ -12,23 +12,22 @@ cross-file navigation in your editor. It runs the same rule
 engine as `mdsmith check` on the command line and in CI, so a
 file that is clean as you edit is clean in the pipeline.
 Diagnostics, quick fixes, and navigation all come from one
-bundled binary — there is nothing else to install.
+bundled binary, with nothing else to install.
 
-Coming from markdownlint, mdsmith covers the same style rules
-and adds cross-file checks on top. The
+If you use markdownlint today, mdsmith covers the same style
+rules and adds cross-file checks. The
 [migration guide](../migrate-from-markdownlint.md) maps every
 rule and rewrites your config.
 
 ## What you get
 
-Each capability links to a fuller page with rules and
-examples.
+Each feature links to a page with its rules and examples.
 
 ### As you write
 
 **Inline diagnostics.** Every rule violation shows as a
-squiggle, on save or on each keystroke — your choice via
-`mdsmith.run`. The [same checks run in CI](../../reference/cli/check.md),
+squiggle, on save or on each keystroke, set by `mdsmith.run`.
+The [same checks run in CI](../../reference/cli/check.md),
 so the editor never disagrees with the build.
 
 **[One-click quick fixes](../../features/auto-fix.md).** Each
@@ -36,15 +35,14 @@ fixable rule contributes a lightbulb. One click rewrites every
 occurrence of that rule in the file, not only the line you
 clicked.
 
-**Fix on save.** Enable `mdsmith.fixOnSave` (off by default)
-and the whole-file fixer runs before each save lands: trailing
-whitespace,
-heading style, code fences, bare URLs, list indentation, and
-table alignment.
+**Fix on save.** Enable `mdsmith.fixOnSave` (off by default).
+On each save, the whole-file fixer rewrites trailing
+whitespace, heading style, code fences, bare URLs, list
+indentation, and table alignment.
 
-**Preview before applying.** Set `mdsmith.previewFix` to route
-every fix through VS Code's Refactor Preview pane, so you read
-the diff before any edit is written.
+**Preview before applying.** Enable `mdsmith.previewFix` and
+every fix routes through VS Code's Refactor Preview pane, so
+you see the diff before it is written.
 
 **Hover for help.** Hover a diagnostic for the rule's
 documentation; hover inside a `<?…?>` directive for its guide
@@ -60,8 +58,8 @@ label in the project.
 
 **[Dependency call hierarchy](../../features/dependency-graph.md).**
 Walk `<?include?>`, `<?catalog?>`, `<?build?>`, and Markdown
-links as incoming and outgoing calls — "what does this page
-embed?" and "who depends on this one?"
+links as incoming and outgoing calls, so you can trace what a
+page embeds and what depends on it.
 
 **[Rename without breaking links](../../features/rename.md).**
 Rename a heading and every workspace anchor link to it is
@@ -110,10 +108,10 @@ code --install-extension mdsmith-<version>.vsix
 You need VS Code 1.85 or later. A config file is optional:
 mdsmith lints with built-in defaults, so the extension works
 as soon as you install it. To tune the rules, run the
-**mdsmith: Initialize Config** command — it writes a starter
-`.mdsmith.yml`. The server then discovers that file by walking
-up from the workspace root to the nearest `.mdsmith.yml` or
-`.git` boundary, the same walk `mdsmith check` uses. See
+**mdsmith: Initialize Config** command, which writes a starter
+`.mdsmith.yml`. The server then finds that file by walking up
+from the workspace root to the nearest `.mdsmith.yml` or
+`.git`, the same as `mdsmith check`. See
 [Installation: VS Code extension](../install.md#vs-code-extension)
 for the channel-by-channel breakdown.
 
@@ -134,8 +132,9 @@ reload.
 | `mdsmith.trace.server` | `off`     | LSP trace verbosity: `off`, `messages`, or `verbose`        |
 
 `mdsmith.run` defaults to `onSave`. Linting on every keystroke
-is opt-in because its latency budget is tighter. To wire
-fix-on-save explicitly instead of through `mdsmith.fixOnSave`:
+is opt-in because its latency budget is tighter. To bind
+fix-on-save through `editor.codeActionsOnSave` instead of
+`mdsmith.fixOnSave`:
 
 ```jsonc
 {
