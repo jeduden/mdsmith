@@ -24,8 +24,8 @@ import (
 
 // BenchmarkLatency1kLines measures end-to-end didChange →
 // publishDiagnostics latency on a 1 000-line synthetic Markdown
-// document. Plan 121 sets a p95 budget of 150 ms; missing it blocks
-// the default `mdsmith.run` from flipping to `onType`.
+// document. Plan 121 sets a p95 budget of 150 ms; the benchmark
+// guards that budget now that `onType` is the default `mdsmith.run`.
 func BenchmarkLatency1kLines(b *testing.B) {
 	benchLatency(b, 1000, 150*time.Millisecond)
 }
@@ -48,9 +48,9 @@ func benchLatency(b *testing.B, lines int, budget time.Duration) {
 	// timeout to every benchmark run.
 	h := newBenchHarness(b)
 
-	// Force `mdsmith.run = onType` for the benchmark — it intentionally
-	// drives didChange events that would otherwise be filtered when
-	// run defaults to onSave.
+	// Force `mdsmith.run = onType` so the benchmark stays independent
+	// of the production default (also onType) and always drives the
+	// didChange events that onSave would otherwise filter.
 	h.srv.settingsMu.Lock()
 	h.srv.settings.Run = runOnType
 	h.srv.settingsMu.Unlock()

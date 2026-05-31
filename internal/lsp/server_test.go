@@ -100,8 +100,8 @@ func newHarnessWithDebounce(t *testing.T, debounce time.Duration) *testHarness {
 		Debounce: debounce,
 	})
 	// Tests want lint-on-didChange to fire so they can verify the
-	// pipeline. Production defaults to onSave (skipping didChange);
-	// flipping to onType keeps the existing tests deterministic.
+	// pipeline. Production also defaults to onType now; setting it
+	// explicitly keeps the harness independent of that default.
 	srv.settingsMu.Lock()
 	srv.settings.Run = runOnType
 	srv.settingsMu.Unlock()
@@ -807,7 +807,11 @@ func TestScheduleLintOnSaveSkipsChange(t *testing.T) {
 	t.Parallel()
 	var buf safeBuffer
 	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
-	// Default run mode is onSave.
+	// Production now defaults to onType, so opt into onSave explicitly
+	// to exercise the didChange-skip path this test covers.
+	s.settingsMu.Lock()
+	s.settings.Run = runOnSave
+	s.settingsMu.Unlock()
 	s.docs.set("file:///x.md", &document{
 		uri: "file:///x.md", path: "x.md", text: []byte("# Hi\n\ndirty   \n"),
 	})
@@ -840,7 +844,7 @@ func TestRunModeFallsBackOnEmpty(t *testing.T) {
 	s.settingsMu.Lock()
 	s.settings.Run = ""
 	s.settingsMu.Unlock()
-	assert.Equal(t, runOnSave, s.runMode())
+	assert.Equal(t, runOnType, s.runMode())
 }
 
 func TestFetchClientSettingsHandlesEmptyArray(t *testing.T) {
@@ -859,7 +863,7 @@ func TestFetchClientSettingsHandlesEmptyArray(t *testing.T) {
 	awaitDone(t, done)
 	s.settingsMu.RLock()
 	defer s.settingsMu.RUnlock()
-	assert.Equal(t, runOnSave, s.settings.Run)
+	assert.Equal(t, runOnType, s.settings.Run)
 }
 
 func TestFetchClientSettingsHandlesMalformedResult(t *testing.T) {
@@ -873,7 +877,7 @@ func TestFetchClientSettingsHandlesMalformedResult(t *testing.T) {
 	awaitDone(t, done)
 	s.settingsMu.RLock()
 	defer s.settingsMu.RUnlock()
-	assert.Equal(t, runOnSave, s.settings.Run)
+	assert.Equal(t, runOnType, s.settings.Run)
 }
 
 // deliverPendingResponse polls s.pendingResp for the (single)
@@ -1562,7 +1566,7 @@ func TestFetchClientSettingsIgnoresErrorResponse(t *testing.T) {
 	// Run should remain at the default; we just verify no panic.
 	s.settingsMu.RLock()
 	defer s.settingsMu.RUnlock()
-	assert.Equal(t, runOnSave, s.settings.Run)
+	assert.Equal(t, runOnType, s.settings.Run)
 }
 
 func TestDidChangeWatchedFilesRelintsOpenDocs(t *testing.T) {
@@ -2130,7 +2134,7 @@ func TestRunModeFallsBackOnUnknown(t *testing.T) {
 	s.settingsMu.Lock()
 	s.settings.Run = "garbage-mode"
 	s.settingsMu.Unlock()
-	assert.Equal(t, runOnSave, s.runMode())
+	assert.Equal(t, runOnType, s.runMode())
 }
 
 // Regression: catalog/toc/include used to be excluded from
