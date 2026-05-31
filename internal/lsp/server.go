@@ -187,7 +187,7 @@ func New(opts Options) *Server {
 		onConfigReload: opts.OnConfigReload,
 		logger:         logger,
 		docs:           newDocumentStore(),
-		settings:       userSettings{Run: runOnSave},
+		settings:       userSettings{Run: runOnType},
 		pending:        make(map[string]*pendingLint),
 		pendingResp:    make(map[string]chan rpcResponse),
 		diags:          make(map[string][]Diagnostic),
@@ -907,7 +907,7 @@ func (s *Server) runMode() string {
 	case runOff, runOnSave, runOnType:
 		return s.settings.Run
 	default:
-		return runOnSave
+		return runOnType
 	}
 }
 

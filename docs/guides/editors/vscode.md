@@ -86,8 +86,8 @@ global preferences go in your user settings.
 | ---------------------- | ----------- | ------------------------------------------------------------------------------------------------------- |
 | `mdsmith.path`         | `"mdsmith"` | Default runs the bundled per-platform binary; an absolute path overrides it (see Troubleshooting)       |
 | `mdsmith.config`       | `""`        | Override `-c` config path (absolute or workspace)                                                       |
-| `mdsmith.run`          | `"onSave"`  | When to lint: `onType`, `onSave`, or `off`                                                              |
-| `mdsmith.fixOnSave`    | `false`     | Wires `source.fixAll.mdsmith` on save                                                                   |
+| `mdsmith.run`          | `"onType"`  | When to lint: `onType` (default), `onSave`, or `off` (off disables mdsmith entirely)                    |
+| `mdsmith.fixOnSave`    | `false`     | Auto-fix on save via `source.fixAll.mdsmith`; ignored when `mdsmith.run` is `off`                       |
 | `mdsmith.previewFix`   | `false`     | Open Refactor Preview before applying any fix (see [Preview before applying](#preview-before-applying)) |
 | `mdsmith.trace.server` | `"off"`     | LSP trace verbosity: `off`, `messages`, `verbose`                                                       |
 
@@ -97,9 +97,24 @@ server via `workspace/configuration`. Changing any of
 them takes effect on the next document event without
 reloading the window.
 
-The default `mdsmith.run` is `onSave`. Live linting
-on every keystroke is opt-in because the latency
-budget is tighter (see [Performance](#performance)).
+`mdsmith.run` is the master switch for linting, and
+`mdsmith.fixOnSave` layers auto-fixing on top of it.
+`onType` is the default. Because `off` disables
+mdsmith entirely, a save never rewrites the buffer
+while `mdsmith.run` is `off`, even with
+`mdsmith.fixOnSave` left on:
+
+| `mdsmith.run` | `mdsmith.fixOnSave` | Behavior                                          |
+| ------------- | ------------------- | ------------------------------------------------- |
+| `onType`      | `false`             | Diagnostics update live as you type (default)     |
+| `onType`      | `true`              | Live diagnostics; saving also auto-fixes the file |
+| `onSave`      | `false`             | Diagnostics update only when you save             |
+| `onSave`      | `true`              | Saving re-lints and auto-fixes the file           |
+| `off`         | either              | mdsmith is inert: no diagnostics, no fix-on-save  |
+
+Switch `mdsmith.run` to `onSave` on very large files
+if per-keystroke linting feels slow (see
+[Performance](#performance)).
 
 ## Code actions
 
@@ -143,6 +158,10 @@ command expects. Bind it to save by setting:
 
 Or set `mdsmith.fixOnSave` to `true`, which wires the
 same behavior without touching `editor.codeActionsOnSave`.
+Unlike a manual `editor.codeActionsOnSave` entry,
+`mdsmith.fixOnSave` honors `mdsmith.run`: it is
+suppressed when `mdsmith.run` is `off`, so a disabled
+linter never rewrites a file on save.
 
 ## Preview before applying
 
@@ -393,9 +412,9 @@ go test -run=^$ -bench=. ./internal/lsp/...
 
 `go test ./...` does not invoke benchmarks by
 default. CI runs the benchmark explicitly and fails
-if the p95 exceeds the budgets above; missing the
-budget blocks the default `mdsmith.run` from
-flipping to `onType`.
+if the p95 exceeds the budgets above. `mdsmith.run`
+defaults to `onType`, so this gate guards the
+live-linting latency on every release.
 
 The server itself is single-process, multi-document.
 One client equals one server. Memory is bounded by
