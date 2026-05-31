@@ -3,10 +3,10 @@ title: Release Pipeline
 summary: >-
   How a maintainer-dispatched workflow run publishes
   mdsmith to npm, PyPI, the Visual Studio Marketplace,
-  Open VSX, and GitHub Releases — the workflow
-  structure, the OIDC trusted publishers it relies on,
-  the `release` environment that gates every publishing
-  job, the separate website deploy, and the
+  Open VSX, a Flatpak bundle, and GitHub Releases — the
+  workflow structure, the OIDC trusted publishers it
+  relies on, the `release` environment that gates every
+  publishing job, the separate website deploy, and the
   supply-chain hardening features baked into the
   pipeline.
 ---
@@ -30,6 +30,7 @@ row: "| [{title}]({filename}) | <{channelurl}> | {credential} |"
 ?>
 | Channel                                                                    | Release page                                                          | Credential              |
 | -------------------------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------- |
+| [Flatpak](release-channels/flatpak.md)                                     | <https://github.com/jeduden/mdsmith/releases>                         | GITHUB_TOKEN + OIDC     |
 | [GitHub Releases](release-channels/github-releases.md)                     | <https://github.com/jeduden/mdsmith/releases>                         | GITHUB_TOKEN + OIDC     |
 | [npm](release-channels/npm.md)                                             | <https://www.npmjs.com/package/@mdsmith/cli>                          | OIDC Trusted Publishing |
 | [Open VSX](release-channels/open-vsx.md)                                   | <https://open-vsx.org/extension/jeduden/mdsmith>                      | OVSX_PAT                |
@@ -84,14 +85,13 @@ packages from the root.
 
 ## Job Topology
 
-`build` feeds binaries to `npm`, `pypi`, `vscode`,
-and `release`. `vscode` chains off `build` (it runs
-`mdsmith-release build-npm` on the artifacts so the
-`.vsix` bundles a binary for every platform).
-`release` runs `smoke-test` against the fresh `npm`,
-`pypi`, and `mise` channels. Every credential-bearing job is
-gated by `if: github.repository == 'jeduden/mdsmith'`
-and runs in the `release` GitHub environment.
+`build` feeds binaries to `npm`, `pypi`, `vscode`, `flatpak`, and `release`.
+`vscode` chains off `build`, running `mdsmith-release build-npm` so the
+`.vsix` bundles every platform. `flatpak` chains off `build` too, handing
+`release` a `.flatpak` bundle of the x86_64 binary to attach to the draft.
+`release` runs `smoke-test` against the fresh `npm`, `pypi`, and `mise`
+channels. Every credential-bearing job is gated by the repository guard and
+runs in the `release` GitHub environment.
 
 The website deploy is a **separate workflow**,
 `.github/workflows/pages.yml`. It builds

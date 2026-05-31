@@ -11,6 +11,7 @@
 //	mdsmith-release check
 //	mdsmith-release build-npm <artifacts-dir> <out-dir>
 //	mdsmith-release build-wheels <artifacts-dir> <out-dir>
+//	mdsmith-release build-flatpak <artifacts-dir> <out-dir>
 //	mdsmith-release sync-docs <src-dir> <dst-dir>
 //	mdsmith-release build-website [--no-fix] [src-dir] [dst-dir]
 //	mdsmith-release verify-website-links --dir <html-dir> [--base-url <url>]
@@ -47,6 +48,7 @@ Commands:
   check                           Verify tracked manifests are at the dev sentinel.
   build-npm <artifacts> <out>     Build npm platform sub-packages.
   build-wheels <artifacts> <out>  Build platform-tagged Python wheels.
+  build-flatpak <art> <out>       Stage the .flatpak bundle's manifest + Linux binaries.
   sync-docs <src> <dst>           Snapshot docs/ into a Hugo content tree.
   build-website [--no-fix] [src] [dst]
                                   mdsmith fix (unless --no-fix) + sync-docs.
@@ -100,6 +102,8 @@ func dispatch(cmd, root string, rest []string) int {
 		return runBuildNpm(root, rest)
 	case "build-wheels":
 		return runBuildWheels(root, rest)
+	case "build-flatpak":
+		return runBuildFlatpak(root, rest)
 	case "sync-docs":
 		return runSyncDocs(root, rest)
 	case "build-website":
@@ -225,6 +229,31 @@ func runBuildWheels(root string, args []string) int {
 		return 2
 	}
 	return reportError(release.BuildWheels(root, fs.Arg(0), fs.Arg(1)))
+}
+
+func runBuildFlatpak(_ string, args []string) int {
+	fs := flag.NewFlagSet("build-flatpak", flag.ContinueOnError)
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr,
+			"Usage: mdsmith-release build-flatpak <artifacts-dir> <out-dir>\n\n"+
+				"Stage the flatpak-builder manifest for\n"+
+				"io.github.jeduden.mdsmith and the two Linux release binaries\n"+
+				"it references from <artifacts-dir> into <out-dir>. The\n"+
+				"release.yml flatpak job then runs flatpak-builder and\n"+
+				"`flatpak build-bundle` to produce the single-file .flatpak\n"+
+				"attached to the GitHub release. x86_64 is the only arch CI\n"+
+				"bundles.\n")
+	}
+	if err := fs.Parse(args); err != nil {
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith-release: build-flatpak"); code >= 0 {
+			return code
+		}
+	}
+	if fs.NArg() != 2 {
+		fs.Usage()
+		return 2
+	}
+	return reportError(release.BuildFlatpak(fs.Arg(0), fs.Arg(1)))
 }
 
 func runSyncDocs(_ string, args []string) int {

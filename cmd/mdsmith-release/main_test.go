@@ -58,6 +58,8 @@ func TestRunRejectsBadArity(t *testing.T) {
 		{"build-npm with one arg", []string{"build-npm", "art"}},
 		{"build-wheels without args", []string{"build-wheels"}},
 		{"build-wheels with one arg", []string{"build-wheels", "art"}},
+		{"build-flatpak without args", []string{"build-flatpak"}},
+		{"build-flatpak with one arg", []string{"build-flatpak", "art"}},
 		{"build-website with three positionals", []string{"build-website", "a", "b", "c"}},
 	}
 	for _, c := range cases {
@@ -97,6 +99,7 @@ func TestReportFlagParseErrNilReturnsContinue(t *testing.T) {
 func TestSubcommandHelpExitsZero(t *testing.T) {
 	for _, sub := range []string{
 		"stamp", "check", "build-npm", "build-wheels",
+		"build-flatpak",
 		"sync-docs", "build-website", "verify-website-links",
 		"sync-messaging",
 		"sync-coverage-matrix",
@@ -111,6 +114,7 @@ func TestSubcommandHelpExitsZero(t *testing.T) {
 func TestSubcommandRejectsUnknownFlag(t *testing.T) {
 	for _, sub := range []string{
 		"stamp", "check", "build-npm", "build-wheels",
+		"build-flatpak",
 		"sync-docs", "build-website", "verify-website-links",
 		"sync-messaging",
 		"sync-coverage-matrix",
@@ -190,6 +194,44 @@ func TestRunBuildNpmReportsError(t *testing.T) {
 
 	require.Equal(t, 0, run([]string{"stamp", "1.2.3"}))
 	assert.Equal(t, 1, run([]string{"build-npm", "missing-artifacts", "dist"}))
+}
+
+// TestRunBuildFlatpakEndToEnd dispatches through `run build-flatpak`
+// so the FlagSet parse, arity check, and reportError wiring run with
+// realistic args, and asserts the manifest plus the staged binary it
+// references land in out-dir.
+func TestRunBuildFlatpakEndToEnd(t *testing.T) {
+	root := t.TempDir()
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	require.NoError(t, os.Chdir(root))
+
+	artifacts := filepath.Join(root, "artifacts")
+	require.NoError(t, os.MkdirAll(artifacts, 0o755))
+	for _, asset := range []string{"mdsmith-linux-arm64", "mdsmith-linux-amd64"} {
+		require.NoError(t, os.WriteFile(filepath.Join(artifacts, asset),
+			[]byte("#!/bin/sh\necho fake\n"), 0o755))
+	}
+
+	assert.Equal(t, 0, run([]string{"build-flatpak", "artifacts", "out"}))
+	for _, f := range []string{
+		"io.github.jeduden.mdsmith.yml",
+		"mdsmith-linux-amd64",
+	} {
+		_, err := os.Stat(filepath.Join(root, "out", f))
+		assert.NoError(t, err, f)
+	}
+}
+
+func TestRunBuildFlatpakReportsError(t *testing.T) {
+	root := t.TempDir()
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	require.NoError(t, os.Chdir(root))
+	// Missing artifacts dir → BuildFlatpak errors → exit 1.
+	assert.Equal(t, 1, run([]string{"build-flatpak", "missing-artifacts", "out"}))
 }
 
 // TestRunBuildWebsiteEndToEnd dispatches through `run

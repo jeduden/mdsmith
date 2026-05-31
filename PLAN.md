@@ -149,5 +149,6 @@ footer: |
 | 218 | 🔲     | opus   | [WASM size reduction — CUE-free engine path and tinygo support](plan/218_wasm-size-reduction.md)                                        |
 | 219 | 🔲     | opus   | [Multiplexed AST walk to close the parity gap to mado](plan/219_multiplexed-ast-walk.md)                                                |
 | 219 | 🔲     | opus   | [Route cmd/mdsmith and the LSP through pkg/mdsmith.Session](plan/219_session-cli-lsp-migration.md)                                      |
+| 220 | 🔳     | opus   | [Ship mdsmith as a self-hosted Flatpak bundle](plan/220_flatpak-bundle-distribution.md)                                                 |
 | 220 | 🔲     | opus   | [Make the pre-merge-commit hook the single git-index writer](plan/220_git-index-lock-retry.md)                                          |
 <?/catalog?>
