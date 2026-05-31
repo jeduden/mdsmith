@@ -122,7 +122,7 @@ loop. Both are kept; both are hardened against a transient lock.
    with backoff. Never delete a lock it did not create. Return a
    clear "index locked" error on a persistent lock. Keep MDS048
    staging `.gitattributes` (no behavior change for the rule).
-2. [ ] Harden the hook's staging loop in
+2. [x] Harden the hook's staging loop in
    [BuildHookScript](../internal/githooks/githooks.go) against a
    transient lock. Use bounded retry with backoff. Never delete a
    lock it did not create. Exit with a clear "index locked"
@@ -134,14 +134,14 @@ loop. Both are kept; both are hardened against a transient lock.
 
 ## Acceptance Criteria
 
-- [ ] A transient lock that clears within the retry window is
+- [x] A transient lock that clears within the retry window is
       staged successfully, driven with a fake `git`. This holds
       for both MDS048's `StageGitattributes` and the hook's
       staging loop.
-- [ ] A persistent lock makes the writer fail with a clear "index
+- [x] A persistent lock makes the writer fail with a clear "index
       locked" message (MDS048 returns the error; the hook exits
       non-zero). Neither writer removes a lock it did not create.
-- [ ] `HookMatchesCanonical` recognizes the updated template.
+- [x] `HookMatchesCanonical` recognizes the updated template.
       `pre-merge-commit status` reports no drift.
 - [ ] Integration: after a `--no-commit` merge, run the hook, then
       commit. The merge commit captures both the regenerated

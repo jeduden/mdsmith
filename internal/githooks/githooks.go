@@ -993,6 +993,29 @@ func HasMdsmithMergeDriver(repoRoot string) bool {
 // (read uses IFS= -r) at the cost of mishandling the rare filename
 // that contains literal newlines — an acceptable trade for
 // portability.
+//
+// Each `git add` is wrapped in mdsmith_git_add, a bounded
+// retry-with-backoff that absorbs a transient `.git/index.lock`. If a
+// concurrent git invocation briefly holds the lock, `git add` fails
+// with `Unable to create '.../index.lock': File exists`; retrying
+// after a short wait turns a queue-bouncing hard failure into a brief
+// pause. The retry only waits for the holder to release the lock — it
+// never deletes `.git/index.lock`, so a lock the hook did not create
+// is left untouched. When the lock outlasts the retry budget the hook
+// prints `index locked` and exits non-zero so the merge aborts
+// loudly rather than committing a partially staged tree. A non-lock
+// `git add` failure is propagated immediately, since it will not
+// clear on retry.
+//
+// The backoff uses `sleep 0.1 2>/dev/null || sleep 1`: fractional
+// sleep is honored on GNU/BSD/macOS coreutils (fast), and the 1s
+// fallback keeps the script correct on any `sleep` that accepts only
+// integer seconds.
+//
+// The staging phase runs under `set +e` so the retry helper can
+// inspect each `git add` exit status itself; an assignment from a
+// failing command substitution would otherwise trip `set -e` before
+// the helper could classify the failure.
 func BuildHookScript(exe string) string {
 	return "#!/bin/sh\n" +
 		PreMergeCommitMarker + "\n" +
@@ -1003,6 +1026,31 @@ func BuildHookScript(exe string) string {
 		"# marked with merge=mdsmith in .gitattributes.\n" +
 		"set -e\n" +
 		"cd \"$(git rev-parse --show-toplevel)\"\n" +
+		"# Stage one path, retrying a transient .git/index.lock with\n" +
+		"# bounded backoff. Never removes a lock it did not create; a\n" +
+		"# persistent lock exits non-zero with a clear message.\n" +
+		"mdsmith_git_add() {\n" +
+		"  _attempt=0\n" +
+		"  while :; do\n" +
+		"    _err=$(git add -- \"$1\" 2>&1)\n" +
+		"    _status=$?\n" +
+		"    [ \"$_status\" -eq 0 ] && return 0\n" +
+		"    case \"$_err\" in\n" +
+		"      *index.lock*\"File exists\"*)\n" +
+		"        if [ \"$_attempt\" -ge 5 ]; then\n" +
+		"          echo \"mdsmith pre-merge-commit hook: index locked: $_err\" >&2\n" +
+		"          exit 1\n" +
+		"        fi\n" +
+		"        _attempt=$((_attempt + 1))\n" +
+		"        sleep 0.1 2>/dev/null || sleep 1\n" +
+		"        ;;\n" +
+		"      *)\n" +
+		"        echo \"$_err\" >&2\n" +
+		"        exit \"$_status\"\n" +
+		"        ;;\n" +
+		"    esac\n" +
+		"  done\n" +
+		"}\n" +
 		"# `set +e` around the fix invocation so we can capture its\n" +
 		"# raw exit code. `if ! cmd; then status=$?; ...` looks\n" +
 		"# tempting, but POSIX `! cmd` returns the logical NOT of\n" +
@@ -1012,16 +1060,25 @@ func BuildHookScript(exe string) string {
 		"set +e\n" +
 		shellQuote(exe) + " fix .\n" +
 		"status=$?\n" +
-		"set -e\n" +
 		"if [ \"$status\" -ne 0 ] && [ \"$status\" -ne 1 ]; then\n" +
 		"  exit \"$status\"\n" +
 		"fi\n" +
+		"# Stay under `set +e`: mdsmith_git_add captures each `git add`\n" +
+		"# exit status to classify a lock failure, and exits on a hard\n" +
+		"# error. The `while` loop runs in the pipeline's subshell, so a\n" +
+		"# `mdsmith_git_add` exit there ends only the subshell; capture\n" +
+		"# the pipeline status afterward and re-raise it so a persistent\n" +
+		"# lock (or other hard error) aborts the whole hook.\n" +
 		"git diff --name-only -- '*.md' '*.markdown' | " +
 		"while IFS= read -r f; do\n" +
 		"  if [ -n \"$f\" ]; then\n" +
-		"    git add -- \"$f\"\n" +
+		"    mdsmith_git_add \"$f\"\n" +
 		"  fi\n" +
-		"done\n"
+		"done\n" +
+		"stage_status=$?\n" +
+		"if [ \"$stage_status\" -ne 0 ]; then\n" +
+		"  exit \"$stage_status\"\n" +
+		"fi\n"
 }
 
 // HookMatchesCanonical reports whether hook content looks like the
@@ -1045,6 +1102,11 @@ func HookMatchesCanonical(hook string) bool {
 		`if [ "$status" -ne 0 ] && [ "$status" -ne 1 ]; then`,
 		"git diff --name-only -- '*.md' '*.markdown' |",
 		`while IFS= read -r f; do`,
+		// Staging goes through the index.lock-aware retry helper. A
+		// hook that drifted back to a bare `git add -- "$f"` loop
+		// lacks this call and must be flagged so the lock hardening is
+		// not silently lost on an out-of-date hook.
+		`mdsmith_git_add "$f"`,
 	}
 	for _, frag := range required {
 		if !hookHasNonCommentLineContaining(hook, frag) {
