@@ -1,24 +1,29 @@
 ---
 id: 220
-title: Make the pre-merge-commit hook the single git-index writer
-status: "🔲"
+title: Harden the git-index writers against a transient index.lock
+status: "🔳"
 model: opus
 summary: >-
   The merge queue bounces when the pre-merge-commit hook's `git
   add` fails on `.git/index.lock: File exists`. The action source
   rules out a concurrent or killed process, so the trigger is still
-  under investigation. Regardless, MDS048 does an in-process `git
-  add` that no linter should. Make the hook the single stager and
-  remove MDS048's index mutation.
+  under investigation. mdsmith has two git-index writers during a
+  merge: MDS048's in-process `git add` and the hook's staging loop.
+  Harden both with bounded retry/backoff and a clear "index locked"
+  failure on a persistent lock, never deleting a lock it did not
+  create.
 depends-on: []
 ---
-# Make the pre-merge-commit hook the single git-index writer
+# Harden the git-index writers against a transient index.lock
 
 ## Goal
 
 Stop the merge queue from bouncing on a `.git/index.lock`
-failure. Remove the in-process `git add` that `mdsmith fix` should
-never perform. Leave one git-index writer: the hook.
+failure. mdsmith has two git-index writers during a merge:
+MDS048's in-process `git add` and the pre-merge-commit hook's
+staging loop. Harden both against a transient lock instead of
+collapsing to one writer, so MDS048's user-facing behavior is
+unchanged.
 
 ## Symptom
 
@@ -81,57 +86,61 @@ caller in [githooksync](../internal/rules/githooksync/rule.go).
 The hook's own staging loop then runs `git add`.
 
 The log cannot order the two `git add` calls: the action captures
-all hook stderr as one block. It does not need to. The fix removes
-MDS048's in-process `git add`, leaving the hook as the single
-writer. That eliminates the double-writer condition whichever
-writer was at fault.
+all hook stderr as one block. It does not need to. The fix hardens
+both writers against a transient `index.lock` so a brief lock no
+longer bounces the queue, whichever writer hit it.
 
 ## Design
 
-Mutating the git index is orchestration, not linting. Today two
-mdsmith writers touch the index during a merge: the hook's staging
-loop and MDS048's in-process `git add`. The fix leaves one writer.
+Two mdsmith writers touch the index during a merge: MDS048's
+in-process `git add -- .gitattributes` and the hook's staging
+loop. Both are kept; both are hardened against a transient lock.
 
-- The pre-merge-commit hook is the only mdsmith component that
-  stages. It runs after `git merge --no-commit`, while git has
-  paused, so the index is free in the normal path.
-- MDS048 writes `.gitattributes` as a pure content transform. It
-  performs no `git add`. The hook stages `.gitattributes`.
+- MDS048 still stages `.gitattributes` from its `Fix` so the
+  rule's user-facing behavior is unchanged. Its
+  [StageGitattributes](../internal/githooks/githooks.go) call site
+  retries a `git add` that fails on a `.git/index.lock` with
+  bounded backoff, and returns a clear "index locked" error if the
+  lock persists.
+- The pre-merge-commit hook still stages the markdown files
+  `mdsmith fix` touched (and `.gitattributes` is already staged by
+  MDS048, which the hook runs via `mdsmith fix .`). Its staging
+  loop in [BuildHookScript](../internal/githooks/githooks.go)
+  retries a `git add` that fails on a lock with bounded backoff,
+  and exits with a clear "index locked" message if the lock
+  persists.
+- Lock-safety: neither writer deletes a `.git/index.lock` it did
+  not create. The retry only waits for an existing lock to clear;
+  on a persistent lock it fails loudly rather than forcing the
+  lock away.
 
 ## Tasks
 
-1. In one atomic change, remove the in-process `git add` from
-   MDS048 ([StageGitattributes](../internal/githooks/githooks.go)
-   and its caller in
-   [githooksync](../internal/rules/githooksync/rule.go)). Extend
-   the hook's staging loop in
-   [BuildHookScript](../internal/githooks/githooks.go) to add
-   `.gitattributes` beside `*.md` / `*.markdown`. Ship both halves
-   together. Experiment shows that removing the in-process `git
-   add` while the hook stages only `*.md` drops the regenerated
-   `.gitattributes` from the merge commit. Update
+1. Harden MDS048's
+   [StageGitattributes](../internal/githooks/githooks.go) call
+   site against a transient `.git/index.lock`. Use bounded retry
+   with backoff. Never delete a lock it did not create. Return a
+   clear "index locked" error on a persistent lock. Keep MDS048
+   staging `.gitattributes` (no behavior change for the rule).
+2. Harden the hook's staging loop in
+   [BuildHookScript](../internal/githooks/githooks.go) against a
+   transient lock. Use bounded retry with backoff. Never delete a
+   lock it did not create. Exit with a clear "index locked"
+   message on a persistent lock. Update
    [HookMatchesCanonical](../internal/githooks/githooks.go) and the
-   golden fixtures. Adjust MDS048's diagnostics and tests.
-2. Harden the hook's staging loop against a transient lock. Use
-   bounded retry with backoff. Never delete a lock it did not
-   create. Exit with a clear "index locked" message on a
-   persistent lock. This is defensive; no concurrent writer is
-   known.
+   golden fixtures.
 3. Update the
    [pre-merge-commit reference](../docs/reference/cli/pre-merge-commit.md).
 
 ## Acceptance Criteria
 
-- [ ] `mdsmith fix` performs no in-process git index mutation:
-      MDS048 does no `git add`.
-- [ ] The hook stages `.gitattributes` beside `*.md` /
-      `*.markdown`, so a merge that regenerates `.gitattributes`
-      still captures it.
 - [ ] A transient lock that clears within the retry window is
-      staged successfully, driven with a fake `git`.
-- [ ] A persistent lock makes the hook exit with a clear "index
-      locked" message. The hook never removes a lock it did not
-      create.
+      staged successfully, driven with a fake `git`. This holds
+      for both MDS048's `StageGitattributes` and the hook's
+      staging loop.
+- [ ] A persistent lock makes the writer fail with a clear "index
+      locked" message (MDS048 returns the error; the hook exits
+      non-zero). Neither writer removes a lock it did not create.
 - [ ] `HookMatchesCanonical` recognizes the updated template.
       `pre-merge-commit status` reports no drift.
 - [ ] Integration: after a `--no-commit` merge, run the hook, then
@@ -166,12 +175,13 @@ auto-commit, staging breaks even today.
 
 ## Open decision
 
-Task 1 changes MDS048's behavior. Today its `fix` auto-stages
-`.gitattributes`. Afterward a manual `mdsmith fix` leaves it
-modified but unstaged, and the hook stages it during merges. The
-alternative keeps staging in MDS048 and only hardens the call
-site. The single-writer design is recommended. Confirm before
-implementing.
+Resolved 2026-05-31. The single-writer redesign (remove MDS048's
+in-process `git add`, make the hook the only stager) was
+considered and rejected. The maintainer chose the less invasive
+alternative: keep MDS048 staging `.gitattributes` and only harden
+the two call sites against a transient `index.lock`. MDS048's
+user-facing behavior — `fix` auto-stages `.gitattributes` — is
+unchanged.
 
 ## See also
 
