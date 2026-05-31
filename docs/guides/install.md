@@ -4,10 +4,11 @@ weight: 10
 summary: >-
   Every channel that ships the mdsmith binary, the VS
   Code extension, or the Claude Code plugin — npm,
-  PyPI, asdf, mise, the GitHub release, the Visual
-  Studio Marketplace plus Open VSX, and the
-  in-repository Claude Code marketplace — and which
-  channel to pick for which workflow.
+  PyPI, Homebrew, asdf, mise, a Flatpak bundle, the
+  GitHub release, the Visual Studio Marketplace plus
+  Open VSX, and the in-repository Claude Code
+  marketplace — and which channel to pick for which
+  workflow.
 ---
 # Installation
 

@@ -209,10 +209,8 @@ func TestRunBuildFlatpakEndToEnd(t *testing.T) {
 
 	artifacts := filepath.Join(root, "artifacts")
 	require.NoError(t, os.MkdirAll(artifacts, 0o755))
-	for _, asset := range []string{"mdsmith-linux-arm64", "mdsmith-linux-amd64"} {
-		require.NoError(t, os.WriteFile(filepath.Join(artifacts, asset),
-			[]byte("#!/bin/sh\necho fake\n"), 0o755))
-	}
+	require.NoError(t, os.WriteFile(filepath.Join(artifacts, "mdsmith-linux-amd64"),
+		[]byte("#!/bin/sh\necho fake\n"), 0o755))
 
 	assert.Equal(t, 0, run([]string{"build-flatpak", "artifacts", "out"}))
 	for _, f := range []string{

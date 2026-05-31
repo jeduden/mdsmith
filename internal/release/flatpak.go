@@ -17,51 +17,39 @@ const flatpakAppID = "io.github.jeduden.mdsmith"
 const flatpakRuntimeVersion = "24.08"
 
 // flatpakBuild maps a Flatpak arch to the Linux release binary it
-// ships. Flatpak is Linux-only, so this is the linux subset of the
-// build matrix in .github/workflows/release.yml. CI bundles x86_64
-// only (flatpak-builder targets the runner's native arch); the
-// aarch64 source keeps the manifest buildable on an arm64 host.
+// ships. The bundle is x86_64 only: flatpak-builder targets the CI
+// runner's native architecture, and cross-building aarch64 under
+// emulation is not worth it for this channel (aarch64 Linux uses the
+// binary, npm, or PyPI channels). Add an entry here only alongside a
+// matching cross-build in .github/workflows/release.yml.
 type flatpakBuild struct {
-	Asset string // release-asset basename (e.g. "mdsmith-linux-arm64")
-	Arch  string // flatpak arch: "aarch64" | "x86_64"
+	Asset string // release-asset basename (e.g. "mdsmith-linux-amd64")
+	Arch  string // flatpak arch: "x86_64"
 }
 
 var flatpakBuilds = []flatpakBuild{
-	{"mdsmith-linux-arm64", "aarch64"},
 	{"mdsmith-linux-amd64", "x86_64"},
 }
 
 // BuildFlatpak stages the flatpak-builder manifest for flatpakAppID
-// and the Linux release binaries it references into outDir, reading
-// the binaries from artifactsDir. The release.yml `flatpak` job then
-// runs flatpak-builder against the manifest and `flatpak
-// build-bundle` to produce the single-file .flatpak attached to the
-// GitHub release.
+// and the x86_64 Linux release binary it references into outDir,
+// reading the binary from artifactsDir. The release.yml flatpak job
+// then runs flatpak-builder and `flatpak build-bundle` to produce the
+// single-file .flatpak attached to the GitHub release.
 //
-// The manifest uses local `path:` sources, not release-download
-// URLs: the job builds the bundle from the freshly built binaries
-// before the release is published, so there is no download URL to
-// pin yet. Each binary is copied next to the manifest so
-// flatpak-builder resolves its `path:` relative to the manifest
-// directory. Every referenced binary must exist in artifactsDir; a
-// missing one fails the step with nothing staged.
+// The manifest uses a local `path:` source, not a release-download
+// URL: the job builds the bundle from the freshly built binary before
+// the release is published. Each binary is copied next to the manifest
+// so flatpak-builder resolves its `path:` relative to the manifest
+// directory.
 func (t *Toolkit) BuildFlatpak(artifactsDir, outDir string) error {
-	// Read every binary before writing anything, so a missing asset
-	// fails the step with a clean (un-created) out-dir.
-	bins := make([][]byte, len(flatpakBuilds))
-	for i, fb := range flatpakBuilds {
-		data, err := t.fs.ReadFile(filepath.Join(artifactsDir, fb.Asset))
-		if err != nil {
-			return fmt.Errorf("read %s: %w", fb.Asset, err)
-		}
-		bins[i] = data
-	}
 	if err := t.fs.MkdirAll(outDir, 0o755); err != nil {
 		return err
 	}
-	for i, fb := range flatpakBuilds {
-		if err := t.fs.WriteFile(
-			filepath.Join(outDir, fb.Asset), bins[i], 0o755); err != nil {
+	for _, fb := range flatpakBuilds {
+		src := filepath.Join(artifactsDir, fb.Asset)
+		dst := filepath.Join(outDir, fb.Asset)
+		if err := t.copyFile(src, dst, 0o755); err != nil {
 			return fmt.Errorf("stage %s: %w", fb.Asset, err)
 		}
 	}
