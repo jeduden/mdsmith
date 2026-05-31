@@ -6,7 +6,7 @@ summary: >-
   solid-architecture skill (audit mode)
   appends here; blockers are also filed as
   plans.
-audit-from: 41e61a5e08279bb37230cdb2e7ae33119b26077a
+audit-from: 37488a7c524f6e2d0a686b9f33662c6f786f966c
 ---
 # Architecture audit log
 
@@ -147,30 +147,8 @@ command registrations into `wiring.ts`.
 Dedicated modules under `commands/`
 also work.
 
-`internal/lsp/hover.go` imports from
-`docs/`.
-
-The
-[hover.go file](../../internal/lsp/hover.go)
-imports `docs/guides/directives`. That
-is a Go package living inside the docs
-tree.
-
-The import is used as an `embed.FS` for
-directive documentation served via
-hover. This violates DIP and the
-dependency direction rule. The layering
-map has no `docs/` layer. A Go package
-under `docs/` blurs the source vs.
-documentation boundary.
-
-Severity: tax.
-
-Fix by moving the embed package to
-`internal/directives`. Co-locating with
-`internal/concepts` also works. That is
-the established pattern for embedded
-doc content.
+`internal/lsp/hover.go` imported from `docs/`
+(DIP) — resolved by [plan/200][200].
 
 `internal/fix` imports `internal/engine`.
 
@@ -204,23 +182,8 @@ Move gitignore, limits, PI, and
 yamlsafe into sibling packages each
 named for their question.
 
-`cmd/mdsmith/main.go` is too long.
-
-The
-[main.go entry](../../cmd/mdsmith/main.go)
-is 1202 lines across 39 functions. Six
-handlers exceed 50 lines (`runHelp`
-81, `runFix` 71, `fixDiscovered` 68,
-`runCheck` 62, `checkStdin` 61, `run`
-57). The
-[Go architecture doc](architecture/go.md)
-states that a handler in `cmd/` longer
-than ~50 lines is a smell. Severity:
-tax. Fix by splitting the over-long
-handlers into per-subcommand files.
-The pattern is already used for
-`kinds.go`, `metrics.go`,
-`backlinks.go`, and `mergedriver.go`.
+`cmd/mdsmith/main.go` was 1 202 lines — resolved
+by [plan/202][202].
 
 ### nice-to-have
 
@@ -307,3 +270,13 @@ never import `internal/lsp`.
 ### nice-to-have (2026-05-19)
 
 `cue/types` not in layering map — [plan/206][206].
+
+## Audit 2026-05-31 (range: 4809097..37488a7)
+
+Plans 200, 201, 202 green. Tax:
+[plan/221][221] (`pkg/mdsmith` private helpers),
+[plan/222][222] (`internal/lint` SRP, now 11 concerns).
+`linkstyle` helpers — add tests in-place.
+
+[221]: ../../plan/221_arch-fix-mdsmith-helper-tests.md
+[222]: ../../plan/222_arch-fix-lint-srp.md
