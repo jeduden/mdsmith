@@ -116,20 +116,20 @@ loop. Both are kept; both are hardened against a transient lock.
 
 ## Tasks
 
-1. Harden MDS048's
+1. [x] Harden MDS048's
    [StageGitattributes](../internal/githooks/githooks.go) call
    site against a transient `.git/index.lock`. Use bounded retry
    with backoff. Never delete a lock it did not create. Return a
    clear "index locked" error on a persistent lock. Keep MDS048
    staging `.gitattributes` (no behavior change for the rule).
-2. Harden the hook's staging loop in
+2. [ ] Harden the hook's staging loop in
    [BuildHookScript](../internal/githooks/githooks.go) against a
    transient lock. Use bounded retry with backoff. Never delete a
    lock it did not create. Exit with a clear "index locked"
    message on a persistent lock. Update
    [HookMatchesCanonical](../internal/githooks/githooks.go) and the
    golden fixtures.
-3. Update the
+3. [ ] Update the
    [pre-merge-commit reference](../docs/reference/cli/pre-merge-commit.md).
 
 ## Acceptance Criteria
