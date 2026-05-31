@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/testsymlink"
@@ -782,6 +783,114 @@ func TestStageGitattributes_ReturnsErrorOutsideRepo(t *testing.T) {
 	// dir is not a git repo; `git -C dir add` exits non-zero.
 	err := StageGitattributes(dir)
 	assert.Error(t, err)
+}
+
+// withStubGitAdd swaps the package-level git-add seam and the retry
+// backoff schedule for the duration of a test, restoring both
+// afterward. The schedule is shortened to a few zero-length waits so
+// retry-driven tests run instantly.
+func withStubGitAdd(t *testing.T, stub func(repoRoot string) ([]byte, error)) {
+	t.Helper()
+	origAdd := gitAddGitattributes
+	origBackoff := stageRetryBackoff
+	t.Cleanup(func() {
+		gitAddGitattributes = origAdd
+		stageRetryBackoff = origBackoff
+	})
+	gitAddGitattributes = stub
+	stageRetryBackoff = []time.Duration{0, 0, 0, 0, 0}
+}
+
+// lockExistsOutput mirrors git's real message when it cannot create
+// .git/index.lock, so the lock detector is tested against the exact
+// stderr the field bug produced.
+const lockExistsOutput = "fatal: Unable to create '/repo/.git/index.lock': File exists.\n\n" +
+	"Another git process seems to be running in this repository."
+
+// TestStageGitattributes_RetriesTransientLock drives the
+// transient-lock-clears case with a fake git: the first attempts fail
+// with the index.lock message, then a later attempt succeeds. The
+// staging call must retry and ultimately report success.
+func TestStageGitattributes_RetriesTransientLock(t *testing.T) {
+	calls := 0
+	withStubGitAdd(t, func(repoRoot string) ([]byte, error) {
+		calls++
+		if calls < 3 {
+			return []byte(lockExistsOutput), &exec.ExitError{}
+		}
+		return nil, nil
+	})
+
+	require.NoError(t, StageGitattributes("/repo"),
+		"a lock that clears within the retry window must stage successfully")
+	assert.Equal(t, 3, calls, "StageGitattributes must retry until the lock clears")
+}
+
+// TestStageGitattributes_PersistentLockFailsClearly drives the
+// persistent-lock case: every attempt fails with the index.lock
+// message. The call must exhaust its retries and return a clear
+// "index locked" error rather than retrying forever or surfacing a
+// bare exit status.
+func TestStageGitattributes_PersistentLockFailsClearly(t *testing.T) {
+	calls := 0
+	withStubGitAdd(t, func(repoRoot string) ([]byte, error) {
+		calls++
+		return []byte(lockExistsOutput), &exec.ExitError{}
+	})
+
+	err := StageGitattributes("/repo")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "index locked",
+		"a persistent lock must surface a clear \"index locked\" message")
+	assert.Greater(t, calls, 1, "StageGitattributes must retry before giving up")
+}
+
+// TestStageGitattributes_NeverRemovesLockItDidNotCreate proves the
+// retry path waits for the lock to clear without deleting it: a
+// real .git/index.lock left in place stays in place after a
+// persistent-lock failure.
+func TestStageGitattributes_NeverRemovesLockItDidNotCreate(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	dir := t.TempDir()
+	require.NoError(t, exec.Command("git", "init", dir).Run())
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".gitattributes"), []byte("*.md merge=mdsmith\n"), 0o644))
+
+	lockPath := filepath.Join(dir, ".git", "index.lock")
+	require.NoError(t, os.WriteFile(lockPath, []byte("held by someone else"), 0o644))
+
+	// Shorten the backoff so the real `git add` retries finish fast.
+	origBackoff := stageRetryBackoff
+	t.Cleanup(func() { stageRetryBackoff = origBackoff })
+	stageRetryBackoff = []time.Duration{0, 0}
+
+	err := StageGitattributes(dir)
+	require.Error(t, err, "a held lock must make staging fail")
+	assert.Contains(t, err.Error(), "index locked")
+
+	data, readErr := os.ReadFile(lockPath)
+	require.NoError(t, readErr, "the pre-existing lock must not be removed")
+	assert.Equal(t, "held by someone else", string(data),
+		"StageGitattributes must never delete a lock it did not create")
+}
+
+// TestStageGitattributes_NonLockErrorNotRetried proves a non-lock
+// failure (e.g. running outside a repo) is returned immediately
+// rather than burning the whole retry budget on an error that will
+// never clear.
+func TestStageGitattributes_NonLockErrorNotRetried(t *testing.T) {
+	calls := 0
+	withStubGitAdd(t, func(repoRoot string) ([]byte, error) {
+		calls++
+		return []byte("fatal: not a git repository"), &exec.ExitError{}
+	})
+
+	err := StageGitattributes("/repo")
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "index locked")
+	assert.Equal(t, 1, calls, "a non-lock error must not be retried")
 }
 
 func TestDefaultIncludes(t *testing.T) {
