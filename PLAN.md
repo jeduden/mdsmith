@@ -134,7 +134,7 @@ footer: |
 | 206 | 🔲     |        | [Document cue/ in architecture layering map](plan/206_arch-fix-cue-types-docs.md)                                                       |
 | 207 | ✅     | sonnet | [LSP fix preview via ChangeAnnotation](plan/207_lsp-fix-preview.md)                                                                     |
 | 208 | ✅     | opus   | [Kind-per-file config under `.mdsmith/kinds/`](plan/208_kind-files.md)                                                                  |
-| 209 | 🔲     | opus   | [Convention-per-file config under `.mdsmith/conventions/`](plan/209_convention-files.md)                                                |
+| 209 | ✅     | opus   | [Convention-per-file config under `.mdsmith/conventions/`](plan/209_convention-files.md)                                                |
 | 210 | ✅     | opus   | [Single source of truth for product messaging via `mdsmith extract`](plan/210_messaging-source-of-truth.md)                             |
 | 211 | 🔳     | opus   | [`<?include?>` projects any typed value of any kind via `extract`](plan/211_include-extract-value.md)                                   |
 | 212 | 🔲     | opus   | [`mdsmith extract` projects paragraph inline spans as data](plan/212_extract-inline-spans.md)                                           |
@@ -149,6 +149,6 @@ footer: |
 | 218 | 🔲     | opus   | [WASM size reduction — CUE-free engine path and tinygo support](plan/218_wasm-size-reduction.md)                                        |
 | 219 | 🔲     | opus   | [Multiplexed AST walk to close the parity gap to mado](plan/219_multiplexed-ast-walk.md)                                                |
 | 219 | 🔲     | opus   | [Route cmd/mdsmith and the LSP through pkg/mdsmith.Session](plan/219_session-cli-lsp-migration.md)                                      |
-| 220 | 🔳     | opus   | [Ship mdsmith as a self-hosted Flatpak bundle](plan/220_flatpak-bundle-distribution.md)                                                 |
-| 220 | 🔲     | opus   | [Make the pre-merge-commit hook the single git-index writer](plan/220_git-index-lock-retry.md)                                          |
+| 220 | ✅     | opus   | [Harden the git-index writers against a transient index.lock](plan/220_git-index-lock-retry.md)                                         |
+| 221 | 🔳     | opus   | [Ship mdsmith as a self-hosted Flatpak bundle](plan/221_flatpak-bundle-distribution.md)                                                 |
 <?/catalog?>

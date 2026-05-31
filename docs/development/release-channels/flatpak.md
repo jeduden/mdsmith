@@ -28,9 +28,10 @@ flatpak run io.github.jeduden.mdsmith check .
 
 The first install also pulls the
 `org.freedesktop.Platform` 24.08 runtime from Flathub.
-That happens only if the host lacks it. The bundle records
-Flathub as its runtime source, so the install can offer
-it.
+That happens only if the host lacks it. Only the runtime
+comes from Flathub; the mdsmith binary is baked into the
+bundle. The bundle records Flathub as its runtime source,
+so the install can offer it.
 
 Flatpak sandboxes every app. So the manifest declares
 `--filesystem=host`. A linter must read whatever files the
@@ -50,10 +51,11 @@ assets, so the timing matters.
 
 The job stages the manifest and the binary with
 [`build-flatpak`](../release-tooling.md). It runs
-`flatpak-builder` against the freedesktop 24.08 SDK. Then
-`flatpak build-bundle` packs the result into one file. The
-job also verifies the bundle installs and reports the
-tag's version. Then it uploads the bundle as an artifact.
+`flatpak-builder` against the freedesktop 24.08 runtime
+and SDK. Then `flatpak build-bundle` packs the result into
+one file. The job also verifies the bundle installs and
+reports the tag's version. Then it uploads the bundle as
+an artifact.
 
 The `release` job attaches that artifact to the draft. The
 bundle is named `mdsmith-x86_64.flatpak`. So it matches

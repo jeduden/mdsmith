@@ -518,6 +518,10 @@ jobs:
   flatpak:
     needs: [build]
     runs-on: ubuntu-latest
+    # Bound the heavy steps (apt install + ~hundreds-of-MB Flathub
+    # runtime pull + flatpak-builder) so a stuck download cannot hold
+    # the release-gating job to the 6h default.
+    timeout-minutes: 20
     if: *release_repo_trigger_ok
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -556,9 +560,11 @@ jobs:
         # build-bundle packs it into a single file. --runtime-repo
         # records flathub so `flatpak install ./mdsmith-x86_64.flatpak`
         # can offer the runtime if the host lacks it.
+        # --disable-rofiles-fuse avoids the rofiles-fuse mount, which is
+        # fragile under the runner's restricted FUSE.
         run: |
           flatpak-builder --user --install-deps-from=flathub \
-            --force-clean --repo=flatpak-repo \
+            --disable-rofiles-fuse --force-clean --repo=flatpak-repo \
             flatpak-build-dir flatpak-build/io.github.jeduden.mdsmith.yml
           flatpak build-bundle \
             --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
@@ -573,7 +579,9 @@ jobs:
           VERSION: ${{ env.VERSION }}
         run: |
           flatpak install --user -y ./mdsmith-x86_64.flatpak
-          got=$(flatpak run io.github.jeduden.mdsmith version)
+          # Take the last stdout line so a first-run portal/sandbox
+          # notice cannot break the exact-match check.
+          got=$(flatpak run io.github.jeduden.mdsmith version | tail -n1)
           want="mdsmith ${VERSION}"
           if [ "$got" != "$want" ]; then
             echo "flatpak bundle version mismatch: got '$got', want '$want'" >&2
