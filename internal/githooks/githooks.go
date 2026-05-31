@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/config"
@@ -855,26 +856,89 @@ func atomicWriteGitattributes(path string, data []byte, mode os.FileMode) error 
 	return os.Rename(tmpName, path)
 }
 
+// gitAddGitattributes runs `git add -- .gitattributes` against
+// repoRoot and returns git's combined output plus the exit error. It
+// is a package-level variable so tests can substitute a fake git that
+// fails with a synthetic index.lock message a fixed number of times
+// before succeeding, exercising the transient- and persistent-lock
+// retry paths deterministically without racing a real lock file.
+//
+// CombinedOutput is used so git's stderr (e.g. `fatal: Unable to
+// create '/.../.git/index.lock': File exists.`) is preserved — both
+// for the lock detector below and for MDS048's "staging failed"
+// diagnostic, which would otherwise carry only an `exit status N`
+// and nothing actionable.
+var gitAddGitattributes = func(repoRoot string) ([]byte, error) {
+	return exec.Command(
+		"git", "-C", repoRoot, "add", "--", ".gitattributes",
+	).CombinedOutput()
+}
+
+// stageRetryBackoff is the wait schedule between `git add` attempts in
+// StageGitattributes. Its length sets the retry budget: one initial
+// attempt plus one retry per entry. The waits ramp so a lock held for
+// a few hundred milliseconds clears without a tight spin, while a
+// genuinely stuck lock still fails in well under a second. It is a
+// variable so tests can shorten it to zero-length waits.
+var stageRetryBackoff = []time.Duration{
+	10 * time.Millisecond,
+	20 * time.Millisecond,
+	40 * time.Millisecond,
+	80 * time.Millisecond,
+	160 * time.Millisecond,
+}
+
+// isIndexLockError reports whether git's combined output describes a
+// failure to acquire .git/index.lock. git prints a stable
+// "Unable to create '<path>/index.lock': File exists" line in that
+// case; matching both fragments avoids treating an unrelated mention
+// of a lock file as a retryable condition.
+func isIndexLockError(output []byte) bool {
+	s := string(output)
+	return strings.Contains(s, "index.lock") && strings.Contains(s, "File exists")
+}
+
 // StageGitattributes runs `git add -- .gitattributes` against repoRoot
 // so updates written by Fix end up in the index. Without this, the
 // pre-merge-commit hook flow stages only the markdown file passed to
 // `mdsmith fix`, leaving the regenerated .gitattributes in the working
 // tree but absent from the resulting merge commit. Errors are surfaced
 // so callers can decide whether to roll back; the working-tree write
-// itself is already done at the point this is called. CombinedOutput
-// is used so git's stderr (e.g. `fatal: Unable to create
-// '/.../.git/index.lock': File exists.`) is preserved in the error
-// returned to the caller — without it MDS048's "staging failed"
-// diagnostic would only carry an `exit status N` and nothing
-// actionable.
+// itself is already done at the point this is called.
+//
+// A `git add` that fails because `.git/index.lock` already exists is
+// retried with bounded backoff (stageRetryBackoff): a transient lock
+// held by a concurrent git invocation usually clears within a few
+// tens of milliseconds, and retrying turns a queue-bouncing hard
+// failure into a brief wait. The retry never deletes the lock — it
+// only waits for the holder to release it — so a lock this process
+// did not create is left untouched. When the lock persists past the
+// retry budget, StageGitattributes returns a clear "index locked"
+// error rather than a bare exit status. Non-lock failures are
+// returned immediately, since they will not clear on retry.
 func StageGitattributes(repoRoot string) error {
-	out, err := exec.Command(
-		"git", "-C", repoRoot, "add", "--", ".gitattributes",
-	).CombinedOutput()
-	if err == nil {
-		return nil
+	var out []byte
+	var err error
+	for attempt := 0; ; attempt++ {
+		out, err = gitAddGitattributes(repoRoot)
+		if err == nil {
+			return nil
+		}
+		if !isIndexLockError(out) || attempt >= len(stageRetryBackoff) {
+			break
+		}
+		time.Sleep(stageRetryBackoff[attempt])
 	}
+
 	msg := strings.TrimSpace(string(out))
+	if isIndexLockError(out) {
+		// The lock outlasted every retry. Report it as locked and keep
+		// git's own message so the operator sees which lock file and the
+		// "remove the file manually" hint, without mdsmith ever removing
+		// a lock it did not create. isIndexLockError matches only
+		// non-empty output, so msg always carries git's message here.
+		return fmt.Errorf("stage .gitattributes: index locked: %w: %s", err, msg)
+	}
 	if msg == "" {
 		return fmt.Errorf("stage .gitattributes: %w", err)
 	}
@@ -898,6 +962,41 @@ func HasMdsmithMergeDriver(repoRoot string) bool {
 	}
 	return strings.TrimSpace(string(out)) != ""
 }
+
+// stagingHelperShellFunc is the POSIX `mdsmith_git_add` function the
+// hook uses to stage one path with index.lock-aware retry. It is kept
+// as a package-level constant so BuildHookScript stays short and so
+// the retry policy lives in one readable block. The function backs off
+// with `sleep 0.1 2>/dev/null || sleep 1` (fast on coreutils that
+// honor fractional sleep, portable elsewhere), bounds the retries, and
+// on a persistent lock prints `index locked` and exits the hook
+// non-zero. It never deletes `.git/index.lock` — only waits for the
+// holder to release it.
+const stagingHelperShellFunc = "# Stage one path, retrying a transient .git/index.lock with\n" +
+	"# bounded backoff. Never removes a lock it did not create; a\n" +
+	"# persistent lock exits non-zero with a clear message.\n" +
+	"mdsmith_git_add() {\n" +
+	"  _attempt=0\n" +
+	"  while :; do\n" +
+	"    _err=$(git add -- \"$1\" 2>&1)\n" +
+	"    _status=$?\n" +
+	"    [ \"$_status\" -eq 0 ] && return 0\n" +
+	"    case \"$_err\" in\n" +
+	"      *index.lock*\"File exists\"*)\n" +
+	"        if [ \"$_attempt\" -ge 5 ]; then\n" +
+	"          echo \"mdsmith pre-merge-commit hook: index locked: $_err\" >&2\n" +
+	"          exit 1\n" +
+	"        fi\n" +
+	"        _attempt=$((_attempt + 1))\n" +
+	"        sleep 0.1 2>/dev/null || sleep 1\n" +
+	"        ;;\n" +
+	"      *)\n" +
+	"        echo \"$_err\" >&2\n" +
+	"        exit \"$_status\"\n" +
+	"        ;;\n" +
+	"    esac\n" +
+	"  done\n" +
+	"}\n"
 
 // BuildHookScript returns the canonical pre-merge-commit hook
 // content. The script runs `mdsmith fix` once on the entire repo
@@ -927,6 +1026,29 @@ func HasMdsmithMergeDriver(repoRoot string) bool {
 // (read uses IFS= -r) at the cost of mishandling the rare filename
 // that contains literal newlines — an acceptable trade for
 // portability.
+//
+// Each `git add` is wrapped in mdsmith_git_add, a bounded
+// retry-with-backoff that absorbs a transient `.git/index.lock`. If a
+// concurrent git invocation briefly holds the lock, `git add` fails
+// with `Unable to create '.../index.lock': File exists`; retrying
+// after a short wait turns a queue-bouncing hard failure into a brief
+// pause. The retry only waits for the holder to release the lock — it
+// never deletes `.git/index.lock`, so a lock the hook did not create
+// is left untouched. When the lock outlasts the retry budget the hook
+// prints `index locked` and exits non-zero so the merge aborts
+// loudly rather than committing a partially staged tree. A non-lock
+// `git add` failure is propagated immediately, since it will not
+// clear on retry.
+//
+// The backoff uses `sleep 0.1 2>/dev/null || sleep 1`: fractional
+// sleep is honored on GNU/BSD/macOS coreutils (fast), and the 1s
+// fallback keeps the script correct on any `sleep` that accepts only
+// integer seconds.
+//
+// The staging phase runs under `set +e` so the retry helper can
+// inspect each `git add` exit status itself; an assignment from a
+// failing command substitution would otherwise trip `set -e` before
+// the helper could classify the failure.
 func BuildHookScript(exe string) string {
 	return "#!/bin/sh\n" +
 		PreMergeCommitMarker + "\n" +
@@ -937,6 +1059,7 @@ func BuildHookScript(exe string) string {
 		"# marked with merge=mdsmith in .gitattributes.\n" +
 		"set -e\n" +
 		"cd \"$(git rev-parse --show-toplevel)\"\n" +
+		stagingHelperShellFunc +
 		"# `set +e` around the fix invocation so we can capture its\n" +
 		"# raw exit code. `if ! cmd; then status=$?; ...` looks\n" +
 		"# tempting, but POSIX `! cmd` returns the logical NOT of\n" +
@@ -946,16 +1069,25 @@ func BuildHookScript(exe string) string {
 		"set +e\n" +
 		shellQuote(exe) + " fix .\n" +
 		"status=$?\n" +
-		"set -e\n" +
 		"if [ \"$status\" -ne 0 ] && [ \"$status\" -ne 1 ]; then\n" +
 		"  exit \"$status\"\n" +
 		"fi\n" +
+		"# Stay under `set +e`: mdsmith_git_add captures each `git add`\n" +
+		"# exit status to classify a lock failure, and exits on a hard\n" +
+		"# error. The `while` loop runs in the pipeline's subshell, so a\n" +
+		"# `mdsmith_git_add` exit there ends only the subshell; capture\n" +
+		"# the pipeline status afterward and re-raise it so a persistent\n" +
+		"# lock (or other hard error) aborts the whole hook.\n" +
 		"git diff --name-only -- '*.md' '*.markdown' | " +
 		"while IFS= read -r f; do\n" +
 		"  if [ -n \"$f\" ]; then\n" +
-		"    git add -- \"$f\"\n" +
+		"    mdsmith_git_add \"$f\"\n" +
 		"  fi\n" +
-		"done\n"
+		"done\n" +
+		"stage_status=$?\n" +
+		"if [ \"$stage_status\" -ne 0 ]; then\n" +
+		"  exit \"$stage_status\"\n" +
+		"fi\n"
 }
 
 // HookMatchesCanonical reports whether hook content looks like the
@@ -979,6 +1111,11 @@ func HookMatchesCanonical(hook string) bool {
 		`if [ "$status" -ne 0 ] && [ "$status" -ne 1 ]; then`,
 		"git diff --name-only -- '*.md' '*.markdown' |",
 		`while IFS= read -r f; do`,
+		// Staging goes through the index.lock-aware retry helper. A
+		// hook that drifted back to a bare `git add -- "$f"` loop
+		// lacks this call and must be flagged so the lock hardening is
+		// not silently lost on an out-of-date hook.
+		`mdsmith_git_add "$f"`,
 	}
 	for _, frag := range required {
 		if !hookHasNonCommentLineContaining(hook, frag) {
