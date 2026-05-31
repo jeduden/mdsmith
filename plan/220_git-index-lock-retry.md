@@ -1,7 +1,7 @@
 ---
 id: 220
 title: Harden the git-index writers against a transient index.lock
-status: "🔳"
+status: "✅"
 model: opus
 summary: >-
   The merge queue bounces when the pre-merge-commit hook's `git
@@ -146,8 +146,8 @@ loop. Both are kept; both are hardened against a transient lock.
 - [x] Integration: after a `--no-commit` merge, run the hook, then
       commit. The merge commit captures both the regenerated
       `.gitattributes` and the fixed `*.md`. The worktree is clean.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues.
 
 ## Invocation model
 

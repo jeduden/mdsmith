@@ -1719,10 +1719,15 @@ func TestE2E_MergeDriver_FileOrderingRace_Resolved(t *testing.T) {
 // driver from pre-regenerating .gitattributes in the worktree, so the
 // stale managed block survives to hook time and MDS048 has a genuine
 // correction to stage — the realistic shape of the queue bug.
-func TestE2E_PreMergeCommit_NoCommitMergeCapturesBoth(t *testing.T) {
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git not available")
-	}
+// setupNoConflictMergeRepo builds the repo and two branches for
+// TestE2E_PreMergeCommit_NoCommitMergeCapturesBoth: the merge driver
+// and hook are installed, a deliberately stale .gitattributes managed
+// block (missing *.markdown) is committed directly via git so no later
+// `mdsmith fix` re-canonicalises it, `theirs` adds plan/02.md without
+// regenerating PLAN.md, and `ours` makes an unrelated change. ours is
+// left checked out, ready to merge theirs.
+func setupNoConflictMergeRepo(t *testing.T) string {
+	t.Helper()
 	dir := t.TempDir()
 	gitInit(t, dir)
 
@@ -1732,18 +1737,11 @@ func TestE2E_PreMergeCommit_NoCommitMergeCapturesBoth(t *testing.T) {
 	writeFixture(t, dir, "plan/01.md", fmt.Sprintf(planTmpl, 1, 1, "🔲", 1))
 	writeFixture(t, dir, "PLAN.md", planMdTmpl)
 
-	// Install the merge driver + hook (this canonicalises .gitattributes
-	// in the working tree), then seed the catalog body so PLAN.md is
-	// clean for plan 1.
 	_, stderr, code := runBinaryInDir(t, dir, "", "merge-driver", "install")
 	require.Equal(t, 0, code, "install failed: %s", stderr)
 	_, stderr, code = runBinaryInDir(t, dir, "", "fix", "PLAN.md")
 	require.Equal(t, 0, code, "seed fix failed: %s", stderr)
 
-	// Commit a deliberately stale managed block (drop the *.markdown
-	// include) directly via git, with no later `mdsmith fix` to
-	// re-canonicalise it, so the stale block is what every branch
-	// inherits and what reaches the merge.
 	staleAttrs := "# BEGIN mdsmith merge-driver\n" +
 		"*.md merge=mdsmith\n" +
 		"# END mdsmith merge-driver\n"
@@ -1751,21 +1749,24 @@ func TestE2E_PreMergeCommit_NoCommitMergeCapturesBoth(t *testing.T) {
 	gitCommit(t, dir, "seed (stale .gitattributes)")
 	seedSHA := strings.TrimSpace(gitInDir(t, dir, "rev-parse", "HEAD"))
 
-	// theirs: add plan/02.md but leave PLAN.md's catalog stale, so the
-	// merge does not touch PLAN.md (no conflict, no driver run) yet the
-	// post-merge catalog is out of date — work for the hook's fix.
 	gitInDir(t, dir, "checkout", "-q", "-b", "theirs", seedSHA)
 	writeFixture(t, dir, "plan/02.md", fmt.Sprintf(planTmpl, 2, 2, "🔲", 2))
 	gitInDir(t, dir, "add", "plan/02.md")
 	gitInDir(t, dir, "-c", "commit.gpgsign=false", "commit", "-q", "-m",
 		"add plan 2 (catalog intentionally not regenerated)")
 
-	// ours: an unrelated change so the merge is a real --no-ff merge
-	// with no overlap on PLAN.md or .gitattributes.
 	gitInDir(t, dir, "checkout", "-q", "-b", "ours", seedSHA)
 	writeFixture(t, dir, "NOTES.txt", "note\n")
 	gitInDir(t, dir, "add", "NOTES.txt")
 	gitInDir(t, dir, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "ours note")
+	return dir
+}
+
+func TestE2E_PreMergeCommit_NoCommitMergeCapturesBoth(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	dir := setupNoConflictMergeRepo(t)
 
 	// Step 1: `git merge --no-ff --no-commit`, leaving the commit
 	// uncreated, exactly as the merge-queue action does.
