@@ -7,6 +7,31 @@
 # marked with merge=mdsmith in .gitattributes.
 set -e
 cd "$(git rev-parse --show-toplevel)"
+# Stage one path, retrying a transient .git/index.lock with
+# bounded backoff. Never removes a lock it did not create; a
+# persistent lock exits non-zero with a clear message.
+mdsmith_git_add() {
+  _attempt=0
+  while :; do
+    _err=$(git add -- "$1" 2>&1)
+    _status=$?
+    [ "$_status" -eq 0 ] && return 0
+    case "$_err" in
+      *index.lock*"File exists"*)
+        if [ "$_attempt" -ge 5 ]; then
+          echo "mdsmith pre-merge-commit hook: index locked: $_err" >&2
+          exit 1
+        fi
+        _attempt=$((_attempt + 1))
+        sleep 0.1 2>/dev/null || sleep 1
+        ;;
+      *)
+        echo "$_err" >&2
+        exit "$_status"
+        ;;
+    esac
+  done
+}
 # `set +e` around the fix invocation so we can capture its
 # raw exit code. `if ! cmd; then status=$?; ...` looks
 # tempting, but POSIX `! cmd` returns the logical NOT of
@@ -16,12 +41,21 @@ cd "$(git rev-parse --show-toplevel)"
 set +e
 '/usr/local/bin/mdsmith' fix .
 status=$?
-set -e
 if [ "$status" -ne 0 ] && [ "$status" -ne 1 ]; then
   exit "$status"
 fi
+# Stay under `set +e`: mdsmith_git_add captures each `git add`
+# exit status to classify a lock failure, and exits on a hard
+# error. The `while` loop runs in the pipeline's subshell, so a
+# `mdsmith_git_add` exit there ends only the subshell; capture
+# the pipeline status afterward and re-raise it so a persistent
+# lock (or other hard error) aborts the whole hook.
 git diff --name-only -- '*.md' '*.markdown' | while IFS= read -r f; do
   if [ -n "$f" ]; then
-    git add -- "$f"
+    mdsmith_git_add "$f"
   fi
 done
+stage_status=$?
+if [ "$stage_status" -ne 0 ]; then
+  exit "$stage_status"
+fi
