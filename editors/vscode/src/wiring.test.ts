@@ -17,6 +17,7 @@ import {
   buildClientOptions,
   buildServerOptions,
   collectFixAllEdits,
+  forwardMdsmithConfigChange,
   startupErrorMessage,
   type CodeActionLike,
   type FileSystemWatcherLike,
@@ -244,6 +245,46 @@ describe("startupErrorMessage", () => {
       candidates: [],
     });
     expect(msg).toContain("resolved command: /opt/mdsmith");
+  });
+});
+
+describe("forwardMdsmithConfigChange", () => {
+  test("notifies the server when the change touches mdsmith.*", () => {
+    let calls = 0;
+    forwardMdsmithConfigChange(
+      { affectsConfiguration: (section) => section === "mdsmith" },
+      () => {
+        calls++;
+      }
+    );
+    expect(calls).toBe(1);
+  });
+
+  test("stays quiet when the change does not touch mdsmith.*", () => {
+    // An unrelated settings edit (e.g. editor.fontSize) must not trigger
+    // a config re-pull + full re-lint of every open buffer.
+    let calls = 0;
+    forwardMdsmithConfigChange(
+      { affectsConfiguration: () => false },
+      () => {
+        calls++;
+      }
+    );
+    expect(calls).toBe(0);
+  });
+
+  test("asks specifically about the mdsmith section", () => {
+    const asked: string[] = [];
+    forwardMdsmithConfigChange(
+      {
+        affectsConfiguration: (section) => {
+          asked.push(section);
+          return false;
+        }
+      },
+      () => {}
+    );
+    expect(asked).toEqual(["mdsmith"]);
   });
 });
 

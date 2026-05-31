@@ -178,6 +178,37 @@ function candidateLabel(c: BinaryCandidate): string {
   }
 }
 
+// ConfigChangeLike is the structural subset of
+// vscode.ConfigurationChangeEvent the extension consults when deciding
+// whether a settings edit is worth forwarding to the server. Defined
+// here so the decision can be unit-tested without the `vscode` runtime.
+export interface ConfigChangeLike {
+  affectsConfiguration(section: string): boolean;
+}
+
+// forwardMdsmithConfigChange invokes `notify` exactly when a
+// configuration-change event touches any `mdsmith.*` setting.
+//
+// The LSP server reads mdsmith.config / mdsmith.run / mdsmith.previewFix
+// by pulling workspace/configuration on initialize and on every
+// workspace/didChangeConfiguration notification. vscode-languageclient
+// does NOT emit that notification on its own unless
+// LanguageClientOptions.synchronize.configurationSection is set — and we
+// deliberately leave it unset to stay on the pull model. Without an
+// explicit nudge the server therefore keeps whatever settings it read at
+// startup, so toggling e.g. mdsmith.previewFix has no effect until the
+// server restarts. The caller wires `notify` to push the notification;
+// gating on the mdsmith section keeps unrelated settings edits from
+// triggering a config re-pull and a re-lint of every open buffer.
+export function forwardMdsmithConfigChange(
+  event: ConfigChangeLike,
+  notify: () => void
+): void {
+  if (event.affectsConfiguration("mdsmith")) {
+    notify();
+  }
+}
+
 // Minimal shapes of the bits of vscode.CodeAction / WorkspaceEdit /
 // Uri / TextEdit we touch when filtering fixAll edits. Defining them
 // here lets tests drive the pure pipeline without importing `vscode`.
