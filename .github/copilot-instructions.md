@@ -112,6 +112,7 @@ row: "- [{summary}](../{filename})"
 - [Select Markdown files by a CUE expression on front matter.](../docs/reference/cli/query.md)
 - [Rename a heading or link-reference label and rewrite every dependent edit.](../docs/reference/cli/rename.md)
 - [Print the mdsmith build version and exit.](../docs/reference/cli/version.md)
+- [Each file under `.mdsmith/conventions/` declares one user convention. The basename is the convention name; the file body carries a `flavor:` plus a `rules:` map. Sits alongside inline `conventions.<name>:` in `.mdsmith.yml`.](../docs/reference/convention-files.md)
 - [Built-in Markdown conventions, the rule presets each one applies, and how user config layers on top via deep-merge.](../docs/reference/conventions.md)
 - [Glob pattern syntax across mdsmith config, directives, and CLI argument expansion, with the supported exclusion semantics for each surface.](../docs/reference/globs.md)
 - [Look up exact CLI commands, config glob and schema syntax, the built-in conventions, and the section-schema grammar.](../docs/reference/index.md)
