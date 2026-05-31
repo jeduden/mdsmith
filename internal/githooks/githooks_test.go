@@ -893,6 +893,22 @@ func TestStageGitattributes_NonLockErrorNotRetried(t *testing.T) {
 	assert.Equal(t, 1, calls, "a non-lock error must not be retried")
 }
 
+// TestStageGitattributes_NonLockErrorEmptyOutput drives a non-lock
+// failure that produces no output (e.g. git failing to exec): the
+// staging call must still return a wrapped "stage .gitattributes"
+// error, not misreport it as a lock or panic on the empty message.
+func TestStageGitattributes_NonLockErrorEmptyOutput(t *testing.T) {
+	withStubGitAdd(t, func(repoRoot string) ([]byte, error) {
+		return nil, &exec.ExitError{}
+	})
+
+	err := StageGitattributes("/repo")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "stage .gitattributes")
+	assert.NotContains(t, err.Error(), "index locked",
+		"an empty-output non-lock error must not be misreported as a lock")
+}
+
 func TestDefaultIncludes(t *testing.T) {
 	got := DefaultIncludes()
 	assert.Equal(t, []string{"*.md", "*.markdown"}, got)

@@ -935,10 +935,8 @@ func StageGitattributes(repoRoot string) error {
 		// The lock outlasted every retry. Report it as locked and keep
 		// git's own message so the operator sees which lock file and the
 		// "remove the file manually" hint, without mdsmith ever removing
-		// a lock it did not create.
-		if msg == "" {
-			return fmt.Errorf("stage .gitattributes: index locked: %w", err)
-		}
+		// a lock it did not create. isIndexLockError matches only
+		// non-empty output, so msg always carries git's message here.
 		return fmt.Errorf("stage .gitattributes: index locked: %w: %s", err, msg)
 	}
 	if msg == "" {
