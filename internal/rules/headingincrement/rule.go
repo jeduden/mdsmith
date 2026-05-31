@@ -2,6 +2,7 @@ package headingincrement
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/placeholders"
@@ -62,7 +63,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 					RuleID:   r.ID(),
 					RuleName: r.Name(),
 					Severity: lint.Warning,
-					Message:  fmt.Sprintf("first heading level should be 1, got %d", level),
+					Message:  "first heading level should be 1, got " + strconv.Itoa(level),
 				})
 			}
 		} else if level > prevLevel+1 && !isPlaceholder {
@@ -74,8 +75,9 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 				RuleID:   r.ID(),
 				RuleName: r.Name(),
 				Severity: lint.Warning,
-				Message: fmt.Sprintf("heading level incremented from %d to %d (expected %d)",
-					prevLevel, level, prevLevel+1),
+				Message: "heading level incremented from " + strconv.Itoa(prevLevel) +
+					" to " + strconv.Itoa(level) +
+					" (expected " + strconv.Itoa(prevLevel+1) + ")",
 			})
 		}
 

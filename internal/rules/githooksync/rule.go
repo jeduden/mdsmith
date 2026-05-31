@@ -5,6 +5,7 @@
 package githooksync
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,6 +16,10 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 )
+
+// preMergeMarkerBytes is the package-level byte slice of PreMergeCommitMarker,
+// hoisted to avoid allocating a copy of the full hook file on every check.
+var preMergeMarkerBytes = []byte(githooks.PreMergeCommitMarker)
 
 func init() {
 	rule.Register(&Rule{})
@@ -173,7 +178,7 @@ func peekHookSource(repoRoot string) hookSource {
 		}
 		return hookSourceUnreadable
 	}
-	if strings.Contains(string(data), githooks.PreMergeCommitMarker) {
+	if bytes.Contains(data, preMergeMarkerBytes) {
 		return hookSourceManaged
 	}
 	return hookSourceUnmanaged

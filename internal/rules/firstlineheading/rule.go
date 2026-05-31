@@ -2,6 +2,7 @@ package firstlineheading
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/placeholders"
@@ -37,24 +38,24 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		level = 1
 	}
 
-	missingMsg := fmt.Sprintf("first line should be a level %d heading", level)
+	levelStr := strconv.Itoa(level)
 
 	if len(f.Source) == 0 {
-		return r.diag(f, missingMsg)
+		return r.diag(f, "first line should be a level "+levelStr+" heading")
 	}
 
 	firstChild := f.AST.FirstChild()
 	if firstChild == nil {
-		return r.diag(f, missingMsg)
+		return r.diag(f, "first line should be a level "+levelStr+" heading")
 	}
 
 	heading, ok := firstChild.(*ast.Heading)
 	if !ok {
-		return r.diag(f, missingMsg)
+		return r.diag(f, "first line should be a level "+levelStr+" heading")
 	}
 
 	if headingLine(heading, f) != 1 {
-		return r.diag(f, fmt.Sprintf("first line should be a level %d heading, found blank line", level))
+		return r.diag(f, "first line should be a level "+levelStr+" heading, found blank line")
 	}
 
 	if heading.Level != level {
@@ -64,7 +65,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		if placeholders.ContainsBodyToken(text, r.Placeholders) {
 			return nil
 		}
-		return r.diag(f, fmt.Sprintf("first heading should be level %d, got %d", level, heading.Level))
+		return r.diag(f, "first heading should be level "+levelStr+", got "+strconv.Itoa(heading.Level))
 	}
 
 	return nil
