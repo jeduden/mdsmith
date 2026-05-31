@@ -56,6 +56,20 @@ type ResolvedKind struct {
 	SourcePath string
 }
 
+// ResolvedConvention names the active convention for a file and, for a
+// user-defined convention, the file that defined it. Name is empty
+// when no convention is selected. IsUser is true when the active
+// convention is user-defined (declared inline in `.mdsmith.yml` or in
+// a `.mdsmith/conventions/<name>.{yaml,yml}` file; plan 209) rather
+// than a built-in. SourcePath is the defining file and is set only for
+// a user convention — built-ins are compiled into the binary and carry
+// no path.
+type ResolvedConvention struct {
+	Name       string
+	IsUser     bool
+	SourcePath string
+}
+
 // LayerEntry is one applicable merge layer for a single rule. Source
 // identifies the layer; Set indicates whether this layer touched the rule;
 // Value, when Set is true, is the rule's RuleCfg supplied by this layer.
@@ -113,10 +127,12 @@ func (rr *RuleResolution) LeafByPath(path string) *Leaf {
 	return nil
 }
 
-// FileResolution is the per-file resolution: kind list (with assignment
-// sources) and per-rule resolution. Rules is keyed by rule name.
+// FileResolution is the per-file resolution: the active convention
+// (when one is selected), the kind list (with assignment sources), and
+// per-rule resolution. Rules is keyed by rule name.
 type FileResolution struct {
 	File       string
+	Convention ResolvedConvention
 	Kinds      []ResolvedKind
 	Rules      map[string]RuleResolution
 	Categories map[string]bool
@@ -144,10 +160,30 @@ func ResolveFile(cfg *Config, filePath string, fmKinds []string, fmFields map[st
 
 	return &FileResolution{
 		File:       filePath,
+		Convention: resolveConvention(cfg),
 		Kinds:      kinds,
 		Rules:      rules,
 		Categories: cats,
 	}
+}
+
+// resolveConvention reports the active convention for a file: the
+// selected convention name, whether it is user-defined, and (for a
+// user convention) the file that defined it. It returns the zero
+// ResolvedConvention when no convention is selected. A built-in
+// convention is reported by name with no source path — built-ins are
+// compiled into the binary. Mirrors how ResolvedKind carries a kind's
+// defining file (plan 209).
+func resolveConvention(cfg *Config) ResolvedConvention {
+	if cfg.Convention == "" {
+		return ResolvedConvention{}
+	}
+	rc := ResolvedConvention{Name: cfg.Convention}
+	if uc, isUser := cfg.Conventions[cfg.Convention]; isUser {
+		rc.IsUser = true
+		rc.SourcePath = uc.SourcePath
+	}
+	return rc
 }
 
 // layerInfo captures one applicable merge layer's source and its rule

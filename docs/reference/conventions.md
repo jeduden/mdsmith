@@ -233,7 +233,9 @@ convention: our-team
 
 Each entry is a `{ flavor, rules }` pair. The `rules`
 block uses the same schema as the top-level `rules:`
-block.
+block. To lift one out of `.mdsmith.yml` into its own
+file under `.mdsmith/conventions/<name>.yaml`, see the
+[convention files reference](convention-files.md).
 
 ### Validation
 

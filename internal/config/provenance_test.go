@@ -200,3 +200,37 @@ kind-assignment:
 	assert.Equal(t, "plan", entry["kind"])
 	assert.Equal(t, "plan/[0-9][0-9]*_*.md", entry["pattern"])
 }
+
+// TestResolveConvention covers the three convention-provenance cases
+// plan 209 surfaces: a user convention carries its name, the user
+// flag, and its defining file; a built-in carries only its name; no
+// selection yields the zero value.
+func TestResolveConvention(t *testing.T) {
+	t.Run("user convention carries source path", func(t *testing.T) {
+		cfg := &Config{
+			Convention: "portable-strict",
+			Conventions: map[string]UserConvention{
+				"portable-strict": {
+					SourcePath: "/ws/.mdsmith/conventions/portable-strict.yaml",
+				},
+			},
+		}
+		rc := resolveConvention(cfg)
+		assert.Equal(t, "portable-strict", rc.Name)
+		assert.True(t, rc.IsUser)
+		assert.Equal(t,
+			"/ws/.mdsmith/conventions/portable-strict.yaml", rc.SourcePath)
+	})
+	t.Run("built-in convention has no source path", func(t *testing.T) {
+		rc := resolveConvention(&Config{Convention: "github"})
+		assert.Equal(t, "github", rc.Name)
+		assert.False(t, rc.IsUser)
+		assert.Empty(t, rc.SourcePath)
+	})
+	t.Run("no convention selected", func(t *testing.T) {
+		rc := resolveConvention(&Config{})
+		assert.Empty(t, rc.Name)
+		assert.False(t, rc.IsUser)
+		assert.Empty(t, rc.SourcePath)
+	})
+}

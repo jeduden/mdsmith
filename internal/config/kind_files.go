@@ -2,11 +2,14 @@ package config
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 	"gopkg.in/yaml.v3"
@@ -40,7 +43,7 @@ type discoveredKind struct {
 // Errors fired (each names the offending file so the user can
 // jump straight to it):
 //   - basename does not match `[a-z][a-z0-9-]*`
-//   - a subdirectory exists under `.mdsmith/kinds/`
+//   - a subdirectory or symlink exists under `.mdsmith/kinds/`
 //   - the same basename appears as both `.yaml` and `.yml`
 //   - the YAML body has a top-level key outside `KindBody`
 //
@@ -71,13 +74,27 @@ func discoverKinds(workspaceDir string) (map[string]discoveredKind, error) {
 
 	for _, entry := range entries {
 		name := entry.Name()
+		// Reject symlinks outright: a symlink reports IsDir()==false
+		// from lstat, so without this guard a symlinked directory
+		// would slip past the subdirectory check below and a symlinked
+		// file would be read off the workspace by parseKindFile.
+		if entry.Type()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf(
+				"%s: symlinks are not allowed (found %q)",
+				kindFilesDir, name)
+		}
 		if entry.IsDir() {
 			return nil, fmt.Errorf(
 				"%s: subdirectories are not allowed (found %q)",
 				kindFilesDir, name)
 		}
+		// Match `.yaml`/`.yml` case-insensitively so a `.YAML` file is
+		// not silently skipped (surprising on case-insensitive
+		// filesystems where it denotes the same path as `.yaml`).
 		ext := filepath.Ext(name)
-		if ext != ".yaml" && ext != ".yml" {
+		switch strings.ToLower(ext) {
+		case ".yaml", ".yml":
+		default:
 			continue
 		}
 		base := name[:len(name)-len(ext)]
@@ -105,7 +122,8 @@ func discoverKinds(workspaceDir string) (map[string]discoveredKind, error) {
 	return result, nil
 }
 
-// mergeKindFiles discovers file-defined kinds under the
+// mergeKindFiles tags every inline kind with cfgPath for
+// provenance, then discovers file-defined kinds under the
 // workspace root (parent of cfgPath) and merges them into
 // cfg.Kinds. A name colliding between a file kind and an inline
 // kind is a config error naming both sources — the two do not
@@ -114,6 +132,15 @@ func discoverKinds(workspaceDir string) (map[string]discoveredKind, error) {
 // and always supplies a non-empty cfgPath, so no defensive
 // guard is needed for that.
 func mergeKindFiles(cfg *Config, cfgPath string) error {
+	// Tag every inline kind with cfgPath so provenance attributes
+	// kinds uniformly whether they came from `.mdsmith.yml` or a file
+	// under `.mdsmith/kinds/`. This runs before the file merge so a
+	// collision diagnostic can quote both sources verbatim.
+	for name, body := range cfg.Kinds {
+		body.SourcePath = cfgPath
+		cfg.Kinds[name] = body
+	}
+
 	discovered, err := discoverKinds(filepath.Dir(cfgPath))
 	if err != nil {
 		return err
@@ -124,7 +151,16 @@ func mergeKindFiles(cfg *Config, cfgPath string) error {
 	if cfg.Kinds == nil {
 		cfg.Kinds = make(map[string]KindBody, len(discovered))
 	}
-	for name, dk := range discovered {
+	// Iterate in sorted name order so that when more than one file
+	// kind is in conflict, the reported error is deterministic across
+	// runs instead of depending on map iteration order.
+	names := make([]string, 0, len(discovered))
+	for name := range discovered {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		dk := discovered[name]
 		if existing, clash := cfg.Kinds[name]; clash {
 			return fmt.Errorf(
 				"kind %q is declared both inline in %s and in %s; "+
@@ -139,10 +175,13 @@ func mergeKindFiles(cfg *Config, cfgPath string) error {
 // parseKindFile reads one kind file and decodes it into a
 // KindBody with strict (KnownFields) decoding so a typo in a
 // top-level key surfaces as a config error rather than being
-// silently dropped. UnmarshalSafe handles anchor/alias rejection
+// silently dropped. RejectYAMLAliases handles anchor/alias rejection
 // before the strict decode runs.
 func parseKindFile(path string) (KindBody, error) {
-	data, err := os.ReadFile(path) //nolint:gosec // path is built from workspace + kindFilesDir
+	// readLimitedConfig caps the read at maxConfigBytes (1 MB), the
+	// same guard `.mdsmith.yml` gets — a kind file should never be
+	// large, and an unbounded os.ReadFile is a needless OOM surface.
+	data, err := readLimitedConfig(path)
 	if err != nil {
 		return KindBody{}, fmt.Errorf("reading %s: %w", path, err)
 	}
@@ -153,6 +192,12 @@ func parseKindFile(path string) (KindBody, error) {
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
 	if err := dec.Decode(&body); err != nil {
+		// An empty, whitespace-only, or comments-only file decodes to
+		// io.EOF (no YAML node); report it clearly instead of
+		// surfacing the decoder's bare "EOF".
+		if errors.Is(err, io.EOF) {
+			return KindBody{}, fmt.Errorf("%s: empty kind file", path)
+		}
 		return KindBody{}, fmt.Errorf("parsing %s: %w", path, err)
 	}
 	return body, nil

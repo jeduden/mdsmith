@@ -39,9 +39,10 @@ func ParseBytes(data []byte) (*Config, error) {
 }
 
 // loadFromBytes is the shared parse pipeline behind Load and
-// ParseBytes. sourcePath tags inline kinds for provenance and anchors
-// disk kind-file discovery; mergeKinds gates that disk read so the
-// in-memory path stays filesystem-free.
+// ParseBytes. sourcePath tags inline kinds and conventions for
+// provenance and anchors disk discovery of `.mdsmith/{kinds,
+// conventions}/`; mergeKinds gates those disk reads so the in-memory
+// path stays filesystem-free.
 func loadFromBytes(data []byte, sourcePath string, mergeKinds bool) (*Config, error) {
 	// Catch non-string `convention:` values before UnmarshalSafe
 	// silently coerces them into the string field.
@@ -79,20 +80,18 @@ func loadFromBytes(data []byte, sourcePath string, mergeKinds bool) (*Config, er
 	detectFilesKeyDeprecations(&cfg)
 	detectMetaCategoryDeprecations(&cfg)
 
-	// Tag every inline kind with the loaded config path so
-	// provenance can attribute kinds uniformly regardless of
-	// whether they came from `.mdsmith.yml` or a file under
-	// `.mdsmith/kinds/` (plan 208). The tag runs before
-	// discoverKinds so a collision diagnostic can quote both
-	// sources verbatim.
-	for name, body := range cfg.Kinds {
-		body.SourcePath = sourcePath
-		cfg.Kinds[name] = body
-	}
-
+	// mergeKindFiles and mergeConventionFiles each tag their inline
+	// entries with sourcePath for provenance, then merge any
+	// file-defined entries from `.mdsmith/{kinds,conventions}/`
+	// (plans 208 and 209), erroring on name collisions. Both are
+	// gated by mergeKinds so the in-memory ParseBytes path performs
+	// no filesystem discovery.
 	if mergeKinds {
 		if err := mergeKindFiles(&cfg, sourcePath); err != nil {
 			return nil, fmt.Errorf("loading kind files: %w", err)
+		}
+		if err := mergeConventionFiles(&cfg, sourcePath); err != nil {
+			return nil, fmt.Errorf("loading convention files: %w", err)
 		}
 	}
 

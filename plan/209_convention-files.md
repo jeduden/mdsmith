@@ -1,7 +1,7 @@
 ---
 id: 209
 title: Convention-per-file config under `.mdsmith/conventions/`
-status: "🔲"
+status: "✅"
 model: opus
 depends-on: [208, 113]
 summary: >-
@@ -118,20 +118,20 @@ error.
 
 ## Acceptance Criteria
 
-- [ ] A convention at
+- [x] A convention at
       `.mdsmith/conventions/foo.yaml` with the
       same body as inline `conventions.foo:` emits
       byte-equal effective rules.
-- [ ] A convention declared both in a file and
+- [x] A convention declared both in a file and
       inline errors naming both sources.
-- [ ] A convention basename failing
+- [x] A convention basename failing
       `[a-z][a-z0-9-]*` or a file in a subdir
       errors.
-- [ ] A name collision with a built-in convention
+- [x] A name collision with a built-in convention
       errors.
-- [ ] `mdsmith kinds resolve <file>` prints the
+- [x] `mdsmith kinds resolve <file>` prints the
       defining-source path on the convention
       layer when one is active.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
-- [ ] `mdsmith check .` passes.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
+- [x] `mdsmith check .` passes.

@@ -454,6 +454,77 @@ func TestFileResolutionJSON_IncludesSourcePath(t *testing.T) {
 		out.Kinds[0].SourcePath)
 }
 
+// TestWriteFileResolutionText_RendersConvention pins plan 209's CLI
+// surface: when a user convention is active, the resolution text adds a
+// `convention: <name> (user) defined-in <path>` line so a reader can
+// jump to the defining file (parallel to a kind's `defined-in`).
+func TestWriteFileResolutionText_RendersConvention(t *testing.T) {
+	cfg := &config.Config{
+		Convention: "portable-strict",
+		Conventions: map[string]config.UserConvention{
+			"portable-strict": {
+				SourcePath: "/repo/.mdsmith/conventions/portable-strict.yaml",
+			},
+		},
+		Rules: map[string]config.RuleCfg{"line-length": {Enabled: true}},
+	}
+	res := config.ResolveFile(cfg, "x.md", nil, nil)
+	var buf bytes.Buffer
+	require.NoError(t, WriteFileResolutionText(&buf, res))
+	assert.Contains(t, buf.String(),
+		"convention: portable-strict (user) defined-in /repo/.mdsmith/conventions/portable-strict.yaml")
+}
+
+// TestWriteFileResolutionText_BuiltinConventionHasNoPath pins that a
+// built-in convention is reported by name with no `defined-in` suffix
+// and no `(user)` tag — built-ins are compiled in and carry no file.
+func TestWriteFileResolutionText_BuiltinConventionHasNoPath(t *testing.T) {
+	cfg := &config.Config{
+		Convention: "github",
+		Rules:      map[string]config.RuleCfg{"line-length": {Enabled: true}},
+	}
+	res := config.ResolveFile(cfg, "x.md", nil, nil)
+	var buf bytes.Buffer
+	require.NoError(t, WriteFileResolutionText(&buf, res))
+	out := buf.String()
+	assert.Contains(t, out, "convention: github")
+	assert.NotContains(t, out, "defined-in")
+	assert.NotContains(t, out, "(user)")
+}
+
+// TestFileResolutionJSON_IncludesConvention pins the `convention`
+// object in JSON output (name + user + source-path) — the stable field
+// LSP and audit tooling key off rather than parsing text.
+func TestFileResolutionJSON_IncludesConvention(t *testing.T) {
+	cfg := &config.Config{
+		Convention: "portable-strict",
+		Conventions: map[string]config.UserConvention{
+			"portable-strict": {
+				SourcePath: "/repo/.mdsmith/conventions/portable-strict.yaml",
+			},
+		},
+		Rules: map[string]config.RuleCfg{"line-length": {Enabled: true}},
+	}
+	res := config.ResolveFile(cfg, "x.md", nil, nil)
+	out := FileResolution(res)
+	require.NotNil(t, out.Convention)
+	assert.Equal(t, "portable-strict", out.Convention.Name)
+	assert.True(t, out.Convention.User)
+	assert.Equal(t, "/repo/.mdsmith/conventions/portable-strict.yaml",
+		out.Convention.SourcePath)
+}
+
+// TestFileResolutionJSON_NoConventionOmitsField pins that the
+// `convention` object is absent when no convention is selected.
+func TestFileResolutionJSON_NoConventionOmitsField(t *testing.T) {
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{"line-length": {Enabled: true}},
+	}
+	res := config.ResolveFile(cfg, "x.md", nil, nil)
+	out := FileResolution(res)
+	assert.Nil(t, out.Convention)
+}
+
 // TestMakeBodyJSON_IncludesSourcePath pins the new `source-path`
 // JSON key on the body output for `kinds list` / `kinds show`.
 func TestMakeBodyJSON_IncludesSourcePath(t *testing.T) {

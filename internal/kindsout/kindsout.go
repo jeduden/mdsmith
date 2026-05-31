@@ -187,6 +187,18 @@ type ResolvedKindJSON struct {
 	SourcePath string `json:"source-path,omitempty"`
 }
 
+// ResolvedConventionJSON names the active convention and, for a user
+// convention, the file that defined it. User is true for a user
+// convention (inline in `.mdsmith.yml` or a
+// `.mdsmith/conventions/<name>.{yaml,yml}` file; plan 209); SourcePath
+// is set only then — built-in conventions carry no path. Absent from
+// the file resolution when no convention is selected.
+type ResolvedConventionJSON struct {
+	Name       string `json:"name"`
+	User       bool   `json:"user,omitempty"`
+	SourcePath string `json:"source-path,omitempty"`
+}
+
 // LeafJSON is one effective leaf with its winning source and the chain
 // of layers that set it.
 type LeafJSON struct {
@@ -229,6 +241,7 @@ type RuleSummaryJSON struct {
 // FileResolutionJSON is the JSON form of a file's effective config.
 type FileResolutionJSON struct {
 	File       string                     `json:"file"`
+	Convention *ResolvedConventionJSON    `json:"convention,omitempty"`
 	Kinds      []ResolvedKindJSON         `json:"kinds"`
 	Categories map[string]bool            `json:"categories,omitempty"`
 	Rules      map[string]RuleSummaryJSON `json:"rules"`
@@ -241,6 +254,13 @@ func FileResolution(res *config.FileResolution) FileResolutionJSON {
 		Kinds:      make([]ResolvedKindJSON, 0, len(res.Kinds)),
 		Categories: res.Categories,
 		Rules:      make(map[string]RuleSummaryJSON, len(res.Rules)),
+	}
+	if res.Convention.Name != "" {
+		out.Convention = &ResolvedConventionJSON{
+			Name:       res.Convention.Name,
+			User:       res.Convention.IsUser,
+			SourcePath: res.Convention.SourcePath,
+		}
 	}
 	for _, k := range res.Kinds {
 		out.Kinds = append(out.Kinds, ResolvedKindJSON{
@@ -417,6 +437,26 @@ func writeEffectiveFrontmatter(
 	return nil
 }
 
+// writeConventionLine prints the active-convention line for a file
+// resolution — `convention: <name> (user) defined-in <path>` —
+// mirroring a kind's `defined-in` suffix. Nothing is written when no
+// convention is selected; a built-in convention prints its name with
+// no `(user)` tag and no path (built-ins are compiled into the binary).
+func writeConventionLine(w io.Writer, c config.ResolvedConvention) error {
+	if c.Name == "" {
+		return nil
+	}
+	line := "convention: " + sanitizeControl(c.Name)
+	if c.IsUser {
+		line += " (user)"
+	}
+	if c.SourcePath != "" {
+		line += " defined-in " + sanitizeControl(c.SourcePath)
+	}
+	_, err := fmt.Fprintln(w, line)
+	return err
+}
+
 // WriteFileResolutionText renders a per-file resolution as text, with
 // effective kinds and per-leaf source info for every rule.
 func WriteFileResolutionText(w io.Writer, res *config.FileResolution) error {
@@ -445,6 +485,10 @@ func WriteFileResolutionText(w io.Writer, res *config.FileResolution) error {
 				return err
 			}
 		}
+	}
+
+	if err := writeConventionLine(w, res.Convention); err != nil {
+		return err
 	}
 
 	if _, err := fmt.Fprintln(w, "rules:"); err != nil {

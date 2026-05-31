@@ -119,7 +119,7 @@ func copyUserConventions(m map[string]UserConvention) map[string]UserConvention 
 		for rk, rv := range v.Rules {
 			rules[rk] = copyRuleCfg(rv)
 		}
-		out[k] = UserConvention{Flavor: v.Flavor, Rules: rules}
+		out[k] = UserConvention{Flavor: v.Flavor, Rules: rules, SourcePath: v.SourcePath}
 	}
 	return out
 }
