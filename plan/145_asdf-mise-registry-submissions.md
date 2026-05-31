@@ -3,7 +3,7 @@ id: 145
 title: >-
   Publish mdsmith via asdf and mise registry
   submissions
-status: "🔲"
+status: "🔳"
 summary: >-
   Land the asdf-plugin repo (jeduden/asdf-mdsmith) and
   the mise-plugins/registry entry that the multi-channel
@@ -83,11 +83,11 @@ on `asdf plugin add mdsmith`.
 
 ## Acceptance Criteria
 
-- [ ] `jeduden/asdf-mdsmith` exists with the four
+- [x] `jeduden/asdf-mdsmith` exists with the four
       `bin/` scripts and a green CI workflow.
 - [ ] `asdf plugin add mdsmith` resolves without an
       explicit URL after the asdf-plugins PR merges.
-- [ ] `asdf install mdsmith X.Y.Z` then
+- [x] `asdf install mdsmith X.Y.Z` then
       `mdsmith version` prints `mdsmith vX.Y.Z`.
 - [ ] `mise use mdsmith@X.Y.Z` (no `ubi:`) resolves
       after the mise-plugins/registry PR merges, and

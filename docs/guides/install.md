@@ -45,13 +45,16 @@ into the binary at build time. Pick one path:
 | PyPI (pip)           | `pip install mdsmith`                                                                               | Python projects and Python-only CI images                               |
 | uvx                  | `uvx mdsmith check .`                                                                               | Ephemeral runs via uv                                                   |
 | pipx                 | `pipx install mdsmith`                                                                              | Isolated CLI install on Python hosts                                    |
+| Homebrew             | `brew install jeduden/mdsmith/mdsmith`                                                              | macOS and Linux via Homebrew                                            |
 | mise (`ubi` backend) | `mise use -g ubi:jeduden/mdsmith@latest`                                                            | Repos using mise; works today via GitHub releases without a registry PR |
+| asdf                 | `asdf plugin add mdsmith https://github.com/jeduden/asdf-mdsmith.git`                               | Repos standardized on asdf                                              |
 | GitHub release       | Download `mdsmith-<os>-<arch>` from the [release page](https://github.com/jeduden/mdsmith/releases) | Air-gapped hosts and direct binary control                              |
 
-asdf and the short `mise use mdsmith@latest` form depend on
-follow-up registry submissions tracked in
-[plan/145](../../plan/145_asdf-mise-registry-submissions.md); the
-sections below explain how to use each one once those land.
+The short `asdf plugin add mdsmith` and `mise use mdsmith@latest`
+forms — without an explicit URL — depend on registry submissions
+tracked in
+[plan/145](../../plan/145_asdf-mise-registry-submissions.md). The
+explicit-URL asdf install, Homebrew, and `ubi:` mise all work today.
 
 The binary ships for linux x86_64, linux aarch64, macOS
 x86_64, macOS arm64, and Windows amd64. Other targets
@@ -107,13 +110,9 @@ and `python -m mdsmith` all work.
 
 ## asdf
 
-> **Pending follow-up.** The `jeduden/asdf-mdsmith` plugin repo is
-> a follow-up tracked in
-> [plan/145](../../plan/145_asdf-mise-registry-submissions.md).
-> Until that repo exists, the commands below will not resolve.
-> Use one of the channels above in the meantime.
-
-Once the plugin repo is published:
+The [`jeduden/asdf-mdsmith`](https://github.com/jeduden/asdf-mdsmith)
+plugin installs the prebuilt binary for your platform and verifies it
+against the release `checksums.txt`:
 
 ```bash
 asdf plugin add mdsmith https://github.com/jeduden/asdf-mdsmith.git
@@ -126,6 +125,24 @@ Once the plugin is also listed in
 [`asdf-vm/asdf-plugins`](https://github.com/asdf-vm/asdf-plugins),
 the explicit URL becomes optional:
 `asdf plugin add mdsmith` resolves on its own.
+
+## Homebrew
+
+```bash
+brew install jeduden/mdsmith/mdsmith
+mdsmith version
+```
+
+This taps
+[`jeduden/homebrew-mdsmith`](https://github.com/jeduden/homebrew-mdsmith)
+and installs the prebuilt binary for macOS or Linux, on Intel or
+arm64, verified against the release `checksums.txt`. Upgrade with
+`brew upgrade mdsmith`. To tap once and then install by short name:
+
+```bash
+brew tap jeduden/mdsmith
+brew install mdsmith
+```
 
 ## mise
 

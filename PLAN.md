@@ -73,7 +73,7 @@ footer: |
 | 142 | ✅     | sonnet | [Content rules for prose constraints](plan/142_schema-content-constraints.md)                                                           |
 | 143 | ✅     | sonnet | [Schema cross-references, acronyms, and index](plan/143_schema-cross-refs-acronyms-index.md)                                            |
 | 144 | ✅     | sonnet | [Numeric sort for `<?catalog?>` directive](plan/144_catalog-numeric-sort.md)                                                            |
-| 145 | 🔲     | opus   | [Publish mdsmith via asdf and mise registry submissions](plan/145_asdf-mise-registry-submissions.md)                                    |
+| 145 | 🔳     | opus   | [Publish mdsmith via asdf and mise registry submissions](plan/145_asdf-mise-registry-submissions.md)                                    |
 | 146 | ✅     | opus   | [Schema engine — sources, scope tree, per-scope rules](plan/146_inline-schema-in-kinds.md)                                              |
 | 147 | ✅     | opus   | [Actionable schema diagnostics for MDS020](plan/147_actionable-schema-diagnostics.md)                                                   |
 | 148 | ✅     | sonnet | [Named field-type shortcuts for inline schemas](plan/148_named-field-type-shortcuts.md)                                                 |

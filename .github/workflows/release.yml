@@ -586,6 +586,30 @@ jobs:
           fi
           echo "channel=${{ matrix.channel }}: $got"
 
+  # Nudge the Homebrew tap to bump its formula to this version right
+  # away. Best-effort glue, not part of the gated publish: the tap at
+  # jeduden/homebrew-mdsmith also self-bumps on a daily schedule, so a
+  # missing token or a failed dispatch never blocks a release. The
+  # token is a fine-grained PAT with Contents: write on the tap repo,
+  # stored as the HOMEBREW_TAP_DISPATCH_TOKEN repo secret.
+  notify-homebrew-tap:
+    needs: [release]
+    if: *release_repo_trigger_ok
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch a formula bump to the tap
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_DISPATCH_TOKEN }}
+          VERSION: ${{ env.VERSION }}
+        run: |
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "HOMEBREW_TAP_DISPATCH_TOKEN unset; the tap will self-bump on its daily schedule."
+            exit 0
+          fi
+          gh api repos/jeduden/homebrew-mdsmith/dispatches \
+            -f event_type=mdsmith-release \
+            -f "client_payload[version]=${VERSION#v}"
+
   # A tool release also ships the website. The deploy itself lives
   # in pages.yml (its own workflow, also triggered by docs-only
   # pushes to main and by manual workflow_dispatch); this job just
