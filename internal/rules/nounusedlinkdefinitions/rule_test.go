@@ -269,8 +269,8 @@ func TestApplySettings_SliceAny(t *testing.T) {
 	require.NoError(t, r.ApplySettings(map[string]any{
 		"ignored-labels": []any{"foo", "BAR"},
 	}))
-	assert.True(t, r.ignoredLabels["foo"])
-	assert.True(t, r.ignoredLabels["bar"])
+	assert.Contains(t, r.ignoredLabels, "foo")
+	assert.Contains(t, r.ignoredLabels, "bar")
 }
 
 func TestApplySettings_SliceString(t *testing.T) {
@@ -278,7 +278,7 @@ func TestApplySettings_SliceString(t *testing.T) {
 	require.NoError(t, r.ApplySettings(map[string]any{
 		"ignored-labels": []string{"Baz"},
 	}))
-	assert.True(t, r.ignoredLabels["baz"])
+	assert.Contains(t, r.ignoredLabels, "baz")
 }
 
 func TestApplySettings_Empty(t *testing.T) {
@@ -422,7 +422,7 @@ func TestScanRefDefLine_WhitespaceOnlyDestination(t *testing.T) {
 // production AST never feeds nil to the walker, but unit-test
 // callers (and future struct-literal *File values) might.
 func TestCollectUsedLabelsInto_NilNode(t *testing.T) {
-	used := map[string]bool{}
+	used := map[string]struct{}{}
 	collectUsedLabelsInto(nil, used)
 	assert.Empty(t, used)
 }

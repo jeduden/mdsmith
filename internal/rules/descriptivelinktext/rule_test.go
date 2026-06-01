@@ -159,7 +159,7 @@ func TestCachedBannedSet(t *testing.T) {
 	r := &Rule{Banned: []string{"Click Here", "MORE"}}
 
 	first := r.cachedBannedSet()
-	require.Equal(t, map[string]bool{"click here": true, "more": true}, first,
+	require.Equal(t, map[string]struct{}{"click here": {}, "more": {}}, first,
 		"lookup keys must be the normalised form of r.Banned")
 
 	second := r.cachedBannedSet()
@@ -175,7 +175,7 @@ func TestCachedBannedSet(t *testing.T) {
 		reflect.ValueOf(first).Pointer(),
 		reflect.ValueOf(third).Pointer(),
 		"ApplySettings must clear the cache so the next call rebuilds")
-	assert.Equal(t, map[string]bool{"x": true}, third)
+	assert.Equal(t, map[string]struct{}{"x": {}}, third)
 
 	// An empty Banned yields a non-nil empty map; CheckNode short-
 	// circuits on len(r.Banned)==0 before calling cachedBannedSet, so

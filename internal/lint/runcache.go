@@ -112,7 +112,7 @@ func (c *RunCache) Includes(absPath string, build func() []string) []string {
 // per-target lookup; on link-heavy corpora it collapses the
 // per-host-file goldmark parse + AST walk to one walk per (Run,
 // target).
-func (c *RunCache) Anchors(absPath string, build func() (map[string]bool, error)) (map[string]bool, error) {
+func (c *RunCache) Anchors(absPath string, build func() (map[string]struct{}, error)) (map[string]struct{}, error) {
 	ei, _ := c.anchors.LoadOrStore(absPath, &anchorEntry{})
 	e := ei.(*anchorEntry)
 	e.mu.Lock()
@@ -138,7 +138,7 @@ func (c *RunCache) Anchors(absPath string, build func() (map[string]bool, error)
 type anchorEntry struct {
 	mu      sync.Mutex
 	done    bool
-	anchors map[string]bool
+	anchors map[string]struct{}
 }
 
 // Wikilinks returns build's result keyed by rootKey, computed at

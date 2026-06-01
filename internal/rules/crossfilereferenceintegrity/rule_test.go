@@ -607,8 +607,8 @@ func TestCheck_AnchorOnlyLinkMissingHeading(t *testing.T) {
 // when the result is already present in the cache.
 func TestAnchorsForFile_CacheHit(t *testing.T) {
 	// Pre-populate the cache with a known anchor set.
-	cached := map[string]bool{"intro": true}
-	cache := map[string]map[string]bool{
+	cached := map[string]struct{}{"intro": {}}
+	cache := map[string]map[string]struct{}{
 		"mykey": cached,
 	}
 
@@ -623,12 +623,12 @@ func TestAnchorsForFile_CacheHit(t *testing.T) {
 
 	result, err := anchorsForFile(nil, tf, cache)
 	require.NoError(t, err)
-	require.True(t, result["intro"], "cache hit must return the pre-populated anchors")
+	require.Contains(t, result, "intro", "cache hit must return the pre-populated anchors")
 }
 
 // TestAnchorsForFile_ReadError exercises the read() error path in anchorsForFile.
 func TestAnchorsForFile_ReadError(t *testing.T) {
-	cache := map[string]map[string]bool{}
+	cache := map[string]map[string]struct{}{}
 	readErr := errors.New("simulated read error")
 	tf := targetFile{
 		cacheKey: "errkey",
@@ -1447,13 +1447,13 @@ func TestCheck_Wikilinks_UnreadableTarget(t *testing.T) {
 }
 
 func TestWikilinkAnchorsForTarget_CacheHit(t *testing.T) {
-	cache := map[string]map[string]bool{
-		"wikilink:notes.md": {"x": true},
+	cache := map[string]map[string]struct{}{
+		"wikilink:notes.md": {"x": {}},
 	}
 	f := &lint.File{}
 	got, err := wikilinkAnchorsForTarget(f, nil, "notes.md", cache)
 	require.NoError(t, err)
-	assert.True(t, got["x"])
+	assert.Contains(t, got, "x")
 }
 
 func TestWorkspaceRelativeSource_NoRootDir(t *testing.T) {

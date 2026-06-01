@@ -29,8 +29,8 @@ func TestCollectHeadingAnchors_DuplicateHeadings(t *testing.T) {
 	f, err := lint.NewFile("test.md", []byte("# Intro\n\n## Intro\n"))
 	require.NoError(t, err)
 	anchors := linkgraph.CollectAnchors(f)
-	require.True(t, anchors["intro"], "first heading should be 'intro'")
-	require.True(t, anchors["intro-1"], "second heading should be 'intro-1'")
+	require.Contains(t, anchors, "intro", "first heading should be 'intro'")
+	require.Contains(t, anchors, "intro-1", "second heading should be 'intro-1'")
 }
 
 // --- ApplySettings: bad exclude type ---

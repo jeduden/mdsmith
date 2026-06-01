@@ -146,19 +146,19 @@ func TestRunCache_ConcurrentSingleBuild(t *testing.T) {
 func TestRunCache_AnchorsBuildsOnce(t *testing.T) {
 	c := NewRunCache()
 	var calls int32
-	anchors1, err := c.Anchors("/abs/target.md", func() (map[string]bool, error) {
+	anchors1, err := c.Anchors("/abs/target.md", func() (map[string]struct{}, error) {
 		atomic.AddInt32(&calls, 1)
-		return map[string]bool{"intro": true}, nil
+		return map[string]struct{}{"intro": {}}, nil
 	})
 	require.NoError(t, err)
-	require.True(t, anchors1["intro"])
+	require.Contains(t, anchors1, "intro")
 
-	anchors2, err := c.Anchors("/abs/target.md", func() (map[string]bool, error) {
+	anchors2, err := c.Anchors("/abs/target.md", func() (map[string]struct{}, error) {
 		atomic.AddInt32(&calls, 1)
 		return nil, nil
 	})
 	require.NoError(t, err)
-	require.True(t, anchors2["intro"])
+	require.Contains(t, anchors2, "intro")
 	require.Equal(t, int32(1), atomic.LoadInt32(&calls),
 		"Anchors build must run exactly once per absPath")
 }
@@ -172,13 +172,13 @@ func TestRunCache_AnchorsErrorIsRetryable(t *testing.T) {
 	c := NewRunCache()
 	failure := assert.AnError
 	var calls int32
-	_, err := c.Anchors("/abs/oops.md", func() (map[string]bool, error) {
+	_, err := c.Anchors("/abs/oops.md", func() (map[string]struct{}, error) {
 		atomic.AddInt32(&calls, 1)
 		return nil, failure
 	})
 	require.ErrorIs(t, err, failure)
 
-	_, err = c.Anchors("/abs/oops.md", func() (map[string]bool, error) {
+	_, err = c.Anchors("/abs/oops.md", func() (map[string]struct{}, error) {
 		atomic.AddInt32(&calls, 1)
 		return nil, failure
 	})
@@ -194,22 +194,22 @@ func TestRunCache_AnchorsErrorIsRetryable(t *testing.T) {
 func TestRunCache_AnchorsInvalidateForcesRebuild(t *testing.T) {
 	c := NewRunCache()
 	var calls int32
-	build := func(value string) func() (map[string]bool, error) {
-		return func() (map[string]bool, error) {
+	build := func(value string) func() (map[string]struct{}, error) {
+		return func() (map[string]struct{}, error) {
 			atomic.AddInt32(&calls, 1)
-			return map[string]bool{value: true}, nil
+			return map[string]struct{}{value: {}}, nil
 		}
 	}
 
 	a1, err := c.Anchors("/abs/x.md", build("v1"))
 	require.NoError(t, err)
-	require.True(t, a1["v1"])
+	require.Contains(t, a1, "v1")
 
 	c.Invalidate("/abs/x.md")
 
 	a2, err := c.Anchors("/abs/x.md", build("v2"))
 	require.NoError(t, err)
-	require.True(t, a2["v2"], "Invalidate must clear the anchors slot")
+	require.Contains(t, a2, "v2", "Invalidate must clear the anchors slot")
 	require.Equal(t, int32(2), atomic.LoadInt32(&calls),
 		"Anchors build must run again after Invalidate")
 }
@@ -225,12 +225,12 @@ func TestRunCache_AnchorsConcurrentSingleBuild(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			a, err := c.Anchors("/abs/shared.md", func() (map[string]bool, error) {
+			a, err := c.Anchors("/abs/shared.md", func() (map[string]struct{}, error) {
 				atomic.AddInt32(&calls, 1)
-				return map[string]bool{"x": true}, nil
+				return map[string]struct{}{"x": {}}, nil
 			})
 			assert.NoError(t, err)
-			assert.True(t, a["x"])
+			assert.Contains(t, a, "x")
 		}()
 	}
 	wg.Wait()

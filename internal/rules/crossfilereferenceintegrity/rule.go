@@ -65,16 +65,16 @@ type checkCtx struct {
 	resolvedRoot     string
 	resolvedSiteRoot string
 
-	selfAnchors      map[string]bool
+	selfAnchors      map[string]struct{}
 	selfAnchorsBuilt bool
-	anchorCache      map[string]map[string]bool
+	anchorCache      map[string]map[string]struct{}
 }
 
 // ensureSelfAnchors lazily builds the heading-anchor set for f.
 // The fixture's link `[other](other.md)` has no anchor and no
 // link is local-anchor, so this path stays cold; the per-Check
 // allocation collapsed from "always paid" to "only when needed".
-func (c *checkCtx) ensureSelfAnchors() map[string]bool {
+func (c *checkCtx) ensureSelfAnchors() map[string]struct{} {
 	if !c.selfAnchorsBuilt {
 		c.selfAnchors = linkgraph.CollectAnchors(c.f)
 		c.selfAnchorsBuilt = true
@@ -86,9 +86,9 @@ func (c *checkCtx) ensureSelfAnchors() map[string]bool {
 // already-resolved target-file anchor sets. The cache is only
 // queried for cross-file Markdown links with a fragment; for the
 // gate fixture the link has no fragment so the map stays nil.
-func (c *checkCtx) ensureAnchorCache() map[string]map[string]bool {
+func (c *checkCtx) ensureAnchorCache() map[string]map[string]struct{} {
 	if c.anchorCache == nil {
-		c.anchorCache = make(map[string]map[string]bool, 2)
+		c.anchorCache = make(map[string]map[string]struct{}, 2)
 		// Seed with the self-anchor entry the original eager
 		// initialisation used — preserves the cache shape for any
 		// future caller that asks via the "self" key.
@@ -147,7 +147,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 // wikilinks.
 func (r *Rule) checkWikilinks(
 	f *lint.File,
-	anchorCache map[string]map[string]bool,
+	anchorCache map[string]map[string]struct{},
 ) []lint.Diagnostic {
 	// f.FS is guaranteed non-nil by the caller (r.Check returns early
 	// otherwise), and wikilinkRoot's last fallback returns f.FS, so
@@ -178,7 +178,7 @@ func (r *Rule) checkWikilinkAnchor(
 	wl linkgraph.WikiLink,
 	resolved string,
 	root fs.FS,
-	anchorCache map[string]map[string]bool,
+	anchorCache map[string]map[string]struct{},
 ) []lint.Diagnostic {
 	if wl.Anchor == "" || !isMarkdownPath(resolved) {
 		return nil
@@ -187,7 +187,7 @@ func (r *Rule) checkWikilinkAnchor(
 	if err != nil {
 		return []lint.Diagnostic{wikilinkUnreadableTargetDiag(f.Path, wl, resolved, err, r)}
 	}
-	if anchors[linkgraph.NormalizeAnchor(wl.Anchor)] {
+	if _, ok := anchors[linkgraph.NormalizeAnchor(wl.Anchor)]; ok {
 		return nil
 	}
 	return []lint.Diagnostic{wikilinkBrokenAnchorDiag(f.Path, wl, resolved, r)}
@@ -316,8 +316,8 @@ func wikilinkAnchorsForTarget(
 	f *lint.File,
 	root fs.FS,
 	resolved string,
-	cache map[string]map[string]bool,
-) (map[string]bool, error) {
+	cache map[string]map[string]struct{},
+) (map[string]struct{}, error) {
 	key := "wikilink:" + resolved
 	if anchors, ok := cache[key]; ok {
 		return anchors, nil
@@ -506,7 +506,7 @@ func (r *Rule) checkRelativeTarget(
 	if err != nil {
 		return []lint.Diagnostic{unreadableTargetDiag(ctx.f.Path, line, col, r, target.Raw, err)}
 	}
-	if targetAnchors[linkgraph.NormalizeAnchor(target.Anchor)] {
+	if _, ok := targetAnchors[linkgraph.NormalizeAnchor(target.Anchor)]; ok {
 		return nil
 	}
 	return []lint.Diagnostic{brokenHeadingDiag(ctx.f.Path, line, col, r, target.Raw)}
@@ -538,7 +538,7 @@ func targetExists(f *lint.File, linkPath, resolvedRoot string) bool {
 func checkLocalAnchor(
 	ctx *checkCtx, line, col int, target linkgraph.Target,
 ) []lint.Diagnostic {
-	if ctx.ensureSelfAnchors()[linkgraph.NormalizeAnchor(target.Anchor)] {
+	if _, ok := ctx.ensureSelfAnchors()[linkgraph.NormalizeAnchor(target.Anchor)]; ok {
 		return nil
 	}
 	return []lint.Diagnostic{brokenHeadingDiag(ctx.f.Path, line, col, ctx.rule, target.Raw)}
@@ -768,7 +768,7 @@ type targetFile struct {
 	read        func() ([]byte, error)
 }
 
-func anchorsForFile(host *lint.File, target targetFile, cache map[string]map[string]bool) (map[string]bool, error) {
+func anchorsForFile(host *lint.File, target targetFile, cache map[string]map[string]struct{}) (map[string]struct{}, error) {
 	if anchors, ok := cache[target.cacheKey]; ok {
 		return anchors, nil
 	}
@@ -784,7 +784,7 @@ func anchorsForFile(host *lint.File, target targetFile, cache map[string]map[str
 	// host file. That matches the previous per-Check cache's
 	// semantics, where an unreadable target produced a diagnostic on
 	// the host but did not poison the cache for siblings.
-	var anchors map[string]bool
+	var anchors map[string]struct{}
 	var err error
 	if host != nil && host.RunCache != nil && target.runCacheKey != "" {
 		// The build closure escapes to heap (the RunCache stores it
@@ -819,7 +819,7 @@ type anchorBuilder struct {
 	target targetFile
 }
 
-func (b anchorBuilder) build() (map[string]bool, error) {
+func (b anchorBuilder) build() (map[string]struct{}, error) {
 	return buildAnchorsForTarget(b.target)
 }
 
@@ -827,7 +827,7 @@ func (b anchorBuilder) build() (map[string]bool, error) {
 // and collects the heading anchor set. Extracted so anchorsForFile
 // can call it without going through the build closure that would
 // otherwise capture `err` and escape to the heap.
-func buildAnchorsForTarget(target targetFile) (map[string]bool, error) {
+func buildAnchorsForTarget(target targetFile) (map[string]struct{}, error) {
 	data, err := target.read()
 	if err != nil {
 		return nil, err

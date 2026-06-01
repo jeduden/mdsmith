@@ -34,10 +34,10 @@ func TestAnchorsForFile_RunCacheHit(t *testing.T) {
 	}
 
 	// First call: builds and stores.
-	cache1 := map[string]map[string]bool{}
+	cache1 := map[string]map[string]struct{}{}
 	anchors1, err := anchorsForFile(host, target, cache1)
 	require.NoError(t, err)
-	require.True(t, anchors1["intro"], "expected the anchor slug from `# Intro`")
+	require.Contains(t, anchors1, "intro", "expected the anchor slug from `# Intro`")
 
 	// Second call (fresh per-Check cache, same host/RunCache):
 	// the read function must NOT fire — the cache resolves it.
@@ -46,10 +46,10 @@ func TestAnchorsForFile_RunCacheHit(t *testing.T) {
 		called = true
 		return nil, nil
 	}
-	cache2 := map[string]map[string]bool{}
+	cache2 := map[string]map[string]struct{}{}
 	anchors2, err := anchorsForFile(host, target, cache2)
 	require.NoError(t, err)
-	require.True(t, anchors2["intro"])
+	require.Contains(t, anchors2, "intro")
 	require.False(t, called,
 		"RunCache hit must skip the target.read() call on the second invocation")
 }
@@ -73,11 +73,11 @@ func TestAnchorsForFile_RunCacheReadError(t *testing.T) {
 		},
 	}
 
-	_, err1 := anchorsForFile(host, target, map[string]map[string]bool{})
+	_, err1 := anchorsForFile(host, target, map[string]map[string]struct{}{})
 	require.ErrorIs(t, err1, errReadFailed)
 	require.Equal(t, 1, calls)
 
-	_, err2 := anchorsForFile(host, target, map[string]map[string]bool{})
+	_, err2 := anchorsForFile(host, target, map[string]map[string]struct{}{})
 	require.ErrorIs(t, err2, errReadFailed)
 	require.Equal(t, 2, calls,
 		"a read error must not be cached — the retry on the next host file should re-call read()")
@@ -102,7 +102,7 @@ func TestAnchorsForFile_EmptyRunCacheKeySkipsRunCache(t *testing.T) {
 
 	// Two separate per-Check caches simulate two host files.
 	// Without RunCache, each one calls read() independently.
-	cache1 := map[string]map[string]bool{}
+	cache1 := map[string]map[string]struct{}{}
 	_, err := anchorsForFile(host, target, cache1)
 	require.NoError(t, err)
 
@@ -111,7 +111,7 @@ func TestAnchorsForFile_EmptyRunCacheKeySkipsRunCache(t *testing.T) {
 		calls++
 		return []byte("# Intro\n"), nil
 	}
-	cache2 := map[string]map[string]bool{}
+	cache2 := map[string]map[string]struct{}{}
 	_, err = anchorsForFile(host, target, cache2)
 	require.NoError(t, err)
 	require.Equal(t, 1, calls,

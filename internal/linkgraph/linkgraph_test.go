@@ -102,10 +102,10 @@ func TestExtractLinks_LinesAreBodyRelative(t *testing.T) {
 func TestCollectAnchors(t *testing.T) {
 	f := newFile(t, "# Intro\n\n## Setup\n\n## Setup\n\n##   \n")
 	anchors := CollectAnchors(f)
-	assert.True(t, anchors["intro"])
-	assert.True(t, anchors["setup"])
-	assert.True(t, anchors["setup-1"])
-	assert.False(t, anchors[""], "empty-text headings produce no slug")
+	assert.Contains(t, anchors, "intro")
+	assert.Contains(t, anchors, "setup")
+	assert.Contains(t, anchors, "setup-1")
+	assert.NotContains(t, anchors, "", "empty-text headings produce no slug")
 }
 
 // TestCollectAnchors_CollisionWithPreNumberedHeading guards against
@@ -120,9 +120,9 @@ func TestCollectAnchors_CollisionWithPreNumberedHeading(t *testing.T) {
 	// All three headings must appear under distinct anchors. The
 	// canonical GitHub behavior is to keep numbering until no
 	// collision exists, so the third heading becomes `intro-1-1`.
-	assert.True(t, anchors["intro"], "first heading keeps the plain slug")
-	assert.True(t, anchors["intro-1"], "second heading uses the next free suffix")
-	assert.True(t, anchors["intro-1-1"], "third heading must not collide with the second")
+	assert.Contains(t, anchors, "intro", "first heading keeps the plain slug")
+	assert.Contains(t, anchors, "intro-1", "second heading uses the next free suffix")
+	assert.Contains(t, anchors, "intro-1-1", "third heading must not collide with the second")
 }
 
 func TestCollectAnchors_NilFile(t *testing.T) {
@@ -178,7 +178,7 @@ func TestCollectAnchors_AstStringHeading(t *testing.T) {
 	f := &lint.File{AST: root, Source: nil}
 
 	anchors := CollectAnchors(f)
-	assert.True(t, anchors["hello-world"], "ast.String value should drive the slug")
+	assert.Contains(t, anchors, "hello-world", "ast.String value should drive the slug")
 }
 
 // TestExtractLinks_LinkWithNoTextChildren covers the linkPosition

@@ -171,13 +171,13 @@ func ExtractImages(f *lint.File) []Link {
 // `intro-1-1`) rather than two distinct ones with a collision.
 // The set keys are the slugified anchor names; values are always true
 // so callers can use map-lookup.
-func CollectAnchors(f *lint.File) map[string]bool {
-	anchors := make(map[string]bool)
+func CollectAnchors(f *lint.File) map[string]struct{} {
+	anchors := make(map[string]struct{})
 	if f == nil || f.AST == nil {
 		return anchors
 	}
 	for _, item := range mdtext.CollectTOCItems(f.AST, f.Source) {
-		anchors[item.Anchor] = true
+		anchors[item.Anchor] = struct{}{}
 	}
 	return anchors
 }
