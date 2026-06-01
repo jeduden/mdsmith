@@ -10,9 +10,27 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/githooks"
+	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestMergeDriverRules_ExcludesGitHookSync(t *testing.T) {
+	// Precondition: MDS048 (git-hook-sync) is registered, so excluding
+	// it is meaningful rather than a silent no-op.
+	require.NotNil(t, rule.ByID("MDS048"),
+		"precondition: MDS048 must be registered")
+
+	rules := mergeDriverRules()
+	for _, r := range rules {
+		assert.NotEqual(t, "MDS048", r.ID(),
+			"the merge driver runs inside `git merge` (which holds "+
+				".git/index.lock); MDS048's Fix does an in-process `git add` "+
+				"that races it, so the merge driver must not run MDS048")
+	}
+	assert.Len(t, rules, len(rule.All())-1,
+		"mergeDriverRules must drop exactly the git-hook-sync rule")
+}
 
 func TestStripSectionConflicts_Diff3CatalogConflict(t *testing.T) {
 	// diff3-style conflict markers include a ||||||| base section
