@@ -261,8 +261,8 @@ from the 2026-05-19 audit closed (200,
 
 - **plan/203** (🔲) — server.go and
   symbols.go still unsplit. server.go
-  now 1 843 lines (was 1 536 when
-  first flagged); symbols.go 1 386.
+  now 1 867 lines (was 1 536 when
+  first flagged); symbols.go 1 394.
 - **plan/204** (🔲) —
   `internal/fix → internal/engine`
   inversion unresolved.
