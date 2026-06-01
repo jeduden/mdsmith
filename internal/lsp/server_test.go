@@ -4049,5 +4049,25 @@ func TestWithinRoot(t *testing.T) {
 	assert.True(t, withinRoot("/work", "/work"), "root itself counts")
 	assert.False(t, withinRoot("/work", "/etc/passwd"), "sibling escapes")
 	assert.False(t, withinRoot("relative", "/abs/path"),
-		"Rel cannot relate a relative root to an absolute path → outside")
+		"a relative root and an absolute path resolve to disjoint subtrees → outside")
+}
+
+// TestWithinRoot_SymlinkEscapeRejected pins the symlink-safe behaviour
+// (Copilot review): a real file inside the root is contained, but an
+// in-root symlink that resolves outside the root is rejected — a purely
+// lexical check would have accepted it.
+func TestWithinRoot_SymlinkEscapeRejected(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	inside := filepath.Join(root, "proto.md")
+	require.NoError(t, os.WriteFile(inside, []byte("x"), 0o600))
+	assert.True(t, withinRoot(root, inside), "real in-root file is contained")
+
+	outside := t.TempDir()
+	secret := filepath.Join(outside, "secret.md")
+	require.NoError(t, os.WriteFile(secret, []byte("s"), 0o600))
+	link := filepath.Join(root, "evil.md")
+	require.NoError(t, os.Symlink(secret, link))
+	assert.False(t, withinRoot(root, link),
+		"an in-root symlink resolving outside the root is rejected")
 }

@@ -123,14 +123,30 @@ func relatedURI(file, root string) (string, bool) {
 }
 
 // withinRoot reports whether path resolves inside root (root itself
-// counts). A "../" escape, or a path on a different volume that Rel
-// cannot relate, is treated as outside.
+// counts). Both sides are absolutised and symlink-resolved first, so an
+// in-root symlink that points outside the workspace cannot bypass the
+// containment check — matching the symlink-safe guard the schema index
+// writer uses (internal/schema.resolveDir). A "../" escape, or a path
+// on a different volume that Rel cannot relate, is treated as outside.
 func withinRoot(root, path string) bool {
-	rel, err := filepath.Rel(root, path)
-	if err != nil {
-		return false
+	rel, err := filepath.Rel(resolveSymlinks(root), resolveSymlinks(path))
+	return err == nil && rel != ".." &&
+		!strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// resolveSymlinks returns p as an absolute, symlink-resolved path so a
+// lexical containment check cannot be fooled by a symlink. EvalSymlinks
+// needs the path to exist; when it does not (a stale or not-yet-created
+// reference), this falls back to the lexical absolute path — best-effort,
+// mirroring internal/schema.resolveDir. filepath.Abs only fails without
+// a working directory, an unrecoverable state, so its error is ignored
+// and Clean carries the fallback.
+func resolveSymlinks(p string) string {
+	abs, _ := filepath.Abs(p)
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		return resolved
 	}
-	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+	return filepath.Clean(abs)
 }
 
 // isAbsPath reports whether p is absolute on any host OS — including
