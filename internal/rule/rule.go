@@ -29,6 +29,18 @@ type DryRunPredictor interface {
 	PredictDryRunFix(f *lint.File) []lint.Diagnostic
 }
 
+// GitIndexMutator is implemented by a rule whose Fix mutates the git
+// index (e.g. an in-process `git add`). The merge driver excludes
+// such rules: it runs inside `git merge`, which holds
+// `.git/index.lock` for the whole merge, so a second index writer
+// there races the lock (see cmd/mdsmith/mergedriver.go). MDS048
+// (git-hook-sync) is the current implementer.
+type GitIndexMutator interface {
+	// MutatesGitIndex reports whether the rule's Fix writes the git
+	// index.
+	MutatesGitIndex() bool
+}
+
 // Configurable is implemented by rules that have user-tunable settings.
 type Configurable interface {
 	ApplySettings(settings map[string]any) error

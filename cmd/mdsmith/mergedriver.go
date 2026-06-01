@@ -328,30 +328,27 @@ func readAndRestore(pathname string, backup []byte, backupErr error, mode os.Fil
 	return fixed, 0
 }
 
-// gitHookSyncRuleID is MDS048 (git-hook-sync), the only rule whose
-// Fix mutates the git index — it stages .gitattributes via an
-// in-process `git add`. See mergeDriverRules.
-const gitHookSyncRuleID = "MDS048"
-
 // mergeDriverRules is the fix rule set the merge driver runs: every
-// registered rule except the git-index-mutating git-hook-sync rule
-// (MDS048).
+// registered rule except those that mutate the git index (rules
+// implementing rule.GitIndexMutator — today only MDS048,
+// git-hook-sync).
 //
 // git invokes the merge driver from inside `git merge`, which holds
-// `.git/index.lock` for the whole merge. MDS048's Fix runs an
-// in-process `git add -- .gitattributes` (githooks.StageGitattributes);
-// executed here it is a second index writer racing the parent
-// `git merge` for that lock, which can leave a stale `.git/index.lock`
-// that fails the staging step and bounces the merge queue. The merge
-// driver only needs the content-regenerating rules to resolve a
-// conflict, so the index-mutating rule is dropped; the
-// pre-merge-commit hook still runs MDS048 afterward, when git no
-// longer holds the lock.
+// `.git/index.lock` for the whole merge. A rule whose Fix runs an
+// in-process `git add` (e.g. githooks.StageGitattributes) would be a
+// second index writer racing the parent `git merge` for that lock,
+// which can leave a stale `.git/index.lock` that fails the staging
+// step and bounces the merge queue. The merge driver only needs the
+// content-regenerating rules to resolve a conflict, so index-mutating
+// rules are dropped; the pre-merge-commit hook still runs them
+// afterward, when git no longer holds the lock. Filtering by the
+// capability interface (not a rule ID) excludes any future
+// index-mutating rule automatically.
 func mergeDriverRules() []rule.Rule {
 	all := rule.All()
 	out := make([]rule.Rule, 0, len(all))
 	for _, r := range all {
-		if r.ID() == gitHookSyncRuleID {
+		if m, ok := r.(rule.GitIndexMutator); ok && m.MutatesGitIndex() {
 			continue
 		}
 		out = append(out, r)

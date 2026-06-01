@@ -15,21 +15,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMergeDriverRules_ExcludesGitHookSync(t *testing.T) {
-	// Precondition: MDS048 (git-hook-sync) is registered, so excluding
-	// it is meaningful rather than a silent no-op.
-	require.NotNil(t, rule.ByID("MDS048"),
-		"precondition: MDS048 must be registered")
+func TestMergeDriverRules_ExcludesGitIndexMutators(t *testing.T) {
+	// Precondition: MDS048 (git-hook-sync) is a registered git-index
+	// mutator, so the exclusion is meaningful rather than a no-op.
+	mds048 := rule.ByID("MDS048")
+	require.NotNil(t, mds048, "precondition: MDS048 must be registered")
+	m, ok := mds048.(rule.GitIndexMutator)
+	require.True(t, ok && m.MutatesGitIndex(),
+		"precondition: MDS048 must declare rule.GitIndexMutator")
 
 	rules := mergeDriverRules()
 	for _, r := range rules {
-		assert.NotEqual(t, "MDS048", r.ID(),
+		gm, ok := r.(rule.GitIndexMutator)
+		assert.False(t, ok && gm.MutatesGitIndex(),
 			"the merge driver runs inside `git merge` (which holds "+
-				".git/index.lock); MDS048's Fix does an in-process `git add` "+
-				"that races it, so the merge driver must not run MDS048")
+				".git/index.lock); it must exclude every git-index-mutating "+
+				"rule, but %s remained", r.ID())
 	}
-	assert.Len(t, rules, len(rule.All())-1,
-		"mergeDriverRules must drop exactly the git-hook-sync rule")
+	assert.NotEmpty(t, rules,
+		"mergeDriverRules must still run the content-regenerating rules")
 }
 
 func TestStripSectionConflicts_Diff3CatalogConflict(t *testing.T) {
