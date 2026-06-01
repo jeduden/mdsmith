@@ -27,6 +27,19 @@ type jsonDiagnostic struct {
 	// deprecation diagnostics stay unchanged on the wire.
 	Deprecated bool   `json:"deprecated,omitempty"`
 	ReplacedBy string `json:"replaced_by,omitempty"`
+	// RelatedLocations and DocURL mirror lint.Diagnostic's plan-221
+	// fields so CI scripts can read the schema-constraint location and
+	// the rule-doc URL without parsing the message. Both omitempty so
+	// diagnostics that carry neither stay unchanged on the wire.
+	RelatedLocations []jsonRelatedLocation `json:"related_locations,omitempty"`
+	DocURL           string                `json:"doc_url,omitempty"`
+}
+
+type jsonRelatedLocation struct {
+	File    string `json:"file,omitempty"`
+	Line    int    `json:"line,omitempty"`
+	Column  int    `json:"column,omitempty"`
+	Message string `json:"message"`
 }
 
 type jsonExplanation struct {
@@ -46,23 +59,40 @@ func (f *JSONFormatter) Format(w io.Writer, diagnostics []lint.Diagnostic) error
 	items := make([]jsonDiagnostic, 0, len(diagnostics))
 	for _, d := range diagnostics {
 		items = append(items, jsonDiagnostic{
-			File:            d.File,
-			Line:            d.Line,
-			Column:          d.Column,
-			Rule:            d.RuleID,
-			Name:            d.RuleName,
-			Severity:        string(d.Severity),
-			Message:         d.Message,
-			SourceLines:     d.SourceLines,
-			SourceStartLine: d.SourceStartLine,
-			Explanation:     explanationToJSON(d.Explanation),
-			Deprecated:      d.Deprecated,
-			ReplacedBy:      d.ReplacedBy,
+			File:             d.File,
+			Line:             d.Line,
+			Column:           d.Column,
+			Rule:             d.RuleID,
+			Name:             d.RuleName,
+			Severity:         string(d.Severity),
+			Message:          d.Message,
+			SourceLines:      d.SourceLines,
+			SourceStartLine:  d.SourceStartLine,
+			Explanation:      explanationToJSON(d.Explanation),
+			Deprecated:       d.Deprecated,
+			ReplacedBy:       d.ReplacedBy,
+			RelatedLocations: relatedToJSON(d.RelatedLocations),
+			DocURL:           d.DocURL,
 		})
 	}
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(items)
+}
+
+// relatedToJSON maps the structured related locations onto their JSON
+// form. Returns nil (so omitempty fires) when there are none.
+func relatedToJSON(locs []lint.RelatedLocation) []jsonRelatedLocation {
+	if len(locs) == 0 {
+		return nil
+	}
+	out := make([]jsonRelatedLocation, 0, len(locs))
+	for _, l := range locs {
+		out = append(out, jsonRelatedLocation{
+			File: l.File, Line: l.Line, Column: l.Column, Message: l.Message,
+		})
+	}
+	return out
 }
 
 func explanationToJSON(e *lint.Explanation) *jsonExplanation {

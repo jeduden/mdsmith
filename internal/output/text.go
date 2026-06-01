@@ -66,11 +66,61 @@ func (f *TextFormatter) Format(w io.Writer, diagnostics []lint.Diagnostic) error
 			return err
 		}
 
+		if err := f.formatRelated(w, d.RelatedLocations); err != nil {
+			return err
+		}
+
 		if err := f.formatExplanation(w, d.Explanation); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// formatRelated writes one dimmed trailer line per related location,
+// e.g. "  ↳ plan/proto.md:4 — schema requires one of: ...". For an
+// MDS020 diagnostic this is where the schema reference surfaces,
+// sourced from the structured RelatedLocations rather than the message
+// body. File, line, and message can carry user-controlled text (schema
+// paths, expected vocabularies), so each piece is sanitized before it
+// is joined into the single-line trailer.
+func (f *TextFormatter) formatRelated(w io.Writer, locs []lint.RelatedLocation) error {
+	for _, loc := range locs {
+		body := relatedLine(loc)
+		if body == "" {
+			continue
+		}
+		var err error
+		if f.Color {
+			_, err = fmt.Fprintf(w, "  ↳ \033[2m%s\033[0m\n", body)
+		} else {
+			_, err = fmt.Fprintf(w, "  ↳ %s\n", body)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// relatedLine renders the "<file>:<line> — <message>" body for one
+// related location. The location is omitted when File is empty, the
+// ":<line>" is omitted when Line is 0, and the " — " separator appears
+// only when both a location and a message are present.
+func relatedLine(loc lint.RelatedLocation) string {
+	where := sanitizeControl(loc.File)
+	if where != "" && loc.Line > 0 {
+		where += ":" + strconv.Itoa(loc.Line)
+	}
+	msg := sanitizeControl(loc.Message)
+	switch {
+	case where != "" && msg != "":
+		return where + " — " + msg
+	case where != "":
+		return where
+	default:
+		return msg
+	}
 }
 
 // formatExplanation writes a one-line trailer naming the rule and
