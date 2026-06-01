@@ -9,19 +9,23 @@ maintainability: null
 markdownlint:
   - id: MD026
     name: no-trailing-punctuation
+    partial: false
     default: true
 rumdl:
   - id: MD026
     name: no-trailing-punctuation
+    partial: false
     default: true
 mado:
   - id: MD026
     name: no-trailing-punctuation
+    partial: false
     default: true
 panache: []
 obsidian-linter:
   - id: remove-trailing-punctuation-in-heading
     name: remove-trailing-punctuation-in-heading
+    partial: false
     default: false
 ---
 # MDS017: no-trailing-punctuation-in-heading

@@ -9,9 +9,11 @@ maintainability: null
 markdownlint:
   - id: MD018
     name: no-missing-space-atx
+    partial: false
     default: true
   - id: MD019
     name: no-multiple-space-atx
+    partial: false
     default: true
   - id: MD020
     name: no-missing-space-closed-atx
@@ -19,16 +21,20 @@ markdownlint:
     default: true
   - id: MD021
     name: no-multiple-space-closed-atx
+    partial: false
     default: true
   - id: MD023
     name: heading-start-left
+    partial: false
     default: true
 rumdl:
   - id: MD018
     name: no-space-atx
+    partial: false
     default: true
   - id: MD019
     name: multiple-space-atx
+    partial: false
     default: true
   - id: MD020
     name: no-space-closed-atx
@@ -36,16 +42,20 @@ rumdl:
     default: true
   - id: MD021
     name: multiple-space-closed-atx
+    partial: false
     default: true
   - id: MD023
     name: heading-start-left
+    partial: false
     default: true
 mado:
   - id: MD018
     name: no-missing-space-atx
+    partial: false
     default: true
   - id: MD019
     name: no-multiple-space-atx
+    partial: false
     default: true
   - id: MD020
     name: no-missing-space-closed-atx
@@ -53,9 +63,11 @@ mado:
     default: false
   - id: MD021
     name: no-multiple-space-closed-atx
+    partial: false
     default: true
   - id: MD023
     name: heading-start-left
+    partial: false
     default: true
 panache: []
 obsidian-linter:

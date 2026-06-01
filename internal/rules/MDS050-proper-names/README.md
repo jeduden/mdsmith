@@ -9,10 +9,12 @@ maintainability: null
 markdownlint:
   - id: MD044
     name: proper-names
+    partial: false
     default: true
 rumdl:
   - id: MD044
     name: proper-names
+    partial: false
     default: true
 mado: []
 panache: []

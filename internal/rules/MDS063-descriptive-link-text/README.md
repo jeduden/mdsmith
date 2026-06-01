@@ -11,10 +11,12 @@ maintainability: null
 markdownlint:
   - id: MD059
     name: descriptive-link-text
+    partial: false
     default: true
 rumdl:
   - id: MD059
     name: link-text
+    partial: false
     default: true
 mado: []
 panache: []

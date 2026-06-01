@@ -9,14 +9,17 @@ maintainability: null
 markdownlint:
   - id: MD025
     name: single-h1
+    partial: false
     default: true
 rumdl:
   - id: MD025
     name: single-title
+    partial: false
     default: true
 mado:
   - id: MD025
     name: single-h1
+    partial: false
     default: true
 panache: []
 obsidian-linter: []

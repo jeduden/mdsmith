@@ -5,11 +5,11 @@ status: '"ready" | "not-ready"'
 description: 'string & != ""'
 nature: '"directive" | "generator" | "content" | "style" | "structure"'
 maintainability: '{signal: string & != "", fix: string & != "", "for-diagnostic"?: bool | *false} | null'
-markdownlint: '[...{id: =~"^MD[0-9]{3}$", name: string & != "", partial?: bool | *false, default: bool}]'
-rumdl: '[...{id: =~"^MD[0-9]{3}$", name: string & != "", partial?: bool | *false, default: bool}]'
-mado: '[...{id: =~"^MD[0-9]{3}$", name: string & != "", partial?: bool | *false, default: bool}]'
-panache: '[...{id: =~"^[a-z][a-z0-9-]*$", name: string & != "", partial?: bool | *false, default: bool}]'
-obsidian-linter: '[...{id: =~"^[a-z][a-z0-9-]*$", name: string & != "", partial?: bool | *false, default: bool}]'
+markdownlint: '[...{id: =~"^MD[0-9]{3}$", name: string & != "", partial: bool, default: bool}]'
+rumdl: '[...{id: =~"^MD[0-9]{3}$", name: string & != "", partial: bool, default: bool}]'
+mado: '[...{id: =~"^MD[0-9]{3}$", name: string & != "", partial: bool, default: bool}]'
+panache: '[...{id: =~"^[a-z][a-z0-9-]*$", name: string & != "", partial: bool, default: bool}]'
+obsidian-linter: '[...{id: =~"^[a-z][a-z0-9-]*$", name: string & != "", partial: bool, default: bool}]'
 category: '"accessibility" | "code" | "directive" | "heading" | "line" | "link" | "list" | "prose" | "structural" | "table" | "whitespace"'
 ---
 # {id}: {name}
@@ -25,12 +25,12 @@ category: '"accessibility" | "code" | "directive" | "heading" | "line" | "link" 
      The `markdownlint:`, `rumdl:`, `mado:`, `panache:`, and
      `obsidian-linter:` keys each list the peer linter's rules
      that this mdsmith rule covers. Each entry has `id:`,
-     `name:`, and a required `default:` (whether the peer linter
-     ships the rule enabled by default upstream);
-     `partial: true` marks an incomplete cover. These per-rule
-     front-matter blocks are the source of truth —
-     `mdsmith-release sync-coverage-matrix` renders
-     docs/research/markdownlint-coverage/README.md from them.
+     `name:`, a required `partial: bool` (true when the mdsmith
+     rule only partly covers the peer check), and a required
+     `default:` (whether the peer linter ships the rule enabled
+     by default upstream). These per-rule front-matter blocks are
+     the source of truth for the coverage matrix at
+     docs/research/markdownlint-coverage/README.md.
      Set the key to `[]` (empty list) for tools that have no
      analog rule; the schema no longer accepts `null` here.
      Repeat the description verbatim. Use prescriptive voice,

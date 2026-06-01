@@ -9,14 +9,17 @@ maintainability: null
 markdownlint:
   - id: MD038
     name: no-space-in-code
+    partial: false
     default: true
 rumdl:
   - id: MD038
     name: no-space-in-code
+    partial: false
     default: true
 mado:
   - id: MD038
     name: no-space-in-code
+    partial: false
     default: true
 panache: []
 obsidian-linter: []

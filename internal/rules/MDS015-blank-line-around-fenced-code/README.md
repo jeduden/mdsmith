@@ -9,19 +9,23 @@ maintainability: null
 markdownlint:
   - id: MD031
     name: blanks-around-fences
+    partial: false
     default: true
 rumdl:
   - id: MD031
     name: blanks-around-fences
+    partial: false
     default: true
 mado:
   - id: MD031
     name: blanks-around-fences
+    partial: false
     default: true
 panache: []
 obsidian-linter:
   - id: empty-line-around-code-fences
     name: empty-line-around-code-fences
+    partial: false
     default: false
 ---
 # MDS015: blank-line-around-fenced-code

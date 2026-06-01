@@ -9,19 +9,23 @@ maintainability: null
 markdownlint:
   - id: MD009
     name: no-trailing-spaces
+    partial: false
     default: true
 rumdl:
   - id: MD009
     name: no-trailing-spaces
+    partial: false
     default: true
 mado:
   - id: MD009
     name: no-trailing-spaces
+    partial: false
     default: true
 panache: []
 obsidian-linter:
   - id: trailing-spaces
     name: trailing-spaces
+    partial: false
     default: false
 ---
 # MDS006: no-trailing-spaces

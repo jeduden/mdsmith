@@ -9,14 +9,17 @@ maintainability: null
 markdownlint:
   - id: MD024
     name: no-duplicate-heading
+    partial: false
     default: true
 rumdl:
   - id: MD024
     name: multiple-headings
+    partial: false
     default: true
 mado:
   - id: MD024
     name: no-duplicate-heading
+    partial: false
     default: true
 panache: []
 obsidian-linter: []

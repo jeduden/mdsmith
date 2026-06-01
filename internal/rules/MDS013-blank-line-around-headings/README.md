@@ -9,19 +9,23 @@ maintainability: null
 markdownlint:
   - id: MD022
     name: blanks-around-headings
+    partial: false
     default: true
 rumdl:
   - id: MD022
     name: blanks-around-headings
+    partial: false
     default: true
 mado:
   - id: MD022
     name: blanks-around-headings
+    partial: false
     default: true
 panache: []
 obsidian-linter:
   - id: heading-blank-lines
     name: heading-blank-lines
+    partial: false
     default: false
 ---
 # MDS013: blank-line-around-headings

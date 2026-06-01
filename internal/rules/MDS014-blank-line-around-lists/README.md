@@ -9,14 +9,17 @@ maintainability: null
 markdownlint:
   - id: MD032
     name: blanks-around-lists
+    partial: false
     default: true
 rumdl:
   - id: MD032
     name: blanks-around-lists
+    partial: false
     default: true
 mado:
   - id: MD032
     name: blanks-around-lists
+    partial: false
     default: false
 panache: []
 obsidian-linter:

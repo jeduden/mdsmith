@@ -11,18 +11,22 @@ maintainability: null
 markdownlint:
   - id: MD053
     name: link-image-reference-definitions
+    partial: false
     default: true
 rumdl:
   - id: MD053
     name: link-image-definitions
+    partial: false
     default: true
 mado: []
 panache:
   - id: duplicate-reference-labels
     name: duplicate-reference-labels
+    partial: false
     default: true
   - id: unused-definitions
     name: unused-definitions
+    partial: false
     default: true
 obsidian-linter: []
 ---

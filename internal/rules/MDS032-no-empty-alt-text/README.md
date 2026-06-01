@@ -9,10 +9,12 @@ maintainability: null
 markdownlint:
   - id: MD045
     name: no-alt-text
+    partial: false
     default: true
 rumdl:
   - id: MD045
     name: no-alt-text
+    partial: false
     default: true
 mado: []
 panache: []

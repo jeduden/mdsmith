@@ -11,14 +11,17 @@ maintainability: null
 markdownlint:
   - id: MD014
     name: commands-show-output
+    partial: false
     default: true
 rumdl:
   - id: MD014
     name: commands-show-output
+    partial: false
     default: true
 mado:
   - id: MD014
     name: commands-show-output
+    partial: false
     default: true
 panache: []
 obsidian-linter: []

@@ -9,15 +9,18 @@ maintainability: null
 markdownlint:
   - id: MD052
     name: reference-links-images
+    partial: false
     default: true
 rumdl:
   - id: MD052
     name: reference-links-images
+    partial: false
     default: true
 mado: []
 panache:
   - id: undefined-references
     name: undefined-references
+    partial: false
     default: true
 obsidian-linter: []
 ---

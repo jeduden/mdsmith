@@ -9,19 +9,23 @@ maintainability: null
 markdownlint:
   - id: MD012
     name: no-multiple-blanks
+    partial: false
     default: true
 rumdl:
   - id: MD012
     name: no-multiple-blanks
+    partial: false
     default: true
 mado:
   - id: MD012
     name: no-multiple-blanks
+    partial: false
     default: true
 panache: []
 obsidian-linter:
   - id: consecutive-blank-lines
     name: consecutive-blank-lines
+    partial: false
     default: false
 ---
 # MDS008: no-multiple-blanks

@@ -9,10 +9,12 @@ maintainability: null
 markdownlint:
   - id: MD054
     name: link-image-style
+    partial: false
     default: true
 rumdl:
   - id: MD054
     name: link-image-style
+    partial: false
     default: true
 mado: []
 panache: []

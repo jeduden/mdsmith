@@ -9,15 +9,18 @@ maintainability: null
 markdownlint:
   - id: MD051
     name: link-fragments
+    partial: false
     default: true
 rumdl:
   - id: MD051
     name: link-fragments
+    partial: false
     default: true
 mado: []
 panache:
   - id: undefined-anchor
     name: undefined-anchor
+    partial: false
     default: true
 obsidian-linter: []
 ---

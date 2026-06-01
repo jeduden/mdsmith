@@ -9,19 +9,23 @@ maintainability: null
 markdownlint:
   - id: MD034
     name: no-bare-urls
+    partial: false
     default: true
 rumdl:
   - id: MD034
     name: no-bare-urls
+    partial: false
     default: true
 mado:
   - id: MD034
     name: no-bare-urls
+    partial: false
     default: true
 panache: []
 obsidian-linter:
   - id: no-bare-urls
     name: no-bare-urls
+    partial: false
     default: false
 ---
 # MDS012: no-bare-urls

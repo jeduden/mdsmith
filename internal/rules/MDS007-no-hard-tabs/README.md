@@ -9,14 +9,17 @@ maintainability: null
 markdownlint:
   - id: MD010
     name: no-hard-tabs
+    partial: false
     default: true
 rumdl:
   - id: MD010
     name: no-hard-tabs
+    partial: false
     default: true
 mado:
   - id: MD010
     name: no-hard-tabs
+    partial: false
     default: true
 panache: []
 obsidian-linter: []

@@ -12,10 +12,12 @@ maintainability:
 markdownlint:
   - id: MD043
     name: required-headings
+    partial: false
     default: true
 rumdl:
   - id: MD043
     name: required-headings
+    partial: false
     default: true
 mado: []
 panache: []

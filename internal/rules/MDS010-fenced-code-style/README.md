@@ -9,10 +9,12 @@ maintainability: null
 markdownlint:
   - id: MD048
     name: code-fence-style
+    partial: false
     default: true
 rumdl:
   - id: MD048
     name: code-fence-style
+    partial: false
     default: true
 mado: []
 panache: []

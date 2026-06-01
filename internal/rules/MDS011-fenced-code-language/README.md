@@ -9,14 +9,17 @@ maintainability: null
 markdownlint:
   - id: MD040
     name: fenced-code-language
+    partial: false
     default: true
 rumdl:
   - id: MD040
     name: fenced-code-language
+    partial: false
     default: true
 mado:
   - id: MD040
     name: fenced-code-language
+    partial: false
     default: true
 panache: []
 obsidian-linter: []
