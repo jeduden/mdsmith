@@ -118,11 +118,48 @@ itself. If the kind's `path-pattern` or
 `kind-assignment` must change, that needs explicit
 maintainer consent per CLAUDE.md.
 
+### Extraction model
+
+Two generators already exist, and each fits a
+different shape. This plan uses both, and leans on
+`extract` harder than the catalog-only first draft.
+
+`<?catalog?>` aggregates many files into rows. It reads
+frontmatter only. So it stays the tool for the
+cross-file tables in install.md and release.md.
+
+`mdsmith extract` projects one schema-bound file into a
+typed tree of frontmatter plus body sections. Its
+read-side, `<?include ... extract:?>`, splices one
+typed leaf back into Markdown with no fragment file
+([plan/211](211_include-extract-value.md)). Three
+surfaces should use it:
+
+- **Typed channel bodies.** Give each channel file a
+  section schema. The body then carries structured
+  detail: per-platform commands, verify steps, and the
+  artifact list. This is the "deeper levels" payoff.
+- **Per-channel install sections.** Each `##` section
+  in install.md pulls its own command from the channel
+  file with `<?include ... extract: command ?>`. The
+  prose can no longer drift from the source.
+- **The machine data file.** `website/data/channels.yaml`
+  is the output of `mdsmith extract --format yaml`, not
+  a hand-rolled serializer. The picker reads that tree.
+
+`extract` is single-file, so the set stays one file per
+channel. That also keeps the catalog tables and the
+per-channel website pages working. The sync command
+loads each file through `extract`, the way
+`sync-messaging` already does, and assembles the array.
+
 ### Generated surfaces
 
 1. The [install.md](../docs/guides/install.md) table
    becomes a `<?catalog?>` over the directory, sorted
    by `weight`, with `command` and `audience` columns.
+   Each per-channel section below the table embeds its
+   own command with `<?include ... extract: command ?>`.
 2. The [release.md](../docs/development/release.md)
    table becomes a `<?catalog?>` with `where: mechanism
    == "push"`, so Homebrew, asdf, and mise are excluded
@@ -131,9 +168,10 @@ maintainer consent per CLAUDE.md.
    [install-everywhere.md](../docs/features/install-everywhere.md)
    pull a generated channel-name fragment via
    `<?include?>`, so the prose cannot drift.
-4. The website hero `install:` block and a new
-   `website/data/channels.yaml` are emitted by the sync
-   command below. The hero stays a curated subset via a
+4. A new `website/data/channels.yaml` is the output of
+   `mdsmith extract --format yaml`, assembled by the
+   sync command below. The hero `install:` block reads
+   that data and stays a curated subset via a
    `featured: true` flag on the chosen channels.
 
 ### Interactive picker
@@ -150,9 +188,10 @@ past a flat table.
 ### Sync command and drift gate
 
 Add a `sync-channels` command to the release tool,
-modeled on `sync-messaging`. It reads each channel file.
-It then rebuilds the include fragment and the Hugo data
-file. It also patches the hero block on the home page.
+modeled on `sync-messaging`. It loads each channel file
+through `mdsmith extract`. It writes the Hugo data file
+from that typed output. It also patches the hero block
+on the home page.
 
 The `--check` flag exits non-zero on drift. Wire it into
 [ci.yml](../.github/workflows/ci.yml) next to the
@@ -178,8 +217,10 @@ check.
    [proto.md](../docs/development/release-channels/proto.md):
    make `registry` / `credential` / `job` optional and
    add `mechanism`, `artifact`, `command`, `audience`,
-   `status`, `platforms`. Backfill the five existing
-   push files so `mdsmith check .` stays green.
+   `status`, `platforms`. Add a section schema so each
+   channel body projects through `extract`. Backfill the
+   five existing push files so `mdsmith check .` stays
+   green.
 2. Add `go.md`, `npx.md`, `uvx.md`, `pipx.md`,
    `homebrew.md`, `asdf.md`, and `mise.md` with full
    frontmatter.
@@ -187,16 +228,20 @@ check.
    [install.md](../docs/guides/install.md) channels
    table to a `<?catalog?>`; run `mdsmith fix` and
    confirm the rendered table matches today's content.
+   Embed each per-channel command with
+   `<?include ... extract: command ?>`.
 4. Convert the
    [release.md](../docs/development/release.md) table to
    a `where: mechanism == "push"` catalog.
-5. Replace the channel list in the feature card and
+5. Replace the channel-name list in the feature card and
    [install-everywhere.md](../docs/features/install-everywhere.md)
-   with a generated `<?include?>` fragment.
+   with a `<?catalog?>` of names, so the aggregate
+   prose stays generated.
 6. Add `mdsmith-release sync-channels` plus unit tests
    under [internal/release/](../internal/release),
-   following the `sync-messaging` pattern. Emit the
-   fragment, the hero patch, and the Hugo data file.
+   following the `sync-messaging` pattern. It loads each
+   file via `mdsmith extract` and writes
+   `website/data/channels.yaml` from the typed output.
 7. Add `sync-channels --check`, wire it into
    [ci.yml](../.github/workflows/ci.yml), and document
    it in
@@ -211,6 +256,9 @@ check.
   directory; no other file enumerates channels by hand.
 - [ ] `mdsmith fix` regenerates the install.md and
   release.md tables byte-for-byte from the source.
+- [ ] `mdsmith extract` projects each channel file as
+  frontmatter plus a typed body, and
+  `website/data/channels.yaml` is that output.
 - [ ] The README, the feature card, and
   [install-everywhere.md](../docs/features/install-everywhere.md)
   list Homebrew and asdf, and no surface calls asdf
