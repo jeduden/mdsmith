@@ -98,15 +98,17 @@ discriminator fields are added:
 - `artifact: "cli" | "vscode-extension" | "claude-plugin"`.
 - `command` — the install one-liner.
 - `audience` — the "Best for" cell.
-- `status: "live" | "pending"` — `pending` marks the
-  short-form asdf and mise installs still waiting on a
-  registry PR
-  ([plan/145](145_asdf-mise-registry-submissions.md)).
 - `platforms` — optional tags (`macos`, `linux`,
-  `windows`, `node`, `python`, `go`, `editor`, `agent`)
-  that drive the interactive picker's filters.
+  `windows`, `node`, `python`, `go`, `editor`) that
+  drive the interactive picker's filters.
 - `registry`, `credential`, `job` — now optional, set
   only on `mechanism: push` channels.
+
+The implementation dropped a planned `status: live |
+pending` field: every listed command works today, so the
+field was uniformly `live`. The short-form asdf and mise
+caveat ([plan/145](145_asdf-mise-registry-submissions.md))
+stays as body prose on those channel files instead.
 
 Add the seven missing files: `go.md`, `npx.md`,
 `uvx.md`, `pipx.md`, `homebrew.md`, `asdf.md`,
@@ -180,10 +182,10 @@ Add a Hugo partial `install-picker.html` to the install
 page. It reads `website/data/channels.yaml`. It filters
 channels by OS and ecosystem, using the `platforms`
 tags. It then shows the matching `command` with a copy
-button. Reuse the styling from
-[install-list.html](../website/layouts/partials/install-list.html).
-A picker keeps every channel visible as the list grows
-past a flat table.
+button, reusing the `.install-row` styling in
+[app.css](../website/static/css/app.css). A picker keeps
+every channel visible as the list grows past a flat
+table.
 
 ### Sync command and drift gate
 

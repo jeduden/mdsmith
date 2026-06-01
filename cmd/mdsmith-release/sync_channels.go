@@ -36,22 +36,34 @@ func runSyncChannels(root string, args []string) int {
 		fs.Usage()
 		return 2
 	}
-	if *check {
-		drift, err := release.CheckChannels(root)
-		if err != nil {
-			return reportError(err)
-		}
-		if drift {
-			_, _ = fmt.Fprintln(os.Stderr,
-				"channels: website/data/channels.yaml is out of date; "+
-					"run `mdsmith-release sync-channels`")
-			return 1
-		}
-		_, _ = fmt.Fprintln(os.Stdout,
-			"channels: website/data/channels.yaml matches the source")
-		return 0
+	chs, err := release.LoadChannels(root)
+	if err != nil {
+		return reportError(err)
 	}
-	changed, err := release.SyncChannels(root)
+	if *check {
+		return runSyncChannelsCheck(root, chs)
+	}
+	return runSyncChannelsApply(root, chs)
+}
+
+func runSyncChannelsCheck(root string, chs []release.Channel) int {
+	drift, err := release.CheckChannelsData(root, chs)
+	if err != nil {
+		return reportError(err)
+	}
+	if drift {
+		_, _ = fmt.Fprintln(os.Stderr,
+			"channels: website/data/channels.yaml is out of date; "+
+				"run `mdsmith-release sync-channels`")
+		return 1
+	}
+	_, _ = fmt.Fprintln(os.Stdout,
+		"channels: website/data/channels.yaml matches the source")
+	return 0
+}
+
+func runSyncChannelsApply(root string, chs []release.Channel) int {
+	changed, err := release.WriteChannelsData(root, chs)
 	if err != nil {
 		return reportError(err)
 	}

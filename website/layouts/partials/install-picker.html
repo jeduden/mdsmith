@@ -2,22 +2,27 @@
        (website/data/channels.yaml, produced by `mdsmith-release
        sync-channels` from docs/development/release-channels/*.md)
        and renders every channel with platform-tag filter chips.
-       The copy buttons reuse the global [data-copy] handler in
-       baseof.html. With JS off, every row and an inert chip row
-       still render, so all commands stay reachable. */ -}}
+       The chip set is derived from the platform tags actually
+       present in the data — known tags first in $order, then any
+       new tag a channel introduces — so adding a channel can never
+       leave a row unreachable by a missing chip. The copy buttons
+       reuse the global [data-copy] handler in baseof.html. With JS
+       off, every row and an inert chip row still render, so all
+       commands stay reachable. */ -}}
 {{- $channels := site.Data.channels -}}
-{{- $order := slice "go" "node" "python" "macos" "linux" "windows" "editor" -}}
 {{- $labels := dict "go" "Go" "node" "Node" "python" "Python" "macos" "macOS" "linux" "Linux" "windows" "Windows" "editor" "Editor" -}}
+{{- $order := slice "go" "node" "python" "macos" "linux" "windows" "editor" -}}
 {{- $present := slice -}}
-{{- range $channels -}}
-  {{- range .platforms -}}{{- $present = $present | append . -}}{{- end -}}
-{{- end -}}
+{{- range $channels }}{{ range .platforms }}{{ if not (in $present .) }}{{ $present = $present | append . }}{{ end }}{{ end }}{{ end -}}
+{{- $chips := slice -}}
+{{- range $order }}{{ if in $present . }}{{ $chips = $chips | append . }}{{ end }}{{ end -}}
+{{- range $present }}{{ if not (in $order .) }}{{ $chips = $chips | append . }}{{ end }}{{ end -}}
 <div class="install-picker" data-install-picker>
   <div class="install-filters" role="group" aria-label="Filter channels by platform">
     <button class="install-filter is-active" type="button" data-filter="all" aria-pressed="true">All</button>
-    {{- range $order }}{{ if in $present . }}
-    <button class="install-filter" type="button" data-filter="{{ . }}" aria-pressed="false">{{ index $labels . }}</button>
-    {{- end }}{{ end }}
+    {{- range $chips }}
+    <button class="install-filter" type="button" data-filter="{{ . }}" aria-pressed="false">{{ index $labels . | default (humanize .) }}</button>
+    {{- end }}
   </div>
   <div class="install-list">
     {{- range $channels }}

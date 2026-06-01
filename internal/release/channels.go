@@ -59,22 +59,61 @@ type channelDoc struct {
 	} `json:"frontmatter"`
 }
 
-// channelExtractor is a package-level seam so tests stub the
-// shell-out without driving the real mdsmith binary.
-var channelExtractor = runChannelExtract
+// channelsExtractAll is the package-level seam tests stub so they
+// run without the real mdsmith binary. Production builds mdsmith
+// once and projects every listed file through it.
+var channelsExtractAll = extractAllChannels
 
-func runChannelExtract(root, relPath string) ([]byte, error) {
-	cmd := exec.Command("go", "run", "./cmd/mdsmith", //nolint:gosec // CI-only; constant verb + a dir-listed name
-		"extract", ChannelKind, relPath, "--format", "json")
+// extractAllChannels builds the mdsmith binary once, then runs
+// `extract release-channel <file> --format json` per file and
+// returns the raw JSON keyed by the file's slash path. Building
+// once avoids a per-file `go run` relink (12 files today, growing).
+func extractAllChannels(root string, rels []string) (map[string][]byte, error) {
+	bin, cleanup, err := buildMdsmith(root)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+	out := make(map[string][]byte, len(rels))
+	for _, rel := range rels {
+		b, err := runExtract(bin, root, rel)
+		if err != nil {
+			return nil, err
+		}
+		out[rel] = b
+	}
+	return out, nil
+}
+
+// buildMdsmith compiles ./cmd/mdsmith into a temp dir and returns
+// the binary path plus a cleanup func.
+func buildMdsmith(root string) (string, func(), error) {
+	dir, err := os.MkdirTemp("", "mdsmith-extract-*")
+	if err != nil {
+		return "", nil, fmt.Errorf("tempdir: %w", err)
+	}
+	cleanup := func() { _ = os.RemoveAll(dir) }
+	bin := filepath.Join(dir, "mdsmith")
+	cmd := exec.Command("go", "build", "-o", bin, "./cmd/mdsmith") //nolint:gosec // CI-only; constant args
+	cmd.Dir = root
+	if combined, err := cmd.CombinedOutput(); err != nil {
+		cleanup()
+		return "", nil, fmt.Errorf("build mdsmith: %w (%s)", err, combined)
+	}
+	return bin, cleanup, nil
+}
+
+func runExtract(bin, root, rel string) ([]byte, error) {
+	cmd := exec.Command(bin, "extract", ChannelKind, rel, "--format", "json") //nolint:gosec // CI-only; dir-listed name
 	cmd.Dir = root
 	out, err := cmd.Output()
 	if err != nil {
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {
 			return nil, fmt.Errorf("mdsmith extract %s: %w (stderr: %s)",
-				relPath, err, ee.Stderr)
+				rel, err, ee.Stderr)
 		}
-		return nil, fmt.Errorf("mdsmith extract %s: %w", relPath, err)
+		return nil, fmt.Errorf("mdsmith extract %s: %w", rel, err)
 	}
 	return out, nil
 }
@@ -108,12 +147,22 @@ func LoadChannels(root string) ([]Channel, error) {
 	if err != nil {
 		return nil, err
 	}
-	chs := make([]Channel, 0, len(files))
-	for _, name := range files {
-		rel := filepath.ToSlash(filepath.Join(ChannelDir, name))
-		out, err := channelExtractor(root, rel)
-		if err != nil {
-			return nil, err
+	if len(files) == 0 {
+		return nil, fmt.Errorf("no channel files found under %s", ChannelDir)
+	}
+	rels := make([]string, len(files))
+	for i, name := range files {
+		rels[i] = filepath.ToSlash(filepath.Join(ChannelDir, name))
+	}
+	raw, err := channelsExtractAll(root, rels)
+	if err != nil {
+		return nil, err
+	}
+	chs := make([]Channel, 0, len(rels))
+	for _, rel := range rels {
+		out, ok := raw[rel]
+		if !ok {
+			return nil, fmt.Errorf("extract: no output for %s", rel)
 		}
 		var doc channelDoc
 		if err := json.Unmarshal(out, &doc); err != nil {
@@ -149,10 +198,12 @@ func (c Channel) validate(src string) error {
 	var missing []string
 	for _, p := range []struct{ name, value string }{
 		{"title", c.Title},
+		{"summary", c.Summary},
 		{"mechanism", c.Mechanism},
 		{"artifact", c.Artifact},
 		{"command", c.Command},
 		{"audience", c.Audience},
+		{"url", c.URL},
 	} {
 		if strings.TrimSpace(p.value) == "" {
 			missing = append(missing, p.name)
@@ -161,6 +212,10 @@ func (c Channel) validate(src string) error {
 	if len(missing) > 0 {
 		return fmt.Errorf("channel %s: empty field(s): %s",
 			src, strings.Join(missing, ", "))
+	}
+	if c.Weight < 1 {
+		return fmt.Errorf("channel %s: weight must be >= 1, got %d",
+			src, c.Weight)
 	}
 	return nil
 }
@@ -185,23 +240,22 @@ func RenderChannelsYAML(chs []Channel) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// renderChannelsFile loads the source and renders the data bytes.
-func renderChannelsFile(root string) ([]byte, error) {
-	chs, err := LoadChannels(root)
-	if err != nil {
-		return nil, err
-	}
-	return RenderChannelsYAML(chs)
+// channelsDataPath is the absolute data-file path under root.
+func channelsDataPath(root string) string {
+	return filepath.Join(root, filepath.FromSlash(ChannelsDataFile))
 }
 
-// SyncChannels regenerates ChannelsDataFile from the source and
-// reports whether the on-disk file changed.
-func SyncChannels(root string) (bool, error) {
-	out, err := renderChannelsFile(root)
+// WriteChannelsData regenerates ChannelsDataFile from pre-loaded
+// channels and reports whether the on-disk file changed. Splitting
+// the write from LoadChannels keeps the apply path unit-testable
+// without the `mdsmith extract` shell-out (the sync-messaging
+// split is the precedent).
+func WriteChannelsData(root string, chs []Channel) (bool, error) {
+	out, err := RenderChannelsYAML(chs)
 	if err != nil {
 		return false, err
 	}
-	path := filepath.Join(root, filepath.FromSlash(ChannelsDataFile))
+	path := channelsDataPath(root)
 	if old, err := os.ReadFile(path); err == nil && bytes.Equal(old, out) {
 		return false, nil
 	}
@@ -214,15 +268,15 @@ func SyncChannels(root string) (bool, error) {
 	return true, nil
 }
 
-// CheckChannels reports whether ChannelsDataFile is out of date
-// with respect to the source. A missing file counts as drift.
-func CheckChannels(root string) (bool, error) {
-	out, err := renderChannelsFile(root)
+// CheckChannelsData reports whether ChannelsDataFile is out of date
+// with respect to the pre-loaded channels. A missing file counts as
+// drift.
+func CheckChannelsData(root string, chs []Channel) (bool, error) {
+	out, err := RenderChannelsYAML(chs)
 	if err != nil {
 		return false, err
 	}
-	path := filepath.Join(root, filepath.FromSlash(ChannelsDataFile))
-	old, err := os.ReadFile(path)
+	old, err := os.ReadFile(channelsDataPath(root))
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return true, nil

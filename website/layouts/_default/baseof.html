@@ -59,8 +59,7 @@
           sideToggle.setAttribute("aria-expanded", open ? "true" : "false");
         });
       }
-      const picker = document.querySelector("[data-install-picker]");
-      if (picker) {
+      document.querySelectorAll("[data-install-picker]").forEach(picker => {
         const filters = picker.querySelectorAll(".install-filter");
         const rows = picker.querySelectorAll(".install-row");
         filters.forEach(f => {
@@ -72,12 +71,12 @@
               o.setAttribute("aria-pressed", on ? "true" : "false");
             });
             rows.forEach(r => {
-              const tags = (r.getAttribute("data-platforms") || "").split(" ");
+              const tags = (r.getAttribute("data-platforms") || "").split(" ").filter(Boolean);
               r.hidden = !(sel === "all" || tags.includes(sel));
             });
           });
         });
-      }
+      });
       document.querySelectorAll("[data-copy]").forEach(btn => {
         btn.addEventListener("click", async () => {
           const text = btn.getAttribute("data-copy");
