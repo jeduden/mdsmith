@@ -14,6 +14,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/placeholders"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/setutil"
 )
 
 func init() {
@@ -187,7 +188,7 @@ func (r *Rule) checkWikilinkAnchor(
 	if err != nil {
 		return []lint.Diagnostic{wikilinkUnreadableTargetDiag(f.Path, wl, resolved, err, r)}
 	}
-	if _, ok := anchors[linkgraph.NormalizeAnchor(wl.Anchor)]; ok {
+	if setutil.Contains(anchors, linkgraph.NormalizeAnchor(wl.Anchor)) {
 		return nil
 	}
 	return []lint.Diagnostic{wikilinkBrokenAnchorDiag(f.Path, wl, resolved, r)}
@@ -506,7 +507,7 @@ func (r *Rule) checkRelativeTarget(
 	if err != nil {
 		return []lint.Diagnostic{unreadableTargetDiag(ctx.f.Path, line, col, r, target.Raw, err)}
 	}
-	if _, ok := targetAnchors[linkgraph.NormalizeAnchor(target.Anchor)]; ok {
+	if setutil.Contains(targetAnchors, linkgraph.NormalizeAnchor(target.Anchor)) {
 		return nil
 	}
 	return []lint.Diagnostic{brokenHeadingDiag(ctx.f.Path, line, col, r, target.Raw)}
@@ -538,7 +539,7 @@ func targetExists(f *lint.File, linkPath, resolvedRoot string) bool {
 func checkLocalAnchor(
 	ctx *checkCtx, line, col int, target linkgraph.Target,
 ) []lint.Diagnostic {
-	if _, ok := ctx.ensureSelfAnchors()[linkgraph.NormalizeAnchor(target.Anchor)]; ok {
+	if setutil.Contains(ctx.ensureSelfAnchors(), linkgraph.NormalizeAnchor(target.Anchor)) {
 		return nil
 	}
 	return []lint.Diagnostic{brokenHeadingDiag(ctx.f.Path, line, col, ctx.rule, target.Raw)}

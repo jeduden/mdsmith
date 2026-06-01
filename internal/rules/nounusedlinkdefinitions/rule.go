@@ -10,6 +10,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/setutil"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/util"
 )
@@ -106,7 +107,10 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 // allocation-free walk here — plan 195 task 6.
 func (r *Rule) checkSingleDef(f *lint.File, d referenceDefinition) []lint.Diagnostic {
 	norm := util.ToLinkReference(d.rawLabel)
-	if _, ok := r.ignoredLabels[norm]; ok || isLabelUsedInAST(f.AST, norm) {
+	if setutil.Contains(r.ignoredLabels, norm) {
+		return nil
+	}
+	if isLabelUsedInAST(f.AST, norm) {
 		return nil
 	}
 	return []lint.Diagnostic{{
@@ -134,7 +138,7 @@ func (r *Rule) checkMultiDefs(f *lint.File, defs []referenceDefinition) []lint.D
 	var diags []lint.Diagnostic
 	for _, d := range defs {
 		norm := util.ToLinkReference(d.rawLabel)
-		if _, ok := ignored[norm]; ok {
+		if setutil.Contains(ignored, norm) {
 			continue
 		}
 		if firstLine, exists := seen[norm]; exists {
@@ -154,7 +158,7 @@ func (r *Rule) checkMultiDefs(f *lint.File, defs []referenceDefinition) []lint.D
 			usedLabels = collectUsedLabels(f)
 			usedLabelsDone = true
 		}
-		if _, ok := usedLabels[norm]; !ok {
+		if !setutil.Contains(usedLabels, norm) {
 			diags = append(diags, lint.Diagnostic{
 				File:     f.Path,
 				Line:     d.line,
@@ -215,12 +219,12 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	var cuts []fixCut
 	for _, d := range defs {
 		norm := util.ToLinkReference(d.rawLabel)
-		if _, ok := ignored[norm]; ok {
+		if setutil.Contains(ignored, norm) {
 			continue
 		}
-		_, isDuplicate := seen[norm]
+		alreadySeen := setutil.Contains(seen, norm)
 		seen[norm] = struct{}{}
-		if _, ok := usedLabels[norm]; !isDuplicate && ok {
+		if !alreadySeen && setutil.Contains(usedLabels, norm) {
 			continue
 		}
 		start := d.start

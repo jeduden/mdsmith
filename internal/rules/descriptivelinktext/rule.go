@@ -10,6 +10,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
+	"github.com/jeduden/mdsmith/internal/setutil"
 	"github.com/yuin/goldmark/ast"
 )
 
@@ -108,7 +109,7 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 	}
 
 	text := collectLinkText(link, f.Source)
-	if _, ok := r.cachedBannedSet()[normalizeText(text)]; !ok {
+	if !setutil.Contains(r.cachedBannedSet(), normalizeText(text)) {
 		return nil
 	}
 	line := linkLine(link, f)
