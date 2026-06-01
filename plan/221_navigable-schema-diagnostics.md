@@ -1,7 +1,7 @@
 ---
 id: 221
 title: Navigable schema diagnostics in the editor
-status: "🔳"
+status: "✅"
 model: opus
 depends-on: [147, 133]
 summary: >-
@@ -143,16 +143,14 @@ consumers:
 
 Every schema diagnostic gets the best anchor in the
 linted file, plus a related location to the schema
-rule. FM-field anchoring and the related locations
-shipped. Re-anchoring the *absence* cases (missing
-section, missing content) is deferred.
-`nonBodyDiagLine` returns a non-positive coordinate
-on purpose, so
+rule. A missing section anchors at the heading it
+should follow, via `MissingSectionAnchor`, not at the
+top of the file. The guard stays intact. When the
+insertion point sits inside a generated section, or
+there is no preceding heading, the anchor falls back
+to the non-positive `nonBodyDiagLine` value. That way
 [`filterGeneratedDiags`](../internal/engine/check.go)
-never drops a missing-section diagnostic. A body
-anchor would bring that drop risk back. The related
-location already reaches the constraint, so the
-re-anchor is a follow-up.
+can never drop a missing-section diagnostic.
 
 ### Issue-first hover
 
@@ -243,9 +241,10 @@ declaration's line — still navigable.
    Callers mutate the `Diagnostic` that `MakeDiag`
    returns, so its `(file, line, msg)` signature stays
    unchanged across its ~30 call sites.
-4. (Follow-up) Re-anchor missing section / content
-   off line 1. Deferred to keep the
-   `filterGeneratedDiags` guarantee (see Design).
+4. Re-anchor a missing section at the preceding
+   heading (`MissingSectionAnchor`), guarded so an
+   insertion point inside a generated section falls
+   back to the non-body anchor.
 5. Add `rules.DocURL` (a reusable rule-ID → doc-page
    URL lookup) and derive `codeDescription` from it in
    `toLSP`. No `DocURL` field on the diagnostic.
@@ -258,11 +257,11 @@ declaration's line — still navigable.
    ([hover.go](../internal/lsp/hover.go)) to the
    issue-first layout, using `RuleInfo.Description`
    for the one-line rule summary.
-9. (Follow-up) Thread `yaml.Node` lines for inline
-   kind / `.mdsmith.yml` schemas into
-   `Schema.FrontmatterLines`. File schemas (`proto.md`)
-   already resolve to a line; inline schemas still show
-   the `inline kind schema` label.
+9. Thread the kind's `SourcePath` onto the inline
+   schema-sources entry in the merge layer so an inline
+   kind schema names its defining file, not the bare
+   `inline kind schema` label. (Per-key `yaml.Node`
+   line numbers within that file remain a follow-up.)
 10. Update [plan 217](217_obsidian-plugin.md) to
     require the issue-first tooltip and the
     schema-location link.
@@ -280,15 +279,12 @@ declaration's line — still navigable.
       surface, not stored on the diagnostic.
 - [x] An MDS020 FM violation has a `RelatedLocation`
       naming the schema file and line.
-- [ ] An inline-kind violation gets a real file/line
-      (or documented kind line), never the bare label.
-      Follow-up: inline schemas still show the
-      `inline kind schema` label (needs config-loader
-      per-key position tracking).
-- [ ] A missing section anchors at the insertion
-      point, not file line 1. Follow-up: deferred to
-      preserve the `filterGeneratedDiags` guarantee
-      (see Design).
+- [x] An inline-kind violation names the kind's
+      defining file, not the bare label. (Per-key line
+      numbers within that file stay a follow-up.)
+- [x] A missing section anchors at the preceding
+      heading, not file line 1, while keeping the
+      `filterGeneratedDiags` guarantee (see Design).
 - [x] A filename violation stays on line 1 but carries
       a related location to `path-pattern:`.
 - [x] `mdsmith check` prints the schema reference from
