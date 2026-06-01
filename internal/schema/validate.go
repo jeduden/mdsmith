@@ -146,21 +146,24 @@ func validateFrontmatterDiags(
 	schemaVal := compiled.Value
 	ctx := compiled.Ctx
 	if err := compiled.Err(); err != nil {
-		return []lint.Diagnostic{mkDiag(f.Path, anchor,
-			compileFailureDiag(sch, "schema", "valid schema CUE", err).Format())}
+		return []lint.Diagnostic{
+			compileFailureDiag(sch, "schema", "valid schema CUE", err).
+				Emit(mkDiag, f.Path, anchor)}
 	}
 	if docFM == nil {
 		docFM = map[string]any{}
 	}
 	data, err := json.Marshal(docFM)
 	if err != nil {
-		return []lint.Diagnostic{mkDiag(f.Path, anchor,
-			compileFailureDiag(sch, "front matter", "JSON-marshalable front matter", err).Format())}
+		return []lint.Diagnostic{
+			compileFailureDiag(sch, "front matter", "JSON-marshalable front matter", err).
+				Emit(mkDiag, f.Path, anchor)}
 	}
 	dataVal := ctx.CompileBytes(data)
 	if err := dataVal.Err(); err != nil {
-		return []lint.Diagnostic{mkDiag(f.Path, anchor,
-			compileFailureDiag(sch, "front matter", "valid front matter", err).Format())}
+		return []lint.Diagnostic{
+			compileFailureDiag(sch, "front matter", "valid front matter", err).
+				Emit(mkDiag, f.Path, anchor)}
 	}
 	merged := schemaVal.Unify(dataVal)
 	verr := merged.Validate(cue.Concrete(true))
@@ -176,13 +179,13 @@ func validateFrontmatterDiags(
 	}
 	cueErrs := errors.Errors(verr)
 	if len(cueErrs) == 0 {
-		return []lint.Diagnostic{mkDiag(f.Path, anchor,
+		return []lint.Diagnostic{
 			SchemaDiagnostic{
 				Field:     "front matter",
 				Actual:    fmt.Sprintf("%v", verr),
 				Expected:  "valid CUE",
 				SchemaRef: schemaRef(sch, ""),
-			}.Format())}
+			}.Emit(mkDiag, f.Path, anchor)}
 	}
 	keyLines := docFrontmatterKeyLines(f)
 	out := dedupedCUEErrorDiags(f, sch, docFM, cueErrs, keyLines, mkDiag)
@@ -208,7 +211,7 @@ func dedupedCUEErrorDiags(
 			continue
 		}
 		seen[key] = true
-		out = append(out, mkDiag(f.Path, fmDiagLine(f, ce.Path(), keyLines), d.Format()))
+		out = append(out, d.Emit(mkDiag, f.Path, fmDiagLine(f, ce.Path(), keyLines)))
 	}
 	return out
 }
@@ -255,7 +258,7 @@ func validateDeprecatedFieldsWithLines(
 			DeprecationMessage: meta.Message,
 			SchemaRef:          schemaRef(sch, k),
 		}
-		warn := mkDiag(f.Path, fmDiagLine(f, []string{bare}, keyLines), d.Format())
+		warn := d.Emit(mkDiag, f.Path, fmDiagLine(f, []string{bare}, keyLines))
 		warn.Severity = lint.Warning
 		warn.Deprecated = true
 		warn.ReplacedBy = meta.ReplacedBy
@@ -642,9 +645,9 @@ func validateScopes(
 			// use the non-body anchor so filterGeneratedDiags
 			// can't drop the diagnostic if body line 1 sits
 			// inside a generated section.
-			diags = append(diags, mkDiag(f.Path, nonBodyDiagLine(f),
-				missingSectionDiag(
-					formatHeading(expectedLevel, displayHeading(sc)), sch).Format()))
+			diags = append(diags, missingSectionDiag(
+				formatHeading(expectedLevel, displayHeading(sc)), sch).
+				Emit(mkDiag, f.Path, nonBodyDiagLine(f)))
 		}
 	}
 
@@ -779,8 +782,8 @@ func handleLeftoverHeadings(
 			continue
 		}
 		if !allowExtra && closed {
-			diags = append(diags, mkDiag(f.Path, dh.Line,
-				unexpectedSectionDiag(formatHeading(dh.Level, dh.Text), "", sch).Format()))
+			diags = append(diags, unexpectedSectionDiag(
+				formatHeading(dh.Level, dh.Text), "", sch).Emit(mkDiag, f.Path, dh.Line))
 		}
 		docIdx++
 	}
@@ -848,8 +851,8 @@ func claimLateScope(
 ) (int, []lint.Diagnostic) {
 	sc := scopes[idx]
 	dh := docHeads[docIdx]
-	diags := []lint.Diagnostic{mkDiag(f.Path, dh.Line,
-		outOfOrderDiag(formatHeading(dh.Level, dh.Text), "", sch).Format())}
+	diags := []lint.Diagnostic{outOfOrderDiag(
+		formatHeading(dh.Level, dh.Text), "", sch).Emit(mkDiag, f.Path, dh.Line)}
 	claimed[idx] = true
 	claimCounts[idx]++
 	docIdx++
@@ -1074,11 +1077,10 @@ func (s *matchRun) step(docHeads []DocHeading, docIdx int) (bool, int, bool) {
 			return true, docIdx, false
 		}
 		if !s.allowExtra && s.closed {
-			s.diags = append(s.diags, s.mkDiag(s.f.Path, dh.Line,
-				unexpectedSectionDiag(
-					formatHeading(dh.Level, dh.Text),
-					formatHeading(s.expectedLevel, displayHeading(sc)),
-					s.sch).Format()))
+			s.diags = append(s.diags, unexpectedSectionDiag(
+				formatHeading(dh.Level, dh.Text),
+				formatHeading(s.expectedLevel, displayHeading(sc)),
+				s.sch).Emit(s.mkDiag, s.f.Path, dh.Line))
 		}
 		return false, docIdx + 1, false
 	}
@@ -1171,11 +1173,10 @@ func (s *matchRun) handleNonMatch(docHeads []DocHeading, docIdx int) (bool, int,
 	}
 	if !s.allowExtra && s.closed {
 		sc := s.scopes[s.idx]
-		s.diags = append(s.diags, s.mkDiag(s.f.Path, dh.Line,
-			unexpectedSectionDiag(
-				formatHeading(dh.Level, dh.Text),
-				formatHeading(s.expectedLevel, displayHeading(sc)),
-				s.sch).Format()))
+		s.diags = append(s.diags, unexpectedSectionDiag(
+			formatHeading(dh.Level, dh.Text),
+			formatHeading(s.expectedLevel, displayHeading(sc)),
+			s.sch).Emit(s.mkDiag, s.f.Path, dh.Line))
 	}
 	return false, docIdx + 1, false
 }
@@ -1284,8 +1285,8 @@ func levelDiagIfNeeded(
 	if dh.Level == expectedLevel {
 		return nil
 	}
-	return []lint.Diagnostic{mkDiag(f.Path, dh.Line,
-		levelMismatchSchemaDiag(dh.Text, expectedLevel, dh.Level, sch).Format())}
+	return []lint.Diagnostic{levelMismatchSchemaDiag(
+		dh.Text, expectedLevel, dh.Level, sch).Emit(mkDiag, f.Path, dh.Line)}
 }
 
 // claimOutOfOrder records that docHeads[docIdx] matches scopes[ooIdx]
@@ -1300,11 +1301,10 @@ func claimOutOfOrder(
 	sc := scopes[idx]
 	ooSc := scopes[ooIdx]
 	dh := docHeads[docIdx]
-	diags := []lint.Diagnostic{mkDiag(f.Path, dh.Line,
-		outOfOrderDiag(
-			formatHeading(dh.Level, dh.Text),
-			formatHeading(expectedLevel, displayHeading(sc)),
-			sch).Format())}
+	diags := []lint.Diagnostic{outOfOrderDiag(
+		formatHeading(dh.Level, dh.Text),
+		formatHeading(expectedLevel, displayHeading(sc)),
+		sch).Emit(mkDiag, f.Path, dh.Line)}
 	diags = append(diags, levelDiagIfNeeded(f, sch, dh, expectedLevel, mkDiag)...)
 	// Count the contiguous run of same-level headings starting at
 	// docIdx that match ooSc. The recovery path still claims only
@@ -1589,7 +1589,7 @@ func validateFilename(
 			Hint:      err.Error(),
 			SchemaRef: schemaRef(sch, ""),
 		}
-		return []lint.Diagnostic{mkDiag(f.Path, anchor, d.Format())}
+		return []lint.Diagnostic{d.Emit(mkDiag, f.Path, anchor)}
 	}
 	if !matched {
 		// `glob` makes the constraint syntax explicit: users
@@ -1604,7 +1604,7 @@ func validateFilename(
 			Expected:  fmt.Sprintf("filename matching glob %s", pattern),
 			SchemaRef: schemaRef(sch, ""),
 		}
-		return []lint.Diagnostic{mkDiag(f.Path, anchor, d.Format())}
+		return []lint.Diagnostic{d.Emit(mkDiag, f.Path, anchor)}
 	}
 	return nil
 }

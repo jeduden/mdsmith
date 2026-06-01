@@ -6,6 +6,5 @@ diagnostics:
     column: 1
     message: |-
       Title: got h2, expected h1
-      schema: ../../internal/rules/MDS020-required-structure/bad/data/wildcard-tmpl.md
 ---
 ## Title

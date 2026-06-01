@@ -263,7 +263,9 @@ func TestKindPathPattern_MismatchEmitsMDS020(t *testing.T) {
 	d := result.Diagnostics[0]
 	assert.Equal(t, "MDS020", d.RuleID)
 	assert.Contains(t, d.Message, `path: got "plan/early-draft.md"`)
-	assert.Contains(t, d.Message, "kinds[plan] / path-pattern")
+	// The schema reference now rides on a structured related location.
+	require.Len(t, d.RelatedLocations, 1)
+	assert.Equal(t, "kinds[plan] / path-pattern", d.RelatedLocations[0].Message)
 }
 
 // TestKindPathPattern_MatchEmitsNoDiagnostic is the green half of the

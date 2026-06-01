@@ -9,7 +9,8 @@ diagnostics:
     column: 1
     message: |-
       ## Tasks: got <missing>, expected section to be present
-      schema: inline kind schema
+    related:
+      - message: "inline kind schema"
 ---
 # My Plan
 

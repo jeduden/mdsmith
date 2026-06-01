@@ -7,7 +7,6 @@ diagnostics:
     message: |-
       ## Tasks: got <out of order>, expected in declared order
         (expected after "## Goal")
-      schema: ../../internal/rules/MDS020-required-structure/bad/data/tmpl.md
 ---
 # My Plan
 

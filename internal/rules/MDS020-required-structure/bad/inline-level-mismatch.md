@@ -10,7 +10,6 @@ diagnostics:
     column: 1
     message: |-
       Step: got h2, expected h3
-      schema: inline kind schema
 ---
 # Runbook
 

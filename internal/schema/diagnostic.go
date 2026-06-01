@@ -3,7 +3,10 @@ package schema
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
+
+	"github.com/jeduden/mdsmith/internal/lint"
 )
 
 // SchemaDiagnostic is the structured form of an MDS020 violation.
@@ -76,17 +79,18 @@ type SchemaDiagnostic struct {
 	DeprecationMessage string
 }
 
-// Format renders the diagnostic as the two-line message described
-// in plan 147: the first line carries field/actual/expected, an
-// optional hint follows in parentheses on its own indented line,
-// and the schema reference appears on a trailing line so it stays
-// greppable without parsing the message body.
+// Format renders the human-facing message: the first line carries
+// field/actual/expected, and an optional hint follows in parentheses
+// on its own indented line. Per plan 221 the schema reference no
+// longer rides on the message — Emit attaches it as a structured
+// lint.RelatedLocation so the CLI and the LSP surface it as a
+// navigable location rather than greppable text.
 //
 // When Deprecated is true the renderer switches to plan 136's
 // deprecation shape: the first line reads
 // "<field>: deprecated field" optionally followed by
 // "; replaced by `<name>`" when ReplacedBy is set, then an
-// optional message line, then the schema reference.
+// optional message line.
 func (d SchemaDiagnostic) Format() string {
 	if d.Deprecated {
 		return d.formatDeprecated()
@@ -110,10 +114,6 @@ func (d SchemaDiagnostic) Format() string {
 		b.WriteString(d.Hint)
 		b.WriteString(")")
 	}
-	if d.SchemaRef != "" {
-		b.WriteString("\nschema: ")
-		b.WriteString(d.SchemaRef)
-	}
 	return b.String()
 }
 
@@ -136,11 +136,82 @@ func (d SchemaDiagnostic) formatDeprecated() string {
 		b.WriteString("\n  message: ")
 		b.WriteString(d.DeprecationMessage)
 	}
-	if d.SchemaRef != "" {
-		b.WriteString("\nschema: ")
-		b.WriteString(d.SchemaRef)
-	}
 	return b.String()
+}
+
+// Emit builds the lint.Diagnostic for this schema diagnostic. It runs
+// the message through mk (which fills in file, line, rule ID, and
+// source context) and then attaches the schema reference as a
+// RelatedLocation so the CLI prints it as a trailer and the LSP maps
+// it onto relatedInformation. The (file, line, msg) MakeDiag signature
+// is unchanged across its call sites; Emit only augments the result.
+func (d SchemaDiagnostic) Emit(mk MakeDiag, file string, line int) lint.Diagnostic {
+	diag := mk(file, line, d.Format())
+	if rl, ok := d.related(); ok {
+		diag.RelatedLocations = append(diag.RelatedLocations, rl)
+	}
+	return diag
+}
+
+// related converts the textual SchemaRef into a structured
+// RelatedLocation. A ref of the form "<path>:<line>" or "<path>"
+// yields a navigable location; a descriptive label that names no file
+// (e.g. "inline kind schema" or "kinds[task] / path-pattern") yields a
+// message-only location so the reference still shows in CLI output
+// while the LSP, which needs a URI, skips it. Returns ok=false when
+// there is no reference at all.
+func (d SchemaDiagnostic) related() (lint.RelatedLocation, bool) {
+	if d.SchemaRef == "" {
+		return lint.RelatedLocation{}, false
+	}
+	file, line := parseSchemaRef(d.SchemaRef)
+	if file == "" {
+		// Label-only ref: keep the label as the message; no file means
+		// no navigable URI for the LSP, which drops empty-file entries.
+		return lint.RelatedLocation{Message: d.SchemaRef}, true
+	}
+	return lint.RelatedLocation{File: file, Line: line, Message: d.relatedMessage()}, true
+}
+
+// relatedMessage is the short label shown on a navigable schema
+// related-location. The detailed expectation stays in the main
+// diagnostic message, so this stays concise.
+func (d SchemaDiagnostic) relatedMessage() string {
+	if d.Deprecated {
+		return "deprecated by schema"
+	}
+	return "required by schema"
+}
+
+// parseSchemaRef splits a SchemaRef into a file path and 1-based line.
+// It recognizes "<path>:<line>" when the suffix is a positive integer
+// and the prefix looks like a path, and "<path>" on its own. Anything
+// that is not a path (labels with spaces, single words with no
+// separator) returns ("", 0) so the caller treats it as a label.
+func parseSchemaRef(ref string) (file string, line int) {
+	if i := strings.LastIndexByte(ref, ':'); i > 0 {
+		if n, err := strconv.Atoi(ref[i+1:]); err == nil && n > 0 {
+			if cand := ref[:i]; looksLikePath(cand) {
+				return cand, n
+			}
+		}
+	}
+	if looksLikePath(ref) {
+		return ref, 0
+	}
+	return "", 0
+}
+
+// looksLikePath reports whether s is plausibly a repo-relative file
+// path: no whitespace, and at least one "/" or "." separator. Schema
+// sources are POSIX paths like "plan/proto.md", so this rejects the
+// descriptive labels ("inline kind schema", "schema") without a false
+// positive on a real path.
+func looksLikePath(s string) bool {
+	if s == "" || strings.ContainsAny(s, " \t") {
+		return false
+	}
+	return strings.ContainsAny(s, "/.")
 }
 
 // formatActual renders a JSON-decoded front-matter value for the

@@ -163,8 +163,8 @@ func TestValidateFrontmatterDiags_InvalidCUESchemaCarriesRef(t *testing.T) {
 	require.NoError(t, err)
 	diags := ValidateFrontmatterDiags(f, sch, map[string]any{"id": 1}, makeDiagForTest)
 	require.Len(t, diags, 1)
-	assert.Contains(t, diags[0].Message, "schema:")
-	assert.Contains(t, diags[0].Message, "kind bad")
+	require.Len(t, diags[0].RelatedLocations, 1)
+	assert.Equal(t, "kind bad", diags[0].RelatedLocations[0].Message)
 }
 
 // TestCompileFailureDiag_FieldsRoundTrip exercises the
@@ -215,7 +215,8 @@ func TestValidateFrontmatterDiags_JSONMarshalFailureCarriesRef(t *testing.T) {
 	diags := ValidateFrontmatterDiags(f, sch, docFM, makeDiagForTest)
 	require.Len(t, diags, 1)
 	assert.Contains(t, diags[0].Message, "JSON-marshalable")
-	assert.Contains(t, diags[0].Message, "kind broken")
+	require.Len(t, diags[0].RelatedLocations, 1)
+	assert.Equal(t, "kind broken", diags[0].RelatedLocations[0].Message)
 }
 
 // TestValidateFrontmatterDiags_ExtraFieldCarriesRef

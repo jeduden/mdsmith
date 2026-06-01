@@ -95,6 +95,21 @@ type expectedDiag struct {
 	// decoder). The fixture asserts that the actual message
 	// starts with this string. Mutually exclusive with Message.
 	MessagePrefix string `yaml:"message-prefix"`
+	// Related, when present, asserts the diagnostic's structured
+	// related locations (plan 221). Opt-in: an empty list skips the
+	// check, so only fixtures that exercise the schema reference need
+	// to declare it.
+	Related []expectedRelated `yaml:"related"`
+}
+
+// expectedRelated asserts one RelatedLocation on a diagnostic. File
+// and Line are checked only when non-zero so a fixture can assert a
+// label-only related location (message, no navigable file/line).
+type expectedRelated struct {
+	File          string `yaml:"file"`
+	Line          int    `yaml:"line"`
+	Message       string `yaml:"message"`
+	MessagePrefix string `yaml:"message-prefix"`
 }
 
 type fixtureFrontMatter struct {
@@ -555,6 +570,46 @@ func assertExpectedDiags(
 		} else {
 			assert.Equal(t, exp.Message, d.Message,
 				"diagnostic %d message mismatch", i)
+		}
+		assertRelated(t, i, exp.Related, d.RelatedLocations)
+	}
+}
+
+// assertRelated checks a diagnostic's structured related locations
+// against the fixture's opt-in `related:` block. An empty expectation
+// skips the check. File and Line are compared only when the fixture
+// sets them, so a label-only related location (no navigable file)
+// can be asserted by its message alone.
+func assertRelated(
+	t *testing.T, idx int,
+	expected []expectedRelated, actual []lint.RelatedLocation,
+) {
+	t.Helper()
+	if len(expected) == 0 {
+		return
+	}
+	if !assert.Len(t, actual, len(expected),
+		"diagnostic %d related-location count", idx) {
+		return
+	}
+	for j, er := range expected {
+		al := actual[j]
+		if er.File != "" {
+			assert.Equal(t, er.File, al.File,
+				"diagnostic %d related %d file", idx, j)
+		}
+		if er.Line != 0 {
+			assert.Equal(t, er.Line, al.Line,
+				"diagnostic %d related %d line", idx, j)
+		}
+		switch {
+		case er.MessagePrefix != "":
+			assert.True(t, strings.HasPrefix(al.Message, er.MessagePrefix),
+				"diagnostic %d related %d message %q does not start with %q",
+				idx, j, al.Message, er.MessagePrefix)
+		case er.Message != "":
+			assert.Equal(t, er.Message, al.Message,
+				"diagnostic %d related %d message", idx, j)
 		}
 	}
 }

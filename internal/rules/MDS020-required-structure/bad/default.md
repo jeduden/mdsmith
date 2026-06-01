@@ -6,7 +6,9 @@ diagnostics:
     column: 1
     message: |-
       ## Tasks: got <missing>, expected section to be present
-      schema: ../../internal/rules/MDS020-required-structure/bad/data/tmpl.md
+    related:
+      - file: "../../internal/rules/MDS020-required-structure/bad/data/tmpl.md"
+        message: "required by schema"
 ---
 # My Plan
 

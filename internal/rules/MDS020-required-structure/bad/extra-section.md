@@ -7,7 +7,6 @@ diagnostics:
     message: |-
       ## Extra: got <present>, expected not declared in schema
         (expected "## Goal" here instead)
-      schema: ../../internal/rules/MDS020-required-structure/bad/data/tmpl.md
 ---
 # My Plan
 
