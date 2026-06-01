@@ -1041,6 +1041,16 @@ func (s *Server) runLint(uri string) {
 	if _, ok := s.docs.get(uri); !ok {
 		return
 	}
+	// run mode can flip to off while the CPU-bound RunSource above was
+	// in flight (the user toggled mdsmith.run mid-lint).
+	// fetchClientSettings already cleared the squiggles for that switch
+	// via clearOpenDiagnostics; re-check here so this in-flight pass
+	// does not re-publish them and undo the master switch. Normal
+	// scheduling never reaches runLint in off mode — scheduleLint
+	// returns early — so this only guards the race.
+	if s.runMode() == runOff {
+		return
+	}
 	// Mirror `mdsmith check`: surface lint pipeline errors (parse
 	// failures, oversized buffers, config-target rule errors) to
 	// the editor instead of silently dropping them. Otherwise the

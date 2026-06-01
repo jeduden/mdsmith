@@ -1587,6 +1587,65 @@ func TestFetchClientSettingsOffClearsDiagnostics(t *testing.T) {
 		"switching to run=off must publish empty diagnostics")
 }
 
+func TestClearOpenDiagnosticsCancelsPendingLint(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	// Long debounce so the armed timer never fires during the test —
+	// clearOpenDiagnostics must cancel it, not race it.
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All(), Debounce: 10 * time.Second})
+	uri := "file:///x.md"
+	s.docs.set(uri, &document{
+		uri: uri, path: "x.md", text: []byte("# Hi\n"), version: 2,
+	})
+	// Arm a debounced lint (onType) and seed a cached diagnostic.
+	s.settingsMu.Lock()
+	s.settings.Run = runOnType
+	s.settingsMu.Unlock()
+	s.scheduleLint(uri, lintTriggerChange)
+	s.pendingMu.Lock()
+	_, armed := s.pending[uri]
+	s.pendingMu.Unlock()
+	require.True(t, armed, "precondition: a debounce timer is armed")
+	s.diagsMu.Lock()
+	s.diags[uri] = []Diagnostic{{Message: "stale"}}
+	s.diagsMu.Unlock()
+
+	s.clearOpenDiagnostics()
+
+	s.pendingMu.Lock()
+	_, stillArmed := s.pending[uri]
+	s.pendingMu.Unlock()
+	assert.False(t, stillArmed, "clearOpenDiagnostics must cancel the pending lint")
+	s.diagsMu.RLock()
+	_, cached := s.diags[uri]
+	s.diagsMu.RUnlock()
+	assert.False(t, cached, "clearOpenDiagnostics must drop cached diagnostics")
+	assert.Contains(t, buf.String(), `"diagnostics":[]`,
+		"clearOpenDiagnostics must publish empty diagnostics")
+}
+
+func TestRunLintSkipsPublishWhenOff(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	// off is reachable inside runLint only via the race the guard
+	// covers: a lint already in flight when the user switches to off.
+	s.settingsMu.Lock()
+	s.settings.Run = runOff
+	s.settingsMu.Unlock()
+	uri := "file:///x.md"
+	s.docs.set(uri, &document{
+		uri: uri, path: "x.md", text: []byte("# Hi\n\ndirty   \n"), version: 1,
+	})
+	s.runLint(uri)
+	assert.NotContains(t, buf.String(), "publishDiagnostics",
+		"runLint must not publish while run mode is off")
+	s.diagsMu.RLock()
+	_, cached := s.diags[uri]
+	s.diagsMu.RUnlock()
+	assert.False(t, cached, "runLint must not cache diagnostics while run mode is off")
+}
+
 func TestFetchClientSettingsIgnoresErrorResponse(t *testing.T) {
 	t.Parallel()
 	var buf safeBuffer
