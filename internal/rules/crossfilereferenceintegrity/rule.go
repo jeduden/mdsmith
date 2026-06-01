@@ -768,7 +768,9 @@ type targetFile struct {
 	read        func() ([]byte, error)
 }
 
-func anchorsForFile(host *lint.File, target targetFile, cache map[string]map[string]struct{}) (map[string]struct{}, error) {
+func anchorsForFile(
+	host *lint.File, target targetFile, cache map[string]map[string]struct{},
+) (map[string]struct{}, error) {
 	if anchors, ok := cache[target.cacheKey]; ok {
 		return anchors, nil
 	}
