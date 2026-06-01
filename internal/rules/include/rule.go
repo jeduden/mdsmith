@@ -16,6 +16,9 @@ import (
 	"github.com/yuin/goldmark/ast"
 )
 
+// sourceDirKey is hoisted to avoid allocating a new slice on each inner-loop iteration.
+var sourceDirKey = []byte("source-dir:")
+
 func init() {
 	rule.Register(&Rule{})
 }
@@ -465,10 +468,6 @@ func injectSourceDir(text, sourceDir string) string {
 	}
 	var injections []injection
 
-	// Convert once; seg.Value needs a []byte source and text is a string.
-	// Hoisting avoids re-allocating the full file content on each inner-loop iteration.
-	textBytes := []byte(text)
-
 	for n := parsed.AST.FirstChild(); n != nil; n = n.NextSibling() {
 		pi, ok := n.(*lint.ProcessingInstruction)
 		if !ok {
@@ -487,7 +486,7 @@ func injectSourceDir(text, sourceDir string) string {
 		already := false
 		for i := 1; i < pi.Lines().Len(); i++ {
 			seg := pi.Lines().At(i)
-			if bytes.Contains(seg.Value(textBytes), []byte("source-dir:")) {
+			if bytes.Contains(seg.Value(parsed.Source), sourceDirKey) {
 				already = true
 				break
 			}

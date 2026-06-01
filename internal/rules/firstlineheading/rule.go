@@ -38,24 +38,22 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		level = 1
 	}
 
-	levelStr := strconv.Itoa(level)
-
 	if len(f.Source) == 0 {
-		return r.diag(f, "first line should be a level "+levelStr+" heading")
+		return r.diag(f, "first line should be a level "+strconv.Itoa(level)+" heading")
 	}
 
 	firstChild := f.AST.FirstChild()
 	if firstChild == nil {
-		return r.diag(f, "first line should be a level "+levelStr+" heading")
+		return r.diag(f, "first line should be a level "+strconv.Itoa(level)+" heading")
 	}
 
 	heading, ok := firstChild.(*ast.Heading)
 	if !ok {
-		return r.diag(f, "first line should be a level "+levelStr+" heading")
+		return r.diag(f, "first line should be a level "+strconv.Itoa(level)+" heading")
 	}
 
 	if headingLine(heading, f) != 1 {
-		return r.diag(f, "first line should be a level "+levelStr+" heading, found blank line")
+		return r.diag(f, "first line should be a level "+strconv.Itoa(level)+" heading, found blank line")
 	}
 
 	if heading.Level != level {
@@ -65,7 +63,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		if placeholders.ContainsBodyToken(text, r.Placeholders) {
 			return nil
 		}
-		return r.diag(f, "first heading should be level "+levelStr+", got "+strconv.Itoa(heading.Level))
+		return r.diag(f, "first heading should be level "+strconv.Itoa(level)+", got "+strconv.Itoa(heading.Level))
 	}
 
 	return nil

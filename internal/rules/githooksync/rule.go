@@ -296,10 +296,12 @@ func (r *Rule) preMergeCommitHookDrift(repoRoot string) string {
 			hookPath, err,
 		)
 	}
-	hook := string(data)
-	if !strings.Contains(hook, githooks.PreMergeCommitMarker) {
+	// Cheap bytes check before the string conversion; avoids allocating the
+	// full hook file content as a string for unmanaged hooks.
+	if !bytes.Contains(data, preMergeMarkerBytes) {
 		return ""
 	}
+	hook := string(data)
 	// The canonical hook content depends on the absolute path of the
 	// mdsmith binary that originally installed it. Comparing only the
 	// portions that are independent of that path (the marker plus the
