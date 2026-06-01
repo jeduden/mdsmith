@@ -301,6 +301,20 @@ func TestMissingSectionAnchor(t *testing.T) {
 		"candidate inside a generated range → non-body anchor")
 	assert.Equal(t, 5, MissingSectionAnchor(f, 5),
 		"candidate outside the range is still used")
+
+	// Regression (Copilot review): with no front matter stripped,
+	// NonBodyDiagLine is 1. If the document opens with a generated
+	// section that covers line 1, the fallback must not land on that
+	// generated line — it clamps to a non-positive anchor so
+	// engine.filterGeneratedDiags can never drop the missing-section
+	// diagnostic.
+	f.GeneratedRanges = []lint.LineRange{{From: 1, To: 3}}
+	require.Equal(t, 1, NonBodyDiagLine(f))
+	got := MissingSectionAnchor(f, 0)
+	assert.LessOrEqual(t, got, 0,
+		"fallback inside a generated range clamps to a non-positive anchor")
+	assert.False(t, lineInGeneratedRange(f, got),
+		"the clamped anchor lies outside every generated range")
 }
 
 // TestPrecedingHeadingLine covers the document-order lookup: the

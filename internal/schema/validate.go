@@ -307,7 +307,17 @@ func MissingSectionAnchor(f *lint.File, candidate int) int {
 	if candidate > 0 && !lineInGeneratedRange(f, candidate) {
 		return candidate
 	}
-	return NonBodyDiagLine(f)
+	fallback := NonBodyDiagLine(f)
+	// NonBodyDiagLine is positive (line 1) when no front matter was
+	// stripped. A document that opens with a generated section then puts
+	// line 1 inside a generated range, where a positive anchor would be
+	// dropped by engine.filterGeneratedDiags. Clamp to 0: a non-positive
+	// line cannot fall within any 1-based generated range, so the
+	// missing-section diagnostic always survives.
+	if fallback > 0 && lineInGeneratedRange(f, fallback) {
+		return 0
+	}
+	return fallback
 }
 
 // precedingHeadingLine returns the line of the document heading just
