@@ -1,7 +1,7 @@
 ---
 id: 188
 title: Regex-over-source rules — inventory and AST-resident replacements
-status: "🔲"
+status: "🔳"
 model: opus
 depends-on: []
 summary: >-
@@ -53,8 +53,8 @@ memoized per-File accessor — existing or new.
 
 ## Tasks
 
-1. [ ] Create this plan.
-2. [ ] Inventory every rule whose `Check` (or helpers called only
+1. [x] Create this plan.
+2. [x] Inventory every rule whose `Check` (or helpers called only
    from `Check`) calls `regexp.MatchString`, `regexp.FindAll*`, or
    compiles a package-level regex against `f.Source`. List the
    rule ID, the regex pattern, the AST node type that carries the
@@ -80,27 +80,86 @@ memoized per-File accessor — existing or new.
 
 ## Inventory
 
-To be filled in by task 2. Initial suspects from plan 187 and from
-file grep:
+Authoritative as of this branch's base (origin/main). Every rule
+whose non-test code imports `regexp` was read. The test that
+decides conversion is **what the regex matches against**, not
+whether `regexp` is imported:
 
-- `nounusedlinkdefinitions` — plan 187 names it explicitly at ~70 ms.
-  Definitions are in `f.LinkReferences()` already; usages are in
-  the AST as `*ast.Link` / `*ast.Image` with `ReferenceLink: true`.
-  **Likely conversion: route through `f.LinkReferences()` +
-  AST walk for usages.**
-- `noundefinedreferencelabels` — symmetric to the above.
-- `nobareurls` — currently scans `f.Source` for URL patterns.
-  AST equivalent: `*ast.AutoLink` and `*ast.Text` segments.
-  Conversion is less clean (bare URLs are exactly the case the
-  parser does NOT pick up), so this likely stays regex.
-- `noinlinehtml` — could use `*ast.RawHTML` and `*ast.HTMLBlock`
-  rather than scan source.
-- `notrailingpunctuation` — operates on heading text; AST already
-  exposes heading children.
-- `linelength` — pure line-based, no AST equivalent, stays as-is.
+- A regex run against a **per-line slice** (`f.Lines[i]`) or against
+  **AST-derived text** (a heading's plain text, a paragraph's
+  extracted text, a table cell, a code-fence info string, a user
+  recipe command) does not re-derive block structure. The parse
+  result is already its input. These are not the lever.
+- A regex run against the **whole `f.Source`** with a multiline
+  (`(?m)`) anchor to rediscover line or block structure *is* the
+  lever. goldmark's canonical parse already produced that
+  structure and discarded the re-scan's answer.
 
-The above is unverified; task 2 produces the authoritative list
-with patterns and cost numbers.
+### The lever (full-source structural re-scan → AST-resident)
+
+One rule qualifies: **MDS043 `no-reference-style`**, in
+`collectReferenceDefinitions`.
+
+- **Pattern.** It runs a **second full `goldmark` parse**
+  (`lint.NewParser().Parse`) to read `ctx.References()`. It then
+  runs `refDefRE` over all of `f.Source` to locate each definition.
+  `refDefRE` is `` (?m)^[ ]{0,3}\[([^\]\n]+)\]:[ \t]*\S+.*$ ``.
+- **AST equivalent.** `f.LinkReferences()` returns the
+  canonical-parse reference set, already memoized on the `*File`.
+  The locate step routes through the hand-rolled `scanRefDefLine`
+  byte scanner. MDS053 already proved that scanner equal to this
+  exact regex, byte for byte.
+- **Cost.** About 468 µs and 537 allocs per `Check` on the per-rule
+  bench doc (`BenchmarkOptInRule/MDS043`). The rule's own budget
+  comment attributes the bulk to the second parse.
+
+MDS043 is the **only** rule on this branch still doing a redundant
+second parse. The check `grep -rn 'NewParser().Parse\|ParseContext'
+internal/rules/*/rule.go` returns MDS043 alone. It is also the only
+rule running a `(?m)` regex over `f.Source` to re-derive line
+structure (`refDefRE`, plus `footnoteDefRE`, which is true regex —
+see below).
+
+### Already converted — the realized template (no work)
+
+- MDS053 `no-unused-link-definitions` and MDS054
+  `no-undefined-reference-labels` — plan 195 (#387) already routed
+  both through `f.LinkReferences()` + a hand-rolled `scanRefDefLine`
+  byte scanner. Neither imports `regexp`. They are the pattern this
+  plan extends, exactly as the Goal states. Plan 187's "~70 ms
+  `nounusedlinkdefinitions` full-source regex scan" no longer
+  exists on this branch.
+
+### Kept regex — no AST equivalent (true regex), per task 6
+
+These run `regexp`, but not over `f.Source` to re-derive structure,
+so the AST carries nothing to route them through:
+
+- MDS043 footnote scans — `footnoteRefRE` = `` \[\^([^\]\n]+)\] ``
+  and `footnoteDefRE` = `` (?m)^[ ]{0,3}\[\^([^\]\n]+)\]: `` over
+  `f.Source`. **No AST equivalent**: the canonical lint parser does
+  not enable goldmark's footnote extension, so the AST surfaces no
+  footnote nodes. Kept (and left untouched by the MDS043 conversion).
+- MDS012 `no-bare-urls` (`urlPattern`) — bare URLs are exactly the
+  text goldmark does *not* turn into a node; the regex runs over
+  AST text segments, not whole source. Kept (matches the plan's own
+  prediction).
+- MDS001 `line-length` (`setextUnderlineRe`), MDS059
+  `blockquote-whitespace` (`reBlockquotePrefix`, `reMultiSpace`) —
+  per-line slices. Kept.
+- MDS067 `callout-type` (`calloutRE`) — first line segment of a
+  blockquote (AST-derived). MDS025 `table-format`
+  (`separatorRe`) — a table cell (AST-derived). MDS035
+  `toc-directive` (`[TOC]` etc.) — a paragraph's source line
+  (AST-derived). MDS030 `empty-section-body`
+  (`htmlCommentPattern`), MDS062 `link-validity` (`reversedRe`) —
+  run over masked/section-scoped text, not whole-source structure.
+  Kept.
+- MDS040 `recipe-safety` (`placeholderRe`, `fusedRe`) — a
+  user-declared recipe command string. MDS020
+  `required-structure`, MDS057 `required-text-patterns`, MDS036
+  `max-section-length`, MDS028 `token-budget` — user-supplied or
+  tokenizer patterns over AST-derived section/heading text. Kept.
 
 ## Acceptance Criteria
 
