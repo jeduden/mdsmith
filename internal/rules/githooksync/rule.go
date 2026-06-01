@@ -87,6 +87,12 @@ func (r *Rule) ID() string { return "MDS048" }
 // Name implements rule.Rule.
 func (r *Rule) Name() string { return "git-hook-sync" }
 
+// MutatesGitIndex reports that MDS048's Fix stages .gitattributes via
+// an in-process `git add` (see githooks.StageGitattributes), so the
+// merge driver must exclude it — the driver runs inside `git merge`,
+// which holds .git/index.lock. Implements rule.GitIndexMutator.
+func (r *Rule) MutatesGitIndex() bool { return true }
+
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "structural" }
 
