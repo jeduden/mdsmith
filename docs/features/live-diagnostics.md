@@ -26,8 +26,8 @@ search spans the whole project.
 Implementation jumps to every
 target of a heading at once. Completion suggests anchors,
 labels, kind names, and directive paths as you type. Hover on a
-diagnostic leads with the issue, then links to the schema
-constraint it broke and the rule's help.
+diagnostic leads with the issue and a link to the schema constraint
+it broke, then a condensed rule identity and a docs link.
 
 Two capabilities have their own pages. [Rename](rename.md)
 rewrites a heading and every anchor link to it in one edit.

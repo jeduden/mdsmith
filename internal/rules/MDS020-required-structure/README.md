@@ -313,11 +313,11 @@ constraint, and (when it can) a hint:
 ```text
 status: got "draf", expected one of: "draft", "open", "done"
   (did you mean "draft"?)
+  ↳ plan/proto.md:4 — required by schema
 ```
 
-The schema reference now rides on a related location (plan 221),
-not the message. The CLI prints it as a `↳ <ref>` trailer. Editors
-render it as a navigable `relatedInformation` entry.
+That schema reference rides on a related location (plan 221),
+shown above; editors render it as a `relatedInformation` entry.
 
 | Condition            | Message                                                               |
 | -------------------- | --------------------------------------------------------------------- |
