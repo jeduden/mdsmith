@@ -145,13 +145,42 @@ func NewGitignoreMatcher(root string) *GitignoreMatcher {
 
 // collectAncestorGitignores finds .gitignore files in directories above
 // the given root, ordered from the filesystem root down to root's parent.
+//
+// The walk stops at a Git working-tree boundary. Git applies a
+// .gitignore only to paths within the working tree that contains it, so
+// rules from an enclosing repository do not cross into a nested working
+// tree. Concretely:
+//
+//   - If root is itself a working-tree root (it contains a .git entry,
+//     which is a file for a linked worktree and a directory for the main
+//     checkout), no ancestor .gitignore is collected at all.
+//   - Otherwise the walk climbs through ancestors and stops after the
+//     first ancestor that is a working-tree root — that ancestor is the
+//     top of root's own working tree.
+//
+// Without this boundary, a worktree nested under a path its superproject
+// ignores (e.g. ".claude/worktrees/agent-x") would inherit that ignore
+// rule and classify every file inside the worktree as ignored, so a
+// catalog glob would resolve to zero files and `fix` would empty the
+// section.
 func collectAncestorGitignores(root string) []string {
+	// A matcher rooted at its own working tree must not inherit the
+	// superproject's ignore rules.
+	if isWorktreeRoot(root) {
+		return nil
+	}
+
 	var ancestors []string
 	dir := filepath.Dir(root)
 	for {
 		gi := filepath.Join(dir, ".gitignore")
 		if _, err := os.Stat(gi); err == nil {
 			ancestors = append([]string{gi}, ancestors...)
+		}
+		// Stop after the working-tree root that root belongs to; rules
+		// above it are in an enclosing repository and do not apply.
+		if isWorktreeRoot(dir) {
+			break
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
@@ -162,6 +191,16 @@ func collectAncestorGitignores(root string) []string {
 	// Reverse so they go from root-of-tree down to immediate parent.
 	// They are already collected root-first due to prepending, so no reversal needed.
 	return ancestors
+}
+
+// isWorktreeRoot reports whether dir is the root of a Git working tree,
+// i.e. it directly contains a ".git" entry. For the main checkout this
+// is a directory; for a linked worktree (git worktree add) it is a file
+// holding a "gitdir:" pointer. Either form marks a working-tree boundary
+// that ancestor .gitignore collection must not cross.
+func isWorktreeRoot(dir string) bool {
+	_, err := os.Lstat(filepath.Join(dir, ".git"))
+	return err == nil
 }
 
 // IsIgnored returns true if the given absolute path should be ignored.
