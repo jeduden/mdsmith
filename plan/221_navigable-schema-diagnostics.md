@@ -143,11 +143,16 @@ consumers:
 
 Every schema diagnostic gets the best anchor in the
 linted file, plus a related location to the schema
-rule. Absence cases move off line 1 where a
-meaningful insertion point exists. A new helper in
-[validate.go](../internal/schema/validate.go) derives
-the insertion line from the scope tree's matched
-siblings.
+rule. FM-field anchoring and the related locations
+shipped. Re-anchoring the *absence* cases (missing
+section, missing content) is deferred.
+`nonBodyDiagLine` returns a non-positive coordinate
+on purpose, so
+[`filterGeneratedDiags`](../internal/engine/check.go)
+never drops a missing-section diagnostic. A body
+anchor would bring that drop risk back. The related
+location already reaches the constraint, so the
+re-anchor is a follow-up.
 
 ### Issue-first hover
 
@@ -238,9 +243,9 @@ declaration's line — still navigable.
    Callers mutate the `Diagnostic` that `MakeDiag`
    returns, so its `(file, line, msg)` signature stays
    unchanged across its ~30 call sites.
-4. Add the insertion-point helper; re-anchor missing
-   section and missing content off line 1. Unit-test
-   each anchor.
+4. (Follow-up) Re-anchor missing section / content
+   off line 1. Deferred to keep the
+   `filterGeneratedDiags` guarantee (see Design).
 5. Populate `DocURL` for MDS020 via a reusable
    rule→URL lookup.
 6. CLI: print `RelatedLocations` as trailer lines in
@@ -252,9 +257,11 @@ declaration's line — still navigable.
    ([hover.go](../internal/lsp/hover.go)) to the
    issue-first layout, using `RuleInfo.Description`
    for the one-line rule summary.
-9. Thread `yaml.Node` lines for kind files and
-   `proto.md` into `Schema.FrontmatterLines`; add the
-   `.mdsmith.yml` path or the kind-line fallback.
+9. (Follow-up) Thread `yaml.Node` lines for inline
+   kind / `.mdsmith.yml` schemas into
+   `Schema.FrontmatterLines`. File schemas (`proto.md`)
+   already resolve to a line; inline schemas still show
+   the `inline kind schema` label.
 10. Update [plan 217](217_obsidian-plugin.md) to
     require the issue-first tooltip and the
     schema-location link.
@@ -266,29 +273,34 @@ declaration's line — still navigable.
 
 ## Acceptance Criteria
 
-- [ ] `lint.Diagnostic` carries `RelatedLocations` and
+- [x] `lint.Diagnostic` carries `RelatedLocations` and
       `DocURL`; old diagnostics serialize unchanged.
-- [ ] An MDS020 FM violation has a `RelatedLocation`
+- [x] An MDS020 FM violation has a `RelatedLocation`
       naming the schema file and line.
 - [ ] An inline-kind violation gets a real file/line
       (or documented kind line), never the bare label.
+      Follow-up: inline schemas still show the
+      `inline kind schema` label (needs config-loader
+      per-key position tracking).
 - [ ] A missing section anchors at the insertion
-      point, not file line 1.
-- [ ] A filename violation stays on line 1 but carries
+      point, not file line 1. Follow-up: deferred to
+      preserve the `filterGeneratedDiags` guarantee
+      (see Design).
+- [x] A filename violation stays on line 1 but carries
       a related location to `path-pattern:`.
-- [ ] `mdsmith check` prints the schema reference from
+- [x] `mdsmith check` prints the schema reference from
       `RelatedLocations`, not the message body.
-- [ ] The LSP diagnostic includes
+- [x] The LSP diagnostic includes
       `relatedInformation` (cross-file URI) and
       `codeDescription.href` for MDS020.
-- [ ] A VS Code hover shows the issue first, a
+- [x] A VS Code hover shows the issue first, a
       separator, then a one-line summary and a doc
       link — not the full README.
-- [ ] [Plan 217](217_obsidian-plugin.md) requires the
+- [x] [Plan 217](217_obsidian-plugin.md) requires the
       issue-first tooltip and a navigable link.
-- [ ] The
+- [x] The
       [MDS020 README](../internal/rules/MDS020-required-structure/README.md)
       documents the new shape.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues.
-- [ ] `mdsmith check .` passes.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues.
+- [x] `mdsmith check .` passes.
