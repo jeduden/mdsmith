@@ -11,13 +11,14 @@ use of LLMs as linters.
 
 ### mdsmith
 
-Go binary with zero runtime deps. 30 rule IDs
-([MDS001][mds001]-[MDS030][mds030]) covering structural
-linting, readability metrics, and generated-content
-management.
+Go binary with zero runtime deps. It ships 67 rules,
+[MDS001][mds001] through [MDS068][mds068] (MDS060 is
+unused). They cover structure, readability, cross-file
+links, and generated content.
 
-[MDS029][mds029] (conciseness-scoring) is experimental and
-disabled by default. The other 29 rules are stable.
+26 of the 67 rules are opt-in (off by default), among them
+conciseness-scoring ([MDS029][mds029]); the rest run by
+default.
 
 Key differentiators:
 
@@ -34,7 +35,7 @@ Key differentiators:
 ### [markdownlint][] ([markdownlint-cli2][])
 
 Node.js. ~60 built-in rules
-([MD001][md001]-[MD058][md058]), 31 auto-fixable. The most
+([MD001][md001]-[MD059][md059]), 31 auto-fixable. The most
 widely adopted Markdown linter. GitHub uses it internally
 via [markdownlint-github][].
 
@@ -274,9 +275,10 @@ layer both: format on save with obsidian-linter,
 then enforce the contract across every `.md` in CI
 with mdsmith.
 
-Sixteen obsidian-linter rules map onto an mdsmith
-rule. They appear in the [peer-linter coverage
-matrix][mdcov]. The remaining 49 are listed below.
+Sixteen mdsmith rules cover an obsidian-linter analog,
+eighteen of its rules in all. The [peer-linter coverage
+matrix][mdcov] lists each pairing. The rest have no
+mdsmith analog and are grouped below.
 
 #### obsidian-linter rules with no mdsmith equivalent
 
@@ -420,6 +422,8 @@ See the [deep-dive comparison][mdbase-deep-dive].
 It covers types, queries, validation, links, the fix
 engine, workflows, and how to run both tools together.
 
+### LLM as Linter
+
 Using language models (GPT-4, Claude, etc.) directly to
 check prose quality, conciseness, and style. This is
 emerging through dedicated CLI tools and AI review bots.
@@ -486,8 +490,8 @@ the broadest set. The full rule-by-rule mapping lives in the
 [markdownlint coverage matrix][mdcov]: every markdownlint
 `MDxxx`, the mdsmith rule that covers it or the plan that
 schedules it, and the mdsmith-only rules. As of 2026-05
-mdsmith implements all 52 active markdownlint rules (50
-fully, 2 partial).
+mdsmith implements all 52 active markdownlint rules (49
+fully, 3 partial).
 
 ### Rust Markdown linters (rumdl, mado, panache)
 
@@ -511,7 +515,7 @@ R Markdown constructs the others flatten away.
 | ----------------------- | ------------ | -------------------- | -------------------- | ------------ |
 | Language                | Go           | Rust                 | Rust                 | Rust         |
 | Rule IDs                | own `MDSxxx` | markdownlint `MDxxx` | markdownlint `MDxxx` | own          |
-| Rule count              | 30+          | 71                   | ~41                  | unenumerated |
+| Rule count              | 67           | 71                   | ~41                  | unenumerated |
 | Autofix / format        | `fix`        | `--fix`, `fmt`       | no                   | `format`     |
 | LSP / editor            | yes (LSP)    | yes (LSP)            | no                   | yes (LSP)    |
 | Config format           | YAML         | TOML                 | TOML                 | TOML         |
@@ -529,10 +533,10 @@ a single positioning line ("built for speed with Rust"),
 names its inspiration (ruff), and states the drop-in promise
 up front. panache leads with one precise sentence that names
 its three jobs and its one technical edge (the lossless CST).
-mdsmith's own README front matter applies the same lesson:
-one crisp line, one verifiable number (sub-300 ms
-self-check), and an explicit "not just a markdownlint clone"
-framing before the feature list.
+mdsmith's own README applies the same lesson: a one-line
+tagline, then a reproducible number (about 0.2 s for its
+523 files, ~10x faster than Node markdownlint) and a note
+that it does more per file than the Rust linters.
 
 ### Prose and Readability
 
@@ -893,38 +897,16 @@ escape the repo root.
 ## Future Plans
 
 Open work is tracked in [PLAN.md](../../PLAN.md). The
-items most relevant to this comparison are:
+`<?build?>` directive and its recipe-safety rule already
+ship. The rest of the build subsystem matters most here:
 
-- **Build subsystem** (plans
-  [101][plan101], [102][plan102], [103][plan103],
-  [104][plan104]) — a `mdsmith build` subcommand with
-  a `<?build?>` directive, staleness tracking, and
-  lifecycle hooks. This will close part of the gap
-  with Hugo: deriving artifacts from Markdown sources
-  without leaving the linter.
-- **markdownlint rule coverage** — mdsmith now implements
-  all 52 active markdownlint rules. MDS068 (`link-style`)
-  covers MD054 (link-image-style) via the
-  `links.style.link-image-style` six-toggle axis, completing
-  coverage. MDS025 (`table-format`) covers MD055, MD056,
-  and MD058 (MD056 flag-only); MDS062 (`link-validity`)
-  covers MD011 and MD042; MDS064 (`atx-heading-whitespace`)
-  covers MD018-MD021 and MD023; MDS063
-  (`descriptive-link-text`) covers MD059; MDS065
-  (`code-block-style`) covers MD046; MDS066
-  (`commands-show-output`) covers MD014. The [coverage
-  matrix][mdcov] tracks each.
-- **User-defined Markdown conventions**
-  ([plan 113][plan113]) — let teams package their own
-  rule presets the way the built-in conventions
-  ([reference][conventions]) do today.
-- **Glob unification** ([plan 120][plan120]) — one
-  glob matcher across config, directives, and CLI
-  arguments.
-- **Recipe-safety rule MDS040 and a build-config
-  block** ([plan 100][plan100]) — guard rails on the
-  forthcoming build directive so it cannot run
-  arbitrary commands without explicit opt-in.
+- the `mdsmith build` subcommand ([plan 102][plan102])
+- build-target staleness and dependency tracking
+  ([plan 103][plan103])
+- before/after lifecycle hooks ([plan 104][plan104])
+
+Together they close part of the gap with Hugo: deriving
+artifacts from Markdown sources without leaving the linter.
 
 Pin a version (`go install github.com/jeduden/mdsmith/cmd/mdsmith@vX.Y.Z`) if
 you need a stable rule set while these land.
@@ -939,9 +921,9 @@ you need a stable rule set while these land.
 [mds025]: ../../internal/rules/MDS025-table-format/README.md
 [mds027]: ../../internal/rules/MDS027-cross-file-reference-integrity/README.md
 [mds067]: ../../internal/rules/MDS067-callout-type/README.md
+[mds068]: ../../internal/rules/MDS068-link-style/README.md
 [mds028]: ../../internal/rules/MDS028-token-budget/README.md
 [mds029]: ../../internal/rules/MDS029-conciseness-scoring/README.md
-[mds030]: ../../internal/rules/MDS030-empty-section-body/README.md
 [mds035]: ../../internal/rules/MDS035-toc-directive/README.md
 [mds038]: ../../internal/rules/MDS038-toc/README.md
 <!-- markdownlint links -->
@@ -951,7 +933,7 @@ you need a stable rule set while these land.
 [mdl-vscode]: https://marketplace.visualstudio.com/items?itemName=DavidAnson.vscode-markdownlint
 [mdl-action]: https://github.com/DavidAnson/markdownlint-cli2-action
 [md001]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md001.md
-[md058]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md058.md
+[md059]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md059.md
 <!-- remark-lint links -->
 [remark-lint]: https://github.com/remarkjs/remark-lint
 [remark]: https://github.com/remarkjs/remark
@@ -1010,10 +992,6 @@ you need a stable rule set while these land.
 [plan78]: ../../plan/78_query-command.md
 [plan83]: ../../plan/83_security-hardening-batch.md
 [plan84]: ../../plan/84_symlink-default-deny.md
-[plan100]: ../../plan/100_build-config-and-mds040.md
-[plan101]: ../../plan/101_build-directive-mds039.md
 [plan102]: ../../plan/102_build-subcommand.md
 [plan103]: ../../plan/103_build-staleness-and-deps.md
 [plan104]: ../../plan/104_build-lifecycle-hooks.md
-[plan113]: ../../plan/113_user-defined-profiles.md
-[plan120]: ../../plan/120_glob-unification.md
