@@ -96,7 +96,7 @@ the release side. Just a typed walk over data.
 3. [x] **YAML / msgpack passthrough.** The same projection mode
    works for `--format yaml` and `--format msgpack`. The
    in-memory tree is one shape; only the serializer changes.
-4. **Default-key collision.** A scope declaring both
+4. [x] **Default-key collision.** A scope declaring both
    `{kind: paragraph, projection: text}` and
    `{kind: paragraph, projection: inline}` would emit two
    sibling keys; declare and document the default keys

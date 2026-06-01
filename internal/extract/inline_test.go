@@ -151,3 +151,54 @@ func TestExtract_InlineRejectsRawHTML(t *testing.T) {
 	require.NotEmpty(t, diags)
 	assert.Contains(t, diags[0].Message, "raw HTML")
 }
+
+// TestExtract_TextAndInlineCoexist verifies that a scope holding a
+// `text`-projected paragraph and an `inline`-projected paragraph
+// emits two sibling keys (the distinct default keys `text` and
+// `inline`) rather than colliding. Content entries are positional, so
+// each binds its own paragraph node.
+func TestExtract_TextAndInlineCoexist(t *testing.T) {
+	sch := &schema.Schema{
+		RootLevel: 2,
+		Sections: []schema.Scope{{
+			Heading: "Headline",
+			Matcher: &schema.Matcher{Regex: "Headline"},
+			Content: []schema.ContentEntry{
+				{Kind: schema.ContentKindParagraph, Required: true,
+					Projection: schema.ProjectionText},
+				{Kind: schema.ContentKindParagraph, Required: true,
+					Projection: schema.ProjectionInline},
+			},
+		}},
+	}
+	got, diags := run(t, "## Headline\n\nplain prose.\n\nMark*down*.\n", sch, nil)
+	require.Empty(t, diags)
+	headline := got.(map[string]any)["headline"].(map[string]any)
+	assert.Equal(t, "plain prose.", headline["text"])
+	spans := headline["inline"].([]any)
+	require.Len(t, spans, 3)
+	assert.Equal(t, map[string]any{"span": "text", "value": "Mark"}, spans[0])
+}
+
+// TestExtract_InlineBindResolvesCollision verifies a `bind:` override
+// renames an inline projection's default key, so two inline entries
+// can coexist without colliding on `inline`.
+func TestExtract_InlineBindResolvesCollision(t *testing.T) {
+	alt := "headline-spans"
+	sch := &schema.Schema{
+		RootLevel: 2,
+		Sections: []schema.Scope{{
+			Heading: "Headline",
+			Matcher: &schema.Matcher{Regex: "Headline"},
+			Content: []schema.ContentEntry{
+				{Kind: schema.ContentKindParagraph, Required: true,
+					Projection: schema.ProjectionInline, Bind: &alt},
+			},
+		}},
+	}
+	got, diags := run(t, "## Headline\n\nhi\n", sch, nil)
+	require.Empty(t, diags)
+	headline := got.(map[string]any)["headline"].(map[string]any)
+	assert.Contains(t, headline, "headline-spans")
+	assert.NotContains(t, headline, "inline")
+}
