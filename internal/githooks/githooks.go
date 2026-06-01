@@ -1127,10 +1127,18 @@ func HookMatchesCanonical(hook string) bool {
 		// lacks this call and must be flagged so the lock hardening is
 		// not silently lost on an out-of-date hook.
 		`mdsmith_git_add "$f"`,
-		// The staging loop must capture and re-raise its exit status so
-		// a persistent lock fails the hook instead of being swallowed by
-		// the pipeline (a hook missing this falls through and exits 0).
+		// Require the helper definition itself, not just the call, so a
+		// hook that dropped the `mdsmith_git_add()` function (and would
+		// fail at runtime) is flagged as drift.
+		`mdsmith_git_add() {`,
+		// The capture lines alone are not enough: require the guards that
+		// act on them, or a drifted hook could keep `stage_status=$?` yet
+		// drop the exit and silently swallow a staging failure. The
+		// diff-failure guard likewise keeps a hard `git diff` error from
+		// being masked by the pipeline.
 		"stage_status=$?",
+		`if [ "$stage_status" -ne 0 ]; then`,
+		`if [ "$diff_status" -ne 0 ]; then`,
 	}
 	for _, frag := range required {
 		if !hookHasNonCommentLineContaining(hook, frag) {

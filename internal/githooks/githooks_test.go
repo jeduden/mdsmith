@@ -798,7 +798,9 @@ func withStubGitAdd(t *testing.T, stub func(repoRoot string) ([]byte, error)) {
 		stageRetryBackoff = origBackoff
 	})
 	gitAddGitattributes = stub
-	stageRetryBackoff = []time.Duration{0, 0, 0, 0, 0}
+	// Match production's retry count (zero-duration for speed) so
+	// assertions on len(stageRetryBackoff) validate the real budget.
+	stageRetryBackoff = make([]time.Duration, len(origBackoff))
 }
 
 // lockExistsOutput mirrors git's real message when it cannot create

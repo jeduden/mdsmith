@@ -1818,6 +1818,7 @@ func TestE2E_PreMergeCommit_ConflictingMergeResolvesWithHookSync(t *testing.T) {
 // driver from pre-regenerating .gitattributes in the worktree, so the
 // stale managed block survives to hook time and MDS048 has a genuine
 // correction to stage — the realistic shape of the queue bug.
+
 // setupNoConflictMergeRepo builds the repo and two branches for
 // TestE2E_PreMergeCommit_NoCommitMergeCapturesBoth: the merge driver
 // and hook are installed, a deliberately stale .gitattributes managed
@@ -1922,6 +1923,12 @@ func TestE2E_PreMergeCommit_NoCommitMergeCapturesBoth(t *testing.T) {
 	status := gitInDir(t, dir, "status", "--porcelain")
 	assert.Empty(t, strings.TrimSpace(status),
 		"worktree must be clean after the hook+commit flow; git status:\n%s", status)
+
+	// A fresh check must pass — catches a structurally broken PLAN.md
+	// (malformed table, leftover markers) that the catalog-row regexps
+	// above would miss on a clean-but-wrong tree.
+	_, checkStderr, checkCode := runBinaryInDir(t, dir, "", "check", ".")
+	assert.Equal(t, 0, checkCode, "check after merge must pass; stderr:\n%s", checkStderr)
 }
 
 // gitInit initializes a git repo with isolated user/sign config so

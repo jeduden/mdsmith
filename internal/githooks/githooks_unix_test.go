@@ -299,7 +299,8 @@ func setupHookRepo(t *testing.T) (repoDir, binDir, target string) {
 // modified, and exit 0.
 func TestHookStagingLoop_RetriesTransientLock(t *testing.T) {
 	repoDir, binDir, _ := setupHookRepo(t)
-	hookPATH := writeFakeGitLockOnAdd(t, binDir, 2)
+	const failCount = 2
+	hookPATH := writeFakeGitLockOnAdd(t, binDir, failCount)
 
 	cmd := exec.Command(filepath.Join(repoDir, ".git", "hooks", "pre-merge-commit"))
 	cmd.Dir = repoDir
@@ -318,8 +319,8 @@ func TestHookStagingLoop_RetriesTransientLock(t *testing.T) {
 
 	attempts, err := os.ReadFile(filepath.Join(binDir, "add-attempts"))
 	require.NoError(t, err)
-	assert.Equal(t, "3", strings.TrimSpace(string(attempts)),
-		"hook must retry git add exactly 3 times (2 transient failures + 1 success)")
+	assert.Equal(t, strconv.Itoa(failCount+1), strings.TrimSpace(string(attempts)),
+		"hook must call git add exactly failCount+1 times (failCount failures + 1 success)")
 }
 
 // TestHookStagingLoop_PersistentLockFailsClearly drives the
