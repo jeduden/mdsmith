@@ -1053,8 +1053,9 @@ func TestToLSP_RelatedFileOnlyAnchorsAtLineZero(t *testing.T) {
 }
 
 // TestToLSP_RelatedURIGuards covers relatedURI's safety branches: a
-// relative file with no workspace root, and a "../" path that escapes
-// the root, both drop the entry; an absolute path is kept.
+// relative file with no workspace root, a "../" path that escapes the
+// root, and an absolute path outside the root are all dropped; an
+// absolute path inside the root is kept.
 func TestToLSP_RelatedURIGuards(t *testing.T) {
 	t.Parallel()
 	mk := func(file, root string) []diagnosticRelatedInformation {
@@ -1066,9 +1067,11 @@ func TestToLSP_RelatedURIGuards(t *testing.T) {
 	}
 	assert.Empty(t, mk("proto.md", ""), "relative file, no root → dropped")
 	assert.Empty(t, mk("../../etc/passwd", "/work/project"), "escaping root → dropped")
-	abs := mk("/abs/proto.md", "/work")
-	require.Len(t, abs, 1, "absolute path → kept")
-	assert.Contains(t, abs[0].Location.URI, "/abs/proto.md")
+	assert.Empty(t, mk("/etc/passwd", "/work/project"),
+		"absolute path outside root → dropped")
+	abs := mk("/work/project/sub/proto.md", "/work/project")
+	require.Len(t, abs, 1, "absolute path inside root → kept")
+	assert.Contains(t, abs[0].Location.URI, "/work/project/sub/proto.md")
 }
 
 // TestToLSPForwardsDeprecationData regresses plan 136: the
@@ -4006,17 +4009,15 @@ func TestInvalidateCachedRead_DropsEntry(t *testing.T) {
 
 // TestRelatedURI_CrossPlatformAbsolute pins that relatedURI treats
 // Windows drive-letter and UNC paths as absolute even on a non-Windows
-// host (matching pathToURI), so such a related location is passed
-// straight through rather than mis-joined to the workspace root.
+// host (matching pathToURI). With no workspace root to bound it, such a
+// path is passed straight through rather than mis-joined.
 func TestRelatedURI_CrossPlatformAbsolute(t *testing.T) {
 	t.Parallel()
-	uri, ok := relatedURI(`C:\work\proto.md`, "/lin/root")
+	uri, ok := relatedURI(`C:\work\proto.md`, "")
 	require.True(t, ok)
 	assert.Equal(t, "file:///C:/work/proto.md", uri)
-	assert.NotContains(t, uri, "lin/root",
-		"absolute Windows path must not be joined to the Linux root")
 
-	uri, ok = relatedURI(`\\server\share\proto.md`, "/lin/root")
+	uri, ok = relatedURI(`\\server\share\proto.md`, "")
 	require.True(t, ok)
 	assert.True(t, strings.HasPrefix(uri, "file://"))
 	assert.Contains(t, uri, "server")
@@ -4024,7 +4025,7 @@ func TestRelatedURI_CrossPlatformAbsolute(t *testing.T) {
 	uri, ok = relatedURI("plan/proto.md", "/lin/root")
 	require.True(t, ok)
 	assert.Contains(t, uri, "/lin/root/plan/proto.md",
-		"a workspace-relative path still joins to root")
+		"a workspace-relative path joins to root and stays inside it")
 }
 
 // TestRelatedHoverLink covers the rule-agnostic related-link renderer:
@@ -4045,4 +4046,16 @@ func TestRelatedHoverLink(t *testing.T) {
 
 	ri.Message = ""
 	assert.Equal(t, "[proto.md:5](file:///w/proto.md#L5)", relatedHoverLink(ri))
+}
+
+// TestWithinRoot covers the containment check, including the
+// filepath.Rel error branch (a relative root against an absolute path
+// cannot be related, so it counts as outside).
+func TestWithinRoot(t *testing.T) {
+	t.Parallel()
+	assert.True(t, withinRoot("/work", "/work/sub/x.md"), "inside root")
+	assert.True(t, withinRoot("/work", "/work"), "root itself counts")
+	assert.False(t, withinRoot("/work", "/etc/passwd"), "sibling escapes")
+	assert.False(t, withinRoot("relative", "/abs/path"),
+		"Rel cannot relate a relative root to an absolute path → outside")
 }

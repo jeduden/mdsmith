@@ -96,28 +96,43 @@ func relatedInformation(locs []lint.RelatedLocation, root string) []diagnosticRe
 
 // relatedURI resolves a related-location file to a file:// URI, or
 // reports ok=false when no safe, navigable URI exists. A label-only
-// location (empty File) is dropped. An absolute path is used as-is. A
-// relative path needs a workspace root to become absolute, and must
-// stay within it — a "../" escape is dropped rather than pointing the
-// editor outside the workspace. Because every path reaching pathToURI
-// is absolute, the URI is always non-empty, so no empty-URI ever
-// reaches the wire.
+// location (empty File) is dropped. Both absolute and relative paths
+// must resolve inside the workspace root when one is known, so a config
+// that points a schema source at an arbitrary local file (e.g.
+// /etc/passwd from a malicious repo) is never turned into a navigable
+// editor link; a "../" escape is dropped for the same reason. With no
+// root there is nothing to bound an absolute path against, so it is
+// used as-is. Because every path reaching pathToURI is absolute, the
+// URI is always non-empty, so no empty-URI ever reaches the wire.
 func relatedURI(file, root string) (string, bool) {
 	if file == "" {
 		return "", false
 	}
 	if isAbsPath(file) {
+		if root != "" && !withinRoot(root, file) {
+			return "", false
+		}
 		return pathToURI(file), true
 	}
 	if root == "" {
 		return "", false
 	}
 	path := filepath.Join(root, filepath.FromSlash(file))
-	if rel, _ := filepath.Rel(root, path); rel == ".." ||
-		strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	if !withinRoot(root, path) {
 		return "", false
 	}
 	return pathToURI(path), true
+}
+
+// withinRoot reports whether path resolves inside root (root itself
+// counts). A "../" escape, or a path on a different volume that Rel
+// cannot relate, is treated as outside.
+func withinRoot(root, path string) bool {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // isAbsPath reports whether p is absolute on any host OS — including
