@@ -93,7 +93,7 @@ the release side. Just a typed walk over data.
    Container spans recurse through the same walker, so nesting
    composes naturally. Anything not in this table (raw HTML,
    images, custom inline) is a hard error from extract.
-3. **YAML / msgpack passthrough.** The same projection mode
+3. [x] **YAML / msgpack passthrough.** The same projection mode
    works for `--format yaml` and `--format msgpack`. The
    in-memory tree is one shape; only the serializer changes.
 4. **Default-key collision.** A scope declaring both

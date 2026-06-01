@@ -3,6 +3,7 @@ package extract
 import (
 	"fmt"
 
+	"github.com/jeduden/mdsmith/internal/schema"
 	"github.com/yuin/goldmark/ast"
 )
 
@@ -111,8 +112,12 @@ func (p *projector) unsupportedInline(n ast.Node) {
 	default:
 		what = fmt.Sprintf("an unsupported inline node (%T)", n)
 	}
-	p.collision("<inline>",
-		"inline projection cannot represent "+what+
-			" — supported spans are text, code, autolink, emphasis, "+
-			"strong, and link")
+	p.emit(schema.SchemaDiagnostic{
+		Field:    "inline",
+		Actual:   what,
+		Expected: "one of: text, code, autolink, emphasis, strong, link",
+		Hint: "the `projection: inline` mapping covers only those " +
+			"spans; remove the node or drop the inline projection",
+		SchemaRef: schema.FormatSchemaRef(p.sch, ""),
+	})
 }

@@ -328,23 +328,27 @@ func (p *projector) setKey(obj map[string]any, key string, val any) {
 }
 
 func (p *projector) collision(key, why string) {
-	d := schema.SchemaDiagnostic{
+	p.emit(schema.SchemaDiagnostic{
 		Field:     key,
 		Actual:    "<collision>",
 		Expected:  "a unique projection key",
 		Hint:      why,
 		SchemaRef: schema.FormatSchemaRef(p.sch, ""),
-	}
-	// Extract returns its diagnostics straight to the CLI formatter
-	// without running them through lint.File.AdjustDiagnostics, so the
-	// line must already be an absolute file line. schema.NonBodyDiagLine
-	// returns 1-LineOffset (meant for later adjustment) and would print
-	// a zero/negative line for front-matter-stripped files; line 1 is
-	// the correct fixed anchor for a whole-document projection error.
-	//
-	// Route through Emit (rather than building the Diagnostic by hand)
-	// so the schema reference rides on a RelatedLocation like every
-	// other MDS020 emit site — Format() no longer carries it (plan 230).
+	})
+}
+
+// emit appends a SchemaDiagnostic as an MDS020 error. Extract returns
+// its diagnostics straight to the CLI formatter without running them
+// through lint.File.AdjustDiagnostics, so the line must already be an
+// absolute file line. schema.NonBodyDiagLine returns 1-LineOffset
+// (meant for later adjustment) and would print a zero/negative line
+// for front-matter-stripped files; line 1 is the correct fixed anchor
+// for a whole-document projection error.
+//
+// Route through Emit (rather than building the Diagnostic by hand) so
+// the schema reference rides on a RelatedLocation like every other
+// MDS020 emit site — Format() no longer carries it (plan 230).
+func (p *projector) emit(d schema.SchemaDiagnostic) {
 	mk := func(file string, line int, msg string) lint.Diagnostic {
 		return lint.Diagnostic{
 			File:     file,
