@@ -219,10 +219,8 @@ check.
    [proto.md](../docs/development/release-channels/proto.md):
    make `registry` / `credential` / `job` optional and
    add `mechanism`, `artifact`, `command`, `audience`,
-   `status`, `platforms`. Add a section schema so each
-   channel body projects through `extract`. Backfill the
-   five existing push files so `mdsmith check .` stays
-   green.
+   `platforms`. Backfill the five existing push files so
+   `mdsmith check .` stays green.
 2. Add `go.md`, `npx.md`, `uvx.md`, `pipx.md`,
    `homebrew.md`, `asdf.md`, and `mise.md` with full
    frontmatter.

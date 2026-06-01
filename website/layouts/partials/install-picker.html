@@ -9,7 +9,7 @@
        reuse the global [data-copy] handler in baseof.html. With JS
        off, every row and an inert chip row still render, so all
        commands stay reachable. */ -}}
-{{- $channels := site.Data.channels -}}
+{{- $channels := hugo.Data.channels -}}
 {{- $labels := dict "go" "Go" "node" "Node" "python" "Python" "macos" "macOS" "linux" "Linux" "windows" "Windows" "editor" "Editor" -}}
 {{- $order := slice "go" "node" "python" "macos" "linux" "windows" "editor" -}}
 {{- $present := slice -}}
