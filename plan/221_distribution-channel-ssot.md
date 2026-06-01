@@ -7,8 +7,8 @@ summary: >-
   toolchain — in one schema-bound directory, and
   generate every channel list from it: the install
   guide table, the release pipeline table, the README,
-  the feature card, the website hero, and an
-  interactive website picker. A `sync-channels --check`
+  the feature card, and an interactive website
+  picker. A `sync-channels --check`
   gate fails CI when any surface drifts.
 model: opus
 depends-on: []
@@ -40,8 +40,8 @@ The copies have already drifted:
 - The [README](../README.md) install block omits
   Homebrew and still flags asdf as "pending", though
   the explicit-URL asdf install works today.
-- The website hero `install:` block in
-  [_index.md](../website/content/_index.md) is a
+- The homepage install tabs (`install:` in
+  [_index.md](../website/content/_index.md)) are a
   curated five-tab subset (go, npm, pip, vs code,
   claude) with neither asdf nor Homebrew.
 
@@ -146,8 +146,11 @@ surfaces should use it:
   file with `<?include ... extract: command ?>`. The
   prose can no longer drift from the source.
 - **The machine data file.** `website/data/channels.yaml`
-  is the output of `mdsmith extract --format yaml`, not
-  a hand-rolled serializer. The picker reads that tree.
+  is the picker's data source. The sync command loads each
+  channel through `mdsmith extract`, then marshals the
+  projected fields into a flat array (renaming
+  `channelurl` to `url`, dropping the publish-only
+  fields). The picker reads that file.
 
 `extract` is single-file, so the set stays one file per
 channel. That also keeps the catalog tables and the
@@ -173,8 +176,10 @@ loads each file through `extract`, the way
 4. A new `website/data/channels.yaml` is assembled by
    the sync command below (extract per file, marshalled
    to YAML). The homepage install section reads it
-   through the picker. The hero `install:` tabs stay a
-   hand-curated subset, untouched by the sync.
+   through the picker, which replaces the old
+   hand-curated `install:` tabs in
+   [_index.md](../website/content/_index.md) — so no
+   second list is left to keep in sync.
 
 ### Interactive picker
 
@@ -192,8 +197,7 @@ table.
 Add a `sync-channels` command to the release tool,
 modeled on `sync-messaging`. It loads each channel file
 through `mdsmith extract`. It writes the Hugo data file
-from that typed output. It also patches the hero block
-on the home page.
+from that typed output, which the picker reads.
 
 The `--check` flag exits non-zero on drift. Wire it into
 [ci.yml](../.github/workflows/ci.yml) next to the
@@ -208,8 +212,8 @@ check.
   release.md, and the feature card to generated output.
   No Go or website changes.
 - **Phase 2 — sync and gate.** Add `sync-channels
-  --check`, the hero patcher, `website/data/channels.yaml`,
-  and the CI gate.
+  --check`, `website/data/channels.yaml`, and the CI
+  gate.
 - **Phase 3 — interactive.** Add the Hugo install
   picker.
 
