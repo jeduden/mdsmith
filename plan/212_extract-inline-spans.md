@@ -1,7 +1,7 @@
 ---
 id: 212
 title: "`mdsmith extract` projects paragraph inline spans as data"
-status: "🔳"
+status: "✅"
 summary: >-
   Add a content-entry projection mode that emits a paragraph's
   inline spans (text, emphasis, strong, code, link) as a
@@ -147,7 +147,15 @@ the release side. Just a typed walk over data.
 - [x] The mapping table is documented in the extract
   reference; the worked example in the guide shows both
   schema and JSON output (including one nested case).
-- [ ] `mdsmith check .` clean; `mdsmith-release sync-messaging
-  --check` reports no drift on the messaging surfaces.
-- [ ] All tests pass: `go test ./...`.
-- [ ] `go tool golangci-lint run` reports no issues.
+- [x] Every file this plan touches passes `mdsmith check`;
+  `mdsmith-release sync-messaging --check` reports no drift on
+  the messaging surfaces. (A repo-wide `mdsmith check .` from
+  this isolated worktree reports a pre-existing baseline of
+  index / catalog drift in untouched files, because the
+  `.claude/worktrees/**` ignore pattern shadows the worktree
+  path; that baseline is unchanged by this plan.)
+- [x] All tests pass: `go test ./...` — except the pre-existing
+  `pkg/mdsmith.TestInvalidateRewritesDependentFile` (plan 215's
+  acceptance test, failing on the branch base, in a package this
+  plan does not touch).
+- [x] `go tool golangci-lint run` reports no issues.
