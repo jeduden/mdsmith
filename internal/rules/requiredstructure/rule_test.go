@@ -2581,3 +2581,12 @@ func TestBuildSchemaRefForLegacy(t *testing.T) {
 			"proto.md", got, "proto.md")
 	}
 }
+
+// TestLegacyPrecedingLine covers the file-schema path's document-order
+// lookup mirror of precedingHeadingLine.
+func TestLegacyPrecedingLine(t *testing.T) {
+	heads := []docHeading{{Line: 2}, {Line: 5}}
+	assert.Equal(t, 0, legacyPrecedingLine(heads, 0))
+	assert.Equal(t, 2, legacyPrecedingLine(heads, 1))
+	assert.Equal(t, 5, legacyPrecedingLine(heads, 2))
+}

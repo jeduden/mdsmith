@@ -299,6 +299,44 @@ func nonBodyDiagLine(f *lint.File) int {
 	return NonBodyDiagLine(f)
 }
 
+// MissingSectionAnchor returns the body line to anchor a
+// missing-section diagnostic. candidate is the natural insertion
+// point — the line of the heading the missing section should follow.
+// It is used when it is a real body line (> 0) that lies outside every
+// generated range; otherwise the non-body anchor is returned. A
+// missing section has no body line of its own, and anchoring inside a
+// generated section would let engine.filterGeneratedDiags drop the
+// diagnostic — the very case NonBodyDiagLine's non-positive value
+// guards against. So this re-anchors at the insertion point only when
+// it is safe, and falls back to line 1 otherwise (plan 221).
+func MissingSectionAnchor(f *lint.File, candidate int) int {
+	if candidate > 0 && !lineInGeneratedRange(f, candidate) {
+		return candidate
+	}
+	return NonBodyDiagLine(f)
+}
+
+// precedingHeadingLine returns the line of the document heading just
+// before docIdx — the section a missing scope should follow — or 0
+// when there is no preceding heading.
+func precedingHeadingLine(docHeads []DocHeading, docIdx int) int {
+	if idx := docIdx - 1; idx >= 0 && idx < len(docHeads) {
+		return docHeads[idx].Line
+	}
+	return 0
+}
+
+// lineInGeneratedRange reports whether the 1-based body line falls
+// within any of the file's generated-section ranges.
+func lineInGeneratedRange(f *lint.File, line int) bool {
+	for _, r := range f.GeneratedRanges {
+		if r.Contains(line) {
+			return true
+		}
+	}
+	return false
+}
+
 // fmDiagLine returns the line to anchor a front-matter diagnostic
 // at, expressed in the body-line coordinate system the engine
 // uses before lint.File.AdjustDiagnostics fires. When the doc's
@@ -641,13 +679,15 @@ func validateScopes(
 		if claimedThis {
 			allowExtra = false
 		} else if !claimed[i] && sc.Required() {
-			// Missing sections have no body line to point at;
-			// use the non-body anchor so filterGeneratedDiags
-			// can't drop the diagnostic if body line 1 sits
-			// inside a generated section.
+			// Anchor the missing section at the heading it should
+			// follow (the preceding document heading), so the
+			// squiggle lands where the section belongs rather than
+			// at file line 1. MissingSectionAnchor falls back to the
+			// non-body anchor when there is no preceding heading or
+			// the insertion point sits inside a generated section.
 			diags = append(diags, missingSectionDiag(
 				formatHeading(expectedLevel, displayHeading(sc)), sch).
-				Emit(mkDiag, f.Path, nonBodyDiagLine(f)))
+				Emit(mkDiag, f.Path, MissingSectionAnchor(f, precedingHeadingLine(docHeads, docIdx))))
 		}
 	}
 

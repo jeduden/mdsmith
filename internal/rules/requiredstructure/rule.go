@@ -1821,7 +1821,8 @@ func walkRequiredHeadings(
 			allowExtra = false
 		}
 		if !found && !claimed[schIdx] {
-			diags = append(diags, missingSectionDiagLegacy(f, req, ref))
+			diags = append(diags, missingSectionDiagLegacy(
+				f, req, ref, legacyPrecedingLine(docHeadings, docIdx)))
 		}
 	}
 	return diags, docIdx, allowExtra
@@ -1850,7 +1851,7 @@ func flagTrailingExtras(
 // missingSectionDiagLegacy builds the SchemaDiagnostic for a
 // required heading that the document lacks.
 func missingSectionDiagLegacy(
-	f *lint.File, req schemaHeading, ref string,
+	f *lint.File, req schemaHeading, ref string, precedingLine int,
 ) lint.Diagnostic {
 	d := schema.SchemaDiagnostic{
 		Field:     formatHeading(req.Level, req.Text),
@@ -1858,11 +1859,22 @@ func missingSectionDiagLegacy(
 		Expected:  "section to be present",
 		SchemaRef: ref,
 	}
-	// Missing sections have no body line to point at; use the
-	// non-body anchor so the engine's filterGeneratedDiags can't
-	// drop the diagnostic when body line 1 sits inside a
-	// generated section.
-	return d.Emit(makeDiag, f.Path, schema.NonBodyDiagLine(f))
+	// Anchor at the heading the missing section should follow so the
+	// squiggle lands where the section belongs; MissingSectionAnchor
+	// falls back to the non-body anchor when there is no preceding
+	// heading or the insertion point sits inside a generated section
+	// (where filterGeneratedDiags would otherwise drop it).
+	return d.Emit(makeDiag, f.Path, schema.MissingSectionAnchor(f, precedingLine))
+}
+
+// legacyPrecedingLine returns the line of the document heading just
+// before docIdx (the section a missing required heading should
+// follow), or 0 when there is none.
+func legacyPrecedingLine(docHeadings []docHeading, docIdx int) int {
+	if idx := docIdx - 1; idx >= 0 && idx < len(docHeadings) {
+		return docHeadings[idx].Line
+	}
+	return 0
 }
 
 // buildSchemaRefForLegacy returns the schema reference string

@@ -281,3 +281,34 @@ func TestDocFrontmatterKeyLines_StrippedFrontMatter(t *testing.T) {
 	assert.Equal(t, 2, lines["id"])
 	assert.Equal(t, 3, lines["status"])
 }
+
+// TestMissingSectionAnchor covers the body-anchoring helper added in
+// plan 221: a real body line outside every generated range is used as
+// the anchor; a zero candidate (no preceding heading) and a candidate
+// inside a generated section both fall back to the non-body anchor so
+// engine.filterGeneratedDiags can never drop the diagnostic.
+func TestMissingSectionAnchor(t *testing.T) {
+	f, err := lint.NewFile("doc.md", []byte("# A\n## B\n## C\n"))
+	require.NoError(t, err)
+	require.Equal(t, 1, NonBodyDiagLine(f))
+
+	assert.Equal(t, 2, MissingSectionAnchor(f, 2), "real body line is used")
+	assert.Equal(t, NonBodyDiagLine(f), MissingSectionAnchor(f, 0),
+		"no preceding heading → non-body anchor")
+
+	f.GeneratedRanges = []lint.LineRange{{From: 2, To: 4}}
+	assert.Equal(t, NonBodyDiagLine(f), MissingSectionAnchor(f, 3),
+		"candidate inside a generated range → non-body anchor")
+	assert.Equal(t, 5, MissingSectionAnchor(f, 5),
+		"candidate outside the range is still used")
+}
+
+// TestPrecedingHeadingLine covers the document-order lookup: the
+// heading just before docIdx, or 0 when there is none.
+func TestPrecedingHeadingLine(t *testing.T) {
+	heads := []DocHeading{{Line: 1}, {Line: 3}, {Line: 7}}
+	assert.Equal(t, 0, precedingHeadingLine(heads, 0))
+	assert.Equal(t, 1, precedingHeadingLine(heads, 1))
+	assert.Equal(t, 7, precedingHeadingLine(heads, 3))
+	assert.Equal(t, 0, precedingHeadingLine(nil, 5))
+}

@@ -82,6 +82,31 @@ func TestCheck_InlineSchema_MissingSection(t *testing.T) {
 	expectDiagMsg(t, diags, `## Tasks: got <missing>, expected section to be present`)
 }
 
+// TestCheck_InlineSchema_MissingSectionAnchorsAtPrecedingHeading pins
+// plan 221's body anchoring: a missing section's diagnostic lands on
+// the heading it should follow (## Goal, line 3), not file line 1.
+func TestCheck_InlineSchema_MissingSectionAnchorsAtPrecedingHeading(t *testing.T) {
+	r := &Rule{InlineSchema: inlineSchema(t, map[string]any{
+		"closed": true,
+		"sections": []any{
+			map[string]any{"heading": "Goal"},
+			map[string]any{"heading": "Tasks"},
+		},
+	})}
+	f := newTestFile(t, "doc.md", "# My Plan\n\n## Goal\n\nGoal text.\n")
+	diags := r.Check(f)
+	var found bool
+	for _, d := range diags {
+		if strings.Contains(d.Message, "## Tasks") &&
+			strings.Contains(d.Message, "section to be present") {
+			assert.Equal(t, 3, d.Line,
+				"missing section anchors at the preceding heading (## Goal)")
+			found = true
+		}
+	}
+	require.True(t, found, "expected a missing-Tasks diagnostic")
+}
+
 func TestCheck_InlineSchema_ParityWithFileSchema(t *testing.T) {
 	// File-based and inline schemas with equivalent structure must
 	// emit the same diagnostic for the same document — this is

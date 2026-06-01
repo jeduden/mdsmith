@@ -5,7 +5,8 @@ settings:
       - heading: "Goal"
       - heading: "Tasks"
 diagnostics:
-  - line: 1
+  # Missing section anchors at the preceding heading (## Goal, line 3).
+  - line: 3
     column: 1
     message: |-
       ## Tasks: got <missing>, expected section to be present
