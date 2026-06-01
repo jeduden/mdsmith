@@ -11,6 +11,7 @@ import (
 	flag "github.com/spf13/pflag"
 
 	fixpkg "github.com/jeduden/mdsmith/internal/fix"
+	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -134,6 +135,7 @@ func fixFiles(fileArgs []string, opts fixCLIOpts) int {
 		Explain:          opts.explain,
 		DryRun:           opts.dryRun,
 	}
+	files = orderFilesLeavesFirst(files, fixer.RootDir, maxBytes)
 	fixResult := fixer.Fix(files)
 	return reportFixResult(opts, fixResult, logger)
 }
@@ -162,8 +164,52 @@ func fixDiscovered(opts fixCLIOpts) int {
 		Explain:          opts.explain,
 		DryRun:           opts.dryRun,
 	}
+	files = orderFilesLeavesFirst(files, fixer.RootDir, maxBytes)
 	fixResult := fixer.Fix(files)
 	return reportFixResult(opts, fixResult, logger)
+}
+
+// orderFilesLeavesFirst reorders files so generated-section
+// dependencies are fixed before the files that embed them, letting a
+// single `mdsmith fix` pass converge an include/catalog cascade
+// instead of needing one pass per dependency level. It builds the
+// workspace dependency index over files and topologically sorts it
+// (leaves first; see index.DependencyOrder).
+//
+// Ordering is a convergence optimization, not a correctness
+// requirement — Fixer.Fix re-sweeps to a fixpoint regardless — so any
+// setup problem (a short list, two inputs that collapse to one
+// workspace path) falls back to the caller's original order rather
+// than failing or dropping a file.
+func orderFilesLeavesFirst(files []string, rootDir string, maxBytes int64) []string {
+	if len(files) < 2 {
+		return files
+	}
+	relToAbs := make(map[string]string, len(files))
+	rels := make([]string, 0, len(files))
+	for _, abs := range files {
+		rel := index.NormalizePath(workspaceRelativePath(abs, rootDir))
+		if _, dup := relToAbs[rel]; dup {
+			return files
+		}
+		relToAbs[rel] = abs
+		rels = append(rels, rel)
+	}
+
+	idx := index.New(rootDir)
+	idx.BuildSerial(rels, func(rel string) ([]byte, error) {
+		return lint.ReadFileLimited(relToAbs[rel], maxBytes)
+	})
+
+	ordered := idx.DependencyOrder(rels)
+	if len(ordered) != len(files) {
+		return files
+	}
+	out := make([]string, 0, len(files))
+	for _, rel := range ordered {
+		out = append(out, relToAbs[rel])
+	}
+	return out
 }
 
 // reportFixResult writes the fix run's output and computes the exit

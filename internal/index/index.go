@@ -468,6 +468,120 @@ func (i *Index) OutgoingEdges(file string) []Edge {
 	return out
 }
 
+// DependencyOrder returns paths reordered so that a file's
+// generated-section dependencies come before the file itself: a file
+// that <?include?>s or <?build?>s another is placed after its targets
+// (leaves first). This lets a single fix sweep regenerate an upstream
+// file before the downstream file that embeds it, so an
+// include/catalog cascade converges in one productive pass instead of
+// one pass per dependency level.
+//
+// Only resolved include and build edges constrain the order. Catalog
+// edges are glob-based (Unresolved) and impose no constraint — the
+// fix workspace fixpoint loop settles catalog sources that are
+// themselves fixed. Link edges (anchor/file/ref) do not embed content
+// and are ignored. Targets outside paths impose no constraint (they
+// are read as-is and never fixed). Files in a dependency cycle, and
+// files with no constraint, keep their original relative order.
+//
+// The input slice is not mutated; a new slice with the same elements
+// is returned. Fewer than two paths are returned unchanged.
+func (i *Index) DependencyOrder(paths []string) []string {
+	if i == nil || len(paths) < 2 {
+		return paths
+	}
+
+	indegree, dependents := i.dependencyEdges(paths)
+
+	// Kahn's algorithm, seeded in input order so independent files keep
+	// their original relative order.
+	queue := make([]string, 0, len(paths))
+	for _, p := range paths {
+		if indegree[p] == 0 {
+			queue = append(queue, p)
+		}
+	}
+	out := make([]string, 0, len(paths))
+	seen := make(map[string]struct{}, len(paths))
+	for len(queue) > 0 {
+		n := queue[0]
+		queue = queue[1:]
+		out = append(out, n)
+		seen[n] = struct{}{}
+		for _, d := range dependents[n] {
+			indegree[d]--
+			if indegree[d] == 0 {
+				queue = append(queue, d)
+			}
+		}
+	}
+
+	// Any file still unseen is part of a dependency cycle; append it in
+	// input order. The fix workspace fixpoint loop converges these.
+	if len(out) < len(paths) {
+		for _, p := range paths {
+			if _, ok := seen[p]; !ok {
+				out = append(out, p)
+			}
+		}
+	}
+	return out
+}
+
+// dependencyEdges builds the in-set generated-section dependency graph
+// among paths. indegree[p] is the number of distinct in-set files p
+// must be processed after (its resolved include/build targets), and
+// dependents[d] lists the files that depend on d. Returned maps have an
+// entry for every path.
+func (i *Index) dependencyEdges(paths []string) (map[string]int, map[string][]string) {
+	inSet := make(map[string]struct{}, len(paths))
+	for _, p := range paths {
+		inSet[p] = struct{}{}
+	}
+	deps := make(map[string]map[string]struct{}, len(paths))
+	dependents := make(map[string][]string, len(paths))
+	indegree := make(map[string]int, len(paths))
+	for _, p := range paths {
+		indegree[p] = 0
+	}
+	for _, p := range paths {
+		for _, e := range i.OutgoingEdges(p) {
+			t, ok := orderingTarget(e, p, inSet)
+			if !ok {
+				continue
+			}
+			if _, dup := deps[p][t]; dup {
+				continue
+			}
+			if deps[p] == nil {
+				deps[p] = make(map[string]struct{})
+			}
+			deps[p][t] = struct{}{}
+			dependents[t] = append(dependents[t], p)
+			indegree[p]++
+		}
+	}
+	return indegree, dependents
+}
+
+// orderingTarget returns e's in-set dependency target when e is a
+// resolved include or build edge that constrains fix order. ok is
+// false for catalog (glob) and link edges, unresolved or empty
+// targets, self-edges, and targets outside the fix set.
+func orderingTarget(e Edge, source string, inSet map[string]struct{}) (string, bool) {
+	if e.Unresolved || (e.Kind != EdgeInclude && e.Kind != EdgeBuild) {
+		return "", false
+	}
+	t := e.TargetFile
+	if t == "" || t == source {
+		return "", false
+	}
+	if _, ok := inSet[t]; !ok {
+		return "", false
+	}
+	return t, true
+}
+
 // FilesByKind returns workspace files whose front-matter `kinds:`
 // list contains kind. Order is undefined.
 func (i *Index) FilesByKind(kind string) []string {
