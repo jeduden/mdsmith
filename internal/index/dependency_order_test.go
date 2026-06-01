@@ -90,3 +90,67 @@ func TestDependencyOrder_DoesNotMutateInput(t *testing.T) {
 	_ = idx.DependencyOrder(in)
 	assert.Equal(t, []string{"top.md", "leaf.md"}, in, "input slice must not be mutated")
 }
+
+// TestDependencyOrder_IgnoresNonDependencyEdges verifies that only
+// resolved include/build edges constrain order: a <?catalog?> (an
+// Unresolved glob edge) and a Markdown file link impose no constraint,
+// so a file reached only by those is not forced before its referrer.
+// Only the include edge to dep.md orders dep before host.
+func TestDependencyOrder_IgnoresNonDependencyEdges(t *testing.T) {
+	idx := New("/root")
+	idx.Update("host.md", []byte(
+		"# Host\n\n"+
+			"<?include\nfile: dep.md\n?>\n<?/include?>\n\n"+
+			"<?catalog\nglob: \"*.md\"\nrow: \"- {filename}\"\n?>\n<?/catalog?>\n\n"+
+			"See [other](other.md).\n"))
+	idx.Update("dep.md", []byte("# Dep\n"))
+	idx.Update("other.md", []byte("# Other\n"))
+
+	in := []string{"host.md", "dep.md", "other.md"}
+	got := idx.DependencyOrder(in)
+
+	require.ElementsMatch(t, in, got, "must return the same set of paths")
+	pos := make(map[string]int, len(got))
+	for i, p := range got {
+		pos[p] = i
+	}
+	assert.Less(t, pos["dep.md"], pos["host.md"],
+		"only the include edge constrains order: dep before host")
+	// other.md is merely link-referenced, so it carries no ordering
+	// constraint; presence (ElementsMatch above) is all that's required.
+}
+
+// TestDependencyOrder_IgnoresSelfInclude verifies a self-edge (a file
+// that includes itself) imposes no constraint and does not drop or
+// duplicate the file.
+func TestDependencyOrder_IgnoresSelfInclude(t *testing.T) {
+	idx := New("/root")
+	idx.Update("self.md", include("self.md"))
+	idx.Update("leaf.md", []byte("# Leaf\n"))
+
+	in := []string{"self.md", "leaf.md"}
+	got := idx.DependencyOrder(in)
+	require.ElementsMatch(t, in, got, "self-include must not drop or duplicate a file")
+}
+
+// TestDependencyOrder_DeduplicatesRepeatedDependency verifies that a
+// file including the same target twice contributes one ordering
+// constraint, not two: the target still precedes the host.
+func TestDependencyOrder_DeduplicatesRepeatedDependency(t *testing.T) {
+	idx := New("/root")
+	idx.Update("host.md", []byte(
+		"# Host\n\n"+
+			"<?include\nfile: leaf.md\n?>\n<?/include?>\n\n"+
+			"<?include\nfile: leaf.md\n?>\n<?/include?>\n"))
+	idx.Update("leaf.md", []byte("# Leaf\n"))
+
+	in := []string{"host.md", "leaf.md"}
+	got := idx.DependencyOrder(in)
+	require.ElementsMatch(t, in, got)
+	pos := make(map[string]int, len(got))
+	for i, p := range got {
+		pos[p] = i
+	}
+	assert.Less(t, pos["leaf.md"], pos["host.md"],
+		"a repeated include still orders the target before the host")
+}

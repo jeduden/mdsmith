@@ -202,9 +202,6 @@ func orderFilesLeavesFirst(files []string, rootDir string, maxBytes int64) []str
 	})
 
 	ordered := idx.DependencyOrder(rels)
-	if len(ordered) != len(files) {
-		return files
-	}
 	out := make([]string, 0, len(files))
 	for _, rel := range ordered {
 		out = append(out, relToAbs[rel])

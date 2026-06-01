@@ -44,3 +44,15 @@ func TestOrderFilesLeavesFirst_ShortInput(t *testing.T) {
 	in := []string{"/ws/only.md"}
 	assert.Equal(t, in, orderFilesLeavesFirst(in, "/ws", lint.DefaultMaxInputBytes))
 }
+
+// TestOrderFilesLeavesFirst_DuplicateWorkspacePath verifies the
+// fallback when two inputs collapse to the same workspace-relative
+// path: the helper returns the caller's list unchanged rather than
+// dropping a file when mapping the ordered relatives back to absolutes.
+func TestOrderFilesLeavesFirst_DuplicateWorkspacePath(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "a.md")
+	in := []string{p, p} // both normalize to the same workspace path
+	got := orderFilesLeavesFirst(in, dir, lint.DefaultMaxInputBytes)
+	assert.Equal(t, in, got, "duplicate workspace path must fall back to input order")
+}

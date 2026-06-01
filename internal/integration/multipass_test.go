@@ -105,7 +105,8 @@ func TestMultiPassFix_CrossFileCatalogIncludeCascade(t *testing.T) {
 	// without the workspace fixpoint under test, so the baseline does
 	// not presuppose the fix.
 	for i := 0; i < 10; i++ {
-		fixer.Fix(paths)
+		res := fixer.Fix(paths)
+		require.Empty(t, res.Errors, "unexpected errors during baseline setup: %v", res.Errors)
 		b, err := os.ReadFile(top)
 		require.NoError(t, err)
 		if strings.Contains(string(b), "SUMMARY_V1") {

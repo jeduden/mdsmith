@@ -531,8 +531,10 @@ func (i *Index) DependencyOrder(paths []string) []string {
 // dependencyEdges builds the in-set generated-section dependency graph
 // among paths. indegree[p] is the number of distinct in-set files p
 // must be processed after (its resolved include/build targets), and
-// dependents[d] lists the files that depend on d. Returned maps have an
-// entry for every path.
+// dependents[d] lists the files that depend on d. indegree has an entry
+// for every path; dependents is keyed only by files that are depended
+// upon, so a path nothing depends on has no key — a missing key reads
+// as a nil slice, which ranges as empty.
 func (i *Index) dependencyEdges(paths []string) (map[string]int, map[string][]string) {
 	inSet := make(map[string]struct{}, len(paths))
 	for _, p := range paths {
@@ -573,7 +575,11 @@ func orderingTarget(e Edge, source string, inSet map[string]struct{}) (string, b
 		return "", false
 	}
 	t := e.TargetFile
-	if t == "" || t == source {
+	// A self-edge (a file that includes itself) imposes no ordering
+	// constraint. collectDirectiveEdges never emits an empty target for
+	// include/build edges, and an empty target could not be in inSet
+	// anyway, so the membership check below covers that case.
+	if t == source {
 		return "", false
 	}
 	if _, ok := inSet[t]; !ok {
