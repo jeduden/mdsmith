@@ -10,8 +10,8 @@ runs:
       env:
         # Pinned compatibility baseline for mdsmith release checks and merge tooling.
         # Bump here only when intentionally updating that baseline.
-        MDSMITH_VERSION: v0.28.0
-        MDSMITH_SHA256: 62870ea2fd0681dd42ef4c43cf1760a035949fa51592e52ed16575386828b6a7
+        MDSMITH_VERSION: v0.29.0
+        MDSMITH_SHA256: 130d784cec7fe096ba332974dcd615fc3b4a0ca479730c5fd5a3c9f1f1f55bd3
       # The binary is downloaded over HTTPS and SHA256-verified above
       # before $HOME/.local/bin is appended to PATH, so the github-env
       # write is safe to ignore.
