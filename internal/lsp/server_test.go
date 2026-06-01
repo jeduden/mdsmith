@@ -4002,3 +4002,26 @@ func TestInvalidateCachedRead_DropsEntry(t *testing.T) {
 		t.Errorf("after invalidate: cache hit = %v, want rebuilt", got)
 	}
 }
+
+// TestRelatedURI_CrossPlatformAbsolute pins that relatedURI treats
+// Windows drive-letter and UNC paths as absolute even on a non-Windows
+// host (matching pathToURI), so such a related location is passed
+// straight through rather than mis-joined to the workspace root.
+func TestRelatedURI_CrossPlatformAbsolute(t *testing.T) {
+	t.Parallel()
+	uri, ok := relatedURI(`C:\work\proto.md`, "/lin/root")
+	require.True(t, ok)
+	assert.Equal(t, "file:///C:/work/proto.md", uri)
+	assert.NotContains(t, uri, "lin/root",
+		"absolute Windows path must not be joined to the Linux root")
+
+	uri, ok = relatedURI(`\\server\share\proto.md`, "/lin/root")
+	require.True(t, ok)
+	assert.True(t, strings.HasPrefix(uri, "file://"))
+	assert.Contains(t, uri, "server")
+
+	uri, ok = relatedURI("plan/proto.md", "/lin/root")
+	require.True(t, ok)
+	assert.Contains(t, uri, "/lin/root/plan/proto.md",
+		"a workspace-relative path still joins to root")
+}

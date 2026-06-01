@@ -106,18 +106,29 @@ func relatedURI(file, root string) (string, bool) {
 	if file == "" {
 		return "", false
 	}
-	if filepath.IsAbs(file) {
+	if isAbsPath(file) {
 		return pathToURI(file), true
 	}
 	if root == "" {
 		return "", false
 	}
-	path := filepath.Join(root, file)
+	path := filepath.Join(root, filepath.FromSlash(file))
 	if rel, _ := filepath.Rel(root, path); rel == ".." ||
 		strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", false
 	}
 	return pathToURI(path), true
+}
+
+// isAbsPath reports whether p is absolute on any host OS — including
+// Windows drive-letter (`C:\x`) and UNC (`\\server\share`) paths,
+// which filepath.IsAbs rejects on a non-Windows host. This mirrors the
+// cross-platform classification pathToURI applies, so an absolute
+// related location from a Windows client (or a cross-platform test) is
+// passed straight to pathToURI rather than mis-joined to the workspace
+// root.
+func isAbsPath(p string) bool {
+	return filepath.IsAbs(p) || isWindowsDrivePath(p) || strings.HasPrefix(p, `\\`)
 }
 
 // clampZero returns n, or 0 when n is negative. Used to flip 1-based
