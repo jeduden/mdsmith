@@ -842,7 +842,8 @@ func TestStageGitattributes_PersistentLockFailsClearly(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "index locked",
 		"a persistent lock must surface a clear \"index locked\" message")
-	assert.Greater(t, calls, 1, "StageGitattributes must retry before giving up")
+	assert.Equal(t, len(stageRetryBackoff)+1, calls,
+		"StageGitattributes must exhaust the full retry budget before giving up")
 }
 
 // TestStageGitattributes_NeverRemovesLockItDidNotCreate proves the

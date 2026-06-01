@@ -1758,12 +1758,12 @@ func TestE2E_PreMergeCommit_ConflictingMergeResolvesWithHookSync(t *testing.T) {
 	mergeOut, mergeErr := exec.Command("git", "-C", dir,
 		"-c", "commit.gpgsign=false",
 		"merge", "--no-ff", "--no-commit", "theirs").CombinedOutput()
-	// A driver-resolved --no-commit merge leaves no CONFLICT markers.
-	if mergeErr != nil {
-		require.NotContains(t, string(mergeOut), "CONFLICT",
-			"the merge driver must resolve the PLAN.md catalog conflict; got:\n%s",
-			mergeOut)
-	}
+	// `git merge --no-commit` exits non-zero by design, and some git
+	// versions print "CONFLICT" even when a merge driver resolves the
+	// file — so assert resolution directly: no unmerged index paths.
+	require.Empty(t, strings.TrimSpace(gitInDir(t, dir, "ls-files", "-u")),
+		"merge driver must leave no unmerged paths (conflict resolved); "+
+			"merge exit=%v output:\n%s", mergeErr, mergeOut)
 
 	hook := exec.Command(filepath.Join(gitHooksDir(t, dir), "pre-merge-commit"))
 	hook.Dir = dir

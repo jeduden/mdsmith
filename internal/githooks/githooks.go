@@ -1127,6 +1127,10 @@ func HookMatchesCanonical(hook string) bool {
 		// lacks this call and must be flagged so the lock hardening is
 		// not silently lost on an out-of-date hook.
 		`mdsmith_git_add "$f"`,
+		// The staging loop must capture and re-raise its exit status so
+		// a persistent lock fails the hook instead of being swallowed by
+		// the pipeline (a hook missing this falls through and exits 0).
+		"stage_status=$?",
 	}
 	for _, frag := range required {
 		if !hookHasNonCommentLineContaining(hook, frag) {

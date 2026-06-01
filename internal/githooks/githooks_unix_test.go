@@ -315,6 +315,11 @@ func TestHookStagingLoop_RetriesTransientLock(t *testing.T) {
 	assert.Contains(t, string(stagedOut), "PLAN.md",
 		"hook must stage the modified file once the transient lock clears; got %q",
 		string(stagedOut))
+
+	attempts, err := os.ReadFile(filepath.Join(binDir, "add-attempts"))
+	require.NoError(t, err)
+	assert.Equal(t, "3", strings.TrimSpace(string(attempts)),
+		"hook must retry git add exactly 3 times (2 transient failures + 1 success)")
 }
 
 // TestHookStagingLoop_PersistentLockFailsClearly drives the
