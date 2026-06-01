@@ -46,6 +46,41 @@ type Diagnostic struct {
 	// deprecation declares one. Empty on non-deprecation diagnostics
 	// and on deprecation diagnostics that only set `message:`.
 	ReplacedBy string
+
+	// RelatedLocations carries secondary source locations that explain
+	// the diagnostic — for MDS020, the schema constraint a value
+	// violated. A location may point at a different file than the one
+	// the diagnostic anchors in (the schema lives in proto.md, a kind
+	// file, or .mdsmith.yml). The CLI prints these as trailer lines;
+	// the LSP maps them onto DiagnosticRelatedInformation. Nil on
+	// diagnostics that carry no secondary location.
+	RelatedLocations []RelatedLocation
+
+	// DocURL, when non-empty, is the canonical documentation URL for the
+	// rule that fired. The LSP maps it onto Diagnostic.codeDescription
+	// so the rule code renders as a clickable link; the CLI ignores it.
+	DocURL string
+}
+
+// RelatedLocation is a secondary source location attached to a
+// Diagnostic. It points the reader at the thing that explains the
+// finding — for a schema violation, the line of the schema constraint.
+// File may differ from the owning Diagnostic.File: the schema that a
+// document violates lives in a separate proto.md, kind file, or config.
+type RelatedLocation struct {
+	// File is the path of the related source. It may be the linted
+	// file itself or a separate schema source.
+	File string
+
+	// Line is the 1-based line of the related location.
+	Line int
+
+	// Column is the 1-based column, or 0 when only the line is known.
+	Column int
+
+	// Message describes why the location is related, e.g.
+	// `schema requires one of: "open", "in-progress"`.
+	Message string
 }
 
 // Explanation describes the provenance of a rule's effective config at
