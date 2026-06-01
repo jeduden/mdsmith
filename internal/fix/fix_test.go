@@ -1029,12 +1029,50 @@ func (r *mockNonConvergingRule) Fix(f *lint.File) []byte {
 var _ rule.FixableRule = (*mockNonConvergingRule)(nil)
 
 func TestFix_MaxPassesBoundary(t *testing.T) {
-	// A rule whose Fix always appends "X", so content never converges.
-	// applyFixPasses must exit after exactly maxPasses (10) iterations.
+	// A rule whose Fix always appends "X", so a single file never
+	// converges. The per-file applyFixPasses loop must exit after
+	// exactly maxPasses (10) iterations. This pins the inner per-file
+	// cap, so it drives fixOnce (one workspace pass) directly; Fix's
+	// outer workspace fixpoint loop is covered by
+	// TestFix_WorkspaceFixpointBounded.
 	dir := t.TempDir()
 	mdFile := filepath.Join(dir, "test.md")
 	initial := []byte("A\n")
 	require.NoError(t, os.WriteFile(mdFile, initial, 0o644))
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"mock-non-converging": {Enabled: true},
+		},
+	}
+	fixer := &Fixer{
+		Config: cfg,
+		Rules:  []rule.Rule{&mockNonConvergingRule{id: "MDS999", name: "mock-non-converging"}},
+	}
+
+	result := fixer.fixOnce([]string{mdFile})
+	require.Empty(t, result.Errors, "unexpected errors: %v", result.Errors)
+
+	got, err := os.ReadFile(mdFile)
+	require.NoError(t, err)
+
+	// After 10 passes each appending "X", the file should end with 10 X's.
+	const maxPasses = 10
+	assert.Equal(t, string(initial)+strings.Repeat("X", maxPasses), string(got))
+}
+
+// TestFix_WorkspaceFixpointBounded verifies that Fix's workspace
+// fixpoint loop terminates on a rule that never converges. Each
+// fixOnce caps at maxPasses (10) per-file iterations, and Fix
+// re-sweeps while any file was written, so a non-idempotent rule is
+// bounded by maxWorkspacePasses * maxPasses rather than looping
+// forever. Real fixable rules are idempotent and converge in one or
+// two sweeps; this guards the safety bound that keeps a buggy rule
+// from hanging the merge-queue hook.
+func TestFix_WorkspaceFixpointBounded(t *testing.T) {
+	dir := t.TempDir()
+	mdFile := filepath.Join(dir, "test.md")
+	require.NoError(t, os.WriteFile(mdFile, []byte("A\n"), 0o644))
 
 	cfg := &config.Config{
 		Rules: map[string]config.RuleCfg{
@@ -1051,10 +1089,12 @@ func TestFix_MaxPassesBoundary(t *testing.T) {
 
 	got, err := os.ReadFile(mdFile)
 	require.NoError(t, err)
-
-	// After 10 passes each appending "X", the file should end with 10 X's.
-	const maxPasses = 10
-	assert.Equal(t, string(initial)+strings.Repeat("X", maxPasses), string(got))
+	xs := strings.Count(string(got), "X")
+	// More than one per-file cap proves Fix re-swept the workspace;
+	// no more than the product proves the loop is bounded (no hang).
+	assert.Greater(t, xs, 10, "Fix should re-sweep while the workspace keeps changing")
+	assert.LessOrEqual(t, xs, 100,
+		"workspace fixpoint must stay within maxWorkspacePasses*maxPasses")
 }
 
 // --- dry-run ---

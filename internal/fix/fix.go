@@ -135,9 +135,76 @@ type RuleFixCount struct {
 	Count  int
 }
 
-// Fix applies auto-fixes to the files at the given paths and returns a Result
-// containing remaining diagnostics, modified file paths, and any errors.
+// Fix applies auto-fixes to the files at the given paths and returns a
+// Result with remaining diagnostics, modified file paths, and any errors.
+//
+// Fix runs to a workspace fixpoint: it repeats a full pass over paths
+// until a pass writes nothing back to disk (bounded by
+// maxWorkspacePasses). One pass fixes each file independently, reading
+// its neighbours from disk — that settles intra-file rule cascades
+// (applyFixPasses) but not cross-file generated-section edges: when
+// file A <?include?>s or <?catalog?>s file B and B is fixed later in
+// the same pass, A still embeds B's pre-fix content. Re-sweeping until
+// nothing changes lets those edges settle, so once Fix returns,
+// `mdsmith check` on the same tree finds nothing left to fix. Passing
+// paths in dependency order (leaves first) reaches the fixpoint in one
+// productive pass plus one confirming pass.
+//
+// A dry run previews a single pass: it writes nothing, so a re-sweep
+// would re-read identical bytes and could not converge a cross-file
+// edge, and WouldFix is defined against the original on-disk state.
 func (f *Fixer) Fix(paths []string) *Result {
+	if f.DryRun {
+		return f.fixOnce(paths)
+	}
+
+	const maxWorkspacePasses = 10
+	var first, last *Result
+	modified := make(map[string]struct{})
+	for pass := 0; pass < maxWorkspacePasses; pass++ {
+		r := f.fixOnce(paths)
+		if first == nil {
+			first = r
+		}
+		last = r
+		for _, m := range r.Modified {
+			modified[m] = struct{}{}
+		}
+		// A pass that writes nothing means every file — including every
+		// cross-file generated section — already matched its fixed
+		// form, so the workspace has reached a fixpoint.
+		if len(r.Modified) == 0 {
+			break
+		}
+	}
+
+	// Compose the aggregate Result:
+	//   - FilesChecked and Failures describe the input, so they come
+	//     from the first pass (the only pass that saw the unfixed tree).
+	//   - Diagnostics and Errors describe the converged tree, so they
+	//     come from the last pass, which re-checked every file against
+	//     the final state.
+	//   - Modified is the union across passes: a file fixed only after a
+	//     dependency settled is still a file this run changed.
+	out := &Result{
+		FilesChecked: first.FilesChecked,
+		Failures:     first.Failures,
+		Diagnostics:  last.Diagnostics,
+		Errors:       last.Errors,
+	}
+	out.Modified = make([]string, 0, len(modified))
+	for m := range modified {
+		out.Modified = append(out.Modified, m)
+	}
+	sort.Strings(out.Modified)
+	return out
+}
+
+// fixOnce performs a single pass over paths, fixing each file
+// independently, and returns that pass's Result. Fix wraps it in the
+// workspace fixpoint loop; callers that need cross-file generated
+// sections to converge must go through Fix, not fixOnce.
+func (f *Fixer) fixOnce(paths []string) *Result {
 	res := &Result{}
 
 	// Aggregate `before` and `after` diagnostics across files so the
