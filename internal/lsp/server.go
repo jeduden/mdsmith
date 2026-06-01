@@ -79,6 +79,18 @@ type Server struct {
 	// emitted via window/logMessage and s.logger at most once per session.
 	previewFallbackLogged atomic.Bool
 
+	// Parent-process watchdog (LSP §3.16 InitializeParams.processId).
+	// runCtx is the Run() context; the watchdog stops with it on a
+	// normal shutdown. parentAlive / onParentExit / parentInterval are
+	// test seams — production uses processAlive, os.Exit(0), and
+	// parentPollInterval. parentWatchOnce guards against a repeated
+	// initialize starting a second watcher.
+	runCtx          context.Context
+	parentAlive     func(int) bool
+	onParentExit    func()
+	parentInterval  time.Duration
+	parentWatchOnce sync.Once
+
 	// runCache is the engine read cache shared across every runLint
 	// call so two host buffers that catalog over the same docs/**
 	// tree do not each re-read the matched targets from disk on
@@ -193,6 +205,12 @@ func New(opts Options) *Server {
 		diags:          make(map[string][]Diagnostic),
 		runCache:       lint.NewRunCache(),
 		parseCache:     lint.NewParseCache(),
+		// Parent-process watchdog defaults; Run() overwrites runCtx
+		// with its own context. Tests override these seams.
+		runCtx:         context.Background(),
+		parentAlive:    processAlive,
+		onParentExit:   func() { os.Exit(0) },
+		parentInterval: parentPollInterval,
 	}
 }
 
@@ -206,6 +224,9 @@ func New(opts Options) *Server {
 // teardown does not race the parent goroutine and write
 // publishDiagnostics into a half-closed pipe.
 func (s *Server) Run(ctx context.Context) error {
+	// Record the run context so the parent-process watchdog started in
+	// handleInitialize stops when the server shuts down normally.
+	s.runCtx = ctx
 	defer func() {
 		s.shutdown.Store(true)
 		s.stopPendingLints()
@@ -447,6 +468,11 @@ func (s *Server) handleInitialize(msg *requestMessage) {
 	s.clientCapsMu.Lock()
 	s.clientCaps = p.Capabilities
 	s.clientCapsMu.Unlock()
+
+	// Honor the LSP processId watchdog: exit if the editor that launched
+	// us goes away. Prevents an orphaned server from outliving an editor
+	// update/reload/crash and racing the freshly-spawned one.
+	s.startParentWatch(p.ProcessID)
 
 	res := initializeResult{
 		Capabilities: serverCapabilities{

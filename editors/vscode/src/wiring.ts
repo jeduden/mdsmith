@@ -178,6 +178,80 @@ function candidateLabel(c: BinaryCandidate): string {
   }
 }
 
+// ConfigChangeLike is the structural subset of
+// vscode.ConfigurationChangeEvent the extension consults when deciding
+// whether a settings edit is worth forwarding to the server. Defined
+// here so the decision can be unit-tested without the `vscode` runtime.
+export interface ConfigChangeLike {
+  affectsConfiguration(section: string): boolean;
+}
+
+// forwardMdsmithConfigChange invokes `notify` exactly when a
+// configuration-change event touches any `mdsmith.*` setting.
+//
+// The LSP server reads mdsmith.config / mdsmith.run / mdsmith.previewFix
+// by pulling workspace/configuration on initialize and on every
+// workspace/didChangeConfiguration notification. vscode-languageclient
+// does NOT emit that notification on its own unless
+// LanguageClientOptions.synchronize.configurationSection is set — and we
+// deliberately leave it unset to stay on the pull model. Without an
+// explicit nudge the server therefore keeps whatever settings it read at
+// startup, so toggling e.g. mdsmith.previewFix has no effect until the
+// server restarts. The caller wires `notify` to push the notification;
+// gating on the mdsmith section keeps unrelated settings edits from
+// triggering a config re-pull and a re-lint of every open buffer.
+export function forwardMdsmithConfigChange(
+  event: ConfigChangeLike,
+  notify: () => void
+): void {
+  if (event.affectsConfiguration("mdsmith")) {
+    notify();
+  }
+}
+
+// RunningClientLike is the structural subset of LanguageClient that
+// notifyConfigChangeToClient needs. Defined here so the not-running
+// guard can be unit-tested without constructing a real LanguageClient.
+export interface RunningClientLike {
+  isRunning(): boolean;
+}
+
+// notifyConfigChangeToClient pushes the didChangeConfiguration nudge to
+// the server, but only when the client is actually running.
+//
+// vscode-languageclient@9's LanguageClient.sendNotification returns a
+// REJECTED promise (ResponseError ConnectionInactive, "Client is not
+// running") whenever the client state is StartFailed, Stopping, or
+// Stopped. The config listener can fire in exactly those windows — while
+// the server is restarting, during deactivation, or after a spawn
+// failure that has not yet nulled the reference — so an unguarded
+// `void client?.sendNotification(...)` only guards `undefined` and lets
+// those rejections escape as unhandledRejection. We therefore (1) skip
+// the send unless isRunning(), and (2) attach a .catch() to absorb the
+// residual race where the client stops between the check and the send.
+//
+// `send` is required and owns the actual notification payload: keeping
+// it here (rather than constructing a DidChangeConfigurationNotification
+// inside this helper) is what lets wiring.ts stay decoupled from the
+// vscode-languageclient protocol types so this guard is unit-testable
+// without the runtime. The generic preserves the caller's concrete
+// client type, so `send` receives the real LanguageClient (with its
+// typed sendNotification overloads) rather than the minimal
+// RunningClientLike — no cast needed at the call site.
+export function notifyConfigChangeToClient<T extends RunningClientLike>(
+  client: T | undefined,
+  send: (c: T) => Promise<void>
+): void {
+  if (!client || !client.isRunning()) {
+    return;
+  }
+  // The send can still reject if the client stops in the gap between
+  // isRunning() and here; swallow it so it never becomes an
+  // unhandledRejection. Nothing actionable to do — the next initialize
+  // (on the inevitable restart) re-pulls config anyway.
+  void send(client).catch(() => {});
+}
+
 // Minimal shapes of the bits of vscode.CodeAction / WorkspaceEdit /
 // Uri / TextEdit we touch when filtering fixAll edits. Defining them
 // here lets tests drive the pure pipeline without importing `vscode`.

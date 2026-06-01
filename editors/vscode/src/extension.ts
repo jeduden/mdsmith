@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import {
   CloseAction,
   CloseHandlerResult,
+  DidChangeConfigurationNotification,
   ErrorAction,
   ErrorHandler,
   ErrorHandlerResult,
@@ -16,6 +17,8 @@ import {
   buildClientOptions,
   buildServerOptions,
   collectFixAllEdits,
+  forwardMdsmithConfigChange,
+  notifyConfigChangeToClient,
   startupErrorMessage
 } from "./wiring";
 import { findBinaryCandidates, resolveBinary } from "./binary";
@@ -71,6 +74,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         )
       );
     })
+  );
+
+  // Forward mdsmith.* settings changes to the running server so it
+  // re-pulls config (mdsmith.run, mdsmith.config, mdsmith.previewFix).
+  // The server only reads these on initialize and on
+  // workspace/didChangeConfiguration; vscode-languageclient does not
+  // emit that notification by itself in the pull model, so without this
+  // toggling e.g. mdsmith.previewFix would have no effect until a server
+  // restart. See forwardMdsmithConfigChange for the full rationale.
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((event) =>
+      forwardMdsmithConfigChange(event, () => {
+        notifyConfigChangeToClient(client, (c) =>
+          c.sendNotification(DidChangeConfigurationNotification.type, {
+            settings: null
+          })
+        );
+      })
+    )
   );
 
   await startServer(context);

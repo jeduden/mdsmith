@@ -17,6 +17,8 @@ import {
   buildClientOptions,
   buildServerOptions,
   collectFixAllEdits,
+  forwardMdsmithConfigChange,
+  notifyConfigChangeToClient,
   startupErrorMessage,
   type CodeActionLike,
   type FileSystemWatcherLike,
@@ -244,6 +246,102 @@ describe("startupErrorMessage", () => {
       candidates: [],
     });
     expect(msg).toContain("resolved command: /opt/mdsmith");
+  });
+});
+
+describe("forwardMdsmithConfigChange", () => {
+  test("notifies the server when the change touches mdsmith.*", () => {
+    let calls = 0;
+    forwardMdsmithConfigChange(
+      { affectsConfiguration: (section) => section === "mdsmith" },
+      () => {
+        calls++;
+      }
+    );
+    expect(calls).toBe(1);
+  });
+
+  test("stays quiet when the change does not touch mdsmith.*", () => {
+    // An unrelated settings edit (e.g. editor.fontSize) must not trigger
+    // a config re-pull + full re-lint of every open buffer.
+    let calls = 0;
+    forwardMdsmithConfigChange(
+      { affectsConfiguration: () => false },
+      () => {
+        calls++;
+      }
+    );
+    expect(calls).toBe(0);
+  });
+
+  test("asks specifically about the mdsmith section", () => {
+    const asked: string[] = [];
+    forwardMdsmithConfigChange(
+      {
+        affectsConfiguration: (section) => {
+          asked.push(section);
+          return false;
+        }
+      },
+      () => {}
+    );
+    expect(asked).toEqual(["mdsmith"]);
+  });
+});
+
+describe("notifyConfigChangeToClient", () => {
+  // A client double exposing just isRunning(), plus a send spy that
+  // stands in for the caller-supplied notification callback. Tracking
+  // sends on the spy (not the client) mirrors the real design, where the
+  // payload lives in the callback rather than in RunningClientLike.
+  function fixture(opts: { running: boolean; onSend?: () => Promise<void> }) {
+    let sends = 0;
+    const client = { isRunning: () => opts.running };
+    const send = (_c: typeof client): Promise<void> => {
+      sends++;
+      return opts.onSend ? opts.onSend() : Promise.resolve();
+    };
+    return { sends: () => sends, client, send };
+  }
+
+  test("sends when the client is running", () => {
+    const f = fixture({ running: true });
+    notifyConfigChangeToClient(f.client, f.send);
+    expect(f.sends()).toBe(1);
+  });
+
+  test("does not send when the client is undefined", () => {
+    // No client yet (config edit racing activation): must be a no-op,
+    // never a throw. The send callback must not run.
+    const f = fixture({ running: true });
+    expect(() => notifyConfigChangeToClient(undefined, f.send)).not.toThrow();
+    expect(f.sends()).toBe(0);
+  });
+
+  test("does not send when the client is not running", () => {
+    // vscode-languageclient@9 rejects sendNotification with
+    // ConnectionInactive when the client is Stopping/Stopped/
+    // StartFailed; calling it would surface an unhandled rejection.
+    // The isRunning() guard must prevent the send entirely.
+    const f = fixture({ running: false });
+    notifyConfigChangeToClient(f.client, f.send);
+    expect(f.sends()).toBe(0);
+  });
+
+  test("swallows a rejected send without throwing", async () => {
+    // Even past the guard, the client can transition to not-running
+    // between the isRunning() check and the send, so the callback
+    // returns a rejected promise. notifyConfigChangeToClient must attach
+    // a .catch() so it never becomes an unhandledRejection.
+    const f = fixture({
+      running: true,
+      onSend: () => Promise.reject(new Error("Client is not running"))
+    });
+    expect(() => notifyConfigChangeToClient(f.client, f.send)).not.toThrow();
+    // Let the microtask queue drain; if the .catch() inside were missing
+    // Bun would surface an unhandledRejection and fail the test here.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(f.sends()).toBe(1);
   });
 });
 
