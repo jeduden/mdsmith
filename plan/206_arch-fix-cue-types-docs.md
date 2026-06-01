@@ -1,7 +1,7 @@
 ---
 id: 206
 title: Document cue/ in architecture layering map
-status: "🔳"
+status: "✅"
 summary: >-
   cue/types was added as a public Go package outside
   internal/ and pkg/, but is not in the layering map.
