@@ -1,4 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 // `vscode-languageclient/node` does an unconditional `require("vscode")`
 // at import time, but the `vscode` package is only available inside the
@@ -21,6 +23,9 @@ import {
   notifyConfigChangeToClient,
   shouldFixOnSave,
   startupErrorMessage,
+  RUN_OFF,
+  RUN_ON_SAVE,
+  RUN_ON_TYPE,
   type CodeActionLike,
   type FileSystemWatcherLike,
   type UriLike
@@ -363,6 +368,25 @@ describe("shouldFixOnSave", () => {
     expect(shouldFixOnSave("onType", false)).toBe(false);
     expect(shouldFixOnSave("onSave", false)).toBe(false);
     expect(shouldFixOnSave("off", false)).toBe(false);
+  });
+});
+
+describe("run-mode constants", () => {
+  test("match the mdsmith.run enum declared in package.json", () => {
+    // wiring.ts claims to mirror package.json's mdsmith.run enum; pin
+    // that here so the constants and the contributed setting cannot
+    // drift apart — a drift would make shouldFixOnSave (and the
+    // willSave handler) compare against a value VS Code never sends.
+    const pkg = JSON.parse(
+      readFileSync(resolve(__dirname, "../package.json"), "utf-8")
+    ) as {
+      contributes: {
+        configuration: { properties: Record<string, { enum?: string[] }> };
+      };
+    };
+    const runEnum =
+      pkg.contributes.configuration.properties["mdsmith.run"].enum;
+    expect(runEnum).toEqual([RUN_ON_TYPE, RUN_ON_SAVE, RUN_OFF]);
   });
 });
 
