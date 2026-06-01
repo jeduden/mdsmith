@@ -50,7 +50,17 @@ fi
 # `mdsmith_git_add` exit there ends only the subshell; capture
 # the pipeline status afterward and re-raise it so a persistent
 # lock (or other hard error) aborts the whole hook.
-git diff --name-only -- '*.md' '*.markdown' | while IFS= read -r f; do
+#
+# Capture the changed-file list first and check `git diff`'s own
+# exit status. Piping `git diff` straight into the loop would tie
+# $? to the `while` (which exits 0 on empty input), masking a
+# hard `git diff` failure and committing without staging fixes.
+changed_md=$(git diff --name-only -- '*.md' '*.markdown')
+diff_status=$?
+if [ "$diff_status" -ne 0 ]; then
+  exit "$diff_status"
+fi
+printf '%s\n' "$changed_md" | while IFS= read -r f; do
   if [ -n "$f" ]; then
     mdsmith_git_add "$f"
   fi

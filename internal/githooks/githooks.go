@@ -935,8 +935,9 @@ func StageGitattributes(repoRoot string) error {
 		// The lock outlasted every retry. Report it as locked and keep
 		// git's own message so the operator sees which lock file and the
 		// "remove the file manually" hint, without mdsmith ever removing
-		// a lock it did not create. isIndexLockError matches only
-		// non-empty output, so msg always carries git's message here.
+		// a lock it did not create. isIndexLockError only returns true
+		// when git's output contains the lock message, so msg is
+		// non-empty here.
 		return fmt.Errorf("stage .gitattributes: index locked: %w: %s", err, msg)
 	}
 	if msg == "" {
@@ -1078,7 +1079,17 @@ func BuildHookScript(exe string) string {
 		"# `mdsmith_git_add` exit there ends only the subshell; capture\n" +
 		"# the pipeline status afterward and re-raise it so a persistent\n" +
 		"# lock (or other hard error) aborts the whole hook.\n" +
-		"git diff --name-only -- '*.md' '*.markdown' | " +
+		"#\n" +
+		"# Capture the changed-file list first and check `git diff`'s own\n" +
+		"# exit status. Piping `git diff` straight into the loop would tie\n" +
+		"# $? to the `while` (which exits 0 on empty input), masking a\n" +
+		"# hard `git diff` failure and committing without staging fixes.\n" +
+		"changed_md=$(git diff --name-only -- '*.md' '*.markdown')\n" +
+		"diff_status=$?\n" +
+		"if [ \"$diff_status\" -ne 0 ]; then\n" +
+		"  exit \"$diff_status\"\n" +
+		"fi\n" +
+		"printf '%s\\n' \"$changed_md\" | " +
 		"while IFS= read -r f; do\n" +
 		"  if [ -n \"$f\" ]; then\n" +
 		"    mdsmith_git_add \"$f\"\n" +
@@ -1109,7 +1120,7 @@ func HookMatchesCanonical(hook string) bool {
 		" fix .",
 		"status=$?",
 		`if [ "$status" -ne 0 ] && [ "$status" -ne 1 ]; then`,
-		"git diff --name-only -- '*.md' '*.markdown' |",
+		`changed_md=$(git diff --name-only -- '*.md' '*.markdown')`,
 		`while IFS= read -r f; do`,
 		// Staging goes through the index.lock-aware retry helper. A
 		// hook that drifted back to a bare `git add -- "$f"` loop

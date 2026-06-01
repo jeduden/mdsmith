@@ -1699,6 +1699,105 @@ func TestE2E_MergeDriver_FileOrderingRace_Resolved(t *testing.T) {
 		"check after merge must pass; stderr:\n%s", stderr)
 }
 
+// setupConflictingMergeRepo builds a repo whose `ours` and `theirs`
+// branches both regenerate PLAN.md's catalog (ours adds plan 02,
+// theirs adds plan 03), so merging conflicts inside the generated
+// section and the mdsmith merge driver runs. git-hook-sync is
+// enabled and the merge driver + hook are installed; ours is left
+// checked out, ready to merge theirs.
+func setupConflictingMergeRepo(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	gitInit(t, dir)
+
+	writeFixture(t, dir, ".mdsmith.yml",
+		"rules:\n  catalog: true\n  include: true\n  git-hook-sync: true\n")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "plan"), 0o755))
+	writeFixture(t, dir, "plan/01.md", fmt.Sprintf(planTmpl, 1, 1, "🔲", 1))
+	writeFixture(t, dir, "PLAN.md", planMdTmpl)
+
+	_, stderr, code := runBinaryInDir(t, dir, "", "merge-driver", "install")
+	require.Equal(t, 0, code, "install failed: %s", stderr)
+	_, stderr, code = runBinaryInDir(t, dir, "", "fix", "PLAN.md")
+	require.Equal(t, 0, code, "seed fix failed: %s", stderr)
+	gitCommit(t, dir, "seed")
+	seedSHA := strings.TrimSpace(gitInDir(t, dir, "rev-parse", "HEAD"))
+
+	// ours adds plan 02, theirs adds plan 03: both rewrite PLAN.md's
+	// catalog body, so merging conflicts inside the generated section.
+	completePlanOnBranch(t, dir, "ours", seedSHA, 2)
+	completePlanOnBranch(t, dir, "theirs", seedSHA, 3)
+	gitInDir(t, dir, "checkout", "ours")
+	return dir
+}
+
+// TestE2E_PreMergeCommit_ConflictingMergeResolvesWithHookSync runs the
+// merge-queue model (`git merge --no-ff --no-commit`, then the
+// pre-merge-commit hook, then `git commit`) on a *conflicting* merge of
+// a driver-managed generated file, with git-hook-sync (MDS048) enabled
+// — the shape of the failing queue run.
+//
+// ours adds plan 02 and theirs adds plan 03, so both rewrite PLAN.md's
+// generated catalog and `git merge` invokes the mdsmith merge driver on
+// PLAN.md while git holds .git/index.lock. The driver must resolve the
+// conflict (regenerate the catalog from every plan file) WITHOUT running
+// MDS048's in-process `git add` — that add would race the merge for the
+// lock. MDS048 still runs in the hook afterward, when git no longer
+// holds the lock.
+//
+// This guards the concern that dropping MDS048 from the merge driver
+// could leave the conflict unresolved: it asserts the catalog resolves
+// to list every plan, the merge commits cleanly, .gitattributes
+// survives, the worktree is clean, and no stale .git/index.lock remains.
+func TestE2E_PreMergeCommit_ConflictingMergeResolvesWithHookSync(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	dir := setupConflictingMergeRepo(t)
+
+	mergeOut, mergeErr := exec.Command("git", "-C", dir,
+		"-c", "commit.gpgsign=false",
+		"merge", "--no-ff", "--no-commit", "theirs").CombinedOutput()
+	// A driver-resolved --no-commit merge leaves no CONFLICT markers.
+	if mergeErr != nil {
+		require.NotContains(t, string(mergeOut), "CONFLICT",
+			"the merge driver must resolve the PLAN.md catalog conflict; got:\n%s",
+			mergeOut)
+	}
+
+	hook := exec.Command(filepath.Join(gitHooksDir(t, dir), "pre-merge-commit"))
+	hook.Dir = dir
+	hookOut, hookErr := hook.CombinedOutput()
+	require.NoErrorf(t, hookErr, "pre-merge-commit hook failed: %s", hookOut)
+
+	commitOut, err := exec.Command("git", "-C", dir,
+		"-c", "commit.gpgsign=false",
+		"commit", "--no-edit").CombinedOutput()
+	require.NoErrorf(t, err, "git commit (merge) failed: %s", commitOut)
+
+	// Conflict resolved: the committed catalog lists all three plans.
+	committedPlan := gitInDir(t, dir, "show", "HEAD:PLAN.md")
+	for _, id := range []string{"1", "2", "3"} {
+		assert.Regexp(t, `\| `+id+` +\|`, committedPlan,
+			"merged PLAN.md catalog must list plan %s; got:\n%s", id, committedPlan)
+	}
+	assert.NotContains(t, committedPlan, "<<<<<<<",
+		"no conflict markers may survive into the merge commit")
+
+	// .gitattributes survived, no stale lock, clean worktree.
+	committedAttrs := gitInDir(t, dir, "show", "HEAD:.gitattributes")
+	assert.Contains(t, committedAttrs, "merge=mdsmith",
+		"merge commit must keep the managed .gitattributes")
+	assert.NoFileExists(t, filepath.Join(dir, ".git", "index.lock"),
+		"no stale .git/index.lock may remain after the merge")
+	status := strings.TrimSpace(gitInDir(t, dir, "status", "--porcelain"))
+	assert.Empty(t, status,
+		"worktree must be clean after the merge commit; got:\n%s", status)
+
+	_, stderr, code := runBinaryInDir(t, dir, "", "check", ".")
+	assert.Equal(t, 0, code, "check after merge must pass; stderr:\n%s", stderr)
+}
+
 // TestE2E_PreMergeCommit_NoCommitMergeCapturesBoth exercises the
 // invocation model the merge queue uses: `git merge --no-ff
 // --no-commit`, then the pre-merge-commit hook, then a separate `git
