@@ -18,7 +18,7 @@ import (
 )
 
 // preMergeMarkerBytes is the package-level byte slice of PreMergeCommitMarker,
-// hoisted to avoid allocating a copy of the full hook file on every check.
+// hoisted to avoid re-converting the marker constant to []byte on every call.
 var preMergeMarkerBytes = []byte(githooks.PreMergeCommitMarker)
 
 func init() {
