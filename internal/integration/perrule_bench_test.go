@@ -240,8 +240,9 @@ type perRuleBudget struct {
 //     ceiling, while a real Check-time regression (an added per-line
 //     pass, a lost early-exit) still trips it. The parse floor is
 //     constant, so even a cheap rule's regression shows. Floored at
-//     1ms; MDS043 keeps 2.5ms because it parses the source a second
-//     time via LinkReferences. MDS035 and MDS037 carry 2ms (≈8x): the
+//     1ms (MDS043 now sits at the floor — plan 188 removed its second
+//     parse, so it parses once like every other rule). MDS035 and
+//     MDS037 carry 2ms (≈8x): the
 //     minimum filters TRANSIENT spikes, but a burst spanning every
 //     window — go test ./... runs package binaries in parallel, so a
 //     sibling's go-build can saturate all cores for the whole ~0.2s
@@ -262,11 +263,12 @@ type perRuleBudget struct {
 // fails TestPerRuleBenchBudget (see the "no pinned budget" subtest),
 // so a newly-added opt-in rule must be pinned here as part of the
 // change that adds it.
-// MDS043's Allocs ceiling is set per goldmark build axis in init()
-// below, from mds043AllocCeiling (384 on the arena build in
-// goldmark_arena_test.go, 784 under -tags goldmark_upstream in
-// goldmark_upstream_test.go). The map literal holds the arena value so
-// the column stays numeric; init() overrides it on the non-arena axis.
+// MDS043's Allocs ceiling is set from mds043AllocCeiling in init()
+// below. Plan 188 removed its second parse, so the arena and upstream
+// build axes now allocate identically (16 in both goldmark_arena_test.go
+// and goldmark_upstream_test.go); the per-axis indirection is retained
+// only so a future divergence has a home. The map literal carries the
+// same value so the column stays numeric.
 var perRuleBenchBudget = map[string]perRuleBudget{
 	"MDS024": {Time: 1000 * time.Microsecond, Allocs: 44},  // paragraph-structure: base ~192us / 36 allocs
 	"MDS029": {Time: 1000 * time.Microsecond, Allocs: 30},  // conciseness-scoring: base ~178us / 24 allocs
@@ -277,7 +279,7 @@ var perRuleBenchBudget = map[string]perRuleBudget{
 	"MDS037": {Time: 2000 * time.Microsecond, Allocs: 130}, // duplicated-content: base ~241us / 108 allocs
 	"MDS041": {Time: 1000 * time.Microsecond, Allocs: 4},   // no-inline-html: base ~185us / 0 allocs
 	"MDS042": {Time: 1000 * time.Microsecond, Allocs: 4},   // emphasis-style: base ~176us / 0 allocs
-	"MDS043": {Time: 2500 * time.Microsecond, Allocs: 384}, // no-reference-style: base ~477us / 320 allocs (2nd parse)
+	"MDS043": {Time: 1000 * time.Microsecond, Allocs: 16},  // no-reference-style: base ~215us / 10 allocs (plan 188)
 	"MDS044": {Time: 1000 * time.Microsecond, Allocs: 4},   // horizontal-rule-style: base ~174us / 0 allocs
 	"MDS045": {Time: 1000 * time.Microsecond, Allocs: 6},   // list-marker-style: base ~184us / 1 alloc
 	"MDS046": {Time: 1000 * time.Microsecond, Allocs: 4},   // ordered-list-numbering: base ~175us / 0 allocs

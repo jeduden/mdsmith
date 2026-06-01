@@ -15,7 +15,6 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
 	"github.com/yuin/goldmark/util"
 )
@@ -195,58 +194,134 @@ type referenceDefinition struct {
 	end   int // byte offset just past the trailing newline
 }
 
-// collectReferenceDefinitions re-parses the source with goldmark to
-// pick up reference definitions (which are consumed at parse time and
-// never appear in the document AST), then locates each in source so
-// the rule can report a precise position. Lines inside fenced or
-// indented code blocks are excluded so that definition-shaped lines
-// in examples cannot produce false matches or corrupt Fix output.
+// collectReferenceDefinitions locates each reference definition in
+// source so the rule can report a precise position. Reference
+// definitions are consumed at parse time and never appear in the
+// document AST, so their labels come from f.LinkReferences() — the
+// canonical-parse reference set, already memoized on the *File — and
+// no longer from a second goldmark parse (plan 188). The locate scan
+// walks lines with scanRefDefLine, the byte-for-byte equivalent of
+// the former refDefRE `(?m)^[ ]{0,3}\[([^\]\n]+)\]:[ \t]*\S+.*$`,
+// the same scanner MDS053 already proved equal to that pattern.
+// Lines inside fenced or indented code blocks are excluded so that
+// definition-shaped lines in examples cannot produce false matches
+// or corrupt Fix output.
 func collectReferenceDefinitions(f *lint.File) []referenceDefinition {
 	source := f.Source
-	ctx := parser.NewContext()
-	lint.NewParser().Parse(text.NewReader(source), parser.WithContext(ctx))
 
-	wanted := map[string]bool{}
-	for _, ref := range ctx.References() {
-		wanted[string(ref.Label())] = true
-	}
-	if len(wanted) == 0 {
+	refs := f.LinkReferences()
+	if len(refs) == 0 {
 		return nil
 	}
 
 	codeLines := lint.CollectCodeBlockLines(f)
 	var out []referenceDefinition
-	for _, m := range refDefRE.FindAllSubmatchIndex(source, -1) {
-		raw := source[m[2]:m[3]]
-		if !wanted[util.ToLinkReference(raw)] {
-			continue
+
+	lineNum := 1
+	lineStart := 0
+	for lineStart <= len(source) {
+		eol := lineStart
+		for eol < len(source) && source[eol] != '\n' {
+			eol++
 		}
-		bracketAbs := m[2] - 1
-		matchLine := f.LineOfOffset(bracketAbs)
-		if codeLines[matchLine] {
-			continue
+		labelStart, labelEnd, ok := scanRefDefLine(source, lineStart, eol)
+		if ok {
+			raw := source[labelStart:labelEnd]
+			if labelInRefs(raw, refs) && !codeLines[lineNum] {
+				bracketAbs := labelStart - 1
+				end := eol
+				// Include the trailing newline so a fix can drop the
+				// line cleanly.
+				if end < len(source) && source[end] == '\n' {
+					end++
+				}
+				out = append(out, referenceDefinition{
+					label: string(raw),
+					line:  lineNum,
+					col:   f.ColumnOfOffset(bracketAbs),
+					start: lineStart,
+					end:   end,
+				})
+			}
 		}
-		end := m[1]
-		// Include the trailing newline so a fix can drop the line cleanly.
-		if end < len(source) && source[end] == '\n' {
-			end++
+		if eol >= len(source) {
+			break
 		}
-		out = append(out, referenceDefinition{
-			label: string(raw),
-			line:  matchLine,
-			col:   f.ColumnOfOffset(bracketAbs),
-			start: m[0],
-			end:   end,
-		})
+		lineStart = eol + 1
+		lineNum++
 	}
 	return out
 }
 
-// refDefRE matches a CommonMark reference definition at the start of
-// a line: optional 0-3 spaces, [label]: dest (with optional title).
-// Used only for *locating* a definition after goldmark already
-// confirmed it exists, so a permissive regex is safe.
-var refDefRE = regexp.MustCompile(`(?m)^[ ]{0,3}\[([^\]\n]+)\]:[ \t]*\S+.*$`)
+// labelInRefs reports whether the normalized form of raw matches any
+// label in refs (goldmark already normalized each ref's Label()).
+// Mirrors the former `wanted[util.ToLinkReference(raw)]` membership
+// test against ctx.References().
+func labelInRefs(raw []byte, refs []lint.Reference) bool {
+	normalized := util.ToLinkReference(raw)
+	for _, ref := range refs {
+		if normalized == string(ref.Label()) {
+			return true
+		}
+	}
+	return false
+}
+
+// scanRefDefLine examines source[lineStart:lineEnd] for the
+// CommonMark reference definition pattern (0-3 leading spaces,
+// `[label]:`, optional space/tab, a non-whitespace destination).
+// Returns the absolute byte offsets of the bracket contents and
+// ok=true on a hit. Mirrors the former regex
+// `(?m)^[ ]{0,3}\[([^\]\n]+)\]:[ \t]*\S+.*$` byte-for-byte (the same
+// scanner MDS053 uses). Used only for *locating* a definition after
+// the parse already confirmed it exists.
+func scanRefDefLine(source []byte, lineStart, lineEnd int) (labelStart, labelEnd int, ok bool) {
+	j := lineStart
+	spaces := 0
+	for j < lineEnd && source[j] == ' ' && spaces < 3 {
+		j++
+		spaces++
+	}
+	if j >= lineEnd || source[j] != '[' {
+		return -1, -1, false
+	}
+	labelStart = j + 1
+	k := labelStart
+	for k < lineEnd && source[k] != ']' {
+		k++
+	}
+	if k >= lineEnd || k == labelStart {
+		// Missing `]` on the line, or empty label (matches the
+		// regex's `[^\]\n]+` which requires ≥ 1 char).
+		return -1, -1, false
+	}
+	labelEnd = k
+	colon := labelEnd + 1
+	if colon >= lineEnd || source[colon] != ':' {
+		return -1, -1, false
+	}
+	after := colon + 1
+	for after < lineEnd && (source[after] == ' ' || source[after] == '\t') {
+		after++
+	}
+	if after >= lineEnd {
+		return -1, -1, false
+	}
+	// `\S` rejects ASCII whitespace; the trim loop above already
+	// consumed ' ' and '\t', so this rejects \r and the other
+	// whitespace bytes the regex form also rejected.
+	if isASCIIWhitespace(source[after]) {
+		return -1, -1, false
+	}
+	return labelStart, labelEnd, true
+}
+
+// isASCIIWhitespace mirrors Go's `\s` character class for the
+// destination-prefix guard: the regex `\S+` rejects ' ', '\t', '\n',
+// '\r', '\f', and '\v'.
+func isASCIIWhitespace(b byte) bool {
+	return b == ' ' || b == '\t' || b == '\n' || b == '\r' || b == '\f' || b == '\v'
+}
 
 // footnoteOccurrence records one `[^slug]` reference in source.
 type footnoteOccurrence struct {
