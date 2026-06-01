@@ -45,8 +45,8 @@ not test-only):
    order.
 2. Add `TestFrontMatterEnabled` to
    `pkg/mdsmith/session_api_test.go`.
-   Test enabled (config with strip-
-   frontmatter: true) and disabled.
+   Test enabled (config with
+   front-matter: true) and disabled.
 3. Add `TestFirstError` to
    `pkg/mdsmith/session_api_test.go`.
    Test nil slice, all-nil, first non-nil.

@@ -15,8 +15,8 @@ depends-on: []
 ## Goal
 
 [internal/lint](../internal/lint/) violates
-SRP. The package comment answers twelve
-distinct questions:
+SRP. The package comment answers nine or
+more distinct questions:
 
 - `File` / `Diagnostic` / `Range` value
   types — the core.
@@ -61,13 +61,13 @@ two.
    "piparser extracts processing
    instructions from Markdown."
 4. Assess `parsecache.go` and
-   `runcache.go`: both depend on
-   `lint.File`. If they can be cleanly
-   separated without a circular import,
-   move to `internal/parsecache` and
-   `internal/runcache`. Otherwise keep
-   them in `lint` and document the
-   decision here.
+   `runcache.go`: `lint.File` embeds
+   `*RunCache` (file.go:136), so moving
+   `runcache.go` to `internal/runcache`
+   creates a circular import and is not
+   viable. Keep both in `lint` and add a
+   comment in file.go explaining the
+   coupling. Document the decision here.
 5. Verify `internal/lint` now answers
    one question: "what is a parsed
    Markdown file and its diagnostics?"

@@ -182,7 +182,7 @@ Move gitignore, limits, PI, and
 yamlsafe into sibling packages each
 named for their question.
 
-`cmd/mdsmith/main.go` was 1 202 lines — resolved
+`cmd/mdsmith/main.go` exceeded 1 000 lines — resolved
 by [plan/202][202].
 
 ### nice-to-have
