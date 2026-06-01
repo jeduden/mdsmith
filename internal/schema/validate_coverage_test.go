@@ -283,38 +283,50 @@ func TestDocFrontmatterKeyLines_StrippedFrontMatter(t *testing.T) {
 }
 
 // TestMissingSectionAnchor covers the body-anchoring helper added in
-// plan 221: a real body line outside every generated range is used as
-// the anchor; a zero candidate (no preceding heading) and a candidate
-// inside a generated section both fall back to the non-body anchor so
-// engine.filterGeneratedDiags can never drop the diagnostic.
+// plan 221: the natural insertion point is used when safe; otherwise the
+// anchor is the first body line outside every generated range so
+// engine.filterGeneratedDiags never drops the diagnostic and it still
+// formats as a valid location.
 func TestMissingSectionAnchor(t *testing.T) {
 	f, err := lint.NewFile("doc.md", []byte("# A\n## B\n## C\n"))
 	require.NoError(t, err)
 	require.Equal(t, 1, NonBodyDiagLine(f))
 
 	assert.Equal(t, 2, MissingSectionAnchor(f, 2), "real body line is used")
-	assert.Equal(t, NonBodyDiagLine(f), MissingSectionAnchor(f, 0),
-		"no preceding heading → non-body anchor")
+	assert.Equal(t, 1, MissingSectionAnchor(f, 0),
+		"no preceding heading → first body line")
 
 	f.GeneratedRanges = []lint.LineRange{{From: 2, To: 4}}
-	assert.Equal(t, NonBodyDiagLine(f), MissingSectionAnchor(f, 3),
-		"candidate inside a generated range → non-body anchor")
+	assert.Equal(t, 1, MissingSectionAnchor(f, 3),
+		"candidate inside a generated range → first non-generated line")
 	assert.Equal(t, 5, MissingSectionAnchor(f, 5),
 		"candidate outside the range is still used")
 
-	// Regression (Copilot review): with no front matter stripped,
-	// NonBodyDiagLine is 1. If the document opens with a generated
-	// section that covers line 1, the fallback must not land on that
-	// generated line — it clamps to a non-positive anchor so
-	// engine.filterGeneratedDiags can never drop the missing-section
-	// diagnostic.
+	// Regression (Copilot review): a document that opens with a generated
+	// section. The anchor must not be a generated positive line (dropped
+	// by filterGeneratedDiags) nor a 0 that formats as file:0 — it is the
+	// first body line outside the generated range.
 	f.GeneratedRanges = []lint.LineRange{{From: 1, To: 3}}
-	require.Equal(t, 1, NonBodyDiagLine(f))
 	got := MissingSectionAnchor(f, 0)
-	assert.LessOrEqual(t, got, 0,
-		"fallback inside a generated range clamps to a non-positive anchor")
+	assert.Positive(t, got, "anchors at a real body line, not file:0")
 	assert.False(t, lineInGeneratedRange(f, got),
-		"the clamped anchor lies outside every generated range")
+		"the anchor lies outside every generated range")
+
+	// Whole file generated, nothing stripped: no positive line is safe
+	// and no non-positive line formats as a valid location, so 0 is the
+	// last resort that still surfaces the diagnostic.
+	f.GeneratedRanges = []lint.LineRange{{From: 1, To: len(f.Lines)}}
+	assert.Equal(t, 0, MissingSectionAnchor(f, 0),
+		"whole file generated, no front matter → file-start last resort")
+
+	// Whole file generated but front matter was stripped: the non-body
+	// anchor is non-positive, so it survives filtering and maps back onto
+	// the file rather than degenerating to 0.
+	f.LineOffset = 5
+	assert.Equal(t, NonBodyDiagLine(f), MissingSectionAnchor(f, 0),
+		"whole file generated, front matter stripped → non-body anchor")
+	assert.Negative(t, MissingSectionAnchor(f, 0),
+		"the non-body anchor is non-positive and survives filtering")
 }
 
 // TestPrecedingHeadingLine covers the document-order lookup: the

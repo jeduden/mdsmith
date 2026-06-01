@@ -294,30 +294,48 @@ func nonBodyDiagLine(f *lint.File) int {
 
 // MissingSectionAnchor returns the body line to anchor a
 // missing-section diagnostic. candidate is the natural insertion
-// point — the line of the heading the missing section should follow.
-// It is used when it is a real body line (> 0) that lies outside every
-// generated range; otherwise the non-body anchor is returned. A
-// missing section has no body line of its own, and anchoring inside a
-// generated section would let engine.filterGeneratedDiags drop the
-// diagnostic — the very case NonBodyDiagLine's non-positive value
-// guards against. So this re-anchors at the insertion point only when
-// it is safe, and falls back to the non-body anchor — the non-positive
-// NonBodyDiagLine value, not a literal line 1 — otherwise (plan 221).
+// point — the line of the heading the missing section should follow —
+// and is used when it is a real body line (> 0) outside every generated
+// range. A missing section has no body line of its own, and anchoring
+// inside a generated section would let engine.filterGeneratedDiags drop
+// the diagnostic. When candidate is unusable, the non-body anchor is
+// used: a non-positive value survives filtering and maps back to file
+// line 1, and a positive value (nothing stripped, line 1) is fine as
+// long as line 1 is not itself generated. The remaining case — a
+// document that opens with a generated section so the positive non-body
+// anchor sits inside it — anchors at the first body line outside every
+// generated range (a positive line that both survives filtering and
+// formats as a valid location), or 0 when the whole file is generated
+// and no safe positive anchor exists, so the diagnostic still surfaces
+// rather than being dropped or printed as file:0 (plan 221).
 func MissingSectionAnchor(f *lint.File, candidate int) int {
 	if candidate > 0 && !lineInGeneratedRange(f, candidate) {
 		return candidate
 	}
 	fallback := NonBodyDiagLine(f)
-	// NonBodyDiagLine is positive (line 1) when no front matter was
-	// stripped. A document that opens with a generated section then puts
-	// line 1 inside a generated range, where a positive anchor would be
-	// dropped by engine.filterGeneratedDiags. Clamp to 0: a non-positive
-	// line cannot fall within any 1-based generated range, so the
-	// missing-section diagnostic always survives.
-	if fallback > 0 && lineInGeneratedRange(f, fallback) {
-		return 0
+	if fallback <= 0 || !lineInGeneratedRange(f, fallback) {
+		return fallback
 	}
-	return fallback
+	// fallback is a positive line (nothing stripped) inside a leading
+	// generated range, where filterGeneratedDiags would drop it. Prefer
+	// the first body line outside every generated range; fall back to 0
+	// only when the whole file is generated.
+	if line := firstNonGeneratedLine(f); line > 0 {
+		return line
+	}
+	return 0
+}
+
+// firstNonGeneratedLine returns the first 1-based body line that lies
+// outside every generated range, or 0 when the file is empty or
+// entirely generated (no such line exists).
+func firstNonGeneratedLine(f *lint.File) int {
+	for line := 1; line <= len(f.Lines); line++ {
+		if !lineInGeneratedRange(f, line) {
+			return line
+		}
+	}
+	return 0
 }
 
 // precedingHeadingLine returns the line of the document heading just
