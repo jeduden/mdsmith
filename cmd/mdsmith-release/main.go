@@ -23,7 +23,6 @@
 //	mdsmith-release bench [workdir]
 //	mdsmith-release pull-site-assets
 //	mdsmith-release sync-messaging [--check]
-//	mdsmith-release sync-coverage-matrix [--check]
 //
 // Each subcommand operates relative to the current working
 // directory, which is the repo root in CI.
@@ -62,8 +61,6 @@ Commands:
   bench [workdir]                 Run the pinned cross-tool benchmark; promote JSON + fragments.
   pull-site-assets                Fetch the published demo GIF + benchmark numbers for the site build.
   sync-messaging [--check]        Propagate docs/brand/messaging.md into every tracked surface (or check drift).
-  sync-coverage-matrix [--check]  Regenerate the peer-linter coverage matrix from rule front matter
-                                  (or check drift).
   sync-parity-rules [--check]     Regenerate the parity-convention disabled-rules fragment
                                   (or check drift).
   sync-channels [--check]         Regenerate website/data/channels.yaml from the channel files
@@ -138,8 +135,6 @@ func dispatchGenerators(cmd, root string, rest []string) int {
 	switch cmd {
 	case "sync-messaging":
 		return runSyncMessaging(root, rest)
-	case "sync-coverage-matrix":
-		return runSyncCoverageMatrix(root, rest)
 	case "sync-parity-rules":
 		return runSyncParityRules(root, rest)
 	case "sync-channels":

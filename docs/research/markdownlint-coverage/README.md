@@ -10,10 +10,9 @@ summary: >-
 For every mdsmith rule, the analog rule in each peer
 Markdown linter (markdownlint, rumdl, mado, panache,
 obsidian-linter) with the peer's upstream
-default-enabled state. This page is generated from each
-rule README's front matter by
-`mdsmith-release sync-coverage-matrix`; do not edit it
-by hand.
+default-enabled state. Each section is a `<?catalog?>`
+directive over the rule READMEs filtered by `category:`;
+run `mdsmith fix` to regenerate from front matter.
 
 Cell legend:
 
@@ -24,6 +23,81 @@ Cell legend:
 
 ## Headings
 
+<?catalog
+source-dir: "internal/rules"
+glob: "MDS*/README.md"
+where: 'category: "heading"'
+sort: id
+header: |
+  | mdsmith | markdownlint | rumdl | mado | panache | obsidian-linter |
+  | ------- | ------------ | ----- | ---- | ------- | --------------- |
+row-expr: |
+  "| [\(id)](../../../internal/rules/" +
+  "\(id)-\(name)/README.md) \(name)" +
+  [if status != "ready" {" (not-ready)"},
+   if status == "ready" {""}][0] +
+  " | " +
+  [if markdownlint == [] {"—"},
+   if markdownlint != [] {
+     strings.Join([for m in markdownlint {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if rumdl == [] {"—"},
+   if rumdl != [] {
+     strings.Join([for m in rumdl {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if mado == [] {"—"},
+   if mado != [] {
+     strings.Join([for m in mado {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if panache == [] {"—"},
+   if panache != [] {
+     strings.Join([for m in panache {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if fm["obsidian-linter"] == [] {"—"},
+   if fm["obsidian-linter"] != [] {
+     strings.Join([for m in fm["obsidian-linter"] {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " |"
+?>
 | mdsmith                                                                                                                  | markdownlint                                                                                                                                                                      | rumdl                                                                                                                                                       | mado                                                                                                                                                                              | panache              | obsidian-linter                           |
 | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- | ----------------------------------------- |
 | [MDS002](../../../internal/rules/MDS002-heading-style/README.md) heading-style                                           | MD003 ✅ heading-style                                                                                                                                                            | MD003 ✅ heading-style                                                                                                                                      | MD003 ⚪ heading-style                                                                                                                                                            | —                    | —                                         |
@@ -37,9 +111,85 @@ Cell legend:
 | [MDS036](../../../internal/rules/MDS036-max-section-length/README.md) max-section-length                                 | —                                                                                                                                                                                 | —                                                                                                                                                           | —                                                                                                                                                                                 | —                    | —                                         |
 | [MDS051](../../../internal/rules/MDS051-single-h1/README.md) single-h1                                                   | MD025 ✅ single-h1                                                                                                                                                                | MD025 ✅ single-title                                                                                                                                       | MD025 ✅ single-h1                                                                                                                                                                | —                    | —                                         |
 | [MDS064](../../../internal/rules/MDS064-atx-heading-whitespace/README.md) atx-heading-whitespace                         | MD018 ✅ no-missing-space-atx, MD019 ✅ no-multiple-space-atx, MD020 ✅ no-missing-space-closed-atx (partial), MD021 ✅ no-multiple-space-closed-atx, MD023 ✅ heading-start-left | MD018 ✅ no-space-atx, MD019 ✅ multiple-space-atx, MD020 ✅ no-space-closed-atx (partial), MD021 ✅ multiple-space-closed-atx, MD023 ✅ heading-start-left | MD018 ✅ no-missing-space-atx, MD019 ✅ no-multiple-space-atx, MD020 ⚪ no-missing-space-closed-atx (partial), MD021 ✅ no-multiple-space-closed-atx, MD023 ✅ heading-start-left | —                    | headings-start-line ⚪ (partial)          |
+<?/catalog?>
 
 ## Lists
 
+<?catalog
+source-dir: "internal/rules"
+glob: "MDS*/README.md"
+where: 'category: "list"'
+sort: id
+header: |
+  | mdsmith | markdownlint | rumdl | mado | panache | obsidian-linter |
+  | ------- | ------------ | ----- | ---- | ------- | --------------- |
+row-expr: |
+  "| [\(id)](../../../internal/rules/" +
+  "\(id)-\(name)/README.md) \(name)" +
+  [if status != "ready" {" (not-ready)"},
+   if status == "ready" {""}][0] +
+  " | " +
+  [if markdownlint == [] {"—"},
+   if markdownlint != [] {
+     strings.Join([for m in markdownlint {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if rumdl == [] {"—"},
+   if rumdl != [] {
+     strings.Join([for m in rumdl {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if mado == [] {"—"},
+   if mado != [] {
+     strings.Join([for m in mado {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if panache == [] {"—"},
+   if panache != [] {
+     strings.Join([for m in panache {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if fm["obsidian-linter"] == [] {"—"},
+   if fm["obsidian-linter"] != [] {
+     strings.Join([for m in fm["obsidian-linter"] {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " |"
+?>
 | mdsmith                                                                                            | markdownlint                                       | rumdl                                              | mado                                               | panache | obsidian-linter                    |
 | -------------------------------------------------------------------------------------------------- | -------------------------------------------------- | -------------------------------------------------- | -------------------------------------------------- | ------- | ---------------------------------- |
 | [MDS014](../../../internal/rules/MDS014-blank-line-around-lists/README.md) blank-line-around-lists | MD032 ✅ blanks-around-lists                       | MD032 ✅ blanks-around-lists                       | MD032 ⚪ blanks-around-lists                       | —       | paragraph-blank-lines ⚪ (partial) |
@@ -47,9 +197,85 @@ Cell legend:
 | [MDS045](../../../internal/rules/MDS045-list-marker-style/README.md) list-marker-style             | MD004 ✅ ul-style                                  | MD004 ✅ ul-style                                  | MD004 ✅ ul-style                                  | —       | unordered-list-style ⚪            |
 | [MDS046](../../../internal/rules/MDS046-ordered-list-numbering/README.md) ordered-list-numbering   | MD029 ✅ ol-prefix                                 | MD029 ✅ ol-prefix                                 | MD029 ✅ ol-prefix                                 | —       | ordered-list-style ⚪              |
 | [MDS061](../../../internal/rules/MDS061-list-marker-space/README.md) list-marker-space             | MD030 ✅ list-marker-space                         | MD030 ✅ list-marker-space                         | MD030 ✅ list-marker-space                         | —       | space-after-list-markers ⚪        |
+<?/catalog?>
 
 ## Whitespace, blank lines, tabs
 
+<?catalog
+source-dir: "internal/rules"
+glob: "MDS*/README.md"
+where: 'category: "whitespace"'
+sort: id
+header: |
+  | mdsmith | markdownlint | rumdl | mado | panache | obsidian-linter |
+  | ------- | ------------ | ----- | ---- | ------- | --------------- |
+row-expr: |
+  "| [\(id)](../../../internal/rules/" +
+  "\(id)-\(name)/README.md) \(name)" +
+  [if status != "ready" {" (not-ready)"},
+   if status == "ready" {""}][0] +
+  " | " +
+  [if markdownlint == [] {"—"},
+   if markdownlint != [] {
+     strings.Join([for m in markdownlint {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if rumdl == [] {"—"},
+   if rumdl != [] {
+     strings.Join([for m in rumdl {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if mado == [] {"—"},
+   if mado != [] {
+     strings.Join([for m in mado {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if panache == [] {"—"},
+   if panache != [] {
+     strings.Join([for m in panache {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if fm["obsidian-linter"] == [] {"—"},
+   if fm["obsidian-linter"] != [] {
+     strings.Join([for m in fm["obsidian-linter"] {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " |"
+?>
 | mdsmith                                                                                            | markdownlint                                                         | rumdl                                                           | mado                                                                 | panache | obsidian-linter                                                           |
 | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------- |
 | [MDS006](../../../internal/rules/MDS006-no-trailing-spaces/README.md) no-trailing-spaces           | MD009 ✅ no-trailing-spaces                                          | MD009 ✅ no-trailing-spaces                                     | MD009 ✅ no-trailing-spaces                                          | —       | trailing-spaces ⚪                                                        |
@@ -59,9 +285,85 @@ Cell legend:
 | [MDS044](../../../internal/rules/MDS044-horizontal-rule-style/README.md) horizontal-rule-style     | MD035 ✅ hr-style                                                    | MD035 ✅ hr-style                                               | MD035 ✅ hr-style                                                    | —       | —                                                                         |
 | [MDS052](../../../internal/rules/MDS052-no-space-in-code-spans/README.md) no-space-in-code-spans   | MD038 ✅ no-space-in-code                                            | MD038 ✅ no-space-in-code                                       | MD038 ✅ no-space-in-code                                            | —       | —                                                                         |
 | [MDS059](../../../internal/rules/MDS059-blockquote-whitespace/README.md) blockquote-whitespace     | MD027 ✅ no-multiple-space-blockquote, MD028 ✅ no-blanks-blockquote | MD027 ✅ multiple-spaces-blockquote, MD028 ✅ blanks-blockquote | MD027 ⚪ no-multiple-space-blockquote, MD028 ✅ no-blanks-blockquote | —       | blockquote-style ⚪ (partial), empty-line-around-blockquotes ⚪ (partial) |
+<?/catalog?>
 
 ## Code blocks and code spans
 
+<?catalog
+source-dir: "internal/rules"
+glob: "MDS*/README.md"
+where: 'category: "code"'
+sort: id
+header: |
+  | mdsmith | markdownlint | rumdl | mado | panache | obsidian-linter |
+  | ------- | ------------ | ----- | ---- | ------- | --------------- |
+row-expr: |
+  "| [\(id)](../../../internal/rules/" +
+  "\(id)-\(name)/README.md) \(name)" +
+  [if status != "ready" {" (not-ready)"},
+   if status == "ready" {""}][0] +
+  " | " +
+  [if markdownlint == [] {"—"},
+   if markdownlint != [] {
+     strings.Join([for m in markdownlint {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if rumdl == [] {"—"},
+   if rumdl != [] {
+     strings.Join([for m in rumdl {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if mado == [] {"—"},
+   if mado != [] {
+     strings.Join([for m in mado {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if panache == [] {"—"},
+   if panache != [] {
+     strings.Join([for m in panache {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if fm["obsidian-linter"] == [] {"—"},
+   if fm["obsidian-linter"] != [] {
+     strings.Join([for m in fm["obsidian-linter"] {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " |"
+?>
 | mdsmith                                                                                                        | markdownlint                  | rumdl                         | mado                          | panache | obsidian-linter                  |
 | -------------------------------------------------------------------------------------------------------------- | ----------------------------- | ----------------------------- | ----------------------------- | ------- | -------------------------------- |
 | [MDS010](../../../internal/rules/MDS010-fenced-code-style/README.md) fenced-code-style                         | MD048 ✅ code-fence-style     | MD048 ✅ code-fence-style     | —                             | —       | —                                |
@@ -70,9 +372,85 @@ Cell legend:
 | [MDS031](../../../internal/rules/MDS031-unclosed-code-block/README.md) unclosed-code-block                     | —                             | —                             | —                             | —       | —                                |
 | [MDS065](../../../internal/rules/MDS065-code-block-style/README.md) code-block-style                           | MD046 ✅ code-block-style     | MD046 ✅ code-block-style     | MD046 ✅ code-block-style     | —       | —                                |
 | [MDS066](../../../internal/rules/MDS066-commands-show-output/README.md) commands-show-output                   | MD014 ✅ commands-show-output | MD014 ✅ commands-show-output | MD014 ✅ commands-show-output | —       | —                                |
+<?/catalog?>
 
 ## Links and references
 
+<?catalog
+source-dir: "internal/rules"
+glob: "MDS*/README.md"
+where: 'category: "link"'
+sort: id
+header: |
+  | mdsmith | markdownlint | rumdl | mado | panache | obsidian-linter |
+  | ------- | ------------ | ----- | ---- | ------- | --------------- |
+row-expr: |
+  "| [\(id)](../../../internal/rules/" +
+  "\(id)-\(name)/README.md) \(name)" +
+  [if status != "ready" {" (not-ready)"},
+   if status == "ready" {""}][0] +
+  " | " +
+  [if markdownlint == [] {"—"},
+   if markdownlint != [] {
+     strings.Join([for m in markdownlint {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if rumdl == [] {"—"},
+   if rumdl != [] {
+     strings.Join([for m in rumdl {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if mado == [] {"—"},
+   if mado != [] {
+     strings.Join([for m in mado {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if panache == [] {"—"},
+   if panache != [] {
+     strings.Join([for m in panache {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if fm["obsidian-linter"] == [] {"—"},
+   if fm["obsidian-linter"] != [] {
+     strings.Join([for m in fm["obsidian-linter"] {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " |"
+?>
 | mdsmith                                                                                                          | markdownlint                                        | rumdl                                           | mado                       | panache                                              | obsidian-linter |
 | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | ----------------------------------------------- | -------------------------- | ---------------------------------------------------- | --------------- |
 | [MDS012](../../../internal/rules/MDS012-no-bare-urls/README.md) no-bare-urls                                     | MD034 ✅ no-bare-urls                               | MD034 ✅ no-bare-urls                           | MD034 ✅ no-bare-urls      | —                                                    | no-bare-urls ⚪ |
@@ -83,16 +461,168 @@ Cell legend:
 | [MDS054](../../../internal/rules/MDS054-no-undefined-reference-labels/README.md) no-undefined-reference-labels   | MD052 ✅ reference-links-images                     | MD052 ✅ reference-links-images                 | —                          | undefined-references ✅                              | —               |
 | [MDS062](../../../internal/rules/MDS062-link-validity/README.md) link-validity                                   | MD011 ✅ no-reversed-links, MD042 ✅ no-empty-links | MD011 ✅ reversed-link, MD042 ✅ no-empty-links | —                          | —                                                    | —               |
 | [MDS068](../../../internal/rules/MDS068-link-style/README.md) link-style                                         | MD054 ✅ link-image-style                           | MD054 ✅ link-image-style                       | —                          | —                                                    | —               |
+<?/catalog?>
 
 ## Tables
 
+<?catalog
+source-dir: "internal/rules"
+glob: "MDS*/README.md"
+where: 'category: "table"'
+sort: id
+header: |
+  | mdsmith | markdownlint | rumdl | mado | panache | obsidian-linter |
+  | ------- | ------------ | ----- | ---- | ------- | --------------- |
+row-expr: |
+  "| [\(id)](../../../internal/rules/" +
+  "\(id)-\(name)/README.md) \(name)" +
+  [if status != "ready" {" (not-ready)"},
+   if status == "ready" {""}][0] +
+  " | " +
+  [if markdownlint == [] {"—"},
+   if markdownlint != [] {
+     strings.Join([for m in markdownlint {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if rumdl == [] {"—"},
+   if rumdl != [] {
+     strings.Join([for m in rumdl {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if mado == [] {"—"},
+   if mado != [] {
+     strings.Join([for m in mado {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if panache == [] {"—"},
+   if panache != [] {
+     strings.Join([for m in panache {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if fm["obsidian-linter"] == [] {"—"},
+   if fm["obsidian-linter"] != [] {
+     strings.Join([for m in fm["obsidian-linter"] {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " |"
+?>
 | mdsmith                                                                                | markdownlint                                                                                    | rumdl                                                                                    | mado | panache | obsidian-linter                       |
 | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---- | ------- | ------------------------------------- |
 | [MDS025](../../../internal/rules/MDS025-table-format/README.md) table-format           | MD055 ✅ table-pipe-style, MD056 ✅ table-column-count (partial), MD058 ✅ blanks-around-tables | MD055 ✅ table-pipe-style, MD056 ✅ table-column-count (partial), MD058 ✅ table-spacing | —    | —       | empty-line-around-tables ⚪ (partial) |
 | [MDS026](../../../internal/rules/MDS026-table-readability/README.md) table-readability | —                                                                                               | —                                                                                        | —    | —       | —                                     |
+<?/catalog?>
 
 ## Prose and readability
 
+<?catalog
+source-dir: "internal/rules"
+glob: "MDS*/README.md"
+where: 'category: "prose"'
+sort: id
+header: |
+  | mdsmith | markdownlint | rumdl | mado | panache | obsidian-linter |
+  | ------- | ------------ | ----- | ---- | ------- | --------------- |
+row-expr: |
+  "| [\(id)](../../../internal/rules/" +
+  "\(id)-\(name)/README.md) \(name)" +
+  [if status != "ready" {" (not-ready)"},
+   if status == "ready" {""}][0] +
+  " | " +
+  [if markdownlint == [] {"—"},
+   if markdownlint != [] {
+     strings.Join([for m in markdownlint {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if rumdl == [] {"—"},
+   if rumdl != [] {
+     strings.Join([for m in rumdl {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if mado == [] {"—"},
+   if mado != [] {
+     strings.Join([for m in mado {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if panache == [] {"—"},
+   if panache != [] {
+     strings.Join([for m in panache {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if fm["obsidian-linter"] == [] {"—"},
+   if fm["obsidian-linter"] != [] {
+     strings.Join([for m in fm["obsidian-linter"] {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " |"
+?>
 | mdsmith                                                                                                  | markdownlint                                   | rumdl                                          | mado                          | panache | obsidian-linter                    |
 | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------- | ----------------------------- | ------- | ---------------------------------- |
 | [MDS023](../../../internal/rules/MDS023-paragraph-readability/README.md) paragraph-readability           | —                                              | —                                              | —                             | —       | —                                  |
@@ -108,9 +638,85 @@ Cell legend:
 | [MDS057](../../../internal/rules/MDS057-required-text-patterns/README.md) required-text-patterns         | —                                              | —                                              | —                             | —       | —                                  |
 | [MDS058](../../../internal/rules/MDS058-required-mentions/README.md) required-mentions                   | —                                              | —                                              | —                             | —       | —                                  |
 | [MDS063](../../../internal/rules/MDS063-descriptive-link-text/README.md) descriptive-link-text           | MD059 ✅ descriptive-link-text                 | MD059 ✅ link-text                             | —                             | —       | —                                  |
+<?/catalog?>
 
 ## Structure and cross-file
 
+<?catalog
+source-dir: "internal/rules"
+glob: "MDS*/README.md"
+where: 'category: "structural"'
+sort: id
+header: |
+  | mdsmith | markdownlint | rumdl | mado | panache | obsidian-linter |
+  | ------- | ------------ | ----- | ---- | ------- | --------------- |
+row-expr: |
+  "| [\(id)](../../../internal/rules/" +
+  "\(id)-\(name)/README.md) \(name)" +
+  [if status != "ready" {" (not-ready)"},
+   if status == "ready" {""}][0] +
+  " | " +
+  [if markdownlint == [] {"—"},
+   if markdownlint != [] {
+     strings.Join([for m in markdownlint {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if rumdl == [] {"—"},
+   if rumdl != [] {
+     strings.Join([for m in rumdl {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if mado == [] {"—"},
+   if mado != [] {
+     strings.Join([for m in mado {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if panache == [] {"—"},
+   if panache != [] {
+     strings.Join([for m in panache {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if fm["obsidian-linter"] == [] {"—"},
+   if fm["obsidian-linter"] != [] {
+     strings.Join([for m in fm["obsidian-linter"] {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " |"
+?>
 | mdsmith                                                                                    | markdownlint               | rumdl                      | mado                    | panache | obsidian-linter |
 | ------------------------------------------------------------------------------------------ | -------------------------- | -------------------------- | ----------------------- | ------- | --------------- |
 | [MDS020](../../../internal/rules/MDS020-required-structure/README.md) required-structure   | MD043 ✅ required-headings | MD043 ✅ required-headings | —                       | —       | —               |
@@ -120,9 +726,25 @@ Cell legend:
 | [MDS041](../../../internal/rules/MDS041-no-inline-html/README.md) no-inline-html           | MD033 ✅ no-inline-html    | MD033 ✅ no-inline-html    | MD033 ✅ no-inline-html | —       | —               |
 | [MDS048](../../../internal/rules/MDS048-git-hook-sync/README.md) git-hook-sync             | —                          | —                          | —                       | —       | —               |
 | [MDS067](../../../internal/rules/MDS067-callout-type/README.md) callout-type               | —                          | —                          | —                       | —       | —               |
+<?/catalog?>
 
 ## Generated sections (directives) (mdsmith-only)
 
+<?catalog
+source-dir: "internal/rules"
+glob: "MDS*/README.md"
+where: 'category: "directive"'
+sort: id
+header: |
+  | mdsmith | What it adds |
+  | ------- | ------------ |
+row-expr: |
+  "| [\(id)](../../../internal/rules/" +
+  "\(id)-\(name)/README.md) \(name)" +
+  [if status != "ready" {" (not-ready)"},
+   if status == "ready" {""}][0] +
+  " | \(description) |"
+?>
 | mdsmith                                                                        | What it adds                                                                                                            |
 | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
 | [MDS019](../../../internal/rules/MDS019-catalog/README.md) catalog             | Catalog content must reflect selected front matter fields from files matching its glob.                                 |
@@ -131,15 +753,168 @@ Cell legend:
 | [MDS038](../../../internal/rules/MDS038-toc/README.md) toc                     | Keep toc generated heading lists in sync with document headings.                                                        |
 | [MDS039](../../../internal/rules/MDS039-build/README.md) build                 | Validate `<?build?>` directive parameters and keep the section body in sync with the recipe's rendered `body-template`. |
 | [MDS040](../../../internal/rules/MDS040-recipe-safety/README.md) recipe-safety | Validate each build.recipes command for shell-safety at lint time; the rule never executes any binary.                  |
+<?/catalog?>
 
 ## Accessibility
 
+<?catalog
+source-dir: "internal/rules"
+glob: "MDS*/README.md"
+where: 'category: "accessibility"'
+sort: id
+header: |
+  | mdsmith | markdownlint | rumdl | mado | panache | obsidian-linter |
+  | ------- | ------------ | ----- | ---- | ------- | --------------- |
+row-expr: |
+  "| [\(id)](../../../internal/rules/" +
+  "\(id)-\(name)/README.md) \(name)" +
+  [if status != "ready" {" (not-ready)"},
+   if status == "ready" {""}][0] +
+  " | " +
+  [if markdownlint == [] {"—"},
+   if markdownlint != [] {
+     strings.Join([for m in markdownlint {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if rumdl == [] {"—"},
+   if rumdl != [] {
+     strings.Join([for m in rumdl {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if mado == [] {"—"},
+   if mado != [] {
+     strings.Join([for m in mado {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if panache == [] {"—"},
+   if panache != [] {
+     strings.Join([for m in panache {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if fm["obsidian-linter"] == [] {"—"},
+   if fm["obsidian-linter"] != [] {
+     strings.Join([for m in fm["obsidian-linter"] {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " |"
+?>
 | mdsmith                                                                                | markdownlint         | rumdl                | mado | panache | obsidian-linter |
 | -------------------------------------------------------------------------------------- | -------------------- | -------------------- | ---- | ------- | --------------- |
 | [MDS032](../../../internal/rules/MDS032-no-empty-alt-text/README.md) no-empty-alt-text | MD045 ✅ no-alt-text | MD045 ✅ no-alt-text | —    | —       | —               |
+<?/catalog?>
 
 ## Line length
 
+<?catalog
+source-dir: "internal/rules"
+glob: "MDS*/README.md"
+where: 'category: "line"'
+sort: id
+header: |
+  | mdsmith | markdownlint | rumdl | mado | panache | obsidian-linter |
+  | ------- | ------------ | ----- | ---- | ------- | --------------- |
+row-expr: |
+  "| [\(id)](../../../internal/rules/" +
+  "\(id)-\(name)/README.md) \(name)" +
+  [if status != "ready" {" (not-ready)"},
+   if status == "ready" {""}][0] +
+  " | " +
+  [if markdownlint == [] {"—"},
+   if markdownlint != [] {
+     strings.Join([for m in markdownlint {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if rumdl == [] {"—"},
+   if rumdl != [] {
+     strings.Join([for m in rumdl {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if mado == [] {"—"},
+   if mado != [] {
+     strings.Join([for m in mado {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if panache == [] {"—"},
+   if panache != [] {
+     strings.Join([for m in panache {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " | " +
+  [if fm["obsidian-linter"] == [] {"—"},
+   if fm["obsidian-linter"] != [] {
+     strings.Join([for m in fm["obsidian-linter"] {
+       "\(m.id) " +
+       [if m.default {"✅"}, if !m.default {"⚪"}][0] +
+       [if m.id != m.name {" \(m.name)"},
+        if m.id == m.name {""}][0] +
+       [if m.partial {" (partial)"},
+        if !m.partial {""}][0]
+     }], ", ")
+   }][0] +
+  " |"
+?>
 | mdsmith                                                                    | markdownlint         | rumdl                | mado                 | panache | obsidian-linter |
 | -------------------------------------------------------------------------- | -------------------- | -------------------- | -------------------- | ------- | --------------- |
 | [MDS001](../../../internal/rules/MDS001-line-length/README.md) line-length | MD013 ✅ line-length | MD013 ✅ line-length | MD013 ✅ line-length | —       | —               |
+<?/catalog?>
