@@ -1,7 +1,7 @@
 ---
 id: 206
 title: Document cue/ in architecture layering map
-status: "🔲"
+status: "✅"
 summary: >-
   cue/types was added as a public Go package outside
   internal/ and pkg/, but is not in the layering map.
@@ -42,10 +42,10 @@ for CUE consumers. Two gaps need fixing:
 
 ## Acceptance Criteria
 
-- [ ] The layering diagram in
+- [x] The layering diagram in
   `docs/development/architecture/index.md`
   shows `cue/types`.
-- [ ] `Source()` has a "no test by design"
+- [x] `Source()` has a "no test by design"
   comment.
-- [ ] `go run ./cmd/mdsmith check .`
+- [x] `go run ./cmd/mdsmith check .`
   reports no issues.

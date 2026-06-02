@@ -24,4 +24,6 @@ var source string
 // verbatim. internal/schema reads this once to seed
 // its runtime registry and to drive the drift test
 // that pins registry entries to the documented CUE.
+//
+// no test by design: trivial embed accessor
 func Source() string { return source }

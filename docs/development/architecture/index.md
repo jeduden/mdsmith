@@ -110,6 +110,14 @@ cmd/mdsmith              internal/lsp
                                 (the five
                                  custom
                                  extensions)
+                    └─> cue/types
+                        (the embedded
+                         field-type-shortcut
+                         CUE library;
+                         public, imports no
+                         internal/ package;
+                         internal/schema
+                         reads its embed)
 ```
 
 `pkg/markdown` sits at the bottom. It
@@ -124,7 +132,20 @@ custom goldmark parser in the tree.
 The MDS034 rule and the schema engine
 both build on it.
 
-Both packages are public surfaces.
+`cue/types` sits at the bottom too,
+outside both `internal/` and `pkg/`. It
+embeds the canonical
+field-type-shortcut CUE library, the one
+that lets a schema write `created: date`.
+Its Go import path is
+`github.com/jeduden/mdsmith/cue/types`,
+mirroring how `pkg/markdown` is the public
+parse surface. `internal/schema` reads
+its embed to seed the runtime registry,
+and the package imports nothing in the
+tree.
+
+These packages are public surfaces.
 For details see
 [cross-system contracts](cross-system.md)
 and [Public Markdown Library](../markdown-library.md).
