@@ -4,11 +4,16 @@ summary: >-
   The same `.vsix` republished to Open VSX so
   VSCodium, Cursor, Theia, and Gitpod can install
   it.
+mechanism: push
+artifact: vscode-extension
+command: codium --install-extension jeduden.mdsmith
+audience: VSCodium, Cursor, Theia, and Gitpod
+platforms: [editor]
 registry: open-vsx.org
 credential: OVSX_PAT
 job: vscode
 channelurl: https://open-vsx.org/extension/jeduden/mdsmith
-weight: 4
+weight: 12
 ---
 # Open VSX
 

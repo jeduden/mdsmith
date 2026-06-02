@@ -38,19 +38,31 @@ several channels. `mdsmith version` reports the same
 value on every channel because the version is stamped
 into the binary at build time. Pick one path:
 
-| Channel              | Command                                                                                                                                      | Best for                                                                |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| Go                   | `go install github.com/jeduden/mdsmith/cmd/mdsmith@latest`                                                                                   | Go developers with a working Go toolchain                               |
-| npm                  | `npm install -g @mdsmith/cli`                                                                                                                | Node / TypeScript repos and npm-friendly CI                             |
-| npx                  | `npx @mdsmith/cli check .`                                                                                                                   | One-off checks without a global install                                 |
-| PyPI (pip)           | `pip install mdsmith`                                                                                                                        | Python projects and Python-only CI images                               |
-| uvx                  | `uvx mdsmith check .`                                                                                                                        | Ephemeral runs via uv                                                   |
-| pipx                 | `pipx install mdsmith`                                                                                                                       | Isolated CLI install on Python hosts                                    |
-| Homebrew             | `brew install jeduden/mdsmith/mdsmith`                                                                                                       | macOS and Linux via Homebrew                                            |
-| mise (`ubi` backend) | `mise use -g ubi:jeduden/mdsmith@latest`                                                                                                     | Repos using mise; works today via GitHub releases without a registry PR |
-| asdf                 | `asdf plugin add mdsmith https://github.com/jeduden/asdf-mdsmith.git`                                                                        | Repos standardized on asdf                                              |
-| Flatpak              | `flatpak install ./mdsmith-x86_64.flatpak` (download the x86_64 bundle from the [release page](https://github.com/jeduden/mdsmith/releases)) | x86_64 Linux desktops standardized on Flatpak                           |
-| GitHub release       | Download `mdsmith-<os>-<arch>` from the [release page](https://github.com/jeduden/mdsmith/releases)                                          | Air-gapped hosts and direct binary control                              |
+<?catalog
+glob:
+  - "../development/release-channels/*.md"
+  - "!../development/release-channels/proto.md"
+where: 'artifact: "cli"'
+sort: numeric:weight
+header: |
+  | Channel | Command | Best for |
+  | ------- | ------- | -------- |
+row: "| {title} | `{command}` | {audience} |"
+?>
+| Channel         | Command                                                                                    | Best for                                          |
+| --------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------- |
+| Go              | `go install github.com/jeduden/mdsmith/cmd/mdsmith@latest`                                 | Go developers with a working Go toolchain         |
+| npm             | `npm install -g @mdsmith/cli`                                                              | Node / TypeScript repos and npm-friendly CI       |
+| npx             | `npx @mdsmith/cli check .`                                                                 | One-off checks without a global install           |
+| PyPI            | `pip install mdsmith`                                                                      | Python projects and Python-only CI images         |
+| uvx             | `uvx mdsmith check .`                                                                      | Ephemeral runs via uv                             |
+| pipx            | `pipx install mdsmith`                                                                     | Isolated CLI install on Python hosts              |
+| Homebrew        | `brew install jeduden/mdsmith/mdsmith`                                                     | macOS and Linux via Homebrew                      |
+| mise            | `mise use -g ubi:jeduden/mdsmith@latest`                                                   | Repos using mise; works today via GitHub releases |
+| asdf            | `asdf plugin add mdsmith https://github.com/jeduden/asdf-mdsmith.git`                      | Repos standardized on asdf                        |
+| GitHub Releases | `curl -LO https://github.com/jeduden/mdsmith/releases/latest/download/mdsmith-<os>-<arch>` | Air-gapped hosts and direct binary control        |
+| Flatpak         | `flatpak install ./mdsmith-x86_64.flatpak`                                                 | Sandboxed Linux x86_64 desktops via Flatpak       |
+<?/catalog?>
 
 The short `asdf plugin add mdsmith` and `mise use mdsmith@latest`
 forms — without an explicit URL — depend on registry submissions

@@ -22,6 +22,7 @@ Each channel has its own file under
 
 <?catalog
 glob: ["release-channels/*.md", "!release-channels/proto.md"]
+where: 'mechanism: "push"'
 sort: title
 header: |
   | Channel | Release page | Credential |

@@ -151,4 +151,5 @@ footer: |
 | 219 | 🔲     | opus   | [Route cmd/mdsmith and the LSP through pkg/mdsmith.Session](plan/219_session-cli-lsp-migration.md)                                      |
 | 220 | ✅     | opus   | [Harden the git-index writers against a transient index.lock](plan/220_git-index-lock-retry.md)                                         |
 | 221 | 🔳     | opus   | [Ship mdsmith as a self-hosted Flatpak bundle](plan/221_flatpak-bundle-distribution.md)                                                 |
+| 222 | ✅     | opus   | [Single source of truth for distribution channels](plan/222_distribution-channel-ssot.md)                                               |
 <?/catalog?>

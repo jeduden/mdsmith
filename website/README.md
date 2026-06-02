@@ -93,19 +93,25 @@ sidebar.
 
 ## Homepage content sources
 
-The homepage has **no** Hugo data file. Every block is
-sourced from Markdown so a copy edit lands in one place:
+Every homepage block is sourced from Markdown, so a copy
+edit lands in one place. The install picker reads one
+generated data file, `website/data/channels.yaml`. The
+`sync-channels` command derives that file from the
+release-channel docs, gated against drift in CI:
 
-- **Hero + install quickstart** — front matter (`hero:`,
-  `install:`) on the homepage itself,
-  `content/_index.md`, read by `hero.html` and
-  `install-list.html`.
+- **Hero** — front matter (`hero:`) on the homepage
+  itself, `content/_index.md`, read by `hero.html`.
+- **Install picker** — `install-picker.html` reads
+  `hugo.Data.channels` (the generated
+  `website/data/channels.yaml`). It renders every channel
+  with platform-tag filter chips.
 - **"Distributed via" strip** — the release-channel docs
   `../docs/development/release-channels/*.md`. Each
   carries a canonical `channelurl:` and an ordering
   `weight:`; `logos-strip.html` ranges the synced
-  section. (`channelurl`, not `url`: Hugo treats a
-  front-matter `url` as a page-URL override.)
+  section, filtered to the push channels
+  (`mechanism: push`). (`channelurl`, not `url`: Hugo
+  treats a front-matter `url` as a page-URL override.)
 - **Feature cards** — the shared Markdown described
   below.
 

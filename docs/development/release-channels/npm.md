@@ -4,11 +4,16 @@ summary: >-
   Root `@mdsmith/cli` plus one platform-specific
   subpackage per supported host, all published via
   OIDC Trusted Publishing.
+mechanism: push
+artifact: cli
+command: npm install -g @mdsmith/cli
+audience: Node / TypeScript repos and npm-friendly CI
+platforms: [node]
 registry: registry.npmjs.org
 credential: OIDC Trusted Publishing
 job: npm
 channelurl: https://www.npmjs.com/package/@mdsmith/cli
-weight: 1
+weight: 2
 ---
 # npm
 

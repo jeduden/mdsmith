@@ -5,11 +5,16 @@ summary: >-
   x86_64 Linux release binary and attached to each
   GitHub release, installed by file with host
   filesystem access for the linter.
+mechanism: push
+artifact: cli
+command: flatpak install ./mdsmith-x86_64.flatpak
+audience: Sandboxed Linux x86_64 desktops via Flatpak
+platforms: [linux]
 registry: github.com/jeduden/mdsmith/releases
 credential: GITHUB_TOKEN + OIDC
 job: flatpak
 channelurl: https://github.com/jeduden/mdsmith/releases
-weight: 7
+weight: 13
 ---
 # Flatpak
 

@@ -4,10 +4,14 @@
 # BEGIN mdsmith merge-driver
 *.md merge=mdsmith
 *.markdown merge=mdsmith
+.git/** -merge
 demo/** -merge
 internal/rules/*/bad/** -merge
 internal/rules/*/bad.md -merge
 internal/rules/*/good/** -merge
 internal/rules/*/fixed/** -merge
+internal/rules/*/pattern/** -merge
 .claude/worktrees/** -merge
+editors/**/node_modules/** -merge
+editors/**/dist/** -merge
 # END mdsmith merge-driver

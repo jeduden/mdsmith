@@ -66,6 +66,8 @@ Commands:
                                   (or check drift).
   sync-parity-rules [--check]     Regenerate the parity-convention disabled-rules fragment
                                   (or check drift).
+  sync-channels [--check]         Regenerate website/data/channels.yaml from the channel files
+                                  (or check drift).
 `
 
 func main() {
@@ -140,6 +142,8 @@ func dispatchGenerators(cmd, root string, rest []string) int {
 		return runSyncCoverageMatrix(root, rest)
 	case "sync-parity-rules":
 		return runSyncParityRules(root, rest)
+	case "sync-channels":
+		return runSyncChannels(root, rest)
 	default:
 		fmt.Fprintf(os.Stderr, "mdsmith-release: unknown command %q\n%s", cmd, usageText)
 		return 2

@@ -4,11 +4,16 @@ summary: >-
   Per-platform mdsmith binaries plus the .vsix, the
   checksum file, and a Sigstore signature, attached
   to a tag-named release.
+mechanism: push
+artifact: cli
+command: curl -LO https://github.com/jeduden/mdsmith/releases/latest/download/mdsmith-<os>-<arch>
+audience: Air-gapped hosts and direct binary control
+platforms: [linux, macos, windows]
 registry: github.com/jeduden/mdsmith/releases
 credential: GITHUB_TOKEN + OIDC
 job: release
 channelurl: https://github.com/jeduden/mdsmith/releases
-weight: 5
+weight: 10
 ---
 # GitHub Releases
 

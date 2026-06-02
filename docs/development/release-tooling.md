@@ -64,6 +64,7 @@ setup step.
 | `pull-site-assets`               | `pages.yml` deploy job                     |
 | `sync-messaging [--check]`       | `ci.yml` messaging-drift; local sync       |
 | `sync-coverage-matrix [--check]` | `ci.yml` coverage-matrix-drift; local sync |
+| `sync-channels [--check]`        | `ci.yml` channels-drift; local sync        |
 
 Each subcommand lives under `cmd/mdsmith-release/`.
 It delegates to a function in `internal/release/`.

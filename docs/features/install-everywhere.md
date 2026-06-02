@@ -14,9 +14,9 @@ A linter that is hard to install does not get adopted. mdsmith is
 one static Go binary, and every channel ships that same binary.
 
 Install it with `go install`, `npm` or `npx @mdsmith/cli`, `pip`,
-`uvx`, or `pipx`, through `mise` and `asdf`, or by direct
-download from a GitHub Release. The editor extension comes from
-the VS Code Marketplace and Open VSX.
+`uvx`, or `pipx`, through Homebrew, `mise`, and `asdf`, or by
+direct download from a GitHub Release. The editor extension comes
+from the VS Code Marketplace and Open VSX.
 
 The package wrappers carry no `postinstall` network call. A
 locked-down or air-gapped CI runner installs the pinned version

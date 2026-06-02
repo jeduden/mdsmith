@@ -3,11 +3,16 @@ title: PyPI
 summary: >-
   One platform-tagged wheel per supported host,
   published via OIDC Trusted Publishing.
+mechanism: push
+artifact: cli
+command: pip install mdsmith
+audience: Python projects and Python-only CI images
+platforms: [python]
 registry: pypi.org
 credential: OIDC Trusted Publishing
 job: pypi
 channelurl: https://pypi.org/project/mdsmith/
-weight: 2
+weight: 4
 ---
 # PyPI
 

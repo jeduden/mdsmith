@@ -145,8 +145,9 @@ navigation reach your editor and your coding agent unchanged.
 
 **[Installs everywhere](docs/features/install-everywhere.md).**
 One version-stamped Go binary ships through go install, npm,
-pip, uvx, mise, asdf, and GitHub Releases. No postinstall
-network call, so locked-down CI installs offline.
+pip, uvx, Homebrew, mise, and asdf, plus a direct GitHub
+Release download. No postinstall network call, so locked-down
+CI installs offline.
 <?/include?>
 
 **🆚 How does it compare?** See:
@@ -175,6 +176,7 @@ CLI:
 go install github.com/jeduden/mdsmith/cmd/mdsmith@latest
 npm install -g @mdsmith/cli    # or: npx @mdsmith/cli
 pip install mdsmith            # or: uvx mdsmith / pipx install mdsmith
+brew install jeduden/mdsmith/mdsmith   # macOS / Linux (Homebrew)
 ```
 
 Editor extension (LSP-backed; runs `mdsmith lsp`):
@@ -198,7 +200,7 @@ across your docs):
 ```
 
 More: the [install guide](docs/guides/install.md) covers
-direct downloads and mise (asdf pending).
+asdf, mise, and direct binary downloads.
 [VS Code integration](docs/guides/editors/vscode.md) covers
 settings, code actions, and troubleshooting.
 

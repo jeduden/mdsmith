@@ -3,11 +3,16 @@ title: Visual Studio Marketplace
 summary: >-
   The mdsmith VS Code extension `.vsix`, published
   via a long-lived Marketplace publisher PAT.
+mechanism: push
+artifact: vscode-extension
+command: code --install-extension jeduden.mdsmith
+audience: Stock VS Code, GitHub Codespaces, and github.dev
+platforms: [editor]
 registry: marketplace.visualstudio.com
 credential: VSCE_PAT
 job: vscode
 channelurl: https://marketplace.visualstudio.com/items?itemName=jeduden.mdsmith
-weight: 3
+weight: 11
 ---
 # Visual Studio Marketplace
 

@@ -111,5 +111,6 @@ navigation reach your editor and your coding agent unchanged.
 
 **[Installs everywhere](install-everywhere.md).**
 One version-stamped Go binary ships through go install, npm,
-pip, uvx, mise, asdf, and GitHub Releases. No postinstall
-network call, so locked-down CI installs offline.
+pip, uvx, Homebrew, mise, and asdf, plus a direct GitHub
+Release download. No postinstall network call, so locked-down
+CI installs offline.

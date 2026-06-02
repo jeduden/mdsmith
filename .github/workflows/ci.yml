@@ -98,6 +98,22 @@ jobs:
           go-version-file: go.mod
       - run: go run ./cmd/mdsmith-release sync-coverage-matrix --check
 
+  # The website install picker reads website/data/channels.yaml,
+  # generated from docs/development/release-channels/*.md via
+  # `mdsmith-release sync-channels`. A hand edit to the data file
+  # would be reverted on the next sync, so fail fast on drift.
+  # See plan/222.
+  channels-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+      - run: go run ./cmd/mdsmith-release sync-channels --check
+
   # Block any future PR from adding install-time or publish-time
   # lifecycle scripts to the published npm packages. The shai-hulud
   # / TanStack worm class (npm supply-chain compromise, 2025-2026)

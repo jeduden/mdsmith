@@ -356,6 +356,26 @@ main {
 .install-copy:hover { color: var(--canvas); border-color: var(--steel-500); }
 .install-copy.is-copied { color: var(--term-ok); border-color: var(--term-ok); }
 
+/* Install picker: platform-tag filter chips above the channel
+   list. Chips toggle .install-row[hidden]; with JS off every row
+   stays visible and the chips are inert. */
+.install-picker { display: flex; flex-direction: column; gap: 14px; }
+.install-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+.install-filter {
+  background: transparent;
+  border: 1px solid var(--steel-700);
+  color: var(--steel-300);
+  padding: 5px 12px; font-size: 12px; font-family: var(--font-mono);
+  text-transform: uppercase; letter-spacing: 0.05em;
+  border-radius: 999px; cursor: pointer;
+  transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
+}
+.install-filter:hover { color: var(--canvas); border-color: var(--steel-500); }
+.install-filter.is-active {
+  color: var(--forge-300); border-color: var(--forge-400); background: var(--steel-950);
+}
+.install-row[hidden] { display: none; }
+
 /* ========== TERMINAL ========== */
 
 .term {
