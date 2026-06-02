@@ -88,3 +88,33 @@ func TestNewGitignoreMatcher_AncestorGitignoreStillAppliesWithoutBoundary(t *tes
 	assert.True(t, m.IsIgnored(logFile, false),
 		"ancestor .gitignore *.log rule should still apply when no working-tree boundary intervenes")
 }
+
+// TestNewGitignoreMatcher_StopsAtAncestorWorktreeBoundary covers the
+// ancestor-walk `break`: the matcher root is an ordinary subdirectory,
+// but an ancestor between it and the superproject is itself a worktree
+// root (a `.git` file). The walk must stop at that inner worktree root,
+// so the superproject's .gitignore above it is never collected.
+func TestNewGitignoreMatcher_StopsAtAncestorWorktreeBoundary(t *testing.T) {
+	super := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(super, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(super, ".gitignore"),
+		[]byte("*.log\n"), 0o644))
+
+	// Inner worktree root nested below the superproject: .git is a file.
+	wt := filepath.Join(super, "nested", "wt")
+	require.NoError(t, os.MkdirAll(wt, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(wt, ".git"),
+		[]byte("gitdir: /elsewhere\n"), 0o644))
+
+	// Matcher root is a plain subdirectory of the inner worktree.
+	sub := filepath.Join(wt, "a", "b")
+	require.NoError(t, os.MkdirAll(sub, 0o755))
+	logFile := filepath.Join(sub, "out.log")
+	require.NoError(t, os.WriteFile(logFile, []byte("log"), 0o644))
+
+	m := NewGitignoreMatcher(sub)
+	require.NotNil(t, m)
+	assert.False(t, m.IsIgnored(logFile, false),
+		"the ancestor walk must stop at the inner worktree root, so the "+
+			"superproject's *.log rule is never inherited across it")
+}
