@@ -201,7 +201,10 @@ func (p *projector) projectContent(
 			p.setKey(obj, nextKey(base), p.tableRows(cm.Node))
 		case schema.ContentKindParagraph:
 			if cm.Entry.Projection == schema.ProjectionInline {
-				p.setKey(obj, nextKey(base), p.inlineSpans(cm.Node))
+				// Resolve the key once so the unsupported-inline
+				// diagnostic can name the same key setKey writes under.
+				key := nextKey(base)
+				p.setKey(obj, key, p.inlineSpans(key, cm.Node))
 			} else {
 				p.setKey(obj, nextKey(base), p.nodeText(cm.Node))
 			}

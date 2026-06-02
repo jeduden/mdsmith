@@ -1,6 +1,7 @@
 package extract
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -16,7 +17,7 @@ import (
 // survive a normal parse, so the branch is exercised directly.
 func TestInlineSpanStringNode(t *testing.T) {
 	p := &projector{f: &lint.File{Path: "headline.md"}, sch: inlineScope()}
-	got := p.inlineSpan(ast.NewString([]byte("typeset")))
+	got := p.inlineSpan("inline", ast.NewString([]byte("typeset")))
 	assert.Equal(t, map[string]any{"span": "text", "value": "typeset"}, got)
 	assert.Empty(t, p.diags)
 }
@@ -34,7 +35,7 @@ func TestWalkInlineChildren_TextNodeContributesTextAndBreak(t *testing.T) {
 	txt := ast.NewTextSegment(text.NewSegment(0, 5))
 	txt.SetSoftLineBreak(true)
 	parent.AppendChild(parent, txt)
-	got := p.walkInlineChildren(parent)
+	got := p.walkInlineChildren("inline", parent)
 	require.Len(t, got, 2)
 	assert.Equal(t, map[string]any{"span": "text", "value": "first"}, got[0])
 	assert.Equal(t, map[string]any{"span": "break", "hard": false}, got[1])
@@ -43,12 +44,16 @@ func TestWalkInlineChildren_TextNodeContributesTextAndBreak(t *testing.T) {
 
 // TestUnsupportedInlineDefault covers unsupportedInline's default branch: a
 // node that is neither an image nor inline raw HTML is named by its Go type
-// so a future custom inline node surfaces a clear diagnostic.
+// so a future custom inline node surfaces a clear diagnostic. The diagnostic
+// also leads with the passed projection key (here a non-default "body") so
+// the field tracks the real output key rather than the literal "inline".
 func TestUnsupportedInlineDefault(t *testing.T) {
 	p := &projector{f: &lint.File{Path: "headline.md"}, sch: inlineScope()}
-	p.unsupportedInline(ast.NewText())
+	p.unsupportedInline("body", ast.NewText())
 	require.Len(t, p.diags, 1)
 	assert.Equal(t, "MDS020", p.diags[0].RuleID)
 	assert.Contains(t, p.diags[0].Message, "unsupported inline node")
 	assert.Contains(t, p.diags[0].Message, "ast.Text")
+	assert.Truef(t, strings.HasPrefix(p.diags[0].Message, "body:"),
+		"diagnostic should lead with the projection key, got %q", p.diags[0].Message)
 }

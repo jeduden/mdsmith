@@ -1,6 +1,7 @@
 package extract
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/schema"
@@ -243,4 +244,53 @@ func TestExtract_InlineBindResolvesCollision(t *testing.T) {
 	headline := got.(map[string]any)["headline"].(map[string]any)
 	assert.Contains(t, headline, "headline-spans")
 	assert.NotContains(t, headline, "inline")
+}
+
+// TestExtract_InlineUnsupportedNamesActualKey verifies the
+// unsupported-inline diagnostic names the actual projection key rather
+// than the literal "inline" default. A `bind:` override renames the key,
+// so an unsupported node (an image) under that entry must surface a
+// diagnostic that leads with the bind name — pointing at a field that
+// exists in the emitted data. Regression test for the post-rebase review.
+func TestExtract_InlineUnsupportedNamesActualKey(t *testing.T) {
+	alt := "headline-spans"
+	sch := &schema.Schema{
+		RootLevel: 2,
+		Sections: []schema.Scope{{
+			Heading: "Headline",
+			Matcher: &schema.Matcher{Regex: "Headline"},
+			Content: []schema.ContentEntry{
+				{Kind: schema.ContentKindParagraph, Required: true,
+					Projection: schema.ProjectionInline, Bind: &alt},
+			},
+		}},
+	}
+	_, diags := run(t, "## Headline\n\n![alt](img.png)\n", sch, nil)
+	require.NotEmpty(t, diags)
+	assert.Truef(t, strings.HasPrefix(diags[0].Message, "headline-spans:"),
+		"diagnostic should lead with the bind key, got %q", diags[0].Message)
+}
+
+// TestExtract_InlineUnsupportedNamesSuffixedKey verifies the
+// unsupported-inline diagnostic carries the -N repeat suffix: a second
+// inline paragraph projects under `inline-2`, so an unsupported node
+// there must name `inline-2`, not the bare `inline`.
+func TestExtract_InlineUnsupportedNamesSuffixedKey(t *testing.T) {
+	sch := &schema.Schema{
+		RootLevel: 2,
+		Sections: []schema.Scope{{
+			Heading: "Headline",
+			Matcher: &schema.Matcher{Regex: "Headline"},
+			Content: []schema.ContentEntry{
+				{Kind: schema.ContentKindParagraph, Required: true,
+					Projection: schema.ProjectionInline},
+				{Kind: schema.ContentKindParagraph, Required: true,
+					Projection: schema.ProjectionInline},
+			},
+		}},
+	}
+	_, diags := run(t, "## Headline\n\nok\n\n![alt](img.png)\n", sch, nil)
+	require.NotEmpty(t, diags)
+	assert.Truef(t, strings.HasPrefix(diags[0].Message, "inline-2:"),
+		"diagnostic should lead with the suffixed key, got %q", diags[0].Message)
 }

@@ -15,11 +15,16 @@ import (
 // hard error: walkInlineChildren records a projection diagnostic via
 // the projector and the caller returns nothing. Plan 212.
 //
+// key is the projection key this paragraph emits under (the `bind:`
+// override or the kind default, plus any `-N` repeat suffix). It rides
+// down the walk so an unsupported node names the real output key as the
+// diagnostic field, not the bare "inline" default.
+//
 // The walker drives `mdsmith extract` only — it never runs on the
 // check hot path — so it favours a clear recursive shape over the
 // allocation budget the lint rules hold to.
-func (p *projector) inlineSpans(n ast.Node) []any {
-	return p.walkInlineChildren(n)
+func (p *projector) inlineSpans(key string, n ast.Node) []any {
+	return p.walkInlineChildren(key, n)
 }
 
 // walkInlineChildren maps every inline child of parent to a span
@@ -32,10 +37,10 @@ func (p *projector) inlineSpans(n ast.Node) []any {
 // `break` span when the node carries a soft or hard line break. The
 // break span is appended after the text span so the wrapped-line
 // structure of a paragraph survives projection.
-func (p *projector) walkInlineChildren(parent ast.Node) []any {
+func (p *projector) walkInlineChildren(key string, parent ast.Node) []any {
 	var spans []any
 	for c := parent.FirstChild(); c != nil; c = c.NextSibling() {
-		span := p.inlineSpan(c)
+		span := p.inlineSpan(key, c)
 		if span == nil {
 			continue
 		}
@@ -69,7 +74,7 @@ func breakSpan(n ast.Node) map[string]any {
 // inlineSpan maps one inline AST node to its span object per the plan
 // 212 mapping table. It returns nil (after recording a diagnostic)
 // for any node the table does not cover.
-func (p *projector) inlineSpan(n ast.Node) map[string]any {
+func (p *projector) inlineSpan(key string, n ast.Node) map[string]any {
 	switch node := n.(type) {
 	case *ast.Text:
 		return map[string]any{
@@ -98,20 +103,20 @@ func (p *projector) inlineSpan(n ast.Node) map[string]any {
 		return map[string]any{
 			"span":     name,
 			"level":    node.Level,
-			"children": p.walkInlineChildren(node),
+			"children": p.walkInlineChildren(key, node),
 		}
 	case *ast.Link:
 		span := map[string]any{
 			"span":     "link",
 			"url":      string(node.Destination),
-			"children": p.walkInlineChildren(node),
+			"children": p.walkInlineChildren(key, node),
 		}
 		if len(node.Title) > 0 {
 			span["title"] = string(node.Title)
 		}
 		return span
 	default:
-		p.unsupportedInline(n)
+		p.unsupportedInline(key, n)
 		return nil
 	}
 }
@@ -130,8 +135,12 @@ func (p *projector) codeSpanText(n *ast.CodeSpan) string {
 // unsupportedInline records a hard projection error naming the node
 // type the inline projection cannot represent. Images and inline raw
 // HTML are the common cases; the default branch names the Go type so
-// a future custom inline node surfaces a clear message.
-func (p *projector) unsupportedInline(n ast.Node) {
+// a future custom inline node surfaces a clear message. The diagnostic
+// field is key — the paragraph's actual projection key (a `bind:`
+// override or the kind default, with any `-N` repeat suffix) — so the
+// error points at a field that exists in the emitted data rather than
+// the bare "inline" default.
+func (p *projector) unsupportedInline(key string, n ast.Node) {
 	var what string
 	switch n.(type) {
 	case *ast.Image:
@@ -142,7 +151,7 @@ func (p *projector) unsupportedInline(n ast.Node) {
 		what = fmt.Sprintf("an unsupported inline node (%T)", n)
 	}
 	p.emit(schema.SchemaDiagnostic{
-		Field:    "inline",
+		Field:    key,
 		Actual:   what,
 		Expected: "one of: text, break, code, autolink, emphasis, strong, link",
 		Hint: "the `projection: inline` mapping covers only those " +
