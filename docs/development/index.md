@@ -27,6 +27,7 @@ row: "- [{title}]({filename})"
 - [Release Pipeline](release.md)
 - [Release Tooling Architecture](release-tooling.md)
 - [Secret Rotations](secret-rotations.md)
+- [Ship and adopt new directive syntax](adopt-new-directive-syntax.md)
 - [Website configuration](website-config.md)
 <?/catalog?>
 

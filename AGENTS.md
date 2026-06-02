@@ -40,6 +40,7 @@ row: "- [{summary}]({filename})"
 - [The mental model behind mdsmith — how flavor, rule, convention, and kind relate, how generated sections work, the placeholder grammar, and how it compares to other Markdown linters.](docs/background/index.md)
 - [How mdsmith compares to other Markdown linters.](docs/background/markdown-linters.md)
 - [How to wire a new peer Markdown linter into mdsmith's comparison docs, the per-rule coverage matrix, and the benchmark page.](docs/development/add-peer-linter.md)
+- [Release new directive syntax and bump the pinned CI baseline before checked-in Markdown uses it, so the `mdsmith-fixed-version` job stays green.](docs/development/adopt-new-directive-syntax.md)
 - [Running log of SOLID and clean-architecture findings on origin/main. The solid-architecture skill (audit mode) appends here; blockers are also filed as plans.](docs/development/architecture-audit.md)
 - [Checklist for sweeping origin/main for SOLID and boundary violations. Records findings in the audit log; schedules blockers as new plan files.](docs/development/architecture/audit-checklist.md)
 - [External-surface contracts: LSP, CLI, .mdsmith.yml, generated markers, plugin manifest, distribution shims. Public APIs.](docs/development/architecture/cross-system.md)
@@ -208,6 +209,7 @@ row: "- [{title}](docs/development/{filename})"
 - [Release Pipeline](docs/development/release.md)
 - [Release Tooling Architecture](docs/development/release-tooling.md)
 - [Secret Rotations](docs/development/secret-rotations.md)
+- [Ship and adopt new directive syntax](docs/development/adopt-new-directive-syntax.md)
 - [Website configuration](docs/development/website-config.md)
 <?/catalog?>
 
