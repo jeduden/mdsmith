@@ -11,7 +11,9 @@ import (
 	"sync"
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/piparser"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/yuin/goldmark/ast"
 )
@@ -237,7 +239,7 @@ func (r *Rule) generateIncludeContent(
 		return "", diags
 	}
 
-	data, err := lint.ReadFSFileLimited(readFS, readPath, f.MaxInputBytes)
+	data, err := bytelimit.ReadFSFileLimited(readFS, readPath, f.MaxInputBytes)
 	if err != nil {
 		return "", []lint.Diagnostic{makeDiag(filePath, line,
 			fmt.Sprintf("cannot read include file %q: %v", file, err))}
@@ -469,7 +471,7 @@ func injectSourceDir(text, sourceDir string) string {
 	var injections []injection
 
 	for n := parsed.AST.FirstChild(); n != nil; n = n.NextSibling() {
-		pi, ok := n.(*lint.ProcessingInstruction)
+		pi, ok := n.(*piparser.ProcessingInstruction)
 		if !ok {
 			continue
 		}

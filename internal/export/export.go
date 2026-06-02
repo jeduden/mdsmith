@@ -14,6 +14,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/piparser"
 	"github.com/jeduden/mdsmith/internal/rule"
 )
 
@@ -262,7 +263,7 @@ func stripDirectives(f *lint.File, directives []directiveStrip) []byte {
 	// Markerless directives: every top-level PI whose lines fall
 	// outside a known pair's strip range and body range.
 	for n := f.AST.FirstChild(); n != nil; n = n.NextSibling() {
-		pi, ok := n.(*lint.ProcessingInstruction)
+		pi, ok := n.(*piparser.ProcessingInstruction)
 		if !ok {
 			continue
 		}
@@ -303,7 +304,7 @@ func stripDirectives(f *lint.File, directives []directiveStrip) []byte {
 // opening line, and a multi-line PI where the closure sits on its
 // own line; the latter is the only shape that extends `end` past
 // `start`.
-func piLineRange(pi *lint.ProcessingInstruction, f *lint.File) (int, int) {
+func piLineRange(pi *piparser.ProcessingInstruction, f *lint.File) (int, int) {
 	first := pi.Lines().At(0)
 	start := f.LineOfOffset(first.Start)
 	if !pi.HasClosure() {

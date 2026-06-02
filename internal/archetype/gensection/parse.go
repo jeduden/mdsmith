@@ -7,6 +7,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/fieldinterp"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/piparser"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 )
 
@@ -53,7 +54,7 @@ func FindMarkerPairs(
 	endName := "/" + directiveName
 
 	for n := f.AST.FirstChild(); n != nil; n = n.NextSibling() {
-		pi, ok := n.(*lint.ProcessingInstruction)
+		pi, ok := n.(*piparser.ProcessingInstruction)
 		if !ok {
 			continue
 		}
@@ -102,7 +103,7 @@ func FindMarkerPairs(
 }
 
 func handleStartMarker(
-	f *lint.File, pi *lint.ProcessingInstruction,
+	f *lint.File, pi *piparser.ProcessingInstruction,
 	current *MarkerPair, diags []lint.Diagnostic,
 	ruleID, ruleName string,
 ) (*MarkerPair, []lint.Diagnostic) {
@@ -127,7 +128,7 @@ func handleStartMarker(
 }
 
 func handleEndMarker(
-	f *lint.File, pi *lint.ProcessingInstruction,
+	f *lint.File, pi *piparser.ProcessingInstruction,
 	current *MarkerPair, pairs []MarkerPair, diags []lint.Diagnostic,
 	ruleID, ruleName string,
 ) (*MarkerPair, []MarkerPair, []lint.Diagnostic) {
@@ -156,7 +157,7 @@ func handleEndMarker(
 
 // isEndMarkerAloneOnLine checks that the end marker PI is the only
 // content on its source line.
-func isEndMarkerAloneOnLine(pi *lint.ProcessingInstruction, f *lint.File) bool {
+func isEndMarkerAloneOnLine(pi *piparser.ProcessingInstruction, f *lint.File) bool {
 	seg := pi.Lines().At(0)
 	raw := string(seg.Value(f.Source))
 	trimmed := strings.TrimSpace(raw)
@@ -166,7 +167,7 @@ func isEndMarkerAloneOnLine(pi *lint.ProcessingInstruction, f *lint.File) bool {
 
 // extractYAMLBody returns the YAML content from a PI's Lines(),
 // skipping the first line (the <?name line).
-func extractYAMLBody(pi *lint.ProcessingInstruction, source []byte) string {
+func extractYAMLBody(pi *piparser.ProcessingInstruction, source []byte) string {
 	lines := pi.Lines()
 	if lines.Len() <= 1 {
 		return ""
@@ -181,7 +182,7 @@ func extractYAMLBody(pi *lint.ProcessingInstruction, source []byte) string {
 
 // piClosureEndLine returns the 1-based line number of the PI's closure
 // (or last body line for single-line PIs).
-func piClosureEndLine(pi *lint.ProcessingInstruction, f *lint.File) int {
+func piClosureEndLine(pi *piparser.ProcessingInstruction, f *lint.File) int {
 	if pi.HasClosure() && pi.ClosureLine.Start != pi.Lines().At(0).Start {
 		// Multi-line PI: closure is on a separate line.
 		return f.LineOfOffset(pi.ClosureLine.Start)

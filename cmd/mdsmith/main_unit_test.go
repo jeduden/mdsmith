@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/engine"
 	fixpkg "github.com/jeduden/mdsmith/internal/fix"
@@ -138,7 +139,7 @@ func TestResolveMaxInputBytes_BothEmpty_UsesDefault(t *testing.T) {
 	cfg := &config.Config{}
 	n, err := resolveMaxInputBytes(cfg, "")
 	require.NoError(t, err)
-	assert.Equal(t, lint.DefaultMaxInputBytes, n)
+	assert.Equal(t, bytelimit.DefaultMaxInputBytes, n)
 }
 
 func TestResolveMaxInputBytes_CLIFlagOverridesConfig(t *testing.T) {

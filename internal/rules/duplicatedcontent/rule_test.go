@@ -211,7 +211,7 @@ func TestCheck_OversizeCorpusFileSkipped(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "b.md"), "# B\n\n"+p+"\n")
 
 	f := newLintFileWithRoot(t, filepath.Join(dir, "a.md"), dir)
-	// MaxInputBytes forces lint.ReadFSFileLimited to reject b.md, so the
+	// MaxInputBytes forces bytelimit.ReadFSFileLimited to reject b.md, so the
 	// walker silently skips it and no duplicate is reported.
 	f.MaxInputBytes = 1
 

@@ -1,6 +1,9 @@
 package lint
 
-import "github.com/yuin/goldmark/ast"
+import (
+	"github.com/jeduden/mdsmith/internal/piparser"
+	"github.com/yuin/goldmark/ast"
+)
 
 // CollectPIBlockLines returns a set of 1-based line numbers that belong
 // to processing-instruction blocks, including the opening <?... line and
@@ -35,7 +38,7 @@ func collectPIBlockLinesInto(n ast.Node, f *File, lines map[int]bool) {
 	if n == nil {
 		return
 	}
-	if pi, ok := n.(*ProcessingInstruction); ok {
+	if pi, ok := n.(*piparser.ProcessingInstruction); ok {
 		segs := pi.Lines()
 		for i := 0; i < segs.Len(); i++ {
 			lines[f.LineOfOffset(segs.At(i).Start)] = true

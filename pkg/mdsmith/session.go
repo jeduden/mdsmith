@@ -16,6 +16,7 @@ import (
 	"hash/fnv"
 	"sync"
 
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/engine"
 	fixpkg "github.com/jeduden/mdsmith/internal/fix"
@@ -128,7 +129,7 @@ func NewSession(opts SessionOptions) (*Session, error) {
 		cfgPath:    src.configPath(),
 		rules:      rule.All(),
 		rootDir:    rootDirOf(opts.Workspace),
-		maxBytes:   lint.DefaultMaxInputBytes,
+		maxBytes:   bytelimit.DefaultMaxInputBytes,
 		checkCache: make(map[string]cachedCheck),
 	}, nil
 }

@@ -13,6 +13,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/directives"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/piparser"
 	"github.com/jeduden/mdsmith/internal/rules"
 )
 
@@ -223,7 +224,7 @@ func directiveHoverAt(source []byte, pos Position) *hoverResult {
 		if !entering || result != nil {
 			return ast.WalkContinue, nil
 		}
-		pi, ok := n.(*lint.ProcessingInstruction)
+		pi, ok := n.(*piparser.ProcessingInstruction)
 		if !ok {
 			return ast.WalkContinue, nil
 		}

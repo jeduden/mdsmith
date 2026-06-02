@@ -13,7 +13,7 @@ import (
 )
 
 // countingFS wraps an fstest.MapFS and counts how many times each path
-// is read (via ReadFile, the path lint.ReadFSFileLimited and the YAML
+// is read (via ReadFile, the path bytelimit.ReadFSFileLimited and the YAML
 // front-matter reader take when MaxInputBytes is unset). doublestar's
 // glob walk uses ReadDir/Stat, not ReadFile, so a matched markdown
 // file's count reflects only the rule passes that re-read its content.

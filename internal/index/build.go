@@ -10,6 +10,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
+	"github.com/jeduden/mdsmith/internal/piparser"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
@@ -521,7 +522,7 @@ func collectLinkRefDefs(filePath string, ctx parser.Context, body []byte, lines 
 func collectDirectives(filePath string, root ast.Node, source []byte, fmOffset int) []Symbol {
 	var out []Symbol
 	for n := root.FirstChild(); n != nil; n = n.NextSibling() {
-		pi, ok := n.(*lint.ProcessingInstruction)
+		pi, ok := n.(*piparser.ProcessingInstruction)
 		if !ok {
 			continue
 		}
@@ -549,7 +550,7 @@ func collectDirectives(filePath string, root ast.Node, source []byte, fmOffset i
 // gives the end; goldmark emits HasClosure() == true for every
 // well-formed PI, so the branch where Lines() spans multiple
 // segments without a closure is unreachable in practice.
-func piLineRange(pi *lint.ProcessingInstruction, source []byte, fmOffset int) (int, int) {
+func piLineRange(pi *piparser.ProcessingInstruction, source []byte, fmOffset int) (int, int) {
 	startSeg := pi.Lines().At(0)
 	startLine := lineOfOffset(source, startSeg.Start) + fmOffset
 	endLine := startLine

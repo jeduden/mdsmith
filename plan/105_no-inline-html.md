@@ -37,7 +37,7 @@ types for raw HTML:
   (`text <span>marked</span> text`, `<br>`, `<kbd>x</kbd>`).
 
 The PI block parser
-([internal/lint/pi.go](../internal/lint/pi.go))
+([internal/piparser/pi.go](../internal/piparser/pi.go))
 already replaces block-level `<?name ... ?>`
 directives with a distinct AST node, so block
 directives are *not* HTMLBlocks. Inline

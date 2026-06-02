@@ -7,6 +7,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/piparser"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
@@ -110,12 +111,12 @@ func completionContextBody(srcPath string, body []byte, bodyLines [][]byte, body
 	if insideCodeBlock(root, body, bodyLine) {
 		return CompletionContext{Tag: CompletionNone}
 	}
-	var foundPI *lint.ProcessingInstruction
+	var foundPI *piparser.ProcessingInstruction
 	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
 		}
-		if pi, ok := n.(*lint.ProcessingInstruction); ok {
+		if pi, ok := n.(*piparser.ProcessingInstruction); ok {
 			if piContainsLine(body, pi, bodyLine) {
 				foundPI = pi
 			}
@@ -179,7 +180,7 @@ func piArgCompletion(piName, argKey, argVal string) (CompletionContext, bool) {
 // The prefix is extracted from the text up to the cursor (not the full line)
 // so partial values like `file: "docs/g` are returned correctly even when
 // the line later has a closing quote.
-func directiveCompletionContext(pi *lint.ProcessingInstruction, lines [][]byte, line, col int) CompletionContext {
+func directiveCompletionContext(pi *piparser.ProcessingInstruction, lines [][]byte, line, col int) CompletionContext {
 	if line < 1 || line > len(lines) {
 		return CompletionContext{Tag: CompletionNone}
 	}

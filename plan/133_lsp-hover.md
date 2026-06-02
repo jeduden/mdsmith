@@ -81,7 +81,7 @@ uses.
 **Directive fallback.** If no diagnostic covers the
 cursor, the server checks for a `<?directive ...?>`
 block at that position (via
-[`lint/pi_parser.go`](../internal/lint/pi_parser.go)).
+[`piparser/pi_parser.go`](../internal/piparser/pi_parser.go)).
 If one matches, the server returns the directive
 docs from [docs/guides/directives/](../docs/guides/directives/).
 

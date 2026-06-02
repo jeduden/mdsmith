@@ -1,4 +1,4 @@
-package lint
+package piparser
 
 import (
 	"github.com/yuin/goldmark/util"
@@ -6,10 +6,10 @@ import (
 	"github.com/jeduden/mdsmith/pkg/markdown"
 )
 
-// PIBlockParserPrioritized returns the PI parser with its priority
+// BlockParserPrioritized returns the PI parser with its priority
 // for registration, forwarded from pkg/markdown. Kept because
 // internal/schema registers it directly; the parser logic itself
 // lives in pkg/markdown.
-func PIBlockParserPrioritized() util.PrioritizedValue {
+func BlockParserPrioritized() util.PrioritizedValue {
 	return markdown.PIBlockParserPrioritized()
 }

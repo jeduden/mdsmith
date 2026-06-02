@@ -10,6 +10,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
+	"github.com/jeduden/mdsmith/internal/piparser"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
@@ -209,7 +210,7 @@ func headingInfo(target *ast.Heading, source []byte, root ast.Node) (string, int
 func locateInAST(srcPath string, root ast.Node, source []byte, lines [][]byte, line, col int) (LocateResult, bool) {
 	cursorOff := offsetAt(lines, line, col)
 	var found *ast.Link
-	var foundPI *lint.ProcessingInstruction
+	var foundPI *piparser.ProcessingInstruction
 	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
@@ -222,7 +223,7 @@ func locateInAST(srcPath string, root ast.Node, source []byte, lines [][]byte, l
 			}
 		}
 		// Block-level processing-instruction.
-		if pi, ok := n.(*lint.ProcessingInstruction); ok {
+		if pi, ok := n.(*piparser.ProcessingInstruction); ok {
 			if piContainsLine(source, pi, line) {
 				foundPI = pi
 			}
@@ -365,7 +366,7 @@ func scanForByte(source []byte, from int, target byte) int {
 	return -1
 }
 
-func piContainsLine(source []byte, pi *lint.ProcessingInstruction, line int) bool {
+func piContainsLine(source []byte, pi *piparser.ProcessingInstruction, line int) bool {
 	startSeg := pi.Lines().At(0)
 	startLine := lineOfOffset(source, startSeg.Start)
 	endLine := startLine
@@ -411,7 +412,7 @@ func linkToLocate(srcPath string, l *ast.Link, source []byte) LocateResult {
 // for the cursor's specific argument line. The directive name surfaces
 // as DirectiveName; the argument key/value the cursor sits on lands in
 // DirectiveArg/DirectiveValue.
-func piToLocate(pi *lint.ProcessingInstruction, source []byte, lines [][]byte, line, col int) LocateResult {
+func piToLocate(pi *piparser.ProcessingInstruction, source []byte, lines [][]byte, line, col int) LocateResult {
 	res := LocateResult{
 		Tag:           TokenDirectiveArg,
 		DirectiveName: pi.Name,
