@@ -267,7 +267,8 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			RuleID:   r.ID(),
 			RuleName: r.Name(),
 			Severity: lint.Warning,
-			Message:  "proper name " + strconv.Quote(string(f.Source[m.start:m.start+m.length])) + " should be " + strconv.Quote(m.name),
+			Message: "proper name " + strconv.Quote(string(f.Source[m.start:m.start+m.length])) +
+				" should be " + strconv.Quote(m.name),
 		})
 	}
 	return diags

@@ -70,7 +70,8 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 		RuleID:   r.ID(),
 		RuleName: r.Name(),
 		Severity: lint.Warning,
-		Message:  "list indent should be " + strconv.Itoa(expectedIndent) + " spaces, found " + strconv.Itoa(actualIndent),
+		Message: "list indent should be " + strconv.Itoa(expectedIndent) +
+			" spaces, found " + strconv.Itoa(actualIndent),
 	}}
 }
 
@@ -154,7 +155,6 @@ func countLeadingSpaces(line []byte) int {
 	}
 	return count
 }
-
 
 // Fix implements rule.FixableRule.
 func (r *Rule) Fix(f *lint.File) []byte {

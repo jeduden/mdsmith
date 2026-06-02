@@ -188,7 +188,6 @@ func TestIsInlineNode_Heading(t *testing.T) {
 	assert.False(t, isInlineNode(node))
 }
 
-
 // --- Check with zero/negative Spaces defaults to 2 ---
 
 func TestCheck_ZeroSpaces_DefaultsTo2(t *testing.T) {
