@@ -119,7 +119,7 @@ For the headline `Mark*down*, smithed.`:
 ```
 
 A nested example — a strong span wrapping a code span,
-`**`mdsmith fix`**` — projects with no mode switch:
+``**`mdsmith fix`**`` — projects with no mode switch:
 
 ```json
 { "span": "strong", "level": 2, "children": [

@@ -211,7 +211,7 @@ func (p *projector) projectContent(
 
 // contentBaseKey returns the base projection key for a content
 // entry: the user-supplied bind value when set, otherwise the
-// kind's default name (`code`/`items`/`rows`/`text`). A paragraph
+// kind's default name (`code`/`inline`/`items`/`rows`/`text`). A paragraph
 // projected as inline spans defaults to `inline` instead of `text`,
 // so a scope can declare both a `text` and an `inline` projection of
 // the same paragraph without colliding (plan 212).

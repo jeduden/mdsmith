@@ -134,7 +134,7 @@ the release side. Just a typed walk over data.
   typed span (text / emphasis / strong / code / link /
   autolink). Container spans carry `children`; leaf spans
   carry `value`.
-- [x] Nested inline (`**`code`**`, `[**bold**](url)`, etc.)
+- [x] Nested inline (``**`code`**``, `[**bold**](url)`, etc.)
   round-trips through the projection without error; the
   consumer walks one uniform shape.
 - [x] `internal/release/messaging.go` no longer imports

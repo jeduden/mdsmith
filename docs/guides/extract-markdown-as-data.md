@@ -186,7 +186,7 @@ trailing text:
 ```
 
 Nesting composes through the same shape. A paragraph
-`run **`mdsmith fix`** daily` projects the strong span
+``run **`mdsmith fix`** daily`` projects the strong span
 with the code span nested in its `children` — the
 consumer walks one uniform tree, with no flat-versus-
 recursive mode switch:
