@@ -319,6 +319,12 @@ main {
   letter-spacing: 0.06em;
   color: var(--forge-400);
 }
+/* The label links to the channel's registry / marketplace page so
+   editor users reach the storefront's install button and anyone can
+   check provenance. Keep the forge-400 look on the dark list — the
+   global link color (forge-700) would be too dark there. */
+a.install-label { text-decoration: none; }
+a.install-label:hover { color: var(--forge-300); text-decoration: underline; }
 .install-row .install-cmd {
   flex: 1 1 auto;
   min-width: 0;
@@ -361,20 +367,35 @@ main {
    stays visible and the chips are inert. */
 .install-picker { display: flex; flex-direction: column; gap: 14px; }
 .install-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+/* Chips sit on the light section background, not on the dark
+   install list, so their text must read against --bg (canvas).
+   Only the text changed: the old --steel-300 / --canvas washed out
+   on the light canvas, so default/hover text now uses --fg-muted /
+   --fg. The borders keep their original steel-700 / steel-500
+   tokens (both clear the 3:1 non-text-contrast bar on canvas). The
+   active state moves to the site's .chip.is-on treatment (forge-700
+   on forge-50, ~7:1) for a consistent, legible "selected" look. */
 .install-filter {
   background: transparent;
   border: 1px solid var(--steel-700);
-  color: var(--steel-300);
+  color: var(--fg-muted);
   padding: 5px 12px; font-size: 12px; font-family: var(--font-mono);
   text-transform: uppercase; letter-spacing: 0.05em;
   border-radius: 999px; cursor: pointer;
   transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
 }
-.install-filter:hover { color: var(--canvas); border-color: var(--steel-500); }
+.install-filter:hover { color: var(--fg); border-color: var(--steel-500); }
 .install-filter.is-active {
-  color: var(--forge-300); border-color: var(--forge-400); background: var(--steel-950);
+  color: var(--forge-700); border-color: var(--forge-500); background: var(--forge-50);
 }
 .install-row[hidden] { display: none; }
+/* Sits on the light section background; --fg-muted reads at ~8.4:1. */
+.install-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+}
 
 /* ========== TERMINAL ========== */
 
