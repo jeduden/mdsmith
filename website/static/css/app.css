@@ -361,18 +361,24 @@ main {
    stays visible and the chips are inert. */
 .install-picker { display: flex; flex-direction: column; gap: 14px; }
 .install-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+/* Chips sit on the light section background, not on the dark
+   install list. Their text must read against --bg (canvas), so
+   they use dark steel/forge tokens — not the light --steel-300 /
+   --canvas the dark-context copy button uses. The active state
+   reuses the site's .chip.is-on treatment (forge-700 on forge-50,
+   ~7:1) for a consistent, legible "selected" look. */
 .install-filter {
   background: transparent;
-  border: 1px solid var(--steel-700);
-  color: var(--steel-300);
+  border: 1px solid var(--border-strong);
+  color: var(--fg-muted);
   padding: 5px 12px; font-size: 12px; font-family: var(--font-mono);
   text-transform: uppercase; letter-spacing: 0.05em;
   border-radius: 999px; cursor: pointer;
   transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
 }
-.install-filter:hover { color: var(--canvas); border-color: var(--steel-500); }
+.install-filter:hover { color: var(--fg); border-color: var(--border-strong); background: var(--bg-sunken); }
 .install-filter.is-active {
-  color: var(--forge-300); border-color: var(--forge-400); background: var(--steel-950);
+  color: var(--forge-700); border-color: var(--forge-500); background: var(--forge-50);
 }
 .install-row[hidden] { display: none; }
 
