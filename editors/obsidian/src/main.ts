@@ -65,7 +65,6 @@ export default class MdsmithPlugin extends Plugin {
   private cfg: MdsmithSettings = { ...DEFAULTS };
   private runtime: MdsmithRuntime | undefined;
   private sync: WorkspaceSync | undefined;
-  private syncRefs: EventRef[] = [];
   private fixOnSaveRef: EventRef | undefined;
   private debouncedFixOnSave: DebouncedFn<[]> | undefined;
   private lineCommandIds: string[] = [];
@@ -146,12 +145,12 @@ export default class MdsmithPlugin extends Plugin {
     }
 
     // Push vault edits into the session, debounced 200 ms per file.
+    // WorkspaceSync owns its vault subscriptions: start() subscribes and
+    // stop() (run from teardownRuntime on both unload and restart)
+    // unsubscribes, so a restart never leaks listeners onto the disposed
+    // runtime.
     this.sync = new WorkspaceSync(this.app.vault, this.runtime);
-    // WorkspaceSync.start returns its own opaque EventRef[]; they are
-    // the obsidian Vault's refs at runtime, so register each for
-    // automatic teardown.
-    this.syncRefs = this.sync.start() as EventRef[];
-    this.syncRefs.forEach((ref) => this.registerEvent(ref));
+    this.sync.start();
 
     this.configureFixOnSave();
     // Lint whatever is already open.
@@ -165,7 +164,6 @@ export default class MdsmithPlugin extends Plugin {
     this.debouncedFixOnSave = undefined;
     this.sync?.stop();
     this.sync = undefined;
-    this.syncRefs = [];
     this.runtime?.dispose();
     this.runtime = undefined;
     this.diagnosticsByUri.clear();

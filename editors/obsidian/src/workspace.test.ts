@@ -27,8 +27,10 @@ interface FakeFile {
 function makeVault(files: Record<string, string>): VaultLike & {
   fire(event: "modify" | "create" | "delete", path: string): Promise<void>;
   set(path: string, content: string): void;
+  listenerCount(event: "modify" | "create" | "delete"): number;
 } {
-  const handlers: Record<string, Array<(f: FakeFile) => unknown>> = {};
+  type Handler = (f: FakeFile) => unknown;
+  const handlers: Record<string, Handler[]> = {};
   const store = { ...files };
   return {
     getMarkdownFiles(): FakeFile[] {
@@ -37,9 +39,18 @@ function makeVault(files: Record<string, string>): VaultLike & {
     async cachedRead(file: { path: string }): Promise<string> {
       return store[file.path] ?? "";
     },
-    on(event: string, cb: (f: FakeFile) => unknown): { event: string } {
+    on(event: string, cb: Handler): { event: string; cb: Handler } {
       (handlers[event] ??= []).push(cb);
-      return { event };
+      return { event, cb };
+    },
+    // offref mirrors Obsidian's Events.offref: drop the exact handler the
+    // matching on() returned, so stop() can unsubscribe what it started.
+    offref(ref): void {
+      const r = ref as { event: string; cb: Handler };
+      const list = handlers[r.event];
+      if (!list) return;
+      const i = list.indexOf(r.cb);
+      if (i >= 0) list.splice(i, 1);
     },
     async fire(event, path): Promise<void> {
       const file: FakeFile = { path, extension: "md" };
@@ -47,6 +58,9 @@ function makeVault(files: Record<string, string>): VaultLike & {
     },
     set(path, content): void {
       store[path] = content;
+    },
+    listenerCount(event): number {
+      return (handlers[event] ?? []).length;
     },
   };
 }
@@ -165,5 +179,32 @@ describe("WorkspaceSync", () => {
     sync.stop(); // before the window elapses
     await sleep(80);
     expect(rt.calls.length).toBe(0);
+  });
+
+  test("stop() unregisters the vault listeners so later events are ignored", async () => {
+    const vault = makeVault({ "a.md": "# A\n" });
+    const rt = recordingRuntime();
+    const sync = new WorkspaceSync(vault, rt, 50);
+    sync.start();
+    sync.stop();
+
+    // A change after stop() must never reach the (now disposed) runtime —
+    // otherwise a session restart fires invalidate() on dead state.
+    vault.set("a.md", "# A2\n");
+    await vault.fire("modify", "a.md");
+    await sleep(80);
+    expect(rt.calls.length).toBe(0);
+  });
+
+  test("repeated start()/stop() cycles do not accumulate listeners", () => {
+    const vault = makeVault({ "a.md": "# A\n" });
+    const sync = new WorkspaceSync(vault, recordingRuntime(), 50);
+    sync.start();
+    sync.stop();
+    sync.start();
+    sync.stop();
+    for (const event of ["modify", "create", "delete"] as const) {
+      expect(vault.listenerCount(event)).toBe(0);
+    }
   });
 });

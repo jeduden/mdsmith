@@ -40,6 +40,10 @@ export interface VaultLike {
     event: "modify" | "create" | "delete",
     callback: (file: VaultFileLike) => unknown,
   ): EventRef;
+  // offref removes a listener registered by on(), mirroring Obsidian's
+  // Events.offref. WorkspaceSync.stop() calls it for every ref start()
+  // produced so a restart unsubscribes cleanly.
+  offref(ref: EventRef): void;
 }
 
 // DEBOUNCE_MS is the per-file fan-out delay from plan 217. A save burst
@@ -79,9 +83,9 @@ export class WorkspaceSync {
     private readonly debounceMs: number = DEBOUNCE_MS,
   ) {}
 
-  // start subscribes to the three vault events and returns the EventRef
-  // handles so the plugin can hand them to registerEvent for automatic
-  // cleanup on unload. Each handler debounces per file.
+  // start subscribes to the three vault events and records the EventRef
+  // handles so stop() can unsubscribe them. It also returns them for a
+  // caller that wants the handles. Each handler debounces per file.
   start(): EventRef[] {
     this.refs = [
       this.vault.on("modify", (f) => this.schedule(f, "upsert")),
@@ -125,10 +129,12 @@ export class WorkspaceSync {
     }
   }
 
-  // stop cancels every pending push. The plugin also unregisters the
-  // EventRefs through registerEvent's automatic teardown, so this only
-  // needs to clear the timers.
+  // stop unsubscribes the vault listeners start() registered and cancels
+  // every pending push, so a disposed runtime never receives a late
+  // invalidate and a restart does not accumulate duplicate listeners.
   stop(): void {
+    for (const ref of this.refs) this.vault.offref(ref);
+    this.refs = [];
     for (const timer of this.timers.values()) clearTimeout(timer);
     this.timers.clear();
   }
