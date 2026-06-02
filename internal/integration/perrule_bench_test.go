@@ -204,6 +204,12 @@ func perRuleTiming(tb testing.TB, r rule.Rule, src []byte, mapFS fstest.MapFS) r
 		s := time.Now()
 		_ = makeFile()
 		parseNs := time.Since(s).Nanoseconds()
+		if parseNs <= 0 {
+			// A ns-resolution clock never times the ~170µs parse at 0, but
+			// guard the divisor so a degenerate measurement fails loudly
+			// instead of making the ratio +Inf.
+			tb.Fatalf("parse op measured %dns; need >0 to form the ratio", parseNs)
+		}
 
 		s = time.Now()
 		f := makeFile()
