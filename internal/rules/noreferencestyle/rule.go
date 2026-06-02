@@ -333,11 +333,12 @@ func scanRefDefLine(source []byte, lineStart, lineEnd int) (labelStart, labelEnd
 	return labelStart, labelEnd, true
 }
 
-// isASCIIWhitespace mirrors Go's `\s` character class for the
-// destination-prefix guard: the regex `\S+` rejects ' ', '\t', '\n',
-// '\r', '\f', and '\v'.
+// isASCIIWhitespace mirrors Go regexp's `\s` (RE2): space, tab,
+// newline, carriage return, and form feed. RE2's `\s` excludes the
+// vertical tab (\v), so `\S` matches \v — the scanner must accept a
+// \v-led destination to stay byte-identical with the old refDefRE.
 func isASCIIWhitespace(b byte) bool {
-	return b == ' ' || b == '\t' || b == '\n' || b == '\r' || b == '\f' || b == '\v'
+	return b == ' ' || b == '\t' || b == '\n' || b == '\r' || b == '\f'
 }
 
 // footnoteOccurrence records one `[^slug]` reference in source.

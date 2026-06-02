@@ -26,6 +26,7 @@ func TestScanRefDefLine(t *testing.T) {
 		{"more than three leading spaces", "    [a]: x", 0, 10, -1, -1, false},
 		{"nothing after colon", "[a]:   ", 0, 7, -1, -1, false},
 		{"carriage-return destination", "[a]:\r", 0, 5, -1, -1, false},
+		{"vertical-tab destination", "[a]:\vx", 0, 6, 1, 2, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
