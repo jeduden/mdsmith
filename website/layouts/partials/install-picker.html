@@ -27,10 +27,16 @@
   <div class="install-list">
     {{- range $channels }}
     <div class="install-row" data-platforms="{{ delimit .platforms " " }}">
-      <span class="install-label">{{ .title }}</span>
+      <a class="install-label" href="{{ .url }}" target="_blank" rel="noopener" title="Open the {{ .title }} page">{{ .title }}</a>
       <code class="install-cmd"><span class="prompt">$</span> <span class="cmd">{{ .command }}</span></code>
       <button class="install-copy" type="button" aria-label="Copy {{ .title }} install command" data-copy="{{ .command }}">copy</button>
     </div>
     {{- end }}
   </div>
+  {{- /* Surface the headline supply-chain facts on the page so a
+         security reviewer can triage without clicking into a docs
+         page. These restate what the channel docs already publish
+         (github-releases / npm / pypi front matter); per-channel
+         detail lives in the install guide. */ -}}
+  <p class="install-note">Releases are Sigstore-signed and checksummed; npm and PyPI publish via OIDC Trusted Publishing. The <a href="{{ "/guides/install/" | relURL }}">install guide</a> lists per-channel verification.</p>
 </div>

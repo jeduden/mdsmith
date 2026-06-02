@@ -319,6 +319,12 @@ main {
   letter-spacing: 0.06em;
   color: var(--forge-400);
 }
+/* The label links to the channel's registry / marketplace page so
+   editor users reach the storefront's install button and anyone can
+   check provenance. Keep the forge-400 look on the dark list — the
+   global link color (forge-700) would be too dark there. */
+a.install-label { text-decoration: none; }
+a.install-label:hover { color: var(--forge-300); text-decoration: underline; }
 .install-row .install-cmd {
   flex: 1 1 auto;
   min-width: 0;
@@ -383,6 +389,13 @@ main {
   color: var(--forge-700); border-color: var(--forge-500); background: var(--forge-50);
 }
 .install-row[hidden] { display: none; }
+/* Sits on the light section background; --fg-muted reads at ~8.4:1. */
+.install-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+}
 
 /* ========== TERMINAL ========== */
 
