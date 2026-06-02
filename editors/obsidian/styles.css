@@ -82,3 +82,35 @@
   cursor: pointer;
   text-decoration: underline;
 }
+
+/*
+ * Workspace diagnostics view — the sortable table the "mdsmith
+ * Diagnostics" ItemView renders. Each row is clickable and jumps to
+ * source.
+ */
+
+.mdsmith-diagnostics-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-ui-small);
+}
+
+.mdsmith-diagnostics-table tr {
+  cursor: pointer;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.mdsmith-diagnostics-table tr:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.mdsmith-diagnostics-table td {
+  padding: 0.25em 0.5em;
+  vertical-align: top;
+}
+
+.mdsmith-diagnostics-table td:first-child {
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+}
