@@ -299,8 +299,12 @@ func TestMissingSectionAnchor(t *testing.T) {
 	f.GeneratedRanges = []lint.LineRange{{From: 2, To: 4}}
 	assert.Equal(t, 1, MissingSectionAnchor(f, 3),
 		"candidate inside a generated range → first non-generated line")
-	assert.Equal(t, 5, MissingSectionAnchor(f, 5),
-		"candidate outside the range is still used")
+
+	f.GeneratedRanges = []lint.LineRange{{From: 2, To: 2}}
+	assert.Equal(t, 3, MissingSectionAnchor(f, 3),
+		"in-range candidate outside the generated range is used")
+	assert.Equal(t, 1, MissingSectionAnchor(f, len(f.Lines)+1),
+		"out-of-range candidate falls back; never returns > len(f.Lines)")
 
 	// Regression (Copilot review): a document that opens with a generated
 	// section. The anchor must not be a generated positive line (dropped

@@ -295,10 +295,14 @@ func nonBodyDiagLine(f *lint.File) int {
 // MissingSectionAnchor returns the body line to anchor a
 // missing-section diagnostic. candidate is the natural insertion
 // point — the line of the heading the missing section should follow —
-// and is used when it is a real body line (> 0) outside every generated
-// range. A missing section has no body line of its own, and anchoring
-// inside a generated section would let engine.filterGeneratedDiags drop
-// the diagnostic. When candidate is unusable, the non-body anchor is
+// and is used when it is a real body line (> 0 and within the file)
+// outside every generated range. An out-of-range candidate (e.g. an
+// insertion-point sentinel past EOF) is treated as unusable so the
+// result never exceeds len(f.Lines) and can never map to an
+// out-of-range editor/LSP position. A missing section has no body line
+// of its own, and anchoring inside a generated section would let
+// engine.filterGeneratedDiags drop the diagnostic. When candidate is
+// unusable, the non-body anchor is
 // used: a non-positive value survives filtering and maps back to file
 // line 1, and a positive value (nothing stripped, line 1) is fine as
 // long as line 1 is not itself generated. The remaining case — a
@@ -309,7 +313,7 @@ func nonBodyDiagLine(f *lint.File) int {
 // and no safe positive anchor exists, so the diagnostic still surfaces
 // rather than being dropped or printed as file:0 (plan 230).
 func MissingSectionAnchor(f *lint.File, candidate int) int {
-	if candidate > 0 && !lineInGeneratedRange(f, candidate) {
+	if candidate > 0 && candidate <= len(f.Lines) && !lineInGeneratedRange(f, candidate) {
 		return candidate
 	}
 	fallback := NonBodyDiagLine(f)
