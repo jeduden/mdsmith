@@ -1400,6 +1400,65 @@ func TestE2E_MergeDriver_Install(t *testing.T) {
 	assert.NotEmpty(t, hookData, "installed hook must not be empty")
 }
 
+func TestE2E_MergeDriver_CIInstall_InSync(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, exec.Command("git", "init", dir).Run(), "git init")
+
+	// Seed an in-sync .gitattributes plus the driver and hook.
+	_, stderr, code := runBinaryInDir(t, dir, "", "merge-driver", "install")
+	require.Equal(t, 0, code, "install must succeed; stderr: %s", stderr)
+
+	attrPath := filepath.Join(dir, ".gitattributes")
+	before, err := os.ReadFile(attrPath)
+	require.NoError(t, err)
+
+	// ci-install verifies the committed file without rewriting it.
+	_, stderr, code = runBinaryInDir(t, dir, "", "merge-driver", "ci-install")
+	assert.Equal(t, 0, code,
+		"ci-install must succeed on an in-sync repo; stderr: %s", stderr)
+
+	after, err := os.ReadFile(attrPath)
+	require.NoError(t, err)
+	assert.Equal(t, string(before), string(after),
+		"ci-install must not modify .gitattributes")
+
+	// The driver is registered so `git merge` dispatches to it.
+	out, err := exec.Command("git", "-C", dir, "config", "merge.mdsmith.driver").Output()
+	require.NoError(t, err, "reading git config")
+	assert.Contains(t, string(out), "merge-driver run %O %A %B %P")
+
+	// The pre-merge-commit hook is installed (git-internal, untracked).
+	hookPath := filepath.Join(gitHooksDir(t, dir), "pre-merge-commit")
+	_, err = os.Stat(hookPath)
+	require.NoError(t, err, "ci-install must install the pre-merge-commit hook")
+}
+
+func TestE2E_MergeDriver_CIInstall_Drift_ExitsTwo(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, exec.Command("git", "init", dir).Run(), "git init")
+
+	_, stderr, code := runBinaryInDir(t, dir, "", "merge-driver", "install")
+	require.Equal(t, 0, code, "install must succeed; stderr: %s", stderr)
+
+	attrPath := filepath.Join(dir, ".gitattributes")
+	before, err := os.ReadFile(attrPath)
+	require.NoError(t, err)
+
+	// Introduce drift: add an ignore pattern after install, so the
+	// committed .gitattributes no longer matches .mdsmith.yml.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"),
+		[]byte("ignore:\n  - \"vendor/**\"\n"), 0o644))
+
+	_, stderr, code = runBinaryInDir(t, dir, "", "merge-driver", "ci-install")
+	assert.Equal(t, 2, code, "ci-install must fail on drift; stderr: %s", stderr)
+	assert.Contains(t, stderr, "out of sync")
+
+	after, err := os.ReadFile(attrPath)
+	require.NoError(t, err)
+	assert.Equal(t, string(before), string(after),
+		"ci-install must not modify .gitattributes on drift")
+}
+
 func TestE2E_MergeDriver_Install_Idempotent(t *testing.T) {
 	dir := t.TempDir()
 

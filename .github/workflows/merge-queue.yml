@@ -37,6 +37,14 @@ jobs:
 
       - uses: ./.github/actions/setup-mdsmith-pinned-version
       - name: Install mdsmith merge driver and pre-merge-commit hook
+        # NOTE: switch `merge-driver install` to `merge-driver ci-install`
+        # once the pinned baseline (setup-mdsmith-pinned-version) ships it.
+        # `install` re-renders .gitattributes from .mdsmith.yml; a drifted
+        # committed copy would be rewritten here, dirtying the worktree and
+        # aborting the action's `git merge` — which requeues the PR and
+        # re-fires the labeled trigger forever. `ci-install` verifies
+        # .gitattributes instead of writing it (it cannot dirty the tree)
+        # and fails loudly on drift, turning a loop into one clean red run.
         run: |
           mdsmith merge-driver install
           mdsmith pre-merge-commit install

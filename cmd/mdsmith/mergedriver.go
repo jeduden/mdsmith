@@ -42,7 +42,22 @@ Subcommands:
         excludes; do not enable git-hook-sync if you rely on a
         custom include set.
 
-Git config (set by install):
+  ci-install
+        Like install, but treats the committed .gitattributes as
+        the source of truth instead of rewriting it — the npm-ci
+        analogue of install's npm-install. It registers the merge
+        driver and installs the pre-merge-commit hook (both
+        git-internal and untracked), then verifies that the
+        committed managed block matches the globs derived from
+        .mdsmith.yml. It exits non-zero if .gitattributes is
+        missing, has no managed block, or has drifted, and never
+        writes the file. Use it in CI and the merge queue, where
+        rewriting a tracked file mid-run would dirty the worktree
+        and abort the merge. Takes no glob arguments; it always
+        compares against the canonical default include set, so it
+        is incompatible with custom-glob installs (same as MDS048).
+
+Git config (set by install / ci-install):
   merge.mdsmith.driver = '/absolute/path/to/mdsmith' merge-driver run %O %A %B %P
 
   The path is the absolute location of the mdsmith binary at install time,
@@ -64,6 +79,8 @@ func runMergeDriver(args []string) int {
 		return runMergeDriverRun(args[1:])
 	case "install":
 		return runMergeDriverInstall(args[1:])
+	case "ci-install":
+		return runMergeDriverCIInstall(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr,
 			"mdsmith: merge-driver: unknown subcommand %q\n\n%s",
@@ -594,6 +611,119 @@ func runMergeDriverInstall(args []string) int {
 	fmt.Fprintf(os.Stderr,
 		"\nTo also enable drift detection, add this to your .mdsmith.yml:\n\n%s\n",
 		githooks.EnableRuleSnippet("git-hook-sync"))
+	return 0
+}
+
+// runMergeDriverCIInstall is the npm-ci analogue of install: it sets up
+// the merge machinery (git config driver entry, pre-merge-commit hook)
+// but treats the committed .gitattributes as the source of truth rather
+// than rewriting it. It verifies that the committed managed block
+// matches the glob set derived from .mdsmith.yml and exits non-zero on a
+// missing block or drift.
+//
+// The merge queue runs this instead of install: install re-renders
+// .gitattributes from .mdsmith.yml, so a committed copy that has drifted
+// gets rewritten, dirtying the worktree and aborting the action's
+// `git merge` ("local changes would be overwritten") — which requeues
+// the PR and re-fires the labeled trigger forever. ci-install never
+// writes the tracked file, so the merge always starts from a clean tree;
+// genuine drift surfaces as one clear failed setup step (which does not
+// requeue) instead of an infinite loop.
+func runMergeDriverCIInstall(args []string) int {
+	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Fprint(os.Stderr, mergeDriverUsage)
+		return 0
+	}
+	if len(args) > 0 {
+		fmt.Fprintf(os.Stderr,
+			"mdsmith: merge-driver ci-install takes no glob arguments; it "+
+				"verifies the committed .gitattributes against .mdsmith.yml "+
+				"without rewriting it\n")
+		return 2
+	}
+
+	// Verify we're in a git repo.
+	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
+	out, err := cmd.Output()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: not in a git repository\n")
+		return 2
+	}
+	repoRoot := strings.TrimSpace(string(out))
+
+	// Compute the expected glob set exactly as install would write it,
+	// so the two commands can never disagree on what "in sync" means.
+	// nil args means the canonical default include set plus the
+	// .mdsmith.yml ignore-derived -merge overrides.
+	expected, rc := resolveManagedGlobs(repoRoot, nil)
+	if rc != 0 {
+		return rc
+	}
+
+	// Verify the committed .gitattributes matches — never write it.
+	attrPath := filepath.Join(repoRoot, ".gitattributes")
+	if rc := verifyGitattributes(attrPath, expected); rc != 0 {
+		return rc
+	}
+
+	if err := registerMergeDriver(); err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		return 2
+	}
+
+	if err := ensurePreMergeCommitHook(repoRoot); err != nil {
+		fmt.Fprintf(os.Stderr,
+			"mdsmith: installing pre-merge-commit hook: %v\n", err)
+		return 2
+	}
+
+	hookPath := filepath.Join(resolveHooksDir(repoRoot), "pre-merge-commit")
+	fmt.Fprintf(os.Stderr, "mdsmith: merge driver 'mdsmith' verified and installed (ci mode)\n")
+	fmt.Fprintf(os.Stderr, "  git config: merge.mdsmith.driver\n")
+	fmt.Fprintf(os.Stderr, "  .gitattributes: %s (verified in sync; not modified)\n", attrPath)
+	fmt.Fprintf(os.Stderr, "  pre-merge-commit hook: %s\n", hookPath)
+	return 0
+}
+
+// verifyGitattributes checks that the mdsmith managed block in the
+// committed .gitattributes at attrPath matches expected, without ever
+// writing the file. It returns 0 when they match. On a missing file, a
+// missing managed block, or drift it prints a message naming the fix
+// (`mdsmith merge-driver install`) and returns 2.
+func verifyGitattributes(attrPath string, expected githooks.Globs) int {
+	data, err := os.ReadFile(attrPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr,
+				"mdsmith: %s not found; run `mdsmith merge-driver install` "+
+					"and commit the result\n", attrPath)
+			return 2
+		}
+		fmt.Fprintf(os.Stderr, "mdsmith: reading %s: %v\n", attrPath, err)
+		return 2
+	}
+
+	installed, ok := githooks.ExtractGlobs(string(data))
+	if !ok {
+		fmt.Fprintf(os.Stderr,
+			"mdsmith: %s has no mdsmith merge-driver managed block; run "+
+				"`mdsmith merge-driver install` and commit the result\n",
+			attrPath)
+		return 2
+	}
+
+	if !githooks.GlobsEqual(installed, expected) {
+		fmt.Fprintf(os.Stderr,
+			"mdsmith: committed .gitattributes is out of sync with "+
+				".mdsmith.yml; run `mdsmith merge-driver install` and commit "+
+				"the result\n"+
+				"  committed: include=%v exclude=%v\n"+
+				"  expected:  include=%v exclude=%v\n",
+			installed.Include, installed.Exclude,
+			expected.Include, expected.Exclude)
+		return 2
+	}
+
 	return 0
 }
 

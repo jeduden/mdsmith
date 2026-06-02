@@ -1377,3 +1377,150 @@ func TestFixAtRealPath_PreservesOursFileMode(t *testing.T) {
 	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm(),
 		"fixAtRealPath must preserve the original permissions of ours")
 }
+
+// --- merge-driver ci-install (npm-ci-style: verify, never write) ---
+
+func TestRunMergeDriver_CIInstall_HelpFlag_ExitsZero(t *testing.T) {
+	captureStderr(func() {
+		assert.Equal(t, 0, runMergeDriver([]string{"ci-install", "--help"}))
+	})
+}
+
+func TestRunMergeDriver_CIInstall_NotInRepo(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".git"),
+		[]byte("not a real gitdir"), 0o644))
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	got := captureStderr(func() {
+		assert.Equal(t, 2, runMergeDriver([]string{"ci-install"}))
+	})
+	assert.Contains(t, got, "not in a git repository")
+}
+
+// ci-install verifies the committed .gitattributes against .mdsmith.yml
+// rather than scoping a fresh install, so it rejects the positional glob
+// args that `install` accepts.
+func TestRunMergeDriver_CIInstall_RejectsGlobArgs(t *testing.T) {
+	dir := t.TempDir()
+	initTestRepo(t, dir)
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	got := captureStderr(func() {
+		assert.Equal(t, 2, runMergeDriver([]string{"ci-install", "docs/**/*.md"}))
+	})
+	assert.Contains(t, got, "no glob arguments")
+}
+
+func TestRunMergeDriver_CIInstall_MissingGitattributes_Fails(t *testing.T) {
+	dir := t.TempDir()
+	initTestRepo(t, dir)
+
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) { return "/usr/local/bin/mdsmith", nil }
+
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	got := captureStderr(func() {
+		assert.Equal(t, 2, runMergeDriver([]string{"ci-install"}))
+	})
+	assert.Contains(t, got, "merge-driver install",
+		"a missing .gitattributes must name the fix command")
+}
+
+func TestRunMergeDriver_CIInstall_NoManagedBlock_Fails(t *testing.T) {
+	dir := t.TempDir()
+	initTestRepo(t, dir)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".gitattributes"),
+		[]byte("*.txt text\n"), 0o644))
+
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) { return "/usr/local/bin/mdsmith", nil }
+
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	got := captureStderr(func() {
+		assert.Equal(t, 2, runMergeDriver([]string{"ci-install"}))
+	})
+	assert.Contains(t, got, "managed block")
+}
+
+func TestRunMergeDriver_CIInstall_InSync_DoesNotModifyGitattributes(t *testing.T) {
+	dir := t.TempDir()
+	initTestRepo(t, dir)
+
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) { return "/usr/local/bin/mdsmith", nil }
+
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	// install writes a canonical, in-sync .gitattributes.
+	captureStderr(func() {
+		require.Equal(t, 0, runMergeDriver([]string{"install"}))
+	})
+	attrPath := filepath.Join(dir, ".gitattributes")
+	before, err := os.ReadFile(attrPath)
+	require.NoError(t, err)
+
+	got := captureStderr(func() {
+		assert.Equal(t, 0, runMergeDriver([]string{"ci-install"}))
+	})
+	assert.Contains(t, got, "verified")
+
+	after, err := os.ReadFile(attrPath)
+	require.NoError(t, err)
+	assert.Equal(t, string(before), string(after),
+		"ci-install must not modify .gitattributes")
+}
+
+// Drift is the exact condition that bounced the merge queue: an ignore
+// pattern added to .mdsmith.yml without regenerating .gitattributes.
+// ci-install must catch it and fail loudly without rewriting the file
+// (which is what would dirty the worktree and abort the queue's merge).
+func TestRunMergeDriver_CIInstall_Drift_Fails(t *testing.T) {
+	dir := t.TempDir()
+	initTestRepo(t, dir)
+
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) { return "/usr/local/bin/mdsmith", nil }
+
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	captureStderr(func() {
+		require.Equal(t, 0, runMergeDriver([]string{"install"}))
+	})
+	attrPath := filepath.Join(dir, ".gitattributes")
+	before, err := os.ReadFile(attrPath)
+	require.NoError(t, err)
+
+	// Add an ignore pattern so the expected glob set diverges from the
+	// committed .gitattributes.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"),
+		[]byte("ignore:\n  - \"vendor/**\"\n"), 0o644))
+
+	got := captureStderr(func() {
+		assert.Equal(t, 2, runMergeDriver([]string{"ci-install"}))
+	})
+	assert.Contains(t, got, "out of sync")
+
+	after, err := os.ReadFile(attrPath)
+	require.NoError(t, err)
+	assert.Equal(t, string(before), string(after),
+		"ci-install must not modify .gitattributes even on drift")
+}
