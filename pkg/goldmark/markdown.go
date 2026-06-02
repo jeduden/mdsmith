@@ -126,10 +126,10 @@ func (m *markdown) Convert(source []byte, writer io.Writer, opts ...parser.Parse
 	return m.renderer.Render(writer, source, doc)
 }
 
-func (m *markdown) Parser() parser.Parser            { return m.parser }
-func (m *markdown) SetParser(v parser.Parser)        { m.parser = v }
-func (m *markdown) Renderer() renderer.Renderer      { return m.renderer }
-func (m *markdown) SetRenderer(v renderer.Renderer)  { m.renderer = v }
+func (m *markdown) Parser() parser.Parser           { return m.parser }
+func (m *markdown) SetParser(v parser.Parser)       { m.parser = v }
+func (m *markdown) Renderer() renderer.Renderer     { return m.renderer }
+func (m *markdown) SetRenderer(v renderer.Renderer) { m.renderer = v }
 
 // An Extender hooks additional parsers/renderers onto a Markdown.
 type Extender interface {

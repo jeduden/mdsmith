@@ -6,7 +6,11 @@ summary: >-
   solid-architecture skill (audit mode)
   appends here; blockers are also filed as
   plans.
+<<<<<<< .merge_file_EQdLsz
 audit-from: 37488a7c524f6e2d0a686b9f33662c6f786f966c
+=======
+audit-from: 91c15ca9c3eca3f7277ac476efe59e8b8c681a84
+>>>>>>> .merge_file_eFRpXR
 ---
 # Architecture audit log
 
@@ -24,98 +28,25 @@ The touched set covered 1107 files. Of
 those, 425 were Go or TypeScript sources
 outside fixture and generated paths.
 
-### resolved by plan/154
+### resolved by plan/154, plan/155, plan/201
 
-Rule packages imported other rule
-packages.
+[plan/154](../../plan/154_arch-fix-rule-helper-extraction.md):
+Four rules imported `fencedcodestyle`. One
+imported `tableformat`. Helpers lifted to
+`internal/rules/fencepos` and
+`internal/rules/tablefmt`.
+`TestRulesDoNotImportEachOther` guards the
+boundary.
 
-Four rules imported
-`internal/rules/fencedcodestyle` for
-fence-position helpers (`FenceCharAt`,
-`FenceOpenLine`, `FenceOpenLineRange`,
-`FenceCloseLine`,
-`FenceCloseLineRange`):
+[plan/155](../../plan/155_arch-fix-convention-config-ownership.md):
+`internal/config` imported `markdownflavor`.
+Convention types hoisted to
+`internal/convention`.
+`TestConfigDoesNotImportRules` guards.
 
-- `internal/rules/fencedcodelanguage`
-- `internal/rules/orderedlistnumbering`
-- `internal/rules/unclosedcodeblock`
-- `internal/rules/blanklinearoundfencedcode`
-
-A fifth rule (`internal/rules/catalog`)
-imported `internal/rules/tableformat`
-for `FormatString`.
-
-[plan/154](../../plan/154_arch-fix-rule-helper-extraction.md)
-lifted the helpers into two sibling
-packages:
-
-- `internal/rules/fencepos` exports
-  `CharAt`, `OpenLine`,
-  `OpenLineRange`, `CloseLine`, and
-  `CloseLineRange`.
-- `internal/rules/tablefmt` exports
-  `FormatString`. The donor also
-  needs `Violations` and
-  `FormatLines`; both are exported.
-
-Both donors (`fencedcodestyle`,
-`tableformat`) and the four consumers
-now depend on these helpers. No rule
-imports another rule.
-
-`TestRulesDoNotImportEachOther` in
-`internal/integration/` guards the new
-boundary. It parses every non-test
-`.go` file under `internal/rules/`. It
-fails if a file imports another
-`internal/rules/<...>` package other
-than the documented helpers
-(`astutil`, `settings`, `fencepos`,
-`tablefmt`). A sub-package of the
-file's own rule is also allowed. The
-blank-import barrel package
-`internal/rules/all/` is exempt by
-design.
-
-### resolved by plan/155
-
-Config imports a rule package.
-
-[`internal/config/convention.go`](../../internal/config/convention.go)
-imported `internal/rules/markdownflavor`
-to use `Convention`, `RulePreset`,
-`ParseFlavor`, `Lookup`, and
-`ConventionNames`.
-
-[plan/155](../../plan/155_arch-fix-convention-config-ownership.md)
-hoisted those shapes into a new
-[internal/convention package](../../internal/convention/convention.go).
-The markdownflavor rule now imports
-`internal/convention` for the `Flavor`
-type. The config package depends on
-`internal/convention`, not on a rule.
-
-`TestConfigDoesNotImportRules` guards
-the new direction. It parses every
-non-test file under `internal/config/`.
-It fails if any import path contains
-`internal/rules/`.
-
-### resolved by plan/201
-
-`internal/testutil` used an
-anti-pattern name. The package
-comment read "small helpers shared
-across test binaries" — the canonical
-`util` / `helpers` smell — but held a
-single helper, `symlink.go`.
-
-[plan/201](../../plan/201_arch-fix-testutil-rename.md)
-renamed the package to
-[internal/testsymlink](../../internal/testsymlink/).
-The new name states the question the
-one file answers. Five test files now
-import the new path.
+[plan/201](../../plan/201_arch-fix-testutil-rename.md):
+`internal/testutil` → `internal/testsymlink`.
+Five test callers updated.
 
 ### tax
 
@@ -271,6 +202,8 @@ never import `internal/lsp`.
 
 `cue/types` not in layering map — [plan/206][206].
 
+<<<<<<< .merge_file_EQdLsz
+
 ## Audit 2026-05-31 (range: 4809097..37488a7)
 
 Plans 200, 201, 202 green. Tax:
@@ -280,3 +213,74 @@ Plans 200, 201, 202 green. Tax:
 
 [223]: ../../plan/223_arch-fix-mdsmith-helper-tests.md
 [224]: ../../plan/224_arch-fix-lint-srp.md
+=======
+
+## Audit 2026-05-24 (range: e8b3d04..91c15ca)
+
+SHA `41e61a5e` (nominal audit-from) was
+not in this local clone; checkout
+started at `e8b3d04`. The effective
+sweep covered 58 commits,
+`e8b3d04` through `91c15ca`. Of the Go
+and TypeScript files touched, 3 plans
+from the 2026-05-19 audit closed (200,
+201, 202); 4 remain open (203, 204,
+205, 206).
+
+### resolved since 2026-05-19
+
+- **plan/200** ✅ — `docs/guides/directives`
+  embed moved to `internal/directives`.
+- **plan/201** ✅ — `internal/testutil`
+  renamed to `internal/testsymlink`.
+- **plan/202** ✅ — `cmd/mdsmith/main.go`
+  split into per-subcommand files; now
+  669 lines (was 1 306).
+
+### open (carrying from 2026-05-19)
+
+- **plan/203** (🔲) — server.go and
+  symbols.go still unsplit. server.go
+  now 1 867 lines (was 1 536 when
+  first flagged); symbols.go 1 394.
+- **plan/204** (🔲) —
+  `internal/fix → internal/engine`
+  inversion unresolved.
+- **plan/205** (🔲) — `extension.ts`
+  SRP refactor not started.
+- **plan/206** (🔲) — `cue/types`
+  missing from layering map.
+
+### tax (2026-05-24)
+
+`internal/lint` SRP never scheduled.
+
+The 2026-05-13 audit flagged
+`internal/lint` as mixing
+`File`/`Diagnostic` value types with
+code-block AST helpers, gitignore
+matching, byte-limit guards, PI
+parsing, and YAML safety. YAML safety
+migrated to `internal/yamlutil` since
+then. Three concerns remain: `gitignore.go`
+(278 lines), `limits.go`
+(`ReadFileLimited` is imported by 17+
+files outside `internal/lint`), and
+`pi.go` + `pi_parser.go`. No plan was
+ever filed — [plan/223][223] schedules
+the split.
+
+### nice-to-have (2026-05-24)
+
+`internal/punkt` not in layering map.
+
+Commit `a1aa6c5` vendored a Punkt
+sentence-tokenizer fork into
+`internal/punkt`. Only
+`internal/mdtext` imports it. The
+package answers "segment text into
+sentences". The SRP bullet list in
+go.md lists the core packages but omits
+this helper. [plan/224][224] adds it.
+
+>>>>>>> .merge_file_eFRpXR

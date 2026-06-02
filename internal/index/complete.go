@@ -7,6 +7,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/pi"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
@@ -110,14 +111,14 @@ func completionContextBody(srcPath string, body []byte, bodyLines [][]byte, body
 	if insideCodeBlock(root, body, bodyLine) {
 		return CompletionContext{Tag: CompletionNone}
 	}
-	var foundPI *lint.ProcessingInstruction
+	var foundPI *pi.ProcessingInstruction
 	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
 		}
-		if pi, ok := n.(*lint.ProcessingInstruction); ok {
-			if piContainsLine(body, pi, bodyLine) {
-				foundPI = pi
+		if piNode, ok := n.(*pi.ProcessingInstruction); ok {
+			if piContainsLine(body, piNode, bodyLine) {
+				foundPI = piNode
 			}
 		}
 		return ast.WalkContinue, nil
@@ -179,7 +180,7 @@ func piArgCompletion(piName, argKey, argVal string) (CompletionContext, bool) {
 // The prefix is extracted from the text up to the cursor (not the full line)
 // so partial values like `file: "docs/g` are returned correctly even when
 // the line later has a closing quote.
-func directiveCompletionContext(pi *lint.ProcessingInstruction, lines [][]byte, line, col int) CompletionContext {
+func directiveCompletionContext(piNode *pi.ProcessingInstruction, lines [][]byte, line, col int) CompletionContext {
 	if line < 1 || line > len(lines) {
 		return CompletionContext{Tag: CompletionNone}
 	}
@@ -198,19 +199,19 @@ func directiveCompletionContext(pi *lint.ProcessingInstruction, lines [][]byte, 
 	// the "<?name " opener stripped (single-line PI like <?include file: "…"?>).
 	m := piArgRE.FindStringSubmatch(lineUpToCursor)
 	if m == nil {
-		if stripped, ok := strings.CutPrefix(lineUpToCursor, "<?"+pi.Name+" "); ok {
+		if stripped, ok := strings.CutPrefix(lineUpToCursor, "<?"+piNode.Name+" "); ok {
 			m = piArgRE.FindStringSubmatch(stripped)
 		}
 	}
 	if len(m) >= 3 {
 		argVal := strings.Trim(strings.TrimSpace(m[2]), `"'`)
-		if ctx, ok := piArgCompletion(pi.Name, m[1], argVal); ok {
+		if ctx, ok := piArgCompletion(piNode.Name, m[1], argVal); ok {
 			return ctx
 		}
 	}
 
 	// Check if the cursor is on a YAML list item line under glob: in a catalog PI.
-	if pi.Name == "catalog" {
+	if piNode.Name == "catalog" {
 		if item, ok := yamlListItemValue(lineUpToCursor); ok {
 			// line-1 is the 0-based index of the current line.
 			parentKey := scanBackwardForPIKey(lines, line-1)

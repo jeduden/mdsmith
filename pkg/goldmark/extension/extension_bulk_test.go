@@ -65,9 +65,9 @@ func TestDefinitionList_EdgeCases(t *testing.T) {
 	//  - colon-not-followed-by-space (line 43)
 	//  - deeply-indented body (w >= 8 -> indented code)
 	srcs := []string{
-		"term\n:   def\n",                                  // happy path
-		"term\n:def\n",                                     // no space after :
-		"term\n:       very deeply indented def\n",         // 7+ space indent
+		"term\n:   def\n", // happy path
+		"term\n:def\n",    // no space after :
+		"term\n:       very deeply indented def\n",          // 7+ space indent
 		"term\n:   def1\n: def2\n",                          // two defs in sequence
 		"term\n:   def with paragraph\n\n   continuation\n", // multi-paragraph def
 	}
@@ -104,10 +104,10 @@ func TestTaskList_ParseEarlyReturns(t *testing.T) {
 	// inputs include `[` so the trigger fires; only the well-formed
 	// list-item-text-block case actually creates a TaskCheckBox.
 	srcs := []string{
-		"[x] outside any list\n",                  // parent.Parent() not ListItem
-		"- some text before [x] checkbox\n",       // parent.HasChildren (text before [)
-		"- [notvalid] not a checkbox\n",           // regex miss
-		"- [x] valid checkbox\n",                  // sanity / happy path
+		"[x] outside any list\n",            // parent.Parent() not ListItem
+		"- some text before [x] checkbox\n", // parent.HasChildren (text before [)
+		"- [notvalid] not a checkbox\n",     // regex miss
+		"- [x] valid checkbox\n",            // sanity / happy path
 		"- [ ] unchecked checkbox\n",
 		"- [X] uppercase X checkbox\n",
 	}
@@ -125,13 +125,13 @@ func TestFootnote_OpenFailPaths(t *testing.T) {
 	// Each input starts with '[' so the Trigger fires, but the
 	// rest of the line is not a valid footnote definition.
 	srcs := []string{
-		"[not-a-footnote] just a link reference?\n",  // missing ^
-		"[^missing-close\n",                          // no closing ]
-		"[^missing-colon] no colon\n",                // ] but no :
-		"[^]: empty label\n",                         // blank label
-		"[^x]:\n",                                    // empty body (pos >= len after \n strip)
-		"[^x]:",                                      // no trailing newline at all
-		"[^x]: definition\n",                         // valid (sanity)
+		"[not-a-footnote] just a link reference?\n", // missing ^
+		"[^missing-close\n",                         // no closing ]
+		"[^missing-colon] no colon\n",               // ] but no :
+		"[^]: empty label\n",                        // blank label
+		"[^x]:\n",                                   // empty body (pos >= len after \n strip)
+		"[^x]:",                                     // no trailing newline at all
+		"[^x]: definition\n",                        // valid (sanity)
 	}
 	for _, src := range srcs {
 		md := goldmark.New(goldmark.WithExtensions(extension.Footnote))

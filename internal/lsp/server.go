@@ -27,6 +27,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
+	"github.com/jeduden/mdsmith/internal/readlimit"
 	"github.com/jeduden/mdsmith/internal/rule"
 )
 
@@ -1096,7 +1097,7 @@ func (s *Server) resolveMaxInputBytes(cfg *config.Config) int64 {
 		raw = cfg.MaxInputSize
 	}
 	if raw == "" {
-		return lint.DefaultMaxInputBytes
+		return readlimit.DefaultMaxInputBytes
 	}
 	n, err := config.ParseSize(raw)
 	if err != nil {
@@ -1105,7 +1106,7 @@ func (s *Server) resolveMaxInputBytes(cfg *config.Config) int64 {
 			Type:    messageTypeError,
 			Message: fmt.Sprintf("mdsmith: invalid max-input-size %q: %v", raw, err),
 		})
-		return lint.DefaultMaxInputBytes
+		return readlimit.DefaultMaxInputBytes
 	}
 	return n
 }

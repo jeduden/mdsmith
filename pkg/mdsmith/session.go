@@ -20,6 +20,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/engine"
 	fixpkg "github.com/jeduden/mdsmith/internal/fix"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/readlimit"
 	"github.com/jeduden/mdsmith/internal/rule"
 
 	// Register every production rule so rule.All() returns the full
@@ -128,7 +129,7 @@ func NewSession(opts SessionOptions) (*Session, error) {
 		cfgPath:    src.configPath(),
 		rules:      rule.All(),
 		rootDir:    rootDirOf(opts.Workspace),
-		maxBytes:   lint.DefaultMaxInputBytes,
+		maxBytes:   readlimit.DefaultMaxInputBytes,
 		checkCache: make(map[string]cachedCheck),
 	}, nil
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/pi"
 )
 
 // TestExtractDirectives_BuildEmptySourceSkipped covers the build
@@ -78,17 +79,17 @@ func TestLineOfOffset_NegativeAndOversize(t *testing.T) {
 // TestDirectivePILine_NoLines covers the defensive branch where a
 // processing-instruction has no Lines(). Goldmark guarantees Lines()
 // is non-empty for any parsed PI, so we construct the case directly
-// using a zero-value lint.ProcessingInstruction; the helper falls
+// using a zero-value pi.ProcessingInstruction; the helper falls
 // back to line 1.
 func TestDirectivePILine_NoLines(t *testing.T) {
-	pi := &lint.ProcessingInstruction{}
+	piNode := &pi.ProcessingInstruction{}
 	// Synthesize a *lint.File so directivePILine has something to
 	// dereference. f.LineOfOffset is unreachable from the empty-Lines
 	// branch.
 	source := []byte("# T\n")
 	f, err := lint.NewFile("test.md", source)
 	require.NoError(t, err)
-	assert.Equal(t, 1, directivePILine(f, pi))
+	assert.Equal(t, 1, directivePILine(f, piNode))
 }
 
 // TestExtractDirectives_NonStringParamRejected covers the

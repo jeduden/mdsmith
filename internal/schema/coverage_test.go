@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/readlimit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/yuin/goldmark/ast"
@@ -1270,12 +1270,12 @@ func TestValidate_PlaceholderRegexParticipatesInOutOfOrder(t *testing.T) {
 
 // TestParseFile_DefaultMaxBytesCapped regresses the FileReader
 // MaxBytes default: a zero-value reader now defaults to
-// lint.DefaultMaxInputBytes so a 5 MB schema file is rejected
+// readlimit.DefaultMaxInputBytes so a 5 MB schema file is rejected
 // instead of silently read.
 func TestParseFile_DefaultMaxBytesCapped(t *testing.T) {
 	dir := t.TempDir()
 	// Build a file larger than the 2 MB default.
-	big := make([]byte, lint.DefaultMaxInputBytes+1)
+	big := make([]byte, readlimit.DefaultMaxInputBytes+1)
 	for i := range big {
 		big[i] = 'a'
 	}

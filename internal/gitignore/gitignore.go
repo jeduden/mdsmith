@@ -1,4 +1,7 @@
-package lint
+// Package gitignore answers "is this path ignored by .gitignore?" It
+// parses .gitignore files at every directory level (plus ancestors) and
+// matches paths against the collected rules, including negation.
+package gitignore
 
 import (
 	"bufio"
@@ -7,10 +10,10 @@ import (
 	"strings"
 )
 
-// GitignoreMatcher checks whether a given path is ignored according to
-// .gitignore rules. It supports multiple .gitignore files at different
-// directory levels, including negation patterns.
-type GitignoreMatcher struct {
+// Matcher checks whether a given path is ignored according to .gitignore
+// rules. It supports multiple .gitignore files at different directory
+// levels, including negation patterns.
+type Matcher struct {
 	// rules ordered from root to leaf; later rules override earlier ones.
 	rules []ignoreRule
 }
@@ -103,12 +106,11 @@ func trimTrailingWhitespace(s string) string {
 	return s[:i]
 }
 
-// NewGitignoreMatcher creates a matcher by collecting .gitignore files
-// from the given root directory and all its subdirectories.
-// It also looks for .gitignore files in ancestor directories up to the
-// filesystem root.
-func NewGitignoreMatcher(root string) *GitignoreMatcher {
-	m := &GitignoreMatcher{}
+// NewMatcher creates a matcher by collecting .gitignore files from the
+// given root directory and all its subdirectories. It also looks for
+// .gitignore files in ancestor directories up to the filesystem root.
+func NewMatcher(root string) *Matcher {
+	m := &Matcher{}
 
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
@@ -207,7 +209,7 @@ func isWorktreeRoot(dir string) bool {
 
 // IsIgnored returns true if the given absolute path should be ignored.
 // isDir indicates whether the path is a directory.
-func (m *GitignoreMatcher) IsIgnored(absPath string, isDir bool) bool {
+func (m *Matcher) IsIgnored(absPath string, isDir bool) bool {
 	ignored := false
 	for _, r := range m.rules {
 		if r.dirOnly && !isDir {

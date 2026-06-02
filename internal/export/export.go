@@ -14,6 +14,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/pi"
 	"github.com/jeduden/mdsmith/internal/rule"
 )
 
@@ -262,11 +263,11 @@ func stripDirectives(f *lint.File, directives []directiveStrip) []byte {
 	// Markerless directives: every top-level PI whose lines fall
 	// outside a known pair's strip range and body range.
 	for n := f.AST.FirstChild(); n != nil; n = n.NextSibling() {
-		pi, ok := n.(*lint.ProcessingInstruction)
+		piNode, ok := n.(*pi.ProcessingInstruction)
 		if !ok {
 			continue
 		}
-		startLine, endLine := piLineRange(pi, f)
+		startLine, endLine := piLineRange(piNode, f)
 
 		if overlapsAny(startLine, endLine, stripLines) {
 			continue
@@ -303,16 +304,16 @@ func stripDirectives(f *lint.File, directives []directiveStrip) []byte {
 // opening line, and a multi-line PI where the closure sits on its
 // own line; the latter is the only shape that extends `end` past
 // `start`.
-func piLineRange(pi *lint.ProcessingInstruction, f *lint.File) (int, int) {
-	first := pi.Lines().At(0)
+func piLineRange(piNode *pi.ProcessingInstruction, f *lint.File) (int, int) {
+	first := piNode.Lines().At(0)
 	start := f.LineOfOffset(first.Start)
-	if !pi.HasClosure() {
+	if !piNode.HasClosure() {
 		return start, start
 	}
-	if pi.ClosureLine.Start == first.Start {
+	if piNode.ClosureLine.Start == first.Start {
 		return start, start
 	}
-	return start, f.LineOfOffset(pi.ClosureLine.Start)
+	return start, f.LineOfOffset(piNode.ClosureLine.Start)
 }
 
 func overlapsAny(from, to int, set map[int]bool) bool {

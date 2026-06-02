@@ -1,4 +1,7 @@
-package lint
+// Package readlimit answers "read a file up to a byte cap" — a general
+// I/O concern shared by the CLI, engine, and rules that must guard against
+// pathologically large inputs.
+package readlimit
 
 import (
 	"fmt"
@@ -26,7 +29,7 @@ func ReadFileLimited(path string, max int64) ([]byte, error) {
 	}
 	defer f.Close() //nolint:errcheck // best-effort close on read-only file
 
-	return readLimited(f, path, max)
+	return readLimited(f, max)
 }
 
 // ReadFSFileLimited reads name from fsys, returning an error if the file
@@ -43,7 +46,7 @@ func ReadFSFileLimited(fsys fs.FS, name string, max int64) ([]byte, error) {
 	}
 	defer f.Close() //nolint:errcheck // best-effort close on read-only file
 
-	return readLimited(f, name, max)
+	return readLimited(f, max)
 }
 
 // readLimited reads from r up to max+1 bytes. If the read returns more
@@ -53,7 +56,7 @@ func ReadFSFileLimited(fsys fs.FS, name string, max int64) ([]byte, error) {
 // When the underlying reader is a file, we stat it first to report the
 // actual file size in the error message. For non-file readers (or when
 // stat fails), we report the truncated read length.
-func readLimited(r io.Reader, name string, max int64) ([]byte, error) {
+func readLimited(r io.Reader, max int64) ([]byte, error) {
 	// Try to get actual file size for a better error message.
 	var actualSize int64 = -1
 	if st, ok := r.(interface{ Stat() (os.FileInfo, error) }); ok {

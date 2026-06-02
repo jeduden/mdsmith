@@ -10,6 +10,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/extract"
 	"github.com/jeduden/mdsmith/internal/extract/encode"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/readlimit"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/requiredstructure"
 	"github.com/jeduden/mdsmith/internal/schema"
@@ -22,7 +23,7 @@ import (
 // resolveFileFromCLI and the check gate (a duplicate read or a
 // stdout write failure on already-validated state).
 var (
-	extractReadFile = lint.ReadFileLimited
+	extractReadFile = readlimit.ReadFileLimited
 	extractNewFile  = lint.NewFileFromSource
 	extractEncode   = encode.Encode
 	// extractStdout nil means "resolve os.Stdout at call time" so a

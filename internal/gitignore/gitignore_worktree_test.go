@@ -1,4 +1,4 @@
-package lint
+package gitignore
 
 import (
 	"os"
@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestNewGitignoreMatcher_StopsAtWorktreeBoundary pins the worktree
+// TestNewMatcher_StopsAtWorktreeBoundary pins the worktree
 // catalog-emptying bug at the gitignore layer.
 //
 // Layout mirrors a Git worktree nested under an ignored path of its
@@ -28,7 +28,7 @@ import (
 // ignore rules across the working-tree boundary, and neither must
 // mdsmith — otherwise a `plan/*.md` catalog glob resolves to zero files
 // and `fix` empties the section.
-func TestNewGitignoreMatcher_StopsAtWorktreeBoundary(t *testing.T) {
+func TestNewMatcher_StopsAtWorktreeBoundary(t *testing.T) {
 	repo := t.TempDir()
 	// Repo is a working tree: .git is a directory.
 	require.NoError(t, os.MkdirAll(filepath.Join(repo, ".git"), 0o755))
@@ -45,7 +45,7 @@ func TestNewGitignoreMatcher_StopsAtWorktreeBoundary(t *testing.T) {
 	planFile := filepath.Join(wt, "plan", "foo.md")
 	require.NoError(t, os.WriteFile(planFile, []byte("# foo\n"), 0o644))
 
-	m := NewGitignoreMatcher(wt)
+	m := NewMatcher(wt)
 	require.NotNil(t, m)
 
 	// The file itself must not be ignored.
@@ -65,13 +65,13 @@ func TestNewGitignoreMatcher_StopsAtWorktreeBoundary(t *testing.T) {
 	}
 }
 
-// TestNewGitignoreMatcher_AncestorGitignoreStillAppliesWithoutBoundary
+// TestNewMatcher_AncestorGitignoreStillAppliesWithoutBoundary
 // guards the normal (non-worktree) case: when the matcher root is an
 // ordinary subdirectory of a repo — with NO intervening .git marker —
 // an ancestor .gitignore must still apply. This is the behavior the
 // worktree fix must preserve, so the fix cannot simply drop all
 // ancestor .gitignore collection.
-func TestNewGitignoreMatcher_AncestorGitignoreStillAppliesWithoutBoundary(t *testing.T) {
+func TestNewMatcher_AncestorGitignoreStillAppliesWithoutBoundary(t *testing.T) {
 	repo := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(repo, ".gitignore"),
 		[]byte("*.log\n"), 0o644))
@@ -83,18 +83,18 @@ func TestNewGitignoreMatcher_AncestorGitignoreStillAppliesWithoutBoundary(t *tes
 
 	// Matcher rooted at the subdirectory; the ancestor .gitignore's
 	// "*.log" rule must still be collected and applied.
-	m := NewGitignoreMatcher(sub)
+	m := NewMatcher(sub)
 	require.NotNil(t, m)
 	assert.True(t, m.IsIgnored(logFile, false),
 		"ancestor .gitignore *.log rule should still apply when no working-tree boundary intervenes")
 }
 
-// TestNewGitignoreMatcher_StopsAtAncestorWorktreeBoundary covers the
+// TestNewMatcher_StopsAtAncestorWorktreeBoundary covers the
 // ancestor-walk `break`: the matcher root is an ordinary subdirectory,
 // but an ancestor between it and the superproject is itself a worktree
 // root (a `.git` file). The walk must stop at that inner worktree root,
 // so the superproject's .gitignore above it is never collected.
-func TestNewGitignoreMatcher_StopsAtAncestorWorktreeBoundary(t *testing.T) {
+func TestNewMatcher_StopsAtAncestorWorktreeBoundary(t *testing.T) {
 	super := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(super, ".git"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(super, ".gitignore"),
@@ -112,7 +112,7 @@ func TestNewGitignoreMatcher_StopsAtAncestorWorktreeBoundary(t *testing.T) {
 	logFile := filepath.Join(sub, "out.log")
 	require.NoError(t, os.WriteFile(logFile, []byte("log"), 0o644))
 
-	m := NewGitignoreMatcher(sub)
+	m := NewMatcher(sub)
 	require.NotNil(t, m)
 	assert.False(t, m.IsIgnored(logFile, false),
 		"the ancestor walk must stop at the inner worktree root, so the "+

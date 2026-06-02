@@ -7,6 +7,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/jeduden/mdsmith/internal/gitignore"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rules/tablefmt"
 
@@ -3676,7 +3677,7 @@ func TestSpec_GitignoreFiltersMatchedFiles(t *testing.T) {
 	require.NoError(t, err)
 	f.FS = os.DirFS(dir)
 	d := dir // capture for closure
-	f.GitignoreFunc = func() *lint.GitignoreMatcher { return lint.NewGitignoreMatcher(d) }
+	f.GitignoreFunc = func() *gitignore.Matcher { return gitignore.NewMatcher(d) }
 
 	r := &Rule{}
 	diags := r.Check(f)
@@ -3699,7 +3700,7 @@ func TestSpec_GitignoreFalseIncludesIgnoredFiles(t *testing.T) {
 	require.NoError(t, err)
 	f.FS = os.DirFS(dir)
 	d := dir // capture for closure
-	f.GitignoreFunc = func() *lint.GitignoreMatcher { return lint.NewGitignoreMatcher(d) }
+	f.GitignoreFunc = func() *gitignore.Matcher { return gitignore.NewMatcher(d) }
 
 	r := &Rule{}
 	diags := r.Check(f)
@@ -3726,7 +3727,7 @@ func TestSpec_GitignoreNegationReIncludes(t *testing.T) {
 	require.NoError(t, err)
 	f.FS = os.DirFS(dir)
 	d := dir // capture for closure
-	f.GitignoreFunc = func() *lint.GitignoreMatcher { return lint.NewGitignoreMatcher(d) }
+	f.GitignoreFunc = func() *gitignore.Matcher { return gitignore.NewMatcher(d) }
 
 	r := &Rule{}
 	diags := r.Check(f)
@@ -4172,11 +4173,11 @@ func TestResolveGitignoreMatcher_NoMatcherAvailable(t *testing.T) {
 
 func TestResolveGitignoreMatcher_WithMatcher(t *testing.T) {
 	dir := t.TempDir()
-	stub := &lint.GitignoreMatcher{}
+	stub := &gitignore.Matcher{}
 	f := &lint.File{
 		Path:    filepath.Join(dir, "index.md"),
 		RootDir: dir,
-		GitignoreFunc: func() *lint.GitignoreMatcher {
+		GitignoreFunc: func() *gitignore.Matcher {
 			return stub
 		},
 	}

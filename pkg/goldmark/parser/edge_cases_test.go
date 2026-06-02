@@ -18,9 +18,9 @@ func TestFencedCodeBlock_IndentationBranches(t *testing.T) {
 	// expected" branch with body lines that have fewer leading
 	// spaces than the opener.
 	cases := []string{
-		"   ```\nbody\n   ```\n",                    // 3-space opener, no body indent
-		"   ```\n body\n   ```\n",                   // 3-space opener, 1-space body
-		"```\nfirst\n\n  blank then content\n```\n", // blank line inside fence
+		"   ```\nbody\n   ```\n",                                            // 3-space opener, no body indent
+		"   ```\n body\n   ```\n",                                           // 3-space opener, 1-space body
+		"```\nfirst\n\n  blank then content\n```\n",                         // blank line inside fence
 		"~~~\nfirst\n~~~~\nnot a closer with diff char\nstill inside ~~~\n", // tilde with wrong closer
 	}
 	for _, src := range cases {
@@ -33,9 +33,9 @@ func TestRawHTML_Comment_AllShapes(t *testing.T) {
 	// branch in parseComment by varying the content.
 	cases := []string{
 		"a <!-- short --> b\n",
-		"a <!----> b\n",     // empty comment 1 (<!-- ->)
-		"a <!---> b\n",      // empty comment 2 (<!--->)
-		"a <!---- -> b\n",   // not a valid close (->) on first attempt
+		"a <!----> b\n",   // empty comment 1 (<!-- ->)
+		"a <!---> b\n",    // empty comment 2 (<!--->)
+		"a <!---- -> b\n", // not a valid close (->) on first attempt
 		"a <!-- multi\nline --> b\n",
 		"a <!-- multi\nline\nmore line --> b\n",
 		"a <!-- unclosed comment never ends\n",
@@ -91,7 +91,7 @@ func TestSetextHeading_LongUnderlineAndShortContent(t *testing.T) {
 		"Title\n=====\n",
 		"Title\n=\n", // single-char underline
 		"Title\n-----\n",
-		"Title\n   -----\n",   // 3-space indented underline (max allowed)
+		"Title\n   -----\n",              // 3-space indented underline (max allowed)
 		"Para\nspan\nUnderline\n=====\n", // multi-line setext content
 	}
 	for _, src := range cases {
@@ -154,9 +154,9 @@ func TestSetextHeading_AttributesAndAutoID(t *testing.T) {
 		parser.WithAttribute(),
 	)
 	srcs := []string{
-		"Setext Heading\n==============\n", // auto-generated id branch
+		"Setext Heading\n==============\n",                   // auto-generated id branch
 		"Setext With Id {#my-id}\n=======================\n", // explicit-id branch (Put)
-		"Setext Two-level\n-----\n",        // h2 setext
+		"Setext Two-level\n-----\n",                          // h2 setext
 	}
 	for _, src := range srcs {
 		root := p.Parse(text.NewReader([]byte(src)), parser.WithContext(parser.NewContext()))
@@ -185,8 +185,8 @@ func TestCodeSpan_NestedBackticks(t *testing.T) {
 		"a `` co`de `` b\n",
 		"a ``` ` ``` b\n",
 		"a `unclosed\n",
-		"a `` co\nde `` b\n",          // multi-line code span
-		"a ` ` b\n",                   // single-space code span
+		"a `` co\nde `` b\n", // multi-line code span
+		"a ` ` b\n",          // single-space code span
 		"a `   spaces stripped   ` b\n",
 	}
 	for _, src := range cases {
@@ -199,18 +199,18 @@ func TestEmphasis_RareDelimiterPatterns(t *testing.T) {
 	// CanOpenCloser asymmetric, can-open-but-not-close, can-close-
 	// but-not-open, intraword underscores, multi-character runs.
 	cases := []string{
-		"a*foo bar*",                       // basic emphasis
-		"*foo *bar*",                        // double open
-		"*foo* bar*",                        // open then trailing
-		"foo*bar*baz",                       // intraword * (allowed)
-		"foo_bar_baz",                       // intraword _ (NOT emphasis)
-		"foo*_bar_*baz",                     // mixed delimiters
-		"**foo***bar**",                     // adjacent runs
-		"*foo **bar***",                    // mixed lengths
-		"***foo***",                         // triple = both em+strong
-		"*** foo ***",                       // surrounded with spaces
-		"a *foo*** bar*** baz",              // longer runs
-		"_*foo*_",                           // nested different delims
+		"a*foo bar*",           // basic emphasis
+		"*foo *bar*",           // double open
+		"*foo* bar*",           // open then trailing
+		"foo*bar*baz",          // intraword * (allowed)
+		"foo_bar_baz",          // intraword _ (NOT emphasis)
+		"foo*_bar_*baz",        // mixed delimiters
+		"**foo***bar**",        // adjacent runs
+		"*foo **bar***",        // mixed lengths
+		"***foo***",            // triple = both em+strong
+		"*** foo ***",          // surrounded with spaces
+		"a *foo*** bar*** baz", // longer runs
+		"_*foo*_",              // nested different delims
 		"_**foo**_",
 		"** open with no close",
 		"close with no open **",
@@ -261,7 +261,7 @@ func TestDelimiters_UnmatchedEmphasisClearsStack(t *testing.T) {
 func TestATXHeading_AttributeParsingEdgeCases(t *testing.T) {
 	// parseLastLineAttributes handles \-escapes and { braces.
 	cases := []string{
-		`# H \{not-attribute\}`,    // escaped braces
+		`# H \{not-attribute\}`,     // escaped braces
 		`# H \! { #id }`,            // escaped punct then attr block
 		`# H { #id } trailing text`, // attr block in middle, then text
 		`# H {#id}`,                 // valid
@@ -275,17 +275,17 @@ func TestATXHeading_AttributeParsingEdgeCases(t *testing.T) {
 func TestAttribute_EdgeCases(t *testing.T) {
 	// Drive remaining parseAttribute branches.
 	cases := []string{
-		`# H {}`,             // empty
-		`# H {  }`,           // whitespace
-		`# H {!notattr}`,     // non-identifier first char
-		`# H {123start}`,     // numeric start (invalid identifier)
-		`# H {.}`,            // bare dot (no class name)
-		`# H {#}`,            // bare hash (no id name)
+		`# H {}`,         // empty
+		`# H {  }`,       // whitespace
+		`# H {!notattr}`, // non-identifier first char
+		`# H {123start}`, // numeric start (invalid identifier)
+		`# H {.}`,        // bare dot (no class name)
+		`# H {#}`,        // bare hash (no id name)
 		`# H {.-leading-dash}`,
 		`# H {#:colon-name}`,
 		`# H {key1=val1 key2=val2}`,
-		`# H {key=[1, 2, 3]}`,      // array value
-		`# H {key={#nested}}`,       // nested attributes
+		`# H {key=[1, 2, 3]}`, // array value
+		`# H {key={#nested}}`, // nested attributes
 	}
 	for _, src := range cases {
 		_ = parseWithDefaultsAttr(src)
@@ -298,9 +298,9 @@ func TestAttribute_MultipleClasses(t *testing.T) {
 	// branch. A single class shortcut hits the findUpdate miss
 	// branch (the !ok -> append fallback).
 	srcs := []string{
-		`# H {.first}`,             // miss branch
-		`# H {.first .second}`,     // miss then success
-		`# H {.a .b .c}`,           // success branch fires twice
+		`# H {.first}`,         // miss branch
+		`# H {.first .second}`, // miss then success
+		`# H {.a .b .c}`,       // success branch fires twice
 		`# H {.x .y .z .w}`,
 	}
 	for _, src := range srcs {
@@ -336,13 +336,13 @@ func TestAttribute_NumberShapes(t *testing.T) {
 		`# H {n=0}`,
 		`# H {n=10}`,
 		`# H {n=-7}`,
-		`# H {n=+5}`,            // explicit + sign
+		`# H {n=+5}`, // explicit + sign
 		`# H {n=3.14}`,
 		`# H {n=-3.14}`,
 		`# H {n=1e10}`,
-		`# H {n=1E10}`,          // capital E
+		`# H {n=1E10}`, // capital E
 		`# H {n=1.5e-3}`,
-		`# H {n=1.5E+3}`,        // capital E with +
+		`# H {n=1.5E+3}`, // capital E with +
 		`# H {n=+5.5e-3}`,
 		`# H {n=-not-a-number}`, // sign without numeric -> bail
 	}

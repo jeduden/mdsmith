@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/pi"
 	"github.com/stretchr/testify/assert"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
@@ -416,9 +417,9 @@ func TestScanBackwardForPIKeyExhaustsLoop(t *testing.T) {
 func TestDirectiveCompletionContextLineGuard(t *testing.T) {
 	t.Parallel()
 	// line=0 is out of bounds → returns CompletionNone (L161-163).
-	pi := &lint.ProcessingInstruction{Name: "catalog"}
+	piNode := &pi.ProcessingInstruction{Name: "catalog"}
 	lines := [][]byte{[]byte(`glob: "docs/"`)}
-	res := directiveCompletionContext(pi, lines, 0, 5)
+	res := directiveCompletionContext(piNode, lines, 0, 5)
 	assert.Equal(t, CompletionNone, res.Tag)
 }
 
@@ -426,9 +427,9 @@ func TestDirectiveCompletionContextColNegative(t *testing.T) {
 	t.Parallel()
 	// col=0 makes cursorByteCol = -1 < 0 → clamped to 0 (L167-169).
 	// With empty text-up-to-cursor, piArgRE and yamlListItemValue both fail → CompletionNone.
-	pi := &lint.ProcessingInstruction{Name: "catalog"}
+	piNode := &pi.ProcessingInstruction{Name: "catalog"}
 	lines := [][]byte{[]byte(`glob: "docs/"`)}
-	res := directiveCompletionContext(pi, lines, 1, 0)
+	res := directiveCompletionContext(piNode, lines, 1, 0)
 	assert.Equal(t, CompletionNone, res.Tag)
 }
 

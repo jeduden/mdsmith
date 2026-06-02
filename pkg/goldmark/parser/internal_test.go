@@ -179,9 +179,9 @@ func TestCalcListOffset_AllBranches(t *testing.T) {
 		source string
 		match  [6]int
 	}{
-		{"no-body", "- ", [6]int{0, 0, 0, 1, -1, -1}},                // match[4] < 0
-		{"blank-body", "-   ", [6]int{0, 0, 0, 1, 1, 4}},              // blank
-		{"normal-indent", "- abc", [6]int{0, 0, 0, 1, 2, 5}},          // indent <= 4
+		{"no-body", "- ", [6]int{0, 0, 0, 1, -1, -1}},                      // match[4] < 0
+		{"blank-body", "-   ", [6]int{0, 0, 0, 1, 1, 4}},                   // blank
+		{"normal-indent", "- abc", [6]int{0, 0, 0, 1, 2, 5}},               // indent <= 4
 		{"deep-indent-codeblock", "-     code", [6]int{0, 0, 0, 1, 2, 10}}, // > 4
 	}
 	for _, c := range cases {
@@ -475,11 +475,11 @@ func TestRawHTMLParser_ParseComment_Direct(t *testing.T) {
 	bp := &rawHTMLParser{}
 	pc := NewContext()
 	cases := []string{
-		"<!--> immediate-empty\n", // empty comment <!-->
-		"<!---> 3-dash empty\n",   // empty comment <!--->
-		"<!-- simple --> ok\n",    // normal
+		"<!--> immediate-empty\n",   // empty comment <!-->
+		"<!---> 3-dash empty\n",     // empty comment <!--->
+		"<!-- simple --> ok\n",      // normal
 		"<!-- multi\nline --> ok\n", // multi-line
-		"<!-- unclosed\n",         // unclosed
+		"<!-- unclosed\n",           // unclosed
 	}
 	for _, src := range cases {
 		r := text.NewReader([]byte(src))
@@ -494,24 +494,24 @@ func TestHTMLBlockParser_Open_AllTypes(t *testing.T) {
 	bp := &htmlBlockParser{}
 
 	cases := []string{
-		"<script>\n",                // type 1 - script
-		"<pre>\n",                   // type 1 - pre
-		"<style>\n",                 // type 1 - style
-		"<!-- comment\n",            // type 2
-		"<?xml ?>\n",                // type 3
-		"<!DOCTYPE html>\n",         // type 4
-		"<![CDATA[content]]>\n",     // type 5
-		"<div>\n",                   // type 6 (allowed block tag)
-		"<table>\n",                 // type 6
-		"<form>\n",                  // type 6
-		"<header>\n",                // type 6
-		"</div>\n",                  // type 6 (closing tag, allowed)
-		"<a href=\"x\">\n",          // type 7
-		"<custom-tag>\n",            // type 7
-		"</closing/>\n",             // type 7 close+self-close
-		"</custom attr=\"v\">\n",    // type 7 close+attr - rejected
-		"<unknowntag>\n",            // not a valid type
-		"<>invalid\n",               // malformed
+		"<script>\n",             // type 1 - script
+		"<pre>\n",                // type 1 - pre
+		"<style>\n",              // type 1 - style
+		"<!-- comment\n",         // type 2
+		"<?xml ?>\n",             // type 3
+		"<!DOCTYPE html>\n",      // type 4
+		"<![CDATA[content]]>\n",  // type 5
+		"<div>\n",                // type 6 (allowed block tag)
+		"<table>\n",              // type 6
+		"<form>\n",               // type 6
+		"<header>\n",             // type 6
+		"</div>\n",               // type 6 (closing tag, allowed)
+		"<a href=\"x\">\n",       // type 7
+		"<custom-tag>\n",         // type 7
+		"</closing/>\n",          // type 7 close+self-close
+		"</custom attr=\"v\">\n", // type 7 close+attr - rejected
+		"<unknowntag>\n",         // not a valid type
+		"<>invalid\n",            // malformed
 	}
 	parent := ast.NewDocument()
 	for _, src := range cases {

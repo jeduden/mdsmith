@@ -12,8 +12,8 @@ import (
 	flag "github.com/spf13/pflag"
 
 	"github.com/jeduden/mdsmith/internal/index"
-	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
+	"github.com/jeduden/mdsmith/internal/readlimit"
 	"github.com/jeduden/mdsmith/internal/rename"
 )
 
@@ -60,7 +60,7 @@ func (w cliRenameWorkspace) Resolve(file string) (string, []byte, bool) {
 	if !ok {
 		abs = filepath.Join(w.rootDir, filepath.FromSlash(rel))
 	}
-	src, err := lint.ReadFileLimited(abs, w.maxBytes)
+	src, err := readlimit.ReadFileLimited(abs, w.maxBytes)
 	if err != nil {
 		return "", nil, false
 	}
@@ -171,7 +171,7 @@ func buildRenameWorkspace(opts renameOptions, target string) (cliRenameWorkspace
 	}
 	idx := index.New(rootDir)
 	idx.BuildSerial(rels, func(rel string) ([]byte, error) {
-		return lint.ReadFileLimited(relToAbs[rel], maxBytes)
+		return readlimit.ReadFileLimited(relToAbs[rel], maxBytes)
 	})
 	ws := cliRenameWorkspace{idx: idx, relToAbs: relToAbs, rootDir: rootDir, maxBytes: maxBytes}
 	_, src, ok := ws.Resolve(target)

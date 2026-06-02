@@ -775,7 +775,7 @@ func TestRunSource_EmptyInput(t *testing.T) {
 }
 
 // Regression: in-memory sources must respect Runner.MaxInputBytes
-// the same way on-disk reads respect lint.ReadFileLimited. Without
+// the same way on-disk reads respect readlimit.ReadFileLimited. Without
 // this guard, LSP and other in-memory callers would diverge from
 // `mdsmith check`'s "file too large" behavior.
 func TestRunSource_RejectsOversizedSource(t *testing.T) {

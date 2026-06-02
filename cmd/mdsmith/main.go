@@ -17,6 +17,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/output"
 	"github.com/jeduden/mdsmith/internal/profiling"
 	"github.com/jeduden/mdsmith/internal/query"
+	"github.com/jeduden/mdsmith/internal/readlimit"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 
 	// Import every production rule package via the shared barrel so
@@ -254,7 +255,7 @@ func queryFiles(matcher *query.Matcher, files []string, delim string, verbose bo
 // readFrontMatterRaw reads a file, strips front matter, and
 // unmarshals YAML into map[string]any (preserving numeric types).
 func readFrontMatterRaw(path string, maxBytes int64) (map[string]any, error) {
-	data, err := lint.ReadFileLimited(path, maxBytes)
+	data, err := readlimit.ReadFileLimited(path, maxBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -574,7 +575,7 @@ func resolveMaxInputBytes(cfg *config.Config, cliFlag string) (int64, error) {
 		raw = cfg.MaxInputSize
 	}
 	if raw == "" {
-		return lint.DefaultMaxInputBytes, nil
+		return readlimit.DefaultMaxInputBytes, nil
 	}
 	n, err := config.ParseSize(raw)
 	if err != nil {

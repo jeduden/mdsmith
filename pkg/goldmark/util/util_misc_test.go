@@ -132,13 +132,13 @@ func TestFindEmailIndex(t *testing.T) {
 		in   string
 		want int
 	}{
-		{"foo@bar.com", 11},        // valid -> length
-		{"@bar.com", -1},            // no local part (i == 0)
-		{"foobarcom", -1},           // all email chars, no @ (i >= len)
-		{"foo!bar.com", -1},         // non-email char before @
-		{"foo@", -1},                // @ at end (i >= len after @)
-		{"foo@!!!", -1},             // @ followed by non-domain
-		{"", -1},                    // empty
+		{"foo@bar.com", 11}, // valid -> length
+		{"@bar.com", -1},    // no local part (i == 0)
+		{"foobarcom", -1},   // all email chars, no @ (i >= len)
+		{"foo!bar.com", -1}, // non-email char before @
+		{"foo@", -1},        // @ at end (i >= len after @)
+		{"foo@!!!", -1},     // @ followed by non-domain
+		{"", -1},            // empty
 	}
 	for _, c := range cases {
 		got := util.FindEmailIndex([]byte(c.in))
@@ -159,10 +159,10 @@ func TestFirstNonSpacePosition(t *testing.T) {
 		{"\t\tabc", 2},
 		{"   ", -1},
 		{"", -1},
-		{"\n", -1},              // newline at start -> -1
-		{"   \n", -1},           // spaces then newline -> -1
-		{"\t\n", -1},            // tab then newline
-		{"abc\n", 0},            // non-space first
+		{"\n", -1},    // newline at start -> -1
+		{"   \n", -1}, // spaces then newline -> -1
+		{"\t\n", -1},  // tab then newline
+		{"abc\n", 0},  // non-space first
 	}
 	for _, c := range cases {
 		if got := util.FirstNonSpacePosition([]byte(c.in)); got != c.want {
@@ -178,10 +178,10 @@ func TestUTF8Len(t *testing.T) {
 		b    byte
 		want int8
 	}{
-		{'A', 1},        // ASCII -> 1
-		{0xC2, 2},       // start of a 2-byte sequence
-		{0xE0, 3},       // start of a 3-byte sequence
-		{0xF0, 4},       // start of a 4-byte sequence
+		{'A', 1},  // ASCII -> 1
+		{0xC2, 2}, // start of a 2-byte sequence
+		{0xE0, 3}, // start of a 3-byte sequence
+		{0xF0, 4}, // start of a 4-byte sequence
 		// Continuation bytes (0x80..0xBF) are not leading bytes; the
 		// internal table flags them with a sentinel value, not 0.
 		// Just check that ASCII and multi-byte leaders return the

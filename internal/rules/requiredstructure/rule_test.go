@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/pi"
 	"github.com/jeduden/mdsmith/internal/rule"
 
 	"github.com/stretchr/testify/assert"
@@ -1597,15 +1598,15 @@ func TestExtractPIFileParam_MultiLine(t *testing.T) {
 	src := "<?include\nfile: other.md\n?>"
 	f, err := lint.NewFileFromSource("schema.md", []byte(src), true)
 	require.NoError(t, err)
-	var pi *lint.ProcessingInstruction
+	var piNode *pi.ProcessingInstruction
 	for c := f.AST.FirstChild(); c != nil; c = c.NextSibling() {
-		if p, ok := c.(*lint.ProcessingInstruction); ok {
-			pi = p
+		if p, ok := c.(*pi.ProcessingInstruction); ok {
+			piNode = p
 			break
 		}
 	}
-	require.NotNil(t, pi, "expected ProcessingInstruction in parsed AST")
-	result, err := extractPIFileParam(pi, []byte(src))
+	require.NotNil(t, piNode, "expected ProcessingInstruction in parsed AST")
+	result, err := extractPIFileParam(piNode, []byte(src))
 	require.NoError(t, err)
 	assert.Equal(t, "other.md", result)
 }
@@ -1736,15 +1737,15 @@ func TestExtractPIFileParam_SingleLine(t *testing.T) {
 	src := "<?include file: other.md ?>\ncontent\n<?/include?>"
 	f, err := lint.NewFileFromSource("schema.md", []byte(src), true)
 	require.NoError(t, err)
-	var pi *lint.ProcessingInstruction
+	var piNode *pi.ProcessingInstruction
 	for c := f.AST.FirstChild(); c != nil; c = c.NextSibling() {
-		if p, ok := c.(*lint.ProcessingInstruction); ok {
-			pi = p
+		if p, ok := c.(*pi.ProcessingInstruction); ok {
+			piNode = p
 			break
 		}
 	}
-	require.NotNil(t, pi, "expected ProcessingInstruction in parsed AST")
-	result, err := extractPIFileParam(pi, []byte(src))
+	require.NotNil(t, piNode, "expected ProcessingInstruction in parsed AST")
+	result, err := extractPIFileParam(piNode, []byte(src))
 	require.NoError(t, err)
 	assert.Equal(t, "other.md", result)
 }
@@ -1755,15 +1756,15 @@ func TestResolveSchemaIncludePath_EmptyFileParam(t *testing.T) {
 	src := "<?include\nfile: \"\"\n?>\ncontent\n<?/include?>"
 	f, err := lint.NewFileFromSource("schema.md", []byte(src), true)
 	require.NoError(t, err)
-	var pi *lint.ProcessingInstruction
+	var piNode *pi.ProcessingInstruction
 	for c := f.AST.FirstChild(); c != nil; c = c.NextSibling() {
-		if p, ok := c.(*lint.ProcessingInstruction); ok {
-			pi = p
+		if p, ok := c.(*pi.ProcessingInstruction); ok {
+			piNode = p
 			break
 		}
 	}
-	require.NotNil(t, pi, "expected ProcessingInstruction in parsed AST")
-	_, err = resolveSchemaIncludePath(pi, []byte(src), "schema.md")
+	require.NotNil(t, piNode, "expected ProcessingInstruction in parsed AST")
+	_, err = resolveSchemaIncludePath(piNode, []byte(src), "schema.md")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing required 'file' attribute")
 }
@@ -1773,15 +1774,15 @@ func TestResolveSchemaIncludePath_AbsolutePath(t *testing.T) {
 	src := "<?include\nfile: /abs/path.md\n?>\ncontent\n<?/include?>"
 	f, err := lint.NewFileFromSource("schema.md", []byte(src), true)
 	require.NoError(t, err)
-	var pi *lint.ProcessingInstruction
+	var piNode *pi.ProcessingInstruction
 	for c := f.AST.FirstChild(); c != nil; c = c.NextSibling() {
-		if p, ok := c.(*lint.ProcessingInstruction); ok {
-			pi = p
+		if p, ok := c.(*pi.ProcessingInstruction); ok {
+			piNode = p
 			break
 		}
 	}
-	require.NotNil(t, pi)
-	_, err = resolveSchemaIncludePath(pi, []byte(src), "schema.md")
+	require.NotNil(t, piNode)
+	_, err = resolveSchemaIncludePath(piNode, []byte(src), "schema.md")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "absolute file path")
 }
@@ -1791,15 +1792,15 @@ func TestResolveSchemaIncludePath_DotDotTraversal(t *testing.T) {
 	src := "<?include\nfile: ../parent.md\n?>\ncontent\n<?/include?>"
 	f, err := lint.NewFileFromSource("schema.md", []byte(src), true)
 	require.NoError(t, err)
-	var pi *lint.ProcessingInstruction
+	var piNode *pi.ProcessingInstruction
 	for c := f.AST.FirstChild(); c != nil; c = c.NextSibling() {
-		if p, ok := c.(*lint.ProcessingInstruction); ok {
-			pi = p
+		if p, ok := c.(*pi.ProcessingInstruction); ok {
+			piNode = p
 			break
 		}
 	}
-	require.NotNil(t, pi)
-	_, err = resolveSchemaIncludePath(pi, []byte(src), "schema.md")
+	require.NotNil(t, piNode)
+	_, err = resolveSchemaIncludePath(piNode, []byte(src), "schema.md")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `".." traversal`)
 }

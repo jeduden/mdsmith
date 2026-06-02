@@ -26,10 +26,10 @@ func TestSoftLineBreak_AllEnumValues(t *testing.T) {
 		want bool
 	}{
 		{EastAsianLineBreaksNone, 'A', 'B', false},
-		{EastAsianLineBreaksSimple, 'A', 'B', true},                                 // narrow + narrow
-		{EastAsianLineBreaksSimple, 0x4E00, 0x4E01, false},                          // wide + wide
-		{EastAsianLineBreaksCSS3Draft, 'A', 'B', true},                              // Rule 4 default
-		{EastAsianLineBreaks(99), 'A', 'B', false},                                  // default arm of switch
+		{EastAsianLineBreaksSimple, 'A', 'B', true},        // narrow + narrow
+		{EastAsianLineBreaksSimple, 0x4E00, 0x4E01, false}, // wide + wide
+		{EastAsianLineBreaksCSS3Draft, 'A', 'B', true},     // Rule 4 default
+		{EastAsianLineBreaks(99), 'A', 'B', false},         // default arm of switch
 	}
 	for _, c := range cases {
 		if got := c.mode.softLineBreak(c.a, c.b); got != c.want {
@@ -42,9 +42,9 @@ func TestCSS3DraftSoftLineBreak_AllRules(t *testing.T) {
 	// Drive each of the 4 rules of CSS3 Draft segment break
 	// transformation.
 	cases := []struct {
-		name     string
-		a, b     rune
-		want     bool
+		name string
+		a, b rune
+		want bool
 	}{
 		{"rule1-zwsp-before", '​', 'A', false},
 		{"rule1-zwsp-after", 'A', '​', false},

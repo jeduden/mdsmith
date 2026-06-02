@@ -6,6 +6,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/globpath"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/pi"
 )
 
 // DirectiveKind enumerates the directive shapes ExtractDirectives
@@ -70,24 +71,24 @@ func ExtractDirectives(f *lint.File) []DirectiveEdge {
 	}
 	var out []DirectiveEdge
 	for n := f.AST.FirstChild(); n != nil; n = n.NextSibling() {
-		pi, ok := n.(*lint.ProcessingInstruction)
+		piNode, ok := n.(*pi.ProcessingInstruction)
 		if !ok {
 			continue
 		}
-		if strings.HasPrefix(pi.Name, "/") {
+		if strings.HasPrefix(piNode.Name, "/") {
 			continue
 		}
-		switch pi.Name {
+		switch piNode.Name {
 		case "include", "build", "catalog":
 		default:
 			continue
 		}
-		line := directivePILine(f, pi)
-		params, ok := parsePIParams(pi, f.Source)
+		line := directivePILine(f, piNode)
+		params, ok := parsePIParams(piNode, f.Source)
 		if !ok {
 			continue
 		}
-		switch pi.Name {
+		switch piNode.Name {
 		case "include":
 			file := strings.TrimSpace(params["file"])
 			if file == "" {
@@ -126,11 +127,11 @@ func ExtractDirectives(f *lint.File) []DirectiveEdge {
 // directivePILine returns the 1-based body-relative line of the
 // directive's opening marker. Goldmark guarantees a parsed PI has at
 // least one source line.
-func directivePILine(f *lint.File, pi *lint.ProcessingInstruction) int {
-	if pi.Lines().Len() == 0 {
+func directivePILine(f *lint.File, piNode *pi.ProcessingInstruction) int {
+	if piNode.Lines().Len() == 0 {
 		return 1
 	}
-	return f.LineOfOffset(pi.Lines().At(0).Start)
+	return f.LineOfOffset(piNode.Lines().At(0).Start)
 }
 
 // parsePIParams converts a PI block's YAML body into a flat string
@@ -139,11 +140,11 @@ func directivePILine(f *lint.File, pi *lint.ProcessingInstruction) int {
 // Malformed YAML yields ok=false, matching the index's
 // "if you can't trust the params, don't synthesize an edge from
 // them" rule. Dedicated lint rules report the user-facing diagnostic.
-func parsePIParams(pi *lint.ProcessingInstruction, source []byte) (map[string]string, bool) {
-	body := extractPIBody(pi, source)
+func parsePIParams(piNode *pi.ProcessingInstruction, source []byte) (map[string]string, bool) {
+	body := extractPIBody(piNode, source)
 	startLine := 1
-	if pi.Lines().Len() > 0 {
-		startLine = lineOfOffset(source, pi.Lines().At(0).Start)
+	if piNode.Lines().Len() > 0 {
+		startLine = lineOfOffset(source, piNode.Lines().At(0).Start)
 	}
 	mp := gensection.MarkerPair{StartLine: startLine, YAMLBody: body}
 	rawMap, diags := gensection.ParseYAMLBody("", mp, "", "")
@@ -158,8 +159,8 @@ func parsePIParams(pi *lint.ProcessingInstruction, source []byte) (map[string]st
 	return params, true
 }
 
-func extractPIBody(pi *lint.ProcessingInstruction, source []byte) string {
-	lines := pi.Lines()
+func extractPIBody(piNode *pi.ProcessingInstruction, source []byte) string {
+	lines := piNode.Lines()
 	if lines.Len() <= 1 {
 		return ""
 	}

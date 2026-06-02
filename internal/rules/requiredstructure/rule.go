@@ -15,7 +15,9 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/jeduden/mdsmith/internal/fieldinterp"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/pi"
 	"github.com/jeduden/mdsmith/internal/placeholders"
+	"github.com/jeduden/mdsmith/internal/readlimit"
 	"github.com/jeduden/mdsmith/internal/rule"
 	rulesettings "github.com/jeduden/mdsmith/internal/rules/settings"
 	"github.com/jeduden/mdsmith/internal/schema"
@@ -1165,12 +1167,12 @@ func parseSchemaFrontMatter(prefix []byte, cache *lint.RunCache) (schemaConfig, 
 func extractRequireDirective(f *lint.File) (string, error) {
 	var filenamePattern string
 	for c := f.AST.FirstChild(); c != nil; c = c.NextSibling() {
-		pi, ok := c.(*lint.ProcessingInstruction)
-		if !ok || pi.Name != "require" {
+		piNode, ok := c.(*pi.ProcessingInstruction)
+		if !ok || piNode.Name != "require" {
 			continue
 		}
 		// Extract YAML body from PI content.
-		lines := pi.Lines()
+		lines := piNode.Lines()
 		var body []byte
 		if lines.Len() == 1 {
 			// Single-line: <?require key: value ?>
@@ -1512,7 +1514,7 @@ func extractSchemaHeadings(
 			line := schemaFile.LineOfOffset(node.Lines().At(0).Start)
 			headings = append(headings, docHeading{Level: node.Level, Text: text, Line: line})
 
-		case *lint.ProcessingInstruction:
+		case *pi.ProcessingInstruction:
 			if node.Name != "include" {
 				return ast.WalkContinue, nil
 			}
@@ -1565,9 +1567,9 @@ func extractSchemaHeadings(
 // resolveSchemaIncludePath extracts and validates the file parameter from
 // an include PI, returning the resolved filesystem path.
 func resolveSchemaIncludePath(
-	pi *lint.ProcessingInstruction, source []byte, schemaPath string,
+	piNode *pi.ProcessingInstruction, source []byte, schemaPath string,
 ) (string, error) {
-	fileParam, err := extractPIFileParam(pi, source)
+	fileParam, err := extractPIFileParam(piNode, source)
 	if err != nil {
 		return "", fmt.Errorf("parsing include processing instruction: %w", err)
 	}
@@ -1596,10 +1598,10 @@ func resolveSchemaIncludePath(
 // error. The path-plus-subIncludes pair lets the caller record the
 // full dependency footprint on RunCache's reverse-include index.
 func expandSchemaInclude(
-	pi *lint.ProcessingInstruction, source []byte,
+	piNode *pi.ProcessingInstruction, source []byte,
 	schemaPath string, visited map[string]bool, chain []string, maxBytes int64,
 ) ([]docHeading, string, string, []string, error) {
-	includedPath, err := resolveSchemaIncludePath(pi, source, schemaPath)
+	includedPath, err := resolveSchemaIncludePath(piNode, source, schemaPath)
 	if err != nil {
 		return nil, "", "", nil, err
 	}
@@ -1622,7 +1624,7 @@ func expandSchemaInclude(
 			"cyclic include: %s", strings.Join(chainCopy, " -> "))
 	}
 
-	fragData, err := lint.ReadFileLimited(includedPath, maxBytes)
+	fragData, err := readlimit.ReadFileLimited(includedPath, maxBytes)
 	if err != nil {
 		return nil, "", includedPath, nil, fmt.Errorf(
 			"cannot read schema include file %q: %w", includedPath, err)
@@ -1662,13 +1664,13 @@ func expandSchemaInclude(
 
 // extractPIFileParam parses the YAML body of an include PI to extract
 // the "file" parameter.
-func extractPIFileParam(pi *lint.ProcessingInstruction, source []byte) (string, error) {
-	lines := pi.Lines()
+func extractPIFileParam(piNode *pi.ProcessingInstruction, source []byte) (string, error) {
+	lines := piNode.Lines()
 	var body string
 	if lines.Len() == 1 {
 		seg := lines.At(0)
 		raw := strings.TrimSpace(string(seg.Value(source)))
-		raw = strings.TrimPrefix(raw, "<?"+pi.Name)
+		raw = strings.TrimPrefix(raw, "<?"+piNode.Name)
 		if idx := strings.Index(raw, "?>"); idx >= 0 {
 			raw = raw[:idx]
 		}
@@ -2244,9 +2246,9 @@ func extractYAML(fmBlock []byte) []byte {
 // <?require?> PI in the file, or 0 if none is found.
 func findRequireDirectiveLine(f *lint.File) int {
 	for c := f.AST.FirstChild(); c != nil; c = c.NextSibling() {
-		pi, ok := c.(*lint.ProcessingInstruction)
-		if ok && pi.Name == "require" {
-			return f.LineOfOffset(pi.Lines().At(0).Start)
+		piNode, ok := c.(*pi.ProcessingInstruction)
+		if ok && piNode.Name == "require" {
+			return f.LineOfOffset(piNode.Lines().At(0).Start)
 		}
 	}
 	return 0
@@ -2392,9 +2394,9 @@ func readSchemaFile(f *lint.File, schema string) ([]byte, error) {
 		if clean == ".." || strings.HasPrefix(clean, "../") {
 			return nil, fmt.Errorf("schema path %q escapes project root", schema)
 		}
-		return lint.ReadFSFileLimited(f.RootFS, clean, f.MaxInputBytes)
+		return readlimit.ReadFSFileLimited(f.RootFS, clean, f.MaxInputBytes)
 	}
-	return lint.ReadFileLimited(schema, f.MaxInputBytes)
+	return readlimit.ReadFileLimited(schema, f.MaxInputBytes)
 }
 
 func makeDiag(file string, line int, msg string) lint.Diagnostic {

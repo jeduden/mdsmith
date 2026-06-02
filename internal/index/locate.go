@@ -10,6 +10,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
+	"github.com/jeduden/mdsmith/internal/pi"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
@@ -209,7 +210,7 @@ func headingInfo(target *ast.Heading, source []byte, root ast.Node) (string, int
 func locateInAST(srcPath string, root ast.Node, source []byte, lines [][]byte, line, col int) (LocateResult, bool) {
 	cursorOff := offsetAt(lines, line, col)
 	var found *ast.Link
-	var foundPI *lint.ProcessingInstruction
+	var foundPI *pi.ProcessingInstruction
 	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
@@ -222,9 +223,9 @@ func locateInAST(srcPath string, root ast.Node, source []byte, lines [][]byte, l
 			}
 		}
 		// Block-level processing-instruction.
-		if pi, ok := n.(*lint.ProcessingInstruction); ok {
-			if piContainsLine(source, pi, line) {
-				foundPI = pi
+		if piNode, ok := n.(*pi.ProcessingInstruction); ok {
+			if piContainsLine(source, piNode, line) {
+				foundPI = piNode
 			}
 		}
 		return ast.WalkContinue, nil
@@ -365,12 +366,12 @@ func scanForByte(source []byte, from int, target byte) int {
 	return -1
 }
 
-func piContainsLine(source []byte, pi *lint.ProcessingInstruction, line int) bool {
-	startSeg := pi.Lines().At(0)
+func piContainsLine(source []byte, piNode *pi.ProcessingInstruction, line int) bool {
+	startSeg := piNode.Lines().At(0)
 	startLine := lineOfOffset(source, startSeg.Start)
 	endLine := startLine
-	if pi.HasClosure() && pi.ClosureLine.Start > startSeg.Start {
-		endLine = lineOfOffset(source, pi.ClosureLine.Start)
+	if piNode.HasClosure() && piNode.ClosureLine.Start > startSeg.Start {
+		endLine = lineOfOffset(source, piNode.ClosureLine.Start)
 	}
 	return line >= startLine && line <= endLine
 }
@@ -411,10 +412,10 @@ func linkToLocate(srcPath string, l *ast.Link, source []byte) LocateResult {
 // for the cursor's specific argument line. The directive name surfaces
 // as DirectiveName; the argument key/value the cursor sits on lands in
 // DirectiveArg/DirectiveValue.
-func piToLocate(pi *lint.ProcessingInstruction, source []byte, lines [][]byte, line, col int) LocateResult {
+func piToLocate(piNode *pi.ProcessingInstruction, source []byte, lines [][]byte, line, col int) LocateResult {
 	res := LocateResult{
 		Tag:           TokenDirectiveArg,
-		DirectiveName: pi.Name,
+		DirectiveName: piNode.Name,
 	}
 	// Find the line the cursor is on within the PI body.
 	if line > len(lines) {
@@ -427,8 +428,8 @@ func piToLocate(pi *lint.ProcessingInstruction, source []byte, lines [][]byte, l
 		res.DirectiveArg = m[1]
 		res.DirectiveValue = strings.Trim(strings.TrimSpace(m[2]), `"'`)
 	}
-	if (pi.Name == "include" && res.DirectiveArg == "file") ||
-		(pi.Name == "build" && res.DirectiveArg == "source") {
+	if (piNode.Name == "include" && res.DirectiveArg == "file") ||
+		(piNode.Name == "build" && res.DirectiveArg == "source") {
 		res.DirectiveTargetFile = res.DirectiveValue
 	}
 	return res

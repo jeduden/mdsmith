@@ -22,10 +22,10 @@ type SourceOptions struct {
 	RootDir          string
 	StripFrontMatter bool
 	// MaxInputBytes caps Source size before any fix runs. Semantics
-	// match lint.ReadFileLimited: <= 0 or math.MaxInt64 means
+	// match readlimit.ReadFileLimited: <= 0 or math.MaxInt64 means
 	// unlimited; > 0 means reject buffers larger than that many
 	// bytes. Callers that want the default 2 MB cap must pass
-	// lint.DefaultMaxInputBytes explicitly.
+	// readlimit.DefaultMaxInputBytes explicitly.
 	MaxInputBytes int64
 	// SourceFS, when non-nil, is the filesystem the fixable rules
 	// (include/catalog/cross-file) see for the buffer. Callers that
@@ -56,7 +56,7 @@ func SourceWithRules(opts SourceOptions, names []string) ([]byte, error) {
 
 func fixSourceImpl(opts SourceOptions, only []string) ([]byte, error) {
 	maxBytes := opts.MaxInputBytes
-	// Mirror the on-disk cap that lint.ReadFileLimited applies
+	// Mirror the on-disk cap that readlimit.ReadFileLimited applies
 	// during `mdsmith fix`. The same convention is used here so
 	// callers who already resolved the project's max-input-size
 	// (CLI, LSP) can pass the value through unchanged:
@@ -64,12 +64,12 @@ func fixSourceImpl(opts SourceOptions, only []string) ([]byte, error) {
 	//   - max == math.MaxInt64 → unlimited.
 	//   - max > 0            → cap the buffer at that many bytes.
 	// When the caller wants the default 2 MB cap, they must pass
-	// lint.DefaultMaxInputBytes explicitly (resolveMaxInputBytes
+	// readlimit.DefaultMaxInputBytes explicitly (resolveMaxInputBytes
 	// in cmd/mdsmith/main.go shows the canonical resolution).
 	if maxBytes > 0 && maxBytes != math.MaxInt64 &&
 		int64(len(opts.Source)) > maxBytes {
 		// Match the on-disk Fixer's error shape — Fixer.Fix wraps
-		// lint.ReadFileLimited's "file too large" via
+		// readlimit.ReadFileLimited's "file too large" via
 		// `reading %q: %w`, so editor / log output stays uniform
 		// regardless of whether the source came from disk or an
 		// in-memory caller (LSP, stdin, …).

@@ -7,6 +7,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/fieldinterp"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/pi"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 )
 
@@ -53,33 +54,33 @@ func FindMarkerPairs(
 	endName := "/" + directiveName
 
 	for n := f.AST.FirstChild(); n != nil; n = n.NextSibling() {
-		pi, ok := n.(*lint.ProcessingInstruction)
+		piNode, ok := n.(*pi.ProcessingInstruction)
 		if !ok {
 			continue
 		}
 
-		switch pi.Name {
+		switch piNode.Name {
 		case directiveName:
 			if current != nil {
-				if !pi.HasClosure() {
-					piLine := f.LineOfOffset(pi.Lines().At(0).Start)
+				if !piNode.HasClosure() {
+					piLine := f.LineOfOffset(piNode.Lines().At(0).Start)
 					diags = append(diags, MakeDiag(ruleID, ruleName, f.Path, piLine,
-						fmt.Sprintf("generated section start marker <?%s is missing closing ?>", pi.Name)))
+						fmt.Sprintf("generated section start marker <?%s is missing closing ?>", piNode.Name)))
 				} else {
 					// Well-formed nested start marker — skip it and track depth.
 					depth++
 				}
 			} else {
-				current, diags = handleStartMarker(f, pi, current, diags, ruleID, ruleName)
+				current, diags = handleStartMarker(f, piNode, current, diags, ruleID, ruleName)
 			}
 		case endName:
 			if current != nil && depth > 0 {
-				if !pi.HasClosure() {
-					piLine := f.LineOfOffset(pi.Lines().At(0).Start)
+				if !piNode.HasClosure() {
+					piLine := f.LineOfOffset(piNode.Lines().At(0).Start)
 					diags = append(diags, MakeDiag(ruleID, ruleName, f.Path, piLine,
-						fmt.Sprintf("generated section end marker <?%s is missing closing ?>", pi.Name)))
-				} else if !isEndMarkerAloneOnLine(pi, f) {
-					piLine := f.LineOfOffset(pi.Lines().At(0).Start)
+						fmt.Sprintf("generated section end marker <?%s is missing closing ?>", piNode.Name)))
+				} else if !isEndMarkerAloneOnLine(piNode, f) {
+					piLine := f.LineOfOffset(piNode.Lines().At(0).Start)
 					diags = append(diags, MakeDiag(ruleID, ruleName, f.Path, piLine,
 						"generated section end marker must be the only content on its line"))
 				} else {
@@ -87,7 +88,7 @@ func FindMarkerPairs(
 					depth--
 				}
 			} else {
-				current, pairs, diags = handleEndMarker(f, pi, current, pairs, diags, ruleID, ruleName)
+				current, pairs, diags = handleEndMarker(f, piNode, current, pairs, diags, ruleID, ruleName)
 			}
 		}
 	}
@@ -102,48 +103,48 @@ func FindMarkerPairs(
 }
 
 func handleStartMarker(
-	f *lint.File, pi *lint.ProcessingInstruction,
+	f *lint.File, piNode *pi.ProcessingInstruction,
 	current *MarkerPair, diags []lint.Diagnostic,
 	ruleID, ruleName string,
 ) (*MarkerPair, []lint.Diagnostic) {
-	piLine := f.LineOfOffset(pi.Lines().At(0).Start)
+	piLine := f.LineOfOffset(piNode.Lines().At(0).Start)
 	if current != nil {
 		return current, append(diags,
 			MakeDiag(ruleID, ruleName, f.Path, piLine,
 				"nested generated section markers are not allowed"))
 	}
-	if !pi.HasClosure() {
+	if !piNode.HasClosure() {
 		return nil, append(diags,
 			MakeDiag(ruleID, ruleName, f.Path, piLine,
-				fmt.Sprintf("generated section start marker <?%s is missing closing ?>", pi.Name)))
+				fmt.Sprintf("generated section start marker <?%s is missing closing ?>", piNode.Name)))
 	}
 
 	mp := MarkerPair{
 		StartLine:   piLine,
-		YAMLBody:    extractYAMLBody(pi, f.Source),
-		ContentFrom: piClosureEndLine(pi, f) + 1,
+		YAMLBody:    extractYAMLBody(piNode, f.Source),
+		ContentFrom: piClosureEndLine(piNode, f) + 1,
 	}
 	return &mp, diags
 }
 
 func handleEndMarker(
-	f *lint.File, pi *lint.ProcessingInstruction,
+	f *lint.File, piNode *pi.ProcessingInstruction,
 	current *MarkerPair, pairs []MarkerPair, diags []lint.Diagnostic,
 	ruleID, ruleName string,
 ) (*MarkerPair, []MarkerPair, []lint.Diagnostic) {
-	piLine := f.LineOfOffset(pi.Lines().At(0).Start)
+	piLine := f.LineOfOffset(piNode.Lines().At(0).Start)
 	if current == nil {
 		return nil, pairs, append(diags,
 			MakeDiag(ruleID, ruleName, f.Path, piLine,
 				"unexpected generated section end marker"))
 	}
-	if !pi.HasClosure() {
+	if !piNode.HasClosure() {
 		return current, pairs, append(diags,
 			MakeDiag(ruleID, ruleName, f.Path, piLine,
-				fmt.Sprintf("generated section end marker <?%s is missing closing ?>", pi.Name)))
+				fmt.Sprintf("generated section end marker <?%s is missing closing ?>", piNode.Name)))
 	}
 
-	if !isEndMarkerAloneOnLine(pi, f) {
+	if !isEndMarkerAloneOnLine(piNode, f) {
 		return current, pairs, append(diags,
 			MakeDiag(ruleID, ruleName, f.Path, piLine,
 				"generated section end marker must be the only content on its line"))
@@ -156,18 +157,18 @@ func handleEndMarker(
 
 // isEndMarkerAloneOnLine checks that the end marker PI is the only
 // content on its source line.
-func isEndMarkerAloneOnLine(pi *lint.ProcessingInstruction, f *lint.File) bool {
-	seg := pi.Lines().At(0)
+func isEndMarkerAloneOnLine(piNode *pi.ProcessingInstruction, f *lint.File) bool {
+	seg := piNode.Lines().At(0)
 	raw := string(seg.Value(f.Source))
 	trimmed := strings.TrimSpace(raw)
-	expected := fmt.Sprintf("<?%s?>", pi.Name)
+	expected := fmt.Sprintf("<?%s?>", piNode.Name)
 	return trimmed == expected
 }
 
 // extractYAMLBody returns the YAML content from a PI's Lines(),
 // skipping the first line (the <?name line).
-func extractYAMLBody(pi *lint.ProcessingInstruction, source []byte) string {
-	lines := pi.Lines()
+func extractYAMLBody(piNode *pi.ProcessingInstruction, source []byte) string {
+	lines := piNode.Lines()
 	if lines.Len() <= 1 {
 		return ""
 	}
@@ -181,13 +182,13 @@ func extractYAMLBody(pi *lint.ProcessingInstruction, source []byte) string {
 
 // piClosureEndLine returns the 1-based line number of the PI's closure
 // (or last body line for single-line PIs).
-func piClosureEndLine(pi *lint.ProcessingInstruction, f *lint.File) int {
-	if pi.HasClosure() && pi.ClosureLine.Start != pi.Lines().At(0).Start {
+func piClosureEndLine(piNode *pi.ProcessingInstruction, f *lint.File) int {
+	if piNode.HasClosure() && piNode.ClosureLine.Start != piNode.Lines().At(0).Start {
 		// Multi-line PI: closure is on a separate line.
-		return f.LineOfOffset(pi.ClosureLine.Start)
+		return f.LineOfOffset(piNode.ClosureLine.Start)
 	}
 	// Single-line PI: closure is the same line as opening.
-	lastSeg := pi.Lines().At(pi.Lines().Len() - 1)
+	lastSeg := piNode.Lines().At(piNode.Lines().Len() - 1)
 	return f.LineOfOffset(lastSeg.Start)
 }
 

@@ -15,8 +15,8 @@ glob:
 sort: title
 row: "- [{title}]({filename})"
 ?>
+- [](architecture-audit.md)
 - [Adding a peer linter](add-peer-linter.md)
-- [Architecture audit log](architecture-audit.md)
 - [Architecture principles](architecture/index.md)
 - [Coverage Gate](coverage.md)
 - [File Placement](file-placement.md)

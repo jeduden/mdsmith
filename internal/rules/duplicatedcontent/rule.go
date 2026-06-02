@@ -17,6 +17,8 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/jeduden/mdsmith/internal/globpath"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/pi"
+	"github.com/jeduden/mdsmith/internal/readlimit"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
 	"github.com/yuin/goldmark/ast"
@@ -145,26 +147,26 @@ func generatedRanges(f *lint.File) [][2]int {
 		return nil
 	}
 	var ranges [][2]int
-	var openPI *lint.ProcessingInstruction
+	var openPI *pi.ProcessingInstruction
 	depth := 0
 	for n := f.AST.FirstChild(); n != nil; n = n.NextSibling() {
-		pi, ok := n.(*lint.ProcessingInstruction)
+		piNode, ok := n.(*pi.ProcessingInstruction)
 		if !ok {
 			continue
 		}
 		if openPI == nil {
-			if (pi.Name == "include" || pi.Name == "catalog") && pi.HasClosure() {
-				openPI = pi
+			if (piNode.Name == "include" || piNode.Name == "catalog") && piNode.HasClosure() {
+				openPI = piNode
 				depth = 0
 			}
-		} else if pi.Name == openPI.Name && pi.HasClosure() {
+		} else if piNode.Name == openPI.Name && piNode.HasClosure() {
 			depth++
-		} else if pi.Name == "/"+openPI.Name && pi.HasClosure() && pi.Lines().Len() > 0 {
+		} else if piNode.Name == "/"+openPI.Name && piNode.HasClosure() && piNode.Lines().Len() > 0 {
 			if depth > 0 {
 				depth--
 			} else {
 				start := openPI.ClosureLine.Stop
-				stop := pi.Lines().At(0).Start
+				stop := piNode.Lines().At(0).Start
 				if stop > start {
 					ranges = append(ranges, [2]int{start, stop})
 				}
@@ -391,7 +393,7 @@ func indexFileIfEligible(
 	if !matchesFilters(path, include, exclude) {
 		return
 	}
-	data, err := lint.ReadFSFileLimited(corpus, path, maxBytes)
+	data, err := readlimit.ReadFSFileLimited(corpus, path, maxBytes)
 	if err != nil {
 		return
 	}

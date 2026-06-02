@@ -10,6 +10,7 @@ import (
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 
+	"github.com/jeduden/mdsmith/internal/gitignore"
 	"github.com/jeduden/mdsmith/pkg/markdown"
 )
 
@@ -49,9 +50,9 @@ type File struct {
 	// and the result is cached. Rules that do not call GetGitignore
 	// never trigger matcher construction. sync.Once keeps the lazy
 	// build race-free if a *File is shared across goroutines.
-	GitignoreFunc func() *GitignoreMatcher
+	GitignoreFunc func() *gitignore.Matcher
 	gitignoreOnce sync.Once
-	gitignoreVal  *GitignoreMatcher
+	gitignoreVal  *gitignore.Matcher
 
 	// GeneratedRanges records the content line ranges of generated
 	// sections (<?include?> / <?catalog?> bodies). Diagnostics whose
@@ -225,7 +226,7 @@ func (f *File) SetRootDir(dir string) {
 
 // GetGitignore returns the gitignore matcher for this file, creating it
 // lazily on first call. Returns nil if no GitignoreFunc was configured.
-func (f *File) GetGitignore() *GitignoreMatcher {
+func (f *File) GetGitignore() *gitignore.Matcher {
 	f.gitignoreOnce.Do(func() {
 		if f.GitignoreFunc != nil {
 			f.gitignoreVal = f.GitignoreFunc()

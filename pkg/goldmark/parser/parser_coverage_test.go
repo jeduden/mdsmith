@@ -177,7 +177,7 @@ func TestParser_AddOptions(t *testing.T) {
 // AddOptions dispatch — it never opens.
 type noopBlockParser struct{}
 
-func (noopBlockParser) Trigger() []byte               { return nil }
+func (noopBlockParser) Trigger() []byte { return nil }
 func (noopBlockParser) Open(parent ast.Node, reader text.Reader, pc parser.Context) (ast.Node, parser.State) {
 	return nil, parser.NoChildren
 }
@@ -185,5 +185,5 @@ func (noopBlockParser) Continue(node ast.Node, reader text.Reader, pc parser.Con
 	return parser.Close
 }
 func (noopBlockParser) Close(node ast.Node, reader text.Reader, pc parser.Context) {}
-func (noopBlockParser) CanInterruptParagraph() bool                                 { return false }
-func (noopBlockParser) CanAcceptIndentedLine() bool                                 { return false }
+func (noopBlockParser) CanInterruptParagraph() bool                                { return false }
+func (noopBlockParser) CanAcceptIndentedLine() bool                                { return false }

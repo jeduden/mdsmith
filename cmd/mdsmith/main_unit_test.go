@@ -20,6 +20,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
 	"github.com/jeduden/mdsmith/internal/query"
+	"github.com/jeduden/mdsmith/internal/readlimit"
 	ruledocs "github.com/jeduden/mdsmith/internal/rules"
 )
 
@@ -138,7 +139,7 @@ func TestResolveMaxInputBytes_BothEmpty_UsesDefault(t *testing.T) {
 	cfg := &config.Config{}
 	n, err := resolveMaxInputBytes(cfg, "")
 	require.NoError(t, err)
-	assert.Equal(t, lint.DefaultMaxInputBytes, n)
+	assert.Equal(t, readlimit.DefaultMaxInputBytes, n)
 }
 
 func TestResolveMaxInputBytes_CLIFlagOverridesConfig(t *testing.T) {

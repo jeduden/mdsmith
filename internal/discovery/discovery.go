@@ -7,7 +7,7 @@ import (
 	"sort"
 
 	"github.com/bmatcuk/doublestar/v4"
-	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/gitignore"
 )
 
 // Options controls how file discovery behaves.
@@ -55,9 +55,9 @@ func Discover(opts Options) ([]string, error) {
 		return nil, nil
 	}
 
-	var gitMatcher *lint.GitignoreMatcher
+	var gitMatcher *gitignore.Matcher
 	if opts.UseGitignore {
-		gitMatcher = lint.NewGitignoreMatcher(baseDir)
+		gitMatcher = gitignore.NewMatcher(baseDir)
 	}
 
 	w := &walker{
@@ -91,7 +91,7 @@ func validatePatterns(patterns []string) []string {
 type walker struct {
 	absBase        string
 	patterns       []string
-	git            *lint.GitignoreMatcher
+	git            *gitignore.Matcher
 	followSymlinks bool
 	seen           map[string]bool
 	result         []string

@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/pi"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
@@ -88,19 +89,19 @@ func TestPiToLocate_LineBeyondLines(t *testing.T) {
 	t.Parallel()
 	src := []byte("<?include\nfile: a.md\n?>\n")
 	root := lint.NewParser().Parse(text.NewReader(src), parser.WithContext(parser.NewContext()))
-	var pi *lint.ProcessingInstruction
+	var piNode *pi.ProcessingInstruction
 	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
 		}
-		if p, ok := n.(*lint.ProcessingInstruction); ok {
-			pi = p
+		if p, ok := n.(*pi.ProcessingInstruction); ok {
+			piNode = p
 		}
 		return ast.WalkContinue, nil
 	})
-	require.NotNil(t, pi, "expected an include PI in the parse")
+	require.NotNil(t, piNode, "expected an include PI in the parse")
 	lines := bytes.Split(src, []byte("\n"))
-	res := piToLocate(pi, src, lines, len(lines)+10, 1)
+	res := piToLocate(piNode, src, lines, len(lines)+10, 1)
 	assert.Equal(t, TokenDirectiveArg, res.Tag)
 	assert.Equal(t, "include", res.DirectiveName)
 	assert.Empty(t, res.DirectiveArg)
