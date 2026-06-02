@@ -1,7 +1,7 @@
 ---
 id: 217
 title: Obsidian plugin (WASM runtime)
-status: "🔳"
+status: "✅"
 model: opus
 summary: >-
   Ship an Obsidian plugin under
@@ -250,47 +250,47 @@ artifact.
 
 ## Acceptance Criteria
 
-- [ ] `editors/obsidian/` builds with
+- [x] `editors/obsidian/` builds with
       `bun run build.ts --production`.
       Output: `dist/main.js`,
       `dist/mdsmith.wasm`,
       `dist/wasm_exec.js`,
       `manifest.json`, `styles.css`.
-- [ ] `bun test` passes. Coverage spans
+- [x] `bun test` passes. Coverage spans
       runtime marshalling, workspace
       snapshot, diagnostics decoration,
       and settings round-trip.
-- [ ] Loading the plugin in a vault with
+- [x] Loading the plugin in a vault with
       an `MDS001` violation shows a wavy
       underline within 1 s of opening the
       file on desktop, 2 s on a modern
       iPad.
-- [ ] Hover tooltip is issue-first: message,
+- [x] Hover tooltip is issue-first: message,
       then the schema constraint (a navigable link
       when it has a file/line, else plain text),
       then rule code and a docs link. The "Fix"
       link applies the quick-fix.
-- [ ] `mdsmith: Fix file` produces the
+- [x] `mdsmith: Fix file` produces the
       same buffer as `mdsmith fix` on the
       same input.
-- [ ] `fixOnSave: true` runs `Fix file`
+- [x] `fixOnSave: true` runs `Fix file`
       after each save without a plugin
       restart.
-- [ ] `manifest.json` does NOT set
+- [x] `manifest.json` does NOT set
       `isDesktopOnly`. Mobile loads the
       plugin.
-- [ ] Release zip stays under 25 MB.
-- [ ] Cold-start `check` on the
+- [x] Release zip stays under 25 MB.
+- [x] Cold-start `check` on the
       1000-line fixture: ≤ 1 s on
       desktop, ≤ 2 s on a modern iPad.
       Steady-state: ≤ 150 ms.
-- [ ] CI attaches
+- [x] CI attaches
       `mdsmith-obsidian-<version>.zip` to
       the release artifacts.
-- [ ] `docs/guides/editors/obsidian.md`
+- [x] `docs/guides/editors/obsidian.md`
       exists. The linter-comparison page
       cites the new plugin.
-- [ ] `mdsmith check .` passes.
+- [x] `mdsmith check .` passes.
 
 ## Non-Goals
 
