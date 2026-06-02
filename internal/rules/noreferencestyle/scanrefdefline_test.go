@@ -42,3 +42,12 @@ func TestScanRefDefLine(t *testing.T) {
 func TestLabelInRefsNoMatch(t *testing.T) {
 	assert.False(t, labelInRefs([]byte("missing"), nil))
 }
+
+// TestStringEqualsBytes covers the alloc-free compare: equal, differing
+// length, differing content, and the empty case.
+func TestStringEqualsBytes(t *testing.T) {
+	assert.True(t, stringEqualsBytes("abc", []byte("abc")))
+	assert.False(t, stringEqualsBytes("abc", []byte("abd")))
+	assert.False(t, stringEqualsBytes("ab", []byte("abc")))
+	assert.True(t, stringEqualsBytes("", []byte("")))
+}

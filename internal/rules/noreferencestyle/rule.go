@@ -190,7 +190,7 @@ type referenceDefinition struct {
 	label string
 	line  int
 	col   int
-	start int // byte offset of the `[` opening the label
+	start int // byte offset of the definition line's start (incl. leading indentation); the Fix cut start
 	end   int // byte offset just past the trailing newline
 }
 
@@ -260,11 +260,28 @@ func collectReferenceDefinitions(f *lint.File) []referenceDefinition {
 func labelInRefs(raw []byte, refs []lint.Reference) bool {
 	normalized := util.ToLinkReference(raw)
 	for _, ref := range refs {
-		if normalized == string(ref.Label()) {
+		if stringEqualsBytes(normalized, ref.Label()) {
 			return true
 		}
 	}
 	return false
+}
+
+// stringEqualsBytes compares a string to a byte slice without
+// allocating. Mirrors MDS053 (nounusedlinkdefinitions)'s
+// alloc-free compare, keeping labelInRefs off the per-reference
+// allocation hot path that `s == string(b)` creates for a
+// variable s.
+func stringEqualsBytes(s string, b []byte) bool {
+	if len(s) != len(b) {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // scanRefDefLine examines source[lineStart:lineEnd] for the
