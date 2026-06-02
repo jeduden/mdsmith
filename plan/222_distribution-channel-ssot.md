@@ -1,7 +1,7 @@
 ---
 id: 222
 title: Single source of truth for distribution channels
-status: "🔳"
+status: "✅"
 summary: >-
   Hold every distribution channel — push, pull, and
   toolchain — in one schema-bound directory, and
