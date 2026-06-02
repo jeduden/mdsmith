@@ -102,7 +102,7 @@ jobs:
   # generated from docs/development/release-channels/*.md via
   # `mdsmith-release sync-channels`. A hand edit to the data file
   # would be reverted on the next sync, so fail fast on drift.
-  # See plan/221.
+  # See plan/222.
   channels-drift:
     runs-on: ubuntu-latest
     steps:
