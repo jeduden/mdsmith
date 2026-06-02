@@ -17,10 +17,12 @@ import {
   buildClientOptions,
   buildServerOptions,
   collectFixAllEdits,
+  decideClose,
   forwardMdsmithConfigChange,
   notifyConfigChangeToClient,
   shouldFixOnSave,
   startupErrorMessage,
+  RestartPolicyState,
   RUN_ON_TYPE
 } from "./wiring";
 import { findBinaryCandidates, resolveBinary } from "./binary";
@@ -148,7 +150,8 @@ async function startServer(context: vscode.ExtensionContext): Promise<void> {
   // "Show Output" prompt instead of silently disabling the
   // extension. The mdsmith.restartServer command stays the
   // explicit manual recovery path either way.
-  clientOptions.errorHandler = new MdsmithErrorHandler();
+  const errorHandler = new MdsmithErrorHandler();
+  clientOptions.errorHandler = errorHandler;
 
   // Rewrite the server's public-website rule-docs links (in hovers) so
   // they open the README offline from the bundled binary instead of a
@@ -174,6 +177,19 @@ async function startServer(context: vscode.ExtensionContext): Promise<void> {
 
   try {
     await client.start();
+    // After a successful start, listen for the server announcing that a
+    // newer instance for this workspace has taken over. Marking the
+    // error handler turns the imminent connection close into a
+    // no-restart, so this (now orphaned) editor host stops respawning a
+    // server that the newer one immediately supersedes again. See the
+    // newest-wins workspace singleton in internal/lsp/singleton.go.
+    client.onNotification("mdsmith/superseded", () => {
+      errorHandler.markSuperseded();
+      getOutputChannel().appendLine(
+        "mdsmith: a newer server has taken over this workspace; " +
+          "stopping this instance (it will not be restarted)."
+      );
+    });
   } catch (err) {
     // start() rejected — leave the LanguageClient referenceable
     // briefly so the user can hit "Show Output" to read the
@@ -268,27 +284,43 @@ function showOutput(): void {
 //    "Restart Language Server" / "Show Output" choice so the
 //    user can recover with one click instead of reloading the
 //    window.
+//  - Suppresses the restart entirely once the server announces it
+//    was superseded (markSuperseded). The decision itself lives in
+//    decideClose (wiring.ts) so it can be unit-tested without vscode.
 class MdsmithErrorHandler implements ErrorHandler {
   private static readonly maxRestarts = 25;
   private static readonly windowMs = 3 * 60 * 1000;
-  private restarts: number[] = [];
+  private state: RestartPolicyState = { restarts: [], superseded: false };
+
+  // markSuperseded records that the server told us (via the
+  // mdsmith/superseded notification) that a newer instance for this
+  // workspace has taken over. The imminent connection close is then
+  // expected and intentional, so closed() must NOT restart — otherwise
+  // this now-orphaned editor host would respawn a server the newer one
+  // supersedes again, the exact restart loop a leaked extension host
+  // used to sustain.
+  markSuperseded(): void {
+    this.state.superseded = true;
+  }
 
   error(_error: Error, _message: Message | undefined, _count: number | undefined): ErrorHandlerResult {
     return { action: ErrorAction.Continue };
   }
 
   closed(): CloseHandlerResult {
-    const now = Date.now();
-    this.restarts = this.restarts.filter((t) => now - t < MdsmithErrorHandler.windowMs);
-    this.restarts.push(now);
-    if (this.restarts.length > MdsmithErrorHandler.maxRestarts) {
+    const { restart, capExceeded } = decideClose(
+      this.state,
+      Date.now(),
+      MdsmithErrorHandler.maxRestarts,
+      MdsmithErrorHandler.windowMs
+    );
+    if (capExceeded) {
       // Show the prompt asynchronously so we do not block the
       // close handler. The promise body decides whether to
       // restart based on the user's choice.
       void promptRestartAfterRepeatedFailures();
-      return { action: CloseAction.DoNotRestart };
     }
-    return { action: CloseAction.Restart };
+    return { action: restart ? CloseAction.Restart : CloseAction.DoNotRestart };
   }
 }
 

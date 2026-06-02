@@ -184,6 +184,15 @@ tripped because the binary crashes on every request. Open the
 "mdsmith" Output channel for the stack trace, fix the cause,
 then run `mdsmith: Restart Language Server`.
 
+**Two mdsmith servers running; I want one.** A reload or
+update can leave the old extension host alive next to the new
+one, each running its own server. The newest server wins: it
+claims the workspace and the older one exits, sending an
+`mdsmith/superseded` notice first so the client does not
+restart it. If an older build left an orphan, kill its
+extension host once — not the `mdsmith` process, which the
+host respawns.
+
 ## See also
 
 - [`mdsmith lsp`](../../reference/cli/lsp.md) — the protocol

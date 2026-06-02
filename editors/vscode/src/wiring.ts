@@ -252,6 +252,55 @@ export function notifyConfigChangeToClient<T extends RunningClientLike>(
   void send(client).catch(() => {});
 }
 
+// RestartPolicyState is the mutable bookkeeping the LSP client's
+// CloseHandler carries across close events: the recent restart
+// timestamps (for rate-limiting respawns) and whether the server told
+// us it was intentionally superseded by a newer instance for the same
+// workspace (mdsmith/superseded). Defined here so the decision is
+// unit-testable without the `vscode` runtime.
+export interface RestartPolicyState {
+  restarts: number[];
+  superseded: boolean;
+}
+
+// CloseDecision is what decideClose returns: whether to restart the
+// server, and whether the restart-rate cap was just exceeded (the
+// caller surfaces the recovery prompt in that case).
+export interface CloseDecision {
+  restart: boolean;
+  capExceeded: boolean;
+}
+
+// decideClose is the pure restart policy for a closed LSP connection.
+//
+//   - If the server announced it was superseded, the close is expected:
+//     a newer mdsmith for this workspace has taken over. Restarting
+//     would respawn a server the newer one immediately supersedes again
+//     — the orphaned-host restart loop a leaked extension host caused.
+//     So: never restart, and do not even count it against the cap.
+//   - Otherwise count the close within a sliding window and restart
+//     until more than `maxRestarts` happen inside `windowMs`, at which
+//     point we stop and report capExceeded so the caller can prompt.
+//
+// It mutates `state.restarts` in place (the window prune + the new
+// entry) so successive calls share the rolling history.
+export function decideClose(
+  state: RestartPolicyState,
+  now: number,
+  maxRestarts: number,
+  windowMs: number
+): CloseDecision {
+  if (state.superseded) {
+    return { restart: false, capExceeded: false };
+  }
+  state.restarts = state.restarts.filter((t) => now - t < windowMs);
+  state.restarts.push(now);
+  if (state.restarts.length > maxRestarts) {
+    return { restart: false, capExceeded: true };
+  }
+  return { restart: true, capExceeded: false };
+}
+
 // Run modes for `mdsmith.run`. Mirror the enum declared in
 // package.json and the runMode constants in the Go server
 // (internal/lsp/server.go): onType lints live as you type, onSave

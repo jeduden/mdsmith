@@ -19,6 +19,7 @@ import {
   buildClientOptions,
   buildServerOptions,
   collectFixAllEdits,
+  decideClose,
   forwardMdsmithConfigChange,
   notifyConfigChangeToClient,
   shouldFixOnSave,
@@ -28,6 +29,7 @@ import {
   RUN_ON_TYPE,
   type CodeActionLike,
   type FileSystemWatcherLike,
+  type RestartPolicyState,
   type UriLike
 } from "./wiring";
 
@@ -447,5 +449,57 @@ describe("collectFixAllEdits", () => {
       action("source.fixAll.mdsmith", [[target, [second]]])
     ];
     expect(collectFixAllEdits(actions, target)).toEqual([first, second]);
+  });
+});
+
+describe("decideClose", () => {
+  const maxRestarts = 25;
+  const windowMs = 3 * 60 * 1000;
+
+  function fresh(): RestartPolicyState {
+    return { restarts: [], superseded: false };
+  }
+
+  test("restarts a normal close and records the timestamp", () => {
+    const state = fresh();
+    // The first close is under the cap, so it must restart.
+    const decision = decideClose(state, 1000, maxRestarts, windowMs);
+    expect(decision.restart).toBe(true);
+    expect(decision.capExceeded).toBe(false);
+    expect(state.restarts).toEqual([1000]);
+  });
+
+  test("does not restart and does not count once superseded", () => {
+    const state: RestartPolicyState = { restarts: [10, 20, 30], superseded: true };
+    const decision = decideClose(state, 9_999, maxRestarts, windowMs);
+    expect(decision.restart).toBe(false);
+    expect(decision.capExceeded).toBe(false);
+    // The superseded short-circuit must not touch the restart history.
+    expect(state.restarts).toEqual([10, 20, 30]);
+  });
+
+  test("stops restarting and flags the cap once more than maxRestarts close in the window", () => {
+    const state = fresh();
+    let last = decideClose(state, 0, maxRestarts, windowMs);
+    // 25 closes all restart; the 26th trips the cap.
+    for (let i = 1; i <= maxRestarts; i++) {
+      last = decideClose(state, i, maxRestarts, windowMs);
+    }
+    expect(last.restart).toBe(false);
+    expect(last.capExceeded).toBe(true);
+  });
+
+  test("prunes close timestamps older than the window so a slow trickle keeps restarting", () => {
+    const state = fresh();
+    // Seed maxRestarts closes far in the past.
+    for (let i = 0; i < maxRestarts; i++) {
+      decideClose(state, i, maxRestarts, windowMs);
+    }
+    // A close well past the window prunes the stale entries, so it is
+    // treated as the first recent close and restarts.
+    const decision = decideClose(state, windowMs + 1_000, maxRestarts, windowMs);
+    expect(decision.restart).toBe(true);
+    expect(decision.capExceeded).toBe(false);
+    expect(state.restarts).toEqual([windowMs + 1_000]);
   });
 });

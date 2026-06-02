@@ -92,6 +92,24 @@ type Server struct {
 	parentInterval  time.Duration
 	parentWatchOnce sync.Once
 
+	// Workspace singleton (newest-wins). When EnableWorkspaceSingleton
+	// is set, handleInitialize claims the workspace root in a shared
+	// registry under instanceID and starts a watcher that steps this
+	// server aside — notifying the editor via mdsmith/superseded, then
+	// exiting — once a newer server claims the same workspace. This
+	// reaps an orphaned server kept alive by a leaked editor host: the
+	// case the processId watchdog can't see, because that host stays
+	// alive. instanceID is "" when the feature is off, which makes
+	// startSingletonWatch a no-op. singletonClaim / singletonCurrent /
+	// singletonInterval / onSupersededExit are test seams — production
+	// uses a file registry, singletonPollInterval, and os.Exit(0).
+	instanceID         string
+	singletonClaim     func(key, id string) error
+	singletonCurrent   func(key string) string
+	singletonInterval  time.Duration
+	onSupersededExit   func()
+	singletonWatchOnce sync.Once
+
 	// runCache is the engine read cache shared across every runLint
 	// call so two host buffers that catalog over the same docs/**
 	// tree do not each re-read the matched targets from disk on
@@ -175,6 +193,14 @@ type Options struct {
 	// produce the same diagnostics in the editor as `mdsmith check`
 	// does on the CLI.
 	OnConfigReload func(cfgPath string)
+	// EnableWorkspaceSingleton turns on the newest-wins workspace
+	// singleton. When two servers run for the same workspace root — a
+	// leaked editor host left one orphaned and a reload spawned a fresh
+	// one — the older steps aside so exactly one stays live. cmd/mdsmith
+	// enables it; unit tests leave it off so they neither write to the
+	// real cache dir nor leak a watcher goroutine (the dedicated
+	// singleton tests drive the seams directly).
+	EnableWorkspaceSingleton bool
 }
 
 // New constructs a Server. The Server does not run until Run() is
@@ -191,7 +217,7 @@ func New(opts Options) *Server {
 	if logger == nil {
 		logger = &vlog.Logger{}
 	}
-	return &Server{
+	s := &Server{
 		t:              newTransport(opts.Reader, opts.Writer),
 		rules:          opts.Rules,
 		debounce:       debounce,
@@ -212,7 +238,18 @@ func New(opts Options) *Server {
 		parentAlive:    processAlive,
 		onParentExit:   func() { os.Exit(0) },
 		parentInterval: parentPollInterval,
+		// Workspace-singleton defaults; the registry seams are wired
+		// only when the feature is enabled so unit tests stay hermetic.
+		singletonInterval: singletonPollInterval,
+		onSupersededExit:  func() { os.Exit(0) },
 	}
+	if opts.EnableWorkspaceSingleton {
+		s.instanceID = newInstanceID()
+		reg := defaultRegistry()
+		s.singletonClaim = reg.claim
+		s.singletonCurrent = reg.current
+	}
+	return s
 }
 
 // Run drives the server until the input stream returns io.EOF, the
@@ -474,6 +511,13 @@ func (s *Server) handleInitialize(msg *requestMessage) {
 	// us goes away. Prevents an orphaned server from outliving an editor
 	// update/reload/crash and racing the freshly-spawned one.
 	s.startParentWatch(p.ProcessID)
+
+	// Newest-wins workspace singleton: claim this workspace and step
+	// aside if a newer server later claims it. Backstops the processId
+	// watchdog for the case it can't see — a leaked editor host that
+	// stays alive, holding our stdin open so no EOF arrives, while its
+	// window is gone.
+	s.startSingletonWatch(root)
 
 	res := initializeResult{
 		Capabilities: serverCapabilities{
