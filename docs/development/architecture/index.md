@@ -137,10 +137,9 @@ outside both `internal/` and `pkg/`. It
 embeds the canonical
 field-type-shortcut CUE library, the one
 that lets a schema write `created: date`.
-Its intended import path for CUE
-consumers is
-`github.com/jeduden/mdsmith/cue/types`. That
-mirrors how `pkg/markdown` is the public
+Its Go import path is
+`github.com/jeduden/mdsmith/cue/types`,
+mirroring how `pkg/markdown` is the public
 parse surface. `internal/schema` reads
 its embed to seed the runtime registry,
 and the package imports nothing in the
