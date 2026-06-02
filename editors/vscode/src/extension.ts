@@ -28,13 +28,13 @@ import { runFixWorkspace } from "./commands/fix-workspace";
 import { runInit } from "./commands/init";
 import { runMergeDriverInstall } from "./commands/merge-driver";
 import { runKindsResolve, runKindsWhy, makeKindsContentProvider } from "./commands/kinds";
-import { KINDS_SCHEME, parseKindsUri } from "./commands/virtual-doc";
+import { KINDS_SCHEME, kindsContentUri, parseKindsUri } from "./commands/virtual-doc";
 import {
   RULE_SCHEME,
   OPEN_RULE_DOC_COMMAND,
   buildRuleDocUri,
-  fetchRuleDocContent,
   isRuleId,
+  provideRuleDocContent,
   rewriteHoverMarkdown,
 } from "./commands/rule-doc";
 
@@ -534,7 +534,7 @@ function registerPaletteCommands(context: vscode.ExtensionContext): void {
       KINDS_SCHEME,
       {
         provideTextDocumentContent: (uri: vscode.Uri) => {
-          const uriStr = uri.toString();
+          const uriStr = kindsContentUri(uri);
           const parsed = parseKindsUri(uriStr);
           // Derive the workspace folder from the file encoded in the URI so
           // binary/config lookups use the correct per-folder settings even
@@ -565,7 +565,7 @@ function registerPaletteCommands(context: vscode.ExtensionContext): void {
       RULE_SCHEME,
       {
         provideTextDocumentContent: (uri: vscode.Uri) =>
-          fetchRuleDocContent(uri.toString(), getBinary(), getWorkspaceRoot()),
+          provideRuleDocContent(uri, getBinary(), getWorkspaceRoot()),
       }
     ),
 

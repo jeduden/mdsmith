@@ -146,3 +146,22 @@ export async function fetchRuleDocContent(
 
   return result.stdout.trimEnd() + "\n";
 }
+
+// provideRuleDocContent is the mdsmith-rule: TextDocumentContentProvider
+// entry point. Its uri parameter is the structural slice of vscode.Uri
+// this needs — declared inline rather than imported so the function
+// stays unit-testable without the editor runtime.
+//
+// It MUST stringify with skipEncoding=true. VS Code's default
+// Uri.toString() percent-encodes the query's "=" separator
+// (id=MDS019 → id%3DMDS019), which parseRuleDocUri then rejects, so the
+// clicked hover link opened a virtual document that only read
+// "malformed rule URI". skipEncoding leaves the "=" intact.
+export function provideRuleDocContent(
+  uri: { toString(skipEncoding?: boolean): string },
+  binary: string,
+  workspaceRoot: string | undefined,
+  spawn: SpawnFn = defaultSpawn,
+): Promise<string> {
+  return fetchRuleDocContent(uri.toString(true), binary, workspaceRoot, spawn);
+}
