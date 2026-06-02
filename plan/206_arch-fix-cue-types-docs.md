@@ -42,10 +42,10 @@ for CUE consumers. Two gaps need fixing:
 
 ## Acceptance Criteria
 
-- [ ] The layering diagram in
+- [x] The layering diagram in
   `docs/development/architecture/index.md`
   shows `cue/types`.
-- [ ] `Source()` has a "no test by design"
+- [x] `Source()` has a "no test by design"
   comment.
-- [ ] `go run ./cmd/mdsmith check .`
+- [x] `go run ./cmd/mdsmith check .`
   reports no issues.

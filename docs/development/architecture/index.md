@@ -139,7 +139,7 @@ field-type-shortcut CUE library, the one
 that lets a schema write `created: date`.
 Its intended import path for CUE
 consumers is
-`github.com/jeduden/mdsmith/types`. That
+`github.com/jeduden/mdsmith/cue/types`. That
 mirrors how `pkg/markdown` is the public
 parse surface. `internal/schema` reads
 its embed to seed the runtime registry,
