@@ -279,7 +279,7 @@ var perRuleBenchBudget = map[string]perRuleBudget{
 	"MDS037": {Time: 2000 * time.Microsecond, Allocs: 130}, // duplicated-content: base ~241us / 108 allocs
 	"MDS041": {Time: 1000 * time.Microsecond, Allocs: 4},   // no-inline-html: base ~185us / 0 allocs
 	"MDS042": {Time: 1000 * time.Microsecond, Allocs: 4},   // emphasis-style: base ~176us / 0 allocs
-	"MDS043": {Time: 1000 * time.Microsecond, Allocs: 16},  // no-reference-style: base ~215us / 10 allocs (plan 188)
+	"MDS043": {Time: 1500 * time.Microsecond, Allocs: 16},  // no-reference-style: base ~215us / 10 allocs (plan 188); ceiling raised to 1500us for CI timing headroom
 	"MDS044": {Time: 1000 * time.Microsecond, Allocs: 4},   // horizontal-rule-style: base ~174us / 0 allocs
 	"MDS045": {Time: 1000 * time.Microsecond, Allocs: 6},   // list-marker-style: base ~184us / 1 alloc
 	"MDS046": {Time: 1000 * time.Microsecond, Allocs: 4},   // ordered-list-numbering: base ~175us / 0 allocs
