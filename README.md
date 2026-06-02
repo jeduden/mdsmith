@@ -55,7 +55,7 @@ through `mdsmith lsp`, and in your coding agent through a Claude
 Code plugin. The check that blocks a merge is the same one you see
 as you type, so feedback never depends on which tool you opened.
 
-### Clean Markdown, automatically
+### Clean, consistent Markdown
 
 Catch style, formatting, and readability problems on every file.
 `mdsmith fix` rewrites the ones with a single correct fix;
@@ -78,7 +78,7 @@ Cap file, section, and token-budget size, enforce a reading grade
 and sentence count, and flag verbatim copy-paste between files.
 Three rules ship on by default; two are opt-in.
 
-### Everywhere you work
+### One engine, every surface
 
 The same engine runs in CI, in your editor, and in your coding
 agent, from one fast static binary you can install through any
@@ -106,7 +106,7 @@ The same version-stamped binary ships through go install, npm,
 pip, uvx, Homebrew, mise, asdf, and GitHub Releases. No
 postinstall network call, so locked-down CI installs offline.
 
-### Across your whole docs tree
+### A connected docs tree
 
 mdsmith reads the links, includes, and headings that tie your
 files together, so a rename or a move never strands a reference.
@@ -177,8 +177,8 @@ result, so generated content never blocks a merge.
 
 **[Config you can explain](docs/features/config-transparency.md).**
 Config layers deep-merge rule by rule: defaults, convention,
-kinds, then per-glob overrides. `check --explain` and `mdsmith
-kinds resolve` show which layer set each effective value, per leaf.
+kinds, then per-glob overrides. `mdsmith check --explain` and
+`mdsmith kinds resolve` show which layer set each effective value.
 
 **[Quality you can verify](docs/features/quality.md).**
 The CI, Go Report Card, and Codecov badges report live project

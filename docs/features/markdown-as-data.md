@@ -12,12 +12,12 @@ weight: 14
 
 A schema-conformant Markdown file is already structured data: the
 front matter is a map, and the headings beneath it form a tree.
-`mdsmith extract` reads that structure out with no extra
+`mdsmith extract` reads that structure with no extra
 annotation, because the [kind schema](file-kinds-schemas.md) is
 the extraction contract.
 
 `mdsmith extract <kind> --format json|yaml|msgpack <file>` walks
-the composed schema in lockstep with the file and emits a tree.
+the composed schema alongside the file and emits a tree.
 Front matter goes under a `frontmatter` key, each heading becomes
 an object keyed by its slug, and repeating sections become arrays.
 A non-conformant file prints the same diagnostics as `mdsmith
@@ -25,7 +25,7 @@ check` and exits non-zero, never emitting partial data.
 
 The read side lives on the `<?include?>` directive. Its
 `extract:` parameter walks the same tree and splices one leaf into
-another file's body, so a README can quote a value from its source
+another file's body. A README can quote a value from its source
 of truth, and `mdsmith fix` keeps the copy current. No intermediate
 fragment file is left to maintain.
 
