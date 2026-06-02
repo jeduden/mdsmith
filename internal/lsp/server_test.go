@@ -100,8 +100,8 @@ func newHarnessWithDebounce(t *testing.T, debounce time.Duration) *testHarness {
 		Debounce: debounce,
 	})
 	// Tests want lint-on-didChange to fire so they can verify the
-	// pipeline. Production defaults to onSave (skipping didChange);
-	// flipping to onType keeps the existing tests deterministic.
+	// pipeline. Production also defaults to onType now; setting it
+	// explicitly keeps the harness independent of that default.
 	srv.settingsMu.Lock()
 	srv.settings.Run = runOnType
 	srv.settingsMu.Unlock()
@@ -807,7 +807,11 @@ func TestScheduleLintOnSaveSkipsChange(t *testing.T) {
 	t.Parallel()
 	var buf safeBuffer
 	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
-	// Default run mode is onSave.
+	// Production now defaults to onType, so opt into onSave explicitly
+	// to exercise the didChange-skip path this test covers.
+	s.settingsMu.Lock()
+	s.settings.Run = runOnSave
+	s.settingsMu.Unlock()
 	s.docs.set("file:///x.md", &document{
 		uri: "file:///x.md", path: "x.md", text: []byte("# Hi\n\ndirty   \n"),
 	})
@@ -840,7 +844,7 @@ func TestRunModeFallsBackOnEmpty(t *testing.T) {
 	s.settingsMu.Lock()
 	s.settings.Run = ""
 	s.settingsMu.Unlock()
-	assert.Equal(t, runOnSave, s.runMode())
+	assert.Equal(t, runOnType, s.runMode())
 }
 
 func TestFetchClientSettingsHandlesEmptyArray(t *testing.T) {
@@ -859,7 +863,7 @@ func TestFetchClientSettingsHandlesEmptyArray(t *testing.T) {
 	awaitDone(t, done)
 	s.settingsMu.RLock()
 	defer s.settingsMu.RUnlock()
-	assert.Equal(t, runOnSave, s.settings.Run)
+	assert.Equal(t, runOnType, s.settings.Run)
 }
 
 func TestFetchClientSettingsHandlesMalformedResult(t *testing.T) {
@@ -873,7 +877,7 @@ func TestFetchClientSettingsHandlesMalformedResult(t *testing.T) {
 	awaitDone(t, done)
 	s.settingsMu.RLock()
 	defer s.settingsMu.RUnlock()
-	assert.Equal(t, runOnSave, s.settings.Run)
+	assert.Equal(t, runOnType, s.settings.Run)
 }
 
 // deliverPendingResponse polls s.pendingResp for the (single)
@@ -1551,6 +1555,97 @@ func TestFetchClientSettingsAppliesResponse(t *testing.T) {
 	assert.Equal(t, "/tmp/x.yml", s.settings.ConfigPath)
 }
 
+func TestFetchClientSettingsOffClearsDiagnostics(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	// Seed an open document with a previously published diagnostic, as
+	// if an onType/onSave lint had already run and shown a squiggle.
+	uri := "file:///x.md"
+	s.docs.set(uri, &document{
+		uri: uri, path: "x.md", text: []byte("# Hi\n"), version: 1,
+	})
+	s.diagsMu.Lock()
+	s.diags[uri] = []Diagnostic{{Message: "stale"}}
+	s.diagsMu.Unlock()
+
+	// Client switches mdsmith.run to off.
+	done := make(chan struct{})
+	go func() { defer close(done); s.fetchClientSettings(context.Background()) }()
+	deliverPendingResponse(t, s, json.RawMessage(`[{"run":"off"}]`), nil)
+	awaitDone(t, done)
+
+	// off is a master switch: cached diagnostics for the open document
+	// must be dropped and an empty publishDiagnostics sent so the editor
+	// removes the squiggles instead of leaving them until the buffer is
+	// closed.
+	s.diagsMu.RLock()
+	got := s.diags[uri]
+	s.diagsMu.RUnlock()
+	assert.Empty(t, got, "switching to run=off must clear cached diagnostics")
+	assert.Contains(t, buf.String(), `"diagnostics":[]`,
+		"switching to run=off must publish empty diagnostics")
+}
+
+func TestClearOpenDiagnosticsCancelsPendingLint(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	// Long debounce so the armed timer never fires during the test —
+	// clearOpenDiagnostics must cancel it, not race it.
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All(), Debounce: 10 * time.Second})
+	uri := "file:///x.md"
+	s.docs.set(uri, &document{
+		uri: uri, path: "x.md", text: []byte("# Hi\n"), version: 2,
+	})
+	// Arm a debounced lint (onType) and seed a cached diagnostic.
+	s.settingsMu.Lock()
+	s.settings.Run = runOnType
+	s.settingsMu.Unlock()
+	s.scheduleLint(uri, lintTriggerChange)
+	s.pendingMu.Lock()
+	_, armed := s.pending[uri]
+	s.pendingMu.Unlock()
+	require.True(t, armed, "precondition: a debounce timer is armed")
+	s.diagsMu.Lock()
+	s.diags[uri] = []Diagnostic{{Message: "stale"}}
+	s.diagsMu.Unlock()
+
+	s.clearOpenDiagnostics()
+
+	s.pendingMu.Lock()
+	_, stillArmed := s.pending[uri]
+	s.pendingMu.Unlock()
+	assert.False(t, stillArmed, "clearOpenDiagnostics must cancel the pending lint")
+	s.diagsMu.RLock()
+	_, cached := s.diags[uri]
+	s.diagsMu.RUnlock()
+	assert.False(t, cached, "clearOpenDiagnostics must drop cached diagnostics")
+	assert.Contains(t, buf.String(), `"diagnostics":[]`,
+		"clearOpenDiagnostics must publish empty diagnostics")
+}
+
+func TestRunLintSkipsPublishWhenOff(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	// off is reachable inside runLint only via the race the guard
+	// covers: a lint already in flight when the user switches to off.
+	s.settingsMu.Lock()
+	s.settings.Run = runOff
+	s.settingsMu.Unlock()
+	uri := "file:///x.md"
+	s.docs.set(uri, &document{
+		uri: uri, path: "x.md", text: []byte("# Hi\n\ndirty   \n"), version: 1,
+	})
+	s.runLint(uri)
+	assert.NotContains(t, buf.String(), "publishDiagnostics",
+		"runLint must not publish while run mode is off")
+	s.diagsMu.RLock()
+	_, cached := s.diags[uri]
+	s.diagsMu.RUnlock()
+	assert.False(t, cached, "runLint must not cache diagnostics while run mode is off")
+}
+
 func TestFetchClientSettingsIgnoresErrorResponse(t *testing.T) {
 	t.Parallel()
 	var buf safeBuffer
@@ -1562,7 +1657,7 @@ func TestFetchClientSettingsIgnoresErrorResponse(t *testing.T) {
 	// Run should remain at the default; we just verify no panic.
 	s.settingsMu.RLock()
 	defer s.settingsMu.RUnlock()
-	assert.Equal(t, runOnSave, s.settings.Run)
+	assert.Equal(t, runOnType, s.settings.Run)
 }
 
 func TestDidChangeWatchedFilesRelintsOpenDocs(t *testing.T) {
@@ -2130,7 +2225,7 @@ func TestRunModeFallsBackOnUnknown(t *testing.T) {
 	s.settingsMu.Lock()
 	s.settings.Run = "garbage-mode"
 	s.settingsMu.Unlock()
-	assert.Equal(t, runOnSave, s.runMode())
+	assert.Equal(t, runOnType, s.runMode())
 }
 
 // Regression: catalog/toc/include used to be excluded from

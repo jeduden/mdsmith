@@ -199,7 +199,7 @@ func New(opts Options) *Server {
 		onConfigReload: opts.OnConfigReload,
 		logger:         logger,
 		docs:           newDocumentStore(),
-		settings:       userSettings{Run: runOnSave},
+		settings:       userSettings{Run: runOnType},
 		pending:        make(map[string]*pendingLint),
 		pendingResp:    make(map[string]chan rpcResponse),
 		diags:          make(map[string][]Diagnostic),
@@ -933,7 +933,45 @@ func (s *Server) runMode() string {
 	case runOff, runOnSave, runOnType:
 		return s.settings.Run
 	default:
-		return runOnSave
+		return runOnType
+	}
+}
+
+// clearOpenDiagnostics drops every published diagnostic for open
+// documents and asks the client to remove the squiggles. Used when
+// mdsmith.run flips to off: scheduleLint publishes nothing in off
+// mode, so diagnostics shown before the switch would otherwise linger
+// until the buffer is closed. Any armed debounce timer is cancelled
+// first so a lint scheduled just before the switch cannot re-publish
+// after the clear.
+func (s *Server) clearOpenDiagnostics() {
+	for _, uri := range s.docs.openURIs() {
+		// Collect the pending timer under pendingMu, then Stop outside
+		// the lock — Stop hits the runtime timer heap and can block,
+		// and holding pendingMu across it would serialize scheduleLint.
+		s.pendingMu.Lock()
+		pending, hadPending := s.pending[uri]
+		if hadPending {
+			delete(s.pending, uri)
+		}
+		s.pendingMu.Unlock()
+		if hadPending && pending.timer != nil {
+			pending.timer.Stop()
+		}
+		version := 0
+		if doc, ok := s.docs.get(uri); ok {
+			version = doc.version
+		}
+		// Delete and publish the empty set under diagsMu so this clear
+		// serializes with runLint's mode-checked publish (which holds
+		// the same lock across its check and write). Once mdsmith.run is
+		// off, an in-flight lint either skips publishing or is ordered
+		// before this clear — so the empty set is always the last word.
+		s.diagsMu.Lock()
+		delete(s.diags, uri)
+		_ = s.t.writeNotification("textDocument/publishDiagnostics",
+			publishDiagnosticsParams{URI: uri, Version: version, Diagnostics: []Diagnostic{}})
+		s.diagsMu.Unlock()
 	}
 }
 
@@ -1027,11 +1065,22 @@ func (s *Server) runLint(uri string) {
 	docDiags, otherDiags := partitionDocDiagnostics(res.Diagnostics, relPath)
 	s.surfaceForeignDiagnostics(uri, otherDiags)
 	lspDiags := toLSPAll(docDiags, doc.text)
-	// Cache before publishing so hover requests that arrive after the
-	// client observes the notification always find current diagnostics.
+	// Cache and publish under diagsMu, re-checking the run mode inside
+	// the lock. mdsmith.run can flip to off while the CPU-bound
+	// RunSource above is in flight; clearOpenDiagnostics deletes and
+	// publishes the empty set under the same lock when that happens.
+	// Holding diagsMu across the check, the cache, and the wire write
+	// serializes the two: an in-flight lint either sees off and
+	// publishes nothing, or publishes under the lock before the clear —
+	// whose empty publish is then ordered last — so off stays a true
+	// master switch with no stale squiggles. Caching before the write
+	// also keeps hover consistent with what the client just received.
 	s.diagsMu.Lock()
+	defer s.diagsMu.Unlock()
+	if s.runMode() == runOff {
+		return
+	}
 	s.diags[uri] = lspDiags
-	s.diagsMu.Unlock()
 	_ = s.t.writeNotification("textDocument/publishDiagnostics",
 		publishDiagnosticsParams{URI: uri, Version: doc.version, Diagnostics: lspDiags})
 }
@@ -1719,8 +1768,16 @@ func (s *Server) fetchClientSettings(ctx context.Context) {
 		// applied settings rather than whatever was in effect when
 		// handleDidChangeConfiguration fired.
 		s.reloadConfig()
-		for _, uri := range s.docs.openURIs() {
-			s.scheduleLint(uri, lintTriggerConfig)
+		if s.runMode() == runOff {
+			// off is a master switch: scheduleLint publishes nothing
+			// in off mode, so squiggles shown before the switch would
+			// linger until the buffer closes. Drop them and tell the
+			// client to clear them.
+			s.clearOpenDiagnostics()
+		} else {
+			for _, uri := range s.docs.openURIs() {
+				s.scheduleLint(uri, lintTriggerConfig)
+			}
 		}
 	case <-timeout.C:
 		// Client never replied; defaults stand.

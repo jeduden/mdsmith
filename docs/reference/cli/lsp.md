@@ -42,11 +42,10 @@ stdio transport. The server uses stdio either way.
 
 `mdsmith.run` controls when the server actually re-lints:
 
-- `onSave` (default): lint on `didOpen`, `didSave`, and config
-  changes. `didChange` events update the buffer but do not trigger a
-  lint pass.
-- `onType`: lint on every `didChange` (debounced 200 ms) plus the
-  same triggers as `onSave`.
+- `onType` (default): lint on every `didChange` (debounced 200 ms)
+  plus `didOpen`, `didSave`, and config changes.
+- `onSave`: lint on `didOpen`, `didSave`, and config changes only.
+  `didChange` events update the buffer but do not trigger a lint pass.
 - `off`: never lint automatically. Code actions still work when
   invoked explicitly.
 

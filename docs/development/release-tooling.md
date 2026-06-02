@@ -54,6 +54,7 @@ setup step.
 | `check`                          | `ci.yml` version-guard                     |
 | `build-npm <art> <out>`          | `release.yml` npm job                      |
 | `build-wheels <art> <out>`       | `release.yml` pypi job                     |
+| `build-flatpak <art> <out>`      | `release.yml` flatpak job                  |
 | `sync-docs <src> <dst>`          | composed by `build-website`                |
 | `build-website [flags]`          | `pages.yml` deploy job                     |
 | `check-secret-rotations`         | `secret-rotation-reminder.yml`             |

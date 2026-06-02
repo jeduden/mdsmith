@@ -26,7 +26,8 @@ Each feature links to a page with its rules and examples.
 ### As you write
 
 **Inline diagnostics.** Every rule violation shows as a
-squiggle, on save or on each keystroke, set by `mdsmith.run`.
+squiggle — live as you type by default, or only on save,
+set by `mdsmith.run`.
 The [same checks run in CI](../../reference/cli/check.md),
 so the editor never disagrees with the build.
 
@@ -38,7 +39,8 @@ clicked.
 **Fix on save.** Enable `mdsmith.fixOnSave` (off by default).
 On each save, the whole-file fixer rewrites trailing
 whitespace, heading style, code fences, bare URLs, list
-indentation, and table alignment.
+indentation, and table alignment. Setting `mdsmith.run` to
+`off` suppresses it.
 
 **Preview before applying.** Enable `mdsmith.previewFix` and
 every fix routes through VS Code's Refactor Preview pane, so
@@ -122,19 +124,31 @@ preferences go in your user settings. Changing any setting
 takes effect on the next document event, with no window
 reload.
 
-| Setting                | Default   | Purpose                                                     |
-| ---------------------- | --------- | ----------------------------------------------------------- |
-| `mdsmith.run`          | `onSave`  | When to lint: `onType`, `onSave`, or `off`                  |
-| `mdsmith.fixOnSave`    | `false`   | Run `mdsmith fix` on save                                   |
-| `mdsmith.previewFix`   | `false`   | Open Refactor Preview before applying any fix               |
-| `mdsmith.config`       | `""`      | Override the `.mdsmith.yml` path (absolute or workspace)    |
-| `mdsmith.path`         | `mdsmith` | Pin a binary; the default runs the bundled per-platform one |
-| `mdsmith.trace.server` | `off`     | LSP trace verbosity: `off`, `messages`, or `verbose`        |
+| Setting                | Default   | Purpose                                                                            |
+| ---------------------- | --------- | ---------------------------------------------------------------------------------- |
+| `mdsmith.run`          | `onType`  | When to lint: `onType` (default), `onSave`, or `off` (off stops automatic linting) |
+| `mdsmith.fixOnSave`    | `false`   | Run `mdsmith fix` on save; ignored when `mdsmith.run` is `off`                     |
+| `mdsmith.previewFix`   | `false`   | Open Refactor Preview before applying any fix                                      |
+| `mdsmith.config`       | `""`      | Override the `.mdsmith.yml` path (absolute or workspace)                           |
+| `mdsmith.path`         | `mdsmith` | Pin a binary; the default runs the bundled per-platform one                        |
+| `mdsmith.trace.server` | `off`     | LSP trace verbosity: `off`, `messages`, or `verbose`                               |
 
-`mdsmith.run` defaults to `onSave`. Linting on every keystroke
-is opt-in because its latency budget is tighter. To bind
-fix-on-save through `editor.codeActionsOnSave` instead of
-`mdsmith.fixOnSave`:
+`mdsmith.run` defaults to `onType`, so diagnostics update
+live as you type. `mdsmith.fixOnSave` layers auto-fixing on
+top, and `off` is a master switch: it stops diagnostics and
+suppresses fix-on-save, so a save never rewrites the buffer
+while `mdsmith.run` is `off`.
+
+| `mdsmith.run` | `mdsmith.fixOnSave` | Behavior                                              |
+| ------------- | ------------------- | ----------------------------------------------------- |
+| `onType`      | `false`             | Diagnostics update live as you type (default)         |
+| `onType`      | `true`              | Live diagnostics; saving also auto-fixes the file     |
+| `onSave`      | `false`             | Diagnostics update only when you save                 |
+| `onSave`      | `true`              | Saving re-lints and auto-fixes the file               |
+| `off`         | either              | No diagnostics or fix-on-save; quick fixes still work |
+
+To bind fix-on-save through `editor.codeActionsOnSave`
+instead of `mdsmith.fixOnSave`:
 
 ```jsonc
 {
@@ -143,6 +157,10 @@ fix-on-save through `editor.codeActionsOnSave` instead of
   }
 }
 ```
+
+This manual wiring is not gated by `mdsmith.run`: unlike
+`mdsmith.fixOnSave`, it still fixes on save even when
+`mdsmith.run` is `off`.
 
 ## Troubleshooting
 
