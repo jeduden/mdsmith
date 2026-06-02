@@ -69,10 +69,9 @@ func lookupDocFromFS(fsys fs.FS, query string) (string, error) {
 		return "", err
 	}
 
-	q := strings.ToUpper(strings.TrimSpace(query))
-	qName := strings.ToLower(strings.TrimSpace(query))
+	q := strings.TrimSpace(query)
 	for _, d := range docs {
-		if strings.ToUpper(d.ID) == q || d.Name == qName {
+		if strings.EqualFold(d.ID, q) || strings.EqualFold(d.Name, q) {
 			return stripFrontMatter(d.Content), nil
 		}
 	}

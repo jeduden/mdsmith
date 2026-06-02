@@ -30,6 +30,18 @@ func TestLookupDoc_ByIDAndName(t *testing.T) {
 	require.Contains(t, content, "MET001", "expected MET001 content, got: %s", content)
 }
 
+func TestLookupDoc_CaseInsensitive(t *testing.T) {
+	// ID lookup is case-insensitive via strings.EqualFold.
+	content, err := LookupDoc("met001")
+	require.NoError(t, err, "LookupDoc(met001): %v", err)
+	require.Contains(t, content, "bytes", "expected bytes content for lowercase ID query")
+
+	// Name lookup is case-insensitive via strings.EqualFold.
+	content, err = LookupDoc("BYTES")
+	require.NoError(t, err, "LookupDoc(BYTES): %v", err)
+	require.Contains(t, content, "MET001", "expected MET001 content for uppercase name query")
+}
+
 func TestLookupDoc_Unknown(t *testing.T) {
 	_, err := LookupDoc("MET999")
 	require.Error(t, err, "expected unknown metric error")

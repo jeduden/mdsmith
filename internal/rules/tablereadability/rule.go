@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"strconv"
 	"unicode/utf8"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -73,7 +74,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			diags = append(diags, makeDiag(
 				f,
 				tbl.startLine,
-				fmt.Sprintf("table has too many columns (%d > %d)", cols, maxColumns),
+				"table has too many columns ("+strconv.Itoa(cols)+" > "+strconv.Itoa(maxColumns)+")",
 			))
 		}
 
@@ -81,14 +82,14 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			diags = append(diags, makeDiag(
 				f,
 				tbl.startLine,
-				fmt.Sprintf("table has too many rows (%d > %d)", rows, maxRows),
+				"table has too many rows ("+strconv.Itoa(rows)+" > "+strconv.Itoa(maxRows)+")",
 			))
 		}
 
 		if words, line, col := tbl.maxCellWords(); words > maxWordsPerCell {
-			msg := fmt.Sprintf("table cell has too many words (%d > %d)", words, maxWordsPerCell)
+			msg := "table cell has too many words (" + strconv.Itoa(words) + " > " + strconv.Itoa(maxWordsPerCell) + ")"
 			if header := tbl.columnHeader(col); header != "" {
-				msg += fmt.Sprintf(" in column %q", header)
+				msg += " in column " + strconv.Quote(header)
 			}
 			diags = append(diags, makeDiag(
 				f,

@@ -2,6 +2,7 @@ package maxfilelength
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -46,7 +47,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			RuleID:   r.ID(),
 			RuleName: r.Name(),
 			Severity: lint.Warning,
-			Message:  fmt.Sprintf("file too long (%d > %d)", lineCount, max),
+			Message:  "file too long (" + strconv.Itoa(lineCount) + " > " + strconv.Itoa(max) + ")",
 		}}
 	}
 	return nil

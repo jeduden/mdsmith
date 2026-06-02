@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 // DevSentinel is the version every tracked manifest carries
@@ -222,6 +223,19 @@ func (t *Toolkit) Check(root string) error {
 // Check delegates to a default-OS Toolkit (see Stamp).
 func Check(root string) error { return New().Check(root) }
 
+// pinRECache caches compiled optionalDependencies pin regexes by package name so
+// repeated checkManifest calls for the same key set skip NFA recompilation.
+var pinRECache sync.Map // map[string]*regexp.Regexp
+
+func pinRE(key string) *regexp.Regexp {
+	if v, ok := pinRECache.Load(key); ok {
+		return v.(*regexp.Regexp)
+	}
+	re := regexp.MustCompile(`(?m)^[ \t]*"` + regexp.QuoteMeta(key) + `"[ \t]*:[ \t]*"([^"]+)"`)
+	pinRECache.Store(key, re)
+	return re
+}
+
 func (t *Toolkit) checkManifest(m Manifest, note func(string)) {
 	body, err := t.fs.ReadFile(m.Path)
 	if err != nil {
@@ -241,9 +255,7 @@ func (t *Toolkit) checkManifest(m Manifest, note func(string)) {
 		note(fmt.Sprintf("%s: version is %q, want %q", m.Path, sub[2], DevSentinel))
 	}
 	for _, key := range m.RequiredMdsmithPins {
-		keyRE := regexp.MustCompile(`(?m)^[ \t]*"` + regexp.QuoteMeta(key) +
-			`"[ \t]*:[ \t]*"([^"]+)"`)
-		kSub := keyRE.FindSubmatch(body)
+		kSub := pinRE(key).FindSubmatch(body)
 		if kSub == nil {
 			note(fmt.Sprintf("%s: optionalDependencies missing key %s", m.Path, key))
 			continue
