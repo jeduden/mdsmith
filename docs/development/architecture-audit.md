@@ -287,10 +287,10 @@ then. Three concerns remain: `gitignore.go`
 (`ReadFileLimited` is imported by 17+
 files outside `internal/lint`), and
 `pi.go` + `pi_parser.go`. No plan was
-ever filed — [plan/221][221] schedules
+ever filed — [plan/223][223] schedules
 the split.
 
-[221]: ../../plan/221_arch-fix-lint-srp.md
+[223]: ../../plan/223_arch-fix-lint-srp.md
 
 ### nice-to-have (2026-05-24)
 
@@ -303,6 +303,6 @@ sentence-tokenizer fork into
 package answers "segment text into
 sentences". The SRP bullet list in
 go.md lists the core packages but omits
-this helper. [plan/222][222] adds it.
+this helper. [plan/224][224] adds it.
 
-[222]: ../../plan/222_arch-fix-punkt-layering.md
+[224]: ../../plan/224_arch-fix-punkt-layering.md
