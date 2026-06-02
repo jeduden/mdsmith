@@ -17,23 +17,33 @@ depends-on: []
 
 [internal/lint](../internal/lint/) violates
 SRP. The package has no doc comment, but
-its twelve non-test source files cover
-distinct concerns:
+its twelve non-test source files mix one
+coherent model with three standalone
+utilities.
+
+The **core parsed-file model** (stays in
+`lint` — these are facets of one subject,
+a parsed Markdown file):
 
 - `File` / `Diagnostic` / `Range` value
-  types — the core.
+  types (`file.go`, `diagnostic.go`).
 - Code-block AST helpers (`codeblocks.go`).
-- Gitignore-pattern matching
-  (`gitignore.go`).
-- Byte-limit guards (`limits.go`).
-- Processing-instruction parsing
-  (`pi.go`, `pi_parser.go`).
 - Front-matter extraction
   (`frontmatter.go`).
 - Parse cache (`parsecache.go`).
 - Run cache (`runcache.go`).
 - Prose-range projection
   (`proserange.go`).
+
+The **standalone utilities** (extracted by
+this plan — each answers its own question,
+unrelated to the parsed-file model):
+
+- Gitignore-pattern matching
+  (`gitignore.go`).
+- Byte-limit guards (`limits.go`).
+- Processing-instruction parsing
+  (`pi.go`, `pi_parser.go`).
 
 The audit noted this in May 2026. Three
 more files have been added since. No
@@ -42,9 +52,10 @@ plan existed.
 The
 [Go architecture doc](../docs/development/architecture/go.md)
 requires each package to answer one
-question. A package doc comment that
-needs "and" to describe it wants to be
-two.
+question. A package doc comment that joins
+two *unrelated* responsibilities with "and"
+wants to be two packages; listing the
+facets of a single subject is fine.
 
 ## Tasks
 
@@ -73,14 +84,17 @@ two.
    [internal/lint/file.go](../internal/lint/file.go)
    explaining the coupling. Document the
    decision here.
-5. Add `internal/lint/doc.go` with the
-   package doc: "lint defines the File
-   and Diagnostic types that represent a
-   parsed Markdown file and its
-   diagnostics."
+5. Add `internal/lint/doc.go` with a
+   package doc whose subject is one noun
+   — the parsed Markdown file — e.g.
+   "lint models a parsed Markdown file:
+   its source, AST, front matter,
+   diagnostics, caches, and prose ranges."
+   (The "and" here lists facets of one
+   subject, not separate responsibilities.)
 6. Verify `internal/lint` now answers
    one question: "what is a parsed
-   Markdown file and its diagnostics?"
+   Markdown file?"
 7. Run `go build ./...` and
    `go test ./...`.
 
@@ -93,8 +107,9 @@ two.
 - [ ] `internal/piparser` exists with a
   focused package doc.
 - [ ] `internal/lint/doc.go` exists with
-  a focused package doc that needs no
-  "and" to describe it.
+  a package doc whose subject is a single
+  noun — the parsed Markdown file — not a
+  conjunction of unrelated responsibilities.
 - [ ] `go build ./...` clean.
 - [ ] `go test ./...` passes.
 - [ ] `go tool golangci-lint run` clean.

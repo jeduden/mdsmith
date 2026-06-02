@@ -49,7 +49,9 @@ not test-only):
    front-matter: true) and disabled.
 3. Add `TestFirstError` to
    `pkg/mdsmith/session_api_test.go`.
-   Test nil slice, all-nil, first non-nil.
+   Test the current contract: empty
+   slice returns nil; a non-empty slice
+   returns `errs[0]`.
 4. Add `TestCloneDiagnostics` to
    `pkg/mdsmith/session_api_test.go`.
    Assert the clone is a distinct slice;
