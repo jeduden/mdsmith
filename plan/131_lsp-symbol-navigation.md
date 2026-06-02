@@ -218,7 +218,7 @@ that ignores them sees the post-plan-121 server.
 2. Add the inbound / outbound edge tables. Sources:
    anchor links, file links, `<?include?>`,
    `<?catalog?>`, `<?build?>`. Reuse
-   [`lint/pi_parser.go`](../internal/pi/pi_parser.go).
+   [`pi/pi_parser.go`](../internal/pi/pi_parser.go).
 3. Add `internal/index/locate.go` mapping a
    document URI plus position to an AST node and
    token tag. One test per tag.

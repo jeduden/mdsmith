@@ -287,7 +287,7 @@ func TestColumnOfOffset_AtNewline(t *testing.T) {
 	assert.Equal(t, 3, f.ColumnOfOffset(2))
 }
 
-// --- NewParser / PIBlockParserPrioritized forwarders ---
+// --- NewParser forwarder ---
 
 // TestNewParser_ReturnsNonNil pins the public forwarder: a rule
 // re-parsing a document (for example, to consult the link-reference
