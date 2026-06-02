@@ -66,7 +66,9 @@ template that renders one cell per peer from the rule
 README front matter. The `category: "directive"`
 section is the exception: it is mdsmith-only, a
 two-column `mdsmith | What it adds` table with no peer
-cells. There is no Go renderer.
+cells. There is no dedicated Go coverage-matrix
+generator to extend anymore; `mdsmith fix` renders
+the `<?catalog?>` blocks from these templates.
 
 Add the `newtool` column to every peer-coverage block
 (all sections except the directive one), two edits
@@ -88,6 +90,10 @@ a comma-joined entry per mapping: the peer `id`, a
 differs from the `id`, and a ` (partial)` suffix.
 Keep the new cell identical to the others so the
 legend holds.
+
+The page's `summary:` and opening paragraph name the
+peers in prose; add `newtool` to both so they match
+the columns.
 
 Step 5 regenerates the tables, and `mdsmith check`
 fails on any that drift.
