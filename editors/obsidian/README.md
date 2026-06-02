@@ -44,5 +44,5 @@ bun test
 | `runMode`    | `"onSave"` | `onType` / `onSave` / `off`      |
 | `fixOnSave`  | `false`    | Run `Fix file` after each save   |
 
-A user guide covering install and troubleshooting lands with the rest
-of plan 217's documentation task.
+See the [user guide](../../docs/guides/editors/obsidian.md) for install
+and troubleshooting.

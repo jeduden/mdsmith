@@ -226,7 +226,11 @@ the same `.md` files.
 
 Pin `convention: obsidian` (see the
 [conventions reference][conventions]) to enable both
-checks with one config line.
+checks with one config line. mdsmith also ships an
+[Obsidian plugin](../guides/editors/obsidian.md) that
+runs the engine as WebAssembly inside the vault, so the
+same checks surface as inline diagnostics on desktop and
+mobile.
 
 The wikilink check resolves `[[Page]]` against every
 workspace file by stem. Matching is case-insensitive

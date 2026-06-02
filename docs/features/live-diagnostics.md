@@ -39,4 +39,6 @@ links as a call hierarchy — also available as `mdsmith deps`.
 
 The [VS Code extension](../guides/editors/vscode.md) shows all of
 it, with fix-on-save you can opt into. The same build ships on Open
-VSX too. The Claude Code plugin feeds the same data to the agent.
+VSX too. The Claude Code plugin feeds the same data to the agent. The
+[Obsidian plugin](../guides/editors/obsidian.md) shows diagnostics and
+fixes inside the vault via a WebAssembly runtime.
