@@ -83,6 +83,7 @@ Each AST node maps to one span object:
 | AST node           | Emitted span                                  |
 | ------------------ | --------------------------------------------- |
 | text               | `{span: text, value}`                         |
+| line break         | `{span: break, hard}`                         |
 | code span          | `{span: code, value}`                         |
 | autolink (`<url>`) | `{span: autolink, value, url}`                |
 | emphasis (`*…*`)   | `{span: emphasis, level: 1, children: [...]}` |
@@ -94,6 +95,14 @@ container spans (emphasis, strong, link) carry a
 `children` list and recurse through the same mapping,
 so nesting composes uniformly. A link omits `title`
 when the Markdown link has none.
+
+A wrapped paragraph keeps its line structure: a text
+node that ends in a line break emits its text span and
+then a `break` span. `hard` is `true` for a hard break
+(a backslash or two trailing spaces before the newline)
+and `false` for a soft wrap. So `first⏎second` projects
+as `[{span: text, value: first}, {span: break, hard:
+false}, {span: text, value: second}]`.
 
 For the headline `Mark*down*, smithed.`:
 

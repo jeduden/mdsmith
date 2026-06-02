@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/text"
 )
 
 // TestInlineSpanStringNode covers the *ast.String case: typographer and
@@ -17,6 +18,26 @@ func TestInlineSpanStringNode(t *testing.T) {
 	p := &projector{f: &lint.File{Path: "headline.md"}, sch: inlineScope()}
 	got := p.inlineSpan(ast.NewString([]byte("typeset")))
 	assert.Equal(t, map[string]any{"span": "text", "value": "typeset"}, got)
+	assert.Empty(t, p.diags)
+}
+
+// TestWalkInlineChildren_TextNodeContributesTextAndBreak covers the
+// one-node-two-spans path directly: a Text child whose SoftLineBreak
+// flag is set must contribute its text span followed by a `break`
+// span, so the walker appends both rather than one.
+func TestWalkInlineChildren_TextNodeContributesTextAndBreak(t *testing.T) {
+	p := &projector{
+		f:   &lint.File{Path: "headline.md", Source: []byte("first")},
+		sch: inlineScope(),
+	}
+	parent := ast.NewParagraph()
+	txt := ast.NewTextSegment(text.NewSegment(0, 5))
+	txt.SetSoftLineBreak(true)
+	parent.AppendChild(parent, txt)
+	got := p.walkInlineChildren(parent)
+	require.Len(t, got, 2)
+	assert.Equal(t, map[string]any{"span": "text", "value": "first"}, got[0])
+	assert.Equal(t, map[string]any{"span": "break", "hard": false}, got[1])
 	assert.Empty(t, p.diags)
 }
 

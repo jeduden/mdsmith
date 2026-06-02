@@ -27,14 +27,43 @@ func (p *projector) inlineSpans(n ast.Node) []any {
 // table records a collision-style diagnostic and is skipped; because
 // Extract treats any diagnostic as a hard failure and emits nothing,
 // the partial list is never surfaced.
+//
+// A single Text node can contribute two spans: its text span, then a
+// `break` span when the node carries a soft or hard line break. The
+// break span is appended after the text span so the wrapped-line
+// structure of a paragraph survives projection.
 func (p *projector) walkInlineChildren(parent ast.Node) []any {
 	var spans []any
 	for c := parent.FirstChild(); c != nil; c = c.NextSibling() {
-		if span := p.inlineSpan(c); span != nil {
-			spans = append(spans, span)
+		span := p.inlineSpan(c)
+		if span == nil {
+			continue
+		}
+		spans = append(spans, span)
+		if br := breakSpan(c); br != nil {
+			spans = append(spans, br)
 		}
 	}
 	return spans
+}
+
+// breakSpan returns a `break` span when n is a Text node ending in a
+// soft or hard line break, and nil otherwise. `hard` is true for a
+// hard break (a backslash or two trailing spaces before the newline)
+// and false for a soft break (a plain wrapped line). Plan 212.
+func breakSpan(n ast.Node) map[string]any {
+	t, ok := n.(*ast.Text)
+	if !ok {
+		return nil
+	}
+	switch {
+	case t.HardLineBreak():
+		return map[string]any{"span": "break", "hard": true}
+	case t.SoftLineBreak():
+		return map[string]any{"span": "break", "hard": false}
+	default:
+		return nil
+	}
 }
 
 // inlineSpan maps one inline AST node to its span object per the plan

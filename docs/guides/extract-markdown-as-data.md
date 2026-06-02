@@ -203,10 +203,14 @@ recursive mode switch:
 
 Leaf spans (text, code, autolink) carry a `value`;
 container spans (emphasis, strong, link) carry
-`children`. An image, inline raw HTML, or any node
-outside that set is a hard error — the same exit code
-as a non-conformant file. The full mapping table is in
-the [extract reference][extract-inline].
+`children`. A wrapped line emits a `break` span between
+the surrounding text spans — `hard` is `true` for a
+hard break (a backslash or two trailing spaces) and
+`false` for a soft wrap — so a multi-line paragraph
+keeps its line structure. An image, inline raw HTML, or
+any node outside that set is a hard error — the same
+exit code as a non-conformant file. The full mapping
+table is in the [extract reference][extract-inline].
 
 [extract-inline]: ../reference/cli/extract.md#inline-span-projection
 

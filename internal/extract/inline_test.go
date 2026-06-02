@@ -180,6 +180,48 @@ func TestExtract_TextAndInlineCoexist(t *testing.T) {
 	assert.Equal(t, map[string]any{"span": "text", "value": "Mark"}, spans[0])
 }
 
+// TestExtract_InlineSoftBreak verifies a wrapped paragraph
+// (`first⏎second`) emits a `break` span with `hard: false` after the
+// first text node's span, so the line structure survives projection.
+func TestExtract_InlineSoftBreak(t *testing.T) {
+	got, diags := run(t, "## Headline\n\nfirst\nsecond\n", inlineScope(), nil)
+	require.Empty(t, diags)
+	spans := got.(map[string]any)["headline"].(map[string]any)["inline"].([]any)
+	require.Len(t, spans, 3)
+	assert.Equal(t, map[string]any{"span": "text", "value": "first"}, spans[0])
+	assert.Equal(t, map[string]any{"span": "break", "hard": false}, spans[1])
+	assert.Equal(t, map[string]any{"span": "text", "value": "second"}, spans[2])
+}
+
+// TestExtract_InlineHardBreak verifies a hard line break (two trailing
+// spaces before the newline) emits a `break` span with `hard: true`.
+func TestExtract_InlineHardBreak(t *testing.T) {
+	got, diags := run(t, "## Headline\n\nfirst  \nsecond\n", inlineScope(), nil)
+	require.Empty(t, diags)
+	spans := got.(map[string]any)["headline"].(map[string]any)["inline"].([]any)
+	require.Len(t, spans, 3)
+	assert.Equal(t, map[string]any{"span": "text", "value": "first"}, spans[0])
+	assert.Equal(t, map[string]any{"span": "break", "hard": true}, spans[1])
+	assert.Equal(t, map[string]any{"span": "text", "value": "second"}, spans[2])
+}
+
+// TestExtract_InlineBreakInsideContainer verifies a soft break inside
+// an emphasis span emits the `break` span among the container's
+// children, not at the top level.
+func TestExtract_InlineBreakInsideContainer(t *testing.T) {
+	got, diags := run(t, "## Headline\n\n*first\nsecond*\n", inlineScope(), nil)
+	require.Empty(t, diags)
+	spans := got.(map[string]any)["headline"].(map[string]any)["inline"].([]any)
+	require.Len(t, spans, 1)
+	em := spans[0].(map[string]any)
+	assert.Equal(t, "emphasis", em["span"])
+	assert.Equal(t, []any{
+		map[string]any{"span": "text", "value": "first"},
+		map[string]any{"span": "break", "hard": false},
+		map[string]any{"span": "text", "value": "second"},
+	}, em["children"])
+}
+
 // TestExtract_InlineBindResolvesCollision verifies a `bind:` override
 // renames an inline projection's default key, so two inline entries
 // can coexist without colliding on `inline`.

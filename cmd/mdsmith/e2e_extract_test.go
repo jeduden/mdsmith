@@ -279,3 +279,29 @@ func TestE2E_Extract_InlineUnsupportedNode(t *testing.T) {
 	assert.Contains(t, stderr, "image")
 	assert.NotContains(t, stdout, "\"inline\"")
 }
+
+// A wrapped paragraph projects a `break` span between the two text
+// runs so the line structure survives `mdsmith extract`. The plain
+// wrap is a soft break (`hard: false`).
+func TestE2E_Extract_InlineSoftBreak(t *testing.T) {
+	dir := kindsTestDir(t, inlineCfg, map[string]string{
+		"hero/page.md": "# Hero\n\n## Headline\n\nfirst\nsecond\n",
+	})
+	stdout, stderr, code := runBinaryInDir(t, dir, "",
+		"extract", "hero", "hero/page.md", "--format", "json")
+	require.Equal(t, 0, code, "stderr=%s", stderr)
+
+	var got map[string]any
+	require.NoError(t, json.Unmarshal([]byte(stdout), &got))
+	want := map[string]any{
+		"frontmatter": map[string]any{},
+		"headline": map[string]any{
+			"inline": []any{
+				map[string]any{"span": "text", "value": "first"},
+				map[string]any{"span": "break", "hard": false},
+				map[string]any{"span": "text", "value": "second"},
+			},
+		},
+	}
+	assert.Equal(t, want, got)
+}
