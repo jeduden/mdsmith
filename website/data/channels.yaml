@@ -125,3 +125,13 @@
     - editor
   url: https://open-vsx.org/extension/jeduden/mdsmith
   weight: 12
+- title: Flatpak
+  summary: A single-file `.flatpak` bundle built in CI from the x86_64 Linux release binary and attached to each GitHub release, installed by file with host filesystem access for the linter.
+  mechanism: push
+  artifact: cli
+  command: flatpak install ./mdsmith-x86_64.flatpak
+  audience: Sandboxed Linux x86_64 desktops via Flatpak
+  platforms:
+    - linux
+  url: https://github.com/jeduden/mdsmith/releases
+  weight: 13
