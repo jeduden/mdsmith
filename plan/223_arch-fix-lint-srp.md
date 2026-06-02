@@ -58,13 +58,14 @@ they answer.
 1. Create `internal/gitignore`. Move
    `gitignore.go` contents there as
    `gitignore.Matcher` / `NewMatcher`.
-   Add `TestNewMatcher` and
-   `TestMatcher_IsIgnored` unit tests
-   (plus the migrated pattern-matching
-   coverage). Update all callers.
+   Add `TestNewMatcher_*` and
+   `TestMatcher_IsIgnored_DirOnly` unit
+   tests (plus the migrated
+   pattern-matching coverage). Update all
+   callers.
 2. Create `internal/readlimit`. Move
    `limits.go` contents there. Add
-   `TestReadFileLimited` and
+   `TestReadFileLimited_*` and
    `TestDefaultMaxInputBytes` unit tests.
    Update all callers.
 3. Create `internal/pi`. Move `pi.go`
@@ -84,10 +85,10 @@ they answer.
 ## Acceptance Criteria
 
 - [x] `internal/gitignore` package exists
-  with `TestNewMatcher` and
-  `TestMatcher_IsIgnored`.
+  with `TestNewMatcher_*` and
+  `TestMatcher_IsIgnored_DirOnly`.
 - [x] `internal/readlimit` package exists
-  with `TestReadFileLimited` and
+  with `TestReadFileLimited_*` and
   `TestDefaultMaxInputBytes`.
   `ReadFileLimited`, `ReadFSFileLimited`,
   and `DefaultMaxInputBytes` removed
@@ -99,9 +100,9 @@ they answer.
   from `internal/lint`.
 - [x] `internal/lint` contains only
   `File`, `Diagnostic`, lint-local
-  helpers, and the run cache. The four
-  moved files no longer exist under
-  `internal/lint/`.
+  helpers, and the parse and run caches.
+  The four moved files no longer exist
+  under `internal/lint/`.
 - [x] `docs/development/architecture/go.md`
   lists all three new packages in the
   SRP section.

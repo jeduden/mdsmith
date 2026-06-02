@@ -1,6 +1,6 @@
 // Package pi re-exports the goldmark processing-instruction block node and
 // parser from pkg/markdown. It gives the linter's many callers (type
-// switches in schema, index, export, rename, gensection, …) a single
+// switches in schema, index, export, linkgraph, gensection, …) a single
 // internal home for the <?name ... ?> node so the public package's
 // definition lives in exactly one place.
 package pi
