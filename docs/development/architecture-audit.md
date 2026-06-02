@@ -274,9 +274,9 @@ never import `internal/lsp`.
 ## Audit 2026-05-31 (range: 4809097..37488a7)
 
 Plans 200, 201, 202 green. Tax:
-[plan/221][221] (`pkg/mdsmith` private helpers),
-[plan/222][222] (`internal/lint` SRP, now 11 concerns).
+[plan/223][223] (`pkg/mdsmith` private helpers),
+[plan/224][224] (`internal/lint` SRP, now 12 files).
 `linkstyle` helpers — add tests in-place.
 
-[221]: ../../plan/221_arch-fix-mdsmith-helper-tests.md
-[222]: ../../plan/222_arch-fix-lint-srp.md
+[223]: ../../plan/223_arch-fix-mdsmith-helper-tests.md
+[224]: ../../plan/224_arch-fix-lint-srp.md
