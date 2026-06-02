@@ -111,6 +111,37 @@ func TestFormatSnippet_SingleDigitLineNumber(t *testing.T) {
 	assert.Contains(t, output, strings.Repeat("·", 8)+"^")
 }
 
+func TestFormatSnippet_NonPositiveLineCaretMatchesHeader(t *testing.T) {
+	// A non-positive Line is a body-anchor sentinel (plan 230). The header
+	// clamps it to line 1 via DisplayLine(); the snippet caret must mark
+	// that same line rather than being silently dropped because it keyed
+	// off the raw sentinel.
+	f := &TextFormatter{Color: false}
+	var buf bytes.Buffer
+
+	diagnostics := []lint.Diagnostic{
+		{
+			File:            "doc.md",
+			Line:            0, // sentinel
+			Column:          1,
+			RuleID:          "MDS020",
+			RuleName:        "required-structure",
+			Message:         "missing required section",
+			SourceLines:     []string{"# Heading"},
+			SourceStartLine: 1,
+		},
+	}
+
+	err := f.Format(&buf, diagnostics)
+	require.NoError(t, err)
+
+	output := buf.String()
+	// Header clamps the sentinel to line 1.
+	assert.Contains(t, output, "doc.md:1:1")
+	// The caret marks that same line (gutterWidth=1, column=1, dots = 1+1+2 = 4).
+	assert.Contains(t, output, strings.Repeat("·", 4)+"^")
+}
+
 func TestFormatSnippet_TwoDigitLineNumber(t *testing.T) {
 	f := &TextFormatter{Color: false}
 	var buf bytes.Buffer

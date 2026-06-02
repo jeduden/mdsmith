@@ -48,15 +48,22 @@ type TextFormatter struct {
 // source snippet with line-number gutter and caret marker.
 func (f *TextFormatter) Format(w io.Writer, diagnostics []lint.Diagnostic) error {
 	for _, d := range diagnostics {
+		// Normalize the local copy to the user-facing line up front so the
+		// header and the snippet caret always agree on which line to mark,
+		// even when Line is a non-positive body-anchor sentinel (plan 230).
+		// DisplayLine clamps to >= 1; the engine skips snippet context for
+		// such diagnostics today, so this keeps the formatter self-consistent
+		// for any diagnostic it is handed rather than relying on that guard.
+		d.Line = d.DisplayLine()
 		safeFile := sanitizeControl(d.File)
 		safeMsg := sanitizeControl(d.Message)
 		var err error
 		if f.Color {
 			_, err = fmt.Fprintf(w, "\033[36m%s:%d:%d\033[0m \033[33m%s\033[0m %s\n",
-				safeFile, d.DisplayLine(), d.Column, d.RuleID, safeMsg)
+				safeFile, d.Line, d.Column, d.RuleID, safeMsg)
 		} else {
 			_, err = fmt.Fprintf(w, "%s:%d:%d %s %s\n",
-				safeFile, d.DisplayLine(), d.Column, d.RuleID, safeMsg)
+				safeFile, d.Line, d.Column, d.RuleID, safeMsg)
 		}
 		if err != nil {
 			return err
