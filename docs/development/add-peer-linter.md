@@ -59,21 +59,27 @@ matter into `RuleInfo`. Three edits:
 ## 3. Extend the coverage matrix
 
 The matrix lives in
-`docs/research/markdownlint-coverage/README.md` as
-one `<?catalog?>` block per rule category. Each block
-carries a `header:` table and a `row-expr:` CUE
+`docs/research/markdownlint-coverage/README.md`. Most
+sections are a `<?catalog?>` block per rule category,
+each with a `header:` table and a `row-expr:` CUE
 template that renders one cell per peer from the rule
-README front matter. There is no Go renderer.
+README front matter. The `category: "directive"`
+section is the exception: it is mdsmith-only, a
+two-column `mdsmith | What it adds` table with no peer
+cells. There is no Go renderer.
 
-Two edits add the `newtool` column to a block:
+Add the `newtool` column to every peer-coverage block
+(all sections except the directive one), two edits
+each:
 
 - Append `newtool` to the `header:` row and its
   `---` separator row.
 - Append a peer cell to `row-expr:`. Copy an existing
-  peer's cell and read the new key — `for m in
-  newtool` for a bare name, or `for m in
-  fm["newtool"]` for a hyphenated one, the way
-  `obsidian-linter` is read.
+  peer's cell and read the new key: `for m in
+  newtool` when the key is a bare identifier, or the
+  `fm["..."]` accessor when it has a hyphen — the way
+  `obsidian-linter` is read as `for m in
+  fm["obsidian-linter"]`.
 
 A peer cell renders `—` for an empty list, otherwise
 a comma-joined entry per mapping: the peer `id`, a
@@ -82,9 +88,8 @@ differs from the `id`, and a ` (partial)` suffix.
 Keep the new cell identical to the others so the
 legend holds.
 
-Every category block (one per `##` section) needs the
-same two edits. Step 5 regenerates the tables, and
-`mdsmith check` fails on any that drift.
+Step 5 regenerates the tables, and `mdsmith check`
+fails on any that drift.
 
 ## 4. Add per-rule mappings
 
