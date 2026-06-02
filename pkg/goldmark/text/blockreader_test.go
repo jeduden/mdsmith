@@ -31,7 +31,7 @@ func newTestBlockReader(src string) text.BlockReader {
 
 func TestBlockReader_LineOffset(t *testing.T) {
 	r := newTestBlockReader("    hello\nworld\n")
-	r.PeekLine()      // load the first line
+	r.PeekLine() // load the first line
 	if r.LineOffset() < 0 {
 		t.Errorf("LineOffset should be >= 0, got %d", r.LineOffset())
 	}

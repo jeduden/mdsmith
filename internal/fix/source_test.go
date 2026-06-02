@@ -12,6 +12,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/config"
 	fixpkg "github.com/jeduden/mdsmith/internal/fix"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/readlimit"
 	"github.com/jeduden/mdsmith/internal/rule"
 
 	// Register the rules we exercise in these tests.
@@ -87,7 +88,7 @@ func TestFixSourceWithRulesAppliesOnlyNamed(t *testing.T) {
 // TestFixSourceWithRulesUnlimitedMaxBytes pins the new unlimited
 // semantics: SourceOptions.MaxInputBytes <= 0 must NOT trigger the
 // 2 MB DefaultMaxInputBytes cap — it must skip the size guard
-// entirely (matching lint.ReadFileLimited / cmd resolveMaxInputBytes
+// entirely (matching readlimit.ReadFileLimited / cmd resolveMaxInputBytes
 // when the user sets `max-input-size: 0`). We use a buffer larger
 // than DefaultMaxInputBytes so a regression to the old
 // "0 means default" behavior would surface as a "file too large"
@@ -98,9 +99,9 @@ func TestFixSourceWithRulesUnlimitedMaxBytes(t *testing.T) {
 	// 3 MB of filler so the input exceeds DefaultMaxInputBytes (2 MB).
 	// The trailing-spaces rule still finds the violation on the
 	// first body line.
-	body := strings.Repeat("x", int(lint.DefaultMaxInputBytes)+1024*1024)
+	body := strings.Repeat("x", int(readlimit.DefaultMaxInputBytes)+1024*1024)
 	source := []byte(sentinel + body + "\n")
-	require.Greater(t, int64(len(source)), lint.DefaultMaxInputBytes,
+	require.Greater(t, int64(len(source)), readlimit.DefaultMaxInputBytes,
 		"source must exceed DefaultMaxInputBytes for the test to be meaningful")
 
 	out, err := fixpkg.SourceWithRules(fixpkg.SourceOptions{
@@ -119,7 +120,7 @@ func TestFixSourceWithRulesUnlimitedMaxBytes(t *testing.T) {
 }
 
 // Regression: in-memory fixes must enforce MaxInputBytes the same
-// way on-disk Fixer does via lint.ReadFileLimited.
+// way on-disk Fixer does via readlimit.ReadFileLimited.
 func TestFixSourceRejectsOversizedSource(t *testing.T) {
 	t.Parallel()
 	_, err := fixpkg.Source(fixpkg.SourceOptions{

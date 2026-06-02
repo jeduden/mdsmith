@@ -14,6 +14,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
+	"github.com/jeduden/mdsmith/internal/readlimit"
 	"github.com/jeduden/mdsmith/internal/rule"
 )
 
@@ -198,7 +199,7 @@ func orderFilesLeavesFirst(files []string, rootDir string, maxBytes int64) []str
 
 	idx := index.New(rootDir)
 	idx.BuildSerial(rels, func(rel string) ([]byte, error) {
-		return lint.ReadFileLimited(relToAbs[rel], maxBytes)
+		return readlimit.ReadFileLimited(relToAbs[rel], maxBytes)
 	})
 
 	ordered := idx.DependencyOrder(rels)

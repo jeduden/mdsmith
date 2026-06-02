@@ -12,6 +12,8 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/pi"
+	"github.com/jeduden/mdsmith/internal/readlimit"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/yuin/goldmark/ast"
 )
@@ -237,7 +239,7 @@ func (r *Rule) generateIncludeContent(
 		return "", diags
 	}
 
-	data, err := lint.ReadFSFileLimited(readFS, readPath, f.MaxInputBytes)
+	data, err := readlimit.ReadFSFileLimited(readFS, readPath, f.MaxInputBytes)
 	if err != nil {
 		return "", []lint.Diagnostic{makeDiag(filePath, line,
 			fmt.Sprintf("cannot read include file %q: %v", file, err))}
@@ -469,23 +471,23 @@ func injectSourceDir(text, sourceDir string) string {
 	var injections []injection
 
 	for n := parsed.AST.FirstChild(); n != nil; n = n.NextSibling() {
-		pi, ok := n.(*lint.ProcessingInstruction)
+		piNode, ok := n.(*pi.ProcessingInstruction)
 		if !ok {
 			continue
 		}
 		// Skip end markers (<?/name?>).
-		if strings.HasPrefix(pi.Name, "/") {
+		if strings.HasPrefix(piNode.Name, "/") {
 			continue
 		}
-		firstSeg := pi.Lines().At(0)
+		firstSeg := piNode.Lines().At(0)
 		// Skip single-line PIs (<?name ...?>).
-		if pi.HasClosure() && pi.ClosureLine.Start == firstSeg.Start {
+		if piNode.HasClosure() && piNode.ClosureLine.Start == firstSeg.Start {
 			continue
 		}
 		// Skip if source-dir is already present in the PI body.
 		already := false
-		for i := 1; i < pi.Lines().Len(); i++ {
-			seg := pi.Lines().At(i)
+		for i := 1; i < piNode.Lines().Len(); i++ {
+			seg := piNode.Lines().At(i)
 			if bytes.Contains(seg.Value(parsed.Source), sourceDirKey) {
 				already = true
 				break

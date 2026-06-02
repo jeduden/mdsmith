@@ -93,10 +93,10 @@ func TestIsTableDelim_AllBranches(t *testing.T) {
 		{"valid-simple", "---|---", true},
 		{"valid-with-colons", ":---|---:|:---:", true},
 		{"valid-with-spaces", " --- | --- ", true},
-		{"only-dashes-no-pipe", "------", false},  // allSep -> false
-		{"invalid-char", "---|--x", false},        // x is not allowed
-		{"too-indented", "    ---|---", false},    // IndentWidth > 3
-		{"empty", "", false},                      // allSep stays true on empty -> false
+		{"only-dashes-no-pipe", "------", false}, // allSep -> false
+		{"invalid-char", "---|--x", false},       // x is not allowed
+		{"too-indented", "    ---|---", false},   // IndentWidth > 3
+		{"empty", "", false},                     // allSep stays true on empty -> false
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

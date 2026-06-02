@@ -76,10 +76,10 @@ func TestATXHeading_NoSpaceAfterHash(t *testing.T) {
 func TestATXHeading_EmptyContentAndAllHashes(t *testing.T) {
 	// Drive the specific hl.Len()==0 and ### ### branches.
 	cases := []string{
-		"# \n",          // hl.Len() == 0 after trim
-		"### ###\n",     // line[0] == '#' after closing hash trim
+		"# \n",      // hl.Len() == 0 after trim
+		"### ###\n", // line[0] == '#' after closing hash trim
 		"## ###\n",
-		"# \\#\n",       // escaped hash at end
+		"# \\#\n", // escaped hash at end
 	}
 	for _, src := range cases {
 		_ = parseWithDefaults(src)
@@ -92,13 +92,13 @@ func TestATXHeading_EdgeCases(t *testing.T) {
 	// - alone '#' with no content (just space) -> empty heading
 	// - trailing closing hashes
 	cases := []string{
-		"#######  not a heading\n",  // 7 hashes = not a heading
-		"# \n",                       // empty heading content
-		"#\n",                        // bare hash
-		"# title #\n",                // trailing close hash
-		"# title  ###\n",             // multiple closing hashes
-		"# title \\#\n",              // escaped closing hash
-		"  # indented heading\n",     // 2-space leading
+		"#######  not a heading\n", // 7 hashes = not a heading
+		"# \n",                     // empty heading content
+		"#\n",                      // bare hash
+		"# title #\n",              // trailing close hash
+		"# title  ###\n",           // multiple closing hashes
+		"# title \\#\n",            // escaped closing hash
+		"  # indented heading\n",   // 2-space leading
 	}
 	for _, src := range cases {
 		_ = parseWithDefaults(src)
@@ -122,10 +122,10 @@ func TestCodeBlock_TabIndentedBody(t *testing.T) {
 	// space-then-tab where the space counts as padding 1 and the
 	// tab fills the rest of the 4-column indent.
 	cases := []string{
-		" \tafter-space-tab\n",                    // 1 space + tab -> tab inside padding
-		"  \tafter-2spaces-tab\n",                 // 2 spaces + tab
-		"   \tafter-3spaces-tab\n",                // 3 spaces + tab
-		"\tplain-tab\n\tsecond tab line\n",        // pure tab
+		" \tafter-space-tab\n",             // 1 space + tab -> tab inside padding
+		"  \tafter-2spaces-tab\n",          // 2 spaces + tab
+		"   \tafter-3spaces-tab\n",         // 3 spaces + tab
+		"\tplain-tab\n\tsecond tab line\n", // pure tab
 	}
 	for _, src := range cases {
 		_ = parseWithDefaults(src)

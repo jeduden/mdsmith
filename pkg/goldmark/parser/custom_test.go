@@ -23,7 +23,7 @@ type recordingInlineParser struct {
 	setOptionCalls int
 }
 
-func (p *recordingInlineParser) Trigger() []byte                       { return []byte{'^'} }
+func (p *recordingInlineParser) Trigger() []byte { return []byte{'^'} }
 func (p *recordingInlineParser) Parse(parent ast.Node, block text.Reader, pc parser.Context) ast.Node {
 	return nil
 }
@@ -60,8 +60,8 @@ func (b *recordingBlockParser) Continue(node ast.Node, reader text.Reader, pc pa
 	return parser.Close
 }
 func (b *recordingBlockParser) Close(node ast.Node, reader text.Reader, pc parser.Context) {}
-func (b *recordingBlockParser) CanInterruptParagraph() bool                                 { return false }
-func (b *recordingBlockParser) CanAcceptIndentedLine() bool                                 { return false }
+func (b *recordingBlockParser) CanInterruptParagraph() bool                                { return false }
+func (b *recordingBlockParser) CanAcceptIndentedLine() bool                                { return false }
 func (b *recordingBlockParser) SetOption(name parser.OptionName, _ any) {
 	if name == customOptName {
 		b.setOptionCalls++

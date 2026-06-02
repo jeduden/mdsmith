@@ -12,6 +12,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/kindsout"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/readlimit"
 )
 
 const kindsUsage = `Usage: mdsmith kinds <subcommand> [args]
@@ -257,7 +258,7 @@ func runKindsPath(stdout io.Writer, args []string) int {
 // path's leniency for FM YAML errors that decode would otherwise
 // surface.
 func readFrontMatter(cfg *config.Config, path string, maxBytes int64) ([]string, map[string]any, error) {
-	data, err := lint.ReadFileLimited(path, maxBytes)
+	data, err := readlimit.ReadFileLimited(path, maxBytes)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -317,7 +318,7 @@ func resolveFileFromCLI(path string) (*config.FileResolution, *config.Config, in
 			fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 			return nil, nil, 2
 		}
-		if _, err := lint.ReadFileLimited(path, maxBytes); err != nil {
+		if _, err := readlimit.ReadFileLimited(path, maxBytes); err != nil {
 			fmt.Fprintf(os.Stderr, "mdsmith: reading %s: %v\n", path, err)
 			return nil, nil, 2
 		}

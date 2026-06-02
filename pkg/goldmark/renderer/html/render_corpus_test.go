@@ -19,11 +19,11 @@ import (
 
 func TestRenderCorpus_AllNodeTypes(t *testing.T) {
 	cases := []struct {
-		name   string
-		src    string
-		want   []string
-		opts   []renderer.Option
-		exts   []goldmark.Extender
+		name string
+		src  string
+		want []string
+		opts []renderer.Option
+		exts []goldmark.Extender
 	}{
 		// Block-level renderers.
 		{name: "Heading", src: "# H1\n## H2\n### H3\n#### H4\n##### H5\n###### H6\n",

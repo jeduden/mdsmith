@@ -13,6 +13,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/directives"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/pi"
 	"github.com/jeduden/mdsmith/internal/rules"
 )
 
@@ -223,22 +224,22 @@ func directiveHoverAt(source []byte, pos Position) *hoverResult {
 		if !entering || result != nil {
 			return ast.WalkContinue, nil
 		}
-		pi, ok := n.(*lint.ProcessingInstruction)
+		piNode, ok := n.(*pi.ProcessingInstruction)
 		if !ok {
 			return ast.WalkContinue, nil
 		}
 
-		openSeg := pi.Lines().At(0)
+		openSeg := piNode.Lines().At(0)
 		openContent := source[openSeg.Start:openSeg.Stop]
 		// startChar is the column of <? (indent may be 0–3 spaces per grammar).
 		startChar := len(openContent) - len(bytes.TrimLeft(openContent, " "))
 		startLine := f.LineOfOffset(openSeg.Start) - 1 // 0-based
 
 		var endLine int
-		if pi.HasClosure() {
-			endLine = f.LineOfOffset(pi.ClosureLine.Start) - 1
+		if piNode.HasClosure() {
+			endLine = f.LineOfOffset(piNode.ClosureLine.Start) - 1
 		} else {
-			endLine = f.LineOfOffset(pi.Lines().At(pi.Lines().Len()-1).Start) - 1
+			endLine = f.LineOfOffset(piNode.Lines().At(piNode.Lines().Len()-1).Start) - 1
 		}
 
 		if pos.Line < startLine || pos.Line > endLine {
@@ -257,7 +258,7 @@ func directiveHoverAt(source []byte, pos Position) *hoverResult {
 			}
 		}
 
-		docContent, ok := directiveDocFor(pi.Name)
+		docContent, ok := directiveDocFor(piNode.Name)
 		if !ok {
 			// Cursor is inside the block but no docs registered; stop
 			// searching (no point checking other nodes at the same position).

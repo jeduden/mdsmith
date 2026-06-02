@@ -22,51 +22,41 @@ modes to check Go changes against it.
 Each `internal/` package answers one
 question. The current production set:
 
-- `internal/config` — load and merge
-  `.mdsmith.yml` across defaults, kinds,
-  and overrides.
-- `internal/engine` — orchestrate rules
-  over files; owns the run loop.
-- `internal/lint` — run rule checks
-  against a parsed file.
-- `internal/fix` — produce edits that
-  make a file stop violating rules.
-- `internal/linkgraph` — the canonical
-  Markdown link / directive / reference
-  extractor. MDS027, the `mdsmith list
-  backlinks` CLI, and the workspace
-  symbol index (`internal/index`) all
-  consult it so anchor normalisation,
-  workspace-relative path resolution,
-  and catalog-glob handling stay
-  consistent across surfaces. The
-  per-file extractor is pure (no file
-  reads, no workspace walks) so callers
-  can fan it out across goroutines.
-- `internal/index` — the workspace
-  symbol / edge graph (headings,
-  link-ref defs, directives,
-  front-matter keys, reverse edges);
-  queried by the LSP, schema, and the
-  rename / deps surfaces.
+- `internal/config` — load and merge `.mdsmith.yml` across defaults,
+  kinds, and overrides.
+- `internal/engine` — orchestrate rules over files; owns the run loop.
+- `internal/lint` — run rule checks against a parsed file.
+- `internal/gitignore` — answer "is this path ignored by .gitignore?";
+  collects per-directory and ancestor rules. Split out of `internal/lint`.
+- `internal/readlimit` — read a file up to a byte cap (`ReadFileLimited`,
+  `ReadFSFileLimited`, `DefaultMaxInputBytes`); a general I/O guard split
+  out of `internal/lint`.
+- `internal/pi` — the goldmark processing-instruction (`<?…?>`) block
+  node and parser, re-exported from `pkg/markdown` for the linter's type
+  switches. Split out of `internal/lint`.
+- `internal/fix` — produce edits that make a file stop violating rules.
+- `internal/linkgraph` — the canonical Markdown link / directive /
+  reference extractor. MDS027, the `mdsmith list backlinks` CLI, and the
+  workspace symbol index (`internal/index`) all consult it so anchor
+  normalisation, workspace-relative path resolution, and catalog-glob
+  handling stay consistent across surfaces. The per-file extractor is pure
+  (no file reads, no workspace walks) so callers can fan it out across
+  goroutines.
+- `internal/index` — the workspace symbol / edge graph (headings, link-ref
+  defs, directives, front-matter keys, reverse edges); queried by the LSP,
+  schema, and the rename / deps surfaces.
 - `internal/lsp` — LSP server (top layer).
-- `pkg/markdown` — the one goldmark
-  parse/produce surface (CommonMark+PI);
-  `pkg/markdown/flavor` adds extensions.
-  Public; see [Public Markdown Library](../markdown-library.md).
-- `internal/mdtext` — walk an
-  already-parsed AST (slugging, TOC,
-  plain-text). `pkg/markdown` produces
-  the node it walks.
-- `internal/punkt` — sentence segmenter
-  (vendored Punkt); only `internal/mdtext` imports it.
+- `pkg/markdown` — the one goldmark parse/produce surface (CommonMark+PI);
+  `pkg/markdown/flavor` adds extensions. Public; see
+  [Public Markdown Library](../markdown-library.md).
+- `internal/mdtext` — walk an already-parsed AST (slugging, TOC,
+  plain-text). `pkg/markdown` produces the node it walks.
+- `internal/punkt` — sentence segmenter (vendored Punkt); only
+  `internal/mdtext` imports it.
 - `internal/rule` — Rule and FixableRule ports.
-- `internal/rules/<rule-name>/` — one Go
-  rule per package, e.g.
-  `internal/rules/linelength/`. Docs and
-  fixtures live alongside in
-  `internal/rules/MDS###-<rule-name>/`
-  (e.g.
+- `internal/rules/<rule-name>/` — one Go rule per package, e.g.
+  `internal/rules/linelength/`. Docs and fixtures live alongside in
+  `internal/rules/MDS###-<rule-name>/` (e.g.
   `internal/rules/MDS001-line-length/`).
 
 The names answer the question the package

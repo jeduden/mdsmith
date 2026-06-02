@@ -322,8 +322,8 @@ func TestCorpus_CRLFLineEndings(t *testing.T) {
 	// Drive the \\r\\n line-break branches in parseBlock.
 	cases := []string{
 		"line one\r\nline two\r\n",
-		"text  \r\nhard break\r\n",                          // [space][space]\r\n
-		"text\\\r\nbackslash break\r\n",                     // \\\r\n
+		"text  \r\nhard break\r\n",      // [space][space]\r\n
+		"text\\\r\nbackslash break\r\n", // \\\r\n
 	}
 	md := goldmark.New()
 	for i, src := range cases {

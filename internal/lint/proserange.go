@@ -1,6 +1,9 @@
 package lint
 
-import "github.com/yuin/goldmark/ast"
+import (
+	"github.com/jeduden/mdsmith/internal/pi"
+	"github.com/yuin/goldmark/ast"
+)
 
 // Range is a half-open byte range [Start, End) into File.Source.
 type Range struct{ Start, End int }
@@ -79,7 +82,7 @@ func collectProseRanges(root ast.Node) []Range {
 func collectProseRangesInto(n ast.Node, out *[]Range) {
 	switch t := n.(type) {
 	case *ast.FencedCodeBlock, *ast.CodeBlock, *ast.HTMLBlock,
-		*ast.CodeSpan, *ast.AutoLink, *ast.RawHTML, *ProcessingInstruction:
+		*ast.CodeSpan, *ast.AutoLink, *ast.RawHTML, *pi.ProcessingInstruction:
 		return
 	case *ast.Text:
 		seg := t.Segment

@@ -28,6 +28,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/readlimit"
 	"github.com/jeduden/mdsmith/internal/rule"
 
 	// Register the production rule set so rule.All() returns what an
@@ -3058,7 +3059,7 @@ func TestResolveMaxInputBytesSurfacesParseError(t *testing.T) {
 
 	got := s.resolveMaxInputBytes(cfg)
 
-	assert.Equal(t, lint.DefaultMaxInputBytes, got, "parse failure must fall back to the default")
+	assert.Equal(t, readlimit.DefaultMaxInputBytes, got, "parse failure must fall back to the default")
 	out := buf.String()
 	assert.Contains(t, out, `"window/logMessage"`)
 	assert.Contains(t, out, "invalid max-input-size")
@@ -3126,9 +3127,9 @@ func TestRunLintSurfacesRunnerErrorsViaLogMessage(t *testing.T) {
 		text: []byte("# H\n\nthis is well past sixteen bytes of body content\n"),
 	})
 	// Default MaxInputBytes (2 MiB) is too generous to trip the
-	// guard; runLint's runner pins to lint.DefaultMaxInputBytes,
+	// guard; runLint's runner pins to readlimit.DefaultMaxInputBytes,
 	// so we exercise the path by sending a buffer larger than 2 MiB.
-	bigSize := lint.DefaultMaxInputBytes + 1
+	bigSize := readlimit.DefaultMaxInputBytes + 1
 	s.docs.set("file:///x/huge.md", &document{
 		uri:  "file:///x/huge.md",
 		path: "x/huge.md",

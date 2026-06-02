@@ -298,7 +298,6 @@ func TestReferenceLink_Construct(t *testing.T) {
 	}
 }
 
-
 func TestDocument_OwnerDocument(t *testing.T) {
 	doc := ast.NewDocument()
 	if doc.OwnerDocument() != doc {

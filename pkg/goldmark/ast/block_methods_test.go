@@ -86,7 +86,7 @@ func TestDocument_AddMeta_EmptyMap(t *testing.T) {
 	// AddMeta on a Document with an existing non-nil meta map
 	// drives the n.meta != nil branch (skip allocation).
 	doc := ast.NewDocument()
-	doc.AddMeta("first", 1) // allocates
+	doc.AddMeta("first", 1)  // allocates
 	doc.AddMeta("second", 2) // existing map
 	if doc.Meta()["second"] != 2 {
 		t.Error("second AddMeta call should not lose the value")

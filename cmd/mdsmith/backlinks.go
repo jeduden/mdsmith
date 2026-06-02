@@ -17,6 +17,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/globpath"
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/readlimit"
 )
 
 // backlinkRecord is one incoming link to the queried target.
@@ -306,7 +307,7 @@ func extractBacklinksFromSource(
 	maxBytes int64, stripFrontMatter bool,
 	index *linkgraph.WikilinkIndex,
 ) ([]backlinkRecord, error) {
-	data, err := lint.ReadFileLimited(src, maxBytes)
+	data, err := readlimit.ReadFileLimited(src, maxBytes)
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", srcRel, err)
 	}

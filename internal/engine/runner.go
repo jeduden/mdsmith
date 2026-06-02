@@ -15,8 +15,10 @@ import (
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/explain"
+	"github.com/jeduden/mdsmith/internal/gitignore"
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
+	"github.com/jeduden/mdsmith/internal/readlimit"
 	"github.com/jeduden/mdsmith/internal/rule"
 )
 
@@ -79,7 +81,7 @@ type Runner struct {
 	// because Run lints files on multiple goroutines and the
 	// GitignoreFunc closure each file carries reaches back into the
 	// shared cache lazily during rule execution.
-	gitignoreCache map[string]*lint.GitignoreMatcher
+	gitignoreCache map[string]*gitignore.Matcher
 	gitignoreMu    sync.Mutex
 	// RunCache is the engine-owned read cache shared by every File
 	// processed in one Run / RunSource pass. The catalog rule reads
@@ -321,7 +323,7 @@ func (r *Runner) lintFile(path string, rules []rule.Rule, intraFileCap int, cach
 	}
 	flog.Printf("file: %s", path)
 
-	source, err := lint.ReadFileLimited(path, r.MaxInputBytes)
+	source, err := readlimit.ReadFileLimited(path, r.MaxInputBytes)
 	if err != nil {
 		return fileOutcome{errs: []error{fmt.Errorf("reading %q: %w", path, err)}}
 	}
@@ -340,7 +342,7 @@ func (r *Runner) lintFile(path string, rules []rule.Rule, intraFileCap int, cach
 		gitignoreDir = r.RootDir
 	}
 	gd := gitignoreDir // capture for closure
-	f.GitignoreFunc = func() *lint.GitignoreMatcher {
+	f.GitignoreFunc = func() *gitignore.Matcher {
 		return r.cachedGitignore(gd)
 	}
 
@@ -464,7 +466,7 @@ func (r *Runner) runSource(path string, source []byte, version int, useParseCach
 	// any individual file's size.
 	r.runConfigTargetRules(res)
 
-	// Mirror the on-disk size cap that lint.ReadFileLimited /
+	// Mirror the on-disk size cap that readlimit.ReadFileLimited /
 	// readStdinLimited apply to file and stdin reads. Without this
 	// guard, in-memory callers (LSP, other integrations) would parse
 	// arbitrarily large buffers and diverge from `mdsmith check`'s
@@ -472,7 +474,7 @@ func (r *Runner) runSource(path string, source []byte, version int, useParseCach
 	if r.MaxInputBytes > 0 && r.MaxInputBytes != math.MaxInt64 &&
 		int64(len(source)) > r.MaxInputBytes {
 		// Match the on-disk error shape — processFile wraps
-		// lint.ReadFileLimited's "file too large" via
+		// readlimit.ReadFileLimited's "file too large" via
 		// `reading %q: %w`, so editor / log output stays
 		// uniform whether the source came from stdin, an LSP
 		// buffer, or a real file on disk.
@@ -562,7 +564,7 @@ func (r *Runner) populateFileFields(f *lint.File, path string) {
 	}
 	if gitignoreDir != "" {
 		gd := gitignoreDir
-		f.GitignoreFunc = func() *lint.GitignoreMatcher {
+		f.GitignoreFunc = func() *gitignore.Matcher {
 			return r.cachedGitignore(gd)
 		}
 	}
@@ -695,11 +697,11 @@ func (r *Runner) runCacheForCall() *lint.RunCache {
 // creating and caching it on first use to avoid re-walking the filesystem.
 // The cache key is normalized to an absolute path so equivalent paths
 // (e.g. "sub" vs "./sub") share the same entry.
-func (r *Runner) cachedGitignore(dir string) *lint.GitignoreMatcher {
+func (r *Runner) cachedGitignore(dir string) *gitignore.Matcher {
 	r.gitignoreMu.Lock()
 	defer r.gitignoreMu.Unlock()
 	if r.gitignoreCache == nil {
-		r.gitignoreCache = make(map[string]*lint.GitignoreMatcher)
+		r.gitignoreCache = make(map[string]*gitignore.Matcher)
 	}
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
@@ -708,7 +710,7 @@ func (r *Runner) cachedGitignore(dir string) *lint.GitignoreMatcher {
 	if m, ok := r.gitignoreCache[absDir]; ok {
 		return m
 	}
-	m := lint.NewGitignoreMatcher(absDir)
+	m := gitignore.NewMatcher(absDir)
 	r.gitignoreCache[absDir] = m
 	return m
 }

@@ -11,8 +11,8 @@ import (
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	fixpkg "github.com/jeduden/mdsmith/internal/fix"
 	"github.com/jeduden/mdsmith/internal/githooks"
-	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
+	"github.com/jeduden/mdsmith/internal/readlimit"
 	"github.com/jeduden/mdsmith/internal/rule"
 )
 
@@ -136,7 +136,7 @@ var osWriteFile = os.WriteFile
 
 // readFileLimited is a variable so tests can substitute a failing
 // implementation to exercise the read-fixed-file error path in readAndRestore.
-var readFileLimited = lint.ReadFileLimited
+var readFileLimited = readlimit.ReadFileLimited
 
 // fixFileInPlaceFn is a variable so tests can substitute a failing
 // implementation to exercise the fix-failed error path in fixAtRealPath.
@@ -180,7 +180,7 @@ func mergeAndClean(base, ours, theirs string, maxBytes int64) ([]byte, int) {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return nil, 2
 	}
-	content, err := lint.ReadFileLimited(ours, maxBytes)
+	content, err := readlimit.ReadFileLimited(ours, maxBytes)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: reading merge result: %v\n", err)
 		return nil, 2
@@ -271,7 +271,7 @@ func fixAtRealPath(cleaned []byte, ours, pathname string, maxBytes int64) ([]byt
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return nil, 2
 	}
-	backup, backupErr := lint.ReadFileLimited(pathname, maxBytes)
+	backup, backupErr := readlimit.ReadFileLimited(pathname, maxBytes)
 	if backupErr != nil && !os.IsNotExist(backupErr) {
 		fmt.Fprintf(os.Stderr, "mdsmith: reading %s for backup: %v\n", pathname, backupErr)
 		return nil, 2

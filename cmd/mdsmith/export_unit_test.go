@@ -11,7 +11,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/export"
-	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/readlimit"
 	"github.com/jeduden/mdsmith/internal/rule"
 
 	// Make sure the production directive rules are registered for
@@ -150,7 +150,7 @@ func TestPrepareExportFile_BasicWiring(t *testing.T) {
 	path := filepath.Join(dir, "doc.md")
 	require.NoError(t, os.WriteFile(path, []byte(src), 0644))
 
-	f, rules, err := prepareExportFile(path, []byte(src), minimalConfig(), "", lint.DefaultMaxInputBytes)
+	f, rules, err := prepareExportFile(path, []byte(src), minimalConfig(), "", readlimit.DefaultMaxInputBytes)
 	require.NoError(t, err)
 
 	require.NotNil(t, f.FS, "FS should be wired so include/catalog can read siblings")
@@ -187,7 +187,7 @@ func TestPrepareExportFile_InvalidFrontMatterKinds_ReturnsError(t *testing.T) {
 	path := filepath.Join(dir, "doc.md")
 	require.NoError(t, os.WriteFile(path, []byte(src), 0644))
 
-	_, _, err := prepareExportFile(path, []byte(src), minimalConfig(), "", lint.DefaultMaxInputBytes)
+	_, _, err := prepareExportFile(path, []byte(src), minimalConfig(), "", readlimit.DefaultMaxInputBytes)
 	require.Error(t, err)
 	assert.True(t,
 		strings.Contains(err.Error(), "kinds") ||
@@ -251,7 +251,7 @@ func TestPrepareExportFile_ConfigureRuleError_BubblesUp(t *testing.T) {
 	require.NoError(t, os.WriteFile(srcPath, []byte("# Hi\n"), 0644))
 	src := []byte("# Hi\n")
 
-	_, _, err = prepareExportFile(srcPath, src, cfg, cfgPath, lint.DefaultMaxInputBytes)
+	_, _, err = prepareExportFile(srcPath, src, cfg, cfgPath, readlimit.DefaultMaxInputBytes)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "emphasis-style")
 }
@@ -267,7 +267,7 @@ func TestConfiguredEnabledRules_OmitsRulesAbsentFromEffective(t *testing.T) {
 
 func TestDoExport_ReadError_ExitsTwo(t *testing.T) {
 	// doExport is called via runExport; the file does not exist, so
-	// lint.ReadFileLimited fails and the CLI exits 2 with a message
+	// readlimit.ReadFileLimited fails and the CLI exits 2 with a message
 	// on stderr.
 	missing := filepath.Join(t.TempDir(), "nope.md")
 	stderr := captureStderr(func() {
@@ -465,7 +465,7 @@ func TestPrepareExportFile_NoCfgPath_UsesDocDirForGitignore(t *testing.T) {
 	path := filepath.Join(dir, "doc.md")
 	require.NoError(t, os.WriteFile(path, []byte(src), 0644))
 
-	f, _, err := prepareExportFile(path, []byte(src), minimalConfig(), "", lint.DefaultMaxInputBytes)
+	f, _, err := prepareExportFile(path, []byte(src), minimalConfig(), "", readlimit.DefaultMaxInputBytes)
 	require.NoError(t, err)
 	// Calling GetGitignore should invoke the closure on line 153-155
 	// and return a matcher anchored at the doc's parent dir.
@@ -485,7 +485,7 @@ func TestPrepareExportFile_WithCfgPath_UsesProjectRootForGitignore(t *testing.T)
 	path := filepath.Join(dir, "doc.md")
 	require.NoError(t, os.WriteFile(path, []byte(src), 0644))
 
-	f, _, err := prepareExportFile(path, []byte(src), minimalConfig(), cfgPath, lint.DefaultMaxInputBytes)
+	f, _, err := prepareExportFile(path, []byte(src), minimalConfig(), cfgPath, readlimit.DefaultMaxInputBytes)
 	require.NoError(t, err)
 	matcher := f.GetGitignore()
 	require.NotNil(t, matcher)

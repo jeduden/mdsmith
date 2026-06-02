@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
+	"github.com/jeduden/mdsmith/internal/gitignore"
 )
 
 // isMarkdown returns true if the file extension is .md or .markdown.
@@ -451,9 +452,9 @@ func addDirFiles(dir string, opts ResolveOpts, addFile func(string)) error {
 // Lstat-based, so symlinked directories encountered during the walk are
 // never descended into either way.
 func walkDir(dir string, useGitignore, followSymlinks bool) ([]string, error) {
-	var matcher *GitignoreMatcher
+	var matcher *gitignore.Matcher
 	if useGitignore {
-		matcher = NewGitignoreMatcher(dir)
+		matcher = gitignore.NewMatcher(dir)
 	}
 
 	var files []string
@@ -509,7 +510,7 @@ func walkDir(dir string, useGitignore, followSymlinks bool) ([]string, error) {
 }
 
 // isGitignored checks if a path is ignored by gitignore rules.
-func isGitignored(matcher *GitignoreMatcher, path string, isDir bool) bool {
+func isGitignored(matcher *gitignore.Matcher, path string, isDir bool) bool {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return false

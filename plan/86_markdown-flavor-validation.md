@@ -66,8 +66,8 @@ custom detection-only extensions (~1250 LOC total with
 tests) cover the rest. All 12 features detected via
 AST -- no regex fallback. Each custom extension
 follows the PI block parser pattern
-([internal/lint/pi_parser.go](../internal/lint/pi_parser.go),
-[internal/lint/pi.go](../internal/lint/pi.go)).
+([internal/pi/pi_parser.go](../internal/pi/pi_parser.go),
+[internal/pi/pi.go](../internal/pi/pi.go)).
 
 ## Design
 

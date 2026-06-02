@@ -49,12 +49,12 @@ func TestParseAttributes_ValueShapes(t *testing.T) {
 
 func TestParseAttributes_Malformed(t *testing.T) {
 	cases := []string{
-		`{=v}`,        // empty key
-		`{k=}`,        // empty value
-		`{k="unclos`,  // unclosed double-quoted
-		`{k='unclos`,  // unclosed single-quoted
-		`{k=[1, 2`,    // unclosed array
-		`{`,           // bare opener
+		`{=v}`,       // empty key
+		`{k=}`,       // empty value
+		`{k="unclos`, // unclosed double-quoted
+		`{k='unclos`, // unclosed single-quoted
+		`{k=[1, 2`,   // unclosed array
+		`{`,          // bare opener
 	}
 	for _, src := range cases {
 		t.Run(src, func(t *testing.T) {

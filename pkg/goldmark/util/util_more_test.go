@@ -70,12 +70,12 @@ func TestURLEscape_TruncatedMultiByteAtEnd(t *testing.T) {
 	// continuation triggers this.  Single-byte inputs of a
 	// 2/3/4-byte leader also drive the u8len-adjusted-to-0 branch.
 	cases := [][]byte{
-		{0xF0, 0x9F},               // 4-byte truncated to 2
-		{0xF0, 0x9F, 0x98},         // 4-byte truncated to 3
-		{0xE0, 0xA4},               // 3-byte truncated
-		{0xC2},                     // 2-byte leader alone -> u8len becomes 0
-		{0xE0},                     // 3-byte leader alone
-		{0xF0},                     // 4-byte leader alone
+		{0xF0, 0x9F},       // 4-byte truncated to 2
+		{0xF0, 0x9F, 0x98}, // 4-byte truncated to 3
+		{0xE0, 0xA4},       // 3-byte truncated
+		{0xC2},             // 2-byte leader alone -> u8len becomes 0
+		{0xE0},             // 3-byte leader alone
+		{0xF0},             // 4-byte leader alone
 	}
 	for _, c := range cases {
 		_ = util.URLEscape(c, false)
@@ -88,11 +88,11 @@ func TestURLEscape_EdgeBytes(t *testing.T) {
 	// already-percent-escaped passthrough, trailing-only chars.
 	cases := []string{
 		"already%20escaped",
-		string([]byte{0xC2, 'a', 0xC3}),                // truncated multi-byte at end
-		string([]byte{0xFF, 'x'}),                       // invalid leading byte
-		string([]byte{0xC2, 0xA0}),                      // 2-byte UTF-8 (NBSP)
-		string([]byte{0xE0, 0xA4, 0xB9}),                // 3-byte UTF-8
-		string([]byte{0xF0, 0x9F, 0x98, 0x80}),          // 4-byte UTF-8 emoji
+		string([]byte{0xC2, 'a', 0xC3}),        // truncated multi-byte at end
+		string([]byte{0xFF, 'x'}),              // invalid leading byte
+		string([]byte{0xC2, 0xA0}),             // 2-byte UTF-8 (NBSP)
+		string([]byte{0xE0, 0xA4, 0xB9}),       // 3-byte UTF-8
+		string([]byte{0xF0, 0x9F, 0x98, 0x80}), // 4-byte UTF-8 emoji
 		"plain text",
 		"",
 	}
@@ -109,10 +109,10 @@ func TestDoFullUnicodeCaseFolding(t *testing.T) {
 		{"ABC", "abc"},
 		{"hello", "hello"},
 		{"ß", "ss"},
-		{"Ⓜ", "ⓜ"},                                  // Circled Latin Capital M to small
-		{"AÉ", "aé"},                                // mix ASCII + accented
+		{"Ⓜ", "ⓜ"},   // Circled Latin Capital M to small
+		{"AÉ", "aé"}, // mix ASCII + accented
 		{string([]byte{0xFF, 0xFE}), string([]byte{0xFF, 0xFE})}, // invalid UTF-8 -> RuneError skipped
-		{string([]byte{'A', 0x80, 'B'}), "a\x80b"},  // continuation byte mid-stream
+		{string([]byte{'A', 0x80, 'B'}), "a\x80b"},               // continuation byte mid-stream
 	}
 	for _, c := range cases {
 		got := string(util.DoFullUnicodeCaseFolding([]byte(c.in)))
@@ -133,8 +133,8 @@ func TestResolveEntityNames(t *testing.T) {
 		{"&copy;", "©"},
 		{"plain text", "plain text"},
 		{"&unknownentity;", "&unknownentity;"}, // unchanged when unknown
-		{"&", "&"},                              // bare ampersand
-		{"&amp", "&amp"},                        // unterminated
+		{"&", "&"},                             // bare ampersand
+		{"&amp", "&amp"},                       // unterminated
 	}
 	for _, c := range cases {
 		got := string(util.ResolveEntityNames([]byte(c.in)))

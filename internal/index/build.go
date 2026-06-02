@@ -10,6 +10,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
+	"github.com/jeduden/mdsmith/internal/pi"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
@@ -521,18 +522,18 @@ func collectLinkRefDefs(filePath string, ctx parser.Context, body []byte, lines 
 func collectDirectives(filePath string, root ast.Node, source []byte, fmOffset int) []Symbol {
 	var out []Symbol
 	for n := root.FirstChild(); n != nil; n = n.NextSibling() {
-		pi, ok := n.(*lint.ProcessingInstruction)
+		piNode, ok := n.(*pi.ProcessingInstruction)
 		if !ok {
 			continue
 		}
-		if strings.HasPrefix(pi.Name, "/") {
+		if strings.HasPrefix(piNode.Name, "/") {
 			continue
 		}
-		startLine, endLine := piLineRange(pi, source, fmOffset)
+		startLine, endLine := piLineRange(piNode, source, fmOffset)
 		out = append(out, Symbol{
 			File:          filePath,
 			Kind:          SymbolDirective,
-			Name:          pi.Name,
+			Name:          piNode.Name,
 			StartLine:     startLine,
 			EndLine:       endLine,
 			SelectionLine: startLine,
@@ -549,12 +550,12 @@ func collectDirectives(filePath string, root ast.Node, source []byte, fmOffset i
 // gives the end; goldmark emits HasClosure() == true for every
 // well-formed PI, so the branch where Lines() spans multiple
 // segments without a closure is unreachable in practice.
-func piLineRange(pi *lint.ProcessingInstruction, source []byte, fmOffset int) (int, int) {
-	startSeg := pi.Lines().At(0)
+func piLineRange(piNode *pi.ProcessingInstruction, source []byte, fmOffset int) (int, int) {
+	startSeg := piNode.Lines().At(0)
 	startLine := lineOfOffset(source, startSeg.Start) + fmOffset
 	endLine := startLine
-	if pi.HasClosure() && pi.ClosureLine.Start > startSeg.Start {
-		endLine = lineOfOffset(source, pi.ClosureLine.Start) + fmOffset
+	if piNode.HasClosure() && piNode.ClosureLine.Start > startSeg.Start {
+		endLine = lineOfOffset(source, piNode.ClosureLine.Start) + fmOffset
 	}
 	return startLine, endLine
 }

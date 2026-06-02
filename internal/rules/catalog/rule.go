@@ -14,9 +14,11 @@ import (
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/cuetemplate"
 	"github.com/jeduden/mdsmith/internal/fieldinterp"
+	"github.com/jeduden/mdsmith/internal/gitignore"
 	"github.com/jeduden/mdsmith/internal/globpath"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/query"
+	"github.com/jeduden/mdsmith/internal/readlimit"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
 	"github.com/jeduden/mdsmith/internal/rules/tablefmt"
@@ -855,7 +857,7 @@ func resolveGlobMatchesFrom(res globResolution, f *lint.File, params map[string]
 // filtering, or nil when gitignore filtering is disabled or no matcher
 // is available. The absolute base directory matched paths are anchored
 // to is supplied separately by resolveGlobFS as part of globResolution.
-func resolveGitignoreMatcher(f *lint.File, params map[string]string) *lint.GitignoreMatcher {
+func resolveGitignoreMatcher(f *lint.File, params map[string]string) *gitignore.Matcher {
 	if params["gitignore"] == "false" {
 		return nil
 	}
@@ -1122,7 +1124,7 @@ func absMatchedPath(res globResolution, m string) (string, bool) {
 // Reached during Check via cachedFrontMatter so directives that glob
 // overlapping sets do not each re-read the same matched file.
 func readFrontMatter(fsys fs.FS, path string, maxBytes int64) (map[string]any, error) {
-	data, err := lint.ReadFSFileLimited(fsys, path, maxBytes)
+	data, err := readlimit.ReadFSFileLimited(fsys, path, maxBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -1322,7 +1324,7 @@ func includeTargetsOf(
 // lint.NewFile never returns an error (its signature is legacy), so
 // the parse is unwrapped — there is no error path to guard.
 func scanIncludeTargets(fsys fs.FS, filePath string, maxBytes int64) []string {
-	data, err := lint.ReadFSFileLimited(fsys, filePath, maxBytes)
+	data, err := readlimit.ReadFSFileLimited(fsys, filePath, maxBytes)
 	if err != nil {
 		return nil
 	}
@@ -1469,7 +1471,7 @@ func isExcluded(filePath string, patterns []string) bool {
 // base is the pre-computed absolute path of that directory. To match
 // gitignore semantics for directory-only patterns (e.g. "ignored/"),
 // ancestor directories are also checked with isDir=true.
-func isGitignored(matcher *lint.GitignoreMatcher, base, matchedPath string) bool {
+func isGitignored(matcher *gitignore.Matcher, base, matchedPath string) bool {
 	abs := filepath.Join(base, matchedPath)
 
 	// Check whether any ancestor directory is ignored (handles dir-only

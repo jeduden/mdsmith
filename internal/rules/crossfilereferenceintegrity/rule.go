@@ -13,6 +13,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/placeholders"
+	"github.com/jeduden/mdsmith/internal/readlimit"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/setutil"
 )
@@ -323,7 +324,7 @@ func wikilinkAnchorsForTarget(
 	if anchors, ok := cache[key]; ok {
 		return anchors, nil
 	}
-	data, err := lint.ReadFSFileLimited(root, resolved, f.MaxInputBytes)
+	data, err := readlimit.ReadFSFileLimited(root, resolved, f.MaxInputBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -853,7 +854,7 @@ func resolveTargetFile(f *lint.File, linkPath, resolvedRoot string) (targetFile,
 				cacheKey:    "os:" + path,
 				runCacheKey: path,
 				read: func() ([]byte, error) {
-					return lint.ReadFileLimited(path, maxBytes)
+					return readlimit.ReadFileLimited(path, maxBytes)
 				},
 			}, true
 		}
@@ -870,7 +871,7 @@ func resolveTargetFile(f *lint.File, linkPath, resolvedRoot string) (targetFile,
 	return targetFile{
 		cacheKey: "fs:" + fsPath,
 		read: func() ([]byte, error) {
-			return lint.ReadFSFileLimited(f.FS, fsPath, maxBytes)
+			return readlimit.ReadFSFileLimited(f.FS, fsPath, maxBytes)
 		},
 	}, true
 }

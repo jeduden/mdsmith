@@ -1,4 +1,7 @@
-package lint
+// Package readlimit answers "read a file up to a byte cap" — a general
+// I/O concern shared by the CLI, engine, and rules that must guard against
+// pathologically large inputs.
+package readlimit
 
 import (
 	"fmt"

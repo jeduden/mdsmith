@@ -43,12 +43,12 @@ func TestRenderOption_EastAsianLineBreaksSimple(t *testing.T) {
 	// adjacent ast.Text siblings within a paragraph.  Construct
 	// inputs whose pre-break and post-break runes vary by width.
 	cases := []string{
-		"日本語\nテキスト\n",                // both wide -> suppressed
-		"abc\n日本語\n",                    // narrow then wide -> preserved
-		"日本語\nabc\n",                    // wide then narrow -> preserved
-		"abc\ndef\n",                      // both narrow -> preserved
-		"日本 *bold* 語\nさらに\n",          // text-emph-text across break
-		"日本\nテキスト *bold* end\n",     // wide rune then narrow break
+		"日本語\nテキスト\n",           // both wide -> suppressed
+		"abc\n日本語\n",            // narrow then wide -> preserved
+		"日本語\nabc\n",            // wide then narrow -> preserved
+		"abc\ndef\n",            // both narrow -> preserved
+		"日本 *bold* 語\nさらに\n",    // text-emph-text across break
+		"日本\nテキスト *bold* end\n", // wide rune then narrow break
 	}
 	for _, src := range cases {
 		_ = convertWithOpts(t, src, html.WithEastAsianLineBreaks(html.EastAsianLineBreaksSimple))
@@ -71,7 +71,7 @@ func TestRenderOption_EastAsianLineBreaksCSS3DraftPunctuation(t *testing.T) {
 		// Rule 2 — both F/W/H, neither side Hangul -> break removed.
 		"日本語\nテキスト\n",
 		// Rule 2 — both F/W/H, one side Hangul -> break PRESERVED.
-		"가\n나\n",   // both Hangul
+		"가\n나\n", // both Hangul
 		// Rule 3 — punctuation on one side -> break removed.
 		"a。\n日本語\n",
 		"日本語\n、b\n",
@@ -254,9 +254,9 @@ func TestRender_HeadingWithExtraAttributes(t *testing.T) {
 	// - string value (vs []byte)
 	doc := ast.NewDocument()
 	h := ast.NewHeading(2)
-	h.SetAttribute([]byte("id"), []byte("title"))         // filter hit, []byte
-	h.SetAttribute([]byte("data-x"), []byte("y"))         // data prefix, []byte
-	h.SetAttribute([]byte("data-z"), "string-value")      // data prefix, string value
+	h.SetAttribute([]byte("id"), []byte("title"))           // filter hit, []byte
+	h.SetAttribute([]byte("data-x"), []byte("y"))           // data prefix, []byte
+	h.SetAttribute([]byte("data-z"), "string-value")        // data prefix, string value
 	h.SetAttribute([]byte("not-in-filter"), []byte("nope")) // filter miss, no data prefix
 	doc.AppendChild(doc, h)
 	r := renderer.NewRenderer(renderer.WithNodeRenderers(util.Prioritized(html.NewRenderer(), 1000)))

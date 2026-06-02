@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/readlimit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,7 +27,7 @@ func TestOrderFilesLeavesFirst(t *testing.T) {
 	leaf := write("z_leaf.md", "# Leaf\n")
 
 	in := []string{top, mid, leaf} // sorted (walk) order: includer first
-	got := orderFilesLeavesFirst(in, dir, lint.DefaultMaxInputBytes)
+	got := orderFilesLeavesFirst(in, dir, readlimit.DefaultMaxInputBytes)
 
 	require.ElementsMatch(t, in, got, "must return the same set of paths")
 	pos := make(map[string]int, len(got))
@@ -42,7 +42,7 @@ func TestOrderFilesLeavesFirst(t *testing.T) {
 // single file has nothing to order and is returned unchanged.
 func TestOrderFilesLeavesFirst_ShortInput(t *testing.T) {
 	in := []string{"/ws/only.md"}
-	assert.Equal(t, in, orderFilesLeavesFirst(in, "/ws", lint.DefaultMaxInputBytes))
+	assert.Equal(t, in, orderFilesLeavesFirst(in, "/ws", readlimit.DefaultMaxInputBytes))
 }
 
 // TestOrderFilesLeavesFirst_DuplicateWorkspacePath verifies the
@@ -53,6 +53,6 @@ func TestOrderFilesLeavesFirst_DuplicateWorkspacePath(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "a.md")
 	in := []string{p, p} // both normalize to the same workspace path
-	got := orderFilesLeavesFirst(in, dir, lint.DefaultMaxInputBytes)
+	got := orderFilesLeavesFirst(in, dir, readlimit.DefaultMaxInputBytes)
 	assert.Equal(t, in, got, "duplicate workspace path must fall back to input order")
 }

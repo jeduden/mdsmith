@@ -43,8 +43,8 @@ func TestContext_IDs_GenerateAndPut(t *testing.T) {
 	// - all-punctuation -> empty result -> "heading" / "id" defaults
 	// - non-heading kind for empty result -> "id" default
 	_ = string(ids.Generate([]byte("日本語"), ast.KindHeading))   // multi-byte chars
-	_ = string(ids.Generate([]byte("!!!"), ast.KindHeading))      // all punct -> empty -> "heading"
-	_ = string(ids.Generate([]byte("!!!"), ast.KindParagraph))    // all punct -> empty -> "id"
+	_ = string(ids.Generate([]byte("!!!"), ast.KindHeading))   // all punct -> empty -> "heading"
+	_ = string(ids.Generate([]byte("!!!"), ast.KindParagraph)) // all punct -> empty -> "id"
 }
 
 func TestContext_WithIDs(t *testing.T) {
