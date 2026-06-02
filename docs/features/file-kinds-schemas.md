@@ -7,7 +7,7 @@ summary: >-
 icon: shapes
 link: "/guides/file-kinds/"
 rules: ["MDS020"]
-weight: 9
+weight: 11
 ---
 # File kinds and schemas
 

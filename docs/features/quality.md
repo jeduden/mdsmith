@@ -7,7 +7,7 @@ summary: >-
   line.
 icon: shield-check
 link: "/development/coverage/"
-weight: 8
+weight: 18
 ---
 # Quality you can verify
 

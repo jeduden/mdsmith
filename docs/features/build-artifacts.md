@@ -7,7 +7,7 @@ summary: >-
 icon: blocks
 link: "/guides/directives/build/"
 rules: ["MDS039", "MDS040"]
-weight: 11
+weight: 13
 ---
 # Build artifacts in sync
 

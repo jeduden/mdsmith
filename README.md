@@ -41,113 +41,149 @@ heading-level: "absolute"
 ?>
 ## Why mdsmith
 
-mdsmith is one rule engine behind every surface: the CLI, the LSP
-server, and the VS Code extension all run the same checks. Neovim
-and other LSP-aware editors plug in through the same server; a
-Claude Code plugin is available for users of that editor. This
-page is the shared overview. The README includes it; the website
-renders it and links each card to a fuller page.
+mdsmith is a Markdown linter and formatter written in Go. It
+checks style, readability, structure, and cross-file integrity,
+and auto-fixes what fixes cleanly. Where markdownlint-compatible
+linters stop at per-file style, mdsmith adds the cross-file graph,
+generated sections, structure schemas, and readability budgets.
+Together they keep a whole docs tree consistent as it grows, so
+the same Markdown can drive your README, your docs site, and
+downstream pipelines.
 
-### Core (every repo)
+One rule engine runs everywhere you work: in CI, in your editor
+through `mdsmith lsp`, and in your coding agent through a Claude
+Code plugin. The check that blocks a merge is the same one you see
+as you type, so feedback never depends on which tool you opened.
 
-These features pay off on a single README and scale up to a docs
-monorepo.
+### Clean Markdown, automatically
+
+Catch style, formatting, and readability problems on every file.
+`mdsmith fix` rewrites the ones with a single correct fix;
+`mdsmith check` is the read-only gate for CI.
 
 **[Auto-fix Markdown formatting](docs/features/auto-fix.md).**
 `mdsmith fix` rewrites whitespace, headings, code fences, bare
-URLs, list indentation, and table alignment in place. It loops
-until edits stabilize. `mdsmith check` is the read-only CI
-sibling.
-
-**[Live diagnostics wherever you write](docs/features/live-diagnostics.md).**
-`mdsmith lsp` emits diagnostics, quick-fixes, and navigation. Any
-LSP-aware editor can consume it. The VS Code extension and the
-Claude Code plugin surface the same data.
-
-**[Rename without breaking links](docs/features/rename.md).**
-Rename a heading and every workspace anchor link to it is
-rewritten in one atomic edit. Link-ref labels rename with their
-uses. A colliding slug fails loudly instead of breaking links.
-
-**[See the dependency graph](docs/features/dependency-graph.md).**
-`mdsmith deps` lists what a file pulls in, or what depends on it.
-The LSP call-hierarchy walks the same `<?include?>`, `<?catalog?>`,
-`<?build?>`, and link graph in your editor.
-
-**[Cross-file integrity](docs/features/cross-file-integrity.md).**
-Built-in rules flag broken links and missing anchors, enforce
-per-file section schemas, and keep Markdown in the right folders.
-Schemas can be inline on a file kind or shared via `proto.md`
-files.
-
-### Scale (large docs sites)
-
-These features show up when the repo grows past a handful of
-files: includes, catalogs, dependency graphs, release gates, and
-size budgets.
-
-**[Size and readability limits](docs/features/size-and-readability.md).**
-Cap file, section, and token-budget size. Enforce reading grade
-and sentence count. Flag verbatim copy-paste across files. Three
-rules ship on by default; two are opt-in.
-
-**[Self-maintaining sections](docs/features/self-maintaining-sections.md).**
-On `mdsmith fix`, `<?toc?>` rebuilds a heading TOC, `<?catalog?>`
-generates an index from front matter, and `<?include?>` splices
-in another file. A Git merge driver resolves conflicts in those
-blocks.
-
-**[Gate releases on doc status](docs/features/release-gating.md).**
-`mdsmith list query` selects files by a CUE expression on front
-matter. `mdsmith metrics rank` ranks files by any shared metric.
-Both pipe straight into a release script.
-
-**[Fast on every run](docs/features/performance.md).**
-A single static Go binary with no runtime to boot. The workspace
-walk runs in parallel and embeds are linted once, so CI and
-editor feedback stay instant.
-
-**[Quality you can verify](docs/features/quality.md).**
-The build, Go Report Card, and coverage badges at the top of the
-README report live project health. mdsmith lints its own docs
-with the rules it ships, and a coverage gate blocks merges that
-drop below the line.
-
-**[File kinds and schemas](docs/features/file-kinds-schemas.md).**
-Tag each file with a kind, then validate its headings and front
-matter against a schema declared inline on the kind or shared via
-a `proto.md` template. A whole directory obeys one contract.
+URLs, list indentation, and table alignment in place, looping
+until edits stabilize. `mdsmith check` runs the same rules
+read-only for CI.
 
 **[Conventions and flavors](docs/features/markdown-conventions.md).**
-Pin a convention to get a curated rule preset and a target
-renderer flavor in one switch. `MDS034` flags syntax the flavor
-will not render. A placeholder vocabulary spares template tokens.
+Pin one convention to apply a curated rule preset and a target
+renderer flavor together. `MDS034` flags syntax the flavor will
+not render; a placeholder vocabulary leaves template tokens like
+`{name}` alone.
+
+**[Size and readability limits](docs/features/size-and-readability.md).**
+Cap file, section, and token-budget size, enforce a reading grade
+and sentence count, and flag verbatim copy-paste between files.
+Three rules ship on by default; two are opt-in.
+
+### Everywhere you work
+
+The same engine runs in CI, in your editor, and in your coding
+agent, from one fast static binary you can install through any
+channel.
+
+**[Live diagnostics wherever you write](docs/features/live-diagnostics.md).**
+`mdsmith lsp` serves diagnostics, quick-fixes, and navigation
+(definition, references, symbol search, and a call hierarchy) to
+any LSP-aware editor over stdio.
+
+**[Editors and agents](docs/features/editor-agent-integration.md).**
+A bundled VS Code extension and a Claude Code plugin drive that
+same server, so diagnostics, fix-on-save, and navigation reach
+your editor and your agent with no separate install. The `.vsix`
+is republished to Open VSX for Cursor, VSCodium, and Theia.
+
+**[Fast on every run](docs/features/performance.md).**
+One static Go binary, no runtime to start. The workspace walk runs
+across all cores, and includes are linted once. A full check of
+this repository's ~720 files takes about 1.3 s, roughly 4x faster
+than Node markdownlint.
+
+**[Installs everywhere](docs/features/install-everywhere.md).**
+The same version-stamped binary ships through go install, npm,
+pip, uvx, Homebrew, mise, asdf, and GitHub Releases. No
+postinstall network call, so locked-down CI installs offline.
+
+### Across your whole docs tree
+
+mdsmith reads the links, includes, and headings that tie your
+files together, so a rename or a move never strands a reference.
+
+**[Cross-file integrity](docs/features/cross-file-integrity.md).**
+`MDS027` flags broken links and missing anchors across the
+workspace, `MDS020` validates each file against its section
+schema, and `MDS033` keeps files in their allowed folders.
+
+**[Rename without breaking links](docs/features/rename.md).**
+Rename a heading and mdsmith rewrites every workspace anchor link
+that resolved to its slug in one atomic edit. Link-reference
+labels rename with their uses; a colliding slug fails loudly
+instead of breaking links.
+
+**[See the dependency graph](docs/features/dependency-graph.md).**
+`mdsmith deps` lists what a file pulls in (includes, catalogs,
+build sources, and links), or every file that points at it with
+`--incoming`. The editor walks the same graph as a call hierarchy.
+
+**[File kinds and schemas](docs/features/file-kinds-schemas.md).**
+Tag each file with a `kind`, then validate its headings, section
+order, and front matter against a schema. Declare the schema
+inline on the kind or share it from a `proto.md` template, so a
+whole directory obeys one contract.
+
+### Markdown as a single source of truth
+
+Each file stays the single source of truth. mdsmith keeps the
+generated parts in sync, and can project the file out as JSON,
+YAML, or msgpack.
+
+**[Self-maintaining sections](docs/features/self-maintaining-sections.md).**
+On `mdsmith fix`, `<?toc?>` rebuilds a heading table of contents,
+`<?catalog?>` generates an index from front matter, and
+`<?include?>` splices in another file. A Git merge driver resolves
+conflicts inside those blocks.
 
 **[Build artifacts in sync](docs/features/build-artifacts.md).**
-`<?build?>` declares an artifact and a recipe. `mdsmith fix`
-keeps the section body in sync with the recipe output. `MDS040`
-shell-safety-checks the recipe without running it.
+The `<?build?>` directive declares an artifact and a recipe;
+`mdsmith fix` rebuilds the section body from the recipe output so
+the doc never quotes a stale file. `MDS040` shell-safety-checks
+the recipe without running it.
+
+**[Markdown as a data source](docs/features/markdown-as-data.md).**
+`mdsmith extract` projects a schema-conformant file to a JSON,
+YAML, or msgpack tree, and `<?include extract:?>` reads one value
+back into another file. `mdsmith export` writes a portable,
+directive-free copy that renders on any Markdown tool.
+
+### Built for your pipeline
+
+Release gates, a Git merge driver, transparent config, and a
+coverage-gated build make mdsmith safe to wire into a shared
+repository.
+
+**[Gate releases on doc status](docs/features/release-gating.md).**
+`mdsmith list query 'status: "✅"' plan/` selects files by a CUE
+expression on front matter, and `mdsmith metrics rank` orders
+files by any shared metric. Both print plain lines ready to pipe
+into a release script.
 
 **[Git-native, conflict-free](docs/features/git-native.md).**
-A merge driver auto-resolves conflicts inside generated blocks.
-A pre-merge-commit hook re-runs `mdsmith fix` and re-stages the
+A Git merge driver re-runs the directive and keeps the regenerated
+body when two branches both touch a generated block. A
+pre-merge-commit hook re-runs `mdsmith fix` and re-stages the
 result, so generated content never blocks a merge.
 
 **[Config you can explain](docs/features/config-transparency.md).**
 Config layers deep-merge rule by rule: defaults, convention,
-kinds, then overrides. `--explain` and `mdsmith kinds resolve`
-show which layer set each effective value.
+kinds, then per-glob overrides. `check --explain` and `mdsmith
+kinds resolve` show which layer set each effective value, per leaf.
 
-**[Editors and agents](docs/features/editor-agent-integration.md).**
-A bundled VS Code extension and Claude Code plugins drive the
-same `mdsmith lsp` server, so diagnostics, fix-on-save, and
-navigation reach your editor and your coding agent unchanged.
-
-**[Installs everywhere](docs/features/install-everywhere.md).**
-One version-stamped Go binary ships through go install, npm,
-pip, uvx, Homebrew, mise, and asdf, plus a direct GitHub
-Release download. No postinstall network call, so locked-down
-CI installs offline.
+**[Quality you can verify](docs/features/quality.md).**
+The CI, Go Report Card, and Codecov badges report live project
+health. mdsmith lints its own docs with the rules it ships, and a
+coverage gate blocks any merge that drops below the line.
 <?/include?>
 
 **🆚 How does it compare?** See:

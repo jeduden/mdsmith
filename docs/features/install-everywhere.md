@@ -6,7 +6,7 @@ summary: >-
   call, so locked-down CI installs offline.
 icon: package
 link: "/guides/install/"
-weight: 15
+weight: 7
 ---
 # Installs everywhere
 

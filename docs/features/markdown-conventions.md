@@ -7,7 +7,7 @@ summary: >-
 icon: book-type
 link: "/reference/conventions/"
 rules: ["MDS034"]
-weight: 10
+weight: 2
 ---
 # Conventions and flavors
 

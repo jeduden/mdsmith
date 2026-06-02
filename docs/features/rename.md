@@ -6,7 +6,7 @@ summary: >-
   their uses. A colliding slug fails loudly instead of silently
   breaking cross-file links.
 icon: replace
-weight: 4
+weight: 9
 link: "/reference/cli/lsp/"
 ---
 # Rename without breaking links

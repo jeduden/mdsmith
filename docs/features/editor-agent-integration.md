@@ -6,7 +6,7 @@ summary: >-
   reach your editor and your coding agent unchanged.
 icon: plug
 link: "/guides/editors/vscode/"
-weight: 14
+weight: 5
 ---
 # Editors and agents
 

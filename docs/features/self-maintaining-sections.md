@@ -7,7 +7,7 @@ summary: >-
   those blocks.
 icon: list-checks
 link: "/guides/directives/generating-content/"
-weight: 5
+weight: 12
 ---
 # Self-maintaining sections
 

@@ -7,7 +7,7 @@ summary: >-
   LSP-aware editor.
 icon: edit-3
 link: "/guides/editors/vscode/"
-weight: 2
+weight: 4
 ---
 # Live diagnostics wherever you write
 

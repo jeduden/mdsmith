@@ -6,7 +6,7 @@ summary: >-
   any shared metric — both ready to pipe into a release script.
 icon: gauge
 link: "/reference/cli/query/"
-weight: 6
+weight: 15
 ---
 # Gate releases on doc status
 

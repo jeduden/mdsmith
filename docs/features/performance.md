@@ -7,7 +7,7 @@ summary: >-
   gate against regression.
 icon: zap
 link: "/reference/cli/check/"
-weight: 7
+weight: 6
 ---
 # Fast on every run
 
