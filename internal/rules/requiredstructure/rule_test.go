@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/piparser"
 	"github.com/jeduden/mdsmith/internal/rule"
 
 	"github.com/stretchr/testify/assert"
@@ -1597,9 +1598,9 @@ func TestExtractPIFileParam_MultiLine(t *testing.T) {
 	src := "<?include\nfile: other.md\n?>"
 	f, err := lint.NewFileFromSource("schema.md", []byte(src), true)
 	require.NoError(t, err)
-	var pi *lint.ProcessingInstruction
+	var pi *piparser.ProcessingInstruction
 	for c := f.AST.FirstChild(); c != nil; c = c.NextSibling() {
-		if p, ok := c.(*lint.ProcessingInstruction); ok {
+		if p, ok := c.(*piparser.ProcessingInstruction); ok {
 			pi = p
 			break
 		}
@@ -1736,9 +1737,9 @@ func TestExtractPIFileParam_SingleLine(t *testing.T) {
 	src := "<?include file: other.md ?>\ncontent\n<?/include?>"
 	f, err := lint.NewFileFromSource("schema.md", []byte(src), true)
 	require.NoError(t, err)
-	var pi *lint.ProcessingInstruction
+	var pi *piparser.ProcessingInstruction
 	for c := f.AST.FirstChild(); c != nil; c = c.NextSibling() {
-		if p, ok := c.(*lint.ProcessingInstruction); ok {
+		if p, ok := c.(*piparser.ProcessingInstruction); ok {
 			pi = p
 			break
 		}
@@ -1755,9 +1756,9 @@ func TestResolveSchemaIncludePath_EmptyFileParam(t *testing.T) {
 	src := "<?include\nfile: \"\"\n?>\ncontent\n<?/include?>"
 	f, err := lint.NewFileFromSource("schema.md", []byte(src), true)
 	require.NoError(t, err)
-	var pi *lint.ProcessingInstruction
+	var pi *piparser.ProcessingInstruction
 	for c := f.AST.FirstChild(); c != nil; c = c.NextSibling() {
-		if p, ok := c.(*lint.ProcessingInstruction); ok {
+		if p, ok := c.(*piparser.ProcessingInstruction); ok {
 			pi = p
 			break
 		}
@@ -1773,9 +1774,9 @@ func TestResolveSchemaIncludePath_AbsolutePath(t *testing.T) {
 	src := "<?include\nfile: /abs/path.md\n?>\ncontent\n<?/include?>"
 	f, err := lint.NewFileFromSource("schema.md", []byte(src), true)
 	require.NoError(t, err)
-	var pi *lint.ProcessingInstruction
+	var pi *piparser.ProcessingInstruction
 	for c := f.AST.FirstChild(); c != nil; c = c.NextSibling() {
-		if p, ok := c.(*lint.ProcessingInstruction); ok {
+		if p, ok := c.(*piparser.ProcessingInstruction); ok {
 			pi = p
 			break
 		}
@@ -1791,9 +1792,9 @@ func TestResolveSchemaIncludePath_DotDotTraversal(t *testing.T) {
 	src := "<?include\nfile: ../parent.md\n?>\ncontent\n<?/include?>"
 	f, err := lint.NewFileFromSource("schema.md", []byte(src), true)
 	require.NoError(t, err)
-	var pi *lint.ProcessingInstruction
+	var pi *piparser.ProcessingInstruction
 	for c := f.AST.FirstChild(); c != nil; c = c.NextSibling() {
-		if p, ok := c.(*lint.ProcessingInstruction); ok {
+		if p, ok := c.(*piparser.ProcessingInstruction); ok {
 			pi = p
 			break
 		}

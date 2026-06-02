@@ -178,7 +178,7 @@ func (w *MemWorkspace) FS() fs.FS {
 
 // memFS is a minimal read-only fs.FS over a map of slash-paths to
 // bytes. It implements fs.ReadFileFS and fs.GlobFS so doublestar.Glob
-// and lint.ReadFSFileLimited operate without per-file Open overhead,
+// and bytelimit.ReadFSFileLimited operate without per-file Open overhead,
 // and fs.ReadDirFS so directory walks (e.g. doublestar's recursive
 // descent) resolve.
 type memFS map[string][]byte

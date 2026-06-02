@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/config"
-	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 )
 
@@ -125,7 +125,7 @@ func DiscoverFiles(repoRoot string, maxBytes int64) []string {
 		if config.IsIgnored(ignorePatterns, key) {
 			return nil
 		}
-		content, err := lint.ReadFileLimited(path, maxBytes)
+		content, err := bytelimit.ReadFileLimited(path, maxBytes)
 		if err != nil {
 			return nil
 		}

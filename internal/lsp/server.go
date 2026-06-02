@@ -21,6 +21,7 @@ import (
 	"github.com/hexops/gotextdiff/myers"
 	"github.com/hexops/gotextdiff/span"
 
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/engine"
 	fixpkg "github.com/jeduden/mdsmith/internal/fix"
@@ -1096,7 +1097,7 @@ func (s *Server) resolveMaxInputBytes(cfg *config.Config) int64 {
 		raw = cfg.MaxInputSize
 	}
 	if raw == "" {
-		return lint.DefaultMaxInputBytes
+		return bytelimit.DefaultMaxInputBytes
 	}
 	n, err := config.ParseSize(raw)
 	if err != nil {
@@ -1105,7 +1106,7 @@ func (s *Server) resolveMaxInputBytes(cfg *config.Config) int64 {
 			Type:    messageTypeError,
 			Message: fmt.Sprintf("mdsmith: invalid max-input-size %q: %v", raw, err),
 		})
-		return lint.DefaultMaxInputBytes
+		return bytelimit.DefaultMaxInputBytes
 	}
 	return n
 }

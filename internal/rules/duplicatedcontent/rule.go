@@ -15,8 +15,10 @@ import (
 	"unicode"
 
 	"github.com/bmatcuk/doublestar/v4"
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/globpath"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/piparser"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
 	"github.com/yuin/goldmark/ast"
@@ -145,10 +147,10 @@ func generatedRanges(f *lint.File) [][2]int {
 		return nil
 	}
 	var ranges [][2]int
-	var openPI *lint.ProcessingInstruction
+	var openPI *piparser.ProcessingInstruction
 	depth := 0
 	for n := f.AST.FirstChild(); n != nil; n = n.NextSibling() {
-		pi, ok := n.(*lint.ProcessingInstruction)
+		pi, ok := n.(*piparser.ProcessingInstruction)
 		if !ok {
 			continue
 		}
@@ -391,7 +393,7 @@ func indexFileIfEligible(
 	if !matchesFilters(path, include, exclude) {
 		return
 	}
-	data, err := lint.ReadFSFileLimited(corpus, path, maxBytes)
+	data, err := bytelimit.ReadFSFileLimited(corpus, path, maxBytes)
 	if err != nil {
 		return
 	}

@@ -13,8 +13,10 @@ import (
 
 	"cuelang.org/go/cue"
 	"github.com/bmatcuk/doublestar/v4"
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/fieldinterp"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/piparser"
 	"github.com/jeduden/mdsmith/internal/placeholders"
 	"github.com/jeduden/mdsmith/internal/rule"
 	rulesettings "github.com/jeduden/mdsmith/internal/rules/settings"
@@ -1165,7 +1167,7 @@ func parseSchemaFrontMatter(prefix []byte, cache *lint.RunCache) (schemaConfig, 
 func extractRequireDirective(f *lint.File) (string, error) {
 	var filenamePattern string
 	for c := f.AST.FirstChild(); c != nil; c = c.NextSibling() {
-		pi, ok := c.(*lint.ProcessingInstruction)
+		pi, ok := c.(*piparser.ProcessingInstruction)
 		if !ok || pi.Name != "require" {
 			continue
 		}
@@ -1512,7 +1514,7 @@ func extractSchemaHeadings(
 			line := schemaFile.LineOfOffset(node.Lines().At(0).Start)
 			headings = append(headings, docHeading{Level: node.Level, Text: text, Line: line})
 
-		case *lint.ProcessingInstruction:
+		case *piparser.ProcessingInstruction:
 			if node.Name != "include" {
 				return ast.WalkContinue, nil
 			}
@@ -1565,7 +1567,7 @@ func extractSchemaHeadings(
 // resolveSchemaIncludePath extracts and validates the file parameter from
 // an include PI, returning the resolved filesystem path.
 func resolveSchemaIncludePath(
-	pi *lint.ProcessingInstruction, source []byte, schemaPath string,
+	pi *piparser.ProcessingInstruction, source []byte, schemaPath string,
 ) (string, error) {
 	fileParam, err := extractPIFileParam(pi, source)
 	if err != nil {
@@ -1596,7 +1598,7 @@ func resolveSchemaIncludePath(
 // error. The path-plus-subIncludes pair lets the caller record the
 // full dependency footprint on RunCache's reverse-include index.
 func expandSchemaInclude(
-	pi *lint.ProcessingInstruction, source []byte,
+	pi *piparser.ProcessingInstruction, source []byte,
 	schemaPath string, visited map[string]bool, chain []string, maxBytes int64,
 ) ([]docHeading, string, string, []string, error) {
 	includedPath, err := resolveSchemaIncludePath(pi, source, schemaPath)
@@ -1622,7 +1624,7 @@ func expandSchemaInclude(
 			"cyclic include: %s", strings.Join(chainCopy, " -> "))
 	}
 
-	fragData, err := lint.ReadFileLimited(includedPath, maxBytes)
+	fragData, err := bytelimit.ReadFileLimited(includedPath, maxBytes)
 	if err != nil {
 		return nil, "", includedPath, nil, fmt.Errorf(
 			"cannot read schema include file %q: %w", includedPath, err)
@@ -1662,7 +1664,7 @@ func expandSchemaInclude(
 
 // extractPIFileParam parses the YAML body of an include PI to extract
 // the "file" parameter.
-func extractPIFileParam(pi *lint.ProcessingInstruction, source []byte) (string, error) {
+func extractPIFileParam(pi *piparser.ProcessingInstruction, source []byte) (string, error) {
 	lines := pi.Lines()
 	var body string
 	if lines.Len() == 1 {
@@ -2244,7 +2246,7 @@ func extractYAML(fmBlock []byte) []byte {
 // <?require?> PI in the file, or 0 if none is found.
 func findRequireDirectiveLine(f *lint.File) int {
 	for c := f.AST.FirstChild(); c != nil; c = c.NextSibling() {
-		pi, ok := c.(*lint.ProcessingInstruction)
+		pi, ok := c.(*piparser.ProcessingInstruction)
 		if ok && pi.Name == "require" {
 			return f.LineOfOffset(pi.Lines().At(0).Start)
 		}
@@ -2392,9 +2394,9 @@ func readSchemaFile(f *lint.File, schema string) ([]byte, error) {
 		if clean == ".." || strings.HasPrefix(clean, "../") {
 			return nil, fmt.Errorf("schema path %q escapes project root", schema)
 		}
-		return lint.ReadFSFileLimited(f.RootFS, clean, f.MaxInputBytes)
+		return bytelimit.ReadFSFileLimited(f.RootFS, clean, f.MaxInputBytes)
 	}
-	return lint.ReadFileLimited(schema, f.MaxInputBytes)
+	return bytelimit.ReadFileLimited(schema, f.MaxInputBytes)
 }
 
 func makeDiag(file string, line int, msg string) lint.Diagnostic {

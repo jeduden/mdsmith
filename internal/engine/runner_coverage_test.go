@@ -27,7 +27,7 @@ func TestCachedGitignore_ReturnsMatcher(t *testing.T) {
 	}
 
 	m := runner.cachedGitignore(dir)
-	require.NotNil(t, m, "expected non-nil GitignoreMatcher")
+	require.NotNil(t, m, "expected non-nil gitignore.Matcher")
 }
 
 func TestCachedGitignore_CacheHit(t *testing.T) {

@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/piparser"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
@@ -88,12 +89,12 @@ func TestPiToLocate_LineBeyondLines(t *testing.T) {
 	t.Parallel()
 	src := []byte("<?include\nfile: a.md\n?>\n")
 	root := lint.NewParser().Parse(text.NewReader(src), parser.WithContext(parser.NewContext()))
-	var pi *lint.ProcessingInstruction
+	var pi *piparser.ProcessingInstruction
 	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
 		}
-		if p, ok := n.(*lint.ProcessingInstruction); ok {
+		if p, ok := n.(*piparser.ProcessingInstruction); ok {
 			pi = p
 		}
 		return ast.WalkContinue, nil

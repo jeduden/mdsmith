@@ -10,6 +10,7 @@ import (
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 
+	"github.com/jeduden/mdsmith/internal/gitignore"
 	"github.com/jeduden/mdsmith/pkg/markdown"
 )
 
@@ -49,9 +50,9 @@ type File struct {
 	// and the result is cached. Rules that do not call GetGitignore
 	// never trigger matcher construction. sync.Once keeps the lazy
 	// build race-free if a *File is shared across goroutines.
-	GitignoreFunc func() *GitignoreMatcher
+	GitignoreFunc func() *gitignore.Matcher
 	gitignoreOnce sync.Once
-	gitignoreVal  *GitignoreMatcher
+	gitignoreVal  *gitignore.Matcher
 
 	// GeneratedRanges records the content line ranges of generated
 	// sections (<?include?> / <?catalog?> bodies). Diagnostics whose
@@ -133,6 +134,14 @@ type File struct {
 	// globbed by N host-file catalogs is read once per run, not N
 	// times. nil for struct-literal Files in unit tests; the
 	// catalog rule then takes the per-Check fallback path.
+	//
+	// RunCache (runcache.go) and the parse cache (parsecache.go) stay in
+	// this package rather than moving to siblings like the gitignore,
+	// bytelimit, and piparser splits: File embeds *RunCache here, so a
+	// dedicated internal/runcache package would import lint for File
+	// while lint imports it for the field — a circular import. They are
+	// facets of the parsed-file model, not standalone utilities, so
+	// they belong with File anyway. See plan/224.
 	RunCache *RunCache
 }
 
@@ -225,7 +234,7 @@ func (f *File) SetRootDir(dir string) {
 
 // GetGitignore returns the gitignore matcher for this file, creating it
 // lazily on first call. Returns nil if no GitignoreFunc was configured.
-func (f *File) GetGitignore() *GitignoreMatcher {
+func (f *File) GetGitignore() *gitignore.Matcher {
 	f.gitignoreOnce.Do(func() {
 		if f.GitignoreFunc != nil {
 			f.gitignoreVal = f.GitignoreFunc()

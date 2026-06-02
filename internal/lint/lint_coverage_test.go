@@ -3,14 +3,35 @@ package lint
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"sync"
 	"testing"
 
+	"github.com/yuin/goldmark/ast"
+
+	"github.com/jeduden/mdsmith/internal/gitignore"
+	"github.com/jeduden/mdsmith/internal/piparser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// findPINodes returns all ProcessingInstruction nodes in the AST,
+// searching the full tree recursively. It backs the lint-level NewFile
+// integration smoke (TestNewFile_MultiPIs); the exhaustive PI grammar
+// tests live with the canonical parser in pkg/markdown.
+func findPINodes(root ast.Node) []*piparser.ProcessingInstruction {
+	var nodes []*piparser.ProcessingInstruction
+	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		if node, ok := n.(*piparser.ProcessingInstruction); ok {
+			nodes = append(nodes, node)
+		}
+		return ast.WalkContinue, nil
+	})
+	return nodes
+}
 
 // --- GetGitignore tests ---
 
@@ -22,9 +43,9 @@ func TestGetGitignore_NilFunc(t *testing.T) {
 
 func TestGetGitignore_WithFunc(t *testing.T) {
 	called := 0
-	matcher := &GitignoreMatcher{}
+	matcher := &gitignore.Matcher{}
 	f := &File{
-		GitignoreFunc: func() *GitignoreMatcher {
+		GitignoreFunc: func() *gitignore.Matcher {
 			called++
 			return matcher
 		},
@@ -36,9 +57,9 @@ func TestGetGitignore_WithFunc(t *testing.T) {
 
 func TestGetGitignore_Cached(t *testing.T) {
 	called := 0
-	matcher := &GitignoreMatcher{}
+	matcher := &gitignore.Matcher{}
 	f := &File{
-		GitignoreFunc: func() *GitignoreMatcher {
+		GitignoreFunc: func() *gitignore.Matcher {
 			called++
 			return matcher
 		},
@@ -124,7 +145,7 @@ func TestIsGitignored_MatchAndNoMatch(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("*.log\n"), 0o644))
 
-	matcher := NewGitignoreMatcher(dir)
+	matcher := gitignore.NewMatcher(dir)
 	// A file matching the pattern should be ignored.
 	logFile := filepath.Join(dir, "test.log")
 	require.NoError(t, os.WriteFile(logFile, []byte("log"), 0o644))
@@ -136,264 +157,10 @@ func TestIsGitignored_MatchAndNoMatch(t *testing.T) {
 	assert.False(t, isGitignored(matcher, mdFile, false))
 }
 
-// --- trimTrailingWhitespace tests ---
-
-func TestTrimTrailingWhitespace_NoWhitespace(t *testing.T) {
-	assert.Equal(t, "hello", trimTrailingWhitespace("hello"))
-}
-
-func TestTrimTrailingWhitespace_TrailingSpaces(t *testing.T) {
-	assert.Equal(t, "hello", trimTrailingWhitespace("hello   "))
-}
-
-func TestTrimTrailingWhitespace_TrailingTabs(t *testing.T) {
-	assert.Equal(t, "hello", trimTrailingWhitespace("hello\t\t"))
-}
-
-func TestTrimTrailingWhitespace_EscapedSpace(t *testing.T) {
-	// Backslash before trailing space preserves one space.
-	assert.Equal(t, "hello ", trimTrailingWhitespace("hello\\  "))
-}
-
-func TestTrimTrailingWhitespace_EmptyString(t *testing.T) {
-	assert.Equal(t, "", trimTrailingWhitespace(""))
-}
-
-func TestTrimTrailingWhitespace_AllWhitespace(t *testing.T) {
-	assert.Equal(t, "", trimTrailingWhitespace("   "))
-}
-
-// --- NewGitignoreMatcher tests ---
-
-func TestNewGitignoreMatcher_NoGitignore(t *testing.T) {
-	dir := t.TempDir()
-	m := NewGitignoreMatcher(dir)
-	require.NotNil(t, m)
-	// Use a unique extension unlikely to appear in any ancestor .gitignore.
-	path := filepath.Join(dir, t.Name()+"-not-ignored.mdsmith-test-unique")
-	assert.False(t, m.IsIgnored(path, false))
-}
-
-func TestNewGitignoreMatcher_WithGitignore(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("*.log\nbuild/\n"), 0o644))
-
-	m := NewGitignoreMatcher(dir)
-	require.NotNil(t, m)
-	assert.True(t, len(m.rules) >= 2, "expected at least 2 rules from .gitignore")
-}
-
-func TestNewGitignoreMatcher_NestedGitignore(t *testing.T) {
-	dir := t.TempDir()
-	sub := filepath.Join(dir, "sub")
-	require.NoError(t, os.MkdirAll(sub, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("*.log\n"), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(sub, ".gitignore"), []byte("draft.md\n"), 0o644))
-
-	m := NewGitignoreMatcher(dir)
-	require.NotNil(t, m)
-	// Should have rules from both .gitignore files.
-	assert.True(t, len(m.rules) >= 2)
-}
-
-func TestNewGitignoreMatcher_UnreadableGitignore(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("permission test not reliable on Windows")
-	}
-	if os.Getuid() == 0 {
-		t.Skip("permission test not reliable as root")
-	}
-	dir := t.TempDir()
-	// A valid .gitignore in the root so we have something to match against.
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("*.log\n"), 0o644))
-
-	// A subdirectory with an unreadable .gitignore (chmod 000).
-	sub := filepath.Join(dir, "sub")
-	require.NoError(t, os.MkdirAll(sub, 0o755))
-	bad := filepath.Join(sub, ".gitignore")
-	require.NoError(t, os.WriteFile(bad, []byte("*.tmp\n"), 0o644))
-	require.NoError(t, os.Chmod(bad, 0o000))
-	defer func() { _ = os.Chmod(bad, 0o644) }()
-
-	// NewGitignoreMatcher should not panic; it silently skips unreadable files.
-	m := NewGitignoreMatcher(dir)
-	require.NotNil(t, m)
-
-	// Rules from the readable root .gitignore should still be active.
-	logFile := filepath.Join(dir, "test.log")
-	assert.True(t, m.IsIgnored(logFile, false), "*.log rule from root .gitignore should still apply")
-}
-
-func TestNewGitignoreMatcher_NegationPattern(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".gitignore"),
-		[]byte("*.md\n!keep.md\n"), 0o644))
-
-	m := NewGitignoreMatcher(dir)
-	require.NotNil(t, m)
-
-	// keep.md should NOT be ignored due to negation.
-	keepAbs := filepath.Join(dir, "keep.md")
-	assert.False(t, m.IsIgnored(keepAbs, false), "keep.md should not be ignored")
-
-	// other.md should be ignored.
-	otherAbs := filepath.Join(dir, "other.md")
-	assert.True(t, m.IsIgnored(otherAbs, false), "other.md should be ignored")
-}
-
-// --- matchGitignorePattern tests ---
-
-func TestMatchGitignorePattern_Simple(t *testing.T) {
-	assert.True(t, matchGitignorePattern("*.md", "readme.md"))
-	assert.False(t, matchGitignorePattern("*.md", "readme.txt"))
-}
-
-func TestMatchGitignorePattern_Doublestar(t *testing.T) {
-	assert.True(t, matchGitignorePattern("**/*.md", "sub/readme.md"))
-	assert.True(t, matchGitignorePattern("**/*.md", "a/b/c.md"))
-}
-
-func TestMatchGitignorePattern_ExactMatch(t *testing.T) {
-	assert.True(t, matchGitignorePattern("readme.md", "readme.md"))
-	assert.False(t, matchGitignorePattern("readme.md", "other.md"))
-}
-
-// --- matchDoublestar tests ---
-
-func TestMatchDoublestar_LeadingDoublestar(t *testing.T) {
-	assert.True(t, matchDoublestar("**/*.md", "readme.md"))
-	assert.True(t, matchDoublestar("**/*.md", "sub/readme.md"))
-	assert.True(t, matchDoublestar("**/*.md", "a/b/c.md"))
-}
-
-func TestMatchDoublestar_TrailingDoublestar(t *testing.T) {
-	assert.True(t, matchDoublestar("docs/**", "docs/readme.md"))
-	assert.True(t, matchDoublestar("docs/**", "docs/sub/file.md"))
-	assert.True(t, matchDoublestar("docs/**", "docs"))
-}
-
-func TestMatchDoublestar_MiddleDoublestar(t *testing.T) {
-	assert.True(t, matchDoublestar("a/**/b.md", "a/b.md"))
-	// Middle ** with single intermediate dir: prefix "a" matches pathParts[:1]="a",
-	// suffix "b.md" must match pathParts[1:]="sub/b.md" which it doesn't via
-	// filepath.Match. This is a known limitation of the simple ** implementation.
-	// Verify the zero-depth case works.
-	assert.True(t, matchDoublestar("docs/**/readme.md", "docs/readme.md"))
-}
-
-func TestMatchDoublestar_JustDoublestar(t *testing.T) {
-	assert.True(t, matchDoublestar("**", "anything"))
-	assert.True(t, matchDoublestar("**", "a/b/c"))
-}
-
-func TestMatchDoublestar_LeadingSlashDoublestar(t *testing.T) {
-	assert.True(t, matchDoublestar("/**/*.md", "readme.md"))
-	assert.True(t, matchDoublestar("/**/*.md", "sub/readme.md"))
-}
-
-func TestMatchDoublestar_TrailingSlashDoublestar(t *testing.T) {
-	assert.True(t, matchDoublestar("docs/**/", "docs/sub"))
-	assert.True(t, matchDoublestar("docs/**/", "docs"))
-}
-
-func TestMatchDoublestar_MultipleDoublestars(t *testing.T) {
-	// Pattern with multiple ** falls back to simple matching.
-	assert.True(t, matchDoublestar("a/**/b/**/c", "a/x/b/y/c"))
-}
-
-func TestMatchDoublestar_NoMatch(t *testing.T) {
-	assert.False(t, matchDoublestar("docs/**/*.md", "src/file.md"))
-}
-
 // PI node and parser unit tests live with the canonical
 // implementation in pkg/markdown (TestKind_ProcessingInstruction,
 // TestIsRaw_ProcessingInstruction, TestPIBlockParser_*, …). The
 // lint-level integration smoke is TestNewFile_MultiPIs below.
-
-// --- parseGitignoreFile tests ---
-
-func TestParseGitignoreFile_Comments(t *testing.T) {
-	dir := t.TempDir()
-	gi := filepath.Join(dir, ".gitignore")
-	content := "# This is a comment\n\n*.log\n# Another comment\nbuild/\n"
-	require.NoError(t, os.WriteFile(gi, []byte(content), 0o644))
-
-	rules, err := parseGitignoreFile(gi)
-	require.NoError(t, err)
-	assert.Len(t, rules, 2) // *.log and build/
-}
-
-func TestParseGitignoreFile_Negation(t *testing.T) {
-	dir := t.TempDir()
-	gi := filepath.Join(dir, ".gitignore")
-	content := "*.md\n!keep.md\n"
-	require.NoError(t, os.WriteFile(gi, []byte(content), 0o644))
-
-	rules, err := parseGitignoreFile(gi)
-	require.NoError(t, err)
-	require.Len(t, rules, 2)
-	assert.False(t, rules[0].negate)
-	assert.True(t, rules[1].negate)
-}
-
-func TestParseGitignoreFile_DirOnly(t *testing.T) {
-	dir := t.TempDir()
-	gi := filepath.Join(dir, ".gitignore")
-	content := "build/\n"
-	require.NoError(t, os.WriteFile(gi, []byte(content), 0o644))
-
-	rules, err := parseGitignoreFile(gi)
-	require.NoError(t, err)
-	require.Len(t, rules, 1)
-	assert.True(t, rules[0].dirOnly)
-}
-
-func TestParseGitignoreFile_LeadingSlash(t *testing.T) {
-	dir := t.TempDir()
-	gi := filepath.Join(dir, ".gitignore")
-	content := "/build\n"
-	require.NoError(t, os.WriteFile(gi, []byte(content), 0o644))
-
-	rules, err := parseGitignoreFile(gi)
-	require.NoError(t, err)
-	require.Len(t, rules, 1)
-	assert.True(t, rules[0].hasSlash)
-	assert.Equal(t, "build", rules[0].pattern)
-}
-
-func TestParseGitignoreFile_SlashInMiddle(t *testing.T) {
-	dir := t.TempDir()
-	gi := filepath.Join(dir, ".gitignore")
-	content := "sub/dir\n"
-	require.NoError(t, os.WriteFile(gi, []byte(content), 0o644))
-
-	rules, err := parseGitignoreFile(gi)
-	require.NoError(t, err)
-	require.Len(t, rules, 1)
-	assert.True(t, rules[0].hasSlash)
-}
-
-func TestParseGitignoreFile_Nonexistent(t *testing.T) {
-	_, err := parseGitignoreFile(filepath.Join(t.TempDir(), "no-such/.gitignore"))
-	assert.Error(t, err)
-}
-
-// --- IsIgnored dirOnly tests ---
-
-func TestIsIgnored_DirOnlySkipsFile(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("build/\n"), 0o644))
-
-	m := NewGitignoreMatcher(dir)
-
-	// A file named "build" should NOT be ignored by "build/" pattern.
-	buildFile := filepath.Join(dir, "build")
-	assert.False(t, m.IsIgnored(buildFile, false), "file named 'build' should not be ignored by dir-only pattern")
-
-	// A directory named "build" should be ignored.
-	buildDir := filepath.Join(dir, "build")
-	assert.True(t, m.IsIgnored(buildDir, true), "dir named 'build' should be ignored by dir-only pattern")
-}
 
 // --- LineOfOffset tests ---
 
@@ -520,7 +287,7 @@ func TestColumnOfOffset_AtNewline(t *testing.T) {
 	assert.Equal(t, 3, f.ColumnOfOffset(2))
 }
 
-// --- NewParser / PIBlockParserPrioritized forwarders ---
+// --- NewParser forwarder ---
 
 // TestNewParser_ReturnsNonNil pins the public forwarder: a rule
 // re-parsing a document (for example, to consult the link-reference
@@ -529,16 +296,6 @@ func TestColumnOfOffset_AtNewline(t *testing.T) {
 func TestNewParser_ReturnsNonNil(t *testing.T) {
 	p := NewParser()
 	require.NotNil(t, p, "NewParser must return a usable parser.Parser")
-}
-
-// TestPIBlockParserPrioritized_ReturnsRegisteredParser pins the
-// public forwarder: internal/schema registers this parser directly
-// to bring goldmark's view of `<?…?>` blocks in line with mdsmith's.
-// The returned PrioritizedValue must carry a non-nil Value so the
-// registration is meaningful.
-func TestPIBlockParserPrioritized_ReturnsRegisteredParser(t *testing.T) {
-	pv := PIBlockParserPrioritized()
-	require.NotNil(t, pv.Value, "PI block parser value must be non-nil")
 }
 
 // PIBlockParser edge cases and extractPINameBytes unit tests live
@@ -648,14 +405,6 @@ func TestIsMarkdown(t *testing.T) {
 	assert.False(t, isMarkdown("file.go"))
 }
 
-// --- matchRule edge cases ---
-
-func TestMatchRule_OutsideBase(t *testing.T) {
-	r := ignoreRule{base: "/home/user/project", pattern: "*.md"}
-	// Path outside the base should not match.
-	assert.False(t, matchRule(r, "/other/path/file.md"))
-}
-
 // --- Walk with PI nodes ---
 
 // TestNewFile_MultiPIs is the lint-level integration smoke that
@@ -691,35 +440,6 @@ func TestSetRootDir_SetsRootDirAndRootFS(t *testing.T) {
 	fh, err := f.RootFS.Open(sentinel)
 	require.NoError(t, err, "RootFS must be able to open files under dir")
 	_ = fh.Close()
-}
-
-// --- NewGitignoreMatcher ancestor .gitignore tests ---
-
-// TestNewGitignoreMatcher_AncestorGitignore verifies that rules from a
-// .gitignore file in an ancestor directory (above the root passed to
-// NewGitignoreMatcher) are collected and applied.
-func TestNewGitignoreMatcher_AncestorGitignore(t *testing.T) {
-	// Build: /parent/.gitignore (contains *.ancestor)
-	//        /parent/child/           <- root passed to NewGitignoreMatcher
-	parent := t.TempDir()
-	child := filepath.Join(parent, "child")
-	require.NoError(t, os.MkdirAll(child, 0o755))
-
-	ancestorGitignore := filepath.Join(parent, ".gitignore")
-	require.NoError(t, os.WriteFile(ancestorGitignore, []byte("*.ancestor\n"), 0o644))
-
-	m := NewGitignoreMatcher(child)
-	require.NotNil(t, m)
-
-	// A file in the child dir that matches the ancestor pattern should be ignored.
-	matchedFile := filepath.Join(child, "test.ancestor")
-	assert.True(t, m.IsIgnored(matchedFile, false),
-		"file matching an ancestor .gitignore pattern must be ignored")
-
-	// A file that does not match must not be ignored.
-	otherFile := filepath.Join(child, "test.md")
-	assert.False(t, m.IsIgnored(otherFile, false),
-		"file not matching the ancestor pattern must not be ignored")
 }
 
 // --- addDirFiles error path ---
@@ -762,7 +482,7 @@ func TestIsGitignored_DirectorySentinel(t *testing.T) {
 	gitignorePath := filepath.Join(dir, ".gitignore")
 	require.NoError(t, os.WriteFile(gitignorePath, []byte("logs/\n"), 0o644))
 
-	m := NewGitignoreMatcher(dir)
+	m := gitignore.NewMatcher(dir)
 	logsDir := filepath.Join(dir, "logs")
 	// isGitignored for a directory entry.
 	assert.True(t, isGitignored(m, logsDir, true),

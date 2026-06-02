@@ -280,3 +280,13 @@ Plans 200, 201, 202 green. Tax:
 
 [223]: ../../plan/223_arch-fix-mdsmith-helper-tests.md
 [224]: ../../plan/224_arch-fix-lint-srp.md
+
+### nice-to-have (2026-06-02)
+
+`internal/punkt` not in the layering map —
+[plan/225][225]. Separately, [plan/224][224]
+(`internal/lint` SRP) is now implemented:
+`gitignore`, `bytelimit`, and `piparser`
+split into sibling packages.
+
+[225]: ../../plan/225_arch-fix-punkt-layering.md

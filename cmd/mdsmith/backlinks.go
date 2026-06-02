@@ -13,6 +13,7 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 	flag "github.com/spf13/pflag"
 
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/globpath"
 	"github.com/jeduden/mdsmith/internal/linkgraph"
@@ -306,7 +307,7 @@ func extractBacklinksFromSource(
 	maxBytes int64, stripFrontMatter bool,
 	index *linkgraph.WikilinkIndex,
 ) ([]backlinkRecord, error) {
-	data, err := lint.ReadFileLimited(src, maxBytes)
+	data, err := bytelimit.ReadFileLimited(src, maxBytes)
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", srcRel, err)
 	}

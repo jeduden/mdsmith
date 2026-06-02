@@ -9,9 +9,11 @@ import (
 	"sort"
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/engine"
 	"github.com/jeduden/mdsmith/internal/explain"
+	"github.com/jeduden/mdsmith/internal/gitignore"
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -55,14 +57,14 @@ type Fixer struct {
 	// read-only tricks. Production callers leave it nil.
 	WriteFile func(path string, data []byte, perm os.FileMode) error
 
-	// gitignoreCache caches GitignoreMatchers by directory so the
+	// gitignoreCache caches gitignore matchers by directory so the
 	// matcher tree is walked once per directory across a fix run,
 	// matching the engine.Runner cache contract that catalog and
 	// other gitignore-aware rules expect.
-	gitignoreCache map[string]*lint.GitignoreMatcher
+	gitignoreCache map[string]*gitignore.Matcher
 }
 
-// cachedGitignore returns a GitignoreMatcher for the given directory,
+// cachedGitignore returns a *gitignore.Matcher for the given directory,
 // creating and caching it on first use so the matcher tree is walked
 // once per (Fixer, dir). Mirrors engine.Runner so the fix path's
 // lint.File values give catalog (and any other rule that calls
@@ -72,18 +74,18 @@ type Fixer struct {
 // path) and idempotent, and it collapses equivalent forms like
 // "./sub" and "sub" / "sub/" so callers passing the same logical
 // directory in slightly different syntactic forms share one cache
-// entry. lint.NewGitignoreMatcher canonicalizes its argument
+// entry. gitignore.NewMatcher canonicalizes its argument
 // internally (filepath.Abs) before walking, so the matcher itself is
 // correctly rooted even when the cleaned key is still relative.
-func (f *Fixer) cachedGitignore(dir string) *lint.GitignoreMatcher {
+func (f *Fixer) cachedGitignore(dir string) *gitignore.Matcher {
 	if f.gitignoreCache == nil {
-		f.gitignoreCache = make(map[string]*lint.GitignoreMatcher)
+		f.gitignoreCache = make(map[string]*gitignore.Matcher)
 	}
 	key := filepath.Clean(dir)
 	if m, ok := f.gitignoreCache[key]; ok {
 		return m
 	}
-	m := lint.NewGitignoreMatcher(key)
+	m := gitignore.NewMatcher(key)
 	f.gitignoreCache[key] = m
 	return m
 }
@@ -282,7 +284,7 @@ func (f *Fixer) fixFile(path string) (
 ) {
 	var errs []error
 
-	source, err := lint.ReadFileLimited(path, f.MaxInputBytes)
+	source, err := bytelimit.ReadFileLimited(path, f.MaxInputBytes)
 	if err != nil {
 		return nil, nil, "", false, []error{fmt.Errorf("reading %q: %w", path, err)}
 	}
@@ -600,7 +602,7 @@ func (f *Fixer) prepareFile(path string, source []byte) (*lint.File, fs.FS, []st
 		gitignoreDir = f.RootDir
 	}
 	gd := gitignoreDir // capture for closure
-	lf.GitignoreFunc = func() *lint.GitignoreMatcher {
+	lf.GitignoreFunc = func() *gitignore.Matcher {
 		return f.cachedGitignore(gd)
 	}
 	kinds, err := lint.ParseFrontMatterKinds(lf.FrontMatter)

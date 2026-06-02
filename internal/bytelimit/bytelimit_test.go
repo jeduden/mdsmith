@@ -1,4 +1,4 @@
-package lint_test
+package bytelimit_test
 
 import (
 	"math"
@@ -7,17 +7,21 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestDefaultMaxInputBytes(t *testing.T) {
+	assert.Equal(t, int64(2*1024*1024), bytelimit.DefaultMaxInputBytes)
+}
 
 func TestReadFileLimited_Normal(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "small.md")
 	require.NoError(t, os.WriteFile(p, []byte("hello"), 0o644))
 
-	data, err := lint.ReadFileLimited(p, 100)
+	data, err := bytelimit.ReadFileLimited(p, 100)
 	require.NoError(t, err)
 	assert.Equal(t, []byte("hello"), data)
 }
@@ -31,7 +35,7 @@ func TestReadFileLimited_AtLimit(t *testing.T) {
 	}
 	require.NoError(t, os.WriteFile(p, content, 0o644))
 
-	data, err := lint.ReadFileLimited(p, 50)
+	data, err := bytelimit.ReadFileLimited(p, 50)
 	require.NoError(t, err)
 	assert.Equal(t, content, data)
 }
@@ -42,7 +46,7 @@ func TestReadFileLimited_OverLimit(t *testing.T) {
 	content := make([]byte, 100)
 	require.NoError(t, os.WriteFile(p, content, 0o644))
 
-	_, err := lint.ReadFileLimited(p, 50)
+	_, err := bytelimit.ReadFileLimited(p, 50)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "file too large")
 	assert.Contains(t, err.Error(), "100 bytes")
@@ -55,7 +59,7 @@ func TestReadFileLimited_ZeroUnlimited(t *testing.T) {
 	content := make([]byte, 10000)
 	require.NoError(t, os.WriteFile(p, content, 0o644))
 
-	data, err := lint.ReadFileLimited(p, 0)
+	data, err := bytelimit.ReadFileLimited(p, 0)
 	require.NoError(t, err)
 	assert.Len(t, data, 10000)
 }
@@ -66,7 +70,7 @@ func TestReadFileLimited_NegativeUnlimited(t *testing.T) {
 	content := make([]byte, 10000)
 	require.NoError(t, os.WriteFile(p, content, 0o644))
 
-	data, err := lint.ReadFileLimited(p, -1)
+	data, err := bytelimit.ReadFileLimited(p, -1)
 	require.NoError(t, err)
 	assert.Len(t, data, 10000)
 }
@@ -76,13 +80,13 @@ func TestReadFileLimited_EmptyFile(t *testing.T) {
 	p := filepath.Join(dir, "empty.md")
 	require.NoError(t, os.WriteFile(p, nil, 0o644))
 
-	data, err := lint.ReadFileLimited(p, 100)
+	data, err := bytelimit.ReadFileLimited(p, 100)
 	require.NoError(t, err)
 	assert.Empty(t, data)
 }
 
 func TestReadFileLimited_NotFound(t *testing.T) {
-	_, err := lint.ReadFileLimited("/nonexistent/file.md", 100)
+	_, err := bytelimit.ReadFileLimited("/nonexistent/file.md", 100)
 	require.Error(t, err)
 }
 
@@ -92,7 +96,7 @@ func TestReadFileLimited_MaxInt64Unlimited(t *testing.T) {
 	p := filepath.Join(dir, "file.md")
 	require.NoError(t, os.WriteFile(p, []byte("hello"), 0o644))
 
-	data, err := lint.ReadFileLimited(p, math.MaxInt64)
+	data, err := bytelimit.ReadFileLimited(p, math.MaxInt64)
 	require.NoError(t, err)
 	assert.Equal(t, []byte("hello"), data)
 }
@@ -101,7 +105,7 @@ func TestReadFSFileLimited_MaxInt64Unlimited(t *testing.T) {
 	fsys := fstest.MapFS{
 		"test.md": &fstest.MapFile{Data: []byte("hello")},
 	}
-	data, err := lint.ReadFSFileLimited(fsys, "test.md", math.MaxInt64)
+	data, err := bytelimit.ReadFSFileLimited(fsys, "test.md", math.MaxInt64)
 	require.NoError(t, err)
 	assert.Equal(t, []byte("hello"), data)
 }
@@ -110,7 +114,7 @@ func TestReadFSFileLimited_Normal(t *testing.T) {
 	fsys := fstest.MapFS{
 		"test.md": &fstest.MapFile{Data: []byte("hello")},
 	}
-	data, err := lint.ReadFSFileLimited(fsys, "test.md", 100)
+	data, err := bytelimit.ReadFSFileLimited(fsys, "test.md", 100)
 	require.NoError(t, err)
 	assert.Equal(t, []byte("hello"), data)
 }
@@ -120,7 +124,7 @@ func TestReadFSFileLimited_OverLimit(t *testing.T) {
 	fsys := fstest.MapFS{
 		"big.md": &fstest.MapFile{Data: content},
 	}
-	_, err := lint.ReadFSFileLimited(fsys, "big.md", 50)
+	_, err := bytelimit.ReadFSFileLimited(fsys, "big.md", 50)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "file too large")
 }
@@ -130,7 +134,7 @@ func TestReadFSFileLimited_ZeroUnlimited(t *testing.T) {
 	fsys := fstest.MapFS{
 		"big.md": &fstest.MapFile{Data: content},
 	}
-	data, err := lint.ReadFSFileLimited(fsys, "big.md", 0)
+	data, err := bytelimit.ReadFSFileLimited(fsys, "big.md", 0)
 	require.NoError(t, err)
 	assert.Len(t, data, 10000)
 }
@@ -143,13 +147,13 @@ func TestReadFSFileLimited_AtLimit(t *testing.T) {
 	fsys := fstest.MapFS{
 		"exact.md": &fstest.MapFile{Data: content},
 	}
-	data, err := lint.ReadFSFileLimited(fsys, "exact.md", 50)
+	data, err := bytelimit.ReadFSFileLimited(fsys, "exact.md", 50)
 	require.NoError(t, err)
 	assert.Equal(t, content, data)
 }
 
 func TestReadFSFileLimited_Nonexistent(t *testing.T) {
 	fsys := fstest.MapFS{}
-	_, err := lint.ReadFSFileLimited(fsys, "no-such.md", 100)
+	_, err := bytelimit.ReadFSFileLimited(fsys, "no-such.md", 100)
 	require.Error(t, err)
 }

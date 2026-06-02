@@ -1,7 +1,7 @@
 ---
 id: 224
 title: Split internal/lint along question boundaries
-status: "🔲"
+status: "✅"
 summary: >-
   internal/lint answers too many questions.
   Move gitignore, limits, and PI into sibling
@@ -105,16 +105,16 @@ facets of a single subject is fine.
 
 ## Acceptance Criteria
 
-- [ ] `internal/gitignore` exists with a
+- [x] `internal/gitignore` exists with a
   focused package doc.
-- [ ] `internal/bytelimit` exists with a
+- [x] `internal/bytelimit` exists with a
   focused package doc.
-- [ ] `internal/piparser` exists with a
+- [x] `internal/piparser` exists with a
   focused package doc.
-- [ ] `internal/lint/doc.go` exists with
+- [x] `internal/lint/doc.go` exists with
   a package doc whose subject is a single
   noun — the parsed Markdown file — not a
   conjunction of unrelated responsibilities.
-- [ ] `go build ./...` clean.
-- [ ] `go test ./...` passes.
-- [ ] `go tool golangci-lint run` clean.
+- [x] `go build ./...` clean.
+- [x] `go test ./...` passes.
+- [x] `go tool golangci-lint run` clean.

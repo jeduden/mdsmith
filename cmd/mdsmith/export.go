@@ -8,9 +8,11 @@ import (
 	flag "github.com/spf13/pflag"
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/engine"
 	"github.com/jeduden/mdsmith/internal/export"
+	"github.com/jeduden/mdsmith/internal/gitignore"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 )
@@ -97,7 +99,7 @@ func doExport(path string, flags exportFlags) int {
 		return 2
 	}
 
-	data, err := lint.ReadFileLimited(path, maxBytes)
+	data, err := bytelimit.ReadFileLimited(path, maxBytes)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return 2
@@ -150,8 +152,8 @@ func prepareExportFile(
 		f.SetRootDir(root)
 		gitignoreDir = root
 	}
-	f.GitignoreFunc = func() *lint.GitignoreMatcher {
-		return lint.NewGitignoreMatcher(gitignoreDir)
+	f.GitignoreFunc = func() *gitignore.Matcher {
+		return gitignore.NewMatcher(gitignoreDir)
 	}
 	// Match engine.Runner.processFile so staleness diagnostics inside
 	// an outer include/catalog body are suppressed: the host file is

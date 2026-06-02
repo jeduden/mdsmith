@@ -6,6 +6,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/globpath"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/piparser"
 )
 
 // DirectiveKind enumerates the directive shapes ExtractDirectives
@@ -70,7 +71,7 @@ func ExtractDirectives(f *lint.File) []DirectiveEdge {
 	}
 	var out []DirectiveEdge
 	for n := f.AST.FirstChild(); n != nil; n = n.NextSibling() {
-		pi, ok := n.(*lint.ProcessingInstruction)
+		pi, ok := n.(*piparser.ProcessingInstruction)
 		if !ok {
 			continue
 		}
@@ -126,7 +127,7 @@ func ExtractDirectives(f *lint.File) []DirectiveEdge {
 // directivePILine returns the 1-based body-relative line of the
 // directive's opening marker. Goldmark guarantees a parsed PI has at
 // least one source line.
-func directivePILine(f *lint.File, pi *lint.ProcessingInstruction) int {
+func directivePILine(f *lint.File, pi *piparser.ProcessingInstruction) int {
 	if pi.Lines().Len() == 0 {
 		return 1
 	}
@@ -139,7 +140,7 @@ func directivePILine(f *lint.File, pi *lint.ProcessingInstruction) int {
 // Malformed YAML yields ok=false, matching the index's
 // "if you can't trust the params, don't synthesize an edge from
 // them" rule. Dedicated lint rules report the user-facing diagnostic.
-func parsePIParams(pi *lint.ProcessingInstruction, source []byte) (map[string]string, bool) {
+func parsePIParams(pi *piparser.ProcessingInstruction, source []byte) (map[string]string, bool) {
 	body := extractPIBody(pi, source)
 	startLine := 1
 	if pi.Lines().Len() > 0 {
@@ -158,7 +159,7 @@ func parsePIParams(pi *lint.ProcessingInstruction, source []byte) (map[string]st
 	return params, true
 }
 
-func extractPIBody(pi *lint.ProcessingInstruction, source []byte) string {
+func extractPIBody(pi *piparser.ProcessingInstruction, source []byte) string {
 	lines := pi.Lines()
 	if lines.Len() <= 1 {
 		return ""

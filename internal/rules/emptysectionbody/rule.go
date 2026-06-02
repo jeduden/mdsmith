@@ -7,6 +7,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
+	"github.com/jeduden/mdsmith/internal/piparser"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/yuin/goldmark/ast"
 )
@@ -248,7 +249,7 @@ func topLevelNodes(root ast.Node) []ast.Node {
 
 func hasAllowMarker(nodes []ast.Node, markerName string) bool {
 	for _, node := range nodes {
-		pi, ok := node.(*lint.ProcessingInstruction)
+		pi, ok := node.(*piparser.ProcessingInstruction)
 		if !ok {
 			continue
 		}
@@ -264,7 +265,7 @@ func hasMeaningfulContent(nodes []ast.Node, source []byte) bool {
 		switch n := node.(type) {
 		case *ast.Heading:
 			continue
-		case *lint.ProcessingInstruction:
+		case *piparser.ProcessingInstruction:
 			continue
 		case *ast.HTMLBlock:
 			raw := nodeLinesText(n, source)

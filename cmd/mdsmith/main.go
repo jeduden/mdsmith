@@ -10,6 +10,7 @@ import (
 
 	flag "github.com/spf13/pflag"
 
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/discovery"
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -254,7 +255,7 @@ func queryFiles(matcher *query.Matcher, files []string, delim string, verbose bo
 // readFrontMatterRaw reads a file, strips front matter, and
 // unmarshals YAML into map[string]any (preserving numeric types).
 func readFrontMatterRaw(path string, maxBytes int64) (map[string]any, error) {
-	data, err := lint.ReadFileLimited(path, maxBytes)
+	data, err := bytelimit.ReadFileLimited(path, maxBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -574,7 +575,7 @@ func resolveMaxInputBytes(cfg *config.Config, cliFlag string) (int64, error) {
 		raw = cfg.MaxInputSize
 	}
 	if raw == "" {
-		return lint.DefaultMaxInputBytes, nil
+		return bytelimit.DefaultMaxInputBytes, nil
 	}
 	n, err := config.ParseSize(raw)
 	if err != nil {

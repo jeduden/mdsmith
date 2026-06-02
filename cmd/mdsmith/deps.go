@@ -9,8 +9,8 @@ import (
 
 	flag "github.com/spf13/pflag"
 
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/index"
-	"github.com/jeduden/mdsmith/internal/lint"
 )
 
 // depRecord is one dependency edge, either an outgoing reference from
@@ -222,7 +222,7 @@ func runDeps(args []string) int {
 	idx.BuildSerial(rels, func(rel string) ([]byte, error) {
 		// rel always comes from rels, and rels is built in
 		// lockstep with relToAbs, so the lookup never misses.
-		return lint.ReadFileLimited(relToAbs[rel], maxBytes)
+		return bytelimit.ReadFileLimited(relToAbs[rel], maxBytes)
 	})
 
 	recs := collectDeps(idx, target, opts.incoming)

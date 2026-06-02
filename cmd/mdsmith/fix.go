@@ -10,6 +10,7 @@ import (
 
 	flag "github.com/spf13/pflag"
 
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 	fixpkg "github.com/jeduden/mdsmith/internal/fix"
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -198,7 +199,7 @@ func orderFilesLeavesFirst(files []string, rootDir string, maxBytes int64) []str
 
 	idx := index.New(rootDir)
 	idx.BuildSerial(rels, func(rel string) ([]byte, error) {
-		return lint.ReadFileLimited(relToAbs[rel], maxBytes)
+		return bytelimit.ReadFileLimited(relToAbs[rel], maxBytes)
 	})
 
 	ordered := idx.DependencyOrder(rels)

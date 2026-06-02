@@ -22,51 +22,44 @@ modes to check Go changes against it.
 Each `internal/` package answers one
 question. The current production set:
 
-- `internal/config` — load and merge
-  `.mdsmith.yml` across defaults, kinds,
-  and overrides.
-- `internal/engine` — orchestrate rules
-  over files; owns the run loop.
-- `internal/lint` — run rule checks
-  against a parsed file.
-- `internal/fix` — produce edits that
-  make a file stop violating rules.
-- `internal/linkgraph` — the canonical
-  Markdown link / directive / reference
-  extractor. MDS027, the `mdsmith list
-  backlinks` CLI, and the workspace
-  symbol index (`internal/index`) all
-  consult it so anchor normalisation,
-  workspace-relative path resolution,
-  and catalog-glob handling stay
-  consistent across surfaces. The
-  per-file extractor is pure (no file
-  reads, no workspace walks) so callers
-  can fan it out across goroutines.
-- `internal/index` — the workspace
-  symbol / edge graph (headings,
-  link-ref defs, directives,
-  front-matter keys, reverse edges);
-  queried by the LSP, schema, and the
-  rename / deps surfaces.
-- `internal/lsp` — speak the Language
-  Server Protocol; consumes the engine.
-- `pkg/markdown` — the one goldmark
-  parse/produce surface (CommonMark+PI);
-  `pkg/markdown/flavor` adds extensions.
-  Public; see [Public Markdown Library](../markdown-library.md).
-- `internal/mdtext` — walk an
-  already-parsed AST (slugging, TOC,
-  plain-text). `pkg/markdown` produces
-  the node it walks.
-- `internal/rule` — interfaces for rules
-  and fixes (the ports package).
-- `internal/rules/<rule-name>/` — one Go
-  rule per package, e.g.
-  `internal/rules/linelength/`. Docs and
-  fixtures live alongside in
-  `internal/rules/MDS###-<rule-name>/`
-  (e.g.
+- `internal/config` — load and merge `.mdsmith.yml` across defaults,
+  kinds, and overrides.
+- `internal/engine` — orchestrate rules over files; owns the run loop.
+- `internal/lint` — model a parsed Markdown file (source, AST, front
+  matter, diagnostics, caches, prose ranges) that rules and the engine
+  consume.
+- `internal/gitignore` — match a path against .gitignore patterns
+  (per-directory and ancestor rules, stopping at the working-tree
+  boundary). Split out of `internal/lint`.
+- `internal/bytelimit` — read a file up to a byte cap (`ReadFileLimited`,
+  `ReadFSFileLimited`, `DefaultMaxInputBytes`). Split out of
+  `internal/lint`.
+- `internal/piparser` — re-export the goldmark processing-instruction
+  (`<?…?>`) block node and parser from `pkg/markdown` for the linter's
+  type switches. Split out of `internal/lint`.
+- `internal/fix` — produce edits that make a file stop violating rules.
+- `internal/linkgraph` — the canonical Markdown link / directive /
+  reference extractor. MDS027, the `mdsmith list backlinks` CLI, and the
+  workspace symbol index (`internal/index`) all consult it so anchor
+  normalisation, workspace-relative path resolution, and catalog-glob
+  handling stay consistent across surfaces. The per-file extractor is pure
+  (no file reads, no workspace walks) so callers can fan it out across
+  goroutines.
+- `internal/index` — the workspace symbol / edge graph (headings, link-ref
+  defs, directives, front-matter keys, reverse edges); queried by the LSP,
+  schema, and the rename / deps surfaces.
+- `internal/lsp` — speak the Language Server Protocol; consumes the engine.
+- `pkg/markdown` — the one goldmark parse/produce surface (CommonMark+PI);
+  `pkg/markdown/flavor` adds extensions. Public; see
+  [Public Markdown Library](../markdown-library.md).
+- `internal/mdtext` — walk an already-parsed AST (slugging, TOC,
+  plain-text). `pkg/markdown` produces the node it walks.
+- `internal/punkt` — sentence segmenter (vendored Punkt); only
+  `internal/mdtext` imports it.
+- `internal/rule` — interfaces for rules and fixes (the ports package).
+- `internal/rules/<rule-name>/` — one Go rule per package, e.g.
+  `internal/rules/linelength/`. Docs and fixtures live alongside in
+  `internal/rules/MDS###-<rule-name>/` (e.g.
   `internal/rules/MDS001-line-length/`).
 
 The names answer the question the package

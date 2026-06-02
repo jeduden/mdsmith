@@ -7,7 +7,7 @@ import (
 	"strconv"
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
-	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 )
 
 // Row holds computed metric values for a single file.
@@ -21,7 +21,7 @@ type Row struct {
 func Collect(paths []string, defs []Definition, maxBytes int64) ([]Row, error) {
 	rows := make([]Row, 0, len(paths))
 	for _, path := range paths {
-		source, err := lint.ReadFileLimited(path, maxBytes)
+		source, err := bytelimit.ReadFileLimited(path, maxBytes)
 		if err != nil {
 			return nil, fmt.Errorf("reading %q: %w", path, err)
 		}

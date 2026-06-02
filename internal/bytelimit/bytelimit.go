@@ -1,4 +1,7 @@
-package lint
+// Package bytelimit guards against oversized inputs. It reads a file —
+// from disk or an fs.FS — up to a byte cap, returning an error when the
+// file exceeds it.
+package bytelimit
 
 import (
 	"fmt"

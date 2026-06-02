@@ -8,8 +8,10 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/fieldinterp"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/piparser"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 	"github.com/yuin/goldmark/ast"
 )
@@ -296,7 +298,7 @@ func stripDelimiters(fm []byte) []byte {
 // and parses its YAML body to extract the filename constraint.
 func extractRequireFilename(f *lint.File) (string, error) {
 	for c := f.AST.FirstChild(); c != nil; c = c.NextSibling() {
-		pi, ok := c.(*lint.ProcessingInstruction)
+		pi, ok := c.(*piparser.ProcessingInstruction)
 		if !ok || pi.Name != "require" {
 			continue
 		}
@@ -316,7 +318,7 @@ func extractRequireFilename(f *lint.File) (string, error) {
 	return "", nil
 }
 
-func piYAMLBody(pi *lint.ProcessingInstruction, source []byte, name string) (string, error) {
+func piYAMLBody(pi *piparser.ProcessingInstruction, source []byte, name string) (string, error) {
 	lines := pi.Lines()
 	if lines.Len() == 1 {
 		seg := lines.At(0)
@@ -352,7 +354,7 @@ func collectFileHeadings(
 		case *ast.Heading:
 			text := headingText(node, f.Source)
 			heads = append(heads, FileHeading{Level: node.Level, Text: text})
-		case *lint.ProcessingInstruction:
+		case *piparser.ProcessingInstruction:
 			if node.Name != "include" {
 				return ast.WalkContinue, nil
 			}
@@ -374,7 +376,7 @@ func collectFileHeadings(
 }
 
 func expandInclude(
-	pi *lint.ProcessingInstruction, source []byte,
+	pi *piparser.ProcessingInstruction, source []byte,
 	r *FileReader, schemaPath string, visited map[string]bool, chain []string,
 ) ([]FileHeading, string, error) {
 	included, err := resolveIncludePath(pi, source, schemaPath)
@@ -427,7 +429,7 @@ func expandInclude(
 }
 
 func resolveIncludePath(
-	pi *lint.ProcessingInstruction, source []byte, schemaPath string,
+	pi *piparser.ProcessingInstruction, source []byte, schemaPath string,
 ) (string, error) {
 	body, err := piYAMLBody(pi, source, pi.Name)
 	if err != nil {
@@ -463,12 +465,12 @@ func resolveIncludePath(
 // OS filesystem. The behaviour mirrors the legacy
 // requiredstructure.readSchemaFile helper so existing fixtures keep
 // resolving paths the same way. A zero MaxBytes is normalised to
-// lint.DefaultMaxInputBytes so a default-constructed FileReader
+// bytelimit.DefaultMaxInputBytes so a default-constructed FileReader
 // does not silently read unbounded schema/include files.
 func (r *FileReader) readPath(path string) ([]byte, error) {
 	maxBytes := r.MaxBytes
 	if maxBytes == 0 {
-		maxBytes = lint.DefaultMaxInputBytes
+		maxBytes = bytelimit.DefaultMaxInputBytes
 	}
 	if r.RootFS != nil {
 		if filepath.IsAbs(path) {
@@ -479,9 +481,9 @@ func (r *FileReader) readPath(path string) ([]byte, error) {
 		if clean == ".." || strings.HasPrefix(clean, "../") {
 			return nil, fmt.Errorf("schema path %q escapes project root", path)
 		}
-		return lint.ReadFSFileLimited(r.RootFS, clean, maxBytes)
+		return bytelimit.ReadFSFileLimited(r.RootFS, clean, maxBytes)
 	}
-	return lint.ReadFileLimited(path, maxBytes)
+	return bytelimit.ReadFileLimited(path, maxBytes)
 }
 
 // headingsToScopes converts a flat list of (level, text) headings
