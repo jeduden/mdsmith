@@ -52,27 +52,12 @@ Numbers above come from a reproducible
 <!-- Rendered by .github/workflows/demo.yml on push to main; published to the assets branch -->
 ![mdsmith demo](https://raw.githubusercontent.com/jeduden/mdsmith/assets/assets/demo.gif)
 
-## 🚀 Quickstart
-
-```bash
-go install github.com/jeduden/mdsmith/cmd/mdsmith@latest  # or npm / pip / brew (see Installation)
-mdsmith check .   # lint every Markdown file; non-zero exit on failure (CI-ready)
-mdsmith fix .     # auto-fix what fixes cleanly, in place
-```
-
-`check` reports one diagnostic per line, then a summary line:
-
-```text
-docs/guide.md:42:81  MDS001  line too long (88 > 80)
-stats: checked=128 fixed=0 failures=1 unfixed=1
-```
-
 <?include
 file: docs/features/index.md
 strip-frontmatter: "true"
 heading-level: "absolute"
 ?>
-### Why mdsmith
+## Why mdsmith
 
 mdsmith is a Markdown linter and formatter written in Go. It
 checks style, readability, structure, and cross-file integrity,
@@ -88,7 +73,7 @@ through `mdsmith lsp`, and in your coding agent through a Claude
 Code plugin. The check that blocks a merge is the same one you see
 as you type, so feedback never depends on which tool you opened.
 
-#### Clean, consistent Markdown
+### Clean, consistent Markdown
 
 Catch style, formatting, and readability problems on every file.
 `mdsmith fix` rewrites the ones with a single correct fix;
@@ -111,7 +96,7 @@ Cap file, section, and token-budget size, enforce a reading grade
 and sentence count, and flag verbatim copy-paste between files.
 Three rules ship on by default; two are opt-in.
 
-#### One engine, every surface
+### One engine, every surface
 
 The same engine runs in CI, in your editor, and in your coding
 agent, from one fast static binary you can install through any
@@ -139,7 +124,7 @@ The same version-stamped binary ships through go install, npm,
 pip, uvx, Homebrew, mise, asdf, and GitHub Releases. No
 postinstall network call, so locked-down CI installs offline.
 
-#### A connected docs tree
+### A connected docs tree
 
 mdsmith reads the links, includes, and headings that tie your
 files together, so a rename or a move never strands a reference.
@@ -166,7 +151,7 @@ order, and front matter against a schema. Declare the schema
 inline on the kind or share it from a `proto.md` template, so a
 whole directory obeys one contract.
 
-#### Markdown as a single source of truth
+### Markdown as a single source of truth
 
 Each file stays the single source of truth. mdsmith keeps the
 generated parts in sync, and can project the file out as JSON,
@@ -190,7 +175,7 @@ YAML, or msgpack tree, and `<?include extract:?>` reads one value
 back into another file. `mdsmith export` writes a portable,
 directive-free copy that renders on any Markdown tool.
 
-#### Built for your pipeline
+### Built for your pipeline
 
 Release gates, a Git merge driver, transparent config, and a
 coverage-gated build make mdsmith safe to wire into a shared
@@ -218,6 +203,21 @@ The CI, Go Report Card, and Codecov badges report live project
 health. mdsmith lints its own docs with the rules it ships, and a
 coverage gate blocks any merge that drops below the line.
 <?/include?>
+
+## 🚀 Quickstart
+
+```bash
+go install github.com/jeduden/mdsmith/cmd/mdsmith@latest  # or npm / pip / brew (see Installation)
+mdsmith check .   # lint every Markdown file; non-zero exit on failure (CI-ready)
+mdsmith fix .     # auto-fix what fixes cleanly, in place
+```
+
+`check` reports one diagnostic per line, then a summary line:
+
+```text
+docs/guide.md:42:81  MDS001  line too long (88 > 80)
+stats: checked=128 fixed=0 failures=1 unfixed=1
+```
 
 ## 📦 Installation
 
