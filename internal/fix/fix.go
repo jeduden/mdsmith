@@ -57,14 +57,14 @@ type Fixer struct {
 	// read-only tricks. Production callers leave it nil.
 	WriteFile func(path string, data []byte, perm os.FileMode) error
 
-	// gitignoreCache caches GitignoreMatchers by directory so the
+	// gitignoreCache caches gitignore matchers by directory so the
 	// matcher tree is walked once per directory across a fix run,
 	// matching the engine.Runner cache contract that catalog and
 	// other gitignore-aware rules expect.
 	gitignoreCache map[string]*gitignore.Matcher
 }
 
-// cachedGitignore returns a GitignoreMatcher for the given directory,
+// cachedGitignore returns a *gitignore.Matcher for the given directory,
 // creating and caching it on first use so the matcher tree is walked
 // once per (Fixer, dir). Mirrors engine.Runner so the fix path's
 // lint.File values give catalog (and any other rule that calls

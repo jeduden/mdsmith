@@ -76,7 +76,7 @@ type Runner struct {
 	// explicit cap. RunSource uses GOMAXPROCS directly because the
 	// file-level pool does not run for single-file in-memory paths.
 	IntraFileConcurrency int
-	// gitignoreCache caches GitignoreMatchers by directory to avoid
+	// gitignoreCache caches gitignore matchers by directory to avoid
 	// re-walking the filesystem for each file. gitignoreMu guards it
 	// because Run lints files on multiple goroutines and the
 	// GitignoreFunc closure each file carries reaches back into the
@@ -693,7 +693,7 @@ func (r *Runner) runCacheForCall() *lint.RunCache {
 	return lint.NewRunCache()
 }
 
-// cachedGitignore returns a GitignoreMatcher for the given directory,
+// cachedGitignore returns a *gitignore.Matcher for the given directory,
 // creating and caching it on first use to avoid re-walking the filesystem.
 // The cache key is normalized to an absolute path so equivalent paths
 // (e.g. "sub" vs "./sub") share the same entry.
