@@ -9,8 +9,8 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/bytelimit"
+	"github.com/jeduden/mdsmith/internal/checker"
 	"github.com/jeduden/mdsmith/internal/config"
-	"github.com/jeduden/mdsmith/internal/engine"
 	"github.com/jeduden/mdsmith/internal/export"
 	"github.com/jeduden/mdsmith/internal/gitignore"
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -218,7 +218,7 @@ func exportFrontMatterFields(
 }
 
 // configuredEnabledRules clones+configures every enabled rule via
-// engine.ConfigureRule, the same path fix.Fixer.fixableRules uses.
+// checker.ConfigureRule, the same path fix.Fixer.fixableRules uses.
 // A settings-apply error short-circuits the export with a clear
 // message rather than silently dropping the rule.
 func configuredEnabledRules(
@@ -233,7 +233,7 @@ func configuredEnabledRules(
 		if !cfg.Enabled {
 			continue
 		}
-		configured, err := engine.ConfigureRule(rl, cfg)
+		configured, err := checker.ConfigureRule(rl, cfg)
 		if err != nil {
 			return nil, err
 		}

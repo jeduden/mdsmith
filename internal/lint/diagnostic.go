@@ -113,3 +113,43 @@ type ExplanationLeaf struct {
 	Value  any
 	Source string
 }
+
+// DedupeDiagnostics removes duplicate diagnostics from diags, where
+// two diagnostics are considered equal when their (File, Line, Column,
+// RuleID, Message) tuples match. Earlier-encountered duplicates win so
+// the diagnostic order from the first hit is preserved. The input slice
+// is never modified; nil input returns nil and a non-nil input always
+// produces a freshly-allocated slice so callers can keep the original
+// around without worrying about aliasing.
+func DedupeDiagnostics(diags []Diagnostic) []Diagnostic {
+	if len(diags) == 0 {
+		return nil
+	}
+	if len(diags) == 1 {
+		return append([]Diagnostic(nil), diags[0])
+	}
+	type key struct {
+		File    string
+		Line    int
+		Column  int
+		RuleID  string
+		Message string
+	}
+	seen := make(map[key]struct{}, len(diags))
+	out := make([]Diagnostic, 0, len(diags))
+	for _, d := range diags {
+		k := key{
+			File:    d.File,
+			Line:    d.Line,
+			Column:  d.Column,
+			RuleID:  d.RuleID,
+			Message: d.Message,
+		}
+		if _, ok := seen[k]; ok {
+			continue
+		}
+		seen[k] = struct{}{}
+		out = append(out, d)
+	}
+	return out
+}

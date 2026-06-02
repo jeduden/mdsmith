@@ -10,8 +10,8 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/bytelimit"
+	"github.com/jeduden/mdsmith/internal/checker"
 	"github.com/jeduden/mdsmith/internal/config"
-	"github.com/jeduden/mdsmith/internal/engine"
 	"github.com/jeduden/mdsmith/internal/explain"
 	"github.com/jeduden/mdsmith/internal/gitignore"
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -253,9 +253,9 @@ func (f *Fixer) fixOnce(paths []string) *Result {
 		}
 		res.Errors = append(res.Errors, errs...)
 	}
-	res.Failures = len(engine.DedupeDiagnostics(allBefore))
+	res.Failures = len(lint.DedupeDiagnostics(allBefore))
 
-	res.Diagnostics = engine.DedupeDiagnostics(res.Diagnostics)
+	res.Diagnostics = lint.DedupeDiagnostics(res.Diagnostics)
 	sort.Slice(res.Diagnostics, func(i, j int) bool {
 		di, dj := res.Diagnostics[i], res.Diagnostics[j]
 		if di.File != dj.File {
@@ -305,7 +305,7 @@ func (f *Fixer) fixFile(path string) (
 
 	fixable, settingsErrs := f.fixableRules(effective)
 	lf.GeneratedRanges = gensection.FindAllGeneratedRanges(lf)
-	beforeDiags, checkErrs := engine.CheckRules(lf, f.Rules, effective)
+	beforeDiags, checkErrs := checker.CheckRules(lf, f.Rules, effective)
 	errs = append(errs, append(settingsErrs, checkErrs...)...)
 
 	current := f.applyFixPasses(path, lf.Source, fixable, lf, dirFS, &errs)
@@ -327,7 +327,7 @@ func (f *Fixer) fixFile(path string) (
 
 	finalFile := buildPostFixFile(path, current, lf, dirFS)
 
-	diags, checkErrs := engine.CheckRules(finalFile, f.Rules, effective)
+	diags, checkErrs := checker.CheckRules(finalFile, f.Rules, effective)
 	errs = append(errs, checkErrs...)
 	if f.DryRun {
 		diags = subtractPredictedDryRunFixes(diags, fixable, finalFile)
@@ -399,8 +399,8 @@ func computeWouldFixAggregated(
 	allBefore, allAfter []lint.Diagnostic,
 	bytesChangedByPath map[string]bool,
 ) ([]WouldFixFile, int) {
-	beforeByFile := groupDiagsByFile(engine.DedupeDiagnostics(allBefore))
-	afterByFile := groupDiagsByFile(engine.DedupeDiagnostics(allAfter))
+	beforeByFile := groupDiagsByFile(lint.DedupeDiagnostics(allBefore))
+	afterByFile := groupDiagsByFile(lint.DedupeDiagnostics(allAfter))
 
 	files := make(map[string]struct{}, len(beforeByFile)+len(bytesChangedByPath))
 	for path := range beforeByFile {
@@ -708,7 +708,7 @@ func (f *Fixer) fixableRules(effective map[string]config.RuleCfg) ([]rule.Fixabl
 			continue
 		}
 
-		configured, err := engine.ConfigureRule(rl, cfg)
+		configured, err := checker.ConfigureRule(rl, cfg)
 		if err != nil {
 			errs = append(errs, err)
 			continue

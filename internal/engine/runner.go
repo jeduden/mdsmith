@@ -375,37 +375,11 @@ func (r *Runner) lintFile(path string, rules []rule.Rule, intraFileCap int, cach
 // is never modified; nil input returns nil and a non-nil input
 // always produces a freshly-allocated slice so callers can keep the
 // original around without worrying about aliasing.
+//
+// Deprecated: call lint.DedupeDiagnostics directly. This wrapper exists
+// so existing callers need not be updated all at once.
 func DedupeDiagnostics(diags []lint.Diagnostic) []lint.Diagnostic {
-	if len(diags) == 0 {
-		return nil
-	}
-	if len(diags) == 1 {
-		return append([]lint.Diagnostic(nil), diags[0])
-	}
-	type key struct {
-		File    string
-		Line    int
-		Column  int
-		RuleID  string
-		Message string
-	}
-	seen := make(map[key]struct{}, len(diags))
-	out := make([]lint.Diagnostic, 0, len(diags))
-	for _, d := range diags {
-		k := key{
-			File:    d.File,
-			Line:    d.Line,
-			Column:  d.Column,
-			RuleID:  d.RuleID,
-			Message: d.Message,
-		}
-		if _, ok := seen[k]; ok {
-			continue
-		}
-		seen[k] = struct{}{}
-		out = append(out, d)
-	}
-	return out
+	return lint.DedupeDiagnostics(diags)
 }
 
 // RunSource lints in-memory source bytes (e.g. from stdin or an LSP
