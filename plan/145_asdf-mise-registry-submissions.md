@@ -6,7 +6,7 @@ title: >-
 status: "🔳"
 summary: >-
   Land the asdf-plugin repo (jeduden/asdf-mdsmith) and
-  the mise-plugins/registry entry that the multi-channel
+  the jdx/mise registry entry that the multi-channel
   release pipeline already documents but cannot trigger
   from this repo. Spun out of plan/130 because both
   tasks ship outside this repo.
@@ -28,10 +28,11 @@ Neither registry knows about us yet.
 
 ## Background
 
-`mise` reads our GitHub releases directly via its
-`ubi` backend. A registry entry is just the
-difference between `ubi:jeduden/mdsmith@VER` (works
-today) and the shorter `mdsmith@VER` form.
+`mise` reads our GitHub releases directly. Its
+`github` backend already resolves
+`mise use github:jeduden/mdsmith@VER`. The `asdf:`
+and `go:` backends work too. A registry entry only
+adds the shorter, prefix-less `mdsmith@VER` form.
 
 `asdf` is different. It needs a plugin repo that
 knows how to list versions and fetch the binary.
@@ -63,13 +64,16 @@ on `asdf plugin add mdsmith`.
    [`asdf-vm/asdf-plugins`](https://github.com/asdf-vm/asdf-plugins)
    adding mdsmith so `asdf plugin add mdsmith`
    resolves without an explicit URL.
-4. File a PR to
-   [`mise-plugins/registry`](https://github.com/mise-plugins/registry)
-   adding mdsmith via the `ubi` backend pointing at
-   `jeduden/mdsmith` releases. Once merged, the
-   shorter `mise use mdsmith@latest` form starts
-   resolving on user CLIs without any code change in
-   this repo.
+4. File a PR to mise's curated registry,
+   [`jdx/mise`](https://github.com/jdx/mise)
+   `registry.toml`, adding a `[tools.mdsmith]` entry
+   on the `github:jeduden/mdsmith` backend (`ubi:` is
+   deprecated for new entries) with a `test` field.
+   The PR body must make a popularity/maintenance
+   case, since the registry is curated. Once merged,
+   the prefix-less `mise use mdsmith@latest` form
+   starts resolving on user CLIs without any code
+   change in this repo.
 5. Update
    [docs/guides/install.md](../docs/guides/install.md)
    to drop the "pending follow-up" badge from the
@@ -89,9 +93,10 @@ on `asdf plugin add mdsmith`.
       explicit URL after the asdf-plugins PR merges.
 - [x] `asdf install mdsmith X.Y.Z` then
       `mdsmith version` prints `mdsmith vX.Y.Z`.
-- [ ] `mise use mdsmith@X.Y.Z` (no `ubi:`) resolves
-      after the mise-plugins/registry PR merges, and
-      `mdsmith version` prints `mdsmith vX.Y.Z`.
+- [ ] `mise use mdsmith@X.Y.Z` (no backend prefix)
+      resolves after the `jdx/mise` registry PR
+      merges, and `mdsmith version` prints
+      `mdsmith vX.Y.Z`.
 - [ ] [docs/guides/install.md](../docs/guides/install.md)
       no longer flags asdf or short-form mise as
       pending follow-ups.
