@@ -6,7 +6,6 @@ diagnostics:
     column: 1
     message: |-
       Goal: got h3, expected h2
-      schema: ../../internal/rules/MDS020-required-structure/bad/data/tmpl.md
 ---
 # My Plan
 

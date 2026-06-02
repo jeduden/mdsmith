@@ -27,9 +27,15 @@ func TestSchemaDiagnostic_Format_AllFields(t *testing.T) {
 	}
 	got := d.Format()
 	want := "status: got \"draft\", expected one of: \"open\", \"in-progress\", \"done\"\n" +
-		"  (did you mean \"open\"?)\n" +
-		"schema: plan/proto.md:4"
-	assert.Equal(t, want, got)
+		"  (did you mean \"open\"?)"
+	assert.Equal(t, want, got, "Format no longer carries the schema trailer")
+
+	// The schema reference now rides on a structured related location.
+	rl, ok := d.related()
+	assert.True(t, ok)
+	assert.Equal(t, "plan/proto.md", rl.File)
+	assert.Equal(t, 4, rl.Line)
+	assert.Equal(t, "required by schema", rl.Message)
 }
 
 // TestSchemaDiagnostic_Format_NoActual covers the branch
@@ -43,8 +49,15 @@ func TestSchemaDiagnostic_Format_NoActual(t *testing.T) {
 		Expected:  "section to be present",
 		SchemaRef: "kind plan",
 	}
-	want := "## Goal: expected section to be present\nschema: kind plan"
+	want := "## Goal: expected section to be present"
 	assert.Equal(t, want, d.Format())
+
+	// "kind plan" is a descriptive label, not a file path, so the
+	// related location is message-only (no navigable file/line).
+	rl, ok := d.related()
+	assert.True(t, ok)
+	assert.Equal(t, "", rl.File)
+	assert.Equal(t, "kind plan", rl.Message)
 }
 
 // TestSchemaDiagnostic_Format_FieldOnly covers the very
@@ -54,6 +67,79 @@ func TestSchemaDiagnostic_Format_NoActual(t *testing.T) {
 func TestSchemaDiagnostic_Format_FieldOnly(t *testing.T) {
 	d := SchemaDiagnostic{Field: "field"}
 	assert.Equal(t, "field", d.Format())
+}
+
+// TestSchemaDiagnostic_Related_Variants pins how each SchemaRef shape
+// maps onto a structured related location: file:line and file-only
+// refs are navigable; descriptive labels (with spaces or no path
+// separator) become message-only; an empty ref yields no location.
+func TestSchemaDiagnostic_Related_Variants(t *testing.T) {
+	cases := []struct {
+		name     string
+		ref      string
+		wantOK   bool
+		wantFile string
+		wantLine int
+		wantMsg  string
+	}{
+		{"file with line", "plan/proto.md:4", true, "plan/proto.md", 4, "required by schema"},
+		{"file without line", "plan/proto.md", true, "plan/proto.md", 0, "required by schema"},
+		{"inline label", "inline kind schema", true, "", 0, "inline kind schema"},
+		{"path-pattern label", "kinds[plan] / path-pattern", true, "", 0, "kinds[plan] / path-pattern"},
+		{"single word label", "schema", true, "", 0, "schema"},
+		{"colon but non-numeric", "kind:rfc", true, "", 0, "kind:rfc"},
+		{"no ref", "", false, "", 0, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			rl, ok := SchemaDiagnostic{SchemaRef: c.ref}.related()
+			require.Equal(t, c.wantOK, ok)
+			if !c.wantOK {
+				return
+			}
+			assert.Equal(t, c.wantFile, rl.File)
+			assert.Equal(t, c.wantLine, rl.Line)
+			assert.Equal(t, c.wantMsg, rl.Message)
+		})
+	}
+}
+
+// TestSchemaDiagnostic_Related_Deprecated covers the deprecation
+// label on a navigable ref.
+func TestSchemaDiagnostic_Related_Deprecated(t *testing.T) {
+	rl, ok := SchemaDiagnostic{SchemaRef: "plan/proto.md:4", Deprecated: true}.related()
+	require.True(t, ok)
+	assert.Equal(t, "deprecated by schema", rl.Message)
+}
+
+// TestSchemaDiagnostic_Emit_AttachesRelated checks that Emit runs the
+// message through MakeDiag and attaches the schema reference as a
+// related location rather than leaving it in the message body.
+func TestSchemaDiagnostic_Emit_AttachesRelated(t *testing.T) {
+	mk := func(file string, line int, msg string) lint.Diagnostic {
+		return lint.Diagnostic{File: file, Line: line, Message: msg, RuleID: "MDS020"}
+	}
+	d := SchemaDiagnostic{
+		Field: "status", Actual: `"x"`, Expected: `one of: "a"`,
+		SchemaRef: "plan/proto.md:4",
+	}
+	got := d.Emit(mk, "task.md", 7)
+	assert.Equal(t, "task.md", got.File)
+	assert.Equal(t, 7, got.Line)
+	assert.NotContains(t, got.Message, "schema:", "schema ref no longer in message")
+	require.Len(t, got.RelatedLocations, 1)
+	assert.Equal(t, "plan/proto.md", got.RelatedLocations[0].File)
+	assert.Equal(t, 4, got.RelatedLocations[0].Line)
+}
+
+// TestSchemaDiagnostic_Emit_NoRefNoRelated checks that a diagnostic
+// without a SchemaRef gets no related location.
+func TestSchemaDiagnostic_Emit_NoRefNoRelated(t *testing.T) {
+	mk := func(file string, line int, msg string) lint.Diagnostic {
+		return lint.Diagnostic{File: file, Line: line, Message: msg}
+	}
+	got := SchemaDiagnostic{Field: "x"}.Emit(mk, "a.md", 1)
+	assert.Nil(t, got.RelatedLocations)
 }
 
 // TestFormatActual_FallbackOnMarshalError exercises the
@@ -79,8 +165,7 @@ func TestSchemaDiagnostic_Format_NoHint(t *testing.T) {
 		SchemaRef: "kind rfc",
 	}
 	got := d.Format()
-	want := "id: got \"BAD\", expected string matching ^RFC-[0-9]{4}$\n" +
-		"schema: kind rfc"
+	want := "id: got \"BAD\", expected string matching ^RFC-[0-9]{4}$"
 	assert.Equal(t, want, got)
 }
 
@@ -176,9 +261,9 @@ func TestParseFMBlockKeyLines_BlockScalarWithFenceSequence(t *testing.T) {
 // TestValidateFrontmatterDiags_CompileFailureCarriesSchemaRef
 // regresses the Copilot review observation that early-return
 // diagnostics for unrecoverable CUE/JSON failures used to drop
-// the trailing `schema: ...` line. Every diagnostic the
-// validator emits now uses SchemaDiagnostic so the source is
-// always present.
+// the schema reference. Every diagnostic the validator emits now
+// uses SchemaDiagnostic, so the source rides on a structured
+// related location rather than the message body (plan 230).
 func TestValidateFrontmatterDiags_CompileFailureCarriesSchemaRef(t *testing.T) {
 	sch := &Schema{
 		Source: "kind broken",
@@ -191,8 +276,8 @@ func TestValidateFrontmatterDiags_CompileFailureCarriesSchemaRef(t *testing.T) {
 	doc := newDocFile(t, "doc.md", "# T\n")
 	diags := ValidateFrontmatterDiags(doc, sch, map[string]any{"id": 1}, makeDiagForTest)
 	require.NotEmpty(t, diags)
-	assert.Contains(t, diags[0].Message, "schema:")
-	assert.Contains(t, diags[0].Message, "kind broken")
+	require.Len(t, diags[0].RelatedLocations, 1)
+	assert.Equal(t, "kind broken", diags[0].RelatedLocations[0].Message)
 }
 
 // TestRenderExpected_IntRangeOverflowGuard regresses two

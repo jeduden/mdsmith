@@ -139,6 +139,33 @@ func TestEffectiveInjectsInlineSchema(t *testing.T) {
 	require.Contains(t, got, "sections")
 }
 
+// TestEffectiveInjectsInlineSchemaSourcePath covers plan 230: the
+// kind's defining file (SourcePath) rides on the schema-sources entry
+// as `source`, so an inline-kind violation names a navigable file
+// instead of the bare "inline kind schema" label.
+func TestEffectiveInjectsInlineSchemaSourcePath(t *testing.T) {
+	cfg := &Config{
+		Rules: map[string]RuleCfg{"required-structure": {Enabled: true}},
+		Kinds: map[string]KindBody{
+			"rfc": {
+				Schema: map[string]any{
+					"sections": []any{map[string]any{"heading": "Overview"}},
+				},
+				SourcePath: "/work/.mdsmith.yml",
+			},
+		},
+		KindAssignment: []KindAssignmentEntry{
+			{Glob: []string{"docs/rfcs/*.md"}, Kinds: []string{"rfc"}},
+		},
+	}
+	effective := Effective(cfg, "docs/rfcs/foo.md", nil, nil)
+	sources, ok := effective["required-structure"].Settings["schema-sources"].([]any)
+	require.True(t, ok)
+	require.Len(t, sources, 1)
+	entry := sources[0].(map[string]any)
+	require.Equal(t, "/work/.mdsmith.yml", entry["source"])
+}
+
 // TestEffectiveComposesSchemaSourcesAcrossKinds covers plan 156: when
 // kind A supplies a file-path schema and kind B supplies an inline
 // schema, both end up in the composed schema-sources list rather

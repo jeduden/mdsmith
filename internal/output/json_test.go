@@ -350,3 +350,19 @@ func TestExplanationToJSON_EmptyLeavesIsEmptySlice(t *testing.T) {
 		t.Errorf("len(Leaves) = %d, want 0", len(got.Leaves))
 	}
 }
+
+// TestJSONFormatter_ClampsNonPositiveLine regresses plan 230: a
+// diagnostic anchored at line 0 serializes as line 1, not 0. Column is
+// left untouched (0 stays "unknown").
+func TestJSONFormatter_ClampsNonPositiveLine(t *testing.T) {
+	var buf bytes.Buffer
+	f := &JSONFormatter{}
+	require.NoError(t, f.Format(&buf, []lint.Diagnostic{
+		{File: "gen.md", Line: 0, Column: 3, RuleID: "MDS020", Message: "x"},
+	}))
+	var got []map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
+	require.Len(t, got, 1)
+	assert.EqualValues(t, 1, got[0]["line"])
+	assert.EqualValues(t, 3, got[0]["column"])
+}

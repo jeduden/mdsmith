@@ -163,8 +163,8 @@ func TestValidateFrontmatterDiags_InvalidCUESchemaCarriesRef(t *testing.T) {
 	require.NoError(t, err)
 	diags := ValidateFrontmatterDiags(f, sch, map[string]any{"id": 1}, makeDiagForTest)
 	require.Len(t, diags, 1)
-	assert.Contains(t, diags[0].Message, "schema:")
-	assert.Contains(t, diags[0].Message, "kind bad")
+	require.Len(t, diags[0].RelatedLocations, 1)
+	assert.Equal(t, "kind bad", diags[0].RelatedLocations[0].Message)
 }
 
 // TestCompileFailureDiag_FieldsRoundTrip exercises the
@@ -215,7 +215,8 @@ func TestValidateFrontmatterDiags_JSONMarshalFailureCarriesRef(t *testing.T) {
 	diags := ValidateFrontmatterDiags(f, sch, docFM, makeDiagForTest)
 	require.Len(t, diags, 1)
 	assert.Contains(t, diags[0].Message, "JSON-marshalable")
-	assert.Contains(t, diags[0].Message, "kind broken")
+	require.Len(t, diags[0].RelatedLocations, 1)
+	assert.Equal(t, "kind broken", diags[0].RelatedLocations[0].Message)
 }
 
 // TestValidateFrontmatterDiags_ExtraFieldCarriesRef
@@ -279,4 +280,65 @@ func TestDocFrontmatterKeyLines_StrippedFrontMatter(t *testing.T) {
 	require.NotNil(t, lines)
 	assert.Equal(t, 2, lines["id"])
 	assert.Equal(t, 3, lines["status"])
+}
+
+// TestMissingSectionAnchor covers the body-anchoring helper added in
+// plan 230: the natural insertion point is used when safe; otherwise the
+// anchor is the first body line outside every generated range so
+// engine.filterGeneratedDiags never drops the diagnostic and it still
+// formats as a valid location.
+func TestMissingSectionAnchor(t *testing.T) {
+	f, err := lint.NewFile("doc.md", []byte("# A\n## B\n## C\n"))
+	require.NoError(t, err)
+	require.Equal(t, 1, NonBodyDiagLine(f))
+
+	assert.Equal(t, 2, MissingSectionAnchor(f, 2), "real body line is used")
+	assert.Equal(t, 1, MissingSectionAnchor(f, 0),
+		"no preceding heading → first body line")
+
+	f.GeneratedRanges = []lint.LineRange{{From: 2, To: 4}}
+	assert.Equal(t, 1, MissingSectionAnchor(f, 3),
+		"candidate inside a generated range → first non-generated line")
+
+	f.GeneratedRanges = []lint.LineRange{{From: 2, To: 2}}
+	assert.Equal(t, 3, MissingSectionAnchor(f, 3),
+		"in-range candidate outside the generated range is used")
+	assert.Equal(t, 1, MissingSectionAnchor(f, len(f.Lines)+1),
+		"out-of-range candidate falls back; never returns > len(f.Lines)")
+
+	// Regression (Copilot review): a document that opens with a generated
+	// section. The anchor must not be a generated positive line (dropped
+	// by filterGeneratedDiags) nor a 0 that formats as file:0 — it is the
+	// first body line outside the generated range.
+	f.GeneratedRanges = []lint.LineRange{{From: 1, To: 3}}
+	got := MissingSectionAnchor(f, 0)
+	assert.Positive(t, got, "anchors at a real body line, not file:0")
+	assert.False(t, lineInGeneratedRange(f, got),
+		"the anchor lies outside every generated range")
+
+	// Whole file generated, nothing stripped: no positive line is safe
+	// and no non-positive line formats as a valid location, so 0 is the
+	// last resort that still surfaces the diagnostic.
+	f.GeneratedRanges = []lint.LineRange{{From: 1, To: len(f.Lines)}}
+	assert.Equal(t, 0, MissingSectionAnchor(f, 0),
+		"whole file generated, no front matter → file-start last resort")
+
+	// Whole file generated but front matter was stripped: the non-body
+	// anchor is non-positive, so it survives filtering and maps back onto
+	// the file rather than degenerating to 0.
+	f.LineOffset = 5
+	assert.Equal(t, NonBodyDiagLine(f), MissingSectionAnchor(f, 0),
+		"whole file generated, front matter stripped → non-body anchor")
+	assert.Negative(t, MissingSectionAnchor(f, 0),
+		"the non-body anchor is non-positive and survives filtering")
+}
+
+// TestPrecedingHeadingLine covers the document-order lookup: the
+// heading just before docIdx, or 0 when there is none.
+func TestPrecedingHeadingLine(t *testing.T) {
+	heads := []DocHeading{{Line: 1}, {Line: 3}, {Line: 7}}
+	assert.Equal(t, 0, precedingHeadingLine(heads, 0))
+	assert.Equal(t, 1, precedingHeadingLine(heads, 1))
+	assert.Equal(t, 7, precedingHeadingLine(heads, 3))
+	assert.Equal(t, 0, precedingHeadingLine(nil, 5))
 }

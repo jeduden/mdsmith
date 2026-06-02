@@ -2,10 +2,13 @@ package lsp
 
 import (
 	"bytes"
+	"path/filepath"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
+	"github.com/jeduden/mdsmith/internal/rules"
 )
 
 // toLSP converts an mdsmith diagnostic to the LSP wire shape.
@@ -29,7 +32,18 @@ import (
 // on the same line, which clamps every input to [0, line's UTF-16
 // length], so endCol is always >= startCol — no end-before-start
 // guard is needed.
-func toLSP(d lint.Diagnostic, lines [][]byte) Diagnostic {
+func toLSP(d lint.Diagnostic, lines [][]byte, root string) Diagnostic {
+	return toLSPWithRoot(d, lines, root, resolveSymlinks(root))
+}
+
+// toLSPWithRoot is toLSP with the workspace root's symlink-resolved form
+// precomputed. toLSPAll resolves the (constant) root once per publish and
+// passes it here, so the EvalSymlinks syscall in withinRoot does not
+// repeat once per related location on the keystroke hot path — only each
+// target path is resolved per entry. root stays the configured root for
+// the join and emitted URI; resolvedRoot is used only for the
+// symlink-safe containment check.
+func toLSPWithRoot(d lint.Diagnostic, lines [][]byte, root, resolvedRoot string) Diagnostic {
 	startLine := d.Line - 1
 	if startLine < 0 {
 		startLine = 0
@@ -37,7 +51,7 @@ func toLSP(d lint.Diagnostic, lines [][]byte) Diagnostic {
 	line := currentLineBytes(lines, d.Line)
 	startCol := mdtext.UTF16FromByteOffset(line, d.Column-1)
 	endCol := utf16Length(line)
-	return Diagnostic{
+	out := Diagnostic{
 		Range: Range{
 			Start: Position{Line: startLine, Character: startCol},
 			End:   Position{Line: startLine, Character: endCol},
@@ -52,15 +66,136 @@ func toLSP(d lint.Diagnostic, lines [][]byte) Diagnostic {
 			ReplacedBy: d.ReplacedBy,
 		},
 	}
+	if ri := relatedInformation(d.RelatedLocations, root, resolvedRoot); len(ri) > 0 {
+		out.RelatedInformation = ri
+	}
+	// codeDescription gives the rule code a clickable docs link,
+	// derived from the rule ID. Unknown IDs (rules.DocURL returns "")
+	// leave it unset.
+	if href := rules.DocURL(d.RuleID); href != "" {
+		out.CodeDescription = &codeDescription{Href: href}
+	}
+	return out
+}
+
+// relatedInformation converts structured related locations to the LSP
+// wire form, resolving each file to a file:// URI against root
+// (a workspace-relative schema path becomes absolute first). A related
+// location with no File — an inline-schema label that names no source
+// file — cannot become a navigable URI and is dropped here; the CLI
+// still surfaces it as a trailer line. Coordinates flip 1-based →
+// 0-based and clamp at 0, so a file-only ref (Line 0) anchors at the
+// schema's first line.
+func relatedInformation(locs []lint.RelatedLocation, root, resolvedRoot string) []diagnosticRelatedInformation {
+	var out []diagnosticRelatedInformation
+	for _, loc := range locs {
+		uri, ok := relatedURI(loc.File, root, resolvedRoot)
+		if !ok {
+			continue
+		}
+		pos := Position{
+			Line:      clampZero(loc.Line - 1),
+			Character: clampZero(loc.Column - 1),
+		}
+		out = append(out, diagnosticRelatedInformation{
+			Location: location{URI: uri, Range: Range{Start: pos, End: pos}},
+			Message:  loc.Message,
+		})
+	}
+	return out
+}
+
+// relatedURI resolves a related-location file to a file:// URI, or
+// reports ok=false when no safe, navigable URI exists. A navigable URI
+// requires a bounded workspace root: without one (a rootless session)
+// no related location becomes a link, because nothing can vouch that a
+// path — absolute or relative — stays inside the project, and a config
+// could point a schema source at an arbitrary local file (e.g.
+// /etc/passwd from a malicious repo). With a root, both absolute and
+// relative paths must resolve inside it; a "../" escape or an absolute
+// path outside the root is dropped. Every path reaching pathToURI is
+// absolute, so the URI is always non-empty and no empty-URI reaches
+// the wire.
+func relatedURI(file, root, resolvedRoot string) (string, bool) {
+	if file == "" || root == "" {
+		return "", false
+	}
+	if isAbsPath(file) {
+		if !withinRoot(resolvedRoot, file) {
+			return "", false
+		}
+		return pathToURI(file), true
+	}
+	path := filepath.Join(root, filepath.FromSlash(file))
+	if !withinRoot(resolvedRoot, path) {
+		return "", false
+	}
+	return pathToURI(path), true
+}
+
+// withinRoot reports whether path resolves inside resolvedRoot (the root
+// itself counts). resolvedRoot must already be absolute and symlink-
+// resolved (see resolveSymlinks); path is absolutised and symlink-
+// resolved here, so an in-root symlink that points outside the workspace
+// cannot bypass the containment check — matching the symlink-safe guard
+// the schema index writer uses (internal/schema.resolveDir). The caller
+// resolves the constant root once per publish rather than once per
+// related location. A "../" escape, or a path on a different volume that
+// Rel cannot relate, is treated as outside.
+func withinRoot(resolvedRoot, path string) bool {
+	rel, err := filepath.Rel(resolvedRoot, resolveSymlinks(path))
+	return err == nil && rel != ".." &&
+		!strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// resolveSymlinks returns p as an absolute, symlink-resolved path so a
+// lexical containment check cannot be fooled by a symlink. EvalSymlinks
+// needs the path to exist; when it does not (a stale or not-yet-created
+// reference), this falls back to the lexical absolute path — best-effort,
+// mirroring internal/schema.resolveDir. filepath.Abs only fails without
+// a working directory, an unrecoverable state, so its error is ignored
+// and Clean carries the fallback.
+func resolveSymlinks(p string) string {
+	abs, _ := filepath.Abs(p)
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		return resolved
+	}
+	return filepath.Clean(abs)
+}
+
+// isAbsPath reports whether p is absolute on any host OS — including
+// Windows drive-letter (`C:\x`) and UNC (`\\server\share`) paths,
+// which filepath.IsAbs rejects on a non-Windows host. This mirrors the
+// cross-platform classification pathToURI applies, so an absolute
+// related location from a Windows client (or a cross-platform test) is
+// passed straight to pathToURI rather than mis-joined to the workspace
+// root.
+func isAbsPath(p string) bool {
+	return filepath.IsAbs(p) || isWindowsDrivePath(p) || strings.HasPrefix(p, `\\`)
+}
+
+// clampZero returns n, or 0 when n is negative. Used to flip 1-based
+// schema coordinates to 0-based LSP coordinates without underflowing
+// when the line or column is unknown (0).
+func clampZero(n int) int {
+	if n < 0 {
+		return 0
+	}
+	return n
 }
 
 // toLSPAll maps a slice. Returns an empty (non-nil) slice for empty
-// input so the JSON wire form is `[]`, never `null`.
-func toLSPAll(diags []lint.Diagnostic, source []byte) []Diagnostic {
+// input so the JSON wire form is `[]`, never `null`. root resolves
+// cross-file related-location URIs (see relatedInformation).
+func toLSPAll(diags []lint.Diagnostic, source []byte, root string) []Diagnostic {
 	out := make([]Diagnostic, 0, len(diags))
 	lines := splitLines(source)
+	// The workspace root is constant across the publish, so resolve its
+	// symlinks once here instead of once per related location inside
+	// withinRoot (EvalSymlinks is a syscall on the keystroke hot path).
+	resolvedRoot := resolveSymlinks(root)
 	for _, d := range diags {
-		out = append(out, toLSP(d, lines))
+		out = append(out, toLSPWithRoot(d, lines, root, resolvedRoot))
 	}
 	return out
 }

@@ -8,6 +8,7 @@ diagnostics:
     column: 1
     message: |-
       path: got "path-pattern-mismatch.md", expected path matching glob [0-9]*_*.md
-      schema: kinds[plan] / path-pattern
+    related:
+      - message: "kinds[plan] / path-pattern"
 ---
 # Plan body whose path does not match the kind's path-pattern

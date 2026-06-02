@@ -1064,7 +1064,7 @@ func (s *Server) runLint(uri string) {
 	// just linted.
 	docDiags, otherDiags := partitionDocDiagnostics(res.Diagnostics, relPath)
 	s.surfaceForeignDiagnostics(uri, otherDiags)
-	lspDiags := toLSPAll(docDiags, doc.text)
+	lspDiags := toLSPAll(docDiags, doc.text, root)
 	// Cache and publish under diagsMu, re-checking the run mode inside
 	// the lock. mdsmith.run can flip to off while the CPU-bound
 	// RunSource above is in flight; clearOpenDiagnostics deletes and

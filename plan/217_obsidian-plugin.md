@@ -95,10 +95,12 @@ field tracks the diagnostics. Each shows as
 a wavy underline. Severity classes live in
 `styles.css`.
 
-A hover tooltip shows the rule code and
-the message. The tooltip footer carries a
-"Fix" link. The link runs the same
-code-action flow as the palette command.
+A hover tooltip is issue-first (plan 230): the
+message leads, then the schema constraint from
+`related_locations` (a navigable link when it has
+a file/line, else plain text), then the rule code
+and a docs link. The "Fix" link runs the same flow
+as the palette command.
 
 A "mdsmith Diagnostics" [`ItemView`][iv]
 lists every workspace diagnostic in a sortable
@@ -263,9 +265,11 @@ artifact.
       underline within 1 s of opening the
       file on desktop, 2 s on a modern
       iPad.
-- [ ] Hover tooltip shows rule code and
-      message. The "Fix" link applies the
-      quick-fix.
+- [ ] Hover tooltip is issue-first: message,
+      then the schema constraint (a navigable link
+      when it has a file/line, else plain text),
+      then rule code and a docs link. The "Fix"
+      link applies the quick-fix.
 - [ ] `mdsmith: Fix file` produces the
       same buffer as `mdsmith fix` on the
       same input.

@@ -25,9 +25,11 @@ search spans the whole project.
 
 Implementation jumps to every
 target of a heading at once. Completion suggests anchors,
-labels, kind names, and directive paths as you type. Hover
-shows the rule's help on a diagnostic and the guide page on a
-directive.
+labels, kind names, and directive paths as you type. Hover on a
+diagnostic leads with the issue; when it carries a related location
+(a schema check like MDS020 names the constraint it broke), a link
+to that source comes next, then a condensed rule identity and a
+docs link.
 
 Two capabilities have their own pages. [Rename](rename.md)
 rewrites a heading and every anchor link to it in one edit.

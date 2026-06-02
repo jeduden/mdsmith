@@ -46,9 +46,11 @@ indentation, and table alignment. Setting `mdsmith.run` to
 every fix routes through VS Code's Refactor Preview pane, so
 you see the diff before it is written.
 
-**Hover for help.** Hover a diagnostic for the rule's
-documentation; hover inside a `<?…?>` directive for its guide
-page.
+**Hover for help.** Hover a diagnostic for the rule's one-line
+summary plus a link that opens its full documentation offline:
+a read-only tab rendered from the binary's embedded README, no
+browser or network. Hover inside a `<?…?>` directive for its
+guide page.
 
 ### Across your project
 

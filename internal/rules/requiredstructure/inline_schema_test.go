@@ -82,6 +82,31 @@ func TestCheck_InlineSchema_MissingSection(t *testing.T) {
 	expectDiagMsg(t, diags, `## Tasks: got <missing>, expected section to be present`)
 }
 
+// TestCheck_InlineSchema_MissingSectionAnchorsAtPrecedingHeading pins
+// plan 230's body anchoring: a missing section's diagnostic lands on
+// the heading it should follow (## Goal, line 3), not file line 1.
+func TestCheck_InlineSchema_MissingSectionAnchorsAtPrecedingHeading(t *testing.T) {
+	r := &Rule{InlineSchema: inlineSchema(t, map[string]any{
+		"closed": true,
+		"sections": []any{
+			map[string]any{"heading": "Goal"},
+			map[string]any{"heading": "Tasks"},
+		},
+	})}
+	f := newTestFile(t, "doc.md", "# My Plan\n\n## Goal\n\nGoal text.\n")
+	diags := r.Check(f)
+	var found bool
+	for _, d := range diags {
+		if strings.Contains(d.Message, "## Tasks") &&
+			strings.Contains(d.Message, "section to be present") {
+			assert.Equal(t, 3, d.Line,
+				"missing section anchors at the preceding heading (## Goal)")
+			found = true
+		}
+	}
+	require.True(t, found, "expected a missing-Tasks diagnostic")
+}
+
 func TestCheck_InlineSchema_ParityWithFileSchema(t *testing.T) {
 	// File-based and inline schemas with equivalent structure must
 	// emit the same diagnostic for the same document — this is
@@ -964,4 +989,39 @@ func TestCheck_InlineSchema_PerScopeRequiredMentions(t *testing.T) {
 		"expected one required-mentions diagnostic from the Strict scope override")
 	// The diagnostic anchors at the Strict heading line (line 7).
 	assert.Equal(t, 7, mentions[0].Line)
+}
+
+// TestCheck_InlineKindSchema_RelatedLocationCarriesSourcePath pins
+// plan 230: an inline kind schema delivered as a schema-sources entry
+// with a `source` makes the violation's related location point at the
+// kind's defining file, not the bare "inline kind schema" label.
+func TestCheck_InlineKindSchema_RelatedLocationCarriesSourcePath(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"schema-sources": []any{
+			map[string]any{
+				"inline": map[string]any{
+					"closed": true,
+					"sections": []any{
+						map[string]any{"heading": "Goal"},
+						map[string]any{"heading": "Tasks"},
+					},
+				},
+				"source": "/work/.mdsmith.yml",
+			},
+		},
+	})
+	require.NoError(t, err)
+	f := newTestFile(t, "doc.md", "# My Plan\n\n## Goal\n\nText.\n")
+	diags := r.Check(f)
+	var found bool
+	for _, d := range diags {
+		for _, rl := range d.RelatedLocations {
+			if rl.File == "/work/.mdsmith.yml" {
+				found = true
+			}
+		}
+	}
+	require.True(t, found,
+		"inline kind violation points at the kind's source file, not a label")
 }

@@ -377,7 +377,7 @@ func effectiveRules(cfg *Config, filePath string, kinds []string) map[string]Rul
 			continue
 		}
 		if resolved := resolvedInlineSchema(cfg.Kinds, kindName, body); len(resolved) > 0 {
-			applyInlineSchemaSource(result, resolved)
+			applyInlineSchemaSource(result, resolved, body.SourcePath)
 		}
 		if body.PathPattern != "" {
 			applyPathPattern(result, kindName, body.PathPattern)
@@ -472,7 +472,7 @@ func resolvedInlineSchema(
 // applyInlineSchemaSource appends a KindBody.Schema (inline schema
 // map) as a `schema-sources` entry. Multiple kinds with inline
 // schemas thus accumulate rather than overwrite.
-func applyInlineSchemaSource(result map[string]RuleCfg, schema map[string]any) {
+func applyInlineSchemaSource(result map[string]RuleCfg, schema map[string]any, sourcePath string) {
 	rs, ok := result["required-structure"]
 	if !ok {
 		rs = RuleCfg{Enabled: true}
@@ -481,6 +481,13 @@ func applyInlineSchemaSource(result map[string]RuleCfg, schema map[string]any) {
 		rs.Settings = map[string]any{}
 	}
 	entry := map[string]any{"inline": cloneSettings(schema)}
+	// Carry the kind's defining file so an inline-schema violation
+	// points the reader at <.mdsmith.yml or kind file> rather than the
+	// bare "inline kind schema" label (plan 230). The rule reads this
+	// as the schema reference; it is not part of the schema content.
+	if sourcePath != "" {
+		entry["source"] = sourcePath
+	}
 	existing, _ := rs.Settings["schema-sources"].([]any)
 	rs.Settings["schema-sources"] = append(existing, entry)
 	rs.Enabled = true

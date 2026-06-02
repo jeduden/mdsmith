@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 )
@@ -67,6 +68,34 @@ type Maintainability struct {
 // ListRules returns all embedded rules sorted by ID.
 func ListRules() ([]RuleInfo, error) {
 	return listRulesFromFS(rulesFS)
+}
+
+// docSiteBase is the published rules-section base URL. SyncDocs serves
+// internal/rules/<ID>-<name>/README.md at <docSiteBase><lower(ID-name)>/,
+// so a rule's doc-page slug is its directory name lowercased (Hugo
+// case-folds path-derived URLs).
+const docSiteBase = "https://mdsmith.dev/rules/"
+
+var docURLOnce struct {
+	sync.Once
+	m map[string]string
+}
+
+// DocURL returns the canonical website documentation URL for a rule ID
+// (e.g. "MDS020" → "https://mdsmith.dev/rules/mds020-required-structure/"),
+// or "" when the ID is unknown. The map is built once from the embedded
+// rule list and cached; safe for concurrent use.
+func DocURL(id string) string {
+	docURLOnce.Do(func() {
+		all, _ := ListRules()
+		m := make(map[string]string, len(all))
+		for _, r := range all {
+			slug := strings.ToLower(r.ID + "-" + r.Name)
+			m[strings.ToUpper(r.ID)] = docSiteBase + slug + "/"
+		}
+		docURLOnce.m = m
+	})
+	return docURLOnce.m[strings.ToUpper(id)]
 }
 
 // LookupRule finds a rule by ID (e.g. "MDS001") or name (e.g. "line-length")

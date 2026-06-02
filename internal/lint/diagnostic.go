@@ -46,6 +46,55 @@ type Diagnostic struct {
 	// deprecation declares one. Empty on non-deprecation diagnostics
 	// and on deprecation diagnostics that only set `message:`.
 	ReplacedBy string
+
+	// RelatedLocations carries secondary source locations that explain
+	// the diagnostic — for MDS020, the schema constraint a value
+	// violated. A location may point at a different file than the one
+	// the diagnostic anchors in (the schema lives in proto.md, a kind
+	// file, or .mdsmith.yml). The CLI prints these as trailer lines;
+	// the LSP maps them onto DiagnosticRelatedInformation. Nil on
+	// diagnostics that carry no secondary location.
+	//
+	// The rule-documentation link surfaced as the LSP codeDescription
+	// is not stored here: it is fully derived from RuleID at the LSP
+	// surface (see rules.DocURL), so there is no per-diagnostic field.
+	RelatedLocations []RelatedLocation
+}
+
+// DisplayLine returns Line clamped to at least 1 for user-facing output
+// (CLI text, JSON, and the public API). plan 230 may anchor a diagnostic
+// at a non-positive line internally so it survives generated-section
+// filtering when no safe positive anchor exists (a wholly generated
+// file); that sentinel must never surface as line 0 in 1-based output.
+// Column is not clamped: 0 is the established "column unknown" value
+// (the text formatter prints it and omits the caret), and
+// RelatedLocation lines keep their own 0 = "unknown" semantics too.
+func (d Diagnostic) DisplayLine() int {
+	if d.Line < 1 {
+		return 1
+	}
+	return d.Line
+}
+
+// RelatedLocation is a secondary source location attached to a
+// Diagnostic. It points the reader at the thing that explains the
+// finding — for a schema violation, the line of the schema constraint.
+// File may differ from the owning Diagnostic.File: the schema that a
+// document violates lives in a separate proto.md, kind file, or config.
+type RelatedLocation struct {
+	// File is the path of the related source. It may be the linted
+	// file itself or a separate schema source.
+	File string
+
+	// Line is the 1-based line of the related location.
+	Line int
+
+	// Column is the 1-based column, or 0 when only the line is known.
+	Column int
+
+	// Message describes why the location is related, e.g.
+	// `schema requires one of: "open", "in-progress"`.
+	Message string
 }
 
 // Explanation describes the provenance of a rule's effective config at

@@ -24,10 +24,28 @@ type Diagnostic struct {
 	Deprecated      bool         `json:"deprecated,omitempty"`
 	ReplacedBy      string       `json:"replaced_by,omitempty"`
 
+	// RelatedLocations carries secondary source locations — for MDS020,
+	// the schema constraint a value violated — matching the CLI
+	// `--format json` shape so the WASM/Session host and the CLI decode
+	// one schema. A host (e.g. the Obsidian plugin) renders these as
+	// navigable links. Omitted when there are none.
+	RelatedLocations []RelatedLocation `json:"related_locations,omitempty"`
+
 	// RuleID is an unexported-on-the-wire convenience for Go callers
 	// that want the rule identifier without parsing JSON. It is not
 	// serialized; use Rule for the wire field.
 	RuleID string `json:"-"`
+}
+
+// RelatedLocation is a secondary source location attached to a
+// Diagnostic — for a schema violation, the line of the schema
+// constraint. File may differ from the owning Diagnostic.File (the
+// schema lives in a separate proto.md, kind file, or config).
+type RelatedLocation struct {
+	File    string `json:"file,omitempty"`
+	Line    int    `json:"line,omitempty"`
+	Column  int    `json:"column,omitempty"`
+	Message string `json:"message"`
 }
 
 // Explanation attaches per-leaf rule provenance to a Diagnostic. It is
@@ -74,19 +92,35 @@ func toDiagnostics(in []lint.Diagnostic) []Diagnostic {
 	out := make([]Diagnostic, 0, len(in))
 	for _, d := range in {
 		out = append(out, Diagnostic{
-			File:            d.File,
-			Line:            d.Line,
-			Column:          d.Column,
-			Rule:            d.RuleID,
-			RuleID:          d.RuleID,
-			Name:            d.RuleName,
-			Severity:        string(d.Severity),
-			Message:         d.Message,
-			SourceLines:     d.SourceLines,
-			SourceStartLine: d.SourceStartLine,
-			Explanation:     toExplanation(d.Explanation),
-			Deprecated:      d.Deprecated,
-			ReplacedBy:      d.ReplacedBy,
+			File:             d.File,
+			Line:             d.DisplayLine(),
+			Column:           d.Column,
+			Rule:             d.RuleID,
+			RuleID:           d.RuleID,
+			Name:             d.RuleName,
+			Severity:         string(d.Severity),
+			Message:          d.Message,
+			SourceLines:      d.SourceLines,
+			SourceStartLine:  d.SourceStartLine,
+			Explanation:      toExplanation(d.Explanation),
+			Deprecated:       d.Deprecated,
+			ReplacedBy:       d.ReplacedBy,
+			RelatedLocations: toRelatedLocations(d.RelatedLocations),
+		})
+	}
+	return out
+}
+
+// toRelatedLocations converts engine related locations to the public
+// shape; returns nil for none so the JSON field is omitted.
+func toRelatedLocations(in []lint.RelatedLocation) []RelatedLocation {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]RelatedLocation, 0, len(in))
+	for _, l := range in {
+		out = append(out, RelatedLocation{
+			File: l.File, Line: l.Line, Column: l.Column, Message: l.Message,
 		})
 	}
 	return out

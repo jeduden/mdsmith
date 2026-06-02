@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"path"
 	"strings"
 	"sync"
 
@@ -124,19 +125,67 @@ func (s *Server) handleHover(msg *requestMessage) {
 	_ = s.t.writeResponse(msg.ID, nil)
 }
 
-// ruleHoverContent builds the hover body for a diagnostic: the diagnostic
-// message on its own line, a blank line, then the rule's help text.
-// Unknown rules get a brief fallback pointing at `mdsmith help rule`.
+// ruleHoverContent builds the hover body for a diagnostic, issue-first
+// (plan 230): the diagnostic message — what is wrong in this file —
+// leads as the primary block, followed by any navigable related
+// location, a separator, then a condensed rule-identity block (the
+// rule code, its one-line description, and a docs link). The full rule
+// README is no longer inlined, so the issue is not buried under
+// documentation.
 func ruleHoverContent(d Diagnostic) string {
+	var b strings.Builder
+	b.WriteString(d.Message)
+	for _, ri := range d.RelatedInformation {
+		b.WriteString("\n\n")
+		b.WriteString(relatedHoverLink(ri))
+	}
+	b.WriteString("\n\n---\n\n")
+	b.WriteString(ruleIdentityBlock(d))
+	return b.String()
+}
+
+// relatedHoverLink renders a related location as a markdown link the
+// reader can jump to, e.g. "[proto.md:5](file:///…/proto.md#L5) —
+// required by schema". RelatedLocations is rule-agnostic, so the link
+// is rendered generically and the entry's own message (the reason the
+// location is related, "required by schema" for MDS020) trails it
+// rather than a hard-coded "Schema:" label. The em-dash form mirrors
+// the CLI trailer. This is the Obsidian path; VS Code additionally
+// surfaces the same location natively as relatedInformation.
+func relatedHoverLink(ri diagnosticRelatedInformation) string {
+	line := ri.Location.Range.Start.Line + 1
+	link := fmt.Sprintf("[%s:%d](%s#L%d)",
+		path.Base(ri.Location.URI), line, ri.Location.URI, line)
+	if ri.Message != "" {
+		return link + " — " + ri.Message
+	}
+	return link
+}
+
+// ruleIdentityBlock renders the secondary block: the rule code, its
+// name and one-line description, a docs link, and the optional
+// remediation hint. Unknown rules degrade to the code plus a
+// `mdsmith help rule` pointer.
+func ruleIdentityBlock(d Diagnostic) string {
+	header := "`" + d.Code + "`"
+	if d.Data != nil && d.Data.RuleName != "" {
+		header += " · " + d.Data.RuleName
+	}
 	info, ok := cachedRuleInfo(d.Code)
-	if !ok {
-		return fmt.Sprintf("**%s** %s\n\nSee `mdsmith help rule %s` for details.", d.Code, d.Message, d.Code)
+	if ok && info.Description != "" {
+		header += " — " + info.Description
 	}
-	body := fmt.Sprintf("**%s** %s\n\n%s", d.Code, d.Message, info.Content)
-	if info.Maintainability != nil && info.Maintainability.ForDiagnostic {
-		body += fmt.Sprintf("\n\nSuggested remediation: %s", info.Maintainability.Fix)
+	var b strings.Builder
+	b.WriteString(header)
+	if d.CodeDescription != nil && d.CodeDescription.Href != "" {
+		fmt.Fprintf(&b, "\n\n[Open rule docs ↗](%s)", d.CodeDescription.Href)
+	} else {
+		fmt.Fprintf(&b, "\n\nSee `mdsmith help rule %s` for details.", d.Code)
 	}
-	return body
+	if ok && info.Maintainability != nil && info.Maintainability.ForDiagnostic {
+		fmt.Fprintf(&b, "\n\nSuggested remediation: %s", info.Maintainability.Fix)
+	}
+	return b.String()
 }
 
 // cachedRuleInfo returns the rule metadata for a given diagnostic code, or

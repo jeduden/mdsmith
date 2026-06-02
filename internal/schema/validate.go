@@ -146,22 +146,24 @@ func validateFrontmatterDiags(
 	schemaVal := compiled.Value
 	ctx := compiled.Ctx
 	if err := compiled.Err(); err != nil {
-		return []lint.Diagnostic{mkDiag(f.Path, anchor,
-			compileFailureDiag(sch, "schema", "valid schema CUE", err).Format())}
+		return []lint.Diagnostic{
+			compileFailureDiag(sch, "schema", "valid schema CUE", err).
+				Emit(mkDiag, f.Path, anchor)}
 	}
 	if docFM == nil {
 		docFM = map[string]any{}
 	}
 	data, err := json.Marshal(docFM)
 	if err != nil {
-		return []lint.Diagnostic{mkDiag(f.Path, anchor,
-			compileFailureDiag(sch, "front matter", "JSON-marshalable front matter", err).Format())}
+		return []lint.Diagnostic{
+			compileFailureDiag(sch, "front matter", "JSON-marshalable front matter", err).
+				Emit(mkDiag, f.Path, anchor)}
 	}
+	// CompileBytes parses the JSON the marshal above produced, which is
+	// always valid CUE, so it cannot error here. A bottom value would
+	// still surface through the Unify + Validate path below, so there is
+	// no separate (untestable) compile-failure branch for it.
 	dataVal := ctx.CompileBytes(data)
-	if err := dataVal.Err(); err != nil {
-		return []lint.Diagnostic{mkDiag(f.Path, anchor,
-			compileFailureDiag(sch, "front matter", "valid front matter", err).Format())}
-	}
 	merged := schemaVal.Unify(dataVal)
 	verr := merged.Validate(cue.Concrete(true))
 	if verr == nil {
@@ -174,18 +176,12 @@ func validateFrontmatterDiags(
 		return validateDeprecatedFieldsWithLines(
 			f, sch, docFM, docFrontmatterKeyLines(f), mkDiag)
 	}
-	cueErrs := errors.Errors(verr)
-	if len(cueErrs) == 0 {
-		return []lint.Diagnostic{mkDiag(f.Path, anchor,
-			SchemaDiagnostic{
-				Field:     "front matter",
-				Actual:    fmt.Sprintf("%v", verr),
-				Expected:  "valid CUE",
-				SchemaRef: schemaRef(sch, ""),
-			}.Format())}
-	}
+	// errors.Errors returns a non-empty list for any non-nil CUE
+	// validation error, so there is no separate (untestable) "valid CUE"
+	// fallback; the per-error diagnostics below cover every reachable
+	// validation failure.
 	keyLines := docFrontmatterKeyLines(f)
-	out := dedupedCUEErrorDiags(f, sch, docFM, cueErrs, keyLines, mkDiag)
+	out := dedupedCUEErrorDiags(f, sch, docFM, errors.Errors(verr), keyLines, mkDiag)
 	return append(out, validateDeprecatedFieldsWithLines(f, sch, docFM, keyLines, mkDiag)...)
 }
 
@@ -208,7 +204,7 @@ func dedupedCUEErrorDiags(
 			continue
 		}
 		seen[key] = true
-		out = append(out, mkDiag(f.Path, fmDiagLine(f, ce.Path(), keyLines), d.Format()))
+		out = append(out, d.Emit(mkDiag, f.Path, fmDiagLine(f, ce.Path(), keyLines)))
 	}
 	return out
 }
@@ -255,7 +251,7 @@ func validateDeprecatedFieldsWithLines(
 			DeprecationMessage: meta.Message,
 			SchemaRef:          schemaRef(sch, k),
 		}
-		warn := mkDiag(f.Path, fmDiagLine(f, []string{bare}, keyLines), d.Format())
+		warn := d.Emit(mkDiag, f.Path, fmDiagLine(f, []string{bare}, keyLines))
 		warn.Severity = lint.Warning
 		warn.Deprecated = true
 		warn.ReplacedBy = meta.ReplacedBy
@@ -294,6 +290,77 @@ func NonBodyDiagLine(f *lint.File) int {
 // schema package; external callers reach for NonBodyDiagLine.
 func nonBodyDiagLine(f *lint.File) int {
 	return NonBodyDiagLine(f)
+}
+
+// MissingSectionAnchor returns the body line to anchor a
+// missing-section diagnostic. candidate is the natural insertion
+// point — the line of the heading the missing section should follow —
+// and is used when it is a real body line (> 0 and within the file)
+// outside every generated range. An out-of-range candidate (e.g. an
+// insertion-point sentinel past EOF) is treated as unusable so the
+// result never exceeds len(f.Lines) and can never map to an
+// out-of-range editor/LSP position. A missing section has no body line
+// of its own, and anchoring inside a generated section would let
+// engine.filterGeneratedDiags drop the diagnostic. When candidate is
+// unusable, the non-body anchor is
+// used: a non-positive value survives filtering and maps back to file
+// line 1, and a positive value (nothing stripped, line 1) is fine as
+// long as line 1 is not itself generated. The remaining case — a
+// document that opens with a generated section so the positive non-body
+// anchor sits inside it — anchors at the first body line outside every
+// generated range (a positive line that both survives filtering and
+// formats as a valid location), or 0 when the whole file is generated
+// and no safe positive anchor exists, so the diagnostic still surfaces
+// rather than being dropped or printed as file:0 (plan 230).
+func MissingSectionAnchor(f *lint.File, candidate int) int {
+	if candidate > 0 && candidate <= len(f.Lines) && !lineInGeneratedRange(f, candidate) {
+		return candidate
+	}
+	fallback := NonBodyDiagLine(f)
+	if fallback <= 0 || !lineInGeneratedRange(f, fallback) {
+		return fallback
+	}
+	// fallback is a positive line (nothing stripped) inside a leading
+	// generated range, where filterGeneratedDiags would drop it. Prefer
+	// the first body line outside every generated range; fall back to 0
+	// only when the whole file is generated.
+	if line := firstNonGeneratedLine(f); line > 0 {
+		return line
+	}
+	return 0
+}
+
+// firstNonGeneratedLine returns the first 1-based body line that lies
+// outside every generated range, or 0 when the file is empty or
+// entirely generated (no such line exists).
+func firstNonGeneratedLine(f *lint.File) int {
+	for line := 1; line <= len(f.Lines); line++ {
+		if !lineInGeneratedRange(f, line) {
+			return line
+		}
+	}
+	return 0
+}
+
+// precedingHeadingLine returns the line of the document heading just
+// before docIdx — the section a missing scope should follow — or 0
+// when there is no preceding heading.
+func precedingHeadingLine(docHeads []DocHeading, docIdx int) int {
+	if idx := docIdx - 1; idx >= 0 && idx < len(docHeads) {
+		return docHeads[idx].Line
+	}
+	return 0
+}
+
+// lineInGeneratedRange reports whether the 1-based body line falls
+// within any of the file's generated-section ranges.
+func lineInGeneratedRange(f *lint.File, line int) bool {
+	for _, r := range f.GeneratedRanges {
+		if r.Contains(line) {
+			return true
+		}
+	}
+	return false
 }
 
 // fmDiagLine returns the line to anchor a front-matter diagnostic
@@ -638,13 +705,15 @@ func validateScopes(
 		if claimedThis {
 			allowExtra = false
 		} else if !claimed[i] && sc.Required() {
-			// Missing sections have no body line to point at;
-			// use the non-body anchor so filterGeneratedDiags
-			// can't drop the diagnostic if body line 1 sits
-			// inside a generated section.
-			diags = append(diags, mkDiag(f.Path, nonBodyDiagLine(f),
-				missingSectionDiag(
-					formatHeading(expectedLevel, displayHeading(sc)), sch).Format()))
+			// Anchor the missing section at the heading it should
+			// follow (the preceding document heading), so the
+			// squiggle lands where the section belongs rather than
+			// at file line 1. MissingSectionAnchor falls back to the
+			// non-body anchor when there is no preceding heading or
+			// the insertion point sits inside a generated section.
+			diags = append(diags, missingSectionDiag(
+				formatHeading(expectedLevel, displayHeading(sc)), sch).
+				Emit(mkDiag, f.Path, MissingSectionAnchor(f, precedingHeadingLine(docHeads, docIdx))))
 		}
 	}
 
@@ -779,8 +848,8 @@ func handleLeftoverHeadings(
 			continue
 		}
 		if !allowExtra && closed {
-			diags = append(diags, mkDiag(f.Path, dh.Line,
-				unexpectedSectionDiag(formatHeading(dh.Level, dh.Text), "", sch).Format()))
+			diags = append(diags, unexpectedSectionDiag(
+				formatHeading(dh.Level, dh.Text), "", sch).Emit(mkDiag, f.Path, dh.Line))
 		}
 		docIdx++
 	}
@@ -848,8 +917,8 @@ func claimLateScope(
 ) (int, []lint.Diagnostic) {
 	sc := scopes[idx]
 	dh := docHeads[docIdx]
-	diags := []lint.Diagnostic{mkDiag(f.Path, dh.Line,
-		outOfOrderDiag(formatHeading(dh.Level, dh.Text), "", sch).Format())}
+	diags := []lint.Diagnostic{outOfOrderDiag(
+		formatHeading(dh.Level, dh.Text), "", sch).Emit(mkDiag, f.Path, dh.Line)}
 	claimed[idx] = true
 	claimCounts[idx]++
 	docIdx++
@@ -1074,11 +1143,10 @@ func (s *matchRun) step(docHeads []DocHeading, docIdx int) (bool, int, bool) {
 			return true, docIdx, false
 		}
 		if !s.allowExtra && s.closed {
-			s.diags = append(s.diags, s.mkDiag(s.f.Path, dh.Line,
-				unexpectedSectionDiag(
-					formatHeading(dh.Level, dh.Text),
-					formatHeading(s.expectedLevel, displayHeading(sc)),
-					s.sch).Format()))
+			s.diags = append(s.diags, unexpectedSectionDiag(
+				formatHeading(dh.Level, dh.Text),
+				formatHeading(s.expectedLevel, displayHeading(sc)),
+				s.sch).Emit(s.mkDiag, s.f.Path, dh.Line))
 		}
 		return false, docIdx + 1, false
 	}
@@ -1171,11 +1239,10 @@ func (s *matchRun) handleNonMatch(docHeads []DocHeading, docIdx int) (bool, int,
 	}
 	if !s.allowExtra && s.closed {
 		sc := s.scopes[s.idx]
-		s.diags = append(s.diags, s.mkDiag(s.f.Path, dh.Line,
-			unexpectedSectionDiag(
-				formatHeading(dh.Level, dh.Text),
-				formatHeading(s.expectedLevel, displayHeading(sc)),
-				s.sch).Format()))
+		s.diags = append(s.diags, unexpectedSectionDiag(
+			formatHeading(dh.Level, dh.Text),
+			formatHeading(s.expectedLevel, displayHeading(sc)),
+			s.sch).Emit(s.mkDiag, s.f.Path, dh.Line))
 	}
 	return false, docIdx + 1, false
 }
@@ -1284,8 +1351,8 @@ func levelDiagIfNeeded(
 	if dh.Level == expectedLevel {
 		return nil
 	}
-	return []lint.Diagnostic{mkDiag(f.Path, dh.Line,
-		levelMismatchSchemaDiag(dh.Text, expectedLevel, dh.Level, sch).Format())}
+	return []lint.Diagnostic{levelMismatchSchemaDiag(
+		dh.Text, expectedLevel, dh.Level, sch).Emit(mkDiag, f.Path, dh.Line)}
 }
 
 // claimOutOfOrder records that docHeads[docIdx] matches scopes[ooIdx]
@@ -1300,11 +1367,10 @@ func claimOutOfOrder(
 	sc := scopes[idx]
 	ooSc := scopes[ooIdx]
 	dh := docHeads[docIdx]
-	diags := []lint.Diagnostic{mkDiag(f.Path, dh.Line,
-		outOfOrderDiag(
-			formatHeading(dh.Level, dh.Text),
-			formatHeading(expectedLevel, displayHeading(sc)),
-			sch).Format())}
+	diags := []lint.Diagnostic{outOfOrderDiag(
+		formatHeading(dh.Level, dh.Text),
+		formatHeading(expectedLevel, displayHeading(sc)),
+		sch).Emit(mkDiag, f.Path, dh.Line)}
 	diags = append(diags, levelDiagIfNeeded(f, sch, dh, expectedLevel, mkDiag)...)
 	// Count the contiguous run of same-level headings starting at
 	// docIdx that match ooSc. The recovery path still claims only
@@ -1589,7 +1655,7 @@ func validateFilename(
 			Hint:      err.Error(),
 			SchemaRef: schemaRef(sch, ""),
 		}
-		return []lint.Diagnostic{mkDiag(f.Path, anchor, d.Format())}
+		return []lint.Diagnostic{d.Emit(mkDiag, f.Path, anchor)}
 	}
 	if !matched {
 		// `glob` makes the constraint syntax explicit: users
@@ -1604,7 +1670,7 @@ func validateFilename(
 			Expected:  fmt.Sprintf("filename matching glob %s", pattern),
 			SchemaRef: schemaRef(sch, ""),
 		}
-		return []lint.Diagnostic{mkDiag(f.Path, anchor, d.Format())}
+		return []lint.Diagnostic{d.Emit(mkDiag, f.Path, anchor)}
 	}
 	return nil
 }

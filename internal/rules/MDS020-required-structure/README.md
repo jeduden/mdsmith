@@ -313,11 +313,11 @@ constraint, and (when it can) a hint:
 ```text
 status: got "draf", expected one of: "draft", "open", "done"
   (did you mean "draft"?)
-schema: plan/proto.md:4
+  ↳ plan/proto.md:4 — required by schema
 ```
 
-The trailing `schema: <ref>` line points at the source; for
-proto.md schemas it includes the constraint's line number.
+That schema reference rides on a related location (plan 230),
+shown above; editors render it as a `relatedInformation` entry.
 
 | Condition            | Message                                                               |
 | -------------------- | --------------------------------------------------------------------- |

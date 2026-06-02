@@ -981,8 +981,98 @@ func TestComputeCodeActionsCachesNilEdits(t *testing.T) {
 func TestToLSPClampsZeroLine(t *testing.T) {
 	t.Parallel()
 	got := toLSP(lint.Diagnostic{Line: 0, Column: 1, RuleID: "MDS001", Severity: lint.Error},
-		[][]byte{[]byte("a")})
+		[][]byte{[]byte("a")}, "")
 	assert.Equal(t, 0, got.Range.Start.Line)
+}
+
+// TestToLSP_RelatedInformationAndCodeDescription pins plan 230's wire
+// mapping: a navigable related location becomes a relatedInformation
+// entry with a resolved file:// URI and 0-based coordinates, the rule
+// code gets a derived codeDescription.href, and a file-less label is
+// dropped.
+func TestToLSP_RelatedInformationAndCodeDescription(t *testing.T) {
+	t.Parallel()
+	d := lint.Diagnostic{
+		Line: 2, Column: 1, RuleID: "MDS020", RuleName: "required-structure",
+		Severity: lint.Error, Message: `status: got "x"`,
+		RelatedLocations: []lint.RelatedLocation{
+			{File: "proto.md", Line: 4, Column: 3, Message: "required by schema"},
+			{Message: "inline kind schema"}, // no file → dropped
+		},
+	}
+	got := toLSP(d, [][]byte{[]byte("a"), []byte("status: x")}, "/work")
+	require.NotNil(t, got.CodeDescription)
+	assert.Equal(t, "https://mdsmith.dev/rules/mds020-required-structure/",
+		got.CodeDescription.Href, "derived from the rule ID")
+	require.Len(t, got.RelatedInformation, 1, "the file-less label is dropped")
+	ri := got.RelatedInformation[0]
+	assert.Equal(t, "required by schema", ri.Message)
+	assert.Equal(t, 3, ri.Location.Range.Start.Line, "1-based line 4 → 0-based 3")
+	assert.Equal(t, 2, ri.Location.Range.Start.Character, "1-based col 3 → 0-based 2")
+	assert.True(t, strings.HasPrefix(ri.Location.URI, "file://"))
+	assert.Contains(t, ri.Location.URI, "proto.md")
+}
+
+// TestToLSP_NoRelatedNoCodeDescription confirms a diagnostic with no
+// related locations and an unknown rule ID gets neither field.
+func TestToLSP_NoRelatedNoCodeDescription(t *testing.T) {
+	t.Parallel()
+	got := toLSP(lint.Diagnostic{Line: 1, Column: 1, RuleID: "MDSZZZ"},
+		[][]byte{[]byte("x")}, "/w")
+	assert.Nil(t, got.RelatedInformation)
+	assert.Nil(t, got.CodeDescription)
+}
+
+// TestToLSP_DerivesCodeDescriptionForKnownRule confirms a real rule ID
+// gets a codeDescription pointing at its website doc page.
+func TestToLSP_DerivesCodeDescriptionForKnownRule(t *testing.T) {
+	t.Parallel()
+	got := toLSP(lint.Diagnostic{Line: 1, Column: 1, RuleID: "MDS001"},
+		[][]byte{[]byte("x")}, "/w")
+	require.NotNil(t, got.CodeDescription)
+	assert.Equal(t, "https://mdsmith.dev/rules/mds001-line-length/",
+		got.CodeDescription.Href)
+}
+
+// TestToLSP_RelatedFileOnlyAnchorsAtLineZero covers the clamp path: a
+// file-only related location (Line and Column unknown / 0) anchors at
+// the schema file's first line rather than underflowing to a negative
+// coordinate.
+func TestToLSP_RelatedFileOnlyAnchorsAtLineZero(t *testing.T) {
+	t.Parallel()
+	d := lint.Diagnostic{
+		Line: 1, Column: 1, RuleID: "MDS020",
+		RelatedLocations: []lint.RelatedLocation{
+			{File: "proto.md", Message: "required by schema"},
+		},
+	}
+	got := toLSP(d, [][]byte{[]byte("x")}, "/w")
+	require.Len(t, got.RelatedInformation, 1)
+	assert.Equal(t, 0, got.RelatedInformation[0].Location.Range.Start.Line)
+	assert.Equal(t, 0, got.RelatedInformation[0].Location.Range.Start.Character)
+}
+
+// TestToLSP_RelatedURIGuards covers relatedURI's safety branches: a
+// relative file with no workspace root, a "../" path that escapes the
+// root, and an absolute path outside the root are all dropped; an
+// absolute path inside the root is kept.
+func TestToLSP_RelatedURIGuards(t *testing.T) {
+	t.Parallel()
+	mk := func(file, root string) []diagnosticRelatedInformation {
+		d := lint.Diagnostic{
+			Line: 1, Column: 1, RuleID: "MDS020",
+			RelatedLocations: []lint.RelatedLocation{{File: file, Line: 2, Message: "x"}},
+		}
+		return toLSP(d, [][]byte{[]byte("x")}, root).RelatedInformation
+	}
+	assert.Empty(t, mk("proto.md", ""), "relative file, no root → dropped")
+	assert.Empty(t, mk("/abs/proto.md", ""), "absolute file, no root → dropped")
+	assert.Empty(t, mk("../../etc/passwd", "/work/project"), "escaping root → dropped")
+	assert.Empty(t, mk("/etc/passwd", "/work/project"),
+		"absolute path outside root → dropped")
+	abs := mk("/work/project/sub/proto.md", "/work/project")
+	require.Len(t, abs, 1, "absolute path inside root → kept")
+	assert.Contains(t, abs[0].Location.URI, "/work/project/sub/proto.md")
 }
 
 // TestToLSPForwardsDeprecationData regresses plan 136: the
@@ -1001,7 +1091,7 @@ func TestToLSPForwardsDeprecationData(t *testing.T) {
 		Deprecated: true,
 		ReplacedBy: "owner",
 		Message:    "legacy_owner: deprecated field",
-	}, [][]byte{[]byte("---")})
+	}, [][]byte{[]byte("---")}, "")
 	require.NotNil(t, got.Data)
 	assert.True(t, got.Data.Deprecated)
 	assert.Equal(t, "owner", got.Data.ReplacedBy)
@@ -1015,6 +1105,7 @@ func TestToLSPEmptyLineProducesZeroWidthRange(t *testing.T) {
 	got := toLSP(
 		lint.Diagnostic{Line: 2, Column: 1, RuleID: "MDS001", Severity: lint.Error},
 		[][]byte{[]byte("first"), []byte("")},
+		"",
 	)
 	assert.Equal(t, 1, got.Range.Start.Line)
 	assert.Equal(t, 0, got.Range.Start.Character)
@@ -2166,6 +2257,7 @@ func TestToLSPMultiByteRuneBeforeColumn(t *testing.T) {
 	got := toLSP(
 		lint.Diagnostic{Line: 1, Column: 3, RuleID: "MDS001", Severity: lint.Error},
 		[][]byte{line},
+		"",
 	)
 	assert.Equal(t, 1, got.Range.Start.Character,
 		"Column 3 (byte offset 2 = after é) should map to UTF-16 character 1")
@@ -2181,6 +2273,7 @@ func TestToLSPSurrogatePairBeforeColumn(t *testing.T) {
 	got := toLSP(
 		lint.Diagnostic{Line: 1, Column: 5, RuleID: "MDS001", Severity: lint.Error},
 		[][]byte{line},
+		"",
 	)
 	assert.Equal(t, 2, got.Range.Start.Character,
 		"after a non-BMP rune the start character should advance by 2 UTF-16 units")
@@ -3654,6 +3747,43 @@ func TestRuleHoverContentFallback(t *testing.T) {
 	assert.Contains(t, content, "mdsmith help rule MDSZZZ")
 }
 
+// TestRuleHoverContent_IssueFirst pins plan 230's hover layout: the
+// diagnostic message and the navigable schema link lead as the primary
+// block, a separator follows, then the condensed rule identity (code,
+// name, one-line description, docs link). The full README is not
+// inlined.
+func TestRuleHoverContent_IssueFirst(t *testing.T) {
+	t.Parallel()
+	d := Diagnostic{
+		Code:            "MDS020",
+		Message:         `status: got "draft", expected one of "open"`,
+		Data:            &diagnosticData{RuleName: "required-structure"},
+		CodeDescription: &codeDescription{Href: "https://mdsmith.dev/rules/MDS020"},
+		RelatedInformation: []diagnosticRelatedInformation{{
+			Location: location{
+				URI:   "file:///w/plan/proto.md",
+				Range: Range{Start: Position{Line: 3}},
+			},
+			Message: "required by schema",
+		}},
+	}
+	got := ruleHoverContent(d)
+
+	sep := strings.Index(got, "\n---\n")
+	require.Positive(t, sep, "hover has an issue/rule separator")
+	issue, ruleBlock := got[:sep], got[sep:]
+
+	assert.Contains(t, issue, `status: got "draft"`, "issue leads")
+	assert.Contains(t, issue,
+		"[proto.md:4](file:///w/plan/proto.md#L4) — required by schema",
+		"navigable related link with its message sits in the issue block")
+	assert.Contains(t, ruleBlock, "`MDS020` · required-structure",
+		"rule identity is secondary")
+	assert.Contains(t, ruleBlock, "Document structure and front matter",
+		"one-line description, not the full README")
+	assert.Contains(t, ruleBlock, "https://mdsmith.dev/rules/MDS020")
+}
+
 // TestDirectiveHoverAtInRange covers the path where the cursor falls inside a
 // directive block that has registered documentation.
 func TestDirectiveHoverAtInRange(t *testing.T) {
@@ -3876,4 +4006,68 @@ func TestInvalidateCachedRead_DropsEntry(t *testing.T) {
 	if got != "rebuilt" {
 		t.Errorf("after invalidate: cache hit = %v, want rebuilt", got)
 	}
+}
+
+// TestIsAbsPath covers the cross-platform absolute-path classification
+// relatedURI relies on: POSIX absolute, Windows drive-letter, and UNC
+// paths are absolute on any host (so they are bounded against the root,
+// not mis-joined to it); a relative path is not.
+func TestIsAbsPath(t *testing.T) {
+	t.Parallel()
+	assert.True(t, isAbsPath("/abs/proto.md"), "posix absolute")
+	assert.True(t, isAbsPath(`C:\work\proto.md`), "windows drive-letter")
+	assert.True(t, isAbsPath(`\\server\share\proto.md`), "UNC")
+	assert.False(t, isAbsPath("plan/proto.md"), "relative")
+}
+
+// TestRelatedHoverLink covers the rule-agnostic related-link renderer:
+// the entry's own message trails the link, and an entry with no message
+// renders the bare link.
+func TestRelatedHoverLink(t *testing.T) {
+	t.Parallel()
+	ri := diagnosticRelatedInformation{
+		Location: location{
+			URI:   "file:///w/proto.md",
+			Range: Range{Start: Position{Line: 4}},
+		},
+		Message: "required by schema",
+	}
+	assert.Equal(t,
+		"[proto.md:5](file:///w/proto.md#L5) — required by schema",
+		relatedHoverLink(ri))
+
+	ri.Message = ""
+	assert.Equal(t, "[proto.md:5](file:///w/proto.md#L5)", relatedHoverLink(ri))
+}
+
+// TestWithinRoot covers the containment check, including the
+// filepath.Rel error branch (a relative root against an absolute path
+// cannot be related, so it counts as outside).
+func TestWithinRoot(t *testing.T) {
+	t.Parallel()
+	assert.True(t, withinRoot("/work", "/work/sub/x.md"), "inside root")
+	assert.True(t, withinRoot("/work", "/work"), "root itself counts")
+	assert.False(t, withinRoot("/work", "/etc/passwd"), "sibling escapes")
+	assert.False(t, withinRoot("relative", "/abs/path"),
+		"a relative root and an absolute path resolve to disjoint subtrees → outside")
+}
+
+// TestWithinRoot_SymlinkEscapeRejected pins the symlink-safe behaviour
+// (Copilot review): a real file inside the root is contained, but an
+// in-root symlink that resolves outside the root is rejected — a purely
+// lexical check would have accepted it.
+func TestWithinRoot_SymlinkEscapeRejected(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	inside := filepath.Join(root, "proto.md")
+	require.NoError(t, os.WriteFile(inside, []byte("x"), 0o600))
+	assert.True(t, withinRoot(root, inside), "real in-root file is contained")
+
+	outside := t.TempDir()
+	secret := filepath.Join(outside, "secret.md")
+	require.NoError(t, os.WriteFile(secret, []byte("s"), 0o600))
+	link := filepath.Join(root, "evil.md")
+	require.NoError(t, os.Symlink(secret, link))
+	assert.False(t, withinRoot(root, link),
+		"an in-root symlink resolving outside the root is rejected")
 }

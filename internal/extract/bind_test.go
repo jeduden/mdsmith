@@ -89,6 +89,10 @@ func TestExtract_BindHoistCollisionFlagged(t *testing.T) {
 		sch, nil)
 	require.NotEmpty(t, diags)
 	assert.Contains(t, diags[0].Message, "goal")
+	// The schema reference must survive as a related location (plan
+	// 230 moved it off the message; extract must Emit, not hand-build).
+	require.Len(t, diags[0].RelatedLocations, 1,
+		"collision diagnostic carries the schema reference")
 }
 
 // TestExtract_BindRepeatingHoistRejected covers the edge case where

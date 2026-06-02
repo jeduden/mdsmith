@@ -39,3 +39,24 @@ func TestToExplanationConverts(t *testing.T) {
 		t.Fatalf("Leaves[1] = %+v, want {exclude tables kind:doc}", got.Leaves[1])
 	}
 }
+
+// TestToDiagnosticsClampsNonPositiveLine covers the public-API clamp:
+// plan 230's line-0 sentinel must not leak through the Session/WASM API;
+// it surfaces as 1, while a RelatedLocation line of 0 ("unknown") is
+// preserved.
+func TestToDiagnosticsClampsNonPositiveLine(t *testing.T) {
+	out := toDiagnostics([]lint.Diagnostic{{
+		File: "gen.md", Line: 0, Column: 3, RuleID: "MDS020",
+		RelatedLocations: []lint.RelatedLocation{{File: "p.md", Line: 0}},
+	}})
+	if len(out) != 1 {
+		t.Fatalf("got %d diagnostics, want 1", len(out))
+	}
+	if out[0].Line != 1 || out[0].Column != 3 {
+		t.Fatalf("public Line/Column = %d/%d, want 1/3 (line clamped, column kept)",
+			out[0].Line, out[0].Column)
+	}
+	if len(out[0].RelatedLocations) != 1 || out[0].RelatedLocations[0].Line != 0 {
+		t.Fatalf("related location line not preserved as 0 (unknown)")
+	}
+}

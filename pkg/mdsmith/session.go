@@ -363,9 +363,9 @@ func firstError(errs []error) error {
 // cloneDiagnostics returns a shallow copy of the slice so a caller
 // cannot append into or overwrite the cache's backing array. The
 // Diagnostic elements are copied by value; their inner slices
-// (SourceLines) and pointer (Explanation) are shared, which is safe
-// because callers treat results as read-only and the engine never
-// mutates a diagnostic after producing it. nil maps to nil so the
+// (SourceLines, RelatedLocations) and pointer (Explanation) are
+// shared, which is safe because callers treat results as read-only and
+// the engine never mutates a diagnostic after producing it. nil maps to nil so the
 // public no-diagnostics contract (nil, not []) is preserved.
 func cloneDiagnostics(in []Diagnostic) []Diagnostic {
 	if in == nil {

@@ -251,7 +251,15 @@ func parseSchemaSources(v any) ([]SchemaSource, error) {
 				return nil, fmt.Errorf(
 					"schema-sources[%d].inline must be a non-empty mapping, got %T", i, inlineV)
 			}
-			sch, err := schema.ParseInline(im, "inline kind schema")
+			// The merge layer (config.applyInlineSchemaSource) attaches
+			// the kind's defining file as `source` so the schema
+			// reference is navigable; fall back to the generic label
+			// when it is absent (e.g. a direct `inline-schema:` setting).
+			label := "inline kind schema"
+			if src, ok := m["source"].(string); ok && src != "" {
+				label = src
+			}
+			sch, err := schema.ParseInline(im, label)
 			if err != nil {
 				return nil, fmt.Errorf("schema-sources[%d].inline: %w", i, err)
 			}
@@ -1821,7 +1829,8 @@ func walkRequiredHeadings(
 			allowExtra = false
 		}
 		if !found && !claimed[schIdx] {
-			diags = append(diags, missingSectionDiagLegacy(f, req, ref))
+			diags = append(diags, missingSectionDiagLegacy(
+				f, req, ref, legacyPrecedingLine(docHeadings, docIdx)))
 		}
 	}
 	return diags, docIdx, allowExtra
@@ -1841,7 +1850,7 @@ func flagTrailingExtras(
 			Expected:  "not declared in schema",
 			SchemaRef: ref,
 		}
-		diags = append(diags, makeDiag(f.Path, dh.Line, d.Format()))
+		diags = append(diags, d.Emit(makeDiag, f.Path, dh.Line))
 		docIdx++
 	}
 	return diags
@@ -1850,7 +1859,7 @@ func flagTrailingExtras(
 // missingSectionDiagLegacy builds the SchemaDiagnostic for a
 // required heading that the document lacks.
 func missingSectionDiagLegacy(
-	f *lint.File, req schemaHeading, ref string,
+	f *lint.File, req schemaHeading, ref string, precedingLine int,
 ) lint.Diagnostic {
 	d := schema.SchemaDiagnostic{
 		Field:     formatHeading(req.Level, req.Text),
@@ -1858,11 +1867,22 @@ func missingSectionDiagLegacy(
 		Expected:  "section to be present",
 		SchemaRef: ref,
 	}
-	// Missing sections have no body line to point at; use the
-	// non-body anchor so the engine's filterGeneratedDiags can't
-	// drop the diagnostic when body line 1 sits inside a
-	// generated section.
-	return makeDiag(f.Path, schema.NonBodyDiagLine(f), d.Format())
+	// Anchor at the heading the missing section should follow so the
+	// squiggle lands where the section belongs; MissingSectionAnchor
+	// falls back to the non-body anchor when there is no preceding
+	// heading or the insertion point sits inside a generated section
+	// (where filterGeneratedDiags would otherwise drop it).
+	return d.Emit(makeDiag, f.Path, schema.MissingSectionAnchor(f, precedingLine))
+}
+
+// legacyPrecedingLine returns the line of the document heading just
+// before docIdx (the section a missing required heading should
+// follow), or 0 when there is none.
+func legacyPrecedingLine(docHeadings []docHeading, docIdx int) int {
+	if idx := docIdx - 1; idx >= 0 && idx < len(docHeadings) {
+		return docHeadings[idx].Line
+	}
+	return 0
 }
 
 // buildSchemaRefForLegacy returns the schema reference string
@@ -1911,7 +1931,7 @@ func matchRequired(
 				Hint:      fmt.Sprintf("expected after %q", formatHeading(req.Level, req.Text)),
 				SchemaRef: schemaRef,
 			}
-			diags = append(diags, makeDiag(f.Path, dh.Line, ooDiag.Format()))
+			diags = append(diags, ooDiag.Emit(makeDiag, f.Path, dh.Line))
 			if dh.Level != other.Level {
 				diags = append(diags, levelMismatchDiag(f, dh, other, schemaRef))
 			}
@@ -1927,7 +1947,7 @@ func matchRequired(
 				Hint:      fmt.Sprintf("expected %q here instead", formatHeading(req.Level, req.Text)),
 				SchemaRef: schemaRef,
 			}
-			diags = append(diags, makeDiag(f.Path, dh.Line, unexpDiag.Format()))
+			diags = append(diags, unexpDiag.Emit(makeDiag, f.Path, dh.Line))
 		}
 		docIdx++
 	}
@@ -1945,7 +1965,7 @@ func levelMismatchDiag(
 		Expected:  fmt.Sprintf("h%d", req.Level),
 		SchemaRef: schemaRef,
 	}
-	return makeDiag(f.Path, dh.Line, d.Format())
+	return d.Emit(makeDiag, f.Path, dh.Line)
 }
 
 // nextUnclaimed returns the first index in candidates that is >= minIdx
@@ -2285,7 +2305,7 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 			Expected:  fmt.Sprintf("path matching glob %s", pp.Pattern),
 			SchemaRef: fmt.Sprintf("kinds[%s] / path-pattern", pp.Kind),
 		}
-		diags = append(diags, makeDiag(f.Path, schema.NonBodyDiagLine(f), d.Format()))
+		diags = append(diags, d.Emit(makeDiag, f.Path, schema.NonBodyDiagLine(f)))
 	}
 	return diags
 }
@@ -2341,7 +2361,7 @@ func checkFilenamePattern(
 			Hint:      err.Error(),
 			SchemaRef: buildSchemaRefForLegacy(schemaSource),
 		}
-		return []lint.Diagnostic{makeDiag(f.Path, anchor, d.Format())}
+		return []lint.Diagnostic{d.Emit(makeDiag, f.Path, anchor)}
 	}
 	if !matched {
 		// `glob` keeps the wording aligned with schema.validateFilename
@@ -2352,7 +2372,7 @@ func checkFilenamePattern(
 			Expected:  fmt.Sprintf("filename matching glob %s", pattern),
 			SchemaRef: buildSchemaRefForLegacy(schemaSource),
 		}
-		return []lint.Diagnostic{makeDiag(f.Path, anchor, d.Format())}
+		return []lint.Diagnostic{d.Emit(makeDiag, f.Path, anchor)}
 	}
 	return nil
 }

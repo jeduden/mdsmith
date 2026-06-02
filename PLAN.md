@@ -152,4 +152,5 @@ footer: |
 | 220 | ✅     | opus   | [Harden the git-index writers against a transient index.lock](plan/220_git-index-lock-retry.md)                                         |
 | 221 | 🔳     | opus   | [Ship mdsmith as a self-hosted Flatpak bundle](plan/221_flatpak-bundle-distribution.md)                                                 |
 | 222 | ✅     | opus   | [Single source of truth for distribution channels](plan/222_distribution-channel-ssot.md)                                               |
+| 230 | ✅     | opus   | [Navigable schema diagnostics in the editor](plan/230_navigable-schema-diagnostics.md)                                                  |
 <?/catalog?>

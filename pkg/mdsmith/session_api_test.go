@@ -1,11 +1,59 @@
 package mdsmith
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// TestCheckCarriesRelatedLocations verifies the public Diagnostic
+// carries RelatedLocations for a schema (MDS020) violation and that it
+// JSON-marshals with the related_locations field — matching the CLI
+// --format json shape so a WASM/Session host (e.g. the Obsidian
+// plugin) reads one schema (plan 230).
+func TestCheckCarriesRelatedLocations(t *testing.T) {
+	cfg := ConfigYAML("kinds:\n" +
+		"  task:\n" +
+		"    schema:\n" +
+		"      sections:\n" +
+		"        - heading: \"Goal\"\n" +
+		"        - heading: \"Tasks\"\n" +
+		"kind-assignment:\n" +
+		"  - glob: [\"*.md\"]\n" +
+		"    kinds: [task]\n")
+	s, err := NewSession(SessionOptions{Workspace: NewMemWorkspace(nil), Config: cfg})
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	defer s.Dispose()
+	// The document has Goal but is missing the required Tasks section.
+	diags, err := s.Check("a.md", []byte("# Title\n\n## Goal\n\nbody\n"))
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	var found *Diagnostic
+	for i := range diags {
+		if diags[i].Rule == "MDS020" {
+			found = &diags[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("no MDS020 diagnostic among %d diagnostics", len(diags))
+	}
+	if len(found.RelatedLocations) != 1 {
+		t.Fatalf("RelatedLocations = %d, want 1", len(found.RelatedLocations))
+	}
+	b, err := json.Marshal(*found)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if !strings.Contains(string(b), "related_locations") {
+		t.Errorf("public JSON missing related_locations: %s", b)
+	}
+}
 
 // --- ConfigSource: ConfigPath and ConfigYAML ---
 

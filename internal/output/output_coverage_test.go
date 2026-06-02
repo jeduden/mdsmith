@@ -111,6 +111,37 @@ func TestFormatSnippet_SingleDigitLineNumber(t *testing.T) {
 	assert.Contains(t, output, strings.Repeat("·", 8)+"^")
 }
 
+func TestFormatSnippet_NonPositiveLineCaretMatchesHeader(t *testing.T) {
+	// A non-positive Line is a body-anchor sentinel (plan 230). The header
+	// clamps it to line 1 via DisplayLine(); the snippet caret must mark
+	// that same line rather than being silently dropped because it keyed
+	// off the raw sentinel.
+	f := &TextFormatter{Color: false}
+	var buf bytes.Buffer
+
+	diagnostics := []lint.Diagnostic{
+		{
+			File:            "doc.md",
+			Line:            0, // sentinel
+			Column:          1,
+			RuleID:          "MDS020",
+			RuleName:        "required-structure",
+			Message:         "missing required section",
+			SourceLines:     []string{"# Heading"},
+			SourceStartLine: 1,
+		},
+	}
+
+	err := f.Format(&buf, diagnostics)
+	require.NoError(t, err)
+
+	output := buf.String()
+	// Header clamps the sentinel to line 1.
+	assert.Contains(t, output, "doc.md:1:1")
+	// The caret marks that same line (gutterWidth=1, column=1, dots = 1+1+2 = 4).
+	assert.Contains(t, output, strings.Repeat("·", 4)+"^")
+}
+
 func TestFormatSnippet_TwoDigitLineNumber(t *testing.T) {
 	f := &TextFormatter{Color: false}
 	var buf bytes.Buffer
@@ -277,4 +308,26 @@ func TestFormat_CaretWriterError(t *testing.T) {
 
 	err := f.Format(w, diagnostics)
 	assert.Error(t, err, "expected error from failing caret write")
+}
+
+// TestFormat_RelatedWriterError covers the writeRelated error return:
+// the header succeeds (write 1), the diagnostic has no SourceLines so
+// formatSnippet writes nothing, and the related-location trailer write
+// fails.
+func TestFormat_RelatedWriterError(t *testing.T) {
+	f := &TextFormatter{Color: false}
+	w := &limitedWriter{limit: 1}
+
+	diagnostics := []lint.Diagnostic{
+		{
+			File: "test.md", Line: 1, Column: 1,
+			RuleID: "MDS020", RuleName: "required-structure", Message: "test",
+			RelatedLocations: []lint.RelatedLocation{
+				{File: "proto.md", Line: 2, Message: "required by schema"},
+			},
+		},
+	}
+
+	err := f.Format(w, diagnostics)
+	assert.Error(t, err, "expected error from failing related-location write")
 }

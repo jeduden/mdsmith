@@ -75,6 +75,24 @@ func expectDiagMsg(
 	)
 }
 
+// expectRelatedMsg asserts that some diagnostic carries a related
+// location whose Message contains substr. Since plan 230, the schema
+// reference rides on RelatedLocations rather than the message body, so
+// schema-ref assertions go through this helper.
+func expectRelatedMsg(
+	t *testing.T, diags []lint.Diagnostic, substr string,
+) {
+	t.Helper()
+	for _, d := range diags {
+		for _, rl := range d.RelatedLocations {
+			if strings.Contains(rl.Message, substr) {
+				return
+			}
+		}
+	}
+	t.Errorf("no related location contains %q", substr)
+}
+
 // =====================================================================
 // Rule metadata
 // =====================================================================
@@ -903,8 +921,9 @@ func TestCheck_PathPattern_Mismatch(t *testing.T) {
 		`path: got "plan/early-draft.md"`)
 	assert.Contains(t, diags[0].Message,
 		`glob plan/[0-9][0-9]*_*.md`)
-	assert.Contains(t, diags[0].Message,
-		`schema: kinds[plan] / path-pattern`)
+	require.Len(t, diags[0].RelatedLocations, 1)
+	assert.Equal(t, "kinds[plan] / path-pattern",
+		diags[0].RelatedLocations[0].Message)
 	assert.Equal(t, "MDS020", diags[0].RuleID)
 	assert.Equal(t, "required-structure", diags[0].RuleName)
 	assert.Equal(t, 1, diags[0].Line)
@@ -1022,8 +1041,8 @@ func TestCheck_PathPattern_MultipleKindsBothFail(t *testing.T) {
 	}}
 	diags := r.Check(f)
 	expectDiags(t, diags, 2)
-	expectDiagMsg(t, diags, "kinds[plan] / path-pattern")
-	expectDiagMsg(t, diags, "kinds[rfc] / path-pattern")
+	expectRelatedMsg(t, diags, "kinds[plan] / path-pattern")
+	expectRelatedMsg(t, diags, "kinds[rfc] / path-pattern")
 }
 
 func TestCheck_PathPattern_PlusRequireFilenameBothEmit(t *testing.T) {
@@ -1044,7 +1063,7 @@ filename: "[0-9]*_*.md"
 	diags := r.Check(f)
 	expectDiagMsg(t, diags,
 		`filename: got "my-plan.md", expected filename matching glob [0-9]*_*.md`)
-	expectDiagMsg(t, diags, "kinds[plan] / path-pattern")
+	expectRelatedMsg(t, diags, "kinds[plan] / path-pattern")
 }
 
 func TestApplySettings_PathPatternsParsesList(t *testing.T) {
@@ -2052,8 +2071,7 @@ status: '"🔲" | "🔳" | "✅"'
 	diags := r.Check(f)
 	var hasCUEDiag bool
 	for _, d := range diags {
-		if strings.Contains(d.Message, "id:") &&
-			strings.Contains(d.Message, "schema:") {
+		if strings.Contains(d.Message, "id:") && len(d.RelatedLocations) == 1 {
 			hasCUEDiag = true
 		}
 	}
@@ -2206,9 +2224,35 @@ status: '"open" | "done"'
 		"---\nstatus: bogus\n---\n# Any title\n")
 	diags := r.Check(f)
 	// status is on line 3 of the schema (line 1 is "---",
-	// line 2 is "id:", line 3 is "status:").
-	expectDiagMsg(t, diags, "schema:")
-	expectDiagMsg(t, diags, ":3")
+	// line 2 is "id:", line 3 is "status:"). The schema reference
+	// now rides on a related location pointing at that line.
+	var found bool
+	for _, d := range diags {
+		for _, rl := range d.RelatedLocations {
+			if rl.Line == 3 && strings.Contains(rl.File, ".md") {
+				found = true
+			}
+		}
+	}
+	assert.True(t, found, "a related location points at schema line 3")
+}
+
+// TestCheck_EveryMDS020DiagnosticCarriesRelatedLocation pins plan 230's
+// invariant: every MDS020 diagnostic surfaces the schema reference as a
+// related location. One document here triggers several distinct emit
+// paths (unexpected section + two missing sections); reverting any of
+// them to the old message-trailer form would drop the navigation and
+// fail this test.
+func TestCheck_EveryMDS020DiagnosticCarriesRelatedLocation(t *testing.T) {
+	schemaPath := writeSchema(t, "---\n---\n# ?\n\n## Goal\n\n## Tasks\n")
+	r := &Rule{Schema: schemaPath}
+	f := newTestFile(t, "doc.md", "# Title\n\n## Random\n\nbody\n")
+	diags := r.Check(f)
+	require.GreaterOrEqual(t, len(diags), 2, "expected several violations")
+	for i, d := range diags {
+		assert.Len(t, d.RelatedLocations, 1,
+			"diagnostic %d %q must carry a related location", i, d.Message)
+	}
 }
 
 // TestCheck_FrontMatter_DiagnosticLineAtKey regresses the
@@ -2536,4 +2580,13 @@ func TestBuildSchemaRefForLegacy(t *testing.T) {
 		t.Errorf("buildSchemaRefForLegacy(%q) = %q, want %q",
 			"proto.md", got, "proto.md")
 	}
+}
+
+// TestLegacyPrecedingLine covers the file-schema path's document-order
+// lookup mirror of precedingHeadingLine.
+func TestLegacyPrecedingLine(t *testing.T) {
+	heads := []docHeading{{Line: 2}, {Line: 5}}
+	assert.Equal(t, 0, legacyPrecedingLine(heads, 0))
+	assert.Equal(t, 2, legacyPrecedingLine(heads, 1))
+	assert.Equal(t, 5, legacyPrecedingLine(heads, 2))
 }

@@ -598,3 +598,17 @@ func TestTextFormatter_SnippetDotPathAlignment(t *testing.T) {
 	require.GreaterOrEqual(t, caretPos, 0, "no ^ found in caret line")
 	assert.Equal(t, 'h', diagRunes[caretPos], "caret should point at 'h' in https")
 }
+
+// TestTextFormatter_ClampsNonPositiveLine regresses plan 230: a
+// diagnostic anchored at line 0 (a wholly generated file) prints as
+// line 1, never file:0. Column is left untouched (0 is "unknown",
+// covered by TestTextFormatter_SnippetColumnZero).
+func TestTextFormatter_ClampsNonPositiveLine(t *testing.T) {
+	var buf bytes.Buffer
+	f := &TextFormatter{}
+	require.NoError(t, f.Format(&buf, []lint.Diagnostic{
+		{File: "gen.md", Line: 0, Column: 3, RuleID: "MDS020", Message: "missing section"},
+	}))
+	assert.Contains(t, buf.String(), "gen.md:1:3 ")
+	assert.NotContains(t, buf.String(), "gen.md:0:")
+}
