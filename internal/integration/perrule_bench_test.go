@@ -160,64 +160,6 @@ func perRuleAllocs(tb testing.TB, r rule.Rule, src []byte, mapFS fstest.MapFS) f
 	return delta
 }
 
-// perRuleCheckNsPerOp returns a CI-stable total parse+Check ns/op for
-// one rule: the MINIMUM per-op wall time over several fixed-size
-// repetitions, not the average testing.Benchmark reports. The minimum
-// is the right gate quantity on a shared CI runner — a noisy
-// neighbour, scheduler preemption, or a GC pause only ever ADDS time,
-// so the least-contended repetition is the closest estimate of the
-// rule's true cost and a transient spike cannot inflate it. Gating the
-// average flaked the gate: MDS035 measured 1.33ms on a contended CI
-// runner against a ~0.2ms uncontended cost (it clocks ~0.18ms locally).
-//
-// The gate times parse+Check TOGETHER rather than the parse-subtracted
-// Check delta on purpose. On this corpus the goldmark parse (~170µs)
-// dwarfs most rules' Check (often < 30µs), so a subtracted Check time
-// is dominated by parse jitter and routinely goes negative run to run
-// — useless as a gate quantity. Parse cost is constant across every
-// opt-in rule (same doc, same factory), so a Check regression still
-// pushes the COMBINED number past the rule's pinned ceiling, while the
-// constant parse floor keeps the measurement stable.
-func perRuleCheckNsPerOp(tb testing.TB, r rule.Rule, src []byte, mapFS fstest.MapFS) int64 {
-	tb.Helper()
-	makeFile := perRuleBenchMakeFile(tb, src, mapFS)
-	_ = r.Check(makeFile()) // warm once before measuring
-	// Each repetition times a fixed batch of parse+Check ops. iters
-	// keeps a batch long enough (~tens of ms) to amortize per-call
-	// setup and stay well above timer resolution; repeats gives
-	// several short, independent windows so at least one lands in a
-	// quiet scheduling slot even on a contended runner. Return the
-	// minimum ns/op across the windows.
-	//
-	// Min, not the p95 the sibling latency gates (BenchmarkLatency*,
-	// BenchmarkCheckCorpus*) use: those characterise a latency
-	// DISTRIBUTION, whereas this gate estimates one rule's fixed cost,
-	// where CI contention is additive noise to strip out — for which
-	// the least-contended window is the right estimator and a p95 would
-	// just track the worst window and re-flake. runtime.GC() before
-	// each window starts it from a clean heap so a GC assist is far
-	// less likely to fall inside the timed region (the high-alloc
-	// rules — MDS043/037/035 — need this most).
-	const (
-		iters   = 100
-		repeats = 12
-	)
-	var best int64
-	for i := 0; i < repeats; i++ {
-		runtime.GC()
-		start := time.Now()
-		for j := 0; j < iters; j++ {
-			f := makeFile()
-			_ = r.Check(f)
-		}
-		nsPerOp := time.Since(start).Nanoseconds() / iters
-		if i == 0 || nsPerOp < best {
-			best = nsPerOp
-		}
-	}
-	return best
-}
-
 // timeBatchNsPerOp runs op iters times in one GC-cleaned window and
 // returns the per-op nanoseconds for that window. runtime.GC() before
 // the timed region starts it from a clean heap so a GC assist is less
@@ -296,85 +238,78 @@ func perRuleTiming(tb testing.TB, r rule.Rule, src []byte, mapFS fstest.MapFS) r
 	return t
 }
 
-// perRuleBudget pairs the two hard per-rule gates: total parse+Check
-// wall time and parse-subtracted allocs/op. Bundled so a new opt-in
-// rule's entry cannot forget either limit.
-type perRuleBudget struct {
-	Time   time.Duration
-	Allocs float64
-}
+// maxTimeRatio caps every opt-in rule's parse+Check time as a MULTIPLE
+// of the parse-only floor measured in the same run (see perRuleTiming).
+// One uniform bar fits all rules because the ratio divides out machine
+// speed and CI contention: a sibling go-build that saturates every core
+// inflates the parse floor and the parse+Check total together, so the
+// ratio reads the same on a quiet box or a saturated batch runner. That
+// sustained all-core contention is exactly what an absolute ns ceiling
+// could not filter (it only ADDS time, across every measurement window),
+// so MDS035/MDS037 once tripped a 1.25ms ceiling and had to carry ~8x
+// headroom; normalising by the same-run parse floor removes the
+// machine-speed factor entirely.
+//
+// The ceiling clears the heaviest observed Check by a wide margin while
+// still tripping a Check that adds a full extra parse (ratio +~1.0). On
+// perRuleBenchDoc (2026-06-02) every rule but one sits at 0.94-1.33x;
+// the outlier is MDS043 (no-reference-style) at ~1.5-1.65x across runs,
+// whose many allocations charge GC into its Check windows. 2.5x leaves
+// that noisy outlier ~50% headroom yet still binds the 24 cheap rules
+// tighter than the old absolute gate (1ms vs their ~175µs ≈ 5.7x). The
+// deterministic perRuleAllocCeiling gate below is the tight per-rule
+// algorithmic-regression catch; this is the coarse CPU backstop. If a
+// legitimate cost change pushes a rule over the bar, re-measure with
+// `go test -run TestPerRuleBenchBudget -v ./internal/integration/` (the
+// gate logs every rule's ratio) and raise this, noting why.
+const maxTimeRatio = 2.5
 
-// perRuleBenchBudget pins each opt-in rule's ceiling. The trailing
-// comment on every row records the approximate baseline the ceiling
-// was derived from (4-core dev box, 2026-05-29, total parse+Check on
-// perRuleBenchDoc, measured as an average; perRuleCheckNsPerOp now
-// gates the per-window minimum, which runs a touch lower).
+// perRuleAllocCeiling pins each opt-in rule's parse-subtracted allocs/op
+// ceiling on perRuleBenchDoc. Allocations are CPU-independent, so this
+// is the tight, deterministic gate that catches an algorithmic
+// regression (extra parse, lost memo, escaped closure); maxTimeRatio
+// above is the coarse CPU backstop. Ceiling = baseline + max(20%, 4)
+// allocs; the trailing comment records the approximate baseline (4-core
+// dev box).
 //
-// Headroom philosophy (mirrors BenchmarkCheckCorpus*'s ~15-20% alloc /
-// ~3-5x time sizing):
+// A rule MISSING from this map fails TestPerRuleBenchBudget (the "no
+// pinned ceiling" path), so a newly-added opt-in rule must be pinned
+// here as part of the change that adds it. Re-measure with `go test -run
+// TestPerRuleBenchBudget -v ./internal/integration/` (the gate logs each
+// rule's observed allocs/op).
 //
-//   - Time ceiling ≈ 5x the measured baseline. perRuleCheckNsPerOp
-//     gates the MINIMUM ns/op over repetitions, not the average, so a
-//     slower runner and ordinary CI jitter stay well under the
-//     ceiling, while a real Check-time regression (an added per-line
-//     pass, a lost early-exit) still trips it. The parse floor is
-//     constant, so even a cheap rule's regression shows. Floored at
-//     1ms (MDS043 now sits at the floor — plan 188 removed its second
-//     parse, so it parses once like every other rule). MDS035 and
-//     MDS037 carry 2ms (≈8x): the
-//     minimum filters TRANSIENT spikes, but a burst spanning every
-//     window — go test ./... runs package binaries in parallel, so a
-//     sibling's go-build can saturate all cores for the whole ~0.2s
-//     measurement — the minimum cannot filter, and their higher base
-//     once pushed the gate over a 1.25ms ceiling, so they get headroom.
-//   - Allocs ceiling = baseline + max(20%, 4) allocs, deterministic.
-//     Allocations are CPU-independent, so this is the tight gate that
-//     catches an algorithmic regression (extra parse, lost memo,
-//     escaped closure) the wall-time budget would have to budge for.
-//
-// Updating an entry: when a legitimate cost change lands (a rule
-// gains a feature that adds real work), re-measure with
-// `go test -run TestPerRuleBenchBudget -v ./internal/integration/`
-// (the gate logs each rule's observed ns/op + allocs/op) or
-// `go test -run x -bench BenchmarkOptInRule ./internal/integration/`,
-// then raise that one row to the new baseline + the headroom above
-// and note why in the trailing comment. A rule MISSING from this map
-// fails TestPerRuleBenchBudget (see the "no pinned budget" subtest),
-// so a newly-added opt-in rule must be pinned here as part of the
-// change that adds it.
-// MDS043's Allocs ceiling is set from mds043AllocCeiling in init()
-// below. Plan 188 removed its second parse, so the arena and upstream
-// build axes now allocate identically (16 in both goldmark_arena_test.go
-// and goldmark_upstream_test.go); the per-axis indirection is retained
-// only so a future divergence has a home. The map literal carries the
-// same value so the column stays numeric.
-var perRuleBenchBudget = map[string]perRuleBudget{
-	"MDS024": {Time: 1000 * time.Microsecond, Allocs: 44},  // paragraph-structure: base ~192us / 36 allocs
-	"MDS029": {Time: 1000 * time.Microsecond, Allocs: 30},  // conciseness-scoring: base ~178us / 24 allocs
-	"MDS033": {Time: 1000 * time.Microsecond, Allocs: 4},   // directory-structure: base ~166us / 0 allocs
-	"MDS034": {Time: 1000 * time.Microsecond, Allocs: 4},   // markdown-flavor: base ~197us / 0 allocs
-	"MDS035": {Time: 2000 * time.Microsecond, Allocs: 102}, // toc-directive: base ~228us / 84 allocs
-	"MDS036": {Time: 1000 * time.Microsecond, Allocs: 4},   // max-section-length: base ~193us / 0 allocs
-	"MDS037": {Time: 2000 * time.Microsecond, Allocs: 130}, // duplicated-content: base ~241us / 108 allocs
-	"MDS041": {Time: 1000 * time.Microsecond, Allocs: 4},   // no-inline-html: base ~185us / 0 allocs
-	"MDS042": {Time: 1000 * time.Microsecond, Allocs: 4},   // emphasis-style: base ~176us / 0 allocs
-	"MDS043": {Time: 1500 * time.Microsecond, Allocs: 16},  // no-reference-style: base ~215us / 10 allocs (plan 188)
-	"MDS044": {Time: 1000 * time.Microsecond, Allocs: 4},   // horizontal-rule-style: base ~174us / 0 allocs
-	"MDS045": {Time: 1000 * time.Microsecond, Allocs: 6},   // list-marker-style: base ~184us / 1 alloc
-	"MDS046": {Time: 1000 * time.Microsecond, Allocs: 4},   // ordered-list-numbering: base ~175us / 0 allocs
-	"MDS047": {Time: 1000 * time.Microsecond, Allocs: 4},   // ambiguous-emphasis: base ~165us / 0 allocs
-	"MDS048": {Time: 1000 * time.Microsecond, Allocs: 4},   // git-hook-sync: base ~172us / 0 allocs
-	"MDS049": {Time: 1000 * time.Microsecond, Allocs: 6},   // no-space-in-link-text: base ~183us / 1 alloc
-	"MDS050": {Time: 1000 * time.Microsecond, Allocs: 4},   // proper-names: base ~165us / 0 allocs
-	"MDS051": {Time: 1000 * time.Microsecond, Allocs: 6},   // single-h1: base ~176us / 1 alloc
-	"MDS052": {Time: 1000 * time.Microsecond, Allocs: 4},   // no-space-in-code-spans: base ~177us / 0 allocs
-	"MDS055": {Time: 1000 * time.Microsecond, Allocs: 4},   // forbidden-paragraph-starts: base ~179us / 0 allocs
-	"MDS056": {Time: 1000 * time.Microsecond, Allocs: 4},   // forbidden-text: base ~174us / 0 allocs
-	"MDS057": {Time: 1000 * time.Microsecond, Allocs: 4},   // required-text-patterns: base ~171us / 0 allocs
-	"MDS058": {Time: 1000 * time.Microsecond, Allocs: 4},   // required-mentions: base ~172us / 0 allocs
-	"MDS063": {Time: 1000 * time.Microsecond, Allocs: 44},  // descriptive-link-text: base ~179us / 36 allocs
-	"MDS067": {Time: 1000 * time.Microsecond, Allocs: 12},  // callout-type: base ~182us / 8 allocs
-	"MDS068": {Time: 1000 * time.Microsecond, Allocs: 4},   // link-style: base ~172us / 0 allocs
+// MDS043's ceiling is set from mds043AllocCeiling in init() below. Plan
+// 188 removed its second parse, so the arena and upstream build axes now
+// allocate identically (16 in both goldmark_arena_test.go and
+// goldmark_upstream_test.go); the init() indirection is retained only so
+// a future divergence has a home.
+var perRuleAllocCeiling = map[string]float64{
+	"MDS024": 44,  // paragraph-structure: ~36 allocs
+	"MDS029": 30,  // conciseness-scoring: ~24 allocs
+	"MDS033": 4,   // directory-structure: 0 allocs
+	"MDS034": 4,   // markdown-flavor: 0 allocs
+	"MDS035": 102, // toc-directive: ~84 allocs
+	"MDS036": 4,   // max-section-length: 0 allocs
+	"MDS037": 130, // duplicated-content: ~108 allocs
+	"MDS041": 4,   // no-inline-html: 0 allocs
+	"MDS042": 4,   // emphasis-style: 0 allocs
+	"MDS043": 16,  // no-reference-style: ~10 allocs (plan 188)
+	"MDS044": 4,   // horizontal-rule-style: 0 allocs
+	"MDS045": 6,   // list-marker-style: ~1 alloc
+	"MDS046": 4,   // ordered-list-numbering: 0 allocs
+	"MDS047": 4,   // ambiguous-emphasis: 0 allocs
+	"MDS048": 4,   // git-hook-sync: 0 allocs
+	"MDS049": 6,   // no-space-in-link-text: ~1 alloc
+	"MDS050": 4,   // proper-names: 0 allocs
+	"MDS051": 6,   // single-h1: ~1 alloc
+	"MDS052": 4,   // no-space-in-code-spans: 0 allocs
+	"MDS055": 4,   // forbidden-paragraph-starts: 0 allocs
+	"MDS056": 4,   // forbidden-text: 0 allocs
+	"MDS057": 4,   // required-text-patterns: 0 allocs
+	"MDS058": 4,   // required-mentions: 0 allocs
+	"MDS063": 44,  // descriptive-link-text: ~36 allocs
+	"MDS067": 12,  // callout-type: ~8 allocs
+	"MDS068": 4,   // link-style: 0 allocs
 }
 
 // init pins MDS043's allocs ceiling to the active goldmark build axis.
@@ -383,9 +318,7 @@ var perRuleBenchBudget = map[string]perRuleBudget{
 // above carries the arena value, so this only differs on the non-arena
 // axis.
 func init() {
-	b := perRuleBenchBudget["MDS043"]
-	b.Allocs = mds043AllocCeiling
-	perRuleBenchBudget["MDS043"] = b
+	perRuleAllocCeiling["MDS043"] = mds043AllocCeiling
 }
 
 // TestPerRuleBenchDocCompliant guards the invariant perRuleBenchDoc
@@ -417,8 +350,9 @@ func TestPerRuleBenchDocCompliant(t *testing.T) {
 
 // TestPerRuleBenchBudget is the per-opt-in-rule regression gate. For
 // each opt-in rule it asserts BOTH a pinned allocs/op ceiling
-// (deterministic) and a pinned total parse+Check ns/op ceiling
-// (generous headroom for CI jitter). Each rule is its own subtest so a
+// (deterministic, perRuleAllocCeiling) and the uniform parse-normalised
+// time-ratio ceiling (maxTimeRatio, runner-independent). Each rule is
+// its own subtest so a
 // failure names the offending rule and the rest of the matrix stays
 // visible.
 //
@@ -439,38 +373,43 @@ func TestPerRuleBenchBudget(t *testing.T) {
 	for _, r := range optInRules() {
 		r := r
 		t.Run(r.ID()+"_"+r.Name(), func(t *testing.T) {
-			budget, ok := perRuleBenchBudget[r.ID()]
+			allocCeiling, ok := perRuleAllocCeiling[r.ID()]
 			if !ok {
-				t.Fatalf("%s (%s) is opt-in but has no pinned budget in "+
-					"perRuleBenchBudget. Add an entry: measure its baseline "+
-					"with `go test -run TestPerRuleBenchBudget -v "+
-					"./internal/integration/` and pin Time ≈ 5x and Allocs ≈ "+
-					"baseline + max(20%%, 4).", r.ID(), r.Name())
+				t.Fatalf("%s (%s) is opt-in but has no pinned alloc ceiling "+
+					"in perRuleAllocCeiling. Add an entry: measure its "+
+					"baseline with `go test -run TestPerRuleBenchBudget -v "+
+					"./internal/integration/` and pin allocs to baseline + "+
+					"max(20%%, 4).", r.ID(), r.Name())
 			}
 
 			allocs := perRuleAllocs(t, r, src, mapFS)
-			if allocs > budget.Allocs {
+			if allocs > allocCeiling {
 				t.Fatalf("%s (%s) Check allocates %.1f/op, pinned ceiling = "+
 					"%.0f. Either fix the regression (lost memo, extra parse, "+
 					"escaped closure) or, if the new cost is justified, raise "+
-					"this rule's Allocs entry in perRuleBenchBudget and note "+
-					"why.", r.ID(), r.Name(), allocs, budget.Allocs)
+					"this rule's entry in perRuleAllocCeiling and note why.",
+					r.ID(), r.Name(), allocs, allocCeiling)
 			}
 
-			ns := perRuleCheckNsPerOp(t, r, src, mapFS)
-			got := time.Duration(ns) * time.Nanosecond
+			tm := perRuleTiming(t, r, src, mapFS)
+			ratio := tm.Ratio()
 			// Log the observed numbers so a `-v` run doubles as the
-			// re-measurement source when an entry needs updating.
-			t.Logf("%s (%s): %v parse+Check, %.0f allocs/op "+
-				"(ceilings: %v, %.0f)",
-				r.ID(), r.Name(), got, allocs, budget.Time, budget.Allocs)
-			if got > budget.Time {
-				t.Fatalf("%s (%s) total parse+Check %v exceeds pinned ceiling "+
-					"%v. A real Check-time regression is "+
-					"suspected; the constant parse floor means a cheap rule's "+
-					"regression still shows here. If the cost is justified, "+
-					"raise this rule's Time entry in perRuleBenchBudget.",
-					r.ID(), r.Name(), got, budget.Time)
+			// re-measurement source when a ceiling needs updating.
+			t.Logf("%s (%s): ratio %.2f (parse %v, parse+Check %v), %.0f "+
+				"allocs/op (ceilings: ratio %.2f, allocs %.0f)",
+				r.ID(), r.Name(), ratio,
+				time.Duration(tm.ParseNs), time.Duration(tm.FullNs),
+				allocs, maxTimeRatio, allocCeiling)
+			if ratio > maxTimeRatio {
+				t.Fatalf("%s (%s) parse+Check is %.2fx the parse floor (%v "+
+					"vs %v), over the %.2fx maxTimeRatio ceiling. A real "+
+					"Check-time regression is suspected; the ratio cancels "+
+					"CI contention, so this is machine-independent. If the "+
+					"cost is justified, raise maxTimeRatio (noting why); the "+
+					"deterministic allocs gate above is the finer catch.",
+					r.ID(), r.Name(), ratio,
+					time.Duration(tm.FullNs), time.Duration(tm.ParseNs),
+					maxTimeRatio)
 			}
 		})
 	}
