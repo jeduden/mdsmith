@@ -74,7 +74,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			diags = append(diags, makeDiag(
 				f,
 				tbl.startLine,
-				"table has too many columns (" + strconv.Itoa(cols) + " > " + strconv.Itoa(maxColumns) + ")",
+				"table has too many columns ("+strconv.Itoa(cols)+" > "+strconv.Itoa(maxColumns)+")",
 			))
 		}
 
@@ -82,7 +82,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			diags = append(diags, makeDiag(
 				f,
 				tbl.startLine,
-				"table has too many rows (" + strconv.Itoa(rows) + " > " + strconv.Itoa(maxRows) + ")",
+				"table has too many rows ("+strconv.Itoa(rows)+" > "+strconv.Itoa(maxRows)+")",
 			))
 		}
 
