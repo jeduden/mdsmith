@@ -27,7 +27,7 @@
   <div class="install-list">
     {{- range $channels }}
     <div class="install-row" data-platforms="{{ delimit .platforms " " }}">
-      <a class="install-label" href="{{ .url }}" target="_blank" rel="noopener" title="Open the {{ .title }} page">{{ .title }}</a>
+      <a class="install-label" href="{{ .url }}" rel="noopener">{{ .title }}</a>
       <code class="install-cmd"><span class="prompt">$</span> <span class="cmd">{{ .command }}</span></code>
       <button class="install-copy" type="button" aria-label="Copy {{ .title }} install command" data-copy="{{ .command }}">copy</button>
     </div>

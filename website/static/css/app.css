@@ -369,22 +369,22 @@ a.install-label:hover { color: var(--forge-300); text-decoration: underline; }
 .install-filters { display: flex; flex-wrap: wrap; gap: 8px; }
 /* Chips sit on the light section background, not on the dark
    install list, so their text must read against --bg (canvas).
-   The old default/hover text (--steel-300 / --canvas) washed out
-   there; the text now uses --fg-muted / --fg. The 1px border still
-   uses --border-strong (--steel-300) — a line, not text, so it
-   needs no 4.5:1 contrast. The active state reuses the site's
-   .chip.is-on treatment (forge-700 on forge-50, ~7:1) for a
-   consistent, legible "selected" look. */
+   Only the text changed: the old --steel-300 / --canvas washed out
+   on the light canvas, so default/hover text now uses --fg-muted /
+   --fg. The borders keep their original steel-700 / steel-500
+   tokens (both clear the 3:1 non-text-contrast bar on canvas). The
+   active state moves to the site's .chip.is-on treatment (forge-700
+   on forge-50, ~7:1) for a consistent, legible "selected" look. */
 .install-filter {
   background: transparent;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--steel-700);
   color: var(--fg-muted);
   padding: 5px 12px; font-size: 12px; font-family: var(--font-mono);
   text-transform: uppercase; letter-spacing: 0.05em;
   border-radius: 999px; cursor: pointer;
   transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
 }
-.install-filter:hover { color: var(--fg); border-color: var(--border-strong); background: var(--bg-sunken); }
+.install-filter:hover { color: var(--fg); border-color: var(--steel-500); }
 .install-filter.is-active {
   color: var(--forge-700); border-color: var(--forge-500); background: var(--forge-50);
 }
