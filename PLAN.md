@@ -144,9 +144,7 @@ footer: |
 | 215 | ✅     | opus   | [mdsmith public engine API and WASM bindings](plan/215_engine-api-wasm.md)                                                              |
 | 215 | ✅     | opus   | [Audit AST-walking rules and rewrite the ones that only need f.Lines](plan/215_lines-only-rule-audit.md)                                |
 | 216 | ✅     | opus   | [Per-document parse cache for the LSP, keyed by version](plan/216_lsp-parse-cache.md)                                                   |
-| 217 | 🔲     |        | [Split internal/lint along question lines](plan/217_arch-fix-lint-srp.md)                                                               |
 | 217 | 🔲     | opus   | [Obsidian plugin (WASM runtime)](plan/217_obsidian-plugin.md)                                                                           |
-| 218 | ✅     |        | [Add internal/punkt to the architecture layering map](plan/218_arch-fix-punkt-layering.md)                                              |
 | 218 | ✅     | sonnet | [Finish MD054 link-image-style coverage in MDS068](plan/218_finish-md054-link-image-style.md)                                           |
 | 218 | 🔲     | opus   | [WASM size reduction — CUE-free engine path and tinygo support](plan/218_wasm-size-reduction.md)                                        |
 | 219 | 🔲     | opus   | [Multiplexed AST walk to close the parity gap to mado](plan/219_multiplexed-ast-walk.md)                                                |
@@ -154,5 +152,7 @@ footer: |
 | 220 | ✅     | opus   | [Harden the git-index writers against a transient index.lock](plan/220_git-index-lock-retry.md)                                         |
 | 221 | 🔳     | opus   | [Ship mdsmith as a self-hosted Flatpak bundle](plan/221_flatpak-bundle-distribution.md)                                                 |
 | 222 | ✅     | opus   | [Single source of truth for distribution channels](plan/222_distribution-channel-ssot.md)                                               |
+| 223 | ✅     |        | [Split internal/lint along question lines](plan/223_arch-fix-lint-srp.md)                                                               |
+| 224 | ✅     |        | [Add internal/punkt to the architecture layering map](plan/224_arch-fix-punkt-layering.md)                                              |
 | 230 | ✅     | opus   | [Navigable schema diagnostics in the editor](plan/230_navigable-schema-diagnostics.md)                                                  |
 <?/catalog?>
