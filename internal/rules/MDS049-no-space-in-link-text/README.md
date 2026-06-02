@@ -9,14 +9,17 @@ maintainability: null
 markdownlint:
   - id: MD039
     name: no-space-in-links
+    partial: false
     default: true
 rumdl:
   - id: MD039
     name: no-space-in-links
+    partial: false
     default: true
 mado:
   - id: MD039
     name: no-space-in-links
+    partial: false
     default: true
 panache: []
 obsidian-linter: []

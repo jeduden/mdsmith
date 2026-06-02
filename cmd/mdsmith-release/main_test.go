@@ -102,7 +102,6 @@ func TestSubcommandHelpExitsZero(t *testing.T) {
 		"build-flatpak",
 		"sync-docs", "build-website", "verify-website-links",
 		"sync-messaging",
-		"sync-coverage-matrix",
 		"sync-parity-rules",
 		"sync-channels",
 	} {
@@ -118,7 +117,6 @@ func TestSubcommandRejectsUnknownFlag(t *testing.T) {
 		"build-flatpak",
 		"sync-docs", "build-website", "verify-website-links",
 		"sync-messaging",
-		"sync-coverage-matrix",
 		"sync-parity-rules",
 		"sync-channels",
 	} {

@@ -9,14 +9,17 @@ maintainability: null
 markdownlint:
   - id: MD003
     name: heading-style
+    partial: false
     default: true
 rumdl:
   - id: MD003
     name: heading-style
+    partial: false
     default: true
 mado:
   - id: MD003
     name: heading-style
+    partial: false
     default: false
 panache: []
 obsidian-linter: []

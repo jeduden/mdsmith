@@ -13,6 +13,7 @@ markdownlint:
     default: true
   - id: MD007
     name: ul-indent
+    partial: false
     default: true
 rumdl:
   - id: MD005
@@ -21,6 +22,7 @@ rumdl:
     default: true
   - id: MD007
     name: ul-indent
+    partial: false
     default: true
 mado:
   - id: MD005
@@ -29,6 +31,7 @@ mado:
     default: true
   - id: MD007
     name: ul-indent
+    partial: false
     default: false
 panache: []
 obsidian-linter: []

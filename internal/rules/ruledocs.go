@@ -46,7 +46,7 @@ type RuleInfo struct {
 //
 // The per-rule front-matter blocks are the source of truth;
 // docs/research/markdownlint-coverage/README.md is regenerated from
-// them by `mdsmith-release sync-coverage-matrix`.
+// them by `mdsmith fix` rebuilding its `<?catalog?>` blocks.
 type RuleMapping struct {
 	ID      string `yaml:"id"`
 	Name    string `yaml:"name"`

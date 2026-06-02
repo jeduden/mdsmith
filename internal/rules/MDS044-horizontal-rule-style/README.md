@@ -11,14 +11,17 @@ maintainability: null
 markdownlint:
   - id: MD035
     name: hr-style
+    partial: false
     default: true
 rumdl:
   - id: MD035
     name: hr-style
+    partial: false
     default: true
 mado:
   - id: MD035
     name: hr-style
+    partial: false
     default: true
 panache: []
 obsidian-linter: []

@@ -9,19 +9,23 @@ maintainability: null
 markdownlint:
   - id: MD029
     name: ol-prefix
+    partial: false
     default: true
 rumdl:
   - id: MD029
     name: ol-prefix
+    partial: false
     default: true
 mado:
   - id: MD029
     name: ol-prefix
+    partial: false
     default: true
 panache: []
 obsidian-linter:
   - id: ordered-list-style
     name: ordered-list-style
+    partial: false
     default: false
 ---
 # MDS046: ordered-list-numbering

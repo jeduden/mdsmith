@@ -12,16 +12,20 @@ maintainability: null
 markdownlint:
   - id: MD011
     name: no-reversed-links
+    partial: false
     default: true
   - id: MD042
     name: no-empty-links
+    partial: false
     default: true
 rumdl:
   - id: MD011
     name: reversed-link
+    partial: false
     default: true
   - id: MD042
     name: no-empty-links
+    partial: false
     default: true
 mado: []
 panache: []

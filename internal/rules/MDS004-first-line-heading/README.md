@@ -9,14 +9,17 @@ maintainability: null
 markdownlint:
   - id: MD041
     name: first-line-h1
+    partial: false
     default: true
 rumdl:
   - id: MD041
     name: first-line-h1
+    partial: false
     default: true
 mado:
   - id: MD041
     name: first-line-h1
+    partial: false
     default: true
 panache: []
 obsidian-linter: []

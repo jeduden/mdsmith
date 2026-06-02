@@ -9,14 +9,17 @@ maintainability: null
 markdownlint:
   - id: MD037
     name: no-space-in-emphasis
+    partial: false
     default: true
 rumdl:
   - id: MD037
     name: spaces-around-emphasis
+    partial: false
     default: true
 mado:
   - id: MD037
     name: no-space-in-emphasis
+    partial: false
     default: true
 panache: []
 obsidian-linter: []

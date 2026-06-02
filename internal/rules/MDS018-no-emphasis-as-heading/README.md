@@ -9,14 +9,17 @@ maintainability: null
 markdownlint:
   - id: MD036
     name: no-emphasis-as-heading
+    partial: false
     default: true
 rumdl:
   - id: MD036
     name: no-emphasis-as-heading
+    partial: false
     default: true
 mado:
   - id: MD036
     name: no-emphasis-as-heading
+    partial: false
     default: true
 panache: []
 obsidian-linter: []

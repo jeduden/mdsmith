@@ -22,6 +22,9 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
+
+	"github.com/mattn/go-runewidth"
 
 	"github.com/jeduden/mdsmith/internal/convention"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -142,4 +145,71 @@ func checkParityRulesFragment(root string, render func() (string, error)) (strin
 		"%s is out of sync with the parity convention.\n"+
 			"Run: mdsmith-release sync-parity-rules\n",
 		ParityRulesFragmentFile), nil
+}
+
+// writePaddedTable writes a GFM table to buf with column widths
+// computed from the widest cell in each column (using Unicode
+// rune widths so multi-byte characters align correctly), floored
+// at three. Each separator cell is a run of dashes as wide as its
+// column, so the floor guarantees at least "---" — matching
+// internal/rules/tablefmt and the cross-flavor minimum that
+// markdown-it and pandoc require.
+func writePaddedTable(
+	buf *bytes.Buffer, headers []string, rows [][]string,
+) {
+	widths := make([]int, len(headers))
+	for i, h := range headers {
+		widths[i] = runewidth.StringWidth(h)
+	}
+	for _, row := range rows {
+		for i, c := range row {
+			if w := runewidth.StringWidth(c); w > widths[i] {
+				widths[i] = w
+			}
+		}
+	}
+	// Floor each column at three so every separator cell renders at
+	// least "---", matching internal/rules/tablefmt and the
+	// cross-flavor minimum markdown-it and pandoc require.
+	for i := range widths {
+		if widths[i] < 3 {
+			widths[i] = 3
+		}
+	}
+	// Header row.
+	for i, h := range headers {
+		if i == 0 {
+			buf.WriteByte('|')
+		}
+		buf.WriteByte(' ')
+		buf.WriteString(h)
+		buf.WriteString(strings.Repeat(" ",
+			widths[i]-runewidth.StringWidth(h)))
+		buf.WriteString(" |")
+	}
+	buf.WriteByte('\n')
+	// Separator row.
+	for i := range headers {
+		if i == 0 {
+			buf.WriteByte('|')
+		}
+		buf.WriteByte(' ')
+		buf.WriteString(strings.Repeat("-", widths[i]))
+		buf.WriteString(" |")
+	}
+	buf.WriteByte('\n')
+	// Body rows.
+	for _, row := range rows {
+		for i, c := range row {
+			if i == 0 {
+				buf.WriteByte('|')
+			}
+			buf.WriteByte(' ')
+			buf.WriteString(c)
+			buf.WriteString(strings.Repeat(" ",
+				widths[i]-runewidth.StringWidth(c)))
+			buf.WriteString(" |")
+		}
+		buf.WriteByte('\n')
+	}
 }

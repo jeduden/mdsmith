@@ -11,19 +11,23 @@ maintainability: null
 markdownlint:
   - id: MD030
     name: list-marker-space
+    partial: false
     default: true
 rumdl:
   - id: MD030
     name: list-marker-space
+    partial: false
     default: true
 mado:
   - id: MD030
     name: list-marker-space
+    partial: false
     default: true
 panache: []
 obsidian-linter:
   - id: space-after-list-markers
     name: space-after-list-markers
+    partial: false
     default: false
 ---
 # MDS061: list-marker-space

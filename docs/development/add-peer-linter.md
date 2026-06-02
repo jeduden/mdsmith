@@ -108,15 +108,16 @@ batch of edits.
 ## 5. Regenerate the matrix
 
 ```bash
-go run ./cmd/mdsmith-release sync-coverage-matrix
+go run ./cmd/mdsmith fix docs/research/markdownlint-coverage/
 go run ./cmd/mdsmith check internal/rules/ docs/research/
 go test ./internal/release/ ./internal/rules/
 ```
 
-The generator rewrites the matrix in place. Commit
-the diff in the same change as the front-matter
-edits. CI runs a drift check that catches a
-matrix out of sync with the rule READMEs.
+`mdsmith fix` rebuilds the `<?catalog?>` tables in
+place from the rule README front matter. Commit the
+diff in the same change as the front-matter edits.
+`mdsmith check` fails on a table left out of sync
+with the rule READMEs.
 
 ## 6. Update the comparison page
 

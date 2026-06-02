@@ -11,14 +11,17 @@ maintainability: null
 markdownlint:
   - id: MD033
     name: no-inline-html
+    partial: false
     default: true
 rumdl:
   - id: MD033
     name: no-inline-html
+    partial: false
     default: true
 mado:
   - id: MD033
     name: no-inline-html
+    partial: false
     default: true
 panache: []
 obsidian-linter: []

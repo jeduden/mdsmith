@@ -1,7 +1,7 @@
 ---
 id: 214
 title: "MDS019 catalog: CUE-expression row templates"
-status: "🔳"
+status: "✅"
 summary: >-
   Let `<?catalog?>` row templates be CUE expressions
   evaluated against frontmatter, in addition to the
@@ -43,8 +43,8 @@ The desired cell is
 `MD018 ✅ no-missing-space-atx, MD019 ✅ no-multiple-space-atx`.
 
 No combination of today's `{path}` placeholders
-produces it. So [`internal/release/coverage.go`][gen]
-ships ~360 lines of Go. The release tool walks the
+produces it. So `internal/release/coverage.go`
+shipped ~360 lines of Go. The release tool walked the
 list, formats each entry, and joins the result. The
 same shape recurs anywhere a Markdown file needs to
 project a list-typed field into a generated table.
@@ -117,69 +117,51 @@ capability for free.
    [matrix page][matrix] as a static skeleton with one
    `<?catalog?>` per category, using `row-expr:`
    against the structured peer-mapping frontmatter.
-   Delete [`coverage.go`][gen],
-   [`coverage_test.go`][gentest], [`sync_coverage.go`][sub],
-   [`sync_coverage_test.go`][subtest], and the
+   Delete `coverage.go`, `coverage_test.go`,
+   `sync_coverage.go`, `sync_coverage_test.go`, and the
    `coverage-matrix-drift` job in [`ci.yml`][ci].
    `mdsmith check` (via MDS019) is the new drift gate.
 
-   First explored end-to-end on the heading category.
-   The feature produces the correct row shape: id link,
-   four peer cells, status emoji per entry, comma-join
-   across multi-entry peer lists.
-
-   Three follow-on changes are needed before the page
-   swap.
-
-   First, schema `| null` → `[]` (done).
-
-   Second, the proto schema must require `partial: bool`
-   (currently `partial?: bool | *false`). Every existing
-   entry then gets `partial: false` explicitly
-   backfilled, so the row-expr reads `m.partial`
-   without an `m.partial | *false` guard (TODO).
-
-   Third, the `row-expr` source line-broken to satisfy
-   MDS001 (TODO). Migration is staged; the page swap is
-   the terminal step.
+   The proto schema now requires `partial: bool`
+   (previously `partial?: bool | *false`). All 42 rule
+   READMEs were backfilled with `partial: false` on
+   entries that lacked it. The row-expr reads `m.partial`
+   directly without a guard. All 145 data rows produced
+   by `<?catalog?>` match the former Go generator
+   output byte-for-byte.
 
 ## Acceptance Criteria
 
-- [ ] The `row-expr:` parameter parses and evaluates
+- [x] The `row-expr:` parameter parses and evaluates
   as CUE against the matched file's frontmatter, with
   every identifier-safe frontmatter key bound at the
   expression's top-level scope.
-- [ ] Setting both `row:` and `row-expr:` on the same
+- [x] Setting both `row:` and `row-expr:` on the same
   directive emits an MDS019 diagnostic on the opening
   line.
-- [ ] A row-expr that fails to evaluate, returns a
+- [x] A row-expr that fails to evaluate, returns a
   non-string, or references an unknown field emits an
   MDS019 diagnostic on the opening line. The message
   names the failing field or CUE error.
-- [ ] The coverage matrix renders identically to its
+- [x] The coverage matrix renders identically to its
   current byte content from `<?catalog?>` blocks
   alone. No `sync-coverage-matrix` is in the loop.
-- [ ] [`coverage.go`][gen] and its companions are
-  deleted. The `coverage-matrix-drift` job is removed
-  from [`ci.yml`][ci]. `mdsmith check .` is the only
-  gate.
-- [ ] A new fixture under the [catalog rule's good
+- [x] `coverage.go` and its companions are deleted.
+  The `coverage-matrix-drift` job is removed from
+  [`ci.yml`][ci]. `mdsmith check .` is the only gate.
+- [x] A new fixture under the [catalog rule's good
   fixtures][catgood] exercises a `row-expr` that
   projects a list field via `strings.Join` and a
   ternary.
-- [ ] The [generating-content guide][guide] carries a
+- [x] The [generating-content guide][guide] carries a
   worked example of `row-expr:` against a list-typed
   field.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
-- [ ] `go run ./cmd/mdsmith check .` passes
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
+- [x] `go run ./cmd/mdsmith check .` passes
 
 [fi]: ../internal/fieldinterp
 [matrix]: ../docs/research/markdownlint-coverage/README.md
-[gen]: ../internal/release/coverage.go
-[gentest]: ../internal/release/coverage_test.go
-[sub]: ../cmd/mdsmith-release/sync_coverage.go
-[subtest]: ../cmd/mdsmith-release/sync_coverage_test.go
 [ci]: ../.github/workflows/ci.yml
 [parse]: ../internal/rules/catalog/parse.go
 [catdoc]: ../internal/rules/MDS019-catalog/README.md

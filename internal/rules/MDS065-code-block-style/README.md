@@ -11,14 +11,17 @@ maintainability: null
 markdownlint:
   - id: MD046
     name: code-block-style
+    partial: false
     default: true
 rumdl:
   - id: MD046
     name: code-block-style
+    partial: false
     default: true
 mado:
   - id: MD046
     name: code-block-style
+    partial: false
     default: true
 panache: []
 obsidian-linter: []

@@ -12,25 +12,31 @@ maintainability: null
 markdownlint:
   - id: MD049
     name: emphasis-style
+    partial: false
     default: true
   - id: MD050
     name: strong-style
+    partial: false
     default: true
 rumdl:
   - id: MD049
     name: emphasis-style
+    partial: false
     default: true
   - id: MD050
     name: strong-style
+    partial: false
     default: true
 mado: []
 panache: []
 obsidian-linter:
   - id: emphasis-style
     name: emphasis-style
+    partial: false
     default: false
   - id: strong-style
     name: strong-style
+    partial: false
     default: false
 ---
 # MDS042: emphasis-style

@@ -9,19 +9,23 @@ maintainability: null
 markdownlint:
   - id: MD004
     name: ul-style
+    partial: false
     default: true
 rumdl:
   - id: MD004
     name: ul-style
+    partial: false
     default: true
 mado:
   - id: MD004
     name: ul-style
+    partial: false
     default: true
 panache: []
 obsidian-linter:
   - id: unordered-list-style
     name: unordered-list-style
+    partial: false
     default: false
 ---
 # MDS045: list-marker-style

@@ -1,6 +1,7 @@
 package release
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -72,6 +73,18 @@ func TestRenderConventionDisableTable_UnregisteredRule(t *testing.T) {
 		"parity", func(string) rule.Rule { return nil })
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not registered")
+}
+
+// TestWritePaddedTableFloorsNarrowColumns drives the separator floor:
+// a column whose widest cell is narrower than three must still render
+// at least "---", matching internal/rules/tablefmt (and the
+// cross-flavor minimum markdown-it and pandoc require).
+func TestWritePaddedTableFloorsNarrowColumns(t *testing.T) {
+	var buf bytes.Buffer
+	writePaddedTable(&buf, []string{"A", "B"}, [][]string{{"x", "y"}})
+
+	want := "| A   | B   |\n| --- | --- |\n| x   | y   |\n"
+	assert.Equal(t, want, buf.String())
 }
 
 func TestApplyParityRulesFragment_WritesWhenMissing(t *testing.T) {

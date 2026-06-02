@@ -11,23 +11,29 @@ maintainability: null
 markdownlint:
   - id: MD027
     name: no-multiple-space-blockquote
+    partial: false
     default: true
   - id: MD028
     name: no-blanks-blockquote
+    partial: false
     default: true
 rumdl:
   - id: MD027
     name: multiple-spaces-blockquote
+    partial: false
     default: true
   - id: MD028
     name: blanks-blockquote
+    partial: false
     default: true
 mado:
   - id: MD027
     name: no-multiple-space-blockquote
+    partial: false
     default: false
   - id: MD028
     name: no-blanks-blockquote
+    partial: false
     default: true
 panache: []
 obsidian-linter:

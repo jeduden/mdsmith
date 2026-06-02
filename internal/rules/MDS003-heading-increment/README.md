@@ -9,22 +9,27 @@ maintainability: null
 markdownlint:
   - id: MD001
     name: heading-increment
+    partial: false
     default: true
 rumdl:
   - id: MD001
     name: heading-increment
+    partial: false
     default: true
 mado:
   - id: MD001
     name: heading-increment
+    partial: false
     default: true
 panache:
   - id: heading-hierarchy
     name: heading-hierarchy
+    partial: false
     default: true
 obsidian-linter:
   - id: header-increment
     name: header-increment
+    partial: false
     default: false
 ---
 # MDS003: heading-increment

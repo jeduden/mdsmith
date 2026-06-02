@@ -9,19 +9,23 @@ maintainability: null
 markdownlint:
   - id: MD047
     name: single-trailing-newline
+    partial: false
     default: true
 rumdl:
   - id: MD047
     name: file-end-newline
+    partial: false
     default: true
 mado:
   - id: MD047
     name: single-trailing-newline
+    partial: false
     default: true
 panache: []
 obsidian-linter:
   - id: line-break-at-document-end
     name: line-break-at-document-end
+    partial: false
     default: false
 ---
 # MDS009: single-trailing-newline

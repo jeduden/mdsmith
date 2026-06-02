@@ -9,14 +9,17 @@ maintainability: null
 markdownlint:
   - id: MD013
     name: line-length
+    partial: false
     default: true
 rumdl:
   - id: MD013
     name: line-length
+    partial: false
     default: true
 mado:
   - id: MD013
     name: line-length
+    partial: false
     default: true
 panache: []
 obsidian-linter: []
