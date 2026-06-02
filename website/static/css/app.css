@@ -362,11 +362,13 @@ main {
 .install-picker { display: flex; flex-direction: column; gap: 14px; }
 .install-filters { display: flex; flex-wrap: wrap; gap: 8px; }
 /* Chips sit on the light section background, not on the dark
-   install list. Their text must read against --bg (canvas), so
-   they use dark steel/forge tokens — not the light --steel-300 /
-   --canvas the dark-context copy button uses. The active state
-   reuses the site's .chip.is-on treatment (forge-700 on forge-50,
-   ~7:1) for a consistent, legible "selected" look. */
+   install list, so their text must read against --bg (canvas).
+   The old default/hover text (--steel-300 / --canvas) washed out
+   there; the text now uses --fg-muted / --fg. The 1px border still
+   uses --border-strong (--steel-300) — a line, not text, so it
+   needs no 4.5:1 contrast. The active state reuses the site's
+   .chip.is-on treatment (forge-700 on forge-50, ~7:1) for a
+   consistent, legible "selected" look. */
 .install-filter {
   background: transparent;
   border: 1px solid var(--border-strong);
