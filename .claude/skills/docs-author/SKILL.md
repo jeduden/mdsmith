@@ -11,8 +11,9 @@ description: >-
   this in the house voice", "summary for this
   page", "title for this page", "polish for
   non-native readers", "this reads like AI",
-  "remove AI tells / slop", or "what type of doc
-  is this". Skip this skill for content-rule fixes
+  "remove AI tells / slop", "what type of doc is
+  this", or "polish the README or landing page".
+  Skip this skill for content-rule fixes
   (line length, heading hygiene, readability) —
   those are enforced by `mdsmith check`.
 user-invocable: true
@@ -104,6 +105,11 @@ fix the type and the voice.
 If the page is mixing two quadrants, split it.
 One page, one type.
 
+A README, a landing page, or the feature overview
+is not a compass type — it sells the tool rather
+than documents it. Those surfaces have their own
+rules in the Marketing surfaces section below.
+
 ### Tutorial — learning-oriented (acquisition × action)
 
 - **Audience mode**: a learner with no prior
@@ -166,6 +172,90 @@ One page, one type.
 - **Banned**: ordered steps; CLI flag tables;
   goal-naming.
 - **Home**: `docs/background/`.
+
+## Marketing surfaces — README and landing page
+
+The four compass types describe docs pages. A
+README hero, the website home page, and the shared
+feature overview do a different job: they sell the
+tool to someone still deciding whether to try it.
+Different mode, different rules. These come from a
+2026 read of the mise (`jdx/mise`) README and
+landing page — the strongest peer example —
+adapted to mdsmith.
+
+- **Audience mode**: a skimmer who has not
+  committed. One screen to earn the install.
+- **Voice**: concrete and claim-first, but still
+  global English and still anti-slop.
+- **Home**: `README.md`, `website/content/`, and
+  the shared overview `docs/features/index.md`.
+
+### Rules
+
+1. **Lead with the payoff, not the mechanism.**
+   The first line names the outcome the reader
+   gets, not how it works. mise opens with *"Your
+   dev env, already prepped."*, not "a polyglot
+   tool manager". mdsmith leads with `Mark*down*,
+   smithed.` and the eyebrow *Markdown as a single
+   source of truth*.
+2. **One controlling metaphor, used everywhere.**
+   mise rides *mise en place* through every
+   section (The Idea, The Menu, The Recipe).
+   mdsmith owns the smith — forge, anvil, hammer,
+   temper. Pick one; never mix metaphors.
+3. **Show, do not only tell.** A 60-second
+   Quickstart with real command output beats a
+   feature list. Paste what the tool actually
+   prints; never fabricate output.
+4. **One concrete number, not adjectives.** mise:
+   "900+ tools, 1 toml file". mdsmith: "523 files
+   in ~0.2 s, ~10x Node markdownlint", linked to a
+   reproducible benchmark.
+5. **Short pitch, then detail.** Three to five
+   benefit-named groups, one line each, before any
+   long card list. Never open with the full
+   feature dump.
+6. **One blessed install, the rest behind a
+   link** — unless install breadth is itself the
+   pitch. mdsmith ships through many channels and
+   treats that as a feature, so it keeps the full
+   list.
+7. **Earn trust with proof, not praise.** Badges,
+   a sponsor, a star count, a contributor graph
+   are real signals. Drop "blazingly fast" and
+   "production-ready".
+8. **Dogfood as proof.** When the tool maintains
+   its own README — mdsmith generates the command
+   table and feature list with `<?catalog?>` and
+   `<?include?>` — say so once. The artifact is
+   the demo.
+
+### mdsmith specifics
+
+- Hero copy is single-source. The slogan, eyebrow,
+  lead, and tagline live in
+  `docs/brand/messaging.md`. `mdsmith-release
+  sync-messaging` propagates them to the generated
+  fragments and every other surface, and CI fails
+  on drift. Edit the source and run sync-messaging;
+  never hand-edit a fragment or paste copy into the
+  README.
+- The README `<?include?>`s those fragments and
+  `docs/features/index.md`, so changing the message
+  once updates every surface that embeds it.
+- Respect the README `max-file-length` cap. Trim
+  secondary prose before proposing a higher cap —
+  the cap is owner-owned config in `.mdsmith.yml`.
+
+### Passes still apply
+
+Marketing copy gets the global-English and
+anti-slop passes too; it is the most slop-prone
+writing in the repo. One allowance: a single
+controlling metaphor and one strong, true claim
+belong here, where reference prose would cut them.
 
 ## Workflow
 
