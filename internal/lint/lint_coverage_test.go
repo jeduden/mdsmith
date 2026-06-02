@@ -7,10 +7,31 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/yuin/goldmark/ast"
+
 	"github.com/jeduden/mdsmith/internal/gitignore"
+	"github.com/jeduden/mdsmith/internal/pi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// findPINodes returns all ProcessingInstruction nodes in the AST,
+// searching the full tree recursively. It backs the lint-level NewFile
+// integration smoke (TestNewFile_MultiPIs); the exhaustive PI grammar
+// tests live with the canonical parser in pkg/markdown.
+func findPINodes(root ast.Node) []*pi.ProcessingInstruction {
+	var nodes []*pi.ProcessingInstruction
+	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		if node, ok := n.(*pi.ProcessingInstruction); ok {
+			nodes = append(nodes, node)
+		}
+		return ast.WalkContinue, nil
+	})
+	return nodes
+}
 
 // --- GetGitignore tests ---
 
