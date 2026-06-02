@@ -69,8 +69,8 @@ MDS048.
 ### `run <base> <ours> <theirs> <pathname>`
 
 Driver entrypoint, invoked by Git. Not normally called by
-hand. After `install`, Git will dispatch to it whenever
-merging a file marked `merge=mdsmith`.
+hand. After `install` or `ci-install`, Git will dispatch to
+it whenever merging a file marked `merge=mdsmith`.
 
 ## Git config (set by `install` / `ci-install`)
 

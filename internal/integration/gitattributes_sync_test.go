@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/githooks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -52,7 +53,14 @@ func findRepoRoot(t *testing.T) string {
 func TestRepoGitattributesInSyncWithConfig(t *testing.T) {
 	root := findRepoRoot(t)
 
-	expected := githooks.LoadGlobs(root)
+	// Load .mdsmith.yml with error-checking rather than githooks.LoadGlobs,
+	// which silently falls back to default globs on a missing or
+	// unparseable config. A broken config must fail this gate loudly, not
+	// slip through comparing against defaults (or fail later with a
+	// misleading "run merge-driver install" message).
+	cfg, err := config.Load(filepath.Join(root, ".mdsmith.yml"))
+	require.NoError(t, err, "repository .mdsmith.yml must load and parse")
+	expected, _ := githooks.GlobsFromConfig(cfg)
 
 	data, err := os.ReadFile(filepath.Join(root, ".gitattributes"))
 	require.NoError(t, err, "repository .gitattributes must exist")
