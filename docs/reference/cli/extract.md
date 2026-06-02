@@ -127,14 +127,22 @@ A nested example — a strong span wrapping a code span,
 ] }
 ```
 
-`projection: inline` is rejected at schema-load time on
-any non-paragraph kind. Anything outside the mapping
-table — an image, inline raw HTML, or a custom inline
-node — is a hard error at extract time, with the same
-exit code as a non-conformant file. The `text` and
-`inline` default keys differ, so one paragraph entry
-can project `text` and another `inline` without
-colliding; a `bind:` override renames either key.
+Each content kind constrains its projection at schema-
+load time. A `paragraph` takes `text` or `inline`. A
+`code-block` takes `code`. A `table`, `list`, or
+`unlisted` slot takes none. An incompatible combination
+fails when the config loads, not silently at extract
+time. Rejected cases include `projection: code` on a
+paragraph, `projection: inline` on a code-block, and any
+`projection` on a table.
+
+Anything outside the mapping table is a hard error at
+extract time, with the same exit code as a non-conformant
+file. Images, inline raw HTML, and custom inline nodes
+fall in this set. The `text` and `inline` default keys
+differ, so one paragraph entry can project `text` and
+another `inline` without colliding. A `bind:` override
+renames either key.
 
 ## Custom binding with `bind`
 

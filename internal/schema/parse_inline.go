@@ -1061,10 +1061,14 @@ func applyContentField(k string, vv any, ce *ContentEntry, path string) error {
 
 // setContentProjection reads the optional `projection:` mode for a
 // content entry (`text` / `code` / `inline`). An empty value is the
-// implicit default and is never written explicitly. `inline` emits a
-// paragraph's typed inline spans and is rejected on any non-paragraph
-// kind, since code blocks, lists, and tables have no inline tree to
-// project. Plan 212.
+// implicit default and is never written explicitly.
+//
+// Each content kind constrains which modes are legal, and an
+// incompatible combination is a schema-load error rather than a
+// silently-ignored field: a paragraph projects `text` or `inline`
+// (its plain text or its typed inline-span tree); a code-block
+// projects `code` (its raw body); and a table, list, or unlisted slot
+// has no projection mode at all. Plan 212.
 func setContentProjection(ce *ContentEntry, v any, path string) error {
 	s, ok := v.(string)
 	if !ok {
@@ -1077,12 +1081,36 @@ func setContentProjection(ce *ContentEntry, v any, path string) error {
 			"%s.projection: unknown projection %q (valid: text, code, inline)",
 			path, s)
 	}
-	if s == ProjectionInline && ce.Kind != ContentKindParagraph {
-		return fmt.Errorf(
-			"%s.projection: `projection: inline` is only valid on "+
-				"`kind: paragraph`, not `kind: %s`", path, ce.Kind)
+	if err := checkProjectionKind(ce.Kind, s, path); err != nil {
+		return err
 	}
 	ce.Projection = s
+	return nil
+}
+
+// checkProjectionKind enforces the projection/kind matrix at schema
+// load. proj is already a known mode (text / code / inline). The
+// error names what the kind allows so an incompatible combination
+// fails with a fix inline rather than being dropped at extract time.
+func checkProjectionKind(kind, proj, path string) error {
+	switch kind {
+	case ContentKindParagraph:
+		if proj == ProjectionCode {
+			return fmt.Errorf(
+				"%s.projection: kind: paragraph allows projection text or "+
+					"inline, not %s", path, proj)
+		}
+	case ContentKindCodeBlock:
+		if proj != ProjectionCode {
+			return fmt.Errorf(
+				"%s.projection: kind: code-block allows projection code, "+
+					"not %s", path, proj)
+		}
+	default:
+		return fmt.Errorf(
+			"%s.projection: projection is not allowed on kind: %s "+
+				"(only paragraph and code-block project)", path, kind)
+	}
 	return nil
 }
 

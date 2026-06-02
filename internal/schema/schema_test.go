@@ -434,18 +434,97 @@ func TestParseInline_ContentProjectionUnknownValue(t *testing.T) {
 	assert.Contains(t, err.Error(), "unknown projection")
 }
 
-func TestParseInline_ContentProjectionInlineOnNonParagraph(t *testing.T) {
-	_, err := ParseInline(map[string]any{
+// parseProjectionCombo is a tiny helper for the projection-matrix
+// tests: it parses a single-section schema whose one content entry
+// carries the given kind and projection.
+func parseProjectionCombo(kind, projection string) (*Schema, error) {
+	return ParseInline(map[string]any{
 		"sections": []any{map[string]any{
 			"heading": "Examples",
 			"content": []any{map[string]any{
-				"kind": "code-block", "projection": "inline",
+				"kind": kind, "projection": projection,
 			}},
 		}},
 	}, "kind x")
+}
+
+// TestParseInline_ProjectionMatrixAllowed pins every (kind,
+// projection) pair the schema accepts: paragraph takes text or
+// inline, code-block takes code.
+func TestParseInline_ProjectionMatrixAllowed(t *testing.T) {
+	allowed := []struct{ kind, projection string }{
+		{"paragraph", "text"},
+		{"paragraph", "inline"},
+		{"code-block", "code"},
+	}
+	for _, c := range allowed {
+		t.Run(c.kind+"/"+c.projection, func(t *testing.T) {
+			sch, err := parseProjectionCombo(c.kind, c.projection)
+			require.NoError(t, err)
+			require.Len(t, sch.Sections[0].Content, 1)
+			assert.Equal(t, c.projection, sch.Sections[0].Content[0].Projection)
+		})
+	}
+}
+
+// TestParseInline_ProjectionCodeOnParagraphRejected rejects
+// `projection: code` on a paragraph — paragraphs project text or
+// inline, never code.
+func TestParseInline_ProjectionCodeOnParagraphRejected(t *testing.T) {
+	_, err := parseProjectionCombo("paragraph", "code")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(),
-		"`projection: inline` is only valid on `kind: paragraph`")
+		"kind: paragraph allows projection text or inline, not code")
+}
+
+// TestParseInline_ProjectionTextOnCodeBlockRejected rejects
+// `projection: text` on a code-block — code blocks project only code.
+func TestParseInline_ProjectionTextOnCodeBlockRejected(t *testing.T) {
+	_, err := parseProjectionCombo("code-block", "text")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(),
+		"kind: code-block allows projection code, not text")
+}
+
+// TestParseInline_ProjectionInlineOnCodeBlockRejected rejects
+// `projection: inline` on a code-block. This subsumes the old
+// inline-only check with the unified matrix message.
+func TestParseInline_ProjectionInlineOnCodeBlockRejected(t *testing.T) {
+	_, err := parseProjectionCombo("code-block", "inline")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(),
+		"kind: code-block allows projection code, not inline")
+}
+
+// TestParseInline_ProjectionOnTableRejected rejects any projection on
+// a table — tables have no projection mode.
+func TestParseInline_ProjectionOnTableRejected(t *testing.T) {
+	for _, p := range []string{"text", "code", "inline"} {
+		t.Run(p, func(t *testing.T) {
+			_, err := parseProjectionCombo("table", p)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(),
+				"projection is not allowed on kind: table")
+		})
+	}
+}
+
+// TestParseInline_ProjectionOnListRejected rejects any projection on a
+// list.
+func TestParseInline_ProjectionOnListRejected(t *testing.T) {
+	_, err := parseProjectionCombo("list", "text")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(),
+		"projection is not allowed on kind: list")
+}
+
+// TestParseInline_ProjectionOnUnlistedRejected rejects any projection
+// on an unlisted slot.
+func TestParseInline_ProjectionOnUnlistedRejected(t *testing.T) {
+	_, err := parseProjectionCombo("unlisted", "code")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(),
+		"projection is not allowed on kind: unlisted")
 }
 
 func TestParseInline_ContentUnknownKind(t *testing.T) {
