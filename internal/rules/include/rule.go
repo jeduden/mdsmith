@@ -142,11 +142,8 @@ func validateIncludeDirective(
 	}
 
 	// Validate heading-level parameter if present.
-	if hl, ok := params["heading-level"]; ok {
-		if hl != "absolute" {
-			return []lint.Diagnostic{makeDiag(filePath, line,
-				`include directive "heading-level" must be "absolute"`)}
-		}
+	if diags := validateHeadingLevel(filePath, line, params); len(diags) > 0 {
+		return diags
 	}
 
 	// Validate heading-offset parameter if present.
@@ -221,6 +218,24 @@ func validateHeadingOffset(
 	if _, hasHL := params["heading-level"]; hasHL {
 		return []lint.Diagnostic{makeDiag(filePath, line,
 			`include directive "heading-offset" cannot be combined with "heading-level"`)}
+	}
+	return nil
+}
+
+// validateHeadingLevel checks the heading-level parameter when present: it
+// must be "absolute" (parent-relative nesting) or an integer 1..6 (an
+// explicit target level for the shallowest included heading).
+func validateHeadingLevel(
+	filePath string, line int, params map[string]string,
+) []lint.Diagnostic {
+	hl, ok := params["heading-level"]
+	if !ok || hl == "absolute" {
+		return nil
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(hl))
+	if err != nil || n < 1 || n > 6 {
+		return []lint.Diagnostic{makeDiag(filePath, line,
+			`include directive "heading-level" must be "absolute" or an integer between 1 and 6`)}
 	}
 	return nil
 }
@@ -367,8 +382,12 @@ func processIncludedContent(
 		}
 	}
 
-	if params["heading-level"] == "absolute" {
+	if hl := params["heading-level"]; hl == "absolute" {
 		text = adjustHeadings(text, findParentHeadingLevel(f, line))
+	} else if hl != "" {
+		// Numeric target, validated to 1..6 in validateIncludeDirective.
+		n, _ := strconv.Atoi(strings.TrimSpace(hl))
+		text = adjustHeadingsToLevel(text, n)
 	}
 	if off, ok := params["heading-offset"]; ok {
 		// Validated to a -6..6 integer in validateIncludeDirective; on any

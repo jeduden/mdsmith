@@ -62,6 +62,25 @@ func adjustHeadingsByOffset(content string, offset int) string {
 	return strings.Join(applyShift(lines, offset), "\n")
 }
 
+// adjustHeadingsToLevel shifts headings so the shallowest one becomes the
+// given target level (1..6), reusing findMinHeadingLevel and applyShift. The
+// shift may be negative (promotion); levels are clamped to 1..6. Content with
+// no heading, or already at the target, is returned unchanged. Unlike
+// adjustHeadings this carries no parent-relative guards: the target is
+// stated outright, so an explicit promotion is allowed.
+func adjustHeadingsToLevel(content string, target int) string {
+	lines := strings.Split(content, "\n")
+	minLevel := findMinHeadingLevel(lines)
+	if minLevel == 0 {
+		return content
+	}
+	shift := target - minLevel
+	if shift == 0 {
+		return content
+	}
+	return strings.Join(applyShift(lines, shift), "\n")
+}
+
 // findMinHeadingLevel scans lines and returns the minimum heading level found,
 // ignoring lines inside fenced code blocks. Returns 0 if no headings are found.
 func findMinHeadingLevel(lines []string) int {

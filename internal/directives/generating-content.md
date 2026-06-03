@@ -50,10 +50,11 @@ heading-level: "absolute"
 ```
 
 `strip-frontmatter` drops the leading YAML block.
-`heading-level: "absolute"` shifts included headings
-so they nest under the include site's parent
-heading; omit it to keep source heading levels
-unchanged. No other value is accepted.
+`heading-level` takes `"absolute"` or an integer 1-6.
+`"absolute"` nests included headings under the include
+site's parent heading; a number pins the shallowest
+heading to that level, which also works at the document
+root. Omit it to keep source heading levels unchanged.
 
 `heading-offset: "N"` shifts every included heading by
 the signed integer N (-6 to 6), so it works even with no
