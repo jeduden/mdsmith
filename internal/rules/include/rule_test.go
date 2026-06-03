@@ -555,6 +555,96 @@ func TestFix_HeadingLevelAbsolute(t *testing.T) {
 }
 
 // =====================================================================
+// Heading level (numeric target)
+// =====================================================================
+
+func TestCheck_HeadingLevelNumericAtDocRoot(t *testing.T) {
+	fsys := fstest.MapFS{
+		"data.md": {Data: []byte("# Title\n\nText.\n\n## Sub\n\nMore.\n")},
+	}
+	// No parent heading, yet "2" pins the shallowest heading to level 2:
+	// # -> ##, ## -> ###. This is what "absolute" cannot do at the root.
+	src := "<?include\nfile: data.md\nheading-level: \"2\"\n?>\n" +
+		"## Title\n\nText.\n\n### Sub\n\nMore.\n<?/include?>\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestCheck_HeadingLevelNumericPromote(t *testing.T) {
+	fsys := fstest.MapFS{
+		"data.md": {Data: []byte("### Deep\n\n#### Deeper\n")},
+	}
+	// "1" pins the shallowest (h3) to h1, promoting: ### -> #, #### -> ##.
+	src := "<?include\nfile: data.md\nheading-level: \"1\"\n?>\n" +
+		"# Deep\n\n## Deeper\n<?/include?>\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestFix_HeadingLevelNumeric(t *testing.T) {
+	fsys := fstest.MapFS{
+		"data.md": {Data: []byte("# Title\n\n## Sub\n")},
+	}
+	src := "<?include\nfile: data.md\nheading-level: \"2\"\n?>\n" +
+		"old\n<?/include?>\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	got := string(r.Fix(f))
+	want := "<?include\nfile: data.md\nheading-level: \"2\"\n?>\n" +
+		"## Title\n\n### Sub\n<?/include?>\n"
+	assert.Equal(t, want, got, "Fix output mismatch\ngot:\n%s\nwant:\n%s", got, want)
+}
+
+func TestCheck_HeadingLevelOutOfRange(t *testing.T) {
+	fsys := fstest.MapFS{"data.md": {Data: []byte("# A\n")}}
+	src := "<?include\nfile: data.md\nheading-level: \"7\"\n?>\n" +
+		"# A\n<?/include?>\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiagMsg(t, diags,
+		`"heading-level" must be "absolute" or an integer between 1 and 6`)
+}
+
+func TestCheck_HeadingLevelZeroInvalid(t *testing.T) {
+	fsys := fstest.MapFS{"data.md": {Data: []byte("# A\n")}}
+	src := "<?include\nfile: data.md\nheading-level: \"0\"\n?>\n" +
+		"# A\n<?/include?>\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiagMsg(t, diags,
+		`"heading-level" must be "absolute" or an integer between 1 and 6`)
+}
+
+func TestCheck_HeadingLevelNumericWithOffset(t *testing.T) {
+	fsys := fstest.MapFS{"data.md": {Data: []byte("## A\n")}}
+	src := "<?include\nfile: data.md\n" +
+		"heading-level: \"2\"\nheading-offset: \"1\"\n?>\n" +
+		"## A\n<?/include?>\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiagMsg(t, diags,
+		`"heading-offset" cannot be combined with "heading-level"`)
+}
+
+func TestCheck_HeadingLevelNumericWithExtract(t *testing.T) {
+	fsys := fstest.MapFS{"data.md": {Data: []byte("content\n")}}
+	src := "<?include\nfile: data.md\n" +
+		"extract: foo\nheading-level: \"2\"\n?>\ncontent\n<?/include?>\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiagMsg(t, diags,
+		`"extract" cannot be combined with "heading-level"`)
+}
+
+// =====================================================================
 // Heading offset
 // =====================================================================
 
