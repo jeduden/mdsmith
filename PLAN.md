@@ -158,4 +158,5 @@ footer: |
 | 230 | ✅     | opus   | [Navigable schema diagnostics in the editor](plan/230_navigable-schema-diagnostics.md)                                                  |
 | 231 | ✅     |        | [LSP newest-wins workspace singleton](plan/231_lsp-workspace-singleton.md)                                                              |
 | 232 | ✅     | opus   | [include heading-offset parameter](plan/232_include-heading-offset.md)                                                                  |
+| 233 | 🔳     | opus   | [numeric heading-level target for include](plan/233_include-heading-level-target.md)                                                    |
 <?/catalog?>
