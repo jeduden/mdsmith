@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -107,6 +108,101 @@ func TestOverlayWorkspaceFSReflectsLatestSet(t *testing.T) {
 func TestOverlayWorkspaceSatisfiesMutable(t *testing.T) {
 	var _ mutableWorkspace = NewOverlayWorkspace(t.TempDir())
 	var _ Workspace = NewOverlayWorkspace(t.TempDir())
+}
+
+// TestOverlayWorkspaceGlob verifies OverlayWorkspace.Glob expands a
+// doublestar pattern against the on-disk tree rooted at Root and returns
+// sorted, root-relative-resolved matches. Open buffers exist on disk, so
+// globbing defers to disk; the overlay only shadows content on read.
+func TestOverlayWorkspaceGlob(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "docs"), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	for _, name := range []string{"docs/b.md", "docs/a.md", "docs/c.txt"} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte("x"), 0o600); err != nil {
+			t.Fatalf("WriteFile %s: %v", name, err)
+		}
+	}
+
+	ws := NewOverlayWorkspace(root)
+	// An overlaid buffer must not add or remove a glob match: globbing
+	// reads disk, not the overlay.
+	ws.Set("docs/a.md", []byte("buffer"))
+
+	got, err := ws.Glob("docs/*.md")
+	if err != nil {
+		t.Fatalf("Glob: %v", err)
+	}
+	want := []string{filepath.Join(root, "docs", "a.md"), filepath.Join(root, "docs", "b.md")}
+	if !slices.Equal(got, want) {
+		t.Fatalf("Glob(docs/*.md) = %v, want %v (sorted, disk-backed)", got, want)
+	}
+}
+
+// TestOverlayWorkspaceGlobBadPattern verifies a malformed doublestar
+// pattern surfaces an error rather than being silently swallowed,
+// matching OSWorkspace.Glob's error contract.
+func TestOverlayWorkspaceGlobBadPattern(t *testing.T) {
+	ws := NewOverlayWorkspace(t.TempDir())
+	if _, err := ws.Glob("[bad"); err == nil {
+		t.Fatal("Glob([bad): expected an error for a malformed pattern, got nil")
+	}
+}
+
+// TestOverlayWorkspaceReadFileAbsolutePath covers diskPath's
+// passthrough branch: an absolute path is read unchanged (not re-rooted
+// under Root), mirroring OSWorkspace.resolve so an absolute-path caller
+// reaches the file it named.
+func TestOverlayWorkspaceReadFileAbsolutePath(t *testing.T) {
+	root := t.TempDir()
+	// A file OUTSIDE Root, addressed by its absolute path. If diskPath
+	// wrongly joined it under Root, this read would miss.
+	other := t.TempDir()
+	abs := filepath.Join(other, "elsewhere.md")
+	if err := os.WriteFile(abs, []byte("absolute"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	ws := NewOverlayWorkspace(root)
+	got, err := ws.ReadFile(abs)
+	if err != nil {
+		t.Fatalf("ReadFile(abs): %v", err)
+	}
+	if string(got) != "absolute" {
+		t.Fatalf("ReadFile(abs) = %q, want disk bytes read at the absolute path", got)
+	}
+}
+
+// TestOverlayFSGlob verifies the fs.FS view's Glob (fs.GlobFS) expands a
+// doublestar pattern against disk, so doublestar.Glob and the
+// catalog/include rules globbing through the FS view honour `**` and
+// brace alternatives just like the other glob surfaces in mdsmith.
+func TestOverlayFSGlob(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "docs", "sub"), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "docs", "a.md"), []byte("a"), 0o600); err != nil {
+		t.Fatalf("WriteFile a: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "docs", "sub", "b.md"), []byte("b"), 0o600); err != nil {
+		t.Fatalf("WriteFile b: %v", err)
+	}
+
+	fsys, ok := NewOverlayWorkspace(root).FS().(fs.GlobFS)
+	if !ok {
+		t.Fatal("OverlayWorkspace.FS() must implement fs.GlobFS")
+	}
+	got, err := fsys.Glob("docs/**/*.md")
+	if err != nil {
+		t.Fatalf("FS().Glob: %v", err)
+	}
+	want := []string{"docs/a.md", "docs/sub/b.md"}
+	slices.Sort(got)
+	if !slices.Equal(got, want) {
+		t.Fatalf("FS().Glob(docs/**/*.md) = %v, want %v", got, want)
+	}
 }
 
 // TestSessionOverlayBufferReachesCrossFileRule is the end-to-end
