@@ -78,6 +78,13 @@ type Manifest struct {
 func (t *Toolkit) TrackedManifests(root string) []Manifest {
 	out := []Manifest{
 		{filepath.Join(root, "editors", "vscode", "package.json"), ManifestJSON, []string{"@mdsmith/cli"}},
+		// The Obsidian plugin bundles the WASM engine in-tree (no
+		// @mdsmith/* npm pin), so only its version field is stamped.
+		// manifest.json is the version Obsidian reads; package.json keeps
+		// the dev tooling in lockstep. The release `obsidian` job runs
+		// `mdsmith-release stamp` and zips the stamped copies.
+		{filepath.Join(root, "editors", "obsidian", "manifest.json"), ManifestJSON, nil},
+		{filepath.Join(root, "editors", "obsidian", "package.json"), ManifestJSON, nil},
 		{filepath.Join(root, "npm", "mdsmith", "package.json"), ManifestJSON, PlatformPackages},
 	}
 	platformsDir := filepath.Join(root, "npm", "platforms")

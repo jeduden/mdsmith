@@ -1,0 +1,117 @@
+/*
+ * mdsmith for Obsidian — diagnostic decorations and tooltip styles.
+ *
+ * The CodeMirror 6 layer in src/diagnostics.ts applies these classes
+ * to ranges with active diagnostics. The mdsmith engine reports
+ * severity as a string ("error" or "warning", plus "info" reserved
+ * for forward-compatibility); diagnostics.ts maps each to one of the
+ * severity classes below.
+ */
+
+.mdsmith-diagnostic {
+  text-decoration: underline wavy;
+  text-decoration-skip-ink: none;
+  text-underline-offset: 0.2em;
+}
+
+.mdsmith-diagnostic-error {
+  text-decoration-color: var(--text-error, #e06c75);
+}
+
+.mdsmith-diagnostic-warning {
+  text-decoration-color: var(--text-warning, #d19a66);
+}
+
+.mdsmith-diagnostic-info {
+  text-decoration-color: var(--text-accent, #61afef);
+}
+
+/*
+ * Tooltip — issue-first (plan 230): the message leads, then the schema
+ * constraint from related_locations, then the rule code and a docs
+ * link. Each row is a block so they stack top to bottom.
+ */
+
+.mdsmith-tooltip {
+  background-color: var(--background-secondary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 0.5em 0.75em;
+  max-width: 32em;
+  font-size: var(--font-ui-small);
+}
+
+.mdsmith-tooltip-message {
+  display: block;
+  font-weight: var(--font-semibold);
+}
+
+.mdsmith-tooltip-related {
+  display: block;
+  margin-top: 0.35em;
+  color: var(--text-muted);
+}
+
+.mdsmith-tooltip-related-link {
+  color: var(--text-accent);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.mdsmith-tooltip-meta {
+  display: block;
+  margin-top: 0.35em;
+  color: var(--text-muted);
+  font-size: var(--font-smaller);
+}
+
+.mdsmith-tooltip-code {
+  font-family: var(--font-monospace);
+  margin-right: 0.5em;
+}
+
+.mdsmith-tooltip-docs {
+  color: var(--text-accent);
+  text-decoration: underline;
+}
+
+.mdsmith-tooltip-fix {
+  display: inline-block;
+  margin-top: 0.5em;
+  color: var(--interactive-accent);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/*
+ * Workspace diagnostics view — the sortable table the "mdsmith
+ * Diagnostics" ItemView renders. Each row is clickable and jumps to
+ * source.
+ */
+
+.mdsmith-diagnostics-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-ui-small);
+}
+
+.mdsmith-diagnostics-table tr {
+  cursor: pointer;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.mdsmith-diagnostics-table tr:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.mdsmith-diagnostics-table td {
+  padding: 0.25em 0.5em;
+  vertical-align: top;
+}
+
+.mdsmith-diagnostics-table td:first-child {
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+}

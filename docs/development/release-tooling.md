@@ -55,6 +55,7 @@ setup step.
 | `build-npm <art> <out>`     | `release.yml` npm job                      |
 | `build-wheels <art> <out>`  | `release.yml` pypi job                     |
 | `build-flatpak <art> <out>` | `release.yml` flatpak job                  |
+| `package-obsidian <d> <o>`  | `ci.yml` + `release.yml` obsidian jobs     |
 | `sync-docs <src> <dst>`     | composed by `build-website`                |
 | `build-website [flags]`     | `pages.yml` deploy job                     |
 | `check-secret-rotations`    | `secret-rotation-reminder.yml`             |

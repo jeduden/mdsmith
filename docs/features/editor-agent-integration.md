@@ -41,5 +41,6 @@ feeds the same diagnostics and navigation to the agent, plus a
 Markdown-organization audit skill. The agent sees mdsmith inline
 while it edits your docs.
 
-See the [VS Code guide](../guides/editors/vscode.md) and the
+See the [VS Code guide](../guides/editors/vscode.md), the
+[Obsidian guide](../guides/editors/obsidian.md), and the
 [install guide](../guides/install.md) for setup.

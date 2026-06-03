@@ -391,6 +391,60 @@ jobs:
           MDSMITH_VSIX_E2E: "1"
         run: bun test ./src/e2e/vsix.e2e.ts
 
+  # Plan 217: the Obsidian plugin. Unlike the VS Code extension (which
+  # bundles a native binary per platform), the plugin ships ONE WASM
+  # artifact that runs on desktop and mobile alike. This job builds the
+  # engine to WebAssembly, typechecks + tests the plugin, builds it, and
+  # zips dist/ into mdsmith-obsidian-<version>.zip — the same artifact
+  # the release pipeline attaches to the GitHub Release.
+  obsidian-plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-bun
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+      - name: Install plugin dependencies
+        working-directory: editors/obsidian
+        # `--ignore-scripts` neutralizes install-time code execution
+        # from every dep in the resolved tree (see release.yml).
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: TypeScript typecheck
+        working-directory: editors/obsidian
+        # Bun's bundler tolerates type errors; run `tsc --noEmit` so a
+        # TS regression fails CI before it ships in the zip.
+        run: bunx tsc --noEmit
+      - name: Run plugin unit tests
+        working-directory: editors/obsidian
+        # The runtime, workspace, diagnostics, settings, and build tests
+        # build the WASM artifact on demand via the Go toolchain above.
+        run: bun test --preload ./src/test-setup.ts
+      - name: Build the engine to WebAssembly
+        # build.ts can compile the WASM itself, but building it here
+        # (and pointing build.ts at the output) keeps the size-budget
+        # flags in one place — cmd/mdsmith-wasm/build.sh.
+        run: bash cmd/mdsmith-wasm/build.sh
+      - name: Build the plugin
+        working-directory: editors/obsidian
+        env:
+          MDSMITH_OBSIDIAN_WASM_DIR: ${{ github.workspace }}/cmd/mdsmith-wasm/dist
+        run: bun run build.ts --production
+      - name: Package the release zip
+        # Runtime logic lives in mdsmith-release per
+        # docs/development/release-tooling.md. package-obsidian reads the
+        # version from dist/manifest.json and writes
+        # mdsmith-obsidian-<version>.zip with the five files Obsidian
+        # loads, flat at the top level, via archive/zip (no `zip`
+        # binary). outDir is editors/obsidian so the upload glob matches.
+        run: go run ./cmd/mdsmith-release package-obsidian editors/obsidian/dist editors/obsidian
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mdsmith-obsidian-plugin
+          path: editors/obsidian/mdsmith-obsidian-*.zip
+
   # Plan 215: the mdsmith engine compiled to WebAssembly. The smoke
   # test (cmd/mdsmith-wasm/smoke_test.go) builds the artifact and runs
   # it through a Node harness, asserting `session.check` matches the

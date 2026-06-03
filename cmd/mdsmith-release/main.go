@@ -12,6 +12,7 @@
 //	mdsmith-release build-npm <artifacts-dir> <out-dir>
 //	mdsmith-release build-wheels <artifacts-dir> <out-dir>
 //	mdsmith-release build-flatpak <artifacts-dir> <out-dir>
+//	mdsmith-release package-obsidian <dist-dir> <out-dir>
 //	mdsmith-release sync-docs <src-dir> <dst-dir>
 //	mdsmith-release build-website [--no-fix] [src-dir] [dst-dir]
 //	mdsmith-release verify-website-links --dir <html-dir> [--base-url <url>]
@@ -48,6 +49,7 @@ Commands:
   build-npm <artifacts> <out>     Build npm platform sub-packages.
   build-wheels <artifacts> <out>  Build platform-tagged Python wheels.
   build-flatpak <art> <out>       Stage the .flatpak bundle's manifest + Linux binaries.
+  package-obsidian <dist> <out>   Build the Obsidian plugin release zip from <dist>.
   sync-docs <src> <dst>           Snapshot docs/ into a Hugo content tree.
   build-website [--no-fix] [src] [dst]
                                   mdsmith fix (unless --no-fix) + sync-docs.
@@ -103,6 +105,8 @@ func dispatch(cmd, root string, rest []string) int {
 		return runBuildWheels(root, rest)
 	case "build-flatpak":
 		return runBuildFlatpak(root, rest)
+	case "package-obsidian":
+		return runPackageObsidian(root, rest)
 	case "sync-docs":
 		return runSyncDocs(root, rest)
 	case "build-website":

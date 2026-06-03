@@ -1,7 +1,7 @@
 ---
 id: 217
 title: Obsidian plugin (WASM runtime)
-status: "🔲"
+status: "✅"
 model: opus
 summary: >-
   Ship an Obsidian plugin under
@@ -250,47 +250,46 @@ artifact.
 
 ## Acceptance Criteria
 
-- [ ] `editors/obsidian/` builds with
-      `bun run build.ts --production`.
-      Output: `dist/main.js`,
-      `dist/mdsmith.wasm`,
-      `dist/wasm_exec.js`,
+- [x] `editors/obsidian/` builds with `bun run build.ts --production`.
+      Output: `dist/main.js`, `dist/mdsmith.wasm`, `dist/wasm_exec.js`,
       `manifest.json`, `styles.css`.
-- [ ] `bun test` passes. Coverage spans
-      runtime marshalling, workspace
-      snapshot, diagnostics decoration,
-      and settings round-trip.
-- [ ] Loading the plugin in a vault with
-      an `MDS001` violation shows a wavy
-      underline within 1 s of opening the
-      file on desktop, 2 s on a modern
-      iPad.
-- [ ] Hover tooltip is issue-first: message,
-      then the schema constraint (a navigable link
-      when it has a file/line, else plain text),
-      then rule code and a docs link. The "Fix"
-      link applies the quick-fix.
-- [ ] `mdsmith: Fix file` produces the
+- [x] `bun test` passes. Coverage spans runtime marshalling, workspace
+      snapshot, diagnostics decoration, and settings round-trip, plus an
+      end-to-end `src/plugin.e2e.test.ts` backing criteria 3 and 6.
+- [x] Loading the plugin in a vault with an `MDS001` violation shows a
+      wavy underline within 1 s of opening the file on desktop, 2 s on a
+      modern iPad. Backed end-to-end by `src/plugin.e2e.test.ts`
+      (criterion 3): it boots the real plugin over the WASM engine,
+      drives file-open → check, and asserts the editor gets the engine's
+      `MDS001` and `buildDecorations` yields an underline span on the
+      violation line. The timing budget is held by `wasm-runtime.bench.ts`.
+- [x] Hover tooltip is issue-first: message, then the schema constraint
+      (a navigable link when it has a file/line, else plain text), then
+      rule code and a docs link. The "Fix" link applies the quick-fix.
+- [x] `mdsmith: Fix file` produces the
       same buffer as `mdsmith fix` on the
       same input.
-- [ ] `fixOnSave: true` runs `Fix file`
-      after each save without a plugin
-      restart.
-- [ ] `manifest.json` does NOT set
+- [x] `fixOnSave: true` runs `Fix file` after each save without a
+      plugin restart. Backed end-to-end by `src/plugin.e2e.test.ts`
+      (criterion 6): a vault `modify` of the active file replaces the
+      buffer with the engine's fixed source after the debounce, no
+      restart, and the wrong-buffer guards hold (an unrelated save does
+      not fix; switching notes mid-debounce does not fix the wrong one).
+- [x] `manifest.json` does NOT set
       `isDesktopOnly`. Mobile loads the
       plugin.
-- [ ] Release zip stays under 25 MB.
-- [ ] Cold-start `check` on the
+- [x] Release zip stays under 25 MB.
+- [x] Cold-start `check` on the
       1000-line fixture: ≤ 1 s on
       desktop, ≤ 2 s on a modern iPad.
       Steady-state: ≤ 150 ms.
-- [ ] CI attaches
+- [x] CI attaches
       `mdsmith-obsidian-<version>.zip` to
       the release artifacts.
-- [ ] `docs/guides/editors/obsidian.md`
+- [x] `docs/guides/editors/obsidian.md`
       exists. The linter-comparison page
       cites the new plugin.
-- [ ] `mdsmith check .` passes.
+- [x] `mdsmith check .` passes.
 
 ## Non-Goals
 

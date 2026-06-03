@@ -256,6 +256,74 @@ jobs:
           name: mdsmith-vscode-extension
           path: editors/vscode/mdsmith-*.vsix
 
+  obsidian:
+    # Plan 217. The Obsidian plugin ships ONE WASM artifact (not a
+    # per-platform binary), so it does not depend on the `build` matrix.
+    # It compiles the engine to WebAssembly, builds the plugin, and zips
+    # dist/ as mdsmith-obsidian-<version>.zip. The `release` job
+    # downloads it with the other artifacts and the `mdsmith-*` globs
+    # there cover it for the GitHub release attachment, the checksum
+    # file, the SLSA provenance, and the cosign signature.
+    #
+    # No publisher tokens and no `release` environment: the only channel
+    # is GitHub Releases (plan 217 Non-Goals), so there is nothing to
+    # gate. The plugin manifests (editors/obsidian/{manifest,package}.json)
+    # are in the tracked-manifest set, so `mdsmith-release stamp` rewrites
+    # their dev sentinel to the release version alongside the rest of the
+    # tracked set; only this job's zip carries the result.
+    needs: [preflight]
+    if: *release_repo_trigger_ok
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-bun
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Stamp the manifests with the release version
+        env:
+          VERSION: ${{ env.VERSION }}
+        # Runtime logic lives in mdsmith-release per
+        # docs/development/release-tooling.md. stamp rewrites every
+        # tracked manifest's dev sentinel to the release tag (the obsidian
+        # manifest.json/package.json among them); the checkout is
+        # discarded after the run, so only the zip built below ships the
+        # stamped files.
+        run: go run ./cmd/mdsmith-release stamp "${VERSION#v}"
+      - name: Install plugin dependencies
+        working-directory: editors/obsidian
+        # --ignore-scripts neutralizes install-time hooks (see the npm
+        # job and release.md). No --frozen-lockfile: the stamp above
+        # rewrote package.json's version, so bun.lock is intentionally
+        # out of date for that field.
+        run: bun install --ignore-scripts
+      - name: Run plugin unit tests
+        working-directory: editors/obsidian
+        run: bun test --preload ./src/test-setup.ts
+      - name: Build the engine to WebAssembly
+        run: bash cmd/mdsmith-wasm/build.sh
+      - name: Build the plugin
+        working-directory: editors/obsidian
+        env:
+          MDSMITH_OBSIDIAN_WASM_DIR: ${{ github.workspace }}/cmd/mdsmith-wasm/dist
+        run: bun run build.ts --production
+      - name: Package the release zip
+        # Runtime logic lives in mdsmith-release per
+        # docs/development/release-tooling.md. The stamp step above
+        # rewrote dist's manifest.json to the release version, so
+        # package-obsidian reads the version from there and writes
+        # mdsmith-obsidian-<version>.zip with the five files Obsidian
+        # loads, flat, via archive/zip. outDir is editors/obsidian so
+        # the upload glob below matches.
+        run: go run ./cmd/mdsmith-release package-obsidian editors/obsidian/dist editors/obsidian
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mdsmith-obsidian-plugin
+          path: editors/obsidian/mdsmith-obsidian-*.zip
+
   npm:
     needs: [build]
     runs-on: ubuntu-latest
@@ -393,8 +461,10 @@ jobs:
     # the draft before it freezes. The bundle is named with the
     # `mdsmith-` prefix, so the checksum, SLSA attestation, and cosign
     # steps below cover it via the same `mdsmith-*` glob as the raw
-    # binaries — no release-job changes beyond this dependency.
-    needs: [build, vscode, flatpak]
+    # binaries — no release-job changes beyond this dependency. `obsidian`
+    # (plan 217) joins for the same reason: its
+    # mdsmith-obsidian-<version>.zip is matched by the `mdsmith-*` globs.
+    needs: [build, vscode, obsidian, flatpak]
     runs-on: ubuntu-latest
     # See docs/development/release.md for the rationale on `if:`,
     # `environment:`, and the OIDC + attestations permission set.

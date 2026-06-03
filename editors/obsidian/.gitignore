@@ -1,0 +1,10 @@
+# Build outputs and dependencies are not committed. bun.lock IS
+# committed (CI installs with --frozen-lockfile), mirroring
+# editors/vscode/.gitignore.
+node_modules/
+dist/
+coverage/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+*.zip

@@ -326,6 +326,16 @@ configuration surface (`mdsmith.path`, `mdsmith.config`,
 `mdsmith.trace.server`) and fix-on-save via
 `editor.codeActionsOnSave`.
 
+## Obsidian plugin
+
+The Obsidian plugin runs the engine as WebAssembly, so
+it needs no separate binary and works on desktop and
+mobile. Download `mdsmith-obsidian-X.Y.Z.zip` from the
+release page and unzip it into
+`<vault>/.obsidian/plugins/mdsmith/`. See
+[mdsmith for Obsidian](editors/obsidian.md) for the
+step-by-step install and the settings.
+
 ## Claude Code plugins
 
 The Claude Code plugin is an optional editor surface.

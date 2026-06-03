@@ -1,0 +1,29 @@
+{
+  "name": "mdsmith-obsidian",
+  "version": "0.0.0-dev",
+  "private": true,
+  "description": "Obsidian plugin that runs the bundled mdsmith WebAssembly engine and renders diagnostics, quick fixes, and fix-on-save in CodeMirror 6 — one runtime on desktop and mobile.",
+  "license": "MIT",
+  "homepage": "https://mdsmith.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jeduden/mdsmith"
+  },
+  "bugs": {
+    "url": "https://github.com/jeduden/mdsmith/issues"
+  },
+  "scripts": {
+    "compile": "bun run build.ts",
+    "watch": "bun run build.ts --watch",
+    "build": "bun run build.ts --production",
+    "test": "bun test --preload ./src/test-setup.ts"
+  },
+  "devDependencies": {
+    "@codemirror/state": "^6.5.0",
+    "@codemirror/view": "^6.34.0",
+    "@types/bun": "^1.1.0",
+    "@types/node": "^20.11.0",
+    "obsidian": "^1.7.0",
+    "typescript": "^5.4.0"
+  }
+}

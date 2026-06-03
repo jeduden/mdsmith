@@ -50,6 +50,17 @@ func fixtureManifests(t *testing.T, root string) {
 }
 `, plat))
 	}
+	write("editors/obsidian/manifest.json", `{
+  "id": "mdsmith",
+  "name": "mdsmith",
+  "version": "0.0.0-dev"
+}
+`)
+	write("editors/obsidian/package.json", `{
+  "name": "mdsmith-obsidian",
+  "version": "0.0.0-dev"
+}
+`)
 	write("python/pyproject.toml", `[project]
 name = "mdsmith"
 version = "0.0.0-dev"
@@ -85,6 +96,8 @@ func TestStampRewritesEveryManifest(t *testing.T) {
 	}{
 		{"editors/vscode/package.json", `"version": "1.2.3"`},
 		{"editors/vscode/package.json", `"@mdsmith/cli": "1.2.3"`},
+		{"editors/obsidian/manifest.json", `"version": "1.2.3"`},
+		{"editors/obsidian/package.json", `"version": "1.2.3"`},
 		{"npm/mdsmith/package.json", `"version": "1.2.3"`},
 		{"npm/mdsmith/package.json", `"@mdsmith/linux-x64": "1.2.3"`},
 		{"npm/mdsmith/package.json", `"@mdsmith/win32-x64": "1.2.3"`},
@@ -361,6 +374,8 @@ func TestTrackedManifestsListsPlatformSubpackages(t *testing.T) {
 
 	want := []string{
 		filepath.Join(root, "editors", "vscode", "package.json"),
+		filepath.Join(root, "editors", "obsidian", "manifest.json"),
+		filepath.Join(root, "editors", "obsidian", "package.json"),
 		filepath.Join(root, "npm", "mdsmith", "package.json"),
 		filepath.Join(root, "npm", "platforms", "darwin-arm64", "package.json"),
 		filepath.Join(root, "npm", "platforms", "darwin-x64", "package.json"),

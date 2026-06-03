@@ -28,6 +28,8 @@ the tag:
   `mdsmith-darwin-amd64`, `mdsmith-darwin-arm64`,
   `mdsmith-windows-amd64.exe`)
 - The mdsmith VS Code extension `.vsix`
+- The mdsmith Obsidian plugin
+  (`mdsmith-obsidian-<version>.zip`)
 - `checksums.txt` — SHA-256 of every binary
 - `checksums.txt.bundle` — cosign keyless signature
   on `checksums.txt`

@@ -60,6 +60,8 @@ func TestRunRejectsBadArity(t *testing.T) {
 		{"build-wheels with one arg", []string{"build-wheels", "art"}},
 		{"build-flatpak without args", []string{"build-flatpak"}},
 		{"build-flatpak with one arg", []string{"build-flatpak", "art"}},
+		{"package-obsidian without args", []string{"package-obsidian"}},
+		{"package-obsidian with one arg", []string{"package-obsidian", "dist"}},
 		{"build-website with three positionals", []string{"build-website", "a", "b", "c"}},
 	}
 	for _, c := range cases {
@@ -99,7 +101,7 @@ func TestReportFlagParseErrNilReturnsContinue(t *testing.T) {
 func TestSubcommandHelpExitsZero(t *testing.T) {
 	for _, sub := range []string{
 		"stamp", "check", "build-npm", "build-wheels",
-		"build-flatpak",
+		"build-flatpak", "package-obsidian",
 		"sync-docs", "build-website", "verify-website-links",
 		"sync-messaging",
 		"sync-parity-rules",
@@ -114,7 +116,7 @@ func TestSubcommandHelpExitsZero(t *testing.T) {
 func TestSubcommandRejectsUnknownFlag(t *testing.T) {
 	for _, sub := range []string{
 		"stamp", "check", "build-npm", "build-wheels",
-		"build-flatpak",
+		"build-flatpak", "package-obsidian",
 		"sync-docs", "build-website", "verify-website-links",
 		"sync-messaging",
 		"sync-parity-rules",
@@ -230,6 +232,44 @@ func TestRunBuildFlatpakReportsError(t *testing.T) {
 	require.NoError(t, os.Chdir(root))
 	// Missing artifacts dir → BuildFlatpak errors → exit 1.
 	assert.Equal(t, 1, run([]string{"build-flatpak", "missing-artifacts", "out"}))
+}
+
+// TestRunPackageObsidianEndToEnd dispatches through `run
+// package-obsidian` so the FlagSet parse, arity check, and reportError
+// wiring run with realistic args, and asserts the zip lands in out-dir.
+func TestRunPackageObsidianEndToEnd(t *testing.T) {
+	root := t.TempDir()
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	require.NoError(t, os.Chdir(root))
+
+	dist := filepath.Join(root, "dist")
+	require.NoError(t, os.MkdirAll(dist, 0o755))
+	for _, name := range []string{
+		"main.js", "styles.css", "mdsmith.wasm", "wasm_exec.js",
+	} {
+		require.NoError(t, os.WriteFile(filepath.Join(dist, name), []byte("x"), 0o644))
+	}
+	// Pretty-printed manifest with "version" on its own line, matching
+	// the committed editors/obsidian/manifest.json and the format the
+	// stamp step preserves.
+	require.NoError(t, os.WriteFile(filepath.Join(dist, "manifest.json"),
+		[]byte("{\n  \"id\": \"mdsmith\",\n  \"version\": \"9.9.9\"\n}\n"), 0o644))
+
+	assert.Equal(t, 0, run([]string{"package-obsidian", "dist", "out"}))
+	_, err = os.Stat(filepath.Join(root, "out", "mdsmith-obsidian-9.9.9.zip"))
+	assert.NoError(t, err)
+}
+
+func TestRunPackageObsidianReportsError(t *testing.T) {
+	root := t.TempDir()
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	require.NoError(t, os.Chdir(root))
+	// Missing dist dir → PackageObsidian errors → exit 1.
+	assert.Equal(t, 1, run([]string{"package-obsidian", "missing-dist", "out"}))
 }
 
 // TestRunBuildWebsiteEndToEnd dispatches through `run
@@ -370,6 +410,17 @@ func writeFixture(t *testing.T, root string) {
   "optionalDependencies": {
     "@mdsmith/cli": "0.0.0-dev"
   }
+}
+`,
+		"editors/obsidian/manifest.json": `{
+  "id": "mdsmith",
+  "name": "mdsmith",
+  "version": "0.0.0-dev"
+}
+`,
+		"editors/obsidian/package.json": `{
+  "name": "mdsmith-obsidian",
+  "version": "0.0.0-dev"
 }
 `,
 		"npm/mdsmith/package.json": `{
