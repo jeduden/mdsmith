@@ -18,19 +18,15 @@ const TransportKindStdio = 0;
 import {
   buildClientOptions,
   buildServerOptions,
-  collectFixAllEdits,
   decideClose,
   forwardMdsmithConfigChange,
   notifyConfigChangeToClient,
-  shouldFixOnSave,
   startupErrorMessage,
   RUN_OFF,
   RUN_ON_SAVE,
   RUN_ON_TYPE,
-  type CodeActionLike,
   type FileSystemWatcherLike,
-  type RestartPolicyState,
-  type UriLike
+  type RestartPolicyState
 } from "./wiring";
 
 // ExecutableLaunchShape is the subset of vscode-languageclient's
@@ -353,32 +349,12 @@ describe("notifyConfigChangeToClient", () => {
   });
 });
 
-describe("shouldFixOnSave", () => {
-  test("fixes on save when fixOnSave is on and run is not off", () => {
-    expect(shouldFixOnSave("onType", true)).toBe(true);
-    expect(shouldFixOnSave("onSave", true)).toBe(true);
-  });
-
-  test("never fixes when run is off, even if fixOnSave is on", () => {
-    // run=off is the master switch: mdsmith is inert, so a save must
-    // not rewrite the buffer. Mirrors the server publishing no
-    // diagnostics in off mode.
-    expect(shouldFixOnSave("off", true)).toBe(false);
-  });
-
-  test("never fixes when fixOnSave is off, whatever the run mode", () => {
-    expect(shouldFixOnSave("onType", false)).toBe(false);
-    expect(shouldFixOnSave("onSave", false)).toBe(false);
-    expect(shouldFixOnSave("off", false)).toBe(false);
-  });
-});
-
 describe("run-mode constants", () => {
   test("match the mdsmith.run enum declared in package.json", () => {
     // wiring.ts claims to mirror package.json's mdsmith.run enum; pin
     // that here so the constants and the contributed setting cannot
-    // drift apart — a drift would make shouldFixOnSave (and the
-    // willSave handler) compare against a value VS Code never sends.
+    // drift apart — a drift would make the server and client compare
+    // against a run value the other never sends.
     const pkg = JSON.parse(
       readFileSync(resolve(__dirname, "../package.json"), "utf-8")
     ) as {
@@ -389,66 +365,6 @@ describe("run-mode constants", () => {
     const runEnum =
       pkg.contributes.configuration.properties["mdsmith.run"].enum;
     expect(runEnum).toEqual([RUN_ON_TYPE, RUN_ON_SAVE, RUN_OFF]);
-  });
-});
-
-describe("collectFixAllEdits", () => {
-  // Helpers: build a minimal Uri-like and code action so the
-  // pipeline can filter without importing vscode.
-  const uri = (value: string): UriLike => ({ toString: () => value });
-
-  function action(
-    kind: string | undefined,
-    edits: readonly [UriLike, unknown[]][] | null
-  ): CodeActionLike {
-    return {
-      kind: kind === undefined ? undefined : { value: kind },
-      edit: edits === null
-        ? undefined
-        : {
-            entries() {
-              return edits as readonly [UriLike, never[]][];
-            }
-          }
-    };
-  }
-
-  test("returns [] when the provider produced no actions", () => {
-    expect(collectFixAllEdits(undefined, uri("file:///x.md"))).toEqual([]);
-    expect(collectFixAllEdits(null, uri("file:///x.md"))).toEqual([]);
-    expect(collectFixAllEdits([], uri("file:///x.md"))).toEqual([]);
-  });
-
-  test("keeps only source.fixAll.mdsmith actions targeting the document", () => {
-    const target = uri("file:///x.md");
-    const wantA = { tag: "wantA" };
-    const wantB = { tag: "wantB" };
-    const skip = { tag: "skip" };
-    const actions: CodeActionLike[] = [
-      // Wrong kind — must not contribute.
-      action("source.fixAll.eslint", [[target, [skip]]]),
-      // Right kind but a different file — must not contribute.
-      action("source.fixAll.mdsmith", [[uri("file:///y.md"), [skip]]]),
-      // Right kind, right file, two edits — both kept.
-      action("source.fixAll.mdsmith", [[target, [wantA, wantB]]]),
-      // Missing kind — must not contribute.
-      action(undefined, [[target, [skip]]]),
-      // Missing edit — must not contribute.
-      action("source.fixAll.mdsmith", null)
-    ];
-    const edits = collectFixAllEdits(actions, target);
-    expect(edits).toEqual([wantA, wantB]);
-  });
-
-  test("preserves edit order across multiple matching actions", () => {
-    const target = uri("file:///x.md");
-    const first = { id: 1 };
-    const second = { id: 2 };
-    const actions: CodeActionLike[] = [
-      action("source.fixAll.mdsmith", [[target, [first]]]),
-      action("source.fixAll.mdsmith", [[target, [second]]])
-    ];
-    expect(collectFixAllEdits(actions, target)).toEqual([first, second]);
   });
 });
 

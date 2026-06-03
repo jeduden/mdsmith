@@ -14,5 +14,8 @@
     "skipLibCheck": true
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  // src/e2e/vscode is the headless VS Code integration harness (mocha +
+  // @vscode/test-electron). It is compiled only by tsconfig.e2e.json so its
+  // mocha globals never leak into the extension build.
+  "exclude": ["node_modules", "dist", "src/e2e/vscode"]
 }

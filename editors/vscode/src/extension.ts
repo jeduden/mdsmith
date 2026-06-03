@@ -16,14 +16,11 @@ import {
 import {
   buildClientOptions,
   buildServerOptions,
-  collectFixAllEdits,
   decideClose,
   forwardMdsmithConfigChange,
   notifyConfigChangeToClient,
-  shouldFixOnSave,
   startupErrorMessage,
-  type RestartPolicyState,
-  RUN_ON_TYPE
+  type RestartPolicyState
 } from "./wiring";
 import { findBinaryCandidates, resolveBinary } from "./binary";
 import { runFixWorkspace } from "./commands/fix-workspace";
@@ -60,38 +57,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   registerPaletteCommands(context);
 
-  // Wire fix-on-save once. The handler reads both settings on every
-  // save so toggling either option does not require a restart.
-  // fixOnSave is gated by mdsmith.run: when run is "off" mdsmith is
-  // inert, so a save must not rewrite the buffer even if fixOnSave was
-  // left on (shouldFixOnSave centralizes that rule).
-  context.subscriptions.push(
-    vscode.workspace.onWillSaveTextDocument((event) => {
-      if (event.document.languageId !== "markdown") return;
-      const cfg = vscode.workspace.getConfiguration("mdsmith");
-      const run = cfg.get<string>("run", RUN_ON_TYPE);
-      const fixOnSave = cfg.get<boolean>("fixOnSave", false);
-      if (!shouldFixOnSave(run, fixOnSave)) return;
-      event.waitUntil(
-        vscode.commands.executeCommand(
-          "vscode.executeCodeActionProvider",
-          event.document.uri,
-          new vscode.Range(0, 0, event.document.lineCount, 0),
-          "source.fixAll.mdsmith"
-        ).then(
-          // collectFixAllEdits is typed against the structural
-          // `TextEditLike` so wiring.ts stays decoupled from the
-          // `vscode` runtime package; cast back to `vscode.TextEdit[]`
-          // here because that's what `event.waitUntil` expects from a
-          // willSave handler. The runtime objects are real
-          // `vscode.TextEdit` instances forwarded from
-          // executeCodeActionProvider, so the cast is safe.
-          (actions) =>
-            collectFixAllEdits(actions, event.document.uri) as vscode.TextEdit[]
-        )
-      );
-    })
-  );
+  // Fix-on-save uses VS Code's native editor.codeActionsOnSave with
+  // source.fixAll.mdsmith — the same model ESLint uses with source.fixAll.eslint
+  // (the deprecated mdsmith.fixOnSave setting points users there). The extension
+  // contributes nothing beyond the LSP code action: VS Code runs the action on
+  // save through the bulk-edit service, which honours mdsmith.previewFix's
+  // ChangeAnnotation and opens the Refactor Preview before writing. A custom
+  // onWillSaveTextDocument handler cannot — its waitUntil drops the annotation
+  // and times out rather than wait for a confirmation UI. See
+  // docs/guides/editors/vscode.md.
 
   // Forward mdsmith.* settings changes to the running server so it
   // re-pulls config (mdsmith.run, mdsmith.config, mdsmith.previewFix).

@@ -154,20 +154,22 @@
           "enumDescriptions": [
             "Re-lint on every keystroke (debounced). Live diagnostics as you type.",
             "Re-lint only when the file is saved.",
-            "Stop automatic linting: no diagnostics, and fix-on-save is suppressed even if mdsmith.fixOnSave is on. Explicit quick fixes still work when invoked."
+            "Stop automatic linting: no diagnostics. Explicit quick fixes still work when invoked."
           ],
           "default": "onType",
-          "description": "When mdsmith lints. `onType` (default) re-lints on each keystroke (debounced); `onSave` re-lints only on save; `off` stops automatic linting — no diagnostics, and `mdsmith.fixOnSave` is ignored (explicit quick fixes still work)."
-        },
-        "mdsmith.fixOnSave": {
-          "type": "boolean",
-          "default": false,
-          "description": "Auto-fix on save by wiring `source.fixAll.mdsmith` into the save flow. Subordinate to `mdsmith.run`: when `mdsmith.run` is `off`, fix-on-save is suppressed and a save never rewrites the buffer."
+          "description": "When mdsmith lints. `onType` (default) re-lints on each keystroke (debounced); `onSave` re-lints only on save; `off` stops automatic linting (no diagnostics; explicit quick fixes still work). Fix-on-save is configured separately, via `editor.codeActionsOnSave`."
         },
         "mdsmith.previewFix": {
           "type": "boolean",
           "default": false,
-          "description": "Open VS Code Refactor Preview before applying any mdsmith fix. When on, every quick fix and source.fixAll.mdsmith action routes through the Refactor Preview pane so you can inspect the diff before accepting. Requires a client that advertises both documentChanges and changeAnnotationSupport (VS Code 1.85+). Leave off for the default apply-immediately behavior."
+          "description": "Show the diff before applying a fix. When on, quick fixes and `source.fixAll.mdsmith` actions (including fix-on-save wired through `editor.codeActionsOnSave`) route through VS Code's Refactor Preview pane so you can inspect and confirm the diff before it is written. Requires a client that advertises both documentChanges and changeAnnotationSupport (VS Code 1.85+). Leave off to apply immediately."
+        },
+        "mdsmith.fixOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Former fix-on-save toggle. Deprecated — fix-on-save is now configured via editor.codeActionsOnSave with source.fixAll.mdsmith.",
+          "deprecationMessage": "Deprecated. Fix-on-save now uses editor.codeActionsOnSave with source.fixAll.mdsmith (the same way ESLint uses source.fixAll.eslint). mdsmith.previewFix controls whether the diff is shown first.",
+          "markdownDeprecationMessage": "**Deprecated.** Fix-on-save now uses VS Code's native `editor.codeActionsOnSave` with `source.fixAll.mdsmith` — the same way ESLint uses `source.fixAll.eslint`:\n\n`\"editor.codeActionsOnSave\": { \"source.fixAll.mdsmith\": \"explicit\" }`\n\n`mdsmith.previewFix` controls whether the diff is shown first."
         },
         "mdsmith.trace.server": {
           "type": "string",
@@ -186,6 +188,7 @@
     "compile": "bun run build.ts",
     "watch": "bun run build.ts --watch",
     "test": "bun test",
+    "test:e2e": "bun run build.ts && rm -rf out-e2e && tsc -p tsconfig.e2e.json && node out-e2e/runTest.js",
     "package": "vsce package --out mdsmith.vsix",
     "vscode:prepublish": "bun run build.ts --production"
   },
@@ -197,9 +200,13 @@
   },
   "devDependencies": {
     "@types/bun": "^1.1.0",
+    "@types/mocha": "^10.0.10",
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.0.0",
+    "glob": "^13.0.6",
+    "mocha": "^11.7.6",
     "typescript": "^5.4.0",
     "vscode-uri": "^3.1.0"
   }

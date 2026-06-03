@@ -36,15 +36,27 @@ fixable rule contributes a lightbulb. One click rewrites every
 occurrence of that rule in the file, not only the line you
 clicked.
 
-**Fix on save.** Enable `mdsmith.fixOnSave` (off by default).
-On each save, the whole-file fixer rewrites trailing
-whitespace, heading style, code fences, bare URLs, list
-indentation, and table alignment. Setting `mdsmith.run` to
-`off` suppresses it.
+**Fix on save.** Add `source.fixAll.mdsmith` to VS Code's
+`editor.codeActionsOnSave` — the same way ESLint uses
+`source.fixAll.eslint`:
+
+```jsonc
+{
+  "editor.codeActionsOnSave": {
+    "source.fixAll.mdsmith": "explicit"
+  }
+}
+```
+
+Each save then fixes trailing whitespace, heading style, code
+fences, bare URLs, list indentation, and table alignment.
 
 **Preview before applying.** Enable `mdsmith.previewFix` and
-every fix routes through VS Code's Refactor Preview pane, so
-you see the diff before it is written.
+quick fixes and fix-on-save route through VS Code's Refactor
+Preview pane, so you see the diff and confirm it before it is
+written. The preview rides the code-action path above (the
+lightbulb and `editor.codeActionsOnSave`); that path carries
+the confirmation into the save.
 
 **Hover for help.** Hover a diagnostic for the rule's one-line
 summary plus a link that opens its full documentation offline:
@@ -129,40 +141,21 @@ reload.
 | Setting                | Default   | Purpose                                                                            |
 | ---------------------- | --------- | ---------------------------------------------------------------------------------- |
 | `mdsmith.run`          | `onType`  | When to lint: `onType` (default), `onSave`, or `off` (off stops automatic linting) |
-| `mdsmith.fixOnSave`    | `false`   | Run `mdsmith fix` on save; ignored when `mdsmith.run` is `off`                     |
-| `mdsmith.previewFix`   | `false`   | Open Refactor Preview before applying any fix                                      |
+| `mdsmith.previewFix`   | `false`   | Show the diff (Refactor Preview) before applying a fix (quick fix or fix-on-save)  |
 | `mdsmith.config`       | `""`      | Override the `.mdsmith.yml` path (absolute or workspace)                           |
 | `mdsmith.path`         | `mdsmith` | Pin a binary; the default runs the bundled per-platform one                        |
 | `mdsmith.trace.server` | `off`     | LSP trace verbosity: `off`, `messages`, or `verbose`                               |
 
-`mdsmith.run` defaults to `onType`, so diagnostics update
-live as you type. `mdsmith.fixOnSave` layers auto-fixing on
-top, and `off` is a master switch: it stops diagnostics and
-suppresses fix-on-save, so a save never rewrites the buffer
-while `mdsmith.run` is `off`.
+`mdsmith.run` defaults to `onType`, so diagnostics update live
+as you type; `onSave` defers them to save, and `off` stops
+them entirely (quick fixes still work on demand).
 
-| `mdsmith.run` | `mdsmith.fixOnSave` | Behavior                                              |
-| ------------- | ------------------- | ----------------------------------------------------- |
-| `onType`      | `false`             | Diagnostics update live as you type (default)         |
-| `onType`      | `true`              | Live diagnostics; saving also auto-fixes the file     |
-| `onSave`      | `false`             | Diagnostics update only when you save                 |
-| `onSave`      | `true`              | Saving re-lints and auto-fixes the file               |
-| `off`         | either              | No diagnostics or fix-on-save; quick fixes still work |
-
-To bind fix-on-save through `editor.codeActionsOnSave`
-instead of `mdsmith.fixOnSave`:
-
-```jsonc
-{
-  "editor.codeActionsOnSave": {
-    "source.fixAll.mdsmith": "explicit"
-  }
-}
-```
-
-This manual wiring is not gated by `mdsmith.run`: unlike
-`mdsmith.fixOnSave`, it still fixes on save even when
-`mdsmith.run` is `off`.
+Fix-on-save is configured through VS Code's native
+`editor.codeActionsOnSave`, shown above under **Fix on save** —
+not through an mdsmith setting. The former `mdsmith.fixOnSave`
+toggle is now a deprecated no-op. Fix-on-save runs independently
+of `mdsmith.run`, and `mdsmith.previewFix` decides whether each
+save shows the diff before writing.
 
 ## Troubleshooting
 

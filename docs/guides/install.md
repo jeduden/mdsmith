@@ -321,8 +321,10 @@ have identical SHA-256 sums; they're the same
 artifact uploaded to three places.
 
 See [VS Code Integration](editors/vscode.md) for the
-configuration surface (`mdsmith.path`, `mdsmith.run`,
-`mdsmith.fixOnSave`, `mdsmith.trace.server`).
+configuration surface (`mdsmith.path`, `mdsmith.config`,
+`mdsmith.run`, `mdsmith.previewFix`, and
+`mdsmith.trace.server`) and fix-on-save via
+`editor.codeActionsOnSave`.
 
 ## Claude Code plugins
 

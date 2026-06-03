@@ -2,6 +2,10 @@ node_modules/
 dist/
 coverage/
 *.vsix
+# Headless VS Code integration test (test:e2e): the downloaded VS Code
+# instance and the compiled mocha harness. Both are regenerated on demand.
+.vscode-test/
+out-e2e/
 package-lock.json
 yarn.lock
 pnpm-lock.yaml

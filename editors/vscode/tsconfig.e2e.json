@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "ES2021",
+    "lib": ["ES2021"],
+    "outDir": "out-e2e",
+    "rootDir": "src/e2e/vscode",
+    "sourceMap": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "types": ["node", "mocha", "vscode"]
+  },
+  "include": ["src/e2e/vscode/**/*.ts"]
+}

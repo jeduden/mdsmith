@@ -2,8 +2,11 @@
 .vscodeignore
 src/**
 tsconfig.json
+tsconfig.e2e.json
 build.ts
 bun.lock
 node_modules/**
+out-e2e/**
+.vscode-test/**
 **/*.map
 **/*.ts
