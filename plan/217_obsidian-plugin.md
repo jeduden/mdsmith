@@ -250,32 +250,31 @@ artifact.
 
 ## Acceptance Criteria
 
-- [x] `editors/obsidian/` builds with
-      `bun run build.ts --production`.
-      Output: `dist/main.js`,
-      `dist/mdsmith.wasm`,
-      `dist/wasm_exec.js`,
+- [x] `editors/obsidian/` builds with `bun run build.ts --production`.
+      Output: `dist/main.js`, `dist/mdsmith.wasm`, `dist/wasm_exec.js`,
       `manifest.json`, `styles.css`.
-- [x] `bun test` passes. Coverage spans
-      runtime marshalling, workspace
-      snapshot, diagnostics decoration,
-      and settings round-trip.
-- [x] Loading the plugin in a vault with
-      an `MDS001` violation shows a wavy
-      underline within 1 s of opening the
-      file on desktop, 2 s on a modern
-      iPad.
-- [x] Hover tooltip is issue-first: message,
-      then the schema constraint (a navigable link
-      when it has a file/line, else plain text),
-      then rule code and a docs link. The "Fix"
-      link applies the quick-fix.
+- [x] `bun test` passes. Coverage spans runtime marshalling, workspace
+      snapshot, diagnostics decoration, and settings round-trip, plus an
+      end-to-end `src/plugin.e2e.test.ts` backing criteria 3 and 6.
+- [x] Loading the plugin in a vault with an `MDS001` violation shows a
+      wavy underline within 1 s of opening the file on desktop, 2 s on a
+      modern iPad. Backed end-to-end by `src/plugin.e2e.test.ts`
+      (criterion 3): it boots the real plugin over the WASM engine,
+      drives file-open → check, and asserts the editor gets the engine's
+      `MDS001` and `buildDecorations` yields an underline span on the
+      violation line. The timing budget is held by `wasm-runtime.bench.ts`.
+- [x] Hover tooltip is issue-first: message, then the schema constraint
+      (a navigable link when it has a file/line, else plain text), then
+      rule code and a docs link. The "Fix" link applies the quick-fix.
 - [x] `mdsmith: Fix file` produces the
       same buffer as `mdsmith fix` on the
       same input.
-- [x] `fixOnSave: true` runs `Fix file`
-      after each save without a plugin
-      restart.
+- [x] `fixOnSave: true` runs `Fix file` after each save without a
+      plugin restart. Backed end-to-end by `src/plugin.e2e.test.ts`
+      (criterion 6): a vault `modify` of the active file replaces the
+      buffer with the engine's fixed source after the debounce, no
+      restart, and the wrong-buffer guards hold (an unrelated save does
+      not fix; switching notes mid-debounce does not fix the wrong one).
 - [x] `manifest.json` does NOT set
       `isDesktopOnly`. Mobile loads the
       plugin.
