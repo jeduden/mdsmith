@@ -66,7 +66,7 @@ export default class MdsmithPlugin extends Plugin {
   private runtime: MdsmithRuntime | undefined;
   private sync: WorkspaceSync | undefined;
   private fixOnSaveRef: EventRef | undefined;
-  private debouncedFixOnSave: DebouncedFn<[]> | undefined;
+  private debouncedFixOnSave: DebouncedFn<[string]> | undefined;
   private lineCommandIds: string[] = [];
   // The latest diagnostics per uri, for the workspace diagnostics view.
   private diagnosticsByUri = new Map<string, Diagnostic[]>();
@@ -225,8 +225,20 @@ export default class MdsmithPlugin extends Plugin {
     cm.dispatch({ effects: setDiagnostics.of(diags) });
   }
 
+  // isActiveFilePath reports whether path is the active Markdown view's
+  // file. Obsidian's vault `modify` fires for ANY vault file (background
+  // sync, other plugins), so the on-save re-lint and fix-on-save both
+  // gate on this: a save to some other note must not touch the buffer
+  // the user is editing.
+  private isActiveFilePath(path: string): boolean {
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+    return view?.file?.path === path;
+  }
+
   // registerActiveFileCheck re-lints on the trigger the run mode picks:
-  // every change for onType, only on save (vault modify) for onSave.
+  // every change for onType, only on save (vault modify) for onSave. The
+  // modify handler filters to the active file so a background write to a
+  // different note never re-lints what the user is looking at.
   private registerActiveFileCheck(): void {
     this.registerEvent(
       this.app.workspace.on("active-leaf-change", () => {
@@ -239,8 +251,10 @@ export default class MdsmithPlugin extends Plugin {
       }),
     );
     this.registerEvent(
-      this.app.vault.on("modify", () => {
-        if (this.cfg.runMode === "onSave") void this.checkActiveFile();
+      this.app.vault.on("modify", (file) => {
+        if (this.cfg.runMode !== "onSave") return;
+        if (!this.isActiveFilePath(file.path)) return;
+        void this.checkActiveFile();
       }),
     );
   }
@@ -322,6 +336,14 @@ export default class MdsmithPlugin extends Plugin {
   // configureFixOnSave wires (or clears) the debounced save→Fix file
   // listener based on the current settings. fixOnSave is subordinate to
   // run mode: when run mode is off, a save never rewrites the buffer.
+  //
+  // Two correctness guards, both keyed on the modified file's path:
+  //   - The modify event filters to the active file, so a background
+  //     write to another note never rewrites the open buffer.
+  //   - The debounce carries the captured path, and the trailing
+  //     callback only fixes when the active view STILL points at that
+  //     path — so switching notes inside the 200 ms window never fixes
+  //     the wrong buffer.
   private configureFixOnSave(): void {
     if (this.fixOnSaveRef) {
       this.app.vault.offref(this.fixOnSaveRef);
@@ -330,13 +352,18 @@ export default class MdsmithPlugin extends Plugin {
     this.debouncedFixOnSave?.cancel();
     this.debouncedFixOnSave = undefined;
     if (!this.cfg.fixOnSave || this.cfg.runMode === "off") return;
-    this.debouncedFixOnSave = debounce(() => {
+    this.debouncedFixOnSave = debounce((path: string) => {
+      // Re-read the active view at fire time: if the user switched notes
+      // within the debounce window, the captured path no longer matches
+      // and we skip rather than fix a different buffer.
       const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-      if (view) void this.fixFile(view.editor, view);
+      if (view?.file?.path !== path) return;
+      void this.fixFile(view.editor, view);
     }, 200);
-    this.fixOnSaveRef = this.app.vault.on("modify", () =>
-      this.debouncedFixOnSave?.(),
-    );
+    this.fixOnSaveRef = this.app.vault.on("modify", (file) => {
+      if (!this.isActiveFilePath(file.path)) return;
+      this.debouncedFixOnSave?.(file.path);
+    });
     this.registerEvent(this.fixOnSaveRef);
   }
 
