@@ -12,7 +12,7 @@ import (
 // negative arm returns nil without paying detectPrefix.
 func TestTryParseTable_StartAtLastLine(t *testing.T) {
 	lines := [][]byte{[]byte("| only one row |")}
-	tbl, end := tryParseTable(lines, 0, map[int]bool{})
+	tbl, end := tryParseTable(lines, 0, map[int]struct{}{})
 	require.Nil(t, tbl)
 	require.Equal(t, 0, end)
 }
@@ -25,7 +25,7 @@ func TestTryParseTable_HeaderNotTableRow(t *testing.T) {
 		[]byte("| foo"),
 		[]byte("| bar |"),
 	}
-	tbl, _ := tryParseTable(lines, 0, map[int]bool{})
+	tbl, _ := tryParseTable(lines, 0, map[int]struct{}{})
 	require.Nil(t, tbl)
 }
 
@@ -40,7 +40,7 @@ func TestFindTables_TryParseReturnsNil(t *testing.T) {
 		[]byte("| not a table"),
 		[]byte("just prose"),
 	}
-	got := findTables(lines, map[int]bool{})
+	got := findTables(lines, map[int]struct{}{})
 	require.Empty(t, got)
 }
 

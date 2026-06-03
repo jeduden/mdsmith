@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
@@ -260,14 +261,22 @@ func IsTable(para *ast.Paragraph, f *lint.File) bool {
 	return bytes.HasPrefix(bytes.TrimSpace(f.Source[seg.Start:seg.Stop]), []byte("|"))
 }
 
+// headingTextPool pools bytes.Buffer values used by HeadingText so
+// heading-text extraction in the hot-path rule walk allocates zero
+// buffers per call instead of one.
+var headingTextPool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
+
 // HeadingText returns the plain-text content of a heading by
 // recursively extracting all text segments from its children.
 func HeadingText(heading *ast.Heading, source []byte) string {
-	var buf bytes.Buffer
+	buf := headingTextPool.Get().(*bytes.Buffer)
+	buf.Reset()
 	for c := heading.FirstChild(); c != nil; c = c.NextSibling() {
-		ExtractText(c, source, &buf)
+		ExtractText(c, source, buf)
 	}
-	return buf.String()
+	s := buf.String()
+	headingTextPool.Put(buf)
+	return s
 }
 
 // ExtractText recursively writes the text content of n and its

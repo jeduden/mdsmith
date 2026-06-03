@@ -64,7 +64,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
 	for i, line := range f.Lines {
 		lineNum := i + 1
-		if skip[lineNum] {
+		if _, ok := skip[lineNum]; ok {
 			continue
 		}
 		masked := maskCodeSpans(line, lineNum, codeSpanRanges, lineStarts)

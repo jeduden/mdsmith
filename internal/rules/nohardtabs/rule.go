@@ -30,7 +30,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
 	for i, line := range f.Lines {
 		lineNum := i + 1
-		if codeLines[lineNum] {
+		if _, ok := codeLines[lineNum]; ok {
 			continue
 		}
 		idx := bytes.IndexByte(line, '\t')
@@ -55,7 +55,7 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	result := make([]string, 0, len(f.Lines))
 	for i, line := range f.Lines {
 		lineNum := i + 1
-		if codeLines[lineNum] {
+		if _, ok := codeLines[lineNum]; ok {
 			result = append(result, string(line))
 			continue
 		}

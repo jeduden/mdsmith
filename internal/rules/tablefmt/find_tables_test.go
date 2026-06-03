@@ -40,7 +40,7 @@ func TestFindTables_SkipsNonPipeLines(t *testing.T) {
 		[]byte("|-----|------|"),
 		[]byte("| a   | b    |"),
 	}
-	got := findTables(lines, map[int]bool{})
+	got := findTables(lines, map[int]struct{}{})
 	require.Len(t, got, 1)
 	assert.Equal(t, 5, got[0].startLine)
 }

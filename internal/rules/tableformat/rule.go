@@ -164,23 +164,23 @@ func (r *Rule) config() tablefmt.Config {
 // only reads the skip set, so handing back the cache avoids a
 // per-Check allocation on the hot path. The merged map is built only
 // when one of the other inputs is non-empty.
-func formatSkipLines(f *lint.File) map[int]bool {
+func formatSkipLines(f *lint.File) map[int]struct{} {
 	code := lint.CollectCodeBlockLines(f)
 	pi := lint.CollectPIBlockLines(f)
 	gen := f.GeneratedRanges
 	if len(pi) == 0 && len(gen) == 0 {
 		return code
 	}
-	skip := make(map[int]bool, len(code)+len(pi))
+	skip := make(map[int]struct{}, len(code)+len(pi))
 	for n := range code {
-		skip[n] = true
+		skip[n] = struct{}{}
 	}
 	for n := range pi {
-		skip[n] = true
+		skip[n] = struct{}{}
 	}
 	for _, gr := range gen {
 		for n := gr.From; n <= gr.To; n++ {
-			skip[n] = true
+			skip[n] = struct{}{}
 		}
 	}
 	return skip

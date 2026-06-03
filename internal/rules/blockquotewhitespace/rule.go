@@ -54,7 +54,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	// a > that appears in the actual content of the blockquote is not flagged.
 	for i, line := range f.Lines {
 		lineNum := i + 1
-		if codeLines[lineNum] {
+		if _, ok := codeLines[lineNum]; ok {
 			continue
 		}
 		prefix := reBlockquotePrefix.Find(line)
@@ -133,7 +133,7 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	lines := make([]string, len(f.Lines))
 	for i, line := range f.Lines {
 		lineNum := i + 1
-		if codeLines[lineNum] {
+		if _, ok := codeLines[lineNum]; ok {
 			lines[i] = string(line)
 			continue
 		}

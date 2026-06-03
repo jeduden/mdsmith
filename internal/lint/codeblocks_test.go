@@ -37,11 +37,17 @@ func TestCollectPIBlockLines_CachedPerFile(t *testing.T) {
 // assertSameMap asserts the two maps are the identical backing map,
 // which proves the walk ran once and the result was cached rather than
 // recomputed (a fresh map each call would have a different address).
-func assertSameMap(t *testing.T, a, b map[int]bool) {
+func assertSameMap(t *testing.T, a, b map[int]struct{}) {
 	t.Helper()
-	a[-1] = true
-	assert.True(t, b[-1], "second call must return the cached map, not a fresh walk")
+	a[-1] = struct{}{}
+	_, ok := b[-1]
+	assert.True(t, ok, "second call must return the cached map, not a fresh walk")
 	delete(a, -1)
+}
+
+func inSet(m map[int]struct{}, k int) bool {
+	_, ok := m[k]
+	return ok
 }
 
 func TestCollectPIBlockLines_MultiLine(t *testing.T) {
@@ -58,10 +64,10 @@ func TestCollectPIBlockLines_MultiLine(t *testing.T) {
 	require.NoError(t, err)
 	lines := CollectPIBlockLines(f)
 	for _, ln := range []int{3, 4, 5} {
-		assert.True(t, lines[ln], "expected line %d to be in PI block lines", ln)
+		assert.True(t, inSet(lines, ln), "expected line %d to be in PI block lines", ln)
 	}
 	for _, ln := range []int{1, 2, 6, 7} {
-		assert.False(t, lines[ln], "expected line %d to NOT be in PI block lines", ln)
+		assert.False(t, inSet(lines, ln), "expected line %d to NOT be in PI block lines", ln)
 	}
 }
 
@@ -87,11 +93,11 @@ func TestCollectCodeBlockLines_FencedCodeBlock(t *testing.T) {
 	lines := CollectCodeBlockLines(f)
 	// Lines 3 (open fence), 4 (content), 5 (close fence) should be in set.
 	for _, ln := range []int{3, 4, 5} {
-		assert.True(t, lines[ln], "expected line %d to be in code block lines", ln)
+		assert.True(t, inSet(lines, ln), "expected line %d to be in code block lines", ln)
 	}
 	// Lines 1, 2 should NOT be in set.
 	for _, ln := range []int{1, 2} {
-		assert.False(t, lines[ln], "expected line %d to NOT be in code block lines", ln)
+		assert.False(t, inSet(lines, ln), "expected line %d to NOT be in code block lines", ln)
 	}
 }
 
@@ -101,7 +107,7 @@ func TestCollectCodeBlockLines_FencedWithInfoString(t *testing.T) {
 	require.NoError(t, err)
 	lines := CollectCodeBlockLines(f)
 	for _, ln := range []int{3, 4, 5} {
-		assert.True(t, lines[ln], "expected line %d to be in code block lines", ln)
+		assert.True(t, inSet(lines, ln), "expected line %d to be in code block lines", ln)
 	}
 }
 
@@ -112,10 +118,10 @@ func TestCollectCodeBlockLines_IndentedCodeBlock(t *testing.T) {
 	require.NoError(t, err)
 	lines := CollectCodeBlockLines(f)
 	for _, ln := range []int{3, 4} {
-		assert.True(t, lines[ln], "expected line %d to be in code block lines", ln)
+		assert.True(t, inSet(lines, ln), "expected line %d to be in code block lines", ln)
 	}
 	// Line 1 should not be in set.
-	assert.False(t, lines[1], "expected line 1 to NOT be in code block lines")
+	assert.False(t, inSet(lines, 1), "expected line 1 to NOT be in code block lines")
 }
 
 func TestCollectCodeBlockLines_NoCodeBlocks(t *testing.T) {
@@ -149,7 +155,7 @@ func TestCollectCodeBlockLines_EmptyFencedCodeBlockWithInfo(t *testing.T) {
 	lines := CollectCodeBlockLines(f)
 	// Line 1 (open fence) and line 2 (close fence) should be in the set.
 	for _, ln := range []int{1, 2} {
-		assert.True(t, lines[ln], "expected line %d to be in code block lines", ln)
+		assert.True(t, inSet(lines, ln), "expected line %d to be in code block lines", ln)
 	}
 }
 
@@ -160,10 +166,10 @@ func TestCollectCodeBlockLines_MultipleFencedCodeBlocks(t *testing.T) {
 	lines := CollectCodeBlockLines(f)
 	// Lines 1,2,3 (first block) and 5,6,7 (second block).
 	for _, ln := range []int{1, 2, 3, 5, 6, 7} {
-		assert.True(t, lines[ln], "expected line %d to be in code block lines", ln)
+		assert.True(t, inSet(lines, ln), "expected line %d to be in code block lines", ln)
 	}
 	// Line 4 (blank between blocks) should NOT be.
-	assert.False(t, lines[4], "expected line 4 to NOT be in code block lines")
+	assert.False(t, inSet(lines, 4), "expected line 4 to NOT be in code block lines")
 }
 
 func TestCollectCodeBlockLines_TildeFence(t *testing.T) {
@@ -172,7 +178,7 @@ func TestCollectCodeBlockLines_TildeFence(t *testing.T) {
 	require.NoError(t, err)
 	lines := CollectCodeBlockLines(f)
 	for _, ln := range []int{1, 2, 3} {
-		assert.True(t, lines[ln], "expected line %d to be in code block lines", ln)
+		assert.True(t, inSet(lines, ln), "expected line %d to be in code block lines", ln)
 	}
 }
 
@@ -182,7 +188,7 @@ func TestCollectCodeBlockLines_FencedWithMultipleContentLines(t *testing.T) {
 	require.NoError(t, err)
 	lines := CollectCodeBlockLines(f)
 	for _, ln := range []int{1, 2, 3, 4, 5} {
-		assert.True(t, lines[ln], "expected line %d to be in code block lines", ln)
+		assert.True(t, inSet(lines, ln), "expected line %d to be in code block lines", ln)
 	}
 }
 
@@ -201,8 +207,8 @@ func TestCollectCodeBlockLines_TabIndentedLine(t *testing.T) {
 	f, err := NewFile("test.md", src)
 	require.NoError(t, err)
 	lines := CollectCodeBlockLines(f)
-	assert.True(t, lines[1], "expected line 1 to be in code block lines (tab-indented = indented code block)")
-	assert.False(t, lines[2], "expected line 2 to NOT be in code block lines")
+	assert.True(t, inSet(lines, 1), "expected line 1 to be in code block lines (tab-indented = indented code block)")
+	assert.False(t, inSet(lines, 2), "expected line 2 to NOT be in code block lines")
 }
 
 func TestCollectCodeBlockLines_FencedWithBlankLinesInside(t *testing.T) {
@@ -212,7 +218,7 @@ func TestCollectCodeBlockLines_FencedWithBlankLinesInside(t *testing.T) {
 	require.NoError(t, err)
 	lines := CollectCodeBlockLines(f)
 	for _, ln := range []int{1, 2, 3, 4, 5, 6} {
-		assert.True(t, lines[ln], "expected line %d to be in code block lines", ln)
+		assert.True(t, inSet(lines, ln), "expected line %d to be in code block lines", ln)
 	}
 }
 
@@ -221,7 +227,7 @@ func TestCollectCodeBlockLines_FencedWithBlankLinesInside(t *testing.T) {
 // ast.Walk closure; the guard exists so unit-test struct-literal
 // *File values with no AST stay safe to call.
 func TestCollectPIBlockLinesInto_NilNode(t *testing.T) {
-	lines := map[int]bool{}
+	lines := map[int]struct{}{}
 	collectPIBlockLinesInto(nil, &File{}, lines)
 	assert.Empty(t, lines)
 }
@@ -229,7 +235,7 @@ func TestCollectPIBlockLinesInto_NilNode(t *testing.T) {
 // TestCollectCodeBlockLinesInto_NilNode pins the same nil-node
 // guard for the code-block walker. Mirrors PIBlockLinesInto.
 func TestCollectCodeBlockLinesInto_NilNode(t *testing.T) {
-	lines := map[int]bool{}
+	lines := map[int]struct{}{}
 	collectCodeBlockLinesInto(nil, &File{}, lines)
 	assert.Empty(t, lines)
 }

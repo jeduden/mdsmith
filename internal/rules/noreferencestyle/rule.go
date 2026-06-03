@@ -227,7 +227,7 @@ func collectReferenceDefinitions(f *lint.File) []referenceDefinition {
 		labelStart, labelEnd, ok := scanRefDefLine(source, lineStart, eol)
 		if ok {
 			raw := source[labelStart:labelEnd]
-			if labelInRefs(raw, refs) && !codeLines[lineNum] {
+			if _, inCode := codeLines[lineNum]; labelInRefs(raw, refs) && !inCode {
 				bracketAbs := labelStart - 1
 				end := eol
 				// Include the trailing newline so a fix can drop the
@@ -362,7 +362,7 @@ var footnoteRefRE = regexp.MustCompile(`\[\^([^\]\n]+)\]`)
 var footnoteDefRE = regexp.MustCompile(`(?m)^[ ]{0,3}\[\^([^\]\n]+)\]:`)
 
 func scanFootnoteReferences(
-	f *lint.File, codeLines map[int]bool, codeSpans []byteRange,
+	f *lint.File, codeLines map[int]struct{}, codeSpans []byteRange,
 ) []footnoteOccurrence {
 	source := f.Source
 	matches := footnoteRefRE.FindAllSubmatchIndex(source, -1)
@@ -374,7 +374,7 @@ func scanFootnoteReferences(
 			continue
 		}
 		line := f.LineOfOffset(start)
-		if codeLines[line] {
+		if _, ok := codeLines[line]; ok {
 			continue
 		}
 		if rangeContains(codeSpans, start) {
@@ -392,7 +392,7 @@ func scanFootnoteReferences(
 }
 
 func scanFootnoteDefinitions(
-	f *lint.File, codeLines map[int]bool,
+	f *lint.File, codeLines map[int]struct{},
 ) []footnoteOccurrence {
 	source := f.Source
 	matches := footnoteDefRE.FindAllSubmatchIndex(source, -1)
@@ -400,7 +400,7 @@ func scanFootnoteDefinitions(
 	for _, m := range matches {
 		start := m[0]
 		line := f.LineOfOffset(start)
-		if codeLines[line] {
+		if _, ok := codeLines[line]; ok {
 			continue
 		}
 		out = append(out, footnoteOccurrence{
@@ -452,10 +452,10 @@ func footnotePlacementMessage(
 	defs []footnoteOccurrence,
 	source []byte,
 ) string {
-	defLines := map[int]bool{}
+	defLines := map[int]struct{}{}
 	hasMatchingSlug := false
 	for _, d := range defs {
-		defLines[d.line] = true
+		defLines[d.line] = struct{}{}
 		if d.slug == ref.slug {
 			hasMatchingSlug = true
 		}
@@ -479,10 +479,13 @@ func footnotePlacementMessage(
 // belonging to the paragraph that contains `line`. The paragraph
 // stops at the next blank line, the next footnote definition, or
 // end of file.
-func paragraphEndLine(source []byte, line int, defLines map[int]bool) int {
+func paragraphEndLine(source []byte, line int, defLines map[int]struct{}) int {
 	lines := bytes.Split(source, []byte("\n"))
 	end := line
-	for end < len(lines) && !isBlankLine(lines[end]) && !defLines[end+1] {
+	for end < len(lines) && !isBlankLine(lines[end]) {
+		if _, ok := defLines[end+1]; ok {
+			break
+		}
 		end++
 	}
 	return end

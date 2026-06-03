@@ -349,7 +349,7 @@ func emitLines(srcLines [][]byte, strip map[int]bool) []byte {
 // and anchor leading/trailing trims. That preserves intentional
 // blank lines inside fenced and indented code blocks, matching how
 // MDS008 (blank-line rule) leaves code-block whitespace alone.
-func normalizeBlankLines(src []byte, codeBlockLines map[int]bool) []byte {
+func normalizeBlankLines(src []byte, codeBlockLines map[int]struct{}) []byte {
 	if len(src) == 0 {
 		return src
 	}
@@ -366,7 +366,8 @@ func normalizeBlankLines(src []byte, codeBlockLines map[int]bool) []byte {
 	}
 	lines := make([]srcLine, len(rawLines))
 	for i, l := range rawLines {
-		lines[i] = srcLine{text: l, inCode: codeBlockLines[i+1]}
+		_, inCode := codeBlockLines[i+1]
+		lines[i] = srcLine{text: l, inCode: inCode}
 	}
 
 	isBlank := func(l srcLine) bool {

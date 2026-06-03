@@ -90,7 +90,7 @@ func FormatStringWithConfig(s string, cfg Config) string {
 // Violations returns the formatting violations found in lines. codeLines
 // maps 1-based line numbers known to sit inside a fenced or indented
 // code block; those lines are skipped.
-func Violations(lines [][]byte, codeLines map[int]bool, cfg Config) []Violation {
+func Violations(lines [][]byte, codeLines map[int]struct{}, cfg Config) []Violation {
 	tables := findTables(lines, codeLines)
 	cfg = normalizeConfig(cfg)
 
@@ -111,7 +111,7 @@ func Violations(lines [][]byte, codeLines map[int]bool, cfg Config) []Violation 
 // FormatLines rewrites every table found in source with canonical
 // formatting, preserving everything else. lines must be the result of
 // splitting source on newlines (i.e. f.Lines from internal/lint).
-func FormatLines(source []byte, lines [][]byte, codeLines map[int]bool, cfg Config) []byte {
+func FormatLines(source []byte, lines [][]byte, codeLines map[int]struct{}, cfg Config) []byte {
 	tables := findTables(lines, codeLines)
 	if len(tables) == 0 {
 		out := make([]byte, len(source))
@@ -205,12 +205,12 @@ var separatorRe = regexp.MustCompile(`^:?-+:?$`)
 // otherwise pay — on every non-pipe line. On real corpora most
 // lines have no `|`, so the per-Check overhead drops to the cost of
 // scanning the lines that could plausibly start a table.
-func findTables(lines [][]byte, codeLines map[int]bool) []table {
+func findTables(lines [][]byte, codeLines map[int]struct{}) []table {
 	var tables []table
 	i := 0
 	for i < len(lines) {
 		lineNum := i + 1 // 1-based
-		if codeLines[lineNum] {
+		if _, ok := codeLines[lineNum]; ok {
 			i++
 			continue
 		}
@@ -233,7 +233,7 @@ func findTables(lines [][]byte, codeLines map[int]bool) []table {
 // Returns the table and the index of the line after the table, or nil if
 // no table starts here. A valid table must have at least a header row and
 // a separator row.
-func tryParseTable(lines [][]byte, start int, codeLines map[int]bool) (*table, int) {
+func tryParseTable(lines [][]byte, start int, codeLines map[int]struct{}) (*table, int) {
 	if start >= len(lines) {
 		return nil, start
 	}
@@ -247,7 +247,8 @@ func tryParseTable(lines [][]byte, start int, codeLines map[int]bool) (*table, i
 	}
 
 	// Need at least 2 lines (header + separator).
-	if start+1 >= len(lines) || codeLines[start+2] {
+	_, nextInCode := codeLines[start+2]
+	if start+1 >= len(lines) || nextInCode {
 		return nil, start
 	}
 
@@ -278,7 +279,7 @@ func tryParseTable(lines [][]byte, start int, codeLines map[int]bool) (*table, i
 	// Data rows.
 	end := start + 2
 	for end < len(lines) {
-		if codeLines[end+1] { // end is 0-based, codeLines is 1-based
+		if _, ok := codeLines[end+1]; ok { // end is 0-based, codeLines is 1-based
 			break
 		}
 		rowContent := stripPrefix(lines[end], prefix)

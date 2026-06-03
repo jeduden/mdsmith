@@ -212,10 +212,10 @@ type tableRow struct {
 
 var separatorRe = regexp.MustCompile(`^:?-+:?$`)
 
-func findTables(lines [][]byte, codeLines map[int]bool) []table {
+func findTables(lines [][]byte, codeLines map[int]struct{}) []table {
 	var tables []table
 	for i := 0; i < len(lines); {
-		if codeLines[i+1] {
+		if _, ok := codeLines[i+1]; ok {
 			i++
 			continue
 		}
@@ -242,7 +242,7 @@ func findTables(lines [][]byte, codeLines map[int]bool) []table {
 	return tables
 }
 
-func tryParseTable(lines [][]byte, start int, codeLines map[int]bool) (*table, int) {
+func tryParseTable(lines [][]byte, start int, codeLines map[int]struct{}) (*table, int) {
 	if start+1 >= len(lines) {
 		return nil, start
 	}
@@ -253,7 +253,7 @@ func tryParseTable(lines [][]byte, start int, codeLines map[int]bool) (*table, i
 		return nil, start
 	}
 
-	if codeLines[start+2] {
+	if _, ok := codeLines[start+2]; ok {
 		return nil, start
 	}
 	separator := stripPrefix(lines[start+1], prefix)
@@ -272,7 +272,7 @@ func tryParseTable(lines [][]byte, start int, codeLines map[int]bool) (*table, i
 
 	end := start + 2
 	for end < len(lines) {
-		if codeLines[end+1] {
+		if _, ok := codeLines[end+1]; ok {
 			break
 		}
 		content := stripPrefix(lines[end], prefix)

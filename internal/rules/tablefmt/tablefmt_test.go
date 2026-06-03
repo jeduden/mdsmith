@@ -168,7 +168,7 @@ func TestFindTables_FirstLineInCodeBlock_Skipped(t *testing.T) {
 	// there.
 	src := "| a | b |\n|---|---|\n| 1 | 2 |\n"
 	lines := splitLines(src)
-	tables := findTables(lines, map[int]bool{1: true})
+	tables := findTables(lines, map[int]struct{}{1: struct{}{}})
 	assert.Empty(t, tables, "no tables should be parsed when the header line is inside code")
 }
 
@@ -410,7 +410,7 @@ func TestTryParseTable_DataRowInCodeBlock(t *testing.T) {
 		[]byte("|---|---|"),
 		[]byte("| 1 | 2 |"),
 	}
-	codeLines := map[int]bool{3: true} // 1-based: line 3 is in code
+	codeLines := map[int]struct{}{3: struct{}{}} // 1-based: line 3 is in code
 	tbl, end := tryParseTable(lines, 0, codeLines)
 	require.NotNil(t, tbl, "expected a valid table (header+sep only)")
 	// end should be 2 (not 3), because data row at index 2 is in code
@@ -689,7 +689,7 @@ func TestFormatLines_TableInsideSkippedCodeBlock_NotRewritten(t *testing.T) {
 		"|---|---|\n" + // 8
 		"| foo | barbaz |\n") // 9
 	lines := splitLines(string(src))
-	codeLines := map[int]bool{2: true, 3: true, 4: true}
+	codeLines := map[int]struct{}{2: struct{}{}, 3: struct{}{}, 4: struct{}{}}
 
 	out := FormatLines(src, lines, codeLines, Config{Pad: 1})
 	outStr := string(out)

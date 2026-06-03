@@ -307,7 +307,7 @@ func collectDefinitions(f *lint.File) []referenceDefinition {
 	}
 
 	var (
-		codeLines, piLines map[int]bool
+		codeLines, piLines map[int]struct{}
 		blockLinesReady    bool
 		out                []referenceDefinition
 	)
@@ -328,7 +328,9 @@ func collectDefinitions(f *lint.File) []referenceDefinition {
 					piLines = lint.CollectPIBlockLines(f)
 					blockLinesReady = true
 				}
-				if !codeLines[lineNum] && !piLines[lineNum] &&
+				_, inCode := codeLines[lineNum]
+				_, inPI := piLines[lineNum]
+				if !inCode && !inPI &&
 					!lineInGeneratedRanges(lineNum, f.GeneratedRanges) {
 					bracketAbs := labelStart - 1
 					end := eol

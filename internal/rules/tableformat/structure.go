@@ -284,7 +284,9 @@ func structureSkipFunc(f *lint.File) func(int) bool {
 	pi := lint.CollectPIBlockLines(f)
 	gen := f.GeneratedRanges
 	return func(lineNum int) bool {
-		if code[lineNum] || pi[lineNum] {
+		_, inCode := code[lineNum]
+		_, inPI := pi[lineNum]
+		if inCode || inPI {
 			return true
 		}
 		for _, gr := range gen {

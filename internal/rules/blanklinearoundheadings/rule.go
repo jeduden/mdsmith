@@ -51,7 +51,7 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 
 	// Skip headings whose lines overlap with code block regions.
 	codeLines := lint.CollectCodeBlockLines(f)
-	if codeLines[line] {
+	if _, ok := codeLines[line]; ok {
 		return nil
 	}
 	lastLine := headingLastLine(heading, f)
@@ -150,7 +150,7 @@ func collectHeadingBlankLineInsertions(f *lint.File) (insertBefore, insertAfter 
 			return ast.WalkContinue, nil
 		}
 		line := astutil.HeadingLine(heading, f)
-		if codeLines[line] {
+		if _, ok := codeLines[line]; ok {
 			return ast.WalkContinue, nil
 		}
 		headings = append(headings, headingInfo{line: line, lastLine: headingLastLine(heading, f)})

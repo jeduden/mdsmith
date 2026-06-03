@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"unicode/utf8"
@@ -157,9 +156,9 @@ func (r *Rule) DefaultSettings() map[string]any {
 // and no per-line branch. Pre-creating empty maps to "look uniform"
 // added three wasted allocations per Check before plan 195.
 type lineCategories struct {
-	code    map[int]bool
-	table   map[int]bool
-	heading map[int]bool
+	code    map[int]struct{}
+	table   map[int]struct{}
+	heading map[int]struct{}
 }
 
 func (r *Rule) buildCategories(f *lint.File) lineCategories {
@@ -178,10 +177,10 @@ func (r *Rule) buildCategories(f *lint.File) lineCategories {
 
 // activeMax returns the effective maximum for a line given its categories.
 func (r *Rule) activeMax(baseMax int, lc lineCategories, lineNum int) int {
-	if lc.heading[lineNum] && r.HeadingMax != nil {
+	if _, ok := lc.heading[lineNum]; ok && r.HeadingMax != nil {
 		return *r.HeadingMax
 	}
-	if lc.code[lineNum] && r.CodeBlockMax != nil {
+	if _, ok := lc.code[lineNum]; ok && r.CodeBlockMax != nil {
 		return *r.CodeBlockMax
 	}
 	return baseMax
@@ -189,10 +188,10 @@ func (r *Rule) activeMax(baseMax int, lc lineCategories, lineNum int) int {
 
 // isSkipped returns true if the line should be excluded from checking.
 func (r *Rule) isSkipped(line []byte, lineNum, limit int, lc lineCategories) bool {
-	if r.isExcluded("code-blocks") && lc.code[lineNum] {
+	if _, ok := lc.code[lineNum]; r.isExcluded("code-blocks") && ok {
 		return true
 	}
-	if r.isExcluded("tables") && lc.table[lineNum] {
+	if _, ok := lc.table[lineNum]; r.isExcluded("tables") && ok {
 		return true
 	}
 	if r.isExcluded("urls") && isURLOnlyLine(line) {
@@ -380,11 +379,11 @@ func hasSpacePastLimit(line []byte, limit int) bool {
 // (`^\s*\|`) with a tight byte loop; the regexp engine's internal
 // buffer rentals were the dominant per-Check allocator for this
 // helper before plan 195.
-func collectTableLines(f *lint.File) map[int]bool {
-	lines := map[int]bool{}
+func collectTableLines(f *lint.File) map[int]struct{} {
+	lines := map[int]struct{}{}
 	for i, line := range f.Lines {
 		if isTableLineStart(line) {
-			lines[i+1] = true
+			lines[i+1] = struct{}{}
 		}
 	}
 	return lines
@@ -414,8 +413,8 @@ var setextUnderlineRe = regexp.MustCompile(`^[=-]+$`)
 
 // collectHeadingLines walks the AST and returns a set of 1-based line numbers
 // that are heading lines, including Setext underlines.
-func collectHeadingLines(f *lint.File) map[int]bool {
-	lines := map[int]bool{}
+func collectHeadingLines(f *lint.File) map[int]struct{} {
+	lines := map[int]struct{}{}
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
@@ -426,12 +425,12 @@ func collectHeadingLines(f *lint.File) map[int]bool {
 		}
 		ln := headingLineNum(h, f)
 		if ln > 0 {
-			lines[ln] = true
+			lines[ln] = struct{}{}
 			// For Setext headings, also include the underline line.
 			if ln < len(f.Lines) {
-				next := strings.TrimSpace(string(f.Lines[ln])) // 0-indexed: ln is the next line
-				if setextUnderlineRe.MatchString(next) {
-					lines[ln+1] = true
+				next := bytes.TrimSpace(f.Lines[ln]) // 0-indexed: ln is the next line
+				if setextUnderlineRe.Match(next) {
+					lines[ln+1] = struct{}{}
 				}
 			}
 		}

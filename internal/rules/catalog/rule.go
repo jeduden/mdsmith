@@ -588,7 +588,8 @@ func escapeDiag(filePath string, line int) globResolution {
 // silently producing partial matches.
 func containsDotDotInsideBraces(p string) bool {
 	depth := 0
-	for i := 0; i < len(p); i++ {
+	n := len(p)
+	for i := 0; i < n; i++ {
 		switch p[i] {
 		case '{':
 			depth++
@@ -597,7 +598,7 @@ func containsDotDotInsideBraces(p string) bool {
 				depth--
 			}
 		case '.':
-			if depth == 0 || i+1 >= len(p) || p[i+1] != '.' {
+			if depth == 0 || i+1 >= n || p[i+1] != '.' {
 				continue
 			}
 			if !braceSegmentBoundary(p, i-1) || !braceSegmentBoundary(p, i+2) {

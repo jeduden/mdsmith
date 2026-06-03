@@ -1,7 +1,7 @@
 package noduplicateheadings
 
 import (
-	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -55,7 +55,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 				RuleID:   r.ID(),
 				RuleName: r.Name(),
 				Severity: lint.Warning,
-				Message:  fmt.Sprintf("duplicate heading %q (first defined on line %d)", text, firstLine),
+				Message:  "duplicate heading " + strconv.Quote(text) + " (first defined on line " + strconv.Itoa(firstLine) + ")",
 			})
 		} else {
 			seen[text] = line

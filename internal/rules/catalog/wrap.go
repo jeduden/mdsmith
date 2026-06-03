@@ -63,10 +63,11 @@ func wrapCellBr(text string, maxWidth int) string {
 
 	spans := parseMarkdownSpansRunes(runes)
 	var lines []string
+	n := len(runes)
 	offset := 0 // current rune offset into original text
 
-	for len(runes)-offset > maxWidth {
-		remLen := len(runes) - offset
+	for n-offset > maxWidth {
+		remLen := n - offset
 		adjustedSpans := spansInRange(spans, offset, offset+remLen)
 		breakPos := findBreakPointRunes(runes[offset:], adjustedSpans, maxWidth)
 
@@ -79,12 +80,12 @@ func wrapCellBr(text string, maxWidth int) string {
 
 		// Advance past the break and any leading spaces.
 		offset += breakPos
-		for offset < len(runes) && runes[offset] == ' ' {
+		for offset < n && runes[offset] == ' ' {
 			offset++
 		}
 	}
 
-	if offset < len(runes) {
+	if offset < n {
 		lines = append(lines, string(runes[offset:]))
 	}
 
@@ -102,12 +103,13 @@ type markdownSpan struct {
 func parseMarkdownSpansRunes(runes []rune) []markdownSpan {
 	var spans []markdownSpan
 
+	n := len(runes)
 	i := 0
-	for i < len(runes) {
+	for i < n {
 		// Check for inline code: `...`
 		if runes[i] == '`' {
 			end := -1
-			for j := i + 1; j < len(runes); j++ {
+			for j := i + 1; j < n; j++ {
 				if runes[j] == '`' {
 					end = j
 					break
@@ -123,7 +125,7 @@ func parseMarkdownSpansRunes(runes []rune) []markdownSpan {
 		// Check for markdown link: [text](url)
 		if runes[i] == '[' {
 			closeBracket := findClosingBracketRunes(runes, i)
-			if closeBracket > i && closeBracket+1 < len(runes) && runes[closeBracket+1] == '(' {
+			if closeBracket > i && closeBracket+1 < n && runes[closeBracket+1] == '(' {
 				closeParen := findClosingParenRunes(runes, closeBracket+1)
 				if closeParen > closeBracket+1 {
 					spans = append(spans, markdownSpan{start: i, end: closeParen + 1})
@@ -142,7 +144,8 @@ func parseMarkdownSpansRunes(runes []rune) []markdownSpan {
 // findClosingBracketRunes finds the closing ] for an opening [ at pos in a rune slice.
 func findClosingBracketRunes(runes []rune, pos int) int {
 	depth := 0
-	for i := pos; i < len(runes); i++ {
+	n := len(runes)
+	for i := pos; i < n; i++ {
 		switch runes[i] {
 		case '[':
 			depth++
@@ -159,7 +162,8 @@ func findClosingBracketRunes(runes []rune, pos int) int {
 // findClosingParenRunes finds the closing ) for an opening ( at pos in a rune slice.
 func findClosingParenRunes(runes []rune, pos int) int {
 	depth := 0
-	for i := pos; i < len(runes); i++ {
+	n := len(runes)
+	for i := pos; i < n; i++ {
 		switch runes[i] {
 		case '(':
 			depth++

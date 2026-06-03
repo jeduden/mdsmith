@@ -65,7 +65,7 @@ func TestFindTables_SkipsNonPipeLines(t *testing.T) {
 		[]byte("|-----|------|"),
 		[]byte("| a   | b    |"),
 	}
-	got := findTables(lines, map[int]bool{})
+	got := findTables(lines, map[int]struct{}{})
 	if len(got) != 1 {
 		t.Fatalf("findTables returned %d tables, want 1", len(got))
 	}

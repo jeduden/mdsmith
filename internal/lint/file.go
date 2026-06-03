@@ -86,10 +86,10 @@ type File struct {
 	// profiling). The cached map is shared read-only with every
 	// caller; no caller mutates it. atomic.Bool + mutex matches
 	// newlineOffsets above for the same closure-box reason.
-	codeBlockLines     map[int]bool
+	codeBlockLines     map[int]struct{}
 	codeBlockLinesDone atomic.Bool
 	codeBlockLinesMu   sync.Mutex
-	piBlockLines       map[int]bool
+	piBlockLines       map[int]struct{}
 	piBlockLinesDone   atomic.Bool
 	piBlockLinesMu     sync.Mutex
 

@@ -50,7 +50,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	consecutiveBlanks := 0
 	for i, line := range f.Lines {
 		lineNum := i + 1
-		if codeLines[lineNum] {
+		if _, ok := codeLines[lineNum]; ok {
 			consecutiveBlanks = 0
 			continue
 		}
@@ -82,7 +82,7 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	consecutiveBlanks := 0
 	for i, line := range f.Lines {
 		lineNum := i + 1
-		if codeLines[lineNum] {
+		if _, ok := codeLines[lineNum]; ok {
 			result = append(result, string(line))
 			consecutiveBlanks = 0
 			continue
