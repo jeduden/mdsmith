@@ -149,6 +149,19 @@ func validateIncludeDirective(
 		}
 	}
 
+	// Validate heading-offset parameter if present.
+	if ho, ok := params["heading-offset"]; ok {
+		n, err := strconv.Atoi(strings.TrimSpace(ho))
+		if err != nil || n < -6 || n > 6 {
+			return []lint.Diagnostic{makeDiag(filePath, line,
+				`include directive "heading-offset" must be an integer between -6 and 6`)}
+		}
+		if _, hasHL := params["heading-level"]; hasHL {
+			return []lint.Diagnostic{makeDiag(filePath, line,
+				`include directive "heading-offset" cannot be combined with "heading-level"`)}
+		}
+	}
+
 	// Validate extract parameter if present.
 	if ex, ok := params["extract"]; ok {
 		if strings.TrimSpace(ex) == "" {
@@ -162,6 +175,10 @@ func validateIncludeDirective(
 		if _, hasHL := params["heading-level"]; hasHL {
 			return []lint.Diagnostic{makeDiag(filePath, line,
 				`include directive "extract" cannot be combined with "heading-level"`)}
+		}
+		if _, hasHO := params["heading-offset"]; hasHO {
+			return []lint.Diagnostic{makeDiag(filePath, line,
+				`include directive "extract" cannot be combined with "heading-offset"`)}
 		}
 		// generateIncludeContent returns the projected leaf directly
 		// for extract: directives and never runs the wrap / source-dir
@@ -323,6 +340,12 @@ func processIncludedContent(
 
 	if params["heading-level"] == "absolute" {
 		text = adjustHeadings(text, findParentHeadingLevel(f, line))
+	}
+	if off, ok := params["heading-offset"]; ok {
+		// Validated to a -6..6 integer in validateIncludeDirective; on any
+		// unexpected parse failure fall back to 0 (no shift).
+		n, _ := strconv.Atoi(strings.TrimSpace(off))
+		text = adjustHeadingsByOffset(text, n)
 	}
 	if wrap, ok := params["wrap"]; ok {
 		fence := strings.Repeat("`", minFenceLen(text))

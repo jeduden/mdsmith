@@ -555,6 +555,96 @@ func TestFix_HeadingLevelAbsolute(t *testing.T) {
 }
 
 // =====================================================================
+// Heading offset
+// =====================================================================
+
+func TestCheck_HeadingOffsetAtDocRoot(t *testing.T) {
+	fsys := fstest.MapFS{
+		"data.md": {Data: []byte("# Title\n\nText.\n\n## Sub\n\nMore.\n")},
+	}
+	// No heading precedes the marker, yet heading-offset still demotes:
+	// # -> ##, ## -> ###. This is the case absolute mode cannot handle.
+	src := "<?include\nfile: data.md\nheading-offset: \"1\"\n?>\n" +
+		"## Title\n\nText.\n\n### Sub\n\nMore.\n<?/include?>\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestCheck_HeadingOffsetNegative(t *testing.T) {
+	fsys := fstest.MapFS{
+		"data.md": {Data: []byte("## Two\n\n### Three\n")},
+	}
+	// heading-offset: "-1" promotes: ## -> #, ### -> ##.
+	src := "# Doc\n\n<?include\nfile: data.md\nheading-offset: \"-1\"\n?>\n" +
+		"# Two\n\n## Three\n<?/include?>\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestFix_HeadingOffset(t *testing.T) {
+	fsys := fstest.MapFS{
+		"data.md": {Data: []byte("# Title\n\n## Sub\n")},
+	}
+	src := "<?include\nfile: data.md\nheading-offset: \"1\"\n?>\n" +
+		"old\n<?/include?>\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	got := string(r.Fix(f))
+	want := "<?include\nfile: data.md\nheading-offset: \"1\"\n?>\n" +
+		"## Title\n\n### Sub\n<?/include?>\n"
+	assert.Equal(t, want, got, "Fix output mismatch\ngot:\n%s\nwant:\n%s", got, want)
+}
+
+func TestCheck_HeadingOffsetNonInteger(t *testing.T) {
+	fsys := fstest.MapFS{"data.md": {Data: []byte("content\n")}}
+	src := "<?include\nfile: data.md\nheading-offset: \"x\"\n?>\n" +
+		"content\n<?/include?>\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiagMsg(t, diags,
+		`"heading-offset" must be an integer between -6 and 6`)
+}
+
+func TestCheck_HeadingOffsetOutOfRange(t *testing.T) {
+	fsys := fstest.MapFS{"data.md": {Data: []byte("content\n")}}
+	src := "<?include\nfile: data.md\nheading-offset: \"7\"\n?>\n" +
+		"content\n<?/include?>\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiagMsg(t, diags,
+		`"heading-offset" must be an integer between -6 and 6`)
+}
+
+func TestCheck_HeadingOffsetWithHeadingLevel(t *testing.T) {
+	fsys := fstest.MapFS{"data.md": {Data: []byte("## A\n")}}
+	src := "# Doc\n\n<?include\nfile: data.md\n" +
+		"heading-level: \"absolute\"\nheading-offset: \"1\"\n?>\n" +
+		"## A\n<?/include?>\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiagMsg(t, diags,
+		`"heading-offset" cannot be combined with "heading-level"`)
+}
+
+func TestCheck_HeadingOffsetWithExtract(t *testing.T) {
+	fsys := fstest.MapFS{"data.md": {Data: []byte("content\n")}}
+	src := "<?include\nfile: data.md\n" +
+		"extract: foo\nheading-offset: \"1\"\n?>\ncontent\n<?/include?>\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiagMsg(t, diags,
+		`"extract" cannot be combined with "heading-offset"`)
+}
+
+// =====================================================================
 // Combined link adjustment and heading level
 // =====================================================================
 
