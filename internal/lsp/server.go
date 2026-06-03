@@ -126,6 +126,19 @@ type Server struct {
 	sessionMu sync.RWMutex
 	session   *mdsmith.Session
 	workspace *mdsmith.OverlayWorkspace
+	// newSession constructs the per-workspace Session. It is a test seam
+	// — production uses mdsmith.NewSession. NewSession only fails when its
+	// ConfigSource fails to load, and rebuildSession always passes a
+	// compiled (already-loaded) source, so the error path is unreachable
+	// in production; the seam lets a test drive rebuildSession's failure
+	// branch (and the nil-session guards downstream of it) red/green.
+	newSession func(mdsmith.SessionOptions) (*mdsmith.Session, error)
+	// afterLintCheck, when non-nil, runs in runLint immediately after the
+	// session Check returns and before the results are published. It is a
+	// test seam (nil in production) that lets a test deterministically
+	// simulate a didClose landing mid-lint — the race the "document was
+	// closed while we were linting" guard protects against.
+	afterLintCheck func()
 }
 
 // userSettings mirrors the subset of `mdsmith.*` VS Code keys the
@@ -241,6 +254,9 @@ func New(opts Options) *Server {
 		// (singleton.go) so both default closures are unit-testable.
 		singletonInterval: singletonPollInterval,
 		onSupersededExit:  func() { osExit(0) },
+		// Production session constructor; tests override to exercise the
+		// rebuild-failure branch.
+		newSession: mdsmith.NewSession,
 	}
 	if opts.EnableWorkspaceSingleton {
 		s.instanceID = newInstanceID()
@@ -1081,6 +1097,11 @@ func (s *Server) runLint(uri string) {
 		return
 	}
 	res := sess.CheckVersion(relPath, doc.text, doc.version)
+	if s.afterLintCheck != nil {
+		// Test seam: deterministically interpose a concurrent didClose /
+		// shutdown between the Check and the publish below.
+		s.afterLintCheck()
+	}
 	// engine.RunSource is CPU-bound and can run for hundreds of
 	// milliseconds on large buffers. The client may have requested
 	// shutdown/exit while we were busy; if so, drop everything we
@@ -1674,7 +1695,7 @@ func (s *Server) rebuildSession(cfg *config.Config, cfgPath string) {
 	// warning the LSP showed before).
 	s.resolveMaxInputBytes(cfg)
 	ws := mdsmith.NewOverlayWorkspace(root)
-	sess, err := mdsmith.NewSession(mdsmith.SessionOptions{
+	sess, err := s.newSession(mdsmith.SessionOptions{
 		Workspace: ws,
 		Config:    mdsmith.ConfigCompiled(cfg, cfgPath),
 	})
