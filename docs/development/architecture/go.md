@@ -162,10 +162,16 @@ need.
 The compiler enforces it. The arrows that
 must hold:
 
-- `cmd/mdsmith` may import `internal/...`.
-- `internal/lsp` may import
-  `internal/engine` and its support
-  packages.
+- `cmd/mdsmith` may import `internal/...`
+  and `pkg/mdsmith`.
+- `internal/lsp` depends on `pkg/mdsmith`
+  for every lint, fix, and navigation
+  path; it does not import
+  `internal/engine` directly (plan 219).
+- `pkg/mdsmith` is the sanctioned
+  `Session` entrypoint over
+  `internal/engine`. Both entry points
+  depend on it, never the reverse.
 - `internal/index` is a peer support
   package both entry points may import;
   it must never import `internal/lsp`
@@ -191,17 +197,17 @@ appropriate ports package).
 
 ## Clean wiring in `cmd/mdsmith`
 
-The CLI entry does flag parsing,
-constructs the engine with its
-dependencies, invokes a subcommand
-handler, and translates the result into
-an exit code and output stream. Anything
-domain-related — including how files are
-discovered, how diagnostics are merged,
-how plans are validated — belongs in
-`internal/engine` or its dependencies. A
-handler in `cmd/mdsmith` longer than
-~50 lines is a smell.
+The CLI entry parses flags, builds a
+`pkg/mdsmith.Session` for its check/fix
+path (or the engine directly for a
+specialized command), invokes a
+subcommand handler, and maps the result
+to an exit code. Domain logic — file
+discovery, diagnostic merging, plan
+validation — belongs in `pkg/mdsmith`,
+`internal/engine`, or their dependencies.
+A handler longer than ~50 lines is a
+smell.
 
 ## Errors and panics
 
