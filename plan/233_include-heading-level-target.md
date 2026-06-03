@@ -108,25 +108,25 @@ and in fenced doc examples, never as a live directive.
 
 ## Tasks
 
-1. [ ] Add `adjustHeadingsToLevel(content, target)` to
+1. [x] Add `adjustHeadingsToLevel(content, target)` to
    [`headings.go`][headings], reusing `findMinHeadingLevel`
    and `applyShift`. Unit tests for pin, promote, clamp,
    zero-shift no-op, no-heading, and setext land first,
    red.
-2. [ ] Accept an integer 1-6 for `heading-level` in
+2. [x] Accept an integer 1-6 for `heading-level` in
    `validateIncludeDirective`; update the error message. A
    unit test pins the valid and invalid cases.
-3. [ ] Apply the numeric target in `processIncludedContent`
+3. [x] Apply the numeric target in `processIncludedContent`
    via `adjustHeadingsToLevel`, leaving the `"absolute"`
    branch untouched.
-4. [ ] Add a good/bad/fixed fixture trio under
+4. [x] Add a good/bad/fixed fixture trio under
    [MDS021-include][dir] exercising `heading-level: "2"`.
-5. [ ] Update the rule README ([MDS021-include][readme]):
+5. [x] Update the rule README ([MDS021-include][readme]):
    the parameter table, the heading-level section, an
    example, and the new diagnostic message row.
-6. [ ] Update the directive guide ([generating][guide])
+6. [x] Update the directive guide ([generating][guide])
    and the built-in help ([help][help]).
-7. [ ] Run `go test ./...`, `go tool golangci-lint run`,
+7. [x] Run `go test ./...`, `go tool golangci-lint run`,
    the allocation-budget test, and `mdsmith check .`.
    Confirm `mdsmith check .` shows no churn in the tracked
    files that use `heading-level: "absolute"`.
@@ -145,18 +145,18 @@ and in fenced doc examples, never as a live directive.
 
 ## Acceptance Criteria
 
-- [ ] `heading-level: "2"` pins the shallowest embedded
+- [x] `heading-level: "2"` pins the shallowest embedded
       heading to level 2 on `mdsmith fix`, even at the
       document root
-- [ ] `heading-level: "1"` promotes a source that starts
+- [x] `heading-level: "1"` promotes a source that starts
       deeper, clamped at level 1
-- [ ] `heading-level: "absolute"` output is unchanged for
+- [x] `heading-level: "absolute"` output is unchanged for
       existing tracked includes (no churn)
-- [ ] A non-integer or out-of-range `heading-level` is a
+- [x] A non-integer or out-of-range `heading-level` is a
       lint error naming the allowed values
-- [ ] `heading-level` numeric still cannot pair with
+- [x] `heading-level` numeric still cannot pair with
       `heading-offset` or `extract`
-- [ ] No tracked Markdown uses the numeric form, so
+- [x] No tracked Markdown uses the numeric form, so
       `mdsmith-fixed-version` stays green
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
