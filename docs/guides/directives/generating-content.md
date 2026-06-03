@@ -283,8 +283,9 @@ promotes them. Unlike `heading-level: "absolute"`, the
 shift does not depend on a preceding heading, so it also
 works at the document root — handy when a file's visual
 title is a logo or image rather than an H1.
-`heading-offset` and `heading-level` are mutually
-exclusive.
+`heading-offset` cannot combine with `heading-level` or
+`extract:` — those parameters are mutually exclusive with
+it.
 
 ### Link rewriting
 

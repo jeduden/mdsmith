@@ -42,14 +42,14 @@ for details.
 
 ## Parameters
 
-| Parameter           | Required | Default  | Description                                                                                |
-| ------------------- | -------- | -------- | ------------------------------------------------------------------------------------------ |
-| `file`              | yes      | --       | Relative path to include                                                                   |
-| `extract`           | no       | --       | Dotted path through the extract projection of a kind-typed `file:`. Splices one leaf value |
-| `strip-frontmatter` | no       | `"true"` | Remove YAML frontmatter (incompatible with `extract:`)                                     |
-| `wrap`              | no       | --       | Wrap in code fence (value = language)                                                      |
-| `heading-level`     | no       | --       | `"absolute"`: shift headings to nest under parent (incompatible with `extract:`)           |
-| `heading-offset`    | no       | --       | Signed integer -6 to 6: shift every heading by N (incompatible with `heading-level`)       |
+| Parameter           | Required | Default  | Description                                                                                      |
+| ------------------- | -------- | -------- | ------------------------------------------------------------------------------------------------ |
+| `file`              | yes      | --       | Relative path to include                                                                         |
+| `extract`           | no       | --       | Dotted path through the extract projection of a kind-typed `file:`. Splices one leaf value       |
+| `strip-frontmatter` | no       | `"true"` | Remove YAML frontmatter (incompatible with `extract:`)                                           |
+| `wrap`              | no       | --       | Wrap in code fence (value = language)                                                            |
+| `heading-level`     | no       | --       | `"absolute"`: shift headings to nest under parent (incompatible with `extract:`)                 |
+| `heading-offset`    | no       | --       | Signed integer -6 to 6: shift every heading by N (incompatible with `heading-level`, `extract:`) |
 
 ## Link Adjustment
 
@@ -89,8 +89,8 @@ capped at the 1-6 range.
 
 Unlike `heading-level: "absolute"`, the shift is fixed. It
 does not read a preceding heading, so it also applies at
-the document root. `heading-offset` and `heading-level`
-are mutually exclusive.
+the document root. `heading-offset` cannot combine with
+`heading-level` or `extract:`.
 
 ## Cycle Detection
 
