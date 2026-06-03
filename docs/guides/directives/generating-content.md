@@ -245,9 +245,10 @@ key: value
 
 ### Heading-level adjustment
 
-When including under an existing heading, use
-`heading-level: "absolute"` to shift included
-headings so they nest correctly:
+`heading-level` takes `"absolute"` or an integer 1-6.
+
+Use `"absolute"` when including under an existing heading,
+to shift included headings so they nest correctly:
 
 ```markdown
 ## Project
@@ -263,6 +264,21 @@ Steps here.
 
 Without this parameter, included headings keep their
 original level, which may break heading hierarchy.
+
+Use an integer to pin the shallowest included heading to
+that level, whatever the source or parent — handy at the
+document root, where `"absolute"` is a no-op:
+
+```markdown
+<?include
+file: features.md
+heading-level: "2"
+?>
+## Pinned To Level 2
+<?/include?>
+```
+
+`heading-level` is mutually exclusive with `heading-offset`.
 
 ### Heading-offset adjustment
 

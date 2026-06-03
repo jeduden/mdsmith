@@ -48,7 +48,7 @@ for details.
 | `extract`           | no       | --       | Dotted path through the extract projection of a kind-typed `file:`. Splices one leaf value       |
 | `strip-frontmatter` | no       | `"true"` | Remove YAML frontmatter (incompatible with `extract:`)                                           |
 | `wrap`              | no       | --       | Wrap in code fence (value = language)                                                            |
-| `heading-level`     | no       | --       | `"absolute"`: shift headings to nest under parent (incompatible with `extract:`)                 |
+| `heading-level`     | no       | --       | `"absolute"` or 1-6: nest under parent, or pin shallowest heading to that level                  |
 | `heading-offset`    | no       | --       | Signed integer -6 to 6: shift every heading by N (incompatible with `heading-level`, `extract:`) |
 
 ## Link Adjustment
@@ -66,18 +66,23 @@ For example, `DEVELOPMENT.md` contains
 
 ## Heading-Level Adjustment
 
-When `heading-level: "absolute"` is set, included
-headings shift so the top-level heading becomes a
-child of the enclosing section.
+`heading-level` takes `"absolute"` or an integer 1-6.
 
-Example: the marker sits under `## Project` (level 2).
-The included file has `## Build` (level 2) and
-`### Sub` (level 3). The shift is
-`2 - 2 + 1 = 1`. Result: `### Build` (3) and
-`#### Sub` (4). Levels are capped at 6.
+`"absolute"` is parent-relative: included headings shift
+so the shallowest one becomes a child of the enclosing
+section. The marker sits under `## Project` (level 2). The
+included file has `## Build` (2) and `### Sub` (3). The
+shift is `2 - 2 + 1 = 1`: `### Build` (3) and `#### Sub`
+(4). At the document root no shift is applied.
 
-When the marker sits at document root (no preceding
-heading), no shift is applied.
+An integer pins the shallowest included heading to that
+level, whatever the source starts at, so it also works at
+the document root. `heading-level: "2"` renders a source
+`# Title` / `## Sub` as `## Title` / `### Sub`. A deeper
+source is promoted; levels are capped at 1-6.
+
+`heading-level` cannot combine with `heading-offset` or
+`extract:`.
 
 ## Heading-Offset Adjustment
 
@@ -252,26 +257,26 @@ Outdated content
 
 ## Diagnostics
 
-| Condition              | Message                                                                    |
-| ---------------------- | -------------------------------------------------------------------------- |
-| content mismatch       | generated section is out of date                                           |
-| missing file           | include file "x.md" not found                                              |
-| no file param          | include directive missing required "file" parameter                        |
-| absolute path          | include directive has absolute file path                                   |
-| escapes root           | include file path escapes project root                                     |
-| no root for dotdot     | include file path contains ".." but project root is not configured         |
-| invalid heading-level  | include directive "heading-level" must be "absolute"                       |
-| invalid heading-offset | include directive "heading-offset" must be an integer between -6 and 6     |
-| offset + level         | include directive "heading-offset" cannot be combined with "heading-level" |
-| empty extract          | include directive "extract" value is empty                                 |
-| extract + sfm          | include directive "extract" cannot be combined with "strip-frontmatter"    |
-| extract + hl           | include directive "extract" cannot be combined with "heading-level"        |
-| extract + offset       | include directive "extract" cannot be combined with "heading-offset"       |
-| extract miss           | extract: missing key "x" in extract projection                             |
-| extract no kind        | extract: "x.md" has no resolved kind; cannot project a typed value         |
-| extract not conformant | extract: target file does not conform to its schema: ...                   |
-| cyclic include         | cyclic include: a.md -> b.md -> a.md                                       |
-| depth exceeded         | include depth exceeds maximum (10)                                         |
+| Condition              | Message                                                                            |
+| ---------------------- | ---------------------------------------------------------------------------------- |
+| content mismatch       | generated section is out of date                                                   |
+| missing file           | include file "x.md" not found                                                      |
+| no file param          | include directive missing required "file" parameter                                |
+| absolute path          | include directive has absolute file path                                           |
+| escapes root           | include file path escapes project root                                             |
+| no root for dotdot     | include file path contains ".." but project root is not configured                 |
+| invalid heading-level  | include directive "heading-level" must be "absolute" or an integer between 1 and 6 |
+| invalid heading-offset | include directive "heading-offset" must be an integer between -6 and 6             |
+| offset + level         | include directive "heading-offset" cannot be combined with "heading-level"         |
+| empty extract          | include directive "extract" value is empty                                         |
+| extract + sfm          | include directive "extract" cannot be combined with "strip-frontmatter"            |
+| extract + hl           | include directive "extract" cannot be combined with "heading-level"                |
+| extract + offset       | include directive "extract" cannot be combined with "heading-offset"               |
+| extract miss           | extract: missing key "x" in extract projection                                     |
+| extract no kind        | extract: "x.md" has no resolved kind; cannot project a typed value                 |
+| extract not conformant | extract: target file does not conform to its schema: ...                           |
+| cyclic include         | cyclic include: a.md -> b.md -> a.md                                               |
+| depth exceeded         | include depth exceeds maximum (10)                                                 |
 
 ## Pattern
 
