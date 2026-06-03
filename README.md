@@ -1,5 +1,3 @@
-# 🔨 mdsmith
-
 <p align="center">
 <picture>
 <source media="(prefers-color-scheme: dark)" srcset="website/static/img/logo-lockup-inverse.svg">
