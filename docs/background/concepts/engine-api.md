@@ -78,10 +78,14 @@ lightbulb. `ResolveFile` returns the raw per-rule resolution the `kinds
 why` command walks:
 
 ```go
-func (s *Session) CheckVersion(uri string, source []byte, version int) ([]Diagnostic, error)
+func (s *Session) CheckVersion(uri string, source []byte, version int) *engine.Result
 func (s *Session) FixRule(uri string, source []byte, names []string) (FixResult, error)
 func (s *Session) ResolveFile(uri string, fmKinds []string, fmFields map[string]any) *config.FileResolution
 ```
+
+`CheckVersion` returns the engine `Result`, not the public `Diagnostic`
+slice. That keeps the LSP's own diagnostic partitioning and error
+surfacing, consistent with the batch ops above.
 
 Introspection and lifecycle round out the surface:
 

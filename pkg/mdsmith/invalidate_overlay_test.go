@@ -75,13 +75,9 @@ func TestInvalidateDropsVersionParseCache(t *testing.T) {
 	s := newTestSession(t, "", nil)
 	src := []byte("# T\n\nBody paragraph here.\n")
 
-	if _, err := s.CheckVersion("a.md", src, 1); err != nil {
-		t.Fatalf("CheckVersion 1: %v", err)
-	}
+	s.CheckVersion("a.md", src, 1)
 	hits := s.parseCacheHits()
-	if _, err := s.CheckVersion("a.md", src, 1); err != nil {
-		t.Fatalf("CheckVersion 2: %v", err)
-	}
+	s.CheckVersion("a.md", src, 1)
 	if s.parseCacheHits() <= hits {
 		t.Fatal("expected a parse-cache hit before invalidation")
 	}
@@ -89,9 +85,7 @@ func TestInvalidateDropsVersionParseCache(t *testing.T) {
 	s.Invalidate("a.md", []byte("# T\n\nDifferent body now.\n"))
 
 	hitsAfter := s.parseCacheHits()
-	if _, err := s.CheckVersion("a.md", src, 1); err != nil {
-		t.Fatalf("CheckVersion 3: %v", err)
-	}
+	s.CheckVersion("a.md", src, 1)
 	if s.parseCacheHits() != hitsAfter {
 		t.Fatal("CheckVersion served the version parse cache after Invalidate dropped it")
 	}

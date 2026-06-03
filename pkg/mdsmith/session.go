@@ -225,7 +225,7 @@ func (s *Session) newRunner() *engine.Runner {
 }
 
 // CheckVersion lints source for uri at the editor's textDocument
-// version and returns its diagnostics. It is the LSP-facing per-
+// version and returns the engine result. It is the LSP-facing per-
 // keystroke entry point: the session's version-keyed parse cache serves
 // the parsed document when a prior call already parsed (uri, version),
 // so the engine skips re-parsing on a re-lint at the same version (the
@@ -235,7 +235,13 @@ func (s *Session) newRunner() *engine.Runner {
 // Cross-file rules read through the session workspace's FS view, so an
 // open-document overlay applied through Invalidate reaches them — the
 // LSP's unsaved-buffer bytes feed catalog/include/link rules.
-func (s *Session) CheckVersion(uri string, source []byte, version int) ([]Diagnostic, error) {
+//
+// Native-only: it returns the engine's own Result so the LSP keeps its
+// diagnostic partitioning (doc findings vs config-target findings) and
+// error surfacing. It is consistent with CheckPaths/CheckSource, which
+// also return the engine Result. A WASM host uses the JS-mirrored
+// Check.
+func (s *Session) CheckVersion(uri string, source []byte, version int) *engine.Result {
 	// Record a parse-cache hit for the test seam before delegating: the
 	// runner re-probes internally, but counting here keeps the seam off
 	// the engine's API. The extra map lookup is negligible against a
@@ -247,8 +253,7 @@ func (s *Session) CheckVersion(uri string, source []byte, version int) ([]Diagno
 	}
 	r := s.newRunner()
 	r.ParseCache = s.parseCache
-	res := r.RunSourceWithVersion(uri, source, version)
-	return toDiagnostics(res.Diagnostics), firstError(res.Errors)
+	return r.RunSourceWithVersion(uri, source, version)
 }
 
 // Check lints source (the in-memory bytes for uri) and returns its
