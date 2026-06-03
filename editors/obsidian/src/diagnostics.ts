@@ -148,6 +148,36 @@ export function ruleDocUrl(d: Diagnostic): string {
 // that only needs the message + Fix link.
 export type NavigateFn = (loc: RelatedLocation) => void;
 
+// setAttr sets an attribute via a structural cast, mirroring the docs
+// link below — the nodes this renderer builds are not statically typed
+// as full HTMLElements.
+function setAttr(el: HTMLElement, name: string, value: string): void {
+  (el as unknown as { setAttribute(n: string, v: string): void }).setAttribute(
+    name,
+    value,
+  );
+}
+
+// makeActivatable turns a non-form element (an <a>, used for styling)
+// into a keyboard-accessible control: focusable via tabindex, announced
+// as a button via role, and activated by click, Enter, or Space — so the
+// tooltip's Fix and navigate actions work without a mouse.
+function makeActivatable(el: HTMLElement, onActivate: () => void): void {
+  setAttr(el, "role", "button");
+  setAttr(el, "tabindex", "0");
+  el.addEventListener("click", (e: Event) => {
+    e.preventDefault();
+    onActivate();
+  });
+  el.addEventListener("keydown", (e: Event) => {
+    const key = (e as KeyboardEvent).key;
+    if (key === "Enter" || key === " ") {
+      e.preventDefault();
+      onActivate();
+    }
+  });
+}
+
 // renderTooltip composes the issue-first tooltip DOM node. Order: the
 // message (lead), each related location (the schema constraint — a
 // navigable link when it has a file/line, else plain text), the rule
@@ -188,15 +218,12 @@ export function renderTooltip(
   meta.appendChild(docs);
   container.appendChild(meta);
 
-  // 4. Fix link.
+  // 4. Fix link — a keyboard-accessible control (see makeActivatable).
   const fixRow = document.createElement("div");
   const fix = document.createElement("a");
   fix.className = "mdsmith-tooltip-fix";
   fix.textContent = "Fix";
-  fix.addEventListener("click", (e: Event) => {
-    e.preventDefault();
-    onFix();
-  });
+  makeActivatable(fix, onFix);
   fixRow.appendChild(fix);
   container.appendChild(fixRow);
 
@@ -217,10 +244,7 @@ function renderRelated(
     const link = document.createElement("a");
     link.className = "mdsmith-tooltip-related-link";
     link.textContent = loc.message;
-    link.addEventListener("click", (e: Event) => {
-      e.preventDefault();
-      onNavigate(loc);
-    });
+    makeActivatable(link, () => onNavigate(loc));
     row.appendChild(link);
   } else {
     row.textContent = loc.message;

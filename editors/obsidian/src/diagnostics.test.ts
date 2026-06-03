@@ -208,4 +208,46 @@ describe("renderTooltip — issue first (plan 230)", () => {
     // the lower-cased id + name (mirrors the LSP hover-link convention).
     expect(docs?.attrs?.href).toBe("https://mdsmith.dev/rules/mds001-line-length/");
   });
+
+  test("the Fix control is keyboard-accessible: role, tabindex, and Enter activates it", () => {
+    let fixes = 0;
+    const node = renderTooltip(diag({}), () => {
+      fixes++;
+    }) as unknown as {
+      querySelector(s: string): {
+        attrs?: Record<string, string>;
+        dispatchEvent(name: string, init?: Record<string, unknown>): void;
+      } | null;
+    };
+    const fix = node.querySelector(".mdsmith-tooltip-fix");
+    expect(fix?.attrs?.role).toBe("button");
+    expect(fix?.attrs?.tabindex).toBe("0");
+    fix?.dispatchEvent("keydown", { key: "Enter" });
+    expect(fixes).toBe(1);
+  });
+
+  test("the related-location link is keyboard-accessible: role, tabindex, and Enter navigates", () => {
+    let navigated: { file?: string; line?: number } | undefined;
+    const node = renderTooltip(
+      diag({
+        related_locations: [
+          { file: "proto.md", line: 12, message: "schema says X" },
+        ],
+      }),
+      () => {},
+      (loc) => {
+        navigated = { file: loc.file, line: loc.line };
+      },
+    ) as unknown as {
+      querySelector(s: string): {
+        attrs?: Record<string, string>;
+        dispatchEvent(name: string, init?: Record<string, unknown>): void;
+      } | null;
+    };
+    const link = node.querySelector(".mdsmith-tooltip-related-link");
+    expect(link?.attrs?.role).toBe("button");
+    expect(link?.attrs?.tabindex).toBe("0");
+    link?.dispatchEvent("keydown", { key: "Enter" });
+    expect(navigated).toEqual({ file: "proto.md", line: 12 });
+  });
 });

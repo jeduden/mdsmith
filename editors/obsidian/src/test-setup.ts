@@ -66,7 +66,7 @@ function decorate(node: FakeNode): FakeNode & {
   click(): void;
   querySelector(sel: string): (FakeNode & { click(): void }) | null;
   querySelectorAll(sel: string): Array<FakeNode & { click(): void }>;
-  dispatchEvent(name: string): void;
+  dispatchEvent(name: string, init?: Record<string, unknown>): void;
   readonly textContent: string;
 } {
   const d = node as unknown as FakeNode & {
@@ -76,7 +76,7 @@ function decorate(node: FakeNode): FakeNode & {
     click(): void;
     querySelector(sel: string): (FakeNode & { click(): void }) | null;
     querySelectorAll(sel: string): Array<FakeNode & { click(): void }>;
-    dispatchEvent(name: string): void;
+    dispatchEvent(name: string, init?: Record<string, unknown>): void;
   };
   // Replace the prototype textContent (a plain string set/get) with
   // a getter that returns the node's own text plus every descendant's
@@ -122,13 +122,14 @@ function decorate(node: FakeNode): FakeNode & {
     };
     for (const l of list) l(ev);
   };
-  d.dispatchEvent = (name: string) => {
+  d.dispatchEvent = (name: string, init?: Record<string, unknown>) => {
     const list = node.listeners[name] ?? [];
     const ev: FakeEvent = {
       defaultPrevented: false,
       preventDefault() {
         this.defaultPrevented = true;
       },
+      ...init,
     };
     for (const l of list) l(ev);
   };
