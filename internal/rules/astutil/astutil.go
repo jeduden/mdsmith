@@ -263,15 +263,28 @@ func IsTable(para *ast.Paragraph, f *lint.File) bool {
 
 // headingTextPool pools bytes.Buffer values used by HeadingText so
 // heading-text extraction in the hot-path rule walk allocates zero
-// buffers per call instead of one.
+// buffers per call instead of one. Buffers beyond headingTextMaxPooledCap
+// are discarded on release to prevent the LSP long-running process from
+// retaining an oversized backing array indefinitely (mirrors the cap
+// guard in mdtext.ExtractPlainText / extractTextMaxPooledCap).
 var headingTextPool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
+
+// headingTextMaxPooledCap is the maximum buffer capacity returned to
+// headingTextPool. Heading text is always short (typically < 200 bytes);
+// 4 KiB is a generous cap that prevents any pathological case from
+// inflating the pool's steady-state footprint.
+const headingTextMaxPooledCap = 4 * 1024
 
 // HeadingText returns the plain-text content of a heading by
 // recursively extracting all text segments from its children.
 func HeadingText(heading *ast.Heading, source []byte) string {
 	buf := headingTextPool.Get().(*bytes.Buffer)
 	buf.Reset()
-	defer headingTextPool.Put(buf)
+	defer func() {
+		if buf.Cap() <= headingTextMaxPooledCap {
+			headingTextPool.Put(buf)
+		}
+	}()
 	for c := heading.FirstChild(); c != nil; c = c.NextSibling() {
 		ExtractText(c, source, buf)
 	}
