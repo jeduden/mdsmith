@@ -34,6 +34,7 @@ row: "| [{title}]({filename}) | <{channelurl}> | {credential} |"
 | [Flatpak](release-channels/flatpak.md)                                     | <https://github.com/jeduden/mdsmith/releases>                         | GITHUB_TOKEN + OIDC     |
 | [GitHub Releases](release-channels/github-releases.md)                     | <https://github.com/jeduden/mdsmith/releases>                         | GITHUB_TOKEN + OIDC     |
 | [npm](release-channels/npm.md)                                             | <https://www.npmjs.com/package/@mdsmith/cli>                          | OIDC Trusted Publishing |
+| [Obsidian](release-channels/obsidian.md)                                   | <https://github.com/jeduden/mdsmith/releases>                         | GITHUB_TOKEN + OIDC     |
 | [Open VSX](release-channels/open-vsx.md)                                   | <https://open-vsx.org/extension/jeduden/mdsmith>                      | OVSX_PAT                |
 | [PyPI](release-channels/pypi.md)                                           | <https://pypi.org/project/mdsmith/>                                   | OIDC Trusted Publishing |
 | [Visual Studio Marketplace](release-channels/visual-studio-marketplace.md) | <https://marketplace.visualstudio.com/items?itemName=jeduden.mdsmith> | VSCE_PAT                |

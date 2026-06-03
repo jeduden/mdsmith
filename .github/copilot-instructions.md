@@ -57,6 +57,7 @@ row: "- [{summary}](../{filename})"
 - [mise's `ubi` backend installs mdsmith from GitHub release assets; the short `mise use mdsmith` form awaits a registry entry.](../docs/development/release-channels/mise.md)
 - [Root `@mdsmith/cli` plus one platform-specific subpackage per supported host, all published via OIDC Trusted Publishing.](../docs/development/release-channels/npm.md)
 - [`npx @mdsmith/cli` runs mdsmith from the npm package with no global install, caching the platform binary after first use.](../docs/development/release-channels/npx.md)
+- [A `mdsmith-obsidian-<version>.zip` of the WebAssembly engine plus the plugin's five load files, attached to each GitHub release and installed by unzipping into a vault's `.obsidian/plugins/mdsmith/` folder.](../docs/development/release-channels/obsidian.md)
 - [The same `.vsix` republished to Open VSX so VSCodium, Cursor, Theia, and Gitpod can install it.](../docs/development/release-channels/open-vsx.md)
 - [`pipx install mdsmith` puts the PyPI wheel's `mdsmith` console script on PATH inside its own isolated virtualenv.](../docs/development/release-channels/pipx.md)
 - [One platform-tagged wheel per supported host, published via OIDC Trusted Publishing.](../docs/development/release-channels/pypi.md)

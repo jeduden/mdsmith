@@ -2,7 +2,7 @@
 title: 'string & != ""'
 summary: 'string & != ""'
 mechanism: '"push" | "pull" | "toolchain"'
-artifact: '"cli" | "vscode-extension" | "claude-plugin"'
+artifact: '"cli" | "vscode-extension" | "claude-plugin" | "obsidian-plugin"'
 command: 'string & != ""'
 audience: 'string & != ""'
 platforms: '[...string] | *[]'
