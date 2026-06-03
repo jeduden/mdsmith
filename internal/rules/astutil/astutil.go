@@ -271,12 +271,11 @@ var headingTextPool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
 func HeadingText(heading *ast.Heading, source []byte) string {
 	buf := headingTextPool.Get().(*bytes.Buffer)
 	buf.Reset()
+	defer headingTextPool.Put(buf)
 	for c := heading.FirstChild(); c != nil; c = c.NextSibling() {
 		ExtractText(c, source, buf)
 	}
-	s := buf.String()
-	headingTextPool.Put(buf)
-	return s
+	return buf.String()
 }
 
 // ExtractText recursively writes the text content of n and its

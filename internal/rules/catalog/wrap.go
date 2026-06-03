@@ -181,8 +181,9 @@ func findClosingParenRunes(runes []rune, pos int) int {
 // targetWidth, respecting markdown spans (not breaking inside them). It prefers
 // word boundaries (spaces) but will break before a span that exceeds the width.
 func findBreakPointRunes(runes []rune, spans []markdownSpan, targetWidth int) int {
-	if targetWidth >= len(runes) {
-		return len(runes)
+	n := len(runes)
+	if targetWidth >= n {
+		return n
 	}
 
 	// Check if targetWidth falls inside a markdown span
