@@ -7,6 +7,7 @@ summary: >-
 icon: git-merge
 link: "/reference/cli/merge-driver/"
 weight: 16
+group: "Built for your pipeline"
 ---
 # Git-native, conflict-free
 

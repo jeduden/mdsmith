@@ -7,6 +7,7 @@ summary: >-
 icon: braces
 link: "/guides/extract-markdown-as-data/"
 weight: 14
+group: "Markdown as a single source of truth"
 ---
 # Markdown as a data source
 

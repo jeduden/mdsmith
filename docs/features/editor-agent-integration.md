@@ -7,6 +7,7 @@ summary: >-
 icon: plug
 link: "/guides/editors/vscode/"
 weight: 5
+group: "One engine, every surface"
 ---
 # Editors and agents
 

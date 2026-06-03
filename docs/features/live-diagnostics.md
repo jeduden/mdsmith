@@ -8,6 +8,7 @@ summary: >-
 icon: edit-3
 link: "/guides/editors/vscode/"
 weight: 4
+group: "One engine, every surface"
 ---
 # Live diagnostics wherever you write
 

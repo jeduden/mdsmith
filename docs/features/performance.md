@@ -8,6 +8,7 @@ summary: >-
 icon: zap
 link: "/reference/cli/check/"
 weight: 6
+group: "One engine, every surface"
 ---
 # Fast on every run
 

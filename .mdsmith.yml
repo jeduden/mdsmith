@@ -430,6 +430,10 @@ kinds:
         summary: nonEmpty
         icon: nonEmpty
         weight: 'int & >=1'
+        # group: the pillar a card belongs to; the homepage groups
+        # the grid by it (see feature-grid.html). Required so a new
+        # card can't silently fall out of every pillar.
+        group: nonEmpty
         "link?": string
         "rules?": '[...string]'
       closed: false

@@ -233,6 +233,14 @@ main {
 
 /* ========== FEATURE GRID ========== */
 
+.feature-group + .feature-group { margin-top: 40px; }
+.feature-group-title {
+  font-size: 13px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--forge-600);
+  margin: 0 0 14px;
+}
+
 .feature-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -257,9 +265,9 @@ main {
   box-shadow: inset 3px 0 0 var(--forge-500);
 }
 .feature-card:focus-visible { outline: 2px solid var(--forge-500); outline-offset: -2px; }
-.feature-card h3,
-.feature-card:hover h3,
-.feature-card:focus-visible h3 { color: var(--fg); }
+.feature-card h4,
+.feature-card:hover h4,
+.feature-card:focus-visible h4 { color: var(--fg); }
 .feature-card p { color: var(--fg-muted); }
 .feature-more {
   margin-top: auto;
@@ -282,7 +290,7 @@ main {
   display: inline-flex; align-items: center; justify-content: center;
   border: 1px solid var(--forge-100);
 }
-.feature-card h3 {
+.feature-card h4 {
   font-size: 17px; font-weight: 600; margin: 4px 0 0; letter-spacing: -0.01em;
 }
 .feature-card p { font-size: 14px; color: var(--fg-muted); line-height: 1.55; margin: 0; }

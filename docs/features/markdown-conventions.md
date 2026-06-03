@@ -8,6 +8,7 @@ icon: book-type
 link: "/reference/conventions/"
 rules: ["MDS034"]
 weight: 2
+group: "Clean, consistent Markdown"
 ---
 # Conventions and flavors
 

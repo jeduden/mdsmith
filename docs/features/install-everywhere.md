@@ -7,6 +7,7 @@ summary: >-
 icon: package
 link: "/guides/install/"
 weight: 7
+group: "One engine, every surface"
 ---
 # Installs everywhere
 

@@ -8,6 +8,7 @@ summary: >-
 icon: wrench
 link: "/reference/cli/fix/"
 weight: 1
+group: "Clean, consistent Markdown"
 ---
 # Auto-fix Markdown formatting
 

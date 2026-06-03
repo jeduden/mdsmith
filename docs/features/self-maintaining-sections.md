@@ -8,6 +8,7 @@ summary: >-
 icon: list-checks
 link: "/guides/directives/generating-content/"
 weight: 12
+group: "Markdown as a single source of truth"
 ---
 # Self-maintaining sections
 

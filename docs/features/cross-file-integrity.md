@@ -8,6 +8,7 @@ icon: link
 link: "/guides/directives/enforcing-structure/"
 rules: ["MDS027", "MDS020", "MDS033"]
 weight: 8
+group: "A connected docs tree"
 ---
 # Cross-file integrity
 

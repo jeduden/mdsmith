@@ -7,6 +7,7 @@ summary: >-
 icon: gauge
 link: "/reference/cli/query/"
 weight: 15
+group: "Built for your pipeline"
 ---
 # Gate releases on doc status
 

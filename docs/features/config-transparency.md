@@ -7,6 +7,7 @@ summary: >-
 icon: git-compare
 link: "/reference/cli/kinds/"
 weight: 17
+group: "Built for your pipeline"
 ---
 # Config you can explain
 
