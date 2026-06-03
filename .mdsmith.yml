@@ -431,10 +431,11 @@ kinds:
         icon: nonEmpty
         weight: 'int & >=1'
         # group: which pillar a card belongs to. The homepage groups
-        # the grid by it (see feature-grid.html), so it must be one of
-        # the five pillar names below, exactly. A typo or an unknown
-        # group fails `mdsmith check` instead of silently dropping the
-        # card out of the grid.
+        # the grid by it (see feature-grid.html), rendering one heading
+        # per distinct value it finds, so a typo or an unknown group
+        # would surface as a stray extra heading. Pin it to the five
+        # pillar names below so a bad value fails `mdsmith check`
+        # instead.
         group: '"Clean, consistent Markdown" | "One engine, every surface" | "A connected docs tree" | "Markdown as a single source of truth" | "Built for your pipeline"'
         "link?": string
         "rules?": '[...string]'
