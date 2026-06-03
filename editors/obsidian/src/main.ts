@@ -123,7 +123,7 @@ export default class MdsmithPlugin extends Plugin {
   // one session. A failure surfaces a Notice and leaves the plugin in a
   // degraded "engine down" state rather than crashing — the user can
   // fix config and restart.
-  private async startRuntime(): Promise<void> {
+  private async startRuntime(): Promise<boolean> {
     try {
       const loaders = makeAssetLoaders(
         this.app.vault.adapter,
@@ -141,7 +141,7 @@ export default class MdsmithPlugin extends Plugin {
       new Notice(
         `mdsmith: failed to start the engine: ${(err as Error).message}`,
       );
-      return;
+      return false;
     }
 
     // Push vault edits into the session, debounced 200 ms per file.
@@ -155,11 +155,12 @@ export default class MdsmithPlugin extends Plugin {
     this.configureFixOnSave();
     // Lint whatever is already open.
     await this.checkActiveFile();
+    return true;
   }
 
   // teardownRuntime disposes the session, unsubscribes the fix-on-save
-  // vault listener, and cancels the pending fix. Safe to call when the
-  // runtime never started.
+  // vault listener, cancels the pending fix, and clears any diagnostics
+  // already shown. Safe to call when the runtime never started.
   private teardownRuntime(): void {
     this.debouncedFixOnSave?.cancel();
     this.debouncedFixOnSave = undefined;
@@ -171,7 +172,13 @@ export default class MdsmithPlugin extends Plugin {
     this.sync = undefined;
     this.runtime?.dispose();
     this.runtime = undefined;
+    // Drop diagnostics the engine already painted so a disposed or
+    // failed-restart engine never leaves stale underlines, tooltips, or
+    // a populated panel behind.
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (view) this.pushDiagnostics(view, []);
     this.diagnosticsByUri.clear();
+    this.refreshDiagnosticsView();
   }
 
   // restartRuntime is the dispose + recreate flow shared by the
@@ -179,8 +186,9 @@ export default class MdsmithPlugin extends Plugin {
   // no in-place reconfigure, so a config change rebuilds the session.
   private async restartRuntime(): Promise<void> {
     this.teardownRuntime();
-    await this.startRuntime();
-    new Notice("mdsmith: session restarted");
+    if (await this.startRuntime()) {
+      new Notice("mdsmith: session restarted");
+    }
   }
 
   // loadConfigYAML reads the override config file when configPath is

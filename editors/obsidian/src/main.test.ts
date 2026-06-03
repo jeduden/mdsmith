@@ -42,6 +42,7 @@ function makeApp(): {
     workspace: {
       on(event: string, cb: () => unknown): unknown;
       getActiveViewOfType(_t: unknown): FakeView | null;
+      getLeavesOfType(_t: string): unknown[];
     };
   };
   active: { view: FakeView | null };
@@ -72,6 +73,9 @@ function makeApp(): {
         },
         getActiveViewOfType(_t: unknown): FakeView | null {
           return active.view;
+        },
+        getLeavesOfType(_t: string): unknown[] {
+          return [];
         },
       },
     },
@@ -263,5 +267,35 @@ describe("teardownRuntime — vault listener cleanup (Copilot review)", () => {
     // session.
     callPrivate(plugin, "teardownRuntime");
     expect(harness.modifyListenerCount()).toBe(0);
+  });
+});
+
+describe("engine-down / restart safety (Copilot review)", () => {
+  test("teardownRuntime clears the active editor's diagnostics so none linger when the engine is down", () => {
+    const { plugin, harness } = makePlugin({ runMode: "onSave" });
+    const dispatched: Array<{ effects?: { value: unknown } }> = [];
+    harness.active.view = {
+      file: { path: "active.md" },
+      editor: {
+        cm: {
+          dispatch: (tr: { effects?: { value: unknown } }) =>
+            dispatched.push(tr),
+        },
+      },
+    };
+    callPrivate(plugin, "teardownRuntime");
+    // Teardown pushes an empty diagnostics set into the editor so stale
+    // underlines/tooltips do not survive a disposed engine.
+    expect(dispatched[dispatched.length - 1]?.effects?.value).toEqual([]);
+  });
+
+  test("startRuntime reports failure (returns false) when the engine cannot load", async () => {
+    // makePlugin's fake App has no vault adapter / getMarkdownFiles, so
+    // the snapshot/load throws and startRuntime takes its catch branch.
+    const { plugin } = makePlugin();
+    const ok = await (
+      plugin as unknown as { startRuntime(): Promise<boolean> }
+    ).startRuntime();
+    expect(ok).toBe(false);
   });
 });
