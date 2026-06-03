@@ -30,31 +30,36 @@ var obsidianZipFiles = []string{
 //
 // The zip is built with archive/zip rather than shelling out to the
 // `zip` binary so the step is pure Go, cross-platform, and unit
-// testable — the rule in docs/development/release-tooling.md. A missing
+// testable — the rule in docs/development/release-tooling.md. Every
+// dist file is read into memory before outDir is touched, so a missing
 // manifest.json, a manifest with no version, or any missing required
-// file is an error.
+// file fails before the function creates anything.
 func PackageObsidian(distDir, outDir string) (string, error) {
 	version, err := readObsidianVersion(filepath.Join(distDir, "manifest.json"))
 	if err != nil {
 		return "", err
 	}
 
+	contents := make([][]byte, len(obsidianZipFiles))
+	for i, name := range obsidianZipFiles {
+		data, err := os.ReadFile(filepath.Join(distDir, name))
+		if err != nil {
+			return "", fmt.Errorf("read %s: %w", name, err)
+		}
+		contents[i] = data
+	}
+
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return "", err
 	}
-
 	zipPath := filepath.Join(outDir, "mdsmith-obsidian-"+version+".zip")
-	if err := writeObsidianZip(distDir, zipPath); err != nil {
-		return "", err
-	}
-
-	info, err := os.Stat(zipPath)
-	if err != nil {
+	archive := buildObsidianZip(contents)
+	if err := os.WriteFile(zipPath, archive, 0o644); err != nil {
 		return "", err
 	}
 	// Parity with the old `ls -l`: a one-line confirmation of the
 	// artifact path and size.
-	fmt.Printf("packaged %s (%d bytes)\n", zipPath, info.Size())
+	fmt.Printf("packaged %s (%d bytes)\n", zipPath, len(archive))
 	return zipPath, nil
 }
 
@@ -74,30 +79,21 @@ func readObsidianVersion(path string) (string, error) {
 	return string(sub[2]), nil
 }
 
-// writeObsidianZip writes the five obsidianZipFiles from distDir into a
-// new zip at zipPath, each stored under its base name. A missing
-// required file is an error and leaves no zip behind.
-func writeObsidianZip(distDir, zipPath string) error {
+// buildObsidianZip encodes the dist file contents (indexed to match
+// obsidianZipFiles) into zip bytes, each stored flat under its base
+// name. The destination is an in-memory bytes.Buffer, which never fails
+// a write, so the archive/zip calls cannot return a real error here and
+// their results are intentionally discarded — the same deliberate-ignore
+// idiom bench.go uses for `_ = out.Close()`. The only failure mode, a
+// missing source file, is handled by PackageObsidian when it reads the
+// files (before this is called), so this returns no error.
+func buildObsidianZip(contents [][]byte) []byte {
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
-	for _, name := range obsidianZipFiles {
-		data, err := os.ReadFile(filepath.Join(distDir, name))
-		if err != nil {
-			return fmt.Errorf("read %s: %w", name, err)
-		}
-		w, err := zw.Create(name)
-		if err != nil {
-			return fmt.Errorf("add %s to zip: %w", name, err)
-		}
-		if _, err := w.Write(data); err != nil {
-			return fmt.Errorf("write %s to zip: %w", name, err)
-		}
+	for i, name := range obsidianZipFiles {
+		w, _ := zw.Create(name)
+		_, _ = w.Write(contents[i])
 	}
-	if err := zw.Close(); err != nil {
-		return fmt.Errorf("finalize zip: %w", err)
-	}
-	if err := os.WriteFile(zipPath, buf.Bytes(), 0o644); err != nil {
-		return fmt.Errorf("write %s: %w", zipPath, err)
-	}
-	return nil
+	_ = zw.Close()
+	return buf.Bytes()
 }
