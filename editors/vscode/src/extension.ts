@@ -22,7 +22,7 @@ import {
   notifyConfigChangeToClient,
   shouldFixOnSave,
   startupErrorMessage,
-  RestartPolicyState,
+  type RestartPolicyState,
   RUN_ON_TYPE
 } from "./wiring";
 import { findBinaryCandidates, resolveBinary } from "./binary";
