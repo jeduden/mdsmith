@@ -213,12 +213,19 @@ func resolveSessionMaxBytes(cfg *config.Config) int64 {
 }
 
 // rootDirOf returns the workspace root to anchor RootDir-dependent
-// resolution. An OSWorkspace contributes its Root; a MemWorkspace has
-// no on-disk root (the empty string is correct, leaving cross-file
-// rules to resolve root-relative globs against the workspace FS).
+// resolution. An OSWorkspace contributes its Root and an
+// OverlayWorkspace (the LSP's workspace) its root — the same directory
+// diskPath/Glob resolve against — so the LSP session keys its cross-file
+// RunCache by absolute paths, matching the CLI's OSWorkspace rather than
+// silently flipping to relative keys. A MemWorkspace has no on-disk root
+// (the empty string is correct, leaving cross-file rules to resolve
+// root-relative globs against the workspace FS).
 func rootDirOf(ws Workspace) string {
-	if osw, ok := ws.(OSWorkspace); ok {
-		return osw.Root
+	switch w := ws.(type) {
+	case OSWorkspace:
+		return w.Root
+	case *OverlayWorkspace:
+		return w.root
 	}
 	return ""
 }

@@ -205,6 +205,95 @@ func TestOverlayFSGlob(t *testing.T) {
 	}
 }
 
+// TestSessionOverlayAnchorsRootDir verifies a Session built over an
+// OverlayWorkspace (the LSP's workspace) anchors its rootDir at the
+// overlay's project root, not the empty string. The empty value would
+// flip the cross-file RunCache from absolute keys (the CLI's OSWorkspace
+// behaviour) to relative keys — an unintended asymmetry between the CLI
+// and the LSP. absPath, which Invalidate keys cache evictions by, must
+// then resolve the same absolute path Runner.RootDir keys cache writes
+// by, so the two stay consistent.
+func TestSessionOverlayAnchorsRootDir(t *testing.T) {
+	root := t.TempDir()
+	ws := NewOverlayWorkspace(root)
+	s, err := NewSession(SessionOptions{Workspace: ws, Config: ConfigYAML("")})
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	defer s.Dispose()
+
+	if s.rootDir != root {
+		t.Fatalf("session rootDir = %q, want overlay root %q", s.rootDir, root)
+	}
+	// absPath (cache-eviction keying) must produce an absolute path under
+	// the root for a workspace-relative uri, matching how the runner's
+	// RootDir anchors cross-file cache writes. A relative result would
+	// mean Invalidate evicts a key the rules never wrote.
+	if got := s.absPath("docs/a.md"); got != filepath.Join(root, "docs", "a.md") {
+		t.Fatalf("absPath(docs/a.md) = %q, want %q", got, filepath.Join(root, "docs", "a.md"))
+	}
+}
+
+// TestSessionOverlayInvalidateDropsStaleCrossFileRead is the
+// invalidation-consistency acceptance for the corrected absolute
+// keying: a cross-file Fix warms the RunCache for a neighbour (keyed by
+// the absolute path the runner's RootDir produces), then Invalidate
+// (keyed by absPath) must drop that exact entry so the next Fix reads
+// the changed bytes. If the write key and the eviction key disagreed —
+// the asymmetry an empty rootDir introduces — the second Fix would
+// project the stale summary from the cached cross-file read. Fix is
+// used (not a hand-written catalog body) so the canonical generated
+// formatting is produced by the engine, not guessed.
+func TestSessionOverlayInvalidateDropsStaleCrossFileRead(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "docs"), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "docs", "one.md"),
+		[]byte("---\nsummary: First\n---\n# One\n\nBody paragraph.\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	ws := NewOverlayWorkspace(root)
+	s, err := NewSession(SessionOptions{Workspace: ws, Config: ConfigYAML("")})
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	defer s.Dispose()
+
+	index := []byte("# Index\n\n<?catalog\nglob:\n  - \"docs/*.md\"\n" +
+		"row: \"- [{summary}](docs/{filename})\"\n?>\n<?/catalog?>\n")
+
+	// First Fix reads docs/one.md through the RunCache and projects its
+	// saved summary, warming the absolute-keyed cross-file read.
+	res1, err := s.Fix("index.md", index)
+	if err != nil {
+		t.Fatalf("Fix 1: %v", err)
+	}
+	if !strings.Contains(res1.Source, "First") {
+		t.Fatalf("Fix 1: catalog should project the saved summary First:\n%s", res1.Source)
+	}
+
+	// Change the neighbour's summary through the overlay. Invalidate keys
+	// the eviction by absPath; the next Fix's cross-file read keys the
+	// lookup by the runner's RootDir-anchored absolute path. They must be
+	// the same key, or the cache returns the stale "First".
+	s.Invalidate("docs/one.md", []byte("---\nsummary: Second\n---\n# One\n\nBody paragraph.\n"))
+
+	res2, err := s.Fix("index.md", index)
+	if err != nil {
+		t.Fatalf("Fix 2: %v", err)
+	}
+	if !strings.Contains(res2.Source, "Second") {
+		t.Fatalf("Fix 2: expected the new summary Second, proving Invalidate "+
+			"dropped the absolute-keyed cross-file read:\n%s", res2.Source)
+	}
+	if strings.Contains(res2.Source, "First") {
+		t.Fatalf("Fix 2: stale summary First survived; the eviction key did "+
+			"not match the cross-file read key:\n%s", res2.Source)
+	}
+}
+
 // TestSessionOverlayBufferReachesCrossFileRule is the end-to-end
 // footgun-3 acceptance for the LSP scenario: a Session over an
 // OverlayWorkspace catalogs a file whose unsaved-buffer summary differs

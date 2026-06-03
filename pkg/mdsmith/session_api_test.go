@@ -140,6 +140,13 @@ func TestRootDirOf(t *testing.T) {
 	if got := rootDirOf(NewMemWorkspace(nil)); got != "" {
 		t.Fatalf("rootDirOf(MemWorkspace) = %q, want empty", got)
 	}
+	// An OverlayWorkspace carries the project root in its root field
+	// (used by diskPath/Glob); rootDirOf must return it so the LSP
+	// session anchors RootDir-dependent resolution — and its cross-file
+	// RunCache keys — at absolute paths, matching the CLI's OSWorkspace.
+	if got := rootDirOf(NewOverlayWorkspace("/proj")); got != "/proj" {
+		t.Fatalf("rootDirOf(OverlayWorkspace{root}) = %q, want /proj", got)
+	}
 }
 
 // --- Kinds / frontMatterFor ---
