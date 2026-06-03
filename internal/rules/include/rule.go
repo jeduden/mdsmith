@@ -150,49 +150,78 @@ func validateIncludeDirective(
 	}
 
 	// Validate heading-offset parameter if present.
-	if ho, ok := params["heading-offset"]; ok {
-		n, err := strconv.Atoi(strings.TrimSpace(ho))
-		if err != nil || n < -6 || n > 6 {
-			return []lint.Diagnostic{makeDiag(filePath, line,
-				`include directive "heading-offset" must be an integer between -6 and 6`)}
-		}
-		if _, hasHL := params["heading-level"]; hasHL {
-			return []lint.Diagnostic{makeDiag(filePath, line,
-				`include directive "heading-offset" cannot be combined with "heading-level"`)}
-		}
+	if diags := validateHeadingOffset(filePath, line, params); len(diags) > 0 {
+		return diags
 	}
 
 	// Validate extract parameter if present.
-	if ex, ok := params["extract"]; ok {
-		if strings.TrimSpace(ex) == "" {
-			return []lint.Diagnostic{makeDiag(filePath, line,
-				`include directive "extract" value is empty`)}
-		}
-		if _, hasSFM := params["strip-frontmatter"]; hasSFM {
-			return []lint.Diagnostic{makeDiag(filePath, line,
-				`include directive "extract" cannot be combined with "strip-frontmatter"`)}
-		}
-		if _, hasHL := params["heading-level"]; hasHL {
-			return []lint.Diagnostic{makeDiag(filePath, line,
-				`include directive "extract" cannot be combined with "heading-level"`)}
-		}
-		if _, hasHO := params["heading-offset"]; hasHO {
-			return []lint.Diagnostic{makeDiag(filePath, line,
-				`include directive "extract" cannot be combined with "heading-offset"`)}
-		}
-		// generateIncludeContent returns the projected leaf directly
-		// for extract: directives and never runs the wrap / source-dir
-		// pipeline, so silently accepting these params would drop them.
-		if _, hasWrap := params["wrap"]; hasWrap {
-			return []lint.Diagnostic{makeDiag(filePath, line,
-				`include directive "extract" cannot be combined with "wrap"`)}
-		}
-		if _, hasSD := params["source-dir"]; hasSD {
-			return []lint.Diagnostic{makeDiag(filePath, line,
-				`include directive "extract" cannot be combined with "source-dir"`)}
-		}
+	if diags := validateExtractParam(filePath, line, params); len(diags) > 0 {
+		return diags
 	}
 
+	return nil
+}
+
+// validateExtractParam checks the extract parameter when present: a non-empty
+// value that cannot combine with strip-frontmatter, heading-level,
+// heading-offset, wrap, or source-dir. extract returns a single projected
+// leaf, so the body-processing pipeline does not apply.
+func validateExtractParam(
+	filePath string, line int, params map[string]string,
+) []lint.Diagnostic {
+	ex, ok := params["extract"]
+	if !ok {
+		return nil
+	}
+	if strings.TrimSpace(ex) == "" {
+		return []lint.Diagnostic{makeDiag(filePath, line,
+			`include directive "extract" value is empty`)}
+	}
+	if _, hasSFM := params["strip-frontmatter"]; hasSFM {
+		return []lint.Diagnostic{makeDiag(filePath, line,
+			`include directive "extract" cannot be combined with "strip-frontmatter"`)}
+	}
+	if _, hasHL := params["heading-level"]; hasHL {
+		return []lint.Diagnostic{makeDiag(filePath, line,
+			`include directive "extract" cannot be combined with "heading-level"`)}
+	}
+	if _, hasHO := params["heading-offset"]; hasHO {
+		return []lint.Diagnostic{makeDiag(filePath, line,
+			`include directive "extract" cannot be combined with "heading-offset"`)}
+	}
+	// generateIncludeContent returns the projected leaf directly for
+	// extract: directives and never runs the wrap / source-dir pipeline,
+	// so silently accepting these params would drop them.
+	if _, hasWrap := params["wrap"]; hasWrap {
+		return []lint.Diagnostic{makeDiag(filePath, line,
+			`include directive "extract" cannot be combined with "wrap"`)}
+	}
+	if _, hasSD := params["source-dir"]; hasSD {
+		return []lint.Diagnostic{makeDiag(filePath, line,
+			`include directive "extract" cannot be combined with "source-dir"`)}
+	}
+	return nil
+}
+
+// validateHeadingOffset checks the heading-offset parameter when present: it
+// must parse as an integer in -6..6, and it cannot combine with heading-level
+// (the two are rival heading-adjustment strategies).
+func validateHeadingOffset(
+	filePath string, line int, params map[string]string,
+) []lint.Diagnostic {
+	ho, ok := params["heading-offset"]
+	if !ok {
+		return nil
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(ho))
+	if err != nil || n < -6 || n > 6 {
+		return []lint.Diagnostic{makeDiag(filePath, line,
+			`include directive "heading-offset" must be an integer between -6 and 6`)}
+	}
+	if _, hasHL := params["heading-level"]; hasHL {
+		return []lint.Diagnostic{makeDiag(filePath, line,
+			`include directive "heading-offset" cannot be combined with "heading-level"`)}
+	}
 	return nil
 }
 

@@ -178,6 +178,24 @@ func TestAdjustHeadingsByOffset(t *testing.T) {
 			offset:  2,
 			want:    "###### Five\n\n###### Six\n",
 		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := adjustHeadingsByOffset(tt.content, tt.offset)
+			assert.Equal(t, tt.want, got,
+				"adjustHeadingsByOffset() =\n%q\nwant:\n%q", got, tt.want)
+		})
+	}
+}
+
+func TestAdjustHeadingsByOffset_SetextAndFences(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		offset  int
+		want    string
+	}{
 		{
 			name:    "setext h1 converted to ATX when shifted",
 			content: "Title\n=====\n\nBody.\n",
