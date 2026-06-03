@@ -225,6 +225,60 @@ func TestAdjustHeadingsByOffset_SetextAndFences(t *testing.T) {
 	}
 }
 
+func TestAdjustHeadingsToLevel(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		target  int
+		want    string
+	}{
+		{
+			name:    "pin source h1 to level 2",
+			content: "# One\n\n## Two\n",
+			target:  2,
+			want:    "## One\n\n### Two\n",
+		},
+		{
+			name:    "pin deeper source up to level 1 (promote)",
+			content: "### Deep\n\n#### Deeper\n",
+			target:  1,
+			want:    "# Deep\n\n## Deeper\n",
+		},
+		{
+			name:    "target equals min is a no-op",
+			content: "## Two\n\n### Three\n",
+			target:  2,
+			want:    "## Two\n\n### Three\n",
+		},
+		{
+			name:    "clamp at level 6",
+			content: "## A\n\n##### B\n",
+			target:  6,
+			want:    "###### A\n\n###### B\n",
+		},
+		{
+			name:    "no headings returns unchanged",
+			content: "Just text.\n\nMore.\n",
+			target:  2,
+			want:    "Just text.\n\nMore.\n",
+		},
+		{
+			name:    "setext h1 pinned to level 2 becomes ATX",
+			content: "Title\n=====\n\nBody.\n",
+			target:  2,
+			want:    "## Title\n\nBody.\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := adjustHeadingsToLevel(tt.content, tt.target)
+			assert.Equal(t, tt.want, got,
+				"adjustHeadingsToLevel() =\n%q\nwant:\n%q", got, tt.want)
+		})
+	}
+}
+
 // --- isResultPrevLineFence ---
 
 // TestIsResultPrevLineFence pins both branches: empty result
