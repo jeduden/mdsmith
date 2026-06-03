@@ -5,10 +5,15 @@
 // raw module, so the WASM details (Go's wasm_exec.js glue, the
 // globalThis.mdsmith factory, the Promise-returning methods) stay here.
 //
-// One MdsmithRuntime owns one mdsmith.Session over the vault. Construct
-// it once on plugin load with the workspace snapshot + config YAML; a
-// vault edit pushes new bytes through invalidate(); a config change or
-// unload calls dispose() and (for config) builds a fresh runtime.
+// The WASM engine loads ONCE per module (memoized below): Go's main
+// blocks forever on select{}, so re-instantiating it per runtime would
+// leak an immortal Go runtime on every Restart / config change. Each
+// MdsmithRuntime then owns one mdsmith.Session over that shared engine.
+// Construct a runtime with the workspace snapshot + config YAML; a vault
+// edit pushes new bytes through invalidate(); a config change or unload
+// calls dispose(), which tears down only the session — the engine stays
+// up, ready for the next createRuntime, exactly as the engine-API model
+// prescribes (a config change is dispose-session + createSession).
 //
 // The engine API and the WASM binding contract live in
 // docs/background/concepts/engine-api.md.
@@ -122,11 +127,46 @@ function loadGoConstructor(source: string): new () => GoRuntime {
   return g.Go;
 }
 
-// createRuntime instantiates the engine and builds one Session over the
-// supplied workspace + config. It resolves once the session is ready.
-export async function createRuntime(
+// enginePromise memoizes the one-time engine load (eval wasm_exec.js +
+// WebAssembly.instantiate + grab the globalThis.mdsmith factory). It is
+// module-scoped so every createRuntime call after the first reuses the
+// same long-lived Go runtime instead of instantiating another.
+//
+// The Go WASM main blocks forever on select{} to keep the exported
+// callbacks alive (cmd/mdsmith-wasm/main.go), so there is no per-runtime
+// shutdown — only session.dispose(). Re-running go.run() per createRuntime
+// would leak one immortal Go runtime on every Restart / configPath
+// change. The engine-API model is: a config change is dispose-session +
+// createSession, NOT a new WASM instance (docs/background/concepts/
+// engine-api.md — compiled config is built once at NewSession). So the
+// engine loads once and stays up; createRuntime only spins sessions.
+//
+// Holding a Promise (not the resolved factory) dedupes concurrent first
+// calls: a second createRuntime that races the first awaits the same
+// in-flight load rather than starting a second instantiate.
+let enginePromise: Promise<MdsmithFactory> | undefined;
+
+// loadEngine performs the one-time engine bring-up and returns the
+// factory. The loaders run only on the first call; later calls await the
+// cached promise and never re-read the assets.
+function loadEngine(opts: RuntimeOptions): Promise<MdsmithFactory> {
+  if (!enginePromise) {
+    enginePromise = instantiateEngine(opts).catch((err: unknown) => {
+      // A failed bring-up must not poison the cache: clear it so a later
+      // createRuntime (e.g. after the user fixes a missing asset) can
+      // retry rather than re-rejecting the same stale promise forever.
+      enginePromise = undefined;
+      throw err;
+    });
+  }
+  return enginePromise;
+}
+
+// instantiateEngine evaluates wasm_exec.js, instantiates the module,
+// starts the Go runtime, and returns the registered factory.
+async function instantiateEngine(
   opts: RuntimeOptions,
-): Promise<MdsmithRuntime> {
+): Promise<MdsmithFactory> {
   const execSource = await opts.loadWasmExec();
   const Go = loadGoConstructor(execSource);
   const bytes = await opts.loadWasmBytes();
@@ -140,8 +180,8 @@ export async function createRuntime(
   // go.run never resolves: Go's main blocks on select{} to keep the
   // exported callbacks alive. It registers globalThis.mdsmith
   // synchronously during startup, so we grab the factory reference
-  // immediately after — before any other runtime instance could
-  // overwrite the global.
+  // immediately after. The engine loads exactly once per module, so
+  // there is no second instance to race the global.
   go.run(instance);
 
   const factory = (globalThis as unknown as { mdsmith?: MdsmithFactory })
@@ -151,13 +191,32 @@ export async function createRuntime(
       "the WASM module did not register globalThis.mdsmith.createSession",
     );
   }
+  return factory;
+}
 
+// createRuntime builds one Session over the supplied workspace + config
+// and resolves once the session is ready. The first call loads the WASM
+// engine (memoized); every later call — a Restart, a configPath change —
+// reuses that engine and only creates a fresh session. dispose() tears
+// down the session alone; the engine stays up.
+export async function createRuntime(
+  opts: RuntimeOptions,
+): Promise<MdsmithRuntime> {
+  const factory = await loadEngine(opts);
   const session = await factory.createSession({
     workspace: opts.workspace,
     configYAML: opts.configYAML ?? "",
   });
-
   return new SessionRuntime(session);
+}
+
+// __resetEngineForTests drops the memoized engine so a test can force a
+// fresh bring-up. Production code never calls it — the engine is meant
+// to live for the whole plugin session. It does NOT tear down the Go
+// runtime (there is no shutdown hook); a test that resets and reloads
+// simply re-evaluates wasm_exec.js and re-instantiates.
+export function __resetEngineForTests(): void {
+  enginePromise = undefined;
 }
 
 // SessionRuntime adapts a WasmSession to the MdsmithRuntime facade. It

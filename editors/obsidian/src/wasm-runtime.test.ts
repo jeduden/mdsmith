@@ -10,12 +10,20 @@
 // they exercise the JS↔Go marshalling, not a mock. They build the
 // artifact on demand and skip when the Go toolchain is absent.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  __resetEngineForTests,
   createRuntime,
   type Diagnostic,
   type MdsmithRuntime,
@@ -80,6 +88,14 @@ async function makeRuntime(
 }
 
 describe.skipIf(skip)("createRuntime", () => {
+  // The engine is memoized at module scope; reset it before each test so
+  // one test's cached engine never leaks into another's load-count
+  // assertions. Production never resets — the engine lives for the whole
+  // plugin session.
+  beforeEach(() => {
+    __resetEngineForTests();
+  });
+
   test("check returns a normalized diagnostic array for a clean file", async () => {
     const rt = await makeRuntime({});
     const diags = await rt.check("clean.md", "# Clean\n\nA tidy paragraph.\n");
@@ -159,5 +175,115 @@ describe.skipIf(skip)("createRuntime", () => {
     expect(caps).toContain("fix");
     expect(caps).toContain("kinds");
     rt.dispose();
+  });
+
+  // Thread C: the engine (wasm_exec eval + WebAssembly.instantiate +
+  // globalThis.mdsmith) loads ONCE and is reused across every
+  // createRuntime — a Restart / configPath change must not instantiate a
+  // second immortal Go runtime, only a fresh session.
+  test("the engine loads once across multiple createRuntime calls", async () => {
+    let execLoads = 0;
+    let byteLoads = 0;
+    const countingOpts = () => ({
+      loadWasmExec: () => {
+        execLoads++;
+        return wasmExecSource;
+      },
+      loadWasmBytes: async () => {
+        byteLoads++;
+        return wasmBytes;
+      },
+    });
+
+    const rt1 = await createRuntime({ workspace: {}, ...countingOpts() });
+    const rt2 = await createRuntime({ workspace: {}, ...countingOpts() });
+    const rt3 = await createRuntime({
+      workspace: {},
+      configYAML: "rules:\n  MDS001:\n    max-line-length: 40\n",
+      ...countingOpts(),
+    });
+
+    // One asset read total, despite three runtimes (one of them with a
+    // different config — proving a config change reuses the engine).
+    expect(execLoads).toBe(1);
+    expect(byteLoads).toBe(1);
+
+    rt1.dispose();
+    rt2.dispose();
+    rt3.dispose();
+  });
+
+  test("concurrent first createRuntime calls share a single engine load", async () => {
+    let execLoads = 0;
+    let byteLoads = 0;
+    const opts = () => ({
+      workspace: {},
+      loadWasmExec: () => {
+        execLoads++;
+        return wasmExecSource;
+      },
+      loadWasmBytes: async () => {
+        byteLoads++;
+        return wasmBytes;
+      },
+    });
+
+    // Two createRuntime calls launched before either resolves: the
+    // memoized Promise dedupes the bring-up to one instantiate.
+    const [rtA, rtB] = await Promise.all([
+      createRuntime(opts()),
+      createRuntime(opts()),
+    ]);
+    expect(execLoads).toBe(1);
+    expect(byteLoads).toBe(1);
+    rtA.dispose();
+    rtB.dispose();
+  });
+
+  test("a failed engine load does not poison the cache — a later call can retry", async () => {
+    // First bring-up fails because the asset loader throws. The memoized
+    // promise must be cleared so the next createRuntime re-attempts the
+    // load rather than re-rejecting forever (the plugin's degraded-mode
+    // recovery relies on this: startRuntime catches and the user can
+    // Restart).
+    await expect(
+      createRuntime({
+        workspace: {},
+        loadWasmExec: () => {
+          throw new Error("asset missing");
+        },
+        loadWasmBytes: async () => wasmBytes,
+      }),
+    ).rejects.toThrow("asset missing");
+
+    // A subsequent call with working loaders succeeds.
+    const rt = await makeRuntime({});
+    const caps = rt.capabilities();
+    expect(caps).toContain("check");
+    rt.dispose();
+  });
+
+  test("two cache-shared runtimes work independently; disposing one leaves the other live", async () => {
+    // Both runtimes ride the same engine but own distinct sessions.
+    const rtA = await makeRuntime({});
+    const rtB = await makeRuntime({});
+
+    const longLine =
+      "This line is deliberately made to exceed the eighty character limit by adding extra words here now.";
+    // A still works.
+    const aDiags = await rtA.check("a.md", `# A\n\n${longLine}\n`);
+    expect(aDiags.map((d) => d.rule)).toContain("MDS001");
+
+    // Dispose A; B must keep working (the engine is not torn down, and
+    // B's session is independent of A's).
+    rtA.dispose();
+    const bDiags = await rtB.check("b.md", `# B\n\n${longLine}\n`);
+    expect(bDiags.map((d) => d.rule)).toContain("MDS001");
+
+    // A is now disposed: a call on it throws the disposed-guard error,
+    // proving dispose() really tore A's session down (not a no-op).
+    expect(() => rtA.capabilities()).toThrow();
+
+    rtB.dispose();
   });
 });
