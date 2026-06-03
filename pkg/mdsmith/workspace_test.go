@@ -113,6 +113,59 @@ func TestOSWorkspaceReadFile(t *testing.T) {
 	}
 }
 
+// TestOSWorkspaceReadFileAndFSAgreeOnURI is the plan-219 footgun-1
+// acceptance test. With a non-empty Root, a workspace-relative uri must
+// resolve to the same on-disk file through ReadFile and through FS —
+// the two read paths the session uses (frontMatterFor reads via
+// ReadFile; the engine reads cross-file content via FS). Reading one
+// uri both ways must yield one file's bytes, not two different files.
+func TestOSWorkspaceReadFileAndFSAgreeOnURI(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "docs"), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	const uri = "docs/a.md"
+	if err := os.WriteFile(filepath.Join(root, uri), []byte("rooted"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	ws := OSWorkspace{Root: root}
+
+	viaReadFile, err := ws.ReadFile(uri)
+	if err != nil {
+		t.Fatalf("ReadFile(%q): %v", uri, err)
+	}
+	viaFS, err := fs.ReadFile(ws.FS(), uri)
+	if err != nil {
+		t.Fatalf("fs.ReadFile(FS, %q): %v", uri, err)
+	}
+	if string(viaReadFile) != "rooted" || string(viaFS) != "rooted" {
+		t.Fatalf("ReadFile=%q FS=%q, both should read the single rooted file %q",
+			viaReadFile, viaFS, "rooted")
+	}
+}
+
+// TestOSWorkspaceReadFileAbsoluteIgnoresRoot verifies that an absolute
+// path passed to ReadFile is read as-is even when Root is set — the
+// rooting only applies to workspace-relative paths, so callers that
+// already hold an absolute path keep working.
+func TestOSWorkspaceReadFileAbsoluteIgnoresRoot(t *testing.T) {
+	root := t.TempDir()
+	other := t.TempDir()
+	abs := filepath.Join(other, "x.md")
+	if err := os.WriteFile(abs, []byte("absolute"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	ws := OSWorkspace{Root: root}
+	got, err := ws.ReadFile(abs)
+	if err != nil {
+		t.Fatalf("ReadFile(abs): %v", err)
+	}
+	if string(got) != "absolute" {
+		t.Fatalf("ReadFile(abs) = %q, want %q", got, "absolute")
+	}
+}
+
 func TestOSWorkspaceGlob(t *testing.T) {
 	dir := t.TempDir()
 	for _, name := range []string{"a.md", "b.md", "c.txt"} {

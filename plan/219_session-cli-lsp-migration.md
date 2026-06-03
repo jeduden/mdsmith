@@ -1,7 +1,7 @@
 ---
 id: 219
 title: Route cmd/mdsmith and the LSP through pkg/mdsmith.Session
-status: "🔲"
+status: "🔳"
 model: opus
 summary: >-
   Migrate the CLI's check/fix/kinds subcommands and the LSP server
@@ -86,7 +86,7 @@ it affects, not after:
       `pkg/mdsmith.Session`.
 - [ ] The LSP uses one `Session` per workspace and invalidates it on
       document and watched-file changes.
-- [ ] `OSWorkspace.ReadFile` and `OSWorkspace.FS` resolve the same
+- [x] `OSWorkspace.ReadFile` and `OSWorkspace.FS` resolve the same
       `uri` to the same file, proven by a test.
 - [ ] `Session.Fix` does not re-lint when the fix made no edit.
 - [ ] The LSP's in-memory buffer bytes reach cross-file rules through

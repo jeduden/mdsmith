@@ -42,16 +42,35 @@ type Workspace interface {
 // usable and reads paths exactly as passed (absolute or relative to the
 // process working directory).
 type OSWorkspace struct {
-	// Root, when non-empty, is the directory the FS view is rooted at.
-	// ReadFile and Glob still operate on the paths as passed; only FS
-	// is anchored at Root. The CLI sets this to the project root so
-	// catalog/include resolve workspace-relative targets.
+	// Root, when non-empty, is the directory both ReadFile and FS are
+	// anchored at. A workspace-relative path (e.g. "docs/a.md") resolves
+	// against Root in ReadFile, so ReadFile and FS agree on the file a
+	// given uri names; an absolute path is read as-is. Glob still expands
+	// the pattern exactly as passed. The CLI sets Root to the project
+	// root so catalog/include and frontMatterFor resolve the same
+	// workspace-relative target. With an empty Root, paths are read
+	// exactly as passed (the zero-value behaviour).
 	Root string
 }
 
-// ReadFile reads path from the host filesystem.
+// ReadFile reads path from the host filesystem. When Root is set and
+// path is workspace-relative, it is resolved against Root so ReadFile
+// and FS (which is rooted at Root) name the same file for one uri — see
+// the Root field doc. An absolute path is read unchanged.
 func (w OSWorkspace) ReadFile(p string) ([]byte, error) {
-	return os.ReadFile(p) //nolint:gosec // path is caller-controlled; OSWorkspace is the native disk seam
+	return os.ReadFile(w.resolve(p)) //nolint:gosec // path is caller-controlled; OSWorkspace is the native disk seam
+}
+
+// resolve maps a workspace-relative path to an absolute one rooted at
+// Root, mirroring how FS (os.DirFS(Root)) interprets the same path.
+// An absolute path, or any path when Root is empty, is returned
+// unchanged so the zero-value workspace and absolute-path callers keep
+// reading paths exactly as passed.
+func (w OSWorkspace) resolve(p string) string {
+	if w.Root == "" || filepath.IsAbs(p) {
+		return p
+	}
+	return filepath.Join(w.Root, filepath.FromSlash(p))
 }
 
 // Glob expands a doublestar pattern against the host filesystem.
