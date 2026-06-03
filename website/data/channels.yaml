@@ -135,3 +135,13 @@
     - linux
   url: https://github.com/jeduden/mdsmith/releases
   weight: 13
+- title: Obsidian
+  summary: A `mdsmith-obsidian-<version>.zip` of the WebAssembly engine plus the plugin's five load files, attached to each GitHub release and installed by unzipping into a vault's `.obsidian/plugins/mdsmith/` folder.
+  mechanism: push
+  artifact: obsidian-plugin
+  command: unzip mdsmith-obsidian-<version>.zip -d <vault>/.obsidian/plugins/mdsmith/
+  audience: Obsidian vaults on desktop and mobile
+  platforms:
+    - editor
+  url: https://github.com/jeduden/mdsmith/releases
+  weight: 14
