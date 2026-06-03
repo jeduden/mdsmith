@@ -61,9 +61,10 @@ func ExtractWikiLinks(f *lint.File) []WikiLink {
 	for _, m := range wikilinkRE.FindAllSubmatchIndex(source, -1) {
 		start := m[0]
 		line := f.LineOfOffset(start)
-		_, inCode := codeLines[line]
-		_, inPI := piLines[line]
-		if inCode || inPI {
+		if _, ok := codeLines[line]; ok {
+			continue
+		}
+		if _, ok := piLines[line]; ok {
 			continue
 		}
 		if inCodeSpan(codeSpans, start) {

@@ -267,10 +267,15 @@ func (r *Rule) scanFullRefs(
 			continue
 		}
 		line := f.LineOfOffset(open1)
-		_, inCode := codeLines[line]
-		_, inPI := piLines[line]
-		if inCode || inPI ||
-			inCodeSpan(spans, open1) || isEscapedBracket(source, open1) {
+		if _, ok := codeLines[line]; ok {
+			pos = ca2
+			continue
+		}
+		if _, ok := piLines[line]; ok {
+			pos = ca2
+			continue
+		}
+		if inCodeSpan(spans, open1) || isEscapedBracket(source, open1) {
 			pos = ca2
 			continue
 		}
@@ -326,10 +331,15 @@ func (r *Rule) scanCollapsedRefs(
 			continue
 		}
 		line := f.LineOfOffset(open)
-		_, inCode := codeLines[line]
-		_, inPI := piLines[line]
-		if inCode || inPI ||
-			inCodeSpan(spans, open) || isEscapedBracket(source, open) {
+		if _, ok := codeLines[line]; ok {
+			pos = ca + 2
+			continue
+		}
+		if _, ok := piLines[line]; ok {
+			pos = ca + 2
+			continue
+		}
+		if inCodeSpan(spans, open) || isEscapedBracket(source, open) {
 			pos = ca + 2
 			continue
 		}
@@ -400,10 +410,15 @@ func (r *Rule) scanShortcutRefs(
 			}
 		}
 		line := f.LineOfOffset(open)
-		_, inCode := codeLines[line]
-		_, inPI := piLines[line]
-		if inCode || inPI ||
-			inCodeSpan(spans, open) || isEscapedBracket(source, open) {
+		if _, ok := codeLines[line]; ok {
+			pos = ca
+			continue
+		}
+		if _, ok := piLines[line]; ok {
+			pos = ca
+			continue
+		}
+		if inCodeSpan(spans, open) || isEscapedBracket(source, open) {
 			pos = ca
 			continue
 		}

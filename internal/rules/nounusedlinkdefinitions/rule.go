@@ -329,21 +329,22 @@ func collectDefinitions(f *lint.File) []referenceDefinition {
 					blockLinesReady = true
 				}
 				_, inCode := codeLines[lineNum]
-				_, inPI := piLines[lineNum]
-				if !inCode && !inPI &&
-					!lineInGeneratedRanges(lineNum, f.GeneratedRanges) {
-					bracketAbs := labelStart - 1
-					end := eol
-					if end < len(source) && source[end] == '\n' {
-						end++
+				if !inCode {
+					_, inPI := piLines[lineNum]
+					if !inPI && !lineInGeneratedRanges(lineNum, f.GeneratedRanges) {
+						bracketAbs := labelStart - 1
+						end := eol
+						if end < len(source) && source[end] == '\n' {
+							end++
+						}
+						out = append(out, referenceDefinition{
+							rawLabel: rawLabel,
+							line:     lineNum,
+							col:      f.ColumnOfOffset(bracketAbs),
+							start:    lineStart,
+							end:      end,
+						})
 					}
-					out = append(out, referenceDefinition{
-						rawLabel: rawLabel,
-						line:     lineNum,
-						col:      f.ColumnOfOffset(bracketAbs),
-						start:    lineStart,
-						end:      end,
-					})
 				}
 			}
 		}
