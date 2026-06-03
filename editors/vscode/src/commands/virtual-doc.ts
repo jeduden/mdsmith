@@ -25,6 +25,22 @@ export function buildWhyUri(filePath: string, rule: string): string {
   );
 }
 
+// kindsContentUri returns the parseable string form of the Uri handed
+// to the mdsmith-kinds: TextDocumentContentProvider. Its argument is the
+// structural slice of vscode.Uri this needs, declared inline so the
+// function stays unit-testable without the editor runtime.
+//
+// skipEncoding=true is required. VS Code's default Uri.toString()
+// percent-encodes the query separators ("=" → %3D, and the param-joining
+// "&" → %26), so parseKindsUri can no longer split out the file and rule
+// keys and the provider reports "malformed kinds URI". skipEncoding
+// leaves those separators intact.
+export function kindsContentUri(uri: {
+  toString(skipEncoding?: boolean): string;
+}): string {
+  return uri.toString(true);
+}
+
 // parseKindsUri extracts command, file, and optional rule from a
 // mdsmith-kinds: URI string. Returns null when the URI is malformed.
 // Uses URL parsing so both "mdsmith-kinds://resolve?file=…" and the

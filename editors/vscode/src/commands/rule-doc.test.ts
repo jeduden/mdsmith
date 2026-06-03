@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { URI } from "vscode-uri";
 import type { SpawnFn } from "./runner";
 import {
   buildRuleDocUri,
@@ -6,6 +7,7 @@ import {
   isRuleId,
   OPEN_RULE_DOC_COMMAND,
   parseRuleDocUri,
+  provideRuleDocContent,
   rewriteHoverMarkdown,
   rewriteRuleDocLinks,
   ruleDocCommandUri,
@@ -187,5 +189,31 @@ describe("fetchRuleDocContent", () => {
     const out = await fetchRuleDocContent(buildRuleDocUri("MDS001"), "mdsmith", undefined, failing);
     expect(out).toContain("could not start");
     expect(out).toContain("ENOENT");
+  });
+});
+
+// ---- provideRuleDocContent (vscode.Uri round trip) ----
+
+describe("provideRuleDocContent", () => {
+  test("survives the real vscode.Uri round trip and passes the bare ID", async () => {
+    // Regression: clicking a rule's hover doc link opened a virtual
+    // document that only read "mdsmith: malformed rule URI". The content
+    // provider received the Uri VS Code built from buildRuleDocUri and
+    // stringified it with the default Uri.toString(), which percent-
+    // encodes the query's '=' separator (id=MDS019 -> id%3DMDS019) — a
+    // form parseRuleDocUri rightly rejects. URI here is the same
+    // implementation backing vscode.Uri, so this reproduces it exactly.
+    const uri = URI.parse(buildRuleDocUri("MDS019"));
+    expect(uri.toString()).toBe("mdsmith-rule://doc?id%3DMDS019");
+
+    let seen: string[] = [];
+    const out = await provideRuleDocContent(
+      uri,
+      "mdsmith",
+      undefined,
+      fakeSpawn({ stdout: "# MDS019\n\nbody\n" }, (a) => (seen = a)),
+    );
+    expect(seen).toEqual(["help", "rule", "MDS019"]);
+    expect(out).toBe("# MDS019\n\nbody\n");
   });
 });

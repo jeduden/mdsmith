@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { URI } from "vscode-uri";
 import {
   extractRuleIds,
   makeKindsContentProvider,
@@ -10,6 +11,7 @@ import {
 import {
   buildResolveUri,
   buildWhyUri,
+  kindsContentUri,
   parseKindsUri,
   fetchKindsContent,
 } from "./virtual-doc";
@@ -105,6 +107,35 @@ describe("parseKindsUri", () => {
     expect(parseKindsUri("http://example.com")).toBeNull();
     expect(parseKindsUri("mdsmith-kinds://why?rule=MDS001")).toBeNull();
     expect(parseKindsUri("mdsmith-kinds://why?file=/foo.md")).toBeNull();
+  });
+});
+
+// ---- kindsContentUri (vscode.Uri round trip) ----
+
+describe("kindsContentUri", () => {
+  // The content provider receives the Uri VS Code parsed from
+  // buildResolveUri/buildWhyUri and must turn it back into a string
+  // parseKindsUri can read. The default Uri.toString() percent-encodes
+  // the query separators ('=' -> %3D, and the param-joining '&' -> %26),
+  // so the file/rule keys vanish and the provider reports "malformed
+  // kinds URI". URI here is the same implementation backing vscode.Uri.
+  test("round-trips a resolve URI through parseKindsUri", () => {
+    const uri = URI.parse(buildResolveUri("/a/b.md"));
+    expect(uri.toString()).toBe("mdsmith-kinds://resolve?file%3D%2Fa%2Fb.md");
+    expect(parseKindsUri(kindsContentUri(uri))).toEqual({
+      command: "resolve",
+      file: "/a/b.md",
+      rule: undefined,
+    });
+  });
+
+  test("round-trips a why URI (two query params) through parseKindsUri", () => {
+    const uri = URI.parse(buildWhyUri("/a/b.md", "MDS001"));
+    expect(parseKindsUri(kindsContentUri(uri))).toEqual({
+      command: "why",
+      file: "/a/b.md",
+      rule: "MDS001",
+    });
   });
 });
 
