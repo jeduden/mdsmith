@@ -384,7 +384,11 @@ main {
 .feature-shot-bar .dot.r { background: #FF6B5C; }
 .feature-shot-bar .dot.y { background: var(--forge-400); }
 .feature-shot-bar .dot.g { background: var(--term-ok); }
-.feature-shot { display: block; width: 100%; height: auto; }
+/* Reserve the recommended ~16:10 box up front so a lazy-loaded
+   screenshot does not shift the layout when it arrives; contain keeps
+   the whole capture visible (16:10 fills it exactly, off-ratio
+   letterboxes on the dark frame rather than cropping). */
+.feature-shot { display: block; width: 100%; height: auto; aspect-ratio: 16 / 10; object-fit: contain; }
 
 @media (min-width: 881px) {
   /* Wide tiles (hero + the tail stretches) lay out as text body | box,
@@ -1012,6 +1016,10 @@ a.rule-ref:hover code { text-decoration: underline; }
   .feature-card--hero .icon { width: 32px; height: 32px; border-radius: 6px; }
   .feature-card--hero h4 { font-size: 17px; letter-spacing: -0.01em; }
   .feature-card--hero p { font-size: 14px; max-width: none; }
+  /* Stacked uniformly, so the hero takes the same left accent as the
+     other cards instead of its desktop bottom accent. */
+  .feature-card--hero:hover,
+  .feature-card--hero:focus-visible { box-shadow: inset 3px 0 0 var(--forge-500); }
   .docs-index { grid-template-columns: 1fr; }
   .docs-grid { grid-template-columns: 1fr; gap: 20px; }
   /* Standard mobile pattern: the long docs nav collapses
