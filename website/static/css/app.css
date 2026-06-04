@@ -1617,8 +1617,13 @@ a.rule-ref:hover code { text-decoration: underline; }
   .hero-grid { grid-template-columns: 1fr; gap: 36px; }
   .hero h1 { font-size: 44px; }
 
-  /* Feature grid — every pillar collapses to a single column. */
-  .card-grid {
+  /* Feature grid — every pillar collapses to a single column. The
+     data-count variants are listed too: the tuned 2/3-column templates
+     carry higher specificity, so a bare `.card-grid` would not override
+     them here. */
+  .card-grid,
+  .card-grid[data-count="3"],
+  .card-grid[data-count="4"] {
     grid-template-columns: 1fr;
     border-radius: 8px;
   }
