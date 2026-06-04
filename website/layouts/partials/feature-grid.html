@@ -9,12 +9,13 @@
        appearance); cards within a group render by weight.
 
        Bento featured-first layout: the first card in each group
-       gets `feature-card--hero` (a 2-column anchor tile), and the
-       group's card count is stamped as `data-count` on
-       `.feature-grid`. All void-filling for non-multiple-of-3
-       counts is pure CSS keyed on `data-count` and the
-       `:last-child` / `:nth-last-child(2)` of the cards — see the
-       feature-grid rules in app.css. No per-section config.
+       gets `feature-card--hero` (a 2-column anchor tile). The grid
+       stamps `data-count` (used by the N=1 and N=3 special cases)
+       and, for N >= 4, `data-tail="(N-2) mod 3"` — the number of
+       cards in the last row. All void-filling is pure CSS keyed on
+       `data-tail` (plus the N=1/N=3 data-count cases), so it fills
+       cleanly at any group size — see the feature-grid rules in
+       app.css. No per-section config.
 
        Right-hand media (balances the wide tiles): every card
        carries a `.feature-media` column. CSS shows it only on the
@@ -41,7 +42,7 @@
   {{- $count := len $groupPages -}}
   <div class="feature-group">
     <h3 class="feature-group-title">{{ $group }}</h3>
-    <div class="feature-grid" data-count="{{ $count }}">
+    <div class="feature-grid" data-count="{{ $count }}"{{ if ge $count 4 }} data-tail="{{ mod (sub $count 2) 3 }}"{{ end }}>
       {{- range $i, $page := $groupPages }}
       <a class="feature-card{{ if eq $i 0 }} feature-card--hero{{ end }}" href="{{ $page.RelPermalink }}">
         <div class="feature-card-body">
