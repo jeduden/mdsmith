@@ -16,8 +16,9 @@
   ─────────────
   Each lead card renders an artifact partial from
   website/layouts/partials/feature-artifacts/. The map below
-  ties a group name to a partial + theme class. Groups not listed
-  render as a non-lead card (graceful fallback — no crash).
+  ties a group name to its artifact partial. Groups not listed
+  render their first card as a normal (non-lead) grid card — a
+  graceful fallback, no crash.
 
     "Clean, consistent Markdown"            → terminal  (dark)
     "One engine, every surface"             → editor    (light)
@@ -38,13 +39,13 @@
   first-appearance order (weight); cards within a group by weight.
 */ -}}
 
-{{- /* Artifact map: group name → (partial path, theme class) */ -}}
+{{- /* Artifact map: group name → artifact partial path. */ -}}
 {{- $artifactMap := dict
-  "Clean, consistent Markdown"           (dict "partial" "feature-artifacts/terminal" "theme" "dark")
-  "One engine, every surface"            (dict "partial" "feature-artifacts/editor"   "theme" "light")
-  "A connected docs tree"                (dict "partial" "feature-artifacts/graph"    "theme" "light")
-  "Markdown as a single source of truth" (dict "partial" "feature-artifacts/doc"      "theme" "light")
-  "Built for your pipeline"              (dict "partial" "feature-artifacts/ci"       "theme" "light")
+  "Clean, consistent Markdown"           "feature-artifacts/terminal"
+  "One engine, every surface"            "feature-artifacts/editor"
+  "A connected docs tree"                "feature-artifacts/graph"
+  "Markdown as a single source of truth" "feature-artifacts/doc"
+  "Built for your pipeline"              "feature-artifacts/ci"
 -}}
 
 {{- $features := site.GetPage "/features" -}}
@@ -72,9 +73,8 @@
       {{- /* Lead = first card of a group that has a mapped artifact;
              index returns nil for an unmapped group, which is falsy. */ -}}
       {{- $isLead := false -}}
-      {{- $theme := "" -}}
-      {{- if and (eq $i 0) $artifact }}{{ $isLead = true }}{{ $theme = index $artifact "theme" }}{{ end -}}
-    <a class="card{{ if $isLead }} card--lead card--lead-{{ $theme }}{{ end }}" href="{{ $page.RelPermalink }}">
+      {{- if and (eq $i 0) $artifact }}{{ $isLead = true }}{{ end -}}
+    <a class="card{{ if $isLead }} card--lead{{ end }}" href="{{ $page.RelPermalink }}">
       <div class="card-body{{ if $isLead }} card-body--lead{{ end }}">
         <span class="card-icon" aria-hidden="true">
           <i data-lucide="{{ $page.Params.icon | default "check" }}" width="{{ if $isLead }}24{{ else }}18{{ end }}" height="{{ if $isLead }}24{{ else }}18{{ end }}"></i>
@@ -90,7 +90,7 @@
           <span class="card-more">Learn more <i data-lucide="arrow-right" width="12" height="12" aria-hidden="true"></i></span>
         </div>
       </div>
-      {{- if $isLead }}{{ partial (index $artifact "partial") . }}{{ end -}}
+      {{- if $isLead }}{{ partial $artifact . }}{{ end -}}
     </a>
     {{- end }}
   </div>

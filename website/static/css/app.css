@@ -537,6 +537,9 @@ main {
   background: #070A0D;
   border-bottom-color: #1A1F26;
 }
+/* The near-black terminal bar needs a lighter title than the default
+   steel-500 used on the light artifact bars, for legible contrast. */
+.artifact-titlebar--terminal .artifact-title { color: var(--term-fg-dim); }
 .term-dot-r { background: #FF6B5C; }
 .term-dot-y { background: #E58233; }
 .term-dot-g { background: #5DC58C; }
