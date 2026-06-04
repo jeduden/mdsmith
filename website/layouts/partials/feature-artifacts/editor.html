@@ -1,0 +1,76 @@
+{{- /* VS Code editor artifact — Pillar 2 "One engine, every surface".
+       Light editor frame with LSP hover popup for a bare-URL diagnostic.
+       Rule code corrected: MDS012 (bare URL — wrap in angle brackets).
+       aria-hidden: purely decorative marketing visual. */ -}}
+<div class="card-media card-media--editor" aria-hidden="true">
+  <div class="artifact-frame artifact-frame--editor">
+    <div class="artifact-titlebar artifact-titlebar--editor">
+      <div class="vscode-traffic">
+        <span class="vscode-dot vscode-dot-r"></span>
+        <span class="vscode-dot vscode-dot-y"></span>
+        <span class="vscode-dot vscode-dot-g"></span>
+      </div>
+      <span class="artifact-title artifact-title--editor">README.md — mdsmith</span>
+    </div>
+    <div class="vscode-body">
+      <div class="vscode-activity-bar">
+        <div class="vscode-ab-icon vscode-ab-active" title="Explorer">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        </div>
+        <div class="vscode-ab-icon" title="Search">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </div>
+        <div class="vscode-ab-icon" title="Extensions">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="14" y="2" width="8" height="8" rx="1"/><rect x="2" y="14" width="8" height="8" rx="1"/><path d="M2 2h8v8H2z"/><path d="M14 14h8v8h-8z"/></svg>
+        </div>
+      </div>
+      <div class="vscode-main">
+        <div class="vscode-tabs">
+          <div class="vscode-tab vscode-tab--active">README.md</div>
+          <div class="vscode-tab">install.md</div>
+        </div>
+        <div class="vscode-editor-area">
+          <div class="vscode-gutter">
+            <span>45</span>
+            <span>46</span>
+            <span class="vscode-gutter-active">47</span>
+            <span>48</span>
+            <span>49</span>
+            <span>50</span>
+          </div>
+          <div class="vscode-code-area">
+            <div class="vscode-line">
+              <span class="vc-text">Install via npm or use any package manager:</span>
+            </div>
+            <div class="vscode-line">&nbsp;</div>
+            <div class="vscode-line vscode-line--error">
+              <span class="vc-url vc-squiggle-red">https://github.com/jeduden/mdsmith/releases</span>
+            </div>
+            <div class="vscode-line">&nbsp;</div>
+            <div class="vscode-line">
+              <span class="vc-text">Or install with Homebrew:</span>
+            </div>
+            <div class="vscode-line">&nbsp;</div>
+          </div>
+        </div>
+        <div class="vscode-hover-popup">
+          <div class="vscode-hover-header">
+            <span class="vscode-lightbulb">💡</span>
+            <span class="vscode-hover-rule">MDS012</span>
+            <span class="vscode-hover-msg">bare URL — wrap in angle brackets or add link text</span>
+          </div>
+          <div class="vscode-hover-actions">
+            <span class="vscode-quickfix-label">Quick Fix…</span>
+            <span class="vscode-quickfix-item">▶ Wrap in angle brackets</span>
+            <span class="vscode-quickfix-item vscode-quickfix-dim">  Add named link text…</span>
+          </div>
+        </div>
+        <div class="vscode-status-bar">
+          <span class="vscode-status-problems">⚠ 1 problem</span>
+          <span class="vscode-status-lang">Markdown</span>
+          <span class="vscode-status-ext">mdsmith LSP</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

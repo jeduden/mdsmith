@@ -1,0 +1,59 @@
+{{- /* Document / catalog artifact — Pillar 4 "Markdown as a single source of truth".
+       Light editor showing a catalog directive regenerating its body on fix.
+       Rule code: MDS019 (catalog directive).
+       aria-hidden: purely decorative marketing visual. */ -}}
+<div class="card-media card-media--doc" aria-hidden="true">
+  <div class="artifact-frame artifact-frame--doc">
+    <div class="artifact-titlebar artifact-titlebar--doc">
+      <div class="doc-traffic">
+        <span class="doc-dot doc-dot-r"></span>
+        <span class="doc-dot doc-dot-y"></span>
+        <span class="doc-dot doc-dot-g"></span>
+      </div>
+      <span class="artifact-title artifact-title--doc">CLAUDE.md</span>
+    </div>
+    <div class="artifact-body artifact-body--doc">
+      <div class="doc-file">
+        <div class="doc-line">
+          <span class="doc-gutter doc-gutter-dim">12</span>
+          <span class="doc-code"><span class="doc-h2">## Development Reference</span></span>
+        </div>
+        <div class="doc-line">
+          <span class="doc-gutter doc-gutter-dim">13</span>
+          <span class="doc-code doc-blank">&nbsp;</span>
+        </div>
+        <div class="doc-line">
+          <span class="doc-gutter doc-gutter-dim">14</span>
+          <span class="doc-code"><span class="doc-directive">&lt;?catalog glob: "docs/**/*.md" sort: path ?&gt;</span></span>
+        </div>
+        <div class="doc-line doc-line--added">
+          <span class="doc-gutter doc-gutter-add">+</span>
+          <span class="doc-code"><span class="doc-list-item">- <span class="doc-link">[Architecture](docs/dev/architecture.md)</span></span></span>
+        </div>
+        <div class="doc-line doc-line--added">
+          <span class="doc-gutter doc-gutter-add">+</span>
+          <span class="doc-code"><span class="doc-list-item">- <span class="doc-link">[Coverage Gate](docs/dev/coverage.md)</span></span></span>
+        </div>
+        <div class="doc-line doc-line--added">
+          <span class="doc-gutter doc-gutter-add">+</span>
+          <span class="doc-code"><span class="doc-list-item">- <span class="doc-link">[Release Pipeline](docs/dev/release.md)</span></span></span>
+        </div>
+        <div class="doc-line">
+          <span class="doc-gutter doc-gutter-dim">18</span>
+          <span class="doc-code"><span class="doc-directive">&lt;?/catalog?&gt;</span></span>
+        </div>
+        <div class="doc-line">
+          <span class="doc-gutter doc-gutter-dim">19</span>
+          <span class="doc-code doc-blank">&nbsp;</span>
+        </div>
+        <div class="doc-line">
+          <span class="doc-gutter doc-gutter-dim">20</span>
+          <span class="doc-code"><span class="doc-h3">### Build &amp; Test</span></span>
+        </div>
+        <div class="doc-annotation">
+          <span class="doc-annotation-icon">↺</span> catalog regenerated 3 entries on <code>mdsmith fix</code>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

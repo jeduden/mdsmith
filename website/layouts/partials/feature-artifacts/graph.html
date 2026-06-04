@@ -1,0 +1,55 @@
+{{- /* Dependency graph artifact — Pillar 3 "A connected docs tree".
+       Light SVG graph with a broken-anchor error callout.
+       Rule code corrected: MDS027 (cross-file reference integrity /
+       missing anchor).
+       aria-hidden: purely decorative marketing visual. */ -}}
+<div class="card-media card-media--graph" aria-hidden="true">
+  <div class="artifact-frame artifact-frame--graph">
+    <div class="artifact-titlebar artifact-titlebar--graph">
+      <div class="graph-traffic">
+        <span class="graph-dot graph-dot-r"></span>
+        <span class="graph-dot graph-dot-y"></span>
+        <span class="graph-dot graph-dot-g"></span>
+      </div>
+      <span class="artifact-title artifact-title--graph">mdsmith deps — workspace</span>
+    </div>
+    <div class="artifact-body artifact-body--graph">
+      <svg viewBox="0 0 340 230" xmlns="http://www.w3.org/2000/svg" class="graph-svg">
+        <!-- Edges (normal) -->
+        <line x1="100" y1="50" x2="240" y2="50" stroke="#D6DAE0" stroke-width="1.5"/>
+        <line x1="100" y1="65" x2="65" y2="130" stroke="#D6DAE0" stroke-width="1.5"/>
+        <line x1="100" y1="65" x2="168" y2="130" stroke="#D6DAE0" stroke-width="1.5"/>
+        <!-- Broken edge: api.md → guide.md (highlighted in error) -->
+        <line x1="240" y1="65" x2="270" y2="130" stroke="#E5484D" stroke-width="2" stroke-dasharray="5,3"/>
+        <!-- Edge label marker (!) -->
+        <circle cx="257" cy="100" r="8" fill="#FEF0F0" stroke="#E5484D" stroke-width="1.2"/>
+        <text x="257" y="104" text-anchor="middle" font-family="monospace" font-size="9" font-weight="700" fill="#E5484D">!</text>
+
+        <!-- Node: index.md (root, center-left) -->
+        <rect x="50" y="28" width="100" height="30" rx="6" fill="#FFFFFF" stroke="#D6DAE0" stroke-width="1.5"/>
+        <text x="100" y="48" text-anchor="middle" font-family="monospace" font-size="10.5" fill="#0F1419">index.md</text>
+
+        <!-- Node: api.md -->
+        <rect x="192" y="28" width="88" height="30" rx="6" fill="#FFFFFF" stroke="#D6DAE0" stroke-width="1.5"/>
+        <text x="236" y="48" text-anchor="middle" font-family="monospace" font-size="10.5" fill="#0F1419">api.md</text>
+
+        <!-- Node: proto.md (forge tint — kind anchor) -->
+        <rect x="14" y="118" width="88" height="30" rx="6" fill="#FDF3EA" stroke="#ECA152" stroke-width="1.5"/>
+        <text x="58" y="138" text-anchor="middle" font-family="monospace" font-size="10.5" fill="#B84F12">proto.md</text>
+
+        <!-- Node: CLAUDE.md -->
+        <rect x="120" y="118" width="92" height="30" rx="6" fill="#FFFFFF" stroke="#D6DAE0" stroke-width="1.5"/>
+        <text x="166" y="138" text-anchor="middle" font-family="monospace" font-size="10.5" fill="#0F1419">CLAUDE.md</text>
+
+        <!-- Node: guide.md (broken target — error highlight) -->
+        <rect x="228" y="118" width="88" height="30" rx="6" fill="#FEF0F0" stroke="#E5484D" stroke-width="2"/>
+        <text x="272" y="138" text-anchor="middle" font-family="monospace" font-size="10.5" fill="#C3372C">guide.md</text>
+
+        <!-- Error callout below broken edge -->
+        <rect x="188" y="163" width="148" height="38" rx="5" fill="#FEF0F0" stroke="#E5484D" stroke-width="1"/>
+        <text x="197" y="178" font-family="monospace" font-size="9.5" font-weight="600" fill="#C3372C">MDS027 missing anchor</text>
+        <text x="197" y="192" font-family="monospace" font-size="9" fill="#8A93A0">#setup not found in guide.md</text>
+      </svg>
+    </div>
+  </div>
+</div>

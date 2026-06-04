@@ -1,33 +1,52 @@
-{{- /* Feature cards are driven by the shared Markdown in
-       docs/features/ (synced and served at /features/ by
-       `mdsmith-release build-website`). The repository README
-       includes the same source via <?include?>, so the card
-       copy and the README cannot drift. Cards are grouped into
-       the five "pillars" via each page's `group` front-matter
-       field, so the homepage mirrors the README's grouped
-       overview. Groups render in weight order (first
-       appearance); cards within a group render by weight.
+{{- /*
+  Feature grid — "Why mdsmith" section homepage pillar layout.
 
-       Bento featured-first layout: the first card in each group
-       gets `feature-card--hero` (a 2-column anchor tile). The grid
-       stamps `data-count` (used by the N=1 and N=3 special cases)
-       and, for N >= 4, `data-tail="(N-2) mod 3"` — the number of
-       cards in the last row. All void-filling is pure CSS keyed on
-       `data-tail` (plus the N=1/N=3 data-count cases), so it fills
-       cleanly at any group size — see the feature-grid rules in
-       app.css. No per-section config.
+  STRUCTURE
+  ─────────
+  Five pillars, one per feature group. Each pillar emits:
+    • A .pillar-header with a zero-padded number, the group name,
+      and a .pillar-rule hairline that fills the remaining width.
+    • A .card-grid[data-count=N] containing N cards.
+    • The FIRST card in every group is the LEAD card: it gets
+      class card--lead card--lead-{theme} and a device-frame
+      artifact partial rendered after .card-body.
+    • Remaining cards are plain .card elements.
 
-       Right-hand media (balances the wide tiles): every card
-       carries a `.feature-media` column. CSS shows it only on the
-       wide tiles (hero + the void-fill stretches). By default it
-       holds an oversized faded copy of the feature's icon. Set
-       `image:` in a feature's front matter (a path under the
-       site's static/, e.g. `img/features/auto-fix.png`) and that
-       card shows the screenshot instead, framed as a dark
-       terminal window. Drop the PNG in
-       website/static/img/features/ ; adding the `image:` field
-       also needs an optional `image?` leaf on the `feature` kind
-       schema in .mdsmith.yml. */ -}}
+  ARTIFACT MAP
+  ─────────────
+  Each lead card renders an artifact partial from
+  website/layouts/partials/feature-artifacts/. The map below
+  ties a group name to a partial + theme class. Groups not listed
+  render as a non-lead card (graceful fallback — no crash).
+
+    "Clean, consistent Markdown"            → terminal  (dark)
+    "One engine, every surface"             → editor    (light)
+    "A connected docs tree"                 → graph     (light)
+    "Markdown as a single source of truth"  → doc       (light)
+    "Built for your pipeline"               → ci        (light)
+
+  These artifact frames are website-only marketing visuals.
+  The repository README includes the same feature descriptions
+  via <?include?> directives — the artifacts do not appear there.
+
+  DATA
+  ────
+  All copy (title, summary, icon, rules, href) comes from
+  docs/features/*.md front matter, mirrored to
+  website/content/docs/features/ by `mdsmith-release build-website`.
+  Cards are grouped by the `group:` field; groups render in
+  first-appearance order (weight); cards within a group by weight.
+*/ -}}
+
+{{- /* Artifact map: group name → (partial path, theme class) */ -}}
+{{- $artifactMap := dict
+  "Clean, consistent Markdown"           (dict "partial" "feature-artifacts/terminal" "theme" "dark")
+  "One engine, every surface"            (dict "partial" "feature-artifacts/editor"   "theme" "light")
+  "A connected docs tree"                (dict "partial" "feature-artifacts/graph"    "theme" "light")
+  "Markdown as a single source of truth" (dict "partial" "feature-artifacts/doc"      "theme" "light")
+  "Built for your pipeline"              (dict "partial" "feature-artifacts/ci"       "theme" "light")
+-}}
+
 {{- $features := site.GetPage "/features" -}}
 {{- if $features -}}
 {{- $pages := $features.Pages.ByWeight -}}
@@ -37,44 +56,44 @@
     {{- if not (in $groups .) }}{{ $groups = $groups | append . }}{{ end -}}
   {{- end -}}
 {{- end -}}
-{{- range $group := $groups }}
+
+{{- range $gi, $group := $groups -}}
   {{- $groupPages := where $pages "Params.group" $group -}}
   {{- $count := len $groupPages -}}
-  <div class="feature-group">
-    <h3 class="feature-group-title">{{ $group }}</h3>
-    <div class="feature-grid" data-count="{{ $count }}"{{ if ge $count 4 }} data-tail="{{ mod (sub $count 2) 3 }}"{{ end }}>
-      {{- range $i, $page := $groupPages }}
-      <a class="feature-card{{ if eq $i 0 }} feature-card--hero{{ end }}" href="{{ $page.RelPermalink }}">
-        <div class="feature-card-body">
-          <span class="icon" aria-hidden="true">
-            <i data-lucide="{{ $page.Params.icon | default "check" }}" width="{{ if eq $i 0 }}20{{ else }}18{{ end }}" height="{{ if eq $i 0 }}20{{ else }}18{{ end }}"></i>
-          </span>
-          <h4>{{ $page.Title }}</h4>
-          {{/* Inline render so the summary's inline markup
-               (code spans, links) does not nest a block <p>
-               inside this wrapping <p>. summary is required by
-               the `feature` kind's schema, so `mdsmith check`
-               fails on an incomplete page before it can ship —
-               no template-side guard needed. */}}
-          <p>{{ $page.RenderString (dict "display" "inline") $page.Params.summary }}</p>
+  {{- $artifact := index $artifactMap $group -}}
+<div class="pillar">
+  <div class="pillar-header">
+    <span class="pillar-num">{{ printf "%02d" (add $gi 1) }}</span>
+    <span class="pillar-name">{{ $group }}</span>
+    <span class="pillar-rule" aria-hidden="true"></span>
+  </div>
+  <div class="card-grid" data-count="{{ $count }}">
+    {{- range $i, $page := $groupPages -}}
+      {{- /* Lead = first card of a group that has a mapped artifact;
+             index returns nil for an unmapped group, which is falsy. */ -}}
+      {{- $isLead := false -}}
+      {{- $theme := "" -}}
+      {{- if and (eq $i 0) $artifact }}{{ $isLead = true }}{{ $theme = index $artifact "theme" }}{{ end -}}
+    <a class="card{{ if $isLead }} card--lead card--lead-{{ $theme }}{{ end }}" href="{{ $page.RelPermalink }}">
+      <div class="card-body{{ if $isLead }} card-body--lead{{ end }}">
+        <span class="card-icon">
+          <i data-lucide="{{ $page.Params.icon | default "check" }}" width="{{ if $isLead }}24{{ else }}18{{ end }}" height="{{ if $isLead }}24{{ else }}18{{ end }}"></i>
+        </span>
+        <div class="card-content">
+          <h4 class="card-title">{{ $page.Title }}</h4>
+          <p class="card-desc">{{ $page.RenderString (dict "display" "inline") $page.Params.summary }}</p>
           {{- with $page.Params.rules }}
-          <div class="feature-rules">
+          <div class="card-rules">
             {{ range . }}<span class="rule-chip">{{ . }}</span>{{ end }}
           </div>
           {{- end }}
-          <span class="feature-more">Learn more <i data-lucide="arrow-right" width="14" height="14" aria-hidden="true"></i></span>
+          <span class="card-more">Learn more <i data-lucide="arrow-right" width="12" height="12"></i></span>
         </div>
-        <div class="feature-media{{ with $page.Params.image }} feature-media--shot{{ end }}" aria-hidden="true">
-          {{- with $page.Params.image }}
-          <span class="feature-shot-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></span>
-          <img class="feature-shot" src="{{ . | relURL }}" alt="" loading="lazy">
-          {{- else }}
-          <i class="feature-watermark" data-lucide="{{ $page.Params.icon | default "check" }}" width="160" height="160"></i>
-          {{- end }}
-        </div>
-      </a>
-      {{- end }}
-    </div>
+      </div>
+      {{- if $isLead }}{{ partial (index $artifact "partial") . }}{{ end -}}
+    </a>
+    {{- end }}
   </div>
-{{- end }}
+</div>
+{{- end -}}
 {{- end -}}

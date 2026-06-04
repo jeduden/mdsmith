@@ -225,180 +225,792 @@ main {
   letter-spacing: -0.02em;
   margin: 0 0 14px;
 }
+.section-title em {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 400;
+  color: var(--forge-600);
+  letter-spacing: -0.02em;
+}
 .section-lead {
   font-size: 17px; color: var(--fg-muted); line-height: 1.55;
   max-width: 640px;
   margin: 0 0 48px;
 }
 
-/* ========== FEATURE GRID ========== */
+/* ========== FEATURE GRID — PILLAR LAYOUT ========== */
 
-.feature-group + .feature-group { margin-top: 40px; }
-.feature-group-title {
-  font-size: 13px; font-weight: 700;
-  text-transform: uppercase; letter-spacing: 0.06em;
-  color: var(--forge-600);
-  margin: 0 0 14px;
+/* ── Pillar group ── */
+.pillar { margin-bottom: 52px; }
+.pillar:last-child { margin-bottom: 0; }
+
+.pillar-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.pillar-num {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--steel-300);
+  flex-shrink: 0;
+}
+.pillar-name {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--steel-400);
+  flex-shrink: 0;
+}
+.pillar-rule {
+  flex: 1;
+  height: 1px;
+  background: var(--steel-100);
 }
 
-/*
- * Bento featured-first. A 3-column grid with hairline separators
- * (the 1px gap over a --border background). The template marks the
- * first card .feature-card--hero (spans 2 columns, to anchor the
- * pillar). With the hero taking a row of three, `tail = (N - 2) mod 3`
- * is the number of cards left in the last row; the template stamps it
- * as data-tail (for N >= 4) so the CSS targets the pattern, not
- * specific counts — a void-free fill at ANY group size with no JS:
- *     tail 0  (5,8,11,…): rows fill exactly; no special rule
- *     tail 1  (6,9,12,…): the lone last card spans the whole row
- *     tail 2  (4,7,10,…): 2nd-to-last spans 2, last spans 1 -> 3 wide
- *   N = 1: the hero spans the full width            (data-count="1")
- *   N = 3: a 2-column grid — hero banner on top, two tiles beneath
- *          (a clean "hero + two", never a wide stub) (data-count="3")
- */
-.feature-grid {
+/* ── Card grid ── */
+/* Hairline separators: 1px gap over steel-100 background. */
+.card-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
   gap: 1px;
-  background: var(--border);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  background: var(--steel-100);
+  border: 1px solid var(--steel-100);
+  border-radius: 12px;
   overflow: hidden;
 }
-.feature-card--hero { grid-column: span 2; }
-.feature-grid[data-count="1"] .feature-card--hero { grid-column: 1 / -1; }
-.feature-grid[data-count="3"] { grid-template-columns: 1fr 1fr; }
-.feature-grid[data-tail="1"] .feature-card:last-child { grid-column: 1 / -1; }
-.feature-grid[data-tail="2"] .feature-card:nth-last-child(2) { grid-column: span 2; }
 
-.feature-card {
-  background: var(--bg-raised);
-  padding: 28px 24px;
-  display: flex; flex-direction: column; gap: 10px;
-  color: var(--fg);
+/* 3-card grid: lead full-width, 2-col below */
+.card-grid[data-count="3"] {
+  grid-template-columns: repeat(2, 1fr);
+}
+.card-grid[data-count="3"] .card:first-child {
+  grid-column: 1 / -1;
+}
+
+/* 4-card grid: lead full-width, 3-col below */
+.card-grid[data-count="4"] {
+  grid-template-columns: repeat(3, 1fr);
+}
+.card-grid[data-count="4"] .card:first-child {
+  grid-column: 1 / -1;
+}
+
+/* ── Card base ── */
+.card {
   position: relative;
-  transition: background var(--dur-base), box-shadow var(--dur-base);
-}
-.feature-card:hover,
-.feature-card:focus-visible {
-  background: var(--canvas);
+  display: flex;
+  flex-direction: column;
+  background: var(--canvas-raised);
   text-decoration: none;
-  box-shadow: inset 3px 0 0 var(--forge-500);
+  color: inherit;
+  overflow: hidden;
+  transition: background 130ms ease;
 }
-.feature-card:focus-visible { outline: 2px solid var(--forge-500); outline-offset: -2px; }
-.feature-card h4,
-.feature-card:hover h4,
-.feature-card:focus-visible h4 { color: var(--fg); }
-.feature-more {
+.card:hover { background: var(--steel-50); }
+.card:focus-visible {
+  outline: 2px solid var(--forge-500);
+  outline-offset: -2px;
+  z-index: 1;
+}
+
+/* Lead card: horizontal layout */
+.card--lead {
+  flex-direction: row;
+  align-items: stretch;
+  min-height: 300px;
+}
+
+/* 2px forge gradient accent on lead cards */
+.card--lead::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    var(--forge-500) 0%,
+    var(--forge-300) 60%,
+    transparent 100%
+  );
+  z-index: 1;
+}
+
+/* ── Card internals ── */
+.card-body {
+  display: flex;
+  flex-direction: column;
+  padding: 26px 26px 22px;
+  flex: 1;
+  min-height: 180px;
+}
+
+.card-body--lead {
+  padding: 36px 36px 32px 36px;
+  flex: 0 0 320px;
+  min-width: 240px;
+  position: relative;
+}
+
+.card-icon {
+  display: flex;
+  align-items: center;
+  width: 32px;
+  height: 32px;
+  margin-bottom: 16px;
+  flex-shrink: 0;
+  color: var(--steel-400);
+  stroke-width: 1.5;
+}
+.card-body--lead .card-icon {
+  width: 36px;
+  height: 36px;
+  margin-bottom: 20px;
+  color: var(--forge-600);
+}
+.card-icon svg { width: 100%; height: 100%; stroke-width: inherit; }
+
+.card-title {
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: var(--steel-900);
+  margin-bottom: 7px;
+}
+.card-body--lead .card-title {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.028em;
+  line-height: 1.18;
+  margin-bottom: 11px;
+}
+
+.card-desc {
+  font-size: 13px;
+  line-height: 1.58;
+  color: var(--steel-500);
+  margin: 0;
+}
+.card-body--lead .card-desc {
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--steel-600);
+  max-width: 30ch;
+}
+
+/* .rule-chip is shared across card and old feature-card contexts */
+.rule-chip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--steel-500);
+  background: var(--steel-50);
+  border: 1px solid var(--steel-100);
+  border-radius: 3px;
+  padding: 2px 6px;
+  line-height: 1.5;
+}
+.card-body--lead .rule-chip {
+  color: var(--forge-700);
+  background: var(--forge-50);
+  border-color: var(--forge-100);
+}
+
+.card-rules {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 14px;
+}
+
+.card-content { display: flex; flex-direction: column; flex: 1; }
+
+.card-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--steel-300);
   margin-top: auto;
-  display: inline-flex; align-items: center; gap: 5px;
+  padding-top: 18px;
+  text-decoration: none;
+  transition: color 130ms ease;
+}
+.card:hover .card-more { color: var(--steel-500); }
+.card-body--lead .card-more { color: var(--forge-400); font-size: 12.5px; }
+.card--lead:hover .card-more { color: var(--forge-600); }
+.card-more svg { transition: transform 130ms ease; }
+.card:hover .card-more svg { transform: translateX(2px); }
+
+/* ── Lead card media panel ── */
+.card-media {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  padding: 24px 24px 24px 16px;
+  min-width: 200px;
+  background: var(--canvas-sunken);
+}
+
+.card-media--terminal {
+  background: #0A0E13;
+  padding: 20px 20px 20px 12px;
+}
+.card-media--editor {
+  background: #F0EDE8;
+  align-items: flex-start;
+  padding-top: 24px;
+}
+.card-media--graph {
+  background: var(--steel-50);
+}
+.card-media--doc {
+  background: #F0EDE8;
+}
+.card-media--ci {
+  background: var(--steel-50);
+}
+
+.card--lead:hover .card-media {
+  filter: brightness(1.02);
+}
+
+/* ── Artifact frame — shared frame language ── */
+.artifact-frame {
+  width: 100%;
+  max-width: 440px;
+  border-radius: 9px;
+  box-shadow: 0 2px 12px rgba(15,20,25,0.09), 0 1px 3px rgba(15,20,25,0.06);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Shared titlebar base */
+.artifact-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  flex-shrink: 0;
+  border-bottom: 1px solid;
+}
+.artifact-title {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  flex: 1;
+  text-align: center;
+  color: var(--steel-500);
+}
+
+/* Shared traffic dots */
+.term-dots, .vscode-traffic, .graph-traffic, .doc-traffic, .ci-traffic {
+  display: flex;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.term-dot, .vscode-dot, .graph-dot, .doc-dot, .ci-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+/* ── Artifact 1: Terminal (dark) ── */
+.artifact-frame--terminal {
+  border: 1px solid #1A1F26;
+  background: #0F1419;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.45), 0 1px 4px rgba(0,0,0,0.3);
+}
+.artifact-titlebar--terminal {
+  background: #070A0D;
+  border-bottom-color: #1A1F26;
+}
+.term-dot-r { background: #FF6B5C; }
+.term-dot-y { background: #E58233; }
+.term-dot-g { background: #5DC58C; }
+
+.artifact-body--terminal {
+  padding: 14px 16px 16px;
+  overflow: hidden;
+  background: #0F1419;
+}
+.term-pre {
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--forge-600);
-  opacity: 0;
-  transform: translateX(-4px);
-  transition: opacity var(--dur-base), transform var(--dur-base);
+  line-height: 1.72;
+  color: #E6E1D6;
+  margin: 0;
+  padding: 0;
+  background: none;
+  white-space: pre;
+  overflow: hidden;
 }
-.feature-card:hover .feature-more,
-.feature-card:focus-visible .feature-more { opacity: 1; transform: translateX(0); }
-.feature-rules { margin-top: 2px; }
-.feature-card .icon {
-  width: 32px; height: 32px;
+
+/* Terminal syntax tokens */
+.t-prompt { color: #E58233; }
+.t-cmd    { color: #E6E1D6; font-weight: 500; }
+.t-arg    { color: #F4B860; }
+.t-dim    { color: #8A93A0; }
+.t-ok     { color: #5DC58C; }
+.t-err    { color: #FF6B5C; }
+.t-warn   { color: #ECA152; }
+.t-rule   { color: #B98AE8; }
+.t-path   { color: #79C7E8; }
+
+/* ── Artifact 2: VS Code editor (light) ── */
+.artifact-frame--editor {
+  border: 1px solid var(--steel-200);
+  background: #FFFFFF;
+}
+.artifact-titlebar--editor {
+  background: #F3F0EC;
+  border-bottom-color: #E0DDD8;
+  padding: 8px 12px;
+}
+.vscode-dot-r { background: #FF5F57; }
+.vscode-dot-y { background: #FFBD2E; }
+.vscode-dot-g { background: #28CA42; }
+.artifact-title--editor {
+  color: #5C6773;
+  font-size: 10px;
+}
+
+.vscode-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  background: #FFFFFF;
+  min-height: 180px;
+}
+
+/* Activity bar — slim left strip */
+.vscode-activity-bar {
+  width: 34px;
+  background: #F3F0EC;
+  border-right: 1px solid #E0DDD8;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.vscode-ab-icon {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: #8A93A0;
+  cursor: pointer;
+}
+.vscode-ab-active { color: #D9651D; }
+.vscode-ab-icon svg { display: block; }
+
+/* Main editor pane */
+.vscode-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Tab bar */
+.vscode-tabs {
+  display: flex;
+  background: #F3F0EC;
+  border-bottom: 1px solid #E0DDD8;
+  flex-shrink: 0;
+}
+.vscode-tab {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 6px 12px 5px;
+  color: #8A93A0;
+  border-right: 1px solid #E0DDD8;
+  white-space: nowrap;
+}
+.vscode-tab--active {
+  background: #FFFFFF;
+  color: #0F1419;
+  border-bottom-color: #FFFFFF;
+  border-top: 1.5px solid #D9651D;
+  margin-top: -0.5px;
+}
+
+/* Editor area with gutter */
+.vscode-editor-area {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+.vscode-gutter {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 8px 8px 4px;
+  min-width: 28px;
+  background: #FFFFFF;
+  border-right: 1px solid #EAECEF;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.7;
+  color: #B4BBC4;
+  text-align: right;
+  flex-shrink: 0;
+  user-select: none;
+}
+.vscode-gutter-active { color: #5C6773; font-weight: 600; }
+
+.vscode-code-area {
+  flex: 1;
+  padding: 8px 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.7;
+  color: #0F1419;
+  overflow: hidden;
+  position: relative;
+}
+.vscode-line { display: block; white-space: nowrap; }
+.vscode-line--error { background: rgba(229,72,77,0.06); }
+
+/* VS Code syntax */
+.vc-text    { color: #3F4A57; }
+.vc-url     { color: #2563A8; }
+
+/* Wavy underline squiggle */
+.vc-squiggle-red {
+  text-decoration: underline wavy #E5484D;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1.5px;
+}
+
+/* Hover popup */
+.vscode-hover-popup {
+  position: absolute;
+  top: 75px;
+  left: 28px;
+  right: 4px;
+  background: #FFFFFF;
+  border: 1px solid #D6DAE0;
   border-radius: 6px;
-  background: var(--forge-50);
+  box-shadow: 0 4px 16px rgba(15,20,25,0.14), 0 1px 4px rgba(15,20,25,0.08);
+  overflow: hidden;
+  z-index: 5;
+}
+.vscode-hover-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px 5px;
+  border-bottom: 1px solid #EAECEF;
+  font-size: 10.5px;
+}
+.vscode-lightbulb { font-size: 11px; }
+.vscode-hover-rule {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #B98AE8;
+  font-weight: 600;
+}
+.vscode-hover-msg { color: #3F4A57; font-size: 10.5px; flex: 1; }
+.vscode-hover-actions { padding: 5px 10px 7px; }
+.vscode-quickfix-label {
+  font-size: 10px;
+  font-weight: 600;
   color: var(--forge-600);
-  display: inline-flex; align-items: center; justify-content: center;
+  display: block;
+  margin-bottom: 3px;
+}
+.vscode-quickfix-item {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #3F4A57;
+  padding: 2px 4px;
+  border-radius: 3px;
+  background: var(--forge-50);
   border: 1px solid var(--forge-100);
+  margin-bottom: 2px;
 }
-.feature-card h4 {
-  font-size: 17px; font-weight: 600; margin: 4px 0 0; letter-spacing: -0.01em;
-}
-.feature-card p { font-size: 14px; color: var(--fg-muted); line-height: 1.55; margin: 0; }
-.feature-card .rule-chip {
-  display: inline-flex; align-items: center;
-  font-family: var(--font-mono); font-size: 11px;
-  background: var(--steel-50); border: 1px solid var(--border-strong);
-  padding: 1px 6px; border-radius: 3px; margin-right: 4px; color: var(--steel-700);
+.vscode-quickfix-dim {
+  background: var(--steel-50);
+  border-color: var(--steel-100);
+  color: #8A93A0;
 }
 
-/* Hero enlargements — declared after the generic .feature-card rules
-   so they win at equal specificity. The hero's hover accent moves to
-   the bottom edge, since the hero is wide rather than tall. */
-.feature-card--hero:hover,
-.feature-card--hero:focus-visible { box-shadow: inset 0 -3px 0 var(--forge-500); }
-.feature-card--hero .icon { width: 40px; height: 40px; border-radius: var(--radius-lg); }
-.feature-card--hero h4 { font-size: 20px; letter-spacing: -0.02em; }
-.feature-card--hero p { font-size: 15px; max-width: 52ch; }
+/* Status bar */
+.vscode-status-bar {
+  height: 20px;
+  background: #D9651D;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.vscode-status-problems {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: rgba(255,255,255,0.92);
+  font-weight: 500;
+}
+.vscode-status-lang, .vscode-status-ext {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: rgba(255,255,255,0.7);
+}
+.vscode-status-lang { margin-left: auto; }
+.vscode-status-ext  { margin-left: 8px; }
 
-/* Right-hand media column. Wide tiles (the hero and the void-fill
-   stretches) lay out as two columns — text body on the left, this
-   media on the right — to balance their extra width. By default the
-   media is a soft forge-gradient panel carrying the feature's own
-   icon, centered and fully visible; a feature page that sets `image:`
-   swaps in a screenshot, framed as a dark terminal window (matching
-   .hero-demo) and shown in full. Narrow tiles keep the media hidden
-   and stay a single text column. */
-.feature-card-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
-.feature-media { display: none; position: relative; overflow: hidden; border-radius: var(--radius-md); }
-/* Default box: the feature's own icon lit by a forge glow. Two layers
-   give it depth instead of a flat wash: a soft radial orb behind the
-   icon for luminosity, over a smooth right->left wash that eases into
-   the text. Negative margins bleed both to the tile's top/right/bottom
-   edges so the colour reaches the outer edge. */
-.feature-media:not(.feature-media--shot) {
-  align-items: center; justify-content: center;
-  margin: -28px -24px -28px 0;
-  border-radius: 0;
-  background:
-    radial-gradient(74% 86% at 66% 50%,
-      rgba(217, 101, 29, 0.30) 0%,
-      rgba(217, 101, 29, 0.10) 44%,
-      rgba(217, 101, 29, 0.00) 72%),
-    linear-gradient(to left,
-      rgba(217, 101, 29, 0.19) 0%,
-      rgba(217, 101, 29, 0.11) 28%,
-      rgba(217, 101, 29, 0.04) 60%,
-      rgba(217, 101, 29, 0.00) 100%);
+/* ── Artifact 3: Dependency graph (light) ── */
+.artifact-frame--graph {
+  border: 1px solid var(--steel-200);
+  background: #FFFFFF;
 }
-.feature-watermark {
-  width: 52%; max-width: 150px; max-height: 72%; height: auto;
-  color: var(--forge-500); opacity: 0.55; pointer-events: none;
+.artifact-titlebar--graph {
+  background: var(--steel-50);
+  border-bottom-color: var(--steel-100);
+  padding: 8px 12px;
 }
-/* Screenshot box: dark terminal frame; the image shows in full
-   (height auto, no crop) and the frame hugs it, centered in the card. */
-.feature-media--shot {
-  flex-direction: column; align-self: center;
-  background: var(--term-bg);
-  border: 1px solid var(--steel-800);
-  box-shadow: var(--shadow-md);
+.graph-dot-r { background: #FF5F57; }
+.graph-dot-y { background: #FFBD2E; }
+.graph-dot-g { background: #28CA42; }
+.artifact-title--graph {
+  color: #5C6773;
+  font-size: 10px;
 }
-.feature-shot-bar {
-  height: 26px; flex: 0 0 auto;
-  display: flex; align-items: center; gap: 6px; padding: 0 10px;
-  background: var(--steel-950); border-bottom: 1px solid var(--steel-800);
+.artifact-body--graph {
+  padding: 12px;
+  background: #FFFFFF;
+  overflow: hidden;
 }
-.feature-shot-bar .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--steel-700); }
-.feature-shot-bar .dot.r { background: #FF6B5C; }
-.feature-shot-bar .dot.y { background: var(--forge-400); }
-.feature-shot-bar .dot.g { background: var(--term-ok); }
-/* Reserve the recommended ~16:10 box up front so a lazy-loaded
-   screenshot does not shift the layout when it arrives; contain keeps
-   the whole capture visible (16:10 fills it exactly, off-ratio
-   letterboxes on the dark frame rather than cropping). */
-.feature-shot { display: block; width: 100%; height: auto; aspect-ratio: 16 / 10; object-fit: contain; }
+.graph-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  min-height: 160px;
+}
+
+/* ── Artifact 4: Document / TOC (light) ── */
+.artifact-frame--doc {
+  border: 1px solid var(--steel-200);
+  background: #FFFFFF;
+}
+.artifact-titlebar--doc {
+  background: #F3F0EC;
+  border-bottom-color: #E0DDD8;
+  padding: 8px 12px;
+}
+.doc-dot-r { background: #FF5F57; }
+.doc-dot-y { background: #FFBD2E; }
+.doc-dot-g { background: #28CA42; }
+.artifact-title--doc { color: #5C6773; font-size: 10px; }
+
+.artifact-body--doc {
+  background: #FFFFFF;
+  overflow: hidden;
+}
+
+.doc-file {
+  padding: 6px 0;
+  position: relative;
+}
+.doc-line {
+  display: flex;
+  align-items: baseline;
+  min-height: 21px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.7;
+}
+.doc-line--added {
+  background: rgba(45,142,90,0.08);
+}
+.doc-gutter {
+  width: 26px;
+  min-width: 26px;
+  text-align: right;
+  padding-right: 8px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  user-select: none;
+  flex-shrink: 0;
+}
+.doc-gutter-dim { color: #B4BBC4; }
+.doc-gutter-add { color: #2A8E5A; font-weight: 700; }
+.doc-code { padding: 0 10px; flex: 1; overflow: hidden; }
+.doc-blank { color: #EAECEF; }
+
+/* Doc syntax */
+.doc-h2 { color: #0F1419; font-weight: 600; }
+.doc-h3 { color: #3F4A57; font-weight: 600; }
+.doc-directive { color: #D9651D; font-style: italic; font-size: 10px; }
+.doc-list-item { color: #3F4A57; }
+.doc-link { color: #2563A8; }
+
+.doc-annotation {
+  font-size: 10px;
+  color: #2A8E5A;
+  background: rgba(45,142,90,0.07);
+  border-top: 1px solid rgba(45,142,90,0.15);
+  padding: 6px 10px 6px 34px;
+  font-family: var(--font-mono);
+}
+.doc-annotation code {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  background: rgba(45,142,90,0.12);
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: #2A8E5A;
+}
+
+/* ── Artifact 5: CI checks (GitHub Actions light style) ── */
+.artifact-frame--ci {
+  border: 1px solid var(--steel-200);
+  background: #FFFFFF;
+}
+.artifact-titlebar--ci {
+  background: var(--steel-50);
+  border-bottom-color: var(--steel-100);
+  padding: 8px 12px;
+}
+.ci-dot-r { background: #FF5F57; }
+.ci-dot-y { background: #FFBD2E; }
+.ci-dot-g { background: #28CA42; }
+.artifact-title--ci { color: #5C6773; font-size: 10px; }
+
+.artifact-body--ci {
+  padding: 12px 14px;
+  background: #FFFFFF;
+  overflow: hidden;
+}
+
+.ci-checks-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--steel-100);
+}
+.ci-workflow-name {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #0F1419;
+}
+.ci-all-pass {
+  font-size: 10px;
+  color: #2A8E5A;
+  font-weight: 600;
+}
+
+.ci-check-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.ci-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  background: var(--steel-50);
+  border: 1px solid var(--steel-100);
+}
+.ci-check--pass { border-left: 2.5px solid #2A8E5A; }
+.ci-check-icon { flex-shrink: 0; display: flex; align-items: center; }
+.ci-check-name {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: #0F1419;
+  flex: 1;
+}
+.ci-check-time {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: #8A93A0;
+}
+
+/* Gate step */
+.ci-gate-step {
+  background: var(--steel-50);
+  border: 1px solid var(--steel-100);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.ci-step-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: var(--steel-100);
+  border-bottom: 1px solid var(--steel-200);
+}
+.ci-step-arrow { color: #5C6773; font-size: 9px; }
+.ci-step-name {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: #3F4A57;
+}
+.ci-step-body { padding: 8px 10px; }
+.ci-step-cmd {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: #3F4A57;
+  margin-bottom: 5px;
+}
+.ci-dollar { color: var(--forge-500); margin-right: 4px; }
+.ci-arg { color: #F4B860; }
+.ci-step-output {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ci-pass-badge {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #FFFFFF;
+  background: #2A8E5A;
+  padding: 1px 7px;
+  border-radius: 3px;
+  letter-spacing: 0.05em;
+}
+.ci-step-dim {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #5C6773;
+}
 
 @media (min-width: 881px) {
-  /* Wide tiles (hero + the tail stretches) lay out as text body | box,
-     with the media revealed. Same selector set as the void-fill. */
-  .feature-card--hero,
-  .feature-grid[data-tail="1"] .feature-card:last-child,
-  .feature-grid[data-tail="2"] .feature-card:nth-last-child(2) {
-    flex-direction: row; align-items: stretch; gap: 28px;
+  /* Tablet breakpoint: 4-col grids collapse support cols to 2 */
+  .card-grid[data-count="4"] {
+    grid-template-columns: repeat(2, 1fr);
   }
-  .feature-card--hero > .feature-media,
-  .feature-grid[data-tail="1"] .feature-card:last-child > .feature-media,
-  .feature-grid[data-tail="2"] .feature-card:nth-last-child(2) > .feature-media {
-    display: flex; flex: 0 0 40%;
+  .card-grid[data-count="4"] .card:first-child {
+    grid-column: 1 / -1;
+  }
+  .card-body--lead {
+    flex: 0 0 300px;
   }
 }
 
@@ -1002,21 +1614,56 @@ a.rule-ref:hover code { text-decoration: underline; }
 @media (max-width: 880px) {
   .hero-grid { grid-template-columns: 1fr; gap: 36px; }
   .hero h1 { font-size: 44px; }
-  /* Feature grid -> single column; undo every bento span and the
-     enlarged hero sizing so cards stack uniformly on small screens. */
-  .feature-grid,
-  .feature-grid[data-count="3"] { grid-template-columns: 1fr; }
-  .feature-card--hero,
-  .feature-grid[data-count="1"] .feature-card--hero,
-  .feature-grid[data-tail="1"] .feature-card:last-child,
-  .feature-grid[data-tail="2"] .feature-card:nth-last-child(2) { grid-column: auto; }
-  .feature-card--hero .icon { width: 32px; height: 32px; border-radius: 6px; }
-  .feature-card--hero h4 { font-size: 17px; letter-spacing: -0.01em; }
-  .feature-card--hero p { font-size: 14px; max-width: none; }
-  /* Stacked uniformly, so the hero takes the same left accent as the
-     other cards instead of its desktop bottom accent. */
-  .feature-card--hero:hover,
-  .feature-card--hero:focus-visible { box-shadow: inset 3px 0 0 var(--forge-500); }
+
+  /* Feature grid — single column; all grids collapse */
+  .card-grid[data-count="3"],
+  .card-grid[data-count="4"] {
+    grid-template-columns: 1fr;
+    border-radius: 8px;
+  }
+  .card-grid[data-count="3"] .card:first-child,
+  .card-grid[data-count="4"] .card:first-child {
+    grid-column: 1;
+  }
+
+  /* Lead card: artifact on top, body below */
+  .card--lead {
+    flex-direction: column-reverse;
+  }
+  .card-body--lead {
+    padding: 28px 24px 24px;
+    flex: none;
+    min-width: 0;
+    width: 100%;
+  }
+  .card-body--lead .card-desc { max-width: none; }
+  .card-body--lead .card-title { font-size: 18px; }
+
+  .card-media {
+    min-height: 180px;
+    min-width: 0;
+    width: 100%;
+    border-bottom: 1px solid var(--steel-100);
+    padding: 16px;
+  }
+  .card-media--terminal { padding: 12px; }
+
+  .artifact-frame { max-width: 100%; }
+
+  /* Scale down terminal text on mobile */
+  .term-pre { font-size: 10px; line-height: 1.6; }
+
+  /* Scale down VS Code artifact */
+  .vscode-code-area { font-size: 9.5px; }
+  .vscode-gutter    { font-size: 9px; }
+  .vscode-hover-popup { position: static; margin-top: 4px; }
+
+  /* Graph SVG — full width */
+  .graph-svg { height: 160px; }
+
+  .pillar { margin-bottom: 36px; }
+  .card-body { padding: 22px 20px 18px; }
+
   .docs-index { grid-template-columns: 1fr; }
   .docs-grid { grid-template-columns: 1fr; gap: 20px; }
   /* Standard mobile pattern: the long docs nav collapses

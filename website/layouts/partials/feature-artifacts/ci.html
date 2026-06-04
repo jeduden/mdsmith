@@ -1,0 +1,54 @@
+{{- /* CI checks artifact — Pillar 5 "Built for your pipeline".
+       Light GitHub Actions-style checks panel with release gate step.
+       aria-hidden: purely decorative marketing visual. */ -}}
+<div class="card-media card-media--ci" aria-hidden="true">
+  <div class="artifact-frame artifact-frame--ci">
+    <div class="artifact-titlebar artifact-titlebar--ci">
+      <div class="ci-traffic">
+        <span class="ci-dot ci-dot-r"></span>
+        <span class="ci-dot ci-dot-y"></span>
+        <span class="ci-dot ci-dot-g"></span>
+      </div>
+      <span class="artifact-title artifact-title--ci">Actions — release-gate</span>
+    </div>
+    <div class="artifact-body artifact-body--ci">
+      <div class="ci-checks-header">
+        <span class="ci-workflow-name">release-gate</span>
+        <span class="ci-all-pass">✓ All checks passed</span>
+      </div>
+      <div class="ci-check-list">
+        <div class="ci-check ci-check--pass">
+          <span class="ci-check-icon ci-icon-pass">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" fill="#2A8E5A"/><path d="M7 12.5l3.5 3.5L17 9" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+          <span class="ci-check-name">mdsmith check</span>
+          <span class="ci-check-time">4s</span>
+        </div>
+        <div class="ci-check ci-check--pass">
+          <span class="ci-check-icon ci-icon-pass">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" fill="#2A8E5A"/><path d="M7 12.5l3.5 3.5L17 9" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+          <span class="ci-check-name">coverage gate</span>
+          <span class="ci-check-time">12s</span>
+        </div>
+        <div class="ci-check ci-check--pass">
+          <span class="ci-check-icon ci-icon-pass">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" fill="#2A8E5A"/><path d="M7 12.5l3.5 3.5L17 9" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+          <span class="ci-check-name">release gate</span>
+          <span class="ci-check-time">3s</span>
+        </div>
+      </div>
+      <div class="ci-gate-step">
+        <div class="ci-step-header">
+          <span class="ci-step-arrow">▶</span>
+          <span class="ci-step-name">Run: release gate</span>
+        </div>
+        <div class="ci-step-body">
+          <div class="ci-step-cmd"><span class="ci-dollar">$</span> mdsmith list query <span class="ci-arg">'status: "✅"'</span> plan/</div>
+          <div class="ci-step-output"><span class="ci-pass-badge">PASS</span> <span class="ci-step-dim">16 / 16 plans complete</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

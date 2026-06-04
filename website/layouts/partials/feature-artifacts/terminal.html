@@ -1,0 +1,35 @@
+{{- /* Terminal artifact — Pillar 1 "Clean, consistent Markdown".
+       Dark macOS-style terminal showing mdsmith check → fix → check.
+       Rule codes corrected: MDS001 (line too long, default limit 80),
+       MDS012 (bare URL), MDS006 (trailing spaces).
+       aria-hidden: purely decorative marketing visual. */ -}}
+<div class="card-media card-media--terminal" aria-hidden="true">
+  <div class="artifact-frame artifact-frame--terminal">
+    <div class="artifact-titlebar artifact-titlebar--terminal">
+      <div class="term-dots">
+        <span class="term-dot term-dot-r"></span>
+        <span class="term-dot term-dot-y"></span>
+        <span class="term-dot term-dot-g"></span>
+      </div>
+      <span class="artifact-title">mdsmith — docs/</span>
+    </div>
+    <div class="artifact-body artifact-body--terminal">
+<pre class="term-pre"><span class="t-prompt">$</span> <span class="t-cmd">mdsmith check</span> <span class="t-arg">docs/</span>
+
+<span class="t-path">docs/guides/install.md</span><span class="t-dim">:23:81</span>  <span class="t-rule">MDS001</span>  <span class="t-err">line too long (84 &gt; 80)</span>
+<span class="t-path">docs/guides/install.md</span><span class="t-dim">:47:1</span>   <span class="t-rule">MDS012</span>  <span class="t-warn">bare URL — wrap in angle brackets</span>
+<span class="t-path">docs/features/auto-fix.md</span><span class="t-dim">:31:3</span>  <span class="t-rule">MDS006</span>  <span class="t-err">trailing spaces</span>
+
+<span class="t-dim">  3 issues in 2 files</span>
+
+<span class="t-prompt">$</span> <span class="t-cmd">mdsmith fix</span> <span class="t-arg">docs/</span>
+
+<span class="t-ok">  ✓</span> <span class="t-dim">fixed</span>  <span class="t-path">docs/guides/install.md</span>     <span class="t-dim">(2 rewrites, pass 1)</span>
+<span class="t-ok">  ✓</span> <span class="t-dim">fixed</span>  <span class="t-path">docs/features/auto-fix.md</span>  <span class="t-dim">(1 rewrite, pass 1)</span>
+
+<span class="t-prompt">$</span> <span class="t-cmd">mdsmith check</span> <span class="t-arg">docs/</span>
+
+<span class="t-ok">  ✓ all checks passing</span>  <span class="t-dim">· 11 ms</span></pre>
+    </div>
+  </div>
+</div>
