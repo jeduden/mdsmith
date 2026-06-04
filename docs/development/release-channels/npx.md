@@ -8,7 +8,7 @@ mechanism: toolchain
 artifact: cli
 command: npx @mdsmith/cli check .
 audience: One-off checks without a global install
-platforms: [node]
+platforms: [node, linux, macos, windows]
 channelurl: https://www.npmjs.com/package/@mdsmith/cli
 weight: 3
 ---

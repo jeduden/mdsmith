@@ -8,7 +8,7 @@ mechanism: toolchain
 artifact: cli
 command: pipx install mdsmith
 audience: Isolated CLI install on Python hosts
-platforms: [python]
+platforms: [python, linux, macos, windows]
 channelurl: https://pypi.org/project/mdsmith/
 weight: 6
 ---

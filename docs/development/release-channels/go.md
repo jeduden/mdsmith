@@ -8,7 +8,7 @@ mechanism: toolchain
 artifact: cli
 command: go install github.com/jeduden/mdsmith/cmd/mdsmith@latest
 audience: Go developers with a working Go toolchain
-platforms: [go]
+platforms: [go, linux, macos, windows]
 channelurl: https://pkg.go.dev/github.com/jeduden/mdsmith
 weight: 1
 ---
