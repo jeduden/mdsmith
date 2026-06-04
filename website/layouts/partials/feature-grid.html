@@ -7,10 +7,11 @@
     • A .pillar-header with a zero-padded number, the group name,
       and a .pillar-rule hairline that fills the remaining width.
     • A .card-grid[data-count=N] containing N cards.
-    • The FIRST card in every group is the LEAD card: it gets
-      class card--lead card--lead-{theme} and a device-frame
-      artifact partial rendered after .card-body.
-    • Remaining cards are plain .card elements.
+    • The first card of a group with a mapped artifact is the LEAD
+      card: it gets class card--lead and a device-frame artifact
+      partial after .card-body. (An unmapped group has no lead — its
+      first card is a plain .card.)
+    • All other cards are plain .card elements.
 
   ARTIFACT MAP
   ─────────────

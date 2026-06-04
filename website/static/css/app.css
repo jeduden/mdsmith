@@ -403,7 +403,7 @@ main {
   max-width: 30ch;
 }
 
-/* .rule-chip is shared across card and old feature-card contexts */
+/* .rule-chip — the MDSxxx rule tags shown on feature cards. */
 .rule-chip {
   font-family: var(--font-mono);
   font-size: 10px;
