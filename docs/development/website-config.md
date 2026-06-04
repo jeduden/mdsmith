@@ -66,9 +66,10 @@ The user-facing sections (`background`, `features`, `guides`,
 A link from a published page into a pruned tree must still
 work. The rewriter routes it to the file's GitHub source at
 sync time. So the link resolves on the site rather than
-breaking. The code is `repoPrunedDocLink` in the website
-package. The four pruned dirs are direct children of the docs
-root, so a relative link points at one of them at any depth.
+breaking. The code is `repoPrunedDocLink` in
+`internal/release/website.go` (package `release`). The four
+pruned dirs are direct children of the docs root, so a
+relative link points at one of them at any depth.
 
 Two consumers of the maintainer pages were repointed so they
 survive the prune. The homepage logos strip now reads the

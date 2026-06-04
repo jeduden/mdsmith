@@ -296,8 +296,8 @@ hash with `Get-FileHash` and compare it to the expected
 value pulled from `checksums.txt`:
 
 ```powershell
-$expected = (Select-String -Path checksums.txt `
-  -Pattern mdsmith-windows-amd64.exe).Line.Split()[0]
+$expected = (Select-String -Path checksums.txt -SimpleMatch `
+  "mdsmith-windows-amd64.exe").Line.Split()[0].ToLower()
 $actual = (Get-FileHash mdsmith.exe -Algorithm SHA256).Hash.ToLower()
 if ($actual -eq $expected) { "checksum OK" } else { throw "checksum mismatch" }
 ```
