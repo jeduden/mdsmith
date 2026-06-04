@@ -291,18 +291,20 @@ Invoke-WebRequest "$base/mdsmith-windows-amd64.exe" -OutFile mdsmith.exe
 Invoke-WebRequest "$base/checksums.txt" -OutFile checksums.txt
 ```
 
-`sha256sum -c` is a POSIX tool; on Windows compute the
-hash with `Get-FileHash` and compare it to the
-`mdsmith-windows-amd64.exe` line in `checksums.txt`:
+`sha256sum -c` is a POSIX tool. On Windows, compute the
+hash with `Get-FileHash` and compare it to the expected
+value pulled from `checksums.txt`:
 
 ```powershell
-(Get-FileHash mdsmith.exe -Algorithm SHA256).Hash.ToLower()
-Select-String -Path checksums.txt -Pattern mdsmith-windows-amd64.exe
+$expected = (Select-String -Path checksums.txt `
+  -Pattern mdsmith-windows-amd64.exe).Line.Split()[0]
+$actual = (Get-FileHash mdsmith.exe -Algorithm SHA256).Hash.ToLower()
+if ($actual -eq $expected) { "checksum OK" } else { throw "checksum mismatch" }
 ```
 
-The two strings must be equal. Then move the binary
-into a directory on your user `PATH` so new shells find
-`mdsmith`:
+A `checksum OK` line means the download is intact. Then
+move the binary into a directory on your user `PATH` so
+new shells find `mdsmith`:
 
 ```powershell
 $dest = "$env:LOCALAPPDATA\Programs\mdsmith"
