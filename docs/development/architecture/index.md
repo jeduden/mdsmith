@@ -63,16 +63,28 @@ hit.
 ## Project layering
 
 Go side. `cmd/mdsmith` and `internal/lsp`
-are both top-layer entry points; both
-depend on `internal/engine`, never the
-reverse.
+are both top-layer entry points. Both
+depend on `pkg/mdsmith` — the public
+`Session` engine API — never the reverse.
+`Session` is the sanctioned orchestration
+layer over `internal/engine`: it owns the
+workspace, the compiled config, and the
+cross-file and parse caches, and exposes
+check, fix, and kinds (plan 219). The LSP
+depends on it exclusively; the CLI routes
+its check/fix path through it and reads a
+few `internal/engine` result types
+directly for output formatting.
 
 ```text
 cmd/mdsmith              internal/lsp
   (CLI entry)              (LSP entry)
         └───────┐    ┌──────┘
                 ↓    ↓
-        internal/engine      (orchestration)
+        pkg/mdsmith          (Session:
+                              orchestration
+                              entrypoint)
+              └─> internal/engine
               └─> internal/{rule, fix,
                             config, output,
                             lint, linkgraph,

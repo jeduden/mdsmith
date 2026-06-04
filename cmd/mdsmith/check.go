@@ -10,7 +10,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/engine"
 	vlog "github.com/jeduden/mdsmith/internal/log"
-	"github.com/jeduden/mdsmith/internal/rule"
+	mdsmith "github.com/jeduden/mdsmith/pkg/mdsmith"
 )
 
 // checkCLIOpts bundles the runtime knobs threaded through the check
@@ -115,17 +115,34 @@ func checkFiles(fileArgs []string, opts checkCLIOpts) int {
 		return code
 	}
 
-	runner := &engine.Runner{
-		Config:           cfg,
-		Rules:            rule.All(),
-		StripFrontMatter: frontMatterEnabled(cfg),
-		Logger:           logger,
-		RootDir:          rootDirFromConfig(cfgPath),
-		MaxInputBytes:    maxBytes,
-		Explain:          opts.explain,
-		ConfigPath:       cfgPath,
+	sess := sessionForCLI(cfg, cfgPath)
+	defer sess.Dispose()
+	result := sess.CheckPaths(files, checkBatchOptions(opts, logger, maxBytes))
+	return reportCheckResult(result, opts, logger)
+}
+
+// checkBatchOptions maps the check CLI flags, the resolved logger, and
+// the resolved byte cap onto the session's BatchOptions.
+func checkBatchOptions(opts checkCLIOpts, logger *vlog.Logger, maxBytes int64) mdsmith.BatchOptions {
+	return mdsmith.BatchOptions{
+		Explain:       opts.explain,
+		MaxInputBytes: batchMaxBytes(maxBytes),
+		Logger:        logger,
 	}
-	return reportCheckResult(runner.Run(files), opts, logger)
+}
+
+// batchMaxBytes maps the CLI's fully-resolved max-input-size (config
+// merged with the --max-input-size flag) onto BatchOptions.MaxInputBytes,
+// which treats 0 as "use the session default". The CLI value is always
+// authoritative, and resolveMaxInputBytes returns 0 for an explicit
+// `max-input-size: 0` (unlimited) — so map that to math.MaxInt64, the
+// engine's explicit-unlimited sentinel, to keep it authoritative and
+// non-zero rather than silently falling back to the 2 MB default.
+func batchMaxBytes(resolved int64) int64 {
+	if resolved <= 0 {
+		return math.MaxInt64
+	}
+	return resolved
 }
 
 // checkStdin reads from stdin, lints the content, and returns the appropriate
@@ -154,17 +171,10 @@ func checkStdin(opts checkCLIOpts) int {
 		return 2
 	}
 
-	runner := &engine.Runner{
-		Config:           cfg,
-		Rules:            rule.All(),
-		StripFrontMatter: frontMatterEnabled(cfg),
-		Logger:           logger,
-		RootDir:          rootDirFromConfig(cfgPath),
-		MaxInputBytes:    maxBytes,
-		Explain:          opts.explain,
-		ConfigPath:       cfgPath,
-	}
-	return reportCheckResult(runner.RunSource("<stdin>", source), opts, logger)
+	sess := sessionForCLI(cfg, cfgPath)
+	defer sess.Dispose()
+	result := sess.CheckSource("<stdin>", source, checkBatchOptions(opts, logger, maxBytes))
+	return reportCheckResult(result, opts, logger)
 }
 
 // checkDiscovered loads config, discovers files from config patterns,
@@ -181,17 +191,10 @@ func checkDiscovered(opts checkCLIOpts) int {
 		return 2
 	}
 
-	runner := &engine.Runner{
-		Config:           cfg,
-		Rules:            rule.All(),
-		StripFrontMatter: frontMatterEnabled(cfg),
-		Logger:           logger,
-		RootDir:          rootDirFromConfig(cfgPath),
-		MaxInputBytes:    maxBytes,
-		Explain:          opts.explain,
-		ConfigPath:       cfgPath,
-	}
-	return reportCheckResult(runner.Run(files), opts, logger)
+	sess := sessionForCLI(cfg, cfgPath)
+	defer sess.Dispose()
+	result := sess.CheckPaths(files, checkBatchOptions(opts, logger, maxBytes))
+	return reportCheckResult(result, opts, logger)
 }
 
 // reportCheckResult writes diagnostics + the run-stats line and

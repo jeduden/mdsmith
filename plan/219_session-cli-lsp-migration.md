@@ -1,7 +1,7 @@
 ---
 id: 219
 title: Route cmd/mdsmith and the LSP through pkg/mdsmith.Session
-status: "🔲"
+status: "✅"
 model: opus
 summary: >-
   Migrate the CLI's check/fix/kinds subcommands and the LSP server
@@ -82,18 +82,18 @@ it affects, not after:
 
 ## Acceptance Criteria
 
-- [ ] `cmd/mdsmith` check, fix, and kinds construct a
+- [x] `cmd/mdsmith` check, fix, and kinds construct a
       `pkg/mdsmith.Session`.
-- [ ] The LSP uses one `Session` per workspace and invalidates it on
+- [x] The LSP uses one `Session` per workspace and invalidates it on
       document and watched-file changes.
-- [ ] `OSWorkspace.ReadFile` and `OSWorkspace.FS` resolve the same
+- [x] `OSWorkspace.ReadFile` and `OSWorkspace.FS` resolve the same
       `uri` to the same file, proven by a test.
-- [ ] `Session.Fix` does not re-lint when the fix made no edit.
-- [ ] The LSP's in-memory buffer bytes reach cross-file rules through
+- [x] `Session.Fix` does not re-lint when the fix made no edit.
+- [x] The LSP's in-memory buffer bytes reach cross-file rules through
       the session (Invalidate carries open-document content).
-- [ ] The CLI end-to-end tests and the LSP p95 latency gate pass.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues.
+- [x] The CLI end-to-end tests and the LSP p95 latency gate pass.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues.
 
 ## See also
 

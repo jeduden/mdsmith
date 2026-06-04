@@ -13,7 +13,9 @@
 package mdsmith
 
 import (
+	"bytes"
 	"hash/fnv"
+	"path/filepath"
 	"sync"
 
 	"github.com/jeduden/mdsmith/internal/bytelimit"
@@ -43,6 +45,15 @@ type ConfigSource interface {
 	configPath() string
 }
 
+// alreadyMerged marks a [ConfigSource] whose loadConfig returns a config
+// that is already layered over the defaults (and may carry caller
+// injected settings). NewSession uses the as-is config for such a
+// source instead of re-merging. [ConfigCompiled] is the only
+// implementation today.
+type alreadyMerged interface {
+	alreadyMerged()
+}
+
 // ConfigYAML is a [ConfigSource] backed by an inline YAML string. An
 // empty string yields a mostly-default config.
 type ConfigYAML string
@@ -62,6 +73,29 @@ func (c ConfigPath) loadConfig() (*config.Config, error) {
 }
 
 func (c ConfigPath) configPath() string { return string(c) }
+
+// ConfigCompiled is a [ConfigSource] backed by an already-merged
+// *config.Config plus the path it was loaded from (empty for none). Use
+// it when the caller has already loaded and merged the configuration and
+// applied its own side effects to it — the CLI's loadConfig injects
+// build recipes (for MDS040) and installs the include-extract projector,
+// then hands the resulting config straight to a Session. NewSession
+// takes a compiled source as-is and does not re-merge it over defaults,
+// so those injected settings survive.
+func ConfigCompiled(cfg *config.Config, path string) ConfigSource {
+	return compiledConfig{cfg: cfg, path: path}
+}
+
+// compiledConfig is the [ConfigSource] returned by [ConfigCompiled]. It
+// implements alreadyMerged so NewSession skips the defaults merge.
+type compiledConfig struct {
+	cfg  *config.Config
+	path string
+}
+
+func (c compiledConfig) loadConfig() (*config.Config, error) { return c.cfg, nil }
+func (c compiledConfig) configPath() string                  { return c.path }
+func (c compiledConfig) alreadyMerged()                      {}
 
 // SessionOptions configures a [Session].
 type SessionOptions struct {
@@ -94,6 +128,22 @@ type Session struct {
 	// source). The test seam parseCount reads it; the bench asserts
 	// steady-state stays under half the cold-start time.
 	parses int
+
+	// runCache is the engine-owned cross-file read cache shared across
+	// every operation on this session, so two host buffers that catalog
+	// over the same tree do not each re-read the matched targets. The
+	// LSP relies on this surviving across per-keystroke CheckVersion
+	// calls; Invalidate drops the changed path's entry. Created once in
+	// NewSession.
+	runCache *lint.RunCache
+	// parseCache memoizes the parsed *lint.File for a document keyed by
+	// (uri, version). CheckVersion installs it on the runner so a repeat
+	// Check at the same version skips the parse — the plan-216 contract
+	// the LSP latency gate depends on. Invalidate drops the path's entry.
+	parseCache *lint.ParseCache
+	// parseHits counts version-keyed parse-cache hits CheckVersion
+	// observed. Test seam (parseCacheHits); not part of the public API.
+	parseHits int
 }
 
 // cachedCheck is one memoized Check result: the content hash it was
@@ -122,33 +172,68 @@ func NewSession(opts SessionOptions) (*Session, error) {
 	// (cmd/mdsmith loadConfigRaw) and the LSP server do. Without this,
 	// a config that omits a rule leaves it disabled rather than at its
 	// default-enabled state, so a bare session would lint nothing.
-	cfg := config.Merge(config.Defaults(), loaded)
+	//
+	// A source that has already merged (ConfigCompiled, used by the CLI
+	// which merges and then injects build recipes / the include-extract
+	// projector onto the result) is taken as-is: re-merging would
+	// recompute rule entries and drop those injected settings.
+	cfg := loaded
+	if _, merged := src.(alreadyMerged); !merged {
+		cfg = config.Merge(config.Defaults(), loaded)
+	}
 	return &Session{
 		ws:         opts.Workspace,
 		cfg:        cfg,
 		cfgPath:    src.configPath(),
 		rules:      rule.All(),
 		rootDir:    rootDirOf(opts.Workspace),
-		maxBytes:   bytelimit.DefaultMaxInputBytes,
+		maxBytes:   resolveSessionMaxBytes(cfg),
 		checkCache: make(map[string]cachedCheck),
+		runCache:   lint.NewRunCache(),
+		parseCache: lint.NewParseCache(),
 	}, nil
 }
 
+// resolveSessionMaxBytes resolves the session's input byte cap from the
+// config's max-input-size, mirroring cmd/mdsmith's resolveMaxInputBytes
+// and the LSP's: an empty setting yields the default 2 MB cap, "0" means
+// unlimited, and any other value is the parsed byte count. An
+// unparseable value falls back to the default (the CLI surfaces the
+// parse error separately at flag time; the session, like the LSP, stays
+// lenient and uses the default so a bad config does not wedge linting).
+func resolveSessionMaxBytes(cfg *config.Config) int64 {
+	if cfg == nil || cfg.MaxInputSize == "" {
+		return bytelimit.DefaultMaxInputBytes
+	}
+	n, err := config.ParseSize(cfg.MaxInputSize)
+	if err != nil {
+		return bytelimit.DefaultMaxInputBytes
+	}
+	return n
+}
+
 // rootDirOf returns the workspace root to anchor RootDir-dependent
-// resolution. An OSWorkspace contributes its Root; a MemWorkspace has
-// no on-disk root (the empty string is correct, leaving cross-file
-// rules to resolve root-relative globs against the workspace FS).
+// resolution. An OSWorkspace contributes its Root and an
+// OverlayWorkspace (the LSP's workspace) its root — the same directory
+// diskPath/Glob resolve against — so the LSP session keys its cross-file
+// RunCache by absolute paths, matching the CLI's OSWorkspace rather than
+// silently flipping to relative keys. A MemWorkspace has no on-disk root
+// (the empty string is correct, leaving cross-file rules to resolve
+// root-relative globs against the workspace FS).
 func rootDirOf(ws Workspace) string {
-	if osw, ok := ws.(OSWorkspace); ok {
-		return osw.Root
+	switch w := ws.(type) {
+	case OSWorkspace:
+		return w.Root
+	case *OverlayWorkspace:
+		return w.root
 	}
 	return ""
 }
 
-// newRunner builds the engine.Runner shared by Check and by Fix's
-// post-fix re-lint, so both paths lint with identical configuration.
-// SourceFS is snapshotted per call, so a workspace edit applied through
-// Invalidate is visible to the next operation.
+// newRunner builds the engine.Runner that backs Check (and therefore
+// Fix's post-fix diagnostics, which route through Check). SourceFS is
+// snapshotted per call, so a workspace edit applied through Invalidate
+// is visible to the next operation.
 func (s *Session) newRunner() *engine.Runner {
 	return &engine.Runner{
 		Config:           s.cfg,
@@ -158,7 +243,42 @@ func (s *Session) newRunner() *engine.Runner {
 		MaxInputBytes:    s.maxBytes,
 		SourceFS:         s.ws.FS(),
 		ConfigPath:       s.cfgPath,
+		// Shared cross-file read cache: a catalog/include target read by
+		// one operation is reused by the next until Invalidate drops it.
+		RunCache: s.runCache,
 	}
+}
+
+// CheckVersion lints source for uri at the editor's textDocument
+// version and returns the engine result. It is the LSP-facing per-
+// keystroke entry point: the session's version-keyed parse cache serves
+// the parsed document when a prior call already parsed (uri, version),
+// so the engine skips re-parsing on a re-lint at the same version (the
+// plan-216 contract). An edit bumps the version, which misses the cache
+// and re-parses. uri is workspace-relative, matching config globs.
+//
+// Cross-file rules read through the session workspace's FS view, so an
+// open-document overlay applied through Invalidate reaches them — the
+// LSP's unsaved-buffer bytes feed catalog/include/link rules.
+//
+// Native-only: it returns the engine's own Result so the LSP keeps its
+// diagnostic partitioning (doc findings vs config-target findings) and
+// error surfacing. It is consistent with CheckPaths/CheckSource, which
+// also return the engine Result. A WASM host uses the JS-mirrored
+// Check.
+func (s *Session) CheckVersion(uri string, source []byte, version int) *engine.Result {
+	// Record a parse-cache hit for the test seam before delegating: the
+	// runner re-probes internally, but counting here keeps the seam off
+	// the engine's API. The extra map lookup is negligible against a
+	// parse and only on the version path.
+	if _, ok := s.parseCache.Get(uri, version); ok {
+		s.mu.Lock()
+		s.parseHits++
+		s.mu.Unlock()
+	}
+	r := s.newRunner()
+	r.ParseCache = s.parseCache
+	return r.RunSourceWithVersion(uri, source, version)
 }
 
 // Check lints source (the in-memory bytes for uri) and returns its
@@ -220,17 +340,59 @@ func (s *Session) Fix(uri string, source []byte) (FixResult, error) {
 		return FixResult{}, err
 	}
 
-	// Re-lint the fixed bytes so the result carries the diagnostics
-	// that survive the fix (non-fixable rules, unfixable violations).
-	// This does not poison the Check cache: the fixed bytes hash
-	// differently, and a later Check on them reuses the entry.
-	res := s.newRunner().RunSource(uri, fixed)
+	// Re-lint the fixed bytes so the result carries the diagnostics that
+	// survive the fix (non-fixable rules, unfixable violations). Route
+	// through Check, not a fresh full runner, so the session's parse and
+	// check caches absorb the work (footgun 4: avoid re-linting twice).
+	// When the fix made no edit, fixed == source, so this Check hits the
+	// cache if the caller already Checked this source — a no-op Fix on a
+	// clean buffer no longer pays for a second lint. The cache is keyed
+	// by content hash, so the fixed bytes (changed or not) reuse or
+	// populate the correct entry.
+	diags, err := s.Check(uri, fixed)
+	if err != nil {
+		return FixResult{
+			Source:      string(fixed),
+			Changed:     !bytes.Equal(fixed, source),
+			Diagnostics: diags,
+		}, err
+	}
 
 	return FixResult{
 		Source:      string(fixed),
-		Changed:     string(fixed) != string(source),
-		Diagnostics: toDiagnostics(res.Diagnostics),
-	}, firstError(res.Errors)
+		Changed:     !bytes.Equal(fixed, source),
+		Diagnostics: diags,
+	}, nil
+}
+
+// FixRule applies only the named fixable rules to source and returns
+// the rewritten bytes plus a Changed flag. It is the LSP per-rule
+// quick-fix entry point (today's fix.SourceWithRules): a lightbulb that
+// fixes one rule's violations rewrites the document through this without
+// disturbing other rules. An empty names slice is a no-op.
+//
+// FixRule does not re-lint — the quick-fix path needs only the bytes and
+// whether they changed — so Diagnostics on the result is always nil.
+// Cross-file rules read through the session workspace's FS view, so an
+// open-document overlay (Invalidate) reaches them.
+func (s *Session) FixRule(uri string, source []byte, names []string) (FixResult, error) {
+	fixed, err := fixpkg.SourceWithRules(fixpkg.SourceOptions{
+		Config:           s.cfg,
+		Rules:            s.rules,
+		Path:             uri,
+		Source:           source,
+		RootDir:          s.rootDir,
+		StripFrontMatter: frontMatterEnabled(s.cfg),
+		MaxInputBytes:    s.maxBytes,
+		SourceFS:         s.ws.FS(),
+	}, names)
+	if err != nil {
+		return FixResult{}, err
+	}
+	return FixResult{
+		Source:  string(fixed),
+		Changed: !bytes.Equal(fixed, source),
+	}, nil
 }
 
 // Kinds resolves the kind list and effective rule configuration for
@@ -243,8 +405,22 @@ func (s *Session) Kinds(uri string) (KindResolution, error) {
 	if err != nil {
 		return KindResolution{}, err
 	}
-	res := config.ResolveFile(s.cfg, uri, fmKinds, fmFields)
-	return toKindResolution(res), nil
+	return toKindResolution(s.ResolveFile(uri, fmKinds, fmFields)), nil
+}
+
+// ResolveFile resolves the kind list and per-rule effective config for
+// uri against the session's compiled config, given the file's
+// already-parsed front-matter kinds and fields (pass nil when there are
+// none). It returns the raw *config.FileResolution, including the
+// per-rule merge chain the CLI's `kinds why` walks.
+//
+// Native-only: it returns an internal config type. The CLI reads and
+// validates front matter itself (its error UX differs from the
+// session's lenient unsaved-buffer handling) and hands the parsed
+// inputs here; [Session.Kinds] is the JS-mirrored sibling that reads
+// front matter through the workspace and returns the public JSON shape.
+func (s *Session) ResolveFile(uri string, fmKinds []string, fmFields map[string]any) *config.FileResolution {
+	return config.ResolveFile(s.cfg, uri, fmKinds, fmFields)
 }
 
 // frontMatterFor reads uri through the workspace and parses its
@@ -297,10 +473,11 @@ func capabilityList() []string {
 }
 
 // Invalidate signals that uri changed. With a content argument it
-// rewrites uri in the workspace (when the workspace is a MemWorkspace)
-// so the next cross-file Check reads the new bytes; an OSWorkspace
-// ignores content and re-reads disk. A no-content call on a
-// MemWorkspace deletes the file (it was removed).
+// rewrites uri in the workspace (when the workspace implements the
+// mutable Set/Delete overlay — MemWorkspace and the LSP's buffer
+// overlay do) so the next cross-file Check reads the new bytes; a bare
+// OSWorkspace ignores content and re-reads disk. A no-content call on a
+// mutable workspace deletes the file (it was removed).
 //
 // It then drops every cached Check result, not only uri's: a changed
 // file can affect any file that reads it through a cross-file rule
@@ -309,7 +486,13 @@ func capabilityList() []string {
 // reuse the cache buys is a within-session optimisation; correctness
 // after an edit wins.
 func (s *Session) Invalidate(uri string, content ...[]byte) {
-	if mw, ok := s.ws.(*MemWorkspace); ok {
+	// Route the open-document bytes through the Workspace's mutable
+	// interface (Set/Delete) rather than a hardcoded *MemWorkspace type
+	// assertion, so any buffer-overlay workspace — the LSP's, which
+	// shadows disk with unsaved-buffer content — receives the edit and
+	// its cross-file rules read the new bytes (footgun 3). An OSWorkspace
+	// (no Set/Delete) re-reads disk, so only the caches below drop.
+	if mw, ok := s.ws.(mutableWorkspace); ok {
 		switch {
 		case len(content) > 0:
 			mw.Set(uri, content[0])
@@ -317,9 +500,36 @@ func (s *Session) Invalidate(uri string, content ...[]byte) {
 			mw.Delete(uri)
 		}
 	}
+	// Drop the engine caches for the changed path so the next operation
+	// re-reads and re-parses it: the cross-file read cache (keyed by the
+	// absolute path catalog/include compute) and the version-keyed parse
+	// cache (keyed by the workspace-relative uri).
+	s.runCache.Invalidate(s.absPath(uri))
+	s.parseCache.Invalidate(uri)
 	s.mu.Lock()
 	clear(s.checkCache)
 	s.mu.Unlock()
+}
+
+// InvalidateWikilinks drops the cross-file read cache's wikilink index
+// so the next Check rebuilds the candidate set. The LSP calls it when a
+// watched file is created or deleted: a wikilink like `[[NewPage]]`
+// would otherwise resolve against the pre-change set. It is the
+// workspace-shape sibling of [Session.Invalidate], which drops a single
+// path's cached content.
+func (s *Session) InvalidateWikilinks() {
+	s.runCache.InvalidateWikilinks()
+}
+
+// absPath maps a workspace-relative uri to the absolute path the engine
+// read cache keys catalog/include reads by. With no rootDir (a
+// MemWorkspace, or an unrooted OSWorkspace) the uri is returned
+// unchanged — the cache keys it the same way the rules do.
+func (s *Session) absPath(uri string) string {
+	if s.rootDir == "" || filepath.IsAbs(uri) {
+		return uri
+	}
+	return filepath.Join(s.rootDir, filepath.FromSlash(uri))
 }
 
 // Dispose releases the session's caches. The session must not be used
@@ -337,6 +547,14 @@ func (s *Session) parseCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.parses
+}
+
+// parseCacheHits returns the number of version-keyed parse-cache hits
+// CheckVersion observed. Test seam, not part of the public API.
+func (s *Session) parseCacheHits() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.parseHits
 }
 
 // frontMatterEnabled reports whether front-matter stripping is on for

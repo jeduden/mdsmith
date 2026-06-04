@@ -1,7 +1,6 @@
 package lsp
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -23,12 +22,11 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/config"
-	"github.com/jeduden/mdsmith/internal/engine"
-	fixpkg "github.com/jeduden/mdsmith/internal/fix"
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
 	"github.com/jeduden/mdsmith/internal/rule"
+	mdsmith "github.com/jeduden/mdsmith/pkg/mdsmith"
 )
 
 // Server runs the LSP loop over a transport pair. One Server instance
@@ -110,23 +108,37 @@ type Server struct {
 	onSupersededExit   func()
 	singletonWatchOnce sync.Once
 
-	// runCache is the engine read cache shared across every runLint
-	// call so two host buffers that catalog over the same docs/**
-	// tree do not each re-read the matched targets from disk on
-	// every keystroke. didChange, didSave, and didChangeWatchedFiles
-	// call its Invalidate seam so an edited file's cached read is
-	// dropped — the next runLint that reaches that path re-reads
-	// from disk.
-	runCache *lint.RunCache
-	// parseCache memoizes the parsed *lint.File for the active
-	// buffer, keyed by (workspace-relative path, textDocument
-	// version). runLint passes doc.version into RunSourceWithVersion;
-	// on hit the engine skips lint.NewFileFromSource. didChange,
-	// didClose, and didChangeWatchedFiles call Invalidate on the
-	// affected path's relative key so a stale entry never serves a
-	// post-edit lint. didOpen needs no drop — the version starts
-	// fresh and no entry exists yet.
-	parseCache *lint.ParseCache
+	// session is the per-workspace pkg/mdsmith.Session every lint and
+	// fix path routes through (plan 219). It owns the cross-file read
+	// cache and the version-keyed parse cache the latency gate depends
+	// on, and an OverlayWorkspace whose open-buffer overlay lets the
+	// editor's unsaved bytes reach cross-file rules. reloadConfig
+	// rebuilds it when the compiled config changes (config is compiled
+	// once per session); sessionMu guards the rebuild against concurrent
+	// lint/fix readers. workspace is the session's overlay, held so
+	// document events can Set/Delete buffers on it.
+	//
+	// didChange/didSave/didClose/didChangeWatchedFiles push buffer edits
+	// and drop stale cache entries through session.Invalidate; a
+	// watched create/delete drops the wikilink index through
+	// session.InvalidateWikilinks. didOpen needs no drop — the version
+	// starts fresh.
+	sessionMu sync.RWMutex
+	session   *mdsmith.Session
+	workspace *mdsmith.OverlayWorkspace
+	// newSession constructs the per-workspace Session. It is a test seam
+	// — production uses mdsmith.NewSession. NewSession only fails when its
+	// ConfigSource fails to load, and rebuildSession always passes a
+	// compiled (already-loaded) source, so the error path is unreachable
+	// in production; the seam lets a test drive rebuildSession's failure
+	// branch (and the nil-session guards downstream of it) red/green.
+	newSession func(mdsmith.SessionOptions) (*mdsmith.Session, error)
+	// afterLintCheck, when non-nil, runs in runLint immediately after the
+	// session Check returns and before the results are published. It is a
+	// test seam (nil in production) that lets a test deterministically
+	// simulate a didClose landing mid-lint — the race the "document was
+	// closed while we were linting" guard protects against.
+	afterLintCheck func()
 }
 
 // userSettings mirrors the subset of `mdsmith.*` VS Code keys the
@@ -230,8 +242,6 @@ func New(opts Options) *Server {
 		pending:        make(map[string]*pendingLint),
 		pendingResp:    make(map[string]chan rpcResponse),
 		diags:          make(map[string][]Diagnostic),
-		runCache:       lint.NewRunCache(),
-		parseCache:     lint.NewParseCache(),
 		// Parent-process watchdog defaults; Run() overwrites runCtx
 		// with its own context. Tests override these seams.
 		runCtx:         context.Background(),
@@ -244,6 +254,9 @@ func New(opts Options) *Server {
 		// (singleton.go) so both default closures are unit-testable.
 		singletonInterval: singletonPollInterval,
 		onSupersededExit:  func() { osExit(0) },
+		// Production session constructor; tests override to exercise the
+		// rebuild-failure branch.
+		newSession: mdsmith.NewSession,
 	}
 	if opts.EnableWorkspaceSingleton {
 		s.instanceID = newInstanceID()
@@ -594,6 +607,9 @@ func (s *Server) handleDidOpen(ctx context.Context, raw json.RawMessage) {
 		version: p.TextDocument.Version,
 	})
 	s.indexUpdate(path, []byte(p.TextDocument.Text))
+	// Seed the session overlay with the opened buffer so a cross-file
+	// rule in another open document reads its unsaved bytes.
+	s.syncBuffer(path, []byte(p.TextDocument.Text))
 	// didOpen lints unless run=off — the user wants an initial
 	// snapshot when linting is on at all. scheduleLint applies the
 	// same off-skip as every other trigger.
@@ -617,8 +633,10 @@ func (s *Server) handleDidChange(ctx context.Context, raw json.RawMessage) {
 	doc.version = p.TextDocument.Version
 	s.docs.set(p.TextDocument.URI, doc)
 	s.indexUpdate(doc.path, doc.text)
-	s.invalidateCachedRead(doc.path)
-	s.invalidateParseCache(doc.path)
+	// Push the edited bytes into the overlay and drop this path's stale
+	// read- and parse-cache entries: cross-file rules now see the new
+	// buffer, and the edited document re-parses (the version bumped).
+	s.syncBuffer(doc.path, doc.text)
 	s.scheduleLint(p.TextDocument.URI, lintTriggerChange)
 }
 
@@ -634,7 +652,10 @@ func (s *Server) handleDidSave(ctx context.Context, raw json.RawMessage) {
 		return
 	}
 	if doc, ok := s.docs.get(p.TextDocument.URI); ok {
-		s.invalidateCachedRead(doc.path)
+		// On save the on-disk file matches the buffer, so drop the
+		// overlay and caches; cross-file reads fall through to the saved
+		// file. The buffer is re-overlaid on the next edit.
+		s.dropPath(doc.path)
 	}
 	s.scheduleLint(p.TextDocument.URI, lintTriggerSave)
 }
@@ -670,10 +691,10 @@ func (s *Server) handleDidClose(raw json.RawMessage) {
 	// watcher path will catch the deletion if it lands separately.
 	if doc != nil {
 		s.indexReloadFromDisk(doc.path)
-		// Drop the per-document parse cache entry: the buffer is
-		// gone, and a reopen will land at version 1 again so any
-		// surviving entry would only waste memory until evicted.
-		s.invalidateParseCache(doc.path)
+		// Drop the overlay and per-document parse cache entry: the
+		// buffer is gone, so cross-file reads must fall through to the
+		// saved file, and a reopen lands at version 1 again.
+		s.dropPath(doc.path)
 	}
 	// Clear cached diagnostics and squiggles on close.
 	s.diagsMu.Lock()
@@ -689,24 +710,12 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 		return
 	}
 	configChanged := false
-	treeChanged := false
 	mdChanges := make([]string, 0, len(p.Changes))
 	for _, c := range p.Changes {
 		path := uriToPath(c.URI)
 		if strings.HasSuffix(path, ".mdsmith.yml") {
 			configChanged = true
 			continue
-		}
-		// The wikilink index indexes every file under the workspace
-		// — not just markdown — because embeds like `![[image.png]]`
-		// resolve to any extension. A create or delete of any
-		// non-config file therefore changes the candidate set; the
-		// flag is set before the markdown filter so an image add or
-		// a rename to a binary asset still rebuilds the index.
-		// Per LSP spec: 1=Created, 2=Changed, 3=Deleted. A rename
-		// is reported as a Deleted+Created pair.
-		if c.Type == fileChangeCreated || c.Type == fileChangeDeleted {
-			treeChanged = true
 		}
 		// Use isMarkdownExt for case-insensitive extension match
 		// — the rest of the navigation surface (docTextOrFile,
@@ -718,6 +727,7 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 			mdChanges = append(mdChanges, path)
 		}
 	}
+	treeChanged := watchedFilesTreeChanged(p.Changes)
 	if configChanged {
 		s.reloadConfig()
 		// kind / ignore globs may have shifted — drop the index so
@@ -728,66 +738,88 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 		}
 		return
 	}
-	if treeChanged && s.runCache != nil {
+	if treeChanged {
 		// File create / delete / rename changes the candidate set
 		// the WikilinkIndex keys off, so the next Check must rebuild
 		// the index from scratch — otherwise MDS027 would resolve
 		// `[[NewPage]]` against the pre-create set and report it
 		// missing (or keep resolving `[[OldName]]` after a delete).
-		s.runCache.InvalidateWikilinks()
+		if sess, _ := s.currentSession(); sess != nil {
+			sess.InvalidateWikilinks()
+		}
 	}
 	openPaths := s.openDocPaths()
 	for _, path := range mdChanges {
-		// External edits land on disk and are the run cache's primary
-		// staleness trigger — drop the entry whether or not we own
-		// the buffer, because the file the catalog rule would read
-		// next has changed underneath us.
-		s.invalidateCachedRead(path)
-		// The parse cache is keyed off the active buffer's
-		// workspace-relative path. When a watched file is also open
-		// in the editor, didChange has already (or will) bump the
-		// version — but if the on-disk edit lands while the buffer
-		// is open at the same content, the cached *File would still
-		// reflect the pre-disk-edit text. Invalidate eagerly to be
-		// safe; the next runLint pays one parse rather than serving
-		// stale results.
-		s.invalidateParseCache(path)
-		// Skip files the editor currently has open as a buffer — the
-		// watcher event would otherwise overwrite the live edits with
-		// the stale on-disk content, and symbol navigation would
-		// silently jump back to the last saved version. Open buffers
-		// are kept in sync via didOpen/didChange instead.
+		// Skip files the editor currently has open as a buffer: their
+		// authoritative content is the overlay buffer (kept current by
+		// didOpen/didChange), so an external on-disk edit does not change
+		// what we lint, and dropPath would wrongly delete the buffer
+		// overlay and make cross-file reads fall through to the stale
+		// disk content. Symbol navigation likewise stays on the live
+		// buffer.
 		if openPaths[path] {
 			continue
 		}
+		// External edit to a file we do not have open: drop its cache
+		// entries (it has no overlay) so the next cross-file Check
+		// re-reads the changed bytes from disk.
+		s.dropPath(path)
 		s.indexReloadFromDisk(path)
 	}
 }
 
-// invalidateCachedRead drops the run cache's entry for path so the
-// next runLint that crosses it re-reads from disk. path is the
-// document's absolute filesystem path, which matches the absolute
-// key the catalog rule computes when populating the cache.
-func (s *Server) invalidateCachedRead(path string) {
-	if s.runCache == nil || path == "" {
-		return
+// watchedFilesTreeChanged reports whether a watched-file batch creates
+// or deletes any non-config file, which changes the candidate set the
+// wikilink index keys off — so the session's wikilink index must rebuild
+// on the next Check (`[[NewPage]]` / `![[image.png]]` resolve against any
+// extension, so a binary asset add counts too). A pure-change batch (no
+// create/delete) leaves the candidate set intact. Per LSP spec:
+// 1=Created, 2=Changed, 3=Deleted; a rename arrives as a Deleted+Created
+// pair. Pulled out of handleDidChangeWatchedFiles so the decision is
+// unit-testable without a live session and its caches.
+func watchedFilesTreeChanged(changes []fileEvent) bool {
+	for _, c := range changes {
+		if strings.HasSuffix(uriToPath(c.URI), ".mdsmith.yml") {
+			continue
+		}
+		if c.Type == fileChangeCreated || c.Type == fileChangeDeleted {
+			return true
+		}
 	}
-	s.runCache.Invalidate(path)
+	return false
 }
 
-// invalidateParseCache drops the parse cache's entry for the
-// document at absPath. The parse cache is keyed by the workspace-
-// relative path RunSourceWithVersion sees, so this method resolves
-// absPath against the current workspace root before delegating to
-// the cache.
-//
-// Used by didChange (edits bump the version, so the prior entry is
-// already dead; this drops it promptly), didClose (buffer gone),
-// and didChangeWatchedFiles (on-disk content changed underneath the
-// editor).
-func (s *Server) invalidateParseCache(absPath string) {
+// syncBuffer pushes an open buffer's current bytes into the session's
+// overlay and drops the path's stale cache entries, so the next
+// cross-file Check reads the unsaved content and the edited document
+// itself re-parses. Called from didOpen (seed the overlay) and
+// didChange (refresh it). absPath is the document's absolute filesystem
+// path; the session keys the overlay and parse cache by the
+// workspace-relative form and the read cache by the absolute form, all
+// derived from the relative uri passed here.
+func (s *Server) syncBuffer(absPath string, content []byte) {
+	sess, _ := s.currentSession()
+	if sess == nil || absPath == "" {
+		return
+	}
 	_, _, root := s.snapshotConfig()
-	s.parseCache.Invalidate(workspaceRelative(root, absPath))
+	sess.Invalidate(workspaceRelative(root, absPath), content)
+}
+
+// dropPath drops the session caches for absPath and removes any overlay
+// entry, so the next read falls through to disk. Used by didSave and
+// didClose (the buffer's bytes are now the saved file) and by
+// didChangeWatchedFiles (an external edit landed on disk underneath us).
+// A no-content Invalidate deletes the overlay entry; for a file with no
+// overlay (a watched neighbour the editor never opened) it just drops
+// the caches.
+func (s *Server) dropPath(absPath string) {
+	sess, _ := s.currentSession()
+	if sess == nil || absPath == "" {
+		return
+	}
+	_, _, root := s.snapshotConfig()
+	sess.Invalidate(workspaceRelative(root, absPath))
 }
 
 // openDocPaths returns the set of filesystem paths currently held as
@@ -1037,7 +1069,7 @@ func (s *Server) runLint(uri string) {
 	if !ok {
 		return
 	}
-	cfg, configPath, root := s.snapshotConfig()
+	cfg, _, root := s.snapshotConfig()
 	if cfg == nil {
 		cfg = config.Merge(config.Defaults(), nil)
 	}
@@ -1050,33 +1082,26 @@ func (s *Server) runLint(uri string) {
 			publishDiagnosticsParams{URI: uri, Version: doc.version, Diagnostics: []Diagnostic{}})
 		return
 	}
-	maxBytes := s.resolveMaxInputBytes(cfg)
-	r := &engine.Runner{
-		Config:           cfg,
-		Rules:            s.rules,
-		StripFrontMatter: frontMatterEnabled(cfg),
-		RootDir:          root,
-		MaxInputBytes:    maxBytes,
-		SourceFS:         dirFSForPath(doc.path),
-		// ConfigPath gates whether config-target rules execute (see
-		// engine.Runner.runConfigTargetRules); without it, LSP
-		// linting silently skips those rules even when a config is
-		// loaded.
-		ConfigPath: configPath,
-		// Share the server-wide read cache across every runLint so
-		// the catalog rule does not re-read each docs/** target on
-		// every keystroke. didChange / didSave / didChangeWatchedFiles
-		// call s.runCache.Invalidate so an edited file's cached read
-		// is dropped before the next pass.
-		RunCache: s.runCache,
-		// Per-document parse cache, keyed by (relPath, doc.version).
-		// On hit the engine skips lint.NewFileFromSource and reuses
-		// the cached *lint.File. didChange / didClose /
-		// didChangeWatchedFiles invalidate the entry via
-		// s.invalidateParseCache(relPath).
-		ParseCache: s.parseCache,
+	// Route the lint through the per-workspace Session. It owns the
+	// cross-file read cache and the version-keyed parse cache, and reads
+	// neighbouring files through its OverlayWorkspace — so the open
+	// buffer this lint is about (pushed into the overlay by didOpen /
+	// didChange) and every other open buffer reach cross-file rules.
+	// CheckVersion serves the cached parse when (relPath, doc.version)
+	// is already parsed, holding the latency gate.
+	sess, _ := s.currentSession()
+	if sess == nil {
+		// No session yet (reloadConfig has not run): nothing to lint
+		// against. handleInitialized builds the first session before any
+		// document event, so this only guards a pre-init race.
+		return
 	}
-	res := r.RunSourceWithVersion(relPath, doc.text, doc.version)
+	res := sess.CheckVersion(relPath, doc.text, doc.version)
+	if s.afterLintCheck != nil {
+		// Test seam: deterministically interpose a concurrent didClose /
+		// shutdown between the Check and the publish below.
+		s.afterLintCheck()
+	}
 	// engine.RunSource is CPU-bound and can run for hundreds of
 	// milliseconds on large buffers. The client may have requested
 	// shutdown/exit while we were busy; if so, drop everything we
@@ -1137,6 +1162,11 @@ func (s *Server) runLint(uri string) {
 // "0" → unlimited, otherwise the parsed byte count. Parse errors
 // fall back to the default and are surfaced via window/logMessage
 // so the editor user can correct the config.
+//
+// The session resolves its own byte cap from the same config field, so
+// rebuildSession calls this once per reload purely to surface the
+// editor-facing warning on a malformed value — the returned cap is the
+// session's job.
 func (s *Server) resolveMaxInputBytes(cfg *config.Config) int64 {
 	raw := ""
 	if cfg != nil {
@@ -1402,18 +1432,17 @@ func (s *Server) appendFixAllAction(
 	// at the document's real directory so include/catalog rules
 	// still resolve neighbour files independent of the process
 	// CWD.
-	relPath := workspaceRelative(root, doc.path)
-	fixed, err := fixpkg.Source(fixpkg.SourceOptions{
-		Config:           cfg,
-		Rules:            s.rules,
-		Path:             relPath,
-		Source:           doc.text,
-		RootDir:          root,
-		SourceFS:         dirFSForPath(doc.path),
-		StripFrontMatter: frontMatterEnabled(cfg),
-		MaxInputBytes:    s.resolveMaxInputBytes(cfg),
-	})
-	if err == nil && !bytes.Equal(fixed, doc.text) {
+	// Fix-all routes through Session.Fix (today's fix.Source) so the LSP
+	// and `mdsmith fix` share one entry point. The session reads
+	// neighbours through its OverlayWorkspace, so include/catalog rules
+	// resolve against the project root and see open-buffer overlays.
+	sess, _ := s.currentSession()
+	if sess == nil {
+		return actions
+	}
+	res, err := sess.Fix(workspaceRelative(root, doc.path), doc.text)
+	if err == nil && res.Changed {
+		fixed := []byte(res.Source)
 		edit := buildFileEdit(p.TextDocument.URI, doc.text, fixed,
 			annotated, "mdsmith-fix-all", titleFixAllMdsmith)
 		actions = append(actions, codeAction{
@@ -1446,21 +1475,18 @@ func (s *Server) quickFixBytesFor(
 	if !isFixable(s.rules, rule) {
 		return nil
 	}
-	relPath := workspaceRelative(root, doc.path)
-	fixed, err := fixpkg.SourceWithRules(fixpkg.SourceOptions{
-		Config:           cfg,
-		Rules:            s.rules,
-		Path:             relPath,
-		Source:           doc.text,
-		RootDir:          root,
-		SourceFS:         dirFSForPath(doc.path),
-		StripFrontMatter: frontMatterEnabled(cfg),
-		MaxInputBytes:    s.resolveMaxInputBytes(cfg),
-	}, []string{rule})
-	if err != nil || bytes.Equal(fixed, doc.text) {
+	// Per-rule quick-fix routes through Session.FixRule (today's
+	// fix.SourceWithRules): only `rule`'s violations are rewritten, and
+	// neighbours resolve through the session's OverlayWorkspace.
+	sess, _ := s.currentSession()
+	if sess == nil {
 		return nil
 	}
-	return fixed
+	res, err := sess.FixRule(workspaceRelative(root, doc.path), doc.text, []string{rule})
+	if err != nil || !res.Changed {
+		return nil
+	}
+	return []byte(res.Source)
 }
 
 // wantsKind reports whether the client's `Only` filter accepts the
@@ -1643,6 +1669,89 @@ func documentEndPosition(source []byte) (int, int) {
 	return len(lines) - 1, utf16Length(lines[len(lines)-1])
 }
 
+// rebuildSession constructs a fresh per-workspace Session over an
+// OverlayWorkspace rooted at the effective project root, disposes the
+// previous one, and re-seeds the new overlay with every open buffer so
+// cross-file rules keep reading unsaved bytes across the rebuild. cfg is
+// already merged (and carries the include-extract projector / build
+// injection the host applied), so it is handed over with ConfigCompiled
+// and used as-is.
+//
+// A failure to build the session is non-fatal: NewSession only errors
+// when its ConfigSource fails to load, and a compiled source cannot, so
+// this never returns an error in practice. On the off chance it did, the
+// previous session is left in place rather than dropped.
+func (s *Server) rebuildSession(cfg *config.Config, cfgPath string) {
+	root := cfgPath
+	if root != "" {
+		root = filepath.Dir(cfgPath)
+	} else {
+		s.configMu.RLock()
+		root = s.rootDir
+		s.configMu.RUnlock()
+	}
+	// Surface a malformed max-input-size to the editor (the session
+	// silently falls back to the default; this keeps the user-facing
+	// warning the LSP showed before).
+	s.resolveMaxInputBytes(cfg)
+	ws := mdsmith.NewOverlayWorkspace(root)
+	sess, err := s.newSession(mdsmith.SessionOptions{
+		Workspace: ws,
+		Config:    mdsmith.ConfigCompiled(cfg, cfgPath),
+	})
+	if err != nil {
+		s.logger.Printf("session: rebuild failed: %v", err)
+		return
+	}
+	// Seed the overlay with every open buffer before publishing the new
+	// session, so the first cross-file Check after a reload already sees
+	// unsaved bytes.
+	for _, uri := range s.docs.openURIs() {
+		if doc, ok := s.docs.get(uri); ok {
+			ws.Set(workspaceRelative(root, doc.path), doc.text)
+		}
+	}
+	s.sessionMu.Lock()
+	s.session = sess
+	s.workspace = ws
+	s.sessionMu.Unlock()
+	// Do NOT Dispose the superseded session. A lint/fix goroutine may
+	// still hold it (obtained from currentSession() before this swap),
+	// and Dispose nils its checkCache under lock — so the held session's
+	// next Check would lose its warm cache, and a concurrent reload while
+	// linting is in flight is exactly when that happens. The superseded
+	// session is unreferenced once every in-flight caller returns, so GC
+	// reclaims it (its caches are plain maps, nothing OS-level to release);
+	// the public Dispose() stays for external callers that own a session's
+	// whole lifetime. Letting GC reap it keeps the invariant simple: a
+	// session handed out by currentSession() is never disposed underfoot.
+}
+
+// currentSession returns the active session and its overlay workspace
+// under the session lock, building one on demand if none exists yet.
+// reloadConfig (from handleInitialized) builds the session eagerly for
+// the normal path; this lazy fallback covers a client that lints after
+// only `initialize` — there the session must still exist, with whatever
+// config snapshotConfig holds (defaults when none was discovered),
+// matching the pre-session behaviour where runLint linted against
+// default config.
+func (s *Server) currentSession() (*mdsmith.Session, *mdsmith.OverlayWorkspace) {
+	s.sessionMu.RLock()
+	sess, ws := s.session, s.workspace
+	s.sessionMu.RUnlock()
+	if sess != nil {
+		return sess, ws
+	}
+	cfg, cfgPath, _ := s.snapshotConfig()
+	if cfg == nil {
+		cfg = config.Merge(config.Defaults(), nil)
+	}
+	s.rebuildSession(cfg, cfgPath)
+	s.sessionMu.RLock()
+	defer s.sessionMu.RUnlock()
+	return s.session, s.workspace
+}
+
 // snapshotConfig returns the cached config, its source path, and the
 // effective project root used for glob/ignore matching and as
 // Runner.RootDir. The root mirrors the CLI's rootDirFromConfig:
@@ -1681,14 +1790,15 @@ func (s *Server) reloadConfig() {
 	s.configPath = cfgPath
 	s.configMu.Unlock()
 
+	// Rebuild the per-workspace Session against the freshly merged
+	// config. The session compiles config once, so any reload (config or
+	// settings change) needs a new one; this also gives it fresh caches,
+	// which subsumes the old per-path parseCache.InvalidateAll on a moved
+	// config path. The new overlay is re-seeded with every open buffer so
+	// cross-file rules keep seeing unsaved bytes after the rebuild.
+	s.rebuildSession(cfg, cfgPath)
+
 	if pathChanged {
-		// snapshotConfig derives the workspace root from configPath;
-		// every parse cache key is workspace-relative to that root.
-		// When the config path moves (initial load, watched-file
-		// change, settings update) the existing keys belong to the
-		// previous root, so the cache must be cleared before the
-		// next runLint computes new ones.
-		s.parseCache.InvalidateAll()
 		// Notify the host only when the config path actually changes,
 		// matching the OnConfigReload field doc ("resolves a new
 		// config path"). A no-op reload (every didChangeConfiguration

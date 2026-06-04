@@ -42,13 +42,50 @@ type SessionOptions struct {
 }
 ```
 
-The core operations are thin shims over the engine and the fixer:
+The core operations are thin shims over the engine and the fixer. Each
+takes one URI and its in-memory bytes:
 
 ```go
 func (s *Session) Check(uri string, source []byte) ([]Diagnostic, error)
 func (s *Session) Fix(uri string, source []byte) (FixResult, error)
 func (s *Session) Kinds(uri string) (KindResolution, error)
 ```
+
+Two native-only batch operations lint or fix many files on disk in one
+call. Each drives the engine's parallel path loop and returns its own
+result type. So `cmd/mdsmith` keeps file discovery, ordering, and output
+formatting, but drops its own engine plumbing:
+
+```go
+func (s *Session) CheckPaths(paths []string, opts BatchOptions) *engine.Result
+func (s *Session) FixPaths(paths []string, opts BatchOptions) *fix.Result
+```
+
+`BatchOptions` carries the `--explain` flag, the parallel concurrency
+cap (`GOMAXPROCS` by default), a per-call byte cap, a verbose logger,
+and a dry-run flag for `FixPaths`. These two methods have **no
+JavaScript mirror**: a browser host has no disk, no file walk, and no
+write-back, so it lints single buffers through `Check` / `Fix` instead.
+The `MemWorkspace` is the only filesystem under WASM. See [open
+namespace and capabilities](#open-namespace-and-capabilities) for how
+the native-only set stays in lock-step despite the gap.
+
+Three more native-only methods serve the LSP server. `CheckVersion`
+takes the editor's `textDocument` version, so the [version-keyed parse
+cache](#caching) can serve a re-lint at the same version without
+re-parsing. `FixRule` applies one rule's fixes for a quick-fix
+lightbulb. `ResolveFile` returns the raw per-rule resolution the `kinds
+why` command walks:
+
+```go
+func (s *Session) CheckVersion(uri string, source []byte, version int) *engine.Result
+func (s *Session) FixRule(uri string, source []byte, names []string) (FixResult, error)
+func (s *Session) ResolveFile(uri string, fmKinds []string, fmFields map[string]any) *config.FileResolution
+```
+
+`CheckVersion` returns the engine `Result`, not the public `Diagnostic`
+slice. That keeps the LSP's own diagnostic partitioning and error
+surfacing, consistent with the batch ops above.
 
 Introspection and lifecycle round out the surface:
 
@@ -82,9 +119,36 @@ disk under `GOOS=js GOARCH=wasm`. So the JS `workspace` map becomes a
 `MemWorkspace` once at session construction. It then mutates only
 through `Invalidate(uri, content)`.
 
+A `Workspace` reads through two paths that must agree on which file a
+URI names: `ReadFile` (which `Session.Kinds` uses to read front matter)
+and the `fs.FS` view (which cross-file rules — catalog, include, links —
+read through). `OSWorkspace` carries an optional `Root`; the CLI sets it
+to the project root so workspace-relative URIs match config globs. With
+a `Root`, `ReadFile` resolves a relative URI against it, exactly as the
+`Root`-rooted `fs.FS` does, so the same URI cannot resolve to two
+different files. An absolute path is read unchanged, and an empty `Root`
+reads paths as passed. `MemWorkspace` keys both paths off the same map.
+
+A third implementation, `OverlayWorkspace`, is the LSP server's. It
+reads disk rooted at `Root` but lets `Set(uri, bytes)` shadow a path's
+content with an editor's unsaved buffer, so cross-file rules read the
+live buffer rather than the last saved file. Only content is overlaid —
+open buffers still exist on disk, so globbing and directory walks defer
+to disk, and the `fs.FS` view clones only the small open-buffer map per
+lint pass, never the corpus. That keeps a per-keystroke `CheckVersion`
+off any `O(corpus)` snapshot cost.
+
 `MemWorkspace.Glob` is a linear key filter. The lint hot loop must not
 call it per file; a benchmark fixture asserts no per-file `Glob` under
 `MemWorkspace`.
+
+The configuration arrives through a `ConfigSource`. `ConfigYAML` carries
+inline YAML (the WASM path) and `ConfigPath` names a `.mdsmith.yml` on
+disk; `NewSession` merges either over the built-in defaults.
+`ConfigCompiled` wraps an already-merged `*config.Config`: the CLI
+loads, merges, injects build recipes, and installs the include-extract
+projector, then hands the result over so those side effects survive. A
+compiled source is taken as-is.
 
 ## Open namespace and capabilities
 
@@ -99,27 +163,44 @@ to both sides without rearranging the existing methods. Each new method
 declares itself once on Go's `Session` and once on the proxied JS
 session — there is no central registry.
 
+`Capabilities()` advertises only the mirrored single-file surface
+(`check`, `fix`, `kinds`). The native-only batch ops (`checkPaths`,
+`fixPaths`) are left off, because a JS host can never call them. A
+native test ties the JS proxy method set to the Go `Session` method set
+minus an explicit native-only allowlist. A new *mirrored* method added
+on one side but not the other fails the build. A new native-only batch
+method is allowed once it joins that allowlist.
+
 ## Caching
 
-The session owns three caches, all session-scoped:
+The session owns four caches, all session-scoped:
 
-- **Parsed AST.** One entry per URI, holding the last
-  `(content-hash, document)` pair. The next `Check` on the same URI
-  with the same content reuses it. The first `Check` parses; later
-  `Check` and `Fix` on the same source skip the parse.
+- **Check results.** One entry per URI, holding the last
+  `(content-hash, diagnostics)` pair. The next `Check` on the same URI
+  with the same content reuses it without re-parsing or re-linting; a
+  no-op `Fix` reuses it too.
+- **Version-keyed parse.** One parsed document per URI, keyed by the
+  editor's `textDocument` version. `CheckVersion` serves it, so a
+  re-lint at the same version (a code action, a hover) skips the parse.
+  An edit bumps the version and misses, forcing a re-parse. This is the
+  per-keystroke cache the LSP latency gate depends on.
+- **Cross-file read.** The engine read cache shared across operations,
+  so a catalog or include target read by one buffer is not re-read by
+  the next on every keystroke.
 - **Compiled config.** Built once at `NewSession`. A config change
   needs `Dispose()` plus a new `NewSession`; there is no in-place
   reconfigure.
-- **Workspace `ReadFile` results.** Keyed by path.
 
 `Invalidate(uri)` signals that `uri` changed. With a `content` argument
-it rewrites that file in a `MemWorkspace`, so the next cross-file
-`Check` reads the new bytes. `OSWorkspace` ignores `content` and
-re-reads disk; a no-`content` call on a `MemWorkspace` deletes the
-entry (file removed). Invalidate then drops every cached `Check`
-result, not only `uri`'s. A changed file can feed any other through a
-cross-file rule (catalog, include, links), and the session keeps no
-dependency graph, so a stale dependent must never be served.
+it rewrites that file through the workspace's mutable overlay, so the
+next cross-file `Check` reads the new bytes — this is how the LSP's
+unsaved-buffer bytes reach catalog, include, and link rules. A bare
+`OSWorkspace` has no overlay and re-reads disk; a no-`content` call on a
+mutable workspace deletes the entry (file removed). Invalidate drops the
+changed path's read-cache and version-parse entries, then drops every
+cached `Check` result, not only `uri`'s. A changed file can feed any
+other through a cross-file rule, and the session keeps no dependency
+graph, so a stale dependent must never be served.
 
 ## WASM bindings
 

@@ -11,11 +11,12 @@ import (
 	flag "github.com/spf13/pflag"
 
 	"github.com/jeduden/mdsmith/internal/bytelimit"
+	"github.com/jeduden/mdsmith/internal/config"
 	fixpkg "github.com/jeduden/mdsmith/internal/fix"
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
-	"github.com/jeduden/mdsmith/internal/rule"
+	mdsmith "github.com/jeduden/mdsmith/pkg/mdsmith"
 )
 
 // runFix implements the "fix" subcommand: auto-fix lint issues in place.
@@ -125,20 +126,7 @@ func fixFiles(fileArgs []string, opts fixCLIOpts) int {
 	if code >= 0 {
 		return code
 	}
-
-	fixer := &fixpkg.Fixer{
-		Config:           cfg,
-		Rules:            rule.All(),
-		StripFrontMatter: frontMatterEnabled(cfg),
-		Logger:           logger,
-		RootDir:          rootDirFromConfig(cfgPath),
-		MaxInputBytes:    maxBytes,
-		Explain:          opts.explain,
-		DryRun:           opts.dryRun,
-	}
-	files = orderFilesLeavesFirst(files, fixer.RootDir, maxBytes)
-	fixResult := fixer.Fix(files)
-	return reportFixResult(opts, fixResult, logger)
+	return runFixThroughSession(cfg, cfgPath, opts, logger, files, maxBytes)
 }
 
 // fixDiscovered loads config, discovers files from config patterns,
@@ -154,19 +142,27 @@ func fixDiscovered(opts fixCLIOpts) int {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return 2
 	}
+	return runFixThroughSession(cfg, cfgPath, opts, logger, files, maxBytes)
+}
 
-	fixer := &fixpkg.Fixer{
-		Config:           cfg,
-		Rules:            rule.All(),
-		StripFrontMatter: frontMatterEnabled(cfg),
-		Logger:           logger,
-		RootDir:          rootDirFromConfig(cfgPath),
-		MaxInputBytes:    maxBytes,
-		Explain:          opts.explain,
-		DryRun:           opts.dryRun,
-	}
-	files = orderFilesLeavesFirst(files, fixer.RootDir, maxBytes)
-	fixResult := fixer.Fix(files)
+// runFixThroughSession orders files leaves-first, builds a Session over
+// the already-loaded config, and runs Session.FixPaths — the shared body
+// of fixFiles and fixDiscovered. Leaves-first ordering stays here in the
+// CLI (a convergence optimisation over the engine's fixpoint loop), so
+// FixPaths receives an already-ordered list.
+func runFixThroughSession(
+	cfg *config.Config, cfgPath string, opts fixCLIOpts,
+	logger *vlog.Logger, files []string, maxBytes int64,
+) int {
+	files = orderFilesLeavesFirst(files, rootDirFromConfig(cfgPath), maxBytes)
+	sess := sessionForCLI(cfg, cfgPath)
+	defer sess.Dispose()
+	fixResult := sess.FixPaths(files, mdsmith.BatchOptions{
+		Explain:       opts.explain,
+		MaxInputBytes: batchMaxBytes(maxBytes),
+		Logger:        logger,
+		DryRun:        opts.dryRun,
+	})
 	return reportFixResult(opts, fixResult, logger)
 }
 

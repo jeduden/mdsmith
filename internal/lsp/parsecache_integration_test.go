@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -43,16 +42,12 @@ func TestParseCache_DidChangeReflectsNewText(t *testing.T) {
 	require.NoError(t, json.Unmarshal(first, &p1))
 	assert.Empty(t, p1.Diagnostics, "clean buffer should produce no diagnostics on the first lint")
 
-	// Sanity: the server populated the parse cache. The relative
-	// path the cache keys off is the absolute path itself when no
-	// workspace root is configured (workspaceRelative returns the
-	// input). Either way, an entry must exist for version 1.
-	_, ok := h.srv.parseCache.Get("/workspace/parsecache.md", 1)
-	require.True(t, ok, "parse cache should hold the version-1 entry after the first lint")
-
-	// didChange at version 2: dirty buffer with trailing spaces.
-	// The cache must invalidate, force a reparse, and MDS006 must
-	// appear in the published diagnostics.
+	// didChange at version 2: dirty buffer with trailing spaces. The
+	// session's version-keyed parse cache must miss at the new version,
+	// force a reparse, and MDS006 must appear in the published
+	// diagnostics. (The cache mechanics themselves are unit-tested at the
+	// session layer in pkg/mdsmith; here we pin the editor-visible
+	// outcome.)
 	h.notify("textDocument/didChange", didChangeTextDocumentParams{
 		TextDocument: versionedTextDocumentIdentifier{URI: uri, Version: 2},
 		ContentChanges: []textDocumentContentChangeEvent{
@@ -71,21 +66,14 @@ func TestParseCache_DidChangeReflectsNewText(t *testing.T) {
 		}
 	}
 	assert.True(t, saw006, "expected MDS006 after didChange; got %+v", p2.Diagnostics)
-
-	// The version-1 entry must be gone: didChange invalidated it.
-	// The version-2 entry must exist: the post-edit runLint stored
-	// the fresh parse.
-	_, ok = h.srv.parseCache.Get("/workspace/parsecache.md", 1)
-	assert.False(t, ok, "didChange must drop the version-1 entry so a stale parse cannot resurface")
-	_, ok = h.srv.parseCache.Get("/workspace/parsecache.md", 2)
-	assert.True(t, ok, "the post-edit lint must store a fresh entry at the new version")
 }
 
-// TestParseCache_DidCloseDropsEntry pins didClose's invalidation:
-// once the buffer is closed the cache entry must be gone so a
-// reopen (which restarts at version 1) cannot accidentally serve a
-// stale *File parsed against the previous session's content.
-func TestParseCache_DidCloseDropsEntry(t *testing.T) {
+// TestParseCache_DidCloseReopenReflectsNewText pins didClose's
+// invalidation behaviourally: once a buffer is closed and reopened
+// (which restarts at version 1) with different content, the republished
+// diagnostics reflect the reopened text — a stale version-1 parse from
+// the first session must not resurface.
+func TestParseCache_DidCloseReopenReflectsNewText(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	_, errResp := h.request("initialize", initializeParams{})
@@ -94,31 +82,46 @@ func TestParseCache_DidCloseDropsEntry(t *testing.T) {
 	uri := "file:///workspace/close.md"
 	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
 		TextDocument: textDocumentItem{
-			URI: uri, LanguageID: "markdown", Version: 1, Text: "# Hi\n\nclean\n",
+			URI: uri, LanguageID: "markdown", Version: 1, Text: "# Hi\n\nclean line\n",
 		},
 	})
-	_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
-
-	_, ok := h.srv.parseCache.Get("/workspace/close.md", 1)
-	require.True(t, ok, "the open lint must populate the cache")
+	first := h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+	var p1 publishDiagnosticsParams
+	require.NoError(t, json.Unmarshal(first, &p1))
+	assert.Empty(t, p1.Diagnostics, "clean buffer should produce no diagnostics")
 
 	h.notify("textDocument/didClose", didCloseTextDocumentParams{
 		TextDocument: textDocumentIdentifier{URI: uri},
 	})
 	_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
 
-	_, ok = h.srv.parseCache.Get("/workspace/close.md", 1)
-	assert.False(t, ok, "didClose must drop the parse cache entry")
+	// Reopen at version 1 with dirty content. If a stale version-1 parse
+	// survived didClose, MDS006 would be missed.
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{
+			URI: uri, LanguageID: "markdown", Version: 1, Text: "# Hi\n\ndirty line   \n",
+		},
+	})
+	second := h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+	var p2 publishDiagnosticsParams
+	require.NoError(t, json.Unmarshal(second, &p2))
+	var saw006 bool
+	for _, d := range p2.Diagnostics {
+		if d.Code == "MDS006" {
+			saw006 = true
+			break
+		}
+	}
+	assert.True(t, saw006, "reopen at version 1 must reflect the new dirty text, got %+v", p2.Diagnostics)
 }
 
-// TestParseCache_ReloadConfigClearsOnRootChange pins that the parse
-// cache is flushed when reloadConfig picks a different .mdsmith.yml.
-// snapshotConfig derives the workspace root from configPath, and
-// every cache key is relative to that root; when the path moves, the
-// previously stored keys belong to a stale root and must be cleared
-// so a subsequent runLint cannot miss an invalidate it issued against
-// the new key.
-func TestParseCache_ReloadConfigClearsOnRootChange(t *testing.T) {
+// TestParseCache_ReloadRebuildsSessionOnRootChange pins that a config
+// reload to a different .mdsmith.yml rebuilds the per-workspace session.
+// Every cache (the version-keyed parse cache, the cross-file read cache)
+// is owned by the session and is rooted at the config's directory, so a
+// rebuild on a moved config path gives fresh caches keyed against the
+// new root — no stale entry from the previous root can survive.
+func TestParseCache_ReloadRebuildsSessionOnRootChange(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 
@@ -128,11 +131,6 @@ func TestParseCache_ReloadConfigClearsOnRootChange(t *testing.T) {
 	dirB := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dirA, ".mdsmith.yml"), []byte("{}\n"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dirB, ".mdsmith.yml"), []byte("{}\n"), 0o600))
-
-	// Sanity: the dirs are distinct workspace roots. If they
-	// collapse to one (impossible with t.TempDir, but the contract
-	// the test gates on), the configPath flip would be a no-op and
-	// the test would pass without exercising InvalidateAll.
 	require.NotEqual(t, dirA, dirB, "test setup: the two configs must live in different directories")
 
 	// Point reloadConfig at dirA's config and let it land.
@@ -142,22 +140,20 @@ func TestParseCache_ReloadConfigClearsOnRootChange(t *testing.T) {
 	h.srv.reloadConfig()
 	_, _, rootA := h.srv.snapshotConfig()
 	require.Equal(t, dirA, rootA, "first reload must adopt dirA as the workspace root")
-
-	// Warm the cache with a synthetic entry keyed off dirA.
-	f, err := lint.NewFileFromSource("docs/foo.md", []byte("# Hi\n"), false)
-	require.NoError(t, err)
-	h.srv.parseCache.Put("docs/foo.md", 1, f)
+	sessA, _ := h.srv.currentSession()
+	require.NotNil(t, sessA, "first reload must build a session")
 
 	// Flip the override to dirB and reload. configPath changes, so
-	// reloadConfig must call parseCache.InvalidateAll.
+	// reloadConfig must rebuild the session against the new root.
 	h.srv.settingsMu.Lock()
 	h.srv.settings.ConfigPath = filepath.Join(dirB, ".mdsmith.yml")
 	h.srv.settingsMu.Unlock()
 	h.srv.reloadConfig()
 	_, _, rootB := h.srv.snapshotConfig()
 	require.Equal(t, dirB, rootB, "second reload must adopt dirB as the workspace root")
-	require.NotEqual(t, rootA, rootB, "the reload must change the workspace root for the InvalidateAll branch to fire")
+	require.NotEqual(t, rootA, rootB, "the reload must change the workspace root")
 
-	_, ok := h.srv.parseCache.Get("docs/foo.md", 1)
-	assert.False(t, ok, "config-path change must drop every parse cache entry")
+	sessB, _ := h.srv.currentSession()
+	require.NotNil(t, sessB, "second reload must build a session")
+	assert.NotSame(t, sessA, sessB, "a config-path change must rebuild the session with fresh caches")
 }

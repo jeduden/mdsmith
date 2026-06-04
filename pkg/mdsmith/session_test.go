@@ -85,6 +85,65 @@ func TestSessionFixNoChange(t *testing.T) {
 	}
 }
 
+// TestSessionFixNoChangeReusesCheckCache is the plan-219 footgun-4
+// acceptance test: Fix must not re-lint with a fresh full runner when
+// the fix made no edit. When a prior Check already linted the identical
+// source, a following no-op Fix reuses that cached result and runs zero
+// additional parses — the doubled work the footgun warned about is
+// gone.
+func TestSessionFixNoChangeReusesCheckCache(t *testing.T) {
+	s := newTestSession(t, "", nil)
+	src := []byte("# Title\n\nClean body paragraph.\n")
+
+	// Warm the Check cache for this exact source.
+	if _, err := s.Check("a.md", src); err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	afterCheck := s.parseCount()
+
+	res, err := s.Fix("a.md", src)
+	if err != nil {
+		t.Fatalf("Fix: %v", err)
+	}
+	if res.Changed {
+		t.Fatal("Fix: expected Changed=false on already-clean source")
+	}
+	if got := s.parseCount(); got != afterCheck {
+		t.Fatalf("Fix re-linted a no-op fix: parseCount went %d -> %d; "+
+			"a no-op Fix must reuse the cached Check instead of a fresh runner",
+			afterCheck, got)
+	}
+}
+
+// TestSessionFixNoChangeStillReturnsDiagnostics verifies the
+// short-circuit preserves the contract: a no-op Fix still returns the
+// diagnostics that remain (non-fixable findings) on the unchanged
+// source. A long line (MDS001) is default-enabled and not fixable, so
+// it survives the fix and must appear in the remaining diagnostics even
+// though Fix made no edit.
+func TestSessionFixNoChangeStillReturnsDiagnostics(t *testing.T) {
+	s := newTestSession(t, "", nil)
+	long := "# Title\n\n" + strings.Repeat("verylongword ", 12) + "tail\n"
+	src := []byte(long)
+
+	res, err := s.Fix("a.md", src)
+	if err != nil {
+		t.Fatalf("Fix: %v", err)
+	}
+	if res.Changed {
+		t.Fatalf("Fix: expected Changed=false, got source %q", res.Source)
+	}
+	var hasLineLen bool
+	for _, d := range res.Diagnostics {
+		if d.Rule == "MDS001" {
+			hasLineLen = true
+		}
+	}
+	if !hasLineLen {
+		t.Fatalf("Fix(no-op): expected the surviving MDS001 diagnostic, got %+v", res.Diagnostics)
+	}
+}
+
 func TestSessionKindsResolvesKind(t *testing.T) {
 	cfg := "kinds:\n  doc:\n    path-pattern: \"docs/**/*.md\"\n" +
 		"kind-assignment:\n  - glob: [\"docs/**/*.md\"]\n    kinds: [doc]\n"
@@ -233,4 +292,58 @@ func TestSessionCheckAfterDisposeNoPanic(t *testing.T) {
 	if _, err := s.Check("a.md", []byte("# Title\n\nBody paragraph here.\n")); err != nil {
 		t.Fatalf("Check after Dispose: unexpected error: %v", err)
 	}
+}
+
+// TestSessionDisposeDropsCheckCache pins the mechanic behind the LSP's
+// use-after-dispose hazard: Dispose nils checkCache, so a Check on a
+// session that is still held re-parses instead of serving the warm
+// cache. The "held" half is the invariant the LSP's rebuildSession now
+// upholds by NOT disposing the superseded session — a goroutine that
+// obtained the session before the swap keeps its warm cache; the
+// "disposed" half is the regression it must never re-introduce.
+func TestSessionDisposeDropsCheckCache(t *testing.T) {
+	src := []byte("# Title\n\nClean body paragraph.\n")
+
+	t.Run("held session keeps its warm cache", func(t *testing.T) {
+		s := newTestSession(t, "", nil)
+		if _, err := s.Check("a.md", src); err != nil {
+			t.Fatalf("warm Check: %v", err)
+		}
+		warm := s.parseCount()
+
+		// Building a replacement session (what rebuildSession does on a
+		// reload) must not touch the held session's cache. The held
+		// reference re-Checks the same source and serves from cache.
+		_ = newTestSession(t, "", nil)
+
+		if _, err := s.Check("a.md", src); err != nil {
+			t.Fatalf("re-Check: %v", err)
+		}
+		if got := s.parseCount(); got != warm {
+			t.Fatalf("held session re-parsed (parseCount %d -> %d); its warm "+
+				"checkCache must survive a peer session being built", warm, got)
+		}
+	})
+
+	t.Run("disposed session loses its cache", func(t *testing.T) {
+		s := newTestSession(t, "", nil)
+		if _, err := s.Check("a.md", src); err != nil {
+			t.Fatalf("warm Check: %v", err)
+		}
+		warm := s.parseCount()
+
+		// Dispose is the hazard: it nils checkCache. A caller that still
+		// holds the session re-parses on its next Check — the warm cache is
+		// gone. This is exactly why rebuildSession must not Dispose a
+		// session it just handed out via currentSession().
+		s.Dispose()
+
+		if _, err := s.Check("a.md", src); err != nil {
+			t.Fatalf("re-Check after Dispose: %v", err)
+		}
+		if got := s.parseCount(); got == warm {
+			t.Fatalf("parseCount stayed %d after Dispose; the test no longer "+
+				"observes the cache loss that Dispose-on-an-in-use-session causes", warm)
+		}
+	})
 }

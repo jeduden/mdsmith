@@ -278,7 +278,15 @@ func readFrontMatter(cfg *config.Config, path string, maxBytes int64) ([]string,
 }
 
 // resolveFileFromCLI loads config, parses the file's front matter for
-// kinds: and returns a FileResolution. Errors are printed to stderr.
+// kinds:, and returns a FileResolution computed through a
+// pkg/mdsmith.Session. Errors are printed to stderr.
+//
+// The CLI keeps front-matter reading, validation, and the max-input /
+// missing-file / directory error UX here — the session is intentionally
+// lenient toward unsaved buffers, so this command's stricter contract
+// stays in the CLI. The session owns the compiled config and performs
+// the resolution: this routes `kinds resolve` / `kinds why` through it
+// while preserving the command's exact diagnostics.
 //
 // When the config disables front matter (`front-matter: false`), front
 // matter is neither parsed nor validated so the resolution mirrors the
@@ -286,7 +294,7 @@ func readFrontMatter(cfg *config.Config, path string, maxBytes int64) ([]string,
 // against max-input-size) to surface readability errors and to match
 // the engine's rejection of oversized or unreadable paths.
 func resolveFileFromCLI(path string) (*config.FileResolution, *config.Config, int) {
-	cfg, _, code := kindsConfig()
+	cfg, cfgPath, code := kindsConfig()
 	if code != 0 {
 		return nil, nil, code
 	}
@@ -324,7 +332,9 @@ func resolveFileFromCLI(path string) (*config.FileResolution, *config.Config, in
 		}
 	}
 
-	return config.ResolveFile(cfg, path, fmKinds, fmFields), cfg, 0
+	sess := sessionForCLI(cfg, cfgPath)
+	defer sess.Dispose()
+	return sess.ResolveFile(path, fmKinds, fmFields), cfg, 0
 }
 
 // runKindsResolve prints the resolved kind list and merged rule config

@@ -2347,6 +2347,13 @@ func TestQuickFixBytesForCatalogProducesEdit(t *testing.T) {
 	stale := []byte("# Doc\n\n<?catalog\nglob: [\"a.md\"]\n?>\nold body\n<?/catalog?>\n")
 	doc := &document{path: docPath, text: stale}
 
+	// quickFixBytesFor now resolves the fix through the per-workspace
+	// session, which is rooted at the server's workspace root. Set it to
+	// dir so the catalog's `a.md` glob resolves against the on-disk file.
+	s.configMu.Lock()
+	s.rootDir = dir
+	s.configMu.Unlock()
+
 	fixed := s.quickFixBytesFor("catalog", doc, cfg, dir)
 	require.NotNil(t, fixed, "catalog must surface a quick-fix action; "+
 		"users expect mdsmith fix in the Quick Fix lightbulb menu")
@@ -3257,37 +3264,27 @@ func TestHandleDidChangeWatchedFiles_InvalidatesWikilinkIndex(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
-			rc := lint.NewRunCache()
-			s.runCache = rc
-			// Seed the cache so we can detect whether the handler
-			// cleared it.
-			var built int
-			rc.Wikilinks("/root", func() any {
-				built++
-				return "v1"
-			})
-			require.Equal(t, 1, built)
-
-			body, err := json.Marshal(didChangeWatchedFilesParams{
-				Changes: []fileEvent{{URI: tc.uri, Type: tc.changeType}},
-			})
-			require.NoError(t, err)
-			s.handleDidChangeWatchedFiles(context.Background(), body)
-
-			rc.Wikilinks("/root", func() any {
-				built++
-				return "v2"
-			})
-			if tc.want {
-				assert.Equal(t, 2, built,
-					"wikilink cache must rebuild after %s", tc.name)
-			} else {
-				assert.Equal(t, 1, built,
-					"%s must not invalidate the wikilink cache", tc.name)
-			}
+			// The handler routes a create/delete to
+			// session.InvalidateWikilinks via this decision. Testing the
+			// pure decision pins which change types rebuild the wikilink
+			// candidate set without a live session and its caches (the
+			// session-level wikilink drop is covered in pkg/mdsmith).
+			got := watchedFilesTreeChanged([]fileEvent{{URI: tc.uri, Type: tc.changeType}})
+			assert.Equal(t, tc.want, got,
+				"watchedFilesTreeChanged(%s) = %v, want %v", tc.name, got, tc.want)
 		})
 	}
+}
+
+// TestWatchedFilesTreeChangedSkipsConfig pins that a .mdsmith.yml change
+// alone does not flag a tree change (it is handled by the config-reload
+// path, which rebuilds the session entirely).
+func TestWatchedFilesTreeChangedSkipsConfig(t *testing.T) {
+	t.Parallel()
+	got := watchedFilesTreeChanged([]fileEvent{
+		{URI: "file:///proj/.mdsmith.yml", Type: fileChangeCreated},
+	})
+	assert.False(t, got, "a config-only create must not flag a wikilink tree change")
 }
 
 func TestDocumentStoreGetMissing(t *testing.T) {
@@ -3977,51 +3974,13 @@ func TestHandleDidClose_CancelsPendingLint(t *testing.T) {
 	assert.False(t, hasPending, "pending lint timer must be cleared after didClose")
 }
 
-// --- invalidateCachedRead ---
-
-// TestInvalidateCachedRead_NilRunCache pins the early-return when
-// the server has no run cache attached. The didChange handler
-// drives this in tests that construct a Server without seeding
-// s.runCache, but the branch was not explicitly asserted.
-func TestInvalidateCachedRead_NilRunCache(t *testing.T) {
-	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
-	// runCache is nil by default. The call must not panic.
-	s.invalidateCachedRead("/some/path")
-}
-
-// TestInvalidateCachedRead_EmptyPath pins the early-return when
-// the caller passes an empty path. The runCache is non-nil, so
-// only the path guard fires.
-func TestInvalidateCachedRead_EmptyPath(t *testing.T) {
-	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
-	rc := lint.NewRunCache()
-	s.runCache = rc
-	s.invalidateCachedRead("")
-	// Cache state should not have been touched.
-}
-
-// TestInvalidateCachedRead_DropsEntry pins the happy path: a
-// non-nil runCache plus a non-empty path forwards to
-// runCache.Invalidate. We seed a CatalogEntries entry for the
-// path and verify it is dropped after the call.
-func TestInvalidateCachedRead_DropsEntry(t *testing.T) {
-	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
-	rc := lint.NewRunCache()
-	s.runCache = rc
-	const path = "/seed/file.md"
-	rc.FrontMatter(path, func() any { return "stored" })
-	// Sanity: cache hit before invalidation.
-	got := rc.FrontMatter(path, func() any { return "rebuilt" })
-	if got != "stored" {
-		t.Fatalf("seed: cache hit = %v, want stored", got)
-	}
-	s.invalidateCachedRead(path)
-	// After invalidate, the build closure runs again.
-	got = rc.FrontMatter(path, func() any { return "rebuilt" })
-	if got != "rebuilt" {
-		t.Errorf("after invalidate: cache hit = %v, want rebuilt", got)
-	}
-}
+// Read-cache invalidation moved from the Server onto the per-workspace
+// pkg/mdsmith.Session: the nil-guard, empty-path, and drops-entry
+// branches that TestInvalidateCachedRead_* used to pin are now exercised
+// by the session's own Invalidate tests in pkg/mdsmith
+// (TestInvalidateClearsDependentCache, TestInvalidateDropsVersionParseCache).
+// The Server's syncBuffer/dropPath wrappers that route to the session
+// are covered behaviourally by the document-sync and overlay tests.
 
 // TestIsAbsPath covers the cross-platform absolute-path classification
 // relatedURI relies on: POSIX absolute, Windows drive-letter, and UNC

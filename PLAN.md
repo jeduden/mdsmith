@@ -148,7 +148,7 @@ footer: |
 | 218 | ✅     | sonnet | [Finish MD054 link-image-style coverage in MDS068](plan/218_finish-md054-link-image-style.md)                                           |
 | 218 | 🔲     | opus   | [WASM size reduction — CUE-free engine path and tinygo support](plan/218_wasm-size-reduction.md)                                        |
 | 219 | 🔲     | opus   | [Multiplexed AST walk to close the parity gap to mado](plan/219_multiplexed-ast-walk.md)                                                |
-| 219 | 🔲     | opus   | [Route cmd/mdsmith and the LSP through pkg/mdsmith.Session](plan/219_session-cli-lsp-migration.md)                                      |
+| 219 | ✅     | opus   | [Route cmd/mdsmith and the LSP through pkg/mdsmith.Session](plan/219_session-cli-lsp-migration.md)                                      |
 | 220 | ✅     | opus   | [Harden the git-index writers against a transient index.lock](plan/220_git-index-lock-retry.md)                                         |
 | 221 | 🔳     | opus   | [Ship mdsmith as a self-hosted Flatpak bundle](plan/221_flatpak-bundle-distribution.md)                                                 |
 | 222 | ✅     | opus   | [Single source of truth for distribution channels](plan/222_distribution-channel-ssot.md)                                               |

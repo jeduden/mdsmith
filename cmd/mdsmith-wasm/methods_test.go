@@ -9,22 +9,74 @@ import (
 	mdsmith "github.com/jeduden/mdsmith/pkg/mdsmith"
 )
 
+// nativeOnlyMethods are exported *mdsmith.Session methods that
+// deliberately have no JavaScript mirror. The batch operations
+// (checkPaths, fixPaths) read and write many files on disk and return
+// the engine's own Result types so the CLI keeps its discovery and
+// output formatting; a WASM host has no disk and drives single files
+// through check/fix instead (plan 219, documented as native-only in
+// docs/background/concepts/engine-api.md). The parity check below
+// subtracts these before comparing so adding a JS-mirrored Go method
+// without exposing it in JS still fails, while a native-only addition
+// is allowed once it is listed here.
+var nativeOnlyMethods = map[string]bool{
+	"checkPaths":          true,
+	"checkSource":         true,
+	"checkVersion":        true,
+	"fixPaths":            true,
+	"fixRule":             true,
+	"invalidateWikilinks": true,
+	"resolveFile":         true,
+}
+
 // TestSessionMethodSetMatchesGo asserts the JS session proxy's method
-// set matches the Go *mdsmith.Session method set name-for-name (modulo
-// the Go→JS lower-camel convention). The WASM bridge builds its proxy
-// from sessionMethodNames(); this test ties that list to the actual Go
-// methods via reflection, so adding a Go method without exposing it in
-// JS (or vice versa) fails the build's tests.
+// set matches the JS-mirrored Go *mdsmith.Session method set
+// name-for-name (modulo the Go→JS lower-camel convention and the
+// native-only batch ops). The WASM bridge builds its proxy from
+// sessionMethodNames(); this test ties that list to the actual Go
+// methods via reflection, so adding a JS-mirrored Go method without
+// exposing it in JS (or vice versa) fails the build's tests.
 func TestSessionMethodSetMatchesGo(t *testing.T) {
 	jsNames := sessionMethodNames()
 	sort.Strings(jsNames)
 
-	goNames := exportedMethodNames(reflect.TypeOf((*mdsmith.Session)(nil)))
+	goNames := mirroredGoMethodNames()
 	sort.Strings(goNames)
 
 	if !reflect.DeepEqual(jsNames, goNames) {
-		t.Fatalf("JS session methods %v != Go Session methods %v", jsNames, goNames)
+		t.Fatalf("JS session methods %v != JS-mirrored Go Session methods %v "+
+			"(native-only methods %v are excluded)", jsNames, goNames, nativeOnlyMethods)
 	}
+}
+
+// TestNativeOnlyMethodsExistOnGoSession guards the allowlist: every name
+// in nativeOnlyMethods must be a real exported Go Session method, so a
+// stale entry (a renamed or removed batch op) cannot silently mask a
+// future drift.
+func TestNativeOnlyMethodsExistOnGoSession(t *testing.T) {
+	all := make(map[string]bool)
+	for _, n := range exportedMethodNames(reflect.TypeOf((*mdsmith.Session)(nil))) {
+		all[n] = true
+	}
+	for n := range nativeOnlyMethods {
+		if !all[n] {
+			t.Fatalf("nativeOnlyMethods lists %q but *mdsmith.Session has no such exported method", n)
+		}
+	}
+}
+
+// mirroredGoMethodNames returns the exported Go Session method names
+// minus the native-only batch ops, i.e. the set that must mirror into
+// JS one-for-one.
+func mirroredGoMethodNames() []string {
+	var out []string
+	for _, n := range exportedMethodNames(reflect.TypeOf((*mdsmith.Session)(nil))) {
+		if nativeOnlyMethods[n] {
+			continue
+		}
+		out = append(out, n)
+	}
+	return out
 }
 
 // TestCoreCapabilitiesAreMethods asserts every name Capabilities()

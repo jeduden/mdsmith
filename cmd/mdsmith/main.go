@@ -19,6 +19,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/profiling"
 	"github.com/jeduden/mdsmith/internal/query"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
+	mdsmith "github.com/jeduden/mdsmith/pkg/mdsmith"
 
 	// Import every production rule package via the shared barrel so
 	// the registry is populated by init(). Tests that need the same
@@ -589,6 +590,29 @@ func frontMatterEnabled(cfg *config.Config) bool {
 		return *cfg.FrontMatter
 	}
 	return true
+}
+
+// sessionForCLI builds a pkg/mdsmith.Session over the host filesystem
+// for the already-loaded config. cfg has been merged and had its CLI
+// side effects applied (build-recipe injection, the include-extract
+// projector) by loadConfig, so it is wrapped with mdsmith.ConfigCompiled
+// and handed over as-is — NewSession must not re-merge it. The OS
+// workspace is rooted at the project root so ReadFile and the engine's
+// FS view agree on a workspace-relative uri.
+//
+// NewSession only fails when its ConfigSource fails to load; a compiled
+// source cannot (ConfigCompiled.loadConfig returns the config verbatim
+// with a nil error), so the error is always nil here. Rather than carry
+// a dead, untestable error branch at every call site, the impossible
+// error is dropped — matching the in-tree NewFileFromSource //nolint
+// pattern. If a future compiled source becomes fallible, NewSession's
+// signature forces this line to surface the error again.
+func sessionForCLI(cfg *config.Config, cfgPath string) *mdsmith.Session {
+	sess, _ := mdsmith.NewSession(mdsmith.SessionOptions{ //nolint:errcheck // ConfigCompiled never fails to load
+		Workspace: mdsmith.OSWorkspace{Root: rootDirFromConfig(cfgPath)},
+		Config:    mdsmith.ConfigCompiled(cfg, cfgPath),
+	})
+	return sess
 }
 
 // rootDirFromConfig returns the project root directory derived from the
