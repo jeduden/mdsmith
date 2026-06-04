@@ -32,6 +32,22 @@ var hugoShortcodeAngle = regexp.MustCompile(`\{\{<([^}]*)>\}\}`)
 // `{{%/* ... */%}}` form.
 var hugoShortcodePercent = regexp.MustCompile(`\{\{%([^}]*)%\}\}`)
 
+// nonPublishedDocDirs are the immediate docs/ subdirectories that
+// ship in the repo for maintainers but are not part of the
+// user-facing website. SyncDocs skips them at the docs root, so
+// the rendered site carries only the user docs (background,
+// features, guides, reference). Links from a published page into
+// one of these trees are routed to the file's GitHub source by
+// rewriteRuleLinks (see repoPrunedDocLink in website.go). The match
+// is by directory name at the root level only, so a same-named
+// subdirectory deeper in the tree is unaffected.
+var nonPublishedDocDirs = map[string]struct{}{
+	"development": {},
+	"research":    {},
+	"security":    {},
+	"brand":       {},
+}
+
 // syncableExt is the allow-list of file extensions copied into the
 // Hugo content tree. Files outside this set (Go embed.go helpers,
 // build artifacts, etc.) live in docs/ as repo plumbing but have
@@ -168,7 +184,7 @@ func (t *Toolkit) SyncDocs(srcDir, dstDir string) error {
 	// the real repo-relative docs path would mis-anchor those
 	// URLs (silently — they would 404 on GitHub, not error here).
 	repoDir := filepath.Base(filepath.Clean(srcDir))
-	if _, err := t.syncDocsDir(srcDir, dstDir, repoDir); err != nil {
+	if _, err := t.syncDocsDir(srcDir, dstDir, repoDir, true); err != nil {
 		return fmt.Errorf("sync %s -> %s: %w", srcDir, dstDir, err)
 	}
 	return nil
@@ -230,7 +246,7 @@ func SyncDocs(srcDir, dstDir string) error {
 // file ended up under dst. An empty dst is removed so the rendered
 // tree doesn't expose hollow directories from upstream pruning
 // (a docs/ subdir containing only a proto.md, say).
-func (t *Toolkit) syncDocsDir(src, dst, repoDir string) (bool, error) {
+func (t *Toolkit) syncDocsDir(src, dst, repoDir string, atRoot bool) (bool, error) {
 	entries, err := t.fs.ReadDir(src)
 	if err != nil {
 		return false, fmt.Errorf("read dir %s: %w", src, err)
@@ -256,6 +272,14 @@ func (t *Toolkit) syncDocsDir(src, dst, repoDir string) (bool, error) {
 			// docs/ copy arbitrary runner files into the
 			// published site.
 			continue
+		}
+		if atRoot && e.IsDir() {
+			// Maintainer-only docs/ subtrees never reach the
+			// published site; links into them are GitHub-routed
+			// at rewrite time.
+			if _, pruned := nonPublishedDocDirs[e.Name()]; pruned {
+				continue
+			}
 		}
 		srcPath := filepath.Join(src, e.Name())
 		var entryWrote bool
@@ -287,7 +311,7 @@ func (t *Toolkit) syncDocsSubdir(src, dst, name string, siblings map[string]stru
 	if err := t.fs.MkdirAll(childDst, 0o755); err != nil {
 		return false, fmt.Errorf("mkdir %s: %w", childDst, err)
 	}
-	childWrote, err := t.syncDocsDir(src, childDst, path.Join(repoDir, name))
+	childWrote, err := t.syncDocsDir(src, childDst, path.Join(repoDir, name), false)
 	if err != nil {
 		return childWrote, err
 	}

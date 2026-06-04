@@ -8,7 +8,7 @@ mechanism: toolchain
 artifact: cli
 command: uvx mdsmith check .
 audience: Ephemeral runs via uv
-platforms: [python]
+platforms: [python, linux, macos, windows]
 channelurl: https://pypi.org/project/mdsmith/
 weight: 5
 ---

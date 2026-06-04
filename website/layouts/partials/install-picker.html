@@ -18,7 +18,7 @@
 {{- range $order }}{{ if in $present . }}{{ $chips = $chips | append . }}{{ end }}{{ end -}}
 {{- range $present }}{{ if not (in $order .) }}{{ $chips = $chips | append . }}{{ end }}{{ end -}}
 <div class="install-picker" data-install-picker>
-  <div class="install-filters" role="group" aria-label="Filter channels by platform">
+  <div class="install-filters" role="group" aria-label="Filter install options by platform">
     <button class="install-filter is-active" type="button" data-filter="all" aria-pressed="true">All</button>
     {{- range $chips }}
     <button class="install-filter" type="button" data-filter="{{ . }}" aria-pressed="false">{{ index $labels . | default (humanize .) }}</button>
@@ -38,5 +38,5 @@
          page. These restate what the channel docs already publish
          (github-releases / npm / pypi front matter); per-channel
          detail lives in the install guide. */ -}}
-  <p class="install-note">Releases are Sigstore-signed and checksummed; npm and PyPI publish via OIDC Trusted Publishing. The <a href="{{ "/guides/install/" | relURL }}">install guide</a> lists per-channel verification.</p>
+  <p class="install-note">Releases are Sigstore-signed and checksummed; npm and PyPI publish via OIDC Trusted Publishing. The <a href="{{ "/guides/install/" | relURL }}">install guide</a> lists verification steps for each install method.</p>
 </div>

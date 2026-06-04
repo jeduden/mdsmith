@@ -6,7 +6,7 @@
 {{ $root := site.Home }}
 {{- /* Explicit narrative order for the docs groups: the
        sidebar reads as a user journey (why → how → look up →
-       rule catalog → mental model → contribute) rather than
+       rule catalog → mental model) rather than
        Hugo's default title sort. Per-section weights in each
        _index.md front matter would do this too, but
        docs/features/index.md is the feature-index kind, whose
@@ -20,7 +20,7 @@
        section not named in $order is appended afterwards by
        weight, so a new docs section still renders without a
        template change. */ -}}
-{{ $order := slice "features" "guides" "reference" "rules" "background" "development" }}
+{{ $order := slice "features" "guides" "reference" "rules" "background" }}
 <button class="docs-side-toggle" type="button" aria-expanded="false" aria-controls="docs-nav">
   <span class="docs-side-toggle-label">Documentation</span>
   <i data-lucide="chevron-down" width="16" height="16" aria-hidden="true"></i>

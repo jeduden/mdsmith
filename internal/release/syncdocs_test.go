@@ -69,8 +69,9 @@ func TestSyncDocs_SynthesizesSectionIndex(t *testing.T) {
 	// would collide with cli.md's URL).
 	writeFile(t, filepath.Join(src, "reference", "cli.md"), "# CLI\n\nbody\n")
 	writeFile(t, filepath.Join(src, "reference", "cli", "check.md"), "# check\n\nbody\n")
-	// release-channels/ exercises the humanizer.
-	writeFile(t, filepath.Join(src, "development", "release-channels", "npm.md"), "# npm\n\nbody\n")
+	// release-channels/ exercises the humanizer (under a kept dir,
+	// since development/ itself is pruned from the site).
+	writeFile(t, filepath.Join(src, "concepts", "release-channels", "npm.md"), "# npm\n\nbody\n")
 	// guides/index.md must survive untouched (no stub overwrite).
 	writeFile(t, filepath.Join(src, "guides", "index.md"), "---\ntitle: \"Guides\"\n---\nguides body\n")
 
@@ -84,7 +85,7 @@ func TestSyncDocs_SynthesizesSectionIndex(t *testing.T) {
 	assert.True(t, os.IsNotExist(err),
 		"reference/cli/ has a sibling cli.md overview — no stub")
 
-	chans, err := os.ReadFile(filepath.Join(dst, "development", "release-channels", "_index.md"))
+	chans, err := os.ReadFile(filepath.Join(dst, "concepts", "release-channels", "_index.md"))
 	require.NoError(t, err)
 	assert.Contains(t, string(chans), `title: "Release Channels"`)
 
@@ -107,6 +108,32 @@ func TestSyncDocs_PrunesNonMarkdownNonImage(t *testing.T) {
 	for _, dropped := range []string{"embed.go", "notes.txt"} {
 		_, err := os.Stat(filepath.Join(dst, dropped))
 		assert.Truef(t, os.IsNotExist(err), "%s should not be copied", dropped)
+	}
+}
+
+func TestSyncDocs_PrunesMaintainerDirs(t *testing.T) {
+	src := t.TempDir()
+	dst := t.TempDir()
+	// User-facing dirs are published.
+	writeFile(t, filepath.Join(src, "guides", "install.md"), "install\n")
+	writeFile(t, filepath.Join(src, "reference", "cli.md"), "cli\n")
+	// Maintainer-only dirs at the docs root are pruned.
+	writeFile(t, filepath.Join(src, "development", "coverage.md"), "cov\n")
+	writeFile(t, filepath.Join(src, "research", "spike.md"), "spike\n")
+	writeFile(t, filepath.Join(src, "security", "audit.md"), "audit\n")
+	writeFile(t, filepath.Join(src, "brand", "voice.md"), "voice\n")
+	// A same-named dir that is NOT at the root must be kept: the
+	// prune matches by name at the docs root only.
+	writeFile(t, filepath.Join(src, "guides", "development", "deep.md"), "deep\n")
+
+	require.NoError(t, SyncDocs(src, dst))
+
+	assertFile(t, filepath.Join(dst, "guides", "install.md"), "install\n")
+	assertFile(t, filepath.Join(dst, "reference", "cli.md"), "cli\n")
+	assertFile(t, filepath.Join(dst, "guides", "development", "deep.md"), "deep\n")
+	for _, pruned := range []string{"development", "research", "security", "brand"} {
+		_, err := os.Stat(filepath.Join(dst, pruned))
+		assert.Truef(t, os.IsNotExist(err), "%s must be pruned from the site", pruned)
 	}
 }
 
@@ -865,19 +892,19 @@ func TestSyncDocs_RewritesSiblingNonPublishedLinks(t *testing.T) {
 	root := t.TempDir()
 	src := filepath.Join(root, "docs")
 	dst := t.TempDir()
-	writeFile(t, filepath.Join(src, "research", "benchmarks", "README.md"),
+	writeFile(t, filepath.Join(src, "reference", "benchmarks", "README.md"),
 		"# Bench\n\nRun [`run.sh`](run.sh) with "+
 			"[cfg](bench-parity.mdsmith.yml).\n")
 
 	require.NoError(t, SyncDocs(src, dst))
 
 	got, err := os.ReadFile(
-		filepath.Join(dst, "research", "benchmarks", "README.md"))
+		filepath.Join(dst, "reference", "benchmarks", "README.md"))
 	require.NoError(t, err)
 	assert.Contains(t, string(got),
-		"["+"`run.sh`"+"]("+ghBlob+"docs/research/benchmarks/run.sh)")
+		"["+"`run.sh`"+"]("+ghBlob+"docs/reference/benchmarks/run.sh)")
 	assert.Contains(t, string(got),
-		"[cfg]("+ghBlob+"docs/research/benchmarks/bench-parity.mdsmith.yml)")
+		"[cfg]("+ghBlob+"docs/reference/benchmarks/bench-parity.mdsmith.yml)")
 }
 
 func writeFile(t *testing.T, path, content string) {

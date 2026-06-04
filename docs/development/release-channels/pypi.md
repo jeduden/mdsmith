@@ -7,7 +7,7 @@ mechanism: push
 artifact: cli
 command: pip install mdsmith
 audience: Python projects and Python-only CI images
-platforms: [python]
+platforms: [python, linux, macos, windows]
 registry: pypi.org
 credential: OIDC Trusted Publishing
 job: pypi

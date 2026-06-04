@@ -8,7 +8,7 @@ mechanism: push
 artifact: cli
 command: npm install -g @mdsmith/cli
 audience: Node / TypeScript repos and npm-friendly CI
-platforms: [node]
+platforms: [node, linux, macos, windows]
 registry: registry.npmjs.org
 credential: OIDC Trusted Publishing
 job: npm

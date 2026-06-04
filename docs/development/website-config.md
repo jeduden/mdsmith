@@ -53,6 +53,30 @@ The first mount excludes `docs/**` so the unsynced
 `content/docs/` directory is not also exposed under `/docs/`;
 the second mount re-roots it.
 
+## Maintainer docs are not published
+
+The public site is for users. `SyncDocs` skips four `docs/`
+subtrees at the docs root — `development`, `research`,
+`security`, and `brand`. They ship in the repo for
+maintainers but never render at `mdsmith.dev`. The set lives
+in `nonPublishedDocDirs` in `internal/release/syncdocs.go`.
+The user-facing sections (`background`, `features`, `guides`,
+`reference`) are all that reach the site.
+
+A link from a published page into a pruned tree must still
+work. The rewriter routes it to the file's GitHub source at
+sync time. So the link resolves on the site rather than
+breaking. The code is `repoPrunedDocLink` in
+`internal/release/website.go` (package `release`). The four
+pruned dirs are direct children of the docs root, so a
+relative link points at one of them at any depth.
+
+Two consumers of the maintainer pages were repointed so they
+survive the prune. The homepage logos strip now reads the
+generated `channels.yaml` data file. It no longer reads the
+`/development/release-channels/` pages. The footer links
+contributors to the GitHub `docs/development` tree.
+
 ## `[markup.goldmark.renderer]` `unsafe = false`
 
 Synced docs carry no raw HTML. `sync-docs` strips

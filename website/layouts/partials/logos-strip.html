@@ -2,21 +2,21 @@
   <div class="container">
     <div class="logos-strip">
       <span class="logos-label">Published to</span>
-      {{- /* Sourced from the release-channel docs
-             (docs/development/release-channels/*.md), synced and
-             served at /development/release-channels/. Each carries
-             a canonical `channelurl` and an ordering `weight` in
-             front matter — no separate data file. Filtered to the
-             push channels (the credentialed publish registries):
-             the directory also holds pull/toolchain channels (go,
-             npx, brew, asdf, …) that are install paths, not
-             distribution registries, and do not belong here. */ -}}
-      {{ with site.GetPage "/development/release-channels" }}
-        {{ range where .Pages.ByWeight ".Params.mechanism" "push" }}
-          {{ $c := . }}
-          {{ with .Params.channelurl }}
-            <a class="logos-item" href="{{ . }}" rel="noopener">{{ $c.Title }}</a>
-          {{ end }}
+      {{- /* Sourced from the generated install data
+             (website/data/channels.yaml, produced by
+             `mdsmith-release sync-channels` from
+             docs/development/release-channels/*.md). Reading the
+             data file rather than the synced pages keeps this strip
+             working after the maintainer docs/development/ tree is
+             pruned from the published site. Filtered to the push
+             channels (the credentialed publish registries): the
+             data also holds pull/toolchain entries (go, npx, brew,
+             asdf, …) that are install paths, not distribution
+             registries, and do not belong here. */ -}}
+      {{ range where (sort hugo.Data.channels "weight") "mechanism" "push" }}
+        {{ $c := . }}
+        {{ with $c.url }}
+          <a class="logos-item" href="{{ . }}" rel="noopener">{{ $c.title }}</a>
         {{ end }}
       {{ end }}
     </div>

@@ -181,6 +181,29 @@ var repoNonPublishedRefDef = regexp.MustCompile(
 		`PLAN\.md|README\.md|LICENSE|SECURITY\.md|CLAUDE\.md|AGENTS\.md` +
 		`)`)
 
+// repoPrunedDocLink matches an inline link from a published doc
+// into a docs/ subtree SyncDocs prunes from the site
+// (development, research, security, brand — see
+// nonPublishedDocDirs). Those four dirs are direct children of
+// docs/, so a `(?:\.\./)+<dir>/…` reference always resolves to
+// `docs/<dir>/…` whatever the source page's depth; the captured
+// suffix (group 1) is therefore the docs-relative path, and
+// rewritePrunedDocInline prepends `docs/` to build the GitHub
+// source URL. Group 2 is the optional link title, re-emitted so a
+// titled link keeps it. Mirrors repoNonPublishedLink, which cannot
+// be reused because its captures are already repo-root-relative.
+var repoPrunedDocLink = regexp.MustCompile(
+	`\]\((?:\.\./)+((?:development|research|security|brand)/\S+)` +
+		linkTitleTail + `\)`)
+
+// repoPrunedDocRefDef is the reference-style sibling of
+// repoPrunedDocLink for `[label]: ../../development/foo.md` forms.
+// Group 1 is the `[label]: ` prefix; group 2 the docs-relative
+// suffix.
+var repoPrunedDocRefDef = regexp.MustCompile(
+	`(?m)^(\[[^\]]+\]: )(?:\.\./)+` +
+		`((?:development|research|security|brand)/\S+)`)
+
 // indexMdLink matches an inline link whose target ends in
 // `<path>/index.md` (the docs/-tree convention for a directory
 // overview). The rewrite drops the `index.md` filename so the
@@ -340,6 +363,12 @@ func rewriteRuleLinks(b []byte) []byte {
 		seg = repoRuleRefDef.ReplaceAllFunc(seg, rewriteRepoRuleRefDef)
 		seg = repoNonPublishedLink.ReplaceAllFunc(seg, rewriteNonPublishedInline)
 		seg = repoNonPublishedRefDef.ReplaceAllFunc(seg, rewriteNonPublishedRefDef)
+		// Pruned maintainer-doc links route to GitHub. Must
+		// precede indexMdLink so a `../development/x/index.md`
+		// link becomes a GitHub URL instead of being stripped to
+		// a (now-unpublished) `../development/x/` directory link.
+		seg = repoPrunedDocLink.ReplaceAllFunc(seg, rewritePrunedDocInline)
+		seg = repoPrunedDocRefDef.ReplaceAllFunc(seg, rewritePrunedDocRefDef)
 		// Drop the `index.md` filename — Hugo serves the
 		// directory's _index.md at `/<path>/`, not at
 		// `/<path>/_index.md` or `/<path>/index.md`. Keeping
@@ -414,6 +443,25 @@ func rewriteNonPublishedInline(match []byte) []byte {
 func rewriteNonPublishedRefDef(match []byte) []byte {
 	m := repoNonPublishedRefDef.FindSubmatch(match)
 	return []byte(string(m[1]) + githubURLForPath(m[2]))
+}
+
+// rewritePrunedDocInline routes a link into a pruned maintainer-doc
+// tree to its GitHub source. m[1] is the docs-relative suffix
+// (e.g. `development/coverage.md`); prepending `docs/` reconstructs
+// the repo path githubURLForPath expects. m[2] is the optional link
+// title, re-emitted after the URL.
+func rewritePrunedDocInline(match []byte) []byte {
+	m := repoPrunedDocLink.FindSubmatch(match)
+	return []byte("](" + githubURLForPath([]byte("docs/"+string(m[1]))) +
+		string(m[2]) + ")")
+}
+
+// rewritePrunedDocRefDef is the reference-style sibling of
+// rewritePrunedDocInline. m[1] is the `[label]: ` prefix; m[2] the
+// docs-relative suffix.
+func rewritePrunedDocRefDef(match []byte) []byte {
+	m := repoPrunedDocRefDef.FindSubmatch(match)
+	return []byte(string(m[1]) + githubURLForPath([]byte("docs/"+string(m[2]))))
 }
 
 // applyOutsideCode calls fn on each maximal substring of src

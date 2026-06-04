@@ -560,6 +560,43 @@ func TestRewriteRuleLinks_TitledNonPublishedRefDef(t *testing.T) {
 		"titled non-published reference definition must be rewritten with its title preserved")
 }
 
+func TestRewriteRuleLinks_PrunedDocInline(t *testing.T) {
+	got := string(rewriteRuleLinks(
+		[]byte(`See [cov](../development/coverage.md).` + "\n")))
+	assert.Contains(t, got,
+		`[cov](https://github.com/jeduden/mdsmith/blob/main/docs/development/coverage.md)`,
+		"a link into a pruned maintainer-doc tree must route to its GitHub source")
+	assert.NotContains(t, got, "../development/",
+		"no relative pruned-doc path may survive the rewrite")
+}
+
+func TestRewriteRuleLinks_PrunedDocDeepTitled(t *testing.T) {
+	got := string(rewriteRuleLinks(
+		[]byte(`Deep: [api](../../development/markdown-library.md "Lib").` + "\n")))
+	assert.Contains(t, got,
+		`[api](https://github.com/jeduden/mdsmith/blob/main/docs/development/markdown-library.md "Lib")`,
+		"a deeper ../../ pruned-doc link keeps its title and routes to GitHub")
+}
+
+func TestRewriteRuleLinks_PrunedDocRefDef(t *testing.T) {
+	got := string(rewriteRuleLinks(
+		[]byte(`[npm-channel]: ../development/release-channels/npm.md` + "\n")))
+	assert.Contains(t, got,
+		`[npm-channel]: https://github.com/jeduden/mdsmith/blob/main/docs/development/release-channels/npm.md`,
+		"a pruned-doc reference definition must route to GitHub")
+}
+
+func TestRewriteRuleLinks_PrunedResearchInlineFenceUntouched(t *testing.T) {
+	in := "Real: [b](../research/benchmarks/README.md).\n\n" +
+		"```markdown\n- [x](development/index.md)\n```\n"
+	got := string(rewriteRuleLinks([]byte(in)))
+	assert.Contains(t, got,
+		`[b](https://github.com/jeduden/mdsmith/blob/main/docs/research/benchmarks/README.md)`,
+		"a research link routes to GitHub like the other pruned dirs")
+	assert.Contains(t, got, "[x](development/index.md)",
+		"a fenced example link must pass through untouched")
+}
+
 func TestRewriteRuleLinks_TitledRuleInlineAndRefDef(t *testing.T) {
 	in := "Deep: [MDS020](../../../internal/rules/" +
 		"MDS020-required-structure/README.md \"Req\").\n\n" +
