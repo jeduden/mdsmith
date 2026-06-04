@@ -551,8 +551,10 @@ func logicalCells(content string) []string {
 	return splitCells(t)
 }
 
-// countCells returns the logical cell count of a row. A row that is
-// only edge pipes or empty has no cells.
+// countCells returns the logical cell count of a row. An empty row or
+// a row consisting of a single bare pipe ("|") has zero cells. A
+// bordered row whose interior is all whitespace (e.g. "|  |") has one
+// empty cell, not zero.
 //
 // This avoids allocating a []string via logicalCells: it strips edge
 // pipes directly, then counts unescaped interior pipes.
