@@ -331,6 +331,55 @@ main {
 .feature-card--hero h4 { font-size: 20px; letter-spacing: -0.02em; }
 .feature-card--hero p { font-size: 15px; max-width: 52ch; }
 
+/* Right-hand media column. Wide tiles (the hero and the void-fill
+   stretches) lay out as two columns — text body on the left, this
+   media on the right — to balance their extra width. By default the
+   media is an oversized faded copy of the feature icon; a feature
+   page that sets `image:` swaps in a screenshot framed as a dark
+   terminal window (matching .hero-demo). Narrow tiles keep the media
+   hidden and stay a single text column. */
+.feature-card-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.feature-media { display: none; position: relative; overflow: hidden; border-radius: var(--radius-md); }
+.feature-watermark {
+  position: absolute; right: -6%; top: 50%; transform: translateY(-50%);
+  width: 160px; height: 160px;
+  color: var(--forge-500); opacity: 0.1; pointer-events: none;
+}
+.feature-media--shot {
+  background: var(--term-bg);
+  border: 1px solid var(--steel-800);
+  box-shadow: var(--shadow-md);
+}
+.feature-shot-bar {
+  height: 26px; flex: 0 0 auto;
+  display: flex; align-items: center; gap: 6px; padding: 0 10px;
+  background: var(--steel-950); border-bottom: 1px solid var(--steel-800);
+}
+.feature-shot-bar .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--steel-700); }
+.feature-shot-bar .dot.r { background: #FF6B5C; }
+.feature-shot-bar .dot.y { background: var(--forge-400); }
+.feature-shot-bar .dot.g { background: var(--term-ok); }
+.feature-shot { flex: 1 1 auto; min-height: 0; display: block; width: 100%; object-fit: cover; object-position: top left; }
+
+@media (min-width: 881px) {
+  /* Wide tiles: text body | media, with the media revealed. This
+     selector set matches the void-fill stretches above. */
+  .feature-card--hero,
+  .feature-grid[data-count="4"] .feature-card:nth-last-child(2),
+  .feature-grid[data-count="7"] .feature-card:nth-last-child(2),
+  .feature-grid[data-count="6"] .feature-card:last-child,
+  .feature-grid[data-count="9"] .feature-card:last-child {
+    flex-direction: row; align-items: stretch; gap: 28px;
+  }
+  .feature-card--hero > .feature-media,
+  .feature-grid[data-count="4"] .feature-card:nth-last-child(2) > .feature-media,
+  .feature-grid[data-count="7"] .feature-card:nth-last-child(2) > .feature-media,
+  .feature-grid[data-count="6"] .feature-card:last-child > .feature-media,
+  .feature-grid[data-count="9"] .feature-card:last-child > .feature-media {
+    display: flex; flex-direction: column; flex: 0 0 40%;
+  }
+}
+
 /* ========== INSTALL LIST ========== */
 
 /* Stacked, always-visible channel list (replaces the old tabs:

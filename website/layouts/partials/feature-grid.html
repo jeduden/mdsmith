@@ -14,7 +14,19 @@
        `.feature-grid`. All void-filling for non-multiple-of-3
        counts is pure CSS keyed on `data-count` and the
        `:last-child` / `:nth-last-child(2)` of the cards — see the
-       feature-grid rules in app.css. No per-section config. */ -}}
+       feature-grid rules in app.css. No per-section config.
+
+       Right-hand media (balances the wide tiles): every card
+       carries a `.feature-media` column. CSS shows it only on the
+       wide tiles (hero + the void-fill stretches). By default it
+       holds an oversized faded copy of the feature's icon. Set
+       `image:` in a feature's front matter (a path under the
+       site's static/, e.g. `img/features/auto-fix.png`) and that
+       card shows the screenshot instead, framed as a dark
+       terminal window. Drop the PNG in
+       website/static/img/features/ ; adding the `image:` field
+       also needs an optional `image?` leaf on the `feature` kind
+       schema in .mdsmith.yml. */ -}}
 {{- $features := site.GetPage "/features" -}}
 {{- if $features -}}
 {{- $pages := $features.Pages.ByWeight -}}
@@ -32,23 +44,33 @@
     <div class="feature-grid" data-count="{{ $count }}">
       {{- range $i, $page := $groupPages }}
       <a class="feature-card{{ if eq $i 0 }} feature-card--hero{{ end }}" href="{{ $page.RelPermalink }}">
-        <span class="icon" aria-hidden="true">
-          <i data-lucide="{{ $page.Params.icon | default "check" }}" width="{{ if eq $i 0 }}20{{ else }}18{{ end }}" height="{{ if eq $i 0 }}20{{ else }}18{{ end }}"></i>
-        </span>
-        <h4>{{ $page.Title }}</h4>
-        {{/* Inline render so the summary's inline markup
-             (code spans, links) does not nest a block <p>
-             inside this wrapping <p>. summary is required by
-             the `feature` kind's schema, so `mdsmith check`
-             fails on an incomplete page before it can ship —
-             no template-side guard needed. */}}
-        <p>{{ $page.RenderString (dict "display" "inline") $page.Params.summary }}</p>
-        {{- with $page.Params.rules }}
-        <div class="feature-rules">
-          {{ range . }}<span class="rule-chip">{{ . }}</span>{{ end }}
+        <div class="feature-card-body">
+          <span class="icon" aria-hidden="true">
+            <i data-lucide="{{ $page.Params.icon | default "check" }}" width="{{ if eq $i 0 }}20{{ else }}18{{ end }}" height="{{ if eq $i 0 }}20{{ else }}18{{ end }}"></i>
+          </span>
+          <h4>{{ $page.Title }}</h4>
+          {{/* Inline render so the summary's inline markup
+               (code spans, links) does not nest a block <p>
+               inside this wrapping <p>. summary is required by
+               the `feature` kind's schema, so `mdsmith check`
+               fails on an incomplete page before it can ship —
+               no template-side guard needed. */}}
+          <p>{{ $page.RenderString (dict "display" "inline") $page.Params.summary }}</p>
+          {{- with $page.Params.rules }}
+          <div class="feature-rules">
+            {{ range . }}<span class="rule-chip">{{ . }}</span>{{ end }}
+          </div>
+          {{- end }}
+          <span class="feature-more">Learn more <i data-lucide="arrow-right" width="14" height="14" aria-hidden="true"></i></span>
         </div>
-        {{- end }}
-        <span class="feature-more">Learn more <i data-lucide="arrow-right" width="14" height="14" aria-hidden="true"></i></span>
+        <div class="feature-media{{ with $page.Params.image }} feature-media--shot{{ end }}" aria-hidden="true">
+          {{- with $page.Params.image }}
+          <span class="feature-shot-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></span>
+          <img class="feature-shot" src="{{ . | relURL }}" alt="" loading="lazy">
+          {{- else }}
+          <i class="feature-watermark" data-lucide="{{ $page.Params.icon | default "check" }}" width="160" height="160"></i>
+          {{- end }}
+        </div>
       </a>
       {{- end }}
     </div>
