@@ -415,6 +415,17 @@ func TestCollectTOCItems_Empty(t *testing.T) {
 	assert.Empty(t, items)
 }
 
+func TestCollectTOCItems_SuffixCollision(t *testing.T) {
+	// "Foo", then "Foo-1" (explicit), then another "Foo": the auto-generated
+	// "foo-1" is already taken, so the second duplicate must become "foo-2".
+	doc, src := parseDoc(t, "## Foo\n\n## Foo-1\n\n## Foo\n")
+	items := mdtext.CollectTOCItems(doc, src)
+	require.Len(t, items, 3)
+	assert.Equal(t, "foo", items[0].Anchor)
+	assert.Equal(t, "foo-1", items[1].Anchor)
+	assert.Equal(t, "foo-2", items[2].Anchor)
+}
+
 func TestCollectTOCItems_HeadingWithEmptySlug(t *testing.T) {
 	// A heading consisting only of punctuation produces an empty slug and
 	// is skipped.

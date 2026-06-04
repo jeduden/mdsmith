@@ -313,6 +313,19 @@ func TestCountCellsDegenerate(t *testing.T) {
 	assert.Equal(t, 2, countCells("a | b"))
 }
 
+func TestCountUnescapedPipes(t *testing.T) {
+	assert.Equal(t, 0, countUnescapedPipes(""))
+	assert.Equal(t, 0, countUnescapedPipes("text"))
+	assert.Equal(t, 1, countUnescapedPipes("a|b"))
+	assert.Equal(t, 2, countUnescapedPipes("a|b|c"))
+	// Escaped pipe \| is not a cell delimiter.
+	assert.Equal(t, 0, countUnescapedPipes(`\|`))
+	// Escaped pipe followed by a real pipe: only the real one counts.
+	assert.Equal(t, 1, countUnescapedPipes(`\||`))
+	// Multiple escaped pipes with no real pipe.
+	assert.Equal(t, 0, countUnescapedPipes(`\|\|`))
+}
+
 func TestEscapedPipeIsOneCell(t *testing.T) {
 	// `a \| b` is a single cell; the escaped pipe must not split it.
 	src := "# T\n\n| A      | B |\n| ------ | - |\n| a \\| b | c |\n"
