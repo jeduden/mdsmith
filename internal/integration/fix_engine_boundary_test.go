@@ -37,7 +37,7 @@ func TestFixDoesNotImportEngine(t *testing.T) {
 		if d.IsDir() {
 			return nil
 		}
-		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+		if !strings.HasSuffix(path, ".go") {
 			return nil
 		}
 
