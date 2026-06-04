@@ -277,6 +277,11 @@ main {
 /* Hairline separators: 1px gap over steel-100 background. */
 .card-grid {
   display: grid;
+  /* Default for any card count (the grid is data-driven): support
+     cards flow into as many ~240px columns as fit, so an unexpected
+     count never collapses to a single column. data-count 3/4 tune
+     this below; the lead always spans the full row (.card--lead). */
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 1px;
   background: var(--steel-100);
   border: 1px solid var(--steel-100);
@@ -284,20 +289,13 @@ main {
   overflow: hidden;
 }
 
-/* 3-card grid: lead full-width, 2-col below */
+/* Tuned column counts for the real pillar sizes: 3 cards -> 2-col
+   support row, 4 cards -> 3-col. */
 .card-grid[data-count="3"] {
   grid-template-columns: repeat(2, 1fr);
 }
-.card-grid[data-count="3"] .card--lead {
-  grid-column: 1 / -1;
-}
-
-/* 4-card grid: lead full-width, 3-col below */
 .card-grid[data-count="4"] {
   grid-template-columns: repeat(3, 1fr);
-}
-.card-grid[data-count="4"] .card--lead {
-  grid-column: 1 / -1;
 }
 
 /* ── Card base ── */
@@ -318,8 +316,9 @@ main {
   z-index: 1;
 }
 
-/* Lead card: horizontal layout */
+/* Lead card: spans the full row (any count) and lays out horizontally. */
 .card--lead {
+  grid-column: 1 / -1;
   flex-direction: row;
   align-items: stretch;
   min-height: 300px;
@@ -1012,9 +1011,6 @@ main {
   .card-grid[data-count="4"] {
     grid-template-columns: repeat(2, 1fr);
   }
-  .card-grid[data-count="4"] .card--lead {
-    grid-column: 1 / -1;
-  }
   .card-body--lead {
     flex: 0 0 300px;
   }
@@ -1621,15 +1617,13 @@ a.rule-ref:hover code { text-decoration: underline; }
   .hero-grid { grid-template-columns: 1fr; gap: 36px; }
   .hero h1 { font-size: 44px; }
 
-  /* Feature grid — single column; all grids collapse */
-  .card-grid[data-count="3"],
-  .card-grid[data-count="4"] {
+  /* Feature grid — every pillar collapses to a single column. */
+  .card-grid {
     grid-template-columns: 1fr;
     border-radius: 8px;
   }
-  .card-grid[data-count="3"] .card--lead,
-  .card-grid[data-count="4"] .card--lead {
-    grid-column: 1;
+  .card-grid .card--lead {
+    grid-column: auto;
   }
 
   /* Lead card: artifact on top, body below */
