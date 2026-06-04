@@ -58,9 +58,10 @@ func TestVerifyWebsiteLinks_AcceptsUnquotedHref(t *testing.T) {
 	require.NoError(t, VerifyWebsiteLinks(root, ""))
 }
 
-// TestVerifyWebsiteLinks_FailsOnMissingSiblingMD removes the only
-// clean doc permalink so the recursive sibling-.md probe finds no
-// match anywhere in the rendered tree.
+// TestVerifyWebsiteLinks_FailsOnMissingSiblingMD overwrites the
+// pinned reference/index.html with a stale `.md` ref, so the
+// non-recursive sibling-.md probe reads that one file and finds no
+// permalink match.
 func TestVerifyWebsiteLinks_FailsOnMissingSiblingMD(t *testing.T) {
 	root := goodSite(t, "")
 	writeFile(t, filepath.Join(root, "reference", "index.html"),
