@@ -76,7 +76,7 @@
       {{- if and (eq $i 0) $artifact }}{{ $isLead = true }}{{ $theme = index $artifact "theme" }}{{ end -}}
     <a class="card{{ if $isLead }} card--lead card--lead-{{ $theme }}{{ end }}" href="{{ $page.RelPermalink }}">
       <div class="card-body{{ if $isLead }} card-body--lead{{ end }}">
-        <span class="card-icon">
+        <span class="card-icon" aria-hidden="true">
           <i data-lucide="{{ $page.Params.icon | default "check" }}" width="{{ if $isLead }}24{{ else }}18{{ end }}" height="{{ if $isLead }}24{{ else }}18{{ end }}"></i>
         </span>
         <div class="card-content">
@@ -87,7 +87,7 @@
             {{ range . }}<span class="rule-chip">{{ . }}</span>{{ end }}
           </div>
           {{- end }}
-          <span class="card-more">Learn more <i data-lucide="arrow-right" width="12" height="12"></i></span>
+          <span class="card-more">Learn more <i data-lucide="arrow-right" width="12" height="12" aria-hidden="true"></i></span>
         </div>
       </div>
       {{- if $isLead }}{{ partial (index $artifact "partial") . }}{{ end -}}

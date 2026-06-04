@@ -310,7 +310,7 @@ main {
   overflow: hidden;
   transition: background 130ms ease;
 }
-.card:hover { background: var(--steel-50); }
+.card:hover { background: var(--steel-50); color: inherit; text-decoration: none; }
 .card:focus-visible {
   outline: 2px solid var(--forge-500);
   outline-offset: -2px;
@@ -1001,8 +1001,10 @@ main {
   color: #5C6773;
 }
 
-@media (min-width: 881px) {
-  /* Tablet breakpoint: 4-col grids collapse support cols to 2 */
+@media (max-width: 960px) {
+  /* Tablet: a count=4 pillar's 3 support columns collapse to 2.
+     Wider desktops keep the base 3-column layout (clean row of 3);
+     <=880px collapses to a single column below. */
   .card-grid[data-count="4"] {
     grid-template-columns: repeat(2, 1fr);
   }
