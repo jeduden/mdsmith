@@ -278,6 +278,50 @@ GitHub OIDC identity, so a forged binary or rewritten
 checksums file fails verification unless the attacker
 also controls `release.yml` on `jeduden/mdsmith`.
 
+### Windows (PowerShell)
+
+Windows has no Homebrew or Flatpak channel, so the
+direct download is the toolchain-free path. The asset
+is `mdsmith-windows-amd64.exe`. Download it and the
+checksums file:
+
+```powershell
+$base = "https://github.com/jeduden/mdsmith/releases/latest/download"
+Invoke-WebRequest "$base/mdsmith-windows-amd64.exe" -OutFile mdsmith.exe
+Invoke-WebRequest "$base/checksums.txt" -OutFile checksums.txt
+```
+
+`sha256sum -c` is a POSIX tool; on Windows compute the
+hash with `Get-FileHash` and compare it to the
+`mdsmith-windows-amd64.exe` line in `checksums.txt`:
+
+```powershell
+(Get-FileHash mdsmith.exe -Algorithm SHA256).Hash.ToLower()
+Select-String -Path checksums.txt -Pattern mdsmith-windows-amd64.exe
+```
+
+The two strings must be equal. Then move the binary
+into a directory on your user `PATH` so new shells find
+`mdsmith`:
+
+```powershell
+$dest = "$env:LOCALAPPDATA\Programs\mdsmith"
+New-Item -ItemType Directory -Force -Path $dest | Out-Null
+Move-Item mdsmith.exe "$dest\mdsmith.exe" -Force
+[Environment]::SetEnvironmentVariable(
+  "Path",
+  [Environment]::GetEnvironmentVariable("Path", "User") + ";$dest",
+  "User")
+```
+
+Open a new terminal and run `mdsmith version` to
+confirm. The `gh attestation verify` and `cosign
+verify-blob` steps above work unchanged on Windows —
+both tools ship a Windows build, and attestation
+matches by content digest, so the local filename does
+not matter. Pass `mdsmith.exe` (or the verbatim
+`mdsmith-windows-amd64.exe`) as the file argument.
+
 ### CycloneDX SBOM
 
 Every release also publishes a CycloneDX SBOM of the
