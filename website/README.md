@@ -31,9 +31,9 @@ the website cannot drift out of sync with the binary.
 Hugo (non-extended is fine — no SCSS or image processing):
 
 ```bash
-# install hugo — pin matches HUGO_VERSION in the pages-deploy
-# workflow so local builds cannot drift from CI.
-go install github.com/gohugoio/hugo@v0.161.1
+# install the pinned hugo — the version lives in .hugo-version
+# (the single source the pages-deploy and e2e workflows read).
+go install "github.com/gohugoio/hugo@v$(cat .hugo-version)"
 
 # sync ../docs/ -> content/docs/ (mdsmith fix + snapshot).
 # Run from the repo root; content/docs/ is .gitignore'd.
