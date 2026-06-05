@@ -489,7 +489,7 @@ main {
 }
 
 .card-media--terminal {
-  background: #0A0E13;
+  background: #F0EDE8;
   padding: 20px 20px 20px 12px;
 }
 .card-media--editor {
@@ -574,28 +574,20 @@ main {
   overflow: hidden;
   background: #0F1419;
 }
-.term-pre {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.72;
-  color: #E6E1D6;
-  margin: 0;
-  padding: 0;
-  background: none;
-  white-space: pre;
-  overflow: hidden;
-}
+/* The terminal body is a real `mdsmith check -> fix -> check` run rendered
+   to SVG by scripts/gen-feature-terminal.sh; it sits on the dark frame. */
+.term-shot { display: block; width: 100%; height: auto; }
 
-/* Terminal syntax tokens */
-.t-prompt { color: #E58233; }
-.t-cmd    { color: #E6E1D6; font-weight: 500; }
-.t-arg    { color: #F4B860; }
-.t-dim    { color: #8A93A0; }
-.t-ok     { color: #5DC58C; }
-.t-err    { color: #FF6B5C; }
-.t-warn   { color: #ECA152; }
-.t-rule   { color: #B98AE8; }
-.t-path   { color: #79C7E8; }
+/* A real screenshot framed like the other artifacts — e.g. a VS Code
+   capture dropped at static/img/features/editor.png. */
+.artifact-frame--shot {
+  border: 1px solid var(--steel-200);
+  background: #FFFFFF;
+  box-shadow: var(--shadow-md);
+}
+/* A real screenshot floats framed on the tile's light background (like
+   the terminal), at its natural aspect — no cropping. */
+.artifact-shot { display: block; width: 100%; height: auto; }
 
 /* ── Artifact 2: VS Code editor (light) ── */
 .artifact-frame--editor {
@@ -1680,9 +1672,6 @@ a.rule-ref:hover code { text-decoration: underline; }
   .card-media--terminal { padding: 12px; }
 
   .artifact-frame { max-width: 100%; }
-
-  /* Scale down terminal text on mobile */
-  .term-pre { font-size: 10px; line-height: 1.6; }
 
   /* Scale down VS Code artifact */
   .vscode-code-area { font-size: 9.5px; }

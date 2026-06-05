@@ -1,0 +1,43 @@
+<svg width="552px" height="323px" viewBox="0 0 552 323" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve">
+    <style>
+        * {
+            font-family: Courier, monospace;
+            font-size: 13px;
+        }
+        tspan, text {
+            font-variant-ligatures: none;
+            dominant-baseline: central;
+            white-space: pre;
+            fill: #cccccc;
+        }
+        .bg {
+            stroke-width: "0.5px";
+        }
+        .dim {
+            opacity: 0.5;
+        }
+        <!-- Foreground ANSI colors -->
+        .fa1 { fill: #cd3131; }
+        .fa3 { fill: #e5e510; }
+        .fa6 { fill: #11a8cd; }
+        <!-- Foreground custom colors -->
+        .fc0 { fill: #e58233; }
+    </style>
+<text x="0px" y="8.5px"><tspan class="fc0">❯ </tspan><tspan>mdsmith check intro.md</tspan></text>
+<text x="0px" y="25.5px"><tspan class="fa6">intro.md:3:58 </tspan><tspan class="fa3">MDS006 </tspan><tspan>trailing whitespace</tspan></text>
+<text x="0px" y="42.5px"><tspan class="dim">1 | # Quickstart</tspan></text>
+<text x="0px" y="59.5px"><tspan class="dim">2 | </tspan></text>
+<text x="0px" y="76.5px"><tspan>3 | Lint your Markdown, then auto-fix it in one fast command.   </tspan></text>
+<text x="0px" y="93.5px"><tspan>·····························································</tspan><tspan class="fa1">^</tspan></text>
+<text x="0px" y="110.5px"><tspan class="dim">4 | Read the setup guide at https://github.com/jeduden/mdsmith today.</tspan></text>
+<text x="0px" y="127.5px"><tspan class="fa6">intro.md:4:25 </tspan><tspan class="fa3">MDS012 </tspan><tspan>bare URL found; use angle brackets or a link</tspan></text>
+<text x="0px" y="144.5px"><tspan class="dim">2 | </tspan></text>
+<text x="0px" y="161.5px"><tspan class="dim">3 | Lint your Markdown, then auto-fix it in one fast command.   </tspan></text>
+<text x="0px" y="178.5px"><tspan>4 | Read the setup guide at https://github.com/jeduden/mdsmith today.</tspan></text>
+<text x="0px" y="195.5px"><tspan>····························</tspan><tspan class="fa1">^</tspan></text>
+<text x="0px" y="212.5px"><tspan>stats: checked=1 fixed=0 failures=2 unfixed=2</tspan></text>
+<text x="0px" y="246.5px"><tspan class="fc0">❯ </tspan><tspan>mdsmith fix intro.md</tspan></text>
+<text x="0px" y="263.5px"><tspan>stats: checked=1 fixed=1 failures=2 unfixed=0</tspan></text>
+<text x="0px" y="297.5px"><tspan class="fc0">❯ </tspan><tspan>mdsmith check intro.md</tspan></text>
+<text x="0px" y="314.5px"><tspan>stats: checked=1 fixed=0 failures=0 unfixed=0</tspan></text>
+</svg>

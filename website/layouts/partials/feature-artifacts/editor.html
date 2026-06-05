@@ -1,7 +1,18 @@
-{{- /* VS Code editor artifact — Pillar 2 "One engine, every surface".
-       Light editor frame with LSP hover popup for a bare-URL diagnostic.
-       Rule code corrected: MDS012 (bare URL — wrap in angle brackets).
+{{- /* Editor artifact — Pillar 2 "One engine, every surface".
+       Prefers a REAL VS Code screenshot if one is provided at
+       website/static/img/features/editor.png; otherwise it falls back to
+       the hand-built mockup below. To add a real capture: open a Markdown
+       file in VS Code with the mdsmith extension, hover an mdsmith
+       diagnostic so the squiggle + Quick Fix lightbulb show, and export a
+       ~16:10 PNG (light theme, ~2x for retina) to that path.
        aria-hidden: purely decorative marketing visual. */ -}}
+{{- if os.FileExists "static/img/features/editor.png" }}
+<div class="card-media card-media--editor" aria-hidden="true">
+  <div class="artifact-frame artifact-frame--shot">
+    <img class="artifact-shot" src="{{ "img/features/editor.png" | relURL }}" alt="" loading="lazy">
+  </div>
+</div>
+{{- else }}
 <div class="card-media card-media--editor" aria-hidden="true">
   <div class="artifact-frame artifact-frame--editor">
     <div class="artifact-titlebar artifact-titlebar--editor">
@@ -74,3 +85,4 @@
     </div>
   </div>
 </div>
+{{- end }}
