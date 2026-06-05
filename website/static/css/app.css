@@ -108,6 +108,32 @@ main {
 }
 .topnav-gh:hover { background: var(--steel-800); color: var(--canvas); text-decoration: none; }
 
+/* Below ~500px the single-row nav (brand + section links + version
+   + GitHub) no longer fits. Unwrapped it overflowed the viewport,
+   widening the document past the screen so every section — the hero
+   most visibly — sat pinned to the left with dead space on the
+   right. Wrapping keeps the bar within the viewport and every item
+   reachable with no JS: the brand and GitHub button share the top
+   row, the section links drop to a full-width row beneath them. */
+@media (max-width: 560px) {
+  .topnav { height: auto; }
+  .topnav-inner {
+    flex-wrap: wrap;
+    column-gap: 16px;
+    row-gap: 2px;
+    padding: 8px 20px;
+  }
+  .topnav-brand { order: 1; }
+  .topnav-right { order: 2; }
+  .topnav-links {
+    order: 3;
+    flex-basis: 100%;
+    /* Offset the first link's padding so its text lines up with the
+       brand at the gutter edge. */
+    margin-left: -10px;
+  }
+}
+
 /* ========== HERO ========== */
 
 .hero {
