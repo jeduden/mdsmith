@@ -16,6 +16,15 @@ type FixableRule interface {
 	Fix(f *lint.File) []byte
 }
 
+// QuickFixTitler is implemented by a FixableRule that wants a custom
+// lightbulb label for its quick fix instead of the generic
+// "Fix all <name> with mdsmith". The editor shows FixTitle() verbatim,
+// so phrase it as the concrete edit the user gets (e.g. MDS012 returns
+// "Wrap in angle brackets"). The edit itself is still whole-file scoped.
+type QuickFixTitler interface {
+	FixTitle() string
+}
+
 // DryRunPredictor is implemented by FixableRules whose Fix performs
 // side effects (e.g. writing a sibling file, staging a git index
 // entry) rather than rewriting the markdown source itself. During

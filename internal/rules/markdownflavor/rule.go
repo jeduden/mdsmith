@@ -222,3 +222,6 @@ var (
 	_ rule.Defaultable  = (*Rule)(nil)
 	_ rule.FixableRule  = (*Rule)(nil)
 )
+
+// FixTitle implements rule.QuickFixTitler.
+func (r *Rule) FixTitle() string { return "Replace syntax the flavor can't render" }

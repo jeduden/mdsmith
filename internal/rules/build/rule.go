@@ -363,3 +363,6 @@ func toStringSlice(v any) ([]string, error) {
 
 var _ rule.FixableRule = (*Rule)(nil)
 var _ gensection.Directive = (*Rule)(nil)
+
+// FixTitle implements rule.QuickFixTitler.
+func (r *Rule) FixTitle() string { return "Regenerate build section" }

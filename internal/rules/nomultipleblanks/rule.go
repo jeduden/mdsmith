@@ -125,3 +125,6 @@ func (r *Rule) DefaultSettings() map[string]any {
 }
 
 var _ rule.Configurable = (*Rule)(nil)
+
+// FixTitle implements rule.QuickFixTitler.
+func (r *Rule) FixTitle() string { return "Collapse blank lines" }

@@ -169,3 +169,6 @@ func escapeLinkText(s string) string {
 	s = strings.ReplaceAll(s, "]", "\\]")
 	return s
 }
+
+// FixTitle implements rule.QuickFixTitler.
+func (r *Rule) FixTitle() string { return "Regenerate table of contents" }

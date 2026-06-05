@@ -354,3 +354,6 @@ var (
 	_ rule.Defaultable  = (*Rule)(nil)
 	_ rule.ListMerger   = (*Rule)(nil)
 )
+
+// FixTitle implements rule.QuickFixTitler.
+func (r *Rule) FixTitle() string { return "Fix proper-name capitalization" }

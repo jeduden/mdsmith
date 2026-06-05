@@ -200,3 +200,6 @@ var (
 	_ rule.FixableRule  = (*Rule)(nil)
 	_ rule.Configurable = (*Rule)(nil)
 )
+
+// FixTitle implements rule.QuickFixTitler.
+func (r *Rule) FixTitle() string { return "Reformat table" }

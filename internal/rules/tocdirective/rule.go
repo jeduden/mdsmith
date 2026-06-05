@@ -273,3 +273,6 @@ func computeBlankLines(source []byte, start, end int) (needBefore, needAfter boo
 var _ rule.FixableRule = (*Rule)(nil)
 
 var _ rule.Defaultable = (*Rule)(nil)
+
+// FixTitle implements rule.QuickFixTitler.
+func (r *Rule) FixTitle() string { return "Regenerate TOC section" }

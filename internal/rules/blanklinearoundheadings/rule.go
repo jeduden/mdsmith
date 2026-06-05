@@ -213,3 +213,6 @@ func isSetextHeading(heading *ast.Heading, source []byte) bool {
 
 var _ rule.FixableRule = (*Rule)(nil)
 var _ rule.NodeChecker = (*Rule)(nil)
+
+// FixTitle implements rule.QuickFixTitler.
+func (r *Rule) FixTitle() string { return "Add blank lines around heading" }

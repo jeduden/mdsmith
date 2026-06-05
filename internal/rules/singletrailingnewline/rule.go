@@ -84,3 +84,6 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	trimmed := bytes.TrimRight(src, "\n")
 	return append(trimmed, '\n')
 }
+
+// FixTitle implements rule.QuickFixTitler.
+func (r *Rule) FixTitle() string { return "Fix trailing newline" }

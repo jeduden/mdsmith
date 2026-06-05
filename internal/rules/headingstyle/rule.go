@@ -324,3 +324,6 @@ func (r *Rule) DefaultSettings() map[string]any {
 var _ rule.FixableRule = (*Rule)(nil)
 var _ rule.Configurable = (*Rule)(nil)
 var _ rule.NodeChecker = (*Rule)(nil)
+
+// FixTitle implements rule.QuickFixTitler.
+func (r *Rule) FixTitle() string { return "Convert to configured heading style" }

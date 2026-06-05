@@ -25,6 +25,16 @@ func TestCheck_BareURL(t *testing.T) {
 	if d.RuleID != "MDS012" {
 		t.Errorf("expected rule ID MDS012, got %s", d.RuleID)
 	}
+	if d.Message != "bare URL — wrap in angle brackets or add link text" {
+		t.Errorf("unexpected message: %q", d.Message)
+	}
+}
+
+func TestFixTitle(t *testing.T) {
+	r := &Rule{}
+	if got := r.FixTitle(); got != "Wrap in angle brackets" {
+		t.Errorf("unexpected fix title: %q", got)
+	}
 }
 
 func TestCheck_AngleBracketLink(t *testing.T) {

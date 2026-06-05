@@ -1621,3 +1621,6 @@ func checkFieldCaseMismatches(filePath string, line int, row string, entries []f
 	}
 	return diags
 }
+
+// FixTitle implements rule.QuickFixTitler.
+func (r *Rule) FixTitle() string { return "Regenerate catalog" }

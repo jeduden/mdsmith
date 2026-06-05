@@ -215,3 +215,6 @@ func leadingSpaces(b []byte) int {
 }
 
 var _ rule.FixableRule = (*Rule)(nil)
+
+// FixTitle implements rule.QuickFixTitler.
+func (r *Rule) FixTitle() string { return "Fix heading spacing" }

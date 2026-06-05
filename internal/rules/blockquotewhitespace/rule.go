@@ -251,3 +251,6 @@ func isBlankLine(f *lint.File, lineNum int) bool {
 }
 
 var _ rule.FixableRule = (*Rule)(nil)
+
+// FixTitle implements rule.QuickFixTitler.
+func (r *Rule) FixTitle() string { return "Fix blockquote spacing" }

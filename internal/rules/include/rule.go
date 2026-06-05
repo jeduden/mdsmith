@@ -588,3 +588,6 @@ func injectSourceDir(text, sourceDir string) string {
 }
 
 var _ rule.FixableRule = (*Rule)(nil)
+
+// FixTitle implements rule.QuickFixTitler.
+func (r *Rule) FixTitle() string { return "Regenerate include section" }

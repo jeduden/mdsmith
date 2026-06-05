@@ -520,3 +520,6 @@ var (
 	_ rule.DryRunPredictor = (*Rule)(nil)
 	_ rule.RepoScoped      = (*Rule)(nil)
 )
+
+// FixTitle implements rule.QuickFixTitler.
+func (r *Rule) FixTitle() string { return "Regenerate .gitattributes block" }

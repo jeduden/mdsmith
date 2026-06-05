@@ -64,3 +64,6 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	}
 	return []byte(strings.Join(result, "\n"))
 }
+
+// FixTitle implements rule.QuickFixTitler.
+func (r *Rule) FixTitle() string { return "Remove trailing whitespace" }

@@ -168,3 +168,6 @@ func needsBlankAfter(f *lint.File, line int) bool {
 func isBlank(line []byte) bool {
 	return len(bytes.TrimSpace(line)) == 0
 }
+
+// FixTitle implements rule.QuickFixTitler.
+func (r *Rule) FixTitle() string { return "Add blank lines around code fence" }

@@ -536,3 +536,6 @@ func toStringSlice(v any) ([]string, bool) {
 		return nil, false
 	}
 }
+
+// FixTitle implements rule.QuickFixTitler.
+func (r *Rule) FixTitle() string { return "Remove unused link definitions" }

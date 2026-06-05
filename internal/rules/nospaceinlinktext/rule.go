@@ -411,3 +411,6 @@ var (
 	_ rule.FixableRule  = (*Rule)(nil)
 	_ rule.NodeChecker  = (*Rule)(nil)
 )
+
+// FixTitle implements rule.QuickFixTitler.
+func (r *Rule) FixTitle() string { return "Trim whitespace in link text" }

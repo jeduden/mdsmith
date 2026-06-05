@@ -357,3 +357,6 @@ var (
 	_ rule.Defaultable  = (*Rule)(nil)
 	_ rule.NodeChecker  = (*Rule)(nil)
 )
+
+// FixTitle implements rule.QuickFixTitler.
+func (r *Rule) FixTitle() string { return "Convert to configured list marker" }

@@ -250,3 +250,6 @@ func needsBlankAdjacent(f *lint.File, targetLine, direction int) bool {
 	}
 	return !isBlank(f.Lines[adjLine-1])
 }
+
+// FixTitle implements rule.QuickFixTitler.
+func (r *Rule) FixTitle() string { return "Add blank lines around list" }

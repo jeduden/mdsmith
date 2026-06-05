@@ -266,3 +266,6 @@ func toIntSetting(v any) (int, bool) {
 
 var _ rule.Configurable = (*Rule)(nil)
 var _ rule.NodeChecker = (*Rule)(nil)
+
+// FixTitle implements rule.QuickFixTitler.
+func (r *Rule) FixTitle() string { return "Fix list indentation" }

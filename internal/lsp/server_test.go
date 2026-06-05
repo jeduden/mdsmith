@@ -2455,8 +2455,34 @@ func TestComputeCodeActionsDedupesPerRule(t *testing.T) {
 			"quickfix actions for the same rule must share the cached edit")
 	}
 	for _, a := range actions {
-		assert.Equal(t, "Fix all no-trailing-spaces with mdsmith", a.Title)
+		assert.Equal(t, "Remove trailing whitespace", a.Title)
 	}
+}
+
+// A rule may supply a human-friendly quick-fix label instead of the
+// generic "Fix all <rule> with mdsmith". MDS012 (no-bare-urls) reads
+// "Wrap in angle brackets" so the lightbulb matches the docs/website mock.
+func TestComputeCodeActionsCustomQuickFixTitle(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	cfg := config.Merge(config.Defaults(), nil)
+	doc := &document{
+		path: "x.md",
+		text: []byte("# Hi\n\nVisit https://example.com for more.\n"),
+	}
+	p := codeActionParams{
+		TextDocument: textDocumentIdentifier{URI: "file:///x.md"},
+		Context: codeActionContext{
+			Diagnostics: []Diagnostic{{
+				Code: "MDS012",
+				Data: &diagnosticData{RuleName: "no-bare-urls"},
+			}},
+			Only: []string{kindQuickFix},
+		},
+	}
+	actions := s.computeCodeActions(p, doc, cfg, "")
+	require.Len(t, actions, 1)
+	assert.Equal(t, "Wrap in angle brackets", actions[0].Title)
 }
 
 // ---- previewFix / ChangeAnnotation tests ----

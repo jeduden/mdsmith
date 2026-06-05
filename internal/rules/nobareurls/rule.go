@@ -67,7 +67,7 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 			RuleID:   r.ID(),
 			RuleName: r.Name(),
 			Severity: lint.Warning,
-			Message:  "bare URL found; use angle brackets or a link",
+			Message:  "bare URL — wrap in angle brackets or add link text",
 		})
 	}
 	return diags
@@ -86,6 +86,10 @@ func isInsideNonBareContext(n ast.Node) bool {
 	}
 	return false
 }
+
+// FixTitle implements rule.QuickFixTitler so the editor lightbulb reads
+// "Wrap in angle brackets" rather than the generic "Fix all ...".
+func (r *Rule) FixTitle() string { return "Wrap in angle brackets" }
 
 // Fix implements rule.FixableRule.
 func (r *Rule) Fix(f *lint.File) []byte {

@@ -2419,3 +2419,6 @@ func makeDiag(file string, line int, msg string) lint.Diagnostic {
 		Message:  msg,
 	}
 }
+
+// FixTitle implements rule.QuickFixTitler.
+func (r *Rule) FixTitle() string { return "Sync section to front matter" }

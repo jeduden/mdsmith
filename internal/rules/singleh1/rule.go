@@ -307,3 +307,6 @@ func headingLineStart(heading *ast.Heading, source []byte) int {
 	}
 	return offset
 }
+
+// FixTitle implements rule.QuickFixTitler.
+func (r *Rule) FixTitle() string { return "Demote extra H1 to H2" }
