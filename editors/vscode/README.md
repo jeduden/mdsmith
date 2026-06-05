@@ -49,7 +49,7 @@ code --install-extension mdsmith-<version>.vsix
 | `mdsmith.path`         | `"mdsmith"` | Binary path; default runs the bundled per-platform binary. Set an absolute path to override; falls back to PATH only if your platform was not bundled (e.g. `/go/bin/mdsmith`) |
 | `mdsmith.config`       | `""`        | Override `-c` config path                                                                                                                                                      |
 | `mdsmith.run`          | `"onType"`  | When to lint: `onType` (default), `onSave`, or `off` (off stops automatic linting)                                                                                             |
-| `mdsmith.previewFix`   | `false`     | Show the diff (Refactor Preview) before applying a fix (quick fix or fix-on-save)                                                                                              |
+| `mdsmith.previewFix`   | `false`     | Show the diff (Refactor Preview) before fix-on-save writes; quick fixes apply immediately                                                                                      |
 | `mdsmith.trace.server` | `"off"`     | LSP trace verbosity                                                                                                                                                            |
 
 Fix-on-save uses VS Code's native `editor.codeActionsOnSave`,

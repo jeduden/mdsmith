@@ -5,10 +5,11 @@ status: "✅"
 summary: >-
   Opt-in `mdsmith.previewFix` setting that attaches
   an LSP `ChangeAnnotation` flagged
-  `needsConfirmation: true` to every quick-fix and
-  `source.fixAll.mdsmith` WorkspaceEdit, so VS Code
-  opens its Refactor Preview pane with a diff
-  before applying.
+  `needsConfirmation: true` to the
+  `source.fixAll.mdsmith` (fix-on-save) WorkspaceEdit,
+  so VS Code opens its Refactor Preview pane with a
+  diff before applying. Interactive quick fixes apply
+  immediately (see the Revision note).
 model: sonnet
 depends-on: []
 ---
@@ -266,10 +267,10 @@ the matrix:
       server falls back to the legacy `changes`
       shape and logs the fallback once per
       session.
-- [x] Quick-fix actions carry one annotation per
-      rule (`mdsmith-fix-<rule>`);
-      `source.fixAll.mdsmith` carries
-      `mdsmith-fix-all`.
+- [x] `source.fixAll.mdsmith` carries the
+      `mdsmith-fix-all` annotation. (Revised: quick
+      fixes no longer carry a per-rule annotation —
+      they apply immediately. See the Revision note.)
 - [x] [`docs/guides/editors/vscode.md`](../docs/guides/editors/vscode.md)
       documents the setting and the
       `previewFix` × `fixOnSave` interaction.

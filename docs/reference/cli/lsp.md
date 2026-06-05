@@ -91,16 +91,17 @@ prints:
 - **`quickfix`** — one per fixable diagnostic. Each
   edit replaces the whole document with the output of
   running the single rule, so it covers every
-  occurrence of that rule (the action title reads
-  "Fix all `<rule>` with mdsmith"). Within one
+  occurrence of that rule. The action title is the
+  rule's own quick-fix label (e.g. "Remove trailing
+  whitespace"); a rule that supplies none falls back
+  to "Fix all `<rule>` with mdsmith". Within one
   request all quick-fix actions for the same rule
   share one `WorkspaceEdit`; the fix is run once
   regardless of how many diagnostics carry that
-  rule. Generated-section rules (catalog, toc,
-  include) regenerate the section in their fix; the
-  action surfaces normally and the title
-  ("Fix all `<rule>` with mdsmith") is explicit
-  about the whole-file scope.
+  rule. Quick fixes apply immediately (see Fix
+  preview below). Generated-section rules (catalog,
+  toc, include) regenerate the section in their fix;
+  the action surfaces normally.
 - **`source.fixAll.mdsmith`** — runs `mdsmith fix` on the
   current buffer; produces the same bytes the on-disk fixer
   would write.

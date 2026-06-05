@@ -1522,8 +1522,8 @@ func wantsKind(only []string, kind string) bool {
 // MDS012 → "Wrap in angle brackets"); otherwise the generic "Fix all
 // <name> with mdsmith" is used. That phrasing signals the action's
 // WorkspaceEdit covers every occurrence of the rule, not only the
-// diagnostic the user clicked on — see the comment on quickFixEditFor
-// for why the edit is whole-file scoped.
+// diagnostic the user clicked on — see appendQuickFixActions /
+// quickFixBytesFor for why the edit is whole-file scoped.
 func quickFixTitle(rules []rule.Rule, name string) string {
 	for _, r := range rules {
 		if r.Name() != name {
