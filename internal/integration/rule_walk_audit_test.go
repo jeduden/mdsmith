@@ -106,9 +106,10 @@ type ruleWalkEntry struct {
 	// signals.
 	Fired bool `json:"fired"`
 	// IsNodeChecker: the rule's Check delegates to the engine's shared
-	// multiplex walk (rule.NodeChecker). Plan 215 leaves these alone —
+	// multiplex walk — as a stateless rule.NodeChecker or a stateful
+	// rule.NodeVisitorRule (plan 219). Plan 215 leaves these alone —
 	// their walk is already amortized — but records the signal so the
-	// manifest explains why a nil-AST-unsafe NodeChecker is not a
+	// manifest explains why a nil-AST-unsafe walk-driven rule is not a
 	// rewrite target.
 	IsNodeChecker bool `json:"is_node_checker"`
 	// UsesASTWalk / ReadsFileAST: static-scan signals. UsesASTWalk is
@@ -152,7 +153,17 @@ type auditProbeInput struct {
 func classifyRuleWalk(tb testing.TB, r rule.Rule, static staticWalkSignal, inputs []auditProbeInput) ruleWalkEntry {
 	tb.Helper()
 
+	// A rule is "walk-driven" when its Check delegates to the engine's
+	// one shared ast.Walk — either as a stateless rule.NodeChecker or as
+	// a stateful rule.NodeVisitorRule (plan 219). Both amortize their
+	// traversal into the multiplex, so the manifest records the same
+	// is_node_checker signal: it explains why such a rule is nil-AST
+	// unsafe (the shared WalkVisitor/WalkNodes short-circuits on a nil
+	// AST) without that being an AST-required regression.
 	_, isNC := r.(rule.NodeChecker)
+	if !isNC {
+		_, isNC = r.(rule.NodeVisitorRule)
+	}
 
 	var fired, nilPanicked, nilDiverged, codeSensitive bool
 	for _, in := range inputs {

@@ -174,3 +174,54 @@ func TestCheckRules_VisitorFreshPerFile(t *testing.T) {
 	require.Len(t, d1, 1, "file one's h1->h5 jump is flagged")
 	require.Empty(t, d2, "file two's lone h2 must not be flagged; visitor state is fresh per file")
 }
+
+// migratedVisitorRules lists every production rule migrated to
+// rule.NodeVisitorRule (plan 219's stateful migrations) by its
+// registered Name(). The byte-identity table-test below resolves each
+// through the production registry, so adding a migration only requires
+// appending a name here. It is the visitor sibling of migratedRules.
+var migratedVisitorRules = []struct {
+	id, name string
+}{
+	{"MDS005", "no-duplicate-headings"},
+}
+
+// assertMigratedVisitorRuleEquivalent runs one migrated visitor rule
+// against the shared corpus twice — once with its NodeVisitorRule
+// capability hidden (so the engine runs its Check, the pre-multiplex
+// path) and once exposed (so the engine drives it through the shared
+// walk) — and asserts byte-identity of the two diagnostic slices.
+func assertMigratedVisitorRuleEquivalent(t *testing.T, name string) {
+	t.Helper()
+	rl := newRuleByName(t, name)
+	vr, ok := rl.(rule.NodeVisitorRule)
+	require.True(t, ok, "%s expected to implement NodeVisitorRule", rl.Name())
+
+	eff := map[string]config.RuleCfg{rl.Name(): {Enabled: true}}
+
+	f1, err := lint.NewFile("doc.md", migratedRuleEquivalenceCorpus)
+	require.NoError(t, err)
+	f2, err := lint.NewFile("doc.md", migratedRuleEquivalenceCorpus)
+	require.NoError(t, err)
+
+	seq, errs1 := checkRules(f1, []rule.Rule{hiddenVisitorRule{vr}}, eff, true)
+	mux, errs2 := checkRules(f2, []rule.Rule{rl}, eff, true)
+
+	require.Empty(t, errs1)
+	require.Empty(t, errs2)
+	assert.Equal(t, seq, mux,
+		"%s: multiplexed visitor output must equal sequential", rl.Name())
+}
+
+// TestCheckRules_MigratedVisitorRulesEqualSequential pins that every
+// stateful NodeVisitorRule in the production rule set produces a
+// byte-identical diagnostic slice whether routed through the
+// multiplexed walk or the legacy per-rule path. Each rule is tested in
+// isolation so a failure points at exactly one rule.
+func TestCheckRules_MigratedVisitorRulesEqualSequential(t *testing.T) {
+	for _, tc := range migratedVisitorRules {
+		t.Run(tc.id, func(t *testing.T) {
+			assertMigratedVisitorRuleEquivalent(t, tc.name)
+		})
+	}
+}
