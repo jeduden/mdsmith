@@ -7,11 +7,6 @@ import (
 	"github.com/jeduden/mdsmith/internal/rule"
 )
 
-var (
-	tabBytes    = []byte("\t")
-	spacesBytes = []byte("    ")
-)
-
 func init() {
 	rule.Register(&Rule{})
 }
@@ -63,7 +58,7 @@ func (r *Rule) Fix(f *lint.File) []byte {
 			result = append(result, line)
 			continue
 		}
-		result = append(result, bytes.ReplaceAll(line, tabBytes, spacesBytes))
+		result = append(result, bytes.ReplaceAll(line, []byte("\t"), []byte("    ")))
 	}
 	return bytes.Join(result, []byte("\n"))
 }

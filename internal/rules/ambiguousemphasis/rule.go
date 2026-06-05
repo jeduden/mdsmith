@@ -61,7 +61,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	codeSpanRanges := collectCodeSpanRanges(f)
 	lineStarts := computeLineStarts(f.Source)
 
-	diags := make([]lint.Diagnostic, 0, len(f.Lines)/8+1)
+	diags := make([]lint.Diagnostic, 0, len(f.Lines)/4+1)
 	for i, line := range f.Lines {
 		lineNum := i + 1
 		if _, ok := skip[lineNum]; ok {
