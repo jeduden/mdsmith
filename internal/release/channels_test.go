@@ -375,3 +375,17 @@ func TestLoadChannelsFromDataFile(t *testing.T) {
 	assert.Empty(t, chs[0].CommandWindows)
 	assert.Equal(t, "iwr x.exe", chs[1].CommandWindows)
 }
+
+func TestLoadChannelsFromDataFile_Errors(t *testing.T) {
+	// No channels.yaml under root → read error.
+	_, err := LoadChannelsFromDataFile(t.TempDir())
+	require.Error(t, err)
+
+	// Present but malformed YAML → parse error.
+	root := t.TempDir()
+	p := filepath.Join(root, ChannelsDataFile)
+	require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+	require.NoError(t, os.WriteFile(p, []byte("title: not-a-list\n  bad: ]["), 0o644))
+	_, err = LoadChannelsFromDataFile(root)
+	require.Error(t, err)
+}

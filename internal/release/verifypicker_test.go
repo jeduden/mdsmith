@@ -172,3 +172,18 @@ func TestVerifyInstallPicker_FailsOnStrayWindowsAttr(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "data-cmd-windows")
 }
+
+// A channel without command-windows must render no <noscript>
+// fallback; a stray one fails closed.
+func TestVerifyInstallPicker_FailsOnStrayNoscript(t *testing.T) {
+	chs := []Channel{{Title: "Go", Command: "go install x", Platforms: []string{"linux"}}}
+	page := `<html><body><div class="install-picker">` +
+		`<div class="install-row" data-cmd-default="go install x">` +
+		`<noscript><code class="install-cmd install-cmd-noscript">` +
+		`<span class="cmd">x</span></code></noscript>` +
+		`</div></div></body></html>`
+	root := writePickerSite(t, page)
+	err := VerifyInstallPicker(root, chs)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "stray <noscript>")
+}
