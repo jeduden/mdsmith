@@ -39,7 +39,11 @@ for c in check fix check; do
   ( cd "$proj" && "$tmp/mdsmith" "$c" intro.md 2>&1 ) || true
 done > "$cap"
 
-grep -q 'MDS012' "$cap" && grep -q 'failures=0' "$cap" || {
+# Both fixable diagnostics must appear and the FINAL line must end green,
+# so a crash or a changed output format aborts instead of writing a broken
+# SVG (don't match a stray "failures=0" from a non-final command).
+grep -q 'MDS006' "$cap" && grep -q 'MDS012' "$cap" \
+  && tail -n1 "$cap" | grep -q 'failures=0' || {
   echo "gen-feature-terminal: unexpected mdsmith output, refusing to write SVG:" >&2
   sed 's/\x1b\[[0-9;]*m//g' "$cap" >&2
   exit 1
