@@ -270,6 +270,82 @@ describe("teardownRuntime — vault listener cleanup (Copilot review)", () => {
   });
 });
 
+describe("loadConfigYAML — config resolution + auto-discovery", () => {
+  // makeConfigPlugin wires a plugin onto a fake App whose vault adapter
+  // serves the given files through exists/read — the surface both the
+  // explicit-path read and auto-discovery call. configPath seeds the
+  // setting under test.
+  function makeConfigPlugin(
+    files: Record<string, string>,
+    configPath = "",
+  ): MdsmithPlugin {
+    const adapter = {
+      async exists(path: string): Promise<boolean> {
+        return path in files;
+      },
+      async read(path: string): Promise<string> {
+        const v = files[path];
+        if (v === undefined) throw new Error(`ENOENT: ${path}`);
+        return v;
+      },
+    };
+    const app = { vault: { adapter } };
+    const PluginCtor = MdsmithPlugin as unknown as new (
+      a: unknown,
+      m: unknown,
+    ) => MdsmithPlugin;
+    const plugin = new PluginCtor(app, { dir: "plugin" });
+    const internals = plugin as unknown as {
+      app: unknown;
+      cfg: MdsmithSettings;
+    };
+    internals.app = app;
+    internals.cfg = { configPath, runMode: "onSave", fixOnSave: false };
+    return plugin;
+  }
+
+  const load = (plugin: MdsmithPlugin): Promise<string> =>
+    (
+      plugin as unknown as { loadConfigYAML(): Promise<string> }
+    ).loadConfigYAML();
+
+  test("auto-discovers the vault-root .mdsmith.yml when no Config path is set", async () => {
+    const plugin = makeConfigPlugin({
+      ".mdsmith.yml": "rules:\n  line-length: false\n",
+    });
+    expect(await load(plugin)).toBe("rules:\n  line-length: false\n");
+  });
+
+  test('falls back to "" when no path is set and the vault has no .mdsmith.yml', async () => {
+    const plugin = makeConfigPlugin({ "note.md": "# Hi\n" });
+    expect(await load(plugin)).toBe("");
+  });
+
+  test("an explicit Config path is read in preference to auto-discovery", async () => {
+    const plugin = makeConfigPlugin(
+      {
+        ".mdsmith.yml": "rules:\n  line-length: false\n",
+        "cfg/custom.yml": "rules:\n  no-bare-urls: false\n",
+      },
+      "cfg/custom.yml",
+    );
+    expect(await load(plugin)).toBe("rules:\n  no-bare-urls: false\n");
+  });
+
+  test('an unreadable explicit Config path degrades to "" (notice + defaults), not to discovery', async () => {
+    // configPath names a file the adapter cannot read, so read() rejects.
+    // The explicit-path branch surfaces a Notice (stubbed in tests) and
+    // returns "" — it must NOT silently fall through to the vault-root
+    // .mdsmith.yml, which would mask the user's broken path with an
+    // unrelated config. The present .mdsmith.yml is the bait.
+    const plugin = makeConfigPlugin(
+      { ".mdsmith.yml": "rules:\n  line-length: false\n" },
+      "cfg/missing.yml",
+    );
+    expect(await load(plugin)).toBe("");
+  });
+});
+
 describe("engine-down / restart safety (Copilot review)", () => {
   test("teardownRuntime clears the active editor's diagnostics so none linger when the engine is down", () => {
     const { plugin, harness } = makePlugin({ runMode: "onSave" });
