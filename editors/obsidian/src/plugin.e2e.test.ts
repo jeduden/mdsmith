@@ -26,10 +26,17 @@
 // toolchain is absent (mirrors wasm-runtime.test.ts).
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { CONFIG_FILE_NAME } from "./config";
 import { buildDecorations, decorationSetFor } from "./diagnostics";
 import MdsmithPlugin from "./main";
 import type { Diagnostic } from "./wasm-runtime";
@@ -177,7 +184,7 @@ interface Harness {
 // active fake view.
 async function bootPlugin(
   files: Record<string, string>,
-  cfg: { runMode?: string; fixOnSave?: boolean } = {},
+  cfg: { runMode?: string; fixOnSave?: boolean; configYAML?: string } = {},
 ): Promise<Harness> {
   type Handler = (f: { path: string }) => unknown;
   const vaultHandlers: Record<string, Handler[]> = {};
@@ -189,8 +196,14 @@ async function bootPlugin(
       adapter: {
         // The plugin reads its bundled assets through the adapter; serve
         // them from the temp plugin dir. Paths arrive as
-        // `${manifest.dir}/wasm_exec.js` etc.
+        // `${manifest.dir}/wasm_exec.js` etc. The vault-root .mdsmith.yml
+        // auto-discovery reads through the same adapter, so serve the
+        // test's config (when given) for that vault-relative name.
         async read(p: string): Promise<string> {
+          if (p === CONFIG_FILE_NAME) {
+            if (cfg.configYAML === undefined) throw new Error(`ENOENT: ${p}`);
+            return cfg.configYAML;
+          }
           return readFileSync(p, "utf8");
         },
         async readBinary(p: string): Promise<ArrayBuffer> {
@@ -199,6 +212,10 @@ async function bootPlugin(
             buf.byteOffset,
             buf.byteOffset + buf.byteLength,
           ) as ArrayBuffer;
+        },
+        async exists(p: string): Promise<boolean> {
+          if (p === CONFIG_FILE_NAME) return cfg.configYAML !== undefined;
+          return existsSync(p);
         },
       },
       getMarkdownFiles(): Array<{ path: string; extension: string }> {
@@ -328,6 +345,30 @@ describe.skipIf(skip)("plugin e2e (criteria 3 & 6)", () => {
     expect(decorationSetFor(doc, pushed ?? [])).not.toBe(
       decorationSetFor(doc, []),
     );
+  }, 120_000);
+
+  test("auto-discovers a vault-root .mdsmith.yml and compiles it into the session (no Config path set)", async () => {
+    // Criterion 3 proves the same LONG_LINE trips MDS001 under the
+    // defaults. Here a vault-root .mdsmith.yml turns line-length off;
+    // with discovery wired, the engine compiles that config and the
+    // long line no longer reports MDS001 — proving the config was found
+    // AND applied end to end, not merely read.
+    __resetEngineForTests();
+    const path = "note.md";
+    const source = `# Title\n\n${LONG_LINE}\n`;
+    const harness = await bootPlugin(
+      { [path]: source },
+      { configYAML: "rules:\n  line-length: false\n" },
+    );
+    const view = harness.newView(path, source);
+    harness.setActive(view);
+
+    await (
+      harness.plugin as unknown as { checkActiveFile(): Promise<void> }
+    ).checkActiveFile();
+
+    const pushed = view.editor.cm.lastDiagnostics ?? [];
+    expect(pushed.map((d) => d.rule)).not.toContain("MDS001");
   }, 120_000);
 
   test("criterion 6: a save fixes the active buffer in place with no restart", async () => {

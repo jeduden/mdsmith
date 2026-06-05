@@ -33,6 +33,7 @@ import {
   type DebouncedFn,
   type LineCommand,
 } from "./actions";
+import { discoverConfigYAML } from "./config";
 import {
   editorExtensions,
   setDiagnostics,
@@ -191,20 +192,24 @@ export default class MdsmithPlugin extends Plugin {
     }
   }
 
-  // loadConfigYAML reads the override config file when configPath is
-  // set, else returns "" (engine defaults). The override is read through
-  // the vault adapter so it works on mobile too.
+  // loadConfigYAML resolves the YAML the engine compiles. An explicit
+  // Config path wins: it is read through the vault adapter (so it works
+  // on mobile too) and a read failure surfaces a Notice. With no path
+  // set, the plugin auto-discovers a .mdsmith.yml at the vault root; an
+  // absent file falls back to "" (the engine defaults).
   private async loadConfigYAML(): Promise<string> {
     const p = this.cfg.configPath.trim();
-    if (!p) return "";
-    try {
-      return await this.app.vault.adapter.read(p);
-    } catch (err) {
-      new Notice(
-        `mdsmith: could not read config ${p}: ${(err as Error).message}`,
-      );
-      return "";
+    if (p) {
+      try {
+        return await this.app.vault.adapter.read(p);
+      } catch (err) {
+        new Notice(
+          `mdsmith: could not read config ${p}: ${(err as Error).message}`,
+        );
+        return "";
+      }
     }
+    return discoverConfigYAML(this.app.vault.adapter);
   }
 
   // checkActiveFile lints the active Markdown buffer and pushes the

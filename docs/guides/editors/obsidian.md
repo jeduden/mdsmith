@@ -100,8 +100,10 @@ drop the unzipped files there.
 You need Obsidian 1.5 or later. A config file is
 optional: mdsmith lints with built-in defaults, so the
 plugin works as soon as you enable it. To tune the
-rules, add a `.mdsmith.yml` to the vault and point the
-**Config path** setting at it.
+rules, add a `.mdsmith.yml` to the vault root and the
+plugin discovers it automatically — no setting to
+change. To load a config from another location, set the
+**Config path** setting to its vault-relative path.
 
 [gh]: https://github.com/jeduden/mdsmith/releases
 
@@ -109,11 +111,11 @@ rules, add a `.mdsmith.yml` to the vault and point the
 
 Open **Settings → Community plugins → mdsmith**.
 
-| Setting      | Default  | Purpose                                                   |
-| ------------ | -------- | --------------------------------------------------------- |
-| `configPath` | `""`     | Override the `.mdsmith.yml` path; empty uses the defaults |
-| `runMode`    | `onSave` | When to re-lint: `onType`, `onSave`, or `off`             |
-| `fixOnSave`  | `false`  | Run `Fix file` 200 ms after each save                     |
+| Setting      | Default  | Purpose                                                              |
+| ------------ | -------- | -------------------------------------------------------------------- |
+| `configPath` | `""`     | Path to a `.mdsmith.yml`; empty auto-discovers one at the vault root |
+| `runMode`    | `onSave` | When to re-lint: `onType`, `onSave`, or `off`                        |
+| `fixOnSave`  | `false`  | Run `Fix file` 200 ms after each save                                |
 
 `runMode` controls when diagnostics refresh. `onType`
 re-lints on each edit; `onSave` re-lints only when you
@@ -142,10 +144,15 @@ not `off`. With `onSave`, diagnostics refresh only
 when you save the note. Open and re-save the file to
 force a re-lint.
 
-**The config is not applied.** An unreadable **Config
-path** reports a notice and falls back to the engine
-defaults. Confirm the path is vault-relative and the
-file exists, then run `mdsmith: Restart session`.
+**The config is not applied.** With **Config path**
+empty, the plugin loads a `.mdsmith.yml` only from the
+vault root — confirm the file sits there, not in a
+subfolder. An unreadable **Config path** reports a
+notice and falls back to the engine defaults. Confirm
+the path is vault-relative and the file exists, then run
+`mdsmith: Restart session`. After editing a discovered
+config in place, run `mdsmith: Restart session` too —
+the session compiles config once at startup.
 
 ## See also
 

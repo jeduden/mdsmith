@@ -14,9 +14,10 @@ export type RunMode = "onType" | "onSave" | "off";
 
 // MdsmithSettings is the typed settings shape, persisted as JSON.
 export interface MdsmithSettings {
-  // configPath overrides the auto-discovered .mdsmith.yml. Empty defers
-  // to the engine's default. Changing it rebuilds the session (plan 215
-  // has no in-place reconfigure).
+  // configPath overrides auto-discovery. Empty auto-discovers a
+  // .mdsmith.yml at the vault root (and falls back to the engine
+  // defaults when there is none). Changing it rebuilds the session
+  // (plan 215 has no in-place reconfigure).
   configPath: string;
   runMode: RunMode;
   // fixOnSave runs Fix file 200 ms after each save when true.
@@ -131,8 +132,8 @@ export class MdsmithSettingTab extends PluginSettingTab {
     new Setting(this.containerEl)
       .setName("Config path")
       .setDesc(
-        "Override the auto-discovered .mdsmith.yml. Empty uses the engine " +
-          "default. Changing this rebuilds the lint session.",
+        "Path to a .mdsmith.yml, vault-relative. Empty auto-discovers one " +
+          "at the vault root. Changing this rebuilds the lint session.",
       )
       .addText(
         (text: {
