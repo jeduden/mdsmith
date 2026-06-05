@@ -6,16 +6,17 @@
 #   - The CI e2e job (.github/workflows/e2e.yml)
 #   - The site-e2e agent skill (editors/claude-code-site/)
 #
-# The Hugo version comes from the HUGO_VERSION env var. Its default
-# below must be kept in sync with the pin in .github/workflows/pages.yml
-# so all three callers render byte-identical output.
+# The Hugo version comes from the HUGO_VERSION env var, defaulting to
+# the single source of truth in .hugo-version at the repo root — the
+# same file the e2e and pages-deploy workflows read — so all three
+# callers render byte-identical output.
 #
 # Usage:
 #   PORT=3001 ./website/e2e/scripts/serve.sh
 #
 # Env vars:
 #   PORT          Port to listen on (default: 3001)
-#   HUGO_VERSION  Hugo version to use (default: 0.161.1 — must match pages.yml)
+#   HUGO_VERSION  Hugo version to use (default: read from .hugo-version)
 #
 # The script runs from the repository root.
 
@@ -23,7 +24,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 PORT="${PORT:-3001}"
-HUGO_VERSION="${HUGO_VERSION:-0.161.1}"
+HUGO_VERSION="${HUGO_VERSION:-$(cat "$REPO_ROOT/.hugo-version")}"
 
 echo "serve.sh: repo root = $REPO_ROOT"
 echo "serve.sh: Hugo version = $HUGO_VERSION"

@@ -51,9 +51,10 @@ building and serving the site:
 PORT=3001 bash website/e2e/scripts/serve.sh
 ```
 
-The Hugo version (`HUGO_VERSION` env var, default `0.161.1`)
-must be kept in sync with the pin in
-`.github/workflows/pages.yml`.
+The Hugo version is pinned once in `.hugo-version` at the
+repo root. That file is read by serve.sh, the e2e CI job,
+and the pages deploy, so a bump there updates every
+renderer.
 
 ## CI
 
@@ -63,8 +64,8 @@ itself. It:
 
 1. Installs Node 22 and `npm ci` in `website/e2e/`.
 2. Caches Playwright browsers keyed on `package-lock.json`.
-3. Pre-warms the Go build cache with the pinned Hugo
-   (`v0.161.1`); serve.sh renders via `go run`.
+3. Pre-warms the Go build cache with the pinned Hugo from
+   `.hugo-version`; serve.sh renders via `go run`.
 4. Runs `npx playwright test` with `CI=true`.
 5. Uploads `playwright-report/` and traces as a job
    artifact on every run (`if: always()`).

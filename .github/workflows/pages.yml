@@ -98,14 +98,16 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    env:
-      # Render the site with the same Hugo the deploy uses so the
-      # rendered-HTML probes below run on PR, not only post-merge.
-      HUGO_VERSION: "0.161.1"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+      - name: Read pinned Hugo version
+        # .hugo-version at the repo root is the single source of truth
+        # for the Hugo pin, shared with e2e.yml and serve.sh.
+        run: |
+          hugo_version="$(cat .hugo-version)"
+          echo "HUGO_VERSION=$hugo_version" >> "$GITHUB_ENV"
       - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
         with:
           go-version-file: go.mod
@@ -211,13 +213,6 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    env:
-      # Pin the Hugo version used by the deploy. The same pin
-      # appears in the local dev instructions in website/README.md;
-      # bump both together so a local preview cannot drift from CI.
-      # (mdsmith-release build-website does not install Hugo — it
-      # expects the binary already on PATH — so no pin lives there.)
-      HUGO_VERSION: "0.161.1"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -225,6 +220,13 @@ jobs:
           # Full history + tags so the version resolver below can
           # fall back to the latest v* tag on a docs-only push.
           fetch-depth: 0
+      - name: Read pinned Hugo version
+        # .hugo-version at the repo root is the single source of truth
+        # for the Hugo pin, shared with the build-content job above,
+        # e2e.yml, serve.sh, and the website/README.md dev instructions.
+        run: |
+          hugo_version="$(cat .hugo-version)"
+          echo "HUGO_VERSION=$hugo_version" >> "$GITHUB_ENV"
       - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
         with:
           go-version-file: go.mod
