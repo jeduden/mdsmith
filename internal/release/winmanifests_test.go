@@ -1,6 +1,7 @@
 package release
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -112,4 +113,37 @@ func TestRenderWingetManifest_DifferentVersion(t *testing.T) {
 	assert.NotContains(t, c1, "0.14.0")
 	assert.Contains(t, c2, "0.14.0")
 	assert.NotContains(t, c2, "0.13.0")
+}
+
+// failingReader returns an error on its first Read so the
+// bufio.Scanner inside ParseChecksumFor stops and surfaces
+// scanner.Err() — the read-error branch that a well-formed file or
+// an empty reader never reaches.
+type failingReader struct{}
+
+func (failingReader) Read([]byte) (int, error) {
+	return 0, errors.New("simulated read failure")
+}
+
+// TestParseChecksums_SkipsBlankCommentAndShortLines exercises the
+// three "keep scanning" branches: a blank line, a comment line, and
+// a line with fewer than two whitespace-separated fields. The target
+// hash sits after all three, so the parser must skip past them.
+func TestParseChecksums_SkipsBlankCommentAndShortLines(t *testing.T) {
+	input := "\n" +
+		"# checksums for v1.2.3\n" +
+		"onefield\n" +
+		"deadbeef1234deadbeef1234deadbeef1234deadbeef1234deadbeef1234dead  mdsmith-windows-amd64.exe\n"
+	hash, err := ParseChecksumFor(strings.NewReader(input), "mdsmith-windows-amd64.exe")
+	require.NoError(t, err)
+	assert.Equal(t, "deadbeef1234deadbeef1234deadbeef1234deadbeef1234deadbeef1234dead", hash)
+}
+
+// TestParseChecksums_ScannerError covers the scanner.Err() branch: a
+// reader that fails mid-scan makes ParseChecksumFor return a wrapped
+// "read checksums" error rather than a not-found error.
+func TestParseChecksums_ScannerError(t *testing.T) {
+	_, err := ParseChecksumFor(failingReader{}, "mdsmith-windows-amd64.exe")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "read checksums")
 }

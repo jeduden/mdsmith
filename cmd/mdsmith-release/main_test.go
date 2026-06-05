@@ -686,6 +686,51 @@ func TestRunRenderWingetManifestMissingChecksums(t *testing.T) {
 		filepath.Join(t.TempDir(), "no-such-file.txt")}))
 }
 
+// TestRunRenderWingetManifestMissingHash covers the ParseChecksumFor
+// error branch: the checksums file exists but lacks the Windows exe
+// entry, so the subcommand exits 1.
+func TestRunRenderWingetManifestMissingHash(t *testing.T) {
+	dir := t.TempDir()
+	checksums := filepath.Join(dir, "checksums.txt")
+	require.NoError(t, os.WriteFile(checksums,
+		[]byte("abc123  mdsmith-linux-amd64\n"), 0o644))
+	assert.Equal(t, 1, run([]string{"render-winget-manifest", "--out",
+		filepath.Join(dir, "manifests"), "1.2.3", checksums}))
+}
+
+// TestRunRenderWingetManifestMkdirError covers the os.MkdirAll error
+// branch: --out points under a regular file, so the directory cannot
+// be created and the subcommand exits 1.
+func TestRunRenderWingetManifestMkdirError(t *testing.T) {
+	dir := t.TempDir()
+	checksums := filepath.Join(dir, "checksums.txt")
+	require.NoError(t, os.WriteFile(checksums,
+		[]byte("deadbeef1234deadbeef1234deadbeef1234deadbeef1234deadbeef1234dead  mdsmith-windows-amd64.exe\n"),
+		0o644))
+	// A regular file cannot have children, so MkdirAll(blocker/sub) fails.
+	blocker := filepath.Join(dir, "blocker")
+	require.NoError(t, os.WriteFile(blocker, []byte("x"), 0o644))
+	assert.Equal(t, 1, run([]string{"render-winget-manifest", "--out",
+		filepath.Join(blocker, "sub"), "1.2.3", checksums}))
+}
+
+// TestRunRenderWingetManifestWriteError covers the os.WriteFile error
+// branch: the first manifest's target path is pre-created as a
+// directory, so writing the file fails and the subcommand exits 1.
+func TestRunRenderWingetManifestWriteError(t *testing.T) {
+	dir := t.TempDir()
+	checksums := filepath.Join(dir, "checksums.txt")
+	require.NoError(t, os.WriteFile(checksums,
+		[]byte("deadbeef1234deadbeef1234deadbeef1234deadbeef1234deadbeef1234dead  mdsmith-windows-amd64.exe\n"),
+		0o644))
+	outDir := filepath.Join(dir, "manifests")
+	// Pre-create the first output name as a directory so os.WriteFile
+	// to that path fails with "is a directory".
+	require.NoError(t, os.MkdirAll(filepath.Join(outDir, "jeduden.mdsmith.yaml"), 0o755))
+	assert.Equal(t, 1, run([]string{"render-winget-manifest", "--out",
+		outDir, "0.13.0", checksums}))
+}
+
 // TestPrintCheckResult verifies the three formatting branches
 // of the human-readable summary.
 func TestPrintCheckResult(t *testing.T) {
