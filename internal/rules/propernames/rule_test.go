@@ -252,7 +252,7 @@ func TestScanCodeSpanChildren_NonTextChild_Skipped(t *testing.T) {
 	cs := ast.NewCodeSpan()
 	// ast.NewString is an inline node that is not *ast.Text, making the !ok branch reachable.
 	cs.AppendChild(cs, ast.NewString([]byte("javascript")))
-	out := scanCodeSpanChildren(r.buildNameEntries(), cs, f)
+	out := scanCodeSpanChildren(r.buildNameEntries(), cs, f, nil)
 	assert.Nil(t, out)
 }
 

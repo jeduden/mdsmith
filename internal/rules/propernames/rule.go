@@ -146,39 +146,38 @@ type lineNode interface {
 }
 
 // scanLines scans all lines from a block node (FencedCodeBlock, CodeBlock,
-// HTMLBlock) and appends any wrong-cased matches to out.
-func scanLines(entries []nameEntry, n lineNode, f *lint.File) []wrongMatch {
+// HTMLBlock) and appends any wrong-cased matches to acc, returning it.
+func scanLines(entries []nameEntry, n lineNode, f *lint.File, acc []wrongMatch) []wrongMatch {
 	segs := n.Lines()
-	var out []wrongMatch
 	for i := 0; i < segs.Len(); i++ {
 		seg := segs.At(i)
-		out = append(out, scanBytes(entries, seg.Value(f.Source), seg.Start, f.Source)...)
+		acc = append(acc, scanBytes(entries, seg.Value(f.Source), seg.Start, f.Source)...)
 	}
-	return out
+	return acc
 }
 
-// scanCodeSpanChildren scans the Text children of a CodeSpan node.
-func scanCodeSpanChildren(entries []nameEntry, v *ast.CodeSpan, f *lint.File) []wrongMatch {
-	var out []wrongMatch
+// scanCodeSpanChildren scans the Text children of a CodeSpan node and appends
+// any wrong-cased matches to acc, returning it.
+func scanCodeSpanChildren(entries []nameEntry, v *ast.CodeSpan, f *lint.File, acc []wrongMatch) []wrongMatch {
 	for c := v.FirstChild(); c != nil; c = c.NextSibling() {
 		t, ok := c.(*ast.Text)
 		if !ok {
 			continue
 		}
 		seg := t.Segment
-		out = append(out, scanBytes(entries, seg.Value(f.Source), seg.Start, f.Source)...)
+		acc = append(acc, scanBytes(entries, seg.Value(f.Source), seg.Start, f.Source)...)
 	}
-	return out
+	return acc
 }
 
-// scanRawHTMLSegments scans the Segments of a RawHTML node.
-func scanRawHTMLSegments(entries []nameEntry, v *ast.RawHTML, f *lint.File) []wrongMatch {
-	var out []wrongMatch
+// scanRawHTMLSegments scans the Segments of a RawHTML node and appends any
+// wrong-cased matches to acc, returning it.
+func scanRawHTMLSegments(entries []nameEntry, v *ast.RawHTML, f *lint.File, acc []wrongMatch) []wrongMatch {
 	for i := 0; i < v.Segments.Len(); i++ {
 		seg := v.Segments.At(i)
-		out = append(out, scanBytes(entries, seg.Value(f.Source), seg.Start, f.Source)...)
+		acc = append(acc, scanBytes(entries, seg.Value(f.Source), seg.Start, f.Source)...)
 	}
-	return out
+	return acc
 }
 
 // collectMatches walks the AST and gathers all wrong-cased matches.
@@ -200,22 +199,22 @@ func (r *Rule) collectMatches(f *lint.File) []wrongMatch {
 			return ast.WalkSkipChildren, nil
 		case *ast.CodeSpan:
 			if r.CheckCode {
-				all = append(all, scanCodeSpanChildren(entries, v, f)...)
+				all = scanCodeSpanChildren(entries, v, f, all)
 			}
 			return ast.WalkSkipChildren, nil
 		case *ast.FencedCodeBlock, *ast.CodeBlock:
 			if r.CheckCode {
-				all = append(all, scanLines(entries, n, f)...)
+				all = scanLines(entries, n, f, all)
 			}
 			return ast.WalkSkipChildren, nil
 		case *ast.HTMLBlock:
 			if r.CheckHTML {
-				all = append(all, scanLines(entries, n, f)...)
+				all = scanLines(entries, n, f, all)
 			}
 			return ast.WalkSkipChildren, nil
 		case *ast.RawHTML:
 			if r.CheckHTML {
-				all = append(all, scanRawHTMLSegments(entries, v, f)...)
+				all = scanRawHTMLSegments(entries, v, f, all)
 			}
 			return ast.WalkSkipChildren, nil
 		case *ast.Text:

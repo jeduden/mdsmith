@@ -2,7 +2,6 @@ package notrailingspaces
 
 import (
 	"bytes"
-	"strings"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -52,17 +51,16 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 // Fix implements rule.FixableRule.
 func (r *Rule) Fix(f *lint.File) []byte {
 	codeLines := lint.CollectCodeBlockLines(f)
-	result := make([]string, 0, len(f.Lines))
+	result := make([][]byte, 0, len(f.Lines))
 	for i, line := range f.Lines {
 		lineNum := i + 1
 		if _, ok := codeLines[lineNum]; ok {
-			result = append(result, string(line))
+			result = append(result, line)
 			continue
 		}
-		trimmed := bytes.TrimRight(line, " \t")
-		result = append(result, string(trimmed))
+		result = append(result, bytes.TrimRight(line, " \t"))
 	}
-	return []byte(strings.Join(result, "\n"))
+	return bytes.Join(result, []byte("\n"))
 }
 
 // FixTitle implements rule.QuickFixTitler.

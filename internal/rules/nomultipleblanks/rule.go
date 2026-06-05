@@ -3,7 +3,6 @@ package nomultipleblanks
 import (
 	"bytes"
 	"fmt"
-	"strings"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -78,12 +77,12 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 func (r *Rule) Fix(f *lint.File) []byte {
 	codeLines := lint.CollectCodeBlockLines(f)
 	max := r.maxBlanks()
-	result := make([]string, 0, len(f.Lines))
+	result := make([][]byte, 0, len(f.Lines))
 	consecutiveBlanks := 0
 	for i, line := range f.Lines {
 		lineNum := i + 1
 		if _, ok := codeLines[lineNum]; ok {
-			result = append(result, string(line))
+			result = append(result, line)
 			consecutiveBlanks = 0
 			continue
 		}
@@ -95,9 +94,9 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		} else {
 			consecutiveBlanks = 0
 		}
-		result = append(result, string(line))
+		result = append(result, line)
 	}
-	return []byte(strings.Join(result, "\n"))
+	return bytes.Join(result, []byte("\n"))
 }
 
 // ApplySettings implements rule.Configurable.
