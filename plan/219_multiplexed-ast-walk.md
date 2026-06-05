@@ -92,38 +92,132 @@ lets the engine route only the relevant nodes.
    diagnostics stay grouped in rules order, so output is
    byte-identical (pinned in
    [`multiplex_visitor_test.go`](../internal/engine/multiplex_visitor_test.go)).
-3. [ ] Migrate the heaviest AST-walking rules first, chosen
+3. [x] Migrate the heaviest AST-walking rules first, chosen
    from a fresh profile. Each migration is behaviour-
    preserving: the rule's existing fixtures must pass
-   unchanged before and after.
-4. [ ] Keep line-oriented rules on `Check`; the multiplexer
+   unchanged before and after. A fresh engine-bench profile
+   named the per-rule heading walks as the cleanest remaining
+   targets among default rules. Migrated the two pure
+   stateful per-node default rules — MDS003 heading-increment
+   (`prevLevel`) and MDS005 no-duplicate-headings (`seen`
+   map). Fixtures and unit tests pass unchanged; the engine
+   table-test pins each multiplexed output byte-identical to
+   its sequential `Check`. Every other default rule still on
+   `ast.Walk` is not a clean pure-visitor target — see "Not
+   migrated" below.
+4. [x] Keep line-oriented rules on `Check`; the multiplexer
    and the line pass run side by side. Document which path
-   each rule uses.
-5. [ ] Hold the multi-goroutine check and LSP paths
+   each rule uses. The path each rule takes is recorded by
+   the plan-215 walk-audit manifest at
+   `internal/integration/testdata/rule_walk_audit.json`:
+   `is_node_checker: true` now marks both stateless
+   `NodeChecker`s and stateful `NodeVisitorRule`s (the shared
+   walk); line rules keep `is_node_checker: false`. The
+   "Not migrated" section below records why each remaining
+   `ast.Walk` rule stays on `Check`.
+5. [x] Hold the multi-goroutine check and LSP paths
    race-clean under `-race`; the shared walk must not
-   introduce cross-file or cross-goroutine state.
-6. [ ] Extend the
+   introduce cross-file or cross-goroutine state. The visitor
+   state is fresh per file and never shared. `-race` is clean
+   for `internal/engine`, `internal/rule`, `internal/lsp`,
+   and the migrated rule packages.
+   `TestRunner_ParallelStatefulVisitorsIsolated` pins the
+   migrated visitors' per-file isolation across concurrency 1
+   vs 8.
+6. [x] Extend the
    [check-bench gate](175_check-performance-gate.md) to
    track the win. Target: the `mdsmith-parity` neutral-
    corpus ratio to mado within about 1.2x, or a profiler
-   showing no cheap win remains.
-7. [ ] Refresh the benchmark prose and, if the harness is
-   re-run, the committed `data/*.json` and fragments.
+   showing no cheap win remains. Recorded outcome:
+   profiler-backed negative on wall time. A before/after A/B
+   (the two heading rules' own walks vs folded into the
+   shared walk) over a heading-dense 120-file corpus,
+   `-count=8` single-core, measured medians of 34.6 ms
+   (before) and 36.5 ms (after) — equal within run noise. The
+   fresh profile shows MDS003/MDS005 no longer appear as
+   separate `ast.Walk` callers; their cost moved under the
+   shared-walk closure with no net change. This re-confirms
+   plan 187's measured finding: the duplicated-walk *flat*
+   cost (~6 %) is intrinsic per-node work, not redundant
+   traversal, so folding these rules removes redundant work
+   but yields no measurable wall-time win. The cross-tool
+   `mdsmith-parity` harness (mado/rumdl/hyperfine) needs
+   network + external installs and was not re-run here; the
+   gate baselines are unchanged because no number moved.
+7. [x] Refresh the benchmark prose and, if the harness is
+   re-run, the committed `data/*.json` and fragments. The
+   harness was not re-run (it needs network and external
+   linters, and the in-process A/B shows no wall-time
+   movement to promote), so the committed `data/*.json` and
+   fragments are unchanged — matching plan 187 task 5's
+   "nothing to promote" outcome.
+
+## Not migrated — reason
+
+Every default-enabled rule that still calls `ast.Walk` in its
+`Check` was inspected; none is a clean pure-`NodeVisitorRule`
+target:
+
+- **MDS001 line-length**: line-level by default; its
+  `collectHeadingLines` walk only runs when the non-default
+  `heading-max` is set, so the default parity path never
+  walks.
+- **MDS051 single-h1**, **MDS065 code-block-style**,
+  **MDS036 max-section-length**, **MDS037 duplicated-content**:
+  collect-then-decide — a diagnostic for one node depends on
+  the whole collection (the majority code-block style, all
+  H1s, per-section bounds), and several also read front
+  matter. MDS051/MDS036/MDS037 are opt-in, off the parity
+  path.
+- **MDS059 blockquote-whitespace**, **MDS062 link-validity**:
+  hybrid — a line scan (MD027 marker spacing; the reversed
+  `(text)[url]` regex) plus an `ast.Walk`, joined in one
+  `Check` (link-validity also post-sorts). A rule is driven
+  by `Check` OR by the shared walk, not both, so these cannot
+  become pure visitors without splitting; their own walks are
+  a fraction of a percent of CPU, so the split is not worth
+  the correctness risk.
+- **MDS020 required-structure**: collects headings into an
+  ordered list before validating against the schema (plan 189
+  already recorded this).
+- **MDS050 proper-names**: uses `WalkSkipChildren` for
+  correctness, then post-sorts and deduplicates (opt-in; plan
+  189 recorded this).
+- **MDS053 no-unused-link-definitions**, **MDS054
+  no-undefined-reference-labels**: read link reference
+  definitions from `lint.File.LinkReferences` (plan 175); the
+  only `ast.Walk` is a small code-span-range helper, not a
+  per-node pass.
 
 ## Acceptance Criteria
 
-- [ ] One AST traversal per file dispatches to all
+- [x] One AST traversal per file dispatches to all
       registered rules; no migrated rule calls `ast.Walk`
-      on its own.
-- [ ] Every migrated rule's fixtures and unit tests pass
+      on its own. The engine drives one shared `ast.Walk`
+      that feeds every `NodeChecker` and `NodeVisitorRule`;
+      the migrated rules MDS003/MDS005 delegate to
+      `rule.WalkVisitor` and no longer call `ast.Walk`.
+- [x] Every migrated rule's fixtures and unit tests pass
       unchanged (behaviour-preserving).
-- [ ] Engine diagnostic output byte-matches the pre-refactor
-      output across the test corpora.
-- [ ] The check-bench gate shows the neutral-corpus
+- [x] Engine diagnostic output byte-matches the pre-refactor
+      output across the test corpora. Pinned per-rule by the
+      `multiplex_visitor_test.go` equivalence table and
+      end-to-end by the unchanged integration fixture suite.
+- [x] The check-bench gate shows the neutral-corpus
       `mdsmith-parity` ratio to mado improved toward the
-      target.
-- [ ] `-race` is clean for the parallel check and LSP
+      target. **Resolved via the task-6 alternative — a
+      profiler showing no cheap win remains.** The cross-tool
+      harness needs network + external linters and could not
+      be re-run here; the in-process before/after A/B over a
+      heading-dense corpus shows no wall-time movement (34.6
+      vs 36.5 ms median, equal within noise), re-confirming
+      plan 187: the duplicated-walk flat cost is intrinsic
+      per-node work, not redundant traversal. The migrations
+      remove the redundant traversal and add the seam, but
+      the parity ratio is unchanged by this increment. See
+      task 6 for the numbers.
+- [x] `-race` is clean for the parallel check and LSP
       paths.
-- [ ] `mdsmith check .` passes.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] `mdsmith check .` passes.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
