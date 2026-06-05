@@ -139,6 +139,56 @@ func TestRunner_ParallelStatefulRuleIsolated(t *testing.T) {
 	}
 }
 
+// TestRunner_ParallelStatefulVisitorsIsolated pins that the plan-219
+// stateful NodeVisitorRules (MDS003 heading-increment's prevLevel,
+// MDS005 no-duplicate-headings' seen map) keep their per-walk state
+// isolated under the multi-goroutine check path. Each file triggers
+// both rules — a heading-level jump and a duplicate heading whose first
+// occurrence differs per file — so a leaked visitor (shared across
+// goroutines or reused across files) would change a message or a count.
+// The serial run is the reference; a concurrency-8 run must be
+// byte-identical, and `go test -race` flags any shared access.
+func TestRunner_ParallelStatefulVisitorsIsolated(t *testing.T) {
+	dir := t.TempDir()
+	const n = 64
+	paths := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		p := filepath.Join(dir, fmt.Sprintf("doc%03d.md", i))
+		// h1 -> h3 is a MDS003 jump; the repeated "Dup <i>" heading is a
+		// MDS005 duplicate whose first-occurrence line varies per file
+		// because the lead-in prose length differs by i.
+		lead := strings.Repeat("Prose. ", i%5+1)
+		body := fmt.Sprintf("# Doc %d\n\n%s\n\n### Dup %d\n\ntext\n\n### Dup %d\n",
+			i, lead, i, i)
+		require.NoError(t, os.WriteFile(p, []byte(body), 0o644))
+		paths = append(paths, p)
+	}
+
+	run := func(concurrency int) []lint.Diagnostic {
+		runner := &engine.Runner{
+			Config: &config.Config{
+				Rules: map[string]config.RuleCfg{
+					"heading-increment":     {Enabled: true},
+					"no-duplicate-headings": {Enabled: true},
+				},
+			},
+			Rules:       rule.All(),
+			RootDir:     dir,
+			Concurrency: concurrency,
+		}
+		return runner.Run(paths).Diagnostics
+	}
+
+	serial := run(1)
+	parallel := run(8)
+
+	// Both rules must actually fire, or the test proves nothing.
+	require.NotEmpty(t, serial, "the corpus must trigger the stateful rules")
+	assert.Equal(t, serial, parallel,
+		"stateful visitor output must be byte-identical across concurrency; "+
+			"a leak across goroutines or files would diverge here")
+}
+
 // TestRunner_ParallelVerboseLogIsOrdered checks that a parallel run
 // with an enabled logger emits each file's verbose block in input
 // order with no cross-file interleaving — the buffered-then-merged
