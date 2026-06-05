@@ -91,6 +91,12 @@ to the [GitHub release][gh]. To install it:
 4. In Obsidian, open **Settings → Community plugins**,
    then enable **mdsmith**.
 
+This vault-relative path is the same on every OS. The
+`.obsidian` folder is hidden, though. Rather than browse to
+it, open the plugins folder from **Settings → Community
+plugins** — the folder icon by **Installed plugins** — and
+drop the unzipped files there.
+
 You need Obsidian 1.5 or later. A config file is
 optional: mdsmith lints with built-in defaults, so the
 plugin works as soon as you enable it. To tune the

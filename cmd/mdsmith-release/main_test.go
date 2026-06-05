@@ -103,6 +103,7 @@ func TestSubcommandHelpExitsZero(t *testing.T) {
 		"stamp", "check", "build-npm", "build-wheels",
 		"build-flatpak", "package-obsidian",
 		"sync-docs", "build-website", "verify-website-links",
+		"verify-install-picker",
 		"sync-messaging",
 		"sync-parity-rules",
 		"sync-channels",
@@ -118,12 +119,36 @@ func TestSubcommandRejectsUnknownFlag(t *testing.T) {
 		"stamp", "check", "build-npm", "build-wheels",
 		"build-flatpak", "package-obsidian",
 		"sync-docs", "build-website", "verify-website-links",
+		"verify-install-picker",
 		"sync-messaging",
 		"sync-parity-rules",
 		"sync-channels",
 	} {
 		assert.Equal(t, 2, run([]string{sub, "--bogus"}), "%s --bogus", sub)
 	}
+}
+
+// TestRunVerifyInstallPicker drives the handler's three outcomes:
+// missing --dir (usage, 2), a homepage that matches the loaded
+// channels.yaml (0), and a root with no channels.yaml so the load
+// fails (1).
+func TestRunVerifyInstallPicker(t *testing.T) {
+	// No --dir → usage, exit 2.
+	assert.Equal(t, 2, runVerifyInstallPicker(t.TempDir(), nil))
+
+	// A root whose channels.yaml matches the rendered homepage → 0.
+	root := t.TempDir()
+	cy := filepath.Join(root, release.ChannelsDataFile)
+	require.NoError(t, os.MkdirAll(filepath.Dir(cy), 0o755))
+	require.NoError(t, os.WriteFile(cy,
+		[]byte("- title: Go\n  command: go install x\n  weight: 1\n"), 0o644))
+	htmlDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(htmlDir, "index.html"),
+		[]byte(`<div class="install-row" data-cmd-default="go install x"></div>`), 0o644))
+	assert.Equal(t, 0, runVerifyInstallPicker(root, []string{"--dir", htmlDir}))
+
+	// A root with no channels.yaml → load error, exit 1.
+	assert.Equal(t, 1, runVerifyInstallPicker(t.TempDir(), []string{"--dir", htmlDir}))
 }
 
 // TestRunCheckOnDevSentinel exercises runCheck's success branch

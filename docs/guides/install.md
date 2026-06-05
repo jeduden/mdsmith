@@ -278,12 +278,41 @@ GitHub OIDC identity, so a forged binary or rewritten
 checksums file fails verification unless the attacker
 also controls `release.yml` on `jeduden/mdsmith`.
 
-### Windows (PowerShell)
+### Windows
 
-Windows has no Homebrew or Flatpak channel, so the
-direct download is the toolchain-free path. The asset
-is `mdsmith-windows-amd64.exe`. Download it and the
-checksums file:
+Windows has no package-manager channel yet, so the
+direct download is the install path. There is one
+Windows asset, `mdsmith-windows-amd64.exe` — no
+`<os>-<arch>` to fill in.
+
+**Manual install — the path most people want.** No
+PowerShell required; the steps are a browser download
+and the Settings UI. On the
+[releases page](https://github.com/jeduden/mdsmith/releases),
+open the latest release and download
+`mdsmith-windows-amd64.exe` from its Assets.
+
+To verify it before installing, also download
+`checksums.txt` from the same Assets. In the download
+folder, run
+`certutil -hashfile mdsmith-windows-amd64.exe SHA256`
+(Command Prompt or PowerShell — `certutil` ships with
+Windows). Compare its hash to the
+`mdsmith-windows-amd64.exe` line in `checksums.txt`.
+
+Then install it:
+
+1. Make a folder to keep it in — for example
+   `%LOCALAPPDATA%\Programs\mdsmith` — and move the
+   file there. Rename it to `mdsmith.exe` so it runs
+   as `mdsmith`.
+2. Add that folder to your account `PATH`: open *Edit
+   environment variables for your account* from the
+   Start menu, edit `Path`, add the folder, and save.
+3. Open a new terminal and run `mdsmith version`.
+
+**Scripted install (PowerShell).** Download the binary
+and the checksums file:
 
 ```powershell
 $base = "https://github.com/jeduden/mdsmith/releases/latest/download"

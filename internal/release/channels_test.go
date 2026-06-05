@@ -77,6 +77,37 @@ func TestLoadChannelsSortsByWeightAndSkipsProto(t *testing.T) {
 	assert.Equal(t, "A", chs[1].Title)
 }
 
+func TestLoadChannels_CommandWindows(t *testing.T) {
+	root := seedChannelDir(t, "gh.md", "go.md")
+	gh := mkChannelDoc("GitHub Releases", "push", "cli", "curl <os>", "aud", 10)
+	gh.Frontmatter.CommandWindows = "Invoke-WebRequest x.exe -OutFile mdsmith.exe"
+	stubExtractAll(t, map[string]channelDoc{
+		relKey("gh.md"): gh,
+		relKey("go.md"): mkChannelDoc("Go", "toolchain", "cli", "go install", "aud", 1),
+	})
+	chs, err := LoadChannels(root)
+	require.NoError(t, err)
+	require.Len(t, chs, 2)
+	// Sorted by weight: Go (1) then GitHub Releases (10).
+	assert.Empty(t, chs[0].CommandWindows, "Go has no Windows override")
+	assert.Equal(t, "Invoke-WebRequest x.exe -OutFile mdsmith.exe",
+		chs[1].CommandWindows)
+}
+
+func TestRenderChannelsYAML_OmitsEmptyCommandWindows(t *testing.T) {
+	out := string(RenderChannelsYAML([]Channel{
+		{Title: "Go", Command: "go install", Mechanism: "toolchain",
+			Artifact: "cli", Audience: "a", URL: "https://x", Weight: 1},
+		{Title: "GH", Command: "curl", CommandWindows: "iwr x.exe",
+			Mechanism: "push", Artifact: "cli", Audience: "a",
+			URL: "https://x", Weight: 10},
+	}))
+	assert.Contains(t, out, "command-windows: iwr x.exe",
+		"a set override is emitted")
+	assert.NotContains(t, out, `command-windows: ""`,
+		"omitempty drops the key for channels without an override")
+}
+
 func TestLoadChannels_MissingDirErrors(t *testing.T) {
 	_, err := LoadChannels(t.TempDir()) // no channel dir at all
 	require.Error(t, err)
@@ -326,5 +357,35 @@ func TestExtractAllChannels_RunExtractError(t *testing.T) {
 	// non-existent channel file makes runExtract fail mid-loop.
 	_, err := extractAllChannels(repoRootForChannels(t),
 		[]string{"docs/development/release-channels/does-not-exist.md"})
+	require.Error(t, err)
+}
+
+func TestLoadChannelsFromDataFile(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, ChannelsDataFile)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	require.NoError(t, os.WriteFile(path, []byte(
+		"- title: Go\n  command: go install\n  weight: 1\n"+
+			"- title: GH\n  command: curl\n  command-windows: iwr x.exe\n  weight: 10\n"),
+		0o644))
+	chs, err := LoadChannelsFromDataFile(root)
+	require.NoError(t, err)
+	require.Len(t, chs, 2)
+	assert.Equal(t, "Go", chs[0].Title)
+	assert.Empty(t, chs[0].CommandWindows)
+	assert.Equal(t, "iwr x.exe", chs[1].CommandWindows)
+}
+
+func TestLoadChannelsFromDataFile_Errors(t *testing.T) {
+	// No channels.yaml under root → read error.
+	_, err := LoadChannelsFromDataFile(t.TempDir())
+	require.Error(t, err)
+
+	// Present but malformed YAML → parse error.
+	root := t.TempDir()
+	p := filepath.Join(root, ChannelsDataFile)
+	require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+	require.NoError(t, os.WriteFile(p, []byte("title: not-a-list\n  bad: ]["), 0o644))
+	_, err = LoadChannelsFromDataFile(root)
 	require.Error(t, err)
 }
