@@ -81,11 +81,17 @@ lets the engine route only the relevant nodes.
    `rule.NodeVisitor` / `rule.NodeVisitorRule` /
    `rule.WalkVisitor` in
    [`internal/rule/visitor.go`](../internal/rule/visitor.go).
-2. [ ] Build the multiplexer in the engine: the single
+2. [x] Build the multiplexer in the engine: the single
    `ast.Walk` per file dispatches to every stateful visitor
    registered for that node kind alongside the existing
    `NodeChecker` dispatch. Resolve diagnostic ordering and
-   dedup so output byte-matches the current engine.
+   dedup so output byte-matches the current engine. The
+   engine's `classifyRules` now builds a fresh per-file
+   visitor for each `NodeVisitorRule` and routes its
+   declared kinds through the same shared walk; per-rule
+   diagnostics stay grouped in rules order, so output is
+   byte-identical (pinned in
+   [`multiplex_visitor_test.go`](../internal/engine/multiplex_visitor_test.go)).
 3. [ ] Migrate the heaviest AST-walking rules first, chosen
    from a fresh profile. Each migration is behaviour-
    preserving: the rule's existing fixtures must pass

@@ -57,15 +57,26 @@ func checkRules(
 	return checkRulesWithIntraFile(f, rules, effective, skipSourceContext, 1)
 }
 
-// ruleSlot is one rule's diagnostic bucket. NodeCheckers append to
-// it from the shared walk; non-NodeCheckers fill it once via Check.
-// Slots are kept in rules order so the final concatenation reproduces
-// the sequential output exactly. Configure-failed rules never get a
-// slot — they short-circuit in classifyRules with an entry in errs.
+// ruleSlot is one rule's diagnostic bucket. NodeCheckers and stateful
+// NodeVisitorRules append to it from the one shared walk;
+// non-walking rules fill it once via Check. Slots are kept in rules
+// order so the final concatenation reproduces the sequential output
+// exactly. Configure-failed rules never get a slot — they
+// short-circuit in classifyRules with an entry in errs.
+//
+// Exactly one of nc, visitor, or check is set per slot:
+//   - nc: a stateless rule.NodeChecker, shown every node.
+//   - visitor: the fresh per-file rule.NodeVisitor of a
+//     NodeVisitorRule, shown only the kinds in want. A NodeVisitorRule
+//     whose NewNodeVisitor returned nil gets no slot at all (it
+//     contributes nothing for this file).
+//   - check: a non-walking rule, run once via Check.
 type ruleSlot struct {
-	nc    rule.NodeChecker
-	check rule.Rule // non-nil for non-NodeChecker slots
-	diags []lint.Diagnostic
+	nc      rule.NodeChecker
+	visitor rule.NodeVisitor
+	want    map[ast.NodeKind]struct{} // declared kinds for visitor; nil = all
+	check   rule.Rule                 // non-nil for non-walking slots
+	diags   []lint.Diagnostic
 }
 
 // checkRulesWithIntraFile is the core implementation that accepts an
@@ -79,25 +90,34 @@ func checkRulesWithIntraFile(
 	skipSourceContext bool,
 	intraFileCap int,
 ) ([]lint.Diagnostic, []error) {
-	slots, nodeCheckers, errs := classifyRules(rules, effective)
+	slots, walkSlots, errs := classifyRules(f, rules, effective)
 
-	// Run non-NodeChecker rules. With cap=1 the loop stays serial and
+	// Run non-walking rules. With cap=1 the loop stays serial and
 	// matches the legacy code path byte-for-byte. With cap>1, slots
 	// run concurrently into their own buckets; rules order is
 	// preserved because the concatenation step reads `slots` in
 	// index order at the end.
 	runNonNodeCheckers(f, slots, intraFileCap)
 
-	// The shared walk runs after the goroutine workers join, so its
-	// node visitor and the rules running inside it never race for
-	// any per-rule state. NodeCheckers stay internally serial: one
-	// goroutine, one walk, one rule per node — fast enough that
-	// splitting per rule would lose the cache locality the multiplex
-	// just won.
-	if len(nodeCheckers) > 0 {
+	// The one shared walk runs after the goroutine workers join, so its
+	// node visitors and the rules running inside it never race for
+	// any per-rule state. Walk-driven rules stay internally serial:
+	// one goroutine, one walk, every interested rule per node — fast
+	// enough that splitting per rule would lose the cache locality the
+	// multiplex just won. A NodeChecker is shown every node; a
+	// NodeVisitor is shown only the kinds it declared (want == nil
+	// means all), so the same single traversal serves both stateless
+	// and stateful per-node rules.
+	if len(walkSlots) > 0 {
 		_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-			for _, s := range nodeCheckers {
-				s.diags = append(s.diags, s.nc.CheckNode(n, entering, f)...)
+			kind := n.Kind()
+			for _, s := range walkSlots {
+				switch {
+				case s.nc != nil:
+					s.diags = append(s.diags, s.nc.CheckNode(n, entering, f)...)
+				case rule.WantsKind(s.want, kind):
+					s.diags = append(s.diags, s.visitor.VisitNode(n, entering, f)...)
+				}
 			}
 			return ast.WalkContinue, nil
 		})
@@ -122,16 +142,22 @@ func checkRulesWithIntraFile(
 // otherwise the worker's existing clone is reused as-is), and splits
 // the result into per-rule slots. The slots slice keeps every
 // enabled rule in input order (so the final concatenation is
-// deterministic); the nodeCheckers slice is the subset whose group
-// will be filled by the shared walk.
+// deterministic); the walkSlots slice is the subset (NodeCheckers and
+// stateful NodeVisitorRules) whose group is filled by the one shared
+// ast.Walk.
+//
+// f is needed to build a NodeVisitorRule's fresh per-file visitor
+// (NewNodeVisitor(f)). That visitor may carry per-walk state; building
+// it here, once per file, is what keeps the state from leaking across
+// files or goroutines.
 func classifyRules(
-	rules []rule.Rule, effective map[string]config.RuleCfg,
-) (slots []ruleSlot, nodeCheckers []*ruleSlot, errs []error) {
+	f *lint.File, rules []rule.Rule, effective map[string]config.RuleCfg,
+) (slots []ruleSlot, walkSlots []*ruleSlot, errs []error) {
 	// Pre-size at the registered-rule count. In production all but a
 	// handful of rules are enabled by default. Allocating slots as a
 	// value slice (rather than a slice of `*ruleSlot`) collapses the
 	// 50+ per-file pointer allocations the previous shape paid into
-	// one backing-array allocation. nodeCheckers stays a pointer
+	// one backing-array allocation. walkSlots stays a pointer
 	// slice but references entries by `&slots[i]`, which is stable
 	// because the slots cap was pre-set to len(rules) — no append
 	// grows the backing, so the index-derived pointers do not
@@ -151,17 +177,29 @@ func classifyRules(
 			slots = append(slots, ruleSlot{nc: nc})
 			continue
 		}
+		if vr, ok := checkRule.(rule.NodeVisitorRule); ok {
+			// A nil visitor means the rule has nothing to do for this
+			// file (e.g. an unconfigured opt-in rule); it gets no slot
+			// and contributes nothing, matching its standalone Check.
+			if v := vr.NewNodeVisitor(f); v != nil {
+				slots = append(slots, ruleSlot{
+					visitor: v,
+					want:    rule.NewKindSet(v.Kinds()),
+				})
+			}
+			continue
+		}
 		slots = append(slots, ruleSlot{check: checkRule})
 	}
 	for i := range slots {
-		if slots[i].nc != nil {
-			if nodeCheckers == nil {
-				nodeCheckers = make([]*ruleSlot, 0, len(slots)/2+1)
+		if slots[i].nc != nil || slots[i].visitor != nil {
+			if walkSlots == nil {
+				walkSlots = make([]*ruleSlot, 0, len(slots)/2+1)
 			}
-			nodeCheckers = append(nodeCheckers, &slots[i])
+			walkSlots = append(walkSlots, &slots[i])
 		}
 	}
-	return slots, nodeCheckers, errs
+	return slots, walkSlots, errs
 }
 
 // runNonNodeCheckers fills the non-NodeChecker slots' diags fields.

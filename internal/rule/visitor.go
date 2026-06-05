@@ -65,10 +65,10 @@ func WalkVisitor(r NodeVisitorRule, f *lint.File) []lint.Diagnostic {
 	if v == nil {
 		return nil
 	}
-	want := kindSet(v.Kinds())
+	want := NewKindSet(v.Kinds())
 	var diags []lint.Diagnostic
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if wantsKind(want, n.Kind()) {
+		if WantsKind(want, n.Kind()) {
 			diags = append(diags, v.VisitNode(n, entering, f)...)
 		}
 		return ast.WalkContinue, nil
@@ -76,9 +76,11 @@ func WalkVisitor(r NodeVisitorRule, f *lint.File) []lint.Diagnostic {
 	return diags
 }
 
-// kindSet turns a visitor's declared kinds into a lookup set. A nil or
-// empty slice yields a nil set, which wantsKind reads as "every kind".
-func kindSet(kinds []ast.NodeKind) map[ast.NodeKind]struct{} {
+// NewKindSet turns a visitor's declared kinds into a lookup set. A nil
+// or empty slice yields a nil set, which WantsKind reads as "every
+// kind". The engine builds the same set once per visitor so its
+// multiplexed dispatch routes nodes identically to WalkVisitor.
+func NewKindSet(kinds []ast.NodeKind) map[ast.NodeKind]struct{} {
 	if len(kinds) == 0 {
 		return nil
 	}
@@ -89,10 +91,10 @@ func kindSet(kinds []ast.NodeKind) map[ast.NodeKind]struct{} {
 	return set
 }
 
-// wantsKind reports whether a node of kind k should be routed to a
+// WantsKind reports whether a node of kind k should be routed to a
 // visitor whose declared-kind set is want. A nil set means the visitor
 // declared no kinds, i.e. it wants every node.
-func wantsKind(want map[ast.NodeKind]struct{}, k ast.NodeKind) bool {
+func WantsKind(want map[ast.NodeKind]struct{}, k ast.NodeKind) bool {
 	if want == nil {
 		return true
 	}
