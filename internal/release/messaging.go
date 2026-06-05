@@ -1,11 +1,16 @@
 package release
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/yuin/goldmark/ast"
+
+	"github.com/jeduden/mdsmith/pkg/markdown"
 )
 
 // MessagingKind is the kind name registered in .mdsmith.yml that
@@ -18,7 +23,7 @@ const MessagingSourceFile = "docs/brand/messaging.md"
 
 // Messaging is the flat, in-process Go value every patcher
 // consumes. The JSON shape `mdsmith extract messaging`
-// produces (frontmatter scalars + an inline-span headline
+// produces (frontmatter scalars + a code-block headline
 // section + paragraph sections for the prose fields) is
 // decoded via the internal `messagingDoc` envelope in
 // LoadMessaging and copied here; no field on Messaging is
@@ -56,17 +61,16 @@ func (m *Messaging) Headline() string {
 // LoadMessaging projects MessagingSourceFile through
 // `mdsmith extract <MessagingKind> --format json` and decodes
 // it into a typed Messaging value. The JSON shape mirrors the
-// kind's schema: `title` and `summary` live under `frontmatter`;
-// the headline lives under a top-level `headline` object whose
-// `inline` array is the paragraph's typed inline-span projection
-// (plan 212); the prose values (`eyebrow`, `lead`, `tagline`,
-// and the five per-surface descriptions) live under their own
-// top-level objects keyed by the section's bind/slug, each
-// carrying a `text` field — the projection rule for a paragraph
-// under an H2. The mdsmith binary is invoked via
-// `go run ./cmd/mdsmith` so the same source tree drives the
-// linter and the release tooling. Every documented field must be
-// non-empty; a missing or blank field is a hard error.
+// kind's schema: `title`, `summary`, and the headline triple
+// live under `frontmatter`; the prose values
+// (`eyebrow`, `lead`, `tagline`, and the five per-surface
+// descriptions) live under their own top-level objects keyed
+// by the section's bind/slug, each carrying a `text` field —
+// the projection rule for a paragraph under an H2. The mdsmith
+// binary is invoked via `go run ./cmd/mdsmith` so the same
+// source tree drives the linter and the release tooling.
+// Every documented field must be non-empty; a missing or blank
+// field is a hard error.
 func LoadMessaging(root string) (*Messaging, error) {
 	out, err := messagingExtractor(root)
 	if err != nil {
@@ -76,13 +80,13 @@ func LoadMessaging(root string) (*Messaging, error) {
 	if err := json.Unmarshal(out, &doc); err != nil {
 		return nil, fmt.Errorf("decode messaging json: %w", err)
 	}
-	// An empty headline.inline is left for Validate to surface as
-	// the standard missing-field message; a non-empty span list
-	// that does not match the canonical shape is a hard headline
-	// error that points at the problem directly.
+	// An empty headline.code is left for Validate to surface as
+	// the standard missing-field message; a non-empty code that
+	// does not match the canonical shape is a hard headline
+	// error that points at the parse problem directly.
 	var pre, em, post string
-	if len(doc.Headline.Inline) > 0 {
-		p, e, s, perr := splitHeadlineSpans(doc.Headline.Inline)
+	if strings.TrimSpace(doc.Headline.Code) != "" {
+		p, e, s, perr := parseHeadlineEmphasis(doc.Headline.Code)
 		if perr != nil {
 			return nil, fmt.Errorf("headline: %w", perr)
 		}
@@ -109,130 +113,102 @@ func LoadMessaging(root string) (*Messaging, error) {
 	return &m, nil
 }
 
-// headlineSpan is one element of the headline paragraph's `inline`
-// projection (plan 212). It is the typed shape `mdsmith extract`
-// emits; the release tool reads it directly instead of re-parsing
-// Markdown. Leaf spans (text, code, autolink) carry Value; container
-// spans (emphasis, strong, link) carry Children.
-type headlineSpan struct {
-	Span     string         `json:"span"`
-	Value    string         `json:"value"`
-	Level    int            `json:"level"`
-	Children []headlineSpan `json:"children"`
-}
-
-// splitHeadlineSpans walks the top-level inline spans of the headline
-// paragraph and splits them on the single emphasis span. It returns
-// pre, em, post for the website hero template
-// `<h1>{pre}<em>{em}</em>{post}</h1>`.
+// parseHeadlineEmphasis walks the headline source as Markdown
+// via pkg/markdown.Parse (the same goldmark parser the linter
+// uses) and splits it on its single Level-1 emphasis span.
+// Returns pre, em, post for the website hero template
+// `<h1>{pre}<em>{em}</em>{post}</h1>`. Errors if the source
+// has zero or more than one Level-1 emphasis span — the hero
+// template can render only one — or if the parse produces
+// anything other than a single Paragraph.
 //
-// The release tool does no Markdown parsing: the inline projection is
-// what mdsmith owns; this function only walks the typed data. It
-// errors when the spans have zero or more than one top-level
-// `emphasis` span (the hero template renders exactly one <em>), when
-// the single span is `strong` rather than `emphasis` (double `**`
-// means <strong>, not <em>), when a non-text span sits at the top
-// level, or when the emphasis span's children are not all text.
-func splitHeadlineSpans(spans []headlineSpan) (pre, em, post string, err error) {
-	var preB, emB, postB strings.Builder
+// The release tool does no Markdown parsing itself: the AST is
+// the projection mdsmith owns; this function only walks it.
+func parseHeadlineEmphasis(src string) (pre, em, post string, err error) {
+	doc := markdown.Parse([]byte(strings.TrimSpace(src)))
+	body := doc.Body
+	root := doc.AST
+	// The headline source is a single line of inline content;
+	// the parser wraps it in a single Paragraph.
+	first := root.FirstChild()
+	if first == nil || first.NextSibling() != nil ||
+		first.Kind() != ast.KindParagraph {
+		return "", "", "", fmt.Errorf(
+			"expected a single paragraph, got %q", src)
+	}
+	// Walk the paragraph's inline children once. Accumulate text
+	// before / inside / after the Emphasis node; reject when the
+	// shape doesn't match.
+	var preBuf, emBuf, postBuf bytes.Buffer
 	emCount := 0
-	for _, s := range spans {
-		switch s.Span {
-		case "text":
+	for child := first.FirstChild(); child != nil; child = child.NextSibling() {
+		switch n := child.(type) {
+		case *ast.Text:
+			seg := n.Segment.Value(body)
 			if emCount == 0 {
-				preB.WriteString(s.Value)
+				preBuf.Write(seg)
 			} else {
-				postB.WriteString(s.Value)
+				postBuf.Write(seg)
 			}
-		case "break":
-			// A reflowed headline projects a soft/hard line break
-			// between text runs; render it as a space (matching the
-			// plain-text extractor) so wrapping the source line does
-			// not fail sync-messaging.
-			if emCount == 0 {
-				preB.WriteByte(' ')
-			} else {
-				postB.WriteByte(' ')
+		case *ast.Emphasis:
+			if n.Level != 1 {
+				return "", "", "", fmt.Errorf(
+					"headline emphasis must use single `*…*` (em), not double `**`")
 			}
-		case "emphasis":
 			emCount++
 			if emCount > 1 {
-				return "", "", "", errors.New(
+				return "", "", "", fmt.Errorf(
 					"expected exactly one `*…*` emphasis span, got more")
 			}
-			flat, ferr := flattenTextChildren(s.Children)
-			if ferr != nil {
-				return "", "", "", ferr
+			for t := n.FirstChild(); t != nil; t = t.NextSibling() {
+				tn, ok := t.(*ast.Text)
+				if !ok {
+					return "", "", "", fmt.Errorf(
+						"headline emphasis must contain plain text only")
+				}
+				emBuf.Write(tn.Segment.Value(body))
 			}
-			emB.WriteString(flat)
-		case "strong":
-			return "", "", "", errors.New(
-				"headline emphasis must use single `*…*` (em), not " +
-					"a `strong` span (double `**`)")
 		default:
 			return "", "", "", fmt.Errorf(
-				"unsupported inline span in headline: %q", s.Span)
+				"unsupported inline node in headline: %T", child)
 		}
 	}
 	if emCount == 0 {
-		return "", "", "", errors.New(
+		return "", "", "", fmt.Errorf(
 			"expected exactly one `*…*` emphasis span, got none")
 	}
-	if emB.Len() == 0 {
-		return "", "", "", errors.New("emphasis span is empty")
+	if emBuf.Len() == 0 {
+		return "", "", "", fmt.Errorf("emphasis span is empty")
 	}
-	return preB.String(), emB.String(), postB.String(), nil
-}
-
-// flattenTextChildren concatenates a span's children, requiring every
-// child to be a text leaf. The hero template's <em> renders inline
-// text only, so a nested emphasis, code, or link inside the headline
-// emphasis is rejected.
-func flattenTextChildren(children []headlineSpan) (string, error) {
-	var b strings.Builder
-	for _, c := range children {
-		switch c.Span {
-		case "text":
-			b.WriteString(c.Value)
-		case "break":
-			// A break inside the emphasized run (the emphasis wrapped
-			// across source lines) renders as a space, same as the
-			// top-level handling.
-			b.WriteByte(' ')
-		default:
-			return "", errors.New(
-				"headline emphasis must contain plain text only")
-		}
-	}
-	return b.String(), nil
+	return preBuf.String(), emBuf.String(), postBuf.String(), nil
 }
 
 // messagingDoc mirrors the shape `mdsmith extract messaging`
 // emits. The body-section fields land at the document root
-// (not under `frontmatter`); each prose section carries a `text`
-// field, while the headline carries an `inline` span list.
+// (not under `frontmatter`); each carries a `text` field that
+// holds the paragraph the H2 section contains.
 type messagingDoc struct {
 	Frontmatter struct {
 		Title   string `json:"title"`
 		Summary string `json:"summary"`
 	} `json:"frontmatter"`
-	Headline                    sectionInline `json:"headline"`
-	Eyebrow                     sectionText   `json:"eyebrow"`
-	Lead                        sectionText   `json:"lead"`
-	Tagline                     sectionText   `json:"tagline"`
-	VSCodeDescription           sectionText   `json:"vscode-description"`
-	VSCodeOverview              sectionText   `json:"vscode-overview"`
-	ClaudeCodeLSPDescription    sectionText   `json:"claude-code-lsp-description"`
-	ClaudeCodeSkillsDescription sectionText   `json:"claude-code-skills-description"`
-	ClaudeCodeAuditDescription  sectionText   `json:"claude-code-audit-description"`
+	Headline                    sectionCode `json:"headline"`
+	Eyebrow                     sectionText `json:"eyebrow"`
+	Lead                        sectionText `json:"lead"`
+	Tagline                     sectionText `json:"tagline"`
+	VSCodeDescription           sectionText `json:"vscode-description"`
+	VSCodeOverview              sectionText `json:"vscode-overview"`
+	ClaudeCodeLSPDescription    sectionText `json:"claude-code-lsp-description"`
+	ClaudeCodeSkillsDescription sectionText `json:"claude-code-skills-description"`
+	ClaudeCodeAuditDescription  sectionText `json:"claude-code-audit-description"`
 }
 
 type sectionText struct {
 	Text string `json:"text"`
 }
 
-type sectionInline struct {
-	Inline []headlineSpan `json:"inline"`
+type sectionCode struct {
+	Code string `json:"code"`
 }
 
 // Validate fails fast if any required field is empty. The

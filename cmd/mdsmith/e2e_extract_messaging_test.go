@@ -30,7 +30,7 @@ const messagingKindCfg = `kinds:
         - heading: null
         - heading: { regex: '^Headline$' }
           content:
-            - { kind: paragraph, projection: inline, required: true }
+            - { kind: code-block, required: true }
         - heading: { regex: '^Eyebrow$' }
           content:
             - { kind: paragraph, required: true }
@@ -73,7 +73,9 @@ const messagingFixture = "---\n" +
 	"\n" +
 	"## Headline\n" +
 	"\n" +
+	"```markdown\n" +
 	"Mark*down*, smithed.\n" +
+	"```\n" +
 	"\n" + `## Eyebrow
 
 Eyebrow text.
@@ -116,11 +118,11 @@ var expectedMessagingFrontmatter = []string{
 
 // expectedMessagingSections lists every top-level body-section
 // key the messaging kind must project (paragraph sections carry
-// a `text` field, the headline carries an `inline` span list —
-// the typed projection whose single `emphasis` span the release
-// tooling splits into pre/em/post). Adding a field requires
-// updating .mdsmith.yml, the real source file, this constant,
-// and the sync registry in one change.
+// a `text` field, the headline carries a `code` field — the
+// raw Markdown source whose single `*…*` emphasis span the
+// release tooling splits into pre/em/post). Adding a field
+// requires updating .mdsmith.yml, the real source file, this
+// constant, and the sync registry in one change.
 var expectedMessagingSections = []string{
 	"eyebrow",
 	"lead",
@@ -159,20 +161,12 @@ func TestE2E_Extract_Messaging(t *testing.T) {
 		assert.True(t, isString, "field %q is not a string: %T", key, v)
 		assert.NotEmpty(t, s, "field %q is empty", key)
 	}
-	// Headline projects as an inline-span list: the release tooling
-	// finds the single emphasis span and splits pre/em/post around
-	// it.
+	// Headline projects as a code block (raw Markdown source).
 	headline, ok := got["headline"].(map[string]any)
 	require.True(t, ok, "missing headline section")
-	spans, isList := headline["inline"].([]any)
-	require.True(t, isList, "headline.inline not a list: %T", headline["inline"])
-	var emCount int
-	for _, s := range spans {
-		if s.(map[string]any)["span"] == "emphasis" {
-			emCount++
-		}
-	}
-	assert.Equal(t, 1, emCount, "headline must carry exactly one emphasis span")
+	src, isString := headline["code"].(string)
+	assert.True(t, isString, "headline.code not a string: %T", headline["code"])
+	assert.Contains(t, src, "*", "headline source must keep the emphasis span")
 
 	for _, key := range expectedMessagingSections {
 		sec, present := got[key].(map[string]any)

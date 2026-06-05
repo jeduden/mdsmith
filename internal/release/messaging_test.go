@@ -21,23 +21,12 @@ func repoRoot(t *testing.T) string {
 	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
 }
 
-// canonicalHeadlineInline is the inline-span projection of
-// `Mark*down*, smithed.` — the shape `mdsmith extract` now emits for
-// the Headline paragraph.
-const canonicalHeadlineInline = `{ "inline": [
-    { "span": "text", "value": "Mark" },
-    { "span": "emphasis", "level": 1, "children": [
-      { "span": "text", "value": "down" }
-    ]},
-    { "span": "text", "value": ", smithed." }
-  ]}`
-
 const fullMessagingJSON = `{
   "frontmatter": {
     "title": "mdsmith product messaging",
     "summary": "Canonical product messaging."
   },
-  "headline": ` + canonicalHeadlineInline + `,
+  "headline": { "code": "Mark*down*, smithed." },
   "eyebrow": { "text": "Markdown as a single source of truth" },
   "lead": { "text": "Lead text." },
   "tagline": { "text": "Tagline text." },
@@ -97,7 +86,7 @@ func TestLoadMessaging_WhitespaceOnlyFieldFails(t *testing.T) {
 	// sections at the document root, not under `frontmatter`).
 	bad := `{
 		"frontmatter": {"title": "t", "summary": "s"},
-		"headline":  ` + canonicalHeadlineInline + `,
+		"headline":  {"code": "Mark*down*, smithed."},
 		"eyebrow":   {"text": "e"},
 		"lead":      {"text": "   \t\n"},
 		"tagline":   {"text": "tg"},
@@ -127,82 +116,63 @@ func TestLoadMessaging_ExtractorError(t *testing.T) {
 	assert.Contains(t, err.Error(), "boom")
 }
 
-// spans is a tiny constructor helper so the splitHeadlineSpans tests
-// build inline span lists without repeating the literal shape.
-func textSpan(v string) headlineSpan { return headlineSpan{Span: "text", Value: v} }
-
-func TestSplitHeadlineSpans_CanonicalShape(t *testing.T) {
-	pre, em, post, err := splitHeadlineSpans([]headlineSpan{
-		textSpan("Mark"),
-		{Span: "emphasis", Level: 1, Children: []headlineSpan{textSpan("down")}},
-		textSpan(", smithed."),
-	})
+func TestParseHeadlineEmphasis_CanonicalShape(t *testing.T) {
+	pre, em, post, err := parseHeadlineEmphasis("Mark*down*, smithed.")
 	require.NoError(t, err)
 	assert.Equal(t, "Mark", pre)
 	assert.Equal(t, "down", em)
 	assert.Equal(t, ", smithed.", post)
 }
 
-func TestSplitHeadlineSpans_NoEmphasisFails(t *testing.T) {
-	_, _, _, err := splitHeadlineSpans([]headlineSpan{textSpan("Markdown, smithed.")})
+func TestParseHeadlineEmphasis_NoEmphasisFails(t *testing.T) {
+	_, _, _, err := parseHeadlineEmphasis("Markdown, smithed.")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "exactly one")
 }
 
-func TestSplitHeadlineSpans_MultipleEmphasisFails(t *testing.T) {
-	// Two emphasis spans cannot map to a single <em> in the hero
-	// template; the walk must reject.
-	_, _, _, err := splitHeadlineSpans([]headlineSpan{
-		{Span: "emphasis", Level: 1, Children: []headlineSpan{textSpan("a")}},
-		{Span: "emphasis", Level: 1, Children: []headlineSpan{textSpan("b")}},
-	})
+func TestParseHeadlineEmphasis_MultipleEmphasisFails(t *testing.T) {
+	// Two `*…*` spans cannot map to a single `<em>` in the
+	// hero template; the parser must reject.
+	_, _, _, err := parseHeadlineEmphasis("Mark*down*, *smithed*.")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "exactly one")
 }
 
-func TestSplitHeadlineSpans_EmptySpanFails(t *testing.T) {
-	_, _, _, err := splitHeadlineSpans([]headlineSpan{
-		textSpan("Mark"),
-		{Span: "emphasis", Level: 1},
-		textSpan(", smithed."),
-	})
+func TestParseHeadlineEmphasis_EmptySpanFails(t *testing.T) {
+	_, _, _, err := parseHeadlineEmphasis("Mark**, smithed.")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "empty")
 }
 
-func TestSplitHeadlineSpans_StrongRejected(t *testing.T) {
-	// A strong span (level 2 emphasis) means <strong>, not <em>.
-	// The website hero template only knows the em form.
-	_, _, _, err := splitHeadlineSpans([]headlineSpan{
-		textSpan("Mark"),
-		{Span: "strong", Level: 2, Children: []headlineSpan{textSpan("down")}},
-		textSpan(", smithed."),
-	})
+func TestParseHeadlineEmphasis_StrongRejected(t *testing.T) {
+	// Double asterisks mean strong / <strong>, not <em>. The
+	// website hero template only knows the em form.
+	_, _, _, err := parseHeadlineEmphasis("Mark**down**, smithed.")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "strong")
+	assert.Contains(t, err.Error(), "double")
 }
 
-func TestSplitHeadlineSpans_UnsupportedTopLevelRejected(t *testing.T) {
-	// A code span at the top level is not text or emphasis; the
-	// headline split rejects it.
-	_, _, _, err := splitHeadlineSpans([]headlineSpan{
-		{Span: "emphasis", Level: 1, Children: []headlineSpan{textSpan("down")}},
-		{Span: "code", Value: "x"},
-	})
+func TestParseHeadlineEmphasis_NonParagraphRejected(t *testing.T) {
+	// A line that goldmark parses as a heading rather than a
+	// paragraph (a `#` prefix) fails the single-paragraph
+	// guard.
+	_, _, _, err := parseHeadlineEmphasis("# Mark*down*, smithed.")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "code")
+	assert.Contains(t, err.Error(), "single paragraph")
 }
 
-func TestSplitHeadlineSpans_NonTextEmphasisChildRejected(t *testing.T) {
-	// Inline code inside the emphasis span — the em flatten step
-	// rejects anything that is not a text leaf.
-	_, _, _, err := splitHeadlineSpans([]headlineSpan{
-		textSpan("Mark"),
-		{Span: "emphasis", Level: 1, Children: []headlineSpan{
-			textSpan("d"), {Span: "code", Value: "own"},
-		}},
-		textSpan(", smithed."),
-	})
+func TestParseHeadlineEmphasis_UnsupportedInlineRejected(t *testing.T) {
+	// A bare URL parses as an autolink — not Text or Emphasis,
+	// so the default case in the inline switch fires.
+	_, _, _, err := parseHeadlineEmphasis("Mark*down*, smithed. <https://x.test>")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported inline")
+}
+
+func TestParseHeadlineEmphasis_NestedInsideEmphasisRejected(t *testing.T) {
+	// Inline code inside the emphasis span (`*x`y`z*` parses as
+	// Emphasis containing Text + CodeSpan + Text) — the inner
+	// walk over the emphasis children rejects anything that
+	// isn't plain text.
+	_, _, _, err := parseHeadlineEmphasis("Mark*x`y`z*, smithed.")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "plain text only")
 }
@@ -218,35 +188,13 @@ func TestMessaging_Headline(t *testing.T) {
 			"website hero splits into pre/em/post")
 }
 
-func TestSplitHeadlineSpans_BreakRendersAsSpace(t *testing.T) {
-	// A reflowed headline projects `break` spans between text runs
-	// (and may carry one inside the emphasis). They render as spaces
-	// instead of failing the split, so wrapping the source line does
-	// not break sync-messaging.
-	pre, em, post, err := splitHeadlineSpans([]headlineSpan{
-		textSpan("Mark"),
-		{Span: "break"},
-		textSpan("smith"),
-		{Span: "emphasis", Level: 1, Children: []headlineSpan{
-			textSpan("ma"), {Span: "break"}, textSpan("gic"),
-		}},
-		textSpan(","),
-		{Span: "break"},
-		textSpan("fast."),
-	})
-	require.NoError(t, err)
-	assert.Equal(t, "Mark smith", pre)
-	assert.Equal(t, "ma gic", em)
-	assert.Equal(t, ", fast.", post)
-}
-
-func TestLoadMessaging_HeadlineError(t *testing.T) {
-	// headline.inline is non-empty but carries no emphasis span;
-	// the split surfaces an error and LoadMessaging wraps it with a
+func TestLoadMessaging_HeadlineParseError(t *testing.T) {
+	// headline.code is non-empty but has no `*…*` span; the
+	// parser surfaces an error and LoadMessaging wraps it with a
 	// "headline:" prefix.
 	bad := `{
 		"frontmatter": {"title": "t", "summary": "s"},
-		"headline":  {"inline": [{"span": "text", "value": "Markdown, smithed."}]},
+		"headline":  {"code": "Markdown, smithed."},
 		"eyebrow":   {"text": "e"},
 		"lead":      {"text": "l"},
 		"tagline":   {"text": "tg"},

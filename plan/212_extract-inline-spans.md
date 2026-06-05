@@ -1,7 +1,7 @@
 ---
 id: 212
 title: "`mdsmith extract` projects paragraph inline spans as data"
-status: "✅"
+status: "🔳"
 summary: >-
   Add a content-entry projection mode that emits a paragraph's
   inline spans (text, emphasis, strong, code, link) as a
@@ -70,6 +70,13 @@ the release side. Just a typed walk over data.
 
 ## Tasks
 
+> **Adoption deferred.** Task 5 and the `messaging.go`
+> acceptance criterion below are reverted from this PR:
+> `mdsmith-fixed-version` runs the pinned release binary, which
+> cannot parse `projection:` until plan-212 ships and the
+> baseline is bumped. Re-apply after the pin bump — see
+> [the doc](../docs/development/adopt-new-directive-syntax.md).
+
 1. [x] **Content-projection field on schema.** Add a `projection:`
    key to schema content entries. Allowed values: `text` (the
    current default), `code` (for code blocks, already
@@ -102,7 +109,7 @@ the release side. Just a typed walk over data.
    sibling keys; declare and document the default keys
    (`text` and `inline`) so a schema author can resolve a
    collision via `bind:`.
-5. [x] **Adopt in messaging.** Switch
+5. [ ] **Adopt in messaging.** Switch
    [`docs/brand/messaging.md`](../docs/brand/messaging.md)'s
    `## Headline` from a code block to a paragraph with
    `projection: inline`. Drop the
@@ -137,11 +144,12 @@ the release side. Just a typed walk over data.
 - [x] Nested inline (``**`code`**``, `[**bold**](url)`, etc.)
   round-trips through the projection without error; the
   consumer walks one uniform shape.
-- [x] `internal/release/messaging.go` no longer imports
+- [ ] `internal/release/messaging.go` no longer imports
   `pkg/markdown` or parses Markdown itself. The headline parsing
   helper is deleted; the release tool reads `headline.inline`
   directly. (`syncdocs.go`'s unrelated `pkg/markdown` use for
-  Hugo doc reconciliation is out of scope.)
+  Hugo doc reconciliation is out of scope.) *(Deferred with
+  task 5.)*
 - [x] `mdsmith extract` rejects an unsupported inline node
   (raw HTML, image, custom) when the schema asks for `inline`.
 - [x] The mapping table is documented in the extract

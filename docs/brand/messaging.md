@@ -17,14 +17,17 @@ Edit a section here, then run `mdsmith-release sync-messaging`
 to propagate the change to every tracked surface. CI runs
 `sync-messaging --check` and fails the build on drift.
 
-The Headline keeps exactly one `*emphasized*` span (single
-asterisks, not `**`). The hero template splits the line on that
-span, and `sync-messaging --check` fails if the span is missing
-or doubled.
-
 ## Headline
 
+The website hero template renders the headline as
+`<h1>{pre}<em>{em}</em>{post}</h1>`. The raw Markdown source
+lives in the code block below; `mdsmith-release sync-messaging`
+parses the single emphasis span (`*…*`) to derive the pre / em
+/ post split.
+
+```markdown
 Mark*down*, smithed.
+```
 
 ## Eyebrow
 
