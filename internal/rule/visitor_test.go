@@ -132,3 +132,46 @@ func (nilVisitorRule) Name() string                            { return "nil-vis
 func (nilVisitorRule) Category() string                        { return "test" }
 func (r nilVisitorRule) Check(f *lint.File) []lint.Diagnostic  { return WalkVisitor(r, f) }
 func (nilVisitorRule) NewNodeVisitor(_ *lint.File) NodeVisitor { return nil }
+
+// everyKindVisitor declares no kinds, so NewKindSet yields a nil set and
+// WantsKind routes every node to it — the documented "a nil or empty
+// slice means every kind" path. It records each kind it is shown.
+type everyKindVisitor struct {
+	seen map[ast.NodeKind]int
+}
+
+func (v *everyKindVisitor) Kinds() []ast.NodeKind { return nil }
+
+func (v *everyKindVisitor) VisitNode(n ast.Node, entering bool, _ *lint.File) []lint.Diagnostic {
+	if v.seen == nil {
+		v.seen = map[ast.NodeKind]int{}
+	}
+	if entering {
+		v.seen[n.Kind()]++
+	}
+	return nil
+}
+
+type everyKindRule struct{ v *everyKindVisitor }
+
+func (everyKindRule) ID() string                                { return "MDSV03" }
+func (everyKindRule) Name() string                              { return "every-kind-stub" }
+func (everyKindRule) Category() string                          { return "test" }
+func (r everyKindRule) Check(f *lint.File) []lint.Diagnostic    { return WalkVisitor(r, f) }
+func (r everyKindRule) NewNodeVisitor(_ *lint.File) NodeVisitor { return r.v }
+
+// TestWalkVisitor_NoKindsWantsEveryNode pins the documented "wants every
+// kind" path: a visitor that declares no kinds makes NewKindSet return a
+// nil set, which WantsKind reads as every node. The visitor must then be
+// shown non-heading kinds too, so both branch defaults are exercised.
+func TestWalkVisitor_NoKindsWantsEveryNode(t *testing.T) {
+	f, err := lint.NewFile("t.md", []byte("# A\n\ntext\n"))
+	require.NoError(t, err)
+
+	v := &everyKindVisitor{}
+	_ = WalkVisitor(everyKindRule{v: v}, f)
+
+	require.NotEmpty(t, v.seen)
+	assert.Greater(t, v.seen[ast.KindParagraph], 0,
+		"a no-kinds visitor must be shown every node kind, including paragraphs")
+}
