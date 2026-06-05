@@ -107,26 +107,24 @@ prints:
 
 ### Fix preview (ChangeAnnotation)
 
-Set `mdsmith.previewFix: true` to open Refactor Preview before
-any fix lands. Both capabilities below must appear in
-`initialize`:
+Set `mdsmith.previewFix: true` to preview the
+`source.fixAll.mdsmith` edit before it writes. That action
+is what fix-on-save runs. The preview is scoped to it:
+quick fixes apply right away. Both capabilities below must
+appear in `initialize`:
 
 - `workspace.workspaceEdit.documentChanges`
 - `workspace.workspaceEdit.changeAnnotationSupport`
 
-When both are present, edits use `AnnotatedTextEdit`
-(LSP 3.16) with `needsConfirmation: true`. The
-`edits` slice carries one entry per line-aligned
-diff hunk, not one whole-file replacement (which
-Refactor Preview would render as "old file → new
-file" with no visible delta). All hunks share an
-`annotationId`.
-
-Each quick fix carries the id
-`mdsmith-fix-<rule-name>`. The fix-all action uses
-`mdsmith-fix-all`. Drop either capability and the
-server emits the legacy `changes` map. A warning
-goes to `window/logMessage` once per session.
+When both are present, the `source.fixAll.mdsmith` edit
+uses `AnnotatedTextEdit` (LSP 3.16) with
+`needsConfirmation: true`. The `edits` slice carries one
+entry per line-aligned diff hunk, not one whole-file
+replacement (which Refactor Preview would render as "old
+file → new file" with no visible delta). All hunks share
+the `mdsmith-fix-all` `annotationId`. Drop either
+capability and the server emits the legacy `changes` map.
+A warning goes to `window/logMessage` once per session.
 
 ## Symbol navigation
 

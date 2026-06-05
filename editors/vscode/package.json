@@ -162,7 +162,7 @@
         "mdsmith.previewFix": {
           "type": "boolean",
           "default": false,
-          "description": "Show the diff before applying a fix. When on, quick fixes and `source.fixAll.mdsmith` actions (including fix-on-save wired through `editor.codeActionsOnSave`) route through VS Code's Refactor Preview pane so you can inspect and confirm the diff before it is written. Requires a client that advertises both documentChanges and changeAnnotationSupport (VS Code 1.85+). Leave off to apply immediately."
+          "description": "Show the diff before applying fix-on-save. When on, the `source.fixAll.mdsmith` action (including fix-on-save wired through `editor.codeActionsOnSave`) routes through VS Code's Refactor Preview pane so you can inspect and confirm the diff before it is written. Interactive lightbulb quick fixes always apply immediately — use VS Code's built-in lightbulb Preview (the chevron / Ctrl+Enter) to preview a single fix. Requires a client that advertises both documentChanges and changeAnnotationSupport (VS Code 1.85+). Leave off to apply fix-on-save immediately."
         },
         "mdsmith.fixOnSave": {
           "type": "boolean",

@@ -14,6 +14,19 @@ depends-on: []
 ---
 # LSP fix preview via ChangeAnnotation
 
+## Revision
+
+This was later narrowed. Only the fix-all action
+(`source.fixAll.mdsmith`, run on save) asks for a preview
+now. Lightbulb quick fixes apply right away. A quick fix is
+the one fix you just chose, so there is nothing to confirm.
+
+A forced preview hid the edit in a pane whose Apply button
+is easy to miss, and a second click hit the open preview.
+The lightbulb still has its own Preview (the chevron, or
+Ctrl+Enter). See
+[`internal/lsp/server.go`](../internal/lsp/server.go).
+
 ## Goal
 
 Let the user opt into a preview pane before any

@@ -1361,6 +1361,17 @@ func (s *Server) useAnnotatedEdits() bool {
 // per-diagnostic actions, since each one would have produced the
 // same whole-file edit anyway. This keeps the latency budget bounded
 // even on files with many diagnostics from the same rule.
+//
+// mdsmith.previewFix's Refactor Preview is scoped to the
+// source.fixAll.mdsmith action only. Interactive lightbulb quick fixes
+// always apply immediately: the user picked one specific fix, so a
+// forced confirmation preview is friction — and worse, it stranded the
+// edit in a Refactor Preview pane whose Apply control is easy to miss,
+// so a second lightbulb click collided with the still-pending preview
+// ("Another refactoring is being previewed"). Preview belongs on the
+// auto-applied bulk edit (fix-on-save wires source.fixAll.mdsmith
+// through editor.codeActionsOnSave); VS Code's lightbulb still offers a
+// per-action "Preview" (the chevron / Ctrl+Enter) for a single fix.
 func (s *Server) computeCodeActions(
 	p codeActionParams, doc *document, cfg *config.Config, root string,
 ) []codeAction {
@@ -1368,14 +1379,11 @@ func (s *Server) computeCodeActions(
 	wantFixAll := wantsKind(p.Context.Only, kindSourceFixAll)
 
 	actions := make([]codeAction, 0, len(p.Context.Diagnostics)+1)
-	if wantQuickFix || wantFixAll {
-		annotated := s.useAnnotatedEdits()
-		if wantQuickFix {
-			actions = s.appendQuickFixActions(actions, p, doc, cfg, root, annotated)
-		}
-		if wantFixAll {
-			actions = s.appendFixAllAction(actions, p, doc, cfg, root, annotated)
-		}
+	if wantQuickFix {
+		actions = s.appendQuickFixActions(actions, p, doc, cfg, root)
+	}
+	if wantFixAll {
+		actions = s.appendFixAllAction(actions, p, doc, cfg, root, s.useAnnotatedEdits())
 	}
 	return actions
 }
@@ -1385,10 +1393,14 @@ func (s *Server) computeCodeActions(
 // fix.SourceWithRules call fires per distinct rule regardless of how many
 // diagnostics it covers. The same *workspaceEdit is shared across all
 // actions for the same rule so the fix only runs once even on noisy files.
+//
+// The edit is always the immediate (legacy changes-map) form, so VS Code
+// applies the quick fix the moment the user picks it — mdsmith.previewFix
+// does not route interactive quick fixes through the Refactor Preview (see
+// computeCodeActions for why).
 func (s *Server) appendQuickFixActions(
 	actions []codeAction,
 	p codeActionParams, doc *document, cfg *config.Config, root string,
-	annotated bool,
 ) []codeAction {
 	ruleEdits := make(map[string]*workspaceEdit)
 	for _, d := range p.Context.Diagnostics {
@@ -1400,8 +1412,7 @@ func (s *Server) appendQuickFixActions(
 		if !seen {
 			fixed := s.quickFixBytesFor(rule, doc, cfg, root)
 			if fixed != nil {
-				edit = buildFileEdit(p.TextDocument.URI, doc.text, fixed,
-					annotated, "mdsmith-fix-"+rule, quickFixTitle(s.rules, rule))
+				edit = fullFileEdit(p.TextDocument.URI, doc.text, fixed)
 			}
 			ruleEdits[rule] = edit
 		}

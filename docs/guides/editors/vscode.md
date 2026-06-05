@@ -51,12 +51,14 @@ clicked.
 Each save then fixes trailing whitespace, heading style, code
 fences, bare URLs, list indentation, and table alignment.
 
-**Preview before applying.** Enable `mdsmith.previewFix` and
-quick fixes and fix-on-save route through VS Code's Refactor
-Preview pane, so you see the diff and confirm it before it is
-written. The preview rides the code-action path above (the
-lightbulb and `editor.codeActionsOnSave`); that path carries
-the confirmation into the save.
+**Preview fix-on-save.** Enable `mdsmith.previewFix` and
+fix-on-save routes through VS Code's Refactor Preview pane, so
+you see the diff and confirm it before `source.fixAll.mdsmith`
+writes it on save. Interactive lightbulb quick fixes always
+apply immediately — they are the one fix you just chose, so
+there is nothing to confirm. To preview a single quick fix,
+use VS Code's built-in lightbulb Preview (the chevron, or
+Ctrl+Enter).
 
 **Hover for help.** Hover a diagnostic for the rule's one-line
 summary plus a link that opens its full documentation offline:
@@ -138,13 +140,13 @@ preferences go in your user settings. Changing any setting
 takes effect on the next document event, with no window
 reload.
 
-| Setting                | Default   | Purpose                                                                            |
-| ---------------------- | --------- | ---------------------------------------------------------------------------------- |
-| `mdsmith.run`          | `onType`  | When to lint: `onType` (default), `onSave`, or `off` (off stops automatic linting) |
-| `mdsmith.previewFix`   | `false`   | Show the diff (Refactor Preview) before applying a fix (quick fix or fix-on-save)  |
-| `mdsmith.config`       | `""`      | Override the `.mdsmith.yml` path (absolute or workspace)                           |
-| `mdsmith.path`         | `mdsmith` | Pin a binary; the default runs the bundled per-platform one                        |
-| `mdsmith.trace.server` | `off`     | LSP trace verbosity: `off`, `messages`, or `verbose`                               |
+| Setting                | Default   | Purpose                                                                                   |
+| ---------------------- | --------- | ----------------------------------------------------------------------------------------- |
+| `mdsmith.run`          | `onType`  | When to lint: `onType` (default), `onSave`, or `off` (off stops automatic linting)        |
+| `mdsmith.previewFix`   | `false`   | Show the diff (Refactor Preview) before fix-on-save writes; quick fixes apply immediately |
+| `mdsmith.config`       | `""`      | Override the `.mdsmith.yml` path (absolute or workspace)                                  |
+| `mdsmith.path`         | `mdsmith` | Pin a binary; the default runs the bundled per-platform one                               |
+| `mdsmith.trace.server` | `off`     | LSP trace verbosity: `off`, `messages`, or `verbose`                                      |
 
 `mdsmith.run` defaults to `onType`, so diagnostics update live
 as you type; `onSave` defers them to save, and `off` stops
@@ -155,7 +157,9 @@ Fix-on-save is configured through VS Code's native
 not through an mdsmith setting. The former `mdsmith.fixOnSave`
 toggle is now a deprecated no-op. Fix-on-save runs independently
 of `mdsmith.run`, and `mdsmith.previewFix` decides whether each
-save shows the diff before writing.
+save shows the diff before writing. `mdsmith.previewFix` governs
+fix-on-save only; interactive lightbulb quick fixes always apply
+immediately (use the lightbulb's own Preview to inspect one).
 
 ## Troubleshooting
 

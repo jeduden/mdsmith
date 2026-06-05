@@ -2511,8 +2511,10 @@ func newPreviewServer(t *testing.T, docChanges, changeAnnotSupport bool) *Server
 }
 
 // TestPreviewFixLegacyFallbackWhenCapsMissing verifies that when
-// previewFix is on but the client lacks capability, edits stay in the
-// legacy changes form (not documentChanges).
+// previewFix is on but the client lacks capability, the
+// source.fixAll.mdsmith edit stays in the legacy changes form (not
+// documentChanges). Interactive quick fixes are always legacy and so
+// can't exercise the capability gate; fix-all is the annotated path.
 func TestPreviewFixLegacyFallbackWhenCapsMissing(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -2531,11 +2533,7 @@ func TestPreviewFixLegacyFallbackWhenCapsMissing(t *testing.T) {
 			p := codeActionParams{
 				TextDocument: textDocumentIdentifier{URI: "file:///x.md"},
 				Context: codeActionContext{
-					Diagnostics: []Diagnostic{{
-						Code: "MDS006",
-						Data: &diagnosticData{RuleName: "no-trailing-spaces"},
-					}},
-					Only: []string{kindQuickFix},
+					Only: []string{kindSourceFixAll},
 				},
 			}
 			actions := s.computeCodeActions(p, doc, cfg, "")
@@ -2587,11 +2585,7 @@ func TestPreviewFixFallbackLogsWarningOnce(t *testing.T) {
 			p := codeActionParams{
 				TextDocument: textDocumentIdentifier{URI: "file:///x.md"},
 				Context: codeActionContext{
-					Diagnostics: []Diagnostic{{
-						Code: "MDS006",
-						Data: &diagnosticData{RuleName: "no-trailing-spaces"},
-					}},
-					Only: []string{kindQuickFix},
+					Only: []string{kindSourceFixAll},
 				},
 			}
 
@@ -2640,10 +2634,15 @@ func TestPreviewFixAnnotatedFixAllAction(t *testing.T) {
 	assert.True(t, ann.NeedsConfirmation)
 }
 
-// TestPreviewFixAnnotatedPerRuleQuickFix verifies that per-rule quick
-// fixes carry annotations with IDs mdsmith-fix-<rule> when the
-// annotated path is active.
-func TestPreviewFixAnnotatedPerRuleQuickFix(t *testing.T) {
+// TestPreviewFixQuickFixAppliesImmediately verifies that interactive
+// lightbulb quick fixes always apply immediately — even with previewFix
+// on and the client advertising changeAnnotationSupport. The previewFix
+// Refactor Preview is scoped to source.fixAll.mdsmith (fix-on-save);
+// forcing it on a single, explicitly-chosen quick fix stranded the edit
+// in a preview pane whose Apply control is easy to miss, so a second
+// lightbulb click collided with the pending preview ("Another
+// refactoring is being previewed").
+func TestPreviewFixQuickFixAppliesImmediately(t *testing.T) {
 	t.Parallel()
 	s := newPreviewServer(t, true, true)
 	cfg := config.Merge(config.Defaults(), nil)
@@ -2662,12 +2661,58 @@ func TestPreviewFixAnnotatedPerRuleQuickFix(t *testing.T) {
 	require.NotEmpty(t, actions)
 	edit := actions[0].Edit
 	require.NotNil(t, edit)
-	assert.Empty(t, edit.Changes)
-	require.Len(t, edit.DocumentChanges, 1)
-	require.Len(t, edit.DocumentChanges[0].Edits, 1)
-	wantID := "mdsmith-fix-no-trailing-spaces"
-	assert.Equal(t, wantID, edit.DocumentChanges[0].Edits[0].AnnotationID)
-	ann, ok := edit.ChangeAnnotations[wantID]
+	// Legacy changes form => VS Code applies it directly, no preview.
+	assert.NotEmpty(t, edit.Changes, "quick fix must use the immediate (legacy) edit form")
+	assert.Empty(t, edit.DocumentChanges, "quick fix must not request a Refactor Preview")
+	assert.Empty(t, edit.ChangeAnnotations, "quick fix must carry no needsConfirmation annotation")
+}
+
+// TestPreviewFixLightbulbScopesPreviewToFixAll models the manual
+// lightbulb request (no Only filter) with previewFix on. In a single
+// response the per-rule quick fix must be immediate (legacy changes
+// form, no annotation) while the source.fixAll.mdsmith action carries
+// the needsConfirmation preview. This is the exact interaction that
+// regressed: a forced preview on the quick fix stranded it in a pane
+// whose Apply control is easy to miss, so retrying collided with the
+// pending preview.
+func TestPreviewFixLightbulbScopesPreviewToFixAll(t *testing.T) {
+	t.Parallel()
+	s := newPreviewServer(t, true, true)
+	cfg := config.Merge(config.Defaults(), nil)
+	doc := &document{path: "x.md", text: []byte("# Hi\n\ndirty   \n")}
+	p := codeActionParams{
+		TextDocument: textDocumentIdentifier{URI: "file:///x.md"},
+		Context: codeActionContext{
+			// No Only filter: the lightbulb asks for every kind.
+			Diagnostics: []Diagnostic{{
+				Code: "MDS006",
+				Data: &diagnosticData{RuleName: "no-trailing-spaces"},
+			}},
+		},
+	}
+	actions := s.computeCodeActions(p, doc, cfg, "")
+
+	var quickFix, fixAll *codeAction
+	for i := range actions {
+		switch actions[i].Kind {
+		case kindQuickFix:
+			quickFix = &actions[i]
+		case kindSourceFixAll:
+			fixAll = &actions[i]
+		}
+	}
+	require.NotNil(t, quickFix, "lightbulb must offer the per-rule quick fix")
+	require.NotNil(t, fixAll, "lightbulb must offer the fix-all action")
+
+	// Quick fix: immediate (legacy changes form), no preview.
+	assert.NotEmpty(t, quickFix.Edit.Changes, "quick fix must apply immediately")
+	assert.Empty(t, quickFix.Edit.DocumentChanges)
+	assert.Empty(t, quickFix.Edit.ChangeAnnotations)
+
+	// Fix-all: previewed (annotated, needsConfirmation).
+	assert.Empty(t, fixAll.Edit.Changes)
+	require.NotEmpty(t, fixAll.Edit.DocumentChanges)
+	ann, ok := fixAll.Edit.ChangeAnnotations["mdsmith-fix-all"]
 	require.True(t, ok)
 	assert.True(t, ann.NeedsConfirmation)
 }
@@ -2679,38 +2724,21 @@ func TestPreviewFixAnnotatedPerRuleQuickFix(t *testing.T) {
 // "old file → new file" with no visible delta and the whole document
 // flattened into the lower preview pane's single-line label.
 //
-// Setup: 12 unchanged lines bracketing two distant trailing-whitespace
-// lines (1 and 10). The per-rule quickfix path runs only
-// no-trailing-spaces, so the only diff is on those two lines and the
-// hunk count check isn't muddied by other auto-fixes.
+// The annotated path is now reached only through source.fixAll.mdsmith
+// (interactive quick fixes apply immediately). Setup: clean markdown
+// except two distant trailing-whitespace lines, so the fix-all diff is
+// just those two spots and the hunk count check isn't muddied by other
+// auto-fixes.
 func TestPreviewFixAnnotatedHunksNotWholeFile(t *testing.T) {
 	t.Parallel()
 	s := newPreviewServer(t, true, true)
 	cfg := config.Merge(config.Defaults(), nil)
-	lines := []string{
-		"# Heading",
-		"intro line   ", // trailing spaces, line index 1
-		"",
-		"para a",
-		"para b",
-		"para c",
-		"",
-		"para d",
-		"para e",
-		"",
-		"closing line   ", // trailing spaces, line index 10
-		"",
-	}
-	src := []byte(strings.Join(lines, "\n") + "\n")
+	src := []byte("# Heading\n\nintro line   \n\npara a\n\npara b\n\nclosing line   \n")
 	doc := &document{path: "x.md", text: src}
 	p := codeActionParams{
 		TextDocument: textDocumentIdentifier{URI: "file:///x.md"},
 		Context: codeActionContext{
-			Diagnostics: []Diagnostic{{
-				Code: "MDS006",
-				Data: &diagnosticData{RuleName: "no-trailing-spaces"},
-			}},
-			Only: []string{kindQuickFix},
+			Only: []string{kindSourceFixAll},
 		},
 	}
 	actions := s.computeCodeActions(p, doc, cfg, "")
@@ -2725,27 +2753,30 @@ func TestPreviewFixAnnotatedHunksNotWholeFile(t *testing.T) {
 		"preview path must emit per-hunk edits, not a whole-file replacement")
 
 	// No single edit may span the whole document.
+	lineCount := bytes.Count(src, []byte("\n")) + 1
 	for i, e := range edits {
 		span := e.Range.End.Line - e.Range.Start.Line
-		assert.Lessf(t, span, len(lines)-1,
+		assert.Lessf(t, span, lineCount-1,
 			"edit %d spans %d lines [%d..%d]; "+
 				"preview path must emit per-hunk edits, "+
 				"not a whole-file replacement",
 			i, span, e.Range.Start.Line, e.Range.End.Line)
 	}
 
-	// All edits must share the same annotation id so the preview
+	// All edits must share the fix-all annotation id so the preview
 	// pane groups them under one entry.
 	for _, e := range edits {
-		assert.Equal(t, "mdsmith-fix-no-trailing-spaces", e.AnnotationID)
+		assert.Equal(t, "mdsmith-fix-all", e.AnnotationID)
 	}
 
-	// Applying the edits must yield the same bytes the per-rule
-	// fix pipeline would have written.
+	// Applying the edits must yield the same bytes the fix-all
+	// pipeline would have written.
 	got := applyAnnotatedEdits(t, src, edits)
-	want := s.quickFixBytesFor("no-trailing-spaces", doc, cfg, "")
-	require.NotNil(t, want)
-	assert.Equal(t, string(want), string(got))
+	sess, _ := s.currentSession()
+	require.NotNil(t, sess)
+	res, err := sess.Fix(workspaceRelative("", doc.path), src)
+	require.NoError(t, err)
+	assert.Equal(t, res.Source, string(got))
 }
 
 // TestAnnotatedHunkEdits covers annotatedHunkEdits directly so the
