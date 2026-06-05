@@ -183,6 +183,7 @@ func TestCheckRules_VisitorFreshPerFile(t *testing.T) {
 var migratedVisitorRules = []struct {
 	id, name string
 }{
+	{"MDS003", "heading-increment"},
 	{"MDS005", "no-duplicate-headings"},
 }
 

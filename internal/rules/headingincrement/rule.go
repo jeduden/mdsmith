@@ -30,43 +30,57 @@ func (r *Rule) Name() string { return "heading-increment" }
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "heading" }
 
-// Check implements rule.Rule.
+// Check implements rule.Rule. It delegates to the shared walk so a
+// direct caller (the LSP, unit tests) sees the same node stream the
+// engine's multiplexed dispatch feeds the visitor.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	return rule.WalkVisitor(r, f)
+}
+
+// NewNodeVisitor implements rule.NodeVisitorRule. The visitor carries
+// the running prevLevel across the walk's Heading nodes, so the engine
+// can fold this rule's traversal into the one shared ast.Walk. A fresh
+// visitor per file resets prevLevel to 0 for each document.
+func (r *Rule) NewNodeVisitor(_ *lint.File) rule.NodeVisitor {
+	return &visitor{rule: r}
+}
+
+// visitor is the per-file worker: prevLevel tracks the most recent
+// heading level seen so a jump of more than one level is flagged.
+type visitor struct {
+	rule      *Rule
+	prevLevel int
+}
+
+// Kinds implements rule.NodeVisitor: only Heading nodes matter.
+func (v *visitor) Kinds() []ast.NodeKind { return []ast.NodeKind{ast.KindHeading} }
+
+// VisitNode implements rule.NodeVisitor. It mirrors the original
+// ast.Walk callback exactly: placeholder headings skip the increment
+// diagnostic but still update prevLevel so subsequent headings track
+// correctly.
+func (v *visitor) VisitNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
+	if !entering {
+		return nil
+	}
+	heading, ok := n.(*ast.Heading)
+	if !ok {
+		return nil
+	}
+
+	r := v.rule
+	level := heading.Level
+
+	// Check if this heading's text matches a configured placeholder.
+	// Placeholder headings skip the increment diagnostic but still
+	// update prevLevel so subsequent headings track correctly.
+	isPlaceholder := len(r.Placeholders) > 0 &&
+		placeholders.ContainsBodyToken(astutil.HeadingText(heading, f.Source), r.Placeholders)
+
 	var diags []lint.Diagnostic
-	prevLevel := 0
-
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		heading, ok := n.(*ast.Heading)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
-
-		level := heading.Level
-
-		// Check if this heading's text matches a configured placeholder.
-		// Placeholder headings skip the increment diagnostic but still
-		// update prevLevel so subsequent headings track correctly.
-		isPlaceholder := len(r.Placeholders) > 0 &&
-			placeholders.ContainsBodyToken(astutil.HeadingText(heading, f.Source), r.Placeholders)
-
-		if prevLevel == 0 {
-			// First heading: should be h1
-			if level > 1 && !isPlaceholder {
-				line := astutil.HeadingLine(heading, f)
-				diags = append(diags, lint.Diagnostic{
-					File:     f.Path,
-					Line:     line,
-					Column:   1,
-					RuleID:   r.ID(),
-					RuleName: r.Name(),
-					Severity: lint.Warning,
-					Message:  "first heading level should be 1, got " + strconv.Itoa(level),
-				})
-			}
-		} else if level > prevLevel+1 && !isPlaceholder {
+	if v.prevLevel == 0 {
+		// First heading: should be h1
+		if level > 1 && !isPlaceholder {
 			line := astutil.HeadingLine(heading, f)
 			diags = append(diags, lint.Diagnostic{
 				File:     f.Path,
@@ -75,18 +89,29 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 				RuleID:   r.ID(),
 				RuleName: r.Name(),
 				Severity: lint.Warning,
-				Message: "heading level incremented from " + strconv.Itoa(prevLevel) +
-					" to " + strconv.Itoa(level) +
-					" (expected " + strconv.Itoa(prevLevel+1) + ")",
+				Message:  "first heading level should be 1, got " + strconv.Itoa(level),
 			})
 		}
+	} else if level > v.prevLevel+1 && !isPlaceholder {
+		line := astutil.HeadingLine(heading, f)
+		diags = append(diags, lint.Diagnostic{
+			File:     f.Path,
+			Line:     line,
+			Column:   1,
+			RuleID:   r.ID(),
+			RuleName: r.Name(),
+			Severity: lint.Warning,
+			Message: "heading level incremented from " + strconv.Itoa(v.prevLevel) +
+				" to " + strconv.Itoa(level) +
+				" (expected " + strconv.Itoa(v.prevLevel+1) + ")",
+		})
+	}
 
-		prevLevel = level
-		return ast.WalkContinue, nil
-	})
-
+	v.prevLevel = level
 	return diags
 }
+
+var _ rule.NodeVisitorRule = (*Rule)(nil)
 
 // ApplySettings implements rule.Configurable.
 func (r *Rule) ApplySettings(s map[string]any) error {
