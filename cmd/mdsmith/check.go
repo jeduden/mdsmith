@@ -34,6 +34,7 @@ func runCheck(args []string) int {
 	if code >= 0 {
 		return code
 	}
+	tuneGCForBatch()
 	if hasStdin {
 		return checkStdin(opts)
 	}

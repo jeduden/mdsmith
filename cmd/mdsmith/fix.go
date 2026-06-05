@@ -25,6 +25,7 @@ func runFix(args []string) int {
 	if code >= 0 {
 		return code
 	}
+	tuneGCForBatch()
 	if hasStdin {
 		fmt.Fprintf(os.Stderr, "mdsmith: cannot fix stdin in place\n")
 		return 2
