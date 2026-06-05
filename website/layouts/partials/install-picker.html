@@ -26,7 +26,13 @@
   </div>
   <div class="install-list">
     {{- range $channels }}
-    <div class="install-row" data-platforms="{{ delimit .platforms " " }}">
+    {{- /* command-windows (optional, hyphenated key) is a concrete
+           Windows line for channels whose default command carries an
+           `<os>-<arch>` placeholder Windows cannot use; the filter JS
+           in baseof.html swaps to data-cmd-windows when the Windows
+           chip is active and back to data-cmd-default otherwise. */ -}}
+    {{- $cw := index . "command-windows" -}}
+    <div class="install-row" data-platforms="{{ delimit .platforms " " }}" data-cmd-default="{{ .command }}"{{ with $cw }} data-cmd-windows="{{ . }}"{{ end }}>
       <a class="install-label" href="{{ .url }}" rel="noopener">{{ .title }}</a>
       <code class="install-cmd"><span class="prompt">$</span> <span class="cmd">{{ .command }}</span></code>
       <button class="install-copy" type="button" aria-label="Copy {{ .title }} install command" data-copy="{{ .command }}">copy</button>

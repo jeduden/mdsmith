@@ -7,6 +7,7 @@ summary: >-
 mechanism: push
 artifact: cli
 command: curl -LO https://github.com/jeduden/mdsmith/releases/latest/download/mdsmith-<os>-<arch>
+command-windows: Invoke-WebRequest https://github.com/jeduden/mdsmith/releases/latest/download/mdsmith-windows-amd64.exe -OutFile mdsmith.exe
 audience: Air-gapped hosts and direct binary control
 platforms: [linux, macos, windows]
 registry: github.com/jeduden/mdsmith/releases

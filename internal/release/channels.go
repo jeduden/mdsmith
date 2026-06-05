@@ -32,15 +32,22 @@ const ChannelsDataFile = "website/data/channels.yaml"
 // The yaml tags define the website/data/channels.yaml schema the
 // install-picker partial consumes.
 type Channel struct {
-	Title     string   `yaml:"title"`
-	Summary   string   `yaml:"summary"`
-	Mechanism string   `yaml:"mechanism"`
-	Artifact  string   `yaml:"artifact"`
-	Command   string   `yaml:"command"`
-	Audience  string   `yaml:"audience"`
-	Platforms []string `yaml:"platforms"`
-	URL       string   `yaml:"url"`
-	Weight    int      `yaml:"weight"`
+	Title     string `yaml:"title"`
+	Summary   string `yaml:"summary"`
+	Mechanism string `yaml:"mechanism"`
+	Artifact  string `yaml:"artifact"`
+	Command   string `yaml:"command"`
+	// CommandWindows is an optional Windows-specific install
+	// command. Windows ships a single `.exe` asset, so a generic
+	// `<os>-<arch>` `command` placeholder is not runnable there;
+	// when set, the install picker shows this concrete line under
+	// the Windows filter. Omitted from the data file when empty
+	// (every channel but the GitHub release today).
+	CommandWindows string   `yaml:"command-windows,omitempty"`
+	Audience       string   `yaml:"audience"`
+	Platforms      []string `yaml:"platforms"`
+	URL            string   `yaml:"url"`
+	Weight         int      `yaml:"weight"`
 }
 
 // channelDoc mirrors the `frontmatter` object that
@@ -48,15 +55,16 @@ type Channel struct {
 // frontmatter feeds the picker; the body is documentation.
 type channelDoc struct {
 	Frontmatter struct {
-		Title      string   `json:"title"`
-		Summary    string   `json:"summary"`
-		Mechanism  string   `json:"mechanism"`
-		Artifact   string   `json:"artifact"`
-		Command    string   `json:"command"`
-		Audience   string   `json:"audience"`
-		Platforms  []string `json:"platforms"`
-		ChannelURL string   `json:"channelurl"`
-		Weight     int      `json:"weight"`
+		Title          string   `json:"title"`
+		Summary        string   `json:"summary"`
+		Mechanism      string   `json:"mechanism"`
+		Artifact       string   `json:"artifact"`
+		Command        string   `json:"command"`
+		CommandWindows string   `json:"command-windows"`
+		Audience       string   `json:"audience"`
+		Platforms      []string `json:"platforms"`
+		ChannelURL     string   `json:"channelurl"`
+		Weight         int      `json:"weight"`
 	} `json:"frontmatter"`
 }
 
@@ -180,15 +188,16 @@ func LoadChannels(root string) ([]Channel, error) {
 		}
 		f := doc.Frontmatter
 		ch := Channel{
-			Title:     f.Title,
-			Summary:   f.Summary,
-			Mechanism: f.Mechanism,
-			Artifact:  f.Artifact,
-			Command:   f.Command,
-			Audience:  f.Audience,
-			Platforms: f.Platforms,
-			URL:       f.ChannelURL,
-			Weight:    f.Weight,
+			Title:          f.Title,
+			Summary:        f.Summary,
+			Mechanism:      f.Mechanism,
+			Artifact:       f.Artifact,
+			Command:        f.Command,
+			CommandWindows: f.CommandWindows,
+			Audience:       f.Audience,
+			Platforms:      f.Platforms,
+			URL:            f.ChannelURL,
+			Weight:         f.Weight,
 		}
 		if err := ch.validate(rel); err != nil {
 			return nil, err

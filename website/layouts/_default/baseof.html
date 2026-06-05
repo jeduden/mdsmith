@@ -73,6 +73,15 @@
             rows.forEach(r => {
               const tags = (r.getAttribute("data-platforms") || "").split(" ").filter(Boolean);
               r.hidden = !(sel === "all" || tags.includes(sel));
+              // Swap to a platform-specific command when one exists
+              // (e.g. data-cmd-windows for the .exe), else the default.
+              const cmd = r.getAttribute("data-cmd-" + sel) || r.getAttribute("data-cmd-default");
+              if (cmd !== null) {
+                const cmdEl = r.querySelector(".install-cmd .cmd");
+                const copyBtn = r.querySelector(".install-copy");
+                if (cmdEl) cmdEl.textContent = cmd;
+                if (copyBtn) copyBtn.setAttribute("data-copy", cmd);
+              }
             });
           });
         });

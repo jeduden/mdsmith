@@ -77,6 +77,37 @@ func TestLoadChannelsSortsByWeightAndSkipsProto(t *testing.T) {
 	assert.Equal(t, "A", chs[1].Title)
 }
 
+func TestLoadChannels_CommandWindows(t *testing.T) {
+	root := seedChannelDir(t, "gh.md", "go.md")
+	gh := mkChannelDoc("GitHub Releases", "push", "cli", "curl <os>", "aud", 10)
+	gh.Frontmatter.CommandWindows = "Invoke-WebRequest x.exe -OutFile mdsmith.exe"
+	stubExtractAll(t, map[string]channelDoc{
+		relKey("gh.md"): gh,
+		relKey("go.md"): mkChannelDoc("Go", "toolchain", "cli", "go install", "aud", 1),
+	})
+	chs, err := LoadChannels(root)
+	require.NoError(t, err)
+	require.Len(t, chs, 2)
+	// Sorted by weight: Go (1) then GitHub Releases (10).
+	assert.Empty(t, chs[0].CommandWindows, "Go has no Windows override")
+	assert.Equal(t, "Invoke-WebRequest x.exe -OutFile mdsmith.exe",
+		chs[1].CommandWindows)
+}
+
+func TestRenderChannelsYAML_OmitsEmptyCommandWindows(t *testing.T) {
+	out := string(RenderChannelsYAML([]Channel{
+		{Title: "Go", Command: "go install", Mechanism: "toolchain",
+			Artifact: "cli", Audience: "a", URL: "https://x", Weight: 1},
+		{Title: "GH", Command: "curl", CommandWindows: "iwr x.exe",
+			Mechanism: "push", Artifact: "cli", Audience: "a",
+			URL: "https://x", Weight: 10},
+	}))
+	assert.Contains(t, out, "command-windows: iwr x.exe",
+		"a set override is emitted")
+	assert.NotContains(t, out, `command-windows: ""`,
+		"omitempty drops the key for channels without an override")
+}
+
 func TestLoadChannels_MissingDirErrors(t *testing.T) {
 	_, err := LoadChannels(t.TempDir()) // no channel dir at all
 	require.Error(t, err)
