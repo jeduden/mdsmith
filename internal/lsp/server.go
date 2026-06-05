@@ -1401,7 +1401,7 @@ func (s *Server) appendQuickFixActions(
 			fixed := s.quickFixBytesFor(rule, doc, cfg, root)
 			if fixed != nil {
 				edit = buildFileEdit(p.TextDocument.URI, doc.text, fixed,
-					annotated, "mdsmith-fix-"+rule, quickFixTitle(rule))
+					annotated, "mdsmith-fix-"+rule, quickFixTitle(s.rules, rule))
 			}
 			ruleEdits[rule] = edit
 		}
@@ -1409,7 +1409,7 @@ func (s *Server) appendQuickFixActions(
 			continue
 		}
 		actions = append(actions, codeAction{
-			Title:       quickFixTitle(rule),
+			Title:       quickFixTitle(s.rules, rule),
 			Kind:        kindQuickFix,
 			Diagnostics: []Diagnostic{d},
 			Edit:        edit,
@@ -1506,12 +1506,24 @@ func wantsKind(only []string, kind string) bool {
 	return false
 }
 
-// quickFixTitle returns the lightbulb label. Phrased "Fix all" to
-// signal that the action's WorkspaceEdit covers every occurrence of
-// the rule, not only the diagnostic the user clicked on — see the
-// comment on quickFixEditFor for why the edit is whole-file scoped.
-func quickFixTitle(rule string) string {
-	return "Fix all " + rule + " with mdsmith"
+// quickFixTitle returns the lightbulb label for a rule's quick fix. A
+// rule implementing rule.QuickFixTitler supplies its own label (e.g.
+// MDS012 → "Wrap in angle brackets"); otherwise the generic "Fix all
+// <name> with mdsmith" is used. That phrasing signals the action's
+// WorkspaceEdit covers every occurrence of the rule, not only the
+// diagnostic the user clicked on — see the comment on quickFixEditFor
+// for why the edit is whole-file scoped.
+func quickFixTitle(rules []rule.Rule, name string) string {
+	for _, r := range rules {
+		if r.Name() != name {
+			continue
+		}
+		if t, ok := r.(rule.QuickFixTitler); ok {
+			return t.FixTitle()
+		}
+		break
+	}
+	return "Fix all " + name + " with mdsmith"
 }
 
 // fullFileEdit returns a WorkspaceEdit that replaces the entire
