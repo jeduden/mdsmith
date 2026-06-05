@@ -158,6 +158,16 @@ jobs:
         run: |
           go run ./cmd/mdsmith-release verify-website-links \
             --dir ./website/public --base-url ""
+      - name: Verify install picker matches channel docs
+        # Probe the rendered homepage so a Hugo-template regression
+        # in install-picker.html — a dropped data-cmd-windows, a
+        # missing <noscript> fallback, a renamed attribute — fails
+        # the PR. The channels.yaml round-trip test in
+        # internal/release covers only the Go<->YAML layer, not the
+        # template; this closes that gap against the real render.
+        run: |
+          go run ./cmd/mdsmith-release verify-install-picker \
+            --dir ./website/public
       - name: Verify baseURL prefix on absolute hrefs
         # Re-render with a fake subpath baseURL and re-probe, so a
         # render-link regression in the relURL prefixing (which a

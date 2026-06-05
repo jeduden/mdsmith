@@ -16,6 +16,7 @@
 //	mdsmith-release sync-docs <src-dir> <dst-dir>
 //	mdsmith-release build-website [--no-fix] [src-dir] [dst-dir]
 //	mdsmith-release verify-website-links --dir <html-dir> [--base-url <url>]
+//	mdsmith-release verify-install-picker --dir <html-dir>
 //	mdsmith-release publish-release
 //	mdsmith-release sbom <out-path>
 //	mdsmith-release check-secret-rotations
@@ -55,6 +56,8 @@ Commands:
                                   mdsmith fix (unless --no-fix) + sync-docs.
   verify-website-links --dir <dir> [--base-url <url>]
                                   Probe rendered HTML for render-link regressions.
+  verify-install-picker --dir <dir>
+                                  Check the rendered install picker matches the channel docs.
   publish-release                 Flip the tag's draft release to published.
   sbom <out-path>                 Emit a CycloneDX SBOM of the Go module to <out-path>.
   check-secret-rotations          Open GitHub issues for secrets due for rotation.
@@ -113,6 +116,8 @@ func dispatch(cmd, root string, rest []string) int {
 		return runBuildWebsite(root, rest)
 	case "verify-website-links":
 		return runVerifyWebsiteLinks(root, rest)
+	case "verify-install-picker":
+		return runVerifyInstallPicker(root, rest)
 	case "publish-release":
 		return runPublishRelease(root, rest)
 	case "sbom":
@@ -349,6 +354,38 @@ func runVerifyWebsiteLinks(_ string, args []string) int {
 		return 2
 	}
 	return reportError(release.VerifyWebsiteLinks(*dir, *baseURL))
+}
+
+func runVerifyInstallPicker(root string, args []string) int {
+	fs := flag.NewFlagSet("verify-install-picker", flag.ContinueOnError)
+	dir := fs.String("dir", "",
+		"path to the Hugo output directory (usually website/public)")
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr,
+			"Usage: mdsmith-release verify-install-picker --dir <dir>\n\n"+
+				"Probe the rendered homepage in <dir> for the install\n"+
+				"picker contract: one data-cmd-default row per channel,\n"+
+				"and for every channel that declares command-windows a\n"+
+				"matching data-cmd-windows attribute plus a <noscript>\n"+
+				"fallback. The expected commands are read from the channel\n"+
+				"docs, so a Hugo-template regression that the channels.yaml\n"+
+				"round-trip cannot see fails here. Exits non-zero on the\n"+
+				"first mismatch.\n")
+	}
+	if err := fs.Parse(args); err != nil {
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith-release: verify-install-picker"); code >= 0 {
+			return code
+		}
+	}
+	if *dir == "" {
+		fs.Usage()
+		return 2
+	}
+	channels, err := release.LoadChannels(root)
+	if err != nil {
+		return reportError(err)
+	}
+	return reportError(release.VerifyInstallPicker(*dir, channels))
 }
 
 // reportFlagParseErr mirrors the helper in cmd/mdsmith/main.go:
