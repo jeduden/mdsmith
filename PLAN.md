@@ -158,7 +158,7 @@ footer: |
 | 230 | ✅     | opus   | [Navigable schema diagnostics in the editor](plan/230_navigable-schema-diagnostics.md)                                                  |
 | 231 | ✅     |        | [LSP newest-wins workspace singleton](plan/231_lsp-workspace-singleton.md)                                                              |
 | 232 | ✅     | opus   | [include heading-offset parameter](plan/232_include-heading-offset.md)                                                                  |
-| 233 | 🔳     | opus   | [numeric heading-level target for include](plan/233_include-heading-level-target.md)                                                    |
+| 233 | ✅     | opus   | [numeric heading-level target for include](plan/233_include-heading-level-target.md)                                                    |
 | 234 | 🔲     | sonnet | [Distribute mdsmith on Windows via Scoop and WinGet](plan/234_windows-package-managers.md)                                              |
 | 235 | 🔲     | sonnet | [Playwright end-to-end tests for the website, runnable by CI and agents](plan/235_playwright-site-e2e.md)                               |
 <?/catalog?>

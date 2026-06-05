@@ -1,5 +1,3 @@
-# 🔨 mdsmith
-
 <p align="center">
 <picture>
 <source media="(prefers-color-scheme: dark)" srcset="website/static/img/logo-lockup-inverse.svg">
@@ -62,7 +60,7 @@ src="https://raw.githubusercontent.com/jeduden/mdsmith/assets/assets/demo.gif">
 <?include
 file: docs/features/index.md
 strip-frontmatter: "true"
-heading-level: "absolute"
+heading-level: "2"
 ?>
 ## Why mdsmith
 

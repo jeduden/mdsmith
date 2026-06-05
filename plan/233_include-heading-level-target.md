@@ -1,7 +1,7 @@
 ---
 id: 233
 title: numeric heading-level target for include
-status: "🔳"
+status: "✅"
 summary: >-
   Extend the `<?include?>` directive's `heading-level`
   parameter (MDS021) to accept an integer 1-6 that pins
@@ -138,10 +138,14 @@ and in fenced doc examples, never as a live directive.
 
 ## Deferred — gated on the pin bump
 
-8. [ ] Adopt `heading-level: "<number>"` in tracked
-   Markdown only after a release ships it and the pinned
-   baseline is bumped. This task stays open as the
-   reminder; the plan holds at `🔳` until then.
+8. [x] Adopt `heading-level: "<number>"` in tracked
+   Markdown. The gate cleared: the feature shipped in
+   v0.32.0 and the pinned baseline is now v0.33.0.
+   `README.md` drops its top-level H1 — the logo lockup
+   is the title — and pins the features `<?include?>` to
+   `heading-level: "2"`. A `README.md`-only
+   `first-line-heading: false` override covers the now
+   intentionally H1-less file.
 
 ## Acceptance Criteria
 
@@ -156,7 +160,8 @@ and in fenced doc examples, never as a live directive.
       lint error naming the allowed values
 - [x] `heading-level` numeric still cannot pair with
       `heading-offset` or `extract`
-- [x] No tracked Markdown uses the numeric form, so
+- [x] `README.md` adopts the numeric form; the pinned
+      baseline (v0.33.0) parses it, so
       `mdsmith-fixed-version` stays green
 - [x] All tests pass: `go test ./...`
 - [x] `go tool golangci-lint run` reports no issues

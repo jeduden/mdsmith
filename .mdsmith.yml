@@ -156,6 +156,13 @@ overrides:
         max-rows: 40
       paragraph-structure:
         max-sentences: 30
+  - glob: ["README.md"]
+    rules:
+      # The top-level H1 is intentionally dropped — the centered
+      # logo lockup is the title — so the file's first heading is
+      # the features <?include?> body, pinned to level 2. Same
+      # opt-out the other include/template-driven files above use.
+      first-line-heading: false
   - glob: ["PLAN.md"]
     rules:
       table-readability:
