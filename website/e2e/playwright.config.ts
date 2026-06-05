@@ -38,7 +38,7 @@ export default defineConfig({
    * Playwright starts this once for the entire run and stops it after.
    * The PORT env var is forwarded so serve.sh and baseURL agree. */
   webServer: {
-    command: `PORT=${process.env.PORT ?? 3001} bash ../../website/e2e/scripts/serve.sh`,
+    command: `PORT=${process.env.PORT ?? 3001} bash scripts/serve.sh`,
     url: `http://localhost:${process.env.PORT ?? 3001}`,
     reuseExistingServer: !process.env.CI,
     /* Allow up to 3 minutes for the content build + Hugo render */

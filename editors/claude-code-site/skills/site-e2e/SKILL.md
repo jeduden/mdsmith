@@ -13,10 +13,11 @@ description: >-
 user-invocable: true
 argument-hint: "[test | screenshot <url> | serve]"
 allowed-tools: >-
-  Bash(npx playwright:*),
-  Bash(bash ./website/e2e/scripts/serve.sh:*),
-  Bash(go run ./cmd/mdsmith-release:*),
-  Bash(git rev-parse:*)
+  Bash(git rev-parse:*),
+  Bash(cd website/e2e && npm ci),
+  Bash(npx playwright install:*),
+  Bash(cd website/e2e && npx playwright:*),
+  Bash(bash website/e2e/scripts/serve.sh:*)
 ---
 # site-e2e
 
@@ -86,11 +87,11 @@ test file.
 1. Start the site server in one terminal:
 
    ```bash
-   PORT=3001 bash website/e2e/scripts/serve.sh
+   bash website/e2e/scripts/serve.sh
    ```
 
 2. Ask the agent to screenshot a URL:
-   "Screenshot <http://localhost:3001/">
+   "Screenshot <http://localhost:3001/>"
 
    The Playwright MCP server handles the browser
    session. It works headless with no display.
@@ -101,7 +102,7 @@ To start the site and leave it running (useful for
 manual inspection or MCP interaction):
 
 ```bash
-PORT=3001 bash website/e2e/scripts/serve.sh
+bash website/e2e/scripts/serve.sh
 ```
 
 ## Architecture note

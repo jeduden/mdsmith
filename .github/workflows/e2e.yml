@@ -69,9 +69,13 @@ jobs:
         working-directory: website/e2e
         run: npx playwright install --with-deps chromium
 
-      - name: Install Hugo
-        # `go install` resolves via the Go module proxy with sumdb
-        # checksum verification, so the binary is pinned by content hash.
+      - name: Pre-warm the Hugo build cache
+        # serve.sh renders via `go run github.com/gohugoio/hugo@v…`, not a
+        # PATH binary, so this step does not install Hugo for it to call.
+        # It compiles that pinned Hugo into the Go build cache up front
+        # (resolved through the module proxy with sumdb checksum
+        # verification) so the webServer's `go run` render does not pay a
+        # cold compile inside its 180s startup timeout.
         run: go install "github.com/gohugoio/hugo@v${HUGO_VERSION}"
 
       - name: Run Playwright tests
