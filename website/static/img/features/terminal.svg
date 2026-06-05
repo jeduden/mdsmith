@@ -1,4 +1,4 @@
-<svg width="69ch" height="24.699999em" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve">
+<svg width="552px" height="323px" viewBox="0 0 552 323" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve">
     <style>
         * {
             font-family: Courier, monospace;
@@ -23,21 +23,21 @@
         <!-- Foreground custom colors -->
         .fc0 { fill: #e58233; }
     </style>
-<text x="0ch" y="0.65em"><tspan class="fc0">❯ </tspan><tspan>mdsmith check intro.md</tspan></text>
-<text x="0ch" y="1.9499999em"><tspan class="fa6">intro.md:3:58 </tspan><tspan class="fa3">MDS006 </tspan><tspan>trailing whitespace</tspan></text>
-<text x="0ch" y="3.25em"><tspan class="dim">1 | # Quickstart</tspan></text>
-<text x="0ch" y="4.5499997em"><tspan class="dim">2 | </tspan></text>
-<text x="0ch" y="5.85em"><tspan>3 | Lint your Markdown, then auto-fix it in one fast command.   </tspan></text>
-<text x="0ch" y="7.1499996em"><tspan>·····························································</tspan><tspan class="fa1">^</tspan></text>
-<text x="0ch" y="8.45em"><tspan class="dim">4 | Read the setup guide at https://github.com/jeduden/mdsmith today.</tspan></text>
-<text x="0ch" y="9.75em"><tspan class="fa6">intro.md:4:25 </tspan><tspan class="fa3">MDS012 </tspan><tspan>bare URL found; use angle brackets or a link</tspan></text>
-<text x="0ch" y="11.049999em"><tspan class="dim">2 | </tspan></text>
-<text x="0ch" y="12.349999em"><tspan class="dim">3 | Lint your Markdown, then auto-fix it in one fast command.   </tspan></text>
-<text x="0ch" y="13.65em"><tspan>4 | Read the setup guide at https://github.com/jeduden/mdsmith today.</tspan></text>
-<text x="0ch" y="14.95em"><tspan>····························</tspan><tspan class="fa1">^</tspan></text>
-<text x="0ch" y="16.25em"><tspan>stats: checked=1 fixed=0 failures=2 unfixed=2</tspan></text>
-<text x="0ch" y="18.849998em"><tspan class="fc0">❯ </tspan><tspan>mdsmith fix intro.md</tspan></text>
-<text x="0ch" y="20.15em"><tspan>stats: checked=1 fixed=1 failures=2 unfixed=0</tspan></text>
-<text x="0ch" y="22.75em"><tspan class="fc0">❯ </tspan><tspan>mdsmith check intro.md</tspan></text>
-<text x="0ch" y="24.05em"><tspan>stats: checked=1 fixed=0 failures=0 unfixed=0</tspan></text>
+<text x="0px" y="8.5px"><tspan class="fc0">❯ </tspan><tspan>mdsmith check intro.md</tspan></text>
+<text x="0px" y="25.5px"><tspan class="fa6">intro.md:3:58 </tspan><tspan class="fa3">MDS006 </tspan><tspan>trailing whitespace</tspan></text>
+<text x="0px" y="42.5px"><tspan class="dim">1 | # Quickstart</tspan></text>
+<text x="0px" y="59.5px"><tspan class="dim">2 | </tspan></text>
+<text x="0px" y="76.5px"><tspan>3 | Lint your Markdown, then auto-fix it in one fast command.   </tspan></text>
+<text x="0px" y="93.5px"><tspan>·····························································</tspan><tspan class="fa1">^</tspan></text>
+<text x="0px" y="110.5px"><tspan class="dim">4 | Read the setup guide at https://github.com/jeduden/mdsmith today.</tspan></text>
+<text x="0px" y="127.5px"><tspan class="fa6">intro.md:4:25 </tspan><tspan class="fa3">MDS012 </tspan><tspan>bare URL found; use angle brackets or a link</tspan></text>
+<text x="0px" y="144.5px"><tspan class="dim">2 | </tspan></text>
+<text x="0px" y="161.5px"><tspan class="dim">3 | Lint your Markdown, then auto-fix it in one fast command.   </tspan></text>
+<text x="0px" y="178.5px"><tspan>4 | Read the setup guide at https://github.com/jeduden/mdsmith today.</tspan></text>
+<text x="0px" y="195.5px"><tspan>····························</tspan><tspan class="fa1">^</tspan></text>
+<text x="0px" y="212.5px"><tspan>stats: checked=1 fixed=0 failures=2 unfixed=2</tspan></text>
+<text x="0px" y="246.5px"><tspan class="fc0">❯ </tspan><tspan>mdsmith fix intro.md</tspan></text>
+<text x="0px" y="263.5px"><tspan>stats: checked=1 fixed=1 failures=2 unfixed=0</tspan></text>
+<text x="0px" y="297.5px"><tspan class="fc0">❯ </tspan><tspan>mdsmith check intro.md</tspan></text>
+<text x="0px" y="314.5px"><tspan>stats: checked=1 fixed=0 failures=0 unfixed=0</tspan></text>
 </svg>

@@ -1645,9 +1645,6 @@ a.rule-ref:hover code { text-decoration: underline; }
 
   .artifact-frame { max-width: 100%; }
 
-  /* Scale down terminal text on mobile */
-  .term-pre { font-size: 10px; line-height: 1.6; }
-
   /* Scale down VS Code artifact */
   .vscode-code-area { font-size: 9.5px; }
   .vscode-gutter    { font-size: 9px; }
