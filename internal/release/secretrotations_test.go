@@ -608,6 +608,50 @@ func TestCheckSecretRotationsRejectsMissingRotationsDir(t *testing.T) {
 	assert.Contains(t, err.Error(), "no per-secret files")
 }
 
+// TestRecordRotationPropagatesSplitFrontMatterError drives the
+// splitFrontMatter failure branch in RecordRotation. FindEntry has
+// to parse valid front matter first, so the fault is staged on the
+// second read: FindEntry sees the real, well-formed file, then the
+// re-read inside RecordRotation returns a body whose front matter
+// is unterminated, which splitFrontMatter rejects.
+func TestRecordRotationPropagatesSplitFrontMatterError(t *testing.T) {
+	root := fakeRotationsDir(t, map[string]string{
+		"v.md": "---\ntitle: V\nlastRotated: \"2026-04-01\"\nperiodDays: 30\n---\n",
+	})
+	var n int
+	withFakeOSFuncs(t, fakeOSFuncs{
+		readFile: func(p string) ([]byte, error) {
+			n++
+			if n == 1 {
+				return os.ReadFile(p) // FindEntry reads the real file
+			}
+			// RecordRotation's own read: opener present but never
+			// closed, so splitFrontMatter reports unterminated.
+			return []byte("---\ntitle: V\nlastRotated: \"2026-04-01\"\n"), nil
+		},
+	})
+	_, err := RecordRotation(root, "V", "2026-05-12")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unterminated front matter")
+}
+
+// TestCheckSecretRotationsPropagatesLoadError drives the
+// LoadRotations failure branch in CheckSecretRotations (distinct
+// from the empty-but-present "no per-secret files" branch): a
+// rotations directory that does not exist makes the underlying
+// ReadDir fail, and the error must propagate.
+func TestCheckSecretRotationsPropagatesLoadError(t *testing.T) {
+	// t.TempDir() has no docs/development/secret-rotations subtree,
+	// so LoadRotations' ReadDir fails before any classification.
+	root := t.TempDir()
+	_, err := CheckSecretRotations(root, CheckRotationsOptions{
+		Now: time.Now(), GH: (&recordingGH{}).Run, Env: MapEnviron{},
+	})
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "no per-secret files",
+		"a missing dir must surface the ReadDir error, not the empty-dir message")
+}
+
 // TestRecordRotationUnknownTitle covers the FindEntry error
 // propagation back through RecordRotation.
 func TestRecordRotationUnknownTitle(t *testing.T) {

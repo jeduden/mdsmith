@@ -1,7 +1,9 @@
 package release
 
 import (
+	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -236,4 +238,48 @@ func TestWalkAndRequireAny_MissingRootSurfacesWalkError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "probe-y")
 	assert.Contains(t, err.Error(), "walk")
+}
+
+// danglingHTML plants a symlink with a .html extension that points
+// at a nonexistent target inside dir. WalkDir's lstat sees a
+// non-directory .html entry, so the probe tries to read it and
+// readHTMLFile fails — the unreadable-member branch that the
+// missing-root tests above do not reach (those fail in WalkDir
+// itself, before any read). Skipped where symlinks are unavailable.
+func danglingHTML(t *testing.T, dir string) {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	link := filepath.Join(dir, "broken.html")
+	if err := os.Symlink(filepath.Join(dir, "no-such-target"), link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+}
+
+// TestWalkAndReject_UnreadableMemberSurfacesReadError drives the
+// readHTMLFile-error branch inside walkAndReject: a dangling .html
+// symlink is a non-dir entry the walk descends to but cannot read.
+func TestWalkAndReject_UnreadableMemberSurfacesReadError(t *testing.T) {
+	dir := t.TempDir()
+	danglingHTML(t, dir)
+	err := walkAndReject(dir, linkProbe{
+		name:        "probe-reject",
+		wantNoMatch: regexp.MustCompile(`never-matches`),
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "probe-reject")
+	assert.Contains(t, err.Error(), "rendered HTML not found")
+}
+
+// TestWalkAndRequireAny_UnreadableMemberSurfacesReadError drives
+// the same readHTMLFile-error branch for the require-any variant.
+func TestWalkAndRequireAny_UnreadableMemberSurfacesReadError(t *testing.T) {
+	dir := t.TempDir()
+	danglingHTML(t, dir)
+	err := walkAndRequireAny(dir, linkProbe{
+		name:         "probe-any",
+		wantAnyMatch: regexp.MustCompile(`anything`),
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "probe-any")
+	assert.Contains(t, err.Error(), "rendered HTML not found")
 }

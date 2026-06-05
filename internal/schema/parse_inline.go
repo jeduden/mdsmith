@@ -1052,16 +1052,75 @@ func applyContentField(k string, vv any, ce *ContentEntry, path string) error {
 		return setContentItemBound(&ce.MaxItems, vv, path, k, ce.Kind)
 	case "bind":
 		return setContentBind(ce, vv, path)
+	case "projection":
+		return setContentProjection(ce, vv, path)
 	default:
 		return fmt.Errorf("%s: unknown content key %q", path, k)
 	}
 }
 
+// setContentProjection reads the optional `projection:` mode for a
+// content entry (`text` / `code` / `inline`). Omitting the key uses
+// the kind's default projection; this runs only when `projection:`
+// is present, so an explicit empty string is rejected as an unknown
+// projection like any other unrecognised value.
+//
+// Each content kind constrains which modes are legal, and an
+// incompatible combination is a schema-load error rather than a
+// silently-ignored field: a paragraph projects `text` or `inline`
+// (its plain text or its typed inline-span tree); a code-block
+// projects `code` (its raw body); and a table, list, or unlisted slot
+// has no projection mode at all. Plan 212.
+func setContentProjection(ce *ContentEntry, v any, path string) error {
+	s, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("%s.projection must be a string, got %T", path, v)
+	}
+	switch s {
+	case ProjectionText, ProjectionCode, ProjectionInline:
+	default:
+		return fmt.Errorf(
+			"%s.projection: unknown projection %q (valid: text, code, inline)",
+			path, s)
+	}
+	if err := checkProjectionKind(ce.Kind, s, path); err != nil {
+		return err
+	}
+	ce.Projection = s
+	return nil
+}
+
+// checkProjectionKind enforces the projection/kind matrix at schema
+// load. proj is already a known mode (text / code / inline). The
+// error names what the kind allows so an incompatible combination
+// fails with a fix inline rather than being dropped at extract time.
+func checkProjectionKind(kind, proj, path string) error {
+	switch kind {
+	case ContentKindParagraph:
+		if proj == ProjectionCode {
+			return fmt.Errorf(
+				"%s.projection: kind: paragraph allows projection text or "+
+					"inline, not %s", path, proj)
+		}
+	case ContentKindCodeBlock:
+		if proj != ProjectionCode {
+			return fmt.Errorf(
+				"%s.projection: kind: code-block allows projection code, "+
+					"not %s", path, proj)
+		}
+	default:
+		return fmt.Errorf(
+			"%s.projection: projection is not allowed on kind: %s "+
+				"(only paragraph and code-block project)", path, kind)
+	}
+	return nil
+}
+
 // setContentBind reads the optional `bind:` override for a content
-// entry. A non-empty value renames the default key (`code` / `items`
-// / `rows` / `text`). The empty form is rejected because a content
-// entry has no children to hoist; users who want to drop the wrapper
-// key should restructure the schema instead.
+// entry. A non-empty value renames the default key (`code` /
+// `inline` / `items` / `rows` / `text`). The empty form is rejected
+// because a content entry has no children to hoist; users who want to
+// drop the wrapper key should restructure the schema instead.
 func setContentBind(ce *ContentEntry, v any, path string) error {
 	s, ok := v.(string)
 	if !ok {

@@ -67,7 +67,7 @@ func TestWalkExtractPath_KeyOnNonObject(t *testing.T) {
 
 func TestWalkExtractPath_ObjectWithSingleContentKey(t *testing.T) {
 	// A leaf object that carries a single well-known content key
-	// (text/code/items/rows) splices the inner value.
+	// (text/code/inline/items/rows) splices the inner value.
 	data := map[string]any{
 		"tagline": map[string]any{"text": "Hello world"},
 	}
@@ -83,6 +83,22 @@ func TestWalkExtractPath_ObjectWithCodeKey(t *testing.T) {
 	v, err := walkExtractPath(data, "headline")
 	require.NoError(t, err)
 	assert.Equal(t, "Mark*down*, smithed.", v)
+}
+
+func TestWalkExtractPath_ObjectWithInlineKey(t *testing.T) {
+	// An inline-projected paragraph wraps its spans under `inline`;
+	// walkExtractPath unwraps it like the other content keys, so
+	// `<?include extract: headline?>` behaves like a text projection.
+	spans := []any{
+		map[string]any{"span": "text", "value": "Mark"},
+		map[string]any{"span": "text", "value": ", smithed."},
+	}
+	data := map[string]any{
+		"headline": map[string]any{"inline": spans},
+	}
+	v, err := walkExtractPath(data, "headline")
+	require.NoError(t, err)
+	assert.Equal(t, spans, v)
 }
 
 func TestWalkExtractPath_AmbiguousObject(t *testing.T) {
@@ -142,6 +158,23 @@ func TestWalkExtractPath_MultiKeyWithExactlyOneContentKey(t *testing.T) {
 	v, err := walkExtractPath(data, "section")
 	require.NoError(t, err)
 	assert.Equal(t, "Hello", v)
+}
+
+func TestWalkExtractPath_TextAndInlineSiblingsAmbiguous(t *testing.T) {
+	// A scope with both a text-projected and an inline-projected
+	// paragraph yields {text, inline}; both are content keys (plan
+	// 212), so `extract: <section>` without a leaf is ambiguous and
+	// the user must spell out .text or .inline rather than silently
+	// getting the text sibling.
+	data := map[string]any{
+		"section": map[string]any{
+			"text":   "Hello",
+			"inline": []any{map[string]any{"span": "text", "value": "Hi"}},
+		},
+	}
+	_, err := walkExtractPath(data, "section")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ambiguous")
 }
 
 // =====================================================================

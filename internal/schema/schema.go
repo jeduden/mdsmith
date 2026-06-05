@@ -375,7 +375,32 @@ type ContentEntry struct {
 	// entry has no children to hoist into the parent. Nil means
 	// "use the default key". Plan 167.
 	Bind *string
+
+	// Projection selects how `mdsmith extract` renders the matched
+	// node. Empty means the kind's implicit default (`text` for a
+	// paragraph, `code` for a code-block). One of `Projection*`.
+	// `ProjectionInline` emits a paragraph's inline spans as a typed
+	// recursive list and is rejected at parse time on any non-paragraph
+	// kind; it also defaults the paragraph's extract key to `inline`
+	// instead of `text` (unless `bind:` overrides it). Plan 212.
+	Projection string
 }
+
+// Content-projection mode discriminators. The on-disk YAML carries
+// one of these strings under a content entry's `projection:` key.
+// An empty Projection means the kind's implicit default.
+const (
+	// ProjectionText emits a paragraph's plain text (the default for
+	// `kind: paragraph`).
+	ProjectionText = "text"
+	// ProjectionCode emits a code-block's raw body (the default for
+	// `kind: code-block`).
+	ProjectionCode = "code"
+	// ProjectionInline emits a paragraph's inline spans as a typed
+	// recursive list (text / emphasis / strong / code / link /
+	// autolink). Valid only on `kind: paragraph`.
+	ProjectionInline = "inline"
+)
 
 // IsEmpty reports whether s carries no constraints. Used by callers
 // (notably MDS020) to short-circuit when a kind declares no schema.

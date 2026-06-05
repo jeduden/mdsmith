@@ -56,12 +56,93 @@ Content entries project under default keys:
 - `list` → `items`.
 - `table` with columns → `rows` (row objects keyed by
   column header).
-- `paragraph` → `text`.
+- `paragraph` → `text` (plain text), or `inline` when
+  the entry sets `projection: inline` (see below).
 
 Two sibling projections that resolve to the same key
 are a schema error. It is reported at extract time.
 Optional sections that did not match are omitted, not
 emitted as null.
+
+## Inline-span projection
+
+A paragraph entry projects its plain text by default.
+Set `projection: inline` on the entry to project the
+paragraph's inline structure instead. The result is a
+typed, recursive list of spans under the `inline` key:
+
+```yaml
+sections:
+  - heading: { regex: '^Headline$' }
+    content:
+      - { kind: paragraph, projection: inline, required: true }
+```
+
+Each AST node maps to one span object:
+
+| AST node           | Emitted span                                  |
+| ------------------ | --------------------------------------------- |
+| text               | `{span: text, value}`                         |
+| line break         | `{span: break, hard}`                         |
+| code span          | `{span: code, value}`                         |
+| autolink (`<url>`) | `{span: autolink, value, url}`                |
+| emphasis (`*…*`)   | `{span: emphasis, level: 1, children: [...]}` |
+| strong (`**…**`)   | `{span: strong, level: 2, children: [...]}`   |
+| link (`[t](url)`)  | `{span: link, url, title?, children: [...]}`  |
+
+Leaf spans (text, code, autolink) carry a `value`;
+container spans (emphasis, strong, link) carry a
+`children` list and recurse through the same mapping,
+so nesting composes uniformly. A link omits `title`
+when the Markdown link has none.
+
+A wrapped paragraph keeps its line structure: a text
+node that ends in a line break emits its text span and
+then a `break` span. `hard` is `true` for a hard break
+(a backslash or two trailing spaces before the newline)
+and `false` for a soft wrap. So `first⏎second` projects
+as `[{span: text, value: first}, {span: break, hard:
+false}, {span: text, value: second}]`.
+
+For the headline `Mark*down*, smithed.`:
+
+```json
+"headline": {
+  "inline": [
+    { "span": "text", "value": "Mark" },
+    { "span": "emphasis", "level": 1, "children": [
+      { "span": "text", "value": "down" }
+    ]},
+    { "span": "text", "value": ", smithed." }
+  ]
+}
+```
+
+A nested example — a strong span wrapping a code span,
+``**`mdsmith fix`**`` — projects with no mode switch:
+
+```json
+{ "span": "strong", "level": 2, "children": [
+    { "span": "code", "value": "mdsmith fix" }
+] }
+```
+
+Each content kind constrains its projection at schema-
+load time. A `paragraph` takes `text` or `inline`. A
+`code-block` takes `code`. A `table`, `list`, or
+`unlisted` slot takes none. An incompatible combination
+fails when the config loads, not silently at extract
+time. Rejected cases include `projection: code` on a
+paragraph, `projection: inline` on a code-block, and any
+`projection` on a table.
+
+Anything outside the mapping table is a hard error at
+extract time, with the same exit code as a non-conformant
+file. Images, inline raw HTML, and custom inline nodes
+fall in this set. The `text` and `inline` default keys
+differ, so one paragraph entry can project `text` and
+another `inline` without colliding. A `bind:` override
+renames either key.
 
 ## Custom binding with `bind`
 
@@ -70,7 +151,7 @@ A scope or content entry can set an optional
 
 - `bind: <name>` renames a scope's key (replacing
   the slugified heading) or a content entry's key
-  (replacing `code` / `items` / `rows` / `text`).
+  (replacing `code` / `inline` / `items` / `rows` / `text`).
 - `bind: ""` on a scope hoists its children and
   content directly into the parent — useful when a
   wrapper heading exists only for document structure

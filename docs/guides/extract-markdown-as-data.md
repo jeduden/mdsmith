@@ -129,6 +129,91 @@ the same shape both encodings would produce:
 The body version costs nothing at the projection
 layer and is the editable artifact.
 
+## Projecting inline structure
+
+A paragraph projects as plain `text` by default. When
+the consumer needs the structure *inside* the
+paragraph — which fragment is emphasised, which token
+is code, which span is a link — set
+`projection: inline` on the content entry. The
+paragraph then projects under an `inline` key as a
+typed, recursive span list instead of a flat string.
+
+A website headline whose hero template renders one
+emphasised word is the canonical case. The copy
+itself is the source of truth, and the consumer reads
+the emphasis position from the data:
+
+```markdown
+---
+title: Product copy
+---
+# Product copy
+
+## Headline
+
+Mark*down*, smithed.
+```
+
+```yaml
+kinds:
+  product-copy:
+    schema:
+      sections:
+        - heading: { regex: '^Headline$' }
+          content:
+            - { kind: paragraph, projection: inline, required: true }
+```
+
+`mdsmith extract product-copy --format json` emits the
+headline as a span list — text, then the level-1
+emphasis span with its own `children`, then the
+trailing text:
+
+```json
+{
+  "frontmatter": { "title": "Product copy" },
+  "headline": {
+    "inline": [
+      { "span": "text", "value": "Mark" },
+      { "span": "emphasis", "level": 1, "children": [
+        { "span": "text", "value": "down" }
+      ]},
+      { "span": "text", "value": ", smithed." }
+    ]
+  }
+}
+```
+
+Nesting composes through the same shape. A paragraph
+``run **`mdsmith fix`** daily`` projects the strong span
+with the code span nested in its `children` — the
+consumer walks one uniform tree, with no flat-versus-
+recursive mode switch:
+
+```json
+"inline": [
+  { "span": "text", "value": "run " },
+  { "span": "strong", "level": 2, "children": [
+    { "span": "code", "value": "mdsmith fix" }
+  ]},
+  { "span": "text", "value": " daily" }
+]
+```
+
+Leaf spans (text, code, autolink) carry a `value`;
+container spans (emphasis, strong, link) carry
+`children`. A wrapped line emits a `break` span between
+the surrounding text spans — `hard` is `true` for a
+hard break (a backslash or two trailing spaces) and
+`false` for a soft wrap — so a multi-line paragraph
+keeps its line structure. An image, inline raw HTML, or
+any node outside that set is a hard error — the same
+exit code as a non-conformant file. The full mapping
+table is in the [extract reference][extract-inline].
+
+[extract-inline]: ../reference/cli/extract.md#inline-span-projection
+
 ## When frontmatter is the right call
 
 - **Short scalars where YAML's typing earns its
@@ -216,7 +301,7 @@ shortcuts, and lint-time errors are documented in
 - [`mdsmith extract`][extract] — the CLI reference,
   including default projection rules per content
   entry type (code → `code`, list → `items`,
-  table → `rows`, paragraph → `text`).
+  table → `rows`, paragraph → `text` or `inline`).
 - [Schemas guide][schemas] — declaring the kind
   schema that doubles as the extraction contract.
 - [Generating Content with Directives][gen-content] —

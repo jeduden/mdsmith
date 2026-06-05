@@ -74,7 +74,7 @@ func getExtractProjector() ExtractProjector {
 // walkExtractPath returns the inner value so callers do not have to
 // know which projection rule produced the wrapper. The set mirrors
 // the default key names contentBaseKey returns in internal/extract.
-var extractContentKeys = []string{"text", "code", "items", "rows"}
+var extractContentKeys = []string{"text", "code", "inline", "items", "rows"}
 
 // walkExtractPath walks a dotted path through the extract JSON tree
 // rooted at data. Empty path segments and missing keys are errors;

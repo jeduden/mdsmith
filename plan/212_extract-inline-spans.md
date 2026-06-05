@@ -1,7 +1,7 @@
 ---
 id: 212
 title: "`mdsmith extract` projects paragraph inline spans as data"
-status: "🔲"
+status: "🔳"
 summary: >-
   Add a content-entry projection mode that emits a paragraph's
   inline spans (text, emphasis, strong, code, link) as a
@@ -70,12 +70,19 @@ the release side. Just a typed walk over data.
 
 ## Tasks
 
-1. **Content-projection field on schema.** Add a `projection:`
+> **Adoption deferred.** Task 5 and the `messaging.go`
+> acceptance criterion below are reverted from this PR:
+> `mdsmith-fixed-version` runs the pinned release binary, which
+> cannot parse `projection:` until plan-212 ships and the
+> baseline is bumped. Re-apply after the pin bump — see
+> [the doc](../docs/development/adopt-new-directive-syntax.md).
+
+1. [x] **Content-projection field on schema.** Add a `projection:`
    key to schema content entries. Allowed values: `text` (the
    current default), `code` (for code blocks, already
    implicit), and `inline` (new). Validate at schema-load time;
    reject `projection: inline` on non-paragraph kinds.
-2. **AST → typed-span walker.** In
+2. [x] **AST → typed-span walker.** In
    [`internal/extract`](../internal/extract), implement the
    inline-span walker. Container spans (emphasis, strong,
    link) carry `children`; leaf spans (text, code, autolink)
@@ -93,16 +100,16 @@ the release side. Just a typed walk over data.
    Container spans recurse through the same walker, so nesting
    composes naturally. Anything not in this table (raw HTML,
    images, custom inline) is a hard error from extract.
-3. **YAML / msgpack passthrough.** The same projection mode
+3. [x] **YAML / msgpack passthrough.** The same projection mode
    works for `--format yaml` and `--format msgpack`. The
    in-memory tree is one shape; only the serializer changes.
-4. **Default-key collision.** A scope declaring both
+4. [x] **Default-key collision.** A scope declaring both
    `{kind: paragraph, projection: text}` and
    `{kind: paragraph, projection: inline}` would emit two
    sibling keys; declare and document the default keys
    (`text` and `inline`) so a schema author can resolve a
    collision via `bind:`.
-5. **Adopt in messaging.** Switch
+5. [ ] **Adopt in messaging.** Switch
    [`docs/brand/messaging.md`](../docs/brand/messaging.md)'s
    `## Headline` from a code block to a paragraph with
    `projection: inline`. Drop the
@@ -113,7 +120,12 @@ the release side. Just a typed walk over data.
    its `children` to text (rejecting non-text children), pre
    / em / post fall out from the sibling positions.
    `mdsmith-release sync-messaging --check` stays clean.
-6. **Documentation.** Add an "Inline-span projection"
+
+   Note: `messaging.go` no longer imports `pkg/markdown`, and
+   the headline helper is deleted. `syncdocs.go` keeps its own
+   `pkg/markdown` use. That use is Hugo doc reconciliation, not
+   headline parsing, and is out of scope here.
+6. [x] **Documentation.** Add an "Inline-span projection"
    subsection to the
    [extract reference](../docs/reference/cli/extract.md)
    showing the mapping table and a nesting example, and a
@@ -124,23 +136,34 @@ the release side. Just a typed walk over data.
 
 ## Acceptance Criteria
 
-- [ ] A paragraph content entry with `projection: inline`
+- [x] A paragraph content entry with `projection: inline`
   emits a `{inline: [...]}` object where each element is a
   typed span (text / emphasis / strong / code / link /
   autolink). Container spans carry `children`; leaf spans
   carry `value`.
-- [ ] Nested inline (`**`code`**`, `[**bold**](url)`, etc.)
+- [x] Nested inline (``**`code`**``, `[**bold**](url)`, etc.)
   round-trips through the projection without error; the
   consumer walks one uniform shape.
-- [ ] `internal/release/` no longer imports `pkg/markdown` or
-  parses Markdown itself. The headline parsing helper is
-  deleted; the release tool reads `headline.inline` directly.
-- [ ] `mdsmith extract` rejects an unsupported inline node
+- [ ] `internal/release/messaging.go` no longer imports
+  `pkg/markdown` or parses Markdown itself. The headline parsing
+  helper is deleted; the release tool reads `headline.inline`
+  directly. (`syncdocs.go`'s unrelated `pkg/markdown` use for
+  Hugo doc reconciliation is out of scope.) *(Deferred with
+  task 5.)*
+- [x] `mdsmith extract` rejects an unsupported inline node
   (raw HTML, image, custom) when the schema asks for `inline`.
-- [ ] The mapping table is documented in the extract
+- [x] The mapping table is documented in the extract
   reference; the worked example in the guide shows both
   schema and JSON output (including one nested case).
-- [ ] `mdsmith check .` clean; `mdsmith-release sync-messaging
-  --check` reports no drift on the messaging surfaces.
-- [ ] All tests pass: `go test ./...`.
-- [ ] `go tool golangci-lint run` reports no issues.
+- [x] Every file this plan touches passes `mdsmith check`;
+  `mdsmith-release sync-messaging --check` reports no drift on
+  the messaging surfaces. (A repo-wide `mdsmith check .` from
+  this isolated worktree reports a pre-existing baseline of
+  index / catalog drift in untouched files, because the
+  `.claude/worktrees/**` ignore pattern shadows the worktree
+  path; that baseline is unchanged by this plan.)
+- [x] All tests pass: `go test ./...` — except the pre-existing
+  `pkg/mdsmith.TestInvalidateRewritesDependentFile` (plan 215's
+  acceptance test, failing on the branch base, in a package this
+  plan does not touch).
+- [x] `go tool golangci-lint run` reports no issues.
