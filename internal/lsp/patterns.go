@@ -19,7 +19,7 @@ type rulePattern struct {
 // the same response shape as a workspace where every rule is `maintainability: null`.
 func (s *Server) handleRulePatterns(msg *requestMessage) {
 	all, _ := rules.ListRules()
-	out := make([]rulePattern, 0)
+	out := make([]rulePattern, 0, len(all))
 	for _, r := range all {
 		if r.Maintainability == nil {
 			continue

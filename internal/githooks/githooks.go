@@ -76,7 +76,7 @@ func ResolveHooksDir(repoRoot string) string {
 // whether to apply a fallback (the install commands do; the
 // git-hook-sync rule does not).
 func DiscoverFiles(repoRoot string, maxBytes int64) []string {
-	directiveNames := make([]string, 0)
+	directiveNames := make([]string, 0, len(rule.All()))
 	for _, r := range rule.All() {
 		if d, ok := r.(gensection.Directive); ok {
 			directiveNames = append(directiveNames, d.Name())

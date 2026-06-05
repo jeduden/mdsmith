@@ -61,7 +61,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	codeSpanRanges := collectCodeSpanRanges(f)
 	lineStarts := computeLineStarts(f.Source)
 
-	var diags []lint.Diagnostic
+	diags := make([]lint.Diagnostic, 0, len(f.Lines)/8+1)
 	for i, line := range f.Lines {
 		lineNum := i + 1
 		if _, ok := skip[lineNum]; ok {
@@ -103,8 +103,8 @@ type escape struct {
 // returns the unescaped delimiter runs and escaped-delimiter
 // positions.
 func scanLine(line []byte) ([]emphRun, []escape) {
-	var runs []emphRun
-	var escapes []escape
+	runs := make([]emphRun, 0, 4)
+	escapes := make([]escape, 0, 4)
 
 	var cur *emphRun
 	closeRun := func() {
