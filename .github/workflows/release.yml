@@ -936,6 +936,14 @@ jobs:
           # Never persist the token in git config; the push step
           # authenticates explicitly via a one-shot, masked header.
           persist-credentials: false
+          # Full clone so the publish step's `git fetch origin assets`
+          # resolves refs/remotes/origin/assets. The default single-
+          # branch shallow checkout tracks only main, so the subsequent
+          # `git checkout -B assets origin/assets` would die — and inside
+          # the `until` loop that failure is swallowed, leaving the job
+          # green while it never publishes. Matches the peer assets
+          # publishers in benchmark.yml and demo.yml.
+          fetch-depth: 0
       - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
         with:
           go-version-file: go.mod
