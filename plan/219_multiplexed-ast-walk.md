@@ -1,7 +1,7 @@
 ---
 id: 219
 title: Multiplexed AST walk to close the parity gap to mado
-status: "🔲"
+status: "✅"
 model: opus
 depends-on: [175, 195]
 summary: >-
@@ -92,3 +92,39 @@ N.
 - [ ] `mdsmith check .` passes.
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool golangci-lint run` reports no issues
+
+## Outcome — not promoting (re-benchmarked post-#496)
+
+Closed as a profiler-backed negative. PR #491 was closed,
+not merged, so the boxes above stay unchecked. The shared
+walk for stateless `NodeChecker`s already lives in
+`internal/checker`. Folding the two stateful heading rules
+(MDS003, MDS005) into it wins nothing. Three independent
+signals agree:
+
+- **Direct A/B (this plan's spike).** The two heading
+  rules folded into the shared walk vs. their own walks,
+  on a heading-dense 120-file corpus, `-count=8`
+  single-core: median **34.6 ms both ways** — no
+  wall-time difference.
+- **Post-#496 re-benchmark.** On current `main` (with
+  #496's GC/allocation cuts landed), an instruction-level
+  profile of the neutral parity corpus puts the AST-walk
+  *traversal* at **~4.4% flat** (`ast.walkHelper`); the
+  ~21% beneath `ast.Walk` is per-node rule **work**, which
+  one shared traversal does not remove. Parse now
+  dominates (`ParseContext` ~38%, `parseBlock` ~24%).
+- **Where the mado gap actually is.** The parity
+  profiling behind #496 attributed the gap to
+  GC/allocation (~40% of executed instructions, since cut
+  by #496), a startup `cuelang`/`apd` decimal-table init,
+  and MDS062's backtracking regex — not walk count. #496
+  took the real win (−39% wall, −30% allocations) via a
+  different lever.
+
+One note on the rebase. The walk machinery has moved since
+this plan forked. It went out of
+`internal/engine/check.go` into `internal/checker`
+(plan 204 + #496). Adapting the multiplex dispatch is now
+a re-port onto a new package, not a replay. That is not
+worth it for a confirmed zero.
