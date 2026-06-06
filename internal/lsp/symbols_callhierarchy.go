@@ -9,6 +9,11 @@ import (
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 )
 
+// LSP call-hierarchy handlers: prepareCallHierarchy plus incoming /
+// outgoing call resolution over the workspace link graph. Split out of
+// symbols.go so each LSP dispatch group owns its own file
+// (cf. rename.go, completion.go).
+
 // handlePrepareCallHierarchy returns a single call-hierarchy item
 // anchored at (file, optional heading). On a directive arg the item
 // is the target file; on a heading line, the heading section.

@@ -7,6 +7,10 @@ import (
 	"github.com/jeduden/mdsmith/internal/index"
 )
 
+// LSP workspace-symbol handler: workspace/symbol substring search over
+// the workspace index. Split out of symbols.go so each LSP dispatch
+// group owns its own file (cf. rename.go, completion.go).
+
 // handleWorkspaceSymbol returns SymbolInformation entries for every
 // substring match in the workspace index.
 func (s *Server) handleWorkspaceSymbol(msg *requestMessage) {

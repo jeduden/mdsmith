@@ -7,6 +7,11 @@ import (
 	"github.com/jeduden/mdsmith/internal/index"
 )
 
+// LSP document-symbol outline: textDocument/documentSymbol and the
+// heading / front-matter / directive tree builders it renders. Split
+// out of symbols.go so each LSP dispatch group owns its own file
+// (cf. rename.go, completion.go).
+
 // handleDocumentSymbol returns a hierarchical outline of the buffer.
 // Front-matter keys hang off a synthetic top-of-file symbol;
 // directives become children of their enclosing heading.

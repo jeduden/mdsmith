@@ -9,6 +9,11 @@ import (
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 )
 
+// LSP navigation handlers: textDocument/definition, /implementation,
+// and /references, plus the target-resolution helpers they share. Split
+// out of symbols.go so each LSP dispatch group owns its own file
+// (cf. rename.go, completion.go).
+
 // handleDefinition resolves textDocument/definition.
 func (s *Server) handleDefinition(msg *requestMessage) {
 	var p textDocumentPositionParams
