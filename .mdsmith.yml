@@ -315,6 +315,20 @@ ignore:
   - "editors/**/dist/**"
 
 kinds:
+  free-body:
+    # Shared schema skeleton for doc kinds whose body is
+    # free-form prose: a preamble followed by any headings.
+    # Each consumer sets only its own `frontmatter:` and
+    # reuses this section shape plus `closed: false` via
+    # `extends:`, removing the duplication these kinds used
+    # to each carry.
+    schema:
+      closed: false
+      sections:
+        - heading: null
+        - heading:
+            regex: '.+'
+            repeat: { min: 0 }
   proto:
     rules:
       # proto.md files lead with directives and placeholder
@@ -364,37 +378,28 @@ kinds:
       required-structure:
         schema: docs/security/proto.md
   architecture-doc:
+    extends: free-body
     schema:
       frontmatter:
         title: nonEmpty
         slug: nonEmpty
         summary: nonEmpty
-      closed: false
-      sections:
-        - heading: null
-        - heading:
-            regex: '.+'
-            repeat: { min: 0 }
     rules:
       max-file-length:
         max: 500
   cli-command:
+    extends: free-body
     schema:
       frontmatter:
         command: nonEmpty
         summary: nonEmpty
-      closed: false
-      sections:
-        - heading: null
-        - heading:
-            regex: '.+'
-            repeat: { min: 0 }
   release-channel:
     path-pattern: "{docs,website/content/docs}/development/release-channels/{proto.md,*.md}"
     rules:
       required-structure:
         schema: docs/development/release-channels/proto.md
   secret-rotation:
+    extends: free-body
     schema:
       frontmatter:
         title: nonEmpty
@@ -406,31 +411,21 @@ kinds:
         usedBy: nonEmpty
         scope: nonEmpty
         releaseEnvScoped: bool
-      closed: false
-      sections:
-        - heading: null
-        - heading:
-            regex: '.+'
-            repeat: { min: 0 }
   audit-log:
+    extends: free-body
     schema:
       frontmatter:
         title: nonEmpty
         "summary?": string
         audit-from: '=~"^[0-9a-f]{7,40}$"'
       filename: "architecture-audit.md"
-      closed: false
-      sections:
-        - heading: null
-        - heading:
-            regex: '.+'
-            repeat: { min: 0 }
   feature:
     # Marketing feature pages under docs/features/. The homepage
     # feature grid (website/layouts/partials/feature-grid.html)
     # and the README <?include?> both depend on this front
     # matter, so the schema makes a missing/typo'd field fail
     # `mdsmith check` instead of silently breaking a card.
+    extends: free-body
     schema:
       frontmatter:
         title: nonEmpty
@@ -446,26 +441,15 @@ kinds:
         group: '"Clean, consistent Markdown" | "One engine, every surface" | "A connected docs tree" | "Markdown as a single source of truth" | "Built for your pipeline"'
         "link?": string
         "rules?": '[...string]'
-      closed: false
-      sections:
-        - heading: null
-        - heading:
-            regex: '.+'
-            repeat: { min: 0 }
   feature-index:
     # docs/features/index.md is the shared "Why mdsmith"
     # overview, not a card: it carries only title + summary
     # (no icon/weight), so it gets its own kind.
+    extends: free-body
     schema:
       frontmatter:
         title: nonEmpty
         summary: nonEmpty
-      closed: false
-      sections:
-        - heading: null
-        - heading:
-            regex: '.+'
-            repeat: { min: 0 }
   messaging:
     # docs/brand/messaging.md is the single source of truth
     # for the product slogan, lead, tagline, and per-surface
@@ -537,6 +521,7 @@ kinds:
     # the same content can be indexed by either Hugo or
     # `<?catalog?>`.
     path-pattern: "website/content/*.md"
+    extends: free-body
     schema:
       frontmatter:
         title: nonEmpty
@@ -548,12 +533,6 @@ kinds:
         # consume the specific keys.
         "hero?": '{...}'
         "install?": '[...{...}]'
-      closed: false
-      sections:
-        - heading: null
-        - heading:
-            regex: '.+'
-            repeat: { min: 0 }
     rules:
       first-line-heading: false
       heading-increment: false
