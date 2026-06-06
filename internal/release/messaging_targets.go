@@ -39,11 +39,15 @@ type MessagingTarget struct {
 // included content is up to date before the consuming file is
 // re-read.
 func MessagingTargets(root string) []MessagingTarget {
-	out := make([]MessagingTarget, 0, 16)
-	out = append(out, messagingFragmentTargets(root)...)
-	out = append(out, messagingWebsiteTargets(root)...)
-	out = append(out, messagingPackageTargets(root)...)
-	out = append(out, messagingEditorTargets(root)...)
+	frags := messagingFragmentTargets(root)
+	web := messagingWebsiteTargets(root)
+	pkgs := messagingPackageTargets(root)
+	eds := messagingEditorTargets(root)
+	out := make([]MessagingTarget, 0, len(frags)+len(web)+len(pkgs)+len(eds))
+	out = append(out, frags...)
+	out = append(out, web...)
+	out = append(out, pkgs...)
+	out = append(out, eds...)
 	return out
 }
 

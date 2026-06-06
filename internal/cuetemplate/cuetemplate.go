@@ -173,7 +173,7 @@ func buildSource(fm map[string]any, expr string) string {
 	if err != nil {
 		panic(fmt.Errorf("cuetemplate: encoding frontmatter: %w", err))
 	}
-	src := make([]byte, 0, len(fmJSON)+128)
+	var src []byte //nolint:prealloc
 	src = append(src, []byte(
 		"import \"strings\"\n\n"+
 			"_strings_used: strings.Join([], \"\")\n")...)
