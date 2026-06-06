@@ -9,6 +9,7 @@ import (
 	flag "github.com/spf13/pflag"
 
 	"github.com/jeduden/mdsmith/internal/engine"
+	"github.com/jeduden/mdsmith/internal/gctune"
 	vlog "github.com/jeduden/mdsmith/internal/log"
 	mdsmith "github.com/jeduden/mdsmith/pkg/mdsmith"
 )
@@ -34,7 +35,7 @@ func runCheck(args []string) int {
 	if code >= 0 {
 		return code
 	}
-	tuneGCForBatch()
+	gctune.ApplyBatch()
 	if hasStdin {
 		return checkStdin(opts)
 	}
