@@ -648,7 +648,7 @@ func (r *Rule) isAnySchemaFile(f *lint.File) bool {
 // sync (no source body content) so the legacy syncPoints code path
 // is skipped.
 func (r *Rule) checkSingleInlineSchema(f *lint.File, sch *schema.Schema) []lint.Diagnostic {
-	var diags []lint.Diagnostic
+	diags := make([]lint.Diagnostic, 0, 8)
 	docFMRaw, fmDiags := readDocFrontMatterRaw(f)
 	diags = append(diags, fmDiags...)
 	fmIsCUE := placeholders.HasCUEFrontmatter(r.Placeholders)
@@ -1622,7 +1622,7 @@ func expandSchemaInclude(
 			"schema include depth exceeds maximum (%d)", maxSchemaIncludeDepth)
 	}
 	if visited[includedPath] {
-		chainCopy := make([]string, len(chain))
+		chainCopy := make([]string, len(chain), len(chain)+1)
 		copy(chainCopy, chain)
 		chainCopy = append(chainCopy, includedPath)
 		return nil, "", includedPath, nil, fmt.Errorf(

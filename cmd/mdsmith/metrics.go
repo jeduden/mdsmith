@@ -326,7 +326,7 @@ func writeMetricsListJSON(defs []metricspkg.Definition) error {
 func writeMetricsRankText(rows []metricspkg.Row, defs []metricspkg.Definition) error {
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 
-	var headers []string
+	headers := make([]string, 0, len(defs)+1)
 	for _, def := range defs {
 		headers = append(headers, strings.ToUpper(def.Name))
 	}

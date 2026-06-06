@@ -71,7 +71,6 @@ func (r *Rule) EnabledByDefault() bool { return false }
 
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
-	var diags []lint.Diagnostic
 	// Iterate the per-File memoized non-table paragraph collection so
 	// the AST walk is shared with the other paragraph-walking rules
 	// (MDS023 paragraph-readability, MDS057 required-text-patterns,
@@ -91,6 +90,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	// collector keeps MDS024 inside the budget; the extra
 	// extraction cost when MDS057/MDS058 are co-enabled is paid
 	// per-paragraph in the bare ExtractText calls.
+	var diags []lint.Diagnostic //nolint:prealloc // pre-sizing would exceed the 9-alloc/op budget (plan 193)
 	for _, p := range astutil.CollectSectionParagraphs(f) {
 		diags = append(diags, r.checkParagraph(p.ExtractText(f.Source), p.Line, f.Path)...)
 	}

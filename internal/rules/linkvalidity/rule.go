@@ -222,7 +222,7 @@ func (r *Rule) Fix(f *lint.File) []byte {
 			out[i] = line
 			continue
 		}
-		var b []byte
+		b := make([]byte, 0, len(line))
 		prev := 0
 		for _, mm := range matches {
 			b = append(b, line[prev:mm.col0]...)

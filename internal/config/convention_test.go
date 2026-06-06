@@ -175,7 +175,7 @@ func TestProvenance_ConventionLayerVisible(t *testing.T) {
 	require.True(t, ok, "rule must appear in resolution")
 	require.NotEmpty(t, rr.Layers)
 
-	var sources []string
+	sources := make([]string, 0, len(rr.Layers))
 	for _, l := range rr.Layers {
 		sources = append(sources, l.Source)
 	}
@@ -610,7 +610,7 @@ func TestProvenance_UserConventionLayerHasUserSuffix(t *testing.T) {
 	rr, ok := res.Rules["markdown-flavor"]
 	require.True(t, ok)
 
-	var sources []string
+	sources := make([]string, 0, len(rr.Layers))
 	for _, l := range rr.Layers {
 		sources = append(sources, l.Source)
 	}

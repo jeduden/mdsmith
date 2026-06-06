@@ -515,7 +515,7 @@ func loadBadFixtureInputs(t *testing.T, dir string) []auditProbeInput {
 		paths = append(paths, single)
 	}
 
-	var inputs []auditProbeInput
+	inputs := make([]auditProbeInput, 0, len(paths))
 	for _, p := range paths {
 		raw, err := os.ReadFile(p) //nolint:gosec // test fixture path
 		require.NoError(t, err)

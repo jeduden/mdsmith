@@ -234,7 +234,7 @@ func TestRunner_IntraFileConcurrencyByteIdentical(t *testing.T) {
 	}
 	cfg := config.Defaults()
 	dir := t.TempDir()
-	var paths []string
+	paths := make([]string, 0, len(files))
 	for name, body := range files {
 		p := filepath.Join(dir, name)
 		require.NoError(t, os.WriteFile(p, []byte(body), 0o644))

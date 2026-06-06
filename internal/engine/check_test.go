@@ -443,7 +443,7 @@ func (r *mockMultiLineRule) ID() string       { return r.id }
 func (r *mockMultiLineRule) Name() string     { return r.name }
 func (r *mockMultiLineRule) Category() string { return "test" }
 func (r *mockMultiLineRule) Check(f *lint.File) []lint.Diagnostic {
-	var diags []lint.Diagnostic
+	diags := make([]lint.Diagnostic, 0, len(r.lines))
 	for _, l := range r.lines {
 		diags = append(diags, lint.Diagnostic{
 			File:     f.Path,

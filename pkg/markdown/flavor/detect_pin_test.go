@@ -93,7 +93,7 @@ func TestDetectByteIdenticalPin(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			doc := markdown.Parse([]byte(tc.src))
 			got := Detect(doc, nil)
-			var gotShapes []findingShape
+			var gotShapes []findingShape //nolint:prealloc
 			for _, f := range got {
 				gotShapes = append(gotShapes,
 					findingShape{f.Feature, f.Line, f.Column})

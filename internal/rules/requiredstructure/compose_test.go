@@ -596,7 +596,7 @@ func TestBodySyncDiagnostics_ParseError(t *testing.T) {
 	// The compose-path reports the parse failure; the
 	// body-sync path swallows it (the swallowed branch is what
 	// this test covers).
-	var msgs []string
+	msgs := make([]string, 0, len(diags))
 	for _, d := range diags {
 		msgs = append(msgs, d.Message)
 	}

@@ -543,7 +543,7 @@ func cloneSettingsMap(m map[string]any) map[string]any {
 }
 
 func composeCrossRefs(schemas []*Schema) []CrossRef {
-	var out []CrossRef
+	out := make([]CrossRef, 0, len(schemas))
 	for _, s := range schemas {
 		out = append(out, s.CrossReferences...)
 	}
