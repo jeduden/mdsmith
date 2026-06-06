@@ -1,21 +1,24 @@
 name: Cross-tool benchmark
 
 # Re-measure the mdsmith-vs-Rust benchmark on every merge to
-# main and publish to the orphan `assets` branch (the demo.gif
-# pattern): both the refreshed numbers (data + fragments) and
-# the benchmark Markdown pages rendered from main's READMEs with
-# those numbers spliced in. Record-only: it never gates a merge
-# or a release, and it never pushes to protected main. The
-# in-repo committed snapshot — refreshed via run.sh or the
-# release's benchmark-publish PR, reviewed before merge — stays the
+# main and publish a RECORD-ONLY drift snapshot to the orphan
+# `assets` branch under assets/benchmarks-drift/ (the demo.gif
+# pattern): the refreshed numbers (data + fragments) plus the
+# benchmark Markdown pages rendered from main's READMEs. It never
+# gates a merge or a release, never pushes to protected main, and
+# NOTHING reads assets/benchmarks-drift/ — it is a drift signal
+# only. This per-merge run re-measures on a noisy shared runner,
+# so keeping it off every published path is deliberate: the
+# figures users see must not swing run-to-run with whatever else
+# shared the runner (the #502 principle).
+#
+# The published figures live elsewhere. The in-repo committed
+# snapshot (refreshed via run.sh, reviewed in a PR) is the
 # `bench-fragments` gate's source of truth and the floor a
-# non-release site build reads (a release instead bakes in its own
-# freshly-measured numbers; see release.yml's benchmark-publish). This
-# per-merge run re-measures on a noisy shared runner, so it is a
-# record-only drift signal (a demo.gif-style artifact on the
-# assets branch), NOT a live source the website or docs read; if
-# it fed the published figures they would swing run-to-run with
-# whatever else shared the runner.
+# non-release site build reads. Each release publishes its own
+# freshly-measured numbers — baked into the site and pushed to
+# assets/benchmarks/ (the path the README links to) by
+# release.yml's benchmark-publish job.
 
 on:
   push:
@@ -97,11 +100,12 @@ jobs:
     needs: record
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    # Serialize against demo.yml's publish job: both rewrite
-    # disjoint subtrees on the same orphan `assets` ref, so a
-    # concurrent run loses one workflow's push to non-fast-forward
-    # rejection. cancel-in-progress: false because the queued run
-    # still has unique work (its own subtree update) to land.
+    # Serialize against demo.yml's and release.yml's publish jobs:
+    # all three rewrite DISJOINT subtrees on the same orphan `assets`
+    # ref (demo.gif, benchmarks-drift/, benchmarks/), so a concurrent
+    # run would still lose one workflow's push to non-fast-forward
+    # rejection on the shared ref. cancel-in-progress: false because
+    # the queued run still has unique work (its own subtree) to land.
     concurrency:
       group: assets-branch
       cancel-in-progress: false
@@ -117,20 +121,20 @@ jobs:
         with:
           name: ${{ needs.record.outputs.artifact_name }}
           path: /tmp/bench
-      - name: Publish numbers to the assets branch
+      - name: Publish the drift snapshot to the assets branch
         run: |
-          # Update ONLY assets/benchmarks/ on the shared orphan
-          # assets branch. demo.yml manages assets/demo.gif on the
-          # same branch, so neither workflow may wipe the whole
-          # tree — each touches only its own subtree and commits
-          # only when its subtree changed.
+          # Update ONLY assets/benchmarks-drift/ on the shared orphan
+          # assets branch. demo.yml manages assets/demo.gif and
+          # release.yml's benchmark-publish manages assets/benchmarks/
+          # (the published, README-linked numbers) on the same branch,
+          # so each writer touches only its own subtree and commits
+          # only when that subtree changed.
           #
-          # The job-level concurrency group `assets-branch`
-          # serializes against demo.yml's publish. The
-          # retry-with-refetch loop below is defense-in-depth:
-          # rebuild our subtree on top of the latest origin/assets
-          # if any other writer landed a commit between our fetch
-          # and our push.
+          # The job-level concurrency group `assets-branch` serializes
+          # against the other two publishers. The retry-with-refetch
+          # loop below is defense-in-depth: rebuild our subtree on top
+          # of the latest origin/assets if any other writer landed a
+          # commit between our fetch and our push.
           set -euo pipefail
 
           git config user.name  "github-actions[bot]"
@@ -146,18 +150,18 @@ jobs:
               git rm -r --cached . >/dev/null 2>&1 || true
             fi
 
-            # Replace only the benchmarks subtree. assets/demo.gif
-            # (if present) is left exactly as demo.yml wrote it.
-            rm -rf assets/benchmarks
-            mkdir -p assets/benchmarks
-            cp -R /tmp/bench/. assets/benchmarks/
+            # Replace only the drift subtree. assets/demo.gif and
+            # assets/benchmarks/ (other workflows') are left untouched.
+            rm -rf assets/benchmarks-drift
+            mkdir -p assets/benchmarks-drift
+            cp -R /tmp/bench/. assets/benchmarks-drift/
 
-            git add assets/benchmarks
+            git add assets/benchmarks-drift
             if git diff --staged --quiet; then
-              echo "benchmark numbers unchanged — nothing to push"
+              echo "benchmark drift unchanged — nothing to push"
               return 0
             fi
-            git commit -m "chore: refresh cross-tool benchmark numbers"
+            git commit -m "chore: refresh cross-tool benchmark drift snapshot"
             git push -u origin assets
           }
 

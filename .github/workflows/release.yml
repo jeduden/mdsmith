@@ -964,19 +964,16 @@ jobs:
           cp -r docs/research/benchmarks/data /tmp/baseline-data
       - name: Re-measure the cross-tool benchmark
         run: go run ./cmd/mdsmith-release bench /tmp/mdsmith-bench
-      - name: Re-splice the fragment includes
-        # Bake the freshly measured fragments. The benchmark doc
-        # (docs/research/benchmarks/README.md) embeds results.fragment.md
-        # and is rendered into the assets-branch page the README links
-        # to. performance.md is NOT baked here — the pages job bakes it
-        # from the artifact's headline.fragment.md at deploy time — and
-        # README no longer embeds numbers, so neither is re-spliced.
+      - name: Normalize the freshly measured fragments
+        # Normalize the gen_fragments.py tables to the gate's canonical
+        # form (the same step benchmark.yml runs). No host page is
+        # re-spliced here: the pages job bakes performance.md from the
+        # artifact at deploy time, and the README links to
+        # results.fragment.md directly.
         run: |
           go run ./cmd/mdsmith fix \
             docs/research/benchmarks/results.fragment.md \
             docs/research/benchmarks/headline.fragment.md
-          go run ./cmd/mdsmith fix \
-            docs/research/benchmarks/README.md
       - name: Stage the benchmark-numbers artifact
         # Two fragments feed the pages job's site bake; the fresh and
         # baseline data dirs feed bench-regression-gate. Uploaded before
@@ -997,13 +994,16 @@ jobs:
           if-no-files-found: error
       - name: Publish the numbers to the assets branch
         # GitHub Actions cannot open PRs here, but it can push to the
-        # orphan `assets` branch. Push this release's numbers plus the
-        # rendered benchmark page there, so the README's assets-branch
-        # link reflects the release at once. Subtree-safe and best-effort:
-        # it rewrites only assets/benchmarks/ (demo.yml owns
-        # assets/demo.gif), commits only on change, retries a push race,
-        # and on repeated failure warns rather than failing the job —
-        # `pages` needs the artifact uploaded above, not this push.
+        # orphan `assets` branch. Push this release's data + fragments
+        # there, so the README's [bench-live] link target
+        # (assets/benchmarks/results.fragment.md) shows the release's
+        # numbers. This job OWNS assets/benchmarks/; demo.yml owns
+        # assets/demo.gif and benchmark.yml owns assets/benchmarks-drift/,
+        # so the three subtrees are disjoint. Subtree-safe and
+        # best-effort: it rewrites only assets/benchmarks/, commits only
+        # on change, retries a push race, and on repeated failure warns
+        # rather than failing the job — `pages` needs the artifact
+        # uploaded above, not this push.
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -1012,16 +1012,16 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Stage the subtree before switching branches: raw numbers, the
-          # two fragments, and the rendered benchmark page the README
-          # links to (the benchmark doc was baked in the re-splice step).
+          # Stage the subtree before switching branches: the raw data and
+          # the two fragments. results.fragment.md is the README's link
+          # target; both render as clean tables with no inner links to
+          # 404 on the assets branch.
           rm -rf /tmp/bench-assets
-          mkdir -p /tmp/bench-assets/data /tmp/bench-assets/pages
+          mkdir -p /tmp/bench-assets/data
           cp docs/research/benchmarks/results.fragment.md \
              docs/research/benchmarks/headline.fragment.md \
              /tmp/bench-assets/
           cp docs/research/benchmarks/data/*.json /tmp/bench-assets/data/
-          cp docs/research/benchmarks/README.md /tmp/bench-assets/pages/benchmark.md
 
           # The push authenticates via a masked http.extraheader (checkout
           # ran with persist-credentials: false).

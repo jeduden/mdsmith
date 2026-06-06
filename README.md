@@ -339,4 +339,4 @@ upgrades stay reviewable.
 [grc-link]: https://goreportcard.com/report/github.com/jeduden/mdsmith
 [cov-badge]: https://codecov.io/gh/jeduden/mdsmith/branch/main/graph/badge.svg
 [cov-link]: https://codecov.io/gh/jeduden/mdsmith/branch/main
-[bench-live]: https://github.com/jeduden/mdsmith/blob/assets/assets/benchmarks/pages/benchmark.md
+[bench-live]: https://github.com/jeduden/mdsmith/blob/assets/assets/benchmarks/results.fragment.md
