@@ -266,6 +266,28 @@ func TestMemFSGlobDoublestar(t *testing.T) {
 	}
 }
 
+// --- indexSlash ---
+
+// TestIndexSlash covers the four boundary cases: no slash, slash at
+// index 0, slash in the middle, and slash at the last position.
+func TestIndexSlash(t *testing.T) {
+	cases := []struct {
+		input string
+		want  int
+	}{
+		{"noslash", -1},
+		{"/leading", 0},
+		{"mid/dle", 3},
+		{"trailing/", 8},
+	}
+	for _, tc := range cases {
+		got := indexSlash(tc.input)
+		if got != tc.want {
+			t.Errorf("indexSlash(%q) = %d, want %d", tc.input, got, tc.want)
+		}
+	}
+}
+
 // Workspace is satisfied by both implementations.
 var (
 	_ Workspace = OSWorkspace{}

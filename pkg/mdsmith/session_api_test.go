@@ -2,6 +2,7 @@ package mdsmith
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -332,6 +333,108 @@ func TestKindsFieldsParseError(t *testing.T) {
 	s := newTestSession(t, cfg, files)
 	if _, err := s.Kinds("seq.md"); err == nil {
 		t.Fatal("Kinds: expected a ParseFrontMatterFields error for sequence front matter, got nil")
+	}
+}
+
+// --- capabilityList ---
+
+// TestCapabilityList asserts the returned slice contains the expected
+// capability names in sorted order. The WASM bridge reads the same list,
+// so any rename must update both sides; this test locks the exact names.
+func TestCapabilityList(t *testing.T) {
+	got := capabilityList()
+	want := []string{"check", "fix", "kinds"}
+	if len(got) != len(want) {
+		t.Fatalf("capabilityList() = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("capabilityList()[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+// --- frontMatterEnabled ---
+
+// TestFrontMatterEnabled covers enabled (nil pointer — the default),
+// explicitly true, and explicitly false. The helper gates both
+// StripFrontMatter on the engine runner and frontMatterFor's parse path.
+func TestFrontMatterEnabled(t *testing.T) {
+	// nil config → enabled (default)
+	if !frontMatterEnabled(nil) {
+		t.Fatal("frontMatterEnabled(nil) = false, want true")
+	}
+	// FrontMatter field nil (key absent in YAML) → enabled
+	cfg, err := ConfigYAML("").loadConfig()
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	if !frontMatterEnabled(cfg) {
+		t.Fatal("frontMatterEnabled(defaultConfig) = false, want true")
+	}
+	// Explicitly enabled
+	cfgTrue, err := ConfigYAML("front-matter: true").loadConfig()
+	if err != nil {
+		t.Fatalf("loadConfig true: %v", err)
+	}
+	if !frontMatterEnabled(cfgTrue) {
+		t.Fatal("frontMatterEnabled(front-matter:true) = false, want true")
+	}
+	// Explicitly disabled
+	cfgFalse, err := ConfigYAML("front-matter: false").loadConfig()
+	if err != nil {
+		t.Fatalf("loadConfig false: %v", err)
+	}
+	if frontMatterEnabled(cfgFalse) {
+		t.Fatal("frontMatterEnabled(front-matter:false) = true, want false")
+	}
+}
+
+// --- firstError ---
+
+// TestFirstError covers the empty-slice (nil) and non-empty contracts.
+func TestFirstError(t *testing.T) {
+	if got := firstError(nil); got != nil {
+		t.Fatalf("firstError(nil) = %v, want nil", got)
+	}
+	if got := firstError([]error{}); got != nil {
+		t.Fatalf("firstError([]) = %v, want nil", got)
+	}
+	sentinel := errors.New("sentinel")
+	other := errors.New("other")
+	got := firstError([]error{sentinel, other})
+	if got != sentinel {
+		t.Fatalf("firstError([sentinel, other]) = %v, want sentinel", got)
+	}
+}
+
+// --- cloneDiagnostics ---
+
+// TestCloneDiagnostics asserts the clone is a distinct backing array and
+// that mutating it does not touch the source slice.
+func TestCloneDiagnostics(t *testing.T) {
+	// nil input must return nil (preserves the public no-diagnostics contract)
+	if got := cloneDiagnostics(nil); got != nil {
+		t.Fatalf("cloneDiagnostics(nil) = %v, want nil", got)
+	}
+	// Non-nil: clone is distinct but carries the same values
+	src := []Diagnostic{
+		{Rule: "MDS001", Message: "alpha"},
+		{Rule: "MDS002", Message: "beta"},
+	}
+	clone := cloneDiagnostics(src)
+	if len(clone) != len(src) {
+		t.Fatalf("clone length = %d, want %d", len(clone), len(src))
+	}
+	for i := range src {
+		if clone[i].Rule != src[i].Rule || clone[i].Message != src[i].Message {
+			t.Fatalf("clone[%d] = %+v, want Rule=%q Message=%q", i, clone[i], src[i].Rule, src[i].Message)
+		}
+	}
+	// Mutate the clone; source must be untouched
+	clone[0].Message = "mutated"
+	if src[0].Message != "alpha" {
+		t.Fatalf("mutating clone poisoned source: src[0].Message = %q", src[0].Message)
 	}
 }
 

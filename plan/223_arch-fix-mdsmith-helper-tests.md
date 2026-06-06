@@ -1,7 +1,7 @@
 ---
 id: 223
 title: Add unit tests for pkg/mdsmith private helpers
-status: "🔲"
+status: "✅"
 summary: >-
   Five private helpers in the new public
   pkg/mdsmith package lack dedicated unit
@@ -64,13 +64,13 @@ not test-only):
 
 ## Acceptance Criteria
 
-- [ ] `TestCapabilityList` exists and
+- [x] `TestCapabilityList` exists and
   passes.
-- [ ] `TestFrontMatterEnabled` exists and
+- [x] `TestFrontMatterEnabled` exists and
   passes.
-- [ ] `TestFirstError` exists and passes.
-- [ ] `TestCloneDiagnostics` exists and
+- [x] `TestFirstError` exists and passes.
+- [x] `TestCloneDiagnostics` exists and
   passes.
-- [ ] `TestIndexSlash` exists and passes.
-- [ ] `go test ./pkg/mdsmith/...` green.
-- [ ] `go tool golangci-lint run` clean.
+- [x] `TestIndexSlash` exists and passes.
+- [x] `go test ./pkg/mdsmith/...` green.
+- [x] `go tool golangci-lint run` clean.

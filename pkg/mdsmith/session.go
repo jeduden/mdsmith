@@ -559,8 +559,9 @@ func (s *Session) parseCacheHits() int {
 
 // frontMatterEnabled reports whether front-matter stripping is on for
 // the compiled config. Mirrors cmd/mdsmith's helper of the same name.
+// A nil cfg is treated as the default (enabled).
 func frontMatterEnabled(cfg *config.Config) bool {
-	return cfg.FrontMatter == nil || *cfg.FrontMatter
+	return cfg == nil || cfg.FrontMatter == nil || *cfg.FrontMatter
 }
 
 // hashBytes returns a fast non-cryptographic content hash for cache
