@@ -33,7 +33,6 @@ import (
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -314,17 +313,25 @@ func (t *Toolkit) Bench(root, workdir string) error {
 	}
 
 	dataDir := filepath.Join(root, benchDirRel, "data")
+	return t.finalizeBenchData(root, workdir, outDir, dataDir)
+}
+
+// finalizeBenchData turns a completed hyperfine run into the committed
+// snapshot: it promotes the JSON exports into dataDir, records the real
+// per-corpus file counts (corpus_sizes.json), then regenerates the
+// fragments via gen_fragments.py. Split out of Bench so the data tail
+// is exercisable without the network, hyperfine, or a real corpus
+// build.
+func (t *Toolkit) finalizeBenchData(root, workdir, outDir, dataDir string) error {
 	if err := t.promoteBenchJSON(outDir, dataDir); err != nil {
 		return err
 	}
-
 	// Record the file count each corpus actually carries so the
 	// fragment headings/headline track the real corpus instead of a
 	// frozen literal. gen_fragments.py reads this next.
 	if err := t.writeCorpusSizes(workdir, dataDir); err != nil {
 		return err
 	}
-
 	fmt.Println("bench: regenerating fragments via gen_fragments.py")
 	gen := filepath.Join(root, benchDirRel, "gen_fragments.py")
 	if err := t.runner.RunCommand(root, "python3", gen, dataDir, filepath.Join(root, benchDirRel)); err != nil {
@@ -542,21 +549,26 @@ func (t *Toolkit) countMarkdownFiles(root string) (int, error) {
 	if !t.exists(root) {
 		return 0, nil
 	}
-	n := 0
-	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if strings.HasSuffix(p, ".md") || strings.HasSuffix(p, ".markdown") {
-			n++
-		}
-		return nil
-	})
+	// Walk through the FS seam (not filepath.WalkDir) so the read
+	// error is fault-injectable in tests, matching the rest of the
+	// toolkit's filesystem access.
+	entries, err := t.fs.ReadDir(root)
 	if err != nil {
 		return 0, fmt.Errorf("count markdown under %s: %w", root, err)
+	}
+	n := 0
+	for _, e := range entries {
+		if e.IsDir() {
+			sub, err := t.countMarkdownFiles(filepath.Join(root, e.Name()))
+			if err != nil {
+				return 0, err
+			}
+			n += sub
+			continue
+		}
+		if strings.HasSuffix(e.Name(), ".md") || strings.HasSuffix(e.Name(), ".markdown") {
+			n++
+		}
 	}
 	return n, nil
 }
@@ -585,11 +597,13 @@ func (t *Toolkit) writeCorpusSizes(workdir, dataDir string) error {
 	if err != nil {
 		return err
 	}
-	body, err := json.MarshalIndent(corpusSizes{Repo: repoN, Neutral: neutralN}, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal corpus sizes: %w", err)
-	}
-	body = append(body, '\n')
+	// A fixed two-int shape cannot fail to serialize, so format the
+	// JSON directly rather than carry an untestable marshal-error
+	// branch. The bytes match json.MarshalIndent(..., "", "  ") plus a
+	// trailing newline — the exact form gen_fragments.py reads and the
+	// bench-fragments idempotency gate expects.
+	sizes := corpusSizes{Repo: repoN, Neutral: neutralN}
+	body := []byte(fmt.Sprintf("{\n  %q: %d,\n  %q: %d\n}\n", "repo", sizes.Repo, "neutral", sizes.Neutral))
 	dst := filepath.Join(dataDir, "corpus_sizes.json")
 	if err := t.fs.WriteFile(dst, body, 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", dst, err)

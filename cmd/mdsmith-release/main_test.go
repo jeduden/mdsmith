@@ -109,6 +109,7 @@ func TestSubcommandHelpExitsZero(t *testing.T) {
 		"sync-channels",
 		"render-scoop-manifest",
 		"render-winget-manifest",
+		"pull-site-assets",
 	} {
 		assert.Equal(t, 0, run([]string{sub, "--help"}), "%s --help", sub)
 	}
