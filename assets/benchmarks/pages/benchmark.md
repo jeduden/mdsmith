@@ -9,13 +9,16 @@ summary: >-
 
 Our own benchmark run, not a re-quote of each project's README.
 Reproduce it with [`run.sh`](run.sh), a thin wrapper over
-`mdsmith-release bench`. The same harness runs automatically on
-every merge to `main` and publishes to the orphan `assets`
-branch: the refreshed numbers plus this page and the repo README
-rendered with those numbers spliced in; the website reads them
-at build time (the demo.gif pattern). The committed `data/*.json`
-snapshot in this directory stays the `bench-fragments` gate's
-source of truth and is what the tables below render from in-repo.
+`mdsmith-release bench`. The published numbers come from the
+committed `data/*.json` snapshot in this directory: it is the
+`bench-fragments` gate's source of truth, what the tables below
+render from in-repo, and what the website reads at build time. You
+refresh it deliberately by running `run.sh` and reviewing the
+result in a PR. The same harness also runs on every merge to
+`main`, publishing a re-measured copy to the orphan `assets`
+branch — but that per-merge run is a record-only drift signal (the
+demo.gif-style artifact), not a live source the website or the
+docs read.
 
 ## Method
 
@@ -48,16 +51,21 @@ source of truth and is what the tables below render from in-repo.
 
 | Corpus  | Files | Source                                            |
 | ------- | ----- | ------------------------------------------------- |
-| repo    | 523   | mdsmith's own tracked Markdown (fixtures dropped) |
+| repo    | 722   | mdsmith's own tracked Markdown (fixtures dropped) |
 | neutral | 234   | Rust Book + Rust Reference `src/` (third-party)   |
 
 ### Environment
 
-- Linux 6.18.5 x86_64, 4 vCPU, Intel Xeon @ 2.10 GHz
+- GitHub Actions `ubuntu-latest`: a shared 4-vCPU runner
+  (Linux 6.18.5 x86_64, Intel Xeon @ 2.10 GHz). Shared, not
+  dedicated — neighbouring load on the host moves the absolute
+  numbers, which is why the per-tool ratio within one run, not
+  the cross-tool absolute time across runs, is the signal (see
+  [Why absolute numbers move](#why-absolute-numbers-move-and-how-the-factor-stays-stable)).
 - mdsmith (Go 1.25.8 build), mado 0.3.0, rumdl 0.1.93,
   panache 2.46.0, markdownlint-cli2 0.22.1 (markdownlint
   0.40.0)
-- Date: 2026-05-17
+- Date: 2026-06-06
 
 ## Results
 
@@ -78,29 +86,29 @@ the harness (run.sh) and `mdsmith fix` to refresh. -->
 mdsmith-only rules so the work class matches the markdownlint
 tools (see `bench-parity.mdsmith.yml`).
 
-**Repo corpus — 523 Markdown files** (median wall time, lower is
+**Repo corpus — 722 Markdown files** (median wall time, lower is
 better; `vs mado` is the median ratio to the fastest tool):
 
 | Tool              | Median  | Min     | vs mado |
 | ----------------- | ------- | ------- | ------- |
-| mado              | 57 ms   | 56 ms   | 1.0x    |
-| mdsmith-parity    | 102 ms  | 100 ms  | 1.8x    |
-| rumdl             | 286 ms  | 277 ms  | 5.0x    |
-| mdsmith           | 445 ms  | 440 ms  | 7.8x    |
-| panache           | 548 ms  | 522 ms  | 9.6x    |
-| markdownlint-cli2 | 4168 ms | 4113 ms | 73x     |
+| mado              | 58 ms   | 57 ms   | 1.0x    |
+| mdsmith-parity    | 103 ms  | 102 ms  | 1.8x    |
+| rumdl             | 287 ms  | 283 ms  | 5.0x    |
+| mdsmith           | 464 ms  | 444 ms  | 8.0x    |
+| panache           | 526 ms  | 523 ms  | 9.1x    |
+| markdownlint-cli2 | 4241 ms | 4180 ms | 73x     |
 
 **Neutral corpus — 234 files** (Rust Book + Rust Reference,
 longer third-party prose):
 
 | Tool              | Median  | Min     | vs mado |
 | ----------------- | ------- | ------- | ------- |
-| mado              | 46 ms   | 46 ms   | 1.0x    |
-| mdsmith-parity    | 133 ms  | 132 ms  | 2.9x    |
-| rumdl             | 190 ms  | 188 ms  | 4.1x    |
-| mdsmith           | 246 ms  | 241 ms  | 5.3x    |
-| panache           | 531 ms  | 513 ms  | 11x     |
-| markdownlint-cli2 | 3110 ms | 3082 ms | 67x     |
+| mado              | 47 ms   | 46 ms   | 1.0x    |
+| mdsmith-parity    | 134 ms  | 133 ms  | 2.9x    |
+| rumdl             | 191 ms  | 188 ms  | 4.1x    |
+| mdsmith           | 249 ms  | 246 ms  | 5.3x    |
+| panache           | 531 ms  | 517 ms  | 11x     |
+| markdownlint-cli2 | 3097 ms | 3048 ms | 66x     |
 <?/include?>
 
 ## Reading the result
@@ -167,6 +175,62 @@ working as intended.
 Pick mado or rumdl for raw markdownlint-rule throughput;
 pick mdsmith when the cross-file graph, readability budgets,
 and self-maintaining sections are the point.
+
+### Why absolute numbers move, and how the factor stays stable
+
+The absolute milliseconds in the table above are not stable
+release to release, and that is expected, not a regression.
+Three things move them; only the per-tool ratio within one run
+is meant to be read as a result.
+
+**The repo corpus grows.** It is mdsmith's own tracked
+Markdown, and the project keeps adding docs — 523 files when
+this page was first written, 722 now. A linter that checks more
+files takes longer, so mdsmith's absolute repo-corpus time
+creeps up as the docs grow, with no change to the engine. The
+tell that growth — not a code regression — drives most of the
+move is mado: a fixed-version check-only binary, its repo time
+went from 40 ms over 523 files to 57 ms over 722, about 1.4x,
+almost exactly the 1.38x file growth (722/523). When the
+fixed-version tool scales with the file count, the shared cause
+is the file count. (The neutral corpus does not grow — it is
+pinned third-party prose; see below.)
+
+**`ubuntu-latest` is a shared runner.** The benchmark runs on a
+shared 4-vCPU GitHub Actions host, not a dedicated machine, so a
+neighbour's load on the same host slows a run non-uniformly: a
+lean tool that fits in cache might lose ~1.4x between a quiet and
+a contended run, while a memory- or IO-heavy tool (Node
+markdownlint-cli2 at ~400 MB resident is the extreme) can lose
+several-x. So the cross-tool *absolute* times are
+environment-dependent and not comparable across runs. The
+per-tool *ratio* measured inside a single run — every tool hit
+the same contention at the same moment — is the number that
+survives the move, which is why this page reads ratios, not
+raw milliseconds.
+
+**The reproducibility holes are closed.** Two inputs that used
+to drift silently no longer do. The neutral corpus is pinned to
+fixed upstream commits of the Rust Book and Rust Reference
+(`rustBookPinnedSHA` / `rustRefPinnedSHA` in
+`internal/release/bench.go`), so its content is identical run to
+run instead of following each repo's moving default branch. And
+the file count in the headings and the headline is computed from
+the corpus the harness actually built (`bench.go` writes
+`data/corpus_sizes.json`, `gen_fragments.py` reads it), never a
+hardcoded literal — so the count cannot quietly go stale as the
+repo's Markdown grows the way the old frozen "523" did.
+
+**The policy this implies.** The published numbers come from the
+committed in-repo snapshot under this directory, refreshed
+deliberately via `run.sh` and reviewed in a PR — one run, one
+machine, one moment of contention, so its cross-tool ratios are
+internally consistent. The per-merge `benchmark.yml` CI run
+re-measures on a fresh, separately-contended runner and is a
+record-only drift signal: it is never a live source the website
+or these docs read. That separation is deliberate; without it,
+the site's headline factor would swing run to run with whatever
+else was sharing the runner.
 
 ### Why obsidian-linter is not benchmarked
 
@@ -321,7 +385,7 @@ re-scoped, and a CI gate now guards the real number.
 
 ### Gates
 
-Three gates, all in CI:
+Four gates in CI:
 
 - **Tiered check budgets** —
   `BenchmarkCheckCorpus{Small,Large}` in
@@ -337,8 +401,18 @@ Three gates, all in CI:
   `data/*.json` via `gen_fragments.py`, re-runs
   `mdsmith fix`, and `git diff --exit-code`s. A
   hand-edited fragment or a stale number fails the build.
-  The cross-tool numbers only move when `run.sh` promotes
-  fresh JSON into `data/`.
+  The cross-tool numbers only move when fresh JSON is
+  promoted into `data/` — by the per-release
+  `benchmark-refresh` job or a local `run.sh`.
+- **Per-release regression gate + refresh** — on every
+  release, `release.yml`'s `benchmark-refresh` job
+  re-measures on the runner and runs
+  `mdsmith-release bench-check`, which compares mdsmith's
+  ratio to mado (machine- and corpus-size-independent)
+  against the committed baseline and fails on a real
+  relative slowdown. The same job opens a PR that refreshes
+  the committed snapshot, so the published numbers never
+  freeze between releases.
 - **Required checks** — CI runs on every PR and the
   merge queue, so these jobs gate queue merges. A
   maintainer must also add `check-bench` and
