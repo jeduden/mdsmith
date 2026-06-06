@@ -116,14 +116,14 @@ func loadFromBytes(data []byte, sourcePath string, mergeKinds bool) (*Config, er
 func topLevelKeySet(data []byte) map[string]bool {
 	node, err := yamlutil.UnmarshalNodeSafe(data)
 	if err != nil {
-		return map[string]bool{}
+		return nil
 	}
 	if node.Kind != yaml.DocumentNode || len(node.Content) == 0 {
-		return map[string]bool{}
+		return nil
 	}
 	mapping := node.Content[0]
 	if mapping.Kind != yaml.MappingNode {
-		return map[string]bool{}
+		return nil
 	}
 	result := make(map[string]bool, len(mapping.Content)/2)
 	for i := 0; i < len(mapping.Content)-1; i += 2 {

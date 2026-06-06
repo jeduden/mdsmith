@@ -19,7 +19,7 @@ func Collect(cfg *Config, cacheDir string) ([]Record, error) {
 
 	allow := makeAllowset(cfg.LicenseAllowlist)
 
-	records := make([]Record, 0)
+	records := make([]Record, 0, len(cfg.Sources))
 	for idx, source := range cfg.Sources {
 		sourceRecords, err := collectSource(
 			cfg,

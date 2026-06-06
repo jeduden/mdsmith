@@ -69,7 +69,7 @@ func runHelpPatterns(args []string) int {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return 2
 	}
-	items := make([]patternRec, 0)
+	items := make([]patternRec, 0, len(rules))
 	for _, r := range rules {
 		if r.Maintainability == nil {
 			continue
