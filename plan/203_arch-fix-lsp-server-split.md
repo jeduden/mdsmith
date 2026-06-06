@@ -1,7 +1,7 @@
 ---
 id: 203
 title: Split internal/lsp/server.go and symbols.go
-status: "🔲"
+status: "🔳"
 summary: >-
   server.go (1 536 lines) and symbols.go (1 385
   lines) both exceed the 1 000-line threshold.
