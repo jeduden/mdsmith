@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -116,4 +117,10 @@ func TestApplyDefaultSettings_ClearsContains(t *testing.T) {
 	r := &Rule{Contains: []string{"should"}}
 	require.NoError(t, r.ApplySettings(r.DefaultSettings()))
 	assert.Empty(t, r.Contains)
+}
+
+func TestSettingMergeMode(t *testing.T) {
+	r := &Rule{}
+	assert.Equal(t, rule.MergeAppend, r.SettingMergeMode("contains"))
+	assert.Equal(t, rule.MergeReplace, r.SettingMergeMode("unknown"))
 }

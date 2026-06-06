@@ -114,8 +114,20 @@ func (r *Rule) DefaultSettings() map[string]any {
 	}
 }
 
+// SettingMergeMode implements rule.ListMerger. The "starts" list
+// appends across config layers so a project that pins a convention
+// (e.g. no-llm-tells) and then adds its own forbidden openers unions
+// the two lists rather than replacing the convention's.
+func (r *Rule) SettingMergeMode(key string) rule.MergeMode {
+	if key == "starts" {
+		return rule.MergeAppend
+	}
+	return rule.MergeReplace
+}
+
 var (
 	_ rule.Configurable = (*Rule)(nil)
 	_ rule.Defaultable  = (*Rule)(nil)
+	_ rule.ListMerger   = (*Rule)(nil)
 	_ rule.NodeChecker  = (*Rule)(nil)
 )
