@@ -97,25 +97,25 @@ runs in the `release` GitHub environment.
 
 The website deploy is a **separate workflow**,
 `.github/workflows/pages.yml`. It builds
-[mdsmith.dev](https://mdsmith.dev/) from `website/`
-and deploys it to GitHub Pages. It runs on every push
-to `main` under `docs/**` or `website/**`, so a docs
-change ships the site with no tool release. A
-maintainer can also deploy on demand: the
-`workflow_dispatch` trigger appears as **Run
-workflow** in the Actions tab. A tool release ships
-it too: `release.yml`'s `pages` job gates on the
-`release` job, so the site deploys only after the
-release is frozen. `pages.yml` runs in the
-`github-pages` environment, not the `release` one.
+[mdsmith.dev](https://mdsmith.dev/) and deploys to GitHub
+Pages on every push to `main` under `docs/**` or
+`website/**` (a docs change ships the site with no tool
+release), and on manual `workflow_dispatch`.
 
-`pages.yml` calls `mdsmith-release build-website
---no-fix ./docs ./website/content/docs`. That snapshots
-the source-of-truth `docs/` tree into the Hugo content
-tree. `--no-fix` is used because `docs/` is already
-lint-clean on main; CI must not mutate it. It resolves
-the version to stamp from the caller input (a tool
-release) or the latest `v*` tag (a docs-only push).
+A tool release ships it too. Its `pages` job gates on
+`release` and on `benchmark-publish`. That job hands the
+deploy a fresh `benchmark-numbers` artifact, baked into the
+site's performance page. So each release shows its own
+figures, not the stale committed ones. A failed measurement
+blocks the deploy; a slowdown only trips the separate
+`bench-regression-gate`.
+
+`pages.yml` runs in the `github-pages` environment and calls
+`build-website --no-fix ./docs ./website/content/docs` to
+snapshot `docs/` into the Hugo tree. `--no-fix` because
+`docs/` is lint-clean on main; the release-flow benchmark
+bake is the one exception. It stamps the version from the
+caller input or the latest `v*` tag.
 
 ## OIDC Trusted Publishing
 

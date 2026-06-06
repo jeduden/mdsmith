@@ -851,18 +851,31 @@ jobs:
 
   # A tool release also ships the website. The deploy itself lives
   # in pages.yml (its own workflow, also triggered by docs-only
-  # pushes to main and by manual workflow_dispatch); this job just
-  # calls it with the release version so the published site shows
-  # the new version. Gated on `release` so the site is deployed
-  # only after the release has been frozen — the draft is published
-  # and immutable — so mdsmith.dev never advertises a version whose
+  # pushes to main and by manual workflow_dispatch); this job calls
+  # it with the release version so the published site shows the new
+  # version. Gated on `release` so the site is deployed only after
+  # the release has been frozen — the draft is published and
+  # immutable — so mdsmith.dev never advertises a version whose
   # GitHub release does not yet exist. `release` transitively
   # depends on `npm` (release -> vscode -> npm), so a failed npm
   # publish also blocks this deploy. That is intentional: with no
   # frozen release there is no version to ship the site for. `pypi`
   # is not in the release chain, so a PyPI outage does not block it.
+  #
+  # Also needs `benchmark-publish`: that job re-measures the
+  # cross-tool benchmark and uploads the fragments as the
+  # `benchmark-numbers` artifact, which pages.yml downloads and bakes
+  # into the published performance page. That dependency is what makes
+  # benchmark publication a prerequisite for website publication — the
+  # site deploy never runs ahead of the numbers it is meant to show,
+  # so every release ships its own freshly-measured figures rather
+  # than the committed snapshot. A benchmark MEASUREMENT failure
+  # blocks this deploy (no fragments to bake); a perf REGRESSION does
+  # not — that trips the separate bench-regression-gate, which pages
+  # does not depend on, so an honest-but-slower release still ships
+  # its site.
   pages:
-    needs: [release]
+    needs: [release, benchmark-publish]
     if: *release_repo_trigger_ok
     permissions:
       contents: read
@@ -871,40 +884,66 @@ jobs:
     uses: ./.github/workflows/pages.yml
     with:
       version: ${{ inputs.version }}
+      # The artifact benchmark-publish uploads in this same run;
+      # pages.yml downloads it and bakes the fragments into the
+      # published performance page so the site shows release numbers.
+      benchmark-artifact: benchmark-numbers
 
-  # Re-measure the cross-tool benchmark on every release and open a PR
-  # with the refreshed numbers and the pages that embed them, so the
-  # committed snapshot the README, the benchmark doc, and the website
-  # read never freezes between releases (there is no local run.sh step
-  # in the normal flow). bench-check is the regression gate: it compares
-  # mdsmith's ratio to mado -- machine- and corpus-size-independent, the
-  # "same code, same factor" signal -- and fails this job, visibly, on a
-  # real relative slowdown. It runs AFTER `release` and is intentionally
-  # not in the publish gating chain: the cross-tool fetch (pinned
-  # tarballs, npm, Rust clones) has enough external moving parts that a
-  # flake should not block shipping. The PR lands through the normal
-  # review-and-merge path; the bench-fragments gate re-checks the
-  # fragments against the data when the PR is enqueued in the merge
-  # queue, before it merges. (Like record-secret-rotation.yml, the PR
-  # is opened with the default token, so ci.yml does not auto-run on
-  # PR open — the merge queue is where the gate fires.)
-  benchmark-refresh:
+  # Re-measure the cross-tool benchmark once per release, then publish
+  # the numbers two ways: (1) the `benchmark-numbers` artifact the
+  # `pages` job bakes into the published site, so the release ships its
+  # own fresh figures; (2) a push of the numbers and the rendered
+  # benchmark page to the orphan `assets` branch (the branch demo.yml
+  # and benchmark.yml already use), which the README links to. It runs
+  # AFTER `release`.
+  #
+  # GitHub Actions cannot open PRs in this repo (the "Allow GitHub
+  # Actions to create and approve pull requests" setting is off and
+  # stays off — that denial turned a fully-published v0.36.0 into a red
+  # release run), but it CAN push to `assets`. So the numbers are
+  # published by pushing to `assets`, never by a PR into protected main;
+  # the committed in-repo snapshot is refreshed separately via run.sh.
+  #
+  # This job succeeds whenever the MEASUREMENT succeeds, even on a perf
+  # regression: `pages` needs this job, and a regressed-but-honest
+  # release must still ship its site. The hard regression signal lives
+  # in the separate `bench-regression-gate` below, which fails visibly
+  # on a real slowdown but does not block the deploy. A measurement or
+  # cross-tool-fetch failure here DOES fail the job (and so blocks
+  # `pages`), because there are then no fresh numbers. The assets push
+  # is best-effort: `pages` consumes the uploaded artifact, not the
+  # push, so a push race or failure warns but never blocks the site.
+  benchmark-publish:
     needs: [release]
     if: *release_repo_trigger_ok
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    # contents: write to push the refresh branch; pull-requests: write
-    # for `gh pr create`. The change to main still goes through the
-    # normal review-and-merge path -- this token only opens the PR.
+    # Serialize against demo.yml and benchmark.yml: all three rewrite
+    # disjoint subtrees on the same orphan `assets` ref, so a concurrent
+    # writer would lose its push to non-fast-forward rejection. The
+    # retry-with-refetch loop in the publish step is the second defense.
+    concurrency:
+      group: assets-branch
+      cancel-in-progress: false
+    # contents: write to push the numbers to the orphan `assets` branch
+    # (never to protected main). No pull-requests permission: this job
+    # publishes by pushing to `assets`, not by opening a PR.
     permissions:
       contents: write
-      pull-requests: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           # Never persist the token in git config; the push step
           # authenticates explicitly via a one-shot, masked header.
           persist-credentials: false
+          # Full clone so the publish step's `git fetch origin assets`
+          # resolves refs/remotes/origin/assets. The default single-
+          # branch shallow checkout tracks only main, so the subsequent
+          # `git checkout -B assets origin/assets` would die — and inside
+          # the `until` loop that failure is swallowed, leaving the job
+          # green while it never publishes. Matches the peer assets
+          # publishers in benchmark.yml and demo.yml.
+          fetch-depth: 0
       - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
         with:
           go-version-file: go.mod
@@ -925,14 +964,46 @@ jobs:
           cp -r docs/research/benchmarks/data /tmp/baseline-data
       - name: Re-measure the cross-tool benchmark
         run: go run ./cmd/mdsmith-release bench /tmp/mdsmith-bench
-      - name: Re-splice the fragment includes
+      - name: Normalize the freshly measured fragments
+        # Normalize the gen_fragments.py tables to the gate's canonical
+        # form (the same step benchmark.yml runs). No host page is
+        # re-spliced here: the pages job bakes performance.md from the
+        # artifact at deploy time, and the README links to
+        # results.fragment.md directly.
         run: |
           go run ./cmd/mdsmith fix \
             docs/research/benchmarks/results.fragment.md \
             docs/research/benchmarks/headline.fragment.md
-          go run ./cmd/mdsmith fix \
-            README.md docs/research/benchmarks/README.md
-      - name: Check for regression and open the refresh PR
+      - name: Stage the benchmark-numbers artifact
+        # Two fragments feed the pages job's site bake; the fresh and
+        # baseline data dirs feed bench-regression-gate. Uploaded before
+        # the assets push so the artifact every consumer needs exists
+        # even if the best-effort push later races or fails.
+        run: |
+          mkdir -p artifacts/bench/data artifacts/bench/baseline-data
+          cp docs/research/benchmarks/headline.fragment.md \
+             docs/research/benchmarks/results.fragment.md \
+             artifacts/bench/
+          cp docs/research/benchmarks/data/*.json artifacts/bench/data/
+          cp /tmp/baseline-data/*.json artifacts/bench/baseline-data/
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: benchmark-numbers
+          path: artifacts/bench
+          retention-days: 7
+          if-no-files-found: error
+      - name: Publish the numbers to the assets branch
+        # GitHub Actions cannot open PRs here, but it can push to the
+        # orphan `assets` branch. Push this release's data + fragments
+        # there, so the README's [bench-live] link target
+        # (assets/benchmarks/results.fragment.md) shows the release's
+        # numbers. This job OWNS assets/benchmarks/; demo.yml owns
+        # assets/demo.gif and benchmark.yml owns assets/benchmarks-drift/,
+        # so the three subtrees are disjoint. Subtree-safe and
+        # best-effort: it rewrites only assets/benchmarks/, commits only
+        # on change, retries a push race, and on repeated failure warns
+        # rather than failing the job — `pages` needs the artifact
+        # uploaded above, not this push.
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -941,61 +1012,92 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Ratio-based regression gate: mdsmith vs mado within each
-          # run, so the runner speed and the (growing) corpus cancel and
-          # only a real relative slowdown trips it. Capture the verdict
-          # for the PR body and defer failing the job until after the PR
-          # is opened, so a regressed run still leaves a reviewable diff.
-          verdict=$(go run ./cmd/mdsmith-release bench-check \
-            /tmp/baseline-data docs/research/benchmarks/data 2>&1) && rc=0 || rc=$?
-          echo "$verdict"
+          # Stage the subtree before switching branches: the raw data and
+          # the two fragments. results.fragment.md is the README's link
+          # target; both render as clean tables with no inner links to
+          # 404 on the assets branch.
+          rm -rf /tmp/bench-assets
+          mkdir -p /tmp/bench-assets/data
+          cp docs/research/benchmarks/results.fragment.md \
+             docs/research/benchmarks/headline.fragment.md \
+             /tmp/bench-assets/
+          cp docs/research/benchmarks/data/*.json /tmp/bench-assets/data/
 
-          git add docs/research/benchmarks/data \
-                  docs/research/benchmarks/results.fragment.md \
-                  docs/research/benchmarks/headline.fragment.md \
-                  docs/research/benchmarks/README.md \
-                  README.md
-          if git diff --staged --quiet; then
-            echo "::notice::benchmark numbers unchanged -- no PR opened"
-            exit "$rc"
-          fi
-
-          branch="bench/refresh-${VERSION}-${GITHUB_RUN_ID}"
-          git checkout -b "$branch"
-          git commit -m "bench: refresh cross-tool benchmark numbers for ${VERSION}"
-          # Authenticate the push via a masked http.extraheader rather
-          # than embedding the token in the remote URL.
+          # The push authenticates via a masked http.extraheader (checkout
+          # ran with persist-credentials: false).
           auth_header=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
           echo "::add-mask::$auth_header"
-          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth_header}" \
-            push origin "HEAD:refs/heads/${branch}"
 
-          # Build the PR body with echo appends (no heredoc) so dedent
-          # and backtick expansion cannot bite. Single quotes keep the
-          # Markdown backticks literal.
-          {
-            echo 'Automated refresh of the committed cross-tool benchmark snapshot,'
-            echo "re-measured on the CI runner during the ${VERSION} release."
-            echo ''
-            echo 'Review the number diff under `docs/research/benchmarks/data/` and the'
-            echo 'regenerated fragments. Absolute times wobble on a shared runner, so the'
-            echo '**ratio** is the signal -- the regression gate compares mdsmith to mado,'
-            echo 'which cancels both the runner speed and the corpus size:'
-            echo ''
-            echo '```'
-            echo "$verdict"
-            echo '```'
-          } > /tmp/pr-body.md
-          gh pr create \
-            --base main \
-            --head "$branch" \
-            --title "bench: refresh cross-tool benchmark numbers for ${VERSION}" \
-            --body-file /tmp/pr-body.md
+          # set -e is ignored inside a function run as an `until`
+          # condition, so a transient git failure returns non-zero and is
+          # retried rather than aborting the step (bash conditional ctx).
+          publish_once() {
+            if git ls-remote --exit-code origin refs/heads/assets >/dev/null 2>&1; then
+              git fetch origin assets
+              git checkout -f -B assets origin/assets
+            else
+              # First ever publish: unborn branch, no siblings yet.
+              git checkout --orphan assets
+              git rm -r --cached . >/dev/null 2>&1 || true
+            fi
+            # Replace only our subtree; leave assets/demo.gif (demo.yml's)
+            # exactly as it was. Commit only when the numbers changed.
+            rm -rf assets/benchmarks
+            mkdir -p assets/benchmarks
+            cp -R /tmp/bench-assets/. assets/benchmarks/
+            git add assets/benchmarks
+            if git diff --staged --quiet; then
+              echo "benchmark numbers unchanged -- nothing to push"
+              return 0
+            fi
+            git commit -m "bench: publish ${VERSION} cross-tool benchmark numbers"
+            git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth_header}" \
+              push -u origin assets
+          }
 
-          if [ "$rc" -ne 0 ]; then
-            # rc!=0 is either a real regression or bench-check failing to
-            # read the data (missing tool/file); the verdict echoed above
-            # says which. Either way fail the job so it is visible.
-            echo "::error::bench-check failed — perf regression, or it could not read the benchmark data (see the verdict above). The refresh PR opened for review; this run is marked failed."
-            exit "$rc"
-          fi
+          attempt=1
+          max_attempts=5
+          backoff=2
+          until publish_once; do
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "::warning::could not publish benchmark numbers to the assets branch after $max_attempts attempts. The website deploy is not blocked (it uses the uploaded benchmark-numbers artifact)."
+              exit 0
+            fi
+            echo "push race on assets branch; retry $attempt/$max_attempts after ${backoff}s"
+            sleep "$backoff"
+            attempt=$((attempt + 1))
+            backoff=$((backoff * 2))
+          done
+
+  # Hard regression gate, split out of benchmark-publish so a real
+  # slowdown fails visibly WITHOUT blocking the website deploy: `pages`
+  # needs `benchmark-publish`, not this job. It re-runs the ratio-based
+  # bench-check over the artifact's baseline-vs-fresh data — mdsmith vs
+  # mado within each run, so runner speed and the growing corpus cancel
+  # and only a real relative slowdown trips it. Reading the data from
+  # the artifact (rather than re-measuring) keeps the gate's verdict
+  # consistent with the numbers benchmark-publish actually shipped.
+  bench-regression-gate:
+    needs: [benchmark-publish]
+    if: *release_repo_trigger_ok
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: benchmark-numbers
+          path: /tmp/bench-numbers
+      - name: Compare the mdsmith-vs-mado ratio against the baseline
+        # Non-zero exit is a real relative slowdown or unreadable data
+        # (the verdict says which); either fails this gate so it is
+        # visible, but the website deploy already proceeded in parallel.
+        run: |
+          go run ./cmd/mdsmith-release bench-check \
+            /tmp/bench-numbers/baseline-data \
+            /tmp/bench-numbers/data

@@ -50,25 +50,25 @@ setup step.
 
 ## Subcommands
 
-| Subcommand                   | Invoked by                                 |
-| ---------------------------- | ------------------------------------------ |
-| `stamp <version>`            | `release.yml` publishing jobs; `pages.yml` |
-| `publish-release`            | `release.yml` release job                  |
-| `check`                      | `ci.yml` version-guard                     |
-| `build-npm <art> <out>`      | `release.yml` npm job                      |
-| `build-wheels <art> <out>`   | `release.yml` pypi job                     |
-| `build-flatpak <art> <out>`  | `release.yml` flatpak job                  |
-| `package-obsidian <d> <o>`   | `ci.yml` + `release.yml` obsidian jobs     |
-| `sync-docs <src> <dst>`      | composed by `build-website`                |
-| `build-website [flags]`      | `pages.yml` deploy job                     |
-| `check-secret-rotations`     | `secret-rotation-reminder.yml`             |
-| `record-rotation <t> <d>`    | `record-secret-rotation.yml`               |
-| `merge-coverage -o <o> <p>`  | `ci.yml` test job                          |
-| `bench [workdir]`            | `benchmark.yml` record job; `run.sh`       |
-| `bench-check <base> <fresh>` | `release.yml` benchmark-refresh job        |
-| `pull-site-assets`           | `pages.yml` deploy job                     |
-| `sync-messaging [--check]`   | `ci.yml` messaging-drift; local sync       |
-| `sync-channels [--check]`    | `ci.yml` channels-drift; local sync        |
+| Subcommand                   | Invoked by                                                        |
+| ---------------------------- | ----------------------------------------------------------------- |
+| `stamp <version>`            | `release.yml` publishing jobs; `pages.yml`                        |
+| `publish-release`            | `release.yml` release job                                         |
+| `check`                      | `ci.yml` version-guard                                            |
+| `build-npm <art> <out>`      | `release.yml` npm job                                             |
+| `build-wheels <art> <out>`   | `release.yml` pypi job                                            |
+| `build-flatpak <art> <out>`  | `release.yml` flatpak job                                         |
+| `package-obsidian <d> <o>`   | `ci.yml` + `release.yml` obsidian jobs                            |
+| `sync-docs <src> <dst>`      | composed by `build-website`                                       |
+| `build-website [flags]`      | `pages.yml` deploy job                                            |
+| `check-secret-rotations`     | `secret-rotation-reminder.yml`                                    |
+| `record-rotation <t> <d>`    | `record-secret-rotation.yml`                                      |
+| `merge-coverage -o <o> <p>`  | `ci.yml` test job                                                 |
+| `bench [workdir]`            | `benchmark.yml` record; `release.yml` benchmark-publish; `run.sh` |
+| `bench-check <base> <fresh>` | `release.yml` benchmark-publish + bench-regression-gate           |
+| `pull-site-assets`           | `pages.yml` deploy job                                            |
+| `sync-messaging [--check]`   | `ci.yml` messaging-drift; local sync                              |
+| `sync-channels [--check]`    | `ci.yml` channels-drift; local sync                               |
 
 Each subcommand lives under `cmd/mdsmith-release/`.
 It delegates to a function in `internal/release/`.
