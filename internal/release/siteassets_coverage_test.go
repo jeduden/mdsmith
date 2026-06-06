@@ -22,13 +22,13 @@ func resp200(body string) struct {
 }
 
 // TestPullSiteAssets_TransportError covers the err != nil branch
-// of PullSiteAssets for the required demo GIF: a transport failure
-// on it fails the deploy with a wrapped error rather than being
-// silently swallowed.
+// of PullSiteAssets for the demo GIF: a transport failure on it
+// fails the deploy with a wrapped error rather than being silently
+// swallowed.
 func TestPullSiteAssets_TransportError(t *testing.T) {
 	transport := errors.New("dial tcp: connection refused")
 
-	t.Run("required transport error fails the deploy", func(t *testing.T) {
+	t.Run("transport error fails the deploy", func(t *testing.T) {
 		root := t.TempDir()
 		g := &fakeGetter{resp: map[string]struct {
 			status int

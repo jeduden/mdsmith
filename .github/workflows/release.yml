@@ -918,7 +918,11 @@ jobs:
         # The committed data/ is the previous release's numbers. Keep a
         # copy so bench-check can compare the fresh ratios against it
         # after the measurement overwrites data/ in place.
-        run: cp -r docs/research/benchmarks/data /tmp/baseline-data
+        run: |
+          # rm first so a re-run on a persistent runner replaces the
+          # baseline rather than nesting it under /tmp/baseline-data/data.
+          rm -rf /tmp/baseline-data
+          cp -r docs/research/benchmarks/data /tmp/baseline-data
       - name: Re-measure the cross-tool benchmark
         run: go run ./cmd/mdsmith-release bench /tmp/mdsmith-bench
       - name: Re-splice the fragment includes
@@ -989,6 +993,9 @@ jobs:
             --body-file /tmp/pr-body.md
 
           if [ "$rc" -ne 0 ]; then
-            echo "::error::perf regression: mdsmith slowed relative to mado beyond tolerance. The refresh PR opened for review; this run is marked failed so the regression is visible."
+            # rc!=0 is either a real regression or bench-check failing to
+            # read the data (missing tool/file); the verdict echoed above
+            # says which. Either way fail the job so it is visible.
+            echo "::error::bench-check failed — perf regression, or it could not read the benchmark data (see the verdict above). The refresh PR opened for review; this run is marked failed."
             exit "$rc"
           fi

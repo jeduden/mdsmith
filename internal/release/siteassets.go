@@ -29,15 +29,14 @@ import (
 // hotlinked at runtime.
 const rawAssetsBase = "https://raw.githubusercontent.com/jeduden/mdsmith/assets/assets/"
 
-// siteAsset is one published artifact pulled at build time.
-// required marks an artifact whose absence is a real regression
-// worth failing the deploy (the demo GIF has been published for
-// many releases and the hero hard-depends on it); a non-required
-// miss falls back to the committed copy.
+// siteAsset is one published artifact pulled at build time. Every
+// listed asset is required: a transport error or non-200 fails the
+// deploy (the demo GIF is reliably published and the hero hard-depends
+// on it). There is no non-required fallback branch because no asset
+// needs one — add it with a test when one does (Defensive Code rule).
 type siteAsset struct {
-	url      string
-	dst      string
-	required bool
+	url string
+	dst string
 }
 
 // siteAssets maps each published artifact to its working-tree
@@ -53,36 +52,23 @@ type siteAsset struct {
 func siteAssets(root string) []siteAsset {
 	return []siteAsset{
 		{
-			url:      rawAssetsBase + "demo.gif",
-			dst:      filepath.Join(root, "website", "static", "img", "demo.gif"),
-			required: true,
+			url: rawAssetsBase + "demo.gif",
+			dst: filepath.Join(root, "website", "static", "img", "demo.gif"),
 		},
 	}
 }
 
-// PullSiteAssets fetches every published artifact into the
-// working tree before the Hugo build. Per-asset policy: a 200
-// overwrites the destination; a transport error or non-200 on a
-// required asset fails the deploy loudly; the same miss on a
-// non-required asset logs and keeps the committed copy.
+// PullSiteAssets fetches every published artifact into the working
+// tree before the Hugo build: a 200 overwrites the destination; a
+// transport error or non-200 fails the deploy loudly.
 func (t *Toolkit) PullSiteAssets(root string) error {
 	for _, a := range siteAssets(root) {
 		status, body, err := t.http.Get(a.url)
 		if err != nil {
-			if a.required {
-				return fmt.Errorf("fetch %s: %w", a.url, err)
-			}
-			fmt.Printf("pull-site-assets: %s unreachable (%v); keeping committed %s\n",
-				a.url, err, a.dst)
-			continue
+			return fmt.Errorf("fetch %s: %w", a.url, err)
 		}
 		if status != 200 {
-			if a.required {
-				return fmt.Errorf("fetch %s: HTTP %d", a.url, status)
-			}
-			fmt.Printf("pull-site-assets: %s HTTP %d; keeping committed %s\n",
-				a.url, status, a.dst)
-			continue
+			return fmt.Errorf("fetch %s: HTTP %d", a.url, status)
 		}
 		if err := t.fs.MkdirAll(filepath.Dir(a.dst), 0o755); err != nil {
 			return fmt.Errorf("mkdir %s: %w", filepath.Dir(a.dst), err)
