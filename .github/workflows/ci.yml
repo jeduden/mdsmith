@@ -312,7 +312,8 @@ jobs:
           git diff --exit-code -- \
             docs/research/benchmarks/results.fragment.md \
             docs/research/benchmarks/headline.fragment.md \
-            README.md docs/background/markdown-linters.md \
+            docs/features/performance.md \
+            docs/background/markdown-linters.md \
             docs/research/benchmarks/README.md
 
   vscode-extension:
