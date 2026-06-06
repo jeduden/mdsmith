@@ -1,7 +1,7 @@
 ---
 id: 203
 title: Split internal/lsp/server.go and symbols.go
-status: "🔳"
+status: "✅"
 summary: >-
   server.go (1 536 lines) and symbols.go (1 385
   lines) both exceed the 1 000-line threshold.
@@ -43,10 +43,10 @@ each own a dispatch group.
 
 ## Acceptance Criteria
 
-- [ ] No non-test production file under
+- [x] No non-test production file under
   `internal/lsp/` exceeds 1 000 lines
   (`*_test.go` files are out of scope).
-- [ ] `go build ./...` clean.
-- [ ] `go test ./...` passes (LSP
+- [x] `go build ./...` clean.
+- [x] `go test ./...` passes (LSP
   integration tests included).
-- [ ] `go tool golangci-lint run` clean.
+- [x] `go tool golangci-lint run` clean.
