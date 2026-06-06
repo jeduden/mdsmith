@@ -387,7 +387,7 @@ func (s *Server) locationsForFileTop(file string, idx *index.Index) []location {
 // file path.
 func (s *Server) locationsForFileReferences(file string, idx *index.Index) []location {
 	edges := idx.IncomingEdges(file, "")
-	var out []location
+	out := make([]location, 0, len(edges))
 	for _, e := range edges {
 		switch e.Kind {
 		case index.EdgeFileLink:

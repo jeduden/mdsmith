@@ -191,7 +191,7 @@ func (r *Rule) validateRecipes(filePath string) []lint.Diagnostic {
 	}
 	sort.Strings(names)
 
-	var diags []lint.Diagnostic
+	diags := make([]lint.Diagnostic, 0, len(names))
 	for _, name := range names {
 		diags = append(diags, r.checkRecipe(filePath, name, r.Recipes[name])...)
 	}

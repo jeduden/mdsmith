@@ -164,7 +164,8 @@ func TestNpmChannelDocMatchesPlatformBuilds(t *testing.T) {
 	}
 	require.NotEmpty(t, actual, "npm.md: no bullet list found")
 
-	expected := []string{"- `@mdsmith/cli` — root, contains the shim"}
+	expected := make([]string, 0, 1+len(npmPlatformBuilds))
+	expected = append(expected, "- `@mdsmith/cli` — root, contains the shim")
 	for _, pb := range npmPlatformBuilds {
 		expected = append(expected, "- `@mdsmith/"+pb.NodeTarget+"`")
 	}

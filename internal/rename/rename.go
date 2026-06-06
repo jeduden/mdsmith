@@ -220,7 +220,7 @@ func linkRefEdits(source []byte, oldLabel, newName string) []Edit {
 	body, fmOffset := bodyAndFMOffset(source)
 	root := lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
 	lines := splitLines(source)
-	var out []Edit
+	out := make([]Edit, 0, 8)
 	out = append(out, refDefEditsInBody(body, lines, fmOffset, oldLabel, newName)...)
 	out = append(out, refUseEditsInBody(root, body, lines, fmOffset, oldLabel, newName)...)
 	return out

@@ -173,7 +173,7 @@ func buildSource(fm map[string]any, expr string) string {
 	if err != nil {
 		panic(fmt.Errorf("cuetemplate: encoding frontmatter: %w", err))
 	}
-	var src []byte
+	var src []byte //nolint:prealloc
 	src = append(src, []byte(
 		"import \"strings\"\n\n"+
 			"_strings_used: strings.Join([], \"\")\n")...)

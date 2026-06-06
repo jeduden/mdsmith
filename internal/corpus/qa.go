@@ -90,7 +90,7 @@ func validateAnnotationsAgainstSample(
 	annotations []QAAnnotation,
 ) error {
 	seenIDs := make(map[string]struct{}, len(annotations))
-	extraIDs := make([]string, 0)
+	extraIDs := make([]string, 0, len(annotations))
 
 	for _, annotation := range annotations {
 		recordID := annotation.RecordID

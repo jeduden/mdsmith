@@ -63,7 +63,7 @@ func zipFileNames(t *testing.T, whlPath string) []string {
 	r, err := zip.OpenReader(whlPath)
 	require.NoError(t, err, "open %s", whlPath)
 	defer func() { _ = r.Close() }()
-	var names []string
+	names := make([]string, 0, len(r.File))
 	for _, f := range r.File {
 		names = append(names, f.Name)
 	}
@@ -132,7 +132,7 @@ func assertWheel(t *testing.T, out string, entries []os.DirEntry, c wheelCase) {
 		}
 	}
 	if match == "" {
-		names := []string{}
+		names := make([]string, 0, len(entries))
 		for _, e := range entries {
 			names = append(names, e.Name())
 		}

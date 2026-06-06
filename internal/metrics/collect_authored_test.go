@@ -3,6 +3,7 @@ package metrics
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -16,10 +17,7 @@ func TestCollect_AuthoredMetrics(t *testing.T) {
 	dir := t.TempDir()
 
 	// hostFull.md has an <?include?> section with 100 lines of content.
-	bigContent := ""
-	for i := 0; i < 100; i++ {
-		bigContent += "Generated line with some words here.\n"
-	}
+	bigContent := strings.Repeat("Generated line with some words here.\n", 100)
 	hostFull := "# Host\n\nAuthor wrote this.\n\n" +
 		"<?include\nfile: frag.md\n?>\n" +
 		bigContent +

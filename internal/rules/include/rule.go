@@ -275,7 +275,7 @@ func (r *Rule) checkCycleOrDepth(
 			fmt.Sprintf("include depth exceeds maximum (%d)", maxIncludeDepth))}
 	}
 	if r.visited[resolvedFile] {
-		chain := make([]string, len(r.chain))
+		chain := make([]string, len(r.chain), len(r.chain)+1)
 		copy(chain, r.chain)
 		chain = append(chain, resolvedFile)
 		return []lint.Diagnostic{makeDiag(filePath, line,

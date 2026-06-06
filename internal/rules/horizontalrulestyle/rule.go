@@ -69,7 +69,7 @@ func (r *Rule) checkHR(f *lint.File, line int) []lint.Diagnostic {
 	_, token := splitHRLine(rawLine)
 	delimiter, count, hasSpaces := parseHR(token)
 
-	var diags []lint.Diagnostic
+	diags := make([]lint.Diagnostic, 0, 4)
 	diags = append(diags, r.checkDelimiter(f, line, delimiter)...)
 	diags = append(diags, r.checkSpaces(f, line, hasSpaces)...)
 	diags = append(diags, r.checkLength(f, line, count)...)
