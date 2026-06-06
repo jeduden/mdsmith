@@ -13,6 +13,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/config"
 	fixpkg "github.com/jeduden/mdsmith/internal/fix"
+	"github.com/jeduden/mdsmith/internal/gctune"
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
@@ -25,7 +26,7 @@ func runFix(args []string) int {
 	if code >= 0 {
 		return code
 	}
-	tuneGCForBatch()
+	gctune.ApplyBatch()
 	if hasStdin {
 		fmt.Fprintf(os.Stderr, "mdsmith: cannot fix stdin in place\n")
 		return 2

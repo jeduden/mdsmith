@@ -16,6 +16,7 @@ import (
 	"runtime/debug"
 	"syscall/js"
 
+	"github.com/jeduden/mdsmith/internal/gctune"
 	mdsmith "github.com/jeduden/mdsmith/pkg/mdsmith"
 )
 
@@ -24,6 +25,10 @@ import (
 var version string
 
 func main() {
+	// Apply the shared batch GC policy (internal/gctune): the WASM engine
+	// runs the same check/fix work as the CLI, so it gets the same GOGC
+	// default from the one source of truth. An explicit GOGC still wins.
+	gctune.ApplyBatch()
 	js.Global().Set("mdsmith", js.ValueOf(map[string]any{
 		"createSession": js.FuncOf(createSession),
 		"version":       resolveVersion(),
