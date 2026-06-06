@@ -111,7 +111,7 @@ func loadFromBytes(data []byte, sourcePath string, mergeKinds bool) (*Config, er
 }
 
 // topLevelKeySet returns the set of top-level YAML mapping keys
-// present in data, or an empty set on parse error. It rejects
+// present in data, or nil on parse error. It rejects
 // anchor/alias usage for the same reason yamlHasKey does.
 func topLevelKeySet(data []byte) map[string]bool {
 	node, err := yamlutil.UnmarshalNodeSafe(data)

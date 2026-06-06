@@ -1320,7 +1320,7 @@ func TestYamlHasKeyRejectsAnchor(t *testing.T) {
 
 // TestTopLevelKeySet_InvalidYAML covers the yaml.Unmarshal error
 // branch of topLevelKeySet: a syntactically bad YAML payload
-// returns an empty set (not a panic) so callers can degrade
+// returns nil (not a panic) so callers can degrade
 // gracefully.
 func TestTopLevelKeySet_InvalidYAML(t *testing.T) {
 	assert.Empty(t, topLevelKeySet([]byte("{not: valid: yaml:")))

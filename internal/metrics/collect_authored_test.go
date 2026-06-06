@@ -17,13 +17,7 @@ func TestCollect_AuthoredMetrics(t *testing.T) {
 	dir := t.TempDir()
 
 	// hostFull.md has an <?include?> section with 100 lines of content.
-	const line = "Generated line with some words here.\n"
-	var sb strings.Builder
-	sb.Grow(len(line) * 100)
-	for i := 0; i < 100; i++ {
-		sb.WriteString(line)
-	}
-	bigContent := sb.String()
+	bigContent := strings.Repeat("Generated line with some words here.\n", 100)
 	hostFull := "# Host\n\nAuthor wrote this.\n\n" +
 		"<?include\nfile: frag.md\n?>\n" +
 		bigContent +
