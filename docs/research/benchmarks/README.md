@@ -401,17 +401,20 @@ Four gates in CI:
   `data/*.json` via `gen_fragments.py`, re-runs
   `mdsmith fix`, and `git diff --exit-code`s. A
   hand-edited fragment or a stale number fails the build.
-  The cross-tool numbers only move when fresh JSON is
-  promoted into `data/` — by the per-release
-  `benchmark-publish` job or a local `run.sh`.
+  The committed `data/` only moves when a maintainer
+  promotes fresh JSON locally via `run.sh` and opens a PR;
+  the per-release job publishes to the `assets` branch, not
+  to `main`.
 - **Per-release measure, publish, and regression gate** —
   on every release, `release.yml`'s `benchmark-publish`
-  job re-measures on the runner, uploads the fragments as
-  the `benchmark-numbers` artifact (which the website
-  deploy downloads and bakes in, so each release ships its
-  own freshly-measured figures), and opens a PR that
-  refreshes the committed snapshot, so the published
-  numbers never freeze between releases. The separate
+  job re-measures on the runner and publishes the numbers
+  two ways: it uploads the fragments as the
+  `benchmark-numbers` artifact (which the website deploy
+  bakes in, so each release's site shows its own
+  freshly-measured figures) and pushes the numbers plus the
+  rendered benchmark page to the orphan `assets` branch the
+  README links to. GitHub Actions cannot open a PR here, so
+  it never touches the committed snapshot. The separate
   `bench-regression-gate` job runs
   `mdsmith-release bench-check`, which compares mdsmith's
   ratio to mado (machine- and corpus-size-independent)

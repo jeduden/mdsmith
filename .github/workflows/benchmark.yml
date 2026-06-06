@@ -6,9 +6,11 @@ name: Cross-tool benchmark
 # the benchmark Markdown pages rendered from main's READMEs with
 # those numbers spliced in. Record-only: it never gates a merge
 # or a release, and it never pushes to protected main. The
-# in-repo committed snapshot — hand-refreshed via run.sh and
-# reviewed in a PR — stays the `bench-fragments` gate's source of
-# truth AND the numbers the website reads at build time. This
+# in-repo committed snapshot — refreshed via run.sh or the
+# release's benchmark-publish PR, reviewed before merge — stays the
+# `bench-fragments` gate's source of truth and the floor a
+# non-release site build reads (a release instead bakes in its own
+# freshly-measured numbers; see release.yml's benchmark-publish). This
 # per-merge run re-measures on a noisy shared runner, so it is a
 # record-only drift signal (a demo.gif-style artifact on the
 # assets branch), NOT a live source the website or docs read; if

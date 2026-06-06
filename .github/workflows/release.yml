@@ -889,14 +889,20 @@ jobs:
       # published performance page so the site shows release numbers.
       benchmark-artifact: benchmark-numbers
 
-  # Re-measure the cross-tool benchmark once per release. The single
-  # measurement feeds three consumers: (1) the `benchmark-numbers`
-  # artifact the `pages` job bakes into the published site so the
-  # release ships its own fresh figures; (2) the refresh PR that
-  # updates the committed snapshot — the bench-fragments gate's floor
-  # and the source the assets-branch link is re-rendered from — through
-  # the normal review-and-merge path; (3) the bench-check verdict
-  # reported in that PR. It runs AFTER `release`.
+  # Re-measure the cross-tool benchmark once per release, then publish
+  # the numbers two ways: (1) the `benchmark-numbers` artifact the
+  # `pages` job bakes into the published site, so the release ships its
+  # own fresh figures; (2) a push of the numbers and the rendered
+  # benchmark page to the orphan `assets` branch (the branch demo.yml
+  # and benchmark.yml already use), which the README links to. It runs
+  # AFTER `release`.
+  #
+  # GitHub Actions cannot open PRs in this repo (the "Allow GitHub
+  # Actions to create and approve pull requests" setting is off and
+  # stays off — that denial turned a fully-published v0.36.0 into a red
+  # release run), but it CAN push to `assets`. So the numbers are
+  # published by pushing to `assets`, never by a PR into protected main;
+  # the committed in-repo snapshot is refreshed separately via run.sh.
   #
   # This job succeeds whenever the MEASUREMENT succeeds, even on a perf
   # regression: `pages` needs this job, and a regressed-but-honest
@@ -904,21 +910,26 @@ jobs:
   # in the separate `bench-regression-gate` below, which fails visibly
   # on a real slowdown but does not block the deploy. A measurement or
   # cross-tool-fetch failure here DOES fail the job (and so blocks
-  # `pages`), because there are then no fresh numbers to publish.
-  # (Like record-secret-rotation.yml, the PR is opened with the default
-  # token, so ci.yml does not auto-run on PR open — the merge queue is
-  # where the bench-fragments gate fires.)
+  # `pages`), because there are then no fresh numbers. The assets push
+  # is best-effort: `pages` consumes the uploaded artifact, not the
+  # push, so a push race or failure warns but never blocks the site.
   benchmark-publish:
     needs: [release]
     if: *release_repo_trigger_ok
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    # contents: write to push the refresh branch; pull-requests: write
-    # for `gh pr create`. The change to main still goes through the
-    # normal review-and-merge path -- this token only opens the PR.
+    # Serialize against demo.yml and benchmark.yml: all three rewrite
+    # disjoint subtrees on the same orphan `assets` ref, so a concurrent
+    # writer would lose its push to non-fast-forward rejection. The
+    # retry-with-refetch loop in the publish step is the second defense.
+    concurrency:
+      group: assets-branch
+      cancel-in-progress: false
+    # contents: write to push the numbers to the orphan `assets` branch
+    # (never to protected main). No pull-requests permission: this job
+    # publishes by pushing to `assets`, not by opening a PR.
     permissions:
       contents: write
-      pull-requests: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -946,22 +957,23 @@ jobs:
       - name: Re-measure the cross-tool benchmark
         run: go run ./cmd/mdsmith-release bench /tmp/mdsmith-bench
       - name: Re-splice the fragment includes
-        # performance.md (a PUBLISHED page) includes headline.fragment.md
-        # and the benchmark doc includes results.fragment.md. README no
-        # longer embeds numbers — it links to the assets-branch page — so
-        # it is not re-spliced here.
+        # Bake the freshly measured fragments. The benchmark doc
+        # (docs/research/benchmarks/README.md) embeds results.fragment.md
+        # and is rendered into the assets-branch page the README links
+        # to. performance.md is NOT baked here — the pages job bakes it
+        # from the artifact's headline.fragment.md at deploy time — and
+        # README no longer embeds numbers, so neither is re-spliced.
         run: |
           go run ./cmd/mdsmith fix \
             docs/research/benchmarks/results.fragment.md \
             docs/research/benchmarks/headline.fragment.md
           go run ./cmd/mdsmith fix \
-            docs/features/performance.md \
             docs/research/benchmarks/README.md
       - name: Stage the benchmark-numbers artifact
         # Two fragments feed the pages job's site bake; the fresh and
-        # baseline data dirs feed bench-regression-gate. Staged before
-        # the PR step so the artifact exists regardless of what the PR
-        # step does (including the unchanged-numbers no-PR path).
+        # baseline data dirs feed bench-regression-gate. Uploaded before
+        # the assets push so the artifact every consumer needs exists
+        # even if the best-effort push later races or fails.
         run: |
           mkdir -p artifacts/bench/data artifacts/bench/baseline-data
           cp docs/research/benchmarks/headline.fragment.md \
@@ -975,7 +987,15 @@ jobs:
           path: artifacts/bench
           retention-days: 7
           if-no-files-found: error
-      - name: Open the refresh PR
+      - name: Publish the numbers to the assets branch
+        # GitHub Actions cannot open PRs here, but it can push to the
+        # orphan `assets` branch. Push this release's numbers plus the
+        # rendered benchmark page there, so the README's assets-branch
+        # link reflects the release at once. Subtree-safe and best-effort:
+        # it rewrites only assets/benchmarks/ (demo.yml owns
+        # assets/demo.gif), commits only on change, retries a push race,
+        # and on repeated failure warns rather than failing the job —
+        # `pages` needs the artifact uploaded above, not this push.
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -984,55 +1004,62 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Capture the bench-check verdict for the PR body only. The
-          # hard regression gate is bench-regression-gate; here we
-          # report but never fail, so the website deploy (which needs
-          # this job) is not blocked by a regression.
-          verdict=$(go run ./cmd/mdsmith-release bench-check \
-            /tmp/baseline-data docs/research/benchmarks/data 2>&1) || true
-          echo "$verdict"
+          # Stage the subtree before switching branches: raw numbers, the
+          # two fragments, and the rendered benchmark page the README
+          # links to (the benchmark doc was baked in the re-splice step).
+          rm -rf /tmp/bench-assets
+          mkdir -p /tmp/bench-assets/data /tmp/bench-assets/pages
+          cp docs/research/benchmarks/results.fragment.md \
+             docs/research/benchmarks/headline.fragment.md \
+             /tmp/bench-assets/
+          cp docs/research/benchmarks/data/*.json /tmp/bench-assets/data/
+          cp docs/research/benchmarks/README.md /tmp/bench-assets/pages/benchmark.md
 
-          git add docs/research/benchmarks/data \
-                  docs/research/benchmarks/results.fragment.md \
-                  docs/research/benchmarks/headline.fragment.md \
-                  docs/research/benchmarks/README.md \
-                  docs/features/performance.md
-          if git diff --staged --quiet; then
-            echo "::notice::benchmark numbers unchanged -- no PR opened"
-            exit 0
-          fi
-
-          branch="bench/refresh-${VERSION}-${GITHUB_RUN_ID}"
-          git checkout -b "$branch"
-          git commit -m "bench: refresh cross-tool benchmark numbers for ${VERSION}"
-          # Authenticate the push via a masked http.extraheader rather
-          # than embedding the token in the remote URL.
+          # The push authenticates via a masked http.extraheader (checkout
+          # ran with persist-credentials: false).
           auth_header=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
           echo "::add-mask::$auth_header"
-          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth_header}" \
-            push origin "HEAD:refs/heads/${branch}"
 
-          # Build the PR body with echo appends (no heredoc) so dedent
-          # and backtick expansion cannot bite. Single quotes keep the
-          # Markdown backticks literal.
-          {
-            echo 'Automated refresh of the committed cross-tool benchmark snapshot,'
-            echo "re-measured on the CI runner during the ${VERSION} release."
-            echo ''
-            echo 'Review the number diff under `docs/research/benchmarks/data/` and the'
-            echo 'regenerated fragments. Absolute times wobble on a shared runner, so the'
-            echo '**ratio** is the signal -- the regression gate compares mdsmith to mado,'
-            echo 'which cancels both the runner speed and the corpus size:'
-            echo ''
-            echo '```'
-            echo "$verdict"
-            echo '```'
-          } > /tmp/pr-body.md
-          gh pr create \
-            --base main \
-            --head "$branch" \
-            --title "bench: refresh cross-tool benchmark numbers for ${VERSION}" \
-            --body-file /tmp/pr-body.md
+          # set -e is ignored inside a function run as an `until`
+          # condition, so a transient git failure returns non-zero and is
+          # retried rather than aborting the step (bash conditional ctx).
+          publish_once() {
+            if git ls-remote --exit-code origin refs/heads/assets >/dev/null 2>&1; then
+              git fetch origin assets
+              git checkout -f -B assets origin/assets
+            else
+              # First ever publish: unborn branch, no siblings yet.
+              git checkout --orphan assets
+              git rm -r --cached . >/dev/null 2>&1 || true
+            fi
+            # Replace only our subtree; leave assets/demo.gif (demo.yml's)
+            # exactly as it was. Commit only when the numbers changed.
+            rm -rf assets/benchmarks
+            mkdir -p assets/benchmarks
+            cp -R /tmp/bench-assets/. assets/benchmarks/
+            git add assets/benchmarks
+            if git diff --staged --quiet; then
+              echo "benchmark numbers unchanged -- nothing to push"
+              return 0
+            fi
+            git commit -m "bench: publish ${VERSION} cross-tool benchmark numbers"
+            git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth_header}" \
+              push -u origin assets
+          }
+
+          attempt=1
+          max_attempts=5
+          backoff=2
+          until publish_once; do
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "::warning::could not publish benchmark numbers to the assets branch after $max_attempts attempts. The website deploy is not blocked (it uses the uploaded benchmark-numbers artifact)."
+              exit 0
+            fi
+            echo "push race on assets branch; retry $attempt/$max_attempts after ${backoff}s"
+            sleep "$backoff"
+            attempt=$((attempt + 1))
+            backoff=$((backoff * 2))
+          done
 
   # Hard regression gate, split out of benchmark-publish so a real
   # slowdown fails visibly WITHOUT blocking the website deploy: `pages`
