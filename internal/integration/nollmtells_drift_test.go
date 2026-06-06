@@ -90,61 +90,58 @@ func readSlopCatalog(t *testing.T) map[string]map[string]bool {
 	data, err := os.ReadFile(path) //nolint:gosec // fixed in-repo path
 	require.NoError(t, err)
 
-	want := map[string]bool{
-		"Vocabulary tells": true,
-		"Phrasal tells":    true,
-		"Sentence openers": true,
+	out := map[string]map[string]bool{
+		"Vocabulary tells": {},
+		"Phrasal tells":    {},
+		"Sentence openers": {},
 	}
-	out := map[string]map[string]bool{}
-	for s := range want {
-		out[s] = map[string]bool{}
-	}
-
-	var section string
-	var bullet string
-	flush := func() {
-		if bullet == "" || !want[section] {
-			bullet = ""
-			return
-		}
-		item := strings.TrimSpace(strings.TrimPrefix(bullet, "- "))
-		switch section {
-		case "Vocabulary tells":
-			for _, word := range strings.Split(item, ",") {
-				out[section][normalizeVocab(word)] = true
-			}
-		case "Phrasal tells":
-			out[section][strings.Trim(item, `"`)] = true
-		case "Sentence openers":
-			out[section][item] = true
-		}
+	var section, bullet string
+	emit := func() {
+		recordCatalogBullet(out, section, bullet)
 		bullet = ""
 	}
-
 	sc := bufio.NewScanner(strings.NewReader(string(data)))
 	for sc.Scan() {
-		line := sc.Text()
-		if strings.HasPrefix(line, "## ") {
-			flush()
-			section = strings.TrimSpace(strings.TrimPrefix(line, "## "))
-			continue
-		}
-		trimmed := strings.TrimSpace(line)
+		line := strings.TrimSpace(sc.Text())
 		switch {
-		case strings.HasPrefix(trimmed, "- "):
-			// New bullet: emit the previous one, start this one.
-			flush()
-			bullet = trimmed
-		case trimmed == "":
-			flush()
+		case strings.HasPrefix(line, "## "):
+			emit()
+			section = strings.TrimSpace(strings.TrimPrefix(line, "## "))
+		case strings.HasPrefix(line, "- "):
+			emit()
+			bullet = line
+		case line == "":
+			emit()
 		case bullet != "":
-			// Continuation of a wrapped bullet.
-			bullet += " " + trimmed
+			bullet += " " + line // continuation of a wrapped bullet
 		}
 	}
-	flush()
+	emit()
 	require.NoError(t, sc.Err())
 	return out
+}
+
+// recordCatalogBullet adds the items in one catalog bullet to the
+// section's set. Vocabulary bullets list comma-separated words with an
+// optional sense tag; phrasal bullets are quoted; sentence openers are
+// taken verbatim. Bullets outside the three tracked sections, and the
+// empty bullet, are ignored.
+func recordCatalogBullet(out map[string]map[string]bool, section, bullet string) {
+	set, ok := out[section]
+	if !ok || bullet == "" {
+		return
+	}
+	item := strings.TrimSpace(strings.TrimPrefix(bullet, "- "))
+	switch section {
+	case "Vocabulary tells":
+		for _, word := range strings.Split(item, ",") {
+			set[normalizeVocab(word)] = true
+		}
+	case "Phrasal tells":
+		set[strings.Trim(item, `"`)] = true
+	default: // Sentence openers
+		set[item] = true
+	}
 }
 
 // normalizeVocab strips a parenthetical sense tag (e.g.

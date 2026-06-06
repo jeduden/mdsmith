@@ -12,11 +12,9 @@ settings that pairs a Markdown flavor with a set of
 style choices. Setting `convention:` at the top of
 your `.mdsmith.yml` selects one of the built-in
 bundles; the rule presets in that bundle are applied
-as a base layer beneath your own rule config.
-
-Conventions answer "what kind of Markdown does this
-project write?" with one config knob instead of
-eight.
+as a base layer beneath your own rule config. It
+answers "what kind of Markdown does this project
+write?" with one config knob instead of eight.
 
 A convention is distinct from a flavor. Flavor is a
 property of the *renderer* (CommonMark, GFM,
@@ -36,12 +34,11 @@ convention: portable
 That single line pins a flavor and a curated set of
 style-rule settings. `convention:` is a top-level
 config key, sibling to `rules:`, `kinds:`, and
-`overrides:`. Setting an unknown name is a config
-error at load time.
+`overrides:`. An unknown name is a config error.
 
 Built-in values: `portable`, `github`, `obsidian`,
-`parity`, `plain`. The key is optional; omit it for no
-convention.
+`parity`, `plain`, `no-llm-tells`. The key is
+optional; omit it for no convention.
 
 You may also set `flavor:` inside `markdown-flavor`
 alongside `convention:`. If both are set, they must
@@ -130,15 +127,31 @@ markdownlint-compatible tools (mado, rumdl) check
 it: `flavor: gfm` plus every mdsmith-only rule
 turned off, leaving the structural style class
 those tools also run. Use it for a like-for-like
-comparison, or as a fast check-only markdownlint
-gate before you adopt the cross-file and
-generated-section layer. The disabled-rule list is
-generated from the convention so it never drifts —
-see the [benchmark doc][parity-list]. Unlike the
-other built-ins, `parity` leaves `markdown-flavor`
+comparison, or as a fast markdownlint gate before
+you adopt the cross-file and generated-section
+layer. The disabled-rule list is generated from the
+convention, so it never drifts — see the
+[benchmark doc][parity-list]. Unlike the other
+built-ins, `parity` leaves `markdown-flavor`
 (MDS034) opt-in.
 
 [parity-list]: ../research/benchmarks/README.md
+
+### `no-llm-tells`
+
+Flags mechanical LLM-prose tells in CI. MDS056
+blocks vocabulary and phrasal tells; MDS055 blocks
+banned sentence openers; MDS023 and MDS024 tighten
+readability budgets. Lists are sourced from
+[`slop-patterns.md`][slop]; a drift-checker test
+keeps the two in sync.
+
+Pins no flavor and does not enable `markdown-flavor`
+(MDS034). The `contains` and `starts` lists merge by
+**append**: a project's own entries join the
+convention's list instead of replacing it.
+
+[slop]: ../../.claude/skills/docs-author/slop-patterns.md
 
 ## How presets layer with user config
 
@@ -166,9 +179,8 @@ The `default` and `user` layers come from the same
 convention so a convention can enable a rule that
 is opt-in by default (e.g. `convention: portable`
 turns on MDS034). Without the split, the default's
-`Enabled: false` would land on top of the
-convention's `Enabled: true` and silently disable
-the rule.
+`Enabled: false` would override the convention's
+`Enabled: true`.
 
 For example, the `github` convention sets
 `no-inline-html.allow: [details, summary]`. To
@@ -199,24 +211,15 @@ rules:
   markdown-flavor: false
 ```
 
-The `convention:` selector lives at the top level.
-So the user can disable MDS034 cleanly with a
-bool-only `markdown-flavor: false` entry in the
-rules block. The convention preset has already
-populated the merged config at load time. A
-bool-only later layer toggles `enabled` without
-erasing the preset's settings. The rule stays
-configured but its `Check()` is gated off. The
-other rules in the preset are untouched.
-
-This split keeps MDS034 focused on "what does this
-renderer interpret as a feature." Conventions
-orchestrate style separately.
+A bool-only `markdown-flavor: false` entry toggles
+`enabled` without erasing the preset's settings. The
+rule stays configured but its `Check()` is gated
+off. The other rules in the preset are untouched.
 
 ## User-defined conventions
 
-The three built-in conventions cover common cases.
-Teams that need something custom define it inline in
+The built-in conventions cover common cases. Teams
+that need something custom define it inline in
 `.mdsmith.yml`. The top-level `conventions:` key holds
 the map:
 
@@ -260,10 +263,10 @@ convention "our-team" rule "no-inline-html": no-inline-html: unknown setting "al
 ### Reserved names
 
 The built-in names `portable`, `github`,
-`obsidian`, `parity`, and `plain` are reserved.
-Defining a `conventions.portable` entry is a config
-error. This keeps the built-in names stable across
-docs and tutorials.
+`obsidian`, `parity`, `plain`, and `no-llm-tells`
+are reserved. Defining a `conventions.portable`
+entry is a config error. This keeps the built-in
+names stable across docs and tutorials.
 
 ### Resolution order
 
@@ -274,25 +277,17 @@ is impossible. When neither table matches, the error
 lists both sets:
 
 ```text
-unknown convention "bogus" (valid: github, obsidian, our-team, parity, plain, portable)
+unknown convention "bogus" (valid: github, no-llm-tells, obsidian, our-team, parity, plain, portable)
 ```
 
 ### Interaction with top-level rules
 
-User-defined conventions apply as a base layer, exactly
-like the built-in conventions. A top-level `rules:`
-entry overrides the convention preset for that rule.
-The rest of the preset remains.
-
-### Inspecting user conventions
-
-`mdsmith kinds resolve <file>` labels user convention
-layers with a `(user)` suffix. Built-in conventions
-carry no suffix. Example merge-chain output:
-
-```text
-convention.our-team (user)   set    {flavor: gfm}
-```
+User-defined conventions apply as a base layer, like
+the built-in conventions. A top-level `rules:` entry
+overrides the convention preset for that rule; the
+rest of the preset remains. `mdsmith kinds resolve
+<file>` labels user-convention layers with a
+`(user)` suffix.
 
 ## Inspecting an effective convention
 

@@ -21,7 +21,18 @@ by recasting the sentence — swapping the word
 leaves the same shape behind, and that shape is
 the tell.
 
+The mechanical sections — "Vocabulary tells",
+"Phrasal tells", and "Sentence openers" — also
+ship as the built-in [`no-llm-tells`
+convention][conv], which MDS056 and MDS055 enforce
+in CI and the editor without a model in the loop. A
+drift-checker test keeps the convention's lists a
+subset of this catalog. The structural, tone, and
+formatting sections below need contextual judgement
+and stay skill-only.
+
 [wp-signs]: https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing
+[conv]: ../../../docs/reference/conventions.md
 
 ## Vocabulary tells
 

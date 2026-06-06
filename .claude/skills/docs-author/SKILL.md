@@ -416,6 +416,15 @@ a non-native reader can parse on a first read.
 
 ## Anti-slop pass
 
+The banned-word and opener lists from
+`slop-patterns.md` ship as the built-in
+`no-llm-tells` convention. Set `convention:
+no-llm-tells` in `.mdsmith.yml` and MDS056 and
+MDS055 enforce them in CI with no model in the
+loop. This skill still owns the structural, tone,
+and formatting passes. Those need context that a
+substring check cannot provide.
+
 Run after the global-English pass. The catalog
 lives in `slop-patterns.md`. Load it, then walk
 the draft against each category. The catalog
