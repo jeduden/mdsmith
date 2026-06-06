@@ -199,7 +199,7 @@ func TestNamesSorted(t *testing.T) {
 	names := Names()
 	assert.True(t, sort.StringsAreSorted(names),
 		"Names should return a sorted slice; got %v", names)
-	assert.ElementsMatch(t, []string{"github", "obsidian", "parity", "plain", "portable"}, names)
+	assert.ElementsMatch(t, []string{"github", "no-llm-tells", "obsidian", "parity", "plain", "portable"}, names)
 }
 
 // parityDisabledRules is the canonical set of rules the built-in

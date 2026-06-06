@@ -96,6 +96,51 @@ func TestApplyConvention_FlavorMismatchErrors(t *testing.T) {
 	assert.Contains(t, err.Error(), "gfm")
 }
 
+func TestApplyConvention_FlavorUnsetConventionAllowsAnyUserFlavor(t *testing.T) {
+	// no-llm-tells leaves its flavor unset (FlavorAny). A project that
+	// also pins markdown-flavor to gfm must not be rejected: the
+	// convention is renderer-agnostic and does not enable markdown-flavor.
+	cfg := &Config{
+		Convention: "no-llm-tells",
+		Rules: map[string]RuleCfg{
+			"markdown-flavor": {Enabled: true, Settings: map[string]any{"flavor": "gfm"}},
+		},
+	}
+	require.NoError(t, applyConvention(cfg))
+	require.NotNil(t, cfg.ConventionPreset)
+}
+
+func TestApplyConvention_NoLLMTells_EnablesRulesWithSettings(t *testing.T) {
+	cfg := &Config{Convention: "no-llm-tells"}
+	require.NoError(t, applyConvention(cfg))
+
+	ft, ok := cfg.ConventionPreset["forbidden-text"]
+	require.True(t, ok, "preset must contain forbidden-text")
+	assert.True(t, ft.Enabled)
+	contains, ok := ft.Settings["contains"].([]any)
+	require.True(t, ok, "contains must be []any")
+	assert.Contains(t, contains, "delve")
+	assert.Contains(t, contains, "it's important to note that")
+
+	fps, ok := cfg.ConventionPreset["forbidden-paragraph-starts"]
+	require.True(t, ok, "preset must contain forbidden-paragraph-starts")
+	starts, ok := fps.Settings["starts"].([]any)
+	require.True(t, ok)
+	assert.Contains(t, starts, "Moreover,")
+
+	ps, ok := cfg.ConventionPreset["paragraph-structure"]
+	require.True(t, ok)
+	assert.Equal(t, 25, ps.Settings["max-words-per-sentence"])
+
+	pr, ok := cfg.ConventionPreset["paragraph-readability"]
+	require.True(t, ok)
+	assert.Equal(t, 12.0, pr.Settings["max-index"])
+
+	dlt, ok := cfg.ConventionPreset["descriptive-link-text"]
+	require.True(t, ok)
+	assert.True(t, dlt.Enabled)
+}
+
 func TestApplyConvention_FlavorAgreeAccepted(t *testing.T) {
 	cfg := &Config{
 		Convention: "github",
@@ -164,6 +209,49 @@ func TestEffectiveRules_UserSettingDeepMergesOverConvention(t *testing.T) {
 	assert.Equal(t, 5, rc.Settings["length"], "user scalar wins")
 	assert.Equal(t, "dash", rc.Settings["style"], "preset sibling preserved")
 	assert.Equal(t, true, rc.Settings["require-blank-lines"], "preset sibling preserved")
+}
+
+func TestEffectiveRules_NoLLMTells_UserForbiddenTextUnionsWithConvention(t *testing.T) {
+	// A project pins no-llm-tells and adds its own forbidden phrase.
+	// MDS056 opts contains: into MergeAppend, so the user's list unions
+	// with the convention's instead of replacing it.
+	cfg := &Config{
+		Convention: "no-llm-tells",
+		Rules: map[string]RuleCfg{
+			"forbidden-text": {
+				Enabled:  true,
+				Settings: map[string]any{"contains": []any{"synergy"}},
+			},
+		},
+		ExplicitRules: map[string]bool{"forbidden-text": true},
+	}
+	require.NoError(t, applyConvention(cfg))
+
+	got := Effective(cfg, "doc.md", nil, nil)
+	contains, ok := got["forbidden-text"].Settings["contains"].([]any)
+	require.True(t, ok)
+	assert.Contains(t, contains, "delve", "convention entry survives")
+	assert.Contains(t, contains, "synergy", "user entry is added")
+}
+
+func TestEffectiveRules_NoLLMTells_UserOpenersUnionWithConvention(t *testing.T) {
+	cfg := &Config{
+		Convention: "no-llm-tells",
+		Rules: map[string]RuleCfg{
+			"forbidden-paragraph-starts": {
+				Enabled:  true,
+				Settings: map[string]any{"starts": []any{"We "}},
+			},
+		},
+		ExplicitRules: map[string]bool{"forbidden-paragraph-starts": true},
+	}
+	require.NoError(t, applyConvention(cfg))
+
+	got := Effective(cfg, "doc.md", nil, nil)
+	starts, ok := got["forbidden-paragraph-starts"].Settings["starts"].([]any)
+	require.True(t, ok)
+	assert.Contains(t, starts, "Moreover,", "convention entry survives")
+	assert.Contains(t, starts, "We ", "user entry is added")
 }
 
 func TestProvenance_ConventionLayerVisible(t *testing.T) {

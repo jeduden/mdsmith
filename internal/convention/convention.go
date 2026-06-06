@@ -179,6 +179,52 @@ var conventions = map[string]Convention{
 			},
 		},
 	},
+	// no-llm-tells ships the mechanical layer of the docs-author
+	// anti-slop catalog as a one-key convention. It enables MDS056
+	// (forbidden-text) with a curated list of LLM vocabulary and phrase
+	// tells, MDS055 (forbidden-paragraph-starts) with the banned
+	// sentence openers, and tightens MDS023 (max-words-per-sentence) and
+	// MDS024 (paragraph-readability max-index) for non-native readers.
+	// MDS027 (descriptive-link-text) rounds out the bundle.
+	//
+	// Flavor is left unset (FlavorAny): anti-slop is renderer-agnostic,
+	// so the convention must not force a GFM or Obsidian project off its
+	// flavor. The convention does not enable markdown-flavor (MDS034), so
+	// the flavor field never reports; the loader skips the flavor-conflict
+	// guard for a convention whose flavor is FlavorAny.
+	//
+	// The curated lists live in nollmtells.go; their source of truth is
+	// .claude/skills/docs-author/slop-patterns.md, kept in sync by the
+	// drift-checker integration test.
+	"no-llm-tells": {
+		Name:   "no-llm-tells",
+		Flavor: FlavorAny,
+		Rules: map[string]RulePreset{
+			"forbidden-text": {
+				Enabled: true,
+				Settings: map[string]any{
+					"contains": toAnySlice(llmVocabularyAndPhrases()),
+				},
+			},
+			"forbidden-paragraph-starts": {
+				Enabled: true,
+				Settings: map[string]any{
+					"starts": toAnySlice(llmParagraphOpeners()),
+				},
+			},
+			"paragraph-structure": {
+				Enabled: true,
+				Settings: map[string]any{
+					"max-words-per-sentence": 25,
+				},
+			},
+			"paragraph-readability": {
+				Enabled:  true,
+				Settings: map[string]any{"max-index": 12.0},
+			},
+			"descriptive-link-text": {Enabled: true},
+		},
+	},
 	// parity restricts mdsmith to the markdownlint-compatible rule
 	// class — the structural style rules the Rust markdownlint ports
 	// (mado, rumdl) also run — by turning off every mdsmith-only rule:

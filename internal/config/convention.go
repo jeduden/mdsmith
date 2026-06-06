@@ -46,7 +46,10 @@ func applyConvention(cfg *Config) error {
 	if err != nil {
 		return fmt.Errorf("convention: %w", err)
 	}
-	if rc, ok := cfg.Rules["markdown-flavor"]; ok {
+	if rc, ok := cfg.Rules["markdown-flavor"]; ok && conv.Flavor != convention.FlavorAny {
+		// A convention with FlavorAny is renderer-agnostic (e.g.
+		// no-llm-tells); it imposes no flavor and never conflicts with a
+		// user's markdown-flavor selection, so the guard is skipped.
 		userFlavor, err := stringSetting(
 			rc.Settings, "flavor", "rules.markdown-flavor.flavor",
 		)
