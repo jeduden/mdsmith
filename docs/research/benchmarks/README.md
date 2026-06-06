@@ -10,11 +10,12 @@ summary: >-
 Our own benchmark run, not a re-quote of each project's README.
 Reproduce it with [`run.sh`](run.sh), a thin wrapper over
 `mdsmith-release bench`. The same harness runs automatically on
-every merge to `main` and publishes the refreshed numbers to the
-orphan `assets` branch; the website reads them at build time
-(the demo.gif pattern). The committed `data/*.json` snapshot in
-this directory stays the `bench-fragments` gate's source of
-truth and is what the tables below render from in-repo.
+every merge to `main` and publishes to the orphan `assets`
+branch: the refreshed numbers plus this page and the repo README
+rendered with those numbers spliced in; the website reads them
+at build time (the demo.gif pattern). The committed `data/*.json`
+snapshot in this directory stays the `bench-fragments` gate's
+source of truth and is what the tables below render from in-repo.
 
 ## Method
 

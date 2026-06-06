@@ -1,12 +1,14 @@
 name: Cross-tool benchmark
 
 # Re-measure the mdsmith-vs-Rust benchmark on every merge to
-# main and publish the refreshed numbers to the orphan `assets`
-# branch (the demo.gif pattern). Record-only: it never gates a
-# merge or a release. The website pulls these numbers at
-# build time; the in-repo committed snapshot stays the
-# `bench-fragments` CI gate's source of truth and is unaffected
-# by this workflow.
+# main and publish to the orphan `assets` branch (the demo.gif
+# pattern): both the refreshed numbers (data + fragments) and
+# the benchmark Markdown pages rendered from main's READMEs with
+# those numbers spliced in. Record-only: it never gates a merge
+# or a release, and it never pushes to protected main — the
+# in-repo committed snapshot stays the `bench-fragments` gate's
+# source of truth, hand-refreshed via run.sh. The website pulls
+# the assets numbers at build time.
 
 on:
   push:
@@ -55,13 +57,28 @@ jobs:
           go run ./cmd/mdsmith fix \
             docs/research/benchmarks/results.fragment.md \
             docs/research/benchmarks/headline.fragment.md
-      - name: Stage publishable numbers
+      - name: Render the benchmark pages from main's READMEs
+        # Splice the freshly measured fragments into the pages that
+        # embed them via <?include?> — the top-level README (headline)
+        # and this benchmark README (result tables) — producing
+        # rendered Markdown to publish alongside the raw numbers. Runs
+        # in this creds-free record job (no push token), not the
+        # publish job. The working-tree edits are never committed; the
+        # in-repo snapshot on protected main is untouched.
         run: |
-          mkdir -p artifacts/benchmarks/data
+          go run ./cmd/mdsmith fix \
+            README.md \
+            docs/research/benchmarks/README.md
+      - name: Stage publishable numbers and rendered pages
+        run: |
+          mkdir -p artifacts/benchmarks/data artifacts/benchmarks/pages
           cp docs/research/benchmarks/results.fragment.md \
              docs/research/benchmarks/headline.fragment.md \
              artifacts/benchmarks/
           cp docs/research/benchmarks/data/*.json artifacts/benchmarks/data/
+          cp README.md artifacts/benchmarks/pages/repo-readme.md
+          cp docs/research/benchmarks/README.md \
+             artifacts/benchmarks/pages/benchmark.md
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: benchmark-numbers
