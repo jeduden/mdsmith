@@ -686,7 +686,7 @@ func atomicWriteFile(path string, data []byte, mode os.FileMode) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := os.Chmod(tmpPath, mode); err != nil {
+	if err := chmodFile(tmpPath, mode); err != nil {
 		return err
 	}
 	if err := os.Rename(tmpPath, path); err != nil {
