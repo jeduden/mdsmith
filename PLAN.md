@@ -138,7 +138,7 @@ footer: |
 | 210 | ✅     | opus   | [Single source of truth for product messaging via `mdsmith extract`](plan/210_messaging-source-of-truth.md)                             |
 | 211 | 🔳     | opus   | [`<?include?>` projects any typed value of any kind via `extract`](plan/211_include-extract-value.md)                                   |
 | 212 | ✅     | opus   | [`mdsmith extract` projects paragraph inline spans as data](plan/212_extract-inline-spans.md)                                           |
-| 213 | 🔳     | opus   | [Built-in `no-llm-tells` convention with append-mode forbidden lists](plan/213_anti-slop-convention.md)                                 |
+| 213 | ✅     | opus   | [Built-in `no-llm-tells` convention with append-mode forbidden lists](plan/213_anti-slop-convention.md)                                 |
 | 214 | ✅     | sonnet | [MDS019 catalog: CUE-expression row templates](plan/214_catalog-cue-row-expressions.md)                                                 |
 | 214 | ⛔     | opus   | [Obsidian plugin via hand-rolled LSP bridge](plan/214_obsidian-plugin.md)                                                               |
 | 215 | ✅     | opus   | [mdsmith public engine API and WASM bindings](plan/215_engine-api-wasm.md)                                                              |

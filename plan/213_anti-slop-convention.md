@@ -1,7 +1,7 @@
 ---
 id: 213
 title: Built-in `no-llm-tells` convention with append-mode forbidden lists
-status: "🔳"
+status: "✅"
 model: opus
 depends-on: []
 summary: >-
