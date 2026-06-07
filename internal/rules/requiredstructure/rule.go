@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"strings"
 
-	"cuelang.org/go/cue"
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/fieldinterp"
@@ -2150,64 +2149,10 @@ func checkBodySync(
 		fmt.Sprintf("body does not match frontmatter field %q: expected %q", field, expected))}
 }
 
-// validateCUESchemaSyntax checks that schema compiles as CUE.
-//
-// The free function form (no RunCache) is the canonical entry point
-// kept for tests. The cache-bound variant validateCUESchemaSyntaxWith
-// is reached from parseSchemaFrontMatter when a cache is in scope,
-// so two schemas with identical CUE source share one compile per
-// Run.
-func validateCUESchemaSyntax(schema string) error {
-	return validateCUESchemaSyntaxWith(nil, schema)
-}
-
-// validateCUESchemaSyntaxWith is validateCUESchemaSyntax with the
-// CompileString site routed through cache when non-nil. A nil cache
-// compiles a fresh value (the test-direct path).
-func validateCUESchemaSyntaxWith(cache *lint.RunCache, schema string) error {
-	if strings.TrimSpace(schema) == "" {
-		return nil
-	}
-	if err := cachedCompiledCUEWith(cache, schema).Err(); err != nil {
-		return fmt.Errorf("invalid schema frontmatter CUE: %w", err)
-	}
-	return nil
-}
-
-func validateFrontMatterCUE(schema string, fm map[string]any) error {
-	if strings.TrimSpace(schema) == "" {
-		return nil
-	}
-
-	compiled := cachedCompiledCUEWith(nil, schema)
-	if err := compiled.Err(); err != nil {
-		return fmt.Errorf("invalid CUE schema: %w", err)
-	}
-
-	if fm == nil {
-		fm = map[string]any{}
-	}
-
-	data, err := json.Marshal(fm)
-	if err != nil {
-		return fmt.Errorf("serialize front matter: %w", err)
-	}
-
-	// The data value must come from the same cue.Context as the
-	// schema value — cue values cannot cross contexts. The cached
-	// wrapper exposes its Context for exactly this case.
-	// CompileBytes of json.Marshal output is always valid CUE, so
-	// any error on dataVal would also surface through merged.Validate
-	// below; the previous explicit check carried no testable path.
-	dataVal := compiled.Ctx.CompileBytes(data)
-
-	merged := compiled.Value.Unify(dataVal)
-	if err := merged.Validate(cue.Concrete(true)); err != nil {
-		return err
-	}
-
-	return nil
-}
+// validateCUESchemaSyntax, validateCUESchemaSyntaxWith, and
+// validateFrontMatterCUE live in cue_native.go (native) and
+// cue_wasm.go (the no-op stubs): all compile CUE, which the WASM
+// build omits. See the doc comments there.
 
 // readDocFrontMatterRaw reads YAML frontmatter from the document.
 func readDocFrontMatterRaw(f *lint.File) (map[string]any, []lint.Diagnostic) {

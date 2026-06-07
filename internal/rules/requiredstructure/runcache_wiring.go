@@ -4,7 +4,6 @@ import (
 	"path/filepath"
 
 	"github.com/jeduden/mdsmith/internal/lint"
-	"github.com/jeduden/mdsmith/internal/schema"
 )
 
 // schemaParseResult is the cached payload for ParsedSchema: a
@@ -190,23 +189,11 @@ func schemaCUESources(sch *parsedSchema) []string {
 	return []string{expr}
 }
 
-// cachedCompiledCUEWith returns the cached compile of source. It is a
-// thin forward to schema.CachedCompile so the rule package keeps the
-// historical name at its call sites (validateCUESchemaSyntaxWith /
-// validateFrontMatterCUE) and the wrapper type lives in one place. The
-// returned wrapper carries the *cue.Context the value was compiled
-// against so callers that need to Unify additional values use the same
-// context (cue.Value cannot cross contexts).
-//
-// Tests drive this directly to assert single-build semantics; the
-// rule path reaches it through validateCUESchemaSyntaxWith /
-// validateFrontMatterCUE, both of which sit inside the already-cached
-// parseSchema closure. The CompiledCUE slot adds a second-tier win:
-// two distinct schema files producing identical CUE source share one
-// compile.
-func cachedCompiledCUEWith(cache *lint.RunCache, source string) *schema.CompiledCUE {
-	return schema.CachedCompile(cache, source)
-}
+// cachedCompiledCUEWith lives in cue_native.go (native only): it
+// forwards to schema.CachedCompile, which compiles CUE. The WASM
+// build omits CUE, so this helper and its callers
+// (validateCUESchemaSyntaxWith / validateFrontMatterCUE) are
+// build-tagged out there.
 
 // absSchemaCacheKey resolves a schema path to an absolute filesystem
 // key for ParsedSchema. Returns "" when no stable identity can be

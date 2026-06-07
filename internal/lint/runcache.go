@@ -44,6 +44,18 @@ type RunCache struct {
 	// than races on a partial value.
 	schemaIncludes   sync.Map // string (absPath) -> []string
 	schemaCUESources sync.Map // string (absPath) -> []string
+
+	// schemaDependentsMu serialises the empty-set cleanup in
+	// invalidate. sync.Map.CompareAndDelete would give the same
+	// race-safe "delete only if unchanged" guarantee in one call, but
+	// tinygo's standard library omits CompareAndDelete, so the WASM
+	// engine must not depend on it. The mutex makes the Load-compare-
+	// Delete sequence atomic against a concurrent cleanup; it does NOT
+	// need to cover registerSchemaIncludes' Store, because that path's
+	// own verify-and-retry loop already detects an orphaned set — the
+	// same race window CompareAndDelete left open. See
+	// docs/background/concepts/engine-api.md.
+	schemaDependentsMu sync.Mutex
 }
 
 // runCacheEntry guards a single cache slot so build runs exactly once
@@ -212,14 +224,14 @@ func (c *RunCache) registerSchemaMetadata(absPath string, meta ParsedSchemaMetad
 // re-adding the same dependent key is a no-op.
 //
 // The verify-and-retry loop closes a race with Invalidate's
-// empty-set cleanup: Invalidate's CompareAndDelete on the outer
+// empty-set cleanup: Invalidate's compare-and-delete on the outer
 // schemaDependents map only compares the outer-value pointer,
 // which stays the same even when a concurrent register adds to
 // the inner *sync.Map. Without the retry, this sequence loses
 // the new dependent:
 //
 //  1. T1 register: LoadOrStore("frag") → setI (existing)
-//  2. T2 invalidate: empty-check on setI → empty → CompareAndDelete
+//  2. T2 invalidate: empty-check on setI → empty → compare-and-delete
 //     drops the outer entry
 //  3. T1 register: set.Store(schemaPath) → lands on the orphaned
 //     setI, never reachable from schemaDependents again
@@ -378,14 +390,15 @@ func (c *RunCache) invalidate(absPath string, visited map[string]bool) {
 	// absPath from that fragment's dependent set. Leaves the
 	// fragment's own slot intact (it is a sibling document, not the
 	// invalidated one); only the back-pointer to absPath is
-	// removed. When that removal empties the set, CompareAndDelete
-	// drops the schemaDependents entry too so long-lived LSP
-	// sessions do not accumulate empty *sync.Maps. CompareAndDelete
-	// is the race-safe primitive: if a concurrent
-	// registerSchemaMetadata re-Stored a dependent between our
-	// Range and the delete, the value in schemaDependents now
-	// differs from setI and the delete is skipped, preserving the
-	// new entry.
+	// removed. When that removal empties the set, the entry is
+	// dropped from schemaDependents too so long-lived LSP sessions
+	// do not accumulate empty *sync.Maps. The drop is a race-safe
+	// compare-and-delete: if a concurrent registerSchemaMetadata
+	// re-Stored a dependent between our Range and the delete, the
+	// value in schemaDependents now differs from setI and the delete
+	// is skipped, preserving the new entry. schemaDependentsMu makes
+	// the compare-and-delete atomic without sync.Map.CompareAndDelete,
+	// which tinygo omits.
 	for _, frag := range includes {
 		if frag == "" {
 			continue
@@ -402,8 +415,24 @@ func (c *RunCache) invalidate(absPath string, visited map[string]bool) {
 			return false
 		})
 		if empty {
-			c.schemaDependents.CompareAndDelete(frag, setI)
+			c.compareAndDeleteDependents(frag, setI)
 		}
+	}
+}
+
+// compareAndDeleteDependents drops key from schemaDependents only when
+// its current value still equals want — the tinygo-safe equivalent of
+// sync.Map.CompareAndDelete(key, want), which tinygo's standard library
+// omits. schemaDependentsMu serialises the Load-compare-Delete so two
+// concurrent cleanups cannot both observe the same stale value and
+// double-delete a freshly re-Stored set. A concurrent
+// registerSchemaIncludes Store is still detected by that function's own
+// verify-and-retry loop, exactly as it was under CompareAndDelete.
+func (c *RunCache) compareAndDeleteDependents(key string, want any) {
+	c.schemaDependentsMu.Lock()
+	defer c.schemaDependentsMu.Unlock()
+	if current, ok := c.schemaDependents.Load(key); ok && current == want {
+		c.schemaDependents.Delete(key)
 	}
 }
 

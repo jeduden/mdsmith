@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-
-	"cuelang.org/go/cue/cuecontext"
 )
 
 // MergeRawMap applies plan-135 extends semantics to two raw inline
@@ -531,14 +529,7 @@ func (e *InvalidFrontmatterError) Error() string {
 // Unwrap exposes the underlying parse error.
 func (e *InvalidFrontmatterError) Unwrap() error { return e.Cause }
 
-// checkUnifiable reports whether a CUE expression can be reduced
-// without contradiction. It compiles the expression in a fresh CUE
-// context; the compiled value's Err() is non-nil whenever the
-// expression reduces to bottom (CUE's "no value satisfies"
-// outcome), so a simple Err()-check covers every conflict shape
-// the plan cares about — `int & string`, conflicting bounds,
-// closed-struct violations, unresolved references.
-func checkUnifiable(expr string) error {
-	v := cuecontext.New().CompileString(expr)
-	return v.Err()
-}
+// checkUnifiable lives in extend_cue.go (native) and extend_wasm.go
+// (the no-op stub): it compiles CUE to detect a contradictory
+// frontmatter constraint, which the WASM build omits. See the doc
+// comments there.
