@@ -43,7 +43,7 @@ title = "mdsmith"
     target = "data"
 
 [outputs]
-  home = ["HTML"]
+  home = ["HTML", "JSON"]
   page = ["HTML"]
   section = ["HTML"]
 

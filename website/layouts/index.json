@@ -1,0 +1,32 @@
+{{- /* Search index for the ⌘K search field.
+
+       Emitted as the home page's JSON output format (hugo.toml:
+       [outputs] home includes "JSON", so Hugo writes /index.json).
+       static/js/search.js fetches it once on first open and matches
+       titles, summaries, and a plain-text body excerpt entirely in
+       the browser — no external search service and no build-time
+       index step, in keeping with the site's self-hosted, no-runtime-
+       network posture.
+
+       Indexed pages are the leaf pages (Kind "page") and section
+       landing pages (Kind "section"); the home page, taxonomies, and
+       term pages are skipped. The body is whitespace-collapsed and
+       capped at searchBodyChars runes so the whole index stays small
+       enough to fetch in a single request. */ -}}
+{{- $searchBodyChars := 1600 -}}
+{{- $index := slice -}}
+{{- range $p := where site.Pages "Kind" "in" (slice "page" "section") -}}
+  {{- $summary := "" -}}
+  {{- with $p.Params.summary -}}
+    {{- $summary = $p.RenderString (dict "display" "inline") . | plainify | chomp -}}
+  {{- end -}}
+  {{- $body := substr (replaceRE `\s+` " " ($p.Plain | htmlUnescape)) 0 $searchBodyChars -}}
+  {{- $index = $index | append (dict
+        "title" $p.Title
+        "summary" $summary
+        "section" ($p.Section | title)
+        "href" $p.RelPermalink
+        "body" $body
+  ) -}}
+{{- end -}}
+{{- $index | jsonify -}}

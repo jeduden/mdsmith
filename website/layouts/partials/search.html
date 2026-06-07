@@ -1,0 +1,46 @@
+{{- /* ⌘K / Ctrl+K documentation search.
+
+       The trigger reuses .topnav-kbd (styled for a keyboard-hinted
+       search field). static/js/search.js wires it up: it opens the
+       native <dialog>, fetches the home page's JSON output (the
+       search index at data-search-index) on first open, and matches
+       it in the browser.
+
+       Scoped to html.js in CSS — with JavaScript off the inert
+       button is hidden and the docs sidebar remains the way to
+       navigate, so no capability is lost. The dialog markup ships in
+       the DOM (closed) so Lucide's createIcons() iconifies it at
+       load. */ -}}
+<button type="button" class="topnav-kbd search-trigger" data-search-open
+        aria-haspopup="dialog" aria-keyshortcuts="Control+K Meta+K Slash"
+        aria-label="Search the documentation">
+  <i data-lucide="search" width="15" height="15" aria-hidden="true"></i>
+  <span class="search-trigger-text">Search</span>
+  <span class="search-trigger-keys" aria-hidden="true">
+    <kbd class="search-trigger-key" data-search-cmd>⌘</kbd><kbd class="search-trigger-key">K</kbd>
+  </span>
+</button>
+
+<dialog class="search-dialog" data-search-dialog
+        aria-label="Search the documentation"
+        data-search-index="{{ "index.json" | relURL }}">
+  <div class="search-panel">
+    <div class="search-field">
+      <i data-lucide="search" width="18" height="18" aria-hidden="true" class="search-field-icon"></i>
+      <input type="search" class="search-input" data-search-input
+             placeholder="Search the documentation…" autocomplete="off"
+             autocapitalize="off" autocorrect="off" spellcheck="false"
+             aria-label="Search query" role="combobox" aria-expanded="false"
+             aria-autocomplete="list" aria-controls="search-results">
+      <kbd class="search-esc" data-search-close>Esc</kbd>
+    </div>
+    <ul class="search-results" id="search-results" data-search-results
+        role="listbox" aria-label="Search results"></ul>
+    <p class="search-status" data-search-status hidden></p>
+    <div class="search-footer" aria-hidden="true">
+      <span class="search-foot"><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+      <span class="search-foot"><kbd>↵</kbd> open</span>
+      <span class="search-foot"><kbd>esc</kbd> close</span>
+    </div>
+  </div>
+</dialog>

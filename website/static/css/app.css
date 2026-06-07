@@ -1733,3 +1733,195 @@ a.rule-ref:hover code { text-decoration: underline; }
   .pg-pane + .pg-pane { border-left: 0; border-top: 1px solid var(--border); }
   .pg-pane { height: 360px; }
 }
+
+/* ========== SEARCH (⌘K) ========== */
+
+/* The trigger is inert without JS (search.js wires the dialog), so it
+   only appears once html.js lands. The docs sidebar stays the no-JS
+   path to every page. */
+.search-trigger { display: none; }
+html.js .search-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  /* Re-use .topnav-kbd's border/background; widen the right padding so
+     the ⌘K hint reads as a distinct chip from the "Search" label. */
+  padding: 4px 6px 4px 10px;
+  color: var(--fg-subtle);
+}
+.search-trigger:hover { color: var(--fg); }
+.search-trigger i,
+.search-trigger svg { color: var(--fg-subtle); flex: none; }
+.search-trigger-text { font-family: var(--font-sans); font-size: 13px; }
+.search-trigger-keys { display: inline-flex; gap: 2px; }
+.search-trigger-key {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 5px;
+  border-radius: var(--radius-xs);
+  background: var(--steel-100);
+  color: var(--steel-600);
+}
+
+/* The dialog itself is just a transparent, top-anchored container; the
+   visible card is .search-panel. */
+.search-dialog {
+  width: min(580px, calc(100vw - 32px));
+  max-width: 580px;
+  margin: 12vh auto auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  overflow: visible;
+}
+.search-dialog::backdrop {
+  background: rgba(15, 20, 25, 0.42);
+  backdrop-filter: saturate(140%) blur(3px);
+}
+.search-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: 70vh;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.search-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.search-field-icon { color: var(--fg-subtle); flex: none; }
+.search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  color: var(--fg);
+}
+.search-input::placeholder { color: var(--fg-subtle); }
+/* Hide the native clear/search affordances so the field reads as one
+   flat input across browsers. */
+.search-input::-webkit-search-decoration,
+.search-input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+.search-esc {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 3px 6px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border);
+  background: var(--steel-50);
+  color: var(--fg-subtle);
+  cursor: pointer;
+}
+
+.search-results {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+}
+.search-result { margin: 0; }
+.search-result-link {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 12px;
+  border-radius: var(--radius-md);
+  color: var(--fg);
+}
+.search-result-link:hover { text-decoration: none; }
+.search-result.is-active .search-result-link { background: var(--accent-soft); }
+.search-result.is-active .search-result-title { color: var(--accent); }
+.search-result-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.search-result-title {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.search-result-section {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-subtle);
+}
+.search-result-summary {
+  font-size: 12.5px;
+  color: var(--fg-muted);
+  line-height: 1.4;
+  /* Clamp long summaries to two lines so every result stays scannable. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.search-results mark {
+  background: transparent;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.search-status {
+  margin: 0;
+  padding: 18px 16px;
+  font-size: 13px;
+  color: var(--fg-subtle);
+  text-align: center;
+}
+
+.search-footer {
+  display: flex;
+  gap: 16px;
+  padding: 9px 14px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-sunken);
+  font-size: 11px;
+  color: var(--fg-subtle);
+}
+.search-foot { display: inline-flex; align-items: center; gap: 5px; }
+.search-footer kbd {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 2px 5px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+}
+
+/* Lock the page behind the modal so only the result list scrolls. */
+html.search-active { overflow: hidden; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .search-dialog[open] { animation: search-in var(--dur-base) var(--ease-out); }
+  @keyframes search-in {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+
+/* On narrow nav the label and key hint would crowd the bar; keep just
+   the icon button (still full-size, still keyboard-openable). */
+@media (max-width: 720px) {
+  .search-trigger-text,
+  .search-trigger-keys { display: none; }
+  html.js .search-trigger { padding: 5px 7px; }
+}

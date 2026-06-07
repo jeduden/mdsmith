@@ -25,6 +25,7 @@
       {{ end }}
     </nav>
     <div class="topnav-right">
+      {{ partial "search.html" . }}
       <a class="topnav-version" href="{{ "/guides/install/" | relURL }}" title="Install mdsmith">v{{ .Site.Params.version }}</a>
       <a class="topnav-gh" href="https://github.com/{{ .Site.Params.githubRepo }}" rel="noopener" aria-label="mdsmith on GitHub">
         {{ partial "github-mark.html" (dict "size" 15) }}
