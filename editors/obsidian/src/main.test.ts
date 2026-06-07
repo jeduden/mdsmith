@@ -41,16 +41,23 @@ function makeApp(): {
     };
     workspace: {
       on(event: string, cb: () => unknown): unknown;
+      onLayoutReady(cb: () => unknown): void;
       getActiveViewOfType(_t: unknown): FakeView | null;
       getLeavesOfType(_t: string): unknown[];
     };
   };
   active: { view: FakeView | null };
   fireModify(path: string): void;
+  fireLayoutReady(): void;
+  layoutReadyCount(): number;
   modifyListenerCount(): number;
 } {
   type Handler = (f: FakeFile) => unknown;
   const vaultHandlers: Record<string, Handler[]> = {};
+  // Captured onLayoutReady callbacks. The fake never runs them eagerly,
+  // modelling Obsidian's cold start where the vault index is not ready
+  // when onload runs; fireLayoutReady() simulates the vault becoming ready.
+  const layoutReadyCbs: Array<() => unknown> = [];
   const active: { view: FakeView | null } = { view: null };
   return {
     app: {
@@ -71,6 +78,9 @@ function makeApp(): {
         on(_event: string, _cb: () => unknown): unknown {
           return {};
         },
+        onLayoutReady(cb: () => unknown): void {
+          layoutReadyCbs.push(cb);
+        },
         getActiveViewOfType(_t: unknown): FakeView | null {
           return active.view;
         },
@@ -82,6 +92,12 @@ function makeApp(): {
     active,
     fireModify(path: string): void {
       for (const cb of vaultHandlers["modify"] ?? []) cb({ path });
+    },
+    fireLayoutReady(): void {
+      for (const cb of layoutReadyCbs) cb();
+    },
+    layoutReadyCount(): number {
+      return layoutReadyCbs.length;
     },
     modifyListenerCount(): number {
       return vaultHandlers["modify"]?.length ?? 0;
@@ -373,5 +389,32 @@ describe("engine-down / restart safety (Copilot review)", () => {
       plugin as unknown as { startRuntime(): Promise<boolean> }
     ).startRuntime();
     expect(ok).toBe(false);
+  });
+});
+
+describe("onload — defers the first snapshot to layout-ready (cold-start race)", () => {
+  // On a cold Obsidian start the vault file index is not fully populated
+  // when onload runs, so app.vault.getMarkdownFiles() — the workspace-
+  // snapshot source — can return a partial list, dropping deep
+  // include/link targets and making cross-file directives report a
+  // missing file. onload must defer the first startRuntime() until
+  // app.workspace.onLayoutReady fires, when the vault is fully indexed.
+  test("startRuntime runs on layout-ready, not during onload", async () => {
+    const { plugin, harness } = makePlugin();
+    const startSpy = mock(() => Promise.resolve(true));
+    (
+      plugin as unknown as { startRuntime: () => Promise<boolean> }
+    ).startRuntime = startSpy;
+
+    await plugin.onload();
+
+    // Deferred: onload registered exactly one layout-ready callback and
+    // has NOT snapshotted the vault yet.
+    expect(startSpy).not.toHaveBeenCalled();
+    expect(harness.layoutReadyCount()).toBe(1);
+
+    // The vault finishes loading: the snapshot runs now.
+    harness.fireLayoutReady();
+    expect(startSpy).toHaveBeenCalledTimes(1);
   });
 });

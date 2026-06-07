@@ -67,13 +67,13 @@ func cachedParseSchema(
 		cache = f.RunCache
 	}
 	if cache == nil {
-		sch, _, err := parseSchemaWithCache(data, schemaPath, fileMaxBytes(f), nil)
+		sch, _, err := parseSchemaWithRootFS(data, schemaPath, fileMaxBytes(f), nil, schemaRootFS(f))
 		return sch, err
 	}
 	absPath := absSchemaCacheKey(f, schemaPath)
 	absRoot := absRootDir(f)
 	return cachedParseSchemaWith(cache, absPath, absRoot, func() (*parsedSchema, []string, error) {
-		return parseSchemaWithCache(data, schemaPath, fileMaxBytes(f), cache)
+		return parseSchemaWithRootFS(data, schemaPath, fileMaxBytes(f), cache, schemaRootFS(f))
 	})
 }
 

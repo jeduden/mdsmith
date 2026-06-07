@@ -3,6 +3,7 @@ package requiredstructure
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -204,6 +205,44 @@ func TestRule_SchemaParsedOncePerRunCache(t *testing.T) {
 func filepathAbs(t *testing.T, p string) (string, error) {
 	t.Helper()
 	return filepath.Abs(p)
+}
+
+// TestRule_SchemaIncludeViaRootFS verifies a schema <?include?> fragment
+// resolves through the workspace RootFS when there is no usable OS disk —
+// the Session/WASM shape (RootFS set, RootDir empty). Both the schema and
+// its fragment live only in the in-memory FS, so the os.ReadFile fallback
+// cannot find them; before RootFS was threaded into schema-include
+// resolution this surfaced a "cannot read schema include file"
+// diagnostic ("not implemented on js" in the actual WASM build).
+func TestRule_SchemaIncludeViaRootFS(t *testing.T) {
+	mfs := fstest.MapFS{
+		"rules/proto.md": &fstest.MapFile{
+			Data: []byte("# {id}: {name}\n\n<?include\nfile: section.md\n?>\n"),
+		},
+		"rules/section.md": &fstest.MapFile{
+			Data: []byte("## Section\n"),
+		},
+	}
+	r := &Rule{Schema: "rules/proto.md"}
+	f, err := lint.NewFile("rules/x/README.md",
+		[]byte("---\nid: MDS001\nname: line-length\n---\n# MDS001: line-length\n\n## Section\n"))
+	require.NoError(t, err)
+	f.FS = mfs
+	f.RootFS = mfs // RootDir intentionally empty: the Session/WASM shape.
+
+	for _, d := range r.Check(f) {
+		if strings.Contains(d.Message, "cannot read schema include") {
+			t.Fatalf("schema include must resolve via RootFS, got: %s", d.Message)
+		}
+	}
+}
+
+// TestSchemaRootFS covers both branches of the RootFS accessor: a nil
+// file (the cache primitive's struct-literal test path) yields nil, and a
+// file with a RootFS yields it.
+func TestSchemaRootFS(t *testing.T) {
+	assert.Nil(t, schemaRootFS(nil))
+	assert.NotNil(t, schemaRootFS(&lint.File{RootFS: fstest.MapFS{}}))
 }
 
 // TestRule_FragmentInvalidationEvictsParsedSchema is the end-to-end

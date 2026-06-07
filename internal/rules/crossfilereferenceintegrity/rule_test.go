@@ -683,6 +683,73 @@ func TestResolveTargetFile_EmptyFSPathReturnsNotFound(t *testing.T) {
 	require.False(t, ok, "fsPath='' after TrimPrefix must return not found")
 }
 
+// TestTargetExists_ParentTraversalViaRootFS mirrors the WASM/Session
+// shape: a workspace-relative source path in a subdirectory, a
+// project-root RootFS, and an up-and-over link. The OS branch cannot
+// help (no on-disk file) and the legacy FS branch would hand ".." to
+// io/fs (which rejects it); RootFS-relative resolution collapses the
+// "..".
+func TestTargetExists_ParentTraversalViaRootFS(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "internal", "rules", "x"), 0o755))
+	writeFile(t, filepath.Join(root, "internal", "rules", "x", "README.md"), "# X\n")
+
+	f := &lint.File{
+		Path:   "docs/background/linters.md",
+		FS:     os.DirFS(root),
+		RootFS: os.DirFS(root),
+	}
+	assert.True(t, targetExists(f, "../../internal/rules/x/README.md", ""),
+		"an existing up-and-over target must resolve via RootFS")
+	assert.False(t, targetExists(f, "../../internal/rules/x/MISSING.md", ""),
+		"a missing up-and-over target must still report absent")
+	assert.False(t, targetExists(f, "../../../escape.md", ""),
+		"a link escaping the workspace root must not resolve here")
+}
+
+// TestResolveWorkspaceRelTarget covers every branch of the helper:
+// joining onto the source dir, collapsing "..", and the rejections for
+// empty, absolute, and root-escaping links.
+func TestResolveWorkspaceRelTarget(t *testing.T) {
+	rel, ok := resolveWorkspaceRelTarget("docs/background/linters.md", "../../internal/x.md")
+	require.True(t, ok)
+	assert.Equal(t, "internal/x.md", rel)
+
+	rel, ok = resolveWorkspaceRelTarget("docs/a.md", "b.md")
+	require.True(t, ok)
+	assert.Equal(t, "docs/b.md", rel)
+
+	_, ok = resolveWorkspaceRelTarget("docs/a.md", "")
+	assert.False(t, ok, "empty link is not a workspace target")
+	_, ok = resolveWorkspaceRelTarget("docs/a.md", "/etc/passwd")
+	assert.False(t, ok, "absolute link is not a workspace target")
+	_, ok = resolveWorkspaceRelTarget("docs/a.md", "../../escape.md")
+	assert.False(t, ok, "a link escaping the workspace root is rejected")
+}
+
+// TestResolveTargetFile_ParentTraversalViaRootFS exercises the in-memory
+// RootFS branch of resolveTargetFile (the anchored-link path), which the
+// Session/WASM engine takes for an up-and-over target.
+func TestResolveTargetFile_ParentTraversalViaRootFS(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "internal", "rules", "x"), 0o755))
+	writeFile(t, filepath.Join(root, "internal", "rules", "x", "README.md"), "# X\n")
+
+	f := &lint.File{
+		Path:   "docs/background/linters.md",
+		FS:     os.DirFS(root),
+		RootFS: os.DirFS(root),
+	}
+	tf, ok := resolveTargetFile(f, "../../internal/rules/x/README.md", "")
+	require.True(t, ok, "an existing up-and-over target must resolve via RootFS")
+	data, err := tf.read()
+	require.NoError(t, err)
+	assert.Equal(t, []byte("# X\n"), data)
+
+	_, ok = resolveTargetFile(f, "../../internal/rules/x/MISSING.md", "")
+	assert.False(t, ok, "a missing up-and-over target must not resolve")
+}
+
 // =====================================================================
 // Additional coverage: toStringSlice with []string type
 // =====================================================================

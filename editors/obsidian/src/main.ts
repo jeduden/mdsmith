@@ -7,9 +7,14 @@
 // workspace, diagnostics, actions, settings, wiring); the methods here
 // just orchestrate the Obsidian lifecycle.
 //
-// onload order (plan 217 §Lifecycle): read settings → load the WASM
-// bundle → build the workspace snapshot → createRuntime once → register
-// the CM6 extension, commands, diagnostics view, and vault listeners.
+// onload order (plan 217 §Lifecycle): read settings → register the CM6
+// extension, commands, diagnostics view, and vault listeners → then,
+// once app.workspace.onLayoutReady fires, build the workspace snapshot
+// and createRuntime. The snapshot is deferred to layout-ready because
+// app.vault.getMarkdownFiles() is only complete after the vault finishes
+// indexing; running it during a cold-start onload can return a partial
+// file list, which drops deep include/link targets and makes cross-file
+// directives report a missing file.
 // onunload disposes the runtime, cancels listeners, and detaches the
 // view. A "Restart session" command runs the same dispose + create
 // flow a configPath change uses.
@@ -110,7 +115,12 @@ export default class MdsmithPlugin extends Plugin {
     this.registerActiveFileCheck();
     this.registerCursorCommands();
 
-    await this.startRuntime();
+    // Defer the first snapshot until the vault index is fully populated.
+    // onLayoutReady runs the callback once the vault is ready — or
+    // immediately if it already is (e.g. the plugin is enabled after
+    // startup) — so app.vault.getMarkdownFiles() returns the complete
+    // file list and cross-file include/link resolution sees every file.
+    this.app.workspace.onLayoutReady(() => void this.startRuntime());
   }
 
   override onunload(): void {

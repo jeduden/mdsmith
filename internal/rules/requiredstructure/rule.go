@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -1405,6 +1406,18 @@ func parseSchema(data []byte, schemaPath string, maxBytes int64) (*parsedSchema,
 func parseSchemaWithCache(
 	data []byte, schemaPath string, maxBytes int64, cache *lint.RunCache,
 ) (*parsedSchema, []string, error) {
+	return parseSchemaWithRootFS(data, schemaPath, maxBytes, cache, nil)
+}
+
+// parseSchemaWithRootFS is parseSchemaWithCache plus the workspace RootFS
+// used to read <?include?> fragments. The Session/WASM and LSP engines
+// have no usable OS disk (os.ReadFile is "not implemented on js" in
+// WASM), so schema includes must read through the in-memory workspace FS;
+// the CLI passes a nil rootFS and reads from disk. cachedParseSchema
+// supplies f.RootFS.
+func parseSchemaWithRootFS(
+	data []byte, schemaPath string, maxBytes int64, cache *lint.RunCache, rootFS fs.FS,
+) (*parsedSchema, []string, error) {
 	prefix, content := lint.StripFrontMatter(data)
 
 	cfg, err := parseSchemaFrontMatter(prefix, cache)
@@ -1447,7 +1460,7 @@ func parseSchemaWithCache(
 		visited := map[string]bool{cleanPath: true}
 		chain := []string{cleanPath}
 		var fp string
-		headings, fp, includes, err = extractSchemaHeadings(f, schemaPath, visited, chain, maxBytes)
+		headings, fp, includes, err = extractSchemaHeadings(f, schemaPath, visited, chain, maxBytes, rootFS)
 		if err != nil {
 			// Surface a partial *parsedSchema (carrying the
 			// frontmatter CUE source the cache will track via
@@ -1502,7 +1515,7 @@ func parseSchemaWithCache(
 // transitive set appended after the fragment's own path.
 func extractSchemaHeadings(
 	schemaFile *lint.File, schemaPath string,
-	visited map[string]bool, chain []string, maxBytes int64,
+	visited map[string]bool, chain []string, maxBytes int64, rootFS fs.FS,
 ) ([]docHeading, string, []string, error) {
 	var headings []docHeading
 	var filenamePattern string
@@ -1524,7 +1537,7 @@ func extractSchemaHeadings(
 				return ast.WalkContinue, nil
 			}
 			fragHeadings, fp, fragIncluded, subIncludes, walkErr := expandSchemaInclude(
-				node, schemaFile.Source, schemaPath, visited, chain, maxBytes)
+				node, schemaFile.Source, schemaPath, visited, chain, maxBytes, rootFS)
 			if walkErr != nil {
 				// Record the broken-but-known fragment plus any
 				// transitive sub-includes the recursive walk
@@ -1604,7 +1617,7 @@ func resolveSchemaIncludePath(
 // full dependency footprint on RunCache's reverse-include index.
 func expandSchemaInclude(
 	pi *piparser.ProcessingInstruction, source []byte,
-	schemaPath string, visited map[string]bool, chain []string, maxBytes int64,
+	schemaPath string, visited map[string]bool, chain []string, maxBytes int64, rootFS fs.FS,
 ) ([]docHeading, string, string, []string, error) {
 	includedPath, err := resolveSchemaIncludePath(pi, source, schemaPath)
 	if err != nil {
@@ -1629,7 +1642,7 @@ func expandSchemaInclude(
 			"cyclic include: %s", strings.Join(chainCopy, " -> "))
 	}
 
-	fragData, err := bytelimit.ReadFileLimited(includedPath, maxBytes)
+	fragData, err := readSchemaInclude(rootFS, includedPath, maxBytes)
 	if err != nil {
 		return nil, "", includedPath, nil, fmt.Errorf(
 			"cannot read schema include file %q: %w", includedPath, err)
@@ -1650,7 +1663,7 @@ func expandSchemaInclude(
 	visited[includedPath] = true
 	chain = append(chain, includedPath)
 	fragHeadings, fp2, subIncludes, err := extractSchemaHeadings(
-		fragFile, includedPath, visited, chain, maxBytes)
+		fragFile, includedPath, visited, chain, maxBytes, rootFS)
 	delete(visited, includedPath)
 	if err != nil {
 		// Surface includedPath plus whatever subIncludes the
@@ -2406,6 +2419,28 @@ func readSchemaFile(f *lint.File, schema string) ([]byte, error) {
 		return bytelimit.ReadFSFileLimited(f.RootFS, clean, f.MaxInputBytes)
 	}
 	return bytelimit.ReadFileLimited(schema, f.MaxInputBytes)
+}
+
+// schemaRootFS returns f's workspace RootFS, or nil when f is nil. It is
+// the seam cachedParseSchema uses to feed RootFS-based <?include?>
+// fragment reads (see parseSchemaWithRootFS).
+func schemaRootFS(f *lint.File) fs.FS {
+	if f == nil {
+		return nil
+	}
+	return f.RootFS
+}
+
+// readSchemaInclude reads a schema <?include?> fragment. It prefers the
+// workspace RootFS — the Session/WASM and LSP path, where os.ReadFile is
+// absent or "not implemented on js" — and falls back to the OS filesystem
+// for the on-disk CLI. includedPath is project-relative
+// (resolveSchemaIncludePath rejects ".."), so it is a valid fs.FS key.
+func readSchemaInclude(rootFS fs.FS, includedPath string, maxBytes int64) ([]byte, error) {
+	if rootFS != nil {
+		return bytelimit.ReadFSFileLimited(rootFS, filepath.ToSlash(includedPath), maxBytes)
+	}
+	return bytelimit.ReadFileLimited(includedPath, maxBytes)
 }
 
 func makeDiag(file string, line int, msg string) lint.Diagnostic {

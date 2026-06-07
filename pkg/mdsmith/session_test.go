@@ -249,6 +249,53 @@ func TestSessionCheckCrossFileMemWorkspace(t *testing.T) {
 	}
 }
 
+// TestSessionParentTraversalLinkMemWorkspace verifies a relative link
+// that traverses ".." up and over resolves through the in-memory
+// workspace. The CLI resolves such links on disk; the Session has no
+// disk, so the engine must wire RootFS to the workspace FS and collapse
+// ".." for the io/fs lookup (which rejects raw ".." paths). Before that,
+// this reported a false MDS027 broken link — the Obsidian/WASM symptom.
+func TestSessionParentTraversalLinkMemWorkspace(t *testing.T) {
+	files := map[string][]byte{
+		"shared/b.md": []byte("# B\n\nBody paragraph for b here.\n"),
+	}
+	s := newTestSession(t, "", files)
+	host := []byte("# A\n\nSee [B](../../shared/b.md) for the details here now.\n")
+	diags, err := s.Check("docs/sub/a.md", host)
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	for _, d := range diags {
+		if d.RuleID == "MDS027" {
+			t.Fatalf("unexpected MDS027 broken-link for an existing ..-target: %+v", diags)
+		}
+	}
+}
+
+// TestSessionParentTraversalIncludeMemWorkspace verifies an <?include?>
+// whose target sits above the including file resolves through the
+// in-memory workspace. Without RootFS wired to the workspace, include
+// resolution rejects ".." paths with "project root is not configured".
+func TestSessionParentTraversalIncludeMemWorkspace(t *testing.T) {
+	files := map[string][]byte{
+		"shared/snippet.md": []byte("Reusable snippet body here.\n"),
+	}
+	s := newTestSession(t, "", files)
+	host := []byte("# A\n\n<?include\nfile: ../../shared/snippet.md\n?>\n" +
+		"Reusable snippet body here.\n<?/include?>\n")
+	diags, err := s.Check("docs/sub/a.md", host)
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	for _, d := range diags {
+		if d.RuleID == "MDS021" &&
+			(strings.Contains(d.Message, "is not configured") ||
+				strings.Contains(d.Message, "cannot read include file")) {
+			t.Fatalf("include ..-target failed to resolve: %s", d.Message)
+		}
+	}
+}
+
 // TestSessionCheckResultIsolatedFromCache verifies the slice Check
 // returns does not alias the cached slice, so a caller mutating its
 // result cannot poison a later Check on the same (uri, source).

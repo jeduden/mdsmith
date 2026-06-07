@@ -553,6 +553,15 @@ func (r *Runner) populateFileFields(f *lint.File, path string) {
 	case filepath.IsAbs(path):
 		gitignoreDir = filepath.Dir(path)
 	}
+	// An in-memory workspace (the Session's MemWorkspace, e.g. the WASM
+	// build) has no on-disk RootDir, but its SourceFS is rooted at the
+	// project root — the same contract os.DirFS(RootDir) gives on disk.
+	// Wire it as RootFS so RootFS-aware cross-file rules (include's ".."
+	// resolution, MDS020's schema reads) read through the workspace
+	// instead of falling back to os.*, which is "not implemented on js".
+	if r.RootDir == "" && r.SourceFS != nil {
+		f.RootFS = r.SourceFS
+	}
 	if gitignoreDir != "" {
 		gd := gitignoreDir
 		f.GitignoreFunc = func() *gitignore.Matcher {

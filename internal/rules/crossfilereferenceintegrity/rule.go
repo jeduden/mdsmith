@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -522,11 +523,23 @@ func (r *Rule) checkRelativeTarget(
 // resolveTargetFile when only file existence (not the read
 // helper) matters.
 func targetExists(f *lint.File, linkPath, resolvedRoot string) bool {
-	if path, ok := resolveTargetOSPath(f.Path, linkPath); ok && cachedStatExists(path) {
-		if resolvedRoot == "" || isWithinRoot(resolvedRoot, path) {
+	if osPath, ok := resolveTargetOSPath(f.Path, linkPath); ok && cachedStatExists(osPath) {
+		if resolvedRoot == "" || isWithinRoot(resolvedRoot, osPath) {
 			return true
 		}
 		return false
+	}
+	// In-memory / workspace-relative resolution: the WASM and LSP engines
+	// have no OS disk for the branch above. Resolve the link against the
+	// source file's directory within the project-root FS, collapsing ".."
+	// so io/fs — which rejects paths containing ".." — can stat an
+	// up-and-over target (e.g. docs/x.md -> ../../internal/y.md).
+	if f.RootFS != nil && !filepath.IsAbs(f.Path) {
+		if rel, ok := resolveWorkspaceRelTarget(f.Path, linkPath); ok {
+			if _, err := fs.Stat(f.RootFS, rel); err == nil {
+				return true
+			}
+		}
 	}
 	fsPath := filepath.ToSlash(linkPath)
 	fsPath = strings.TrimPrefix(fsPath, "./")
@@ -843,20 +856,37 @@ func buildAnchorsForTarget(target targetFile) (map[string]struct{}, error) {
 
 func resolveTargetFile(f *lint.File, linkPath, resolvedRoot string) (targetFile, bool) {
 	maxBytes := f.MaxInputBytes
-	if path, ok := resolveTargetOSPath(f.Path, linkPath); ok {
-		if cachedStatExists(path) {
+	if osPath, ok := resolveTargetOSPath(f.Path, linkPath); ok {
+		if cachedStatExists(osPath) {
 			// Reject links that resolve outside the project root,
 			// evaluating symlinks to prevent bypass via symlinked dirs.
-			if resolvedRoot != "" && !isWithinRoot(resolvedRoot, path) {
+			if resolvedRoot != "" && !isWithinRoot(resolvedRoot, osPath) {
 				return targetFile{}, false
 			}
 			return targetFile{
-				cacheKey:    "os:" + path,
-				runCacheKey: path,
+				cacheKey:    "os:" + osPath,
+				runCacheKey: osPath,
 				read: func() ([]byte, error) {
-					return bytelimit.ReadFileLimited(path, maxBytes)
+					return bytelimit.ReadFileLimited(osPath, maxBytes)
 				},
 			}, true
+		}
+	}
+
+	// In-memory / workspace-relative resolution (see targetExists): resolve
+	// the link within the project-root FS so an up-and-over ".." target,
+	// which io/fs rejects as a raw path, still reads on the WASM/LSP engines.
+	if f.RootFS != nil && !filepath.IsAbs(f.Path) {
+		if rel, ok := resolveWorkspaceRelTarget(f.Path, linkPath); ok {
+			if _, err := fs.Stat(f.RootFS, rel); err == nil {
+				rootFS := f.RootFS
+				return targetFile{
+					cacheKey: "fs:" + rel,
+					read: func() ([]byte, error) {
+						return bytelimit.ReadFSFileLimited(rootFS, rel, maxBytes)
+					},
+				}, true
+			}
 		}
 	}
 
@@ -934,6 +964,26 @@ func resolveTargetOSPath(sourcePath, linkPath string) (string, bool) {
 	}
 
 	return filepath.Clean(filepath.Join(filepath.Dir(sourcePath), linkPath)), true
+}
+
+// resolveWorkspaceRelTarget maps a workspace-relative source path and a
+// file-relative link to a slash path valid for fs.Stat against the
+// project-root FS (f.RootFS). It joins the link onto the source file's
+// directory and cleans ".." away — io/fs rejects any path containing
+// ".." — and returns ("", false) when the result escapes the workspace
+// root, is empty, or is absolute, none of which name a file inside the
+// in-memory workspace.
+func resolveWorkspaceRelTarget(sourcePath, linkPath string) (string, bool) {
+	lp := filepath.ToSlash(linkPath)
+	if lp == "" || strings.HasPrefix(lp, "/") {
+		return "", false
+	}
+	dir := path.Dir(filepath.ToSlash(sourcePath))
+	rel := path.Clean(path.Join(dir, lp))
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, "../") {
+		return "", false
+	}
+	return rel, true
 }
 
 func isMarkdownPath(path string) bool {
