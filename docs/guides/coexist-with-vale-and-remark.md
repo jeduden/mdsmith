@@ -1,5 +1,6 @@
 ---
 title: Coexist with Vale and remark
+weight: 60
 summary: >-
   Vale owns brand voice and prose style; remark owns
   Markdown AST transformations; mdsmith owns formatting,
