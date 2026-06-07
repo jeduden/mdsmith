@@ -181,7 +181,7 @@ func ParseCUEPath(expr string) []string {
 func parseIdentLabel(expr string, start int) (string, int, bool) {
 	i := start
 	c := expr[i]
-	if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z') {
+	if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') {
 		return "", start, false
 	}
 	i++
