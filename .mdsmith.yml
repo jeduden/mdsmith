@@ -204,6 +204,11 @@ overrides:
       heading-increment: false
       max-file-length:
         max: 330
+  - glob: ["docs/development/release.md",
+           "website/content/docs/development/release.md"]
+    rules:
+      max-file-length:
+        max: 330
   - glob: ["docs/guides/**/*.md",
            "website/content/docs/guides/**/*.md"]
     rules:

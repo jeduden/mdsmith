@@ -45,16 +45,15 @@ row: "| [{title}]({filename}) | <{channelurl}> | {credential} |"
 A maintainer opens the **Release** workflow in the
 Actions tab, clicks **Run workflow**, enters the
 version (e.g. `v0.13.0`), and confirms. The run pauses
-on the `release` environment's required-reviewer gate;
-one approval releases every channel.
+once, on the `gate` job's `release-approval` reviewer
+rule, so that one approval releases every channel.
 
 `release.yml` triggers solely on `workflow_dispatch`
 with a required `version` input. It does not trigger
 on `push`, tags, the `release` event,
 `pull_request_target`, or `workflow_run`. The Releases
-UI cannot drive the pipeline directly. A draft release
-never creates a tag. The pipeline also owns the
-release object (draft → upload → publish), so an
+UI cannot drive it. A draft release never creates a
+tag. The pipeline owns the release object, so an
 externally created release would collide.
 
 The `release` job creates the tag itself: `tag_name` and
@@ -92,8 +91,10 @@ packages from the root.
 `.vsix` bundles every platform. `flatpak` chains off `build` too, handing
 `release` a `.flatpak` bundle of the x86_64 binary to attach to the draft.
 `release` runs `smoke-test` against the fresh `npm`, `pypi`, and `mise`
-channels. Every credential-bearing job is gated by the repository guard and
-runs in the `release` GitHub environment.
+channels. The `gate` job chains off `build` and is the lone reviewer-gated
+job (environment `release-approval`); every credential-bearing job lists it
+in `needs:`, so one approval releases the whole pipeline. Each such job also
+carries the repository guard and runs in the `release` GitHub environment.
 
 The website deploy is a **separate workflow**,
 `.github/workflows/pages.yml`. It builds
@@ -178,28 +179,48 @@ Trusted Publishing satisfies the 2FA requirement
 because the OIDC token already proves the workflow's
 identity.
 
-## The `release` GitHub Environment
+## The `release` and `release-approval` Environments
 
-Every job that holds a publishing credential — `npm`,
-`pypi`, `vscode`, `release` — declares
-`environment: release`. The `environment` claim then
-appears in the OIDC token and is pinned by the npm
-and PyPI Trusted Publisher configs above.
+Two environments split the work: scoping credentials,
+and gating on a human.
 
-Configure the environment at
+**`release`** scopes the credentials. Every publishing
+job — `npm`, `pypi`, `vscode`, `release`, and
+`winget-submit` — declares `environment: release`. That
+routes the env-scoped secrets (`VSCE_PAT`, `OVSX_PAT`,
+`WINGET_PR_TOKEN`) to the jobs that read them. It also
+puts the `environment=release` claim in the OIDC token,
+which the npm and PyPI Trusted Publisher configs pin.
+This environment carries no reviewer — only the
+main-only branch restriction.
+
+**`release-approval`** is the lone human gate. The
+`gate` job is its only user, and every credential job
+lists `gate` in `needs:`. So no secret is readable and
+no OIDC token is minted before the one approval. That
+split collapses the prompts into one. The old flow
+asked three times: after `build`, then for `release`,
+then for `winget-submit`.
+
+Configure both at
 <https://github.com/jeduden/mdsmith/settings/environments>:
 
-| Setting                      | Value                               |
+| `release-approval`           | Value                               |
 | ---------------------------- | ----------------------------------- |
 | Required reviewers           | jeduden                             |
 | Wait timer                   | 5 minutes (cancellation window)     |
 | Deployment branches and tags | Selected — protected branch: `main` |
 
+| `release`                    | Value                                     |
+| ---------------------------- | ----------------------------------------- |
+| Required reviewers           | none — moved to `release-approval`        |
+| Deployment branches and tags | Selected — protected branch: `main`       |
+| Secrets                      | `VSCE_PAT`, `OVSX_PAT`, `WINGET_PR_TOKEN` |
+
 Without these protections the `environment` claim is
 purely decorative. The Trusted Publishers reject any
-workflow run whose claim set does not include
-`environment=release`, so the env must exist before
-the first release.
+run whose claim set omits `environment=release`. So
+both environments must exist before the first release.
 
 ## Long-Lived Publisher Tokens
 
@@ -231,8 +252,9 @@ enough.
   `--bundle`) on `checksums.txt`. The signing
   certificate's subject is the `release.yml` workflow
   on this repository for the dispatched run.
-- **`release` GitHub environment** gating every
-  publishing job behind required-reviewer rules.
+- **Single reviewer-gated `gate` job** (environment
+  `release-approval`) in every credential job's
+  `needs:`, so one approval gates every publish.
 - **`if: github.repository == 'jeduden/mdsmith'`** on
   every publishing job, so a fork-cloned release
   workflow cannot reach the publish steps.
@@ -281,9 +303,11 @@ or after rotating credentials. Each item below is a
 configuration the workflow assumes is already in
 place.
 
-1. [ ] Create the `release` environment at
+1. [ ] Create the `release` and `release-approval`
+   environments at
    <https://github.com/jeduden/mdsmith/settings/environments>
-   with the values in the table above.
+   with the values in the tables above. The reviewer
+   goes on `release-approval` only.
 2. [ ] Add the npm Trusted Publisher to every
    published package with `environment=release` and
    `ref=refs/heads/main` (see the npm Trusted
@@ -296,9 +320,10 @@ place.
 6. [ ] Enable branch protection on `main` requiring
    CODEOWNERS review for the paths in
    `.github/CODEOWNERS`.
-7. [ ] Keep the `release` environment's required
-   reviewer set: it is the only release gate, since
-   the workflow (not a maintainer) creates the tag.
+7. [ ] Keep `release-approval`'s required reviewer
+   set. With `gate` in every credential job's `needs:`,
+   it is the only release gate, and the workflow (not a
+   maintainer) creates the tag.
 
 ## Verifying a Released Artifact
 

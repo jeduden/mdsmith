@@ -4,9 +4,13 @@ name: Release
 # longer the trigger: the GitHub Releases UI cannot drive the
 # draft-first immutable publish flow (a draft release never creates a
 # tag, so no push event fires). Publishing jobs (npm, pypi, vscode,
-# release) declare `environment: release` and are gated behind its
-# required-reviewer rule; preflight and build run without that gate.
-# The `release` job creates the tag itself. See
+# release, winget-submit) declare `environment: release` for its
+# secrets and OIDC scope; the single required-reviewer rule lives on
+# the separate `release-approval` environment, used only by the
+# `gate` job that every credential job lists in `needs:`. So one
+# approval releases every channel and no secret is reachable before
+# it. preflight/build/obsidian/flatpak run ahead of the gate. The
+# `release` job creates the tag itself. See
 # docs/development/release.md.
 on:
   workflow_dispatch:
@@ -105,6 +109,28 @@ jobs:
           name: mdsmith-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ env.bin }}
 
+  # Single human-approval chokepoint for the entire release. The lone
+  # required-reviewer rule now lives on the `release-approval`
+  # environment and this job is its only user, so the maintainer
+  # approves exactly once. Every credential-bearing job — `npm`,
+  # `pypi`, `vscode`, `release`, `winget-submit` — lists `gate` in
+  # `needs:`, so none can start (and none can read a `release`-scoped
+  # secret or mint an OIDC token) until this approval lands. The
+  # `release` environment keeps those secrets, its OIDC Trusted-
+  # Publisher scope, and its main-only branch restriction; it just no
+  # longer carries a reviewer. Moving the reviewer onto a single-use
+  # environment is what collapses the old three approval waves
+  # (npm/pypi/vscode, then release, then winget-submit) into one. No
+  # checkout, no secrets, no OIDC here — nothing to attack.
+  gate:
+    needs: [build]
+    if: *release_repo_trigger_ok
+    runs-on: ubuntu-latest
+    environment: release-approval
+    steps:
+      - name: Record the single release approval
+        run: echo "release ${VERSION} approved; publishing every channel"
+
   vscode:
     # `needs: [build]` for the binaries: the .vsix bundles a binary
     # for *every* supported platform (build.ts → dist/cli/), so the
@@ -113,7 +139,7 @@ jobs:
     # `build` job's release artifacts via `mdsmith-release build-npm`
     # — the same generator the `npm` job uses — so this job no longer
     # waits on (or couples to) the npm publish.
-    needs: [build]
+    needs: [build, gate]
     runs-on: ubuntu-latest
     # MDSMITH_VSIX_PLATFORM_DIR points build.ts at the full
     # build-npm output. It is set at job scope so the run that
@@ -325,7 +351,7 @@ jobs:
           path: editors/obsidian/mdsmith-obsidian-*.zip
 
   npm:
-    needs: [build]
+    needs: [build, gate]
     runs-on: ubuntu-latest
     # See docs/development/release.md for the canonical description
     # of `if:`, `environment:`, OIDC Trusted Publishing scope, and
@@ -413,7 +439,7 @@ jobs:
         run: npm publish --access public --provenance
 
   pypi:
-    needs: [build]
+    needs: [build, gate]
     runs-on: ubuntu-latest
     # See docs/development/release.md for the canonical PyPI Trusted
     # Publisher config (workflow + environment scope) and the
@@ -464,7 +490,7 @@ jobs:
     # binaries — no release-job changes beyond this dependency. `obsidian`
     # (plan 217) joins for the same reason: its
     # mdsmith-obsidian-<version>.zip is matched by the `mdsmith-*` globs.
-    needs: [build, vscode, obsidian, flatpak]
+    needs: [build, vscode, obsidian, flatpak, gate]
     runs-on: ubuntu-latest
     # See docs/development/release.md for the rationale on `if:`,
     # `environment:`, and the OIDC + attestations permission set.
@@ -815,7 +841,7 @@ jobs:
   # other publish jobs) so a stolen token cannot silently submit
   # manifests without reviewer approval.
   winget-submit:
-    needs: [release]
+    needs: [release, gate]
     if: *release_repo_trigger_ok
     runs-on: ubuntu-latest
     environment: release
