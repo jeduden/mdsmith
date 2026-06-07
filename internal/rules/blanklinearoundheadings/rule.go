@@ -1,6 +1,7 @@
 package blanklinearoundheadings
 
 import (
+	"bytes"
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -62,8 +63,7 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 	if line > 1 {
 		prevLineIdx := line - 2 // 0-based index
 		if prevLineIdx >= 0 && prevLineIdx < len(f.Lines) {
-			prevLine := strings.TrimSpace(string(f.Lines[prevLineIdx]))
-			if prevLine != "" {
+			if len(bytes.TrimSpace(f.Lines[prevLineIdx])) != 0 {
 				diags = append(diags, lint.Diagnostic{
 					File:     f.Path,
 					Line:     line,
@@ -80,8 +80,7 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 	// Check blank line after (not needed for last line)
 	nextLineIdx := lastLine // 0-based index of line after heading
 	if nextLineIdx < len(f.Lines) {
-		nextLine := strings.TrimSpace(string(f.Lines[nextLineIdx]))
-		if nextLine != "" {
+		if len(bytes.TrimSpace(f.Lines[nextLineIdx])) != 0 {
 			diags = append(diags, lint.Diagnostic{
 				File:     f.Path,
 				Line:     line,
@@ -176,7 +175,7 @@ func isNonBlankLine(lines [][]byte, idx int) bool {
 	if idx < 0 || idx >= len(lines) {
 		return false
 	}
-	return strings.TrimSpace(string(lines[idx])) != ""
+	return len(bytes.TrimSpace(lines[idx])) != 0
 }
 
 func headingLastLine(heading *ast.Heading, f *lint.File) int {

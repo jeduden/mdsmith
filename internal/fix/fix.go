@@ -700,8 +700,8 @@ func atomicWriteFile(path string, data []byte, mode os.FileMode) error {
 // If a rule implements Configurable and has settings, it is cloned and
 // configured before being returned.
 func (f *Fixer) fixableRules(effective map[string]config.RuleCfg) ([]rule.FixableRule, []error) {
-	var fixable []rule.FixableRule
-	var errs []error
+	fixable := make([]rule.FixableRule, 0, len(f.Rules))
+	errs := make([]error, 0, len(f.Rules))
 	for _, rl := range f.Rules {
 		cfg, ok := effective[rl.Name()]
 		if !ok || !cfg.Enabled {
