@@ -53,7 +53,7 @@ test.describe("⌘K search", () => {
     const dialog = page.locator("[data-search-dialog]");
     await expect(dialog).toBeHidden();
 
-    await page.keyboard.press(`Control+k`);
+    await page.keyboard.press("Control+k");
     await expect(dialog).toBeVisible();
     await expect(page.locator("[data-search-input]")).toBeFocused();
   });
@@ -62,9 +62,9 @@ test.describe("⌘K search", () => {
     page,
   }) => {
     const dialog = page.locator("[data-search-dialog]");
-    await page.keyboard.press(`Control+k`);
+    await page.keyboard.press("Control+k");
     await expect(dialog).toBeVisible();
-    await page.keyboard.press(`Control+k`);
+    await page.keyboard.press("Control+k");
     await expect(dialog).toBeHidden();
   });
 
@@ -80,7 +80,7 @@ test.describe("⌘K search", () => {
   // ─── querying ───────────────────────────────────────────────────────
 
   test("typing a query renders matching results", async ({ page }) => {
-    await page.keyboard.press(`Control+k`);
+    await page.keyboard.press("Control+k");
     const input = page.locator("[data-search-input]");
     await input.fill("auto-fix");
 
@@ -95,7 +95,7 @@ test.describe("⌘K search", () => {
   });
 
   test("a query with no matches shows the empty status", async ({ page }) => {
-    await page.keyboard.press(`Control+k`);
+    await page.keyboard.press("Control+k");
     await page.locator("[data-search-input]").fill("zzzznomatchquery");
 
     // Assert the real empty-state text, not merely a visible status: the
@@ -110,7 +110,7 @@ test.describe("⌘K search", () => {
   test("ArrowDown then Enter navigates to the active result", async ({
     page,
   }) => {
-    await page.keyboard.press(`Control+k`);
+    await page.keyboard.press("Control+k");
     await page.locator("[data-search-input]").fill("install");
 
     // First result is active on render; move to the second, then open.
@@ -127,7 +127,7 @@ test.describe("⌘K search", () => {
   });
 
   test("clicking a result navigates to its page", async ({ page }) => {
-    await page.keyboard.press(`Control+k`);
+    await page.keyboard.press("Control+k");
     await page.locator("[data-search-input]").fill("auto-fix");
 
     const link = page.locator(
@@ -139,10 +139,16 @@ test.describe("⌘K search", () => {
 
   // ─── closing ────────────────────────────────────────────────────────
 
-  test("Escape closes the dialog", async ({ page }) => {
+  test("Escape closes the dialog even with a non-empty query", async ({
+    page,
+  }) => {
     const dialog = page.locator("[data-search-dialog]");
-    await page.keyboard.press(`Control+k`);
+    await page.keyboard.press("Control+k");
     await expect(dialog).toBeVisible();
+    // Type first: with a non-empty type=search input some engines (WebKit)
+    // consume the first Escape to clear the field, so search.js handles
+    // Escape explicitly. One Escape must still close the dialog.
+    await page.locator("[data-search-input]").fill("schema");
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
   });

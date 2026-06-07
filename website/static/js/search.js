@@ -109,21 +109,28 @@
     }
 
     // ── rendering ────────────────────────────────────────────────────
+    // Compile the case-insensitive matcher for a query once per render.
+    // Terms are ordered longest-first so a shorter term cannot mask part
+    // of a longer overlapping one. Returns null for an empty query.
+    function termsRegExp(terms) {
+      if (terms.length === 0) return null;
+      const ordered = terms.slice().sort((a, b) => b.length - a.length);
+      return new RegExp("(" + ordered.map(escapeRegExp).join("|") + ")", "gi");
+    }
+
     // Wrap each matched term in <mark>, building DOM text nodes (never
-    // innerHTML) so the query is escaped, not interpreted. Terms are
-    // matched longest-first so a shorter term cannot mask part of a
-    // longer overlapping one.
-    function highlight(text, terms) {
+    // innerHTML) so the query is escaped, not interpreted. `re` is the
+    // shared matcher from termsRegExp, compiled once per render.
+    function highlight(text, re) {
       const frag = document.createDocumentFragment();
       if (!text) return frag;
-      if (terms.length === 0) {
+      if (!re) {
         frag.appendChild(document.createTextNode(text));
         return frag;
       }
-      const ordered = terms.slice().sort((a, b) => b.length - a.length);
-      const re = new RegExp("(" + ordered.map(escapeRegExp).join("|") + ")", "gi");
       // String.split with a capturing group yields [text, match, text,
-      // …]; odd indices are the captured matches.
+      // …]; odd indices are the captured matches. split() ignores the
+      // regex's lastIndex, so one compiled re is safely reused per call.
       text.split(re).forEach((part, i) => {
         if (part === "") return;
         if (i % 2 === 1) {
@@ -168,6 +175,7 @@
       }
       setStatus("");
 
+      const re = termsRegExp(terms);
       results.forEach((doc, idx) => {
         const li = document.createElement("li");
         li.className = "search-result";
@@ -183,7 +191,7 @@
         head.className = "search-result-head";
         const title = document.createElement("span");
         title.className = "search-result-title";
-        title.appendChild(highlight(doc.title || "", terms));
+        title.appendChild(highlight(doc.title || "", re));
         head.appendChild(title);
         if (doc.section) {
           const sec = document.createElement("span");
@@ -196,7 +204,7 @@
         if (doc.summary) {
           const sum = document.createElement("span");
           sum.className = "search-result-summary";
-          sum.appendChild(highlight(doc.summary, terms));
+          sum.appendChild(highlight(doc.summary, re));
           a.appendChild(sum);
         }
 
@@ -234,7 +242,9 @@
     }
 
     function go() {
-      const doc = results[active] || results[0];
+      // active is always a valid index when results is non-empty (render
+      // calls setActive(0)), and Enter only calls go() under that guard.
+      const doc = results[active];
       if (doc) window.location.assign(doc.href);
     }
 
@@ -296,7 +306,13 @@
             go();
           }
           break;
-        // Esc is handled natively by <dialog>.
+        case "Escape":
+          // WebKit consumes Escape on a non-empty type=search input to
+          // clear the field, so it never reaches the <dialog>. Close
+          // explicitly for consistent Escape-to-close across browsers.
+          e.preventDefault();
+          close();
+          break;
         default:
           break;
       }
