@@ -6,7 +6,7 @@ summary: >-
   solid-architecture skill (audit mode)
   appends here; blockers are also filed as
   plans.
-audit-from: 37488a7c524f6e2d0a686b9f33662c6f786f966c
+audit-from: 82583fc1cce6f4be8451196f60e5dc6d1e6a5b28
 ---
 # Architecture audit log
 
@@ -290,3 +290,13 @@ Plans 200, 201, 202 green. Tax:
 split into sibling packages.
 
 [225]: ../../plan/225_arch-fix-punkt-layering.md
+
+## Audit 2026-06-07 (range: 37488a7..82583fc)
+
+Plans 203–225 green. Blocker: `Session.CheckSource`
+(public API) had no unit test. Fixed: added
+`pkg/mdsmith/checksource_test.go` with 4 tests.
+Tax: [plan/236][236], [plan/237][237].
+
+[236]: ../../plan/236_arch-fix-tablereadability-dup.md
+[237]: ../../plan/237_arch-fix-include-helper-tests.md
