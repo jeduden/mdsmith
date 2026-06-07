@@ -98,7 +98,7 @@ func (r *Rule) diag(f *lint.File, line int, msg string) lint.Diagnostic {
 // that goes nowhere; markdownlint MD042 treats `#` the same way.
 func emptyDestination(dest []byte) bool {
 	t := bytes.TrimSpace(dest)
-	return len(t) == 0 || string(t) == "#"
+	return len(t) == 0 || (len(t) == 1 && t[0] == '#')
 }
 
 // hasVisibleContent reports whether the link renders any visible

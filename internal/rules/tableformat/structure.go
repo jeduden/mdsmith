@@ -14,9 +14,9 @@ package tableformat
 
 import (
 	"bytes"
-	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -209,13 +209,16 @@ func checkPipeStyle(f *lint.File, t tableBlock, style, ruleID, ruleName string) 
 
 func checkColumnCount(f *lint.File, t tableBlock, ruleID, ruleName string) []lint.Diagnostic {
 	want := t.rows[0].cells
-	var diags []lint.Diagnostic
+	diags := make([]lint.Diagnostic, 0, len(t.rows)-1)
 	for _, row := range t.rows[1:] {
 		if row.cells == want {
 			continue
 		}
 		diags = append(diags, structureDiag(f, row.lineNum, 1, ruleID, ruleName,
-			fmt.Sprintf("table column count; expected %d, got %d", want, row.cells)))
+			"table column count; expected "+strconv.Itoa(want)+", got "+strconv.Itoa(row.cells)))
+	}
+	if len(diags) == 0 {
+		return nil
 	}
 	return diags
 }
