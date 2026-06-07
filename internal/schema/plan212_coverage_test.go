@@ -255,7 +255,7 @@ func TestWriteAndRename_CloseErrorSurfaces(t *testing.T) {
 	dir := t.TempDir()
 	tmp, err := os.CreateTemp(dir, "x-*.tmp")
 	require.NoError(t, err)
-	defer tmp.Close()
+	defer func() { _ = tmp.Close() }()
 	err = writeAndRename(tmp, tmp.Name(), filepath.Join(dir, "out.json"), []byte("data"))
 	require.ErrorIs(t, err, os.ErrClosed)
 }

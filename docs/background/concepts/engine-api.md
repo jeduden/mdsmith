@@ -238,43 +238,72 @@ is async, and any Go method returning `(T, error)` maps to a
 ## WASM limits and size budgets
 
 `GOOS=js GOARCH=wasm` has no filesystem, no subprocess, and no threads.
-Two consequences follow:
+The engine build-tags a CUE-free path behind `//go:build wasm` to keep
+the artifact small and let `tinygo` compile it. The CUE module (95
+packages) and protobuf are dropped. `Session.Capabilities` still
+returns `["check", "fix", "kinds"]`, so every method works. But some
+rule-internal behaviours that need CUE or the OS filesystem degrade to
+a no-op on WASM. These per-rule degradations are not in the capability
+list, because they do not remove a method.
 
-- **MDS040 (recipe safety) is out of scope on WASM.** That rule
-  shell-safety-checks build recipes and needs real shell access, so its
-  registration sits behind a `//go:build !wasm` tag. The package still
-  compiles under WASM; the rule self-registers only on native. Every
-  other rule runs.
-- **No disk reads.** Cross-file rules read through the `MemWorkspace`
-  the host supplies, never the OS filesystem.
+What the WASM build drops, and why:
+
+- **MDS040 (recipe safety) is out of scope.** It shell-safety-checks
+  build recipes and needs real shell access, so its registration sits
+  behind `//go:build !wasm`. The package still compiles under WASM;
+  the rule self-registers only on native.
+- **CUE front-matter validation (MDS020) is skipped.** The
+  heading-structure, filename, and content checks still run; only the
+  `frontmatter:` CUE-constraint check (`internal/schema`'s
+  CUE-backed `ValidateFrontmatter` / `validateFrontmatterDiags`) is a
+  no-op. A document's front matter is not validated against its
+  schema's CUE constraints on WASM.
+- **Catalog `where:` queries and CUE row templates are inert.**
+  `internal/query` (the `where:` matcher) and `internal/cuetemplate`
+  (CUE `row:` expressions) return a "not available in the WASM build"
+  error, which the catalog rule surfaces as a diagnostic on that
+  directive. Plain `{field}` row templates still work — they run
+  through the CUE-free `internal/fieldinterp` path, which reimplements
+  the dotted/quoted path parser without CUE.
+- **Kind `extends` skips the merge-time contradiction check.** The
+  extends merge still runs; `internal/schema`'s `checkUnifiable` (which
+  compiled the unified CUE constraint to detect `int & string`-style
+  conflicts) is a no-op.
+- **No disk reads or writes.** Cross-file rules read through the
+  `MemWorkspace` the host supplies, never the OS filesystem. The
+  `<?index?>` schema sidecar (`schema.WriteIndex` / `ValidateIndex`)
+  and the git-hook / `.gitattributes` writers are no-ops — they have
+  no OS disk to act on, and their `os.Chmod` / `os.SameFile` calls are
+  among the standard-library functions `tinygo` omits.
 
 The artifact lands under `cmd/mdsmith-wasm/dist/` for plan 217. The
-build script (`cmd/mdsmith-wasm/build.sh`) copies `wasm_exec.js` from
-`$(go env GOROOT)/lib/wasm/` alongside the standard Go artifact. A
+build script (`cmd/mdsmith-wasm/build.sh`) copies `wasm_exec.js`
+alongside the artifact. It reads it from `$(go env GOROOT)/lib/wasm/`
+for standard Go, or `$(tinygo env TINYGOROOT)/targets/` for tinygo. A
 smoke test creates a session, calls `session.check`, and asserts the
-result matches the native engine on the same in-memory fixture.
+result matches the native engine on the same in-memory fixture. It runs
+against both the standard-Go and the tinygo artifact.
 
 ### Size budget
 
-The target budgets were a standard-Go artifact of ≤ 18 MB and a
-`tinygo` artifact of ≤ 8 MB. The engine's actual dependency graph makes
-neither reachable today:
+Plan 218 brought both artifacts under the budgets plan 215 set:
 
-- The standard Go WASM artifact is about 40 MB uncompressed (8.6 MB
-  gzipped, the figure that crosses the wire). The dominant cost is CUE
-  (95 packages) plus protobuf, pulled in by core engine packages —
-  `internal/schema` (MDS020 file-schema validation), `internal/fieldinterp`
-  (catalog and include field interpolation), and `internal/query`. CUE
-  cannot be build-tagged out without disabling those features.
-- `tinygo` does not compile the engine. The first wall is
-  `sync.Map.CompareAndDelete` in `internal/lint/runcache.go`, which
-  `tinygo`'s standard library omits, and CUE's heavy reflection would
-  block it further.
+- **Standard-Go WASM: ~10.5 MB raw (~2.7 MB gzipped, the figure that
+  crosses the wire), under the 18 MB budget.** Removing CUE and
+  protobuf via the `//go:build wasm` path above dropped it from ~38 MB.
+- **tinygo WASM: ~3 MB, under the 8 MB budget.** Two further fixes
+  unblocked tinygo: `internal/lint/runcache.go` no longer uses
+  `sync.Map.CompareAndDelete` (which tinygo's standard library omits) —
+  a mutex-guarded compare-and-delete replaces it — and the on-disk
+  `os.Chmod` / `os.SameFile` call sites are build-tagged out. The
+  tinygo build also needs `-stack-size=1MB`: the engine's package init
+  (rule registry, the regexp tables in `internal/lint`, config
+  defaults) overflows tinygo's default 64 KB goroutine stack, which
+  otherwise traps at startup as "memory access out of bounds".
 
-So the shipping artifact is the standard Go WASM build. Bringing it
-under budget — a CUE-free schema/field-interpolation path, or a
-`tinygo`-compatible engine — is follow-up work tracked separately, not
-part of this plan.
+`cmd/mdsmith-wasm/size_test.go` asserts both budgets. The standard-Go
+test runs on every host. The tinygo test runs only where the `tinygo`
+toolchain is installed, and skips otherwise.
 
 ## See also
 
