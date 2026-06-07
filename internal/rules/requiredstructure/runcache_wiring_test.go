@@ -237,6 +237,14 @@ func TestRule_SchemaIncludeViaRootFS(t *testing.T) {
 	}
 }
 
+// TestSchemaRootFS covers both branches of the RootFS accessor: a nil
+// file (the cache primitive's struct-literal test path) yields nil, and a
+// file with a RootFS yields it.
+func TestSchemaRootFS(t *testing.T) {
+	assert.Nil(t, schemaRootFS(nil))
+	assert.NotNil(t, schemaRootFS(&lint.File{RootFS: fstest.MapFS{}}))
+}
+
 // TestRule_FragmentInvalidationEvictsParsedSchema is the end-to-end
 // integration check for Copilot thread 1 on PR #377: after Rule.Check
 // reads a schema whose <?include?> reaches a fragment, calling
