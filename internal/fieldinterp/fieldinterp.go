@@ -169,9 +169,6 @@ func ParseCUEPath(expr string) []string {
 			return nil // trailing dot
 		}
 	}
-	if len(segments) == 0 {
-		return nil
-	}
 	return segments
 }
 

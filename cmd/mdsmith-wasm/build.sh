@@ -31,7 +31,12 @@ tinygo)
 		echo "build.sh: tinygo not found on PATH" >&2
 		exit 1
 	fi
-	tinygo build -target wasm -no-debug -o dist/mdsmith.wasm .
+	# -stack-size=1MB: the engine's package init (rule registry, the
+	# regexp tables in internal/lint, config defaults) overflows
+	# tinygo's default 64 KB goroutine stack, which surfaces as a
+	# "memory access out of bounds" trap at startup. 1 MB clears it
+	# with room to spare. See docs/background/concepts/engine-api.md.
+	tinygo build -target wasm -no-debug -stack-size=1MB -o dist/mdsmith.wasm .
 	cp "$(tinygo env TINYGOROOT)/targets/wasm_exec.js" dist/wasm_exec.js
 	;;
 *)

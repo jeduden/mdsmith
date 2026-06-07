@@ -184,3 +184,33 @@ func TestParseCUEPath_MixedQuotedAndIdent(t *testing.T) {
 	segments := ParseCUEPath(`params."my-key"`)
 	assert.Equal(t, []string{"params", "my-key"}, segments)
 }
+
+// TestParseCUEPath_LeadingUnderscore drives the non-letter first-char
+// branch in parseIdentLabel (leading _ is not a valid CUE identifier).
+func TestParseCUEPath_LeadingUnderscore(t *testing.T) {
+	assert.Nil(t, ParseCUEPath("_hidden"))
+}
+
+// TestParseCUEPath_BadEscapeInQuotedLabel drives two branches in
+// parseQuotedLabel: the case '\\' arm (i += 2) and the strconv.Unquote
+// error arm (\q is not a valid Go/CUE escape sequence).
+func TestParseCUEPath_BadEscapeInQuotedLabel(t *testing.T) {
+	// Raw string: four bytes " \ q " — closing quote is found after
+	// the escape, but strconv.Unquote rejects \q.
+	assert.Nil(t, ParseCUEPath(`"\q"`))
+}
+
+// TestParseCUEPath_UnclosedQuotedLabel drives the unclosed-quote return
+// at the bottom of parseQuotedLabel.
+func TestParseCUEPath_UnclosedQuotedLabel(t *testing.T) {
+	assert.Nil(t, ParseCUEPath(`"noclosing`))
+}
+
+// TestValidate_RegexMatchesButParseFails drives the path == nil branch
+// inside Validate: \w+ in the placeholder regex matches digit-leading
+// labels, but ParseCUEPath rejects them as invalid CUE identifiers.
+func TestValidate_RegexMatchesButParseFails(t *testing.T) {
+	err := Validate("{123}")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid CUE path")
+}
