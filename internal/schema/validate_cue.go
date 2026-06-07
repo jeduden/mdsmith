@@ -203,9 +203,6 @@ func ValidateFrontmatter(sch *Schema, fm map[string]any) error {
 		return fmt.Errorf("serialize front matter: %w", err)
 	}
 	dataVal := ctx.CompileBytes(data)
-	if err := dataVal.Err(); err != nil {
-		return fmt.Errorf("compile front matter: %w", err)
-	}
 	merged := schemaVal.Unify(dataVal)
 	if err := merged.Validate(cue.Concrete(true)); err != nil {
 		return err

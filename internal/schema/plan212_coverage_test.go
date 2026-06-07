@@ -229,3 +229,33 @@ func TestWriteAndRename_ChmodErrorSurfaces(t *testing.T) {
 		filepath.Join(dir, "out.json"), []byte("data"))
 	require.Error(t, err)
 }
+
+// TestResolveDir_AbsFailureFallsBackToClean drives the abs=="" branch
+// in resolveDir by injecting a filepath.Abs stub that returns "".
+func TestResolveDir_AbsFailureFallsBackToClean(t *testing.T) {
+	orig := absPathFn
+	t.Cleanup(func() { absPathFn = orig })
+	absPathFn = func(path string) (string, error) {
+		return "", os.ErrNotExist
+	}
+	got := resolveDir("some/relative/path")
+	require.NotEmpty(t, got)
+	require.Equal(t, filepath.Clean("some/relative/path"), got)
+}
+
+// TestWriteAndRename_CloseErrorSurfaces drives the tmp.Close() error
+// branch in writeAndRename by injecting a failing close function.
+func TestWriteAndRename_CloseErrorSurfaces(t *testing.T) {
+	orig := closeFileFn
+	t.Cleanup(func() { closeFileFn = orig })
+	closeFileFn = func(_ *os.File) error {
+		return os.ErrClosed
+	}
+
+	dir := t.TempDir()
+	tmp, err := os.CreateTemp(dir, "x-*.tmp")
+	require.NoError(t, err)
+	defer tmp.Close()
+	err = writeAndRename(tmp, tmp.Name(), filepath.Join(dir, "out.json"), []byte("data"))
+	require.ErrorIs(t, err, os.ErrClosed)
+}

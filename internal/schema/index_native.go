@@ -123,12 +123,17 @@ func atomicWriteIndex(target string, data []byte) error {
 	return nil
 }
 
+// closeFileFn and absPathFn are variables so tests can inject
+// failures into writeAndRename and resolveDir without OS tricks.
+var closeFileFn = (*os.File).Close
+var absPathFn = filepath.Abs
+
 func writeAndRename(tmp *os.File, tmpPath, target string, data []byte) error {
 	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
+		_ = closeFileFn(tmp)
 		return err
 	}
-	if err := tmp.Close(); err != nil {
+	if err := closeFileFn(tmp); err != nil {
 		return err
 	}
 	if err := os.Chmod(tmpPath, 0o644); err != nil {
@@ -168,7 +173,7 @@ func verifyIndexWithinRoot(f *lint.File, target string) error {
 // fails when the host has no working directory, which is not a
 // recoverable state, so we ignore its error and rely on Clean.
 func resolveDir(dir string) string {
-	abs, _ := filepath.Abs(dir)
+	abs, _ := absPathFn(dir)
 	if abs == "" {
 		abs = filepath.Clean(dir)
 	}
