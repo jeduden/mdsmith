@@ -1,4 +1,5 @@
 /mdsmith
+/mdsmith-wasm
 *.test
 *.prof
 eval/corpus/config.local.yml
