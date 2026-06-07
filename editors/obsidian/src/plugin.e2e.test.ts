@@ -243,6 +243,10 @@ async function bootPlugin(
       on(_event: string, _cb: () => unknown): unknown {
         return {};
       },
+      // onload defers the first snapshot to onLayoutReady; this e2e boots
+      // the runtime explicitly below (and awaits it), so the fake captures
+      // the callback without firing it to avoid starting the runtime twice.
+      onLayoutReady(_cb: () => unknown): void {},
       getActiveViewOfType(_t: unknown): FakeMarkdownView | null {
         return active.view;
       },
@@ -281,6 +285,12 @@ async function bootPlugin(
   internals.saveData = async () => {};
 
   await plugin.onload();
+  // onload now defers startRuntime() to onLayoutReady (faked as a no-op
+  // above); start the runtime here and await it so the assertions below
+  // run against a ready engine, exactly as the pre-deferral onload did.
+  await (
+    plugin as unknown as { startRuntime(): Promise<boolean> }
+  ).startRuntime();
 
   return {
     plugin,
