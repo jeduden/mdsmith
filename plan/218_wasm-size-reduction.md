@@ -1,7 +1,7 @@
 ---
 id: 218
 title: WASM size reduction — CUE-free engine path and tinygo support
-status: "🔲"
+status: "🔳"
 model: opus
 summary: >-
   Bring the `cmd/mdsmith-wasm` artifact under the ≤ 18 MB (standard
