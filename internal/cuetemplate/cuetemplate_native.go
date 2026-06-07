@@ -1,3 +1,5 @@
+//go:build !wasm
+
 // Package cuetemplate evaluates a CUE expression against a
 // frontmatter map and returns the rendered string. It is the
 // templating sibling of internal/query: query.Match unifies a
@@ -27,6 +29,11 @@
 //     `fm.strings` only; the bare `strings` identifier always
 //     resolves to the import so `strings.Join(...)` keeps
 //     working regardless of frontmatter contents.
+//
+// The CUE-backed implementation here is built only on native
+// (//go:build !wasm). The WASM build replaces it with a stub that
+// reports the feature unavailable, keeping CUE's ~95 packages out of
+// the artifact. See docs/background/concepts/engine-api.md.
 package cuetemplate
 
 import (
