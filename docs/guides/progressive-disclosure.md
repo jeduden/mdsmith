@@ -1,5 +1,6 @@
 ---
 title: Progressive Disclosure for AI Agents
+weight: 80
 summary: >-
   Use `<?catalog?>` with a per-file `summary` front
   matter field to emit a one-line index of a directory,

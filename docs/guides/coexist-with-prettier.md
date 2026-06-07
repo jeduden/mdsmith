@@ -1,5 +1,6 @@
 ---
 title: Coexist with Prettier
+weight: 50
 summary: >-
   Run mdsmith alongside Prettier by ordering
   `mdsmith fix` before `prettier --write` in the

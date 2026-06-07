@@ -1,5 +1,6 @@
 ---
 title: Migrating from markdownlint
+weight: 70
 summary: >-
   Move a project from markdownlint-cli or markdownlint-cli2
   to mdsmith — the rule mapping, the config rewrite, and
