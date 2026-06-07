@@ -66,6 +66,31 @@ jobs:
           go-version-file: go.mod
       - run: go run ./cmd/mdsmith-release check
 
+  # Enforce the release pipeline's secret-gating invariant: every job
+  # in release.yml that declares `environment: release` must list the
+  # `gate` job in `needs:`. The `release` environment carries no
+  # required reviewer (so a single approval on the `release-approval`
+  # environment covers the whole run); the `needs: gate` edge is then
+  # the only thing keeping a credential job from reading a publisher
+  # secret — VSCE_PAT, OVSX_PAT, WINGET_PR_TOKEN, the Homebrew/Scoop
+  # dispatch tokens — or minting a publishing OIDC token before that
+  # approval lands. Without this guard the property would be
+  # convention; a future ungated `environment: release` job could
+  # disclose a secret with no approval. Runtime logic lives in
+  # mdsmith-release per docs/development/release-tooling.md.
+  release-gate-guard:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+      - run: go run ./cmd/mdsmith-release check-release-gates
+
   # Product messaging surfaces (READMEs, package manifests, hugo
   # config, hero frontmatter, plugin manifests) are derived from
   # docs/brand/messaging.md via `mdsmith-release sync-messaging`.

@@ -184,14 +184,16 @@ identity.
 Two environments split the work: scoping credentials,
 and gating on a human.
 
-**`release`** scopes the credentials. Every publishing
-job — `npm`, `pypi`, `vscode`, `release`, and
-`winget-submit` — declares `environment: release`. That
-routes the env-scoped secrets (`VSCE_PAT`, `OVSX_PAT`,
-`WINGET_PR_TOKEN`) to the jobs that read them. It also
-puts the `environment=release` claim in the OIDC token,
-which the npm and PyPI Trusted Publisher configs pin.
-This environment carries no reviewer — only the
+**`release`** scopes the credentials. Every job that
+publishes or nudges a channel — `npm`, `pypi`,
+`vscode`, `release`, `winget-submit`, and the
+Homebrew/Scoop dispatch jobs — declares
+`environment: release`. That routes the env-scoped
+secrets (`VSCE_PAT`, `OVSX_PAT`, `WINGET_PR_TOKEN`, and
+the two dispatch tokens) to the jobs that read them. It
+also puts the `environment=release` claim in the OIDC
+token, which the npm and PyPI Trusted Publisher configs
+pin. This environment carries no reviewer — only the
 main-only branch restriction.
 
 **`release-approval`** is the lone human gate. The
@@ -211,16 +213,45 @@ Configure both at
 | Wait timer                   | 5 minutes (cancellation window)     |
 | Deployment branches and tags | Selected — protected branch: `main` |
 
-| `release`                    | Value                                     |
-| ---------------------------- | ----------------------------------------- |
-| Required reviewers           | none — moved to `release-approval`        |
-| Deployment branches and tags | Selected — protected branch: `main`       |
-| Secrets                      | `VSCE_PAT`, `OVSX_PAT`, `WINGET_PR_TOKEN` |
+| `release`                    | Value                                                                |
+| ---------------------------- | -------------------------------------------------------------------- |
+| Required reviewers           | none — moved to `release-approval`                                   |
+| Deployment branches and tags | Selected — protected branch: `main`                                  |
+| Secrets                      | `VSCE_PAT`, `OVSX_PAT`, `WINGET_PR_TOKEN`, + Homebrew/Scoop dispatch |
 
 Without these protections the `environment` claim is
 purely decorative. The Trusted Publishers reject any
 run whose claim set omits `environment=release`. So
 both environments must exist before the first release.
+
+## How One Approval Unlocks Every Secret
+
+```text
+reviewer approval
+  │
+  ▼
+gate  ── environment: release-approval   (the only required reviewer)
+  │
+  │  every credential job declares  needs: [gate]
+  ▼
+npm · pypi · vscode · release · winget-submit ·
+notify-homebrew-tap · notify-scoop-bucket
+  │  each declares  environment: release
+  │  → entering the environment provisions its secrets
+  ▼
+VSCE_PAT · OVSX_PAT · WINGET_PR_TOKEN ·
+HOMEBREW_TAP_DISPATCH_TOKEN · SCOOP_BUCKET_DISPATCH_TOKEN
++ the environment=release OIDC claim  (npm / PyPI Trusted Publishing)
+```
+
+`release` holds the secrets but no reviewer;
+`release-approval` holds the reviewer but no secrets.
+The `needs: [gate]` edge is the only thing between a
+credential job and a secret, so the one approval gates
+them all. The `release-gate-guard` CI job fails the
+build if any `environment: release` job ever drops that
+edge, so this stays a checked guarantee rather than a
+convention.
 
 ## Long-Lived Publisher Tokens
 
@@ -255,6 +286,11 @@ enough.
 - **Single reviewer-gated `gate` job** (environment
   `release-approval`) in every credential job's
   `needs:`, so one approval gates every publish.
+- **`release-gate-guard` CI job** (plus a Go test)
+  fails the build if any `environment: release` job
+  omits `needs: [gate]`, so the single-approval
+  property is a checked guarantee, not a convention.
+  Runs `mdsmith-release check-release-gates`.
 - **`if: github.repository == 'jeduden/mdsmith'`** on
   every publishing job, so a fork-cloned release
   workflow cannot reach the publish steps.
@@ -315,8 +351,10 @@ place.
 3. [ ] Add the PyPI Trusted Publisher with the same
    environment scope.
 4. [ ] Enable `2fa-required` on every npm package.
-5. [ ] Store `VSCE_PAT` and `OVSX_PAT` as repo
-   secrets scoped to the `release` environment.
+5. [ ] Store `VSCE_PAT`, `OVSX_PAT`, `WINGET_PR_TOKEN`,
+   `HOMEBREW_TAP_DISPATCH_TOKEN`, and
+   `SCOOP_BUCKET_DISPATCH_TOKEN` as secrets on the
+   `release` environment.
 6. [ ] Enable branch protection on `main` requiring
    CODEOWNERS review for the paths in
    `.github/CODEOWNERS`.

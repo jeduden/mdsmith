@@ -778,15 +778,18 @@ jobs:
           echo "channel=${{ matrix.channel }}: $got"
 
   # Nudge the Homebrew tap to bump its formula to this version right
-  # away. Best-effort glue, not part of the gated publish: the tap at
-  # jeduden/homebrew-mdsmith also self-bumps on a daily schedule, so a
-  # missing token or a failed dispatch never blocks a release. The
-  # token is a fine-grained PAT with Contents: write on the tap repo,
-  # stored as the HOMEBREW_TAP_DISPATCH_TOKEN repo secret.
+  # away. Best-effort: the tap at jeduden/homebrew-mdsmith also
+  # self-bumps on a daily schedule, so a missing token or a failed
+  # dispatch never blocks a release. The token is a fine-grained PAT
+  # with Contents: write on the tap repo, stored as the
+  # HOMEBREW_TAP_DISPATCH_TOKEN secret on the `release` environment —
+  # reviewer-gated like the publish jobs and unreadable before the
+  # `gate` approval, hence `environment: release` + `needs: gate`.
   notify-homebrew-tap:
-    needs: [release]
+    needs: [release, gate]
     if: *release_repo_trigger_ok
     runs-on: ubuntu-latest
+    environment: release
     steps:
       - name: Dispatch a formula bump to the tap
         env:
@@ -802,16 +805,19 @@ jobs:
             -f "client_payload[version]=${VERSION#v}"
 
   # Nudge the Scoop bucket to bump its manifest to this version right
-  # away. Best-effort glue, not part of the gated publish: the bucket
-  # at jeduden/scoop-mdsmith also self-bumps via its `checkver` +
-  # `autoupdate` blocks on a daily schedule, so a missing token or a
-  # failed dispatch never blocks a release. The token is a fine-grained
-  # PAT with Contents: write on the bucket repo, stored as the
-  # SCOOP_BUCKET_DISPATCH_TOKEN repo secret.
+  # away. Best-effort: the bucket at jeduden/scoop-mdsmith also
+  # self-bumps via its `checkver` + `autoupdate` blocks on a daily
+  # schedule, so a missing token or a failed dispatch never blocks a
+  # release. The token is a fine-grained PAT with Contents: write on
+  # the bucket repo, stored as the SCOOP_BUCKET_DISPATCH_TOKEN secret
+  # on the `release` environment — reviewer-gated like the publish jobs
+  # and unreadable before the `gate` approval, hence
+  # `environment: release` + `needs: gate`.
   notify-scoop-bucket:
-    needs: [release]
+    needs: [release, gate]
     if: *release_repo_trigger_ok
     runs-on: ubuntu-latest
+    environment: release
     steps:
       - name: Dispatch a manifest bump to the Scoop bucket
         env:
