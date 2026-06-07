@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -2209,11 +2208,17 @@ func findRequireDirectiveLine(f *lint.File) int {
 }
 
 // isSchemaFile checks if the document path is the configured schema.
+// It first tries an inode-identity comparison (os.Stat + os.SameFile)
+// so two paths that resolve to the same file through different
+// symlinks or relative forms are recognised, then falls back to a
+// cleaned-absolute-path comparison. The inode step is delegated to
+// sameStatFile, which is build-tagged: tinygo's wasm runtime omits
+// os.SameFile, and a WASM host has no OS disk to stat, so the WASM
+// build skips straight to the path comparison. See
+// docs/background/concepts/engine-api.md.
 func isSchemaFile(docPath, schemaPath string) bool {
-	docInfo, errDoc := os.Stat(docPath)
-	schemaInfo, errSchema := os.Stat(schemaPath)
-	if errDoc == nil && errSchema == nil {
-		return os.SameFile(docInfo, schemaInfo)
+	if same, ok := sameStatFile(docPath, schemaPath); ok {
+		return same
 	}
 
 	docAbs, errDocAbs := filepath.Abs(docPath)
