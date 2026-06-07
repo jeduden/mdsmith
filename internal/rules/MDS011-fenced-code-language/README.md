@@ -90,6 +90,10 @@ fmt.Println("hello")
 - **Implementation**:
   [source](./)
 - **Category**: code
-- **Markdownlint**: [MD040][mdl-md040] (fenced-code-language)
+- **markdownlint**: [MD040][mdl-md040] (fenced-code-language)
+- **rumdl**: [MD040][rumdl-md040] (fenced-code-language)
+- **mado**: [MD040][mado-rules] (fenced-code-language)
 
 [mdl-md040]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md040.md
+[rumdl-md040]: https://rumdl.dev/md040/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules

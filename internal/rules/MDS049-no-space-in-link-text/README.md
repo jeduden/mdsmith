@@ -101,6 +101,10 @@ Visit [example](https://example.com) for more.
 - **Implementation**:
   [source](./)
 - **Category**: link
-- **Markdownlint**: [MD039][mdl-md039] (no-space-in-links)
+- **markdownlint**: [MD039][mdl-md039] (no-space-in-links)
+- **rumdl**: [MD039][rumdl-md039] (no-space-in-links)
+- **mado**: [MD039][mado-rules] (no-space-in-links)
 
 [mdl-md039]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md039.md
+[rumdl-md039]: https://rumdl.dev/md039/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules

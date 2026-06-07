@@ -94,6 +94,13 @@ Body text.
 - **Implementation**:
   [source](./)
 - **Category**: heading
-- **Markdownlint**: [MD026][mdl-md026] (no-trailing-punctuation)
+- **markdownlint**: [MD026][mdl-md026] (no-trailing-punctuation)
+- **rumdl**: [MD026][rumdl-md026] (no-trailing-punctuation)
+- **mado**: [MD026][mado-rules] (no-trailing-punctuation)
+- **obsidian-linter**: [remove-trailing-punctuation-in-heading]
 
 [mdl-md026]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md026.md
+[rumdl-md026]: https://rumdl.dev/md026/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules
+[remove-trailing-punctuation-in-heading]:
+  https://platers.github.io/obsidian-linter/settings/heading-rules/#remove-trailing-punctuation-in-heading

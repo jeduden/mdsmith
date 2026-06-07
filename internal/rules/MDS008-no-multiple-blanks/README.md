@@ -98,6 +98,13 @@ more code with blank lines above
 - **Implementation**:
   [source](./)
 - **Category**: whitespace
-- **Markdownlint**: [MD012][mdl-md012] (no-multiple-blanks)
+- **markdownlint**: [MD012][mdl-md012] (no-multiple-blanks)
+- **rumdl**: [MD012][rumdl-md012] (no-multiple-blanks)
+- **mado**: [MD012][mado-rules] (no-multiple-blanks)
+- **obsidian-linter**: [consecutive-blank-lines]
 
 [mdl-md012]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md012.md
+[rumdl-md012]: https://rumdl.dev/md012/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules
+[consecutive-blank-lines]:
+  https://platers.github.io/obsidian-linter/settings/spacing-rules/#consecutive-blank-lines

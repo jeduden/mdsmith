@@ -166,6 +166,13 @@ Outer uses dash (correct), inner should use asterisk but uses dash.
 - **Implementation**:
   [source](./)
 - **Category**: list
-- **Markdownlint**: [MD004][mdl-md004] (ul-style)
+- **markdownlint**: [MD004][mdl-md004] (ul-style)
+- **rumdl**: [MD004][rumdl-md004] (ul-style)
+- **mado**: [MD004][mado-rules] (ul-style)
+- **obsidian-linter**: [unordered-list-style]
 
 [mdl-md004]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md004.md
+[rumdl-md004]: https://rumdl.dev/md004/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules
+[unordered-list-style]:
+  https://platers.github.io/obsidian-linter/settings/content-rules/#unordered-list-style

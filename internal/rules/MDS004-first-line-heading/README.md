@@ -133,6 +133,10 @@ Some content here.
 - **Implementation**:
   [source](./)
 - **Category**: heading
-- **Markdownlint**: [MD041][mdl-md041] (first-line-h1)
+- **markdownlint**: [MD041][mdl-md041] (first-line-h1)
+- **rumdl**: [MD041][rumdl-md041] (first-line-h1)
+- **mado**: [MD041][mado-rules] (first-line-h1)
 
 [mdl-md041]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md041.md
+[rumdl-md041]: https://rumdl.dev/md041/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules

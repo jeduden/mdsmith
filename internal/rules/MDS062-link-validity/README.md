@@ -173,9 +173,14 @@ The reversed form `(text)[url]` is shown as code, not as a link.
 - **Implementation**:
   [source](../linkvalidity/)
 - **Category**: link
-- **Markdownlint**:
+- **markdownlint**:
   - [MD011][mdl-md011] (no-reversed-links)
   - [MD042][mdl-md042] (no-empty-links)
+- **rumdl**:
+  - [MD011][rumdl-md011] (reversed-link)
+  - [MD042][rumdl-md042] (no-empty-links)
 
 [mdl-md011]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md011.md
 [mdl-md042]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md042.md
+[rumdl-md011]: https://rumdl.dev/md011/
+[rumdl-md042]: https://rumdl.dev/md042/

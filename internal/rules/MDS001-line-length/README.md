@@ -268,6 +268,10 @@ This line inside a code block is over 80 characters but within the code-block-ma
 - **Implementation**:
   [source](./)
 - **Category**: line
-- **Markdownlint**: [MD013][mdl-md013] (line-length)
+- **markdownlint**: [MD013][mdl-md013] (line-length)
+- **rumdl**: [MD013][rumdl-md013] (line-length)
+- **mado**: [MD013][mado-rules] (line-length)
 
 [mdl-md013]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md013.md
+[rumdl-md013]: https://rumdl.dev/md013/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules

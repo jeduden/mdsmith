@@ -37,11 +37,9 @@ Document structure and front matter must match its schema.
 
 Useful tokens: `cue-frontmatter`.
 
-When neither `schema` nor `inline-schema` is set the
-rule skips structure and front matter validation, but
-still warns on misplaced `<?require?>` directives. Use
-overrides or `kinds:` to apply schemas to specific file
-groups.
+When neither `schema` nor `inline-schema` is set the rule skips structure
+and front matter validation, but still warns on misplaced `<?require?>`
+directives. Use overrides or `kinds:` to apply schemas to specific file groups.
 
 A kind may declare its schema in either form. The config loader
 rejects a kind that sets both — see [file kinds](../../../docs/guides/file-kinds.md).
@@ -370,6 +368,8 @@ Other shapes get no hint.
 - **Guide**:
   [directive guide](../../../docs/guides/directives/enforcing-structure.md)
 - **Category**: structural
-- **Markdownlint**: [MD043][mdl-md043] (required-headings)
+- **markdownlint**: [MD043][mdl-md043] (required-headings)
+- **rumdl**: [MD043][rumdl-md043] (required-headings)
 
 [mdl-md043]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md043.md
+[rumdl-md043]: https://rumdl.dev/md043/

@@ -117,6 +117,10 @@ title: My Doc
 - **Fixable**: yes — extra H1s are demoted to H2; front-matter conflicts are not auto-fixed
 - **Implementation**: [source](./)
 - **Category**: heading
-- **Markdownlint**: [MD025][mdl-md025] (single-h1)
+- **markdownlint**: [MD025][mdl-md025] (single-h1)
+- **rumdl**: [MD025][rumdl-md025] (single-title)
+- **mado**: [MD025][mado-rules] (single-h1)
 
 [mdl-md025]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md025.md
+[rumdl-md025]: https://rumdl.dev/md025/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules

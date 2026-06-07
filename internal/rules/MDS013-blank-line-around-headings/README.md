@@ -100,6 +100,13 @@ Content here.
 - **Implementation**:
   [source](./)
 - **Category**: heading
-- **Markdownlint**: [MD022][mdl-md022] (blanks-around-headings)
+- **markdownlint**: [MD022][mdl-md022] (blanks-around-headings)
+- **rumdl**: [MD022][rumdl-md022] (blanks-around-headings)
+- **mado**: [MD022][mado-rules] (blanks-around-headings)
+- **obsidian-linter**: [heading-blank-lines]
 
 [mdl-md022]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md022.md
+[rumdl-md022]: https://rumdl.dev/md022/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules
+[heading-blank-lines]:
+  https://platers.github.io/obsidian-linter/settings/spacing-rules/#heading-blank-lines

@@ -147,9 +147,18 @@ wrap: markdown
 - **Implementation**:
   [source](./)
 - **Category**: list
-- **Markdownlint**:
+- **markdownlint**:
   - [MD005][mdl-md005] (list-indent) (partial)
   - [MD007][mdl-md007] (ul-indent)
+- **rumdl**:
+  - [MD005][rumdl-md005] (list-indent) (partial)
+  - [MD007][rumdl-md007] (ul-indent)
+- **mado**:
+  - [MD005][mado-rules] (list-indent) (partial)
+  - [MD007][mado-rules] (ul-indent)
 
 [mdl-md005]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md005.md
 [mdl-md007]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md007.md
+[rumdl-md005]: https://rumdl.dev/md005/
+[rumdl-md007]: https://rumdl.dev/md007/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules

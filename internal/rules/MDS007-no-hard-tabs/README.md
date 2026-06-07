@@ -91,6 +91,10 @@ No tabs here.
 - **Implementation**:
   [source](./)
 - **Category**: whitespace
-- **Markdownlint**: [MD010][mdl-md010] (no-hard-tabs)
+- **markdownlint**: [MD010][mdl-md010] (no-hard-tabs)
+- **rumdl**: [MD010][rumdl-md010] (no-hard-tabs)
+- **mado**: [MD010][mado-rules] (no-hard-tabs)
 
 [mdl-md010]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md010.md
+[rumdl-md010]: https://rumdl.dev/md010/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules

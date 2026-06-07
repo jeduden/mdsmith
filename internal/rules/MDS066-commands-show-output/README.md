@@ -128,6 +128,10 @@ $ pwd
 - **Implementation**:
   [source](./)
 - **Category**: code
-- **Markdownlint**: [MD014][mdl-md014] (commands-show-output)
+- **markdownlint**: [MD014][mdl-md014] (commands-show-output)
+- **rumdl**: [MD014][rumdl-md014] (commands-show-output)
+- **mado**: [MD014][mado-rules] (commands-show-output)
 
 [mdl-md014]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md014.md
+[rumdl-md014]: https://rumdl.dev/md014/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules

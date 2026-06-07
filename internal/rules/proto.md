@@ -115,22 +115,37 @@ rules:
 - **Implementation**:
   [source](./)
 - **Category**: {category}
-- **Markdownlint**: [MDxxx][mdl-mdxxx] (name)
+- **markdownlint**: [MDxxx][mdl-mdxxx] (name)
+- **rumdl**: [MDxxx][rumdl-mdxxx] (name)
+- **mado**: [MDxxx][mado-rules] (name)
 
 [mdl-mdxxx]: https://github.com/DavidAnson/markdownlint/blob/main/doc/mdxxx.md
+[rumdl-mdxxx]: https://rumdl.dev/mdxxx/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules
 
 <!-- Bullets in this order: ID, Name, Status, Default, Fixable,
-     Implementation, Category, Markdownlint, and optionally Concept.
+     Implementation, Category, then one bullet per peer linter the rule
+     covers (markdownlint, rumdl, mado, panache, obsidian-linter), and
+     optionally Concept or Guide.
      Default may include key settings: "enabled, max: 80".
      Category must match the `category:` front-matter field and one
-     of the values in ValidCategories. Pick the narrowest that fits;
-     drop any category not in this list.
-     The Markdownlint bullet mirrors the `markdownlint:` front-matter
-     list. One entry per markdownlint rule the mdsmith rule covers,
-     joined with commas; "(partial)" suffixes a partial cover. The
-     matching link-reference definition follows the bullet block.
-     Omit the Markdownlint bullet (and the link refs) for mdsmith-only
-     rules with `markdownlint: []` in front matter.
+     of the values in ValidCategories. Pick the narrowest that fits.
+
+     The peer-linter bullets above and their link-reference definitions
+     are GENERATED from the `markdownlint:`/`rumdl:`/`mado:`/`panache:`/
+     `obsidian-linter:` front matter. Do not hand-write them; edit the
+     front matter and regenerate (the same data feeds the coverage
+     matrix):
+       MDSMITH_UPDATE_PEER_LINKS=1 go test ./internal/rules \
+         -run TestRuleREADMEPeerLinks
+     One bullet per peer with a non-empty list, one entry per covered
+     rule (nested when more than one), "(partial)" marking a partial
+     cover. markdownlint/rumdl/mado link the MDxxx id (mado shares one
+     `mado-rules` label -- it has no per-rule docs); panache and
+     obsidian-linter use a bare `rule-name` shortcut reference. A
+     definition past the line limit wraps onto an indented URL line.
+     A rule whose peer lists are all empty has no peer bullets.
+
      Add a Concept bullet when the rule has a dedicated concept page:
        - **Concept**: [NAME](../../../docs/background/concepts/NAME.md)
      Omit the Concept bullet when no concept page applies. -->

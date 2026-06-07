@@ -192,6 +192,11 @@ against `[bar]: url`.
 - **Fixable**: no
 - **Implementation**: [source](./)
 - **Category**: link
-- **Markdownlint**: [MD052][mdl-md052] (reference-links-images)
+- **markdownlint**: [MD052][mdl-md052] (reference-links-images)
+- **rumdl**: [MD052][rumdl-md052] (reference-links-images)
+- **panache**: [undefined-references]
 
 [mdl-md052]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md052.md
+[rumdl-md052]: https://rumdl.dev/md052/
+[undefined-references]:
+  https://panache.bz/reference/linter-rules.html#undefined-references

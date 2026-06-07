@@ -154,9 +154,21 @@ The following cases emit diagnostics but are
 - **Implementation**:
   [source](./)
 - **Category**: prose
-- **Markdownlint**:
+- **markdownlint**:
   - [MD049][mdl-md049] (emphasis-style)
   - [MD050][mdl-md050] (strong-style)
+- **rumdl**:
+  - [MD049][rumdl-md049] (emphasis-style)
+  - [MD050][rumdl-md050] (strong-style)
+- **obsidian-linter**:
+  - [emphasis-style]
+  - [strong-style]
 
 [mdl-md049]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md049.md
 [mdl-md050]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md050.md
+[rumdl-md049]: https://rumdl.dev/md049/
+[rumdl-md050]: https://rumdl.dev/md050/
+[emphasis-style]:
+  https://platers.github.io/obsidian-linter/settings/content-rules/#emphasis-style
+[strong-style]:
+  https://platers.github.io/obsidian-linter/settings/content-rules/#strong-style

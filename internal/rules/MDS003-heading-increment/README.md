@@ -108,6 +108,16 @@ Body text.
 - **Implementation**:
   [source](./)
 - **Category**: heading
-- **Markdownlint**: [MD001][mdl-md001] (heading-increment)
+- **markdownlint**: [MD001][mdl-md001] (heading-increment)
+- **rumdl**: [MD001][rumdl-md001] (heading-increment)
+- **mado**: [MD001][mado-rules] (heading-increment)
+- **panache**: [heading-hierarchy]
+- **obsidian-linter**: [header-increment]
 
 [mdl-md001]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md001.md
+[rumdl-md001]: https://rumdl.dev/md001/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules
+[heading-hierarchy]:
+  https://panache.bz/reference/linter-rules.html#heading-hierarchy
+[header-increment]:
+  https://platers.github.io/obsidian-linter/settings/heading-rules/#header-increment

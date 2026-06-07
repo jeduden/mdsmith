@@ -94,6 +94,13 @@ code block with language tag
 - **Implementation**:
   [source](./)
 - **Category**: whitespace
-- **Markdownlint**: [MD009][mdl-md009] (no-trailing-spaces)
+- **markdownlint**: [MD009][mdl-md009] (no-trailing-spaces)
+- **rumdl**: [MD009][rumdl-md009] (no-trailing-spaces)
+- **mado**: [MD009][mado-rules] (no-trailing-spaces)
+- **obsidian-linter**: [trailing-spaces]
 
 [mdl-md009]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md009.md
+[rumdl-md009]: https://rumdl.dev/md009/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules
+[trailing-spaces]:
+  https://platers.github.io/obsidian-linter/settings/spacing-rules/#trailing-spaces

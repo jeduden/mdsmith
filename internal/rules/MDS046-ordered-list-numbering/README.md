@@ -175,6 +175,13 @@ that the start fix already covers.
 - **Implementation**:
   [source](./)
 - **Category**: list
-- **Markdownlint**: [MD029][mdl-md029] (ol-prefix)
+- **markdownlint**: [MD029][mdl-md029] (ol-prefix)
+- **rumdl**: [MD029][rumdl-md029] (ol-prefix)
+- **mado**: [MD029][mado-rules] (ol-prefix)
+- **obsidian-linter**: [ordered-list-style]
 
 [mdl-md029]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md029.md
+[rumdl-md029]: https://rumdl.dev/md029/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules
+[ordered-list-style]:
+  https://platers.github.io/obsidian-linter/settings/content-rules/#ordered-list-style

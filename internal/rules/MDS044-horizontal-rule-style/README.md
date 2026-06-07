@@ -227,6 +227,10 @@ blank lines above and below.
 - **Implementation**:
   [source](./)
 - **Category**: whitespace
-- **Markdownlint**: [MD035][mdl-md035] (hr-style)
+- **markdownlint**: [MD035][mdl-md035] (hr-style)
+- **rumdl**: [MD035][rumdl-md035] (hr-style)
+- **mado**: [MD035][mado-rules] (hr-style)
 
 [mdl-md035]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md035.md
+[rumdl-md035]: https://rumdl.dev/md035/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules

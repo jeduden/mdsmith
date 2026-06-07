@@ -98,6 +98,13 @@ is what the rule detects.
 - **Implementation**:
   [source](./)
 - **Category**: whitespace
-- **Markdownlint**: [MD047][mdl-md047] (single-trailing-newline)
+- **markdownlint**: [MD047][mdl-md047] (single-trailing-newline)
+- **rumdl**: [MD047][rumdl-md047] (file-end-newline)
+- **mado**: [MD047][mado-rules] (single-trailing-newline)
+- **obsidian-linter**: [line-break-at-document-end]
 
 [mdl-md047]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md047.md
+[rumdl-md047]: https://rumdl.dev/md047/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules
+[line-break-at-document-end]:
+  https://platers.github.io/obsidian-linter/settings/spacing-rules/#line-break-at-document-end

@@ -103,6 +103,8 @@ See [`SomeAPI`](https://example.com/api) for details.
 - **Implementation**:
   [source](../descriptivelinktext/)
 - **Category**: prose
-- **Markdownlint**: [MD059][mdl-md059] (descriptive-link-text)
+- **markdownlint**: [MD059][mdl-md059] (descriptive-link-text)
+- **rumdl**: [MD059][rumdl-md059] (link-text)
 
 [mdl-md059]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md059.md
+[rumdl-md059]: https://rumdl.dev/md059/

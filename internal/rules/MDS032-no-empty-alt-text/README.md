@@ -82,6 +82,8 @@ wrap: markdown
 - **Implementation**:
   [source](./)
 - **Category**: accessibility
-- **Markdownlint**: [MD045][mdl-md045] (no-alt-text)
+- **markdownlint**: [MD045][mdl-md045] (no-alt-text)
+- **rumdl**: [MD045][rumdl-md045] (no-alt-text)
 
 [mdl-md045]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md045.md
+[rumdl-md045]: https://rumdl.dev/md045/

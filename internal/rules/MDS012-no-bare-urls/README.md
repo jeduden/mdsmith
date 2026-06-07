@@ -90,6 +90,13 @@ Visit [example](https://example.com) for more.
 - **Implementation**:
   [source](./)
 - **Category**: link
-- **Markdownlint**: [MD034][mdl-md034] (no-bare-urls)
+- **markdownlint**: [MD034][mdl-md034] (no-bare-urls)
+- **rumdl**: [MD034][rumdl-md034] (no-bare-urls)
+- **mado**: [MD034][mado-rules] (no-bare-urls)
+- **obsidian-linter**: [no-bare-urls]
 
 [mdl-md034]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md034.md
+[rumdl-md034]: https://rumdl.dev/md034/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules
+[no-bare-urls]:
+  https://platers.github.io/obsidian-linter/settings/content-rules/#no-bare-urls

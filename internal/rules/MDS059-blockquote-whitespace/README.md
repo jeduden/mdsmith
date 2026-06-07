@@ -155,9 +155,25 @@ wrap: markdown
 - **Implementation**:
   [source](./)
 - **Category**: whitespace
-- **Markdownlint**:
+- **markdownlint**:
   - [MD027][mdl-md027] (no-multiple-space-blockquote)
   - [MD028][mdl-md028] (no-blanks-blockquote)
+- **rumdl**:
+  - [MD027][rumdl-md027] (multiple-spaces-blockquote)
+  - [MD028][rumdl-md028] (blanks-blockquote)
+- **mado**:
+  - [MD027][mado-rules] (no-multiple-space-blockquote)
+  - [MD028][mado-rules] (no-blanks-blockquote)
+- **obsidian-linter**:
+  - [blockquote-style] (partial)
+  - [empty-line-around-blockquotes] (partial)
 
 [mdl-md027]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md027.md
 [mdl-md028]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md028.md
+[rumdl-md027]: https://rumdl.dev/md027/
+[rumdl-md028]: https://rumdl.dev/md028/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules
+[blockquote-style]:
+  https://platers.github.io/obsidian-linter/settings/content-rules/#blockquote-style
+[empty-line-around-blockquotes]:
+  https://platers.github.io/obsidian-linter/settings/spacing-rules/#empty-line-around-blockquotes

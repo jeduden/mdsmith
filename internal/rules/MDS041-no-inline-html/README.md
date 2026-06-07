@@ -118,6 +118,10 @@ Press <kbd>Enter</kbd> to continue.
 - **Implementation**:
   [source](./)
 - **Category**: structural
-- **Markdownlint**: [MD033][mdl-md033] (no-inline-html)
+- **markdownlint**: [MD033][mdl-md033] (no-inline-html)
+- **rumdl**: [MD033][rumdl-md033] (no-inline-html)
+- **mado**: [MD033][mado-rules] (no-inline-html)
 
 [mdl-md033]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md033.md
+[rumdl-md033]: https://rumdl.dev/md033/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules

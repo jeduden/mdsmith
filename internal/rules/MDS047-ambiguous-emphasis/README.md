@@ -231,6 +231,10 @@ __a__b__
 - **Implementation**:
   [source](./)
 - **Category**: prose
-- **Markdownlint**: [MD037][mdl-md037] (no-space-in-emphasis)
+- **markdownlint**: [MD037][mdl-md037] (no-space-in-emphasis)
+- **rumdl**: [MD037][rumdl-md037] (spaces-around-emphasis)
+- **mado**: [MD037][mado-rules] (no-space-in-emphasis)
 
 [mdl-md037]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md037.md
+[rumdl-md037]: https://rumdl.dev/md037/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules

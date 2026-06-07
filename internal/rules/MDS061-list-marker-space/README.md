@@ -166,6 +166,13 @@ Ordered list with two spaces after each marker.
 - **Implementation**:
   [source](./)
 - **Category**: list
-- **Markdownlint**: [MD030][mdl-md030] (list-marker-space)
+- **markdownlint**: [MD030][mdl-md030] (list-marker-space)
+- **rumdl**: [MD030][rumdl-md030] (list-marker-space)
+- **mado**: [MD030][mado-rules] (list-marker-space)
+- **obsidian-linter**: [space-after-list-markers]
 
 [mdl-md030]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md030.md
+[rumdl-md030]: https://rumdl.dev/md030/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules
+[space-after-list-markers]:
+  https://platers.github.io/obsidian-linter/settings/spacing-rules/#space-after-list-markers

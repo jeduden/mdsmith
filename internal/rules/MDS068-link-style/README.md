@@ -297,3 +297,8 @@ See [sibling](good/sibling.md) — inline form, as policy requires.
 - **Implementation**:
   [source](./)
 - **Category**: link
+- **markdownlint**: [MD054][mdl-md054] (link-image-style)
+- **rumdl**: [MD054][rumdl-md054] (link-image-style)
+
+[mdl-md054]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md054.md
+[rumdl-md054]: https://rumdl.dev/md054/

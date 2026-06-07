@@ -120,6 +120,10 @@ wrap: markdown
 - **Implementation**:
   [source](./)
 - **Category**: heading
-- **Markdownlint**: [MD036][mdl-md036] (no-emphasis-as-heading)
+- **markdownlint**: [MD036][mdl-md036] (no-emphasis-as-heading)
+- **rumdl**: [MD036][rumdl-md036] (no-emphasis-as-heading)
+- **mado**: [MD036][mado-rules] (no-emphasis-as-heading)
 
 [mdl-md036]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md036.md
+[rumdl-md036]: https://rumdl.dev/md036/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules

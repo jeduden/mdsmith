@@ -146,6 +146,10 @@ Use `foo bar` for multi-word.
 - **Implementation**:
   [source](./)
 - **Category**: whitespace
-- **Markdownlint**: [MD038][mdl-md038] (no-space-in-code)
+- **markdownlint**: [MD038][mdl-md038] (no-space-in-code)
+- **rumdl**: [MD038][rumdl-md038] (no-space-in-code)
+- **mado**: [MD038][mado-rules] (no-space-in-code)
 
 [mdl-md038]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md038.md
+[rumdl-md038]: https://rumdl.dev/md038/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules

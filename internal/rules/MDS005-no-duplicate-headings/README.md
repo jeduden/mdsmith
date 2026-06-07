@@ -94,6 +94,10 @@ Body two.
 - **Implementation**:
   [source](./)
 - **Category**: heading
-- **Markdownlint**: [MD024][mdl-md024] (no-duplicate-heading)
+- **markdownlint**: [MD024][mdl-md024] (no-duplicate-heading)
+- **rumdl**: [MD024][rumdl-md024] (multiple-headings)
+- **mado**: [MD024][mado-rules] (no-duplicate-heading)
 
 [mdl-md024]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md024.md
+[rumdl-md024]: https://rumdl.dev/md024/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules

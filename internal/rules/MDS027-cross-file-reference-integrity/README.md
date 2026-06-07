@@ -200,6 +200,11 @@ See [guide](bad/ref/guide.md#missing-section).
 - **Implementation**:
   [source](./)
 - **Category**: link
-- **Markdownlint**: [MD051][mdl-md051] (link-fragments)
+- **markdownlint**: [MD051][mdl-md051] (link-fragments)
+- **rumdl**: [MD051][rumdl-md051] (link-fragments)
+- **panache**: [undefined-anchor]
 
 [mdl-md051]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md051.md
+[rumdl-md051]: https://rumdl.dev/md051/
+[undefined-anchor]:
+  https://panache.bz/reference/linter-rules.html#undefined-anchor

@@ -167,6 +167,10 @@ Body text.
 - **Implementation**:
   [source](./)
 - **Category**: heading
-- **Markdownlint**: [MD003][mdl-md003] (heading-style)
+- **markdownlint**: [MD003][mdl-md003] (heading-style)
+- **rumdl**: [MD003][rumdl-md003] (heading-style)
+- **mado**: [MD003][mado-rules] (heading-style)
 
 [mdl-md003]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md003.md
+[rumdl-md003]: https://rumdl.dev/md003/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules

@@ -154,6 +154,15 @@ Ignored labels are never removed.
 - **Fixable**: yes
 - **Implementation**: [source](./)
 - **Category**: link
-- **Markdownlint**: [MD053][mdl-md053] (link-image-reference-definitions)
+- **markdownlint**: [MD053][mdl-md053] (link-image-reference-definitions)
+- **rumdl**: [MD053][rumdl-md053] (link-image-definitions)
+- **panache**:
+  - [duplicate-reference-labels]
+  - [unused-definitions]
 
 [mdl-md053]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md053.md
+[rumdl-md053]: https://rumdl.dev/md053/
+[duplicate-reference-labels]:
+  https://panache.bz/reference/linter-rules.html#duplicate-reference-labels
+[unused-definitions]:
+  https://panache.bz/reference/linter-rules.html#unused-definitions

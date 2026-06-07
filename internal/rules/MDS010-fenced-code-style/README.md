@@ -135,6 +135,8 @@ fmt.Println("hello")
 - **Implementation**:
   [source](./)
 - **Category**: code
-- **Markdownlint**: [MD048][mdl-md048] (code-fence-style)
+- **markdownlint**: [MD048][mdl-md048] (code-fence-style)
+- **rumdl**: [MD048][rumdl-md048] (code-fence-style)
 
 [mdl-md048]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md048.md
+[rumdl-md048]: https://rumdl.dev/md048/

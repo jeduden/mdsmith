@@ -201,6 +201,8 @@ diagnostic is emitted.
 - **Implementation**:
   [source](./)
 - **Category**: prose
-- **Markdownlint**: [MD044][mdl-md044] (proper-names)
+- **markdownlint**: [MD044][mdl-md044] (proper-names)
+- **rumdl**: [MD044][rumdl-md044] (proper-names)
 
 [mdl-md044]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md044.md
+[rumdl-md044]: https://rumdl.dev/md044/

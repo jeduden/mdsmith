@@ -151,6 +151,10 @@ Some text first.
 - **Implementation**:
   [source](./)
 - **Category**: code
-- **Markdownlint**: [MD046][mdl-md046] (code-block-style)
+- **markdownlint**: [MD046][mdl-md046] (code-block-style)
+- **rumdl**: [MD046][rumdl-md046] (code-block-style)
+- **mado**: [MD046][mado-rules] (code-block-style)
 
 [mdl-md046]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md046.md
+[rumdl-md046]: https://rumdl.dev/md046/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules

@@ -102,6 +102,13 @@ Content here.
 - **Implementation**:
   [source](./)
 - **Category**: list
-- **Markdownlint**: [MD032][mdl-md032] (blanks-around-lists)
+- **markdownlint**: [MD032][mdl-md032] (blanks-around-lists)
+- **rumdl**: [MD032][rumdl-md032] (blanks-around-lists)
+- **mado**: [MD032][mado-rules] (blanks-around-lists)
+- **obsidian-linter**: [paragraph-blank-lines] (partial)
 
 [mdl-md032]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md032.md
+[rumdl-md032]: https://rumdl.dev/md032/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules
+[paragraph-blank-lines]:
+  https://platers.github.io/obsidian-linter/settings/spacing-rules/#paragraph-blank-lines

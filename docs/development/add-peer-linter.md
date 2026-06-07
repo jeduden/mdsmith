@@ -56,6 +56,21 @@ matter into `RuleInfo`. Three edits:
 
 `go build ./...` should pass.
 
+Each rule README links its peer rules in its
+Meta-Information section. The test
+`internal/rules/peerlinks_test.go` builds that block.
+Teach it the new peer's links:
+
+- Add `{"newtool", info.Newtool}` to `peerLinkSpecs`
+- Add a `peerRefID` case (a label prefix like
+  `mdl-`, or the bare rule name for a shortcut peer)
+- Add a `peerRefURL` case returning the per-rule doc
+  URL; if the tool has no per-rule page, point every
+  entry at one section anchor (as `mado` does)
+- For a tool that pages rules by category (like
+  obsidian-linter), add a name-to-category map and a
+  `peerEntry` shortcut branch via `isShortcutPeer`
+
 ## 3. Extend the coverage matrix
 
 The matrix lives in
@@ -127,19 +142,26 @@ Two facts about defaults are easy to miss:
 README against the proto schema. Run it after every
 batch of edits.
 
-## 5. Regenerate the matrix
+## 5. Regenerate the matrix and rule README links
 
 ```bash
 go run ./cmd/mdsmith fix docs/research/markdownlint-coverage/
+MDSMITH_UPDATE_PEER_LINKS=1 go test ./internal/rules \
+  -run TestRuleREADMEPeerLinks
 go run ./cmd/mdsmith check internal/rules/ docs/research/
 go test ./internal/release/ ./internal/rules/
 ```
 
 `mdsmith fix` rebuilds the `<?catalog?>` tables in
-place from the rule README front matter. Commit the
-diff in the same change as the front-matter edits.
-`mdsmith check` fails on a table left out of sync
-with the rule READMEs.
+place from the rule README front matter. The
+`MDSMITH_UPDATE_PEER_LINKS` run rewrites the
+peer-linter bullets in each rule README's
+Meta-Information section from the same front matter;
+a plain `go test ./internal/rules` fails when a
+README has drifted. Commit both diffs in the same
+change as the front-matter edits. `mdsmith check`
+fails on a table left out of sync with the rule
+READMEs.
 
 ## 6. Update the comparison page
 

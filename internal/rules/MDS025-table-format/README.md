@@ -351,5 +351,21 @@ Paragraph after.
 - **Implementation**:
   [source](./)
 - **Category**: table
-- **markdownlint coverage**: MD055 (table-pipe-style), MD056
-  (table-column-count, flag only), MD058 (blanks-around-tables)
+- **markdownlint**:
+  - [MD055][mdl-md055] (table-pipe-style)
+  - [MD056][mdl-md056] (table-column-count) (partial)
+  - [MD058][mdl-md058] (blanks-around-tables)
+- **rumdl**:
+  - [MD055][rumdl-md055] (table-pipe-style)
+  - [MD056][rumdl-md056] (table-column-count) (partial)
+  - [MD058][rumdl-md058] (table-spacing)
+- **obsidian-linter**: [empty-line-around-tables] (partial)
+
+[mdl-md055]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md055.md
+[mdl-md056]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md056.md
+[mdl-md058]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md058.md
+[rumdl-md055]: https://rumdl.dev/md055/
+[rumdl-md056]: https://rumdl.dev/md056/
+[rumdl-md058]: https://rumdl.dev/md058/
+[empty-line-around-tables]:
+  https://platers.github.io/obsidian-linter/settings/spacing-rules/#empty-line-around-tables

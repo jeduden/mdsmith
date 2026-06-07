@@ -163,15 +163,36 @@ Tab after opening `#`:
 - **Fixable**: yes
 - **Implementation**: [source](./)
 - **Category**: heading
-- **Markdownlint**:
+- **markdownlint**:
   - [MD018][mdl-md018] (no-missing-space-atx)
   - [MD019][mdl-md019] (no-multiple-space-atx)
   - [MD020][mdl-md020] (no-missing-space-closed-atx) (partial)
   - [MD021][mdl-md021] (no-multiple-space-closed-atx)
   - [MD023][mdl-md023] (heading-start-left)
+- **rumdl**:
+  - [MD018][rumdl-md018] (no-space-atx)
+  - [MD019][rumdl-md019] (multiple-space-atx)
+  - [MD020][rumdl-md020] (no-space-closed-atx) (partial)
+  - [MD021][rumdl-md021] (multiple-space-closed-atx)
+  - [MD023][rumdl-md023] (heading-start-left)
+- **mado**:
+  - [MD018][mado-rules] (no-missing-space-atx)
+  - [MD019][mado-rules] (no-multiple-space-atx)
+  - [MD020][mado-rules] (no-missing-space-closed-atx) (partial)
+  - [MD021][mado-rules] (no-multiple-space-closed-atx)
+  - [MD023][mado-rules] (heading-start-left)
+- **obsidian-linter**: [headings-start-line] (partial)
 
 [mdl-md018]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md018.md
 [mdl-md019]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md019.md
 [mdl-md020]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md020.md
 [mdl-md021]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md021.md
 [mdl-md023]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md023.md
+[rumdl-md018]: https://rumdl.dev/md018/
+[rumdl-md019]: https://rumdl.dev/md019/
+[rumdl-md020]: https://rumdl.dev/md020/
+[rumdl-md021]: https://rumdl.dev/md021/
+[rumdl-md023]: https://rumdl.dev/md023/
+[mado-rules]: https://github.com/akiomik/mado#supported-rules
+[headings-start-line]:
+  https://platers.github.io/obsidian-linter/settings/heading-rules/#headings-start-line
