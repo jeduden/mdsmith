@@ -12,8 +12,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-
-	"cuelang.org/go/cue"
 )
 
 // fieldPattern matches a single-brace placeholder using CUE path
@@ -129,31 +127,98 @@ func Validate(text string) error {
 	return nil
 }
 
-// ParseCUEPath parses a CUE path expression into unquoted label
-// segments using cue.ParsePath. Non-identifier keys (hyphens, dots,
-// spaces) must be quoted: "my-key". Returns nil for malformed
-// expressions.
+// ParseCUEPath parses a dotted field-path expression into unquoted
+// label segments. A segment is either a bare identifier
+// ([A-Za-z][A-Za-z0-9_]*) or a double-quoted label whose escape
+// sequences follow Go string-literal rules. Non-identifier keys
+// (hyphens, dots, spaces, leading digits or underscores) must be
+// quoted: "my-key". Returns nil for any malformed expression.
+//
+// This is a CUE-free reimplementation of the small subset of
+// cue.ParsePath the template language uses, so the engine — and its
+// WebAssembly build — no longer pulls in the CUE module for
+// {field} interpolation. Identifiers reject a leading underscore (CUE
+// reserves that for hidden fields) and a leading digit; quoted labels
+// reject an empty string. See docs/background/concepts/engine-api.md.
 func ParseCUEPath(expr string) []string {
 	if expr == "" {
 		return nil
 	}
-	p := cue.ParsePath(expr)
-	if p.Err() != nil {
-		return nil
-	}
-	sels := p.Selectors()
-	if len(sels) == 0 {
-		return nil
-	}
-	segments := make([]string, len(sels))
-	for i, s := range sels {
-		u := s.Unquoted()
-		if u == "" {
-			return nil // reject empty labels
+	var segments []string
+	for i := 0; i < len(expr); {
+		var seg string
+		var ok bool
+		if expr[i] == '"' {
+			seg, i, ok = parseQuotedLabel(expr, i)
+		} else {
+			seg, i, ok = parseIdentLabel(expr, i)
 		}
-		segments[i] = u
+		if !ok || seg == "" {
+			return nil
+		}
+		segments = append(segments, seg)
+		if i == len(expr) {
+			break
+		}
+		// A separator must follow a completed segment.
+		if expr[i] != '.' {
+			return nil
+		}
+		i++
+		if i == len(expr) {
+			return nil // trailing dot
+		}
+	}
+	if len(segments) == 0 {
+		return nil
 	}
 	return segments
+}
+
+// parseIdentLabel reads a bare identifier label starting at start.
+// It returns the label, the index just past it, and whether the run
+// was a valid identifier ([A-Za-z][A-Za-z0-9_]*).
+func parseIdentLabel(expr string, start int) (string, int, bool) {
+	i := start
+	c := expr[i]
+	if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z') {
+		return "", start, false
+	}
+	i++
+	for i < len(expr) {
+		c := expr[i]
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' {
+			i++
+			continue
+		}
+		break
+	}
+	return expr[start:i], i, true
+}
+
+// parseQuotedLabel reads a double-quoted label starting at the opening
+// quote at start. It returns the unquoted label, the index just past
+// the closing quote, and whether the quoted run unquoted cleanly via
+// Go string-literal rules.
+func parseQuotedLabel(expr string, start int) (string, int, bool) {
+	// Find the matching closing quote, honouring backslash escapes.
+	i := start + 1
+	for i < len(expr) {
+		switch expr[i] {
+		case '\\':
+			i += 2
+		case '"':
+			lit := expr[start : i+1]
+			unq, err := strconv.Unquote(lit)
+			if err != nil {
+				return "", start, false
+			}
+			return unq, i + 1, true
+		default:
+			i++
+		}
+	}
+	return "", start, false
 }
 
 // ResolvePath walks data using the given path segments and returns
