@@ -159,3 +159,51 @@ func TestRealReleaseWorkflowSatisfiesGates(t *testing.T) {
 	assert.Empty(t, got,
 		"release.yml has an environment: release job missing needs:[gate]: %v", got)
 }
+
+func TestGateViolationString(t *testing.T) {
+	v := GateViolation{Job: "npm", Reason: "missing gate"}
+	assert.Equal(t, "npm: missing gate", v.String())
+}
+
+func TestCheckReleaseGatesFileReportsMissingWorkflow(t *testing.T) {
+	_, err := CheckReleaseGatesFile(t.TempDir())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), ReleaseWorkflowPath)
+}
+
+func TestCheckReleaseGatesFlagsJobWithNoNeeds(t *testing.T) {
+	// A release-env job with no `needs:` at all — exercises the
+	// empty-needs path and is still flagged for not depending on gate.
+	const wf = `
+jobs:
+  gate:
+    environment: release-approval
+    runs-on: ubuntu-latest
+  npm:
+    environment: release
+    runs-on: ubuntu-latest
+`
+	got, err := CheckReleaseGates([]byte(wf))
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "npm", got[0].Job)
+}
+
+func TestCheckReleaseGatesIgnoresEnvironmentMappingWithoutName(t *testing.T) {
+	// A mapping environment with no `name` resolves to "" and is not
+	// treated as the secret env, so it raises no violation.
+	const wf = `
+jobs:
+  gate:
+    environment: release-approval
+    runs-on: ubuntu-latest
+  weird:
+    needs: [build]
+    environment:
+      url: https://example.com
+    runs-on: ubuntu-latest
+`
+	got, err := CheckReleaseGates([]byte(wf))
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}
