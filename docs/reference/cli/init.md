@@ -4,11 +4,9 @@ summary: Generate a default `.mdsmith.yml` config in the current directory.
 ---
 # `mdsmith init`
 
-Generate a default `.mdsmith.yml` config file in the
-current directory. The generated file lists every rule
-with its built-in default settings, so you can flip
-individual rules off or override settings with a clear
-diff.
+The generated file lists every rule with its built-in
+default settings, so you can flip individual rules off or
+override settings with a clear diff.
 
 ```text
 mdsmith init

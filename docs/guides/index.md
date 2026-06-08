@@ -41,12 +41,13 @@ header: |
   |-------|-------------|
 row: "| [{title}]({filename}) | {summary} |"
 ?>
-| Guide                                                                          | Description                                                                                                                     |
-| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
-| [Build directive](directives/build.md)                                         | How to use the build directive to declare artifact outputs, keep generated bodies in sync, and configure user-declared recipes. |
-| [Coming from Hugo](directives/hugo-migration.md)                               | Key differences between Hugo templates and mdsmith directives for users familiar with Hugo.                                     |
-| [Enforcing Document Structure with Schemas](directives/enforcing-structure.md) | How to use schemas, require, and allow-empty-section to validate headings, front matter, and filenames.                         |
-| [Generating Content with Directives](directives/generating-content.md)         | How to use catalog and include directives to generate and embed content in Markdown files.                                      |
+| Guide                                                                          | Description                                                                                                                                                                                    |
+| ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Build directive](directives/build.md)                                         | How to use the build directive to declare artifact outputs, keep generated bodies in sync, and configure user-declared recipes.                                                                |
+| [Coming from Hugo](directives/hugo-migration.md)                               | Key differences between Hugo templates and mdsmith directives for users familiar with Hugo.                                                                                                    |
+| [Directives](directives/index.md)                                              | Guides to mdsmith's content directives — generating content with `<?catalog?>` and `<?include?>`, enforcing structure with schemas, declaring build artifacts, and moving from Hugo templates. |
+| [Enforcing Document Structure with Schemas](directives/enforcing-structure.md) | How to use schemas, require, and allow-empty-section to validate headings, front matter, and filenames.                                                                                        |
+| [Generating Content with Directives](directives/generating-content.md)         | How to use catalog and include directives to generate and embed content in Markdown files.                                                                                                     |
 <?/catalog?>
 
 ## Editors
@@ -62,6 +63,7 @@ row: "| [{title}]({filename}) | {summary} |"
 ?>
 | Guide                                       | Description                                                                                                                                                          |
 | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Editors](editors/index.md)                 | Editor integration guides for mdsmith — VS Code, Neovim, and Obsidian — all driven by the same bundled `mdsmith lsp` server.                                         |
 | [mdsmith for Obsidian](editors/obsidian.md) | Install the mdsmith Obsidian plugin and use its inline diagnostics, hover fixes, fix-on-save, and diagnostics panel — one WebAssembly runtime on desktop and mobile. |
 | [mdsmith for VS Code](editors/vscode.md)    | Install the mdsmith VS Code extension and use its inline diagnostics, quick fixes, fix-on-save, and cross-file navigation — one bundled binary, no extra setup.      |
 | [Neovim Integration](editors/neovim.md)     | Wire `mdsmith lsp` into Neovim's built-in LSP client so diagnostics, code actions, and navigation work inline with no extra plugin.                                  |

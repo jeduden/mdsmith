@@ -4,11 +4,10 @@ summary: Rename a heading or link-reference label and rewrite every dependent ed
 ---
 # `mdsmith rename`
 
-Rename a heading or a link-reference label and rewrite
-every dependent edit across the workspace in place. This
-is the CLI surface for the same rename engine the LSP
-server drives, so a script or agent with no editor reaches
-it too.
+The CLI surface for the same rename engine the LSP server
+drives, so a script or agent with no editor reaches it too.
+Every dependent edit across the workspace is rewritten in
+place.
 
 ```text
 mdsmith rename [flags] <file> <old> <new>

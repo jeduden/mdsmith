@@ -3,7 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ if .IsHome }}{{ .Site.Title }} — {{ .Site.Params.description }}{{ else }}{{ .Title }} · {{ .Site.Title }}{{ end }}</title>
+  {{- /* The home page title uses the hero eyebrow as a short
+         tagline rather than the long site description. Without
+         this split the `<title>` and `<meta name="description">`
+         would carry the same prose (both sourced from
+         messaging.md's Tagline), so Google's search snippet
+         would print the same sentence twice — once on the title
+         line, once on the description line. The eyebrow is the
+         tracked short tagline (see docs/brand/messaging.md
+         Eyebrow), and at ~30 chars it stays under the ~60-char
+         search-result title cap. */ -}}
+  <title>{{ if .IsHome }}{{ .Site.Title }} — {{ site.Home.Params.hero.eyebrow }}{{ else }}{{ .Title }} · {{ .Site.Title }}{{ end }}</title>
   {{- /* Per-page meta description priority: explicit Description
          (set via Hugo's .Description), then the `summary` front
          matter field that the website-page kind schema requires,

@@ -4,8 +4,10 @@ summary: Lint Markdown files for style issues.
 ---
 # `mdsmith check`
 
-Lint Markdown files for style, structure, and integrity
-issues.
+Walks the workspace, parses each file once, runs every
+configured rule, and prints diagnostics — without writing
+anything back. Also covers structure and cross-file
+integrity, not only line-level style.
 
 ```text
 mdsmith check [flags] [files...]

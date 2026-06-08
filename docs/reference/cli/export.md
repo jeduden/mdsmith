@@ -4,10 +4,9 @@ summary: Write a portable, directive-free copy of a Markdown file.
 ---
 # `mdsmith export`
 
-Write a portable, directive-free copy of a Markdown file
-to stdout. Generated section markers are stripped and
-the bodies stay as plain Markdown. `<?include?>` content
-is inlined recursively. The result renders on any
+Writes to stdout. Every `<?...?>` directive marker is
+stripped and the body stays as plain Markdown. `<?include?>`
+content is inlined recursively. The result renders on any
 Markdown tool with no mdsmith knowledge.
 
 ```text

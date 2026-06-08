@@ -1,4 +1,5 @@
 baseURL = "https://mdsmith.dev/"
+disableKinds = ["taxonomy", "term"]
 enableGitInfo = false
 enableRobotsTXT = true
 locale = "en-us"

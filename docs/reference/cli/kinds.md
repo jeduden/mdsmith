@@ -4,9 +4,10 @@ summary: Inspect declared file kinds and resolve effective rule config per file.
 ---
 # `mdsmith kinds`
 
-Inspect declared file kinds and resolve the effective rule
-config that each file ends up with. See
-[File Kinds](../../guides/file-kinds.md) for the concept.
+See [File Kinds](../../guides/file-kinds.md) for the concept.
+Each subcommand resolves the layered config (defaults →
+convention → kind → overrides) for one file path or kind name
+and prints the merged result.
 
 ```text
 mdsmith kinds <subcommand> [args]

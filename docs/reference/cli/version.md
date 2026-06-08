@@ -4,8 +4,6 @@ summary: Print the mdsmith build version and exit.
 ---
 # `mdsmith version`
 
-Print the mdsmith build version and exit.
-
 ```text
 mdsmith version
 ```

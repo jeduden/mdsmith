@@ -4,10 +4,9 @@ summary: List and rank shared Markdown metrics (file length, token estimate, rea
 ---
 # `mdsmith metrics`
 
-List and rank shared Markdown metrics. Metrics are the
-shared measurements rules compute — file length, section
-length, token estimate, readability scores — surfaced as a
-standalone CLI for triage.
+Metrics are the shared measurements rules compute: file
+length, section length, token estimate, readability scores.
+This CLI surfaces them as a standalone tool for triage.
 
 ```text
 mdsmith metrics <command> [flags] [files...]

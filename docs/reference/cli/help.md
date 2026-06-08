@@ -4,10 +4,9 @@ summary: Show built-in documentation for rules, metrics, and concept pages.
 ---
 # `mdsmith help`
 
-Show built-in documentation for rules, metrics, and concept
-pages without a network call. Useful for piping into
-`AGENTS.md`, `CLAUDE.md`, `.cursor/rules`, or any LLM
-context.
+Pulls every page from the embedded docs bundle — no network
+call, no extra install. Useful for piping into `AGENTS.md`,
+`CLAUDE.md`, `.cursor/rules`, or any LLM context.
 
 ```text
 mdsmith help <topic>

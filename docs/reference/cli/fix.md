@@ -4,8 +4,8 @@ summary: Auto-fix lint issues in Markdown files in place.
 ---
 # `mdsmith fix`
 
-Auto-fix lint issues in Markdown files in place. Multi-pass
-fixing resolves cascading changes in one invocation.
+Multi-pass fixing resolves cascading changes in one
+invocation, so a single run leaves the worktree clean.
 
 ```text
 mdsmith fix [flags] [files...]
