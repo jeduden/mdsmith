@@ -69,7 +69,7 @@ maps:
 Each finding becomes a `result` with a `ruleId` (its `id`), a
 message, and a physical location (file + region). Each distinct
 `id` becomes a `rule` in `tool.driver.rules`. That rule carries the
-title, the CWE (as a `relationships`/`properties` tag), and the
+title, the CWE (as a `properties.tags` entry), and the
 `security-severity`. `confidence` is recorded in result
 `properties`.
 

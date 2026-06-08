@@ -222,3 +222,29 @@ func TestGradeExtraPositional(t *testing.T) {
 	assert.Equal(t, 2, code)
 	assert.Contains(t, errOut, "positional")
 }
+
+func TestGradeViaCasesInvalidSpec(t *testing.T) {
+	// A structurally invalid cases.yaml (duplicate ids) is rejected even
+	// when the named case parses — the CLI validates the whole spec, so a
+	// duplicate id can't silently resolve to the wrong rubric.
+	casesPath := filepath.Join(t.TempDir(), "cases.yaml")
+	require.NoError(t, os.WriteFile(casesPath, []byte(`baseline_ref: b72285df2f6b422dd2eb31058884757f13acc78c
+cases:
+  - id: dup
+    mode: pr
+    prompt: p
+    setup: s
+    expect: {must: [a], must_not: [b]}
+    grade: {forbid_severities: [high]}
+  - id: dup
+    mode: pr
+    prompt: p
+    setup: s
+    expect: {must: [a], must_not: [b]}
+    grade: {forbid_severities: [high]}
+`), 0o644))
+	path := writeJSON(t, criticalFinding)
+	code, _, errOut := runCLI("grade", "--findings", path, "--cases", casesPath, "--case", "dup")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, errOut, "duplicate case id")
+}

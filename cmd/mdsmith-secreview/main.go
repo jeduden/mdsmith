@@ -178,6 +178,10 @@ func gradeConstraints(gf gradeFlags, stderr io.Writer) (secreview.Constraints, s
 			_, _ = fmt.Fprintf(stderr, "mdsmith-secreview: %v\n", err)
 			return secreview.Constraints{}, "", 2
 		}
+		if err := spec.Validate(); err != nil {
+			_, _ = fmt.Fprintf(stderr, "mdsmith-secreview: %v\n", err)
+			return secreview.Constraints{}, "", 2
+		}
 		con, err := constraintsForID(spec, gf.caseID)
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "mdsmith-secreview: %v\n", err)

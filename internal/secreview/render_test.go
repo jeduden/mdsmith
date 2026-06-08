@@ -246,15 +246,16 @@ func TestBuildSARIFDuplicateRuleID(t *testing.T) {
 }
 
 func TestPhysicalLocationsKeepsRelated(t *testing.T) {
-	// Primary + two related: one with a startLine, one file-only. All three
-	// are kept — a file-only location emits an artifactLocation with no
-	// region (matching render_findings.py); only a missing file drops one.
+	// Primary + three related: one with a startLine, one file-only (kept,
+	// no region — matching render_findings.py), and one with no file at all
+	// (dropped). Only a missing file drops a location.
 	f := &Finding{
 		ID: "S001", Severity: "high",
 		Location: &Location{File: "a.go", StartLine: 1},
 		RelatedLocations: []Location{
 			{File: "b.go", StartLine: 2},
 			{File: "c.go"}, // file-only: kept, no region
+			{StartLine: 9}, // no file: dropped
 		},
 	}
 	doc := buildSARIF(&Report{Findings: []Finding{*f}})
@@ -264,6 +265,19 @@ func TestPhysicalLocationsKeepsRelated(t *testing.T) {
 	assert.Equal(t, "b.go", locs[1].PhysicalLocation.ArtifactLocation.URI)
 	assert.Equal(t, "c.go", locs[2].PhysicalLocation.ArtifactLocation.URI)
 	assert.Nil(t, locs[2].PhysicalLocation.Region, "file-only location has no region")
+}
+
+func TestReportSummaryEscapesPipe(t *testing.T) {
+	// A finding title containing a pipe (security findings routinely name
+	// shell metacharacters) must be escaped in the Markdown summary table so
+	// the row keeps its columns instead of splitting into extras.
+	r := &Report{Findings: []Finding{{
+		ID: "S001", Severity: "high", Confidence: "confirmed",
+		Title: "shell || and | pipe", Surface: "cli",
+		Location: &Location{File: "a.go", StartLine: 5},
+	}}}
+	md := buildReport(r, time.Now())
+	assert.Contains(t, md, `| shell \|\| and \| pipe |`)
 }
 
 func TestRenderSARIFFileOnlyLocation(t *testing.T) {

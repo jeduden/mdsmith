@@ -48,9 +48,21 @@ func writeSummary(b *strings.Builder, findings []Finding) {
 	for i := range findings {
 		f := &findings[i]
 		fmt.Fprintf(b, "| %s | %s | %s | %s | %s | `%s` |\n",
-			f.ID, f.Severity, orQuestion(f.Confidence), f.Title, f.Surface, locStr(f.Location))
+			tableCell(f.ID), tableCell(f.Severity), tableCell(orQuestion(f.Confidence)),
+			tableCell(f.Title), tableCell(f.Surface), tableCell(locStr(f.Location)))
 	}
 	b.WriteString("\n")
+}
+
+// tableCell escapes a value for a Markdown pipe-table cell: a literal `|`
+// becomes `\|` and any newline becomes a space, so a free-text finding
+// title (security findings routinely name shell metacharacters like `|`
+// or `||`) cannot split the row into extra columns or break it across
+// lines.
+func tableCell(s string) string {
+	s = strings.ReplaceAll(s, "\r", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	return strings.ReplaceAll(s, "|", "\\|")
 }
 
 // severityCounts renders "Critical: n | High: n | ..." across all five
