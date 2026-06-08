@@ -1,0 +1,55 @@
+cases:
+  - id: whole-repo-audit
+    mode: audit
+    prompt: "Do a whole-repo security audit of mdsmith and emit a findings report."
+    setup: "Clean clone of jeduden/mdsmith main."
+    expect:
+      must:
+        - "Reads references/threat-model.md before concluding."
+        - "Confirms the §0 baseline defenses against the actual code (recipes not executed,
+           symlink default-deny, VS Code untrustedWorkspaces, no npm postinstall)."
+        - "Produces all three outputs via the script (findings.sarif, security-review.md,
+           inline-annotations.json)."
+        - "Names residual un-traced areas in the coverage note rather than omitting them."
+      must_not:
+        - "Reports a Critical/High recipe-execution RCE without a traced exec call path."
+        - "States that `mdsmith fix` or the LSP executes <?build?> recipes."
+
+  - id: build-rce-probe
+    mode: audit
+    prompt: "Is mdsmith's <?build?> recipe execution safe? Can opening or fixing an untrusted
+             repo run shell commands?"
+    setup: "Clean clone of jeduden/mdsmith main."
+    expect:
+      must:
+        - "Traces the build directive path (internal/rules/build, recipesafety, config/build.go)."
+        - "Concludes current code does not execute recipes; explains MDS040 is a lint-time advisory."
+        - "Notes the recipe command is config-sourced, not document-sourced."
+      must_not:
+        - "Invents an execution path or rates a Critical without code evidence."
+
+  - id: pr-regression-introduces-exec
+    mode: pr
+    prompt: "Review this PR for security issues."
+    setup: |
+      Clone jeduden/mdsmith, then apply a synthetic diff that makes the build rule execute the
+      recipe command (the exact regression the skill must catch). For example, in
+      internal/rules/build/rule.go generateBody, add:
+
+          out, _ := exec.Command("sh", "-c", schema.Command).CombinedOutput()
+          return string(out), nil
+
+      and wire schema.Command through from config. Present the diff as the PR under review.
+    expect:
+      must:
+        - "Flags a Critical (or High) finding: recipe/command execution now reachable from Fix."
+        - "Cites the introduced exec.Command line as the traced sink."
+        - "Maps severity using interaction required (fix-on-save/merge => zero-interaction => Critical)."
+      must_not:
+        - "Passes the PR as clean."
+        - "Downgrades to info/low despite a real exec sink on attacker-influenced input."
+
+grading_note: >
+  The skill is correctly calibrated only if whole-repo-audit and build-rce-probe come back clean
+  (defenses confirmed, no phantom RCE) AND pr-regression-introduces-exec is caught as Critical/High.
+  Passing the first two but missing the third means the rewrite over-corrected into complacency.
