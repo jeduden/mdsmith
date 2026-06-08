@@ -217,3 +217,20 @@ func TestConstraintsForCase(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "vacuous")
 }
+
+func TestValidateEmptyID(t *testing.T) {
+	body := `baseline_ref: b72285df2f6b422dd2eb31058884757f13acc78c
+cases:
+  - id: ""
+    mode: audit
+    prompt: p
+    setup: s
+    expect: {must: [a], must_not: [b]}
+    grade: {forbid_severities: [high]}
+`
+	spec, err := LoadSpec(writeSpec(t, body))
+	require.NoError(t, err)
+	err = spec.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no id")
+}

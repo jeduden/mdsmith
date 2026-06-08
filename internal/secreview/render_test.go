@@ -289,3 +289,21 @@ func TestLocStr(t *testing.T) {
 	assert.Equal(t, "a.go:5-9", locStr(&Location{File: "a.go", StartLine: 5, EndLine: 9}))
 	assert.Equal(t, "a.go:5", locStr(&Location{File: "a.go", StartLine: 5, EndLine: 5}))
 }
+
+func TestMarshalJSONError(t *testing.T) {
+	// A channel cannot be JSON-encoded, so marshalJSON surfaces the encoder
+	// error instead of panicking.
+	_, err := marshalJSON(make(chan int))
+	require.Error(t, err)
+}
+
+func TestRenderErrorWhenOutputFileIsADir(t *testing.T) {
+	// MkdirAll succeeds, but findings.sarif already exists as a directory,
+	// so the WriteFile of the first output fails and Render returns a
+	// wrapped write error rather than panicking.
+	out := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(out, "findings.sarif"), 0o755))
+	err := Render(multiSevReport(), out)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "findings.sarif")
+}
