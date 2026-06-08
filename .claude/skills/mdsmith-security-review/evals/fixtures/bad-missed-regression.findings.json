@@ -13,7 +13,7 @@
       "severity": "info",
       "confidence": "tentative",
       "surface": "directive",
-      "location": {"file": "internal/rules/build/rule.go", "startLine": 270},
+      "location": {"file": "internal/rules/build/rule.go", "startLine": 276},
       "description": "There is an exec.Command here, but recipes are config-sourced so it is likely safe.",
       "impact": "Low.",
       "remediation": "Maybe add a comment."
