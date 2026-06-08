@@ -54,14 +54,16 @@ func writeSummary(b *strings.Builder, findings []Finding) {
 	b.WriteString("\n")
 }
 
-// tableCell escapes a value for a Markdown pipe-table cell: a literal `|`
-// becomes `\|` and any newline becomes a space, so a free-text finding
-// title (security findings routinely name shell metacharacters like `|`
-// or `||`) cannot split the row into extra columns or break it across
-// lines.
+// tableCell escapes a value for a Markdown pipe-table cell. Newlines
+// become spaces; a backslash is doubled and a `|` becomes `\|`. The
+// backslash pass must run first: a title containing a literal `\|` would
+// otherwise become `\\|`, which GFM reads as an escaped backslash plus a
+// LIVE pipe delimiter — splitting the row. Security finding titles
+// routinely name shell metacharacters (`|`, `||`, `\|`), so this matters.
 func tableCell(s string) string {
 	s = strings.ReplaceAll(s, "\r", " ")
 	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\\", "\\\\")
 	return strings.ReplaceAll(s, "|", "\\|")
 }
 
@@ -193,9 +195,14 @@ func buildAnnotations(r *Report) []Annotation {
 	return anns
 }
 
-// annotationBody formats one annotation's Markdown body: the headline, the
-// description, and the fix (or "n/a").
+// annotationBody formats one annotation's Markdown body: the headline,
+// the description (omitted when empty, matching the report's per-field
+// guards so an empty description doesn't leave a blank paragraph), and the
+// fix (or "n/a").
 func annotationBody(f *Finding) string {
-	return fmt.Sprintf("**[%s · %s] %s**\n\n%s\n\n**Fix:** %s",
-		f.ID, f.Severity, f.Title, f.Description, orDefault(f.Remediation, "n/a"))
+	b := fmt.Sprintf("**[%s · %s] %s**", f.ID, f.Severity, f.Title)
+	if f.Description != "" {
+		b += "\n\n" + f.Description
+	}
+	return b + "\n\n**Fix:** " + orDefault(f.Remediation, "n/a")
 }

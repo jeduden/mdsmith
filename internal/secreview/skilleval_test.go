@@ -209,6 +209,31 @@ func checkPatchAppliesAndBuilds(t *testing.T, root, baseline, patch string) {
 	build.Dir = wt
 	out, err := build.CombinedOutput()
 	require.NoErrorf(t, err, "go build of the patched build rule failed: %s", out)
+
+	assertGoldenCitesSink(t, wt)
+}
+
+// assertGoldenCitesSink cross-checks that the pr-regression golden fixture's
+// primary location cites the real exec.Command line in the patched build
+// rule, so the exemplar cannot drift to a stale line after a recalibration.
+func assertGoldenCitesSink(t *testing.T, worktree string) {
+	t.Helper()
+	src, err := os.ReadFile(filepath.Join(worktree, "internal", "rules", "build", "rule.go"))
+	require.NoError(t, err)
+	sink := 0
+	for i, line := range strings.Split(string(src), "\n") {
+		if strings.Contains(line, "exec.Command(") {
+			sink = i + 1
+			break
+		}
+	}
+	require.NotZero(t, sink, "exec.Command not found in the patched build rule")
+	golden, err := LoadReport(filepath.Join(skillDir(t), "evals", "fixtures",
+		"pr-regression-introduces-exec.findings.json"))
+	require.NoError(t, err)
+	require.NotNil(t, golden.Findings[0].Location)
+	assert.Equalf(t, sink, golden.Findings[0].Location.StartLine,
+		"golden fixture should cite the exec.Command line (%d) as its primary location", sink)
 }
 
 // runGit runs a git command in dir and fails the test on a non-zero exit,

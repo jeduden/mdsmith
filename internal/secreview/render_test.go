@@ -280,6 +280,30 @@ func TestReportSummaryEscapesPipe(t *testing.T) {
 	assert.Contains(t, md, `| shell \|\| and \| pipe |`)
 }
 
+func TestReportSummaryEscapesBackslashThenPipe(t *testing.T) {
+	// A literal `\|` in a title must escape the backslash too (`\\\|`), or
+	// GFM would treat the pipe as a live delimiter and split the row.
+	r := &Report{Findings: []Finding{{
+		ID: "S001", Severity: "high", Confidence: "confirmed",
+		Title: `a \| b`, Surface: "cli", Location: &Location{File: "x.go", StartLine: 1},
+	}}}
+	md := buildReport(r, time.Now())
+	assert.Contains(t, md, `a \\\| b`)
+}
+
+func TestAnnotationBodyEmptyDescription(t *testing.T) {
+	// A finding with no description must not leave a blank paragraph between
+	// the headline and the fix line.
+	r := &Report{Findings: []Finding{{
+		ID: "S001", Severity: "high", Title: "no desc",
+		Location: &Location{File: "a.go", StartLine: 1},
+	}}}
+	anns := buildAnnotations(r)
+	require.Len(t, anns, 1)
+	assert.Equal(t, "**[S001 · high] no desc**\n\n**Fix:** n/a", anns[0].Body)
+	assert.NotContains(t, anns[0].Body, "\n\n\n")
+}
+
 func TestRenderSARIFFileOnlyLocation(t *testing.T) {
 	// A finding whose primary location names a file but no startLine renders
 	// as that file's artifactLocation (no region) — NOT the repo-name
