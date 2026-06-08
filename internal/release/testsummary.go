@@ -409,16 +409,24 @@ func readModulePath(root string) (string, error) {
 // section: one row per pyramid layer with its function and case
 // counts, then a bold total row.
 func RenderTestSummaryMarkdown(c TestCounts) string {
+	totF := c.Functions[LayerUnit] + c.Functions[LayerIntegration] + c.Functions[LayerE2E]
+	totC := c.Cases[LayerUnit] + c.Cases[LayerIntegration] + c.Cases[LayerE2E]
 	var b strings.Builder
 	b.WriteString("## Test suite\n\n")
+	// Lead with a bold one-line headline so the counts read at a
+	// glance at the top of the job-summary panel, above the table.
+	fmt.Fprintf(&b, "**%s test functions** — %s unit · %s integration · %s end-to-end "+
+		"· **%s cases** including subtests\n\n",
+		thousands(totF),
+		thousands(c.Functions[LayerUnit]),
+		thousands(c.Functions[LayerIntegration]),
+		thousands(c.Functions[LayerE2E]),
+		thousands(totC))
 	b.WriteString("| Layer | Test functions | Test cases |\n")
 	b.WriteString("| --- | --: | --: |\n")
-	var totF, totC int
 	for _, layer := range testLayerOrder {
-		fn, cs := c.Functions[layer], c.Cases[layer]
-		totF += fn
-		totC += cs
-		fmt.Fprintf(&b, "| %s | %s | %s |\n", layerLabel(layer), thousands(fn), thousands(cs))
+		fmt.Fprintf(&b, "| %s | %s | %s |\n",
+			layerLabel(layer), thousands(c.Functions[layer]), thousands(c.Cases[layer]))
 	}
 	fmt.Fprintf(&b, "| **Total** | **%s** | **%s** |\n", thousands(totF), thousands(totC))
 	b.WriteString("\n*Test functions count top-level `func Test…`; " +

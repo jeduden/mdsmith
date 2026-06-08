@@ -301,6 +301,11 @@ func TestRenderTestSummaryMarkdown(t *testing.T) {
 	}
 	got := RenderTestSummaryMarkdown(c)
 	assert.Contains(t, got, "## Test suite")
+	// Bold one-line headline leads the panel, above the table.
+	assert.Contains(t, got,
+		"**8,231 test functions** — 7,919 unit · 28 integration · 284 end-to-end · **10,005 cases** including subtests")
+	assert.Less(t, strings.Index(got, "8,231 test functions"), strings.Index(got, "| Layer |"),
+		"headline appears above the table")
 	assert.Contains(t, got, "| Unit | 7,919 | 9,088 |")
 	assert.Contains(t, got, "| Integration | 28 | 629 |")
 	assert.Contains(t, got, "| End-to-end | 284 | 288 |")
