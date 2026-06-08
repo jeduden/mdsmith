@@ -3,7 +3,7 @@ id: 241
 title: Schema-per-file config under `.mdsmith/schemas/`
 status: "🔲"
 model: opus
-depends-on: [146, 208, 209]
+depends-on: [146, 156, 208, 209]
 summary: >-
   Add a top-level `schemas:` registry to
   `.mdsmith.yml`, mirrored at
@@ -39,7 +39,7 @@ Today a kind embeds its schema inline under
 `kinds.<name>.schema:` or points at a `proto.md`.
 Inline doesn't share; `proto.md` shares but uses
 a different matcher grammar. The registry
-shares AND uses the plan 146 matcher engine via
+shares AND uses the plan 156 matcher engine via
 [`schema.ParseInline`](../internal/schema/parse_inline.go).
 
 `docs/guides/conventions.md` does not exist; the
@@ -99,7 +99,7 @@ is a registry name, a map stays inline.
 # .mdsmith.yml
 schemas:                    # inline equivalent of
   rfc-v1:                   # .mdsmith/schemas/rfc-v1.yaml
-    filename: "RFC-*.md"
+    filename: "RFC-[0-9][0-9][0-9][0-9].md"
     sections:
       - heading: "Overview"
       - heading: "Decision"
@@ -131,24 +131,27 @@ Interactions:
 
 ### Mutual exclusion
 
-A named `schema:` resolves to an inline map
-before validation runs.
+A named `schema:` resolves to a map before
 [`validateKindSchemaSources`](../internal/config/validate.go)
-then rejects any kind with two schema sources,
-the same as today.
+runs, so a two-source kind is rejected as today.
+Every registry entry — referenced or not — is
+parsed by `schema.ParseInline` at load, so a typo
+in an unused schema still surfaces.
+`resolveNamedSchemas` collects all undeclared
+references into one error.
 
-### Sharing and provenance
+### Provenance
 
-Multi-kind composition per
+Composition per
 [plan 156](156_kind-schema-composition.md) is
-unchanged. Each kind adds one `schema-sources`
-entry (`inline` = resolved YAML). `schema.Compose`
-merges them.
+unchanged: each kind adds one `schema-sources`
+entry, merged by `schema.Compose`.
 
-`applyInlineSchemaSource` already takes a
-`sourcePath`. For a named reference it carries
-the schema file's path, so a violation's "go to
-schema" location points there.
+`applyInlineSchemaSource`'s `sourcePath` is the
+schema's home. It is the `.yaml` path for a file
+entry, `.mdsmith.yml` for an inline-registry
+entry, the kind's file for an inline-on-kind
+body. "Go to schema" lands there.
 
 ## ...
 
@@ -158,11 +161,11 @@ schema" location points there.
 
 Per
 [Go architecture patterns](../docs/development/architecture/go.md):
-no new package. Discovery lives in
-`internal/config`.
+no new package; the type change ripples from
+`internal/config` into `internal/kindsout`.
 
 1. **`internal/config`** (+ `internal/kindsout`):
-   add a `SchemaRef` type with `UnmarshalYAML`
+   add a `KindSchemaRef` type with `UnmarshalYAML`
    dispatching on `yaml.Node.Kind` (scalar →
    named ref, mapping → inline body). Replace
    `KindBody.Schema map[string]any` and route
@@ -192,7 +195,7 @@ no new package. Discovery lives in
    kind/convention merges and before
    `ValidateKinds`, call `mergeSchemaFiles` then
    `resolveNamedSchemas(cfg)`. The resolver
-   replaces each kind's named `SchemaRef` with
+   replaces each kind's named `KindSchemaRef` with
    the discovered body in place. Undeclared
    names error. Unit tests cover happy path,
    undeclared name, and the inline form
@@ -204,18 +207,17 @@ no new package. Discovery lives in
    `rules.required-structure.schema:` — or plus
    `inline-schema:` — then trips the existing
    pairwise checks with "pick one source".
-6. **`internal/config`**: thread the schema
-   file's path through
-   `applyInlineSchemaSource` as `sourcePath`
-   when the inline body came from a named
-   reference. Provenance test asserts the
-   `source` key on the schema-sources entry
-   carries `.mdsmith/schemas/<name>.yaml`.
+6. **`internal/config`**: thread each schema's
+   `sourcePath` through `applyInlineSchemaSource`.
+   Provenance tests assert the `source` key
+   carries `.mdsmith/schemas/<name>.yaml` for a
+   file entry and `.mdsmith.yml` for an
+   inline-registry entry.
 7. **`internal/integration`**: contract test
    covers directory layout, basename rule,
-   subdirectory/symlink rejection, both
-   dual-source rejections, and undeclared-name
-   rejection.
+   subdirectory/symlink rejection, the two
+   dual-source rejections, inline-vs-file and
+   cross-extension collisions, undeclared names.
 8. **`internal/integration`**: parallel
    fixtures — one kind defined inline, one via
    named YAML reference, same Markdown input —
@@ -243,10 +245,12 @@ no new package. Discovery lives in
     reference as a fourth source.
 13. **Docs — conventions guide**: add
     `docs/guides/conventions.md` with H2s for
-    declaring a convention inline, the
-    top-level `convention:` selector, layering
-    rules over a preset, and the "split into a
-    file" recipe. The catalog auto-includes it.
+    built-in vs user conventions, declaring one
+    inline, the `convention:` selector, the
+    flavor-must-agree rule, layering rules over
+    a preset, and the "split into a file"
+    recipe. `mdsmith fix` regenerates the
+    CLAUDE.md catalog to include it.
 14. **Docs — architecture boundaries**: add a
     row in [cross-system.md][cs] for
     `.mdsmith/schemas/`.
@@ -294,7 +298,7 @@ no new package. Discovery lives in
       reference `.mdsmith/schemas/`.
 - [ ] `docs/guides/conventions.md` covers the
       four H2s named in task 13.
-- [ ] Unit tests cover `SchemaRef.UnmarshalYAML`,
+- [ ] Unit tests cover `KindSchemaRef.UnmarshalYAML`,
       `discoverSchemas`, `mergeSchemaFiles`,
       and `resolveNamedSchemas`.
 - [ ] All tests pass: `go test ./...`
