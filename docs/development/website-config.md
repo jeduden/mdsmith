@@ -77,6 +77,18 @@ generated `channels.yaml` data file. It no longer reads the
 `/development/release-channels/` pages. The footer links
 contributors to the GitHub `docs/development` tree.
 
+## `disableKinds`
+
+`disableKinds = ["taxonomy", "term"]` switches off Hugo's
+auto-generated `/categories/` and `/tags/` listing pages.
+No `.md` file under `docs/` declares either taxonomy.
+Without the setting Hugo would still emit the empty index
+URLs. They would all share the site-level
+`<meta name="description">`. That is the duplicated SEO
+snippet that hit `mdsmith.dev` before this setting landed.
+Re-enable the kinds only when a published doc starts using
+either taxonomy.
+
 ## `[markup.goldmark.renderer]` `unsafe = false`
 
 Synced docs carry no raw HTML. `sync-docs` strips
