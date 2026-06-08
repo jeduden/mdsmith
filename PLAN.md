@@ -163,7 +163,7 @@ footer: |
 | 235 | ✅     | sonnet | [Playwright end-to-end tests for the website, runnable by CI and agents](plan/235_playwright-site-e2e.md)                               |
 | 236 | 🔲     | sonnet | [Consolidate duplicated table-parse helpers in tablereadability](plan/236_arch-fix-tablereadability-dup.md)                             |
 | 236 | 🔲     | opus   | [cuelite phase 0 — package, façade, and differential harness](plan/236_cuelite-package-harness.md)                                      |
-| 237 | 🔳     | haiku  | [Unit tests for include-rule private validation helpers](plan/237_arch-fix-include-helper-tests.md)                                     |
+| 237 | ✅     | haiku  | [Unit tests for include-rule private validation helpers](plan/237_arch-fix-include-helper-tests.md)                                     |
 | 237 | 🔲     | sonnet | [cuelite phase 1 — surface D (placeholder paths)](plan/237_cuelite-surface-d.md)                                                        |
 | 238 | 🔲     | opus   | [cuelite phase 2 — surfaces A + B (schema, query)](plan/238_cuelite-surfaces-ab.md)                                                     |
 | 239 | 🔲     | opus   | [cuelite phase 3 — surface C (row-expr evaluator)](plan/239_cuelite-surface-c.md)                                                       |
