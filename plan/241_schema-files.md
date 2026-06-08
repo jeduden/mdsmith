@@ -21,14 +21,15 @@ summary: >-
 
 ## Goal
 
-Inline schemas bloat `.mdsmith.yml` the way
-`kinds:` and `conventions:` once did. This plan
-splits each schema into its own
-`.mdsmith/schemas/<name>.yaml` — a top-level
-`schemas:` registry mirrored to a folder, the
-208/209 pattern. A kind references one by name
-(`schema: rfc-v1`); one schema can drive several
-kinds.
+Plans 208 and 209 let a crowded `kinds:` or
+`conventions:` block move into one file per entry
+under `.mdsmith/kinds/` and `.mdsmith/conventions/`.
+Inline schemas have the same problem and no such
+escape. This plan adds a top-level `schemas:`
+registry mirrored at `.mdsmith/schemas/<name>.yaml`,
+so each schema moves to its own file. A kind
+references one by name (`schema: rfc-v1`); one
+schema can drive several kinds.
 
 ## ...
 
@@ -135,11 +136,10 @@ Interactions:
 A named `schema:` resolves to a map before
 [`validateKindSchemaSources`](../internal/config/validate.go)
 runs, so a two-source kind is rejected as today.
-Every registry entry — referenced or not — is
-parsed by `schema.ParseInline` at load, so a typo
-in an unused schema still surfaces.
-`resolveNamedSchemas` collects all undeclared
-references into one error.
+A referenced schema's body is grammar-checked
+when its kind validates — the same point an
+inline schema is checked today. An undeclared
+name errors at load.
 
 ### Provenance
 
@@ -148,11 +148,13 @@ Composition per
 unchanged: each kind adds one `schema-sources`
 entry, merged by `schema.Compose`.
 
-`applyInlineSchemaSource`'s `sourcePath` is the
-schema's home. It is the `.yaml` path for a file
-entry, `.mdsmith.yml` for an inline-registry
-entry, the kind's file for an inline-on-kind
-body. "Go to schema" lands there.
+`KindSchemaRef` carries the schema's own
+`SourcePath`, set at resolution. It is the `.yaml`
+path for a file entry, `.mdsmith.yml` for an
+inline-registry entry, empty for an inline-on-kind
+body (the kind's file then applies).
+`applyInlineSchemaSource` threads it, so "go to
+schema" lands on the schema, not the kind.
 
 ## ...
 
@@ -168,9 +170,11 @@ no new package; the type change ripples from
 1. **`internal/config`** (+ `internal/kindsout`):
    add a `KindSchemaRef` type with `UnmarshalYAML`
    dispatching on `yaml.Node.Kind` (scalar →
-   named ref, mapping → inline body). Replace
-   `KindBody.Schema map[string]any` and route
-   every map reader through a `Map()` accessor:
+   named ref, mapping → inline body) plus a
+   `SourcePath` field for the schema's own origin.
+   Replace `KindBody.Schema map[string]any` and
+   route every map reader through a `Map()`
+   accessor:
    `resolvedInlineSchema`, `extendsChainSchemas`,
    `validateKindSchemaSources`,
    `effectiveExplicit`, `resolveLayerInlineSchema`,
@@ -197,10 +201,10 @@ no new package; the type change ripples from
    `ValidateKinds`, call `mergeSchemaFiles` then
    `resolveNamedSchemas(cfg)`. The resolver
    replaces each kind's named `KindSchemaRef` with
-   the discovered body in place. Undeclared
-   names error. Unit tests cover happy path,
-   undeclared name, and the inline form
-   passing through.
+   the discovered body in place and sets its
+   `SourcePath`. An undeclared name errors. Unit
+   tests cover happy path, undeclared name, and
+   the inline form passing through.
 5. **`internal/config`**: adapt
    `validateKindSchemaSources` to read
    `body.Schema.Map()` (filled by resolution).
@@ -208,8 +212,8 @@ no new package; the type change ripples from
    `rules.required-structure.schema:` — or plus
    `inline-schema:` — then trips the existing
    pairwise checks with "pick one source".
-6. **`internal/config`**: thread each schema's
-   `sourcePath` through `applyInlineSchemaSource`.
+6. **`internal/config`**: thread the ref's
+   `SourcePath` through `applyInlineSchemaSource`.
    Provenance tests assert the `source` key
    carries `.mdsmith/schemas/<name>.yaml` for a
    file entry and `.mdsmith.yml` for an
