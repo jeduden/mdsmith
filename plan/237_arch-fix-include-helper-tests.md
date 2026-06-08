@@ -1,7 +1,7 @@
 ---
 id: 237
 title: Unit tests for include-rule private validation helpers
-status: "🔲"
+status: "🔳"
 summary: >-
   Add dedicated unit tests for the four private helpers
   extracted from validateIncludeDirective in plan 232/233.
