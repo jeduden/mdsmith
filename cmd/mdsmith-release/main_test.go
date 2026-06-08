@@ -110,6 +110,7 @@ func TestSubcommandHelpExitsZero(t *testing.T) {
 		"render-scoop-manifest",
 		"render-winget-manifest",
 		"pull-site-assets",
+		"test-summary",
 		"bench",
 		"bench-check",
 	} {
@@ -130,6 +131,7 @@ func TestSubcommandRejectsUnknownFlag(t *testing.T) {
 		"sync-channels",
 		"render-scoop-manifest",
 		"render-winget-manifest",
+		"test-summary",
 	} {
 		assert.Equal(t, 2, run([]string{sub, "--bogus"}), "%s --bogus", sub)
 	}

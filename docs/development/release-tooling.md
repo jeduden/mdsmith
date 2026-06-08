@@ -64,6 +64,7 @@ setup step.
 | `check-secret-rotations`     | `secret-rotation-reminder.yml`                                    |
 | `record-rotation <t> <d>`    | `record-secret-rotation.yml`                                      |
 | `merge-coverage -o <o> <p>`  | `ci.yml` test job                                                 |
+| `test-summary`               | `ci.yml` test job                                                 |
 | `bench [workdir]`            | `benchmark.yml` record; `release.yml` benchmark-publish; `run.sh` |
 | `bench-check <base> <fresh>` | `release.yml` benchmark-publish + bench-regression-gate           |
 | `pull-site-assets`           | `pages.yml` deploy job                                            |

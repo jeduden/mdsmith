@@ -503,9 +503,19 @@ jobs:
       - name: Install mdsmith
         run: go install ./cmd/mdsmith
       - name: Run tests with coverage
+        # -json streams structured events into `mdsmith-release
+        # test-summary`, which tallies the unit/integration/e2e test
+        # counts into the job summary and echoes a terse (non -v) log
+        # to the console. set -o pipefail keeps a `go test` failure
+        # fatal despite the pipe (it is also the GitHub default shell's
+        # behaviour). -coverprofile still writes unit.cov for the
+        # Codecov upload below.
         run: |
+          set -o pipefail
           mkdir -p "$GITHUB_WORKSPACE/e2e-cover"
-          E2E_COVERDIR="$GITHUB_WORKSPACE/e2e-cover" go test -covermode=atomic -coverprofile=unit.cov ./...
+          E2E_COVERDIR="$GITHUB_WORKSPACE/e2e-cover" \
+            go test -json -covermode=atomic -coverprofile=unit.cov ./... \
+            | go run ./cmd/mdsmith-release test-summary
       - name: Merge coverage profiles
         run: |
           e2e_profile="$GITHUB_WORKSPACE/e2e-cover/e2e_coverage.txt"

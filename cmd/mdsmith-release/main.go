@@ -22,6 +22,7 @@
 //	mdsmith-release check-secret-rotations
 //	mdsmith-release record-rotation <ENTRY_TITLE> <YYYY-MM-DD>
 //	mdsmith-release merge-coverage -o <out> <profile>...
+//	mdsmith-release test-summary
 //	mdsmith-release bench [workdir]
 //	mdsmith-release pull-site-assets
 //	mdsmith-release sync-messaging [--check]
@@ -65,6 +66,7 @@ Commands:
   check-secret-rotations          Open GitHub issues for secrets due for rotation.
   record-rotation <title> <date>  Update lastRotated in a per-secret rotation file.
   merge-coverage -o <out> <p>...  Merge coverage profiles by summing hit counts.
+  test-summary                    Tally unit/integration/e2e tests from a go test -json stream on stdin.
   bench [workdir]                 Run the pinned cross-tool benchmark; promote JSON + fragments.
   bench-check <base> <fresh>      Fail if mdsmith regressed vs mado between two benchmark snapshots.
   pull-site-assets                Fetch the published demo GIF for the site build.
@@ -135,6 +137,8 @@ func dispatch(cmd, root string, rest []string) int {
 		return runRecordRotation(root, rest)
 	case "merge-coverage":
 		return runMergeCoverage(root, rest)
+	case "test-summary":
+		return runTestSummary(root, rest)
 	case "pull-site-assets":
 		return runPullSiteAssets(root, rest)
 	default:
