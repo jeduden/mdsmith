@@ -99,10 +99,8 @@ func TestValidateHeadingLevel(t *testing.T) {
 	})
 }
 
-// TestValidateExtractParam covers all branches:
-// no extract param, empty extract value, conflict with strip-frontmatter,
-// conflict with heading-level, conflict with heading-offset,
-// conflict with wrap, conflict with source-dir, valid extract value.
+// TestValidateExtractParam covers the absent-param, empty-value, and
+// valid-value branches of validateExtractParam.
 func TestValidateExtractParam(t *testing.T) {
 	t.Run("no extract param returns nil", func(t *testing.T) {
 		diags := validateExtractParam("doc.md", 1, map[string]string{})
@@ -117,6 +115,19 @@ func TestValidateExtractParam(t *testing.T) {
 		assert.Contains(t, diags[0].Message, "empty")
 	})
 
+	t.Run("valid extract with only file param returns nil", func(t *testing.T) {
+		params := map[string]string{
+			"extract": "tagline",
+			"file":    "other.md",
+		}
+		diags := validateExtractParam("doc.md", 1, params)
+		assert.Nil(t, diags)
+	})
+}
+
+// TestValidateExtractParam_Conflicts covers the four incompatible-parameter
+// branches: strip-frontmatter, heading-level, heading-offset, wrap, source-dir.
+func TestValidateExtractParam_Conflicts(t *testing.T) {
 	t.Run("extract conflicts with strip-frontmatter", func(t *testing.T) {
 		params := map[string]string{
 			"extract":           "tagline",
@@ -170,15 +181,6 @@ func TestValidateExtractParam(t *testing.T) {
 		require.Len(t, diags, 1)
 		assert.Contains(t, diags[0].Message, "extract")
 		assert.Contains(t, diags[0].Message, "source-dir")
-	})
-
-	t.Run("valid extract with only file param returns nil", func(t *testing.T) {
-		params := map[string]string{
-			"extract": "tagline",
-			"file":    "other.md",
-		}
-		diags := validateExtractParam("doc.md", 1, params)
-		assert.Nil(t, diags)
 	})
 }
 
