@@ -1,0 +1,22 @@
+{
+  "_comment": "NEGATIVE fixture: the over-corrected/complacent failure mode for pr-regression-introduces-exec. It sees the exec sink but rates it info, so grade.py MUST fail it (require_finding wants >= high at the sink file). run.py asserts this failure — proving the grader has teeth.",
+  "target": {
+    "mode": "pr",
+    "repo": "jeduden/mdsmith",
+    "ref": "regressions/build-exec.patch @ b72285d",
+    "scope": "build rule diff"
+  },
+  "findings": [
+    {
+      "id": "S001",
+      "title": "build generateBody runs a command; probably fine",
+      "severity": "info",
+      "confidence": "tentative",
+      "surface": "directive",
+      "location": {"file": "internal/rules/build/rule.go", "startLine": 270},
+      "description": "There is an exec.Command here, but recipes are config-sourced so it is likely safe.",
+      "impact": "Low.",
+      "remediation": "Maybe add a comment."
+    }
+  ]
+}

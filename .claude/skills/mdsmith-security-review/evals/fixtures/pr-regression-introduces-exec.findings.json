@@ -1,0 +1,25 @@
+{
+  "target": {
+    "mode": "pr",
+    "repo": "jeduden/mdsmith",
+    "ref": "regressions/build-exec.patch @ b72285d",
+    "scope": "build rule diff"
+  },
+  "coverage": "Reviewed the diff and traced the introduced sink from Generate -> Fix.",
+  "findings": [
+    {
+      "id": "S001",
+      "title": "build generateBody executes a document-controlled shell command (RCE)",
+      "severity": "critical",
+      "confidence": "confirmed",
+      "surface": "directive",
+      "cwe": "CWE-78",
+      "location": {"file": "internal/rules/build/rule.go", "startLine": 270, "endLine": 273},
+      "related_locations": [{"file": "internal/rules/build/rule.go", "startLine": 123}],
+      "description": "The patch adds exec.Command(\"sh\", \"-c\", \"<recipe> <output>\") in generateBody. recipeName and output are <?build?> directive params, i.e. document-sourced. generateBody is reached from Generate -> Fix, so `mdsmith fix` (and editor fix-on-save and the merge driver) runs attacker-controlled shell on a hostile repo with zero interaction.",
+      "impact": "Remote code execution when a victim opens/fixes a hostile repo, or when such a repo is merged.",
+      "repro": "A repo with a <?build?> directive whose output param is `x; touch PWNED`; running `mdsmith fix` executes it.",
+      "remediation": "Revert the patch. mdsmith must never execute recipes; the command stays in external tooling (the §0 defense)."
+    }
+  ]
+}

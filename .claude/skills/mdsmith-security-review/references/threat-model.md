@@ -171,7 +171,7 @@ Verify each still holds and find the gaps:
   through before trust?
 - **Binary resolution**: with `mdsmith.path` restricted, confirm a
   workspace `.vscode/settings.json` truly cannot redirect the binary
-  pre-trust. Check how the path is read (`runner.ts`, `binary.ts`).
+  pre-trust. Check how the path is read (`binary.ts`, `wiring.ts`).
 - **Argument construction**: `spawn` with an argv array vs
   `exec`/`shell: true` with interpolated paths? Flag any
   shelling-out.

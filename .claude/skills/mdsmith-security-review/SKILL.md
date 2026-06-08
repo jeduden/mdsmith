@@ -92,7 +92,7 @@ This skill runs in two modes. Decide first; if unclear, ask.
    script — do not hand-write SARIF:
 
    ```bash
-   python scripts/render_findings.py findings.json --out-dir <dir>
+   go run ./cmd/mdsmith-secreview render findings.json --out-dir <dir>
    ```
 
    It writes `security-review.md`, `findings.sarif`, and

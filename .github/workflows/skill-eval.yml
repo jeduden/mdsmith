@@ -1,0 +1,29 @@
+name: skill eval
+
+# Deterministic eval of the mdsmith-security-review skill, pinned to
+# cases.yaml's baseline_ref. Runs the Go eval tests in strict mode: it
+# validates cases.yaml, renders every fixture and checks the
+# severity -> SARIF mapping, grades the goldens and rejects the
+# complacent negative, and verifies regressions/build-exec.patch still
+# applies AND compiles at baseline_ref. See internal/secreview and
+# .claude/skills/mdsmith-security-review/evals.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  skill-eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # baseline_ref must be present for the patch check
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+      - run: go test ./internal/secreview/... ./cmd/mdsmith-secreview/...
+        env:
+          SECREVIEW_STRICT: "1"

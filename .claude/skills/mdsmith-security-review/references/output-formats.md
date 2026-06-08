@@ -1,7 +1,7 @@
 # Output Formats
 
-All three outputs are rendered from one **`findings.json`** by
-`scripts/render_findings.py`. Author that one file; never
+All three outputs are rendered from one **`findings.json`** by the
+`mdsmith-secreview render` command. Author that one file; never
 hand-write SARIF.
 
 ## The finding object
@@ -16,6 +16,7 @@ hand-write SARIF.
     "ref": "abc1234",                     // commit / PR head, for traceability
     "scope": "VS Code extension + LSP"    // free text
   },
+  "coverage": "what was and wasn't reviewed; any in-scope area left inconclusive. Optional top-level string; renders as the report's Coverage note. Omit it and the note falls back to a placeholder.",
   "findings": [
     {
       "id": "S001",                       // stable within this review; S001, S002, ...

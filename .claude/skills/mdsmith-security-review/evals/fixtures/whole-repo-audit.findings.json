@@ -1,0 +1,23 @@
+{
+  "target": {
+    "mode": "audit",
+    "repo": "jeduden/mdsmith",
+    "ref": "b72285df2f6b422dd2eb31058884757f13acc78c",
+    "scope": "whole repo"
+  },
+  "coverage": "Walked the §0 defenses and every surface in threat-model.md. LSP and Obsidian command handlers were read but not exhaustively traced; flagged as residual rather than implied clean.",
+  "findings": [
+    {
+      "id": "S001",
+      "title": "MDS040 is advisory-only; keep docs from implying a runtime sandbox",
+      "severity": "info",
+      "confidence": "confirmed",
+      "surface": "directive",
+      "cwe": "CWE-1059",
+      "location": {"file": "internal/rules/recipesafety/rule.go", "startLine": 1},
+      "description": "MDS040 lints recipe strings at check time; it does not sandbox execution. mdsmith never executes recipes, so this is a documentation-clarity note, not a defect.",
+      "impact": "None directly; the only risk is a reader assuming runtime protection that mdsmith does not provide.",
+      "remediation": "Keep docs explicit that the guarantee ends at the external runner."
+    }
+  ]
+}

@@ -198,6 +198,9 @@ jobs:
   mdsmith:
     uses: ./.github/workflows/mdsmith-check.yml
 
+  skill-eval:
+    uses: ./.github/workflows/skill-eval.yml
+
   mdsmith-fixed-version:
     runs-on: ubuntu-latest
     steps:

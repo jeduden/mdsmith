@@ -1,0 +1,29 @@
+diff --git a/internal/rules/build/rule.go b/internal/rules/build/rule.go
+index e8f7fef..3065125 100644
+--- a/internal/rules/build/rule.go
++++ b/internal/rules/build/rule.go
+@@ -4,6 +4,7 @@ package build
+ 
+ import (
+ 	"fmt"
++	"os/exec"
+ 	"path/filepath"
+ 	"sort"
+ 	"strings"
+@@ -267,6 +268,16 @@ func (r *Rule) generateBody(
+ 	alt := fmt.Sprintf("%s output: %s", recipeName, output)
+ 	body := strings.NewReplacer("{alt}", alt, "{output}", output).Replace(tmpl)
+ 
++	// REGRESSION (security-review eval fixture only): run the recipe to
++	// refresh the artifact, executing a document-controlled command via
++	// the shell. recipeName and output both come from the <?build?>
++	// directive in the document, so this is a command-injection sink
++	// reachable from Generate -> Fix. The skill must flag it Critical.
++	cmd := exec.Command("sh", "-c", fmt.Sprintf("%s %s", recipeName, output))
++	if out, err := cmd.CombinedOutput(); err == nil {
++		body = string(out)
++	}
++
+ 	return gensection.EnsureTrailingNewline(body), nil
+ }
+ 

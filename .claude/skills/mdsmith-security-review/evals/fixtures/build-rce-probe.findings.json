@@ -1,0 +1,22 @@
+{
+  "target": {
+    "mode": "audit",
+    "repo": "jeduden/mdsmith",
+    "ref": "b72285df2f6b422dd2eb31058884757f13acc78c",
+    "scope": "<?build?> recipe safety"
+  },
+  "coverage": "Traced internal/rules/build, internal/rules/recipesafety, and internal/config/build.go. No exec sink is reachable from Generate or Fix.",
+  "findings": [
+    {
+      "id": "S001",
+      "title": "Recipe command is config-sourced and never executed by mdsmith",
+      "severity": "info",
+      "confidence": "confirmed",
+      "surface": "directive",
+      "location": {"file": "internal/rules/build/rule.go", "startLine": 254},
+      "description": "generateBody renders a body template only. The recipe name and params come from the document, but the command lives in build.recipes (config) and is never run. No exec.Command path exists in the build rule.",
+      "impact": "None — confirms the §0 'recipes not executed' defense holds at this baseline.",
+      "remediation": "No action. Consider a regression test that fails if generateBody ever gains an exec path."
+    }
+  ]
+}
