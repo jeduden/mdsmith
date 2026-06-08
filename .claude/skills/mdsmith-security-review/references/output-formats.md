@@ -70,8 +70,8 @@ Each finding becomes a `result` with a `ruleId` (its `id`), a
 message, and a physical location (file + region). Each distinct
 `id` becomes a `rule` in `tool.driver.rules`. That rule carries the
 title, the CWE (as a `properties.tags` entry), and the
-`security-severity`. `confidence` is recorded in result
-`properties`.
+`security-severity`. `confidence` and `severity` are recorded in
+result `properties`.
 
 ## Output 2 (human report): `security-review.md`
 
@@ -98,7 +98,7 @@ line:
 [
   {"path": "editors/vscode/src/extension.ts", "line": 142, "side": "RIGHT",
    "severity": "critical", "id": "S001",
-   "body": "**[S001 · critical] <title>**\n\n<one-paragraph description + remediation>"}
+   "body": "**[S001 · critical] <title>**\n\n<description>\n\n**Fix:** <remediation>"}
 ]
 ```
 

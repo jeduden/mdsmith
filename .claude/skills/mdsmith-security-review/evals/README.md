@@ -27,7 +27,7 @@ The eval is a set of Go tests in `internal/secreview`. Run them in
 strict mode from the repo root:
 
 ```bash
-SECREVIEW_STRICT=1 go test ./internal/secreview/...
+SECREVIEW_STRICT=1 go test ./internal/secreview/... ./cmd/mdsmith-secreview/...
 ```
 
 They run these checks, all pinned to `baseline_ref`:
