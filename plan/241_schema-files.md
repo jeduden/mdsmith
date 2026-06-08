@@ -23,10 +23,12 @@ summary: >-
 ## Goal
 
 A user with many kinds outgrows inline schemas.
-This plan adds `.mdsmith/schemas/`: one file per
-schema, referenced from any kind by name
-(`schema: rfc-v1`). The same schema can then drive
-multiple kinds.
+This plan adds a top-level `schemas:` registry to
+`.mdsmith.yml`, mirrored at
+`.mdsmith/schemas/<name>.yaml` — the same pattern
+plans 208/209 set for `kinds:` and `conventions:`.
+Kinds reference a schema by name
+(`schema: rfc-v1`).
 
 ## ...
 
@@ -36,25 +38,21 @@ multiple kinds.
 
 Today a kind embeds its schema inline under
 `kinds.<name>.schema:` or points at a `proto.md`.
-Inline does not share; `proto.md` shares but uses
-a different matcher grammar. A YAML file under
-`.mdsmith/schemas/` shares AND uses the plan 146
-matcher engine via
+Inline doesn't share; `proto.md` shares but uses
+a different matcher grammar. The registry
+shares AND uses the plan 146 matcher engine via
 [`schema.ParseInline`](../internal/schema/parse_inline.go).
 
 `docs/guides/conventions.md` does not exist; the
-plan adds it as a side deliverable parallel to
-[`file-kinds.md`](../docs/guides/file-kinds.md).
+plan adds it as a side deliverable.
 
 ## Non-Goals
 
 - Migrating `proto.md` to YAML.
-- Removing inline `schema:` maps.
+- Removing inline `schema:` maps on kinds.
 - Schema-file-level `extends:`.
 - Adopting `.mdsmith/schemas/` in this repo
-  (deferred until the pinned mdsmith version
-  ships the feature).
-- Auto-binding by basename.
+  (deferred until the pinned mdsmith ships it).
 
 ## Design
 
@@ -76,69 +74,61 @@ Subdirectories and symlinks are rejected. The
 
 ### Schema file shape
 
-The body parses through `schema.ParseInline`.
-Allowed top-level keys (anything else errors):
-`frontmatter`, `filename`, `closed`, `sections`,
-`cross-references`, `acronyms`, and `index`.
+A file `.mdsmith/schemas/<name>.yaml` is the
+per-file split of an inline `schemas.<name>:`
+block. The body parses through
+`schema.ParseInline`. Top-level keys allowed:
 
-```yaml
-# .mdsmith/schemas/rfc-v1.yaml
-filename: "RFC-[0-9][0-9][0-9][0-9].md"
-frontmatter:
-  id: '=~"^RFC-[0-9]{4}$"'
-  status: '"draft" | "ratified" | "deprecated"'
-closed: true
-sections:
-  - heading: null
-  - heading: "Overview"
-  - heading: "Decision"
-  - heading: "References"
-```
+- `frontmatter`
+- `filename`
+- `closed`
+- `sections`
+- `cross-references`
+- `acronyms`
+- `index`
 
-The schema's name is the basename minus
-extension, matching `[a-z][a-z0-9-]*` — the same
-rule kind and convention files carry.
+The basename is the schema's name, matching
+`[a-z][a-z0-9-]*` — same rule kind and convention
+files carry.
 
 ### Referencing from a kind
 
-A kind references a YAML schema file by name
-through the existing `schema:` key — its value
-becomes polymorphic:
+A kind's `schema:` becomes polymorphic: a string
+is a registry name, a map stays inline.
 
 ```yaml
+# .mdsmith.yml
+schemas:                    # inline equivalent of
+  rfc-v1:                   # .mdsmith/schemas/rfc-v1.yaml
+    filename: "RFC-*.md"
+    sections:
+      - heading: "Overview"
+      - heading: "Decision"
+
 kinds:
   rfc:
-    schema: rfc-v1            # resolves .mdsmith/schemas/rfc-v1.yaml
+    schema: rfc-v1          # registry reference
   rfc-internal:
-    schema: rfc-v1            # one schema drives both kinds
+    schema: rfc-v1          # one schema drives both kinds
   draft:
-    schema:                   # inline form (unchanged)
+    schema:                 # inline body still allowed
       filename: "DRAFT-*.md"
 ```
 
-The string form looks the schema up by name.
-The map form keeps its inline meaning. The
-merge layer resolves the named reference at
-config-load time. The resolved body threads
-through the same `schema-sources` plumbing
-inline schemas use today.
-
-An undeclared name errors, naming the kind and
-the missing schema.
+The merge layer resolves the registry reference
+at load time so the rule sees one inline body.
+An undeclared name errors. A name declared both
+inline under `schemas:` AND as a file errors,
+naming both — same rule as kinds and conventions.
 
 Interactions:
 
-- **`extends:`** — name references resolve to
+- **`extends:`** — registry refs resolve to
   bodies **before** `ResolveKindInlineSchema`
-  walks the chain, so parent and child schemas
-  merge via the plan 135 semantics either way.
+  walks the chain.
 - **`path-pattern:`** — runs independently from
   the resolved schema's `filename:`. Both fire
-  on a mismatch (unchanged from inline).
-- **Namespace** — schema names live in a flat
-  registry under `.mdsmith/schemas/`. A `proto.md`
-  path under `rules.required-structure.schema:`
-  is a separate source type.
+  on a mismatch.
 
 ### Mutual exclusion
 
@@ -192,10 +182,13 @@ no new package. Discovery lives in
    `[a-z][a-z0-9-]*`, no subdirs, no symlinks,
    no `.yaml`/`.yml` duplicates, no unknown
    top-level keys). Unit test per rejection.
-3. **`internal/config`**: add `Schemas
-   map[string]map[string]any` on `Config`.
-   `mergeSchemaFiles(cfg, cfgPath)` populates
-   it. `ParseBytes` skips disk discovery.
+3. **`internal/config`**: add top-level
+   `Schemas map[string]map[string]any` on
+   `Config`, populated by YAML unmarshal of
+   inline `schemas:` AND by `mergeSchemaFiles`.
+   An inline-vs-file name collision errors,
+   matching kinds/conventions. `ParseBytes`
+   skips disk discovery.
 4. **`internal/config`**: in `Load`, after the
    kind/convention merges and before
    `ValidateKinds`, call `mergeSchemaFiles` then
@@ -283,7 +276,9 @@ no new package. Discovery lives in
       message: basename outside
       `[a-z][a-z0-9-]*`, file in a subdirectory,
       symlink, duplicate basename across
-      `.yaml`/`.yml`, unknown top-level key.
+      `.yaml`/`.yml`, unknown top-level key,
+      name declared inline under `schemas:` AND
+      as a file.
 - [ ] A kind that sets a named `schema:` and
       `rules.required-structure.schema:` errors;
       same for named `schema:` and
