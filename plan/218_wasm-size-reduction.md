@@ -1,93 +1,291 @@
 ---
 id: 218
-title: WASM size reduction — CUE-free engine path and tinygo support
+title: In-house CUE-subset engine for WASM size and tinygo
 status: "🔲"
 model: opus
 summary: >-
-  Bring the `cmd/mdsmith-wasm` artifact under the ≤ 18 MB (standard
-  Go) and ≤ 8 MB (tinygo) budgets plan 215 set but could not reach.
-  The engine pulls in CUE (95 packages) plus protobuf via
-  `internal/schema`, `internal/fieldinterp`, and `internal/query`; a
-  CUE-free schema/interpolation path and a tinygo-compatible
-  `internal/lint` runcache are the two levers.
+  Replace the cuelang.org/go dependency with a small, pure-Go,
+  stdlib-only engine implementing the exact CUE subset mdsmith
+  uses — schema constraints (MDS020), `query`/`where:` filters,
+  `{field}` placeholder paths, and catalog `row-expr` templates —
+  with identical syntax and semantics. The package lands first as
+  a CUE-backed façade, is adopted across mdsmith, then flipped to
+  the in-house engine surface by surface, proven by differential
+  tests against CUE. Drops ~95 packages plus bignum and protobuf,
+  unblocks tinygo, brings the WASM artifact under the plan-215
+  budgets, and removes per-check JSON round-trips and per-context
+  value plumbing from the hot path. Ships as a public,
+  benchmarked Go package. Split into phase plans 236–240.
 depends-on: [215]
 ---
-# WASM size reduction — CUE-free engine path and tinygo support
+# In-house CUE-subset engine for WASM size and tinygo
 
 ## Goal
 
-Shrink the mdsmith WebAssembly artifact to the plan-215 size
-targets: ≤ 18 MB standard-Go and ≤ 8 MB tinygo. It is ~38 MB today
-(8.2 MB gzipped). A smaller bundle lets the
-[Obsidian plugin (plan 217)](217_obsidian-plugin.md) run on mobile.
+Drop `cuelang.org/go`. Replace it with a small in-house
+engine: pure Go, standard library only. It covers the exact
+CUE subset mdsmith uses, with the same syntax and semantics.
+Four payoffs follow:
+
+- the dependency leaves `go.mod`;
+- the WASM artifact fits the plan-215 budgets;
+- tinygo can compile the engine;
+- the schema hot path loses a JSON round-trip per check.
 
 ## Background
 
-[Plan 215](215_engine-api-wasm.md) delivered the public engine API
-and a working standard-Go WASM build. But that artifact runs ~2×
-over budget. And tinygo cannot compile the engine at all. Two root
-causes, both diagnosed during plan 215:
+mdsmith pulls in all of CUE for a tiny, fixed API. The cost
+is `cuelang.org/go v0.16.1`: about 95 packages, plus
+`cockroachdb/apd` (bignum) and protobuf. Yet only **7
+non-test files** import it, across four sub-packages (`cue`,
+`cue/cuecontext`, `cue/parser`, `cue/errors`). Nothing uses
+`cue/ast`, `cue/format`, `cue/load`, the module loader, or
+user-facing `import`/`package`/`#def` syntax.
 
-- **CUE + protobuf bulk.** `internal/schema` (MDS020 file-schema
-  validation), `internal/fieldinterp` (catalog/include field
-  interpolation), and `internal/query` pull in CUE's ~95 packages
-  plus protobuf. This is the dominant size cost and cannot be
-  build-tagged out without disabling those features.
-- **tinygo incompatibility.** tinygo's standard library omits
-  `sync.Map.CompareAndDelete`, used by
-  [`internal/lint/runcache.go`](../internal/lint/runcache.go), and
-  CUE's heavy reflection blocks compilation further.
+The API surface in use is small: construct a value
+(`CompileString`, `CompileBytes`), unify and validate it
+(`Unify`, `Validate(Concrete(true))`), and read it
+(`LookupPath`, `String`, `Decode`, `Exists`, `Fields`). Paths
+use `ParsePath`. Diagnostics use `errors.Error.Path`. The
+façade below mirrors exactly this set.
 
-Plan 215 guards the artifact at its real size (≤ 42 MiB raw /
-≤ 9 MiB gzipped) so it cannot grow silently; this plan attacks the
-budget itself.
+CUE is used on exactly four surfaces.
+
+**A. Schema constraints (MDS020).**
+[internal/schema](../internal/schema/validate.go) and
+[requiredstructure](../internal/rules/requiredstructure/rule.go)
+compile a per-key constraint struct from the `frontmatter:`
+values, unify it with the document's front matter, and check
+`Concrete(true)`. The features used: the type atoms (`string
+int float number bool bytes null _`), `=~` regex, `&`, `|`,
+the bounds `>= <= > < !=`, the `*` default, trailing `?`
+optional keys, struct literals with `close()`, lists
+(`[...T]`, `[_, ...T]`), `len()`, and `strings.MinRunes`.
+
+**B. `query` / catalog `where:`.**
+[internal/query](../internal/query/query.go) wraps the
+expression in `{...}`. It requires every referenced leaf path
+to **exist**, because CUE structs are open. Then it unifies
+and checks concreteness. This is a strict subset of A.
+
+**C. Catalog `row-expr` templates.**
+[internal/cuetemplate](../internal/cuetemplate/cuetemplate.go)
+evaluates a CUE *expression returning a string*: string
+interpolation `\(x)`, list comprehensions, the `[if c {a}, if
+!c {b}][0]` ternary idiom, field selection, and
+`strings.Join`. This is the richest surface, but the
+narrowest in real use.
+
+**D. Placeholder paths.**
+[internal/fieldinterp](../internal/fieldinterp/fieldinterp.go)
+uses only `cue.ParsePath`, to parse `{a.b.c}` and
+`{"my-key".sub}`. Resolution is already hand-rolled.
+
+The seven field-type shortcuts in
+[cue/types/types.cue](../cue/types/types.cue) are one-liners:
+six `=~` regexes and one `string & !=""`. They are read as
+text, not imported as CUE.
+
+Why this matters now: the
+[engine-api page](../docs/background/concepts/engine-api.md)
+names CUE as the dominant WASM cost (~40 MB raw / 8.6 MB
+gzipped). It also blocks tinygo. mdsmith needs only
+int64/float64 bounds and RE2 regex. Go's `regexp` backs `=~`.
+So none of CUE's lattice machinery is required.
+
+### Strategy: one engine, adopted then flipped
+
+One engine everywhere beats a build-tagged, wasm-only subset.
+It keeps one code path, drops the dependency on every target,
+and speeds the native CLI and LSP. Getting there safely splits
+two risks: moving call sites, and engine correctness.
+
+So `cue/cuelite` lands first as a **thin wrapper over CUE**.
+Every call site moves onto it with behaviour unchanged — that
+step stays green. Only afterward is the implementation
+**flipped** to the in-house engine, behind the stable API. The
+CUE-backed path stays as the differential oracle. Both moves
+are red/green TDD, surface by surface: D, then A + B, then C.
+
+This is **not** the schema-unification
+"[Direction B](../docs/research/schema-unification/spike.md)"
+that swaps CUE syntax for a YAML DSL: same spec, CUE syntax
+stays valid everywhere.
 
 ## Design
 
-Two independent levers, either of which helps:
+### New package
 
-1. **CUE-free fast path.** Behind a `//go:build wasm` tag, replace
-   the CUE-backed schema compile and field interpolation with a
-   hand-rolled evaluator covering the subset a WASM host needs.
-   Measure which features (MDS020, catalog `where`, query) the
-   Obsidian host actually calls and gate the rest out.
-2. **tinygo-compatible runcache.** Replace the
-   `sync.Map.CompareAndDelete` use in
-   [`internal/lint/runcache.go`](../internal/lint/runcache.go) with a
-   mutex-guarded map the tinygo runtime supports, then re-attempt the
-   tinygo build once CUE is gone.
+A public leaf package, proposed `cue/cuelite` beside
+[cue/types](../cue/types/types.cue), exported and versioned
+like [pkg/markdown](../docs/development/markdown-library.md). Once flipped
+it imports only the standard library: `regexp`, `strconv`, `sort`,
+`unicode/utf8`, and optionally `encoding/json`. It sits at the
+bottom of the layering map. Its consumers are the `schema`,
+`requiredstructure`, `query`, `fieldinterp`, and `cuetemplate`
+packages; it imports none of them. The façade mirrors the CUE
+calls above:
+
+```go
+package cuelite
+
+func Compile(src string) (*Value, error)      // CompileString
+func CompileJSON(data []byte) (*Value, error) // CompileBytes
+func ParsePath(expr string) (Path, error)
+
+func (v *Value) Unify(o *Value) *Value
+func (v *Value) Validate() error              // Concrete(true)
+func (v *Value) LookupPath(p Path) (*Value, bool)
+func (v *Value) String() (string, error)
+// plus Decode, Exists, Fields; errors carry a field Path.
+```
+
+One simplification falls out. A CUE value is tied to a
+`*cue.Context` and cannot cross contexts, forcing the
+context-pairing plumbing in
+[compile_cache.go](../internal/schema/compile_cache.go).
+A `cuelite.Value` is a context-free immutable struct, so a
+compiled schema is shareable across goroutines.
+
+### Value model
+
+A `Value` is one of a fixed set of shapes:
+
+- bottom (⊥), carrying a reason and a path;
+- top (`_`), and null;
+- a concrete scalar: string, int64, float64, bool, or bytes;
+- a typed atom (the kind, no value yet);
+- a bounded scalar (kind plus the set `>= <= > < != =~`);
+- a disjunction (branches, plus an optional default for `*`);
+- a struct (ordered fields, each optional?, open or closed);
+- a list (`[...T]`, or `[_, ...T]` with a required prefix length).
+
+Numbers are int64/float64; front-matter and JSON values fit, so no bignum.
+
+### Unification and concreteness
+
+`Unify` is the lattice meet over that model. The rules are
+small:
+
+- ⊥ absorbs; ⊤ is identity. Concrete & concrete must be equal.
+- concrete & bound/type must satisfy; bound & bound intersect on a shared kind.
+- a disjunction distributes: drop ⊥ branches, collapse a
+  singleton, preserve a default.
+- structs unify field-wise (an extra field vs a closed struct
+  is ⊥); lists unify by element and length.
+
+`Validate` reports the first non-concrete or ⊥ leaf, with its
+path, matching CUE's `Validate(Concrete(true))`.
+
+### Hot-path performance
+
+- **Skip the JSON round-trip.** Today every check does
+  `json.Marshal(fm)` → `CompileBytes` → `Unify`. The engine
+  validates a `map[string]any` directly instead, cutting the
+  marshal and most allocations. `CompileJSON` is off the hot path.
+- **Compile once, share freely.** Regexes compile at
+  schema-compile time and cache on the node. The immutable
+  `Value` is reused across files and goroutines through the
+  existing [RunCache](../internal/lint/runcache.go).
+- **Budget.** Add `cue/cuelite` to the
+  [alloc-budget test](../internal/integration/alloc_budget_test.go);
+  validation must stay within the ≤ 10 allocs/op rule.
+
+### Expression evaluator (surface C)
+
+Surface C needs a real evaluator, so it gets its own phase. It
+is a small tree-walker over the same parsed AST. It supports
+string interpolation, `for`/`if` comprehensions, indexing,
+field selection, and the operators the ternary idiom needs. It
+also carries a tiny builtin registry: `strings.Join` and
+`len`, and reuses cuetemplate's scope binding.
+
+### Testing and coverage
+
+`cue/cuelite` targets **100 % statement and branch coverage**.
+The [coverage gate](../docs/development/coverage.md) holds the
+patch at the project baseline. The four-layer
+[pyramid](../docs/development/architecture/tests.md) applies:
+
+- **unit** — a dedicated test per function, with every `Unify`
+  and `Validate` rule and each ⊥/error path driven red/green, so
+  no defensive branch is left uncovered;
+- **contract** — the façade surface and the `errors`/`Path`
+  shape MDS020 reads;
+- **integration** — the differential harness: the in-house path
+  runs against the CUE-backed façade (the **oracle**) on each
+  expression, asserting identical accept/reject and error
+  field-paths over every `frontmatter:` constraint, the
+  [file-kinds conflict table](../docs/guides/file-kinds.md), the
+  query/`where:` examples, and a `go test` fuzzer;
+- **e2e** — `mdsmith check .`, unchanged.
+
+Branch coverage is checked with `go tool gobco -branch`. CUE is removed
+in phase 4, once the diff is clean and coverage is 100 %.
+
+### WASM / tinygo
+
+With CUE gone, the engine is pure stdlib. One more change is
+needed for tinygo: replace `sync.Map.CompareAndDelete` in
+[runcache.go](../internal/lint/runcache.go) with a
+mutex-guarded map (the tinygo lever). Then `tinygo build
+-target wasm ./cmd/mdsmith-wasm` becomes reachable. `go.mod`
+sheds ~95 packages plus apd and protobuf; `Capabilities()` is unchanged.
 
 ## Tasks
 
-1. Profile the WASM artifact (`go tool nm -size`) to confirm CUE and
-   protobuf are the dominant contributors and rank packages by bytes.
-2. Prototype a CUE-free schema/interpolation path behind
-   `//go:build wasm`; measure the size drop.
-3. Remove `sync.Map.CompareAndDelete` from the lint runcache so
-   tinygo can compile that package.
-4. Attempt the tinygo build end to end; record the artifact size.
-5. Tighten the plan-215 size-budget test to the budgets this plan
-   reaches.
+The work is split into per-phase plans, run in order. Each
+keeps `go test ./...` green; CUE leaves `go.mod` only at the
+end:
+
+1. [Phase 0 — package, façade, harness](236_cuelite-package-harness.md)
+2. [Phase 1 — surface D (placeholder paths)](237_cuelite-surface-d.md)
+3. [Phase 2 — surfaces A + B (schema, query)](238_cuelite-surfaces-ab.md)
+4. [Phase 3 — surface C (row-expr evaluator)](239_cuelite-surface-c.md)
+5. [Phase 4 — drop cuelang.org + tinygo](240_cuelite-drop-cue.md)
 
 ## Acceptance Criteria
 
+- [ ] `cuelang.org/go` no longer appears in `go.mod` or
+      `go.sum`, and no non-test file imports `cuelang.org/...`.
+- [ ] The differential harness shows `cue/cuelite` and
+      CUE agree on accept/reject and error field-paths, over
+      the full corpus, the conflict table, and the query
+      examples — checked before CUE is removed.
+- [ ] `go run ./cmd/mdsmith check .` passes unchanged: every
+      existing schema, `proto.md`, plan, and query stays valid,
+      with no syntax migration.
+- [ ] `cue/cuelite` validation stays within the ≤ 10
+      allocs/op budget and skips the per-check JSON round-trip.
+- [ ] A benchmark records `cue/cuelite` vs CUE speed and
+      allocs; the schema validate path does not regress.
+- [ ] `cue/cuelite` is a documented, exported public package.
 - [ ] Standard-Go WASM artifact ≤ 18 MB.
-- [ ] `tinygo build -target wasm ./cmd/mdsmith-wasm` succeeds and is
-      ≤ 8 MB.
-- [ ] Any feature dropped under `//go:build wasm` is documented in
-      [the engine-api page](../docs/background/concepts/engine-api.md)
-      and reflected by `Capabilities()`.
-- [ ] `cmd/mdsmith-wasm/size_test.go` asserts the new budgets.
+- [ ] `tinygo build -target wasm ./cmd/mdsmith-wasm` succeeds
+      and is ≤ 8 MB; `size_test.go` asserts the new budgets.
+- [ ] MDS020 diagnostics stay actionable and navigable (plan
+      147 / plan 230 behavior preserved).
+- [ ] `cue/cuelite` reaches 100 % statement and branch
+      coverage (`go tool cover -func`; `go tool gobco -branch`),
+      and the Codecov `project`/`patch` gates pass.
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool golangci-lint run` reports no issues.
 
 ## Non-Goals
 
-- Changing the public `pkg/mdsmith` API surface — this is a
-  size/compile effort, not an API change.
-- The Obsidian plugin UI ([plan 217](217_obsidian-plugin.md)).
+- The schema-unification YAML DSL
+  ([Direction B](../docs/research/schema-unification/spike.md)):
+  this keeps CUE syntax, it does not replace it.
+- User-facing CUE `import` / `package` / `#def` syntax — never
+  shipped, still out of scope.
+- CUE for body/section structure: already a YAML + RE2 surface
+  ([section-schema](../docs/reference/section-schema.md)),
+  untouched here.
+- Any change to the public
+  [pkg/mdsmith](../docs/background/concepts/engine-api.md) API
+  or to `Capabilities()`.
 
 ## See also
 
 - [Plan 215: engine API and WASM bindings](215_engine-api-wasm.md)
-- [Engine API concept page](../docs/background/concepts/engine-api.md)
+- [Named field-type shortcuts](148_named-field-type-shortcuts.md)
