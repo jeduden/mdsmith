@@ -1,7 +1,7 @@
 ---
 id: 237
 title: Unit tests for include-rule private validation helpers
-status: "🔳"
+status: "✅"
 summary: >-
   Add dedicated unit tests for the four private helpers
   extracted from validateIncludeDirective in plan 232/233.
@@ -57,9 +57,9 @@ entry point for future refactors).
 
 ## Acceptance Criteria
 
-- [ ] `TestValidateHeadingOffset` covers five cases.
-- [ ] `TestValidateHeadingLevel` covers three cases.
-- [ ] `TestValidateExtractParam` has branch coverage.
-- [ ] `TestFindParentHeadingLevel` covers both cases.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] `TestValidateHeadingOffset` covers five cases.
+- [x] `TestValidateHeadingLevel` covers three cases.
+- [x] `TestValidateExtractParam` has branch coverage.
+- [x] `TestFindParentHeadingLevel` covers both cases.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
