@@ -22,13 +22,11 @@ summary: >-
 
 ## Goal
 
-Help an mdsmith user with a growing `.mdsmith.yml`
-factor schemas into separate files. Plans 208 and
-209 covered kinds and conventions. This plan adds
-`.mdsmith/schemas/<name>.yaml`. Any inline
-`kinds.<name>.schema:` block can lift into a
-standalone YAML file, referenced by name
-(`schema: rfc-v1`).
+A user with many kinds outgrows inline schemas.
+This plan adds `.mdsmith/schemas/`: one file per
+schema, referenced from any kind by name
+(`schema: rfc-v1`). The same schema can then drive
+multiple kinds.
 
 ## ...
 
