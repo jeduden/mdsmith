@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	flag "github.com/spf13/pflag"
 
@@ -91,7 +92,8 @@ func runRender(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	names := secreview.RenderFileNames()
-	_, _ = fmt.Fprintf(stdout, "rendered %d finding(s) -> %s\n", len(report.Findings), joinComma(names))
+	_, _ = fmt.Fprintf(stdout, "rendered %d finding(s) -> %s\n",
+		len(report.Findings), strings.Join(names, ", "))
 	return 0
 }
 
@@ -157,6 +159,12 @@ func parseGradeFlags(args []string, stderr io.Writer) (gradeFlags, int) {
 		_, _ = fmt.Fprint(stderr, "mdsmith-secreview: --case requires --cases\n")
 		return gf, 2
 	}
+	if fs.NArg() != 0 {
+		_, _ = fmt.Fprintf(stderr,
+			"mdsmith-secreview: grade takes no positional args, got %v\n", fs.Args())
+		fs.Usage()
+		return gf, 2
+	}
 	return gf, -1
 }
 
@@ -214,16 +222,4 @@ func parseFlags(fs *flag.FlagSet, args []string, stderr io.Writer, name string) 
 	}
 	_, _ = fmt.Fprintf(stderr, "mdsmith-secreview: %s: %v\n", name, err)
 	return 2
-}
-
-// joinComma joins names with ", ".
-func joinComma(names []string) string {
-	out := ""
-	for i, n := range names {
-		if i > 0 {
-			out += ", "
-		}
-		out += n
-	}
-	return out
 }

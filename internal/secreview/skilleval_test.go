@@ -195,6 +195,10 @@ func baselinePresent(root, ref string) bool {
 func checkPatchAppliesAndBuilds(t *testing.T, root, baseline, patch string) {
 	t.Helper()
 	wt := filepath.Join(t.TempDir(), "baseline-worktree")
+	// Clear any worktree admin entry leaked by a prior run whose --force
+	// remove failed: the temp dir is already gone, so prune drops the stale
+	// registration and avoids an "already registered" failure on add.
+	runGit(t, root, "worktree", "prune")
 	runGit(t, root, "worktree", "add", "--detach", wt, baseline)
 	defer func() { _ = exec.Command("git", "-C", root, "worktree", "remove", "--force", wt).Run() }()
 
@@ -214,4 +218,22 @@ func runGit(t *testing.T, dir string, args ...string) {
 	full := append([]string{"-C", dir}, args...)
 	out, err := exec.Command("git", full...).CombinedOutput()
 	require.NoErrorf(t, err, "git %s: %s", strings.Join(args, " "), out)
+}
+
+// TestSkillEvalWorkflowEnforcesStrict guards the CI config itself.
+// TestSkillRegressionPatchAtBaseline only runs (rather than skips) under
+// SECREVIEW_STRICT=1 with the baseline commit present, so the skill-eval
+// workflow must set that env var and check out full history. This test —
+// which runs in the ordinary `go test` job, no strict mode needed — fails
+// if either guarantee is removed, so the calibration gate cannot silently
+// degrade to a no-op skip.
+func TestSkillEvalWorkflowEnforcesStrict(t *testing.T) {
+	wf := filepath.Join(repoRoot(t), ".github", "workflows", "skill-eval.yml")
+	data, err := os.ReadFile(wf)
+	require.NoError(t, err)
+	body := string(data)
+	assert.Contains(t, body, "SECREVIEW_STRICT",
+		"skill-eval.yml must run the eval in strict mode")
+	assert.Contains(t, body, "fetch-depth: 0",
+		"skill-eval.yml must fetch full history so baseline_ref is present")
 }

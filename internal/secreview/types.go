@@ -22,8 +22,7 @@ const (
 )
 
 // severityRank orders severities low to high so a "min severity" floor
-// can be expressed as an integer comparison. It mirrors grade.py's
-// SEVERITY_RANK.
+// can be expressed as an integer comparison (info=0 … critical=4).
 var severityRank = map[string]int{
 	severityInfo:     0,
 	severityLow:      1,
@@ -32,14 +31,21 @@ var severityRank = map[string]int{
 	severityCritical: 4,
 }
 
-// severityOrder orders severities high to low for report/SARIF output,
-// mirroring render_findings.py's SEVERITY_ORDER (critical first).
-var severityOrder = map[string]int{
-	severityCritical: 0,
-	severityHigh:     1,
-	severityMedium:   2,
-	severityLow:      3,
-	severityInfo:     4,
+// severitiesHighToLow is the single source of truth for severity
+// display order, most severe first. severityOrder and the report's
+// count line both derive from it so they cannot drift apart.
+var severitiesHighToLow = []string{
+	severityCritical, severityHigh, severityMedium, severityLow, severityInfo,
+}
+
+// severityOrder orders severities high to low for report/SARIF output
+// (critical=0 … info=4), derived from severitiesHighToLow.
+var severityOrder = indexOf(severitiesHighToLow)
+
+// knownSeverityList is the five severities least-severe-first, used in
+// the "want one of …" validity error.
+var knownSeverityList = []string{
+	severityInfo, severityLow, severityMedium, severityHigh, severityCritical,
 }
 
 // sarifLevel maps a finding severity to the SARIF result level, matching
@@ -76,6 +82,15 @@ var confidenceOrder = map[string]int{
 func SeverityKnown(s string) bool {
 	_, ok := severityRank[s]
 	return ok
+}
+
+// indexOf maps each element of ss to its position in the slice.
+func indexOf(ss []string) map[string]int {
+	m := make(map[string]int, len(ss))
+	for i, s := range ss {
+		m[s] = i
+	}
+	return m
 }
 
 // Location is a single source position cited by a finding.

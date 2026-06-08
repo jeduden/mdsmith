@@ -246,20 +246,55 @@ func TestBuildSARIFDuplicateRuleID(t *testing.T) {
 }
 
 func TestPhysicalLocationsKeepsRelated(t *testing.T) {
-	// Primary + one usable related + one unusable related (no startLine).
+	// Primary + two related: one with a startLine, one file-only. All three
+	// are kept — a file-only location emits an artifactLocation with no
+	// region (matching render_findings.py); only a missing file drops one.
 	f := &Finding{
 		ID: "S001", Severity: "high",
 		Location: &Location{File: "a.go", StartLine: 1},
 		RelatedLocations: []Location{
 			{File: "b.go", StartLine: 2},
-			{File: "c.go"}, // no startLine -> dropped
+			{File: "c.go"}, // file-only: kept, no region
 		},
 	}
 	doc := buildSARIF(&Report{Findings: []Finding{*f}})
 	locs := doc.Runs[0].Results[0].Locations
-	require.Len(t, locs, 2)
+	require.Len(t, locs, 3)
 	assert.Equal(t, "a.go", locs[0].PhysicalLocation.ArtifactLocation.URI)
 	assert.Equal(t, "b.go", locs[1].PhysicalLocation.ArtifactLocation.URI)
+	assert.Equal(t, "c.go", locs[2].PhysicalLocation.ArtifactLocation.URI)
+	assert.Nil(t, locs[2].PhysicalLocation.Region, "file-only location has no region")
+}
+
+func TestRenderSARIFFileOnlyLocation(t *testing.T) {
+	// A finding whose primary location names a file but no startLine renders
+	// as that file's artifactLocation (no region) — NOT the repo-name
+	// fallback used only when a finding has no usable location at all.
+	r := &Report{
+		Target:   Target{Repo: "jeduden/mdsmith"},
+		Findings: []Finding{{ID: "S001", Severity: "high", Location: &Location{File: "only.go"}}},
+	}
+	locs := firstResult(decodeSARIF(t, r))["locations"].([]any)
+	require.Len(t, locs, 1)
+	phys := locs[0].(map[string]any)["physicalLocation"].(map[string]any)
+	assert.Equal(t, "only.go", phys["artifactLocation"].(map[string]any)["uri"])
+	_, hasRegion := phys["region"]
+	assert.False(t, hasRegion, "file-only location must not emit a region")
+}
+
+func TestValidateNormalizesSeverityForRender(t *testing.T) {
+	// A mixed-case severity passes validation and, after normalization,
+	// renders with the correct SARIF level/security-severity instead of a
+	// blank one (the bug when render read the raw, un-lowercased value).
+	fs := []Finding{{
+		ID: "S001", Title: "t", Severity: "Critical",
+		Location: &Location{File: "a.go", StartLine: 1},
+	}}
+	require.NoError(t, ValidateFindings(fs))
+	assert.Equal(t, "critical", fs[0].Severity)
+	doc := buildSARIF(&Report{Findings: fs})
+	assert.Equal(t, "error", doc.Runs[0].Results[0].Level)
+	assert.Equal(t, "9.5", doc.Runs[0].Tool.Driver.Rules[0].Properties.SecuritySeverity)
 }
 
 func TestSortConfidenceTieAndDefault(t *testing.T) {

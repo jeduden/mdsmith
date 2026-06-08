@@ -213,3 +213,12 @@ func TestGradeViaCasesBadFile(t *testing.T) {
 	assert.Equal(t, 2, code)
 	assert.Contains(t, errOut, "cannot read")
 }
+
+func TestGradeExtraPositional(t *testing.T) {
+	// grade takes no positionals; a stray arg (e.g. a fat-fingered path)
+	// is an input error, not silently ignored — symmetric with render.
+	path := writeJSON(t, criticalFinding)
+	code, _, errOut := runCLI("grade", "--findings", path, "--forbid-severity", "critical", "stray")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, errOut, "positional")
+}

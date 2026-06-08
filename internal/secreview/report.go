@@ -56,13 +56,12 @@ func writeSummary(b *strings.Builder, findings []Finding) {
 // severityCounts renders "Critical: n | High: n | ..." across all five
 // severities in descending order, matching render_findings.py.
 func severityCounts(findings []Finding) string {
-	order := []string{"critical", "high", "medium", "low", "info"}
-	counts := make(map[string]int, len(order))
+	counts := make(map[string]int, len(severitiesHighToLow))
 	for i := range findings {
 		counts[findings[i].Severity]++
 	}
-	parts := make([]string, 0, len(order))
-	for _, s := range order {
+	parts := make([]string, 0, len(severitiesHighToLow))
+	for _, s := range severitiesHighToLow {
 		parts = append(parts, fmt.Sprintf("%s: %d", capitalize(s), counts[s]))
 	}
 	return strings.Join(parts, " | ")

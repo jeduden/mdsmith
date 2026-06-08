@@ -3,8 +3,8 @@
 # the §0 defenses, and the regression patch below are all pinned to
 # it. references/threat-model.md is calibrated to the same commit.
 # When the skill is recalibrated, bump this and refresh fixtures +
-# regressions/*.patch together (run.py fails if the patch no longer
-# applies).
+# regressions/*.patch together (the skill-eval Go tests fail if the
+# patch no longer applies).
 baseline_ref: b72285df2f6b422dd2eb31058884757f13acc78c
 
 cases:
@@ -23,8 +23,8 @@ cases:
       must_not:
         - "Reports a Critical/High recipe-execution RCE without a traced exec call path."
         - "States that `mdsmith fix` or the LSP executes <?build?> recipes."
-    # Machine-checkable subset of the rubric (enforced by grade.py on
-    # the findings.json). The prose must/must_not above stay human-judged.
+    # Machine-checkable subset of the rubric (enforced by the Go grader
+    # on the findings.json). The prose must/must_not above stay human-judged.
     grade:
       forbid_severities: [critical, high]
 

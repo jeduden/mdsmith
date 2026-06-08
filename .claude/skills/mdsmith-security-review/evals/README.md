@@ -12,10 +12,10 @@ regression patch all match that commit.
 
 The eval has a mechanical layer and a human-judged layer.
 
-- **Mechanical** — `run.py` and `grade.py` enforce what is derivable
-  from `findings.json`: forbidden severities, a required finding at
-  the sink, the renderer round-trip, and that the regression patch
-  still applies. CI runs this on every PR.
+- **Mechanical** — the Go eval tests (`internal/secreview`) enforce
+  what is derivable from `findings.json`: forbidden severities, a
+  required finding at the sink, the renderer round-trip, and that the
+  regression patch still applies. CI runs this on every PR.
 - **Human-judged** — the prose `expect.must` / `expect.must_not` in
   `cases.yaml` (for example "reads threat-model.md first", "names
   residual un-traced areas"). These still need a person or an LLM to

@@ -173,15 +173,17 @@ func buildResult(f *Finding, ruleIndex map[string]int, repo string) sarifResult 
 }
 
 // physicalLocations gathers the primary location followed by the related
-// locations, dropping any with no file or no startLine.
+// locations, dropping any with no file. A located finding that omits its
+// startLine is still emitted (artifactLocation without a region), matching
+// render_findings.py — only a missing file drops the location.
 func physicalLocations(f *Finding) []sarifLocation {
 	out := make([]sarifLocation, 0, 1+len(f.RelatedLocations))
-	if loc := f.Location; loc != nil && loc.File != "" && loc.StartLine != 0 {
+	if loc := f.Location; loc != nil && loc.File != "" {
 		out = append(out, physical(loc))
 	}
 	for i := range f.RelatedLocations {
 		loc := &f.RelatedLocations[i]
-		if loc.File == "" || loc.StartLine == 0 {
+		if loc.File == "" {
 			continue
 		}
 		out = append(out, physical(loc))
@@ -189,17 +191,19 @@ func physicalLocations(f *Finding) []sarifLocation {
 	return out
 }
 
-// physical builds a SARIF location for a position that already has a file
-// and a startLine.
+// physical builds a SARIF location for a position that has a file. The
+// region is included only when startLine is set, so a file-only location
+// emits just the artifactLocation.
 func physical(loc *Location) sarifLocation {
-	end := loc.EndLine
-	if end == 0 {
-		end = loc.StartLine
+	phys := sarifPhysical{ArtifactLocation: sarifArtifact{URI: loc.File}}
+	if loc.StartLine != 0 {
+		end := loc.EndLine
+		if end == 0 {
+			end = loc.StartLine
+		}
+		phys.Region = &sarifRegion{StartLine: loc.StartLine, EndLine: end}
 	}
-	return sarifLocation{PhysicalLocation: sarifPhysical{
-		ArtifactLocation: sarifArtifact{URI: loc.File},
-		Region:           &sarifRegion{StartLine: loc.StartLine, EndLine: end},
-	}}
+	return sarifLocation{PhysicalLocation: phys}
 }
 
 // orDefault returns s, or def when s is empty.

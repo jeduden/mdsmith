@@ -172,3 +172,20 @@ func TestLoadReportBadSeverity(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown severity")
 }
+
+func TestValidateFindingsRequiresID(t *testing.T) {
+	// An empty id is rejected: buildSARIF keys rules by id, so empty-id
+	// findings would otherwise collapse into one mislabeled rule.
+	err := ValidateFindings([]Finding{{Severity: "high"}})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no id")
+}
+
+func TestValidateFindingsNormalizesSeverity(t *testing.T) {
+	// Severity is lowercased in place so render and grade see a canonical
+	// value (Python's load() did the same).
+	fs := []Finding{{ID: "S001", Severity: "Critical"}, {ID: "S002", Severity: "HIGH"}}
+	require.NoError(t, ValidateFindings(fs))
+	assert.Equal(t, "critical", fs[0].Severity)
+	assert.Equal(t, "high", fs[1].Severity)
+}

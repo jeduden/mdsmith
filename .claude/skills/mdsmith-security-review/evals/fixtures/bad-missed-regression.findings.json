@@ -1,5 +1,5 @@
 {
-  "_comment": "NEGATIVE fixture: the over-corrected/complacent failure mode for pr-regression-introduces-exec. It sees the exec sink but rates it info, so grade.py MUST fail it (require_finding wants >= high at the sink file). run.py asserts this failure — proving the grader has teeth.",
+  "_comment": "NEGATIVE fixture: the over-corrected/complacent failure mode for pr-regression-introduces-exec. It sees the exec sink but rates it info, so the grader MUST fail it (require_finding wants >= high at the sink file). The skill-eval Go test (TestSkillGradeGoldensAndNegative) asserts this failure — proving the grader has teeth.",
   "target": {
     "mode": "pr",
     "repo": "jeduden/mdsmith",

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"sort"
 	"strings"
 )
 
@@ -22,23 +21,13 @@ type Constraints struct {
 	RequireLocationFile string
 }
 
-// knownSeverities returns the five severities, sorted, for error messages.
-func knownSeverities() []string {
-	out := make([]string, 0, len(severityRank))
-	for s := range severityRank {
-		out = append(out, s)
-	}
-	sort.Slice(out, func(i, j int) bool { return severityRank[out[i]] < severityRank[out[j]] })
-	return out
-}
-
 // normSeverity lowercases value and verifies it is one of the five
 // severities, returning a clean error (mentioning what) otherwise.
 func normSeverity(value, what string) (string, error) {
 	sev := strings.ToLower(value)
 	if !SeverityKnown(sev) {
 		return "", fmt.Errorf("%s: unknown severity %q (want one of %s)",
-			what, value, strings.Join(knownSeverities(), ", "))
+			what, value, strings.Join(knownSeverityList, ", "))
 	}
 	return sev, nil
 }
@@ -77,30 +66,30 @@ func BuildConstraints(forbid []string, reqMin, reqFile string) (Constraints, err
 	}, nil
 }
 
-// ValidateFindings enforces the same strictness as render_findings.py:
-// every finding must carry a non-empty severity that is one of the five.
-// A missing or typo'd severity is a clean error here rather than silently
-// ranking below any floor and matching no forbidden set.
+// ValidateFindings enforces the same strictness as render_findings.py
+// and normalizes in place: every finding must carry a non-empty id and a
+// non-empty severity that is one of the five, and the severity is
+// lowercased so render and grade both see a canonical value. The Python
+// load() did `f["severity"] = sev`; without this a "Critical" finding
+// passes validation but renders with a blank SARIF level. A non-empty id
+// is required because buildSARIF keys rules by id, so two empty-id
+// findings would otherwise collapse into one mislabeled rule.
 func ValidateFindings(fs []Finding) error {
 	for i := range fs {
 		f := &fs[i]
-		if f.Severity == "" {
-			return fmt.Errorf("finding %s has no severity", findingLabel(f, i))
+		if f.ID == "" {
+			return fmt.Errorf("finding #%d has no id", i)
 		}
-		if _, err := normSeverity(f.Severity, "finding "+findingLabel(f, i)); err != nil {
+		if f.Severity == "" {
+			return fmt.Errorf("finding %q has no severity", f.ID)
+		}
+		sev, err := normSeverity(f.Severity, fmt.Sprintf("finding %q", f.ID))
+		if err != nil {
 			return err
 		}
+		f.Severity = sev
 	}
 	return nil
-}
-
-// findingLabel names a finding for an error message: its id, or its index
-// when the id is empty.
-func findingLabel(f *Finding, i int) string {
-	if f.ID != "" {
-		return fmt.Sprintf("%q", f.ID)
-	}
-	return fmt.Sprintf("#%d", i)
 }
 
 // Grade evaluates findings against c and returns a list of failure

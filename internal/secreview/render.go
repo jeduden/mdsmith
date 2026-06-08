@@ -51,11 +51,12 @@ func RenderFileNames() []string {
 }
 
 // marshalJSON renders v as 2-space-indented JSON with HTML escaping
-// disabled, so `<`, `>`, and `&` survive verbatim — matching
-// render_findings.py's json.dumps output for the SARIF and annotation
-// bodies (which contain directive and Go syntax like <?build?>). The
-// trailing newline json.Encoder appends is trimmed so the bytes match a
-// plain json.dumps with no terminator.
+// disabled, so directive and Go tokens like `<?build?>`, `<`, `>`, and `&`
+// survive verbatim instead of being escaped to `<` etc. Non-ASCII
+// (em dash, `·`, `§`) is emitted as raw UTF-8 — valid JSON, and the literal
+// characters the output-formats doc shows. (Python's json.dumps default
+// escapes non-ASCII to \uXXXX instead; the decoded data is identical.) The
+// single trailing newline json.Encoder appends is trimmed.
 func marshalJSON(v any) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
