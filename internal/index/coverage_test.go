@@ -3,6 +3,7 @@ package index
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -71,10 +72,30 @@ func TestFrontMatterSymbolsHandlesErrors(t *testing.T) {
 
 func TestFrontMatterScalarFormats(t *testing.T) {
 	t.Parallel()
-	// Number value triggers the fmt.Sprintf default branch.
+	// int: small positive integer (yaml.v3 → int on 64-bit).
 	v, ok := frontMatterScalar([]byte("---\nnum: 42\n---\n"), "num")
 	assert.True(t, ok)
 	assert.Equal(t, "42", v)
+	// float64: decimal value.
+	v, ok = frontMatterScalar([]byte("---\nratio: 3.14\n---\n"), "ratio")
+	assert.True(t, ok)
+	assert.Equal(t, "3.14", v)
+	// uint64: integer > math.MaxInt64 (yaml.v3 → uint64).
+	v, ok = frontMatterScalar([]byte("---\nbig: 18446744073709551615\n---\n"), "big")
+	assert.True(t, ok)
+	assert.Equal(t, "18446744073709551615", v)
+	// bool.
+	v, ok = frontMatterScalar([]byte("---\nflag: true\n---\n"), "flag")
+	assert.True(t, ok)
+	assert.Equal(t, "true", v)
+	// time.Time: unquoted ISO-8601 date (yaml.v3 → time.Time).
+	v, ok = frontMatterScalar([]byte("---\ndate: 2024-01-15\n---\n"), "date")
+	assert.True(t, ok)
+	expected := time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	assert.Equal(t, expected, v)
+	// default: null/~ value → absent-like return.
+	_, ok = frontMatterScalar([]byte("---\nfield: null\n---\n"), "field")
+	assert.False(t, ok)
 	// Missing key.
 	_, ok = frontMatterScalar([]byte("---\nfoo: bar\n---\n"), "missing")
 	assert.False(t, ok)
@@ -84,15 +105,11 @@ func TestFrontMatterScalarFormats(t *testing.T) {
 	// Invalid YAML.
 	_, ok = frontMatterScalar([]byte("---\n!!invalid\n---\n"), "x")
 	assert.False(t, ok)
-	// Front matter without trailing newline — stripDelimiters
-	// hits the second TrimSuffix branch.
+	// Front matter without trailing newline — stripDelimiters hits the
+	// second TrimSuffix branch.
 	v, ok = frontMatterScalar([]byte("---\nx: hi\n---"), "x")
 	assert.True(t, ok)
 	assert.Equal(t, "hi", v)
-	// Bool value uses the default fmt.Sprintf branch.
-	v, ok = frontMatterScalar([]byte("---\nflag: true\n---\n"), "flag")
-	assert.True(t, ok)
-	assert.Equal(t, "true", v)
 }
 
 func TestFrontMatterStringListBranches(t *testing.T) {
