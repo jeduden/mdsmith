@@ -42,11 +42,17 @@ test.describe("homepage positioning", () => {
     await page.goto("/");
 
     const row = page.locator(".install-row").first();
+    const label = row.locator(".install-label");
     const cmd = row.locator(".install-cmd");
     const rowBox = await row.boundingBox();
+    const labelBox = await label.boundingBox();
     const cmdBox = await cmd.boundingBox();
     expect(rowBox).not.toBeNull();
+    expect(labelBox).not.toBeNull();
     expect(cmdBox).not.toBeNull();
+    // Wrapped: the command renders on a line below the label
+    // rather than truncated beside it.
+    expect(cmdBox!.y).toBeGreaterThanOrEqual(labelBox!.y + labelBox!.height);
     // Full-width line: the command spans (almost) the row's inner
     // width rather than the ~40% it got next to the label.
     expect(cmdBox!.width).toBeGreaterThan(rowBox!.width * 0.8);

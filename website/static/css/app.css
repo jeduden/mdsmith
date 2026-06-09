@@ -189,13 +189,15 @@ main {
   max-width: 540px;
   margin: 0 0 28px;
 }
-/* Hero lead body is rendered through Hugo's `markdownify`,
-   which wraps the text in <p>. Without these resets, the
-   global `p, .p { margin: 0 0 var(--space-4); }` from
-   colors_and_type.css would stack on top of .hero-lead's
-   own bottom margin. */
-.hero-lead p { margin: 0; }
-.hero-lead p:not(:last-child) { margin-bottom: 12px; }
+/* Hero lead and positioning bodies are rendered Markdown
+   (markdownify / .Content), which wraps the text in <p>.
+   Without these resets, the global
+   `p, .p { margin: 0 0 var(--space-4); }` from
+   colors_and_type.css would stack on top of the blocks'
+   own bottom margins. */
+.hero-lead p, .positioning-body p { margin: 0; }
+.hero-lead p:not(:last-child),
+.positioning-body p:not(:last-child) { margin-bottom: 12px; }
 .hero-cta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .hero-switch {
   font-size: 14px;
@@ -219,14 +221,14 @@ main {
   padding: 36px 0;
   border-bottom: 1px solid var(--border-subtle);
 }
+/* Paragraph margin resets live with .hero-lead's (same
+   rendered-Markdown wrapping). */
 .positioning-body {
   max-width: 760px;
   font-size: 16px;
   line-height: 1.65;
   color: var(--fg-muted);
 }
-.positioning-body p { margin: 0; }
-.positioning-body p:not(:last-child) { margin-bottom: 12px; }
 
 /* ========== BUTTONS ========== */
 
@@ -300,14 +302,14 @@ main {
   gap: 12px;
   margin-bottom: 16px;
 }
-/* steel-400 / steel-500: the lighter steel-300/400 pair sat below
-   the 4.5:1 WCAG AA contrast bar at these tiny sizes. */
+/* steel-500: the lighter steel-300/400 pair sat below the 4.5:1
+   WCAG AA contrast bar at these tiny sizes. */
 .pillar-num {
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.08em;
-  color: var(--steel-400);
+  color: var(--steel-500);
   flex-shrink: 0;
 }
 .pillar-name {
