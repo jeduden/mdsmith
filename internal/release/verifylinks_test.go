@@ -200,8 +200,20 @@ func TestVerifyWebsiteLinks_HomeInternalHrefResolves(t *testing.T) {
 	writeFile(t, filepath.Join(root, "index.html"),
 		`<a class="hero-switch-link" href="/guides/migrate-from-markdownlint/">guide</a>`+
 			`<a href=/guides/install/>install</a>`+
-			`<a href="https://github.com/jeduden/mdsmith" rel="noopener">gh</a>`)
+			`<a href="https://github.com/jeduden/mdsmith" rel="noopener">gh</a>`+
+			`<a href="//cdn.example.com/x/">protocol-relative</a>`)
 	require.NoError(t, VerifyWebsiteLinks(root, ""))
+}
+
+// TestVerifyWebsiteLinks_FailsOnMissingHomepage pins the probe's
+// fail-closed behavior: a rendered tree without a homepage cannot
+// pass, mirroring the single-file probes.
+func TestVerifyWebsiteLinks_FailsOnMissingHomepage(t *testing.T) {
+	root := goodSite(t, "")
+	require.NoError(t, os.Remove(filepath.Join(root, "index.html")))
+	err := VerifyWebsiteLinks(root, "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "verify homepage hrefs")
 }
 
 // TestVerifyWebsiteLinks_FailsOnHomeHrefMissingTarget pins the
