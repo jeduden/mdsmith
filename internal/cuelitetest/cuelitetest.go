@@ -184,15 +184,16 @@ func validateOutcome(verr error) Outcome {
 // OraclePath validates a Case directly through cuelang.org/go — the
 // oracle the in-house path is measured against. It mirrors the cuelite
 // path stage for stage: a per-call context (matching cuelite's per-Value
-// context), strict JSON extraction for the data arm, and the first CUE
-// error's field path on a validation rejection.
+// context), strict JSON extraction for the data arm, and the field path
+// of every CUE error leaf on a validation rejection — not only the
+// first — so the oracle and the in-house path compare leaf for leaf.
 func OraclePath(c Case) Outcome {
 	ctx := cuecontext.New()
 	schema := ctx.CompileString(c.Schema)
 	if schema.Err() != nil {
 		return Outcome{Stage: StageCompileSchema}
 	}
-	data, err := oracleData(ctx, c.Data)
+	data, err := oracleData(ctx, []byte(c.Data))
 	if err != nil {
 		return Outcome{Stage: StageCompileData}
 	}
@@ -213,9 +214,11 @@ func OraclePath(c Case) Outcome {
 // check, not CompileBytes — so the oracle rejects non-JSON data and
 // duplicate keys exactly where the cuelite path does. It returns the
 // build error so OraclePath branches on it rather than on a sentinel
-// bottom value.
-func oracleData(ctx *cue.Context, data string) (cue.Value, error) {
-	expr, err := cuejson.Extract("", []byte(data))
+// bottom value. It takes []byte so callers convert once: the benchmark
+// hoists the conversion out of its timed loop, keeping both arms
+// symmetric.
+func oracleData(ctx *cue.Context, data []byte) (cue.Value, error) {
+	expr, err := cuejson.Extract("", data)
 	if err != nil {
 		return cue.Value{}, err
 	}

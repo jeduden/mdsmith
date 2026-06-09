@@ -2,9 +2,11 @@ package cuelitetest
 
 import (
 	stderrors "errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // recorder is a testing.TB that captures failures instead of failing, so
@@ -21,7 +23,7 @@ type recorder struct {
 func (r *recorder) Helper() { r.helperCalls++ }
 
 func (r *recorder) Errorf(format string, args ...any) {
-	r.failures = append(r.failures, format)
+	r.failures = append(r.failures, fmt.Sprintf(format, args...))
 }
 
 func TestOutcome_Accepted(t *testing.T) {
@@ -162,7 +164,10 @@ func TestCompare(t *testing.T) {
 		reject := func(Case) Outcome { return Outcome{Stage: StageValidate} }
 		ok := Compare(r, accept, reject, Case{Name: "mismatch"})
 		assert.False(t, ok)
-		assert.Len(t, r.failures, 1)
+		require.Len(t, r.failures, 1)
+		// The recorder renders the format with its args, so the captured
+		// failure names the disagreeing case rather than a bare format string.
+		assert.Contains(t, r.failures[0], `case "mismatch"`)
 	})
 }
 

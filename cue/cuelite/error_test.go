@@ -46,6 +46,14 @@ func TestPathError_errorsAs(t *testing.T) {
 	assert.Equal(t, []string{"x"}, pe.Path())
 }
 
+// nilUnwrapper is an error whose Unwrap() error returns nil — a wrapper
+// that declares the single-cause shape but carries no cause. It exercises
+// the recursion's nil guard in collectPathErrors.
+type nilUnwrapper struct{}
+
+func (nilUnwrapper) Error() string { return "wrapper with no cause" }
+func (nilUnwrapper) Unwrap() error { return nil }
+
 func TestErrors(t *testing.T) {
 	t.Run("nil error yields nil", func(t *testing.T) {
 		assert.Nil(t, Errors(nil))
@@ -77,6 +85,26 @@ func TestErrors(t *testing.T) {
 		require.Len(t, got, 1)
 		assert.Equal(t, []string{"a"}, got[0].Path())
 	})
+	t.Run("nested joins flatten in encounter order", func(t *testing.T) {
+		nested := errors.Join(
+			errors.Join(
+				newPathError([]string{"a"}, "x"),
+				newPathError([]string{"b"}, "y"),
+			),
+			newPathError([]string{"c"}, "z"),
+		)
+		got := Errors(nested)
+		require.Len(t, got, 3)
+		assert.Equal(t, []string{"a"}, got[0].Path())
+		assert.Equal(t, []string{"b"}, got[1].Path())
+		assert.Equal(t, []string{"c"}, got[2].Path())
+	})
+}
+
+// TestErrors_wrappers covers the single-wrapper (Unwrap() error) leg of the
+// tree walk: a leaf or a nested join hidden behind a fmt.Errorf("%w", …)
+// wrapper, and a wrapper that unwraps to nil.
+func TestErrors_wrappers(t *testing.T) {
 	t.Run("leaves behind a single wrapper are found", func(t *testing.T) {
 		// fmt.Errorf("%w", pe) is an Unwrap() error wrapper, not a join;
 		// Errors must recurse through it to reach the leaf.
@@ -97,18 +125,10 @@ func TestErrors(t *testing.T) {
 		assert.Equal(t, []string{"a"}, got[0].Path())
 		assert.Equal(t, []string{"b"}, got[1].Path())
 	})
-	t.Run("nested joins flatten in encounter order", func(t *testing.T) {
-		nested := errors.Join(
-			errors.Join(
-				newPathError([]string{"a"}, "x"),
-				newPathError([]string{"b"}, "y"),
-			),
-			newPathError([]string{"c"}, "z"),
-		)
-		got := Errors(nested)
-		require.Len(t, got, 3)
-		assert.Equal(t, []string{"a"}, got[0].Path())
-		assert.Equal(t, []string{"b"}, got[1].Path())
-		assert.Equal(t, []string{"c"}, got[2].Path())
+	t.Run("a single wrapper that unwraps to nil contributes nothing", func(t *testing.T) {
+		// A custom Unwrap() error returning nil (a wrapper with no cause)
+		// must not panic the walk: the recursion's nil guard short-circuits
+		// and the node contributes no leaf.
+		assert.Nil(t, Errors(nilUnwrapper{}))
 	})
 }

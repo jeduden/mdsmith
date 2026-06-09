@@ -92,10 +92,14 @@ func BenchmarkValidate(b *testing.B) {
 		if schema.Err() != nil {
 			b.Fatal(schema.Err())
 		}
+		// Hoist the []byte conversion out of the timed loop so this arm
+		// stays symmetric with the cuelite arm, which times CompileJSON over
+		// a pre-built dataBytes.
+		dataBytes := []byte(c.Data)
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			data, err := oracleData(ctx, c.Data)
+			data, err := oracleData(ctx, dataBytes)
 			if err != nil {
 				b.Fatal(err)
 			}
