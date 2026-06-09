@@ -64,6 +64,44 @@ func TestValue_Unify(t *testing.T) {
 
 		assert.NoError(t, schema.Unify(data).Validate())
 	})
+	t.Run("bottom receiver absorbs", func(t *testing.T) {
+		bad, compileErr := Compile(`{status: =}`)
+		require.Error(t, compileErr)
+		ok, err := Compile(`{status: string}`)
+		require.NoError(t, err)
+		// A bottom receiver must not panic; it propagates its compile error.
+		assert.Equal(t, compileErr, bad.Unify(ok).Validate())
+	})
+	t.Run("bottom operand absorbs", func(t *testing.T) {
+		ok, err := Compile(`{status: string}`)
+		require.NoError(t, err)
+		bad, compileErr := Compile(`{status: =}`)
+		require.Error(t, compileErr)
+		assert.Equal(t, compileErr, ok.Unify(bad).Validate())
+	})
+	t.Run("zero operand against concrete receiver absorbs", func(t *testing.T) {
+		ok, err := Compile(`{status: "✅"}`)
+		require.NoError(t, err)
+		// A concrete receiver that would validate on its own must still
+		// reject when unified with a zero (uninitialized) operand, rather
+		// than treating the zero Value as top and accepting.
+		assert.NoError(t, ok.Validate(), "concrete receiver alone must pass")
+		assert.Error(t, ok.Unify(Value{}).Validate())
+	})
+	t.Run("zero receiver against concrete operand absorbs", func(t *testing.T) {
+		ok, err := Compile(`{status: "✅"}`)
+		require.NoError(t, err)
+		// A zero receiver must absorb the operand as bottom, not panic on a
+		// nil context and not accept.
+		assert.Error(t, Value{}.Unify(ok).Validate())
+	})
+}
+
+// TestValue_Unify_chained exercises rebuild's three branches when an
+// operand is itself a derived Unify result: reuse-in-context, the
+// chained merge that must keep constraints, and the unrebuildable
+// cross-context operand that must absorb as bottom.
+func TestValue_Unify_chained(t *testing.T) {
 	t.Run("chained unify against a derived result keeps constraints", func(t *testing.T) {
 		// a.Unify(b) is a derived Value in a's context; unifying c against it
 		// must preserve b's constraint so a conflicting c is rejected, not
@@ -106,37 +144,6 @@ func TestValue_Unify(t *testing.T) {
 		other, err := Compile(`{weight: int}`)
 		require.NoError(t, err)
 		assert.Error(t, other.Unify(derived).Validate())
-	})
-	t.Run("bottom receiver absorbs", func(t *testing.T) {
-		bad, compileErr := Compile(`{status: =}`)
-		require.Error(t, compileErr)
-		ok, err := Compile(`{status: string}`)
-		require.NoError(t, err)
-		// A bottom receiver must not panic; it propagates its compile error.
-		assert.Equal(t, compileErr, bad.Unify(ok).Validate())
-	})
-	t.Run("bottom operand absorbs", func(t *testing.T) {
-		ok, err := Compile(`{status: string}`)
-		require.NoError(t, err)
-		bad, compileErr := Compile(`{status: =}`)
-		require.Error(t, compileErr)
-		assert.Equal(t, compileErr, ok.Unify(bad).Validate())
-	})
-	t.Run("zero operand against concrete receiver absorbs", func(t *testing.T) {
-		ok, err := Compile(`{status: "✅"}`)
-		require.NoError(t, err)
-		// A concrete receiver that would validate on its own must still
-		// reject when unified with a zero (uninitialized) operand, rather
-		// than treating the zero Value as top and accepting.
-		assert.NoError(t, ok.Validate(), "concrete receiver alone must pass")
-		assert.Error(t, ok.Unify(Value{}).Validate())
-	})
-	t.Run("zero receiver against concrete operand absorbs", func(t *testing.T) {
-		ok, err := Compile(`{status: "✅"}`)
-		require.NoError(t, err)
-		// A zero receiver must absorb the operand as bottom, not panic on a
-		// nil context and not accept.
-		assert.Error(t, Value{}.Unify(ok).Validate())
 	})
 }
 
