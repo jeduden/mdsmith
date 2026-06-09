@@ -81,23 +81,38 @@ This skill runs in two modes. Decide first; if unclear, ask.
    for, per surface. **Read this file before forming conclusions** —
    it is the core of the skill.
 
-4. **Record findings in the structured model.** Capture each finding
-   as a JSON object per the schema in `references/output-formats.md`.
-   One finding = one defect. Assign severity using the rubric below
-   and record `confidence` honestly (`confirmed` only if you traced
-   the code path or built a repro; otherwise `likely` / `tentative`).
+4. **Record findings in the structured model.** Pick the review's
+   stem first: `YYYY-MM-DD-<slug>` (today's date plus a short scope
+   slug, e.g. `2026-06-09-full-repo-audit`). Author the findings as
+   `docs/security/<stem>.findings.json` per the schema in
+   `references/output-formats.md`. One finding = one defect. Assign
+   severity using the rubric below and record `confidence` honestly
+   (`confirmed` only if you traced the code path or built a repro;
+   otherwise `likely` / `tentative`).
 
-5. **Emit the three outputs.** From the single `findings.json`,
-   render the report, the SARIF, and the inline annotations. Use the
-   script — do not hand-write SARIF:
+5. **Emit the three outputs.** From the single findings file,
+   render the report, the SARIF, and the inline annotations into
+   `docs/security/` under the same stem. Use the script — do not
+   hand-write SARIF:
 
    ```bash
-   go run ./cmd/mdsmith-secreview render findings.json --out-dir <dir>
+   go run ./cmd/mdsmith-secreview render \
+     docs/security/<stem>.findings.json \
+     --out-dir docs/security/ --stem <stem>
    ```
 
-   It writes `security-review.md`, `findings.sarif`, and
-   `inline-annotations.json`; see `references/output-formats.md` for
-   the schema and what each output is for.
+   It writes `<stem>.md`, `<stem>.sarif`, and
+   `<stem>.inline-annotations.json`. The schema and the purpose of
+   each output live in `references/output-formats.md`. The date
+   stem keeps every review's files apart. A later review never
+   overwrites an earlier one. `SECURITY.md`'s catalog indexes the
+   new `.md` on the next fix pass.
+
+   Then make the report pass the linter: add the front matter
+   `docs/security/proto.md` requires (`date`, `scope`, `method`,
+   `title`, `summary`), keep the H1 directly after the closing
+   `---`, and run `mdsmith fix` on it. Regenerate `SECURITY.md`'s
+   catalog with `mdsmith fix SECURITY.md`.
 
 6. **Summarize honestly.** Lead with the highest-severity confirmed
    findings. Separate confirmed defects from hardening suggestions.
