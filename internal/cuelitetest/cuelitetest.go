@@ -27,6 +27,7 @@ package cuelitetest
 import (
 	"bytes"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -249,76 +250,98 @@ func oracleData(ctx *cue.Context, data []byte) (cue.Value, error) {
 	if err != nil {
 		return cue.Value{}, err
 	}
-	val := ctx.BuildExpr(expr)
-	if err := val.Err(); err != nil {
-		return cue.Value{}, err
-	}
-	return val, nil
+	// BuildExpr of an extracted strict-JSON expression does not bottom
+	// (the only documented bottom source, a duplicate key, is rejected
+	// above), so the oracle, like cuelite's buildJSON, carries no
+	// unreachable val.Err() guard here.
+	return ctx.BuildExpr(expr), nil
 }
 
 // rawDuplicateKeys rejects the first object key repeated within one
 // object at any depth, mirroring cuelite's strict-JSON rule with an
-// INDEPENDENT walk: a recursive json.RawMessage descent rather than
-// cuelite's flat token stack, so the two arms agreeing is real
-// cross-checking and not one calling the other. It re-decodes the
-// document one structural level at a time so a duplicate key is visible
-// before the last-wins collapse a generic map would impose. A malformed
-// document yields no duplicate error: cuejson.Extract reports the syntax
-// error, keeping one definition of "not JSON".
-func rawDuplicateKeys(raw []byte) error {
-	trimmed := bytes.TrimSpace(raw)
-	if len(trimmed) == 0 {
-		return nil
+// INDEPENDENT walk: a recursive token consumer driven by sentinel
+// signals rather than cuelite's flat parity stack, so the two arms
+// agreeing is real cross-checking and not one calling the other. A
+// malformed document yields no duplicate error — any token error is
+// reported as errMalformed and swallowed at the top, leaving
+// cuejson.Extract to report the syntax error and keep one definition of
+// "not JSON".
+func rawDuplicateKeys(data []byte) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	if err := walkJSONValue(dec); err != nil && !stderrors.Is(err, errMalformed) {
+		return err
 	}
-	switch trimmed[0] {
-	case '{':
-		var ordered []struct {
-			key string
-			val json.RawMessage
+	return nil
+}
+
+// errMalformed signals that the token stream was not well-formed JSON.
+// rawDuplicateKeys swallows it (deferring to cuejson.Extract); a genuine
+// duplicate-key error is a different, non-errMalformed error that
+// propagates.
+var errMalformed = stderrors.New("malformed JSON")
+
+// walkJSONValue consumes exactly one JSON value from dec — a scalar, or a
+// whole object/array it recurses into — and returns the first duplicate
+// object key it finds. A token error becomes errMalformed.
+func walkJSONValue(dec *json.Decoder) error {
+	tok, err := dec.Token()
+	if err != nil {
+		return errMalformed
+	}
+	// json.Decoder only ever hands an OPENING delimiter as a value token:
+	// a bare '}' or ']' is a syntax error it reports at Token() above, never
+	// a value here. So a delim is '{' or '[', and anything else is a scalar.
+	switch tok {
+	case json.Delim('{'):
+		return walkJSONObject(dec)
+	case json.Delim('['):
+		return walkJSONArray(dec)
+	default:
+		return nil // a scalar value
+	}
+}
+
+// walkJSONObject consumes object members up to the matching '}', rejecting
+// the first key that repeats within this object and recursing into each
+// value. The opening '{' has already been consumed by the caller.
+func walkJSONObject(dec *json.Decoder) error {
+	seen := map[string]struct{}{}
+	for dec.More() {
+		// dec.More() is true, so the next token is a string key: a JSON
+		// object key is always a string, and a non-string would be a syntax
+		// error Token() reports here, not a wrong-typed token. So a token
+		// error is the only failure to guard, and the assertion is safe.
+		keyTok, err := dec.Token()
+		if err != nil {
+			return errMalformed
 		}
-		dec := json.NewDecoder(bytes.NewReader(trimmed))
-		// Consume the opening '{'.
-		if _, err := dec.Token(); err != nil {
-			return nil
+		key := keyTok.(string)
+		if _, dup := seen[key]; dup {
+			return fmt.Errorf("duplicate JSON key %q", key)
 		}
-		seen := map[string]struct{}{}
-		for dec.More() {
-			keyTok, err := dec.Token()
-			if err != nil {
-				return nil
-			}
-			key, ok := keyTok.(string)
-			if !ok {
-				return nil
-			}
-			if _, dup := seen[key]; dup {
-				return fmt.Errorf("duplicate JSON key %q", key)
-			}
-			seen[key] = struct{}{}
-			var val json.RawMessage
-			if err := dec.Decode(&val); err != nil {
-				return nil
-			}
-			ordered = append(ordered, struct {
-				key string
-				val json.RawMessage
-			}{key, val})
+		seen[key] = struct{}{}
+		if err := walkJSONValue(dec); err != nil {
+			return err
 		}
-		for _, kv := range ordered {
-			if err := rawDuplicateKeys(kv.val); err != nil {
-				return err
-			}
+	}
+	// Consume the closing '}'.
+	if _, err := dec.Token(); err != nil {
+		return errMalformed
+	}
+	return nil
+}
+
+// walkJSONArray consumes array elements up to the matching ']', recursing
+// into each. The opening '[' has already been consumed by the caller.
+func walkJSONArray(dec *json.Decoder) error {
+	for dec.More() {
+		if err := walkJSONValue(dec); err != nil {
+			return err
 		}
-	case '[':
-		var elems []json.RawMessage
-		if err := json.Unmarshal(trimmed, &elems); err != nil {
-			return nil
-		}
-		for _, e := range elems {
-			if err := rawDuplicateKeys(e); err != nil {
-				return err
-			}
-		}
+	}
+	// Consume the closing ']'.
+	if _, err := dec.Token(); err != nil {
+		return errMalformed
 	}
 	return nil
 }

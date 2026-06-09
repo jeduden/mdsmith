@@ -12,13 +12,16 @@
 // method delegates to CUE, so mdsmith call sites can move onto the
 // façade with behaviour unchanged. Only afterward is the implementation
 // flipped, method by method, to a small in-house pure-Go engine behind
-// this same stable API. Throughout that flip the CUE-backed path stays
-// available as the differential oracle: the harness in
-// internal/cuelitetest runs a value through both the in-house path and
-// the CUE-backed path and asserts identical accept/reject outcomes and
-// identical error field paths. Until a method is flipped, both paths
-// are the same CUE-backed code, so the harness is a green scaffold the
-// later phases extend.
+// this same stable API. Throughout that flip a differential oracle keeps
+// the flip honest: the harness in internal/cuelitetest runs a value
+// through both the in-house path (this façade) and an INDEPENDENT
+// CUE-backed oracle it implements itself (internal/cuelitetest's
+// OraclePath, talking to cuelang.org/go directly, not this façade), and
+// asserts identical accept/reject outcomes and identical error field
+// paths. This façade's own delegation to CUE is deleted at the flip
+// (plan 240); the oracle is the harness's, not the façade's. Until a
+// method is flipped, both paths reduce to CUE, so the harness is a green
+// scaffold the later phases extend.
 //
 // Phase 0 (plan 236) exposes only the minimal surface the delegation
 // pattern, the differential harness, and the benchmark need: Compile,
@@ -34,19 +37,38 @@
 // safe for concurrent use, and that long-lived contexts can grow
 // unbounded. So each Compile/CompileJSON builds its own *cue.Context.
 // Independently compiled roots are therefore isolated from one another.
-// A DERIVED value — the result of Unify — shares the receiver root's
-// context, so it is NOT isolated from that root and must not be used
-// concurrently with it; under CUE v0.16.1 that concurrency disclaimer
-// applies to every value drawn from the same context. Unify keeps a
-// single result context by reusing an operand's value when it already
-// belongs to the receiver's context and otherwise re-compiling the
-// operand's retained source there. This is the honest interim cost of
-// the CUE-backed phase: one context per compiled root, and at most one
-// re-compile of a cross-context operand per Unify. The in-house engine
-// of plan 218 erases both — a flipped Value is a context-free immutable
-// struct shareable across goroutines — without changing this API: Value
-// stays a value type whose Unify takes and returns a Value, so a bottom
-// (⊥) absorbs cleanly in either implementation.
+//
+// Unify needs both operands in one context, and it gets there by
+// REBUILDING one side into the other's context. Whichever side still
+// retains source is the side rebuilt; the result then lives in — and is
+// NOT isolated from — the context of the side that was NOT rebuilt. Unify
+// tries the operand first (rebuild the operand into the receiver's
+// context, the common fresh-operand-against-a-root case) and otherwise
+// rebuilds the receiver into the operand's context. When BOTH sides are
+// derived results with no source, neither can be rebuilt and Unify
+// returns errCrossContext as a bottom.
+//
+// Two consequences follow for concurrent use, and they are the teachable
+// safe rule:
+//
+//   - A source-carrying Value used as the NON-rebuilt side has its context
+//     MUTATED by each cross-context Unify (the rebuilt operand is compiled
+//     INTO that context). So a compiled schema shared across goroutines —
+//     used as the receiver in schemaVal.Unify(dataVal) — must have external
+//     synchronization, or each goroutine must compile its own copy. Sharing
+//     one compiled Value across goroutines without locking is a data race
+//     under the same CUE v0.16.1 disclaimer.
+//   - Repeated cross-context Unify against ONE long-lived Value accumulates
+//     a compiled document in its context per call — CUE's documented
+//     long-lived-context growth. A benchmark that validates many documents
+//     against one cached schema therefore pays an N-dependent per-op cost.
+//
+// Both are interim costs of the CUE-backed phase. The in-house engine of
+// plan 218 erases them — a flipped Value is a context-free immutable
+// struct, shareable across goroutines and free of context growth —
+// without changing this API: Value stays a value type whose Unify takes
+// and returns a Value, so a bottom (⊥) absorbs cleanly in either
+// implementation.
 package cuelite
 
 import (
@@ -156,9 +178,10 @@ func CompileJSON(data []byte) (Value, error) {
 // Extract reports a malformed document before any value is built. It
 // first rejects any duplicate object key (at any nesting depth,
 // including inside array elements), since CUE's lift would silently
-// unify same-named keys rather than reject them. Any remaining bottom
-// (⊥) from the build is returned as that bottom's Err(), so CompileJSON
-// surfaces it as a Go error exactly as Compile surfaces a CUE bottom.
+// unify same-named keys rather than reject them. The two rejection
+// sources — a duplicate key and a malformed document — are the only
+// errors CompileJSON surfaces; an extracted strict-JSON expression
+// builds without bottoming (see BuildExpr below).
 func buildJSON(ctx *cue.Context, data []byte) (cue.Value, error) {
 	if err := checkDuplicateJSONKeys(data); err != nil {
 		return cue.Value{}, err
@@ -167,11 +190,14 @@ func buildJSON(ctx *cue.Context, data []byte) (cue.Value, error) {
 	if err != nil {
 		return cue.Value{}, err
 	}
-	val := ctx.BuildExpr(expr)
-	if err := val.Err(); err != nil {
-		return cue.Value{}, err
-	}
-	return val, nil
+	// BuildExpr of an extracted strict-JSON expression cannot bottom:
+	// JSON values are concrete and self-consistent, and the one documented
+	// bottom source — a duplicate object key — is already rejected above.
+	// So there is no val.Err() guard here; adding one would be an
+	// unreachable defensive branch (and a coverage hole) per the project's
+	// drive-it-red-or-don't rule. Should a future CUE build ever bottom, it
+	// still surfaces: Validate runs cue.Value.Validate on the result.
+	return ctx.BuildExpr(expr), nil
 }
 
 // checkDuplicateJSONKeys walks the JSON document with the streaming
@@ -318,9 +344,14 @@ func (v Value) Unify(o Value) Value {
 		return bottom(err)
 	}
 	if rebuilt, ok := o.rebuild(v.val.Context()); ok {
-		// The merged value carries v's context. A re-Unify of the result is
-		// not part of the phase-0 surface; the result is consumed only by
-		// Validate, which reads val, so no source is retained.
+		// The operand was rebuilt into v's context, so the merged value lives
+		// in v's context — and is not isolated from v. The result retains no
+		// source: a later cross-context Unify against it rebuilds the OTHER
+		// side instead (the receiver-rebuild branch below handles that), and
+		// only two such sourceless results in different contexts absorb as a
+		// bottom. Re-Unify of a derived result IS exercised — by
+		// TestValue_Unify_crossContext and the chained corpus cases — so this
+		// is a real branch, not an unreachable convenience.
 		return Value{val: v.val.Unify(rebuilt)}
 	}
 	// The operand is derived in a foreign context. If the receiver still

@@ -6,6 +6,7 @@ import (
 	"cuelang.org/go/cue"
 	"cuelang.org/go/cue/cuecontext"
 	"cuelang.org/go/cue/errors"
+	"github.com/stretchr/testify/require"
 
 	"github.com/jeduden/mdsmith/cue/cuelite"
 )
@@ -29,19 +30,21 @@ func benchCase() Case {
 // differential run share one definition of agreement.
 func TestBenchCaseAccepted(t *testing.T) {
 	c := benchCase()
-	if !Compare(t, CueLitePath, OraclePath, c) {
-		t.Fatal("benchmark case must agree across paths")
-	}
-	if !CueLitePath(c).Accepted() {
-		t.Fatal("benchmark case must be accepted")
-	}
+	// Compare already records a t.Errorf on disagreement, so no extra
+	// t.Fatal is needed; the Accepted check uses require per house style.
+	Compare(t, CueLitePath, OraclePath, c)
+	require.True(t, CueLitePath(c).Accepted(), "benchmark case must be accepted")
 }
 
 // BenchmarkCompileValidate measures the cold path — compile schema,
 // compile data, unify, validate, every iteration — of the cuelite façade
-// against the direct CUE oracle. Both arms pay one context per operation
-// (cuelite per Value, the oracle per call), so the comparison is
-// symmetric and honest.
+// against the direct CUE oracle. The two arms are NOT symmetric in
+// context cost: the oracle builds one *cue.Context per call and compiles
+// both schema and data into it, while the cuelite arm builds one context
+// per Value (two: schema, data) plus a third rebuild compile when Unify
+// carries one operand across contexts. So the cuelite arm pays two
+// contexts plus a rebuild against the oracle's one — the honest interim
+// cost the flip erases, not a like-for-like comparison.
 func BenchmarkCompileValidate(b *testing.B) {
 	c := benchCase()
 	b.Run("cuelite", func(b *testing.B) {
@@ -66,6 +69,14 @@ func BenchmarkCompileValidate(b *testing.B) {
 // against: one schema compiled once, then many documents validated
 // against it. The schema compile is hoisted out of the timed loop in
 // both arms, so the loop measures data compile + unify + validate only.
+//
+// In the CUE-backed phase the per-op cost is N-dependent, not flat:
+// every iteration's cross-context Unify rebuilds the fresh data Value
+// into the one long-lived schema context, accumulating one compiled
+// document in that context per iteration (CUE's documented long-lived-
+// context growth). So later iterations run against a larger context than
+// earlier ones. The flip to the in-house engine — a context-free
+// immutable schema — makes this cost flat and the growth disappear.
 func BenchmarkValidate(b *testing.B) {
 	c := benchCase()
 	b.Run("cuelite", func(b *testing.B) {
