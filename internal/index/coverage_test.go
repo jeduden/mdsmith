@@ -158,6 +158,25 @@ func TestCollectLinkRefDefsDuplicateLabel(t *testing.T) {
 	assert.Equal(t, 1, refs, "expected exactly one SymbolLinkRef for 'lab'")
 }
 
+func TestCollectLinkRefDefsMixedCaseLabel(t *testing.T) {
+	t.Parallel()
+	// A mixed-case label like [Foo Bar]: url must produce a SymbolLinkRef
+	// with anchor "foo bar" (goldmark normalizes labels to lowercase). The
+	// wanted-map key must be normalized so the regex match is found.
+	src := "# T\n\n[link][Foo Bar]\n\n[Foo Bar]: https://example.com\n"
+	idx := New("/r")
+	idx.Update("a.md", []byte(src))
+	fe, ok := idx.File("a.md")
+	require.True(t, ok)
+	var refs int
+	for _, s := range fe.Symbols {
+		if s.Kind == SymbolLinkRef && s.Anchor == "foo bar" {
+			refs++
+		}
+	}
+	assert.Equal(t, 1, refs, "expected one SymbolLinkRef for mixed-case label 'Foo Bar'")
+}
+
 func TestCollectLinkEdgesAnchorOnlyTakesAnchorBranch(t *testing.T) {
 	t.Parallel()
 	// `[x](#sec)` exercises the LocalAnchor=true branch of
