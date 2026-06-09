@@ -264,7 +264,8 @@ func TestRenderStemRejectsUnsafeStem(t *testing.T) {
 	// before writing anything.
 	dir := t.TempDir()
 	for _, bad := range []string{
-		"../escape", "a/b", `a\b`, "with space", ".", "..", "/abs",
+		"../escape", "a/b", `a\b`, "with space", "with\ttab",
+		".", "..", "/abs", ".hidden",
 	} {
 		err := RenderStem(multiSevReport(), dir, bad)
 		assert.Errorf(t, err, "stem %q should be rejected", bad)

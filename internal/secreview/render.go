@@ -66,7 +66,10 @@ func validateStem(stem string) error {
 	if stem != filepath.Base(stem) || stem == "." || stem == ".." {
 		return fmt.Errorf("invalid --stem %q: must be a bare filename, not a path", stem)
 	}
-	if strings.ContainsAny(stem, `/\`) || strings.ContainsRune(stem, os.PathSeparator) {
+	// filepath.Base only splits on the host separator, so reject both
+	// slashes explicitly: a stem authored on Unix with a backslash must
+	// not become a path component on Windows.
+	if strings.ContainsAny(stem, `/\`) {
 		return fmt.Errorf("invalid --stem %q: must not contain a path separator", stem)
 	}
 	if strings.ContainsFunc(stem, unicode.IsSpace) {
