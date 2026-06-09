@@ -10,8 +10,6 @@ hero:
 ---
 mdsmith is a Markdown linter and formatter written in Go. It checks style,
 readability, structure, and cross-file integrity, and auto-fixes what fixes
-cleanly. Where markdownlint-compatible linters stop at per-file style,
-mdsmith adds the cross-file graph, generated sections, and readability
-budgets. One rule engine powers the CLI, the LSP server, and the VS Code
+cleanly. One rule engine powers the CLI, the LSP server, and the VS Code
 extension — Neovim and other LSP-aware editors plug in through the same
 server, and a Claude Code plugin is available for users of that editor.

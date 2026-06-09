@@ -415,8 +415,10 @@ func runVerifyWebsiteLinks(_ string, args []string) int {
 				"page permalink, `index.md` drop → section URL, no\n"+
 				"unpublished `README.md` hrefs in rule pages,\n"+
 				"javascript:/data: hrefs neutralized, and the configured\n"+
-				"baseURL prefix on site-absolute hrefs. Exits non-zero on\n"+
-				"the first failed probe.\n")
+				"baseURL prefix on site-absolute hrefs. Also resolves\n"+
+				"every internal homepage href to a rendered page, since\n"+
+				"template-emitted links bypass the markdown link rules.\n"+
+				"Exits non-zero on the first failed probe.\n")
 	}
 	if err := fs.Parse(args); err != nil {
 		if code := reportFlagParseErr(err, os.Stderr, "mdsmith-release: verify-website-links"); code >= 0 {

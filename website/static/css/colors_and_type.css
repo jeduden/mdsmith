@@ -64,6 +64,9 @@
   --forge-900: #341606;
 
   /* ----- Steel ----- */
+  /* Text on light backgrounds needs steel-500 or darker to
+     clear the 4.5:1 WCAG AA contrast bar; steel-300/400 are
+     for borders, icons, and other non-text decoration. */
   --steel-50:  #F5F6F7;
   --steel-100: #EAECEF;
   --steel-200: #D6DAE0;
