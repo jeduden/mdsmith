@@ -445,7 +445,7 @@ func (v Value) Validate() error {
 		// consumer loop over Errors still sees one diagnostic for the
 		// failure. Wrap the bottom's cause so errors.Is/As still reach the
 		// original CUE error or sentinel (errZeroValue, errCrossContext).
-		return newPathErrorWrapping(nil, err.Error(), err)
+		return newPathError(nil, err.Error(), err)
 	}
 	verr := v.val.Validate(cue.Concrete(true))
 	if verr == nil {
@@ -466,7 +466,7 @@ func (v Value) Validate() error {
 // that hands this helper an empty leaf slice.
 func joinValidationErrors(leaves []errors.Error, verr error) error {
 	if len(leaves) == 0 {
-		return newPathErrorWrapping(nil, verr.Error(), verr)
+		return newPathError(nil, verr.Error(), verr)
 	}
 	joined := make([]error, len(leaves))
 	for i, leaf := range leaves {
@@ -485,5 +485,5 @@ func joinValidationErrors(leaves []errors.Error, verr error) error {
 // cue/errors.Error) through the returned leaf.
 func pathErrorOf(e errors.Error) *PathError {
 	format, args := e.Msg()
-	return newPathErrorWrapping(e.Path(), fmt.Sprintf(format, args...), e)
+	return newPathError(e.Path(), fmt.Sprintf(format, args...), e)
 }

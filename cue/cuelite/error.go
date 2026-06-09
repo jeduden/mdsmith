@@ -25,21 +25,13 @@ type PathError struct {
 }
 
 // newPathError builds a PathError at the given field path with the
-// given message. A nil or empty path produces an error whose Error()
-// is the bare message, with no path prefix. The message must be
-// path-free: Error() is responsible for the single path prefix, so a
-// message that already carries the path would double it. The error
-// carries no wrapped cause; use newPathErrorWrapping to keep one
-// reachable through errors.Is/As.
-func newPathError(path []string, msg string) *PathError {
-	return &PathError{path: path, msg: msg}
-}
-
-// newPathErrorWrapping is newPathError that also retains cause as the
-// PathError's wrapped error, so errors.Is/As against the original CUE
-// error or a sentinel still resolve through the returned leaf. The
-// message is still path-free and still owns the single path prefix.
-func newPathErrorWrapping(path []string, msg string, cause error) *PathError {
+// given message, retaining cause as its wrapped error (nil when there is
+// none) so errors.Is/As against the original CUE error or a sentinel
+// resolve through the returned leaf. A nil or empty path produces an
+// error whose Error() is the bare message, with no path prefix. The
+// message must be path-free: Error() owns the single path prefix, so a
+// message that already carries the path would double it.
+func newPathError(path []string, msg string, cause error) *PathError {
 	return &PathError{path: path, msg: msg, wrapped: cause}
 }
 

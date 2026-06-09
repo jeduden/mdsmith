@@ -127,13 +127,13 @@ func TestCollectPathErrors(t *testing.T) {
 		assert.Nil(t, out)
 	})
 	t.Run("a bare PathError is appended as a leaf", func(t *testing.T) {
-		pe := newPathError([]string{"a"}, "boom")
+		pe := newPathError([]string{"a"}, "boom", nil)
 		out := collectPathErrors(pe, nil, map[error]struct{}{})
 		require.Len(t, out, 1)
 		assert.Same(t, pe, out[0])
 	})
 	t.Run("an already-visited node is skipped", func(t *testing.T) {
-		pe := newPathError([]string{"a"}, "boom")
+		pe := newPathError([]string{"a"}, "boom", nil)
 		visited := map[error]struct{}{pe: {}}
 		out := collectPathErrors(pe, nil, visited)
 		assert.Empty(t, out, "a node in visited must not be re-collected")

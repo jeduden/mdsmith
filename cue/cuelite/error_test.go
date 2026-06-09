@@ -11,14 +11,25 @@ import (
 )
 
 func TestNewPathError(t *testing.T) {
-	err := newPathError([]string{"meta", "status"}, "value out of range")
-	require.NotNil(t, err)
-	assert.Equal(t, []string{"meta", "status"}, err.Path())
-	assert.Equal(t, "meta.status: value out of range", err.Error())
+	t.Run("path and message, nil cause", func(t *testing.T) {
+		err := newPathError([]string{"meta", "status"}, "value out of range", nil)
+		require.NotNil(t, err)
+		assert.Equal(t, []string{"meta", "status"}, err.Path())
+		assert.Equal(t, "meta.status: value out of range", err.Error())
+		assert.NoError(t, err.Unwrap(), "a nil cause leaves Unwrap nil")
+	})
+	t.Run("non-nil cause is retained for errors.Is/As", func(t *testing.T) {
+		// The single consolidated constructor still wraps a cause so the
+		// returned leaf resolves errors.Is against it.
+		cause := errors.New("underlying")
+		err := newPathError([]string{"x"}, "boom", cause)
+		assert.Same(t, cause, err.Unwrap(), "Unwrap returns the retained cause")
+		assert.True(t, errors.Is(err, cause), "errors.Is reaches the wrapped cause")
+	})
 }
 
 func TestNewPathError_emptyPath(t *testing.T) {
-	err := newPathError(nil, "front matter does not satisfy schema")
+	err := newPathError(nil, "front matter does not satisfy schema", nil)
 	require.NotNil(t, err)
 	assert.Nil(t, err.Path())
 	assert.Equal(t, "front matter does not satisfy schema", err.Error())
@@ -44,7 +55,7 @@ func TestPathError_Path_returnsCopy(t *testing.T) {
 	// Path() must not alias the error's internal slice: a caller that
 	// mutates the returned slice (the harness collects leaf.Path() into its
 	// own structures) must not corrupt a later Error() render.
-	err := newPathError([]string{"meta", "status"}, "boom")
+	err := newPathError([]string{"meta", "status"}, "boom", nil)
 	got := err.Path()
 	require.Len(t, got, 2)
 	got[0] = "MUTATED"
@@ -54,8 +65,20 @@ func TestPathError_Path_returnsCopy(t *testing.T) {
 		"a second Path() call must still see the original field path")
 }
 
+func TestPathError_Unwrap(t *testing.T) {
+	t.Run("returns the retained cause", func(t *testing.T) {
+		cause := errors.New("cause")
+		err := newPathError([]string{"a"}, "boom", cause)
+		assert.Same(t, cause, err.Unwrap())
+	})
+	t.Run("returns nil when there is no cause", func(t *testing.T) {
+		err := newPathError([]string{"a"}, "boom", nil)
+		assert.NoError(t, err.Unwrap())
+	})
+}
+
 func TestPathError_errorsAs(t *testing.T) {
-	var wrapped error = newPathError([]string{"x"}, "boom")
+	var wrapped error = newPathError([]string{"x"}, "boom", nil)
 	var pe *PathError
 	require.True(t, errors.As(wrapped, &pe))
 	assert.Equal(t, []string{"x"}, pe.Path())
@@ -77,14 +100,14 @@ func TestErrors(t *testing.T) {
 		assert.Nil(t, Errors(errors.New("not a path error")))
 	})
 	t.Run("single bare PathError yields one", func(t *testing.T) {
-		got := Errors(newPathError([]string{"a"}, "boom"))
+		got := Errors(newPathError([]string{"a"}, "boom", nil))
 		require.Len(t, got, 1)
 		assert.Equal(t, []string{"a"}, got[0].Path())
 	})
 	t.Run("joined PathErrors are all collected in order", func(t *testing.T) {
 		joined := errors.Join(
-			newPathError([]string{"a"}, "x"),
-			newPathError([]string{"b"}, "y"),
+			newPathError([]string{"a"}, "x", nil),
+			newPathError([]string{"b"}, "y", nil),
 		)
 		got := Errors(joined)
 		require.Len(t, got, 2)
@@ -93,7 +116,7 @@ func TestErrors(t *testing.T) {
 	})
 	t.Run("a join mixing a foreign error keeps only the PathErrors", func(t *testing.T) {
 		joined := errors.Join(
-			newPathError([]string{"a"}, "x"),
+			newPathError([]string{"a"}, "x", nil),
 			errors.New("foreign"),
 		)
 		got := Errors(joined)
@@ -103,10 +126,10 @@ func TestErrors(t *testing.T) {
 	t.Run("nested joins flatten in encounter order", func(t *testing.T) {
 		nested := errors.Join(
 			errors.Join(
-				newPathError([]string{"a"}, "x"),
-				newPathError([]string{"b"}, "y"),
+				newPathError([]string{"a"}, "x", nil),
+				newPathError([]string{"b"}, "y", nil),
 			),
-			newPathError([]string{"c"}, "z"),
+			newPathError([]string{"c"}, "z", nil),
 		)
 		got := Errors(nested)
 		require.Len(t, got, 3)
@@ -128,7 +151,7 @@ func TestErrors_sharedLeafCountedOnce(t *testing.T) {
 	// errors.Join(verr, fmt.Errorf("wrap: %w", verr)) reaches the same
 	// leaf twice; a naive walk double-counts it. The walk must visit each
 	// node at most once, so one underlying leaf yields exactly one entry.
-	pe := newPathError([]string{"a"}, "boom")
+	pe := newPathError([]string{"a"}, "boom", nil)
 	joined := errors.Join(pe, fmt.Errorf("wrap: %w", pe))
 	got := Errors(joined)
 	require.Len(t, got, 1, "a shared leaf must be reported once, not twice")
@@ -147,8 +170,8 @@ func TestErrors_pathErrorIsALeaf(t *testing.T) {
 	// A *PathError that itself wraps an error is a leaf: the walk reports
 	// the PathError once and does NOT descend into its wrapped cause, so a
 	// wrapped *PathError is not re-walked into extra entries.
-	inner := newPathError([]string{"inner"}, "inner boom")
-	outer := newPathErrorWrapping([]string{"outer"}, "outer boom", inner)
+	inner := newPathError([]string{"inner"}, "inner boom", nil)
+	outer := newPathError([]string{"outer"}, "outer boom", inner)
 	got := Errors(outer)
 	require.Len(t, got, 1, "a wrapping PathError is one leaf, not two")
 	assert.Equal(t, []string{"outer"}, got[0].Path())
@@ -173,7 +196,7 @@ func TestErrors_uncomparableNodeDoesNotPanic(t *testing.T) {
 	t.Run("an uncomparable error joined with a leaf collects the leaf", func(t *testing.T) {
 		// errors.Join holds an uncomparable branch beside a *PathError leaf;
 		// the walk must collect the leaf without panicking on the branch.
-		pe := newPathError([]string{"x"}, "boom")
+		pe := newPathError([]string{"x"}, "boom", nil)
 		joined := errors.Join(sliceErr{"a"}, pe)
 		var got []*PathError
 		assert.NotPanics(t, func() {
@@ -191,7 +214,7 @@ func TestErrors_wrappers(t *testing.T) {
 	t.Run("leaves behind a single wrapper are found", func(t *testing.T) {
 		// fmt.Errorf("%w", pe) is an Unwrap() error wrapper, not a join;
 		// Errors must recurse through it to reach the leaf.
-		wrapped := fmt.Errorf("context: %w", newPathError([]string{"a"}, "boom"))
+		wrapped := fmt.Errorf("context: %w", newPathError([]string{"a"}, "boom", nil))
 		got := Errors(wrapped)
 		require.Len(t, got, 1)
 		assert.Equal(t, []string{"a"}, got[0].Path())
@@ -200,8 +223,8 @@ func TestErrors_wrappers(t *testing.T) {
 		// A join hidden behind a single wrapper: errors.As stops at the
 		// first leaf, so a walk that does not recurse past the wrapper into
 		// the join's branches would report only one of the two.
-		pe1 := newPathError([]string{"a"}, "x")
-		pe2 := newPathError([]string{"b"}, "y")
+		pe1 := newPathError([]string{"a"}, "x", nil)
+		pe2 := newPathError([]string{"b"}, "y", nil)
 		wrapped := fmt.Errorf("ctx: %w", errors.Join(pe1, pe2))
 		got := Errors(wrapped)
 		require.Len(t, got, 2)
