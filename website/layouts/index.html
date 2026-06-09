@@ -1,10 +1,10 @@
 {{ define "main" }}
   {{ partial "hero.html" . }}
-  {{- /* The page body of content/_index.md is the one-paragraph
-         category statement ("mdsmith is a Markdown linter and
-         formatter written in Go…"). Render it right under the
-         hero so a first-time visitor can classify the product
-         without scrolling to the Why section. The canonical copy
+  {{- /* The page body of content/_index.md is a one-paragraph
+         scope statement (what mdsmith checks, and the one engine
+         behind CLI, LSP, and editors). The hero lead carries the
+         category ("a Markdown linter and formatter"); this strip
+         adds the concrete scope right under it. The fuller copy
          is the intro of docs/features/index.md (which the README
          includes and /features/ renders); keep the _index.md body
          aligned with it when either changes. */ -}}
