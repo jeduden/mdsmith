@@ -1,7 +1,7 @@
 ---
 id: 218
 title: In-house CUE-subset engine for WASM size and tinygo
-status: "🔲"
+status: "🔳"
 model: opus
 summary: >-
   Replace the cuelang.org/go dependency with a small, pure-Go,

@@ -1,7 +1,7 @@
 ---
 id: 236
 title: "cuelite phase 0 — package, façade, and differential harness"
-status: "🔲"
+status: "✅"
 model: opus
 summary: >-
   Create the public cue/cuelite package — the Value type, the
@@ -44,13 +44,37 @@ CUE, so adopting it later stays green.
 
 ## Acceptance Criteria
 
-- [ ] `cue/cuelite` is a public, exported, documented package
+- [x] `cue/cuelite` is a public, exported, documented package
       with its `Value` type and delegation scaffold.
-- [ ] Each function ships with a dedicated unit test.
-- [ ] The differential harness and the benchmark run in CI.
-- [ ] No mdsmith call site imports `cue/cuelite` yet.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues.
+- [x] Each function ships with a dedicated unit test.
+- [x] The differential harness and the benchmark run in CI.
+- [x] No mdsmith call site imports `cue/cuelite` yet.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues.
+
+## Implementation notes
+
+Two choices differ from the sketch in plan 218, both
+behaviour-preserving:
+
+- **Shared context, no per-`Value` rebinding.** Every `Value`
+  compiles against one package-wide `*cue.Context`, so `Unify`
+  needs no cross-context re-binding. This replaces the per-`Value`
+  context pairing the sketch implied, and matches the
+  `internal/schema` rule that two values must share a context to
+  unify. The flip to the in-house engine drops the shared context
+  entirely, as planned.
+- **Harness lives in `cue/cuelite/difftest`.** The differential
+  harness is a sibling sub-package, not an in-package file. It
+  exposes `CueLitePath` (the in-house path), `OraclePath` (the CUE
+  oracle), and `Run` over a `Case` corpus, with a CI-visible
+  `TestRun_corpus`. The later phases plug the real engine into
+  `CueLitePath` unchanged.
+
+The phase-0 surface is small. It has `Compile`, `CompileJSON`,
+`Value.Unify`, and `Value.Validate`. It also has the `PathError`
+type with `NewPathError`, `Path`, and `Error`. The rest of the
+façade arrives in the per-surface phases.
 
 ## See also
 

@@ -146,7 +146,7 @@ footer: |
 | 216 | ✅     | opus   | [Per-document parse cache for the LSP, keyed by version](plan/216_lsp-parse-cache.md)                                                   |
 | 217 | ✅     | opus   | [Obsidian plugin (WASM runtime)](plan/217_obsidian-plugin.md)                                                                           |
 | 218 | ✅     | sonnet | [Finish MD054 link-image-style coverage in MDS068](plan/218_finish-md054-link-image-style.md)                                           |
-| 218 | 🔲     | opus   | [In-house CUE-subset engine for WASM size and tinygo](plan/218_wasm-size-reduction.md)                                                  |
+| 218 | 🔳     | opus   | [In-house CUE-subset engine for WASM size and tinygo](plan/218_wasm-size-reduction.md)                                                  |
 | 219 | ✅     | opus   | [Multiplexed AST walk to close the parity gap to mado](plan/219_multiplexed-ast-walk.md)                                                |
 | 219 | ✅     | opus   | [Route cmd/mdsmith and the LSP through pkg/mdsmith.Session](plan/219_session-cli-lsp-migration.md)                                      |
 | 220 | ✅     | opus   | [Harden the git-index writers against a transient index.lock](plan/220_git-index-lock-retry.md)                                         |
@@ -162,7 +162,7 @@ footer: |
 | 234 | 🔳     | sonnet | [Distribute mdsmith on Windows via Scoop and WinGet](plan/234_windows-package-managers.md)                                              |
 | 235 | ✅     | sonnet | [Playwright end-to-end tests for the website, runnable by CI and agents](plan/235_playwright-site-e2e.md)                               |
 | 236 | ✅     | sonnet | [Consolidate duplicated table-parse helpers in tablereadability](plan/236_arch-fix-tablereadability-dup.md)                             |
-| 236 | 🔲     | opus   | [cuelite phase 0 — package, façade, and differential harness](plan/236_cuelite-package-harness.md)                                      |
+| 236 | ✅     | opus   | [cuelite phase 0 — package, façade, and differential harness](plan/236_cuelite-package-harness.md)                                      |
 | 237 | ✅     | haiku  | [Unit tests for include-rule private validation helpers](plan/237_arch-fix-include-helper-tests.md)                                     |
 | 237 | 🔲     | sonnet | [cuelite phase 1 — surface D (placeholder paths)](plan/237_cuelite-surface-d.md)                                                        |
 | 238 | 🔲     | opus   | [cuelite phase 2 — surfaces A + B (schema, query)](plan/238_cuelite-surfaces-ab.md)                                                     |
