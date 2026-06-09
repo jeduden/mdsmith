@@ -199,6 +199,9 @@ func TestRawDuplicateKeys(t *testing.T) {
 		// Two lone-surrogate escaped keys decode to the same U+FFFD; the
 		// walker must skip dup tracking for U+FFFD keys, not fabricate a dup.
 		{"lone-surrogate keys not duplicates", `{"\ud800":1,"\udc00":2}`, false},
+		// A U+FFFD key is skipped for dup tracking, but its VALUE is still
+		// walked: a real duplicate nested under it must still be caught.
+		{"duplicate nested under a U+FFFD key", `{"\ud800":{"a":1,"a":2}}`, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

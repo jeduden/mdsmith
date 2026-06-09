@@ -218,4 +218,10 @@ func TestScanDuplicateJSONKeys(t *testing.T) {
 		// object is left to Extract rather than fabricating a duplicate.
 		assert.NoError(t, scanDuplicateJSONKeys([]byte(`{"x":1} {"a":1,"a":2}`)))
 	})
+	t.Run("top-level scalar stops the scan", func(t *testing.T) {
+		// A bare top-level scalar is the whole first value with no open
+		// container, so the scan returns immediately and leaves any trailing
+		// data (a fabricated second value) to Extract.
+		assert.NoError(t, scanDuplicateJSONKeys([]byte(`42 {"a":1,"a":2}`)))
+	})
 }
