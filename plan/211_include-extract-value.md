@@ -1,7 +1,7 @@
 ---
 id: 211
 title: "`<?include?>` projects any typed value of any kind via `extract`"
-status: "🔳"
+status: "✅"
 summary: >-
   Extend the include directive to pull a typed value out of any
   kind-typed Markdown file via the same projection
@@ -61,7 +61,7 @@ the rendered text of an object).
 
 ## Tasks
 
-1. **Directive parameter parsing.** Add `extract:` to the
+1. [x] **Directive parameter parsing.** Add `extract:` to the
    include directive validator in
    [`internal/rules/include/`](../internal/rules/include).
    Reject the parameter on files whose resolved kind set is
@@ -69,7 +69,7 @@ the rendered text of an object).
    `strip-frontmatter:` or `heading-level:` for the first
    iteration — the value flow is scalar-only, so the
    frontmatter / heading-level params do not apply.
-2. **Extract integration.** When the directive carries
+2. [x] **Extract integration.** When the directive carries
    `extract:`, run the included file through the same projection
    `mdsmith extract` produces (re-use
    [`internal/extract`](../internal/extract) directly — no
@@ -77,26 +77,29 @@ the rendered text of an object).
    splice the leaf value. Object leaves with a single
    well-known content key (`text`, `code`, `items`, `rows`)
    splice the inner value; ambiguous objects are a lint error.
-3. **Lint behavior.** A failing path lookup (`extract: nope.x`)
+3. [x] **Lint behavior.** A failing path lookup (`extract: nope.x`)
    is `MDS021 generated section is out of date` with the
    error message pointing at the missing key. A schema-non-
    conformant target file surfaces the same diagnostic that
    `mdsmith check` would surface for it, prefixed with the
    directive's call site.
-4. **Auto-fix.** `mdsmith fix` regenerates the body of the
+4. [x] **Auto-fix.** `mdsmith fix` regenerates the body of the
    include block from the current projection — the same model
    the existing file-include path uses. Round-trip stability
    matches the existing include behavior.
-5. **Adopt in messaging.** Update [`README.md`](../README.md),
+5. [x] **Adopt in messaging.** Update [`README.md`](../README.md),
    [`npm/mdsmith/README.md`](../npm/mdsmith/README.md), and
    [`python/README.md`](../python/README.md) to use
    `<?include file: docs/brand/messaging.md extract: tagline.text ?>`.
-6. **Delete the fragment layer.** Remove
-   [`docs/brand/fragments/`](../docs/brand/fragments) and the
+   The feature-doc and editor READMEs that consumed the
+   `vscode-overview` fragment now read it via
+   `extract: vscode-overview.text` too.
+6. [x] **Delete the fragment layer.** Remove
+   the `docs/brand/fragments/` directory and the
    `messagingFragmentTargets` entries in the release tooling
-   under [`internal/release/`][rel]. Drop the
-   `MarkdownFragment` patcher type if no other target
-   references it.
+   under [`internal/release/`][rel]. The `MarkdownFragment`
+   patcher type had no other references, so it (and its
+   header / wrap / unwrap helpers) was dropped.
 7. [x] **Documentation.** Add an "Include a typed value"
    subsection to the
    [generating-content guide][gen-content] with worked
@@ -119,11 +122,11 @@ the rendered text of an object).
   target, or an `extract:` on a file with no resolved kind.
 - [x] `mdsmith fix` regenerates the block body from the
   projection; running twice is byte-stable.
-- [ ] Every README that previously read a fragment file now
+- [x] Every README that previously read a fragment file now
   reads from `docs/brand/messaging.md` directly via
   `extract: tagline.text`; `docs/brand/fragments/` is removed
   and `mdsmith check .` stays clean.
-- [ ] `mdsmith-release sync-messaging --check` reports no drift
+- [x] `mdsmith-release sync-messaging --check` reports no drift
   (the JSON / TOML / YAML patcher targets continue working
   unchanged; only the fragment layer goes away).
 - [x] The new directive is documented in
