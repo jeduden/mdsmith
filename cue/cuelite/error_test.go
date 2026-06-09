@@ -143,9 +143,9 @@ func TestErrors_cyclicChainTerminates(t *testing.T) {
 }
 
 func TestErrors_pathErrorIsALeaf(t *testing.T) {
-	// A *PathError that itself wraps an error (finding 4) is a leaf: the
-	// walk reports the PathError once and does NOT descend into its wrapped
-	// cause, so a wrapped *PathError is not re-walked into extra entries.
+	// A *PathError that itself wraps an error is a leaf: the walk reports
+	// the PathError once and does NOT descend into its wrapped cause, so a
+	// wrapped *PathError is not re-walked into extra entries.
 	inner := newPathError([]string{"inner"}, "inner boom")
 	outer := newPathErrorWrapping([]string{"outer"}, "outer boom", inner)
 	got := Errors(outer)

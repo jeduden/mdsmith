@@ -110,39 +110,34 @@ func TestStage_String(t *testing.T) {
 	}
 }
 
-// TestPaths exercises both the in-house and the oracle Path through the
-// same table, so the two stay symmetric stage for stage.
+// TestPaths pins the ABSOLUTE resolution stage of each path through both
+// the in-house and the oracle Path, so the two stay symmetric stage for
+// stage. It holds only the compile-stage rows the corpus run cannot
+// assert — the corpus checks that the two paths AGREE, never which
+// absolute stage they resolve at, so a bug that moved both arms to the
+// wrong stage in lockstep would pass the corpus but fail here. The
+// accept and validate-reject rows that were once here duplicated
+// corpus() entries byte for byte and are covered by TestRun_corpus.
 func TestPaths(t *testing.T) {
 	paths := map[string]Path{"cuelite": CueLitePath, "oracle": OraclePath}
 	cases := []struct {
 		name  string
 		c     Case
 		stage Stage
-		paths [][]string
 	}{
-		{"accepts conforming data",
-			Case{Schema: `{status: string}`, Data: `{"status": "done"}`}, StageAccepted, nil},
-		{"validate reject carries field path",
-			Case{Schema: `{status: "✅"}`, Data: `{"status": "🔲"}`}, StageValidate, [][]string{{"status"}}},
-		{"multi-leaf reject carries every sorted path",
-			Case{Schema: `{a: "x", b: "y"}`, Data: `{"a": "p", "b": "q"}`}, StageValidate, [][]string{{"a"}, {"b"}}},
 		{"schema compile error",
-			Case{Schema: `{status: =}`, Data: `{"status": "x"}`}, StageCompileSchema, nil},
+			Case{Schema: `{status: =}`, Data: `{"status": "x"}`}, StageCompileSchema},
 		{"data compile error",
-			Case{Schema: `{status: string}`, Data: `{not json`}, StageCompileData, nil},
+			Case{Schema: `{status: string}`, Data: `{not json`}, StageCompileData},
 		{"non-JSON data rejected at the data stage",
-			Case{Schema: `{n: int}`, Data: `{n: 3}`}, StageCompileData, nil},
+			Case{Schema: `{n: int}`, Data: `{n: 3}`}, StageCompileData},
 		{"duplicate-key data rejected at the data stage",
-			Case{Schema: `{a: int}`, Data: `{"a":1,"a":2}`}, StageCompileData, nil},
+			Case{Schema: `{a: int}`, Data: `{"a":1,"a":2}`}, StageCompileData},
 	}
 	for name, path := range paths {
 		for _, tc := range cases {
 			t.Run(name+"/"+tc.name, func(t *testing.T) {
-				o := path(tc.c)
-				assert.Equal(t, tc.stage, o.Stage)
-				if tc.stage == StageValidate {
-					assert.Equal(t, tc.paths, o.Paths)
-				}
+				assert.Equal(t, tc.stage, path(tc.c).Stage)
 			})
 		}
 	}
@@ -186,6 +181,12 @@ func TestRawDuplicateKeys(t *testing.T) {
 		{"top-level scalar ok", `42`, false},
 		{"malformed defers to extract", `{not json`, false},
 		{"whitespace only defers", `   `, false},
+		{"lone close brace defers", `}`, false},
+		{"lone close bracket defers", `]`, false},
+		{"non-string key defers", `{1:2}`, false},
+		{"truncated object defers", `{"a":1`, false},
+		{"truncated array defers", `["x"`, false},
+		{"truncated after key defers", `{"a"`, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

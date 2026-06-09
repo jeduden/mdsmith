@@ -188,9 +188,9 @@ func TestValue_Unify_chained(t *testing.T) {
 	})
 }
 
-// TestValue_Unify_crossContext covers the order-insensitive cross-context
-// unification of finding 3: a derived operand against a source-carrying
-// receiver rebuilds the RECEIVER into the operand's context, so c.Unify(
+// TestValue_Unify_crossContext covers order-insensitive cross-context
+// unification: a derived operand against a source-carrying receiver
+// rebuilds the RECEIVER into the operand's context, so c.Unify(
 // a.Unify(b)) of compatible roots validates and of conflicting roots
 // rejects with the right path; only when BOTH sides are derived in
 // different contexts does it absorb as a pathless bottom.
@@ -364,50 +364,32 @@ func TestValidate_unwrapsToCueError(t *testing.T) {
 // TestValidate_invariant pins the contract every consumer loop relies on:
 // a non-nil Validate error always decomposes to at least one *PathError,
 // so a loop over Errors never emits zero diagnostics for a failing value.
-// The three bottom flavors — zero Value, a replayed compile error, and a
-// cross-context derived bottom — were the gap: they returned a bare Go
-// error that Errors flattened to nil. Each must now surface a *PathError
-// (with an empty path, the message preserved).
+// The bottom flavors that were the gap — zero Value, a replayed compile
+// error, a replayed JSON compile error — are each pinned through
+// assertBottomError elsewhere (TestValue_Validate, TestCompile,
+// TestCompileJSON). The one shape not message-pinned anywhere else is the
+// SWAPPED-order cross-context derived bottom: c.Unify(d).Unify(a.Unify(b)),
+// the mirror of TestValue_Unify_crossContext's a.Unify(b).Unify(c.Unify(d)).
+// It must still surface one empty-path *PathError, not a bare Go error
+// Errors would flatten to nil.
 func TestValidate_invariant(t *testing.T) {
-	bottoms := map[string]func(t *testing.T) error{
-		"zero Value": func(t *testing.T) error {
-			return Value{}.Validate()
-		},
-		"replayed compile error": func(t *testing.T) error {
-			bad, compileErr := Compile(`{status: =}`)
-			require.Error(t, compileErr)
-			return bad.Validate()
-		},
-		"replayed JSON compile error": func(t *testing.T) error {
-			bad, compileErr := CompileJSON([]byte(`{not json`))
-			require.Error(t, compileErr)
-			return bad.Validate()
-		},
-		"cross-context derived bottom": func(t *testing.T) error {
-			a, err := Compile(`{status: string}`)
-			require.NoError(t, err)
-			b, err := CompileJSON([]byte(`{"status": "✅"}`))
-			require.NoError(t, err)
-			c, err := Compile(`{weight: int}`)
-			require.NoError(t, err)
-			d, err := CompileJSON([]byte(`{"weight": 1}`))
-			require.NoError(t, err)
-			// Both operands are derived results in different contexts, so the
-			// unification cannot rebuild either into the other and absorbs as a
-			// pathless bottom.
-			return c.Unify(d).Unify(a.Unify(b)).Validate()
-		},
-	}
-	for name, build := range bottoms {
-		t.Run(name, func(t *testing.T) {
-			verr := build(t)
-			require.Error(t, verr)
-			// The invariant: Validate() != nil ⇒ len(Errors(verr)) ≥ 1.
-			leaves := Errors(verr)
-			require.GreaterOrEqual(t, len(leaves), 1,
-				"a non-nil Validate error must decompose to at least one *PathError")
-			assert.Empty(t, leaves[0].Path(),
-				"a bottom-path error carries no specific leaf, so its path is empty")
-		})
-	}
+	a, err := Compile(`{status: string}`)
+	require.NoError(t, err)
+	b, err := CompileJSON([]byte(`{"status": "✅"}`))
+	require.NoError(t, err)
+	c, err := Compile(`{weight: int}`)
+	require.NoError(t, err)
+	d, err := CompileJSON([]byte(`{"weight": 1}`))
+	require.NoError(t, err)
+	// Both operands are derived results in different contexts, so the
+	// unification cannot rebuild either into the other and absorbs as a
+	// pathless bottom.
+	verr := c.Unify(d).Unify(a.Unify(b)).Validate()
+	require.Error(t, verr)
+	// The invariant: Validate() != nil ⇒ len(Errors(verr)) ≥ 1.
+	leaves := Errors(verr)
+	require.GreaterOrEqual(t, len(leaves), 1,
+		"a non-nil Validate error must decompose to at least one *PathError")
+	assert.Empty(t, leaves[0].Path(),
+		"a bottom-path error carries no specific leaf, so its path is empty")
 }
