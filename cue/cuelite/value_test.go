@@ -118,6 +118,13 @@ func TestCompileJSON(t *testing.T) {
 		require.NoError(t, err)
 		assert.NoError(t, v.Validate())
 	})
+}
+
+// TestCompileJSON_edgeInputs covers the strict-JSON scanner's edge
+// behavior: lossy-decode keys deferred to Extract, a trailing second
+// top-level value, an out-of-float64-range number, and a lone-surrogate
+// value surfaced as a data-stage compile error.
+func TestCompileJSON_edgeInputs(t *testing.T) {
 	t.Run("invalid-UTF-8 raw keys are not fabricated duplicates", func(t *testing.T) {
 		// json.Decoder replaces each invalid byte in a raw key with U+FFFD, so
 		// two distinct invalid-byte keys would collapse to one fabricated

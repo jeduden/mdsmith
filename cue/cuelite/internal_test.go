@@ -1,6 +1,7 @@
 package cuelite
 
 import (
+	"encoding/json"
 	stderrors "errors"
 	"testing"
 
@@ -137,6 +138,57 @@ func TestCollectPathErrors(t *testing.T) {
 		visited := map[error]struct{}{pe: {}}
 		out := collectPathErrors(pe, nil, visited)
 		assert.Empty(t, out, "a node in visited must not be re-collected")
+	})
+}
+
+func TestJSONLevel_recordKey(t *testing.T) {
+	t.Run("nil level treats token as a value", func(t *testing.T) {
+		// A top-level token has no object level; it is never a key.
+		var l *jsonLevel
+		handled, err := l.recordKey("x")
+		require.NoError(t, err)
+		assert.False(t, handled)
+	})
+	t.Run("array level treats token as a value", func(t *testing.T) {
+		l := &jsonLevel{} // keys == nil marks an array level
+		handled, err := l.recordKey("x")
+		require.NoError(t, err)
+		assert.False(t, handled)
+	})
+	t.Run("a non-string token at an object level is a value", func(t *testing.T) {
+		l := &jsonLevel{keys: map[string]struct{}{}}
+		handled, err := l.recordKey(json.Delim('{'))
+		require.NoError(t, err)
+		assert.False(t, handled)
+	})
+	t.Run("a fresh key is recorded and consumed", func(t *testing.T) {
+		l := &jsonLevel{keys: map[string]struct{}{}}
+		handled, err := l.recordKey("a")
+		require.NoError(t, err)
+		assert.True(t, handled)
+		assert.True(t, l.seenKey, "the key half flips the parity to expect a value")
+		_, seen := l.keys["a"]
+		assert.True(t, seen)
+	})
+	t.Run("a seenKey token is the value half and not a key", func(t *testing.T) {
+		l := &jsonLevel{keys: map[string]struct{}{}, seenKey: true}
+		handled, err := l.recordKey("a")
+		require.NoError(t, err)
+		assert.False(t, handled, "past the key, the string is the value")
+	})
+	t.Run("a repeated key reports a duplicate", func(t *testing.T) {
+		l := &jsonLevel{keys: map[string]struct{}{"a": {}}}
+		handled, err := l.recordKey("a")
+		assert.True(t, handled)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `"a"`)
+	})
+	t.Run("a U+FFFD key is consumed but not tracked", func(t *testing.T) {
+		l := &jsonLevel{keys: map[string]struct{}{}}
+		handled, err := l.recordKey("�")
+		require.NoError(t, err)
+		assert.True(t, handled)
+		assert.Empty(t, l.keys, "a replacement-char key is skipped for dup tracking")
 	})
 }
 

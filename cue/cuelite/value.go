@@ -255,6 +255,44 @@ func buildJSON(ctx *cue.Context, data []byte) (cue.Value, error) {
 //     of each other. A lone-surrogate key still errors at the build (see
 //     buildJSON); a literal-"�" key is the documented gap CompileJSON
 //     describes.
+//
+// jsonLevel is one open container in scanDuplicateJSONKeys' stack. keys
+// is non-nil for an object level and holds the keys already seen at it;
+// nil marks an array level. seenKey is true when the next string token
+// at an object level is a value (the key was already read), false when
+// it is the next key.
+type jsonLevel struct {
+	keys    map[string]struct{}
+	seenKey bool
+}
+
+// recordKey handles tok when it is the key half of a key/value pair at
+// this object level, returning handled=true so the caller advances. It
+// reports an error on the first duplicate key. tok is NOT a key — so
+// handled is false and the caller treats it as a value — when l is nil
+// (top level), an array level (l.keys == nil), already past the key
+// (l.seenKey), or not a string. A key whose decode produced U+FFFD (a
+// lone-surrogate escape or a literal "�") is consumed but skipped for
+// dup tracking, since two such keys cannot be told apart.
+func (l *jsonLevel) recordKey(tok any) (bool, error) {
+	if l == nil || l.keys == nil || l.seenKey {
+		return false, nil
+	}
+	s, ok := tok.(string)
+	if !ok {
+		return false, nil
+	}
+	l.seenKey = true
+	if strings.ContainsRune(s, utf8.RuneError) {
+		return true, nil
+	}
+	if _, dup := l.keys[s]; dup {
+		return true, fmt.Errorf("duplicate JSON key %q", s)
+	}
+	l.keys[s] = struct{}{}
+	return true, nil
+}
+
 func scanDuplicateJSONKeys(data []byte) error {
 	// Invalid UTF-8 would make the decoder fold distinct raw keys onto one
 	// U+FFFD; leave such input to cuejson.Extract.
@@ -263,15 +301,7 @@ func scanDuplicateJSONKeys(data []byte) error {
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.UseNumber()
-	// level is one open container. keys is non-nil for an object level and
-	// holds the keys already seen at it; nil marks an array level. seenKey
-	// is true when the next string token at an object level is a value (the
-	// key was already read), false when it is the next key.
-	type level struct {
-		keys    map[string]struct{}
-		seenKey bool
-	}
-	var stack []*level
+	var stack []*jsonLevel
 	for {
 		tok, err := dec.Token()
 		if err == io.EOF {
@@ -281,37 +311,26 @@ func scanDuplicateJSONKeys(data []byte) error {
 			// Malformed JSON: leave the syntax error to cuejson.Extract.
 			return nil
 		}
-		var cur *level
+		var cur *jsonLevel
 		if len(stack) > 0 {
 			cur = stack[len(stack)-1]
 		}
 		// At an object level, a string token is a key unless it is the value
-		// half of a key/value pair (seenKey). Check keys for duplication.
-		if cur != nil && cur.keys != nil && !cur.seenKey {
-			if s, ok := tok.(string); ok {
-				// A key whose decode produced U+FFFD (a lone-surrogate escape
-				// or a literal "�") cannot be reliably distinguished from
-				// another such key, so skip dup tracking for it.
-				if strings.ContainsRune(s, utf8.RuneError) {
-					cur.seenKey = true
-					continue
-				}
-				if _, dup := cur.keys[s]; dup {
-					return fmt.Errorf("duplicate JSON key %q", s)
-				}
-				cur.keys[s] = struct{}{}
-				cur.seenKey = true
-				continue
-			}
+		// half of a key/value pair. recordKey handles it (and the duplicate
+		// check) when so; otherwise the token is a value, handled below.
+		if handled, err := cur.recordKey(tok); err != nil {
+			return err
+		} else if handled {
+			continue
 		}
 		switch tok {
 		case json.Delim('{'):
 			// A nested object is the value half of cur's pair; push it and
 			// leave cur.seenKey set, so its matching '}' restores cur below.
-			stack = append(stack, &level{keys: map[string]struct{}{}})
+			stack = append(stack, &jsonLevel{keys: map[string]struct{}{}})
 			continue
 		case json.Delim('['):
-			stack = append(stack, &level{})
+			stack = append(stack, &jsonLevel{})
 			continue
 		case json.Delim('}'), json.Delim(']'):
 			// Close the container, then mark it consumed as a value in its

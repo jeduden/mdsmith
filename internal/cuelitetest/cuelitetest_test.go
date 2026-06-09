@@ -295,7 +295,11 @@ func corpus() []Case {
 		// mergeable duplicate "a" beside it slips past BOTH arms into a
 		// phantom merged object that validates. Both arms must keep scanning
 		// and reject the duplicate at the data stage.
-		{Name: "big-number duplicate reject", Schema: `{a: {b: int, c: int}}`, Data: `{"x":1e999,"a":{"b":1},"a":{"c":2}}`},
+		{
+			Name:   "big-number duplicate reject",
+			Schema: `{a: {b: int, c: int}}`,
+			Data:   `{"x":1e999,"a":{"b":1},"a":{"c":2}}`,
+		},
 		// The same overflowing number with no duplicate key must still be
 		// accepted end-to-end by both arms.
 		{Name: "big-number no duplicate ok", Schema: `{x: number}`, Data: `{"x":1e999}`},
