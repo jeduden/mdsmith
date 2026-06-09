@@ -155,14 +155,14 @@ context-pairing plumbing in
 The phase-0 façade pays an honest interim cost for this. Each
 compiled `Value` owns a fresh `*cue.Context`, since CUE v0.16.1
 documents that values from one context are neither
-concurrency-safe nor memory-bounded. `Unify` rebuilds the
-operand's source inside the receiver's context, so unification
-stays single-context.
+concurrency-safe nor memory-bounded. `Unify` rebuilds whichever
+side retains source into the OTHER side's mutated context, so a
+shared schema needs synchronization and a long-lived `Value`
+grows until the flip.
 
-The flipped in-house `Value` is a
-context-free immutable struct. A compiled schema is then
-shareable across goroutines, and the per-`Value` context
-disappears with no API change.
+The flipped in-house `Value` is a context-free immutable struct.
+A compiled schema is then shareable across goroutines, and the
+per-`Value` context disappears with no API change.
 
 The differential oracle harness lives under
 `internal/cuelitetest`. It is module-internal, so the

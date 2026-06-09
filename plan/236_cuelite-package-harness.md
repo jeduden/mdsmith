@@ -66,14 +66,20 @@ Two choices differ from the sketch in plan 218:
   and that long-lived contexts grow unbounded, so a single
   process-wide context is both a data race and a memory leak.
   Instead each `Compile`/`CompileJSON` owns a fresh `*cue.Context`
-  and keeps its source bytes; `Unify` rebuilds the operand's
-  source inside the receiver's context so unification stays
-  single-context and two `Value`s never share mutable CUE state.
-  This is the honest interim cost — one context per compiled
-  `Value`, one re-derive of the operand per `Unify`. The flip to
-  the in-house engine drops contexts entirely, with no API change:
-  `Value` is a value type whose `Unify` takes and returns a
-  `Value`, and a bottom (⊥) absorbs in either implementation.
+  and keeps its source bytes; `Unify` rebuilds whichever side
+  retains source into the OTHER side's context, so unification
+  stays single-context and the result lives in the context of the
+  side that was not rebuilt. That side's context is therefore
+  MUTATED by the cross-context `Unify` (the rebuilt operand is
+  compiled into it), so two `Value`s sharing a context are not
+  concurrency-safe and a long-lived `Value` accumulates one
+  compiled document per cross-context `Unify`. This is the honest
+  interim cost — one context per compiled `Value`, one rebuild of
+  a cross-context operand per `Unify`, and the caller's duty to
+  synchronize or per-goroutine-compile a shared schema. The flip
+  to the in-house engine drops contexts entirely, with no API
+  change: `Value` is a value type whose `Unify` takes and returns
+  a `Value`, and a bottom (⊥) absorbs in either implementation.
 - **Harness lives in `internal/cuelitetest`, not under
   `cue/cuelite/`.** An earlier draft put it in a public
   `cue/cuelite/difftest` sub-package. Code review rejected that

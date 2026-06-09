@@ -40,8 +40,9 @@ unification rules.
    `Fields`, …), still delegating to CUE. The phase-0 interim
    has two costs to retire here. First, each `Compile`/
    `CompileJSON` owns a fresh `*cue.Context`, and a cross-context
-   `Unify` re-compiles the operand's retained source into the
-   receiver's context — at most one rebuild per such `Unify`.
+   `Unify` rebuilds whichever side retains source into the other
+   side's context — one rebuild per such `Unify`, leaving the
+   result in (and mutating) the non-rebuilt side's context.
    Second, the schema path still marshals front matter to JSON
    and `CompileJSON` parses it back, so validating one file pays
    two JSON traversals. Both blow the ≤ 10 allocs/op budget on
@@ -74,6 +75,28 @@ unification rules.
       coverage.
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool golangci-lint run` reports no issues.
+
+## Implementation notes
+
+- **LookupPath provenance.** A derived `Value` (a `Unify` result)
+  is context-pinned and retains no source, so it cannot be rebuilt
+  into another context. `LookupPath` on such a value inherits that
+  limit: a section-level lookup against a cached schema must keep
+  rebuildable provenance — for example the root source plus the
+  looked-up path — or the cached schema either races (each lookup
+  mutates its shared context) or forfeits caching (every lookup
+  recompiles). Choose the provenance representation when adding
+  `LookupPath`, not after.
+- **Call-site operand order.** Today's adopters call
+  `schemaVal.Unify(dataVal)` in
+  [validate.go](../internal/schema/validate.go) and
+  `m.schema.Unify(dataVal)` in
+  [query.go](../internal/query/query.go) — the SHARED schema is the
+  receiver, so the cross-context rebuild puts the schema's context
+  in the mutated (non-rebuilt) position. Phase 2 must pick the
+  operand order and locking deliberately: a schema cached and
+  reused across files or goroutines cannot sit in the mutated
+  position without synchronization.
 
 ## See also
 

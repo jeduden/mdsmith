@@ -48,6 +48,16 @@ flips.
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool golangci-lint run` reports no issues.
 
+## Implementation notes
+
+- **Extend the existing harness, don't fork it.** Surface D adds
+  its path-parse case by extending `internal/cuelitetest`'s `Case`
+  and `Outcome` (a new case field plus a stage or payload as the
+  shape needs), not by standing up a parallel structure. `Outcome.
+  Equal` now compares `Paths` at every stage, so a parsed-segment
+  payload attached at `StageAccepted` is differentially checked
+  rather than silently always-equal.
+
 ## See also
 
 - [Plan 218 — in-house CUE-subset engine](218_wasm-size-reduction.md)
