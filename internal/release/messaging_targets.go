@@ -34,17 +34,15 @@ type MessagingTarget struct {
 // summaries and the drift-check diagnostics, so it has to stay
 // deterministic.
 //
-// Fragments come first because the READMEs <?include?> them;
-// running the apply path top-down guarantees the source of any
-// included content is up to date before the consuming file is
-// re-read.
+// READMEs no longer consume a generated fragment layer; they
+// read messaging values directly with `<?include extract:?>`
+// against docs/brand/messaging.md, so every target here is a
+// structured non-Markdown surface that must already exist.
 func MessagingTargets(root string) []MessagingTarget {
-	frags := messagingFragmentTargets(root)
 	web := messagingWebsiteTargets(root)
 	pkgs := messagingPackageTargets(root)
 	eds := messagingEditorTargets(root)
-	out := make([]MessagingTarget, 0, len(frags)+len(web)+len(pkgs)+len(eds))
-	out = append(out, frags...)
+	out := make([]MessagingTarget, 0, len(web)+len(pkgs)+len(eds))
 	out = append(out, web...)
 	out = append(out, pkgs...)
 	out = append(out, eds...)
@@ -53,44 +51,6 @@ func MessagingTargets(root string) []MessagingTarget {
 
 func messagingPath(root string, parts ...string) string {
 	return filepath.Join(append([]string{root}, parts...)...)
-}
-
-// messagingFragmentTargets returns the generated Markdown
-// fragments. READMEs <?include?> them, so they live first in
-// the apply order.
-func messagingFragmentTargets(root string) []MessagingTarget {
-	return []MessagingTarget{
-		{
-			Label:   "tagline fragment",
-			Path:    messagingPath(root, "docs", "brand", "fragments", "tagline.fragment.md"),
-			Patcher: MarkdownFragment{},
-			ValueOf: func(m *Messaging) string { return m.Tagline },
-		},
-		{
-			Label:   "lead fragment",
-			Path:    messagingPath(root, "docs", "brand", "fragments", "lead.fragment.md"),
-			Patcher: MarkdownFragment{},
-			ValueOf: func(m *Messaging) string { return m.Lead },
-		},
-		{
-			Label:   "vscode overview fragment",
-			Path:    messagingPath(root, "docs", "brand", "fragments", "vscode-overview.fragment.md"),
-			Patcher: MarkdownFragment{},
-			ValueOf: func(m *Messaging) string { return m.VSCodeOverview },
-		},
-		{
-			Label:   "headline fragment",
-			Path:    messagingPath(root, "docs", "brand", "fragments", "headline.fragment.md"),
-			Patcher: MarkdownFragment{},
-			ValueOf: func(m *Messaging) string { return m.Headline() },
-		},
-		{
-			Label:   "eyebrow fragment",
-			Path:    messagingPath(root, "docs", "brand", "fragments", "eyebrow.fragment.md"),
-			Patcher: MarkdownFragment{},
-			ValueOf: func(m *Messaging) string { return m.Eyebrow },
-		},
-	}
 }
 
 // messagingWebsiteTargets returns the Hugo site surfaces: the
@@ -202,11 +162,10 @@ type ApplyResult struct {
 }
 
 // ApplyMessaging patches every target with its canonical value
-// from m. Only generated-fragment targets (MarkdownFragment
-// patchers) are created when missing — the on-first-run
-// behavior. Every other target's file must exist; a missing
-// non-fragment surface is a hard "required file missing"
-// error. Idempotent: rerunning produces no further writes.
+// from m. Every target's file must already exist; a missing
+// surface is a hard "required file missing" error (no target is
+// created on demand). Idempotent: rerunning produces no further
+// writes.
 func (t *Toolkit) ApplyMessaging(root string, m *Messaging) ([]ApplyResult, error) {
 	results := make([]ApplyResult, 0, len(MessagingTargets(root)))
 	for _, tg := range MessagingTargets(root) {
@@ -232,12 +191,9 @@ func (t *Toolkit) applyTarget(tg MessagingTarget, m *Messaging) (ApplyResult, er
 		if !errors.Is(err, fs.ErrNotExist) {
 			return ApplyResult{Target: tg}, fmt.Errorf("read %s: %w", tg.Path, err)
 		}
-		// Missing file is fatal for everything except generated
-		// fragments — those are created here on first run.
-		if _, isFragment := tg.Patcher.(MarkdownFragment); !isFragment {
-			return ApplyResult{Target: tg}, fmt.Errorf("required file missing: %s", tg.Path)
-		}
-		body = nil
+		// Every tracked surface is an existing structured file;
+		// none is created on demand, so a missing file is fatal.
+		return ApplyResult{Target: tg}, fmt.Errorf("required file missing: %s", tg.Path)
 	}
 	out, err := tg.Patcher.PatchValue(body, want)
 	if err != nil {
@@ -245,9 +201,6 @@ func (t *Toolkit) applyTarget(tg MessagingTarget, m *Messaging) (ApplyResult, er
 	}
 	if bytes.Equal(out, body) {
 		return ApplyResult{Target: tg, Changed: false}, nil
-	}
-	if err := t.fs.MkdirAll(filepath.Dir(tg.Path), 0o755); err != nil {
-		return ApplyResult{Target: tg}, fmt.Errorf("mkdir %s: %w", tg.Path, err)
 	}
 	if err := t.fs.WriteFile(tg.Path, out, 0o644); err != nil {
 		return ApplyResult{Target: tg}, fmt.Errorf("write %s: %w", tg.Path, err)

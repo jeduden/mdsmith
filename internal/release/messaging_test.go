@@ -207,17 +207,6 @@ func TestSplitHeadlineSpans_NonTextEmphasisChildRejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "plain text only")
 }
 
-func TestMessaging_Headline(t *testing.T) {
-	m := &Messaging{
-		HeadlinePre:  "Mark",
-		HeadlineEm:   "down",
-		HeadlinePost: ", smithed.",
-	}
-	assert.Equal(t, "Mark*down*, smithed.", m.Headline(),
-		"Headline reassembles the single-emphasis Markdown the "+
-			"website hero splits into pre/em/post")
-}
-
 func TestSplitHeadlineSpans_BreakRendersAsSpace(t *testing.T) {
 	// A reflowed headline projects `break` spans between text runs
 	// (and may carry one inside the emphasis). They render as spaces

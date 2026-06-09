@@ -2,19 +2,22 @@
 title: mdsmith product messaging
 summary: >-
   Canonical slogan, lead, tagline, and per-surface descriptions
-  for the mdsmith product. Generated fragments and the
-  non-Markdown surfaces enumerated in plan 210 derive their copy
-  from this file.
+  for the mdsmith product. READMEs read these sections directly
+  via `<?include extract:?>`, and the non-Markdown surfaces
+  enumerated in plan 210 derive their copy from this file.
 ---
 # mdsmith product messaging
 
-Every field below feeds the generated fragments under
-`docs/brand/fragments/` and the JSON, TOML, and YAML surfaces
-enumerated in
-[plan 210](../../plan/210_messaging-source-of-truth.md).
+Every field below is read two ways. Markdown surfaces (the
+READMEs and feature docs) pull a section in place with
+`<?include file: docs/brand/messaging.md extract: <path> ?>`.
+The JSON, TOML, and YAML surfaces enumerated in
+[plan 210](../../plan/210_messaging-source-of-truth.md) derive
+their copy through `mdsmith-release sync-messaging`.
 
-Edit a section here, then run `mdsmith-release sync-messaging`
-to propagate the change to every tracked surface. CI runs
+Edit a section here, then run `mdsmith fix` to refresh the
+Markdown includes and `mdsmith-release sync-messaging` to
+propagate the change to every non-Markdown surface. CI runs
 `sync-messaging --check` and fails the build on drift.
 
 The Headline keeps exactly one `*emphasized*` span (single

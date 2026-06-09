@@ -327,8 +327,8 @@ the same JSON projection
 produces and splices a single leaf. The value is a
 dotted path: `frontmatter.title` reaches the title
 field; `tagline.text` reaches the paragraph under
-the `## Tagline` heading; `headline.code` reaches a
-fenced code block.
+the `## Tagline` heading; a section whose body is a
+fenced code block is reached through its `.code` key.
 
 A paragraph section. The target's
 `## Tagline` heading projects to `{"tagline":
@@ -344,16 +344,19 @@ Markdown, fast.
 <?/include?>
 ```
 
-A fenced code block. The `## Headline` section
-projects to `{"headline": {"code": "..."}}`. Use
-`headline.code` to splice the code body verbatim:
+A fenced code block. A section whose body is a
+single fenced code block projects its contents under
+a `code` key. Given a file `setup.md` whose
+`## Setup` section holds an install command, the
+projection is `{"setup": {"code": "..."}}`, and
+`setup.code` splices the code body verbatim:
 
 ```markdown
 <?include
-file: docs/brand/messaging.md
-extract: headline.code
+file: setup.md
+extract: setup.code
 ?>
-Mark*down*, smithed.
+go install github.com/jeduden/mdsmith/cmd/mdsmith@latest
 <?/include?>
 ```
 
@@ -372,13 +375,16 @@ mdsmith product messaging
 ```
 
 Single-content-key shortcut. A leaf object that
-carries exactly one of `text`, `code`, `items`, or
-`rows` resolves to the inner value, so
+carries exactly one of `text`, `code`, `inline`,
+`items`, or `rows` resolves to the inner value, so
 `extract: tagline` and `extract: tagline.text`
-splice the same content. Multi-key wrappers (the
-JSON projection of a section with several content
-entries) are ambiguous and surface as a lint error
-with the available keys listed.
+splice the same content. An `inline` value is a
+typed span list rather than a scalar, so it cannot
+be spliced yet and surfaces as a lint error.
+Multi-key wrappers (the JSON projection of a
+section with several content entries) are ambiguous
+and surface as a lint error with the available keys
+listed.
 
 Restrictions. `extract:` is scalar-only for now —
 combining it with `strip-frontmatter:` or
