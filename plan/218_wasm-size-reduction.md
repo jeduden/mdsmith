@@ -127,17 +127,17 @@ packages; it imports none of them. The façade mirrors the CUE
 calls above:
 
 ```go
-package cuelite
-
 func Compile(src string) (Value, error)      // CompileString
 func CompileJSON(data []byte) (Value, error) // strict JSON; stricter than CompileBytes
-func ParsePath(expr string) (Path, error)
-
+func ParsePath(expr string) (Path, error)    // {a.b.c} → Path
+func MakePath(segments ...string) Path        // construct from segments
 func (v Value) Unify(o Value) Value
 func (v Value) Validate() error              // Concrete(true)
 func (v Value) LookupPath(p Path) (Value, bool)
 func (v Value) String() (string, error)
-// plus Decode, Exists, Fields; errors carry a field Path.
+func (p Path) Segments() []string            // unquoted per-selector strings
+// plus Decode, Exists, Fields; errors carry a Path. MakePath serves
+// query.collectPaths; Segments serves fieldinterp.ParseCUEPath.
 ```
 
 `Value` is a **value type**, not a pointer. Methods take and

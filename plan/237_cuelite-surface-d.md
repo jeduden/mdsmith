@@ -50,13 +50,28 @@ flips.
 
 ## Implementation notes
 
-- **Extend the existing harness, don't fork it.** Surface D adds
-  its path-parse case by extending `internal/cuelitetest`'s `Case`
-  and `Outcome` (a new case field plus a stage or payload as the
-  shape needs), not by standing up a parallel structure. `Outcome.
-  Equal` now compares `Paths` at every stage, so a parsed-segment
-  payload attached at `StageAccepted` is differentially checked
-  rather than silently always-equal.
+- **`Path` is not opaque — both directions are real consumers.**
+  [`fieldinterp.ParseCUEPath`](../internal/fieldinterp/fieldinterp.go)
+  reads the unquoted per-selector strings back OUT of a parsed path
+  (the harness compares `[][]string`), so the surface-D `Path` API
+  must expose a `Segments()` accessor.
+  [`query.collectPaths`](../internal/query/query.go) builds paths IN
+  programmatically via `cue.MakePath` + `iter.Selector()`, so the
+  API must also offer a constructor-from-segments (the in-house
+  `MakePath` equivalent). Adopt both when adding `ParsePath`, so the
+  flip in task 3 does not change the API.
+- **Extend the harness TYPES, but add a separate path arm — don't
+  append to the corpus.** Surface D extends `internal/cuelitetest`'s
+  `Case` and `Outcome` (a new case field plus a stage or payload as
+  the shape needs), not a parallel structure. But `Run` hardcodes
+  the schema/data arms (`CueLitePath`/`OraclePath`), and a path-only
+  `Case` in the existing `corpus()` slice would agree VACUOUSLY —
+  an empty schema and data classify identically in both arms
+  regardless of the path. So surface D adds its OWN path-comparing
+  arm/runner (parse via cuelite vs `cue.ParsePath`, compare
+  segments) rather than appending path cases to the existing corpus
+  slice. `Outcome.Equal` already compares `Paths` at every stage, so
+  a parsed-segment payload is differentially checked there.
 
 ## See also
 

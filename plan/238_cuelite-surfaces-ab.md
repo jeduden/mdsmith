@@ -102,6 +102,23 @@ unification rules.
   operand order and locking deliberately: a schema cached and
   reused across files or goroutines cannot sit in the mutated
   position without synchronization.
+- **RunCache / CachedCompile shape (task 2).** The cache's contract
+  — one schema compile per Run, shared across parallel workers via
+  [`CompiledCUE.Ctx`](../internal/schema/compile_cache.go) — has NO
+  façade equivalent, because cuelite hides the context. Neither
+  operand order resolves it under the cache: `schemaVal.Unify(
+  dataVal)` rebuilds the data into the shared schema's context and
+  MUTATES it (a data race under `-race` CI when workers share the
+  cached schema), while `dataVal.Unify(schemaVal)` rebuilds the
+  schema per file and recompiles it each call (the cache becomes a
+  no-op and the compile-once assertions in
+  [validate_runcache_test.go](../internal/schema/validate_runcache_test.go)
+  break). So task 2 must redesign the cache shape, not just adopt
+  the façade — cache the SOURCE and compile per worker, or guard the
+  shared `Value` with a lock, or defer caching to the in-house flip
+  in task 3 (where a context-free `Value` is shareable). Name the
+  affected files when scheduling: `compile_cache.go` and
+  `validate_runcache_test.go`.
 
 ## See also
 
