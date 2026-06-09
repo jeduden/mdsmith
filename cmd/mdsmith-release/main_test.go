@@ -356,6 +356,8 @@ func TestRunVerifyWebsiteLinksHappyPath(t *testing.T) {
 		[]byte(`<a href="/rules/mds020-required-structure/">x</a>`), 0o644))
 	require.NoError(t, os.WriteFile(rule,
 		[]byte(`<a href="/rules/mds021/">x</a>`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "index.html"),
+		[]byte(`<p>home</p>`), 0o644))
 
 	assert.Equal(t, 0, run([]string{"verify-website-links", "--dir", root}))
 }

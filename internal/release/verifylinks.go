@@ -45,7 +45,42 @@ func VerifyWebsiteLinks(htmlDir, baseURL string) error {
 			return err
 		}
 	}
+	if err := verifyHomeHrefs(htmlDir, prefix); err != nil {
+		return err
+	}
 	return verifyBreadcrumbs(htmlDir, prefix)
+}
+
+// homeLinkRe matches one anchor on the homepage, capturing its
+// href whether quoted (Hugo's default) or unquoted (--minify).
+// Other attributes may precede href (class on buttons and cards),
+// so the prefix is lazy.
+var homeLinkRe = regexp.MustCompile(`<a\s[^>]*?href="?([^"\s>]+)"?`)
+
+// verifyHomeHrefs resolves every site-internal <a href> on the
+// rendered homepage to a page on disk. The homepage is assembled
+// almost entirely from templates (hero, nav, feature cards,
+// footer), so its hardcoded hrefs bypass both the markdown-side
+// link rules and the render-link hook that docs pages get — a
+// renamed or pruned guide would otherwise rot a homepage link
+// silently. External and protocol-relative links are skipped;
+// each remaining site-absolute href resolves under the same rules
+// breadcrumb crumbs use.
+func verifyHomeHrefs(htmlDir, prefix string) error {
+	data, err := readHTMLFile(filepath.Join(htmlDir, "index.html"))
+	if err != nil {
+		return fmt.Errorf("verify homepage hrefs: %w", err)
+	}
+	for _, m := range homeLinkRe.FindAllSubmatch(data, -1) {
+		href := string(m[1])
+		if !strings.HasPrefix(href, "/") || strings.HasPrefix(href, "//") {
+			continue
+		}
+		if err := resolveCrumbHref(htmlDir, prefix, href); err != nil {
+			return fmt.Errorf("verify homepage hrefs: %w", err)
+		}
+	}
+	return nil
 }
 
 // breadcrumbNavRe captures the inner HTML of the docs-breadcrumb

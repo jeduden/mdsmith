@@ -57,6 +57,7 @@ func TestVerifyWebsiteLinks_AcceptsUnquotedHref(t *testing.T) {
 		`<a href=/rules/mds020-required-structure/>rule</a>`)
 	writeFile(t, filepath.Join(root, "rules", "mds001", "index.html"),
 		`<a href=/rules/mds021/>sibling</a>`)
+	writeFile(t, filepath.Join(root, "index.html"), `<p>home</p>`)
 	require.NoError(t, VerifyWebsiteLinks(root, ""))
 }
 
@@ -183,6 +184,49 @@ func TestVerifyWebsiteLinks_MissingRecursiveRootWraps(t *testing.T) {
 	err := VerifyWebsiteLinks(root, "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "walk")
+}
+
+// --- homepage href probes ---
+
+// TestVerifyWebsiteLinks_HomeInternalHrefResolves accepts a
+// homepage whose internal links point at rendered pages; external
+// links and unquoted (--minify) hrefs are handled too.
+func TestVerifyWebsiteLinks_HomeInternalHrefResolves(t *testing.T) {
+	root := goodSite(t, "")
+	writeFile(t, filepath.Join(root, "guides", "migrate-from-markdownlint", "index.html"),
+		`<p>guide</p>`)
+	writeFile(t, filepath.Join(root, "guides", "install", "index.html"),
+		`<p>install</p>`)
+	writeFile(t, filepath.Join(root, "index.html"),
+		`<a class="hero-switch-link" href="/guides/migrate-from-markdownlint/">guide</a>`+
+			`<a href=/guides/install/>install</a>`+
+			`<a href="https://github.com/jeduden/mdsmith" rel="noopener">gh</a>`)
+	require.NoError(t, VerifyWebsiteLinks(root, ""))
+}
+
+// TestVerifyWebsiteLinks_FailsOnHomeHrefMissingTarget pins the
+// link-rot guard: the homepage is assembled from templates (hero,
+// nav, cards, footer), so its hardcoded hrefs bypass the markdown
+// link rules — a renamed guide must fail the probe.
+func TestVerifyWebsiteLinks_FailsOnHomeHrefMissingTarget(t *testing.T) {
+	root := goodSite(t, "")
+	writeFile(t, filepath.Join(root, "index.html"),
+		`<a href="/guides/migrate-from-markdownlint/">moved guide</a>`)
+	err := VerifyWebsiteLinks(root, "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "migrate-from-markdownlint")
+}
+
+// TestVerifyWebsiteLinks_HomeHrefSubpathResolves trims the
+// project-pages baseURL prefix before resolving, mirroring the
+// breadcrumb resolution rules.
+func TestVerifyWebsiteLinks_HomeHrefSubpathResolves(t *testing.T) {
+	root := goodSite(t, "/mdsmith")
+	writeFile(t, filepath.Join(root, "guides", "install", "index.html"),
+		`<p>install</p>`)
+	writeFile(t, filepath.Join(root, "index.html"),
+		`<a href="/mdsmith/guides/install/">install</a>`)
+	require.NoError(t, VerifyWebsiteLinks(root, "https://example.com/mdsmith/"))
 }
 
 // --- breadcrumb probes ---
