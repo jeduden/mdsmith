@@ -227,7 +227,11 @@ func checkDuplicateJSONKeys(data []byte) error {
 // Array levels carry no key rule, so their elements are scanned only to
 // recurse into nested objects. A malformed document yields no duplicate
 // error: cuejson.Extract is left to report the syntax error.
+// dec.UseNumber() keeps a number outside float64 range (1e999, valid
+// JSON) from erroring mid-scan and being misread as malformed, which
+// would let a duplicate beside it slip past.
 func scanDuplicateJSONKeys(dec *json.Decoder) error {
+	dec.UseNumber()
 	// level is one open container. keys is non-nil for an object level and
 	// holds the keys already seen at it; nil marks an array level. seenKey
 	// is true when the next string token at an object level is a value (the

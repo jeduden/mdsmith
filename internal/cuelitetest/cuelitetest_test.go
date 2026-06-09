@@ -173,6 +173,10 @@ func TestRawDuplicateKeys(t *testing.T) {
 		{"dup in array element", `[{"a":1,"a":1}]`, true},
 		{"deep array dup", `{"a":[[{"k":1,"k":2}]]}`, true},
 		{"dup after nested object value", `{"a":{"x":1},"a":2}`, true},
+		// 1e999 overflows float64; UseNumber keeps the walk from misreading
+		// it as malformed and deferring, so the duplicate beside it is caught.
+		{"dup beside an overflowing number", `{"x":1e999,"a":1,"a":2}`, true},
+		{"overflowing number without dup ok", `{"x":1e999}`, false},
 		{"same key different objects ok", `{"x":{"a":1},"y":{"a":2}}`, false},
 		{"sibling objects ok", `[{"a":1},{"a":2}]`, false},
 		{"scalars ok", `{"a":1,"b":2}`, false},
@@ -278,5 +282,14 @@ func corpus() []Case {
 		// surface that bottom as a data-stage compile error (StageCompileData)
 		// rather than one arm accepting a phantom value.
 		{Name: "lone-surrogate value reject", Schema: `{a: string, b: int}`, Data: `{"a": "\ud800", "b": "x"}`},
+		// 1e999 is valid JSON but overflows float64; without dec.UseNumber()
+		// in both walkers, json.Decoder.Token errors on it mid-scan and the
+		// mergeable duplicate "a" beside it slips past BOTH arms into a
+		// phantom merged object that validates. Both arms must keep scanning
+		// and reject the duplicate at the data stage.
+		{Name: "big-number duplicate reject", Schema: `{a: {b: int, c: int}}`, Data: `{"x":1e999,"a":{"b":1},"a":{"c":2}}`},
+		// The same overflowing number with no duplicate key must still be
+		// accepted end-to-end by both arms.
+		{Name: "big-number no duplicate ok", Schema: `{x: number}`, Data: `{"x":1e999}`},
 	}
 }

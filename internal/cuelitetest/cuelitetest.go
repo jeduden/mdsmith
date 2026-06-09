@@ -273,6 +273,11 @@ func oracleData(ctx *cue.Context, data []byte) (cue.Value, error) {
 // "not JSON".
 func rawDuplicateKeys(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	// UseNumber keeps a number outside float64 range (1e999, valid JSON)
+	// from erroring mid-walk and being misread as malformed, which would
+	// let a duplicate beside it slip past — matching cuelite's scanner so
+	// the two arms do not diverge.
+	dec.UseNumber()
 	if err := walkJSONValue(dec); err != nil && !stderrors.Is(err, errMalformed) {
 		return err
 	}

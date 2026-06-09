@@ -101,6 +101,23 @@ func TestCompileJSON(t *testing.T) {
 		require.NoError(t, err)
 		assert.NoError(t, v.Validate())
 	})
+	t.Run("duplicate beside an out-of-float64-range number rejected", func(t *testing.T) {
+		// 1e999 is valid JSON but overflows float64; without dec.UseNumber()
+		// json.Decoder.Token errors on it mid-scan, the scanner misreads that
+		// as malformed and defers, and the mergeable duplicate "a" slips past
+		// into a phantom merged object. The scanner must keep scanning and
+		// reject the duplicate.
+		_, err := CompileJSON([]byte(`{"x":1e999,"a":{"b":1},"a":{"c":2}}`))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `"a"`)
+	})
+	t.Run("out-of-float64-range number without duplicates accepted", func(t *testing.T) {
+		// The same overflowing number, with no duplicate key, must still
+		// compile end-to-end: the scanner defers cleanly and Extract lifts it.
+		v, err := CompileJSON([]byte(`{"x":1e999}`))
+		require.NoError(t, err)
+		assert.NoError(t, v.Validate())
+	})
 	t.Run("lone-surrogate value rejected at the data stage", func(t *testing.T) {
 		// A lone-surrogate escape such as "\ud800" is grammar-valid
 		// duplicate-free strict JSON, so it passes the scanner and
