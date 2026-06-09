@@ -38,14 +38,16 @@ YAML scalar.
 The trap is to reach for frontmatter for everything
 because it's structured. A 60-character `tagline` in
 frontmatter and the same 60 characters in a
-`## Tagline` body section produce identical JSON;
-the body version is shorter to edit, diffs cleanly
-when wrapped, and is lintable as Markdown.
+`## Tagline` body section project the same string;
+only the key moves, from `frontmatter.tagline` to
+`tagline.text`. The body version is shorter to edit,
+diffs cleanly when wrapped, and is lintable as
+Markdown.
 
 ## Worked example
 
-A product-copy file with a tagline, a lead, and one
-per-surface description.
+A product-copy file at `docs/copy/product.md` with a
+tagline, a lead, and one per-surface description.
 
 ### Frontmatter-heavy (the trap)
 
@@ -101,7 +103,8 @@ Inline diagnostics, fix-on-save, and instant
 navigation for Markdown in VS Code.
 ```
 
-With a matching schema in `.mdsmith.yml`:
+With a matching schema and kind assignment in
+`.mdsmith.yml`:
 
 ```yaml
 kinds:
@@ -109,25 +112,49 @@ kinds:
     schema:
       sections:
         - heading: { regex: '^Tagline$' }
+          content:
+            - { kind: paragraph }
         - heading: { regex: '^Lead$' }
+          content:
+            - { kind: paragraph }
         - heading: { regex: '^VS Code$' }
           bind: vscode-description
+          content:
+            - { kind: paragraph }
+kind-assignment:
+  - glob: ["docs/copy/product.md"]
+    kinds: [product-copy]
 ```
 
-`mdsmith extract product-copy --format json` emits
-the same shape both encodings would produce:
+Each `content:` entry declares the paragraph its
+section projects. A section without one projects as
+an empty object — the schema, not the body, decides
+what `extract` emits.
+
+`mdsmith extract product-copy --format json docs/copy/product.md`
+emits:
 
 ```json
 {
-  "frontmatter": { "title": "Product copy" },
-  "tagline": { "text": "Mark down your ideas; smith them into shipping docs." },
-  "lead": { "text": "A lint-and-fix tool that keeps your Markdown consistent across every surface — READMEs, docs site, editor extensions." },
-  "vscode-description": { "text": "Inline diagnostics, fix-on-save, and instant navigation for Markdown in VS Code." }
+  "frontmatter": {
+    "title": "Product copy"
+  },
+  "lead": {
+    "text": "A lint-and-fix tool that keeps your Markdown consistent across every surface — READMEs, docs site, editor extensions."
+  },
+  "tagline": {
+    "text": "Mark down your ideas; smith them into shipping docs."
+  },
+  "vscode-description": {
+    "text": "Inline diagnostics, fix-on-save, and instant navigation for Markdown in VS Code."
+  }
 }
 ```
 
-The body version costs nothing at the projection
-layer and is the editable artifact.
+Keys come out sorted, not in document order. The
+consumer reads the same strings the frontmatter
+version held, and the body version is the editable
+artifact.
 
 ## Projecting inline structure
 
@@ -165,21 +192,36 @@ kinds:
             - { kind: paragraph, projection: inline, required: true }
 ```
 
-`mdsmith extract product-copy --format json` emits the
-headline as a span list — text, then the level-1
-emphasis span with its own `children`, then the
-trailing text:
+`mdsmith extract product-copy --format json docs/copy/product.md`
+emits the headline as a span list: text, then the
+level-1 emphasis span with its own `children`, then
+the trailing text:
 
 ```json
 {
-  "frontmatter": { "title": "Product copy" },
+  "frontmatter": {
+    "title": "Product copy"
+  },
   "headline": {
     "inline": [
-      { "span": "text", "value": "Mark" },
-      { "span": "emphasis", "level": 1, "children": [
-        { "span": "text", "value": "down" }
-      ]},
-      { "span": "text", "value": ", smithed." }
+      {
+        "span": "text",
+        "value": "Mark"
+      },
+      {
+        "children": [
+          {
+            "span": "text",
+            "value": "down"
+          }
+        ],
+        "level": 1,
+        "span": "emphasis"
+      },
+      {
+        "span": "text",
+        "value": ", smithed."
+      }
     ]
   }
 }
@@ -194,9 +236,11 @@ recursive mode switch:
 ```json
 "inline": [
   { "span": "text", "value": "run " },
-  { "span": "strong", "level": 2, "children": [
-    { "span": "code", "value": "mdsmith fix" }
-  ]},
+  {
+    "children": [{ "span": "code", "value": "mdsmith fix" }],
+    "level": 2,
+    "span": "strong"
+  },
   { "span": "text", "value": " daily" }
 ]
 ```
@@ -281,13 +325,14 @@ embed reads the tagline directly:
 file: docs/copy/product.md
 extract: tagline.text
 ?>
-Mark down your ideas; smith them into shipping
-docs.
+Mark down your ideas; smith them into shipping docs.
 <?/include?>
 ```
 
-The directive runs the included file through the
-same projection rules `mdsmith extract` produces,
+The spliced text lands on one line: a `text`
+projection joins a soft-wrapped paragraph with
+spaces. The directive runs the included file through
+the same projection rules `mdsmith extract` uses,
 walks the dotted path, and splices the leaf. There
 is no intermediate "fragment" file to keep in sync —
 the README reads the source of truth on every lint.
