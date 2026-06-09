@@ -71,9 +71,9 @@ jobs:
   # that declares `environment: release` must list the `gate` job in
   # `needs:` (literal env names, matched case-insensitively the way
   # GitHub matches them) and must not carry an approval-bypassing
-  # `if:` (always() / !cancelled()); `gate` must be the lone job on
-  # `release-approval`; and no other workflow may target either
-  # environment. The `release` environment carries no required
+  # `if:` (always() / failure() / cancelled()); `gate` must be the
+  # lone job on `release-approval`; and no other workflow may target
+  # either environment. The `release` environment carries no required
   # reviewer (so a single approval on the `release-approval`
   # environment covers the whole run); the `needs: gate` edge is then
   # the only thing keeping a credential job from reading a publisher

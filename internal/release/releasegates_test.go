@@ -171,8 +171,10 @@ func TestCheckReleaseGatesFlagsApprovalBypassingIf(t *testing.T) {
 	// `if: always()` (or !cancelled()) overrides a failed or rejected
 	// gate and would hand the job the secrets anyway.
 	cases := map[string]string{
-		"always":    "always()",
-		"cancelled": "${{ !cancelled() }}",
+		"always":          "always()",
+		"not-cancelled":   "${{ !cancelled() }}",
+		"failure":         "failure()",
+		"plain-cancelled": "cancelled()",
 	}
 	for name, cond := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -216,6 +218,29 @@ jobs:
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	assert.Equal(t, "npm", got[0].Job)
+}
+
+func TestCheckReleaseGatesFollowsNeedsAlias(t *testing.T) {
+	// A needs list shared between jobs through a YAML anchor must
+	// resolve through the alias, or the aliased job would be misread
+	// as gate-less and flagged spuriously.
+	const wf = `
+jobs:
+  gate:
+    environment: release-approval
+    runs-on: ubuntu-latest
+  npm:
+    needs: &shared [build, gate]
+    environment: release
+    runs-on: ubuntu-latest
+  pypi:
+    needs: *shared
+    environment: release
+    runs-on: ubuntu-latest
+`
+	got, err := CheckReleaseGates([]byte(wf))
+	require.NoError(t, err)
+	assert.Empty(t, got)
 }
 
 func TestCheckReleaseGatesRequiresGateJob(t *testing.T) {
@@ -378,6 +403,26 @@ jobs:
 	require.Len(t, got, 1)
 	assert.Equal(t, "other.yaml", got[0].Workflow)
 	assert.Contains(t, got[0].Reason, "reserved")
+}
+
+func TestCheckReleaseGatesRootFlagsForeignExpressionEnv(t *testing.T) {
+	// An expression-valued environment in a sibling workflow could
+	// evaluate to "release" at run time; the guard rejects what it
+	// cannot verify statically.
+	root := writeWorkflows(t, map[string]string{
+		"release.yml": gateWorkflow,
+		"dynamic.yml": `
+jobs:
+  deploy:
+    environment: ${{ inputs.env }}
+    runs-on: ubuntu-latest
+`,
+	})
+	got, err := CheckReleaseGatesRoot(root)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "dynamic.yml", got[0].Workflow)
+	assert.Contains(t, got[0].Reason, "expression")
 }
 
 func TestCheckReleaseGatesRootTagsReleaseWorkflowViolations(t *testing.T) {

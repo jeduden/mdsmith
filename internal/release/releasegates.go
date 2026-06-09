@@ -35,11 +35,14 @@ const (
 )
 
 // bypassIfPattern matches the `if:` expressions that make a job run
-// even when a needed job failed or was cancelled. With the reviewer on
-// the gate job rather than the `release` environment, such an `if:` on
-// a credential job would run it — and hand it the secrets — after a
-// failed or rejected gate.
-var bypassIfPattern = regexp.MustCompile(`always\s*\(\s*\)|!\s*cancelled\s*\(\s*\)`)
+// even when a needed job failed or was cancelled. Any status-check
+// function other than success() replaces the implicit success()
+// condition: always() and !cancelled() run regardless, and failure()
+// or cancelled() run exactly when a needed job failed or was
+// cancelled. With the reviewer on the gate job rather than the
+// `release` environment, any of these on a credential job would run
+// it — and hand it the secrets — after a failed or rejected gate.
+var bypassIfPattern = regexp.MustCompile(`(always|failure|cancelled)\s*\(`)
 
 // GateViolation is one job that breaks the secret-gating invariant,
 // with a human-readable reason. Workflow is the file the job lives in;
@@ -72,8 +75,9 @@ type gateRawWorkflow struct {
 // `environment: release` — and so can read that environment's
 // publisher secrets or mint an OIDC token scoped to it — must list the
 // `gate` job in `needs:`, must not carry an `if:` that survives a
-// failed gate (always() / !cancelled()), and `gate` itself must be the
-// only job on the reviewer-gated `release-approval` environment.
+// failed gate (any status-check function other than success()), and
+// `gate` itself must be the only job on the reviewer-gated
+// `release-approval` environment.
 // Environment names compare case-insensitively because GitHub treats
 // them that way, and expression-valued environments are rejected
 // outright: the guard can only verify literal names.
@@ -159,9 +163,9 @@ func checkReleaseJob(name string, job gateRawJob) []GateViolation {
 	if bypassIfPattern.MatchString(ifCondition(job.If)) {
 		violations = append(violations, GateViolation{
 			Job: name,
-			Reason: "its if: uses always() or !cancelled(), which would run the " +
-				"job — with the environment's secrets — even after a failed or " +
-				"rejected gate",
+			Reason: "its if: uses a status-check function other than success() " +
+				"(always/failure/cancelled), which would run the job — with the " +
+				"environment's secrets — even after a failed or rejected gate",
 		})
 	}
 	return violations
@@ -181,6 +185,16 @@ func checkWorkflowEnvIsolation(workflowYAML []byte) ([]GateViolation, error) {
 	for _, name := range slices.Sorted(maps.Keys(wf.Jobs)) {
 		env := environmentName(wf.Jobs[name].Environment)
 		switch {
+		case strings.Contains(env, "${{"):
+			// GitHub resolves the expression at run time, so it could
+			// evaluate to "release"; the guard cannot verify it
+			// statically and rejects it like CheckReleaseGates does.
+			violations = append(violations, GateViolation{
+				Job: name,
+				Reason: fmt.Sprintf(
+					"environment is an expression (%q); the guard can only "+
+						"verify literal environment names", env),
+			})
 		case strings.EqualFold(env, secretEnvName):
 			violations = append(violations, GateViolation{
 				Job: name,
@@ -267,7 +281,9 @@ func environmentName(n yaml.Node) string {
 }
 
 // needsList returns a job's dependencies. `needs:` is either a scalar
-// (`needs: build`) or a sequence (`needs: [build, gate]`).
+// (`needs: build`) or a sequence (`needs: [build, gate]`), possibly
+// shared between jobs through a YAML anchor — follow the alias so a
+// shared needs list is not misread as empty.
 func needsList(n yaml.Node) []string {
 	switch n.Kind {
 	case yaml.ScalarNode:
@@ -278,6 +294,10 @@ func needsList(n yaml.Node) []string {
 			out = append(out, c.Value)
 		}
 		return out
+	case yaml.AliasNode:
+		if n.Alias != nil {
+			return needsList(*n.Alias)
+		}
 	}
 	return nil
 }

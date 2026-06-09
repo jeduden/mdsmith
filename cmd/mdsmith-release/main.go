@@ -135,6 +135,17 @@ func dispatch(cmd, root string, rest []string) int {
 		return runPublishRelease(root, rest)
 	case "sbom":
 		return runSBOM(root, rest)
+	default:
+		return dispatchMaintenance(cmd, root, rest)
+	}
+}
+
+// dispatchMaintenance routes the repo-maintenance subcommands
+// (secret rotation, coverage, CI summaries, site assets), split from
+// dispatch so each routing function stays within the funlen budget as
+// the command table grows.
+func dispatchMaintenance(cmd, root string, rest []string) int {
+	switch cmd {
 	case "check-secret-rotations":
 		return runCheckSecretRotations(root, rest)
 	case "record-rotation":
@@ -227,7 +238,7 @@ func runCheckReleaseGates(root string, args []string) int {
 			"every workflow under .github/workflows/: in release.yml each\n"+
 			"job that declares `environment: release` must list the `gate`\n"+
 			"job in `needs:` and must not carry an approval-bypassing `if:`\n"+
-			"(always() / !cancelled()); `gate` must be the lone job on the\n"+
+			"(always() / failure() / cancelled()); `gate` must be the lone job on the\n"+
 			"`release-approval` environment; and no other workflow may\n"+
 			"target either environment. Used by the release-gate-guard CI\n"+
 			"job. Exits non-zero on any violation.\n")

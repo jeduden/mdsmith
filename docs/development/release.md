@@ -254,8 +254,9 @@ every workflow under `.github/workflows/`. A job that
 targets `environment: release` fails the build when it
 drops the `gate` edge, hides the environment behind an
 expression, or carries an approval-bypassing `if:`
-(`always()` / `!cancelled()`). Any other workflow that
-targets either environment fails the build too.
+(`always()`, `failure()`, `cancelled()`). Any other
+workflow that targets either environment — or hides one
+behind an expression — fails the build too.
 
 ## Long-Lived Publisher Tokens
 
