@@ -281,6 +281,81 @@ than one line, and anything that benefits from
 Markdown formatting (code, emphasis, links) all
 belong in the body.
 
+## Frontmatter `title` and the H1
+
+The worked example carries the same string twice:
+`title: Product copy` in frontmatter and
+`# Product copy` as the H1. Nothing checks the two
+against each other by default, so they can drift
+apart edit by edit.
+
+The test from the previous section decides it. When
+no catalog row, site template, or release script
+reads `frontmatter.title`, delete the field; the H1
+alone is the title. When a tool does read the
+field, keep it and let MDS020 enforce the match.
+
+Enforcement needs a file-based schema. An inline
+`schema:` starts matching at H2 — the H1 belongs to
+[first-line-heading][mds004] — so the kind switches
+to a `proto.md` whose first row is the `{title}`
+placeholder:
+
+```markdown
+# {title}
+
+## ...
+```
+
+```yaml
+kinds:
+  product-copy:
+    rules:
+      required-structure:
+        schema: copy-proto.md
+```
+
+The `{title}` row requires the frontmatter field
+and checks the H1 text against its value. A drifted
+H1 fails `mdsmith check`:
+
+```text
+docs/copy/product.md:4:1 MDS020 heading does not match frontmatter: expected "Product copy" (from title), got "Product page copy"
+```
+
+The synced H1 also becomes data. `mdsmith extract`
+projects the H1 scope under a `title` key, with the
+captured heading text inside:
+
+```json
+{
+  "frontmatter": {
+    "title": "Product copy"
+  },
+  "title": {
+    "title": "Product copy"
+  }
+}
+```
+
+Weigh two limits before switching. Every schema
+source on a file must declare the same root level,
+so an H1-rooted `proto.md` cannot compose with an
+H2-rooted inline schema on the same file. And a
+`proto.md` declares heading rows only, not
+`content:` entries, so the worked example's
+paragraph projections (`tagline.text`, …) drop out
+of the tree.
+
+When the kind's main job is extraction, keep the
+inline schema and delete the frontmatter field
+instead. mdsmith cannot project the H1 text without
+a frontmatter field behind it: a `{title}` row with
+no `title` field matches any heading, and `extract`
+skips wildcard scopes.
+
+[mds004]: ../../internal/rules/MDS004-first-line-heading/README.md
+
 ## `bind:` patterns
 
 `bind:` renames the JSON key that a heading or
