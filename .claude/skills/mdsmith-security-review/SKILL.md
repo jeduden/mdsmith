@@ -115,11 +115,39 @@ This skill runs in two modes. Decide first; if unclear, ask.
    `---`, and run `mdsmith fix` on it. Regenerate `SECURITY.md`'s
    catalog with `mdsmith fix SECURITY.md`.
 
-6. **Summarize honestly.** Lead with the highest-severity confirmed
+6. **Schedule the fixes as plans.** A review that finds defects
+   but leaves no track record of how they get fixed is half a
+   review. Turn the actionable findings into `plan/` files so the
+   fix work is queued like any other task. Group by the fix, not by
+   the finding: one plan covers one coherent change even when it
+   closes several findings (the
+   [`83_security-hardening-batch`](../../../plan/83_security-hardening-batch.md)
+   plan is the canonical multi-finding batch).
+
+  - File one plan per Critical/High/Medium finding (or per shared
+     fix). Batch the Low/informational/hardening items into a single
+     "security hardening batch — `<date>`" plan rather than one file
+     each.
+  - Use the next free numeric prefix in `plan/` and follow
+     [`plan/proto.md`](../../../plan/proto.md): front-matter `id`,
+     `title`, `status: "🔲"`, a `summary`, and a `model` suggestion;
+     body sections Goal, Tasks (red/green TDD steps), and Acceptance
+     Criteria.
+  - In the Goal, name each finding it closes by id and link the
+     review's `report.md`, so the plan and the audit cross-reference.
+  - Run `mdsmith fix PLAN.md` to refresh the index, then
+     `mdsmith check plan/` so the new files pass.
+  - In **PR-review mode**, prefer fixing a finding in the PR itself;
+     file a plan only for follow-up work that is out of the PR's
+     scope. In **audit mode**, file plans for every actionable
+     finding.
+
+7. **Summarize honestly.** Lead with the highest-severity confirmed
    findings. Separate confirmed defects from hardening suggestions.
-   If you could not reach a conclusion on an in-scope area (e.g. you
-   couldn't find the recipe-execution code), say so explicitly
-   rather than implying it's clean.
+   List the plan files you filed. If you could not reach a
+   conclusion on an in-scope area (e.g. you couldn't find the
+   recipe-execution code), say so explicitly rather than implying
+   it's clean.
 
 ## Severity rubric
 
