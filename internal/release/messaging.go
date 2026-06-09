@@ -45,14 +45,6 @@ type Messaging struct {
 	ClaudeCodeAuditDescription  string
 }
 
-// Headline reassembles the website hero's single-emphasis
-// Markdown from the pre/em/post triple LoadMessaging split it
-// into. It is the inverse of parseHeadlineEmphasis and the
-// canonical value for the README's headline fragment.
-func (m *Messaging) Headline() string {
-	return m.HeadlinePre + "*" + m.HeadlineEm + "*" + m.HeadlinePost
-}
-
 // LoadMessaging projects MessagingSourceFile through
 // `mdsmith extract <MessagingKind> --format json` and decodes
 // it into a typed Messaging value. The JSON shape mirrors the

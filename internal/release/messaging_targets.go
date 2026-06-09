@@ -202,9 +202,6 @@ func (t *Toolkit) applyTarget(tg MessagingTarget, m *Messaging) (ApplyResult, er
 	if bytes.Equal(out, body) {
 		return ApplyResult{Target: tg, Changed: false}, nil
 	}
-	if err := t.fs.MkdirAll(filepath.Dir(tg.Path), 0o755); err != nil {
-		return ApplyResult{Target: tg}, fmt.Errorf("mkdir %s: %w", tg.Path, err)
-	}
 	if err := t.fs.WriteFile(tg.Path, out, 0o644); err != nil {
 		return ApplyResult{Target: tg}, fmt.Errorf("write %s: %w", tg.Path, err)
 	}

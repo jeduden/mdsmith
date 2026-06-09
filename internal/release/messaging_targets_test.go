@@ -165,9 +165,9 @@ func TestApplyMessaging_WritesEveryTrackedSurface(t *testing.T) {
 	results, err := ApplyMessaging(root, m)
 	require.NoError(t, err)
 	require.Len(t, results, len(MessagingTargets(root)))
-	// First apply: every target either creates a fragment or
-	// rewrites an existing surface; nothing should be left as
-	// "unchanged" because the starting values differ.
+	// First apply: every target rewrites an existing surface;
+	// nothing should be left as "unchanged" because the
+	// starting values differ.
 	for _, r := range results {
 		assert.True(t, r.Changed, "%s did not change on first apply", r.Target.Label)
 	}
@@ -237,9 +237,9 @@ func TestFormatDrift_RendersReadableReport(t *testing.T) {
 }
 
 func TestApplyMessaging_FailsWhenRequiredFileMissing(t *testing.T) {
-	// Delete one non-fragment target (a JSON manifest); apply
-	// must return "required file missing" because only fragment
-	// targets are created on demand.
+	// Delete one target file (a JSON manifest); apply must
+	// return "required file missing" because every tracked
+	// surface must already exist — none is created on demand.
 	root := applyTestRoot(t)
 	require.NoError(t,
 		os.Remove(filepath.Join(root, "npm/mdsmith/package.json")))
@@ -316,20 +316,12 @@ func TestOneLineForDrift_TruncatesByRunesNotBytes(t *testing.T) {
 }
 
 // faultyFS wraps a real os-backed FS, overriding one method to
-// inject a failure. Used to cover the mkdir/write error branches
-// in applyTarget that no on-disk setup can reliably trigger
+// inject a failure. Used to cover the write error branch in
+// applyTarget that no on-disk setup can reliably trigger
 // (chmod tricks are skipped under root, which CI sometimes is).
 type faultyFS struct {
 	FS
-	failMkdir bool
 	failWrite bool
-}
-
-func (f *faultyFS) MkdirAll(path string, perm fs.FileMode) error {
-	if f.failMkdir {
-		return errors.New("synthetic mkdir failure")
-	}
-	return f.FS.MkdirAll(path, perm)
 }
 
 func (f *faultyFS) WriteFile(name string, data []byte, perm fs.FileMode) error {
@@ -337,14 +329,6 @@ func (f *faultyFS) WriteFile(name string, data []byte, perm fs.FileMode) error {
 		return errors.New("synthetic write failure")
 	}
 	return f.FS.WriteFile(name, data, perm)
-}
-
-func TestApplyMessaging_FailsOnMkdirError(t *testing.T) {
-	root := applyTestRoot(t)
-	tk := NewWithFS(&faultyFS{FS: osFS{}, failMkdir: true})
-	_, err := tk.ApplyMessaging(root, sampleMessaging())
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "mkdir")
 }
 
 func TestApplyMessaging_FailsOnWriteError(t *testing.T) {
