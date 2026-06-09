@@ -51,7 +51,7 @@ const usageText = `Usage: mdsmith-release <command> [args]
 Commands:
   stamp <version>                 Rewrite tracked manifests to <version>.
   check                           Verify tracked manifests are at the dev sentinel.
-  check-release-gates             Verify every environment: release job lists the gate job in needs:.
+  check-release-gates             Verify release-environment gating across .github/workflows.
   build-npm <artifacts> <out>     Build npm platform sub-packages.
   build-wheels <artifacts> <out>  Build platform-tagged Python wheels.
   build-flatpak <art> <out>       Stage the .flatpak bundle's manifest + Linux binaries.
@@ -223,11 +223,14 @@ func runCheckReleaseGates(root string, args []string) int {
 	fs := flag.NewFlagSet("check-release-gates", flag.ContinueOnError)
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: mdsmith-release check-release-gates\n\n"+
-			"Verify the release workflow's secret-gating invariant: every\n"+
+			"Verify the release pipeline's secret-gating invariant across\n"+
+			"every workflow under .github/workflows/: in release.yml each\n"+
 			"job that declares `environment: release` must list the `gate`\n"+
-			"job in `needs:`, and `gate` must be the lone reviewer chokepoint\n"+
-			"on the `release-approval` environment. Used by the\n"+
-			"release-gate-guard CI job. Exits non-zero on any violation.\n")
+			"job in `needs:` and must not carry an approval-bypassing `if:`\n"+
+			"(always() / !cancelled()); `gate` must be the lone job on the\n"+
+			"`release-approval` environment; and no other workflow may\n"+
+			"target either environment. Used by the release-gate-guard CI\n"+
+			"job. Exits non-zero on any violation.\n")
 	}
 	if err := fs.Parse(args); err != nil {
 		if code := reportFlagParseErr(err, os.Stderr, "mdsmith-release: check-release-gates"); code >= 0 {
@@ -238,7 +241,7 @@ func runCheckReleaseGates(root string, args []string) int {
 		fs.Usage()
 		return 2
 	}
-	violations, err := release.CheckReleaseGatesFile(root)
+	violations, err := release.CheckReleaseGatesRoot(root)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith-release: %v\n", err)
 		return 1
@@ -250,11 +253,11 @@ func runCheckReleaseGates(root string, args []string) int {
 		}
 		fmt.Fprintln(os.Stderr,
 			"\nevery `environment: release` job must list `gate` in needs: so no\n"+
-				"secret is reachable before the single approval. See\n"+
-				"docs/development/release.md.")
+				"secret is reachable before the single approval, and only release.yml\n"+
+				"may target the release environments. See docs/development/release.md.")
 		return 1
 	}
-	fmt.Println("release-gate invariant holds: every environment: release job needs gate")
+	fmt.Println("release-gate invariant holds across .github/workflows")
 	return 0
 }
 

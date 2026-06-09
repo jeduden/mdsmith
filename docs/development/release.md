@@ -248,10 +248,14 @@ HOMEBREW_TAP_DISPATCH_TOKEN · SCOOP_BUCKET_DISPATCH_TOKEN
 `release-approval` holds the reviewer but no secrets.
 The `needs: [gate]` edge is the only thing between a
 credential job and a secret, so the one approval gates
-them all. The `release-gate-guard` CI job fails the
-build if any `environment: release` job ever drops that
-edge, so this stays a checked guarantee rather than a
-convention.
+them all. The `release-gate-guard` CI job keeps this a
+checked guarantee rather than a convention. It scans
+every workflow under `.github/workflows/`. A job that
+targets `environment: release` fails the build when it
+drops the `gate` edge, hides the environment behind an
+expression, or carries an approval-bypassing `if:`
+(`always()` / `!cancelled()`). Any other workflow that
+targets either environment fails the build too.
 
 ## Long-Lived Publisher Tokens
 
@@ -287,10 +291,12 @@ enough.
   `release-approval`) in every credential job's
   `needs:`, so one approval gates every publish.
 - **`release-gate-guard` CI job** (plus a Go test)
-  fails the build if any `environment: release` job
-  omits `needs: [gate]`, so the single-approval
-  property is a checked guarantee, not a convention.
-  Runs `mdsmith-release check-release-gates`.
+  scans every workflow and fails the build on any
+  `environment: release` job that omits
+  `needs: [gate]`, on approval-bypassing `if:`
+  conditions, and on any sibling workflow that targets
+  the release environments. Runs
+  `mdsmith-release check-release-gates`.
 - **`if: github.repository == 'jeduden/mdsmith'`** on
   every publishing job, so a fork-cloned release
   workflow cannot reach the publish steps.
@@ -354,7 +360,11 @@ place.
 5. [ ] Store `VSCE_PAT`, `OVSX_PAT`, `WINGET_PR_TOKEN`,
    `HOMEBREW_TAP_DISPATCH_TOKEN`, and
    `SCOOP_BUCKET_DISPATCH_TOKEN` as secrets on the
-   `release` environment.
+   `release` environment. Delete any old plain-repo
+   copies of the same names: a job reads the
+   environment copy, so a stale repo-level token would
+   linger unrotated — and an empty environment copy
+   makes the dispatch jobs skip silently.
 6. [ ] Enable branch protection on `main` requiring
    CODEOWNERS review for the paths in
    `.github/CODEOWNERS`.

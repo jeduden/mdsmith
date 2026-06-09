@@ -2,18 +2,26 @@ package release
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
-	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
 const (
-	// ReleaseWorkflowPath is the workflow whose secret-gating
-	// invariant CheckReleaseGates enforces, relative to the repo root.
+	// ReleaseWorkflowPath is the workflow that owns the gated release
+	// pipeline, relative to the repo root. CheckReleaseGatesRoot
+	// applies the full invariant to it and confines the two release
+	// environments to it.
 	ReleaseWorkflowPath = ".github/workflows/release.yml"
+
+	// workflowsDirName is the directory CheckReleaseGatesRoot scans;
+	// every *.yml / *.yaml file in it is checked.
+	workflowsDirName = ".github/workflows"
 
 	// gateJobName is the single approval chokepoint every job that can
 	// reach a release-environment secret must depend on.
@@ -26,20 +34,33 @@ const (
 	approvalEnvName = "release-approval"
 )
 
+// bypassIfPattern matches the `if:` expressions that make a job run
+// even when a needed job failed or was cancelled. With the reviewer on
+// the gate job rather than the `release` environment, such an `if:` on
+// a credential job would run it — and hand it the secrets — after a
+// failed or rejected gate.
+var bypassIfPattern = regexp.MustCompile(`always\s*\(\s*\)|!\s*cancelled\s*\(\s*\)`)
+
 // GateViolation is one job that breaks the secret-gating invariant,
-// with a human-readable reason.
+// with a human-readable reason. Workflow is the file the job lives in;
+// empty when the caller checked a single document directly.
 type GateViolation struct {
-	Job    string
-	Reason string
+	Workflow string
+	Job      string
+	Reason   string
 }
 
 func (v GateViolation) String() string {
-	return fmt.Sprintf("%s: %s", v.Job, v.Reason)
+	if v.Workflow == "" {
+		return fmt.Sprintf("%s: %s", v.Job, v.Reason)
+	}
+	return fmt.Sprintf("%s: %s: %s", v.Workflow, v.Job, v.Reason)
 }
 
 type gateRawJob struct {
 	Environment yaml.Node `yaml:"environment"`
 	Needs       yaml.Node `yaml:"needs"`
+	If          yaml.Node `yaml:"if"`
 }
 
 type gateRawWorkflow struct {
@@ -50,8 +71,12 @@ type gateRawWorkflow struct {
 // release workflow YAML. Every job that declares
 // `environment: release` — and so can read that environment's
 // publisher secrets or mint an OIDC token scoped to it — must list the
-// `gate` job in `needs:`, and `gate` itself must be the single
-// reviewer chokepoint on the `release-approval` environment.
+// `gate` job in `needs:`, must not carry an `if:` that survives a
+// failed gate (always() / !cancelled()), and `gate` itself must be the
+// only job on the reviewer-gated `release-approval` environment.
+// Environment names compare case-insensitively because GitHub treats
+// them that way, and expression-valued environments are rejected
+// outright: the guard can only verify literal names.
 //
 // The `release` environment carries no required reviewer (so one
 // approval covers the whole run); the `needs: gate` edge is therefore
@@ -79,7 +104,7 @@ func CheckReleaseGates(workflowYAML []byte) ([]GateViolation, error) {
 			Job:    gateJobName,
 			Reason: "missing: the single approval chokepoint must exist",
 		})
-	} else if env := environmentName(gate.Environment); env != approvalEnvName {
+	} else if env := environmentName(gate.Environment); !strings.EqualFold(env, approvalEnvName) {
 		violations = append(violations, GateViolation{
 			Job: gateJobName,
 			Reason: fmt.Sprintf(
@@ -88,35 +113,139 @@ func CheckReleaseGates(workflowYAML []byte) ([]GateViolation, error) {
 		})
 	}
 
-	for _, name := range sortedJobNames(wf.Jobs) {
+	for _, name := range slices.Sorted(maps.Keys(wf.Jobs)) {
 		if name == gateJobName {
 			continue
 		}
-		if environmentName(wf.Jobs[name].Environment) != secretEnvName {
-			continue
-		}
-		if !slices.Contains(needsList(wf.Jobs[name].Needs), gateJobName) {
+		violations = append(violations, checkReleaseJob(name, wf.Jobs[name])...)
+	}
+	return violations, nil
+}
+
+// checkReleaseJob applies the per-job rules of CheckReleaseGates to
+// one non-gate job in release.yml.
+func checkReleaseJob(name string, job gateRawJob) []GateViolation {
+	env := environmentName(job.Environment)
+	if strings.Contains(env, "${{") {
+		return []GateViolation{{
+			Job: name,
+			Reason: fmt.Sprintf(
+				"environment is an expression (%q); the guard can only "+
+					"verify literal environment names", env),
+		}}
+	}
+	if strings.EqualFold(env, approvalEnvName) {
+		return []GateViolation{{
+			Job: name,
+			Reason: fmt.Sprintf(
+				"declares environment: %s, but only the %q job may use the "+
+					"approval environment — a second user adds a second "+
+					"approval prompt", approvalEnvName, gateJobName),
+		}}
+	}
+	if !strings.EqualFold(env, secretEnvName) {
+		return nil
+	}
+	var violations []GateViolation
+	if !slices.Contains(needsList(job.Needs), gateJobName) {
+		violations = append(violations, GateViolation{
+			Job: name,
+			Reason: fmt.Sprintf(
+				"declares environment: %s but does not list %q in needs: — "+
+					"it could read that environment's secrets without approval",
+				secretEnvName, gateJobName),
+		})
+	}
+	if bypassIfPattern.MatchString(ifCondition(job.If)) {
+		violations = append(violations, GateViolation{
+			Job: name,
+			Reason: "its if: uses always() or !cancelled(), which would run the " +
+				"job — with the environment's secrets — even after a failed or " +
+				"rejected gate",
+		})
+	}
+	return violations
+}
+
+// checkWorkflowEnvIsolation checks a workflow OTHER than release.yml:
+// no job in it may target the `release` or `release-approval`
+// environments. The gate chokepoint only exists inside release.yml, so
+// a release-environment job anywhere else would reach the publisher
+// secrets with no approval path at all.
+func checkWorkflowEnvIsolation(workflowYAML []byte) ([]GateViolation, error) {
+	var wf gateRawWorkflow
+	if err := yaml.Unmarshal(workflowYAML, &wf); err != nil {
+		return nil, err
+	}
+	var violations []GateViolation
+	for _, name := range slices.Sorted(maps.Keys(wf.Jobs)) {
+		env := environmentName(wf.Jobs[name].Environment)
+		switch {
+		case strings.EqualFold(env, secretEnvName):
 			violations = append(violations, GateViolation{
 				Job: name,
 				Reason: fmt.Sprintf(
-					"declares environment: %s but does not list %q in needs: — "+
-						"it could read that environment's secrets without approval",
-					secretEnvName, gateJobName),
+					"declares environment: %s outside %s — the environment's "+
+						"secrets must only be reachable through the gated "+
+						"release pipeline", secretEnvName, ReleaseWorkflowPath),
+			})
+		case strings.EqualFold(env, approvalEnvName):
+			violations = append(violations, GateViolation{
+				Job: name,
+				Reason: fmt.Sprintf(
+					"declares environment: %s outside %s — the approval "+
+						"environment is reserved for the release pipeline's "+
+						"%q job", approvalEnvName, ReleaseWorkflowPath, gateJobName),
 			})
 		}
 	}
 	return violations, nil
 }
 
-// CheckReleaseGatesFile reads the release workflow under root and runs
-// CheckReleaseGates over it.
-func CheckReleaseGatesFile(root string) ([]GateViolation, error) {
-	path := filepath.Join(root, ReleaseWorkflowPath)
-	data, err := os.ReadFile(path)
+// CheckReleaseGatesRoot scans every workflow under .github/workflows
+// beneath root: release.yml gets the full CheckReleaseGates invariant,
+// and every other workflow must stay clear of the two release
+// environments (checkWorkflowEnvIsolation). Checking the whole
+// directory — not just release.yml — is what stops a new or edited
+// sibling workflow from reaching the `release` secrets ungated.
+func CheckReleaseGatesRoot(root string) ([]GateViolation, error) {
+	dir := filepath.Join(root, workflowsDirName)
+	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, fmt.Errorf("reading %s: %w", ReleaseWorkflowPath, err)
+		return nil, fmt.Errorf("reading %s: %w", workflowsDirName, err)
 	}
-	return CheckReleaseGates(data)
+	var violations []GateViolation
+	sawRelease := false
+	releaseBase := filepath.Base(ReleaseWorkflowPath)
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() ||
+			(!strings.HasSuffix(name, ".yml") && !strings.HasSuffix(name, ".yaml")) {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			return nil, fmt.Errorf("reading %s/%s: %w", workflowsDirName, name, err)
+		}
+		var found []GateViolation
+		if name == releaseBase {
+			sawRelease = true
+			found, err = CheckReleaseGates(data)
+		} else {
+			found, err = checkWorkflowEnvIsolation(data)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("parsing %s/%s: %w", workflowsDirName, name, err)
+		}
+		for i := range found {
+			found[i].Workflow = name
+		}
+		violations = append(violations, found...)
+	}
+	if !sawRelease {
+		return nil, fmt.Errorf("missing %s", ReleaseWorkflowPath)
+	}
+	return violations, nil
 }
 
 // environmentName returns the environment a job targets. GitHub allows
@@ -153,11 +282,18 @@ func needsList(n yaml.Node) []string {
 	return nil
 }
 
-func sortedJobNames(jobs map[string]gateRawJob) []string {
-	names := make([]string, 0, len(jobs))
-	for name := range jobs {
-		names = append(names, name)
+// ifCondition returns a job's `if:` expression. release.yml shares one
+// repository-guard condition through a YAML anchor, and yaml.v3 hands
+// the alias node through unresolved when decoding into a yaml.Node —
+// follow it so an aliased always() cannot hide from bypassIfPattern.
+func ifCondition(n yaml.Node) string {
+	switch n.Kind {
+	case yaml.ScalarNode:
+		return n.Value
+	case yaml.AliasNode:
+		if n.Alias != nil {
+			return n.Alias.Value
+		}
 	}
-	sort.Strings(names)
-	return names
+	return ""
 }

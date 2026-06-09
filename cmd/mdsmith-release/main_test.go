@@ -54,6 +54,7 @@ func TestRunRejectsBadArity(t *testing.T) {
 		{"stamp without version", []string{"stamp"}},
 		{"stamp with extra args", []string{"stamp", "1.2.3", "extra"}},
 		{"check with extra arg", []string{"check", "extra"}},
+		{"check-release-gates with extra arg", []string{"check-release-gates", "extra"}},
 		{"build-npm without args", []string{"build-npm"}},
 		{"build-npm with one arg", []string{"build-npm", "art"}},
 		{"build-wheels without args", []string{"build-wheels"}},
@@ -100,7 +101,8 @@ func TestReportFlagParseErrNilReturnsContinue(t *testing.T) {
 // itself, so the dispatcher just needs to surface exit code 0.
 func TestSubcommandHelpExitsZero(t *testing.T) {
 	for _, sub := range []string{
-		"stamp", "check", "build-npm", "build-wheels",
+		"stamp", "check", "check-release-gates",
+		"build-npm", "build-wheels",
 		"build-flatpak", "package-obsidian",
 		"sync-docs", "build-website", "verify-website-links",
 		"verify-install-picker",
@@ -122,7 +124,8 @@ func TestSubcommandHelpExitsZero(t *testing.T) {
 // branch of reportFlagParseErr.
 func TestSubcommandRejectsUnknownFlag(t *testing.T) {
 	for _, sub := range []string{
-		"stamp", "check", "build-npm", "build-wheels",
+		"stamp", "check", "check-release-gates",
+		"build-npm", "build-wheels",
 		"build-flatpak", "package-obsidian",
 		"sync-docs", "build-website", "verify-website-links",
 		"verify-install-picker",
