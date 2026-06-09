@@ -106,6 +106,9 @@ func TestSubcommandHelpExitsZero(t *testing.T) {
 		"build-flatpak", "package-obsidian",
 		"sync-docs", "build-website", "verify-website-links",
 		"verify-install-picker",
+		"publish-release", "sbom",
+		"check-secret-rotations", "record-rotation",
+		"merge-coverage",
 		"sync-messaging",
 		"sync-parity-rules",
 		"sync-channels",
@@ -129,12 +132,18 @@ func TestSubcommandRejectsUnknownFlag(t *testing.T) {
 		"build-flatpak", "package-obsidian",
 		"sync-docs", "build-website", "verify-website-links",
 		"verify-install-picker",
+		"publish-release", "sbom",
+		"check-secret-rotations", "record-rotation",
+		"merge-coverage",
 		"sync-messaging",
 		"sync-parity-rules",
 		"sync-channels",
 		"render-scoop-manifest",
 		"render-winget-manifest",
+		"pull-site-assets",
 		"test-summary",
+		"bench",
+		"bench-check",
 	} {
 		assert.Equal(t, 2, run([]string{sub, "--bogus"}), "%s --bogus", sub)
 	}
