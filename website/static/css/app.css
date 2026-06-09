@@ -86,7 +86,7 @@ main {
 .topnav-link.is-active { color: var(--fg); }
 .topnav-brand img { display: block; }
 .topnav-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
-.topnav-version { font-family: var(--font-mono); font-size: 12px; color: var(--fg-subtle); }
+.topnav-version { font-family: var(--font-mono); font-size: 12px; color: var(--fg-subtle); white-space: nowrap; }
 .topnav-version:hover { color: var(--accent); text-decoration: none; }
 .topnav-kbd {
   font-family: var(--font-mono);
@@ -197,12 +197,36 @@ main {
 .hero-lead p { margin: 0; }
 .hero-lead p:not(:last-child) { margin-bottom: 12px; }
 .hero-cta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.hero-switch {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+  margin: 16px 0 0;
+}
 .hero-badges {
   display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
   margin-top: 22px;
 }
 .hero-badges a { display: inline-flex; line-height: 0; }
 .hero-badges img { height: 20px; display: block; }
+
+/* ========== POSITIONING ========== */
+
+/* One-paragraph category statement (the content/_index.md body),
+   rendered between the hero and the logos strip so a first-time
+   visitor can classify the product without scrolling. */
+.positioning {
+  padding: 36px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.positioning-body {
+  max-width: 760px;
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--fg-muted);
+}
+.positioning-body p { margin: 0; }
+.positioning-body p:not(:last-child) { margin-bottom: 12px; }
 
 /* ========== BUTTONS ========== */
 
@@ -276,12 +300,14 @@ main {
   gap: 12px;
   margin-bottom: 16px;
 }
+/* steel-400 / steel-500: the lighter steel-300/400 pair sat below
+   the 4.5:1 WCAG AA contrast bar at these tiny sizes. */
 .pillar-num {
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.08em;
-  color: var(--steel-300);
+  color: var(--steel-400);
   flex-shrink: 0;
 }
 .pillar-name {
@@ -290,7 +316,7 @@ main {
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--steel-400);
+  color: var(--steel-500);
   flex-shrink: 0;
 }
 .pillar-rule {
@@ -456,6 +482,9 @@ main {
 
 .card-content { display: flex; flex-direction: column; flex: 1; }
 
+/* steel-500 / forge-600 bases: the old steel-300 / forge-400 read
+   at ~2:1 against the card background — under the 4.5:1 WCAG AA
+   bar — and touch users never see the darker hover state. */
 .card-more {
   display: inline-flex;
   align-items: center;
@@ -463,15 +492,15 @@ main {
   font-size: 11.5px;
   font-weight: 500;
   letter-spacing: 0.01em;
-  color: var(--steel-300);
+  color: var(--steel-500);
   margin-top: auto;
   padding-top: 18px;
   text-decoration: none;
   transition: color 130ms ease;
 }
-.card:hover .card-more { color: var(--steel-500); }
-.card-body--lead .card-more { color: var(--forge-400); font-size: 12.5px; }
-.card--lead:hover .card-more { color: var(--forge-600); }
+.card:hover .card-more { color: var(--steel-700); }
+.card-body--lead .card-more { color: var(--forge-600); font-size: 12.5px; }
+.card--lead:hover .card-more { color: var(--forge-700); }
 .card-more svg { transition: transform 130ms ease; }
 .card:hover .card-more svg { transform: translateX(2px); }
 
@@ -1130,6 +1159,18 @@ a.install-label:hover { color: var(--forge-300); text-decoration: underline; }
   color: var(--forge-700); border-color: var(--forge-500); background: var(--forge-50);
 }
 .install-row[hidden] { display: none; }
+
+/* On narrow screens the single-row layout truncated commands to a
+   few characters ("$ go install g…") with no visible affordance —
+   the overflow-x scroll is invisible until touched. Wrap instead:
+   label and copy button share the top line, the command drops to
+   a full-width line below (still nowrap + scrollable for the
+   longest curl/unzip lines). */
+@media (max-width: 560px) {
+  .install-row { flex-wrap: wrap; row-gap: 8px; padding: 12px 16px; }
+  .install-label { flex: 1 1 auto; }
+  .install-row .install-cmd { order: 3; flex-basis: 100%; }
+}
 /* Sits on the light section background; --fg-muted reads at ~8.4:1. */
 .install-note {
   margin: 0;
@@ -1729,6 +1770,19 @@ a.rule-ref:hover code { text-decoration: underline; }
   html.js .docs-side-nav { display: none; }
   html.js .docs-side-nav.is-open { display: block; }
   .footer-grid { grid-template-columns: 1fr 1fr; }
+  /* The brand cell drops from 2fr to a half-width column here,
+     which crushed the tagline to ~12 characters per line; span
+     both columns instead. */
+  .footer-grid .footer-col:first-child { grid-column: 1 / -1; }
+
+  /* space-between + wrap scattered the channel names with ragged
+     gaps once they wrapped; switch to a left-aligned gap flow with
+     the label on its own line. */
+  .logos { padding: 28px 0; }
+  .logos-strip { justify-content: flex-start; gap: 12px 24px; }
+  .logos-label { flex-basis: 100%; }
+  .logos-item { font-size: 16px; }
+
   .pg { grid-template-columns: 1fr; height: auto; }
   .pg-pane + .pg-pane { border-left: 0; border-top: 1px solid var(--border); }
   .pg-pane { height: 360px; }

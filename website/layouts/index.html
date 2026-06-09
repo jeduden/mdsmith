@@ -1,11 +1,23 @@
 {{ define "main" }}
   {{ partial "hero.html" . }}
+  {{- /* The page body of content/_index.md is the one-paragraph
+         category statement ("mdsmith is a Markdown linter and
+         formatter written in Go…"). Render it right under the
+         hero so a first-time visitor can classify the product
+         without scrolling to the Why section. */ -}}
+  {{ with .Content }}
+  <section class="positioning">
+    <div class="container">
+      <div class="positioning-body">{{ . }}</div>
+    </div>
+  </section>
+  {{ end }}
   {{ partial "logos-strip.html" . }}
   <section class="section">
     <div class="container">
       <div class="section-eyebrow">Why mdsmith</div>
       <h2 class="section-title">Forged <em>whole.</em></h2>
-      <p class="section-lead">Where other linters stop at per-file style, mdsmith forges the whole tree: it checks readability, ties files together with links, includes, and schemas, keeps generated sections in sync, and gates the result in CI — all from one engine that runs the same in your editor, your agent, and your pipeline. Each card opens a fuller write-up; the same copy backs the repository README.</p>
+      <p class="section-lead">Where other linters stop at per-file style, mdsmith forges the whole tree: it checks readability, ties files together with links, includes, and schemas, keeps generated sections in sync, and gates the result in CI — all from one engine that runs the same in your editor, your agent, and your pipeline.</p>
       {{ partial "feature-grid.html" . }}
     </div>
   </section>
