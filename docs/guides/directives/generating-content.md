@@ -375,13 +375,16 @@ mdsmith product messaging
 ```
 
 Single-content-key shortcut. A leaf object that
-carries exactly one of `text`, `code`, `items`, or
-`rows` resolves to the inner value, so
+carries exactly one of `text`, `code`, `inline`,
+`items`, or `rows` resolves to the inner value, so
 `extract: tagline` and `extract: tagline.text`
-splice the same content. Multi-key wrappers (the
-JSON projection of a section with several content
-entries) are ambiguous and surface as a lint error
-with the available keys listed.
+splice the same content. An `inline` value is a
+typed span list rather than a scalar, so it cannot
+be spliced yet and surfaces as a lint error.
+Multi-key wrappers (the JSON projection of a
+section with several content entries) are ambiguous
+and surface as a lint error with the available keys
+listed.
 
 Restrictions. `extract:` is scalar-only for now —
 combining it with `strip-frontmatter:` or
