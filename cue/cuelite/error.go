@@ -1,6 +1,7 @@
 package cuelite
 
 import (
+	"reflect"
 	"slices"
 	"strings"
 )
@@ -117,14 +118,26 @@ func Errors(err error) []*PathError {
 // recursing forever. A *PathError leaf is appended before the visited
 // check can dedup it only through its parents, so each distinct leaf
 // pointer still yields one entry.
+//
+// Only a comparable node is memoized: an uncomparable concrete type (a
+// slice- or map-backed error) cannot be a map key — inserting it would
+// panic "hash of unhashable type". Such a node is walked WITHOUT
+// memoization, so a cycle reachable only through it could recurse
+// forever; in practice a cycle needs a comparable self-referencing node
+// (an uncomparable value cannot equal itself by ==, so it cannot close a
+// Go error chain back onto itself), which is still memoized and still
+// terminates.
 func collectPathErrors(err error, out []*PathError, visited map[error]struct{}) []*PathError {
 	if err == nil {
 		return out
 	}
-	if _, seen := visited[err]; seen {
-		return out
+	comparable := reflect.TypeOf(err).Comparable()
+	if comparable {
+		if _, seen := visited[err]; seen {
+			return out
+		}
+		visited[err] = struct{}{}
 	}
-	visited[err] = struct{}{}
 	if pe, ok := err.(*PathError); ok {
 		return append(out, pe)
 	}

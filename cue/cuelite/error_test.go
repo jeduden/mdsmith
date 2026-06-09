@@ -3,6 +3,7 @@ package cuelite
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -151,6 +152,36 @@ func TestErrors_pathErrorIsALeaf(t *testing.T) {
 	got := Errors(outer)
 	require.Len(t, got, 1, "a wrapping PathError is one leaf, not two")
 	assert.Equal(t, []string{"outer"}, got[0].Path())
+}
+
+// sliceErr is an error whose concrete type is a slice — uncomparable, so
+// using it as a map key panics ("hash of unhashable type"). It exists to
+// prove the Errors walk memoizes only comparable nodes.
+type sliceErr []string
+
+func (s sliceErr) Error() string { return strings.Join(s, ",") }
+
+func TestErrors_uncomparableNodeDoesNotPanic(t *testing.T) {
+	t.Run("a bare uncomparable error is walked without panicking", func(t *testing.T) {
+		// Inserting an uncomparable node into the visited map would panic;
+		// the walk must skip memoizing it and still return (it carries no
+		// *PathError leaf, so the result is nil).
+		assert.NotPanics(t, func() {
+			assert.Nil(t, Errors(sliceErr{"a", "b"}))
+		})
+	})
+	t.Run("an uncomparable error joined with a leaf collects the leaf", func(t *testing.T) {
+		// errors.Join holds an uncomparable branch beside a *PathError leaf;
+		// the walk must collect the leaf without panicking on the branch.
+		pe := newPathError([]string{"x"}, "boom")
+		joined := errors.Join(sliceErr{"a"}, pe)
+		var got []*PathError
+		assert.NotPanics(t, func() {
+			got = Errors(joined)
+		})
+		require.Len(t, got, 1)
+		assert.Equal(t, []string{"x"}, got[0].Path())
+	})
 }
 
 // TestErrors_wrappers covers the single-wrapper (Unwrap() error) leg of the
