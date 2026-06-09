@@ -230,6 +230,12 @@ func checkDuplicateJSONKeys(data []byte) error {
 // dec.UseNumber() keeps a number outside float64 range (1e999, valid
 // JSON) from erroring mid-scan and being misread as malformed, which
 // would let a duplicate beside it slip past.
+//
+// The scan stops once the first top-level value closes (the stack
+// empties, or the first top-level scalar is consumed). Any trailing data
+// is "invalid JSON after top-level value", which cuejson.Extract
+// reports; fabricating a duplicate from a second top-level value would
+// mask that error.
 func scanDuplicateJSONKeys(dec *json.Decoder) error {
 	dec.UseNumber()
 	// level is one open container. keys is non-nil for an object level and
@@ -280,17 +286,26 @@ func scanDuplicateJSONKeys(dec *json.Decoder) error {
 			// parent (now the top of the stack) so the parent expects its
 			// next key.
 			stack = stack[:len(stack)-1]
-			if len(stack) > 0 {
-				parent := stack[len(stack)-1]
-				if parent.keys != nil {
-					parent.seenKey = false
-				}
+			if len(stack) == 0 {
+				// The first top-level value just closed. Stop scanning: any
+				// trailing data is "invalid JSON after top-level value", which
+				// cuejson.Extract reports — fabricating a duplicate from a
+				// second top-level value would mask that.
+				return nil
+			}
+			parent := stack[len(stack)-1]
+			if parent.keys != nil {
+				parent.seenKey = false
 			}
 			continue
 		}
 		// A scalar value was the value half of cur's pair: flip cur back to
-		// expecting its next key.
-		if cur != nil && cur.keys != nil {
+		// expecting its next key. A top-level scalar (no open container) is
+		// the whole first value; stop so any trailing data defers to Extract.
+		if cur == nil {
+			return nil
+		}
+		if cur.keys != nil {
 			cur.seenKey = false
 		}
 	}

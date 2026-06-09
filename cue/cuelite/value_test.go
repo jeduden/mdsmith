@@ -101,6 +101,17 @@ func TestCompileJSON(t *testing.T) {
 		require.NoError(t, err)
 		assert.NoError(t, v.Validate())
 	})
+	t.Run("trailing second top-level value defers to Extract", func(t *testing.T) {
+		// {"x":1} {"a":1,"a":2}: the scanner must stop once the first
+		// top-level value closes, leaving the trailing data to Extract — which
+		// reports "invalid JSON ... after top-level value" — rather than
+		// fabricating a duplicate "a" from a second top-level object Extract
+		// never reaches.
+		_, err := CompileJSON([]byte(`{"x":1} {"a":1,"a":2}`))
+		require.Error(t, err)
+		assert.NotContains(t, err.Error(), "duplicate",
+			"the error must come from Extract, not a fabricated scanner duplicate")
+	})
 	t.Run("duplicate beside an out-of-float64-range number rejected", func(t *testing.T) {
 		// 1e999 is valid JSON but overflows float64; without dec.UseNumber()
 		// json.Decoder.Token errors on it mid-scan, the scanner misreads that

@@ -133,6 +133,8 @@ func TestPaths(t *testing.T) {
 			Case{Schema: `{n: int}`, Data: `{n: 3}`}, StageCompileData},
 		{"duplicate-key data rejected at the data stage",
 			Case{Schema: `{a: int}`, Data: `{"a":1,"a":2}`}, StageCompileData},
+		{"trailing top-level value rejected at the data stage",
+			Case{Schema: `{x: int}`, Data: `{"x":1} {"a":1,"a":2}`}, StageCompileData},
 	}
 	for name, path := range paths {
 		for _, tc := range cases {
@@ -291,5 +293,10 @@ func corpus() []Case {
 		// The same overflowing number with no duplicate key must still be
 		// accepted end-to-end by both arms.
 		{Name: "big-number no duplicate ok", Schema: `{x: number}`, Data: `{"x":1e999}`},
+		// A second top-level value: the cuelite scanner must stop after the
+		// first value closes (the oracle's walker already consumes only one),
+		// so both arms defer to Extract's "after top-level value" error and
+		// resolve at StageCompileData rather than fabricating a duplicate "a".
+		{Name: "trailing top-level value reject", Schema: `{x: int}`, Data: `{"x":1} {"a":1,"a":2}`},
 	}
 }
