@@ -50,8 +50,11 @@
 package cuelite
 
 import (
+	"bytes"
+	"encoding/json"
 	stderrors "errors"
 	"fmt"
+	"io"
 
 	"cuelang.org/go/cue"
 	"cuelang.org/go/cue/cuecontext"
@@ -128,10 +131,13 @@ func Compile(src string) (Value, error) {
 // over the JSON-data lift mdsmith uses to validate marshalled front
 // matter against a schema. The input must be strict JSON: arbitrary
 // CUE source (an unquoted key, an expression) is rejected, unlike a
-// raw CompileBytes. A document that parses as JSON but builds to a
-// bottom — a duplicate key, say — also reports an error, matching
-// Compile, which surfaces bottoms rather than silently accepting them.
-// The returned Value owns a fresh *cue.Context.
+// raw CompileBytes. Duplicate object keys are rejected outright, naming
+// the offending key — CUE's JSON lift instead UNIFIES same-named keys
+// (mergeable or equal duplicates compile to a phantom merged object,
+// only conflicting ones error), whereas real JSON consumers are
+// last-wins, so cuelite enforces the strict no-duplicate-keys contract
+// before the CUE lift rather than validating a value no JSON reader
+// would produce. The returned Value owns a fresh *cue.Context.
 func CompileJSON(data []byte) (Value, error) {
 	ctx := cuecontext.New()
 	val, err := buildJSON(ctx, data)
@@ -147,11 +153,16 @@ func CompileJSON(data []byte) (Value, error) {
 
 // buildJSON parses strict JSON into a cue.Value inside ctx. It rejects
 // any input that is not valid JSON (so CUE source cannot slip through):
-// Extract reports a malformed document before any value is built. A
-// document that extracts but builds to a bottom (⊥) — a duplicate key,
-// for instance — is returned as that bottom's Err(), so CompileJSON
+// Extract reports a malformed document before any value is built. It
+// first rejects any duplicate object key (at any nesting depth,
+// including inside array elements), since CUE's lift would silently
+// unify same-named keys rather than reject them. Any remaining bottom
+// (⊥) from the build is returned as that bottom's Err(), so CompileJSON
 // surfaces it as a Go error exactly as Compile surfaces a CUE bottom.
 func buildJSON(ctx *cue.Context, data []byte) (cue.Value, error) {
+	if err := checkDuplicateJSONKeys(data); err != nil {
+		return cue.Value{}, err
+	}
 	expr, err := cuejson.Extract("", data)
 	if err != nil {
 		return cue.Value{}, err
@@ -161,6 +172,96 @@ func buildJSON(ctx *cue.Context, data []byte) (cue.Value, error) {
 		return cue.Value{}, err
 	}
 	return val, nil
+}
+
+// checkDuplicateJSONKeys walks the JSON document with the streaming
+// token decoder and reports the first object key that appears twice
+// within the same object — at any nesting depth, including objects that
+// are array elements. CUE's JSON lift unifies same-named keys (mergeable
+// and equal duplicates compile silently, only conflicting ones error),
+// which validates a phantom merged object no last-wins JSON consumer
+// would build; cuelite enforces strict JSON's no-duplicate-keys rule
+// here, before the CUE lift. A malformed document yields no duplicate
+// error: cuejson.Extract is left to report the syntax error, so the two
+// arms keep one place that decides what "not JSON" means.
+func checkDuplicateJSONKeys(data []byte) error {
+	return scanDuplicateJSONKeys(json.NewDecoder(bytes.NewReader(data)))
+}
+
+// scanDuplicateJSONKeys streams the decoder's tokens and rejects the
+// first duplicate object key. It keys off json.Decoder's structural
+// guarantee: between a '{' and its matching '}', tokens alternate
+// key, value, key, value, …, where each value is a single scalar token
+// or a whole nested container (which the decoder emits as one '{'/'['
+// delimiter that we recurse on). So inside an object level, the next
+// string token after an even number of values is a key; we track that
+// parity per open object with seenKey, flipping it once per value.
+// Array levels carry no key rule, so their elements are scanned only to
+// recurse into nested objects. A malformed document yields no duplicate
+// error: cuejson.Extract is left to report the syntax error.
+func scanDuplicateJSONKeys(dec *json.Decoder) error {
+	// level is one open container. keys is non-nil for an object level and
+	// holds the keys already seen at it; nil marks an array level. seenKey
+	// is true when the next string token at an object level is a value (the
+	// key was already read), false when it is the next key.
+	type level struct {
+		keys    map[string]struct{}
+		seenKey bool
+	}
+	var stack []*level
+	for {
+		tok, err := dec.Token()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			// Malformed JSON: leave the syntax error to cuejson.Extract.
+			return nil
+		}
+		var cur *level
+		if len(stack) > 0 {
+			cur = stack[len(stack)-1]
+		}
+		// At an object level, a string token is a key unless it is the value
+		// half of a key/value pair (seenKey). Check keys for duplication.
+		if cur != nil && cur.keys != nil && !cur.seenKey {
+			if s, ok := tok.(string); ok {
+				if _, dup := cur.keys[s]; dup {
+					return fmt.Errorf("duplicate JSON key %q", s)
+				}
+				cur.keys[s] = struct{}{}
+				cur.seenKey = true
+				continue
+			}
+		}
+		switch tok {
+		case json.Delim('{'):
+			// A nested object is the value half of cur's pair; push it and
+			// leave cur.seenKey set, so its matching '}' restores cur below.
+			stack = append(stack, &level{keys: map[string]struct{}{}})
+			continue
+		case json.Delim('['):
+			stack = append(stack, &level{})
+			continue
+		case json.Delim('}'), json.Delim(']'):
+			// Close the container, then mark it consumed as a value in its
+			// parent (now the top of the stack) so the parent expects its
+			// next key.
+			stack = stack[:len(stack)-1]
+			if len(stack) > 0 {
+				parent := stack[len(stack)-1]
+				if parent.keys != nil {
+					parent.seenKey = false
+				}
+			}
+			continue
+		}
+		// A scalar value was the value half of cur's pair: flip cur back to
+		// expecting its next key.
+		if cur != nil && cur.keys != nil {
+			cur.seenKey = false
+		}
+	}
 }
 
 // rebuild returns o as a cue.Value living in ctx, so an operand can be

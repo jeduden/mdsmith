@@ -150,6 +150,46 @@ func TestValidateOutcome(t *testing.T) {
 	})
 }
 
+// TestRawDuplicateKeys exercises the oracle's independent duplicate-key
+// walk directly, so its recursive descent is pinned apart from the
+// corpus run. It is the oracle counterpart to cuelite's
+// checkDuplicateJSONKeys tests: both implementations of the same
+// strict-JSON contract are unit-tested on the same shapes.
+func TestRawDuplicateKeys(t *testing.T) {
+	cases := []struct {
+		name string
+		json string
+		dup  bool
+	}{
+		{"conflicting dup", `{"a":1,"a":2}`, true},
+		{"mergeable dup", `{"a":{"b":1},"a":{"c":2}}`, true},
+		{"equal dup", `{"a":1,"a":1}`, true},
+		{"nested dup", `{"x":{"a":1,"a":1}}`, true},
+		{"dup in array element", `[{"a":1,"a":1}]`, true},
+		{"deep array dup", `{"a":[[{"k":1,"k":2}]]}`, true},
+		{"dup after nested object value", `{"a":{"x":1},"a":2}`, true},
+		{"same key different objects ok", `{"x":{"a":1},"y":{"a":2}}`, false},
+		{"sibling objects ok", `[{"a":1},{"a":2}]`, false},
+		{"scalars ok", `{"a":1,"b":2}`, false},
+		{"empty object ok", `{}`, false},
+		{"empty array ok", `[]`, false},
+		{"top-level scalar ok", `42`, false},
+		{"malformed defers to extract", `{not json`, false},
+		{"whitespace only defers", `   `, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := rawDuplicateKeys([]byte(tc.json))
+			if tc.dup {
+				require.Error(t, err, "expected duplicate error for %s", tc.json)
+				assert.Contains(t, err.Error(), `duplicate JSON key`)
+			} else {
+				assert.NoError(t, err, "unexpected error for %s", tc.json)
+			}
+		})
+	}
+}
+
 func TestCompare(t *testing.T) {
 	t.Run("agreement records no failure", func(t *testing.T) {
 		r := &recorder{}
@@ -199,6 +239,12 @@ func corpus() []Case {
 		{Name: "regex reject", Schema: `{slug: =~"^[a-z]+$"}`, Data: `{"slug": "AB1"}`},
 		{Name: "nested reject", Schema: `{meta: {status: "✅"}}`, Data: `{"meta": {"status": "x"}}`},
 		{Name: "multi-leaf reject", Schema: `{a: "x", b: "y"}`, Data: `{"a": "p", "b": "q"}`},
-		{Name: "duplicate key reject", Schema: `{a: int}`, Data: `{"a":1,"a":2}`},
+		{Name: "conflicting duplicate key reject", Schema: `{a: int}`, Data: `{"a":1,"a":2}`},
+		// A MERGEABLE duplicate key. CUE's lift unifies same-named object
+		// keys into a phantom merged object, so without the independent
+		// duplicate-key check in oracleData the oracle would accept this while
+		// the cuelite arm rejects it at StageCompileData — a phantom
+		// divergence. Both arms must reject it at the data stage.
+		{Name: "mergeable duplicate key reject", Schema: `{a: {b: int, c: int}}`, Data: `{"a":{"b":1},"a":{"c":2}}`},
 	}
 }

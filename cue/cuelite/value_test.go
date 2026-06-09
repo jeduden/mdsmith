@@ -59,13 +59,46 @@ func TestCompileJSON(t *testing.T) {
 		_, err := CompileJSON([]byte(`{"n": >=0}`))
 		require.Error(t, err)
 	})
-	t.Run("duplicate key builds to a bottom and reports an error", func(t *testing.T) {
-		// {"a":1,"a":2} extracts as JSON but unifies to a conflicting bottom;
-		// CompileJSON must surface that as a Go error, matching Compile, not
-		// return (Value, nil).
+	t.Run("conflicting duplicate key rejected", func(t *testing.T) {
+		// {"a":1,"a":2} would extract as JSON and unify to a conflicting
+		// bottom; strict JSON rejects any duplicate key before the CUE lift,
+		// so CompileJSON surfaces a Go error naming the key.
 		v, err := CompileJSON([]byte(`{"a":1,"a":2}`))
 		require.Error(t, err)
+		assert.Contains(t, err.Error(), `"a"`)
 		assertBottomError(t, v.Validate(), err.Error())
+	})
+	t.Run("mergeable duplicate key rejected", func(t *testing.T) {
+		// CUE UNIFIES duplicate object keys, so {"a":{"b":1},"a":{"c":2}}
+		// would compile to a phantom merged object. Real JSON consumers are
+		// last-wins; strict JSON forbids any duplicate key. CompileJSON must
+		// reject it before the CUE lift.
+		_, err := CompileJSON([]byte(`{"a":{"b":1},"a":{"c":2}}`))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `"a"`)
+	})
+	t.Run("equal duplicate key rejected", func(t *testing.T) {
+		// CUE accepts {"a":1,"a":1} (equal unifies to itself); strict JSON
+		// still forbids the duplicate.
+		_, err := CompileJSON([]byte(`{"a":1,"a":1}`))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `"a"`)
+	})
+	t.Run("nested duplicate key rejected", func(t *testing.T) {
+		_, err := CompileJSON([]byte(`{"x":{"a":1,"a":1}}`))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `"a"`)
+	})
+	t.Run("duplicate key inside an array element rejected", func(t *testing.T) {
+		_, err := CompileJSON([]byte(`[{"a":1,"a":1}]`))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `"a"`)
+	})
+	t.Run("same key in different objects accepted", func(t *testing.T) {
+		// The same name in two SEPARATE objects is not a duplicate.
+		v, err := CompileJSON([]byte(`{"x":{"a":1},"y":{"a":2}}`))
+		require.NoError(t, err)
+		assert.NoError(t, v.Validate())
 	})
 }
 

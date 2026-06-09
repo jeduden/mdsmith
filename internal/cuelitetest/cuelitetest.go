@@ -25,6 +25,9 @@
 package cuelitetest
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"slices"
 	"strconv"
 	"testing"
@@ -217,7 +220,19 @@ func OraclePath(c Case) Outcome {
 // bottom value. It takes []byte so callers convert once: the benchmark
 // hoists the conversion out of its timed loop, keeping both arms
 // symmetric.
+//
+// The duplicate-key rejection is an INDEPENDENT reimplementation of
+// cuelite's rule (rawDuplicateKeys), not a call into it: the harness's
+// value is that two separate implementations of the same contract agree.
+// CUE's JSON lift would silently unify same-named object keys into a
+// phantom merged object (a mergeable duplicate compiles clean), so
+// without this check the oracle would accept a document the cuelite arm
+// rejects at StageCompileData — a phantom divergence. Both arms
+// therefore reject any duplicate key here, before the lift.
 func oracleData(ctx *cue.Context, data []byte) (cue.Value, error) {
+	if err := rawDuplicateKeys(data); err != nil {
+		return cue.Value{}, err
+	}
 	expr, err := cuejson.Extract("", data)
 	if err != nil {
 		return cue.Value{}, err
@@ -227,6 +242,73 @@ func oracleData(ctx *cue.Context, data []byte) (cue.Value, error) {
 		return cue.Value{}, err
 	}
 	return val, nil
+}
+
+// rawDuplicateKeys rejects the first object key repeated within one
+// object at any depth, mirroring cuelite's strict-JSON rule with an
+// INDEPENDENT walk: a recursive json.RawMessage descent rather than
+// cuelite's flat token stack, so the two arms agreeing is real
+// cross-checking and not one calling the other. It re-decodes the
+// document one structural level at a time so a duplicate key is visible
+// before the last-wins collapse a generic map would impose. A malformed
+// document yields no duplicate error: cuejson.Extract reports the syntax
+// error, keeping one definition of "not JSON".
+func rawDuplicateKeys(raw []byte) error {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return nil
+	}
+	switch trimmed[0] {
+	case '{':
+		var ordered []struct {
+			key string
+			val json.RawMessage
+		}
+		dec := json.NewDecoder(bytes.NewReader(trimmed))
+		// Consume the opening '{'.
+		if _, err := dec.Token(); err != nil {
+			return nil
+		}
+		seen := map[string]struct{}{}
+		for dec.More() {
+			keyTok, err := dec.Token()
+			if err != nil {
+				return nil
+			}
+			key, ok := keyTok.(string)
+			if !ok {
+				return nil
+			}
+			if _, dup := seen[key]; dup {
+				return fmt.Errorf("duplicate JSON key %q", key)
+			}
+			seen[key] = struct{}{}
+			var val json.RawMessage
+			if err := dec.Decode(&val); err != nil {
+				return nil
+			}
+			ordered = append(ordered, struct {
+				key string
+				val json.RawMessage
+			}{key, val})
+		}
+		for _, kv := range ordered {
+			if err := rawDuplicateKeys(kv.val); err != nil {
+				return err
+			}
+		}
+	case '[':
+		var elems []json.RawMessage
+		if err := json.Unmarshal(trimmed, &elems); err != nil {
+			return nil
+		}
+		for _, e := range elems {
+			if err := rawDuplicateKeys(e); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // Compare runs one Case through both inHouse and oracle and reports a
