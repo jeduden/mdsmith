@@ -1,8 +1,6 @@
 package release
 
 import (
-	"errors"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -315,25 +313,14 @@ func TestOneLineForDrift_TruncatesByRunesNotBytes(t *testing.T) {
 	}
 }
 
-// faultyFS wraps a real os-backed FS, overriding one method to
-// inject a failure. Used to cover the write error branch in
-// applyTarget that no on-disk setup can reliably trigger
-// (chmod tricks are skipped under root, which CI sometimes is).
-type faultyFS struct {
-	FS
-	failWrite bool
-}
-
-func (f *faultyFS) WriteFile(name string, data []byte, perm fs.FileMode) error {
-	if f.failWrite {
-		return errors.New("synthetic write failure")
-	}
-	return f.FS.WriteFile(name, data, perm)
-}
-
 func TestApplyMessaging_FailsOnWriteError(t *testing.T) {
+	// fakeFS (fault_test.go) injects the write failure that no
+	// on-disk setup can reliably trigger (chmod tricks are
+	// skipped under root, which CI sometimes is).
 	root := applyTestRoot(t)
-	tk := NewWithFS(&faultyFS{FS: osFS{}, failWrite: true})
+	ff := newFakeFS()
+	ff.failOnWriteFileCall = 1
+	tk := NewWithFS(ff)
 	_, err := tk.ApplyMessaging(root, sampleMessaging())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "write")

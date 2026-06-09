@@ -346,14 +346,14 @@ Markdown, fast.
 
 A fenced code block. A section whose body is a
 single fenced code block projects its contents under
-a `code` key — a `## Setup` section holding an
-install command projects to
-`{"setup": {"code": "..."}}`. Use `setup.code` to
-splice the code body verbatim:
+a `code` key. Given a file `setup.md` whose
+`## Setup` section holds an install command, the
+projection is `{"setup": {"code": "..."}}`, and
+`setup.code` splices the code body verbatim:
 
 ```markdown
 <?include
-file: docs/examples/setup.md
+file: setup.md
 extract: setup.code
 ?>
 go install github.com/jeduden/mdsmith/cmd/mdsmith@latest
