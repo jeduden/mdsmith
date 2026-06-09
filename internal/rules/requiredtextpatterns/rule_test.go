@@ -251,3 +251,24 @@ func TestApplySettings_SkipIndicesNonIntegerEntry(t *testing.T) {
 	})
 	assert.Error(t, err)
 }
+
+func TestApplySettings_PatternsCachesCompiledRegex(t *testing.T) {
+	t.Parallel()
+	// Two sequential ApplySettings calls with the same pattern must return
+	// the same *regexp.Regexp pointer — the second LoadOrStore call hits the
+	// loaded=true branch and discards the freshly compiled regexp in favour
+	// of the cached one.
+	const pat = `^CacheTestPatternRTP\d+$`
+	s := map[string]any{
+		"patterns": []any{
+			map[string]any{"pattern": pat},
+		},
+	}
+	r1, r2 := &Rule{}, &Rule{}
+	require.NoError(t, r1.ApplySettings(s))
+	require.NoError(t, r2.ApplySettings(s))
+	require.Len(t, r1.Patterns, 1)
+	require.Len(t, r2.Patterns, 1)
+	assert.Same(t, r1.Patterns[0].Regex, r2.Patterns[0].Regex,
+		"expected second call to reuse the cached *regexp.Regexp")
+}

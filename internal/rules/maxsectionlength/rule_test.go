@@ -510,3 +510,24 @@ func TestCheck_TableWordsNotCounted(t *testing.T) {
 	r := &Rule{MaxWords: 5}
 	assert.Empty(t, r.Check(mustFile(t, src)))
 }
+
+func TestApplySettings_PerHeadingCachesCompiledPattern(t *testing.T) {
+	t.Parallel()
+	// Two sequential ApplySettings calls with the same pattern must return
+	// the same *regexp.Regexp pointer — the second LoadOrStore call hits the
+	// loaded=true branch and discards the freshly compiled regexp in favour
+	// of the cached one.
+	const pat = `^CacheTestPatternMSL\d+$`
+	s := map[string]any{
+		"per-heading": []any{
+			map[string]any{"pattern": pat, "max": 5},
+		},
+	}
+	r1, r2 := &Rule{}, &Rule{}
+	require.NoError(t, r1.ApplySettings(s))
+	require.NoError(t, r2.ApplySettings(s))
+	require.Len(t, r1.PerHeading, 1)
+	require.Len(t, r2.PerHeading, 1)
+	assert.Same(t, r1.PerHeading[0].Regex, r2.PerHeading[0].Regex,
+		"expected second call to reuse the cached *regexp.Regexp")
+}
