@@ -1,7 +1,7 @@
 ---
 id: 236
 title: Consolidate duplicated table-parse helpers in tablereadability
-status: "🔲"
+status: "✅"
 summary: >-
   Move tablereadability's private findTables/tryParseTable
   into tablefmt so the two rules share one copy.
@@ -47,8 +47,8 @@ pass).
 
 ## Acceptance Criteria
 
-- [ ] Table-boundary scanning exists in one package only.
-- [ ] `tablereadability` does not duplicate scanning logic.
-- [ ] `TestRulesDoNotImportEachOther` passes.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] Table-boundary scanning exists in one package only.
+- [x] `tablereadability` does not duplicate scanning logic.
+- [x] `TestRulesDoNotImportEachOther` passes.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

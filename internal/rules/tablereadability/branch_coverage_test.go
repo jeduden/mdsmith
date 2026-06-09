@@ -6,41 +6,36 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestTryParseTable_StartAtLastLine covers the boundary check
+// TestParseTables_SingleRowOnly covers the boundary check
 // where a `|`-starting line at the end of the file cannot be a
-// table (a table requires at least header + separator). The
-// negative arm returns nil without paying detectPrefix.
-func TestTryParseTable_StartAtLastLine(t *testing.T) {
+// table (a table requires at least header + separator).
+func TestParseTables_SingleRowOnly(t *testing.T) {
 	lines := [][]byte{[]byte("| only one row |")}
-	tbl, end := tryParseTable(lines, 0, map[int]struct{}{})
-	require.Nil(t, tbl)
-	require.Equal(t, 0, end)
+	got := parseTables(lines, map[int]struct{}{})
+	require.Empty(t, got)
 }
 
-// TestTryParseTable_HeaderNotTableRow covers the path where the
+// TestParseTables_MalformedHeader covers the path where the
 // "header" line is pipe-leading but doesn't end with a `|` (e.g.
-// `| foo`) so isTableRow returns false.
-func TestTryParseTable_HeaderNotTableRow(t *testing.T) {
+// `| foo`) so it is not recognized as a table.
+func TestParseTables_MalformedHeader(t *testing.T) {
 	lines := [][]byte{
 		[]byte("| foo"),
 		[]byte("| bar |"),
 	}
-	tbl, _ := tryParseTable(lines, 0, map[int]struct{}{})
-	require.Nil(t, tbl)
+	got := parseTables(lines, map[int]struct{}{})
+	require.Empty(t, got)
 }
 
-// TestFindTables_TryParseReturnsNil covers findTables' inner
-// `if tbl == nil` arm when tryParseTable finds a pipe line that
-// does not start a table — the loop advances by one rather than
-// jumping to `end`.
-func TestFindTables_TryParseReturnsNil(t *testing.T) {
-	// A pipe-leading line followed by a non-pipe line — tryParseTable
-	// returns nil because the separator row is missing.
+// TestParseTables_MissingSeparatorRow covers parseTables skipping
+// a pipe-containing line that does not start a valid table (the
+// separator row is missing), advancing by one rather than jumping.
+func TestParseTables_MissingSeparatorRow(t *testing.T) {
 	lines := [][]byte{
 		[]byte("| not a table"),
 		[]byte("just prose"),
 	}
-	got := findTables(lines, map[int]struct{}{})
+	got := parseTables(lines, map[int]struct{}{})
 	require.Empty(t, got)
 }
 

@@ -51,11 +51,11 @@ func TestDetectPrefix(t *testing.T) {
 	}
 }
 
-// TestFindTables_SkipsNonPipeLines covers the plan-195 inner
-// guard that skips tryParseTable on lines without `|`. The
+// TestParseTables_SkipsNonPipeLines covers the plan-195 inner
+// guard that skips table parsing on lines without `|`. The
 // fixture's prose lines must not trigger the table parser; a
 // regression that removes the guard still parses every line.
-func TestFindTables_SkipsNonPipeLines(t *testing.T) {
+func TestParseTables_SkipsNonPipeLines(t *testing.T) {
 	lines := [][]byte{
 		[]byte("# Title"),
 		[]byte(""),
@@ -65,9 +65,9 @@ func TestFindTables_SkipsNonPipeLines(t *testing.T) {
 		[]byte("|-----|------|"),
 		[]byte("| a   | b    |"),
 	}
-	got := findTables(lines, map[int]struct{}{})
+	got := parseTables(lines, map[int]struct{}{})
 	if len(got) != 1 {
-		t.Fatalf("findTables returned %d tables, want 1", len(got))
+		t.Fatalf("parseTables returned %d tables, want 1", len(got))
 	}
 	if got[0].startLine != 5 {
 		t.Fatalf("table startLine = %d, want 5", got[0].startLine)
