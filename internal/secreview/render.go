@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
+	"unicode"
 )
 
 // renderFiles names the three artifacts Render writes, in the order
@@ -26,6 +28,9 @@ func Render(r *Report, outDir string) error {
 // so successive dated reviews can coexist in one directory (the
 // docs/security/ convention). An empty stem keeps the legacy fixed names.
 func RenderStem(r *Report, outDir, stem string) error {
+	if err := validateStem(stem); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return fmt.Errorf("create out dir: %w", err)
 	}
@@ -37,16 +42,38 @@ func RenderStem(r *Report, outDir, stem string) error {
 	if err != nil {
 		return fmt.Errorf("marshal annotations: %w", err)
 	}
+	// names and data are parallel: RenderFileNamesStem returns the
+	// SARIF, report, and annotation basenames in that fixed order.
 	names := RenderFileNamesStem(stem)
-	contents := map[string][]byte{
-		names[0]: sarif,
-		names[1]: []byte(buildReport(r, time.Now())),
-		names[2]: annotations,
-	}
-	for _, name := range names {
-		if err := os.WriteFile(filepath.Join(outDir, name), contents[name], 0o644); err != nil {
+	data := [][]byte{sarif, []byte(buildReport(r, time.Now())), annotations}
+	for i, name := range names {
+		if err := os.WriteFile(filepath.Join(outDir, name), data[i], 0o644); err != nil {
 			return fmt.Errorf("write %s: %w", name, err)
 		}
+	}
+	return nil
+}
+
+// validateStem rejects a stem that is anything other than a single safe
+// filename component. Path separators or a parent ref ("..") would let
+// the stem escape outDir; whitespace and a leading dot break the
+// docs/security/*.md catalog glob the rendered report is indexed by. An
+// empty stem is allowed — it selects the legacy fixed names.
+func validateStem(stem string) error {
+	if stem == "" {
+		return nil
+	}
+	if stem != filepath.Base(stem) || stem == "." || stem == ".." {
+		return fmt.Errorf("invalid --stem %q: must be a bare filename, not a path", stem)
+	}
+	if strings.ContainsAny(stem, `/\`) || strings.ContainsRune(stem, os.PathSeparator) {
+		return fmt.Errorf("invalid --stem %q: must not contain a path separator", stem)
+	}
+	if strings.ContainsFunc(stem, unicode.IsSpace) {
+		return fmt.Errorf("invalid --stem %q: must not contain whitespace", stem)
+	}
+	if strings.HasPrefix(stem, ".") {
+		return fmt.Errorf("invalid --stem %q: must not start with a dot", stem)
 	}
 	return nil
 }

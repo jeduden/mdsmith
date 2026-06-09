@@ -257,6 +257,22 @@ func TestRenderFileNamesWithStem(t *testing.T) {
 	assert.Equal(t, RenderFileNames(), RenderFileNamesStem(""))
 }
 
+func TestRenderStemRejectsUnsafeStem(t *testing.T) {
+	// A stem is a bare filename component, not a path. Separators,
+	// parent refs, and whitespace would escape outDir or break the
+	// docs/security/*.md catalog glob, so RenderStem rejects them
+	// before writing anything.
+	dir := t.TempDir()
+	for _, bad := range []string{
+		"../escape", "a/b", `a\b`, "with space", ".", "..", "/abs",
+	} {
+		err := RenderStem(multiSevReport(), dir, bad)
+		assert.Errorf(t, err, "stem %q should be rejected", bad)
+	}
+	// A clean dated stem is accepted.
+	require.NoError(t, RenderStem(multiSevReport(), dir, "2026-06-09-full-repo-audit"))
+}
+
 func TestRenderErrorOnUnwritableDir(t *testing.T) {
 	// Point out-dir at a path whose parent is a regular file, so MkdirAll
 	// fails and Render surfaces a wrapped error rather than panicking.

@@ -17,8 +17,8 @@ cases:
         - "Reads references/threat-model.md before concluding."
         - "Confirms the §0 baseline defenses against the actual code (recipes not executed,
            symlink default-deny, VS Code untrustedWorkspaces, no npm postinstall)."
-        - "Produces all three outputs via the script (findings.sarif, security-review.md,
-           inline-annotations.json)."
+        - "Produces all three outputs via the script (<stem>.sarif, <stem>.md,
+           <stem>.inline-annotations.json) under docs/security/."
         - "Names residual un-traced areas in the coverage note rather than omitting them."
       must_not:
         - "Reports a Critical/High recipe-execution RCE without a traced exec call path."

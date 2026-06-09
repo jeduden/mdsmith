@@ -147,6 +147,7 @@ The Obsidian plugin TypeScript source was not present in the
 tree at this ref — that surface is inconclusive.
 
 All §0 baseline defenses were confirmed to still hold.
-Two actionable items were found: one confirmed Medium
-(LSP panic DoS) and one informational
-(cuetemplate panic-vs-error).
+Three findings were recorded: one confirmed Medium
+(LSP panic DoS) and two informational (a cuetemplate
+panic-vs-error and a YAML-safety inconsistency in
+convention.go).
