@@ -9,14 +9,22 @@ import { test, expect } from "@playwright/test";
  * first-time visitor what mdsmith is and where to start.
  */
 test.describe("homepage positioning", () => {
-  test("category statement renders under the hero", async ({ page }) => {
+  test("scope statement renders under the hero", async ({ page }) => {
     await page.goto("/");
 
     const positioning = page.locator(".positioning-body");
     await expect(positioning).toBeVisible();
     await expect(positioning).toContainText(
-      "mdsmith is a Markdown linter and formatter written in Go",
+      "mdsmith checks style, readability, structure, and cross-file integrity",
     );
+  });
+
+  test("hero lead names the product category", async ({ page }) => {
+    await page.goto("/");
+
+    const lead = page.locator(".hero-lead");
+    await expect(lead).toBeVisible();
+    await expect(lead).toContainText("Markdown linter and formatter");
   });
 
   test("hero links markdownlint users to the migration guide", async ({
@@ -30,6 +38,24 @@ test.describe("homepage positioning", () => {
       "href",
       /\/guides\/migrate-from-markdownlint\/$/,
     );
+  });
+
+  test("failed badge images hide their links instead of breaking", async ({
+    page,
+  }) => {
+    // Simulate the badge hosts being blocked or down: abort every
+    // request that leaves the local site. The JS in baseof.html
+    // must hide each failed badge's link so the hero never shows
+    // a broken-image icon.
+    await page.route(/^https?:\/\/(?!localhost)/, route => route.abort());
+    await page.goto("/");
+
+    const badges = page.locator(".hero-badges a");
+    const count = await badges.count();
+    expect(count).toBeGreaterThan(0);
+    for (let i = 0; i < count; i++) {
+      await expect(badges.nth(i)).toBeHidden();
+    }
   });
 
   test("install commands stay readable on a narrow viewport", async ({

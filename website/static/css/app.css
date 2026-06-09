@@ -205,11 +205,17 @@ main {
   color: var(--fg-muted);
   margin: 16px 0 0;
 }
+/* min-height reserves the badge row so late or failed external
+   badge images don't shift the hero; the JS in baseof.html hides
+   a failed badge's link ([hidden]) instead of letting the browser
+   paint a broken-image icon. */
 .hero-badges {
   display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
   margin-top: 22px;
+  min-height: 20px;
 }
 .hero-badges a { display: inline-flex; line-height: 0; }
+.hero-badges a[hidden] { display: none; }
 .hero-badges img { height: 20px; display: block; }
 
 /* ========== POSITIONING ========== */

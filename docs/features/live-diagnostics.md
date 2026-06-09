@@ -7,7 +7,7 @@ summary: >-
   LSP-aware editor.
 icon: edit-3
 link: "/guides/editors/vscode/"
-weight: 4
+weight: 5
 group: "One engine, every surface"
 ---
 # Live diagnostics wherever you write

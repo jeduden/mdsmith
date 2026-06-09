@@ -6,7 +6,7 @@ summary: >-
   reach your editor and your coding agent unchanged.
 icon: plug
 link: "/guides/editors/vscode/"
-weight: 5
+weight: 4
 group: "One engine, every surface"
 ---
 # Editors and agents

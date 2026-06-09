@@ -62,6 +62,21 @@
         document.addEventListener("scroll", onScroll, { passive: true });
         onScroll();
       }
+      // The hero badges load from three external hosts (GitHub,
+      // goreportcard, codecov, shields). When a host is slow,
+      // blocked, or down, the browser paints a broken-image icon
+      // in the hero's most prominent slot. Hide the failed badge's
+      // link instead; with JS off the current (broken-icon)
+      // behavior is unchanged. Images can fail before listeners
+      // attach, so completed-but-empty images are swept too.
+      document.querySelectorAll(".hero-badges img").forEach(img => {
+        const hide = () => {
+          const a = img.closest("a");
+          if (a) a.hidden = true;
+        };
+        if (img.complete && img.naturalWidth === 0) hide();
+        else img.addEventListener("error", hide);
+      });
       const sideToggle = document.querySelector(".docs-side-toggle");
       const sideNav = document.getElementById("docs-nav");
       if (sideToggle && sideNav) {

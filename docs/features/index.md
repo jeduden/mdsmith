@@ -50,16 +50,17 @@ The same engine runs in CI, in your editor, and in your coding
 agent, from one fast static binary you can install through any
 channel.
 
+**[Editors and agents](editor-agent-integration.md).**
+A bundled VS Code extension and a Claude Code plugin drive the
+same `mdsmith lsp` server, so diagnostics, fix-on-save, and
+navigation reach your editor and your agent with no separate
+install. The `.vsix` is republished to Open VSX for Cursor,
+VSCodium, and Theia.
+
 **[Live diagnostics wherever you write](live-diagnostics.md).**
 `mdsmith lsp` serves diagnostics, quick-fixes, and navigation
 (definition, references, symbol search, and a call hierarchy) to
 any LSP-aware editor over stdio.
-
-**[Editors and agents](editor-agent-integration.md).**
-A bundled VS Code extension and a Claude Code plugin drive that
-same server, so diagnostics, fix-on-save, and navigation reach
-your editor and your agent with no separate install. The `.vsix`
-is republished to Open VSX for Cursor, VSCodium, and Theia.
 
 **[Fast on every run](performance.md).**
 One static Go binary, no runtime to start. The workspace walk runs
