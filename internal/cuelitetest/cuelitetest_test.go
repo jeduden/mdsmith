@@ -66,6 +66,19 @@ func TestOutcome_Equal(t *testing.T) {
 		b := Outcome{Stage: StageValidate, Paths: [][]string{}}
 		assert.True(t, a.Equal(b))
 	})
+	t.Run("equal normalizes unsorted paths without mutating", func(t *testing.T) {
+		// Equal must compare sorted copies so an Outcome built directly by a
+		// later phase (not through validatePaths, which sorts) cannot produce
+		// an order-sensitive comparison. The inputs must be left untouched.
+		aPaths := [][]string{{"b"}, {"a"}}
+		bPaths := [][]string{{"a"}, {"b"}}
+		a := Outcome{Stage: StageValidate, Paths: aPaths}
+		b := Outcome{Stage: StageValidate, Paths: bPaths}
+		assert.True(t, a.Equal(b))
+		// No mutation: the original (unsorted) slice order survives.
+		assert.Equal(t, [][]string{{"b"}, {"a"}}, aPaths)
+		assert.Equal(t, [][]string{{"a"}, {"b"}}, bPaths)
+	})
 }
 
 func TestStage_String(t *testing.T) {

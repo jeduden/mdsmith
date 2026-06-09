@@ -108,6 +108,12 @@ func (o Outcome) Accepted() bool { return o.Stage == StageAccepted }
 // when both rejected at validation, on every rejecting field path. Two
 // outcomes that resolved at the same non-validate stage are equal
 // regardless of Paths, since only a validation rejection locates leaves.
+//
+// Equal compares sorted COPIES of the two path sets and never mutates
+// its operands, so an Outcome built directly by a later phase — not
+// through validatePaths, which sorts for deterministic display — still
+// compares order-insensitively. The two engines may surface the same
+// rejecting leaves in different orders; only the set of leaves matters.
 func (o Outcome) Equal(other Outcome) bool {
 	if o.Stage != other.Stage {
 		return false
@@ -115,7 +121,15 @@ func (o Outcome) Equal(other Outcome) bool {
 	if o.Stage != StageValidate {
 		return true
 	}
-	return slices.EqualFunc(o.Paths, other.Paths, slices.Equal[[]string])
+	return slices.EqualFunc(sortedPaths(o.Paths), sortedPaths(other.Paths), slices.Equal[[]string])
+}
+
+// sortedPaths returns a sorted copy of paths, leaving the input
+// untouched so Equal can normalize without mutating either operand.
+func sortedPaths(paths [][]string) [][]string {
+	out := slices.Clone(paths)
+	slices.SortFunc(out, slices.Compare[[]string])
+	return out
 }
 
 // validatePaths builds a StageValidate Outcome from a set of rejecting

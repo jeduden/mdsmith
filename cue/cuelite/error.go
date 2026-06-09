@@ -1,7 +1,6 @@
 package cuelite
 
 import (
-	stderrors "errors"
 	"strings"
 )
 
@@ -48,25 +47,49 @@ func (e *PathError) Error() string {
 // into one slice so callers (the internal/schema validator emitting one
 // MDS020 diagnostic per field, the differential harness comparing every
 // rejected path) iterate uniformly without type-switching on the join
-// shape. It mirrors cuelang.org/go/cue/errors.Errors. A nil error, or
-// an error carrying no *PathError, yields nil — never a non-nil empty
-// slice — so a caller can range over the result unconditionally.
+// shape. It mirrors cuelang.org/go/cue/errors.Errors.
+//
+// Errors is a full error-tree walk: it descends through both join
+// wrappers (Unwrap() []error) and single wrappers (Unwrap() error),
+// collecting every *PathError leaf in encounter order. A *PathError
+// hidden behind a fmt.Errorf("%w", …) wrapper, or a join nested inside
+// such a wrapper, is therefore reported in full — not truncated to the
+// first leaf an errors.As would stop at. A nil error, or an error tree
+// carrying no *PathError, yields nil — never a non-nil empty slice — so
+// a caller can range over the result unconditionally.
+//
+// This walk underpins the invariant documented on Validate: every
+// non-nil error Validate returns decomposes to at least one *PathError,
+// so a consumer loop over Errors emits at least one diagnostic for any
+// failing value.
 func Errors(err error) []*PathError {
 	if err == nil {
 		return nil
 	}
-	var pe *PathError
-	if stderrors.As(err, &pe) {
-		// As stops at the first match; recurse over the join's branches so
-		// every leaf is collected, not just the first.
-		if joined, ok := err.(interface{ Unwrap() []error }); ok {
-			var out []*PathError
-			for _, leaf := range joined.Unwrap() {
-				out = append(out, Errors(leaf)...)
-			}
-			return out
-		}
-		return []*PathError{pe}
+	var out []*PathError
+	return collectPathErrors(err, out)
+}
+
+// collectPathErrors appends every *PathError leaf reachable from err to
+// out in encounter order. A node that is itself a *PathError is a leaf
+// and is appended directly (its own message, not its wrapped causes,
+// being the rejection). Otherwise the walk recurses through a join
+// wrapper (Unwrap() []error) or a single wrapper (Unwrap() error). A
+// node that is neither a *PathError nor any wrapper contributes nothing.
+func collectPathErrors(err error, out []*PathError) []*PathError {
+	if err == nil {
+		return out
 	}
-	return nil
+	if pe, ok := err.(*PathError); ok {
+		return append(out, pe)
+	}
+	switch w := err.(type) {
+	case interface{ Unwrap() []error }:
+		for _, leaf := range w.Unwrap() {
+			out = collectPathErrors(leaf, out)
+		}
+	case interface{ Unwrap() error }:
+		out = collectPathErrors(w.Unwrap(), out)
+	}
+	return out
 }

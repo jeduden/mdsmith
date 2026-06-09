@@ -2,6 +2,7 @@ package cuelite
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -75,5 +76,39 @@ func TestErrors(t *testing.T) {
 		got := Errors(joined)
 		require.Len(t, got, 1)
 		assert.Equal(t, []string{"a"}, got[0].Path())
+	})
+	t.Run("leaves behind a single wrapper are found", func(t *testing.T) {
+		// fmt.Errorf("%w", pe) is an Unwrap() error wrapper, not a join;
+		// Errors must recurse through it to reach the leaf.
+		wrapped := fmt.Errorf("context: %w", newPathError([]string{"a"}, "boom"))
+		got := Errors(wrapped)
+		require.Len(t, got, 1)
+		assert.Equal(t, []string{"a"}, got[0].Path())
+	})
+	t.Run("leaves behind a wrapped join are all found in order", func(t *testing.T) {
+		// A join hidden behind a single wrapper: errors.As stops at the
+		// first leaf, so a walk that does not recurse past the wrapper into
+		// the join's branches would report only one of the two.
+		pe1 := newPathError([]string{"a"}, "x")
+		pe2 := newPathError([]string{"b"}, "y")
+		wrapped := fmt.Errorf("ctx: %w", errors.Join(pe1, pe2))
+		got := Errors(wrapped)
+		require.Len(t, got, 2)
+		assert.Equal(t, []string{"a"}, got[0].Path())
+		assert.Equal(t, []string{"b"}, got[1].Path())
+	})
+	t.Run("nested joins flatten in encounter order", func(t *testing.T) {
+		nested := errors.Join(
+			errors.Join(
+				newPathError([]string{"a"}, "x"),
+				newPathError([]string{"b"}, "y"),
+			),
+			newPathError([]string{"c"}, "z"),
+		)
+		got := Errors(nested)
+		require.Len(t, got, 3)
+		assert.Equal(t, []string{"a"}, got[0].Path())
+		assert.Equal(t, []string{"b"}, got[1].Path())
+		assert.Equal(t, []string{"c"}, got[2].Path())
 	})
 }
