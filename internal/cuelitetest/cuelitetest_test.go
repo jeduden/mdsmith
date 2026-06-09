@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // recorder is a testing.TB that captures failures instead of failing, so
@@ -31,8 +30,8 @@ func TestOutcome_Accepted(t *testing.T) {
 }
 
 func TestOutcome_Equal(t *testing.T) {
-	t.Run("same non-validate stage ignores path", func(t *testing.T) {
-		a := Outcome{Stage: StageAccepted, Path: []string{"x"}}
+	t.Run("same non-validate stage ignores paths", func(t *testing.T) {
+		a := Outcome{Stage: StageAccepted, Paths: [][]string{{"x"}}}
 		b := Outcome{Stage: StageAccepted}
 		assert.True(t, a.Equal(b))
 	})
@@ -45,21 +44,45 @@ func TestOutcome_Equal(t *testing.T) {
 		assert.False(t,
 			Outcome{Stage: StageCompileSchema}.Equal(Outcome{Stage: StageCompileData}))
 	})
-	t.Run("validate reject with same path are equal", func(t *testing.T) {
-		a := Outcome{Stage: StageValidate, Path: []string{"status"}}
-		b := Outcome{Stage: StageValidate, Path: []string{"status"}}
+	t.Run("validate reject with same paths are equal", func(t *testing.T) {
+		a := Outcome{Stage: StageValidate, Paths: [][]string{{"status"}}}
+		b := Outcome{Stage: StageValidate, Paths: [][]string{{"status"}}}
 		assert.True(t, a.Equal(b))
 	})
 	t.Run("validate reject with different path differ", func(t *testing.T) {
-		a := Outcome{Stage: StageValidate, Path: []string{"status"}}
-		b := Outcome{Stage: StageValidate, Path: []string{"title"}}
+		a := Outcome{Stage: StageValidate, Paths: [][]string{{"status"}}}
+		b := Outcome{Stage: StageValidate, Paths: [][]string{{"title"}}}
 		assert.False(t, a.Equal(b))
 	})
-	t.Run("nil path equals empty path", func(t *testing.T) {
-		a := Outcome{Stage: StageValidate, Path: nil}
-		b := Outcome{Stage: StageValidate, Path: []string{}}
+	t.Run("dropping a later leaf differs", func(t *testing.T) {
+		// The reason Outcome carries every path: an engine that gets the
+		// first leaf right but drops the second must not look equal.
+		a := Outcome{Stage: StageValidate, Paths: [][]string{{"a"}, {"b"}}}
+		b := Outcome{Stage: StageValidate, Paths: [][]string{{"a"}}}
+		assert.False(t, a.Equal(b))
+	})
+	t.Run("nil paths equals empty paths", func(t *testing.T) {
+		a := Outcome{Stage: StageValidate, Paths: nil}
+		b := Outcome{Stage: StageValidate, Paths: [][]string{}}
 		assert.True(t, a.Equal(b))
 	})
+}
+
+func TestStage_String(t *testing.T) {
+	cases := []struct {
+		stage Stage
+		want  string
+	}{
+		{StageAccepted, "Accepted"},
+		{StageCompileSchema, "CompileSchema"},
+		{StageCompileData, "CompileData"},
+		{StageValidate, "Validate"},
+		{StageError, "Error"},
+		{Stage(99), "Stage(99)"},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, tc.stage.String())
+	}
 }
 
 // TestPaths exercises both the in-house and the oracle Path through the
@@ -70,18 +93,22 @@ func TestPaths(t *testing.T) {
 		name  string
 		c     Case
 		stage Stage
-		path  []string
+		paths [][]string
 	}{
 		{"accepts conforming data",
 			Case{Schema: `{status: string}`, Data: `{"status": "done"}`}, StageAccepted, nil},
 		{"validate reject carries field path",
-			Case{Schema: `{status: "✅"}`, Data: `{"status": "🔲"}`}, StageValidate, []string{"status"}},
+			Case{Schema: `{status: "✅"}`, Data: `{"status": "🔲"}`}, StageValidate, [][]string{{"status"}}},
+		{"multi-leaf reject carries every sorted path",
+			Case{Schema: `{a: "x", b: "y"}`, Data: `{"a": "p", "b": "q"}`}, StageValidate, [][]string{{"a"}, {"b"}}},
 		{"schema compile error",
 			Case{Schema: `{status: =}`, Data: `{"status": "x"}`}, StageCompileSchema, nil},
 		{"data compile error",
 			Case{Schema: `{status: string}`, Data: `{not json`}, StageCompileData, nil},
 		{"non-JSON data rejected at the data stage",
 			Case{Schema: `{n: int}`, Data: `{n: 3}`}, StageCompileData, nil},
+		{"duplicate-key data rejected at the data stage",
+			Case{Schema: `{a: int}`, Data: `{"a":1,"a":2}`}, StageCompileData, nil},
 	}
 	for name, path := range paths {
 		for _, tc := range cases {
@@ -89,7 +116,7 @@ func TestPaths(t *testing.T) {
 				o := path(tc.c)
 				assert.Equal(t, tc.stage, o.Stage)
 				if tc.stage == StageValidate {
-					assert.Equal(t, tc.path, o.Path)
+					assert.Equal(t, tc.paths, o.Paths)
 				}
 			})
 		}
@@ -153,16 +180,7 @@ func corpus() []Case {
 		{Name: "regex ok", Schema: `{slug: =~"^[a-z]+$"}`, Data: `{"slug": "abc"}`},
 		{Name: "regex reject", Schema: `{slug: =~"^[a-z]+$"}`, Data: `{"slug": "AB1"}`},
 		{Name: "nested reject", Schema: `{meta: {status: "✅"}}`, Data: `{"meta": {"status": "x"}}`},
-	}
-}
-
-func TestStageString(t *testing.T) {
-	// Cheap guard that the Stage constants are distinct, so a future
-	// reorder cannot silently collapse two stages into one value.
-	all := []Stage{StageAccepted, StageCompileSchema, StageCompileData, StageValidate, StageError}
-	seen := map[Stage]bool{}
-	for _, s := range all {
-		require.False(t, seen[s], "duplicate Stage value %d", s)
-		seen[s] = true
+		{Name: "multi-leaf reject", Schema: `{a: "x", b: "y"}`, Data: `{"a": "p", "b": "q"}`},
+		{Name: "duplicate key reject", Schema: `{a: int}`, Data: `{"a":1,"a":2}`},
 	}
 }

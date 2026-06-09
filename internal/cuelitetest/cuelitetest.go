@@ -25,8 +25,8 @@
 package cuelitetest
 
 import (
-	stderrors "errors"
 	"slices"
+	"strconv"
 	"testing"
 
 	"cuelang.org/go/cue"
@@ -61,6 +61,25 @@ const (
 	StageError
 )
 
+// String renders a Stage as its constant name, so a disagreement printed
+// by Compare names the stage instead of an opaque integer.
+func (s Stage) String() string {
+	switch s {
+	case StageAccepted:
+		return "Accepted"
+	case StageCompileSchema:
+		return "CompileSchema"
+	case StageCompileData:
+		return "CompileData"
+	case StageValidate:
+		return "Validate"
+	case StageError:
+		return "Error"
+	default:
+		return "Stage(" + strconv.Itoa(int(s)) + ")"
+	}
+}
+
 // Case is one differential-test input: a CUE schema source and a JSON
 // data document to validate against it. Name labels the case in failure
 // messages.
@@ -72,20 +91,23 @@ type Case struct {
 
 // Outcome is the result of validating a Case through one path. Stage
 // records where the case resolved. When it resolved at StageValidate,
-// Path carries the field path of the rejecting leaf, so the two paths
-// can be compared not just on accept/reject but on where they reject.
+// Paths carries the field path of every rejecting leaf — not only the
+// first — sorted deterministically, so the two paths can be compared not
+// just on accept/reject but on every leaf they reject and where. An
+// engine that gets the first leaf right but drops a later one therefore
+// shows a disagreement instead of passing.
 type Outcome struct {
 	Stage Stage
-	Path  []string
+	Paths [][]string
 }
 
 // Accepted reports whether the data satisfied the schema.
 func (o Outcome) Accepted() bool { return o.Stage == StageAccepted }
 
 // Equal reports whether two Outcomes agree on the resolution stage and,
-// when both rejected at validation, on the rejecting field path. Two
+// when both rejected at validation, on every rejecting field path. Two
 // outcomes that resolved at the same non-validate stage are equal
-// regardless of Path, since only a validation rejection locates a leaf.
+// regardless of Paths, since only a validation rejection locates leaves.
 func (o Outcome) Equal(other Outcome) bool {
 	if o.Stage != other.Stage {
 		return false
@@ -93,7 +115,15 @@ func (o Outcome) Equal(other Outcome) bool {
 	if o.Stage != StageValidate {
 		return true
 	}
-	return slices.Equal(o.Path, other.Path)
+	return slices.EqualFunc(o.Paths, other.Paths, slices.Equal[[]string])
+}
+
+// validatePaths builds a StageValidate Outcome from a set of rejecting
+// field paths, sorted deterministically so the two engines compare leaf
+// for leaf regardless of the order each surfaced them.
+func validatePaths(paths [][]string) Outcome {
+	slices.SortFunc(paths, slices.Compare[[]string])
+	return Outcome{Stage: StageValidate, Paths: paths}
 }
 
 // Path is a validation strategy: it validates a Case and reports the
@@ -117,20 +147,24 @@ func CueLitePath(c Case) Outcome {
 }
 
 // validateOutcome maps the result of cuelite.Validate to an Outcome.
-// cuelite.Validate documents that it returns a *PathError (bare or
-// joined), so errors.As recovers the field path. A nil error is an
-// acceptance; any other error shape — which a future engine bug could
-// produce — becomes StageError so the harness reports a diff rather than
-// panicking on a failed type assertion.
+// cuelite.Errors enumerates every per-field *PathError (bare or joined),
+// so the Outcome carries all rejecting leaves, not only the first. A nil
+// error is an acceptance; a non-nil error that carries no *PathError —
+// which a future engine bug could produce — becomes StageError so the
+// harness reports a diff rather than dropping the rejection.
 func validateOutcome(verr error) Outcome {
 	if verr == nil {
 		return Outcome{Stage: StageAccepted}
 	}
-	var pe *cuelite.PathError
-	if !stderrors.As(verr, &pe) {
+	leaves := cuelite.Errors(verr)
+	if len(leaves) == 0 {
 		return Outcome{Stage: StageError}
 	}
-	return Outcome{Stage: StageValidate, Path: pe.Path()}
+	paths := make([][]string, len(leaves))
+	for i, leaf := range leaves {
+		paths[i] = leaf.Path()
+	}
+	return validatePaths(paths)
 }
 
 // OraclePath validates a Case directly through cuelang.org/go — the
@@ -144,26 +178,38 @@ func OraclePath(c Case) Outcome {
 	if schema.Err() != nil {
 		return Outcome{Stage: StageCompileSchema}
 	}
-	data := oracleData(ctx, c.Data)
-	if data.Err() != nil {
+	data, err := oracleData(ctx, c.Data)
+	if err != nil {
 		return Outcome{Stage: StageCompileData}
 	}
 	verr := schema.Unify(data).Validate(cue.Concrete(true))
 	if verr == nil {
 		return Outcome{Stage: StageAccepted}
 	}
-	return Outcome{Stage: StageValidate, Path: errors.Errors(verr)[0].Path()}
+	leaves := errors.Errors(verr)
+	paths := make([][]string, len(leaves))
+	for i, leaf := range leaves {
+		paths[i] = leaf.Path()
+	}
+	return validatePaths(paths)
 }
 
 // oracleData lifts the data document into ctx the same way cuelite's
-// CompileJSON does — strict JSON extraction, not CompileBytes — so the
-// oracle rejects non-JSON data exactly where the cuelite path does.
-func oracleData(ctx *cue.Context, data string) cue.Value {
+// CompileJSON does — strict JSON extraction plus a built-value bottom
+// check, not CompileBytes — so the oracle rejects non-JSON data and
+// duplicate keys exactly where the cuelite path does. It returns the
+// build error so OraclePath branches on it rather than on a sentinel
+// bottom value.
+func oracleData(ctx *cue.Context, data string) (cue.Value, error) {
 	expr, err := cuejson.Extract("", []byte(data))
 	if err != nil {
-		return ctx.CompileString("_|_") // a bottom whose Err() is non-nil
+		return cue.Value{}, err
 	}
-	return ctx.BuildExpr(expr)
+	val := ctx.BuildExpr(expr)
+	if err := val.Err(); err != nil {
+		return cue.Value{}, err
+	}
+	return val, nil
 }
 
 // Compare runs one Case through both inHouse and oracle and reports a

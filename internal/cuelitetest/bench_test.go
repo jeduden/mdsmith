@@ -6,7 +6,6 @@ import (
 	"cuelang.org/go/cue"
 	"cuelang.org/go/cue/cuecontext"
 	"cuelang.org/go/cue/errors"
-	cuejson "cuelang.org/go/encoding/json"
 
 	"github.com/jeduden/mdsmith/cue/cuelite"
 )
@@ -29,11 +28,11 @@ func benchCase() Case {
 // rather than hand-rolling an agreement check, so the guard and the CI
 // differential run share one definition of agreement.
 func TestBenchCaseAccepted(t *testing.T) {
-	require := Compare(t, CueLitePath, OraclePath, benchCase())
-	if !require {
+	c := benchCase()
+	if !Compare(t, CueLitePath, OraclePath, c) {
 		t.Fatal("benchmark case must agree across paths")
 	}
-	if !CueLitePath(benchCase()).Accepted() {
+	if !CueLitePath(c).Accepted() {
 		t.Fatal("benchmark case must be accepted")
 	}
 }
@@ -74,10 +73,11 @@ func BenchmarkValidate(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
+		dataBytes := []byte(c.Data)
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			data, err := cuelite.CompileJSON([]byte(c.Data))
+			data, err := cuelite.CompileJSON(dataBytes)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -95,11 +95,10 @@ func BenchmarkValidate(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			expr, err := cuejson.Extract("", []byte(c.Data))
+			data, err := oracleData(ctx, c.Data)
 			if err != nil {
 				b.Fatal(err)
 			}
-			data := ctx.BuildExpr(expr)
 			if verr := schema.Unify(data).Validate(cue.Concrete(true)); verr != nil {
 				b.Fatal(errors.Errors(verr)[0])
 			}
