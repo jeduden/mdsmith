@@ -154,3 +154,20 @@ func TestContainsDotDotSegment(t *testing.T) {
 		assert.Equal(t, want, globpath.ContainsDotDotSegment(input), input)
 	}
 }
+
+func TestContainsDotDotSegment_ZeroAllocs(t *testing.T) {
+	paths := []string{
+		"..",
+		"../foo",
+		"foo/..",
+		"foo/../bar",
+		"foo/bar/baz",
+	}
+	for _, p := range paths {
+		allocs := testing.AllocsPerRun(100, func() {
+			globpath.ContainsDotDotSegment(p)
+		})
+		assert.Equal(t, 0.0, allocs,
+			"ContainsDotDotSegment(%q) allocs: want 0, got %v", p, allocs)
+	}
+}

@@ -169,7 +169,7 @@ func (r *Rule) checkFootnotes(f *lint.File) []lint.Diagnostic {
 			})
 			continue
 		}
-		msg := footnotePlacementMessage(ref, defs, f.Source)
+		msg := footnotePlacementMessage(ref, defs, f.Lines)
 		if msg != "" {
 			diags = append(diags, lint.Diagnostic{
 				File:     f.Path,
@@ -456,7 +456,7 @@ func isFootnoteDefinitionAt(source []byte, start int) bool {
 func footnotePlacementMessage(
 	ref footnoteOccurrence,
 	defs []footnoteOccurrence,
-	source []byte,
+	lines [][]byte,
 ) string {
 	defLines := map[int]struct{}{}
 	hasMatchingSlug := false
@@ -466,7 +466,7 @@ func footnotePlacementMessage(
 			hasMatchingSlug = true
 		}
 	}
-	endLine := paragraphEndLine(source, ref.line, defLines)
+	endLine := paragraphEndLine(lines, ref.line, defLines)
 	for _, d := range defs {
 		if d.slug != ref.slug {
 			continue
@@ -484,9 +484,8 @@ func footnotePlacementMessage(
 // paragraphEndLine returns the 1-based line number of the last line
 // belonging to the paragraph that contains `line`. The paragraph
 // stops at the next blank line, the next footnote definition, or
-// end of file.
-func paragraphEndLine(source []byte, line int, defLines map[int]struct{}) int {
-	lines := bytes.Split(source, []byte("\n"))
+// end of file. lines is f.Lines (pre-split by lint.NewFile).
+func paragraphEndLine(lines [][]byte, line int, defLines map[int]struct{}) int {
 	end := line
 	for end < len(lines) && !isBlankLine(lines[end]) {
 		if _, ok := defLines[end+1]; ok {

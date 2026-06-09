@@ -1324,19 +1324,24 @@ func cueFieldLabel(key string) string {
 
 // collectBodySyncPoints scans body content for {field} references and
 // adds them to the syncPoints map under their nearest preceding heading.
+// Iterates over content bytes directly to avoid the bytes.Split allocation.
 func collectBodySyncPoints(
 	content []byte, headings []docHeading,
 	syncPoints map[int][]syncPoint,
 ) {
-	lines := bytes.Split(content, []byte("\n"))
 	currentHeading := -1
-	for _, lineB := range lines {
-		trimmedB := bytes.TrimSpace(lineB)
-		if len(trimmedB) == 0 {
+	start := 0
+	for i := 0; i <= len(content); i++ {
+		if i < len(content) && content[i] != '\n' {
 			continue
 		}
-		if trimmedB[0] == '#' {
-			trimmed := string(trimmedB)
+		lineB := bytes.TrimSpace(content[start:i])
+		start = i + 1
+		if len(lineB) == 0 {
+			continue
+		}
+		if lineB[0] == '#' {
+			trimmed := string(lineB)
 			for j, h := range headings {
 				if headingMatchesLine(h, trimmed) {
 					currentHeading = j
@@ -1346,7 +1351,7 @@ func collectBodySyncPoints(
 			continue
 		}
 		if currentHeading >= 0 {
-			trimmed := string(trimmedB)
+			trimmed := string(lineB)
 			fields := fieldinterp.Fields(trimmed)
 			if len(fields) > 0 {
 				compiled := buildFieldPattern(trimmed)

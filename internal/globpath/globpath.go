@@ -44,13 +44,12 @@ func ResolveAgainstRoot(baseDir, p2 string) (resolved string, escapes bool) {
 
 // ContainsDotDotSegment reports whether p contains a ".." path element
 // when split on "/". Filenames like "..foo" do not match.
+// Uses zero-allocation string checks instead of strings.Split.
 func ContainsDotDotSegment(p string) bool {
-	for _, elem := range strings.Split(p, "/") {
-		if elem == ".." {
-			return true
-		}
-	}
-	return false
+	return p == ".." ||
+		strings.HasPrefix(p, "../") ||
+		strings.HasSuffix(p, "/..") ||
+		strings.Contains(p, "/../")
 }
 
 // Match reports whether path matches pattern using the doublestar matcher.

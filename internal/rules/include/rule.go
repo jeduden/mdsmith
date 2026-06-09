@@ -12,6 +12,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/bytelimit"
+	"github.com/jeduden/mdsmith/internal/globpath"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/piparser"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -255,7 +256,7 @@ func resolveIncludePath(
 		}
 		readFS = f.RootFS
 		readPath = resolvedFile
-	} else if containsDotDotElement(file) {
+	} else if globpath.ContainsDotDotSegment(file) {
 		return nil, "", "", []lint.Diagnostic{makeDiag(filePath, line,
 			`include file path contains ".." but project root is not configured`)}
 	}
@@ -441,33 +442,21 @@ func makeDiag(file string, line int, msg string) lint.Diagnostic {
 
 // minFenceLen returns the minimum backtick fence length needed to safely
 // wrap text without conflicting with backtick runs inside the content.
+// Scans bytes directly to avoid the strings.Split allocation.
 func minFenceLen(text string) int {
 	n := 3
-	for _, line := range strings.Split(text, "\n") {
-		run := 0
-		for _, c := range line {
-			if c == '`' {
-				run++
-				if run >= n {
-					n = run + 1
-				}
-			} else {
-				run = 0
+	run := 0
+	for i := 0; i < len(text); i++ {
+		if text[i] == '`' {
+			run++
+			if run >= n {
+				n = run + 1
 			}
+		} else {
+			run = 0
 		}
 	}
 	return n
-}
-
-// containsDotDotElement reports whether the slash-separated path contains
-// a ".." path element. It does not match filenames like "foo..bar.md".
-func containsDotDotElement(p string) bool {
-	for _, elem := range strings.Split(p, "/") {
-		if elem == ".." {
-			return true
-		}
-	}
-	return false
 }
 
 // expandNestedIncludes parses the included file for nested include

@@ -194,6 +194,17 @@ func TestMatchDoublestar_MultipleDoublestars(t *testing.T) {
 
 func TestMatchDoublestar_NoMatch(t *testing.T) {
 	assert.False(t, matchDoublestar("docs/**/*.md", "src/file.md"))
+	// Leading ** with no matching tail: exercises the return-false path in
+	// matchLeadingDoublestar after the tail-advancing loop exhausts all slashes.
+	assert.False(t, matchDoublestar("**/*.md", "readme.txt"))
+	assert.False(t, matchDoublestar("**/foo.md", "bar/baz.txt"))
+}
+
+func TestMatchDoublestar_MiddleDoublestar_SuffixOnly(t *testing.T) {
+	// When ** expands to zero segments and the path starts with the suffix,
+	// matchMiddleDoublestar returns true via the pre-loop check.
+	// This is the same behavior as the original (i=0 guard skipped prefix check).
+	assert.True(t, matchDoublestar("a/**/b.md", "b.md"))
 }
 
 // --- parseGitignoreFile tests ---

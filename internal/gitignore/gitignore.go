@@ -271,53 +271,82 @@ func matchGitignorePattern(pattern, path string) bool {
 
 // matchDoublestar handles patterns containing **.
 func matchDoublestar(pattern, path string) bool {
-	// Split pattern on "**" and match each segment.
-	parts := strings.Split(pattern, "**")
-	if len(parts) == 2 {
-		prefix := parts[0]
-		suffix := parts[1]
-
-		// Leading ** — matches any path prefix.
-		if prefix == "" || prefix == "/" {
-			suffix = strings.TrimPrefix(suffix, "/")
-			if suffix == "" {
-				// Pattern is just "**" — matches everything.
-				return true
-			}
-			// Try matching suffix against every possible subpath.
-			pathParts := strings.Split(path, "/")
-			for i := range pathParts {
-				sub := strings.Join(pathParts[i:], "/")
-				if matchGitignorePattern(suffix, sub) {
-					return true
-				}
-			}
-			return false
-		}
-
-		// Trailing ** — matches any path suffix.
-		if suffix == "" || suffix == "/" {
-			prefix = strings.TrimSuffix(prefix, "/")
-			return strings.HasPrefix(path, prefix+"/") || path == prefix
-		}
-
-		// Middle ** — e.g., "a/**/b".
-		prefix = strings.TrimSuffix(prefix, "/")
-		suffix = strings.TrimPrefix(suffix, "/")
-		pathParts := strings.Split(path, "/")
-		for i := range pathParts {
-			prefixPart := strings.Join(pathParts[:i], "/")
-			suffixPart := strings.Join(pathParts[i:], "/")
-			if (i == 0 || matchGitignorePattern(prefix, prefixPart)) &&
-				matchGitignorePattern(suffix, suffixPart) {
-				return true
-			}
-		}
-		return false
+	// Find the single "**" without allocating. Multiple "**" fall back to
+	// the filepath.Match path at the bottom.
+	idx := strings.Index(pattern, "**")
+	if idx >= 0 && !strings.Contains(pattern[idx+2:], "**") {
+		prefix := pattern[:idx]
+		suffix := pattern[idx+2:]
+		return matchSingleDoublestar(prefix, suffix, path)
 	}
-
 	// Multiple ** in one pattern — fall back to simple matching.
-	// This is an edge case; try matching each path permutation.
 	matched, _ := filepath.Match(strings.ReplaceAll(pattern, "**", "*"), path)
 	return matched
+}
+
+// matchSingleDoublestar handles the three structural cases for a pattern
+// with exactly one "**": leading, trailing, and middle.
+// All string slicing is zero-copy (no allocations from splitting).
+func matchSingleDoublestar(prefix, suffix, path string) bool {
+	// Leading ** — matches any path prefix.
+	if prefix == "" || prefix == "/" {
+		return matchLeadingDoublestar(strings.TrimPrefix(suffix, "/"), path)
+	}
+	// Trailing ** — matches any path suffix.
+	if suffix == "" || suffix == "/" {
+		prefix = strings.TrimSuffix(prefix, "/")
+		return strings.HasPrefix(path, prefix+"/") || path == prefix
+	}
+	// Middle ** — e.g., "a/**/b".
+	return matchMiddleDoublestar(
+		strings.TrimSuffix(prefix, "/"),
+		strings.TrimPrefix(suffix, "/"),
+		path,
+	)
+}
+
+// matchLeadingDoublestar handles "**/suffix" style patterns. It tries the
+// suffix against every trailing sub-path of path, advancing one directory
+// component at a time. String slicing shares the backing array with path.
+func matchLeadingDoublestar(suffix, path string) bool {
+	if suffix == "" {
+		return true // pattern is just "**"
+	}
+	tail := path
+	for {
+		if matchGitignorePattern(suffix, tail) {
+			return true
+		}
+		j := strings.Index(tail, "/")
+		if j < 0 {
+			break
+		}
+		tail = tail[j+1:]
+	}
+	return false
+}
+
+// matchMiddleDoublestar handles "prefix/**/suffix" style patterns. It tries
+// every split position of path without allocating (substrings share the
+// backing array with path).
+func matchMiddleDoublestar(prefix, suffix, path string) bool {
+	// Position 0: no prefix constraint; check suffix against the whole path.
+	if matchGitignorePattern(suffix, path) {
+		return true
+	}
+	remaining := path
+	for {
+		j := strings.Index(remaining, "/")
+		if j < 0 {
+			break
+		}
+		prefixPart := path[:len(path)-len(remaining)+j]
+		suffixPart := remaining[j+1:]
+		if matchGitignorePattern(prefix, prefixPart) &&
+			matchGitignorePattern(suffix, suffixPart) {
+			return true
+		}
+		remaining = remaining[j+1:]
+	}
+	return false
 }
