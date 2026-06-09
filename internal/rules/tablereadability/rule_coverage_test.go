@@ -250,44 +250,45 @@ func TestCheck_TooManyWordsPerCell_NoHeaderColumn(t *testing.T) {
 // Phase 5: additional branch coverage
 // =====================================================================
 
-// tryParseTable: separator line is not a table row → return nil
-func TestTryParseTable_SeparatorNotTableRow(t *testing.T) {
+// parseTables: separator line is not a table row → no tables found
+func TestParseTables_SeparatorNotTableRow(t *testing.T) {
 	lines := [][]byte{
 		[]byte("| A | B |"),
 		[]byte("just text"), // not a table row
 		[]byte("| C | D |"),
 	}
-	tbl, _ := tryParseTable(lines, 0, map[int]struct{}{})
-	assert.Nil(t, tbl, "expected nil when separator is not a table row")
+	got := parseTables(lines, map[int]struct{}{})
+	assert.Empty(t, got, "expected no tables when separator is not a table row")
 }
 
-// tryParseTable: separator is a table row but not a separator row → return nil
-func TestTryParseTable_SeparatorNotSeparatorRow(t *testing.T) {
+// parseTables: separator is a table row but not a separator row → no tables found
+func TestParseTables_SeparatorNotSeparatorRow(t *testing.T) {
 	lines := [][]byte{
 		[]byte("| A | B |"),
 		[]byte("| C | D |"), // is table row but not separator
 		[]byte("| E | F |"),
 	}
-	tbl, _ := tryParseTable(lines, 0, map[int]struct{}{})
-	assert.Nil(t, tbl, "expected nil when second line is not a separator row")
+	got := parseTables(lines, map[int]struct{}{})
+	assert.Empty(t, got, "expected no tables when second line is not a separator row")
 }
 
-// tryParseTable: separator line is in a code block → return nil
-// codeLines uses 1-based line numbers; start=0, separator is at index 1 → 1-based=2
-func TestTryParseTable_SeparatorInCodeBlock(t *testing.T) {
+// parseTables: separator line is in a code block → no tables found
+// codeLines uses 1-based line numbers; separator is at index 1 → 1-based=2
+func TestParseTables_SeparatorInCodeBlock(t *testing.T) {
 	codeLines := map[int]struct{}{2: {}} // 1-based line 2 = index 1 (separator)
 	lines := [][]byte{
 		[]byte("| A | B |"),
 		[]byte("|---|---|"),
 		[]byte("| C | D |"),
 	}
-	tbl, _ := tryParseTable(lines, 0, codeLines)
-	assert.Nil(t, tbl, "expected nil when separator line is a code line")
+	got := parseTables(lines, codeLines)
+	assert.Empty(t, got, "expected no tables when separator line is a code line")
 }
 
-// tryParseTable: subsequent data row is in a code block → loop breaks early.
-// With start=0, end starts at 2. codeLines[end+1]=codeLines[3] means index 2 (lines[2]).
-func TestTryParseTable_DataRowInCodeBlock(t *testing.T) {
+// parseTables: subsequent data row is in a code block → table boundary stops early.
+// codeLines[3] marks line index 2 (1-based=3) as a code line, so the table
+// only spans lines 0-1 (header + separator).
+func TestParseTables_DataRowInCodeBlock(t *testing.T) {
 	codeLines := map[int]struct{}{3: {}} // 1-based line 3 = index 2 (lines[2])
 	lines := [][]byte{
 		[]byte("| A | B |"),
@@ -295,11 +296,10 @@ func TestTryParseTable_DataRowInCodeBlock(t *testing.T) {
 		[]byte("| C | D |"), // this is in a code block
 		[]byte("| E | F |"),
 	}
-	tbl, end := tryParseTable(lines, 0, codeLines)
-	require.NotNil(t, tbl)
-	// The loop should break when it hits lines[2] (codeLines[3]=true).
-	// end should remain at 2 (start+2 initial value, loop doesn't advance).
-	assert.Equal(t, 2, end, "expected end at 2 (before code-blocked line)")
+	got := parseTables(lines, codeLines)
+	require.Len(t, got, 1, "expected one table found before code-blocked line")
+	// Table should only have header + separator rows (2 rows), not the code-blocked line.
+	assert.Equal(t, 2, len(got[0].rows), "expected 2 rows (header + separator)")
 }
 
 // columnWidthRatio: columns == 0 → return 0

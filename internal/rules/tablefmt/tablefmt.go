@@ -198,6 +198,91 @@ const (
 // separatorRe matches a table separator row cell content.
 var separatorRe = regexp.MustCompile(`^:?-+:?$`)
 
+// ScanTableBoundaries returns the 0-based [start, end] line-index pairs
+// (both inclusive) for each table block found in lines, without parsing
+// cell contents. codeLines maps 1-based line numbers of fenced or
+// indented code-block lines to skip. Returns nil when no tables are found.
+func ScanTableBoundaries(lines [][]byte, codeLines map[int]struct{}) [][2]int {
+	var out [][2]int
+	i := 0
+	for i < len(lines) {
+		if _, ok := codeLines[i+1]; ok {
+			i++
+			continue
+		}
+		if bytes.IndexByte(lines[i], '|') < 0 {
+			i++
+			continue
+		}
+		end, ok := scanTableEnd(lines, i, codeLines)
+		if !ok {
+			i++
+			continue
+		}
+		out = append(out, [2]int{i, end})
+		i = end + 1
+	}
+	return out
+}
+
+// scanTableEnd returns the 0-based inclusive end index of a table
+// starting at start. Returns (0, false) when no valid table starts here.
+// Does not allocate.
+func scanTableEnd(lines [][]byte, start int, codeLines map[int]struct{}) (int, bool) {
+	if start+1 >= len(lines) {
+		return 0, false
+	}
+	if _, ok := codeLines[start+2]; ok {
+		return 0, false
+	}
+	if !isSeparatorLine(lines[start+1]) {
+		return 0, false
+	}
+	end := start + 1
+	for end+1 < len(lines) {
+		if _, ok := codeLines[end+2]; ok {
+			break
+		}
+		if bytes.IndexByte(lines[end+1], '|') < 0 {
+			break
+		}
+		end++
+	}
+	return end, true
+}
+
+// isSeparatorLine reports whether line is a GFM table separator row.
+// It checks that every non-empty cell between pipes matches :?-+:?.
+// Tolerates a blockquote or indentation prefix before the first pipe.
+// Does not allocate.
+func isSeparatorLine(line []byte) bool {
+	idx := bytes.IndexByte(line, '|')
+	if idx < 0 || bytes.IndexByte(line, '-') < 0 {
+		return false
+	}
+	pos := idx + 1
+	hasCells := false
+	for pos <= len(line) {
+		end := bytes.IndexByte(line[pos:], '|')
+		var cell []byte
+		if end < 0 {
+			cell = bytes.TrimSpace(line[pos:])
+			pos = len(line) + 1
+		} else {
+			cell = bytes.TrimSpace(line[pos : pos+end])
+			pos += end + 1
+		}
+		if len(cell) == 0 {
+			continue
+		}
+		if !separatorRe.Match(cell) {
+			return false
+		}
+		hasCells = true
+	}
+	return hasCells
+}
+
 // findTables scans file lines for contiguous table blocks, skipping
 // lines inside fenced or indented code blocks. The byte-check
 // shortcut (`bytes.IndexByte(line, '|') < 0`) avoids a tryParseTable

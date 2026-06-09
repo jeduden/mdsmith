@@ -11,6 +11,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
+	"github.com/jeduden/mdsmith/internal/rules/tablefmt"
 )
 
 const (
@@ -63,7 +64,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	maxRatio := positiveFloatOrDefault(r.MaxColumnWidthRatio, defaultMaxColumnWidthRatio)
 
 	codeLines := lint.CollectCodeBlockLines(f)
-	tables := findTables(f.Lines, codeLines)
+	tables := parseTables(f.Lines, codeLines)
 	if len(tables) == 0 {
 		return nil
 	}
@@ -212,78 +213,46 @@ type tableRow struct {
 
 var separatorRe = regexp.MustCompile(`^:?-+:?$`)
 
-func findTables(lines [][]byte, codeLines map[int]struct{}) []table {
-	var tables []table
-	for i := 0; i < len(lines); {
-		if _, ok := codeLines[i+1]; ok {
-			i++
-			continue
-		}
-
-		// Lines that cannot contain a `|` cannot start a table; the
-		// guard avoids a per-line detectPrefix allocation. detectPrefix
-		// returns "" for non-pipe lines anyway, but only after a
-		// `string(line)` conversion that was the dominant per-Check
-		// allocator on file-with-no-tables corpora before plan 195.
-		if bytes.IndexByte(lines[i], '|') < 0 {
-			i++
-			continue
-		}
-
-		tbl, end := tryParseTable(lines, i, codeLines)
-		if tbl == nil {
-			i++
-			continue
-		}
-
-		tables = append(tables, *tbl)
-		i = end
+// parseTables uses tablefmt.ScanTableBoundaries to locate table blocks,
+// then parses each block's cells into the tablereadability-local table
+// type. Scanning and cell-parsing are separated so the scanner lives in
+// one place (tablefmt) while the zero-alloc [][]byte cell representation
+// stays in this package.
+func parseTables(lines [][]byte, codeLines map[int]struct{}) []table {
+	bounds := tablefmt.ScanTableBoundaries(lines, codeLines)
+	if len(bounds) == 0 {
+		return nil
+	}
+	tables := make([]table, 0, len(bounds))
+	for _, b := range bounds {
+		tbl := parseTableBlock(lines, b[0], b[1])
+		tables = append(tables, tbl)
 	}
 	return tables
 }
 
-func tryParseTable(lines [][]byte, start int, codeLines map[int]struct{}) (*table, int) {
-	if start+1 >= len(lines) {
-		return nil, start
-	}
-
+// parseTableBlock parses cells from lines[start..end] (both 0-based,
+// inclusive) into a table value. It mirrors the prefix-strip and
+// splitRow logic of the former tryParseTable, keeping the [][]byte
+// cell representation for zero-alloc counting on the hot path.
+func parseTableBlock(lines [][]byte, start, end int) table {
 	prefix := detectPrefix(lines[start])
 	header := stripPrefix(lines[start], prefix)
-	if !isTableRow(header) {
-		return nil, start
-	}
+	rows := make([]tableRow, 0, end-start+1)
+	rows = append(rows, tableRow{line: start + 1, cells: splitRow(header)})
 
-	if _, ok := codeLines[start+2]; ok {
-		return nil, start
-	}
-	separator := stripPrefix(lines[start+1], prefix)
-	if !isTableRow(separator) {
-		return nil, start
-	}
-	sepCells := splitRow(separator)
-	if !isSeparatorRow(sepCells) {
-		return nil, start
-	}
+	if start+1 <= end {
+		separator := stripPrefix(lines[start+1], prefix)
+		sepCells := splitRow(separator)
+		rows = append(rows, tableRow{line: start + 2, cells: sepCells, isSeparator: true})
 
-	rows := []tableRow{
-		{line: start + 1, cells: splitRow(header)},
-		{line: start + 2, cells: sepCells, isSeparator: true},
-	}
-
-	end := start + 2
-	for end < len(lines) {
-		if _, ok := codeLines[end+1]; ok {
-			break
+		for i := start + 2; i <= end; i++ {
+			content := stripPrefix(lines[i], prefix)
+			rows = append(rows, tableRow{line: i + 1, cells: splitRow(content)})
 		}
-		content := stripPrefix(lines[end], prefix)
-		if !isTableRow(content) {
-			break
-		}
-		rows = append(rows, tableRow{line: end + 1, cells: splitRow(content)})
-		end++
 	}
 
-	return &table{startLine: start + 1, rows: rows}, end
+	return table{startLine: start + 1, rows: rows}
 }
 
 func (t table) columnCount() int {
@@ -543,14 +512,6 @@ func stripPrefix(line []byte, prefix string) []byte {
 		}
 	}
 	return line[len(prefix):]
-}
-
-func isTableRow(content []byte) bool {
-	trimmed := bytes.TrimSpace(content)
-	if len(trimmed) < 2 {
-		return false
-	}
-	return trimmed[0] == '|' && trimmed[len(trimmed)-1] == '|'
 }
 
 // splitRow splits a row's interior (after outer-pipe strip and
