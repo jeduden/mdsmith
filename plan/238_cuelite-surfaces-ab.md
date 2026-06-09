@@ -32,8 +32,23 @@ unification rules.
 
 ## Tasks
 
-1. Add the compile/unify/validate façade to `cue/cuelite`,
-   delegating to CUE.
+1. Adopt the compile/unify/validate façade already shipped by
+   phase 0 ([plan 236](236_cuelite-package-harness.md)):
+   `Compile`, `CompileJSON`, `Value.Unify`, `Value.Validate`,
+   and the `Errors` accessor. Extend it with the per-surface
+   methods these call sites need (`LookupPath`, `Decode`,
+   `Fields`, …), still delegating to CUE. The phase-0 interim
+   has two costs to retire here. First, each `Compile`/
+   `CompileJSON` owns a fresh `*cue.Context`, and a cross-context
+   `Unify` re-compiles the operand's retained source into the
+   receiver's context — at most one rebuild per such `Unify`.
+   Second, the schema path still marshals front matter to JSON
+   and `CompileJSON` parses it back, so validating one file pays
+   two JSON traversals. Both blow the ≤ 10 allocs/op budget on
+   the hot path, so the budget is met only by the flip in task 3
+   — the in-house engine validates a `map[string]any` directly
+   (plan 218), with no JSON round-trip and no per-`Value`
+   context — not by the façade adoption in this task.
 2. Move [internal/schema](../internal/schema),
    [requiredstructure](../internal/rules/requiredstructure/rule.go),
    and [internal/query](../internal/query/query.go) onto the

@@ -31,8 +31,11 @@ CUE, so adopting it later stays green.
 
 1. Create `cue/cuelite` with its `Value` type (wrapping a
    `cue.Value`), the CUE delegation pattern, and path-tagged
-   errors. Surface façade methods (`ParsePath`, `Compile`,
-   `Unify`, …) are added in their own phases. One unit test per
+   errors. Phase 0 ships the minimal surface the harness and
+   benchmark need — `Compile`, `CompileJSON`, `Value.Unify`,
+   `Value.Validate`, and the package-level `Errors` accessor.
+   The per-surface façade methods (`ParsePath`, `LookupPath`,
+   `Decode`, …) are added in their own phases. One unit test per
    function.
 2. Build the differential harness: run a value or expression
    through the in-house path and the CUE-backed path, and

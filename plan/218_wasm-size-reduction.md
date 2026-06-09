@@ -196,8 +196,14 @@ small:
 - structs unify field-wise (an extra field vs a closed struct
   is ⊥); lists unify by element and length.
 
-`Validate` reports the first non-concrete or ⊥ leaf, with its
-path, matching CUE's `Validate(Concrete(true))`.
+`Validate` reports one `*PathError` per non-concrete or ⊥
+leaf. Each error is tagged with its field path, matching CUE's
+`Validate(Concrete(true))`. A single failing leaf returns a bare
+`*PathError`; several return an `errors.Join` of them. The
+package-level `Errors` accessor flattens that bare-or-joined
+error into the full slice of per-field failures. A consumer thus
+enumerates every rejecting leaf without type-switching on the
+join shape.
 
 ### Hot-path performance
 
