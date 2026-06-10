@@ -139,6 +139,21 @@ func evalIdent(n *ast.Ident, scope map[string]*engineValue) (*engineValue, error
 // a; when c does not, the comprehension contributes nothing and element 0 is
 // b.
 func evalIndex(n *ast.IndexExpr, scope map[string]*engineValue) (*engineValue, error) {
+	// Check the index TARGET first: indexing anything but a list LITERAL is a
+	// type error CUE rejects ("invalid operand … want list or struct"). Checking
+	// it before the index means a non-list target (`0[mech]`, `m[0]`) is an
+	// eager "invalid operation" compile error even when the index is an
+	// unresolved reference, rather than a thunk that defers to validate. For a
+	// concrete-target case (`0[mech]`, `m[0]`) this matches CUE's compile
+	// rejection; for a deferred-target case (`(m=="")[0]`) CUE defers to
+	// validate and the in-house engine is stricter — a documented "invalid
+	// operation" out-of-subset rejection the differential harness's hatch 1
+	// tolerates.
+	list, ok := n.X.(*ast.ListLit)
+	if !ok {
+		return nil, fmt.Errorf(
+			"cuelite: invalid operation: index target must be a list literal, got %T", n.X)
+	}
 	idxVal, err := evalExpr(n.Index, scope)
 	if err != nil {
 		return nil, err
@@ -146,13 +161,6 @@ func evalIndex(n *ast.IndexExpr, scope map[string]*engineValue) (*engineValue, e
 	if idxVal.kind != kInt {
 		return nil, fmt.Errorf(
 			"cuelite: invalid operation: list index must be an integer, got %s", idxVal.describe())
-	}
-	list, ok := n.X.(*ast.ListLit)
-	if !ok {
-		// Indexing a non-list (`"0"[0]`) is an invalid operation CUE also rejects
-		// — eagerly here, deferred-and-dropped in a disjunction by CUE.
-		return nil, fmt.Errorf(
-			"cuelite: invalid operation: index target must be a list literal, got %T", n.X)
 	}
 	elems, err := evalListElems(list, scope)
 	if err != nil {

@@ -431,6 +431,11 @@ func edgeFuzzSeeds() []struct{ schema, data string } {
 		// covers it.
 		{`({A:""|"0"[0]})`, `0`},
 		{`{a: "0"[0]}`, `{"a":1}`},
+		// Indexing a non-list whose INDEX is an unresolved reference (`0[mech]`):
+		// the non-list target is a type error CUE rejects at compile regardless
+		// of the index; the in-house engine rejects it eagerly too rather than
+		// deferring a thunk.
+		{`{mech:string,A:0[mech]}`, `0`},
 		// A single-quoted bytes literal (`''`, `'x'`): a distinct CUE type with
 		// no JSON representation, rejected out-of-subset by the in-house engine.
 		{`''`, `""`},

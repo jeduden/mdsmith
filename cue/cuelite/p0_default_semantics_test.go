@@ -135,6 +135,31 @@ func TestConcreteNonScalarDefault(t *testing.T) {
 	})
 }
 
+// TestIndexNonListTarget pins that indexing a non-list TARGET (`0[mech]`,
+// `"s"[0]`) is rejected at schema COMPILE — even when the index is an
+// unresolved reference, since the target being a non-list is a type error
+// regardless of the index. CUE rejects "invalid operand … want list or
+// struct"; the in-house engine must not defer a thunk that rejects at validate.
+// A valid list index by a sibling reference still resolves. Probed against
+// cuelang v0.16.1.
+func TestIndexNonListTarget(t *testing.T) {
+	for _, src := range []string{
+		`{mech: string, A: 0[mech]}`,
+		`{A: 0[1]}`,
+		`{mech: string, A: "s"[mech]}`,
+	} {
+		_, err := Compile(src)
+		require.Error(t, err, src)
+		assert.Contains(t, err.Error(), "invalid operation", src)
+	}
+	// A valid list index by a sibling reference resolves against data.
+	s, err := Compile(`{A: [1, 2][mech], mech: int}`)
+	require.NoError(t, err)
+	d, err := CompileJSON([]byte(`{"mech":0}`))
+	require.NoError(t, err)
+	assert.NoError(t, s.Unify(d).Validate())
+}
+
 // TestMeetThunkRefErasure pins that an undeclared reference inside a deferred
 // branch of a compile-time `&` meet surfaces as "reference not found" at
 // compile, not silently erased by the eager meet. Probed against CUE v0.16.1:
