@@ -1045,337 +1045,196 @@ func TestMergeAndClean_WriteFileFails_ExitsTwo(t *testing.T) {
 	assert.Contains(t, got, "writing cleaned merge")
 }
 
-func TestFixAtRealPath_WriteToPathnameFails_ExitsTwo(t *testing.T) {
+func TestFixMergedContent_FixFails_ExitsTwo(t *testing.T) {
 	dir := t.TempDir()
-	origWd, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(dir))
-	t.Cleanup(func() { _ = os.Chdir(origWd) })
-
-	content := []byte("# Hello\n")
-	pathname := filepath.Join(dir, "PLAN.md")
 	ours := filepath.Join(dir, "ours.md")
-	require.NoError(t, os.WriteFile(pathname, content, 0o644))
-	require.NoError(t, os.WriteFile(ours, content, 0o644))
+	require.NoError(t, os.WriteFile(ours, []byte("# Hello\n"), 0o644))
 
-	orig := osWriteFile
-	t.Cleanup(func() { osWriteFile = orig })
-	osWriteFile = func(name string, data []byte, perm os.FileMode) error {
-		if name == pathname {
-			return fmt.Errorf("mock: write to pathname failed")
-		}
-		return os.WriteFile(name, data, perm)
+	orig := fixSourceFn
+	t.Cleanup(func() { fixSourceFn = orig })
+	fixSourceFn = func(string, []byte, int64) ([]byte, error) {
+		return nil, fmt.Errorf("mock fix failure")
 	}
 
 	got := captureStderr(func() {
-		_, code := fixAtRealPath(content, ours, pathname, 1<<20)
-		assert.Equal(t, 2, code)
-	})
-	assert.Contains(t, got, "writing to")
-}
-
-func TestFixAtRealPath_WriteToOursFails_ExitsTwo(t *testing.T) {
-	dir := t.TempDir()
-	origWd, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(dir))
-	t.Cleanup(func() { _ = os.Chdir(origWd) })
-
-	content := []byte("# Hello\n")
-	pathname := filepath.Join(dir, "PLAN.md")
-	ours := filepath.Join(dir, "ours.md")
-	require.NoError(t, os.WriteFile(pathname, content, 0o644))
-	require.NoError(t, os.WriteFile(ours, content, 0o644))
-
-	orig := osWriteFile
-	t.Cleanup(func() { osWriteFile = orig })
-	osWriteFile = func(name string, data []byte, perm os.FileMode) error {
-		if name == ours {
-			return fmt.Errorf("mock: write to ours failed")
-		}
-		return os.WriteFile(name, data, perm)
-	}
-
-	got := captureStderr(func() {
-		_, code := fixAtRealPath(content, ours, pathname, 1<<20)
-		assert.Equal(t, 2, code)
-	})
-	assert.Contains(t, got, "writing merge output")
-}
-
-// guardCallN returns a guardFn replacement that delegates to the real
-// guardRegularFile for the first n-1 calls, then returns an error on call n,
-// then delegates again for all subsequent calls.
-func guardCallN(n int, msg string) func(string) error {
-	var calls int
-	return func(path string) error {
-		calls++
-		if calls == n {
-			return fmt.Errorf("%s: %s", path, msg)
-		}
-		return guardRegularFile(path)
-	}
-}
-
-func TestFixAtRealPath_ThirdGuardFails_ExitsTwo(t *testing.T) {
-	// 3rd guardFn call = re-check of pathname immediately before write.
-	dir := t.TempDir()
-	origWd, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(dir))
-	t.Cleanup(func() { _ = os.Chdir(origWd) })
-
-	pathname := filepath.Join(dir, "PLAN.md")
-	ours := filepath.Join(dir, "ours.md")
-	require.NoError(t, os.WriteFile(pathname, []byte("# Hello\n"), 0o644))
-	require.NoError(t, os.WriteFile(ours, []byte("# Hello\n"), 0o644))
-
-	orig := guardFn
-	t.Cleanup(func() { guardFn = orig })
-	guardFn = guardCallN(3, "injected pre-write guard")
-
-	got := captureStderr(func() {
-		_, code := fixAtRealPath([]byte("# Hello\n"), ours, pathname, 1<<20)
-		assert.Equal(t, 2, code)
-	})
-	assert.Contains(t, got, "injected pre-write guard")
-}
-
-func TestFixAtRealPath_FourthGuardFails_ExitsTwo(t *testing.T) {
-	// guardFn call sequence in fixAtRealPath + readAndRestore (backup exists):
-	//   1 = pathname, 2 = ours (start), 3 = pathname pre-write,
-	//   4 = pathname pre-read (readAndRestore), 5 = pathname pre-restore,
-	//   6 = ours pre-final-write
-	// This test exercises call 4 (pre-read guard in readAndRestore).
-	dir := t.TempDir()
-	origWd, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(dir))
-	t.Cleanup(func() { _ = os.Chdir(origWd) })
-
-	pathname := filepath.Join(dir, "PLAN.md")
-	ours := filepath.Join(dir, "ours.md")
-	require.NoError(t, os.WriteFile(pathname, []byte("# Hello\n"), 0o644))
-	require.NoError(t, os.WriteFile(ours, []byte("# Hello\n"), 0o644))
-
-	orig := guardFn
-	t.Cleanup(func() { guardFn = orig })
-	guardFn = guardCallN(4, "injected pre-read guard")
-
-	got := captureStderr(func() {
-		_, code := fixAtRealPath([]byte("# Hello\n"), ours, pathname, 1<<20)
-		assert.Equal(t, 2, code)
-	})
-	assert.Contains(t, got, "injected pre-read guard")
-}
-
-func TestFixAtRealPath_FifthGuardFails_ExitsTwo(t *testing.T) {
-	// guardFn call 5 = re-check of pathname before restore write.
-	dir := t.TempDir()
-	origWd, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(dir))
-	t.Cleanup(func() { _ = os.Chdir(origWd) })
-
-	pathname := filepath.Join(dir, "PLAN.md")
-	ours := filepath.Join(dir, "ours.md")
-	require.NoError(t, os.WriteFile(pathname, []byte("# Hello\n"), 0o644))
-	require.NoError(t, os.WriteFile(ours, []byte("# Hello\n"), 0o644))
-
-	orig := guardFn
-	t.Cleanup(func() { guardFn = orig })
-	guardFn = guardCallN(5, "injected pre-restore guard")
-
-	got := captureStderr(func() {
-		_, code := fixAtRealPath([]byte("# Hello\n"), ours, pathname, 1<<20)
-		assert.Equal(t, 2, code)
-	})
-	assert.Contains(t, got, "injected pre-restore guard")
-}
-
-func TestFixAtRealPath_SixthGuardFails_ExitsTwo(t *testing.T) {
-	// guardFn call 6 = re-check of ours before final write.
-	dir := t.TempDir()
-	origWd, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(dir))
-	t.Cleanup(func() { _ = os.Chdir(origWd) })
-
-	pathname := filepath.Join(dir, "PLAN.md")
-	ours := filepath.Join(dir, "ours.md")
-	require.NoError(t, os.WriteFile(pathname, []byte("# Hello\n"), 0o644))
-	require.NoError(t, os.WriteFile(ours, []byte("# Hello\n"), 0o644))
-
-	orig := guardFn
-	t.Cleanup(func() { guardFn = orig })
-	guardFn = guardCallN(6, "injected pre-ours-write guard")
-
-	got := captureStderr(func() {
-		_, code := fixAtRealPath([]byte("# Hello\n"), ours, pathname, 1<<20)
-		assert.Equal(t, 2, code)
-	})
-	assert.Contains(t, got, "injected pre-ours-write guard")
-}
-
-func TestFixAtRealPath_FixFails_ExitsTwo(t *testing.T) {
-	dir := t.TempDir()
-	origWd, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(dir))
-	t.Cleanup(func() { _ = os.Chdir(origWd) })
-
-	pathname := filepath.Join(dir, "PLAN.md")
-	ours := filepath.Join(dir, "ours.md")
-	require.NoError(t, os.WriteFile(pathname, []byte("# Hello\n"), 0o644))
-	require.NoError(t, os.WriteFile(ours, []byte("# Hello\n"), 0o644))
-
-	orig := fixFileInPlaceFn
-	t.Cleanup(func() { fixFileInPlaceFn = orig })
-	fixFileInPlaceFn = func(string, int64) error {
-		return fmt.Errorf("mock fix failure")
-	}
-
-	got := captureStderr(func() {
-		_, code := fixAtRealPath([]byte("# Hello\n"), ours, pathname, 1<<20)
+		_, code := fixMergedContent([]byte("# Hello\n"), ours, "PLAN.md", 1<<20)
 		assert.Equal(t, 2, code)
 	})
 	assert.Contains(t, got, "fix failed")
 }
 
-func TestFixAtRealPath_PathnameNotExist_RemovesAfterFix(t *testing.T) {
-	// When pathname doesn't exist before the merge, fixAtRealPath should
-	// remove the temp file it created rather than restoring non-existent content.
+func TestFixMergedContent_GuardOursFails_ExitsTwo(t *testing.T) {
 	dir := t.TempDir()
-	origWd, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(dir))
-	t.Cleanup(func() { _ = os.Chdir(origWd) })
-
-	pathname := filepath.Join(dir, "newfile.md")
-	ours := filepath.Join(dir, "ours.md")
-	// pathname does NOT exist — backup will be ENOENT.
-	require.NoError(t, os.WriteFile(ours, []byte("# Hello\n"), 0o644))
-
-	fixed, code := fixAtRealPath([]byte("# Hello\n"), ours, pathname, 1<<20)
-	assert.Equal(t, 0, code)
-	assert.NotEmpty(t, fixed)
-	// pathname should have been removed after the fix cycle.
-	_, statErr := os.Stat(pathname)
-	assert.True(t, os.IsNotExist(statErr), "pathname should be removed after fix")
-}
-
-func TestFixAtRealPath_GuardBeforeRemoveFails_ExitsTwo(t *testing.T) {
-	// 6th guardFn call = re-check of pathname before os.Remove in the
-	// ENOENT-backup branch of readAndRestore.
-	dir := t.TempDir()
-	origWd, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(dir))
-	t.Cleanup(func() { _ = os.Chdir(origWd) })
-
-	pathname := filepath.Join(dir, "newfile.md")
 	ours := filepath.Join(dir, "ours.md")
 	require.NoError(t, os.WriteFile(ours, []byte("# Hello\n"), 0o644))
+
+	origFix := fixSourceFn
+	t.Cleanup(func() { fixSourceFn = origFix })
+	fixSourceFn = func(_ string, src []byte, _ int64) ([]byte, error) {
+		return src, nil
+	}
 
 	orig := guardFn
 	t.Cleanup(func() { guardFn = orig })
-	// guardFn call sequence for the ENOENT-backup path:
-	//   1 = pathname at top of fixAtRealPath
-	//   2 = ours at top of fixAtRealPath
-	//   3 = pathname re-check before write
-	//   4 = pathname pre-read in readAndRestore
-	//   5 = pathname re-check before os.Remove in readAndRestore
-	// (the restore guard is skipped because backupErr is ENOENT)
-	guardFn = guardCallN(5, "injected pre-remove guard")
-
-	got := captureStderr(func() {
-		_, code := fixAtRealPath([]byte("# Hello\n"), ours, pathname, 1<<20)
-		assert.Equal(t, 2, code)
-	})
-	assert.Contains(t, got, "injected pre-remove guard")
-}
-
-func TestFixAtRealPath_ReadFixedFileFails_ExitsTwo(t *testing.T) {
-	dir := t.TempDir()
-	origWd, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(dir))
-	t.Cleanup(func() { _ = os.Chdir(origWd) })
-
-	pathname := filepath.Join(dir, "PLAN.md")
-	ours := filepath.Join(dir, "ours.md")
-	require.NoError(t, os.WriteFile(pathname, []byte("# Hello\n"), 0o644))
-	require.NoError(t, os.WriteFile(ours, []byte("# Hello\n"), 0o644))
-
-	orig := readFileLimited
-	t.Cleanup(func() { readFileLimited = orig })
-	readFileLimited = func(string, int64) ([]byte, error) {
-		return nil, fmt.Errorf("mock read fixed failure")
+	guardFn = func(path string) error {
+		return fmt.Errorf("%s: injected pre-ours-write guard", path)
 	}
 
 	got := captureStderr(func() {
-		_, code := fixAtRealPath([]byte("# Hello\n"), ours, pathname, 1<<20)
+		_, code := fixMergedContent([]byte("# Hello\n"), ours, "PLAN.md", 1<<20)
 		assert.Equal(t, 2, code)
 	})
-	assert.Contains(t, got, "reading fixed file")
+	assert.Contains(t, got, "injected pre-ours-write guard")
 }
 
-func TestFixAtRealPath_RestoreWriteFails_ExitsTwo(t *testing.T) {
-	// Restore write (2nd osWriteFile call) fails.
+func TestFixMergedContent_WriteToOursFails_ExitsTwo(t *testing.T) {
 	dir := t.TempDir()
-	origWd, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(dir))
-	t.Cleanup(func() { _ = os.Chdir(origWd) })
-
-	pathname := filepath.Join(dir, "PLAN.md")
 	ours := filepath.Join(dir, "ours.md")
-	require.NoError(t, os.WriteFile(pathname, []byte("# Hello\n"), 0o644))
 	require.NoError(t, os.WriteFile(ours, []byte("# Hello\n"), 0o644))
 
-	var writeCount int
+	origFix := fixSourceFn
+	t.Cleanup(func() { fixSourceFn = origFix })
+	fixSourceFn = func(_ string, src []byte, _ int64) ([]byte, error) {
+		return src, nil
+	}
+
 	orig := osWriteFile
 	t.Cleanup(func() { osWriteFile = orig })
-	osWriteFile = func(name string, data []byte, perm os.FileMode) error {
-		writeCount++
-		if writeCount == 2 { // second write = restore
-			return fmt.Errorf("mock restore failure")
-		}
-		return orig(name, data, perm)
+	osWriteFile = func(string, []byte, os.FileMode) error {
+		return fmt.Errorf("mock: write to ours failed")
 	}
 
 	got := captureStderr(func() {
-		_, code := fixAtRealPath([]byte("# Hello\n"), ours, pathname, 1<<20)
+		_, code := fixMergedContent([]byte("# Hello\n"), ours, "PLAN.md", 1<<20)
 		assert.Equal(t, 2, code)
 	})
-	assert.Contains(t, got, "restoring")
+	assert.Contains(t, got, "writing merge output")
 }
 
-func TestFixAtRealPath_PreservesOursFileMode(t *testing.T) {
+func TestFixMergedContent_DoesNotTouchWorktreePathname(t *testing.T) {
+	// The worktree path exists; the driver must neither read nor
+	// write it — a byte-identical rewrite would still change stat
+	// data and abort the parent merge (see runMergeDriverRun).
+	dir := t.TempDir()
+	pathname := filepath.Join(dir, "PLAN.md")
+	ours := filepath.Join(dir, "ours.md")
+	require.NoError(t, os.WriteFile(pathname, []byte("worktree\n"), 0o644))
+	require.NoError(t, os.WriteFile(ours, []byte("# Hello\n"), 0o644))
+	before, err := os.Lstat(pathname)
+	require.NoError(t, err)
+
+	origFix := fixSourceFn
+	t.Cleanup(func() { fixSourceFn = origFix })
+	fixSourceFn = func(_ string, _ []byte, _ int64) ([]byte, error) {
+		return []byte("# Fixed\n"), nil
+	}
+
+	fixed, code := fixMergedContent([]byte("# Hello\n"), ours, pathname, 1<<20)
+	require.Equal(t, 0, code)
+	assert.Equal(t, "# Fixed\n", string(fixed))
+
+	result, err := os.ReadFile(ours)
+	require.NoError(t, err)
+	assert.Equal(t, "# Fixed\n", string(result), "fixed content must land in ours")
+
+	after, err := os.Lstat(pathname)
+	require.NoError(t, err)
+	assert.True(t, before.ModTime().Equal(after.ModTime()),
+		"worktree pathname mtime must be untouched")
+	worktree, err := os.ReadFile(pathname)
+	require.NoError(t, err)
+	assert.Equal(t, "worktree\n", string(worktree),
+		"worktree pathname content must be untouched")
+}
+
+func TestFixMergedContent_PathnameNotExist_Succeeds(t *testing.T) {
+	// %P may not exist in the worktree (add/add merges). The driver
+	// never touches it, so a missing pathname is not an error and
+	// nothing is created at that path.
+	dir := t.TempDir()
+	pathname := filepath.Join(dir, "newfile.md")
+	ours := filepath.Join(dir, "ours.md")
+	require.NoError(t, os.WriteFile(ours, []byte("# Hello\n"), 0o644))
+
+	origFix := fixSourceFn
+	t.Cleanup(func() { fixSourceFn = origFix })
+	fixSourceFn = func(_ string, src []byte, _ int64) ([]byte, error) {
+		return src, nil
+	}
+
+	fixed, code := fixMergedContent([]byte("# Hello\n"), ours, pathname, 1<<20)
+	assert.Equal(t, 0, code)
+	assert.NotEmpty(t, fixed)
+	_, statErr := os.Stat(pathname)
+	assert.True(t, os.IsNotExist(statErr),
+		"pathname must not be created by the merge driver")
+}
+
+func TestFixMergedContent_PreservesOursFileMode(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("file mode bits not meaningful on Windows")
 	}
 
 	dir := t.TempDir()
-	origWd, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(dir))
-	t.Cleanup(func() { _ = os.Chdir(origWd) })
-
-	content := []byte("# Hello\n\nWorld.\n")
-	pathname := filepath.Join(dir, "PLAN.md")
 	ours := filepath.Join(dir, "ours.md")
-	require.NoError(t, os.WriteFile(pathname, content, 0o644))
-	require.NoError(t, os.WriteFile(ours, content, 0o600))
+	require.NoError(t, os.WriteFile(ours, []byte("# Hello\n"), 0o600))
 
-	fixed, code := fixAtRealPath(content, ours, pathname, 1<<20)
+	origFix := fixSourceFn
+	t.Cleanup(func() { fixSourceFn = origFix })
+	fixSourceFn = func(_ string, src []byte, _ int64) ([]byte, error) {
+		return src, nil
+	}
+
+	fixed, code := fixMergedContent([]byte("# Hello\n"), ours, "PLAN.md", 1<<20)
 	require.Equal(t, 0, code)
 	assert.NotEmpty(t, fixed)
 
 	info, err := os.Stat(ours)
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm(),
-		"fixAtRealPath must preserve the original permissions of ours")
+		"fixMergedContent must preserve the original permissions of ours")
+}
+
+func TestFixMergedSource_RegeneratesCatalog_NoDiskWrites(t *testing.T) {
+	dir := t.TempDir()
+	origWd, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"),
+		[]byte("rules:\n  catalog: true\n"), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "plans"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "plans", "alpha.md"),
+		[]byte("---\ntitle: Alpha\n---\n\n# Alpha\n\nContent.\n"), 0o644))
+
+	// Stale catalog body: regeneration must fill in the alpha row.
+	source := "# Doc\n\n<?catalog\nglob: \"plans/*.md\"\nsort: title\n" +
+		"row: \"- [{title}]({filename})\"\n?>\n<?/catalog?>\n"
+
+	fixed, err := fixMergedSource("CATALOG.md", []byte(source), 1<<20)
+	require.NoError(t, err)
+	assert.Contains(t, string(fixed), "- [Alpha](plans/alpha.md)",
+		"catalog must regenerate from neighbour files on disk")
+
+	_, statErr := os.Stat(filepath.Join(dir, "CATALOG.md"))
+	assert.True(t, os.IsNotExist(statErr),
+		"fixMergedSource must not create the file on disk")
+}
+
+func TestFixMergedSource_ConfigLoadFails(t *testing.T) {
+	dir := t.TempDir()
+	origWd, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"),
+		[]byte(":\tnot yaml"), 0o644))
+
+	_, err = fixMergedSource("PLAN.md", []byte("# Hello\n"), 1<<20)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "loading config")
 }
 
 // --- merge-driver ci-install (npm-ci-style: verify, never write) ---

@@ -12,7 +12,6 @@ import (
 	"github.com/jeduden/mdsmith/internal/bytelimit"
 	fixpkg "github.com/jeduden/mdsmith/internal/fix"
 	"github.com/jeduden/mdsmith/internal/githooks"
-	vlog "github.com/jeduden/mdsmith/internal/log"
 	"github.com/jeduden/mdsmith/internal/rule"
 )
 
@@ -22,8 +21,11 @@ Subcommands:
   run <base> <ours> <theirs> <pathname>
         Run as a git custom merge driver. Strips conflict
         markers inside regenerable sections (catalog, include),
-        runs mdsmith fix to regenerate them, and exits non-zero
-        if unresolved conflict markers remain.
+        runs mdsmith fix in memory to regenerate them, and exits
+        non-zero if unresolved conflict markers remain. Only the
+        <ours> temp file is written; the worktree <pathname> is
+        never touched, so the parent merge or rebase never sees
+        the path as locally modified.
 
   install [globs...]
         Register the merge driver in git config and ensure
@@ -134,13 +136,10 @@ var guardFn = guardRegularFile
 // to exercise error paths without needing OS tricks.
 var osWriteFile = os.WriteFile
 
-// readFileLimited is a variable so tests can substitute a failing
-// implementation to exercise the read-fixed-file error path in readAndRestore.
-var readFileLimited = bytelimit.ReadFileLimited
-
-// fixFileInPlaceFn is a variable so tests can substitute a failing
-// implementation to exercise the fix-failed error path in fixAtRealPath.
-var fixFileInPlaceFn = fixFileInPlace
+// fixSourceFn is a variable so tests can substitute a failing
+// implementation to exercise the fix-failed error path in
+// fixMergedContent.
+var fixSourceFn = fixMergedSource
 
 // mergeAndClean performs the 3-way merge and strips conflict markers.
 // Returns the cleaned content and an exit code (0 on success).
@@ -239,9 +238,15 @@ func runMergeDriverRun(args []string) int {
 		return rc
 	}
 
-	// Step 3: run mdsmith fix at the real path and write result
-	// back to ours.
-	fixed, rc := fixAtRealPath(cleaned, ours, pathname, maxBytes)
+	// Step 3: run mdsmith fix on the merged content in memory and
+	// write the result to ours. The worktree path (%P) is never
+	// written: the driver runs while the parent merge is still in
+	// flight, and even a byte-identical write-and-restore changes
+	// the file's stat data, which makes git's up-to-date check
+	// treat the path as locally modified and abort the merge with
+	// "Your local changes would be overwritten" — under git rebase
+	// the pick is rescheduled forever.
+	fixed, rc := fixMergedContent(cleaned, ours, pathname, maxBytes)
 	if rc != 0 {
 		return rc
 	}
@@ -257,45 +262,17 @@ func runMergeDriverRun(args []string) int {
 	return 0
 }
 
-// fixAtRealPath writes cleaned content to pathname, runs mdsmith
-// fix, copies the result to ours, and restores pathname.
-func fixAtRealPath(cleaned []byte, ours, pathname string, maxBytes int64) ([]byte, int) {
-	pathnameMode := mergeFileMode(pathname, 0o644)
-	oursMode := mergeFileMode(ours, 0o644)
-
-	if err := guardFn(pathname); err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+// fixMergedContent runs the mdsmith fix pipeline on cleaned in
+// memory — anchored at pathname so config globs and neighbour-file
+// reads resolve as they would for the real file — and writes the
+// result to ours. pathname itself is never read or written; see
+// runMergeDriverRun step 3 for why a worktree write (even one
+// restored byte-for-byte) aborts the parent merge.
+func fixMergedContent(cleaned []byte, ours, pathname string, maxBytes int64) ([]byte, int) {
+	fixed, err := fixSourceFn(pathname, cleaned, maxBytes)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: fix failed: %v\n", err)
 		return nil, 2
-	}
-	if err := guardFn(ours); err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
-		return nil, 2
-	}
-	backup, backupErr := bytelimit.ReadFileLimited(pathname, maxBytes)
-	if backupErr != nil && !os.IsNotExist(backupErr) {
-		fmt.Fprintf(os.Stderr, "mdsmith: reading %s for backup: %v\n", pathname, backupErr)
-		return nil, 2
-	}
-	// Re-check immediately before writing to narrow the TOCTOU window.
-	if err := guardFn(pathname); err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
-		return nil, 2
-	}
-	if err := osWriteFile(pathname, cleaned, pathnameMode); err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: writing to %s: %v\n", pathname, err)
-		return nil, 2
-	}
-
-	fixErr := fixFileInPlaceFn(pathname, maxBytes)
-
-	fixed, code := readAndRestore(pathname, backup, backupErr, pathnameMode, maxBytes)
-	if code != 0 {
-		return fixed, code
-	}
-
-	if fixErr != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: fix failed: %v\n", fixErr)
-		return fixed, 2
 	}
 
 	// Re-check ours immediately before writing the final merge result.
@@ -303,47 +280,9 @@ func fixAtRealPath(cleaned []byte, ours, pathname string, maxBytes int64) ([]byt
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return nil, 2
 	}
-	if err := osWriteFile(ours, fixed, oursMode); err != nil {
+	if err := osWriteFile(ours, fixed, mergeFileMode(ours, 0o644)); err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: writing merge output: %v\n", err)
 		return nil, 2
-	}
-	return fixed, 0
-}
-
-// readAndRestore reads the fixed content from pathname, restores its original
-// content (or removes it if it did not previously exist), and returns the fixed
-// bytes. A non-zero exit code means the caller should propagate the error.
-func readAndRestore(pathname string, backup []byte, backupErr error, mode os.FileMode, maxBytes int64) ([]byte, int) {
-	// Re-check before reading the fixed result to guard against a symlink swap.
-	if err := guardFn(pathname); err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
-		return nil, 2
-	}
-	fixed, err := readFileLimited(pathname, maxBytes)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: reading fixed file: %v\n", err)
-		return nil, 2
-	}
-
-	var restoreErr error
-	if backupErr == nil {
-		// Re-check before restore to narrow TOCTOU window.
-		if err := guardFn(pathname); err != nil {
-			fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
-			return fixed, 2
-		}
-		restoreErr = osWriteFile(pathname, backup, mode)
-	} else if os.IsNotExist(backupErr) {
-		// Re-check before removal to avoid removing a swapped-in directory.
-		if err := guardFn(pathname); err != nil {
-			fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
-			return fixed, 2
-		}
-		restoreErr = os.Remove(pathname)
-	}
-	if restoreErr != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: restoring %s: %v\n", pathname, restoreErr)
-		return fixed, 2
 	}
 	return fixed, 0
 }
@@ -376,26 +315,26 @@ func mergeDriverRules() []rule.Rule {
 	return out
 }
 
-// fixFileInPlace runs the mdsmith fix pipeline on a single file.
-func fixFileInPlace(path string, maxBytes int64) error {
+// fixMergedSource runs the merge driver's fix rule set over source
+// in memory and returns the fixed bytes. path anchors config-glob
+// matching, and — because git invokes merge drivers from the
+// worktree root — the dirFS derived from it resolves neighbour
+// files (include sources, catalog globs) exactly as a fix of the
+// on-disk file would. Nothing is written to disk.
+func fixMergedSource(path string, source []byte, maxBytes int64) ([]byte, error) {
 	cfg, _, err := loadConfig("")
 	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
+		return nil, fmt.Errorf("loading config: %w", err)
 	}
 
-	fixer := &fixpkg.Fixer{
+	return fixpkg.Source(fixpkg.SourceOptions{
 		Config:           cfg,
 		Rules:            mergeDriverRules(),
+		Path:             path,
+		Source:           source,
 		StripFrontMatter: frontMatterEnabled(cfg),
-		Logger:           &vlog.Logger{},
 		MaxInputBytes:    maxBytes,
-	}
-
-	result := fixer.Fix([]string{path})
-	if len(result.Errors) > 0 {
-		return result.Errors[0]
-	}
-	return nil
+	})
 }
 
 // regenDirectiveNames returns the directive names whose content

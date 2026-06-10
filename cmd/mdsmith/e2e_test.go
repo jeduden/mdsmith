@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jeduden/mdsmith/internal/githooks"
 	"github.com/jeduden/mdsmith/internal/testsymlink"
@@ -1523,6 +1524,69 @@ func TestE2E_MergeDriver_CatalogConflict_Resolved(t *testing.T) {
 	assert.NotContains(t, content, "<<<<<<<", "expected no conflict markers after merge-driver")
 }
 
+// TestE2E_MergeDriver_Run_LeavesWorktreeUntouched pins the driver's
+// no-worktree-writes contract. The driver used to copy the merged
+// content to %P, run fix there, and restore the original bytes. The
+// restore is byte-identical but rewrites the file, so its stat data
+// (mtime) changes while the parent merge is still in flight. Git's
+// up-to-date check compares cached stat data, so it then treats the
+// path as locally modified and aborts the very merge that invoked
+// the driver ("Your local changes ... would be overwritten") — and
+// a `git rebase` pick that hits this is rescheduled forever. The
+// driver must write only %A.
+func TestE2E_MergeDriver_Run_LeavesWorktreeUntouched(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+
+	writeFixture(t, dir, ".mdsmith.yml", "rules:\n  catalog: true\n")
+
+	catalogBase := "# Doc\n\n<?catalog\nglob: \"plans/*.md\"\nsort: title\n" +
+		"header: |\n  | Title |\n  |-------|\nrow: \"| [{title}]({filename}) |\"\n?>\n" +
+		"| Title       |\n|-------------|\n| [Alpha](plans/alpha.md) |\n<?/catalog?>\n"
+	catalogOurs := "# Doc\n\n<?catalog\nglob: \"plans/*.md\"\nsort: title\n" +
+		"header: |\n  | Title |\n  |-------|\nrow: \"| [{title}]({filename}) |\"\n?>\n" +
+		"| Title       |\n|-------------|\n| [Alpha](plans/alpha.md) |\n| [Beta](plans/beta.md) |\n<?/catalog?>\n"
+	catalogTheirs := "# Doc\n\n<?catalog\nglob: \"plans/*.md\"\nsort: title\n" +
+		"header: |\n  | Title |\n  |-------|\nrow: \"| [{title}]({filename}) |\"\n?>\n" +
+		"| Title       |\n|-------------|\n| [Alpha](plans/alpha.md) |\n" +
+		"| [Gamma](plans/gamma.md) |\n<?/catalog?>\n"
+
+	base := writeFixture(t, dir, "base.md", catalogBase)
+	ours := writeFixture(t, dir, "ours.md", catalogOurs)
+	theirs := writeFixture(t, dir, "theirs.md", catalogTheirs)
+	pathname := writeFixture(t, dir, "CATALOG.md", catalogOurs)
+
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "plans"), 0o755))
+	writeFixture(t, dir, "plans/alpha.md", "---\ntitle: Alpha\n---\n\n# Alpha\n\nContent.\n")
+	writeFixture(t, dir, "plans/beta.md", "---\ntitle: Beta\n---\n\n# Beta\n\nContent.\n")
+	writeFixture(t, dir, "plans/gamma.md", "---\ntitle: Gamma\n---\n\n# Gamma\n\nContent.\n")
+
+	before, err := os.Lstat(pathname)
+	require.NoError(t, err)
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "merge-driver", "run", base, ours, theirs, pathname)
+	assert.Equal(t, 0, exitCode, "expected exit 0, got %d; stderr: %s", exitCode, stderr)
+
+	// The regenerated result must land in ours (%A) with both rows.
+	result, _ := os.ReadFile(ours)
+	content := string(result)
+	assert.NotContains(t, content, "<<<<<<<", "expected no conflict markers after merge-driver")
+	assert.Contains(t, content, "plans/beta.md", "fix must regenerate the catalog from neighbour files")
+	assert.Contains(t, content, "plans/gamma.md", "fix must regenerate the catalog from neighbour files")
+
+	// The worktree path (%P) must be untouched: same bytes AND same
+	// stat data — a byte-identical rewrite still bumps mtime.
+	after, err := os.Lstat(pathname)
+	require.NoError(t, err)
+	assert.True(t, before.ModTime().Equal(after.ModTime()),
+		"merge driver wrote the worktree path: mtime changed %v -> %v",
+		before.ModTime(), after.ModTime())
+	worktree, err := os.ReadFile(pathname)
+	require.NoError(t, err)
+	assert.Equal(t, catalogOurs, string(worktree),
+		"worktree content must be byte-identical after merge-driver run")
+}
+
 func TestE2E_MergeDriver_NonCatalogConflict_ExitsOne(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
@@ -1939,6 +2003,414 @@ func TestE2E_MergeDriver_FileOrderingRace_Resolved(t *testing.T) {
 		"check after merge must pass; stderr:\n%s", stderr)
 }
 
+// TestE2E_MergeDriver_RebasePick_Succeeds is the rebase twin of the
+// FileOrderingRace merge test. A rebase pick performs the same 3-way
+// merge, but git verifies worktree paths are up to date against
+// cached stat data before checking out the result. The old driver
+// wrote-and-restored %P in the worktree, bumping its mtime, so the
+// pick aborted with "Your local changes ... would be overwritten"
+// and git rescheduled it — every retry hit the same wall, so the
+// rebase could never finish. The driver must leave the rebase able
+// to complete in one shot with a clean worktree.
+func TestE2E_MergeDriver_RebasePick_Succeeds(t *testing.T) {
+	dir := t.TempDir()
+	gitInit(t, dir)
+
+	writeFixture(t, dir, ".mdsmith.yml",
+		"rules:\n  catalog: true\n  include: true\n")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "plan"), 0o755))
+	writeFixture(t, dir, "plan/01.md", fmt.Sprintf(planTmpl, 1, 1, "🔲", 1))
+	writeFixture(t, dir, "plan/02.md", fmt.Sprintf(planTmpl, 2, 2, "🔲", 2))
+	writeFixture(t, dir, "PLAN.md", planMdTmpl)
+
+	_, stderr, code := runBinaryInDir(t, dir, "", "fix", "PLAN.md")
+	require.Equal(t, 0, code, "seed fix failed: %s", stderr)
+	gitCommit(t, dir, "seed")
+	seedSHA := strings.TrimSpace(gitInDir(t, dir, "rev-parse", "HEAD"))
+
+	// Both branches modify PLAN.md (regenerated catalog) plus their
+	// own plan file, so the rebase pick merges PLAN.md via the driver.
+	completePlanOnBranch(t, dir, "ours", seedSHA, 1)
+	completePlanOnBranch(t, dir, "theirs", seedSHA, 2)
+
+	gitInDir(t, dir, "checkout", "ours")
+	_, stderr, code = runBinaryInDir(t, dir, "", "merge-driver", "install")
+	require.Equal(t, 0, code, "install failed: %s", stderr)
+
+	// Replay ours on top of theirs. With the old worktree-writing
+	// driver this exits non-zero with the pick rescheduled.
+	out, err := exec.Command("git", "-C", dir,
+		"-c", "commit.gpgsign=false",
+		"rebase", "theirs").CombinedOutput()
+	require.NoError(t, err, "git rebase failed: %s", out)
+
+	// The rebase must have fully completed, not stopped mid-pick.
+	_, statErr := os.Stat(filepath.Join(dir, ".git", "rebase-merge"))
+	assert.True(t, os.IsNotExist(statErr),
+		"rebase must not be left in progress")
+
+	// No driver-induced modifications to tracked files may remain.
+	// (install drops an untracked .gitattributes; that is setup, not
+	// driver output, so untracked files are excluded.)
+	status := gitInDir(t, dir, "status", "--porcelain", "--untracked-files=no")
+	assert.Empty(t, strings.TrimSpace(status),
+		"tracked files must be clean after the rebase, got:\n%s", status)
+
+	// Both plan bumps survive the replay. (Rebase runs no
+	// pre-merge-commit hook, so PLAN.md's catalog may need one
+	// `mdsmith fix` — the documented post-rebase step — but the
+	// plan files themselves must hold both ✅ states.)
+	for _, path := range []string{"plan/01.md", "plan/02.md"} {
+		data, err := os.ReadFile(filepath.Join(dir, path))
+		require.NoError(t, err)
+		assert.Contains(t, string(data), `status: "✅"`,
+			"%s status must be ✅ after rebase", path)
+	}
+
+	// One fix pass settles the catalog; check must then be clean.
+	_, stderr, code = runBinaryInDir(t, dir, "", "fix", ".")
+	require.Equal(t, 0, code, "post-rebase fix failed: %s", stderr)
+	_, stderr, code = runBinaryInDir(t, dir, "", "check", ".")
+	assert.Equal(t, 0, code,
+		"check after rebase + fix must pass; stderr:\n%s", stderr)
+}
+
+// TestE2E_MergeDriver_CherryPick_Succeeds covers the third real-git
+// replay path next to merge and rebase: a cherry-pick performs the
+// same 3-way merge as a rebase pick, so it would have hit the same
+// stale-stat abort with the old worktree-writing driver.
+func TestE2E_MergeDriver_CherryPick_Succeeds(t *testing.T) {
+	dir := t.TempDir()
+	gitInit(t, dir)
+
+	writeFixture(t, dir, ".mdsmith.yml",
+		"rules:\n  catalog: true\n  include: true\n")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "plan"), 0o755))
+	writeFixture(t, dir, "plan/01.md", fmt.Sprintf(planTmpl, 1, 1, "🔲", 1))
+	writeFixture(t, dir, "plan/02.md", fmt.Sprintf(planTmpl, 2, 2, "🔲", 2))
+	writeFixture(t, dir, "PLAN.md", planMdTmpl)
+
+	_, stderr, code := runBinaryInDir(t, dir, "", "fix", "PLAN.md")
+	require.Equal(t, 0, code, "seed fix failed: %s", stderr)
+	gitCommit(t, dir, "seed")
+	seedSHA := strings.TrimSpace(gitInDir(t, dir, "rev-parse", "HEAD"))
+
+	completePlanOnBranch(t, dir, "ours", seedSHA, 1)
+	completePlanOnBranch(t, dir, "theirs", seedSHA, 2)
+	theirsSHA := strings.TrimSpace(gitInDir(t, dir, "rev-parse", "theirs"))
+
+	gitInDir(t, dir, "checkout", "ours")
+	_, stderr, code = runBinaryInDir(t, dir, "", "merge-driver", "install")
+	require.Equal(t, 0, code, "install failed: %s", stderr)
+
+	out, err := exec.Command("git", "-C", dir,
+		"-c", "commit.gpgsign=false",
+		"cherry-pick", theirsSHA).CombinedOutput()
+	require.NoError(t, err, "git cherry-pick failed: %s", out)
+
+	_, statErr := os.Stat(filepath.Join(dir, ".git", "CHERRY_PICK_HEAD"))
+	assert.True(t, os.IsNotExist(statErr),
+		"cherry-pick must not be left in progress")
+	status := gitInDir(t, dir, "status", "--porcelain", "--untracked-files=no")
+	assert.Empty(t, strings.TrimSpace(status),
+		"tracked files must be clean after the cherry-pick, got:\n%s", status)
+
+	for _, path := range []string{"plan/01.md", "plan/02.md"} {
+		data, err := os.ReadFile(filepath.Join(dir, path))
+		require.NoError(t, err)
+		assert.Contains(t, string(data), `status: "✅"`,
+			"%s status must be ✅ after cherry-pick", path)
+	}
+
+	_, stderr, code = runBinaryInDir(t, dir, "", "fix", ".")
+	require.Equal(t, 0, code, "post-cherry-pick fix failed: %s", stderr)
+	_, stderr, code = runBinaryInDir(t, dir, "", "check", ".")
+	assert.Equal(t, 0, code,
+		"check after cherry-pick + fix must pass; stderr:\n%s", stderr)
+}
+
+// setupMultiFileRebaseRepo builds a repo whose ours and theirs
+// branches each modify three driver-managed files — PLAN.md's
+// catalog, DOC.md's include body, and NOTES.md, the include's
+// plain-prose source (non-overlapping line edits) — and installs
+// the merge driver. ours is left checked out, ready to rebase
+// onto theirs.
+func setupMultiFileRebaseRepo(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	gitInit(t, dir)
+
+	writeFixture(t, dir, ".mdsmith.yml",
+		"rules:\n  catalog: true\n  include: true\n")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "plan"), 0o755))
+	writeFixture(t, dir, "plan/01.md", fmt.Sprintf(planTmpl, 1, 1, "🔲", 1))
+	writeFixture(t, dir, "plan/02.md", fmt.Sprintf(planTmpl, 2, 2, "🔲", 2))
+	writeFixture(t, dir, "PLAN.md", planMdTmpl)
+	writeFixture(t, dir, "NOTES.md",
+		"# Notes\n\nalpha line stays.\n\nbravo line stays.\n")
+	writeFixture(t, dir, "DOC.md",
+		"# Doc\n\n<?include\nfile: NOTES.md\nheading-level: \"2\"\n?>\n<?/include?>\n")
+
+	_, stderr, code := runBinaryInDir(t, dir, "", "fix", ".")
+	require.Equal(t, 0, code, "seed fix failed: %s", stderr)
+	gitCommit(t, dir, "seed")
+	seedSHA := strings.TrimSpace(gitInDir(t, dir, "rev-parse", "HEAD"))
+
+	// ours: bump plan 01, edit NOTES line 1, regenerate everything.
+	gitInDir(t, dir, "checkout", "-b", "ours", seedSHA)
+	writeFixture(t, dir, "plan/01.md", fmt.Sprintf(planTmpl, 1, 1, "✅", 1))
+	writeFixture(t, dir, "NOTES.md",
+		"# Notes\n\nalpha line changed by ours.\n\nbravo line stays.\n")
+	_, stderr, code = runBinaryInDir(t, dir, "", "fix", ".")
+	require.Equal(t, 0, code, "ours fix failed: %s", stderr)
+	gitCommit(t, dir, "ours: plan 1 + alpha edit")
+
+	// theirs: bump plan 02, edit NOTES line 2, regenerate everything.
+	gitInDir(t, dir, "checkout", "-b", "theirs", seedSHA)
+	writeFixture(t, dir, "plan/02.md", fmt.Sprintf(planTmpl, 2, 2, "✅", 2))
+	writeFixture(t, dir, "NOTES.md",
+		"# Notes\n\nalpha line stays.\n\nbravo line changed by theirs.\n")
+	_, stderr, code = runBinaryInDir(t, dir, "", "fix", ".")
+	require.Equal(t, 0, code, "theirs fix failed: %s", stderr)
+	gitCommit(t, dir, "theirs: plan 2 + bravo edit")
+
+	gitInDir(t, dir, "checkout", "ours")
+	_, stderr, code = runBinaryInDir(t, dir, "", "merge-driver", "install")
+	require.Equal(t, 0, code, "install failed: %s", stderr)
+	return dir
+}
+
+// TestE2E_MergeDriver_RebaseMultiFile_Succeeds replays a pick where
+// the driver runs on THREE both-sides-modified files in one merge —
+// a catalog file, an include file, and the include's plain-prose
+// source. This is the shape of the rebase that exposed the
+// worktree-write bug: one stat-dirtied path is enough to abort the
+// pick, and a multi-file pick multiplies the chances. The pick must
+// complete in one shot with every generated section resolved.
+func TestE2E_MergeDriver_RebaseMultiFile_Succeeds(t *testing.T) {
+	dir := setupMultiFileRebaseRepo(t)
+
+	out, err := exec.Command("git", "-C", dir,
+		"-c", "commit.gpgsign=false",
+		"rebase", "theirs").CombinedOutput()
+	require.NoError(t, err, "multi-file rebase failed: %s", out)
+
+	_, statErr := os.Stat(filepath.Join(dir, ".git", "rebase-merge"))
+	assert.True(t, os.IsNotExist(statErr),
+		"rebase must not be left in progress")
+	status := gitInDir(t, dir, "status", "--porcelain", "--untracked-files=no")
+	assert.Empty(t, strings.TrimSpace(status),
+		"tracked files must be clean after the rebase, got:\n%s", status)
+
+	// Both prose edits to the include source must survive the replay.
+	notes, err := os.ReadFile(filepath.Join(dir, "NOTES.md"))
+	require.NoError(t, err)
+	assert.Contains(t, string(notes), "alpha line changed by ours")
+	assert.Contains(t, string(notes), "bravo line changed by theirs")
+
+	// No generated section may carry conflict markers.
+	for _, path := range []string{"PLAN.md", "DOC.md"} {
+		data, err := os.ReadFile(filepath.Join(dir, path))
+		require.NoError(t, err)
+		assert.NotContains(t, string(data), "<<<<<<<",
+			"%s must not carry conflict markers", path)
+	}
+
+	_, stderr, code := runBinaryInDir(t, dir, "", "fix", ".")
+	require.Equal(t, 0, code, "post-rebase fix failed: %s", stderr)
+	_, stderr, code = runBinaryInDir(t, dir, "", "check", ".")
+	assert.Equal(t, 0, code,
+		"check after rebase + fix must pass; stderr:\n%s", stderr)
+}
+
+// setupAgedPickRepo reproduces the repo shape of the PR #553
+// incident. CATALOG.md carries a catalog plus hand prose; HEAD and
+// the feature branch both regenerate the catalog, and the feature
+// commit also edits the prose, so a pick of it must run the driver
+// AND check out a result that differs from the worktree. The file
+// is then aged: its mtime is moved into the past and the index
+// refreshed, so the index records stat data older than the index
+// itself — exactly the state of any repo that was not created
+// milliseconds ago. Git then trusts stat instead of re-hashing, so
+// a driver that bumps the file's mtime mid-merge (the old
+// write-and-restore behavior) makes the pick abort with "Your
+// local changes ... would be overwritten". Returns the repo dir
+// and the feature commit to pick.
+func setupAgedPickRepo(t *testing.T) (string, string) {
+	t.Helper()
+	dir := t.TempDir()
+	gitInit(t, dir)
+
+	writeFixture(t, dir, ".mdsmith.yml", "rules:\n  catalog: true\n")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "plan"), 0o755))
+	writeFixture(t, dir, "plan/01.md", fmt.Sprintf(planTmpl, 1, 1, "🔲", 1))
+	writeFixture(t, dir, "CATALOG.md",
+		"# Plans\n\nIntro line, version zero.\n\n"+
+			"<?catalog\nglob:\n  - \"plan/*.md\"\nsort: id\n"+
+			"row: \"- [{title}]({filename})\"\n?>\n<?/catalog?>\n")
+	_, stderr, code := runBinaryInDir(t, dir, "", "merge-driver", "install")
+	require.Equal(t, 0, code, "install failed: %s", stderr)
+	_, stderr, code = runBinaryInDir(t, dir, "", "fix", "CATALOG.md")
+	require.Equal(t, 0, code, "seed fix failed: %s", stderr)
+	gitCommit(t, dir, "seed")
+	seedSHA := strings.TrimSpace(gitInDir(t, dir, "rev-parse", "HEAD"))
+
+	// feature: add plan 03, edit the prose line, regenerate.
+	gitInDir(t, dir, "checkout", "-b", "feature", seedSHA)
+	writeFixture(t, dir, "plan/03.md", fmt.Sprintf(planTmpl, 3, 3, "🔲", 3))
+	data, err := os.ReadFile(filepath.Join(dir, "CATALOG.md"))
+	require.NoError(t, err)
+	writeFixture(t, dir, "CATALOG.md", strings.Replace(string(data),
+		"Intro line, version zero.", "Intro line, version two.", 1))
+	_, stderr, code = runBinaryInDir(t, dir, "", "fix", "CATALOG.md")
+	require.Equal(t, 0, code, "feature fix failed: %s", stderr)
+	gitCommit(t, dir, "feature: plan 3 + prose edit")
+	featureSHA := strings.TrimSpace(gitInDir(t, dir, "rev-parse", "HEAD"))
+
+	// HEAD moves on independently: add plan 02, regenerate.
+	gitInDir(t, dir, "checkout", "-b", "trunk", seedSHA)
+	writeFixture(t, dir, "plan/02.md", fmt.Sprintf(planTmpl, 2, 2, "🔲", 2))
+	_, stderr, code = runBinaryInDir(t, dir, "", "fix", "CATALOG.md")
+	require.Equal(t, 0, code, "trunk fix failed: %s", stderr)
+	gitCommit(t, dir, "trunk: plan 2")
+
+	// Age CATALOG.md and refresh, so its recorded stat is strictly
+	// older than the index — git now trusts stat over content.
+	aged := time.Now().Add(-time.Minute)
+	require.NoError(t, os.Chtimes(filepath.Join(dir, "CATALOG.md"), aged, aged))
+	gitInDir(t, dir, "update-index", "--refresh")
+	return dir, featureSHA
+}
+
+// TestE2E_MergeDriver_AgedWorktree_CherryPick_Succeeds is the
+// portable reproduction of the PR #553 incident: in a settled
+// worktree, a pick that both-modifies a driver-managed file used
+// to abort with "Your local changes ... would be overwritten" and
+// be rescheduled forever, because the old driver's byte-identical
+// write-and-restore of %P bumped its mtime while git trusted the
+// file's (older) recorded stat. A cherry-pick is used because it
+// runs the identical 3-way pick machinery without a preceding
+// branch checkout, which would re-freshen the aged file and let
+// git's racy-stat re-hash mask the regression.
+func TestE2E_MergeDriver_AgedWorktree_CherryPick_Succeeds(t *testing.T) {
+	dir, featureSHA := setupAgedPickRepo(t)
+
+	out, err := exec.Command("git", "-C", dir,
+		"-c", "commit.gpgsign=false",
+		"cherry-pick", featureSHA).CombinedOutput()
+	require.NoError(t, err,
+		"cherry-pick must complete; the old worktree-writing driver "+
+			"aborts here with 'local changes would be overwritten': %s", out)
+
+	_, statErr := os.Stat(filepath.Join(dir, ".git", "CHERRY_PICK_HEAD"))
+	assert.True(t, os.IsNotExist(statErr),
+		"cherry-pick must not be left in progress")
+
+	catalog, readErr := os.ReadFile(filepath.Join(dir, "CATALOG.md"))
+	require.NoError(t, readErr)
+	content := string(catalog)
+	assert.Contains(t, content, "Intro line, version two.",
+		"the picked prose edit must land")
+	assert.NotContains(t, content, "<<<<<<<", "no conflict markers")
+
+	status := gitInDir(t, dir, "status", "--porcelain", "--untracked-files=no")
+	assert.Empty(t, strings.TrimSpace(status),
+		"tracked files must be clean after the pick, got:\n%s", status)
+
+	_, stderr, code := runBinaryInDir(t, dir, "", "fix", ".")
+	require.Equal(t, 0, code, "post-pick fix failed: %s", stderr)
+	_, stderr, code = runBinaryInDir(t, dir, "", "check", ".")
+	assert.Equal(t, 0, code, "check after pick + fix must pass; stderr:\n%s", stderr)
+}
+
+// TestE2E_MergeDriver_RealMerge_ProseConflict_AbortRestores drives
+// the driver's failure path through real git: a conflict in
+// hand-written prose is not resolvable, so the driver exits 1, git
+// must record the path as unmerged with markers in the worktree,
+// and `git merge --abort` must restore the pre-merge tree exactly —
+// proving the failed driver run left no stray writes behind.
+func TestE2E_MergeDriver_RealMerge_ProseConflict_AbortRestores(t *testing.T) {
+	dir := t.TempDir()
+	gitInit(t, dir)
+
+	writeFixture(t, dir, ".mdsmith.yml", "rules:\n  catalog: true\n")
+	writeFixture(t, dir, "NOTES.md", "# Notes\n\noriginal line here.\n")
+	_, stderr, code := runBinaryInDir(t, dir, "", "merge-driver", "install")
+	require.Equal(t, 0, code, "install failed: %s", stderr)
+	gitCommit(t, dir, "seed")
+	seedSHA := strings.TrimSpace(gitInDir(t, dir, "rev-parse", "HEAD"))
+
+	oursContent := "# Notes\n\nours change here.\n"
+	gitInDir(t, dir, "checkout", "-b", "ours", seedSHA)
+	writeFixture(t, dir, "NOTES.md", oursContent)
+	gitCommit(t, dir, "ours edit")
+	gitInDir(t, dir, "checkout", "-b", "theirs", seedSHA)
+	writeFixture(t, dir, "NOTES.md", "# Notes\n\ntheirs change here.\n")
+	gitCommit(t, dir, "theirs edit")
+	gitInDir(t, dir, "checkout", "ours")
+
+	out, err := exec.Command("git", "-C", dir,
+		"-c", "commit.gpgsign=false",
+		"merge", "--no-ff", "theirs").CombinedOutput()
+	require.Error(t, err, "prose conflict must stop the merge, got:\n%s", out)
+
+	// git must record the unmerged path and leave markers in place.
+	require.Contains(t, gitInDir(t, dir, "ls-files", "-u"), "NOTES.md",
+		"NOTES.md must be recorded as unmerged")
+	data, readErr := os.ReadFile(filepath.Join(dir, "NOTES.md"))
+	require.NoError(t, readErr)
+	assert.Contains(t, string(data), "<<<<<<<")
+	assert.Contains(t, string(data), "ours change here.")
+	assert.Contains(t, string(data), "theirs change here.")
+
+	// Abort must restore the pre-merge state cleanly.
+	abortOut, abortErr := exec.Command("git", "-C", dir,
+		"merge", "--abort").CombinedOutput()
+	require.NoError(t, abortErr, "merge --abort failed: %s", abortOut)
+	status := gitInDir(t, dir, "status", "--porcelain", "--untracked-files=no")
+	assert.Empty(t, strings.TrimSpace(status),
+		"tracked files must be clean after abort, got:\n%s", status)
+	data, readErr = os.ReadFile(filepath.Join(dir, "NOTES.md"))
+	require.NoError(t, readErr)
+	assert.Equal(t, oursContent, string(data),
+		"abort must restore the pre-merge ours content")
+}
+
+// TestE2E_MergeDriver_RealMerge_Diff3SectionConflict_Resolved pins
+// diff3 conflict-marker handling through real git. With
+// merge.conflictstyle=diff3 the driver's internal `git merge-file`
+// emits ||||||| base sections inside the conflicted generated
+// block; stripSectionConflicts must strip those too, and the
+// regeneration replaces any leftover base lines.
+func TestE2E_MergeDriver_RealMerge_Diff3SectionConflict_Resolved(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	dir := setupConflictingMergeRepo(t)
+	gitInDir(t, dir, "config", "merge.conflictstyle", "diff3")
+
+	out, err := exec.Command("git", "-C", dir,
+		"-c", "commit.gpgsign=false",
+		"merge", "--no-ff", "-m", "merge theirs", "theirs").CombinedOutput()
+	require.NoError(t, err, "git merge failed: %s", out)
+
+	plan, readErr := os.ReadFile(filepath.Join(dir, "PLAN.md"))
+	require.NoError(t, readErr)
+	planStr := string(plan)
+	for _, id := range []string{"1", "2", "3"} {
+		assert.Regexp(t, `\| `+id+` +\|`, planStr,
+			"merged PLAN.md catalog must list plan %s; got:\n%s", id, planStr)
+	}
+	for _, marker := range []string{"<<<<<<<", ">>>>>>>", "|||||||"} {
+		assert.NotContains(t, planStr, marker,
+			"no %s marker may survive the diff3 merge", marker)
+	}
+
+	_, stderr, code := runBinaryInDir(t, dir, "", "check", ".")
+	assert.Equal(t, 0, code,
+		"check after diff3 merge must pass; stderr:\n%s", stderr)
+}
+
 // setupConflictingMergeRepo builds a repo whose `ours` and `theirs`
 // branches both regenerate PLAN.md's catalog (ours adds plan 02,
 // theirs adds plan 03), so merging conflicts inside the generated
@@ -2036,6 +2508,103 @@ func TestE2E_PreMergeCommit_ConflictingMergeResolvesWithHookSync(t *testing.T) {
 
 	_, stderr, code := runBinaryInDir(t, dir, "", "check", ".")
 	assert.Equal(t, 0, code, "check after merge must pass; stderr:\n%s", stderr)
+}
+
+// queueMergeBranch performs one merge exactly the way the merge
+// queue does: `git merge --no-ff --no-commit <branch>`, assert the
+// driver left no unmerged paths, run the pre-merge-commit hook, and
+// `git commit`. Returns after the merge commit exists.
+func queueMergeBranch(t *testing.T, dir, branch string) {
+	t.Helper()
+	mergeOut, mergeErr := exec.Command("git", "-C", dir,
+		"-c", "commit.gpgsign=false",
+		"merge", "--no-ff", "--no-commit", branch).CombinedOutput()
+	// `--no-commit` exits non-zero by design; resolution is judged by
+	// the absence of unmerged index paths.
+	require.Empty(t, strings.TrimSpace(gitInDir(t, dir, "ls-files", "-u")),
+		"merge of %s must leave no unmerged paths; exit=%v output:\n%s",
+		branch, mergeErr, mergeOut)
+
+	hook := exec.Command(filepath.Join(gitHooksDir(t, dir), "pre-merge-commit"))
+	hook.Dir = dir
+	hookOut, hookErr := hook.CombinedOutput()
+	require.NoErrorf(t, hookErr, "pre-merge-commit hook failed for %s: %s",
+		branch, hookOut)
+
+	commitOut, err := exec.Command("git", "-C", dir,
+		"-c", "commit.gpgsign=false",
+		"commit", "--no-edit").CombinedOutput()
+	require.NoErrorf(t, err, "merge commit for %s failed: %s", branch, commitOut)
+}
+
+// TestE2E_MergeQueue_BatchTwoPRs_RightCommits simulates a full
+// merge-queue batch end to end with real git: `ci-install` (the
+// queue's installer), then two PR branches that each regenerate
+// PLAN.md's catalog are merged back to back with the queue's exact
+// sequence (merge --no-ff --no-commit, hook, commit). The second
+// merge must check out results over paths the first merge's driver
+// already processed, so any worktree side effect the driver leaves
+// behind surfaces here. The batch must end with two merge commits,
+// a catalog listing every plan, a clean tree, and a green check.
+func TestE2E_MergeQueue_BatchTwoPRs_RightCommits(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	dir := t.TempDir()
+	gitInit(t, dir)
+
+	writeFixture(t, dir, ".mdsmith.yml",
+		"rules:\n  catalog: true\n  include: true\n")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "plan"), 0o755))
+	writeFixture(t, dir, "plan/01.md", fmt.Sprintf(planTmpl, 1, 1, "🔲", 1))
+	writeFixture(t, dir, "PLAN.md", planMdTmpl)
+
+	// install writes the managed .gitattributes; commit it so
+	// ci-install (the queue's verifying installer) can pass later.
+	_, stderr, code := runBinaryInDir(t, dir, "", "merge-driver", "install")
+	require.Equal(t, 0, code, "install failed: %s", stderr)
+	_, stderr, code = runBinaryInDir(t, dir, "", "fix", "PLAN.md")
+	require.Equal(t, 0, code, "seed fix failed: %s", stderr)
+	gitCommit(t, dir, "seed")
+	seedSHA := strings.TrimSpace(gitInDir(t, dir, "rev-parse", "HEAD"))
+
+	// Two PRs, each bumping its own plan file and regenerating the
+	// shared catalog — the classic queue-batch conflict shape.
+	completePlanOnBranch(t, dir, "pr1", seedSHA, 2)
+	completePlanOnBranch(t, dir, "pr2", seedSHA, 3)
+
+	// The queue starts from a batch branch at main and runs
+	// ci-install, which verifies the committed .gitattributes and
+	// registers the driver + hook without writing tracked files.
+	gitInDir(t, dir, "checkout", "-b", "batch", seedSHA)
+	_, stderr, code = runBinaryInDir(t, dir, "", "merge-driver", "ci-install")
+	require.Equal(t, 0, code, "ci-install failed: %s", stderr)
+
+	queueMergeBranch(t, dir, "pr1")
+	queueMergeBranch(t, dir, "pr2")
+
+	// Two merge commits on top of seed, in order.
+	subjects := gitInDir(t, dir, "log", "--format=%s", seedSHA+"..HEAD")
+	assert.Equal(t, 2, strings.Count(subjects, "Merge branch"),
+		"batch must contain exactly two merge commits, got:\n%s", subjects)
+
+	// The committed catalog lists every plan with its final status.
+	committedPlan := gitInDir(t, dir, "show", "HEAD:PLAN.md")
+	for _, id := range []string{"1", "2", "3"} {
+		assert.Regexp(t, `\| `+id+` +\|`, committedPlan,
+			"batch PLAN.md must list plan %s; got:\n%s", id, committedPlan)
+	}
+	assert.NotContains(t, committedPlan, "<<<<<<<",
+		"no conflict markers may survive into the batch commits")
+
+	// Clean end state: no stale lock, clean tree, green check.
+	assert.NoFileExists(t, filepath.Join(dir, ".git", "index.lock"),
+		"no stale .git/index.lock may remain after the batch")
+	status := strings.TrimSpace(gitInDir(t, dir, "status", "--porcelain"))
+	assert.Empty(t, status,
+		"worktree must be clean after the batch; got:\n%s", status)
+	_, stderr, code = runBinaryInDir(t, dir, "", "check", ".")
+	assert.Equal(t, 0, code, "check after batch must pass; stderr:\n%s", stderr)
 }
 
 // TestE2E_PreMergeCommit_NoCommitMergeCapturesBoth exercises the
