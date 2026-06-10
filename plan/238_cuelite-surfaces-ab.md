@@ -1,7 +1,7 @@
 ---
 id: 238
 title: "cuelite phase 2 — surfaces A + B (schema, query)"
-status: "🔳"
+status: "✅"
 model: opus
 summary: >-
   Move internal/schema, requiredstructure, and internal/query
@@ -80,9 +80,9 @@ unification rules.
       schema suite (plan 147 / plan 230 tests) passes unchanged.
 - [x] The harness shows in-house and CUE agree on the full
       corpus, the real-repo-schema sweep, and a 300 s
-      schema×data fuzzer. `cue/cuelite` statement coverage is
-      93 % (the remaining branches are eval/compile duplication
-      and CUE-era guards; 100 % branch coverage is task-4 work).
+      schema×data fuzzer. `cue/cuelite` and `internal/cuelitetest`
+      reach 100 % statement coverage after the task-4 dedup;
+      gobco branch coverage is 1276/1278 (two structural arms).
 - [x] All tests pass: `go test ./...`
 - [x] `go tool golangci-lint run` reports no issues.
 
@@ -262,19 +262,38 @@ The blocker — four pinned CUE-behavior test classes — was resolved by
 the authorization. The "Test-contract flip" section above records the
 contract each class moved to.
 
-### Task 4 — alloc budget and benchmark (mostly done)
+### Task 4 — coverage, gobco, alloc, factor gate (done)
 
-The flip erased the two-context cost. `BenchmarkValidate/cuelite` now
-measures 8.0 µs/op and 85 allocs/op (was 89 µs / 356), 0.25× the CUE
-oracle; `BenchmarkCompileValidate` is 24.6 µs / 205 allocs, 0.39× CUE.
-Both clear the factor-gate budgets in the tighter ≤ 1.0× direction
-(numbers reported, budgets unchanged). The per-rule alloc-budget test
-passes for MDS020 on representative input.
+**Dedup refactor.** The duplicate builders in `eval.go` collapsed
+into one scope-threaded set. `compileExpr` is the unscoped face of
+`evalExpr` (a nil scope), and `evalChild` routes the field, element,
+and branch positions through the compile-time deferral. An index or
+relational over an unresolved sibling becomes a thunk. A bare
+reference stays a hard "reference not found". Five compile-only
+builders were deleted.
 
-Remaining: drive `cue/cuelite` to 100 % coverage (it sits at 93 %).
-The gap is `eval.go` duplicating `compile.go`'s scoped builders — a
-de-dup refactor closes it — plus two now-unreachable CUE-era
-`validate.go` guards.
+**Coverage 100 %.** `cue/cuelite` and `internal/cuelitetest` are both
+at 100 % statements. Residual defaults were driven red/green on
+constructed values or restructured away. The two `ast.LabelName`-error
+branches were removed: the parser always yields an `*ast.Ident`
+selector member, read via `selectorName`. The impossible list-tail
+nil-fills were dropped under the "openTop ⟹ elem != nil" invariant.
+
+**gobco.** `go tool gobco -branch ./cue/cuelite` reports 1276/1278
+conditions. The two remaining are the structural gaps plan 237
+records (`path.go`'s `sepBracket` switch arm and `multiline.go`'s
+`for i > 0` walk-back bound), neither in the flipped engine.
+
+**Alloc.** The `internal/integration` per-rule gate passes. MDS020
+allocates 0.0/op on the gate fixture (no front matter → early exit).
+The schema-validate hot path it delegates to measures
+`BenchmarkValidate/cuelite` 7.9 µs / 85 allocs (0.24×/0.40× CUE) and
+`BenchmarkCompileValidate` 22.1 µs / 205 allocs (0.35×/0.53× CUE).
+
+**Factor gate tightened.** `HotFactorBudget` and `ColdFactorBudget`
+set to 1.0 at this flip, not deferred to plan 240. The interim
+hot-looser-than-cold guard now asserts both ≤ 1.0×. The armed gate
+passes with margin: hot 0.20–0.30×, cold 0.36–0.40×.
 
 ## See also
 

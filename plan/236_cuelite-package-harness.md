@@ -123,11 +123,12 @@ the per-surface phases.
   runs after a discarded warmup, so the ratio cancels runner noise
   the way it cancels runner speed (the
   [benchcheck](../internal/release/benchcheck.go) philosophy) — and
-  FAILS when either exceeds its interim budget: `HotFactorBudget`
-  2.5x, `ColdFactorBudget` 2.0x. The hot budget is looser because
-  the CUE-backed arm's cost is N-dependent (one compiled document
-  accumulates in the long-lived schema context per iteration), so
-  it measures ~1.9x against the cold path's stable ~1.4x. The
+  FAILS when either exceeds its budget. Phase 0 shipped INTERIM
+  budgets for the CUE-backed façade (`HotFactorBudget` 2.5x,
+  `ColdFactorBudget` 2.0x — hot looser because the CUE-backed arm's
+  cost was N-dependent). The plan-238 flip to the in-house engine
+  TIGHTENED both to <= 1.0x (in-house must not be slower than the
+  CUE oracle it replaces) — not deferred to plan 240. The
   ratio is only meaningful on a quiet runner — under the parallel
   `test` job's CPU contention the cuelite arm degrades more than
   the oracle arm and the factor inflates (observed 3.46x) — so the
@@ -135,9 +136,8 @@ the per-surface phases.
   `cuelite-bench` CI job, and skips everywhere else. The gate
   appends a factor table to `GITHUB_STEP_SUMMARY`. This
   makes plan 218's "the schema validate path does not regress"
-  acceptance criterion enforceable today; plan 240's flip is
-  expected to tighten both budgets to <= 1.0x (in-house must not be
-  slower than the CUE oracle it replaces).
+  acceptance criterion enforceable; post-flip the measured factors
+  sit near 0.26x (hot) and 0.34x (cold), well inside 1.0x.
 
 ## See also
 

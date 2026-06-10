@@ -72,12 +72,17 @@ func TestRenderSummary(t *testing.T) {
 	assert.Equal(t, want, out)
 }
 
-// TestBudgetsAreInterim guards the documented relationship between the
-// two interim budgets: the hot path tolerates the N-dependent CUE
-// context growth, so its budget must stay looser than the flat cold
-// path's. If a future edit inverts them, this fails and forces the doc
-// comment to be revisited.
-func TestBudgetsAreInterim(t *testing.T) {
-	assert.Greater(t, HotFactorBudget, ColdFactorBudget,
-		"hot budget must stay looser than cold while CUE-backed")
+// TestBudgetsEnforceInHouseNotSlower guards the post-flip contract: both
+// factor budgets are <= 1.0x, so the gate asserts the in-house engine is
+// never slower than the CUE oracle it replaced (plan 238 flip; plan 218's
+// no-regression criterion). The hot-looser-than-cold relation the interim
+// CUE-backed budgets held no longer applies — the in-house path pays no
+// per-iteration context growth, so both paths are bounded at the same 1.0x.
+// If a future edit loosens either past 1.0x, this fails and forces the
+// rationale in factorgate.go to be revisited.
+func TestBudgetsEnforceInHouseNotSlower(t *testing.T) {
+	assert.LessOrEqual(t, HotFactorBudget, 1.0,
+		"the in-house hot path must not be slower than the CUE oracle")
+	assert.LessOrEqual(t, ColdFactorBudget, 1.0,
+		"the in-house cold path must not be slower than the CUE oracle")
 }

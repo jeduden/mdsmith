@@ -14,30 +14,34 @@ import (
 // blowup while a slower CI runner moves both arms together and does not
 // trip it.
 //
-// These are INTERIM budgets for the CUE-backed façade phase (plan 236).
-// The flip to the in-house engine (plan 240) is expected to TIGHTEN both
-// to <= 1.0x — the in-house path must not be slower than the CUE oracle
-// it replaces — which is plan 218's "the schema validate path does not
-// regress" acceptance criterion made enforceable. Until that flip, the
-// façade pays an honest interim overhead the budgets leave room for.
+// These are the POST-FLIP budgets. Plan 238 flipped the schema/query
+// surfaces onto the in-house engine, and the interim CUE-backed-façade
+// budgets (a looser hot 2.5x, cold 2.0x leaving room for the façade's
+// honest overhead) were tightened HERE, at the flip, to <= 1.0x — the
+// in-house path must never be slower than the CUE oracle it replaces. This
+// is plan 218's "the schema validate path does not regress" acceptance
+// criterion made enforceable, and plans 236/240's stated intent realized at
+// the 238 flip rather than deferred. The measured factors are well under
+// budget (hot ~0.26x, cold ~0.34x; see bench_test.go and the armed gate),
+// so the gate now asserts the in-house engine is at least as fast as CUE,
+// with the budget headroom absorbing runner noise.
 const (
 	// HotFactorBudget bounds BenchmarkValidate (the compile-schema-once,
-	// validate-many hot path the flip is judged against). It is looser than
-	// the cold budget because the CUE-backed arm's cost is N-dependent, not
-	// flat: each iteration's cross-context Unify rebuilds the fresh data
-	// Value into the one long-lived schema context, accumulating one
-	// compiled document per iteration (CUE's documented long-lived-context
-	// growth, see bench_test.go). The measured factor is ~1.7-1.95x; 2.5x
-	// leaves headroom for that growth plus runner noise while still tripping
-	// on a genuine 3x+ regression. The flip makes this cost flat and is
-	// expected to drop the budget to <= 1.0x.
-	HotFactorBudget = 2.5
+	// validate-many hot path). The in-house engine compiles the schema once
+	// and validates a context-free data Value each iteration with no rebuild
+	// and no per-iteration context growth, so the cost is flat and the
+	// measured factor sits near 0.26x. The 1.0x budget asserts the in-house
+	// arm never regresses past the CUE oracle; the min/min noise-robust
+	// timing (see factorGateReps) keeps a quiet-runner factor of ~0.26x
+	// comfortably inside it.
+	HotFactorBudget = 1.0
 
 	// ColdFactorBudget bounds BenchmarkCompileValidate (compile schema,
-	// compile data, unify, validate every iteration). The measured factor
-	// is a stable ~1.4x, so 2.0x catches a blowup with comfortable headroom
-	// for runner noise. The flip is expected to tighten this to <= 1.0x.
-	ColdFactorBudget = 2.0
+	// compile data, unify, validate every iteration). The in-house engine
+	// pays no cross-context rebuild on this path either; the measured factor
+	// is a stable ~0.34x. The 1.0x budget holds the in-house arm to no slower
+	// than CUE, with the minimum-of-reps timing absorbing runner noise.
+	ColdFactorBudget = 1.0
 )
 
 // factorResult is one benchmark arm's measured ratio against its budget:
