@@ -95,9 +95,12 @@ func unifyConcrete(v, o *engineValue, path []string) *engineValue {
 // concreteEqual reports whether two concrete scalars are equal. The kinds
 // must match: CUE keeps a concrete int and a concrete float distinct (the
 // literal 0 and the literal 0.0 do not unify), so an int never equals a
-// float here. A non-integral data float lifts to kFloat and an integral one
-// to kInt (liftFloat), so a schema int constraint still accepts whole-number
-// data without a cross-kind equality here.
+// float here. A YAML/JSON decoder hands a whole number back as an int (42)
+// and a decimal as a float64 (42.0), and the lifter preserves that kind, so
+// `weight: 42` unifies with `int` and `weight: 42.0` unifies with `float`,
+// matching CUE — no cross-kind equality is needed or wanted here. (The
+// relational == operator does compare numbers across kinds; see
+// numericAwareEqual.)
 func concreteEqual(a, b *engineValue) bool {
 	if a.kind != b.kind {
 		return false
@@ -285,32 +288,94 @@ func unifyBoundLeft(v, o *engineValue, path []string) *engineValue {
 		merged := make([]bound, 0, len(v.bounds)+len(o.bounds))
 		merged = append(merged, v.bounds...)
 		merged = append(merged, o.bounds...)
+		if b := incompatibleBounds(merged); b != nil {
+			return mkBottom(path, "incompatible bounds %s and %s", b.lo.describe(), b.hi.describe())
+		}
 		return &engineValue{kind: kBound, atom: ak, bounds: merged}
 	default:
 		return conflict(path, v, o)
 	}
 }
 
-// unifyDisjunction distributes a meet over disjunction d's branches: each
-// branch is met with o, ⊥ results are dropped, and the surviving branches
-// form the result. A single survivor collapses to that value; an empty
-// result is ⊥. A default branch that survives is preserved.
-func unifyDisjunction(d, o *engineValue, path []string) *engineValue {
-	var survivors []*engineValue
-	var survivingDefault *engineValue
-	for _, br := range d.branches {
-		m := unifyV(br, o, path)
-		if m.isBottomV() {
+// incompatiblePair names a lower/upper bound pair whose interval is empty.
+type incompatiblePair struct {
+	lo bound
+	hi bound
+}
+
+// incompatibleBounds reports the first lower/upper relational bound pair whose
+// interval is empty — the meet of `>=10 & <=5` or `>0 & <0` is ⊥. It mirrors
+// CUE, which rejects such a pair at compile time ("incompatible number/string
+// bounds") while leaving other shapes (an empty `>=5 & <=5 & !=5`, a regex
+// pair) to resolve at validate time. So only the ordered numeric/string bounds
+// participate: != , =~ , !~ , and strings.MinRunes are not folded in, matching
+// CUE's compile-time bound check. A numeric and a string bound never share a
+// kind here (meetAtom already rejected that mix), so the comparison is on like
+// operands.
+func incompatibleBounds(bounds []bound) *incompatiblePair {
+	for i := range bounds {
+		lo := bounds[i]
+		if !lo.isLowerBound() {
 			continue
 		}
-		survivors = append(survivors, m)
-		if d.def != nil && br == d.def {
-			survivingDefault = m
+		for j := range bounds {
+			hi := bounds[j]
+			if !hi.isUpperBound() {
+				continue
+			}
+			// Every bound in a merged set shares a kind: meetAtom rejects mixing a
+			// numeric and a string bound before they reach here, so lo and hi are
+			// both numeric or both string and emptyInterval compares like operands.
+			if emptyInterval(lo, hi) {
+				return &incompatiblePair{lo: lo, hi: hi}
+			}
 		}
 	}
-	// Collapse identical concrete survivors: CUE de-duplicates equal disjuncts,
-	// so `0 | 0` reduced against 0 yields the single value 0, not a two-branch
-	// disjunction that stays non-concrete.
+	return nil
+}
+
+// isLowerBound reports whether a relational bound is a lower bound (>= or >).
+func (b bound) isLowerBound() bool { return b.op == opGe || b.op == opGt }
+
+// isUpperBound reports whether a relational bound is an upper bound (<= or <).
+func (b bound) isUpperBound() bool { return b.op == opLe || b.op == opLt }
+
+// emptyInterval reports whether a lower bound and an upper bound describe an
+// empty interval: the lower operand exceeds the upper, or the two operands are
+// equal and at least one side is strict (>x & <x, >=x & <x, >x & <=x are all
+// empty; >=x & <=x is the singleton {x} and non-empty). Operands are compared
+// numerically for numeric bounds and lexically for string bounds, both via the
+// same primitives the satisfaction checks use.
+func emptyInterval(lo, hi bound) bool {
+	strict := lo.op == opGt || hi.op == opLt
+	if lo.isStr {
+		if lo.str > hi.str {
+			return true
+		}
+		return lo.str == hi.str && strict
+	}
+	if lo.num > hi.num {
+		return true
+	}
+	return lo.num == hi.num && strict
+}
+
+// unifyDisjunction meets disjunction d with o, distributing the meet over d's
+// branches AND computing the meet's default per CUE's rule "the default of a
+// meet is the meet of the defaults". Each branch is met with o, ⊥ results are
+// dropped, and the survivors are deduped to the result's value branches. The
+// result's defaults are the meet of d's default operands with o's default
+// operands (each side's defaults are its marked disjuncts, or all its branches
+// when none are marked, or the value itself when it is not a disjunction),
+// again dropping ⊥ and deduping. A single survivor collapses to that value; an
+// empty result is ⊥.
+//
+// So `(*1|int) & (*2|int)` reduces to the value `1|2|int` with the default
+// `1&2 = ⊥` dropped — no default survives, leaving the field non-concrete,
+// matching CUE. `(*1|2) & (2|3)` keeps the default `1&{2,3} = ⊥`, falling back
+// to the single surviving value 2.
+func unifyDisjunction(d, o *engineValue, path []string) *engineValue {
+	survivors := meetBranches(d.branches, o, path)
 	survivors = dedupeConcrete(survivors)
 	switch len(survivors) {
 	case 0:
@@ -318,8 +383,86 @@ func unifyDisjunction(d, o *engineValue, path []string) *engineValue {
 	case 1:
 		return survivors[0]
 	default:
-		return &engineValue{kind: kDisjoint, branches: survivors, def: survivingDefault}
+		defaults := meetDefaults(d, o, path)
+		defaults = retainByValue(defaults, survivors)
+		defaults = dedupeConcrete(defaults)
+		return &engineValue{kind: kDisjoint, branches: survivors, defaults: defaults}
 	}
+}
+
+// retainByValue keeps the default candidates that correspond to a surviving
+// value branch. A concrete default is kept when an equal concrete survivor
+// exists; a non-concrete default is kept unconditionally (it cannot be matched
+// by value and a stuck default still makes the disjunction non-concrete, which
+// is the conservative outcome). This bridges meetDefaults' fresh meet nodes —
+// which are never pointer-identical to the survivor meets — to the value set,
+// so a default that the value set does not actually contain is dropped.
+func retainByValue(defaults, survivors []*engineValue) []*engineValue {
+	if len(defaults) == 0 {
+		return nil
+	}
+	var out []*engineValue
+	for _, d := range defaults {
+		if !d.concreteScalarV() {
+			out = append(out, d)
+			continue
+		}
+		for _, s := range survivors {
+			if s.concreteScalarV() && concreteEqual(s, d) {
+				out = append(out, d)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// meetBranches meets every branch of a disjunction with o, dropping the ⊥
+// results, returning the surviving meets.
+func meetBranches(branches []*engineValue, o *engineValue, path []string) []*engineValue {
+	var out []*engineValue
+	for _, br := range branches {
+		m := unifyV(br, o, path)
+		if m.isBottomV() {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+// meetDefaults computes the default operands of the meet d & o: the
+// cross-product meet of d's default operands and o's default operands, with ⊥
+// results dropped. The returned values are fresh meets, candidates for the
+// result's defaults once retained to the surviving value branches.
+func meetDefaults(d, o *engineValue, path []string) []*engineValue {
+	var out []*engineValue
+	for _, dd := range defaultOperands(d) {
+		for _, od := range defaultOperands(o) {
+			m := unifyV(dd, od, path)
+			if m.isBottomV() {
+				continue
+			}
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// defaultOperands returns the values that stand in for v when computing the
+// default of a meet: a disjunction's marked defaults if it has any, else all
+// its branches; any other value is its own default. This makes a meet's
+// default fall back to the FULL value of a default-less operand, so
+// `(*1|2) & (2|3)` meets {1} against {2,3} (yielding ⊥) rather than against an
+// absent default.
+func defaultOperands(v *engineValue) []*engineValue {
+	if v.kind != kDisjoint {
+		return []*engineValue{v}
+	}
+	if len(v.defaults) > 0 {
+		return v.defaults
+	}
+	return v.branches
 }
 
 // dedupeConcrete removes later duplicates of a concrete scalar from a
@@ -428,31 +571,127 @@ func concreteScope(a, b *engineValue) map[string]*engineValue {
 	return scope
 }
 
-// hasThunkField reports whether any direct field of v is an unforced thunk,
-// so unifyStruct only pays for the force pass when one is present.
+// hasThunkField reports whether v carries an unforced thunk anywhere a
+// struct's force pass would reach it: a direct field, or a thunk nested in a
+// field's list elements or disjunction branches. unifyStruct only pays for the
+// force pass when one is present. The release-channels idiom puts a thunk in a
+// direct field (`registry: [if …][0]`), but a constraint like
+// `xs: [mech != ""]` nests the thunk in a list element and a `(m == "a") | "z"`
+// nests it in a disjunction branch, so the scan must descend into both.
 func hasThunkField(v *engineValue) bool {
 	for _, f := range v.fields {
-		if f.val.kind == kThunk {
+		if hasThunkValue(f.val) {
 			return true
 		}
 	}
 	return false
 }
 
-// forceThunks returns a copy of struct v with each thunk field replaced by
-// the value it evaluates to against scope. A thunk whose references are still
-// unresolved evaluates to a ⊥ (deferToThunk's fallback), so Validate reports
-// it rather than silently accepting an unforced schema field.
+// hasThunkValue reports whether v IS an unforced thunk or carries one in a
+// list element or disjunction branch. It deliberately does not descend into a
+// nested struct: a nested struct forces its own thunks against its own sibling
+// scope when it is itself unified, so the outer scope must not reach into it.
+func hasThunkValue(v *engineValue) bool {
+	switch v.kind {
+	case kThunk:
+		return true
+	case kList:
+		for _, el := range v.prefix {
+			if hasThunkValue(el) {
+				return true
+			}
+		}
+		if v.elem != nil && hasThunkValue(v.elem) {
+			return true
+		}
+	case kDisjoint:
+		for _, br := range v.branches {
+			if hasThunkValue(br) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// forceThunks returns a copy of struct v with every thunk reachable in a
+// direct field — or nested in that field's list elements or disjunction
+// branches — replaced by the value it evaluates to against scope. A thunk
+// whose references are still unresolved evaluates to a ⊥ (deferToThunk's
+// fallback), so Validate reports it rather than silently accepting an unforced
+// schema field. A nested struct is left untouched: it forces its own thunks
+// against its own scope when it is unified.
 func forceThunks(v *engineValue, scope map[string]*engineValue) *engineValue {
 	out := *v
 	out.fields = make([]field, len(v.fields))
 	for i, f := range v.fields {
 		out.fields[i] = f
-		if f.val.kind == kThunk {
-			out.fields[i].val = f.val.thunkExpr(scope)
-		}
+		out.fields[i].val = forceThunkValue(f.val, scope)
 	}
 	return &out
+}
+
+// forceThunkValue forces a thunk anywhere it sits in v — v itself, a list
+// element, or a disjunction branch — against scope, returning the resolved
+// value. A list or disjunction is rebuilt with each member forced; a
+// disjunction is then re-reduced (its forced branches may collapse, dedupe, or
+// drop to ⊥, just as at build time) so a forced branch participates in the
+// disjunction's defaults and concreteness exactly as a compile-time branch
+// would. A nested struct is returned unchanged: it forces its own thunks
+// against its own scope when it is unified, so the outer scope must not leak
+// into it. Any other value has no thunk and is returned as-is.
+func forceThunkValue(v *engineValue, scope map[string]*engineValue) *engineValue {
+	switch v.kind {
+	case kThunk:
+		return v.thunkExpr(scope)
+	case kList:
+		if !hasThunkValue(v) {
+			return v
+		}
+		out := *v
+		out.prefix = make([]*engineValue, len(v.prefix))
+		for i, el := range v.prefix {
+			out.prefix[i] = forceThunkValue(el, scope)
+		}
+		if v.elem != nil {
+			out.elem = forceThunkValue(v.elem, scope)
+		}
+		return &out
+	case kDisjoint:
+		if !hasThunkValue(v) {
+			return v
+		}
+		branches := make([]*engineValue, len(v.branches))
+		for i, br := range v.branches {
+			branches[i] = forceThunkValue(br, scope)
+		}
+		// Map the original default branches onto their forced counterparts by
+		// position, then re-reduce so a forced branch that dropped to ⊥ or
+		// collapsed is handled exactly like a freshly built disjunction.
+		forcedDefaults := mapDefaults(v.branches, branches, v.defaults)
+		return buildDisjunction(branches, forcedDefaults)
+	default:
+		return v
+	}
+}
+
+// mapDefaults maps each default in olds (a subset of origBranches, by pointer)
+// onto the same-position entry of forcedBranches, so a disjunction's defaults
+// survive a force pass that rebuilt its branches.
+func mapDefaults(origBranches, forcedBranches, olds []*engineValue) []*engineValue {
+	if len(olds) == 0 {
+		return nil
+	}
+	var out []*engineValue
+	for i, br := range origBranches {
+		for _, d := range olds {
+			if d == br {
+				out = append(out, forcedBranches[i])
+				break
+			}
+		}
+	}
+	return out
 }
 
 // indexFields builds a name→index map over a field slice for O(1) lookup

@@ -174,5 +174,8 @@ func TestUnify_thunkOutsideStruct(t *testing.T) {
 func TestUnify_disjunctionPreservesDefault(t *testing.T) {
 	got := unifyResult(t, `*"a" | "b"`, `string`)
 	require.Equal(t, kDisjoint, got.kind)
-	require.NotNil(t, got.def)
+	def, ambiguous := got.defaultValue()
+	require.NotNil(t, def)
+	require.False(t, ambiguous)
+	require.Equal(t, "a", def.str)
 }

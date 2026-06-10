@@ -79,13 +79,17 @@ func TestLiftJSON_numberForms(t *testing.T) {
 	assert.NoError(t, v2.Validate())
 }
 
-// TestLiftMapValue_numberForms covers the integral-float and json.Number
-// branches of the map lift.
+// TestLiftMapValue_numberForms covers the int, float64, and json.Number
+// branches of the map lift. A Go int lifts to kInt and any float64 lifts to
+// kFloat (no integral coercion — a float64 is a float, matching CUE).
 func TestLiftMapValue_numberForms(t *testing.T) {
 	schema, err := Compile(`{i: int, f: float}`)
 	require.NoError(t, err)
-	// An integral float64 lifts to int; a fractional one stays float.
-	assert.NoError(t, schema.CompileMap(map[string]any{"i": float64(7), "f": 1.5}).Validate())
+	assert.NoError(t, schema.CompileMap(map[string]any{"i": 7, "f": 1.5}).Validate())
+	// A whole-number float64 stays a float, so it satisfies float and conflicts
+	// with int — the two lift paths and CUE agree.
+	assert.NoError(t, schema.CompileMap(map[string]any{"i": 1, "f": float64(7)}).Validate())
+	assert.Error(t, schema.CompileMap(map[string]any{"i": float64(7), "f": 1.5}).Validate())
 }
 
 // TestAtomKindOf covers the bytes and bool branches of atomKindOf via a

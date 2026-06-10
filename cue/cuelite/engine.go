@@ -151,9 +151,14 @@ type engineValue struct {
 	// kBound constraints
 	bounds []bound
 
-	// kDisjoint
+	// kDisjoint: branches are the disjuncts; defaults are the *-marked default
+	// disjuncts (zero, one, or several). The disjunction's effective default is
+	// the meet/join of defaults: empty means no default, one means that value,
+	// and several distinct defaults are ambiguous (non-concrete), matching CUE's
+	// default-of-meet rule. A meet of two disjunctions takes the meet of their
+	// defaults, so multiple marks survive until they collapse.
 	branches []*engineValue
-	def      *engineValue // the *-marked default branch, or nil
+	defaults []*engineValue
 
 	// kStruct
 	fields []field
@@ -200,6 +205,25 @@ func (v *engineValue) concreteScalarV() bool {
 		return true
 	}
 	return false
+}
+
+// defaultValue resolves a disjunction's effective default. It deduplicates
+// the marked default disjuncts: none yields (nil, false) — the disjunction has
+// no default; exactly one yields that value; several DISTINCT defaults yield
+// (nil, true) — CUE treats multiple non-unifying defaults as ambiguous, so the
+// disjunction is non-concrete (e.g. `*1 | *2` reduces to the value 1 | 2 with
+// no usable default). Two equal concrete defaults collapse to one, so
+// `*1 | *1` keeps the default 1.
+func (v *engineValue) defaultValue() (*engineValue, bool) {
+	deduped := dedupeConcrete(v.defaults)
+	switch len(deduped) {
+	case 0:
+		return nil, false
+	case 1:
+		return deduped[0], false
+	default:
+		return nil, true
+	}
 }
 
 // numericValue returns v's value as a float64 and true when v is a
@@ -269,6 +293,12 @@ func (v *engineValue) describe() string {
 		return "{...}"
 	case kList:
 		return "[...]"
+	case kThunk:
+		// An unforced deferred expression. It appears in a message only when a
+		// thunk survives into a describe (a disjunction branch printed before its
+		// force pass); name it as an unresolved expression rather than the opaque
+		// "?".
+		return "(unresolved expression)"
 	default:
 		return "?"
 	}

@@ -106,12 +106,41 @@ func checkThunkRefs(s *engineValue) error {
 		declared[f.name] = true
 	}
 	for _, f := range s.fields {
-		if f.val.kind != kThunk {
-			continue
+		if err := checkThunkRefsIn(f.val, declared); err != nil {
+			return err
 		}
-		for _, ref := range f.val.thunkRefs {
+	}
+	return nil
+}
+
+// checkThunkRefsIn verifies every thunk reachable in v — v itself, or a thunk
+// nested in a list element or disjunction branch — references only a declared
+// name. It descends into the same positions the force pass reaches (lists,
+// disjunctions) but NOT into a nested struct, whose own thunks reference its
+// own fields and are checked when that struct is built.
+func checkThunkRefsIn(v *engineValue, declared map[string]bool) error {
+	switch v.kind {
+	case kThunk:
+		for _, ref := range v.thunkRefs {
 			if !declared[ref] {
 				return fmt.Errorf("reference %q not found", ref)
+			}
+		}
+	case kList:
+		for _, el := range v.prefix {
+			if err := checkThunkRefsIn(el, declared); err != nil {
+				return err
+			}
+		}
+		if v.elem != nil {
+			if err := checkThunkRefsIn(v.elem, declared); err != nil {
+				return err
+			}
+		}
+	case kDisjoint:
+		for _, br := range v.branches {
+			if err := checkThunkRefsIn(br, declared); err != nil {
+				return err
 			}
 		}
 	}

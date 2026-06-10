@@ -262,12 +262,20 @@ func evalComparison(n *ast.BinaryExpr, scope map[string]*engineValue) (*engineVa
 // values, returning the boolean result. == / != compare for equality; the
 // ordered relations and regex matches reuse the same primitives the bound
 // checks use, so a comparison and a bound agree on the same operands.
+//
+// == / != compare NUMERICALLY across the int/float kinds, matching CUE: the
+// expression `2 == 2.0` is true (CUE compares numbers by value, not by kind),
+// so the relational `==`/`!=` operators agree with the engine's own ordered
+// comparisons. String, bool, and null equality stays kind-strict (a string
+// never equals an int, true never equals 1) — CUE rejects a cross-kind `==`
+// of non-numbers as a type error, but here both operands are already concrete
+// scalars, so an int-vs-string == reduces to "not equal" rather than failing.
 func compareConcrete(l *engineValue, op token.Token, r *engineValue) (bool, error) {
 	switch op {
 	case token.EQL:
-		return concreteEqual(l, r), nil
+		return numericAwareEqual(l, r), nil
 	case token.NEQ:
-		return !concreteEqual(l, r), nil
+		return !numericAwareEqual(l, r), nil
 	case token.MAT, token.NMAT:
 		if l.kind != kString || r.kind != kString {
 			return false, fmt.Errorf("cuelite: %s requires strings", op)
@@ -296,39 +304,128 @@ func compareConcrete(l *engineValue, op token.Token, r *engineValue) (bool, erro
 	return compareNum(ln, bop, rn), nil
 }
 
+// numericAwareEqual reports whether two concrete scalars are equal for the
+// relational == / != operators. Two numbers compare by VALUE across int and
+// float (2 == 2.0), matching CUE; every other pair (string, bool, null, or a
+// number against a non-number) falls back to concreteEqual's kind-strict
+// equality. This differs from concreteEqual — which keeps a concrete int and
+// float DISTINCT for unification (the literals 0 and 0.0 do not unify) — so the
+// relational operator and the lattice meet deliberately use different rules.
+func numericAwareEqual(a, b *engineValue) bool {
+	an, aok := a.numericValue()
+	bn, bok := b.numericValue()
+	if aok && bok {
+		return an == bn
+	}
+	return concreteEqual(a, b)
+}
+
 // evalDisjunction builds a disjunction value in a scope, flattening nested |
-// and recording a *-marked default branch, the scoped counterpart of
-// compileDisjunction. A branch that defers leaves the whole disjunction
-// deferred.
+// and recording every *-marked default disjunct. It is the scoped counterpart
+// of the former compileDisjunction. A branch that defers leaves the whole
+// disjunction deferred.
+//
+// Construction is where CUE's build-time disjunction reductions happen:
+//   - A ⊥ disjunct is dropped (CUE: `0&1 | 2` keeps only 2); if every disjunct
+//     is ⊥ the disjunction is itself ⊥ — CUE reports "errors in empty
+//     disjunction" at compile time.
+//   - Equal concrete disjuncts collapse to one (`"x" | "x"` is the concrete
+//     "x"), so the result is concrete rather than a stuck two-branch value.
+//   - A parenthesized nested disjunction flattens, and its inner default marks
+//     are carried up (`(*1|2)|3` keeps 1 as the default), so the nested
+//     default is not lost.
+//
+// A defer (an unresolved sibling reference) skips these reductions and leaves
+// the whole expression to become a thunk; the reductions then run when the
+// thunk is forced against data.
 func evalDisjunction(n *ast.BinaryExpr, scope map[string]*engineValue) (*engineValue, error) {
-	out := &engineValue{kind: kDisjoint}
-	var walk func(e ast.Expr) error
-	walk = func(e ast.Expr) error {
+	var branches []*engineValue
+	var defaults []*engineValue
+	var walk func(e ast.Expr, defaulted bool) error
+	walk = func(e ast.Expr, defaulted bool) error {
+		if u, ok := e.(*ast.UnaryExpr); ok && u.Op == token.MUL {
+			// A * mark applies to its whole operand, including a parenthesized
+			// nested disjunction, so every disjunct underneath inherits it.
+			return walk(u.X, true)
+		}
+		if p, ok := e.(*ast.ParenExpr); ok {
+			return walk(p.X, defaulted)
+		}
 		if b, ok := e.(*ast.BinaryExpr); ok && b.Op == token.OR {
-			if err := walk(b.X); err != nil {
+			if err := walk(b.X, defaulted); err != nil {
 				return err
 			}
-			return walk(b.Y)
-		}
-		isDefault := false
-		if u, ok := e.(*ast.UnaryExpr); ok && u.Op == token.MUL {
-			isDefault = true
-			e = u.X
+			return walk(b.Y, defaulted)
 		}
 		br, err := evalChild(e, scope)
 		if err != nil {
 			return err
 		}
-		out.branches = append(out.branches, br)
-		if isDefault {
-			out.def = br
+		branches = append(branches, br)
+		if defaulted {
+			defaults = append(defaults, br)
 		}
 		return nil
 	}
-	if err := walk(n); err != nil {
+	if err := walk(n, false); err != nil {
 		return nil, err
 	}
-	return out, nil
+	return buildDisjunction(branches, defaults), nil
+}
+
+// buildDisjunction reduces a freshly-walked set of disjuncts and defaults into
+// a disjunction value, applying CUE's build-time reductions: drop ⊥ disjuncts,
+// collapse equal concrete disjuncts, and surface an all-⊥ disjunction as a ⊥
+// ("errors in empty disjunction"). A single surviving disjunct collapses to
+// that value (with no disjunction wrapper). Defaults are filtered to the
+// surviving branch set and likewise deduped.
+func buildDisjunction(branches, defaults []*engineValue) *engineValue {
+	live := dropBottomBranches(branches)
+	if len(live) == 0 {
+		// Every disjunct reduced to ⊥. CUE rejects this at compile time as an
+		// empty disjunction rather than deferring to validate.
+		return mkBottom(nil, "empty disjunction: every disjunct is bottom")
+	}
+	live = dedupeConcrete(live)
+	keptDefaults := retainBranches(defaults, live)
+	keptDefaults = dedupeConcrete(keptDefaults)
+	if len(live) == 1 && len(keptDefaults) <= 1 {
+		// A single surviving disjunct is just that value. (A surviving default
+		// equal to it adds nothing.)
+		return live[0]
+	}
+	return &engineValue{kind: kDisjoint, branches: live, defaults: keptDefaults}
+}
+
+// dropBottomBranches returns the non-⊥ entries of branches.
+func dropBottomBranches(branches []*engineValue) []*engineValue {
+	out := branches[:0:0]
+	for _, br := range branches {
+		if br.isBottomV() {
+			continue
+		}
+		out = append(out, br)
+	}
+	return out
+}
+
+// retainBranches keeps only the entries of defaults that are still present
+// (by pointer identity) in the surviving branch set, so a default whose branch
+// was dropped as ⊥ does not haunt the result.
+func retainBranches(defaults, live []*engineValue) []*engineValue {
+	if len(defaults) == 0 {
+		return nil
+	}
+	var out []*engineValue
+	for _, d := range defaults {
+		for _, b := range live {
+			if d == b {
+				out = append(out, d)
+				break
+			}
+		}
+	}
+	return out
 }
 
 // evalUnary evaluates a unary expression in a scope. A standalone unary (a

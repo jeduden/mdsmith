@@ -199,7 +199,9 @@ func TestDescribe_scalars(t *testing.T) {
 	assert.Equal(t, "'ab'", (&engineValue{kind: kBytes, bytes: []byte("ab")}).describe())
 	assert.Equal(t, "{...}", (&engineValue{kind: kStruct}).describe())
 	assert.Equal(t, "[...]", (&engineValue{kind: kList}).describe())
-	assert.Equal(t, "?", (&engineValue{kind: kThunk}).describe())
+	assert.Equal(t, "(unresolved expression)", (&engineValue{kind: kThunk}).describe())
+	// An out-of-range kind hits the describe() default fallback.
+	assert.Equal(t, "?", (&engineValue{kind: kind(99)}).describe())
 }
 
 // TestKindAndOpStrings pins the String() methods used in messages, including

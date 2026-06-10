@@ -139,9 +139,9 @@ func liftMapValue(x any) (*engineValue, error) {
 	case int64:
 		return &engineValue{kind: kInt, i: t}, nil
 	case float64:
-		return liftFloat(t), nil
+		return &engineValue{kind: kFloat, f: t}, nil
 	case float32:
-		return liftFloat(float64(t)), nil
+		return &engineValue{kind: kFloat, f: float64(t)}, nil
 	case json.Number:
 		return liftNumber(t)
 	case map[string]any:
@@ -167,15 +167,4 @@ func liftMapValue(x any) (*engineValue, error) {
 	default:
 		return nil, fmt.Errorf("cuelite: unsupported front-matter value %T", x)
 	}
-}
-
-// liftFloat lifts a float64 that holds an integral value to an int leaf,
-// matching how a JSON/YAML decoder may hand back a whole number as a float
-// — so `weight: 42` validates against `int` whether the decoder produced
-// 42 or 42.0.
-func liftFloat(f float64) *engineValue {
-	if f == float64(int64(f)) {
-		return &engineValue{kind: kInt, i: int64(f)}
-	}
-	return &engineValue{kind: kFloat, f: f}
 }

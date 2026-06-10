@@ -365,11 +365,21 @@ func TestValue_CompileMap(t *testing.T) {
 		require.Len(t, leaves, 1)
 		assert.Equal(t, []string{"status"}, leaves[0].Path())
 	})
-	t.Run("integral float lifts to int", func(t *testing.T) {
-		schema, err := Compile(`{weight: int}`)
+	t.Run("a YAML int satisfies int and a YAML float satisfies float", func(t *testing.T) {
+		// A YAML/JSON decoder hands a whole number back as an int and a decimal
+		// as a float64, and the lifter preserves that kind, matching CUE: 42
+		// satisfies int, 42.0 satisfies float, and a float64 NEVER coerces to int
+		// (CUE keeps 42 and 42.0 distinct — the JSON lift of `42.0` against `int`
+		// is a conflict).
+		schemaInt, err := Compile(`{weight: int}`)
 		require.NoError(t, err)
-		// A YAML decoder may hand 42 back as a float64; it must satisfy int.
-		assert.NoError(t, schema.CompileMap(map[string]any{"weight": float64(42)}).Validate())
+		assert.NoError(t, schemaInt.CompileMap(map[string]any{"weight": 42}).Validate())
+		schemaFloat, err := Compile(`{weight: float}`)
+		require.NoError(t, err)
+		assert.NoError(t, schemaFloat.CompileMap(map[string]any{"weight": float64(42)}).Validate())
+		// A float64 carrying a whole number is still a float, so it conflicts with
+		// int — the CUE-correct behavior the differential oracle agrees with.
+		assert.Error(t, schemaInt.CompileMap(map[string]any{"weight": float64(42)}).Validate())
 	})
 	t.Run("unsupported value type yields a bottom", func(t *testing.T) {
 		schema, err := Compile(`{t: _}`)

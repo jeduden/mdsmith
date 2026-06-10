@@ -44,10 +44,13 @@ func isConcrete(v *engineValue) bool {
 	case kString, kInt, kFloat, kBool, kBytes, kNull:
 		return true
 	case kDisjoint:
-		// A disjunction resolves to its *-marked default when present, so a
+		// A disjunction resolves to its effective default when one survives, so a
 		// defaulted disjunction counts as concrete (the absent field takes its
-		// default).
-		return v.def != nil && isConcrete(v.def)
+		// default). Multiple distinct defaults are ambiguous — CUE leaves such a
+		// disjunction non-concrete — so defaultValue reports no usable default and
+		// the disjunction is not concrete.
+		def, _ := v.defaultValue()
+		return def != nil && isConcrete(def)
 	case kStruct:
 		for _, f := range v.fields {
 			if f.optional && isUnsatisfiedConstraint(f.val) {
@@ -95,11 +98,13 @@ func collectLeaves(v *engineValue, path []string, out []*PathError) []*PathError
 	case kBound:
 		return append(out, newPathError(path, fmt.Sprintf("incomplete value %s", v.describeBound()), nil))
 	case kDisjoint:
-		// A disjunction with a *-marked default resolves to that default when
+		// A disjunction with a single effective default resolves to it when
 		// nothing else pins it (e.g. an absent `unlisted: bool | *false` field
-		// takes false). The default must itself be concrete; validate it.
-		if v.def != nil {
-			return collectLeaves(v.def, path, out)
+		// takes false). The default must itself be concrete; validate it. Multiple
+		// distinct defaults are ambiguous (CUE: `*1 | *2` is non-concrete), so the
+		// disjunction is reported incomplete rather than silently taking one.
+		if def, _ := v.defaultValue(); def != nil {
+			return collectLeaves(def, path, out)
 		}
 		return append(out, newPathError(path, fmt.Sprintf("incomplete value %s", v.describe()), nil))
 	case kThunk:
