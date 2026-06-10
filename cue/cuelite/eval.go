@@ -3,6 +3,7 @@ package cuelite
 import (
 	stderrors "errors"
 	"fmt"
+	"math"
 	"regexp"
 
 	"cuelang.org/go/cue/ast"
@@ -144,9 +145,11 @@ func evalIndex(n *ast.IndexExpr, scope map[string]*engineValue) (*engineValue, e
 	if err != nil {
 		return nil, err
 	}
-	// Compare in int64 space: converting first would truncate on
-	// 32-bit targets (wasm) and could index a wrong-but-valid element.
-	if idxVal.i < 0 || idxVal.i >= int64(len(elems)) {
+	// Bound in int64 space before narrowing: converting first would
+	// truncate on 32-bit targets (wasm) and could index a wrong-but-valid
+	// element. The math.MaxInt32 bound makes the narrowing provably safe
+	// on every platform (a list literal cannot approach 2^31 elements).
+	if idxVal.i < 0 || idxVal.i > math.MaxInt32 || int(idxVal.i) >= len(elems) {
 		return mkBottom(nil, "list index %d out of range (len %d)", idxVal.i, len(elems)), nil
 	}
 	return elems[int(idxVal.i)], nil
