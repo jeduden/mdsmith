@@ -465,21 +465,20 @@ func TestLoad_InvalidConventionSurfacesError(t *testing.T) {
 	assert.Contains(t, err.Error(), "bogus")
 }
 
-// TestValidateConventionScalar_RejectsYAMLAnchors pins that
-// config YAML using anchors/aliases is rejected by
-// validateConventionScalar via yamlutil.RejectYAMLAliases — the
-// same pre-check the kind-file and convention-file loaders run.
-// The old direct yaml.Unmarshal flagged an alias-valued
-// `convention:` only as a type error, and silently accepted
-// anchors on other keys (or an anchored scalar like
-// `convention: &a portable`), leaving a latent risk for any
-// future .Decode() call on the parsed node.
+// TestValidateConventionScalar_RejectsYAMLAnchors pins the
+// document-wide anchor/alias rejection added for audit finding
+// S003: an alias-valued convention and an anchor on an
+// unrelated key are both rejected — the latter is the case a
+// per-value check would miss.
 func TestValidateConventionScalar_RejectsYAMLAnchors(t *testing.T) {
-	// A YAML doc with an anchor on the convention value.
-	data := []byte("base: &anchor portable\nconvention: *anchor\n")
-	err := validateConventionScalar(data)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "anchors/aliases")
+	for _, data := range []string{
+		"base: &anchor portable\nconvention: *anchor\n",
+		"other: &a x\nconvention: portable\n",
+	} {
+		err := validateConventionScalar([]byte(data))
+		require.Error(t, err, data)
+		assert.Contains(t, err.Error(), "anchors/aliases", data)
+	}
 }
 
 func TestCopyConventionPreset_NilReturnsNil(t *testing.T) {

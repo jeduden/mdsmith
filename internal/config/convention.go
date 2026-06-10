@@ -202,13 +202,11 @@ func validateConventionRuleSettings(
 // raw node tag is the only way to catch the type mismatch before
 // that coercion happens.
 func validateConventionScalar(data []byte) error {
-	// Reject anchors/aliases up front via the shared yamlutil
-	// pre-check — the same idiom as the kind-file and
-	// convention-file loaders. RejectYAMLAliases errors only on
-	// anchor/alias use; the direct yaml.Unmarshal below is
-	// deliberate, since its parse errors must stay swallowed so
-	// Load's subsequent UnmarshalSafe call surfaces them with
-	// its own message.
+	// Reject anchors/aliases up front, as the kind-file and
+	// convention-file loaders do. The direct yaml.Unmarshal
+	// below is deliberate: its parse errors must stay swallowed
+	// so the caller's follow-up UnmarshalSafe (Load and
+	// ParseBytes share that pipeline) reports them instead.
 	if err := yamlutil.RejectYAMLAliases(data); err != nil {
 		return err
 	}

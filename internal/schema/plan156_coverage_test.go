@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"math"
 	"strconv"
 	"strings"
 	"testing"
@@ -264,6 +265,20 @@ func TestFrontmatterExpr_MarshalErrorSliceMap(t *testing.T) {
 	require.Error(t, err,
 		"a map containing an unmarshalable value must surface "+
 			"the json error rather than silently returning")
+}
+
+// TestFrontmatterExpr_MarshalErrorPrimitive pins the same error
+// path for the primitive branch: yaml.v3 decodes the scalars
+// `.inf`, `-.inf`, and `.nan` into float64 values json.Marshal
+// rejects, so a schema frontmatter field carrying one must
+// surface an error instead of silently becoming an empty CUE
+// expression.
+func TestFrontmatterExpr_MarshalErrorPrimitive(t *testing.T) {
+	for _, v := range []float64{math.Inf(1), math.Inf(-1), math.NaN()} {
+		expr, err := frontmatterExpr(v)
+		require.Error(t, err, "value %v", v)
+		assert.Empty(t, expr, "value %v", v)
+	}
 }
 
 // TestHeadingLine_EmptyEverywhereFallback covers the trailing

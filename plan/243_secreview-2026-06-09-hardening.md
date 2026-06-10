@@ -6,8 +6,8 @@ model: sonnet
 summary: >-
   Two low-risk hardening fixes from the 2026-06-09 audit:
   return an error instead of panicking in cuetemplate, and
-  route convention.go YAML through the safe wrapper. Closes
-  findings S002 and S003.
+  guard the convention pre-check with the yamlutil alias
+  rejection. Closes findings S002 and S003.
 ---
 # Security hardening batch — 2026-06-09 audit
 
@@ -54,8 +54,19 @@ alias risk.
 Guard the read with `yamlutil.RejectYAMLAliases`. The
 kind-file and convention-file loaders run the same
 pre-check. The tolerant `yaml.Unmarshal` stays: its
-parse errors defer to Load's `UnmarshalSafe`. The
-package already imports `yamlutil`.
+parse errors defer to Load's `UnmarshalSafe`.
+
+### C. Same-class sweep from review (round 2)
+
+Review of fix A found the same discarded-error pattern
+in `frontmatterExpr`
+([`internal/schema/parse_inline.go`](../internal/schema/parse_inline.go)):
+the primitive branch dropped the `json.Marshal` error
+as "unreachable". The same `.inf`/`.nan` front matter
+reaches it through inline kind schemas and `proto.md`.
+The branch now propagates the error. The catalog
+row-expr render error also names the matched file, so
+one bad file in a large catalog is findable.
 
 ## Tasks
 
@@ -69,6 +80,10 @@ package already imports `yamlutil`.
    `yamlutil.RejectYAMLAliases`; keep behaviour
    identical for alias-free input and add a test that
    anchor/alias config YAML is rejected.
+4. [x] Sweep the same discarded-error pattern:
+   propagate the `json.Marshal` error in
+   `frontmatterExpr` and name the matched file in the
+   catalog row-expr render error.
 
 ## Acceptance Criteria
 
@@ -78,6 +93,6 @@ package already imports `yamlutil`.
 - [x] The `.mdsmith.yml` `convention:` scalar pre-check
       rejects anchor/alias YAML via
       `yamlutil.RejectYAMLAliases`.
-- [x] Both fixes covered by tests (driven red/green).
+- [x] All fixes covered by tests (driven red/green).
 - [x] All tests pass: `go test ./...`
 - [x] `go tool golangci-lint run` reports no issues

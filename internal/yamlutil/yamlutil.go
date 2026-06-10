@@ -13,6 +13,13 @@
 //   - [Marshal] — thin wrapper around yaml.Marshal for consistency; safe for
 //     output marshaling where data originates from trusted Go values.
 //
+// One escape hatch is allowed: call [RejectYAMLAliases] directly, followed by
+// a raw decode, when the wrappers cannot express the decode — a strict
+// KnownFields decoder (kind and convention files), per-error-type diagnostics
+// (required-structure front matter), or parse errors that must defer to a
+// later [UnmarshalSafe] on the same bytes (the config convention pre-check).
+// Every such site keeps the pre-check directly above its decode.
+//
 // See docs/security/2026-04-05-adversarial-markdown.md for threat model context.
 package yamlutil
 

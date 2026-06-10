@@ -146,12 +146,10 @@ func (t *Template) Render(fm map[string]any) (string, error) {
 //     row-expr can write `\(id)` instead of `\(fm.id)`.
 //   - The synthetic outField holding the user's expression.
 //
-// JSON marshalling can fail for real frontmatter: yaml.v3
-// decodes the YAML scalars `.inf`, `-.inf`, and `.nan` into
-// float64 ±Inf/NaN values, which json.Marshal rejects. A
-// non-nil error therefore reports a frontmatter value with no
-// JSON encoding; returning it (instead of the old panic) keeps
-// check, fix, and the LSP server alive on such input.
+// JSON marshalling can fail for real frontmatter — among the
+// loader-produced shapes json.Marshal rejects are float64
+// ±Inf/NaN from `.inf`/`.nan` scalars and nested mappings with
+// non-string keys — so the error propagates to the caller.
 func buildSource(fm map[string]any, expr string) (string, error) {
 	// Single-pass filter: drop the renderer's synthetic field
 	// names from the JSON-emitted map AND collect the sorted

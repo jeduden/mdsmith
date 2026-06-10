@@ -174,14 +174,11 @@ func frontmatterExpr(v any) (string, error) {
 			return resolved, nil
 		}
 		return expr, nil
-	case bool, int, int64, float64, nil:
-		// json.Marshal cannot fail on these primitive types, so
-		// the error from the marshal call is intentionally
-		// discarded — keeping the err check would land on a
-		// permanently unreachable branch.
-		b, _ := json.Marshal(x)
-		return string(b), nil
-	case []any, map[string]any:
+	case bool, int, int64, float64, nil, []any, map[string]any:
+		// json.Marshal can fail here on loader-produced values:
+		// yaml.v3 decodes `.inf`/`.nan` scalars into float64
+		// ±Inf/NaN, which have no JSON encoding. Propagate the
+		// error so the offending field is named at config load.
 		b, err := json.Marshal(x)
 		if err != nil {
 			return "", err

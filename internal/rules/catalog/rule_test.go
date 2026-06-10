@@ -4626,3 +4626,34 @@ row-expr: '1 + 1'
 	}
 	assert.True(t, found, "expected render-time error diagnostic; got %v", diags)
 }
+
+func TestRowExpr_NonFiniteFrontMatterNamesFile(t *testing.T) {
+	// yaml.v3 decodes `.inf` to float64 +Inf, which json.Marshal
+	// rejects inside cuetemplate. The render error must surface
+	// as a diagnostic that names the matched file carrying the
+	// bad value, so the user need not bisect the matched set.
+	src := `<?catalog
+glob: "docs/*.md"
+row-expr: 'title'
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/bad.md": {Data: []byte(
+			"---\ntitle: B\nweight: .inf\n---\n# B\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	require.NotEmpty(t, diags)
+	var found bool
+	for _, d := range diags {
+		if strings.Contains(d.Message, "encoding frontmatter") &&
+			strings.Contains(d.Message, "docs/bad.md") {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found,
+		"expected render error naming docs/bad.md; got %v", diags)
+}
