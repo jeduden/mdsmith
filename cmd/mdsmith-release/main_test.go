@@ -55,6 +55,7 @@ func TestRunRejectsBadArity(t *testing.T) {
 		{"stamp with extra args", []string{"stamp", "1.2.3", "extra"}},
 		{"check with extra arg", []string{"check", "extra"}},
 		{"check-release-gates with extra arg", []string{"check-release-gates", "extra"}},
+		{"check-release-smoke with extra arg", []string{"check-release-smoke", "extra"}},
 		{"build-npm without args", []string{"build-npm"}},
 		{"build-npm with one arg", []string{"build-npm", "art"}},
 		{"build-wheels without args", []string{"build-wheels"}},
@@ -102,6 +103,7 @@ func TestReportFlagParseErrNilReturnsContinue(t *testing.T) {
 func TestSubcommandHelpExitsZero(t *testing.T) {
 	for _, sub := range []string{
 		"stamp", "check", "check-release-gates",
+		"check-release-smoke",
 		"build-npm", "build-wheels",
 		"build-flatpak", "package-obsidian",
 		"sync-docs", "build-website", "verify-website-links",
@@ -128,6 +130,7 @@ func TestSubcommandHelpExitsZero(t *testing.T) {
 func TestSubcommandRejectsUnknownFlag(t *testing.T) {
 	for _, sub := range []string{
 		"stamp", "check", "check-release-gates",
+		"check-release-smoke",
 		"build-npm", "build-wheels",
 		"build-flatpak", "package-obsidian",
 		"sync-docs", "build-website", "verify-website-links",

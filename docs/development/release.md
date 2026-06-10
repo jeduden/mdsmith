@@ -90,11 +90,17 @@ packages from the root.
 `vscode` chains off `build`, running `mdsmith-release build-npm` so the
 `.vsix` bundles every platform. `flatpak` chains off `build` too, handing
 `release` a `.flatpak` bundle of the x86_64 binary to attach to the draft.
-`release` runs `smoke-test` against the fresh `npm`, `pypi`, and `mise`
-channels. The `gate` job chains off `build` and is the lone reviewer-gated
-job (environment `release-approval`); every credential-bearing job lists it
-in `needs:`, so one approval releases the whole pipeline. Each such job also
-carries the repository guard and runs in the `release` GitHub environment.
+`release` runs `smoke-test` against the fresh `npm`, `pypi`, `mise`, and
+`go install` channels. The `gate` job chains off `build` and is the lone
+reviewer-gated job (environment `release-approval`); every
+credential-bearing job lists it in `needs:`, so one approval releases the
+whole pipeline. Each such job also carries the repository guard and runs
+in the `release` GitHub environment.
+
+Each `smoke-test` entry installs the just-published version as a user
+would, then asserts `mdsmith version` reports the tag — so a channel
+broken at the source (v0.40.0 was uninstallable via `go install`) fails
+the release run, not a user. `check-release-smoke` guards that coverage.
 
 The website deploy is a **separate workflow**,
 `.github/workflows/pages.yml`. It builds

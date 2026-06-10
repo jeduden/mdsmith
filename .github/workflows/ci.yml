@@ -102,6 +102,13 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go run ./cmd/mdsmith-release check-release-gates
+      # Post-publication coverage is an invariant too: every directly
+      # consumable channel keeps a smoke-test matrix entry in
+      # release.yml, so an install path broken at the source (the
+      # v0.40.0 go.mod replace directive broke `go install m@version`
+      # and nothing in the pipeline noticed) fails the release run
+      # instead of a user.
+      - run: go run ./cmd/mdsmith-release check-release-smoke
 
   # Product messaging surfaces (READMEs, package manifests, hugo
   # config, hero frontmatter, plugin manifests) are derived from

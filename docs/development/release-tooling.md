@@ -55,6 +55,8 @@ setup step.
 | `stamp <version>`            | `release.yml` publishing jobs; `pages.yml`                        |
 | `publish-release`            | `release.yml` release job                                         |
 | `check`                      | `ci.yml` version-guard                                            |
+| `check-release-gates`        | `ci.yml` release-gate-guard                                       |
+| `check-release-smoke`        | `ci.yml` release-gate-guard                                       |
 | `build-npm <art> <out>`      | `release.yml` npm job                                             |
 | `build-wheels <art> <out>`   | `release.yml` pypi job                                            |
 | `build-flatpak <art> <out>`  | `release.yml` flatpak job                                         |

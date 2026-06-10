@@ -762,6 +762,37 @@ jobs:
             run: |
               eval "$(mise activate bash --shims)"
               mdsmith version
+          - channel: go
+            # Resolve the freshly tagged module through proxy.golang.org
+            # and compile it, exactly as `go install` users do. No other
+            # job exercises this path: CI's `go install ./cmd/mdsmith`
+            # is a directory install, which honors go.mod replace
+            # directives that `go install m@version` rejects — the gap
+            # that let v0.40.0 ship uninstallable on the toolchain
+            # channel. TestRootGoModStaysInstallable guards the go.mod
+            # shape pre-merge; this entry proves the published tag
+            # end-to-end. The binary version-stamps itself from the
+            # module tag via runtime/debug.ReadBuildInfo, so the shared
+            # `mdsmith version` assertion below needs no ldflags.
+            # golang:1.25 (debian) ships bash like node:lts above; /go/bin
+            # is already on the image's PATH.
+            container: golang:1.25
+            install: |
+              # proxy.golang.org fetches a brand-new tag on first
+              # request, but a cold edge can briefly serve 404/410 for
+              # it; retry with backoff like the registry loops above.
+              ok=0
+              for attempt in 1 2 3 4 5; do
+                if go install "github.com/jeduden/mdsmith/cmd/mdsmith@${VERSION}"; then
+                  ok=1; break
+                fi
+                sleep 15
+              done
+              if [ "$ok" -ne 1 ]; then
+                echo "go install never succeeded after 5 attempts" >&2
+                exit 1
+              fi
+            run: mdsmith version
     runs-on: ubuntu-latest
     container: ${{ matrix.container }}
     steps:

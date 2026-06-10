@@ -10,6 +10,7 @@
 //	mdsmith-release stamp <version>
 //	mdsmith-release check
 //	mdsmith-release check-release-gates
+//	mdsmith-release check-release-smoke
 //	mdsmith-release build-npm <artifacts-dir> <out-dir>
 //	mdsmith-release build-wheels <artifacts-dir> <out-dir>
 //	mdsmith-release build-flatpak <artifacts-dir> <out-dir>
@@ -39,6 +40,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	flag "github.com/spf13/pflag"
@@ -52,6 +54,7 @@ Commands:
   stamp <version>                 Rewrite tracked manifests to <version>.
   check                           Verify tracked manifests are at the dev sentinel.
   check-release-gates             Verify release-environment gating across .github/workflows.
+  check-release-smoke             Verify release.yml smoke-tests every required channel.
   build-npm <artifacts> <out>     Build npm platform sub-packages.
   build-wheels <artifacts> <out>  Build platform-tagged Python wheels.
   build-flatpak <art> <out>       Stage the .flatpak bundle's manifest + Linux binaries.
@@ -115,6 +118,8 @@ func dispatch(cmd, root string, rest []string) int {
 		return runCheck(root, rest)
 	case "check-release-gates":
 		return runCheckReleaseGates(root, rest)
+	case "check-release-smoke":
+		return runCheckReleaseSmoke(root, rest)
 	case "build-npm":
 		return runBuildNpm(root, rest)
 	case "build-wheels":
@@ -269,6 +274,49 @@ func runCheckReleaseGates(root string, args []string) int {
 		return 1
 	}
 	fmt.Println("release-gate invariant holds across .github/workflows")
+	return 0
+}
+
+func runCheckReleaseSmoke(root string, args []string) int {
+	fs := flag.NewFlagSet("check-release-smoke", flag.ContinueOnError)
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: mdsmith-release check-release-smoke\n\n"+
+			"Verify release.yml's smoke-test matrix has a post-publication\n"+
+			"install entry for every directly consumable channel (%s):\n"+
+			"each entry installs the just-published version and asserts\n"+
+			"`mdsmith version` reports the tag, so a channel broken at the\n"+
+			"source — like the go.mod replace directive that made v0.40.0\n"+
+			"uninstallable via `go install` — fails the release pipeline\n"+
+			"instead of a user. Used by the release-gate-guard CI job.\n"+
+			"Exits non-zero on any violation.\n",
+			strings.Join(release.RequiredSmokeChannels, ", "))
+	}
+	if err := fs.Parse(args); err != nil {
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith-release: check-release-smoke"); code >= 0 {
+			return code
+		}
+	}
+	if fs.NArg() != 0 {
+		fs.Usage()
+		return 2
+	}
+	violations, err := release.CheckReleaseSmokeRoot(root)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith-release: %v\n", err)
+		return 1
+	}
+	if len(violations) > 0 {
+		fmt.Fprintln(os.Stderr, "release smoke coverage violated:")
+		for _, v := range violations {
+			fmt.Fprintf(os.Stderr, "  %s\n", v)
+		}
+		fmt.Fprintln(os.Stderr,
+			"\nevery directly consumable install channel needs a smoke-test matrix\n"+
+				"entry that installs the published version and checks `mdsmith version`.\n"+
+				"See docs/development/release.md.")
+		return 1
+	}
+	fmt.Println("release smoke-test matrix covers every required channel")
 	return 0
 }
 
