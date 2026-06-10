@@ -322,3 +322,13 @@ func TestLiftJSON_branches(t *testing.T) {
 		assert.NoError(t, v.Validate())
 	})
 }
+
+// TestEvalIndex_int64Bounds pins the int64-space bounds check on list
+// indexing: an index literal wider than 32 bits must reject as out of
+// range on every platform rather than truncate on 32-bit targets and
+// silently select a wrong-but-valid element.
+func TestEvalIndex_int64Bounds(t *testing.T) {
+	_, err := Compile(`close({ x: ["a", "b"][9223372036854775806] })`)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "out of range")
+}

@@ -179,3 +179,16 @@ func TestUnify_disjunctionPreservesDefault(t *testing.T) {
 	require.False(t, ambiguous)
 	require.Equal(t, "a", def.str)
 }
+
+// TestConcreteSatisfiesBound_minRunesInt64 pins the int64-space
+// strings.MinRunes comparison: a rune count wider than 32 bits must
+// stay unsatisfied on every platform rather than truncate on 32-bit
+// targets and invert the check.
+func TestConcreteSatisfiesBound_minRunesInt64(t *testing.T) {
+	schema, err := Compile(`close({ x: strings.MinRunes(4294967297) })`)
+	require.NoError(t, err)
+	data, err := CompileJSON([]byte(`{"x": "short"}`))
+	require.NoError(t, err)
+	verr := data.Unify(schema).Validate()
+	require.Error(t, verr)
+}

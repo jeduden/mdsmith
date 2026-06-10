@@ -144,11 +144,12 @@ func evalIndex(n *ast.IndexExpr, scope map[string]*engineValue) (*engineValue, e
 	if err != nil {
 		return nil, err
 	}
-	i := int(idxVal.i)
-	if i < 0 || i >= len(elems) {
-		return mkBottom(nil, "list index %d out of range (len %d)", i, len(elems)), nil
+	// Compare in int64 space: converting first would truncate on
+	// 32-bit targets (wasm) and could index a wrong-but-valid element.
+	if idxVal.i < 0 || idxVal.i >= int64(len(elems)) {
+		return mkBottom(nil, "list index %d out of range (len %d)", idxVal.i, len(elems)), nil
 	}
-	return elems[i], nil
+	return elems[int(idxVal.i)], nil
 }
 
 // evalListElems builds the concrete element list of a list literal, applying

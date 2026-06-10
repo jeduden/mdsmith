@@ -172,7 +172,9 @@ func concreteSatisfiesBound(c *engineValue, bd bound) bool {
 	case opNotMatch:
 		return c.kind == kString && !bd.re.MatchString(c.str)
 	case opMinRunes:
-		return c.kind == kString && utf8.RuneCountInString(c.str) >= int(bd.num)
+		// Compare in float64 space: int(bd.num) would truncate a huge
+		// MinRunes argument on 32-bit targets (wasm) and invert the check.
+		return c.kind == kString && float64(utf8.RuneCountInString(c.str)) >= bd.num
 	}
 	if bd.isStr {
 		if c.kind != kString {
