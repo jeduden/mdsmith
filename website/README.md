@@ -10,21 +10,21 @@ the website cannot drift out of sync with the binary.
 
 ## Layout
 
-| Path                           | Purpose                                                                     |
-| ------------------------------ | --------------------------------------------------------------------------- |
-| `hugo.toml`                    | Site config + module mounts (does NOT mount `../docs` directly).            |
-| `content/_index.md`            | Homepage front matter and copy.                                             |
-| `content/docs/`                | **Synced** from `../docs/` by `mdsmith-release build-website` (gitignored). |
-| `layouts/_default/baseof.html` | Page shell — `<head>`, top nav, footer.                                     |
-| `layouts/index.html`           | Homepage template (hero · feature grid · install tabs · terminal).          |
-| `layouts/_default/single.html` | Docs page template (sidebar + prose).                                       |
-| `layouts/_default/list.html`   | Section index template.                                                     |
-| `layouts/partials/`            | `topnav`, `footer`, `hero`, `feature-grid`, etc.                            |
-| `layouts/shortcodes/`          | `callout`, `diag`, `pill`, `chip`, `install-cmd`.                           |
-| `layouts/_default/_markup/`    | Goldmark render hooks (headings, code blocks).                              |
-| `static/css/`                  | `colors_and_type.css` (tokens) + `app.css` (component styles).              |
-| `static/fonts/`                | Self-hosted WOFF2: 0xProto (mono) + IBM Plex Sans/Serif.                    |
-| `static/img/`                  | Logo SVGs.                                                                  |
+| Path                           | Purpose                                                                      |
+| ------------------------------ | ---------------------------------------------------------------------------- |
+| `hugo.toml`                    | Site config + module mounts (does NOT mount `../docs` directly).             |
+| `content/_index.md`            | Homepage front matter and copy.                                              |
+| `content/docs/`                | **Synced** from `../docs/` by `mdsmith-release build-website` (gitignored).  |
+| `layouts/_default/baseof.html` | Page shell — `<head>`, top nav, footer.                                      |
+| `layouts/index.html`           | Homepage template (hero · positioning band · feature grid · install picker). |
+| `layouts/_default/single.html` | Docs page template (sidebar + prose).                                        |
+| `layouts/_default/list.html`   | Section index template.                                                      |
+| `layouts/partials/`            | `topnav`, `footer`, `hero`, `feature-grid`, etc.                             |
+| `layouts/shortcodes/`          | `callout`, `diag`, `pill`, `chip`, `install-cmd`.                            |
+| `layouts/_default/_markup/`    | Goldmark render hooks (headings, code blocks).                               |
+| `static/css/`                  | `colors_and_type.css` (tokens) + `app.css` (component styles).               |
+| `static/fonts/`                | Self-hosted WOFF2: 0xProto (mono) + IBM Plex Sans/Serif.                     |
+| `static/img/`                  | Logo SVGs.                                                                   |
 
 ## Develop
 
@@ -119,6 +119,11 @@ release-channel docs, gated against drift in CI:
 
 - **Hero** — front matter (`hero:`) on the homepage
   itself, `content/_index.md`, read by `hero.html`.
+- **Positioning band** — the `content/_index.md` body (the
+  one-sentence scope statement) plus the linked "One engine"
+  surface row, hardcoded in `layouts/index.html` like the
+  hero CTAs and rendered directly above the "Available on"
+  strip.
 - **Install picker** — `install-picker.html` reads
   `hugo.Data.channels` (the generated
   `website/data/channels.yaml`). It renders every channel

@@ -1,20 +1,37 @@
 {{ define "main" }}
   {{ partial "hero.html" . }}
-  {{- /* The page body of content/_index.md is a one-paragraph
-         scope statement (what mdsmith checks, and the one engine
-         behind CLI, LSP, and editors). The hero lead carries the
-         category ("a Markdown linter and formatter"); this strip
-         adds the concrete scope right under it. The fuller copy
-         is the intro of docs/features/index.md (which the README
-         includes and /features/ renders); keep the _index.md body
-         aligned with it when either changes. */ -}}
-  {{ with .Content }}
+  {{- /* Positioning band. The content/_index.md body is a
+         one-sentence scope statement (what mdsmith checks and
+         fixes); the "One engine" row lists the product surfaces
+         the one rule engine reaches, each linking to its docs
+         page. The surface links are hardcoded here like the hero
+         CTAs in hero.html — the website-page front-matter schema
+         is closed, so homepage data blocks need a schema key
+         before they can move into front matter. The row is laid
+         out to pair with the "Available on" channels row from
+         logos-strip.html; together the three lines read as one
+         spec-sheet band under the hero. The fuller prose is the
+         intro of docs/features/index.md (which the README
+         includes and /features/ renders); keep the statement and
+         surface list aligned with it when either changes. */ -}}
   <section class="positioning">
     <div class="container">
-      <div class="positioning-body">{{ . }}</div>
+      {{ with .Content }}
+      <div class="positioning-statement">{{ . }}</div>
+      {{ end }}
+      <div class="positioning-engine">
+        <span class="positioning-label">One engine</span>
+        <div class="positioning-surfaces">
+          <a class="positioning-surface" href="{{ "/reference/cli/" | relURL }}">CLI</a>
+          <a class="positioning-surface" href="{{ "/features/live-diagnostics/" | relURL }}">LSP server</a>
+          <a class="positioning-surface" href="{{ "/guides/editors/vscode/" | relURL }}">VS Code</a>
+          <a class="positioning-surface" href="{{ "/guides/editors/neovim/" | relURL }}">Neovim</a>
+          <a class="positioning-surface" href="{{ "/guides/editors/obsidian/" | relURL }}">Obsidian</a>
+          <a class="positioning-surface" href="{{ "/features/editor-agent-integration/" | relURL }}">Claude Code</a>
+        </div>
+      </div>
     </div>
   </section>
-  {{ end }}
   {{ partial "logos-strip.html" . }}
   <section class="section">
     <div class="container">
