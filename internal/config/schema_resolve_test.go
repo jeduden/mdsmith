@@ -196,6 +196,58 @@ func TestLoad_UndeclaredNamedSchemaErrors(t *testing.T) {
 	assert.Contains(t, err.Error(), "rfc")
 }
 
+// TestLoad_NamedSchemaPlusRequiredStructureSchemaErrors pins task 5:
+// a kind that sets a named `schema:` and a
+// `rules.required-structure.schema:` file path is a dual-source
+// conflict, quoting "pick one source".
+func TestLoad_NamedSchemaPlusRequiredStructureSchemaErrors(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(`schemas:
+  rfc-v1:
+    filename: "RFC-*.md"
+kinds:
+  rfc:
+    schema: rfc-v1
+    rules:
+      required-structure:
+        schema: schemas/rfc.md
+`), 0o644))
+	_, err := Load(cfgPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rfc")
+	assert.Contains(t, err.Error(), "pick one source")
+	assert.Contains(t, err.Error(), "schemas/rfc.md")
+	assert.Contains(t, err.Error(), "rfc-v1",
+		"a named-ref conflict must name the referenced schema, "+
+			"not just call it inline")
+}
+
+// TestLoad_NamedSchemaPlusInlineSchemaErrors pins task 5: a kind that
+// sets a named `schema:` and `rules.required-structure.inline-schema:`
+// is a dual-source conflict, quoting "pick one source".
+func TestLoad_NamedSchemaPlusInlineSchemaErrors(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(`schemas:
+  rfc-v1:
+    filename: "RFC-*.md"
+kinds:
+  rfc:
+    schema: rfc-v1
+    rules:
+      required-structure:
+        inline-schema:
+          sections:
+            - heading: "Overview"
+`), 0o644))
+	_, err := Load(cfgPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rfc")
+	assert.Contains(t, err.Error(), "pick one source")
+	assert.Contains(t, err.Error(), "inline-schema")
+}
+
 // TestParseBytes_ResolvesInlineSchemaRegistry pins that the in-memory
 // path (no disk discovery) still resolves a named ref against an
 // inline `schemas:` registry.

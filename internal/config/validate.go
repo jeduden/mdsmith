@@ -135,19 +135,24 @@ func validateKindSchemaSources(name string, body KindBody) error {
 	pathSet, pathSetting := schemaPathSetting(rsCfg, hasRS)
 	inlineSet, _ := schemaInlineSetting(rsCfg, hasRS)
 
+	// The top-level `schema:` is filled in two ways: an inline mapping
+	// (Schema.Name empty) or a named registry reference resolved to a
+	// body (Schema.Name set). Describe whichever the user wrote so the
+	// conflict message points at the right line. Both forms conflict
+	// with a file-path or inline-schema source under required-structure.
 	if len(body.Schema.Map()) > 0 && pathSet {
 		return fmt.Errorf(
-			"kind %q: schema is declared both inline (kinds.%s.schema:) "+
+			"kind %q: schema is declared both via %s "+
 				"and as a file (kinds.%s.rules.required-structure.schema: %q); "+
 				"pick one source",
-			name, name, name, pathSetting)
+			name, schemaSourceDescription(name, body), name, pathSetting)
 	}
 	if len(body.Schema.Map()) > 0 && inlineSet {
 		return fmt.Errorf(
-			"kind %q: schema is declared both inline (kinds.%s.schema:) "+
+			"kind %q: schema is declared both via %s "+
 				"and under kinds.%s.rules.required-structure.inline-schema:; "+
-				"pick one source — keep the top-level kinds.%s.schema: block",
-			name, name, name, name)
+				"pick one source — keep the top-level kinds.%s.schema: declaration",
+			name, schemaSourceDescription(name, body), name, name)
 	}
 	if pathSet && inlineSet {
 		return fmt.Errorf(
@@ -157,6 +162,19 @@ func validateKindSchemaSources(name string, body KindBody) error {
 			name, pathSetting, name)
 	}
 	return nil
+}
+
+// schemaSourceDescription renders the kind's top-level `schema:` source
+// for a conflict message: a named reference reports the registry name
+// it resolved from, an inline mapping reports the bare key. The name
+// form lets a user trace a dual-source error back to the `schema: foo`
+// line rather than mistaking a registry reference for an inline block.
+func schemaSourceDescription(name string, body KindBody) string {
+	if body.Schema.Name != "" {
+		return fmt.Sprintf("a named reference (kinds.%s.schema: %s)",
+			name, body.Schema.Name)
+	}
+	return fmt.Sprintf("an inline block (kinds.%s.schema:)", name)
 }
 
 func schemaPathSetting(rs RuleCfg, hasRS bool) (bool, string) {
