@@ -206,6 +206,21 @@ So the per-field diagnostic, the dedup key, and the anchor line do not
 change. The schema suite passes unchanged. That suite includes the
 plan-147/230 diagnostic-shape tests.
 
+### Task 3 — flip to the in-house value model (not started)
+
+The CUE-backed façade is still in place. The flip — the in-house value
+model, `Unify` as lattice meet, direct `map[string]any` validation, and
+the schema/data fuzzer — is the remaining work. The differential
+harness (validate, access, and path arms) is ready as the oracle scaffold
+and is green today.
+
+### Task 4 — alloc budget and benchmark (not started)
+
+Blocked on task 3. The CUE-backed interim path currently measures about
+356 allocs/op on `BenchmarkValidate/cuelite` (vs CUE's 213), the
+documented two-context-plus-rebuild cost the flip erases. The ≤ 10
+allocs/op budget is met only after task 3.
+
 ## See also
 
 - [Plan 218 — in-house CUE-subset engine](218_wasm-size-reduction.md)
