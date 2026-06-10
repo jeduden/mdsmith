@@ -53,3 +53,25 @@ func TestParseSchema_ContentDirectiveNotAHeading(t *testing.T) {
 		"only the H2 is a heading; the <?content?> row is a directive")
 	assert.Equal(t, "Tagline", tmpl.Headings[0].Text)
 }
+
+// TestIsContentDirectiveOpen pins the directive-name boundary: only
+// `<?content` followed by a non-identifier byte (or nothing) opens a
+// block, so a differently named directive like `<?content-foo?>` is
+// not mistaken for one.
+func TestIsContentDirectiveOpen(t *testing.T) {
+	assert.True(t, isContentDirectiveOpen([]byte("<?content kind: paragraph ?>")))
+	assert.True(t, isContentDirectiveOpen([]byte("<?content?>")))
+	assert.True(t, isContentDirectiveOpen([]byte("<?content")))
+	assert.False(t, isContentDirectiveOpen([]byte("<?content-foo?>")))
+	assert.False(t, isContentDirectiveOpen([]byte("<?contents kind: x ?>")))
+	assert.False(t, isContentDirectiveOpen([]byte("plain body line")))
+}
+
+// TestHeadingIndexForLine covers both outcomes: the index of the
+// first schema heading matching a body heading line, and -1 when no
+// schema heading matches.
+func TestHeadingIndexForLine(t *testing.T) {
+	heads := []docHeading{{Text: "Tagline"}, {Text: "Lead"}}
+	assert.Equal(t, 1, headingIndexForLine(heads, "## Lead"))
+	assert.Equal(t, -1, headingIndexForLine(heads, "## Other"))
+}

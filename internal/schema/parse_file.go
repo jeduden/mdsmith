@@ -307,10 +307,7 @@ func extractRequireFilename(f *lint.File) (string, error) {
 		if !ok || pi.Name != "require" {
 			continue
 		}
-		body, err := piYAMLBody(pi, f.Source, "require")
-		if err != nil {
-			return "", err
-		}
+		body := piYAMLBody(pi, f.Source, "require")
 		if body == "" {
 			continue
 		}
@@ -331,10 +328,7 @@ func extractRequireFilename(f *lint.File) (string, error) {
 // shape as one inline `content:` list entry (`kind`, `projection`,
 // `required`, `bind`, and the kind-specific fields).
 func parseContentDirective(pi *piparser.ProcessingInstruction, source []byte) (ContentEntry, error) {
-	body, err := piYAMLBody(pi, source, "content")
-	if err != nil {
-		return ContentEntry{}, err
-	}
+	body := piYAMLBody(pi, source, "content")
 	if body == "" {
 		return ContentEntry{}, fmt.Errorf(
 			"<?content?> directive missing a `kind:` key")
@@ -346,7 +340,7 @@ func parseContentDirective(pi *piparser.ProcessingInstruction, source []byte) (C
 	return parseContentEntry(m, "<?content?>")
 }
 
-func piYAMLBody(pi *piparser.ProcessingInstruction, source []byte, name string) (string, error) {
+func piYAMLBody(pi *piparser.ProcessingInstruction, source []byte, name string) string {
 	lines := pi.Lines()
 	if lines.Len() == 1 {
 		seg := lines.At(0)
@@ -355,14 +349,14 @@ func piYAMLBody(pi *piparser.ProcessingInstruction, source []byte, name string) 
 		if idx := strings.Index(line, "?>"); idx >= 0 {
 			line = line[:idx]
 		}
-		return strings.TrimSpace(line), nil
+		return strings.TrimSpace(line)
 	}
 	var b strings.Builder
 	for i := 1; i < lines.Len(); i++ {
 		seg := lines.At(i)
 		b.Write(seg.Value(source))
 	}
-	return b.String(), nil
+	return b.String()
 }
 
 // collectFileHeadings walks the schema AST, collecting heading entries
@@ -471,10 +465,7 @@ func expandInclude(
 func resolveIncludePath(
 	pi *piparser.ProcessingInstruction, source []byte, schemaPath string,
 ) (string, error) {
-	body, err := piYAMLBody(pi, source, pi.Name)
-	if err != nil {
-		return "", fmt.Errorf("parsing include processing instruction: %w", err)
-	}
+	body := piYAMLBody(pi, source, pi.Name)
 	if body == "" {
 		return "", fmt.Errorf(
 			"include processing instruction missing required 'file' attribute")

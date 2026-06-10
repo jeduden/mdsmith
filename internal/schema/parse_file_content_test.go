@@ -107,3 +107,39 @@ func TestParseFile_ContentDirectiveRejectsUnknownKey(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown content key")
 }
+
+// TestParseFile_ContentDirectiveRequiresKind locks down that a bare
+// `<?content ?>` with no body fails at parse time instead of
+// declaring an empty entry.
+func TestParseFile_ContentDirectiveRequiresKind(t *testing.T) {
+	dir := t.TempDir()
+	path := writeFile(t, dir, "schema.md",
+		"## Tagline\n\n<?content ?>\n")
+	_, err := ParseFile(&FileReader{}, path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "missing a `kind:` key")
+}
+
+// TestParseFile_ContentDirectiveRejectsInvalidYAML locks down that a
+// directive body that is not valid YAML fails at parse time with the
+// invalid-directive diagnostic.
+func TestParseFile_ContentDirectiveRejectsInvalidYAML(t *testing.T) {
+	dir := t.TempDir()
+	path := writeFile(t, dir, "schema.md",
+		"## Tagline\n\n<?content\nkind: [unclosed\n?>\n")
+	_, err := ParseFile(&FileReader{}, path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid <?content?> directive")
+}
+
+// TestParseFile_ContentDirectiveBeforeHeadingFails locks down that a
+// `<?content?>` row above the first heading is rejected — the entry
+// would have no section to attach to.
+func TestParseFile_ContentDirectiveBeforeHeadingFails(t *testing.T) {
+	dir := t.TempDir()
+	path := writeFile(t, dir, "schema.md",
+		"<?content\nkind: paragraph\n?>\n\n## Tagline\n")
+	_, err := ParseFile(&FileReader{}, path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must appear inside a section")
+}
