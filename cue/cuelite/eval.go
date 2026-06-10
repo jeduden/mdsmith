@@ -47,7 +47,12 @@ func evalExpr(e ast.Expr, scope map[string]*engineValue) (*engineValue, error) {
 	case *ast.StructLit:
 		return evalStruct(n, scope)
 	case *ast.UnaryExpr:
-		return evalUnary(n, scope)
+		// A unary expression (a bound operator >=0, a numeric sign -1) carries no
+		// reference, so it has nothing to resolve against scope and goes straight
+		// to the compile-time builder. A * default marker is stripped by
+		// evalDisjunction before a branch is built, so reaching compileUnary with
+		// one yields the "* default is only valid in a disjunction" error.
+		return compileUnary(n)
 	case *ast.CallExpr:
 		return compileCall(n)
 	case *ast.SelectorExpr:
@@ -191,6 +196,17 @@ func evalComprehension(c *ast.Comprehension, scope map[string]*engineValue) (boo
 		return false, nil, err
 	}
 	if cond.kind != kBool {
+		// A CONCRETE non-bool condition (`if ""`, `if 1`) is a type error CUE
+		// rejects at compile ("cannot use \"\" (type string) as type bool"). A
+		// NON-concrete condition (a type or top, e.g. a still-unresolved
+		// reference that resolved to `string`) defers: the enclosing list element
+		// becomes a thunk awaiting data. Distinguishing the two avoids deferring
+		// an `if` whose condition can never become a bool — which would surface
+		// as an empty-freeRefs panic in compileExpr.
+		if isConcrete(cond) {
+			return false, nil, fmt.Errorf(
+				"cuelite: invalid operation: if condition must be a bool, got %s", cond.describe())
+		}
 		return false, nil, errUnresolved
 	}
 	body, ok := c.Value.(*ast.StructLit)
@@ -436,15 +452,6 @@ func retainBranches(defaults, live []*engineValue) []*engineValue {
 	return out
 }
 
-// evalUnary evaluates a unary expression in a scope. A standalone unary (a
-// bound operator or numeric sign) carries no reference, so it delegates to the
-// compile-time builder; a * default marker is stripped by evalDisjunction
-// before a branch is evaluated, so reaching compileUnary with one yields the
-// "* default is only valid in a disjunction" error.
-func evalUnary(n *ast.UnaryExpr, scope map[string]*engineValue) (*engineValue, error) {
-	return compileUnary(n)
-}
-
 // evalList builds a list value in a scope, supporting comprehension elements
 // the same way evalListElems does but preserving the open tail, so a scoped
 // `[...string]` or `[if c {x}, ...]` resolves with its sibling references.
@@ -624,4 +631,16 @@ func isReferenceName(name string) bool {
 		return false
 	}
 	return true
+}
+
+// isTypeKeyword reports whether name is a CUE built-in TYPE keyword (one that
+// builds a type atom, not a bool/null/top literal). Used to reject a bare
+// type-keyword field LABEL: as a label it shadows the keyword for references
+// in the field's value, a construct the in-house engine cannot model.
+func isTypeKeyword(name string) bool {
+	switch name {
+	case "string", "int", "float", "number", "bool", "bytes":
+		return true
+	}
+	return false
 }

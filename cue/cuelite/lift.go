@@ -1,6 +1,7 @@
 package cuelite
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,8 +15,11 @@ import (
 // delegate to: it enforces the same no-duplicate-key contract (a duplicate
 // object key at any depth is rejected, naming the key — see CompileJSON),
 // rejects any document that is not strict JSON (an unquoted key, a CUE
-// expression), and builds a closed struct so the lifted data validates
-// against an open schema by carrying every key concretely.
+// expression), and builds an OPEN struct carrying every key concretely.
+// Lifted data is open on purpose: closedness is a SCHEMA property, so a
+// `close({a:int})` schema must reject an extra data key while a plain
+// `{a:int}` schema accepts it. Were the data closed, unifying it with an open
+// schema would import the data's closedness and change that outcome.
 //
 // json.Decoder with UseNumber preserves a number's exact text, so an
 // integer lifts to kInt and a non-integral or out-of-int64 number to
@@ -35,7 +39,7 @@ func liftJSON(data []byte) (*engineValue, error) {
 		return nil, err
 	}
 	var raw any
-	dec := json.NewDecoder(bytesReader(data))
+	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.UseNumber()
 	if err := dec.Decode(&raw); err != nil {
 		return nil, fmt.Errorf("cuelite: invalid JSON: %w", err)

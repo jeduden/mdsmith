@@ -66,14 +66,28 @@ func TestEvalIdent_literalKeywords(t *testing.T) {
 }
 
 // TestEvalComprehension_nonBoolCondition covers evalComprehension's
-// non-bool-condition deferral: a concrete non-bool condition defers.
+// non-bool-condition branches: a CONCRETE non-bool condition is a type error
+// (CUE rejects "cannot use 1 (type int) as type bool"), while a NON-concrete
+// condition (a type/top) defers with errUnresolved.
 func TestEvalComprehension_nonBoolCondition(t *testing.T) {
-	comp := &ast.Comprehension{
-		Clauses: []ast.Clause{&ast.IfClause{Condition: ast.NewLit(token.INT, "1")}},
-		Value:   &ast.StructLit{},
-	}
-	_, _, err := evalComprehension(comp, map[string]*engineValue{})
-	assert.ErrorIs(t, err, errUnresolved, "a non-bool condition defers")
+	t.Run("concrete non-bool is a type error", func(t *testing.T) {
+		comp := &ast.Comprehension{
+			Clauses: []ast.Clause{&ast.IfClause{Condition: ast.NewLit(token.INT, "1")}},
+			Value:   &ast.StructLit{},
+		}
+		_, _, err := evalComprehension(comp, map[string]*engineValue{})
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, errUnresolved)
+		assert.Contains(t, err.Error(), "if condition must be a bool")
+	})
+	t.Run("non-concrete type condition defers", func(t *testing.T) {
+		comp := &ast.Comprehension{
+			Clauses: []ast.Clause{&ast.IfClause{Condition: ast.NewIdent("string")}},
+			Value:   &ast.StructLit{},
+		}
+		_, _, err := evalComprehension(comp, map[string]*engineValue{})
+		assert.ErrorIs(t, err, errUnresolved, "a non-concrete type condition defers")
+	})
 }
 
 // TestEvalStruct_ellipsisUnderScope covers evalStruct's Ellipsis branch during

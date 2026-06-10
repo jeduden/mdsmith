@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"cuelang.org/go/cue/ast"
 	"cuelang.org/go/cue/literal"
@@ -177,15 +178,22 @@ func compileExpr(e ast.Expr) (*engineValue, error) {
 		return v, nil
 	}
 	if stderrors.Is(err, errUnresolved) {
-		if isDeferrable(e) {
+		refs := freeRefs(e)
+		if isDeferrable(e) && len(refs) > 0 {
 			return deferToThunk(e), nil
+		}
+		if len(refs) == 0 {
+			// errUnresolved with no free reference is not a missing field: it is a
+			// construct that can never resolve against data — an `if` whose
+			// condition is a non-concrete TYPE (`if string {}`, `if _ {}`), which
+			// CUE rejects as "cannot use string (type string) as type bool". There
+			// is no name to report, so surface the non-resolvable condition.
+			return nil, fmt.Errorf("cuelite: invalid operation: condition cannot resolve to a concrete bool")
 		}
 		// A non-deferrable unresolved reference (a bare ident, or a comparison
 		// whose result the subset cannot use lazily) names a field that cannot
-		// exist. errUnresolved only originates from evalIdent on a reference
-		// name, so freeRefs always finds at least that name; report CUE's eager
-		// wording naming the first free reference.
-		return nil, fmt.Errorf("reference %q not found", freeRefs(e)[0])
+		// exist. Report CUE's eager wording naming the first free reference.
+		return nil, fmt.Errorf("reference %q not found", refs[0])
 	}
 	return nil, err
 }
@@ -254,7 +262,7 @@ func compileBasicLit(n *ast.BasicLit) (*engineValue, error) {
 // stripUnderscores removes the digit-group separators CUE allows in number
 // literals (1_234_567) so strconv can parse them.
 func stripUnderscores(s string) string {
-	if !containsByte(s, '_') {
+	if strings.IndexByte(s, '_') < 0 {
 		return s
 	}
 	out := make([]byte, 0, len(s))
@@ -264,15 +272,6 @@ func stripUnderscores(s string) string {
 		}
 	}
 	return string(out)
-}
-
-func containsByte(s string, b byte) bool {
-	for i := 0; i < len(s); i++ {
-		if s[i] == b {
-			return true
-		}
-	}
-	return false
 }
 
 // checkEmbeddedThunkRefs rejects an embedded thunk (a free comparison like
@@ -306,6 +305,19 @@ func fieldLabel(l ast.Label) (string, error) {
 		if lab.Name == "_" || isDefinitionOrHidden(lab.Name) {
 			return "", fmt.Errorf(
 				"cuelite: unsupported field label %q (definitions and hidden fields are not in the subset)",
+				lab.Name)
+		}
+		// A bare TYPE KEYWORD label (`int:`, `string:`) shadows the keyword for
+		// any reference to the same name in the field's own value: CUE resolves
+		// the inner `int` in `{int: {int}}` as a self-reference to this field,
+		// not the type, which makes the field behave unlike a normal data key.
+		// The in-house engine always resolves a type keyword as the type, so it
+		// cannot model the shadowing — reject the bare keyword label as outside
+		// the subset. A field literally named `int` is still expressible quoted
+		// (`"int":`), which carries no shadowing.
+		if isTypeKeyword(lab.Name) {
+			return "", fmt.Errorf(
+				"cuelite: unsupported field label %q (a bare type keyword shadows references; quote it)",
 				lab.Name)
 		}
 		return lab.Name, nil

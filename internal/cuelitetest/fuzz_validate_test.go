@@ -219,6 +219,19 @@ func extraFuzzSeeds() []struct{ schema, data string } {
 		// that can never resolve.
 		{`A: A > _`, `0`},
 		{`{a: int, b: a == string}`, `{"a":1}`},
+		// An `if` comprehension whose condition is not a concrete bool (a string
+		// literal, a type, or top): CUE rejects "cannot use ... as type bool" at
+		// schema compile; the in-house engine must reject too, not panic on an
+		// empty free-reference set. Regression seed for the freeRefs guard.
+		{`({A: [if "" {}]})`, `0`},
+		{`({A: [if string {}]})`, `0`},
+		// A bare type-keyword field label (int:): CUE resolves a same-named
+		// reference in the field value as a self-reference, not the type, so
+		// `{int: {int}}` accepts `{}` where a quoted label would reject. The
+		// in-house engine cannot model the shadowing and rejects the bare keyword
+		// label out-of-subset; hatch 1 covers the divergence.
+		{`{int: {int}}`, `{}`},
+		{`{string: x}`, `{}`},
 		// A lone-surrogate escape in a VALUE position (hatch 2) and in a KEY
 		// position (now rejected in both arms — no hatch). Seeding both keeps
 		// the surrogate classes exercised on every run.

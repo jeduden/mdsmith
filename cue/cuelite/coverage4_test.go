@@ -160,6 +160,19 @@ func TestFieldLabel_directBranches(t *testing.T) {
 	// A malformed quoted label fails to unquote.
 	_, err = fieldLabel(&ast.BasicLit{Kind: token.STRING, Value: `"\x"`})
 	assert.Error(t, err)
+	// A bare type-keyword identifier label is rejected: it shadows references
+	// to the same name in the field value, which the engine cannot model.
+	for _, kw := range []string{"int", "string", "float", "number", "bool", "bytes"} {
+		_, err = fieldLabel(ast.NewIdent(kw))
+		assert.Error(t, err, "bare type-keyword label %q must reject", kw)
+	}
+	// A non-keyword identifier label is accepted; a quoted type-keyword is too.
+	name, err = fieldLabel(ast.NewIdent("status"))
+	require.NoError(t, err)
+	assert.Equal(t, "status", name)
+	name, err = fieldLabel(&ast.BasicLit{Kind: token.STRING, Value: `"int"`})
+	require.NoError(t, err)
+	assert.Equal(t, "int", name)
 }
 
 // TestCompileFile_topLevelEmbedAmongFields covers compileFile's

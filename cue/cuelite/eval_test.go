@@ -156,6 +156,31 @@ func TestEvalComparison_typeOperand(t *testing.T) {
 	})
 }
 
+// TestCompile_ifConditionNotBool pins that an `if` comprehension whose
+// condition is not a concrete bool is rejected at SCHEMA COMPILE rather than
+// crashing or deferring to a thunk that can never resolve — matching CUE's
+// "cannot use ... as type bool". A concrete non-bool (`if ""`, `if 1`) and a
+// non-concrete type/top condition (`if string`, `if _`) both reject; only a
+// condition that resolves to a bool against data (`if m == "a"`) defers.
+func TestCompile_ifConditionNotBool(t *testing.T) {
+	for _, src := range []string{
+		`({A: [if "" {}]})`,
+		`({A: [if 1 {}]})`,
+		`({A: [if string {}]})`,
+		`({A: [if _ {}]})`,
+	} {
+		_, err := Compile(src)
+		assert.Error(t, err, "a non-bool if condition must reject at compile: %s", src)
+	}
+	// A condition that resolves to a bool once data binds the reference defers
+	// and validates — the deferral path is NOT broken by the rejection above.
+	// With m == "a" the if body is kept, so [0] resolves to `string` and x must
+	// be a string.
+	v, err := Compile(`{m: string, x: [if m == "a" {string}][0]}`)
+	require.NoError(t, err)
+	assert.NoError(t, v.CompileMap(map[string]any{"m": "a", "x": "anything"}).Validate())
+}
+
 // TestLiftJSON_branches covers the JSON lifter's number, array, and scalar
 // branches plus the strict-JSON rejections.
 func TestLiftJSON_branches(t *testing.T) {

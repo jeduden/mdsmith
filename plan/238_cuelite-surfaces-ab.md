@@ -202,13 +202,21 @@ context-free immutable `Value` erases it. The operand order then stops
 mattering. `compile_cache.go`'s `CompiledCUE` dropped its `Ctx` field,
 because cuelite hides the context.
 
-MDS020 diagnostics stay byte-identical. The error walkers consume
-`[]*cuelite.PathError` now. They got those from `cuelite.Errors`. The
-old code used `[]errors.Error`. Both carry the same `.Path()` route.
+MDS020 PER-FIELD diagnostics stay byte-identical. The error walkers
+consume `[]*cuelite.PathError` now, which they get from
+`cuelite.Errors`; the old code used `[]errors.Error`. Both carry the
+same `.Path()` route. So the per-field diagnostic, the dedup key, and
+the anchor line do not change. The schema suite passes unchanged,
+including the plan-147/230 diagnostic-shape tests.
 
-So the per-field diagnostic, the dedup key, and the anchor line do not
-change. The schema suite passes unchanged. That suite includes the
-plan-147/230 diagnostic-shape tests.
+The byte-identity claim is scoped to those per-field diagnostics. The
+dedicated FRONT-MATTER-SHAPE diagnostic is no longer reached from a real
+document. It fires only when front matter holds a value the lifter
+cannot represent. But the `json.Marshal → CompileJSON` round-trip is
+gone (plan 218), and a YAML/JSON decoder only produces representable
+types. The branch survives as a typed fail-safe covered by a synthetic
+unit test, its wording moved from the former `json.Marshal` failure to
+the `LiftMap` representability check.
 
 ### Task 3 — flip to the in-house value model (done)
 

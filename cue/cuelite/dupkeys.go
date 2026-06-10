@@ -9,12 +9,6 @@ import (
 	"unicode/utf8"
 )
 
-// bytesReader wraps a byte slice as an io.Reader for json.Decoder, so the
-// JSON lifters stream without copying the slice.
-func bytesReader(data []byte) io.Reader {
-	return bytes.NewReader(data)
-}
-
 // scanDuplicateKeys walks a JSON document with the streaming token decoder
 // and reports the first object key that appears twice within the same
 // object — at any nesting depth, including objects nested in array
