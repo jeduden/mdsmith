@@ -494,6 +494,8 @@ func edgeFuzzSeeds() []struct{ schema, data string } {
 		// evaluator lands.
 		{`{A:(*0|0)|10}`, `{}`},
 		{`{A:(0|*0)|1}`, `{}`},
+		{`{A:(*"x"|"x")|"y"}`, `{}`},
+		{`{A:(*true|true)|false}`, `{}`},
 		// CUE's root-summary leaf: a top-level disjunction that matches no branch,
 		// and a deferred thunk referencing a non-concrete field, both make CUE
 		// attribute the failure to the ROOT [] while the in-house engine names the
