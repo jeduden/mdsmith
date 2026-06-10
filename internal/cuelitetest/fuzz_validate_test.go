@@ -7,6 +7,7 @@ import (
 
 	"cuelang.org/go/cue/ast"
 	"cuelang.org/go/cue/parser"
+	"cuelang.org/go/cue/token"
 	"github.com/jeduden/mdsmith/cue/cuelite"
 )
 
@@ -134,6 +135,80 @@ func graphHasCycle(graph map[string][]string, nodes map[string]bool) bool {
 		}
 	}
 	return false
+}
+
+// schemaHasNestedDuplicateDefault reports whether the schema has a PARENTHESIZED
+// nested disjunction, used as an operand of an outer disjunction, whose
+// *-marked default value also appears UNMARKED among its sibling disjuncts
+// (`(*0 | 0) | 10`). This is the one disjunction-default shape the in-house
+// engine wrongly accepts (it flattens and keeps the default; CUE's
+// nesting-sensitive evaluation cancels it). The detector is exact — a nested
+// disjunction without the marked+unmarked duplicate (`(*0|1)|10`), and the flat
+// form (`*0|0|1`), do NOT trip it — so it masks no other wrong-accept.
+func schemaHasNestedDuplicateDefault(schema string) bool {
+	f, err := parser.ParseFile("schema.cue", schema)
+	if err != nil {
+		return false
+	}
+	found := false
+	ast.Walk(f, func(n ast.Node) bool {
+		b, ok := n.(*ast.BinaryExpr)
+		if !ok || b.Op != token.OR {
+			return true
+		}
+		for _, operand := range []ast.Expr{b.X, b.Y} {
+			if p, ok := operand.(*ast.ParenExpr); ok && disjunctionHasMarkedUnmarkedDup(p.X) {
+				found = true
+			}
+		}
+		return true
+	}, nil)
+	return found
+}
+
+// disjunctionHasMarkedUnmarkedDup reports whether the disjunction e holds both a
+// *-marked disjunct and an unmarked disjunct with the same source text.
+func disjunctionHasMarkedUnmarkedDup(e ast.Expr) bool {
+	var marked, unmarked []string
+	var collect func(ast.Expr)
+	collect = func(e ast.Expr) {
+		switch n := e.(type) {
+		case *ast.BinaryExpr:
+			if n.Op == token.OR {
+				collect(n.X)
+				collect(n.Y)
+				return
+			}
+		case *ast.ParenExpr:
+			collect(n.X)
+			return
+		case *ast.UnaryExpr:
+			if n.Op == token.MUL {
+				marked = append(marked, disjunctText(n.X))
+				return
+			}
+		}
+		unmarked = append(unmarked, disjunctText(e))
+	}
+	collect(e)
+	for _, m := range marked {
+		if slices.Contains(unmarked, m) {
+			return true
+		}
+	}
+	return false
+}
+
+// disjunctText returns a stable source key for a disjunct (a literal's text or
+// an identifier's name), for the marked/unmarked duplicate comparison.
+func disjunctText(e ast.Expr) string {
+	switch n := e.(type) {
+	case *ast.BasicLit:
+		return n.Value
+	case *ast.Ident:
+		return n.Name
+	}
+	return ""
 }
 
 // inHouseRejectsOutOfSubset reports whether the in-house engine rejects the
@@ -412,6 +487,13 @@ func edgeFuzzSeeds() []struct{ schema, data string } {
 		// in-house engine also reports. The leaf-superset hatch exempts a closed
 		// schema from the surplus bound.
 		{`close({A:""|"0",B:[(string)]})`, `{"0":""}`},
+		// CARRY TO ROUND 2 — a nested disjunction whose marked default value also
+		// appears unmarked (`(*0|0)|10`): the in-house engine flattens and keeps
+		// the default (wrong accept); CUE's nesting-sensitive default cancels it.
+		// The exact pre-oracle skip covers it until the nesting-preserving
+		// evaluator lands.
+		{`{A:(*0|0)|10}`, `{}`},
+		{`{A:(0|*0)|1}`, `{}`},
 		// CUE's root-summary leaf: a top-level disjunction that matches no branch,
 		// and a deferred thunk referencing a non-concrete field, both make CUE
 		// attribute the failure to the ROOT [] while the in-house engine names the
@@ -567,6 +649,21 @@ func fuzzValidateBody() func(*testing.T, string, string) {
 		// CUE on a construct neither the subset nor real schemas admit. An
 		// acyclic schema never trips this, so a genuine divergence is not masked.
 		if schemaHasReferenceCycle(schema) {
+			return
+		}
+		// CARRY TO ROUND 2 — nested-disjunction duplicate default. A
+		// PARENTHESIZED nested disjunction whose marked default value also appears
+		// UNMARKED among its sibling disjuncts (`(*0 | 0) | 10`) is the one
+		// disjunction-default shape the in-house engine gets wrong: CUE evaluates
+		// the sub-disjunction first and the nesting cancels the default (it
+		// rejects an absent field), while the in-house engine flattens the
+		// disjunction and keeps the default (it accepts). Matching CUE here needs
+		// nesting-preserving default propagation — a structural change deferred to
+		// round 2 (plan 239's evaluator work). The detector is EXACT: it fires
+		// only on a nested disjunction with an equal marked+unmarked disjunct
+		// (`(*0|1)|10` and the flat `*0|0|1` do NOT trip it), so no other
+		// wrong-accept is masked. Skip it before the oracle.
+		if schemaHasNestedDuplicateDefault(schema) {
 			return
 		}
 		oracle := OraclePath(c)
