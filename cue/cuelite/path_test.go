@@ -103,6 +103,44 @@ func TestParsePath_accepted(t *testing.T) {
 		{"double-hash raw-string paired surrogate escapes", "##\"\\##uD800\\##uDC00\"##", []string{"𐀀"}},
 		// A leading BOM is skipped (offset 0 only).
 		{"leading BOM skipped", "\ufeffa", []string{"a"}},
+		// Raw-string close scan is escape-aware: an escaped quote followed by a
+		// hash run is NOT the close. CUE decodes `#"\#"#"#` to `"#` (body `\#"#`,
+		// the `\#"` escapes a literal '"', then a literal '#').
+		{"raw-string escaped quote then hash", `#"\#"#"#`, []string{`"#`}},
+		{"raw-string escaped quote mid body", `#"q\#"#x"#`, []string{`q"#x`}},
+		{"double-hash raw escaped quote then hashes", `##"\##"##"##`, []string{`"##`}},
+		{"raw escaped quote in bracket", `x[#"\#"#"#]`, []string{"x", `"#`}},
+		// Multiline string labels. The opener `"""` (or a '#' run + `"""`) must be
+		// followed by a newline; the closing line's leading whitespace is the
+		// indentation stripped from every content line; the final newline before
+		// the close is excluded.
+		{"multiline basic", "\"\"\"\na\n\"\"\"", []string{"a"}},
+		{"multiline indented", "\"\"\"\n  a\n  \"\"\"", []string{"a"}},
+		{"multiline raw", "#\"\"\"\na\n\"\"\"#", []string{"a"}},
+		{"multiline in bracket", "x[\"\"\"\na\n\"\"\"]", []string{"x", "a"}},
+		{"multiline then dot ident", "\"\"\"\na\n\"\"\".b", []string{"a", "b"}},
+		{"multiline escape decoded", "\"\"\"\na\\tb\n\"\"\"", []string{"a\tb"}},
+		{"multiline surrogate pair", "\"\"\"\n\\uD83D\\uDE00\n\"\"\"", []string{"\U0001F600"}},
+		{"multiline raw escape decoded", "#\"\"\"\n  a\\#tb\n  \"\"\"#", []string{"a\tb"}},
+		{"multiline raw literal backslash-n", "#\"\"\"\n  a\\nb\n  \"\"\"#", []string{`a\nb`}},
+		{"multiline CRLF endings", "\"\"\"\r\n  a\r\n  \"\"\"", []string{"a"}},
+		{"multiline two content lines", "\"\"\"\n  a\n  b\n  \"\"\"", []string{"a\nb"}},
+		{"multiline deeper-than-close indent", "\"\"\"\n    a\n  \"\"\"", []string{"  a"}},
+		{"multiline blank line", "\"\"\"\n  a\n\n  b\n  \"\"\"", []string{"a\n\nb"}},
+		{"multiline trailing blank before close", "\"\"\"\n  a\n\n  \"\"\"", []string{"a\n"}},
+		{"multiline tab indent", "\"\"\"\n\ta\n\t\"\"\"", []string{"a"}},
+		// CR is stripped from a multiline token (CUE's scanner.stripCR): a blank
+		// CRLF line, a bare CR mid-content, and a CRLF blank line in the middle
+		// all decode as if the CR were never there.
+		{"multiline blank first line", "\"\"\"\n\n  b\n  \"\"\"", []string{"\nb"}},
+		{"multiline CRLF blank line", "\"\"\"\r\n\r\n  b\r\n  \"\"\"", []string{"\nb"}},
+		{"multiline bare CR in content", "\"\"\"\r\n  a\rb\r\n  \"\"\"", []string{"ab"}},
+		{"multiline CRLF blank line mid", "\"\"\"\n  a\r\n\r\n  b\n  \"\"\"", []string{"a\n\nb"}},
+		// Mirror rows that the corpus pins but the unit table had not (item 5).
+		{"many-hash raw-string label", `####"x"####`, []string{"x"}},
+		{"raw-string escaped quote", "#\"q\\#\"x\"#", []string{`q"x`}},
+		{"raw-string escaped unicode", "#\"\\#u0041\"#", []string{"A"}},
+		{"mixed U-high u-low surrogate escapes", `"\U0000D83D\uDE00"`, []string{"\U0001F600"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -201,6 +239,30 @@ func TestParsePath_rejected(t *testing.T) {
 		{"high surrogate then BMP escape", `"\uD83DA"`},
 		{"high surrogate then non-unicode escape", "\"\\uD83D\\n\""},
 		{"high surrogate then truncated escape", `"\uD83D\u12"`},
+		// Multiline error / empty-decode cases — CUE's Unquoted() yields ""
+		// for each, which the empty-segment check rejects.
+		{"multiline opener not followed by newline", "\"\"\"a\n\"\"\""},
+		{"multiline four-quote opener", "\"\"\"\"\na\n\"\"\"\""},
+		{"multiline unterminated", "\"\"\"\na\n"},
+		{"multiline indent mismatch", "\"\"\"\n a\n  \"\"\""},
+		{"multiline content on closing line", "\"\"\"\na\nb\"\"\""},
+		{"multiline empty body", "\"\"\"\n\"\"\""},
+		{"multiline escaped last newline", "\"\"\"\n  a\\\n  \"\"\""},
+		{"multiline lone surrogate", "\"\"\"\n  \\uD800\n  \"\"\""},
+		{"multiline after dot rejected", "a.\"\"\"\nb\n\"\"\""},
+		{"multiline raw after dot rejected", "a.#\"\"\"\nb\n\"\"\"#"},
+		{"multiline nonws before close", "\"\"\"\n  a\n  x\"\"\""},
+		{"multiline tab content space close", "\"\"\"\n\ta\n  \"\"\""},
+		{"multiline later line bad indent", "\"\"\"\n  a\n b\n  \"\"\""},
+		{"multiline raw truncated escape", "#\"\"\"\na\\#"},
+		{"raw-string trailing escape introducer", "#\"a\\#"},
+		// Mirror rows that the corpus pins but the unit table had not (item 5).
+		{"block comment separator", "a/*c*/.b"},
+		{"vertical tab separator", "a\v.b"},
+		{"bracket literal true", `a[true]`},
+		{"bracket two strings", `a["b" "c"]`},
+		{"trailing BOM", "a\ufeff"},
+		{"BOM-only quoted segment", "\"\ufeff\""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -241,6 +303,19 @@ func TestParsePath_rejectedMessages(t *testing.T) {
 		_, err := cuelite.ParsePath("true")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "literal")
+	})
+	t.Run("comment-only expression names the missing selector", func(t *testing.T) {
+		// "//c" is non-blank but carries no selector; the message must name the
+		// real condition, not a non-existent "trailing dot".
+		_, err := cuelite.ParsePath("//c")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no selector")
+		assert.NotContains(t, err.Error(), "trailing dot")
+	})
+	t.Run("trailing dot still names trailing dot", func(t *testing.T) {
+		_, err := cuelite.ParsePath("a.")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "trailing dot")
 	})
 }
 

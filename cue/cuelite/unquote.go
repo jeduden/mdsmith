@@ -139,8 +139,14 @@ func combineSurrogate(body string, i, hashes int, hi uint32, hiWidth int) (rune,
 	if next+escBackslash+hashes >= len(body) || body[next] != '\\' {
 		return 0, 0, false
 	}
-	if hashes > 0 && body[next+escBackslash:next+escBackslash+hashes] != strings.Repeat("#", hashes) {
-		return 0, 0, false
+	// The low half must repeat the SAME '\' + N '#' introducer. Compare the
+	// '#' run byte-by-byte rather than allocating a strings.Repeat introducer
+	// per pair attempt: this is the decoder's only would-be allocation and a
+	// second source of truth for the introducer shape.
+	for j := 0; j < hashes; j++ {
+		if body[next+escBackslash+j] != '#' {
+			return 0, 0, false
+		}
 	}
 	sel := next + escBackslash + hashes
 	c := body[sel : sel+1]
@@ -281,12 +287,10 @@ func rawUnquote(body string, hashes int) (string, error) {
 			return "", fmt.Errorf("illegal carriage return in raw string")
 		}
 		if body[i] == '\\' && strings.HasPrefix(body[i+1:], hashRun) {
-			// '\' + hashes '#' introduces an escape; the selector follows. The
-			// selector byte must be present — a '\#…' run with nothing after it
-			// (the closing delimiter ate the rest) is a truncated escape.
-			if i+1+hashes >= len(body) {
-				return "", fmt.Errorf("truncated raw-string escape")
-			}
+			// '\' + hashes '#' introduces an escape; the selector follows. Its
+			// byte is always present here: rawStringCloseIndex already rejects (as
+			// unterminated) a '\#…' run with no following byte before the close,
+			// so decodeEscapeAt's selector index is in range.
 			r, width, err := decodeEscapeAt(body, i, hashes)
 			if err != nil {
 				return "", err

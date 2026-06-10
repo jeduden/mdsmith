@@ -41,6 +41,20 @@ func FuzzParsePath(f *testing.F) {
 		"#\"\\#uD800\\uDC00\"#", "##\"\\##uD800\\uDC00\"##", "#\"\\#uD800\\\"#",
 		// BOM at offset 0 (skipped) vs interior (rejected).
 		"\ufeffa", "a\ufeffb", "\"a\ufeffb\"", "a//\ufeff",
+		// Raw-string escape-aware close: an escaped quote followed by a hash
+		// run is not the terminator (the 240s-fuzz minimized regression).
+		`#"\#"#"#`, `#"q\#"#x"#`, `##"\##"##"##`, `x[#"\#"#"#]`,
+		// Multiline string labels: openers, indentation, escapes, CRLF, the
+		// after-dot rejection, and malformed shapes that decode to "".
+		"\"\"\"\na\n\"\"\"", "\"\"\"\n  a\n  \"\"\"", "#\"\"\"\na\n\"\"\"#",
+		"x[\"\"\"\na\n\"\"\"]", "\"\"\"\na\n\"\"\".b", "\"\"\"\na\\tb\n\"\"\"",
+		"\"\"\"\n\\uD83D\\uDE00\n\"\"\"", "\"\"\"\r\n  a\r\n  \"\"\"",
+		"\"\"\"a\n\"\"\"", "\"\"\"\n a\n  \"\"\"", "a.\"\"\"\nb\n\"\"\"",
+		"\"\"\"\n\"\"\"", "\"\"\"\n  a\\\n  \"\"\"",
+		// CR stripping inside multiline tokens (scanner.stripCR): blank CRLF
+		// lines, bare CRs, and blank first lines.
+		"\"\"\"\n\n  b\n  \"\"\"", "\"\"\"\r\n\r\n  b\r\n  \"\"\"",
+		"\"\"\"\r\n  a\rb\r\n  \"\"\"", "\"\"\"\n  a\r\n\r\n  b\n  \"\"\"",
 	} {
 		f.Add(seed)
 	}

@@ -234,8 +234,29 @@ func parsePathSegments(expr string) ([]string, error) {
 func consumeSegment(expr string, pos int, leading bool) (string, int, error) {
 	pos = skipExprSpace(expr, pos)
 	if pos == len(expr) {
-		// Only filler followed the start or a '.': an empty or trailing dot.
+		// Only filler reached the end. At the head this is a non-blank
+		// expression that carries no selector at all (e.g. "//c", a comment
+		// with no field) — name that, not a non-existent dot. After a '.' it
+		// is a genuine trailing dot.
+		if leading {
+			return "", 0, fmt.Errorf(
+				"invalid path expression %q: expression contains no selector", expr)
+		}
 		return "", 0, fmt.Errorf("invalid path expression %q: trailing dot", expr)
+	}
+	if isMultilineStart(expr, pos) {
+		// A multiline string ("""…/#"""…) is a string label only as the head
+		// or a bracket operand — never after a dot, mirroring a raw string and
+		// matching cue.ParsePath ("expected selector, found STRING"). The
+		// leading-only multiline opener is consumed here; a post-dot one falls
+		// through to the '"' case, where parseQuotedSegment's scan rejects the
+		// stray triple quote.
+		if leading {
+			return consumeMultilineSegment(expr, pos)
+		}
+		return "", 0, fmt.Errorf(
+			"invalid path expression %q: a multiline string is not a valid "+
+				"selector after a dot", expr)
 	}
 	if leading && isRawStringStart(expr, pos) {
 		return consumeRawStringSegment(expr, pos)
@@ -269,6 +290,8 @@ func consumeBracketSegment(expr string, pos int) (string, int, error) {
 	var seg string
 	var err error
 	switch {
+	case pos < len(expr) && isMultilineStart(expr, pos):
+		seg, pos, err = consumeMultilineSegment(expr, pos)
 	case pos < len(expr) && isRawStringStart(expr, pos):
 		seg, pos, err = consumeRawStringSegment(expr, pos)
 	case pos < len(expr) && expr[pos] == '"':
@@ -548,6 +571,38 @@ func isRawStringStart(expr string, pos int) bool {
 	return i < len(expr) && expr[i] == '"'
 }
 
+// isMultilineStart reports whether a CUE multiline string opener begins at
+// expr[pos]: an optional run of '#' immediately followed by three quotes
+// (`"""` or '#'×N + `"""`). A multiline string is a string label as the head
+// selector or a bracket operand but not after a dot, mirroring a raw string.
+func isMultilineStart(expr string, pos int) bool {
+	i := pos
+	for i < len(expr) && expr[i] == '#' {
+		i++
+	}
+	return strings.HasPrefix(expr[i:], `"""`)
+}
+
+// consumeMultilineSegment reads a multiline string label at pos (a '#' run
+// then `"""`) and rejects an empty decoded value, mirroring
+// consumeQuotedSegment. A malformed multiline literal whose CUE Unquoted() is
+// "" decodes to "" here, so the empty-segment check rejects it — the same
+// outcome as the oracle.
+func consumeMultilineSegment(expr string, pos int) (string, int, error) {
+	hashes := 0
+	for pos+hashes < len(expr) && expr[pos+hashes] == '#' {
+		hashes++
+	}
+	seg, advance, err := parseMultilineSegment(expr, pos, hashes)
+	if err != nil {
+		return "", 0, fmt.Errorf("invalid path expression %q: %s", expr, err)
+	}
+	if seg == "" {
+		return "", 0, fmt.Errorf("invalid path expression %q: empty multiline segment", expr)
+	}
+	return seg, pos + advance, nil
+}
+
 // parseRawStringSegment reads a multi-hash raw-string label starting at
 // expr[pos] (a run of N '#' then '"') and returns the decoded string, the
 // bytes consumed, and any error. A raw string is delimited by N '#' + '"'
@@ -563,17 +618,13 @@ func parseRawStringSegment(expr string, pos int) (string, int, error) {
 	for pos+hashes < len(expr) && expr[pos+hashes] == '#' {
 		hashes++
 	}
-	// expr[pos+hashes] is '"' (guaranteed by isRawStringStart).
+	// expr[pos+hashes] is '"' (guaranteed by isRawStringStart). A multiline
+	// raw opener (#"""…) is routed to parseMultilineSegment before reaching
+	// here, so the byte after the run is a single '"' opening a single-line
+	// raw string.
 	bodyStart := pos + hashes + 1
-	// A run of THREE opening quotes (#"""…) opens a CUE MULTILINE raw string,
-	// not a single-line label; cue.ParsePath rejects one in a path with
-	// "expected newline after multiline quote", so reject it here too.
-	if strings.HasPrefix(expr[bodyStart:], `""`) {
-		return "", 0, fmt.Errorf(
-			"multiline raw-string label starting at position %d is not supported", pos)
-	}
 	closing := `"` + strings.Repeat("#", hashes)
-	rel := strings.Index(expr[bodyStart:], closing)
+	rel := rawStringCloseIndex(expr[bodyStart:], hashes, closing)
 	if rel < 0 {
 		return "", 0, fmt.Errorf(
 			"unterminated raw-string segment starting at position %d", pos)
@@ -585,4 +636,34 @@ func parseRawStringSegment(expr string, pos int) (string, int, error) {
 	}
 	end := bodyStart + rel + len(closing)
 	return s, end - pos, nil
+}
+
+// rawStringCloseIndex returns the byte offset within body of the closing
+// delimiter of a hash-level-N raw string, or -1 when none is found. It scans
+// left-to-right, skipping each escape sequence ('\' + N '#' + one selector
+// byte) so an escaped quote followed by a hash run cannot be mistaken for the
+// close — the divergence a blind strings.Index has (CUE accepts `#"\#"#"#`,
+// whose body is `\#"#`, decoding to `"#`, but a blind scan stops at the first
+// `"#`). A backslash NOT followed by N '#' is literal and advances one byte.
+// closing is the precomputed `"`+N'#' delimiter the caller already built.
+func rawStringCloseIndex(body string, hashes int, closing string) int {
+	hashRun := strings.Repeat("#", hashes)
+	for i := 0; i < len(body); {
+		if body[i] == '\\' && strings.HasPrefix(body[i+1:], hashRun) {
+			// '\' + N '#' introduces an escape; skip it and its selector byte so
+			// an escaped '"' run is not read as the close. A '\#…' run with no
+			// selector byte left is a truncated escape rawUnquote will reject —
+			// stop advancing past the end and let the close search miss it.
+			if i+1+hashes >= len(body) {
+				return -1
+			}
+			i += 2 + hashes
+			continue
+		}
+		if strings.HasPrefix(body[i:], closing) {
+			return i
+		}
+		i++
+	}
+	return -1
 }

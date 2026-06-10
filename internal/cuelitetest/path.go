@@ -218,7 +218,11 @@ func RunPath(t testing.TB, cases []PathCase) {
 //     quoted keys (dots, escaped quotes, "\/", "\uXXXX", unicode,
 //     numeric-looking), mixed ident+quoted, paired surrogate escapes that
 //     combine into one astral rune, bracket string-index selectors
-//     (a["b"]), multi-hash raw-string labels (#"b"#), and a leading BOM;
+//     (a["b"]), multi-hash raw-string labels (#"b"#) — including an
+//     escaped-quote-then-hash body the close scan must read past
+//     (#"\#"#"#) — multiline string labels (head and bracket, plain and
+//     raw, with indentation, escapes, surrogate pairs, and CRLF), and a
+//     leading BOM;
 //   - rejected inputs: the empty string, leading/trailing dots, an empty
 //     quoted segment, a missing dot after a quoted segment, the literal
 //     keywords true/false/null as the leading selector, hidden labels
@@ -226,7 +230,10 @@ func RunPath(t testing.TB, cases []PathCase) {
 //     (bare numeric, a[0]), Go-only escapes (\xNN, octal \NNN), a raw NUL
 //     inside quotes, the upstream-parser-panic input "a...", whitespace
 //     forms, unterminated quotes, invalid escape sequences, lone surrogate
-//     halves, a raw-string label after a dot, and a non-offset-0 BOM.
+//     halves, a raw-string label after a dot, a multiline string after a
+//     dot, malformed multiline strings (bad opener/indent/close,
+//     escaped final newline) whose CUE value is empty, and a non-offset-0
+//     BOM.
 //
 //nolint:funlen // one table of corpus cases, one row per behaviour class.
 func pathCorpus() []PathCase {
@@ -369,6 +376,8 @@ func pathCorpus() []PathCase {
 
 		// Rejected: unterminated quoted segment.
 		{Name: "unterminated quoted", Expr: `"unterminated`},
+		// Rejected: a trailing lone backslash (no escape selector).
+		{Name: "trailing backslash escape", Expr: `"a\`},
 
 		// Accepted: paired surrogate escapes combine into one astral rune
 		// (utf16.DecodeRune). CUE joins an adjacent high+low surrogate
@@ -437,6 +446,57 @@ func pathCorpus() []PathCase {
 		{Name: "raw-string unterminated more hashes", Expr: `##"a"#`},
 		{Name: "raw-string unknown escape rejected", Expr: `#"a\##nb"#`},
 		{Name: "raw-string truncated escape rejected", Expr: `#"a\#"#`},
+		// Raw-string close scan is escape-aware: an escaped quote followed by a
+		// hash run is NOT a terminator. CUE accepts these in head and bracket
+		// positions and at deeper hash levels; a blind strings.Index close scan
+		// rejected them all (the 240s fuzz minimized to `#"\#"#"#`).
+		{Name: "raw-string escaped quote then hash", Expr: `#"\#"#"#`},
+		{Name: "raw-string escaped quote mid body", Expr: `#"q\#"#x"#`},
+		{Name: "double-hash raw escaped quote then hashes", Expr: `##"\##"##"##`},
+		{Name: "raw escaped quote in bracket", Expr: `x[#"\#"#"#]`},
+		// Multiline string labels ("""…/#"""…) are CUE string labels as the head
+		// or a bracket operand, never after a dot. The opener must be followed by
+		// a newline; the closing line's leading whitespace is the indentation
+		// stripped from every content line; the final newline before the close is
+		// excluded; escapes follow the same dialect as a single-line string. Any
+		// malformed multiline whose CUE Unquoted() is "" is the empty-segment
+		// rejection.
+		{Name: "multiline basic", Expr: "\"\"\"\na\n\"\"\""},
+		{Name: "multiline indented", Expr: "\"\"\"\n  a\n  \"\"\""},
+		{Name: "multiline raw", Expr: "#\"\"\"\na\n\"\"\"#"},
+		{Name: "multiline in bracket", Expr: "x[\"\"\"\na\n\"\"\"]"},
+		{Name: "multiline then dot ident", Expr: "\"\"\"\na\n\"\"\".b"},
+		{Name: "multiline escape decoded", Expr: "\"\"\"\na\\tb\n\"\"\""},
+		{Name: "multiline surrogate pair", Expr: "\"\"\"\n\\uD83D\\uDE00\n\"\"\""},
+		{Name: "multiline raw escape decoded", Expr: "#\"\"\"\n  a\\#tb\n  \"\"\"#"},
+		{Name: "multiline raw literal backslash-n", Expr: "#\"\"\"\n  a\\nb\n  \"\"\"#"},
+		{Name: "multiline CRLF endings", Expr: "\"\"\"\r\n  a\r\n  \"\"\""},
+		{Name: "multiline two content lines", Expr: "\"\"\"\n  a\n  b\n  \"\"\""},
+		{Name: "multiline deeper-than-close indent", Expr: "\"\"\"\n    a\n  \"\"\""},
+		{Name: "multiline blank line", Expr: "\"\"\"\n  a\n\n  b\n  \"\"\""},
+		{Name: "multiline trailing blank before close", Expr: "\"\"\"\n  a\n\n  \"\"\""},
+		{Name: "multiline tab indent", Expr: "\"\"\"\n\ta\n\t\"\"\""},
+		{Name: "multiline opener not followed by newline rejected", Expr: "\"\"\"a\n\"\"\""},
+		{Name: "multiline four-quote opener rejected", Expr: "\"\"\"\"\na\n\"\"\"\""},
+		{Name: "multiline unterminated rejected", Expr: "\"\"\"\na\n"},
+		{Name: "multiline indent mismatch rejected", Expr: "\"\"\"\n a\n  \"\"\""},
+		{Name: "multiline content on closing line rejected", Expr: "\"\"\"\na\nb\"\"\""},
+		{Name: "multiline empty body rejected", Expr: "\"\"\"\n\"\"\""},
+		{Name: "multiline escaped last newline rejected", Expr: "\"\"\"\n  a\\\n  \"\"\""},
+		{Name: "multiline lone surrogate rejected", Expr: "\"\"\"\n  \\uD800\n  \"\"\""},
+		{Name: "multiline after dot rejected", Expr: "a.\"\"\"\nb\n\"\"\""},
+		{Name: "multiline raw after dot rejected", Expr: "a.#\"\"\"\nb\n\"\"\"#"},
+		{Name: "multiline nonws before close rejected", Expr: "\"\"\"\n  a\n  x\"\"\""},
+		{Name: "multiline tab content space close rejected", Expr: "\"\"\"\n\ta\n  \"\"\""},
+		{Name: "multiline later line bad indent rejected", Expr: "\"\"\"\n  a\n b\n  \"\"\""},
+		// CR is stripped from a multiline token (CUE's scanner.stripCR): blank
+		// CRLF lines and bare CRs decode as if absent.
+		{Name: "multiline blank first line", Expr: "\"\"\"\n\n  b\n  \"\"\""},
+		{Name: "multiline CRLF blank line", Expr: "\"\"\"\r\n\r\n  b\r\n  \"\"\""},
+		{Name: "multiline bare CR in content", Expr: "\"\"\"\r\n  a\rb\r\n  \"\"\""},
+		{Name: "multiline CRLF blank line mid", Expr: "\"\"\"\n  a\r\n\r\n  b\n  \"\"\""},
+		{Name: "multiline raw truncated escape rejected", Expr: "#\"\"\"\na\\#"},
+		{Name: "raw-string trailing escape introducer rejected", Expr: "#\"a\\#"},
 		// Raw-string surrogate pairing. At hash level N BOTH halves must carry
 		// the '\#u…' introducer: a \#u high + \#u low pair combines into one
 		// astral rune (accepted), while a \#u high followed by a PLAIN \u low
