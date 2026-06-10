@@ -2,7 +2,7 @@ package lint
 
 import (
 	"github.com/jeduden/mdsmith/internal/piparser"
-	"github.com/yuin/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
 // CollectPIBlockLines returns a set of 1-based line numbers that belong

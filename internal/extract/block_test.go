@@ -4,12 +4,12 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/schema"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/extension"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 	"github.com/jeduden/mdsmith/pkg/markdown/flavor"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/extension"
-	"github.com/yuin/goldmark/text"
 )
 
 // topNodes returns body's top-level block children in document order,

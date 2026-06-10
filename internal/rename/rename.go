@@ -14,10 +14,10 @@ import (
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
-	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/parser"
-	"github.com/yuin/goldmark/text"
-	"github.com/yuin/goldmark/util"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
+	"github.com/jeduden/mdsmith/pkg/goldmark/util"
 )
 
 // Position is a zero-based line / UTF-16 character offset, matching

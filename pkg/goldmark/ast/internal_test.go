@@ -7,7 +7,7 @@ package ast
 import (
 	"testing"
 
-	"github.com/yuin/goldmark/text"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 )
 
 func TestWalkHelper_AllReturnPaths(t *testing.T) {

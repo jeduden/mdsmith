@@ -14,7 +14,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/fencepos"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
-	"github.com/yuin/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
 // Style values for the rule's `style` setting.

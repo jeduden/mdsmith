@@ -11,7 +11,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
-	"github.com/yuin/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
 // ConfigureRule clones a rule and applies settings from cfg if the rule

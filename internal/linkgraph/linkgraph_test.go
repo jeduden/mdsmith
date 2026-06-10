@@ -3,9 +3,9 @@ package linkgraph
 import (
 	"testing"
 
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/yuin/goldmark/ast"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 )

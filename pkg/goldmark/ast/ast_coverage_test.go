@@ -14,8 +14,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/text"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 )
 
 // captureStdout runs fn with os.Stdout redirected to a buffer and

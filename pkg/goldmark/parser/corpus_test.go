@@ -12,9 +12,9 @@ package parser_test
 import (
 	"testing"
 
-	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/parser"
-	"github.com/yuin/goldmark/text"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 )
 
 func walkKinds(root ast.Node) map[ast.NodeKind]int {

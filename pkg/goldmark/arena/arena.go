@@ -32,8 +32,8 @@
 package arena
 
 import (
-	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/text"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 )
 
 // Per-slab capacity. Tuned for the common-case corpus shape: most

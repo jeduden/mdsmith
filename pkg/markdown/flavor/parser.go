@@ -3,9 +3,9 @@ package flavor
 import (
 	"sync"
 
-	"github.com/yuin/goldmark"
-	"github.com/yuin/goldmark/extension"
-	"github.com/yuin/goldmark/parser"
+	"github.com/jeduden/mdsmith/pkg/goldmark"
+	"github.com/jeduden/mdsmith/pkg/goldmark/extension"
+	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
 
 	"github.com/jeduden/mdsmith/pkg/markdown"
 	"github.com/jeduden/mdsmith/pkg/markdown/flavor/ext"

@@ -4,10 +4,10 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	goldast "github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	goldast "github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/text"
 )
 
 func newFile(t *testing.T, src string) *lint.File {

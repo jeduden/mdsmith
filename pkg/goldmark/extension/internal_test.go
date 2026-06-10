@@ -7,8 +7,8 @@ package extension
 import (
 	"testing"
 
-	"github.com/yuin/goldmark/parser"
-	"github.com/yuin/goldmark/text"
+	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 )
 
 func TestApplyFootnoteTemplate_AllBranches(t *testing.T) {
@@ -93,10 +93,10 @@ func TestIsTableDelim_AllBranches(t *testing.T) {
 		{"valid-simple", "---|---", true},
 		{"valid-with-colons", ":---|---:|:---:", true},
 		{"valid-with-spaces", " --- | --- ", true},
-		{"only-dashes-no-pipe", "------", false},  // allSep -> false
-		{"invalid-char", "---|--x", false},        // x is not allowed
-		{"too-indented", "    ---|---", false},    // IndentWidth > 3
-		{"empty", "", false},                      // allSep stays true on empty -> false
+		{"only-dashes-no-pipe", "------", false}, // allSep -> false
+		{"invalid-char", "---|--x", false},       // x is not allowed
+		{"too-indented", "    ---|---", false},   // IndentWidth > 3
+		{"empty", "", false},                     // allSep stays true on empty -> false
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

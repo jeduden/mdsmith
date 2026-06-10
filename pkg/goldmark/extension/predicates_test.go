@@ -11,8 +11,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/yuin/goldmark/extension"
-	extast "github.com/yuin/goldmark/extension/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/extension"
+	extast "github.com/jeduden/mdsmith/pkg/goldmark/extension/ast"
 )
 
 func silence(t *testing.T, fn func()) {

@@ -3,10 +3,10 @@ package ext
 import (
 	"testing"
 
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/extension"
+	extast "github.com/jeduden/mdsmith/pkg/goldmark/extension/ast"
 	"github.com/stretchr/testify/assert"
-	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/extension"
-	extast "github.com/yuin/goldmark/extension/ast"
 )
 
 func TestSubscriptParsesSingleTilde(t *testing.T) {

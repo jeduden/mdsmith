@@ -5,11 +5,11 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/mdtext"
+	"github.com/jeduden/mdsmith/pkg/goldmark"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/yuin/goldmark"
-	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/text"
 )
 
 // parseDoc parses markdown and returns the document root node.

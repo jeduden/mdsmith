@@ -8,7 +8,7 @@ package text_test
 import (
 	"testing"
 
-	"github.com/yuin/goldmark/text"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 )
 
 func TestSegment_ConcatPadding(t *testing.T) {

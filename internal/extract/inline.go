@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/jeduden/mdsmith/internal/schema"
-	"github.com/yuin/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
 // inlineSpans walks the inline children of a paragraph node and

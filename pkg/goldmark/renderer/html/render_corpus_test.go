@@ -10,20 +10,20 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yuin/goldmark"
-	"github.com/yuin/goldmark/extension"
-	"github.com/yuin/goldmark/renderer"
-	"github.com/yuin/goldmark/renderer/html"
-	"github.com/yuin/goldmark/util"
+	"github.com/jeduden/mdsmith/pkg/goldmark"
+	"github.com/jeduden/mdsmith/pkg/goldmark/extension"
+	"github.com/jeduden/mdsmith/pkg/goldmark/renderer"
+	"github.com/jeduden/mdsmith/pkg/goldmark/renderer/html"
+	"github.com/jeduden/mdsmith/pkg/goldmark/util"
 )
 
 func TestRenderCorpus_AllNodeTypes(t *testing.T) {
 	cases := []struct {
-		name   string
-		src    string
-		want   []string
-		opts   []renderer.Option
-		exts   []goldmark.Extender
+		name string
+		src  string
+		want []string
+		opts []renderer.Option
+		exts []goldmark.Extender
 	}{
 		// Block-level renderers.
 		{name: "Heading", src: "# H1\n## H2\n### H3\n#### H4\n##### H5\n###### H6\n",

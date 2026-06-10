@@ -7,7 +7,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
-	"github.com/yuin/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
 // compilePattern returns the pre-compiled Pattern regexp when available,

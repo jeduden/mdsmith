@@ -60,7 +60,7 @@ row: "- [{summary}]({filename})"
 - [The `jeduden/asdf-mdsmith` plugin installs the checksum-verified prebuilt binary; the short form awaits the asdf-plugins registry entry.](docs/development/release-channels/asdf.md)
 - [A single-file `.flatpak` bundle built in CI from the x86_64 Linux release binary and attached to each GitHub release, installed by file with host filesystem access for the linter.](docs/development/release-channels/flatpak.md)
 - [Per-platform mdsmith binaries plus the .vsix, the checksum file, and a Sigstore signature, attached to a tag-named release.](docs/development/release-channels/github-releases.md)
-- [`go install` compiles mdsmith from the tagged module source with the host Go 1.24+ toolchain; no prebuilt binary is downloaded.](docs/development/release-channels/go.md)
+- [`go install` compiles mdsmith from the tagged module source with the host Go 1.25+ toolchain; no prebuilt binary is downloaded.](docs/development/release-channels/go.md)
 - [The `jeduden/homebrew-mdsmith` tap installs the checksum-verified prebuilt binary for macOS or Linux on Intel or arm64.](docs/development/release-channels/homebrew.md)
 - [mise's `ubi` backend installs mdsmith from GitHub release assets; the short `mise use mdsmith` form awaits a registry entry.](docs/development/release-channels/mise.md)
 - [Root `@mdsmith/cli` plus one platform-specific subpackage per supported host, all published via OIDC Trusted Publishing.](docs/development/release-channels/npm.md)
@@ -231,14 +231,18 @@ row: "- [{title}](docs/development/{filename})"
 
 ### Build & Test Commands
 
-Requires Go 1.24+.
+Requires Go 1.25+. Dev tools (golangci-lint, vhs,
+gobco) build from `tools/go.mod`, which needs Go
+1.25.8+; `go.mod` itself must stay tool-free so
+`go install` consumers never inherit a dev tool's
+go floor.
 
 - `go build ./...` — build all packages
 - `go test ./...` — run all tests
 - `go test -run TestName ./...` — run a specific test
 - `go run ./cmd/mdsmith check .` — lint markdown
 - `go run ./cmd/mdsmith fix .` — auto-fix markdown
-- `go tool golangci-lint run` — run linter
+- `go tool -modfile=tools/go.mod golangci-lint run` — run linter
 - `go vet ./...` — run go vet
 
 ### Project Layout

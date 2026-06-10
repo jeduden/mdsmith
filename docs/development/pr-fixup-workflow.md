@@ -93,7 +93,7 @@ go run ./cmd/mdsmith check .
 ```
 
 ```bash
-go tool golangci-lint run --fix ./...
+go tool -modfile=tools/go.mod golangci-lint run --fix ./...
 ```
 
 The `--fix` flag auto-corrects formatting issues.
@@ -169,7 +169,7 @@ Read the log, identify the root cause, fix the code,
 then run linters before committing:
 
 ```bash
-go tool golangci-lint run --fix ./...
+go tool -modfile=tools/go.mod golangci-lint run --fix ./...
 ```
 
 ```bash
@@ -255,7 +255,7 @@ mutation($threadId: ID!) {
 ### 9. Push fixes and repeat
 
 ```bash
-go tool golangci-lint run --fix ./...
+go tool -modfile=tools/go.mod golangci-lint run --fix ./...
 ```
 
 ```bash
@@ -297,7 +297,7 @@ use `/merge-queue` to enqueue it.
 - Works in both local and Claude Code web
   environments. Step 1 installs `gh` if missing.
 - Run `mdsmith check .` and
-  `go tool golangci-lint run --fix ./...`
+  `go tool -modfile=tools/go.mod golangci-lint run --fix ./...`
   before committing.
 - Keep fix commits small — one per CI fix, one per
   batch of related review comments.

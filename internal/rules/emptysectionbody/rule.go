@@ -9,7 +9,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/mdtext"
 	"github.com/jeduden/mdsmith/internal/piparser"
 	"github.com/jeduden/mdsmith/internal/rule"
-	"github.com/yuin/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
 const (

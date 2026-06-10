@@ -14,7 +14,7 @@ import (
 	"cuelang.org/go/cue/errors"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
-	"github.com/yuin/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
 // DocHeading is a heading collected from the document under

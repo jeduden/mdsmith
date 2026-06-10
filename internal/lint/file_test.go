@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/yuin/goldmark/ast"
 )
 
 // TestLinkReferences_FromNewFileParse pins that LinkReferences reads the

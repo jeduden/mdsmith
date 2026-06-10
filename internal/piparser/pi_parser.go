@@ -1,7 +1,7 @@
 package piparser
 
 import (
-	"github.com/yuin/goldmark/util"
+	"github.com/jeduden/mdsmith/pkg/goldmark/util"
 
 	"github.com/jeduden/mdsmith/pkg/markdown"
 )

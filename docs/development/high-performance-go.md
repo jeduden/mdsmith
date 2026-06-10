@@ -282,10 +282,10 @@ variable are the obvious ones. A few more are below.
 ## Tooling
 
 See [Process](#process) for the `benchstat`, `pprof`, and
-`goleak` workflow. `go tool golangci-lint run` is the lint
-gate. Its `perfsprint`, `prealloc`, and gocritic
-performance group are worth enabling on top of
-`.golangci.yml`.
+`goleak` workflow. `go tool -modfile=tools/go.mod
+golangci-lint run` is the lint gate. Its `perfsprint`,
+`prealloc`, and gocritic performance group are worth
+enabling on top of `.golangci.yml`.
 
 ## References
 

@@ -3,11 +3,11 @@ package markdownflavor
 import (
 	"testing"
 
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	extast "github.com/jeduden/mdsmith/pkg/goldmark/extension/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/yuin/goldmark/ast"
-	extast "github.com/yuin/goldmark/extension/ast"
-	"github.com/yuin/goldmark/text"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/pkg/markdown/flavor/ext"

@@ -19,12 +19,19 @@ any `internal/` package. The dependency points
 the other way.
 
 The goldmark dependency itself is a vendored
-fork at `pkg/goldmark/`. A `replace` directive
-in the root `go.mod` wires it in. Plan 197 reuses
-one `text.BlockReader` per parser. Plan 198 adds
-a per-parse slab arena absorbing the four
-structural allocators (text, paragraph,
-segments, segments backing).
+fork at `pkg/goldmark/`. It is part of the main
+module, imported as
+`github.com/jeduden/mdsmith/pkg/goldmark/…`.
+Never wire it via a `go.mod` `replace`
+directive. `go install m@version` rejects a
+module whose `go.mod` carries one. A library
+consumer would also silently resolve upstream
+goldmark instead of the fork.
+
+Plan 197 reuses one `text.BlockReader` per
+parser. Plan 198 adds a per-parse slab arena
+absorbing the four structural allocators (text,
+paragraph, segments, segments backing).
 
 A `parser.WithNoArena()` option and the
 `goldmark_upstream` build tag both turn the arena

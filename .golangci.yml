@@ -1,6 +1,14 @@
 version: "2"
 
 linters:
+  # pkg/goldmark/ is the vendored goldmark@v1.8.2 fork. As a nested
+  # module it was never linted by this config; keep that status quo
+  # now that it is part of the main module (so `go install m@version`
+  # works) — upstream code predates these linters and grading it
+  # would drown real findings.
+  exclusions:
+    paths:
+      - pkg/goldmark
   enable:
     - errcheck
     - funlen

@@ -1,4 +1,6 @@
 /mdsmith
+/mdsmith-release
+/mdsmith-secreview
 *.test
 *.prof
 eval/corpus/config.local.yml

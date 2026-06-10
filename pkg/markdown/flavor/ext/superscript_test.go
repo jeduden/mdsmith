@@ -3,11 +3,11 @@ package ext
 import (
 	"testing"
 
+	"github.com/jeduden/mdsmith/pkg/goldmark"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/yuin/goldmark"
-	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/text"
 )
 
 func walkFindKind(root ast.Node, kind ast.NodeKind) ast.Node {

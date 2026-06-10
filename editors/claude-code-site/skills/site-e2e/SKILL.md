@@ -29,7 +29,7 @@ bundled with this plugin.
 ## Prerequisites
 
 - Node 22+ with `npm` and `npx` on `$PATH`
-- Go 1.24+ (the repo already requires this)
+- Go 1.25+ (the repo already requires this)
 - The `@playwright/test` package installed:
   `cd website/e2e && npm ci`
 - Chromium browser:

@@ -8,7 +8,7 @@ package parser_test
 import (
 	"testing"
 
-	"github.com/yuin/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
 func walkHTMLBlocks(src string) []*ast.HTMLBlock {

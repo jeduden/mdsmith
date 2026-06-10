@@ -2,7 +2,7 @@
 
 package parser
 
-import "github.com/yuin/goldmark/arena"
+import "github.com/jeduden/mdsmith/pkg/goldmark/arena"
 
 // newArenaForParse returns nil under the goldmark_upstream build
 // tag, so every (*arena.Arena) method called from the parsing path

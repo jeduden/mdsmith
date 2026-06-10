@@ -321,7 +321,7 @@ upgrades stay reviewable.
 - [Guides](docs/guides/index.md) — directives, structure, migration
 - [Rule directory](internal/rules/index.md) — every rule with status
 - [CLI reference](docs/reference/cli.md)
-- [Contributor guide](docs/development/index.md) — Go 1.24+, build, test, style
+- [Contributor guide](docs/development/index.md) — Go 1.25+, build, test, style
 
 ## 📄 License
 

@@ -5,10 +5,10 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/schema"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	extast "github.com/jeduden/mdsmith/pkg/goldmark/extension/ast"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/yuin/goldmark/ast"
-	extast "github.com/yuin/goldmark/extension/ast"
 )
 
 // The kind-specific extractors guard their type assertions; the

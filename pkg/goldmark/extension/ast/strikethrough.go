@@ -2,7 +2,7 @@
 package ast
 
 import (
-	gast "github.com/yuin/goldmark/ast"
+	gast "github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
 // A Strikethrough struct represents a strikethrough of GFM text.

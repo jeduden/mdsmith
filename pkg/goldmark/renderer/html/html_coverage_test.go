@@ -10,10 +10,10 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/yuin/goldmark"
-	"github.com/yuin/goldmark/renderer"
-	"github.com/yuin/goldmark/renderer/html"
-	"github.com/yuin/goldmark/util"
+	"github.com/jeduden/mdsmith/pkg/goldmark"
+	"github.com/jeduden/mdsmith/pkg/goldmark/renderer"
+	"github.com/jeduden/mdsmith/pkg/goldmark/renderer/html"
+	"github.com/jeduden/mdsmith/pkg/goldmark/util"
 )
 
 func TestHTMLOptions_ApplyViaNewRenderer(t *testing.T) {

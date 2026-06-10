@@ -23,7 +23,14 @@ jobs:
           fetch-depth: 0 # baseline_ref must be present for the patch check
       - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
         with:
-          go-version-file: go.mod
+          # tools/go.mod, not go.mod: TestSkillRegressionPatchAtBaseline
+          # compiles a baseline_ref worktree whose go.mod may demand a
+          # newer toolchain than HEAD's (HEAD dropped to go 1.25.0 when
+          # dev tools moved to tools/go.mod), and setup-go pins
+          # GOTOOLCHAIN=local, so no auto-switch can paper over the gap.
+          # tools/go.mod carries the dev floor (>= 1.25.8), which
+          # satisfies both checkouts.
+          go-version-file: tools/go.mod
       - run: go test ./internal/secreview/... ./cmd/mdsmith-secreview/...
         env:
           SECREVIEW_STRICT: "1"

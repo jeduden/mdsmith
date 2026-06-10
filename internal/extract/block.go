@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/schema"
-	"github.com/yuin/goldmark/ast"
-	extast "github.com/yuin/goldmark/extension/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	extast "github.com/jeduden/mdsmith/pkg/goldmark/extension/ast"
 )
 
 // blocksFromNodes maps a document-ordered slice of block-level AST

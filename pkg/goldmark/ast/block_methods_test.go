@@ -6,8 +6,8 @@ package ast_test
 import (
 	"testing"
 
-	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/text"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 )
 
 func TestDocument_MetaAddAndSet(t *testing.T) {
@@ -86,7 +86,7 @@ func TestDocument_AddMeta_EmptyMap(t *testing.T) {
 	// AddMeta on a Document with an existing non-nil meta map
 	// drives the n.meta != nil branch (skip allocation).
 	doc := ast.NewDocument()
-	doc.AddMeta("first", 1) // allocates
+	doc.AddMeta("first", 1)  // allocates
 	doc.AddMeta("second", 2) // existing map
 	if doc.Meta()["second"] != 2 {
 		t.Error("second AddMeta call should not lose the value")

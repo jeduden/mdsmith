@@ -11,7 +11,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
 	"github.com/jeduden/mdsmith/internal/setutil"
-	"github.com/yuin/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
 var defaultBanned = []string{"click here", "here", "link", "more"}

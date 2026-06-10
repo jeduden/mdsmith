@@ -11,13 +11,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yuin/goldmark/ast"
-	gext "github.com/yuin/goldmark/extension"
-	extast "github.com/yuin/goldmark/extension/ast"
-	"github.com/yuin/goldmark/renderer"
-	"github.com/yuin/goldmark/renderer/html"
-	"github.com/yuin/goldmark/text"
-	"github.com/yuin/goldmark/util"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	gext "github.com/jeduden/mdsmith/pkg/goldmark/extension"
+	extast "github.com/jeduden/mdsmith/pkg/goldmark/extension/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/renderer"
+	"github.com/jeduden/mdsmith/pkg/goldmark/renderer/html"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
+	"github.com/jeduden/mdsmith/pkg/goldmark/util"
 )
 
 func newExtRenderer() renderer.Renderer {

@@ -61,7 +61,7 @@ picker shows.
 ## Prerequisites
 
 - Node 22+ with `npm` and `npx`
-- Go 1.24+
+- Go 1.25+
 
 Run once per clone to install the browser:
 

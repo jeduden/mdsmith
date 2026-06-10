@@ -15,8 +15,8 @@ func TestIsEastAsianWideRune(t *testing.T) {
 	}{
 		{'A', false},
 		{'☃', false},
-		{'日', true},  // CJK Unified Ideograph
-		{'한', true},  // Hangul Syllable
+		{'日', true}, // CJK Unified Ideograph
+		{'한', true}, // Hangul Syllable
 		{'　', true}, // Ideographic Space (U+3000)
 		{0, false},
 	}
@@ -48,15 +48,15 @@ func TestEastAsianWidth(t *testing.T) {
 		r    rune
 		want string
 	}{
-		{'A', "Na"},     // Narrow — ASCII
-		{0x4E00, "W"},   // Wide — CJK Unified Ideograph
-		{0x3000, "F"},   // Fullwidth — Ideographic Space
-		{0xFF01, "F"},   // Fullwidth — fullwidth exclamation
-		{0xFF61, "H"},   // Halfwidth — halfwidth kana punctuation
-		{0x20A9, "H"},   // Halfwidth — won sign
-		{0x1100, "W"},   // Wide — Hangul jamo
-		{0x00A1, "A"},   // Ambiguous — inverted exclamation
-		{0x0939, "N"},   // Neutral — Devanagari Ha
+		{'A', "Na"},   // Narrow — ASCII
+		{0x4E00, "W"}, // Wide — CJK Unified Ideograph
+		{0x3000, "F"}, // Fullwidth — Ideographic Space
+		{0xFF01, "F"}, // Fullwidth — fullwidth exclamation
+		{0xFF61, "H"}, // Halfwidth — halfwidth kana punctuation
+		{0x20A9, "H"}, // Halfwidth — won sign
+		{0x1100, "W"}, // Wide — Hangul jamo
+		{0x00A1, "A"}, // Ambiguous — inverted exclamation
+		{0x0939, "N"}, // Neutral — Devanagari Ha
 	}
 	for _, c := range cases {
 		if got := EastAsianWidth(c.r); got != c.want {

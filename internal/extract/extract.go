@@ -17,8 +17,8 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
 	"github.com/jeduden/mdsmith/internal/schema"
-	"github.com/yuin/goldmark/ast"
-	extast "github.com/yuin/goldmark/extension/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	extast "github.com/jeduden/mdsmith/pkg/goldmark/extension/ast"
 )
 
 // Extract projects f against the composed schema sch using the

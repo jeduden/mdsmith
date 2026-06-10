@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/yuin/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 
 	"github.com/jeduden/mdsmith/internal/directives"
 	"github.com/jeduden/mdsmith/internal/lint"

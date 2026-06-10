@@ -7,8 +7,8 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/stretchr/testify/require"
-	"github.com/yuin/goldmark/ast"
 )
 
 // TestCountWordsInNode_EquivalentToCountWordsExtractPlainText pins

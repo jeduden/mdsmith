@@ -2,7 +2,7 @@
 title: Go
 summary: >-
   `go install` compiles mdsmith from the tagged
-  module source with the host Go 1.24+ toolchain; no
+  module source with the host Go 1.25+ toolchain; no
   prebuilt binary is downloaded.
 mechanism: toolchain
 artifact: cli
@@ -20,5 +20,6 @@ Release page: <https://pkg.go.dev/github.com/jeduden/mdsmith>
 source. The host Go toolchain does the compile, so no
 prebuilt binary is fetched. The version is stamped
 from the module tag. `mdsmith version` then matches
-every other channel. This path needs Go 1.24 or
-newer.
+every other channel. This path needs Go 1.25 or
+newer. An older host toolchain with the default
+`GOTOOLCHAIN=auto` downloads Go 1.25 by itself.

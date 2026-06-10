@@ -25,7 +25,7 @@ the interactive JavaScript that the Go render probes in
 
 ## Run locally
 
-Requires Node 22+ and Go 1.24+.
+Requires Node 22+ and Go 1.25+.
 
 ```bash
 # Install Playwright and its chromium browser (once per clone).

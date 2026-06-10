@@ -3,9 +3,9 @@ package markdown
 import (
 	"sync"
 
-	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/parser"
-	"github.com/yuin/goldmark/text"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 )
 
 // linkRefResetter is implemented by the fork's
@@ -28,9 +28,11 @@ type linkRefResetter interface {
 // internal/lint's forwards) so parsing decisions stay consistent
 // across surfaces.
 //
-// The "goldmark" the import path resolves to is the in-tree fork at
-// pkg/goldmark/ (plan 197+198), wired via a go.mod replace
-// directive. The fork's parser.DefaultParagraphTransformers returns
+// The goldmark these imports resolve to is the in-tree fork at
+// pkg/goldmark/ (plan 197+198), part of the main module as
+// github.com/jeduden/mdsmith/pkg/goldmark/... — never wired via a
+// go.mod replace directive, which `go install m@version` rejects.
+// The fork's parser.DefaultParagraphTransformers returns
 // a FRESH linkReferenceParagraphTransformer per call, so each parser
 // built here owns its own transformer with its own reusable
 // text.BlockReader — the per-paragraph allocation of upstream

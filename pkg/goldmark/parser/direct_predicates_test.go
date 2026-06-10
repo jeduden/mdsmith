@@ -9,7 +9,7 @@ package parser_test
 import (
 	"testing"
 
-	"github.com/yuin/goldmark/parser"
+	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
 )
 
 func TestFencedCodeBlockParser_Predicates(t *testing.T) {

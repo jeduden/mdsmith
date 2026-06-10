@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	textm "github.com/yuin/goldmark/text"
-	"github.com/yuin/goldmark/util"
+	textm "github.com/jeduden/mdsmith/pkg/goldmark/text"
+	"github.com/jeduden/mdsmith/pkg/goldmark/util"
 )
 
 // A NodeType indicates what type a node belongs to.

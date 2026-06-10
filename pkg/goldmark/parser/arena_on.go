@@ -2,7 +2,7 @@
 
 package parser
 
-import "github.com/yuin/goldmark/arena"
+import "github.com/jeduden/mdsmith/pkg/goldmark/arena"
 
 // newArenaForParse returns a fresh arena.Arena. Each Parse call
 // gets its own arena so AST lifetime is bounded by GC of the

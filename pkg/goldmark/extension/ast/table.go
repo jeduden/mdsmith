@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	gast "github.com/yuin/goldmark/ast"
+	gast "github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
 // Alignment is a text alignment of table cells.
