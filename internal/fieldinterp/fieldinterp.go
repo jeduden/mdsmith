@@ -133,16 +133,17 @@ func Validate(text string) error {
 // segments using cuelite.ParsePath. Non-identifier keys (hyphens, dots,
 // spaces) must be quoted: "my-key". Returns nil for malformed
 // expressions.
+//
+// cuelite.ParsePath never succeeds with zero segments (it rejects the
+// empty and whitespace-only expression), so a nil error guarantees a
+// non-empty Segments(); the result is returned directly with no
+// zero-length guard and no extra copy beyond Segments()' own clone.
 func ParseCUEPath(expr string) []string {
 	p, err := cuelite.ParsePath(expr)
 	if err != nil {
 		return nil
 	}
-	segs := p.Segments()
-	if len(segs) == 0 {
-		return nil
-	}
-	return segs
+	return p.Segments()
 }
 
 // ResolvePath walks data using the given path segments and returns

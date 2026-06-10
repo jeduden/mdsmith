@@ -58,8 +58,8 @@ func TestCueLitePathParsePath(t *testing.T) {
 }
 
 // TestOraclePathParsePath pins the oracle arm's accepted/rejected edges
-// and its safeUnquoted panic recovery, so each oracle branch has a
-// dedicated unit test apart from the corpus run.
+// and its selector classification, so each oracle branch has a dedicated
+// unit test apart from the corpus run.
 func TestOraclePathParsePath(t *testing.T) {
 	t.Run("accepted ident returns segments", func(t *testing.T) {
 		o := OraclePathParsePath(PathCase{Expr: "a.b"})
@@ -74,16 +74,16 @@ func TestOraclePathParsePath(t *testing.T) {
 		o := OraclePathParsePath(PathCase{Expr: "a."})
 		assert.False(t, o.Accepted)
 	})
-	t.Run("hash-prefixed ident safeUnquoted panic is rejected", func(t *testing.T) {
-		// "#foo" parses without error in CUE (DefinitionLabel) but
-		// Unquoted() panics; safeUnquoted must recover the panic and
-		// OraclePathParsePath must report it as rejected.
+	t.Run("definition label is rejected", func(t *testing.T) {
+		// "#foo" parses without error in CUE (DefinitionLabel) but is
+		// outside the string-label-only contract, so selectorSegment
+		// rejects it without any panic recovery.
 		o := OraclePathParsePath(PathCase{Expr: "#foo"})
 		assert.False(t, o.Accepted)
 	})
-	t.Run("numeric ident safeUnquoted panic is rejected", func(t *testing.T) {
-		// "123" parses without error in CUE (IndexLabel) but Unquoted()
-		// panics; same recovery.
+	t.Run("index label is rejected", func(t *testing.T) {
+		// "123" parses without error in CUE (IndexLabel) but is not a
+		// string label; selectorSegment rejects it.
 		o := OraclePathParsePath(PathCase{Expr: "123"})
 		assert.False(t, o.Accepted)
 	})
@@ -92,19 +92,11 @@ func TestOraclePathParsePath(t *testing.T) {
 		o := OraclePathParsePath(PathCase{Expr: `"\ud800"`})
 		assert.False(t, o.Accepted)
 	})
-}
-
-// TestSafeUnquoted drives the panic-recovery seam via the oracle arm, so
-// both the panic path (covered by TestOraclePathParsePath's hash and
-// numeric cases) and the non-panic path are exercised with a dedicated
-// named test.
-func TestSafeUnquoted(t *testing.T) {
-	t.Run("string label does not panic", func(t *testing.T) {
-		// "a" is a plain ident — Unquoted() returns "a" without panicking.
-		// Use the oracle directly; it calls safeUnquoted for each selector.
-		o := OraclePathParsePath(PathCase{Expr: "a"})
-		require.True(t, o.Accepted)
-		assert.Equal(t, []string{"a"}, o.Segments)
+	t.Run("upstream parser panic is rejected", func(t *testing.T) {
+		// "a..." nil-derefs inside cuelang v0.16.1's parser; safeParsePath
+		// recovers the panic and the oracle reports a rejection.
+		o := OraclePathParsePath(PathCase{Expr: "a..."})
+		assert.False(t, o.Accepted)
 	})
 }
 
