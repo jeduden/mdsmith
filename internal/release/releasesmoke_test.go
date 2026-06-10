@@ -102,6 +102,40 @@ func TestCheckReleaseSmokeRootErrorsWithoutWorkflow(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestCheckReleaseSmokeRootErrorsOnMalformedWorkflow(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, ".github", "workflows")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "release.yml"), []byte("jobs: ["), 0o644))
+
+	_, err := CheckReleaseSmokeRoot(root)
+	assert.ErrorContains(t, err, "parsing")
+}
+
+func TestCheckReleaseSmokeRootTagsViolationsWithWorkflow(t *testing.T) {
+	const wf = `
+jobs:
+  smoke-test:
+    strategy:
+      matrix:
+        include:
+          - channel: npm
+          - channel: pip
+          - channel: mise
+`
+	root := t.TempDir()
+	dir := filepath.Join(root, ".github", "workflows")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "release.yml"), []byte(wf), 0o644))
+
+	got, err := CheckReleaseSmokeRoot(root)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "release.yml", got[0].Workflow)
+}
+
 // TestRepoReleaseWorkflowCoversRequiredSmokeChannels pins the real
 // release.yml: every channel in RequiredSmokeChannels has a
 // post-publication smoke entry, so a release that breaks one of them
