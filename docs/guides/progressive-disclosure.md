@@ -80,7 +80,7 @@ row: "- [{summary}]({filename})"
 <?/catalog?>
 ```
 
-The 113-doc tree compresses to ~3 400 tokens of index.
+The ~110-doc tree compresses to ~3 400 tokens of index.
 The agent reads `CLAUDE.md` once at session start and
 already knows which file to open for any task it gets.
 
