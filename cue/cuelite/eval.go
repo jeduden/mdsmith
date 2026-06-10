@@ -261,6 +261,18 @@ func evalComparison(n *ast.BinaryExpr, scope map[string]*engineValue) (*engineVa
 	// operand is an unresolved reference (`A > _`), so it is checked before the
 	// errUnresolved deferral: a type operand can never become concrete, so the
 	// comparison can never resolve and must not become a thunk.
+	// A HARD operand error (anything but errUnresolved — an unsupported
+	// construct like `!0`, or a nested compile failure) can never resolve
+	// against data, so the comparison is a compile error, not a deferral.
+	// Propagate it before the errUnresolved deferral, even when the OTHER
+	// operand is an unresolved reference (`A > !0`): the bad operand makes the
+	// whole comparison non-resolvable, matching CUE's eager rejection.
+	if lerr != nil && !stderrors.Is(lerr, errUnresolved) {
+		return nil, lerr
+	}
+	if rerr != nil && !stderrors.Is(rerr, errUnresolved) {
+		return nil, rerr
+	}
 	if lerr == nil && !isConcrete(l) {
 		return nil, fmt.Errorf("cuelite: invalid operation: %s requires a concrete operand, got %s", n.Op, l.describe())
 	}

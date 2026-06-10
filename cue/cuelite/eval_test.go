@@ -204,6 +204,17 @@ func TestEvalComparison_typeOperand(t *testing.T) {
 		require.NoError(t, err)
 		assert.NoError(t, v.CompileMap(map[string]any{"a": "p", "xs": []any{true}}).Validate())
 	})
+	t.Run("a hard operand error propagates over a deferred reference", func(t *testing.T) {
+		// `!0` is an unsupported construct (a hard error, not errUnresolved). It
+		// can never resolve, so the comparison rejects at compile even when the
+		// OTHER operand is an unresolved reference — in both operand positions.
+		_, err := Compile(`{a: int, b: a > !0}`)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `unsupported unary operator "!"`)
+		_, err = Compile(`{a: int, b: !0 > a}`)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `unsupported unary operator "!"`)
+	})
 }
 
 // TestCompile_ifConditionNotBool pins that an `if` comprehension whose

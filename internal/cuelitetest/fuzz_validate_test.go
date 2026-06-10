@@ -287,6 +287,12 @@ func extraFuzzSeeds() []struct{ schema, data string } {
 		// forced. Seeded for the checkNoMisplacedDefault pass.
 		{`({mechanism:[if mechanism{},(*"")][0]})`, `0`},
 		{`{a: [*""][0]}`, `0`},
+		// A comparison with a HARD-error operand that is not a deferred reference
+		// (!0, an unsupported unary): CUE rejects "invalid operation !0" at
+		// compile; the in-house engine must propagate the operand error rather
+		// than defer on the other (unresolved) operand.
+		{`A: A > !0`, `0`},
+		{`{a: int, b: !0 > a}`, `{"a":1}`},
 		// A lone-surrogate escape in a VALUE position (hatch 2) and in a KEY
 		// position (now rejected in both arms — no hatch). Seeding both keeps
 		// the surrogate classes exercised on every run.
