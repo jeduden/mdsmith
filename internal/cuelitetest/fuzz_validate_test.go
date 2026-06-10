@@ -70,13 +70,20 @@ func topLevelFields(f *ast.File) map[string]ast.Expr {
 	return out
 }
 
-// unwrapStruct unwraps parens around a struct literal, so `({a: 1})` yields its
-// inner struct.
+// unwrapStruct unwraps parens and a close(...) wrapper around a struct literal,
+// so `({a: 1})` and `close({a: 1})` both yield the inner struct.
 func unwrapStruct(e ast.Expr) (*ast.StructLit, bool) {
 	for {
 		switch n := e.(type) {
 		case *ast.ParenExpr:
 			e = n.X
+		case *ast.CallExpr:
+			// close({…}) — descend its single struct argument.
+			if id, ok := n.Fun.(*ast.Ident); ok && id.Name == "close" && len(n.Args) == 1 {
+				e = n.Args[0]
+				continue
+			}
+			return nil, false
 		case *ast.StructLit:
 			return n, true
 		default:
@@ -430,6 +437,7 @@ func edgeFuzzSeeds() []struct{ schema, data string } {
 		{`{a:[if a{}]}`, `0`},
 		{`({mechanism:""|[if mechanism{}]})`, `{}`},
 		{`{a: [if b {}], b: [if a {}]}`, `{}`},
+		{`close({s:[(s)][0]})`, `0`},
 		// A misplaced `*` default mark in an unreached list element: CUE rejects
 		// it at parse ("preference mark not allowed"); the in-house engine's
 		// static pass rejects it up front rather than only when the element is
