@@ -362,11 +362,7 @@ func defaultConfigBytes() ([]byte, error) {
 	fm := true
 	cfg.FrontMatter = &fm
 
-	data, err := yamlutil.Marshal(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("marshalling config: %w", err)
-	}
-	return data, nil
+	return yamlutil.Marshal(cfg)
 }
 
 // convertedConfigBytes reads, parses, and converts a markdownlint

@@ -36,11 +36,15 @@ type mappingIndex struct {
 	ruleMDs map[string][]target
 }
 
+// listRules is a test seam for the embedded rule-metadata read;
+// production always points at rules.ListRules.
+var listRules = rules.ListRules
+
 // buildIndex reads the embedded rule READMEs and indexes their
 // `markdownlint:` front-matter mappings by MD id, by markdownlint rule
 // name, and by mdsmith rule.
 func buildIndex() (*mappingIndex, error) {
-	all, err := rules.ListRules()
+	all, err := listRules()
 	if err != nil {
 		return nil, fmt.Errorf("loading rule metadata: %w", err)
 	}

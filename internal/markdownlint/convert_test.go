@@ -1,6 +1,7 @@
 package markdownlint
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -9,6 +10,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/rules"
 	_ "github.com/jeduden/mdsmith/internal/rules/all"
 )
 
@@ -302,6 +304,34 @@ MD059: {prohibited_texts: [here]}
 	assert.GreaterOrEqual(t, applied, 15, "expected most converted rules to carry settings")
 }
 
+func TestConvert_DefaultKeyInvalid(t *testing.T) {
+	conv := mustConvert(t, "default: 1\nMD041: false\n")
+	assert.True(t, noteWith(conv.Notes, `"default" must be true or false`), "notes: %v", conv.Notes)
+	// An invalid default falls back to true, so the explicit disable
+	// still converts against default-on semantics.
+	assert.Equal(t, config.RuleCfg{Enabled: false}, conv.Rules["first-line-heading"])
+}
+
+func TestConvert_ListRulesError(t *testing.T) {
+	orig := listRules
+	t.Cleanup(func() { listRules = orig })
+	listRules = func() ([]rules.RuleInfo, error) { return nil, errors.New("boom") }
+
+	_, err := Convert(map[string]any{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "loading rule metadata")
+}
+
+func TestBuildIndex_ListRulesError(t *testing.T) {
+	orig := listRules
+	t.Cleanup(func() { listRules = orig })
+	listRules = func() ([]rules.RuleInfo, error) { return nil, errors.New("boom") }
+
+	_, err := buildIndex()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "loading rule metadata")
+}
+
 func TestBuildIndex(t *testing.T) {
 	idx, err := buildIndex()
 	require.NoError(t, err)
@@ -332,6 +362,7 @@ func TestParseMD035Style(t *testing.T) {
 		{in: "consistent", wantErr: true},
 		{in: "-*-", wantErr: true},
 		{in: "--", wantErr: true},
+		{in: "===", wantErr: true},
 	}
 	for _, tt := range tests {
 		style, length, ok := parseMD035Style(tt.in)

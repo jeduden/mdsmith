@@ -743,6 +743,51 @@ func TestE2E_Init_FromMarkdownlint_NoneFound(t *testing.T) {
 		"expected discovery error, got: %s", stderr)
 }
 
+func TestE2E_Init_FromMarkdownlint_MissingExplicitPath(t *testing.T) {
+	dir := t.TempDir()
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "init", "--from-markdownlint=missing.json")
+	assert.Equal(t, 2, exitCode, "expected exit code 2, got %d", exitCode)
+	assert.Contains(t, stderr, "reading missing.json",
+		"expected read error naming the path, got: %s", stderr)
+}
+
+func TestE2E_Init_FromMarkdownlint_ParseError(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, ".markdownlint.json", `{"MD013" true}`)
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "init", "--from-markdownlint")
+	assert.Equal(t, 2, exitCode, "expected exit code 2, got %d", exitCode)
+	assert.Contains(t, stderr, "parsing markdownlint config",
+		"expected parse error, got: %s", stderr)
+}
+
+func TestE2E_Init_UnwritableDir(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission semantics not applicable on Windows")
+	}
+	if os.Getuid() == 0 {
+		t.Skip("running as root: permission checks don't apply")
+	}
+	dir := t.TempDir()
+	require.NoError(t, os.Chmod(dir, 0o555))
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "init")
+	assert.Equal(t, 2, exitCode, "expected exit code 2, got %d", exitCode)
+	assert.Contains(t, stderr, "writing .mdsmith.yml",
+		"expected write error, got: %s", stderr)
+}
+
+func TestE2E_Init_UnknownFlag(t *testing.T) {
+	dir := t.TempDir()
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "init", "--definitely-not-a-flag")
+	assert.Equal(t, 2, exitCode, "expected exit code 2, got %d", exitCode)
+	assert.Contains(t, stderr, "unknown flag",
+		"expected flag parse error, got: %s", stderr)
+}
+
 // --- Stdin frontmatter and Configurable settings tests ---
 
 func TestE2E_Check_Stdin_FrontMatterLineOffset(t *testing.T) {

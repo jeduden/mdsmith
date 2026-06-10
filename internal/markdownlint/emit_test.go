@@ -1,6 +1,7 @@
 package markdownlint
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -70,6 +71,24 @@ MD041: false
 	assert.Equal(t, map[string]any{"max": 100}, cfg.Rules["line-length"].Settings)
 	assert.False(t, cfg.Rules["first-line-heading"].Enabled)
 	assert.Equal(t, map[string]any{"allow": []any{"kbd"}}, cfg.Rules["no-inline-html"].Settings)
+}
+
+// failingMarshaler forces yaml.Marshal down its error return, the only
+// way to drive EmitConfig's marshal-failure branch.
+type failingMarshaler struct{}
+
+func (failingMarshaler) MarshalYAML() (any, error) {
+	return nil, errors.New("boom")
+}
+
+func TestEmitConfig_MarshalError(t *testing.T) {
+	conv := &Conversion{Rules: map[string]config.RuleCfg{
+		"line-length": {Enabled: true, Settings: map[string]any{"bad": failingMarshaler{}}},
+	}}
+
+	_, err := EmitConfig(conv, "x.yaml")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "marshalling converted config")
 }
 
 func TestWrapComment(t *testing.T) {
