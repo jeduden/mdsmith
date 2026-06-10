@@ -28,7 +28,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [FuzzValidate, FuzzParsePath]
+        target: [FuzzValidate, FuzzParsePath, FuzzExpr]
     env:
       GOTOOLCHAIN: local
     steps:
