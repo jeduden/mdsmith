@@ -281,6 +281,12 @@ func extraFuzzSeeds() []struct{ schema, data string } {
 		// field. Hatch 3 tolerates the leaf-path-only difference.
 		{`({mechanism:[if mechanism{}][0]})`, `{}`},
 		{`{a: [if a {}][0]}`, `{}`},
+		// A self-cycle where the field IS the if condition (`{a: [if a {}]}`):
+		// CUE rejects at schema compile ("cannot use list as type bool"); the
+		// in-house engine defers the list and rejects at validate. Hatch 3 covers
+		// the stage divergence — both reject, neither accepts.
+		{`{a:[if a{}]}`, `0`},
+		{`{a: [if a {1}]}`, `{"a":[1]}`},
 		// A misplaced `*` default mark in an unreached list element: CUE rejects
 		// it at parse ("preference mark not allowed"); the in-house engine's
 		// static pass rejects it up front rather than only when the element is
@@ -404,18 +410,28 @@ func fuzzValidateBody() func(*testing.T, string, string) {
 		if bothReject(inHouse, oracle) && leafSuperset(inHouse.Paths, oracle.Paths) {
 			return
 		}
-		// Hatch 3 — structural self-cycle leaf path. A field whose value
-		// references its own label (`{a: [if a {}][0]}`) is a structural cycle.
-		// Both arms REJECT; they differ ONLY in the rejecting-leaf label. CUE
-		// reports the cycle at the ROOT ("cycle with field: a", path []), while
-		// the in-house engine forces the field's thunk, finds the name unbound,
-		// and reports it at the FIELD path. The hatch is scoped to exactly that
-		// signature: both reject at validate, the schema declares a self-cycle,
-		// and the oracle's only rejecting leaf is the root path. A wrong accept,
-		// a stage mismatch, or any non-root oracle path still fails.
-		if bothReject(inHouse, oracle) && schemaHasSelfCycle(schema) &&
-			slices.EqualFunc(oracle.Paths, [][]string{nil}, slices.Equal[[]string]) {
-			return
+		// Hatch 3 — structural self-cycle. A field whose value references its own
+		// label (`{a: [if a {}][0]}`, `{a: [if a {}]}`) is a structural cycle
+		// that BOTH arms reject — only the rejecting STAGE and leaf path differ.
+		// CUE detects the cycle eagerly, reporting it at the ROOT (a CompileSchema
+		// or a validate-stage root path). The in-house engine instead defers the
+		// field to a thunk that, forced against data, finds the self-reference
+		// unresolvable and rejects at the FIELD path (validate stage). The hatch
+		// fires only when the schema declares a self-cycle AND the in-house engine
+		// does reject (never accepts), in one of two shapes:
+		//   - both reject at validate, the oracle's only leaf is the root, or
+		//   - the in-house engine rejects at validate while CUE rejects earlier at
+		//     schema compile (the cycle is a compile-time type error to CUE).
+		// A wrong accept (in-house StageAccepted) still fails; so does any
+		// non-self-cycle stage or leaf mismatch.
+		if schemaHasSelfCycle(schema) && inHouse.Stage == StageValidate {
+			if oracle.Stage == StageCompileSchema {
+				return
+			}
+			if oracle.Stage == StageValidate &&
+				slices.EqualFunc(oracle.Paths, [][]string{nil}, slices.Equal[[]string]) {
+				return
+			}
 		}
 		t.Fatalf("divergence on schema=%q data=%q: in-house %+v vs oracle %+v",
 			schema, data, inHouse, oracle)
