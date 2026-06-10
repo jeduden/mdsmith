@@ -1,42 +1,34 @@
 ---
-title: Migrating from markdownlint
+title: Migrate from markdownlint
 weight: 70
 summary: >-
-  Move a project from markdownlint-cli or markdownlint-cli2
-  to mdsmith — the rule mapping, the config rewrite, and
-  the markdownlint-to-mdsmith rule correspondence.
+  Convert a markdownlint config to `.mdsmith.yml` with `mdsmith init
+  --from-markdownlint`, review the conversion notes, move inline
+  disables into overrides, and run both linters in parallel until
+  cutover.
 ---
-# Migrating from markdownlint
+# Migrate from markdownlint
 
-mdsmith covers all 52 active markdownlint rules under
-different IDs. The CLI shape is similar (`mdsmith check
-.` mirrors `markdownlint .`), the auto-fix story is
-strictly broader, and the config moves from
-`.markdownlint.yaml` to `.mdsmith.yml`. This guide is
-the on-ramp.
+mdsmith covers all 52 active markdownlint rules under different ids,
+and `mdsmith init --from-markdownlint` rewrites a markdownlint config
+into `.mdsmith.yml` mechanically. The CLI shape carries over:
+`mdsmith check .` mirrors `markdownlint .`, and both exit non-zero on
+violations. The
+[rule mapping](../reference/markdownlint-mapping.md) and the converter
+read the same per-rule data, so neither can drift from the other.
 
-## What stays the same
+## 1. Convert the config
 
-- Per-file Markdown style checks (heading style,
-  line-length, list indent, fenced-code style, etc.).
-- Run in CI with a non-zero exit code on violations.
-- Per-rule disable via config.
+Run the converter next to your markdownlint config. It probes
+`.markdownlint.jsonc`, `.markdownlint.json`, `.markdownlint.yaml`,
+`.markdownlint.yml`, and `.markdownlintrc`; pass
+`--from-markdownlint=<path>` to name a file instead.
 
-## What changes
+```bash
+mdsmith init --from-markdownlint
+```
 
-- Rule IDs are `MDSxxx`, not `MDxxx`. The
-  [linter comparison](../background/markdown-linters.md)
-  documents rule-for-rule coverage.
-- mdsmith adds cross-file integrity, generated sections,
-  file kinds, and readability budgets that markdownlint
-  does not have.
-- Config lives in `.mdsmith.yml` with deep-merged layers
-  (defaults → convention → kinds → overrides) rather
-  than the flat markdownlint JSON / YAML.
-
-## Convert `.markdownlint.yaml`
-
-A typical markdownlint config looks like:
+Given this `.markdownlint.yaml`:
 
 ```yaml
 default: true
@@ -47,58 +39,82 @@ MD024:
 MD033: false
 ```
 
-The equivalent `.mdsmith.yml`:
+the command writes this `.mdsmith.yml`:
 
 ```yaml
+# Converted from .markdownlint.yaml by mdsmith init --from-markdownlint.
+# Rules not listed here keep their mdsmith defaults.
+#
+# Not converted:
+# - MD024 option "siblings_only": no mdsmith equivalent
+# - markdownlint enables these checks by default, but the mdsmith
+#   analogs are opt-in and use mdsmith's own default settings — review
+#   and enable each with "<rule>: true": ambiguous-emphasis (MD037),
+#   descriptive-link-text (MD059), emphasis-style (MD049, MD050),
+#   horizontal-rule-style (MD035), link-style (MD054), list-marker-style
+#   (MD004), no-space-in-code-spans (MD038), no-space-in-link-text
+#   (MD039), ordered-list-numbering (MD029), proper-names (MD044),
+#   single-h1 (MD025)
+
+front-matter: true
 rules:
-  line-length:
-    max: 100
-  no-duplicate-headings:
-    siblings-only: true
-  no-inline-html: false
+    line-length:
+        max: 100
 ```
 
-Rule names use kebab-case in mdsmith. Run `mdsmith init`
-to scaffold a starting config with the defaults
-expanded; then trim it to only the rules you want to
-override.
+The example shows the converter's contract:
 
-## Rule mapping (high traffic)
+- `MD013.line_length` became `line-length.max`. Option values translate
+  whenever mdsmith has the matching setting.
+- `MD033: false` produced no entry. `no-inline-html` is already opt-in
+  in mdsmith, so there is nothing to disable.
+- `MD024.siblings_only` has no mdsmith setting, so the converter kept
+  `no-duplicate-headings` at its default and recorded a note instead of
+  guessing.
 
-| markdownlint | mdsmith                              | Notes                                                                 |
-| ------------ | ------------------------------------ | --------------------------------------------------------------------- |
-| MD001        | `heading-increment`                  | Same semantics                                                        |
-| MD003        | `heading-style`                      | atx / setext discriminator                                            |
-| MD004        | `list-marker-style`                  | `*` / `-` / `+`                                                       |
-| MD007        | `list-indent`                        | Spaces per nesting level                                              |
-| MD009        | `no-trailing-spaces`                 | Same                                                                  |
-| MD010        | `no-hard-tabs`                       | Same                                                                  |
-| MD012        | `no-multiple-blanks`                 | `max:` argument                                                       |
-| MD013        | `line-length`                        | `max:` + exclusion lists                                              |
-| MD018-MD020  | `atx-heading-whitespace`             | Unified into one rule                                                 |
-| MD022        | `blank-line-around-headings`         | Same                                                                  |
-| MD024        | `no-duplicate-headings`              | `siblings-only:` flag                                                 |
-| MD025        | `single-h1`                          | One top-level heading per file                                        |
-| MD026        | `no-trailing-punctuation-in-heading` | Same                                                                  |
-| MD031        | `blank-line-around-fenced-code`      | Same                                                                  |
-| MD032        | `blank-line-around-lists`            | Same                                                                  |
-| MD033        | `no-inline-html`                     | Allow-list argument                                                   |
-| MD034        | `no-bare-urls`                       | Same                                                                  |
-| MD040        | `fenced-code-language`               | Same                                                                  |
-| MD041        | `first-line-heading`                 | `level:` argument                                                     |
-| MD046        | `fenced-code-style`                  | backtick / tilde                                                      |
-| MD047        | `single-trailing-newline`            | Same                                                                  |
-| MD054        | `link-style` (opt-in)                | `links.style.link-image-style` six-toggle map; all default to allowed |
+The notes are also echoed on stderr. The converter never invents
+settings: anything it cannot translate faithfully lands in the
+`# Not converted:` block for review.
 
-See [linter comparison](../background/markdown-linters.md)
-for the full coverage table.
+## 2. Review the conversion notes
 
-## Run both in parallel for one PR
+Work through each `# Not converted:` line:
 
-Keep your existing `.markdownlint.yaml` in place. Add
-the mdsmith CI job. Compare reports on a representative
-PR. Once mdsmith reports a strict superset of the
-violations you care about, retire the markdownlint job.
+- Untranslated options (like `siblings_only`): run
+  `mdsmith help <rule>` to read what the mdsmith rule enforces. In most
+  cases the option narrowed a check that mdsmith scopes differently.
+- Opt-in analogs: markdownlint enables style rules such as MD004 (list
+  markers) by default with a "consistent" policy. The mdsmith analogs
+  are opt-in and declare one concrete style, for example
+  `list-marker-style: {style: dash}`. Enable the ones your project
+  wants and set the style your files already use.
+- Tags and `extends`: tag toggles (`whitespace: false`) and `extends:`
+  chains are not converted. Disable the individual rules, or inline the
+  extended config and convert again.
+
+## 3. Move inline disables into config
+
+mdsmith has no `<!-- markdownlint-disable -->` comment. Replace each
+inline disable with an `overrides:` entry — the per-glob layer of
+`.mdsmith.yml` — or list whole files under `ignore:`:
+
+```yaml
+overrides:
+  - glob: ["CHANGELOG.md"]
+    rules:
+      line-length: false
+
+ignore:
+  - "vendor/**"
+```
+
+A `.markdownlintignore` file translates to the same `ignore:` list.
+
+## 4. Run both linters on one PR
+
+Keep the markdownlint CI job. Add mdsmith beside it, compare reports on
+a representative PR, and retire the markdownlint job once mdsmith
+reports everything you care about:
 
 ```yaml
 - name: mdsmith
@@ -107,11 +123,21 @@ violations you care about, retire the markdownlint job.
     mdsmith check .
 ```
 
+The migration is done when `mdsmith check .` passes in CI and the
+markdownlint job is deleted.
+
+## Rule mapping
+
+The [markdownlint rule mapping](../reference/markdownlint-mapping.md)
+lists every markdownlint rule beside the mdsmith rule that covers it,
+generated from the rule READMEs' front matter.
+
 ## See also
 
-- [Linter comparison](../background/markdown-linters.md)
-  — feature-by-feature breakdown.
-- [Conventions](../reference/conventions.md) — pin a
-  flavor preset that matches a markdownlint default.
-- [Coexist with Prettier](coexist-with-prettier.md) —
-  if you already pair markdownlint with Prettier.
+- [`mdsmith init`](../reference/cli/init.md) — flags and exit codes.
+- [Markdown linters comparison](../background/markdown-linters.md) —
+  feature-by-feature breakdown.
+- [Conventions](../reference/conventions.md) — pin a preset that
+  matches a markdownlint default.
+- [Coexist with Prettier](coexist-with-prettier.md) — if you pair
+  markdownlint with Prettier today.
