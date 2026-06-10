@@ -2074,6 +2074,230 @@ func TestE2E_MergeDriver_RebasePick_Succeeds(t *testing.T) {
 		"check after rebase + fix must pass; stderr:\n%s", stderr)
 }
 
+// TestE2E_MergeDriver_CherryPick_Succeeds covers the third real-git
+// replay path next to merge and rebase: a cherry-pick performs the
+// same 3-way merge as a rebase pick, so it would have hit the same
+// stale-stat abort with the old worktree-writing driver.
+func TestE2E_MergeDriver_CherryPick_Succeeds(t *testing.T) {
+	dir := t.TempDir()
+	gitInit(t, dir)
+
+	writeFixture(t, dir, ".mdsmith.yml",
+		"rules:\n  catalog: true\n  include: true\n")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "plan"), 0o755))
+	writeFixture(t, dir, "plan/01.md", fmt.Sprintf(planTmpl, 1, 1, "🔲", 1))
+	writeFixture(t, dir, "plan/02.md", fmt.Sprintf(planTmpl, 2, 2, "🔲", 2))
+	writeFixture(t, dir, "PLAN.md", planMdTmpl)
+
+	_, stderr, code := runBinaryInDir(t, dir, "", "fix", "PLAN.md")
+	require.Equal(t, 0, code, "seed fix failed: %s", stderr)
+	gitCommit(t, dir, "seed")
+	seedSHA := strings.TrimSpace(gitInDir(t, dir, "rev-parse", "HEAD"))
+
+	completePlanOnBranch(t, dir, "ours", seedSHA, 1)
+	completePlanOnBranch(t, dir, "theirs", seedSHA, 2)
+	theirsSHA := strings.TrimSpace(gitInDir(t, dir, "rev-parse", "theirs"))
+
+	gitInDir(t, dir, "checkout", "ours")
+	_, stderr, code = runBinaryInDir(t, dir, "", "merge-driver", "install")
+	require.Equal(t, 0, code, "install failed: %s", stderr)
+
+	out, err := exec.Command("git", "-C", dir,
+		"-c", "commit.gpgsign=false",
+		"cherry-pick", theirsSHA).CombinedOutput()
+	require.NoError(t, err, "git cherry-pick failed: %s", out)
+
+	_, statErr := os.Stat(filepath.Join(dir, ".git", "CHERRY_PICK_HEAD"))
+	assert.True(t, os.IsNotExist(statErr),
+		"cherry-pick must not be left in progress")
+	status := gitInDir(t, dir, "status", "--porcelain", "--untracked-files=no")
+	assert.Empty(t, strings.TrimSpace(status),
+		"tracked files must be clean after the cherry-pick, got:\n%s", status)
+
+	for _, path := range []string{"plan/01.md", "plan/02.md"} {
+		data, err := os.ReadFile(filepath.Join(dir, path))
+		require.NoError(t, err)
+		assert.Contains(t, string(data), `status: "✅"`,
+			"%s status must be ✅ after cherry-pick", path)
+	}
+
+	_, stderr, code = runBinaryInDir(t, dir, "", "fix", ".")
+	require.Equal(t, 0, code, "post-cherry-pick fix failed: %s", stderr)
+	_, stderr, code = runBinaryInDir(t, dir, "", "check", ".")
+	assert.Equal(t, 0, code,
+		"check after cherry-pick + fix must pass; stderr:\n%s", stderr)
+}
+
+// TestE2E_MergeDriver_RebaseMultiFile_Succeeds replays a pick where
+// the driver runs on THREE both-sides-modified files in one merge —
+// a catalog file, an include file, and the include's plain-prose
+// source. This is the shape of the rebase that exposed the
+// worktree-write bug: one stat-dirtied path is enough to abort the
+// pick, and a multi-file pick multiplies the chances. The pick must
+// complete in one shot with every generated section resolved.
+func TestE2E_MergeDriver_RebaseMultiFile_Succeeds(t *testing.T) {
+	dir := t.TempDir()
+	gitInit(t, dir)
+
+	writeFixture(t, dir, ".mdsmith.yml",
+		"rules:\n  catalog: true\n  include: true\n")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "plan"), 0o755))
+	writeFixture(t, dir, "plan/01.md", fmt.Sprintf(planTmpl, 1, 1, "🔲", 1))
+	writeFixture(t, dir, "plan/02.md", fmt.Sprintf(planTmpl, 2, 2, "🔲", 2))
+	writeFixture(t, dir, "PLAN.md", planMdTmpl)
+	writeFixture(t, dir, "NOTES.md",
+		"# Notes\n\nalpha line stays.\n\nbravo line stays.\n")
+	writeFixture(t, dir, "DOC.md",
+		"# Doc\n\n<?include\nfile: NOTES.md\nheading-level: \"2\"\n?>\n<?/include?>\n")
+
+	_, stderr, code := runBinaryInDir(t, dir, "", "fix", ".")
+	require.Equal(t, 0, code, "seed fix failed: %s", stderr)
+	gitCommit(t, dir, "seed")
+	seedSHA := strings.TrimSpace(gitInDir(t, dir, "rev-parse", "HEAD"))
+
+	// ours: bump plan 01, edit NOTES line 1, regenerate everything.
+	gitInDir(t, dir, "checkout", "-b", "ours", seedSHA)
+	writeFixture(t, dir, "plan/01.md", fmt.Sprintf(planTmpl, 1, 1, "✅", 1))
+	writeFixture(t, dir, "NOTES.md",
+		"# Notes\n\nalpha line changed by ours.\n\nbravo line stays.\n")
+	_, stderr, code = runBinaryInDir(t, dir, "", "fix", ".")
+	require.Equal(t, 0, code, "ours fix failed: %s", stderr)
+	gitCommit(t, dir, "ours: plan 1 + alpha edit")
+
+	// theirs: bump plan 02, edit NOTES line 2, regenerate everything.
+	gitInDir(t, dir, "checkout", "-b", "theirs", seedSHA)
+	writeFixture(t, dir, "plan/02.md", fmt.Sprintf(planTmpl, 2, 2, "✅", 2))
+	writeFixture(t, dir, "NOTES.md",
+		"# Notes\n\nalpha line stays.\n\nbravo line changed by theirs.\n")
+	_, stderr, code = runBinaryInDir(t, dir, "", "fix", ".")
+	require.Equal(t, 0, code, "theirs fix failed: %s", stderr)
+	gitCommit(t, dir, "theirs: plan 2 + bravo edit")
+
+	gitInDir(t, dir, "checkout", "ours")
+	_, stderr, code = runBinaryInDir(t, dir, "", "merge-driver", "install")
+	require.Equal(t, 0, code, "install failed: %s", stderr)
+
+	out, err := exec.Command("git", "-C", dir,
+		"-c", "commit.gpgsign=false",
+		"rebase", "theirs").CombinedOutput()
+	require.NoError(t, err, "multi-file rebase failed: %s", out)
+
+	_, statErr := os.Stat(filepath.Join(dir, ".git", "rebase-merge"))
+	assert.True(t, os.IsNotExist(statErr),
+		"rebase must not be left in progress")
+	status := gitInDir(t, dir, "status", "--porcelain", "--untracked-files=no")
+	assert.Empty(t, strings.TrimSpace(status),
+		"tracked files must be clean after the rebase, got:\n%s", status)
+
+	// Both prose edits to the include source must survive the replay.
+	notes, err := os.ReadFile(filepath.Join(dir, "NOTES.md"))
+	require.NoError(t, err)
+	assert.Contains(t, string(notes), "alpha line changed by ours")
+	assert.Contains(t, string(notes), "bravo line changed by theirs")
+
+	// No generated section may carry conflict markers.
+	for _, path := range []string{"PLAN.md", "DOC.md"} {
+		data, err := os.ReadFile(filepath.Join(dir, path))
+		require.NoError(t, err)
+		assert.NotContains(t, string(data), "<<<<<<<",
+			"%s must not carry conflict markers", path)
+	}
+
+	_, stderr, code = runBinaryInDir(t, dir, "", "fix", ".")
+	require.Equal(t, 0, code, "post-rebase fix failed: %s", stderr)
+	_, stderr, code = runBinaryInDir(t, dir, "", "check", ".")
+	assert.Equal(t, 0, code,
+		"check after rebase + fix must pass; stderr:\n%s", stderr)
+}
+
+// TestE2E_MergeDriver_RealMerge_ProseConflict_AbortRestores drives
+// the driver's failure path through real git: a conflict in
+// hand-written prose is not resolvable, so the driver exits 1, git
+// must record the path as unmerged with markers in the worktree,
+// and `git merge --abort` must restore the pre-merge tree exactly —
+// proving the failed driver run left no stray writes behind.
+func TestE2E_MergeDriver_RealMerge_ProseConflict_AbortRestores(t *testing.T) {
+	dir := t.TempDir()
+	gitInit(t, dir)
+
+	writeFixture(t, dir, ".mdsmith.yml", "rules:\n  catalog: true\n")
+	writeFixture(t, dir, "NOTES.md", "# Notes\n\noriginal line here.\n")
+	_, stderr, code := runBinaryInDir(t, dir, "", "merge-driver", "install")
+	require.Equal(t, 0, code, "install failed: %s", stderr)
+	gitCommit(t, dir, "seed")
+	seedSHA := strings.TrimSpace(gitInDir(t, dir, "rev-parse", "HEAD"))
+
+	oursContent := "# Notes\n\nours change here.\n"
+	gitInDir(t, dir, "checkout", "-b", "ours", seedSHA)
+	writeFixture(t, dir, "NOTES.md", oursContent)
+	gitCommit(t, dir, "ours edit")
+	gitInDir(t, dir, "checkout", "-b", "theirs", seedSHA)
+	writeFixture(t, dir, "NOTES.md", "# Notes\n\ntheirs change here.\n")
+	gitCommit(t, dir, "theirs edit")
+	gitInDir(t, dir, "checkout", "ours")
+
+	out, err := exec.Command("git", "-C", dir,
+		"-c", "commit.gpgsign=false",
+		"merge", "--no-ff", "theirs").CombinedOutput()
+	require.Error(t, err, "prose conflict must stop the merge, got:\n%s", out)
+
+	// git must record the unmerged path and leave markers in place.
+	require.Contains(t, gitInDir(t, dir, "ls-files", "-u"), "NOTES.md",
+		"NOTES.md must be recorded as unmerged")
+	data, readErr := os.ReadFile(filepath.Join(dir, "NOTES.md"))
+	require.NoError(t, readErr)
+	assert.Contains(t, string(data), "<<<<<<<")
+	assert.Contains(t, string(data), "ours change here.")
+	assert.Contains(t, string(data), "theirs change here.")
+
+	// Abort must restore the pre-merge state cleanly.
+	abortOut, abortErr := exec.Command("git", "-C", dir,
+		"merge", "--abort").CombinedOutput()
+	require.NoError(t, abortErr, "merge --abort failed: %s", abortOut)
+	status := gitInDir(t, dir, "status", "--porcelain", "--untracked-files=no")
+	assert.Empty(t, strings.TrimSpace(status),
+		"tracked files must be clean after abort, got:\n%s", status)
+	data, readErr = os.ReadFile(filepath.Join(dir, "NOTES.md"))
+	require.NoError(t, readErr)
+	assert.Equal(t, oursContent, string(data),
+		"abort must restore the pre-merge ours content")
+}
+
+// TestE2E_MergeDriver_RealMerge_Diff3SectionConflict_Resolved pins
+// diff3 conflict-marker handling through real git. With
+// merge.conflictstyle=diff3 the driver's internal `git merge-file`
+// emits ||||||| base sections inside the conflicted generated
+// block; stripSectionConflicts must strip those too, and the
+// regeneration replaces any leftover base lines.
+func TestE2E_MergeDriver_RealMerge_Diff3SectionConflict_Resolved(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	dir := setupConflictingMergeRepo(t)
+	gitInDir(t, dir, "config", "merge.conflictstyle", "diff3")
+
+	out, err := exec.Command("git", "-C", dir,
+		"-c", "commit.gpgsign=false",
+		"merge", "--no-ff", "-m", "merge theirs", "theirs").CombinedOutput()
+	require.NoError(t, err, "git merge failed: %s", out)
+
+	plan, readErr := os.ReadFile(filepath.Join(dir, "PLAN.md"))
+	require.NoError(t, readErr)
+	planStr := string(plan)
+	for _, id := range []string{"1", "2", "3"} {
+		assert.Regexp(t, `\| `+id+` +\|`, planStr,
+			"merged PLAN.md catalog must list plan %s; got:\n%s", id, planStr)
+	}
+	for _, marker := range []string{"<<<<<<<", ">>>>>>>", "|||||||"} {
+		assert.NotContains(t, planStr, marker,
+			"no %s marker may survive the diff3 merge", marker)
+	}
+
+	_, stderr, code := runBinaryInDir(t, dir, "", "check", ".")
+	assert.Equal(t, 0, code,
+		"check after diff3 merge must pass; stderr:\n%s", stderr)
+}
+
 // setupConflictingMergeRepo builds a repo whose `ours` and `theirs`
 // branches both regenerate PLAN.md's catalog (ours adds plan 02,
 // theirs adds plan 03), so merging conflicts inside the generated
