@@ -437,6 +437,17 @@ func pathCorpus() []PathCase {
 		{Name: "raw-string unterminated more hashes", Expr: `##"a"#`},
 		{Name: "raw-string unknown escape rejected", Expr: `#"a\##nb"#`},
 		{Name: "raw-string truncated escape rejected", Expr: `#"a\#"#`},
+		// Raw-string surrogate pairing. At hash level N BOTH halves must carry
+		// the '\#u…' introducer: a \#u high + \#u low pair combines into one
+		// astral rune (accepted), while a \#u high followed by a PLAIN \u low
+		// (literal text in a raw string) leaves the high lone — CUE decodes "",
+		// rejected. A \#u high whose next byte is the closing delimiter's
+		// backslash is also lone (the former out-of-bounds-panic input).
+		{Name: "raw-string paired surrogate escapes", Expr: "#\"\\#uD800\\#uDC00\"#"},
+		{Name: "double-hash raw-string paired surrogate escapes", Expr: "##\"\\##uD800\\##uDC00\"##"},
+		{Name: "raw-string high then plain-u low rejected", Expr: "#\"\\#uD800\\uDC00\"#"},
+		{Name: "double-hash raw-string high then plain-u low rejected", Expr: "##\"\\##uD800\\uDC00\"##"},
+		{Name: "raw-string lone high before close rejected", Expr: "#\"\\#uD800\\\"#"},
 		{Name: "multiline raw-string opener rejected", Expr: `##"""##`},
 		{Name: "single-hash multiline raw opener rejected", Expr: `#"""#`},
 		{Name: "raw newline in raw-string rejected", Expr: "#\"\n\"#"},

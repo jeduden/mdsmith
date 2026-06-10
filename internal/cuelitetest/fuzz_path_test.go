@@ -34,6 +34,11 @@ func FuzzParsePath(f *testing.F) {
 		"a[\"b\"]", "a[\n\"b\"]", "a[\"b\"\n]", "a[0]", "a[ \"b\" ]", "[\"b\"]",
 		// Multi-hash raw-string labels and the after-dot rejection.
 		"#\"b\"#", "##\"b\"##", "a[#\"b\"#]", "a.#\"b\"#", "#\"a\\#nb\"#", "#x",
+		// Raw-string surrogate pairing: both halves need the \#u introducer
+		// (accept), a plain \u low half leaves the high lone (reject), and a
+		// high half before the closing delimiter is lone (former panic input).
+		"#\"\\#uD800\\#uDC00\"#", "##\"\\##uD800\\##uDC00\"##",
+		"#\"\\#uD800\\uDC00\"#", "##\"\\##uD800\\uDC00\"##", "#\"\\#uD800\\\"#",
 		// BOM at offset 0 (skipped) vs interior (rejected).
 		"\ufeffa", "a\ufeffb", "\"a\ufeffb\"", "a//\ufeff",
 	} {
