@@ -56,7 +56,8 @@ func TestExtractDirectives_Build_GlobInput(t *testing.T) {
 }
 
 func TestExtractDirectives_Build_MixedLiteralAndGlobInputs(t *testing.T) {
-	src := "# Top\n\n<?build\nrecipe: r\ninputs:\n  - intro.md\n  - chapters/**/*.md\noutputs:\n  - out.html\n?>\n<?/build?>\n"
+	src := "# Top\n\n<?build\nrecipe: r\ninputs:\n  - intro.md\n  - chapters/**/*.md\n" +
+		"outputs:\n  - out.html\n?>\n<?/build?>\n"
 	f := newFile(t, src)
 	edges := ExtractDirectives(f)
 	require.Len(t, edges, 2)

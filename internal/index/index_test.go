@@ -123,7 +123,8 @@ func TestOutgoingEdgesBuildMultipleInputs(t *testing.T) {
 	idx := New("/root")
 	// Two literal inputs: entries yield two resolved build edges; a
 	// glob entry yields one unresolved build edge.
-	src := "# T\n\n<?build\nrecipe: r\ninputs:\n  - a.md\n  - b.md\n  - chapters/*.md\noutputs:\n  - out.html\n?>\n<?/build?>\n"
+	src := "# T\n\n<?build\nrecipe: r\ninputs:\n  - a.md\n  - b.md\n  - chapters/*.md\n" +
+		"outputs:\n  - out.html\n?>\n<?/build?>\n"
 	idx.Update("p.md", []byte(src))
 	fe, ok := idx.File("p.md")
 	require.True(t, ok)

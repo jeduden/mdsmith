@@ -1,7 +1,7 @@
 ---
 id: 102
 title: Multi-output `<?build?>` directive
-status: "🔳"
+status: "✅"
 summary: >-
   Replace `output:` (singular) with `outputs:`
   (list) on the `<?build?>` directive. Add
@@ -310,6 +310,6 @@ call-hierarchy gain real build edges.
 - [x] `docs/guides/directives/build.md`
       describes `outputs:` and `inputs:`; no
       singular-form prose remains
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no
       issues
