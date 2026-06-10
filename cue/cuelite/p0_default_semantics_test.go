@@ -159,6 +159,12 @@ func TestOrderedComparisonNonOrderable(t *testing.T) {
 		`{B: true > 1}`,
 		`{B: null < A, A: 0}`,
 		`{B: A < false, A: 0}`, // RIGHT operand non-orderable, left unresolved
+		// A chained comparison whose inner comparison DEFERS (`0 > A`): the inner
+		// is bool-typed regardless of A, so the outer ordered op is invalid even
+		// though A is unresolved at compile.
+		`{B: 0 > A > 0, A: 0}`,
+		`{B: (0 > A) > 0, A: 0}`,
+		`{B: A > (0 > 1), A: 0}`, // RIGHT operand is a comparison expr
 	}
 	for _, src := range reject {
 		_, err := Compile(src)

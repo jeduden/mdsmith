@@ -368,6 +368,7 @@ func FuzzValidate(f *testing.F) {
 // lone-surrogate classes.
 func extraFuzzSeeds() []struct{ schema, data string } {
 	seeds := append(baseFuzzSeeds(), edgeFuzzSeeds()...)
+	seeds = append(seeds, cycleFuzzSeeds()...)
 	return append(seeds, surrogateFuzzSeeds()...)
 }
 
@@ -501,6 +502,10 @@ func edgeFuzzSeeds() []struct{ schema, data string } {
 		// (invalid operation, hatch 1) rather than deferring a thunk.
 		{`B:0>0>A,A:0`, `0`},
 		{`{B: false > A, A: 0}`, `0`},
+		// The chained form whose inner comparison DEFERS (`0 > A` with A
+		// unresolved): the inner is bool-typed regardless, so the outer ordered
+		// op is invalid at compile.
+		{`B:0>A>0,A:0`, `0`},
 		{`{a: int, b: a == string}`, `{"a":1}`},
 		// An `if` comprehension whose condition is not a concrete bool (a string
 		// literal, a type, or top): CUE rejects "cannot use ... as type bool" at
@@ -515,16 +520,6 @@ func edgeFuzzSeeds() []struct{ schema, data string } {
 		// label out-of-subset; hatch 1 covers the divergence.
 		{`{int: {int}}`, `{}`},
 		{`{string: x}`, `{}`},
-		// Reference cycles — a self-cycle (a field referencing its own label), a
-		// cycle hidden in a disjunction branch, and a mutual cycle. All are
-		// outside the front-matter subset; the fuzzer's pre-oracle cycle guard
-		// skips them. Seeded so the guard stays exercised.
-		{`({mechanism:[if mechanism{}][0]})`, `{}`},
-		{`{a: [if a {}][0]}`, `{}`},
-		{`{a:[if a{}]}`, `0`},
-		{`({mechanism:""|[if mechanism{}]})`, `{}`},
-		{`{a: [if b {}], b: [if a {}]}`, `{}`},
-		{`close({s:[(s)][0]})`, `0`},
 		// A misplaced `*` default mark in an unreached list element: CUE rejects
 		// it at parse ("preference mark not allowed"); the in-house engine's
 		// static pass rejects it up front rather than only when the element is
@@ -566,6 +561,21 @@ func edgeFuzzSeeds() []struct{ schema, data string } {
 		// paren-wrapped mark.
 		{`{(*0)|0}`, `0`},
 		{`{a: 1 | (*0)}`, `{}`},
+	}
+}
+
+// cycleFuzzSeeds covers schema reference cycles — a self-cycle, a cycle hidden
+// in a disjunction branch, and a mutual cycle. All are outside the front-matter
+// subset; the fuzzer's pre-oracle cycle guard skips them, so these keep the
+// guard exercised on every run.
+func cycleFuzzSeeds() []struct{ schema, data string } {
+	return []struct{ schema, data string }{
+		{`({mechanism:[if mechanism{}][0]})`, `{}`},
+		{`{a: [if a {}][0]}`, `{}`},
+		{`{a:[if a{}]}`, `0`},
+		{`({mechanism:""|[if mechanism{}]})`, `{}`},
+		{`{a: [if b {}], b: [if a {}]}`, `{}`},
+		{`close({s:[(s)][0]})`, `0`},
 	}
 }
 

@@ -346,18 +346,23 @@ func evalComparison(n *ast.BinaryExpr, scope map[string]*engineValue) (*engineVa
 	if rerr == nil && !isConcrete(r) {
 		return nil, fmt.Errorf("cuelite: invalid operation: %s requires a concrete operand, got %s", n.Op, r.describe())
 	}
-	// An ORDERED comparison (>, >=, <, <=) on a concrete BOOL or NULL operand is
+	// An ORDERED comparison (>, >=, <, <=) on a non-orderable operand is
 	// ill-typed — bool and null are not orderable — so CUE rejects it at schema
 	// compile ("invalid operands … to '>'") even when the OTHER operand is an
 	// unresolved reference (`false > A`). Reject it eagerly here, before the
-	// deferral, so a chained `0 > 0 > A` (whose left `0 > 0` is the bool false)
-	// fails at compile rather than deferring a thunk that rejects at validate.
+	// deferral, so it fails at compile rather than deferring a thunk that rejects
+	// at validate. Two cases:
+	//   - a concrete operand of a non-orderable KIND (`false > A`), and
+	//   - an operand that is SYNTACTICALLY a comparison (`(0 > A) > 0`, the
+	//     chained form): a comparison is bool-typed regardless of whether its own
+	//     operands resolve, so it can never be an ordered operand. This catches
+	//     the chained case even when the inner comparison defers.
 	if isOrderedOp(n.Op) {
-		if lerr == nil && !orderable(l) {
-			return nil, orderableErr(n.Op, l)
+		if isComparisonExpr(n.X) || (lerr == nil && !orderable(l)) {
+			return nil, orderableErr(n.Op, comparandDescribe(l, lerr))
 		}
-		if rerr == nil && !orderable(r) {
-			return nil, orderableErr(n.Op, r)
+		if isComparisonExpr(n.Y) || (rerr == nil && !orderable(r)) {
+			return nil, orderableErr(n.Op, comparandDescribe(r, rerr))
 		}
 	}
 	// Either operand is an unresolved reference: defer the whole comparison to a
@@ -399,8 +404,36 @@ func orderable(v *engineValue) bool {
 
 // orderableErr builds the in-house "invalid operation" error for an ordered
 // comparison on a non-orderable operand (the wording hatch 1 keys on).
-func orderableErr(op token.Token, v *engineValue) error {
-	return fmt.Errorf("cuelite: invalid operation: %s requires an orderable operand, got %s", op, v.describe())
+func orderableErr(op token.Token, operand string) error {
+	return fmt.Errorf("cuelite: invalid operation: %s requires an orderable operand, got %s", op, operand)
+}
+
+// comparandDescribe renders a comparison operand for the orderable error: the
+// value's own description when it evaluated, else "bool" (a deferred comparison
+// operand is bool-typed) so the message names a concrete reason without a value.
+func comparandDescribe(v *engineValue, verr error) string {
+	if verr == nil {
+		return v.describe()
+	}
+	return "bool"
+}
+
+// isComparisonExpr reports whether e is syntactically a comparison — a binary
+// expression with a relational or equality/match operator. Such an expression
+// is bool-typed, so it can never be an operand of an ORDERED comparison; CUE
+// rejects the chained form (`(0 > A) > 0`) at compile regardless of whether the
+// inner comparison's own operands resolve.
+func isComparisonExpr(e ast.Expr) bool {
+	switch n := e.(type) {
+	case *ast.ParenExpr:
+		return isComparisonExpr(n.X)
+	case *ast.BinaryExpr:
+		switch n.Op {
+		case token.EQL, token.NEQ, token.GEQ, token.LEQ, token.GTR, token.LSS, token.MAT, token.NMAT:
+			return true
+		}
+	}
+	return false
 }
 
 // compareConcrete evaluates a comparison operator over two concrete scalar
