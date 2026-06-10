@@ -1180,7 +1180,10 @@ func checkCatalogIncludeCycle(
 	}
 	useAbs := hasScanAbs && f.RunCache != nil
 	for _, entry := range entries {
-		matchedPath := entryMatchPath(entry)
+		matchedPath := entry.matchPath
+		if matchedPath == "" {
+			matchedPath = fieldinterp.Stringify(entry.fields["filename"])
+		}
 		if matchedIncludesCatalog(f, scanFS, scanAbsDir, useAbs, matchedPath, catalogFile) {
 			displayPath := fieldinterp.Stringify(entry.fields["filename"])
 			return []lint.Diagnostic{makeDiag(filePath, line,

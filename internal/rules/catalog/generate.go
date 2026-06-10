@@ -21,16 +21,6 @@ type fileEntry struct {
 	matchPath string
 }
 
-// entryMatchPath returns the path that identifies entry in
-// diagnostics: the doublestar match path, falling back to the
-// rendered filename field for entries constructed without one.
-func entryMatchPath(entry fileEntry) string {
-	if entry.matchPath != "" {
-		return entry.matchPath
-	}
-	return fieldinterp.Stringify(entry.fields["filename"])
-}
-
 // renderTemplate renders header + row-per-file + footer. Each section is
 // terminated by \n; if the value already ends with \n, no extra is added.
 // If columns config is provided, column constraints (truncation/wrapping)
@@ -86,9 +76,12 @@ func renderTemplate(params map[string]string, entries []fileEntry, columns ...ma
 		if rowTpl != nil {
 			r, err := rowTpl.Render(entry.fields)
 			if err != nil {
+				// Display-form filename, matching the rule's other
+				// per-entry diagnostics (front-matter read errors,
+				// include-cycle reports).
 				return "", fmt.Errorf(
 					"rendering row-expr for %q: %w",
-					entryMatchPath(entry), err)
+					fieldinterp.Stringify(entry.fields["filename"]), err)
 			}
 			rendered = r
 		} else {

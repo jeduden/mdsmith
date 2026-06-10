@@ -56,10 +56,10 @@ kind-file and convention-file loaders run the same
 pre-check. The tolerant `yaml.Unmarshal` stays: its
 parse errors defer to Load's `UnmarshalSafe`.
 
-### C. Same-class sweep from review (round 2)
+### C. Same-class sweep
 
-Review of fix A found the same discarded-error pattern
-in `frontmatterExpr`
+Fix A's discarded-error pattern recurs in
+`frontmatterExpr`
 ([`internal/schema/parse_inline.go`](../internal/schema/parse_inline.go)):
 the primitive branch dropped the `json.Marshal` error
 as "unreachable". The same `.inf`/`.nan` front matter

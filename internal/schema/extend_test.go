@@ -2,6 +2,7 @@ package schema
 
 import (
 	"errors"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -385,6 +386,28 @@ func TestMergeRawMap_FrontmatterConflictMergesWithoutError(t *testing.T) {
 	out := MergeRawMap(parent, child)
 	fm := out["frontmatter"].(map[string]any)
 	assert.Contains(t, fm["x"], "&", "shared key joins via CUE conjunction")
+}
+
+// TestMergeRawMap_UnencodableParentConstraintStillErrors pins the
+// extends corner where the parent constraint is a value
+// frontmatterExpr cannot encode (yaml.v3 turns `.inf` into a
+// float64 +Inf) and the child overrides the same key: the
+// malformed parent must survive the merge so
+// ValidateExtendedFrontmatter names it, rather than the child
+// override silently dropping the broken constraint.
+func TestMergeRawMap_UnencodableParentConstraintStillErrors(t *testing.T) {
+	parent := map[string]any{
+		"frontmatter": map[string]any{"weight": math.Inf(1)},
+	}
+	child := map[string]any{
+		"frontmatter": map[string]any{"weight": "5"},
+	}
+	out := MergeRawMap(parent, child)
+	err := ValidateExtendedFrontmatter(out)
+	require.Error(t, err)
+	var fmErr *InvalidFrontmatterError
+	require.True(t, errors.As(err, &fmErr))
+	assert.Equal(t, "weight", fmErr.Key)
 }
 
 func TestValidateExtendedFrontmatter_RejectsUnsatisfiable(t *testing.T) {
