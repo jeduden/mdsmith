@@ -71,7 +71,11 @@ func TestMergeAndClean_TheirsIsSymlink_ExitsTwo(t *testing.T) {
 	assert.Equal(t, 2, code)
 }
 
-func TestFixAtRealPath_PathnameIsSymlink_ExitsTwo(t *testing.T) {
+func TestFixMergedContent_PathnameIsSymlink_Harmless(t *testing.T) {
+	// The driver never dereferences the worktree path (%P) — it is
+	// only a label for config-glob matching — so a symlinked %P
+	// cannot pull content from outside the worktree and is not an
+	// error. The link itself must be left untouched.
 	dir := t.TempDir()
 	target := filepath.Join(dir, "target.md")
 	link := filepath.Join(dir, "pathname.md")
@@ -81,20 +85,34 @@ func TestFixAtRealPath_PathnameIsSymlink_ExitsTwo(t *testing.T) {
 	ours := filepath.Join(dir, "ours.md")
 	require.NoError(t, os.WriteFile(ours, []byte("# content\n"), 0o644))
 
-	_, code := fixAtRealPath([]byte("# content\n"), ours, link, 1<<20)
-	assert.Equal(t, 2, code)
+	origFix := fixSourceFn
+	t.Cleanup(func() { fixSourceFn = origFix })
+	fixSourceFn = func(_ string, src []byte, _ int64) ([]byte, error) {
+		return src, nil
+	}
+
+	_, code := fixMergedContent([]byte("# content\n"), ours, link, 1<<20)
+	assert.Equal(t, 0, code)
+
+	data, err := os.ReadFile(target)
+	require.NoError(t, err)
+	assert.Equal(t, "# content\n", string(data),
+		"symlink target must be untouched")
 }
 
-func TestFixAtRealPath_OursIsSymlink_ExitsTwo(t *testing.T) {
+func TestFixMergedContent_OursIsSymlink_ExitsTwo(t *testing.T) {
 	dir := t.TempDir()
-	pathname := filepath.Join(dir, "pathname.md")
-	require.NoError(t, os.WriteFile(pathname, []byte("# content\n"), 0o644))
-
 	oursTarget := filepath.Join(dir, "ours-target.md")
 	oursLink := filepath.Join(dir, "ours.md")
 	require.NoError(t, os.WriteFile(oursTarget, []byte("# content\n"), 0o644))
 	require.NoError(t, os.Symlink(oursTarget, oursLink))
 
-	_, code := fixAtRealPath([]byte("# content\n"), oursLink, pathname, 1<<20)
+	origFix := fixSourceFn
+	t.Cleanup(func() { fixSourceFn = origFix })
+	fixSourceFn = func(_ string, src []byte, _ int64) ([]byte, error) {
+		return src, nil
+	}
+
+	_, code := fixMergedContent([]byte("# content\n"), oursLink, "pathname.md", 1<<20)
 	assert.Equal(t, 2, code)
 }

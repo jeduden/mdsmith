@@ -72,6 +72,18 @@ Driver entrypoint, invoked by Git. Not normally called by
 hand. After `install` or `ci-install`, Git will dispatch to
 it whenever merging a file marked `merge=mdsmith`.
 
+The driver writes only the `<ours>` temp file (`%A`). It
+regenerates sections by running `mdsmith fix` on the merged
+content in memory, anchored at `<pathname>` so neighbour
+files resolve as they would for the real file. The worktree
+path itself is never read or written. The driver runs while
+the parent merge is still in flight, so a worktree write
+changes the file's stat data — even when the bytes are
+restored exactly. Git then treats the path as locally
+modified and aborts the merge ("Your local changes ...
+would be overwritten"). Under `git rebase`, a pick that
+hits this is rescheduled forever.
+
 ## Git config (set by `install` / `ci-install`)
 
 ```text

@@ -1523,6 +1523,69 @@ func TestE2E_MergeDriver_CatalogConflict_Resolved(t *testing.T) {
 	assert.NotContains(t, content, "<<<<<<<", "expected no conflict markers after merge-driver")
 }
 
+// TestE2E_MergeDriver_Run_LeavesWorktreeUntouched pins the driver's
+// no-worktree-writes contract. The driver used to copy the merged
+// content to %P, run fix there, and restore the original bytes. The
+// restore is byte-identical but rewrites the file, so its stat data
+// (mtime) changes while the parent merge is still in flight. Git's
+// up-to-date check compares cached stat data, so it then treats the
+// path as locally modified and aborts the very merge that invoked
+// the driver ("Your local changes ... would be overwritten") — and
+// a `git rebase` pick that hits this is rescheduled forever. The
+// driver must write only %A.
+func TestE2E_MergeDriver_Run_LeavesWorktreeUntouched(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+
+	writeFixture(t, dir, ".mdsmith.yml", "rules:\n  catalog: true\n")
+
+	catalogBase := "# Doc\n\n<?catalog\nglob: \"plans/*.md\"\nsort: title\n" +
+		"header: |\n  | Title |\n  |-------|\nrow: \"| [{title}]({filename}) |\"\n?>\n" +
+		"| Title       |\n|-------------|\n| [Alpha](plans/alpha.md) |\n<?/catalog?>\n"
+	catalogOurs := "# Doc\n\n<?catalog\nglob: \"plans/*.md\"\nsort: title\n" +
+		"header: |\n  | Title |\n  |-------|\nrow: \"| [{title}]({filename}) |\"\n?>\n" +
+		"| Title       |\n|-------------|\n| [Alpha](plans/alpha.md) |\n| [Beta](plans/beta.md) |\n<?/catalog?>\n"
+	catalogTheirs := "# Doc\n\n<?catalog\nglob: \"plans/*.md\"\nsort: title\n" +
+		"header: |\n  | Title |\n  |-------|\nrow: \"| [{title}]({filename}) |\"\n?>\n" +
+		"| Title       |\n|-------------|\n| [Alpha](plans/alpha.md) |\n" +
+		"| [Gamma](plans/gamma.md) |\n<?/catalog?>\n"
+
+	base := writeFixture(t, dir, "base.md", catalogBase)
+	ours := writeFixture(t, dir, "ours.md", catalogOurs)
+	theirs := writeFixture(t, dir, "theirs.md", catalogTheirs)
+	pathname := writeFixture(t, dir, "CATALOG.md", catalogOurs)
+
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "plans"), 0o755))
+	writeFixture(t, dir, "plans/alpha.md", "---\ntitle: Alpha\n---\n\n# Alpha\n\nContent.\n")
+	writeFixture(t, dir, "plans/beta.md", "---\ntitle: Beta\n---\n\n# Beta\n\nContent.\n")
+	writeFixture(t, dir, "plans/gamma.md", "---\ntitle: Gamma\n---\n\n# Gamma\n\nContent.\n")
+
+	before, err := os.Lstat(pathname)
+	require.NoError(t, err)
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "merge-driver", "run", base, ours, theirs, pathname)
+	assert.Equal(t, 0, exitCode, "expected exit 0, got %d; stderr: %s", exitCode, stderr)
+
+	// The regenerated result must land in ours (%A) with both rows.
+	result, _ := os.ReadFile(ours)
+	content := string(result)
+	assert.NotContains(t, content, "<<<<<<<", "expected no conflict markers after merge-driver")
+	assert.Contains(t, content, "plans/beta.md", "fix must regenerate the catalog from neighbour files")
+	assert.Contains(t, content, "plans/gamma.md", "fix must regenerate the catalog from neighbour files")
+
+	// The worktree path (%P) must be untouched: same bytes AND same
+	// stat data — a byte-identical rewrite still bumps mtime.
+	after, err := os.Lstat(pathname)
+	require.NoError(t, err)
+	assert.True(t, before.ModTime().Equal(after.ModTime()),
+		"merge driver wrote the worktree path: mtime changed %v -> %v",
+		before.ModTime(), after.ModTime())
+	worktree, err := os.ReadFile(pathname)
+	require.NoError(t, err)
+	assert.Equal(t, catalogOurs, string(worktree),
+		"worktree content must be byte-identical after merge-driver run")
+}
+
 func TestE2E_MergeDriver_NonCatalogConflict_ExitsOne(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
