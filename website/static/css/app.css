@@ -549,11 +549,13 @@ main {
 }
 
 /* ── Artifact frame — shared frame language ── */
+/* Every artifact (real capture or mockup, dark or light) floats on its
+   tile with this one shadow — variants must not override it. */
 .artifact-frame {
   width: 100%;
   max-width: 440px;
   border-radius: 9px;
-  box-shadow: 0 2px 12px rgba(15,20,25,0.09), 0 1px 3px rgba(15,20,25,0.06);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.45), 0 1px 4px rgba(0,0,0,0.3);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -593,7 +595,6 @@ main {
 .artifact-frame--terminal {
   border: 1px solid #1A1F26;
   background: #0F1419;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.45), 0 1px 4px rgba(0,0,0,0.3);
 }
 .artifact-titlebar--terminal {
   background: #070A0D;
@@ -620,7 +621,6 @@ main {
 .artifact-frame--shot {
   border: 1px solid var(--steel-200);
   background: #FFFFFF;
-  box-shadow: var(--shadow-md);
 }
 /* A real screenshot floats framed on the tile's light background (like
    the terminal), at its natural aspect — no cropping. */
