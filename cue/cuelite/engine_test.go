@@ -117,6 +117,8 @@ func TestCompile_errors(t *testing.T) {
 		{"regex bad pattern", `{x: =~"["}`},
 		{"invalid syntax", `{x: =}`},
 		{"index non-list", `{x: 1[0]}`},
+		{"bytes literal", `{x: 'b'}`},
+		{"top-level bytes literal", `''`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

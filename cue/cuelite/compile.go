@@ -352,6 +352,15 @@ func isDeferrable(e ast.Expr) bool {
 func compileBasicLit(n *ast.BasicLit) (*engineValue, error) {
 	switch n.Kind {
 	case token.STRING:
+		// A single-quoted literal (`'x'`) is a CUE BYTES value, a distinct type
+		// from a string that JSON front matter has no representation for. CUE
+		// rejects a bytes schema against string data; the in-house engine, which
+		// has no bytes kind, must not silently treat it as a string. Reject it as
+		// out-of-subset (the cross-engine fuzzer's strict-subset hatch keys on
+		// "unsupported").
+		if len(n.Value) > 0 && n.Value[0] == '\'' {
+			return nil, fmt.Errorf("cuelite: unsupported bytes literal %s (bytes are not in the subset)", n.Value)
+		}
 		s, err := literal.Unquote(n.Value)
 		if err != nil {
 			return nil, fmt.Errorf("cuelite: string literal %s: %w", n.Value, err)

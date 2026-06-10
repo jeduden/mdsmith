@@ -383,6 +383,10 @@ func edgeFuzzSeeds() []struct{ schema, data string } {
 		// covers it.
 		{`({A:""|"0"[0]})`, `0`},
 		{`{a: "0"[0]}`, `{"a":1}`},
+		// A single-quoted bytes literal (`''`, `'x'`): a distinct CUE type with
+		// no JSON representation, rejected out-of-subset by the in-house engine.
+		{`''`, `""`},
+		{`{a: 'x'}`, `{"a":"x"}`},
 		// CUE's root-summary leaf: a top-level disjunction that matches no branch,
 		// and a deferred thunk referencing a non-concrete field, both make CUE
 		// attribute the failure to the ROOT [] while the in-house engine names the
