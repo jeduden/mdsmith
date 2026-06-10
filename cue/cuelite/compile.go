@@ -153,11 +153,10 @@ func compileExpr(e ast.Expr) (*engineValue, error) {
 		}
 		// A non-deferrable unresolved reference (a bare ident, or a comparison
 		// whose result the subset cannot use lazily) names a field that cannot
-		// exist. Surface CUE's eager wording, naming the first free reference.
-		if refs := freeRefs(e); len(refs) > 0 {
-			return nil, fmt.Errorf("reference %q not found", refs[0])
-		}
-		return nil, errUnresolved
+		// exist. errUnresolved only originates from evalIdent on a reference
+		// name, so freeRefs always finds at least that name; report CUE's eager
+		// wording naming the first free reference.
+		return nil, fmt.Errorf("reference %q not found", freeRefs(e)[0])
 	}
 	return nil, err
 }
