@@ -307,7 +307,7 @@ call-hierarchy gain real build edges.
 - [x] `mdsmith deps` lists one build edge
       per `inputs:` entry; `--incoming` on
       an input names the directive's file
-- [ ] `docs/guides/directives/build.md`
+- [x] `docs/guides/directives/build.md`
       describes `outputs:` and `inputs:`; no
       singular-form prose remains
 - [ ] All tests pass: `go test ./...`
