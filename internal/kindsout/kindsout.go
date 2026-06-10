@@ -180,11 +180,18 @@ func RuleCfgValue(rc config.RuleCfg) any {
 // match ("glob a,b AND fields-present x"). SourcePath, when set, is
 // the file that defined the kind body (`.mdsmith.yml` for inline
 // kinds, `.mdsmith/kinds/<name>.{yaml,yml}` for file kinds; plan 208).
+// SchemaSourcePath, when set, is the file that defined the kind's
+// schema when distinct from the kind itself: a `.mdsmith/schemas/
+// <name>.yaml` path (or `.mdsmith.yml` for an inline-registry entry)
+// for a named reference, or the `rules.required-structure.schema:`
+// path for a proto.md schema; omitted for an inline-on-kind schema
+// (plan 241).
 type ResolvedKindJSON struct {
-	Name       string `json:"name"`
-	Source     string `json:"source"`
-	Selector   string `json:"selector,omitempty"`
-	SourcePath string `json:"source-path,omitempty"`
+	Name             string `json:"name"`
+	Source           string `json:"source"`
+	Selector         string `json:"selector,omitempty"`
+	SourcePath       string `json:"source-path,omitempty"`
+	SchemaSourcePath string `json:"schema-source-path,omitempty"`
 }
 
 // ResolvedConventionJSON names the active convention and, for a user
@@ -264,10 +271,11 @@ func FileResolution(res *config.FileResolution) FileResolutionJSON {
 	}
 	for _, k := range res.Kinds {
 		out.Kinds = append(out.Kinds, ResolvedKindJSON{
-			Name:       k.Name,
-			Source:     string(k.Source),
-			Selector:   k.Selector,
-			SourcePath: k.SourcePath,
+			Name:             k.Name,
+			Source:           string(k.Source),
+			Selector:         k.Selector,
+			SourcePath:       k.SourcePath,
+			SchemaSourcePath: k.SchemaSourcePath,
 		})
 	}
 	for name, rr := range res.Rules {
@@ -479,6 +487,12 @@ func WriteFileResolutionText(w io.Writer, res *config.FileResolution) error {
 			suffix := ""
 			if k.SourcePath != "" {
 				suffix = " defined-in " + sanitizeControl(k.SourcePath)
+			}
+			// When the schema lives in a separate file (named YAML or
+			// proto.md), name it too so a reader can jump to the schema
+			// rather than the referencing kind.
+			if k.SchemaSourcePath != "" {
+				suffix += " schema-in " + sanitizeControl(k.SchemaSourcePath)
 			}
 			if _, err := fmt.Fprintf(w, "  - %s (from %s)%s\n",
 				sanitizeControl(k.Name), src, suffix); err != nil {

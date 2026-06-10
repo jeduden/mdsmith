@@ -201,6 +201,73 @@ kind-assignment:
 	assert.Equal(t, "plan/[0-9][0-9]*_*.md", entry["pattern"])
 }
 
+// TestResolveFile_SchemaSourcePath_NamedYAML pins that a kind which
+// references a `.mdsmith/schemas/` schema by name surfaces the
+// schema's own `.yaml` path as ResolvedKind.SchemaSourcePath, distinct
+// from the kind's SourcePath (plan 241 task 9).
+func TestResolveFile_SchemaSourcePath_NamedYAML(t *testing.T) {
+	schemaPath := "/ws/.mdsmith/schemas/rfc-v1.yaml"
+	cfg := &Config{
+		Rules: map[string]RuleCfg{},
+		Kinds: map[string]KindBody{
+			"rfc": {
+				SourcePath: "/ws/.mdsmith.yml",
+				Schema:     resolvedSchemaRef("rfc-v1", map[string]any{"filename": "RFC-*.md"}, schemaPath),
+			},
+		},
+		KindAssignment: []KindAssignmentEntry{
+			{Glob: []string{"*.md"}, Kinds: []string{"rfc"}},
+		},
+	}
+	res := ResolveFile(cfg, "doc.md", nil, nil)
+	require.Len(t, res.Kinds, 1)
+	assert.Equal(t, "/ws/.mdsmith.yml", res.Kinds[0].SourcePath)
+	assert.Equal(t, schemaPath, res.Kinds[0].SchemaSourcePath,
+		"a named YAML schema's defining path must surface as schema-source")
+}
+
+// TestResolveFile_SchemaSourcePath_ProtoMd pins that a kind whose
+// schema is a `proto.md` file (rules.required-structure.schema:)
+// surfaces that path as SchemaSourcePath.
+func TestResolveFile_SchemaSourcePath_ProtoMd(t *testing.T) {
+	yml := `
+kinds:
+  rfc:
+    rules:
+      required-structure:
+        schema: schemas/rfc.md
+kind-assignment:
+  - files: ["*.md"]
+    kinds: [rfc]
+`
+	cfg := resolveFromYAML(t, yml)
+	res := ResolveFile(cfg, "doc.md", nil, nil)
+	require.Len(t, res.Kinds, 1)
+	assert.Equal(t, "schemas/rfc.md", res.Kinds[0].SchemaSourcePath)
+}
+
+// TestResolveFile_SchemaSourcePath_InlineOmitted pins that an inline
+// schema on a kind leaves SchemaSourcePath empty — the kind's own
+// SourcePath already names the defining file.
+func TestResolveFile_SchemaSourcePath_InlineOmitted(t *testing.T) {
+	cfg := &Config{
+		Rules: map[string]RuleCfg{},
+		Kinds: map[string]KindBody{
+			"rfc": {
+				SourcePath: "/ws/.mdsmith.yml",
+				Schema:     inlineSchemaRef(map[string]any{"filename": "RFC-*.md"}),
+			},
+		},
+		KindAssignment: []KindAssignmentEntry{
+			{Glob: []string{"*.md"}, Kinds: []string{"rfc"}},
+		},
+	}
+	res := ResolveFile(cfg, "doc.md", nil, nil)
+	require.Len(t, res.Kinds, 1)
+	assert.Empty(t, res.Kinds[0].SchemaSourcePath,
+		"an inline-on-kind schema has no separate source path")
+}
+
 // TestResolveConvention covers the three convention-provenance cases
 // plan 209 surfaces: a user convention carries its name, the user
 // flag, and its defining file; a built-in carries only its name; no

@@ -306,6 +306,62 @@ func TestKinds_ResolveJSONHasKindsRulesAndLeaves(t *testing.T) {
 	assert.True(t, sawMax, "settings.max leaf must be present")
 }
 
+// TestKinds_ResolveJSONHasSchemaSourcePath pins plan 241 task 9: a
+// kind that references a `.mdsmith/schemas/` schema by name reports the
+// schema's `.yaml` path in `schema-source-path`, distinct from the
+// kind's `source-path` (the `.mdsmith.yml` it was declared in).
+func TestKinds_ResolveJSONHasSchemaSourcePath(t *testing.T) {
+	cfg := `kinds:
+  rfc:
+    schema: rfc-v1
+kind-assignment:
+  - glob: ["doc.md"]
+    kinds: [rfc]
+`
+	dir := kindsTestDir(t, cfg, map[string]string{
+		"doc.md":                       "# T\n",
+		".mdsmith/schemas/rfc-v1.yaml": "filename: \"RFC-*.md\"\n",
+	})
+	stdout, _, code := runBinaryInDir(t, dir, "", "kinds", "resolve", "doc.md", "--json")
+	require.Equal(t, 0, code)
+	var out struct {
+		Kinds []struct {
+			Name             string `json:"name"`
+			SourcePath       string `json:"source-path"`
+			SchemaSourcePath string `json:"schema-source-path"`
+		} `json:"kinds"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &out))
+	require.Len(t, out.Kinds, 1)
+	assert.Equal(t, "rfc", out.Kinds[0].Name)
+	assert.Equal(t,
+		filepath.Join(dir, ".mdsmith.yml"), out.Kinds[0].SourcePath)
+	assert.Equal(t,
+		filepath.Join(dir, ".mdsmith", "schemas", "rfc-v1.yaml"),
+		out.Kinds[0].SchemaSourcePath)
+}
+
+// TestKinds_ResolveTextShowsSchemaSource pins the text rendering of the
+// same: a named-YAML schema prints ` schema-in <path>`.
+func TestKinds_ResolveTextShowsSchemaSource(t *testing.T) {
+	cfg := `kinds:
+  rfc:
+    schema: rfc-v1
+kind-assignment:
+  - glob: ["doc.md"]
+    kinds: [rfc]
+`
+	dir := kindsTestDir(t, cfg, map[string]string{
+		"doc.md":                       "# T\n",
+		".mdsmith/schemas/rfc-v1.yaml": "filename: \"RFC-*.md\"\n",
+	})
+	stdout, _, code := runBinaryInDir(t, dir, "", "kinds", "resolve", "doc.md")
+	require.Equal(t, 0, code)
+	assert.Contains(t, stdout, "schema-in")
+	assert.Contains(t, stdout,
+		filepath.Join(dir, ".mdsmith", "schemas", "rfc-v1.yaml"))
+}
+
 func TestKinds_ResolveFromFrontMatter(t *testing.T) {
 	cfg := `kinds:
   proto:

@@ -54,6 +54,14 @@ type ResolvedKind struct {
 	Source     KindAssignmentSource
 	Selector   string
 	SourcePath string
+	// SchemaSourcePath, when set, is the file that defined the kind's
+	// schema, distinct from SourcePath (the kind's own file). It is
+	// populated for a named registry reference (the
+	// `.mdsmith/schemas/<name>.yaml` path, or `.mdsmith.yml` for an
+	// inline-registry entry; plan 241) and for a `proto.md` schema
+	// (the `rules.required-structure.schema:` path). Empty for an
+	// inline-on-kind schema — SourcePath already names that file.
+	SchemaSourcePath string
 }
 
 // ResolvedConvention names the active convention for a file and, for a
@@ -453,6 +461,26 @@ func leafValue(rc RuleCfg, path string) (any, bool) {
 	return nil, false
 }
 
+// kindSchemaSourcePath returns the file that defined a kind's schema,
+// when that file is distinct from the kind's own. A named registry
+// reference carries the schema's origin on the ref (Schema.SourcePath
+// — a `.mdsmith/schemas/<name>.yaml` path, or `.mdsmith.yml` for an
+// inline-registry entry). A `proto.md` schema lives at the
+// `rules.required-structure.schema:` path. An inline-on-kind schema
+// has no separate file, so the result is empty and the kind's own
+// SourcePath stands in.
+func kindSchemaSourcePath(body KindBody) string {
+	if body.Schema.SourcePath != "" {
+		return body.Schema.SourcePath
+	}
+	if rs, ok := body.Rules["required-structure"]; ok {
+		if set, path := schemaPathSetting(rs, true); set {
+			return path
+		}
+	}
+	return ""
+}
+
 func resolveKindsWithSources(cfg *Config, filePath string, fmKinds []string, fmFields map[string]any) []ResolvedKind {
 	seen := make(map[string]bool)
 	var result []ResolvedKind
@@ -463,15 +491,19 @@ func resolveKindsWithSources(cfg *Config, filePath string, fmKinds []string, fmF
 		seen[name] = true
 		// SourcePath comes from the kind body, not the assignment —
 		// every assignment route to the same name resolves to the
-		// same defining file.
-		var srcPath string
+		// same defining file. SchemaSourcePath, when the kind's schema
+		// comes from a separate file (named YAML or proto.md), names
+		// that file too.
+		var srcPath, schemaSrc string
 		if cfg != nil {
 			if body, ok := cfg.Kinds[name]; ok {
 				srcPath = body.SourcePath
+				schemaSrc = kindSchemaSourcePath(body)
 			}
 		}
 		result = append(result, ResolvedKind{
-			Name: name, Source: source, Selector: selector, SourcePath: srcPath,
+			Name: name, Source: source, Selector: selector,
+			SourcePath: srcPath, SchemaSourcePath: schemaSrc,
 		})
 	}
 	for _, k := range fmKinds {

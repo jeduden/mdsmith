@@ -68,6 +68,15 @@ func InlineSchema(m map[string]any) KindSchemaRef {
 	return KindSchemaRef{inline: m}
 }
 
+// InlineSchemaWithSource builds a KindSchemaRef as if a named reference
+// had resolved to a body from a registry entry at sourcePath, for
+// out-of-package callers (chiefly kindsout tests exercising the
+// schema-source-path surface). It mirrors the internal resolvedSchemaRef
+// produced by resolveNamedSchemas.
+func InlineSchemaWithSource(name string, m map[string]any, sourcePath string) KindSchemaRef {
+	return KindSchemaRef{Name: name, SourcePath: sourcePath, inline: m}
+}
+
 // resolvedSchemaRef builds a KindSchemaRef for a named reference whose
 // body has been looked up in the registry. The original Name is kept
 // so audit surfaces can still report the reference, and SourcePath

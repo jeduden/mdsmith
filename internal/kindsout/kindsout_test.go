@@ -454,6 +454,82 @@ func TestFileResolutionJSON_IncludesSourcePath(t *testing.T) {
 		out.Kinds[0].SourcePath)
 }
 
+// TestFileResolutionJSON_IncludesSchemaSourcePath pins plan 241's CLI
+// surface: a kind that references a `.mdsmith/schemas/` schema by name
+// carries `schema-source-path` (the schema's .yaml path) in JSON,
+// distinct from `source-path` (the kind's own file).
+func TestFileResolutionJSON_IncludesSchemaSourcePath(t *testing.T) {
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{},
+		Kinds: map[string]config.KindBody{
+			"rfc": {
+				SourcePath: "/repo/.mdsmith.yml",
+				Schema: config.InlineSchemaWithSource(
+					"rfc-v1",
+					map[string]any{"filename": "RFC-*.md"},
+					"/repo/.mdsmith/schemas/rfc-v1.yaml"),
+			},
+		},
+		KindAssignment: []config.KindAssignmentEntry{
+			{Glob: []string{"x.md"}, Kinds: []string{"rfc"}},
+		},
+	}
+	res := config.ResolveFile(cfg, "x.md", nil, nil)
+	out := FileResolution(res)
+	require.Len(t, out.Kinds, 1)
+	assert.Equal(t, "/repo/.mdsmith.yml", out.Kinds[0].SourcePath)
+	assert.Equal(t, "/repo/.mdsmith/schemas/rfc-v1.yaml",
+		out.Kinds[0].SchemaSourcePath)
+}
+
+// TestFileResolutionJSON_OmitsSchemaSourcePathForInline pins that an
+// inline-on-kind schema leaves `schema-source-path` empty (omitted in
+// JSON) — `source-path` already names the defining file.
+func TestFileResolutionJSON_OmitsSchemaSourcePathForInline(t *testing.T) {
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{},
+		Kinds: map[string]config.KindBody{
+			"rfc": {
+				SourcePath: "/repo/.mdsmith.yml",
+				Schema:     config.InlineSchema(map[string]any{"filename": "RFC-*.md"}),
+			},
+		},
+		KindAssignment: []config.KindAssignmentEntry{
+			{Glob: []string{"x.md"}, Kinds: []string{"rfc"}},
+		},
+	}
+	res := config.ResolveFile(cfg, "x.md", nil, nil)
+	out := FileResolution(res)
+	require.Len(t, out.Kinds, 1)
+	assert.Empty(t, out.Kinds[0].SchemaSourcePath)
+}
+
+// TestWriteFileResolutionText_RendersSchemaSource pins the text
+// surface: a named-YAML schema prints ` schema-in <path>` after the
+// kind's `defined-in` clause.
+func TestWriteFileResolutionText_RendersSchemaSource(t *testing.T) {
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{},
+		Kinds: map[string]config.KindBody{
+			"rfc": {
+				SourcePath: "/repo/.mdsmith.yml",
+				Schema: config.InlineSchemaWithSource(
+					"rfc-v1",
+					map[string]any{"filename": "RFC-*.md"},
+					"/repo/.mdsmith/schemas/rfc-v1.yaml"),
+			},
+		},
+		KindAssignment: []config.KindAssignmentEntry{
+			{Glob: []string{"x.md"}, Kinds: []string{"rfc"}},
+		},
+	}
+	res := config.ResolveFile(cfg, "x.md", nil, nil)
+	var buf bytes.Buffer
+	require.NoError(t, WriteFileResolutionText(&buf, res))
+	assert.Contains(t, buf.String(),
+		"defined-in /repo/.mdsmith.yml schema-in /repo/.mdsmith/schemas/rfc-v1.yaml")
+}
+
 // TestWriteFileResolutionText_RendersConvention pins plan 209's CLI
 // surface: when a user convention is active, the resolution text adds a
 // `convention: <name> (user) defined-in <path>` line so a reader can
