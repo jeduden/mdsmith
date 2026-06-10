@@ -13,12 +13,14 @@
              data also holds pull/toolchain entries (go, npx, brew,
              asdf, …) that are install paths, not distribution
              registries, and do not belong here. */ -}}
-      {{ range where (sort hugo.Data.channels "weight") "mechanism" "push" }}
-        {{ $c := . }}
-        {{ with $c.url }}
-          <a class="logos-item" href="{{ . }}" rel="noopener">{{ $c.title }}</a>
+      <div class="logos-items">
+        {{ range where (sort hugo.Data.channels "weight") "mechanism" "push" }}
+          {{ $c := . }}
+          {{ with $c.url }}
+            <a class="logos-item" href="{{ . }}" rel="noopener">{{ $c.title }}</a>
+          {{ end }}
         {{ end }}
-      {{ end }}
+      </div>
     </div>
   </div>
 </div>

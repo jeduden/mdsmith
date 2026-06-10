@@ -3,20 +3,43 @@ import { test, expect } from "@playwright/test";
 /**
  * Homepage positioning and audience-path tests.
  *
- * Covers the category statement (the content/_index.md body that
- * layouts/index.html renders under the hero) and the markdownlint
- * migration link in the hero — the two elements that tell a
- * first-time visitor what mdsmith is and where to start.
+ * Covers the positioning band under the hero (the scope statement
+ * from the content/_index.md body plus the one-engine surface row
+ * from its front matter) and the markdownlint migration link in
+ * the hero — the elements that tell a first-time visitor what
+ * mdsmith is and where to start.
  */
 test.describe("homepage positioning", () => {
   test("scope statement renders under the hero", async ({ page }) => {
     await page.goto("/");
 
-    const positioning = page.locator(".positioning-body");
-    await expect(positioning).toBeVisible();
-    await expect(positioning).toContainText(
+    const statement = page.locator(".positioning-statement");
+    await expect(statement).toBeVisible();
+    await expect(statement).toContainText(
       "mdsmith checks style, readability, structure, and cross-file integrity",
     );
+  });
+
+  test("one-engine row links each product surface", async ({ page }) => {
+    await page.goto("/");
+
+    const row = page.locator(".positioning-engine");
+    await expect(row).toBeVisible();
+    await expect(row).toContainText("One engine");
+
+    // Each surface chip is an audience path into the docs: the row
+    // replaces the old prose sentence ("One rule engine powers the
+    // CLI, the LSP server, and the VS Code extension …"), so every
+    // surface named there must stay reachable as a link.
+    const chips = row.locator("a.positioning-surface");
+    await expect(chips).toHaveCount(6);
+    await expect(chips.first()).toHaveAttribute("href", /\/reference\/cli\/$/);
+    await expect(
+      row.locator("a.positioning-surface", { hasText: "VS Code" }),
+    ).toHaveAttribute("href", /\/guides\/editors\/vscode\/$/);
+    await expect(
+      row.locator("a.positioning-surface", { hasText: "Claude Code" }),
+    ).toHaveAttribute("href", /\/features\/editor-agent-integration\/$/);
   });
 
   test("hero lead names the product category", async ({ page }) => {
