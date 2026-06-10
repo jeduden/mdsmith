@@ -168,7 +168,7 @@ The recommended `.gitignore` snippet:
 ```
 
 Never ignore the whole `.mdsmith/` dir.
-Its other folders (`kinds/`,
+Its other folders (`kinds/`, `schemas/`,
 `conventions/`) are checked-in config.
 
 ### Flags on `mdsmith fix`
