@@ -99,6 +99,24 @@ func TestThunkSiblingDefaultResolution(t *testing.T) {
 	})
 }
 
+// TestMeetDefaultReconciliation pins CUE's default-of-a-meet rule across the
+// cross-product cases the fuzzer probed: when both operand defaults survive the
+// meet their reconciliation is the default (`(*0|int)&(0|*int)` → 0&int = 0);
+// when only one survives it is that one (`(*1|2|9)&(*2|3|9)` → 2); two
+// build-time marks stay ambiguous (`*string | *""` rejects). Probed against
+// cuelang v0.16.1.
+func TestMeetDefaultReconciliation(t *testing.T) {
+	runAcceptCases(t, []acceptCase{
+		{"both defaults survive reconcile to 0", `{A:(*0|int)&(0|*int)}`, `{}`, true},
+		{"one default survives", `{A:(*1|2|9)&(*2|3|9)}`, `{}`, true},
+		{"one default survives two-branch", `{A:(*1|2)&(*2|3)}`, `{}`, true},
+		{"conflicting marked defaults reject", `{A:(*1|int)&(*2|int)}`, `{}`, false},
+		{"int meet picks default", `{A:int & (*1|2)}`, `{}`, true},
+		{"build-time double mark ambiguous", `{A: *string | *""}`, `{}`, false},
+		{"build-time two int marks ambiguous", `{A: *0 | *1}`, `{}`, false},
+	})
+}
+
 // TestMeetThunkRefErasure pins that an undeclared reference inside a deferred
 // branch of a compile-time `&` meet surfaces as "reference not found" at
 // compile, not silently erased by the eager meet. Probed against CUE v0.16.1:

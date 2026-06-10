@@ -244,12 +244,14 @@ func (v *engineValue) concreteScalarV() bool {
 
 // defaultValue resolves a disjunction's effective default from its per-branch
 // modes: the branches marked dfltIs are the default disjuncts. A disjunction's
-// branches are always deduped at build/meet time (dedupeBranchModes), so the
-// marked branches are already distinct values. It returns (nil, false) when
-// none is marked — the disjunction has no default and stays non-concrete — (the
-// value, false) when exactly one default survives, and (nil, true) when several
-// distinct defaults are marked — CUE treats multiple non-unifying defaults as
-// ambiguous (`*1 | *2`), leaving the field non-concrete.
+// branches are deduped at build/meet time (dedupeBranchModes), so the marked
+// branches are distinct values. It returns (nil, false) when none is marked —
+// the disjunction has no default and stays non-concrete — (the value, false)
+// when exactly one default survives, and (nil, true) when several distinct
+// defaults are marked — CUE treats multiple non-unifying defaults as ambiguous
+// (`*1 | *2`), leaving the field non-concrete. (A meet's operand defaults are
+// reconciled by unifyDisjunction before they reach a branch mode, so several
+// dfltIs branches here are genuinely ambiguous build-time marks.)
 func (v *engineValue) defaultValue() (*engineValue, bool) {
 	var defs []*engineValue
 	for i, br := range v.branches {

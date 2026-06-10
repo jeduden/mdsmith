@@ -367,7 +367,8 @@ func FuzzValidate(f *testing.F) {
 // edges (each a documented hatch-1 class), the reference cycles, and the
 // lone-surrogate classes.
 func extraFuzzSeeds() []struct{ schema, data string } {
-	return append(baseFuzzSeeds(), edgeFuzzSeeds()...)
+	seeds := append(baseFuzzSeeds(), edgeFuzzSeeds()...)
+	return append(seeds, surrogateFuzzSeeds()...)
 }
 
 // baseFuzzSeeds covers the well-formed subset grammar: type atoms, bounds,
@@ -468,6 +469,13 @@ func edgeFuzzSeeds() []struct{ schema, data string } {
 		// was dropped when its surviving meet stayed a disjunction.
 		{`{A:(0|int)&(*1|int)}`, `{}`},
 		{`{A:(*1|int)&(0|int)}`, `{}`},
+		// The meet's default reconciles the two operand defaults: when both
+		// survive they meet (`(*0|int)&(0|*int)` → 0&int = 0), when one survives
+		// it is that one (`(*1|2|9)&(*2|3|9)` → 2). Regression seeds for the
+		// operand-default meet rule (the raw branch-mode cross product fabricated
+		// a spurious second default and wrongly rejected).
+		{`{A:(*0|int)&(0|*int)}`, `{}`},
+		{`{A:(*1|2|9)&(*2|3|9)}`, `{}`},
 		// An ordered comparison of mismatched scalar kinds (0 > ""): CUE rejects
 		// it as an invalid operation but defers in a disjunction; the in-house
 		// engine rejects eagerly at schema compile.
@@ -552,6 +560,13 @@ func edgeFuzzSeeds() []struct{ schema, data string } {
 		// paren-wrapped mark.
 		{`{(*0)|0}`, `0`},
 		{`{a: 1 | (*0)}`, `{}`},
+	}
+}
+
+// surrogateFuzzSeeds covers the lone-surrogate escape classes in value and key
+// position, plus the escaped-backslash boundary the raw scan must tokenize.
+func surrogateFuzzSeeds() []struct{ schema, data string } {
+	return []struct{ schema, data string }{
 		// A lone-surrogate escape in a VALUE position (hatch 2) and in a KEY
 		// position (now rejected in both arms — no hatch). Seeding both keeps
 		// the surrogate classes exercised on every run.

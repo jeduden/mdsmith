@@ -384,14 +384,82 @@ func unifyDisjunction(d, o *engineValue, path []string) *engineValue {
 	if len(survivors) == 1 {
 		return survivors[0].v
 	}
+	// Resolve the meet's default from the OPERAND defaults (U2), then re-mark
+	// the surviving value branch that equals it as dfltIs. Computing the
+	// default once from the operands avoids the per-branch combineMode
+	// fabricating a spurious second default: `(*0|int)&(0|*int)` has the single
+	// default 0&int = 0, not the ambiguous {0, int} the raw cross product
+	// produces.
+	def := meetDefault(d, o, path)
 	out := &engineValue{kind: kDisjoint}
 	out.branches = make([]*engineValue, len(survivors))
 	out.modes = make([]defaultMode, len(survivors))
 	for i, s := range survivors {
 		out.branches[i] = s.v
-		out.modes[i] = s.mode
+		mode := dfltNot
+		if def != nil && s.v.concreteScalarV() && def.concreteScalarV() && concreteEqual(s.v, def) {
+			mode = dfltIs
+		}
+		out.modes[i] = mode
 	}
 	return out
+}
+
+// meetDefault resolves the default of the meet d & o from the OPERAND defaults
+// (CUE's U2 ⟨v1,d1⟩&⟨v2,d2⟩ = ⟨v1&v2, d1&d2⟩). Each operand's default is its
+// marked value (operandDefault). A side's default SURVIVES the meet when it is
+// compatible with the other operand's value (their meet is not ⊥). When BOTH
+// survive, the default is their meet (`(*0|int)&(0|*int)` → 0&int = 0); when
+// ONLY ONE survives, it is that surviving default met with the other operand
+// (`(*1|2|9)&(*2|3|9)` → only 2 survives → 2); when neither survives, or the
+// reconciled default is non-concrete, there is no usable default. A
+// non-defaulted operand contributes no default of its own.
+func meetDefault(d, o *engineValue, path []string) *engineValue {
+	dd := surviving(operandDefault(d), o, path)
+	od := surviving(operandDefault(o), d, path)
+	switch {
+	case dd != nil && od != nil:
+		return concreteOrNil(unifyV(dd, od, path))
+	case dd != nil:
+		return concreteOrNil(unifyV(dd, o, path))
+	case od != nil:
+		return concreteOrNil(unifyV(od, d, path))
+	default:
+		return nil
+	}
+}
+
+// surviving returns def when it is non-nil and compatible with other (their
+// meet is not ⊥), else nil: a default that conflicts with the other operand's
+// value is dropped from the meet's default (CUE's drops-default rule).
+func surviving(def, other *engineValue, path []string) *engineValue {
+	if def == nil {
+		return nil
+	}
+	if unifyV(def, other, path).isBottomV() {
+		return nil
+	}
+	return def
+}
+
+// concreteOrNil returns v when it is a concrete scalar, else nil — a meet
+// default is usable only when it pins a single concrete value.
+func concreteOrNil(v *engineValue) *engineValue {
+	if v.concreteScalarV() {
+		return v
+	}
+	return nil
+}
+
+// operandDefault returns a disjunction operand's own default value (the meet of
+// its dfltIs branches when concrete), or nil when it has no usable default or
+// is not a disjunction. It is the d in the ⟨v, d⟩ pair the meet rule consumes.
+func operandDefault(v *engineValue) *engineValue {
+	if v.kind != kDisjoint {
+		return nil
+	}
+	def, _ := v.defaultValue()
+	return def
 }
 
 // meetBranchModes takes the cross product of d's (value, mode) branches with
