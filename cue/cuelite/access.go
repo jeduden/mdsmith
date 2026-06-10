@@ -30,6 +30,20 @@ func cuePath(p Path) cue.Path {
 	return cue.MakePath(sels...)
 }
 
+// Err reports whether the Value is a bottom — a compile failure, a zero
+// Value, or a value reduced to bottom by a conflicting Unify — or nil
+// when it names a value. It is the façade over cue.Value.Err, and unlike
+// [Value.Validate] it does NOT check concreteness: a successfully
+// compiled but non-concrete schema (a constraint awaiting data) has no
+// Err. A caller uses it to tell a broken schema from one merely waiting
+// on its document.
+func (v Value) Err() error {
+	if err, ok := v.isBottom(); ok {
+		return err
+	}
+	return v.val.Err()
+}
+
 // LookupPath returns the Value at p within v, and whether it exists. It
 // is the façade over cue.Value.LookupPath. A missing leaf, or a lookup
 // against a bottom, returns ok=false; an empty path returns the receiver.

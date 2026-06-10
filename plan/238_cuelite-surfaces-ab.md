@@ -69,8 +69,9 @@ unification rules.
 
 ## Acceptance Criteria
 
-- [ ] `internal/schema`, `requiredstructure`, and
-      `internal/query` import `cue/cuelite`, not `cuelang.org/go`.
+- [x] `internal/schema`, `requiredstructure`, and
+      `internal/query` import `cue/cuelite`, not `cuelang.org/go`
+      (non-test files; task 2).
 - [ ] Front-matter validation skips the JSON round-trip and
       stays within the ≤ 10 allocs/op budget.
 - [ ] MDS020 diagnostics stay actionable and navigable (plan
@@ -154,6 +155,56 @@ coverage held:
   an `AccessCase`/`AccessOutcome`/`RunAccess` arm comparing
   Exists/LookupPath/Fields/String against a direct-CUE oracle over a
   per-class corpus; green in CI as the flip scaffold.
+
+### Task 2 — adopt the façade (done)
+
+All three packages import `cue/cuelite` now. No non-test file imports
+`cuelang.org/go`. The grep over those trees is empty.
+
+One cuelang import survives, in
+`internal/schema/shortcuts_test.go`. It is a test. It cross-checks the
+shortcut canonicals against CUE, like the harness oracle, so it stays.
+
+Every existing test stayed green unchanged. The `CompiledCUE`-typed
+assertions in `compile_cache_test.go` and `validate_runcache_test.go`
+still pass. `CompiledCUE` is a schema-package type. Its internals
+swapped to wrap a `cuelite.Value`. Its `.Err()` and identity surface
+did not change.
+
+Added `Value.Err()` to the façade. It reports compile/bottom status.
+It skips the concreteness check `Validate` applies. `CompiledCUE.Err()`
+and `checkUnifiable` need exactly that.
+
+**RunCache / CachedCompile shape decision.** Cache the
+source-retaining compiled value. Fix the Unify operand order: the
+shared schema is the operand, the per-file data is the receiver. Every
+call site reads `dataVal.Unify(schemaVal)` — validate.go,
+requiredstructure, query.go.
+
+Under cuelite's `rebuild`, the receiver's context is the one rebuilt
+into. So the per-file data context absorbs a fresh recompile of the
+schema's source. The shared cached `Value` is only read for its `src`.
+It is never mutated.
+
+This keeps the cache's compile-once contract. The
+`validate_runcache_test.go` slot-populated assertion still holds: the
+slot is keyed by CUE source and built once per Run. It is also
+`-race`-clean when parallel workers share the cached schema.
+`CachedCompile_ConcurrentSingleBuild` and the runcache compile-once
+test both pass under `-race`.
+
+The per-file schema recompile is the interim cost. Task 3's
+context-free immutable `Value` erases it. The operand order then stops
+mattering. `compile_cache.go`'s `CompiledCUE` dropped its `Ctx` field,
+because cuelite hides the context.
+
+MDS020 diagnostics stay byte-identical. The error walkers consume
+`[]*cuelite.PathError` now. They got those from `cuelite.Errors`. The
+old code used `[]errors.Error`. Both carry the same `.Path()` route.
+
+So the per-field diagnostic, the dedup key, and the anchor line do not
+change. The schema suite passes unchanged. That suite includes the
+plan-147/230 diagnostic-shape tests.
 
 ## See also
 

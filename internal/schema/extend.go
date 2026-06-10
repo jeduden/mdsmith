@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"cuelang.org/go/cue/cuecontext"
+	"github.com/jeduden/mdsmith/cue/cuelite"
 )
 
 // MergeRawMap applies plan-135 extends semantics to two raw inline
@@ -575,6 +575,9 @@ func (e *InvalidFrontmatterError) Unwrap() error { return e.Cause }
 // the plan cares about — `int & string`, conflicting bounds,
 // closed-struct violations, unresolved references.
 func checkUnifiable(expr string) error {
-	v := cuecontext.New().CompileString(expr)
-	return v.Err()
+	// cuelite.Compile returns the compile/bottom error directly: an
+	// expression that reduces to bottom (a contradiction) surfaces here,
+	// while a non-concrete but consistent constraint compiles cleanly.
+	_, err := cuelite.Compile(expr)
+	return err
 }

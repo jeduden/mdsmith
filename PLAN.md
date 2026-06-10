@@ -156,7 +156,7 @@ footer: |
 | 235        | ✅     | sonnet | [Playwright end-to-end tests for the website, runnable by CI and agents](plan/235_playwright-site-e2e.md)                               |
 | 236        | ✅     | opus   | [cuelite phase 0 — package, façade, and differential harness](plan/236_cuelite-package-harness.md)                                      |
 | 237        | ✅     | sonnet | [cuelite phase 1 — surface D (placeholder paths)](plan/237_cuelite-surface-d.md)                                                        |
-| 238        | 🔲     | opus   | [cuelite phase 2 — surfaces A + B (schema, query)](plan/238_cuelite-surfaces-ab.md)                                                     |
+| 238        | 🔳     | opus   | [cuelite phase 2 — surfaces A + B (schema, query)](plan/238_cuelite-surfaces-ab.md)                                                     |
 | 239        | 🔲     | opus   | [cuelite phase 3 — surface C (row-expr evaluator)](plan/239_cuelite-surface-c.md)                                                       |
 | 240        | 🔲     | sonnet | [cuelite phase 4 — drop cuelang.org and enable tinygo](plan/240_cuelite-drop-cue.md)                                                    |
 | 241        | ✅     | opus   | [Schema-per-file config under `.mdsmith/schemas/`](plan/241_schema-files.md)                                                            |

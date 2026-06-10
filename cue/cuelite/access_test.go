@@ -129,6 +129,35 @@ func TestValue_Fields(t *testing.T) {
 	})
 }
 
+func TestValue_Err(t *testing.T) {
+	t.Run("a successfully compiled non-concrete value has no error", func(t *testing.T) {
+		// {id: string} compiles fine but is not concrete; Err reports the
+		// COMPILE status only, so it is nil even though Validate would fail.
+		v, err := Compile(`{id: string}`)
+		require.NoError(t, err)
+		assert.NoError(t, v.Err())
+	})
+	t.Run("a compile failure surfaces through Err", func(t *testing.T) {
+		v, compileErr := Compile(`{id: =}`)
+		require.Error(t, compileErr)
+		require.Error(t, v.Err())
+	})
+	t.Run("a zero value reports errZeroValue", func(t *testing.T) {
+		err := Value{}.Err()
+		require.Error(t, err)
+		assert.ErrorIs(t, err, errZeroValue)
+	})
+	t.Run("a conflicting unify result is a bottom with an error", func(t *testing.T) {
+		schema, err := Compile(`{a: "x"}`)
+		require.NoError(t, err)
+		data, err := CompileJSON([]byte(`{"a": "y"}`))
+		require.NoError(t, err)
+		// CUE reduces the conflict to a bottom value, so Err surfaces it —
+		// matching cue.Value.Err, which reports a reduced-to-bottom value.
+		assert.Error(t, schema.Unify(data).Err())
+	})
+}
+
 func TestValue_String(t *testing.T) {
 	t.Run("a concrete string returns its value", func(t *testing.T) {
 		v, err := CompileJSON([]byte(`"hello"`))

@@ -4,24 +4,22 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"cuelang.org/go/cue"
-	"cuelang.org/go/cue/cuecontext"
+	"github.com/jeduden/mdsmith/cue/cuelite"
 )
 
 // Matcher holds a pre-compiled CUE expression for matching
 // against front matter maps.
 type Matcher struct {
-	schema cue.Value
-	paths  []cue.Path // leaf field paths required by the expression
+	schema cuelite.Value
+	paths  []cuelite.Path // leaf field paths required by the expression
 }
 
 // Compile parses a CUE struct literal body and returns a
 // Matcher. Returns an error if the expression is invalid.
 func Compile(expr string) (*Matcher, error) {
-	ctx := cuecontext.New()
 	// Wrap the expression body in braces to form a struct literal.
-	val := ctx.CompileString("{" + expr + "}")
-	if err := val.Err(); err != nil {
+	val, err := cuelite.Compile("{" + expr + "}")
+	if err != nil {
 		return nil, fmt.Errorf("invalid CUE expression: %w", err)
 	}
 	paths := collectPaths(val, nil)
@@ -32,21 +30,20 @@ func Compile(expr string) (*Matcher, error) {
 // value, so Match can verify they exist in front matter data before
 // unification. This handles nested struct expressions like
 // `meta: { status: "✅" }`.
-func collectPaths(v cue.Value, prefix []cue.Selector) []cue.Path {
-	var paths []cue.Path
-	iter, err := v.Fields()
-	if err != nil {
-		return nil
-	}
-	for iter.Next() {
-		cur := append(append([]cue.Selector{}, prefix...), iter.Selector())
-		child := iter.Value()
+//
+// Paths are built with cuelite.MakePath from the raw Fields() selectors,
+// never ParsePath: a selector is a data key (it may be dotted, hyphenated,
+// or otherwise unparseable as a path expression), and MakePath stores it
+// verbatim so the later LookupPath finds it.
+func collectPaths(v cuelite.Value, prefix []string) []cuelite.Path {
+	var paths []cuelite.Path
+	for _, f := range v.Fields() {
+		cur := append(append([]string{}, prefix...), f.Selector)
 		// If the child is a struct with fields, recurse into it.
-		childIter, err := child.Fields()
-		if err == nil && childIter.Next() {
-			paths = append(paths, collectPaths(child, cur)...)
+		if len(f.Value.Fields()) > 0 {
+			paths = append(paths, collectPaths(f.Value, cur)...)
 		} else {
-			paths = append(paths, cue.MakePath(cur...))
+			paths = append(paths, cuelite.MakePath(cur...))
 		}
 	}
 	return paths
@@ -62,20 +59,22 @@ func (m *Matcher) Match(fm map[string]any) bool {
 	if err != nil {
 		return false
 	}
-	dataVal := m.schema.Context().CompileBytes(data)
-	if dataVal.Err() != nil {
+	dataVal, err := cuelite.CompileJSON(data)
+	if err != nil {
 		return false
 	}
 	// Require that every field path in the expression exists in the
 	// data. CUE structs are open by default, so unification alone
 	// would accept data missing a field by filling it from the schema.
 	for _, p := range m.paths {
-		if !dataVal.LookupPath(p).Exists() {
+		if _, ok := dataVal.LookupPath(p); !ok {
 			return false
 		}
 	}
-	merged := m.schema.Unify(dataVal)
-	return merged.Validate(cue.Concrete(true)) == nil
+	// Data is the Unify receiver so the shared compiled schema operand is
+	// rebuilt into the per-call data context, never mutated — the same
+	// shared-schema-safe operand order the schema validator uses.
+	return dataVal.Unify(m.schema).Validate() == nil
 }
 
 // Match is a convenience function that compiles expr and tests fm
