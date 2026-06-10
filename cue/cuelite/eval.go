@@ -3,6 +3,7 @@ package cuelite
 import (
 	stderrors "errors"
 	"fmt"
+	"regexp"
 
 	"cuelang.org/go/cue/ast"
 	"cuelang.org/go/cue/token"
@@ -164,8 +165,8 @@ func evalComprehension(c *ast.Comprehension, scope map[string]*engineValue) (boo
 // delegate to the compile-time builders after their operands resolve.
 func evalBinary(n *ast.BinaryExpr, scope map[string]*engineValue) (*engineValue, error) {
 	switch n.Op {
-	case token.EQL, token.NEQ:
-		return evalEquality(n, scope)
+	case token.EQL, token.NEQ, token.GEQ, token.LEQ, token.GTR, token.LSS, token.MAT, token.NMAT:
+		return evalComparison(n, scope)
 	case token.AND:
 		l, err := evalExpr(n.X, scope)
 		if err != nil {
@@ -178,19 +179,18 @@ func evalBinary(n *ast.BinaryExpr, scope map[string]*engineValue) (*engineValue,
 		return unifyV(l, r, nil), nil
 	case token.OR:
 		return evalDisjunction(n, scope)
-	case token.GEQ, token.LEQ, token.GTR, token.LSS, token.MAT:
-		// A relational bound's operand is a literal, not a reference, so the
-		// compile-time builder handles it without scope.
-		return compileRelational(n)
 	default:
 		return nil, fmt.Errorf("cuelite: unsupported binary operator %q", n.Op)
 	}
 }
 
-// evalEquality evaluates an == or != comparison to a concrete bool. Both
-// sides must resolve to concrete scalars; an unresolved reference defers.
-// This is the comparison an `if mechanism == "push"` comprehension needs.
-func evalEquality(n *ast.BinaryExpr, scope map[string]*engineValue) (*engineValue, error) {
+// evalComparison evaluates a binary comparison (==, !=, >=, <=, >, <, =~, !~)
+// of two operands to a concrete bool, the comparison an `if mechanism ==
+// "push"` comprehension or an `A != ""` constraint needs. Both sides must
+// resolve to concrete scalars; an unresolved reference defers (errUnresolved)
+// so the enclosing expression becomes a thunk. A regex comparison (=~ / !~)
+// compiles its pattern and tests the left string.
+func evalComparison(n *ast.BinaryExpr, scope map[string]*engineValue) (*engineValue, error) {
 	l, err := evalExpr(n.X, scope)
 	if err != nil {
 		return nil, err
@@ -202,11 +202,50 @@ func evalEquality(n *ast.BinaryExpr, scope map[string]*engineValue) (*engineValu
 	if !isConcrete(l) || !isConcrete(r) {
 		return nil, errUnresolved
 	}
-	eq := concreteEqual(l, r)
-	if n.Op == token.NEQ {
-		eq = !eq
+	res, err := compareConcrete(l, n.Op, r)
+	if err != nil {
+		return nil, err
 	}
-	return &engineValue{kind: kBool, b: eq}, nil
+	return &engineValue{kind: kBool, b: res}, nil
+}
+
+// compareConcrete evaluates a comparison operator over two concrete scalar
+// values, returning the boolean result. == / != compare for equality; the
+// ordered relations and regex matches reuse the same primitives the bound
+// checks use, so a comparison and a bound agree on the same operands.
+func compareConcrete(l *engineValue, op token.Token, r *engineValue) (bool, error) {
+	switch op {
+	case token.EQL:
+		return concreteEqual(l, r), nil
+	case token.NEQ:
+		return !concreteEqual(l, r), nil
+	case token.MAT, token.NMAT:
+		if l.kind != kString || r.kind != kString {
+			return false, fmt.Errorf("cuelite: %s requires strings", op)
+		}
+		re, err := regexp.Compile(r.str)
+		if err != nil {
+			return false, err
+		}
+		m := re.MatchString(l.str)
+		if op == token.NMAT {
+			m = !m
+		}
+		return m, nil
+	}
+	bop, err := boundOpOf(op)
+	if err != nil {
+		return false, err
+	}
+	if l.kind == kString && r.kind == kString {
+		return compareStr(l.str, bop, r.str), nil
+	}
+	ln, lok := l.numericValue()
+	rn, rok := r.numericValue()
+	if !lok || !rok {
+		return false, fmt.Errorf("cuelite: cannot compare %s and %s", l.describe(), r.describe())
+	}
+	return compareNum(ln, bop, rn), nil
 }
 
 // evalDisjunction builds a disjunction value in a scope, flattening nested |
@@ -355,5 +394,34 @@ func deferToThunk(e ast.Expr) *engineValue {
 			}
 			return v
 		},
+		thunkRefs: freeRefs(e),
 	}
+}
+
+// freeRefs collects the distinct non-keyword identifier names an expression
+// references — the sibling fields a deferred thunk depends on. A type keyword
+// (string, int, …) and the bool/null literals are not references. The
+// compiler uses the result to reject a reference to a name that is not a
+// declared field.
+func freeRefs(e ast.Expr) []string {
+	seen := map[string]bool{}
+	var out []string
+	ast.Walk(e, func(node ast.Node) bool {
+		if id, ok := node.(*ast.Ident); ok && isReferenceName(id.Name) && !seen[id.Name] {
+			seen[id.Name] = true
+			out = append(out, id.Name)
+		}
+		return true
+	}, nil)
+	return out
+}
+
+// isReferenceName reports whether an identifier names a field reference, as
+// opposed to a type keyword or a bool/null literal that compiles to a value.
+func isReferenceName(name string) bool {
+	switch name {
+	case "_", "null", "true", "false", "string", "int", "float", "number", "bool", "bytes":
+		return false
+	}
+	return true
 }

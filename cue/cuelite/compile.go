@@ -78,7 +78,37 @@ func compileFile(file *ast.File) (*engineValue, error) {
 			optional: f.Constraint == token.OPTION,
 		})
 	}
+	if err := checkThunkRefs(out); err != nil {
+		return nil, err
+	}
 	return out, nil
+}
+
+// checkThunkRefs verifies that every deferred (thunk) field references only
+// names declared as fields of the same struct. A reference to an undeclared
+// name (a free comparison like `nature == "x"` in a malformed catalog
+// where-expression) cannot ever resolve, so it is a compile error here rather
+// than a thunk that silently ⊥s at validate time — matching CUE's eager
+// "reference X not found".
+func checkThunkRefs(s *engineValue) error {
+	if !hasThunkField(s) {
+		return nil
+	}
+	declared := make(map[string]bool, len(s.fields))
+	for _, f := range s.fields {
+		declared[f.name] = true
+	}
+	for _, f := range s.fields {
+		if f.val.kind != kThunk {
+			continue
+		}
+		for _, ref := range f.val.thunkRefs {
+			if !declared[ref] {
+				return fmt.Errorf("reference %q not found", ref)
+			}
+		}
+	}
+	return nil
 }
 
 // appendOrUnifyField adds f to fields, unifying with an existing field of
@@ -281,7 +311,13 @@ func compileStruct(n *ast.StructLit) (*engineValue, error) {
 			return nil, fmt.Errorf("cuelite: unsupported struct element %T", d)
 		}
 	}
+	if err := checkThunkRefs(out); err != nil {
+		return nil, err
+	}
 	if embedded != nil {
+		if err := checkEmbeddedThunkRefs(out, embedded); err != nil {
+			return nil, err
+		}
 		if len(out.fields) == 0 {
 			// A struct with only an embedded value IS that value: `{>=1 & <=10}`
 			// is the bound, `{X}` is X. No struct wrapper survives.
@@ -290,6 +326,27 @@ func compileStruct(n *ast.StructLit) (*engineValue, error) {
 		return unifyV(out, embedded, nil), nil
 	}
 	return out, nil
+}
+
+// checkEmbeddedThunkRefs rejects an embedded thunk (a free comparison like
+// `{nature == "x"}`) that references a name not declared as a field of the
+// enclosing struct: such a reference can never resolve, so it is a compile
+// error now rather than a thunk that ⊥s at validate time, matching CUE's
+// eager "reference X not found".
+func checkEmbeddedThunkRefs(s, embedded *engineValue) error {
+	if embedded.kind != kThunk {
+		return nil
+	}
+	declared := make(map[string]bool, len(s.fields))
+	for _, f := range s.fields {
+		declared[f.name] = true
+	}
+	for _, ref := range embedded.thunkRefs {
+		if !declared[ref] {
+			return fmt.Errorf("reference %q not found", ref)
+		}
+	}
+	return nil
 }
 
 // fieldLabel extracts the string name of a struct field label, accepting a
@@ -364,20 +421,13 @@ func compileBinary(n *ast.BinaryExpr) (*engineValue, error) {
 		return unifyV(l, r, nil), nil
 	case token.OR:
 		return compileDisjunction(n)
-	case token.GEQ, token.LEQ, token.GTR, token.LSS, token.NEQ, token.MAT:
-		return compileRelational(n)
-	case token.EQL:
-		// An == comparison appears only in a malformed where-expression (the
-		// constraint grammar uses `key: value`, not `key == value`). Compile
-		// both operands so an unresolved reference surfaces its "reference X not
-		// found" error; a fully concrete comparison is not part of the subset.
-		if _, err := compileExpr(n.X); err != nil {
-			return nil, err
-		}
-		if _, err := compileExpr(n.Y); err != nil {
-			return nil, err
-		}
-		return nil, fmt.Errorf("cuelite: == is not a valid constraint")
+	case token.GEQ, token.LEQ, token.GTR, token.LSS, token.NEQ, token.MAT, token.NMAT, token.EQL:
+		// A binary relational is a COMPARISON of two operands (a reference
+		// against a literal, as in `A != ""` or `mechanism == "push"`), not a
+		// constraint bound — a bound (`>=1`, `!=""`) parses as a UnaryExpr. Defer
+		// to the scoped evaluator so the left reference resolves; an unresolved
+		// reference becomes a thunk or surfaces "reference X not found".
+		return compileDeferrable(n)
 	default:
 		return nil, fmt.Errorf("cuelite: unsupported binary operator %q", n.Op)
 	}
@@ -417,28 +467,11 @@ func compileDisjunction(n *ast.BinaryExpr) (*engineValue, error) {
 	return out, nil
 }
 
-// compileRelational builds a bounded scalar from a binary relational
-// expression. The right operand carries the bound value; the base kind is
-// inferred from that operand (a string operand for != "" makes a string
-// bound, a number operand makes a numeric bound). A =~ takes a string
-// pattern compiled once here.
-func compileRelational(n *ast.BinaryExpr) (*engineValue, error) {
-	op, err := boundOpOf(n.Op)
-	if err != nil {
-		return nil, err
-	}
-	operand, err := compileExpr(n.Y)
-	if err != nil {
-		return nil, err
-	}
-	return boundFromOperand(op, operand)
-}
-
 // compileUnary handles a unary bound operator (>=0 etc. parse as a unary
 // expression whose operand is the bound value) and the * default marker.
 func compileUnary(n *ast.UnaryExpr) (*engineValue, error) {
 	switch n.Op {
-	case token.GEQ, token.LEQ, token.GTR, token.LSS, token.NEQ, token.MAT:
+	case token.GEQ, token.LEQ, token.GTR, token.LSS, token.NEQ, token.MAT, token.NMAT:
 		op, err := boundOpOf(n.Op)
 		if err != nil {
 			return nil, err
@@ -494,6 +527,8 @@ func boundOpOf(t token.Token) (boundOp, error) {
 		return opNe, nil
 	case token.MAT:
 		return opMatch, nil
+	case token.NMAT:
+		return opNotMatch, nil
 	default:
 		return 0, fmt.Errorf("cuelite: unsupported bound operator %q", t)
 	}
@@ -505,18 +540,18 @@ func boundOpOf(t token.Token) (boundOp, error) {
 // a string. The base atomKind is inferred so a later concrete value is
 // type-checked against it.
 func boundFromOperand(op boundOp, operand *engineValue) (*engineValue, error) {
-	if op == opMatch {
+	if op == opMatch || op == opNotMatch {
 		if operand.kind != kString {
-			return nil, fmt.Errorf("cuelite: =~ requires a string pattern, got %s", operand.describe())
+			return nil, fmt.Errorf("cuelite: %s requires a string pattern, got %s", op, operand.describe())
 		}
 		re, err := regexp.Compile(operand.str)
 		if err != nil {
-			return nil, fmt.Errorf("cuelite: =~ pattern %q: %w", operand.str, err)
+			return nil, fmt.Errorf("cuelite: %s pattern %q: %w", op, operand.str, err)
 		}
 		return &engineValue{
 			kind:   kBound,
 			atom:   akString,
-			bounds: []bound{{op: opMatch, re: re, src: operand.str}},
+			bounds: []bound{{op: op, re: re, src: operand.str}},
 		}, nil
 	}
 	switch operand.kind {

@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
+	"unicode/utf8"
 )
 
 // liftJSON parses a strict-JSON document into a concrete engine value. It
@@ -23,6 +25,12 @@ import (
 // rejected it as an invalid Unicode value; the differential harness's
 // oracle is updated in lockstep).
 func liftJSON(data []byte) (*engineValue, error) {
+	// Strict JSON is UTF-8. encoding/json silently replaces an invalid byte
+	// with U+FFFD, which would accept a document CUE's lift rejects; reject it
+	// here so the data arm classifies malformed bytes as a compile failure.
+	if !utf8.Valid(data) {
+		return nil, fmt.Errorf("cuelite: invalid JSON: not valid UTF-8")
+	}
 	if err := scanDuplicateKeys(data); err != nil {
 		return nil, err
 	}
@@ -32,9 +40,11 @@ func liftJSON(data []byte) (*engineValue, error) {
 	if err := dec.Decode(&raw); err != nil {
 		return nil, fmt.Errorf("cuelite: invalid JSON: %w", err)
 	}
-	// Reject trailing content after the first value, so `{"x":1} {...}` is not
-	// silently accepted (matching the strict-JSON contract).
-	if dec.More() {
+	// Reject any content after the first top-level value, so `{"x":1} {...}`
+	// or a trailing `}` is not silently accepted (matching strict JSON). At the
+	// top level dec.More() does not flag trailing tokens, so probe for one more
+	// token: anything but EOF is trailing data.
+	if _, err := dec.Token(); err != io.EOF {
 		return nil, fmt.Errorf("cuelite: invalid JSON: trailing data after top-level value")
 	}
 	return liftAny(raw)

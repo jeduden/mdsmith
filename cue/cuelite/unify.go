@@ -165,6 +165,8 @@ func concreteSatisfiesBound(c *engineValue, bd bound) bool {
 	switch bd.op {
 	case opMatch:
 		return c.kind == kString && bd.re.MatchString(c.str)
+	case opNotMatch:
+		return c.kind == kString && !bd.re.MatchString(c.str)
 	case opMinRunes:
 		return c.kind == kString && utf8.RuneCountInString(c.str) >= int(bd.num)
 	}

@@ -138,10 +138,17 @@ func sortedPaths(paths [][]string) [][]string {
 }
 
 // validatePaths builds a StageValidate Outcome from a set of rejecting
-// field paths, sorted deterministically so the two engines compare leaf
-// for leaf regardless of the order each surfaced them.
+// field paths, sorted deterministically and de-duplicated so the two engines
+// compare on the SET of rejecting leaves regardless of order or multiplicity.
+// CUE emits a disjunction conflict once per failed branch (so `"x" | "y"`
+// rejected yields the same path several times), while the in-house engine
+// reports each failing leaf once; both arms reject the same leaf, so the
+// harness compares the leaf SET. The MDS020 diagnostic path already
+// de-duplicates per field (dedupedCUEErrorDiags), so this matches the
+// behavior consumers actually observe.
 func validatePaths(paths [][]string) Outcome {
 	slices.SortFunc(paths, slices.Compare[[]string])
+	paths = slices.CompactFunc(paths, slices.Equal[[]string])
 	return Outcome{Stage: StageValidate, Paths: paths}
 }
 
@@ -222,9 +229,32 @@ func oracleValidate(leaves []errors.Error) Outcome {
 	}
 	paths := make([][]string, len(leaves))
 	for i, leaf := range leaves {
-		paths[i] = leaf.Path()
+		paths[i] = normalizePath(leaf.Path())
 	}
 	return validatePaths(paths)
+}
+
+// normalizePath strips the quote-wrapping CUE applies to a path segment that
+// is not a bare identifier (a numeric-looking key "0" comes back as `"0"`),
+// so the oracle compares the RAW field key — the same unquoted key the
+// in-house engine carries and that MDS020 indexes docFM with. Without this,
+// the two arms diverge on the rendering of a quote-needing key even though
+// they reject the same field.
+func normalizePath(segs []string) []string {
+	if segs == nil {
+		return nil
+	}
+	out := make([]string, len(segs))
+	for i, s := range segs {
+		if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
+			if unq, err := strconv.Unquote(s); err == nil {
+				out[i] = unq
+				continue
+			}
+		}
+		out[i] = s
+	}
+	return out
 }
 
 // oracleData lifts the data document into ctx through CUE's own strict-JSON

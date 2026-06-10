@@ -76,6 +76,7 @@ const (
 	opLt                      // <
 	opNe                      // !=
 	opMatch                   // =~
+	opNotMatch                // !~
 	opMinRunes                // strings.MinRunes(n): a string's rune count must be >= n
 )
 
@@ -95,6 +96,8 @@ func (b boundOp) String() string {
 		return "!="
 	case opMatch:
 		return "=~"
+	case opNotMatch:
+		return "!~"
 	case opMinRunes:
 		return "strings.MinRunes"
 	default:
@@ -165,8 +168,11 @@ type engineValue struct {
 	// fields) that could not be evaluated at compile time because it
 	// references another field. It is forced (evalThunk) once the enclosing
 	// struct's referenced fields are concrete — typically after data unifies
-	// in. thunkExpr is the AST to re-evaluate.
+	// in. thunkExpr is the AST to re-evaluate; thunkRefs names the sibling
+	// fields it references, so the compiler can reject a reference to a name
+	// that is not a declared field (an unresolvable free reference).
 	thunkExpr thunkEval
+	thunkRefs []string
 }
 
 // thunkEval re-evaluates a deferred schema expression against a scope of
@@ -275,6 +281,8 @@ func (b bound) describe() string {
 	switch b.op {
 	case opMatch:
 		return fmt.Sprintf("=~%q", b.src)
+	case opNotMatch:
+		return fmt.Sprintf("!~%q", b.src)
 	case opMinRunes:
 		return fmt.Sprintf("strings.MinRunes(%d)", int64(b.num))
 	}
