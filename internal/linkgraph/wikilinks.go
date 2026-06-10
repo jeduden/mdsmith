@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/yuin/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 )

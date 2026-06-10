@@ -1,18 +1,26 @@
 // Package goldmark implements a Markdown parser. mdsmith vendors this
-// fork to thread a per-parser BlockReader (plan 197) and absorb the
-// four structural allocators (plan 198) without rebuilding goldmark
-// from scratch. The package layout is identical to upstream so
-// every consumer import path stays `github.com/yuin/goldmark/...`.
+// fork of github.com/yuin/goldmark@v1.8.2 to thread a per-parser
+// BlockReader (plan 197) and absorb the four structural allocators
+// (plan 198) without rebuilding goldmark from scratch. The package
+// layout is identical to upstream; only the import path and the
+// implementation differ. The fork is part of the main module — not a
+// nested module wired via a go.mod replace directive — because
+// `go install m@version` rejects modules whose go.mod carries replace
+// directives, and consumers of mdsmith-as-a-library would silently
+// resolve upstream goldmark instead of the fork. It lives under pkg/
+// rather than internal/ because the upstream library is a public
+// package; hiding the fork under internal/ would semantically
+// misrepresent the surface.
 package goldmark
 
 import (
 	"io"
 
-	"github.com/yuin/goldmark/parser"
-	"github.com/yuin/goldmark/renderer"
-	"github.com/yuin/goldmark/renderer/html"
-	"github.com/yuin/goldmark/text"
-	"github.com/yuin/goldmark/util"
+	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
+	"github.com/jeduden/mdsmith/pkg/goldmark/renderer"
+	"github.com/jeduden/mdsmith/pkg/goldmark/renderer/html"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
+	"github.com/jeduden/mdsmith/pkg/goldmark/util"
 )
 
 // DefaultParser returns a new Parser configured with goldmark's
@@ -126,10 +134,10 @@ func (m *markdown) Convert(source []byte, writer io.Writer, opts ...parser.Parse
 	return m.renderer.Render(writer, source, doc)
 }
 
-func (m *markdown) Parser() parser.Parser            { return m.parser }
-func (m *markdown) SetParser(v parser.Parser)        { m.parser = v }
-func (m *markdown) Renderer() renderer.Renderer      { return m.renderer }
-func (m *markdown) SetRenderer(v renderer.Renderer)  { m.renderer = v }
+func (m *markdown) Parser() parser.Parser           { return m.parser }
+func (m *markdown) SetParser(v parser.Parser)       { m.parser = v }
+func (m *markdown) Renderer() renderer.Renderer     { return m.renderer }
+func (m *markdown) SetRenderer(v renderer.Renderer) { m.renderer = v }
 
 // An Extender hooks additional parsers/renderers onto a Markdown.
 type Extender interface {

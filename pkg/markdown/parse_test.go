@@ -3,10 +3,10 @@ package markdown
 import (
 	"testing"
 
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/parser"
 )
 
 func TestParse(t *testing.T) {

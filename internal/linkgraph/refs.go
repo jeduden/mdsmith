@@ -1,8 +1,8 @@
 package linkgraph
 
 import (
-	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/util"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/util"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 )

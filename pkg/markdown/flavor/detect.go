@@ -5,10 +5,10 @@ import (
 	"regexp"
 	"sort"
 
-	"github.com/yuin/goldmark/ast"
-	extast "github.com/yuin/goldmark/extension/ast"
-	"github.com/yuin/goldmark/parser"
-	"github.com/yuin/goldmark/text"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	extast "github.com/jeduden/mdsmith/pkg/goldmark/extension/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 
 	"github.com/jeduden/mdsmith/pkg/markdown"
 	"github.com/jeduden/mdsmith/pkg/markdown/flavor/ext"

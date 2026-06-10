@@ -3,8 +3,8 @@ package rename
 import (
 	"testing"
 
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/stretchr/testify/assert"
-	"github.com/yuin/goldmark/ast"
 )
 
 func TestInvalidLabelRuneError_Error(t *testing.T) {

@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"testing"
 
-	goldmarkast "github.com/yuin/goldmark/ast"
-	goldmarktext "github.com/yuin/goldmark/text"
+	goldmarkast "github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	goldmarktext "github.com/jeduden/mdsmith/pkg/goldmark/text"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/stretchr/testify/assert"

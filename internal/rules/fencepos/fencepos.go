@@ -9,8 +9,8 @@ import (
 	"bytes"
 
 	"github.com/jeduden/mdsmith/internal/lint"
-	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/text"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 )
 
 // CharAt returns the fence character at the given position, skipping

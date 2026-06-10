@@ -3,9 +3,9 @@ package arena_test
 import (
 	"testing"
 
-	"github.com/yuin/goldmark/arena"
-	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/text"
+	"github.com/jeduden/mdsmith/pkg/goldmark/arena"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 )
 
 // TestNilArenaFallsBackToHeap covers the nil-safety contract: every

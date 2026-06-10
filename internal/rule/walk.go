@@ -2,7 +2,7 @@ package rule
 
 import (
 	"github.com/jeduden/mdsmith/internal/lint"
-	"github.com/yuin/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
 // NodeChecker is an optional capability for a rule whose Check is a

@@ -12,8 +12,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/text"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 )
 
 func TestText_BasicAccessors(t *testing.T) {
@@ -297,7 +297,6 @@ func TestReferenceLink_Construct(t *testing.T) {
 		t.Fatal("NewReferenceLink returned nil")
 	}
 }
-
 
 func TestDocument_OwnerDocument(t *testing.T) {
 	doc := ast.NewDocument()

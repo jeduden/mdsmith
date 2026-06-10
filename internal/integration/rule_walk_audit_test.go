@@ -47,8 +47,8 @@ import (
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	gmast "github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/stretchr/testify/require"
-	gmast "github.com/yuin/goldmark/ast"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -412,7 +412,7 @@ func scanPackageSyntax(p *packages.Package) staticWalkSignal {
 			if obj := p.TypesInfo.Uses[sel.Sel]; obj != nil {
 				if fn, ok := obj.(*types.Func); ok {
 					if fn.Name() == "Walk" && fn.Pkg() != nil &&
-						fn.Pkg().Path() == "github.com/yuin/goldmark/ast" {
+						fn.Pkg().Path() == "github.com/jeduden/mdsmith/pkg/goldmark/ast" {
 						sig.usesASTWalk = true
 					}
 				}

@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/yuin/goldmark/ast"
-	goldmarktext "github.com/yuin/goldmark/text"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	goldmarktext "github.com/jeduden/mdsmith/pkg/goldmark/text"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"

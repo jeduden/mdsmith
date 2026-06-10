@@ -120,7 +120,14 @@ is the only path.
    the root go.mod.  Because pkg/goldmark is a
    nested module, fork-specific tests run via an
    explicit `go test ./...` inside pkg/goldmark/ — see
-   the CI workflow.)
+   the CI workflow.)  (Superseded after v0.40.0: the
+   replace directive broke `go install m@version`,
+   which rejects modules that carry one. The fork is
+   now part of the main module, imported as
+   `github.com/jeduden/mdsmith/pkg/goldmark/…`; the
+   root `test` job covers its default path and the
+   `goldmark-fork-test` job keeps the
+   `goldmark_upstream` A/B axis.)
 2. [x] Move plan 197's `linkrefparagraph` into the
    vendored `parser/` package as the default link-ref
    transformer. Delete the old standalone package.

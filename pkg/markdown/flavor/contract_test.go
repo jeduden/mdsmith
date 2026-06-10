@@ -10,9 +10,9 @@ package flavor_test
 import (
 	"testing"
 
-	"github.com/yuin/goldmark"
-	"github.com/yuin/goldmark/ast"
-	gparser "github.com/yuin/goldmark/parser"
+	"github.com/jeduden/mdsmith/pkg/goldmark"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	gparser "github.com/jeduden/mdsmith/pkg/goldmark/parser"
 
 	"github.com/jeduden/mdsmith/pkg/markdown"
 	"github.com/jeduden/mdsmith/pkg/markdown/flavor"

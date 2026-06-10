@@ -11,8 +11,9 @@ codecov:
     # the status post until all uploads are in.
     wait_for_ci: true
 
-# Vendored third-party code that ships as a sub-module under
-# pkg/goldmark/ (goldmark@v1.8.2 fork, see go.mod replace).
+# Vendored third-party code that ships in-tree under pkg/goldmark/
+# (goldmark@v1.8.2 fork, part of the main module so `go install
+# m@version` works — replace directives are rejected there).
 # mdsmith does not own these tests, so the upstream branch
 # coverage they have is irrelevant to project health; exclude them
 # from every codecov metric so the `changes` per-file gate does

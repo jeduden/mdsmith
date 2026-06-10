@@ -3,7 +3,7 @@ package extract
 import (
 	"regexp"
 
-	"github.com/yuin/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
 // taskMarkerRE matches a leading GFM task-list marker — `[ ]`, `[x]`,

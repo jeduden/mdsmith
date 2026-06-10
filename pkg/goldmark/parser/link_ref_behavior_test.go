@@ -6,10 +6,10 @@ package parser_test
 // CommonMark-spec-conformant behaviour (e.g. that the
 // paragraph is removed when no link-reference definitions
 // survive, that the AST shape matches the spec for known
-// fixtures).  Because the test imports `github.com/yuin/goldmark`
-// which is `replace`-d to this same fork in mdsmith's go.mod,
-// the assertions cover the fork's own contract, not a comparison
-// against a separately-imported upstream goldmark.  Drift from
+// fixtures).  Because the test imports the fork's own packages
+// (github.com/jeduden/mdsmith/pkg/goldmark/...), the assertions
+// cover the fork's own contract, not a comparison against a
+// separately-imported upstream goldmark.  Drift from
 // upstream goldmark itself is tracked via the quarterly upstream
 // merge documented in plan/198_goldmark-arena-fork.md.
 
@@ -18,10 +18,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/parser"
-	"github.com/yuin/goldmark/text"
-	"github.com/yuin/goldmark/util"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
+	"github.com/jeduden/mdsmith/pkg/goldmark/util"
 )
 
 // equivalenceCases drive parseLinkReferenceDefinition's branches.

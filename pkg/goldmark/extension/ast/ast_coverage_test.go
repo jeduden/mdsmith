@@ -11,8 +11,8 @@ import (
 	"os"
 	"testing"
 
-	gast "github.com/yuin/goldmark/ast"
-	extast "github.com/yuin/goldmark/extension/ast"
+	gast "github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	extast "github.com/jeduden/mdsmith/pkg/goldmark/extension/ast"
 )
 
 func captureStdout(t *testing.T, fn func()) string {

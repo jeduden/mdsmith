@@ -23,7 +23,7 @@ import (
 	rulesettings "github.com/jeduden/mdsmith/internal/rules/settings"
 	"github.com/jeduden/mdsmith/internal/schema"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
-	"github.com/yuin/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"gopkg.in/yaml.v3"
 )
 

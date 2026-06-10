@@ -2,7 +2,7 @@ package lint
 
 import (
 	"github.com/jeduden/mdsmith/internal/piparser"
-	"github.com/yuin/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
 // Range is a half-open byte range [Start, End) into File.Source.

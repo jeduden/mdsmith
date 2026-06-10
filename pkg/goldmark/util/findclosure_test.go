@@ -3,7 +3,7 @@ package util_test
 import (
 	"testing"
 
-	"github.com/yuin/goldmark/util"
+	"github.com/jeduden/mdsmith/pkg/goldmark/util"
 )
 
 func TestFindClosure(t *testing.T) {

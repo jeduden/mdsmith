@@ -3,7 +3,7 @@ package text_test
 import (
 	"testing"
 
-	"github.com/yuin/goldmark/text"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 )
 
 func TestSegments_Unshift_Empty(t *testing.T) {

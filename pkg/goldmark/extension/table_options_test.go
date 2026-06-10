@@ -11,11 +11,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yuin/goldmark"
-	"github.com/yuin/goldmark/extension"
-	"github.com/yuin/goldmark/renderer"
-	"github.com/yuin/goldmark/renderer/html"
-	"github.com/yuin/goldmark/util"
+	"github.com/jeduden/mdsmith/pkg/goldmark"
+	"github.com/jeduden/mdsmith/pkg/goldmark/extension"
+	"github.com/jeduden/mdsmith/pkg/goldmark/renderer"
+	"github.com/jeduden/mdsmith/pkg/goldmark/renderer/html"
+	"github.com/jeduden/mdsmith/pkg/goldmark/util"
 )
 
 const tableOptSrc = "| h1 | h2 | h3 |\n|:---|:--:|---:|\n| a  | b  | c  |\n"
@@ -112,11 +112,11 @@ func TestTable_ColumnMismatchRejected(t *testing.T) {
 	// different column count than the delimiter row.  The
 	// paragraph stays a paragraph (no table).
 	srcs := []string{
-		"| a |\n|---|---|---|\n| b |\n",                            // 1 vs 3 cols
-		"| h1 | h2 | h3 |\n|---|\n| a | b | c |\n",                  // 3 vs 1 col
-		"| h |\n| not delim |\n",                                    // 2nd line not a delim
-		"single line paragraph\n",                                   // 1 line only
-		"line one\nline two\nline three\n",                          // no delim row
+		"| a |\n|---|---|---|\n| b |\n",            // 1 vs 3 cols
+		"| h1 | h2 | h3 |\n|---|\n| a | b | c |\n", // 3 vs 1 col
+		"| h |\n| not delim |\n",                   // 2nd line not a delim
+		"single line paragraph\n",                  // 1 line only
+		"line one\nline two\nline three\n",         // no delim row
 	}
 	for _, src := range srcs {
 		md := goldmark.New(goldmark.WithExtensions(extension.Table))

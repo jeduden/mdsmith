@@ -1,8 +1,8 @@
 package markdown
 
 import (
-	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/parser"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
 )
 
 // Document is the result of Parse: the YAML front matter split off the

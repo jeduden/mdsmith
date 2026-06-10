@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yuin/goldmark"
-	"github.com/yuin/goldmark/extension"
-	"github.com/yuin/goldmark/parser"
-	"github.com/yuin/goldmark/renderer/html"
+	"github.com/jeduden/mdsmith/pkg/goldmark"
+	"github.com/jeduden/mdsmith/pkg/goldmark/extension"
+	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
+	"github.com/jeduden/mdsmith/pkg/goldmark/renderer/html"
 )
 
 const comprehensiveCorpus = `# Heading 1 with {#explicit-id .first-class .second}
@@ -322,8 +322,8 @@ func TestCorpus_CRLFLineEndings(t *testing.T) {
 	// Drive the \\r\\n line-break branches in parseBlock.
 	cases := []string{
 		"line one\r\nline two\r\n",
-		"text  \r\nhard break\r\n",                          // [space][space]\r\n
-		"text\\\r\nbackslash break\r\n",                     // \\\r\n
+		"text  \r\nhard break\r\n",      // [space][space]\r\n
+		"text\\\r\nbackslash break\r\n", // \\\r\n
 	}
 	md := goldmark.New()
 	for i, src := range cases {

@@ -3,8 +3,8 @@ package markdown
 import (
 	"fmt"
 
-	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/text"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 )
 
 // KindProcessingInstruction is the ast.NodeKind for ProcessingInstruction.

@@ -6,8 +6,8 @@ import (
 	"io"
 	"sync"
 
-	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/util"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/util"
 )
 
 // A Config struct is a data structure that holds configuration of the Renderer.

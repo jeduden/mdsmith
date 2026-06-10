@@ -3,8 +3,8 @@ package parser_test
 import (
 	"testing"
 
-	"github.com/yuin/goldmark/parser"
-	"github.com/yuin/goldmark/util"
+	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
+	"github.com/jeduden/mdsmith/pkg/goldmark/util"
 )
 
 // Plan-197/198 contract: DefaultParagraphTransformers must return a

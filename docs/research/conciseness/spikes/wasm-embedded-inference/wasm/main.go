@@ -9,8 +9,8 @@
 //   - alloc(size) ptr    : reserve size bytes of guest memory for host input
 //   - free(ptr)          : release a prior alloc
 //   - classify(ptr, len) : classify text at [ptr, ptr+len); returns an
-//                          int64 packing (outPtr<<32)|outLen of a JSON
-//                          result written into a static guest buffer.
+//     int64 packing (outPtr<<32)|outLen of a JSON
+//     result written into a static guest buffer.
 package main
 
 import (

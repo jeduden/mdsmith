@@ -12,8 +12,8 @@ package parser
 import (
 	"testing"
 
-	"github.com/yuin/goldmark/text"
-	"github.com/yuin/goldmark/util"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
+	"github.com/jeduden/mdsmith/pkg/goldmark/util"
 )
 
 func TestNewLinkReferenceParagraphTransformer_ReturnsFreshInstance(t *testing.T) {
@@ -128,8 +128,8 @@ func TestLinkRefTransform_BlockReaderReallocatedOnSourceChange(t *testing.T) {
 
 func TestSameByteSlice_Subslices(t *testing.T) {
 	src := []byte("hello world")
-	left := src[:5]   // "hello"
-	right := src[:5]  // also "hello", same backing
+	left := src[:5]  // "hello"
+	right := src[:5] // also "hello", same backing
 	if !sameByteSlice(left, right) {
 		t.Error("two subslices over the same backing with the same start must compare equal")
 	}
