@@ -212,11 +212,11 @@ func TestCollectDirectiveEdgesEmptyFileParam(t *testing.T) {
 	}
 }
 
-func TestCollectDirectiveEdgesAbsoluteBuildSource(t *testing.T) {
+func TestCollectDirectiveEdgesAbsoluteBuildInput(t *testing.T) {
 	t.Parallel()
-	// Absolute source: → resolveRelTarget returns "" → tgt != ""
-	// is false, no edge emitted.
-	src := "# T\n\n<?build\nsource: \"/abs.md\"\n?>\n<?/build?>\n"
+	// Absolute inputs: entry → ResolveRelTarget returns "" → no edge
+	// emitted for that literal entry.
+	src := "# T\n\n<?build\nrecipe: r\ninputs:\n  - \"/abs.md\"\noutputs:\n  - out.html\n?>\n<?/build?>\n"
 	idx := New("/r")
 	idx.Update("a.md", []byte(src))
 	fe, ok := idx.File("a.md")
@@ -404,15 +404,15 @@ func TestCollectDirectivesSkipsClosingMarker(t *testing.T) {
 	assert.Equal(t, "include", dirs[0].Name)
 }
 
-func TestCollectDirectiveEdgesEmptyBuildSource(t *testing.T) {
+func TestCollectDirectiveEdgesEmptyBuildInputs(t *testing.T) {
 	t.Parallel()
-	// A build directive without source: produces no edge.
+	// A build directive with no inputs: produces no edge.
 	idx := New("/r")
-	idx.Update("a.md", []byte("# T\n\n<?build\ntarget: \"out.md\"\n?>\n<?/build?>\n"))
+	idx.Update("a.md", []byte("# T\n\n<?build\nrecipe: r\noutputs:\n  - out.md\n?>\n<?/build?>\n"))
 	fe, ok := idx.File("a.md")
 	require.True(t, ok)
 	for _, e := range fe.Outgoing {
-		assert.NotEqual(t, EdgeBuild, e.Kind, "build edge without source should be skipped: %+v", e)
+		assert.NotEqual(t, EdgeBuild, e.Kind, "build edge without inputs should be skipped: %+v", e)
 	}
 }
 

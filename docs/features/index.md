@@ -94,7 +94,7 @@ instead of breaking links.
 
 **[See the dependency graph](dependency-graph.md).**
 `mdsmith deps` lists what a file pulls in (includes, catalogs,
-build sources, and links), or every file that points at it with
+build inputs, and links), or every file that points at it with
 `--incoming`. The editor walks the same graph as a call hierarchy.
 
 **[File kinds and schemas](file-kinds-schemas.md).**

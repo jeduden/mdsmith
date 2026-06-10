@@ -427,17 +427,62 @@ func piToLocate(pi *piparser.ProcessingInstruction, source []byte, lines [][]byt
 	if len(m) >= 3 {
 		res.DirectiveArg = m[1]
 		res.DirectiveValue = strings.Trim(strings.TrimSpace(m[2]), `"'`)
+		if pi.Name == "include" && res.DirectiveArg == "file" {
+			res.DirectiveTargetFile = res.DirectiveValue
+		}
+		return res
 	}
-	if (pi.Name == "include" && res.DirectiveArg == "file") ||
-		(pi.Name == "build" && res.DirectiveArg == "source") {
-		res.DirectiveTargetFile = res.DirectiveValue
+	// A YAML list item `- value` belongs to the nearest preceding
+	// `key:` line. For a <?build?> inputs: item, resolve the value as a
+	// go-to-definition target.
+	if item, ok := listItemValue(cursorLine); ok {
+		if key := enclosingListKey(lines, line); key != "" {
+			res.DirectiveArg = key
+			res.DirectiveValue = item
+			if pi.Name == "build" && key == "inputs" {
+				res.DirectiveTargetFile = item
+			}
+		}
 	}
 	return res
+}
+
+// listItemValue returns the unquoted value of a YAML list item line
+// (`  - value`) and whether the line is a list item at all.
+func listItemValue(line string) (string, bool) {
+	m := piListItemRE.FindStringSubmatch(line)
+	if len(m) < 2 {
+		return "", false
+	}
+	return strings.Trim(strings.TrimSpace(m[1]), `"'`), true
+}
+
+// enclosingListKey scans upward from the list-item line (1-based) for
+// the nearest `key:` line with no inline value, returning that key.
+// Returns "" when none precedes the item.
+func enclosingListKey(lines [][]byte, line int) string {
+	for i := line - 2; i >= 0; i-- {
+		m := piArgRE.FindStringSubmatch(string(lines[i]))
+		if len(m) >= 3 && strings.TrimSpace(m[2]) == "" {
+			return m[1]
+		}
+		// A populated `key: value` line or another list item does not
+		// open a list block for our item; keep scanning past list items
+		// but stop at a scalar key/value.
+		if len(m) >= 3 {
+			return ""
+		}
+	}
+	return ""
 }
 
 // piArgRE matches a YAML-ish `key: value` line. Values keep their
 // quote characters so the caller can decide whether to strip them.
 var piArgRE = regexp.MustCompile(`^\s*([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*?)\s*$`)
+
+// piListItemRE matches a YAML list item line (`  - value`). The value
+// keeps its quote characters; the caller strips them.
+var piListItemRE = regexp.MustCompile(`^\s*-\s+(.*?)\s*$`)
 
 // headingOnLine returns the heading whose first source line equals
 // line, or nil.

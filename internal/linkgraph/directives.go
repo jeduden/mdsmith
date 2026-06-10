@@ -16,7 +16,9 @@ type DirectiveKind int
 const (
 	// DirectiveInclude is a `<?include file: …?>` directive.
 	DirectiveInclude DirectiveKind = iota
-	// DirectiveBuild is a `<?build source: …?>` directive.
+	// DirectiveBuild is one `inputs:` entry of a `<?build?>` directive.
+	// A literal entry carries Path; a glob entry carries a single-
+	// element Globs and reports IsUnresolved.
 	DirectiveBuild
 	// DirectiveCatalog is a `<?catalog glob: …?>` directive. Catalog
 	// targets are glob patterns; concrete files are produced by
@@ -30,15 +32,17 @@ const (
 // convention as Link.Line/Column. Callers needing file-relative
 // coordinates must add f.LineOffset themselves.
 //
-// For DirectiveInclude and DirectiveBuild, Path carries the raw
-// directive value (file: for include, source: for build) verbatim
-// from the directive body. Path is the un-resolved string — callers
-// resolve it against the host file's directory using ResolveRelTarget.
+// For DirectiveInclude, Path carries the raw `file:` value verbatim;
+// callers resolve it against the host file's directory using
+// ResolveRelTarget. For DirectiveBuild, Path carries one literal
+// `inputs:` entry (when the entry has no glob metacharacters) and is
+// resolved the same way.
 //
-// For DirectiveCatalog, Globs carries the raw glob pattern list.
-// Path is empty. The IsUnresolved method returns true for catalog
-// edges so reverse-edge queries skip them generically — see the index
-// layer for the corresponding Unresolved flag.
+// For DirectiveCatalog — and for a DirectiveBuild whose `inputs:`
+// entry is a glob — Globs carries the raw pattern(s) and Path is
+// empty. The IsUnresolved method returns true for those edges so
+// reverse-edge queries skip them generically — see the index layer
+// for the corresponding Unresolved flag.
 type DirectiveEdge struct {
 	Line  int
 	Col   int
@@ -49,18 +53,22 @@ type DirectiveEdge struct {
 
 // IsUnresolved reports whether this directive points at glob patterns
 // that need workspace-list expansion before they identify concrete
-// files. True for DirectiveCatalog, false otherwise.
+// files. True for catalog edges and for build edges built from a glob
+// `inputs:` entry (those carry Globs and no Path); false for include
+// and literal build edges.
 func (d DirectiveEdge) IsUnresolved() bool {
-	return d.Kind == DirectiveCatalog
+	return d.Kind == DirectiveCatalog ||
+		(d.Kind == DirectiveBuild && len(d.Globs) > 0)
 }
 
 // ExtractDirectives walks f.AST top-level for processing-instruction
 // nodes whose name is "include", "build", or "catalog", parses each
-// one's YAML body, and returns one DirectiveEdge per directive that
-// carries a usable target. Directives with malformed YAML or empty
-// required parameters are skipped silently — the dedicated lint rules
-// surface those as diagnostics; this extractor only contributes to the
-// link graph.
+// one's YAML body, and returns DirectiveEdges for the targets it
+// carries: one per `<?include?>`, one per `<?build?>` inputs: entry,
+// and one per `<?catalog?>` (whose Globs hold the whole pattern list).
+// Directives with malformed YAML or empty required parameters are
+// skipped silently — the dedicated lint rules surface those as
+// diagnostics; this extractor only contributes to the link graph.
 //
 // Like ExtractLinks, ExtractDirectives is pure given its input: it
 // does no file reads, no workspace traversal, and no global state
@@ -101,16 +109,7 @@ func ExtractDirectives(f *lint.File) []DirectiveEdge {
 				Path: file,
 			})
 		case "build":
-			src := strings.TrimSpace(params["source"])
-			if src == "" {
-				continue
-			}
-			out = append(out, DirectiveEdge{
-				Line: line,
-				Col:  1,
-				Kind: DirectiveBuild,
-				Path: src,
-			})
+			out = appendBuildEdges(out, line, params["inputs"])
 		case "catalog":
 			globs := splitCatalogGlobs(params["glob"])
 			out = append(out, DirectiveEdge{
@@ -170,6 +169,45 @@ func extractPIBody(pi *piparser.ProcessingInstruction, source []byte) string {
 		b.Write(seg.Value(source))
 	}
 	return b.String()
+}
+
+// appendBuildEdges emits one DirectiveBuild edge per non-empty
+// `inputs:` entry in rawInputs (the newline-joined list value
+// gensection produces). A literal entry becomes a resolved edge with
+// Path set; an entry carrying glob metacharacters becomes an
+// unresolved edge whose single-element Globs holds the pattern, mirroring
+// how catalog globs are handled. Empty-after-trim entries are skipped.
+func appendBuildEdges(out []DirectiveEdge, line int, rawInputs string) []DirectiveEdge {
+	for _, entry := range strings.Split(rawInputs, "\n") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		if hasGlobMeta(entry) {
+			out = append(out, DirectiveEdge{
+				Line:  line,
+				Col:   1,
+				Kind:  DirectiveBuild,
+				Globs: []string{entry},
+			})
+			continue
+		}
+		out = append(out, DirectiveEdge{
+			Line: line,
+			Col:  1,
+			Kind: DirectiveBuild,
+			Path: entry,
+		})
+	}
+	return out
+}
+
+// hasGlobMeta reports whether s contains a doublestar glob
+// metacharacter (*, ?, [, {). It matches the conservative classifier
+// MDS039 uses to decide whether an inputs: entry is a literal path or
+// a pattern.
+func hasGlobMeta(s string) bool {
+	return strings.ContainsAny(s, "*?[{")
 }
 
 // splitCatalogGlobs returns the patterns in raw as a slice. The

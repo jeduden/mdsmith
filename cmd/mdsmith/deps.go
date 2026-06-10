@@ -162,7 +162,7 @@ func parseDepsFlags(args []string) (depsOptions, []string, error) {
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, "Usage: mdsmith deps [flags] <file>\n\n"+
 			"List the dependency edges of <file>: the includes, catalogs,\n"+
-			"build sources, and links it points at. With --incoming, list\n"+
+			"build inputs, and links it points at. With --incoming, list\n"+
 			"every workspace file that points at <file> instead.\n\n"+
 			"Exit codes: 0 found, 1 none, 2 error\n\nFlags:\n")
 		fs.PrintDefaults()

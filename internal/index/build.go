@@ -672,6 +672,19 @@ func collectDirectiveEdges(filePath string, f *lint.File, fmOffset int) []Edge {
 				Kind:       EdgeInclude,
 			})
 		case linkgraph.DirectiveBuild:
+			if d.IsUnresolved() {
+				// A glob inputs: entry — emit an unresolved build edge,
+				// the same shape as a catalog edge, so reverse-edge
+				// queries skip it until the glob is expanded.
+				out = append(out, Edge{
+					SourceFile: filePath,
+					SourceLine: line,
+					SourceCol:  d.Col,
+					Kind:       EdgeBuild,
+					Unresolved: true,
+				})
+				continue
+			}
 			tgt := linkgraph.ResolveRelTarget(filePath, d.Path)
 			if tgt == "" {
 				continue

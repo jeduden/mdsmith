@@ -160,16 +160,16 @@ refs.
 
 ### Definition and implementation
 
-| Cursor on…                     | `Definition`                 | `Implementation` adds      |
-| ------------------------------ | ---------------------------- | -------------------------- |
-| `[text](#anchor)`              | heading in this file         | —                          |
-| `[text](./other.md)`           | line 1 of `other.md`         | —                          |
-| `[text](./other.md#anchor)`    | heading in `other.md`        | —                          |
-| `[text][label]`                | matching `[label]: url`      | —                          |
-| `<?include file: "x.md"?>` arg | `x.md` line 1                | —                          |
-| `<?build source: "x.md"?>` arg | `x.md` line 1                | —                          |
-| `kind:` value in front matter  | kind block in `.mdsmith.yml` | every file with that kind  |
-| Heading line                   | the heading                  | every link target matching |
+| Cursor on…                      | `Definition`                 | `Implementation` adds      |
+| ------------------------------- | ---------------------------- | -------------------------- |
+| `[text](#anchor)`               | heading in this file         | —                          |
+| `[text](./other.md)`            | line 1 of `other.md`         | —                          |
+| `[text](./other.md#anchor)`     | heading in `other.md`        | —                          |
+| `[text][label]`                 | matching `[label]: url`      | —                          |
+| `<?include file: "x.md"?>` arg  | `x.md` line 1                | —                          |
+| `<?build?>` `inputs:` list item | `x.md` line 1                | —                          |
+| `kind:` value in front matter   | kind block in `.mdsmith.yml` | every file with that kind  |
+| Heading line                    | the heading                  | every link target matching |
 
 ### References
 
@@ -237,7 +237,7 @@ matches first for anchor completion.
 | Front-matter `kind: prefix`        | Kind names from `.mdsmith.yml`  | `EnumMember` |
 | Front-matter `kinds:` list item    | Kind names from `.mdsmith.yml`  | `EnumMember` |
 | `<?include file: "prefix"?>` arg   | Workspace Markdown paths        | `File`       |
-| `<?build source: "prefix"?>` arg   | Workspace Markdown paths        | `File`       |
+| `<?build?>` `inputs:` list item    | Workspace Markdown paths        | `File`       |
 | `<?catalog glob: "prefix"?>` entry | Workspace Markdown paths        | `File`       |
 | Any other position                 | Empty list (no error)           | —            |
 

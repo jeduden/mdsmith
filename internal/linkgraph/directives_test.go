@@ -20,12 +20,59 @@ func TestExtractDirectives_Include(t *testing.T) {
 }
 
 func TestExtractDirectives_Build(t *testing.T) {
-	src := "# Top\n\n<?build\nsource: \"src.md\"\n?>\n<?/build?>\n"
+	// One literal inputs: entry yields one resolved build edge.
+	src := "# Top\n\n<?build\nrecipe: r\ninputs:\n  - \"src.md\"\noutputs:\n  - out.html\n?>\n<?/build?>\n"
 	f := newFile(t, src)
 	edges := ExtractDirectives(f)
 	require.Len(t, edges, 1)
 	assert.Equal(t, DirectiveBuild, edges[0].Kind)
 	assert.Equal(t, "src.md", edges[0].Path)
+	assert.False(t, edges[0].IsUnresolved())
+}
+
+func TestExtractDirectives_Build_MultipleInputs(t *testing.T) {
+	// One build edge per inputs: entry, in declared order.
+	src := "# Top\n\n<?build\nrecipe: r\ninputs:\n  - a.md\n  - b.md\noutputs:\n  - out.html\n?>\n<?/build?>\n"
+	f := newFile(t, src)
+	edges := ExtractDirectives(f)
+	require.Len(t, edges, 2)
+	assert.Equal(t, DirectiveBuild, edges[0].Kind)
+	assert.Equal(t, "a.md", edges[0].Path)
+	assert.Equal(t, DirectiveBuild, edges[1].Kind)
+	assert.Equal(t, "b.md", edges[1].Path)
+}
+
+func TestExtractDirectives_Build_GlobInput(t *testing.T) {
+	// A glob inputs: entry is carried as an unresolved glob edge, like
+	// a catalog directive.
+	src := "# Top\n\n<?build\nrecipe: r\ninputs:\n  - chapters/*.md\noutputs:\n  - out.html\n?>\n<?/build?>\n"
+	f := newFile(t, src)
+	edges := ExtractDirectives(f)
+	require.Len(t, edges, 1)
+	assert.Equal(t, DirectiveBuild, edges[0].Kind)
+	assert.Empty(t, edges[0].Path)
+	assert.Equal(t, []string{"chapters/*.md"}, edges[0].Globs)
+	assert.True(t, edges[0].IsUnresolved())
+}
+
+func TestExtractDirectives_Build_MixedLiteralAndGlobInputs(t *testing.T) {
+	src := "# Top\n\n<?build\nrecipe: r\ninputs:\n  - intro.md\n  - chapters/**/*.md\noutputs:\n  - out.html\n?>\n<?/build?>\n"
+	f := newFile(t, src)
+	edges := ExtractDirectives(f)
+	require.Len(t, edges, 2)
+	assert.Equal(t, "intro.md", edges[0].Path)
+	assert.False(t, edges[0].IsUnresolved())
+	assert.Equal(t, []string{"chapters/**/*.md"}, edges[1].Globs)
+	assert.True(t, edges[1].IsUnresolved())
+}
+
+func TestExtractDirectives_Build_NoInputsSkipped(t *testing.T) {
+	// A build directive with no inputs: contributes no edges (the
+	// outputs are artifacts the file produces, not dependencies).
+	src := "# Top\n\n<?build\nrecipe: r\noutputs:\n  - out.html\n?>\n<?/build?>\n"
+	f := newFile(t, src)
+	assert.Empty(t, ExtractDirectives(f),
+		"build with no inputs: must not produce an edge")
 }
 
 func TestExtractDirectives_Catalog(t *testing.T) {
@@ -43,13 +90,14 @@ func TestExtractDirectives_Catalog(t *testing.T) {
 func TestExtractDirectives_Mixed(t *testing.T) {
 	src := "# T\n\n" +
 		"<?include\nfile: \"a.md\"\n?>\n<?/include?>\n\n" +
-		"<?build\nsource: \"b.md\"\n?>\n<?/build?>\n\n" +
+		"<?build\nrecipe: r\ninputs:\n  - \"b.md\"\noutputs:\n  - out.html\n?>\n<?/build?>\n\n" +
 		"<?catalog\nglob: \"docs/*.md\"\n?>\n<?/catalog?>\n"
 	f := newFile(t, src)
 	edges := ExtractDirectives(f)
 	require.Len(t, edges, 3)
 	assert.Equal(t, DirectiveInclude, edges[0].Kind)
 	assert.Equal(t, DirectiveBuild, edges[1].Kind)
+	assert.Equal(t, "b.md", edges[1].Path)
 	assert.Equal(t, DirectiveCatalog, edges[2].Kind)
 }
 

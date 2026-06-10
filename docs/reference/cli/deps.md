@@ -5,7 +5,7 @@ summary: List a file's dependency-graph edges (includes, links, catalogs, builds
 # `mdsmith deps`
 
 Print the dependency edges of one Markdown file: the
-includes, catalogs, build sources, and links it points
+includes, catalogs, build inputs, and links it points
 at. With `--incoming`, print every workspace file that
 points at it instead. This is the CLI surface for the
 same workspace graph the LSP call-hierarchy walks.

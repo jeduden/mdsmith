@@ -2,7 +2,7 @@
 title: "See the dependency graph"
 summary: >-
   `mdsmith deps` lists what a file pulls in — includes, catalogs,
-  build sources, and links — or, with `--incoming`, every file that
+  build inputs, and links — or, with `--incoming`, every file that
   points at it. The LSP call-hierarchy walks the same graph in your
   editor.
 icon: network

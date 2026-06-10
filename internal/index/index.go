@@ -84,7 +84,9 @@ const (
 	EdgeInclude
 	// EdgeCatalog is a `<?catalog?>` directive.
 	EdgeCatalog
-	// EdgeBuild is a `<?build source: …?>` directive.
+	// EdgeBuild is one `inputs:` entry of a `<?build?>` directive. A
+	// literal entry is a resolved edge to the input file; a glob entry
+	// is emitted Unresolved, like a catalog edge.
 	EdgeBuild
 )
 

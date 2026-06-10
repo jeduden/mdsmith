@@ -135,13 +135,15 @@ func TestLocateRefDefOnNonRefLine(t *testing.T) {
 	assert.Equal(t, TokenNone, res.Tag)
 }
 
-func TestLocateBuildDirectiveSourceArg(t *testing.T) {
+func TestLocateBuildDirectiveInputListItem(t *testing.T) {
 	t.Parallel()
-	src := "# Top\n\n<?build\nsource: \"x.md\"\n?>\n<?/build?>\n"
-	res := Locator{Path: "a.md"}.Locate([]byte(src), 4, 8)
+	// Cursor on an inputs: list item resolves to that input file so
+	// go-to-definition works on a <?build?> input.
+	src := "# Top\n\n<?build\nrecipe: r\ninputs:\n  - \"x.md\"\noutputs:\n  - out.html\n?>\n<?/build?>\n"
+	res := Locator{Path: "a.md"}.Locate([]byte(src), 6, 6)
 	assert.Equal(t, TokenDirectiveArg, res.Tag)
 	assert.Equal(t, "build", res.DirectiveName)
-	assert.Equal(t, "source", res.DirectiveArg)
+	assert.Equal(t, "inputs", res.DirectiveArg)
 	assert.Equal(t, "x.md", res.DirectiveTargetFile)
 }
 

@@ -117,22 +117,24 @@ func TestCompletionContextDirectiveInclude(t *testing.T) {
 	assert.Equal(t, "file", res.DirectiveArg)
 }
 
-func TestCompletionContextDirectiveBuild(t *testing.T) {
+func TestCompletionContextDirectiveBuildInputs(t *testing.T) {
 	t.Parallel()
 	src := strings.Join([]string{
 		"# Top",
 		"",
 		"<?build",
-		`source: "internal/`,
+		"recipe: r",
+		"inputs:",
+		`  - "internal/`,
 		"?>",
 		"",
 	}, "\n")
-	// Cursor after "internal/" (line 4, col 19).
-	res := Locator{Path: "a.md"}.CompletionContext([]byte(src), 4, 19)
+	// Cursor after "internal/" on the inputs list item (line 6, col 15).
+	res := Locator{Path: "a.md"}.CompletionContext([]byte(src), 6, 15)
 	assert.Equal(t, CompletionDirectivePath, res.Tag)
 	assert.Equal(t, "internal/", res.Prefix)
 	assert.Equal(t, "build", res.DirectiveName)
-	assert.Equal(t, "source", res.DirectiveArg)
+	assert.Equal(t, "inputs", res.DirectiveArg)
 }
 
 func TestCompletionContextDirectiveCatalogInline(t *testing.T) {

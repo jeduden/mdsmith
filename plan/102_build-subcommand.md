@@ -304,7 +304,7 @@ call-hierarchy gain real build edges.
       `params.required` or `params.optional`
 - [x] All MDS039 fixtures use the new
       directive shape
-- [ ] `mdsmith deps` lists one build edge
+- [x] `mdsmith deps` lists one build edge
       per `inputs:` entry; `--incoming` on
       an input names the directive's file
 - [ ] `docs/guides/directives/build.md`

@@ -88,6 +88,62 @@ func TestE2E_Deps_TooManyArgs_ExitsTwo(t *testing.T) {
 	require.Equal(t, 2, code)
 }
 
+// setupBuildDepsWorkspace builds a workspace whose book.md declares a
+// <?build?> with two literal inputs and one glob input, so the build
+// edges can be asserted in both directions.
+func setupBuildDepsWorkspace(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "chapters"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+	wf := func(rel, body string) {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, rel), []byte(body), 0o644))
+	}
+	wf(".mdsmith.yml", "files:\n  - \"**/*.md\"\n")
+	wf("chapters/intro.md", "Intro.\n")
+	wf("chapters/01.md", "Chapter one.\n")
+	wf("book.md", "# Book\n\n<?build\nrecipe: pandoc\ninputs:\n"+
+		"  - chapters/intro.md\n  - chapters/01.md\n  - chapters/*.md\n"+
+		"outputs:\n  - book.html\n?>\n"+
+		"[book.html](book.html)\n<?/build?>\n")
+	return dir
+}
+
+func TestE2E_Deps_BuildInputs_Outgoing(t *testing.T) {
+	dir := setupBuildDepsWorkspace(t)
+	stdout, _, code := runBinaryInDir(t, dir, "", "deps", "--format", "json", "book.md")
+	require.Equal(t, 0, code, "stdout=%q", stdout)
+	var got []depRecordE2E
+	require.NoError(t, json.Unmarshal([]byte(stdout), &got))
+
+	var literalTargets []string
+	var globEdges int
+	for _, r := range got {
+		if r.Kind != "build" {
+			continue
+		}
+		if r.Target == "(glob)" {
+			globEdges++
+			continue
+		}
+		literalTargets = append(literalTargets, r.Target)
+	}
+	assert.ElementsMatch(t, []string{"chapters/intro.md", "chapters/01.md"}, literalTargets,
+		"one build edge per literal inputs: entry")
+	assert.Equal(t, 1, globEdges, "the glob inputs: entry is one unresolved build edge")
+}
+
+func TestE2E_Deps_BuildInputs_Incoming(t *testing.T) {
+	dir := setupBuildDepsWorkspace(t)
+	stdout, _, code := runBinaryInDir(t, dir, "", "deps", "chapters/intro.md", "--incoming")
+	require.Equal(t, 0, code, "stdout=%q", stdout)
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	require.Len(t, lines, 1)
+	assert.True(t, strings.HasPrefix(lines[0], "book.md:"),
+		"--incoming on an input names the build directive's file; got %q", lines[0])
+	assert.Contains(t, lines[0], "build")
+}
+
 func TestE2E_Deps_HelpFlag(t *testing.T) {
 	dir := setupDepsWorkspace(t)
 	_, stderr, code := runBinaryInDir(t, dir, "", "deps", "--help")

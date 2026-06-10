@@ -160,7 +160,6 @@ func piArgCompletion(piName, argKey, argVal string) (CompletionContext, bool) {
 	type pair struct{ name, key string }
 	m := map[pair]string{
 		{"include", "file"}: "file",
-		{"build", "source"}: "source",
 		{"catalog", "glob"}: "glob",
 	}
 	if arg, ok := m[pair{piName, argKey}]; ok {
@@ -210,23 +209,37 @@ func directiveCompletionContext(pi *piparser.ProcessingInstruction, lines [][]by
 		}
 	}
 
-	// Check if the cursor is on a YAML list item line under glob: in a catalog PI.
-	if pi.Name == "catalog" {
-		if item, ok := yamlListItemValue(lineUpToCursor); ok {
-			// line-1 is the 0-based index of the current line.
-			parentKey := scanBackwardForPIKey(lines, line-1)
-			if parentKey == "glob" {
-				return CompletionContext{
-					Tag:           CompletionDirectivePath,
-					Prefix:        item,
-					DirectiveName: "catalog",
-					DirectiveArg:  "glob",
-				}
+	// Check if the cursor is on a YAML list item line under a
+	// path-valued list key: glob: in a catalog PI, or inputs:/outputs:
+	// in a build PI.
+	if item, ok := yamlListItemValue(lineUpToCursor); ok {
+		// line-1 is the 0-based index of the current line.
+		parentKey := scanBackwardForPIKey(lines, line-1)
+		if listItemPathKey(pi.Name, parentKey) {
+			return CompletionContext{
+				Tag:           CompletionDirectivePath,
+				Prefix:        item,
+				DirectiveName: pi.Name,
+				DirectiveArg:  parentKey,
 			}
 		}
 	}
 
 	return CompletionContext{Tag: CompletionNone}
+}
+
+// listItemPathKey reports whether a YAML list item under parentKey in a
+// directive named piName completes to a filesystem path: catalog glob:
+// entries and build inputs:/outputs: entries.
+func listItemPathKey(piName, parentKey string) bool {
+	switch piName {
+	case "catalog":
+		return parentKey == "glob"
+	case "build":
+		return parentKey == "inputs" || parentKey == "outputs"
+	default:
+		return false
+	}
 }
 
 // yamlListItemValue returns the trimmed value from a YAML block-list line

@@ -408,7 +408,7 @@ func TestLocationsForFileReferencesIncludesBuildAndCatalog(t *testing.T) {
 	t.Parallel()
 	srcA := "# A\n"
 	srcInc := "# I\n\n<?include\nfile: \"./a.md\"\n?>\n<?/include?>\n"
-	srcBuild := "# B2\n\n<?build\nsource: \"./a.md\"\n?>\n<?/build?>\n"
+	srcBuild := "# B2\n\n<?build\nrecipe: r\ninputs:\n  - \"./a.md\"\noutputs:\n  - out.html\n?>\n<?/build?>\n"
 	h, _, _ := rootedHarness(t, map[string]string{
 		"a.md": srcA, "i.md": srcInc, "b.md": srcBuild,
 	})
@@ -756,7 +756,7 @@ func TestLocationsForFileReferencesIncludesDirectives(t *testing.T) {
 	srcA := "# A\n"
 	srcB := "# B\n\n[a](./a.md)\n"
 	srcInc := "# I\n\n<?include\nfile: \"./a.md\"\n?>\n<?/include?>\n"
-	srcBuild := "# B2\n\n<?build\nsource: \"./a.md\"\n?>\n<?/build?>\n"
+	srcBuild := "# B2\n\n<?build\nrecipe: r\ninputs:\n  - \"./a.md\"\noutputs:\n  - out.html\n?>\n<?/build?>\n"
 	h, _, _ := rootedHarness(t, map[string]string{
 		"a.md": srcA, "b.md": srcB, "i.md": srcInc, "b2.md": srcBuild,
 	})
@@ -897,8 +897,9 @@ func TestHandlePrepareCallHierarchyOnPlainProseEmpty(t *testing.T) {
 
 func TestHandlePrepareCallHierarchyDirectiveMissingTarget(t *testing.T) {
 	t.Parallel()
-	// Cursor on a directive arg whose key isn't `file:` or
-	// `source:` — handlePrepareCallHierarchy has no target file
+	// Cursor on a directive arg whose key has no target file (not
+	// include's `file:` nor a build `inputs:` list item) —
+	// handlePrepareCallHierarchy has no target file
 	// to anchor at, so the response is an empty item slice rather
 	// than a synthetic file-level fallback. The empty slice is
 	// what the editor needs to render "no call hierarchy here"

@@ -111,7 +111,7 @@ func TestPiContainsLineEmpty(t *testing.T) {
 
 func TestLocateDirectiveArgWithoutTarget(t *testing.T) {
 	t.Parallel()
-	// Directive arg that isn't `file:` / `source:` doesn't set
+	// A scalar directive arg that isn't include's `file:` doesn't set
 	// DirectiveTargetFile.
 	src := "# T\n\n<?include\nstrip-frontmatter: \"true\"\n?>\n<?/include?>\n"
 	res := Locator{Path: "a.md"}.Locate([]byte(src), 4, 5)
@@ -121,13 +121,14 @@ func TestLocateDirectiveArgWithoutTarget(t *testing.T) {
 	assert.Empty(t, res.DirectiveTargetFile)
 }
 
-func TestLocateBuildDirectiveNonSourceArg(t *testing.T) {
+func TestLocateBuildDirectiveScalarArg(t *testing.T) {
 	t.Parallel()
-	src := "# T\n\n<?build\ntarget: \"out.md\"\n?>\n<?/build?>\n"
+	// A scalar build arg (not the inputs: list) sets no target file.
+	src := "# T\n\n<?build\nrecipe: \"r\"\n?>\n<?/build?>\n"
 	res := Locator{Path: "a.md"}.Locate([]byte(src), 4, 5)
 	assert.Equal(t, TokenDirectiveArg, res.Tag)
 	assert.Equal(t, "build", res.DirectiveName)
-	assert.Equal(t, "target", res.DirectiveArg)
+	assert.Equal(t, "recipe", res.DirectiveArg)
 	assert.Empty(t, res.DirectiveTargetFile)
 }
 

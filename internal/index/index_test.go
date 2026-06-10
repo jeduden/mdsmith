@@ -100,7 +100,8 @@ func TestOutgoingEdgesAnchorAndFile(t *testing.T) {
 func TestOutgoingEdgesIncludeAndBuild(t *testing.T) {
 	t.Parallel()
 	idx := New("/root")
-	src := "# T\n\n<?include\nfile: \"sub/x.md\"\n?>\n<?/include?>\n\n<?build\nsource: \"src.md\"\n?>\n<?/build?>\n"
+	src := "# T\n\n<?include\nfile: \"sub/x.md\"\n?>\n<?/include?>\n\n" +
+		"<?build\nrecipe: r\ninputs:\n  - \"src.md\"\noutputs:\n  - out.html\n?>\n<?/build?>\n"
 	idx.Update("p.md", []byte(src))
 	fe, ok := idx.File("p.md")
 	require.True(t, ok)
@@ -115,6 +116,31 @@ func TestOutgoingEdgesIncludeAndBuild(t *testing.T) {
 	}
 	assert.True(t, inc, "missing include edge: %+v", fe.Outgoing)
 	assert.True(t, bld, "missing build edge: %+v", fe.Outgoing)
+}
+
+func TestOutgoingEdgesBuildMultipleInputs(t *testing.T) {
+	t.Parallel()
+	idx := New("/root")
+	// Two literal inputs: entries yield two resolved build edges; a
+	// glob entry yields one unresolved build edge.
+	src := "# T\n\n<?build\nrecipe: r\ninputs:\n  - a.md\n  - b.md\n  - chapters/*.md\noutputs:\n  - out.html\n?>\n<?/build?>\n"
+	idx.Update("p.md", []byte(src))
+	fe, ok := idx.File("p.md")
+	require.True(t, ok)
+	var targets []string
+	var unresolved int
+	for _, e := range fe.Outgoing {
+		if e.Kind != EdgeBuild {
+			continue
+		}
+		if e.Unresolved {
+			unresolved++
+			continue
+		}
+		targets = append(targets, e.TargetFile)
+	}
+	assert.ElementsMatch(t, []string{"a.md", "b.md"}, targets)
+	assert.Equal(t, 1, unresolved, "glob inputs: entry is one unresolved edge")
 }
 
 func TestIncomingEdgesAcrossFiles(t *testing.T) {

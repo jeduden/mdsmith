@@ -10,15 +10,17 @@ import (
 	"github.com/jeduden/mdsmith/internal/piparser"
 )
 
-// TestExtractDirectives_BuildEmptySourceSkipped covers the build
-// branch where `source:` resolves to empty after trim — the
-// directive is skipped silently (dedicated lint rules report the
-// user-facing diagnostic).
-func TestExtractDirectives_BuildEmptySourceSkipped(t *testing.T) {
-	src := "# T\n\n<?build\nsource: \"\"\n?>\n<?/build?>\n"
+// TestExtractDirectives_BuildEmptyInputEntrySkipped covers the build
+// branch where an `inputs:` entry is empty after trim — that entry
+// contributes no edge (dedicated lint rules report the user-facing
+// diagnostic). A trailing empty entry alongside a valid one still
+// yields exactly one edge.
+func TestExtractDirectives_BuildEmptyInputEntrySkipped(t *testing.T) {
+	src := "# T\n\n<?build\nrecipe: r\ninputs:\n  - good.md\n  - \"\"\noutputs:\n  - out.html\n?>\n<?/build?>\n"
 	f := newFile(t, src)
-	assert.Empty(t, ExtractDirectives(f),
-		"build with empty source: must not produce an edge")
+	edges := ExtractDirectives(f)
+	require.Len(t, edges, 1)
+	assert.Equal(t, "good.md", edges[0].Path)
 }
 
 // TestExtractDirectives_CatalogEmptyGlobsValue covers the
