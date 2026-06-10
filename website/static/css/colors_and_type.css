@@ -206,14 +206,18 @@
   /* Float — the one big-shadow moment in the system. Reserved for
      terminal mocks and product screenshots floating on a showcase
      stage. Layered hairline + contact + key + ambient, all neutral
-     steel-tinted — still no glow, no colored shadows. */
-  --shadow-float:    0 0 0 1px rgba(15, 20, 25, 0.05),
-                     0 2px 4px -1px rgba(15, 20, 25, 0.08),
-                     0 16px 32px -8px rgba(15, 20, 25, 0.16),
-                     0 36px 72px -16px rgba(15, 20, 25, 0.18);
-  --shadow-float-sm: 0 0 0 1px rgba(15, 20, 25, 0.05),
-                     0 2px 6px rgba(15, 20, 25, 0.08),
-                     0 12px 28px -10px rgba(15, 20, 25, 0.16);
+     steel-tinted — still no glow, no colored shadows. The layers
+     are tighter and darker than the design export's first cut: the
+     site's stages clip at the tile edge (overflow: hidden) and sit
+     on warm tinted backgrounds, so the shadow must develop within
+     ~50px to stay visible. */
+  --shadow-float:    0 0 0 1px rgba(15, 20, 25, 0.06),
+                     0 1px 2px rgba(15, 20, 25, 0.10),
+                     0 10px 22px -4px rgba(15, 20, 25, 0.22),
+                     0 24px 48px -12px rgba(15, 20, 25, 0.25);
+  --shadow-float-sm: 0 0 0 1px rgba(15, 20, 25, 0.06),
+                     0 2px 6px rgba(15, 20, 25, 0.10),
+                     0 10px 24px -8px rgba(15, 20, 25, 0.22);
 
   /* Gradients — warm only; the bluish-purple veto stands. Use for
      hero glows, bento feature cells, dark panels, and gradient
