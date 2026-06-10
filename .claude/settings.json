@@ -42,19 +42,5 @@
     ],
     "ask": [
     ]
-  },
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "jq -re '.tool_input.command // \"\"' | grep -q 'git push' && REPO=$(git remote get-url origin 2>/dev/null | sed -E 's|.*[:/]([^/]+/[^/]+?)(\\.git)?$|\\1|') && BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) && PR=$(gh api \"repos/$REPO/pulls\" 2>/dev/null | jq -r --arg b \"$BRANCH\" '.[] | select(.head.ref == $b) | .number' | head -1) && [ -n \"$PR\" ] && gh api \"repos/$REPO/pulls/$PR/requested_reviewers\" -X POST -f 'reviewers[]=copilot-pull-request-reviewer[bot]' 2>/dev/null; true",
-            "statusMessage": "Requesting code review..."
-          }
-        ]
-      }
-    ]
   }
 }
