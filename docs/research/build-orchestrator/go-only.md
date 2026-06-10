@@ -2,7 +2,7 @@
 title: External build orchestrator spike — Go-only
 description: Whether mdsmith should outsource its build engine to
   an existing Go-based orchestrator instead of implementing the
-  internal engine described in plans 102-117.
+  internal engine described in the build plan series.
 ---
 # External build orchestrator spike — Go-only
 
@@ -10,8 +10,9 @@ description: Whether mdsmith should outsource its build engine to
 
 mdsmith's `<?build?>` directive turns Markdown into a build
 graph: every directive declares `inputs`, `outputs`, and a
-recipe. The current plan set (102, 103, 115, 116, 117)
-implements an internal engine for this graph: ActionID
+recipe. The current plan set (102, 103, 2606101546,
+2606101547, 2606101548) implements an internal engine
+for this graph: ActionID
 content-hash cache, atomic multi-output write, trust gate,
 hermetic execution environment, stdout/stderr capture, log
 retention, parallel execution.
@@ -35,7 +36,8 @@ constraint.
 Stick with the internal engine. Add a single side door.
 
 No Go-native orchestrator offers a meaningfully better deal
-than what plans 102-117 already specify. The closest
+than what the build plan series already specifies. The
+closest
 single-binary candidate (go-task) matches at the surface but
 not on the threat model: it has no per-config trust gate, no
 hermetic environment, no atomic multi-output write, no
@@ -121,19 +123,19 @@ go-task gets close but loses on five specific points:
    triggers rebuild") cannot be implemented inside
    go-task.
 2. **No trust gate.** A fresh `git clone` of a hostile repo
-   running `task` invokes every declared command. Plan 117
+   running `task` invokes every declared command. Plan 2606101548
    exists because mdsmith cannot ship that default.
 3. **No hermetic environment.** go-task inherits the
-   parent shell environment. Plan 117 specifies an
+   parent shell environment. Plan 2606101548 specifies an
    allowlisted `PATH` and explicit env pass-through.
 4. **No atomic multi-output write.** A failing recipe in
-   go-task leaves partial outputs. Plan 115 plus plan 117
+   go-task leaves partial outputs. Plan 2606101546 plus plan 2606101548
    stage every output in a per-recipe temp directory and
    rename atomically; on failure no declared output is
    touched.
 5. **No output-confinement post-conditions.** go-task does
    not detect when a recipe writes a file outside its
-   declared `generates:`. Plan 117 snapshots the staging
+   declared `generates:`. Plan 2606101548 snapshots the staging
    dir and the output-paths' parents and diffs after the
    recipe.
 
@@ -228,20 +230,20 @@ is stale). Both use content hashing within their scope.
 
 ## Plan delta if we adopt this recommendation
 
-| Plan                                             | Status                                                                                            |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| [102][p102] — multi-output directive             | Stays in full                                                                                     |
-| [103][p103] — staleness + ActionID cache         | Stays in full (content-hash beats every Go-native alternative)                                    |
-| [115][p115] — builder execution in fix           | Stays in full (Model A literally calls `mdsmith fix --build-only`)                                |
-| [116][p116] — UX (logs, `--build-jobs`, explain) | Minor shrink: `--build-jobs N` could be deprioritised if users prefer go-task `deps:` parallelism |
-| [117][p117] — hardening                          | Stays in full (no external tool ships any of these)                                               |
-| **NEW** — `mdsmith targets --json`               | Add (~30 line plan)                                                                               |
+| Plan                                                           | Status                                                                                            |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| [102][p102] — multi-output directive                           | Stays in full                                                                                     |
+| [103][p103] — staleness + ActionID cache                       | Stays in full (content-hash beats every Go-native alternative)                                    |
+| [2606101546][p2606101546] — builder execution in fix           | Stays in full (Model A literally calls `mdsmith fix --build-only`)                                |
+| [2606101547][p2606101547] — UX (logs, `--build-jobs`, explain) | Minor shrink: `--build-jobs N` could be deprioritised if users prefer go-task `deps:` parallelism |
+| [2606101548][p2606101548] — hardening                          | Stays in full (no external tool ships any of these)                                               |
+| **NEW** — `mdsmith targets --json`                             | Add (~30 line plan)                                                                               |
 
 [p102]: ../../../plan/102_build-subcommand.md
 [p103]: ../../../plan/103_build-staleness-and-deps.md
-[p115]: ../../../plan/115_builder-execution-in-fix.md
-[p116]: ../../../plan/116_build-execution-ux.md
-[p117]: ../../../plan/117_build-execution-hardening.md
+[p2606101546]: ../../../plan/2606101546_builder-execution-in-fix.md
+[p2606101547]: ../../../plan/2606101547_build-execution-ux.md
+[p2606101548]: ../../../plan/2606101548_build-execution-hardening.md
 
 ## Risks and unknowns
 
@@ -251,14 +253,14 @@ is stale). Both use content hashing within their scope.
   versioned API.
 - **Two trust surfaces.** If a user wires the side door,
   the outer orchestrator runs *its own* commands too. The
-  trust gate (plan 117) only protects mdsmith's spawn,
+  trust gate (plan 2606101548) only protects mdsmith's spawn,
   not the orchestrator's. Document this explicitly.
 - **`mdsmith fix` vs `mdsmith fix --build-only` vs
   `--no-build` ergonomics.** Three modes is one too many
   if users get them wrong. Document a decision tree.
 - **Generated sections + builds in one DAG.** mdsmith's
   lint-fix pass already runs both in the right order
-  internally (plan 115). The external split is for cross-
+  internally (plan 2606101546). The external split is for cross-
   tool DAGs, not intra-mdsmith ones — the side door does
   not let an orchestrator interleave them.
 
@@ -279,8 +281,8 @@ five lessons from Bazel, Buck, Gradle, Ninja, and others:
 5. Parallel builds collide on undeclared shared state
    (CMake / zlib race-condition reports).
 
-Plan 116 covers gotchas 1, 2, 3, and 4 (logs, failure
-diagnostic, `--build-explain`, `--build-verify`). Plan 117
+Plan 2606101547 covers gotchas 1, 2, 3, and 4 (logs, failure
+diagnostic, `--build-explain`, `--build-verify`). Plan 2606101548
 covers gotcha 5 (post-conditions catch undeclared writes
 even under parallel execution). go-task as the engine
 covers gotcha 5 only (its `deps:` parallelism does not
@@ -323,6 +325,6 @@ enforce output confinement).
 
 - [Plan 102 — multi-output `<?build?>` directive][p102]
 - [Plan 103 — build target staleness and dependency tracking][p103]
-- [Plan 115 — builder execution wired into `mdsmith fix`][p115]
-- [Plan 116 — build execution UX][p116]
-- [Plan 117 — build execution hardening][p117]
+- [Plan 2606101546 — builder execution wired into `mdsmith fix`][p2606101546]
+- [Plan 2606101547 — build execution UX][p2606101547]
+- [Plan 2606101548 — build execution hardening][p2606101548]

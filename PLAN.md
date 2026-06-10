@@ -49,9 +49,6 @@ footer: |
 | 112        | ✅     | opus   | [Markdown convention bundles for MDS034](plan/112_flavor-profiles.md)                                                                   |
 | 113        | ✅     | sonnet | [User-defined Markdown conventions](plan/113_user-defined-profiles.md)                                                                  |
 | 114        | ✅     | sonnet | [MDS034 message clarity and flavor-vs-rule docs](plan/114_mds034-message-and-flavor-vs-rule-docs.md)                                    |
-| 115        | 🔲     | opus   | [Builder execution wired into `mdsmith fix`](plan/115_builder-execution-in-fix.md)                                                      |
-| 116        | 🔲     | opus   | [Build execution UX (stdout/stderr, debug, parallel)](plan/116_build-execution-ux.md)                                                   |
-| 117        | 🔲     | opus   | [Build execution hardening](plan/117_build-execution-hardening.md)                                                                      |
 | 120        | ✅     | sonnet | [Unify glob matcher and field naming across mdsmith](plan/120_glob-unification.md)                                                      |
 | 121        | ✅     | opus   | [Expose mdsmith to VS Code via Language Server Protocol](plan/121_vscode-integration.md)                                                |
 | 122        | ✅     | sonnet | [VS Code palette commands](plan/122_vscode-hover-and-palette.md)                                                                        |
@@ -181,4 +178,7 @@ footer: |
 | 2606092209 | ✅     | sonnet | [Security hardening batch — 2026-06-09 audit](plan/2606092209_secreview-2026-06-09-hardening.md)                                        |
 | 2606100533 | ✅     | sonnet | [Coordination-free plan ids from UTC creation timestamps](plan/2606100533_timestamp-plan-ids.md)                                        |
 | 2606100534 | 🔳     | sonnet | [Workspace-unique front-matter fields (unique-frontmatter rule)](plan/2606100534_unique-frontmatter-rule.md)                            |
+| 2606101546 | 🔲     | opus   | [Builder execution wired into `mdsmith fix`](plan/2606101546_builder-execution-in-fix.md)                                               |
+| 2606101547 | 🔲     | opus   | [Build execution UX (stdout/stderr, debug, parallel)](plan/2606101547_build-execution-ux.md)                                            |
+| 2606101548 | 🔲     | opus   | [Build execution hardening](plan/2606101548_build-execution-hardening.md)                                                               |
 <?/catalog?>

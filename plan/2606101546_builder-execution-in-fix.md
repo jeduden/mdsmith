@@ -1,5 +1,5 @@
 ---
-id: 115
+id: 2606101546
 title: Builder execution wired into `mdsmith fix`
 status: "🔲"
 summary: >-
@@ -30,7 +30,7 @@ check` stays lint-only.
 Builds on plan 102 (directive params) and
 plan 100 (config). Plan 103 layers
 staleness on top. Plan 104 adds hooks. Plan
-116 covers stdout/stderr UX and parallel
+2606101547 covers stdout/stderr UX and parallel
 execution.
 
 The original 102 plan included a separate
@@ -80,7 +80,7 @@ passed literally as one argument.
 
 ### Atomic multi-output write
 
-The basic contract (plan 117 hardens it):
+The basic contract (plan 2606101548 hardens it):
 
 1. mdsmith creates a per-target temp dir.
 2. The recipe is invoked with the temp
@@ -91,7 +91,7 @@ The basic contract (plan 117 hardens it):
 4. On failure, the temp dir is removed; no
    declared output is touched.
 
-Plan 117 adds the security hardening.
+Plan 2606101548 adds the security hardening.
 That covers the trust gate, hermetic env,
 hardened staging dir, output post-
 conditions, and process-group kill on
@@ -147,7 +147,7 @@ lint-fix flags.
 2. Implement basic multi-output atomic
    write: per-target temp dir, post-recipe
    rename, full rollback on failure. Plan
-   117 adds the hardening.
+   2606101548 adds the hardening.
 3. Remove `build.base-url` from
    `internal/config/build.go` and its
    tests. Add an explicit top-level-key
@@ -213,7 +213,7 @@ lint-fix flags.
       scan detects a lingering
       `build.base-url` and errors with
       "build.base-url was removed in plan
-      115; delete it"
+      2606101546; delete it"
 - [ ] No built-in recipes ship; an unknown
       `recipe:` is a lint error (MDS039)
 - [ ] All tests pass: `go test ./...`

@@ -1,9 +1,9 @@
 ---
-id: 117
+id: 2606101548
 title: Build execution hardening
 status: "🔲"
 summary: >-
-  Layer security on top of plan 115's basic
+  Layer security on top of plan 2606101546's basic
   builder execution. Trust gate so a freshly
   cloned repo cannot run recipes silently.
   Hermetic env (allowlisted PATH and env
@@ -22,8 +22,8 @@ model: opus
 ## Goal
 
 Make the build pass safe on an untrusted
-repo. Plan 115 wires the recipe through
-`os/exec`. Plan 117 adds the defenses that
+repo. Plan 2606101546 wires the recipe through
+`os/exec`. Plan 2606101548 adds the defenses that
 stop a hostile recipe or config from
 escaping its declared inputs/outputs,
 leaking child processes, or writing where
@@ -33,7 +33,7 @@ it should not.
 
 The threat model treats both `.mdsmith.yml`
 and `<?build?>` directives as untrusted.
-Plan 115's wiring assumes trusted input;
+Plan 2606101546's wiring assumes trusted input;
 this plan closes the gap so cloning a
 strange repo and running `mdsmith fix` does
 not detonate.
@@ -87,7 +87,7 @@ Each recipe is invoked with:
 - A new process group via `Setpgid` on
   Unix (or `CREATE_NEW_PROCESS_GROUP` on
   Windows).
-- Standard streams attached per plan 116;
+- Standard streams attached per plan 2606101547;
   this plan is process control only.
 
 On `--build-timeout` expiry, mdsmith
@@ -99,7 +99,7 @@ zombies behind.
 
 ### Atomic write hardening
 
-Plan 115's basic atomic write is replaced
+Plan 2606101546's basic atomic write is replaced
 by:
 
 1. mdsmith `Lstat`s `.mdsmith/build-staging/`.
@@ -222,7 +222,7 @@ no pass-through name is empty or contains
    set to staging, `Setpgid` (Unix) or
    process group (Windows), SIGTERM-then-
    SIGKILL on timeout.
-5. Replace plan 115's basic atomic write
+5. Replace plan 2606101546's basic atomic write
    with the hardened version: `Lstat`
    `.mdsmith/build-staging/` and refuse if
    it is a symlink, not a directory, or

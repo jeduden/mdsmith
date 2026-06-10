@@ -17,7 +17,7 @@ model: opus
 
 ## Goal
 
-The build pass inside `mdsmith fix` (plan 115)
+The build pass inside `mdsmith fix` (plan 2606101546)
 runs only recipes whose inputs or recipe spec
 changed, or whose declared outputs are
 missing. mdsmith hashes one ActionID per
@@ -27,7 +27,7 @@ skips fresh targets.
 ## Context
 
 Plan 102 adds `inputs:` and `outputs:` to
-`<?build?>`. Plan 115 wires the build pass
+`<?build?>`. Plan 2606101546 wires the build pass
 into `mdsmith fix` and rebuilds every target
 unconditionally — wasting time and flooding
 git diffs with regenerated artifacts whose
@@ -135,7 +135,7 @@ both source locations. Overlap covers exact
 collisions and directory-prefix collisions
 (`book/` vs `book/index.html`). Without it
 cache ownership is ambiguous and serial
-builds become "last writer wins"; plan 116
+builds become "last writer wins"; plan 2606101547
 reuses the rule for parallel safety.
 
 ### Cache file
@@ -171,7 +171,7 @@ readable.
 
 ### Flags on `mdsmith fix`
 
-Extends plan 115's build-pass flag set:
+Extends plan 2606101546's build-pass flag set:
 
 | Flag                  | Behavior                                                                |
 | --------------------- | ----------------------------------------------------------------------- |
@@ -185,21 +185,21 @@ up to date with its source" a CI signal a
 reviewer can trust. The lint-fix pass still
 runs unless combined with `--build-only`.
 
-### Interaction with plan 115
+### Interaction with plan 2606101546
 
 - The build pass calls the staleness check
   before `Builder.Build`; fresh targets are
   skipped silently.
 - Per-target summary: `OK` (ran, succeeded),
   `FAIL` (ran, failed), `SKIP` (was fresh).
-- `--build-dry-run` (plan 115) gains a per-
+- `--build-dry-run` (plan 2606101546) gains a per-
   target verdict (`STALE | FRESH`).
 
 ### Out of scope
 
 Reverse dependency tracking, watch mode,
 cross-machine cache sharing, tool-version
-hashing. Parallel builds: plan 116.
+hashing. Parallel builds: plan 2606101547.
 
 ## Tasks
 
@@ -227,13 +227,13 @@ hashing. Parallel builds: plan 116.
    clear error naming both source locations;
    do not run either recipe.
 5. Wire staleness into the `mdsmith fix`
-   build pass (plan 115). Default skips
+   build pass (plan 2606101546). Default skips
    fresh; refresh cache entries for rebuilt
    targets; atomic cache write at the end of
    the run. Per-target summary gains `SKIP`.
 6. Add flags `--build-force`,
    `--build-check-stale`, `--build-no-cache`.
-   Update `--build-dry-run` (plan 115) to
+   Update `--build-dry-run` (plan 2606101546) to
    print `STALE | FRESH` per target.
 7. Integration tests:
 

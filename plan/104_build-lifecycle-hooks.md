@@ -16,7 +16,7 @@ model: sonnet
 
 ## Goal
 
-The `mdsmith fix` build pass (plan 115) runs
+The `mdsmith fix` build pass (plan 2606101546) runs
 declared `before` commands once before any
 recipe and declared `after` commands once
 after the recipe pass. Failure semantics are
@@ -24,7 +24,7 @@ explicit and CI-friendly.
 
 ## Context
 
-Plan 115 ships the build pass inside `mdsmith
+Plan 2606101546 ships the build pass inside `mdsmith
 fix`; plan 103 adds staleness. Neither
 provides setup/teardown lifecycle. The
 motivating example is a user-declared
@@ -67,14 +67,14 @@ build pass, not per directive.
 ```text
 1. Lint-fix pass                   (existing fix behavior)
 2. before[0], before[1], …          (in order, plan 104)
-3. recipe pass                       (plan 115)
+3. recipe pass                       (plan 2606101546)
 4. after[0], after[1], …             (in order, plan 104)
 ```
 
 Hooks are part of the build pass.
-`--no-build` (plan 115) skips the build pass
+`--no-build` (plan 2606101546) skips the build pass
 and therefore both hook lists. `--build-only`
-(plan 115) skips step 1 (lint-fix) but still
+(plan 2606101546) skips step 1 (lint-fix) but still
 runs steps 2–4 in order — hooks bracket the
 recipe pass either way.
 
@@ -85,7 +85,7 @@ recipe pass either way.
   no `after` hooks. The lint-fix pass already
   ran; its results stand.
 - **Recipe fails**: finish the recipe pass
-  per plan 115's `OK | FAIL` summary (plan
+  per plan 2606101546's `OK | FAIL` summary (plan
   103 adds `SKIP` once staleness lands),
   then run `after` hooks. Final exit non-zero.
 - **`after` fails**: print stderr and exit
@@ -171,15 +171,15 @@ debugging without the gate.
 
 ### Flags on `mdsmith fix`
 
-| Flag                            | Behavior                                                    |
-| ------------------------------- | ----------------------------------------------------------- |
-| `--no-build`                    | (plan 115) Skip the entire build pass — including hooks     |
-| `--build-no-hooks`              | Run the build pass but skip both `before` and `after` hooks |
-| `--build-skip-hooks-when-fresh` | Skip both lists when no target is stale; run them otherwise |
+| Flag                            | Behavior                                                       |
+| ------------------------------- | -------------------------------------------------------------- |
+| `--no-build`                    | (plan 2606101546) Skip the entire build pass — including hooks |
+| `--build-no-hooks`              | Run the build pass but skip both `before` and `after` hooks    |
+| `--build-skip-hooks-when-fresh` | Skip both lists when no target is stale; run them otherwise    |
 
-`--build-recipe NAME` (plan 115) does not
+`--build-recipe NAME` (plan 2606101546) does not
 filter hooks — they are global.
-`--build-dry-run` (plan 115) lists hooks
+`--build-dry-run` (plan 2606101546) lists hooks
 alongside recipes; nothing executes.
 
 ### Interaction with staleness (plan 103)
@@ -220,7 +220,7 @@ via PID file.
    dispatches via `os/exec`, returns the
    first failure.
 4. Wire `runHooks` into the `mdsmith fix`
-   build pass (plan 115): run `before`
+   build pass (plan 2606101546): run `before`
    immediately before the recipe pass; on
    failure exit immediately with the hook's
    exit code, run no recipes, run no `after`

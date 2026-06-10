@@ -2,7 +2,7 @@
 title: External build orchestrator spike — language relaxed
 description: Whether relaxing the Go-only constraint opens up a
   better external build orchestrator for mdsmith's `<?build?>`
-  feature than the internal engine in plans 102-117.
+  feature than the internal engine in the build plan series.
 ---
 # External build orchestrator spike — language relaxed
 
@@ -37,17 +37,17 @@ candidates split cleanly:
   audience.
 - **Strongest threat model**: [Tup][tup]. Its FUSE / PTRACE
   tracing literally implements output confinement and
-  undeclared-write detection — exactly what plan 117's
+  undeclared-write detection — exactly what plan 2606101548's
   post-conditions reimplement. Distribution requires a
   kernel filesystem extension on every platform.
-- **Closest to "everything plan 117 specifies"**: [Pants
+- **Closest to "everything plan 2606101548 specifies"**: [Pants
   v2][pants]. Sandboxed by default, content-addressed,
   active. ~150 MB install of Python + bundled Rust engine
   for a Markdown linter audience is a non-starter.
 
 The recommendation is unchanged from the Go-only spike:
 **keep the internal engine; treat Tup as the inspiration
-for plan 117's post-conditions, treat Shake as the
+for plan 2606101548's post-conditions, treat Shake as the
 inspiration for plan 103's content-hash and early-cutoff
 design**. Add the same `mdsmith targets --json` side door
 proposed in the Go-only spike — it lets a power user wire
@@ -100,14 +100,14 @@ layer takes over file-access tracing, undeclared-write
 rejection, and incremental rebuild against content hashes.
 The user runs `tup` instead of `mdsmith fix --build-only`.
 
-**Plan delta.** Plan 117 shrinks dramatically. Output
+**Plan delta.** Plan 2606101548 shrinks dramatically. Output
 confinement, undeclared-write detection, and recipe
 sandboxing are Tup's headline features — exactly what plan
-117's post-conditions implement by hand. Plan 103's
+2606101548's post-conditions implement by hand. Plan 103's
 ActionID becomes Tup's signature. Plan 102 stays as the
-directive parser. Plans 115 / 116 shrink to "emit Tupfile
+directive parser. Plans 2606101546 / 2606101547 shrink to "emit Tupfile
 and shell out to `tup`." Net deletion: most of 103 and most
-of 117.
+of 2606101548.
 
 **User burden.** Catastrophic. Tech writers must install
 `tup` plus a FUSE kernel module — [macFUSE][macfuse], or
@@ -135,10 +135,10 @@ takes over. Or mdsmith generates a Shakefile.hs file with
 one `*>` rule per `<?build?>`.
 
 **Plan delta.** Plan 103 (ActionID, early-cutoff caching)
-is exactly Shake's wheelhouse. Plan 116's
+is exactly Shake's wheelhouse. Plan 2606101547's
 `--build-explain` becomes Shake's `--lint` and `-VV`. Plan
-117 still mostly needed — Shake leaves sandboxing to the
-user. Net deletion: most of 103 and parts of 116.
+2606101548 still mostly needed — Shake leaves sandboxing to the
+user. Net deletion: most of 103 and parts of 2606101547.
 
 **User burden.** Severe. Haskell Stack install plus `stack
 install shake` is required; the [Shake quick-start][shake]
@@ -179,7 +179,7 @@ trust gate; classic concurrent-write hazards under
 *Recursive Make Considered Harmful*][miller-make]
 remains the foundational reading). The "every dev
 knows make" advantage is real but does not buy mdsmith
-any of the threat-model defenses plan 117 covers. Plan
+any of the threat-model defenses plan 2606101548 covers. Plan
 delta if adopted: same as ninja.
 
 **redo** (Avery Pennarun's Python implementation, the
@@ -197,7 +197,7 @@ trust gate; Python install or build-from-source for the
 C ports; uneven cross-platform story (Windows is
 poorly supported by every redo implementation). Plan
 delta if adopted: plan 103 mostly absorbed (redo handles
-content hashing); plans 115 / 116 / 117 stay.
+content hashing); plans 2606101546 / 2606101547 / 2606101548 stay.
 
 **ninja.** Single C++ binary, ubiquitous, fast. mdsmith
 emits `build.ninja` (Model B). The mtime problem is
@@ -214,14 +214,14 @@ rebuilds — annoying, not catastrophic. Workaround:
 content-hash sidecar (mdsmith already has the cache
 from plan 103) plus timestamp pinning on cache restore
 (the [`mtime_cache` gem][mtime-cache]). Plan delta if
-adopted: ninja replaces some of 116's parallel work;
+adopted: ninja replaces some of 2606101547's parallel work;
 everything else stays.
 
 **just.** Rust single binary, 33 k+ stars. **It
 explicitly says it is not a build system and does no
 file tracking.** Adopting it deletes nothing from plans
-102 / 103 / 115 / 117 — it would only replace the
-orchestration shell of plan 116. Net value: low.
+102 / 103 / 2606101546 / 2606101548 — it would only replace the
+orchestration shell of plan 2606101547. Net value: low.
 
 [miller-make]: https://aegis.sourceforge.net/auug97.pdf
 [djb-redo]: https://cr.yp.to/redo.html
@@ -233,7 +233,7 @@ orchestration shell of plan 116. Net value: low.
 
 **Pants v2** — Python frontend, Rust engine, sandboxed by
 default, content-addressed, daemon-mode change watching.
-Pants implements every threat-model defense plan 117
+Pants implements every threat-model defense plan 2606101548
 specifies — sandbox, hermetic env, content-addressed
 action cache, fine-grained invalidation — and its
 sandboxing is on by default rather than gated behind
@@ -270,22 +270,22 @@ docs][buck2-install], [Tweag tour of Buck2][buck2-tweag].)
 
 ## Plan delta if any of these were adopted
 
-| Plan                                                          | Tup                           | Shake              | ninja             | Pants v2       |
-| ------------------------------------------------------------- | ----------------------------- | ------------------ | ----------------- | -------------- |
-| [102][p102] — multi-output directive                          | Stays in full                 | Stays in full      | Stays in full     | Stays in full  |
-| [103][p103] — staleness + ActionID cache                      | Mostly deleted                | Mostly deleted     | Stays (mtime gap) | Mostly deleted |
-| [115][p115] — builder execution in fix                        | Shrinks to "emit + shell out" | Shrinks            | Shrinks           | Shrinks        |
-| [116][p116] — UX (logs, `--build-jobs`, explain)              | Shrinks (Tup logs)            | Shrinks (`--lint`) | Minor shrink      | Stays          |
-| [117][p117] — hardening                                       | Mostly deleted                | Stays in full      | Stays in full     | Mostly deleted |
-| **NEW** — `mdsmith targets --json` side door                  | Add                           | Add                | Add               | Add            |
-| **NEW** — graph emitter (Tupfile / Shakefile / ninja / BUILD) | Add                           | Add                | Add               | Add            |
-| **NEW** — install / dependency docs                           | Add                           | Add                | Add               | Add            |
+| Plan                                                           | Tup                           | Shake              | ninja             | Pants v2       |
+| -------------------------------------------------------------- | ----------------------------- | ------------------ | ----------------- | -------------- |
+| [102][p102] — multi-output directive                           | Stays in full                 | Stays in full      | Stays in full     | Stays in full  |
+| [103][p103] — staleness + ActionID cache                       | Mostly deleted                | Mostly deleted     | Stays (mtime gap) | Mostly deleted |
+| [2606101546][p2606101546] — builder execution in fix           | Shrinks to "emit + shell out" | Shrinks            | Shrinks           | Shrinks        |
+| [2606101547][p2606101547] — UX (logs, `--build-jobs`, explain) | Shrinks (Tup logs)            | Shrinks (`--lint`) | Minor shrink      | Stays          |
+| [2606101548][p2606101548] — hardening                          | Mostly deleted                | Stays in full      | Stays in full     | Mostly deleted |
+| **NEW** — `mdsmith targets --json` side door                   | Add                           | Add                | Add               | Add            |
+| **NEW** — graph emitter (Tupfile / Shakefile / ninja / BUILD)  | Add                           | Add                | Add               | Add            |
+| **NEW** — install / dependency docs                            | Add                           | Add                | Add               | Add            |
 
 [p102]: ../../../plan/102_build-subcommand.md
 [p103]: ../../../plan/103_build-staleness-and-deps.md
-[p115]: ../../../plan/115_builder-execution-in-fix.md
-[p116]: ../../../plan/116_build-execution-ux.md
-[p117]: ../../../plan/117_build-execution-hardening.md
+[p2606101546]: ../../../plan/2606101546_builder-execution-in-fix.md
+[p2606101547]: ../../../plan/2606101547_build-execution-ux.md
+[p2606101548]: ../../../plan/2606101548_build-execution-hardening.md
 
 In every column, mdsmith *gains* a graph emitter and an
 install-docs chore. Tup and Pants v2 delete the most plan
@@ -317,7 +317,7 @@ friction.
   treat git-checkout and cache-restore mtimes as untrusted
   even with the internal engine.
 - **Outer-orchestrator trust.** Any hand-off to a foreign
-  orchestrator means the trust gate (plan 117) only
+  orchestrator means the trust gate (plan 2606101548) only
   protects mdsmith's own spawn. The outer orchestrator
   runs its own commands in its own threat envelope.
   Document this asymmetry.
@@ -335,10 +335,10 @@ choices and surfaced two that could be tightened:
 - **Plan 103's content-hash cache** is borrowed from the
   same model that Shake, Bazel, Buck2, and Pants all
   arrived at. Confirmed.
-- **Plan 117's output-confinement post-condition** is
+- **Plan 2606101548's output-confinement post-condition** is
   Tup's headline feature, implemented by mdsmith without
   the FUSE dependency. Confirmed.
-- **Plan 116's `--build-explain`** maps directly to
+- **Plan 2606101547's `--build-explain`** maps directly to
   Shake's `--lint` and `-VV`. Naming and feature scope
   confirmed.
 - **Open question for plan 103**: should the cache
@@ -347,9 +347,9 @@ choices and surfaced two that could be tightened:
   answer is "no" — but the doc should call this out
   explicitly as a deliberate choice borrowed from
   ninja's pain.
-- **Open question for plan 117**: Pants and Tup both
+- **Open question for plan 2606101548**: Pants and Tup both
   sandbox the recipe's `cwd` to a per-invocation
-  directory. Plan 117 already does this via the staging
+  directory. Plan 2606101548 already does this via the staging
   dir; worth restating that the staging dir is the
   recipe's `Cmd.Dir`, full stop.
 
@@ -408,7 +408,7 @@ choices and surfaced two that could be tightened:
 
 - [Plan 102 — multi-output `<?build?>` directive][p102]
 - [Plan 103 — build target staleness and dependency tracking][p103]
-- [Plan 115 — builder execution wired into `mdsmith fix`][p115]
-- [Plan 116 — build execution UX][p116]
-- [Plan 117 — build execution hardening][p117]
+- [Plan 2606101546 — builder execution wired into `mdsmith fix`][p2606101546]
+- [Plan 2606101547 — build execution UX][p2606101547]
+- [Plan 2606101548 — build execution hardening][p2606101548]
 - [Earlier Go-only spike](go-only.md)

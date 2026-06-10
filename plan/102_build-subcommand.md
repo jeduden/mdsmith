@@ -29,7 +29,7 @@ binary as separate argv arguments.
 
 Builds on plan 101 (the `<?build?>` directive
 and MDS039) and plan 100 (`build:` config
-and MDS040). Plan 115 wires targets through
+and MDS040). Plan 2606101546 wires targets through
 a `Builder` into `mdsmith fix`; plan 103
 layers staleness.
 
@@ -82,7 +82,7 @@ returns).
 
 Each entry in `inputs:` is a literal path or a
 glob. Globs are evaluated at build time (plan
-115). Plan 102 only validates the path shape
+2606101546). Plan 102 only validates the path shape
 (see "MDS039 update" below).
 
 ### Body template — rendered once per output
@@ -119,7 +119,7 @@ MDS039 (plan 101) is changed to:
 3. Accept optional `inputs:` (list of strings,
    may be empty). Each entry is a relative
    path with no `..` or a glob. The glob shape
-   is validated; resolution is plan 115's job.
+   is validated; resolution is plan 2606101546's job.
 4. Render `body-template` once per `outputs`
    entry as described above.
 
@@ -153,7 +153,7 @@ allowlist before MDS039 accepts it:
   leading `**/`. Matches are bounded to the
   project root (entries are relative).
 
-At build time (plan 115) the resolved path
+At build time (plan 2606101546) the resolved path
 is re-checked against the project root.
 Inputs (which must exist) use
 `filepath.EvalSymlinks` to resolve the full
@@ -214,7 +214,7 @@ The directive supplies `outputs: [a.png,
 b.png]`; argv expansion appends each as a
 separate argument.
 
-The actual argv expansion happens in plan 115.
+The actual argv expansion happens in plan 2606101546.
 Plan 102's MDS040 update only validates that
 the reserved names are not declared as params.
 
@@ -241,7 +241,7 @@ the reserved names are not declared as params.
     rules; full doublestar globs accepted.
   - Enforce the 10 000-match cap on each
     `inputs:` glob during resolution (plan
-    115 calls into the same validator).
+    2606101546 calls into the same validator).
 
 2. Update body rendering in
    `internal/rules/build/`: render

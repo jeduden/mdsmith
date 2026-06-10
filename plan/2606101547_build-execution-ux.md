@@ -1,5 +1,5 @@
 ---
-id: 116
+id: 2606101547
 title: Build execution UX (stdout/stderr, debug, parallel)
 status: "🔲"
 summary: >-
@@ -29,8 +29,8 @@ execution.
 
 ## Context
 
-Plan 115 dispatches recipes and prints
-`OK | FAIL`. Plan 117 hardens execution.
+Plan 2606101546 dispatches recipes and prints
+`OK | FAIL`. Plan 2606101548 hardens execution.
 Neither helps debug a hung recipe or
 explain a freshness verdict. Five gotchas
 drive this plan:
@@ -85,7 +85,7 @@ any `.mdsmith/build-logs/<id>.log` whose
 ### Failure diagnostic format
 
 When a recipe exits non-zero or fails a
-post-condition check (plan 117), mdsmith
+post-condition check (plan 2606101548), mdsmith
 prints:
 
 ```text
@@ -101,7 +101,7 @@ FAIL book.html (recipe: pandoc)
   …
 ```
 
-`Cmd.Dir` is the staging dir (plan 117), so
+`Cmd.Dir` is the staging dir (plan 2606101548), so
 `{inputs}` and `{outputs}` expand to
 *absolute* paths (project-rooted source,
 staging output). The `source:` line keeps
@@ -113,7 +113,7 @@ away.
 
 ### Hung-recipe diagnostic
 
-When `--build-timeout` expires (plan 115),
+When `--build-timeout` expires (plan 2606101546),
 mdsmith prints before sending SIGTERM:
 
 ```text
@@ -160,7 +160,7 @@ not by the default `fix` flow.
 
 Run up to N recipes concurrently. Default
 is 1 (serial). `N>1` is safe because plan
-117's per-recipe staging dir keeps writes
+2606101548's per-recipe staging dir keeps writes
 disjoint, its output post-conditions catch
 any `outputs:` boundary violation, and the
 cache write happens in one pass after all
@@ -208,11 +208,11 @@ output (future, behind `--build-format json`).
    prefixes.
 2. Implement the failure diagnostic
    format. Add the source `.md` file:line
-   to the `Target` struct (plan 115) so
+   to the `Target` struct (plan 2606101546) so
    diagnostics can point to the
    directive.
 3. Implement the timeout diagnostic
-   (prints before SIGTERM, per plan 117's
+   (prints before SIGTERM, per plan 2606101548's
    process-group kill).
 4. Implement `--build-stream`: forward
    recipe streams line-by-line to the
@@ -227,7 +227,7 @@ output (future, behind `--build-format json`).
    ambiguity at target-graph load.
 6. Implement `--build-verify`: run each
    recipe twice in independent staging
-   dirs (plan 117), `diff` outputs,
+   dirs (plan 2606101548), `diff` outputs,
    warn and set the `unstable` cache
    flag on mismatch.
 7. Implement `--build-jobs N`: concurrent
@@ -293,7 +293,7 @@ output (future, behind `--build-format json`).
       streams live with target-name
       prefix; log file is still written
 - [ ] Timeout fires the diagnostic block
-      before SIGTERM (plan 117)
+      before SIGTERM (plan 2606101548)
 - [ ] `--build-explain TARGET` prints
       every ActionID input field and the
       cache verdict; runs no recipe
