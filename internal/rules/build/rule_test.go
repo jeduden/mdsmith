@@ -741,6 +741,11 @@ func TestValidatePathEntry_InteriorDotDotThatCleansInBounds(t *testing.T) {
 	assert.Empty(t, validatePathEntry("a/../b.png", false))
 }
 
+func TestValidatePathEntry_DotDotCollapsesToRoot(t *testing.T) {
+	// "a/.." cleans to "." (workspace root) — reject to prevent artifacts at ".".
+	assert.NotEmpty(t, validatePathEntry("a/..", false))
+}
+
 func TestValidatePathEntry_UnderMdsmithDir(t *testing.T) {
 	for _, p := range []string{".mdsmith/state", ".mdsmith/out.png"} {
 		assert.NotEmpty(t, validatePathEntry(p, false), "path %q should be rejected", p)

@@ -268,8 +268,7 @@ func hasDotDotSegment(p string) bool {
 func (r *Rule) checkTokens(filePath, name string, tokens []string) []lint.Diagnostic {
 	var diags []lint.Diagnostic
 	for _, tok := range tokens {
-		isSinglePlaceholder := placeholderRe.MatchString(tok) &&
-			placeholderRe.FindString(tok) == tok
+		isSinglePlaceholder := placeholderRe.FindString(tok) == tok
 		if !isSinglePlaceholder {
 			for _, op := range shellOperators {
 				if strings.Contains(tok, op) {

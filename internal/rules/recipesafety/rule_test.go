@@ -644,6 +644,36 @@ func TestCheck_MultipleRecipes_SortedByName(t *testing.T) {
 	assert.Contains(t, diags[1].Message, `"z-recipe"`)
 }
 
+// --- checkReservedTokenShape ---
+
+func TestCheck_EmbeddedReservedPlaceholder_Outputs(t *testing.T) {
+	t.Parallel()
+	// {outputs} embedded inside a larger token — must be standalone.
+	r := newRule(map[string]recipe{"x": {Command: "tool --out={outputs}"}})
+	diags := r.Check(newFile(t, "f.md"))
+	require.Len(t, diags, 1)
+	assert.Equal(t, lint.Error, diags[0].Severity)
+	assert.Contains(t, diags[0].Message, `reserved placeholder "{outputs}" must be a standalone argv token`)
+}
+
+func TestCheck_EmbeddedReservedPlaceholder_Inputs(t *testing.T) {
+	t.Parallel()
+	// {inputs} embedded inside a larger token — must be standalone.
+	r := newRule(map[string]recipe{"x": {Command: "tool --in={inputs}"}})
+	diags := r.Check(newFile(t, "f.md"))
+	require.Len(t, diags, 1)
+	assert.Equal(t, lint.Error, diags[0].Severity)
+	assert.Contains(t, diags[0].Message, `reserved placeholder "{inputs}" must be a standalone argv token`)
+}
+
+func TestCheck_StandaloneReservedPlaceholder_NoDiagnostic(t *testing.T) {
+	t.Parallel()
+	// {outputs} as a standalone token is correct — no reserved-shape error.
+	r := newRule(map[string]recipe{"x": {Command: "tool {outputs} -o {inputs}"}})
+	diags := r.Check(newFile(t, "f.md"))
+	assert.Empty(t, diags)
+}
+
 // --- Diagnostic fields ---
 
 func TestCheck_DiagnosticFields(t *testing.T) {
