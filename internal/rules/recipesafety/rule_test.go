@@ -525,6 +525,101 @@ func TestCheck_UnusedParams_SortedAlphabetically(t *testing.T) {
 	assert.Contains(t, diags[2].Message, `"zebra"`)
 }
 
+// --- Reserved params: inputs / outputs ---
+
+func TestCheck_ReservedParam_OutputsRequired(t *testing.T) {
+	r := newRule(map[string]recipe{
+		"x": {
+			Command:  "tool {outputs}",
+			Required: []string{"outputs"},
+		},
+	})
+	diags := r.Check(newFile(t, "f.md"))
+	require.Len(t, diags, 1)
+	assert.Equal(t, lint.Error, diags[0].Severity)
+	assert.Contains(t, diags[0].Message, `reserved parameter name "outputs"`)
+}
+
+func TestCheck_ReservedParam_InputsRequired(t *testing.T) {
+	r := newRule(map[string]recipe{
+		"x": {
+			Command:  "tool {inputs}",
+			Required: []string{"inputs"},
+		},
+	})
+	diags := r.Check(newFile(t, "f.md"))
+	require.Len(t, diags, 1)
+	assert.Equal(t, lint.Error, diags[0].Severity)
+	assert.Contains(t, diags[0].Message, `reserved parameter name "inputs"`)
+}
+
+func TestCheck_ReservedParam_OutputsOptional(t *testing.T) {
+	r := newRule(map[string]recipe{
+		"x": {
+			Command:  "tool {outputs}",
+			Optional: []string{"outputs"},
+		},
+	})
+	diags := r.Check(newFile(t, "f.md"))
+	require.Len(t, diags, 1)
+	assert.Equal(t, lint.Error, diags[0].Severity)
+	assert.Contains(t, diags[0].Message, `reserved parameter name "outputs"`)
+}
+
+func TestCheck_ReservedParam_InputsOptional(t *testing.T) {
+	r := newRule(map[string]recipe{
+		"x": {
+			Command:  "tool {inputs}",
+			Optional: []string{"inputs"},
+		},
+	})
+	diags := r.Check(newFile(t, "f.md"))
+	require.Len(t, diags, 1)
+	assert.Equal(t, lint.Error, diags[0].Severity)
+	assert.Contains(t, diags[0].Message, `reserved parameter name "inputs"`)
+}
+
+func TestCheck_ReservedParam_BothSorted(t *testing.T) {
+	r := newRule(map[string]recipe{
+		"x": {
+			Command:  "tool {outputs} {inputs}",
+			Required: []string{"outputs", "inputs"},
+		},
+	})
+	diags := r.Check(newFile(t, "f.md"))
+	require.Len(t, diags, 2)
+	// Reported in sorted name order: inputs before outputs.
+	assert.Contains(t, diags[0].Message, `"inputs"`)
+	assert.Contains(t, diags[1].Message, `"outputs"`)
+}
+
+func TestCheck_ReservedParam_NoUnusedWarning(t *testing.T) {
+	// A reserved name declared as a param produces only the reserved
+	// error, not a duplicate unused-param warning.
+	r := newRule(map[string]recipe{
+		"x": {
+			Command:  "tool run",
+			Required: []string{"outputs"},
+		},
+	})
+	diags := r.Check(newFile(t, "f.md"))
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "reserved parameter name")
+}
+
+func TestCheck_ReservedName_NotDeclared_NoError(t *testing.T) {
+	// {outputs}/{inputs} used in the command but not declared as params
+	// is fine — they are the collective placeholders, not named params.
+	r := newRule(map[string]recipe{
+		"x": {
+			Command:  "tool {inputs} -o {outputs}",
+			Required: []string{},
+		},
+	})
+	diags := r.Check(newFile(t, "f.md"))
+	assert.Empty(t, diags)
+}
+
 // --- Good path: no diagnostics ---
 
 func TestCheck_SafeCommand_NoDiagnostics(t *testing.T) {

@@ -37,6 +37,13 @@ var shellOperators = []string{
 	"&&", "||", ";", "|", ">>", "2>", ">", "<", "`", "$(", "${",
 }
 
+// reservedParamNames are param names a recipe may not declare in
+// params.required or params.optional. They are the collective argv
+// placeholders expanded from the directive's outputs:/inputs: lists,
+// so declaring them as named params has no meaning. The build executor
+// (plan 2606101546) substitutes {outputs}/{inputs} for these lists.
+var reservedParamNames = []string{"inputs", "outputs"}
+
 // placeholderRe matches a {name} placeholder where name is an identifier
 // ([A-Za-z_][A-Za-z0-9_]*), consistent with config validation.
 var placeholderRe = regexp.MustCompile(`\{([A-Za-z_][A-Za-z0-9_]*)\}`)
@@ -206,7 +213,30 @@ func (r *Rule) checkRecipe(filePath, name string, rec recipe) []lint.Diagnostic 
 	}
 	diags := r.checkExecutable(filePath, name, tokens[0])
 	diags = append(diags, r.checkTokens(filePath, name, tokens)...)
+	diags = append(diags, r.checkReservedParams(filePath, name, rec)...)
 	diags = append(diags, r.checkUnusedParams(filePath, name, rec)...)
+	return diags
+}
+
+// checkReservedParams reports an error for each reserved param name
+// (inputs, outputs) declared in params.required or params.optional.
+// Results are in reservedParamNames (alphabetical) order.
+func (r *Rule) checkReservedParams(filePath, name string, rec recipe) []lint.Diagnostic {
+	declared := make(map[string]bool, len(rec.Required)+len(rec.Optional))
+	for _, p := range rec.Required {
+		declared[p] = true
+	}
+	for _, p := range rec.Optional {
+		declared[p] = true
+	}
+	var diags []lint.Diagnostic
+	for _, reserved := range reservedParamNames {
+		if declared[reserved] {
+			diags = append(diags, r.diag(filePath, lint.Error,
+				fmt.Sprintf("recipe %q: reserved parameter name %q must not be declared in params",
+					name, reserved)))
+		}
+	}
 	return diags
 }
 
@@ -267,6 +297,11 @@ func (r *Rule) checkUnusedParams(filePath, name string, rec recipe) []lint.Diagn
 	}
 	for _, p := range rec.Optional {
 		declared[p] = true
+	}
+	// Reserved names are reported by checkReservedParams; don't also
+	// flag them here as unreferenced.
+	for _, reserved := range reservedParamNames {
+		delete(declared, reserved)
 	}
 	used := make(map[string]bool)
 	for _, m := range placeholderRe.FindAllStringSubmatch(rec.Command, -1) {

@@ -22,7 +22,7 @@ time; the rule never executes any binary.
 ## What it detects
 
 MDS040 validates the `command` field of every recipe in
-`build.recipes`. It applies six checks:
+`build.recipes`. It applies seven checks:
 
 1. **Non-empty** — `command` must have at least one token.
 2. **No shell interpreter** — the first token must not be
@@ -38,9 +38,18 @@ MDS040 validates the `command` field of every recipe in
    unexpected values.
 5. **No `..` in executable** — the first token must not
    contain a `..` path component.
-6. **No unused params** (warning, not error) — every entry
+6. **No reserved param names** — `inputs` and `outputs` are
+   the collective argv placeholders expanded from the
+   directive's `inputs:` / `outputs:` lists. A recipe must
+   not declare either in `params.required` or
+   `params.optional`.
+7. **No unused params** (warning, not error) — every entry
    in `params.required` and `params.optional` must be
    referenced by at least one `{param}` token in `command`.
+
+The collective placeholders `{outputs}` and `{inputs}` carry
+the directive's output and input lists. Use them directly in
+`command`; do not declare them as named params.
 
 ## Config
 
@@ -118,6 +127,20 @@ build:
 
 MDS040 reports: `recipe "render": command contains fused
 placeholders "{a}{b}" — separate with a delimiter`
+
+### Bad — reserved param name
+
+```yaml
+build:
+  recipes:
+    render:
+      command: "mmdc -i {input} -o {outputs}"
+      params:
+        required: [input, outputs]
+```
+
+MDS040 reports: `recipe "render": reserved parameter name
+"outputs" must not be declared in params`
 
 ## Meta-Information
 

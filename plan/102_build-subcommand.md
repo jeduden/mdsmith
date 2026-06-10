@@ -299,7 +299,7 @@ call-hierarchy gain real build edges.
 - [x] `{output}` in `body-template` refers to
       the current output in each render
       iteration
-- [ ] MDS040 rejects a recipe declaring
+- [x] MDS040 rejects a recipe declaring
       `inputs` or `outputs` in
       `params.required` or `params.optional`
 - [x] All MDS039 fixtures use the new
