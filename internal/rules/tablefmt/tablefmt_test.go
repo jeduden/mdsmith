@@ -49,10 +49,73 @@ func TestSplitRow_SingleColumn(t *testing.T) {
 
 // TestSplitRowBytes_EscapedPipe exercises the \| skip path in
 // splitRowBytes, which is distinct from the string-based splitRow.
+// The escape rule mirrors tablefmt's GFM semantics: \| is kept as a
+// literal in the current cell; a real | is a cell delimiter; \\|
+// means the second \ escapes the pipe (same as \|), so \\| is also
+// not a delimiter — matching GitHub's renderer behaviour.
 func TestSplitRowBytes_EscapedPipe(t *testing.T) {
-	cells := splitRowBytes([]byte(`| a \| b | c |`))
-	want := []string{`a \| b`, "c"}
-	assertCells(t, want, cells)
+	tests := []struct {
+		desc  string
+		input string
+		want  []string
+	}{
+		{
+			desc:  "single escaped pipe in middle of cell",
+			input: `| a \| b | c |`,
+			want:  []string{`a \| b`, "c"},
+		},
+		{
+			desc:  "multiple escaped pipes in one cell",
+			input: `| a \| b \| c | d |`,
+			want:  []string{`a \| b \| c`, "d"},
+		},
+		{
+			desc:  "escaped pipe at start of cell content",
+			input: `| \| text | other |`,
+			want:  []string{`\| text`, "other"},
+		},
+		{
+			desc:  "escaped pipe at end of cell content",
+			input: `| text \| | other |`,
+			want:  []string{`text \|`, "other"},
+		},
+		{
+			desc:  "double backslash before pipe: second \\ escapes the | (\\| is not a delimiter)",
+			input: `| a \\| b |`,
+			want:  []string{`a \\| b`},
+		},
+		{
+			desc:  "escaped pipe between real pipes in multi-cell row",
+			input: `| a | b \| c | d |`,
+			want:  []string{"a", `b \| c`, "d"},
+		},
+		{
+			desc:  "only an escaped pipe — single cell, no real delimiter",
+			input: `| \| |`,
+			want:  []string{`\|`},
+		},
+		{
+			desc:  "escaped pipe in every cell",
+			input: `| a \| x | b \| y | c \| z |`,
+			want:  []string{`a \| x`, `b \| y`, `c \| z`},
+		},
+		{
+			desc:  "backslash not followed by pipe is kept verbatim",
+			input: `| a\b | c |`,
+			want:  []string{`a\b`, "c"},
+		},
+		{
+			desc:  "trailing backslash (no following pipe) kept verbatim",
+			input: `| a\ | b |`,
+			want:  []string{`a\`, "b"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			got := splitRowBytes([]byte(tt.input))
+			assertCells(t, tt.want, got)
+		})
+	}
 }
 
 func TestSplitRowBytes_Basic(t *testing.T) {
