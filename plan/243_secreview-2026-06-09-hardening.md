@@ -1,7 +1,7 @@
 ---
 id: 243
 title: 'Security hardening batch — 2026-06-09 audit'
-status: "🔳"
+status: "✅"
 model: sonnet
 summary: >-
   Two low-risk hardening fixes from the 2026-06-09 audit:
@@ -57,7 +57,7 @@ package already imports `yamlutil` for the pre-check.
    `Render` and its catalog caller.
 2. [x] Replace the `panic` in `buildCUESource` with an
    error return.
-3. [ ] Replace `yaml.Unmarshal(data, &node)` in
+3. [x] Replace `yaml.Unmarshal(data, &node)` in
    `parseConventionFileBody` with
    `yamlutil.UnmarshalNodeSafe`; keep behaviour identical
    for alias-free input and add a test that an
@@ -68,9 +68,9 @@ package already imports `yamlutil` for the pre-check.
 - [x] `buildCUESource` returns an error on marshal
       failure; no panic reaches the catalog render path or
       the LSP.
-- [ ] Convention-file YAML is parsed via
+- [x] Convention-file YAML is parsed via
       `yamlutil.UnmarshalNodeSafe`; an anchor/alias file is
       rejected.
-- [ ] Both fixes covered by tests (driven red/green).
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] Both fixes covered by tests (driven red/green).
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

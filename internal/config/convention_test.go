@@ -465,6 +465,20 @@ func TestLoad_InvalidConventionSurfacesError(t *testing.T) {
 	assert.Contains(t, err.Error(), "bogus")
 }
 
+// TestValidateConventionScalar_RejectsYAMLAnchors pins that a
+// config file whose convention: value uses anchors/aliases is
+// rejected by validateConventionScalar via UnmarshalNodeSafe.
+// Without the safe wrapper the direct yaml.Unmarshal into a
+// yaml.Node silently accepts anchors, leaving a latent risk for
+// any future .Decode() call on the resulting node.
+func TestValidateConventionScalar_RejectsYAMLAnchors(t *testing.T) {
+	// A YAML doc with an anchor on the convention value.
+	data := []byte("base: &anchor portable\nconvention: *anchor\n")
+	err := validateConventionScalar(data)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "anchors/aliases")
+}
+
 func TestCopyConventionPreset_NilReturnsNil(t *testing.T) {
 	assert.Nil(t, copyConventionPreset(nil))
 }

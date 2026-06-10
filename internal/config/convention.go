@@ -8,6 +8,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/convention"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/yamlutil"
 )
 
 // applyConvention reads the top-level Convention selector from the
@@ -199,11 +200,15 @@ func validateConventionRuleSettings(
 // clean type error. Inspecting the raw node tag is the only way to
 // catch the type mismatch before that coercion happens.
 func validateConventionScalar(data []byte) error {
-	// yaml.Unmarshal into yaml.Node does not expand aliases, so this
-	// is safe without an alias-rejection pre-check. Errors are swallowed
-	// because Load's subsequent UnmarshalSafe call will surface them.
-	var node yaml.Node
-	if err := yaml.Unmarshal(data, &node); err != nil {
+	// Route through UnmarshalNodeSafe so anchors/aliases are rejected
+	// consistently with every other user-YAML entry point. Anchor/alias
+	// errors are propagated; other parse errors are swallowed so Load's
+	// subsequent UnmarshalSafe call surfaces them with its own message.
+	node, err := yamlutil.UnmarshalNodeSafe(data)
+	if err != nil {
+		if strings.Contains(err.Error(), "anchors/aliases") {
+			return err
+		}
 		return nil
 	}
 	if node.Kind != yaml.DocumentNode || len(node.Content) == 0 {
