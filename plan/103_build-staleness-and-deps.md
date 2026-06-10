@@ -26,11 +26,10 @@ stored in JSON, decides.
 
 ## Context
 
-Plan 102 adds `inputs:` and `outputs:` to
-`<?build?>`. Plan 2606101546 wires the build pass
-into `mdsmith fix` and rebuilds every target
-unconditionally, wasting time and churning
-git diffs.
+Plan 102 adds `inputs:` and `outputs:`.
+Plan 2606101546 wires the build pass into
+`mdsmith fix`, rebuilding every target
+unconditionally — wasted time, churned diffs.
 
 ### Pattern borrowed from `cmd/go/internal/cache`
 
@@ -47,9 +46,8 @@ rarely preserve it.
 ### Recipe-default inputs
 
 Recipes may declare implicit inputs in
-`build.recipes.NAME.default-inputs`. Each
-entry is a literal relative path or a
-`{param}` token. Example:
+`build.recipes.NAME.default-inputs` —
+literal relative paths or `{param}` tokens:
 
 ```yaml
 build:
@@ -82,10 +80,11 @@ each prefixed with its 8-byte big-endian
 length. Hashed paths are always the
 project-root-relative, slash-normalized
 form, stable across clones. Symlink
-resolution feeds the safety check only.
-Inputs run `EvalSymlinks` before hashing.
-Outputs resolve only the longest existing
-prefix (plan 102). Fields, in order:
+resolution guards against root escape; it
+never alters the hashed string. Inputs run
+`EvalSymlinks` before hashing; outputs
+resolve only the longest existing prefix
+(plan 102). Fields, in order:
 
 ```text
 recipe.command
@@ -101,12 +100,10 @@ length prefix. Each inner key, value, and
 path is itself length-framed; no separator
 bytes are used. Two-layer framing prevents
 collisions when param keys contain `=` or
-`\0` or filenames carry control bytes from
-hostile globs.
+`\0` or filenames carry control bytes.
 
-`cache.version` lets a future mdsmith
-release rev the schema and force a single
-rebuild without crashing on stale entries.
+`cache.version` lets a future release rev
+the schema and force a single rebuild.
 
 ### Staleness check
 
@@ -118,45 +115,42 @@ Per target, in order:
 2. If any entry in `outputs` does not exist
    on disk → stale.
 3. Compute the ActionID.
-4. Look up the target's cache entry by
-   sorted-output-set key. If absent or
-   stored ActionID differs → stale.
+4. Look up the entry by sorted-output-set
+   key; absent or different ActionID → stale.
 5. Hash each declared output; mismatch with
-   the cache entry's stored hash → stale
-   (the artifact was tampered with or
-   regenerated externally).
+   the entry's stored hash → stale
+   (tampered or regenerated externally).
 6. Otherwise → fresh; skip the recipe.
 
-Step 5 makes the cache *advisory*: it catches
-poisoned entries and hand-edited artifacts.
+Step 5 makes the cache *advisory*: it
+catches poisoned or hand-edited entries.
 
 A target is identified in the cache by its
 sorted `outputs` list, length-framed and
 joined. Any overlap across two directives'
 `outputs:` paths — exact or directory-prefix
 (`book/` vs `book/index.html`) — is a build
-error reporting both source locations;
-otherwise cache ownership is ambiguous.
+error reporting both source locations.
 Plan 2606101547 reuses the rule for
 parallel safety.
 
 ### Cache file
 
-Stored at `.mdsmith/build-cache.json`. Each
-entry has:
+Stored at `.mdsmith/build-cache.json`: a
+top-level `version`, then one entry per
+target with:
 
 - `outputs[]`: `{path, hash}` pairs sorted
-  by path; `hash` is sha256 of the artifact
-  at build time, used by staleness step 5.
+  by path; `hash` is the artifact's sha256
+  at build time (staleness step 5).
 - `inputs[]`: sorted post-glob paths;
   informational (ActionID covers content).
 - `action-id`: the ActionID serialized as
   `sha256-<64 lowercase hex>`; stored as
   entry metadata (*not* the JSON map key)
   and used as the log filename stem.
-- `recipe`, `built-at`: informational only;
-  neither is in the ActionID or consulted
-  by staleness.
+- `recipe`, `built-at`: informational; not
+  in the ActionID, not consulted.
 
 All paths are stored relative to the project
 root.
@@ -165,8 +159,17 @@ Cache writes are atomic (temp + rename). A
 mid-build crash leaves the previous cache
 readable.
 
-`.mdsmith/` goes into a recommended
-`.gitignore` snippet — per-clone state.
+The recommended `.gitignore` snippet:
+
+```text
+.mdsmith/build-cache.json
+.mdsmith/build-logs/
+.mdsmith/build-staging/
+```
+
+Never ignore the whole `.mdsmith/` dir.
+Its other folders (`kinds/`, `schemas/`,
+`conventions/`) are checked-in config.
 
 ### Flags on `mdsmith fix`
 
@@ -190,8 +193,8 @@ with `--build-check-stale` or
 
 - Staleness runs before `Builder.Build`;
   fresh targets are skipped silently.
-- Per-target summary: `OK` (ran, succeeded),
-  `FAIL` (ran, failed), `SKIP` (was fresh).
+- Per-target summary: `OK` (succeeded),
+  `FAIL`, `SKIP` (was fresh).
 - `--build-dry-run` gains a `STALE | FRESH`
   verdict per target.
 
@@ -204,10 +207,10 @@ hashing. Parallel builds: plan 2606101547.
 ## Tasks
 
 1. Extend `RecipeCfg` in `internal/config/`
-   with `DefaultInputs []string`. Validate
-   each entry is `{param}` (param declared,
-   not reserved) or a literal relative path
-   with no `..`. Add coverage in MDS040.
+   with `DefaultInputs []string`: each entry
+   `{param}` (declared, not reserved) or a
+   literal relative path, no `..`. Cover in
+   MDS040.
 2. Implement `internal/build/cache.go`:
    load/save `.mdsmith/build-cache.json`,
    atomic write via temp+rename, version
@@ -215,6 +218,7 @@ hashing. Parallel builds: plan 2606101547.
 3. Implement `internal/build/staleness.go`:
    resolve directive `inputs` ∪ recipe
    `default-inputs`, expand directive globs
+   through plan 2606101546's resolver
    (`default-inputs` stay literal), compute
    the length-framed ActionID, check output
    presence and content hash, return
@@ -238,32 +242,30 @@ hashing. Parallel builds: plan 2606101547.
    print `STALE | FRESH` per target.
 7. Integration tests:
 
-  - `cp`-based recipe with `inputs:
-    [src.txt]` skips on second `fix` run;
-    rebuilds when `src.txt` content changes.
+  - A `cp` recipe with `inputs: [src.txt]`
+    skips on the second run; rebuilds when
+    content changes.
   - Touching `src.txt` mtime without changing
     content does not trigger a rebuild.
-  - Editing the recipe `command` in
-    `.mdsmith.yml` triggers a rebuild for
-    all targets using it.
+  - Editing the recipe `command` triggers a
+    rebuild for all targets using it.
   - A two-output directive rebuilds when
     either output is deleted from disk.
   - A glob `inputs:` entry that matches zero
     files is a build error.
-  - Overlapping `outputs:` paths (exact
-    duplicates or directory-prefix
-    collisions) is a build error.
+  - Overlapping `outputs:` paths (exact or
+    directory-prefix) is a build error.
   - `--build-force` rebuilds even when fresh.
   - `--build-check-stale` exits non-zero
-    with stale output and zero with fresh
-    output; no recipe runs.
+    when stale, zero when fresh; no recipe
+    runs.
   - `--build-no-cache` rebuilds everything
     and writes nothing to cache.
 
 8. Document the staleness model and cache
-   file in `docs/guides/directives/build.md`.
-   Add the `.mdsmith/` ignore snippet to the
-   README and to a future `mdsmith init`.
+   file in `docs/guides/directives/build.md`;
+   add the build-state ignore snippet to the
+   README and a future `mdsmith init`.
 
 ## Acceptance Criteria
 
@@ -290,8 +292,7 @@ hashing. Parallel builds: plan 2606101547.
       prints stale targets and exits non-zero
       without running any recipe
 - [ ] `mdsmith fix --build-no-cache` rebuilds
-      everything and writes nothing to
-      `.mdsmith/build-cache.json`
+      everything; writes nothing to the cache
 - [ ] `mdsmith fix --build-dry-run` prints
       every target's `STALE | FRESH` verdict
 - [ ] Per-target summary distinguishes `OK`,
@@ -302,12 +303,11 @@ hashing. Parallel builds: plan 2606101547.
       `action-id`, `built-at`, `inputs`,
       `recipe`
 - [ ] Hand-editing an artifact triggers a
-      rebuild on the next `fix` run (output
-      content hash mismatch)
-- [ ] ActionID computation is length-framed:
-      a path containing NUL or a sentinel
-      byte does not collide with another
-      input set
+      rebuild on the next `fix` (hash
+      mismatch)
+- [ ] ActionID is length-framed: paths with
+      NUL or sentinel bytes cannot collide
+      with another input set
 - [ ] Cache writes are atomic (temp+rename);
       a mid-build crash leaves the previous
       cache readable

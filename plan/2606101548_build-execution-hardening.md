@@ -70,11 +70,12 @@ they are presumed sandboxed.
 
 A run with neither `<?build?>` directives
 nor `build.hooks` (plan 104) never consults
-the gate — nothing would execute. The gate
-covers `.mdsmith.yml` because it is the
-only file that can declare `build:`; if
-config ever spreads across files, the gate
-must widen with it.
+the gate — nothing would execute. Plan
+104's MDS040-clean gate runs after this
+one. The gate covers `.mdsmith.yml` because
+it is the only file that can declare
+`build:`; if config ever spreads across
+files, the gate must widen with it.
 
 ### Hermetic execution environment
 
@@ -115,9 +116,9 @@ by:
    a symlink or non-directory, mdsmith
    refuses.
 2. mdsmith refuses if
-   `.mdsmith/build-staging/` is world-
-   writable on Unix (`0o002` set); the
-   user fixes the permissions.
+   `.mdsmith/build-staging/` is group- or
+   world-writable on Unix (`0o022` mask);
+   the user fixes the permissions.
 3. mdsmith creates the per-recipe staging
    dir via `os.MkdirTemp` (random suffix)
    under `.mdsmith/build-staging/`. With
@@ -147,15 +148,14 @@ by:
 
 ### Output post-conditions
 
-After a recipe exits 0, mdsmith runs two
-checks before the rename phase (Bazel
-issue 14543 lesson):
+After a recipe exits 0, two checks run
+before the rename phase (Bazel issue
+14543 lesson):
 
 - **All declared outputs exist** in the
   staging dir. A missing one is a build
   failure ("recipe exited 0 but did not
-  produce X"). Recipe stdout claiming
-  success is not enough.
+  produce X").
 - **No undeclared write** landed in the
   project tree. mdsmith snapshots the
   output-paths' parent dirs (file list, size,
@@ -297,8 +297,8 @@ pass-through names or names containing `=`.
       a random suffix under
       `.mdsmith/build-staging/`; that
       staging root is refused if it is a
-      symlink, not a directory, or
-      world-writable
+      symlink, not a directory, or group-
+      or world-writable
 - [ ] Rename phase `Lstat`s each output
       destination, refuses to replace a
       symlink, then uses `os.Rename`;

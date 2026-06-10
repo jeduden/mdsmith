@@ -68,11 +68,10 @@ pure function of its config. Plan 103's
 ActionID still covers recipe spec and
 output paths.
 
-Empty `inputs:` is *not* right for recipes
-depending on remote state: the cache never
-invalidates. Use a synthetic input file the
-author touches, or `--build-force` on a
-schedule.
+Empty `inputs:` is wrong for remote-state
+recipes: the cache never invalidates. Use
+a synthetic input file the author touches,
+or `--build-force` on a schedule.
 
 Each entry in `outputs:` is a literal relative
 path. No globs. Every output must be a path the
@@ -143,6 +142,8 @@ allowlist before MDS039 accepts it:
 - After `path.Clean`, the result must not
   start with `..` and must not contain `..`
   segments.
+- Entries under `.mdsmith/` are rejected —
+  that directory is mdsmith state.
 - For `outputs:`: no glob characters
   (`*`, `?`, `[`). Outputs are literal paths.
 - For `inputs:`: full doublestar syntax per
@@ -169,11 +170,10 @@ project is a build error.
 
 ### Glob match cap
 
-A single `inputs:` glob that matches more
-than 10 000 files is a build error. The cap
-is per directive entry, not per directive,
-so an author who needs more declares
-multiple narrower patterns.
+An `inputs:` glob matching more than
+10 000 files is a build error. The cap is
+per entry, so an author who needs more
+declares multiple narrower patterns.
 
 ### Recipe `command` placeholders
 

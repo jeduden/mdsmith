@@ -108,8 +108,10 @@ pass after the existing lint-fix pass:
    `<?build?>` body — get re-rendered).
 2. Build pass runs:
 
-  - Collect all `<?build?>` directives in file
-    order.
+  - Collect all `<?build?>` directives in
+    file order, reusing the lint pass's
+    directive walk — no second workspace
+    walk.
   - For each, dispatch to the recipe's
     `Builder.Build`.
   - Write outputs atomically.
@@ -130,9 +132,12 @@ public `pkg/mdsmith` Session API and is
 excluded from the WASM bindings (plan 215):
 recipes exec processes, which the WASM and
 LSP in-memory fix paths must never do. The
-pre-merge-commit hook and the merge driver
-run fix with `--no-build` semantics, so a
-merge never executes recipes.
+in-process fix API (`fix.Source`) has no
+build stage, exempting the LSP and the
+merge driver by construction; the
+pre-merge-commit hook's script passes
+`--no-build` explicitly. A merge never
+executes recipes.
 
 ### `mdsmith fix` flags
 
@@ -149,6 +154,17 @@ merge never executes recipes.
 exclusive. The `--build-*` prefix groups
 build flags and avoids collision with future
 lint-fix flags.
+
+The same pattern governs later build
+flags. Inspect modes run no recipe:
+`--build-dry-run`, later
+`--build-check-stale` and
+`--build-explain`. They exclude each other
+and the execution-altering `--build-force`
+and `--build-verify`; combining them is a
+usage error. Tuning flags like
+`--build-timeout` or `--build-jobs`
+combine freely with a run.
 
 ## Tasks
 
@@ -177,8 +193,8 @@ lint-fix flags.
    in `cmd/mdsmith/`. Add the five flags
    above. Print per-target summary;
    non-zero exit on failure. Keep the pass
-   out of `pkg/mdsmith`; the pre-merge-commit
-   hook and merge driver invoke fix with
+   out of `pkg/mdsmith` and `fix.Source`;
+   the pre-merge-commit hook script passes
    `--no-build`.
 5. Integration tests:
 
