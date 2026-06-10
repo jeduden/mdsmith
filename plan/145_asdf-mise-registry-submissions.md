@@ -6,7 +6,7 @@ title: >-
 status: "🔳"
 summary: >-
   Land the asdf-plugin repo (jeduden/asdf-mdsmith) and
-  the mise-plugins/registry entry that the multi-channel
+  the jdx/mise registry entry that the multi-channel
   release pipeline already documents but cannot trigger
   from this repo. Spun out of plan/130 because both
   tasks ship outside this repo.
@@ -64,16 +64,23 @@ on `asdf plugin add mdsmith`.
    [`asdf-vm/asdf-plugins`](https://github.com/asdf-vm/asdf-plugins)
    adding mdsmith so `asdf plugin add mdsmith`
    resolves without an explicit URL.
-4. File a PR to mise's curated registry,
-   [`mise-plugins/registry`](https://github.com/mise-plugins/registry)
-   `registry.toml`, adding a `[tools.mdsmith]` entry
-   on the `github:jeduden/mdsmith` backend (`ubi:` is
-   deprecated for new entries) with a `test` field.
-   The PR body must make a popularity/maintenance
-   case, since the registry is curated. Once merged,
-   the prefix-less `mise use mdsmith@latest` form
-   starts resolving on user CLIs without any code
-   change in this repo.
+4. File a PR to mise's curated registry: the
+   `registry/` directory in
+   [`jdx/mise`](https://github.com/jdx/mise), one
+   TOML file per tool. (The former root
+   `registry.toml` was split into per-tool files;
+   the separate `mise-plugins/registry` repo was
+   archived in Oct 2024.) Add
+   `registry/mdsmith.toml` with a `[tools.mdsmith]`
+   entry on the `github:jeduden/mdsmith` backend
+   (`ubi:` is rejected for new entries; `aqua:` is
+   preferred only for tools already in the aqua
+   registry) and the required `test` field. The PR
+   body must make a popularity/maintenance case,
+   since the registry is curated. Once merged, the
+   prefix-less `mise use mdsmith@latest` form starts
+   resolving on user CLIs without any code change in
+   this repo.
 5. Update
    [docs/guides/install.md](../docs/guides/install.md)
    to drop the "pending follow-up" badge from the
@@ -94,7 +101,7 @@ on `asdf plugin add mdsmith`.
 - [x] `asdf install mdsmith X.Y.Z` then
       `mdsmith version` prints `mdsmith vX.Y.Z`.
 - [ ] `mise use mdsmith@X.Y.Z` (no backend prefix)
-      resolves after the `mise-plugins/registry` PR
+      resolves after the `jdx/mise` registry PR
       merges, and `mdsmith version` prints
       `mdsmith vX.Y.Z`.
 - [ ] [docs/guides/install.md](../docs/guides/install.md)
