@@ -365,9 +365,9 @@ func defaultConfigBytes() ([]byte, error) {
 	return yamlutil.Marshal(cfg)
 }
 
-// convertedConfigBytes reads, parses, and converts a markdownlint
-// config ("auto" = discover in the current directory), echoing the
-// conversion notes to w.
+// convertedConfigBytes resolves the markdownlint config path ("auto" =
+// discover in the current directory), converts it via
+// markdownlint.ConvertFile, and echoes the conversion notes to w.
 func convertedConfigBytes(path string, w io.Writer) (data []byte, source string, err error) {
 	source = path
 	if path == "auto" {
@@ -376,23 +376,14 @@ func convertedConfigBytes(path string, w io.Writer) (data []byte, source string,
 			return nil, "", err
 		}
 	}
-	raw, err := bytelimit.ReadFileLimited(source, bytelimit.DefaultMaxInputBytes)
-	if err != nil {
-		return nil, "", fmt.Errorf("reading %s: %w", source, err)
-	}
-	parsed, err := markdownlint.Parse(raw)
-	if err != nil {
-		return nil, "", fmt.Errorf("%s: %w", source, err)
-	}
-	conv, err := markdownlint.Convert(parsed)
+	data, notes, err := markdownlint.ConvertFile(source)
 	if err != nil {
 		return nil, "", err
 	}
-	for _, note := range conv.Notes {
+	for _, note := range notes {
 		_, _ = fmt.Fprintf(w, "mdsmith: note: %s\n", note)
 	}
-	data, err = markdownlint.EmitConfig(conv, source)
-	return data, source, err
+	return data, source, nil
 }
 
 // formatDiagnosticsTo writes diagnostics to w using the specified format.
