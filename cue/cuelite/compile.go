@@ -90,9 +90,14 @@ func visitForDefault(e ast.Expr, disjunctionOperand bool) error {
 	case *ast.BinaryExpr:
 		return visitBinaryForDefault(n, disjunctionOperand)
 	case *ast.ParenExpr:
-		// Parens preserve the surrounding position: `(*"")` in a disjunction
-		// stays a default, `(*"")` elsewhere stays misplaced.
-		return visitForDefault(n.X, disjunctionOperand)
+		// A `*` mark must be the OUTERMOST operator of a disjunct. Wrapping it in
+		// parens (`(*0) | 1`) makes the ParenExpr the disjunct's outermost node,
+		// so CUE rejects the mark ("preference mark not allowed at this
+		// position"). The paren's content is therefore NOT a mark position — pass
+		// false. A `*(a | b)` mark is handled by visitUnaryForDefault before the
+		// paren; a `(a | b)` sub-disjunction re-establishes mark positions for
+		// its own disjuncts via the BinaryExpr OR case.
+		return visitForDefault(n.X, false)
 	case *ast.StructLit:
 		return visitDeclsForDefault(n.Elts)
 	case *ast.ListLit:
@@ -323,15 +328,16 @@ func compileExpr(e ast.Expr) (*engineValue, error) {
 
 // isDeferrable reports whether an expression may be deferred to a kThunk when
 // it references a still-unresolved sibling field: an index expression
-// (`[if c {…}, …][k]`) or a relational comparison (`A != ""`) — the two
-// constructs the release-channels ternary idiom uses. A bare reference or any
-// other construct is not deferrable, so an unresolved reference in it is a
-// compile error rather than a thunk that can never resolve.
+// (`[if c {…}, …][k]`), a list literal whose comprehension references a sibling
+// (`[if c {1}, 2]`), or a relational comparison (`A != ""`) — the constructs
+// the release-channels ternary idiom uses. A bare reference or any other
+// construct is not deferrable, so an unresolved reference in it is a compile
+// error rather than a thunk that can never resolve.
 func isDeferrable(e ast.Expr) bool {
 	switch n := e.(type) {
 	case *ast.ParenExpr:
 		return isDeferrable(n.X)
-	case *ast.IndexExpr:
+	case *ast.IndexExpr, *ast.ListLit:
 		return true
 	case *ast.BinaryExpr:
 		switch n.Op {

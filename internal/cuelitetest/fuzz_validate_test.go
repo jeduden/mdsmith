@@ -311,6 +311,17 @@ func extraFuzzSeeds() []struct{ schema, data string } {
 		// in-house engine must compile the deferred body to catch it.
 		{`({mechanism:[if mechanism{string!=""}][0]})`, `0`},
 		{`{x: [if string {string != ""}][0]}`, `0`},
+		// A non-indexed list field whose comprehension references a sibling
+		// (`xs: [if c {1}, 2]`): CUE accepts and resolves it against data; the
+		// in-house engine must treat the list literal as deferrable, not a hard
+		// "reference not found".
+		{`{c: bool, xs: [if c {1}, 2]}`, `{"c":true,"xs":[1,2]}`},
+		// A `*` default mark wrapped in its own parens (`(*0) | 0`): CUE rejects
+		// "preference mark not allowed at this position" — the mark must be the
+		// outermost operator of a disjunct. The static pass must reject the
+		// paren-wrapped mark.
+		{`{(*0)|0}`, `0`},
+		{`{a: 1 | (*0)}`, `{}`},
 		// A lone-surrogate escape in a VALUE position (hatch 2) and in a KEY
 		// position (now rejected in both arms — no hatch). Seeding both keeps
 		// the surrogate classes exercised on every run.

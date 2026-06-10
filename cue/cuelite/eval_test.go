@@ -28,6 +28,9 @@ func TestCheckNoMisplacedDefault(t *testing.T) {
 		`{a: [...(*"")]}`,                         // open-list tail element type
 		`{a: [*""][0] | 2}`,                       // misplaced mark in a disjunction's left arm
 		`{a: [*""][0] & int}`,                     // misplaced mark in a non-OR binary's left operand
+		`{a: (*0) | 1}`,                           // a mark wrapped in its own parens is misplaced
+		`{a: 1 | (*0)}`,                           // the same on the right disjunct
+		`{a: ((*0)) | 1}`,                         // doubly parenthesized mark
 	}
 	for _, src := range rejects {
 		_, err := Compile(src)
@@ -43,6 +46,8 @@ func TestCheckNoMisplacedDefault(t *testing.T) {
 		`{a: *1 | 2}`,           // simple default
 		`{a: int | *"x"}`,       // default on the right
 		`{a: *(1 | 2) | 3}`,     // default over a parenthesized disjunction
+		`{a: (*1 | 2) | 3}`,     // a sub-disjunction's own direct mark stays valid
+		`{a: *(0) | 1}`,         // a mark over a parenthesized single value is valid
 		`{a: [1, 2][0]}`,        // list index, no mark
 		`{a: close({b: int})}`,  // call, no mark
 		`{a: {b: string}}`,      // nested struct, no mark
@@ -93,6 +98,25 @@ func TestThunk_comparisons(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestDeferrableList pins that a NON-indexed list field whose comprehension
+// references a sibling defers to a thunk and resolves against data — CUE
+// accepts `xs: [if c {1}, 2]`, so the in-house engine must too (a list literal
+// is a deferrable construct, not a hard "reference not found"). An undeclared
+// reference in the list still rejects at compile.
+func TestDeferrableList(t *testing.T) {
+	v, err := Compile(`{c: bool, xs: [if c {1}, 2]}`)
+	require.NoError(t, err)
+	// c=true keeps the if body, so xs is [1, 2]; c=false drops it, xs is [2].
+	assert.NoError(t, v.CompileMap(map[string]any{"c": true, "xs": []any{int64(1), int64(2)}}).Validate())
+	assert.NoError(t, v.CompileMap(map[string]any{"c": false, "xs": []any{int64(2)}}).Validate())
+	assert.Error(t, v.CompileMap(map[string]any{"c": true, "xs": []any{int64(2)}}).Validate(),
+		"c=true requires xs to start with 1")
+	// An undeclared reference in the list is still a hard compile error.
+	_, err = Compile(`{xs: [if undeclared {1}]}`)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `reference "undeclared" not found`)
 }
 
 // TestThunk_nestedListAndStruct drives a thunk whose evaluated body is a
