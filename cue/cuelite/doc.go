@@ -18,6 +18,16 @@
 // deliberately accepts segments ParsePath cannot parse (data keys
 // like "true" or "a.b"), mirroring cue.MakePath.
 //
+// [Value.LookupPath] reads the value at a [Path], [Value.Fields]
+// enumerates a struct's members (whose selectors feed straight into
+// [MakePath]), [Value.Exists] tells a resolved path from an absent one,
+// and [Value.String] / [Value.Decode] read a concrete leaf out. A value
+// derived by LookupPath or Fields keeps REBUILDABLE PROVENANCE — its
+// root source plus the path that reached it — so a [Value.Unify] across
+// contexts reconstructs it instead of pinning a context-bound value,
+// which lets a section lookup against a cached schema cross contexts
+// without mutating the shared value.
+//
 // # Error model
 //
 // Validate upholds one invariant:

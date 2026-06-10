@@ -39,6 +39,20 @@ type Value struct {
 	src    string
 	hasSrc bool
 	err    error
+
+	// lookupRoot, lookupPath, and hasLookup carry the REBUILDABLE
+	// PROVENANCE of a value derived by LookupPath or Fields: the root
+	// source it was looked up in plus the path to reach it. A derived
+	// cue.Value is context-pinned and cannot cross contexts, so rebuild
+	// reconstructs it from this provenance — recompile the root in the
+	// target context, then re-apply the path — instead of mutating a
+	// shared cached value (the race the plan-238 provenance note rules
+	// out). hasSrc is true for any source-retaining Value, including a
+	// lookup result, so rebuild treats both uniformly; hasLookup selects
+	// the path-replay rebuild over a plain source recompile.
+	lookupRoot string
+	lookupPath []string
+	hasLookup  bool
 }
 
 // errZeroValue is the bottom reason for a zero Value — one that was
@@ -304,6 +318,15 @@ func scanDuplicateJSONKeys(data []byte) error {
 func (o Value) rebuild(ctx *cue.Context) (cue.Value, bool) {
 	if o.val.Context() == ctx {
 		return o.val, true
+	}
+	if o.hasLookup {
+		// A LookupPath/Fields result: recompile its root in ctx and re-apply
+		// the path, reconstructing the looked-up subtree in the target
+		// context without pinning the context-bound derived value. This is
+		// the rebuildable provenance plan 238 requires so a cached schema's
+		// section lookup can cross contexts.
+		root := ctx.CompileString(o.lookupRoot)
+		return root.LookupPath(cuePath(Path{segments: o.lookupPath})), true
 	}
 	if o.hasSrc {
 		return ctx.CompileString(o.src), true

@@ -1,7 +1,7 @@
 ---
 id: 238
 title: "cuelite phase 2 — surfaces A + B (schema, query)"
-status: "🔲"
+status: "🔳"
 model: opus
 summary: >-
   Move internal/schema, requiredstructure, and internal/query
@@ -128,6 +128,32 @@ unification rules.
   in task 3 (where a context-free `Value` is shareable). Name the
   affected files when scheduling: `compile_cache.go` and
   `validate_runcache_test.go`.
+
+## Progress
+
+### Task 1 — façade extension (done)
+
+Added the surface-A/B accessor methods to `cue/cuelite`, still
+CUE-backed, each with a dedicated unit test and 100 % statement
+coverage held:
+
+- `Value.Exists`, `Value.LookupPath(Path) (Value, bool)`,
+  `Value.Fields() []Field` (with the `Field{Selector, Value}` shape),
+  `Value.String`, `Value.Decode` — in `cue/cuelite/access.go`.
+- **LookupPath provenance decision (plan note resolved).** A
+  LookupPath/Fields result keeps REBUILDABLE PROVENANCE — the root
+  source plus the path that reached it (`lookupRoot`, `lookupPath`,
+  `hasLookup` on `Value`) — instead of pinning the context-bound
+  derived `cue.Value`. `Value.rebuild` gained a `hasLookup` branch
+  that recompiles the root in the target context and re-applies the
+  path, so a section-level lookup against a cached schema crosses
+  contexts without mutating the shared value (the race the note rules
+  out). Fields extends the prefix one selector per child so a nested
+  field carries the full path.
+- Differential harness extended: `internal/cuelitetest/access.go` adds
+  an `AccessCase`/`AccessOutcome`/`RunAccess` arm comparing
+  Exists/LookupPath/Fields/String against a direct-CUE oracle over a
+  per-class corpus; green in CI as the flip scaffold.
 
 ## See also
 
