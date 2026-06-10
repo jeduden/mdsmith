@@ -7,7 +7,6 @@ import (
 
 	"cuelang.org/go/cue/ast"
 	"cuelang.org/go/cue/parser"
-	"cuelang.org/go/cue/token"
 	"github.com/jeduden/mdsmith/cue/cuelite"
 )
 
@@ -126,33 +125,6 @@ func graphHasCycle(graph map[string][]string, nodes map[string]bool) bool {
 		if color[n] == white && visit(n) {
 			return true
 		}
-	}
-	return false
-}
-
-// schemaIsTopLevelDisjunction reports whether the schema's top-level value is a
-// bare disjunction (`A | B`, possibly parenthesized) rather than a struct or
-// scalar. CUE adds a root-path summary leaf when such a disjunction rejects;
-// the in-house engine reports only the per-field leaves.
-func schemaIsTopLevelDisjunction(schema string) bool {
-	f, err := parser.ParseFile("schema.cue", schema)
-	if err != nil || len(f.Decls) != 1 {
-		return false
-	}
-	emb, ok := f.Decls[0].(*ast.EmbedDecl)
-	if !ok {
-		return false
-	}
-	return isDisjunction(emb.Expr)
-}
-
-// isDisjunction reports whether e is a `|` binary expression, descending parens.
-func isDisjunction(e ast.Expr) bool {
-	switch n := e.(type) {
-	case *ast.ParenExpr:
-		return isDisjunction(n.X)
-	case *ast.BinaryExpr:
-		return n.Op == token.OR
 	}
 	return false
 }
@@ -276,12 +248,36 @@ const maxExtraLeaves = 1
 // engine rejected at least every leaf CUE did — AND the in-house set carries
 // at most maxExtraLeaves paths beyond the oracle's, bounding the tolerance.
 func leafSuperset(got, want [][]string) bool {
+	return leafCovers(got, want) && len(got)-len(want) <= maxExtraLeaves
+}
+
+// leafCovers reports whether every path in want appears in got (got ⊇ want),
+// with no bound on the surplus — used where the in-house engine legitimately
+// reports more FIELD leaves than CUE's summarized set (the root-summary hatch).
+func leafCovers(got, want [][]string) bool {
 	for _, w := range want {
 		if !slices.ContainsFunc(got, func(g []string) bool { return slices.Equal(g, w) }) {
 			return false
 		}
 	}
-	return len(got)-len(want) <= maxExtraLeaves
+	return true
+}
+
+// pathsContainRoot reports whether paths includes the root (empty) path — CUE's
+// "does not satisfy" / "incomplete value" summary leaf.
+func pathsContainRoot(paths [][]string) bool {
+	return slices.ContainsFunc(paths, func(p []string) bool { return len(p) == 0 })
+}
+
+// nonRootPaths returns paths with the root (empty) path removed.
+func nonRootPaths(paths [][]string) [][]string {
+	out := make([][]string, 0, len(paths))
+	for _, p := range paths {
+		if len(p) > 0 {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // FuzzValidate is the differential fuzz target for surfaces A + B: it runs
@@ -380,12 +376,13 @@ func edgeFuzzSeeds() []struct{ schema, data string } {
 		// covers it.
 		{`({A:""|"0"[0]})`, `0`},
 		{`{a: "0"[0]}`, `{"a":1}`},
-		// A bare top-level disjunction (`{m:"0"} | ""`): both arms reject a
-		// non-matching document, but the rejecting-leaf granularity differs (CUE
-		// adds a root summary; the in-house engine enumerates fields). Hatch 3
-		// tolerates the leaf difference for this edge schema shape.
+		// CUE's root-summary leaf: a top-level disjunction that matches no branch,
+		// and a deferred thunk referencing a non-concrete field, both make CUE
+		// attribute the failure to the ROOT [] while the in-house engine names the
+		// precise field. Both reject; Hatch 3 tolerates the granularity.
 		{`({m:"0"}|"")`, `{"m":""}`},
 		{`({m:"0",n:"1"}|"")`, `{"m":"x","n":"y"}`},
+		{`({mechanism:""|"0",A:[if mechanism{}][0]})`, `{}`},
 		// An ordered comparison of mismatched scalar kinds (0 > ""): CUE rejects
 		// it as an invalid operation but defers in a disjunction; the in-house
 		// engine rejects eagerly at schema compile.
@@ -562,18 +559,21 @@ func fuzzValidateBody() func(*testing.T, string, string) {
 		if bothReject(inHouse, oracle) && leafSuperset(inHouse.Paths, oracle.Paths) {
 			return
 		}
-		// Hatch 3 — top-level disjunction leaf granularity. A BARE top-level
-		// disjunction (`{m: "0"} | ""`, `{m,n} | ""`) is the one shape where the
-		// rejecting-leaf SET genuinely differs in granularity rather than in
-		// content: CUE adds a root-path "does not satisfy disjunction" summary and
-		// reports the fields of the branch it tried, while the in-house engine
-		// enumerates every failing field. Both REJECT the document — the
-		// load-bearing accept/reject decision agrees — and a bare top-level
-		// disjunction is itself an edge schema shape (real front matter declares a
-		// struct). So the leaf-set difference is tolerated for a top-level
-		// disjunction that both arms reject at validate; a stage mismatch or a
-		// wrong accept on such a schema still fails.
-		if bothReject(inHouse, oracle) && schemaIsTopLevelDisjunction(schema) {
+		// Hatch 3 — CUE's root-summary leaf. When a disjunction fails to match
+		// any branch, or a deferred thunk references a non-concrete field, CUE
+		// attributes the failure to the ROOT (an empty path — "does not satisfy
+		// disjunction" / "incomplete value"), while the in-house engine attributes
+		// it to the precise FIELD whose thunk could not resolve. CUE emits this
+		// bare root [] leaf ONLY for such a summary (a plain field or literal
+		// mismatch carries the field path in both arms; a genuine root-scalar
+		// mismatch carries [] in both). So the hatch is scoped to exactly that
+		// signature: both reject at validate, CUE reports the root [] and the
+		// in-house engine does not, AND the in-house engine still covers every
+		// NON-root field leaf CUE reports (so no real field rejection is dropped).
+		// A missing field leaf, a wrong accept, or a stage mismatch still fails.
+		if bothReject(inHouse, oracle) &&
+			pathsContainRoot(oracle.Paths) && !pathsContainRoot(inHouse.Paths) &&
+			leafCovers(inHouse.Paths, nonRootPaths(oracle.Paths)) {
 			return
 		}
 		t.Fatalf("divergence on schema=%q data=%q: in-house %+v vs oracle %+v",
