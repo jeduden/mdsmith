@@ -1,0 +1,50 @@
+name: cuelite-fuzz
+
+# Differential fuzzing for the in-house CUE-subset engine (plan 218).
+# The two fuzzers compare the cuelite engine against the direct-CUE
+# oracle in internal/cuelitetest; they exist until plan 240 deletes
+# the oracle, then this workflow retires with the harness.
+#
+# This job carries the EXPLORATORY budget. The regression layer — every
+# previously-found divergence replayed as f.Add seeds and committed
+# testdata corpus entries — already runs in the ordinary `test` job on
+# every push. Review rounds deliberately do not run long fuzz loops;
+# this workflow is where new divergences are hunted, out-of-band.
+
+on:
+  pull_request:
+    paths:
+      - "cue/cuelite/**"
+      - "internal/cuelitetest/**"
+      - ".github/workflows/cuelite-fuzz.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+      - name: Fuzz schema/data validation against the CUE oracle
+        run: go test -run='^$' -fuzz=FuzzValidate -fuzztime=240s ./internal/cuelitetest/
+      - name: Fuzz path parsing against cue.ParsePath
+        run: go test -run='^$' -fuzz=FuzzParsePath -fuzztime=240s ./internal/cuelitetest/
+      # A failing fuzz run writes the minimized input under testdata/fuzz/.
+      # Upload it so the find survives the ephemeral runner and can be
+      # committed as a regression seed.
+      - name: Upload minimized crashers
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzz-crashers
+          path: internal/cuelitetest/testdata/fuzz/
+          if-no-files-found: ignore
