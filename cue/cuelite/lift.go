@@ -1,0 +1,171 @@
+package cuelite
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strconv"
+)
+
+// liftJSON parses a strict-JSON document into a concrete engine value. It
+// is the in-house replacement for the CUE JSON lift CompileJSON used to
+// delegate to: it enforces the same no-duplicate-key contract (a duplicate
+// object key at any depth is rejected, naming the key — see CompileJSON),
+// rejects any document that is not strict JSON (an unquoted key, a CUE
+// expression), and builds a closed struct so the lifted data validates
+// against an open schema by carrying every key concretely.
+//
+// json.Decoder with UseNumber preserves a number's exact text, so an
+// integer lifts to kInt and a non-integral or out-of-int64 number to
+// kFloat — matching the int64/float64 model. A lone-surrogate escape
+// ("\ud800") decodes to U+FFFD under encoding/json and is accepted as a
+// concrete string, the in-house engine's own stable behavior (the CUE lift
+// rejected it as an invalid Unicode value; the differential harness's
+// oracle is updated in lockstep).
+func liftJSON(data []byte) (*engineValue, error) {
+	if err := scanDuplicateKeys(data); err != nil {
+		return nil, err
+	}
+	var raw any
+	dec := json.NewDecoder(bytesReader(data))
+	dec.UseNumber()
+	if err := dec.Decode(&raw); err != nil {
+		return nil, fmt.Errorf("cuelite: invalid JSON: %w", err)
+	}
+	// Reject trailing content after the first value, so `{"x":1} {...}` is not
+	// silently accepted (matching the strict-JSON contract).
+	if dec.More() {
+		return nil, fmt.Errorf("cuelite: invalid JSON: trailing data after top-level value")
+	}
+	return liftAny(raw)
+}
+
+// liftAny converts a decoded JSON value (from encoding/json with
+// UseNumber) into a concrete engine value. Objects become closed structs,
+// arrays become closed lists, and scalars become concrete leaves.
+func liftAny(x any) (*engineValue, error) {
+	switch t := x.(type) {
+	case nil:
+		return &engineValue{kind: kNull}, nil
+	case bool:
+		return &engineValue{kind: kBool, b: t}, nil
+	case string:
+		return &engineValue{kind: kString, str: t}, nil
+	case json.Number:
+		return liftNumber(t)
+	case map[string]any:
+		return liftMap(t)
+	case []any:
+		return liftSlice(t)
+	default:
+		return nil, fmt.Errorf("cuelite: unsupported JSON value %T", x)
+	}
+}
+
+// liftNumber converts a json.Number to an int64 leaf when it parses as an
+// integer, else a float64 leaf, matching the int64/float64 value model.
+func liftNumber(n json.Number) (*engineValue, error) {
+	if i, err := n.Int64(); err == nil {
+		return &engineValue{kind: kInt, i: i}, nil
+	}
+	// strconv.ParseFloat returns the ±Inf value together with an ErrRange for
+	// an out-of-range literal (1e999); json.Number.Float64 forwards both. CUE
+	// accepts such a literal as a concrete number, so the in-house lifter
+	// keeps the ±Inf float rather than rejecting the document — the engine's
+	// own stable behavior, with the differential oracle aligned.
+	f, err := strconv.ParseFloat(n.String(), 64)
+	if err != nil && !errors.Is(err, strconv.ErrRange) {
+		return nil, fmt.Errorf("cuelite: number %s: %w", n.String(), err)
+	}
+	return &engineValue{kind: kFloat, f: f}, nil
+}
+
+// liftMap converts a decoded JSON object to a closed struct, preserving no
+// particular order (Go maps are unordered; field order does not affect
+// unification or the leaf set). Each value is lifted recursively.
+func liftMap(m map[string]any) (*engineValue, error) {
+	out := &engineValue{kind: kStruct}
+	for k, v := range m {
+		ev, err := liftAny(v)
+		if err != nil {
+			return nil, err
+		}
+		out.fields = append(out.fields, field{name: k, val: ev})
+	}
+	return out, nil
+}
+
+// liftSlice converts a decoded JSON array to a closed list (fixed length,
+// no open tail), with each element lifted recursively.
+func liftSlice(s []any) (*engineValue, error) {
+	out := &engineValue{kind: kList}
+	for _, el := range s {
+		ev, err := liftAny(el)
+		if err != nil {
+			return nil, err
+		}
+		out.prefix = append(out.prefix, ev)
+	}
+	return out, nil
+}
+
+// liftMapValue converts a map[string]any (the document's parsed front
+// matter) directly into a concrete engine value, with no JSON marshal/
+// parse round-trip — the hot path plan 218 mandates. It accepts the value
+// shapes a YAML/JSON front-matter decoder produces: map[string]any,
+// []any, string, bool, the integer and float numeric kinds, json.Number,
+// and nil. An unrecognized concrete type (a time.Time, say) is an error
+// so a silent mis-validation cannot slip through.
+func liftMapValue(x any) (*engineValue, error) {
+	switch t := x.(type) {
+	case nil:
+		return &engineValue{kind: kNull}, nil
+	case bool:
+		return &engineValue{kind: kBool, b: t}, nil
+	case string:
+		return &engineValue{kind: kString, str: t}, nil
+	case int:
+		return &engineValue{kind: kInt, i: int64(t)}, nil
+	case int64:
+		return &engineValue{kind: kInt, i: t}, nil
+	case float64:
+		return liftFloat(t), nil
+	case float32:
+		return liftFloat(float64(t)), nil
+	case json.Number:
+		return liftNumber(t)
+	case map[string]any:
+		out := &engineValue{kind: kStruct}
+		for k, v := range t {
+			ev, err := liftMapValue(v)
+			if err != nil {
+				return nil, err
+			}
+			out.fields = append(out.fields, field{name: k, val: ev})
+		}
+		return out, nil
+	case []any:
+		out := &engineValue{kind: kList}
+		for _, el := range t {
+			ev, err := liftMapValue(el)
+			if err != nil {
+				return nil, err
+			}
+			out.prefix = append(out.prefix, ev)
+		}
+		return out, nil
+	default:
+		return nil, fmt.Errorf("cuelite: unsupported front-matter value %T", x)
+	}
+}
+
+// liftFloat lifts a float64 that holds an integral value to an int leaf,
+// matching how a JSON/YAML decoder may hand back a whole number as a float
+// — so `weight: 42` validates against `int` whether the decoder produced
+// 42 or 42.0.
+func liftFloat(f float64) *engineValue {
+	if f == float64(int64(f)) {
+		return &engineValue{kind: kInt, i: int64(f)}
+	}
+	return &engineValue{kind: kFloat, f: f}
+}

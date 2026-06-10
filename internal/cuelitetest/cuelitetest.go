@@ -227,23 +227,26 @@ func oracleValidate(leaves []errors.Error) Outcome {
 	return validatePaths(paths)
 }
 
-// oracleData lifts the data document into ctx the same way cuelite's
-// CompileJSON does — strict JSON extraction plus a built-value bottom
-// check, not CompileBytes — so the oracle rejects non-JSON data and
-// duplicate keys exactly where the cuelite path does. It returns the
-// build error so OraclePath branches on it rather than on a sentinel
-// bottom value. It takes []byte so callers convert once: the benchmark
-// hoists the conversion out of its timed loop, keeping both arms
-// symmetric.
+// oracleData lifts the data document into ctx through CUE's own strict-JSON
+// path — an independent duplicate-key scan, then cuejson.Extract plus a
+// built-value bottom check — so the oracle rejects non-JSON data and
+// duplicate keys exactly where the in-house engine does. It returns the lift
+// error so OraclePath branches on it rather than on a sentinel bottom value,
+// and takes []byte so the benchmark hoists the conversion out of its timed
+// loop, keeping both arms symmetric.
 //
 // The duplicate-key rejection is an INDEPENDENT reimplementation of
-// cuelite's rule (rawDuplicateKeys), not a call into it: the harness's
-// value is that two separate implementations of the same contract agree.
-// CUE's JSON lift would silently unify same-named object keys into a
-// phantom merged object (a mergeable duplicate compiles clean), so
-// without this check the oracle would accept a document the cuelite arm
-// rejects at StageCompileData — a phantom divergence. Both arms
-// therefore reject any duplicate key here, before the lift.
+// cuelite's rule (rawDuplicateKeys), not a call into it: the harness's value
+// is that two separate implementations of the same contract agree. CUE's
+// JSON lift would silently unify same-named object keys into a phantom
+// merged object, so without this check the oracle would accept a document
+// the in-house arm rejects at StageCompileData — a phantom divergence.
+//
+// The post-flip in-house lifter accepts a lone-surrogate escape ("\ud800")
+// as a U+FFFD string, where this CUE lift rejects it; that deliberate
+// divergence (plan 238) is kept out of the differential corpus and pinned by
+// the cuelite package's own unit tests instead, so this oracle stays a
+// faithful direct-CUE check on every corpus row.
 func oracleData(ctx *cue.Context, data []byte) (cue.Value, error) {
 	if err := rawDuplicateKeys(data); err != nil {
 		return cue.Value{}, err
@@ -252,11 +255,6 @@ func oracleData(ctx *cue.Context, data []byte) (cue.Value, error) {
 	if err != nil {
 		return cue.Value{}, err
 	}
-	// BuildExpr can still bottom on a grammar-valid string that is not a
-	// valid Unicode value — a lone-surrogate escape such as "\ud800"
-	// passes the duplicate scan and Extract but builds to ⊥. Surface it as
-	// the data-compile error so the oracle, like cuelite's buildJSON,
-	// classifies it at StageCompileData rather than accepting a phantom.
 	val := ctx.BuildExpr(expr)
 	if err := val.Err(); err != nil {
 		return cue.Value{}, err

@@ -206,13 +206,34 @@ So the per-field diagnostic, the dedup key, and the anchor line do not
 change. The schema suite passes unchanged. That suite includes the
 plan-147/230 diagnostic-shape tests.
 
-### Task 3 — flip to the in-house value model (BLOCKED — decision needed)
+### Task 3 — flip to the in-house value model (done)
 
-The CUE-backed façade is still in place. The flip — the in-house value
-model, `Unify` as lattice meet, direct `map[string]any` validation, and
-the schema/data fuzzer — is the remaining work. The differential
-harness (validate, access, and path arms) is ready as the oracle scaffold
-and is green today.
+The flip landed: an in-house value model, `Unify` as lattice meet,
+direct `map[string]any` validation, and a schema/data fuzzer. The
+differential harness (validate, access, path arms) is the oracle.
+
+#### Test-contract flip (authorized)
+
+The interim per-`Value`-context behaviors were deliberate deviations from
+single-context CUE semantics. The flip RESTORES single-context CUE as the
+ground truth, so four pinned-test classes were rewritten under coordinator
+authorization:
+
+1. Cross-context bottom tests now assert the post-flip contract: a chained
+   unify of derived values SUCCEEDS and validates per single-context CUE.
+   The harness's cross-context corpus rows let the oracle evaluate the same
+   composition in ONE `cue.Context`; both arms agree. `errCrossContext` and
+   the `rebuild` machinery were deleted with their tests.
+2. `Errors() → []*PathError` (+ `PathError.Unwrap` to the engine's own
+   cause). The `errors.As`-to-cuelang assertions were dropped; in-house
+   sentinel unwrap tests (`TestValidate_unwrapsBottom`) kept.
+3. Exact CUE message strings re-pinned on the in-house engine's stable
+   wording: `conflicting values <a> and <b>`, path-tagged.
+4. The CUE-only private-helper tests (`buildJSON`/`rebuild`/
+   `scanDuplicateJSONKeys`/`jsonLevel`/`recordKey`/`cueErrorsOf`) were
+   deleted with their helpers. The strict-JSON duplicate-key CONTRACT of
+   `CompileJSON` is durable and preserved by the in-house JSON lifter; its
+   behavior-level tests stay green.
 
 #### Parser-frontend decision (recorded)
 

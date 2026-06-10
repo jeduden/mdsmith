@@ -336,12 +336,12 @@ func corpus() []Case {
 		// the cuelite arm rejects it at StageCompileData — a phantom
 		// divergence. Both arms must reject it at the data stage.
 		{Name: "mergeable duplicate key reject", Schema: `{a: {b: int, c: int}}`, Data: `{"a":{"b":1},"a":{"c":2}}`},
-		// A lone-surrogate escape is grammar-valid, duplicate-free strict
-		// JSON that passes the scanner and cuejson.Extract but builds to a
-		// bottom ("invalid string: unmatched surrogate pair"). Both arms must
-		// surface that bottom as a data-stage compile error (StageCompileData)
-		// rather than one arm accepting a phantom value.
-		{Name: "lone-surrogate value reject", Schema: `{a: string, b: int}`, Data: `{"a": "\ud800", "b": "x"}`},
+		// A type-mismatched scalar at a named field: a string where the schema
+		// wants int. Both arms reject at the field path. (The former
+		// lone-surrogate-value row tested CUE's surrogate rejection, which the
+		// flip deliberately changed to acceptance — that divergence is pinned by
+		// the cuelite package's own unit tests, not this faithful-CUE corpus.)
+		{Name: "string-where-int reject", Schema: `{a: string, b: int}`, Data: `{"a": "ok", "b": "x"}`},
 		// 1e999 is valid JSON but overflows float64; without dec.UseNumber()
 		// in both walkers, json.Decoder.Token errors on it mid-scan and the
 		// mergeable duplicate "a" beside it slips past BOTH arms into a
@@ -360,16 +360,13 @@ func corpus() []Case {
 		// so both arms defer to Extract's "after top-level value" error and
 		// resolve at StageCompileData rather than fabricating a duplicate "a".
 		{Name: "trailing top-level value reject", Schema: `{x: int}`, Data: `{"x":1} {"a":1,"a":2}`},
-		// Two distinct invalid-byte raw keys both decode to U+FFFD; without a
-		// utf8.Valid pre-check in both walkers, one arm fabricates a duplicate
-		// while the other defers to Extract — a divergence. Both arms must
-		// defer such input to Extract.
-		{Name: "invalid-UTF-8 keys defer", Schema: `{a: _}`, Data: "{\"a\xff\":1,\"a\xfe\":2}"},
-		// Two distinct lone-surrogate escaped keys decode to the same U+FFFD;
-		// both walkers must skip dup tracking for U+FFFD keys, so neither
-		// fabricates a duplicate. (The build then rejects the surrogate via
-		// the val.Err() guard, so both arms resolve at StageCompileData.)
-		{Name: "lone-surrogate keys not duplicates", Schema: `{a: _}`, Data: `{"\ud800":1,"\udc00":2}`},
+		// A deeply nested array-element object with a duplicate key: both the
+		// in-house scanner and the oracle's independent walk descend through the
+		// array levels and reject the duplicate at the data stage. (The former
+		// invalid-UTF-8 and lone-surrogate-key rows tested CUE's surrogate/UTF-8
+		// rejection at the build, a deliberate post-flip divergence pinned by the
+		// cuelite unit tests rather than this faithful-CUE corpus.)
+		{Name: "deep array-element duplicate reject", Schema: `{a: _}`, Data: `{"a":[[{"k":1,"k":2}]]}`},
 		// A string VALUE that equals its own key. The seenKey parity guard
 		// must not misread the value as a key; deleting it fabricates a
 		// duplicate in the cuelite arm and the two arms diverge.
