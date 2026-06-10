@@ -15,7 +15,7 @@
 // tree, emitting diagnostics through the lint.Diagnostic shape.
 //
 // See plan/146_inline-schema-in-kinds.md for the design context.
-// Plan 156 collapses each section entry to one discriminator
+// Plan 2606022124 collapses each section entry to one discriminator
 // (`heading:` — null, string, or mapping) with a single matcher
 // (`regex:`) and a cardinality field (`repeat: {min, max}`); see
 // docs/reference/section-schema.md for the full grammar.
@@ -181,7 +181,7 @@ const (
 // top-level (H2) section list; their children are H3, and so on.
 // Levels come from depth in the tree.
 //
-// Plan 156 collapses the section-entry vocabulary to three
+// Plan 2606022124 collapses the section-entry vocabulary to three
 // orthogonal axes:
 //
 //   - Discriminator — `heading:` value (`null`, string, or mapping).
@@ -191,7 +191,7 @@ const (
 // The legacy `aliases:`, `required:`, scope-level
 // `repeats:`/`sequential:`/`min:`/`max:`, and `{unlisted: true}`
 // shapes are gone; the parser rejects them with a "removed; see
-// plan 156" diagnostic naming the replacement.
+// plan 2606022124" diagnostic naming the replacement.
 type Scope struct {
 	// Heading is the diagnostic-friendly label for this scope —
 	// the bare-string literal for the sugar form, the regex body

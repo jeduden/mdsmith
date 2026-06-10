@@ -442,10 +442,12 @@ review comments.
   Legacy ids 1–243 are frozen; a new plan's id is
   `date -u +%y%m%d%H%M` at creation. The id regexes
   above match both shapes unchanged. Historic
-  duplicates were renumbered, and a reintroduced
-  duplicate fails `mdsmith check`; should one ever
-  surface anyway, key the dependency graph by
-  filename and ask which file the user means.
+  duplicates were renumbered; once plan 2606100534's
+  config block lands (gated on a release and pin
+  bump), a reintroduced duplicate fails
+  `mdsmith check`. Should one surface anyway, key
+  the dependency graph by filename and ask which
+  file the user means.
 - **`origin/main` may be stale.** Always fetch first.
   Step 1 does this, but if you re-run later parts of
   the workflow, re-fetch.

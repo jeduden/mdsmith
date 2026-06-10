@@ -100,14 +100,18 @@ than a helper.
 
 Enablement is gated on the release train. The
 `mdsmith-fixed-version` CI job runs the pinned release
-binary against this repo. That binary predates MDS069.
-The config block therefore lands only after the rule
-ships in a tagged release and the pin bumps — the
+binary. That binary predates MDS069 and silently ignores
+the unknown rule key. Early config would therefore
+enforce uniqueness under the branch binary but not the
+pinned one. The block lands after the rule ships in a
+tagged release and the pin bumps. That keeps both jobs
+consistent — the
 [adopt-new-syntax process](../docs/development/adopt-new-directive-syntax.md).
+
 This plan stays 🔳 with task 4 open as the tracked
 reminder. The [.mdsmith.yml](../.mdsmith.yml) edit needs
-maintainer consent; approving this plan grants it for
-exactly the block below, nested under the top-level
+maintainer consent. Approving this plan grants it for
+exactly the block below. It nests under the top-level
 `rules:` key:
 
 ```yaml
