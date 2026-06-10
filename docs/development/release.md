@@ -98,9 +98,8 @@ whole pipeline. Each such job also carries the repository guard and runs
 in the `release` GitHub environment.
 
 Each `smoke-test` entry installs the just-published version as a user
-would, then asserts `mdsmith version` reports the tag — so a channel
-broken at the source (v0.40.0 was uninstallable via `go install`) fails
-the release run, not a user. `check-release-smoke` guards that coverage.
+would. It asserts `mdsmith version` reports the tag. A broken channel
+(v0.40.0: `go install`) fails the release run, not a user.
 
 The website deploy is a **separate workflow**,
 `.github/workflows/pages.yml`. It builds
@@ -303,7 +302,8 @@ enough.
   `needs: [gate]`, on approval-bypassing `if:`
   conditions, and on any sibling workflow that targets
   the release environments. Runs
-  `mdsmith-release check-release-gates`.
+  `mdsmith-release check-release-gates`, then
+  `check-release-smoke` (per-channel smoke coverage).
 - **`if: github.repository == 'jeduden/mdsmith'`** on
   every publishing job, so a fork-cloned release
   workflow cannot reach the publish steps.
