@@ -115,6 +115,12 @@ On `mdsmith fix`, `<?toc?>` rebuilds a heading table of contents,
 `<?include?>` splices in another file. A Git merge driver resolves
 conflicts inside those blocks.
 
+**[Agent-ready docs index](progressive-disclosure.md).**
+A `<?catalog?>` in `CLAUDE.md` keeps one `summary` line per
+tracked doc, so an agent reads a few thousand tokens of metadata
+up front and opens only the files a task touches. mdsmith's own
+[`CLAUDE.md`](../../CLAUDE.md) is the live example.
+
 **[Build artifacts in sync](build-artifacts.md).**
 The `<?build?>` directive declares an artifact and a recipe;
 `mdsmith fix` rebuilds the section body from the recipe output so

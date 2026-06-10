@@ -6,7 +6,7 @@ summary: >-
   directive-free copy that renders anywhere.
 icon: braces
 link: "/guides/extract-markdown-as-data/"
-weight: 14
+weight: 15
 group: "Markdown as a single source of truth"
 ---
 # Markdown as a data source

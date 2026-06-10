@@ -6,7 +6,7 @@ summary: >-
   re-stages the result, so generated content never blocks a merge.
 icon: git-merge
 link: "/reference/cli/merge-driver/"
-weight: 16
+weight: 17
 group: "Built for your pipeline"
 ---
 # Git-native, conflict-free

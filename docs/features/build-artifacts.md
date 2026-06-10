@@ -7,7 +7,7 @@ summary: >-
 icon: blocks
 link: "/guides/directives/build/"
 rules: ["MDS039", "MDS040"]
-weight: 13
+weight: 14
 group: "Markdown as a single source of truth"
 ---
 # Build artifacts in sync

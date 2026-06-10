@@ -6,7 +6,7 @@ summary: >-
   show which layer set each effective value, per leaf.
 icon: git-compare
 link: "/reference/cli/kinds/"
-weight: 17
+weight: 18
 group: "Built for your pipeline"
 ---
 # Config you can explain

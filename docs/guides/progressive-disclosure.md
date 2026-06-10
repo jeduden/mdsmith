@@ -56,15 +56,19 @@ re-renders.
 ## How mdsmith does it
 
 [`CLAUDE.md`](../../CLAUDE.md) is the live example.
-A single `<?catalog?>` at the top of the file glob-
-matches every doc under `docs/**`, sorts by path, and
-emits one bullet per match:
+A single `<?catalog?>` under its `## Docs` heading
+matches every tracked doc under `docs/**` — four `!`
+patterns exclude research notes, security reports,
+brand copy, and `proto.md` templates — sorts by
+path, and emits one bullet per match:
 
 ```markdown
 <?catalog
 glob:
   - "docs/**/*.md"
   - "!docs/research/**"
+  - "!docs/security/**"
+  - "!docs/brand/**"
   - "!**/proto.md"
 sort: path
 header: ""
@@ -76,7 +80,7 @@ row: "- [{summary}]({filename})"
 <?/catalog?>
 ```
 
-The 60-doc tree compresses to ~5 000 tokens of index.
+The 113-doc tree compresses to ~3 400 tokens of index.
 The agent reads `CLAUDE.md` once at session start and
 already knows which file to open for any task it gets.
 
@@ -284,7 +288,7 @@ itself.
 Two branches both ran `mdsmith fix` and both committed
 the regenerated catalog body — git reports a conflict
 inside the `<?catalog?>` markers. Install the
-[merge driver](../../docs/reference/cli/merge-driver.md)
+[merge driver](../reference/cli/merge-driver.md)
 once per clone:
 
 ```bash

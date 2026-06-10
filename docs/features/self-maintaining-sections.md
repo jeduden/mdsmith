@@ -26,4 +26,6 @@ the conflict for you.
 
 See the [generating-content
 guide](../guides/directives/generating-content.md) for directive
-syntax and options.
+syntax and options. The [progressive disclosure
+guide](../guides/progressive-disclosure.md) turns the same
+catalogs into an agent-ready docs index.
