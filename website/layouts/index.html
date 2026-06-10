@@ -2,14 +2,11 @@
   {{ partial "hero.html" . }}
   {{- /* Positioning band. The content/_index.md body is a
          one-sentence scope statement (what mdsmith checks and
-         fixes); the "One engine" row lists the product surfaces
-         the one rule engine reaches, each linking to its docs
-         page. The surface links are hardcoded here like the hero
-         CTAs in hero.html — the website-page front-matter schema
-         is closed, so homepage data blocks need a schema key
-         before they can move into front matter. The row is laid
+         fixes); the `positioning.surfaces` front matter lists
+         the product surfaces the one rule engine reaches, each
+         linking to its docs page. The "One engine" row is laid
          out to pair with the "Available on" channels row from
-         logos-strip.html; together the three lines read as one
+         logos-strip.html — together the three lines read as one
          spec-sheet band under the hero. The fuller prose is the
          intro of docs/features/index.md (which the README
          includes and /features/ renders); keep the statement and
@@ -19,17 +16,16 @@
       {{ with .Content }}
       <div class="positioning-statement">{{ . }}</div>
       {{ end }}
+      {{ with .Params.positioning }}
       <div class="positioning-engine">
         <span class="positioning-label">One engine</span>
         <div class="positioning-surfaces">
-          <a class="positioning-surface" href="{{ "/reference/cli/" | relURL }}">CLI</a>
-          <a class="positioning-surface" href="{{ "/features/live-diagnostics/" | relURL }}">LSP server</a>
-          <a class="positioning-surface" href="{{ "/guides/editors/vscode/" | relURL }}">VS Code</a>
-          <a class="positioning-surface" href="{{ "/guides/editors/neovim/" | relURL }}">Neovim</a>
-          <a class="positioning-surface" href="{{ "/guides/editors/obsidian/" | relURL }}">Obsidian</a>
-          <a class="positioning-surface" href="{{ "/features/editor-agent-integration/" | relURL }}">Claude Code</a>
+          {{ range .surfaces }}
+          <a class="positioning-surface" href="{{ .url | relURL }}">{{ .title }}</a>
+          {{ end }}
         </div>
       </div>
+      {{ end }}
     </div>
   </section>
   {{ partial "logos-strip.html" . }}

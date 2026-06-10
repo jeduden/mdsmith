@@ -7,6 +7,20 @@ hero:
   headline_em: "down"
   headline_post: ", smithed."
   lead: "mdsmith is a Markdown linter and formatter that keeps your writing neat and consistent — fast enough to stay out of your way. Auto-fix on save, instant navigation, cross-file integrity, and generated sections that keep derived data in sync, so the same Markdown drives docs, READMEs, and downstream pipelines without drift."
+positioning:
+  surfaces:
+    - title: "CLI"
+      url: "/reference/cli/"
+    - title: "LSP server"
+      url: "/features/live-diagnostics/"
+    - title: "VS Code"
+      url: "/guides/editors/vscode/"
+    - title: "Neovim"
+      url: "/guides/editors/neovim/"
+    - title: "Obsidian"
+      url: "/guides/editors/obsidian/"
+    - title: "Claude Code"
+      url: "/features/editor-agent-integration/"
 ---
 mdsmith checks style, readability, structure, and cross-file
 integrity — and auto-fixes what fixes *cleanly*.

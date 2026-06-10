@@ -531,13 +531,15 @@ kinds:
       frontmatter:
         title: nonEmpty
         summary: nonEmpty
-        # The homepage carries its hero copy and install
-        # quickstart in its own front matter (read by
-        # hero.html / install-list.html) instead of a
+        # The homepage carries its hero copy, install
+        # quickstart, and positioning-band surface links in
+        # its own front matter (read by hero.html /
+        # install-list.html / index.html) instead of a
         # separate data file. Open structs: Hugo templates
         # consume the specific keys.
         "hero?": '{...}'
         "install?": '[...{...}]'
+        "positioning?": '{...}'
     rules:
       first-line-heading: false
       heading-increment: false

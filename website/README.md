@@ -120,10 +120,10 @@ release-channel docs, gated against drift in CI:
 - **Hero** — front matter (`hero:`) on the homepage
   itself, `content/_index.md`, read by `hero.html`.
 - **Positioning band** — the `content/_index.md` body (the
-  one-sentence scope statement) plus the linked "One engine"
-  surface row, hardcoded in `layouts/index.html` like the
-  hero CTAs and rendered directly above the "Available on"
-  strip.
+  one-sentence scope statement) plus its
+  `positioning.surfaces` front matter (the linked "One
+  engine" row), rendered by `layouts/index.html` directly
+  above the "Available on" strip.
 - **Install picker** — `install-picker.html` reads
   `hugo.Data.channels` (the generated
   `website/data/channels.yaml`). It renders every channel
