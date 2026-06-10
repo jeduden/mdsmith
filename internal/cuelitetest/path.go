@@ -203,6 +203,8 @@ func RunPath(t testing.TB, cases []PathCase) {
 //     (bare numeric, a[0]), Go-only escapes (\xNN, octal \NNN), a raw NUL
 //     inside quotes, the upstream-parser-panic input "a...", whitespace
 //     forms, unterminated quotes, and invalid escape sequences.
+//
+//nolint:funlen // one table of corpus cases, one row per behaviour class.
 func pathCorpus() []PathCase {
 	return []PathCase{
 		// Accepted: ASCII identifiers.
@@ -309,6 +311,7 @@ func pathCorpus() []PathCase {
 		{Name: "invalid hex in unicode escape", Expr: `"\uZZZZ"`},
 		{Name: "truncated unicode escape", Expr: `"\u12"`},
 		{Name: "truncated big unicode escape", Expr: `"\U0001"`},
+		{Name: "out-of-range big unicode escape", Expr: `"\U80000000"`},
 		{Name: "lone surrogate escape", Expr: `"\ud800"`},
 
 		// Rejected: raw NUL / control bytes inside quotes.

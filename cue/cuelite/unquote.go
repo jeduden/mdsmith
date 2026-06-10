@@ -37,12 +37,12 @@ func cueUnquote(body string) (string, error) {
 	b.Grow(len(body))
 	for i := 0; i < len(body); {
 		c := body[i]
-		switch {
-		case c == '\n':
+		switch c {
+		case '\n':
 			return "", fmt.Errorf("illegal newline in string")
-		case c == '\r':
+		case '\r':
 			return "", fmt.Errorf("illegal carriage return in string")
-		case c == '\\':
+		case '\\':
 			r, width, err := decodeEscape(body[i:])
 			if err != nil {
 				return "", err
@@ -114,18 +114,22 @@ func decodeUnicodeEscape(s string, n int) (rune, int, error) {
 	if len(s) < 2+n {
 		return 0, 0, fmt.Errorf("truncated \\%c escape", s[1])
 	}
-	var v rune
+	// Accumulate into a uint32 so an 8-digit \U escape such as \U80000000
+	// does not overflow rune (an int32) into a negative value that would
+	// slip past the MaxRune check below; CUE rejects such an out-of-range
+	// code point.
+	var v uint32
 	for j := 0; j < n; j++ {
 		d, ok := hexVal(s[2+j])
 		if !ok {
 			return 0, 0, fmt.Errorf("invalid hex digit %q in \\%c escape", s[2+j], s[1])
 		}
-		v = v<<4 | rune(d)
+		v = v<<4 | uint32(d)
 	}
 	if v > utf8.MaxRune || (0xD800 <= v && v < 0xE000) {
 		return 0, 0, fmt.Errorf("invalid code point U+%04X in \\%c escape", v, s[1])
 	}
-	return v, 2 + n, nil
+	return rune(v), 2 + n, nil
 }
 
 // hexVal returns the value of a single hex digit and whether c was one.

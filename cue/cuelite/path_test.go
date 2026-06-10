@@ -11,6 +11,8 @@ import (
 
 // TestParsePath_accepted covers inputs ParsePath accepts and the
 // segments it produces.
+//
+//nolint:funlen // table-driven accept cases, one row per grammar class.
 func TestParsePath_accepted(t *testing.T) {
 	cases := []struct {
 		name string
@@ -126,6 +128,8 @@ func TestParsePath_rejected(t *testing.T) {
 		{"comment before content", "a//c\n.b"},
 		{"comment-only expression", "//c"},
 		{"truncated big unicode escape", `"\U0001"`},
+		{"out-of-range big unicode escape", `"\U80000000"`},
+		{"max-overflow big unicode escape", `"\UFFFFFFFF"`},
 		{"raw newline in quotes", "\"a\nb\""},
 		{"raw CR in quotes", "\"a\rb\""},
 	}
