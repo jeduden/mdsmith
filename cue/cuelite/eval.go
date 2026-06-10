@@ -20,14 +20,20 @@ import (
 // is deferred until data fixes `mechanism`, then forced.
 var errUnresolved = stderrors.New("cuelite: unresolved reference")
 
-// evalExpr evaluates an AST expression against a scope of resolved
-// sibling-field values, the in-house evaluator for the index/comprehension/
-// reference constructs the release-channels schema uses. A reference to a
-// name absent from scope (or present but non-concrete) returns errUnresolved
-// so the caller defers the whole expression. The plain constructs delegate
-// to the same builders compileExpr uses; the scoped ones live here.
+// evalExpr is the single AST-to-value builder, threaded by a scope of
+// resolved sibling-field values. It serves both callers: compileExpr passes
+// scope == nil for the compile-time (unscoped) walk, and the struct force
+// pass passes a populated scope when re-evaluating a deferred thunk. A
+// reference to a name absent from scope (or present but non-concrete)
+// returns errUnresolved so the caller defers the whole expression; with
+// scope == nil every reference is unresolved, so compileExpr's IndexExpr/
+// relational paths become thunks. The scope-free constructs (literals,
+// type keywords, calls, bounds) carry no sibling reference and build the
+// same value regardless of scope.
 func evalExpr(e ast.Expr, scope map[string]*engineValue) (*engineValue, error) {
 	switch n := e.(type) {
+	case *ast.BasicLit:
+		return compileBasicLit(n)
 	case *ast.Ident:
 		return evalIdent(n, scope)
 	case *ast.IndexExpr:
@@ -42,21 +48,60 @@ func evalExpr(e ast.Expr, scope map[string]*engineValue) (*engineValue, error) {
 		return evalStruct(n, scope)
 	case *ast.UnaryExpr:
 		return evalUnary(n, scope)
+	case *ast.CallExpr:
+		return compileCall(n)
+	case *ast.SelectorExpr:
+		// A bare selector like strings.MinRunes outside a call is not a value.
+		return nil, fmt.Errorf("cuelite: unsupported selector expression %q", exprText(n))
 	default:
-		// Constructs with no sibling references compile directly.
-		return compileExpr(e)
+		return nil, fmt.Errorf("cuelite: unsupported construct %T", e)
 	}
 }
 
-// evalIdent resolves a bare identifier: a type keyword compiles as usual,
-// otherwise the name is a sibling-field reference looked up in scope. A name
-// absent from scope, or bound to a non-concrete value, defers the enclosing
-// expression (errUnresolved) — the comprehension condition cannot be decided
-// until the reference is fixed by data.
+// evalChild evaluates a sub-expression in a position that may hold a
+// deferrable construct: a struct field value, a list element, or a
+// disjunction branch. At compile time (scope == nil) it applies compileExpr's
+// deferral — a deferrable index/relational expression over an unresolved
+// reference becomes a kThunk, and any other unresolved reference is a
+// "reference X not found" error. During a struct force pass (scope != nil) it
+// evaluates directly: the scope already carries the resolved siblings, so an
+// unresolved reference there is a genuine failure the caller surfaces.
+func evalChild(e ast.Expr, scope map[string]*engineValue) (*engineValue, error) {
+	if scope == nil {
+		return compileExpr(e)
+	}
+	return evalExpr(e, scope)
+}
+
+// evalIdent resolves a bare identifier: a type keyword or bool/null literal
+// builds its value directly, otherwise the name is a sibling-field reference
+// looked up in scope. A name absent from scope, or bound to a non-concrete
+// value, defers the enclosing expression (errUnresolved) — at compile time
+// (a nil scope) every reference is unresolved, so compileExpr turns a
+// deferrable construct into a thunk and reports any other reference as
+// "reference X not found".
 func evalIdent(n *ast.Ident, scope map[string]*engineValue) (*engineValue, error) {
 	switch n.Name {
-	case "_", "null", "true", "false", "string", "int", "float", "number", "bool", "bytes":
-		return compileIdent(n)
+	case "_":
+		return topValue(), nil
+	case "null":
+		return &engineValue{kind: kNull}, nil
+	case "true":
+		return &engineValue{kind: kBool, b: true}, nil
+	case "false":
+		return &engineValue{kind: kBool, b: false}, nil
+	case "string":
+		return &engineValue{kind: kAtom, atom: akString}, nil
+	case "int":
+		return &engineValue{kind: kAtom, atom: akInt}, nil
+	case "float":
+		return &engineValue{kind: kAtom, atom: akFloat}, nil
+	case "number":
+		return &engineValue{kind: kAtom, atom: akNumber}, nil
+	case "bool":
+		return &engineValue{kind: kAtom, atom: akBool}, nil
+	case "bytes":
+		return &engineValue{kind: kAtom, atom: akBytes}, nil
 	}
 	v, ok := scope[n.Name]
 	if !ok || v == nil {
@@ -271,7 +316,7 @@ func evalDisjunction(n *ast.BinaryExpr, scope map[string]*engineValue) (*engineV
 			isDefault = true
 			e = u.X
 		}
-		br, err := evalExpr(e, scope)
+		br, err := evalChild(e, scope)
 		if err != nil {
 			return err
 		}
@@ -306,7 +351,7 @@ func evalList(n *ast.ListLit, scope map[string]*engineValue) (*engineValue, erro
 		case *ast.Ellipsis:
 			out.openTop = true
 			if e.Type != nil {
-				et, err := evalExpr(e.Type, scope)
+				et, err := evalChild(e.Type, scope)
 				if err != nil {
 					return nil, err
 				}
@@ -323,7 +368,7 @@ func evalList(n *ast.ListLit, scope map[string]*engineValue) (*engineValue, erro
 				out.prefix = append(out.prefix, body)
 			}
 		default:
-			ev, err := evalExpr(el, scope)
+			ev, err := evalChild(el, scope)
 			if err != nil {
 				return nil, err
 			}
@@ -333,9 +378,18 @@ func evalList(n *ast.ListLit, scope map[string]*engineValue) (*engineValue, erro
 	return out, nil
 }
 
-// evalStruct builds a struct value in a scope, resolving each field's value
-// against it. It mirrors compileStruct but threads the scope so a nested
-// reference resolves; the embedded-value and ellipsis handling match.
+// evalStruct is the single struct-literal builder, threaded by scope. It
+// resolves each field's value, unifying repeated keys, and folds an embedded
+// value (a bound `{>=1 & <=10}`, a spread `{X, ...}`) into the struct. A `?`
+// marks an optional key; a `...` ellipsis only documents openness (a struct
+// is open by default unless close() wraps it).
+//
+// At compile time (scope == nil) the field values may defer to thunks, so
+// the builder verifies every thunk references only a declared field — a
+// reference to an undeclared name can never resolve, so it is a compile error
+// here matching CUE's eager "reference X not found". During a struct force
+// pass (scope != nil) the thunks are already resolved, so the check is a
+// no-op the gate skips.
 func evalStruct(n *ast.StructLit, scope map[string]*engineValue) (*engineValue, error) {
 	out := &engineValue{kind: kStruct}
 	var embedded *engineValue
@@ -346,7 +400,7 @@ func evalStruct(n *ast.StructLit, scope map[string]*engineValue) (*engineValue, 
 			if err != nil {
 				return nil, err
 			}
-			val, err := evalExpr(el.Value, scope)
+			val, err := evalChild(el.Value, scope)
 			if err != nil {
 				return nil, err
 			}
@@ -356,7 +410,10 @@ func evalStruct(n *ast.StructLit, scope map[string]*engineValue) (*engineValue, 
 				optional: el.Constraint == token.OPTION,
 			})
 		case *ast.EmbedDecl:
-			ev, err := evalExpr(el.Expr, scope)
+			// An embedded value (a scalar bound or another struct spread in)
+			// unifies with the struct. Defer the meet until the rest of the
+			// struct is built so field order is preserved.
+			ev, err := evalChild(el.Expr, scope)
 			if err != nil {
 				return nil, err
 			}
@@ -371,8 +428,20 @@ func evalStruct(n *ast.StructLit, scope map[string]*engineValue) (*engineValue, 
 			return nil, fmt.Errorf("cuelite: unsupported struct element %T", d)
 		}
 	}
+	if scope == nil {
+		if err := checkThunkRefs(out); err != nil {
+			return nil, err
+		}
+	}
 	if embedded != nil {
+		if scope == nil {
+			if err := checkEmbeddedThunkRefs(out, embedded); err != nil {
+				return nil, err
+			}
+		}
 		if len(out.fields) == 0 {
+			// A struct with only an embedded value IS that value: `{>=1 & <=10}`
+			// is the bound, `{X}` is X. No struct wrapper survives.
 			return embedded, nil
 		}
 		return unifyV(out, embedded, nil), nil

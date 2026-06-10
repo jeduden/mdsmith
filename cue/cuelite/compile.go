@@ -132,53 +132,55 @@ func appendOrUnifyField(fields []field, f field) []field {
 	return append(fields, f)
 }
 
-// compileExpr walks one AST expression node into a value. It dispatches on
-// the node type, covering the subset plan 218 names; an unhandled node is
-// an error naming the construct. An expression with a sibling-field
-// reference (an index/comprehension over another field, as the
-// release-channels schema uses) cannot resolve at compile time, so it is
-// deferred to a kThunk that re-evaluates once data fixes the reference.
+// compileExpr walks one AST expression node into a value at compile time —
+// the single scope-free entry point. It is the unscoped face of [evalExpr]:
+// it evaluates e with a nil scope (so every sibling reference is unresolved).
+// A deferrable construct (an index expression or a relational comparison over
+// a sibling field, the release-channels ternary idiom) that cannot resolve
+// becomes a kThunk to re-evaluate once data fixes the reference. Any other
+// unresolved reference (a bare `undefinedRef`, a `0 > A`) is a hard
+// "reference X not found" error — the subset has no scopes, so a name with no
+// declared field can never bind. A fully resolvable expression compiles to
+// its value.
 func compileExpr(e ast.Expr) (*engineValue, error) {
-	switch n := e.(type) {
-	case *ast.BasicLit:
-		return compileBasicLit(n)
-	case *ast.Ident:
-		return compileIdent(n)
-	case *ast.StructLit:
-		return compileStruct(n)
-	case *ast.ListLit:
-		return compileList(n)
-	case *ast.BinaryExpr:
-		return compileBinary(n)
-	case *ast.UnaryExpr:
-		return compileUnary(n)
-	case *ast.CallExpr:
-		return compileCall(n)
-	case *ast.ParenExpr:
-		return compileExpr(n.X)
-	case *ast.IndexExpr:
-		return compileDeferrable(n)
-	case *ast.SelectorExpr:
-		// A bare selector like strings.MinRunes outside a call is not a value.
-		return nil, fmt.Errorf("cuelite: unsupported selector expression %q", exprText(n))
-	default:
-		return nil, fmt.Errorf("cuelite: unsupported construct %T", e)
-	}
-}
-
-// compileDeferrable evaluates an expression that may reference sibling
-// fields. It tries to resolve it with no scope; an unresolved reference
-// (errUnresolved) makes it a kThunk to force later, while any other error
-// fails the compile and a fully resolvable expression compiles to its value.
-func compileDeferrable(e ast.Expr) (*engineValue, error) {
 	v, err := evalExpr(e, nil)
 	if err == nil {
 		return v, nil
 	}
 	if stderrors.Is(err, errUnresolved) {
-		return deferToThunk(e), nil
+		if isDeferrable(e) {
+			return deferToThunk(e), nil
+		}
+		// A non-deferrable unresolved reference (a bare ident, or a comparison
+		// whose result the subset cannot use lazily) names a field that cannot
+		// exist. Surface CUE's eager wording, naming the first free reference.
+		if refs := freeRefs(e); len(refs) > 0 {
+			return nil, fmt.Errorf("reference %q not found", refs[0])
+		}
+		return nil, errUnresolved
 	}
 	return nil, err
+}
+
+// isDeferrable reports whether an expression may be deferred to a kThunk when
+// it references a still-unresolved sibling field: an index expression
+// (`[if c {…}, …][k]`) or a relational comparison (`A != ""`) — the two
+// constructs the release-channels ternary idiom uses. A bare reference or any
+// other construct is not deferrable, so an unresolved reference in it is a
+// compile error rather than a thunk that can never resolve.
+func isDeferrable(e ast.Expr) bool {
+	switch n := e.(type) {
+	case *ast.ParenExpr:
+		return isDeferrable(n.X)
+	case *ast.IndexExpr:
+		return true
+	case *ast.BinaryExpr:
+		switch n.Op {
+		case token.GEQ, token.LEQ, token.GTR, token.LSS, token.NEQ, token.MAT, token.NMAT, token.EQL:
+			return true
+		}
+	}
+	return false
 }
 
 // compileBasicLit builds a concrete scalar from a literal token.
@@ -235,104 +237,6 @@ func containsByte(s string, b byte) bool {
 		}
 	}
 	return false
-}
-
-// compileIdent builds a typed atom or the top type from a type keyword.
-// number, string, int, float, bool, bytes, null, and _ are the recognized
-// idents; any other bare identifier (an unresolved reference) is an error,
-// since the subset has no scopes or definitions.
-func compileIdent(n *ast.Ident) (*engineValue, error) {
-	switch n.Name {
-	case "_":
-		return topValue(), nil
-	case "null":
-		return &engineValue{kind: kNull}, nil
-	case "true":
-		return &engineValue{kind: kBool, b: true}, nil
-	case "false":
-		return &engineValue{kind: kBool, b: false}, nil
-	case "string":
-		return &engineValue{kind: kAtom, atom: akString}, nil
-	case "int":
-		return &engineValue{kind: kAtom, atom: akInt}, nil
-	case "float":
-		return &engineValue{kind: kAtom, atom: akFloat}, nil
-	case "number":
-		return &engineValue{kind: kAtom, atom: akNumber}, nil
-	case "bool":
-		return &engineValue{kind: kAtom, atom: akBool}, nil
-	case "bytes":
-		return &engineValue{kind: kAtom, atom: akBytes}, nil
-	default:
-		// The subset has no scopes or definitions, so any other bare identifier
-		// is an unresolved reference. The "reference X not found" wording matches
-		// CUE's, which the catalog where-expression diagnostics surface verbatim.
-		return nil, fmt.Errorf("reference %q not found", n.Name)
-	}
-}
-
-// compileStruct builds a struct value from a struct literal, preserving
-// field order. A field label may be a bare identifier or a quoted string;
-// the trailing ? marks an optional key. An embedded close() is not handled
-// here — close() wraps a struct expression (compileCall).
-func compileStruct(n *ast.StructLit) (*engineValue, error) {
-	out := &engineValue{kind: kStruct}
-	var embedded *engineValue
-	for _, d := range n.Elts {
-		switch el := d.(type) {
-		case *ast.Field:
-			name, err := fieldLabel(el.Label)
-			if err != nil {
-				return nil, err
-			}
-			val, err := compileExpr(el.Value)
-			if err != nil {
-				return nil, err
-			}
-			out.fields = appendOrUnifyField(out.fields, field{
-				name:     name,
-				val:      val,
-				optional: el.Constraint == token.OPTION,
-			})
-		case *ast.EmbedDecl:
-			// An embedded value (a scalar or another struct spread into this one)
-			// unifies with the struct. `{>=1 & <=10}` is the bound itself, and
-			// `{X, ...}` merges X's fields. Defer the meet until the rest of the
-			// struct is built so field order is preserved.
-			ev, err := compileExpr(el.Expr)
-			if err != nil {
-				return nil, err
-			}
-			if embedded == nil {
-				embedded = ev
-			} else {
-				embedded = unifyV(embedded, ev, nil)
-			}
-		case *ast.Ellipsis:
-			// `...` marks the struct OPEN (extra keys allowed). A struct is open
-			// by default in this model unless close() wraps it, so the marker
-			// only documents the intent; the optional element type after `...T`
-			// is not a per-field constraint and the subset does not enforce it.
-			continue
-		default:
-			return nil, fmt.Errorf("cuelite: unsupported struct element %T", d)
-		}
-	}
-	if err := checkThunkRefs(out); err != nil {
-		return nil, err
-	}
-	if embedded != nil {
-		if err := checkEmbeddedThunkRefs(out, embedded); err != nil {
-			return nil, err
-		}
-		if len(out.fields) == 0 {
-			// A struct with only an embedded value IS that value: `{>=1 & <=10}`
-			// is the bound, `{X}` is X. No struct wrapper survives.
-			return embedded, nil
-		}
-		return unifyV(out, embedded, nil), nil
-	}
-	return out, nil
 }
 
 // checkEmbeddedThunkRefs rejects an embedded thunk (a free comparison like
@@ -396,102 +300,6 @@ func isDefinitionOrHidden(name string) bool {
 		return false
 	}
 	return len(name) > 0 && (name[0] == '#' || name[0] == '_')
-}
-
-// compileList builds a list value. A trailing ...T ellipsis marks an open
-// list with the given tail element type (the [...T] form); the leading
-// expressions are required prefix elements ([_, ...T] or [a, b]). A closed
-// list (no ellipsis) keeps openTop false, so a length mismatch is a ⊥ at
-// unify.
-func compileList(n *ast.ListLit) (*engineValue, error) {
-	out := &engineValue{kind: kList}
-	for _, el := range n.Elts {
-		if ell, ok := el.(*ast.Ellipsis); ok {
-			out.openTop = true
-			if ell.Type != nil {
-				et, err := compileExpr(ell.Type)
-				if err != nil {
-					return nil, err
-				}
-				out.elem = et
-			} else {
-				out.elem = topValue()
-			}
-			continue
-		}
-		ev, err := compileExpr(el)
-		if err != nil {
-			return nil, err
-		}
-		out.prefix = append(out.prefix, ev)
-	}
-	return out, nil
-}
-
-// compileBinary handles the binary operators in the subset: & (meet), |
-// (disjunction), and the relational/regex bounds (>= <= > < != =~) when
-// they appear as a standalone constraint expression (e.g. `>=0 & <=100`
-// parses each bound as a UnaryExpr; a binary relational like `len(x) >= 3`
-// is handled here). For & the two operands are compiled and met; for | a
-// disjunction is built.
-func compileBinary(n *ast.BinaryExpr) (*engineValue, error) {
-	switch n.Op {
-	case token.AND:
-		l, err := compileExpr(n.X)
-		if err != nil {
-			return nil, err
-		}
-		r, err := compileExpr(n.Y)
-		if err != nil {
-			return nil, err
-		}
-		return unifyV(l, r, nil), nil
-	case token.OR:
-		return compileDisjunction(n)
-	case token.GEQ, token.LEQ, token.GTR, token.LSS, token.NEQ, token.MAT, token.NMAT, token.EQL:
-		// A binary relational is a COMPARISON of two operands (a reference
-		// against a literal, as in `A != ""` or `mechanism == "push"`), not a
-		// constraint bound — a bound (`>=1`, `!=""`) parses as a UnaryExpr. Defer
-		// to the scoped evaluator so the left reference resolves; an unresolved
-		// reference becomes a thunk or surfaces "reference X not found".
-		return compileDeferrable(n)
-	default:
-		return nil, fmt.Errorf("cuelite: unsupported binary operator %q", n.Op)
-	}
-}
-
-// compileDisjunction flattens a | tree into a disjunction value, compiling
-// each branch and recording a *-marked default branch. Nested
-// disjunctions flatten so `a | b | c` yields three branches.
-func compileDisjunction(n *ast.BinaryExpr) (*engineValue, error) {
-	out := &engineValue{kind: kDisjoint}
-	var walk func(e ast.Expr) error
-	walk = func(e ast.Expr) error {
-		if b, ok := e.(*ast.BinaryExpr); ok && b.Op == token.OR {
-			if err := walk(b.X); err != nil {
-				return err
-			}
-			return walk(b.Y)
-		}
-		isDefault := false
-		if u, ok := e.(*ast.UnaryExpr); ok && u.Op == token.MUL {
-			isDefault = true
-			e = u.X
-		}
-		br, err := compileExpr(e)
-		if err != nil {
-			return err
-		}
-		out.branches = append(out.branches, br)
-		if isDefault {
-			out.def = br
-		}
-		return nil
-	}
-	if err := walk(n); err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 // compileUnary handles a unary bound operator (>=0 etc. parse as a unary
