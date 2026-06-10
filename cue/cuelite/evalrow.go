@@ -69,16 +69,16 @@ func parseRowExpr(expr string) (ast.Expr, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cuelite: invalid row expression: %w", err)
 	}
-	// The wrapped source is exactly `mdsmith_row_out: <expr>`, so the file has
-	// one field declaration whose value is the user's expression.
+	// The wrapped source is `mdsmith_row_out: <expr>`, so a single-expression
+	// row parses to exactly one field declaration whose value is that
+	// expression. A row source carrying a comma or newline (`1, 2`) parses to
+	// several declarations — not a single expression — and is rejected. The
+	// leading `mdsmith_row_out:` label guarantees the first declaration is a
+	// field, so no non-field first declaration is reachable.
 	if len(file.Decls) != 1 {
 		return nil, fmt.Errorf("cuelite: row expression must be a single expression")
 	}
-	fld, ok := file.Decls[0].(*ast.Field)
-	if !ok {
-		return nil, fmt.Errorf("cuelite: row expression must be a single expression")
-	}
-	return fld.Value, nil
+	return file.Decls[0].(*ast.Field).Value, nil
 }
 
 // Render evaluates the row expression against scope — a front-matter map
@@ -227,19 +227,12 @@ func evalRowUnary(n *ast.UnaryExpr, scope *rowScope) (*engineValue, error) {
 	}
 }
 
-// evalRowIdent resolves a bare identifier in a row expression: a bool/null
-// literal builds its value, otherwise the name is a front-matter field looked
-// up in scope. An absent name is an error (a row references a field the
-// matched file does not carry).
+// evalRowIdent resolves a bare identifier to a front-matter field looked up in
+// scope (or a comprehension's bound variable). An absent name is an error: the
+// row references a field the matched file does not carry. The `true`, `false`,
+// and `null` keywords are not identifiers — the parser emits them as basic
+// literals (compileBasicLit handles them) — so they never reach here.
 func evalRowIdent(n *ast.Ident, scope *rowScope) (*engineValue, error) {
-	switch n.Name {
-	case "true":
-		return &engineValue{kind: kBool, b: true}, nil
-	case "false":
-		return &engineValue{kind: kBool, b: false}, nil
-	case "null":
-		return &engineValue{kind: kNull}, nil
-	}
 	v, ok := scope.vars[n.Name]
 	if !ok {
 		return nil, fmt.Errorf("cuelite: reference %q not found", n.Name)
@@ -254,19 +247,14 @@ func evalRowIdent(n *ast.Ident, scope *rowScope) (*engineValue, error) {
 // value (null, list, struct) is rejected, matching CUE's
 // "invalid interpolation".
 func evalRowInterpolation(n *ast.Interpolation, scope *rowScope) (*engineValue, error) {
-	if len(n.Elts) == 0 {
-		return nil, fmt.Errorf("cuelite: empty interpolation")
-	}
 	var b strings.Builder
 	for i, elt := range n.Elts {
-		// Even indices are string fragments (the partial-quote literals);
-		// odd indices are the embedded expressions.
+		// The parser interleaves string fragments and embedded expressions, so an
+		// EVEN index is always a partial-quote string literal and an ODD index is
+		// always an embedded expression (the Elts shape ast.Interpolation
+		// documents).
 		if i%2 == 0 {
-			frag, fragErr := interpFragment(elt, i, len(n.Elts))
-			if fragErr != nil {
-				return nil, fragErr
-			}
-			b.WriteString(frag)
+			b.WriteString(interpFragment(elt.(*ast.BasicLit), i, len(n.Elts)))
 			continue
 		}
 		s, exprErr := evalInterpExpr(elt, scope)
@@ -282,30 +270,22 @@ func evalRowInterpolation(n *ast.Interpolation, scope *rowScope) (*engineValue, 
 // fragment carries the opening `"` and a trailing `\(`; the last carries a
 // leading `)` and the closing `"`; a middle fragment carries `)` … `\(`. The
 // inner bytes are re-wrapped in double quotes and unquoted, so escapes decode
-// exactly as in a plain string literal. Row expressions use only the
-// double-quote string dialect, so a single-quote or raw fragment is outside
-// the subset and surfaces as a decode error.
-func interpFragment(elt ast.Expr, i, total int) (string, error) {
-	bl, ok := elt.(*ast.BasicLit)
-	if !ok {
-		return "", fmt.Errorf("cuelite: malformed interpolation fragment %T", elt)
-	}
+// exactly as in a plain string literal. The parser already validated every
+// escape of the whole interpolation, so re-wrapping a fragment in `"…"` and
+// unquoting it never fails — the only string dialect the row subset's
+// interpolation grammar admits is the double-quote one.
+func interpFragment(bl *ast.BasicLit, i, total int) string {
 	raw := bl.Value
 	// Strip the leading delimiter — the opening `"` on the first fragment, else
 	// the `)` that closes the preceding interpolation — and the trailing
 	// delimiter — the closing `"` on the last fragment, else the `\(` that opens
 	// the next interpolation.
-	start := 1
 	end := len(raw) - 2
 	if i == total-1 {
 		end = len(raw) - 1
 	}
-	inner := raw[start:end]
-	dec, err := literal.Unquote(`"` + inner + `"`)
-	if err != nil {
-		return "", fmt.Errorf("cuelite: interpolation fragment %q: %w", inner, err)
-	}
-	return dec, nil
+	dec, _ := literal.Unquote(`"` + raw[1:end] + `"`)
+	return dec
 }
 
 // evalInterpExpr evaluates one embedded interpolation expression and renders
@@ -486,18 +466,18 @@ func evalRowComprehension(c *ast.Comprehension, scope *rowScope) ([]*engineValue
 	if len(c.Clauses) != 1 {
 		return nil, fmt.Errorf("cuelite: only a single-clause comprehension is supported")
 	}
-	body, ok := c.Value.(*ast.StructLit)
-	if !ok {
-		return nil, fmt.Errorf("cuelite: comprehension body must be a struct, got %T", c.Value)
+	// The CUE grammar requires a comprehension value to be a brace-delimited
+	// struct (`[for x in xs {…}]`), so the parser always yields a *ast.StructLit
+	// here.
+	body := c.Value.(*ast.StructLit)
+	// A single-clause comprehension is an `if` or a `for`: a `let` clause cannot
+	// stand alone (it must be followed by another clause, which the len != 1
+	// guard above already rejects), so those two cover every reachable
+	// single-clause shape.
+	if ifc, ok := c.Clauses[0].(*ast.IfClause); ok {
+		return evalRowIfClause(ifc, body, scope)
 	}
-	switch clause := c.Clauses[0].(type) {
-	case *ast.IfClause:
-		return evalRowIfClause(clause, body, scope)
-	case *ast.ForClause:
-		return evalRowForClause(clause, body, scope)
-	default:
-		return nil, fmt.Errorf("cuelite: unsupported comprehension clause %T", c.Clauses[0])
-	}
+	return evalRowForClause(c.Clauses[0].(*ast.ForClause), body, scope)
 }
 
 // evalRowIfClause evaluates an `if cond {body}` comprehension: the condition
