@@ -91,8 +91,8 @@ Each recipe is invoked with:
 - `Cmd.Dir` set to the per-recipe staging
   dir (see "Atomic write hardening" below).
 - A new process group via `Setpgid` on
-  Unix (or `CREATE_NEW_PROCESS_GROUP` on
-  Windows).
+  Unix; on Windows `CREATE_NEW_PROCESS_GROUP`
+  plus a Job Object for the kill path.
 - Standard streams attached per plan 2606101547;
   this plan is process control only.
 
@@ -101,8 +101,9 @@ SIGTERM to the process group, waits up to
 5 s, then sends SIGKILL. Windows has no
 SIGTERM: there mdsmith sends
 `CTRL_BREAK_EVENT` to the group, waits 5 s,
-then `TerminateProcess`. A recipe that
-spawns daemons cannot leave orphans behind.
+then kills the group via its Job Object. A
+recipe that spawns daemons cannot leave
+orphans behind.
 
 ### Atomic write hardening
 
@@ -110,11 +111,10 @@ Plan 2606101546's basic atomic write is replaced
 by:
 
 1. mdsmith `Lstat`s `.mdsmith/build-staging/`.
-   If absent, it creates the directory and
-   `Chmod`s to `0o700` (umask would otherwise
-   filter `MkdirAll`'s mode). If present but
-   a symlink or non-directory, mdsmith
-   refuses.
+   If absent, it creates the dir and
+   `Chmod`s to `0o700` (umask filters
+   `MkdirAll`'s mode). A symlink or
+   non-directory is refused.
 2. mdsmith refuses if
    `.mdsmith/build-staging/` is group- or
    world-writable on Unix (`0o022` mask);
@@ -142,9 +142,8 @@ by:
    state, removes staging, and exits FAIL;
    the next `fix` reruns the recipe (no
    cache write happened).
-6. On any pre-rename failure, the staging
-   dir is removed; no declared output is
-   touched.
+6. On any pre-rename failure the staging
+   dir is removed; outputs stay untouched.
 
 ### Output post-conditions
 
@@ -222,8 +221,8 @@ pass-through names or names containing `=`.
    `internal/build/exec.go`: minimal
    `Cmd.Env` from the allowlist, `Cmd.Dir`
    set to staging, `Setpgid` (Unix) or
-   process group (Windows), SIGTERM-then-
-   SIGKILL on timeout.
+   process group + Job Object (Windows),
+   group kill on timeout.
 5. Replace plan 2606101546's basic atomic
    write with the hardened version:
    staging-root checks, `os.MkdirTemp`
@@ -248,11 +247,9 @@ pass-through names or names containing `=`.
     trust` shows the diff and re-trusts.
   - `mdsmith fix --no-build` skips the
     gate.
-  - Recipe writing a file outside its
-    declared `outputs:` is a build
-    failure; the file is left in place
-    with a warning that points the user
-    to it.
+  - A write outside declared `outputs:` is
+    a build failure; the file is left in
+    place and named in the warning.
   - Recipe exiting 0 without producing a
     declared output is a build failure.
   - World-writable
@@ -309,6 +306,9 @@ pass-through names or names containing `=`.
       restricted to the allowlist and
       `Cmd.Dir` set to the per-recipe
       staging dir
+- [ ] A snapshot scope above 2 000
+      directory entries is a build error
+      naming the oversized dir
 - [ ] Recipe runs in its own process
       group; timeout fires SIGTERM, then
       SIGKILL after 5 s

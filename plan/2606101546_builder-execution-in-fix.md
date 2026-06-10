@@ -133,11 +133,12 @@ excluded from the WASM bindings (plan 215):
 recipes exec processes, which the WASM and
 LSP in-memory fix paths must never do. The
 in-process fix API (`fix.Source`) has no
-build stage, exempting the LSP and the
-merge driver by construction; the
-pre-merge-commit hook's script passes
-`--no-build` explicitly. A merge never
-executes recipes.
+build stage. The merge driver and the
+pre-merge-commit hook script reach fix
+through other paths, so task 4 wires
+`--no-build` into both (the hook generator
+lives in `internal/githooks`). A merge
+never executes recipes.
 
 ### `mdsmith fix` flags
 
@@ -160,9 +161,10 @@ flags. Inspect modes run no recipe:
 `--build-dry-run`, later
 `--build-check-stale` and
 `--build-explain`. They exclude each other
-and the execution-altering `--build-force`
-and `--build-verify`; combining them is a
-usage error. Tuning flags like
+and the execution-altering `--build-force`,
+`--build-no-cache`, and `--build-verify`;
+combining them is a usage error. Tuning
+flags like
 `--build-timeout` or `--build-jobs`
 combine freely with a run.
 
@@ -193,9 +195,10 @@ combine freely with a run.
    in `cmd/mdsmith/`. Add the five flags
    above. Print per-target summary;
    non-zero exit on failure. Keep the pass
-   out of `pkg/mdsmith` and `fix.Source`;
-   the pre-merge-commit hook script passes
-   `--no-build`.
+   out of `pkg/mdsmith` and `fix.Source`.
+   Pass `--no-build` in the merge-driver
+   invocation and in the `internal/githooks`
+   script (regenerate its golden file).
 5. Integration tests:
 
   - `cp`-based single-output recipe runs

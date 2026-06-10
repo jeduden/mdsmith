@@ -76,9 +76,8 @@ or `--build-force` on a schedule.
 Each entry in `outputs:` is a literal relative
 path. No globs. Every output must be a path the
 recipe will write. This keeps post-build
-verification deterministic (every declared
-output must exist on disk after the recipe
-returns).
+verification deterministic: every declared
+output must exist after the recipe returns.
 
 Each entry in `inputs:` is a literal path or a
 glob. Globs are evaluated at build time (plan
@@ -283,7 +282,8 @@ declared as params.
       no newline, no leading/trailing
       whitespace, no Windows drive letters,
       no UNC prefix, no NTFS ADS, no reserved
-      device names, no `..` after `Clean`
+      device names, no `..` after `Clean`,
+      nothing under `.mdsmith/`
 - [ ] An empty `outputs:` list, or any empty
       or whitespace-only entry inside either
       list, is a diagnostic

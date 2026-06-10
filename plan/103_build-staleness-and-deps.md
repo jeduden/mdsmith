@@ -168,7 +168,7 @@ The recommended `.gitignore` snippet:
 ```
 
 Never ignore the whole `.mdsmith/` dir.
-Its other folders (`kinds/`, `schemas/`,
+Its other folders (`kinds/`,
 `conventions/`) are checked-in config.
 
 ### Flags on `mdsmith fix`
@@ -209,8 +209,8 @@ hashing. Parallel builds: plan 2606101547.
 1. Extend `RecipeCfg` in `internal/config/`
    with `DefaultInputs []string`: each entry
    `{param}` (declared, not reserved) or a
-   literal relative path, no `..`. Cover in
-   MDS040.
+   literal relative path passing plan 102's
+   path-shape rules. Cover in MDS040.
 2. Implement `internal/build/cache.go`:
    load/save `.mdsmith/build-cache.json`,
    atomic write via temp+rename, version
