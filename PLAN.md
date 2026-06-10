@@ -172,5 +172,5 @@ footer: |
 | 2606071930 | ✅     | sonnet | [Consolidate duplicated table-parse helpers in tablereadability](plan/2606071930_arch-fix-tablereadability-dup.md)                      |
 | 2606071931 | ✅     | haiku  | [Unit tests for include-rule private validation helpers](plan/2606071931_arch-fix-include-helper-tests.md)                              |
 | 2606100533 | ✅     | sonnet | [Coordination-free plan ids from UTC creation timestamps](plan/2606100533_timestamp-plan-ids.md)                                        |
-| 2606100534 | ✅     | sonnet | [Workspace-unique front-matter fields (unique-frontmatter rule)](plan/2606100534_unique-frontmatter-rule.md)                            |
+| 2606100534 | 🔳     | sonnet | [Workspace-unique front-matter fields (unique-frontmatter rule)](plan/2606100534_unique-frontmatter-rule.md)                            |
 <?/catalog?>

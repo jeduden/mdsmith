@@ -24,8 +24,8 @@ pairs collided this way: 121, 153, 156, 214, 215, 218,
 A shared id breaks every place where the id is the key.
 `depends-on: [215]` resolves to two files. The
 [pick-plan skill](../.claude/skills/pick-plan/SKILL.md)
-keys its dependency graph by filename and carries
-duplicate-id workaround steps. Matching `Plan <id>`
+keys its dependency graph by filename and carried
+duplicate-id workaround steps (removed by task 4). Matching `Plan <id>`
 against branch names and PR titles returns two candidates.
 
 The PLAN.md catalog table is not the problem: the merge
@@ -62,8 +62,11 @@ frozen as a closed range and new ids must be timestamps:
 id: (int & >=1 & <=243) | (int & >=2601010000)
 ```
 
-A `max+1` allocation like 244 now fails MDS020 instead of
-silently extending the legacy sequence.
+A `max+1` allocation like 244 now fails MDS020 instead
+of silently extending the legacy sequence. The
+id-equals-prefix pairing stays convention-only. The
+PLAN.md catalog regenerates from real filenames, so a
+mismatch surfaces on the next `mdsmith fix`.
 
 ### Why the id stays an integer
 
@@ -136,8 +139,10 @@ Obsidian WASM stack and three plan deps pin it. The
 lines-only audit moves with its three Go comments and one
 docs mention. 156 stays with kind-schema composition, the
 `plan/156` comment in [.mdsmith.yml](../.mdsmith.yml).
-Entry-unification moves, carrying the shipped
-`see plan 156` diagnostic strings along.
+Entry-unification moves, and the shipped
+`see plan 156` diagnostic strings move with it to the
+new id — left at 156 they would point users at the
+wrong plan.
 
 The live cuelite chain keeps 236 and 237. The completed
 arch-fix twins move, updating the architecture-audit log
@@ -145,13 +150,13 @@ links. All nine moved twins are completed plans. No
 `depends-on:` entry needed an edit — every ambiguous dep
 already meant a keeper.
 
-Re-point every reference to a moved id, not only
-`depends-on:` entries. Sweep the whole repo for the old
-id with non-digit boundaries: `plan/`, `docs/`,
-`.claude/`, `.github/`, `internal/`, `cmd/`, `editors/`,
-`website/`. Read each hit to decide which twin it means.
-The cuelite chain means the cuelite files, not the
-arch-fix twins.
+Every reference to a moved id was re-pointed, not only
+`depends-on:` entries. The sweep covered the whole repo
+with non-digit boundaries: `plan/`, `docs/`, `.claude/`,
+`.github/`, `internal/`, `cmd/`, `editors/`, `website/`.
+Each hit was read to decide which twin it meant. The
+cuelite chain means the cuelite files, not the arch-fix
+twins.
 
 One known orphan rides along:
 [157_catalog-where-filter.md](157_catalog-where-filter.md)

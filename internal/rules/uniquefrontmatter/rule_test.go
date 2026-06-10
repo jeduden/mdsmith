@@ -1,10 +1,13 @@
 package uniquefrontmatter
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"testing/fstest"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/testsymlink"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -28,12 +31,19 @@ func planFS() fstest.MapFS {
 	}
 }
 
+// planRule builds the shared test rule through ApplySettings so
+// the interned scope key (the production path) is exercised.
 func planRule() *Rule {
-	return &Rule{
-		Field:   "id",
-		Include: []string{"plan/*.md"},
-		Exclude: []string{"plan/proto.md"},
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"field":   "id",
+		"include": []any{"plan/*.md"},
+		"exclude": []any{"plan/proto.md"},
+	})
+	if err != nil {
+		panic(err)
 	}
+	return r
 }
 
 func TestDuplicateFlagsLaterPathOnly(t *testing.T) {
@@ -175,4 +185,84 @@ func TestDiagnosticLineSurvivesLineOffset(t *testing.T) {
 	f.AdjustDiagnostics(diags)
 	assert.Equal(t, 2, diags[0].Line,
 		"diagnostic anchors at the raw file line of id:")
+}
+
+// TestAbsolutePathHostStillMatches pins the lookup-key
+// normalization: the CLI sets f.Path to the absolute argument
+// path, while the index keys are workspace-relative glob output.
+// Without anchoring to RootDir the rule was silently inert for
+// absolute-path invocations.
+func TestAbsolutePathHostStillMatches(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "plan"), 0o755))
+	write := func(name, body string) {
+		require.NoError(t, os.WriteFile(
+			filepath.Join(root, "plan", name), []byte(body), 0o644))
+	}
+	write("a.md", "---\nid: 7\n---\n# A\n")
+	write("b.md", "---\nid: 7\n---\n# B\n")
+
+	r := &Rule{Field: "id", Include: []string{"plan/*.md"}}
+	abs := filepath.Join(root, "plan", "b.md")
+	f, err := lint.NewFile(abs, []byte("# Title\n"))
+	require.NoError(t, err)
+	f.RootDir = root
+	f.RootFS = os.DirFS(root)
+
+	diags := r.Check(f)
+	require.Len(t, diags, 1,
+		"absolute host path must anchor to RootDir and match")
+	assert.Contains(t, diags[0].Message, "plan/a.md")
+}
+
+// TestSymlinkedFilesAreSkipped pins the plan-84 posture: a symlink
+// planted in the scope must not pull outside front matter into the
+// uniqueness namespace, neither to flag a real file nor to claim
+// first-holder.
+func TestSymlinkedFilesAreSkipped(t *testing.T) {
+	testsymlink.SkipIfSymlinkUnsupported(t)
+
+	root := t.TempDir()
+	outside := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "plan"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(outside, "outside.md"),
+		[]byte("---\nid: 7\n---\n# Outside\n"), 0o644))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(root, "plan", "zzz.md"),
+		[]byte("---\nid: 7\n---\n# Real\n"), 0o644))
+	require.NoError(t, os.Symlink(
+		filepath.Join(outside, "outside.md"),
+		filepath.Join(root, "plan", "aaa.md")))
+
+	r := &Rule{Field: "id", Include: []string{"plan/*.md"}}
+	f, err := lint.NewFile("plan/zzz.md", []byte("# Title\n"))
+	require.NoError(t, err)
+	f.RootFS = os.DirFS(root)
+
+	assert.Nil(t, r.Check(f),
+		"a symlinked first-holder must not flag the real file")
+}
+
+// TestScopeIndexMatchesInvalidatedPath pins the targeted
+// invalidation matcher the LSP relies on.
+func TestScopeIndexMatchesInvalidatedPath(t *testing.T) {
+	s := &scopeIndex{
+		rootDir: filepath.FromSlash("/ws"),
+		include: []string{"plan/*.md"},
+		exclude: []string{"plan/proto.md"},
+	}
+	abs := func(p string) string { return filepath.FromSlash(p) }
+
+	assert.True(t, s.MatchesInvalidatedPath(abs("/ws/plan/a.md")),
+		"in-scope edit must drop the index")
+	assert.False(t, s.MatchesInvalidatedPath(abs("/ws/docs/a.md")),
+		"out-of-scope edit must keep the index")
+	assert.False(t, s.MatchesInvalidatedPath(abs("/ws/plan/proto.md")),
+		"excluded path must keep the index")
+	assert.False(t, s.MatchesInvalidatedPath(abs("/elsewhere/plan/a.md")),
+		"outside the root must keep the index")
+	assert.True(t,
+		(&scopeIndex{}).MatchesInvalidatedPath(abs("/anything")),
+		"no root recorded: match everything, drop conservatively")
 }

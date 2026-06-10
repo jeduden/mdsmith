@@ -171,3 +171,30 @@ func TestTopLevelMappingLines(t *testing.T) {
 		assert.Equal(t, map[string]int{"id": 3}, lines)
 	})
 }
+
+func TestTopLevelScalarField(t *testing.T) {
+	doc, err := yamlutil.UnmarshalNodeSafe([]byte(
+		"id: 7\ntitle: \"7\"\nempty:\nlist:\n  - a\n"))
+	require.NoError(t, err)
+
+	v, line, ok := yamlutil.TopLevelScalarField(&doc, "id", 1)
+	require.True(t, ok)
+	assert.Equal(t, "7", v)
+	assert.Equal(t, 2, line, "body line 1 shifts by the offset")
+
+	v, _, ok = yamlutil.TopLevelScalarField(&doc, "title", 1)
+	require.True(t, ok, "quoted scalar is a scalar")
+	assert.Equal(t, "7", v, "quoted and bare ints share text")
+
+	_, _, ok = yamlutil.TopLevelScalarField(&doc, "empty", 1)
+	assert.False(t, ok, "null value carries no scalar text")
+
+	_, _, ok = yamlutil.TopLevelScalarField(&doc, "list", 1)
+	assert.False(t, ok, "sequence value carries no scalar text")
+
+	_, _, ok = yamlutil.TopLevelScalarField(&doc, "absent", 1)
+	assert.False(t, ok)
+
+	_, _, ok = yamlutil.TopLevelScalarField(nil, "id", 1)
+	assert.False(t, ok, "nil document degrades to not-found")
+}

@@ -6,7 +6,7 @@ summary: >-
   Schemas can be inline on a file kind or shared via `proto.md` files.
 icon: link
 link: "/guides/directives/enforcing-structure/"
-rules: ["MDS027", "MDS020", "MDS033"]
+rules: ["MDS027", "MDS020", "MDS033", "MDS069"]
 weight: 8
 group: "A connected docs tree"
 ---
@@ -19,7 +19,9 @@ resolves links and anchors across the whole workspace.
 `MDS027` flags broken links and missing anchors. `MDS020`
 enforces a per-file section schema: required headings,
 front-matter fields, and ordering. `MDS033` keeps each Markdown
-file in an allowed folder. The
+file in an allowed folder. `MDS069` keeps a front-matter field
+unique across a set of files — document ids, slugs, or titles
+that no two files may share. The
 [rule directory](/rules/)
 has the full reference for each.
 

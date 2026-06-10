@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io/fs"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
+	"github.com/jeduden/mdsmith/internal/yamlutil"
 )
 
 func init() {
@@ -33,6 +35,11 @@ type Rule struct {
 	Field   string
 	Include []string
 	Exclude []string
+
+	// scopeKey caches the RunCache key for the configured scope.
+	// ApplySettings recomputes it; struct-literal callers (unit
+	// tests) leave it empty and index derives it per call.
+	scopeKey string
 }
 
 // ID implements rule.Rule.
@@ -44,20 +51,49 @@ func (r *Rule) Name() string { return "unique-frontmatter" }
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "structural" }
 
-// pathEntry records one in-scope file's field value, the 1-based
-// file line of the field, and — when the value repeats an earlier
-// path's — that first path. firstPath is empty on the first holder.
+// pathEntry records one flagged file's field value, the 1-based
+// file line of the field, and the first path holding the value.
 type pathEntry struct {
 	value     string
 	line      int
 	firstPath string
 }
 
-// scopeIndex maps every in-scope file that carries the field to its
-// pathEntry. Built once per run and shared read-only across Check
-// goroutines, so lookups stay allocation-free.
+// scopeIndex maps each in-scope file whose value repeats an earlier
+// path's to the data its diagnostic needs. Files with unique values
+// are not stored — Check treats a missing entry as clean — so the
+// index size tracks the number of violations, not the workspace.
+// Built once per run and read-only afterwards, so concurrent Check
+// goroutines share it without locks.
 type scopeIndex struct {
 	byPath map[string]pathEntry
+
+	// rootDir (absolute) plus the glob lists let RunCache.Invalidate
+	// decide whether an edited path could change this index. An
+	// empty rootDir means "cannot tell": the index then drops on
+	// every invalidation.
+	rootDir string
+	include []string
+	exclude []string
+}
+
+// MatchesInvalidatedPath implements lint.ScopeInvalidator: an edited
+// file forces an index rebuild only when it falls inside the scope's
+// globs. Out-of-root paths and Rel errors return false — such paths
+// cannot participate in the scope.
+func (s *scopeIndex) MatchesInvalidatedPath(absPath string) bool {
+	if s.rootDir == "" {
+		return true
+	}
+	rel, err := filepath.Rel(s.rootDir, absPath)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return false
+	}
+	rel = filepath.ToSlash(rel)
+	if globpath.MatchAny(s.exclude, rel) {
+		return false
+	}
+	return globpath.MatchAny(s.include, rel)
 }
 
 // Check implements rule.Rule. The host file is flagged when an
@@ -66,8 +102,8 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	if r.Field == "" || len(r.Include) == 0 {
 		return nil
 	}
-	e, ok := r.index(f).byPath[path.Clean(f.Path)]
-	if !ok || e.firstPath == "" {
+	e, ok := r.index(f).byPath[lookupKey(f)]
+	if !ok {
 		return nil
 	}
 	// e.line is the raw file line of the field; rules emit
@@ -86,14 +122,48 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	}}
 }
 
+// lookupKey returns f.Path in the index's key space: the
+// workspace-relative slash path that globbing the workspace FS
+// produces. The fast path covers engine discovery output (already
+// root-relative, slash-separated, no dot-dot). Absolute arguments,
+// Windows separators, and dot-dot relative arguments anchor to
+// RootDir the way MDS027's workspaceRelativeSource does; relative
+// paths resolve against the working directory, where the CLI
+// resolved them.
+func lookupKey(f *lint.File) string {
+	p := f.Path
+	if !filepath.IsAbs(p) && !strings.ContainsRune(p, '\\') &&
+		!strings.Contains(p, "..") {
+		return path.Clean(p)
+	}
+	if f.RootDir == "" {
+		return path.Clean(filepath.ToSlash(p))
+	}
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return path.Clean(filepath.ToSlash(p))
+	}
+	absRoot, err := filepath.Abs(f.RootDir)
+	if err != nil {
+		return path.Clean(filepath.ToSlash(p))
+	}
+	rel, err := filepath.Rel(absRoot, abs)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return path.Clean(filepath.ToSlash(p))
+	}
+	return path.Clean(filepath.ToSlash(rel))
+}
+
 // index returns the scope index, built at most once per run via the
 // RunCache when wired (one build shared by every host file), else
 // once per File via the per-File memo (unit tests, struct-literal
 // callers). The key encodes the rule's whole scope so two
 // differently-configured layers never share an index.
 func (r *Rule) index(f *lint.File) *scopeIndex {
-	key := strings.Join(append(append(
-		[]string{"MDS069", r.Field}, r.Include...), r.Exclude...), "\x00")
+	key := r.scopeKey
+	if key == "" {
+		key = scopeKeyFor(r.Field, r.Include, r.Exclude)
+	}
 	build := func() any { return r.buildIndex(f) }
 	var v any
 	if f.RunCache != nil {
@@ -104,12 +174,29 @@ func (r *Rule) index(f *lint.File) *scopeIndex {
 	return v.(*scopeIndex)
 }
 
+// scopeKeyFor derives the cache key for one configured scope.
+// ApplySettings interns the result on the rule so configured runs
+// pay no per-Check key allocation.
+func scopeKeyFor(field string, include, exclude []string) string {
+	parts := make([]string, 0, 2+len(include)+len(exclude))
+	parts = append(parts, "MDS069", field)
+	parts = append(parts, include...)
+	parts = append(parts, exclude...)
+	return strings.Join(parts, "\x00")
+}
+
 // buildIndex enumerates the include globs against the workspace FS
 // (RootFS when wired, else the file's FS), drops exclude matches,
-// and records each field-bearing file's value in ascending path
-// order so "first holder" is deterministic.
+// and records duplicate holders in ascending path order so "first
+// holder" is deterministic. In the LSP the workspace FS reads
+// as-saved disk state, the same view every cross-file rule gets;
+// unsaved buffer edits land in the index after save.
 func (r *Rule) buildIndex(f *lint.File) *scopeIndex {
-	idx := &scopeIndex{byPath: map[string]pathEntry{}}
+	idx := &scopeIndex{
+		byPath:  map[string]pathEntry{},
+		include: r.Include,
+		exclude: r.Exclude,
+	}
 	fsys := f.RootFS
 	if fsys == nil {
 		fsys = f.FS
@@ -117,27 +204,38 @@ func (r *Rule) buildIndex(f *lint.File) *scopeIndex {
 	if fsys == nil {
 		return idx
 	}
+	if f.RootDir != "" {
+		if abs, err := filepath.Abs(f.RootDir); err == nil {
+			idx.rootDir = abs
+		}
+	}
 
 	seen := map[string]struct{}{}
 	var paths []string
 	for _, pat := range r.Include {
-		matches, err := doublestar.Glob(fsys, pat)
-		if err != nil {
-			// Patterns are validated in ApplySettings; a walk error
-			// here means the FS, not the config — skip the pattern.
-			continue
-		}
-		for _, m := range matches {
-			m = path.Clean(m)
-			if _, dup := seen[m]; dup {
-				continue
-			}
-			if globpath.MatchAny(r.Exclude, m) {
-				continue
-			}
-			seen[m] = struct{}{}
-			paths = append(paths, m)
-		}
+		// WithNoFollow keeps the walk out of symlinked directories
+		// and reports symlinked files as symlinks, which the type
+		// check skips: front matter outside the workspace must not
+		// join the uniqueness scope. Discovery denies symlinks the
+		// same way (plan 84). Walk errors leave the pattern's
+		// partial matches in place — pattern syntax was already
+		// validated in ApplySettings.
+		_ = doublestar.GlobWalk(fsys, pat,
+			func(m string, d fs.DirEntry) error {
+				if d.IsDir() || d.Type()&fs.ModeSymlink != 0 {
+					return nil
+				}
+				m = path.Clean(m)
+				if _, dup := seen[m]; dup {
+					return nil
+				}
+				if globpath.MatchAny(r.Exclude, m) {
+					return nil
+				}
+				seen[m] = struct{}{}
+				paths = append(paths, m)
+				return nil
+			}, doublestar.WithNoFollow())
 	}
 	sort.Strings(paths)
 
@@ -147,22 +245,28 @@ func (r *Rule) buildIndex(f *lint.File) *scopeIndex {
 		if !ok {
 			continue
 		}
-		entry := pathEntry{value: value, line: line}
 		if first, dup := firstByValue[value]; dup {
-			entry.firstPath = first
+			idx.byPath[p] = pathEntry{
+				value: value, line: line, firstPath: first,
+			}
 		} else {
 			firstByValue[value] = p
 		}
-		idx.byPath[p] = entry
 	}
 	return idx
 }
 
-// fieldValue reads p's front matter and returns the field's value as
-// a string plus the field's 1-based file line. ok is false when the
-// file is unreadable, has no front matter, fails to parse, or lacks
-// the field — all of which mean "not a uniqueness participant", not
-// an error: this rule owns uniqueness, MDS020 owns well-formedness.
+// fieldValue reads p's front matter and returns the field's scalar
+// text and 1-based file line. ok is false when the file is
+// unreadable, has no front matter, fails to parse, or the field is
+// absent, null, or non-scalar — all meaning "not a uniqueness
+// participant", not an error: this rule owns uniqueness, MDS020
+// owns well-formedness.
+//
+// The shared FrontMatter RunCache slot is deliberately not used:
+// that slot's value type belongs to the catalog rule, and a second
+// writer storing a different shape under the same path key would
+// poison whichever rule builds second.
 func (r *Rule) fieldValue(
 	fsys fs.FS, p string, maxBytes int64,
 ) (string, int, bool) {
@@ -174,39 +278,15 @@ func (r *Rule) fieldValue(
 	if prefix == nil {
 		return "", 0, false
 	}
-	fields, err := lint.ParseFrontMatterFields(prefix)
+	delim := []byte("---\n")
+	body := bytes.TrimSuffix(bytes.TrimPrefix(prefix, delim), delim)
+	doc, err := yamlutil.UnmarshalNodeSafe(body)
 	if err != nil {
 		return "", 0, false
 	}
-	v, ok := fields[r.Field]
-	if !ok || v == nil {
-		return "", 0, false
-	}
-	return fmt.Sprintf("%v", v), fieldLine(prefix, r.Field), true
-}
-
-// fieldLine returns the 1-based file line of the first front-matter
-// line that sets field. The prefix starts at the file's first line
-// (the opening ---), so a line index inside the prefix is the file
-// line. Falls back to 1 when the textual scan misses (flow-style or
-// folded mappings).
-func fieldLine(prefix []byte, field string) int {
-	line := 1
-	for len(prefix) > 0 {
-		l := prefix
-		if i := bytes.IndexByte(prefix, '\n'); i >= 0 {
-			l = prefix[:i]
-			prefix = prefix[i+1:]
-		} else {
-			prefix = nil
-		}
-		if bytes.HasPrefix(l, []byte(field)) &&
-			len(l) > len(field) && l[len(field)] == ':' {
-			return line
-		}
-		line++
-	}
-	return 1
+	// The body starts at file line 2 (line 1 is the opening ---),
+	// so the node walk shifts its 1-based body lines by one.
+	return yamlutil.TopLevelScalarField(&doc, r.Field, 1)
 }
 
 // ApplySettings implements rule.Configurable.
@@ -222,7 +302,11 @@ func (r *Rule) ApplySettings(s map[string]any) error {
 			return err
 		}
 	}
-	return r.validateGlobs()
+	if err := r.validateGlobs(); err != nil {
+		return err
+	}
+	r.scopeKey = scopeKeyFor(r.Field, r.Include, r.Exclude)
+	return nil
 }
 
 func (r *Rule) applyOne(key string, v any) error {
@@ -255,14 +339,12 @@ func applyList(target *[]string, name string, v any) error {
 }
 
 func (r *Rule) validateGlobs() error {
-	for _, pat := range r.Include {
-		if !doublestar.ValidatePattern(pat) {
-			return fmt.Errorf("unique-frontmatter: invalid glob %q", pat)
-		}
-	}
-	for _, pat := range r.Exclude {
-		if !doublestar.ValidatePattern(pat) {
-			return fmt.Errorf("unique-frontmatter: invalid glob %q", pat)
+	for _, pats := range [][]string{r.Include, r.Exclude} {
+		for _, pat := range pats {
+			if !doublestar.ValidatePattern(pat) {
+				return fmt.Errorf(
+					"unique-frontmatter: invalid glob %q", pat)
+			}
 		}
 	}
 	return nil
@@ -271,8 +353,8 @@ func (r *Rule) validateGlobs() error {
 // DefaultSettings implements rule.Configurable.
 func (r *Rule) DefaultSettings() map[string]any {
 	return map[string]any{
-		"field":   r.Field,
-		"include": append([]string{}, r.Include...),
-		"exclude": append([]string{}, r.Exclude...),
+		"field":   "",
+		"include": []string{},
+		"exclude": []string{},
 	}
 }

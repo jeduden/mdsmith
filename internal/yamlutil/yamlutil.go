@@ -128,6 +128,36 @@ func TopLevelMappingLines(doc *yaml.Node, lineOffset int) map[string]int {
 	return out
 }
 
+// TopLevelScalarField walks the yaml.Node document produced by
+// UnmarshalNodeSafe and returns the value text and source line
+// (shifted by lineOffset) of the named top-level mapping key. ok is
+// false when the document is not a mapping, the key is absent, or
+// its value is not a non-null scalar — sequences, mappings, and
+// null carry no comparable scalar text. The value is the scalar's
+// text after YAML parsing, so quoted "7" and bare 7 both yield "7".
+func TopLevelScalarField(
+	doc *yaml.Node, field string, lineOffset int,
+) (value string, line int, ok bool) {
+	if doc == nil || len(doc.Content) == 0 {
+		return "", 0, false
+	}
+	root := doc.Content[0]
+	if root == nil || root.Kind != yaml.MappingNode {
+		return "", 0, false
+	}
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		k, v := root.Content[i], root.Content[i+1]
+		if k.Kind != yaml.ScalarNode || k.Value != field {
+			continue
+		}
+		if v.Kind != yaml.ScalarNode || v.Tag == "!!null" {
+			return "", 0, false
+		}
+		return v.Value, k.Line + lineOffset, true
+	}
+	return "", 0, false
+}
+
 func hasYAMLAnchorOrAlias(node *yaml.Node) bool {
 	if node.Anchor != "" || node.Kind == yaml.AliasNode {
 		return true

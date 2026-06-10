@@ -45,3 +45,20 @@ func TestCheck_InertAllocatesNothing(t *testing.T) {
 	allocs := testing.AllocsPerRun(100, func() { _ = inert.Check(f) })
 	assert.Equal(t, 0.0, allocs)
 }
+
+// TestCheck_OutOfScopeConfiguredStaysCheap pins the cost every
+// non-matching file pays when the rule is configured: an interned
+// scope key plus a warm cache hit, with no per-Check key build.
+func TestCheck_OutOfScopeConfiguredStaysCheap(t *testing.T) {
+	fsys := planFS()
+	r := planRule()
+	rc := lint.NewRunCache()
+
+	f := file(t, "other/d.md", fsys)
+	f.RunCache = rc
+	require.Nil(t, r.Check(f), "warm the index")
+
+	allocs := testing.AllocsPerRun(100, func() { _ = r.Check(f) })
+	assert.LessOrEqual(t, allocs, 3.0,
+		"configured out-of-scope file, warm index: %v allocs", allocs)
+}

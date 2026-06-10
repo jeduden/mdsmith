@@ -24,11 +24,15 @@ type RunCache struct {
 	compiledCUE  sync.Map // string (CUE source) -> *runCacheEntry
 
 	// uniqueFieldIndex memoizes MDS069's per-scope value→first-file
-	// index. Keys encode a rule scope (field + globs), not a path,
-	// so Invalidate cannot target one entry — any file edit can
-	// change which path first holds a value, and Invalidate drops
-	// the whole slot instead.
-	uniqueFieldIndex sync.Map // string (scope key) -> *runCacheEntry
+	// index. Keys encode a rule scope (field + globs), not a path.
+	// uniqueFieldScopes mirrors each entry's ScopeInvalidator so
+	// Invalidate can keep indexes whose scope the edited path cannot
+	// touch; it is written only AFTER the entry's once completes
+	// (the same post-once discipline as schemaIncludes) so reads
+	// never race an in-flight build. Entries without a registered
+	// scope drop on every invalidation — the safe default.
+	uniqueFieldIndex  sync.Map // string (scope key) -> *runCacheEntry
+	uniqueFieldScopes sync.Map // string (scope key) -> ScopeInvalidator
 
 	// schemaDependents maps a fragment path to the set of schema
 	// paths whose ParsedSchema slot reached it via <?include?>.
@@ -95,22 +99,45 @@ func (c *RunCache) FrontMatter(absPath string, build func() any) any {
 	return load(&c.frontMatter, absPath, build)
 }
 
-// UniqueFieldIndex returns build's result for key, computed at most
-// once per key in this cache's lifetime. Keys encode a rule's whole
-// uniqueness scope (field plus include/exclude globs); the slot is
-// dropped wholesale by Invalidate because a single file edit can
-// change which path first holds a value anywhere in the scope.
-func (c *RunCache) UniqueFieldIndex(key string, build func() any) any {
-	return load(&c.uniqueFieldIndex, key, build)
+// ScopeInvalidator scopes the unique-field-index slot's response to
+// Invalidate. A cached value that implements it is dropped only when
+// the invalidated path can fall inside its scope; values without it
+// drop on every invalidation — the safe default.
+type ScopeInvalidator interface {
+	MatchesInvalidatedPath(absPath string) bool
 }
 
-// dropUniqueFieldIndexes clears every unique-field index entry. The
-// slot is keyed by rule scope, not by path: an edit to any file can
-// move a value's first holder, so every entry drops on every
-// invalidation.
-func (c *RunCache) dropUniqueFieldIndexes() {
+// UniqueFieldIndex returns build's result for key, computed at most
+// once per key in this cache's lifetime. Keys encode a rule's whole
+// uniqueness scope (field plus include/exclude globs). When the
+// built value implements ScopeInvalidator it is registered for
+// targeted invalidation; the registration happens after load
+// returns (post-once), so Invalidate's reads never race the build.
+func (c *RunCache) UniqueFieldIndex(key string, build func() any) any {
+	v := load(&c.uniqueFieldIndex, key, build)
+	if _, ok := c.uniqueFieldScopes.Load(key); !ok {
+		if si, ok := v.(ScopeInvalidator); ok {
+			c.uniqueFieldScopes.Store(key, si)
+		}
+	}
+	return v
+}
+
+// dropUniqueFieldIndexes clears unique-field index entries that the
+// edited path could affect. An entry with a registered
+// ScopeInvalidator survives when absPath falls outside its scope —
+// an edit to an unrelated file must not force an index rebuild on
+// the next lint pass. Entries without a scope, or any call with an
+// empty absPath, drop unconditionally.
+func (c *RunCache) dropUniqueFieldIndexes(absPath string) {
 	c.uniqueFieldIndex.Range(func(k, _ any) bool {
+		if siv, ok := c.uniqueFieldScopes.Load(k); ok && absPath != "" {
+			if !siv.(ScopeInvalidator).MatchesInvalidatedPath(absPath) {
+				return true
+			}
+		}
 		c.uniqueFieldIndex.Delete(k)
+		c.uniqueFieldScopes.Delete(k)
 		return true
 	})
 }
@@ -348,7 +375,7 @@ func (c *RunCache) invalidate(absPath string, visited map[string]bool) {
 	c.includes.Delete(absPath)
 	c.anchors.Delete(absPath)
 
-	c.dropUniqueFieldIndexes()
+	c.dropUniqueFieldIndexes(absPath)
 
 	// Read the schema's includes + cueSources from the dedicated
 	// sync.Maps. Both are written AFTER ParsedSchema's load returns

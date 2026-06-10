@@ -23,7 +23,13 @@ The first holder in ascending path order stays clean; every
 later file with the same value gets one diagnostic at its
 front-matter line, naming the field, the value, and the first
 holder. Files without the field are skipped. Values compare as
-scalars, so `id: 7` and `id: "7"` collide.
+scalars, so `id: 7` and `id: "7"` collide; sequence, mapping,
+and null values never participate.
+
+Symlinked files and directories are skipped, so front matter
+outside the workspace cannot join the scope. The index reads
+files as saved on disk; in an editor the verdict refreshes on
+save.
 
 The canonical use is plan ids. Two branches that each add a
 plan can merge a silent id collision. This rule turns the

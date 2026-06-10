@@ -1,6 +1,7 @@
 package lint
 
 import (
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -932,8 +933,54 @@ func TestRunCache_DropUniqueFieldIndexesClearsAllEntries(t *testing.T) {
 	}
 
 	c.UniqueFieldIndex("scope-a", build)
-	c.dropUniqueFieldIndexes()
+	c.dropUniqueFieldIndexes("")
 	c.UniqueFieldIndex("scope-a", build)
 	assert.Equal(t, int32(2), atomic.LoadInt32(&calls),
 		"entry must rebuild after dropUniqueFieldIndexes")
+}
+
+// fakeScope implements ScopeInvalidator with a fixed prefix match.
+type fakeScope struct{ prefix string }
+
+func (f fakeScope) MatchesInvalidatedPath(absPath string) bool {
+	return strings.HasPrefix(absPath, f.prefix)
+}
+
+// TestRunCache_ScopedInvalidationKeepsForeignScopes pins the
+// targeted-drop contract: an entry whose ScopeInvalidator rejects
+// the edited path survives Invalidate; a matching entry drops; an
+// entry without a scope drops unconditionally.
+func TestRunCache_ScopedInvalidationKeepsForeignScopes(t *testing.T) {
+	c := NewRunCache()
+
+	var planCalls, docsCalls, bareCalls int32
+	plan := func() any {
+		atomic.AddInt32(&planCalls, 1)
+		return fakeScope{prefix: "/ws/plan/"}
+	}
+	docs := func() any {
+		atomic.AddInt32(&docsCalls, 1)
+		return fakeScope{prefix: "/ws/docs/"}
+	}
+	bare := func() any {
+		atomic.AddInt32(&bareCalls, 1)
+		return "no scope"
+	}
+
+	c.UniqueFieldIndex("plan-scope", plan)
+	c.UniqueFieldIndex("docs-scope", docs)
+	c.UniqueFieldIndex("bare", bare)
+
+	c.Invalidate("/ws/plan/a.md")
+
+	c.UniqueFieldIndex("plan-scope", plan)
+	c.UniqueFieldIndex("docs-scope", docs)
+	c.UniqueFieldIndex("bare", bare)
+
+	assert.Equal(t, int32(2), atomic.LoadInt32(&planCalls),
+		"in-scope edit rebuilds the matching index")
+	assert.Equal(t, int32(1), atomic.LoadInt32(&docsCalls),
+		"out-of-scope edit keeps the foreign index")
+	assert.Equal(t, int32(2), atomic.LoadInt32(&bareCalls),
+		"scopeless entries drop unconditionally")
 }

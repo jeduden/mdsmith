@@ -1,7 +1,7 @@
 ---
 id: 2606100534
 title: 'Workspace-unique front-matter fields (unique-frontmatter rule)'
-status: "✅"
+status: "🔳"
 model: sonnet
 summary: >-
   New rule MDS069: within configured include/exclude globs,
@@ -76,12 +76,15 @@ front-matter "id": value 7 already used by plan/a.md
 ```
 
 The value-to-first-file index builds once per run, in a
-dedicated `RunCache` slot (`UniqueFieldIndex`). The slot
-is keyed by rule scope rather than path: an edit to any
-file can move a value's first holder, so `Invalidate`
-drops the slot wholesale and the next pass rebuilds.
-Hosts without a `RunCache` fall back to the per-File
-memo.
+dedicated `RunCache` slot (`UniqueFieldIndex`). The
+index registers a scope matcher with the slot, so an
+LSP edit drops it only when the edited path falls inside
+the scope's globs — an unrelated edit keeps the index
+warm. Hosts without a `RunCache` fall back to the
+per-File memo. The index reads the workspace as saved on
+disk, the same view every cross-file rule gets; routing
+the LSP's unsaved-buffer overlay into `RootFS`
+engine-wide is follow-up work.
 
 ### Allocation budget
 
@@ -89,15 +92,23 @@ The repo-wide budget gate's fixture configures no
 scopes, so it only exercises the inert path. The rule
 therefore ships its own alloc test. That test configures
 settings, warms the cache, and asserts ≤ 10 allocs per
-Check on the steady state. It mirrors
-[the include rule's alloc test](../internal/rules/include/alloc_test.go).
+Check on the steady state — the repo's per-package
+alloc-test pattern, applied to `Check` itself rather
+than a helper.
 
 ### Enabling for plan ids
 
-This repo enables the rule for plan ids. The
-[.mdsmith.yml](../.mdsmith.yml) edit needs maintainer
-consent. Approving this plan grants it for exactly the
-block below, nested under the top-level `rules:` key:
+Enablement is gated on the release train. The
+`mdsmith-fixed-version` CI job runs the pinned release
+binary against this repo. That binary predates MDS069.
+The config block therefore lands only after the rule
+ships in a tagged release and the pin bumps — the
+[adopt-new-syntax process](../docs/development/adopt-new-directive-syntax.md).
+This plan stays 🔳 with task 4 open as the tracked
+reminder. The [.mdsmith.yml](../.mdsmith.yml) edit needs
+maintainer consent; approving this plan grants it for
+exactly the block below, nested under the top-level
+`rules:` key:
 
 ```yaml
 rules:
@@ -125,16 +136,22 @@ dogfooding: unique ids or titles across any kind.
    `internal/rules/MDS069-unique-frontmatter/` (good/bad
    with expected diagnostics) plus the rule README on the
    rule-readme schema.
-4. [x] With consent, add the plan-id block to
-   [.mdsmith.yml](../.mdsmith.yml) and verify
-   `mdsmith check .` passes on the renumbered tree.
+4. [ ] Gated on the pin bump: after a release ships
+   MDS069 and `MDSMITH_VERSION` in
+   `setup-mdsmith-pinned-version` moves to it, add the
+   plan-id block to [.mdsmith.yml](../.mdsmith.yml)
+   (consent above) and verify a duplicate plan id fails
+   `mdsmith check .` while the clean tree passes.
 
 ## Acceptance Criteria
 
-- [x] A duplicated plan id added locally makes
-  `mdsmith check .` fail; the diagnostic lands on the
-  later file in path order and its message names the
-  field, the value, and the earlier file.
+- [ ] (Gated on task 4.) A duplicated plan id added
+  locally makes `mdsmith check .` fail; the diagnostic
+  lands on the later file in path order and its message
+  names the field, the value, and the earlier file.
+  Verified once pre-gate with a temporary config block
+  and a probe file: the probe failed at its `id:` line
+  naming the first holder.
 - [x] The bad fixture yields exactly one diagnostic per
   extra file sharing a value; the good fixture is clean.
 - [x] A file missing the configured field, or outside the
