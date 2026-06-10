@@ -198,3 +198,31 @@ func TestTopLevelScalarField(t *testing.T) {
 	_, _, ok = yamlutil.TopLevelScalarField(nil, "id", 1)
 	assert.False(t, ok, "nil document degrades to not-found")
 }
+
+func TestTopLevelScalarField_CanonicalSpellings(t *testing.T) {
+	doc, err := yamlutil.UnmarshalNodeSafe([]byte(
+		"hex: 0x10\nunders: 1_000\nflag: True\nf: 7.0\nbig: 99999999999999999999999\n"))
+	require.NoError(t, err)
+
+	v, _, ok := yamlutil.TopLevelScalarField(&doc, "hex", 1)
+	require.True(t, ok)
+	assert.Equal(t, "16", v, "hex ints canonicalize to decimal")
+
+	v, _, ok = yamlutil.TopLevelScalarField(&doc, "unders", 1)
+	require.True(t, ok)
+	assert.Equal(t, "1000", v, "underscore ints canonicalize")
+
+	v, _, ok = yamlutil.TopLevelScalarField(&doc, "flag", 1)
+	require.True(t, ok)
+	assert.Equal(t, "true", v, "bool spellings canonicalize")
+
+	v, _, ok = yamlutil.TopLevelScalarField(&doc, "f", 1)
+	require.True(t, ok)
+	assert.Equal(t, "7", v, "floats canonicalize via %g")
+
+	v, _, ok = yamlutil.TopLevelScalarField(&doc, "big", 1)
+	require.True(t, ok)
+	assert.Equal(t, "1e+23", v,
+		"yaml.v3 resolves over-int64 literals as !!float; both "+
+			"spellings of such a value canonicalize the same way")
+}

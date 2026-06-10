@@ -260,9 +260,91 @@ func TestScopeIndexMatchesInvalidatedPath(t *testing.T) {
 		"out-of-scope edit must keep the index")
 	assert.False(t, s.MatchesInvalidatedPath(abs("/ws/plan/proto.md")),
 		"excluded path must keep the index")
-	assert.False(t, s.MatchesInvalidatedPath(abs("/elsewhere/plan/a.md")),
-		"outside the root must keep the index")
+	assert.True(t, s.MatchesInvalidatedPath(abs("/elsewhere/plan/a.md")),
+		"unrelatable paths drop the index — stale verdicts cost more "+
+			"than a rebuild (e.g. macOS /tmp vs /private/tmp roots)")
 	assert.True(t,
 		(&scopeIndex{}).MatchesInvalidatedPath(abs("/anything")),
 		"no root recorded: match everything, drop conservatively")
+}
+
+// TestSubdirDiscoveryShapeStillMatches pins the CWD-relative host
+// shape: discovery run from a subdirectory hands the rule paths
+// relative to the working directory, not the workspace root, while
+// the index globs the root. The absolute key space reconciles the
+// two.
+func TestSubdirDiscoveryShapeStillMatches(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "plan"), 0o755))
+	write := func(name, body string) {
+		require.NoError(t, os.WriteFile(
+			filepath.Join(root, "plan", name), []byte(body), 0o644))
+	}
+	write("a.md", "---\nid: 7\n---\n# A\n")
+	write("b.md", "---\nid: 7\n---\n# B\n")
+	t.Chdir(filepath.Join(root, "plan"))
+
+	r := &Rule{Field: "id", Include: []string{"plan/*.md"}}
+	f, err := lint.NewFile("b.md", []byte("# Title\n"))
+	require.NoError(t, err)
+	f.RootDir = root
+	f.RootFS = os.DirFS(root)
+
+	diags := r.Check(f)
+	require.Len(t, diags, 1,
+		"CWD-relative host path must resolve against the cwd")
+	assert.Contains(t, diags[0].Message, "plan/a.md")
+}
+
+// TestTargetedInvalidationWithRootDir drives the real scopeIndex
+// through RunCache.Invalidate with absolute paths: an in-root edit
+// outside the globs keeps the index, an in-scope edit drops it.
+func TestTargetedInvalidationWithRootDir(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "plan"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(root, "plan", "a.md"),
+		[]byte("---\nid: 7\n---\n# A\n"), 0o644))
+
+	r := &Rule{Field: "id", Include: []string{"plan/*.md"}}
+	rc := lint.NewRunCache()
+	f, err := lint.NewFile(filepath.Join(root, "plan", "a.md"),
+		[]byte("# Title\n"))
+	require.NoError(t, err)
+	f.RootDir = root
+	f.RootFS = os.DirFS(root)
+	f.RunCache = rc
+
+	require.Nil(t, r.Check(f))
+	warm := r.index(f)
+
+	rc.Invalidate(filepath.Join(root, "docs", "x.md"))
+	assert.Same(t, warm, r.index(f),
+		"in-root edit outside the globs keeps the index")
+
+	rc.Invalidate(filepath.Join(root, "plan", "a.md"))
+	assert.NotSame(t, warm, r.index(f),
+		"in-scope edit drops the index")
+}
+
+// TestSpellingVariantsCollide pins canonical scalar comparison:
+// int, bool, and float spellings of one value share a key.
+func TestSpellingVariantsCollide(t *testing.T) {
+	fsys := fstest.MapFS{
+		"plan/a.md": {Data: []byte("---\nid: 16\n---\n# A\n")},
+		"plan/b.md": {Data: []byte("---\nid: 0x10\n---\n# B\n")},
+	}
+	r := &Rule{Field: "id", Include: []string{"plan/*.md"}}
+	diags := r.Check(file(t, "plan/b.md", fsys))
+	require.Len(t, diags, 1, "hex and decimal spellings collide")
+	assert.Contains(t, diags[0].Message, "value 16")
+}
+
+func TestScopePathsOrderingAndExclusion(t *testing.T) {
+	fsys := planFS()
+	r := planRule()
+	assert.Equal(t,
+		[]string{"plan/a.md", "plan/b.md", "plan/c.md", "plan/notes.md"},
+		r.scopePaths(fsys),
+		"ascending order, excludes dropped, out-of-glob dropped")
 }

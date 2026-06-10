@@ -115,8 +115,15 @@ type ScopeInvalidator interface {
 // returns (post-once), so Invalidate's reads never race the build.
 func (c *RunCache) UniqueFieldIndex(key string, build func() any) any {
 	v := load(&c.uniqueFieldIndex, key, build)
-	if _, ok := c.uniqueFieldScopes.Load(key); !ok {
-		if si, ok := v.(ScopeInvalidator); ok {
+	// Register (or refresh) the scope when missing or when the
+	// entry was rebuilt under the same key — a racing Invalidate
+	// between load and Store could otherwise leave the scope map
+	// pointing at a previous index instance. Scopes for one key
+	// are equivalent (the key encodes the settings), so a stale
+	// pointer answers correctly; the refresh keeps the invariant
+	// "the registered scope belongs to the live entry" honest.
+	if si, ok := v.(ScopeInvalidator); ok {
+		if cur, found := c.uniqueFieldScopes.Load(key); !found || cur != any(si) {
 			c.uniqueFieldScopes.Store(key, si)
 		}
 	}

@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -129,12 +130,15 @@ func TopLevelMappingLines(doc *yaml.Node, lineOffset int) map[string]int {
 }
 
 // TopLevelScalarField walks the yaml.Node document produced by
-// UnmarshalNodeSafe and returns the value text and source line
-// (shifted by lineOffset) of the named top-level mapping key. ok is
-// false when the document is not a mapping, the key is absent, or
-// its value is not a non-null scalar — sequences, mappings, and
-// null carry no comparable scalar text. The value is the scalar's
-// text after YAML parsing, so quoted "7" and bare 7 both yield "7".
+// UnmarshalNodeSafe and returns the value's canonical text and the
+// key's source line (shifted by lineOffset) for the named top-level
+// mapping key. ok is false when the document is not a mapping, the
+// key is absent, or its value is not a non-null scalar — sequences,
+// mappings, and null carry no comparable scalar text. Int, float,
+// and bool scalars canonicalize through decoding so spelling
+// variants agree: quoted "7" and bare 7 yield "7", 0x10 and 16
+// yield "16", True and true yield "true". Other scalars compare by
+// their parsed text.
 func TopLevelScalarField(
 	doc *yaml.Node, field string, lineOffset int,
 ) (value string, line int, ok bool) {
@@ -153,9 +157,35 @@ func TopLevelScalarField(
 		if v.Kind != yaml.ScalarNode || v.Tag == "!!null" {
 			return "", 0, false
 		}
-		return v.Value, k.Line + lineOffset, true
+		return canonicalScalar(v), k.Line + lineOffset, true
 	}
 	return "", 0, false
+}
+
+// canonicalScalar returns the comparison text for a scalar value
+// node. Int, float, and bool scalars decode first so YAML spelling
+// variants (hex, octal, underscores, True vs true) yield one
+// canonical form; values that fail to decode (e.g. ints beyond
+// int64) and all other tags fall back to the parsed source text.
+func canonicalScalar(v *yaml.Node) string {
+	switch v.Tag {
+	case "!!int":
+		var n int64
+		if err := v.Decode(&n); err == nil {
+			return strconv.FormatInt(n, 10)
+		}
+	case "!!float":
+		var fl float64
+		if err := v.Decode(&fl); err == nil {
+			return strconv.FormatFloat(fl, 'g', -1, 64)
+		}
+	case "!!bool":
+		var b bool
+		if err := v.Decode(&b); err == nil {
+			return strconv.FormatBool(b)
+		}
+	}
+	return v.Value
 }
 
 func hasYAMLAnchorOrAlias(node *yaml.Node) bool {

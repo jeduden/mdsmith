@@ -23,8 +23,9 @@ The first holder in ascending path order stays clean; every
 later file with the same value gets one diagnostic at its
 front-matter line, naming the field, the value, and the first
 holder. Files without the field are skipped. Values compare as
-scalars, so `id: 7` and `id: "7"` collide; sequence, mapping,
-and null values never participate.
+canonical scalars: `id: 7` and `id: "7"` collide, and so do
+`id: 0x10` and `id: 16`; sequence, mapping, and null values
+never participate.
 
 Symlinked files and directories are skipped, so front matter
 outside the workspace cannot join the scope. The index reads

@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"fmt"
 	"io/fs"
+	"os"
 	"path"
 	"path/filepath"
 	"sort"
@@ -68,26 +69,55 @@ type pathEntry struct {
 type scopeIndex struct {
 	byPath map[string]pathEntry
 
-	// rootDir (absolute) plus the glob lists let RunCache.Invalidate
-	// decide whether an edited path could change this index. An
-	// empty rootDir means "cannot tell": the index then drops on
-	// every invalidation.
+	// rootDir and cwd (both absolute, captured at build time)
+	// define the key space. With a rootDir, every byPath key is an
+	// absolute native path and a relative host resolves against
+	// cwd — the engine hands rules CWD-relative host paths, and
+	// discovery from a subdirectory yields paths the workspace
+	// root never sees, so root-relative keying cannot work.
+	// Without a rootDir (fixtures, struct-literal tests) keys stay
+	// as cleaned glob output and hosts match by cleaned f.Path.
+	// rootDir plus the glob lists also let RunCache.Invalidate
+	// decide whether an edited path could change this index.
 	rootDir string
+	cwd     string
 	include []string
 	exclude []string
 }
 
-// MatchesInvalidatedPath implements lint.ScopeInvalidator: an edited
-// file forces an index rebuild only when it falls inside the scope's
-// globs. Out-of-root paths and Rel errors return false — such paths
-// cannot participate in the scope.
+// hostKey returns f.Path in the index's key space; see the
+// scopeIndex comment. An unresolvable host returns "" and misses
+// the index, the fail-open posture MDS027 uses for unmappable
+// paths.
+func (s *scopeIndex) hostKey(f *lint.File) string {
+	p := f.Path
+	if s.rootDir == "" {
+		return path.Clean(p)
+	}
+	if !filepath.IsAbs(p) {
+		if s.cwd == "" {
+			return ""
+		}
+		p = filepath.Join(s.cwd, p)
+	}
+	return filepath.Clean(p)
+}
+
+// MatchesInvalidatedPath implements lint.ScopeInvalidator. In-root
+// paths match by the scope's globs. Paths the matcher cannot relate
+// to the root — Rel errors and dot-dot escapes, e.g. a macOS /tmp
+// workspace root receiving /private/tmp document paths — return
+// true: dropping the index too eagerly costs one rebuild, while
+// keeping it stale would freeze the rule's verdicts for the rest
+// of the editing session.
 func (s *scopeIndex) MatchesInvalidatedPath(absPath string) bool {
 	if s.rootDir == "" {
 		return true
 	}
 	rel, err := filepath.Rel(s.rootDir, absPath)
-	if err != nil || strings.HasPrefix(rel, "..") {
-		return false
+	if err != nil || rel == ".." ||
+		strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return true
 	}
 	rel = filepath.ToSlash(rel)
 	if globpath.MatchAny(s.exclude, rel) {
@@ -102,7 +132,8 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	if r.Field == "" || len(r.Include) == 0 {
 		return nil
 	}
-	e, ok := r.index(f).byPath[lookupKey(f)]
+	idx := r.index(f)
+	e, ok := idx.byPath[idx.hostKey(f)]
 	if !ok {
 		return nil
 	}
@@ -122,42 +153,11 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	}}
 }
 
-// lookupKey returns f.Path in the index's key space: the
-// workspace-relative slash path that globbing the workspace FS
-// produces. The fast path covers engine discovery output (already
-// root-relative, slash-separated, no dot-dot). Absolute arguments,
-// Windows separators, and dot-dot relative arguments anchor to
-// RootDir the way MDS027's workspaceRelativeSource does; relative
-// paths resolve against the working directory, where the CLI
-// resolved them.
-func lookupKey(f *lint.File) string {
-	p := f.Path
-	if !filepath.IsAbs(p) && !strings.ContainsRune(p, '\\') &&
-		!strings.Contains(p, "..") {
-		return path.Clean(p)
-	}
-	if f.RootDir == "" {
-		return path.Clean(filepath.ToSlash(p))
-	}
-	abs, err := filepath.Abs(p)
-	if err != nil {
-		return path.Clean(filepath.ToSlash(p))
-	}
-	absRoot, err := filepath.Abs(f.RootDir)
-	if err != nil {
-		return path.Clean(filepath.ToSlash(p))
-	}
-	rel, err := filepath.Rel(absRoot, abs)
-	if err != nil || strings.HasPrefix(rel, "..") {
-		return path.Clean(filepath.ToSlash(p))
-	}
-	return path.Clean(filepath.ToSlash(rel))
-}
-
 // index returns the scope index, built at most once per run via the
-// RunCache when wired (one build shared by every host file), else
-// once per File via the per-File memo (unit tests, struct-literal
-// callers). The key encodes the rule's whole scope so two
+// RunCache when wired (one build shared by every host file). The
+// per-File memo fallback is test-only scaffolding: the engine
+// always wires a RunCache, and without one the index rebuilds once
+// per host file. The key encodes the rule's whole scope so two
 // differently-configured layers never share an index.
 func (r *Rule) index(f *lint.File) *scopeIndex {
 	key := r.scopeKey
@@ -208,8 +208,41 @@ func (r *Rule) buildIndex(f *lint.File) *scopeIndex {
 		if abs, err := filepath.Abs(f.RootDir); err == nil {
 			idx.rootDir = abs
 		}
+		if cwd, err := os.Getwd(); err == nil {
+			idx.cwd = cwd
+		}
 	}
 
+	paths := r.scopePaths(fsys)
+
+	firstByValue := make(map[string]string, len(paths))
+	for _, p := range paths {
+		value, line, ok := r.fieldValue(fsys, p, f.MaxInputBytes)
+		if !ok {
+			continue
+		}
+		key := p
+		if idx.rootDir != "" {
+			key = filepath.Join(idx.rootDir, filepath.FromSlash(p))
+		}
+		if first, dup := firstByValue[value]; dup {
+			// firstPath stays the workspace-relative form: it is
+			// message text, not a key.
+			idx.byPath[key] = pathEntry{
+				value: value, line: line, firstPath: first,
+			}
+		} else {
+			firstByValue[value] = p
+		}
+	}
+	return idx
+}
+
+// scopePaths enumerates the include globs against fsys — skipping
+// directories, symlinks, duplicate matches, and exclude matches —
+// and returns the survivors in ascending path order so "first
+// holder" is deterministic.
+func (r *Rule) scopePaths(fsys fs.FS) []string {
 	seen := map[string]struct{}{}
 	var paths []string
 	for _, pat := range r.Include {
@@ -217,9 +250,11 @@ func (r *Rule) buildIndex(f *lint.File) *scopeIndex {
 		// and reports symlinked files as symlinks, which the type
 		// check skips: front matter outside the workspace must not
 		// join the uniqueness scope. Discovery denies symlinks the
-		// same way (plan 84). Walk errors leave the pattern's
-		// partial matches in place — pattern syntax was already
-		// validated in ApplySettings.
+		// same way (plan 84). One upstream caveat: a symlink in a
+		// pattern's literal prefix (before the first meta
+		// character) is still followed. Walk errors leave the
+		// pattern's partial matches in place — pattern syntax was
+		// already validated in ApplySettings.
 		_ = doublestar.GlobWalk(fsys, pat,
 			func(m string, d fs.DirEntry) error {
 				if d.IsDir() || d.Type()&fs.ModeSymlink != 0 {
@@ -238,22 +273,7 @@ func (r *Rule) buildIndex(f *lint.File) *scopeIndex {
 			}, doublestar.WithNoFollow())
 	}
 	sort.Strings(paths)
-
-	firstByValue := make(map[string]string, len(paths))
-	for _, p := range paths {
-		value, line, ok := r.fieldValue(fsys, p, f.MaxInputBytes)
-		if !ok {
-			continue
-		}
-		if first, dup := firstByValue[value]; dup {
-			idx.byPath[p] = pathEntry{
-				value: value, line: line, firstPath: first,
-			}
-		} else {
-			firstByValue[value] = p
-		}
-	}
-	return idx
+	return paths
 }
 
 // fieldValue reads p's front matter and returns the field's scalar
