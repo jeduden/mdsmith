@@ -27,6 +27,23 @@ richest surface but the narrowest in real use: the only live
 builtin is `strings.Join`. See plan 218 for the evaluator
 design.
 
+The façade shape differs from surfaces A/B.
+[cuetemplate.Compile](../internal/cuetemplate/cuetemplate.go) is
+PARSE-ONLY (`parser.ParseFile`). References like `fm.id` resolve
+only at `Render`, when `buildSource` injects the frontmatter
+scope. `cuelite.Compile` instead EVALUATES. Feeding it a bare
+row-expr would reject the unresolved references with "reference
+not found". So the façade needs two new entries surface C alone
+uses: a parse-without-evaluate entry (the `Compile` analogue), and
+an evaluate-expression-against-a-scope entry (the `Render`
+analogue that takes the frontmatter map / alias bindings).
+
+`Template` also caches one `*cue.Context` at Compile and reuses
+it across `Render` calls. That reuse does not map onto cuelite's
+per-call fresh-context model. So the interim façade pays a fresh
+context per catalog row until the context-free in-house evaluator
+lands.
+
 ## Tasks
 
 1. Add the expression façade to `cue/cuelite`, delegating to

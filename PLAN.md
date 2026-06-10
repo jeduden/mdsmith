@@ -140,7 +140,7 @@ footer: |
 | 215        | ✅     | opus   | [mdsmith public engine API and WASM bindings](plan/215_engine-api-wasm.md)                                                              |
 | 216        | ✅     | opus   | [Per-document parse cache for the LSP, keyed by version](plan/216_lsp-parse-cache.md)                                                   |
 | 217        | ✅     | opus   | [Obsidian plugin (WASM runtime)](plan/217_obsidian-plugin.md)                                                                           |
-| 218        | 🔲     | opus   | [In-house CUE-subset engine for WASM size and tinygo](plan/218_wasm-size-reduction.md)                                                  |
+| 218        | 🔳     | opus   | [In-house CUE-subset engine for WASM size and tinygo](plan/218_wasm-size-reduction.md)                                                  |
 | 219        | ✅     | opus   | [Route cmd/mdsmith and the LSP through pkg/mdsmith.Session](plan/219_session-cli-lsp-migration.md)                                      |
 | 220        | ✅     | opus   | [Harden the git-index writers against a transient index.lock](plan/220_git-index-lock-retry.md)                                         |
 | 221        | ✅     | opus   | [Ship mdsmith as a self-hosted Flatpak bundle](plan/221_flatpak-bundle-distribution.md)                                                 |
@@ -154,14 +154,17 @@ footer: |
 | 233        | ✅     | opus   | [numeric heading-level target for include](plan/233_include-heading-level-target.md)                                                    |
 | 234        | 🔳     | sonnet | [Distribute mdsmith on Windows via Scoop and WinGet](plan/234_windows-package-managers.md)                                              |
 | 235        | ✅     | sonnet | [Playwright end-to-end tests for the website, runnable by CI and agents](plan/235_playwright-site-e2e.md)                               |
-| 236        | 🔲     | opus   | [cuelite phase 0 — package, façade, and differential harness](plan/236_cuelite-package-harness.md)                                      |
+| 236        | ✅     | opus   | [cuelite phase 0 — package, façade, and differential harness](plan/236_cuelite-package-harness.md)                                      |
 | 237        | 🔲     | sonnet | [cuelite phase 1 — surface D (placeholder paths)](plan/237_cuelite-surface-d.md)                                                        |
 | 238        | 🔲     | opus   | [cuelite phase 2 — surfaces A + B (schema, query)](plan/238_cuelite-surfaces-ab.md)                                                     |
 | 239        | 🔲     | opus   | [cuelite phase 3 — surface C (row-expr evaluator)](plan/239_cuelite-surface-c.md)                                                       |
 | 240        | 🔲     | sonnet | [cuelite phase 4 — drop cuelang.org and enable tinygo](plan/240_cuelite-drop-cue.md)                                                    |
 | 241        | 🔲     | opus   | [Schema-per-file config under `.mdsmith/schemas/`](plan/241_schema-files.md)                                                            |
-| 242        | 🔲     | sonnet | [Recover from panics in the LSP lint pipeline](plan/242_lsp-panic-recovery.md)                                                          |
-| 243        | 🔲     | sonnet | [Security hardening batch — 2026-06-09 audit](plan/243_secreview-2026-06-09-hardening.md)                                               |
+| 242        | 🔲     | opus   | [proto.md schemas declare content entries via `<?content?>`](plan/242_proto-content-entries.md)                                         |
+| 243        | ✅     | sonnet | [`mdsmith extract` projects the document H1 as `title`](plan/243_extract-h1-title.md)                                                   |
+| 244        | ✅     | opus   | [Structured list projection; fix nested-item text corruption](plan/244_structured-list-projection.md)                                   |
+| 245        | ✅     | sonnet | [Table projection modes: `records` and `rows`](plan/245_table-projection-modes.md)                                                      |
+| 246        | 🔲     | opus   | [Typed block projection and full-document extract](plan/246_block-projection-full-extract.md)                                           |
 | 2606022122 | ✅     | sonnet | [Review and centralize YAML handling](plan/2606022122_yaml-handling-review.md)                                                          |
 | 2606022123 | ✅     | sonnet | [Catalog directive — accept `..` globs within project root](plan/2606022123_catalog-dotdot-globs.md)                                    |
 | 2606022124 | ✅     | opus   | [Section schema — unify entry shape under `heading:` discriminator](plan/2606022124_schema-entry-unification.md)                        |
@@ -171,6 +174,8 @@ footer: |
 | 2606022128 | ✅     | opus   | [Multiplexed AST walk to close the parity gap to mado](plan/2606022128_multiplexed-ast-walk.md)                                         |
 | 2606071930 | ✅     | sonnet | [Consolidate duplicated table-parse helpers in tablereadability](plan/2606071930_arch-fix-tablereadability-dup.md)                      |
 | 2606071931 | ✅     | haiku  | [Unit tests for include-rule private validation helpers](plan/2606071931_arch-fix-include-helper-tests.md)                              |
+| 2606092208 | ✅     | sonnet | [Recover from panics in the LSP lint pipeline](plan/2606092208_lsp-panic-recovery.md)                                                   |
+| 2606092209 | ✅     | sonnet | [Security hardening batch — 2026-06-09 audit](plan/2606092209_secreview-2026-06-09-hardening.md)                                        |
 | 2606100533 | ✅     | sonnet | [Coordination-free plan ids from UTC creation timestamps](plan/2606100533_timestamp-plan-ids.md)                                        |
 | 2606100534 | 🔳     | sonnet | [Workspace-unique front-matter fields (unique-frontmatter rule)](plan/2606100534_unique-frontmatter-rule.md)                            |
 <?/catalog?>

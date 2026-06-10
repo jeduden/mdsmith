@@ -33,6 +33,12 @@ with the validated match and mirrors the hierarchy:
 - The root holds a `frontmatter` object (the decoded
   front matter, unchanged) and the projected sections
   beside it at the same level.
+- When the schema roots at H2 (all inline schemas do),
+  the document H1's plain text is emitted under the
+  reserved `title` key beside `frontmatter`. No H1 in
+  the document omits the key. A sibling scope whose
+  projection key resolves to `title` is reported as a
+  collision; rename it with `bind:`.
 - A literal heading (`## Goal`) becomes an object keyed
   by the slugified heading (`goal`).
 - A repeating section (`## Step {n}` with a `repeat:`
@@ -48,21 +54,39 @@ with the validated match and mirrors the hierarchy:
 - Wildcard slots (`regex: '.+'`) and unlisted or closed
   headings are skipped: the output is a faithful image
   of the *declared* schema only.
+- H1-rooted schemas (file-based proto.md schemas where
+  the top heading is H1) do not emit the reserved
+  `title` key; the H1 is already a scope in `Sections`.
 
 Content entries project under default keys:
 
 - `code-block` → `code` (raw body; more blocks get
   `code-2`, …).
-- `list` → `items`.
-- `table` with columns → `rows` (row objects keyed by
-  column header).
+- `list` → `items` (an array of strings, each the item's
+  own text), or a tree of item objects when the entry
+  sets `projection: tree` (see below).
+- `table` → `rows` (default `records` projection: row
+  objects keyed by column header). With `projection: rows`
+  the table injects `columns` (header array) and `rows`
+  (positional row arrays) as two sibling keys into the
+  enclosing section object instead (see below).
 - `paragraph` → `text` (plain text), or `inline` when
   the entry sets `projection: inline` (see below).
 
-Two sibling projections that resolve to the same key
-are a schema error. It is reported at extract time.
+A flat `items` string holds the item's own text only.
+A nested sub-list is excluded, not folded in, so `- a`
+with child `- b` projects `"a"`, never `"ab"`. Inline
+markup flattens to text; a task marker stays verbatim
+(`[x]` / `[ ]`); a nest-only item projects the empty
+string, keeping its slot. Use `projection: tree` (below)
+to keep the nesting and split the marker out.
+
+Sibling keys are emitted in sorted order, not document
+order. Two sibling projections that resolve to the same
+key are a schema error. It is reported at extract time.
 Optional sections that did not match are omitted, not
-emitted as null.
+emitted as null. A section that declares no `content:`
+entry projects as an empty object.
 
 ## Inline-span projection
 
@@ -90,19 +114,14 @@ Each AST node maps to one span object:
 | strong (`**…**`)   | `{span: strong, level: 2, children: [...]}`   |
 | link (`[t](url)`)  | `{span: link, url, title?, children: [...]}`  |
 
-Leaf spans (text, code, autolink) carry a `value`;
-container spans (emphasis, strong, link) carry a
-`children` list and recurse through the same mapping,
-so nesting composes uniformly. A link omits `title`
-when the Markdown link has none.
+Leaf spans (text, code, autolink) carry `value`;
+container spans (emphasis, strong, link) carry
+`children` and recurse through the same mapping.
+A link omits `title` when none was written.
 
-A wrapped paragraph keeps its line structure: a text
-node that ends in a line break emits its text span and
-then a `break` span. `hard` is `true` for a hard break
-(a backslash or two trailing spaces before the newline)
-and `false` for a soft wrap. So `first⏎second` projects
-as `[{span: text, value: first}, {span: break, hard:
-false}, {span: text, value: second}]`.
+A wrapped paragraph keeps line structure: a text span,
+then a `break` span (`hard: true` for backslash/double-
+space, `false` for soft wrap), then the next text span.
 
 For the headline `Mark*down*, smithed.`:
 
@@ -110,9 +129,11 @@ For the headline `Mark*down*, smithed.`:
 "headline": {
   "inline": [
     { "span": "text", "value": "Mark" },
-    { "span": "emphasis", "level": 1, "children": [
-      { "span": "text", "value": "down" }
-    ]},
+    {
+      "children": [{ "span": "text", "value": "down" }],
+      "level": 1,
+      "span": "emphasis"
+    },
     { "span": "text", "value": ", smithed." }
   ]
 }
@@ -122,27 +143,93 @@ A nested example — a strong span wrapping a code span,
 ``**`mdsmith fix`**`` — projects with no mode switch:
 
 ```json
-{ "span": "strong", "level": 2, "children": [
-    { "span": "code", "value": "mdsmith fix" }
-] }
+{
+  "children": [{ "span": "code", "value": "mdsmith fix" }],
+  "level": 2,
+  "span": "strong"
+}
 ```
 
-Each content kind constrains its projection at schema-
-load time. A `paragraph` takes `text` or `inline`. A
-`code-block` takes `code`. A `table`, `list`, or
-`unlisted` slot takes none. An incompatible combination
-fails when the config loads, not silently at extract
-time. Rejected cases include `projection: code` on a
-paragraph, `projection: inline` on a code-block, and any
-`projection` on a table.
+Each kind limits which projection it takes. A bad pair
+fails when the config loads, not later at extract:
+
+| Kind         | Allowed `projection`            |
+| ------------ | ------------------------------- |
+| `paragraph`  | `text`, `inline`                |
+| `code-block` | `code`                          |
+| `list`       | `tree` (flat string if omitted) |
+| `table`      | `records` (default), `rows`     |
+| `unlisted`   | none                            |
 
 Anything outside the mapping table is a hard error at
 extract time, with the same exit code as a non-conformant
-file. Images, inline raw HTML, and custom inline nodes
-fall in this set. The `text` and `inline` default keys
-differ, so one paragraph entry can project `text` and
-another `inline` without colliding. A `bind:` override
-renames either key.
+file: images, inline raw HTML, and custom inline nodes.
+The `text` and `inline` default keys differ, so one
+paragraph can project each without colliding.
+
+## Tree projection for lists
+
+A list entry projects an array of own-text strings by
+default. Set `projection: tree` on a `kind: list` entry
+to project each item as an object instead. Each object
+carries:
+
+- `text` — the item's own inline text, flattened, with
+  soft wraps joined and any task marker removed.
+- `checked` — a bool, present only on a GFM task item
+  (`- [x]` / `- [ ]`). Detection matches the renderer: a
+  bare `[x]` and a no-space `[x]done` count; a non-marker
+  word like `[TODO]` does not and stays in `text`.
+- `children` — a recursive array of item objects, present
+  only when the item nests a sub-list.
+
+A checked task nesting one plain child projects as:
+
+```json
+{ "checked": true, "children": [{ "text": "child" }], "text": "done" }
+```
+
+The array order is the item order; ordered-list numbering
+and `start` are out of scope. YAML and msgpack emit the
+same tree. The
+[extract guide](../../guides/extract-markdown-as-data.md)
+has a full worked checklist.
+
+## Table projection modes
+
+A `kind: table` content entry picks one of two
+`projection` values. The default is `records`.
+
+| Projection | Output shape                                         |
+| ---------- | ---------------------------------------------------- |
+| `records`  | `rows: [{Col1: val, Col2: val}, …]`                  |
+| `rows`     | `columns: [Col1, Col2, …]` + `rows: [[val, val], …]` |
+
+**`records` (default)** — each body row is an object
+keyed by column header. Output key is `rows`. A
+duplicate column header is an extract-time error (two
+cells would collide on the same key).
+
+**`rows`** — the table injects two sibling keys into the
+enclosing section object: `columns` (header strings in
+document order) and `rows` (string arrays, one per body
+row). Short rows are padded with `""` to header width.
+Duplicate headers are accepted — `columns` is positional.
+
+For a `Feature`/`Status` table with `{ kind: table }`:
+
+```json
+"matrix": { "rows": [{ "Feature": "check", "Status": "ready" }] }
+```
+
+With `{ kind: table, projection: rows }`:
+
+```json
+"matrix": {
+  "columns": ["Feature", "Status"],
+  "rows": [["check", "ready"]]
+}
+```
 
 ## Custom binding with `bind`
 
@@ -172,58 +259,6 @@ mdsmith extract recipe --format json recipes/cake.md
 mdsmith extract rfc --format yaml docs/rfcs/RFC-0007.md
 mdsmith extract plan --format msgpack plan/166_x.md > plan.mp
 ```
-
-### Worked example
-
-A two-section kind schema and a conformant file:
-
-```yaml
-# .mdsmith.yml
-kinds:
-  product-copy:
-    schema:
-      sections:
-        - heading: { regex: '^Tagline$' }
-        - heading: { regex: '^VS Code$' }
-          bind: vscode-description
-```
-
-```markdown
-<!-- docs/copy.md -->
----
-title: Product copy
----
-# Product copy
-
-## Tagline
-
-Mark down your ideas; smith them into shipping docs.
-
-## VS Code
-
-Inline diagnostics, fix-on-save, and instant
-navigation for Markdown in VS Code.
-```
-
-`mdsmith extract product-copy --format json docs/copy.md`
-emits:
-
-```json
-{
-  "frontmatter": { "title": "Product copy" },
-  "tagline": { "text": "Mark down your ideas; smith them into shipping docs." },
-  "vscode-description": { "text": "Inline diagnostics, fix-on-save, and instant navigation for Markdown in VS Code." }
-}
-```
-
-Each H2 projects as an object keyed by the slugified
-heading (or the `bind:` override); the paragraph
-under each heading projects as `text`. Frontmatter is
-the file's metadata; body sections are the file's
-payload. See the
-[Extract Markdown as data guide](../../guides/extract-markdown-as-data.md)
-for when to put a value in frontmatter vs. a body
-section.
 
 ## Exit codes
 

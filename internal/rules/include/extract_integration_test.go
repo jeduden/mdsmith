@@ -404,3 +404,38 @@ func TestFix_ExtractRoundTripStable(t *testing.T) {
 	second := r.Fix(f2)
 	assert.Equal(t, string(first), string(second))
 }
+
+// =====================================================================
+// Plan 243: <?include extract: title?> splices the H1 plain text
+// =====================================================================
+
+// TestCheck_ExtractH1Title verifies that `extract: title` in an
+// include directive splices the H1 plain text from an H2-rooted
+// schema file. The minimalMessagingFile has `# Mdsmith` as its H1.
+func TestCheck_ExtractH1Title(t *testing.T) {
+	root, hostRel := setupMessagingProject(t)
+	installTestProjector(t, filepath.Join(root, ".mdsmith.yml"))
+	src := "<?include\nfile: message.md\nextract: title\n?>\n" +
+		"Mdsmith\n<?/include?>\n"
+	f := newHostFile(t, root, hostRel, src)
+
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+// TestFix_ExtractH1Title verifies that fixing regenerates the body
+// from the H1 plain text when the include path is `extract: title`.
+func TestFix_ExtractH1Title(t *testing.T) {
+	root, hostRel := setupMessagingProject(t)
+	installTestProjector(t, filepath.Join(root, ".mdsmith.yml"))
+	src := "<?include\nfile: message.md\nextract: title\n?>\n" +
+		"stale\n<?/include?>\n"
+	f := newHostFile(t, root, hostRel, src)
+
+	r := &Rule{}
+	got := string(r.Fix(f))
+	want := "<?include\nfile: message.md\nextract: title\n?>\n" +
+		"Mdsmith\n<?/include?>\n"
+	assert.Equal(t, want, got)
+}

@@ -41,11 +41,37 @@ func Extract(
 	} else {
 		root["frontmatter"] = map[string]any{}
 	}
+	// When the composed schema roots at H2, the document H1 is
+	// outside every schema scope. Emit it under the reserved
+	// "title" key beside `frontmatter`. No H1 → key omitted
+	// (consistent with optional sections: omitted, not null).
+	// First H1 wins when a document carries more than one.
+	// Collision with a sibling scope that resolves to "title"
+	// is reported through the existing setKey machinery.
+	if sch.EffectiveRootLevel() == 2 {
+		if h1Text := p.firstH1PlainText(); h1Text != "" {
+			p.setKey(root, "title", h1Text)
+		}
+	}
 	p.projectChildren(m.Root.Children, root)
 	if len(p.diags) > 0 {
 		return nil, p.diags
 	}
 	return root, nil
+}
+
+// firstH1PlainText returns the plain text of the first H1 heading
+// found in the document, or an empty string if there is none.
+// It uses ExtractPlainText (the same renderer the heading matcher
+// and content projector use) so emphasis and code-span markers
+// are stripped and link text is kept.
+func (p *projector) firstH1PlainText() string {
+	for _, dh := range schema.ExtractDocHeadings(p.f) {
+		if dh.Level == 1 {
+			return strings.TrimSpace(dh.Text)
+		}
+	}
+	return ""
 }
 
 type projector struct {
@@ -196,9 +222,25 @@ func (p *projector) projectContent(
 		case schema.ContentKindCodeBlock:
 			p.setKey(obj, nextKey(base), p.codeBody(cm.Node))
 		case schema.ContentKindList:
-			p.setKey(obj, nextKey(base), p.listItems(cm.Node))
+			if cm.Entry.Projection == schema.ProjectionTree {
+				p.setKey(obj, nextKey(base), p.listTree(cm.Node))
+			} else {
+				p.setKey(obj, nextKey(base), p.listItems(cm.Node))
+			}
 		case schema.ContentKindTable:
-			p.setKey(obj, nextKey(base), p.tableRows(cm.Node))
+			if cm.Entry.Projection == schema.ProjectionRows {
+				// `rows` projection injects two sibling keys —
+				// `columns` and `rows` — directly into the section
+				// object so the consumer sees them as peers, matching
+				// the {"columns":[...], "rows":[[...]...]} shape the
+				// plan defines. The base key is not used here; the
+				// two key names are fixed by the projection spec.
+				cols, rowArrays := p.tableRowsPositional(cm.Node)
+				p.setKey(obj, "columns", cols)
+				p.setKey(obj, "rows", rowArrays)
+			} else {
+				p.setKey(obj, nextKey(base), p.tableRows(cm.Node))
+			}
 		case schema.ContentKindParagraph:
 			if cm.Entry.Projection == schema.ProjectionInline {
 				// Resolve the key once so the unsupported-inline
@@ -261,10 +303,29 @@ func (p *projector) listItems(n ast.Node) []any {
 	}
 	var items []any
 	for c := lst.FirstChild(); c != nil; c = c.NextSibling() {
-		items = append(items, strings.TrimSpace(
-			mdtext.ExtractPlainText(c, p.f.Source)))
+		items = append(items, p.itemOwnText(c))
 	}
 	return items
+}
+
+// itemOwnText returns a list item's own inline text — the text of its
+// direct block children, with any nested sub-list excluded. The bare
+// mdtext.ExtractPlainText recursion would splice a child item's text
+// into the parent with no separator (`boldnested child`), corrupting
+// the data; restricting it to non-List blocks keeps each flat string
+// to the item it belongs to. An item whose only content is a nested
+// list has no own text and projects as the empty string, preserving
+// the item's position in the array. Task markers (`[x]` / `[ ]`) are
+// left verbatim in flat mode, matching the historical output.
+func (p *projector) itemOwnText(item ast.Node) string {
+	var b strings.Builder
+	for c := item.FirstChild(); c != nil; c = c.NextSibling() {
+		if _, ok := c.(*ast.List); ok {
+			continue
+		}
+		b.WriteString(mdtext.ExtractPlainText(c, p.f.Source))
+	}
+	return strings.TrimSpace(b.String())
 }
 
 func (p *projector) tableRows(n ast.Node) []any {
@@ -312,6 +373,50 @@ func (p *projector) tableRows(n ast.Node) []any {
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+// tableRowsPositional implements the `projection: rows` walker. It
+// returns two values:
+//
+//   - cols: a []any of column header strings in document order.
+//   - rows: a []any of []any row arrays, one per body row; each element
+//     is a string. Short rows are padded with empty strings to match
+//     the header width.
+//
+// Duplicate headers are accepted — the columns array is positional, so
+// there is no key collision. Plan 245.
+func (p *projector) tableRowsPositional(n ast.Node) (cols []any, rows []any) {
+	tbl, ok := n.(*extast.Table)
+	if !ok {
+		return nil, nil
+	}
+	var colCount int
+	for r := tbl.FirstChild(); r != nil; r = r.NextSibling() {
+		var cells []string
+		for c := r.FirstChild(); c != nil; c = c.NextSibling() {
+			cells = append(cells, strings.TrimSpace(
+				mdtext.ExtractPlainText(c, p.f.Source)))
+		}
+		if _, isHeader := r.(*extast.TableHeader); isHeader {
+			colCount = len(cells)
+			cols = make([]any, len(cells))
+			for i, h := range cells {
+				cols[i] = h
+			}
+			continue
+		}
+		// Pad short body rows with empty strings.
+		row := make([]any, colCount)
+		for i := 0; i < colCount; i++ {
+			if i < len(cells) {
+				row[i] = cells[i]
+			} else {
+				row[i] = ""
+			}
+		}
+		rows = append(rows, row)
+	}
+	return cols, rows
 }
 
 func (p *projector) nodeText(n ast.Node) string {

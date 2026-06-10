@@ -1411,3 +1411,73 @@ func TestDispatch(t *testing.T) {
 	_ = captureStderr(func() { code = dispatch("totally-unknown", nil) })
 	assert.Equal(t, 2, code)
 }
+
+// --- init config generation ---
+
+func TestDefaultConfigBytes(t *testing.T) {
+	data, err := defaultConfigBytes()
+	require.NoError(t, err)
+
+	s := string(data)
+	assert.Contains(t, s, "rules:")
+	assert.Contains(t, s, "front-matter: true")
+	assert.Contains(t, s, "line-length")
+}
+
+func TestInitConfigBytes_EmptyFlagUsesDefaults(t *testing.T) {
+	var buf bytes.Buffer
+	data, source, err := initConfigBytes("", &buf)
+	require.NoError(t, err)
+
+	assert.Empty(t, source)
+	assert.Contains(t, string(data), "rules:")
+	assert.Empty(t, buf.String(), "defaults conversion emits no notes")
+}
+
+func TestInitConfigBytes_ConvertsNamedConfig(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".markdownlint.json")
+	require.NoError(t, os.WriteFile(path,
+		[]byte(`{"MD013": {"line_length": 120}, "MD024": {"siblings_only": true}}`), 0o644))
+
+	var buf bytes.Buffer
+	data, source, err := initConfigBytes(path, &buf)
+	require.NoError(t, err)
+
+	assert.Equal(t, path, source)
+	assert.Contains(t, string(data), "max: 120")
+	assert.Contains(t, buf.String(), "siblings_only",
+		"untranslated options are echoed as notes")
+}
+
+func TestConvertedConfigBytes_AutoDiscovers(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".markdownlint.yaml"),
+		[]byte("MD041: false\n"), 0o644))
+	t.Chdir(dir)
+
+	var buf bytes.Buffer
+	data, source, err := convertedConfigBytes("auto", &buf)
+	require.NoError(t, err)
+
+	assert.Equal(t, ".markdownlint.yaml", source)
+	assert.Contains(t, string(data), "first-line-heading: false")
+}
+
+func TestConvertedConfigBytes_MissingFile(t *testing.T) {
+	var buf bytes.Buffer
+	_, _, err := convertedConfigBytes(filepath.Join(t.TempDir(), "nope.json"), &buf)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "nope.json")
+}
+
+func TestConvertedConfigBytes_ParseError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".markdownlintrc")
+	require.NoError(t, os.WriteFile(path, []byte(`{"MD013" true}`), 0o644))
+
+	var buf bytes.Buffer
+	_, _, err := convertedConfigBytes(path, &buf)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), ".markdownlintrc")
+}

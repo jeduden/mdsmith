@@ -38,14 +38,16 @@ YAML scalar.
 The trap is to reach for frontmatter for everything
 because it's structured. A 60-character `tagline` in
 frontmatter and the same 60 characters in a
-`## Tagline` body section produce identical JSON;
-the body version is shorter to edit, diffs cleanly
-when wrapped, and is lintable as Markdown.
+`## Tagline` body section project the same string;
+only the key moves, from `frontmatter.tagline` to
+`tagline.text`. The body version is shorter to edit,
+diffs cleanly when wrapped, and is lintable as
+Markdown.
 
 ## Worked example
 
-A product-copy file with a tagline, a lead, and one
-per-surface description.
+A product-copy file at `docs/copy/product.md` with a
+tagline, a lead, and one per-surface description.
 
 ### Frontmatter-heavy (the trap)
 
@@ -101,7 +103,8 @@ Inline diagnostics, fix-on-save, and instant
 navigation for Markdown in VS Code.
 ```
 
-With a matching schema in `.mdsmith.yml`:
+With a matching schema and kind assignment in
+`.mdsmith.yml`:
 
 ```yaml
 kinds:
@@ -109,25 +112,51 @@ kinds:
     schema:
       sections:
         - heading: { regex: '^Tagline$' }
+          content:
+            - { kind: paragraph }
         - heading: { regex: '^Lead$' }
+          content:
+            - { kind: paragraph }
         - heading: { regex: '^VS Code$' }
           bind: vscode-description
+          content:
+            - { kind: paragraph }
+kind-assignment:
+  - glob: ["docs/copy/product.md"]
+    kinds: [product-copy]
 ```
 
-`mdsmith extract product-copy --format json` emits
-the same shape both encodings would produce:
+Each `content:` entry declares the paragraph its
+section projects. A section without one projects as
+an empty object — the schema, not the body, decides
+what `extract` emits.
+
+`mdsmith extract product-copy --format json docs/copy/product.md`
+emits:
 
 ```json
 {
-  "frontmatter": { "title": "Product copy" },
-  "tagline": { "text": "Mark down your ideas; smith them into shipping docs." },
-  "lead": { "text": "A lint-and-fix tool that keeps your Markdown consistent across every surface — READMEs, docs site, editor extensions." },
-  "vscode-description": { "text": "Inline diagnostics, fix-on-save, and instant navigation for Markdown in VS Code." }
+  "frontmatter": {
+    "title": "Product copy"
+  },
+  "title": "Product copy",
+  "lead": {
+    "text": "A lint-and-fix tool that keeps your Markdown consistent across every surface — READMEs, docs site, editor extensions."
+  },
+  "tagline": {
+    "text": "Mark down your ideas; smith them into shipping docs."
+  },
+  "vscode-description": {
+    "text": "Inline diagnostics, fix-on-save, and instant navigation for Markdown in VS Code."
+  }
 }
 ```
 
-The body version costs nothing at the projection
-layer and is the editable artifact.
+The H1 `# Product copy` projects as the top-level
+`title` string. Keys come out sorted, not in document
+order. The consumer reads the same strings the
+frontmatter version held, and the body version is the
+editable artifact.
 
 ## Projecting inline structure
 
@@ -165,21 +194,36 @@ kinds:
             - { kind: paragraph, projection: inline, required: true }
 ```
 
-`mdsmith extract product-copy --format json` emits the
-headline as a span list — text, then the level-1
-emphasis span with its own `children`, then the
-trailing text:
+`mdsmith extract product-copy --format json docs/copy/product.md`
+emits the headline as a span list: text, then the
+level-1 emphasis span with its own `children`, then
+the trailing text:
 
 ```json
 {
-  "frontmatter": { "title": "Product copy" },
+  "frontmatter": {
+    "title": "Product copy"
+  },
   "headline": {
     "inline": [
-      { "span": "text", "value": "Mark" },
-      { "span": "emphasis", "level": 1, "children": [
-        { "span": "text", "value": "down" }
-      ]},
-      { "span": "text", "value": ", smithed." }
+      {
+        "span": "text",
+        "value": "Mark"
+      },
+      {
+        "children": [
+          {
+            "span": "text",
+            "value": "down"
+          }
+        ],
+        "level": 1,
+        "span": "emphasis"
+      },
+      {
+        "span": "text",
+        "value": ", smithed."
+      }
     ]
   }
 }
@@ -194,9 +238,11 @@ recursive mode switch:
 ```json
 "inline": [
   { "span": "text", "value": "run " },
-  { "span": "strong", "level": 2, "children": [
-    { "span": "code", "value": "mdsmith fix" }
-  ]},
+  {
+    "children": [{ "span": "code", "value": "mdsmith fix" }],
+    "level": 2,
+    "span": "strong"
+  },
   { "span": "text", "value": " daily" }
 ]
 ```
@@ -213,6 +259,172 @@ exit code as a non-conformant file. The full mapping
 table is in the [extract reference][extract-inline].
 
 [extract-inline]: ../reference/cli/extract.md#inline-span-projection
+
+## Projecting list structure
+
+A list projects as an array of strings by default — each
+the item's own text. That flat shape loses nesting, and
+it strips a task checkbox down to a literal `[x]` prefix.
+When the consumer needs the structure — which items are
+checked, which nest children — set `projection: tree` on
+the list entry. Each item then projects as an object with
+its own `text`, a `checked` bool on task items, and a
+recursive `children` array on items that nest a sub-list.
+
+A sprint checklist is the canonical case. A status tool
+reads each task's `checked` state and walks `children`
+for sub-tasks:
+
+```markdown
+---
+title: Sprint tasks
+---
+# Sprint tasks
+
+## Tasks
+
+- [x] done item
+- [ ] open item with **bold**
+  - nested child
+- plain item
+```
+
+```yaml
+kinds:
+  checklist:
+    schema:
+      sections:
+        - heading: { regex: '^Tasks$' }
+          content:
+            - { kind: list, projection: tree }
+kind-assignment:
+  - glob: ["tasks.md"]
+    kinds: [checklist]
+```
+
+`mdsmith extract checklist --format json tasks.md` emits:
+
+```json
+{
+  "frontmatter": {
+    "title": "Sprint tasks"
+  },
+  "tasks": {
+    "items": [
+      {
+        "checked": true,
+        "text": "done item"
+      },
+      {
+        "checked": false,
+        "children": [
+          {
+            "text": "nested child"
+          }
+        ],
+        "text": "open item with bold"
+      },
+      {
+        "text": "plain item"
+      }
+    ]
+  }
+}
+```
+
+The `[x]` / `[ ]` marker becomes the `checked` bool and
+never leaks into `text`; the `**bold**` flattens to its
+text; `nested child` rides inside its parent's `children`
+rather than concatenating into the parent string. A plain
+item with no marker and no sub-list is just `{text}`. The
+array order is the item order — ordered-list numbering is
+out of scope. YAML and msgpack emit the same tree.
+
+## Projecting a table as positional rows
+
+A `kind: table` content entry projects as `rows` (an
+array of record objects) by default. Set
+`projection: rows` on the entry when the consumer
+needs column order preserved, tolerates duplicate
+headers, or works with positional data (a chart
+script, a CSV writer, a diff tool).
+
+The `rows` projection injects two sibling keys directly
+into the enclosing section object — `columns` (the
+header array in document order) and `rows` (an array of
+string arrays, one per body row). Short body rows are
+padded with empty strings to match the header width.
+
+A benchmark table in a performance section:
+
+```markdown
+---
+title: Benchmark results
+---
+# Benchmark results
+
+## Latency
+
+| Operation | p50 ms | p99 ms |
+| --------- | ------ | ------ |
+| check     | 12     | 45     |
+| fix       | 18     | 70     |
+```
+
+```yaml
+kinds:
+  benchmark:
+    schema:
+      sections:
+        - heading: { regex: '^Latency$' }
+          content:
+            - { kind: table, projection: rows }
+kind-assignment:
+  - glob: ["docs/benchmarks.md"]
+    kinds: [benchmark]
+```
+
+`mdsmith extract benchmark --format json docs/benchmarks.md`
+emits:
+
+```json
+{
+  "frontmatter": {
+    "title": "Benchmark results"
+  },
+  "latency": {
+    "columns": ["Operation", "p50 ms", "p99 ms"],
+    "rows": [
+      ["check", "12", "45"],
+      ["fix", "18", "70"]
+    ]
+  }
+}
+```
+
+The `columns` array preserves document order; the `rows`
+array omits object keys entirely, so duplicate column
+headers pose no problem and a chart script reads
+`latency.rows[0][1]` by index.
+
+For the default `records` projection the same table
+produces `latency.rows` as an array of objects keyed by
+column header:
+
+```json
+"latency": {
+  "rows": [
+    { "Operation": "check", "p50 ms": "12", "p99 ms": "45" },
+    { "Operation": "fix",   "p50 ms": "18", "p99 ms": "70" }
+  ]
+}
+```
+
+The full projection matrix and duplicate-header
+semantics are in the
+[extract reference][extract-table].
+
+[extract-table]: ../reference/cli/extract.md#table-projection-modes
 
 ## When frontmatter is the right call
 
@@ -236,6 +448,87 @@ Prose paragraphs, multi-line copy, anything wider
 than one line, and anything that benefits from
 Markdown formatting (code, emphasis, links) all
 belong in the body.
+
+## Frontmatter `title` and the H1
+
+The worked example carries the same string twice:
+`title: Product copy` in frontmatter and
+`# Product copy` as the H1. Nothing checks the two
+against each other by default, so they can drift
+apart edit by edit.
+
+The test from the previous section decides it. When
+no catalog row, site template, or release script
+reads `frontmatter.title`, delete the field; the H1
+alone is the title. When a tool does read the
+field, keep it and let MDS020 enforce the match.
+
+### H1 title in the projection
+
+When the schema roots at H2 (all inline schemas do),
+`mdsmith extract` emits the document H1's plain text
+under a reserved `title` key beside `frontmatter` —
+the `"title": "Product copy"` line in the
+[worked example](#worked-example) output above.
+When there is no H1, the `title` key is omitted.
+When a scope bound to `title` (via slug or `bind:`)
+collides with the reserved key, `extract` reports
+it as a collision before emitting any data; rename
+the scope with `bind:` to resolve it.
+
+`<?include extract: title?>` splices the H1 plain
+text directly into a host file with no intermediate
+file needed:
+
+```markdown
+<?include
+file: docs/copy/product.md
+extract: title
+?>
+Product copy
+<?/include?>
+```
+
+### Enforcing H1 ↔ frontmatter consistency
+
+Enforcement requires a file-based schema. An inline
+`schema:` starts matching at H2 — the H1 belongs to
+[first-line-heading][mds004] — so the kind switches
+to a `proto.md` whose first row is the `{title}`
+placeholder:
+
+```markdown
+# {title}
+
+## ...
+```
+
+```yaml
+kinds:
+  product-copy:
+    rules:
+      required-structure:
+        schema: copy-proto.md
+```
+
+The `{title}` row requires the frontmatter field
+and checks the H1 text against its value. A drifted
+H1 fails `mdsmith check`:
+
+```text
+docs/copy/product.md:4:1 MDS020 heading does not match frontmatter: expected "Product copy" (from title), got "Product page copy"
+```
+
+Weigh two limits before switching to a proto.md.
+Every schema source on a file must declare the same
+root level, so an H1-rooted `proto.md` cannot
+compose with an H2-rooted inline schema on the same
+file. And a `proto.md` declares heading rows only,
+not `content:` entries, so the worked example's
+paragraph projections (`tagline.text`, …) drop out
+of the tree.
+
+[mds004]: ../../internal/rules/MDS004-first-line-heading/README.md
 
 ## `bind:` patterns
 
@@ -281,13 +574,14 @@ embed reads the tagline directly:
 file: docs/copy/product.md
 extract: tagline.text
 ?>
-Mark down your ideas; smith them into shipping
-docs.
+Mark down your ideas; smith them into shipping docs.
 <?/include?>
 ```
 
-The directive runs the included file through the
-same projection rules `mdsmith extract` produces,
+The spliced text lands on one line: a `text`
+projection joins a soft-wrapped paragraph with
+spaces. The directive runs the included file through
+the same projection rules `mdsmith extract` uses,
 walks the dotted path, and splices the leaf. There
 is no intermediate "fragment" file to keep in sync —
 the README reads the source of truth on every lint.

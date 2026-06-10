@@ -15,9 +15,10 @@ Diagnostics, quick fixes, and navigation all come from one
 bundled binary, with nothing else to install.
 
 If you use markdownlint today, mdsmith covers the same style
-rules and adds cross-file checks. The
-[migration guide](../migrate-from-markdownlint.md) maps every
-rule and rewrites your config.
+rules and adds cross-file checks. `mdsmith init
+--from-markdownlint` converts your config in one command; the
+[migration guide](../migrate-from-markdownlint.md) covers the
+rest of the move.
 
 ## What you get
 

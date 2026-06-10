@@ -697,6 +697,187 @@ func TestE2E_Init_RefusesIfExists(t *testing.T) {
 	assert.Contains(t, stderr, "already exists", "expected 'already exists' error, got: %s", stderr)
 }
 
+func TestE2E_Init_FromMarkdownlint(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, ".markdownlint.json",
+		`{"MD013": {"line_length": 120}, "MD024": {"siblings_only": true}, "MD041": false}`)
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "init", "--from-markdownlint")
+	assert.Equal(t, 0, exitCode, "expected exit code 0, got %d; stderr: %s", exitCode, stderr)
+	assert.Contains(t, stderr, "created .mdsmith.yml from .markdownlint.json",
+		"expected source in confirmation, got: %s", stderr)
+	assert.Contains(t, stderr, "note:", "expected conversion notes on stderr, got: %s", stderr)
+
+	content, err := os.ReadFile(filepath.Join(dir, ".mdsmith.yml"))
+	require.NoError(t, err, "reading converted config")
+	s := string(content)
+	assert.Contains(t, s, "max: 120", "MD013 line_length must convert, got: %s", s)
+	assert.Contains(t, s, "first-line-heading: false", "MD041: false must convert, got: %s", s)
+	assert.Contains(t, s, `MD024 option "siblings_only"`,
+		"untranslated options must land in the header comment, got: %s", s)
+
+	// The converted config must load: a clean file checks clean under it.
+	writeFixture(t, dir, "README.md", "# Title\n\nSome text.\n")
+	_, stderr, exitCode = runBinaryInDir(t, dir, "", "check", "README.md")
+	assert.Equal(t, 0, exitCode, "converted config must load cleanly; stderr: %s", stderr)
+}
+
+func TestE2E_Init_FromMarkdownlint_ExplicitPath(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "mdl-config.yaml", "MD012:\n  maximum: 2\n")
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "init", "--from-markdownlint=mdl-config.yaml")
+	assert.Equal(t, 0, exitCode, "expected exit code 0, got %d; stderr: %s", exitCode, stderr)
+
+	content, err := os.ReadFile(filepath.Join(dir, ".mdsmith.yml"))
+	require.NoError(t, err, "reading converted config")
+	assert.Contains(t, string(content), "max: 2", "MD012 maximum must convert, got: %s", content)
+}
+
+func TestE2E_Init_FromMarkdownlint_NoneFound(t *testing.T) {
+	dir := t.TempDir()
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "init", "--from-markdownlint")
+	assert.Equal(t, 2, exitCode, "expected exit code 2, got %d", exitCode)
+	assert.Contains(t, stderr, "no markdownlint config found",
+		"expected discovery error, got: %s", stderr)
+}
+
+func TestE2E_Init_FromMarkdownlint_MissingExplicitPath(t *testing.T) {
+	dir := t.TempDir()
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "init", "--from-markdownlint=missing.json")
+	assert.Equal(t, 2, exitCode, "expected exit code 2, got %d", exitCode)
+	assert.Contains(t, stderr, "reading missing.json",
+		"expected read error naming the path, got: %s", stderr)
+}
+
+func TestE2E_Init_FromMarkdownlint_ParseError(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, ".markdownlint.json", `{"MD013" true}`)
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "init", "--from-markdownlint")
+	assert.Equal(t, 2, exitCode, "expected exit code 2, got %d", exitCode)
+	assert.Contains(t, stderr, "parsing markdownlint config",
+		"expected parse error, got: %s", stderr)
+}
+
+// initFromMarkdownlintVariants pairs every config file name the
+// converter probes with a distinct config shape: JSONC comments and
+// trailing commas, JSON options, YAML alias keys, YAML style enums,
+// and a JSON default:false sweep in .markdownlintrc.
+var initFromMarkdownlintVariants = []struct {
+	name     string
+	content  string
+	wantYml  string
+	wantYml2 string
+}{
+	{
+		name:     ".markdownlint.jsonc",
+		content:  "{\n  // tighten lines\n  \"MD013\": {\"line_length\": 91,},\n}",
+		wantYml:  "max: 91",
+		wantYml2: "line-length:",
+	},
+	{
+		name:     ".markdownlint.json",
+		content:  `{"MD007": {"indent": 4}, "MD009": false}`,
+		wantYml:  "spaces: 4",
+		wantYml2: "no-trailing-spaces: false",
+	},
+	{
+		name:     ".markdownlint.yaml",
+		content:  "line-length:\n  line_length: 92\n",
+		wantYml:  "max: 92",
+		wantYml2: "line-length:",
+	},
+	{
+		name:     ".markdownlint.yml",
+		content:  "MD003: {style: setext}\nMD035: {style: \"***\"}\n",
+		wantYml:  "style: setext",
+		wantYml2: "style: asterisk",
+	},
+	{
+		name:     ".markdownlintrc",
+		content:  `{"default": false}`,
+		wantYml:  "line-length: false",
+		wantYml2: "heading-increment: false",
+	},
+}
+
+func TestE2E_Init_FromMarkdownlint_FormatVariants(t *testing.T) {
+	for _, tt := range initFromMarkdownlintVariants {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeFixture(t, dir, tt.name, tt.content)
+
+			_, stderr, exitCode := runBinaryInDir(t, dir, "", "init", "--from-markdownlint")
+			assert.Equal(t, 0, exitCode, "expected exit code 0, got %d; stderr: %s", exitCode, stderr)
+			assert.Contains(t, stderr, "created .mdsmith.yml from "+tt.name,
+				"confirmation must name the discovered file, got: %s", stderr)
+
+			content, err := os.ReadFile(filepath.Join(dir, ".mdsmith.yml"))
+			require.NoError(t, err, "reading converted config")
+			assert.Contains(t, string(content), tt.wantYml, "converted config: %s", content)
+			assert.Contains(t, string(content), tt.wantYml2, "converted config: %s", content)
+		})
+	}
+}
+
+// TestE2E_Init_FromMarkdownlint_ConvertedConfigGoverns proves the
+// converted config drives check end to end: a file violating the
+// mdsmith defaults (a 100-plus-char line and trailing spaces) checks
+// clean under a conversion that raises the line cap and disables
+// MD009, and fails without it.
+func TestE2E_Init_FromMarkdownlint_ConvertedConfigGoverns(t *testing.T) {
+	sample := "# Title\n\n" + strings.Repeat("word ", 24) + "word.   \n"
+
+	dir := t.TempDir()
+	writeFixture(t, dir, ".markdownlint.json",
+		`{"MD013": {"line_length": 200}, "MD009": false}`)
+	writeFixture(t, dir, "doc.md", sample)
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "init", "--from-markdownlint")
+	require.Equal(t, 0, exitCode, "conversion failed: %s", stderr)
+
+	_, stderr, exitCode = runBinaryInDir(t, dir, "", "check", "doc.md")
+	assert.Equal(t, 0, exitCode,
+		"converted config must allow the long line and trailing spaces; stderr: %s", stderr)
+
+	// The same file without the converted config trips both defaults.
+	bare := t.TempDir()
+	writeFixture(t, bare, "doc.md", sample)
+	_, stderr, exitCode = runBinaryInDir(t, bare, "", "check", "doc.md")
+	assert.Equal(t, 1, exitCode, "defaults must reject the file; stderr: %s", stderr)
+	assert.Contains(t, stderr, "MDS001", "expected line-length diagnostic, got: %s", stderr)
+	assert.Contains(t, stderr, "MDS006", "expected trailing-space diagnostic, got: %s", stderr)
+}
+
+func TestE2E_Init_UnwritableDir(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission semantics not applicable on Windows")
+	}
+	if os.Getuid() == 0 {
+		t.Skip("running as root: permission checks don't apply")
+	}
+	dir := t.TempDir()
+	require.NoError(t, os.Chmod(dir, 0o555))
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "init")
+	assert.Equal(t, 2, exitCode, "expected exit code 2, got %d", exitCode)
+	assert.Contains(t, stderr, "writing .mdsmith.yml",
+		"expected write error, got: %s", stderr)
+}
+
+func TestE2E_Init_UnknownFlag(t *testing.T) {
+	dir := t.TempDir()
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "init", "--definitely-not-a-flag")
+	assert.Equal(t, 2, exitCode, "expected exit code 2, got %d", exitCode)
+	assert.Contains(t, stderr, "unknown flag",
+		"expected flag parse error, got: %s", stderr)
+}
+
 // --- Stdin frontmatter and Configurable settings tests ---
 
 func TestE2E_Check_Stdin_FrontMatterLineOffset(t *testing.T) {

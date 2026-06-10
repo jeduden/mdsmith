@@ -289,6 +289,36 @@ jobs:
       # including the <?...?> processing-instruction block.
       - run: go test -run=^$ -bench=. -benchtime=20x ./pkg/markdown/...
 
+  cuelite-bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+      # Plan 236: the cuelite-versus-CUE differential benchmark (the
+      # in-house path against the direct-CUE oracle) must genuinely run
+      # in CI, not just exist. The phases that flip cuelite to the in-house
+      # engine are judged against these arms.
+      - run: go test -run=^$ -bench=. -benchtime=20x ./internal/cuelitetest/...
+      # Plan 236: the cuelite/cue FACTOR gate. TestFactorGate computes the
+      # cuelite-over-cue ns/op ratio for the hot (validate) and cold
+      # (compile-validate) paths and FAILS when either exceeds its interim
+      # budget (2.5x hot, 2.0x cold) — the ratio cancels runner speed, so a
+      # blowup trips it but a slow runner does not. The gate is an ordinary
+      # `go test` (the per-arm measurement loop lives in Go, no inline shell)
+      # and writes a factor table to GITHUB_STEP_SUMMARY for the run page.
+      # -v so the per-benchmark factor lines (t.Log) land in the job
+      # log on success, not only in the step summary.
+      # CUELITE_FACTOR_GATE=1 arms the gate: it skips everywhere else
+      # (notably the parallel `test` job) because the ratio is only
+      # meaningful on a quiet runner.
+      - run: go test -v -run=TestFactorGate ./internal/cuelitetest/...
+        env:
+          CUELITE_FACTOR_GATE: "1"
+
   # Nested-module test job: pkg/goldmark/ has its own go.mod (plan
   # 197+198 fork), so the root `test` job's `go test ./...` does NOT
   # traverse it.  This dedicated step runs the fork's unit tests so

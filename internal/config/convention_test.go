@@ -465,6 +465,22 @@ func TestLoad_InvalidConventionSurfacesError(t *testing.T) {
 	assert.Contains(t, err.Error(), "bogus")
 }
 
+// TestValidateConventionScalar_RejectsYAMLAnchors pins the
+// document-wide anchor/alias rejection added for audit finding
+// S003: an alias-valued convention and an anchor on an
+// unrelated key are both rejected — the latter is the case a
+// per-value check would miss.
+func TestValidateConventionScalar_RejectsYAMLAnchors(t *testing.T) {
+	for _, data := range []string{
+		"base: &anchor portable\nconvention: *anchor\n",
+		"other: &a x\nconvention: portable\n",
+	} {
+		err := validateConventionScalar([]byte(data))
+		require.Error(t, err, data)
+		assert.Contains(t, err.Error(), "anchors/aliases", data)
+	}
+}
+
 func TestCopyConventionPreset_NilReturnsNil(t *testing.T) {
 	assert.Nil(t, copyConventionPreset(nil))
 }

@@ -110,7 +110,7 @@ is one of:
 
 Skip the `<?catalog?>` directive markers — only parse the
 table rows. Ids come in two shapes: a frozen legacy range
-(1–243) and 10-digit UTC-timestamp ids for newer plans
+(1–246) and 10-digit UTC-timestamp ids for newer plans
 (allocation contract in plan/proto.md). Both are plain
 integers; every regex below already matches both. Ids are
 unique — historic duplicates were renumbered by plan
@@ -439,7 +439,7 @@ review comments.
   applies to the branch scan, the PR title scan, and
   the `depends-on:` parse.
 - **Plan ids are timestamps since plan 2606100533.**
-  Legacy ids 1–243 are frozen; a new plan's id is
+  Legacy ids 1–246 are frozen; a new plan's id is
   `date -u +%y%m%d%H%M` at creation. The id regexes
   above match both shapes unchanged. Historic
   duplicates were renumbered; once plan 2606100534's

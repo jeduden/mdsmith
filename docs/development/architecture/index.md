@@ -130,6 +130,15 @@ cmd/mdsmith              internal/lsp
                          internal/ package;
                          internal/schema
                          reads its embed)
+                    └─> cue/cuelite
+                        (the public, versioned
+                         CUE-subset façade;
+                         imports no internal/
+                         package; its eventual
+                         consumers are schema,
+                         requiredstructure,
+                         query, fieldinterp,
+                         and cuetemplate)
 ```
 
 `pkg/markdown` sits at the bottom. It
@@ -156,6 +165,31 @@ parse surface. `internal/schema` reads
 its embed to seed the runtime registry,
 and the package imports nothing in the
 tree.
+
+`cue/cuelite` sits at the bottom too. It
+is the public, versioned façade over the
+small CUE subset mdsmith depends on. That
+subset covers schema constraints, query
+filters, placeholder paths, and catalog
+templates. Its Go import path is
+`github.com/jeduden/mdsmith/cue/cuelite`,
+mirroring `cue/types`.
+
+`cue/cuelite` lands first as a thin
+wrapper over `cuelang.org/go`. It is
+later flipped to a pure-Go engine behind
+the same API. The CUE-backed path stays
+as the differential oracle in the
+module-internal `internal/cuelitetest`
+harness — kept under `internal/` so the
+`cuelang.org/go` import that plan 218
+phase 4 deletes never becomes part of the
+public surface. Its eventual
+consumers are `internal/schema`,
+`requiredstructure`, `query`,
+`fieldinterp`, and `cuetemplate`. It
+imports none of them, and nothing else in
+the tree.
 
 These packages are public surfaces.
 For details see

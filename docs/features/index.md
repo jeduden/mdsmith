@@ -16,6 +16,9 @@ Together they keep a whole docs tree consistent as it grows, so
 the same Markdown can drive your README, your docs site, and
 downstream pipelines.
 
+Already on markdownlint? `mdsmith init --from-markdownlint`
+converts your config and notes whatever needs review.
+
 One rule engine runs everywhere you work: in CI, in your editor
 through `mdsmith lsp`, and in your coding agent through a Claude
 Code plugin. The check that blocks a merge is the same one you see
@@ -111,6 +114,12 @@ On `mdsmith fix`, `<?toc?>` rebuilds a heading table of contents,
 `<?catalog?>` generates an index from front matter, and
 `<?include?>` splices in another file. A Git merge driver resolves
 conflicts inside those blocks.
+
+**[Agent-ready docs index](progressive-disclosure.md).**
+A `<?catalog?>` in `CLAUDE.md` keeps one `summary` line per
+tracked doc, so an agent reads a few thousand tokens of metadata
+up front and opens only the files a task touches. mdsmith's own
+[`CLAUDE.md`](../../CLAUDE.md) is the live example.
 
 **[Build artifacts in sync](build-artifacts.md).**
 The `<?build?>` directive declares an artifact and a recipe;

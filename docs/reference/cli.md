@@ -19,25 +19,25 @@ header: |
   |---------|-------------|
 row: "| [`{command}`]({filename}) | {summary} |"
 ?>
-| Command                                       | Description                                                                          |
-| --------------------------------------------- | ------------------------------------------------------------------------------------ |
-| [`check`](cli/check.md)                       | Lint Markdown files for style issues.                                                |
-| [`deps`](cli/deps.md)                         | List a file's dependency-graph edges (includes, links, catalogs, builds).            |
-| [`export`](cli/export.md)                     | Write a portable, directive-free copy of a Markdown file.                            |
-| [`extract`](cli/extract.md)                   | Emit a schema-conformant Markdown file as a JSON/YAML/msgpack data tree.             |
-| [`fix`](cli/fix.md)                           | Auto-fix lint issues in Markdown files in place.                                     |
-| [`help`](cli/help.md)                         | Show built-in documentation for rules, metrics, and concept pages.                   |
-| [`init`](cli/init.md)                         | Generate a default `.mdsmith.yml` config in the current directory.                   |
-| [`kinds`](cli/kinds.md)                       | Inspect declared file kinds and resolve effective rule config per file.              |
-| [`list`](cli/list.md)                         | Selection-style commands that walk the workspace and emit matches.                   |
-| [`list backlinks`](cli/backlinks.md)          | List workspace links that point at a file.                                           |
-| [`list query`](cli/query.md)                  | Select Markdown files by a CUE expression on front matter.                           |
-| [`lsp`](cli/lsp.md)                           | Run a Language Server Protocol server on stdio for editor integrations.              |
-| [`merge-driver`](cli/merge-driver.md)         | Git merge driver that resolves conflicts inside generated sections.                  |
-| [`metrics`](cli/metrics.md)                   | List and rank shared Markdown metrics (file length, token estimate, readability, …). |
-| [`pre-merge-commit`](cli/pre-merge-commit.md) | Install / manage a pre-merge-commit hook that runs `mdsmith fix` after a merge.      |
-| [`rename`](cli/rename.md)                     | Rename a heading or link-reference label and rewrite every dependent edit.           |
-| [`version`](cli/version.md)                   | Print the mdsmith build version and exit.                                            |
+| Command                                       | Description                                                                                                                               |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| [`check`](cli/check.md)                       | Lint Markdown files for style issues.                                                                                                     |
+| [`deps`](cli/deps.md)                         | List a file's dependency-graph edges (includes, links, catalogs, builds).                                                                 |
+| [`export`](cli/export.md)                     | Write a portable, directive-free copy of a Markdown file.                                                                                 |
+| [`extract`](cli/extract.md)                   | Emit a schema-conformant Markdown file as a JSON/YAML/msgpack data tree.                                                                  |
+| [`fix`](cli/fix.md)                           | Auto-fix lint issues in Markdown files in place.                                                                                          |
+| [`help`](cli/help.md)                         | Show built-in documentation for rules, metrics, and concept pages.                                                                        |
+| [`init`](cli/init.md)                         | Generate a default `.mdsmith.yml` config in the current directory, or convert an existing markdownlint config with `--from-markdownlint`. |
+| [`kinds`](cli/kinds.md)                       | Inspect declared file kinds and resolve effective rule config per file.                                                                   |
+| [`list`](cli/list.md)                         | Selection-style commands that walk the workspace and emit matches.                                                                        |
+| [`list backlinks`](cli/backlinks.md)          | List workspace links that point at a file.                                                                                                |
+| [`list query`](cli/query.md)                  | Select Markdown files by a CUE expression on front matter.                                                                                |
+| [`lsp`](cli/lsp.md)                           | Run a Language Server Protocol server on stdio for editor integrations.                                                                   |
+| [`merge-driver`](cli/merge-driver.md)         | Git merge driver that resolves conflicts inside generated sections.                                                                       |
+| [`metrics`](cli/metrics.md)                   | List and rank shared Markdown metrics (file length, token estimate, readability, …).                                                      |
+| [`pre-merge-commit`](cli/pre-merge-commit.md) | Install / manage a pre-merge-commit hook that runs `mdsmith fix` after a merge.                                                           |
+| [`rename`](cli/rename.md)                     | Rename a heading or link-reference label and rewrite every dependent edit.                                                                |
+| [`version`](cli/version.md)                   | Print the mdsmith build version and exit.                                                                                                 |
 <?/catalog?>
 
 The `check`, `fix`, and `query` commands accept file

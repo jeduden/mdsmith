@@ -24,13 +24,13 @@
           </a>
         </div>
         {{- /* markdownlint users are the highest-intent audience;
-               give them a direct path to the rule mapping and
-               config rewrite instead of leaving the migration
-               guide buried in the docs tree. */ -}}
+               lead with the one-command config conversion and a
+               direct path to the migration guide instead of
+               leaving it buried in the docs tree. */ -}}
         <p class="hero-switch">
           Coming from markdownlint?
-          <a href="{{ "/guides/migrate-from-markdownlint/" | relURL }}">Follow the migration guide</a>
-          for the rule mapping and config rewrite.
+          <code>mdsmith init --from-markdownlint</code> converts your config —
+          <a href="{{ "/guides/migrate-from-markdownlint/" | relURL }}">follow the migration guide</a>.
         </p>
         {{- $repo := $.Site.Params.githubRepo -}}
         <div class="hero-badges" aria-label="Live project health">

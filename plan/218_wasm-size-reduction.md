@@ -1,7 +1,7 @@
 ---
 id: 218
 title: In-house CUE-subset engine for WASM size and tinygo
-status: "🔲"
+status: "🔳"
 model: opus
 summary: >-
   Replace the cuelang.org/go dependency with a small, pure-Go,
@@ -127,25 +127,47 @@ packages; it imports none of them. The façade mirrors the CUE
 calls above:
 
 ```go
-package cuelite
-
-func Compile(src string) (*Value, error)      // CompileString
-func CompileJSON(data []byte) (*Value, error) // CompileBytes
-func ParsePath(expr string) (Path, error)
-
-func (v *Value) Unify(o *Value) *Value
-func (v *Value) Validate() error              // Concrete(true)
-func (v *Value) LookupPath(p Path) (*Value, bool)
-func (v *Value) String() (string, error)
-// plus Decode, Exists, Fields; errors carry a field Path.
+func Compile(src string) (Value, error)      // CompileString
+func CompileJSON(data []byte) (Value, error) // strict JSON; stricter than CompileBytes
+func ParsePath(expr string) (Path, error)    // {a.b.c} → Path
+func MakePath(segments ...string) Path        // construct from segments
+func (v Value) Unify(o Value) Value
+func (v Value) Validate() error              // Concrete(true)
+func (v Value) LookupPath(p Path) (Value, bool)
+func (v Value) String() (string, error)
+func (p Path) Segments() []string            // unquoted per-selector strings
+// plus Decode, Exists, Fields; errors carry a Path. MakePath serves
+// query.collectPaths; Segments serves fieldinterp.ParseCUEPath.
 ```
 
+`Value` is a **value type**, not a pointer. Methods take and
+return `Value` by copy. A zero/bottom `Value` composes without a
+nil receiver to panic on, and the future hot path pays no heap
+allocation per call (the ≤ 10 allocs/op budget). A bottom (⊥)
+absorbs cleanly whether it is a phase-0 error-carrying struct or
+a flipped in-house `Value`. So the API shape is identical before
+and after the flip.
+
 One simplification falls out. A CUE value is tied to a
-`*cue.Context` and cannot cross contexts, forcing the
+`*cue.Context` and cannot cross contexts. That forces the
 context-pairing plumbing in
 [compile_cache.go](../internal/schema/compile_cache.go).
-A `cuelite.Value` is a context-free immutable struct, so a
-compiled schema is shareable across goroutines.
+The phase-0 façade pays an honest interim cost for this. Each
+compiled `Value` owns a fresh `*cue.Context`, since CUE v0.16.1
+documents that values from one context are neither
+concurrency-safe nor memory-bounded. `Unify` rebuilds whichever
+side retains source into the OTHER side's mutated context, so a
+shared schema needs synchronization and a long-lived `Value`
+grows until the flip.
+
+The flipped in-house `Value` is a context-free immutable struct.
+A compiled schema is then shareable across goroutines, and the
+per-`Value` context disappears with no API change.
+
+The differential oracle harness lives under
+`internal/cuelitetest`. It is module-internal, so the
+`cuelang.org/go` import it carries never reaches the public
+surface and is deleted with the package in phase 4.
 
 ### Value model
 
@@ -174,8 +196,14 @@ small:
 - structs unify field-wise (an extra field vs a closed struct
   is ⊥); lists unify by element and length.
 
-`Validate` reports the first non-concrete or ⊥ leaf, with its
-path, matching CUE's `Validate(Concrete(true))`.
+`Validate` reports one `*PathError` per non-concrete or ⊥
+leaf. Each error is tagged with its field path, matching CUE's
+`Validate(Concrete(true))`. A single failing leaf returns a bare
+`*PathError`; several return an `errors.Join` of them. The
+package-level `Errors` accessor flattens that bare-or-joined
+error into the full slice of per-field failures. A consumer thus
+enumerates every rejecting leaf without type-switching on the
+join shape.
 
 ### Hot-path performance
 
@@ -213,9 +241,10 @@ patch at the project baseline. The four-layer
 - **contract** — the façade surface and the `errors`/`Path`
   shape MDS020 reads;
 - **integration** — the differential harness: the in-house path
-  runs against the CUE-backed façade (the **oracle**) on each
-  expression, asserting identical accept/reject and error
-  field-paths over every `frontmatter:` constraint, the
+  runs against an **independent direct-CUE oracle** (not the
+  façade, which becomes the in-house path once flipped, so it
+  cannot also be the oracle), asserting identical accept/reject
+  and error field-paths over every `frontmatter:` constraint, the
   [file-kinds conflict table](../docs/guides/file-kinds.md), the
   query/`where:` examples, and a `go test` fuzzer;
 - **e2e** — `mdsmith check .`, unchanged.

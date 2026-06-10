@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 // TestCompile_RejectsEmptyExpression keeps the contract clear:
@@ -217,4 +218,33 @@ func TestTemplate_Render_CUEKeywordKeyIsQuoted(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "MDS001", got)
+}
+
+// TestTemplate_Render_MarshalErrorReturnsError pins that a
+// frontmatter value json.Marshal cannot serialise produces an
+// error return from Render rather than a panic. A chan is the
+// canonical non-JSON-marshalable Go type.
+func TestTemplate_Render_MarshalErrorReturnsError(t *testing.T) {
+	tpl, err := Compile(`"literal"`)
+	require.NoError(t, err)
+	_, err = tpl.Render(map[string]any{"bad": make(chan int)})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "encoding frontmatter")
+}
+
+// TestTemplate_Render_NonFiniteFrontMatterReturnsError covers
+// the trigger reachable from plain Markdown, decoding the YAML
+// for real: yaml.v3 turns the scalars `.inf` and `.nan` into
+// float64 values json.Marshal rejects, so such front matter
+// must surface as a render error, not a panic.
+func TestTemplate_Render_NonFiniteFrontMatterReturnsError(t *testing.T) {
+	tpl, err := Compile(`"literal"`)
+	require.NoError(t, err)
+	for _, src := range []string{"weight: .inf\n", "score: .nan\n"} {
+		var fm map[string]any
+		require.NoError(t, yaml.Unmarshal([]byte(src), &fm), src)
+		_, err := tpl.Render(fm)
+		require.Error(t, err, src)
+		assert.Contains(t, err.Error(), "encoding frontmatter", src)
+	}
 }

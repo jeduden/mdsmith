@@ -59,7 +59,7 @@ The proto schema enforces the format. Legacy ids are
 frozen as a closed range and new ids must be timestamps:
 
 ```cue
-id: (int & >=1 & <=243) | (int & >=2601010000)
+id: (int & >=1 & <=246) | (int & >=2601010000)
 ```
 
 A `max+1` allocation like 244 now fails MDS020 instead
@@ -150,6 +150,15 @@ links. All nine moved twins are completed plans. No
 `depends-on:` entry needed an edit — every ambiguous dep
 already meant a keeper.
 
+The race struck twice more while this plan was in review:
+main minted duplicate pairs at 242 and 243, plus three
+new singles. The same recipe absorbed them. Pairs 242 and
+243 keep their live or referenced twins, and the
+completed twins moved to timestamp ids. The frozen range
+grew to 246 — each fresh max+1 plan widens it by one
+until this lands, and the timestamp contract in proto.md
+stops the sequence at the source.
+
 Every reference to a moved id was re-pointed, not only
 `depends-on:` entries. The sweep covered the whole repo
 with non-digit boundaries: `plan/`, `docs/`, `.claude/`,
@@ -197,7 +206,7 @@ scope. pick-plan already treats unknown ids as unmet.
    comment block — the `date -u +%y%m%d%H%M` recipe, id
    equals filename prefix, bump one minute on collision —
    and tighten the proto `id:` type to
-   `(int & >=1 & <=243) | (int & >=2601010000)`.
+   `(int & >=1 & <=246) | (int & >=2601010000)`.
 4. [x] Update the
    [pick-plan skill](../.claude/skills/pick-plan/SKILL.md):
    new plan ids are 10-digit timestamps; demote the

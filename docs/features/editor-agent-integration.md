@@ -29,6 +29,10 @@ feeds the same diagnostics and navigation to the agent, plus a
 Markdown-organization audit skill. The agent sees mdsmith inline
 while it edits your docs.
 
+Pair the plugin with the [progressive disclosure
+guide](../guides/progressive-disclosure.md): a `<?catalog?>`
+keeps `CLAUDE.md` a one-line-per-doc index of your docs tree.
+
 See the [VS Code guide](../guides/editors/vscode.md), the
 [Obsidian guide](../guides/editors/obsidian.md), and the
 [install guide](../guides/install.md) for setup.

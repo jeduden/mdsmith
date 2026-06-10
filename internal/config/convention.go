@@ -8,6 +8,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/convention"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/yamlutil"
 )
 
 // applyConvention reads the top-level Convention selector from the
@@ -192,16 +193,23 @@ func validateConventionRuleSettings(
 	return nil
 }
 
-// validateConventionScalar returns an error when the top-level
-// `convention:` value in the raw YAML is not a string scalar.
-// yaml.v3 silently coerces bare ints and bools into string fields,
-// which would surface as "unknown convention 123" instead of a
-// clean type error. Inspecting the raw node tag is the only way to
-// catch the type mismatch before that coercion happens.
+// validateConventionScalar rejects YAML that uses anchors or
+// aliases anywhere in the document, then returns an error when
+// the top-level `convention:` value in the raw YAML is not a
+// string scalar. yaml.v3 silently coerces bare ints and bools
+// into string fields, which would surface as "unknown
+// convention 123" instead of a clean type error. Inspecting the
+// raw node tag is the only way to catch the type mismatch before
+// that coercion happens.
 func validateConventionScalar(data []byte) error {
-	// yaml.Unmarshal into yaml.Node does not expand aliases, so this
-	// is safe without an alias-rejection pre-check. Errors are swallowed
-	// because Load's subsequent UnmarshalSafe call will surface them.
+	// Reject anchors/aliases up front, as the kind-file and
+	// convention-file loaders do. The direct yaml.Unmarshal
+	// below is deliberate: its parse errors must stay swallowed
+	// so the caller's follow-up UnmarshalSafe (Load and
+	// ParseBytes share that pipeline) reports them instead.
+	if err := yamlutil.RejectYAMLAliases(data); err != nil {
+		return err
+	}
 	var node yaml.Node
 	if err := yaml.Unmarshal(data, &node); err != nil {
 		return nil

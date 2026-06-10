@@ -76,7 +76,12 @@ func renderTemplate(params map[string]string, entries []fileEntry, columns ...ma
 		if rowTpl != nil {
 			r, err := rowTpl.Render(entry.fields)
 			if err != nil {
-				return "", fmt.Errorf("rendering row-expr: %w", err)
+				// Display-form filename, matching the rule's other
+				// per-entry diagnostics (front-matter read errors,
+				// include-cycle reports).
+				return "", fmt.Errorf(
+					"rendering row-expr for %q: %w",
+					fieldinterp.Stringify(entry.fields["filename"]), err)
 			}
 			rendered = r
 		} else {

@@ -17,7 +17,9 @@ on `mdsmith fix` and flag stale content on
 
 Use `<?catalog?>` when you need a list of files with
 metadata — for example, a table of plans, a docs
-index, or a rule directory.
+index, or a rule directory. For the agent-facing
+docs index, see
+[Progressive Disclosure for AI Agents](../progressive-disclosure.md).
 
 ### Minimal catalog
 

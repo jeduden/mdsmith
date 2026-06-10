@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -133,6 +134,17 @@ type Server struct {
 	// simulate a didClose landing mid-lint — the race the "document was
 	// closed while we were linting" guard protects against.
 	afterLintCheck func()
+	// lintPanicHook, when non-nil, is called inside runLint just before
+	// the real sess.CheckVersion call. Tests set it to panic so the
+	// deferred recover path can be driven red/green without a real rule
+	// that panics. Nil in production.
+	lintPanicHook func()
+	// dispatchPanicHook, when non-nil, is called by dispatchRaw after
+	// the frame is parsed and before dispatch, so a test can trigger a
+	// handler-stage panic inside the dispatch path. One-shot: the hook
+	// disables itself after firing so subsequent messages route
+	// normally. Nil in production.
+	dispatchPanicHook func()
 }
 
 // userSettings mirrors the subset of `mdsmith.*` VS Code keys the
@@ -322,7 +334,28 @@ var errExitWithoutShutdown = errors.New("lsp: exit notification received before 
 // request). Treating responses as unknown methods would break reply
 // flow for `workspace/configuration`, `client/registerCapability`,
 // and any future server-initiated request.
+//
+// A deferred recover wraps the entire body so a panic inside a message
+// handler does not kill the dispatch loop. The panic is logged with
+// its stack and the offending frame is dropped; when the frame was a
+// request, an InternalError response settles the client's pending
+// call. The next frame is processed normally.
 func (s *Server) dispatchRaw(ctx context.Context, raw []byte) {
+	var reqID json.RawMessage
+	defer func() {
+		r := recover()
+		if r == nil {
+			return
+		}
+		s.logPanic("dispatch", r)
+		// JSON-RPC 2.0 §5: every call gets a response. Without one
+		// the client's promise for this ID pends forever — the
+		// crash would become a hang.
+		if len(reqID) > 0 {
+			_ = s.t.writeError(reqID, codeInternalError,
+				"internal error: panic while handling request")
+		}
+	}()
 	var probe struct {
 		JSONRPC string          `json:"jsonrpc"`
 		ID      json.RawMessage `json:"id,omitempty"`
@@ -362,7 +395,40 @@ func (s *Server) dispatchRaw(ctx context.Context, raw []byte) {
 	msg := &requestMessage{
 		JSONRPC: probe.JSONRPC, ID: probe.ID, Method: probe.Method, Params: probe.Params,
 	}
+	reqID = msg.ID
+	// dispatchPanicHook is a test seam (nil in production). It fires
+	// after the frame is parsed and before dispatch, so a test can
+	// inject a handler-stage panic and assert the deferred recover
+	// both survives it and answers the in-flight request.
+	if s.dispatchPanicHook != nil {
+		s.dispatchPanicHook()
+	}
 	s.dispatch(ctx, msg)
+}
+
+// recoverPanic is the deferred half of panic containment. It must be
+// deferred directly (`defer s.recoverPanic("scope")`) so its
+// recover() call observes the goroutine's panic.
+func (s *Server) recoverPanic(scope string) {
+	if r := recover(); r != nil {
+		s.logPanic(scope, r)
+	}
+}
+
+// logPanic records a recovered panic with its stack on the server log
+// and forwards the same text as a window/logMessage error so the
+// signal reaches the editor's output channel even when verbose
+// logging is off — the production default: `mdsmith lsp` wires no
+// Logger, so s.logger alone would swallow the only evidence of the
+// contained crash.
+func (s *Server) logPanic(scope string, r any) {
+	stack := debug.Stack()
+	s.logger.Printf("%s: recovered panic: %v\n%s", scope, r, stack)
+	_ = s.t.writeNotification("window/logMessage", logMessageParams{
+		Type: messageTypeError,
+		Message: fmt.Sprintf("mdsmith: recovered panic in %s: %v\n%s",
+			scope, r, stack),
+	})
 }
 
 func (s *Server) dispatch(ctx context.Context, msg *requestMessage) {
@@ -730,6 +796,12 @@ func (s *Server) resolveConfig(override string) (cfg *config.Config, cfgPath, lo
 // Must be called from a goroutine other than the dispatch loop, since
 // the response arrives on the same loop.
 func (s *Server) fetchClientSettings(ctx context.Context) {
+	// This runs on its own goroutine (never the dispatch loop), so a
+	// panic in the response path — config load, schema compile,
+	// session rebuild, the host's OnConfigReload callback — would
+	// kill the whole server without this recover, the same crash
+	// class the lint and dispatch recovers contain.
+	defer s.recoverPanic("fetch client settings")
 	id := s.nextReqID.Add(1)
 	// json.Marshal(int64) cannot fail; ignoring the error is safe.
 	idJSON, _ := json.Marshal(id)

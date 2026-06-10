@@ -1,5 +1,5 @@
 ---
-id: '(int & >=1 & <=243) | (int & >=2601010000)'
+id: '(int & >=1 & <=246) | (int & >=2601010000)'
 title: 'string & != ""'
 status: '"🔲" | "🔳" | "✅" | "⛔"'
 summary: 'string | *""'
@@ -26,7 +26,7 @@ filename: "[0-9]*_*.md"
     2026-06-10 05:33 UTC). Use it as both the
     frontmatter `id:` and the filename prefix.
   - Taken already? Add one minute and check again.
-  - Ids 1-243 are the frozen legacy range. Never
+  - Ids 1-246 are the frozen legacy range. Never
     allocate max+1: the `id:` type above rejects
     new ids below 2601010000, so a sequential id
     fails `mdsmith check`.

@@ -116,8 +116,16 @@ func mergeRawFrontmatter(out, parent, child map[string]any) {
 			continue
 		}
 		parentExpr, parentOK := existing.(string)
+		if !parentOK {
+			// The parent value failed normalisation (e.g. a
+			// non-finite float). Keep it so
+			// ValidateExtendedFrontmatter names the key rather
+			// than the child override silently dropping the
+			// malformed constraint.
+			continue
+		}
 		childStr, childIsStr := childExpr.(string)
-		if !parentOK || !childIsStr || parentExpr == childStr {
+		if !childIsStr || parentExpr == childStr {
 			merged[k] = childExpr
 			continue
 		}
@@ -131,8 +139,9 @@ func mergeRawFrontmatter(out, parent, child map[string]any) {
 // expression, scalars JSON-encode, and raw CUE strings pass
 // through verbatim. A value frontmatterExpr cannot resolve (an
 // unknown shortcut, an unsupported type) flows through unchanged
-// so the downstream ParseInline call surfaces the same error
-// signal the user would have seen without the extends merge.
+// so a downstream pass — ParseInline or
+// ValidateExtendedFrontmatter — surfaces the same error signal
+// the user would have seen without the extends merge.
 func normalizeFrontmatterValue(v any) any {
 	expr, err := frontmatterExpr(v)
 	if err != nil {
