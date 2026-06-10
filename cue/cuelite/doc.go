@@ -21,12 +21,10 @@
 // [Value.LookupPath] reads the value at a [Path], [Value.Fields]
 // enumerates a struct's members (whose selectors feed straight into
 // [MakePath]), [Value.Exists] tells a resolved path from an absent one,
-// and [Value.String] / [Value.Decode] read a concrete leaf out. A value
-// derived by LookupPath or Fields keeps REBUILDABLE PROVENANCE — its
-// root source plus the path that reached it — so a [Value.Unify] across
-// contexts reconstructs it instead of pinning a context-bound value,
-// which lets a section lookup against a cached schema cross contexts
-// without mutating the shared value.
+// and [Value.String] / [Value.Decode] read a concrete leaf out.
+// [Value.CompileMap] validates a map[string]any directly against a
+// compiled schema, with no JSON marshal/parse round-trip — the
+// front-matter hot path.
 //
 // # Error model
 //
@@ -40,37 +38,34 @@
 // unspecified; enumerate it with Errors, not by type assertion.
 //
 // A [Value] can also be a bottom (⊥): a compile failure, the zero
-// Value, or a Unify of two derived values from different contexts. A
-// bottom absorbs through [Value.Unify] and surfaces from
-// [Value.Validate] as a single path-free [PathError], so an error
-// flows through a Unify chain instead of panicking.
+// Value, or a conflicting Unify. A bottom absorbs through [Value.Unify]
+// and surfaces from [Value.Validate] as a single path-free [PathError],
+// so an error flows through a Unify chain instead of panicking.
 //
 // # Concurrency and memory
 //
-// Compile, Unify, and Validate delegate to cuelang.org/go; ParsePath
-// is already in-house (a pure-Go parser checked against cue.ParsePath
-// by a differential corpus and fuzzer). CUE v0.16.1
-// documents that values from one *cue.Context are not safe for
-// concurrent use and that a long-lived context grows without bound.
-// Each [Compile] and [CompileJSON] result therefore owns a fresh
-// context, and two costs show through the API:
-//
-//   - A cross-context [Value.Unify] compiles the rebuilt operand into
-//     the context of the side that is not rebuilt, mutating it. A
-//     compiled schema shared across goroutines needs external
-//     synchronization, or one compiled copy per goroutine.
-//   - Each cross-context Unify against one long-lived Value adds one
-//     compiled document to that Value's context. Validating N documents
-//     against one cached schema costs memory proportional to N.
+// A [Value] is a context-free immutable struct: it owns no *cue.Context
+// and no mutable state. A compiled schema is therefore safe for
+// concurrent use and shareable across goroutines with no
+// synchronization — the engine creates fresh value nodes on every
+// Unify rather than mutating a shared one. Validating N documents
+// against one cached schema costs no per-document recompile and no
+// memory that grows with N: each [Value.CompileMap] or [Value.Unify]
+// produces a new immutable result and the schema is read, never
+// written. (The earlier CUE-backed implementation owned a per-Value
+// *cue.Context and paid two interim costs — a context-mutating
+// cross-context Unify and a context that grew per validated document —
+// both of which the in-house engine erases.)
 //
 // # Stability
 //
 // As a public package this is a cross-system contract, like
-// pkg/markdown and pkg/mdsmith. The CUE delegation is an interim
-// implementation: it is being replaced, method by method, by an
-// in-house engine behind this same API. A differential harness pins
-// identical accept/reject outcomes and identical error field paths
-// across that swap, and the swap removes the two context costs above
-// without changing the API. The strategy and the layering rules live
-// in docs/development/architecture/index.md.
+// pkg/markdown and pkg/mdsmith. The evaluator — unify, validate,
+// concreteness — is in-house; the AST frontend reuses cuelang's
+// cue/parser to walk the supported CUE subset into the value model
+// (the interim recorded in plan 238, removed in plan 240's phase 4). A
+// differential harness pins identical accept/reject outcomes and
+// identical error field paths against a direct-CUE oracle across the
+// whole corpus, plus a schema×data fuzzer. The strategy and the
+// layering rules live in docs/development/architecture/index.md.
 package cuelite
