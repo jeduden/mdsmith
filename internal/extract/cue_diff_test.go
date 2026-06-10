@@ -163,6 +163,14 @@ func blocksCorpus(t *testing.T) [][]any {
 		// closed `block_table` arm must accept the empty list, not
 		// just populated rows.
 		{textScope, "## Notes\n\n| A | B |\n| - | - |\n"},
+		// Lenient image spans nested inside container spans: an image
+		// linked (image inside a link's `children`) and an image whose
+		// alt text carries emphasis (a non-text image child). These pin
+		// that block-inline leniency propagates through a container
+		// span's recursion, so the image arm's `children: [...#Span]`
+		// is validated for a non-trivial child, not just a bare alt.
+		{inlineScopeSchema, "## Notes\n\n[![alt](i.png)](u) and " +
+			"![a *b* c](j.png)\n"},
 	}
 	corpus := make([][]any, 0, len(cases))
 	for _, c := range cases {
