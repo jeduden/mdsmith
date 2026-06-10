@@ -83,4 +83,5 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/tocdirective"                // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/tokenbudget"                 // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/unclosedcodeblock"           // registers rule
+	_ "github.com/jeduden/mdsmith/internal/rules/uniquefrontmatter"           // registers rule
 )

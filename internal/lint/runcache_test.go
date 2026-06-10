@@ -876,3 +876,64 @@ func TestRunCache_EmptyFragmentSkippedBothDirections(t *testing.T) {
 	// back-pointer is removed.
 	c.Invalidate(schemaA)
 }
+
+// TestRunCache_UniqueFieldIndexBuildsOnce pins the single-build
+// guarantee for the MDS069 scope-index slot.
+func TestRunCache_UniqueFieldIndexBuildsOnce(t *testing.T) {
+	c := NewRunCache()
+
+	var calls int32
+	build := func() any {
+		atomic.AddInt32(&calls, 1)
+		return "index"
+	}
+
+	for i := 0; i < 3; i++ {
+		got := c.UniqueFieldIndex("MDS069\x00id\x00plan/*.md", build)
+		require.Equal(t, "index", got)
+	}
+	assert.Equal(t, int32(1), atomic.LoadInt32(&calls),
+		"build must run exactly once per scope key")
+}
+
+// TestRunCache_InvalidateDropsEveryUniqueFieldIndex pins the
+// clear-all contract: the slot is keyed by rule scope, not path, so
+// invalidating ANY path must drop every index entry.
+func TestRunCache_InvalidateDropsEveryUniqueFieldIndex(t *testing.T) {
+	c := NewRunCache()
+
+	var calls int32
+	build := func() any {
+		atomic.AddInt32(&calls, 1)
+		return "index"
+	}
+
+	c.UniqueFieldIndex("scope-a", build)
+	c.UniqueFieldIndex("scope-b", build)
+	require.Equal(t, int32(2), atomic.LoadInt32(&calls))
+
+	c.Invalidate("/abs/unrelated.md")
+
+	c.UniqueFieldIndex("scope-a", build)
+	c.UniqueFieldIndex("scope-b", build)
+	assert.Equal(t, int32(4), atomic.LoadInt32(&calls),
+		"both scope entries must rebuild after any Invalidate")
+}
+
+// TestRunCache_DropUniqueFieldIndexesClearsAllEntries exercises the
+// helper directly: every scope key must vanish in one call.
+func TestRunCache_DropUniqueFieldIndexesClearsAllEntries(t *testing.T) {
+	c := NewRunCache()
+
+	var calls int32
+	build := func() any {
+		atomic.AddInt32(&calls, 1)
+		return "index"
+	}
+
+	c.UniqueFieldIndex("scope-a", build)
+	c.dropUniqueFieldIndexes()
+	c.UniqueFieldIndex("scope-a", build)
+	assert.Equal(t, int32(2), atomic.LoadInt32(&calls),
+		"entry must rebuild after dropUniqueFieldIndexes")
+}

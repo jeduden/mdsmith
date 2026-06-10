@@ -79,6 +79,7 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/tocdirective"
 	_ "github.com/jeduden/mdsmith/internal/rules/tokenbudget"
 	_ "github.com/jeduden/mdsmith/internal/rules/unclosedcodeblock"
+	_ "github.com/jeduden/mdsmith/internal/rules/uniquefrontmatter"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

@@ -23,6 +23,13 @@ type RunCache struct {
 	parsedSchema sync.Map // string (absPath) -> *runCacheEntry
 	compiledCUE  sync.Map // string (CUE source) -> *runCacheEntry
 
+	// uniqueFieldIndex memoizes MDS069's per-scope value→first-file
+	// index. Keys encode a rule scope (field + globs), not a path,
+	// so Invalidate cannot target one entry — any file edit can
+	// change which path first holds a value, and Invalidate drops
+	// the whole slot instead.
+	uniqueFieldIndex sync.Map // string (scope key) -> *runCacheEntry
+
 	// schemaDependents maps a fragment path to the set of schema
 	// paths whose ParsedSchema slot reached it via <?include?>.
 	// Invalidate(fragment) walks this set so dependent schemas are
@@ -86,6 +93,26 @@ func NewRunCache() *RunCache {
 // same key block on the same once and observe the same value.
 func (c *RunCache) FrontMatter(absPath string, build func() any) any {
 	return load(&c.frontMatter, absPath, build)
+}
+
+// UniqueFieldIndex returns build's result for key, computed at most
+// once per key in this cache's lifetime. Keys encode a rule's whole
+// uniqueness scope (field plus include/exclude globs); the slot is
+// dropped wholesale by Invalidate because a single file edit can
+// change which path first holds a value anywhere in the scope.
+func (c *RunCache) UniqueFieldIndex(key string, build func() any) any {
+	return load(&c.uniqueFieldIndex, key, build)
+}
+
+// dropUniqueFieldIndexes clears every unique-field index entry. The
+// slot is keyed by rule scope, not by path: an edit to any file can
+// move a value's first holder, so every entry drops on every
+// invalidation.
+func (c *RunCache) dropUniqueFieldIndexes() {
+	c.uniqueFieldIndex.Range(func(k, _ any) bool {
+		c.uniqueFieldIndex.Delete(k)
+		return true
+	})
 }
 
 // Includes returns build's result for absPath. The value is the list
@@ -320,6 +347,8 @@ func (c *RunCache) invalidate(absPath string, visited map[string]bool) {
 	c.frontMatter.Delete(absPath)
 	c.includes.Delete(absPath)
 	c.anchors.Delete(absPath)
+
+	c.dropUniqueFieldIndexes()
 
 	// Read the schema's includes + cueSources from the dedicated
 	// sync.Maps. Both are written AFTER ParsedSchema's load returns

@@ -726,6 +726,7 @@ row-expr: |
 | [MDS041](../../../internal/rules/MDS041-no-inline-html/README.md) no-inline-html           | MD033 ✅ no-inline-html    | MD033 ✅ no-inline-html    | MD033 ✅ no-inline-html | —       | —               |
 | [MDS048](../../../internal/rules/MDS048-git-hook-sync/README.md) git-hook-sync             | —                          | —                          | —                       | —       | —               |
 | [MDS067](../../../internal/rules/MDS067-callout-type/README.md) callout-type               | —                          | —                          | —                       | —       | —               |
+| [MDS069](../../../internal/rules/MDS069-unique-frontmatter/README.md) unique-frontmatter   | —                          | —                          | —                       | —       | —               |
 <?/catalog?>
 
 ## Generated sections (directives) (mdsmith-only)
