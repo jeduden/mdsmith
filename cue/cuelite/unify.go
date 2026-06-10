@@ -1,6 +1,7 @@
 package cuelite
 
 import (
+	"slices"
 	"strconv"
 	"unicode/utf8"
 )
@@ -408,13 +409,33 @@ func retainByValue(defaults, survivors []*engineValue) []*engineValue {
 			continue
 		}
 		for _, s := range survivors {
-			if s.concreteScalarV() && concreteEqual(s, d) {
+			if survivorContainsValue(s, d) {
 				out = append(out, d)
 				break
 			}
 		}
 	}
 	return out
+}
+
+// survivorContainsValue reports whether a surviving value branch holds the
+// concrete scalar d — either because the survivor IS that scalar, or because
+// the survivor is itself a disjunction one of whose branches is that scalar.
+// A meet branch can stay a disjunction (`int & (*1|int)` survives as `1|int`),
+// so a default that the cross-product produced (`int & 1 = 1`) is present in
+// the value set even when no survivor is the bare concrete scalar. Without the
+// nested-disjunction check the default `1` of `(0|int) & (*1|int)` would be
+// dropped and the field wrongly left non-concrete.
+func survivorContainsValue(s, d *engineValue) bool {
+	if s.concreteScalarV() {
+		return concreteEqual(s, d)
+	}
+	if s.kind != kDisjoint {
+		return false
+	}
+	return slices.ContainsFunc(s.branches, func(br *engineValue) bool {
+		return survivorContainsValue(br, d)
+	})
 }
 
 // meetBranches meets every branch of a disjunction with o, dropping the ⊥

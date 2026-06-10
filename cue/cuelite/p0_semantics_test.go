@@ -61,6 +61,13 @@ func TestDisjunctionDefaults(t *testing.T) {
 		// default survives and the field is non-concrete.
 		{"meet of defaults conflicts", `{x: (*1 | int) & (*2 | int)}`, `{}`, false},
 		{"meet of equal defaults", `{x: (*1 | int) & (*1 | int)}`, `{}`, true},
+		// A default met against a default-LESS disjunction whose surviving meet
+		// stays a disjunction (`int & (*1|int)` survives as `1|int`): the default
+		// 1 lives inside that survivor, so it must be retained regardless of
+		// operand order. (Regression: retainByValue only matched bare-scalar
+		// survivors, dropping the default and leaving the field non-concrete.)
+		{"default met vs defaultless, mark right", `{x: (0 | int) & (*1 | int)}`, `{}`, true},
+		{"default met vs defaultless, mark left", `{x: (*1 | int) & (0 | int)}`, `{}`, true},
 		{"meet default vs branches", `{x: (*1 | 2) & (2 | 3)}`, `{}`, true},
 		{"meet default vs default empty", `{x: (*1 | 2) & (1 | *2)}`, `{}`, false},
 		{"meet of two-mark defaults survives one", `{x: (*1 | *2) & (*2 | *3)}`, `{}`, true},

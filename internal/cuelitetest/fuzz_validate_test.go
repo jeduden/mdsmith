@@ -383,6 +383,11 @@ func edgeFuzzSeeds() []struct{ schema, data string } {
 		{`({m:"0"}|"")`, `{"m":""}`},
 		{`({m:"0",n:"1"}|"")`, `{"m":"x","n":"y"}`},
 		{`({mechanism:""|"0",A:[if mechanism{}][0]})`, `{}`},
+		// The default of a meet must apply regardless of operand order
+		// (`(0|int) & (*1|int)` defaults A to 1): a regression where the default
+		// was dropped when its surviving meet stayed a disjunction.
+		{`{A:(0|int)&(*1|int)}`, `{}`},
+		{`{A:(*1|int)&(0|int)}`, `{}`},
 		// An ordered comparison of mismatched scalar kinds (0 > ""): CUE rejects
 		// it as an invalid operation but defers in a disjunction; the in-house
 		// engine rejects eagerly at schema compile.
