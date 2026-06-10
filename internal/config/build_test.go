@@ -39,6 +39,15 @@ func TestCheckBuildConfig_NoBuildKey(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestRejectRemovedBuildKeys_BuildNullValue(t *testing.T) {
+	// build: with a null value (YAML scalar node, not a mapping) must not
+	// error in rejectRemovedBuildKeys; the base-url scan only applies when
+	// the build: value is itself a mapping.
+	yml := []byte("build:\n")
+	_, err := loadFromBytes(yml, "", false)
+	require.NoError(t, err)
+}
+
 // --- ValidateBuildConfig ---
 
 func TestValidateBuildConfig_Nil(t *testing.T) {

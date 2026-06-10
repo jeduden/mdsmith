@@ -332,3 +332,37 @@ func TestBuild_InputGlobMalformed(t *testing.T) {
 	})
 	require.Error(t, err)
 }
+
+func TestCopyFile_Success(t *testing.T) {
+	root := t.TempDir()
+	src := filepath.Join(root, "src.txt")
+	dst := filepath.Join(root, "dst.txt")
+	require.NoError(t, os.WriteFile(src, []byte("hello"), 0o644))
+	require.NoError(t, copyFile(src, dst))
+	got, err := os.ReadFile(dst)
+	require.NoError(t, err)
+	assert.Equal(t, "hello", string(got))
+}
+
+func TestCopyFile_ReadError(t *testing.T) {
+	root := t.TempDir()
+	err := copyFile(filepath.Join(root, "nonexistent.txt"), filepath.Join(root, "dst.txt"))
+	require.Error(t, err)
+}
+
+func TestSubstituteParams_PrefixBeforePlaceholder(t *testing.T) {
+	// A token with literal prefix text before a {name} placeholder exercises
+	// the WriteByte branch that copies non-'{' characters one at a time.
+	out, err := substituteParams("prefix-{name}", map[string]string{"name": "val"})
+	require.NoError(t, err)
+	assert.Equal(t, "prefix-val", out)
+}
+
+func TestSubstituteParams_EmbeddedListPlaceholder(t *testing.T) {
+	// {inputs} or {outputs} embedded inside a larger token (not a standalone
+	// token) must pass through literally — the MDS040 validator rejects such
+	// commands; here we verify the substituteParams passthrough.
+	out, err := substituteParams("prefix-{inputs}-suffix", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "prefix-{inputs}-suffix", out)
+}

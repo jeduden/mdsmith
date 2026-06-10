@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -138,4 +139,107 @@ func TestBuildRecipeSpecs_WithRecipe(t *testing.T) {
 	specs := buildRecipeSpecs(cfg)
 	require.Contains(t, specs, "copy")
 	assert.Equal(t, "cp {inputs} {outputs}", specs["copy"].Command)
+}
+
+func TestRunBuildPass_OK(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("touch not available on Windows")
+	}
+	root := t.TempDir()
+	cfg := buildPassCfg("    mk:\n      command: touch {outputs}\n")
+	cfgPath := filepath.Join(root, ".mdsmith.yml")
+
+	md := buildPassDirective("mk", "out.txt")
+	p := filepath.Join(root, "doc.md")
+	require.NoError(t, os.WriteFile(p, []byte(md), 0o644))
+
+	var buf strings.Builder
+	// timeout: 0 exercises the "timeout <= 0 → 30s default" branch.
+	code := runBuildPass(cfg, cfgPath, []string{p}, buildPassOpts{timeout: 0}, &buf)
+	assert.Equal(t, 0, code)
+	assert.Contains(t, buf.String(), "OK")
+	assert.FileExists(t, filepath.Join(root, "out.txt"))
+}
+
+func TestRunBuildPass_FAIL(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("false not available on Windows")
+	}
+	root := t.TempDir()
+	cfg := buildPassCfg("    boom:\n      command: false\n")
+	cfgPath := filepath.Join(root, ".mdsmith.yml")
+
+	md := buildPassDirective("boom", "out.txt")
+	p := filepath.Join(root, "doc.md")
+	require.NoError(t, os.WriteFile(p, []byte(md), 0o644))
+
+	var buf strings.Builder
+	code := runBuildPass(cfg, cfgPath, []string{p}, buildPassOpts{timeout: time.Second}, &buf)
+	assert.Equal(t, 2, code)
+	assert.Contains(t, buf.String(), "FAIL")
+	assert.NoFileExists(t, filepath.Join(root, "out.txt"))
+}
+
+func TestDirectiveParams_NonStructuralKey(t *testing.T) {
+	params := map[string]string{
+		"recipe":  "cp",
+		"inputs":  "src.txt",
+		"outputs": "dst.txt",
+		"theme":   "dark",
+	}
+	got := directiveParams(params)
+	assert.Equal(t, map[string]string{"theme": "dark"}, got)
+}
+
+func TestDirectiveParams_AllStructural(t *testing.T) {
+	params := map[string]string{
+		"recipe":  "cp",
+		"outputs": "dst.txt",
+	}
+	got := directiveParams(params)
+	assert.Empty(t, got)
+}
+
+func TestCollectBuildTargets_MultipleFilesSort(t *testing.T) {
+	root := t.TempDir()
+	md := buildPassDirective("cp", "out.txt")
+	p1 := filepath.Join(root, "a_doc.md")
+	p2 := filepath.Join(root, "b_doc.md")
+	require.NoError(t, os.WriteFile(p1, []byte(md), 0o644))
+	require.NoError(t, os.WriteFile(p2, []byte(md), 0o644))
+
+	// Pass in reverse order; expect sorted by filename.
+	targets, errs := collectBuildTargets([]string{p2, p1}, root, "", 0)
+	assert.Empty(t, errs)
+	require.Len(t, targets, 2)
+	assert.Equal(t, p1, targets[0].file)
+	assert.Equal(t, p2, targets[1].file)
+}
+
+func TestCollectBuildTargets_EmptyRecipeSkipped(t *testing.T) {
+	root := t.TempDir()
+	// Directive with empty recipe: must be skipped silently.
+	md := "# Build\n\n" +
+		"<?build\nrecipe:\noutputs:\n  - out.txt\n?>\n" +
+		"[out.txt](out.txt)\n<?/build?>\n"
+	p := filepath.Join(root, "doc.md")
+	require.NoError(t, os.WriteFile(p, []byte(md), 0o644))
+
+	targets, errs := collectBuildTargets([]string{p}, root, "", 0)
+	assert.Empty(t, errs)
+	assert.Empty(t, targets, "directive with empty recipe must be skipped")
+}
+
+func TestCollectBuildTargets_EmptyOutputsSkipped(t *testing.T) {
+	root := t.TempDir()
+	// Directive with recipe but no outputs: must be skipped silently.
+	md := "# Build\n\n" +
+		"<?build\nrecipe: cp\n?>\n" +
+		"<?/build?>\n"
+	p := filepath.Join(root, "doc.md")
+	require.NoError(t, os.WriteFile(p, []byte(md), 0o644))
+
+	targets, errs := collectBuildTargets([]string{p}, root, "", 0)
+	assert.Empty(t, errs)
+	assert.Empty(t, targets, "directive with no outputs must be skipped")
 }
