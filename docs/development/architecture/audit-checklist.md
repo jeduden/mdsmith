@@ -34,9 +34,13 @@ budget.
   Updated at the end of every audit.
 - **Plan directory**: `plan/` with a
   numeric prefix
-  (`plan/<NNN>_arch-fix-<slug>.md`).
-  The next available number is one above
-  the highest existing prefix.
+  (`plan/<id>_arch-fix-<slug>.md`).
+  The id is the minute-precision UTC
+  creation time, `date -u +%y%m%d%H%M`;
+  if that id is taken, add one minute.
+  Never allocate "highest prefix plus
+  one" — the allocation contract lives
+  in [plan/proto.md](../../../plan/proto.md).
 - **Plan status sentinel**: `🔲` for
   "not started" (see
   [plan/proto.md](../../../plan/proto.md)).

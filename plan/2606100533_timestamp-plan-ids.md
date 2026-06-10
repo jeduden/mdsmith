@@ -188,23 +188,23 @@ scope. pick-plan already treats unknown ids as unmet.
    each at the file its referrer means. Delete the
    orphaned `depends-on: [19]` entry in
    157_catalog-where-filter.md.
-3. [ ] Document allocation in the [proto.md](proto.md)
+3. [x] Document allocation in the [proto.md](proto.md)
    comment block — the `date -u +%y%m%d%H%M` recipe, id
    equals filename prefix, bump one minute on collision —
    and tighten the proto `id:` type to
    `(int & >=1 & <=243) | (int & >=2601010000)`.
-4. [ ] Update the
+4. [x] Update the
    [pick-plan skill](../.claude/skills/pick-plan/SKILL.md):
    new plan ids are 10-digit timestamps; demote the
    duplicate-id gotchas to a history note; keep the
    dependency graph keyed by filename as defense in depth.
-5. [ ] Replace the max+1 instruction in
+5. [x] Replace the max+1 instruction in
    [audit-checklist.md](../docs/development/architecture/audit-checklist.md)
    ("one above the highest existing prefix") with the
    timestamp recipe, pointing at proto.md as the canonical
    home. No separate docs page: proto.md owns allocation,
    the skill owns selection.
-6. [ ] Run `mdsmith fix PLAN.md` and confirm the table
+6. [x] Run `mdsmith fix PLAN.md` and confirm the table
    orders legacy ids ascending, then timestamp ids.
 
 ## Acceptance Criteria
@@ -218,12 +218,12 @@ scope. pick-plan already treats unknown ids as unmet.
   file's frontmatter id.
 - [x] A catalog unit test sorts an id above 2,147,483,647
   under `sort: numeric:id`.
-- [ ] The [proto.md](proto.md) comment block names
+- [x] The [proto.md](proto.md) comment block names
   `date -u +%y%m%d%H%M`, and a plan with id 244 fails
   `mdsmith check` against the tightened `id:` type.
-- [ ] The pick-plan skill no longer instructs workarounds
+- [x] The pick-plan skill no longer instructs workarounds
   for live duplicate ids.
-- [ ] audit-checklist.md no longer says "one above the
+- [x] audit-checklist.md no longer says "one above the
   highest existing prefix".
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool golangci-lint run` reports no issues

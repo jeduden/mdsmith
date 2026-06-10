@@ -109,10 +109,14 @@ is one of:
 | `⛔`   | superseded  |
 
 Skip the `<?catalog?>` directive markers — only parse the
-table rows. The catalog has duplicate plan ids in a few
-places (two `121` rows, two `153`s, two `156`s). If a
-duplicate id ever surfaces as `🔲`, ask which file the
-user means rather than guessing — the slug disambiguates.
+table rows. Ids come in two shapes: a frozen legacy range
+(1–243) and 10-digit UTC-timestamp ids for newer plans
+(allocation contract in plan/proto.md). Both are plain
+integers; every regex below already matches both. Ids are
+unique — historic duplicates were renumbered by plan
+2606100533. If a duplicate ever reappears, ask which file
+the user means rather than guessing — the slug
+disambiguates.
 
 ### 2. List branches and cross-reference open PRs
 
@@ -163,26 +167,22 @@ is `depends-on: [146, 147]` (inline YAML); parse the
 integers between the brackets.
 
 Build two maps from the results. Key plan records by
-filename, not by id — the catalog has duplicate plan
-ids and two plans sharing an id must not collapse to
-one node:
+filename, not by id. Ids are unique today, but
+filename keying costs nothing and survives a future
+duplicate:
 
 - `deps[filename]` → list of plan ids this plan
   needs.
 - `dependents[id]` → count of plan-files whose
-  `deps` includes this id. A single id may resolve
-  to multiple filenames when duplicates exist; the
-  dependents count sums every plan-file that points
-  at that id, regardless of which duplicate they
-  meant. That's the safe direction — a dep is "met"
-  only when every plan sharing that id is `✅`.
+  `deps` includes this id. Should an id ever be
+  duplicated again, count every plan-file that
+  points at it — a dep is "met" only when every
+  plan sharing that id is `✅`.
 
-Skip the duplicate-id problem by reading by filename
-(you already have it from PLAN.md). If a plan's
-`depends-on:` references an id that isn't in
-PLAN.md at all (typo, deleted plan), treat that dep
-as unmet so the plan stays blocked until someone
-fixes the typo — don't silently ignore it.
+A `depends-on:` id may be missing from PLAN.md
+entirely (typo, deleted plan). Treat that dep as
+unmet, so the plan stays blocked until someone
+fixes the typo. Don't silently ignore it.
 
 ### 4. Report status to the user
 
@@ -438,12 +438,14 @@ review comments.
   doesn't also match a `plan-1020-…` branch. This
   applies to the branch scan, the PR title scan, and
   the `depends-on:` parse.
-- **Duplicate plan ids exist.** Two `121`s, two
-  `153`s, two `156`s. If a duplicate id ever surfaces
-  as `🔲`, ask which file the user means. The slug
-  disambiguates. Always key the dependency graph by
-  filename, not just id, so a duplicate doesn't
-  collapse two plans into one node.
+- **Plan ids are timestamps since plan 2606100533.**
+  Legacy ids 1–243 are frozen; a new plan's id is
+  `date -u +%y%m%d%H%M` at creation. The id regexes
+  above match both shapes unchanged. Historic
+  duplicates were renumbered, and a reintroduced
+  duplicate fails `mdsmith check`; should one ever
+  surface anyway, key the dependency graph by
+  filename and ask which file the user means.
 - **`origin/main` may be stale.** Always fetch first.
   Step 1 does this, but if you re-run later parts of
   the workflow, re-fetch.
