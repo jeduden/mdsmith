@@ -1,7 +1,7 @@
 ---
 id: 242
 title: "proto.md schemas declare content entries via `<?content?>`"
-status: "🔲"
+status: "🔳"
 summary: >-
   A `<?content?>` directive row in a proto.md section body
   declares the same content entry the inline `content:` list

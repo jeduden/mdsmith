@@ -186,9 +186,14 @@ func resolveExtendsPath(schemaPath, parentPath string) (string, error) {
 }
 
 // FileHeading is a heading collected from a schema markdown file.
+// Content carries any `<?content?>` directive rows that appear in the
+// heading's section body, in source order — the proto.md spelling of
+// the inline `content:` list. headingsToScopes copies it onto the
+// scope built for this heading.
 type FileHeading struct {
-	Level int
-	Text  string
+	Level   int
+	Text    string
+	Content []ContentEntry
 }
 
 // parseFileFrontmatter reads the schema's YAML front matter into
@@ -318,6 +323,29 @@ func extractRequireFilename(f *lint.File) (string, error) {
 	return "", nil
 }
 
+// parseContentDirective decodes a `<?content?>` PI body into one
+// ContentEntry, reusing the inline parser so the proto.md spelling
+// validates identically: unknown keys, unknown kinds, and illegal
+// kind/projection combinations fail here with the inline form's
+// diagnostics. The directive body carries the same `key: value`
+// shape as one inline `content:` list entry (`kind`, `projection`,
+// `required`, `bind`, and the kind-specific fields).
+func parseContentDirective(pi *piparser.ProcessingInstruction, source []byte) (ContentEntry, error) {
+	body, err := piYAMLBody(pi, source, "content")
+	if err != nil {
+		return ContentEntry{}, err
+	}
+	if body == "" {
+		return ContentEntry{}, fmt.Errorf(
+			"<?content?> directive missing a `kind:` key")
+	}
+	var m map[string]any
+	if err := yamlutil.UnmarshalSafe([]byte(body), &m); err != nil {
+		return ContentEntry{}, fmt.Errorf("invalid <?content?> directive: %w", err)
+	}
+	return parseContentEntry(m, "<?content?>")
+}
+
 func piYAMLBody(pi *piparser.ProcessingInstruction, source []byte, name string) (string, error) {
 	lines := pi.Lines()
 	if lines.Len() == 1 {
@@ -355,17 +383,29 @@ func collectFileHeadings(
 			text := headingText(node, f.Source)
 			heads = append(heads, FileHeading{Level: node.Level, Text: text})
 		case *piparser.ProcessingInstruction:
-			if node.Name != "include" {
-				return ast.WalkContinue, nil
+			switch node.Name {
+			case "include":
+				frag, fpInc, err := expandInclude(node, f.Source, r, path, visited, chain)
+				if err != nil {
+					return ast.WalkStop, err
+				}
+				if fpInc != "" && fp == "" {
+					fp = fpInc
+				}
+				heads = append(heads, frag...)
+			case "content":
+				if len(heads) == 0 {
+					return ast.WalkStop, fmt.Errorf(
+						"schema %q: <?content?> directive must appear inside "+
+							"a section (after a heading)", path)
+				}
+				entry, err := parseContentDirective(node, f.Source)
+				if err != nil {
+					return ast.WalkStop, err
+				}
+				last := &heads[len(heads)-1]
+				last.Content = append(last.Content, entry)
 			}
-			frag, fpInc, err := expandInclude(node, f.Source, r, path, visited, chain)
-			if err != nil {
-				return ast.WalkStop, err
-			}
-			if fpInc != "" && fp == "" {
-				fp = fpInc
-			}
-			heads = append(heads, frag...)
 		}
 		return ast.WalkContinue, nil
 	})
@@ -534,6 +574,10 @@ func headingsToScopes(heads []FileHeading) ([]Scope, int, error) {
 		if err != nil {
 			return nil, 0, err
 		}
+		// Attach any `<?content?>` directive rows collected in this
+		// heading's section body so a proto-based kind validates and
+		// extracts body content like the equivalent inline schema.
+		sc.Content = h.Content
 		parent.scopes = append(parent.scopes, sc)
 		stack = append(stack, &frame{level: h.Level})
 	}
