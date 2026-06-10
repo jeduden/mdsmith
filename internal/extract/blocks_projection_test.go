@@ -271,6 +271,38 @@ func TestExtract_ScopeBlocksInlineParagraphImage(t *testing.T) {
 	assert.True(t, sawImage, "the image must project as an image span")
 }
 
+// A titled image in blocks-mode inline projects its title under a
+// `title` key on the image span (exercising the lenient image span's
+// title branch), with the alt text in `children`.
+func TestExtract_ScopeBlocksInlineParagraphImageTitle(t *testing.T) {
+	sch := &schema.Schema{
+		RootLevel: 2,
+		Sections: []schema.Scope{{
+			Heading:         "Notes",
+			Matcher:         &schema.Matcher{Regex: "Notes"},
+			Projection:      schema.ProjectionBlocks,
+			BlockParagraphs: schema.ProjectionInline,
+		}},
+	}
+	got, diags := run(t, "## Notes\n\n![alt](pic.png \"the title\")\n", sch, nil)
+	require.Empty(t, diags)
+	blocks := got.(map[string]any)["notes"].(map[string]any)["blocks"].([]any)
+	require.Len(t, blocks, 1)
+	spans := blocks[0].(map[string]any)["inline"].([]any)
+	var img map[string]any
+	for _, s := range spans {
+		if sm := s.(map[string]any); sm["span"] == "image" {
+			img = sm
+		}
+	}
+	require.NotNil(t, img, "expected an image span")
+	assert.Equal(t, "the title", img["title"])
+	assert.Equal(t, "pic.png", img["url"])
+	assert.Equal(t, []any{
+		map[string]any{"span": "text", "value": "alt"},
+	}, img["children"])
+}
+
 // The default (text) blocks projection still drops an image to plain
 // text without erroring — the defined fallback the acceptance
 // criterion allows.

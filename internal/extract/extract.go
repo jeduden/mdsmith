@@ -481,11 +481,19 @@ func (p *projector) tableRows(n ast.Node) []any {
 //
 // Duplicate headers are accepted — the columns array is positional, so
 // there is no key collision. Plan 245.
+//
+// A table node with a header but no body rows returns rows as a
+// non-nil empty slice (not nil): under `projection: blocks` the result
+// serialises to `"rows": []`, which the published CUE contract's
+// `rows: [...[...string]]` accepts, whereas a nil slice would serialise
+// to `"rows": null` and fail validation. The nil return above stays
+// reserved for the not-a-table guard.
 func (p *projector) tableRowsPositional(n ast.Node) (cols []any, rows []any) {
 	tbl, ok := n.(*extast.Table)
 	if !ok {
 		return nil, nil
 	}
+	rows = []any{}
 	var colCount int
 	for r := tbl.FirstChild(); r != nil; r = r.NextSibling() {
 		var cells []string

@@ -159,6 +159,10 @@ func blocksCorpus(t *testing.T) [][]any {
 			"[t](u) <https://x.test> ![alt](pic.png)\nwrapped line\n"},
 		// A task list (tree items carry `checked`).
 		{textScope, "## Notes\n\n- [x] done\n- [ ] open\n  - child\n"},
+		// A header-only table (no body rows) emits `rows: []`; the
+		// closed `block_table` arm must accept the empty list, not
+		// just populated rows.
+		{textScope, "## Notes\n\n| A | B |\n| - | - |\n"},
 	}
 	corpus := make([][]any, 0, len(cases))
 	for _, c := range cases {

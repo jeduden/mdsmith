@@ -103,6 +103,21 @@ func TestBlockWalker_Table(t *testing.T) {
 	}, got[0])
 }
 
+// A header-only table (valid GFM: header + delimiter, no body rows)
+// projects `rows` as an empty, non-nil slice so it serialises to
+// `"rows": []` — the published CUE `#Block` contract rejects the
+// `"rows": null` a nil slice would produce.
+func TestBlockWalker_TableHeaderOnly(t *testing.T) {
+	got, p := walkBody(t, "| A | B |\n| - | - |\n")
+	require.Empty(t, p.diags)
+	require.Len(t, got, 1)
+	assert.Equal(t, map[string]any{
+		"block":   "table",
+		"columns": []any{"A", "B"},
+		"rows":    []any{},
+	}, got[0])
+}
+
 func TestBlockWalker_Quote(t *testing.T) {
 	got, p := walkBody(t, "> A quoted line.\n")
 	require.Empty(t, p.diags)
@@ -129,6 +144,19 @@ func TestBlockWalker_HTMLBlock(t *testing.T) {
 	assert.Equal(t, map[string]any{
 		"block": "html",
 		"value": "<div>raw</div>",
+	}, got[0])
+}
+
+// A multi-line HTML block with an explicit closing line (a comment
+// block, goldmark HTML-block type 2) carries its closure line into the
+// projected `value`, exercising htmlBlockValue's HasClosure() branch.
+func TestBlockWalker_HTMLBlockWithClosure(t *testing.T) {
+	got, p := walkBody(t, "<!-- open\nmiddle\nclose -->\n")
+	require.Empty(t, p.diags)
+	require.Len(t, got, 1)
+	assert.Equal(t, map[string]any{
+		"block": "html",
+		"value": "<!-- open\nmiddle\nclose -->",
 	}, got[0])
 }
 

@@ -721,6 +721,65 @@ func TestParseInline_SchemaBlockParagraphsWithoutBlocksRejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "projection: blocks")
 }
 
+// A non-string schema-level `projection:` is a type error naming the
+// offending key, not a silent ignore.
+func TestParseInline_SchemaProjectionNonStringRejected(t *testing.T) {
+	_, err := ParseInline(map[string]any{
+		"projection": 42,
+		"sections":   []any{map[string]any{"heading": "Notes"}},
+	}, "kind x")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "schema.projection")
+}
+
+// A non-string schema-level `block-paragraphs:` is a type error.
+func TestParseInline_SchemaBlockParagraphsNonStringRejected(t *testing.T) {
+	_, err := ParseInline(map[string]any{
+		"projection":       "blocks",
+		"block-paragraphs": true,
+		"sections":         []any{map[string]any{"heading": "Notes"}},
+	}, "kind x")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "schema.block-paragraphs")
+}
+
+// A schema-level `block-paragraphs:` with a value other than
+// inline/text is rejected before the projection-presence check.
+func TestParseInline_SchemaBlockParagraphsBadValueRejected(t *testing.T) {
+	_, err := ParseInline(map[string]any{
+		"projection":       "blocks",
+		"block-paragraphs": "tree",
+		"sections":         []any{map[string]any{"heading": "Notes"}},
+	}, "kind x")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "inline")
+}
+
+// A non-string scope-level `projection:` is a type error.
+func TestParseInline_ScopeProjectionNonStringRejected(t *testing.T) {
+	_, err := ParseInline(map[string]any{
+		"sections": []any{map[string]any{
+			"heading":    "Notes",
+			"projection": 7,
+		}},
+	}, "kind x")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "projection")
+}
+
+// A non-string scope-level `block-paragraphs:` is a type error.
+func TestParseInline_ScopeBlockParagraphsNonStringRejected(t *testing.T) {
+	_, err := ParseInline(map[string]any{
+		"sections": []any{map[string]any{
+			"heading":          "Notes",
+			"projection":       "blocks",
+			"block-paragraphs": 9,
+		}},
+	}, "kind x")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "block-paragraphs")
+}
+
 func TestParseInline_ContentUnknownKind(t *testing.T) {
 	_, err := ParseInline(map[string]any{
 		"sections": []any{map[string]any{

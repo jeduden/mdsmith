@@ -20,6 +20,4 @@ var source string
 // Source returns the embedded `grammar.cue` contents verbatim. The
 // differential test in internal/extract compiles it and unifies every
 // projected block / span against #Block / #Span.
-//
-// no test by design: trivial embed accessor
 func Source() string { return source }
