@@ -697,6 +697,52 @@ func TestE2E_Init_RefusesIfExists(t *testing.T) {
 	assert.Contains(t, stderr, "already exists", "expected 'already exists' error, got: %s", stderr)
 }
 
+func TestE2E_Init_FromMarkdownlint(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, ".markdownlint.json",
+		`{"MD013": {"line_length": 120}, "MD024": {"siblings_only": true}, "MD041": false}`)
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "init", "--from-markdownlint")
+	assert.Equal(t, 0, exitCode, "expected exit code 0, got %d; stderr: %s", exitCode, stderr)
+	assert.Contains(t, stderr, "created .mdsmith.yml from .markdownlint.json",
+		"expected source in confirmation, got: %s", stderr)
+	assert.Contains(t, stderr, "note:", "expected conversion notes on stderr, got: %s", stderr)
+
+	content, err := os.ReadFile(filepath.Join(dir, ".mdsmith.yml"))
+	require.NoError(t, err, "reading converted config")
+	s := string(content)
+	assert.Contains(t, s, "max: 120", "MD013 line_length must convert, got: %s", s)
+	assert.Contains(t, s, "first-line-heading: false", "MD041: false must convert, got: %s", s)
+	assert.Contains(t, s, `MD024 option "siblings_only"`,
+		"untranslated options must land in the header comment, got: %s", s)
+
+	// The converted config must load: a clean file checks clean under it.
+	writeFixture(t, dir, "README.md", "# Title\n\nSome text.\n")
+	_, stderr, exitCode = runBinaryInDir(t, dir, "", "check", "README.md")
+	assert.Equal(t, 0, exitCode, "converted config must load cleanly; stderr: %s", stderr)
+}
+
+func TestE2E_Init_FromMarkdownlint_ExplicitPath(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "mdl-config.yaml", "MD012:\n  maximum: 2\n")
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "init", "--from-markdownlint=mdl-config.yaml")
+	assert.Equal(t, 0, exitCode, "expected exit code 0, got %d; stderr: %s", exitCode, stderr)
+
+	content, err := os.ReadFile(filepath.Join(dir, ".mdsmith.yml"))
+	require.NoError(t, err, "reading converted config")
+	assert.Contains(t, string(content), "max: 2", "MD012 maximum must convert, got: %s", content)
+}
+
+func TestE2E_Init_FromMarkdownlint_NoneFound(t *testing.T) {
+	dir := t.TempDir()
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "init", "--from-markdownlint")
+	assert.Equal(t, 2, exitCode, "expected exit code 2, got %d", exitCode)
+	assert.Contains(t, stderr, "no markdownlint config found",
+		"expected discovery error, got: %s", stderr)
+}
+
 // --- Stdin frontmatter and Configurable settings tests ---
 
 func TestE2E_Check_Stdin_FrontMatterLineOffset(t *testing.T) {

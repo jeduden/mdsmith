@@ -258,8 +258,9 @@ func (s *convertState) finalize(conv *Conversion, defaultOn bool) {
 		s.notef(`markdownlint "default: false" disables every mdsmith rule with` +
 			` a markdownlint analog; mdsmith-only rules keep their defaults`)
 	} else if gaps := s.optInGaps(); len(gaps) > 0 {
-		s.notef(`markdownlint checks these by default, but the mdsmith analogs`+
-			` are opt-in — enable each with "<rule>: true" to keep the check: %s`,
+		s.notef(`markdownlint enables these checks by default, but the mdsmith`+
+			` analogs are opt-in and use mdsmith's own default settings —`+
+			` review and enable each with "<rule>: true": %s`,
 			strings.Join(gaps, ", "))
 	}
 

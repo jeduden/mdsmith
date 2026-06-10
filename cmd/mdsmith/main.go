@@ -15,6 +15,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/discovery"
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
+	"github.com/jeduden/mdsmith/internal/markdownlint"
 	"github.com/jeduden/mdsmith/internal/output"
 	"github.com/jeduden/mdsmith/internal/profiling"
 	"github.com/jeduden/mdsmith/internal/query"
@@ -48,7 +49,7 @@ Commands:
   merge-driver      Git merge driver for regenerable sections
   pre-merge-commit  Install/manage pre-merge-commit hook
   kinds             Inspect declared kinds and resolve effective config per file
-  init              Generate a default .mdsmith.yml config file
+  init              Generate .mdsmith.yml (--from-markdownlint converts an existing config)
   lsp               Run the Language Server Protocol server on stdio
   version           Print version and exit
 
@@ -281,13 +282,24 @@ func readFrontMatterRaw(path string, maxBytes int64) (map[string]any, error) {
 	return raw, nil
 }
 
-// runInit implements the "init" subcommand: generate .mdsmith.yml.
+// runInit implements the "init" subcommand: generate .mdsmith.yml,
+// either from the built-in defaults or converted from an existing
+// markdownlint config (--from-markdownlint).
 func runInit(args []string) int {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
+	var fromMarkdownlint string
+	fs.StringVar(&fromMarkdownlint, "from-markdownlint", "",
+		"Convert a markdownlint config instead of writing defaults (optionally --from-markdownlint=<path>)")
+	fs.Lookup("from-markdownlint").NoOptDefVal = "auto"
 
 	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: mdsmith init\n\n"+
-			"Generate a default .mdsmith.yml config file in the current directory.\n")
+		fmt.Fprint(os.Stderr, "Usage: mdsmith init [--from-markdownlint[=path]]\n\n"+
+			"Generate a default .mdsmith.yml config file in the current directory.\n\n"+
+			"With --from-markdownlint, convert an existing markdownlint config\n"+
+			"(.markdownlint.jsonc/.json/.yaml/.yml or .markdownlintrc) instead of\n"+
+			"writing the defaults. Without =path the config is auto-discovered in\n"+
+			"the current directory.\n\nFlags:\n")
+		fs.PrintDefaults()
 	}
 
 	if err := fs.Parse(args); err != nil {
@@ -297,7 +309,7 @@ func runInit(args []string) int {
 	}
 
 	if fs.NArg() > 0 {
-		fmt.Fprintf(os.Stderr, "mdsmith: init takes no arguments\n")
+		fmt.Fprintf(os.Stderr, "mdsmith: init takes no arguments (use --from-markdownlint=<path> to name a config)\n")
 		return 2
 	}
 
@@ -309,15 +321,9 @@ func runInit(args []string) int {
 		return 2
 	}
 
-	cfg := config.DumpDefaults()
-
-	// Set front-matter: true as default.
-	fm := true
-	cfg.FrontMatter = &fm
-
-	data, err := yamlutil.Marshal(cfg)
+	data, source, err := initConfigBytes(fromMarkdownlint, os.Stderr)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: marshalling config: %v\n", err)
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return 2
 	}
 
@@ -326,8 +332,71 @@ func runInit(args []string) int {
 		return 2
 	}
 
-	fmt.Fprintf(os.Stderr, "mdsmith: created %s\n", configFile)
+	if source != "" {
+		fmt.Fprintf(os.Stderr, "mdsmith: created %s from %s\n", configFile, source)
+	} else {
+		fmt.Fprintf(os.Stderr, "mdsmith: created %s\n", configFile)
+	}
 	return 0
+}
+
+// initConfigBytes produces the .mdsmith.yml contents for init. An empty
+// fromMarkdownlint yields the full defaults dump; otherwise the named
+// markdownlint config ("auto" = discover in the current directory) is
+// converted, its notes echoed to w, and source reports which file fed
+// the conversion.
+func initConfigBytes(fromMarkdownlint string, w io.Writer) (data []byte, source string, err error) {
+	if fromMarkdownlint == "" {
+		data, err = defaultConfigBytes()
+		return data, "", err
+	}
+	return convertedConfigBytes(fromMarkdownlint, w)
+}
+
+// defaultConfigBytes marshals the built-in defaults, the plain
+// `mdsmith init` output.
+func defaultConfigBytes() ([]byte, error) {
+	cfg := config.DumpDefaults()
+
+	// Set front-matter: true as default.
+	fm := true
+	cfg.FrontMatter = &fm
+
+	data, err := yamlutil.Marshal(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("marshalling config: %w", err)
+	}
+	return data, nil
+}
+
+// convertedConfigBytes reads, parses, and converts a markdownlint
+// config ("auto" = discover in the current directory), echoing the
+// conversion notes to w.
+func convertedConfigBytes(path string, w io.Writer) (data []byte, source string, err error) {
+	source = path
+	if path == "auto" {
+		source, err = markdownlint.Discover(".")
+		if err != nil {
+			return nil, "", err
+		}
+	}
+	raw, err := bytelimit.ReadFileLimited(source, bytelimit.DefaultMaxInputBytes)
+	if err != nil {
+		return nil, "", fmt.Errorf("reading %s: %w", source, err)
+	}
+	parsed, err := markdownlint.Parse(raw)
+	if err != nil {
+		return nil, "", fmt.Errorf("%s: %w", source, err)
+	}
+	conv, err := markdownlint.Convert(parsed)
+	if err != nil {
+		return nil, "", err
+	}
+	for _, note := range conv.Notes {
+		_, _ = fmt.Fprintf(w, "mdsmith: note: %s\n", note)
+	}
+	data, err = markdownlint.EmitConfig(conv, source)
+	return data, source, err
 }
 
 // formatDiagnosticsTo writes diagnostics to w using the specified format.
