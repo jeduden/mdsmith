@@ -4,9 +4,9 @@ title: 'Workspace-unique front-matter fields (unique-frontmatter rule)'
 status: "🔲"
 model: sonnet
 summary: >-
-  Repo-scoped rule that reports two files in a configured
-  glob scope carrying the same value in a named
-  front-matter field, enabled for plan ids so a same-minute
+  New rule MDS069: within configured include/exclude globs,
+  no two files may carry the same value in a named
+  front-matter field. Enabled for plan ids so a same-minute
   id collision fails mdsmith check on the second PR's
   merge-queue run.
 depends-on: [2606100533]
@@ -27,84 +27,118 @@ At that moment the fix is a one-commit rename.
 ## Goal
 
 A rule that reports a repeated front-matter value within
-a configured scope. The later file in path order gets the
-diagnostic, naming the field, the value, and the first
-file. An id collision then surfaces as a `mdsmith check`
-failure, not as a silent duplicate.
+a configured file scope. The later file in path order
+gets the diagnostic. Its message names the field, the
+value, and the earlier file. An id collision then
+surfaces as a `mdsmith check` failure, not as a silent
+duplicate.
 
 ## Design
 
-- New rule `unique-frontmatter` under
-  `internal/rules/uniquefrontmatter/`, taking the next
-  free MDS number (MDS069 at the time of writing).
-- Setting `scopes:` is a list of `{glob, field}` entries.
-  `glob` is a glob list with `!` exclusions per
-  [globs.md](../docs/reference/globs.md); `field` names a
-  front-matter key. Within one scope, every file matching
-  the globs and carrying the field must hold a distinct
-  scalar value. Files without the field are skipped.
-- Repo-scoped, like cross-file-reference-integrity: mark
-  it `rule.RepoScoped` so DedupeDiagnostics keeps the
-  per-file diagnostics (see
-  [plan 183](183_dedupe-diagnostics-repo-scoped-skip.md)).
-- The diagnostic lands on the later file in path order,
-  at its front-matter line:
+### Rule and settings
 
-  ```text
-  front-matter "id": value 2606100533 already used by
-  plan/2606100533_timestamp-plan-ids.md
-  ```
+New rule `unique-frontmatter`, MDS069, under
+`internal/rules/uniquefrontmatter/`. Settings are flat,
+mirroring cross-file-reference-integrity's idiom:
 
-- `scopes` replaces on merge (the default for list
-  settings); document that choice next to its
-  `ApplySettings` handler.
-- With no `scopes` configured the rule reports nothing,
-  so it ships enabled by default and inert.
-- This repo enables it for plan ids. The
-  [.mdsmith.yml](../.mdsmith.yml) edit needs maintainer
-  consent; approving this plan grants it for exactly this
-  block:
+- `field:` — the front-matter key whose values must be
+  distinct. Files without the field are skipped.
+- `include:` / `exclude:` — glob lists selecting the
+  scope, with [globs.md](../docs/reference/globs.md)
+  semantics. Empty `include` disables the rule, so it
+  ships enabled by default and inert.
 
-  ```yaml
+A list-of-scopes shape stays out until a second use case
+exists; every comparable rule grew from flat settings.
+The list settings replace on merge (the default); the
+choice is documented next to `ApplySettings`.
+
+The include globs intentionally repeat the plan kind's
+glob from kind-assignment. Rule settings have no
+precedent for referencing kinds, so the two must be
+updated together if plan files ever move.
+
+### Mechanics
+
+Diagnostics are host-file-anchored, like MDS027: when
+`Check(f)` sees that an earlier in-scope file already
+holds f's value, it reports on f at its front-matter
+line. The earlier file stays clean. One diagnostic per
+later file. No `rule.RepoScoped` marker — each file's
+diagnostic tuple differs, so DedupeDiagnostics is not
+involved.
+
+Example: with `plan/a.md` and `plan/b.md` both carrying
+`id: 7`, only `plan/b.md` is flagged:
+
+```text
+front-matter "id": value 7 already used by plan/a.md
+```
+
+The value-to-first-file index builds once per run from
+the in-scope files' front matter. It rides the existing
+`RunCache` front-matter slot — the same caching the
+catalog rule uses. The catalog's wrapper around that
+slot is package-private, so this rule adds its own thin
+wrapper.
+
+### Allocation budget
+
+The repo-wide budget gate's fixture configures no
+scopes, so it only exercises the inert path. The rule
+therefore ships its own alloc test. That test configures
+settings, warms the cache, and asserts ≤ 10 allocs per
+Check on the steady state. It mirrors
+[the include rule's alloc test](../internal/rules/include/alloc_test.go).
+
+### Enabling for plan ids
+
+This repo enables the rule for plan ids. The
+[.mdsmith.yml](../.mdsmith.yml) edit needs maintainer
+consent. Approving this plan grants it for exactly the
+block below, nested under the top-level `rules:` key:
+
+```yaml
+rules:
   unique-frontmatter:
-    scopes:
-      - glob: ["plan/*.md", "!plan/proto.md"]
-        field: id
-  ```
+    field: id
+    include: ["plan/*.md"]
+    exclude: ["plan/proto.md"]
+```
 
-- A rule, not workflow shell. The
-  [release-tooling page](../docs/development/release-tooling.md)
-  bars inline logic in workflows. Per-scope unique fields
-  are also a reusable cross-file integrity feature worth
-  dogfooding: unique ids or titles across any kind.
+A rule, not workflow shell. The
+[release-tooling page](../docs/development/release-tooling.md)
+bars inline logic in workflows. Per-scope unique fields
+are also a reusable cross-file integrity feature worth
+dogfooding: unique ids or titles across any kind.
 
 ## Tasks
 
-1. [ ] Red/green unit tests in `rule_test.go`: a
-   duplicated scalar across two files diagnoses the later
-   path and names the first; a missing field skips; files
-   outside the globs skip; distinct values pass.
-2. [ ] Implement `Check` within the ≤ 10 allocs/op budget
-   (the alloc budget test must cover the new rule); reuse
-   existing front-matter parsing helpers rather than
-   adding a second YAML parse per file.
+1. [ ] Red/green unit tests in `rule_test.go`, then the
+   rule: registration, settings parsing, the run-scoped
+   index, and the diagnostic on the later file.
+2. [ ] The configured-path alloc test described above;
+   keep `Check` within ≤ 10 allocs/op on the steady
+   state.
 3. [ ] Fixtures under
    `internal/rules/MDS069-unique-frontmatter/` (good/bad
    with expected diagnostics) plus the rule README on the
    rule-readme schema.
-4. [ ] Document the `scopes` replace-on-merge choice next
-   to the `ApplySettings` handler.
-5. [ ] With consent, add the plan-id scope to
+4. [ ] With consent, add the plan-id block to
    [.mdsmith.yml](../.mdsmith.yml) and verify
    `mdsmith check .` passes on the renumbered tree.
 
 ## Acceptance Criteria
 
 - [ ] A duplicated plan id added locally makes
-  `mdsmith check .` fail, naming both files.
+  `mdsmith check .` fail; the diagnostic lands on the
+  later file in path order and its message names the
+  field, the value, and the earlier file.
 - [ ] The bad fixture yields exactly one diagnostic per
   extra file sharing a value; the good fixture is clean.
-- [ ] The new rule passes the per-rule allocation budget
-  test.
+- [ ] A file missing the configured field, or outside the
+  include/exclude scope, is never flagged.
+- [ ] The configured-path alloc test passes at ≤ 10
+  allocs/op; the repo-wide budget gate stays green.
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool golangci-lint run` reports no issues

@@ -50,19 +50,31 @@ At creation, run `date -u +%y%m%d%H%M` and use the output
 as both the frontmatter `id:` and the filename prefix.
 This plan's own id, 2606100533, encodes 2026-06-10 05:33
 UTC. If a `plan/<id>_*.md` already exists in the checkout,
-add one minute and check again. UTC, not local time, so
-ids from containers in different timezones stay ordered.
+add one minute and check again. The same bump rule applies
+when a renumbering-derived timestamp collides (see the
+duplicate-pairs section). UTC, not local time, so ids from
+containers in different timezones stay ordered.
+
+The proto schema enforces the format. Legacy ids are
+frozen as a closed range and new ids must be timestamps:
+
+```cue
+id: (int & >=1 & <=243) | (int & >=2601010000)
+```
+
+A `max+1` allocation like 244 now fails MDS020 instead of
+silently extending the legacy sequence.
 
 ### Why the id stays an integer
 
 Every consumer types the id as "integer", none as "small
 integer", so a 10-digit timestamp drops in unchanged:
 
-- [proto.md](proto.md) — `id: 'int & >=1'` and
-  `depends-on: '[...int]'` both accept it.
+- [proto.md](proto.md) — the `id:` and `depends-on:` CUE
+  types accept any int.
 - [PLAN.md](../PLAN.md) — `sort: numeric:id` orders the
-  legacy ids (largest: 243) first, then timestamp ids in
-  creation order.
+  legacy ids first, then timestamp ids in creation order
+  (with the 64-bit parse fix below for 32-bit targets).
 - The plan kind `path-pattern` in
   [.mdsmith.yml](../.mdsmith.yml),
   `plan/{proto.md,[0-9][0-9]*_*.md}`, matches with no
@@ -77,34 +89,66 @@ integer", so a 10-digit timestamp drops in unchanged:
 A timestamp id exceeds 2,147,483,647, the 32-bit int
 maximum. `parseSortInt` in
 [`internal/rules/catalog/rule.go`](../internal/rules/catalog/rule.go)
-parses sort keys with `strconv.Atoi`. That returns the
-platform int. On a 32-bit target the parse fails, and the
-catalog falls back to lexical order. Lexical order mixes
-legacy and timestamp ids. The tinygo build that
-[240_cuelite-drop-cue.md](240_cuelite-drop-cue.md) aims
-for is such a target. Parse with
-`strconv.ParseInt(value, 10, 64)` instead.
+parsed sort keys with `strconv.Atoi`, which returns the
+platform int. Where int is 32 bits the parse fails, and
+the catalog demotes the whole sort to string comparison
+of the id field. That order interleaves legacy and
+timestamp ids. The tinygo target that
+[218_wasm-size-reduction.md](218_wasm-size-reduction.md)
+defines (and [240_cuelite-drop-cue.md](240_cuelite-drop-cue.md)
+delivers) is such a platform. The fix:
+`strconv.ParseInt(value, 10, 64)`, following the
+precedent in [`internal/config/size.go`](../internal/config/size.go).
 
 ### Legacy ids and the nine duplicate pairs
 
-Existing plans keep their ids, with one exception: in each
-duplicate pair, one twin moves to the timestamp of its own
-first commit:
+Existing plans keep their ids, with one exception. In
+each duplicate pair, one twin moves to a timestamp id.
+The unique-frontmatter rule can then pass on the whole
+workspace. Derive the new id from the twin's first add
+commit:
 
 ```bash
-TZ=UTC git log --diff-filter=A \
-  --date=format:'%y%m%d%H%M' --format=%cd -- <file>
+TZ=UTC git log --reverse --diff-filter=A \
+  --date=format-local:'%y%m%d%H%M' --format=%cd \
+  -- <file> | head -1
 ```
 
-Keep the legacy id on the twin that references outside
-`plan/` name. The `plan/156` comment in
+`format-local:` is required — plain `format:` ignores TZ
+and prints the committer's recorded timezone. `--reverse`
+plus `head -1` pins the first add event when a file has
+several.
+
+Derived timestamps collide: most twins entered the repo in
+one batch import commit, so several files share one
+creation minute. Resolve collisions with the standard bump
+rule — process renumbered files in ascending path order
+and add one minute until the id is free.
+
+Choose the keeper of each legacy id by reference weight.
+Keep the twin that references outside `plan/` name.
+Re-point the rest.
+
+Three anchors are known. The `plan/156` comment in
 [.mdsmith.yml](../.mdsmith.yml) means kind-schema
-composition, so that twin keeps 156. With no outside
-reference, keep the earlier-created twin. Each
-`depends-on:` entry naming a formerly shared id moves to
-the id of the file its referrer means. Read the referrer
-to decide: the cuelite chain means the cuelite files, not
-the arch-fix twins.
+composition. A ci.yml comment pins `Plan 121` to
+vscode-integration. Go comments in `internal/` pin
+`plan 215` to the lines-only rule audit.
+
+Re-point every reference to a moved id, not only
+`depends-on:` entries. Sweep the whole repo for the old
+id with non-digit boundaries: `plan/`, `docs/`,
+`.claude/`, `.github/`, `internal/`, `cmd/`, `editors/`,
+`website/`. Read each hit to decide which twin it means.
+The cuelite chain means the cuelite files, not the
+arch-fix twins.
+
+One known orphan rides along:
+[157_catalog-where-filter.md](157_catalog-where-filter.md)
+declares `depends-on: [19]`, and no plan 19 exists in the
+imported history. Delete that entry. A standing lint
+check for dangling `depends-on:` targets stays out of
+scope. pick-plan already treats unknown ids as unmet.
 
 ### Rejected alternatives
 
@@ -117,47 +161,59 @@ the arch-fix twins.
 - A random integer suffix: the same residual collision
   odds without the chronological sort or the
   self-describing creation date.
-- The slug as the identity: retypes `depends-on:` to
-  strings and rewrites the id schema, the PLAN.md sort,
-  and every id regex in pick-plan, for no smaller race
-  window.
 
 ## Tasks
 
-1. [x] Red/green: a `numeric:id` catalog sort test in
+1. [x] A `numeric:id` catalog sort test in
    [`rule_test.go`](../internal/rules/catalog/rule_test.go)
-   with an id above 2,147,483,647; make it pass by moving
-   `parseSortInt` to `strconv.ParseInt(value, 10, 64)`.
+   with an id above 2,147,483,647; `parseSortInt` moves to
+   `strconv.ParseInt(value, 10, 64)`. (The test cannot go
+   red on a 64-bit dev host; it pins the contract the
+   32-bit target needs.)
 2. [ ] Renumber one twin of each duplicate pair (121, 153,
    156, 214, 215, 218, 219, 236, 237) per the design:
-   rename the file, set its frontmatter `id:`, grep
-   `plan/`, `docs/`, and `.claude/` for references to the
-   old shared id, and re-point each `depends-on:` entry at
-   the file its referrer means.
+   derive the id, bump collisions in path order, rename
+   the file, set its frontmatter `id:`, sweep the whole
+   repo for references to the old shared id, and re-point
+   each at the file its referrer means. Delete the
+   orphaned `depends-on: [19]` entry in
+   157_catalog-where-filter.md.
 3. [ ] Document allocation in the [proto.md](proto.md)
-   comment block: the `date -u +%y%m%d%H%M` recipe, id
-   equals filename prefix, bump one minute on collision.
+   comment block — the `date -u +%y%m%d%H%M` recipe, id
+   equals filename prefix, bump one minute on collision —
+   and tighten the proto `id:` type to
+   `(int & >=1 & <=243) | (int & >=2601010000)`.
 4. [ ] Update the
    [pick-plan skill](../.claude/skills/pick-plan/SKILL.md):
    new plan ids are 10-digit timestamps; demote the
    duplicate-id gotchas to a history note; keep the
    dependency graph keyed by filename as defense in depth.
-5. [ ] Add `docs/development/plan-ids.md` with a
-   `summary:` frontmatter stating the scheme and this
-   rationale; run `mdsmith fix .` so the CLAUDE.md and
-   PLAN.md catalogs include it.
+5. [ ] Replace the max+1 instruction in
+   [audit-checklist.md](../docs/development/architecture/audit-checklist.md)
+   ("one above the highest existing prefix") with the
+   timestamp recipe, pointing at proto.md as the canonical
+   home. No separate docs page: proto.md owns allocation,
+   the skill owns selection.
 6. [ ] Run `mdsmith fix PLAN.md` and confirm the table
    orders legacy ids ascending, then timestamp ids.
 
 ## Acceptance Criteria
 
-- [ ] `grep -h '^id:' plan/*.md | sort | uniq -d` prints
-  nothing.
+- [ ] Frontmatter ids are unique:
+  `awk 'FNR==2,/^---$/ { if ($0 ~ /^id:/) print }' plan/*.md | sort | uniq -d`
+  prints nothing. (Plain `grep '^id:'` is unsound — it
+  also matches `id:` lines inside fenced code examples,
+  e.g. in 92_file-kinds.md.)
 - [ ] Every `depends-on:` entry equals exactly one plan
   file's frontmatter id.
 - [x] A catalog unit test sorts an id above 2,147,483,647
   under `sort: numeric:id`.
 - [ ] The [proto.md](proto.md) comment block names
-  `date -u +%y%m%d%H%M` as the id source.
+  `date -u +%y%m%d%H%M`, and a plan with id 244 fails
+  `mdsmith check` against the tightened `id:` type.
+- [ ] The pick-plan skill no longer instructs workarounds
+  for live duplicate ids.
+- [ ] audit-checklist.md no longer says "one above the
+  highest existing prefix".
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool golangci-lint run` reports no issues
