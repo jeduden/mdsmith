@@ -450,12 +450,13 @@ func parseProjectionCombo(kind, projection string) (*Schema, error) {
 
 // TestParseInline_ProjectionMatrixAllowed pins every (kind,
 // projection) pair the schema accepts: paragraph takes text or
-// inline, code-block takes code.
+// inline, code-block takes code, list takes tree.
 func TestParseInline_ProjectionMatrixAllowed(t *testing.T) {
 	allowed := []struct{ kind, projection string }{
 		{"paragraph", "text"},
 		{"paragraph", "inline"},
 		{"code-block", "code"},
+		{"list", "tree"},
 	}
 	for _, c := range allowed {
 		t.Run(c.kind+"/"+c.projection, func(t *testing.T) {
@@ -509,13 +510,38 @@ func TestParseInline_ProjectionOnTableRejected(t *testing.T) {
 	}
 }
 
-// TestParseInline_ProjectionOnListRejected rejects any projection on a
-// list.
-func TestParseInline_ProjectionOnListRejected(t *testing.T) {
-	_, err := parseProjectionCombo("list", "text")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(),
-		"projection is not allowed on kind: list")
+// TestParseInline_ProjectionNonTreeOnListRejected rejects the
+// paragraph/code-block projections on a list — a list projects only
+// `tree` (or its flat default when projection is omitted).
+func TestParseInline_ProjectionNonTreeOnListRejected(t *testing.T) {
+	for _, p := range []string{"text", "code", "inline"} {
+		t.Run(p, func(t *testing.T) {
+			_, err := parseProjectionCombo("list", p)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(),
+				"kind: list allows projection tree, not "+p)
+		})
+	}
+}
+
+// TestParseInline_ProjectionTreeOnNonListRejected rejects
+// `projection: tree` everywhere except a list — tree is the list's
+// structured mode and has no meaning on a paragraph, code-block,
+// table, or unlisted slot.
+func TestParseInline_ProjectionTreeOnNonListRejected(t *testing.T) {
+	cases := []struct{ kind, want string }{
+		{"paragraph", "kind: paragraph allows projection text or inline, not tree"},
+		{"code-block", "kind: code-block allows projection code, not tree"},
+		{"table", "projection is not allowed on kind: table"},
+		{"unlisted", "projection is not allowed on kind: unlisted"},
+	}
+	for _, c := range cases {
+		t.Run(c.kind, func(t *testing.T) {
+			_, err := parseProjectionCombo(c.kind, "tree")
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), c.want)
+		})
+	}
 }
 
 // TestParseInline_ProjectionOnUnlistedRejected rejects any projection
