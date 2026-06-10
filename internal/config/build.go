@@ -9,7 +9,6 @@ import (
 
 // BuildConfig is the top-level build: section.
 type BuildConfig struct {
-	BaseURL string               `yaml:"base-url,omitempty"`
 	Recipes map[string]RecipeCfg `yaml:"recipes,omitempty"`
 }
 

@@ -103,6 +103,10 @@ func loadFromBytes(data []byte, sourcePath string, mergeKinds bool) (*Config, er
 		return nil, fmt.Errorf("validating config: %w", err)
 	}
 
+	if err := rejectRemovedBuildKeys(data); err != nil {
+		return nil, fmt.Errorf("parsing config file: %w", err)
+	}
+
 	if err := ValidateBuildConfig(&cfg); err != nil {
 		return nil, fmt.Errorf("validating config: %w", err)
 	}
@@ -164,6 +168,42 @@ func topLevelKeySet(data []byte) map[string]bool {
 // yamlHasKey returns true if the top-level YAML mapping contains the given key.
 func yamlHasKey(data []byte, key string) bool {
 	return topLevelKeySet(data)[key]
+}
+
+// rejectRemovedBuildKeys errors if the config still carries a
+// `build.base-url:` key. The struct field was removed in plan
+// 2606101546, and non-strict YAML (yamlutil.UnmarshalSafe) would
+// otherwise drop the key silently, leaving an author to wonder why their
+// setting has no effect. The scan walks the `build:` mapping node
+// directly because base-url is nested, not top-level.
+func rejectRemovedBuildKeys(data []byte) error {
+	node, err := yamlutil.UnmarshalNodeSafe(data)
+	if err != nil {
+		return nil //nolint:nilerr // a parse error surfaces from UnmarshalSafe earlier
+	}
+	if node.Kind != yaml.DocumentNode || len(node.Content) == 0 {
+		return nil
+	}
+	mapping := node.Content[0]
+	if mapping.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		if mapping.Content[i].Value != "build" {
+			continue
+		}
+		buildNode := mapping.Content[i+1]
+		if buildNode.Kind != yaml.MappingNode {
+			return nil
+		}
+		for j := 0; j+1 < len(buildNode.Content); j += 2 {
+			if buildNode.Content[j].Value == "base-url" {
+				return fmt.Errorf(
+					"build.base-url was removed in plan 2606101546; delete it")
+			}
+		}
+	}
+	return nil
 }
 
 // Discover walks up the directory tree from startDir looking for a

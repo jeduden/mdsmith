@@ -7,6 +7,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// --- build.base-url removal ---
+
+func TestLoad_RejectsLingeringBaseURL(t *testing.T) {
+	yml := []byte("build:\n  base-url: https://example.com\n")
+	_, err := loadFromBytes(yml, "", false)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "build.base-url was removed in plan 2606101546")
+}
+
+func TestLoad_RecipesWithoutBaseURLOK(t *testing.T) {
+	yml := []byte("build:\n  recipes:\n    r:\n      command: tool\n")
+	cfg, err := loadFromBytes(yml, "", false)
+	require.NoError(t, err)
+	require.Contains(t, cfg.Build.Recipes, "r")
+}
+
 // --- ValidateBuildConfig ---
 
 func TestValidateBuildConfig_Nil(t *testing.T) {
@@ -449,7 +465,6 @@ func TestSerializeRecipes_BothParams(t *testing.T) {
 
 func TestCopyBuildConfig_MutationDoesNotAliasOriginal(t *testing.T) {
 	orig := BuildConfig{
-		BaseURL: "https://example.com",
 		Recipes: map[string]RecipeCfg{
 			"x": {Command: "tool {a}", Params: ParamCfg{Required: []string{"a"}}},
 		},
@@ -468,7 +483,6 @@ func TestCopyBuildConfig_MutationDoesNotAliasOriginal(t *testing.T) {
 func TestCopyBuildConfig_Empty(t *testing.T) {
 	cp := copyBuildConfig(BuildConfig{})
 	assert.Empty(t, cp.Recipes)
-	assert.Equal(t, "", cp.BaseURL)
 }
 
 // --- Build survives Merge ---
@@ -484,7 +498,6 @@ func TestMerge_PreservesBuild(t *testing.T) {
 			"recipe-safety": {Enabled: true},
 		},
 		Build: BuildConfig{
-			BaseURL: "https://example.com",
 			Recipes: map[string]RecipeCfg{
 				"mermaid": {
 					Command: "mmdc -i {input}",
@@ -495,7 +508,6 @@ func TestMerge_PreservesBuild(t *testing.T) {
 	}
 	merged := Merge(defaults, loaded)
 	require.NotNil(t, merged)
-	assert.Equal(t, "https://example.com", merged.Build.BaseURL)
 	require.Contains(t, merged.Build.Recipes, "mermaid")
 	assert.Equal(t, "mmdc -i {input}", merged.Build.Recipes["mermaid"].Command)
 }
