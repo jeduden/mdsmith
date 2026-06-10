@@ -283,16 +283,13 @@ func evalDisjunction(n *ast.BinaryExpr, scope map[string]*engineValue) (*engineV
 	return out, nil
 }
 
-// evalUnary evaluates a unary expression in a scope: a bound operator, the *
-// default marker, and numeric sign, delegating to the compile-time builder
-// once the operand resolves.
+// evalUnary evaluates a unary expression in a scope. A standalone unary (a
+// bound operator or numeric sign) carries no reference, so it delegates to the
+// compile-time builder; a * default marker is stripped by evalDisjunction
+// before a branch is evaluated, so reaching compileUnary with one yields the
+// "* default is only valid in a disjunction" error.
 func evalUnary(n *ast.UnaryExpr, scope map[string]*engineValue) (*engineValue, error) {
-	switch n.Op {
-	case token.MUL:
-		return evalExpr(n.X, scope)
-	default:
-		return compileUnary(n)
-	}
+	return compileUnary(n)
 }
 
 // evalList builds a list value in a scope, supporting comprehension elements

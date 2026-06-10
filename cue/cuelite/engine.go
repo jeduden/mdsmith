@@ -192,6 +192,16 @@ func topValue() *engineValue { return &engineValue{kind: kTop} }
 // isBottomV reports whether v is ⊥.
 func (v *engineValue) isBottomV() bool { return v != nil && v.kind == kBottom }
 
+// concreteScalarV reports whether v is a concrete scalar leaf (string, int,
+// float, bool, bytes, or null) — used to dedupe equal concrete disjuncts.
+func (v *engineValue) concreteScalarV() bool {
+	switch v.kind {
+	case kString, kInt, kFloat, kBool, kBytes, kNull:
+		return true
+	}
+	return false
+}
+
 // numericValue returns v's value as a float64 and true when v is a
 // concrete int or float scalar, for relational-bound checks.
 func (v *engineValue) numericValue() (float64, bool) {

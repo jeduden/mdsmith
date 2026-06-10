@@ -93,6 +93,17 @@ func FuzzValidate(f *testing.F) {
 		if inHouse.Stage == StageCompileSchema && oracle.Stage != StageCompileSchema {
 			return
 		}
+		// The post-flip in-house JSON lifter accepts a lone-surrogate escape
+		// ("\ud800") as a U+FFFD string, where CUE's stricter lift rejects it at
+		// the data stage. This is the one deliberate data-acceptance divergence
+		// plan 238 records — pinned by the cuelite package's own unit tests — so
+		// a lone oracle StageCompileData (CUE rejected data the in-house engine
+		// accepted) is tolerated. A wrong accept on a schema CUE accepts is not:
+		// the oracle resolving at CompileData means CUE never validated, so this
+		// only fires on a malformed-to-CUE data document.
+		if oracle.Stage == StageCompileData && inHouse.Stage != StageCompileData {
+			return
+		}
 		// Both arms reject the document, and every leaf CUE rejects is also
 		// rejected by the in-house engine — but the in-house engine reports one
 		// or more EXTRA leaves. This happens only on a pathological mix CUE

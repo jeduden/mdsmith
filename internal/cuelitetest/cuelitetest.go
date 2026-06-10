@@ -36,6 +36,7 @@ import (
 	"unicode/utf8"
 
 	"cuelang.org/go/cue"
+	"cuelang.org/go/cue/ast"
 	"cuelang.org/go/cue/cuecontext"
 	"cuelang.org/go/cue/errors"
 	cuejson "cuelang.org/go/encoding/json"
@@ -281,7 +282,7 @@ func oracleData(ctx *cue.Context, data []byte) (cue.Value, error) {
 	if err := rawDuplicateKeys(data); err != nil {
 		return cue.Value{}, err
 	}
-	expr, err := cuejson.Extract("", data)
+	expr, err := extractJSONSafely(data)
 	if err != nil {
 		return cue.Value{}, err
 	}
@@ -290,6 +291,22 @@ func oracleData(ctx *cue.Context, data []byte) (cue.Value, error) {
 		return cue.Value{}, err
 	}
 	return val, nil
+}
+
+// extractJSONSafely wraps cuejson.Extract with a panic recovery: cuelang's
+// JSON-via-expression parser panics (rather than erroring) on some malformed
+// inputs (e.g. "0..."), which would crash the differential run instead of
+// recording a data-compile rejection. Recovering converts the panic to the
+// data-compile error the in-house arm also produces for malformed data, so
+// the two arms agree on rejection rather than the oracle aborting.
+func extractJSONSafely(data []byte) (expr ast.Expr, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			expr = nil
+			err = fmt.Errorf("cuejson.Extract panicked: %v", r)
+		}
+	}()
+	return cuejson.Extract("", data)
 }
 
 // rawDuplicateKeys rejects the first object key repeated within one

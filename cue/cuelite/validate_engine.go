@@ -59,9 +59,9 @@ func isConcrete(v *engineValue) bool {
 		}
 		return true
 	case kList:
-		if v.openTop {
-			return false
-		}
+		// An open list's tail defaults to the empty list, so [...int] is
+		// concrete (it can close to []). Only a non-concrete REQUIRED prefix
+		// element ([_, ...int]) makes the list non-concrete.
 		for _, el := range v.prefix {
 			if !isConcrete(el) {
 				return false
@@ -120,14 +120,12 @@ func collectLeaves(v *engineValue, path []string, out []*PathError) []*PathError
 		}
 		return out
 	case kList:
+		// An open list's tail element type ([...int]) defaults to the empty
+		// list, so it is concrete and adds no leaf (matching CUE). Only the
+		// REQUIRED prefix elements are validated; a non-concrete prefix element
+		// ([_, ...int]) surfaces as an incomplete leaf at its index.
 		for i, el := range v.prefix {
 			out = collectLeaves(el, appendPath(path, intLabel(i)), out)
-		}
-		// An open list's tail element type is a constraint, not data: a list
-		// value reduced to data has its elements in prefix, so the tail is only
-		// present on an unsatisfied schema. Report it as incomplete.
-		if v.openTop && v.elem != nil && v.elem.kind != kTop {
-			out = append(out, newPathError(path, fmt.Sprintf("incomplete list element %s", v.elem.describe()), nil))
 		}
 		return out
 	default:

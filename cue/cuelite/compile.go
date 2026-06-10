@@ -33,6 +33,13 @@ func compileSource(src string) (*engineValue, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A top-level value that is itself an unforced thunk references a name with
+	// no enclosing struct to resolve it (a free `0 > A` expression): the
+	// reference can never bind, so it is an error, matching CUE's eager
+	// "reference X not found".
+	if v.kind == kThunk && len(v.thunkRefs) > 0 {
+		return v, fmt.Errorf("reference %q not found", v.thunkRefs[0])
+	}
 	if v.isBottomV() {
 		return v, fmt.Errorf("cuelite: %s", v.reason)
 	}
@@ -356,6 +363,15 @@ func checkEmbeddedThunkRefs(s, embedded *engineValue) error {
 func fieldLabel(l ast.Label) (string, error) {
 	switch lab := l.(type) {
 	case *ast.Ident:
+		// A definition label (#foo) or a hidden label (_foo) is not a data
+		// field: CUE excludes it from the data struct, so it is outside the
+		// front-matter subset. Reject it so a schema using one fails loudly
+		// rather than treating it as a required data key.
+		if isDefinitionOrHidden(lab.Name) {
+			return "", fmt.Errorf(
+				"cuelite: unsupported field label %q (definitions and hidden fields are not in the subset)",
+				lab.Name)
+		}
 		return lab.Name, nil
 	case *ast.BasicLit:
 		if lab.Kind != token.STRING {
@@ -369,6 +385,16 @@ func fieldLabel(l ast.Label) (string, error) {
 	default:
 		return "", fmt.Errorf("cuelite: unsupported field label %T", l)
 	}
+}
+
+// isDefinitionOrHidden reports whether a label names a CUE definition (#foo,
+// including the bare #) or a hidden field (_foo, but not the top type _),
+// neither of which is a data field in the front-matter subset.
+func isDefinitionOrHidden(name string) bool {
+	if name == "_" {
+		return false
+	}
+	return len(name) > 0 && (name[0] == '#' || name[0] == '_')
 }
 
 // compileList builds a list value. A trailing ...T ellipsis marks an open
@@ -482,9 +508,11 @@ func compileUnary(n *ast.UnaryExpr) (*engineValue, error) {
 		}
 		return boundFromOperand(op, operand)
 	case token.MUL:
-		// A bare *X default outside a disjunction collapses to X (a one-branch
-		// disjunction with a default is just X).
-		return compileExpr(n.X)
+		// A * default marker is only valid as a disjunction branch (`*a | b`),
+		// where compileDisjunction strips it before compiling the branch. A
+		// standalone `*X` is invalid CUE, so reject it here rather than silently
+		// treating it as X.
+		return nil, fmt.Errorf("cuelite: * default is only valid in a disjunction")
 	case token.SUB:
 		// Negative numeric literal: -1, -1.5.
 		inner, err := compileExpr(n.X)
@@ -493,7 +521,16 @@ func compileUnary(n *ast.UnaryExpr) (*engineValue, error) {
 		}
 		return negateNumeric(inner)
 	case token.ADD:
-		return compileExpr(n.X)
+		// Unary plus is valid only on a number (+1, +1.5); on anything else CUE
+		// rejects it, so require a numeric operand.
+		inner, err := compileExpr(n.X)
+		if err != nil {
+			return nil, err
+		}
+		if inner.kind != kInt && inner.kind != kFloat {
+			return nil, fmt.Errorf("cuelite: unary + requires a number, got %s", inner.describe())
+		}
+		return inner, nil
 	default:
 		return nil, fmt.Errorf("cuelite: unsupported unary operator %q", n.Op)
 	}

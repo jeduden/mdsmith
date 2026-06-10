@@ -92,31 +92,31 @@ func unifyConcrete(v, o *engineValue, path []string) *engineValue {
 	}
 }
 
-// concreteEqual reports whether two concrete scalars are equal. An int and
-// a float with the same value unify (CUE treats 1 and 1.0 as the same
-// number); otherwise kinds must match.
+// concreteEqual reports whether two concrete scalars are equal. The kinds
+// must match: CUE keeps a concrete int and a concrete float distinct (the
+// literal 0 and the literal 0.0 do not unify), so an int never equals a
+// float here. A non-integral data float lifts to kFloat and an integral one
+// to kInt (liftFloat), so a schema int constraint still accepts whole-number
+// data without a cross-kind equality here.
 func concreteEqual(a, b *engineValue) bool {
-	if a.kind == b.kind {
-		switch a.kind {
-		case kString:
-			return a.str == b.str
-		case kInt:
-			return a.i == b.i
-		case kFloat:
-			return a.f == b.f
-		case kBool:
-			return a.b == b.b
-		case kBytes:
-			return string(a.bytes) == string(b.bytes)
-		case kNull:
-			return true
-		}
+	if a.kind != b.kind {
 		return false
 	}
-	// int vs float numeric equality (1 == 1.0).
-	an, aok := a.numericValue()
-	bn, bok := b.numericValue()
-	return aok && bok && an == bn
+	switch a.kind {
+	case kString:
+		return a.str == b.str
+	case kInt:
+		return a.i == b.i
+	case kFloat:
+		return a.f == b.f
+	case kBool:
+		return a.b == b.b
+	case kBytes:
+		return string(a.bytes) == string(b.bytes)
+	case kNull:
+		return true
+	}
+	return false
 }
 
 // unifyConcreteAtom checks a concrete scalar against a typed atom: the
@@ -308,6 +308,10 @@ func unifyDisjunction(d, o *engineValue, path []string) *engineValue {
 			survivingDefault = m
 		}
 	}
+	// Collapse identical concrete survivors: CUE de-duplicates equal disjuncts,
+	// so `0 | 0` reduced against 0 yields the single value 0, not a two-branch
+	// disjunction that stays non-concrete.
+	survivors = dedupeConcrete(survivors)
 	switch len(survivors) {
 	case 0:
 		return mkBottom(path, "%s does not satisfy %s", o.describe(), d.describe())
@@ -316,6 +320,29 @@ func unifyDisjunction(d, o *engineValue, path []string) *engineValue {
 	default:
 		return &engineValue{kind: kDisjoint, branches: survivors, def: survivingDefault}
 	}
+}
+
+// dedupeConcrete removes later duplicates of a concrete scalar from a
+// disjunction's surviving branches, so equal concrete disjuncts collapse to
+// one (CUE's behavior). A non-concrete branch is never equal to another and
+// is always kept.
+func dedupeConcrete(branches []*engineValue) []*engineValue {
+	out := branches[:0:0]
+	for _, br := range branches {
+		dup := false
+		if br.concreteScalarV() {
+			for _, kept := range out {
+				if kept.concreteScalarV() && concreteEqual(kept, br) {
+					dup = true
+					break
+				}
+			}
+		}
+		if !dup {
+			out = append(out, br)
+		}
+	}
+	return out
 }
 
 // unifyStruct meets two structs field-wise. A field present in both is the
