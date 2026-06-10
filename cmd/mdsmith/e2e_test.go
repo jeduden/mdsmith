@@ -2002,6 +2002,78 @@ func TestE2E_MergeDriver_FileOrderingRace_Resolved(t *testing.T) {
 		"check after merge must pass; stderr:\n%s", stderr)
 }
 
+// TestE2E_MergeDriver_RebasePick_Succeeds is the rebase twin of the
+// FileOrderingRace merge test. A rebase pick performs the same 3-way
+// merge, but git verifies worktree paths are up to date against
+// cached stat data before checking out the result. The old driver
+// wrote-and-restored %P in the worktree, bumping its mtime, so the
+// pick aborted with "Your local changes ... would be overwritten"
+// and git rescheduled it — every retry hit the same wall, so the
+// rebase could never finish. The driver must leave the rebase able
+// to complete in one shot with a clean worktree.
+func TestE2E_MergeDriver_RebasePick_Succeeds(t *testing.T) {
+	dir := t.TempDir()
+	gitInit(t, dir)
+
+	writeFixture(t, dir, ".mdsmith.yml",
+		"rules:\n  catalog: true\n  include: true\n")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "plan"), 0o755))
+	writeFixture(t, dir, "plan/01.md", fmt.Sprintf(planTmpl, 1, 1, "🔲", 1))
+	writeFixture(t, dir, "plan/02.md", fmt.Sprintf(planTmpl, 2, 2, "🔲", 2))
+	writeFixture(t, dir, "PLAN.md", planMdTmpl)
+
+	_, stderr, code := runBinaryInDir(t, dir, "", "fix", "PLAN.md")
+	require.Equal(t, 0, code, "seed fix failed: %s", stderr)
+	gitCommit(t, dir, "seed")
+	seedSHA := strings.TrimSpace(gitInDir(t, dir, "rev-parse", "HEAD"))
+
+	// Both branches modify PLAN.md (regenerated catalog) plus their
+	// own plan file, so the rebase pick merges PLAN.md via the driver.
+	completePlanOnBranch(t, dir, "ours", seedSHA, 1)
+	completePlanOnBranch(t, dir, "theirs", seedSHA, 2)
+
+	gitInDir(t, dir, "checkout", "ours")
+	_, stderr, code = runBinaryInDir(t, dir, "", "merge-driver", "install")
+	require.Equal(t, 0, code, "install failed: %s", stderr)
+
+	// Replay ours on top of theirs. With the old worktree-writing
+	// driver this exits non-zero with the pick rescheduled.
+	out, err := exec.Command("git", "-C", dir,
+		"-c", "commit.gpgsign=false",
+		"rebase", "theirs").CombinedOutput()
+	require.NoError(t, err, "git rebase failed: %s", out)
+
+	// The rebase must have fully completed, not stopped mid-pick.
+	_, statErr := os.Stat(filepath.Join(dir, ".git", "rebase-merge"))
+	assert.True(t, os.IsNotExist(statErr),
+		"rebase must not be left in progress")
+
+	// No driver-induced modifications to tracked files may remain.
+	// (install drops an untracked .gitattributes; that is setup, not
+	// driver output, so untracked files are excluded.)
+	status := gitInDir(t, dir, "status", "--porcelain", "--untracked-files=no")
+	assert.Empty(t, strings.TrimSpace(status),
+		"tracked files must be clean after the rebase, got:\n%s", status)
+
+	// Both plan bumps survive the replay. (Rebase runs no
+	// pre-merge-commit hook, so PLAN.md's catalog may need one
+	// `mdsmith fix` — the documented post-rebase step — but the
+	// plan files themselves must hold both ✅ states.)
+	for _, path := range []string{"plan/01.md", "plan/02.md"} {
+		data, err := os.ReadFile(filepath.Join(dir, path))
+		require.NoError(t, err)
+		assert.Contains(t, string(data), `status: "✅"`,
+			"%s status must be ✅ after rebase", path)
+	}
+
+	// One fix pass settles the catalog; check must then be clean.
+	_, stderr, code = runBinaryInDir(t, dir, "", "fix", ".")
+	require.Equal(t, 0, code, "post-rebase fix failed: %s", stderr)
+	_, stderr, code = runBinaryInDir(t, dir, "", "check", ".")
+	assert.Equal(t, 0, code,
+		"check after rebase + fix must pass; stderr:\n%s", stderr)
+}
+
 // setupConflictingMergeRepo builds a repo whose `ours` and `theirs`
 // branches both regenerate PLAN.md's catalog (ours adds plan 02,
 // theirs adds plan 03), so merging conflicts inside the generated
