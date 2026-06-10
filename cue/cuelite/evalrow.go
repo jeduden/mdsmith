@@ -635,38 +635,42 @@ func rowStringsJoin(args []*engineValue) (*engineValue, error) {
 	return &engineValue{kind: kString, str: strings.Join(parts, sep.str)}, nil
 }
 
-// rowLen implements len(x): the rune count of a string or the length of a
-// list (the two operand kinds the row subset uses). A struct or scalar is an
-// error.
+// rowLen implements len(x): the BYTE count of a string or the length of a
+// list (the two operand kinds the row subset uses). CUE's len(string) is a
+// byte count, not a rune count — `len("café")` is 5 (the é is two UTF-8
+// bytes), `len("😀")` is 4 — so this counts bytes to match the oracle. A
+// struct is rejected as out-of-subset: CUE's len(struct) is the field count,
+// but the row corpus never takes len of a struct, so the construct stays a
+// loud out-of-subset rejection (the cross-engine fuzzer's strict-subset hatch
+// keys on the "unsupported" wording).
 func rowLen(args []*engineValue) (*engineValue, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("cuelite: len takes one argument")
 	}
 	switch x := args[0]; x.kind {
 	case kString:
-		return &engineValue{kind: kInt, i: int64(len([]rune(x.str)))}, nil
+		return &engineValue{kind: kInt, i: int64(len(x.str))}, nil
 	case kList:
 		return &engineValue{kind: kInt, i: int64(len(x.prefix))}, nil
+	case kStruct:
+		return nil, fmt.Errorf("cuelite: unsupported len of a struct (struct length is not in the subset)")
 	default:
 		return nil, fmt.Errorf("cuelite: len requires a string or list, got %s", x.describe())
 	}
 }
 
-// rowEqual reports whether two row values are equal for `==`/`!=`. Scalars
-// compare with numeric-aware equality (so `2 == 2.0`); a list compares
-// element-wise (the `markdownlint == []` empty-list guard); any other pair is
-// unequal.
+// rowEqual reports whether two row values are equal for `==`/`!=`, matching
+// CUE's two distinct rules. A top-level scalar pair compares with
+// numeric-aware equality, so `2 == 2.0` is true. A list or struct, by
+// contrast, compares STRUCTURALLY with kind-strict element equality (CUE's
+// concreteValueEqual): `{k:1} == {k:1}` is true (field-wise), but `[2] ==
+// [2.0]` is false — inside a structure an int and a float are distinct values,
+// even though the bare scalars compare equal. concreteValueEqual already
+// implements exactly this — a kind-strict list/struct descent that bottoms out
+// in concreteEqual for scalars — so the two arms agree on nested cases too.
 func rowEqual(a, b *engineValue) bool {
-	if a.kind == kList && b.kind == kList {
-		if len(a.prefix) != len(b.prefix) {
-			return false
-		}
-		for i := range a.prefix {
-			if !rowEqual(a.prefix[i], b.prefix[i]) {
-				return false
-			}
-		}
-		return true
+	if a.kind == kList || a.kind == kStruct || b.kind == kList || b.kind == kStruct {
+		return concreteValueEqual(a, b)
 	}
 	return numericAwareEqual(a, b)
 }

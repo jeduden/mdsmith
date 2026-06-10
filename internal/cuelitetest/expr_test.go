@@ -177,6 +177,38 @@ func exprCorpus() []ExprCase {
 		{Name: "strings.Join arity error", Expr: `strings.Join(["a"])`, ScopeJSON: ``},
 		{Name: "len arity error", Expr: `len("a","b")`, ScopeJSON: ``},
 
+		// Equality semantics (item 3): struct field-wise, list type-strict,
+		// scalar numeric-aware.
+		{
+			Name:      "struct equality field-wise",
+			Expr:      `[if x == y {"T"}, if x != y {"F"}][0]`,
+			ScopeJSON: `{"x":{"k":1},"y":{"k":1}}`,
+		},
+		{
+			Name:      "struct inequality field differs",
+			Expr:      `[if x == y {"T"}, if x != y {"F"}][0]`,
+			ScopeJSON: `{"x":{"k":1},"y":{"k":2}}`,
+		},
+		{
+			Name:      "list element equality type-strict",
+			Expr:      `[if x == y {"T"}, if x != y {"F"}][0]`,
+			ScopeJSON: `{"x":[2],"y":[2.0]}`,
+		},
+		{
+			Name:      "scalar numeric equality crosses kinds",
+			Expr:      `[if x == y {"T"}, if x != y {"F"}][0]`,
+			ScopeJSON: `{"x":2,"y":2.0}`,
+		},
+		{
+			Name:      "nested list equality type-strict",
+			Expr:      `[if x == y {"T"}, if x != y {"F"}][0]`,
+			ScopeJSON: `{"x":[[2]],"y":[[2.0]]}`,
+		},
+
+		// len byte count (item 4): multibyte string lengths.
+		{Name: "len of multibyte string", Expr: `"\(len(s))"`, ScopeJSON: `{"s":"café"}`},
+		{Name: "len of emoji string", Expr: `"\(len(s))"`, ScopeJSON: `{"s":"😀"}`},
+
 		// Result-shape and reference errors.
 		{Name: "non-string result", Expr: `42`, ScopeJSON: ``},
 		{Name: "missing reference", Expr: `"\(missing)"`, ScopeJSON: `{"id":"X"}`},
@@ -219,6 +251,9 @@ func FuzzExpr(f *testing.F) {
 		{`fm["k"]`, `{"k":"v"}`},
 		{`xs[0]`, `{"xs":["a"]}`},
 		{`"\(x)"`, `{"x":1.5}`},
+		{`[if x == y {"T"}, if x != y {"F"}][0]`, `{"x":{"k":1},"y":{"k":1}}`},
+		{`[if x == y {"T"}, if x != y {"F"}][0]`, `{"x":[2],"y":[2.0]}`},
+		{`"\(len(s))"`, `{"s":"café"}`},
 	} {
 		f.Add(seed.expr, seed.scope)
 	}

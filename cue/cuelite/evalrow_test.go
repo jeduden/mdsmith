@@ -316,3 +316,59 @@ func TestRender_BigCoverageRowExpr_NotReadyStatus(t *testing.T) {
 		"conciseness-scoring (not-ready) | — | — |"
 	assert.Equal(t, want, got)
 }
+
+// --- item 3: rowEqual struct and type-strict list element equality ---
+
+func TestRender_StructEqualityIsFieldWise(t *testing.T) {
+	// CUE: {k:1} == {k:1} is true (struct equality compares field-wise).
+	got, err := renderRow(t, `[if x == y {"T"}, if x != y {"F"}][0]`, map[string]any{
+		"x": map[string]any{"k": 1},
+		"y": map[string]any{"k": 1},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "T", got)
+}
+
+func TestRender_StructInequalityWhenFieldDiffers(t *testing.T) {
+	got, err := renderRow(t, `[if x == y {"T"}, if x != y {"F"}][0]`, map[string]any{
+		"x": map[string]any{"k": 1},
+		"y": map[string]any{"k": 2},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "F", got)
+}
+
+func TestRender_ListElementEqualityIsTypeStrict(t *testing.T) {
+	// CUE: [2] == [2.0] is FALSE — list element equality is kind-strict, even
+	// though the scalar 2 == 2.0 is true.
+	got, err := renderRow(t, `[if x == y {"T"}, if x != y {"F"}][0]`, map[string]any{
+		"x": []any{2},
+		"y": []any{2.0},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "F", got)
+}
+
+func TestRender_ScalarNumericEqualityCrossesKinds(t *testing.T) {
+	// CUE: top-level 2 == 2.0 is true (numeric-aware).
+	got, err := renderRow(t, `[if x == y {"T"}, if x != y {"F"}][0]`, map[string]any{
+		"x": 2, "y": 2.0,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "T", got)
+}
+
+// --- item 4: len is a byte count, not a rune count ---
+
+func TestRender_LenOfStringIsByteCount(t *testing.T) {
+	// CUE's len(string) is the BYTE count: "café" is 5 bytes (é is 2 bytes).
+	got, err := renderRow(t, `"\(len(s))"`, map[string]any{"s": "café"})
+	require.NoError(t, err)
+	assert.Equal(t, "5", got)
+}
+
+func TestRender_LenOfMultibyteEmoji(t *testing.T) {
+	got, err := renderRow(t, `"\(len(s))"`, map[string]any{"s": "😀"})
+	require.NoError(t, err)
+	assert.Equal(t, "4", got)
+}
