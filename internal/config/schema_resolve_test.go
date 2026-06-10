@@ -248,6 +248,89 @@ kinds:
 	assert.Contains(t, err.Error(), "inline-schema")
 }
 
+// effectiveSchemaSourceEntry runs Effective for filePath under the
+// kind assigned by glob "*.md" and returns the lone schema-sources
+// entry, asserting exactly one is present.
+func effectiveSchemaSourceEntry(t *testing.T, cfg *Config) map[string]any {
+	t.Helper()
+	effective := Effective(cfg, "foo.md", nil, nil)
+	rs, ok := effective["required-structure"]
+	require.True(t, ok, "required-structure must be present")
+	sources, ok := rs.Settings["schema-sources"].([]any)
+	require.True(t, ok, "schema-sources must be a list")
+	require.Len(t, sources, 1)
+	return sources[0].(map[string]any)
+}
+
+// TestEffective_NamedFileSchemaSourceIsSchemaPath pins task 6: a kind
+// defined in `.mdsmith.yml` that references a `.mdsmith/schemas/`
+// schema surfaces the schema's `.yaml` path as the source — "go to
+// schema" lands on the schema file, not the kind's `.mdsmith.yml`.
+func TestEffective_NamedFileSchemaSourceIsSchemaPath(t *testing.T) {
+	schemaPath := "/ws/.mdsmith/schemas/rfc-v1.yaml"
+	cfg := &Config{
+		Kinds: map[string]KindBody{
+			"rfc": {
+				SourcePath: "/ws/.mdsmith.yml", // the kind lives here
+				Schema: resolvedSchemaRef("rfc-v1",
+					map[string]any{"sections": []any{map[string]any{"heading": "X"}}},
+					schemaPath),
+			},
+		},
+		KindAssignment: []KindAssignmentEntry{
+			{Glob: []string{"*.md"}, Kinds: []string{"rfc"}},
+		},
+	}
+	entry := effectiveSchemaSourceEntry(t, cfg)
+	assert.Equal(t, schemaPath, entry["source"],
+		"a named file schema's source must be its .yaml path")
+}
+
+// TestEffective_InlineRegistrySchemaSourceIsConfigPath pins task 6:
+// an inline-registry schema (declared under top-level `schemas:`)
+// surfaces `.mdsmith.yml` as its source.
+func TestEffective_InlineRegistrySchemaSourceIsConfigPath(t *testing.T) {
+	cfgPath := "/ws/.mdsmith.yml"
+	cfg := &Config{
+		Kinds: map[string]KindBody{
+			"rfc": {
+				SourcePath: cfgPath,
+				Schema: resolvedSchemaRef("rfc-v1",
+					map[string]any{"sections": []any{map[string]any{"heading": "X"}}},
+					cfgPath),
+			},
+		},
+		KindAssignment: []KindAssignmentEntry{
+			{Glob: []string{"*.md"}, Kinds: []string{"rfc"}},
+		},
+	}
+	entry := effectiveSchemaSourceEntry(t, cfg)
+	assert.Equal(t, cfgPath, entry["source"])
+}
+
+// TestEffective_InlineOnKindSchemaSourceFallsBackToKindFile pins task
+// 6's fallback: an inline-on-kind schema (no registry name, empty
+// Schema.SourcePath) surfaces the kind's own defining file as the
+// source.
+func TestEffective_InlineOnKindSchemaSourceFallsBackToKindFile(t *testing.T) {
+	kindPath := "/ws/.mdsmith/kinds/rfc.yaml"
+	cfg := &Config{
+		Kinds: map[string]KindBody{
+			"rfc": {
+				SourcePath: kindPath,
+				Schema: inlineSchemaRef(
+					map[string]any{"sections": []any{map[string]any{"heading": "X"}}}),
+			},
+		},
+		KindAssignment: []KindAssignmentEntry{
+			{Glob: []string{"*.md"}, Kinds: []string{"rfc"}},
+		},
+	}
+	entry := effectiveSchemaSourceEntry(t, cfg)
+	assert.Equal(t, kindPath, entry["source"],
+		"an inline-on-kind schema falls back to the kind's file")
+}
+
 // TestParseBytes_ResolvesInlineSchemaRegistry pins that the in-memory
 // path (no disk discovery) still resolves a named ref against an
 // inline `schemas:` registry.

@@ -434,7 +434,7 @@ func effectiveRules(cfg *Config, filePath string, kinds []string) map[string]Rul
 			continue
 		}
 		if resolved := resolvedInlineSchema(cfg.Kinds, kindName, body); len(resolved) > 0 {
-			applyInlineSchemaSource(result, resolved, body.SourcePath)
+			applyInlineSchemaSource(result, resolved, schemaSourcePath(body))
 		}
 		if body.PathPattern != "" {
 			applyPathPattern(result, kindName, body.PathPattern)
@@ -526,9 +526,24 @@ func resolvedInlineSchema(
 	return resolved
 }
 
-// applyInlineSchemaSource appends a KindBody.Schema (inline schema
-// map) as a `schema-sources` entry. Multiple kinds with inline
-// schemas thus accumulate rather than overwrite.
+// schemaSourcePath returns the defining-source path the schema-sources
+// entry should carry for one kind's schema. A named reference resolves
+// to the schema's own origin (Schema.SourcePath — a `.mdsmith/schemas/
+// <name>.yaml` path or `.mdsmith.yml` for an inline-registry entry), so
+// "go to schema" lands on the schema rather than the referencing kind.
+// An inline-on-kind body has no separate origin (Schema.SourcePath
+// empty), so it falls back to the kind's own defining file.
+func schemaSourcePath(body KindBody) string {
+	if body.Schema.SourcePath != "" {
+		return body.Schema.SourcePath
+	}
+	return body.SourcePath
+}
+
+// applyInlineSchemaSource appends a resolved schema body as a
+// `schema-sources` entry, tagged with the schema's defining-source
+// path. Multiple kinds with schemas thus accumulate rather than
+// overwrite.
 func applyInlineSchemaSource(result map[string]RuleCfg, schema map[string]any, sourcePath string) {
 	rs, ok := result["required-structure"]
 	if !ok {
