@@ -144,3 +144,34 @@ func TestMeetThunkRefErasure(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }
+
+// TestOrderedComparisonNonOrderable pins that an ordered comparison (>, >=, <,
+// <=) on a concrete BOOL or NULL operand is rejected at schema COMPILE, even
+// when the other operand is an unresolved reference. A chained `0 > 0 > A`
+// parses as `(0>0) > A` = `false > A`, which CUE rejects as "invalid operands";
+// the in-house engine must reject it eagerly, not defer a thunk that rejects at
+// validate. Probed against cuelang v0.16.1. A == / != on a bool is still fine,
+// and a string IS orderable.
+func TestOrderedComparisonNonOrderable(t *testing.T) {
+	reject := []string{
+		`{B: 0 > 0 > A, A: 0}`,
+		`{B: false > A, A: 0}`,
+		`{B: true > 1}`,
+		`{B: null < A, A: 0}`,
+		`{B: A < false, A: 0}`, // RIGHT operand non-orderable, left unresolved
+	}
+	for _, src := range reject {
+		_, err := Compile(src)
+		require.Error(t, err, "must reject ordered compare on non-orderable: %s", src)
+		assert.Contains(t, err.Error(), "invalid operation", src)
+	}
+	accept := []string{
+		`{B: false == A, A: 0}`, // == admits any concrete
+		`{B: "a" < "b"}`,        // strings are orderable
+		`{B: 1 > 0}`,
+	}
+	for _, src := range accept {
+		_, err := Compile(src)
+		require.NoError(t, err, "must accept orderable / equality compare: %s", src)
+	}
+}

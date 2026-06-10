@@ -346,6 +346,20 @@ func evalComparison(n *ast.BinaryExpr, scope map[string]*engineValue) (*engineVa
 	if rerr == nil && !isConcrete(r) {
 		return nil, fmt.Errorf("cuelite: invalid operation: %s requires a concrete operand, got %s", n.Op, r.describe())
 	}
+	// An ORDERED comparison (>, >=, <, <=) on a concrete BOOL or NULL operand is
+	// ill-typed — bool and null are not orderable — so CUE rejects it at schema
+	// compile ("invalid operands … to '>'") even when the OTHER operand is an
+	// unresolved reference (`false > A`). Reject it eagerly here, before the
+	// deferral, so a chained `0 > 0 > A` (whose left `0 > 0` is the bool false)
+	// fails at compile rather than deferring a thunk that rejects at validate.
+	if isOrderedOp(n.Op) {
+		if lerr == nil && !orderable(l) {
+			return nil, orderableErr(n.Op, l)
+		}
+		if rerr == nil && !orderable(r) {
+			return nil, orderableErr(n.Op, r)
+		}
+	}
 	// Either operand is an unresolved reference: defer the whole comparison to a
 	// thunk (the enclosing struct resolves it once data fixes the reference).
 	if lerr != nil {
@@ -359,6 +373,34 @@ func evalComparison(n *ast.BinaryExpr, scope map[string]*engineValue) (*engineVa
 		return nil, err
 	}
 	return &engineValue{kind: kBool, b: res}, nil
+}
+
+// isOrderedOp reports whether t is an ordered relational operator (>, >=, <,
+// <=) — the ones that require an orderable operand. ==/!= and the regex
+// matches admit any concrete operand and are excluded.
+func isOrderedOp(t token.Token) bool {
+	switch t {
+	case token.GTR, token.GEQ, token.LSS, token.LEQ:
+		return true
+	}
+	return false
+}
+
+// orderable reports whether a concrete value can be an operand of an ordered
+// comparison: a number or a string. A bool or null is NOT orderable, matching
+// CUE's "invalid operands … to '>'" rejection.
+func orderable(v *engineValue) bool {
+	switch v.kind {
+	case kInt, kFloat, kString:
+		return true
+	}
+	return false
+}
+
+// orderableErr builds the in-house "invalid operation" error for an ordered
+// comparison on a non-orderable operand (the wording hatch 1 keys on).
+func orderableErr(op token.Token, v *engineValue) error {
+	return fmt.Errorf("cuelite: invalid operation: %s requires an orderable operand, got %s", op, v.describe())
 }
 
 // compareConcrete evaluates a comparison operator over two concrete scalar

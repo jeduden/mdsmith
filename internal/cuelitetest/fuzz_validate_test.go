@@ -495,6 +495,12 @@ func edgeFuzzSeeds() []struct{ schema, data string } {
 		// in-house engine must reject it eagerly too rather than defer a thunk
 		// that can never resolve.
 		{`A: A > _`, `0`},
+		// An ordered comparison on a non-orderable concrete operand: a chained
+		// `0 > 0 > A` is `(0>0) > A` = `false > A`, which CUE rejects at compile
+		// ("invalid operands"). The in-house engine rejects it eagerly too
+		// (invalid operation, hatch 1) rather than deferring a thunk.
+		{`B:0>0>A,A:0`, `0`},
+		{`{B: false > A, A: 0}`, `0`},
 		{`{a: int, b: a == string}`, `{"a":1}`},
 		// An `if` comprehension whose condition is not a concrete bool (a string
 		// literal, a type, or top): CUE rejects "cannot use ... as type bool" at
