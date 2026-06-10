@@ -130,11 +130,15 @@ func evalIndex(n *ast.IndexExpr, scope map[string]*engineValue) (*engineValue, e
 		return nil, err
 	}
 	if idxVal.kind != kInt {
-		return nil, fmt.Errorf("cuelite: list index must be an integer, got %s", idxVal.describe())
+		return nil, fmt.Errorf(
+			"cuelite: invalid operation: list index must be an integer, got %s", idxVal.describe())
 	}
 	list, ok := n.X.(*ast.ListLit)
 	if !ok {
-		return nil, fmt.Errorf("cuelite: index target must be a list literal, got %T", n.X)
+		// Indexing a non-list (`"0"[0]`) is an invalid operation CUE also rejects
+		// — eagerly here, deferred-and-dropped in a disjunction by CUE.
+		return nil, fmt.Errorf(
+			"cuelite: invalid operation: index target must be a list literal, got %T", n.X)
 	}
 	elems, err := evalListElems(list, scope)
 	if err != nil {

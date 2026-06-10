@@ -347,6 +347,11 @@ func edgeFuzzSeeds() []struct{ schema, data string } {
 		// accepts. Hatch 1's regex class covers it.
 		{`({0!~""|0})`, `0`},
 		{`{a: 0 !~ ""}`, `{"a":0}`},
+		// Indexing a non-list (`"0"[0]`): an invalid operation CUE rejects
+		// eagerly but drops in a disjunction. Hatch 1's invalid-operation class
+		// covers it.
+		{`({A:""|"0"[0]})`, `0`},
+		{`{a: "0"[0]}`, `{"a":1}`},
 		// An ordered comparison of mismatched scalar kinds (0 > ""): CUE rejects
 		// it as an invalid operation but defers in a disjunction; the in-house
 		// engine rejects eagerly at schema compile.
