@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jeduden/mdsmith/internal/githooks"
 	"github.com/jeduden/mdsmith/internal/testsymlink"
@@ -2220,6 +2221,106 @@ func TestE2E_MergeDriver_RebaseMultiFile_Succeeds(t *testing.T) {
 	_, stderr, code = runBinaryInDir(t, dir, "", "check", ".")
 	assert.Equal(t, 0, code,
 		"check after rebase + fix must pass; stderr:\n%s", stderr)
+}
+
+// setupAgedPickRepo reproduces the repo shape of the PR #553
+// incident. CATALOG.md carries a catalog plus hand prose; HEAD and
+// the feature branch both regenerate the catalog, and the feature
+// commit also edits the prose, so a pick of it must run the driver
+// AND check out a result that differs from the worktree. The file
+// is then aged: its mtime is moved into the past and the index
+// refreshed, so the index records stat data older than the index
+// itself — exactly the state of any repo that was not created
+// milliseconds ago. Git then trusts stat instead of re-hashing, so
+// a driver that bumps the file's mtime mid-merge (the old
+// write-and-restore behavior) makes the pick abort with "Your
+// local changes ... would be overwritten". Returns the repo dir
+// and the feature commit to pick.
+func setupAgedPickRepo(t *testing.T) (string, string) {
+	t.Helper()
+	dir := t.TempDir()
+	gitInit(t, dir)
+
+	writeFixture(t, dir, ".mdsmith.yml", "rules:\n  catalog: true\n")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "plan"), 0o755))
+	writeFixture(t, dir, "plan/01.md", fmt.Sprintf(planTmpl, 1, 1, "🔲", 1))
+	writeFixture(t, dir, "CATALOG.md",
+		"# Plans\n\nIntro line, version zero.\n\n"+
+			"<?catalog\nglob:\n  - \"plan/*.md\"\nsort: id\n"+
+			"row: \"- [{title}]({filename})\"\n?>\n<?/catalog?>\n")
+	_, stderr, code := runBinaryInDir(t, dir, "", "merge-driver", "install")
+	require.Equal(t, 0, code, "install failed: %s", stderr)
+	_, stderr, code = runBinaryInDir(t, dir, "", "fix", "CATALOG.md")
+	require.Equal(t, 0, code, "seed fix failed: %s", stderr)
+	gitCommit(t, dir, "seed")
+	seedSHA := strings.TrimSpace(gitInDir(t, dir, "rev-parse", "HEAD"))
+
+	// feature: add plan 03, edit the prose line, regenerate.
+	gitInDir(t, dir, "checkout", "-b", "feature", seedSHA)
+	writeFixture(t, dir, "plan/03.md", fmt.Sprintf(planTmpl, 3, 3, "🔲", 3))
+	data, err := os.ReadFile(filepath.Join(dir, "CATALOG.md"))
+	require.NoError(t, err)
+	writeFixture(t, dir, "CATALOG.md", strings.Replace(string(data),
+		"Intro line, version zero.", "Intro line, version two.", 1))
+	_, stderr, code = runBinaryInDir(t, dir, "", "fix", "CATALOG.md")
+	require.Equal(t, 0, code, "feature fix failed: %s", stderr)
+	gitCommit(t, dir, "feature: plan 3 + prose edit")
+	featureSHA := strings.TrimSpace(gitInDir(t, dir, "rev-parse", "HEAD"))
+
+	// HEAD moves on independently: add plan 02, regenerate.
+	gitInDir(t, dir, "checkout", "-b", "trunk", seedSHA)
+	writeFixture(t, dir, "plan/02.md", fmt.Sprintf(planTmpl, 2, 2, "🔲", 2))
+	_, stderr, code = runBinaryInDir(t, dir, "", "fix", "CATALOG.md")
+	require.Equal(t, 0, code, "trunk fix failed: %s", stderr)
+	gitCommit(t, dir, "trunk: plan 2")
+
+	// Age CATALOG.md and refresh, so its recorded stat is strictly
+	// older than the index — git now trusts stat over content.
+	aged := time.Now().Add(-time.Minute)
+	require.NoError(t, os.Chtimes(filepath.Join(dir, "CATALOG.md"), aged, aged))
+	gitInDir(t, dir, "update-index", "--refresh")
+	return dir, featureSHA
+}
+
+// TestE2E_MergeDriver_AgedWorktree_CherryPick_Succeeds is the
+// portable reproduction of the PR #553 incident: in a settled
+// worktree, a pick that both-modifies a driver-managed file used
+// to abort with "Your local changes ... would be overwritten" and
+// be rescheduled forever, because the old driver's byte-identical
+// write-and-restore of %P bumped its mtime while git trusted the
+// file's (older) recorded stat. A cherry-pick is used because it
+// runs the identical 3-way pick machinery without a preceding
+// branch checkout, which would re-freshen the aged file and let
+// git's racy-stat re-hash mask the regression.
+func TestE2E_MergeDriver_AgedWorktree_CherryPick_Succeeds(t *testing.T) {
+	dir, featureSHA := setupAgedPickRepo(t)
+
+	out, err := exec.Command("git", "-C", dir,
+		"-c", "commit.gpgsign=false",
+		"cherry-pick", featureSHA).CombinedOutput()
+	require.NoError(t, err,
+		"cherry-pick must complete; the old worktree-writing driver "+
+			"aborts here with 'local changes would be overwritten': %s", out)
+
+	_, statErr := os.Stat(filepath.Join(dir, ".git", "CHERRY_PICK_HEAD"))
+	assert.True(t, os.IsNotExist(statErr),
+		"cherry-pick must not be left in progress")
+
+	catalog, readErr := os.ReadFile(filepath.Join(dir, "CATALOG.md"))
+	require.NoError(t, readErr)
+	content := string(catalog)
+	assert.Contains(t, content, "Intro line, version two.",
+		"the picked prose edit must land")
+	assert.NotContains(t, content, "<<<<<<<", "no conflict markers")
+
+	status := gitInDir(t, dir, "status", "--porcelain", "--untracked-files=no")
+	assert.Empty(t, strings.TrimSpace(status),
+		"tracked files must be clean after the pick, got:\n%s", status)
+
+	_, stderr, code := runBinaryInDir(t, dir, "", "fix", ".")
+	require.Equal(t, 0, code, "post-pick fix failed: %s", stderr)
+	_, stderr, code = runBinaryInDir(t, dir, "", "check", ".")
+	assert.Equal(t, 0, code, "check after pick + fix must pass; stderr:\n%s", stderr)
 }
 
 // TestE2E_MergeDriver_RealMerge_ProseConflict_AbortRestores drives
