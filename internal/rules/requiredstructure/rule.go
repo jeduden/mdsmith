@@ -1337,7 +1337,8 @@ func collectBodySyncPoints(
 	// body (e.g. a `bind:` value) must not become a body-sync point,
 	// since the row is schema syntax, not body-sync template text.
 	inPIBlock := false
-	inFence := false
+	var fenceChar byte
+	fenceLen := 0
 	start := 0
 	for i := 0; i <= len(content); i++ {
 		if i < len(content) && content[i] != '\n' {
@@ -1349,22 +1350,33 @@ func collectBodySyncPoints(
 		if len(lineB) == 0 {
 			continue
 		}
-		if inPIBlock {
+		switch {
+		case inPIBlock:
 			// Mirror the block parser: a continuation line closes the
 			// PI only when its trimmed text is exactly `?>` — a `?>`
 			// substring inside a YAML value stays inside the block.
 			inPIBlock = !bytes.Equal(lineB, piClose)
 			continue
-		}
-		if bytes.HasPrefix(lineB, fenceBacktick) || bytes.HasPrefix(lineB, fenceTilde) {
-			// A fenced code block owns its lines before the PI parser
-			// runs, so a directive opener shown inside a fence is
-			// code, not a directive. The marker line itself falls
-			// through as ordinary body text, as it did before the
-			// PI skip existed.
-			inFence = !inFence
-		}
-		if !inFence && isPIOpenLine(raw) {
+		case fenceLen > 0:
+			// Inside a fenced code block the only state change is a
+			// valid close (CommonMark: the opener's character, a run
+			// at least as long, nothing else on the line). Fence
+			// lines — markers included — fall through as ordinary
+			// body text, as they did before the PI skip existed.
+			if fenceClose(raw, lineB, fenceChar, fenceLen) {
+				fenceChar, fenceLen = 0, 0
+			}
+		default:
+			if c, n := fenceOpenRun(raw, lineB); n > 0 {
+				// A fenced code block owns its lines before the PI
+				// parser runs, so a directive opener shown inside a
+				// fence is code, not a directive.
+				fenceChar, fenceLen = c, n
+				break
+			}
+			if !isPIOpenLine(raw) {
+				break
+			}
 			// A single-line `<?name ... ?>` opens and closes on the
 			// same line; only a multi-line opener leaves us inside the
 			// block for subsequent lines. The parser closes an opener
@@ -1419,10 +1431,52 @@ func appendBodySyncFields(
 var (
 	piOpenPrefix = []byte("<?")
 	piClose      = []byte("?>")
-
-	fenceBacktick = []byte("```")
-	fenceTilde    = []byte("~~~")
 )
+
+// fenceOpenRun reports the marker character and run length when a
+// body line opens a fenced code block the way the block parser would:
+// at most three spaces of indentation and a run of at least three
+// backticks or tildes. n is 0 when the line opens no fence. (The same
+// open/close contract as include.rewriteSkippingCode.)
+func fenceOpenRun(raw, lineB []byte) (byte, int) {
+	if len(lineB) == 0 || (lineB[0] != '`' && lineB[0] != '~') {
+		return 0, 0
+	}
+	if lineIndent(raw) > 3 {
+		return 0, 0
+	}
+	n := fenceRun(lineB, lineB[0])
+	if n < 3 {
+		return 0, 0
+	}
+	return lineB[0], n
+}
+
+// fenceClose reports whether a body line closes the open fence per
+// CommonMark: the opener's character, a run at least as long as the
+// opener, nothing but the run on the trimmed line, and at most three
+// spaces of indentation.
+func fenceClose(raw, lineB []byte, ch byte, openLen int) bool {
+	if lineIndent(raw) > 3 {
+		return false
+	}
+	n := fenceRun(lineB, ch)
+	return n >= openLen && n == len(lineB)
+}
+
+// fenceRun returns the length of the run of ch at the start of line.
+func fenceRun(line []byte, ch byte) int {
+	n := 0
+	for n < len(line) && line[n] == ch {
+		n++
+	}
+	return n
+}
+
+// lineIndent returns the number of leading spaces on the raw line.
+func lineIndent(raw []byte) int {
+	return len(raw) - len(bytes.TrimLeft(raw, " "))
+}
 
 // isPIOpenLine reports whether a raw body line opens a processing
 // instruction, mirroring the block parser in pkg/markdown: at most
@@ -1430,10 +1484,10 @@ var (
 // (the bytes up to the first whitespace or `?>`). An indented code
 // example showing a directive is therefore not mistaken for one.
 func isPIOpenLine(raw []byte) bool {
-	trimmed := bytes.TrimLeft(raw, " ")
-	if len(raw)-len(trimmed) > 3 {
+	if lineIndent(raw) > 3 {
 		return false
 	}
+	trimmed := bytes.TrimLeft(raw, " ")
 	trimmed = bytes.TrimRight(trimmed, " \t\r\n")
 	if !bytes.HasPrefix(trimmed, piOpenPrefix) {
 		return false

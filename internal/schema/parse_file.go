@@ -363,8 +363,9 @@ func piYAMLBody(pi *piparser.ProcessingInstruction, source []byte) string {
 // and expanding <?include?> PIs by splicing the included file's
 // headings in place. lineBase is the number of source lines the
 // file's front matter occupied (lint.CountLines of the stripped
-// prefix); adding it to the 1-based body line from f.LineOfOffset
-// yields the absolute file line for directive diagnostics.
+// prefix, which StripFrontMatter always returns newline-terminated);
+// adding it to the 1-based body line from f.LineOfOffset yields the
+// absolute file line for directive diagnostics.
 func collectFileHeadings(
 	f *lint.File, r *FileReader, path string, lineBase int,
 	visited map[string]bool, chain []string,

@@ -12,7 +12,7 @@ import (
 // temp dir and returns its path.
 func schemaFile(t *testing.T, src string) string {
 	t.Helper()
-	return writeFile(t, t.TempDir(), "schema.md", src)
+	return writeFile(t, t.TempDir(), "proto.md", src)
 }
 
 // TestParseFile_ContentDirectiveParagraph is the happy path: a
@@ -172,16 +172,28 @@ func TestParseFile_ContentDirectiveAfterIncludeAttachesToHost(t *testing.T) {
 }
 
 // TestParseFile_ContentDirectiveErrorNamesLine locks down that a
-// directive diagnostic carries the absolute source line, including
-// the lines a front-matter block occupied.
+// directive diagnostic carries the absolute source line — with front
+// matter the block's lines are added; without it the body line is
+// already absolute.
 func TestParseFile_ContentDirectiveErrorNamesLine(t *testing.T) {
-	path := schemaFile(t,
-		"---\ntitle: string\n---\n## Tagline\n\n<?content\nkind: bogus\n?>\n")
-	_, err := ParseFile(&FileReader{}, path)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "line 6",
-		"three front-matter lines plus the body offset of the directive")
-	assert.Contains(t, err.Error(), "unknown content kind")
+	for name, tc := range map[string]struct{ src, line string }{
+		"front matter": {
+			src:  "---\ntitle: string\n---\n## Tagline\n\n<?content\nkind: bogus\n?>\n",
+			line: "line 6",
+		},
+		"no front matter": {
+			src:  "## Tagline\n\n<?content\nkind: bogus\n?>\n",
+			line: "line 3",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := schemaFile(t, tc.src)
+			_, err := ParseFile(&FileReader{}, path)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.line)
+			assert.Contains(t, err.Error(), "unknown content kind")
+		})
+	}
 }
 
 // TestParseFile_ContentDirectiveRejectsInvalidYAML locks down that a

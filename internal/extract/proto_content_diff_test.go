@@ -1,7 +1,6 @@
 package extract
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -72,15 +71,7 @@ func TestExtract_ProtoContentMatchesInline(t *testing.T) {
 	for _, key := range []string{"tagline", "snippet"} {
 		require.Contains(t, h1, key,
 			"proto projection must carry section %q", key)
-		assert.Equal(t, jsonBytes(t, inlineRoot[key]), jsonBytes(t, h1[key]),
+		assert.Equal(t, inlineRoot[key], h1[key],
 			"section %q must project identically from proto and inline schemas", key)
 	}
-}
-
-// jsonBytes marshals v to canonical JSON for byte-level comparison.
-func jsonBytes(t *testing.T, v any) string {
-	t.Helper()
-	b, err := json.Marshal(v)
-	require.NoError(t, err)
-	return string(b)
 }
