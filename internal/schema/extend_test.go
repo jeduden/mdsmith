@@ -832,3 +832,14 @@ func TestExtend_ProjectionChildWinsElseParent(t *testing.T) {
 	assert.Equal(t, ProjectionInline, out.BlockParagraphs,
 		"a set child overrides the parent")
 }
+
+// TestExtend_BlockParagraphsRequiresProjection gives Extend the same
+// co-presence guard test compose carries: a layered result pairing
+// `block-paragraphs` with a missing `projection: blocks` errors
+// instead of propagating the silently dead setting.
+func TestExtend_BlockParagraphsRequiresProjection(t *testing.T) {
+	parent := &Schema{RootLevel: 2, BlockParagraphs: ProjectionInline}
+	_, err := Extend(parent, &Schema{RootLevel: 2})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "without a schema-level")
+}

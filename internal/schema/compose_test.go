@@ -976,3 +976,28 @@ func TestCompose_BlockParagraphsRequiresProjection(t *testing.T) {
 	require.Len(t, out.Sections, 1)
 	assert.Equal(t, ProjectionInline, out.Sections[0].BlockParagraphs)
 }
+
+// TestCompose_ProjectionOrderingSymmetry drives the directions the
+// earlier tests leave implicit: first-source-wins for the carry, and
+// the co-presence guard firing regardless of which input carries the
+// orphaned `block-paragraphs`.
+func TestCompose_ProjectionOrderingSymmetry(t *testing.T) {
+	mk := func(projection string) *Schema {
+		return &Schema{RootLevel: 2, Sections: []Scope{{
+			Heading:    "Notes",
+			Matcher:    &Matcher{Regex: "Notes"},
+			Projection: projection,
+		}}}
+	}
+	out, err := Compose(mk(ProjectionBlocks), mk(""))
+	require.NoError(t, err)
+	require.Len(t, out.Sections, 1)
+	assert.Equal(t, ProjectionBlocks, out.Sections[0].Projection,
+		"the first source's scope projection must survive too")
+
+	_, err = Compose(
+		&Schema{RootLevel: 2},
+		&Schema{RootLevel: 2, BlockParagraphs: ProjectionInline})
+	require.Error(t, err, "the guard fires when the second input carries it")
+	assert.Contains(t, err.Error(), "without a schema-level")
+}
