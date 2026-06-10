@@ -59,8 +59,9 @@ Content entries project under default keys:
 - `paragraph` → `text` (plain text), or `inline` when
   the entry sets `projection: inline` (see below).
 
-Two sibling projections that resolve to the same key
-are a schema error. It is reported at extract time.
+Sibling keys are emitted in sorted order, not document
+order. Two sibling projections that resolve to the same
+key are a schema error. It is reported at extract time.
 Optional sections that did not match are omitted, not
 emitted as null.
 
@@ -110,9 +111,11 @@ For the headline `Mark*down*, smithed.`:
 "headline": {
   "inline": [
     { "span": "text", "value": "Mark" },
-    { "span": "emphasis", "level": 1, "children": [
-      { "span": "text", "value": "down" }
-    ]},
+    {
+      "children": [{ "span": "text", "value": "down" }],
+      "level": 1,
+      "span": "emphasis"
+    },
     { "span": "text", "value": ", smithed." }
   ]
 }
@@ -122,9 +125,11 @@ A nested example — a strong span wrapping a code span,
 ``**`mdsmith fix`**`` — projects with no mode switch:
 
 ```json
-{ "span": "strong", "level": 2, "children": [
-    { "span": "code", "value": "mdsmith fix" }
-] }
+{
+  "children": [{ "span": "code", "value": "mdsmith fix" }],
+  "level": 2,
+  "span": "strong"
+}
 ```
 
 Each content kind constrains its projection at schema-
@@ -175,7 +180,10 @@ mdsmith extract plan --format msgpack plan/166_x.md > plan.mp
 
 ### Worked example
 
-A two-section kind schema and a conformant file:
+A two-section kind schema, a kind assignment, and a
+conformant file. Each section declares a `content:`
+entry. A section without one projects as an empty
+object:
 
 ```yaml
 # .mdsmith.yml
@@ -184,8 +192,15 @@ kinds:
     schema:
       sections:
         - heading: { regex: '^Tagline$' }
+          content:
+            - { kind: paragraph }
         - heading: { regex: '^VS Code$' }
           bind: vscode-description
+          content:
+            - { kind: paragraph }
+kind-assignment:
+  - glob: ["docs/copy.md"]
+    kinds: [product-copy]
 ```
 
 ```markdown
@@ -210,9 +225,15 @@ emits:
 
 ```json
 {
-  "frontmatter": { "title": "Product copy" },
-  "tagline": { "text": "Mark down your ideas; smith them into shipping docs." },
-  "vscode-description": { "text": "Inline diagnostics, fix-on-save, and instant navigation for Markdown in VS Code." }
+  "frontmatter": {
+    "title": "Product copy"
+  },
+  "tagline": {
+    "text": "Mark down your ideas; smith them into shipping docs."
+  },
+  "vscode-description": {
+    "text": "Inline diagnostics, fix-on-save, and instant navigation for Markdown in VS Code."
+  }
 }
 ```
 
