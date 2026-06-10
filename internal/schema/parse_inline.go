@@ -1060,8 +1060,8 @@ func applyContentField(k string, vv any, ce *ContentEntry, path string) error {
 }
 
 // setContentProjection reads the optional `projection:` mode for a
-// content entry (`text` / `code` / `inline`). Omitting the key uses
-// the kind's default projection; this runs only when `projection:`
+// content entry (`text` / `code` / `inline` / `tree`). Omitting the key
+// uses the kind's default projection; this runs only when `projection:`
 // is present, so an explicit empty string is rejected as an unknown
 // projection like any other unrecognised value.
 //
@@ -1069,18 +1069,21 @@ func applyContentField(k string, vv any, ce *ContentEntry, path string) error {
 // incompatible combination is a schema-load error rather than a
 // silently-ignored field: a paragraph projects `text` or `inline`
 // (its plain text or its typed inline-span tree); a code-block
-// projects `code` (its raw body); and a table, list, or unlisted slot
-// has no projection mode at all. Plan 212.
+// projects `code` (its raw body); a list projects `tree` (a typed
+// recursive item tree) or, with projection omitted, its flat string
+// default; and an unlisted slot has no projection mode at all.
+// Plans 212, 244.
 func setContentProjection(ce *ContentEntry, v any, path string) error {
 	s, ok := v.(string)
 	if !ok {
 		return fmt.Errorf("%s.projection must be a string, got %T", path, v)
 	}
 	switch s {
-	case ProjectionText, ProjectionCode, ProjectionInline:
+	case ProjectionText, ProjectionCode, ProjectionInline, ProjectionTree:
 	default:
 		return fmt.Errorf(
-			"%s.projection: unknown projection %q (valid: text, code, inline)",
+			"%s.projection: unknown projection %q "+
+				"(valid: text, code, inline, tree)",
 			path, s)
 	}
 	if err := checkProjectionKind(ce.Kind, s, path); err != nil {
@@ -1091,13 +1094,13 @@ func setContentProjection(ce *ContentEntry, v any, path string) error {
 }
 
 // checkProjectionKind enforces the projection/kind matrix at schema
-// load. proj is already a known mode (text / code / inline). The
-// error names what the kind allows so an incompatible combination
+// load. proj is already a known mode (text / code / inline / tree).
+// The error names what the kind allows so an incompatible combination
 // fails with a fix inline rather than being dropped at extract time.
 func checkProjectionKind(kind, proj, path string) error {
 	switch kind {
 	case ContentKindParagraph:
-		if proj == ProjectionCode {
+		if proj != ProjectionText && proj != ProjectionInline {
 			return fmt.Errorf(
 				"%s.projection: kind: paragraph allows projection text or "+
 					"inline, not %s", path, proj)
@@ -1108,10 +1111,16 @@ func checkProjectionKind(kind, proj, path string) error {
 				"%s.projection: kind: code-block allows projection code, "+
 					"not %s", path, proj)
 		}
+	case ContentKindList:
+		if proj != ProjectionTree {
+			return fmt.Errorf(
+				"%s.projection: kind: list allows projection tree, "+
+					"not %s", path, proj)
+		}
 	default:
 		return fmt.Errorf(
 			"%s.projection: projection is not allowed on kind: %s "+
-				"(only paragraph and code-block project)", path, kind)
+				"(only paragraph, code-block, and list project)", path, kind)
 	}
 	return nil
 }

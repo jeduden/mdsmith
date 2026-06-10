@@ -400,6 +400,12 @@ const (
 	// recursive list (text / emphasis / strong / code / link /
 	// autolink). Valid only on `kind: paragraph`.
 	ProjectionInline = "inline"
+	// ProjectionTree emits a list's items as a typed recursive tree:
+	// each item is an object carrying its own `text`, an optional
+	// `checked` bool for GFM task items, and optional `children` for a
+	// nested sub-list. Valid only on `kind: list`. The flat default
+	// (projection omitted) keeps emitting plain strings. Plan 244.
+	ProjectionTree = "tree"
 )
 
 // IsEmpty reports whether s carries no constraints. Used by callers

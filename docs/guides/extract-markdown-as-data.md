@@ -258,6 +258,86 @@ table is in the [extract reference][extract-inline].
 
 [extract-inline]: ../reference/cli/extract.md#inline-span-projection
 
+## Projecting list structure
+
+A list projects as an array of strings by default — each
+the item's own text. That flat shape loses nesting, and
+it strips a task checkbox down to a literal `[x]` prefix.
+When the consumer needs the structure — which items are
+checked, which nest children — set `projection: tree` on
+the list entry. Each item then projects as an object with
+its own `text`, a `checked` bool on task items, and a
+recursive `children` array on items that nest a sub-list.
+
+A sprint checklist is the canonical case. A status tool
+reads each task's `checked` state and walks `children`
+for sub-tasks:
+
+```markdown
+---
+title: Sprint tasks
+---
+# Sprint tasks
+
+## Tasks
+
+- [x] done item
+- [ ] open item with **bold**
+  - nested child
+- plain item
+```
+
+```yaml
+kinds:
+  checklist:
+    schema:
+      sections:
+        - heading: { regex: '^Tasks$' }
+          content:
+            - { kind: list, projection: tree }
+kind-assignment:
+  - glob: ["tasks.md"]
+    kinds: [checklist]
+```
+
+`mdsmith extract checklist --format json tasks.md` emits:
+
+```json
+{
+  "frontmatter": {
+    "title": "Sprint tasks"
+  },
+  "tasks": {
+    "items": [
+      {
+        "checked": true,
+        "text": "done item"
+      },
+      {
+        "checked": false,
+        "children": [
+          {
+            "text": "nested child"
+          }
+        ],
+        "text": "open item with bold"
+      },
+      {
+        "text": "plain item"
+      }
+    ]
+  }
+}
+```
+
+The `[x]` / `[ ]` marker becomes the `checked` bool and
+never leaks into `text`; the `**bold**` flattens to its
+text; `nested child` rides inside its parent's `children`
+rather than concatenating into the parent string. A plain
+item with no marker and no sub-list is just `{text}`. The
+array order is the item order — ordered-list numbering is
+out of scope. YAML and msgpack emit the same tree.
+
 ## When frontmatter is the right call
 
 - **Short scalars where YAML's typing earns its

@@ -18,6 +18,7 @@ func TestProjectorHelpers_WrongNodeType(t *testing.T) {
 	para := ast.NewParagraph()
 	assert.Equal(t, "", p.codeBody(para))
 	assert.Nil(t, p.listItems(para))
+	assert.Nil(t, p.listTree(para))
 	assert.Nil(t, p.tableRows(para))
 }
 

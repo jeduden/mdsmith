@@ -1,7 +1,7 @@
 ---
 id: 244
 title: "Structured list projection; fix nested-item text corruption"
-status: "🔲"
+status: "✅"
 summary: >-
   Fix flat list projection concatenating nested-item text into
   the parent with no separator, then add `projection: tree` so
@@ -102,15 +102,15 @@ projects each item as an object:
 
 ## Acceptance Criteria
 
-- [ ] Flat `items` never concatenates nested-item text into a
+- [x] Flat `items` never concatenates nested-item text into a
   parent string; the corrupt case above projects
   `"[ ] open item with bold"`.
-- [ ] `projection: tree` emits item objects with `text`,
+- [x] `projection: tree` emits item objects with `text`,
   `checked` only on task items, `children` only when
   non-empty, recursive to any depth.
-- [ ] `projection: tree` on a non-list content entry fails at
+- [x] `projection: tree` on a non-list content entry fails at
   config load.
-- [ ] YAML and msgpack formats emit the same tree.
-- [ ] Reference and guide updated with verified outputs.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] YAML and msgpack formats emit the same tree.
+- [x] Reference and guide updated with verified outputs.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

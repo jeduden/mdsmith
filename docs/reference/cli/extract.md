@@ -53,11 +53,21 @@ Content entries project under default keys:
 
 - `code-block` → `code` (raw body; more blocks get
   `code-2`, …).
-- `list` → `items`.
+- `list` → `items` (an array of strings, each the item's
+  own text), or a tree of item objects when the entry
+  sets `projection: tree` (see below).
 - `table` with columns → `rows` (row objects keyed by
   column header).
 - `paragraph` → `text` (plain text), or `inline` when
   the entry sets `projection: inline` (see below).
+
+A flat `items` string holds the item's own text only.
+A nested sub-list is excluded, not folded in, so `- a`
+with child `- b` projects `"a"`, never `"ab"`. Inline
+markup flattens to text; a task marker stays verbatim
+(`[x]` / `[ ]`); a nest-only item projects the empty
+string, keeping its slot. Use `projection: tree` (below)
+to keep the nesting and split the marker out.
 
 Sibling keys are emitted in sorted order, not document
 order. Two sibling projections that resolve to the same
@@ -132,22 +142,50 @@ A nested example — a strong span wrapping a code span,
 }
 ```
 
-Each content kind constrains its projection at schema-
-load time. A `paragraph` takes `text` or `inline`. A
-`code-block` takes `code`. A `table`, `list`, or
-`unlisted` slot takes none. An incompatible combination
-fails when the config loads, not silently at extract
-time. Rejected cases include `projection: code` on a
-paragraph, `projection: inline` on a code-block, and any
-`projection` on a table.
+Each kind limits which projection it takes. A bad pair
+fails when the config loads, not later at extract:
+
+| Kind         | Allowed `projection`            |
+| ------------ | ------------------------------- |
+| `paragraph`  | `text`, `inline`                |
+| `code-block` | `code`                          |
+| `list`       | `tree` (flat string if omitted) |
+| `table`      | none                            |
+| `unlisted`   | none                            |
 
 Anything outside the mapping table is a hard error at
 extract time, with the same exit code as a non-conformant
-file. Images, inline raw HTML, and custom inline nodes
-fall in this set. The `text` and `inline` default keys
-differ, so one paragraph entry can project `text` and
-another `inline` without colliding. A `bind:` override
-renames either key.
+file: images, inline raw HTML, and custom inline nodes.
+The `text` and `inline` default keys differ, so one
+paragraph can project each without colliding.
+
+## Tree projection for lists
+
+A list entry projects an array of own-text strings by
+default. Set `projection: tree` on a `kind: list` entry
+to project each item as an object instead. Each object
+carries:
+
+- `text` — the item's own inline text, flattened, with
+  soft wraps joined and any task marker removed.
+- `checked` — a bool, present only on a GFM task item
+  (`- [x]` / `- [ ]`). Detection matches the renderer: a
+  bare `[x]` and a no-space `[x]done` count; a non-marker
+  word like `[TODO]` does not and stays in `text`.
+- `children` — a recursive array of item objects, present
+  only when the item nests a sub-list.
+
+A checked task nesting one plain child projects as:
+
+```json
+{ "checked": true, "children": [{ "text": "child" }], "text": "done" }
+```
+
+The array order is the item order; ordered-list numbering
+and `start` are out of scope. YAML and msgpack emit the
+same tree. The
+[extract guide](../../guides/extract-markdown-as-data.md)
+has a full worked checklist.
 
 ## Custom binding with `bind`
 

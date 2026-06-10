@@ -196,7 +196,11 @@ func (p *projector) projectContent(
 		case schema.ContentKindCodeBlock:
 			p.setKey(obj, nextKey(base), p.codeBody(cm.Node))
 		case schema.ContentKindList:
-			p.setKey(obj, nextKey(base), p.listItems(cm.Node))
+			if cm.Entry.Projection == schema.ProjectionTree {
+				p.setKey(obj, nextKey(base), p.listTree(cm.Node))
+			} else {
+				p.setKey(obj, nextKey(base), p.listItems(cm.Node))
+			}
 		case schema.ContentKindTable:
 			p.setKey(obj, nextKey(base), p.tableRows(cm.Node))
 		case schema.ContentKindParagraph:
@@ -261,10 +265,29 @@ func (p *projector) listItems(n ast.Node) []any {
 	}
 	var items []any
 	for c := lst.FirstChild(); c != nil; c = c.NextSibling() {
-		items = append(items, strings.TrimSpace(
-			mdtext.ExtractPlainText(c, p.f.Source)))
+		items = append(items, p.itemOwnText(c))
 	}
 	return items
+}
+
+// itemOwnText returns a list item's own inline text — the text of its
+// direct block children, with any nested sub-list excluded. The bare
+// mdtext.ExtractPlainText recursion would splice a child item's text
+// into the parent with no separator (`boldnested child`), corrupting
+// the data; restricting it to non-List blocks keeps each flat string
+// to the item it belongs to. An item whose only content is a nested
+// list has no own text and projects as the empty string, preserving
+// the item's position in the array. Task markers (`[x]` / `[ ]`) are
+// left verbatim in flat mode, matching the historical output.
+func (p *projector) itemOwnText(item ast.Node) string {
+	var b strings.Builder
+	for c := item.FirstChild(); c != nil; c = c.NextSibling() {
+		if _, ok := c.(*ast.List); ok {
+			continue
+		}
+		b.WriteString(mdtext.ExtractPlainText(c, p.f.Source))
+	}
+	return strings.TrimSpace(b.String())
 }
 
 func (p *projector) tableRows(n ast.Node) []any {
