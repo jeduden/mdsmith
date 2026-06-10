@@ -19,13 +19,23 @@ func acceptsMap(t *testing.T, schema string, m map[string]any) bool {
 // TestCompile_subset exercises every construct the AST compiler supports,
 // one accept and one reject per shape, so each compiler and unify rule is
 // driven red/green through the public surface.
+type subsetCase struct {
+	name   string
+	schema string
+	data   map[string]any
+	accept bool
+}
+
 func TestCompile_subset(t *testing.T) {
-	cases := []struct {
-		name   string
-		schema string
-		data   map[string]any
-		accept bool
-	}{
+	for _, tc := range subsetCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.accept, acceptsMap(t, tc.schema, tc.data))
+		})
+	}
+}
+
+func subsetCases() []subsetCase {
+	return []subsetCase{
 		{"string atom ok", `{a: string}`, map[string]any{"a": "x"}, true},
 		{"string atom reject", `{a: string}`, map[string]any{"a": 1}, false},
 		{"int atom ok", `{a: int}`, map[string]any{"a": int64(3)}, true},
@@ -80,12 +90,6 @@ func TestCompile_subset(t *testing.T) {
 		{"prefix list ok", `{a: [int, ...int]}`, map[string]any{"a": []any{int64(1), int64(2)}}, true},
 		{"closed list length reject", `{a: [int, int]}`, map[string]any{"a": []any{int64(1)}}, false},
 		{"quoted label ok", `{"a-b": string}`, map[string]any{"a-b": "x"}, true},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := acceptsMap(t, tc.schema, tc.data)
-			assert.Equal(t, tc.accept, got)
-		})
 	}
 }
 
@@ -296,7 +300,8 @@ func TestString_nonString(t *testing.T) {
 // TestLiftMapValue covers the front-matter value lift across the Go types a
 // YAML/JSON decoder produces.
 func TestLiftMapValue(t *testing.T) {
-	schema, err := Compile(`{i: int, i2: int, f: float, fl: float, b: bool, s: string, n: null, l: [...int], m: {x: int}}`)
+	schema, err := Compile(`{i: int, i2: int, f: float, fl: float, b: bool, ` +
+		`s: string, n: null, l: [...int], m: {x: int}}`)
 	require.NoError(t, err)
 	data := map[string]any{
 		"i":  42,
