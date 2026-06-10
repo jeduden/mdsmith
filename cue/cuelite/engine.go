@@ -29,6 +29,33 @@ const (
 	kThunk                // a deferred expression awaiting sibling-field resolution
 )
 
+// defaultMode is a disjunction branch's default status, mirroring CUE's
+// per-disjunct mode (cue/internal/core/adt disjunct.go). A `*`-marked disjunct
+// is dfltIs; a sibling of a marked disjunct is dfltNot (it is explicitly not a
+// default); an unmarked disjunct in a disjunction with no marks is dfltMaybe.
+// The ordering dfltMaybe < dfltNot < dfltIs lets a meet/dedup combine two modes
+// by max with the spec's "default wins" precedence: a value that is a default
+// via ANY surviving pairing is a default (so `(*1|2|9) & (*2|3|9)` keeps 2 as
+// the default, the pair 2&2* being not&is = is), while two distinct sides with
+// no default-pairing stay not.
+type defaultMode uint8
+
+const (
+	dfltMaybe defaultMode = iota // unmarked, no mark in the disjunction
+	dfltNot                      // unmarked sibling of a marked disjunct
+	dfltIs                       // *-marked: a default
+)
+
+// combineMode combines two branch modes for a meet (U2) or a dedup, taking the
+// stronger (max) with dfltIs winning: a value defaulted on either side stays a
+// default, then a not-default, else maybe.
+func combineMode(a, b defaultMode) defaultMode {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 // atomKind names the base type of a typed atom or bounded scalar. number
 // admits both int and float; _ is the top type (represented as kTop, not
 // here). bytes is included for completeness though front matter never
@@ -151,14 +178,22 @@ type engineValue struct {
 	// kBound constraints
 	bounds []bound
 
-	// kDisjoint: branches are the disjuncts; defaults are the *-marked default
-	// disjuncts (zero, one, or several). The disjunction's effective default is
-	// the meet/join of defaults: empty means no default, one means that value,
-	// and several distinct defaults are ambiguous (non-concrete), matching CUE's
-	// default-of-meet rule. A meet of two disjunctions takes the meet of their
-	// defaults, so multiple marks survive until they collapse.
+	// kDisjoint: branches are the value disjuncts and modes is a parallel slice
+	// carrying each branch's default mode — the ⟨value, default⟩ pair CUE
+	// threads through evaluation as a per-disjunct mode (cue/internal/core/adt
+	// disjunct.go). A `*` mark sets a disjunct's mode to dfltIs (M1: *v =
+	// ⟨v,v⟩); building joins disjuncts keeping each mode; a meet takes the cross
+	// product of branches with the mode combined by max (U2: ⟨v1,d1⟩&⟨v2,d2⟩ =
+	// ⟨v1&v2, d1&d2⟩). The effective default is the branches whose mode is
+	// dfltIs: exactly one distinct value is the usable default, none or several
+	// is no usable default (the field stays non-concrete). When the value
+	// collapses to a single branch the disjunction IS that value with no mode —
+	// a single-branch disjunction is not a disjunction — so a nested default
+	// whose value collapsed (`*0|0`) is discarded at the outer level, matching
+	// CUE's nesting-sensitive default cancellation. modes is always the same
+	// length as branches.
 	branches []*engineValue
-	defaults []*engineValue
+	modes    []defaultMode
 
 	// kStruct
 	fields []field
@@ -207,20 +242,26 @@ func (v *engineValue) concreteScalarV() bool {
 	return false
 }
 
-// defaultValue resolves a disjunction's effective default. It deduplicates
-// the marked default disjuncts: none yields (nil, false) — the disjunction has
-// no default; exactly one yields that value; several DISTINCT defaults yield
-// (nil, true) — CUE treats multiple non-unifying defaults as ambiguous, so the
-// disjunction is non-concrete (e.g. `*1 | *2` reduces to the value 1 | 2 with
-// no usable default). Two equal concrete defaults collapse to one, so
-// `*1 | *1` keeps the default 1.
+// defaultValue resolves a disjunction's effective default from its per-branch
+// modes: the branches marked dfltIs are the default disjuncts. It returns (nil,
+// false) when none is marked — the disjunction has no default and stays
+// non-concrete — (the value, false) when exactly one distinct default survives,
+// and (nil, true) when several DISTINCT defaults are marked — CUE treats
+// multiple non-unifying defaults as ambiguous (`*1 | *2`), leaving the field
+// non-concrete. Equal concrete defaults collapse to one.
 func (v *engineValue) defaultValue() (*engineValue, bool) {
-	deduped := dedupeConcrete(v.defaults)
-	switch len(deduped) {
+	var defs []*engineValue
+	for i, br := range v.branches {
+		if i < len(v.modes) && v.modes[i] == dfltIs {
+			defs = append(defs, br)
+		}
+	}
+	defs = dedupeConcrete(defs)
+	switch len(defs) {
 	case 0:
 		return nil, false
 	case 1:
-		return deduped[0], false
+		return defs[0], false
 	default:
 		return nil, true
 	}

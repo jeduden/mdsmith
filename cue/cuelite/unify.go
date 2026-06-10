@@ -1,7 +1,6 @@
 package cuelite
 
 import (
-	"slices"
 	"strconv"
 	"unicode/utf8"
 )
@@ -363,129 +362,130 @@ func emptyInterval(lo, hi bound) bool {
 	return lo.num == hi.num && strict
 }
 
-// unifyDisjunction meets disjunction d with o, distributing the meet over d's
-// branches AND computing the meet's default per CUE's rule "the default of a
-// meet is the meet of the defaults". Each branch is met with o, ⊥ results are
-// dropped, and the survivors are deduped to the result's value branches. The
-// result's defaults are the meet of d's default operands with o's default
-// operands (each side's defaults are its marked disjuncts, or all its branches
-// when none are marked, or the value itself when it is not a disjunction),
-// again dropping ⊥ and deduping. A single survivor collapses to that value; an
-// empty result is ⊥.
+// unifyDisjunction meets disjunction d with o, taking the cross product of d's
+// branches with o's branches (each as a (value, mode) pair), per CUE's meet
+// rule U2: ⟨v1,d1⟩ & ⟨v2,d2⟩ = ⟨v1&v2, d1&d2⟩, the mode of each result branch
+// the combineMode (max) of its two parents'. A result branch whose meet
+// produced ANY bottom — top-level OR nested (a closed-struct violation, a field
+// conflict, a bound failure deep in a struct/list) — is pruned, so the
+// surviving branch decides the disjunction. The survivors are deduped (the
+// stronger mode kept). A single survivor collapses to that bare value; an empty
+// cross product is ⊥.
 //
-// So `(*1|int) & (*2|int)` reduces to the value `1|2|int` with the default
-// `1&2 = ⊥` dropped — no default survives, leaving the field non-concrete,
-// matching CUE. `(*1|2) & (2|3)` keeps the default `1&{2,3} = ⊥`, falling back
-// to the single surviving value 2.
+// So `(*1|int) & (*2|int)` reduces to `1|2|int`: the only both-default pair is
+// 1&2 = ⊥, dropped, so no default survives and the field stays non-concrete.
+// `(*1|2|9) & (*2|3|9)` keeps default 2 (the pair 2&2* is mode max(not,is)=is).
 func unifyDisjunction(d, o *engineValue, path []string) *engineValue {
-	survivors := meetBranches(d.branches, o, path)
-	survivors = dedupeConcrete(survivors)
-	switch len(survivors) {
-	case 0:
+	survivors := meetBranchModes(d, o, path)
+	if len(survivors) == 0 {
 		return mkBottom(path, "%s does not satisfy %s", o.describe(), d.describe())
-	case 1:
-		return survivors[0]
-	default:
-		defaults := meetDefaults(d, o, path)
-		defaults = retainByValue(defaults, survivors)
-		defaults = dedupeConcrete(defaults)
-		return &engineValue{kind: kDisjoint, branches: survivors, defaults: defaults}
 	}
-}
-
-// retainByValue keeps the default candidates that correspond to a surviving
-// value branch. A concrete default is kept when an equal concrete survivor
-// exists; a non-concrete default is kept unconditionally (it cannot be matched
-// by value and a stuck default still makes the disjunction non-concrete, which
-// is the conservative outcome). This bridges meetDefaults' fresh meet nodes —
-// which are never pointer-identical to the survivor meets — to the value set,
-// so a default that the value set does not actually contain is dropped.
-func retainByValue(defaults, survivors []*engineValue) []*engineValue {
-	if len(defaults) == 0 {
-		return nil
+	survivors = dedupeBranchModes(survivors)
+	if len(survivors) == 1 {
+		return survivors[0].v
 	}
-	var out []*engineValue
-	for _, d := range defaults {
-		if !d.concreteScalarV() {
-			out = append(out, d)
-			continue
-		}
-		for _, s := range survivors {
-			if survivorContainsValue(s, d) {
-				out = append(out, d)
-				break
-			}
-		}
+	out := &engineValue{kind: kDisjoint}
+	out.branches = make([]*engineValue, len(survivors))
+	out.modes = make([]defaultMode, len(survivors))
+	for i, s := range survivors {
+		out.branches[i] = s.v
+		out.modes[i] = s.mode
 	}
 	return out
 }
 
-// survivorContainsValue reports whether a surviving value branch holds the
-// concrete scalar d — either because the survivor IS that scalar, or because
-// the survivor is itself a disjunction one of whose branches is that scalar.
-// A meet branch can stay a disjunction (`int & (*1|int)` survives as `1|int`),
-// so a default that the cross-product produced (`int & 1 = 1`) is present in
-// the value set even when no survivor is the bare concrete scalar. Without the
-// nested-disjunction check the default `1` of `(0|int) & (*1|int)` would be
-// dropped and the field wrongly left non-concrete.
-func survivorContainsValue(s, d *engineValue) bool {
-	if s.concreteScalarV() {
-		return concreteEqual(s, d)
+// meetBranchModes takes the cross product of d's (value, mode) branches with
+// o's, meeting each pair. A branch whose meet contains a bottom leaf (top-level
+// OR nested — a deep closed-struct violation, field conflict, or bound failure)
+// is pruned WHENEVER at least one branch met cleanly: the surviving clean
+// branch decides the disjunction (CUE's branch-failure rule, P0c). But when
+// EVERY branch's meet contains a bottom, the dirty branches are kept so their
+// nested bottom leaves surface at validate (the disjunction fails, and the
+// failing field — not just a root summary — is reported). The result branch's
+// mode is combineMode of its two parents'. A non-disjunction operand
+// contributes one branch (mode dfltMaybe).
+func meetBranchModes(d, o *engineValue, path []string) []branchMode {
+	dm := branchModesOf(d)
+	om := branchModesOf(o)
+	var clean, dirty []branchMode
+	for _, db := range dm {
+		for _, ob := range om {
+			m := unifyV(db.v, ob.v, path)
+			bm := branchMode{v: m, mode: combineMode(db.mode, ob.mode)}
+			switch {
+			case m.isBottomV():
+				// A TOP-LEVEL bottom branch is dropped outright: it carries no
+				// nested leaf to surface and a clean or nested-dirty branch is a
+				// better failure witness.
+				continue
+			case hasBottomLeaf(m):
+				dirty = append(dirty, bm)
+			default:
+				clean = append(clean, bm)
+			}
+		}
 	}
-	if s.kind != kDisjoint {
+	if len(clean) > 0 {
+		return clean
+	}
+	// No branch met cleanly: keep the nested-dirty branches so their buried
+	// bottom leaves (a deep field conflict) surface at validate, naming the
+	// failing field rather than only a root summary.
+	return dirty
+}
+
+// branchModesOf returns the (value, mode) branches of a value: a disjunction's
+// own branches+modes, or a single dfltMaybe branch for any other value (a
+// non-disjunction operand of a meet has no default mark of its own).
+func branchModesOf(v *engineValue) []branchMode {
+	if v.kind != kDisjoint {
+		return []branchMode{{v: v, mode: dfltMaybe}}
+	}
+	out := make([]branchMode, len(v.branches))
+	for i, br := range v.branches {
+		m := dfltMaybe
+		if i < len(v.modes) {
+			m = v.modes[i]
+		}
+		out[i] = branchMode{v: br, mode: m}
+	}
+	return out
+}
+
+// hasBottomLeaf reports whether v is a bottom or contains a bottom anywhere a
+// meet could have buried one: a struct field, a list element, or a disjunction
+// branch. A disjunction branch whose meet produced a NESTED bottom (a deep
+// closed-struct violation or field conflict) must be pruned exactly like a
+// top-level bottom, so the surviving branch decides the disjunction (CUE's
+// branch-failure rule). The walk descends structs and lists; it does not need
+// to descend a kDisjoint operand differently — a surviving disjunction branch
+// is itself a valid value, so only an actual bottom leaf prunes.
+func hasBottomLeaf(v *engineValue) bool {
+	switch v.kind {
+	case kBottom:
+		return true
+	case kStruct:
+		for _, f := range v.fields {
+			if hasBottomLeaf(f.val) {
+				return true
+			}
+		}
+	case kList:
+		for _, el := range v.prefix {
+			if hasBottomLeaf(el) {
+				return true
+			}
+		}
+		if v.elem != nil && hasBottomLeaf(v.elem) {
+			return true
+		}
+	case kDisjoint:
+		// A disjunction survives as long as one branch is non-bottom; a buried
+		// bottom branch was already pruned when that disjunction was built or met.
+		// So a kDisjoint here is a valid value, never a failed branch.
 		return false
 	}
-	return slices.ContainsFunc(s.branches, func(br *engineValue) bool {
-		return survivorContainsValue(br, d)
-	})
-}
-
-// meetBranches meets every branch of a disjunction with o, dropping the ⊥
-// results, returning the surviving meets.
-func meetBranches(branches []*engineValue, o *engineValue, path []string) []*engineValue {
-	var out []*engineValue
-	for _, br := range branches {
-		m := unifyV(br, o, path)
-		if m.isBottomV() {
-			continue
-		}
-		out = append(out, m)
-	}
-	return out
-}
-
-// meetDefaults computes the default operands of the meet d & o: the
-// cross-product meet of d's default operands and o's default operands, with ⊥
-// results dropped. The returned values are fresh meets, candidates for the
-// result's defaults once retained to the surviving value branches.
-func meetDefaults(d, o *engineValue, path []string) []*engineValue {
-	var out []*engineValue
-	for _, dd := range defaultOperands(d) {
-		for _, od := range defaultOperands(o) {
-			m := unifyV(dd, od, path)
-			if m.isBottomV() {
-				continue
-			}
-			out = append(out, m)
-		}
-	}
-	return out
-}
-
-// defaultOperands returns the values that stand in for v when computing the
-// default of a meet: a disjunction's marked defaults if it has any, else all
-// its branches; any other value is its own default. This makes a meet's
-// default fall back to the FULL value of a default-less operand, so
-// `(*1|2) & (2|3)` meets {1} against {2,3} (yielding ⊥) rather than against an
-// absent default.
-func defaultOperands(v *engineValue) []*engineValue {
-	if v.kind != kDisjoint {
-		return []*engineValue{v}
-	}
-	if len(v.defaults) > 0 {
-		return v.defaults
-	}
-	return v.branches
+	return false
 }
 
 // dedupeConcrete removes later duplicates of a concrete scalar from a
@@ -684,37 +684,24 @@ func forceThunkValue(v *engineValue, scope map[string]*engineValue) *engineValue
 		if !hasThunkValue(v) {
 			return v
 		}
-		branches := make([]*engineValue, len(v.branches))
+		// Force each branch, preserving its mode, then re-reduce so a forced
+		// branch that dropped to ⊥ or collapsed is handled exactly like a
+		// freshly built disjunction. The disjunction already carries an explicit
+		// mode per branch (dfltIs/dfltNot survive a force), so buildDisjunction
+		// must NOT re-raise maybe→not: pass hasMark=false and let the carried
+		// modes stand.
+		forced := make([]branchMode, len(v.branches))
 		for i, br := range v.branches {
-			branches[i] = forceThunkValue(br, scope)
+			m := dfltMaybe
+			if i < len(v.modes) {
+				m = v.modes[i]
+			}
+			forced[i] = branchMode{v: forceThunkValue(br, scope), mode: m}
 		}
-		// Map the original default branches onto their forced counterparts by
-		// position, then re-reduce so a forced branch that dropped to ⊥ or
-		// collapsed is handled exactly like a freshly built disjunction.
-		forcedDefaults := mapDefaults(v.branches, branches, v.defaults)
-		return buildDisjunction(branches, forcedDefaults)
+		return buildDisjunction(forced, false)
 	default:
 		return v
 	}
-}
-
-// mapDefaults maps each default in olds (a subset of origBranches, by pointer)
-// onto the same-position entry of forcedBranches, so a disjunction's defaults
-// survive a force pass that rebuilt its branches.
-func mapDefaults(origBranches, forcedBranches, olds []*engineValue) []*engineValue {
-	if len(olds) == 0 {
-		return nil
-	}
-	var out []*engineValue
-	for i, br := range origBranches {
-		for _, d := range olds {
-			if d == br {
-				out = append(out, forcedBranches[i])
-				break
-			}
-		}
-	}
-	return out
 }
 
 // indexFields builds a name→index map over a field slice for O(1) lookup

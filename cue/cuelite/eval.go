@@ -400,108 +400,154 @@ func numericAwareEqual(a, b *engineValue) bool {
 	return concreteEqual(a, b)
 }
 
-// evalDisjunction builds a disjunction value in a scope, flattening nested |
-// and recording every *-marked default disjunct. A branch that defers leaves
-// the whole disjunction deferred.
-//
-// Construction is where CUE's build-time disjunction reductions happen:
-//   - A ⊥ disjunct is dropped (CUE: `0&1 | 2` keeps only 2); if every disjunct
-//     is ⊥ the disjunction is itself ⊥ — CUE reports "errors in empty
-//     disjunction" at compile time.
-//   - Equal concrete disjuncts collapse to one (`"x" | "x"` is the concrete
-//     "x"), so the result is concrete rather than a stuck two-branch value.
-//   - A parenthesized nested disjunction flattens, and its inner default marks
-//     are carried up (`(*1|2)|3` keeps 1 as the default), so the nested
-//     default is not lost.
-//
-// A defer (an unresolved sibling reference) skips these reductions and leaves
-// the whole expression to become a thunk; the reductions then run when the
-// thunk is forced against data.
+// branchMode is one disjunct as a (value, default-mode) pair — the in-house
+// face of CUE's per-disjunct mode (cue/internal/core/adt disjunct.go). A nested
+// disjunction is flattened into several branchModes, each carrying its own
+// mode, so the nesting-sensitive default propagation survives the flatten.
+type branchMode struct {
+	v    *engineValue
+	mode defaultMode
+}
+
+// evalDisjunction builds a disjunction value in a scope, threading CUE's
+// per-disjunct default mode through the flatten. A `*` mark on a disjunct sets
+// its mode to dfltIs (M1); an unmarked disjunct in a disjunction that HAS a
+// mark is dfltNot; with no mark at all every disjunct is dfltMaybe. A branch
+// that defers leaves the whole disjunction deferred; the reductions then run
+// when the thunk is forced against data.
 func evalDisjunction(n *ast.BinaryExpr, scope map[string]*engineValue) (*engineValue, error) {
-	var branches []*engineValue
-	var defaults []*engineValue
-	var walk func(e ast.Expr, defaulted bool) error
-	walk = func(e ast.Expr, defaulted bool) error {
+	var branches []branchMode
+	hasMark := false
+	var walk func(e ast.Expr, marked bool) error
+	walk = func(e ast.Expr, marked bool) error {
 		if u, ok := e.(*ast.UnaryExpr); ok && u.Op == token.MUL {
 			// A * mark applies to its whole operand, including a parenthesized
 			// nested disjunction, so every disjunct underneath inherits it.
 			return walk(u.X, true)
 		}
-		if p, ok := e.(*ast.ParenExpr); ok {
-			return walk(p.X, defaulted)
-		}
+		// A ParenExpr is NOT descended structurally: explicit parens create a
+		// SUB-DISJUNCTION boundary, so the paren is evaluated as a unit by
+		// evalChild and flattened by value (flattenDisjunct), where a sub-
+		// disjunction whose value collapses to one branch loses its default —
+		// the nesting-sensitive cancellation. Only an UNPARENTHESIZED `b.Op ==
+		// OR` continues the flat walk (`a | b | c` is one disjunction).
 		if b, ok := e.(*ast.BinaryExpr); ok && b.Op == token.OR {
-			if err := walk(b.X, defaulted); err != nil {
+			if err := walk(b.X, marked); err != nil {
 				return err
 			}
-			return walk(b.Y, defaulted)
+			return walk(b.Y, marked)
 		}
-		br, err := evalChild(e, scope)
+		v, err := evalChild(e, scope)
 		if err != nil {
 			return err
 		}
-		branches = append(branches, br)
-		if defaulted {
-			defaults = append(defaults, br)
+		if marked {
+			hasMark = true
 		}
+		branches = append(branches, flattenDisjunct(v, marked)...)
 		return nil
 	}
 	if err := walk(n, false); err != nil {
 		return nil, err
 	}
-	return buildDisjunction(branches, defaults), nil
+	return buildDisjunction(branches, hasMark), nil
 }
 
-// buildDisjunction reduces a freshly-walked set of disjuncts and defaults into
-// a disjunction value, applying CUE's build-time reductions: drop ⊥ disjuncts,
-// collapse equal concrete disjuncts, and surface an all-⊥ disjunction as a ⊥
-// ("errors in empty disjunction"). A single surviving disjunct collapses to
-// that value (with no disjunction wrapper). Defaults are filtered to the
-// surviving branch set and likewise deduped.
-func buildDisjunction(branches, defaults []*engineValue) *engineValue {
-	live := dropBottomBranches(branches)
+// flattenDisjunct turns a built disjunct value into one or more branchModes. A
+// nested disjunction value is flattened into its own branches, each carrying
+// its existing mode UNLESS this disjunct is *-marked, in which case every inner
+// branch becomes dfltIs (M1 over the whole sub-disjunction: `*(1|2)` marks 1
+// and 2). A non-disjunction value is a single branch whose mode is dfltIs when
+// marked, else dfltMaybe (raised to dfltNot later if the disjunction has marks).
+func flattenDisjunct(v *engineValue, marked bool) []branchMode {
+	if v.kind == kDisjoint {
+		out := make([]branchMode, len(v.branches))
+		for i, br := range v.branches {
+			m := dfltMaybe
+			if i < len(v.modes) {
+				m = v.modes[i]
+			}
+			if marked {
+				m = dfltIs
+			}
+			out[i] = branchMode{v: br, mode: m}
+		}
+		return out
+	}
+	if marked {
+		return []branchMode{{v: v, mode: dfltIs}}
+	}
+	return []branchMode{{v: v, mode: dfltMaybe}}
+}
+
+// buildDisjunction reduces a flat set of (value, mode) branches into a value,
+// applying CUE's build-time reductions: drop ⊥ disjuncts, collapse equal
+// concrete value-branches (keeping the stronger mode), and surface an all-⊥ set
+// as a compile ⊥ ("empty disjunction"). When the disjunction HAS any explicit
+// mark, every unmarked maybe-branch is raised to dfltNot (the spec mode
+// function: an unmarked sibling of a marked disjunct is notDefault). A single
+// surviving value collapses to that bare value with NO mode — a single-branch
+// disjunction is not a disjunction, so a nested default whose value collapsed
+// (`*0|0`) is discarded here, matching CUE's nesting-sensitive cancellation.
+func buildDisjunction(branches []branchMode, hasMark bool) *engineValue {
+	live := branches[:0:0]
+	for _, b := range branches {
+		if b.v.isBottomV() {
+			continue
+		}
+		live = append(live, b)
+	}
 	if len(live) == 0 {
 		// Every disjunct reduced to ⊥. CUE rejects this at compile time as an
 		// empty disjunction rather than deferring to validate.
 		return mkBottom(nil, "empty disjunction: every disjunct is bottom")
 	}
-	live = dedupeConcrete(live)
-	keptDefaults := retainBranches(defaults, live)
-	keptDefaults = dedupeConcrete(keptDefaults)
-	if len(live) == 1 && len(keptDefaults) <= 1 {
-		// A single surviving disjunct is just that value. (A surviving default
-		// equal to it adds nothing.)
-		return live[0]
-	}
-	return &engineValue{kind: kDisjoint, branches: live, defaults: keptDefaults}
-}
-
-// dropBottomBranches returns the non-⊥ entries of branches.
-func dropBottomBranches(branches []*engineValue) []*engineValue {
-	out := branches[:0:0]
-	for _, br := range branches {
-		if br.isBottomV() {
-			continue
+	// Dedup BEFORE raising maybe→not so an unmarked sibling equal to a marked
+	// disjunct keeps the default (spec: "def + maybe → def"); only a maybe that
+	// survives dedup distinct from every mark is raised to dfltNot.
+	live = dedupeBranchModes(live)
+	if hasMark {
+		for i := range live {
+			if live[i].mode == dfltMaybe {
+				live[i].mode = dfltNot
+			}
 		}
-		out = append(out, br)
+	}
+	if len(live) == 1 {
+		// A single surviving value is just that value — not a disjunction — so it
+		// carries no mode. A nested disjunction whose value collapsed to one
+		// branch (`*0|0`) thus loses its default here, matching CUE.
+		return live[0].v
+	}
+	out := &engineValue{kind: kDisjoint}
+	out.branches = make([]*engineValue, len(live))
+	out.modes = make([]defaultMode, len(live))
+	for i, b := range live {
+		out.branches[i] = b.v
+		out.modes[i] = b.mode
 	}
 	return out
 }
 
-// retainBranches keeps only the entries of defaults that are still present
-// (by pointer identity) in the surviving branch set, so a default whose branch
-// was dropped as ⊥ does not haunt the result.
-func retainBranches(defaults, live []*engineValue) []*engineValue {
-	if len(defaults) == 0 {
-		return nil
-	}
-	var out []*engineValue
-	for _, d := range defaults {
-		for _, b := range live {
-			if d == b {
-				out = append(out, d)
-				break
+// dedupeBranchModes removes later duplicates of a concrete scalar branch,
+// keeping the stronger mode of the duplicates (combineMode): the spec note
+// "def + maybe → def" means a `*0 | 0` collapses to a single 0 that stays a
+// default. A non-concrete branch is never equal to another and is always kept.
+func dedupeBranchModes(branches []branchMode) []branchMode {
+	out := branches[:0:0]
+	for _, b := range branches {
+		merged := false
+		if b.v.concreteScalarV() {
+			for i := range out {
+				if out[i].v.concreteScalarV() && concreteEqual(out[i].v, b.v) {
+					out[i].mode = combineMode(out[i].mode, b.mode)
+					merged = true
+					break
+				}
 			}
+		}
+		if !merged {
+			out = append(out, b)
 		}
 	}
 	return out
