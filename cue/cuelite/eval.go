@@ -207,33 +207,53 @@ func evalComprehension(c *ast.Comprehension, scope map[string]*engineValue) (boo
 	if !ok {
 		return false, nil, fmt.Errorf("cuelite: unsupported comprehension clause %T", c.Clauses[0])
 	}
+	body, ok := c.Value.(*ast.StructLit)
+	if !ok {
+		return false, nil, fmt.Errorf("cuelite: comprehension body must be a struct, got %T", c.Value)
+	}
 	cond, err := evalExpr(ifc.Condition, scope)
 	if err != nil {
-		return false, nil, err
+		if !stderrors.Is(err, errUnresolved) {
+			return false, nil, err
+		}
+		// The condition is an unresolved reference: the comprehension defers.
+		// Still compile the BODY so a hard error in it (`{string != ""}`) is
+		// caught at compile, matching CUE — which rejects the body's invalid
+		// operand regardless of whether the condition selects it.
+		return false, nil, deferWithBodyCheck(body, scope)
 	}
 	if cond.kind != kBool {
 		// A CONCRETE non-bool condition (`if ""`, `if 1`) is a type error CUE
 		// rejects at compile ("cannot use \"\" (type string) as type bool"). A
-		// NON-concrete condition (a type or top, e.g. a still-unresolved
-		// reference that resolved to `string`) defers: the enclosing list element
-		// becomes a thunk awaiting data. Distinguishing the two avoids deferring
-		// an `if` whose condition can never become a bool — which would surface
-		// as an empty-freeRefs panic in compileExpr.
+		// NON-concrete condition (a type or top, `if string`) defers: the
+		// enclosing list element becomes a thunk awaiting data. Distinguishing
+		// the two avoids deferring an `if` whose condition can never become a
+		// bool — which would surface as an empty-freeRefs panic in compileExpr.
 		if isConcrete(cond) {
 			return false, nil, fmt.Errorf(
 				"cuelite: invalid operation: if condition must be a bool, got %s", cond.describe())
 		}
-		return false, nil, errUnresolved
-	}
-	body, ok := c.Value.(*ast.StructLit)
-	if !ok {
-		return false, nil, fmt.Errorf("cuelite: comprehension body must be a struct, got %T", c.Value)
+		return false, nil, deferWithBodyCheck(body, scope)
 	}
 	bv, err := evalStruct(body, scope)
 	if err != nil {
 		return false, nil, err
 	}
 	return cond.b, bv, nil
+}
+
+// deferWithBodyCheck compiles a deferring comprehension's body solely to
+// surface a HARD error (an unsupported construct, a type-mismatched
+// comparison) the way CUE rejects the body eagerly. A body whose own
+// references merely defer (errUnresolved) is fine — it resolves once the
+// comprehension forces against data — so a body deferral returns errUnresolved
+// (the comprehension defers); any other body error is returned as the hard
+// rejection.
+func deferWithBodyCheck(body *ast.StructLit, scope map[string]*engineValue) error {
+	if _, err := evalStruct(body, scope); err != nil && !stderrors.Is(err, errUnresolved) {
+		return err
+	}
+	return errUnresolved
 }
 
 // evalBinary evaluates a binary expression in a scope. An == or != between a

@@ -305,6 +305,12 @@ func extraFuzzSeeds() []struct{ schema, data string } {
 		// error rather than defer past it on an earlier element.
 		{`({mechanism:[if mechanism{},(string*"")][0]})`, `0`},
 		{`{a: [if c {}, (string*"")][0], c: bool}`, `{"c":true}`},
+		// A hard error in a comprehension BODY whose condition defers
+		// (`{string != ""}` compares a type, not a concrete value): CUE rejects
+		// the body's invalid operand at compile regardless of the condition; the
+		// in-house engine must compile the deferred body to catch it.
+		{`({mechanism:[if mechanism{string!=""}][0]})`, `0`},
+		{`{x: [if string {string != ""}][0]}`, `0`},
 		// A lone-surrogate escape in a VALUE position (hatch 2) and in a KEY
 		// position (now rejected in both arms — no hatch). Seeding both keeps
 		// the surrogate classes exercised on every run.

@@ -154,6 +154,35 @@ func TestThunk_forClauseRejected(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestComprehension_deferredBodyHardError pins that a HARD error in a
+// comprehension body is caught at compile even when the condition defers — CUE
+// rejects the body's invalid operand regardless of whether the condition
+// selects it. A body whose references merely defer still compiles.
+func TestComprehension_deferredBodyHardError(t *testing.T) {
+	t.Run("hard error under an unresolved-reference condition", func(t *testing.T) {
+		// `mechanism` is unresolved, so the condition defers; the body
+		// `{string != ""}` is an invalid operand that must reject at compile.
+		_, err := Compile(`({mechanism:[if mechanism{string!=""}][0]})`)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "requires a concrete operand")
+	})
+	t.Run("hard error under a non-concrete-type condition", func(t *testing.T) {
+		// `if string` is a non-concrete-type condition (it evaluates, not
+		// defers as a reference), so it takes the non-concrete path; the body's
+		// hard error must still reject.
+		_, err := Compile(`{x: [if string {string != ""}][0]}`)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "requires a concrete operand")
+	})
+	t.Run("a deferring body compiles when the condition defers", func(t *testing.T) {
+		// The body `{string & != ""}` is a valid bound, not a hard error, so the
+		// comprehension defers and resolves against data.
+		v, err := Compile(`{m: string, x: [if m == "a" {string & != ""}][0]}`)
+		require.NoError(t, err)
+		assert.NoError(t, v.CompileMap(map[string]any{"m": "a", "x": "ok"}).Validate())
+	})
+}
+
 // TestCompareConcrete_errors covers compareConcrete's error branches: a
 // regex comparison against a non-string and a comparison of incomparable
 // kinds, reached through a forced thunk.
