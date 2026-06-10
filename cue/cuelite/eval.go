@@ -113,6 +113,17 @@ func evalIdent(n *ast.Ident, scope map[string]*engineValue) (*engineValue, error
 	if !ok || v == nil {
 		return nil, errUnresolved
 	}
+	// A sibling whose value is a DEFAULTED disjunction resolves to its default
+	// for a comparison or condition: CUE reads `m == "p"` against `m: string |
+	// *"p"` as true (the default "p"). A non-defaulted disjunction has no usable
+	// default — it stays non-concrete, so the reference defers (and CUE rejects
+	// the sibling as incomplete).
+	if v.kind == kDisjoint {
+		if def, _ := v.defaultValue(); def != nil && isConcrete(def) {
+			return def, nil
+		}
+		return nil, errUnresolved
+	}
 	if !isConcrete(v) {
 		return nil, errUnresolved
 	}
@@ -280,6 +291,16 @@ func evalBinary(n *ast.BinaryExpr, scope map[string]*engineValue) (*engineValue,
 		r, err := evalExpr(n.Y, scope)
 		if err != nil {
 			return nil, err
+		}
+		// When either operand carries an unforced thunk (a deferred branch such
+		// as `0 < A` inside `(int) & (0<A|int)`), DEFER the whole meet to a thunk
+		// rather than running it eagerly: an eager unifyV would force the thunk
+		// with no scope, drop the ⊥ branch, and silently erase the undeclared
+		// reference. Deferring keeps the thunk visible so the enclosing struct's
+		// checkThunkRefs descends it and rejects an undeclared name at compile,
+		// matching CUE's eager "reference X not found".
+		if hasThunkValue(l) || hasThunkValue(r) {
+			return deferToThunk(n), nil
 		}
 		return unifyV(l, r, nil), nil
 	case token.OR:

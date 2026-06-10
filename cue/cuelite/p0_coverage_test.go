@@ -66,18 +66,22 @@ func TestNestedThunkInOpenListTail(t *testing.T) {
 func TestForceThunkValue_nonThunkPassthrough(t *testing.T) {
 	scope := map[string]*engineValue{}
 	plain := &engineValue{kind: kInt, i: 1}
-	assert.Same(t, plain, forceThunkValue(plain, scope))
+	assert.Same(t, plain, forceThunkValue(plain, scope, false))
 	list := &engineValue{kind: kList, prefix: []*engineValue{plain}}
-	assert.Same(t, list, forceThunkValue(list, scope))
-	disj := &engineValue{kind: kDisjoint, branches: []*engineValue{plain, {kind: kInt, i: 2}}}
-	assert.Same(t, disj, forceThunkValue(disj, scope))
+	assert.Same(t, list, forceThunkValue(list, scope, false))
+	disj := &engineValue{
+		kind:     kDisjoint,
+		branches: []*engineValue{plain, {kind: kInt, i: 2}},
+		modes:    []defaultMode{dfltMaybe, dfltMaybe},
+	}
+	assert.Same(t, disj, forceThunkValue(disj, scope, false))
 }
 
 // TestForcedDisjunctionKeepsDefault drives a disjunction whose DEFAULT branch
-// is a thunk: forcing maps the default onto its forced counterpart
-// (mapDefaults), so the resolved default survives the force pass. The schema
-// `x: *(m == "a") | "z"` defaults to the comparison; with m="a" the default
-// resolves to true and an absent x takes it.
+// is a thunk: forcing preserves the branch's default mode, so the resolved
+// default survives the force pass. The schema `x: *(m == "a") | "z"` defaults
+// to the comparison; with m="a" the default resolves to true and an absent x
+// takes it.
 func TestForcedDisjunctionKeepsDefault(t *testing.T) {
 	s, err := Compile(`{m: string, x?: *(m == "a") | "z"}`)
 	require.NoError(t, err)

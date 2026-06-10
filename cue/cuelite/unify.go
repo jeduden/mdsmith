@@ -524,14 +524,12 @@ func unifyStruct(v, o *engineValue, path []string) *engineValue {
 	// both in hand: a schema thunk like `[if mechanism == "push" {…}, …][0]`
 	// resolves against the concrete sibling values data supplies. The scope
 	// draws from BOTH structs' concrete fields, so a schema-side reference to
-	// a data-side sibling resolves.
-	scope := concreteScope(v, o)
-	if hasThunkField(v) {
-		v = forceThunks(v, scope)
-	}
-	if hasThunkField(o) {
-		o = forceThunks(o, scope)
-	}
+	// a data-side sibling resolves. A FIXPOINT loop re-forces until no thunk
+	// newly resolves in a pass: an acyclic chain `n: [if m…][0], o: [if n…][0]`
+	// resolves n in pass 1 (m is concrete), then o in pass 2 (n is now
+	// concrete). The acyclic-schema guarantee bounds the loop by the field
+	// count; a remaining thunk after the fixpoint surfaces as today.
+	v, o = forceThunkFixpoint(v, o)
 	closed := v.closed || o.closed
 	out := &engineValue{kind: kStruct, closed: closed}
 	oIndex := indexFields(o.fields)
@@ -572,6 +570,50 @@ func unifyStruct(v, o *engineValue, path []string) *engineValue {
 		out.fields = append(out.fields, of)
 	}
 	return out
+}
+
+// forceThunkFixpoint repeatedly forces the thunk fields of v and o against the
+// scope of their combined concrete fields until a pass resolves no new thunk —
+// the fixpoint of CUE's lazy field resolution. Each pass rebuilds the scope
+// from the (possibly newly-forced) fields, so a thunk that depends on another
+// thunk's result resolves once the earlier thunk forced. The loop is bounded by
+// the total field count: an acyclic schema resolves one more thunk per pass, so
+// it terminates; the bound also caps a pathological input. A thunk still
+// unresolved after the fixpoint is left as the ⊥ its force pass yields, so it
+// surfaces at validate.
+func forceThunkFixpoint(v, o *engineValue) (*engineValue, *engineValue) {
+	bound := len(v.fields) + len(o.fields) + 1
+	for pass := 0; pass < bound; pass++ {
+		if !hasThunkField(v) && !hasThunkField(o) {
+			return v, o
+		}
+		scope := concreteScope(v, o)
+		before := len(scope)
+		// SOFT force: a thunk whose references are not yet concrete is left for a
+		// later pass rather than collapsed to ⊥, so a chain `n: …, o: [if n…]`
+		// resolves n first, then o.
+		if hasThunkField(v) {
+			v = forceThunks(v, scope, true)
+		}
+		if hasThunkField(o) {
+			o = forceThunks(o, scope, true)
+		}
+		// A pass that grew no new concrete field has reached the fixpoint: the
+		// remaining thunks reference a still-unresolved (or absent) sibling.
+		if len(concreteScope(v, o)) == before {
+			break
+		}
+	}
+	// A HARD final force collapses any thunk the fixpoint could not resolve to
+	// the ⊥ its force pass yields, so an unresolvable thunk surfaces at validate.
+	scope := concreteScope(v, o)
+	if hasThunkField(v) {
+		v = forceThunks(v, scope, false)
+	}
+	if hasThunkField(o) {
+		o = forceThunks(o, scope, false)
+	}
+	return v, o
 }
 
 // concreteScope builds a name→value scope from the concrete fields of two
@@ -639,19 +681,36 @@ func hasThunkValue(v *engineValue) bool {
 
 // forceThunks returns a copy of struct v with every thunk reachable in a
 // direct field — or nested in that field's list elements or disjunction
-// branches — replaced by the value it evaluates to against scope. A thunk
-// whose references are still unresolved evaluates to a ⊥ (deferToThunk's
-// fallback), so Validate reports it rather than silently accepting an unforced
-// schema field. A nested struct is left untouched: it forces its own thunks
-// against its own scope when it is unified.
-func forceThunks(v *engineValue, scope map[string]*engineValue) *engineValue {
+// branches — replaced by the value it evaluates to against scope. When soft is
+// true a thunk whose references are not yet all concrete in scope is left as a
+// thunk for a later fixpoint pass (so a chain `n: …, o: [if n…]` does not
+// collapse o to ⊥ before n resolves); when soft is false a still-unresolved
+// thunk evaluates to a ⊥ (deferToThunk's fallback), so Validate reports it
+// rather than silently accepting an unforced schema field. A nested struct is
+// left untouched: it forces its own thunks against its own scope when it is
+// unified.
+func forceThunks(v *engineValue, scope map[string]*engineValue, soft bool) *engineValue {
 	out := *v
 	out.fields = make([]field, len(v.fields))
 	for i, f := range v.fields {
 		out.fields[i] = f
-		out.fields[i].val = forceThunkValue(f.val, scope)
+		out.fields[i].val = forceThunkValue(f.val, scope, soft)
 	}
 	return &out
+}
+
+// thunkResolvable reports whether every sibling reference a thunk needs is
+// present and concrete in scope, so a soft force may evaluate it. A thunk with
+// an unresolved reference is deferred to a later fixpoint pass instead of
+// collapsing to ⊥.
+func thunkResolvable(v *engineValue, scope map[string]*engineValue) bool {
+	for _, ref := range v.thunkRefs {
+		s, ok := scope[ref]
+		if !ok || !isConcrete(s) {
+			return false
+		}
+	}
+	return true
 }
 
 // forceThunkValue forces a thunk anywhere it sits in v — v itself, a list
@@ -662,10 +721,14 @@ func forceThunks(v *engineValue, scope map[string]*engineValue) *engineValue {
 // disjunction's defaults and concreteness exactly as a compile-time branch
 // would. A nested struct is returned unchanged: it forces its own thunks
 // against its own scope when it is unified, so the outer scope must not leak
-// into it. Any other value has no thunk and is returned as-is.
-func forceThunkValue(v *engineValue, scope map[string]*engineValue) *engineValue {
+// into it. Any other value has no thunk and is returned as-is. When soft, a
+// thunk whose references are not all concrete in scope is returned unchanged.
+func forceThunkValue(v *engineValue, scope map[string]*engineValue, soft bool) *engineValue {
 	switch v.kind {
 	case kThunk:
+		if soft && !thunkResolvable(v, scope) {
+			return v
+		}
 		return v.thunkExpr(scope)
 	case kList:
 		if !hasThunkValue(v) {
@@ -674,10 +737,10 @@ func forceThunkValue(v *engineValue, scope map[string]*engineValue) *engineValue
 		out := *v
 		out.prefix = make([]*engineValue, len(v.prefix))
 		for i, el := range v.prefix {
-			out.prefix[i] = forceThunkValue(el, scope)
+			out.prefix[i] = forceThunkValue(el, scope, soft)
 		}
 		if v.elem != nil {
-			out.elem = forceThunkValue(v.elem, scope)
+			out.elem = forceThunkValue(v.elem, scope, soft)
 		}
 		return &out
 	case kDisjoint:
@@ -696,7 +759,7 @@ func forceThunkValue(v *engineValue, scope map[string]*engineValue) *engineValue
 			if i < len(v.modes) {
 				m = v.modes[i]
 			}
-			forced[i] = branchMode{v: forceThunkValue(br, scope), mode: m}
+			forced[i] = branchMode{v: forceThunkValue(br, scope, soft), mode: m}
 		}
 		return buildDisjunction(forced, false)
 	default:
