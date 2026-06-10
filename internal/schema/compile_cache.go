@@ -6,17 +6,17 @@ import (
 )
 
 // CompiledCUE wraps a compiled cuelite.Value for the schema-side CUE
-// constraint. A cuelite.Value is context-free at this façade boundary —
-// it retains the source it was compiled from, so a cross-context Unify
-// rebuilds it into the data's context rather than requiring callers to
-// carry a *cue.Context. The wrapper is what RunCache.CompiledCUE stores,
-// shared by the schema package's frontmatter validator and the
-// requiredstructure rule's validateCUESchemaSyntax / validateFrontMatterCUE.
+// constraint. Post-flip a cuelite.Value is an immutable, context-free value
+// in the in-house engine: it owns no *cue.Context and is never rebuilt, so a
+// single compiled schema validates many documents with no per-document
+// recompile. The wrapper is what RunCache.CompiledCUE stores, shared by the
+// schema package's frontmatter validator and the requiredstructure rule's
+// validateCUESchemaSyntax / validateFrontMatterCUE.
 //
-// Sharing a cached wrapper across goroutines is safe: the data value is
-// always the Unify RECEIVER (dataVal.Unify(schemaVal)), so the per-file
-// data context is the one rebuilt into, and the shared schema value is
-// only read for its retained source — never mutated. See validate.go.
+// Sharing a cached wrapper across goroutines is safe because the Value is
+// immutable: Unify reads both operands and returns a fresh Value, mutating
+// neither, so operand order no longer matters and no synchronization is
+// needed. See validate.go.
 type CompiledCUE struct {
 	Value cuelite.Value
 }
@@ -34,9 +34,9 @@ func (c *CompiledCUE) Err() error {
 
 // CachedCompile returns the cached compile of source through cache when
 // non-nil, falling back to a fresh compile when the cache is missing.
-// The returned wrapper carries a source-retaining cuelite.Value so a
-// caller that unifies document front matter against it (as the DATA-side
-// receiver) gets a rebuildable schema operand.
+// The returned wrapper carries an immutable, context-free cuelite.Value, so a
+// caller that unifies document front matter against it shares one compiled
+// schema across files and goroutines with no recompile and no synchronization.
 //
 // MDS020's validate.go ValidateFrontmatterDiags and the requiredstructure
 // rule's validateCUESchemaSyntax / validateFrontMatterCUE both call this

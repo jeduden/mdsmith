@@ -557,6 +557,10 @@ func edgeFuzzSeeds() []struct{ schema, data string } {
 		// the surrogate classes exercised on every run.
 		{`{a: _}`, `{"a": "\ud800"}`},
 		{`{a: _}`, `{"\ud800": 1}`},
+		// A key with a literal U+FFFD plus an ESCAPED backslash before `ud800`:
+		// `\\ud800` is the literal text, not a unicode escape, so both arms
+		// accept it. Regression seed for the raw-scan backslash tokenization.
+		{`{a: _}`, "{\"\xef\xbf\xbd\\\\ud800\": 1}"},
 	}
 }
 

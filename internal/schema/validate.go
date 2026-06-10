@@ -131,10 +131,11 @@ func validateFrontmatterDiags(
 	anchor := nonBodyDiagLine(f)
 	// Route the schema-side compile through RunCache.CompiledCUE when one
 	// is in scope so N host files sharing a schema compile its CUE source
-	// exactly once per Run. The cached cuelite.Value retains its source,
-	// so the per-file Unify below rebuilds the SCHEMA into the document's
-	// context — the schema is the operand, the data the receiver — which
-	// keeps the shared cached value unmutated and safe under -race.
+	// exactly once per Run. The cached cuelite.Value is immutable and
+	// context-free, so the per-file Unify below — which lifts the document's
+	// front matter directly via CompileMap and meets it with the shared
+	// schema — reads the cached value without mutating it, safe under -race
+	// regardless of operand order.
 	var cache *lint.RunCache
 	if f != nil {
 		cache = f.RunCache

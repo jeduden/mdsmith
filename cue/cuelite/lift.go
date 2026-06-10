@@ -55,7 +55,8 @@ func liftJSON(data []byte) (*engineValue, error) {
 }
 
 // liftAny converts a decoded JSON value (from encoding/json with
-// UseNumber) into a concrete engine value. Objects become closed structs,
+// UseNumber) into a concrete engine value. Objects become OPEN structs
+// (closedness is a schema property, not a data property — see liftJSON),
 // arrays become closed lists, and scalars become concrete leaves.
 func liftAny(x any) (*engineValue, error) {
 	switch t := x.(type) {

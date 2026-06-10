@@ -102,9 +102,23 @@ func (l *dupLevel) keyHasLoneSurrogateEscape(tok any, raw []byte) bool {
 // immediately followed by a low-surrogate escape, or a low surrogate
 // (DC00–DFFF) standing alone. This is the residue encoding/json folds to U+FFFD
 // and CUE rejects as an "unmatched surrogate pair".
+//
+// The scan tokenizes JSON string escapes left to right: an ESCAPED backslash
+// (`\\`) consumes both bytes, so a following `ud800` is literal text, not a
+// `\u` escape (CUE accepts `"\\ud800"`). Only an UNescaped `\` that introduces
+// a `\u` is a unicode escape examined for a lone surrogate.
 func rawHasLoneSurrogateEscape(raw []byte) bool {
-	for i := 0; i+5 < len(raw); i++ {
-		if raw[i] != '\\' || raw[i+1] != 'u' {
+	for i := 0; i < len(raw); i++ {
+		if raw[i] != '\\' || i+1 >= len(raw) {
+			continue
+		}
+		// An escaped backslash (or any non-u two-char escape) is consumed whole,
+		// so the byte after it cannot start a `\u` escape.
+		if raw[i+1] != 'u' {
+			i++
+			continue
+		}
+		if i+6 > len(raw) {
 			continue
 		}
 		cu, ok := parseHex4(raw[i+2 : i+6])
@@ -118,7 +132,7 @@ func rawHasLoneSurrogateEscape(raw []byte) bool {
 		}
 		if cu >= 0xD800 && cu <= 0xDBFF {
 			// A high surrogate must be followed by a `\uDC00–DFFF` low surrogate.
-			if i+11 >= len(raw) || raw[i+6] != '\\' || raw[i+7] != 'u' {
+			if i+12 > len(raw) || raw[i+6] != '\\' || raw[i+7] != 'u' {
 				return true
 			}
 			lo, ok := parseHex4(raw[i+8 : i+12])

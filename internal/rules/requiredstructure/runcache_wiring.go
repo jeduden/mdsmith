@@ -194,9 +194,9 @@ func schemaCUESources(sch *parsedSchema) []string {
 // thin forward to schema.CachedCompile so the rule package keeps the
 // historical name at its call sites (validateCUESchemaSyntaxWith /
 // validateFrontMatterCUE) and the wrapper type lives in one place. The
-// returned wrapper carries the *cue.Context the value was compiled
-// against so callers that need to Unify additional values use the same
-// context (cue.Value cannot cross contexts).
+// returned wrapper carries an immutable, context-free cuelite.Value, so a
+// caller that needs to Unify additional values does so without carrying or
+// matching a *cue.Context — the in-house engine has none.
 //
 // Tests drive this directly to assert single-build semantics; the
 // rule path reaches it through validateCUESchemaSyntaxWith /

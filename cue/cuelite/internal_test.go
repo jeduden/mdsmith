@@ -154,6 +154,16 @@ func TestRawHasLoneSurrogateEscape(t *testing.T) {
 	assert.True(t, rawHasLoneSurrogateEscape([]byte("\"\\ud83d\\ude00\\udc00\"")))
 	// A valid pair with no trailing surrogate is clean to the end.
 	assert.False(t, rawHasLoneSurrogateEscape([]byte("\"\\ud83d\\ude00AAAAAA\"")))
+	// An ESCAPED backslash (`\\`) followed by literal `ud800` text is NOT a
+	// unicode escape: the `\u` belongs to the consumed `\\` boundary, so the
+	// scan must tokenize `\\` pairs before matching `\u`. CUE accepts such a key
+	// (the `\\ud800` decodes to the literal text `\ud800`, no surrogate).
+	assert.False(t, rawHasLoneSurrogateEscape([]byte(`"\\ud800"`)))
+	assert.False(t, rawHasLoneSurrogateEscape([]byte(`"a\\ud800"`)))
+	assert.False(t, rawHasLoneSurrogateEscape([]byte(`"\\\\ud800"`)))
+	// A literal escaped backslash BEFORE a genuine lone-surrogate escape is
+	// still caught: `\\` consumes two, then `\ud800` is a real lone surrogate.
+	assert.True(t, rawHasLoneSurrogateEscape([]byte(`"\\\ud800"`)))
 }
 
 func TestParseHex4(t *testing.T) {
@@ -193,6 +203,14 @@ func TestScanDuplicateKeys(t *testing.T) {
 		// A literal replacement character in the source is NOT an escape, so CUE
 		// accepts it and the scanner walks past it without rejecting.
 		assert.NoError(t, scanDuplicateKeys([]byte("{\"\xef\xbf\xbd\":1}")))
+	})
+	t.Run("a literal U+FFFD key with an escaped-backslash ud800 is accepted", func(t *testing.T) {
+		// The key holds a literal U+FFFD (so keyHasLoneSurrogateEscape inspects
+		// the raw bytes) plus an ESCAPED backslash before `ud800`: `\\ud800` is
+		// the literal text `\ud800`, not a unicode escape, so CUE accepts it and
+		// the scanner must too. (Regression: the raw scan matched `\u` after the
+		// `\\` boundary and wrongly rejected.)
+		assert.NoError(t, scanDuplicateKeys([]byte("{\"\xef\xbf\xbd\\\\ud800\":1}")))
 	})
 	t.Run("trailing top-level value defers", func(t *testing.T) {
 		assert.NoError(t, scanDuplicateKeys([]byte(`{"x":1} {"a":1,"a":2}`)))
