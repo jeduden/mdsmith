@@ -26,6 +26,7 @@ const (
 	kDisjoint             // a disjunction: branches plus an optional default
 	kStruct               // an ordered struct: fields, open or closed
 	kList                 // a list: [...T] or [_, ...T] with a required prefix length
+	kThunk                // a deferred expression awaiting sibling-field resolution
 )
 
 // atomKind names the base type of a typed atom or bounded scalar. number
@@ -159,7 +160,20 @@ type engineValue struct {
 	prefix  []*engineValue // required leading elements ([_, ...T])
 	elem    *engineValue   // the [...T] tail element type (nil = no tail)
 	openTop bool           // [...] / [...T] allows extra elements
+
+	// kThunk: a schema expression (an index/comprehension over sibling
+	// fields) that could not be evaluated at compile time because it
+	// references another field. It is forced (evalThunk) once the enclosing
+	// struct's referenced fields are concrete — typically after data unifies
+	// in. thunkExpr is the AST to re-evaluate.
+	thunkExpr thunkEval
 }
+
+// thunkEval re-evaluates a deferred schema expression against a scope of
+// resolved sibling-field values, returning the value it produces. It is set
+// by the compiler for an expression with free identifier references and is
+// the only place the AST frontend leaks past compile time.
+type thunkEval func(scope map[string]*engineValue) *engineValue
 
 // mkBottom builds a ⊥ value carrying a reason and an optional path.
 func mkBottom(path []string, format string, args ...any) *engineValue {

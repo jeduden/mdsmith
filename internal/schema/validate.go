@@ -2,7 +2,6 @@ package schema
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -150,20 +149,23 @@ func validateFrontmatterDiags(
 	if docFM == nil {
 		docFM = map[string]any{}
 	}
-	data, err := json.Marshal(docFM)
-	if err != nil {
+	// A front-matter value the in-house lifter cannot represent (a value type
+	// no YAML/JSON decoder produces, e.g. a channel) is a data-shape failure,
+	// not a schema-constraint violation. Surface it as the dedicated
+	// front-matter diagnostic so the reader sees the shape problem rather than
+	// a confusing per-field constraint message. The JSON round-trip is gone
+	// (plan 218), so this replaces the former json.Marshal failure branch.
+	if liftErr := cuelite.LiftMap(docFM).Err(); liftErr != nil {
 		return []lint.Diagnostic{
-			compileFailureDiag(sch, "front matter", "JSON-marshalable front matter", err).
+			compileFailureDiag(sch, "front matter", "representable front-matter values", liftErr).
 				Emit(mkDiag, f.Path, anchor)}
 	}
-	// CompileJSON parses the JSON the marshal above produced, which is
-	// always strict JSON, so it cannot error here. A bottom value would
-	// still surface through the Unify + Validate path below, so there is
-	// no separate (untestable) compile-failure branch for it. The data is
-	// the Unify RECEIVER so the shared schema operand is rebuilt into the
-	// per-file data context, never mutating the cached value.
-	dataVal, _ := cuelite.CompileJSON(data)
-	merged := dataVal.Unify(schemaVal)
+	// Validate the front-matter map DIRECTLY against the compiled schema,
+	// with no json.Marshal → CompileJSON round-trip (plan 218 hot path).
+	// CompileMap lifts the map and unifies it with the cached schema; the
+	// context-free Value is shared safely across parallel workers with no
+	// per-file recompile and no mutation.
+	merged := schemaVal.CompileMap(docFM)
 	verr := merged.Validate()
 	if verr == nil {
 		// Skip the docFrontmatterKeyLines YAML re-parse when there
@@ -1688,17 +1690,9 @@ func ValidateFrontmatter(sch *Schema, fm map[string]any) error {
 	if fm == nil {
 		fm = map[string]any{}
 	}
-	data, err := json.Marshal(fm)
-	if err != nil {
-		return fmt.Errorf("serialize front matter: %w", err)
-	}
-	dataVal, err := cuelite.CompileJSON(data)
-	if err != nil {
-		return fmt.Errorf("compile front matter: %w", err)
-	}
-	// Data is the Unify receiver so the schema operand is rebuilt into the
-	// data's context (the shared-schema-safe operand order).
-	if err := dataVal.Unify(schemaVal).Validate(); err != nil {
+	// Validate the front-matter map directly against the schema, no JSON
+	// round-trip (plan 218).
+	if err := schemaVal.CompileMap(fm).Validate(); err != nil {
 		return err
 	}
 	return nil

@@ -1,7 +1,6 @@
 package query
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/jeduden/mdsmith/cue/cuelite"
@@ -55,12 +54,11 @@ func (m *Matcher) Match(fm map[string]any) bool {
 	if fm == nil {
 		fm = map[string]any{}
 	}
-	data, err := json.Marshal(fm)
-	if err != nil {
-		return false
-	}
-	dataVal, err := cuelite.CompileJSON(data)
-	if err != nil {
+	// Lift the front-matter map directly into a data Value, no JSON
+	// round-trip (plan 218). A bottom (an unsupported value type) never
+	// matches.
+	dataVal := cuelite.LiftMap(fm)
+	if dataVal.Err() != nil {
 		return false
 	}
 	// Require that every field path in the expression exists in the
@@ -71,9 +69,8 @@ func (m *Matcher) Match(fm map[string]any) bool {
 			return false
 		}
 	}
-	// Data is the Unify receiver so the shared compiled schema operand is
-	// rebuilt into the per-call data context, never mutated — the same
-	// shared-schema-safe operand order the schema validator uses.
+	// A context-free Value unifies in either order; the shared compiled
+	// schema is the operand and is never mutated.
 	return dataVal.Unify(m.schema).Validate() == nil
 }
 

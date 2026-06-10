@@ -30,6 +30,15 @@ func unifyV(v, o *engineValue, path []string) *engineValue {
 	if o.kind == kTop {
 		return v
 	}
+	// A thunk reaching unifyV outside a struct's force pass has no sibling
+	// scope to resolve against; force it with an empty scope (yielding a ⊥ for
+	// an unresolved reference) so it never silently unifies to top.
+	if v.kind == kThunk {
+		return unifyV(v.thunkExpr(nil), o, path)
+	}
+	if o.kind == kThunk {
+		return unifyV(v, o.thunkExpr(nil), path)
+	}
 	// A disjunction distributes over the other operand.
 	if v.kind == kDisjoint {
 		return unifyDisjunction(v, o, path)
@@ -316,6 +325,18 @@ func unifyStruct(v, o *engineValue, path []string) *engineValue {
 	if o.kind != kStruct {
 		return conflict(path, v, o)
 	}
+	// Force any deferred (thunk) field now that the two structs' fields are
+	// both in hand: a schema thunk like `[if mechanism == "push" {…}, …][0]`
+	// resolves against the concrete sibling values data supplies. The scope
+	// draws from BOTH structs' concrete fields, so a schema-side reference to
+	// a data-side sibling resolves.
+	scope := concreteScope(v, o)
+	if hasThunkField(v) {
+		v = forceThunks(v, scope)
+	}
+	if hasThunkField(o) {
+		o = forceThunks(o, scope)
+	}
 	closed := v.closed || o.closed
 	out := &engineValue{kind: kStruct, closed: closed}
 	oIndex := indexFields(o.fields)
@@ -356,6 +377,53 @@ func unifyStruct(v, o *engineValue, path []string) *engineValue {
 		out.fields = append(out.fields, of)
 	}
 	return out
+}
+
+// concreteScope builds a name→value scope from the concrete fields of two
+// structs, used to force a thunk field that references a sibling. A field
+// concrete in either struct is bound; a non-concrete or absent field is left
+// out so a thunk that needs it stays deferred (and ultimately ⊥) rather than
+// resolving against a still-unfixed reference.
+func concreteScope(a, b *engineValue) map[string]*engineValue {
+	scope := make(map[string]*engineValue)
+	for _, src := range []*engineValue{a, b} {
+		for _, f := range src.fields {
+			if f.val.kind == kThunk {
+				continue
+			}
+			if isConcrete(f.val) {
+				scope[f.name] = f.val
+			}
+		}
+	}
+	return scope
+}
+
+// hasThunkField reports whether any direct field of v is an unforced thunk,
+// so unifyStruct only pays for the force pass when one is present.
+func hasThunkField(v *engineValue) bool {
+	for _, f := range v.fields {
+		if f.val.kind == kThunk {
+			return true
+		}
+	}
+	return false
+}
+
+// forceThunks returns a copy of struct v with each thunk field replaced by
+// the value it evaluates to against scope. A thunk whose references are still
+// unresolved evaluates to a ⊥ (deferToThunk's fallback), so Validate reports
+// it rather than silently accepting an unforced schema field.
+func forceThunks(v *engineValue, scope map[string]*engineValue) *engineValue {
+	out := *v
+	out.fields = make([]field, len(v.fields))
+	for i, f := range v.fields {
+		out.fields[i] = f
+		if f.val.kind == kThunk {
+			out.fields[i].val = f.val.thunkExpr(scope)
+		}
+	}
+	return &out
 }
 
 // indexFields builds a name→index map over a field slice for O(1) lookup

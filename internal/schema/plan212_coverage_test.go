@@ -79,15 +79,16 @@ func TestParseFile_NestedIncludeFilenamePropagatesUp(t *testing.T) {
 
 // ---- validate.go ----
 
-// TestValidateFrontmatter_JSONMarshalFailureReported drives the
-// json.Marshal error branch in ValidateFrontmatter: a front-matter
-// value json cannot encode (a channel) surfaces the "serialize front
-// matter" error rather than panicking.
-func TestValidateFrontmatter_JSONMarshalFailureReported(t *testing.T) {
+// TestValidateFrontmatter_UnsupportedValueReported drives the lift error
+// branch in ValidateFrontmatter: a front-matter value the in-house lifter
+// cannot represent (a channel) surfaces an "unsupported front-matter value"
+// error rather than panicking. The JSON round-trip is gone (plan 218), so
+// the map is lifted directly and an unrepresentable type is reported here.
+func TestValidateFrontmatter_UnsupportedValueReported(t *testing.T) {
 	sch := &Schema{Frontmatter: map[string]string{"id": "string"}}
 	err := ValidateFrontmatter(sch, map[string]any{"id": make(chan int)})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "serialize front matter")
+	assert.Contains(t, err.Error(), "unsupported front-matter value")
 }
 
 // TestValidateFrontmatter_ConcreteViolationReturnsError drives the

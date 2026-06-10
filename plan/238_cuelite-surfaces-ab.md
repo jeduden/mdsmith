@@ -214,10 +214,9 @@ differential harness (validate, access, path arms) is the oracle.
 
 #### Test-contract flip (authorized)
 
-The interim per-`Value`-context behaviors were deliberate deviations from
-single-context CUE semantics. The flip RESTORES single-context CUE as the
-ground truth, so four pinned-test classes were rewritten under coordinator
-authorization:
+The interim per-`Value`-context behaviors broke from single-context CUE on
+purpose. The flip restores single-context CUE as the truth. So four
+pinned-test classes were rewritten, with sign-off:
 
 1. Cross-context bottom tests now assert the post-flip contract: a chained
    unify of derived values SUCCEEDS and validates per single-context CUE.

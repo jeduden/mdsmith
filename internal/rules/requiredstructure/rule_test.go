@@ -1896,15 +1896,15 @@ func TestValidateFrontMatterCUE_NilFrontMatterTreatedAsEmpty(t *testing.T) {
 		validateFrontMatterCUE(`{id?: string}`, nil))
 }
 
-// validateFrontMatterCUE: a front-matter value that json.Marshal
-// cannot serialize (a channel is the canonical example) surfaces
-// the marshal error wrapped with the "serialize front matter"
-// prefix. Covers the defensive json.Marshal error branch.
+// validateFrontMatterCUE: a front-matter value the in-house lifter cannot
+// represent (a channel is the canonical example) surfaces an "unsupported
+// front-matter value" error. The JSON round-trip is gone (plan 218); the map
+// is lifted directly, so an unrepresentable type is reported by the lifter.
 func TestValidateFrontMatterCUE_NonMarshalableFrontMatter(t *testing.T) {
 	err := validateFrontMatterCUE(`{id?: string}`,
 		map[string]any{"ch": make(chan int)})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "serialize front matter")
+	assert.Contains(t, err.Error(), "unsupported front-matter value")
 }
 
 // readDocFrontMatterRaw: extractYAML returns nil when FrontMatter has no closing delimiter

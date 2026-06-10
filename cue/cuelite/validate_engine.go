@@ -19,6 +19,60 @@ func validateEngine(v *engineValue) []*PathError {
 	return collectLeaves(v, nil, out)
 }
 
+// isUnsatisfiedConstraint reports whether v is an absent optional field's
+// still-unsatisfied constraint, as opposed to a value data provided. An
+// absent optional field keeps exactly its declared constraint, which is some
+// non-concrete shape with no ⊥; a provided optional field is concrete (or
+// reduced to ⊥ on a conflict). So an optional field is "absent" when it
+// carries no ⊥ and is not fully concrete — a bare type/bound/disjunction, an
+// open or non-concrete list, or a struct with a non-concrete member. This
+// distinguishes "the optional field was never provided" (skip it) from "the
+// optional field was provided and conflicts" (a ⊥, still reported).
+func isUnsatisfiedConstraint(v *engineValue) bool {
+	if firstBottom(v) != nil {
+		return false
+	}
+	return !isConcrete(v)
+}
+
+// isConcrete reports whether v is fully concrete data: a concrete scalar or
+// null, a closed list of concrete elements, or a struct whose every field is
+// concrete. A type, bound, disjunction, top, open list, or any ⊥ makes it
+// non-concrete.
+func isConcrete(v *engineValue) bool {
+	switch v.kind {
+	case kString, kInt, kFloat, kBool, kBytes, kNull:
+		return true
+	case kDisjoint:
+		// A disjunction resolves to its *-marked default when present, so a
+		// defaulted disjunction counts as concrete (the absent field takes its
+		// default).
+		return v.def != nil && isConcrete(v.def)
+	case kStruct:
+		for _, f := range v.fields {
+			if f.optional && isUnsatisfiedConstraint(f.val) {
+				continue
+			}
+			if !isConcrete(f.val) {
+				return false
+			}
+		}
+		return true
+	case kList:
+		if v.openTop {
+			return false
+		}
+		for _, el := range v.prefix {
+			if !isConcrete(el) {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
+}
+
 // collectLeaves walks v depth-first, appending a *PathError for every
 // non-concrete or ⊥ leaf at its path. A struct or list recurses into its
 // members; a scalar/atom/bound/disjunction is a leaf decided here.
@@ -41,9 +95,27 @@ func collectLeaves(v *engineValue, path []string, out []*PathError) []*PathError
 	case kBound:
 		return append(out, newPathError(path, fmt.Sprintf("incomplete value %s", v.describeBound()), nil))
 	case kDisjoint:
+		// A disjunction with a *-marked default resolves to that default when
+		// nothing else pins it (e.g. an absent `unlisted: bool | *false` field
+		// takes false). The default must itself be concrete; validate it.
+		if v.def != nil {
+			return collectLeaves(v.def, path, out)
+		}
 		return append(out, newPathError(path, fmt.Sprintf("incomplete value %s", v.describe()), nil))
+	case kThunk:
+		// An unforced thunk awaited data that never arrived (validating a schema
+		// alone, or a reference left unresolved). It is incomplete.
+		return append(out, newPathError(path, "incomplete value (unresolved expression)", nil))
 	case kStruct:
 		for _, f := range v.fields {
+			// An optional field whose value is still a bare constraint was never
+			// satisfied by data: it is absent, not failing. CUE drops an absent
+			// optional field, so skip it rather than reporting it incomplete. An
+			// optional field that DID receive concrete data (or reduced to ⊥ on a
+			// conflict) is checked like any other.
+			if f.optional && isUnsatisfiedConstraint(f.val) {
+				continue
+			}
 			out = collectLeaves(f.val, appendPath(path, f.name), out)
 		}
 		return out

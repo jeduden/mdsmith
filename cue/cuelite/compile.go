@@ -1,6 +1,7 @@
 package cuelite
 
 import (
+	stderrors "errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -96,7 +97,10 @@ func appendOrUnifyField(fields []field, f field) []field {
 
 // compileExpr walks one AST expression node into a value. It dispatches on
 // the node type, covering the subset plan 218 names; an unhandled node is
-// an error naming the construct.
+// an error naming the construct. An expression with a sibling-field
+// reference (an index/comprehension over another field, as the
+// release-channels schema uses) cannot resolve at compile time, so it is
+// deferred to a kThunk that re-evaluates once data fixes the reference.
 func compileExpr(e ast.Expr) (*engineValue, error) {
 	switch n := e.(type) {
 	case *ast.BasicLit:
@@ -115,12 +119,29 @@ func compileExpr(e ast.Expr) (*engineValue, error) {
 		return compileCall(n)
 	case *ast.ParenExpr:
 		return compileExpr(n.X)
+	case *ast.IndexExpr:
+		return compileDeferrable(n)
 	case *ast.SelectorExpr:
 		// A bare selector like strings.MinRunes outside a call is not a value.
 		return nil, fmt.Errorf("cuelite: unsupported selector expression %q", exprText(n))
 	default:
 		return nil, fmt.Errorf("cuelite: unsupported construct %T", e)
 	}
+}
+
+// compileDeferrable evaluates an expression that may reference sibling
+// fields. It tries to resolve it with no scope; an unresolved reference
+// (errUnresolved) makes it a kThunk to force later, while any other error
+// fails the compile and a fully resolvable expression compiles to its value.
+func compileDeferrable(e ast.Expr) (*engineValue, error) {
+	v, err := evalExpr(e, nil)
+	if err == nil {
+		return v, nil
+	}
+	if stderrors.Is(err, errUnresolved) {
+		return deferToThunk(e), nil
+	}
+	return nil, err
 }
 
 // compileBasicLit builds a concrete scalar from a literal token.
@@ -206,7 +227,10 @@ func compileIdent(n *ast.Ident) (*engineValue, error) {
 	case "bytes":
 		return &engineValue{kind: kAtom, atom: akBytes}, nil
 	default:
-		return nil, fmt.Errorf("cuelite: unsupported reference %q", n.Name)
+		// The subset has no scopes or definitions, so any other bare identifier
+		// is an unresolved reference. The "reference X not found" wording matches
+		// CUE's, which the catalog where-expression diagnostics surface verbatim.
+		return nil, fmt.Errorf("reference %q not found", n.Name)
 	}
 }
 
@@ -216,24 +240,54 @@ func compileIdent(n *ast.Ident) (*engineValue, error) {
 // here — close() wraps a struct expression (compileCall).
 func compileStruct(n *ast.StructLit) (*engineValue, error) {
 	out := &engineValue{kind: kStruct}
+	var embedded *engineValue
 	for _, d := range n.Elts {
-		f, ok := d.(*ast.Field)
-		if !ok {
+		switch el := d.(type) {
+		case *ast.Field:
+			name, err := fieldLabel(el.Label)
+			if err != nil {
+				return nil, err
+			}
+			val, err := compileExpr(el.Value)
+			if err != nil {
+				return nil, err
+			}
+			out.fields = appendOrUnifyField(out.fields, field{
+				name:     name,
+				val:      val,
+				optional: el.Constraint == token.OPTION,
+			})
+		case *ast.EmbedDecl:
+			// An embedded value (a scalar or another struct spread into this one)
+			// unifies with the struct. `{>=1 & <=10}` is the bound itself, and
+			// `{X, ...}` merges X's fields. Defer the meet until the rest of the
+			// struct is built so field order is preserved.
+			ev, err := compileExpr(el.Expr)
+			if err != nil {
+				return nil, err
+			}
+			if embedded == nil {
+				embedded = ev
+			} else {
+				embedded = unifyV(embedded, ev, nil)
+			}
+		case *ast.Ellipsis:
+			// `...` marks the struct OPEN (extra keys allowed). A struct is open
+			// by default in this model unless close() wraps it, so the marker
+			// only documents the intent; the optional element type after `...T`
+			// is not a per-field constraint and the subset does not enforce it.
+			continue
+		default:
 			return nil, fmt.Errorf("cuelite: unsupported struct element %T", d)
 		}
-		name, err := fieldLabel(f.Label)
-		if err != nil {
-			return nil, err
+	}
+	if embedded != nil {
+		if len(out.fields) == 0 {
+			// A struct with only an embedded value IS that value: `{>=1 & <=10}`
+			// is the bound, `{X}` is X. No struct wrapper survives.
+			return embedded, nil
 		}
-		val, err := compileExpr(f.Value)
-		if err != nil {
-			return nil, err
-		}
-		out.fields = appendOrUnifyField(out.fields, field{
-			name:     name,
-			val:      val,
-			optional: f.Constraint == token.OPTION,
-		})
+		return unifyV(out, embedded, nil), nil
 	}
 	return out, nil
 }
@@ -312,6 +366,18 @@ func compileBinary(n *ast.BinaryExpr) (*engineValue, error) {
 		return compileDisjunction(n)
 	case token.GEQ, token.LEQ, token.GTR, token.LSS, token.NEQ, token.MAT:
 		return compileRelational(n)
+	case token.EQL:
+		// An == comparison appears only in a malformed where-expression (the
+		// constraint grammar uses `key: value`, not `key == value`). Compile
+		// both operands so an unresolved reference surfaces its "reference X not
+		// found" error; a fully concrete comparison is not part of the subset.
+		if _, err := compileExpr(n.X); err != nil {
+			return nil, err
+		}
+		if _, err := compileExpr(n.Y); err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("cuelite: == is not a valid constraint")
 	default:
 		return nil, fmt.Errorf("cuelite: unsupported binary operator %q", n.Op)
 	}

@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
-	"github.com/jeduden/mdsmith/cue/cuelite"
 	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/fieldinterp"
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -2345,19 +2344,10 @@ func validateFrontMatterCUE(schema string, fm map[string]any) error {
 		fm = map[string]any{}
 	}
 
-	data, err := json.Marshal(fm)
-	if err != nil {
-		return fmt.Errorf("serialize front matter: %w", err)
-	}
-
-	// CompileJSON of json.Marshal output is always strict JSON, so any
-	// error on dataVal would also surface through the Unify + Validate
-	// path below; the previous explicit check carried no testable path.
-	// The data is the Unify RECEIVER so the cached schema operand is
-	// rebuilt into the per-call data context, never mutated.
-	dataVal, _ := cuelite.CompileJSON(data)
-
-	if err := dataVal.Unify(compiled.Value).Validate(); err != nil {
+	// Validate the front-matter map directly against the cached schema, no
+	// JSON marshal round-trip (plan 218). The context-free schema Value is
+	// shared safely with no per-file recompile.
+	if err := compiled.Value.CompileMap(fm).Validate(); err != nil {
 		return err
 	}
 

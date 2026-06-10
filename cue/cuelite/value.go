@@ -98,6 +98,20 @@ func (v Value) CompileMap(m map[string]any) Value {
 	return Value{v: unifyV(ev, v.v, nil)}
 }
 
+// LiftMap lifts a map[string]any directly into a concrete data [Value],
+// with no JSON marshal/parse round-trip. It is the standalone lift
+// CompileMap unifies with a schema, exposed so a caller (query) can read
+// the data back — for example to confirm a required field is PRESENT in the
+// data before unifying, since an open schema would otherwise fill a missing
+// field. An unsupported front-matter value type yields a bottom Value.
+func LiftMap(m map[string]any) Value {
+	ev, err := liftMapValue(m)
+	if err != nil {
+		return bottom(err)
+	}
+	return Value{v: ev}
+}
+
 // Unify returns the meet of v and o: the value satisfying both, the
 // lattice meet over the in-house value model. A bottom (⊥) operand
 // absorbs: if either v or o is a bottom (an error-carrying or zero Value),
