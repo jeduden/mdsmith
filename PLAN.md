@@ -36,7 +36,7 @@ footer: |
 | 98         | ✅     | sonnet | [Replace `archetypes` with `kinds`](plan/98_replace-archetypes-with-kinds.md)                                                           |
 | 100        | ✅     | sonnet | [build config block and MDS040 recipe-safety rule](plan/100_build-config-and-mds040.md)                                                 |
 | 101        | ✅     | sonnet | [build directive and MDS039 lint rule](plan/101_build-directive-mds039.md)                                                              |
-| 102        | 🔲     | opus   | [Builder interface and mdsmith build subcommand](plan/102_build-subcommand.md)                                                          |
+| 102        | 🔲     | opus   | [Multi-output `<?build?>` directive](plan/102_build-subcommand.md)                                                                      |
 | 103        | 🔲     | opus   | [Build target staleness and dependency tracking](plan/103_build-staleness-and-deps.md)                                                  |
 | 104        | 🔲     | sonnet | [Build lifecycle hooks (before/after)](plan/104_build-lifecycle-hooks.md)                                                               |
 | 105        | ✅     | sonnet | [No inline HTML rule](plan/105_no-inline-html.md)                                                                                       |
@@ -178,4 +178,7 @@ footer: |
 | 2606092209 | ✅     | sonnet | [Security hardening batch — 2026-06-09 audit](plan/2606092209_secreview-2026-06-09-hardening.md)                                        |
 | 2606100533 | ✅     | sonnet | [Coordination-free plan ids from UTC creation timestamps](plan/2606100533_timestamp-plan-ids.md)                                        |
 | 2606100534 | 🔳     | sonnet | [Workspace-unique front-matter fields (unique-frontmatter rule)](plan/2606100534_unique-frontmatter-rule.md)                            |
+| 2606101546 | 🔲     | opus   | [Builder execution wired into `mdsmith fix`](plan/2606101546_builder-execution-in-fix.md)                                               |
+| 2606101547 | 🔲     | opus   | [Build execution UX (stdout/stderr, debug, parallel)](plan/2606101547_build-execution-ux.md)                                            |
+| 2606101548 | 🔲     | opus   | [Build execution hardening](plan/2606101548_build-execution-hardening.md)                                                               |
 <?/catalog?>
