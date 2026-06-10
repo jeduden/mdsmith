@@ -1,7 +1,7 @@
 ---
 id: 205
 title: Move extension.ts concerns to wiring.ts
-status: "🔳"
+status: "✅"
 summary: >-
   extension.ts is 509 lines and owns the LSP client
   lifecycle, config-file watcher, error handler, and
@@ -54,4 +54,4 @@ the wiring object, and hand control to
   LSP lifecycle, watcher, and command
   registration. All tests pass.
 - [x] The extension-host e2e suite passes.
-- [ ] `bun run lint` reports no issues.
+- [x] `bun run lint` reports no issues.

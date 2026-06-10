@@ -187,6 +187,7 @@
   "scripts": {
     "compile": "bun run build.ts",
     "watch": "bun run build.ts --watch",
+    "lint": "tsc --noEmit",
     "test": "bun test",
     "test:e2e": "bun run build.ts && rm -rf out-e2e && tsc -p tsconfig.e2e.json && node out-e2e/runTest.js",
     "package": "vsce package --out mdsmith.vsix",
