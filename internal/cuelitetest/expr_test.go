@@ -139,6 +139,14 @@ func exprCorpus() []ExprCase {
 		{Name: "number add is not string", Expr: `1 + 1`, ScopeJSON: ``},
 		{Name: "mixed add rejected", Expr: `"a" + 1`, ScopeJSON: ``},
 
+		// String repetition (item 2): the FuzzExpr ""*0 find, both operand
+		// orders, and the rejected pairings.
+		{Name: "string repeat empty zero", Expr: `"" * 0`, ScopeJSON: ``},
+		{Name: "string repeat three", Expr: `"ab" * 3`, ScopeJSON: ``},
+		{Name: "int times string repeats", Expr: `3 * "ab"`, ScopeJSON: ``},
+		{Name: "string repeat by float rejected", Expr: `"x" * 2.0`, ScopeJSON: ``},
+		{Name: "int times int rejected", Expr: `2 * 3`, ScopeJSON: ``},
+
 		// Ternary idiom and comparisons.
 		{Name: "ternary true", Expr: `[if def {"on"}, if !def {"off"}][0]`, ScopeJSON: `{"def":true}`},
 		{Name: "ternary false", Expr: `[if def {"on"}, if !def {"off"}][0]`, ScopeJSON: `{"def":false}`},
@@ -257,6 +265,12 @@ func FuzzExpr(f *testing.F) {
 		{`[if x == y {"T"}, if x != y {"F"}][0]`, `{"x":[2],"y":[2.0]}`},
 		{`"\(len(s))"`, `{"s":"café"}`},
 		{`fm."my-key"`, `{"my-key":"value"}`},
+		// The CI FuzzExpr find, minimized: string × int repetition. The empty
+		// string × zero count is the corner that crashed before evalRowMul
+		// landed; it now yields "".
+		{`"" * 0`, ``},
+		{`"ab" * 3`, ``},
+		{`3 * "ab"`, ``},
 	} {
 		f.Add(seed.expr, seed.scope)
 	}

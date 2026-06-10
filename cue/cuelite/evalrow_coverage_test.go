@@ -370,3 +370,26 @@ func TestRowSelectorName_UnquoteError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "selector label")
 }
+
+// TestEvalRowSelector_BadLabel covers evalRowSelector's error path when the
+// selector label cannot resolve, via a constructed malformed string-label node
+// the CUE parser never emits for a selector.
+func TestEvalRowSelector_BadLabel(t *testing.T) {
+	rs, err := newRowScope(map[string]any{"fm2": map[string]any{"k": "v"}})
+	require.NoError(t, err)
+	sel := &ast.SelectorExpr{
+		X:   &ast.Ident{Name: "fm2"},
+		Sel: &ast.BasicLit{Kind: token.STRING, Value: `"\x"`},
+	}
+	_, err = evalRowSelector(sel, rs)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "selector label")
+}
+
+// TestRowLen_StructIsRejected covers rowLen's struct branch: CUE's len(struct)
+// is the field count, but the row subset rejects it loudly as out-of-subset.
+func TestRowLen_StructIsRejected(t *testing.T) {
+	_, err := renderRow(t, `"\(len(m))"`, map[string]any{"m": map[string]any{"k": "v"}})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported len of a struct")
+}

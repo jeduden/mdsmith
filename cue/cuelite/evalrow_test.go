@@ -394,3 +394,44 @@ func TestRender_QuotedSelectorMatchesIdentForm(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "MDS001", got)
 }
+
+// --- item 2: string * int repetition (the FuzzExpr ""*0 find) ---
+
+func TestRender_StringRepeatZero(t *testing.T) {
+	// The minimized CI FuzzExpr crasher: "" * 0.
+	got, err := renderRow(t, `"" * 0`, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "", got)
+}
+
+func TestRender_StringRepeatThree(t *testing.T) {
+	got, err := renderRow(t, `"ab" * 3`, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "ababab", got)
+}
+
+func TestRender_IntTimesStringRepeats(t *testing.T) {
+	// CUE allows int * string as well as string * int.
+	got, err := renderRow(t, `3 * "ab"`, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "ababab", got)
+}
+
+func TestRender_StringRepeatNegativeIsError(t *testing.T) {
+	// CUE: a negative repetition count is an error.
+	_, err := renderRow(t, `"x" * -1`, nil)
+	require.Error(t, err)
+}
+
+func TestRender_StringRepeatByFloatIsError(t *testing.T) {
+	// CUE rejects string * float as an invalid operation.
+	_, err := renderRow(t, `"x" * 2.0`, nil)
+	require.Error(t, err)
+}
+
+func TestRender_IntTimesIntIsError(t *testing.T) {
+	// int * int is numeric multiplication, which is not a string and is
+	// out-of-subset arithmetic — it must reject loudly.
+	_, err := renderRow(t, `2 * 3`, nil)
+	require.Error(t, err)
+}

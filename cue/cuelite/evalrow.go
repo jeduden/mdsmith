@@ -342,6 +342,8 @@ func evalRowBinary(n *ast.BinaryExpr, scope *rowScope) (*engineValue, error) {
 	switch n.Op {
 	case token.ADD:
 		return evalRowAdd(l, r)
+	case token.MUL:
+		return evalRowMul(l, r)
 	case token.EQL:
 		return &engineValue{kind: kBool, b: rowEqual(l, r)}, nil
 	case token.NEQ:
@@ -349,6 +351,39 @@ func evalRowBinary(n *ast.BinaryExpr, scope *rowScope) (*engineValue, error) {
 	default:
 		return nil, fmt.Errorf("cuelite: unsupported row operator %q", n.Op)
 	}
+}
+
+// evalRowMul applies `*` to two operands. CUE's `*` over a string and an int —
+// in EITHER order (`"ab" * 3` or `3 * "ab"`) — repeats the string that many
+// times: the FuzzExpr-minimized `"" * 0` is the empty-string, zero-count corner
+// (it yields ""). A negative count is an error ("cannot convert negative number
+// to uint64"), matching CUE. Every other `*` operand pairing — string × float,
+// int × int (numeric multiplication, out of the string-producing subset), or
+// list × int (CUE itself rejects list multiplication in favour of
+// list.Repeat) — is rejected as out-of-subset, the cross-engine fuzzer's
+// strict-subset hatch keying on the wording.
+func evalRowMul(l, r *engineValue) (*engineValue, error) {
+	if s, count, ok := stringRepeatOperands(l, r); ok {
+		if count < 0 {
+			return nil, fmt.Errorf("cuelite: invalid operation: cannot repeat a string a negative number of times")
+		}
+		return &engineValue{kind: kString, str: strings.Repeat(s, int(count))}, nil
+	}
+	return nil, fmt.Errorf("cuelite: unsupported operation: cannot multiply %s and %s", l.describe(), r.describe())
+}
+
+// stringRepeatOperands recognises the string×int repetition pattern in either
+// operand order, returning the string, the repetition count, and ok=true when
+// one operand is a concrete string and the other a concrete int. A string×float
+// or int×int pairing returns ok=false so the caller rejects it as out-of-subset.
+func stringRepeatOperands(l, r *engineValue) (string, int64, bool) {
+	if l.kind == kString && r.kind == kInt {
+		return l.str, r.i, true
+	}
+	if l.kind == kInt && r.kind == kString {
+		return r.str, l.i, true
+	}
+	return "", 0, false
 }
 
 // evalRowAdd applies `+` to two evaluated operands: string+string is
