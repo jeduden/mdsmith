@@ -24,7 +24,11 @@ permissions:
 jobs:
   fuzz:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [FuzzValidate, FuzzParsePath]
     env:
       GOTOOLCHAIN: local
     steps:
@@ -34,10 +38,8 @@ jobs:
       - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
         with:
           go-version-file: go.mod
-      - name: Fuzz schema/data validation against the CUE oracle
-        run: go test -run='^$' -fuzz=FuzzValidate -fuzztime=240s ./internal/cuelitetest/
-      - name: Fuzz path parsing against cue.ParsePath
-        run: go test -run='^$' -fuzz=FuzzParsePath -fuzztime=240s ./internal/cuelitetest/
+      - name: Fuzz ${{ matrix.target }} against the CUE oracle
+        run: go test -run='^$' -fuzz='${{ matrix.target }}$' -fuzztime=240s ./internal/cuelitetest/
       # A failing fuzz run writes the minimized input under testdata/fuzz/.
       # Upload it so the find survives the ephemeral runner and can be
       # committed as a regression seed.
@@ -45,6 +47,6 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: fuzz-crashers
+          name: fuzz-crashers-${{ matrix.target }}
           path: internal/cuelitetest/testdata/fuzz/
           if-no-files-found: ignore
