@@ -237,7 +237,17 @@ func (s *Server) clearOpenDiagnostics() {
 // then asked to wire FS=os.DirFS(absoluteDir) so rules that read
 // neighbouring files (include, catalog) see the same view the CLI
 // would.
+//
+// A deferred recover wraps the entire body so a panic inside a rule's
+// Check (e.g. from an attacker-controlled file) is caught, logged, and
+// dropped. The server stays running and that document's diagnostics are
+// left at their previous value for the cycle.
 func (s *Server) runLint(uri string) {
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Printf("lint %s: recovered panic: %v", uri, r)
+		}
+	}()
 	doc, ok := s.docs.get(uri)
 	if !ok {
 		return
@@ -268,6 +278,12 @@ func (s *Server) runLint(uri string) {
 		// against. handleInitialized builds the first session before any
 		// document event, so this only guards a pre-init race.
 		return
+	}
+	// lintPanicHook is a test seam (nil in production). When set, it
+	// replaces the real CheckVersion call so a test can trigger a panic
+	// inside the lint pipeline and verify the deferred recover catches it.
+	if s.lintPanicHook != nil {
+		s.lintPanicHook()
 	}
 	res := sess.CheckVersion(relPath, doc.text, doc.version)
 	if s.afterLintCheck != nil {
