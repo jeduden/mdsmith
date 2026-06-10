@@ -33,8 +33,10 @@ const usageText = `Usage: mdsmith-secreview <command> [args]
 
 Commands:
   render <findings.json> [--out-dir DIR]
-                          Render findings.sarif, security-review.md, and
+                          Render findings.sarif, report.md, and
                           inline-annotations.json into DIR (default ".").
+                          Point DIR at the per-audit directory
+                          docs/security/<YYYY-MM-DD-slug>/.
   grade --findings F (--cases C --case ID | --forbid-severity S...
                       --require-min-severity S --require-location-file F)
                           Grade a findings.json against a case rubric (via
@@ -71,7 +73,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 func runRender(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("render", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	outDir := fs.String("out-dir", ".", "directory to write the three outputs into")
+	outDir := fs.String("out-dir", ".", "per-audit directory to write the three outputs into")
 	fs.Usage = func() {
 		_, _ = fmt.Fprint(stderr, "Usage: mdsmith-secreview render <findings.json> [--out-dir DIR]\n")
 	}

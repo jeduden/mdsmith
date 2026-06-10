@@ -45,7 +45,7 @@ func decodeSARIF(t *testing.T, r *Report) map[string]any {
 	t.Helper()
 	dir := t.TempDir()
 	require.NoError(t, Render(r, dir))
-	for _, name := range []string{"findings.sarif", "security-review.md", "inline-annotations.json"} {
+	for _, name := range []string{"findings.sarif", "report.md", "inline-annotations.json"} {
 		_, err := os.Stat(filepath.Join(dir, name))
 		require.NoErrorf(t, err, "expected %s to exist", name)
 	}
@@ -215,10 +215,22 @@ func TestRenderAnnotationsSkipNoLocation(t *testing.T) {
 
 func TestRenderFileNames(t *testing.T) {
 	got := RenderFileNames()
-	assert.Equal(t, []string{"findings.sarif", "security-review.md", "inline-annotations.json"}, got)
+	assert.Equal(t, []string{"findings.sarif", "report.md", "inline-annotations.json"}, got)
 	// Returned slice is a copy: mutating it must not affect the package var.
 	got[0] = "mutated"
 	assert.Equal(t, "findings.sarif", RenderFileNames()[0])
+}
+
+func TestRenderWritesFixedNamesIntoAuditDir(t *testing.T) {
+	// Render writes the three fixed-name artifacts into the per-audit
+	// directory the caller supplies; the directory namespaces the
+	// review, so the basenames never vary.
+	dir := filepath.Join(t.TempDir(), "2026-06-09-full-repo-audit")
+	require.NoError(t, Render(multiSevReport(), dir))
+	for _, name := range []string{"findings.sarif", "report.md", "inline-annotations.json"} {
+		_, err := os.Stat(filepath.Join(dir, name))
+		assert.NoErrorf(t, err, "expected %s to exist", name)
+	}
 }
 
 func TestRenderErrorOnUnwritableDir(t *testing.T) {

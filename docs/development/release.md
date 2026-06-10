@@ -335,7 +335,7 @@ enough.
 - **CODEOWNERS** requires owner review on every file
   under `.github/workflows/` and on this document.
 
-The [hardening note](../security/2026-05-12-supply-chain-hardening.md)
+The [hardening note](../security/2026-05-12-supply-chain-hardening/report.md)
 walks through the above against the TanStack /
 mini-shai-hulud attack chain.
 

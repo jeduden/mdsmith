@@ -10,13 +10,16 @@ import (
 	"time"
 )
 
-// renderFiles names the three artifacts Render writes, in the order
-// render_findings.py prints them.
-var renderFiles = []string{"findings.sarif", "security-review.md", "inline-annotations.json"}
+// renderFiles names the three artifacts Render writes, in print order.
+// They land beside the authored findings.json inside one per-audit
+// directory (docs/security/<YYYY-MM-DD-slug>/), so the basenames are
+// fixed — the directory, not a filename stem, namespaces each review.
+var renderFiles = []string{"findings.sarif", "report.md", "inline-annotations.json"}
 
-// Render writes the three review outputs (findings.sarif,
-// security-review.md, inline-annotations.json) into outDir, creating the
-// directory if needed. It mirrors render_findings.py.
+// Render writes the three review outputs (findings.sarif, report.md,
+// inline-annotations.json) into outDir, creating the directory if
+// needed. outDir is the per-audit directory; the caller points it at
+// docs/security/<stem>/.
 func Render(r *Report, outDir string) error {
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return fmt.Errorf("create out dir: %w", err)
@@ -29,13 +32,10 @@ func Render(r *Report, outDir string) error {
 	if err != nil {
 		return fmt.Errorf("marshal annotations: %w", err)
 	}
-	contents := map[string][]byte{
-		"findings.sarif":          sarif,
-		"security-review.md":      []byte(buildReport(r, time.Now())),
-		"inline-annotations.json": annotations,
-	}
-	for _, name := range renderFiles {
-		if err := os.WriteFile(filepath.Join(outDir, name), contents[name], 0o644); err != nil {
+	// renderFiles and data are parallel: SARIF, report, annotations.
+	data := [][]byte{sarif, []byte(buildReport(r, time.Now())), annotations}
+	for i, name := range renderFiles {
+		if err := os.WriteFile(filepath.Join(outDir, name), data[i], 0o644); err != nil {
 			return fmt.Errorf("write %s: %w", name, err)
 		}
 	}

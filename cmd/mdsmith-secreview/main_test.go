@@ -66,7 +66,7 @@ func TestRenderHappy(t *testing.T) {
 	require.Equalf(t, 0, code, "stderr: %s", errOut)
 	assert.Contains(t, out, "rendered 1 finding(s) ->")
 	assert.Contains(t, out, "findings.sarif")
-	for _, name := range []string{"findings.sarif", "security-review.md", "inline-annotations.json"} {
+	for _, name := range []string{"findings.sarif", "report.md", "inline-annotations.json"} {
 		_, err := os.Stat(filepath.Join(outDir, name))
 		require.NoErrorf(t, err, "expected %s", name)
 	}

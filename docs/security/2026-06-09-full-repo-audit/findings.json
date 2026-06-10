@@ -1,0 +1,64 @@
+{
+  "target": {
+    "mode": "audit",
+    "repo": "jeduden/mdsmith",
+    "ref": "646f04a6fd4630aab79649577f24b5a49555e005",
+    "scope": "full repo — all surfaces"
+  },
+  "coverage": "All seven threat-model surfaces reviewed: directive engine (include/catalog/build), CLI core and workspace walk, LSP server, VS Code extension, Obsidian plugin (WASM-based; no file exists), distribution wrappers (npm, GitHub Actions), and Git integration (merge-driver, pre-merge-commit). The Obsidian plugin TypeScript source was not present in the tree at this ref — that surface is therefore inconclusive. All §0 baseline defenses were confirmed to still hold. Three findings were recorded: one confirmed Medium (LSP panic DoS) and two informational (a cuetemplate panic-vs-error and a YAML-safety inconsistency in convention.go).",
+  "findings": [
+    {
+      "id": "S001",
+      "title": "LSP lint goroutines have no panic recovery — hostile Markdown crashes the server",
+      "severity": "medium",
+      "confidence": "confirmed",
+      "surface": "lsp",
+      "cwe": "CWE-248",
+      "location": {
+        "file": "internal/lsp/server_diagnostics.go",
+        "startLine": 131,
+        "endLine": 156
+      },
+      "related_locations": [
+        {"file": "internal/lsp/server_diagnostics.go", "startLine": 82},
+        {"file": "internal/lsp/server_diagnostics.go", "startLine": 240}
+      ],
+      "description": "The AfterFunc-based lint goroutine (`runLintIfCurrent` → `runLint` → `sess.CheckVersion`) carries no `recover()` wrapper anywhere in its call chain. In Go, a panic in a goroutine not covered by a recover propagates to the runtime and kills the entire process. The LSP server (`mdsmith lsp`) is a long-lived process: every open editor session runs exactly one. If a rule, the parser, or include/catalog resolution panics while processing an attacker-controlled Markdown file (nil dereference, index out of bounds, type assertion, etc.), the server exits, all squiggles disappear, and VS Code shows a language-server-crashed banner. The same absence of recovery applies to `dispatchRaw` and `dispatch` — a panic handling an LSP message would crash the main loop too.",
+      "impact": "Denial of service: an attacker who can get the victim to open a crafted Markdown file in VS Code with the mdsmith extension active can silently crash the LSP server. Recovery depends on the editor's auto-restart policy. A crash loop (if the file stays open) gives a persistent DoS. No code execution, no data exfiltration.",
+      "repro": "1. Author a Markdown file whose content triggers an unguarded panic in any lint rule (e.g. a rule that nil-dereferences an AST node on an unusual parse tree). 2. Open the file in VS Code with the extension active. The LSP server crashes and the Output Channel shows the panic stack trace.",
+      "remediation": "Wrap the body of `runLintIfCurrent` (or `runLint`) in a `defer func() { if r := recover(); r != nil { log.Printf(\"lint panic: %v\", r) } }()`. Do the same for `dispatchRaw`. This converts an unrecoverable crash into a logged error; the server stays up, the document's diagnostics are simply absent for that cycle. Then identify and fix the root-cause panic separately."
+    },
+    {
+      "id": "S002",
+      "title": "cuetemplate.buildCUESource panics on json.Marshal failure instead of returning an error",
+      "severity": "info",
+      "confidence": "confirmed",
+      "surface": "directive",
+      "cwe": "CWE-248",
+      "location": {
+        "file": "internal/cuetemplate/cuetemplate.go",
+        "startLine": 174
+      },
+      "description": "The `buildCUESource` helper (called from `cuetemplate.Template.Render` when evaluating a catalog `row-expr:` directive) calls `json.Marshal(emit)` and panics on error: `panic(fmt.Errorf(\"cuetemplate: encoding frontmatter: %w\", err))`. The `emit` map is built from the Markdown file's front matter — attacker-controlled content. While `json.Marshal` failure on YAML-parsed values is unlikely in practice (all go-yaml v3 scalar types are JSON-marshallable), any future change that introduces a non-serialisable type (e.g. a `time.Duration`, channel, or function) would make this reachable. In the LSP context this panic is not recovered (see S001) and kills the server.",
+      "impact": "If triggered in the LSP, same DoS as S001. If triggered via `mdsmith fix`, the CLI process terminates with a non-zero exit — the fix pass is aborted but no data is lost.",
+      "repro": "Currently not reachable with standard go-yaml v3 output. Would become reachable if a front-matter field ever holds a type that json.Marshal cannot serialise.",
+      "remediation": "Replace the panic with an error return: propagate the error up through `buildCUESource` → `Render`. The function signature change is mechanical; the call site in catalog's `renderTemplate` already handles error returns."
+    },
+    {
+      "id": "S003",
+      "title": "convention.go calls yaml.Unmarshal directly instead of yamlutil.UnmarshalNodeSafe",
+      "severity": "info",
+      "confidence": "confirmed",
+      "surface": "directive",
+      "cwe": "CWE-400",
+      "location": {
+        "file": "internal/config/convention.go",
+        "startLine": 206
+      },
+      "description": "At line 206 in `parseConventionFileBody`, `yaml.Unmarshal(data, &node)` is called with a raw `yaml.Node` destination rather than routing through `yamlutil.UnmarshalNodeSafe`. The in-code comment documents this as intentional: go-yaml v3 does not expand aliases when deserialising into a yaml.Node (aliases become AliasNode references), so billion-laughs is not a risk at this call site. The issue is consistency: every other user-YAML entry point uses the safe wrappers. A future refactor that adds a `.Decode()` call on the resulting node without re-checking would reintroduce the alias-expansion risk.",
+      "impact": "No current exploitability. Inconsistency with the project's stated policy creates a latent risk if the call site evolves.",
+      "repro": "No repro needed; this is a hardening gap.",
+      "remediation": "Replace `yaml.Unmarshal(data, &node)` with `node, err = yamlutil.UnmarshalNodeSafe(data)` to align with project convention. The function already imports the yamlutil package for the pre-check (line 205) so this is a one-line change."
+    }
+  ]
+}

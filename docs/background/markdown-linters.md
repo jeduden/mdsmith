@@ -989,7 +989,7 @@ you need a stable rule set while these land.
 [mado]: https://github.com/akiomik/mado
 [panache]: https://panache.bz/
 <!-- mdsmith plan + security + reference links -->
-[mdsmith-sec]: ../security/2026-04-05-adversarial-markdown.md
+[mdsmith-sec]: ../security/2026-04-05-adversarial-markdown/report.md
 [conventions]: ../reference/conventions.md
 [bench]: ../research/benchmarks/README.md
 [mdcov]: ../research/markdownlint-coverage/README.md

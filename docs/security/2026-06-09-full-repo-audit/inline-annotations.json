@@ -1,0 +1,26 @@
+[
+  {
+    "path": "internal/lsp/server_diagnostics.go",
+    "line": 131,
+    "side": "RIGHT",
+    "severity": "medium",
+    "id": "S001",
+    "body": "**[S001 · medium] LSP lint goroutines have no panic recovery — hostile Markdown crashes the server**\n\nThe AfterFunc-based lint goroutine (`runLintIfCurrent` → `runLint` → `sess.CheckVersion`) carries no `recover()` wrapper anywhere in its call chain. In Go, a panic in a goroutine not covered by a recover propagates to the runtime and kills the entire process. The LSP server (`mdsmith lsp`) is a long-lived process: every open editor session runs exactly one. If a rule, the parser, or include/catalog resolution panics while processing an attacker-controlled Markdown file (nil dereference, index out of bounds, type assertion, etc.), the server exits, all squiggles disappear, and VS Code shows a language-server-crashed banner. The same absence of recovery applies to `dispatchRaw` and `dispatch` — a panic handling an LSP message would crash the main loop too.\n\n**Fix:** Wrap the body of `runLintIfCurrent` (or `runLint`) in a `defer func() { if r := recover(); r != nil { log.Printf(\"lint panic: %v\", r) } }()`. Do the same for `dispatchRaw`. This converts an unrecoverable crash into a logged error; the server stays up, the document's diagnostics are simply absent for that cycle. Then identify and fix the root-cause panic separately."
+  },
+  {
+    "path": "internal/cuetemplate/cuetemplate.go",
+    "line": 174,
+    "side": "RIGHT",
+    "severity": "info",
+    "id": "S002",
+    "body": "**[S002 · info] cuetemplate.buildCUESource panics on json.Marshal failure instead of returning an error**\n\nThe `buildCUESource` helper (called from `cuetemplate.Template.Render` when evaluating a catalog `row-expr:` directive) calls `json.Marshal(emit)` and panics on error: `panic(fmt.Errorf(\"cuetemplate: encoding frontmatter: %w\", err))`. The `emit` map is built from the Markdown file's front matter — attacker-controlled content. While `json.Marshal` failure on YAML-parsed values is unlikely in practice (all go-yaml v3 scalar types are JSON-marshallable), any future change that introduces a non-serialisable type (e.g. a `time.Duration`, channel, or function) would make this reachable. In the LSP context this panic is not recovered (see S001) and kills the server.\n\n**Fix:** Replace the panic with an error return: propagate the error up through `buildCUESource` → `Render`. The function signature change is mechanical; the call site in catalog's `renderTemplate` already handles error returns."
+  },
+  {
+    "path": "internal/config/convention.go",
+    "line": 206,
+    "side": "RIGHT",
+    "severity": "info",
+    "id": "S003",
+    "body": "**[S003 · info] convention.go calls yaml.Unmarshal directly instead of yamlutil.UnmarshalNodeSafe**\n\nAt line 206 in `parseConventionFileBody`, `yaml.Unmarshal(data, &node)` is called with a raw `yaml.Node` destination rather than routing through `yamlutil.UnmarshalNodeSafe`. The in-code comment documents this as intentional: go-yaml v3 does not expand aliases when deserialising into a yaml.Node (aliases become AliasNode references), so billion-laughs is not a risk at this call site. The issue is consistency: every other user-YAML entry point uses the safe wrappers. A future refactor that adds a `.Decode()` call on the resulting node without re-checking would reintroduce the alias-expansion risk.\n\n**Fix:** Replace `yaml.Unmarshal(data, &node)` with `node, err = yamlutil.UnmarshalNodeSafe(data)` to align with project convention. The function already imports the yamlutil package for the pre-check (line 205) so this is a one-line change."
+  }
+]

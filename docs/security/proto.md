@@ -6,7 +6,7 @@ title: 'string | *""'
 summary: 'string | *""'
 ---
 <?require
-filename: "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-*.md"
+filename: "report.md"
 ?>
 
 # ?

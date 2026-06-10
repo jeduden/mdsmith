@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "mdsmith-security-review",
+          "informationUri": "https://github.com/jeduden/mdsmith",
+          "rules": [
+            {
+              "id": "S001",
+              "name": "lsp",
+              "shortDescription": {
+                "text": "LSP lint goroutines have no panic recovery — hostile Markdown crashes the server"
+              },
+              "fullDescription": {
+                "text": "The AfterFunc-based lint goroutine (`runLintIfCurrent` → `runLint` → `sess.CheckVersion`) carries no `recover()` wrapper anywhere in its call chain. In Go, a panic in a goroutine not covered by a recover propagates to the runtime and kills the entire process. The LSP server (`mdsmith lsp`) is a long-lived process: every open editor session runs exactly one. If a rule, the parser, or include/catalog resolution panics while processing an attacker-controlled Markdown file (nil dereference, index out of bounds, type assertion, etc.), the server exits, all squiggles disappear, and VS Code shows a language-server-crashed banner. The same absence of recovery applies to `dispatchRaw` and `dispatch` — a panic handling an LSP message would crash the main loop too."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "security-severity": "5.5",
+                "tags": [
+                  "security",
+                  "CWE-248"
+                ]
+              }
+            },
+            {
+              "id": "S002",
+              "name": "directive",
+              "shortDescription": {
+                "text": "cuetemplate.buildCUESource panics on json.Marshal failure instead of returning an error"
+              },
+              "fullDescription": {
+                "text": "The `buildCUESource` helper (called from `cuetemplate.Template.Render` when evaluating a catalog `row-expr:` directive) calls `json.Marshal(emit)` and panics on error: `panic(fmt.Errorf(\"cuetemplate: encoding frontmatter: %w\", err))`. The `emit` map is built from the Markdown file's front matter — attacker-controlled content. While `json.Marshal` failure on YAML-parsed values is unlikely in practice (all go-yaml v3 scalar types are JSON-marshallable), any future change that introduces a non-serialisable type (e.g. a `time.Duration`, channel, or function) would make this reachable. In the LSP context this panic is not recovered (see S001) and kills the server."
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "security-severity": "0.0",
+                "tags": [
+                  "security",
+                  "CWE-248"
+                ]
+              }
+            },
+            {
+              "id": "S003",
+              "name": "directive",
+              "shortDescription": {
+                "text": "convention.go calls yaml.Unmarshal directly instead of yamlutil.UnmarshalNodeSafe"
+              },
+              "fullDescription": {
+                "text": "At line 206 in `parseConventionFileBody`, `yaml.Unmarshal(data, &node)` is called with a raw `yaml.Node` destination rather than routing through `yamlutil.UnmarshalNodeSafe`. The in-code comment documents this as intentional: go-yaml v3 does not expand aliases when deserialising into a yaml.Node (aliases become AliasNode references), so billion-laughs is not a risk at this call site. The issue is consistency: every other user-YAML entry point uses the safe wrappers. A future refactor that adds a `.Decode()` call on the resulting node without re-checking would reintroduce the alias-expansion risk."
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "security-severity": "0.0",
+                "tags": [
+                  "security",
+                  "CWE-400"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "S001",
+          "ruleIndex": 0,
+          "level": "warning",
+          "message": {
+            "text": "LSP lint goroutines have no panic recovery — hostile Markdown crashes the server"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/lsp/server_diagnostics.go"
+                },
+                "region": {
+                  "startLine": 131,
+                  "endLine": 156
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/lsp/server_diagnostics.go"
+                },
+                "region": {
+                  "startLine": 82,
+                  "endLine": 82
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/lsp/server_diagnostics.go"
+                },
+                "region": {
+                  "startLine": 240,
+                  "endLine": 240
+                }
+              }
+            }
+          ],
+          "properties": {
+            "confidence": "confirmed",
+            "severity": "medium"
+          }
+        },
+        {
+          "ruleId": "S002",
+          "ruleIndex": 1,
+          "level": "note",
+          "message": {
+            "text": "cuetemplate.buildCUESource panics on json.Marshal failure instead of returning an error"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/cuetemplate/cuetemplate.go"
+                },
+                "region": {
+                  "startLine": 174,
+                  "endLine": 174
+                }
+              }
+            }
+          ],
+          "properties": {
+            "confidence": "confirmed",
+            "severity": "info"
+          }
+        },
+        {
+          "ruleId": "S003",
+          "ruleIndex": 2,
+          "level": "note",
+          "message": {
+            "text": "convention.go calls yaml.Unmarshal directly instead of yamlutil.UnmarshalNodeSafe"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/config/convention.go"
+                },
+                "region": {
+                  "startLine": 206,
+                  "endLine": 206
+                }
+              }
+            }
+          ],
+          "properties": {
+            "confidence": "confirmed",
+            "severity": "info"
+          }
+        }
+      ]
+    }
+  ]
+}

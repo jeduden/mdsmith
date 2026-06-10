@@ -21,7 +21,7 @@ summary: >-
 
 The steady-state release pipeline and the full list
 of supply-chain controls live in
-[`docs/development/release.md`](../development/release.md).
+[`docs/development/release.md`](../../development/release.md).
 This note is a point-in-time threat model: what the
 attack was, which surfaces it touched in mdsmith, and
 which gaps the 2026-05-12 commit closed.
@@ -132,7 +132,7 @@ step:
 The above leaves four residual concerns. The
 2026-05-12 commit closes them and centralizes the
 ongoing posture in
-[`docs/development/release.md`](../development/release.md).
+[`docs/development/release.md`](../../development/release.md).
 
 ### 1. OIDC token scope was workflow-file-only
 
@@ -148,7 +148,7 @@ With the environment claim required at the npm /
 PyPI side, an attacker who somehow runs `release.yml`
 outside the `release` environment cannot mint a valid
 publish token. The
-[release pipeline operational checklist](../development/release.md#operational-checklist)
+[release pipeline operational checklist](../../development/release.md#operational-checklist)
 lists the corresponding npmjs.com, pypi.org, and
 GitHub UI steps.
 
@@ -212,7 +212,7 @@ changing it requires updating this security note.
   opening a PR. Per-secret files under
   `docs/development/secret-rotations/` hold the
   rotation procedure; see
-  [secret-rotations.md](../development/secret-rotations.md)
+  [secret-rotations.md](../../development/secret-rotations.md)
   for the catalog and overall workflow.
 - **`codecov-action` with `id-token: write` runs on
   PRs from same-repo branches.** The OIDC token's

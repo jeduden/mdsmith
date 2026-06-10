@@ -232,8 +232,8 @@ overrides:
       paragraph-structure:
         max-sentences: 12
         max-words-per-sentence: 120
-  - glob: ["docs/security/*.md", "!docs/security/proto.md",
-           "website/content/docs/security/*.md"]
+  - glob: ["docs/security/*/report.md",
+           "website/content/docs/security/*/report.md"]
     rules:
       line-length:
         max: 600
@@ -378,7 +378,7 @@ kinds:
       required-structure:
         schema: .claude/skills/proto.md
   security-note:
-    path-pattern: "docs/security/{proto.md,[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-*.md}"
+    path-pattern: "docs/security/{proto.md,*/report.md}"
     rules:
       required-structure:
         schema: docs/security/proto.md
@@ -601,8 +601,8 @@ kind-assignment:
   # against a synced file resolves to the same kind as the
   # source. The recursive walk still skips these because the
   # output directory is gitignored.
-  - glob: ["docs/security/*.md",
-           "website/content/docs/security/*.md"]
+  - glob: ["docs/security/proto.md", "docs/security/*/report.md",
+           "website/content/docs/security/*/report.md"]
     kinds: [security-note]
   - glob: ["docs/development/secret-rotations/*.md",
            "website/content/docs/development/secret-rotations/*.md"]

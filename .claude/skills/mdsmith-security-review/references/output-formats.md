@@ -1,12 +1,31 @@
 # Output Formats
 
-All three outputs are rendered from one **`findings.json`** by the
+All three outputs are rendered from one **findings file** by the
 `mdsmith-secreview render` command. Author that one file; never
 hand-write SARIF.
 
+## File layout
+
+Each review owns a directory `docs/security/<YYYY-MM-DD-slug>/`
+holding four fixed-name files:
+
+```text
+docs/security/<stem>/findings.json             # authored input
+docs/security/<stem>/report.md                 # rendered report
+docs/security/<stem>/findings.sarif            # rendered SARIF
+docs/security/<stem>/inline-annotations.json   # rendered annotations
+```
+
+Render with `--out-dir docs/security/<stem>/`. The directory — not a
+filename stem — namespaces each review, so the basenames are fixed
+and a later review never overwrites an earlier one. `SECURITY.md`'s
+`<?catalog?>` over `docs/security/*/report.md` indexes the report;
+run `mdsmith fix SECURITY.md` after rendering. The `security-note`
+kind validates `report.md` against `docs/security/proto.md`.
+
 ## The finding object
 
-`findings.json` is `{"target": {...}, "findings": [ <finding>, ... ]}`.
+The findings file is `{"target": {...}, "findings": [ <finding>, ... ]}`.
 
 ```json
 {
@@ -73,7 +92,7 @@ title, the CWE (as a `properties.tags` entry), and the
 `security-severity`. `confidence` and `severity` are recorded in
 result `properties`.
 
-## Output 2 (human report): `security-review.md`
+## Output 2 (human report): `report.md`
 
 Layout the renderer produces:
 

@@ -43,23 +43,25 @@ repository.
 ## Security Audit Log
 
 Point-in-time security reviews live in
-[`docs/security/`](docs/security/) and follow the
-filename pattern `YYYY-MM-DD-<slug>.md`. Each note
-records the scope, the review method, the findings,
-and the fix or follow-up.
+[`docs/security/`](docs/security/). Each review is a
+directory named `YYYY-MM-DD-<slug>/`. It holds a
+`report.md` next to its machine-readable companions:
+`findings.json`, `findings.sarif`, and
+`inline-annotations.json`. The report records the
+scope, the method, the findings, and the follow-up.
 
 <?catalog
 glob:
-  - "docs/security/*.md"
-  - "!docs/security/proto.md"
+  - "docs/security/*/report.md"
 sort: -date
 header: |
   | Date | Review | Scope |
   |------|--------|-------|
 row: "| {date} | [{title}]({filename}) | {scope} |"
 ?>
-| Date       | Review                                                                                                          | Scope                                                                                                                          |
-| ---------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| 2026-05-12 | [Supply-Chain Hardening — mini-shai-hulud / TanStack Class](docs/security/2026-05-12-supply-chain-hardening.md) | npm, PyPI, VS Code Marketplace, and Open VSX publishing surface; GitHub Actions CI/CD; lockfile and lifecycle-script handling. |
-| 2026-04-05 | [Adversarial Markdown Input](docs/security/2026-04-05-adversarial-markdown.md)                                  | Adversarial markdown input causing unintended side effects on the host machine                                                 |
+| Date       | Review                                                                                                                 | Scope                                                                                                                          |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-06-09 | [mdsmith security audit — 2026-06-09](docs/security/2026-06-09-full-repo-audit/report.md)                              | full repo — all surfaces                                                                                                       |
+| 2026-05-12 | [Supply-Chain Hardening — mini-shai-hulud / TanStack Class](docs/security/2026-05-12-supply-chain-hardening/report.md) | npm, PyPI, VS Code Marketplace, and Open VSX publishing surface; GitHub Actions CI/CD; lockfile and lifecycle-script handling. |
+| 2026-04-05 | [Adversarial Markdown Input](docs/security/2026-04-05-adversarial-markdown/report.md)                                  | Adversarial markdown input causing unintended side effects on the host machine                                                 |
 <?/catalog?>

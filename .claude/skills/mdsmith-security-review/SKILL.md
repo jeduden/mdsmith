@@ -81,29 +81,73 @@ This skill runs in two modes. Decide first; if unclear, ask.
    for, per surface. **Read this file before forming conclusions** —
    it is the core of the skill.
 
-4. **Record findings in the structured model.** Capture each finding
-   as a JSON object per the schema in `references/output-formats.md`.
-   One finding = one defect. Assign severity using the rubric below
-   and record `confidence` honestly (`confirmed` only if you traced
-   the code path or built a repro; otherwise `likely` / `tentative`).
+4. **Record findings in the structured model.** Pick the review's
+   directory first: `docs/security/<YYYY-MM-DD-slug>/` (today's date
+   plus a short scope slug, e.g.
+   `docs/security/2026-06-09-full-repo-audit/`). Author the findings
+   as `<dir>/findings.json` per the schema in
+   `references/output-formats.md`. One finding = one defect. Assign
+   severity using the rubric below and record `confidence` honestly
+   (`confirmed` only if you traced the code path or built a repro;
+   otherwise `likely` / `tentative`).
 
-5. **Emit the three outputs.** From the single `findings.json`,
-   render the report, the SARIF, and the inline annotations. Use the
-   script — do not hand-write SARIF:
+5. **Emit the three outputs.** From the single findings file,
+   render the report, the SARIF, and the inline annotations into
+   the same directory. Use the script — do not hand-write SARIF:
 
    ```bash
-   go run ./cmd/mdsmith-secreview render findings.json --out-dir <dir>
+   go run ./cmd/mdsmith-secreview render \
+     docs/security/<stem>/findings.json \
+     --out-dir docs/security/<stem>/
    ```
 
-   It writes `security-review.md`, `findings.sarif`, and
-   `inline-annotations.json`; see `references/output-formats.md` for
-   the schema and what each output is for.
+   It writes `report.md`, `findings.sarif`, and
+   `inline-annotations.json` beside the `findings.json` input. The
+   schema and the purpose of each output live in
+   `references/output-formats.md`. The per-audit directory keeps
+   every review's files apart, so a later review never overwrites an
+   earlier one. `SECURITY.md`'s catalog indexes the new `report.md`
+   on the next fix pass.
 
-6. **Summarize honestly.** Lead with the highest-severity confirmed
+   Then make the report pass the linter: add the front matter
+   `docs/security/proto.md` requires (`date`, `scope`, `method`,
+   `title`, `summary`), keep the H1 directly after the closing
+   `---`, and run `mdsmith fix` on it. Regenerate `SECURITY.md`'s
+   catalog with `mdsmith fix SECURITY.md`.
+
+6. **Schedule the fixes as plans.** A review that finds defects
+   but leaves no track record of how they get fixed is half a
+   review. Turn the actionable findings into `plan/` files so the
+   fix work is queued like any other task. Group by the fix, not by
+   the finding: one plan covers one coherent change even when it
+   closes several findings (the
+   [`83_security-hardening-batch`](../../../plan/83_security-hardening-batch.md)
+   plan is the canonical multi-finding batch).
+
+  - File one plan per Critical/High/Medium finding (or per shared
+     fix). Batch the Low/informational/hardening items into a single
+     "security hardening batch — `<date>`" plan rather than one file
+     each.
+  - Use the next free numeric prefix in `plan/` and follow
+     [`plan/proto.md`](../../../plan/proto.md): front-matter `id`,
+     `title`, `status: "🔲"`, a `summary`, and a `model` suggestion;
+     body sections Goal, Tasks (red/green TDD steps), and Acceptance
+     Criteria.
+  - In the Goal, name each finding it closes by id and link the
+     review's `report.md`, so the plan and the audit cross-reference.
+  - Run `mdsmith fix PLAN.md` to refresh the index, then
+     `mdsmith check plan/` so the new files pass.
+  - In **PR-review mode**, prefer fixing a finding in the PR itself;
+     file a plan only for follow-up work that is out of the PR's
+     scope. In **audit mode**, file plans for every actionable
+     finding.
+
+7. **Summarize honestly.** Lead with the highest-severity confirmed
    findings. Separate confirmed defects from hardening suggestions.
-   If you could not reach a conclusion on an in-scope area (e.g. you
-   couldn't find the recipe-execution code), say so explicitly
-   rather than implying it's clean.
+   List the plan files you filed. If you could not reach a
+   conclusion on an in-scope area (e.g. you couldn't find the
+   recipe-execution code), say so explicitly rather than implying
+   it's clean.
 
 ## Severity rubric
 
