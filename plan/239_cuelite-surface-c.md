@@ -80,23 +80,15 @@ yet handle:
   wired; the live row-expr builtin `strings.Join` and `len` over a
   string/list are missing.
 
-### Carried-in semantics fix: nested-disjunction default
+### Resolved in phase 2: nested-disjunction default
 
-The phase-2 cross-engine fuzzer found one disjunction-default case
-the in-house engine gets wrong. A PARENTHESIZED nested disjunction
-whose marked default value also appears UNMARKED among its sibling
-disjuncts — `{A: (*0 | 0) | 10}` — wrongly accepts an absent `A`.
-The engine FLATTENS the disjunction and keeps the `*0` default,
-while CUE evaluates the sub-disjunction first, so the nesting
-cancels the default and CUE rejects the absent field. The flat
-`*0 | 0 | 1` and the non-duplicate nested `(*0 | 1) | 10` behave
-correctly — only the nested marked+unmarked duplicate diverges.
-
-The fix needs nesting-aware default propagation in
-`buildDisjunction`, so the evaluator keeps the sub-disjunction
-boundary. Until then the harness skips the exact pattern via
-`schemaHasNestedDuplicateDefault`. Pin the fix with `{A: (*0|0)|10}`
-accepting only when A is present.
+The phase-2 fuzzer found a disjunction-default class the in-house
+engine got wrong. It was a parenthesized nested disjunction whose
+value collapses to one branch (`{A: (*0|0)|10}`). Plan 238's review
+round 2 fixed it in the ⟨value, default⟩ redesign. The evaluator now
+keeps the sub-disjunction boundary (`flattenDisjunct`). A collapsed
+sub-disjunction loses its default. The skip is deleted; surface C
+inherits the corrected semantics.
 
 ## Tasks
 

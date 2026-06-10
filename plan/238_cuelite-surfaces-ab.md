@@ -209,14 +209,10 @@ same `.Path()` route. So the per-field diagnostic, the dedup key, and
 the anchor line do not change. The schema suite passes unchanged,
 including the plan-147/230 diagnostic-shape tests.
 
-The byte-identity claim is scoped to those per-field diagnostics. The
-dedicated FRONT-MATTER-SHAPE diagnostic is no longer reached from a real
-document. It fires only when front matter holds a value the lifter
-cannot represent. But the `json.Marshal → CompileJSON` round-trip is
-gone (plan 218), and a YAML/JSON decoder only produces representable
-types. The branch survives as a typed fail-safe covered by a synthetic
-unit test, its wording moved from the former `json.Marshal` failure to
-the `LiftMap` representability check.
+The byte-identity claim is scoped to per-field diagnostics. The
+front-matter-shape diagnostic is a synthetic fail-safe now. It fires
+only on a value the lifter cannot represent. Its wording moved to the
+`LiftMap` check.
 
 ### Task 3 — flip to the in-house value model (done)
 
@@ -252,27 +248,15 @@ pinned-test classes were rewritten, with sign-off:
 
 #### Parser-frontend decision (recorded)
 
-The schema-constraint parser reuses cuelang's syntax frontend
-(`cue/parser` → `cue/ast`) in phase 2.
-
-The in-house compiler walks that AST into the value model.
-Hand-rolling the full grammar now is risky.
-It also duplicates work phase 3 needs anyway.
-
-The parser yields an AST, not values.
-So the evaluator stays fully in-house: unify, validate, concreteness.
-That is the actual flip.
-
-The oracle keeps its own direct-cuelang evaluator.
-So a shared parser does not collapse the two arms.
-
-Phase 4 (plan 240) swaps the cuelang parser for a hand-rolled one.
-It then drops `cuelang.org/go`.
-This interim is recorded so phase 4 has a removal target.
-
-The blocker — four pinned CUE-behavior test classes — was resolved by
-the authorization. The "Test-contract flip" section above records the
-contract each class moved to.
+The constraint parser reuses cuelang's syntax frontend (`cue/parser` →
+`cue/ast`) in phase 2; the in-house compiler walks that AST into the
+value model. The evaluator stays fully in-house (unify, validate,
+concreteness) — that is the actual flip. The oracle keeps its own
+direct-cuelang evaluator, so a shared parser does not collapse the two
+arms. Phase 4 (plan 240) swaps the cuelang parser for a hand-rolled one
+and drops `cuelang.org/go`; this interim is its removal target. The
+blocker — four pinned CUE-behavior test classes — was resolved by the
+authorization the "Test-contract flip" section records.
 
 ### Task 4 — coverage, gobco, alloc, factor gate (done)
 
@@ -306,6 +290,23 @@ The schema-validate hot path it delegates to measures
 set to 1.0 at this flip, not deferred to plan 240. The interim
 hot-looser-than-cold guard now asserts both ≤ 1.0×. The armed gate
 passes with margin: hot 0.20–0.30×, cold 0.36–0.40×.
+
+### Task 5 — ⟨value, default⟩ default-semantics redesign (done)
+
+Round 2 replaced flatten-and-mark-pointers with CUE's per-disjunct
+mode (`engineValue.modes`).
+
+- `evalDisjunction` flattens by VALUE, so a collapsed sub-disjunction
+  loses its default: `(*0|0)|10` rejects (the plan-239 carry;
+  `schemaHasNestedDuplicateDefault` deleted).
+- `unifyDisjunction` prunes a NESTED-bottom branch and reconciles the
+  meet default from operand defaults; `concreteValueEqual` covers
+  `*[]`.
+- `forceThunkFixpoint`, `evalIdent`, and an `evalBinary` thunk-`&`
+  deferral complete P0.
+
+Each claim was probed against v0.16.1. The 600 s fuzz found one
+divergence, fixed and seeded. Coverage 100 %.
 
 ## See also
 
