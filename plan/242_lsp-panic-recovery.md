@@ -1,7 +1,7 @@
 ---
 id: 242
 title: 'Recover from panics in the LSP lint pipeline'
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   Wrap the LSP lint goroutine and dispatch loop in
@@ -35,29 +35,29 @@ separate bug — this plan only contains the blast radius.
 
 ## Tasks
 
-1. Add a failing test in `internal/lsp` that registers a
+1. [x] Add a failing test in `internal/lsp` that registers a
    rule whose `Check` panics, opens a document, and
    asserts the server stays running and publishes no
    diagnostics for that file (rather than the test
    process dying).
-2. Wrap the body of `runLint` (or `runLintIfCurrent`) in
+2. [x] Wrap the body of `runLint` (or `runLintIfCurrent`) in
    a deferred `recover()` that logs via `s.logger` and
    returns, leaving prior diagnostics untouched.
-3. Wrap `dispatchRaw` in a deferred `recover()` so a
+3. [x] Wrap `dispatchRaw` in a deferred `recover()` so a
    panic in one message handler does not kill the
    dispatch loop; log and continue.
-4. Add a test that a panic during dispatch of one
+4. [x] Add a test that a panic during dispatch of one
    request still lets the next request be served.
 
 ## Acceptance Criteria
 
-- [ ] A rule that panics on a given document no longer
+- [x] A rule that panics on a given document no longer
       terminates the LSP server; the panic is logged and
       that document's diagnostics are skipped for the
       cycle.
-- [ ] A panic handling one LSP message does not stop the
+- [x] A panic handling one LSP message does not stop the
       dispatch loop from serving the next message.
-- [ ] Recovery paths are covered by tests (driven
+- [x] Recovery paths are covered by tests (driven
       red/green).
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

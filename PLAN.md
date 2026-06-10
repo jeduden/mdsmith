@@ -169,7 +169,7 @@ footer: |
 | 239 | 🔲     | opus   | [cuelite phase 3 — surface C (row-expr evaluator)](plan/239_cuelite-surface-c.md)                                                       |
 | 240 | 🔲     | sonnet | [cuelite phase 4 — drop cuelang.org and enable tinygo](plan/240_cuelite-drop-cue.md)                                                    |
 | 241 | 🔲     | opus   | [Schema-per-file config under `.mdsmith/schemas/`](plan/241_schema-files.md)                                                            |
-| 242 | 🔲     | sonnet | [Recover from panics in the LSP lint pipeline](plan/242_lsp-panic-recovery.md)                                                          |
+| 242 | ✅     | sonnet | [Recover from panics in the LSP lint pipeline](plan/242_lsp-panic-recovery.md)                                                          |
 | 242 | 🔲     | opus   | [proto.md schemas declare content entries via `<?content?>`](plan/242_proto-content-entries.md)                                         |
 | 243 | 🔲     | sonnet | [`mdsmith extract` projects the document H1 as `title`](plan/243_extract-h1-title.md)                                                   |
 | 243 | 🔲     | sonnet | [Security hardening batch — 2026-06-09 audit](plan/243_secreview-2026-06-09-hardening.md)                                               |
