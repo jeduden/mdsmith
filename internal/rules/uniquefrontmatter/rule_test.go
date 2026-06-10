@@ -348,3 +348,69 @@ func TestScopePathsOrderingAndExclusion(t *testing.T) {
 		r.scopePaths(fsys),
 		"ascending order, excludes dropped, out-of-glob dropped")
 }
+
+func TestRuleMetadata(t *testing.T) {
+	r := &Rule{}
+	assert.Equal(t, "MDS069", r.ID())
+	assert.Equal(t, "unique-frontmatter", r.Name())
+	assert.Equal(t, "structural", r.Category())
+}
+
+func TestDefaultSettingsZeroValues(t *testing.T) {
+	assert.Equal(t, map[string]any{
+		"field":   "",
+		"include": []string{},
+		"exclude": []string{},
+	}, (&Rule{}).DefaultSettings())
+}
+
+func TestHostKeyWithoutCwdMissesIndex(t *testing.T) {
+	s := &scopeIndex{rootDir: filepath.FromSlash("/ws")}
+	f, err := lint.NewFile("plan/b.md", []byte("# T\n"))
+	require.NoError(t, err)
+	assert.Equal(t, "", s.hostKey(f),
+		"relative host without a captured cwd cannot resolve")
+}
+
+func TestNoWorkspaceFSYieldsEmptyIndex(t *testing.T) {
+	r := planRule()
+	f, err := lint.NewFile("plan/b.md", []byte("# T\n"))
+	require.NoError(t, err)
+	assert.Nil(t, r.Check(f),
+		"a File with neither FS nor RootFS has no scope to index")
+}
+
+func TestOverlappingIncludesDeduplicate(t *testing.T) {
+	fsys := fstest.MapFS{
+		"plan/a.md": {Data: []byte("---\nid: 7\n---\n# A\n")},
+		"plan/b.md": {Data: []byte("---\nid: 7\n---\n# B\n")},
+	}
+	r := &Rule{Field: "id", Include: []string{"plan/*.md", "**/*.md"}}
+	diags := r.Check(file(t, "plan/b.md", fsys))
+	require.Len(t, diags, 1,
+		"a file matched by two patterns joins the scope once")
+}
+
+func TestUnparseableParticipantsAreSkipped(t *testing.T) {
+	fsys := fstest.MapFS{
+		"plan/alias.md":   {Data: []byte("---\nid: &a 7\n---\n# A\n")},
+		"plan/badyaml.md": {Data: []byte("---\nid: [unclosed\n---\n# B\n")},
+		"plan/nofm.md":    {Data: []byte("# No front matter\n")},
+		"plan/ok.md":      {Data: []byte("---\nid: 7\n---\n# O\n")},
+		"plan/zz.md":      {Data: []byte("---\nid: 7\n---\n# Z\n")},
+	}
+	r := &Rule{Field: "id", Include: []string{"plan/*.md"}}
+	diags := r.Check(file(t, "plan/zz.md", fsys))
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "plan/ok.md",
+		"files without front matter or with unparseable YAML never participate")
+}
+
+func TestOversizeParticipantsAreSkipped(t *testing.T) {
+	fsys := planFS()
+	r := planRule()
+	f := file(t, "plan/b.md", fsys)
+	f.MaxInputBytes = 1
+	assert.Nil(t, r.Check(f),
+		"reads beyond the byte limit drop the file from the scope")
+}

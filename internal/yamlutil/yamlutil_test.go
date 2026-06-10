@@ -226,3 +226,14 @@ func TestTopLevelScalarField_CanonicalSpellings(t *testing.T) {
 		"yaml.v3 resolves over-int64 literals as !!float; both "+
 			"spellings of such a value canonicalize the same way")
 }
+
+func TestTopLevelScalarField_NonMappingDocuments(t *testing.T) {
+	doc, err := yamlutil.UnmarshalNodeSafe([]byte("- just\n- a list\n"))
+	require.NoError(t, err)
+	_, _, ok := yamlutil.TopLevelScalarField(&doc, "id", 1)
+	assert.False(t, ok, "sequence documents carry no top-level mapping")
+
+	nilRoot := yaml.Node{Content: []*yaml.Node{nil}}
+	_, _, ok = yamlutil.TopLevelScalarField(&nilRoot, "id", 1)
+	assert.False(t, ok, "a nil root degrades to not-found")
+}
