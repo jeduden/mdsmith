@@ -7,7 +7,7 @@ summary: >-
   filesystem access for the linter.
 mechanism: push
 artifact: cli
-command: flatpak install ./mdsmith-x86_64.flatpak
+command: curl -LO https://github.com/jeduden/mdsmith/releases/latest/download/mdsmith-x86_64.flatpak && flatpak install ./mdsmith-x86_64.flatpak
 audience: Sandboxed Linux x86_64 desktops via Flatpak
 platforms: [linux]
 registry: github.com/jeduden/mdsmith/releases
@@ -23,10 +23,11 @@ Release page: <https://github.com/jeduden/mdsmith/releases>
 The Flatpak channel ships mdsmith as a single-file
 `.flatpak` bundle. The bundle is attached to each GitHub
 release. Its app id is `io.github.jeduden.mdsmith`, and it
-is **x86_64 only**. Download `mdsmith-x86_64.flatpak` from
-the release page, then install and run it:
+is **x86_64 only**. The commands below download the latest
+`mdsmith-x86_64.flatpak`, install it, and run it:
 
 ```bash
+curl -LO https://github.com/jeduden/mdsmith/releases/latest/download/mdsmith-x86_64.flatpak
 flatpak install ./mdsmith-x86_64.flatpak
 flatpak run io.github.jeduden.mdsmith check .
 ```

@@ -50,20 +50,20 @@ header: |
   | ------- | ------- | -------- |
 row: "| {title} | `{command}` | {audience} |"
 ?>
-| Channel         | Command                                                                                    | Best for                                          |
-| --------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------- |
-| Go              | `go install github.com/jeduden/mdsmith/cmd/mdsmith@latest`                                 | Go developers with a working Go toolchain         |
-| npm             | `npm install -g @mdsmith/cli`                                                              | Node / TypeScript repos and npm-friendly CI       |
-| npx             | `npx @mdsmith/cli check .`                                                                 | One-off checks without a global install           |
-| PyPI            | `pip install mdsmith`                                                                      | Python projects and Python-only CI images         |
-| uvx             | `uvx mdsmith check .`                                                                      | Ephemeral runs via uv                             |
-| pipx            | `pipx install mdsmith`                                                                     | Isolated CLI install on Python hosts              |
-| Homebrew        | `brew install jeduden/mdsmith/mdsmith`                                                     | macOS and Linux via Homebrew                      |
-| mise            | `mise use -g ubi:jeduden/mdsmith@latest`                                                   | Repos using mise; works today via GitHub releases |
-| asdf            | `asdf plugin add mdsmith https://github.com/jeduden/asdf-mdsmith.git`                      | Repos standardized on asdf                        |
-| GitHub Releases | `curl -LO https://github.com/jeduden/mdsmith/releases/latest/download/mdsmith-<os>-<arch>` | Air-gapped hosts and direct binary control        |
-| Scoop           | `scoop install mdsmith`                                                                    | Windows users with Scoop installed                |
-| Flatpak         | `flatpak install ./mdsmith-x86_64.flatpak`                                                 | Sandboxed Linux x86_64 desktops via Flatpak       |
+| Channel         | Command                                                                                                                                   | Best for                                          |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| Go              | `go install github.com/jeduden/mdsmith/cmd/mdsmith@latest`                                                                                | Go developers with a working Go toolchain         |
+| npm             | `npm install -g @mdsmith/cli`                                                                                                             | Node / TypeScript repos and npm-friendly CI       |
+| npx             | `npx @mdsmith/cli check .`                                                                                                                | One-off checks without a global install           |
+| PyPI            | `pip install mdsmith`                                                                                                                     | Python projects and Python-only CI images         |
+| uvx             | `uvx mdsmith check .`                                                                                                                     | Ephemeral runs via uv                             |
+| pipx            | `pipx install mdsmith`                                                                                                                    | Isolated CLI install on Python hosts              |
+| Homebrew        | `brew install jeduden/mdsmith/mdsmith`                                                                                                    | macOS and Linux via Homebrew                      |
+| mise            | `mise use -g ubi:jeduden/mdsmith@latest`                                                                                                  | Repos using mise; works today via GitHub releases |
+| asdf            | `asdf plugin add mdsmith https://github.com/jeduden/asdf-mdsmith.git`                                                                     | Repos standardized on asdf                        |
+| GitHub Releases | `curl -LO https://github.com/jeduden/mdsmith/releases/latest/download/mdsmith-<os>-<arch>`                                                | Air-gapped hosts and direct binary control        |
+| Scoop           | `scoop install mdsmith`                                                                                                                   | Windows users with Scoop installed                |
+| Flatpak         | `curl -LO https://github.com/jeduden/mdsmith/releases/latest/download/mdsmith-x86_64.flatpak && flatpak install ./mdsmith-x86_64.flatpak` | Sandboxed Linux x86_64 desktops via Flatpak       |
 <?/catalog?>
 
 A bare `mise use mdsmith@latest` needs a registry entry —
@@ -207,12 +207,13 @@ plugin first as shown above.
 
 ## Flatpak
 
-mdsmith ships an **x86_64-only** Flatpak bundle as a release
-asset. Download `mdsmith-x86_64.flatpak` from the
-[release page](https://github.com/jeduden/mdsmith/releases),
-then install and run it:
+mdsmith ships an **x86_64-only** Flatpak bundle as an asset
+on the [release page](https://github.com/jeduden/mdsmith/releases).
+The commands below download the latest
+`mdsmith-x86_64.flatpak`, install it, and run it:
 
 ```bash
+curl -LO https://github.com/jeduden/mdsmith/releases/latest/download/mdsmith-x86_64.flatpak
 flatpak install ./mdsmith-x86_64.flatpak
 flatpak run io.github.jeduden.mdsmith check .
 ```

@@ -158,7 +158,7 @@
   summary: A single-file `.flatpak` bundle built in CI from the x86_64 Linux release binary and attached to each GitHub release, installed by file with host filesystem access for the linter.
   mechanism: push
   artifact: cli
-  command: flatpak install ./mdsmith-x86_64.flatpak
+  command: curl -LO https://github.com/jeduden/mdsmith/releases/latest/download/mdsmith-x86_64.flatpak && flatpak install ./mdsmith-x86_64.flatpak
   audience: Sandboxed Linux x86_64 desktops via Flatpak
   platforms:
     - linux
