@@ -243,11 +243,7 @@ func (s *Server) clearOpenDiagnostics() {
 // dropped. The server stays running and that document's diagnostics are
 // left at their previous value for the cycle.
 func (s *Server) runLint(uri string) {
-	defer func() {
-		if r := recover(); r != nil {
-			s.logger.Printf("lint %s: recovered panic: %v", uri, r)
-		}
-	}()
+	defer s.recoverPanic("lint " + uri)
 	doc, ok := s.docs.get(uri)
 	if !ok {
 		return
@@ -280,8 +276,9 @@ func (s *Server) runLint(uri string) {
 		return
 	}
 	// lintPanicHook is a test seam (nil in production). When set, it
-	// replaces the real CheckVersion call so a test can trigger a panic
-	// inside the lint pipeline and verify the deferred recover catches it.
+	// fires just before the real CheckVersion call so a test can
+	// trigger a panic inside the lint pipeline and verify the deferred
+	// recover catches it.
 	if s.lintPanicHook != nil {
 		s.lintPanicHook()
 	}

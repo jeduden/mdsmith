@@ -3,6 +3,8 @@ package lsp
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +12,7 @@ import (
 	vlog "github.com/jeduden/mdsmith/internal/log"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestRunLintPanicIsRecovered verifies that a panic inside the lint
@@ -50,10 +53,17 @@ func TestRunLintPanicIsRecovered(t *testing.T) {
 	assert.NotContains(t, out.String(), "publishDiagnostics",
 		"a panic in the lint pipeline must not publish diagnostics")
 
-	// The panic must have been logged so it is observable in the server
-	// log rather than silently swallowed.
+	// The panic must have been logged with its stack so the underlying
+	// bug is diagnosable from the only artifact recovery leaves.
 	assert.Contains(t, logBuf.String(), "injected lint panic",
 		"the recovered panic value must appear in the server log")
+	assert.Contains(t, logBuf.String(), "goroutine",
+		"the recovery log must include the stack trace")
+
+	// Production runs with logging disabled, so the recovery must also
+	// reach the editor's output channel via window/logMessage.
+	assert.Contains(t, out.String(), "window/logMessage",
+		"the recovered panic must surface to the editor")
 }
 
 // TestRunLintIfCurrentPanicIsRecovered verifies the same through the
@@ -128,11 +138,10 @@ func TestDispatchRawPanicAllowsNextRequest(t *testing.T) {
 		"dispatch loop must still serve requests after a recovered panic")
 }
 
-// TestDispatchRawPanicReturnsErrorForPendingRequest verifies that a
-// request whose handler panics gets an InternalError response rather
-// than leaving the client hanging. (Optional: only asserts the server
-// stays alive, since writing a response from recover is optional.)
-func TestDispatchRawPanicServerSurvivesOnRequestPanic(t *testing.T) {
+// TestDispatchRawPanicAnswersPendingRequest verifies that a request
+// whose handler panics gets an InternalError response, so the
+// client's promise for that ID settles instead of pending forever.
+func TestDispatchRawPanicAnswersPendingRequest(t *testing.T) {
 	t.Parallel()
 	var out safeBuffer
 	var logBuf strings.Builder
@@ -156,16 +165,78 @@ func TestDispatchRawPanicServerSurvivesOnRequestPanic(t *testing.T) {
 		Method  string          `json:"method"`
 	}{JSONRPC: "2.0", ID: json.RawMessage(`99`), Method: "shutdown"})
 
-	// Before the fix this panics; after the fix it returns normally.
 	s.dispatchRaw(context.Background(), raw)
 
-	// The panic must be logged.
+	// The panic must be logged with its stack.
 	assert.Contains(t, logBuf.String(), "injected dispatch panic",
 		"the recovered dispatch panic must be logged")
+	assert.Contains(t, logBuf.String(), "goroutine",
+		"the recovery log must include the stack trace")
+
+	// The in-flight request must be answered with InternalError.
+	assert.Contains(t, out.String(), `"id":99`,
+		"the panicked request's ID must be answered")
+	assert.Contains(t, out.String(), `-32603`,
+		"the answer must be an InternalError response")
 
 	// After the panic the server is not in a wedged state; a fresh
-	// request still works.
+	// request is served with a real response.
 	s.dispatchPanicHook = nil
 	s.dispatchRaw(context.Background(),
 		[]byte(`{"jsonrpc":"2.0","id":100,"method":"shutdown"}`))
+	assert.Contains(t, out.String(), `"id":100`,
+		"the follow-up request must receive its response")
+}
+
+// TestFetchClientSettingsPanicIsRecovered verifies that a panic on
+// the client-settings goroutine — here injected via the host's
+// OnConfigReload callback, which runs inside the response path's
+// reloadConfig — is contained instead of killing the server. The
+// same reload triggered from the dispatch loop was already covered
+// by dispatchRaw's recover; this pins the asymmetric goroutine path.
+func TestFetchClientSettingsPanicIsRecovered(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(cfgPath,
+		[]byte("rules:\n  line-length:\n    max: 120\n"), 0o600))
+
+	var out safeBuffer
+	var logBuf strings.Builder
+	s := New(Options{
+		Reader: nil,
+		Writer: &out,
+		Rules:  rule.All(),
+		Logger: &vlog.Logger{Enabled: true, W: &logBuf},
+		OnConfigReload: func(string) {
+			panic("injected config-reload panic")
+		},
+	})
+	s.fetchTimeout = 5 * time.Second
+
+	// Deliver the workspace/configuration response (pointing
+	// mdsmith.config at the temp file, so the resolved path changes
+	// and OnConfigReload fires) once the request has been written.
+	respond := func() {
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) {
+			if strings.Contains(out.String(), "workspace/configuration") {
+				break
+			}
+			time.Sleep(time.Millisecond)
+		}
+		result, err := json.Marshal([]clientSettings{{ConfigPath: &cfgPath}})
+		require.NoError(t, err)
+		s.deliverResponse("1", rpcResponse{Result: result})
+	}
+	go respond()
+
+	// Direct call: without the deferred recover the injected panic
+	// propagates out of fetchClientSettings and fails this test.
+	s.fetchClientSettings(context.Background())
+
+	assert.Contains(t, logBuf.String(), "injected config-reload panic",
+		"the recovered settings-path panic must be logged")
+	assert.Contains(t, logBuf.String(), "goroutine",
+		"the recovery log must include the stack trace")
 }
