@@ -306,10 +306,9 @@ func isDefinitionOrHidden(name string) bool {
 func compileUnary(n *ast.UnaryExpr) (*engineValue, error) {
 	switch n.Op {
 	case token.GEQ, token.LEQ, token.GTR, token.LSS, token.NEQ, token.MAT, token.NMAT:
-		op, err := boundOpOf(n.Op)
-		if err != nil {
-			return nil, err
-		}
+		// The case label is exactly boundOpOf's domain, so the lookup cannot
+		// fail; the ok result is discarded.
+		op, _ := boundOpOf(n.Op)
 		operand, err := compileExpr(n.X)
 		if err != nil {
 			return nil, err
@@ -357,25 +356,28 @@ func negateNumeric(v *engineValue) (*engineValue, error) {
 	}
 }
 
-// boundOpOf maps an AST relational token to a boundOp.
-func boundOpOf(t token.Token) (boundOp, error) {
+// boundOpOf maps an AST relational token to a boundOp, reporting ok=false for
+// a token outside the relational set. Both callers pre-filter to the relational
+// tokens, so ok is always true at those sites and discarded; the false return
+// is the helper's own total-function guard.
+func boundOpOf(t token.Token) (boundOp, bool) {
 	switch t {
 	case token.GEQ:
-		return opGe, nil
+		return opGe, true
 	case token.LEQ:
-		return opLe, nil
+		return opLe, true
 	case token.GTR:
-		return opGt, nil
+		return opGt, true
 	case token.LSS:
-		return opLt, nil
+		return opLt, true
 	case token.NEQ:
-		return opNe, nil
+		return opNe, true
 	case token.MAT:
-		return opMatch, nil
+		return opMatch, true
 	case token.NMAT:
-		return opNotMatch, nil
+		return opNotMatch, true
 	default:
-		return 0, fmt.Errorf("cuelite: unsupported bound operator %q", t)
+		return 0, false
 	}
 }
 
@@ -451,10 +453,9 @@ func compileSelectorCall(sel *ast.SelectorExpr, args []ast.Expr) (*engineValue, 
 	if !ok {
 		return nil, fmt.Errorf("cuelite: unsupported call target %s", exprText(sel))
 	}
-	selName, _, err := ast.LabelName(sel.Sel)
-	if err != nil {
-		return nil, fmt.Errorf("cuelite: unsupported selector: %w", err)
-	}
+	// The parser produces a plain identifier for a selector's member (`pkg.Sel`),
+	// so sel.Sel is an *ast.Ident; selName reads it directly.
+	selName := selectorName(sel.Sel)
 	name := pkg.Name + "." + selName
 	if name != "strings.MinRunes" {
 		return nil, fmt.Errorf("cuelite: unsupported function %q", name)
@@ -476,6 +477,17 @@ func compileSelectorCall(sel *ast.SelectorExpr, args []ast.Expr) (*engineValue, 
 	}, nil
 }
 
+// selectorName returns the member name of a selector (`pkg.member`). The
+// parser produces a plain identifier for a selector's member, so this reads
+// the *ast.Ident directly; any other label node renders as "?" for an error
+// message rather than failing.
+func selectorName(l ast.Label) string {
+	if id, ok := l.(*ast.Ident); ok {
+		return id.Name
+	}
+	return "?"
+}
+
 // exprText renders an AST expression as its source-ish text for an error
 // message, falling back to the Go type when the node is unprintable.
 func exprText(e ast.Expr) string {
@@ -483,11 +495,7 @@ func exprText(e ast.Expr) string {
 	case *ast.Ident:
 		return n.Name
 	case *ast.SelectorExpr:
-		sel, _, err := ast.LabelName(n.Sel)
-		if err != nil {
-			return exprText(n.X) + ".?"
-		}
-		return exprText(n.X) + "." + sel
+		return exprText(n.X) + "." + selectorName(n.Sel)
 	default:
 		return fmt.Sprintf("%T", e)
 	}

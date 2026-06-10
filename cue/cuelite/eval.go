@@ -282,10 +282,9 @@ func compareConcrete(l *engineValue, op token.Token, r *engineValue) (bool, erro
 		}
 		return m, nil
 	}
-	bop, err := boundOpOf(op)
-	if err != nil {
-		return false, err
-	}
+	// op is one of GEQ/LEQ/GTR/LSS here (EQL/NEQ/MAT/NMAT handled above), all in
+	// boundOpOf's domain, so the lookup cannot fail.
+	bop, _ := boundOpOf(op)
 	if l.kind == kString && r.kind == kString {
 		return compareStr(l.str, bop, r.str), nil
 	}

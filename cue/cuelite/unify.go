@@ -484,26 +484,18 @@ func unifyList(v, o *engineValue, path []string) *engineValue {
 	}
 	out := &engineValue{kind: kList, openTop: v.openTop && o.openTop}
 	for i := 0; i < n; i++ {
+		// listElemAt never returns nil for an index reached here: a closed list
+		// shorter than the other's prefix is already rejected by listLengthOK, and
+		// an open list always carries an elem type (the builders set it), so a
+		// past-prefix index of an open list yields that elem.
 		ev := listElemAt(v, i)
 		oe := listElemAt(o, i)
-		if ev == nil {
-			ev = topValue()
-		}
-		if oe == nil {
-			oe = topValue()
-		}
 		out.prefix = append(out.prefix, unifyV(ev, oe, appendPath(path, intLabel(i))))
 	}
 	if out.openTop {
-		te := topValue()
-		if v.elem != nil && o.elem != nil {
-			te = unifyV(v.elem, o.elem, path)
-		} else if v.elem != nil {
-			te = v.elem
-		} else if o.elem != nil {
-			te = o.elem
-		}
-		out.elem = te
+		// Both lists are open here (out.openTop = v.openTop && o.openTop), so each
+		// carries a non-nil elem type; the tail is their meet.
+		out.elem = unifyV(v.elem, o.elem, path)
 	}
 	return out
 }

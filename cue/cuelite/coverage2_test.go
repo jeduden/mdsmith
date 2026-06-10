@@ -214,7 +214,9 @@ func TestCompareNum_default(t *testing.T) {
 // null branches directly.
 func TestConcreteEqual_boolBytesNull(t *testing.T) {
 	assert.True(t, concreteEqual(&engineValue{kind: kBool, b: true}, &engineValue{kind: kBool, b: true}))
-	assert.True(t, concreteEqual(&engineValue{kind: kBytes, bytes: []byte("a")}, &engineValue{kind: kBytes, bytes: []byte("a")}))
+	ba := &engineValue{kind: kBytes, bytes: []byte("a")}
+	bb := &engineValue{kind: kBytes, bytes: []byte("a")}
+	assert.True(t, concreteEqual(ba, bb))
 	assert.True(t, concreteEqual(&engineValue{kind: kNull}, &engineValue{kind: kNull}))
 	assert.False(t, concreteEqual(&engineValue{kind: kAtom}, &engineValue{kind: kAtom}))
 }
