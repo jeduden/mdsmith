@@ -122,6 +122,45 @@ func concreteEqual(a, b *engineValue) bool {
 	return false
 }
 
+// concreteValueEqual reports whether two CONCRETE values are equal across every
+// kind a disjunction default or dedup may carry: a scalar (via concreteEqual),
+// a list (same length, element-wise equal), or a struct (same field set,
+// value-wise equal). A non-concrete value is never equal to another here — the
+// callers gate on concreteness first. This generalizes concreteEqual so a
+// concrete LIST or STRUCT default (`*[]`, `*{x:0}`) deduplicates and matches a
+// surviving branch the way a scalar default does.
+func concreteValueEqual(a, b *engineValue) bool {
+	if a.kind != b.kind {
+		return false
+	}
+	switch a.kind {
+	case kList:
+		if a.openTop || b.openTop || len(a.prefix) != len(b.prefix) {
+			return false
+		}
+		for i := range a.prefix {
+			if !concreteValueEqual(a.prefix[i], b.prefix[i]) {
+				return false
+			}
+		}
+		return true
+	case kStruct:
+		if len(a.fields) != len(b.fields) {
+			return false
+		}
+		bIdx := indexFields(b.fields)
+		for _, fa := range a.fields {
+			j, ok := bIdx[fa.name]
+			if !ok || !concreteValueEqual(fa.val, b.fields[j].val) {
+				return false
+			}
+		}
+		return true
+	default:
+		return concreteEqual(a, b)
+	}
+}
+
 // unifyConcreteAtom checks a concrete scalar against a typed atom: the
 // concrete must belong to the atom's kind (with number admitting int and
 // float). On match the concrete (the more specific value) is the result.
@@ -397,7 +436,7 @@ func unifyDisjunction(d, o *engineValue, path []string) *engineValue {
 	for i, s := range survivors {
 		out.branches[i] = s.v
 		mode := dfltNot
-		if def != nil && s.v.concreteScalarV() && def.concreteScalarV() && concreteEqual(s.v, def) {
+		if def != nil && isConcrete(s.v) && concreteValueEqual(s.v, def) {
 			mode = dfltIs
 		}
 		out.modes[i] = mode
@@ -442,10 +481,11 @@ func surviving(def, other *engineValue, path []string) *engineValue {
 	return def
 }
 
-// concreteOrNil returns v when it is a concrete scalar, else nil — a meet
-// default is usable only when it pins a single concrete value.
+// concreteOrNil returns v when it is fully concrete (a scalar, or a concrete
+// list/struct such as the `*[]` default), else nil — a meet default is usable
+// only when it pins a single concrete value.
 func concreteOrNil(v *engineValue) *engineValue {
-	if v.concreteScalarV() {
+	if isConcrete(v) {
 		return v
 	}
 	return nil

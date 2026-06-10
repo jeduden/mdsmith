@@ -117,6 +117,24 @@ func TestMeetDefaultReconciliation(t *testing.T) {
 	})
 }
 
+// TestConcreteNonScalarDefault pins that a concrete LIST or STRUCT default
+// (`*[]`, `*{x:0}`) works like a scalar default: it deduplicates against an
+// equal sibling branch, resolves the meet default, and matches a provided
+// equal value. The `depends-on: [...int] | *[]` schema the plan/ proto uses is
+// the live case — both an ABSENT and a PROVIDED empty list must accept. Probed
+// against cuelang v0.16.1.
+func TestConcreteNonScalarDefault(t *testing.T) {
+	runAcceptCases(t, []acceptCase{
+		{"list default absent", `{A: [...int] | *[]}`, `{}`, true},
+		{"list default provided empty", `{A: [...int] | *[]}`, `{"A":[]}`, true},
+		{"list default provided non-empty", `{A: [...int] | *[]}`, `{"A":[1,2]}`, true},
+		{"struct default absent", `{A: {x:int} | *{x:0}}`, `{}`, true},
+		{"list mark left absent", `{A: *[1,2] | [3,4]}`, `{}`, true},
+		{"two list marks ambiguous", `{A: *[1] | *[2]}`, `{}`, false},
+		{"equal list marks collapse", `{A: *[1] | *[1]}`, `{}`, true},
+	})
+}
+
 // TestMeetThunkRefErasure pins that an undeclared reference inside a deferred
 // branch of a compile-time `&` meet surfaces as "reference not found" at
 // compile, not silently erased by the eager meet. Probed against CUE v0.16.1:

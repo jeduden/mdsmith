@@ -552,17 +552,19 @@ func buildDisjunction(branches []branchMode, hasMark bool) *engineValue {
 	return out
 }
 
-// dedupeBranchModes removes later duplicates of a concrete scalar branch,
-// keeping the stronger mode of the duplicates (combineMode): the spec note
-// "def + maybe → def" means a `*0 | 0` collapses to a single 0 that stays a
-// default. A non-concrete branch is never equal to another and is always kept.
+// dedupeBranchModes removes later duplicates of a CONCRETE branch (a scalar, or
+// a concrete list/struct such as a `*[]` default), keeping the stronger mode of
+// the duplicates (combineMode): the spec note "def + maybe → def" means a
+// `*0 | 0` collapses to a single 0 that stays a default, and `*[] | []`
+// likewise collapses. A non-concrete branch is never equal to another and is
+// always kept.
 func dedupeBranchModes(branches []branchMode) []branchMode {
 	out := branches[:0:0]
 	for _, b := range branches {
 		merged := false
-		if b.v.concreteScalarV() {
+		if isConcrete(b.v) {
 			for i := range out {
-				if out[i].v.concreteScalarV() && concreteEqual(out[i].v, b.v) {
+				if isConcrete(out[i].v) && concreteValueEqual(out[i].v, b.v) {
 					out[i].mode = combineMode(out[i].mode, b.mode)
 					merged = true
 					break

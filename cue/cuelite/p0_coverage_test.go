@@ -7,6 +7,39 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestConcreteValueEqual_branches drives concreteValueEqual's list, struct, and
+// scalar arms, including the struct field-count mismatch and a missing field.
+func TestConcreteValueEqual_branches(t *testing.T) {
+	one := &engineValue{kind: kInt, i: 1}
+	two := &engineValue{kind: kInt, i: 2}
+	mkStruct := func(fs ...field) *engineValue { return &engineValue{kind: kStruct, fields: fs} }
+	// Different KIND is never equal.
+	assert.False(t, concreteValueEqual(one, &engineValue{kind: kString, str: "1"}))
+	// Equal and unequal lists.
+	assert.True(t, concreteValueEqual(
+		&engineValue{kind: kList, prefix: []*engineValue{one}},
+		&engineValue{kind: kList, prefix: []*engineValue{one}}))
+	assert.False(t, concreteValueEqual(
+		&engineValue{kind: kList, prefix: []*engineValue{one}},
+		&engineValue{kind: kList, prefix: []*engineValue{two}}))
+	// An open list is never equal (the openTop guard).
+	assert.False(t, concreteValueEqual(
+		&engineValue{kind: kList, openTop: true},
+		&engineValue{kind: kList, openTop: true}))
+	// Struct field-count mismatch is unequal.
+	assert.False(t, concreteValueEqual(
+		mkStruct(field{name: "x", val: one}),
+		mkStruct(field{name: "x", val: one}, field{name: "y", val: two})))
+	// Same count, a field present in a but absent in b is unequal.
+	assert.False(t, concreteValueEqual(
+		mkStruct(field{name: "x", val: one}),
+		mkStruct(field{name: "z", val: one})))
+	// Equal structs.
+	assert.True(t, concreteValueEqual(
+		mkStruct(field{name: "x", val: one}),
+		mkStruct(field{name: "x", val: one})))
+}
+
 // TestHasBottomLeaf_nestedPositions drives hasBottomLeaf's list-tail (elem) and
 // disjunction arms: a bottom buried in an open list's tail element is found,
 // and a disjunction value (a valid survivor) is never itself a failed branch.
