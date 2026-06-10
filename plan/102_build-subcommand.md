@@ -102,9 +102,8 @@ plan 101.
 
 MDS039 (plan 101) is changed to:
 
-1. Reject `output:` (singular) — it is no
-   longer a known param. The standard "unknown
-   param" diagnostic applies.
+1. Reject `output:` — no longer a known
+   param; the unknown-param diagnostic applies.
 2. Require `outputs:` (list of strings,
    non-empty). Each entry is validated per
    "Path-shape rules" below.
