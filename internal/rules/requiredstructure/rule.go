@@ -1330,6 +1330,13 @@ func collectBodySyncPoints(
 	syncPoints map[int][]syncPoint,
 ) {
 	currentHeading := -1
+	// inContentDirective is true while scanning the lines of a
+	// multi-line `<?content?>` directive block. Plan 242 makes such a
+	// row opaque to the legacy body-sync collector: a `{field}` token
+	// inside the directive body (e.g. a `bind:` value) must not become
+	// a body-sync point, since the row is a schema directive parsed by
+	// schema.ParseFile, not body-sync template text.
+	inContentDirective := false
 	start := 0
 	for i := 0; i <= len(content); i++ {
 		if i < len(content) && content[i] != '\n' {
@@ -1340,30 +1347,85 @@ func collectBodySyncPoints(
 		if len(lineB) == 0 {
 			continue
 		}
+		if inContentDirective {
+			inContentDirective = !bytes.Contains(lineB, piClose)
+			continue
+		}
+		if isContentDirectiveOpen(lineB) {
+			// A single-line `<?content ... ?>` opens and closes on the
+			// same line; only a multi-line opener leaves us inside the
+			// block for subsequent lines.
+			inContentDirective = !bytes.Contains(lineB[len(contentDirectiveOpen):], piClose)
+			continue
+		}
 		if lineB[0] == '#' {
-			trimmed := string(lineB)
-			for j, h := range headings {
-				if headingMatchesLine(h, trimmed) {
-					currentHeading = j
-					break
-				}
+			if idx := headingIndexForLine(headings, string(lineB)); idx >= 0 {
+				currentHeading = idx
 			}
 			continue
 		}
 		if currentHeading >= 0 {
-			trimmed := string(lineB)
-			fields := fieldinterp.Fields(trimmed)
-			if len(fields) > 0 {
-				compiled := buildFieldPattern(trimmed)
-				for _, f := range fields {
-					syncPoints[currentHeading] = append(
-						syncPoints[currentHeading],
-						syncPoint{Field: f, InBody: true, BodyText: trimmed, compiled: compiled},
-					)
-				}
-			}
+			appendBodySyncFields(syncPoints, currentHeading, string(lineB))
 		}
 	}
+}
+
+// headingIndexForLine returns the index of the first schema heading
+// that matches the body line, or -1 when none does.
+func headingIndexForLine(headings []docHeading, line string) int {
+	for j, h := range headings {
+		if headingMatchesLine(h, line) {
+			return j
+		}
+	}
+	return -1
+}
+
+// appendBodySyncFields records a body-sync point under heading idx for
+// each `{field}` token found in the body line. Lines with no token add
+// nothing.
+func appendBodySyncFields(
+	syncPoints map[int][]syncPoint, idx int, trimmed string,
+) {
+	fields := fieldinterp.Fields(trimmed)
+	if len(fields) == 0 {
+		return
+	}
+	compiled := buildFieldPattern(trimmed)
+	for _, f := range fields {
+		syncPoints[idx] = append(syncPoints[idx],
+			syncPoint{Field: f, InBody: true, BodyText: trimmed, compiled: compiled})
+	}
+}
+
+// contentDirectiveOpen / piClose are the literal markers
+// collectBodySyncPoints scans for to skip a `<?content?>` directive
+// block. They are package-level so the byte slices are allocated
+// once rather than per call.
+var (
+	contentDirectiveOpen = []byte("<?content")
+	piClose              = []byte("?>")
+)
+
+// isContentDirectiveOpen reports whether a trimmed body line opens a
+// `<?content?>` directive. It matches the `<?content` prefix only
+// when the next byte is not an identifier character, so a directive
+// like `<?content-foo?>` (a different name) is not mistaken for one.
+func isContentDirectiveOpen(line []byte) bool {
+	if !bytes.HasPrefix(line, contentDirectiveOpen) {
+		return false
+	}
+	rest := line[len(contentDirectiveOpen):]
+	if len(rest) == 0 {
+		return true
+	}
+	c := rest[0]
+	if c == '-' || c == '_' ||
+		(c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+		(c >= '0' && c <= '9') {
+		return false
+	}
+	return true
 }
 
 // maxSchemaIncludeDepth is the maximum nesting depth for schema includes.

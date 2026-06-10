@@ -83,3 +83,27 @@ func TestParseFile_ContentDirectiveRejectsInlineOnCodeBlock(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, strings.ToLower(err.Error()), "projection")
 }
+
+// TestParseFile_ContentDirectiveRejectsEmptyBind locks down that
+// `bind: ""` on a content entry fails at parse time — a content entry
+// has no children to hoist, the same rule the inline form enforces.
+func TestParseFile_ContentDirectiveRejectsEmptyBind(t *testing.T) {
+	dir := t.TempDir()
+	path := writeFile(t, dir, "schema.md",
+		"## Tagline\n\n<?content\nkind: paragraph\nbind: \"\"\n?>\n")
+	_, err := ParseFile(&FileReader{}, path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "bind")
+}
+
+// TestParseFile_ContentDirectiveRejectsUnknownKey locks down that an
+// unknown key on the directive fails at parse time, matching the
+// inline content parser's unknown-key diagnostic.
+func TestParseFile_ContentDirectiveRejectsUnknownKey(t *testing.T) {
+	dir := t.TempDir()
+	path := writeFile(t, dir, "schema.md",
+		"## Tagline\n\n<?content\nkind: paragraph\nbogus: 1\n?>\n")
+	_, err := ParseFile(&FileReader{}, path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown content key")
+}
