@@ -350,7 +350,9 @@ func mergeScopes(a, b Scope) (Scope, error) {
 	// The schema-rule walker is the only consumer, and its semantics
 	// are already "later overrides earlier" within a single scope.
 	out.Rules = mergeScopeRules(a.Rules, b.Rules)
-	out.Content = append(cloneContent(a.Content), cloneContent(b.Content)...)
+	// cloneScope already deep-copied a.Content into out; appending
+	// b's clone onto it avoids re-cloning a's entries.
+	out.Content = append(out.Content, cloneContent(b.Content)...)
 	return out, nil
 }
 

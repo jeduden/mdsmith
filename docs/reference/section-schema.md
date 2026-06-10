@@ -160,16 +160,8 @@ field `name`, regex-escapes its value, and
 returns it. Use it whenever the heading text
 must equal a frontmatter value. The escape is
 needed because field values can contain RE2
-metacharacters.
-
-```yaml
-- heading:
-    regex: 'Step \#(digits)'
-    repeat: { min: 1 }
-    sequential: true
-- heading:
-    regex: '\#(fmvar(id)): \#(fmvar(name))'
-```
+metacharacters. The "At a glance" block above
+shows both helpers in a pattern.
 
 `sequential: true` is a sibling field on the
 entry. Only meaningful with `digits` in the
@@ -256,22 +248,14 @@ schema:
 
 ## `proto.md` file syntax
 
-> **Heading rows vs body lines.** In heading
-> rows, `{field}` is a wildcard — not resolved
-> against front matter. The table below shows
-> the equivalent inline entry for each row.
->
-> In **body lines**, `{field}` is fully wired:
-> MDS020 checks each placeholder against front
-> matter and `mdsmith fix` rewrites stale lines
-> for a **single file-based schema source**.
-> Composed schemas skip the Fix body rewrite.
-
-Proto.md files use a literal-template surface
-distinct from the inline `regex:` form. Heading
-rows in the body act as the schema's
-`sections:` list. `{n}` and `{field}` survive
-here as template placeholders.
+Heading rows act as the schema's `sections:` list,
+mapping to the inline entries below. In a heading
+row, `{field}` is a wildcard, not a front-matter
+lookup. In a **body line**, `{field}` is fully
+wired: MDS020 checks it against front matter, and
+`mdsmith fix` rewrites stale lines for a single
+file-based schema source (composed schemas skip the
+Fix rewrite).
 
 | Row syntax        | Equivalent inline entry                        |
 | ----------------- | ---------------------------------------------- |
@@ -281,13 +265,32 @@ here as template placeholders.
 | `## Step {n}`     | `heading: { regex: 'Step \#(digits)' }`        |
 | `## {id}`         | `heading: { regex: '\#(fmvar(id))' }`          |
 
-Proto.md cannot express `repeat: { min, max }`
-or `sequential:`. Callers needing those switch
-to the inline-YAML form on a kind in
-`.mdsmith.yml`.
+Proto.md cannot express `repeat:` or `sequential:`;
+switch to the inline form for those. The `<?require
+filename: "..."?>` directive is unchanged.
 
-The `<?require filename: "..."?>` directive in
-proto.md bodies is unchanged.
+### The `<?content?>` directive
+
+A `<?content?>` row in a section body declares one
+content entry. It is the proto.md form of one
+inline `content:` list entry. The body takes the
+same keys: `kind`, `projection`, `required`,
+`bind`, and the kind-specific fields.
+
+```markdown
+## Tagline
+
+<?content
+kind: paragraph
+?>
+```
+
+Two rows declare two ordered entries, keyed by the
+inline positional rule (`text` / `text-2`, …). Each
+row parses through the inline content parser, so a
+bad key, kind, or kind/projection pair fails at
+load. MDS020's legacy check skips these rows;
+validation and extraction use the schema parser.
 
 ## Migration from the old shape
 

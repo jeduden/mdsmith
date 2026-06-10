@@ -1330,40 +1330,179 @@ func collectBodySyncPoints(
 	syncPoints map[int][]syncPoint,
 ) {
 	currentHeading := -1
+	// inPIBlock is true while scanning the lines of a multi-line
+	// processing-instruction block (`<?content?>`, `<?require?>`,
+	// `<?include?>`, …). Plan 242 makes directive rows opaque to the
+	// legacy body-sync collector: a `{field}` token inside a directive
+	// body (e.g. a `bind:` value) must not become a body-sync point,
+	// since the row is schema syntax, not body-sync template text.
+	inPIBlock := false
+	var fenceChar byte
+	fenceLen := 0
 	start := 0
 	for i := 0; i <= len(content); i++ {
 		if i < len(content) && content[i] != '\n' {
 			continue
 		}
-		lineB := bytes.TrimSpace(content[start:i])
+		raw := content[start:i]
+		lineB := bytes.TrimSpace(raw)
 		start = i + 1
 		if len(lineB) == 0 {
 			continue
 		}
+		switch {
+		case inPIBlock:
+			// Mirror the block parser: a continuation line closes the
+			// PI only when its trimmed text is exactly `?>` — a `?>`
+			// substring inside a YAML value stays inside the block.
+			inPIBlock = !bytes.Equal(lineB, piClose)
+			continue
+		case fenceLen > 0:
+			// Inside a fenced code block the only state change is a
+			// valid close (CommonMark: the opener's character, a run
+			// at least as long, nothing else on the line). Fence
+			// lines — markers included — fall through as ordinary
+			// body text, as they did before the PI skip existed.
+			if fenceClose(raw, lineB, fenceChar, fenceLen) {
+				fenceChar, fenceLen = 0, 0
+			}
+		default:
+			if c, n := fenceOpenRun(raw, lineB); n > 0 {
+				// A fenced code block owns its lines before the PI
+				// parser runs, so a directive opener shown inside a
+				// fence is code, not a directive.
+				fenceChar, fenceLen = c, n
+				break
+			}
+			if !isPIOpenLine(raw) {
+				break
+			}
+			// A single-line `<?name ... ?>` opens and closes on the
+			// same line; only a multi-line opener leaves us inside the
+			// block for subsequent lines. The parser closes an opener
+			// on a `?>` anywhere in its line.
+			inPIBlock = !bytes.Contains(lineB, piClose)
+			continue
+		}
 		if lineB[0] == '#' {
-			trimmed := string(lineB)
-			for j, h := range headings {
-				if headingMatchesLine(h, trimmed) {
-					currentHeading = j
-					break
-				}
+			if idx := headingIndexForLine(headings, string(lineB)); idx >= 0 {
+				currentHeading = idx
 			}
 			continue
 		}
 		if currentHeading >= 0 {
-			trimmed := string(lineB)
-			fields := fieldinterp.Fields(trimmed)
-			if len(fields) > 0 {
-				compiled := buildFieldPattern(trimmed)
-				for _, f := range fields {
-					syncPoints[currentHeading] = append(
-						syncPoints[currentHeading],
-						syncPoint{Field: f, InBody: true, BodyText: trimmed, compiled: compiled},
-					)
-				}
-			}
+			appendBodySyncFields(syncPoints, currentHeading, string(lineB))
 		}
 	}
+}
+
+// headingIndexForLine returns the index of the first schema heading
+// that matches the body line, or -1 when none does.
+func headingIndexForLine(headings []docHeading, line string) int {
+	for j, h := range headings {
+		if headingMatchesLine(h, line) {
+			return j
+		}
+	}
+	return -1
+}
+
+// appendBodySyncFields records a body-sync point under heading idx for
+// each `{field}` token found in the body line. Lines with no token add
+// nothing.
+func appendBodySyncFields(
+	syncPoints map[int][]syncPoint, idx int, trimmed string,
+) {
+	fields := fieldinterp.Fields(trimmed)
+	if len(fields) == 0 {
+		return
+	}
+	compiled := buildFieldPattern(trimmed)
+	for _, f := range fields {
+		syncPoints[idx] = append(syncPoints[idx],
+			syncPoint{Field: f, InBody: true, BodyText: trimmed, compiled: compiled})
+	}
+}
+
+// piOpenPrefix / piClose are the literal markers
+// collectBodySyncPoints scans for to skip processing-instruction
+// blocks. They are package-level so the byte slices are allocated
+// once rather than per call.
+var (
+	piOpenPrefix = []byte("<?")
+	piClose      = []byte("?>")
+)
+
+// fenceOpenRun reports the marker character and run length when a
+// body line opens a fenced code block the way the block parser would:
+// at most three spaces of indentation and a run of at least three
+// backticks or tildes. n is 0 when the line opens no fence. (The same
+// open/close contract as include.rewriteSkippingCode.)
+func fenceOpenRun(raw, lineB []byte) (byte, int) {
+	if len(lineB) == 0 || (lineB[0] != '`' && lineB[0] != '~') {
+		return 0, 0
+	}
+	if lineIndent(raw) > 3 {
+		return 0, 0
+	}
+	n := fenceRun(lineB, lineB[0])
+	if n < 3 {
+		return 0, 0
+	}
+	return lineB[0], n
+}
+
+// fenceClose reports whether a body line closes the open fence per
+// CommonMark: the opener's character, a run at least as long as the
+// opener, nothing but the run on the trimmed line, and at most three
+// spaces of indentation.
+func fenceClose(raw, lineB []byte, ch byte, openLen int) bool {
+	if lineIndent(raw) > 3 {
+		return false
+	}
+	n := fenceRun(lineB, ch)
+	return n >= openLen && n == len(lineB)
+}
+
+// fenceRun returns the length of the run of ch at the start of line.
+func fenceRun(line []byte, ch byte) int {
+	n := 0
+	for n < len(line) && line[n] == ch {
+		n++
+	}
+	return n
+}
+
+// lineIndent returns the number of leading spaces on the raw line.
+func lineIndent(raw []byte) int {
+	return len(raw) - len(bytes.TrimLeft(raw, " "))
+}
+
+// isPIOpenLine reports whether a raw body line opens a processing
+// instruction, mirroring the block parser in pkg/markdown: at most
+// three spaces of indentation, a `<?` opener, and a non-empty name
+// (the bytes up to the first whitespace or `?>`). An indented code
+// example showing a directive is therefore not mistaken for one.
+func isPIOpenLine(raw []byte) bool {
+	if lineIndent(raw) > 3 {
+		return false
+	}
+	trimmed := bytes.TrimLeft(raw, " ")
+	trimmed = bytes.TrimRight(trimmed, " \t\r\n")
+	if !bytes.HasPrefix(trimmed, piOpenPrefix) {
+		return false
+	}
+	rest := trimmed[len(piOpenPrefix):]
+	if len(rest) == 0 {
+		return false
+	}
+	if rest[0] == ' ' || rest[0] == '\t' {
+		return false
+	}
+	if bytes.HasPrefix(rest, piClose) {
+		return false
+	}
+	return true
 }
 
 // maxSchemaIncludeDepth is the maximum nesting depth for schema includes.

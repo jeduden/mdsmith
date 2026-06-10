@@ -411,9 +411,8 @@ Front-matter keys map directly to CUE expressions.
 
 MDS020's file-schema check routes through its
 legacy parser: `{field}` in a proto.md heading row
-matches a non-empty run rather than resolving the
-document's frontmatter value via `fmvar(...)`.
-Heading rows are wildcards, not substitutions.
+is a wildcard matching a non-empty run, not a
+`fmvar(...)` substitution of the frontmatter value.
 
 `{field}` in a proto.md **body** is fully wired:
 MDS020 resolves the placeholder against the
@@ -422,13 +421,13 @@ document's front matter and flags any mismatch.
 current front-matter value for files that match a
 **single file-based schema source**. Composed or
 multi-source schemas do not get Fix body rewrites.
-The rule-readme `Meta-Information` body uses this
-to keep `ID`, `Name`, `Status`, and `Category`
-bullets in sync with front matter.
 
-The
-[section-schema reference](../reference/section-schema.md#protomd-file-syntax)
-records the heading-row wildcard mapping.
+A `<?content?>` directive row in a section body
+declares one content entry, so a proto-based kind
+validates and extracts body content like the
+equivalent inline `content:` list. The
+[section-schema reference](../reference/section-schema.md#the-content-directive)
+documents the directive.
 
 ## Choosing a source
 
@@ -438,6 +437,7 @@ records the heading-row wildcard mapping.
 | Schema reused via `<?include?>`        | no     | yes                |
 | Frontmatter-body `{field}` sync        | no     | yes                |
 | Nested section tree                    | yes    | via heading levels |
+| Section content entries                | yes    | via `<?content?>`  |
 | Per-scope rule overrides               | yes    | no                 |
 | Stays next to other kind rule settings | yes    | indirect           |
 

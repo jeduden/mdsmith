@@ -90,7 +90,7 @@ func parseFileBytes(
 		sch.Filename = fp
 	}
 
-	headings, fp2, err := collectFileHeadings(f, r, path, visited, chain)
+	headings, fp2, err := collectFileHeadings(f, r, path, lint.CountLines(prefix), visited, chain)
 	if err != nil {
 		return nil, err
 	}
@@ -186,9 +186,14 @@ func resolveExtendsPath(schemaPath, parentPath string) (string, error) {
 }
 
 // FileHeading is a heading collected from a schema markdown file.
+// Content carries any `<?content?>` directive rows that appear in the
+// heading's section body, in source order — the proto.md spelling of
+// the inline `content:` list. headingsToScopes copies it onto the
+// scope built for this heading.
 type FileHeading struct {
-	Level int
-	Text  string
+	Level   int
+	Text    string
+	Content []ContentEntry
 }
 
 // parseFileFrontmatter reads the schema's YAML front matter into
@@ -302,10 +307,7 @@ func extractRequireFilename(f *lint.File) (string, error) {
 		if !ok || pi.Name != "require" {
 			continue
 		}
-		body, err := piYAMLBody(pi, f.Source, "require")
-		if err != nil {
-			return "", err
-		}
+		body := piYAMLBody(pi, f.Source)
 		if body == "" {
 			continue
 		}
@@ -318,34 +320,64 @@ func extractRequireFilename(f *lint.File) (string, error) {
 	return "", nil
 }
 
-func piYAMLBody(pi *piparser.ProcessingInstruction, source []byte, name string) (string, error) {
+// parseContentDirective decodes a `<?content?>` PI body into one
+// ContentEntry, reusing the inline parser so the proto.md spelling
+// validates identically: unknown keys, unknown kinds, missing
+// `kind:`, and illegal kind/projection combinations fail here with
+// the inline form's diagnostics. The directive body carries the same
+// `key: value` shape as one inline `content:` list entry (`kind`,
+// `projection`, `required`, `bind`, and the kind-specific fields).
+func parseContentDirective(pi *piparser.ProcessingInstruction, source []byte) (ContentEntry, error) {
+	if !pi.HasClosure() {
+		return ContentEntry{}, fmt.Errorf(
+			"<?content?> directive is missing its closing `?>`")
+	}
+	body := piYAMLBody(pi, source)
+	var m map[string]any
+	if err := yamlutil.UnmarshalSafe([]byte(body), &m); err != nil {
+		return ContentEntry{}, fmt.Errorf("invalid <?content?> directive: %w", err)
+	}
+	return parseContentEntry(m, "<?content?>")
+}
+
+func piYAMLBody(pi *piparser.ProcessingInstruction, source []byte) string {
 	lines := pi.Lines()
 	if lines.Len() == 1 {
 		seg := lines.At(0)
 		line := strings.TrimSpace(string(seg.Value(source)))
-		line = strings.TrimPrefix(line, "<?"+name)
+		line = strings.TrimPrefix(line, "<?"+pi.Name)
 		if idx := strings.Index(line, "?>"); idx >= 0 {
 			line = line[:idx]
 		}
-		return strings.TrimSpace(line), nil
+		return strings.TrimSpace(line)
 	}
 	var b strings.Builder
 	for i := 1; i < lines.Len(); i++ {
 		seg := lines.At(i)
 		b.Write(seg.Value(source))
 	}
-	return b.String(), nil
+	return b.String()
 }
 
 // collectFileHeadings walks the schema AST, collecting heading entries
 // and expanding <?include?> PIs by splicing the included file's
-// headings in place.
+// headings in place. lineBase is the number of source lines the
+// file's front matter occupied (lint.CountLines of the stripped
+// prefix, which StripFrontMatter always returns newline-terminated);
+// adding it to the 1-based body line from f.LineOfOffset yields the
+// absolute file line for directive diagnostics.
 func collectFileHeadings(
-	f *lint.File, r *FileReader, path string,
+	f *lint.File, r *FileReader, path string, lineBase int,
 	visited map[string]bool, chain []string,
 ) ([]FileHeading, string, error) {
 	var heads []FileHeading
 	var fp string
+	// lastOwn indexes the most recent heading contributed by this
+	// file itself. An <?include?> splices fragment headings onto
+	// heads, but a <?content?> row in the host body declares an
+	// entry on the host's enclosing section, never on the included
+	// fragment's tail heading.
+	lastOwn := -1
 	err := ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
@@ -354,18 +386,32 @@ func collectFileHeadings(
 		case *ast.Heading:
 			text := headingText(node, f.Source)
 			heads = append(heads, FileHeading{Level: node.Level, Text: text})
+			lastOwn = len(heads) - 1
 		case *piparser.ProcessingInstruction:
-			if node.Name != "include" {
-				return ast.WalkContinue, nil
+			switch node.Name {
+			case "include":
+				frag, fpInc, err := expandInclude(node, f.Source, r, path, visited, chain)
+				if err != nil {
+					return ast.WalkStop, err
+				}
+				if fpInc != "" && fp == "" {
+					fp = fpInc
+				}
+				heads = append(heads, frag...)
+			case "content":
+				line := lineBase + f.LineOfOffset(node.Lines().At(0).Start)
+				if lastOwn < 0 {
+					return ast.WalkStop, fmt.Errorf(
+						"schema %q line %d: <?content?> directive must appear inside "+
+							"a section (after a heading)", path, line)
+				}
+				entry, err := parseContentDirective(node, f.Source)
+				if err != nil {
+					return ast.WalkStop, fmt.Errorf(
+						"schema %q line %d: %w", path, line, err)
+				}
+				heads[lastOwn].Content = append(heads[lastOwn].Content, entry)
 			}
-			frag, fpInc, err := expandInclude(node, f.Source, r, path, visited, chain)
-			if err != nil {
-				return ast.WalkStop, err
-			}
-			if fpInc != "" && fp == "" {
-				fp = fpInc
-			}
-			heads = append(heads, frag...)
 		}
 		return ast.WalkContinue, nil
 	})
@@ -401,7 +447,7 @@ func expandInclude(
 			"cannot read schema include file %q: %w", included, err)
 	}
 
-	_, body := lint.StripFrontMatter(data)
+	fragPrefix, body := lint.StripFrontMatter(data)
 	fragFile, err := lint.NewFile(included, body)
 	if err != nil {
 		return nil, "", fmt.Errorf(
@@ -416,7 +462,7 @@ func expandInclude(
 	visited[included] = true
 	nextChain := append([]string(nil), chain...)
 	nextChain = append(nextChain, included)
-	frag, fpFrag, err := collectFileHeadings(fragFile, r, included, visited, nextChain)
+	frag, fpFrag, err := collectFileHeadings(fragFile, r, included, lint.CountLines(fragPrefix), visited, nextChain)
 	delete(visited, included)
 	if err != nil {
 		return nil, "", err
@@ -431,10 +477,7 @@ func expandInclude(
 func resolveIncludePath(
 	pi *piparser.ProcessingInstruction, source []byte, schemaPath string,
 ) (string, error) {
-	body, err := piYAMLBody(pi, source, pi.Name)
-	if err != nil {
-		return "", fmt.Errorf("parsing include processing instruction: %w", err)
-	}
+	body := piYAMLBody(pi, source)
 	if body == "" {
 		return "", fmt.Errorf(
 			"include processing instruction missing required 'file' attribute")
@@ -533,6 +576,20 @@ func headingsToScopes(heads []FileHeading) ([]Scope, int, error) {
 		sc, err := buildScopeFromHeading(h.Text)
 		if err != nil {
 			return nil, 0, err
+		}
+		// Attach any `<?content?>` directive rows collected in this
+		// heading's section body so a proto-based kind validates and
+		// extracts body content like the equivalent inline schema.
+		// A slot row matches zero-or-more arbitrary headings, so a
+		// content entry on it can never be validated — the inline
+		// parser rejects `content:` on slot scopes, and the proto
+		// spelling must fail the same way instead of storing dead
+		// entries the validation walk silently skips.
+		sc.Content = h.Content
+		if len(sc.Content) > 0 && isSlotMatcher(sc.Matcher) {
+			return nil, 0, fmt.Errorf(
+				"`<?content?>` is not allowed under a `## %s` slot row — "+
+					"move the directive under a named heading", SectionWildcard)
 		}
 		parent.scopes = append(parent.scopes, sc)
 		stack = append(stack, &frame{level: h.Level})

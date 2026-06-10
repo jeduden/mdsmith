@@ -1,0 +1,219 @@
+package schema
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// schemaFile writes src as a single-file proto.md schema in a fresh
+// temp dir and returns its path.
+func schemaFile(t *testing.T, src string) string {
+	t.Helper()
+	return writeFile(t, t.TempDir(), "proto.md", src)
+}
+
+// TestParseFile_ContentDirectiveParagraph is the happy path: a
+// `<?content kind: paragraph ?>` directive row in a proto.md section
+// body declares one content entry on the enclosing section's scope,
+// matching what the inline `content: [{ kind: paragraph }]` form
+// produces.
+func TestParseFile_ContentDirectiveParagraph(t *testing.T) {
+	path := schemaFile(t,
+		"# {title}\n\n## Tagline\n\n<?content\nkind: paragraph\n?>\n")
+	sch, err := ParseFile(&FileReader{}, path)
+	require.NoError(t, err)
+	require.Len(t, sch.Sections, 1, "one H1 root scope")
+	h1 := sch.Sections[0]
+	require.Len(t, h1.Sections, 1, "one H2 under the H1")
+	tagline := h1.Sections[0]
+	require.Len(t, tagline.Content, 1,
+		"the <?content?> row must declare one content entry")
+	assert.Equal(t, ContentKindParagraph, tagline.Content[0].Kind)
+	assert.True(t, tagline.Content[0].Required,
+		"a literal content entry defaults to required")
+}
+
+// TestParseFile_ContentDirectiveTwoOrdered verifies two directives in
+// one section declare two ordered entries (the `text` / `text-2`
+// projection keys the inline form derives from positional order).
+func TestParseFile_ContentDirectiveTwoOrdered(t *testing.T) {
+	path := schemaFile(t,
+		"## Body\n\n<?content\nkind: paragraph\n?>\n\n<?content\nkind: code-block\nlang: go\n?>\n")
+	sch, err := ParseFile(&FileReader{}, path)
+	require.NoError(t, err)
+	require.Len(t, sch.Sections, 1)
+	body := sch.Sections[0]
+	require.Len(t, body.Content, 2, "two directives, two ordered entries")
+	assert.Equal(t, ContentKindParagraph, body.Content[0].Kind)
+	assert.Equal(t, ContentKindCodeBlock, body.Content[1].Kind)
+	assert.Equal(t, "go", body.Content[1].Lang)
+}
+
+// TestParseFile_ContentDirectiveProjectionInline verifies the
+// `projection:` key passes through and is validated by the inline
+// rules (inline is legal on a paragraph).
+func TestParseFile_ContentDirectiveProjectionInline(t *testing.T) {
+	path := schemaFile(t,
+		"## Tagline\n\n<?content\nkind: paragraph\nprojection: inline\n?>\n")
+	sch, err := ParseFile(&FileReader{}, path)
+	require.NoError(t, err)
+	require.Len(t, sch.Sections, 1)
+	require.Len(t, sch.Sections[0].Content, 1)
+	assert.Equal(t, ProjectionInline, sch.Sections[0].Content[0].Projection)
+}
+
+// TestParseFile_ContentDirectiveRejectsUnknownKind locks down that an
+// invalid kind fails at parse time with the inline form's diagnostic.
+func TestParseFile_ContentDirectiveRejectsUnknownKind(t *testing.T) {
+	path := schemaFile(t,
+		"## Tagline\n\n<?content\nkind: bogus\n?>\n")
+	_, err := ParseFile(&FileReader{}, path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown content kind")
+}
+
+// TestParseFile_ContentDirectiveRejectsInlineOnCodeBlock locks down
+// that `projection: inline` on a code-block fails at parse time, the
+// same as the inline form.
+func TestParseFile_ContentDirectiveRejectsInlineOnCodeBlock(t *testing.T) {
+	path := schemaFile(t,
+		"## Snippet\n\n<?content\nkind: code-block\nprojection: inline\n?>\n")
+	_, err := ParseFile(&FileReader{}, path)
+	require.Error(t, err)
+	assert.Contains(t, strings.ToLower(err.Error()), "projection")
+}
+
+// TestParseFile_ContentDirectiveRejectsEmptyBind locks down that
+// `bind: ""` on a content entry fails at parse time — a content entry
+// has no children to hoist, the same rule the inline form enforces.
+func TestParseFile_ContentDirectiveRejectsEmptyBind(t *testing.T) {
+	path := schemaFile(t,
+		"## Tagline\n\n<?content\nkind: paragraph\nbind: \"\"\n?>\n")
+	_, err := ParseFile(&FileReader{}, path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "bind")
+}
+
+// TestParseFile_ContentDirectiveRejectsUnknownKey locks down that an
+// unknown key on the directive fails at parse time, matching the
+// inline content parser's unknown-key diagnostic.
+func TestParseFile_ContentDirectiveRejectsUnknownKey(t *testing.T) {
+	path := schemaFile(t,
+		"## Tagline\n\n<?content\nkind: paragraph\nbogus: 1\n?>\n")
+	_, err := ParseFile(&FileReader{}, path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown content key")
+}
+
+// TestParseFile_ContentDirectiveRequiresKind locks down that a bare
+// `<?content ?>` with no body fails at parse time with the inline
+// form's missing-kind diagnostic (the empty body flows through the
+// shared entry parser, so single-line and multi-line blank bodies
+// emit the same message).
+func TestParseFile_ContentDirectiveRequiresKind(t *testing.T) {
+	for name, src := range map[string]string{
+		"single-line": "## Tagline\n\n<?content ?>\n",
+		"multi-line":  "## Tagline\n\n<?content\n\n?>\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := schemaFile(t, src)
+			_, err := ParseFile(&FileReader{}, path)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "must set a `kind:` key")
+		})
+	}
+}
+
+// TestParseFile_ContentDirectiveUnclosedFails locks down that a
+// `<?content` block left open at EOF (a missing `?>` line) is a
+// parse error rather than a silently accepted directive.
+func TestParseFile_ContentDirectiveUnclosedFails(t *testing.T) {
+	path := schemaFile(t,
+		"## Tagline\n\n<?content\nkind: paragraph\n")
+	_, err := ParseFile(&FileReader{}, path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "missing its closing `?>`")
+}
+
+// TestParseFile_ContentDirectiveOnSlotRowFails mirrors the inline
+// parser: `content:` is rejected on a slot scope, so a `<?content?>`
+// under a `## ...` row must fail instead of storing entries the
+// validation walk silently skips.
+func TestParseFile_ContentDirectiveOnSlotRowFails(t *testing.T) {
+	path := schemaFile(t,
+		"## ...\n\n<?content\nkind: paragraph\n?>\n")
+	_, err := ParseFile(&FileReader{}, path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "slot row")
+}
+
+// TestParseFile_ContentDirectiveAfterIncludeAttachesToHost pins the
+// attachment anchor: a `<?content?>` row that follows an
+// `<?include?>` splice still declares its entry on the host file's
+// enclosing section, not on the included fragment's tail heading.
+func TestParseFile_ContentDirectiveAfterIncludeAttachesToHost(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "frag.md", "## FragEnd\n")
+	path := writeFile(t, dir, "schema.md",
+		"## Host\n\n<?include\nfile: frag.md\n?>\n\n<?content\nkind: paragraph\n?>\n")
+	sch, err := ParseFile(&FileReader{}, path)
+	require.NoError(t, err)
+	require.Len(t, sch.Sections, 2, "host heading plus spliced fragment heading")
+	host, frag := sch.Sections[0], sch.Sections[1]
+	require.Equal(t, "Host", host.Heading)
+	require.Equal(t, "FragEnd", frag.Heading)
+	assert.Len(t, host.Content, 1,
+		"the content entry belongs to the host section")
+	assert.Empty(t, frag.Content,
+		"the spliced fragment heading must not receive the host's entry")
+}
+
+// TestParseFile_ContentDirectiveErrorNamesLine locks down that a
+// directive diagnostic carries the absolute source line — with front
+// matter the block's lines are added; without it the body line is
+// already absolute.
+func TestParseFile_ContentDirectiveErrorNamesLine(t *testing.T) {
+	for name, tc := range map[string]struct{ src, line string }{
+		"front matter": {
+			src:  "---\ntitle: string\n---\n## Tagline\n\n<?content\nkind: bogus\n?>\n",
+			line: "line 6",
+		},
+		"no front matter": {
+			src:  "## Tagline\n\n<?content\nkind: bogus\n?>\n",
+			line: "line 3",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := schemaFile(t, tc.src)
+			_, err := ParseFile(&FileReader{}, path)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.line)
+			assert.Contains(t, err.Error(), "unknown content kind")
+		})
+	}
+}
+
+// TestParseFile_ContentDirectiveRejectsInvalidYAML locks down that a
+// directive body that is not valid YAML fails at parse time with the
+// invalid-directive diagnostic.
+func TestParseFile_ContentDirectiveRejectsInvalidYAML(t *testing.T) {
+	path := schemaFile(t,
+		"## Tagline\n\n<?content\nkind: [unclosed\n?>\n")
+	_, err := ParseFile(&FileReader{}, path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid <?content?> directive")
+}
+
+// TestParseFile_ContentDirectiveBeforeHeadingFails locks down that a
+// `<?content?>` row above the first heading is rejected — the entry
+// would have no section to attach to.
+func TestParseFile_ContentDirectiveBeforeHeadingFails(t *testing.T) {
+	path := schemaFile(t,
+		"<?content\nkind: paragraph\n?>\n\n## Tagline\n")
+	_, err := ParseFile(&FileReader{}, path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must appear inside a section")
+}
