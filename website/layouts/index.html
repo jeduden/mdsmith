@@ -2,15 +2,17 @@
   {{ partial "hero.html" . }}
   {{- /* Positioning band. The content/_index.md body is a
          one-sentence scope statement (what mdsmith checks and
-         fixes); the `positioning.surfaces` front matter lists
-         the product surfaces the one rule engine reaches, each
-         linking to its docs page. The "One engine" row is laid
-         out to pair with the "Available on" channels row from
-         logos-strip.html — together the three lines read as one
-         spec-sheet band under the hero. The fuller prose is the
-         intro of docs/features/index.md (which the README
-         includes and /features/ renders); keep the statement and
-         surface list aligned with it when either changes. */ -}}
+         fixes) — the design system's own tagline copy; the
+         `positioning.surfaces` front matter lists the product
+         surfaces, each linking to its docs page. Per the design
+         system, the surfaces render as plain text links under a
+         mono "Runs in" label (capsules are status-only, never
+         navigation), and the one-engine argument stays in the
+         "Why mdsmith" lead and its pillar rather than in a
+         band-level label. The fuller prose is the intro of
+         docs/features/index.md (which the README includes and
+         /features/ renders); keep the statement and surface
+         list aligned with it when either changes. */ -}}
   <section class="positioning">
     <div class="container">
       {{ with .Content }}
@@ -18,7 +20,7 @@
       {{ end }}
       {{ with .Params.positioning }}
       <div class="positioning-engine">
-        <span class="positioning-label">One engine</span>
+        <span class="positioning-label">Runs in</span>
         <div class="positioning-surfaces">
           {{ range .surfaces }}
           <a class="positioning-surface" href="{{ .url | relURL }}">{{ .title }}</a>

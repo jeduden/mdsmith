@@ -20,12 +20,15 @@ test.describe("homepage positioning", () => {
     );
   });
 
-  test("one-engine row links each product surface", async ({ page }) => {
+  test("runs-in row links each product surface", async ({ page }) => {
     await page.goto("/");
 
     const row = page.locator(".positioning-engine");
     await expect(row).toBeVisible();
-    await expect(row).toContainText("One engine");
+    // Label states the operational fact ("Runs in"), per the design
+    // system's voice rules; the one-engine argument belongs to the
+    // "Why mdsmith" lead and its pillar, not to a band-level label.
+    await expect(row).toContainText("Runs in");
 
     // Each surface chip is an audience path into the docs: the row
     // replaces the old prose sentence ("One rule engine powers the

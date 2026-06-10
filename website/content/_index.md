@@ -23,4 +23,4 @@ positioning:
       url: "/features/editor-agent-integration/"
 ---
 mdsmith checks style, readability, structure, and cross-file
-integrity — and auto-fixes what fixes *cleanly*.
+integrity — and auto-fixes what fixes cleanly.

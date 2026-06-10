@@ -222,11 +222,14 @@ main {
 
 /* The strip between the hero and the "Available on" channels:
    a one-sentence scope statement (the content/_index.md body)
-   set as display type, then the labeled "One engine" row of
-   surface links from the homepage front matter. The statement
-   carries the concrete rule scope so the hero lead never has
-   to (see docs/brand/messaging.md); the channels strip below
-   keeps its own classic logo-band treatment. */
+   set as display type, then a quiet "Runs in" row of surface
+   links from the homepage front matter. The statement carries
+   the concrete rule scope so the hero lead never has to (see
+   docs/brand/messaging.md). Per the design system, the surface
+   links are plain text links — capsules/pills are status-only,
+   never navigation — and the serif-italic accent stays
+   reserved for the hero, so the statement renders in plain
+   sans. */
 .positioning {
   padding: 40px 0 32px;
   border-bottom: 1px solid var(--border-subtle);
@@ -240,18 +243,11 @@ main {
   line-height: 1.5;
   letter-spacing: -0.015em;
   color: var(--fg);
-  margin-bottom: 22px;
-}
-/* Same serif-italic accent as the h1 and section titles. */
-.positioning-statement em {
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-weight: 400;
-  color: var(--forge-600);
+  margin-bottom: 18px;
 }
 .positioning-engine {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 16px;
 }
 .positioning-label {
@@ -265,24 +261,17 @@ main {
 .positioning-surfaces {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px 20px;
 }
+/* Quiet navigation links: solid underline on hover (the global
+   `a:hover` rule), accent color on hover like .logos-item. */
 .positioning-surface {
-  font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: 500;
-  padding: 5px 12px;
-  border-radius: 4px;
-  border: 1px solid var(--border-strong);
-  background: var(--bg-raised);
   color: var(--steel-700);
-  transition: border-color var(--dur-fast) var(--ease-out),
-              color var(--dur-fast) var(--ease-out);
 }
 .positioning-surface:hover {
-  border-color: var(--forge-500);
-  color: var(--forge-600);
-  text-decoration: none;
+  color: var(--accent);
 }
 
 /* ========== BUTTONS ========== */
