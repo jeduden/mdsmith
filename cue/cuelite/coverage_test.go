@@ -98,6 +98,18 @@ func TestAtomKindOf_branches(t *testing.T) {
 	require.Error(t, verr)
 }
 
+// TestCompile_topLabelRejected pins that the bare top token `_` is rejected
+// as a field label (CUE excludes it from the data struct), even though `_`
+// is a valid VALUE (top).
+func TestCompile_topLabelRejected(t *testing.T) {
+	_, err := Compile(`{_: int}`)
+	require.Error(t, err)
+	// `_` as a value is fine.
+	v, err := Compile(`{a: _}`)
+	require.NoError(t, err)
+	assert.NoError(t, v.CompileMap(map[string]any{"a": "anything"}).Validate())
+}
+
 // TestExprText covers exprText's selector and fallback branches via an
 // unsupported selector-expression error message.
 func TestExprText(t *testing.T) {

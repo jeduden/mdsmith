@@ -363,11 +363,12 @@ func checkEmbeddedThunkRefs(s, embedded *engineValue) error {
 func fieldLabel(l ast.Label) (string, error) {
 	switch lab := l.(type) {
 	case *ast.Ident:
-		// A definition label (#foo) or a hidden label (_foo) is not a data
-		// field: CUE excludes it from the data struct, so it is outside the
+		// A definition label (#foo), a hidden label (_foo), or the bare top
+		// token `_` is not a data field: CUE excludes it from the data struct
+		// (and rejects `_` as a label outright), so it is outside the
 		// front-matter subset. Reject it so a schema using one fails loudly
 		// rather than treating it as a required data key.
-		if isDefinitionOrHidden(lab.Name) {
+		if lab.Name == "_" || isDefinitionOrHidden(lab.Name) {
 			return "", fmt.Errorf(
 				"cuelite: unsupported field label %q (definitions and hidden fields are not in the subset)",
 				lab.Name)
