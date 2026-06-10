@@ -931,3 +931,48 @@ func TestCompose_ProjectionKeyConflictErrors(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `heading "Notes"`)
 }
+
+// TestCloneScope_CarriesProjectionFields pins that the projection
+// family survives cloneScope's struct copy — mergeScopes relies on
+// that carry when folding the second scope's values in.
+func TestCloneScope_CarriesProjectionFields(t *testing.T) {
+	sc := Scope{
+		Heading:         "Notes",
+		Projection:      ProjectionBlocks,
+		BlockParagraphs: ProjectionInline,
+	}
+	out := cloneScope(sc)
+	assert.Equal(t, ProjectionBlocks, out.Projection)
+	assert.Equal(t, ProjectionInline, out.BlockParagraphs)
+}
+
+// TestCompose_BlockParagraphsRequiresProjection mirrors the
+// parse-time co-presence guard at compose time: a merge must not
+// synthesize `block-paragraphs` without `projection: blocks` at
+// either level — the parser rejects that pair, so composition cannot
+// be a back door to a silently dead setting.
+func TestCompose_BlockParagraphsRequiresProjection(t *testing.T) {
+	_, err := Compose(
+		&Schema{RootLevel: 2, BlockParagraphs: ProjectionInline},
+		&Schema{RootLevel: 2})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "without a schema-level")
+
+	mk := func(projection, bp string) *Schema {
+		return &Schema{RootLevel: 2, Sections: []Scope{{
+			Heading:         "Notes",
+			Matcher:         &Matcher{Regex: "Notes"},
+			Projection:      projection,
+			BlockParagraphs: bp,
+		}}}
+	}
+	_, err = Compose(mk("", ProjectionInline), mk("", ""))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `heading "Notes"`)
+
+	// The coherent pair still composes.
+	out, err := Compose(mk(ProjectionBlocks, ProjectionInline), mk("", ""))
+	require.NoError(t, err)
+	require.Len(t, out.Sections, 1)
+	assert.Equal(t, ProjectionInline, out.Sections[0].BlockParagraphs)
+}

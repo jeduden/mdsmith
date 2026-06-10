@@ -368,6 +368,15 @@ func mergeScopes(a, b Scope) (Scope, error) {
 	if err != nil {
 		return Scope{}, err
 	}
+	// The same co-presence guard the inline parser applies per scope:
+	// merged halves must not pair `block-paragraphs` with a scope that
+	// lost `projection: blocks`.
+	if out.BlockParagraphs != "" && out.Projection != ProjectionBlocks {
+		return Scope{}, fmt.Errorf(
+			"composed schemas set `block-paragraphs:` for heading %q "+
+				"without `projection: blocks` on the same scope",
+			a.Heading)
+	}
 	return out, nil
 }
 
@@ -390,6 +399,16 @@ func composeProjection(out *Schema, in []*Schema) error {
 			return err
 		}
 		out.BlockParagraphs = bp
+	}
+	// Mirror the parse-time co-presence guard: a merge must not
+	// synthesize `block-paragraphs` without `projection: blocks` — the
+	// pair the parser rejects would otherwise survive composition as a
+	// silently dead setting.
+	if out.BlockParagraphs != "" && out.Projection != ProjectionBlocks {
+		return fmt.Errorf(
+			"composed schemas set `block-paragraphs:` without a " +
+				"schema-level `projection: blocks` — declare the " +
+				"projection on a composed source or drop the option")
 	}
 	return nil
 }
