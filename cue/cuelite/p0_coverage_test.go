@@ -7,6 +7,64 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestHasBottomLeaf_nestedPositions drives hasBottomLeaf's list-tail (elem) and
+// disjunction arms: a bottom buried in an open list's tail element is found,
+// and a disjunction value (a valid survivor) is never itself a failed branch.
+func TestHasBottomLeaf_nestedPositions(t *testing.T) {
+	bot := mkBottom(nil, "boom")
+	// A bottom in an open list's tail element type is a buried bottom.
+	openListWithBadTail := &engineValue{kind: kList, openTop: true, elem: bot}
+	assert.True(t, hasBottomLeaf(openListWithBadTail))
+	// A clean open list with a concrete tail is not.
+	cleanOpenList := &engineValue{kind: kList, openTop: true, elem: &engineValue{kind: kInt, i: 1}}
+	assert.False(t, hasBottomLeaf(cleanOpenList))
+	// A disjunction value is a valid survivor, never a failed branch.
+	disj := &engineValue{
+		kind:     kDisjoint,
+		branches: []*engineValue{{kind: kInt, i: 1}, {kind: kInt, i: 2}},
+		modes:    []defaultMode{dfltMaybe, dfltMaybe},
+	}
+	assert.False(t, hasBottomLeaf(disj))
+}
+
+// TestHasBottomLeaf_listBranchPrunesOnNestedBottom drives the list-element
+// branch of hasBottomLeaf end to end: a disjunction of open lists where one
+// branch's tail conflicts with the data is pruned, so the clean branch decides.
+func TestHasBottomLeaf_listBranchPrunesOnNestedBottom(t *testing.T) {
+	// [...int] | [...string] against ["x"]: the int-tail branch's element meets
+	// "x" to a bottom (nested in the list), so it is pruned and the string-tail
+	// branch accepts.
+	s, err := Compile(`{a: [...int] | [...string]}`)
+	require.NoError(t, err)
+	d, err := CompileJSON([]byte(`{"a":["x"]}`))
+	require.NoError(t, err)
+	assert.NoError(t, s.Unify(d).Validate())
+}
+
+// TestForceThunkFixpoint_schemaSideUnresolvable drives the final HARD force of
+// the schema-side (o) struct: a schema thunk that cannot resolve after the
+// fixpoint (its sibling reference is never made concrete by data) collapses to
+// a ⊥ at validate rather than lingering as a silent thunk.
+func TestForceThunkFixpoint_schemaSideUnresolvable(t *testing.T) {
+	// n references m, but data supplies neither and m stays a bare type, so the
+	// thunk never resolves: the final hard force surfaces it incomplete. The
+	// DATA is the Unify receiver (d.Unify(s)), so the schema with the thunk is
+	// the SECOND operand (o) — exercising the o-side final hard force.
+	s, err := Compile(`{m: string, n: [if m == "p" {1}, 2][0]}`)
+	require.NoError(t, err)
+	d, err := CompileJSON([]byte(`{}`))
+	require.NoError(t, err)
+	assert.Error(t, d.Unify(s).Validate())
+}
+
+// TestRawHasLoneSurrogateEscape_truncatedAtEnd drives the i+6 > len bound: a
+// `\u` escape with fewer than four trailing hex digits at the very end of the
+// raw bytes is not a complete escape and is not a lone surrogate.
+func TestRawHasLoneSurrogateEscape_truncatedAtEnd(t *testing.T) {
+	assert.False(t, rawHasLoneSurrogateEscape([]byte(`"\ud8`)))
+	assert.False(t, rawHasLoneSurrogateEscape([]byte(`"x\u`)))
+}
+
 // TestNestedThunkRefCheck_openListAndDisjunction drives checkThunkRefsIn's
 // open-list (elem) and disjunction-branch descents: an undeclared reference in
 // each nested position is a compile-time "reference not found".

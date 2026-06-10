@@ -72,9 +72,10 @@ func TestMeetBranchesNestedBottomPruning(t *testing.T) {
 // pre-redesign engine forced each thunk once against the initial concrete
 // scope, so a thunk depending on another thunk's result never resolved.
 func TestFixpointThunkForcing(t *testing.T) {
+	const chain = `{m: string, n: [if m == "p" {1}, 2][0], o: [if n == 1 {3}, 4][0]}`
 	runAcceptCases(t, []acceptCase{
-		{"two-step chain", `{m: string, n: [if m == "p" {1}, 2][0], o: [if n == 1 {3}, 4][0]}`, `{"m":"p"}`, true},
-		{"two-step chain other branch", `{m: string, n: [if m == "p" {1}, 2][0], o: [if n == 1 {3}, 4][0]}`, `{"m":"q"}`, true},
+		{"two-step chain", chain, `{"m":"p"}`, true},
+		{"two-step chain other branch", chain, `{"m":"q"}`, true},
 	})
 }
 

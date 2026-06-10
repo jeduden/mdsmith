@@ -113,19 +113,21 @@ func evalIdent(n *ast.Ident, scope map[string]*engineValue) (*engineValue, error
 	if !ok || v == nil {
 		return nil, errUnresolved
 	}
-	// A sibling whose value is a DEFAULTED disjunction resolves to its default
-	// for a comparison or condition: CUE reads `m == "p"` against `m: string |
-	// *"p"` as true (the default "p"). A non-defaulted disjunction has no usable
-	// default — it stays non-concrete, so the reference defers (and CUE rejects
-	// the sibling as incomplete).
-	if v.kind == kDisjoint {
-		if def, _ := v.defaultValue(); def != nil && isConcrete(def) {
-			return def, nil
-		}
+	if !isConcrete(v) {
+		// A non-concrete sibling (a bare type, or a NON-defaulted disjunction
+		// `string | "p"`) cannot drive a comparison: the reference defers, and
+		// CUE rejects the sibling as incomplete. (concreteScope only binds a
+		// concrete field, so a non-concrete sibling reaches here only when a
+		// future caller passes a richer scope; the deferral keeps that safe.)
 		return nil, errUnresolved
 	}
-	if !isConcrete(v) {
-		return nil, errUnresolved
+	// A sibling whose value is a DEFAULTED disjunction resolves to its default
+	// for a comparison or condition: CUE reads `m == "p"` against `m: string |
+	// *"p"` as true (the default "p"). isConcrete already confirmed a usable
+	// default exists, so defaultValue yields it.
+	if v.kind == kDisjoint {
+		def, _ := v.defaultValue()
+		return def, nil
 	}
 	return v, nil
 }

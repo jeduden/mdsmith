@@ -488,29 +488,6 @@ func hasBottomLeaf(v *engineValue) bool {
 	return false
 }
 
-// dedupeConcrete removes later duplicates of a concrete scalar from a
-// disjunction's surviving branches, so equal concrete disjuncts collapse to
-// one (CUE's behavior). A non-concrete branch is never equal to another and
-// is always kept.
-func dedupeConcrete(branches []*engineValue) []*engineValue {
-	out := branches[:0:0]
-	for _, br := range branches {
-		dup := false
-		if br.concreteScalarV() {
-			for _, kept := range out {
-				if kept.concreteScalarV() && concreteEqual(kept, br) {
-					dup = true
-					break
-				}
-			}
-		}
-		if !dup {
-			out = append(out, br)
-		}
-	}
-	return out
-}
-
 // unifyStruct meets two structs field-wise. A field present in both is the
 // meet of its constraints; a field present in one carries over (with its
 // optionality). When either struct is closed, a field present only in the
