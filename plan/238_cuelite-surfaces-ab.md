@@ -206,13 +206,80 @@ So the per-field diagnostic, the dedup key, and the anchor line do not
 change. The schema suite passes unchanged. That suite includes the
 plan-147/230 diagnostic-shape tests.
 
-### Task 3 — flip to the in-house value model (not started)
+### Task 3 — flip to the in-house value model (BLOCKED — decision needed)
 
 The CUE-backed façade is still in place. The flip — the in-house value
 model, `Unify` as lattice meet, direct `map[string]any` validation, and
 the schema/data fuzzer — is the remaining work. The differential
 harness (validate, access, and path arms) is ready as the oracle scaffold
 and is green today.
+
+#### Parser-frontend decision (recorded)
+
+The schema-constraint parser reuses cuelang's syntax frontend
+(`cue/parser` → `cue/ast`) in phase 2.
+
+The in-house compiler walks that AST into the value model.
+Hand-rolling the full grammar now is risky.
+It also duplicates work phase 3 needs anyway.
+
+The parser yields an AST, not values.
+So the evaluator stays fully in-house: unify, validate, concreteness.
+That is the actual flip.
+
+The oracle keeps its own direct-cuelang evaluator.
+So a shared parser does not collapse the two arms.
+
+Phase 4 (plan 240) swaps the cuelang parser for a hand-rolled one.
+It then drops `cuelang.org/go`.
+This interim is recorded so phase 4 has a removal target.
+
+#### Blocker: tests pin CUE behavior the flip erases
+
+The flip is paused for a decision.
+The task rule is: do not weaken a pinned test alone; stop and report.
+These `cue/cuelite` tests pin behavior a pure-Go `Value` cannot
+reproduce.
+
+1. **Cross-context bottom.** In `value_test.go`:
+   `TestValue_Unify_crossContext`, `TestValidate_invariant`,
+   `errCrossContext`, `TestRebuild`. They assert that
+   `a.Unify(b).Unify(c.Unify(d))` absorbs as a pathless bottom.
+   A context-free `Value` has no contexts to cross.
+   So that unify succeeds and accepts.
+   Task 2's notes already say the flip makes operand order stop
+   mattering, so this change is intended.
+
+2. **CUE error type.** Two tests require `errors.As` into a
+   `cueerrors.Error`: `TestValidate_unwrapsToCueError` and
+   `TestPathErrorOf`.
+   The in-house engine emits `*PathError`, not a CUE error.
+
+3. **Exact CUE message.** `value_test.go` pins the string
+   `conflicting values "🔲" and "✅"`.
+   `ExampleErrors` already states the message is not part of the
+   contract.
+   The in-house wording differs.
+
+4. **CUE-only helpers.** `internal_test.go` tests
+   `buildJSON(*cue.Context)`, `rebuild(*cue.Context)`, the JSON-round-trip
+   duplicate scanner, and `cueErrorsOf`.
+   The flip deletes all four.
+
+The durable contract stays green through the flip.
+That contract is accept/reject, leaf paths, the `Errors` invariant, the
+bottom model, the accessors, and `ParsePath`/`MakePath`.
+The corpus harness compares the two arms on exactly that.
+Its cross-context cases need the oracle arm updated in lockstep.
+
+**Decision required.** Approve rewriting items 1–4 to the in-house
+contract.
+That means: drop the cross-context-bottom asserts, swap `cueerrors.Error`
+checks for `*PathError`, relax the message pin to a path-plus-substring
+pin, and retarget the helper tests at the in-house compiler.
+These are the interim CUE scaffolding plan 218 marks for erasure.
+They are pinned, so the flip cannot land green without sign-off.
+No test was weakened this session.
 
 ### Task 4 — alloc budget and benchmark (not started)
 
