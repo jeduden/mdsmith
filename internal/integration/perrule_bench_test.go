@@ -17,7 +17,7 @@ import (
 	"github.com/yuin/goldmark/parser"
 )
 
-// perrule_bench_test.go is plan 215's per-opt-in-rule regression
+// perrule_bench_test.go is plan 2606022126's per-opt-in-rule regression
 // gate. It sits ALONGSIDE TestPerRuleAllocBudget (alloc_budget_test.go)
 // and the engine-level BenchmarkCheckCorpus* gates without replacing
 // either.

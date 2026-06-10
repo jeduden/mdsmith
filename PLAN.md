@@ -51,7 +51,6 @@ footer: |
 | 114        | ✅     | sonnet | [MDS034 message clarity and flavor-vs-rule docs](plan/114_mds034-message-and-flavor-vs-rule-docs.md)                                    |
 | 120        | ✅     | sonnet | [Unify glob matcher and field naming across mdsmith](plan/120_glob-unification.md)                                                      |
 | 121        | ✅     | opus   | [Expose mdsmith to VS Code via Language Server Protocol](plan/121_vscode-integration.md)                                                |
-| 121        | ✅     | sonnet | [Review and centralize YAML handling](plan/121_yaml-handling-review.md)                                                                 |
 | 122        | ✅     | sonnet | [VS Code palette commands](plan/122_vscode-hover-and-palette.md)                                                                        |
 | 124        | ✅     | sonnet | [No space inside code spans rule](plan/124_no-space-in-code-spans.md)                                                                   |
 | 125        | ✅     | sonnet | [No space inside link text rule](plan/125_no-space-in-link-text.md)                                                                     |
@@ -79,12 +78,10 @@ footer: |
 | 148        | ✅     | sonnet | [Named field-type shortcuts for inline schemas](plan/148_named-field-type-shortcuts.md)                                                 |
 | 149        | ✅     | opus   | [Section content schema for non-heading AST nodes](plan/149_section-content-schema.md)                                                  |
 | 151        | ✅     | opus   | [LSP rename for headings and link-reference labels](plan/151_lsp-rename.md)                                                             |
-| 153        | ✅     | sonnet | [Catalog directive — accept `..` globs within project root](plan/153_catalog-dotdot-globs.md)                                           |
 | 153        | ✅     | opus   | [Unify linkgraph and the LSP symbol index](plan/153_unify-linkgraph-and-lsp-index.md)                                                   |
 | 154        | ✅     | sonnet | [arch-fix: extract cross-rule helpers](plan/154_arch-fix-rule-helper-extraction.md)                                                     |
 | 155        | ✅     | sonnet | [arch-fix: relocate convention types out of markdownflavor](plan/155_arch-fix-convention-config-ownership.md)                           |
 | 156        | ✅     | opus   | [Composable required-structure schemas across multiple kinds](plan/156_kind-schema-composition.md)                                      |
-| 156        | ✅     | opus   | [Section schema — unify entry shape under `heading:` discriminator](plan/156_schema-entry-unification.md)                               |
 | 157        | ✅     | sonnet | [Catalog filter by front matter property](plan/157_catalog-where-filter.md)                                                             |
 | 160        | ✅     | sonnet | [Claude Code plugin extensions — skills, agents, hooks](plan/160_claude-code-skills-agents-hooks.md)                                    |
 | 161        | ✅     | sonnet | [Expose rule maintainability patterns via CLI help and LSP](plan/161_rule-pattern-metadata.md)                                          |
@@ -139,15 +136,11 @@ footer: |
 | 211        | ✅     | opus   | [`<?include?>` projects any typed value of any kind via `extract`](plan/211_include-extract-value.md)                                   |
 | 212        | ✅     | opus   | [`mdsmith extract` projects paragraph inline spans as data](plan/212_extract-inline-spans.md)                                           |
 | 213        | ✅     | opus   | [Built-in `no-llm-tells` convention with append-mode forbidden lists](plan/213_anti-slop-convention.md)                                 |
-| 214        | ✅     | sonnet | [MDS019 catalog: CUE-expression row templates](plan/214_catalog-cue-row-expressions.md)                                                 |
 | 214        | ⛔     | opus   | [Obsidian plugin via hand-rolled LSP bridge](plan/214_obsidian-plugin.md)                                                               |
 | 215        | ✅     | opus   | [mdsmith public engine API and WASM bindings](plan/215_engine-api-wasm.md)                                                              |
-| 215        | ✅     | opus   | [Audit AST-walking rules and rewrite the ones that only need f.Lines](plan/215_lines-only-rule-audit.md)                                |
 | 216        | ✅     | opus   | [Per-document parse cache for the LSP, keyed by version](plan/216_lsp-parse-cache.md)                                                   |
 | 217        | ✅     | opus   | [Obsidian plugin (WASM runtime)](plan/217_obsidian-plugin.md)                                                                           |
-| 218        | ✅     | sonnet | [Finish MD054 link-image-style coverage in MDS068](plan/218_finish-md054-link-image-style.md)                                           |
 | 218        | 🔲     | opus   | [In-house CUE-subset engine for WASM size and tinygo](plan/218_wasm-size-reduction.md)                                                  |
-| 219        | ✅     | opus   | [Multiplexed AST walk to close the parity gap to mado](plan/219_multiplexed-ast-walk.md)                                                |
 | 219        | ✅     | opus   | [Route cmd/mdsmith and the LSP through pkg/mdsmith.Session](plan/219_session-cli-lsp-migration.md)                                      |
 | 220        | ✅     | opus   | [Harden the git-index writers against a transient index.lock](plan/220_git-index-lock-retry.md)                                         |
 | 221        | ✅     | opus   | [Ship mdsmith as a self-hosted Flatpak bundle](plan/221_flatpak-bundle-distribution.md)                                                 |
@@ -161,9 +154,7 @@ footer: |
 | 233        | ✅     | opus   | [numeric heading-level target for include](plan/233_include-heading-level-target.md)                                                    |
 | 234        | 🔳     | sonnet | [Distribute mdsmith on Windows via Scoop and WinGet](plan/234_windows-package-managers.md)                                              |
 | 235        | ✅     | sonnet | [Playwright end-to-end tests for the website, runnable by CI and agents](plan/235_playwright-site-e2e.md)                               |
-| 236        | ✅     | sonnet | [Consolidate duplicated table-parse helpers in tablereadability](plan/236_arch-fix-tablereadability-dup.md)                             |
 | 236        | 🔲     | opus   | [cuelite phase 0 — package, façade, and differential harness](plan/236_cuelite-package-harness.md)                                      |
-| 237        | ✅     | haiku  | [Unit tests for include-rule private validation helpers](plan/237_arch-fix-include-helper-tests.md)                                     |
 | 237        | 🔲     | sonnet | [cuelite phase 1 — surface D (placeholder paths)](plan/237_cuelite-surface-d.md)                                                        |
 | 238        | 🔲     | opus   | [cuelite phase 2 — surfaces A + B (schema, query)](plan/238_cuelite-surfaces-ab.md)                                                     |
 | 239        | 🔲     | opus   | [cuelite phase 3 — surface C (row-expr evaluator)](plan/239_cuelite-surface-c.md)                                                       |
@@ -171,6 +162,15 @@ footer: |
 | 241        | 🔲     | opus   | [Schema-per-file config under `.mdsmith/schemas/`](plan/241_schema-files.md)                                                            |
 | 242        | 🔲     | sonnet | [Recover from panics in the LSP lint pipeline](plan/242_lsp-panic-recovery.md)                                                          |
 | 243        | 🔲     | sonnet | [Security hardening batch — 2026-06-09 audit](plan/243_secreview-2026-06-09-hardening.md)                                               |
+| 2606022122 | ✅     | sonnet | [Review and centralize YAML handling](plan/2606022122_yaml-handling-review.md)                                                          |
+| 2606022123 | ✅     | sonnet | [Catalog directive — accept `..` globs within project root](plan/2606022123_catalog-dotdot-globs.md)                                    |
+| 2606022124 | ✅     | opus   | [Section schema — unify entry shape under `heading:` discriminator](plan/2606022124_schema-entry-unification.md)                        |
+| 2606022125 | ✅     | sonnet | [MDS019 catalog: CUE-expression row templates](plan/2606022125_catalog-cue-row-expressions.md)                                          |
+| 2606022126 | ✅     | opus   | [Audit AST-walking rules and rewrite the ones that only need f.Lines](plan/2606022126_lines-only-rule-audit.md)                         |
+| 2606022127 | ✅     | sonnet | [Finish MD054 link-image-style coverage in MDS068](plan/2606022127_finish-md054-link-image-style.md)                                    |
+| 2606022128 | ✅     | opus   | [Multiplexed AST walk to close the parity gap to mado](plan/2606022128_multiplexed-ast-walk.md)                                         |
+| 2606071930 | ✅     | sonnet | [Consolidate duplicated table-parse helpers in tablereadability](plan/2606071930_arch-fix-tablereadability-dup.md)                      |
+| 2606071931 | ✅     | haiku  | [Unit tests for include-rule private validation helpers](plan/2606071931_arch-fix-include-helper-tests.md)                              |
 | 2606100533 | 🔳     | sonnet | [Coordination-free plan ids from UTC creation timestamps](plan/2606100533_timestamp-plan-ids.md)                                        |
 | 2606100534 | 🔲     | sonnet | [Workspace-unique front-matter fields (unique-frontmatter rule)](plan/2606100534_unique-frontmatter-rule.md)                            |
 <?/catalog?>

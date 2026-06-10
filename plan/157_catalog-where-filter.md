@@ -9,7 +9,7 @@ summary: >-
   (directive rule, fixable rule, ready vs draft
   plan, user-invocable skill).
 model: 'sonnet'
-depends-on: [19]
+depends-on: []
 ---
 # Catalog filter by front matter property
 

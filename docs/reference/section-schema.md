@@ -292,7 +292,7 @@ proto.md bodies is unchanged.
 ## Migration from the old shape
 
 Hard cutover. Old-shape keys parse-error with
-a "removed; see plan 156" diagnostic naming
+a "removed; see plan 2606022124" diagnostic naming
 the replacement.
 
 | Old shape                          | New shape                                            |

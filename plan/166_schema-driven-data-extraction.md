@@ -87,7 +87,7 @@ are omitted rather than emitted as null.
 This plan consumes the reworked schema engine, not the
 legacy single-source model.
 
-- **Entry-shape unification (`156_schema-entry-unification`
+- **Entry-shape unification (`2606022124_schema-entry-unification`
   / PR #295) — landed in main.** Every `sections:` entry
   is discriminated by its `heading:` value: a string or
   `{regex, repeat?, sequential?}` mapping for headed
@@ -100,7 +100,7 @@ legacy single-source model.
   #288.** (Two plan files share id 156, so this
   dependency is named by filename here rather than in
   numeric `depends-on:`: it is the composition one, not
-  the now-landed `156_schema-entry-unification`.) A file
+  the now-landed `2606022124_schema-entry-unification`.) A file
   can resolve to multiple kinds whose schemas compose via
   `schema.Compose()`. The extractor consumes the composed
   `Schema`. Default keys derive from heading text, so

@@ -18,7 +18,7 @@ type Range struct{ Start, End int }
 // The projection is derived from f.AST, not re-implemented from
 // f.Lines: a Lines-only rewrite of every prose rule would otherwise
 // each re-grow a fence/HTML/code-span scanner, the exact parallel-parser
-// divergence plan 215 set out to avoid. A rule that only inspects prose
+// divergence plan 2606022126 set out to avoid. A rule that only inspects prose
 // text (proper-name casing, forbidden substrings, most readability
 // checks) scans these ranges with bytes helpers and never walks the AST
 // itself; the AST's implicit code-skipping filter is reproduced once

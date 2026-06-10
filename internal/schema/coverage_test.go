@@ -192,7 +192,7 @@ func TestParseInline_RejectsLegacyRepeatingPatternKeys(t *testing.T) {
 			_, err := ParseInline(raw, "kind x")
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.key)
-			assert.Contains(t, err.Error(), "removed; see plan 156")
+			assert.Contains(t, err.Error(), "removed; see plan 2606022124")
 		})
 	}
 }

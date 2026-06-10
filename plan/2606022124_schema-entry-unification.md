@@ -1,5 +1,5 @@
 ---
-id: 156
+id: 2606022124
 title: >-
   Section schema — unify entry shape under
   `heading:` discriminator
@@ -91,7 +91,7 @@ Plus three migration-only changes:
   (`aliases:` / `required:` / `unlisted:` /
   scope-level `repeats:` / `sequential:` /
   `min:` / `max:` / `require:`) parse-errors
-  with a "removed; see plan 156" diagnostic
+  with a "removed; see plan 2606022124" diagnostic
   naming the replacement.
 
 Diagnostics follow the existing
@@ -127,7 +127,7 @@ Files rewritten as part of implementation:
    `internal/schema/parse_inline.go` to
    accept `{ regex, repeat?, sequential? }`.
    Reject every removed key by name with a
-   "removed; see plan 156" diagnostic naming
+   "removed; see plan 2606022124" diagnostic naming
    the replacement.
 3. [x] In the same parser, flatten
    `require.filename:` to top-level
@@ -209,7 +209,7 @@ Files rewritten as part of implementation:
 - [x] Invalid regex parse-errors with the
       RE2 message and field path.
 - [x] Removed keys each parse-error with a
-      "removed; see plan 156" message
+      "removed; see plan 2606022124" message
       naming the replacement.
 - [x] The 5 rewritten inline kinds and the
       rewritten fixture emit the same MDS020

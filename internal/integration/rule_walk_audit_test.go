@@ -1,6 +1,6 @@
 package integration
 
-// rule_walk_audit_test.go is plan 215's survey and regression gate.
+// rule_walk_audit_test.go is plan 2606022126's survey and regression gate.
 //
 // Phase one (survey): classifyRuleWalk probes every registered rule
 // with two runtime experiments and a static-source scan, then writes a
@@ -19,7 +19,7 @@ package integration
 //
 // The two probes yield three signals — nil-AST safety, code-block
 // sensitivity, diagnostic equality — that map onto the four categories
-// in plan 215's "Phase one — survey" section.
+// in plan 2606022126's "Phase one — survey" section.
 //
 // Phase three (gate): TestRuleWalkAuditManifest recomputes the
 // classification and fails if it drifts from the checked-in manifest.
@@ -52,7 +52,7 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-// walkCategory is the four-way classification plan 215 assigns to each
+// walkCategory is the four-way classification plan 2606022126 assigns to each
 // rule. The string values land verbatim in the JSON manifest.
 type walkCategory string
 

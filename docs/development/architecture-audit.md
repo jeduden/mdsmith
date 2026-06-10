@@ -296,7 +296,8 @@ split into sibling packages.
 Plans 203–225 green. Blocker: `Session.CheckSource`
 (public API) had no unit test. Fixed: added
 `pkg/mdsmith/checksource_test.go` with 4 tests.
-Tax: [plan/236][236], [plan/237][237].
+Tax: the [tablereadability dedup][2606071930] and
+[include helper test][2606071931] plans.
 
-[236]: ../../plan/236_arch-fix-tablereadability-dup.md
-[237]: ../../plan/237_arch-fix-include-helper-tests.md
+[2606071930]: ../../plan/2606071930_arch-fix-tablereadability-dup.md
+[2606071931]: ../../plan/2606071931_arch-fix-include-helper-tests.md

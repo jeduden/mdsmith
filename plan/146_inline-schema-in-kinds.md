@@ -162,7 +162,7 @@ diagnostic.
 permissive subsections sets `closed: true` at
 the root and omits it on each child.
 
-> **Entry shape superseded by plan 156.** The
+> **Entry shape superseded by plan 2606022124.** The
 > grammar below is historical; the current shape
 > lives in the
 > [section-schema reference](../docs/reference/section-schema.md).

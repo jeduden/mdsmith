@@ -28,7 +28,7 @@ import (
 // `aliases:`, `required:`, scope-level `repeats:`/`sequential:`/
 // `min:`/`max:`, `{unlisted: true}` mapping, and schema-level
 // `require:` shapes are gone; the parser rejects them with a
-// "removed; see plan 156" diagnostic naming the replacement.
+// "removed; see plan 2606022124" diagnostic naming the replacement.
 func ParseInline(raw map[string]any, source string) (*Schema, error) {
 	if raw == nil {
 		return &Schema{Source: source, RootLevel: 2}, nil
@@ -40,7 +40,7 @@ func ParseInline(raw map[string]any, source string) (*Schema, error) {
 		return nil, err
 	}
 	if err := rejectRemovedTopKey(raw, "require",
-		"`require:` removed; see plan 156 (use top-level `filename:`)"); err != nil {
+		"`require:` removed; see plan 2606022124 (use top-level `filename:`)"); err != nil {
 		return nil, err
 	}
 	if err := parseInlineFilename(raw, sch); err != nil {
@@ -281,7 +281,7 @@ func rejectDuplicateSiblingBinds(scopes []Scope, path string) error {
 }
 
 // removedScopeKeys lists the per-entry keys plan 156 removed. The
-// parser rejects each one by presence with a "removed; see plan 156"
+// parser rejects each one by presence with a "removed; see plan 2606022124"
 // diagnostic naming the replacement so authors migrating from the
 // old shape see the fix inline rather than the validator silently
 // dropping the constraint.
@@ -297,17 +297,17 @@ var removedScopeKeyOrder = []string{
 }
 
 var removedScopeKeys = map[string]string{
-	"required": "`required:` removed; see plan 156 " +
+	"required": "`required:` removed; see plan 2606022124 " +
 		"(use `repeat: { min: 0, max: 1 }` for optional, or omit for required)",
-	"aliases": "`aliases:` removed; see plan 156 " +
+	"aliases": "`aliases:` removed; see plan 2606022124 " +
 		"(encode disjunction in `regex:`, e.g. `regex: 'A|B'`)",
-	"repeats": "scope-level `repeats:` removed; see plan 156 " +
+	"repeats": "scope-level `repeats:` removed; see plan 2606022124 " +
 		"(use `heading.repeat: { min: 1 }`)",
-	"sequential": "scope-level `sequential:` removed; see plan 156 " +
+	"sequential": "scope-level `sequential:` removed; see plan 2606022124 " +
 		"(set `sequential:` inside the `heading:` mapping)",
-	"min": "scope-level `min:` removed; see plan 156 " +
+	"min": "scope-level `min:` removed; see plan 2606022124 " +
 		"(use `heading.repeat.min`)",
-	"max": "scope-level `max:` removed; see plan 156 " +
+	"max": "scope-level `max:` removed; see plan 2606022124 " +
 		"(use `heading.repeat.max`)",
 }
 
@@ -510,7 +510,7 @@ func setBareStringHeading(sc *Scope, s, path string) error {
 // dropped. The parser rejects each one by presence so authors see
 // the migration path inline.
 var removedHeadingKeys = map[string]string{
-	"unlisted": "`heading.unlisted:` removed; see plan 156 (use `regex: '.+', repeat: { min: 0 }`)",
+	"unlisted": "`heading.unlisted:` removed; see plan 2606022124 (use `regex: '.+', repeat: { min: 0 }`)",
 }
 
 func applyHeadingMapping(sc *Scope, m map[string]any, path string) error {

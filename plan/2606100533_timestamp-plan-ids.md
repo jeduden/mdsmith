@@ -126,14 +126,24 @@ rule — process renumbered files in ascending path order
 and add one minute until the id is free.
 
 Choose the keeper of each legacy id by reference weight.
-Keep the twin that references outside `plan/` name.
+Keep the twin whose references are costlier to move —
+live dependency chains, shipped diagnostic strings, and
+config comments outweigh editable prose and comments.
 Re-point the rest.
 
-Three anchors are known. The `plan/156` comment in
-[.mdsmith.yml](../.mdsmith.yml) means kind-schema
-composition. A ci.yml comment pins `Plan 121` to
-vscode-integration. Go comments in `internal/` pin
-`plan 215` to the lines-only rule audit.
+The executed split: 215 stays with the engine API. The
+Obsidian WASM stack and three plan deps pin it. The
+lines-only audit moves with its three Go comments and one
+docs mention. 156 stays with kind-schema composition, the
+`plan/156` comment in [.mdsmith.yml](../.mdsmith.yml).
+Entry-unification moves, carrying the shipped
+`see plan 156` diagnostic strings along.
+
+The live cuelite chain keeps 236 and 237. The completed
+arch-fix twins move, updating the architecture-audit log
+links. All nine moved twins are completed plans. No
+`depends-on:` entry needed an edit — every ambiguous dep
+already meant a keeper.
 
 Re-point every reference to a moved id, not only
 `depends-on:` entries. Sweep the whole repo for the old
@@ -170,7 +180,7 @@ scope. pick-plan already treats unknown ids as unmet.
    `strconv.ParseInt(value, 10, 64)`. (The test cannot go
    red on a 64-bit dev host; it pins the contract the
    32-bit target needs.)
-2. [ ] Renumber one twin of each duplicate pair (121, 153,
+2. [x] Renumber one twin of each duplicate pair (121, 153,
    156, 214, 215, 218, 219, 236, 237) per the design:
    derive the id, bump collisions in path order, rename
    the file, set its frontmatter `id:`, sweep the whole
@@ -199,12 +209,12 @@ scope. pick-plan already treats unknown ids as unmet.
 
 ## Acceptance Criteria
 
-- [ ] Frontmatter ids are unique:
+- [x] Frontmatter ids are unique:
   `awk 'FNR==2,/^---$/ { if ($0 ~ /^id:/) print }' plan/*.md | sort | uniq -d`
   prints nothing. (Plain `grep '^id:'` is unsound — it
   also matches `id:` lines inside fenced code examples,
   e.g. in 92_file-kinds.md.)
-- [ ] Every `depends-on:` entry equals exactly one plan
+- [x] Every `depends-on:` entry equals exactly one plan
   file's frontmatter id.
 - [x] A catalog unit test sorts an id above 2,147,483,647
   under `sort: numeric:id`.

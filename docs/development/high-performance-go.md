@@ -79,7 +79,7 @@ Allocs stay the tight gate (subtracted, deterministic).
 
 To decide whether a rule needs the AST,
 `testdata/rule_walk_audit.json` records each rule's class
-(plan 215). **Category A** rules scan `f.Lines` with no
+(plan 2606022126). **Category A** rules scan `f.Lines` with no
 AST. **Category B** rules drive `f.ProseRanges()` instead
 of re-implementing fences. **AST-required** rules keep the
 tree. No AST-walking rule is cleanly Category A today.
