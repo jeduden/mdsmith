@@ -70,6 +70,15 @@ func FuzzParsePath(f *testing.F) {
 		"#\"\"\"\n\\\r#\n0\n\"\"\"#", "#\"\"\"\nx\\\r#\ny\\\r#\nz\n\"\"\"#",
 		"#\"\"\"\n\\\r#\n  \\\r#\n0\n\"\"\"#", "#\"\"\"\na\\\r#\n\"\"\"#",
 		"#\"\"\"\n\\#\n0\n\"\"\"#", "#\"\"\"\n  a\\\r#\nx\n  \"\"\"#",
+		// CR-near-close (round 6): the scanner finds the token end on RAW bytes,
+		// but literal.Unquote re-finds the close on the CR-STRIPPED literal, so a CR
+		// breaking a `"""`+'#' run can fuse an EARLIER close whose shorter content
+		// decodes to "". Seed the level-1 bare-CR form (the fuzz-minimized input),
+		// content-before and trailing-dot variants, the level-0 closing-quote-run
+		// CR, and the benign CR-after-close shape.
+		"#\"\"\"\n\"\"\"\r#\n\"\"\"#", "#\"\"\"\n\"\"\"\r#\n\"\"\"#.x",
+		"#\"\"\"\nq\"\"\"\r#z\n\"\"\"#", "\"\"\"\n\"\"\r\"\n\"\"\"",
+		"\"\"\"\na\n\"\"\"\r", "#\"\"\"\n\"\"\"\r##x\n\"\"\"#",
 	} {
 		f.Add(seed)
 	}
