@@ -764,18 +764,14 @@ jobs:
               mdsmith version
           - channel: go
             # Resolve the freshly tagged module through proxy.golang.org
-            # and compile it, exactly as `go install` users do. No other
-            # job exercises this path: CI's `go install ./cmd/mdsmith`
-            # is a directory install, which honors go.mod replace
-            # directives that `go install m@version` rejects — the gap
-            # that let v0.40.0 ship uninstallable on the toolchain
-            # channel. TestRootGoModStaysInstallable guards the go.mod
-            # shape pre-merge; this entry proves the published tag
-            # end-to-end. The binary version-stamps itself from the
-            # module tag via runtime/debug.ReadBuildInfo, so the shared
-            # `mdsmith version` assertion below needs no ldflags.
-            # golang:1.25 (debian) ships bash like node:lts above; /go/bin
-            # is already on the image's PATH.
+            # and compile it, exactly as `go install` users do — the
+            # path that shipped broken in v0.40.0 (a go.mod replace
+            # directive is fatal only here) and that no pre-release job
+            # exercises. TestRootGoModStaysInstallable guards the
+            # go.mod shape pre-merge; this entry proves the published
+            # tag end-to-end. The binary stamps its version from the
+            # module tag, so the shared assertion below just works;
+            # golang:1.25 ships bash and has /go/bin on PATH.
             container: golang:1.25
             install: |
               # proxy.golang.org fetches a brand-new tag on first

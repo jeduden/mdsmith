@@ -262,19 +262,28 @@ func runCheckReleaseGates(root string, args []string) int {
 		fmt.Fprintf(os.Stderr, "mdsmith-release: %v\n", err)
 		return 1
 	}
-	if len(violations) > 0 {
-		fmt.Fprintln(os.Stderr, "release-gate invariant violated:")
-		for _, v := range violations {
-			fmt.Fprintf(os.Stderr, "  %s\n", v)
-		}
-		fmt.Fprintln(os.Stderr,
-			"\nevery `environment: release` job must list `gate` in needs: so no\n"+
-				"secret is reachable before the single approval, and only release.yml\n"+
-				"may target the release environments. See docs/development/release.md.")
-		return 1
+	return reportGuardViolations(violations,
+		"release-gate invariant violated:",
+		"\nevery `environment: release` job must list `gate` in needs: so no\n"+
+			"secret is reachable before the single approval, and only release.yml\n"+
+			"may target the release environments. See docs/development/release.md.",
+		"release-gate invariant holds across .github/workflows")
+}
+
+// reportGuardViolations prints a workflow-guard checker's outcome:
+// the violations plus a closing hint to stderr (exit 1), or the
+// success line to stdout (exit 0).
+func reportGuardViolations(violations []release.GateViolation, header, hint, success string) int {
+	if len(violations) == 0 {
+		fmt.Println(success)
+		return 0
 	}
-	fmt.Println("release-gate invariant holds across .github/workflows")
-	return 0
+	fmt.Fprintln(os.Stderr, header)
+	for _, v := range violations {
+		fmt.Fprintf(os.Stderr, "  %s\n", v)
+	}
+	fmt.Fprintln(os.Stderr, hint)
+	return 1
 }
 
 func runCheckReleaseSmoke(root string, args []string) int {
@@ -305,19 +314,12 @@ func runCheckReleaseSmoke(root string, args []string) int {
 		fmt.Fprintf(os.Stderr, "mdsmith-release: %v\n", err)
 		return 1
 	}
-	if len(violations) > 0 {
-		fmt.Fprintln(os.Stderr, "release smoke coverage violated:")
-		for _, v := range violations {
-			fmt.Fprintf(os.Stderr, "  %s\n", v)
-		}
-		fmt.Fprintln(os.Stderr,
-			"\nevery directly consumable install channel needs a smoke-test matrix\n"+
-				"entry that installs the published version and checks `mdsmith version`.\n"+
-				"See docs/development/release.md.")
-		return 1
-	}
-	fmt.Println("release smoke-test matrix covers every required channel")
-	return 0
+	return reportGuardViolations(violations,
+		"release smoke coverage violated:",
+		"\nevery directly consumable install channel needs a smoke-test matrix\n"+
+			"entry that installs the published version and checks `mdsmith version`.\n"+
+			"See docs/development/release.md.",
+		"release smoke-test matrix covers every required channel")
 }
 
 func runBuildNpm(root string, args []string) int {

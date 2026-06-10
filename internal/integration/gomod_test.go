@@ -9,6 +9,17 @@ import (
 	"golang.org/x/mod/modfile"
 )
 
+// parseRootGoMod reads and parses the repository's root go.mod, the
+// module definition `go install` and library consumers resolve.
+func parseRootGoMod(t *testing.T) *modfile.File {
+	t.Helper()
+	data, err := os.ReadFile("../../go.mod")
+	require.NoError(t, err)
+	f, err := modfile.Parse("go.mod", data, nil)
+	require.NoError(t, err)
+	return f
+}
+
 // TestRootGoModStaysInstallable guards the `go install
 // github.com/jeduden/mdsmith/cmd/mdsmith@<version>` channel
 // (docs/development/release-channels/go.md). The go command refuses
@@ -18,10 +29,7 @@ import (
 // wired via `replace github.com/yuin/goldmark => ./pkg/goldmark`
 // instead of being imported by its in-module path.
 func TestRootGoModStaysInstallable(t *testing.T) {
-	data, err := os.ReadFile("../../go.mod")
-	require.NoError(t, err)
-	f, err := modfile.Parse("go.mod", data, nil)
-	require.NoError(t, err)
+	f := parseRootGoMod(t)
 
 	for _, r := range f.Replace {
 		assert.Failf(t, "replace directive in root go.mod",
@@ -41,10 +49,7 @@ func TestRootGoModStaysInstallable(t *testing.T) {
 // Dev tools belong in tools/go.mod, invoked via
 // `go tool -modfile=tools/go.mod <tool>`.
 func TestRootGoModCarriesNoDevTools(t *testing.T) {
-	data, err := os.ReadFile("../../go.mod")
-	require.NoError(t, err)
-	f, err := modfile.Parse("go.mod", data, nil)
-	require.NoError(t, err)
+	f := parseRootGoMod(t)
 
 	for _, tool := range f.Tool {
 		assert.Failf(t, "tool directive in root go.mod",

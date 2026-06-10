@@ -56,6 +56,13 @@ jobs:
           # (setup-go only parses files NAMED go.mod or go.work —
           # hence tools/go.mod rather than a root go.tools.mod.)
           go-version-file: tools/go.mod
+          # setup-go keys its module cache on the root go.sum only;
+          # golangci-lint builds from tools/go.sum and type-checks the
+          # repo against go.sum, so hash both or the tool's dependency
+          # tree re-downloads on every run.
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
       - run: go tool -modfile=tools/go.mod golangci-lint run
 
   # Tracked manifests must stay pinned at 0.0.0-dev between releases;
