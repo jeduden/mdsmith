@@ -2409,6 +2409,103 @@ func TestE2E_PreMergeCommit_ConflictingMergeResolvesWithHookSync(t *testing.T) {
 	assert.Equal(t, 0, code, "check after merge must pass; stderr:\n%s", stderr)
 }
 
+// queueMergeBranch performs one merge exactly the way the merge
+// queue does: `git merge --no-ff --no-commit <branch>`, assert the
+// driver left no unmerged paths, run the pre-merge-commit hook, and
+// `git commit`. Returns after the merge commit exists.
+func queueMergeBranch(t *testing.T, dir, branch string) {
+	t.Helper()
+	mergeOut, mergeErr := exec.Command("git", "-C", dir,
+		"-c", "commit.gpgsign=false",
+		"merge", "--no-ff", "--no-commit", branch).CombinedOutput()
+	// `--no-commit` exits non-zero by design; resolution is judged by
+	// the absence of unmerged index paths.
+	require.Empty(t, strings.TrimSpace(gitInDir(t, dir, "ls-files", "-u")),
+		"merge of %s must leave no unmerged paths; exit=%v output:\n%s",
+		branch, mergeErr, mergeOut)
+
+	hook := exec.Command(filepath.Join(gitHooksDir(t, dir), "pre-merge-commit"))
+	hook.Dir = dir
+	hookOut, hookErr := hook.CombinedOutput()
+	require.NoErrorf(t, hookErr, "pre-merge-commit hook failed for %s: %s",
+		branch, hookOut)
+
+	commitOut, err := exec.Command("git", "-C", dir,
+		"-c", "commit.gpgsign=false",
+		"commit", "--no-edit").CombinedOutput()
+	require.NoErrorf(t, err, "merge commit for %s failed: %s", branch, commitOut)
+}
+
+// TestE2E_MergeQueue_BatchTwoPRs_RightCommits simulates a full
+// merge-queue batch end to end with real git: `ci-install` (the
+// queue's installer), then two PR branches that each regenerate
+// PLAN.md's catalog are merged back to back with the queue's exact
+// sequence (merge --no-ff --no-commit, hook, commit). The second
+// merge must check out results over paths the first merge's driver
+// already processed, so any worktree side effect the driver leaves
+// behind surfaces here. The batch must end with two merge commits,
+// a catalog listing every plan, a clean tree, and a green check.
+func TestE2E_MergeQueue_BatchTwoPRs_RightCommits(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	dir := t.TempDir()
+	gitInit(t, dir)
+
+	writeFixture(t, dir, ".mdsmith.yml",
+		"rules:\n  catalog: true\n  include: true\n")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "plan"), 0o755))
+	writeFixture(t, dir, "plan/01.md", fmt.Sprintf(planTmpl, 1, 1, "🔲", 1))
+	writeFixture(t, dir, "PLAN.md", planMdTmpl)
+
+	// install writes the managed .gitattributes; commit it so
+	// ci-install (the queue's verifying installer) can pass later.
+	_, stderr, code := runBinaryInDir(t, dir, "", "merge-driver", "install")
+	require.Equal(t, 0, code, "install failed: %s", stderr)
+	_, stderr, code = runBinaryInDir(t, dir, "", "fix", "PLAN.md")
+	require.Equal(t, 0, code, "seed fix failed: %s", stderr)
+	gitCommit(t, dir, "seed")
+	seedSHA := strings.TrimSpace(gitInDir(t, dir, "rev-parse", "HEAD"))
+
+	// Two PRs, each bumping its own plan file and regenerating the
+	// shared catalog — the classic queue-batch conflict shape.
+	completePlanOnBranch(t, dir, "pr1", seedSHA, 2)
+	completePlanOnBranch(t, dir, "pr2", seedSHA, 3)
+
+	// The queue starts from a batch branch at main and runs
+	// ci-install, which verifies the committed .gitattributes and
+	// registers the driver + hook without writing tracked files.
+	gitInDir(t, dir, "checkout", "-b", "batch", seedSHA)
+	_, stderr, code = runBinaryInDir(t, dir, "", "merge-driver", "ci-install")
+	require.Equal(t, 0, code, "ci-install failed: %s", stderr)
+
+	queueMergeBranch(t, dir, "pr1")
+	queueMergeBranch(t, dir, "pr2")
+
+	// Two merge commits on top of seed, in order.
+	subjects := gitInDir(t, dir, "log", "--format=%s", seedSHA+"..HEAD")
+	assert.Equal(t, 2, strings.Count(subjects, "Merge branch"),
+		"batch must contain exactly two merge commits, got:\n%s", subjects)
+
+	// The committed catalog lists every plan with its final status.
+	committedPlan := gitInDir(t, dir, "show", "HEAD:PLAN.md")
+	for _, id := range []string{"1", "2", "3"} {
+		assert.Regexp(t, `\| `+id+` +\|`, committedPlan,
+			"batch PLAN.md must list plan %s; got:\n%s", id, committedPlan)
+	}
+	assert.NotContains(t, committedPlan, "<<<<<<<",
+		"no conflict markers may survive into the batch commits")
+
+	// Clean end state: no stale lock, clean tree, green check.
+	assert.NoFileExists(t, filepath.Join(dir, ".git", "index.lock"),
+		"no stale .git/index.lock may remain after the batch")
+	status := strings.TrimSpace(gitInDir(t, dir, "status", "--porcelain"))
+	assert.Empty(t, status,
+		"worktree must be clean after the batch; got:\n%s", status)
+	_, stderr, code = runBinaryInDir(t, dir, "", "check", ".")
+	assert.Equal(t, 0, code, "check after batch must pass; stderr:\n%s", stderr)
+}
+
 // TestE2E_PreMergeCommit_NoCommitMergeCapturesBoth exercises the
 // invocation model the merge queue uses: `git merge --no-ff
 // --no-commit`, then the pre-merge-commit hook, then a separate `git
