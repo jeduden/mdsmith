@@ -77,6 +77,43 @@ test.describe("⌘K search", () => {
     await expect(dialog).toBeVisible();
   });
 
+  // ─── layout stability ───────────────────────────────────────────────
+
+  test("opening the dialog does not shift the page behind it", async ({
+    page,
+  }) => {
+    // The scroll lock (html.search-active { overflow: hidden }) hides
+    // the page scrollbar; without a reserved gutter the page widens by
+    // the scrollbar width and visibly shifts. Headless Linux Chromium
+    // draws overlay scrollbars that take no layout space, so the pixel
+    // shift cannot be reproduced here — assert the gutter contract on
+    // the root element instead. It must be unconditional: this same
+    // Chromium reserves a nonzero stable gutter, so applying it only
+    // alongside the lock would itself shift the page on open. That
+    // wrong variant is what the width checks below catch.
+    const gutter = await page.evaluate(
+      () => getComputedStyle(document.documentElement).scrollbarGutter
+    );
+    expect(gutter).toBe("stable");
+
+    const widthBefore = await page.evaluate(
+      () => document.documentElement.clientWidth
+    );
+    const nav = page.locator(".topnav-inner");
+    const navBefore = (await nav.boundingBox())!;
+
+    await page.keyboard.press("Control+k");
+    await expect(page.locator("[data-search-dialog]")).toBeVisible();
+
+    const widthAfter = await page.evaluate(
+      () => document.documentElement.clientWidth
+    );
+    const navAfter = (await nav.boundingBox())!;
+    expect(widthAfter).toBe(widthBefore);
+    expect(navAfter.x).toBe(navBefore.x);
+    expect(navAfter.width).toBe(navBefore.width);
+  });
+
   // ─── querying ───────────────────────────────────────────────────────
 
   test("typing a query renders matching results", async ({ page }) => {
