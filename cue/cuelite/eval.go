@@ -357,9 +357,8 @@ func numericAwareEqual(a, b *engineValue) bool {
 }
 
 // evalDisjunction builds a disjunction value in a scope, flattening nested |
-// and recording every *-marked default disjunct. It is the scoped counterpart
-// of the former compileDisjunction. A branch that defers leaves the whole
-// disjunction deferred.
+// and recording every *-marked default disjunct. A branch that defers leaves
+// the whole disjunction deferred.
 //
 // Construction is where CUE's build-time disjunction reductions happen:
 //   - A ⊥ disjunct is dropped (CUE: `0&1 | 2` keeps only 2); if every disjunct

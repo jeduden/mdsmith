@@ -480,9 +480,10 @@ func compileUnary(n *ast.UnaryExpr) (*engineValue, error) {
 		return boundFromOperand(op, operand)
 	case token.MUL:
 		// A * default marker is only valid as a disjunction branch (`*a | b`),
-		// where compileDisjunction strips it before compiling the branch. A
+		// where evalDisjunction strips it before building the branch. A
 		// standalone `*X` is invalid CUE, so reject it here rather than silently
-		// treating it as X.
+		// treating it as X. (checkNoMisplacedDefault catches a misplaced mark in
+		// an unreached position; this catches one the evaluator does reach.)
 		return nil, fmt.Errorf("cuelite: * default is only valid in a disjunction")
 	case token.SUB:
 		// Negative numeric literal: -1, -1.5.
