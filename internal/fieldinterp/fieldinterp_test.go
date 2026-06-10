@@ -370,3 +370,33 @@ func TestDiagnoseYAMLQuoting_Map(t *testing.T) {
 func TestDiagnoseYAMLQuoting_NonMap(t *testing.T) {
 	assert.Equal(t, "", DiagnoseYAMLQuoting("row", 42))
 }
+
+// TestParseCUEPath_NonStringSelectorsReturnNil pins the panic→graceful-nil
+// behavior change at the fieldinterp boundary. The old CUE-backed
+// fieldinterp called cue.ParsePath then Selector.Unquoted() unguarded, so
+// an index, definition, or hidden selector PANICKED. cuelite.ParsePath
+// rejects each as a non-string label, which ParseCUEPath maps to a nil
+// "no path" — a graceful diagnostic, no panic.
+func TestParseCUEPath_NonStringSelectorsReturnNil(t *testing.T) {
+	for _, expr := range []string{"123", "a[0]", "#foo", "_foo", "0"} {
+		t.Run(expr, func(t *testing.T) {
+			assert.NotPanics(t, func() {
+				assert.Nil(t, ParseCUEPath(expr))
+			})
+		})
+	}
+}
+
+// TestInterpolate_NonStringSelectorNoSubstitution pins that an index-style
+// placeholder like {123} substitutes nothing and does not panic — the
+// boundary the plan documents but nothing else pins. fieldPattern matches
+// the bare-number token, but ParseCUEPath rejects "123" as a non-string
+// (index) selector and returns nil, so Interpolate resolves it to the empty
+// string rather than panicking (the old CUE-backed path panicked here).
+func TestInterpolate_NonStringSelectorNoSubstitution(t *testing.T) {
+	data := map[string]any{"123": "value"}
+	assert.NotPanics(t, func() {
+		got := Interpolate("{123}", data)
+		assert.Equal(t, "", got)
+	})
+}
