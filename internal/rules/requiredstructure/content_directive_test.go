@@ -54,17 +54,78 @@ func TestParseSchema_ContentDirectiveNotAHeading(t *testing.T) {
 	assert.Equal(t, "Tagline", tmpl.Headings[0].Text)
 }
 
-// TestIsContentDirectiveOpen pins the directive-name boundary: only
-// `<?content` followed by a non-identifier byte (or nothing) opens a
-// block, so a differently named directive like `<?content-foo?>` is
-// not mistaken for one.
-func TestIsContentDirectiveOpen(t *testing.T) {
-	assert.True(t, isContentDirectiveOpen([]byte("<?content kind: paragraph ?>")))
-	assert.True(t, isContentDirectiveOpen([]byte("<?content?>")))
-	assert.True(t, isContentDirectiveOpen([]byte("<?content")))
-	assert.False(t, isContentDirectiveOpen([]byte("<?content-foo?>")))
-	assert.False(t, isContentDirectiveOpen([]byte("<?contents kind: x ?>")))
-	assert.False(t, isContentDirectiveOpen([]byte("plain body line")))
+// TestIsPIOpenLine mirrors the block parser's opener rules: at most
+// three spaces of indentation, a `<?` prefix, and a non-empty name.
+// Any directive name opens a block (directive bodies are schema
+// syntax, never body-sync template text); an indented code example
+// or a nameless `<?` does not.
+func TestIsPIOpenLine(t *testing.T) {
+	assert.True(t, isPIOpenLine([]byte("<?content kind: paragraph ?>")))
+	assert.True(t, isPIOpenLine([]byte("<?content?>")))
+	assert.True(t, isPIOpenLine([]byte("<?content")))
+	assert.True(t, isPIOpenLine([]byte("<?content-foo?>")))
+	assert.True(t, isPIOpenLine([]byte("<?require filename: \"x.md\" ?>")))
+	assert.True(t, isPIOpenLine([]byte("   <?include")))
+	assert.False(t, isPIOpenLine([]byte("    <?content?>")),
+		"4-space indent is a code line to the parser")
+	assert.False(t, isPIOpenLine([]byte("<? content?>")),
+		"whitespace after <? means no name")
+	assert.False(t, isPIOpenLine([]byte("<??>")), "empty name")
+	assert.False(t, isPIOpenLine([]byte("<?")), "bare opener, no name")
+	assert.False(t, isPIOpenLine([]byte("plain body line")))
+}
+
+// TestParseSchema_PIBlockClosesOnExactLineOnly locks down the close
+// rule shared with the block parser: a `?>` substring inside a YAML
+// value does not end the block, so a `{field}` token on a later
+// directive line still yields no body-sync point.
+func TestParseSchema_PIBlockClosesOnExactLineOnly(t *testing.T) {
+	schemaSrc := "# {id}\n\n## Tagline\n\n<?content\nkind: paragraph\nbind: \"a?>b\"\nalso: tag-{id}\n?>\n"
+	tmpl, err := parseSchema([]byte(schemaSrc), "", 0)
+	require.NoError(t, err)
+	for idx, sps := range tmpl.SyncPoints {
+		for _, sp := range sps {
+			assert.False(t, sp.InBody,
+				"heading %d: a `?>` substring must not end the block early (got field %q)",
+				idx, sp.Field)
+		}
+	}
+}
+
+// TestParseSchema_AnyPIBlockSkipped verifies the skip is not
+// content-specific: a `{field}` token inside any directive body
+// (here `<?require?>`) stays opaque to the body-sync collector.
+func TestParseSchema_AnyPIBlockSkipped(t *testing.T) {
+	schemaSrc := "# {id}\n\n## Tagline\n\n<?require\nfilename: \"{id}.md\"\n?>\n"
+	tmpl, err := parseSchema([]byte(schemaSrc), "", 0)
+	require.NoError(t, err)
+	for idx, sps := range tmpl.SyncPoints {
+		for _, sp := range sps {
+			assert.False(t, sp.InBody,
+				"heading %d: <?require?> body must not yield a body sync point (got field %q)",
+				idx, sp.Field)
+		}
+	}
+}
+
+// TestParseSchema_IndentedDirectiveExampleStaysBodyText is the
+// positive control for the indent guard: a 4-space-indented line
+// showing a directive is a code line to the parser, so its `{field}`
+// token IS collected as a body-sync point.
+func TestParseSchema_IndentedDirectiveExampleStaysBodyText(t *testing.T) {
+	schemaSrc := "# {id}\n\n## Tagline\n\n    <?content {id} ?>\n"
+	tmpl, err := parseSchema([]byte(schemaSrc), "", 0)
+	require.NoError(t, err)
+	found := false
+	for _, sps := range tmpl.SyncPoints {
+		for _, sp := range sps {
+			if sp.InBody && sp.Field == "id" {
+				found = true
+			}
+		}
+	}
+	assert.True(t, found,
+		"an indented directive example is body text; its {id} must be collected")
 }
 
 // TestHeadingIndexForLine covers both outcomes: the index of the

@@ -64,10 +64,14 @@ func TestExtract_ProtoContentMatchesInline(t *testing.T) {
 	// and drop its own heading-sync key so only the projected sections
 	// remain — the same shape the inline root carries beside its
 	// frontmatter object.
-	h1 := protoRoot["title"].(map[string]any)
+	h1, ok := protoRoot["title"].(map[string]any)
+	require.True(t, ok, "proto root must project the H1 scope under `title`, got %T",
+		protoRoot["title"])
 	delete(h1, "title") // the H1's `# {title}` heading-sync value
 
 	for _, key := range []string{"tagline", "snippet"} {
+		require.Contains(t, h1, key,
+			"proto projection must carry section %q", key)
 		assert.Equal(t, jsonBytes(t, inlineRoot[key]), jsonBytes(t, h1[key]),
 			"section %q must project identically from proto and inline schemas", key)
 	}

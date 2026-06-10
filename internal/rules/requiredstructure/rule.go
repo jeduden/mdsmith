@@ -1330,32 +1330,37 @@ func collectBodySyncPoints(
 	syncPoints map[int][]syncPoint,
 ) {
 	currentHeading := -1
-	// inContentDirective is true while scanning the lines of a
-	// multi-line `<?content?>` directive block. Plan 242 makes such a
-	// row opaque to the legacy body-sync collector: a `{field}` token
-	// inside the directive body (e.g. a `bind:` value) must not become
-	// a body-sync point, since the row is a schema directive parsed by
-	// schema.ParseFile, not body-sync template text.
-	inContentDirective := false
+	// inPIBlock is true while scanning the lines of a multi-line
+	// processing-instruction block (`<?content?>`, `<?require?>`,
+	// `<?include?>`, …). Plan 242 makes directive rows opaque to the
+	// legacy body-sync collector: a `{field}` token inside a directive
+	// body (e.g. a `bind:` value) must not become a body-sync point,
+	// since the row is schema syntax, not body-sync template text.
+	inPIBlock := false
 	start := 0
 	for i := 0; i <= len(content); i++ {
 		if i < len(content) && content[i] != '\n' {
 			continue
 		}
-		lineB := bytes.TrimSpace(content[start:i])
+		raw := content[start:i]
+		lineB := bytes.TrimSpace(raw)
 		start = i + 1
 		if len(lineB) == 0 {
 			continue
 		}
-		if inContentDirective {
-			inContentDirective = !bytes.Contains(lineB, piClose)
+		if inPIBlock {
+			// Mirror the block parser: a continuation line closes the
+			// PI only when its trimmed text is exactly `?>` — a `?>`
+			// substring inside a YAML value stays inside the block.
+			inPIBlock = !bytes.Equal(lineB, piClose)
 			continue
 		}
-		if isContentDirectiveOpen(lineB) {
-			// A single-line `<?content ... ?>` opens and closes on the
+		if isPIOpenLine(raw) {
+			// A single-line `<?name ... ?>` opens and closes on the
 			// same line; only a multi-line opener leaves us inside the
-			// block for subsequent lines.
-			inContentDirective = !bytes.Contains(lineB[len(contentDirectiveOpen):], piClose)
+			// block for subsequent lines. The parser closes an opener
+			// on a `?>` anywhere in its line.
+			inPIBlock = !bytes.Contains(lineB, piClose)
 			continue
 		}
 		if lineB[0] == '#' {
@@ -1398,31 +1403,37 @@ func appendBodySyncFields(
 	}
 }
 
-// contentDirectiveOpen / piClose are the literal markers
-// collectBodySyncPoints scans for to skip a `<?content?>` directive
-// block. They are package-level so the byte slices are allocated
+// piOpenPrefix / piClose are the literal markers
+// collectBodySyncPoints scans for to skip processing-instruction
+// blocks. They are package-level so the byte slices are allocated
 // once rather than per call.
 var (
-	contentDirectiveOpen = []byte("<?content")
-	piClose              = []byte("?>")
+	piOpenPrefix = []byte("<?")
+	piClose      = []byte("?>")
 )
 
-// isContentDirectiveOpen reports whether a trimmed body line opens a
-// `<?content?>` directive. It matches the `<?content` prefix only
-// when the next byte is not an identifier character, so a directive
-// like `<?content-foo?>` (a different name) is not mistaken for one.
-func isContentDirectiveOpen(line []byte) bool {
-	if !bytes.HasPrefix(line, contentDirectiveOpen) {
+// isPIOpenLine reports whether a raw body line opens a processing
+// instruction, mirroring the block parser in pkg/markdown: at most
+// three spaces of indentation, a `<?` opener, and a non-empty name
+// (the bytes up to the first whitespace or `?>`). An indented code
+// example showing a directive is therefore not mistaken for one.
+func isPIOpenLine(raw []byte) bool {
+	trimmed := bytes.TrimLeft(raw, " ")
+	if len(raw)-len(trimmed) > 3 {
 		return false
 	}
-	rest := line[len(contentDirectiveOpen):]
-	if len(rest) == 0 {
-		return true
+	trimmed = bytes.TrimRight(trimmed, " \t\r\n")
+	if !bytes.HasPrefix(trimmed, piOpenPrefix) {
+		return false
 	}
-	c := rest[0]
-	if c == '-' || c == '_' ||
-		(c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-		(c >= '0' && c <= '9') {
+	rest := trimmed[len(piOpenPrefix):]
+	if len(rest) == 0 {
+		return false
+	}
+	if rest[0] == ' ' || rest[0] == '\t' {
+		return false
+	}
+	if rest[0] == '?' && len(rest) > 1 && rest[1] == '>' {
 		return false
 	}
 	return true

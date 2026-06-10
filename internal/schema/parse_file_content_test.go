@@ -109,15 +109,83 @@ func TestParseFile_ContentDirectiveRejectsUnknownKey(t *testing.T) {
 }
 
 // TestParseFile_ContentDirectiveRequiresKind locks down that a bare
-// `<?content ?>` with no body fails at parse time instead of
-// declaring an empty entry.
+// `<?content ?>` with no body fails at parse time with the inline
+// form's missing-kind diagnostic (the empty body flows through the
+// shared entry parser, so single-line and multi-line blank bodies
+// emit the same message).
 func TestParseFile_ContentDirectiveRequiresKind(t *testing.T) {
+	for name, src := range map[string]string{
+		"single-line": "## Tagline\n\n<?content ?>\n",
+		"multi-line":  "## Tagline\n\n<?content\n\n?>\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := writeFile(t, dir, "schema.md", src)
+			_, err := ParseFile(&FileReader{}, path)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "must set a `kind:` key")
+		})
+	}
+}
+
+// TestParseFile_ContentDirectiveUnclosedFails locks down that a
+// `<?content` block left open at EOF (a missing `?>` line) is a
+// parse error rather than a silently accepted directive.
+func TestParseFile_ContentDirectiveUnclosedFails(t *testing.T) {
 	dir := t.TempDir()
 	path := writeFile(t, dir, "schema.md",
-		"## Tagline\n\n<?content ?>\n")
+		"## Tagline\n\n<?content\nkind: paragraph\n")
 	_, err := ParseFile(&FileReader{}, path)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "missing a `kind:` key")
+	assert.Contains(t, err.Error(), "missing its closing `?>`")
+}
+
+// TestParseFile_ContentDirectiveOnSlotRowFails mirrors the inline
+// parser: `content:` is rejected on a slot scope, so a `<?content?>`
+// under a `## ...` row must fail instead of storing entries the
+// validation walk silently skips.
+func TestParseFile_ContentDirectiveOnSlotRowFails(t *testing.T) {
+	dir := t.TempDir()
+	path := writeFile(t, dir, "schema.md",
+		"## ...\n\n<?content\nkind: paragraph\n?>\n")
+	_, err := ParseFile(&FileReader{}, path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "slot row")
+}
+
+// TestParseFile_ContentDirectiveAfterIncludeAttachesToHost pins the
+// attachment anchor: a `<?content?>` row that follows an
+// `<?include?>` splice still declares its entry on the host file's
+// enclosing section, not on the included fragment's tail heading.
+func TestParseFile_ContentDirectiveAfterIncludeAttachesToHost(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "frag.md", "## FragEnd\n")
+	path := writeFile(t, dir, "schema.md",
+		"## Host\n\n<?include\nfile: frag.md\n?>\n\n<?content\nkind: paragraph\n?>\n")
+	sch, err := ParseFile(&FileReader{}, path)
+	require.NoError(t, err)
+	require.Len(t, sch.Sections, 2, "host heading plus spliced fragment heading")
+	host, frag := sch.Sections[0], sch.Sections[1]
+	require.Equal(t, "Host", host.Heading)
+	require.Equal(t, "FragEnd", frag.Heading)
+	assert.Len(t, host.Content, 1,
+		"the content entry belongs to the host section")
+	assert.Empty(t, frag.Content,
+		"the spliced fragment heading must not receive the host's entry")
+}
+
+// TestParseFile_ContentDirectiveErrorNamesLine locks down that a
+// directive diagnostic carries the absolute source line, including
+// the lines a front-matter block occupied.
+func TestParseFile_ContentDirectiveErrorNamesLine(t *testing.T) {
+	dir := t.TempDir()
+	path := writeFile(t, dir, "schema.md",
+		"---\ntitle: string\n---\n## Tagline\n\n<?content\nkind: bogus\n?>\n")
+	_, err := ParseFile(&FileReader{}, path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "line 6",
+		"three front-matter lines plus the body offset of the directive")
+	assert.Contains(t, err.Error(), "unknown content kind")
 }
 
 // TestParseFile_ContentDirectiveRejectsInvalidYAML locks down that a
