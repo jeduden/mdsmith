@@ -189,7 +189,9 @@ func TestOrderedComparisonNonOrderable(t *testing.T) {
 		// though A is unresolved at compile.
 		`{B: 0 > A > 0, A: 0}`,
 		`{B: (0 > A) > 0, A: 0}`,
-		`{B: A > (0 > 1), A: 0}`, // RIGHT operand is a comparison expr
+		`{B: A > (0 > 1), A: 0}`,         // RIGHT operand is a comparison expr
+		`{m: string, B: (m =~ "x") > 0}`, // a regex-match operand is bool-typed
+		`{m: string, B: (m !~ "x") < 0}`, // a regex-non-match operand is bool-typed
 	}
 	for _, src := range reject {
 		_, err := Compile(src)
