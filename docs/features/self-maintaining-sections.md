@@ -26,4 +26,8 @@ the conflict for you.
 
 See the [generating-content
 guide](../guides/directives/generating-content.md) for directive
-syntax and options.
+syntax and options. The same catalog mechanism powers
+[progressive disclosure for AI
+agents](../guides/progressive-disclosure.md): a generated
+`CLAUDE.md` index of one-line summaries that lets an agent open
+only the files a task touches.

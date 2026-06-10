@@ -29,6 +29,13 @@ feeds the same diagnostics and navigation to the agent, plus a
 Markdown-organization audit skill. The agent sees mdsmith inline
 while it edits your docs.
 
+An agent pays context tokens for every file it reads. The
+[progressive disclosure
+guide](../guides/progressive-disclosure.md) shows the fix. A
+`<?catalog?>` builds a one-line `CLAUDE.md` index from each
+doc's `summary` front matter. The agent then opens only the
+files a task touches.
+
 See the [VS Code guide](../guides/editors/vscode.md), the
 [Obsidian guide](../guides/editors/obsidian.md), and the
 [install guide](../guides/install.md) for setup.
