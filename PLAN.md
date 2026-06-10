@@ -158,7 +158,7 @@ footer: |
 | 237        | ✅     | sonnet | [cuelite phase 1 — surface D (placeholder paths)](plan/237_cuelite-surface-d.md)                                                        |
 | 238        | ✅     | opus   | [cuelite phase 2 — surfaces A + B (schema, query)](plan/238_cuelite-surfaces-ab.md)                                                     |
 | 239        | 🔲     | opus   | [cuelite phase 3 — surface C (row-expr evaluator)](plan/239_cuelite-surface-c.md)                                                       |
-| 240        | 🔲     | sonnet | [cuelite phase 4 — drop cuelang.org and enable tinygo](plan/240_cuelite-drop-cue.md)                                                    |
+| 240        | 🔲     | opus   | [cuelite phase 4 — drop cuelang.org and enable tinygo](plan/240_cuelite-drop-cue.md)                                                    |
 | 241        | ✅     | opus   | [Schema-per-file config under `.mdsmith/schemas/`](plan/241_schema-files.md)                                                            |
 | 242        | ✅     | opus   | [proto.md schemas declare content entries via `<?content?>`](plan/242_proto-content-entries.md)                                         |
 | 243        | ✅     | sonnet | [`mdsmith extract` projects the document H1 as `title`](plan/243_extract-h1-title.md)                                                   |

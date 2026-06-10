@@ -2,7 +2,7 @@
 id: 240
 title: "cuelite phase 4 — drop cuelang.org and enable tinygo"
 status: "🔲"
-model: sonnet
+model: opus
 summary: >-
   With every surface flipped, delete cue/cuelite's CUE
   delegation and remove cuelang.org/go from go.mod; replace the
@@ -25,37 +25,64 @@ Phase 4 of [plan 218](218_wasm-size-reduction.md). It is
 reachable once surfaces A–D are flipped, so nothing delegates
 to CUE anymore.
 
+This phase is sized `opus`, not `sonnet`. The original `sonnet`
+estimate assumed task 1 was a delegation deletion. The phase-2
+audit corrected that: the standing `cuelang.org/...` dependency
+is the parser and AST, so task 1 is now writing a hand-rolled
+CUE-subset parser and lexer (the grammar plus the underscore and
+escape rules) and re-pointing the evaluator at it. That is the
+largest and most error-prone task in the cuelite series, well
+above the `sonnet` band.
+
 ## Tasks
 
-1. Delete the CUE delegation from `cue/cuelite` and remove
+1. Replace the SYNTAX FRONTEND. After the phase-2/3 flips the only
+   remaining non-test `cuelang.org/...` use is the parser and AST:
+   `compile.go` imports `cue/parser`, `cue/ast`, `cue/literal`, and
+   `cue/token`; `eval.go` imports `cue/ast` and `cue/token`. The
+   evaluator already walks an in-house value model, so this task swaps
+   the AST it walks. Write a hand-rolled CUE-SUBSET parser (the
+   front-matter/row-expr grammar only: structs, fields, lists, the
+   bounds and disjunction operators, comparisons, the single `if`/`for`
+   comprehensions, calls, string/number/bool/null literals with CUE
+   underscore and escape rules) producing an in-house syntax tree, then
+   re-point `compileExpr`/`evalExpr` at it. `literal.Unquote` and the
+   `token` constants are replaced by the new parser's own lexer. This
+   is the last and largest CUE dependency to remove; it is the bulk of
+   the phase.
+2. Delete the CUE delegation from `cue/cuelite` and remove
    `cuelang.org/go` from `go.mod` and `go.sum`. Confirm no
    non-test file imports `cuelang.org/...`.
-2. Delete `internal/cuelitetest` (or port its corpus to pure
+3. Delete `internal/cuelitetest` (or port its corpus to pure
    in-house self-tests with no oracle). Its non-test file
    `cuelitetest.go` imports `cuelang.org/go` for the direct-CUE
    oracle path, so it must go before `cuelang.org/go` can leave
    `go.mod`. Once every surface is flipped, the in-house path and
    the oracle are no longer two implementations to diff — the
    oracle's whole purpose ends — so the harness is removed rather
-   than kept.
-3. Migrate or delete the remaining TEST-ONLY `cuelang.org/...`
+   than kept. Its oracle-backed test files
+   (`cuelitetest_test.go`, `fuzz_validate_test.go`,
+   `bench_test.go`, `factor_gate_test.go`) go with it.
+4. Migrate or delete the remaining TEST-ONLY `cuelang.org/...`
    imports — `go.mod` removal needs the build graph clean of CUE
-   in test files too, not only non-test files.
-   `internal/schema/shortcuts_test.go` imports
-   `cue/cuecontext` directly to compile its shortcut CUE; rewrite
-   it against the cuelite façade (or drop the direct-CUE
-   assertion). `cue/cuelite`'s own tests also delegate-test
-   against CUE (the `cuelang.org/go/cue/errors` and
-   `cuecontext` imports in `value_test.go`/`internal_test.go`);
-   port them to in-house assertions before the module leaves.
-4. Replace `sync.Map.CompareAndDelete` in
+   in test files too, not only non-test files. The current set is:
+   `internal/schema/shortcuts_test.go` (imports `cue/cuecontext`
+   to compile its shortcut CUE — rewrite against the cuelite
+   façade or drop the direct-CUE assertion), and `cue/cuelite`'s
+   own oracle-backed tests
+   (`value_test.go`, `coverage4_test.go`, `coverage5_test.go`,
+   `coverage6_test.go` import `cue/cuecontext`, `cue/ast`,
+   `cue/token`, or `cue/errors`). Port each to in-house assertions
+   or the new parser's tree before the module leaves. Re-run
+   `grep -rl cuelang.org/ --include=*_test.go` until it is empty.
+5. Replace `sync.Map.CompareAndDelete` in
    [runcache.go](../internal/lint/runcache.go) with a
    mutex-guarded map, red/green.
-5. Get the standard-Go and `tinygo build -target wasm
+6. Get the standard-Go and `tinygo build -target wasm
    ./cmd/mdsmith-wasm` builds passing; tighten
    [size_test.go](../cmd/mdsmith-wasm/size_test.go) to the new
    budgets.
-6. Update the
+7. Update the
    [engine-api page](../docs/background/concepts/engine-api.md)
    and the `cue/` entry in the
    [layering map](../docs/development/architecture/index.md).

@@ -44,16 +44,61 @@ per-call fresh-context model. So the interim façade pays a fresh
 context per catalog row until the context-free in-house evaluator
 lands.
 
+### What phase-2 `eval.go` already provides
+
+Plan 238's flip landed a scope-threaded tree-walking evaluator,
+`evalExpr(ast.Expr, scope)`. Surface C extends it, not replaces
+it. It already walks these nodes:
+
+- basic literals,
+- identifiers (sibling-field references and the type keywords),
+- index expressions,
+- binary expressions (comparison, `&`, `|` disjunction),
+- parens,
+- list literals with the open tail,
+- struct literals (fields, embeds, ellipsis),
+- unary expressions,
+- the `close` and `strings.MinRunes` calls,
+- the single-clause `if` comprehension.
+
+References resolve against `scope`. An unresolved one becomes a
+thunk (`deferToThunk`) the force pass re-runs once a sibling binds.
+
+### What surface C still has to add
+
+The row-expr language needs four constructs `evalExpr` does NOT
+yet handle:
+
+- string INTERPOLATION (`"\(fm.id)"`) — no `*ast.Interpolation`
+  case exists,
+- `for` comprehension clauses — `evalComprehension` rejects
+  anything but a single `if` clause,
+- general SELECTOR evaluation (`fm.id`) — a bare `*ast.SelectorExpr`
+  is rejected outside a builtin call, so a frontmatter field
+  access does not resolve,
+- a BUILTIN REGISTRY — only `close` and `strings.MinRunes` are
+  wired; the live row-expr builtin `strings.Join` and `len` over a
+  string/list are missing.
+
 ## Tasks
 
 1. Add the expression façade to `cue/cuelite`, delegating to
-   CUE's evaluator.
+   CUE's evaluator: a parse-without-evaluate entry and an
+   evaluate-against-a-scope entry (see "façade shape" above).
 2. Move [cuetemplate](../internal/cuetemplate/cuetemplate.go)
    onto the façade. The suite stays green.
-3. Flip to an in-house tree-walking evaluator: string
-   interpolation, `for`/`if` comprehensions, indexing, field
-   selection, the ternary idiom, and a `strings.Join`/`len`
-   builtin registry. Red/green per node and per builtin.
+3. EXTEND `evalExpr` (the phase-2 tree-walking evaluator) with the
+   four missing constructs, red/green per node and per builtin:
+
+  - an `*ast.Interpolation` case that evaluates each embedded
+     expression against scope and concatenates,
+  - a `for`-clause arm in `evalComprehension` (and its
+     multi-clause shape),
+  - a scoped `*ast.SelectorExpr` case so `fm.id` resolves a
+     frontmatter field against scope, not just inside a call,
+  - a builtin registry replacing the ad-hoc `compileCall` switch,
+     adding `strings.Join` and `len`.
+
 4. Gate it on the real `row-expr` in
    [markdownlint-coverage](../docs/research/markdownlint-coverage/README.md)
    plus unit tests, checked against the CUE oracle.

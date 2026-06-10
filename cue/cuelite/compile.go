@@ -30,6 +30,14 @@ func compileSource(src string) (*engineValue, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cuelite: parse: %w", err)
 	}
+	// A * default mark is valid only as a disjunction branch. CUE rejects a
+	// misplaced mark eagerly at parse ("preference mark not allowed at this
+	// position"), even inside an unreached list element (`[if c {}, (*"")][0]`).
+	// The evaluator only reaches compileUnary on an element it forces, so a
+	// static pass rejects every misplaced mark up front, matching CUE.
+	if err := checkNoMisplacedDefault(file); err != nil {
+		return nil, err
+	}
 	v, err := compileFile(file)
 	if err != nil {
 		return nil, err
@@ -52,6 +60,115 @@ func compileSource(src string) (*engineValue, error) {
 		return v, fmt.Errorf("cuelite: %s", b.reason)
 	}
 	return v, nil
+}
+
+// checkNoMisplacedDefault rejects a `*` default mark that is not a disjunction
+// branch. CUE treats the mark as a syntax-level preference and rejects it at
+// parse time wherever it is not directly under a `|` — including in a list
+// element the evaluator never forces. The walk descends every expression in
+// the file; at each `*` UnaryExpr it checks whether the position is a valid
+// disjunction operand, reporting the first misplaced one.
+func checkNoMisplacedDefault(file *ast.File) error {
+	for _, d := range file.Decls {
+		if err := visitDeclForDefault(d); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// visitForDefault descends e and returns the first misplaced `*` default mark.
+// disjunctionOperand is true when e sits in a position where a `*` is allowed
+// (a disjunction branch, possibly through parens or a nested mark).
+func visitForDefault(e ast.Expr, disjunctionOperand bool) error {
+	switch n := e.(type) {
+	case *ast.UnaryExpr:
+		return visitUnaryForDefault(n, disjunctionOperand)
+	case *ast.BinaryExpr:
+		return visitBinaryForDefault(n, disjunctionOperand)
+	case *ast.ParenExpr:
+		// Parens preserve the surrounding position: `(*"")` in a disjunction
+		// stays a default, `(*"")` elsewhere stays misplaced.
+		return visitForDefault(n.X, disjunctionOperand)
+	case *ast.StructLit:
+		return visitDeclsForDefault(n.Elts)
+	case *ast.ListLit:
+		return visitExprsForDefault(n.Elts)
+	case *ast.CallExpr:
+		return visitExprsForDefault(n.Args)
+	case *ast.IndexExpr:
+		return visitForDefault(n.X, false)
+	case *ast.Ellipsis:
+		// An open-list tail `[...T]` carries its element type T.
+		if n.Type != nil {
+			return visitForDefault(n.Type, false)
+		}
+	case *ast.Comprehension:
+		// A comprehension is also an ast.Decl; reuse the decl handler so the
+		// body-descent logic lives in one place.
+		return visitDeclForDefault(n)
+	}
+	return nil
+}
+
+// visitUnaryForDefault handles a unary node: a `*` mark is rejected unless it
+// sits in a disjunction-operand position, and its operand keeps that position.
+func visitUnaryForDefault(n *ast.UnaryExpr, disjunctionOperand bool) error {
+	if n.Op == token.MUL {
+		if !disjunctionOperand {
+			return fmt.Errorf("cuelite: * default is only valid in a disjunction")
+		}
+		return visitForDefault(n.X, true)
+	}
+	return visitForDefault(n.X, false)
+}
+
+// visitBinaryForDefault handles a binary node: both arms of a `|` disjunction
+// are valid default positions; any other operator's operands are not.
+func visitBinaryForDefault(n *ast.BinaryExpr, _ bool) error {
+	operand := n.Op == token.OR
+	if err := visitForDefault(n.X, operand); err != nil {
+		return err
+	}
+	return visitForDefault(n.Y, operand)
+}
+
+// visitExprsForDefault descends a slice of expressions (list elements or call
+// arguments), none of which is a disjunction-operand position.
+func visitExprsForDefault(exprs []ast.Expr) error {
+	for _, e := range exprs {
+		if err := visitForDefault(e, false); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// visitDeclsForDefault runs the misplaced-default check over a struct's
+// declarations.
+func visitDeclsForDefault(decls []ast.Decl) error {
+	for _, d := range decls {
+		if err := visitDeclForDefault(d); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// visitDeclForDefault runs the misplaced-default check over one declaration's
+// value.
+func visitDeclForDefault(d ast.Decl) error {
+	switch n := d.(type) {
+	case *ast.Field:
+		return visitForDefault(n.Value, false)
+	case *ast.EmbedDecl:
+		return visitForDefault(n.Expr, false)
+	case *ast.Comprehension:
+		if st, ok := n.Value.(*ast.StructLit); ok {
+			return visitDeclsForDefault(st.Elts)
+		}
+	}
+	return nil
 }
 
 // compileFile walks the declarations of a parsed CUE file into a value. A

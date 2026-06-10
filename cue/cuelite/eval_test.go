@@ -7,6 +7,56 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestCheckNoMisplacedDefault drives the static * default check across every
+// AST position the walker descends, both where a misplaced mark must reject
+// and where a valid default (or no mark) must pass. CUE rejects a misplaced
+// mark at parse, even in an unreached position, so the in-house engine does
+// the same up front.
+func TestCheckNoMisplacedDefault(t *testing.T) {
+	rejects := []string{
+		`{a: *""}`,      // field value
+		`{a: [*""][0]}`, // list element
+		`{a: (*"")}`,    // parenthesized, non-disjunction
+		`({mechanism:[if mechanism{},(*"")][0]})`, // unreached list element
+		`{a: close({b: *1})}`,                     // call argument
+		`{a: [if true {*""}][0]}`,                 // comprehension body field
+		`{a: {b: *""}}`,                           // nested struct field
+		`{a: [1, 2][*0]}`,                         // index expression target operand
+		`{a: -(*"")}`,                             // nested unary operand
+		`if true {a: *""}`,                        // top-level comprehension body
+		`{a: [if true {b: *""}]}`,                 // comprehension as a list element
+		`{a: [...(*"")]}`,                         // open-list tail element type
+		`{a: [*""][0] | 2}`,                       // misplaced mark in a disjunction's left arm
+		`{a: [*""][0] & int}`,                     // misplaced mark in a non-OR binary's left operand
+	}
+	for _, src := range rejects {
+		_, err := Compile(src)
+		assert.Error(t, err, "a misplaced * default must reject: %s", src)
+	}
+	// A top-level comprehension with no misplaced mark passes the default check
+	// (it fails LATER as an unsupported top-level declaration, not on the mark),
+	// exercising the visitDecl comprehension branch's success path.
+	_, err := Compile(`if true {a: int}`)
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "* default", "the * check must pass; a later rule rejects")
+	accepts := []string{
+		`{a: *1 | 2}`,           // simple default
+		`{a: int | *"x"}`,       // default on the right
+		`{a: *(1 | 2) | 3}`,     // default over a parenthesized disjunction
+		`{a: [1, 2][0]}`,        // list index, no mark
+		`{a: close({b: int})}`,  // call, no mark
+		`{a: {b: string}}`,      // nested struct, no mark
+		`{a: [if true {1}][0]}`, // comprehension body, no mark
+		`{a: [if true {b: 1}]}`, // comprehension list element, no mark
+		`{a: [...int]}`,         // open-list tail with a type, no mark
+		`{a: [1, 2, ...]}`,      // bare open-list tail (nil element type)
+	}
+	for _, src := range accepts {
+		_, err := Compile(src)
+		assert.NoError(t, err, "a valid default or no mark must compile: %s", src)
+	}
+}
+
 // TestThunk_comparisons drives a deferred thunk whose `if` condition uses
 // each comparison operator over a sibling reference, so evalComparison and
 // compareConcrete cover the ordered, equality, and regex branches once the

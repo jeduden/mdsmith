@@ -5,8 +5,52 @@ import (
 	"strings"
 	"testing"
 
+	"cuelang.org/go/cue/ast"
+	"cuelang.org/go/cue/parser"
 	"github.com/jeduden/mdsmith/cue/cuelite"
 )
+
+// schemaHasSelfCycle reports whether the schema declares a struct field whose
+// VALUE references the field's own label — a structural self-cycle
+// (`{a: [if a {}][0]}`). CUE reports such a cycle at the ROOT path ("cycle
+// with field: a"), while the in-house engine, which forces the field's thunk
+// against data and finds the name unbound, reports it at the FIELD path. Both
+// REJECT; only the rejecting-leaf label differs. Detecting the construct lets
+// the fuzzer scope that one leaf-path divergence without masking any other.
+func schemaHasSelfCycle(schema string) bool {
+	f, err := parser.ParseFile("schema.cue", schema)
+	if err != nil {
+		return false
+	}
+	found := false
+	// ast.Walk visits every node; a *ast.Field whose value references its own
+	// label is a self-cycle at any nesting depth.
+	for _, d := range f.Decls {
+		ast.Walk(d, func(n ast.Node) bool {
+			if field, ok := n.(*ast.Field); ok {
+				if name, _, _ := ast.LabelName(field.Label); name != "" &&
+					exprReferences(field.Value, name) {
+					found = true
+				}
+			}
+			return true
+		}, nil)
+	}
+	return found
+}
+
+// exprReferences reports whether e contains a bare identifier named name (a
+// reference back to an enclosing field of that name).
+func exprReferences(e ast.Expr, name string) bool {
+	found := false
+	ast.Walk(e, func(n ast.Node) bool {
+		if id, ok := n.(*ast.Ident); ok && id.Name == name {
+			found = true
+		}
+		return !found
+	}, nil)
+	return found
+}
 
 // inHouseRejectsOutOfSubset reports whether the in-house engine rejects the
 // schema at compile time for a documented strict-subset reason:
@@ -232,6 +276,17 @@ func extraFuzzSeeds() []struct{ schema, data string } {
 		// label out-of-subset; hatch 1 covers the divergence.
 		{`{int: {int}}`, `{}`},
 		{`{string: x}`, `{}`},
+		// A structural self-cycle (a field referencing its own label): both arms
+		// reject, CUE at the root ("cycle with field"), the in-house engine at the
+		// field. Hatch 3 tolerates the leaf-path-only difference.
+		{`({mechanism:[if mechanism{}][0]})`, `{}`},
+		{`{a: [if a {}][0]}`, `{}`},
+		// A misplaced `*` default mark in an unreached list element: CUE rejects
+		// it at parse ("preference mark not allowed"); the in-house engine's
+		// static pass rejects it up front rather than only when the element is
+		// forced. Seeded for the checkNoMisplacedDefault pass.
+		{`({mechanism:[if mechanism{},(*"")][0]})`, `0`},
+		{`{a: [*""][0]}`, `0`},
 		// A lone-surrogate escape in a VALUE position (hatch 2) and in a KEY
 		// position (now rejected in both arms — no hatch). Seeding both keeps
 		// the surrogate classes exercised on every run.
@@ -312,6 +367,19 @@ func fuzzValidateBody() func(*testing.T, string, string) {
 		// honest: a missing leaf, a wrong accept, a stage mismatch, OR a leaf-set
 		// blow-up beyond one extra still fails.
 		if bothReject(inHouse, oracle) && leafSuperset(inHouse.Paths, oracle.Paths) {
+			return
+		}
+		// Hatch 3 — structural self-cycle leaf path. A field whose value
+		// references its own label (`{a: [if a {}][0]}`) is a structural cycle.
+		// Both arms REJECT; they differ ONLY in the rejecting-leaf label. CUE
+		// reports the cycle at the ROOT ("cycle with field: a", path []), while
+		// the in-house engine forces the field's thunk, finds the name unbound,
+		// and reports it at the FIELD path. The hatch is scoped to exactly that
+		// signature: both reject at validate, the schema declares a self-cycle,
+		// and the oracle's only rejecting leaf is the root path. A wrong accept,
+		// a stage mismatch, or any non-root oracle path still fails.
+		if bothReject(inHouse, oracle) && schemaHasSelfCycle(schema) &&
+			slices.EqualFunc(oracle.Paths, [][]string{nil}, slices.Equal[[]string]) {
 			return
 		}
 		t.Fatalf("divergence on schema=%q data=%q: in-house %+v vs oracle %+v",
