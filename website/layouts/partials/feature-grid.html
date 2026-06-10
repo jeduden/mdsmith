@@ -49,6 +49,10 @@
   "Built for your pipeline"              "feature-artifacts/ci"
 -}}
 
+{{- /* Icon-tile hue cycle (see the icon-tints token comment in
+       colors_and_type.css). */ -}}
+{{- $tints := slice "ember" "sky" "moss" "amber" "clay" "slate" -}}
+
 {{- $features := site.GetPage "/features" -}}
 {{- if $features -}}
 {{- $pages := $features.Pages.ByWeight -}}
@@ -80,7 +84,6 @@
              ($gi) staggers the cycle so grids do not all open on
              the same hue; consecutive cards in a grid always get
              different hues (the design-system adjacency rule). */ -}}
-      {{- $tints := slice "ember" "sky" "moss" "amber" "clay" "slate" -}}
       {{- $tint := "forge-grad" -}}
       {{- if not $isLead -}}
         {{- $tint = index $tints (mod (add $gi $i) (len $tints)) -}}

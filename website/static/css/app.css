@@ -248,14 +248,17 @@ main {
   align-items: baseline;
   gap: 16px;
 }
-.positioning-label {
-  flex-shrink: 0;
+/* One mono-label recipe for both band rows: the positioning
+   strip's "Runs in" and the logos strip's "Available on". */
+.positioning-label,
+.logos-label {
   font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--fg-subtle);
 }
+.positioning-label { flex-shrink: 0; }
 .positioning-surfaces {
   display: flex;
   flex-wrap: wrap;
@@ -1592,7 +1595,8 @@ a.install-label:hover { color: var(--forge-300); text-decoration: underline; }
   flex-wrap: wrap; gap: 32px;
   filter: grayscale(1); opacity: 0.7;
 }
-.logos-label { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.05em; color: var(--fg-subtle); text-transform: uppercase; }
+/* .logos-label shares the mono-label recipe declared in the
+   POSITIONING BAND section. */
 .logos-item { font-family: var(--font-sans); font-size: 18px; font-weight: 600; color: var(--steel-700); letter-spacing: -0.01em; }
 .logos-item:hover { color: var(--accent); text-decoration: none; }
 .logos-strip:hover { filter: none; opacity: 1; }
@@ -1890,8 +1894,8 @@ a.rule-ref:hover code { text-decoration: underline; }
      both columns instead. */
   .footer-grid .footer-col:first-child { grid-column: 1 / -1; }
 
-  /* Stack the "One engine" label on its own line above the
-     wrapping chips. */
+  /* Stack the "Runs in" label on its own line above the
+     wrapping surface links. */
   .positioning { padding: 28px 0 26px; }
   .positioning-statement { font-size: 18px; margin-bottom: 18px; }
   .positioning-engine { flex-direction: column; align-items: flex-start; gap: 10px; }

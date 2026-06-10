@@ -70,8 +70,8 @@ viewport.
 
 ## Spacing, radii, borders, shadows
 
-- Section rhythm: 96px between major sections, 48px
-  between subsections, 24px inside.
+- Section rhythm: 80px of vertical section padding, 52px
+  between pillars, 24px inside components.
 - Max widths: prose 720px, tables and diagnostics 960px;
   full-bleed only in the hero.
 - 1px is the only border weight. `--border-subtle` divides
@@ -80,10 +80,10 @@ viewport.
 - Radii ladder: 2px inline code, 4px buttons and inputs,
   6px cards and terminal mocks, 10px heroes, 16px modals,
   pill radius for status pills only. Nothing larger.
-- Shadows are two-tier and rare: `--shadow-xs` scrolled
-  nav, `--shadow-sm` resting cards, `--shadow-md` hover
-  and dropdowns, `--shadow-lg` modals. No glow and no
-  colored shadows.
+- Shadows are rare: `--shadow-xs` scrolled nav,
+  `--shadow-sm` resting cards, `--shadow-md` hover and
+  dropdowns, `--shadow-lg` modals. No glow and no colored
+  shadows.
 
 ## Components
 
@@ -99,8 +99,7 @@ viewport.
   stripe; use a rule-ID chip instead.
 - Hover: links underline; buttons darken one step on the
   forge ramp. Never opacity-only hover.
-- Press: 1px translate down, background one step darker.
-  No scale effects.
+- Press: 1px translate down. No scale effects.
 - Focus: `--shadow-focus` ring, always visible. Never
   remove an outline without a replacement.
 - Disabled: 50% opacity with the hue kept.
@@ -111,8 +110,9 @@ viewport.
 ## Iconography and brand marks
 
 - Icons are [Lucide](https://lucide.dev/), stroke-only,
-  sized 16px in dense UI, 20px in prose, 24px in nav and
-  CTAs. Icons punctuate; they never carry a layout.
+  sized to context (12-24px); glyphs inside icon tiles are
+  18px, or 24px in the 36px lead tiles. Icons punctuate;
+  they never carry a layout.
 - Bare glyphs in prose and nav inherit `currentColor`.
   Colored icons appear only inside `.icon-tile` tiles,
   which take a `--tint-*` hue (or the forge gradient for
