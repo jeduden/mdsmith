@@ -338,6 +338,35 @@ func TestExtract_SchemaBlockParagraphsInlineUnlisted(t *testing.T) {
 	assert.Equal(t, map[string]any{"span": "code", "value": "code"}, spans[0])
 }
 
+// Scope-wins precedence in the OFF direction: a schema-level
+// `block-paragraphs: inline` default is overridden by a scope that sets
+// `block-paragraphs: text`, so that scope's paragraphs render flat
+// `text` rather than inline spans. (The inline-ON direction is covered
+// by TestExtract_ScopeBlocksInlineParagraphs; this pins the override
+// turning the option back off — the scope-wins branch of
+// inlineBlockParagraphs.)
+func TestExtract_ScopeBlockParagraphsTextOverridesSchemaInline(t *testing.T) {
+	sch := &schema.Schema{
+		RootLevel:       2,
+		Projection:      schema.ProjectionBlocks,
+		BlockParagraphs: schema.ProjectionInline,
+		Sections: []schema.Scope{{
+			Heading:         "Notes",
+			Matcher:         &schema.Matcher{Regex: "Notes"},
+			Projection:      schema.ProjectionBlocks,
+			BlockParagraphs: schema.ProjectionText,
+		}},
+	}
+	got, diags := run(t, "## Notes\n\nMark*down*.\n", sch, nil)
+	require.Empty(t, diags)
+	blocks := got.(map[string]any)["notes"].(map[string]any)["blocks"].([]any)
+	require.Len(t, blocks, 1)
+	assert.Equal(t, map[string]any{
+		"block": "paragraph",
+		"text":  "Markdown.",
+	}, blocks[0])
+}
+
 // The inline-paragraph choice propagates into nested `section` blocks:
 // a deeper heading's paragraph also renders inline.
 func TestExtract_BlockParagraphsInlineNestedSection(t *testing.T) {
