@@ -114,8 +114,11 @@ func visitForDefault(e ast.Expr, disjunctionOperand bool) error {
 	return nil
 }
 
-// visitUnaryForDefault handles a unary node: a `*` mark is rejected unless it
+// visitUnaryForDefault handles a unary node. A `*` mark is rejected unless it
 // sits in a disjunction-operand position, and its operand keeps that position.
+// An operator outside the subset's unary set (anything but the default `*`,
+// the numeric sign `-`/`+`) — `!`, say — is rejected here too, eagerly, since
+// the evaluator only reaches compileUnary on an operand it forces.
 func visitUnaryForDefault(n *ast.UnaryExpr, disjunctionOperand bool) error {
 	if n.Op == token.MUL {
 		if !disjunctionOperand {

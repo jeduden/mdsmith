@@ -299,6 +299,12 @@ func extraFuzzSeeds() []struct{ schema, data string } {
 		// descend the disjunction/list to reject it too.
 		{`0X0|0<A`, `0`},
 		{`[0 < A]`, `0`},
+		// An unsupported binary operator (string * "") in an UNREACHED list
+		// element: CUE rejects "invalid operand" at compile; the in-house engine
+		// must evaluate every list element eagerly enough to reject the hard
+		// error rather than defer past it on an earlier element.
+		{`({mechanism:[if mechanism{},(string*"")][0]})`, `0`},
+		{`{a: [if c {}, (string*"")][0], c: bool}`, `{"c":true}`},
 		// A lone-surrogate escape in a VALUE position (hatch 2) and in a KEY
 		// position (now rejected in both arms — no hatch). Seeding both keeps
 		// the surrogate classes exercised on every run.

@@ -154,26 +154,42 @@ func evalIndex(n *ast.IndexExpr, scope map[string]*engineValue) (*engineValue, e
 // range).
 func evalListElems(list *ast.ListLit, scope map[string]*engineValue) ([]*engineValue, error) {
 	var out []*engineValue
+	// deferErr holds an errUnresolved seen on some element. A HARD error (an
+	// unsupported construct, a bad call) is returned immediately, even when an
+	// EARLIER element deferred: CUE rejects a `(string*"")` element at compile
+	// regardless of whether `[…][0]` would reach it, so a hard error in any
+	// element fails the whole list. Only when every element either evaluated or
+	// merely deferred does the list itself defer.
+	var deferErr error
 	for _, el := range list.Elts {
+		var err error
 		switch e := el.(type) {
 		case *ast.Ellipsis:
 			// The open tail adds no indexable element.
 			continue
 		case *ast.Comprehension:
-			keep, body, err := evalComprehension(e, scope)
-			if err != nil {
-				return nil, err
-			}
-			if keep {
+			var keep bool
+			var body *engineValue
+			keep, body, err = evalComprehension(e, scope)
+			if err == nil && keep {
 				out = append(out, body)
 			}
 		default:
-			ev, err := evalExpr(el, scope)
-			if err != nil {
+			var ev *engineValue
+			ev, err = evalExpr(el, scope)
+			if err == nil {
+				out = append(out, ev)
+			}
+		}
+		if err != nil {
+			if !stderrors.Is(err, errUnresolved) {
 				return nil, err
 			}
-			out = append(out, ev)
+			deferErr = err
 		}
+	}
+	if deferErr != nil {
+		return nil, deferErr
 	}
 	return out, nil
 }
