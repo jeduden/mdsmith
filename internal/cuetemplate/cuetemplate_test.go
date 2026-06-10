@@ -85,17 +85,20 @@ func TestTemplate_Render_NonStringResultIsError(t *testing.T) {
 }
 
 // TestTemplate_Render_NonConcreteStringIsError covers a
-// row-expr that is string-typed but non-concrete — here an
-// open two-arm string disjunction. Without the
-// concreteness check the CUE String() call yields "" and a
-// caller that ignored the error would silently emit a
-// blank row.
+// row-expr that does not yield a concrete string — here an
+// open two-arm string disjunction. A blank cell is silently
+// wrong, so Render must reject it. The in-house engine has no
+// disjunction in the row subset and rejects the `|` operator
+// outright (re-pinned from the former CUE "concrete string"
+// wording — the message is the engine's stable contract, not
+// CUE's); the contract that a non-concrete result fails loudly
+// is unchanged.
 func TestTemplate_Render_NonConcreteStringIsError(t *testing.T) {
 	tpl, err := Compile(`"foo" | "bar"`)
 	require.NoError(t, err)
 	_, err = tpl.Render(map[string]any{})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "concrete string")
+	assert.Contains(t, err.Error(), "unsupported row operator")
 }
 
 // TestTemplate_Render_UnknownFieldIsError verifies that a

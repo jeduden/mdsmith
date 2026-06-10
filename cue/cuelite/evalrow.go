@@ -3,6 +3,7 @@ package cuelite
 import (
 	stderrors "errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -122,7 +123,18 @@ func newRowScope(scope map[string]any) (*rowScope, error) {
 	for k, raw := range scope {
 		ev, err := liftMapValue(raw)
 		if err != nil {
-			return nil, err
+			// A front-matter value the lifter cannot represent (an unsupported Go
+			// type such as a chan) is an encoding failure, the class the earlier
+			// cuelang-backed renderer surfaced when json.Marshal refused the value.
+			return nil, fmt.Errorf("encoding frontmatter: field %q: %w", k, err)
+		}
+		// A non-finite float (±Inf, NaN — yaml.v3 decodes `.inf`/`.nan` to these)
+		// has no stable string form a Markdown cell can carry, so reject it up
+		// front, naming the field. The earlier renderer rejected the same front
+		// matter when json.Marshal refused to encode it; this preserves that
+		// contract on the in-house engine.
+		if err := checkFinite(ev); err != nil {
+			return nil, fmt.Errorf("encoding frontmatter: field %q: %w", k, err)
 		}
 		vars[k] = ev
 		fmStruct.fields = append(fmStruct.fields, field{name: k, val: ev})
@@ -137,6 +149,32 @@ func newRowScope(scope map[string]any) (*rowScope, error) {
 // index any key — including one that is not a valid identifier — as
 // `fm["my-key"]`.
 const fmField = "fm"
+
+// checkFinite rejects a non-finite float (±Inf or NaN) anywhere in a lifted
+// front-matter value, descending nested structs and lists. Such a value has
+// no Markdown-renderable string form, so a row referencing it must fail
+// loudly rather than emit a garbage cell.
+func checkFinite(v *engineValue) error {
+	switch v.kind {
+	case kFloat:
+		if math.IsInf(v.f, 0) || math.IsNaN(v.f) {
+			return fmt.Errorf("non-finite number")
+		}
+	case kStruct:
+		for _, f := range v.fields {
+			if err := checkFinite(f.val); err != nil {
+				return err
+			}
+		}
+	case kList:
+		for _, el := range v.prefix {
+			if err := checkFinite(el); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
 
 // evalRow walks one row-expression AST node into a concrete value against the
 // scope. Unlike the schema walker it never defers: a reference resolves
@@ -253,18 +291,16 @@ func interpFragment(elt ast.Expr, i, total int) (string, error) {
 		return "", fmt.Errorf("cuelite: malformed interpolation fragment %T", elt)
 	}
 	raw := bl.Value
-	var inner string
-	switch {
-	case i == 0:
-		// Strip the opening `"` and the trailing `\(`.
-		inner = raw[1 : len(raw)-2]
-	case i == total-1:
-		// Strip the leading `)` and the closing `"`.
-		inner = raw[1 : len(raw)-1]
-	default:
-		// A middle fragment: strip the leading `)` and the trailing `\(`.
-		inner = raw[1 : len(raw)-2]
+	// Strip the leading delimiter — the opening `"` on the first fragment, else
+	// the `)` that closes the preceding interpolation — and the trailing
+	// delimiter — the closing `"` on the last fragment, else the `\(` that opens
+	// the next interpolation.
+	start := 1
+	end := len(raw) - 2
+	if i == total-1 {
+		end = len(raw) - 1
 	}
+	inner := raw[start:end]
 	dec, err := literal.Unquote(`"` + inner + `"`)
 	if err != nil {
 		return "", fmt.Errorf("cuelite: interpolation fragment %q: %w", inner, err)
