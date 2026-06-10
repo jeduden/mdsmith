@@ -280,6 +280,26 @@ func TestSortedPaths(t *testing.T) {
 	assert.Equal(t, [][]string{{"b"}, {"a"}}, in, "the input is left untouched")
 }
 
+// TestNormalizePath pins normalizePath directly: a nil input stays nil, a
+// quote-wrapped segment (a numeric-looking key CUE re-quotes) is unquoted to
+// its raw key, and a bare segment passes through. A segment that is not a
+// valid quoted string is left as-is.
+func TestNormalizePath(t *testing.T) {
+	assert.Nil(t, normalizePath(nil), "a nil path stays nil")
+	got := normalizePath([]string{`"0"`, "title", `"a b"`, `"unterminated`})
+	assert.Equal(t, []string{"0", "title", "a b", `"unterminated`}, got)
+}
+
+// TestExtractJSONSafely_panicRecovered pins that extractJSONSafely converts a
+// cuejson.Extract panic into a data-compile error rather than crashing the
+// differential run. The input "0..." makes cuelang's JSON-via-expression
+// parser panic.
+func TestExtractJSONSafely_panicRecovered(t *testing.T) {
+	_, err := extractJSONSafely([]byte(`0...`))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "panicked")
+}
+
 func TestCompare(t *testing.T) {
 	t.Run("agreement records no failure", func(t *testing.T) {
 		r := &recorder{}
