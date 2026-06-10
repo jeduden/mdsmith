@@ -7,7 +7,6 @@ import (
 
 	"cuelang.org/go/cue/ast"
 	"cuelang.org/go/cue/parser"
-	"cuelang.org/go/cue/token"
 	"github.com/jeduden/mdsmith/cue/cuelite"
 )
 
@@ -135,80 +134,6 @@ func graphHasCycle(graph map[string][]string, nodes map[string]bool) bool {
 		}
 	}
 	return false
-}
-
-// schemaHasNestedDuplicateDefault reports whether the schema has a PARENTHESIZED
-// nested disjunction, used as an operand of an outer disjunction, whose
-// *-marked default value also appears UNMARKED among its sibling disjuncts
-// (`(*0 | 0) | 10`). This is the one disjunction-default shape the in-house
-// engine wrongly accepts (it flattens and keeps the default; CUE's
-// nesting-sensitive evaluation cancels it). The detector is exact — a nested
-// disjunction without the marked+unmarked duplicate (`(*0|1)|10`), and the flat
-// form (`*0|0|1`), do NOT trip it — so it masks no other wrong-accept.
-func schemaHasNestedDuplicateDefault(schema string) bool {
-	f, err := parser.ParseFile("schema.cue", schema)
-	if err != nil {
-		return false
-	}
-	found := false
-	ast.Walk(f, func(n ast.Node) bool {
-		b, ok := n.(*ast.BinaryExpr)
-		if !ok || b.Op != token.OR {
-			return true
-		}
-		for _, operand := range []ast.Expr{b.X, b.Y} {
-			if p, ok := operand.(*ast.ParenExpr); ok && disjunctionHasMarkedUnmarkedDup(p.X) {
-				found = true
-			}
-		}
-		return true
-	}, nil)
-	return found
-}
-
-// disjunctionHasMarkedUnmarkedDup reports whether the disjunction e holds both a
-// *-marked disjunct and an unmarked disjunct with the same source text.
-func disjunctionHasMarkedUnmarkedDup(e ast.Expr) bool {
-	var marked, unmarked []string
-	var collect func(ast.Expr)
-	collect = func(e ast.Expr) {
-		switch n := e.(type) {
-		case *ast.BinaryExpr:
-			if n.Op == token.OR {
-				collect(n.X)
-				collect(n.Y)
-				return
-			}
-		case *ast.ParenExpr:
-			collect(n.X)
-			return
-		case *ast.UnaryExpr:
-			if n.Op == token.MUL {
-				marked = append(marked, disjunctText(n.X))
-				return
-			}
-		}
-		unmarked = append(unmarked, disjunctText(e))
-	}
-	collect(e)
-	for _, m := range marked {
-		if slices.Contains(unmarked, m) {
-			return true
-		}
-	}
-	return false
-}
-
-// disjunctText returns a stable source key for a disjunct (a literal's text or
-// an identifier's name), for the marked/unmarked duplicate comparison.
-func disjunctText(e ast.Expr) string {
-	switch n := e.(type) {
-	case *ast.BasicLit:
-		return n.Value
-	case *ast.Ident:
-		return n.Name
-	}
-	return ""
 }
 
 // inHouseRejectsOutOfSubset reports whether the in-house engine rejects the
@@ -367,6 +292,36 @@ func pathsContainRoot(paths [][]string) bool {
 	return slices.ContainsFunc(paths, func(p []string) bool { return len(p) == 0 })
 }
 
+// inHouseLeavesBounded bounds the in-house non-root leaf count under the
+// root-summary hatch. When the oracle reports MORE than just the root leaf (it
+// names some field leaves too) the in-house engine already had to cover them,
+// so the surplus is already pinned by leafCovers; the bound applies only when
+// the oracle reports ONLY the root. There, the in-house engine may name at most
+// the schema's declared top-level fields (or maxExtraLeaves, whichever is
+// larger), so a phantom fan-out into more leaves than the schema has fields
+// fails instead of passing vacuously.
+func inHouseLeavesBounded(inHouse, oracle [][]string, schema string) bool {
+	if len(nonRootPaths(oracle)) > 0 {
+		return true
+	}
+	limit := topLevelFieldCount(schema)
+	if limit < maxExtraLeaves {
+		limit = maxExtraLeaves
+	}
+	return len(nonRootPaths(inHouse)) <= limit
+}
+
+// topLevelFieldCount returns the number of top-level fields the schema declares,
+// the natural ceiling on how many distinct field leaves a single document
+// failure can legitimately produce.
+func topLevelFieldCount(schema string) int {
+	f, err := parser.ParseFile("schema.cue", schema)
+	if err != nil {
+		return 0
+	}
+	return len(topLevelFields(f))
+}
+
 // nonRootPaths returns paths with the root (empty) path removed.
 func nonRootPaths(paths [][]string) [][]string {
 	out := make([][]string, 0, len(paths))
@@ -487,15 +442,20 @@ func edgeFuzzSeeds() []struct{ schema, data string } {
 		// in-house engine also reports. The leaf-superset hatch exempts a closed
 		// schema from the surplus bound.
 		{`close({A:""|"0",B:[(string)]})`, `{"0":""}`},
-		// CARRY TO ROUND 2 — a nested disjunction whose marked default value also
-		// appears unmarked (`(*0|0)|10`): the in-house engine flattens and keeps
-		// the default (wrong accept); CUE's nesting-sensitive default cancels it.
-		// The exact pre-oracle skip covers it until the nesting-preserving
-		// evaluator lands.
+		// A nested disjunction whose marked default value also appears unmarked
+		// (`(*0|0)|10`): the sub-disjunction's value collapses to one branch, so
+		// it carries no default up and CUE rejects an absent A — the in-house
+		// engine's ⟨value, default⟩ pair model now matches (P0b). These exercise
+		// the nesting-sensitive default cancellation on every run.
 		{`{A:(*0|0)|10}`, `{}`},
 		{`{A:(0|*0)|1}`, `{}`},
 		{`{A:(*"x"|"x")|"y"}`, `{}`},
 		{`{A:(*true|true)|false}`, `{}`},
+		// The flat and non-collapsing nested forms keep the default and accept,
+		// so a regression in either direction (dropping a real default, or
+		// keeping a collapsed one) fails.
+		{`{A:0|*0|1}`, `{}`},
+		{`{A:(*0|1)|10}`, `{}`},
 		// CUE's root-summary leaf: a top-level disjunction that matches no branch,
 		// and a deferred thunk referencing a non-concrete field, both make CUE
 		// attribute the failure to the ROOT [] while the in-house engine names the
@@ -653,21 +613,6 @@ func fuzzValidateBody() func(*testing.T, string, string) {
 		if schemaHasReferenceCycle(schema) {
 			return
 		}
-		// CARRY TO ROUND 2 — nested-disjunction duplicate default. A
-		// PARENTHESIZED nested disjunction whose marked default value also appears
-		// UNMARKED among its sibling disjuncts (`(*0 | 0) | 10`) is the one
-		// disjunction-default shape the in-house engine gets wrong: CUE evaluates
-		// the sub-disjunction first and the nesting cancels the default (it
-		// rejects an absent field), while the in-house engine flattens the
-		// disjunction and keeps the default (it accepts). Matching CUE here needs
-		// nesting-preserving default propagation — a structural change deferred to
-		// round 2 (plan 239's evaluator work). The detector is EXACT: it fires
-		// only on a nested disjunction with an equal marked+unmarked disjunct
-		// (`(*0|1)|10` and the flat `*0|0|1` do NOT trip it), so no other
-		// wrong-accept is masked. Skip it before the oracle.
-		if schemaHasNestedDuplicateDefault(schema) {
-			return
-		}
 		oracle := OraclePath(c)
 		if inHouse.Equal(oracle) {
 			return
@@ -714,10 +659,18 @@ func fuzzValidateBody() func(*testing.T, string, string) {
 		// signature: both reject at validate, CUE reports the root [] and the
 		// in-house engine does not, AND the in-house engine still covers every
 		// NON-root field leaf CUE reports (so no real field rejection is dropped).
-		// A missing field leaf, a wrong accept, or a stage mismatch still fails.
+		//
+		// When the oracle reports ONLY the root leaf, the in-house engine's
+		// non-root leaf count is bounded by the schema's top-level field count
+		// (or maxExtraLeaves when that is larger): a phantom-leaf fan-out — one
+		// failure exploded into many fabricated field leaves — exceeds the
+		// declared fields and fails, so the granularity tolerance cannot pass
+		// vacuously. A missing field leaf, a wrong accept, or a stage mismatch
+		// still fails.
 		if bothReject(inHouse, oracle) &&
 			pathsContainRoot(oracle.Paths) && !pathsContainRoot(inHouse.Paths) &&
-			leafCovers(inHouse.Paths, nonRootPaths(oracle.Paths)) {
+			leafCovers(inHouse.Paths, nonRootPaths(oracle.Paths)) &&
+			inHouseLeavesBounded(inHouse.Paths, oracle.Paths, schema) {
 			return
 		}
 		t.Fatalf("divergence on schema=%q data=%q: in-house %+v vs oracle %+v",
