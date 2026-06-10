@@ -1,7 +1,7 @@
 ---
 id: 243
 title: "`mdsmith extract` projects the document H1 as `title`"
-status: "🔳"
+status: "✅"
 summary: >-
   When the composed schema roots at H2, extract emits the
   document H1's rendered plain text under a reserved top-level
@@ -69,7 +69,7 @@ title?>` splices it.
    sources.
 3. [x] Verify `<?include extract: title?>` splices the H1 text
    (the include path walks the same projection).
-4. Update the
+4. [x] Update the
    [extract reference](../docs/reference/cli/extract.md)
    default-projection section and the
    [extract guide](../docs/guides/extract-markdown-as-data.md):
@@ -87,9 +87,9 @@ title?>` splices it.
   reported as a collision before any data is emitted.
 - [x] H1-rooted (proto.md) schemas produce unchanged output.
 - [x] `<?include extract: title?>` splices the H1 text.
-- [ ] Reference and guide updated with verified outputs.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] Reference and guide updated with verified outputs.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
 
 ## Out of scope
 

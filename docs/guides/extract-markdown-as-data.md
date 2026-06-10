@@ -139,6 +139,7 @@ emits:
   "frontmatter": {
     "title": "Product copy"
   },
+  "title": "Product copy",
   "lead": {
     "text": "A lint-and-fix tool that keeps your Markdown consistent across every surface — READMEs, docs site, editor extensions."
   },
@@ -151,10 +152,11 @@ emits:
 }
 ```
 
-Keys come out sorted, not in document order. The
-consumer reads the same strings the frontmatter
-version held, and the body version is the editable
-artifact.
+The H1 `# Product copy` projects as the top-level
+`title` string. Keys come out sorted, not in document
+order. The consumer reads the same strings the
+frontmatter version held, and the body version is the
+editable artifact.
 
 ## Projecting inline structure
 
@@ -461,7 +463,53 @@ reads `frontmatter.title`, delete the field; the H1
 alone is the title. When a tool does read the
 field, keep it and let MDS020 enforce the match.
 
-Enforcement needs a file-based schema. An inline
+### H1 title in the projection
+
+When the schema roots at H2 (all inline schemas do),
+`mdsmith extract` emits the document H1's plain text
+under a reserved `title` key beside `frontmatter`.
+For the body-structured example above:
+
+```json
+{
+  "frontmatter": {
+    "title": "Product copy"
+  },
+  "title": "Product copy",
+  "lead": {
+    "text": "A lint-and-fix tool that keeps your Markdown consistent across every surface — READMEs, docs site, editor extensions."
+  },
+  "tagline": {
+    "text": "Mark down your ideas; smith them into shipping docs."
+  },
+  "vscode-description": {
+    "text": "Inline diagnostics, fix-on-save, and instant navigation for Markdown in VS Code."
+  }
+}
+```
+
+When there is no H1, the `title` key is omitted.
+When a scope bound to `title` (via slug or `bind:`)
+collides with the reserved key, `extract` reports
+it as a collision before emitting any data; rename
+the scope with `bind:` to resolve it.
+
+`<?include extract: title?>` splices the H1 plain
+text directly into a host file with no intermediate
+file needed:
+
+```markdown
+<?include
+file: docs/copy/product.md
+extract: title
+?>
+Product copy
+<?/include?>
+```
+
+### Enforcing H1 ↔ frontmatter consistency
+
+Enforcement requires a file-based schema. An inline
 `schema:` starts matching at H2 — the H1 belongs to
 [first-line-heading][mds004] — so the kind switches
 to a `proto.md` whose first row is the `{title}`
@@ -489,36 +537,14 @@ H1 fails `mdsmith check`:
 docs/copy/product.md:4:1 MDS020 heading does not match frontmatter: expected "Product copy" (from title), got "Product page copy"
 ```
 
-The synced H1 also becomes data. `mdsmith extract`
-projects the H1 scope under a `title` key, with the
-captured heading text inside:
-
-```json
-{
-  "frontmatter": {
-    "title": "Product copy"
-  },
-  "title": {
-    "title": "Product copy"
-  }
-}
-```
-
-Weigh two limits before switching. Every schema
-source on a file must declare the same root level,
-so an H1-rooted `proto.md` cannot compose with an
-H2-rooted inline schema on the same file. And a
-`proto.md` declares heading rows only, not
-`content:` entries, so the worked example's
+Weigh two limits before switching to a proto.md.
+Every schema source on a file must declare the same
+root level, so an H1-rooted `proto.md` cannot
+compose with an H2-rooted inline schema on the same
+file. And a `proto.md` declares heading rows only,
+not `content:` entries, so the worked example's
 paragraph projections (`tagline.text`, …) drop out
 of the tree.
-
-When the kind's main job is extraction, keep the
-inline schema and delete the frontmatter field
-instead. mdsmith cannot project the H1 text without
-a frontmatter field behind it: a `{title}` row with
-no `title` field matches any heading, and `extract`
-skips wildcard scopes.
 
 [mds004]: ../../internal/rules/MDS004-first-line-heading/README.md
 
