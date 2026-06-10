@@ -199,8 +199,12 @@ func evalComparison(n *ast.BinaryExpr, scope map[string]*engineValue) (*engineVa
 	if err != nil {
 		return nil, err
 	}
+	// Both operands evaluated without an unresolved-reference error. If either
+	// is still non-concrete here it is a TYPE (or top), not data awaiting a
+	// reference — `_ > 0`, `bool < false` — which CUE rejects as a type error.
+	// Report it as a compile error rather than a thunk that can never resolve.
 	if !isConcrete(l) || !isConcrete(r) {
-		return nil, errUnresolved
+		return nil, fmt.Errorf("cuelite: cannot compare %s and %s", l.describe(), r.describe())
 	}
 	res, err := compareConcrete(l, n.Op, r)
 	if err != nil {
@@ -403,13 +407,39 @@ func deferToThunk(e ast.Expr) *engineValue {
 func freeRefs(e ast.Expr) []string {
 	seen := map[string]bool{}
 	var out []string
-	ast.Walk(e, func(node ast.Node) bool {
-		if id, ok := node.(*ast.Ident); ok && isReferenceName(id.Name) && !seen[id.Name] {
-			seen[id.Name] = true
-			out = append(out, id.Name)
+	add := func(name string) {
+		if isReferenceName(name) && !seen[name] {
+			seen[name] = true
+			out = append(out, name)
 		}
-		return true
-	}, nil)
+	}
+	var walk func(n ast.Node)
+	walk = func(n ast.Node) {
+		switch node := n.(type) {
+		case nil:
+			return
+		case *ast.Ident:
+			add(node.Name)
+		case *ast.Field:
+			// A field's LABEL is a key, not a reference; only its VALUE can carry
+			// references. (A struct field title in a comprehension body is a key.)
+			walk(node.Value)
+			return
+		case *ast.SelectorExpr:
+			// Only the base of a selector is a reference; the selected name is a
+			// member, not a sibling field.
+			walk(node.X)
+			return
+		}
+		ast.Walk(n, func(child ast.Node) bool {
+			if child == n {
+				return true
+			}
+			walk(child)
+			return false
+		}, nil)
+	}
+	walk(e)
 	return out
 }
 
