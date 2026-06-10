@@ -1,7 +1,7 @@
 ---
 id: 2606100534
 title: 'Workspace-unique front-matter fields (unique-frontmatter rule)'
-status: "🔳"
+status: "✅"
 model: sonnet
 summary: >-
   New rule MDS069: within configured include/exclude globs,
@@ -140,22 +140,26 @@ dogfooding: unique ids or titles across any kind.
    `internal/rules/MDS069-unique-frontmatter/` (good/bad
    with expected diagnostics) plus the rule README on the
    rule-readme schema.
-4. [ ] Gated on the pin bump: after a release ships
+4. [x] Gated on the pin bump: after a release ships
    MDS069 and `MDSMITH_VERSION` in
    `setup-mdsmith-pinned-version` moves to it, add the
    plan-id block to [.mdsmith.yml](../.mdsmith.yml)
    (consent above) and verify a duplicate plan id fails
-   `mdsmith check .` while the clean tree passes.
+   `mdsmith check .` while the clean tree passes. Done
+   with the v0.40.0 pin bump, which ships MDS069.
 
 ## Acceptance Criteria
 
-- [ ] (Gated on task 4.) A duplicated plan id added
+- [x] (Gated on task 4.) A duplicated plan id added
   locally makes `mdsmith check .` fail; the diagnostic
   lands on the later file in path order and its message
   names the field, the value, and the earlier file.
   Verified once pre-gate with a temporary config block
   and a probe file: the probe failed at its `id:` line
-  naming the first holder.
+  naming the first holder. Re-verified with the live
+  block: the probe failed the same way, and the clean
+  tree passes under both the branch binary and the
+  pinned v0.40.0 one.
 - [x] The bad fixture yields exactly one diagnostic per
   extra file sharing a value; the good fixture is clean.
 - [x] A file missing the configured field, or outside the

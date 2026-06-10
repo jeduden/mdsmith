@@ -177,7 +177,7 @@ footer: |
 | 2606092208 | ✅     | sonnet | [Recover from panics in the LSP lint pipeline](plan/2606092208_lsp-panic-recovery.md)                                                   |
 | 2606092209 | ✅     | sonnet | [Security hardening batch — 2026-06-09 audit](plan/2606092209_secreview-2026-06-09-hardening.md)                                        |
 | 2606100533 | ✅     | sonnet | [Coordination-free plan ids from UTC creation timestamps](plan/2606100533_timestamp-plan-ids.md)                                        |
-| 2606100534 | 🔳     | sonnet | [Workspace-unique front-matter fields (unique-frontmatter rule)](plan/2606100534_unique-frontmatter-rule.md)                            |
+| 2606100534 | ✅     | sonnet | [Workspace-unique front-matter fields (unique-frontmatter rule)](plan/2606100534_unique-frontmatter-rule.md)                            |
 | 2606101546 | 🔲     | opus   | [Builder execution wired into `mdsmith fix`](plan/2606101546_builder-execution-in-fix.md)                                               |
 | 2606101547 | 🔲     | opus   | [Build execution UX (stdout/stderr, debug, parallel)](plan/2606101547_build-execution-ux.md)                                            |
 | 2606101548 | 🔲     | opus   | [Build execution hardening](plan/2606101548_build-execution-hardening.md)                                                               |

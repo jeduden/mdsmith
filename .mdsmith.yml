@@ -82,6 +82,13 @@ rules:
   include: true
   unclosed-code-block: true
   git-hook-sync: true
+  # Workspace-unique plan ids (plan/2606100534). Enabled once
+  # the pinned baseline shipped MDS069, per the adopt-new-syntax
+  # process; the pinned job would otherwise ignore the rule.
+  unique-frontmatter:
+    field: id
+    include: ["plan/*.md"]
+    exclude: ["plan/proto.md"]
 
 overrides:
   - glob: ["CLAUDE.md"]
