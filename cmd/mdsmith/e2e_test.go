@@ -2128,14 +2128,14 @@ func TestE2E_MergeDriver_CherryPick_Succeeds(t *testing.T) {
 		"check after cherry-pick + fix must pass; stderr:\n%s", stderr)
 }
 
-// TestE2E_MergeDriver_RebaseMultiFile_Succeeds replays a pick where
-// the driver runs on THREE both-sides-modified files in one merge —
-// a catalog file, an include file, and the include's plain-prose
-// source. This is the shape of the rebase that exposed the
-// worktree-write bug: one stat-dirtied path is enough to abort the
-// pick, and a multi-file pick multiplies the chances. The pick must
-// complete in one shot with every generated section resolved.
-func TestE2E_MergeDriver_RebaseMultiFile_Succeeds(t *testing.T) {
+// setupMultiFileRebaseRepo builds a repo whose ours and theirs
+// branches each modify three driver-managed files — PLAN.md's
+// catalog, DOC.md's include body, and NOTES.md, the include's
+// plain-prose source (non-overlapping line edits) — and installs
+// the merge driver. ours is left checked out, ready to rebase
+// onto theirs.
+func setupMultiFileRebaseRepo(t *testing.T) string {
+	t.Helper()
 	dir := t.TempDir()
 	gitInit(t, dir)
 
@@ -2176,6 +2176,18 @@ func TestE2E_MergeDriver_RebaseMultiFile_Succeeds(t *testing.T) {
 	gitInDir(t, dir, "checkout", "ours")
 	_, stderr, code = runBinaryInDir(t, dir, "", "merge-driver", "install")
 	require.Equal(t, 0, code, "install failed: %s", stderr)
+	return dir
+}
+
+// TestE2E_MergeDriver_RebaseMultiFile_Succeeds replays a pick where
+// the driver runs on THREE both-sides-modified files in one merge —
+// a catalog file, an include file, and the include's plain-prose
+// source. This is the shape of the rebase that exposed the
+// worktree-write bug: one stat-dirtied path is enough to abort the
+// pick, and a multi-file pick multiplies the chances. The pick must
+// complete in one shot with every generated section resolved.
+func TestE2E_MergeDriver_RebaseMultiFile_Succeeds(t *testing.T) {
+	dir := setupMultiFileRebaseRepo(t)
 
 	out, err := exec.Command("git", "-C", dir,
 		"-c", "commit.gpgsign=false",
@@ -2203,7 +2215,7 @@ func TestE2E_MergeDriver_RebaseMultiFile_Succeeds(t *testing.T) {
 			"%s must not carry conflict markers", path)
 	}
 
-	_, stderr, code = runBinaryInDir(t, dir, "", "fix", ".")
+	_, stderr, code := runBinaryInDir(t, dir, "", "fix", ".")
 	require.Equal(t, 0, code, "post-rebase fix failed: %s", stderr)
 	_, stderr, code = runBinaryInDir(t, dir, "", "check", ".")
 	assert.Equal(t, 0, code,
