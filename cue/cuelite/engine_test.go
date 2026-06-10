@@ -110,6 +110,8 @@ func TestCompile_errors(t *testing.T) {
 		{"hidden label", `{_x: int}`},
 		{"comparison of types", `{x: bool < false}`},
 		{"top-level free reference", `0 > A`},
+		{"top-level reference in a disjunction branch", `0x0 | 0 < A`},
+		{"top-level reference in a list", `[0 < A]`},
 		{"embedded free reference", `{nature == "x"}`},
 		{"thunk field undeclared ref", `{x: [if y == "z" {string}][0]}`},
 		{"regex bad pattern", `{x: =~"["}`},

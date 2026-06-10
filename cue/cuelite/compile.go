@@ -42,12 +42,15 @@ func compileSource(src string) (*engineValue, error) {
 	if err != nil {
 		return nil, err
 	}
-	// A top-level value that is itself an unforced thunk references a name with
-	// no enclosing struct to resolve it (a free `0 > A` expression): the
-	// reference can never bind, so it is an error, matching CUE's eager
-	// "reference X not found".
-	if v.kind == kThunk && len(v.thunkRefs) > 0 {
-		return v, fmt.Errorf("reference %q not found", v.thunkRefs[0])
+	// A top-level value carrying an unforced thunk references a name with no
+	// enclosing struct to resolve it (a free `0 > A` expression, or `0x0 | 0<A`
+	// where the reference hides in a disjunction branch): the reference can
+	// never bind, so it is an error, matching CUE's eager "reference X not
+	// found". The check descends a top-level disjunction or list the same way
+	// checkThunkRefsIn does, against an empty declared set (no top-level field
+	// can satisfy it).
+	if err := checkThunkRefsIn(v, map[string]bool{}); err != nil {
+		return v, err
 	}
 	if v.isBottomV() {
 		return v, fmt.Errorf("cuelite: %s", v.reason)

@@ -293,6 +293,12 @@ func extraFuzzSeeds() []struct{ schema, data string } {
 		// than defer on the other (unresolved) operand.
 		{`A: A > !0`, `0`},
 		{`{a: int, b: !0 > a}`, `{"a":1}`},
+		// An undeclared reference hidden in a TOP-LEVEL disjunction branch or
+		// list (no enclosing struct to bind it): CUE rejects "reference A not
+		// found" at compile; the in-house engine's top-level thunk-ref scan must
+		// descend the disjunction/list to reject it too.
+		{`0X0|0<A`, `0`},
+		{`[0 < A]`, `0`},
 		// A lone-surrogate escape in a VALUE position (hatch 2) and in a KEY
 		// position (now rejected in both arms — no hatch). Seeding both keeps
 		// the surrogate classes exercised on every run.
