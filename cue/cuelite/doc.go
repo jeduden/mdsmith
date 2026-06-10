@@ -65,7 +65,8 @@
 // cue/parser to walk the supported CUE subset into the value model
 // (the interim recorded in plan 238, removed in plan 240's phase 4). A
 // differential harness pins identical accept/reject outcomes and
-// identical error field paths against a direct-CUE oracle across the
-// whole corpus, plus a schema×data fuzzer. The strategy and the
-// layering rules live in docs/development/architecture/index.md.
+// identical sets of rejecting leaf paths (deduplicated) against a
+// direct-CUE oracle across the whole corpus, plus a schema×data
+// fuzzer. The strategy and the layering rules live in
+// docs/development/architecture/index.md.
 package cuelite

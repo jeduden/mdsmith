@@ -118,23 +118,36 @@ func TestCompile_hardErrorPropagation(t *testing.T) {
 	}
 }
 
-// TestCompile_basicLitParseErrors covers compileBasicLit's float-parse and
-// string-unquote error branches via malformed literals reached through the
-// parser. (An int overflow is covered elsewhere.)
+// TestCompile_basicLitParseErrors covers compileBasicLit's int-overflow and
+// float-overflow error branches via numbers outside the int64/float64 subset.
+// Both report the out-of-subset "unsupported" class the cross-engine fuzzer's
+// strict-subset hatch keys on.
 func TestCompile_basicLitParseErrors(t *testing.T) {
-	// A float literal that overflows float64 parses but is not in range; CUE's
-	// parser accepts the syntax, and ParseFloat returns ErrRange — accepted as
-	// ±Inf, so use a hex-float-like malformation instead is not possible. The
-	// int-overflow path is the reachable literal error.
+	// An int literal outside int64 range: the in-house engine uses int64, CUE
+	// uses big.Int, so this is an out-of-subset literal, not a parse error.
 	_, err := Compile(`{a: 999999999999999999999999999999}`)
-	assert.Error(t, err)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported int literal")
+	// A float literal that overflows float64 (1e999): ParseFloat returns
+	// ErrRange, so the in-house engine reports the out-of-subset float class.
+	_, err = Compile(`{a: 1e999}`)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported float literal")
 }
 
 // TestCheckEmbeddedThunkRefs_undeclared covers checkEmbeddedThunkRefs
-// rejecting an embedded thunk whose reference is not a declared field.
+// rejecting an embedded thunk whose reference is not a declared field, both
+// as a bare embedded comparison and when the thunk is nested in an embedded
+// disjunction branch — CUE rejects both eagerly with "reference X not found".
 func TestCheckEmbeddedThunkRefs_undeclared(t *testing.T) {
 	_, err := Compile(`{a: int, nature == "x"}`)
 	assert.Error(t, err, "an embedded comparison referencing an undeclared field is rejected")
+	// The thunk lives inside an embedded disjunction (A > "" | ""); the scan
+	// must descend the disjunction to find the undeclared reference A, matching
+	// CUE's eager "reference A not found" rather than deferring to validate.
+	_, err = Compile(`{A > "" | ""}`)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `reference "A" not found`)
 }
 
 // TestFieldLabel_quotedAndBad covers fieldLabel's quoted-string branch and its

@@ -122,6 +122,40 @@ func TestCompareConcrete_errors(t *testing.T) {
 	})
 }
 
+// TestEvalComparison_typeOperand pins that a comparison with a non-concrete
+// TYPE operand (`_`, `string`, an unresolved-to-type left or right side) is
+// rejected at SCHEMA COMPILE rather than deferred to a thunk — matching CUE's
+// eager "'>' requires concrete value". A type operand can never become
+// concrete, so a deferred thunk could never resolve.
+func TestEvalComparison_typeOperand(t *testing.T) {
+	t.Run("right operand is top, left is an unresolved reference", func(t *testing.T) {
+		// A > _: A is an unresolved sibling reference; _ is top. CUE rejects the
+		// _ operand at compile, so the in-house engine must too (not defer A).
+		_, err := Compile(`A: A > _`)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "requires a concrete operand")
+	})
+	t.Run("right operand is a type keyword", func(t *testing.T) {
+		_, err := Compile(`{a: int, b: a == string}`)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "requires a concrete operand")
+	})
+	t.Run("left operand is top", func(t *testing.T) {
+		// _ > a: the LEFT operand is non-concrete; the right is an unresolved
+		// reference. The left check fires first.
+		_, err := Compile(`{a: int, b: _ > a}`)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "requires a concrete operand")
+	})
+	t.Run("concrete-vs-reference still defers to a thunk", func(t *testing.T) {
+		// a != "": both operands are valid (a is a deferred reference, "" is a
+		// concrete string), so the comparison defers and resolves against data.
+		v, err := Compile(`{a: string, xs: [a != ""]}`)
+		require.NoError(t, err)
+		assert.NoError(t, v.CompileMap(map[string]any{"a": "p", "xs": []any{true}}).Validate())
+	})
+}
+
 // TestLiftJSON_branches covers the JSON lifter's number, array, and scalar
 // branches plus the strict-JSON rejections.
 func TestLiftJSON_branches(t *testing.T) {

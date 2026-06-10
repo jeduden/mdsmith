@@ -92,7 +92,9 @@ func liftNumber(n json.Number) (*engineValue, error) {
 
 // liftMap converts a decoded JSON object to a closed struct, preserving no
 // particular order (Go maps are unordered; field order does not affect
-// unification or the leaf set). Each value is lifted recursively.
+// unification or the leaf set). Each value is lifted recursively. A
+// lone-surrogate-ESCAPE key is rejected before this point by scanDuplicateKeys
+// (see CompileJSON), so every key here is a faithful round-trip.
 func liftMap(m map[string]any) (*engineValue, error) {
 	out := &engineValue{kind: kStruct}
 	for k, v := range m {

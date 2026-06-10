@@ -223,13 +223,21 @@ func compileBasicLit(n *ast.BasicLit) (*engineValue, error) {
 	case token.INT:
 		i, err := strconv.ParseInt(stripUnderscores(n.Value), 0, 64)
 		if err != nil {
-			return nil, fmt.Errorf("cuelite: int literal %s: %w", n.Value, err)
+			// The in-house engine represents integers as int64; CUE uses
+			// arbitrary-precision big.Int. An int literal outside the int64 range
+			// is outside the supported subset, not a malformed literal — report
+			// it as unsupported so the cross-engine fuzzer's strict-subset hatch
+			// recognizes the class.
+			return nil, fmt.Errorf("cuelite: unsupported int literal %s (outside int64 range): %w", n.Value, err)
 		}
 		return &engineValue{kind: kInt, i: i}, nil
 	case token.FLOAT:
 		f, err := strconv.ParseFloat(stripUnderscores(n.Value), 64)
 		if err != nil {
-			return nil, fmt.Errorf("cuelite: float literal %s: %w", n.Value, err)
+			// The in-house engine represents floats as float64; a literal that
+			// overflows float64 is outside the supported subset (CUE keeps a
+			// big.Float). Report it as unsupported for the same reason as INT.
+			return nil, fmt.Errorf("cuelite: unsupported float literal %s (outside float64 range): %w", n.Value, err)
 		}
 		return &engineValue{kind: kFloat, f: f}, nil
 	case token.TRUE:
@@ -271,21 +279,16 @@ func containsByte(s string, b byte) bool {
 // `{nature == "x"}`) that references a name not declared as a field of the
 // enclosing struct: such a reference can never resolve, so it is a compile
 // error now rather than a thunk that ⊥s at validate time, matching CUE's
-// eager "reference X not found".
+// eager "reference X not found". The thunk may be the embedded value itself or
+// nested in a disjunction branch or list element (`{A > "" | ""}`), so the
+// scan reuses checkThunkRefsIn to descend the same positions the force pass
+// reaches.
 func checkEmbeddedThunkRefs(s, embedded *engineValue) error {
-	if embedded.kind != kThunk {
-		return nil
-	}
 	declared := make(map[string]bool, len(s.fields))
 	for _, f := range s.fields {
 		declared[f.name] = true
 	}
-	for _, ref := range embedded.thunkRefs {
-		if !declared[ref] {
-			return fmt.Errorf("reference %q not found", ref)
-		}
-	}
-	return nil
+	return checkThunkRefsIn(embedded, declared)
 }
 
 // fieldLabel extracts the string name of a struct field label, accepting a
@@ -357,14 +360,17 @@ func compileUnary(n *ast.UnaryExpr) (*engineValue, error) {
 		}
 		return negateNumeric(inner)
 	case token.ADD:
-		// Unary plus is valid only on a number (+1, +1.5); on anything else CUE
-		// rejects it, so require a numeric operand.
+		// Unary plus is valid only on a number (+1, +1.5). CUE itself rejects
+		// `+x` on a non-number as an "invalid operation" — the in-house engine
+		// reports the same class, just eagerly at schema compile rather than
+		// deferred inside a disjunction (the cross-engine fuzzer's strict-subset
+		// hatch keys on this wording).
 		inner, err := compileExpr(n.X)
 		if err != nil {
 			return nil, err
 		}
 		if inner.kind != kInt && inner.kind != kFloat {
-			return nil, fmt.Errorf("cuelite: unary + requires a number, got %s", inner.describe())
+			return nil, fmt.Errorf("cuelite: invalid operation: unary + requires a number, got %s", inner.describe())
 		}
 		return inner, nil
 	default:
@@ -381,7 +387,9 @@ func negateNumeric(v *engineValue) (*engineValue, error) {
 	case kFloat:
 		return &engineValue{kind: kFloat, f: -v.f}, nil
 	default:
-		return nil, fmt.Errorf("cuelite: cannot negate %s", v.describe())
+		// CUE rejects `-x` on a non-number as an "invalid operation"; the
+		// in-house engine reports the same class eagerly.
+		return nil, fmt.Errorf("cuelite: invalid operation: cannot negate %s", v.describe())
 	}
 }
 
@@ -438,7 +446,13 @@ func boundFromOperand(op boundOp, operand *engineValue) (*engineValue, error) {
 	case kString:
 		return &engineValue{kind: kBound, atom: akString, bounds: []bound{{op: op, str: operand.str, isStr: true}}}, nil
 	default:
-		return nil, fmt.Errorf("cuelite: bound %s requires a scalar operand, got %s", op, operand.describe())
+		// A bound whose operand is a type (>string) or other non-scalar is
+		// outside the supported subset — the in-house engine models bounds only
+		// over concrete scalars. CUE accepts the construct and defers; report it
+		// as unsupported so the cross-engine fuzzer's strict-subset hatch keys on
+		// the class.
+		return nil, fmt.Errorf(
+			"cuelite: unsupported bound %s: requires a scalar operand, got %s", op, operand.describe())
 	}
 }
 

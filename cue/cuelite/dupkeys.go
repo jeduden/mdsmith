@@ -35,6 +35,7 @@ func scanDuplicateKeys(data []byte) error {
 	dec.UseNumber()
 	var stack []*dupLevel
 	for {
+		start := dec.InputOffset()
 		tok, err := dec.Token()
 		if err == io.EOF {
 			return nil
@@ -45,6 +46,9 @@ func scanDuplicateKeys(data []byte) error {
 		var cur *dupLevel
 		if len(stack) > 0 {
 			cur = stack[len(stack)-1]
+		}
+		if cur.keyHasLoneSurrogateEscape(tok, data[start:dec.InputOffset()]) {
+			return fmt.Errorf("cuelite: invalid JSON: object key has a lone-surrogate escape")
 		}
 		if handled, err := cur.recordKey(tok); err != nil {
 			return err
@@ -76,6 +80,87 @@ func scanDuplicateKeys(data []byte) error {
 			cur.seenKey = false
 		}
 	}
+}
+
+// keyHasLoneSurrogateEscape reports whether tok is a KEY at this object level
+// whose decoded value holds U+FFFD AND whose raw source bytes carry a
+// lone-surrogate escape. A key token decoded to U+FFFD may have come from a
+// lone-surrogate escape (`\ud800`) or a literal U+FFFD; they are
+// indistinguishable after decode, but the RAW token bytes tell them apart — an
+// escape carries a `\u` sequence. CUE rejects the escape ("unmatched surrogate
+// pair") and accepts the literal, so this rejects only the escape, restoring
+// the pre-flip CompileJSON contract while still accepting a literal U+FFFD key.
+// A lone-surrogate VALUE escape is not a key, so it is untouched here and stays
+// accepted as a U+FFFD string.
+func (l *dupLevel) keyHasLoneSurrogateEscape(tok any, raw []byte) bool {
+	if l == nil || l.keys == nil || l.seenKey {
+		return false
+	}
+	s, ok := tok.(string)
+	if !ok || !strings.ContainsRune(s, utf8.RuneError) {
+		return false
+	}
+	return rawHasLoneSurrogateEscape(raw)
+}
+
+// rawHasLoneSurrogateEscape reports whether the raw JSON token bytes contain a
+// lone (unpaired) `\uXXXX` surrogate escape: a high surrogate (D800–DBFF) not
+// immediately followed by a low-surrogate escape, or a low surrogate
+// (DC00–DFFF) standing alone. This is the residue encoding/json folds to U+FFFD
+// and CUE rejects as an "unmatched surrogate pair".
+func rawHasLoneSurrogateEscape(raw []byte) bool {
+	for i := 0; i+5 < len(raw); i++ {
+		if raw[i] != '\\' || raw[i+1] != 'u' {
+			continue
+		}
+		cu, ok := parseHex4(raw[i+2 : i+6])
+		if !ok {
+			continue
+		}
+		if cu >= 0xDC00 && cu <= 0xDFFF {
+			// A low surrogate reached here is not the trailing half of a pair (a
+			// valid pair skips its low half below), so it is unpaired.
+			return true
+		}
+		if cu >= 0xD800 && cu <= 0xDBFF {
+			// A high surrogate must be followed by a `\uDC00–DFFF` low surrogate.
+			if i+11 >= len(raw) || raw[i+6] != '\\' || raw[i+7] != 'u' {
+				return true
+			}
+			lo, ok := parseHex4(raw[i+8 : i+12])
+			if !ok || lo < 0xDC00 || lo > 0xDFFF {
+				return true
+			}
+			// A valid pair: advance past the low half (the six bytes `\uXXXX` at
+			// i+6..i+11) so its standalone scan does not misread it as lone.
+			i += 11
+		}
+	}
+	return false
+}
+
+// parseHex4 parses exactly four hex digits into a code unit, reporting ok=false
+// when any byte is not a hex digit.
+func parseHex4(b []byte) (uint32, bool) {
+	if len(b) != 4 {
+		return 0, false
+	}
+	var v uint32
+	for _, c := range b {
+		var d uint32
+		switch {
+		case c >= '0' && c <= '9':
+			d = uint32(c - '0')
+		case c >= 'a' && c <= 'f':
+			d = uint32(c-'a') + 10
+		case c >= 'A' && c <= 'F':
+			d = uint32(c-'A') + 10
+		default:
+			return 0, false
+		}
+		v = v<<4 | d
+	}
+	return v, true
 }
 
 // dupLevel is one open container in scanDuplicateKeys' stack. keys is

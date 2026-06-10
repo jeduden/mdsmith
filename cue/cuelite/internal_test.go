@@ -129,6 +129,46 @@ func TestDupLevel_recordKey(t *testing.T) {
 	})
 }
 
+func TestRawHasLoneSurrogateEscape(t *testing.T) {
+	// A correctly PAIRED surrogate escape (a high surrogate \ud83d followed by
+	// a low surrogate \ude00, the 😀 emoji) is NOT lone.
+	assert.False(t, rawHasLoneSurrogateEscape([]byte("\"\\ud83d\\ude00\"")))
+	// A high surrogate with no following escape is lone.
+	assert.True(t, rawHasLoneSurrogateEscape([]byte(`"\ud800"`)))
+	// A high surrogate followed by a non-escape character is lone.
+	assert.True(t, rawHasLoneSurrogateEscape([]byte(`"\ud800AAAAAA"`)))
+	// A high surrogate followed by a non-\u character is lone.
+	assert.True(t, rawHasLoneSurrogateEscape([]byte(`"\ud83dA"`)))
+	// A high surrogate followed by a valid \u escape whose value is NOT a low
+	// surrogate (\u0041 = 'A') is lone.
+	assert.True(t, rawHasLoneSurrogateEscape([]byte("\"\\ud83d\\u0041\"")))
+	// A lone low surrogate is lone.
+	assert.True(t, rawHasLoneSurrogateEscape([]byte(`"\udc00"`)))
+	// A non-surrogate escape and a literal U+FFFD are not lone surrogates.
+	assert.False(t, rawHasLoneSurrogateEscape([]byte(`"A"`)))
+	assert.False(t, rawHasLoneSurrogateEscape([]byte("\"\xef\xbf\xbd\"")))
+	// A truncated \u escape (not four hex digits) parses as not-a-surrogate.
+	assert.False(t, rawHasLoneSurrogateEscape([]byte(`"\uZZZZ"`)))
+	// A valid pair followed by a lone low surrogate: the scan skips the pair's
+	// low half and still catches the trailing lone surrogate.
+	assert.True(t, rawHasLoneSurrogateEscape([]byte("\"\\ud83d\\ude00\\udc00\"")))
+	// A valid pair with no trailing surrogate is clean to the end.
+	assert.False(t, rawHasLoneSurrogateEscape([]byte("\"\\ud83d\\ude00AAAAAA\"")))
+}
+
+func TestParseHex4(t *testing.T) {
+	v, ok := parseHex4([]byte("D800"))
+	assert.True(t, ok)
+	assert.Equal(t, uint32(0xD800), v)
+	v, ok = parseHex4([]byte("00ff"))
+	assert.True(t, ok)
+	assert.Equal(t, uint32(0x00FF), v)
+	_, ok = parseHex4([]byte("00g0"))
+	assert.False(t, ok)
+	_, ok = parseHex4([]byte("abc"))
+	assert.False(t, ok, "fewer than four digits is not a code unit")
+}
+
 func TestScanDuplicateKeys(t *testing.T) {
 	t.Run("malformed defers to the decoder", func(t *testing.T) {
 		assert.NoError(t, scanDuplicateKeys([]byte(`{"a":1,`)))
@@ -141,8 +181,18 @@ func TestScanDuplicateKeys(t *testing.T) {
 	t.Run("invalid UTF-8 defers", func(t *testing.T) {
 		assert.NoError(t, scanDuplicateKeys([]byte("{\"a\xff\":1,\"a\xfe\":2}")))
 	})
-	t.Run("replacement-char keys are not duplicates", func(t *testing.T) {
-		assert.NoError(t, scanDuplicateKeys([]byte(`{"\ud800":1,"\udc00":2}`)))
+	t.Run("lone-surrogate-escape keys are rejected", func(t *testing.T) {
+		// "\ud800" and "\udc00" decode to the same U+FFFD; they collide, so the
+		// scanner rejects the lone-surrogate ESCAPE outright (matching pre-flip
+		// CUE) rather than fabricating or suppressing a duplicate.
+		err := scanDuplicateKeys([]byte(`{"\ud800":1,"\udc00":2}`))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "lone-surrogate")
+	})
+	t.Run("a literal U+FFFD key is accepted", func(t *testing.T) {
+		// A literal replacement character in the source is NOT an escape, so CUE
+		// accepts it and the scanner walks past it without rejecting.
+		assert.NoError(t, scanDuplicateKeys([]byte("{\"\xef\xbf\xbd\":1}")))
 	})
 	t.Run("trailing top-level value defers", func(t *testing.T) {
 		assert.NoError(t, scanDuplicateKeys([]byte(`{"x":1} {"a":1,"a":2}`)))
@@ -166,8 +216,10 @@ func TestScanDuplicateKeys(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), `"a"`)
 	})
-	t.Run("duplicate nested under a U+FFFD key reported", func(t *testing.T) {
-		err := scanDuplicateKeys([]byte(`{"\ud800":{"a":1,"a":2}}`))
+	t.Run("duplicate nested under a literal U+FFFD key reported", func(t *testing.T) {
+		// A literal U+FFFD key is walked (not rejected as an escape), so a real
+		// duplicate nested under it is still caught.
+		err := scanDuplicateKeys([]byte("{\"\xef\xbf\xbd\":{\"a\":1,\"a\":2}}"))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), `"a"`)
 	})

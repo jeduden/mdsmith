@@ -393,10 +393,49 @@ func corpus() []Case {
 		{Name: "value equal to own key ok", Schema: `{a: string}`, Data: `{"a":"a"}`},
 		// A string value that equals a LATER sibling key.
 		{Name: "value equal to sibling key ok", Schema: `{x: string, y: int}`, Data: `{"x":"y","y":1}`},
-		// A U+FFFD key is skipped for dup tracking, but its VALUE subtree must
-		// still be walked in BOTH arms: a real duplicate nested under a
-		// lone-surrogate key is caught at the data stage. An arm that skipped
-		// the whole subtree after a lossy key would accept this and diverge.
-		{Name: "duplicate nested under a lossy key reject", Schema: `{a: _}`, Data: `{"\ud800":{"a":1,"a":2}}`},
+		// A lone-surrogate-escape key is rejected at the data stage in BOTH arms:
+		// the in-house scanner rejects the escape (restored, plan 238) and CUE's
+		// BuildExpr rejects the unmatched surrogate pair. Either way the document
+		// resolves at StageCompileData, so the two arms agree.
+		{Name: "lone-surrogate escape key reject", Schema: `{a: _}`, Data: `{"\ud800":{"a":1,"a":2}}`},
+		// P0 semantics divergences (plan 238) — each was a round-1 minimized
+		// input where the in-house engine disagreed with CUE before the engine
+		// alignment commit. Pinned here so a regression in any aligned rule fails
+		// the CI-visible differential run, not just the local fuzzer.
+		//
+		// Disjunction defaults: two * marks are ambiguous (non-concrete), so a
+		// required default is unsatisfied — both arms reject at the field path.
+		{Name: "p0 multiple marks reject", Schema: `{a: *string | *""}`, Data: `{}`},
+		// Equal concrete disjuncts collapse to the single value — accepted.
+		{Name: "p0 equal disjuncts accept", Schema: `{a: "x" | "x"}`, Data: `{}`},
+		// A disjunction whose branches are all bottom (0&1, 1&0) is an empty
+		// disjunction — both arms reject at schema compile.
+		{Name: "p0 all-bottom disjunction reject", Schema: `{x: 0&1 | 1&0}`, Data: `{"x":0}`},
+		// The default of a meet is the meet of the defaults: *1 and *2 conflict,
+		// leaving no concrete default — both arms reject the absent field.
+		{Name: "p0 meet of defaults conflicts", Schema: `{x: (*1 | int) & (*2 | int)}`, Data: `{}`},
+		// A parenthesized nested default carries up the flatten — accepted.
+		{Name: "p0 nested default carries", Schema: `{x: (*1 | 2) | 3}`, Data: `{}`},
+		// An empty numeric bound interval reduces to bottom at schema compile.
+		{Name: "p0 empty bound reject", Schema: `{x: >=10 & <=5}`, Data: `{"x":7}`},
+		// Relational == compares numbers across kinds (2 == 2.0 is true).
+		{Name: "p0 numeric cross-kind compare", Schema: `{x: 2 == 2.0}`, Data: `{"x":true}`},
+		// A float64 lifts to a float leaf: float accepts 2.0, int rejects it.
+		{Name: "p0 float accepts float", Schema: `{x: float}`, Data: `{"x": 2.0}`},
+		{Name: "p0 int rejects float", Schema: `{x: int}`, Data: `{"x": 2.0}`},
+		// A thunk nested in a list element is forced against its sibling scope.
+		{
+			Name:   "p0 list-element thunk",
+			Schema: `{mech: string, xs: [mech != ""]}`, Data: `{"mech": "p", "xs": [true]}`,
+		},
+		// A thunk nested in a disjunction branch resolves against the scope.
+		{
+			Name:   "p0 disjunction-branch thunk",
+			Schema: `{m: string, x: (m == "a") | "z"}`, Data: `{"m": "a", "x": true}`,
+		},
+		// (An int/float literal outside the int64/float64 subset is a strict-
+		// subset divergence — the in-house engine rejects at schema compile while
+		// CUE accepts — so it is NOT a corpus agreement row. It is seeded directly
+		// into FuzzValidate, where the strict-subset hatch covers it.)
 	}
 }

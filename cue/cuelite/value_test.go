@@ -4,6 +4,8 @@ import (
 	stderrors "errors"
 	"testing"
 
+	"cuelang.org/go/cue"
+	"cuelang.org/go/cue/cuecontext"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -122,13 +124,17 @@ func TestCompileJSON_edgeInputs(t *testing.T) {
 				"invalid UTF-8 must defer, not fabricate a duplicate")
 		}
 	})
-	t.Run("lone-surrogate escaped keys are not duplicates of each other", func(t *testing.T) {
-		// "\ud800" and "\udc00" decode to the same U+FFFD; they must not be
-		// reported as duplicates of each other. The in-house lifter accepts the
-		// resulting U+FFFD-keyed object as concrete data.
-		v, err := CompileJSON([]byte(`{"\ud800":1,"\udc00":2}`))
-		require.NoError(t, err)
-		assert.NoError(t, v.Validate())
+	t.Run("a lone-surrogate object key is rejected", func(t *testing.T) {
+		// "\ud800" and "\udc00" both decode to U+FFFD, so two distinct source
+		// keys collide and a last-wins merge would silently drop one. The
+		// pre-flip CompileJSON rejected such a key ("invalid string: unmatched
+		// surrogate pair"); the in-house lifter restores that rejection rather
+		// than fabricating a phantom merged object. (A lone-surrogate VALUE is
+		// still accepted — only KEYS collide.)
+		_, err := CompileJSON([]byte(`{"\ud800":1,"\udc00":2}`))
+		require.Error(t, err)
+		_, err = CompileJSON([]byte(`{"\ud800":1}`))
+		require.Error(t, err, "even a single lone-surrogate key is rejected")
 	})
 	t.Run("trailing second top-level value rejected", func(t *testing.T) {
 		_, err := CompileJSON([]byte(`{"x":1} {"a":1,"a":2}`))
@@ -289,6 +295,72 @@ func TestValue_Unify_singleContext(t *testing.T) {
 		require.NoError(t, err)
 		assert.NoError(t, a.Unify(b).Unify(c.Unify(d)).Validate())
 	})
+}
+
+// TestValue_Unify_singleContextOracle backs the "single-context CUE" claim
+// with a DIRECT cuecontext oracle: each chained derived-unify composition is
+// rebuilt by unifying the same source fragments inside ONE cue.Context, and
+// the oracle's accept/reject must match the in-house engine's. This is the
+// concrete check behind plan 238's "the oracle evaluates the same composition
+// in ONE cue.Context; both arms agree" — the differential cuelitetest harness
+// runs a two-input schema×data shape, so the multi-fragment chained
+// compositions are pinned here against CUE directly.
+func TestValue_Unify_singleContextOracle(t *testing.T) {
+	// Each case is a set of CUE source fragments unified left-to-right; the
+	// in-house engine composes the same fragments via Unify and must agree with
+	// a single cue.Context unifying them in order.
+	cases := []struct {
+		name      string
+		fragments []string
+	}{
+		{"compatible schema+schema+data", []string{
+			`{status: string}`, `{status: string}`, `{"status": "✅"}`}},
+		{"conflicting literal vs data", []string{
+			`{status: "🔲"}`, `{status: string}`, `{"status": "✅"}`}},
+		{"two derived results non-concrete int", []string{
+			`{status: string}`, `{"status": "✅"}`, `{weight: int}`, `{height: int}`}},
+		{"two compatible derived data results", []string{
+			`{status: string}`, `{"status": "✅"}`, `{weight: int}`, `{"weight": 1}`}},
+	}
+	ctx := cuecontext.New()
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			// In-house: compile each fragment (data fragments via CompileJSON when
+			// they are JSON objects with quoted keys) and unify them in order.
+			var inHouse Value
+			for i, frag := range c.fragments {
+				v, err := compileFragment(frag)
+				require.NoError(t, err)
+				if i == 0 {
+					inHouse = v
+				} else {
+					inHouse = inHouse.Unify(v)
+				}
+			}
+			inHouseAccepts := inHouse.Validate() == nil
+
+			// Oracle: unify every fragment in ONE cue.Context.
+			oracle := ctx.CompileString(c.fragments[0])
+			require.NoError(t, oracle.Err())
+			for _, frag := range c.fragments[1:] {
+				oracle = oracle.Unify(ctx.CompileString(frag))
+			}
+			oracleAccepts := oracle.Validate(cue.Concrete(true)) == nil
+
+			assert.Equal(t, oracleAccepts, inHouseAccepts,
+				"in-house and single-context CUE must agree on the chained composition")
+		})
+	}
+}
+
+// compileFragment compiles a CUE source fragment, routing a JSON-object
+// fragment (a quoted-key struct) through CompileJSON so a data fragment lifts
+// the same way the engine lifts real data.
+func compileFragment(frag string) (Value, error) {
+	if len(frag) > 1 && frag[0] == '{' && frag[1] == '"' {
+		return CompileJSON([]byte(frag))
+	}
+	return Compile(frag)
 }
 
 func TestValue_Validate(t *testing.T) {

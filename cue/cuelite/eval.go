@@ -236,20 +236,28 @@ func evalBinary(n *ast.BinaryExpr, scope map[string]*engineValue) (*engineValue,
 // so the enclosing expression becomes a thunk. A regex comparison (=~ / !~)
 // compiles its pattern and tests the left string.
 func evalComparison(n *ast.BinaryExpr, scope map[string]*engineValue) (*engineValue, error) {
-	l, err := evalExpr(n.X, scope)
-	if err != nil {
-		return nil, err
+	l, lerr := evalExpr(n.X, scope)
+	r, rerr := evalExpr(n.Y, scope)
+	// A non-concrete TYPE operand (`_`, `string`, `int`) — one that EVALUATED
+	// without an unresolved-reference error but is still non-concrete — makes
+	// the comparison ill-typed: CUE rejects `a > _` and `a == string` at schema
+	// compile ("'>' requires concrete value"). This holds even when the OTHER
+	// operand is an unresolved reference (`A > _`), so it is checked before the
+	// errUnresolved deferral: a type operand can never become concrete, so the
+	// comparison can never resolve and must not become a thunk.
+	if lerr == nil && !isConcrete(l) {
+		return nil, fmt.Errorf("cuelite: invalid operation: %s requires a concrete operand, got %s", n.Op, l.describe())
 	}
-	r, err := evalExpr(n.Y, scope)
-	if err != nil {
-		return nil, err
+	if rerr == nil && !isConcrete(r) {
+		return nil, fmt.Errorf("cuelite: invalid operation: %s requires a concrete operand, got %s", n.Op, r.describe())
 	}
-	// Both operands evaluated without an unresolved-reference error. If either
-	// is still non-concrete here it is a TYPE (or top), not data awaiting a
-	// reference — `_ > 0`, `bool < false` — which CUE rejects as a type error.
-	// Report it as a compile error rather than a thunk that can never resolve.
-	if !isConcrete(l) || !isConcrete(r) {
-		return nil, fmt.Errorf("cuelite: cannot compare %s and %s", l.describe(), r.describe())
+	// Either operand is an unresolved reference: defer the whole comparison to a
+	// thunk (the enclosing struct resolves it once data fixes the reference).
+	if lerr != nil {
+		return nil, lerr
+	}
+	if rerr != nil {
+		return nil, rerr
 	}
 	res, err := compareConcrete(l, n.Op, r)
 	if err != nil {
@@ -299,7 +307,7 @@ func compareConcrete(l *engineValue, op token.Token, r *engineValue) (bool, erro
 	ln, lok := l.numericValue()
 	rn, rok := r.numericValue()
 	if !lok || !rok {
-		return false, fmt.Errorf("cuelite: cannot compare %s and %s", l.describe(), r.describe())
+		return false, fmt.Errorf("cuelite: invalid operation: cannot compare %s and %s", l.describe(), r.describe())
 	}
 	return compareNum(ln, bop, rn), nil
 }

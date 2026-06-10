@@ -224,9 +224,13 @@ pinned-test classes were rewritten, with sign-off:
 
 1. Cross-context bottom tests now assert the post-flip contract: a chained
    unify of derived values SUCCEEDS and validates per single-context CUE.
-   The harness's cross-context corpus rows let the oracle evaluate the same
-   composition in ONE `cue.Context`; both arms agree. `errCrossContext` and
-   the `rebuild` machinery were deleted with their tests.
+   `TestValue_Unify_singleContextOracle` rebuilds each chained composition by
+   unifying the same source fragments inside ONE `cue.Context` and asserts the
+   oracle's accept/reject matches the in-house engine — the direct single-
+   context check behind this claim (the two-input cuelitetest harness covers
+   the schema×data shape; the multi-fragment chained compositions are pinned by
+   this oracle test). `errCrossContext` and the `rebuild` machinery were
+   deleted with their tests.
 2. `Errors() → []*PathError` (+ `PathError.Unwrap` to the engine's own
    cause). The `errors.As`-to-cuelang assertions were dropped; in-house
    sentinel unwrap tests (`TestValidate_unwrapsBottom`) kept.
