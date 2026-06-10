@@ -461,7 +461,8 @@ func TestCheck_UnknownParam_AndCorrectBody(t *testing.T) {
 
 func TestCheck_UnknownParam_AndStaleBody(t *testing.T) {
 	r := ruleWithRender()
-	src := "# Demo\n\n<?build\nrecipe: render\nsource: a.svg\noutputs:\n  - out.png\nextra: val\n?>\nwrong\n<?/build?>\n"
+	src := "# Demo\n\n<?build\nrecipe: render\nsource: a.svg\noutputs:\n  - out.png\nextra: val\n?>\n" +
+		"wrong\n<?/build?>\n"
 	f := newFile(t, src)
 	diags := r.Check(f)
 	require.Len(t, diags, 2)
@@ -484,7 +485,8 @@ func TestFix_RegeneratesBody(t *testing.T) {
 
 func TestFix_MultiOutput(t *testing.T) {
 	r := ruleWithRender()
-	src := "# Demo\n\n<?build\nrecipe: render\nsource: a.svg\noutputs:\n  - book.html\n  - book.epub\n?>\nstale\n<?/build?>\n"
+	src := "# Demo\n\n<?build\nrecipe: render\nsource: a.svg\noutputs:\n  - book.html\n  - book.epub\n?>\n" +
+		"stale\n<?/build?>\n"
 	f := newFile(t, src)
 	got := string(r.Fix(f))
 	assert.Contains(t, got, "![render output: book.html](book.html)")

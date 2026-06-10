@@ -288,9 +288,9 @@ call-hierarchy gain real build edges.
       characters (`*`, `?`, `[`); `inputs:`
       accepts full doublestar globs
       (including leading `**/`)
-- [ ] An `inputs:` glob that resolves to
+- [x] An `inputs:` glob that resolves to
       more than 10 000 files is a build error
-- [ ] A symlinked output or input that
+- [x] A symlinked output or input that
       escapes the project root is a build
       error
 - [x] `body-template` renders once per

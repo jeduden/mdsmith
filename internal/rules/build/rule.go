@@ -336,12 +336,7 @@ func splitList(raw string) []string {
 	if raw == "" {
 		return nil
 	}
-	parts := strings.Split(raw, "\n")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		out = append(out, p)
-	}
-	return out
+	return strings.Split(raw, "\n")
 }
 
 // validatePathEntry validates one outputs: or inputs: entry against the
