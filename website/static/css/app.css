@@ -2118,7 +2118,13 @@ html.js .search-trigger {
   background: var(--bg-raised);
 }
 
-/* Lock the page behind the modal so only the result list scrolls. */
+/* Lock the page behind the modal so only the result list scrolls.
+   The always-on stable gutter keeps the scrollbar's space reserved
+   while the lock hides it, so the page never widens and shifts
+   behind the dialog. It must not move into the lock rule: Chromium
+   reserves a nonzero stable gutter even with overlay scrollbars, so
+   a lock-scoped gutter would itself shift the page on open. */
+html { scrollbar-gutter: stable; }
 html.search-active { overflow: hidden; }
 
 @media (prefers-reduced-motion: no-preference) {
