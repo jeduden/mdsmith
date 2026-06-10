@@ -6,7 +6,7 @@ title: >-
 status: "🔳"
 summary: >-
   Land the asdf-plugin repo (jeduden/asdf-mdsmith) and
-  the jdx/mise registry entry that the multi-channel
+  the mise-plugins/registry entry that the multi-channel
   release pipeline already documents but cannot trigger
   from this repo. Spun out of plan/130 because both
   tasks ship outside this repo.
@@ -65,7 +65,7 @@ on `asdf plugin add mdsmith`.
    adding mdsmith so `asdf plugin add mdsmith`
    resolves without an explicit URL.
 4. File a PR to mise's curated registry,
-   [`jdx/mise`](https://github.com/jdx/mise)
+   [`mise-plugins/registry`](https://github.com/mise-plugins/registry)
    `registry.toml`, adding a `[tools.mdsmith]` entry
    on the `github:jeduden/mdsmith` backend (`ubi:` is
    deprecated for new entries) with a `test` field.
@@ -94,7 +94,7 @@ on `asdf plugin add mdsmith`.
 - [x] `asdf install mdsmith X.Y.Z` then
       `mdsmith version` prints `mdsmith vX.Y.Z`.
 - [ ] `mise use mdsmith@X.Y.Z` (no backend prefix)
-      resolves after the `jdx/mise` registry PR
+      resolves after the `mise-plugins/registry` PR
       merges, and `mdsmith version` prints
       `mdsmith vX.Y.Z`.
 - [ ] [docs/guides/install.md](../docs/guides/install.md)

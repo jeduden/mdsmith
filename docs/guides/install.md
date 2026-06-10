@@ -199,7 +199,7 @@ mise use -g ubi:jeduden/mdsmith@latest
 The one gap is a bare `mise use mdsmith@latest`: no backend
 prefix, and no prior `mise plugins install` like the asdf
 step above. That form needs an entry in mise's curated
-registry ([`jdx/mise`](https://github.com/jdx/mise)
+registry ([`mise-plugins/registry`](https://github.com/mise-plugins/registry)
 `registry.toml`), tracked in
 [plan/145](../../plan/145_asdf-mise-registry-submissions.md).
 Until it merges, use a backend-prefixed form, or install the
