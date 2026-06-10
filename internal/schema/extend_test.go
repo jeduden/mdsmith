@@ -813,3 +813,22 @@ func TestInvalidFrontmatterError_Error(t *testing.T) {
 	assert.NotContains(t, msg, "child")
 	assert.ErrorIs(t, err, cause)
 }
+
+// TestExtend_ProjectionChildWinsElseParent pins the extends layering
+// for the schema-level projection family: a set child value overrides
+// the parent and an unset child inherits it, so `projection: blocks`
+// survives an extends chain.
+func TestExtend_ProjectionChildWinsElseParent(t *testing.T) {
+	parent := &Schema{
+		RootLevel:       2,
+		Projection:      ProjectionBlocks,
+		BlockParagraphs: ProjectionText,
+	}
+	child := &Schema{RootLevel: 2, BlockParagraphs: ProjectionInline}
+	out, err := Extend(parent, child)
+	require.NoError(t, err)
+	assert.Equal(t, ProjectionBlocks, out.Projection,
+		"an unset child inherits the parent's projection")
+	assert.Equal(t, ProjectionInline, out.BlockParagraphs,
+		"a set child overrides the parent")
+}

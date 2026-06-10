@@ -17,7 +17,7 @@ import (
 // survive a normal parse, so the branch is exercised directly.
 func TestInlineSpanStringNode(t *testing.T) {
 	p := &projector{f: &lint.File{Path: "headline.md"}, sch: inlineScope()}
-	got := p.inlineSpan("inline", ast.NewString([]byte("typeset")))
+	got := p.inlineSpan("inline", ast.NewString([]byte("typeset")), false)
 	assert.Equal(t, map[string]any{"span": "text", "value": "typeset"}, got)
 	assert.Empty(t, p.diags)
 }
@@ -35,7 +35,7 @@ func TestWalkInlineChildren_TextNodeContributesTextAndBreak(t *testing.T) {
 	txt := ast.NewTextSegment(text.NewSegment(0, 5))
 	txt.SetSoftLineBreak(true)
 	parent.AppendChild(parent, txt)
-	got := p.walkInlineChildren("inline", parent)
+	got := p.walkInlineChildren("inline", parent, false)
 	require.Len(t, got, 2)
 	assert.Equal(t, map[string]any{"span": "text", "value": "first"}, got[0])
 	assert.Equal(t, map[string]any{"span": "break", "hard": false}, got[1])
@@ -56,4 +56,16 @@ func TestUnsupportedInlineDefault(t *testing.T) {
 	assert.Contains(t, p.diags[0].Message, "ast.Text")
 	assert.Truef(t, strings.HasPrefix(p.diags[0].Message, "body:"),
 		"diagnostic should lead with the projection key, got %q", p.diags[0].Message)
+}
+
+// TestWalkInlineChildren_ChildlessContainerReturnsEmpty pins the
+// null-vs-empty contract: a childless container (`[](u)`) must return
+// the empty list, never nil, so its `children` key serialises as `[]`
+// where the published `[...#Span]` constraint rejects `null`.
+func TestWalkInlineChildren_ChildlessContainerReturnsEmpty(t *testing.T) {
+	p := &projector{f: &lint.File{Path: "headline.md"}, sch: inlineScope()}
+	got := p.walkInlineChildren("inline", ast.NewLink(), false)
+	require.NotNil(t, got, "a nil slice would serialise to null")
+	assert.Empty(t, got)
+	assert.Empty(t, p.diags)
 }

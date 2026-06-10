@@ -844,3 +844,90 @@ func TestMergeMatcher_DisjointWithUnboundedError(t *testing.T) {
 	assert.Contains(t, err.Error(), "5..unbounded")
 	assert.Contains(t, err.Error(), "1..2")
 }
+
+// TestCompose_ProjectionDefaults pins that the schema-level
+// projection family survives composition: an empty value yields to a
+// set one and equal values survive, so `projection: blocks` never
+// silently disappears when kinds share a file.
+func TestCompose_ProjectionDefaults(t *testing.T) {
+	a := &Schema{RootLevel: 2, Projection: ProjectionBlocks}
+	b := &Schema{RootLevel: 2, BlockParagraphs: ProjectionInline}
+	out, err := Compose(a, b)
+	require.NoError(t, err)
+	assert.Equal(t, ProjectionBlocks, out.Projection,
+		"an empty projection yields to the set one")
+	assert.Equal(t, ProjectionInline, out.BlockParagraphs,
+		"an empty block-paragraphs yields to the set one")
+
+	out, err = Compose(a, &Schema{RootLevel: 2, Projection: ProjectionBlocks})
+	require.NoError(t, err)
+	assert.Equal(t, ProjectionBlocks, out.Projection, "equal values survive")
+}
+
+// TestCompose_ProjectionConflictErrors mirrors the bind rule: a
+// genuine schema-level disagreement is a compose-time error, not a
+// silent first-wins.
+func TestCompose_ProjectionConflictErrors(t *testing.T) {
+	a := &Schema{RootLevel: 2, BlockParagraphs: ProjectionInline}
+	b := &Schema{RootLevel: 2, BlockParagraphs: ProjectionText}
+	_, err := Compose(a, b)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "block-paragraphs")
+	assert.Contains(t, err.Error(), "schema level")
+}
+
+// TestCompose_ScopeProjectionCarriesFromEitherSide pins the
+// scope-level merge: when two composed kinds declare the same heading
+// and only one sets `projection: blocks`, the merged scope keeps it.
+func TestCompose_ScopeProjectionCarriesFromEitherSide(t *testing.T) {
+	mk := func(projection string) *Schema {
+		return &Schema{RootLevel: 2, Sections: []Scope{{
+			Heading:    "Notes",
+			Matcher:    &Matcher{Regex: "Notes"},
+			Projection: projection,
+		}}}
+	}
+	out, err := Compose(mk(""), mk(ProjectionBlocks))
+	require.NoError(t, err)
+	require.Len(t, out.Sections, 1)
+	assert.Equal(t, ProjectionBlocks, out.Sections[0].Projection,
+		"the second source's scope projection must survive the merge")
+
+	_, err = Compose(
+		&Schema{RootLevel: 2, Sections: []Scope{{
+			Heading: "Notes", Matcher: &Matcher{Regex: "Notes"},
+			BlockParagraphs: ProjectionInline,
+			Projection:      ProjectionBlocks,
+		}}},
+		&Schema{RootLevel: 2, Sections: []Scope{{
+			Heading: "Notes", Matcher: &Matcher{Regex: "Notes"},
+			BlockParagraphs: ProjectionText,
+			Projection:      ProjectionBlocks,
+		}}})
+	require.Error(t, err, "scope-level disagreement errors")
+	assert.Contains(t, err.Error(), `heading "Notes"`)
+}
+
+// TestCompose_ProjectionKeyConflictErrors drives the projection-key
+// conflict arms at both levels. Parse validation only admits `blocks`
+// today, so the disagreement is hand-built — the arm must still hold
+// for any future second projection value.
+func TestCompose_ProjectionKeyConflictErrors(t *testing.T) {
+	_, err := Compose(
+		&Schema{RootLevel: 2, Projection: ProjectionBlocks},
+		&Schema{RootLevel: 2, Projection: "spans"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "`projection:`")
+	assert.Contains(t, err.Error(), "schema level")
+
+	mk := func(projection string) *Schema {
+		return &Schema{RootLevel: 2, Sections: []Scope{{
+			Heading:    "Notes",
+			Matcher:    &Matcher{Regex: "Notes"},
+			Projection: projection,
+		}}}
+	}
+	_, err = Compose(mk(ProjectionBlocks), mk("spans"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `heading "Notes"`)
+}

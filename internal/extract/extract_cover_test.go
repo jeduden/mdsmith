@@ -170,3 +170,16 @@ func TestExtract_NilFrontmatterEmptyObject(t *testing.T) {
 	// the document has no front matter.
 	assert.Equal(t, map[string]any{}, got.(map[string]any)["frontmatter"])
 }
+
+// The GFM parser always emits a TableHeader, so a header-less table is
+// reachable only from hand-built nodes; both halves must still come
+// back as empty lists, not nil, so `columns` and `rows` serialise as
+// `[]` under the published contract rather than `null`.
+func TestTableRowsPositional_HeaderlessHandBuiltTable(t *testing.T) {
+	p := &projector{f: doc(t, "x\n")}
+	cols, rows := p.tableRowsPositional(extast.NewTable())
+	require.NotNil(t, cols)
+	require.NotNil(t, rows)
+	assert.Empty(t, cols)
+	assert.Empty(t, rows)
+}

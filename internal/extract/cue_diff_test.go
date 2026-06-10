@@ -105,11 +105,19 @@ func validateBlocksRecursive(t *testing.T, ctx *cue.Context, g cue.Value, blocks
 			"block %v must validate against #Block", b)
 		switch b["block"] {
 		case "quote", "section":
-			validateBlocksRecursive(t, ctx, g, b["blocks"].([]any))
+			kids, ok := b["blocks"].([]any)
+			require.True(t, ok,
+				"container block %v must carry a []any blocks list", b)
+			validateBlocksRecursive(t, ctx, g, kids)
 		case "paragraph":
 			if inline, hasInline := b["inline"]; hasInline {
-				for _, s := range inline.([]any) {
-					validateSpansRecursive(t, ctx, g, s.(map[string]any))
+				spans, ok := inline.([]any)
+				require.True(t, ok,
+					"paragraph %v must carry a []any inline list", b)
+				for _, s := range spans {
+					sp, ok := s.(map[string]any)
+					require.True(t, ok, "span must be an object, got %T", s)
+					validateSpansRecursive(t, ctx, g, sp)
 				}
 			}
 		}
@@ -123,8 +131,13 @@ func validateSpansRecursive(t *testing.T, ctx *cue.Context, g cue.Value, span ma
 	require.NoError(t, validateAgainst(t, ctx, g, "#Span", span),
 		"span %v must validate against #Span", span)
 	if kids, ok := span["children"]; ok {
-		for _, c := range kids.([]any) {
-			validateSpansRecursive(t, ctx, g, c.(map[string]any))
+		list, isList := kids.([]any)
+		require.True(t, isList,
+			"span %v children must be a []any list", span)
+		for _, c := range list {
+			child, isObj := c.(map[string]any)
+			require.True(t, isObj, "child span must be an object, got %T", c)
+			validateSpansRecursive(t, ctx, g, child)
 		}
 	}
 }
@@ -171,6 +184,14 @@ func blocksCorpus(t *testing.T) [][]any {
 		// is validated for a non-trivial child, not just a bare alt.
 		{inlineScopeSchema, "## Notes\n\n[![alt](i.png)](u) and " +
 			"![a *b* c](j.png)\n"},
+		// Childless containers: an empty-text link and an empty-alt
+		// image must emit `children: []`, never `children: null` — the
+		// null-vs-empty class the contract rejects (the rows:[] case
+		// above is the block-level sibling of the same class).
+		{inlineScopeSchema, "## Notes\n\n[](u) and ![](p.png)\n"},
+		// Empty containers at block level: a bare blockquote and a
+		// body-less deeper heading must emit `blocks: []`.
+		{textScope, "## Notes\n\n> x\n\n### Only\n"},
 	}
 	corpus := make([][]any, 0, len(cases))
 	for _, c := range cases {

@@ -26,7 +26,7 @@ import (
 // The walker drives `mdsmith extract` only — never the check hot
 // path — so it favours a clear recursive shape over the allocation
 // budget the lint rules hold to.
-func (p *projector) blocksFromNodes(nodes []ast.Node) []any {
+func (p *projector) blocksFromNodes(nodes []ast.Node, inline bool) []any {
 	blocks := make([]any, 0, len(nodes))
 	for i := 0; i < len(nodes); {
 		n := nodes[i]
@@ -37,11 +37,11 @@ func (p *projector) blocksFromNodes(nodes []ast.Node) []any {
 			for j < len(nodes) && !headingAtOrAbove(nodes[j], h.Level) {
 				j++
 			}
-			blocks = append(blocks, p.sectionBlock(h, nodes[i+1:j]))
+			blocks = append(blocks, p.sectionBlock(h, nodes[i+1:j], inline))
 			i = j
 			continue
 		}
-		if b := p.blockNode(n); b != nil {
+		if b := p.blockNode(n, inline); b != nil {
 			blocks = append(blocks, b)
 		}
 		i++
@@ -60,22 +60,24 @@ func headingAtOrAbove(n ast.Node, level int) bool {
 // blocks (blockquote) recurse through it. A blockquote body has no
 // headings in practice, but routing through blocksFromNodes keeps the
 // section-nesting behaviour uniform if one appears.
-func (p *projector) blocksFromChildren(parent ast.Node) []any {
+func (p *projector) blocksFromChildren(parent ast.Node, inline bool) []any {
 	var nodes []ast.Node
 	for c := parent.FirstChild(); c != nil; c = c.NextSibling() {
 		nodes = append(nodes, c)
 	}
-	return p.blocksFromNodes(nodes)
+	return p.blocksFromNodes(nodes, inline)
 }
 
 // blockNode maps one block-level AST node to its block object per the
 // plan 246 grammar table. It returns nil (after recording a
 // diagnostic) for any node the table does not cover, mirroring
-// inlineSpan's hard-error contract.
-func (p *projector) blockNode(n ast.Node) map[string]any {
+// inlineSpan's hard-error contract. inline selects the paragraph
+// rendering (`block-paragraphs: inline`) and flows through container
+// recursion.
+func (p *projector) blockNode(n ast.Node, inline bool) map[string]any {
 	switch node := n.(type) {
 	case *ast.Paragraph, *ast.TextBlock:
-		return p.paragraphBlock(n)
+		return p.paragraphBlock(n, inline)
 	case *ast.FencedCodeBlock:
 		return p.fencedCodeBlock(node)
 	case *ast.CodeBlock:
@@ -86,7 +88,7 @@ func (p *projector) blockNode(n ast.Node) map[string]any {
 		cols, rows := p.tableRowsPositional(node)
 		return map[string]any{"block": "table", "columns": cols, "rows": rows}
 	case *ast.Blockquote:
-		return map[string]any{"block": "quote", "blocks": p.blocksFromChildren(node)}
+		return map[string]any{"block": "quote", "blocks": p.blocksFromChildren(node, inline)}
 	case *ast.ThematicBreak:
 		return map[string]any{"block": "break"}
 	case *ast.HTMLBlock:
@@ -99,14 +101,14 @@ func (p *projector) blockNode(n ast.Node) map[string]any {
 
 // paragraphBlock projects a paragraph (or a loose list item's
 // TextBlock). The default is flat `text`, matching the `text` content
-// projection. When the scope's `block-paragraphs` is `inline`
-// (p.blockInline), it projects the paragraph's typed inline-span list
-// under `inline` instead, so block mode does not force plain text.
-// Block-mode inline is lenient (lenientInlineSpans): an image projects
-// an `image` span rather than aborting, so representable content never
-// exits non-zero. Plan 246.
-func (p *projector) paragraphBlock(n ast.Node) map[string]any {
-	if p.blockInline {
+// projection. When the scope's `block-paragraphs` is `inline`, it
+// projects the paragraph's typed inline-span list under `inline`
+// instead, so block mode does not force plain text. Block-mode inline
+// is lenient (lenientInlineSpans): an image projects an `image` span
+// rather than aborting, so representable content never exits
+// non-zero. Plan 246.
+func (p *projector) paragraphBlock(n ast.Node, inline bool) map[string]any {
+	if inline {
 		return map[string]any{
 			"block":  "paragraph",
 			"inline": p.lenientInlineSpans(n),
@@ -149,17 +151,11 @@ func (p *projector) rawLines(n ast.Node) string {
 // closing line (when present), so the projected `value` is the
 // verbatim HTML the source carried.
 func (p *projector) htmlBlockValue(n *ast.HTMLBlock) string {
-	var b strings.Builder
-	segs := n.Lines()
-	for i := 0; i < segs.Len(); i++ {
-		seg := segs.At(i)
-		b.Write(seg.Value(p.f.Source))
-	}
+	v := p.rawLines(n)
 	if n.HasClosure() {
-		cl := n.ClosureLine
-		b.Write(cl.Value(p.f.Source))
+		v += string(n.ClosureLine.Value(p.f.Source))
 	}
-	return strings.TrimRight(b.String(), "\n")
+	return strings.TrimRight(v, "\n")
 }
 
 // sectionBlock projects a heading deeper than the declared schema as
@@ -167,12 +163,12 @@ func (p *projector) htmlBlockValue(n *ast.HTMLBlock) string {
 // run of following nodes (up to the next same-or-shallower heading),
 // which recurse through the same grammar — so a deeper heading nested
 // inside body opens its own `section` block.
-func (p *projector) sectionBlock(h *ast.Heading, body []ast.Node) map[string]any {
+func (p *projector) sectionBlock(h *ast.Heading, body []ast.Node, inline bool) map[string]any {
 	return map[string]any{
 		"block":   "section",
 		"level":   h.Level,
 		"heading": p.nodeText(h),
-		"blocks":  p.blocksFromNodes(body),
+		"blocks":  p.blocksFromNodes(body, inline),
 	}
 }
 

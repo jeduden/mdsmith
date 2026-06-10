@@ -52,6 +52,9 @@ func Compose(schemas ...*Schema) (*Schema, error) {
 		return nil, err
 	}
 	composeRootClosed(out, nonNil)
+	if err := composeProjection(out, nonNil); err != nil {
+		return nil, err
+	}
 	out.Sections, err = composeSectionLists(extractRootSections(nonNil))
 	if err != nil {
 		return nil, err
@@ -353,7 +356,63 @@ func mergeScopes(a, b Scope) (Scope, error) {
 	// cloneScope already deep-copied a.Content into out; appending
 	// b's clone onto it avoids re-cloning a's entries.
 	out.Content = append(out.Content, cloneContent(b.Content)...)
+	// The scope-level projection family merges like bind: cloneScope
+	// carried a's values, so fold b's in or error on disagreement.
+	out.Projection, err = mergeProjectionField(
+		a.Projection, b.Projection, "projection", a.Heading)
+	if err != nil {
+		return Scope{}, err
+	}
+	out.BlockParagraphs, err = mergeProjectionField(
+		a.BlockParagraphs, b.BlockParagraphs, "block-paragraphs", a.Heading)
+	if err != nil {
+		return Scope{}, err
+	}
 	return out, nil
+}
+
+// composeProjection merges the schema-level `projection:` and
+// `block-paragraphs:` defaults across the composed inputs by the
+// mergeBind rules applied to strings: an empty value yields to a set
+// one, equal values survive, and a genuine disagreement errors so
+// `projection: blocks` never silently disappears when kinds compose.
+func composeProjection(out *Schema, in []*Schema) error {
+	for _, s := range in {
+		p, err := mergeProjectionField(out.Projection, s.Projection,
+			"projection", "")
+		if err != nil {
+			return err
+		}
+		out.Projection = p
+		bp, err := mergeProjectionField(out.BlockParagraphs,
+			s.BlockParagraphs, "block-paragraphs", "")
+		if err != nil {
+			return err
+		}
+		out.BlockParagraphs = bp
+	}
+	return nil
+}
+
+// mergeProjectionField merges one projection-family string across two
+// sources: empty yields, equal survives, disagreement errors. heading
+// is empty for the schema-level defaults and names the scope for
+// scope-level merges.
+func mergeProjectionField(a, b, key, heading string) (string, error) {
+	if a == "" {
+		return b, nil
+	}
+	if b == "" || a == b {
+		return a, nil
+	}
+	where := "the schema level"
+	if heading != "" {
+		where = fmt.Sprintf("heading %q", heading)
+	}
+	return "", fmt.Errorf(
+		"composed schemas declare conflicting `%s:` values at %s: "+
+			"%q vs %q — every source must agree",
+		key, where, a, b)
 }
 
 // mergeBind intersects two scope-level `bind:` overrides for scopes

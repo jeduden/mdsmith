@@ -323,6 +323,7 @@ func Extend(parent, child *Schema) (*Schema, error) {
 		return nil, err
 	}
 	extendFilename(out, parent, child)
+	extendProjection(out, parent, child)
 	extendSections(out, parent, child)
 	extendCrossRefs(out, parent, child)
 	extendAcronyms(out, parent, child)
@@ -457,6 +458,21 @@ func extendFilename(out, parent, child *Schema) {
 		return
 	}
 	out.Filename = parent.Filename
+}
+
+// extendProjection layers the schema-level projection defaults like
+// filename: a child that sets `projection:` or `block-paragraphs:`
+// overrides the parent; an unset child inherits the parent's value,
+// so `projection: blocks` survives an extends chain.
+func extendProjection(out, parent, child *Schema) {
+	out.Projection = child.Projection
+	if out.Projection == "" {
+		out.Projection = parent.Projection
+	}
+	out.BlockParagraphs = child.BlockParagraphs
+	if out.BlockParagraphs == "" {
+		out.BlockParagraphs = parent.BlockParagraphs
+	}
 }
 
 // extendSections copies the child's sections wholesale when it

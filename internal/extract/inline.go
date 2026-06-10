@@ -24,7 +24,7 @@ import (
 // check hot path — so it favours a clear recursive shape over the
 // allocation budget the lint rules hold to.
 func (p *projector) inlineSpans(key string, n ast.Node) []any {
-	return p.walkInlineChildren(key, n)
+	return p.walkInlineChildren(key, n, false)
 }
 
 // lenientInlineSpans walks a paragraph's inline children like
@@ -33,12 +33,10 @@ func (p *projector) inlineSpans(key string, n ast.Node) []any {
 // `block-paragraphs: inline` option so a `blocks`-mode paragraph with
 // an image stays representable rather than aborting (plan 246). Raw
 // HTML and any other out-of-mapping node still error — those are not
-// representable as data. The lenient flag is scoped to this walk.
+// representable as data. Leniency is passed down the walk, never
+// stored, so no state survives the call.
 func (p *projector) lenientInlineSpans(n ast.Node) []any {
-	p.lenientInline = true
-	spans := p.walkInlineChildren("blocks", n)
-	p.lenientInline = false
-	return spans
+	return p.walkInlineChildren("blocks", n, true)
 }
 
 // walkInlineChildren maps every inline child of parent to a span
@@ -51,10 +49,15 @@ func (p *projector) lenientInlineSpans(n ast.Node) []any {
 // `break` span when the node carries a soft or hard line break. The
 // break span is appended after the text span so the wrapped-line
 // structure of a paragraph survives projection.
-func (p *projector) walkInlineChildren(key string, parent ast.Node) []any {
-	var spans []any
+//
+// The list is never nil: a childless container (`[](u)`, `![](p)`)
+// returns the empty list so its `children` key serializes as `[]`,
+// which the published contract's `[...#Span]` accepts where `null`
+// would not.
+func (p *projector) walkInlineChildren(key string, parent ast.Node, lenient bool) []any {
+	spans := []any{}
 	for c := parent.FirstChild(); c != nil; c = c.NextSibling() {
-		span := p.inlineSpan(key, c)
+		span := p.inlineSpan(key, c, lenient)
 		if span == nil {
 			continue
 		}
@@ -99,8 +102,10 @@ func breakSpan(n ast.Node) map[string]any {
 
 // inlineSpan maps one inline AST node to its span object per the plan
 // 212 mapping table. It returns nil (after recording a diagnostic)
-// for any node the table does not cover.
-func (p *projector) inlineSpan(key string, n ast.Node) map[string]any {
+// for any node the table does not cover. lenient widens the table by
+// the `image` span (the block-mode contract, plan 246) and flows into
+// every recursive child walk.
+func (p *projector) inlineSpan(key string, n ast.Node, lenient bool) map[string]any {
 	switch node := n.(type) {
 	case *ast.Text:
 		return map[string]any{
@@ -136,13 +141,13 @@ func (p *projector) inlineSpan(key string, n ast.Node) map[string]any {
 		return map[string]any{
 			"span":     name,
 			"level":    node.Level,
-			"children": p.walkInlineChildren(key, node),
+			"children": p.walkInlineChildren(key, node, lenient),
 		}
 	case *ast.Link:
 		span := map[string]any{
 			"span":     "link",
 			"url":      string(node.Destination),
-			"children": p.walkInlineChildren(key, node),
+			"children": p.walkInlineChildren(key, node, lenient),
 		}
 		if len(node.Title) > 0 {
 			span["title"] = string(node.Title)
@@ -154,14 +159,14 @@ func (p *projector) inlineSpan(key string, n ast.Node) map[string]any {
 		// it as an `image` span so a `blocks`-mode paragraph with an
 		// image stays representable. The alt text rides in `children`,
 		// mirroring `link`. Plan 246.
-		if !p.lenientInline {
+		if !lenient {
 			p.unsupportedInline(key, n)
 			return nil
 		}
 		span := map[string]any{
 			"span":     "image",
 			"url":      string(node.Destination),
-			"children": p.walkInlineChildren(key, node),
+			"children": p.walkInlineChildren(key, node, lenient),
 		}
 		if len(node.Title) > 0 {
 			span["title"] = string(node.Title)

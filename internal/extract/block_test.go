@@ -35,7 +35,7 @@ func topNodes(t *testing.T, body string) (*projector, []ast.Node) {
 func walkBody(t *testing.T, body string) ([]any, *projector) {
 	t.Helper()
 	p, nodes := topNodes(t, body)
-	return p.blocksFromNodes(nodes), p
+	return p.blocksFromNodes(nodes, false), p
 }
 
 func TestBlockWalker_Paragraph(t *testing.T) {
@@ -232,7 +232,7 @@ func TestHeadingAtOrAbove(t *testing.T) {
 // walker a synthetic document node to drive the default arm.
 func TestBlockWalker_UnsupportedBlock(t *testing.T) {
 	p := &projector{f: doc(t, "x\n"), sch: &schema.Schema{}}
-	got := p.blocksFromNodes([]ast.Node{ast.NewDocument()})
+	got := p.blocksFromNodes([]ast.Node{ast.NewDocument()}, false)
 	assert.Empty(t, got)
 	require.NotEmpty(t, p.diags)
 	assert.Contains(t, p.diags[0].Message, "unsupported block")

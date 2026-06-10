@@ -75,22 +75,9 @@ func (p *projector) firstH1PlainText() string {
 }
 
 type projector struct {
-	f   *lint.File
-	sch *schema.Schema
-	// blockInline, when true, makes the block walker render paragraph
-	// blocks as inline-span lists (`{block: paragraph, inline}`)
-	// instead of flat `text`. projectScopeObject sets it per matched
-	// scope from the effective `block-paragraphs` choice (scope wins
-	// over schema default) for the duration of one body projection;
-	// nested sections and quotes inherit the same choice. Plan 246.
-	blockInline bool
-	// lenientInline, when true, makes the inline-span walker project an
-	// image as an `image` span rather than a hard error — the
-	// block-mode inline path (lenientInlineSpans). Plan 212's strict
-	// content-entry inline leaves it false, so an image there still
-	// aborts. Plan 246.
-	lenientInline bool
-	diags         []lint.Diagnostic
+	f     *lint.File
+	sch   *schema.Schema
+	diags []lint.Diagnostic
 }
 
 // keyFor is the single key-naming seam — the one function plan 167
@@ -286,11 +273,13 @@ func (p *projector) projectScopeObject(sm *schema.ScopeMatch) map[string]any {
 	// declared content entry that binds to `blocks` is reported rather
 	// than silently overwritten. An empty section still emits
 	// `blocks: []` (keyed on ProjectsBlocks, not len(Body)) for a
-	// stable shape. blockInline is scoped to this body projection.
+	// stable shape. The paragraph rendering choice (scope wins over
+	// schema default) is passed down the walk, never stored, so no
+	// state survives this projection; nested sections and quotes
+	// inherit the same choice.
 	if sm.ProjectsBlocks {
-		p.blockInline = p.inlineBlockParagraphs(sm.Scope)
-		p.setKey(obj, "blocks", p.blocksFromNodes(sm.Body))
-		p.blockInline = false
+		p.setKey(obj, "blocks",
+			p.blocksFromNodes(sm.Body, p.inlineBlockParagraphs(sm.Scope)))
 	}
 	return obj
 }
@@ -383,13 +372,7 @@ func (p *projector) codeBody(n ast.Node) string {
 	if !ok {
 		return ""
 	}
-	var b strings.Builder
-	segs := fcb.Lines()
-	for i := 0; i < segs.Len(); i++ {
-		seg := segs.At(i)
-		b.Write(seg.Value(p.f.Source))
-	}
-	return strings.TrimRight(b.String(), "\n")
+	return strings.TrimRight(p.rawLines(fcb), "\n")
 }
 
 func (p *projector) listItems(n ast.Node) []any {
@@ -493,6 +476,10 @@ func (p *projector) tableRowsPositional(n ast.Node) (cols []any, rows []any) {
 	if !ok {
 		return nil, nil
 	}
+	// Both halves start non-nil for the same contract reason: a table
+	// node without a TableHeader child (hand-built; the GFM parser
+	// always emits one) must serialise `"columns": []`, not null.
+	cols = []any{}
 	rows = []any{}
 	var colCount int
 	for r := tbl.FirstChild(); r != nil; r = r.NextSibling() {
