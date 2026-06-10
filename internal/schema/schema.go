@@ -406,6 +406,16 @@ const (
 	// nested sub-list. Valid only on `kind: list`. The flat default
 	// (projection omitted) keeps emitting plain strings. Plan 244.
 	ProjectionTree = "tree"
+	// ProjectionRecords emits a table as an array of objects keyed by
+	// column header — the default for `kind: table`. Duplicate column
+	// headers cause an extract-time error because two cells would collide
+	// on the same key. Plan 245.
+	ProjectionRecords = "records"
+	// ProjectionRows emits a table as a `{"columns": [...], "rows":
+	// [[...]...]}` object — column order is preserved, duplicate headers
+	// are accepted (the columns array is positional). Short body rows are
+	// padded with empty strings to match the header width. Plan 245.
+	ProjectionRows = "rows"
 )
 
 // IsEmpty reports whether s carries no constraints. Used by callers

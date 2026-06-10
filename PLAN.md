@@ -174,6 +174,6 @@ footer: |
 | 243 | 🔲     | sonnet | [`mdsmith extract` projects the document H1 as `title`](plan/243_extract-h1-title.md)                                                   |
 | 243 | ✅     | sonnet | [Security hardening batch — 2026-06-09 audit](plan/243_secreview-2026-06-09-hardening.md)                                               |
 | 244 | ✅     | opus   | [Structured list projection; fix nested-item text corruption](plan/244_structured-list-projection.md)                                   |
-| 245 | 🔲     | sonnet | [Table projection modes: `records` and `rows`](plan/245_table-projection-modes.md)                                                      |
+| 245 | ✅     | sonnet | [Table projection modes: `records` and `rows`](plan/245_table-projection-modes.md)                                                      |
 | 246 | 🔲     | opus   | [Typed block projection and full-document extract](plan/246_block-projection-full-extract.md)                                           |
 <?/catalog?>

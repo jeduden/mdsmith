@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/yuin/goldmark/ast"
+	extast "github.com/yuin/goldmark/extension/ast"
 )
 
 // The kind-specific extractors guard their type assertions; the
@@ -20,6 +21,48 @@ func TestProjectorHelpers_WrongNodeType(t *testing.T) {
 	assert.Nil(t, p.listItems(para))
 	assert.Nil(t, p.listTree(para))
 	assert.Nil(t, p.tableRows(para))
+	cols, rows := p.tableRowsPositional(para)
+	assert.Nil(t, cols)
+	assert.Nil(t, rows)
+}
+
+// The table-extension parser pads short body rows to the header
+// width, so tableRowsPositional's own padding branch is unreachable
+// from Markdown source; drive it by stripping cells off a matched
+// table's row.
+func TestTableRowsPositional_PadsHandBuiltShortRow(t *testing.T) {
+	f := doc(t, "## Data\n\n| A | B | C |\n| - | - | - |\n| x | y | z |\n")
+	sc := schema.Scope{
+		Heading: "Data",
+		Matcher: &schema.Matcher{Regex: "Data"},
+		Content: []schema.ContentEntry{
+			{Kind: schema.ContentKindTable, Required: true},
+		},
+	}
+	sch := &schema.Schema{RootLevel: 2, Sections: []schema.Scope{sc}}
+	mt := schema.BuildMatchTree(f, sch, nil)
+	require.NotNil(t, mt)
+	require.NotEmpty(t, mt.Root.Children)
+	content := mt.Root.Children[0].Content
+	require.NotEmpty(t, content)
+	tbl, ok := content[0].Node.(*extast.Table)
+	require.True(t, ok)
+
+	var body *extast.TableRow
+	for r := tbl.FirstChild(); r != nil; r = r.NextSibling() {
+		if rr, isRow := r.(*extast.TableRow); isRow {
+			body = rr
+		}
+	}
+	require.NotNil(t, body)
+	body.RemoveChild(body, body.LastChild())
+	body.RemoveChild(body, body.LastChild())
+
+	p := &projector{f: f}
+	cols, rows := p.tableRowsPositional(tbl)
+	assert.Equal(t, []any{"A", "B", "C"}, cols)
+	require.Len(t, rows, 1)
+	assert.Equal(t, []any{"x", "", ""}, rows[0])
 }
 
 func TestKeyFor_FallbackToHeadingSlug(t *testing.T) {

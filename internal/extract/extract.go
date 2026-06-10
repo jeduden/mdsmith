@@ -202,7 +202,19 @@ func (p *projector) projectContent(
 				p.setKey(obj, nextKey(base), p.listItems(cm.Node))
 			}
 		case schema.ContentKindTable:
-			p.setKey(obj, nextKey(base), p.tableRows(cm.Node))
+			if cm.Entry.Projection == schema.ProjectionRows {
+				// `rows` projection injects two sibling keys —
+				// `columns` and `rows` — directly into the section
+				// object so the consumer sees them as peers, matching
+				// the {"columns":[...], "rows":[[...]...]} shape the
+				// plan defines. The base key is not used here; the
+				// two key names are fixed by the projection spec.
+				cols, rowArrays := p.tableRowsPositional(cm.Node)
+				p.setKey(obj, "columns", cols)
+				p.setKey(obj, "rows", rowArrays)
+			} else {
+				p.setKey(obj, nextKey(base), p.tableRows(cm.Node))
+			}
 		case schema.ContentKindParagraph:
 			if cm.Entry.Projection == schema.ProjectionInline {
 				// Resolve the key once so the unsupported-inline
@@ -335,6 +347,50 @@ func (p *projector) tableRows(n ast.Node) []any {
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+// tableRowsPositional implements the `projection: rows` walker. It
+// returns two values:
+//
+//   - cols: a []any of column header strings in document order.
+//   - rows: a []any of []any row arrays, one per body row; each element
+//     is a string. Short rows are padded with empty strings to match
+//     the header width.
+//
+// Duplicate headers are accepted — the columns array is positional, so
+// there is no key collision. Plan 245.
+func (p *projector) tableRowsPositional(n ast.Node) (cols []any, rows []any) {
+	tbl, ok := n.(*extast.Table)
+	if !ok {
+		return nil, nil
+	}
+	var colCount int
+	for r := tbl.FirstChild(); r != nil; r = r.NextSibling() {
+		var cells []string
+		for c := r.FirstChild(); c != nil; c = c.NextSibling() {
+			cells = append(cells, strings.TrimSpace(
+				mdtext.ExtractPlainText(c, p.f.Source)))
+		}
+		if _, isHeader := r.(*extast.TableHeader); isHeader {
+			colCount = len(cells)
+			cols = make([]any, len(cells))
+			for i, h := range cells {
+				cols[i] = h
+			}
+			continue
+		}
+		// Pad short body rows with empty strings.
+		row := make([]any, colCount)
+		for i := 0; i < colCount; i++ {
+			if i < len(cells) {
+				row[i] = cells[i]
+			} else {
+				row[i] = ""
+			}
+		}
+		rows = append(rows, row)
+	}
+	return cols, rows
 }
 
 func (p *projector) nodeText(n ast.Node) string {

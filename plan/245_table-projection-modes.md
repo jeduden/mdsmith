@@ -1,7 +1,7 @@
 ---
 id: 245
 title: "Table projection modes: `records` and `rows`"
-status: "🔲"
+status: "✅"
 summary: >-
   Name the current header-keyed object projection
   `projection: records`, add `projection: rows` emitting a
@@ -79,14 +79,14 @@ stays the default:
 
 ## Acceptance Criteria
 
-- [ ] `projection: rows` emits `columns` in document order
+- [x] `projection: rows` emits `columns` in document order
   plus positional row arrays; `projection: records` output is
   byte-identical to today's default.
-- [ ] A duplicate column header errors under `records` and
+- [x] A duplicate column header errors under `records` and
   projects under `rows`.
-- [ ] A short body row pads with empty strings to the header
+- [x] A short body row pads with empty strings to the header
   width under `rows`.
-- [ ] An unknown table projection still fails at config load.
-- [ ] Reference and guide updated with verified outputs.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] An unknown table projection still fails at config load.
+- [x] Reference and guide updated with verified outputs.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

@@ -497,15 +497,14 @@ func TestParseInline_ProjectionInlineOnCodeBlockRejected(t *testing.T) {
 		"kind: code-block allows projection code, not inline")
 }
 
-// TestParseInline_ProjectionOnTableRejected rejects any projection on
-// a table — tables have no projection mode.
+// TestParseInline_ProjectionOnTableRejected rejects projection values
+// that are not valid for a table (text, code, inline are paragraph/code
+// only; unknown values are rejected).
 func TestParseInline_ProjectionOnTableRejected(t *testing.T) {
 	for _, p := range []string{"text", "code", "inline"} {
 		t.Run(p, func(t *testing.T) {
 			_, err := parseProjectionCombo("table", p)
 			require.Error(t, err)
-			assert.Contains(t, err.Error(),
-				"projection is not allowed on kind: table")
 		})
 	}
 }
@@ -532,7 +531,7 @@ func TestParseInline_ProjectionTreeOnNonListRejected(t *testing.T) {
 	cases := []struct{ kind, want string }{
 		{"paragraph", "kind: paragraph allows projection text or inline, not tree"},
 		{"code-block", "kind: code-block allows projection code, not tree"},
-		{"table", "projection is not allowed on kind: table"},
+		{"table", "kind: table allows projection records or rows, not tree"},
 		{"unlisted", "projection is not allowed on kind: unlisted"},
 	}
 	for _, c := range cases {
@@ -542,6 +541,32 @@ func TestParseInline_ProjectionTreeOnNonListRejected(t *testing.T) {
 			assert.Contains(t, err.Error(), c.want)
 		})
 	}
+}
+
+// TestParseInline_TableProjectionRecords accepts projection: records on
+// kind: table and stores it on the ContentEntry.
+func TestParseInline_TableProjectionRecords(t *testing.T) {
+	sch, err := parseProjectionCombo("table", "records")
+	require.NoError(t, err)
+	require.Len(t, sch.Sections[0].Content, 1)
+	assert.Equal(t, "records", sch.Sections[0].Content[0].Projection)
+}
+
+// TestParseInline_TableProjectionRows accepts projection: rows on
+// kind: table and stores it on the ContentEntry.
+func TestParseInline_TableProjectionRows(t *testing.T) {
+	sch, err := parseProjectionCombo("table", "rows")
+	require.NoError(t, err)
+	require.Len(t, sch.Sections[0].Content, 1)
+	assert.Equal(t, "rows", sch.Sections[0].Content[0].Projection)
+}
+
+// TestParseInline_TableProjectionUnknownRejected verifies that an
+// unknown projection value on a table is still rejected.
+func TestParseInline_TableProjectionUnknownRejected(t *testing.T) {
+	_, err := parseProjectionCombo("table", "html")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown projection")
 }
 
 // TestParseInline_ProjectionOnUnlistedRejected rejects any projection

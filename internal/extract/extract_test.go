@@ -196,3 +196,136 @@ func TestExtract_MultipleCodeBlocksSuffix(t *testing.T) {
 	assert.Equal(t, "first", goal["code"])
 	assert.Equal(t, "second", goal["code-2"])
 }
+
+// TestExtract_TableProjectionRowsBasic checks that projection: rows
+// emits a `columns` array plus positional row arrays under the `rows`
+// key, instead of the default record objects.
+func TestExtract_TableProjectionRowsBasic(t *testing.T) {
+	sc := schema.Scope{
+		Heading: "Matrix",
+		Matcher: &schema.Matcher{Regex: "Matrix"},
+		Content: []schema.ContentEntry{
+			{
+				Kind:       schema.ContentKindTable,
+				Required:   true,
+				Projection: schema.ProjectionRows,
+			},
+		},
+	}
+	sch := &schema.Schema{RootLevel: 2, Sections: []schema.Scope{sc}}
+	body := "## Matrix\n\n| Feature | Status |\n| - | - |\n| check | ready |\n"
+	got, diags := run(t, body, sch, nil)
+	require.Empty(t, diags)
+	matrix := got.(map[string]any)["matrix"].(map[string]any)
+	cols := matrix["columns"]
+	require.NotNil(t, cols, "expected columns key")
+	assert.Equal(t, []any{"Feature", "Status"}, cols)
+	rows := matrix["rows"].([]any)
+	require.Len(t, rows, 1)
+	assert.Equal(t, []any{"check", "ready"}, rows[0])
+}
+
+// TestExtract_TableProjectionRecordsDefault checks that projection:
+// records produces the same output as the default (no projection set).
+func TestExtract_TableProjectionRecordsDefault(t *testing.T) {
+	scDefault := schema.Scope{
+		Heading: "Matrix",
+		Matcher: &schema.Matcher{Regex: "Matrix"},
+		Content: []schema.ContentEntry{
+			{Kind: schema.ContentKindTable, Required: true},
+		},
+	}
+	scRecords := schema.Scope{
+		Heading: "Matrix",
+		Matcher: &schema.Matcher{Regex: "Matrix"},
+		Content: []schema.ContentEntry{
+			{
+				Kind:       schema.ContentKindTable,
+				Required:   true,
+				Projection: schema.ProjectionRecords,
+			},
+		},
+	}
+	body := "## Matrix\n\n| A | B |\n| - | - |\n| 1 | 2 |\n"
+	schDefault := &schema.Schema{RootLevel: 2, Sections: []schema.Scope{scDefault}}
+	schRecords := &schema.Schema{RootLevel: 2, Sections: []schema.Scope{scRecords}}
+	gotDefault, diaDefault := run(t, body, schDefault, nil)
+	gotRecords, diaRecords := run(t, body, schRecords, nil)
+	require.Empty(t, diaDefault)
+	require.Empty(t, diaRecords)
+	// records projection must produce the same shape as the default
+	assert.Equal(t, gotDefault, gotRecords)
+}
+
+// TestExtract_TableProjectionRowsShortRowPads verifies that a body row
+// with fewer cells than the header is padded with empty strings.
+func TestExtract_TableProjectionRowsShortRowPads(t *testing.T) {
+	sc := schema.Scope{
+		Heading: "Data",
+		Matcher: &schema.Matcher{Regex: "Data"},
+		Content: []schema.ContentEntry{
+			{
+				Kind:       schema.ContentKindTable,
+				Required:   true,
+				Projection: schema.ProjectionRows,
+			},
+		},
+	}
+	sch := &schema.Schema{RootLevel: 2, Sections: []schema.Scope{sc}}
+	// GFM table with a body row that has only one cell
+	body := "## Data\n\n| A | B | C |\n| - | - | - |\n| x |\n"
+	got, diags := run(t, body, sch, nil)
+	require.Empty(t, diags)
+	data := got.(map[string]any)["data"].(map[string]any)
+	rows := data["rows"].([]any)
+	require.Len(t, rows, 1)
+	assert.Equal(t, []any{"x", "", ""}, rows[0])
+}
+
+// TestExtract_TableProjectionRowsDuplicateHeaderOk verifies that
+// duplicate column headers do NOT error under projection: rows — they
+// are projected positionally.
+func TestExtract_TableProjectionRowsDuplicateHeaderOk(t *testing.T) {
+	sc := schema.Scope{
+		Heading: "Data",
+		Matcher: &schema.Matcher{Regex: "Data"},
+		Content: []schema.ContentEntry{
+			{
+				Kind:       schema.ContentKindTable,
+				Required:   true,
+				Projection: schema.ProjectionRows,
+			},
+		},
+	}
+	sch := &schema.Schema{RootLevel: 2, Sections: []schema.Scope{sc}}
+	body := "## Data\n\n| A | A |\n| - | - |\n| 1 | 2 |\n"
+	got, diags := run(t, body, sch, nil)
+	require.Empty(t, diags, "duplicate headers must not error under rows projection")
+	data := got.(map[string]any)["data"].(map[string]any)
+	cols := data["columns"].([]any)
+	assert.Equal(t, []any{"A", "A"}, cols)
+	rows := data["rows"].([]any)
+	require.Len(t, rows, 1)
+	assert.Equal(t, []any{"1", "2"}, rows[0])
+}
+
+// TestExtract_TableProjectionRecordsDuplicateHeaderErrors verifies that
+// duplicate column headers still error under projection: records (the
+// default).
+func TestExtract_TableProjectionRecordsDuplicateHeaderErrors(t *testing.T) {
+	sc := schema.Scope{
+		Heading: "Data",
+		Matcher: &schema.Matcher{Regex: "Data"},
+		Content: []schema.ContentEntry{
+			{
+				Kind:       schema.ContentKindTable,
+				Required:   true,
+				Projection: schema.ProjectionRecords,
+			},
+		},
+	}
+	sch := &schema.Schema{RootLevel: 2, Sections: []schema.Scope{sc}}
+	body := "## Data\n\n| A | A |\n| - | - |\n| 1 | 2 |\n"
+	_, diags := run(t, body, sch, nil)
+	require.NotEmpty(t, diags, "duplicate headers must error under records projection")
+}

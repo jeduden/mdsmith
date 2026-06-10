@@ -56,8 +56,11 @@ Content entries project under default keys:
 - `list` → `items` (an array of strings, each the item's
   own text), or a tree of item objects when the entry
   sets `projection: tree` (see below).
-- `table` with columns → `rows` (row objects keyed by
-  column header).
+- `table` → `rows` (default `records` projection: row
+  objects keyed by column header). With `projection: rows`
+  the table injects `columns` (header array) and `rows`
+  (positional row arrays) as two sibling keys into the
+  enclosing section object instead (see below).
 - `paragraph` → `text` (plain text), or `inline` when
   the entry sets `projection: inline` (see below).
 
@@ -73,7 +76,8 @@ Sibling keys are emitted in sorted order, not document
 order. Two sibling projections that resolve to the same
 key are a schema error. It is reported at extract time.
 Optional sections that did not match are omitted, not
-emitted as null.
+emitted as null. A section that declares no `content:`
+entry projects as an empty object.
 
 ## Inline-span projection
 
@@ -101,19 +105,14 @@ Each AST node maps to one span object:
 | strong (`**…**`)   | `{span: strong, level: 2, children: [...]}`   |
 | link (`[t](url)`)  | `{span: link, url, title?, children: [...]}`  |
 
-Leaf spans (text, code, autolink) carry a `value`;
-container spans (emphasis, strong, link) carry a
-`children` list and recurse through the same mapping,
-so nesting composes uniformly. A link omits `title`
-when the Markdown link has none.
+Leaf spans (text, code, autolink) carry `value`;
+container spans (emphasis, strong, link) carry
+`children` and recurse through the same mapping.
+A link omits `title` when none was written.
 
-A wrapped paragraph keeps its line structure: a text
-node that ends in a line break emits its text span and
-then a `break` span. `hard` is `true` for a hard break
-(a backslash or two trailing spaces before the newline)
-and `false` for a soft wrap. So `first⏎second` projects
-as `[{span: text, value: first}, {span: break, hard:
-false}, {span: text, value: second}]`.
+A wrapped paragraph keeps line structure: a text span,
+then a `break` span (`hard: true` for backslash/double-
+space, `false` for soft wrap), then the next text span.
 
 For the headline `Mark*down*, smithed.`:
 
@@ -150,7 +149,7 @@ fails when the config loads, not later at extract:
 | `paragraph`  | `text`, `inline`                |
 | `code-block` | `code`                          |
 | `list`       | `tree` (flat string if omitted) |
-| `table`      | none                            |
+| `table`      | `records` (default), `rows`     |
 | `unlisted`   | none                            |
 
 Anything outside the mapping table is a hard error at
@@ -187,6 +186,42 @@ same tree. The
 [extract guide](../../guides/extract-markdown-as-data.md)
 has a full worked checklist.
 
+## Table projection modes
+
+A `kind: table` content entry picks one of two
+`projection` values. The default is `records`.
+
+| Projection | Output shape                                         |
+| ---------- | ---------------------------------------------------- |
+| `records`  | `rows: [{Col1: val, Col2: val}, …]`                  |
+| `rows`     | `columns: [Col1, Col2, …]` + `rows: [[val, val], …]` |
+
+**`records` (default)** — each body row is an object
+keyed by column header. Output key is `rows`. A
+duplicate column header is an extract-time error (two
+cells would collide on the same key).
+
+**`rows`** — the table injects two sibling keys into the
+enclosing section object: `columns` (header strings in
+document order) and `rows` (string arrays, one per body
+row). Short rows are padded with `""` to header width.
+Duplicate headers are accepted — `columns` is positional.
+
+For a `Feature`/`Status` table with `{ kind: table }`:
+
+```json
+"matrix": { "rows": [{ "Feature": "check", "Status": "ready" }] }
+```
+
+With `{ kind: table, projection: rows }`:
+
+```json
+"matrix": {
+  "columns": ["Feature", "Status"],
+  "rows": [["check", "ready"]]
+}
+```
+
 ## Custom binding with `bind`
 
 A scope or content entry can set an optional
@@ -215,74 +250,6 @@ mdsmith extract recipe --format json recipes/cake.md
 mdsmith extract rfc --format yaml docs/rfcs/RFC-0007.md
 mdsmith extract plan --format msgpack plan/166_x.md > plan.mp
 ```
-
-### Worked example
-
-A two-section kind schema, a kind assignment, and a
-conformant file. Each section declares a `content:`
-entry. A section without one projects as an empty
-object:
-
-```yaml
-# .mdsmith.yml
-kinds:
-  product-copy:
-    schema:
-      sections:
-        - heading: { regex: '^Tagline$' }
-          content:
-            - { kind: paragraph }
-        - heading: { regex: '^VS Code$' }
-          bind: vscode-description
-          content:
-            - { kind: paragraph }
-kind-assignment:
-  - glob: ["docs/copy.md"]
-    kinds: [product-copy]
-```
-
-```markdown
-<!-- docs/copy.md -->
----
-title: Product copy
----
-# Product copy
-
-## Tagline
-
-Mark down your ideas; smith them into shipping docs.
-
-## VS Code
-
-Inline diagnostics, fix-on-save, and instant
-navigation for Markdown in VS Code.
-```
-
-`mdsmith extract product-copy --format json docs/copy.md`
-emits:
-
-```json
-{
-  "frontmatter": {
-    "title": "Product copy"
-  },
-  "tagline": {
-    "text": "Mark down your ideas; smith them into shipping docs."
-  },
-  "vscode-description": {
-    "text": "Inline diagnostics, fix-on-save, and instant navigation for Markdown in VS Code."
-  }
-}
-```
-
-Each H2 projects as an object keyed by the slugified
-heading (or the `bind:` override); the paragraph
-under each heading projects as `text`. Frontmatter is
-the file's metadata; body sections are the file's
-payload. See the
-[Extract Markdown as data guide](../../guides/extract-markdown-as-data.md)
-for when to put a value in frontmatter vs. a body
-section.
 
 ## Exit codes
 

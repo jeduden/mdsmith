@@ -338,6 +338,92 @@ item with no marker and no sub-list is just `{text}`. The
 array order is the item order — ordered-list numbering is
 out of scope. YAML and msgpack emit the same tree.
 
+## Projecting a table as positional rows
+
+A `kind: table` content entry projects as `rows` (an
+array of record objects) by default. Set
+`projection: rows` on the entry when the consumer
+needs column order preserved, tolerates duplicate
+headers, or works with positional data (a chart
+script, a CSV writer, a diff tool).
+
+The `rows` projection injects two sibling keys directly
+into the enclosing section object — `columns` (the
+header array in document order) and `rows` (an array of
+string arrays, one per body row). Short body rows are
+padded with empty strings to match the header width.
+
+A benchmark table in a performance section:
+
+```markdown
+---
+title: Benchmark results
+---
+# Benchmark results
+
+## Latency
+
+| Operation | p50 ms | p99 ms |
+| --------- | ------ | ------ |
+| check     | 12     | 45     |
+| fix       | 18     | 70     |
+```
+
+```yaml
+kinds:
+  benchmark:
+    schema:
+      sections:
+        - heading: { regex: '^Latency$' }
+          content:
+            - { kind: table, projection: rows }
+kind-assignment:
+  - glob: ["docs/benchmarks.md"]
+    kinds: [benchmark]
+```
+
+`mdsmith extract benchmark --format json docs/benchmarks.md`
+emits:
+
+```json
+{
+  "frontmatter": {
+    "title": "Benchmark results"
+  },
+  "latency": {
+    "columns": ["Operation", "p50 ms", "p99 ms"],
+    "rows": [
+      ["check", "12", "45"],
+      ["fix", "18", "70"]
+    ]
+  }
+}
+```
+
+The `columns` array preserves document order; the `rows`
+array omits object keys entirely, so duplicate column
+headers pose no problem and a chart script reads
+`latency.rows[0][1]` by index.
+
+For the default `records` projection the same table
+produces `latency.rows` as an array of objects keyed by
+column header:
+
+```json
+"latency": {
+  "rows": [
+    { "Operation": "check", "p50 ms": "12", "p99 ms": "45" },
+    { "Operation": "fix",   "p50 ms": "18", "p99 ms": "70" }
+  ]
+}
+```
+
+The full projection matrix and duplicate-header
+semantics are in the
+[extract reference][extract-table].
+
+[extract-table]: ../reference/cli/extract.md#table-projection-modes
+
 ## When frontmatter is the right call
 
 - **Short scalars where YAML's typing earns its
