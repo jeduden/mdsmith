@@ -134,7 +134,8 @@ func graphHasCycle(graph map[string][]string, nodes map[string]bool) bool {
 //
 //   - an out-of-subset construct or literal ("cuelite: unsupported …", which
 //     also covers an int/float literal outside the int64/float64 subset),
-//   - a regex bound (=~ / !~) whose pattern Go's regexp rejects,
+//   - a regex bound (=~ / !~) whose pattern Go's regexp rejects, or one
+//     applied to a non-string operand (`0 !~ ""`),
 //   - a schema-to-schema reference the subset does not resolve ("reference X
 //     not found"), and
 //   - an "invalid operation" CUE itself also rejects but defers (unary +/-
@@ -158,9 +159,15 @@ func inHouseRejectsOutOfSubset(schema string) bool {
 	case strings.Contains(msg, "reference") && strings.Contains(msg, "not found"):
 		return true
 	default:
-		// A regex-pattern compile error always names the offending bound operator.
-		return (strings.Contains(msg, "=~") || strings.Contains(msg, "!~")) &&
-			strings.Contains(msg, "pattern")
+		// The in-house engine is stricter than CUE on a regex construct (=~ /
+		// !~): it eagerly rejects a pattern Go's regexp cannot compile, AND a
+		// regex applied to a non-string operand (`0 !~ ""`). CUE defers the regex
+		// or, inside a disjunction, drops the ⊥ branch and accepts. Both are
+		// eager schema-compile strictness, never a wrong-accept of data, so an
+		// in-house error naming a regex operator is a documented out-of-subset
+		// rejection. The "pattern" / "requires strings" wording pins the class.
+		named := strings.Contains(msg, "=~") || strings.Contains(msg, "!~")
+		return named && (strings.Contains(msg, "pattern") || strings.Contains(msg, "requires strings"))
 	}
 }
 
@@ -278,11 +285,18 @@ func FuzzValidate(f *testing.F) {
 	f.Fuzz(fuzzValidateBody())
 }
 
-// extraFuzzSeeds steers the mutator toward the subset's boundaries: type
-// atoms, bounds, regex, disjunction defaults, optional keys, closed structs,
-// nested structs, lists, len/MinRunes, the strict-subset literal and operator
-// edges (each a documented hatch-1 class), and the lone-surrogate classes.
+// extraFuzzSeeds steers the mutator toward the subset's boundaries: the basic
+// type/bound/disjunction grammar plus the strict-subset literal and operator
+// edges (each a documented hatch-1 class), the reference cycles, and the
+// lone-surrogate classes.
 func extraFuzzSeeds() []struct{ schema, data string } {
+	return append(baseFuzzSeeds(), edgeFuzzSeeds()...)
+}
+
+// baseFuzzSeeds covers the well-formed subset grammar: type atoms, bounds,
+// regex, disjunction defaults, optional keys, closed structs, nested structs,
+// lists, and len/MinRunes.
+func baseFuzzSeeds() []struct{ schema, data string } {
 	return []struct{ schema, data string }{
 		{`{a: string}`, `{"a": "x"}`},
 		{`{a: int}`, `{"a": 1}`},
@@ -306,6 +320,14 @@ func extraFuzzSeeds() []struct{ schema, data string } {
 		{`{a: number}`, `{"a": 1.5}`},
 		{`{a: null}`, `{"a": null}`},
 		{`{a: int}`, `{"a":1,"a":2}`},
+	}
+}
+
+// edgeFuzzSeeds covers the strict-subset edges each fix and hatch documents:
+// out-of-subset literals and operators, deferred-position hard errors, misplaced
+// defaults, reference cycles, and the lone-surrogate classes.
+func edgeFuzzSeeds() []struct{ schema, data string } {
+	return []struct{ schema, data string }{
 		// Strict-subset literal boundaries: an int outside int64 and a float
 		// outside float64 are rejected at in-house schema compile (CUE keeps
 		// big.Int/big.Float and accepts). These steer the mutator at the
@@ -320,6 +342,11 @@ func extraFuzzSeeds() []struct{ schema, data string } {
 		// A bound over a type rather than a concrete scalar (>string): out of
 		// subset for the in-house engine, accepted-and-deferred by CUE.
 		{`{A?: >string}`, `0`},
+		// A regex (=~ / !~) on a non-string operand (0 !~ ""): the in-house
+		// engine rejects eagerly; CUE drops the ⊥ branch in a disjunction and
+		// accepts. Hatch 1's regex class covers it.
+		{`({0!~""|0})`, `0`},
+		{`{a: 0 !~ ""}`, `{"a":0}`},
 		// An ordered comparison of mismatched scalar kinds (0 > ""): CUE rejects
 		// it as an invalid operation but defers in a disjunction; the in-house
 		// engine rejects eagerly at schema compile.
