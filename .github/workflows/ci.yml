@@ -310,7 +310,7 @@ jobs:
       # blowup trips it but a slow runner does not. The gate is an ordinary
       # `go test` (the per-arm measurement loop lives in Go, no inline shell)
       # and writes a factor table to GITHUB_STEP_SUMMARY for the run page.
-      # -v so the per-benchmark factor lines (t.Logf) land in the job
+      # -v so the per-benchmark factor lines (t.Log) land in the job
       # log on success, not only in the step summary.
       # CUELITE_FACTOR_GATE=1 arms the gate: it skips everywhere else
       # (notably the parallel `test` job) because the ratio is only
