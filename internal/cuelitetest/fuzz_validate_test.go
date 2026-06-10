@@ -240,22 +240,38 @@ func bothReject(a, b Outcome) bool {
 	return a.Stage == StageValidate && b.Stage == StageValidate
 }
 
-// maxExtraLeaves bounds the leafSuperset tolerance: the in-house engine may
-// report at most this many MORE rejecting leaves than CUE on an
-// already-failing document. The only documented over-report class — a
-// closed-struct violation reported alongside an absent-required-field
-// violation CUE suppresses — adds a single extra leaf, so a tight bound of 1
-// admits that class while turning any larger leaf-count blow-up (a sign the
-// in-house engine fans a single failure into many phantom leaves) back into a
-// hard fuzzer failure.
+// maxExtraLeaves bounds the leaf-superset tolerance for an OPEN schema: the
+// in-house engine may report at most this many MORE rejecting leaves than CUE
+// on an already-failing open document. A larger surplus on an open schema is a
+// leaf-count blow-up (the in-house engine fanning one failure into many phantom
+// leaves) and fails. A CLOSED schema is exempt from the bound because CUE's
+// close-suppression legitimately omits an unbounded number of missing-field
+// errors the in-house engine reports (see the leaf-superset hatch).
 const maxExtraLeaves = 1
 
-// leafSuperset reports whether every path in want appears in got — the
-// in-house leaf set covers (is a superset of) the oracle's, so the in-house
-// engine rejected at least every leaf CUE did — AND the in-house set carries
-// at most maxExtraLeaves paths beyond the oracle's, bounding the tolerance.
-func leafSuperset(got, want [][]string) bool {
-	return leafCovers(got, want) && len(got)-len(want) <= maxExtraLeaves
+// schemaIsClosed reports whether the schema's top-level value is a closed
+// struct — a `close({…})` call or a struct CUE treats as closed. Used to
+// exempt the close-suppression surplus from the open-schema leaf bound.
+func schemaIsClosed(schema string) bool {
+	f, err := parser.ParseFile("schema.cue", schema)
+	if err != nil || len(f.Decls) != 1 {
+		return false
+	}
+	emb, ok := f.Decls[0].(*ast.EmbedDecl)
+	if !ok {
+		return false
+	}
+	for e := emb.Expr; ; {
+		switch n := e.(type) {
+		case *ast.ParenExpr:
+			e = n.X
+		case *ast.CallExpr:
+			id, ok := n.Fun.(*ast.Ident)
+			return ok && id.Name == "close"
+		default:
+			return false
+		}
+	}
 }
 
 // leafCovers reports whether every path in want appears in got (got ⊇ want),
@@ -387,6 +403,15 @@ func edgeFuzzSeeds() []struct{ schema, data string } {
 		// no JSON representation, rejected out-of-subset by the in-house engine.
 		{`''`, `""`},
 		{`{a: 'x'}`, `{"a":"x"}`},
+		// SI-suffix number literals (1M, 1Ki): CUE accepts them, the in-house
+		// engine's int64/float64 parser does not, so it rejects out-of-subset.
+		{`{a: 1M}`, `{"a":1}`},
+		{`{a: 1Mi}`, `{"a":1}`},
+		// CUE's close-suppression: a closed struct with an extra key reports just
+		// the close violation, suppressing the missing required fields the
+		// in-house engine also reports. The leaf-superset hatch exempts a closed
+		// schema from the surplus bound.
+		{`close({A:""|"0",B:[(string)]})`, `{"0":""}`},
 		// CUE's root-summary leaf: a top-level disjunction that matches no branch,
 		// and a deferred thunk referencing a non-concrete field, both make CUE
 		// attribute the failure to the ROOT [] while the in-house engine names the
@@ -562,19 +587,22 @@ func fuzzValidateBody() func(*testing.T, string, string) {
 			return
 		}
 		// Both arms reject the document, and every leaf CUE rejects is also
-		// rejected by the in-house engine — but the in-house engine reports at
-		// most maxExtraLeaves (1) EXTRA leaves. This happens only on a
-		// pathological mix CUE suppresses: a closed-struct violation on one field
-		// alongside an absent required field on another (CUE reports just the
-		// close violation; the in-house engine reports both — exactly one extra
-		// leaf). Real data never mixes the two — it either conforms to the closed
-		// key set or the diagnostics dedupe per field — and reporting one MORE
-		// failure on an already-failing document is safe (the in-house engine
-		// never silently accepts what CUE rejects). The bound keeps the tolerance
-		// honest: a missing leaf, a wrong accept, a stage mismatch, OR a leaf-set
-		// blow-up beyond one extra still fails.
-		if bothReject(inHouse, oracle) && leafSuperset(inHouse.Paths, oracle.Paths) {
-			return
+		// rejected by the in-house engine — but the in-house engine reports EXTRA
+		// leaves. This is CUE's close-suppression: when a CLOSED struct has an
+		// extra key, CUE reports just the close violation and suppresses every
+		// absent-required-field error, while the in-house engine reports the close
+		// violation AND each missing field. Reporting MORE failures on an
+		// already-failing document is safe (the in-house engine never silently
+		// accepts what CUE rejects). For a closed schema the surplus is the
+		// suppressed missing fields, so it is unbounded; for an open schema the
+		// surplus is bounded to maxExtraLeaves (1) so a leaf-count blow-up — the
+		// in-house engine fanning one failure into many phantom leaves — still
+		// fails. A missing leaf, a wrong accept, or a stage mismatch still fails.
+		if bothReject(inHouse, oracle) && leafCovers(inHouse.Paths, oracle.Paths) {
+			surplus := len(inHouse.Paths) - len(oracle.Paths)
+			if surplus <= maxExtraLeaves || (surplus > 0 && schemaIsClosed(schema)) {
+				return
+			}
 		}
 		// Hatch 3 — CUE's root-summary leaf. When a disjunction fails to match
 		// any branch, or a deferred thunk references a non-concrete field, CUE

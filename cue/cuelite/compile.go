@@ -369,21 +369,23 @@ func compileBasicLit(n *ast.BasicLit) (*engineValue, error) {
 	case token.INT:
 		i, err := strconv.ParseInt(stripUnderscores(n.Value), 0, 64)
 		if err != nil {
-			// The in-house engine represents integers as int64; CUE uses
-			// arbitrary-precision big.Int. An int literal outside the int64 range
-			// is outside the supported subset, not a malformed literal — report
-			// it as unsupported so the cross-engine fuzzer's strict-subset hatch
-			// recognizes the class.
-			return nil, fmt.Errorf("cuelite: unsupported int literal %s (outside int64 range): %w", n.Value, err)
+			// The in-house engine represents integers as int64 and parses only the
+			// plain integer grammar; CUE uses arbitrary-precision big.Int and also
+			// accepts SI suffixes (1M, 1Ki). An int literal Go's ParseInt rejects —
+			// out of int64 range, or carrying a suffix — is outside the supported
+			// subset, not a malformed literal, so report it as unsupported for the
+			// cross-engine fuzzer's strict-subset hatch.
+			return nil, fmt.Errorf("cuelite: unsupported int literal %s: %w", n.Value, err)
 		}
 		return &engineValue{kind: kInt, i: i}, nil
 	case token.FLOAT:
 		f, err := strconv.ParseFloat(stripUnderscores(n.Value), 64)
 		if err != nil {
-			// The in-house engine represents floats as float64; a literal that
-			// overflows float64 is outside the supported subset (CUE keeps a
-			// big.Float). Report it as unsupported for the same reason as INT.
-			return nil, fmt.Errorf("cuelite: unsupported float literal %s (outside float64 range): %w", n.Value, err)
+			// The in-house engine represents floats as float64 and parses only the
+			// plain float grammar; CUE keeps a big.Float and accepts SI suffixes.
+			// A literal Go's ParseFloat rejects is outside the subset for the same
+			// reason as INT.
+			return nil, fmt.Errorf("cuelite: unsupported float literal %s: %w", n.Value, err)
 		}
 		return &engineValue{kind: kFloat, f: f}, nil
 	case token.TRUE:
