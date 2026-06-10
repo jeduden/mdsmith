@@ -95,6 +95,28 @@ func loadFromBytes(data []byte, sourcePath string, mergeKinds bool) (*Config, er
 		}
 	}
 
+	// Build the named-schema registry, then resolve each kind's named
+	// `schema:` reference to a body before ValidateKinds runs. The
+	// registry combines inline `schemas:` entries with file-defined
+	// schemas under `.mdsmith/schemas/` (plan 241); the in-memory
+	// ParseBytes path skips disk discovery and resolves against the
+	// inline registry alone. Resolution lands a body on each named ref
+	// so validateKindSchemaSources and the merge layer see one inline
+	// body, exactly as they do for an inline-on-kind schema.
+	var schemaReg map[string]discoveredSchema
+	if mergeKinds {
+		reg, err := mergeSchemaFiles(&cfg, sourcePath)
+		if err != nil {
+			return nil, fmt.Errorf("loading schema files: %w", err)
+		}
+		schemaReg = reg
+	} else {
+		schemaReg = resolveInlineRegistry(&cfg, sourcePath)
+	}
+	if err := resolveNamedSchemas(&cfg, schemaReg); err != nil {
+		return nil, fmt.Errorf("resolving schemas: %w", err)
+	}
+
 	if err := ValidateKinds(&cfg); err != nil {
 		return nil, fmt.Errorf("validating config: %w", err)
 	}

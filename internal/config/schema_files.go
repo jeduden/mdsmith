@@ -180,6 +180,103 @@ func parseSchemaFile(path string) (map[string]any, error) {
 	return body, nil
 }
 
+// mergeSchemaFiles builds the named-schema registry from two sources:
+// inline `schemas:` entries (tagged with cfgPath for provenance) and
+// file-defined schemas discovered under `.mdsmith/schemas/` (tagged
+// with their `.yaml`/`.yml` path). A name declared both inline AND as
+// a file is a config error naming both sources — the same rule kinds
+// and conventions carry; the two do not merge.
+//
+// Load is the only caller and always supplies a non-empty cfgPath.
+// ParseBytes skips this function (no disk discovery), resolving named
+// refs against the inline registry alone via resolveInlineRegistry.
+func mergeSchemaFiles(cfg *Config, cfgPath string) (map[string]discoveredSchema, error) {
+	reg := resolveInlineRegistry(cfg, cfgPath)
+
+	discovered, err := discoverSchemas(filepath.Dir(cfgPath))
+	if err != nil {
+		return nil, err
+	}
+	if len(discovered) == 0 {
+		return reg, nil
+	}
+	if reg == nil {
+		reg = make(map[string]discoveredSchema, len(discovered))
+	}
+	// Iterate in sorted name order so that when more than one file
+	// schema collides, the reported error is deterministic across runs
+	// instead of depending on map iteration order.
+	names := make([]string, 0, len(discovered))
+	for name := range discovered {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		ds := discovered[name]
+		if existing, clash := reg[name]; clash {
+			return nil, fmt.Errorf(
+				"schema %q is declared both inline in %s and in %s; "+
+					"keep one source",
+				name, existing.sourcePath, ds.sourcePath)
+		}
+		reg[name] = ds
+	}
+	return reg, nil
+}
+
+// resolveInlineRegistry seeds the schema registry with the inline
+// `schemas:` entries, tagging each with cfgPath so provenance
+// attributes an inline-registry schema to `.mdsmith.yml`. Returns nil
+// when no inline schemas are declared so the caller can size the map
+// to the discovered count.
+func resolveInlineRegistry(cfg *Config, cfgPath string) map[string]discoveredSchema {
+	if len(cfg.Schemas) == 0 {
+		return nil
+	}
+	reg := make(map[string]discoveredSchema, len(cfg.Schemas))
+	for name, body := range cfg.Schemas {
+		reg[name] = discoveredSchema{body: body, sourcePath: cfgPath}
+	}
+	return reg
+}
+
+// resolveNamedSchemas replaces every kind's named `schema:` reference
+// with the body from the registry, stamping the ref's SourcePath from
+// the entry's origin (a `.yaml` path for a file schema, `.mdsmith.yml`
+// for an inline-registry schema). A reference to an undeclared name is
+// a config error naming the kind and the missing schema. Inline bodies
+// (refs with no Name) pass through untouched, keeping an empty
+// SourcePath so the kind's own file applies as the schema source.
+//
+// Kinds are walked in sorted name order so an undeclared-name error is
+// deterministic when several kinds reference missing schemas.
+func resolveNamedSchemas(cfg *Config, reg map[string]discoveredSchema) error {
+	if len(cfg.Kinds) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(cfg.Kinds))
+	for name := range cfg.Kinds {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		body := cfg.Kinds[name]
+		if body.Schema.Name == "" {
+			continue
+		}
+		ds, ok := reg[body.Schema.Name]
+		if !ok {
+			return fmt.Errorf(
+				"kind %q: schema %q is not declared inline under "+
+					"`schemas:` or as a file under %s",
+				name, body.Schema.Name, schemaFilesDir)
+		}
+		body.Schema = resolvedSchemaRef(body.Schema.Name, ds.body, ds.sourcePath)
+		cfg.Kinds[name] = body
+	}
+	return nil
+}
+
 // allowedSchemaKeysList renders the schema vocabulary as a sorted,
 // comma-separated list for the unknown-key error message.
 func allowedSchemaKeysList() string {

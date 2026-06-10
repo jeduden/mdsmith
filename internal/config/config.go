@@ -75,6 +75,15 @@ type Config struct {
 	// built-in conventions ("portable", "github", "plain").
 	Conventions map[string]UserConvention `yaml:"conventions,omitempty"`
 
+	// Schemas holds named document-structure schemas declared inline
+	// under the top-level `schemas:` key — the inline equivalent of a
+	// `.mdsmith/schemas/<name>.yaml` file (plan 241). Each entry is a
+	// raw schema body (the map schema.ParseInline consumes). A kind
+	// references one by name (`schema: rfc-v1`); resolveNamedSchemas
+	// replaces the reference with the body at load time. Names must
+	// not collide with a `.mdsmith/schemas/` file basename.
+	Schemas map[string]map[string]any `yaml:"schemas,omitempty"`
+
 	// LegacyNoFollowSymlinks captures the removed `no-follow-symlinks`
 	// key. Its presence surfaces a deprecation warning via
 	// Deprecations; its contents are otherwise ignored now that
