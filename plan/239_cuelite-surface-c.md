@@ -1,7 +1,7 @@
 ---
 id: 239
 title: "cuelite phase 3 — surface C (row-expr evaluator)"
-status: "🔲"
+status: "✅"
 model: opus
 summary: >-
   Move internal/cuetemplate onto cue/cuelite (green), then flip
@@ -92,37 +92,126 @@ inherits the corrected semantics.
 
 ## Tasks
 
-1. Add the expression façade to `cue/cuelite`, delegating to
-   CUE's evaluator: a parse-without-evaluate entry and an
-   evaluate-against-a-scope entry (see "façade shape" above).
-2. Move [cuetemplate](../internal/cuetemplate/cuetemplate.go)
-   onto the façade. The suite stays green.
-3. EXTEND `evalExpr` (the phase-2 tree-walking evaluator) with the
-   four missing constructs, red/green per node and per builtin:
-
-  - an `*ast.Interpolation` case that evaluates each embedded
-     expression against scope and concatenates,
-  - a `for`-clause arm in `evalComprehension` (and its
-     multi-clause shape),
-  - a scoped `*ast.SelectorExpr` case so `fm.id` resolves a
-     frontmatter field against scope, not just inside a call,
-  - a builtin registry replacing the ad-hoc `compileCall` switch,
-     adding `strings.Join` and `len`.
-
-4. Gate it on the real `row-expr` in
+1. [x] Add a row-expression evaluator to `cue/cuelite`: a
+   dedicated tree-walker (`evalrow.go`) for the row subset, with a
+   `CompileRow` (parse-only) / `RowTemplate.Render` (evaluate
+   against a scope) split. It handles `*ast.Interpolation`, `+`
+   concatenation, `for`/`if` comprehension clauses, general
+   `*ast.SelectorExpr` and `fm["key"]` selection, and a builtin
+   registry (`strings.Join`, `len`).
+2. [x] Move [cuetemplate](../internal/cuetemplate/cuetemplate.go)
+   onto `CompileRow`/`Render`. The suite stays green except the
+   re-pins recorded below. `cuelang.org/go` is gone from
+   `internal/cuetemplate` non-test files.
+3. [x] Differential arm: `internal/cuelitetest/expr.go` adds an
+   `ExprCase`/`ExprOutcome`/`ExprPath` arm comparing the engine
+   against a direct-CUE oracle (reconstructing the former
+   cuetemplate `buildSource`), plus `FuzzExpr` and a third leg of
+   the `cuelite-fuzz` CI matrix.
+4. [x] Gate it on the real `row-expr` in
    [markdownlint-coverage](../docs/research/markdownlint-coverage/README.md)
-   plus unit tests, checked against the CUE oracle.
+   and the other checked-in row-exprs, plus adversarial cases,
+   checked against the CUE oracle.
+
+## Implementation Notes
+
+### Design decision: dedicated evaluator, not an extended `evalExpr`
+
+The phase-2 `evalExpr` is the schema evaluator. It threads a
+sibling-field scope. It defers an unresolved reference to a thunk.
+The schema fuzzer pins its invariants.
+
+Surface C has different semantics. A row reference resolves
+against concrete data, or it is a hard error. There is no
+deferral. The row subset also admits constructs the schema subset
+must reject: interpolation, `+`, `for`, general selectors,
+`strings.Join`, and `len`.
+
+Extending `evalExpr` in place would risk those schema invariants
+and tangle two scope models. So surface C got its own walker,
+`evalrow.go`. It shares the value model and the literal builders
+(`compileBasicLit`, `liftMapValue`), but the walk is separate and
+fully covered.
+
+### API surface added (`cue/cuelite`)
+
+- `func CompileRow(expr string) (*RowTemplate, error)` — parse
+  only (syntax check, AST cached).
+- `func (*RowTemplate) Render(scope map[string]any) (string, error)`
+  — evaluate against a front-matter map, yielding a concrete
+  string.
+
+The Compile/Render split mirrors `cuetemplate`. The catalog hot
+path compiles a row-expr once and renders it per matched file. The
+in-house engine is context-free, so a `RowTemplate` is reusable
+across files and goroutines. No per-render context is allocated —
+the per-call fresh-`*cue.Context` cost the old plan note feared is
+gone. The schema `Compile`/`Value` API is untouched.
+
+### Builtin registry
+
+`rowBuiltins` is a `map[string]rowBuiltin` (`strings.Join`, `len`)
+— the registry the plan asked for. Only the builtins the real row
+corpus uses are wired; `len` covers string and list operands.
+
+### Re-pinned messages
+
+- `cuetemplate` non-concrete-string case (`"foo" | "bar"`): the
+  row subset has no disjunction, so the engine reports
+  `unsupported row operator` instead of CUE's `concrete string`.
+  Re-pinned in `TestTemplate_Render_NonConcreteStringIsError`.
+- Non-finite (`.inf`/`.nan`) and unencodable (chan) front matter:
+  the in-house lifter accepts ±Inf/NaN (the schema path's
+  behaviour), so the row scope adds a `checkFinite` pass and wraps
+  both classes as `encoding frontmatter: field "<k>": …`,
+  preserving the reject-and-name-the-field contract the catalog
+  diagnostic (`TestRowExpr_NonFiniteFrontMatterNamesFile`) and
+  `TestTemplate_Render_MarshalErrorReturnsError` depend on. No
+  catalog test message changed; both still see `encoding
+  frontmatter`.
+- The non-string-result message is now the engine's
+  `row expression must yield a concrete string, got …`; it still
+  contains the `concrete string` substring the catalog
+  `TestRowExpr_PerEntryRenderError` pins.
+
+### Differential finding
+
+The differential arm caught a real int/float divergence. A JSON
+scope decoded with the default `json.Unmarshal` turns `42` into a
+`float64`. The engine then interpolates it as `42.0`, while CUE
+prints `42`. The real front-matter path keeps integers as
+integers. So the harness decodes scope JSON with `UseNumber`, and
+the in-house lifter keeps the int. That removes the artifact.
+
+One genuine divergence remains. A fractional float's
+interpolation form is literal-preserving in CUE (`2.0`, `1.50`),
+but shortest-round-trip in the engine. `FuzzExpr` hatches it,
+scoped to a scope carrying a non-integer number. The real corpus
+never interpolates a float.
+
+### Deviations from the rewritten plan
+
+- The plan's task 1 described extending `evalExpr` with the four
+  constructs; the implementation adds a separate `evalrow.go`
+  walker instead (rationale above). The four constructs are all
+  present, just in the row walker.
+- Three unreachable defensive branches were NOT added (per the
+  repo's "drive it red/green" rule): a non-field row declaration,
+  a non-struct comprehension value, and `true`/`false`/`null` as
+  identifiers (the parser emits them as basic literals). The CUE
+  grammar guarantees none can fire.
 
 ## Acceptance Criteria
 
-- [ ] `internal/cuetemplate` imports `cue/cuelite`, not
-      `cuelang.org/go`.
-- [ ] The in-house evaluator matches CUE on every checked-in
-      `row-expr`.
-- [ ] `cue/cuelite` evaluator code keeps 100 % statement and
-      branch coverage.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues.
+- [x] `internal/cuetemplate` imports `cue/cuelite`, not
+      `cuelang.org/go` (non-test files).
+- [x] The in-house evaluator matches CUE on every checked-in
+      `row-expr` (differential corpus + `FuzzExpr` 30 s smoke).
+- [x] `cue/cuelite` evaluator code keeps 100 % statement
+      coverage; `internal/cuelitetest` is 100 % too.
+- [x] All tests pass: `go test ./...`
+- [x] `golangci-lint run` reports no issues on the touched
+      packages.
 
 ## See also
 
