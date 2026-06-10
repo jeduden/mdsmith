@@ -1794,6 +1794,22 @@ func TestSort_Numeric(t *testing.T) {
 				"- 52 [Fifty-two](52.md)\n<?/catalog?>\n",
 			fs: mixedDigitIDs,
 		},
+		{
+			// Guards the 32-bit contract: strconv.Atoi rejects
+			// 2606100533 where int is 32 bits, demoting the whole
+			// sort to string compare (243 < 2606100533 < 52).
+			name: "numeric orders timestamp ids above the 32-bit int max",
+			src: "<?catalog\nglob: \"*.md\"\n" +
+				"sort: numeric:id\nrow: \"- {id} [{title}]({filename})\"\n?>\n" +
+				"- 52 [Fifty-two](legacy52.md)\n" +
+				"- 243 [Legacy max](legacy243.md)\n" +
+				"- 2606100533 [Timestamp id](ts.md)\n<?/catalog?>\n",
+			fs: fstest.MapFS{
+				"legacy52.md":  {Data: []byte("---\nid: 52\ntitle: Fifty-two\n---\n")},
+				"legacy243.md": {Data: []byte("---\nid: 243\ntitle: Legacy max\n---\n")},
+				"ts.md":        {Data: []byte("---\nid: 2606100533\ntitle: Timestamp id\n---\n")},
+			},
+		},
 	})
 }
 
@@ -2155,6 +2171,27 @@ func TestSortEntries_NumericWithIntegerStrings(t *testing.T) {
 	sortEntries(entries, "id", false, true)
 	if entries[0].fields["filename"] != "p52.md" {
 		t.Errorf("expected p52.md first, got %v", entries[0].fields["filename"])
+	}
+}
+
+func TestSortEntries_NumericAboveInt32Max(t *testing.T) {
+	// 2606100533 exceeds the 32-bit int max; parseSortInt must parse
+	// with an explicit 64-bit size so 32-bit platforms keep numeric
+	// order instead of falling back to string compare.
+	entries := []fileEntry{
+		{fields: map[string]any{"filename": "ts.md", "id": "2606100533"}},
+		{fields: map[string]any{"filename": "p243.md", "id": 243}},
+		{fields: map[string]any{"filename": "p52.md", "id": 52}},
+	}
+	sortEntries(entries, "id", false, true)
+	want := []string{"p52.md", "p243.md", "ts.md"}
+	for i, w := range want {
+		if got := entries[i].fields["filename"]; got != w {
+			t.Errorf("entries[%d]: want filename %s, got %v", i, w, got)
+		}
+	}
+	if v, err := parseSortInt(entries[2], "id"); err != nil || v != 2606100533 {
+		t.Errorf("parseSortInt: want 2606100533, got %d err %v", v, err)
 	}
 }
 

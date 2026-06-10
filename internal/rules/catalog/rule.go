@@ -1046,9 +1046,12 @@ func allParseAsInt(entries []fileEntry, key string) bool {
 }
 
 // parseSortInt extracts the entry's sort key as a trimmed string
-// and parses it via strconv.Atoi.
-func parseSortInt(entry fileEntry, key string) (int, error) {
-	return strconv.Atoi(strings.TrimSpace(sortValue(entry, key)))
+// and parses it as a 64-bit integer. The explicit bit size keeps
+// values above the 32-bit int max (10-digit timestamp plan ids)
+// sorting numerically on 32-bit platforms, where strconv.Atoi
+// would fail and demote the whole sort to string compare.
+func parseSortInt(entry fileEntry, key string) (int64, error) {
+	return strconv.ParseInt(strings.TrimSpace(sortValue(entry, key)), 10, 64)
 }
 
 // sortValue returns the sort value for a file entry given a key.

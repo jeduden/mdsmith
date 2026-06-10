@@ -1,7 +1,7 @@
 ---
 id: 2606100533
 title: 'Coordination-free plan ids from UTC creation timestamps'
-status: "🔲"
+status: "🔳"
 model: sonnet
 summary: >-
   Allocate plan ids as the minute-precision UTC creation
@@ -124,7 +124,7 @@ the arch-fix twins.
 
 ## Tasks
 
-1. [ ] Red/green: a `numeric:id` catalog sort test in
+1. [x] Red/green: a `numeric:id` catalog sort test in
    [`rule_test.go`](../internal/rules/catalog/rule_test.go)
    with an id above 2,147,483,647; make it pass by moving
    `parseSortInt` to `strconv.ParseInt(value, 10, 64)`.
@@ -155,7 +155,7 @@ the arch-fix twins.
   nothing.
 - [ ] Every `depends-on:` entry equals exactly one plan
   file's frontmatter id.
-- [ ] A catalog unit test sorts an id above 2,147,483,647
+- [x] A catalog unit test sorts an id above 2,147,483,647
   under `sort: numeric:id`.
 - [ ] The [proto.md](proto.md) comment block names
   `date -u +%y%m%d%H%M` as the id source.
