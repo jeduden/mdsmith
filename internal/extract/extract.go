@@ -41,11 +41,37 @@ func Extract(
 	} else {
 		root["frontmatter"] = map[string]any{}
 	}
+	// When the composed schema roots at H2, the document H1 is
+	// outside every schema scope. Emit it under the reserved
+	// "title" key beside `frontmatter`. No H1 → key omitted
+	// (consistent with optional sections: omitted, not null).
+	// First H1 wins when a document carries more than one.
+	// Collision with a sibling scope that resolves to "title"
+	// is reported through the existing setKey machinery.
+	if sch.EffectiveRootLevel() == 2 {
+		if h1Text := p.firstH1PlainText(); h1Text != "" {
+			p.setKey(root, "title", h1Text)
+		}
+	}
 	p.projectChildren(m.Root.Children, root)
 	if len(p.diags) > 0 {
 		return nil, p.diags
 	}
 	return root, nil
+}
+
+// firstH1PlainText returns the plain text of the first H1 heading
+// found in the document, or an empty string if there is none.
+// It uses ExtractPlainText (the same renderer the heading matcher
+// and content projector use) so emphasis and code-span markers
+// are stripped and link text is kept.
+func (p *projector) firstH1PlainText() string {
+	for _, dh := range schema.ExtractDocHeadings(p.f) {
+		if dh.Level == 1 {
+			return strings.TrimSpace(dh.Text)
+		}
+	}
+	return ""
 }
 
 type projector struct {

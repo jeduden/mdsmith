@@ -69,6 +69,7 @@ Bake a cake.
 func expectedRecipeTree() map[string]any {
 	return map[string]any{
 		"frontmatter": map[string]any{},
+		"title":       "Cake",
 		"goal":        map[string]any{},
 		"steps": map[string]any{
 			"step": []any{
@@ -212,6 +213,7 @@ func TestE2E_Extract_InlineJSON(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(stdout), &got))
 	want := map[string]any{
 		"frontmatter": map[string]any{},
+		"title":       "Hero",
 		"headline": map[string]any{
 			"inline": []any{
 				map[string]any{"span": "text", "value": "Mark"},
@@ -295,6 +297,7 @@ func TestE2E_Extract_InlineSoftBreak(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(stdout), &got))
 	want := map[string]any{
 		"frontmatter": map[string]any{},
+		"title":       "Hero",
 		"headline": map[string]any{
 			"inline": []any{
 				map[string]any{"span": "text", "value": "first"},

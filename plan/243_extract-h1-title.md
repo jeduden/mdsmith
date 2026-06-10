@@ -1,7 +1,7 @@
 ---
 id: 243
 title: "`mdsmith extract` projects the document H1 as `title`"
-status: "🔲"
+status: "✅"
 summary: >-
   When the composed schema roots at H2, extract emits the
   document H1's rendered plain text under a reserved top-level
@@ -59,17 +59,17 @@ title?>` splices it.
 
 ## Tasks
 
-1. Emit the reserved `title` key in
+1. [x] Emit the reserved `title` key in
    [`internal/extract`](../internal/extract) when the
    composed schema's root level is 2 and the document has an
    H1; omit it otherwise. Unit-test: present, absent,
    emphasis-bearing, and multi-H1 documents.
-2. Route the key through the existing collision check; test a
+2. [x] Route the key through the existing collision check; test a
    scope bound to `title` reports a collision naming both
    sources.
-3. Verify `<?include extract: title?>` splices the H1 text
+3. [x] Verify `<?include extract: title?>` splices the H1 text
    (the include path walks the same projection).
-4. Update the
+4. [x] Update the
    [extract reference](../docs/reference/cli/extract.md)
    default-projection section and the
    [extract guide](../docs/guides/extract-markdown-as-data.md):
@@ -80,16 +80,16 @@ title?>` splices it.
 
 ## Acceptance Criteria
 
-- [ ] `mdsmith extract` on an H2-rooted kind emits
+- [x] `mdsmith extract` on an H2-rooted kind emits
   `"title": "<H1 plain text>"` at the top level; the key is
   omitted when the document has no H1.
-- [ ] A sibling projection that resolves to `title` is
+- [x] A sibling projection that resolves to `title` is
   reported as a collision before any data is emitted.
-- [ ] H1-rooted (proto.md) schemas produce unchanged output.
-- [ ] `<?include extract: title?>` splices the H1 text.
-- [ ] Reference and guide updated with verified outputs.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] H1-rooted (proto.md) schemas produce unchanged output.
+- [x] `<?include extract: title?>` splices the H1 text.
+- [x] Reference and guide updated with verified outputs.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
 
 ## Out of scope
 

@@ -33,6 +33,12 @@ with the validated match and mirrors the hierarchy:
 - The root holds a `frontmatter` object (the decoded
   front matter, unchanged) and the projected sections
   beside it at the same level.
+- When the schema roots at H2 (all inline schemas do),
+  the document H1's plain text is emitted under the
+  reserved `title` key beside `frontmatter`. No H1 in
+  the document omits the key. A sibling scope whose
+  projection key resolves to `title` is reported as a
+  collision; rename it with `bind:`.
 - A literal heading (`## Goal`) becomes an object keyed
   by the slugified heading (`goal`).
 - A repeating section (`## Step {n}` with a `repeat:`
@@ -48,6 +54,9 @@ with the validated match and mirrors the hierarchy:
 - Wildcard slots (`regex: '.+'`) and unlisted or closed
   headings are skipped: the output is a faithful image
   of the *declared* schema only.
+- H1-rooted schemas (file-based proto.md schemas where
+  the top heading is H1) do not emit the reserved
+  `title` key; the H1 is already a scope in `Sections`.
 
 Content entries project under default keys:
 

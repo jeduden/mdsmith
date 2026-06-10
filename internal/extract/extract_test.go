@@ -329,3 +329,78 @@ func TestExtract_TableProjectionRecordsDuplicateHeaderErrors(t *testing.T) {
 	_, diags := run(t, body, sch, nil)
 	require.NotEmpty(t, diags, "duplicate headers must error under records projection")
 }
+
+// --- Plan 243: H1 title projection ---
+
+// When the schema roots at H2 and the document has an H1, Extract
+// emits the H1's plain text under a reserved "title" key.
+func TestExtract_H1TitlePresent(t *testing.T) {
+	sch := &schema.Schema{RootLevel: 2, Sections: []schema.Scope{litScope("Goal")}}
+	got, diags := run(t, "# Product copy\n\n## Goal\n\nbody\n", sch, nil)
+	require.Empty(t, diags)
+	root := got.(map[string]any)
+	assert.Equal(t, "Product copy", root["title"])
+}
+
+// When the schema roots at H2 but the document has no H1, the
+// "title" key is omitted entirely (consistent with optional
+// sections: omitted, not null).
+func TestExtract_H1TitleAbsent(t *testing.T) {
+	sch := &schema.Schema{RootLevel: 2, Sections: []schema.Scope{litScope("Goal")}}
+	got, diags := run(t, "## Goal\n\nbody\n", sch, nil)
+	require.Empty(t, diags)
+	root := got.(map[string]any)
+	assert.NotContains(t, root, "title")
+}
+
+// An emphasis-bearing H1 must project as plain text (emphasis
+// markers stripped, link text kept).
+func TestExtract_H1TitleEmphasis(t *testing.T) {
+	sch := &schema.Schema{RootLevel: 2, Sections: []schema.Scope{litScope("Goal")}}
+	got, diags := run(t, "# Mark*down*, smithed\n\n## Goal\n\nbody\n", sch, nil)
+	require.Empty(t, diags)
+	root := got.(map[string]any)
+	assert.Equal(t, "Markdown, smithed", root["title"])
+}
+
+// When a document carries more than one H1, the first one wins.
+func TestExtract_H1TitleFirstWins(t *testing.T) {
+	sch := &schema.Schema{RootLevel: 2, Sections: []schema.Scope{litScope("Goal")}}
+	got, diags := run(t,
+		"# First title\n\n## Goal\n\nbody\n\n# Second title\n\n",
+		sch, nil)
+	require.Empty(t, diags)
+	root := got.(map[string]any)
+	assert.Equal(t, "First title", root["title"])
+}
+
+// When the schema roots at H1 (file-based proto.md schema),
+// the H1 is already a scope in Sections; no reserved "title"
+// key should be added.
+func TestExtract_H1RootedSchemaUnchanged(t *testing.T) {
+	h1scope := litScope("Product copy")
+	h1scope.Sections = []schema.Scope{litScope("Goal")}
+	sch := &schema.Schema{RootLevel: 1, Sections: []schema.Scope{h1scope}}
+	got, diags := run(t, "# Product copy\n\n## Goal\n\nbody\n", sch, nil)
+	require.Empty(t, diags)
+	root := got.(map[string]any)
+	// H1-rooted: the H1 scope is projected under its slugified key,
+	// not under a reserved "title" key.
+	assert.NotContains(t, root, "title")
+	assert.Contains(t, root, "product-copy")
+}
+
+// A sibling scope whose key resolves to "title" (via bind: or
+// slugification) is a collision with the reserved H1 title key.
+func TestExtract_H1TitleCollision(t *testing.T) {
+	titleKey := "title"
+	titleScope := schema.Scope{
+		Heading: "title",
+		Matcher: &schema.Matcher{Regex: "title"},
+		Bind:    &titleKey,
+	}
+	sch := &schema.Schema{RootLevel: 2, Sections: []schema.Scope{titleScope}}
+	_, diags := run(t, "# My doc\n\n## title\n\nbody\n", sch, nil)
+	require.NotEmpty(t, diags)
+	assert.Contains(t, diags[0].Message, "title")
+}
