@@ -468,6 +468,9 @@ func pathCorpus() []PathCase {
 		{Name: "multiline then dot ident", Expr: "\"\"\"\na\n\"\"\".b"},
 		{Name: "multiline escape decoded", Expr: "\"\"\"\na\\tb\n\"\"\""},
 		{Name: "multiline surrogate pair", Expr: "\"\"\"\n\\uD83D\\uDE00\n\"\"\""},
+		{Name: "multiline big-U escape", Expr: "\"\"\"\n\\U0001F600\n\"\"\""},
+		{Name: "multiline mixed escapes", Expr: "\"\"\"\na\\nb\\\"c\\\\d\\/e\\tf\n\"\"\""},
+		{Name: "multiline control escapes", Expr: "\"\"\"\na\\bb\\fc\\rd\\ve\\ag\n\"\"\""},
 		{Name: "multiline raw escape decoded", Expr: "#\"\"\"\n  a\\#tb\n  \"\"\"#"},
 		{Name: "multiline raw literal backslash-n", Expr: "#\"\"\"\n  a\\nb\n  \"\"\"#"},
 		{Name: "multiline CRLF endings", Expr: "\"\"\"\r\n  a\r\n  \"\"\""},
@@ -495,6 +498,30 @@ func pathCorpus() []PathCase {
 		{Name: "multiline CRLF blank line", Expr: "\"\"\"\r\n\r\n  b\r\n  \"\"\""},
 		{Name: "multiline bare CR in content", Expr: "\"\"\"\r\n  a\rb\r\n  \"\"\""},
 		{Name: "multiline CRLF blank line mid", Expr: "\"\"\"\n  a\r\n\r\n  b\n  \"\"\""},
+		// CR-family: CUE makes the opener-newline and escape decisions on the
+		// RAW token (scanner.stripCR runs only AFTER scanning), so a CR run at
+		// the opener, a CR between the backslash and the escape selector, and a
+		// CR among \u hex digits are scan errors CUE rejects — NOT stripped-away
+		// no-ops. The benign '\'+CR+'#' at level 1 stays accepted: the raw '\' is
+		// a literal backslash (CR is not the '#' introducer), and after CR strips
+		// the body is `\#n`, the level-1 newline escape (round-5 probe).
+		{Name: "multiline CR run at opener rejected", Expr: "\"\"\"\r\r\n0\n\"\"\""},
+		{Name: "multiline CR between backslash and selector rejected", Expr: "\"\"\"\n\\\rn\n\"\"\""},
+		{Name: "multiline CR inside unicode hex digits rejected", Expr: "\"\"\"\n\\u00\r41\n\"\"\""},
+		{Name: "multiline truncated unicode escape at close rejected", Expr: "\"\"\"\na\\u0\"\"\""},
+		{Name: "multiline raw backslash-CR before hash introducer", Expr: "#\"\"\"\n  \\\r#n\n  \"\"\"#"},
+		// Escaped-newline line continuation. A raw '\'+CR is a literal backslash
+		// the scanner accepts; stripCR then fuses '\#'+newline into
+		// literal.Unquote's escapedNewline, eliding the newline. A clean
+		// '\#'+newline (no CR) is rejected by the scanner first, so this path is
+		// reachable only via the CR fusion (round-5 fuzz find). An escaped FINAL
+		// newline is errEscapedLastNewline → empty → rejected.
+		{Name: "multiline escaped newline joins lines", Expr: "#\"\"\"\nx\\\r#\ny\\\r#\nz\n\"\"\"#"},
+		{Name: "multiline escaped newline at start", Expr: "#\"\"\"\n\\\r#\n0\n\"\"\"#"},
+		{Name: "multiline escaped newline keeps non-indent", Expr: "#\"\"\"\n\\\r#\n  \\\r#\n0\n\"\"\"#"},
+		{Name: "multiline escaped last newline via CR rejected", Expr: "#\"\"\"\na\\\r#\n\"\"\"#"},
+		{Name: "multiline clean hash-escaped newline rejected", Expr: "#\"\"\"\n\\#\n0\n\"\"\"#"},
+		{Name: "multiline escaped newline bad next indent rejected", Expr: "#\"\"\"\n  a\\\r#\nx\n  \"\"\"#"},
 		{Name: "multiline raw truncated escape rejected", Expr: "#\"\"\"\na\\#"},
 		{Name: "raw-string trailing escape introducer rejected", Expr: "#\"a\\#"},
 		// Raw-string surrogate pairing. At hash level N BOTH halves must carry

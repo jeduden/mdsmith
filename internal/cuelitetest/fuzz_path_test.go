@@ -55,6 +55,21 @@ func FuzzParsePath(f *testing.F) {
 		// lines, bare CRs, and blank first lines.
 		"\"\"\"\n\n  b\n  \"\"\"", "\"\"\"\r\n\r\n  b\r\n  \"\"\"",
 		"\"\"\"\r\n  a\rb\r\n  \"\"\"", "\"\"\"\n  a\r\n\r\n  b\n  \"\"\"",
+		// CR-family (round 5): the opener-newline and escape decisions run on the
+		// RAW token (stripCR runs only after scanning), so a CR run at the opener,
+		// a CR between the backslash and the escape selector, and a CR among \u
+		// hex digits are scan errors CUE rejects; the '\'+CR+'#' level-1 case
+		// stays accepted (literal backslash, then `\#n` after CR strips).
+		"\"\"\"\r\r\n0\n\"\"\"", "\"\"\"\n\\\rn\n\"\"\"", "\"\"\"\n\\u00\r41\n\"\"\"",
+		"#\"\"\"\n  \\\r#n\n  \"\"\"#",
+		"\"\"\"\n\\U0001F600\n\"\"\"", "\"\"\"\na\\u0\"\"\"",
+		"\"\"\"\na\\nb\\\"c\\\\d\\/e\\tf\n\"\"\"", "\"\"\"\na\\bb\\fc\\rd\\ve\\ag\n\"\"\"",
+		// Escaped-newline line continuation reachable via the '\'+CR+'#' fusion
+		// (round-5 fuzz find): the scanner accepts the literal backslash, stripCR
+		// fuses '\#'+newline, and literal.Unquote elides the newline.
+		"#\"\"\"\n\\\r#\n0\n\"\"\"#", "#\"\"\"\nx\\\r#\ny\\\r#\nz\n\"\"\"#",
+		"#\"\"\"\n\\\r#\n  \\\r#\n0\n\"\"\"#", "#\"\"\"\na\\\r#\n\"\"\"#",
+		"#\"\"\"\n\\#\n0\n\"\"\"#", "#\"\"\"\n  a\\\r#\nx\n  \"\"\"#",
 	} {
 		f.Add(seed)
 	}

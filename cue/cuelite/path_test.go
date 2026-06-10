@@ -121,6 +121,11 @@ func TestParsePath_accepted(t *testing.T) {
 		{"multiline then dot ident", "\"\"\"\na\n\"\"\".b", []string{"a", "b"}},
 		{"multiline escape decoded", "\"\"\"\na\\tb\n\"\"\"", []string{"a\tb"}},
 		{"multiline surrogate pair", "\"\"\"\n\\uD83D\\uDE00\n\"\"\"", []string{"\U0001F600"}},
+		{"multiline big-U escape", "\"\"\"\n\\U0001F600\n\"\"\"", []string{"\U0001F600"}},
+		// Cover every non-unicode escape selector the raw escape scan accepts
+		// (\n \" \\ \/ \t and \b \f \r \v \a), each agreeing with cue.ParsePath.
+		{"multiline mixed escapes", "\"\"\"\na\\nb\\\"c\\\\d\\/e\\tf\n\"\"\"", []string{"a\nb\"c\\d/e\tf"}},
+		{"multiline control escapes", "\"\"\"\na\\bb\\fc\\rd\\ve\\ag\n\"\"\"", []string{"a\bb\fc\rd\ve\ag"}},
 		{"multiline raw escape decoded", "#\"\"\"\n  a\\#tb\n  \"\"\"#", []string{"a\tb"}},
 		{"multiline raw literal backslash-n", "#\"\"\"\n  a\\nb\n  \"\"\"#", []string{`a\nb`}},
 		{"multiline CRLF endings", "\"\"\"\r\n  a\r\n  \"\"\"", []string{"a"}},
@@ -136,6 +141,20 @@ func TestParsePath_accepted(t *testing.T) {
 		{"multiline CRLF blank line", "\"\"\"\r\n\r\n  b\r\n  \"\"\"", []string{"\nb"}},
 		{"multiline bare CR in content", "\"\"\"\r\n  a\rb\r\n  \"\"\"", []string{"ab"}},
 		{"multiline CRLF blank line mid", "\"\"\"\n  a\r\n\r\n  b\n  \"\"\"", []string{"a\n\nb"}},
+		// The opener-newline and escape decisions run on the RAW (CR-bearing)
+		// token, but value assembly is CR-stripped: at hash level 1 a '\'+CR is a
+		// literal backslash (CR not the '#' introducer), so the raw scan accepts;
+		// after CR is stripped the body is `\#n`, the level-1 escape for a real
+		// newline. Both arms agree (round-5 CR-family probe).
+		{"multiline raw backslash-CR before hash introducer", "#\"\"\"\n  \\\r#n\n  \"\"\"#", []string{"\n"}},
+		// Escaped-newline line continuation. CUE's scanner accepts a raw '\'+CR
+		// as a literal backslash, and stripCR then fuses '\#' with the following
+		// newline into literal.Unquote's escapedNewline — eliding the newline and
+		// joining lines. (A clean '\#'+newline is rejected by the scanner first,
+		// so this path is reachable only via the CR fusion — round-5 fuzz find.)
+		{"multiline escaped newline joins lines", "#\"\"\"\nx\\\r#\ny\\\r#\nz\n\"\"\"#", []string{"xyz"}},
+		{"multiline escaped newline at start", "#\"\"\"\n\\\r#\n0\n\"\"\"#", []string{"0"}},
+		{"multiline escaped newline keeps non-indent", "#\"\"\"\n\\\r#\n  \\\r#\n0\n\"\"\"#", []string{"  0"}},
 		// Mirror rows that the corpus pins but the unit table had not (item 5).
 		{"many-hash raw-string label", `####"x"####`, []string{"x"}},
 		{"raw-string escaped quote", "#\"q\\#\"x\"#", []string{`q"x`}},
@@ -256,6 +275,29 @@ func TestParsePath_rejected(t *testing.T) {
 		{"multiline later line bad indent", "\"\"\"\n  a\n b\n  \"\"\""},
 		{"multiline raw truncated escape", "#\"\"\"\na\\#"},
 		{"raw-string trailing escape introducer", "#\"a\\#"},
+		// CR-family divergences (round 5): CUE makes the opener-newline and
+		// escape decisions on the RAW token (scanner.stripCR runs only AFTER
+		// scanning), so a CR run at the opener, a CR between the backslash and
+		// the escape selector, or a CR among \u hex digits is a scan error CUE
+		// rejects — not a stripped-away no-op. The in-house parser had accepted
+		// all three because it stripped CR before lexing.
+		{"multiline CR run at opener", "\"\"\"\r\r\n0\n\"\"\""},
+		{"multiline CR between backslash and selector", "\"\"\"\n\\\rn\n\"\"\""},
+		{"multiline CR inside unicode hex digits", "\"\"\"\n\\u00\r41\n\"\"\""},
+		// A \u/\U whose fixed hex run reaches the closing delimiter mid-run is a
+		// truncated escape CUE rejects (it reads the close '"' as an illegal hex
+		// digit); the in-house raw escape scan rejects it as a short hex run.
+		{"multiline truncated unicode escape at close", "\"\"\"\na\\u0\"\"\""},
+		// An escaped FINAL newline (the line continuation lands right before the
+		// close) is CUE's errEscapedLastNewline → empty Unquoted() → rejected.
+		{"multiline escaped last newline via CR", "#\"\"\"\na\\\r#\n\"\"\"#"},
+		// A clean '\#'+newline (no CR fusion) is rejected by CUE's SCANNER as an
+		// unknown escape before literal.Unquote runs; the raw escape scan rejects
+		// it the same way.
+		{"multiline clean hash-escaped newline", "#\"\"\"\n\\#\n0\n\"\"\"#"},
+		// An escaped newline followed by a line that does NOT carry the indent
+		// prefix is CUE's skipWhitespaceAfterNewline error → empty → rejected.
+		{"multiline escaped newline bad next indent", "#\"\"\"\n  a\\\r#\nx\n  \"\"\"#"},
 		// Mirror rows that the corpus pins but the unit table had not (item 5).
 		{"block comment separator", "a/*c*/.b"},
 		{"vertical tab separator", "a\v.b"},
