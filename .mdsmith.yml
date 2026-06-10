@@ -46,6 +46,11 @@ rules:
     include: []
     exclude: []
     strict: true
+  # Plan ids must be workspace-unique (plan/2606100534).
+  unique-frontmatter:
+    field: id
+    include: ["plan/*.md"]
+    exclude: ["plan/proto.md"]
   token-budget:
     max: 8000
     mode: heuristic

@@ -1,7 +1,7 @@
 ---
 id: 2606100534
 title: 'Workspace-unique front-matter fields (unique-frontmatter rule)'
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   New rule MDS069: within configured include/exclude globs,
@@ -75,12 +75,13 @@ Example: with `plan/a.md` and `plan/b.md` both carrying
 front-matter "id": value 7 already used by plan/a.md
 ```
 
-The value-to-first-file index builds once per run from
-the in-scope files' front matter. It rides the existing
-`RunCache` front-matter slot — the same caching the
-catalog rule uses. The catalog's wrapper around that
-slot is package-private, so this rule adds its own thin
-wrapper.
+The value-to-first-file index builds once per run, in a
+dedicated `RunCache` slot (`UniqueFieldIndex`). The slot
+is keyed by rule scope rather than path: an edit to any
+file can move a value's first holder, so `Invalidate`
+drops the slot wholesale and the next pass rebuilds.
+Hosts without a `RunCache` fall back to the per-File
+memo.
 
 ### Allocation budget
 
@@ -114,31 +115,31 @@ dogfooding: unique ids or titles across any kind.
 
 ## Tasks
 
-1. [ ] Red/green unit tests in `rule_test.go`, then the
+1. [x] Red/green unit tests in `rule_test.go`, then the
    rule: registration, settings parsing, the run-scoped
    index, and the diagnostic on the later file.
-2. [ ] The configured-path alloc test described above;
+2. [x] The configured-path alloc test described above;
    keep `Check` within ≤ 10 allocs/op on the steady
    state.
-3. [ ] Fixtures under
+3. [x] Fixtures under
    `internal/rules/MDS069-unique-frontmatter/` (good/bad
    with expected diagnostics) plus the rule README on the
    rule-readme schema.
-4. [ ] With consent, add the plan-id block to
+4. [x] With consent, add the plan-id block to
    [.mdsmith.yml](../.mdsmith.yml) and verify
    `mdsmith check .` passes on the renumbered tree.
 
 ## Acceptance Criteria
 
-- [ ] A duplicated plan id added locally makes
+- [x] A duplicated plan id added locally makes
   `mdsmith check .` fail; the diagnostic lands on the
   later file in path order and its message names the
   field, the value, and the earlier file.
-- [ ] The bad fixture yields exactly one diagnostic per
+- [x] The bad fixture yields exactly one diagnostic per
   extra file sharing a value; the good fixture is clean.
-- [ ] A file missing the configured field, or outside the
+- [x] A file missing the configured field, or outside the
   include/exclude scope, is never flagged.
-- [ ] The configured-path alloc test passes at ≤ 10
+- [x] The configured-path alloc test passes at ≤ 10
   allocs/op; the repo-wide budget gate stays green.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

@@ -1,7 +1,7 @@
 ---
 id: 2606100533
 title: 'Coordination-free plan ids from UTC creation timestamps'
-status: "🔳"
+status: "✅"
 model: sonnet
 summary: >-
   Allocate plan ids as the minute-precision UTC creation
@@ -225,5 +225,5 @@ scope. pick-plan already treats unknown ids as unmet.
   for live duplicate ids.
 - [x] audit-checklist.md no longer says "one above the
   highest existing prefix".
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
