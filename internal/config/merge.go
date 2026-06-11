@@ -145,6 +145,7 @@ func copyBuildConfig(b BuildConfig) BuildConfig {
 				Required: copyStrings(r.Params.Required),
 				Optional: copyStrings(r.Params.Optional),
 			},
+			DefaultInputs: copyStrings(r.DefaultInputs),
 		}
 	}
 	return BuildConfig{Recipes: recipes}

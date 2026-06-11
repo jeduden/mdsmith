@@ -244,6 +244,111 @@ func TestValidateBuildConfig_OptionalParam_Allowed(t *testing.T) {
 	assert.NoError(t, ValidateBuildConfig(cfg))
 }
 
+// --- default-inputs ---
+
+func TestLoad_RecipeDefaultInputs(t *testing.T) {
+	yml := []byte("build:\n  recipes:\n    vhs:\n      command: vhs {tape}\n" +
+		"      params:\n        required: [tape]\n      default-inputs: [\"{tape}\"]\n")
+	cfg, err := loadFromBytes(yml, "", false)
+	require.NoError(t, err)
+	require.Contains(t, cfg.Build.Recipes, "vhs")
+	assert.Equal(t, []string{"{tape}"}, cfg.Build.Recipes["vhs"].DefaultInputs)
+}
+
+func TestValidateBuildConfig_DefaultInputsParamToken_Allowed(t *testing.T) {
+	cfg := &Config{
+		Build: BuildConfig{
+			Recipes: map[string]RecipeCfg{
+				"vhs": {
+					Command:       "vhs {tape}",
+					Params:        ParamCfg{Required: []string{"tape"}},
+					DefaultInputs: []string{"{tape}"},
+				},
+			},
+		},
+	}
+	assert.NoError(t, ValidateBuildConfig(cfg))
+}
+
+func TestValidateBuildConfig_DefaultInputsLiteralPath_Allowed(t *testing.T) {
+	cfg := &Config{
+		Build: BuildConfig{
+			Recipes: map[string]RecipeCfg{
+				"x": {
+					Command:       "tool {outputs}",
+					DefaultInputs: []string{"assets/header.css"},
+				},
+			},
+		},
+	}
+	assert.NoError(t, ValidateBuildConfig(cfg))
+}
+
+func TestValidateBuildConfig_DefaultInputsUndeclaredParam_Rejected(t *testing.T) {
+	cfg := &Config{
+		Build: BuildConfig{
+			Recipes: map[string]RecipeCfg{
+				"x": {
+					Command:       "tool {outputs}",
+					DefaultInputs: []string{"{missing}"},
+				},
+			},
+		},
+	}
+	err := ValidateBuildConfig(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "default-inputs")
+	assert.Contains(t, err.Error(), "missing")
+}
+
+func TestValidateBuildConfig_DefaultInputsReservedParam_Rejected(t *testing.T) {
+	cfg := &Config{
+		Build: BuildConfig{
+			Recipes: map[string]RecipeCfg{
+				"x": {
+					Command:       "tool {outputs}",
+					DefaultInputs: []string{"{inputs}"},
+				},
+			},
+		},
+	}
+	err := ValidateBuildConfig(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "default-inputs")
+}
+
+func TestValidateBuildConfig_DefaultInputsAbsolutePath_Rejected(t *testing.T) {
+	cfg := &Config{
+		Build: BuildConfig{
+			Recipes: map[string]RecipeCfg{
+				"x": {
+					Command:       "tool {outputs}",
+					DefaultInputs: []string{"/etc/passwd"},
+				},
+			},
+		},
+	}
+	err := ValidateBuildConfig(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "default-inputs")
+}
+
+func TestValidateBuildConfig_DefaultInputsParentEscape_Rejected(t *testing.T) {
+	cfg := &Config{
+		Build: BuildConfig{
+			Recipes: map[string]RecipeCfg{
+				"x": {
+					Command:       "tool {outputs}",
+					DefaultInputs: []string{"../secret.txt"},
+				},
+			},
+		},
+	}
+	err := ValidateBuildConfig(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "default-inputs")
+}
+
 // --- InjectBuildConfig ---
 
 func TestInjectBuildConfig_Nil(t *testing.T) {

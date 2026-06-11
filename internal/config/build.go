@@ -17,6 +17,13 @@ type RecipeCfg struct {
 	Command      string   `yaml:"command"`
 	BodyTemplate string   `yaml:"body-template,omitempty"`
 	Params       ParamCfg `yaml:"params,omitempty"`
+	// DefaultInputs declares implicit inputs folded into every directive's
+	// input set. Each entry is either a {param} token (a declared param
+	// name) or a literal relative path passing the path-shape rules. A
+	// param token expands to the root-joined absolute path at exec time;
+	// the value hashed into the ActionID is always the relative path the
+	// param supplies.
+	DefaultInputs []string `yaml:"default-inputs,omitempty"`
 }
 
 // ParamCfg names the params a recipe accepts.
@@ -72,7 +79,73 @@ func validateRecipe(name string, recipe RecipeCfg) error {
 	for _, p := range recipe.Params.Optional {
 		allowed[p] = true
 	}
-	return validateCommandPlaceholders(name, recipe.Command, allowed)
+	if err := validateCommandPlaceholders(name, recipe.Command, allowed); err != nil {
+		return err
+	}
+	return validateDefaultInputs(name, recipe.DefaultInputs, allowed)
+}
+
+// defaultInputTokenRe matches an entry that is exactly a single {name}
+// param token. A literal path entry never matches.
+var defaultInputTokenRe = regexp.MustCompile(`^\{([A-Za-z_][A-Za-z0-9_]*)\}$`)
+
+// validateDefaultInputs checks each default-inputs entry. A {param} token
+// must name a declared, non-reserved param; any other entry must be a
+// literal relative path passing the path-shape rules.
+func validateDefaultInputs(recipeName string, entries []string, allowed map[string]bool) error {
+	for _, entry := range entries {
+		if m := defaultInputTokenRe.FindStringSubmatch(entry); m != nil {
+			param := m[1]
+			if reservedParams[param] || collectivePlaceholders[param] {
+				return fmt.Errorf(
+					"build.recipes.%s: default-inputs uses reserved token {%s}",
+					recipeName, param,
+				)
+			}
+			if !allowed[param] {
+				return fmt.Errorf(
+					"build.recipes.%s: default-inputs references undeclared param {%s}",
+					recipeName, param,
+				)
+			}
+			continue
+		}
+		if reason := defaultInputPathShape(entry); reason != "" {
+			return fmt.Errorf(
+				"build.recipes.%s: default-inputs entry %q %s",
+				recipeName, entry, reason,
+			)
+		}
+	}
+	return nil
+}
+
+// defaultInputPathShape returns "" when entry is an acceptable literal
+// relative path, or a short reason phrase otherwise. The rules mirror the
+// directive path-shape allowlist: no absolute paths, no NUL/newline, no
+// backslashes, no ".." escape.
+func defaultInputPathShape(entry string) string {
+	if strings.TrimSpace(entry) == "" {
+		return "must not be empty"
+	}
+	if entry != strings.TrimSpace(entry) {
+		return "must not have leading or trailing whitespace"
+	}
+	if strings.ContainsAny(entry, "\x00\n\r") {
+		return "must not contain NUL, newline, or carriage return"
+	}
+	if strings.Contains(entry, `\`) {
+		return "must use forward-slash separators only"
+	}
+	if strings.HasPrefix(entry, "/") || strings.HasPrefix(entry, "~") {
+		return "must be a relative path"
+	}
+	cleaned := strings.TrimRight(entry, "/")
+	if cleaned == ".." || strings.HasPrefix(cleaned, "../") ||
+		strings.Contains(cleaned, "/../") || strings.HasSuffix(cleaned, "/..") {
+		return `must not contain ".." path components`
+	}
+	return ""
 }
 
 func validateDeclaredParams(recipeName string, params ParamCfg) error {
@@ -198,6 +271,13 @@ func serializeRecipes(recipes map[string]RecipeCfg) map[string]any {
 		}
 		if len(params) > 0 {
 			m["params"] = params
+		}
+		if len(r.DefaultInputs) > 0 {
+			s := make([]any, len(r.DefaultInputs))
+			for i, v := range r.DefaultInputs {
+				s[i] = v
+			}
+			m["default-inputs"] = s
 		}
 		out[name] = m
 	}
