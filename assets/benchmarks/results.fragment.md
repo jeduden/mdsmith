@@ -6,26 +6,26 @@ the harness (run.sh) and `mdsmith fix` to refresh. -->
 mdsmith-only rules so the work class matches the markdownlint
 tools (see `bench-parity.mdsmith.yml`).
 
-**Repo corpus — 755 Markdown files** (median wall time, lower is
+**Repo corpus — 757 Markdown files** (median wall time, lower is
 better; `vs mado` is the median ratio to the fastest tool):
 
 | Tool              | Median  | Min     | vs mado |
 | ----------------- | ------- | ------- | ------- |
-| mado              | 65 ms   | 61 ms   | 1.0x    |
-| mdsmith-parity    | 115 ms  | 113 ms  | 1.8x    |
-| rumdl             | 320 ms  | 312 ms  | 4.9x    |
-| mdsmith           | 483 ms  | 471 ms  | 7.4x    |
-| panache           | 684 ms  | 585 ms  | 11x     |
-| markdownlint-cli2 | 4550 ms | 4493 ms | 70x     |
+| mado              | 64 ms   | 61 ms   | 1.0x    |
+| mdsmith-parity    | 113 ms  | 111 ms  | 1.8x    |
+| rumdl             | 321 ms  | 312 ms  | 5.0x    |
+| mdsmith           | 499 ms  | 481 ms  | 7.8x    |
+| panache           | 592 ms  | 590 ms  | 9.2x    |
+| markdownlint-cli2 | 4652 ms | 4548 ms | 73x     |
 
 **Neutral corpus — 234 files** (Rust Book + Rust Reference,
 longer third-party prose):
 
 | Tool              | Median  | Min     | vs mado |
 | ----------------- | ------- | ------- | ------- |
-| mado              | 46 ms   | 45 ms   | 1.0x    |
-| mdsmith-parity    | 127 ms  | 126 ms  | 2.8x    |
-| rumdl             | 196 ms  | 192 ms  | 4.3x    |
-| mdsmith           | 243 ms  | 238 ms  | 5.3x    |
-| panache           | 539 ms  | 525 ms  | 12x     |
-| markdownlint-cli2 | 3094 ms | 3028 ms | 67x     |
+| mado              | 45 ms   | 45 ms   | 1.0x    |
+| mdsmith-parity    | 126 ms  | 125 ms  | 2.8x    |
+| rumdl             | 195 ms  | 193 ms  | 4.3x    |
+| mdsmith           | 248 ms  | 244 ms  | 5.4x    |
+| panache           | 560 ms  | 524 ms  | 12x     |
+| markdownlint-cli2 | 3035 ms | 2957 ms | 67x     |
