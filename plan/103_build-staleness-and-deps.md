@@ -1,7 +1,7 @@
 ---
 id: 103
 title: Build target staleness and dependency tracking
-status: "🔳"
+status: "✅"
 summary: >-
   Make the `mdsmith fix` build pass
   Make/Bazel-style. Hash `(recipe spec ‖ sorted

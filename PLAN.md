@@ -37,7 +37,7 @@ footer: |
 | 100        | ✅     | sonnet | [build config block and MDS040 recipe-safety rule](plan/100_build-config-and-mds040.md)                                                 |
 | 101        | ✅     | sonnet | [build directive and MDS039 lint rule](plan/101_build-directive-mds039.md)                                                              |
 | 102        | ✅     | opus   | [Multi-output `<?build?>` directive](plan/102_build-subcommand.md)                                                                      |
-| 103        | 🔳     | opus   | [Build target staleness and dependency tracking](plan/103_build-staleness-and-deps.md)                                                  |
+| 103        | ✅     | opus   | [Build target staleness and dependency tracking](plan/103_build-staleness-and-deps.md)                                                  |
 | 104        | 🔲     | sonnet | [Build lifecycle hooks (before/after)](plan/104_build-lifecycle-hooks.md)                                                               |
 | 105        | ✅     | sonnet | [No inline HTML rule](plan/105_no-inline-html.md)                                                                                       |
 | 106        | ✅     | sonnet | [Emphasis style rule](plan/106_emphasis-style.md)                                                                                       |
