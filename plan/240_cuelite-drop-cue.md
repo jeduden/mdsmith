@@ -111,23 +111,11 @@ above the `sonnet` band.
 - [x] Standard-Go WASM artifact ≤ 18 MB — measured ~11.2 MB raw /
       ~2.8 MB gzipped; `cmd/mdsmith-wasm/size_test.go` asserts the
       tightened ceilings (14 MiB raw / 4 MiB gzip).
-- [🔲] `tinygo build -target wasm ./cmd/mdsmith-wasm` succeeds and is
-      ≤ 8 MB. **UNMET.** Removing CUE and swapping the runcache
-      `sync.Map.CompareAndDelete` lever for a mutex-guarded map cleared
-      two earlier walls, but the build still FAILS on standard-library
-      functions tinygo's wasm target does not implement. Verified with
-      tinygo 0.39.0 (go 1.24.7) — the error inventory:
-      `internal/schema/index.go` `os.Chmod`; `internal/fix/fix.go`
-      `os.Chmod`; `internal/githooks/githooks.go` `os.Chmod`,
-      `os.SameFile`; plus `os.Symlink`/`filepath.EvalSymlinks` in
-      `internal/schema`, `internal/lsp`, and the cross-file rule
-      packages — all reached transitively from `pkg/mdsmith`. Making the
-      tinygo build succeed needs those calls build-tagged out of the
-      wasm graph (a multi-package change), scheduled as plan 247
-      ([247_tinygo-wasm-build.md](247_tinygo-wasm-build.md)).
-      `size_test.go`'s `TestTinyGoWASMArtifactSizeBudget` now records the
-      build failure and skips rather than faking a pass; the 8 MB budget
-      is unverified.
+- [x] `tinygo build -target wasm ./cmd/mdsmith-wasm` succeeds and is
+      ≤ 8 MB. The `os.Chmod`, `os.SameFile`, and
+      `os.Symlink`/`filepath.EvalSymlinks` calls are now behind
+      build-tagged seams (plan 247). `TestTinyGoWASMArtifactSizeBudget`
+      asserts the 8 MB ceiling; the `tinygo-wasm` CI job enforces it.
 - [x] `Capabilities()` is unchanged — `methods_test.go` /
       `smoke_test.go` assert the WASM proxy advertises the same
       capability set as the native session.

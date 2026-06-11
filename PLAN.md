@@ -181,6 +181,9 @@ footer: |
 | 2606101546 | 🔲     | opus   | [Builder execution wired into `mdsmith fix`](plan/2606101546_builder-execution-in-fix.md)                                               |
 | 2606101547 | 🔲     | opus   | [Build execution UX (stdout/stderr, debug, parallel)](plan/2606101547_build-execution-ux.md)                                            |
 | 2606101548 | 🔲     | opus   | [Build execution hardening](plan/2606101548_build-execution-hardening.md)                                                               |
-| 2606110517 | 🔲     | sonnet | [tinygo wasm build under the 8 MiB budget](plan/247_tinygo-wasm-build.md)                                                               |
+| 2606110517 | ✅     | sonnet | [tinygo wasm build under the 8 MiB budget](plan/247_tinygo-wasm-build.md)                                                               |
 | 2606110639 | ✅     |        | [Audience split for website-published docs](plan/2606110639_website-docs-audience-split.md)                                             |
+| 2606111048 | 🔲     |        | [Consolidate tinygo compat stubs into internal/oscompat](plan/2606111048_arch-fix-oscompat-consolidation.md)                            |
+| 2606111049 | 🔲     |        | [Harden WASM size test to match production build](plan/2606111049_wasm-size-test-hardening.md)                                          |
+| 2606111050 | 🔲     |        | [Guard schema.chmodFile with a mutex like fix.chmodFile](plan/2606111050_schema-chmodfile-mutex.md)                                     |
 <?/catalog?>

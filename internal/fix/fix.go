@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/bytelimit"
@@ -648,6 +649,10 @@ func (f *Fixer) effectiveWithCategories(
 	return config.ApplyCategories(effective, categories, func(name string) string { return m[name] }, explicit)
 }
 
+// chmodFileMu guards reads and writes of the chmodFile var so tests that
+// swap it can coexist with parallel tests that call atomicWriteFile.
+var chmodFileMu sync.Mutex
+
 // atomicWriteFile writes data to path using a temp-file-then-rename strategy
 // to reduce the risk of partial writes on crash. Directory fsync is omitted
 // for simplicity; full power-loss durability is not guaranteed.
@@ -686,7 +691,10 @@ func atomicWriteFile(path string, data []byte, mode os.FileMode) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := os.Chmod(tmpPath, mode); err != nil {
+	chmodFileMu.Lock()
+	fn := chmodFile
+	chmodFileMu.Unlock()
+	if err := fn(tmpPath, mode); err != nil {
 		return err
 	}
 	if err := os.Rename(tmpPath, path); err != nil {

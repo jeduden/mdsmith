@@ -157,7 +157,7 @@ func withinRoot(resolvedRoot, path string) bool {
 // and Clean carries the fallback.
 func resolveSymlinks(p string) string {
 	abs, _ := filepath.Abs(p)
-	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+	if resolved, err := evalSymlinks(abs); err == nil {
 		return resolved
 	}
 	return filepath.Clean(abs)

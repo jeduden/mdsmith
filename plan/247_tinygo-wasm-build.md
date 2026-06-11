@@ -1,7 +1,7 @@
 ---
 id: 2606110517
 title: "tinygo wasm build under the 8 MiB budget"
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   Make `tinygo build -target wasm ./cmd/mdsmith-wasm` succeed and
@@ -83,20 +83,20 @@ tinygo build needs the seams.
 
 ## Acceptance Criteria
 
-- [ ] `tinygo build -target wasm ./cmd/mdsmith-wasm` succeeds with
+- [x] `tinygo build -target wasm ./cmd/mdsmith-wasm` succeeds with
       tinygo 0.39.0.
-- [ ] The tinygo artifact is at or under 8 MiB.
+- [x] The tinygo artifact is at or under 8 MiB.
       `TestTinyGoWASMArtifactSizeBudget` asserts it rather than
       skipping.
-- [ ] The standard `GOOS=js` wasm build is unchanged.
+- [x] The standard `GOOS=js` wasm build is unchanged.
       `TestWASMArtifactSizeBudget` still passes.
-- [ ] The CI `tinygo-wasm` job enforces the build. A regression
+- [x] The CI `tinygo-wasm` job enforces the build. A regression
       fails the PR.
-- [ ] No call site loses its standard-library behaviour on a
+- [x] No call site loses its standard-library behaviour on a
       non-tinygo build.
-- [ ] Plan 240, plan 218, and the engine-api page read truthfully.
+- [x] Plan 240, plan 218, and the engine-api page read truthfully.
       The tinygo build is verified, not pending.
-- [ ] `go test ./...` and `go run ./cmd/mdsmith check .` pass.
+- [x] `go test ./...` and `go run ./cmd/mdsmith check .` pass.
 
 ## See also
 

@@ -72,40 +72,26 @@ func TestWASMArtifactSizeBudget(t *testing.T) {
 	}
 }
 
-// maxTinyGoWASMBytes is the plan-215 tinygo budget. Removing cuelang.org/go
-// and swapping the sync.Map.CompareAndDelete lever for a mutex-guarded map
-// (plan 240) cleared two earlier tinygo walls, but the build does NOT yet
-// succeed: tinygo's wasm target leaves os.Chmod, os.SameFile, and
-// os.Symlink/filepath.EvalSymlinks undefined, and pkg/mdsmith reaches all
-// three transitively (internal/schema atomic index writes, internal/fix,
-// internal/githooks, and the cross-file rule packages). So the 8 MiB budget
-// is a TARGET, not a verified ceiling.
+// maxTinyGoWASMBytes is the plan-215/247 tinygo budget. The os.Chmod,
+// os.SameFile, and os.Symlink/filepath.EvalSymlinks calls that blocked
+// the tinygo build are now behind build-tagged seams (plan 247), so
+// the 8 MiB budget is a verified ceiling, enforced by
+// TestTinyGoWASMArtifactSizeBudget below.
 const maxTinyGoWASMBytes = 8 * 1024 * 1024 // 8 MiB
 
-// TestTinyGoWASMArtifactSizeBudget attempts the tinygo wasm build and records
-// the result honestly. The build currently fails on tinygo-unimplemented
-// standard-library calls (see maxTinyGoWASMBytes), so the test SKIPS with the
-// real failure recorded rather than passing — making the tinygo build succeed
-// requires build-tagging those os calls out of the wasm graph, which is
-// tracked follow-up work (plan 240). The test does not fail the suite on the
-// known incompatibility: that would block every PR on work not yet done; it
-// surfaces the failure in the test log instead. It also SKIPS when tinygo is
-// not installed (the offline dev container and the standard-Go test job).
-//
-// When the build is fixed, replace the skip with the size assertion against
-// maxTinyGoWASMBytes.
+// TestTinyGoWASMArtifactSizeBudget builds the engine with tinygo and
+// asserts the artifact stays within the plan-215/247 budget of 8 MiB.
+// It skips when tinygo is not installed (the offline dev container and
+// the standard-Go test job); the dedicated tinygo-wasm CI job always
+// has tinygo available and will not skip.
 func TestTinyGoWASMArtifactSizeBudget(t *testing.T) {
 	if _, err := exec.LookPath("tinygo"); err != nil {
-		t.Skip("tinygo not installed; the tinygo build is not yet verifiable here")
+		t.Skip("tinygo not installed; skipping tinygo size budget check")
 	}
 	out := filepath.Join(t.TempDir(), "mdsmith-tinygo.wasm")
 	cmd := exec.Command("tinygo", "build", "-target", "wasm", "-o", out, ".")
-	b, err := cmd.CombinedOutput()
-	if err != nil {
-		// Known incompatibility: tinygo's wasm target does not implement the os
-		// calls pkg/mdsmith reaches. Record it and skip rather than fail the
-		// suite on work that is not yet done.
-		t.Skipf("tinygo wasm build is not yet supported (known os.* gaps); build output:\n%s", b)
+	if b, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("tinygo wasm build failed: %v\n%s", err, b)
 	}
 	data, err := os.ReadFile(out)
 	if err != nil {

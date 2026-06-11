@@ -802,10 +802,11 @@ func writeGitattributesFile(path, content string) error {
 
 // createTempFn, syncTempFn, closeTempFn, chmodFn, and fstatFn are variables
 // so tests can inject failures into atomicWriteGitattributes without OS tricks.
+// chmodFn is declared in compat_notinygo.go / compat_tinygo.go so the
+// tinygo/wasm build can substitute a no-op without pulling in os.Chmod.
 var createTempFn = os.CreateTemp
 var syncTempFn = (*os.File).Sync
 var closeTempFn = (*os.File).Close
-var chmodFn = os.Chmod
 var fstatFn = (*os.File).Stat
 
 // atomicWriteGitattributes writes data to a temp file in the same directory
@@ -827,7 +828,7 @@ func atomicWriteGitattributes(path string, data []byte, mode os.FileMode) error 
 		if statErr != nil {
 			return statErr
 		}
-		if !os.SameFile(lstatInfo, fdInfo) {
+		if !sameFile(lstatInfo, fdInfo) {
 			return fmt.Errorf("%s: file changed since lstat", path)
 		}
 	} else if !os.IsNotExist(err) {

@@ -519,12 +519,8 @@ jobs:
   # same `go test` run also enforces the artifact size budget
   # (size_test.go, a regression guard now at ~11.2 MB raw / ~2.8 MB
   # gzipped after cuelang.org/go left the graph) and the Go↔JS method-set
-  # parity (methods_test.go). tinygo is intentionally not built here: the
-  # tinygo wasm target still leaves os.Chmod, os.SameFile, and
-  # os.Symlink/filepath.EvalSymlinks undefined, which pkg/mdsmith reaches
-  # transitively, so the tinygo build does not yet compile. Build-tagging
-  # those calls out of the wasm graph is follow-up work (see
-  # docs/background/concepts/engine-api.md and plan/240).
+  # parity (methods_test.go). tinygo is built in the separate tinygo-wasm
+  # job below, which is now enforcing (plan 247).
   wasm:
     runs-on: ubuntu-latest
     steps:
@@ -546,17 +542,11 @@ jobs:
       - name: WASM smoke test, size budget, and method-set parity
         run: go test ./cmd/mdsmith-wasm/...
 
-  # Plan 240: attempt the tinygo wasm build. This is the moment-of-truth
-  # job for the plan's headline criterion (an ≤ 8 MiB tinygo artifact).
-  # The build does NOT yet succeed — tinygo's wasm target leaves os.Chmod,
-  # os.SameFile, and os.Symlink/filepath.EvalSymlinks undefined, and
-  # pkg/mdsmith reaches all three transitively — so the job is
-  # informational (continue-on-error) rather than gating: it surfaces the
-  # exact build errors in the log without blocking PRs on work not yet
-  # done. TestTinyGoWASMArtifactSizeBudget records the same failure and
-  # skips. Build-tagging the os.* calls out of the wasm graph is
-  # scheduled as plan 247 (plan/247_tinygo-wasm-build.md); that plan
-  # drops continue-on-error so the 8 MiB budget gates.
+  # Plan 247: tinygo wasm build — enforcing. The os.Chmod, os.SameFile,
+  # and os.Symlink/filepath.EvalSymlinks calls that previously blocked
+  # this build are now behind build-tagged seams, so the job gates PRs.
+  # TestTinyGoWASMArtifactSizeBudget asserts the artifact is at or under
+  # the plan-215/247 budget of 8 MiB.
   tinygo-wasm:
     runs-on: ubuntu-latest
     permissions:
@@ -578,14 +568,9 @@ jobs:
           echo "${TINYGO_SHA256}  /tmp/tinygo.deb" | sha256sum -c -
           sudo dpkg -i /tmp/tinygo.deb
           tinygo version
-      # Step-level continue-on-error: the build fails today on the
-      # os.* calls plan 247 build-tags away. The errors stay visible in
-      # this step's log while the JOB concludes green, so the known gap
-      # does not block the merge queue.
-      - name: Build the engine with tinygo (informational)
-        continue-on-error: true
+      - name: Build the engine with tinygo
         run: tinygo build -target wasm -o /tmp/mdsmith-tiny.wasm ./cmd/mdsmith-wasm
-      - name: tinygo size budget (skips on the known build failure)
+      - name: tinygo size budget
         run: go test -run TestTinyGoWASMArtifactSizeBudget ./cmd/mdsmith-wasm/...
 
   test:

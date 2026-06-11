@@ -421,7 +421,7 @@ func resolveAbsAndSymlinks(p string) string {
 	if err != nil {
 		return ""
 	}
-	if real, err := filepath.EvalSymlinks(abs); err == nil {
+	if real, err := evalSymlinks(abs); err == nil {
 		return real
 	}
 	return filepath.Clean(abs)

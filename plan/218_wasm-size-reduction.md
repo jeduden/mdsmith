@@ -288,9 +288,9 @@ Split into per-phase plans, run in order, each keeping
       validate stays within its alloc ceiling.
 - [x] `cue/cuelite` is a documented, exported public package.
 - [x] Standard-Go WASM artifact ≤ 18 MB (measured ~11.2 MB).
-- [🔳] `tinygo build -target wasm` succeeds and is ≤ 8 MB —
-      blocked by the os.Chmod / os.SameFile / os.Symlink gaps,
-      scheduled as [plan 247](247_tinygo-wasm-build.md).
+- [x] `tinygo build -target wasm` succeeds and is ≤ 8 MB —
+      the os.Chmod / os.SameFile / os.Symlink gaps are behind
+      build-tagged seams; CI-verified by plan 247.
 - [x] MDS020 diagnostics stay actionable and navigable (plan
       147 / 230 preserved; the schema engine is unchanged).
 - [x] `cue/cuelite` reaches 100 % coverage — the engine logic and

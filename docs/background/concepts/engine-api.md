@@ -12,8 +12,8 @@ summary: >-
 CLI, the LSP server, and the WebAssembly entry point all construct a
 `Session` through it rather than re-deriving their own plumbing. The
 same surface mirrors into JavaScript via WebAssembly with matching
-method names and shapes, so a host such as the
-[Obsidian plugin](../../guides/editors/obsidian.md) consumes one
+method names and shapes, so a host such as the Obsidian plugin from
+[plan 217](../../../../plan/217_obsidian-plugin.md) consumes one
 contract whether it runs native or in a browser.
 
 This page explains the mental model: what a `Session` owns, how the
@@ -248,40 +248,39 @@ Two consequences follow:
 - **No disk reads.** Cross-file rules read through the `MemWorkspace`
   the host supplies, never the OS filesystem.
 
-The artifact lands under `cmd/mdsmith-wasm/dist/`.
-The Obsidian plugin loads it from there. The build
-script (`cmd/mdsmith-wasm/build.sh`) copies
-`wasm_exec.js` from `$(go env GOROOT)/lib/wasm/`
-alongside the artifact. A smoke test creates a
-session, calls `session.check`, and asserts the
-result matches the native engine on the same
-in-memory fixture.
+The artifact lands under `cmd/mdsmith-wasm/dist/` for plan 217. The
+build script (`cmd/mdsmith-wasm/build.sh`) copies `wasm_exec.js` from
+`$(go env GOROOT)/lib/wasm/` alongside the standard Go artifact. A
+smoke test creates a session, calls `session.check`, and asserts the
+result matches the native engine on the same in-memory fixture.
 
 ### Size budget
 
-The target budgets are a standard-Go artifact of ≤ 18 MB and a
-`tinygo` artifact of ≤ 8 MB. The standard-Go budget is met; the tinygo
-budget is not yet reachable.
+Both target budgets are met and CI-verified:
 
 - The standard Go WASM artifact is about 11.2 MB uncompressed (2.8 MB
   gzipped, the figure that crosses the wire), measured by
-  `cmd/mdsmith-wasm/size_test.go`. The in-house `cue/cuelite` engine
-  replaced `cuelang.org/go` so that dependency tree left `go.mod`;
-  no single package dominates the remaining size.
-- `tinygo` does NOT yet compile the engine.
-  `tinygo build -target wasm ./cmd/mdsmith-wasm` fails on four
-  standard-library functions tinygo's wasm target does not implement —
-  `os.Chmod`, `os.SameFile`, and `os.Symlink`/`filepath.EvalSymlinks`,
-  reached transitively through `internal/schema` (atomic index writes),
-  `internal/fix`, `internal/githooks`, and the cross-file rule packages
-  that `pkg/mdsmith` pulls in. Those calls must be build-tagged out of
-  the wasm graph before a tinygo binary is possible. The 8 MB tinygo
-  budget is therefore unverified, not CI-verified.
+  `cmd/mdsmith-wasm/size_test.go`. It was about 40 MB before
+  `cuelang.org/go` was removed: CUE (95 packages) plus `cockroachdb/apd`
+  and protobuf were the dominant cost, pulled in by `internal/schema`
+  (MDS020 file-schema validation), `internal/fieldinterp` (catalog and
+  include field interpolation), and `internal/query`. The in-house
+  `cue/cuelite` engine — a pure-Go, standard-library-only implementation
+  of the exact CUE subset those packages use — replaced CUE, so the
+  whole dependency graph left `go.mod` (plan 218/240). The artifact
+  fits the ≤ 18 MB plan-215 budget with headroom to spare.
+- `tinygo build -target wasm ./cmd/mdsmith-wasm` succeeds (plan 247).
+  The `os.Chmod`, `os.SameFile`, and `os.Symlink`/`filepath.EvalSymlinks`
+  calls that tinygo's wasm target does not implement are now behind
+  build-tagged seams: no-ops or identity functions in the wasm sandbox
+  where they are unreachable or unnecessary. The artifact fits the ≤ 8 MB
+  plan-215/247 budget; `TestTinyGoWASMArtifactSizeBudget` enforces it in
+  the `tinygo-wasm` CI job.
 
-So the shipping artifact is the standard Go WASM build; a smaller tinygo
-binary is not yet available.
+Both WASM builds are CI-verified and gate PRs.
 
 ## See also
 
+- [Plan 215: engine API and WASM bindings](../../../../plan/215_engine-api-wasm.md)
 - [The public Markdown library](../../development/markdown-library.md)
 - [How flavor, rule, convention, and kind differ](flavor-rule-convention-kind.md)
