@@ -415,3 +415,92 @@ func TestCheck_NoBracketEarlyExit(t *testing.T) {
 	src := "# Title\n\nProse with no brackets at all.\n"
 	require.Empty(t, check(t, src))
 }
+
+// --- looksLikeRefTarget (alloc-free heuristic) ---
+
+func TestLooksLikeRefTarget_Table(t *testing.T) {
+	cases := []struct {
+		label string
+		want  bool
+	}{
+		{"plan128", true},
+		{"a-b", true},
+		{"a_b", true},
+		{"label1", true},
+		{"just brackets", false},
+		{"plain", false},
+		{"1starts-with-digit", false},
+		{"-leading-dash", false},
+		{"", false},
+		{"héllo-1", true},
+		{"héllo", false}, // letter start but no digit/dash/underscore
+	}
+	for _, tc := range cases {
+		if got := looksLikeRefTarget([]byte(tc.label)); got != tc.want {
+			t.Errorf("looksLikeRefTarget(%q) = %v, want %v", tc.label, got, tc.want)
+		}
+	}
+}
+
+func TestLooksLikeRefTarget_NoAlloc(t *testing.T) {
+	label := []byte("some-plausible-ref_1")
+	if avg := testing.AllocsPerRun(100, func() { looksLikeRefTarget(label) }); avg != 0 {
+		t.Errorf("looksLikeRefTarget allocates %v per run; want 0", avg)
+	}
+}
+
+// --- inCodeSpan binary search ---
+
+func TestInCodeSpan_SortedLookup(t *testing.T) {
+	spans := []lint.Range{{Start: 5, End: 10}, {Start: 20, End: 25}, {Start: 40, End: 41}}
+	for _, tc := range []struct {
+		off  int
+		want bool
+	}{
+		{0, false}, {4, false}, {5, true}, {9, true}, {10, false},
+		{19, false}, {20, true}, {24, true}, {25, false},
+		{40, true}, {41, false}, {100, false},
+	} {
+		if got := inCodeSpan(spans, tc.off); got != tc.want {
+			t.Errorf("inCodeSpan(%d) = %v, want %v", tc.off, got, tc.want)
+		}
+	}
+	if inCodeSpan(nil, 3) {
+		t.Error("empty spans must report false")
+	}
+}
+
+// --- shared bracket enumeration ---
+
+func TestCollectBrackets_MatchesSequentialNextBracket(t *testing.T) {
+	sources := []string{
+		"",
+		"no brackets at all",
+		"[a] mid [b][c] end [d][] tail [^fn][x]",
+		"[unclosed and [closed] later",
+		"[[nested]] and [multi\nline] broken",
+		"x [a][b] y ![img][] z [shortcut] w",
+		"[]: empty [] pairs [] everywhere",
+	}
+	for _, src := range sources {
+		source := []byte(src)
+		var want []bracket
+		pos := 0
+		for {
+			open, cs, ce, ca, ok := nextBracket(source, pos)
+			if !ok {
+				break
+			}
+			want = append(want, bracket{open: open, cs: cs, ce: ce, ca: ca})
+			pos = open + 1 // densest enumeration: try every later '['
+		}
+		// collectBrackets must produce the maximal entries — those a
+		// scan that always advances past each found '[' would yield.
+		got, buf := collectBrackets(source)
+		defer releaseBrackets(buf)
+		require.Equal(t, len(want), len(got), "source %q", src)
+		for i := range want {
+			assert.Equal(t, want[i], got[i], "source %q entry %d", src, i)
+		}
+	}
+}
