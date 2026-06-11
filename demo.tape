@@ -96,6 +96,10 @@ Type "ARI_DIR=$(mktemp -d)"
 Enter
 Type "cp -R demo/readability/. $ARI_DIR/"
 Enter
+Type "BUILD_DIR=$(mktemp -d)"
+Enter
+Type "cp -R demo/build/. $BUILD_DIR/"
+Enter
 Type "clear"
 Enter
 Sleep 50ms
@@ -152,6 +156,29 @@ Enter
 Sleep 100ms
 
 Type "mdsmith check sample.md"
+Sleep 100ms
+Enter
+Sleep 300ms
+
+# --- Use case 2b: Run a build recipe on fix ---
+
+Hide
+Set TypingSpeed 0
+Type "cd $BUILD_DIR && clear"
+Enter
+Sleep 50ms
+Set TypingSpeed 0.005
+Show
+
+Type "# A <?build?> directive runs its recipe on fix"
+Enter
+Sleep 100ms
+Type "mdsmith fix page.md"
+Sleep 100ms
+Enter
+Sleep 200ms
+
+Type "cat artifact.txt"
 Sleep 100ms
 Enter
 Sleep 300ms

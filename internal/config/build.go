@@ -9,7 +9,6 @@ import (
 
 // BuildConfig is the top-level build: section.
 type BuildConfig struct {
-	BaseURL string               `yaml:"base-url,omitempty"`
 	Recipes map[string]RecipeCfg `yaml:"recipes,omitempty"`
 }
 
@@ -98,10 +97,29 @@ func validateDeclaredParams(recipeName string, params ParamCfg) error {
 	return nil
 }
 
+// collectivePlaceholders are the argv list placeholders the build
+// executor expands from the directive's outputs:/inputs: lists. They
+// may appear in a command without being declared as params, but each
+// must stand alone as its own whitespace-delimited token: expanding a
+// list inside a token fragment (e.g. -o{outputs}) has no well-defined
+// meaning.
+var collectivePlaceholders = map[string]bool{"inputs": true, "outputs": true}
+
 func validateCommandPlaceholders(recipeName, command string, allowed map[string]bool) error {
 	for _, tok := range strings.Fields(command) {
+		isStandalone := tok == "{inputs}" || tok == "{outputs}"
 		for _, m := range placeholderRe.FindAllStringSubmatch(tok, -1) {
 			param := m[1]
+			if collectivePlaceholders[param] {
+				if isStandalone {
+					continue
+				}
+				return fmt.Errorf(
+					"build.recipes.%s: command embeds collective placeholder {%s} in token %q; "+
+						"it must stand alone as its own argument",
+					recipeName, param, tok,
+				)
+			}
 			if reservedParams[param] {
 				return fmt.Errorf(
 					"build.recipes.%s: command uses reserved placeholder {%s}; "+

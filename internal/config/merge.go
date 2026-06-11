@@ -134,7 +134,7 @@ func copyUserConventions(m map[string]UserConvention) map[string]UserConvention 
 // independently.
 func copyBuildConfig(b BuildConfig) BuildConfig {
 	if len(b.Recipes) == 0 {
-		return BuildConfig{BaseURL: b.BaseURL}
+		return BuildConfig{}
 	}
 	recipes := make(map[string]RecipeCfg, len(b.Recipes))
 	for name, r := range b.Recipes {
@@ -147,7 +147,7 @@ func copyBuildConfig(b BuildConfig) BuildConfig {
 			},
 		}
 	}
-	return BuildConfig{BaseURL: b.BaseURL, Recipes: recipes}
+	return BuildConfig{Recipes: recipes}
 }
 
 // copyKinds returns a deep copy of a kinds map, including each RuleCfg's

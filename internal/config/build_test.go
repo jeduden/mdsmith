@@ -7,6 +7,55 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// --- build.base-url removal ---
+
+func TestLoad_RejectsLingeringBaseURL(t *testing.T) {
+	yml := []byte("build:\n  base-url: https://example.com\n")
+	_, err := loadFromBytes(yml, "", false)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "build.base-url was removed in plan 2606101546")
+}
+
+func TestLoad_RecipesWithoutBaseURLOK(t *testing.T) {
+	yml := []byte("build:\n  recipes:\n    r:\n      command: tool\n")
+	cfg, err := loadFromBytes(yml, "", false)
+	require.NoError(t, err)
+	require.Contains(t, cfg.Build.Recipes, "r")
+}
+
+func TestLoad_RejectsInvalidBuildConfig(t *testing.T) {
+	// A recipe that embeds a collective placeholder in a larger token is
+	// invalid. loadFromBytes must surface the ValidateBuildConfig error.
+	yml := []byte("build:\n  recipes:\n    x:\n      command: tool -o{outputs}\n")
+	_, err := loadFromBytes(yml, "", false)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "outputs")
+}
+
+func TestCheckBuildConfig_NoBuildKey(t *testing.T) {
+	// A config with no build: key should pass checkBuildConfig without error.
+	yml := []byte("rules: {}\n")
+	_, err := loadFromBytes(yml, "", false)
+	require.NoError(t, err)
+}
+
+func TestRejectRemovedBuildKeys_BuildNullValue(t *testing.T) {
+	// build: with a null value (YAML scalar node, not a mapping) must not
+	// error in rejectRemovedBuildKeys; the base-url scan only applies when
+	// the build: value is itself a mapping.
+	yml := []byte("build:\n")
+	_, err := loadFromBytes(yml, "", false)
+	require.NoError(t, err)
+}
+
+func TestRejectRemovedBuildKeys_NullDocumentRoot(t *testing.T) {
+	// A null document root (ScalarNode, not MappingNode) must not error in
+	// rejectRemovedBuildKeys — the mapping-kind guard returns nil early.
+	yml := []byte("null\n")
+	_, err := loadFromBytes(yml, "", false)
+	require.NoError(t, err)
+}
+
 // --- ValidateBuildConfig ---
 
 func TestValidateBuildConfig_Nil(t *testing.T) {
@@ -58,6 +107,35 @@ func TestValidateBuildConfig_ValidCommand(t *testing.T) {
 		},
 	}
 	assert.NoError(t, ValidateBuildConfig(cfg))
+}
+
+func TestValidateBuildConfig_CollectivePlaceholdersAllowed(t *testing.T) {
+	// {outputs} and {inputs} are the collective argv placeholders; the
+	// build executor expands them from the directive's outputs:/inputs:
+	// lists, so a command may use them without declaring them as params.
+	cfg := &Config{
+		Build: BuildConfig{
+			Recipes: map[string]RecipeCfg{
+				"copy": {Command: "cp {inputs} {outputs}"},
+			},
+		},
+	}
+	assert.NoError(t, ValidateBuildConfig(cfg))
+}
+
+func TestValidateBuildConfig_EmbeddedCollectivePlaceholderRejected(t *testing.T) {
+	// A collective placeholder must stand alone as its own argv token;
+	// expanding a list inside a token fragment has no meaning.
+	cfg := &Config{
+		Build: BuildConfig{
+			Recipes: map[string]RecipeCfg{
+				"x": {Command: "tool -o{outputs}"},
+			},
+		},
+	}
+	err := ValidateBuildConfig(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "outputs")
 }
 
 func TestValidateBuildConfig_UndeclaredPlaceholder(t *testing.T) {
@@ -449,7 +527,6 @@ func TestSerializeRecipes_BothParams(t *testing.T) {
 
 func TestCopyBuildConfig_MutationDoesNotAliasOriginal(t *testing.T) {
 	orig := BuildConfig{
-		BaseURL: "https://example.com",
 		Recipes: map[string]RecipeCfg{
 			"x": {Command: "tool {a}", Params: ParamCfg{Required: []string{"a"}}},
 		},
@@ -468,7 +545,6 @@ func TestCopyBuildConfig_MutationDoesNotAliasOriginal(t *testing.T) {
 func TestCopyBuildConfig_Empty(t *testing.T) {
 	cp := copyBuildConfig(BuildConfig{})
 	assert.Empty(t, cp.Recipes)
-	assert.Equal(t, "", cp.BaseURL)
 }
 
 // --- Build survives Merge ---
@@ -484,7 +560,6 @@ func TestMerge_PreservesBuild(t *testing.T) {
 			"recipe-safety": {Enabled: true},
 		},
 		Build: BuildConfig{
-			BaseURL: "https://example.com",
 			Recipes: map[string]RecipeCfg{
 				"mermaid": {
 					Command: "mmdc -i {input}",
@@ -495,7 +570,6 @@ func TestMerge_PreservesBuild(t *testing.T) {
 	}
 	merged := Merge(defaults, loaded)
 	require.NotNil(t, merged)
-	assert.Equal(t, "https://example.com", merged.Build.BaseURL)
 	require.Contains(t, merged.Build.Recipes, "mermaid")
 	assert.Equal(t, "mmdc -i {input}", merged.Build.Recipes["mermaid"].Command)
 }

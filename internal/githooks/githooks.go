@@ -1070,7 +1070,7 @@ func BuildHookScript(exe string) string {
 		"# cmd exited 1 — and the `[ \"$status\" -ne 1 ]` guard\n" +
 		"# would then exit before the staging loop ever runs.\n" +
 		"set +e\n" +
-		shellQuote(exe) + " fix .\n" +
+		shellQuote(exe) + " fix --no-build .\n" +
 		"status=$?\n" +
 		"if [ \"$status\" -ne 0 ] && [ \"$status\" -ne 1 ]; then\n" +
 		"  exit \"$status\"\n" +
@@ -1119,7 +1119,7 @@ func HookMatchesCanonical(hook string) bool {
 	required := []string{
 		`cd "$(git rev-parse --show-toplevel)"`,
 		"set +e",
-		" fix .",
+		" fix --no-build .",
 		"status=$?",
 		`if [ "$status" -ne 0 ] && [ "$status" -ne 1 ]; then`,
 		`changed_md=$(git diff --name-only -- '*.md' '*.markdown')`,

@@ -10,8 +10,10 @@ summary: >-
 The `<?build?>` directive declares one or more build artifacts —
 files produced by a recipe configured in `build.recipes` — and the
 source inputs they are built from. `mdsmith fix` renders the section
-body from the recipe's `body-template` and keeps it up to date. No
-external tool runs at lint time.
+body from the recipe's `body-template` and keeps it up to date, then
+runs a build pass that executes each recipe and writes its declared
+outputs. `mdsmith check` is read-only: it validates the directive and
+the body but never runs a recipe.
 
 ## Syntax
 
@@ -111,6 +113,85 @@ reports it if it does. Each placeholder must stand alone as its own
 argv token after whitespace splitting — embedded use like
 `-o{outputs}` is a `command` validation error, because expanding a
 list inside a token fragment has no well-defined meaning.
+
+## Running the build
+
+`mdsmith fix` runs a build pass after the lint-fix pass. It collects
+every `<?build?>` directive across the files it processed, dispatches
+each to its recipe, and prints one `OK` or `FAIL` line per target:
+
+```text
+build docs/architecture.md:12 (render): OK
+build docs/overview.md:30 (pandoc): FAIL: recipe "pandoc" failed: exit status 1
+```
+
+`mdsmith fix` exits non-zero if any recipe fails. A failing recipe
+leaves no partial output: each target stages its outputs in a
+per-target temp directory, and mdsmith renames the staged files into
+place only after the recipe succeeds. A pre-existing output survives
+a failed rebuild untouched.
+
+The build pass runs *after* the lint-fix pass, so a freshly-edited
+`outputs:` list is built with its new value. The pass runs only from
+the `mdsmith fix` CLI: it is not part of the public engine API, the
+WebAssembly bindings, the LSP fix-on-save path, or the Git
+merge-driver, none of which ever execute a process.
+
+### Recipe dispatch
+
+A recipe `command` is dispatched via `os/exec` with an explicit argv.
+No shell is invoked, so a `;`, `|`, or `$(…)` inside a param value is
+passed through as one literal argument and never interpreted. The
+command string is tokenized once with whitespace splitting; `{param}`,
+`{inputs}`, and `{outputs}` are substituted *after* tokenization, so a
+param value containing whitespace stays a single argv entry.
+
+`inputs:` globs resolve against the project root with the doublestar
+matcher. A resolved input that escapes the project root (for example
+through a symlink), or one glob that matches more than 10 000 files,
+is a build error.
+
+### `mdsmith fix` build flags
+
+| Flag                  | Behavior                                        |
+| --------------------- | ----------------------------------------------- |
+| (none)                | Lint-fix pass, then build pass                  |
+| `--no-build`          | Lint-fix pass only                              |
+| `--build-only`        | Build pass only                                 |
+| `--build-recipe NAME` | Build only directives whose `recipe:` is `NAME` |
+| `--build-dry-run`     | Enumerate targets; run no recipe                |
+| `--build-timeout DUR` | Per-recipe timeout (default `30s`)              |
+
+`--no-build` and `--build-only` are mutually exclusive.
+
+### Markdown as data
+
+A recipe can pipe a Markdown file's structure into a downstream tool.
+This recipe runs `mdsmith extract` on an input file and feeds the
+JSON into a chart generator:
+
+```yaml
+build:
+  recipes:
+    chart:
+      command: chart-tool --from {inputs} --out {outputs}
+```
+
+```text
+<?build
+recipe: chart
+inputs:
+  - data/metrics.md
+outputs:
+  - assets/metrics.svg
+?>
+![chart output: assets/metrics.svg](assets/metrics.svg)
+<?/build?>
+```
+
+Here `chart-tool` is your own program; supply one that reads the
+extracted data and writes the chart. mdsmith only dispatches the
+recipe and writes its declared output.
 
 ## Generated body
 

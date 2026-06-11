@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -320,6 +321,21 @@ func TestDiscoverReturnsEmptyWhenNotFound(t *testing.T) {
 	found, err := Discover(dir)
 	require.NoError(t, err, "Discover returned error: %v", err)
 	assert.Equal(t, "", found, "expected empty string, got %s", found)
+}
+
+func TestDiscoverReachesFilesystemRoot(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("filesystem root detection differs on Windows")
+	}
+	// Start from a subdirectory of t.TempDir() with no .git or .mdsmith.yml
+	// anywhere in the hierarchy up to /. Discover must walk all the way to /
+	// and hit the parent==dir guard, returning "" without error.
+	dir := filepath.Join(t.TempDir(), "sub", "deep")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+
+	found, err := Discover(dir)
+	require.NoError(t, err)
+	assert.Equal(t, "", found)
 }
 
 // --- Defaults tests ---

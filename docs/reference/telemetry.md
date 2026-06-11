@@ -15,7 +15,8 @@ checks.
 ## What runs offline
 
 - `mdsmith check` walks the workspace and reads files. No network.
-- `mdsmith fix` rewrites files in place. No network.
+- `mdsmith fix` rewrites files in place. No network from mdsmith
+  itself. Its build pass runs user-declared recipes (see below).
 - `mdsmith lsp` speaks LSP over stdio to the parent editor. No
   network.
 - `mdsmith deps`, `mdsmith rename`, `mdsmith metrics`, `mdsmith query`,
@@ -41,6 +42,17 @@ makes no network calls.
 
 The [install guide](../guides/install.md#github-release-direct-download)
 covers the GitHub-release direct-download path for air-gapped hosts.
+
+## What about `mdsmith fix` build recipes?
+
+The `mdsmith fix` build pass dispatches each `<?build?>` directive to
+a recipe you declare in `build.recipes`. A recipe is your own
+command, run via `os/exec` with an explicit argv and no shell. What
+that command does — including whether it makes a network call — is
+under your control, not mdsmith's. mdsmith executes the recipe; it
+adds no network access of its own. Pass `--no-build` to skip the
+build pass entirely, and `--build-dry-run` to enumerate the targets
+without running any recipe. `mdsmith check` never runs a recipe.
 
 ## What about the Claude Code plugin?
 

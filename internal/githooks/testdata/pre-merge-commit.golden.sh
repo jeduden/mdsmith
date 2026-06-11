@@ -39,7 +39,7 @@ mdsmith_git_add() {
 # cmd exited 1 — and the `[ "$status" -ne 1 ]` guard
 # would then exit before the staging loop ever runs.
 set +e
-'/usr/local/bin/mdsmith' fix .
+'/usr/local/bin/mdsmith' fix --no-build .
 status=$?
 if [ "$status" -ne 0 ] && [ "$status" -ne 1 ]; then
   exit "$status"

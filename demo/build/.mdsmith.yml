@@ -1,0 +1,4 @@
+build:
+  recipes:
+    copy:
+      command: cp {inputs} {outputs}

@@ -1,7 +1,7 @@
 ---
 id: 2606101546
 title: Builder execution wired into `mdsmith fix`
-status: "🔲"
+status: "✅"
 summary: >-
   Run `<?build?>` directives during `mdsmith fix`.
   A `Builder` interface dispatches the
@@ -229,32 +229,32 @@ combine freely with a run.
 
 ## Acceptance Criteria
 
-- [ ] `mdsmith fix` runs the build pass
+- [x] `mdsmith fix` runs the build pass
       after lint-fix; `mdsmith check` runs
       no recipe
-- [ ] All five `--build-*` flags work as
+- [x] All five `--build-*` flags work as
       documented; `--no-build` and
       `--build-only` are mutually exclusive
-- [ ] Single-output and multi-output `cp`/
+- [x] Single-output and multi-output `cp`/
       `tee` recipes write every declared
       output via one invocation
-- [ ] A failing recipe leaves no partial
+- [x] A failing recipe leaves no partial
       output; pre-existing outputs survive
-- [ ] Custom `command` is dispatched via
+- [x] Custom `command` is dispatched via
       `os/exec` with explicit argv; no
       shell is invoked
-- [ ] `{outputs}` and `{inputs}` each
+- [x] `{outputs}` and `{inputs}` each
       expand to one argv per resolved entry
-- [ ] A resolved input escaping the project
+- [x] A resolved input escaping the project
       root, or one glob matching more than
       10 000 files, is a build error
-- [ ] Tokenization uses `strings.Fields`;
+- [x] Tokenization uses `strings.Fields`;
       param values containing whitespace
       pass as one argv entry
-- [ ] `mdsmith fix` exits non-zero on any
+- [x] `mdsmith fix` exits non-zero on any
       recipe failure with per-target
       `OK | FAIL` summary
-- [ ] `build.base-url` is removed. Config
+- [x] `build.base-url` is removed. Config
       loading uses non-strict YAML
       (`yamlutil.UnmarshalSafe`), so the
       struct field's absence alone is
@@ -263,12 +263,12 @@ combine freely with a run.
       `build.base-url` and errors with
       "build.base-url was removed in plan
       2606101546; delete it"
-- [ ] No built-in recipes ship; an unknown
+- [x] No built-in recipes ship; an unknown
       `recipe:` is a lint error (MDS039)
-- [ ] `pkg/mdsmith`, the WASM bindings, LSP
+- [x] `pkg/mdsmith`, the WASM bindings, LSP
       fix, the merge driver, and the
       pre-merge-commit hook never run the
       build pass
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no
       issues
