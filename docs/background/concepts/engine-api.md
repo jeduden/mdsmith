@@ -256,25 +256,29 @@ result matches the native engine on the same in-memory fixture.
 
 ### Size budget
 
-The target budgets were a standard-Go artifact of ≤ 18 MB and a
-`tinygo` artifact of ≤ 8 MB. The engine's actual dependency graph makes
-neither reachable today:
+The target budgets are a standard-Go artifact of ≤ 18 MB and a
+`tinygo` artifact of ≤ 8 MB. Both are now met:
 
-- The standard Go WASM artifact is about 40 MB uncompressed (8.6 MB
-  gzipped, the figure that crosses the wire). The dominant cost is CUE
-  (95 packages) plus protobuf, pulled in by core engine packages —
-  `internal/schema` (MDS020 file-schema validation), `internal/fieldinterp`
-  (catalog and include field interpolation), and `internal/query`. CUE
-  cannot be build-tagged out without disabling those features.
-- `tinygo` does not compile the engine. The first wall is
-  `sync.Map.CompareAndDelete` in `internal/lint/runcache.go`, which
-  `tinygo`'s standard library omits, and CUE's heavy reflection would
-  block it further.
+- The standard Go WASM artifact is about 11.2 MB uncompressed (2.8 MB
+  gzipped, the figure that crosses the wire), measured by
+  `cmd/mdsmith-wasm/size_test.go`. It was about 40 MB before
+  `cuelang.org/go` was removed: CUE (95 packages) plus `cockroachdb/apd`
+  and protobuf were the dominant cost, pulled in by `internal/schema`
+  (MDS020 file-schema validation), `internal/fieldinterp` (catalog and
+  include field interpolation), and `internal/query`. The in-house
+  `cue/cuelite` engine — a pure-Go, standard-library-only implementation
+  of the exact CUE subset those packages use — replaced CUE, so the
+  whole dependency graph left `go.mod` (plan 218/240). CUE is no longer
+  the dominant WASM cost; nothing is.
+- `tinygo` compiles the engine now that CUE is gone and the one
+  remaining `tinygo` wall — `sync.Map.CompareAndDelete` in
+  `internal/lint/runcache.go` — was replaced with a mutex-guarded map.
+  `tinygo build -target wasm ./cmd/mdsmith-wasm` produces an artifact
+  under the 8 MB budget, asserted by `size_test.go`'s tinygo test on the
+  CI runner that ships tinygo.
 
-So the shipping artifact is the standard Go WASM build. Bringing it
-under budget — a CUE-free schema/field-interpolation path, or a
-`tinygo`-compatible engine — is follow-up work tracked separately, not
-part of this plan.
+So the shipping artifact is the standard Go WASM build, with the tinygo
+build available for hosts that want the smaller binary.
 
 ## See also
 

@@ -94,20 +94,59 @@ above the `sonnet` band.
 
 ## Acceptance Criteria
 
-- [ ] `cuelang.org/go` is absent from `go.mod` and `go.sum`;
+- [x] `cuelang.org/go` is absent from `go.mod` and `go.sum`;
       NO file imports `cuelang.org/...` — test files included
-      (`internal/schema/shortcuts_test.go` and the `cue/cuelite`
-      tests migrated off CUE), since a test-only import alone keeps
-      the module in the build graph.
-- [ ] `internal/cuelitetest` is deleted (or its corpus ported to
-      oracle-free in-house self-tests), so no package imports
+      (`internal/schema/shortcuts_test.go` and
+      `internal/extract/cue_diff_test.go` migrated off CUE, and the
+      `cue/cuelite` tests rebuilt on the in-house syntax tree), since
+      a test-only import alone keeps the module in the build graph.
+      `cockroachdb/apd` and protobuf are dropped as orphaned transitives.
+- [x] `internal/cuelitetest` is deleted; its corpus is ported to
+      oracle-free in-house self-tests (`cue/cuelite/corpus_test.go`,
+      `rowcorpus_test.go`), its fuzzers to engine-only smoke fuzzers
+      (`fuzz_test.go`), and its CUE-relative factor gate to an absolute
+      allocs/op guard (`bench_test.go`). No package imports
       `cuelang.org/...` from a non-test file.
-- [ ] Standard-Go WASM artifact ≤ 18 MB.
-- [ ] `tinygo build -target wasm ./cmd/mdsmith-wasm` succeeds
-      and is ≤ 8 MB; `size_test.go` asserts the new budgets.
-- [ ] `Capabilities()` is unchanged.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues.
+- [x] Standard-Go WASM artifact ≤ 18 MB — measured ~11.2 MB raw /
+      ~2.8 MB gzipped; `cmd/mdsmith-wasm/size_test.go` asserts the
+      tightened ceilings (14 MiB raw / 4 MiB gzip).
+- [🔳] `tinygo build -target wasm ./cmd/mdsmith-wasm` succeeds and is
+      ≤ 8 MB; `size_test.go`'s `TestTinyGoWASMArtifactSizeBudget`
+      asserts it. The runcache `sync.Map.CompareAndDelete` lever is
+      swapped for a mutex-guarded map, and no file imports CUE, so the
+      tinygo build is now reachable. tinygo is NOT installable in the
+      offline dev container, so the test SKIPS locally and is
+      CI-verified on the runner that ships tinygo. To verify by hand:
+      `tinygo build -target wasm -o /tmp/m.wasm ./cmd/mdsmith-wasm`
+      then check the size is ≤ 8 MiB.
+- [x] `Capabilities()` is unchanged — `methods_test.go` /
+      `smoke_test.go` assert the WASM proxy advertises the same
+      capability set as the native session.
+- [x] All tests pass: `go test ./...` (and `-race` clean on the
+      affected packages).
+- [🔳] `go tool golangci-lint run` reports no issues — the tools/go.mod
+      golangci-lint needs Go ≥ 1.25.8; the dev container has 1.25.0, so
+      this is CI-verified.
+
+## Implementation Notes
+
+The parser (task 1) emits an in-house syntax tree. It does not mimic
+`cue/ast`. The `cue/cuelite/syntax` package defines node types. They use
+the same names the three consumers already switched on. So re-pointing
+`compile.go`, `eval.go`, and `evalrow.go` was a near-mechanical import
+swap.
+
+One divergence from CUE's tree is deliberate. `Interpolation.Elts`
+carries already-decoded string fragments. The scanner decodes them
+across the three dialects. So `evalRowInterpolation` reads them direct.
+The `token` and `literal` calls map to the in-house token set,
+`syntax.Unquote`, and `syntax.IsBytesLiteral`.
+
+Conformance was proven before the oracle was deleted. The frontend was
+flipped first. The `internal/cuelitetest` differential harness then ran
+green over the corpus, the fuzz seeds, the real schemas, and the
+row-expr suite. Only then was the harness deleted, with its corpus
+ported to engine-only pinned tests.
 
 ## See also
 
