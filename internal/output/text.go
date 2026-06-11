@@ -10,10 +10,33 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 )
 
+// asciiClean reports whether s consists solely of printable ASCII
+// (plus tab when allowTab is set). Such strings need no sanitizing, so
+// the formatters can skip the rune-decoding strings.Map pass — the
+// overwhelmingly common case for paths, messages, and source lines.
+// Any byte >= 0x80 defers to the slow path so multi-byte sequences,
+// C1 controls, and invalid UTF-8 keep strings.Map's exact semantics.
+func asciiClean(s string, allowTab bool) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 0x20 && c < 0x7f {
+			continue
+		}
+		if allowTab && c == '\t' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 // sanitizeControl strips all C0/C1 control characters from s.
 // Used for diagnostic header fields (file path, message) where
 // newlines and tabs could break the single-line format.
 func sanitizeControl(s string) string {
+	if asciiClean(s, false) {
+		return s
+	}
 	return strings.Map(func(r rune) rune {
 		if r < 0x20 || r == 0x7f ||
 			(r >= 0x80 && r <= 0x9f) {
@@ -26,6 +49,9 @@ func sanitizeControl(s string) string {
 // sanitizeSourceLine strips C0/C1 control characters from s but
 // preserves tab for source line indentation display.
 func sanitizeSourceLine(s string) string {
+	if asciiClean(s, true) {
+		return s
+	}
 	return strings.Map(func(r rune) rune {
 		if r == '\t' {
 			return r
@@ -42,12 +68,18 @@ func sanitizeSourceLine(s string) string {
 // When Color is true, the file location is printed in cyan and the rule ID in yellow.
 type TextFormatter struct {
 	Color bool
+	// buf is the scratch each diagnostic's lines are assembled into so
+	// the destination sees one Write per diagnostic instead of one per
+	// formatted line. Reused across diagnostics; grows to the largest
+	// block and stays there for the formatter's lifetime.
+	buf []byte
 }
 
 // Format writes each diagnostic as a header line followed by an optional
 // source snippet with line-number gutter and caret marker.
 func (f *TextFormatter) Format(w io.Writer, diagnostics []lint.Diagnostic) error {
-	for _, d := range diagnostics {
+	for i := range diagnostics {
+		d := diagnostics[i]
 		// Normalize the local copy to the user-facing line up front so the
 		// header and the snippet caret always agree on which line to mark,
 		// even when Line is a non-positive body-anchor sentinel (plan 230).
@@ -55,59 +87,70 @@ func (f *TextFormatter) Format(w io.Writer, diagnostics []lint.Diagnostic) error
 		// such diagnostics today, so this keeps the formatter self-consistent
 		// for any diagnostic it is handed rather than relying on that guard.
 		d.Line = d.DisplayLine()
-		safeFile := sanitizeControl(d.File)
-		safeMsg := sanitizeControl(d.Message)
-		var err error
-		if f.Color {
-			_, err = fmt.Fprintf(w, "\033[36m%s:%d:%d\033[0m \033[33m%s\033[0m %s\n",
-				safeFile, d.Line, d.Column, d.RuleID, safeMsg)
-		} else {
-			_, err = fmt.Fprintf(w, "%s:%d:%d %s %s\n",
-				safeFile, d.Line, d.Column, d.RuleID, safeMsg)
-		}
-		if err != nil {
-			return err
-		}
-
-		if err := f.formatSnippet(w, d); err != nil {
-			return err
-		}
-
-		if err := f.formatRelated(w, d.RelatedLocations); err != nil {
-			return err
-		}
-
-		if err := f.formatExplanation(w, d.Explanation); err != nil {
+		f.buf = f.buf[:0]
+		f.appendHeader(&d)
+		f.appendSnippet(&d)
+		f.appendRelated(d.RelatedLocations)
+		f.appendExplanation(d.Explanation)
+		if _, err := w.Write(f.buf); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// formatRelated writes one dimmed trailer line per related location,
+// appendHeader renders the "<file>:<line>:<col> <rule> <message>" line.
+func (f *TextFormatter) appendHeader(d *lint.Diagnostic) {
+	safeFile := sanitizeControl(d.File)
+	safeMsg := sanitizeControl(d.Message)
+	if f.Color {
+		f.buf = append(f.buf, "\033[36m"...)
+		f.appendLocation(safeFile, d.Line, d.Column)
+		f.buf = append(f.buf, "\033[0m \033[33m"...)
+		f.buf = append(f.buf, d.RuleID...)
+		f.buf = append(f.buf, "\033[0m "...)
+	} else {
+		f.appendLocation(safeFile, d.Line, d.Column)
+		f.buf = append(f.buf, ' ')
+		f.buf = append(f.buf, d.RuleID...)
+		f.buf = append(f.buf, ' ')
+	}
+	f.buf = append(f.buf, safeMsg...)
+	f.buf = append(f.buf, '\n')
+}
+
+// appendLocation renders "<file>:<line>:<col>".
+func (f *TextFormatter) appendLocation(file string, line, col int) {
+	f.buf = append(f.buf, file...)
+	f.buf = append(f.buf, ':')
+	f.buf = strconv.AppendInt(f.buf, int64(line), 10)
+	f.buf = append(f.buf, ':')
+	f.buf = strconv.AppendInt(f.buf, int64(col), 10)
+}
+
+// appendRelated renders one dimmed trailer line per related location,
 // e.g. "  ↳ plan/proto.md:4 — schema requires one of: ...". For an
 // MDS020 diagnostic this is where the schema reference surfaces,
 // sourced from the structured RelatedLocations rather than the message
 // body. File, line, and message can carry user-controlled text (schema
 // paths, expected vocabularies), so each piece is sanitized before it
 // is joined into the single-line trailer.
-func (f *TextFormatter) formatRelated(w io.Writer, locs []lint.RelatedLocation) error {
+func (f *TextFormatter) appendRelated(locs []lint.RelatedLocation) {
 	for _, loc := range locs {
 		body := relatedLine(loc)
 		if body == "" {
 			continue
 		}
-		var err error
 		if f.Color {
-			_, err = fmt.Fprintf(w, "  ↳ \033[2m%s\033[0m\n", body)
+			f.buf = append(f.buf, "  ↳ \033[2m"...)
+			f.buf = append(f.buf, body...)
+			f.buf = append(f.buf, "\033[0m\n"...)
 		} else {
-			_, err = fmt.Fprintf(w, "  ↳ %s\n", body)
-		}
-		if err != nil {
-			return err
+			f.buf = append(f.buf, "  ↳ "...)
+			f.buf = append(f.buf, body...)
+			f.buf = append(f.buf, '\n')
 		}
 	}
-	return nil
 }
 
 // relatedLine renders the "<file>:<line> — <message>" body for one
@@ -130,7 +173,7 @@ func relatedLine(loc lint.RelatedLocation) string {
 	}
 }
 
-// formatExplanation writes a one-line trailer naming the rule and
+// appendExplanation renders a one-line trailer naming the rule and
 // the winning source of each leaf setting that contributed to the
 // rule's effective config. No-op when explanation is nil.
 //
@@ -139,9 +182,9 @@ func relatedLine(loc lint.RelatedLocation) string {
 // piece is run through sanitizeControl before it's joined into the
 // single-line trailer to prevent newlines or ANSI escapes from
 // breaking the format or injecting terminal sequences.
-func (f *TextFormatter) formatExplanation(w io.Writer, e *lint.Explanation) error {
+func (f *TextFormatter) appendExplanation(e *lint.Explanation) {
 	if e == nil {
-		return nil
+		return
 	}
 	parts := make([]string, 0, len(e.Leaves))
 	for _, l := range e.Leaves {
@@ -155,13 +198,19 @@ func (f *TextFormatter) formatExplanation(w io.Writer, e *lint.Explanation) erro
 		body = "(no settings)"
 	}
 	rule := sanitizeControl(e.Rule)
-	prefix := "  └─ "
+	f.buf = append(f.buf, "  └─ "...)
 	if f.Color {
-		_, err := fmt.Fprintf(w, "%s\033[2m%s: %s\033[0m\n", prefix, rule, body)
-		return err
+		f.buf = append(f.buf, "\033[2m"...)
+		f.buf = append(f.buf, rule...)
+		f.buf = append(f.buf, ": "...)
+		f.buf = append(f.buf, body...)
+		f.buf = append(f.buf, "\033[0m\n"...)
+		return
 	}
-	_, err := fmt.Fprintf(w, "%s%s: %s\n", prefix, rule, body)
-	return err
+	f.buf = append(f.buf, rule...)
+	f.buf = append(f.buf, ": "...)
+	f.buf = append(f.buf, body...)
+	f.buf = append(f.buf, '\n')
 }
 
 // formatLeafValue renders a leaf value compactly (JSON-like) so settings
@@ -174,13 +223,13 @@ func formatLeafValue(v any) string {
 	return string(b)
 }
 
-// formatSnippet writes the source context lines with a line-number gutter
+// appendSnippet renders the source context lines with a line-number gutter
 // and a dot-leader caret line under the diagnostic line. The dots always
 // start at column 1, creating a visual path that identifies which line
 // is the diagnostic and (for Column>1) guides the eye to the exact column.
-func (f *TextFormatter) formatSnippet(w io.Writer, d lint.Diagnostic) error {
+func (f *TextFormatter) appendSnippet(d *lint.Diagnostic) {
 	if len(d.SourceLines) == 0 {
-		return nil
+		return
 	}
 
 	maxLineNum := d.SourceStartLine + len(d.SourceLines) - 1
@@ -190,41 +239,64 @@ func (f *TextFormatter) formatSnippet(w io.Writer, d lint.Diagnostic) error {
 		lineNum := d.SourceStartLine + i
 		isDiagLine := lineNum == d.Line
 
-		if err := f.writeSourceLine(w, gutterWidth, lineNum, line, isDiagLine); err != nil {
-			return err
-		}
+		f.appendSourceLine(gutterWidth, lineNum, line, isDiagLine)
 
 		if isDiagLine && d.Column > 0 {
-			if err := f.writeCaretLine(w, gutterWidth, d.Column); err != nil {
-				return err
-			}
+			f.appendCaretLine(gutterWidth, d.Column)
 		}
 	}
-
-	return nil
 }
 
-// writeSourceLine writes a single source line with line-number gutter.
+// appendSourceLine renders a single source line with line-number gutter.
 // Context lines are dimmed when color is on.
-func (f *TextFormatter) writeSourceLine(w io.Writer, gutterWidth, lineNum int, line string, isDiag bool) error {
+func (f *TextFormatter) appendSourceLine(gutterWidth, lineNum int, line string, isDiag bool) {
 	safeLine := sanitizeSourceLine(line)
-	format := "%*d | %s\n"
-	if f.Color && !isDiag {
-		format = "\033[2m%*d | %s\033[0m\n"
+	dim := f.Color && !isDiag
+	if dim {
+		f.buf = append(f.buf, "\033[2m"...)
 	}
-	_, err := fmt.Fprintf(w, format, gutterWidth, lineNum, safeLine)
-	return err
+	f.appendGutterNum(gutterWidth, lineNum)
+	f.buf = append(f.buf, " | "...)
+	f.buf = append(f.buf, safeLine...)
+	if dim {
+		f.buf = append(f.buf, "\033[0m"...)
+	}
+	f.buf = append(f.buf, '\n')
 }
 
-// writeCaretLine writes a continuous dot path from column 0 to the caret.
+// appendGutterNum renders lineNum right-aligned in a gutterWidth-wide
+// space-padded field, matching fmt's "%*d".
+func (f *TextFormatter) appendGutterNum(gutterWidth, lineNum int) {
+	var tmp [20]byte
+	num := strconv.AppendInt(tmp[:0], int64(lineNum), 10)
+	for pad := gutterWidth - len(num); pad > 0; pad-- {
+		f.buf = append(f.buf, ' ')
+	}
+	f.buf = append(f.buf, num...)
+}
+
+// caretDots is a pre-rendered run of the U+00B7 dot used by the caret
+// line, appended in chunks so no per-caret strings.Repeat allocation
+// is needed. 64 dots cover a typical caret; longer columns loop.
+const caretDots = "································································"
+
+// caretDotCount is how many dots caretDots holds (each is 2 bytes).
+const caretDotCount = len(caretDots) / 2
+
+// appendCaretLine renders a continuous dot path from column 0 to the caret.
 // Source lines use "%*d | %s" so content column C (1-based) starts at
 // rune position gutterWidth+3+C-1. Dots fill positions 0..caret-1.
-func (f *TextFormatter) writeCaretLine(w io.Writer, gutterWidth, column int) error {
-	dots := strings.Repeat("·", gutterWidth+column+2)
-	format := "%s^\n"
-	if f.Color {
-		format = "%s\033[31m^\033[0m\n"
+func (f *TextFormatter) appendCaretLine(gutterWidth, column int) {
+	for n := gutterWidth + column + 2; n > 0; n -= caretDotCount {
+		if n >= caretDotCount {
+			f.buf = append(f.buf, caretDots...)
+			continue
+		}
+		f.buf = append(f.buf, caretDots[:2*n]...)
 	}
-	_, err := fmt.Fprintf(w, format, dots)
-	return err
+	if f.Color {
+		f.buf = append(f.buf, "\033[31m^\033[0m\n"...)
+		return
+	}
+	f.buf = append(f.buf, "^\n"...)
 }

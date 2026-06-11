@@ -42,6 +42,58 @@ func TestSanitizeSourceLine(t *testing.T) {
 	assert.Equal(t, "helloworld", sanitizeSourceLine("hello\x1bworld"), "ESC stripped")
 }
 
+func TestSanitize_NonASCIIAndInvalidUTF8(t *testing.T) {
+	// Valid multi-byte text passes through unchanged.
+	assert.Equal(t, "héllo — wörld", sanitizeControl("héllo — wörld"))
+	assert.Equal(t, "héllo — wörld", sanitizeSourceLine("héllo — wörld"))
+	// Invalid UTF-8 bytes are replaced with U+FFFD, exactly as
+	// strings.Map decodes them — the fast path must not skip this.
+	assert.Equal(t, "a�b", sanitizeControl("a\xffb"))
+	assert.Equal(t, "a�b", sanitizeSourceLine("a\xffb"))
+}
+
+func TestSanitize_CleanASCIIReturnsInputUnchanged(t *testing.T) {
+	in := "plain ascii line with [link](url) and `code`"
+	assert.Equal(t, in, sanitizeControl(in))
+	withTab := "indent\tkept"
+	assert.Equal(t, withTab, sanitizeSourceLine(withTab))
+	// The clean path must not allocate: header fields and source lines
+	// run through sanitize once per formatted diagnostic line.
+	assert.Zero(t, testing.AllocsPerRun(100, func() {
+		_ = sanitizeControl(in)
+		_ = sanitizeSourceLine(withTab)
+	}))
+}
+
+// formatWriteCounter counts Write calls to pin that Format batches each
+// diagnostic's lines into a single Write on the destination.
+type formatWriteCounter struct {
+	calls int
+	buf   bytes.Buffer
+}
+
+func (w *formatWriteCounter) Write(p []byte) (int, error) {
+	w.calls++
+	return w.buf.Write(p)
+}
+
+func TestTextFormatter_OneWritePerDiagnostic(t *testing.T) {
+	diags := []lint.Diagnostic{
+		{File: "a.md", Line: 2, Column: 3, RuleID: "MDS001", Message: "m1",
+			SourceLines: []string{"l1", "l2", "l3"}, SourceStartLine: 1},
+		{File: "b.md", Line: 5, Column: 1, RuleID: "MDS002", Message: "m2",
+			SourceLines: []string{"x", "y"}, SourceStartLine: 4},
+	}
+	w := &formatWriteCounter{}
+	f := &TextFormatter{Color: true}
+	require.NoError(t, f.Format(w, diags))
+	assert.Equal(t, 2, w.calls)
+
+	var want bytes.Buffer
+	require.NoError(t, (&TextFormatter{Color: true}).Format(&want, diags))
+	assert.Equal(t, want.String(), w.buf.String())
+}
+
 func TestTextFormatter_SanitizesHeaderFields(t *testing.T) {
 	f := &TextFormatter{Color: false}
 	var buf bytes.Buffer

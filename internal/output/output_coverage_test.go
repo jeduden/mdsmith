@@ -59,26 +59,24 @@ func TestFormat_WriterErrorWithColor(t *testing.T) {
 }
 
 func TestFormat_SnippetWriterError(t *testing.T) {
-	// Use a writer that fails after the first write.
+	// The first diagnostic's block write succeeds; the second fails.
 	w := &limitedWriter{limit: 1}
 	f := &TextFormatter{Color: false}
 
-	diagnostics := []lint.Diagnostic{
-		{
-			File:     "test.md",
-			Line:     1,
-			Column:   1,
-			RuleID:   "MDS001",
-			RuleName: "test",
-			Message:  "test",
-			SourceLines: []string{
-				"line one",
-			},
-			SourceStartLine: 1,
+	d := lint.Diagnostic{
+		File:     "test.md",
+		Line:     1,
+		Column:   1,
+		RuleID:   "MDS001",
+		RuleName: "test",
+		Message:  "test",
+		SourceLines: []string{
+			"line one",
 		},
+		SourceStartLine: 1,
 	}
 
-	err := f.Format(w, diagnostics)
+	err := f.Format(w, []lint.Diagnostic{d, d})
 	assert.Error(t, err)
 }
 
@@ -259,75 +257,69 @@ func (w *limitedWriter) Write(p []byte) (int, error) {
 }
 
 // TestFormat_ExplanationWriterError covers the propagation branch in
-// Format: the header succeeds, the diagnostic has no SourceLines so
-// formatSnippet writes nothing, and the explanation trailer write fails.
+// Format when the failing diagnostic carries an explanation trailer:
+// the first diagnostic's block write succeeds and the second one's
+// fails, so Format must surface the error mid-stream.
 func TestFormat_ExplanationWriterError(t *testing.T) {
 	f := &TextFormatter{Color: false}
 	w := &limitedWriter{limit: 1}
 
-	diagnostics := []lint.Diagnostic{
-		{
-			File:     "test.md",
-			Line:     1,
-			Column:   1,
-			RuleID:   "MDS001",
-			RuleName: "test",
-			Message:  "test",
-			Explanation: &lint.Explanation{
-				Rule: "test",
-				Leaves: []lint.ExplanationLeaf{
-					{Path: "settings.max", Value: 80, Source: "default"},
-				},
+	d := lint.Diagnostic{
+		File:     "test.md",
+		Line:     1,
+		Column:   1,
+		RuleID:   "MDS001",
+		RuleName: "test",
+		Message:  "test",
+		Explanation: &lint.Explanation{
+			Rule: "test",
+			Leaves: []lint.ExplanationLeaf{
+				{Path: "settings.max", Value: 80, Source: "default"},
 			},
 		},
 	}
 
-	err := f.Format(w, diagnostics)
+	err := f.Format(w, []lint.Diagnostic{d, d})
 	assert.Error(t, err, "expected error from failing explanation write")
 }
 
-// TestFormat_CaretWriterError covers the writeCaretLine error return in
-// formatSnippet: the header and source line succeed, but the caret
-// gutter write fails.
+// TestFormat_CaretWriterError covers Format's propagation when the
+// failing diagnostic renders a snippet with a caret line: the first
+// diagnostic's block write succeeds and the second one's fails.
 func TestFormat_CaretWriterError(t *testing.T) {
 	f := &TextFormatter{Color: false}
-	w := &limitedWriter{limit: 2}
+	w := &limitedWriter{limit: 1}
 
-	diagnostics := []lint.Diagnostic{
-		{
-			File:            "test.md",
-			Line:            1,
-			Column:          1,
-			RuleID:          "MDS001",
-			RuleName:        "test",
-			Message:         "test",
-			SourceLines:     []string{"hello"},
-			SourceStartLine: 1,
-		},
+	d := lint.Diagnostic{
+		File:            "test.md",
+		Line:            1,
+		Column:          1,
+		RuleID:          "MDS001",
+		RuleName:        "test",
+		Message:         "test",
+		SourceLines:     []string{"hello"},
+		SourceStartLine: 1,
 	}
 
-	err := f.Format(w, diagnostics)
+	err := f.Format(w, []lint.Diagnostic{d, d})
 	assert.Error(t, err, "expected error from failing caret write")
 }
 
-// TestFormat_RelatedWriterError covers the writeRelated error return:
-// the header succeeds (write 1), the diagnostic has no SourceLines so
-// formatSnippet writes nothing, and the related-location trailer write
-// fails.
+// TestFormat_RelatedWriterError covers Format's propagation when the
+// failing diagnostic carries a related-location trailer: the first
+// diagnostic's block write succeeds and the second one's fails.
 func TestFormat_RelatedWriterError(t *testing.T) {
 	f := &TextFormatter{Color: false}
 	w := &limitedWriter{limit: 1}
 
-	diagnostics := []lint.Diagnostic{
-		{
-			File: "test.md", Line: 1, Column: 1,
-			RuleID: "MDS020", RuleName: "required-structure", Message: "test",
-			RelatedLocations: []lint.RelatedLocation{
-				{File: "proto.md", Line: 2, Message: "required by schema"},
-			},
+	d := lint.Diagnostic{
+		File: "test.md", Line: 1, Column: 1,
+		RuleID: "MDS020", RuleName: "required-structure", Message: "test",
+		RelatedLocations: []lint.RelatedLocation{
+			{File: "proto.md", Line: 2, Message: "required by schema"},
 		},
 	}
 
-	err := f.Format(w, diagnostics)
+	err := f.Format(w, []lint.Diagnostic{d, d})
 	assert.Error(t, err, "expected error from failing related-location write")
 }

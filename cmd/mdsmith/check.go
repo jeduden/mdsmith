@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"math"
@@ -212,20 +213,31 @@ func reportCheckResult(result *engine.Result, opts checkCLIOpts, logger *vlog.Lo
 // run-stats helper both route their own write-error messages through
 // the same writer (see formatDiagnosticsTo, printRunStatsTo) so a
 // fault-injecting writer captures the full stderr surface.
+//
+// All report output goes through one buffered writer: the text
+// formatter emits several small writes per diagnostic, and issuing
+// each as its own syscall on an unbuffered stderr dominated wall time
+// on diagnostic-heavy runs. The buffer is flushed before the verbose
+// logger line so output ordering on a shared fd is preserved.
 func reportCheckResultTo(result *engine.Result, opts checkCLIOpts, logger *vlog.Logger, stderrW io.Writer) int {
-	printErrorsTo(stderrW, result.Errors)
+	bw := bufio.NewWriterSize(stderrW, stderrBufSize)
+	printErrorsTo(bw, result.Errors)
 
 	if !opts.quiet && len(result.Diagnostics) > 0 {
-		if code := formatDiagnosticsTo(stderrW, result.Diagnostics, opts.format, opts.noColor); code != 0 {
+		if code := formatDiagnosticsTo(bw, result.Diagnostics, opts.format, opts.noColor); code != 0 {
+			_ = bw.Flush()
 			return code
 		}
 	}
-	printRunStatsTo(stderrW, opts.format, opts.quiet, runStats{
+	printRunStatsTo(bw, opts.format, opts.quiet, runStats{
 		Checked:  result.FilesChecked,
 		Fixed:    0,
 		Failures: len(result.Diagnostics),
 		Unfixed:  len(result.Diagnostics),
 	})
+	if err := bw.Flush(); err != nil {
+		return 2
+	}
 	logger.Printf("checked %d files, %d issues found", result.FilesChecked, len(result.Diagnostics))
 
 	if len(result.Errors) > 0 && len(result.Diagnostics) == 0 {

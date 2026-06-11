@@ -391,6 +391,57 @@ func (w *alwaysErrorWriter) Write(_ []byte) (int, error) {
 	return 0, fmt.Errorf("write failed")
 }
 
+// countingWriter records how many Write calls it receives. Used to pin
+// that the report paths batch their output instead of issuing one
+// syscall-sized Write per formatted line.
+type countingWriter struct {
+	calls int
+	buf   bytes.Buffer
+}
+
+func (w *countingWriter) Write(p []byte) (int, error) {
+	w.calls++
+	return w.buf.Write(p)
+}
+
+// manyDiagnostics builds n distinct diagnostics with populated source
+// context, the shape a large `mdsmith check` run hands the formatter.
+func manyDiagnostics(n int) []lint.Diagnostic {
+	diags := make([]lint.Diagnostic, n)
+	for i := range diags {
+		diags[i] = lint.Diagnostic{
+			File: "f.md", Line: i + 1, Column: 1, RuleID: "MDS001",
+			RuleName: "line-length", Severity: lint.Warning,
+			Message:         "line too long",
+			SourceLines:     []string{"aaa", "bbb", "ccc"},
+			SourceStartLine: i + 1,
+		}
+	}
+	return diags
+}
+
+func TestReportCheckResultTo_BuffersDiagnosticWrites(t *testing.T) {
+	opts := checkCLIOpts{format: "text", noColor: true}
+	result := &engine.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(100)}
+	w := &countingWriter{}
+	code := reportCheckResultTo(result, opts, &vlog.Logger{}, w)
+	assert.Equal(t, 1, code)
+	assert.Contains(t, w.buf.String(), "line too long")
+	// 100 diagnostics × (header + snippet + caret) lines must not become
+	// hundreds of Write calls on the underlying stderr writer.
+	assert.LessOrEqual(t, w.calls, 4)
+}
+
+func TestReportFixResultTo_BuffersDiagnosticWrites(t *testing.T) {
+	opts := fixCLIOpts{format: "text", noColor: true}
+	result := &fixpkg.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(100)}
+	w := &countingWriter{}
+	code := reportFixResultTo(opts, result, &vlog.Logger{}, w)
+	assert.Equal(t, 1, code)
+	assert.Contains(t, w.buf.String(), "line too long")
+	assert.LessOrEqual(t, w.calls, 4)
+}
+
 func TestWriteDryRunJSON_WriteErrorReturns2(t *testing.T) {
 	var code int
 	captureStderr(func() {

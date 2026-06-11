@@ -386,6 +386,12 @@ func convertedConfigBytes(path string, w io.Writer) (data []byte, source string,
 	return data, source, nil
 }
 
+// stderrBufSize is the buffer the report paths put in front of stderr.
+// The text formatter emits a handful of small writes per diagnostic;
+// batching them into 64 KiB chunks keeps a diagnostic-heavy run from
+// paying one write syscall per formatted line.
+const stderrBufSize = 64 << 10
+
 // formatDiagnosticsTo writes diagnostics to w using the specified format.
 // Returns a non-zero exit code on write error, or 0 on success. The
 // write-error message is best-effort routed to the same w so callers
