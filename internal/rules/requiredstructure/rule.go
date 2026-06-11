@@ -2422,7 +2422,7 @@ func isSchemaFile(docPath, schemaPath string) bool {
 	if errDocAbs != nil || errSchemaAbs != nil {
 		return false
 	}
-	return filepath.Clean(docAbs) == filepath.Clean(schemaAbs)
+	return docAbs == schemaAbs
 }
 
 // formatHeading returns a markdown-style heading string.
