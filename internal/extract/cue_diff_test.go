@@ -1,55 +1,142 @@
 package extract
 
 import (
-	"encoding/json"
+	"fmt"
 	"testing"
 
-	"cuelang.org/go/cue"
-	"cuelang.org/go/cue/cuecontext"
-	cueextract "github.com/jeduden/mdsmith/cue/extract"
 	"github.com/jeduden/mdsmith/internal/schema"
 	"github.com/stretchr/testify/require"
 )
 
-// validateAgainst compiles the published grammar, looks up the named
-// definition, and reports whether v (a projected block or span)
-// unifies with it concretely. A non-nil error means the value is
-// outside the documented grammar.
-func validateAgainst(t *testing.T, ctx *cue.Context, grammar cue.Value, def string, v any) error {
+// cue_diff_test.go validates every block/span an extract fixture projects
+// against the published output grammar (cue/extract/grammar.cue). It once
+// compiled grammar.cue through cuelang.org/go and unified each projected value
+// against the #Block/#Span definitions; the grammar uses CUE definitions and
+// closed disjunctions that the in-house cuelite subset does not model, so the
+// cuelang dependency could not move there. Plan 240 removes cuelang from the
+// module, so this test re-encodes the SAME closed-disjunction contract as an
+// in-house Go structural validator (grammarShapes below): each discriminated
+// arm names its required and optional fields, the struct is closed (an
+// unexpected key fails), and the paragraph arm is text-xor-inline. The grammar
+// shapes here are kept byte-faithful to grammar.cue so a drift in either
+// surfaces; grammar.cue stays the human-readable published contract.
+
+// fieldSet is one closed-struct arm of a discriminated union: the discriminator
+// value, the keys that must be present, and the keys that may be present. Any
+// other key fails the closed-struct check.
+type fieldSet struct {
+	required []string
+	optional []string
+}
+
+// blockShapes maps a `block` discriminator to its closed-struct arm, mirroring
+// grammar.cue's #Block disjunction.
+var blockShapes = map[string]fieldSet{
+	"paragraph": {}, // handled specially (text xor inline) in validateBlock
+	"code":      {required: []string{"value"}, optional: []string{"lang"}},
+	"list":      {required: []string{"items"}},
+	"table":     {required: []string{"columns", "rows"}},
+	"quote":     {required: []string{"blocks"}},
+	"break":     {},
+	"html":      {required: []string{"value"}},
+	"section":   {required: []string{"level", "heading", "blocks"}},
+}
+
+// spanShapes maps a `span` discriminator to its closed-struct arm, mirroring
+// grammar.cue's #Span disjunction.
+var spanShapes = map[string]fieldSet{
+	"text":     {required: []string{"value"}},
+	"break":    {required: []string{"hard"}},
+	"code":     {required: []string{"value"}},
+	"autolink": {required: []string{"value", "url"}},
+	"emphasis": {required: []string{"level", "children"}},
+	"strong":   {required: []string{"level", "children"}},
+	"link":     {required: []string{"url", "children"}, optional: []string{"title"}},
+	"image":    {required: []string{"url", "children"}, optional: []string{"title"}},
+}
+
+// validateShape checks v against a discriminated grammar: the discriminator key
+// (`block` or `span`) selects the arm, every required field must be present,
+// and no key outside required∪optional∪{discriminator} may appear (the closed
+// struct). It returns an error describing the first violation.
+func validateShape(discriminator string, shapes map[string]fieldSet, v map[string]any) error {
+	kind, ok := v[discriminator].(string)
+	if !ok {
+		return fmt.Errorf("missing %q discriminator", discriminator)
+	}
+	shape, known := shapes[kind]
+	if !known {
+		return fmt.Errorf("unknown %s type %q", discriminator, kind)
+	}
+	allowed := map[string]bool{discriminator: true}
+	for _, k := range shape.required {
+		allowed[k] = true
+		if _, present := v[k]; !present {
+			return fmt.Errorf("%s %q missing required field %q", discriminator, kind, k)
+		}
+	}
+	for _, k := range shape.optional {
+		allowed[k] = true
+	}
+	for k := range v {
+		if !allowed[k] {
+			return fmt.Errorf("%s %q has unexpected key %q (closed struct)", discriminator, kind, k)
+		}
+	}
+	return nil
+}
+
+// validateBlock validates one block against #Block. The paragraph arm is
+// text-xor-inline (grammar.cue splits it into two closed arms), so it is
+// handled here rather than through a single fieldSet.
+func validateBlock(v map[string]any) error {
+	if v["block"] == "paragraph" {
+		_, hasText := v["text"]
+		_, hasInline := v["inline"]
+		if hasText == hasInline {
+			return fmt.Errorf("paragraph must carry exactly one of text/inline")
+		}
+		want := "text"
+		if hasInline {
+			want = "inline"
+		}
+		for k := range v {
+			if k != "block" && k != want {
+				return fmt.Errorf("paragraph has unexpected key %q (closed struct)", k)
+			}
+		}
+		return nil
+	}
+	return validateShape("block", blockShapes, v)
+}
+
+// validateAgainstBlock validates v against #Block.
+func validateAgainstBlock(t *testing.T, v any) error {
 	t.Helper()
-	b, err := json.Marshal(v)
-	require.NoError(t, err)
-	data := ctx.CompileBytes(b)
-	require.NoError(t, data.Err())
-	unified := grammar.LookupPath(cue.ParsePath(def)).Unify(data)
-	return unified.Validate(cue.Concrete(true))
+	m, ok := v.(map[string]any)
+	require.Truef(t, ok, "block must be an object, got %T", v)
+	return validateBlock(m)
 }
 
-// grammarValue compiles the embedded grammar.cue once.
-func grammarValue(t *testing.T) (*cue.Context, cue.Value) {
+// validateAgainstSpan validates v against #Span.
+func validateAgainstSpan(t *testing.T, v any) error {
 	t.Helper()
-	ctx := cuecontext.New()
-	g := ctx.CompileString(cueextract.Source())
-	require.NoError(t, g.Err(), "grammar.cue must compile")
-	return ctx, g
+	m, ok := v.(map[string]any)
+	require.Truef(t, ok, "span must be an object, got %T", v)
+	return validateShape("span", spanShapes, m)
 }
 
-// TestCUEGrammar_Compiles is the smoke test: the published grammar
-// compiles and a single paragraph block validates against #Block.
-func TestCUEGrammar_Compiles(t *testing.T) {
-	ctx, g := grammarValue(t)
-	err := validateAgainst(t, ctx, g, "#Block",
-		map[string]any{"block": "paragraph", "text": "hi"})
-	require.NoError(t, err)
+// TestGrammar_Compiles is the smoke test: a single paragraph block validates
+// against #Block.
+func TestGrammar_Compiles(t *testing.T) {
+	require.NoError(t, validateAgainstBlock(t,
+		map[string]any{"block": "paragraph", "text": "hi"}))
 }
 
-// TestCUEGrammar_RejectsInvalid pins that the closed definitions
-// reject malformed values: an unknown block type, an extra key, and a
-// paragraph carrying both `text` and `inline` (the disjunction forbids
-// it). If any of these validated, the contract would be too loose to
-// catch drift.
-func TestCUEGrammar_RejectsInvalid(t *testing.T) {
-	ctx, g := grammarValue(t)
+// TestGrammar_RejectsInvalid pins that the closed definitions reject malformed
+// values: an unknown block type, an extra key, a paragraph carrying both text
+// and inline, and a code block missing its value.
+func TestGrammar_RejectsInvalid(t *testing.T) {
 	cases := []struct {
 		name string
 		v    any
@@ -63,89 +150,70 @@ func TestCUEGrammar_RejectsInvalid(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			err := validateAgainst(t, ctx, g, "#Block", c.v)
-			require.Error(t, err, "grammar must reject %s", c.name)
+			require.Error(t, validateAgainstBlock(t, c.v), "grammar must reject %s", c.name)
 		})
 	}
 }
 
-// TestCUEGrammar_RejectsInvalidSpan pins span-level rejection.
-func TestCUEGrammar_RejectsInvalidSpan(t *testing.T) {
-	ctx, g := grammarValue(t)
+// TestGrammar_RejectsInvalidSpan pins span-level rejection.
+func TestGrammar_RejectsInvalidSpan(t *testing.T) {
 	cases := []struct {
 		name string
 		v    any
 	}{
 		{"unknown span", map[string]any{"span": "smallcaps", "value": "x"}},
-		{"emphasis wrong level", map[string]any{
-			"span": "emphasis", "level": 2, "children": []any{},
-		}},
 		{"text extra key", map[string]any{"span": "text", "value": "x", "url": "y"}},
+		{"emphasis missing children", map[string]any{"span": "emphasis", "level": 1}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			err := validateAgainst(t, ctx, g, "#Span", c.v)
-			require.Error(t, err, "grammar must reject %s", c.name)
+			require.Error(t, validateAgainstSpan(t, c.v), "grammar must reject %s", c.name)
 		})
 	}
 }
 
-// validateBlocksRecursive validates every block in a `blocks` list
-// against #Block, descending into container blocks (quote, section)
-// and validating each `inline` paragraph's spans against #Span. It is
-// the differential check the plan's acceptance criterion names: a
-// fixture's projected blocks must all conform to the published
-// grammar, so the grammar cannot drift from the walker.
-func validateBlocksRecursive(t *testing.T, ctx *cue.Context, g cue.Value, blocks []any) {
+// validateBlocksRecursive validates every block against #Block, descending into
+// container blocks and validating each paragraph's inline spans against #Span.
+func validateBlocksRecursive(t *testing.T, blocks []any) {
 	t.Helper()
 	for _, raw := range blocks {
-		b, ok := raw.(map[string]any)
-		require.True(t, ok, "block must be an object, got %T", raw)
-		require.NoError(t, validateAgainst(t, ctx, g, "#Block", b),
-			"block %v must validate against #Block", b)
+		require.NoErrorf(t, validateAgainstBlock(t, raw), "block %v must validate", raw)
+		b := raw.(map[string]any)
 		switch b["block"] {
 		case "quote", "section":
 			kids, ok := b["blocks"].([]any)
-			require.True(t, ok,
-				"container block %v must carry a []any blocks list", b)
-			validateBlocksRecursive(t, ctx, g, kids)
+			require.Truef(t, ok, "container block %v must carry a []any blocks list", b)
+			validateBlocksRecursive(t, kids)
 		case "paragraph":
 			if inline, hasInline := b["inline"]; hasInline {
 				spans, ok := inline.([]any)
-				require.True(t, ok,
-					"paragraph %v must carry a []any inline list", b)
+				require.Truef(t, ok, "paragraph %v must carry a []any inline list", b)
 				for _, s := range spans {
-					sp, ok := s.(map[string]any)
-					require.True(t, ok, "span must be an object, got %T", s)
-					validateSpansRecursive(t, ctx, g, sp)
+					validateSpansRecursive(t, s)
 				}
 			}
 		}
 	}
 }
 
-// validateSpansRecursive validates one span against #Span and recurses
-// into a container span's children.
-func validateSpansRecursive(t *testing.T, ctx *cue.Context, g cue.Value, span map[string]any) {
+// validateSpansRecursive validates one span against #Span and recurses into a
+// container span's children.
+func validateSpansRecursive(t *testing.T, raw any) {
 	t.Helper()
-	require.NoError(t, validateAgainst(t, ctx, g, "#Span", span),
-		"span %v must validate against #Span", span)
+	require.NoErrorf(t, validateAgainstSpan(t, raw), "span %v must validate", raw)
+	span := raw.(map[string]any)
 	if kids, ok := span["children"]; ok {
 		list, isList := kids.([]any)
-		require.True(t, isList,
-			"span %v children must be a []any list", span)
+		require.Truef(t, isList, "span %v children must be a []any list", span)
 		for _, c := range list {
-			child, isObj := c.(map[string]any)
-			require.True(t, isObj, "child span must be an object, got %T", c)
-			validateSpansRecursive(t, ctx, g, child)
+			validateSpansRecursive(t, c)
 		}
 	}
 }
 
-// blocksCorpus projects a set of documents that together exercise
-// every block-grammar row and the inline-span option, returning each
-// projection's `blocks` list. The differential test validates the
-// whole corpus against the published grammar.
+// blocksCorpus projects a set of documents that together exercise every
+// block-grammar row and the inline-span option, returning each projection's
+// `blocks` list.
 func blocksCorpus(t *testing.T) [][]any {
 	t.Helper()
 	textScope := blocksScope("Notes")
@@ -162,35 +230,16 @@ func blocksCorpus(t *testing.T) [][]any {
 		sch  *schema.Schema
 		body string
 	}{
-		// Every leaf + container block in document order.
 		{textScope, "## Notes\n\npara\n\n```go\nx := 1\n```\n\n    indented\n\n" +
 			"> quoted\n\n- a\n  - b\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\n---\n\n" +
 			"<div>raw</div>\n\n### Sub\n\nnested para\n"},
-		// Inline-paragraph option: text, emphasis, strong, code, link,
-		// autolink, image, and a soft break.
 		{inlineScopeSchema, "## Notes\n\nMark*down* **bold** `code` " +
 			"[t](u) <https://x.test> ![alt](pic.png)\nwrapped line\n"},
-		// A task list (tree items carry `checked`).
 		{textScope, "## Notes\n\n- [x] done\n- [ ] open\n  - child\n"},
-		// A header-only table (no body rows) emits `rows: []`; the
-		// closed `block_table` arm must accept the empty list, not
-		// just populated rows.
 		{textScope, "## Notes\n\n| A | B |\n| - | - |\n"},
-		// Lenient image spans nested inside container spans: an image
-		// linked (image inside a link's `children`) and an image whose
-		// alt text carries emphasis (a non-text image child). These pin
-		// that block-inline leniency propagates through a container
-		// span's recursion, so the image arm's `children: [...#Span]`
-		// is validated for a non-trivial child, not just a bare alt.
 		{inlineScopeSchema, "## Notes\n\n[![alt](i.png)](u) and " +
 			"![a *b* c](j.png)\n"},
-		// Childless containers: an empty-text link and an empty-alt
-		// image must emit `children: []`, never `children: null` — the
-		// null-vs-empty class the contract rejects (the rows:[] case
-		// above is the block-level sibling of the same class).
 		{inlineScopeSchema, "## Notes\n\n[](u) and ![](p.png)\n"},
-		// Empty containers at block level: a bare blockquote and a
-		// body-less deeper heading must emit `blocks: []`.
 		{textScope, "## Notes\n\n> x\n\n### Only\n"},
 	}
 	corpus := make([][]any, 0, len(cases))
@@ -203,22 +252,19 @@ func blocksCorpus(t *testing.T) [][]any {
 	return corpus
 }
 
-// TestCUEGrammar_AllBlockFixturesValidate is the plan-246 acceptance
-// criterion: every block a fixture projects validates against the
-// published #Block definition (spans against #Span), so the grammar
+// TestGrammar_AllBlockFixturesValidate validates every block a fixture projects
+// against the published #Block definition (spans against #Span), so the grammar
 // stays locked to the implementation.
-func TestCUEGrammar_AllBlockFixturesValidate(t *testing.T) {
-	ctx, g := grammarValue(t)
+func TestGrammar_AllBlockFixturesValidate(t *testing.T) {
 	for _, blocks := range blocksCorpus(t) {
-		validateBlocksRecursive(t, ctx, g, blocks)
+		validateBlocksRecursive(t, blocks)
 	}
 }
 
-// TestCUEGrammar_CorpusCoversImageAndBreak guards the differential
-// test's value: it would still pass if the corpus never produced an
-// `image` or `break` span (those grammar rows would go unexercised).
-// Assert the inline corpus case actually emits both.
-func TestCUEGrammar_CorpusCoversImageAndBreak(t *testing.T) {
+// TestGrammar_CorpusCoversImageAndBreak guards the differential test's value:
+// the corpus must actually produce an `image` and a `break` span, else those
+// grammar rows would go unexercised.
+func TestGrammar_CorpusCoversImageAndBreak(t *testing.T) {
 	corpus := blocksCorpus(t)
 	var sawImage, sawBreak bool
 	var walk func(blocks []any)

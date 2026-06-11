@@ -1,3 +1,0 @@
-go test fuzz v1
-string("{mech:string,A:0[mech]}")
-string("0")

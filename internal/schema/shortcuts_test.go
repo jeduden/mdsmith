@@ -1,11 +1,12 @@
 package schema
 
 import (
+	"encoding/json"
 	"sort"
 	"strings"
 	"testing"
 
-	"cuelang.org/go/cue/cuecontext"
+	"github.com/jeduden/mdsmith/cue/cuelite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -24,11 +25,13 @@ func TestShortcutRegistry_NamesMatchPlan(t *testing.T) {
 }
 
 // TestShortcutRegistry_CanonicalsCompileAndMatch exercises every
-// registered shortcut: its canonical CUE expression must parse
-// cleanly, accept a known-good value, and reject a clear
-// violation. The cases ride on the same registry the parser
-// uses, so any change to the canonical CUE that breaks the
-// promised semantics surfaces here.
+// registered shortcut: its canonical CUE expression must compile
+// cleanly through the in-house cuelite engine, accept a known-good
+// value, and reject a clear violation. The cases ride on the same
+// registry the parser uses, so any change to the canonical CUE that
+// breaks the promised semantics surfaces here. (Validated against
+// cuelang while it was vendored; now run on the in-house engine that
+// MDS020 itself uses, plan 240.)
 func TestShortcutRegistry_CanonicalsCompileAndMatch(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -43,21 +46,24 @@ func TestShortcutRegistry_CanonicalsCompileAndMatch(t *testing.T) {
 		{"filename", "notes.md", "notes.txt"},
 		{"nonEmpty", "hello", ""},
 	}
-	ctx := cuecontext.New()
+	// validates compiles `{x: <canonical>}` and reports whether the value
+	// validates against the schema, the same shape MDS020 builds.
+	validates := func(t *testing.T, canonical, value string) bool {
+		t.Helper()
+		schema, err := cuelite.Compile("{x: " + canonical + "}")
+		require.NoErrorf(t, err, "canonical %q failed to compile", canonical)
+		raw, err := json.Marshal(map[string]string{"x": value})
+		require.NoError(t, err)
+		data, err := cuelite.CompileJSON(raw)
+		require.NoError(t, err)
+		return schema.Unify(data).Validate() == nil
+	}
 	for _, tc := range cases {
 		canonical, ok := LookupShortcut(tc.name)
 		require.Truef(t, ok, "shortcut %q missing", tc.name)
-		v := ctx.CompileString(canonical)
-		require.NoErrorf(t, v.Err(),
-			"shortcut %q: canonical CUE %q failed to compile",
-			tc.name, canonical)
-		accept := ctx.CompileString(`"` + tc.accept + `"`)
-		require.NoError(t, accept.Err())
-		require.NoErrorf(t, accept.Unify(v).Validate(),
+		assert.Truef(t, validates(t, canonical, tc.accept),
 			"shortcut %q rejected %q", tc.name, tc.accept)
-		reject := ctx.CompileString(`"` + tc.reject + `"`)
-		require.NoError(t, reject.Err())
-		require.Errorf(t, reject.Unify(v).Validate(),
+		assert.Falsef(t, validates(t, canonical, tc.reject),
 			"shortcut %q accepted %q", tc.name, tc.reject)
 	}
 }
