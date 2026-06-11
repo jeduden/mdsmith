@@ -1387,7 +1387,14 @@ func scanIncludeTargets(fsys fs.FS, filePath string, maxBytes int64) []string {
 	if !bytes.Contains(content, includeMarkerNeedle) {
 		return nil
 	}
-	pf, _ := lint.NewFile(filePath, content)
+	// Pooled parse: pf and everything aliasing its arena die before
+	// release — ParseDirective's params are substrings of content,
+	// and the joined target paths are fresh strings.
+	pf, release, err := lint.NewFileFromSourcePooled(filePath, content, false)
+	if err != nil {
+		return nil
+	}
+	defer release()
 	pairs, _ := gensection.FindMarkerPairs(
 		pf, "include", "MDS021", "include")
 	var targets []string

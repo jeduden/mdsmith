@@ -497,13 +497,37 @@ func refDefLineStarts(source []byte, lineStart, lineEnd int) bool {
 // least one digit, hyphen, or underscore. Requiring a leading letter avoids
 // false positives on regex character classes like [0-9] or [a-z].
 func looksLikeRefTarget(label []byte) bool {
+	// ASCII fast path: one byte-wise pass covers the dominant case;
+	// any high byte falls through to the rune-decoding walk so
+	// Unicode letters and digits keep their exact semantics.
+	ascii := true
 	for i := 0; i < len(label); i++ {
-		if label[i] == ' ' || label[i] == '\t' {
+		c := label[i]
+		if c == ' ' || c == '\t' {
 			return false
 		}
+		if c >= 0x80 {
+			ascii = false
+		}
+	}
+	if len(label) == 0 {
+		return false
+	}
+	if ascii {
+		c := label[0]
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z') {
+			return false
+		}
+		for i := 0; i < len(label); i++ {
+			c := label[i]
+			if c >= '0' && c <= '9' || c == '-' || c == '_' {
+				return true
+			}
+		}
+		return false
 	}
 	first, _ := utf8.DecodeRune(label)
-	if len(label) == 0 || !unicode.IsLetter(first) {
+	if !unicode.IsLetter(first) {
 		return false
 	}
 	for i := 0; i < len(label); {
