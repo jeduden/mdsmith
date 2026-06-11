@@ -21,9 +21,9 @@ every entry in `contains:` and emits one diagnostic per match,
 anchored at the paragraph's start line. Tables (paragraphs whose first
 line starts with `|`) are skipped. Empty substrings are ignored.
 
-Under a schema scope override (plan 146), the per-scope filter keeps
-only diagnostics inside the scope's range. The same code applies to a
-single section.
+Under a [schema scope override](../../../docs/reference/section-schema.md),
+the per-scope filter keeps only diagnostics inside the scope's
+range. The same code applies to a single section.
 
 ## Settings
 
@@ -41,7 +41,7 @@ rules:
     contains: ["should", "may", "might"]
 ```
 
-Per-section (via plan 146 schema scope):
+Per-section (via schema scope):
 
 ```yaml
 kinds:

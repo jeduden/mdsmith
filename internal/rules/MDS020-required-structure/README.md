@@ -316,8 +316,8 @@ status: got "draf", expected one of: "draft", "open", "done"
   ↳ plan/proto.md:4 — required by schema
 ```
 
-That schema reference rides on a related location (plan 230),
-shown above; editors render it as a `relatedInformation` entry.
+The `↳` line attaches the schema source as a related location;
+editors render it as a `relatedInformation` entry.
 
 | Condition            | Message                                                               |
 | -------------------- | --------------------------------------------------------------------- |

@@ -138,12 +138,8 @@ Ignored labels are never removed.
 ## See also
 
 - [MDS027 cross-file-reference-integrity][mds027]
-- [Plan 107: no-reference-style][plan107]
-- [Plan 128: no-undefined-reference-labels][plan128]
 
 [mds027]: ../MDS027-cross-file-reference-integrity/README.md
-[plan107]: ../../../plan/107_no-reference-style.md
-[plan128]: ../../../plan/128_no-undefined-reference-labels.md
 
 ## Meta-Information
 
