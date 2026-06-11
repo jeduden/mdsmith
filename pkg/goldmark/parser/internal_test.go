@@ -714,3 +714,97 @@ func TestParseAttributes_AllBranches(t *testing.T) {
 		})
 	}
 }
+
+// --- inline trigger fast scan ---
+
+func TestInlineTriggerSet_AddAndFirstIndex(t *testing.T) {
+	var s inlineTriggerSet
+	s.add('[')
+	s.add('\\')
+	s.add('\n')
+
+	cases := []struct {
+		line string
+		want int
+	}{
+		{"plain prose with spaces only", -1},
+		{"find [bracket", 5},
+		{"escape \\ here", 7},
+		{"newline\nstops", 7},
+		{"", -1},
+		{"[", 0},
+	}
+	for _, tc := range cases {
+		if got := s.firstIndex([]byte(tc.line)); got != tc.want {
+			t.Errorf("firstIndex(%q) = %d, want %d", tc.line, got, tc.want)
+		}
+	}
+}
+
+func TestInlineTriggerSet_HighBytesNeverMatchUnlessAdded(t *testing.T) {
+	var s inlineTriggerSet
+	s.add('*')
+	if got := s.firstIndex([]byte("caf\xc3\xa9 latte")); got != -1 {
+		t.Errorf("multi-byte UTF-8 must not match, got %d", got)
+	}
+	s.add(0xc3)
+	if got := s.firstIndex([]byte("caf\xc3\xa9")); got != 3 {
+		t.Errorf("explicitly added high byte must match, got %d", got)
+	}
+}
+
+// TestParserBuildsInlineFastScan pins that the canonical parser
+// computes its fast-scan trigger set from the registered inline
+// parsers and includes the loop's structural bytes ('\\' and '\n'),
+// and that a space-triggered inline parser disables the fast path
+// (the per-byte loop maps spaces and the first byte to the ' '
+// parser slot, which a line-level skip could never honour).
+func TestParserBuildsInlineFastScan(t *testing.T) {
+	p := NewParser(WithBlockParsers(DefaultBlockParsers()...),
+		WithInlineParsers(DefaultInlineParsers()...)).(*parser)
+	p.Parse(text.NewReader([]byte("warm up\n")))
+	if !p.fastInlineScan {
+		t.Fatalf("default inline parsers must enable the fast scan")
+	}
+	for _, c := range []byte{'\\', '\n', '`', '[', ']', '*', '_', '<'} {
+		if p.inlineTriggers.firstIndex([]byte{c}) != 0 {
+			t.Errorf("trigger set must contain %q", string(c))
+		}
+	}
+	if p.inlineTriggers.firstIndex([]byte("plain words and spaces")) != -1 {
+		t.Errorf("ordinary prose bytes must not be triggers")
+	}
+}
+
+func TestHeadMayOpenDefinition(t *testing.T) {
+	mk := func(s string) (src []byte, lines *text.Segments) {
+		src = []byte(s)
+		lines = text.NewSegments()
+		lines.Append(text.NewSegment(0, len(src)))
+		return src, lines
+	}
+	cases := []struct {
+		line string
+		want bool
+	}{
+		{"[label]: dest", true},
+		{"   [indented]: dest", true},
+		{"\t[tabbed]: dest", true},
+		{"plain prose", false},
+		{"  plain", false},
+		{"", false},
+		{"   ", false},
+	}
+	for _, tc := range cases {
+		src, lines := mk(tc.line)
+		if got := headMayOpenDefinition(src, lines); got != tc.want {
+			t.Errorf("headMayOpenDefinition(%q) = %v, want %v", tc.line, got, tc.want)
+		}
+	}
+	if headMayOpenDefinition([]byte("x"), text.NewSegments()) {
+		t.Errorf("empty segments must not open a definition")
+	}
+	if headMayOpenDefinition([]byte("x"), nil) {
+		t.Errorf("nil segments must not open a definition")
+	}
+}
