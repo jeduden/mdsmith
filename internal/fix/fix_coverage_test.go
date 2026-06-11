@@ -436,6 +436,22 @@ func TestPrepareFile_UndeclaredKindIsError(t *testing.T) {
 
 // --- atomicWriteFile error paths ---
 
+// TestAtomicWriteFile_ChmodError verifies that atomicWriteFile propagates an
+// error returned by chmodFile (the build-tagged os.Chmod wrapper).
+func TestAtomicWriteFile_ChmodError(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "out.md")
+
+	orig := chmodFile
+	t.Cleanup(func() { chmodFile = orig })
+	chmodFile = func(_ string, _ os.FileMode) error {
+		return os.ErrPermission
+	}
+
+	err := atomicWriteFile(target, []byte("data"), 0o644)
+	require.ErrorIs(t, err, os.ErrPermission)
+}
+
 // TestAtomicWriteFile_TargetNotWritable verifies that atomicWriteFile returns
 // an error when the target exists but is not writable (directory). The
 // preflight OpenFile(O_WRONLY) check fails before any temp file is created.
