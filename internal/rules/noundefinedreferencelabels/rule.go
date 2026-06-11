@@ -184,6 +184,23 @@ func releaseBrackets(bufp *[]bracket) {
 	bracketBufPool.Put(bufp)
 }
 
+// shortcutLabelShaped reproduces the shortcutRE label class for one
+// bracket entry: non-empty, first char not `^` (the bracket scanner
+// already excludes `[`/`]`/newline inside labels), and not followed by
+// `[` (a full/collapsed reference) or `(` (an inline link).
+func shortcutLabelShaped(source []byte, b bracket) bool {
+	if b.cs == b.ce || source[b.cs] == '^' {
+		return false
+	}
+	if b.ca < len(source) {
+		next := source[b.ca]
+		if next == '[' || next == '(' {
+			return false
+		}
+	}
+	return true
+}
+
 // advanceBracket returns the first index at or after i whose entry
 // opens at or after pos — the shared-list equivalent of calling
 // nextBracket(source, pos).
@@ -248,10 +265,7 @@ func (r *Rule) scanFullRefs(
 	source := f.Source
 	var diags []lint.Diagnostic
 	i := 0
-	for {
-		if i >= len(brs) {
-			break
-		}
+	for i < len(brs) {
 		b := brs[i]
 		open1, cs1, ce1, ca1 := b.open, b.cs, b.ce, b.ca
 		// Must be immediately followed by another `[…]` — no
@@ -378,26 +392,11 @@ func (r *Rule) scanShortcutRefs(
 
 	var diags []lint.Diagnostic
 	i := 0
-	for {
-		if i >= len(brs) {
-			break
-		}
+	for i < len(brs) {
 		open, cs, ce, ca := brs[i].open, brs[i].cs, brs[i].ce, brs[i].ca
-		// Reproduce the shortcutRE label class: non-empty, first char
-		// not `^`/`[`/`]`/`\n` (the bracket scanner already excludes
-		// `[`/`]`/`\n` inside the label, so only the `^` check is
-		// new here).
-		if cs == ce || source[cs] == '^' {
+		if !shortcutLabelShaped(source, brs[i]) {
 			i = advanceBracket(brs, i+1, ca)
 			continue
-		}
-		// Skip if followed by `[` (full/collapsed ref) or `(` (inline link).
-		if ca < len(source) {
-			next := source[ca]
-			if next == '[' || next == '(' {
-				i = advanceBracket(brs, i+1, ca)
-				continue
-			}
 		}
 		label := source[cs:ce]
 		isImage := open > 0 && source[open-1] == '!'
@@ -515,7 +514,8 @@ func looksLikeRefTarget(label []byte) bool {
 	}
 	if ascii {
 		c := label[0]
-		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z') {
+		startsWithLetter := c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
+		if !startsWithLetter {
 			return false
 		}
 		for i := 0; i < len(label); i++ {

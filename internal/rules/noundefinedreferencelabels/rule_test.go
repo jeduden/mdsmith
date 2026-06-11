@@ -504,3 +504,29 @@ func TestCollectBrackets_MatchesSequentialNextBracket(t *testing.T) {
 		}
 	}
 }
+
+// --- shortcutLabelShaped (the shortcut scanner's label-class gate) ---
+
+func TestShortcutLabelShaped(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want bool
+	}{
+		{"plain label", "[ref]", true},
+		{"empty label", "[]", false},
+		{"footnote caret", "[^fn]", false},
+		{"full ref follows", "[a][b]", false},
+		{"inline link follows", "[a](u)", false},
+		{"label at end of source", "x [ref]", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			source := []byte(tc.src)
+			brs, buf := collectBrackets(source)
+			defer releaseBrackets(buf)
+			require.NotEmpty(t, brs, "fixture must contain a bracket")
+			assert.Equal(t, tc.want, shortcutLabelShaped(source, brs[0]))
+		})
+	}
+}
