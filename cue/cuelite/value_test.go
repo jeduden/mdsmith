@@ -64,6 +64,12 @@ func TestCompileJSON(t *testing.T) {
 		_, err := CompileJSON([]byte(`{"n": >=0}`))
 		require.Error(t, err)
 	})
+}
+
+// TestCompileJSON_duplicateKeys covers the strict-JSON contract that forbids a
+// duplicate object key before the CUE lift, across the conflicting, mergeable,
+// equal, nested, and array-nested shapes.
+func TestCompileJSON_duplicateKeys(t *testing.T) {
 	t.Run("conflicting duplicate key rejected", func(t *testing.T) {
 		v, err := CompileJSON([]byte(`{"a":1,"a":2}`))
 		require.Error(t, err)
