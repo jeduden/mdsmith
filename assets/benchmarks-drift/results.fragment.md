@@ -11,12 +11,12 @@ better; `vs mado` is the median ratio to the fastest tool):
 
 | Tool              | Median  | Min     | vs mado |
 | ----------------- | ------- | ------- | ------- |
-| mado              | 68 ms   | 63 ms   | 1.0x    |
-| mdsmith-parity    | 107 ms  | 107 ms  | 1.6x    |
-| rumdl             | 320 ms  | 315 ms  | 4.7x    |
-| mdsmith           | 468 ms  | 454 ms  | 6.9x    |
-| panache           | 611 ms  | 595 ms  | 9.0x    |
-| markdownlint-cli2 | 4728 ms | 4588 ms | 69x     |
+| mado              | 63 ms   | 62 ms   | 1.0x    |
+| mdsmith-parity    | 105 ms  | 104 ms  | 1.7x    |
+| rumdl             | 313 ms  | 305 ms  | 5.0x    |
+| mdsmith           | 461 ms  | 459 ms  | 7.3x    |
+| panache           | 726 ms  | 583 ms  | 12x     |
+| markdownlint-cli2 | 4617 ms | 4496 ms | 73x     |
 
 **Neutral corpus — 234 files** (Rust Book + Rust Reference,
 longer third-party prose):
@@ -24,8 +24,8 @@ longer third-party prose):
 | Tool              | Median  | Min     | vs mado |
 | ----------------- | ------- | ------- | ------- |
 | mado              | 46 ms   | 45 ms   | 1.0x    |
-| mdsmith-parity    | 122 ms  | 120 ms  | 2.7x    |
-| rumdl             | 195 ms  | 192 ms  | 4.2x    |
-| mdsmith           | 239 ms  | 235 ms  | 5.2x    |
-| panache           | 560 ms  | 524 ms  | 12x     |
-| markdownlint-cli2 | 3057 ms | 3018 ms | 67x     |
+| mdsmith-parity    | 127 ms  | 125 ms  | 2.8x    |
+| rumdl             | 189 ms  | 187 ms  | 4.1x    |
+| mdsmith           | 250 ms  | 246 ms  | 5.5x    |
+| panache           | 553 ms  | 513 ms  | 12x     |
+| markdownlint-cli2 | 2985 ms | 2915 ms | 65x     |
