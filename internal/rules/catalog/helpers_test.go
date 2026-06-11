@@ -6,6 +6,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/jeduden/mdsmith/internal/gitignore"
 	"github.com/jeduden/mdsmith/internal/lint"
 
 	"github.com/stretchr/testify/assert"
@@ -674,4 +675,34 @@ func TestAbsMatchedPath_NoBaseReturnsFalse(t *testing.T) {
 	assert.False(t, ok,
 		"empty gitignoreBase must opt out of the run cache; a "+
 			"non-absolute key would break LSP invalidation")
+}
+
+// --- gitignore ancestor memo ---
+
+// TestDirChainIgnored_MatchesPerPathWalk pins that the memoized
+// ancestor walk gives the same answer as the original per-path
+// ancestor scan for every file in a tree with a dir-only ignore
+// pattern, and that the memo actually short-circuits repeat
+// ancestors (one IsIgnored probe per distinct directory).
+func TestDirChainIgnored_MatchesPerPathWalk(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "ignored", "sub"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "kept", "sub"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".gitignore"),
+		[]byte("ignored/\n*.skip.md\n"), 0o644))
+
+	matcher := gitignore.NewMatcher(root)
+	require.NotNil(t, matcher)
+
+	paths := []string{
+		"ignored/a.md", "ignored/sub/b.md",
+		"kept/a.md", "kept/sub/b.md", "kept/c.skip.md",
+		"top.md", "top.skip.md",
+	}
+	memo := map[string]bool{}
+	for _, p := range paths {
+		want := isGitignored(matcher, root, p)
+		got := isGitignoredMemo(matcher, root, p, memo)
+		assert.Equal(t, want, got, "path %q", p)
+	}
 }

@@ -870,6 +870,10 @@ func resolveGlobMatchesFrom(res globResolution, f *lint.File, params map[string]
 	// 8 is a rough heuristic: each glob pattern typically matches several
 	// files, so pre-sizing avoids the first few growth doublings.
 	seen := make(map[string]struct{}, len(res.includes)*8)
+	var dirVerdicts map[string]bool
+	if matcher != nil && base != "" {
+		dirVerdicts = make(map[string]bool, 16)
+	}
 	var files []string
 	for _, pattern := range res.includes {
 		matches, err := doublestar.Glob(res.fs, pattern)
@@ -887,7 +891,7 @@ func resolveGlobMatchesFrom(res globResolution, f *lint.File, params map[string]
 			if isExcluded(m, res.excludes) {
 				continue
 			}
-			if matcher != nil && base != "" && isGitignored(matcher, base, m) {
+			if matcher != nil && base != "" && isGitignoredMemo(matcher, base, m, dirVerdicts) {
 				continue
 			}
 			seen[m] = struct{}{}
@@ -1536,6 +1540,35 @@ func isExcluded(filePath string, patterns []string) bool {
 // base is the pre-computed absolute path of that directory. To match
 // gitignore semantics for directory-only patterns (e.g. "ignored/"),
 // ancestor directories are also checked with isDir=true.
+// isGitignoredMemo is isGitignored with a per-call directory-verdict
+// memo: matched paths cluster under few directories and share most of
+// their ancestor chains, so the per-path ancestor rescans collapse to
+// one IsIgnored probe per distinct directory. memo must be scoped to
+// one resolveGlobMatchesFrom call (one matcher, one base).
+func isGitignoredMemo(matcher *gitignore.Matcher, base, matchedPath string, memo map[string]bool) bool {
+	abs := filepath.Join(base, matchedPath)
+	if dirChainIgnored(matcher, filepath.Dir(abs), memo) {
+		return true
+	}
+	return matcher.IsIgnored(abs, false)
+}
+
+// dirChainIgnored reports whether dir or any of its ancestors is
+// ignored as a directory, memoizing the verdict per directory.
+func dirChainIgnored(matcher *gitignore.Matcher, dir string, memo map[string]bool) bool {
+	if v, ok := memo[dir]; ok {
+		return v
+	}
+	var v bool
+	if parent := filepath.Dir(dir); parent == dir {
+		v = matcher.IsIgnored(dir, true)
+	} else {
+		v = dirChainIgnored(matcher, parent, memo) || matcher.IsIgnored(dir, true)
+	}
+	memo[dir] = v
+	return v
+}
+
 func isGitignored(matcher *gitignore.Matcher, base, matchedPath string) bool {
 	abs := filepath.Join(base, matchedPath)
 

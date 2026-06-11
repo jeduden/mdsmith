@@ -129,20 +129,23 @@ check-only port of ~41 markdownlint rules; rumdl and panache
 are per-file linters too. Default mdsmith also resolves the
 cross-file link/anchor graph, scores readability and
 structure, estimates token budgets, and validates generated
-sections. So on its default rule set it lands between the
-Node baseline and the Rust markdownlint tools (see the
-`mdsmith` row) — a gap we are actively closing, not an
-accepted trade-off.
+sections — here under this repository's own `.mdsmith.yml`,
+which switches on opt-in rules a stock install leaves off.
+Even carrying that extra work, the `mdsmith` row now runs in
+the same class as the per-file Rust linters (compare it with
+the `rumdl` row on both corpora) at roughly 3x the
+check-only mado.
 
 **Apples-to-apples: the `parity` convention.** Restricted to
 the rule class the markdownlint tools actually share — the
 built-in `parity` convention, which disables the mdsmith-only
 rules (see
 [Apples-to-apples rule sets](#apples-to-apples-rule-sets)) —
-mdsmith runs in the same class as mado and rumdl. On the repo
-corpus the `mdsmith-parity` row matches mado and comes in
-well ahead of rumdl; on the longer-prose neutral corpus it
-ties rumdl and trails mado. The `mdsmith` → `mdsmith-parity`
+mdsmith runs in mado's class. On the repo corpus the
+`mdsmith-parity` row comes in at mado's time (the two trade
+places run to run within noise), well ahead of rumdl; on the
+longer-prose neutral corpus it trails mado by roughly a third
+and comes in ahead of rumdl. The `mdsmith` → `mdsmith-parity`
 delta is the measured cost of the cross-file and
 generated-content layer — work users opt into, not waste.
 The residual gap to mado on long prose is genuine engine
@@ -378,8 +381,8 @@ job as the others", not "panache at its best".
 
 An earlier performance page cited a sub-300 ms full check
 "of 70-plus Markdown files". That was a narrow scope. The
-repo now tracks ~720 Markdown files; `mdsmith check .` over
-the whole tree is ~1.3 s here, and an 18-file
+repo now tracks ~760 Markdown files; `mdsmith check .` over
+the whole tree is ~0.5 s here, and an 18-file
 `docs/features` subset is ~50 ms. The page has been
 re-scoped, and a CI gate now guards the real number.
 
