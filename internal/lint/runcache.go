@@ -42,7 +42,17 @@ type RunCache struct {
 	// are an empty struct sentinel. Built lazily as ParsedSchema
 	// slots populate; the LSP's didChange path on a fragment then
 	// transitively invalidates every schema that reached it.
-	schemaDependents sync.Map // string (fragmentPath) -> *sync.Map
+	//
+	// This is a mutex-guarded plain map rather than a sync.Map: the
+	// empty-set cleanup needs a compare-and-delete (drop frag only if
+	// it still points at the same set), and sync.Map.CompareAndDelete
+	// is unavailable on tinygo, the toolchain the WASM build targets
+	// (plan 218/240). The mutex guards the outer map's
+	// load/store/compare-and-delete; the inner *sync.Map stays
+	// concurrent for the per-set Store/Delete/Range the register and
+	// invalidate paths run without the outer lock.
+	depsMu           sync.Mutex
+	schemaDependents map[string]*sync.Map // fragmentPath -> dependent-schema set
 
 	// schemaIncludes / schemaCUESources mirror ParsedSchemaMetadata
 	// into dedicated sync.Maps so Invalidate reads metadata without
@@ -89,7 +99,7 @@ type ParsedSchemaMetadata interface {
 // NewRunCache returns an empty cache ready to be installed on
 // engine.Runner.RunCache.
 func NewRunCache() *RunCache {
-	return &RunCache{}
+	return &RunCache{schemaDependents: map[string]*sync.Map{}}
 }
 
 // FrontMatter returns build's result for absPath, computed at most once
@@ -296,14 +306,19 @@ func (c *RunCache) registerSchemaIncludes(schemaPath string, includes []string) 
 		if frag == "" {
 			continue
 		}
-		for retry := 0; retry < 8; retry++ {
-			setI, _ := c.schemaDependents.LoadOrStore(frag, &sync.Map{})
-			set := setI.(*sync.Map)
-			set.Store(schemaPath, struct{}{})
-			if current, ok := c.schemaDependents.Load(frag); ok && current == setI {
-				break
-			}
+		// Under depsMu the load-or-store and the inner Store are one atomic
+		// step, so the empty-set cleanup in invalidate (also under depsMu)
+		// cannot orphan the dependent the way the lock-free sync.Map version's
+		// CompareAndDelete race could — the retry loop that guarded that race is
+		// no longer needed.
+		c.depsMu.Lock()
+		set, ok := c.schemaDependents[frag]
+		if !ok {
+			set = &sync.Map{}
+			c.schemaDependents[frag] = set
 		}
+		set.Store(schemaPath, struct{}{})
+		c.depsMu.Unlock()
 	}
 }
 
@@ -384,80 +399,96 @@ func (c *RunCache) invalidate(absPath string, visited map[string]bool) {
 
 	c.dropUniqueFieldIndexes(absPath)
 
-	// Read the schema's includes + cueSources from the dedicated
-	// sync.Maps. Both are written AFTER ParsedSchema's load returns
-	// (post-sync.Once) and read here via sync.Map.Load, so there is
-	// no race with an in-flight build. A miss (slot never populated,
-	// or already dropped by a sibling Invalidate via the dependents
-	// walk) leaves the slices nil and the rest of the eviction is a
-	// no-op.
-	var includes, cueSources []string
-	if v, ok := c.schemaIncludes.Load(absPath); ok {
-		includes, _ = v.([]string)
-	}
-	if v, ok := c.schemaCUESources.Load(absPath); ok {
-		cueSources, _ = v.([]string)
-	}
-
-	// Drop every CompiledCUE entry the parsed schema produced. The
-	// CUE source is the cache key, so two schemas with identical
-	// front matter share one slot — invalidating absPath drops the
-	// slot for both, and the sibling recompiles on its next lookup
-	// (one CUE compile per surviving schema is the worst case).
-	for _, src := range cueSources {
-		c.compiledCUE.Delete(src)
-	}
-
-	// Walk the reverse-include index: every schema that included
-	// absPath as a fragment must be invalidated transitively. Drain
-	// the set into a slice first so the recursive invalidate calls
-	// (which also touch schemaDependents during their own
-	// fragment-edge cleanup) cannot race with this iteration. The
-	// reverse-index entry for absPath is dropped after the walk so
-	// a re-populated schema's next register re-creates the set with
-	// only the live dependents. The visited set carried through the
-	// recursion is the cycle guard — a dependent that has already
-	// been invalidated in this top-level call is skipped.
-	if setI, ok := c.schemaDependents.Load(absPath); ok {
-		set := setI.(*sync.Map)
-		var deps []string
-		set.Range(func(k, _ any) bool {
-			deps = append(deps, k.(string))
-			return true
-		})
-		for _, dep := range deps {
-			c.invalidate(dep, visited)
-		}
-		c.schemaDependents.Delete(absPath)
-	}
+	includes := c.evictSchemaArtifacts(absPath)
+	c.invalidateDependents(absPath, visited)
 
 	// Drop the parsed-schema slot and its mirrored metadata.
 	c.parsedSchema.Delete(absPath)
 	c.schemaIncludes.Delete(absPath)
 	c.schemaCUESources.Delete(absPath)
 
-	// Drop the reverse-index edges where absPath appears as a
-	// dependent — for each fragment in absPath's includes, remove
-	// absPath from that fragment's dependent set. Leaves the
-	// fragment's own slot intact (it is a sibling document, not the
-	// invalidated one); only the back-pointer to absPath is
-	// removed. When that removal empties the set, CompareAndDelete
-	// drops the schemaDependents entry too so long-lived LSP
-	// sessions do not accumulate empty *sync.Maps. CompareAndDelete
-	// is the race-safe primitive: if a concurrent
-	// registerSchemaMetadata re-Stored a dependent between our
-	// Range and the delete, the value in schemaDependents now
-	// differs from setI and the delete is skipped, preserving the
-	// new entry.
+	c.dropDependentBackPointers(absPath, includes)
+}
+
+// evictSchemaArtifacts drops the CompiledCUE entries the parsed schema at
+// absPath produced and returns the schema's include fragments and CUE sources
+// for the rest of the eviction. The includes/cueSources are read from the
+// dedicated sync.Maps; both are written AFTER ParsedSchema's load returns
+// (post-sync.Once), so there is no race with an in-flight build. A miss (slot
+// never populated, or already dropped by a sibling Invalidate via the
+// dependents walk) leaves the slices nil and the rest of the eviction is a
+// no-op.
+func (c *RunCache) evictSchemaArtifacts(absPath string) (includes []string) {
+	if v, ok := c.schemaIncludes.Load(absPath); ok {
+		includes, _ = v.([]string)
+	}
+	var cueSources []string
+	if v, ok := c.schemaCUESources.Load(absPath); ok {
+		cueSources, _ = v.([]string)
+	}
+	// Drop every CompiledCUE entry the parsed schema produced. The CUE source
+	// is the cache key, so two schemas with identical front matter share one
+	// slot — invalidating absPath drops the slot for both, and the sibling
+	// recompiles on its next lookup (one CUE compile per surviving schema is
+	// the worst case).
+	for _, src := range cueSources {
+		c.compiledCUE.Delete(src)
+	}
+	return includes
+}
+
+// invalidateDependents walks the reverse-include index: every schema that
+// included absPath as a fragment is invalidated transitively. The dependent
+// set is drained into a slice first so the recursive invalidate calls (which
+// also touch schemaDependents during their own fragment-edge cleanup) cannot
+// race with this iteration. The reverse-index entry for absPath is dropped
+// after the walk so a re-populated schema's next register re-creates the set
+// with only the live dependents. The visited set carried through the recursion
+// is the cycle guard — a dependent already invalidated in this top-level call
+// is skipped.
+func (c *RunCache) invalidateDependents(absPath string, visited map[string]bool) {
+	c.depsMu.Lock()
+	set, ok := c.schemaDependents[absPath]
+	c.depsMu.Unlock()
+	if !ok {
+		return
+	}
+	var deps []string
+	set.Range(func(k, _ any) bool {
+		deps = append(deps, k.(string))
+		return true
+	})
+	for _, dep := range deps {
+		c.invalidate(dep, visited)
+	}
+	c.depsMu.Lock()
+	delete(c.schemaDependents, absPath)
+	c.depsMu.Unlock()
+}
+
+// dropDependentBackPointers removes the reverse-index edges where absPath
+// appears as a dependent — for each fragment in absPath's includes, it removes
+// absPath from that fragment's dependent set. It leaves the fragment's own slot
+// intact (a sibling document, not the invalidated one); only the back-pointer
+// to absPath is removed. When that removal empties the set, the entry is
+// dropped too so long-lived LSP sessions do not accumulate empty *sync.Maps.
+// The empty-check and the drop run together under depsMu and confirm the slot
+// still holds the SAME set: a concurrent registerSchemaIncludes that re-stored
+// a dependent either ran before this lock (so the set is non-empty and kept)
+// or after the drop (so it re-creates a fresh set under the same lock) — the
+// mutex makes this the race-safe equivalent of the former
+// sync.Map.CompareAndDelete, which tinygo lacks (plan 240).
+func (c *RunCache) dropDependentBackPointers(absPath string, includes []string) {
 	for _, frag := range includes {
 		if frag == "" {
 			continue
 		}
-		setI, ok := c.schemaDependents.Load(frag)
+		c.depsMu.Lock()
+		set, ok := c.schemaDependents[frag]
 		if !ok {
+			c.depsMu.Unlock()
 			continue
 		}
-		set := setI.(*sync.Map)
 		set.Delete(absPath)
 		empty := true
 		set.Range(func(_, _ any) bool {
@@ -465,9 +496,20 @@ func (c *RunCache) invalidate(absPath string, visited map[string]bool) {
 			return false
 		})
 		if empty {
-			c.schemaDependents.CompareAndDelete(frag, setI)
+			delete(c.schemaDependents, frag)
 		}
+		c.depsMu.Unlock()
 	}
+}
+
+// dependentSet returns the dependent-schema set registered for fragment
+// under the depsMu guard, for tests that assert the reverse-include index
+// shape. It returns (nil, false) when no set is registered.
+func (c *RunCache) dependentSet(fragment string) (*sync.Map, bool) {
+	c.depsMu.Lock()
+	defer c.depsMu.Unlock()
+	set, ok := c.schemaDependents[fragment]
+	return set, ok
 }
 
 // InvalidateWikilinks clears every cached wikilink index. The LSP

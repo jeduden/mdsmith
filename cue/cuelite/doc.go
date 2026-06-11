@@ -73,12 +73,13 @@
 //
 // As a public package this is a cross-system contract, like
 // pkg/markdown and pkg/mdsmith. The evaluator — unify, validate,
-// concreteness — is in-house; the AST frontend reuses cuelang's
-// cue/parser to walk the supported CUE subset into the value model
-// (the interim recorded in plan 238, removed in plan 240's phase 4). A
-// differential harness pins identical accept/reject outcomes and
-// identical sets of rejecting leaf paths (deduplicated) against a
-// direct-CUE oracle across the whole corpus, plus a schema×data
-// fuzzer. The strategy and the layering rules live in
+// concreteness — and the AST frontend are both in-house: the
+// hand-rolled cue/cuelite/syntax lexer and parser replaced
+// cuelang.org/go (plan 240's phase 4), so the package depends only on
+// the standard library. Conformance was proven against a direct-CUE
+// oracle while the differential harness still existed; that harness is
+// gone, and its findings are now pinned as oracle-free regression
+// corpora (corpus_test.go, rowcorpus_test.go) and panic-safety smoke
+// fuzzers (fuzz_test.go). The strategy and the layering rules live in
 // docs/development/architecture/index.md.
 package cuelite

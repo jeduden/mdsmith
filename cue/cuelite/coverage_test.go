@@ -122,6 +122,33 @@ func TestExprText(t *testing.T) {
 	assert.Contains(t, err.Error(), "pkg.sub")
 }
 
+// TestCompileFile_labelDecodeError covers compileFile's fieldLabel-error branch:
+// a TOP-LEVEL field (no braces — the file-of-declarations form) whose quoted
+// label carries a bad escape fails to decode.
+func TestCompileFile_labelDecodeError(t *testing.T) {
+	_, err := Compile(`"\q": 1`)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `\q`)
+}
+
+// TestEvalExpr_bareSelectorOutsideCall covers evalExpr's
+// unsupported-selector branch: a builtin selector (strings.MinRunes) used as a
+// value rather than a call.
+func TestEvalExpr_bareSelectorOutsideCall(t *testing.T) {
+	_, err := Compile(`{a: strings.MinRunes}`)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "strings.MinRunes")
+}
+
+// TestEvalExpr_interpolationInSchema covers evalExpr's default branch: a string
+// interpolation is a row-expression construct, not a schema value, so the
+// schema evaluator rejects it as an unsupported construct.
+func TestEvalExpr_interpolationInSchema(t *testing.T) {
+	_, err := Compile(`{a: "x\(b)y"}`)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported construct")
+}
+
 // TestNumericValue covers numericValue's float branch through a float bound
 // comparison.
 func TestNumericValue_float(t *testing.T) {

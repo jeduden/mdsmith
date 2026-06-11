@@ -1,21 +1,17 @@
 name: cuelite-fuzz
 
-# Differential fuzzing for the in-house CUE-subset engine (plan 218).
-# The two fuzzers compare the cuelite engine against the direct-CUE
-# oracle in internal/cuelitetest; they exist until plan 240 deletes
-# the oracle, then this workflow retires with the harness.
-#
-# This job carries the EXPLORATORY budget. The regression layer — every
-# previously-found divergence replayed as f.Add seeds and committed
-# testdata corpus entries — already runs in the ordinary `test` job on
-# every push. Review rounds deliberately do not run long fuzz loops;
-# this workflow is where new divergences are hunted, out-of-band.
+# Engine smoke fuzzing for the in-house CUE-subset engine (plan 218).
+# Plan 240 deleted the differential oracle with the cuelang.org
+# dependency, so these fuzzers hunt panics, hangs, and silent
+# acceptance of garbage in the parser and evaluators — not divergence.
+# The regression layer (every divergence found while the oracle
+# existed, pinned as f.Add seeds and corpus tests) runs in the
+# ordinary `test` job on every push.
 
 on:
   pull_request:
     paths:
       - "cue/cuelite/**"
-      - "internal/cuelitetest/**"
       - ".github/workflows/cuelite-fuzz.yml"
 
 permissions:
@@ -28,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [FuzzValidate, FuzzParsePath, FuzzExpr]
+        target: [FuzzSchemaSmoke, FuzzRowSmoke, FuzzPathSmoke]
     env:
       GOTOOLCHAIN: local
     steps:
@@ -38,8 +34,8 @@ jobs:
       - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
         with:
           go-version-file: go.mod
-      - name: Fuzz ${{ matrix.target }} against the CUE oracle
-        run: go test -run='^$' -fuzz='${{ matrix.target }}$' -fuzztime=240s ./internal/cuelitetest/
+      - name: Fuzz ${{ matrix.target }} for panic and hang safety
+        run: go test -run='^$' -fuzz='${{ matrix.target }}$' -fuzztime=240s ./cue/cuelite/
       # A failing fuzz run writes the minimized input under testdata/fuzz/.
       # Upload it so the find survives the ephemeral runner and can be
       # committed as a regression seed.
@@ -48,5 +44,5 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: fuzz-crashers-${{ matrix.target }}
-          path: internal/cuelitetest/testdata/fuzz/
+          path: cue/cuelite/testdata/fuzz/
           if-no-files-found: ignore

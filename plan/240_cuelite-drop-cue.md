@@ -1,15 +1,16 @@
 ---
 id: 240
 title: "cuelite phase 4 — drop cuelang.org and enable tinygo"
-status: "🔲"
+status: "🔳"
 model: opus
 summary: >-
   With every surface flipped, delete cue/cuelite's CUE
   delegation and remove cuelang.org/go from go.mod; replace the
   tinygo-incompatible sync.Map.CompareAndDelete in
-  internal/lint/runcache.go; get the standard-Go and tinygo
-  WASM builds under the plan-215 budgets; update the engine-api
-  page and the layering map.
+  internal/lint/runcache.go; get the standard-Go WASM build
+  under the plan-215 budget (the tinygo build still fails on
+  unimplemented os.* calls — criterion unmet); update the
+  engine-api page and the layering map.
 depends-on: [239]
 ---
 # cuelite phase 4 — drop cuelang.org and enable tinygo
@@ -94,20 +95,67 @@ above the `sonnet` band.
 
 ## Acceptance Criteria
 
-- [ ] `cuelang.org/go` is absent from `go.mod` and `go.sum`;
+- [x] `cuelang.org/go` is absent from `go.mod` and `go.sum`;
       NO file imports `cuelang.org/...` — test files included
-      (`internal/schema/shortcuts_test.go` and the `cue/cuelite`
-      tests migrated off CUE), since a test-only import alone keeps
-      the module in the build graph.
-- [ ] `internal/cuelitetest` is deleted (or its corpus ported to
-      oracle-free in-house self-tests), so no package imports
+      (`internal/schema/shortcuts_test.go` and
+      `internal/extract/cue_diff_test.go` migrated off CUE, and the
+      `cue/cuelite` tests rebuilt on the in-house syntax tree), since
+      a test-only import alone keeps the module in the build graph.
+      `cockroachdb/apd` and protobuf are dropped as orphaned transitives.
+- [x] `internal/cuelitetest` is deleted; its corpus is ported to
+      oracle-free in-house self-tests (`cue/cuelite/corpus_test.go`,
+      `rowcorpus_test.go`), its fuzzers to engine-only smoke fuzzers
+      (`fuzz_test.go`), and its CUE-relative factor gate to an absolute
+      allocs/op guard (`bench_test.go`). No package imports
       `cuelang.org/...` from a non-test file.
-- [ ] Standard-Go WASM artifact ≤ 18 MB.
-- [ ] `tinygo build -target wasm ./cmd/mdsmith-wasm` succeeds
-      and is ≤ 8 MB; `size_test.go` asserts the new budgets.
-- [ ] `Capabilities()` is unchanged.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues.
+- [x] Standard-Go WASM artifact ≤ 18 MB — measured ~11.2 MB raw /
+      ~2.8 MB gzipped; `cmd/mdsmith-wasm/size_test.go` asserts the
+      tightened ceilings (14 MiB raw / 4 MiB gzip).
+- [🔲] `tinygo build -target wasm ./cmd/mdsmith-wasm` succeeds and is
+      ≤ 8 MB. **UNMET.** Removing CUE and swapping the runcache
+      `sync.Map.CompareAndDelete` lever for a mutex-guarded map cleared
+      two earlier walls, but the build still FAILS on standard-library
+      functions tinygo's wasm target does not implement. Verified with
+      tinygo 0.39.0 (go 1.24.7) — the error inventory:
+      `internal/schema/index.go` `os.Chmod`; `internal/fix/fix.go`
+      `os.Chmod`; `internal/githooks/githooks.go` `os.Chmod`,
+      `os.SameFile`; plus `os.Symlink`/`filepath.EvalSymlinks` in
+      `internal/schema`, `internal/lsp`, and the cross-file rule
+      packages — all reached transitively from `pkg/mdsmith`. Making the
+      tinygo build succeed needs those calls build-tagged out of the
+      wasm graph (a multi-package change), scheduled as plan 247
+      ([247_tinygo-wasm-build.md](247_tinygo-wasm-build.md)).
+      `size_test.go`'s `TestTinyGoWASMArtifactSizeBudget` now records the
+      build failure and skips rather than faking a pass; the 8 MB budget
+      is unverified.
+- [x] `Capabilities()` is unchanged — `methods_test.go` /
+      `smoke_test.go` assert the WASM proxy advertises the same
+      capability set as the native session.
+- [x] All tests pass: `go test ./...` (and `-race` clean on the
+      affected packages).
+- [🔳] `go tool golangci-lint run` reports no issues — the tools/go.mod
+      golangci-lint needs Go ≥ 1.25.8; the dev container has 1.25.0, so
+      this is CI-verified.
+
+## Implementation Notes
+
+The parser (task 1) emits an in-house syntax tree. It does not mimic
+`cue/ast`. The `cue/cuelite/syntax` package defines node types. They use
+the same names the three consumers already switched on. So re-pointing
+`compile.go`, `eval.go`, and `evalrow.go` was a near-mechanical import
+swap.
+
+One divergence from CUE's tree is deliberate. `Interpolation.Elts`
+carries already-decoded string fragments. The scanner decodes them
+across the three dialects. So `evalRowInterpolation` reads them direct.
+The `token` and `literal` calls map to the in-house token set,
+`syntax.Unquote`, and `syntax.IsBytesLiteral`.
+
+Conformance was proven before the oracle was deleted. The frontend was
+flipped first. The `internal/cuelitetest` differential harness then ran
+green over the corpus, the fuzz seeds, the real schemas, and the
+row-expr suite. Only then was the harness deleted, with its corpus
+ported to engine-only pinned tests.
 
 ## See also
 

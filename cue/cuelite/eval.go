@@ -6,8 +6,7 @@ import (
 	"math"
 	"regexp"
 
-	"cuelang.org/go/cue/ast"
-	"cuelang.org/go/cue/token"
+	"github.com/jeduden/mdsmith/cue/cuelite/syntax"
 )
 
 // errUnresolved signals that an expression could not be evaluated because it
@@ -31,32 +30,32 @@ var errUnresolved = stderrors.New("cuelite: unresolved reference")
 // relational paths become thunks. The scope-free constructs (literals,
 // type keywords, calls, bounds) carry no sibling reference and build the
 // same value regardless of scope.
-func evalExpr(e ast.Expr, scope map[string]*engineValue) (*engineValue, error) {
+func evalExpr(e syntax.Expr, scope map[string]*engineValue) (*engineValue, error) {
 	switch n := e.(type) {
-	case *ast.BasicLit:
+	case *syntax.BasicLit:
 		return compileBasicLit(n)
-	case *ast.Ident:
+	case *syntax.Ident:
 		return evalIdent(n, scope)
-	case *ast.IndexExpr:
+	case *syntax.IndexExpr:
 		return evalIndex(n, scope)
-	case *ast.BinaryExpr:
+	case *syntax.BinaryExpr:
 		return evalBinary(n, scope)
-	case *ast.ParenExpr:
+	case *syntax.ParenExpr:
 		return evalExpr(n.X, scope)
-	case *ast.ListLit:
+	case *syntax.ListLit:
 		return evalList(n, scope)
-	case *ast.StructLit:
+	case *syntax.StructLit:
 		return evalStruct(n, scope)
-	case *ast.UnaryExpr:
+	case *syntax.UnaryExpr:
 		// A unary expression (a bound operator >=0, a numeric sign -1) carries no
 		// reference, so it has nothing to resolve against scope and goes straight
 		// to the compile-time builder. A * default marker is stripped by
 		// evalDisjunction before a branch is built, so reaching compileUnary with
 		// one yields the "* default is only valid in a disjunction" error.
 		return compileUnary(n)
-	case *ast.CallExpr:
+	case *syntax.CallExpr:
 		return compileCall(n)
-	case *ast.SelectorExpr:
+	case *syntax.SelectorExpr:
 		// A bare selector like strings.MinRunes outside a call is not a value.
 		return nil, fmt.Errorf("cuelite: unsupported selector expression %q", exprText(n))
 	default:
@@ -72,7 +71,7 @@ func evalExpr(e ast.Expr, scope map[string]*engineValue) (*engineValue, error) {
 // "reference X not found" error. During a struct force pass (scope != nil) it
 // evaluates directly: the scope already carries the resolved siblings, so an
 // unresolved reference there is a genuine failure the caller surfaces.
-func evalChild(e ast.Expr, scope map[string]*engineValue) (*engineValue, error) {
+func evalChild(e syntax.Expr, scope map[string]*engineValue) (*engineValue, error) {
 	if scope == nil {
 		return compileExpr(e)
 	}
@@ -86,7 +85,7 @@ func evalChild(e ast.Expr, scope map[string]*engineValue) (*engineValue, error) 
 // (a nil scope) every reference is unresolved, so compileExpr turns a
 // deferrable construct into a thunk and reports any other reference as
 // "reference X not found".
-func evalIdent(n *ast.Ident, scope map[string]*engineValue) (*engineValue, error) {
+func evalIdent(n *syntax.Ident, scope map[string]*engineValue) (*engineValue, error) {
 	switch n.Name {
 	case "_":
 		return topValue(), nil
@@ -138,7 +137,7 @@ func evalIdent(n *ast.Ident, scope map[string]*engineValue) (*engineValue, error
 // ternary idiom `[if c {a}, b][0]` reduces here: when c holds, element 0 is
 // a; when c does not, the comprehension contributes nothing and element 0 is
 // b.
-func evalIndex(n *ast.IndexExpr, scope map[string]*engineValue) (*engineValue, error) {
+func evalIndex(n *syntax.IndexExpr, scope map[string]*engineValue) (*engineValue, error) {
 	// Check the index TARGET first: indexing anything but a list LITERAL is a
 	// type error CUE rejects ("invalid operand … want list or struct"). Checking
 	// it before the index means a non-list target (`0[mech]`, `m[0]`) is an
@@ -149,7 +148,7 @@ func evalIndex(n *ast.IndexExpr, scope map[string]*engineValue) (*engineValue, e
 	// validate and the in-house engine is stricter — a documented "invalid
 	// operation" out-of-subset rejection the differential harness's hatch 1
 	// tolerates.
-	list, ok := n.X.(*ast.ListLit)
+	list, ok := n.X.(*syntax.ListLit)
 	if !ok {
 		return nil, fmt.Errorf(
 			"cuelite: invalid operation: index target must be a list literal, got %T", n.X)
@@ -181,7 +180,7 @@ func evalIndex(n *ast.IndexExpr, scope map[string]*engineValue) (*engineValue, e
 // comprehension contributes its body only when the condition holds. The
 // ellipsis tail is ignored for indexing (an index past the prefix is out of
 // range).
-func evalListElems(list *ast.ListLit, scope map[string]*engineValue) ([]*engineValue, error) {
+func evalListElems(list *syntax.ListLit, scope map[string]*engineValue) ([]*engineValue, error) {
 	var out []*engineValue
 	// deferErr holds an errUnresolved seen on some element. A HARD error (an
 	// unsupported construct, a bad call) is returned immediately, even when an
@@ -193,10 +192,10 @@ func evalListElems(list *ast.ListLit, scope map[string]*engineValue) ([]*engineV
 	for _, el := range list.Elts {
 		var err error
 		switch e := el.(type) {
-		case *ast.Ellipsis:
+		case *syntax.Ellipsis:
 			// The open tail adds no indexable element.
 			continue
-		case *ast.Comprehension:
+		case *syntax.Comprehension:
 			var keep bool
 			var body *engineValue
 			keep, body, err = evalComprehension(e, scope)
@@ -228,15 +227,15 @@ func evalListElems(list *ast.ListLit, scope map[string]*engineValue) ([]*engineV
 // shape the release-channels schema uses is supported; a `for` clause or a
 // multi-clause comprehension is rejected with a clear message. The condition
 // must reduce to a concrete bool; a non-concrete one defers (errUnresolved).
-func evalComprehension(c *ast.Comprehension, scope map[string]*engineValue) (bool, *engineValue, error) {
+func evalComprehension(c *syntax.Comprehension, scope map[string]*engineValue) (bool, *engineValue, error) {
 	if len(c.Clauses) != 1 {
 		return false, nil, fmt.Errorf("cuelite: only a single-clause if-comprehension is supported")
 	}
-	ifc, ok := c.Clauses[0].(*ast.IfClause)
+	ifc, ok := c.Clauses[0].(*syntax.IfClause)
 	if !ok {
 		return false, nil, fmt.Errorf("cuelite: unsupported comprehension clause %T", c.Clauses[0])
 	}
-	body, ok := c.Value.(*ast.StructLit)
+	body, ok := c.Value.(*syntax.StructLit)
 	if !ok {
 		return false, nil, fmt.Errorf("cuelite: comprehension body must be a struct, got %T", c.Value)
 	}
@@ -278,7 +277,7 @@ func evalComprehension(c *ast.Comprehension, scope map[string]*engineValue) (boo
 // comprehension forces against data — so a body deferral returns errUnresolved
 // (the comprehension defers); any other body error is returned as the hard
 // rejection.
-func deferWithBodyCheck(body *ast.StructLit, scope map[string]*engineValue) error {
+func deferWithBodyCheck(body *syntax.StructLit, scope map[string]*engineValue) error {
 	if _, err := evalStruct(body, scope); err != nil && !stderrors.Is(err, errUnresolved) {
 		return err
 	}
@@ -289,11 +288,11 @@ func deferWithBodyCheck(body *ast.StructLit, scope map[string]*engineValue) erro
 // resolved reference and a literal yields a concrete bool (driving an `if`
 // comprehension); the lattice operators & and | and the relational bounds
 // delegate to the compile-time builders after their operands resolve.
-func evalBinary(n *ast.BinaryExpr, scope map[string]*engineValue) (*engineValue, error) {
+func evalBinary(n *syntax.BinaryExpr, scope map[string]*engineValue) (*engineValue, error) {
 	switch n.Op {
-	case token.EQL, token.NEQ, token.GEQ, token.LEQ, token.GTR, token.LSS, token.MAT, token.NMAT:
+	case syntax.EQL, syntax.NEQ, syntax.GEQ, syntax.LEQ, syntax.GTR, syntax.LSS, syntax.MAT, syntax.NMAT:
 		return evalComparison(n, scope)
-	case token.AND:
+	case syntax.AND:
 		l, err := evalExpr(n.X, scope)
 		if err != nil {
 			return nil, err
@@ -313,7 +312,7 @@ func evalBinary(n *ast.BinaryExpr, scope map[string]*engineValue) (*engineValue,
 			return deferToThunk(n), nil
 		}
 		return unifyV(l, r, nil), nil
-	case token.OR:
+	case syntax.OR:
 		return evalDisjunction(n, scope)
 	default:
 		return nil, fmt.Errorf("cuelite: unsupported binary operator %q", n.Op)
@@ -326,7 +325,7 @@ func evalBinary(n *ast.BinaryExpr, scope map[string]*engineValue) (*engineValue,
 // resolve to concrete scalars; an unresolved reference defers (errUnresolved)
 // so the enclosing expression becomes a thunk. A regex comparison (=~ / !~)
 // compiles its pattern and tests the left string.
-func evalComparison(n *ast.BinaryExpr, scope map[string]*engineValue) (*engineValue, error) {
+func evalComparison(n *syntax.BinaryExpr, scope map[string]*engineValue) (*engineValue, error) {
 	l, lerr := evalExpr(n.X, scope)
 	r, rerr := evalExpr(n.Y, scope)
 	// A non-concrete TYPE operand (`_`, `string`, `int`) — one that EVALUATED
@@ -391,9 +390,9 @@ func evalComparison(n *ast.BinaryExpr, scope map[string]*engineValue) (*engineVa
 // isOrderedOp reports whether t is an ordered relational operator (>, >=, <,
 // <=) — the ones that require an orderable operand. ==/!= and the regex
 // matches admit any concrete operand and are excluded.
-func isOrderedOp(t token.Token) bool {
+func isOrderedOp(t syntax.Token) bool {
 	switch t {
-	case token.GTR, token.GEQ, token.LSS, token.LEQ:
+	case syntax.GTR, syntax.GEQ, syntax.LSS, syntax.LEQ:
 		return true
 	}
 	return false
@@ -412,7 +411,7 @@ func orderable(v *engineValue) bool {
 
 // orderableErr builds the in-house "invalid operation" error for an ordered
 // comparison on a non-orderable operand (the wording hatch 1 keys on).
-func orderableErr(op token.Token, operand string) error {
+func orderableErr(op syntax.Token, operand string) error {
 	return fmt.Errorf("cuelite: invalid operation: %s requires an orderable operand, got %s", op, operand)
 }
 
@@ -431,13 +430,13 @@ func comparandDescribe(v *engineValue, verr error) string {
 // is bool-typed, so it can never be an operand of an ORDERED comparison; CUE
 // rejects the chained form (`(0 > A) > 0`) at compile regardless of whether the
 // inner comparison's own operands resolve.
-func isComparisonExpr(e ast.Expr) bool {
+func isComparisonExpr(e syntax.Expr) bool {
 	switch n := e.(type) {
-	case *ast.ParenExpr:
+	case *syntax.ParenExpr:
 		return isComparisonExpr(n.X)
-	case *ast.BinaryExpr:
+	case *syntax.BinaryExpr:
 		switch n.Op {
-		case token.EQL, token.NEQ, token.GEQ, token.LEQ, token.GTR, token.LSS, token.MAT, token.NMAT:
+		case syntax.EQL, syntax.NEQ, syntax.GEQ, syntax.LEQ, syntax.GTR, syntax.LSS, syntax.MAT, syntax.NMAT:
 			return true
 		}
 	}
@@ -456,13 +455,13 @@ func isComparisonExpr(e ast.Expr) bool {
 // never equals an int, true never equals 1) — CUE rejects a cross-kind `==`
 // of non-numbers as a type error, but here both operands are already concrete
 // scalars, so an int-vs-string == reduces to "not equal" rather than failing.
-func compareConcrete(l *engineValue, op token.Token, r *engineValue) (bool, error) {
+func compareConcrete(l *engineValue, op syntax.Token, r *engineValue) (bool, error) {
 	switch op {
-	case token.EQL:
+	case syntax.EQL:
 		return numericAwareEqual(l, r), nil
-	case token.NEQ:
+	case syntax.NEQ:
 		return !numericAwareEqual(l, r), nil
-	case token.MAT, token.NMAT:
+	case syntax.MAT, syntax.NMAT:
 		if l.kind != kString || r.kind != kString {
 			return false, fmt.Errorf("cuelite: %s requires strings", op)
 		}
@@ -471,7 +470,7 @@ func compareConcrete(l *engineValue, op token.Token, r *engineValue) (bool, erro
 			return false, err
 		}
 		m := re.MatchString(l.str)
-		if op == token.NMAT {
+		if op == syntax.NMAT {
 			m = !m
 		}
 		return m, nil
@@ -521,12 +520,12 @@ type branchMode struct {
 // mark is dfltNot; with no mark at all every disjunct is dfltMaybe. A branch
 // that defers leaves the whole disjunction deferred; the reductions then run
 // when the thunk is forced against data.
-func evalDisjunction(n *ast.BinaryExpr, scope map[string]*engineValue) (*engineValue, error) {
+func evalDisjunction(n *syntax.BinaryExpr, scope map[string]*engineValue) (*engineValue, error) {
 	var branches []branchMode
 	hasMark := false
-	var walk func(e ast.Expr, marked bool) error
-	walk = func(e ast.Expr, marked bool) error {
-		if u, ok := e.(*ast.UnaryExpr); ok && u.Op == token.MUL {
+	var walk func(e syntax.Expr, marked bool) error
+	walk = func(e syntax.Expr, marked bool) error {
+		if u, ok := e.(*syntax.UnaryExpr); ok && u.Op == syntax.MUL {
 			// A * mark applies to its whole operand, including a parenthesized
 			// nested disjunction, so every disjunct underneath inherits it.
 			return walk(u.X, true)
@@ -537,7 +536,7 @@ func evalDisjunction(n *ast.BinaryExpr, scope map[string]*engineValue) (*engineV
 		// disjunction whose value collapses to one branch loses its default —
 		// the nesting-sensitive cancellation. Only an UNPARENTHESIZED `b.Op ==
 		// OR` continues the flat walk (`a | b | c` is one disjunction).
-		if b, ok := e.(*ast.BinaryExpr); ok && b.Op == token.OR {
+		if b, ok := e.(*syntax.BinaryExpr); ok && b.Op == syntax.OR {
 			if err := walk(b.X, marked); err != nil {
 				return err
 			}
@@ -664,11 +663,11 @@ func dedupeBranchModes(branches []branchMode) []branchMode {
 // evalList builds a list value in a scope, supporting comprehension elements
 // the same way evalListElems does but preserving the open tail, so a scoped
 // `[...string]` or `[if c {x}, ...]` resolves with its sibling references.
-func evalList(n *ast.ListLit, scope map[string]*engineValue) (*engineValue, error) {
+func evalList(n *syntax.ListLit, scope map[string]*engineValue) (*engineValue, error) {
 	out := &engineValue{kind: kList}
 	for _, el := range n.Elts {
 		switch e := el.(type) {
-		case *ast.Ellipsis:
+		case *syntax.Ellipsis:
 			out.openTop = true
 			if e.Type != nil {
 				et, err := evalChild(e.Type, scope)
@@ -679,7 +678,7 @@ func evalList(n *ast.ListLit, scope map[string]*engineValue) (*engineValue, erro
 			} else {
 				out.elem = topValue()
 			}
-		case *ast.Comprehension:
+		case *syntax.Comprehension:
 			keep, body, err := evalComprehension(e, scope)
 			if err != nil {
 				return nil, err
@@ -710,12 +709,12 @@ func evalList(n *ast.ListLit, scope map[string]*engineValue) (*engineValue, erro
 // here matching CUE's eager "reference X not found". During a struct force
 // pass (scope != nil) the thunks are already resolved, so the check is a
 // no-op the gate skips.
-func evalStruct(n *ast.StructLit, scope map[string]*engineValue) (*engineValue, error) {
+func evalStruct(n *syntax.StructLit, scope map[string]*engineValue) (*engineValue, error) {
 	out := &engineValue{kind: kStruct}
 	var embedded *engineValue
 	for _, d := range n.Elts {
 		switch el := d.(type) {
-		case *ast.Field:
+		case *syntax.Field:
 			name, err := fieldLabel(el.Label)
 			if err != nil {
 				return nil, err
@@ -727,9 +726,9 @@ func evalStruct(n *ast.StructLit, scope map[string]*engineValue) (*engineValue, 
 			out.fields = appendOrUnifyField(out.fields, field{
 				name:     name,
 				val:      val,
-				optional: el.Constraint == token.OPTION,
+				optional: el.Constraint == syntax.OPTION,
 			})
-		case *ast.EmbedDecl:
+		case *syntax.EmbedDecl:
 			// An embedded value (a scalar bound or another struct spread in)
 			// unifies with the struct. Defer the meet until the rest of the
 			// struct is built so field order is preserved.
@@ -742,7 +741,7 @@ func evalStruct(n *ast.StructLit, scope map[string]*engineValue) (*engineValue, 
 			} else {
 				embedded = unifyV(embedded, ev, nil)
 			}
-		case *ast.Ellipsis:
+		case *syntax.Ellipsis:
 			continue
 		default:
 			return nil, fmt.Errorf("cuelite: unsupported struct element %T", d)
@@ -774,7 +773,7 @@ func evalStruct(n *ast.StructLit, scope map[string]*engineValue) (*engineValue, 
 // the thunk (evalThunk) runs evalExpr again; if it still cannot resolve, the
 // thunk yields a ⊥ naming the unresolved reference, so an unforced schema
 // field never silently validates.
-func deferToThunk(e ast.Expr) *engineValue {
+func deferToThunk(e syntax.Expr) *engineValue {
 	return &engineValue{
 		kind: kThunk,
 		thunkExpr: func(scope map[string]*engineValue) *engineValue {
@@ -793,7 +792,7 @@ func deferToThunk(e ast.Expr) *engineValue {
 // (string, int, …) and the bool/null literals are not references. The
 // compiler uses the result to reject a reference to a name that is not a
 // declared field.
-func freeRefs(e ast.Expr) []string {
+func freeRefs(e syntax.Expr) []string {
 	seen := map[string]bool{}
 	var out []string
 	add := func(name string) {
@@ -802,31 +801,29 @@ func freeRefs(e ast.Expr) []string {
 			out = append(out, name)
 		}
 	}
-	var walk func(n ast.Node)
-	walk = func(n ast.Node) {
+	var walk func(n syntax.Node)
+	walk = func(n syntax.Node) {
 		switch node := n.(type) {
 		case nil:
 			return
-		case *ast.Ident:
+		case *syntax.Ident:
 			add(node.Name)
-		case *ast.Field:
+		case *syntax.Field:
 			// A field's LABEL is a key, not a reference; only its VALUE can carry
 			// references. (A struct field title in a comprehension body is a key.)
 			walk(node.Value)
 			return
-		case *ast.SelectorExpr:
+		case *syntax.SelectorExpr:
 			// Only the base of a selector is a reference; the selected name is a
 			// member, not a sibling field.
 			walk(node.X)
 			return
 		}
-		ast.Walk(n, func(child ast.Node) bool {
-			if child == n {
-				return true
-			}
-			walk(child)
-			return false
-		}, nil)
+		// Descend the node's direct children; walk recurses into each. The
+		// Ident/Field/SelectorExpr cases above already returned, so a node
+		// reaching here contributes no reference of its own and only its
+		// children can.
+		syntax.WalkChildren(n, walk)
 	}
 	walk(e)
 	return out

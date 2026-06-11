@@ -4,9 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"cuelang.org/go/cue/ast"
-	"cuelang.org/go/cue/literal"
-	"cuelang.org/go/cue/token"
+	"github.com/jeduden/mdsmith/cue/cuelite/syntax"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -369,7 +367,7 @@ func mustInf() float64 {
 // produces this shape for a selector, so the branch is reached only by a direct
 // AST construction.
 func TestRowSelectorName_UnquoteError(t *testing.T) {
-	_, _, err := rowSelectorName(&ast.BasicLit{Kind: token.STRING, Value: `"\x"`})
+	_, _, err := rowSelectorName(&syntax.BasicLit{Kind: syntax.STRING, Value: `"\x"`})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "selector label")
 }
@@ -380,9 +378,9 @@ func TestRowSelectorName_UnquoteError(t *testing.T) {
 func TestEvalRowSelector_BadLabel(t *testing.T) {
 	rs, err := newRowScope(map[string]any{"fm2": map[string]any{"k": "v"}})
 	require.NoError(t, err)
-	sel := &ast.SelectorExpr{
-		X:   &ast.Ident{Name: "fm2"},
-		Sel: &ast.BasicLit{Kind: token.STRING, Value: `"\x"`},
+	sel := &syntax.SelectorExpr{
+		X:   &syntax.Ident{Name: "fm2"},
+		Sel: &syntax.BasicLit{Kind: syntax.STRING, Value: `"\x"`},
 	}
 	_, err = evalRowSelector(sel, rs)
 	require.Error(t, err)
@@ -397,66 +395,29 @@ func TestRowLen_StructIsRejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "unsupported len of a struct")
 }
 
-// TestEvalRowInterpolation_ParseQuotesError covers the ParseQuotes-error branch
-// via a constructed interpolation whose first/last fragments are not valid
-// quote delimiters. The CUE parser never emits this shape.
-func TestEvalRowInterpolation_ParseQuotesError(t *testing.T) {
-	rs, err := newRowScope(nil)
-	require.NoError(t, err)
-	n := &ast.Interpolation{Elts: []ast.Expr{
-		&ast.BasicLit{Kind: token.STRING, Value: `not-a-quote`},
-		&ast.Ident{Name: "x"},
-		&ast.BasicLit{Kind: token.STRING, Value: `also-not`},
-	}}
-	_, err = evalRowInterpolation(n, rs)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid interpolation")
-}
-
-// TestEvalRowInterpolation_FragmentError covers evalRowInterpolation's
-// fragment-error propagation: a five-element interpolation whose first and last
-// fragments parse as valid quotes (so ParseQuotes succeeds) but whose middle
-// continuation fragment lacks the leading `)` interpFragment expects. The
-// parser never emits this shape.
-func TestEvalRowInterpolation_FragmentError(t *testing.T) {
+// TestEvalRowInterpolation_BytesRejected covers evalRowInterpolation's
+// bytes-dialect rejection: the in-house parser flags a single-quote
+// interpolation on the node (IsBytes), which the row subset (no bytes kind)
+// rejects loudly. Driven directly so the branch is covered without relying on
+// the parser emitting a bytes interpolation (which the row corpus never does).
+func TestEvalRowInterpolation_BytesRejected(t *testing.T) {
 	rs, err := newRowScope(map[string]any{"x": "v"})
 	require.NoError(t, err)
-	n := &ast.Interpolation{Elts: []ast.Expr{
-		&ast.BasicLit{Kind: token.STRING, Value: `"a\(`},
-		&ast.Ident{Name: "x"},
-		&ast.BasicLit{Kind: token.STRING, Value: `BAD\(`}, // missing leading ')'
-		&ast.Ident{Name: "x"},
-		&ast.BasicLit{Kind: token.STRING, Value: `)c"`},
+	n := &syntax.Interpolation{IsBytes: true, Elts: []syntax.Expr{
+		&syntax.BasicLit{Value: "a"},
+		&syntax.Ident{Name: "x"},
+		&syntax.BasicLit{Value: "b"},
 	}}
 	_, err = evalRowInterpolation(n, rs)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unmatched ')'")
+	assert.Contains(t, err.Error(), "unsupported bytes interpolation")
 }
 
-// doubleQuoteInfo returns a plain double-quote QuoteInfo for the fragment
-// coverage tests below.
-func doubleQuoteInfo(t *testing.T) literal.QuoteInfo {
-	t.Helper()
-	info, _, _, err := literal.ParseQuotes(`"a\(`, `)b"`)
-	require.NoError(t, err)
-	return info
-}
-
-// TestInterpFragment_UnmatchedPrefix covers interpFragment's unmatched-')'
-// branch: a continuation fragment that does not start with the expected `)`.
-// The parser always emits a leading `)` on a continuation fragment, so this is
-// reachable only by direct construction.
-func TestInterpFragment_UnmatchedPrefix(t *testing.T) {
-	_, err := interpFragment(&ast.BasicLit{Kind: token.STRING, Value: `Xb"`}, doubleQuoteInfo(t), ")", 1)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unmatched ')'")
-}
-
-// TestInterpFragment_UnquoteError covers interpFragment's Unquote-error branch
-// via a fragment carrying an escape the dialect rejects. The parser validates
-// escapes, so this is reachable only by direct construction.
-func TestInterpFragment_UnquoteError(t *testing.T) {
-	_, err := interpFragment(&ast.BasicLit{Kind: token.STRING, Value: `)a\x"`}, doubleQuoteInfo(t), ")", 1)
+// TestEvalRowInterpolation_NonStringEmbedded covers the embedded-expression
+// error path: an interpolation whose embedded value is not stringable (a null)
+// is rejected with "invalid interpolation".
+func TestEvalRowInterpolation_NonStringEmbedded(t *testing.T) {
+	_, err := renderRow(t, `"a\(x)b"`, map[string]any{"x": nil})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid interpolation")
 }

@@ -178,36 +178,37 @@ templates. Its Go import path is
 `github.com/jeduden/mdsmith/cue/cuelite`,
 mirroring `cue/types`.
 
-`cue/cuelite` lands first as a thin
-wrapper over `cuelang.org/go`, then is
-flipped to a pure-Go engine surface by
-surface. `ParsePath` (plan 237) is
-in-house. `Compile`, `Unify`, and
-`Validate` (plan 238) are now in-house
-too: the evaluator is the in-house value
-model. Only the parser frontend
-(`cue/parser` → `cue/ast`) still delegates
-to `cuelang.org/go`, until plan 240 phase
-4 removes it. The CUE-backed arm stays as
-the differential oracle in the
-module-internal `internal/cuelitetest`
-harness. It is kept under `internal/` so
-the
-`cuelang.org/go` import that plan 218
-phase 4 deletes never becomes part of the
-public surface.
+`cue/cuelite` is now fully in-house. It is
+a pure-Go, standard-library-only engine for
+the CUE subset. No `cuelang.org/go`
+dependency remains in the module. It landed
+first as a thin wrapper over
+`cuelang.org/go`. It was then flipped
+surface by surface: `ParsePath` (plan 237),
+`Compile`/`Unify`/`Validate` (plan 238),
+the row-expr evaluator (plan 239). Each flip
+was proven against a direct-CUE oracle.
 
-`fieldinterp` is a consumer, reading
-`cuelite.ParsePath`. `cuetemplate` is a
-consumer too. Its `Compile` and `Render`
-run on `cuelite.CompileRow` and
-`RowTemplate.Render` (plan 239). So
-`cuelang.org/go` is gone from
-`internal/cuetemplate`. The remaining
-prospective consumers are
-`internal/schema`, `requiredstructure`,
-and `query`. `cue/cuelite` imports none
-of them, and nothing else in the tree.
+Plan 240 removed the last delegation. The
+parser frontend is now an in-house lexer and
+recursive-descent parser in
+`cue/cuelite/syntax`, a module-internal
+sub-package. It produces an in-house syntax
+tree, replacing `cue/parser`, `cue/ast`,
+`cue/token`, and `cue/literal`. With every
+surface flipped, the oracle's purpose ended.
+So the `internal/cuelitetest` harness was
+deleted. Its regression value lives on as
+engine-only pinned-corpus and smoke-fuzzer
+tests inside `cue/cuelite`.
+
+`fieldinterp` reads `cuelite.ParsePath`.
+`cuetemplate` runs its row templates on
+`cuelite.CompileRow` (plan 239). The
+`schema`, `requiredstructure`, and `query`
+packages read the validate surface.
+`cue/cuelite` imports none of them. It
+imports nothing else in the tree.
 
 These packages are public surfaces.
 For details see

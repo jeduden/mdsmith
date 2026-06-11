@@ -4,8 +4,6 @@ import (
 	stderrors "errors"
 	"testing"
 
-	"cuelang.org/go/cue"
-	"cuelang.org/go/cue/cuecontext"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -66,6 +64,12 @@ func TestCompileJSON(t *testing.T) {
 		_, err := CompileJSON([]byte(`{"n": >=0}`))
 		require.Error(t, err)
 	})
+}
+
+// TestCompileJSON_duplicateKeys covers the strict-JSON contract that forbids a
+// duplicate object key before the CUE lift, across the conflicting, mergeable,
+// equal, nested, and array-nested shapes.
+func TestCompileJSON_duplicateKeys(t *testing.T) {
 	t.Run("conflicting duplicate key rejected", func(t *testing.T) {
 		v, err := CompileJSON([]byte(`{"a":1,"a":2}`))
 		require.Error(t, err)
@@ -93,6 +97,14 @@ func TestCompileJSON(t *testing.T) {
 		_, err := CompileJSON([]byte(`[{"a":1,"a":1}]`))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), `"a"`)
+	})
+	t.Run("duplicate key in a deeply nested array element rejected", func(t *testing.T) {
+		// A re-pinned FuzzValidate crasher (plan 240 round 1): a duplicate object
+		// key two array levels deep must still be caught before the lift, matching
+		// CUE's reject of `a.0.0.k: conflicting values 2 and 1`.
+		_, err := CompileJSON([]byte(`{"a":[[{"k":1,"k":2}]]}`))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `"k"`)
 	})
 	t.Run("same key in different objects accepted", func(t *testing.T) {
 		v, err := CompileJSON([]byte(`{"x":{"a":1},"y":{"a":2}}`))
@@ -297,36 +309,31 @@ func TestValue_Unify_singleContext(t *testing.T) {
 	})
 }
 
-// TestValue_Unify_singleContextOracle backs the "single-context CUE" claim
-// with a DIRECT cuecontext oracle: each chained derived-unify composition is
-// rebuilt by unifying the same source fragments inside ONE cue.Context, and
-// the oracle's accept/reject must match the in-house engine's. This is the
-// concrete check behind plan 238's "the oracle evaluates the same composition
-// in ONE cue.Context; both arms agree" — the differential cuelitetest harness
-// runs a two-input schema×data shape, so the multi-fragment chained
-// compositions are pinned here against CUE directly.
-func TestValue_Unify_singleContextOracle(t *testing.T) {
-	// Each case is a set of CUE source fragments unified left-to-right; the
-	// in-house engine composes the same fragments via Unify and must agree with
-	// a single cue.Context unifying them in order.
+// TestValue_Unify_chainedComposition pins the chained derived-unify behaviour:
+// each case unifies a set of source fragments left-to-right and asserts the
+// engine's accept/reject. The expected verdicts were validated against a
+// direct single-cue.Context oracle while cuelang was still vendored (plan 238)
+// and are pinned here now that the oracle is gone — the in-house engine is the
+// spec. The differential cuelitetest harness ran a two-input schema×data shape,
+// so these multi-fragment chained compositions are the dedicated regression for
+// the chained Unify path.
+func TestValue_Unify_chainedComposition(t *testing.T) {
 	cases := []struct {
 		name      string
 		fragments []string
+		accepts   bool
 	}{
 		{"compatible schema+schema+data", []string{
-			`{status: string}`, `{status: string}`, `{"status": "✅"}`}},
+			`{status: string}`, `{status: string}`, `{"status": "✅"}`}, true},
 		{"conflicting literal vs data", []string{
-			`{status: "🔲"}`, `{status: string}`, `{"status": "✅"}`}},
+			`{status: "🔲"}`, `{status: string}`, `{"status": "✅"}`}, false},
 		{"two derived results non-concrete int", []string{
-			`{status: string}`, `{"status": "✅"}`, `{weight: int}`, `{height: int}`}},
+			`{status: string}`, `{"status": "✅"}`, `{weight: int}`, `{height: int}`}, false},
 		{"two compatible derived data results", []string{
-			`{status: string}`, `{"status": "✅"}`, `{weight: int}`, `{"weight": 1}`}},
+			`{status: string}`, `{"status": "✅"}`, `{weight: int}`, `{"weight": 1}`}, true},
 	}
-	ctx := cuecontext.New()
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			// In-house: compile each fragment (data fragments via CompileJSON when
-			// they are JSON objects with quoted keys) and unify them in order.
 			var inHouse Value
 			for i, frag := range c.fragments {
 				v, err := compileFragment(frag)
@@ -337,18 +344,8 @@ func TestValue_Unify_singleContextOracle(t *testing.T) {
 					inHouse = inHouse.Unify(v)
 				}
 			}
-			inHouseAccepts := inHouse.Validate() == nil
-
-			// Oracle: unify every fragment in ONE cue.Context.
-			oracle := ctx.CompileString(c.fragments[0])
-			require.NoError(t, oracle.Err())
-			for _, frag := range c.fragments[1:] {
-				oracle = oracle.Unify(ctx.CompileString(frag))
-			}
-			oracleAccepts := oracle.Validate(cue.Concrete(true)) == nil
-
-			assert.Equal(t, oracleAccepts, inHouseAccepts,
-				"in-house and single-context CUE must agree on the chained composition")
+			assert.Equal(t, c.accepts, inHouse.Validate() == nil,
+				"chained composition accept/reject must match the pinned verdict")
 		})
 	}
 }

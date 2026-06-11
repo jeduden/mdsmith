@@ -3,10 +3,7 @@ package cuelite
 import (
 	"testing"
 
-	"cuelang.org/go/cue/ast"
-	"cuelang.org/go/cue/parser"
-	"cuelang.org/go/cue/token"
-
+	"github.com/jeduden/mdsmith/cue/cuelite/syntax"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,12 +14,15 @@ import (
 // constructing the AST node or calling the helper. Each is a real,
 // engine-reachable branch driven red/green.
 
-// parseExpr parses a single CUE expression for direct-helper tests.
-func parseExpr(t *testing.T, src string) ast.Expr {
+// parseExpr parses a single CUE-subset expression for direct-helper tests,
+// wrapping it in a field the in-house frontend understands and returning the
+// field's value expression.
+func parseExpr(t *testing.T, src string) syntax.Expr {
 	t.Helper()
-	e, err := parser.ParseExpr("", src)
+	file, err := syntax.ParseFile("x: " + src)
 	require.NoError(t, err)
-	return e
+	require.Len(t, file.Decls, 1)
+	return file.Decls[0].(*syntax.Field).Value
 }
 
 // TestEvalExpr_unsupportedConstruct covers evalExpr's default branch via a
@@ -62,9 +62,9 @@ func TestEvalComprehension_errorShapes(t *testing.T) {
 // is not a StructLit, driving evalComprehension's non-struct-body branch
 // directly.
 func TestEvalComprehension_nonStructBody(t *testing.T) {
-	comp := &ast.Comprehension{
-		Clauses: []ast.Clause{&ast.IfClause{Condition: ast.NewBool(true)}},
-		Value:   ast.NewString("not a struct"),
+	comp := &syntax.Comprehension{
+		Clauses: []syntax.Clause{&syntax.IfClause{Condition: &syntax.BasicLit{Kind: syntax.TRUE, Value: "true"}}},
+		Value:   &syntax.BasicLit{Kind: syntax.STRING, Value: `"not a struct"`},
 	}
 	_, _, err := evalComprehension(comp, nil)
 	assert.Error(t, err)
@@ -73,9 +73,9 @@ func TestEvalComprehension_nonStructBody(t *testing.T) {
 // TestEvalComprehension_condError drives the condition-evaluation error
 // branch: a condition that compiles to a hard error.
 func TestEvalComprehension_condError(t *testing.T) {
-	comp := &ast.Comprehension{
-		Clauses: []ast.Clause{&ast.IfClause{Condition: parseExpr(t, `=~"["`)}},
-		Value:   &ast.StructLit{},
+	comp := &syntax.Comprehension{
+		Clauses: []syntax.Clause{&syntax.IfClause{Condition: parseExpr(t, `=~"["`)}},
+		Value:   &syntax.StructLit{},
 	}
 	_, _, err := evalComprehension(comp, map[string]*engineValue{})
 	assert.Error(t, err)
@@ -95,10 +95,10 @@ func TestCompareConcrete_regexAndIncomparable(t *testing.T) {
 // the incomparable-numeric branch directly with constructed scalars.
 func TestCompareConcrete_direct(t *testing.T) {
 	// regex compile error.
-	_, err := compareConcrete(&engineValue{kind: kString, str: "x"}, token.MAT, &engineValue{kind: kString, str: "["})
+	_, err := compareConcrete(&engineValue{kind: kString, str: "x"}, syntax.MAT, &engineValue{kind: kString, str: "["})
 	assert.Error(t, err)
 	// numeric op over a bool operand: incomparable.
-	_, err = compareConcrete(&engineValue{kind: kBool, b: true}, token.GTR, &engineValue{kind: kInt, i: 1})
+	_, err = compareConcrete(&engineValue{kind: kBool, b: true}, syntax.GTR, &engineValue{kind: kInt, i: 1})
 	assert.Error(t, err)
 }
 
@@ -146,31 +146,27 @@ func TestFreeRefs_selectorBase(t *testing.T) {
 // TestFieldLabel_directBranches drives fieldLabel's non-string-literal and
 // default branches with constructed labels.
 func TestFieldLabel_directBranches(t *testing.T) {
-	// A non-string BasicLit label (an int literal).
-	_, err := fieldLabel(&ast.BasicLit{Kind: token.INT, Value: "1"})
-	assert.Error(t, err)
-	// An unsupported label node type (an index label expression stands in as a
-	// non-Ident, non-BasicLit label).
-	_, err = fieldLabel(&ast.ListLit{})
+	// A non-string BasicLit label (an int literal) is rejected.
+	_, err := fieldLabel(&syntax.BasicLit{Kind: syntax.INT, Value: "1"})
 	assert.Error(t, err)
 	// A quoted string label that needs unquoting succeeds.
-	name, err := fieldLabel(&ast.BasicLit{Kind: token.STRING, Value: `"a-b"`})
+	name, err := fieldLabel(&syntax.BasicLit{Kind: syntax.STRING, Value: `"a-b"`})
 	require.NoError(t, err)
 	assert.Equal(t, "a-b", name)
 	// A malformed quoted label fails to unquote.
-	_, err = fieldLabel(&ast.BasicLit{Kind: token.STRING, Value: `"\x"`})
+	_, err = fieldLabel(&syntax.BasicLit{Kind: syntax.STRING, Value: `"\x"`})
 	assert.Error(t, err)
 	// A bare type-keyword identifier label is rejected: it shadows references
 	// to the same name in the field value, which the engine cannot model.
 	for _, kw := range []string{"int", "string", "float", "number", "bool", "bytes"} {
-		_, err = fieldLabel(ast.NewIdent(kw))
+		_, err = fieldLabel(&syntax.Ident{Name: kw})
 		assert.Error(t, err, "bare type-keyword label %q must reject", kw)
 	}
 	// A non-keyword identifier label is accepted; a quoted type-keyword is too.
-	name, err = fieldLabel(ast.NewIdent("status"))
+	name, err = fieldLabel(&syntax.Ident{Name: "status"})
 	require.NoError(t, err)
 	assert.Equal(t, "status", name)
-	name, err = fieldLabel(&ast.BasicLit{Kind: token.STRING, Value: `"int"`})
+	name, err = fieldLabel(&syntax.BasicLit{Kind: syntax.STRING, Value: `"int"`})
 	require.NoError(t, err)
 	assert.Equal(t, "int", name)
 }

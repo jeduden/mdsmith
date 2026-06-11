@@ -796,13 +796,12 @@ func TestRunCache_RegisterInvalidateRaceDoesNotLoseDependents(t *testing.T) {
 	wg.Wait()
 
 	// Every live schema must still be a dependent of fragment.
-	setI, ok := c.schemaDependents.Load(fragment)
+	set, ok := c.dependentSet(fragment)
 	require.True(t, ok,
 		"after all live registers, fragment must still have a "+
 			"dependent set — the retry-and-verify loop in "+
 			"registerSchemaIncludes is what prevents the outer "+
 			"entry from being lost under churn")
-	set := setI.(*sync.Map)
 	for _, s := range live {
 		_, hit := set.Load(s)
 		assert.True(t, hit,
@@ -827,7 +826,7 @@ func TestRunCache_InvalidateDropsEmptyDependentSets(t *testing.T) {
 	})
 
 	// Sanity: fragmentB's dependent set holds schemaA.
-	_, presentBefore := c.schemaDependents.Load(fragmentB)
+	_, presentBefore := c.dependentSet(fragmentB)
 	require.True(t, presentBefore,
 		"baseline: fragmentB's dependent set must exist after register")
 
@@ -835,7 +834,7 @@ func TestRunCache_InvalidateDropsEmptyDependentSets(t *testing.T) {
 
 	// fragmentB's set was emptied; the schemaDependents entry must
 	// be gone too.
-	_, presentAfter := c.schemaDependents.Load(fragmentB)
+	_, presentAfter := c.dependentSet(fragmentB)
 	assert.False(t, presentAfter,
 		"after Invalidate(schemaA) removes the last dependent from "+
 			"fragmentB's set, the schemaDependents entry for fragmentB "+

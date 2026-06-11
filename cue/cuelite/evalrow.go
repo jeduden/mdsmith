@@ -7,10 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"cuelang.org/go/cue/ast"
-	"cuelang.org/go/cue/literal"
-	"cuelang.org/go/cue/parser"
-	"cuelang.org/go/cue/token"
+	"github.com/jeduden/mdsmith/cue/cuelite/syntax"
 )
 
 // rowOutField is the synthetic field the parser wraps a row expression in, so
@@ -42,7 +39,7 @@ const rowOutField = "mdsmith_row_out"
 // AST and builds fresh scope and value nodes per call, mutating nothing.
 type RowTemplate struct {
 	src  string
-	expr ast.Expr
+	expr syntax.Expr
 }
 
 // CompileRow parses a row expression into a [RowTemplate]. It checks syntax
@@ -64,8 +61,8 @@ func CompileRow(expr string) (*RowTemplate, error) {
 // parseRowExpr parses a single CUE expression by wrapping it in a synthetic
 // field, the same parse-only frontend cuetemplate uses. It returns the
 // expression node, so Render walks an AST rather than re-parsing per row.
-func parseRowExpr(expr string) (ast.Expr, error) {
-	file, err := parser.ParseFile("row", rowOutField+": "+expr)
+func parseRowExpr(expr string) (syntax.Expr, error) {
+	file, err := syntax.ParseFile(rowOutField + ": " + expr)
 	if err != nil {
 		return nil, fmt.Errorf("cuelite: invalid row expression: %w", err)
 	}
@@ -78,7 +75,7 @@ func parseRowExpr(expr string) (ast.Expr, error) {
 	if len(file.Decls) != 1 {
 		return nil, fmt.Errorf("cuelite: row expression must be a single expression")
 	}
-	return file.Decls[0].(*ast.Field).Value, nil
+	return file.Decls[0].(*syntax.Field).Value, nil
 }
 
 // Render evaluates the row expression against scope — a front-matter map
@@ -297,27 +294,27 @@ func checkFinite(v *engineValue) error {
 // evalRow walks one row-expression AST node into a concrete value against the
 // scope. Unlike the schema walker it never defers: a reference resolves
 // against concrete data or it is an error here.
-func evalRow(e ast.Expr, scope *rowScope) (*engineValue, error) {
+func evalRow(e syntax.Expr, scope *rowScope) (*engineValue, error) {
 	switch n := e.(type) {
-	case *ast.BasicLit:
+	case *syntax.BasicLit:
 		return compileBasicLit(n)
-	case *ast.Ident:
+	case *syntax.Ident:
 		return evalRowIdent(n, scope)
-	case *ast.Interpolation:
+	case *syntax.Interpolation:
 		return evalRowInterpolation(n, scope)
-	case *ast.BinaryExpr:
+	case *syntax.BinaryExpr:
 		return evalRowBinary(n, scope)
-	case *ast.ParenExpr:
+	case *syntax.ParenExpr:
 		return evalRow(n.X, scope)
-	case *ast.SelectorExpr:
+	case *syntax.SelectorExpr:
 		return evalRowSelector(n, scope)
-	case *ast.IndexExpr:
+	case *syntax.IndexExpr:
 		return evalRowIndex(n, scope)
-	case *ast.ListLit:
+	case *syntax.ListLit:
 		return evalRowList(n, scope)
-	case *ast.CallExpr:
+	case *syntax.CallExpr:
 		return evalRowCall(n, scope)
-	case *ast.UnaryExpr:
+	case *syntax.UnaryExpr:
 		return evalRowUnary(n, scope)
 	default:
 		return nil, fmt.Errorf("cuelite: unsupported row construct %T", e)
@@ -328,18 +325,18 @@ func evalRow(e ast.Expr, scope *rowScope) (*engineValue, error) {
 // boolean negation an `if !cond` ternary arm needs, `-` for a negative numeric
 // literal, and `+` for the numeric-identity unary CUE admits (`+(1+2)` is 3).
 // Any other unary operator is outside the subset.
-func evalRowUnary(n *ast.UnaryExpr, scope *rowScope) (*engineValue, error) {
+func evalRowUnary(n *syntax.UnaryExpr, scope *rowScope) (*engineValue, error) {
 	v, err := evalRow(n.X, scope)
 	if err != nil {
 		return nil, err
 	}
 	switch n.Op {
-	case token.NOT:
+	case syntax.NOT:
 		if v.kind != kBool {
 			return nil, fmt.Errorf("cuelite: ! requires a bool, got %s", v.describe())
 		}
 		return &engineValue{kind: kBool, b: !v.b}, nil
-	case token.SUB:
+	case syntax.SUB:
 		// Negating int64 min has no int64 representation (CUE, arbitrary
 		// precision, yields 9223372036854775808): reject it as out-of-subset
 		// rather than silently wrapping, consistent with checkedAddInt64's
@@ -349,7 +346,7 @@ func evalRowUnary(n *ast.UnaryExpr, scope *rowScope) (*engineValue, error) {
 				"cuelite: unsupported integer overflow in -(%d) (big integers are not in the subset)", v.i)
 		}
 		return negateNumeric(v)
-	case token.ADD:
+	case syntax.ADD:
 		return identityNumeric(v)
 	default:
 		return nil, fmt.Errorf("cuelite: unsupported unary operator %q", n.Op)
@@ -373,7 +370,7 @@ func identityNumeric(v *engineValue) (*engineValue, error) {
 // row references a field the matched file does not carry. The `true`, `false`,
 // and `null` keywords are not identifiers — the parser emits them as basic
 // literals (compileBasicLit handles them) — so they never reach here.
-func evalRowIdent(n *ast.Ident, scope *rowScope) (*engineValue, error) {
+func evalRowIdent(n *syntax.Ident, scope *rowScope) (*engineValue, error) {
 	v, ok := scope.vars[n.Name]
 	if !ok {
 		return nil, fmt.Errorf("cuelite: reference %q not found", n.Name)
@@ -382,41 +379,27 @@ func evalRowIdent(n *ast.Ident, scope *rowScope) (*engineValue, error) {
 }
 
 // evalRowInterpolation evaluates a string interpolation (`"a\(x)b"`): the
-// string fragments decode as literals and the embedded expressions evaluate
-// against scope, each rendered with CUE's interpolation rules (a string
-// verbatim, a number/bool by its CUE textual form). A non-stringable embedded
-// value (null, list, struct) is rejected, matching CUE's
-// "invalid interpolation".
+// string fragments are already decoded by the in-house parser (the in-house
+// syntax tree carries decoded fragments on the Interpolation, unlike CUE's
+// raw-token tree), and the embedded expressions evaluate against scope, each
+// rendered with CUE's interpolation rules (a string verbatim, a number/bool by
+// its CUE textual form). A non-stringable embedded value (null, list, struct)
+// is rejected, matching CUE's "invalid interpolation".
 //
-// It ports CUE's own compileInterpolation (internal/core/compile): the OUTER
-// quote dialect is parsed once from the first and last fragment via
-// literal.ParseQuotes, so the plain (`"…"`), raw (`#"…"#`), and multiline
-// (`"""…"""`) string dialects all decode through the same QuoteInfo.Unquote the
-// CUE compiler uses — fixing the prior fragment arithmetic that fit only the
-// double-quote dialect and silently corrupted the others. A BYTES dialect
-// (`'…'`), which ParseQuotes reports as not-double, produces CUE bytes rather
-// than a row string and is rejected loudly as out-of-subset (the cross-engine
-// fuzzer's strict-subset hatch keys on the "unsupported" wording). The Unquote
-// error is never discarded.
-func evalRowInterpolation(n *ast.Interpolation, scope *rowScope) (*engineValue, error) {
-	// n.Elts always has an odd length ≥ 3 here: the parser only emits an
-	// *ast.Interpolation when at least one `\(…)` is present, interleaving
-	// string fragments (even indices) and embedded expressions (odd indices),
-	// so the first and last elements are always string fragments.
-	first := n.Elts[0].(*ast.BasicLit)
-	last := n.Elts[len(n.Elts)-1].(*ast.BasicLit)
-	info, prefixLen, _, err := literal.ParseQuotes(first.Value, last.Value)
-	if err != nil {
-		return nil, fmt.Errorf("cuelite: invalid interpolation: %w", err)
-	}
-	if !info.IsDouble() {
-		// ParseQuotes marks a single-quote dialect as not-double: it is a CUE
-		// bytes interpolation, a distinct type the row subset (which has no bytes
-		// kind) does not carry.
+// The three string dialects (plain `"…"`, raw `#"…"#`, multiline `"""…"""`) all
+// decode in the scanner, so this walker reads the decoded fragment text
+// directly. A BYTES dialect (`'…\(x)…'`) is flagged on the node (IsBytes) and
+// rejected as out-of-subset (the cross-engine fuzzer's strict-subset hatch keys
+// on the "unsupported" wording).
+func evalRowInterpolation(n *syntax.Interpolation, scope *rowScope) (*engineValue, error) {
+	if n.IsBytes {
 		return nil, fmt.Errorf("cuelite: unsupported bytes interpolation (bytes are not in the subset)")
 	}
+	// n.Elts always has an odd length ≥ 3 here: the parser only emits an
+	// *syntax.Interpolation when at least one `\(…)` is present, interleaving
+	// decoded string fragments (even indices) and embedded expressions (odd
+	// indices), so the first and last elements are always string fragments.
 	var b strings.Builder
-	prefix := ""
 	for i, elt := range n.Elts {
 		if i%2 == 1 {
 			s, exprErr := evalInterpExpr(elt, scope)
@@ -426,47 +409,18 @@ func evalRowInterpolation(n *ast.Interpolation, scope *rowScope) (*engineValue, 
 			b.WriteString(s)
 			continue
 		}
-		frag, fragErr := interpFragment(elt.(*ast.BasicLit), info, prefix, prefixLen)
-		if fragErr != nil {
-			return nil, fragErr
-		}
-		b.WriteString(frag)
-		// After the first fragment the opening delimiter is replaced by the `)`
-		// that closes the preceding interpolation — a single byte, matching CUE's
-		// `prefix = ")"; prefixLen = 1`.
-		prefix = ")"
-		prefixLen = 1
+		// An even-index element is a decoded fragment BasicLit; its Value is the
+		// fragment text the scanner already unquoted.
+		b.WriteString(elt.(*syntax.BasicLit).Value)
 	}
 	return &engineValue{kind: kString, str: b.String()}, nil
-}
-
-// interpFragment decodes one string fragment of an interpolation through the
-// interpolation's QuoteInfo, exactly as CUE's parseString does. The fragment's
-// leading delimiter is `prefix` (the opening quote dialect on the first
-// fragment — already consumed by prefixLen — else the `)` that closes the
-// preceding interpolation); after stripping prefixLen bytes, the remaining
-// bytes (which still carry the trailing `\(` introducer the next interpolation
-// opens with, or the closing quote on the last fragment) are decoded by
-// QuoteInfo.Unquote. A fragment whose leading bytes do not match the expected
-// prefix is a malformed interpolation, and an Unquote failure is surfaced —
-// never discarded.
-func interpFragment(bl *ast.BasicLit, info literal.QuoteInfo, prefix string, prefixLen int) (string, error) {
-	if !strings.HasPrefix(bl.Value, prefix) {
-		return "", fmt.Errorf("cuelite: invalid interpolation: unmatched ')'")
-	}
-	s := bl.Value[prefixLen:]
-	dec, err := info.Unquote(s)
-	if err != nil {
-		return "", fmt.Errorf("cuelite: invalid interpolation: %w", err)
-	}
-	return dec, nil
 }
 
 // evalInterpExpr evaluates one embedded interpolation expression and renders
 // it as CUE would: a string verbatim, an int/float/bool by its textual form.
 // A null, list, or struct value has no interpolation rendering and is an
 // error.
-func evalInterpExpr(e ast.Expr, scope *rowScope) (string, error) {
+func evalInterpExpr(e syntax.Expr, scope *rowScope) (string, error) {
 	v, err := evalRow(e, scope)
 	if err != nil {
 		return "", err
@@ -504,7 +458,7 @@ func formatCUEFloat(f float64) string {
 // or adds numbers; `==`/`!=` compare for equality (the comparison an `if`
 // comprehension or a `markdownlint == []` guard needs). Other operators are
 // outside the row subset.
-func evalRowBinary(n *ast.BinaryExpr, scope *rowScope) (*engineValue, error) {
+func evalRowBinary(n *syntax.BinaryExpr, scope *rowScope) (*engineValue, error) {
 	l, err := evalRow(n.X, scope)
 	if err != nil {
 		return nil, err
@@ -514,13 +468,13 @@ func evalRowBinary(n *ast.BinaryExpr, scope *rowScope) (*engineValue, error) {
 		return nil, err
 	}
 	switch n.Op {
-	case token.ADD:
+	case syntax.ADD:
 		return evalRowAdd(l, r)
-	case token.MUL:
+	case syntax.MUL:
 		return evalRowMul(l, r)
-	case token.EQL:
+	case syntax.EQL:
 		return &engineValue{kind: kBool, b: rowEqual(l, r)}, nil
-	case token.NEQ:
+	case syntax.NEQ:
 		return &engineValue{kind: kBool, b: !rowEqual(l, r)}, nil
 	default:
 		return nil, fmt.Errorf("cuelite: unsupported row operator %q", n.Op)
@@ -625,7 +579,7 @@ func checkedAddInt64(a, b int64) (int64, bool) {
 // evalRowSelector evaluates a field selection (`fm.id`, `m.name`): the base
 // resolves to a struct and the named member is read out. A selector on a
 // non-struct, or a member the struct lacks, is an error.
-func evalRowSelector(n *ast.SelectorExpr, scope *rowScope) (*engineValue, error) {
+func evalRowSelector(n *syntax.SelectorExpr, scope *rowScope) (*engineValue, error) {
 	base, err := evalRow(n.X, scope)
 	if err != nil {
 		return nil, err
@@ -655,18 +609,18 @@ func evalRowSelector(n *ast.SelectorExpr, scope *rowScope) (*engineValue, error)
 // only to the bare-ident form, since CUE selects a `_`-prefixed field through a
 // quoted label but not a bare one.
 //
-// The CUE parser only ever produces an *ast.Ident or a STRING *ast.BasicLit for
+// The CUE parser only ever produces an *syntax.Ident or a STRING *syntax.BasicLit for
 // a selector member: a numeric or bytes member is a parse error
 // ("expected selector"), so those AST shapes never reach here. A `\(…)` escape
 // in the quoted label is impossible (a selector label is not an interpolation),
 // so literal.Unquote on a parser-validated STRING token cannot fail; its error
 // is returned for completeness but is unreachable from the parser.
-func rowSelectorName(l ast.Label) (name string, quoted bool, err error) {
-	if id, ok := l.(*ast.Ident); ok {
+func rowSelectorName(l syntax.Label) (name string, quoted bool, err error) {
+	if id, ok := l.(*syntax.Ident); ok {
 		return id.Name, false, nil
 	}
-	bl := l.(*ast.BasicLit)
-	s, uerr := literal.Unquote(bl.Value)
+	bl := l.(*syntax.BasicLit)
+	s, uerr := syntax.Unquote(bl.Value)
 	if uerr != nil {
 		return "", false, fmt.Errorf("cuelite: selector label %s: %w", bl.Value, uerr)
 	}
@@ -691,7 +645,7 @@ func selectField(base *engineValue, name string) (*engineValue, error) {
 // selects the element (the `[…][0]` ternary idiom and `fm.markdownlint[0]`); a
 // struct indexed by a string selects the field (`fm["my-key"]`). An
 // out-of-range or absent index is an error.
-func evalRowIndex(n *ast.IndexExpr, scope *rowScope) (*engineValue, error) {
+func evalRowIndex(n *syntax.IndexExpr, scope *rowScope) (*engineValue, error) {
 	base, err := evalRow(n.X, scope)
 	if err != nil {
 		return nil, err
@@ -724,15 +678,15 @@ func evalRowIndex(n *ast.IndexExpr, scope *rowScope) (*engineValue, error) {
 // comprehension contributes its body when the condition holds; a `for`
 // comprehension contributes its body once per iterated element. The result is
 // a concrete list the index expression or strings.Join consumes.
-func evalRowList(n *ast.ListLit, scope *rowScope) (*engineValue, error) {
+func evalRowList(n *syntax.ListLit, scope *rowScope) (*engineValue, error) {
 	out := &engineValue{kind: kList}
 	for _, el := range n.Elts {
 		switch e := el.(type) {
-		case *ast.Ellipsis:
+		case *syntax.Ellipsis:
 			// A row list literal has no use for an open tail; reject it so a
 			// stray `...` is not silently dropped.
 			return nil, fmt.Errorf("cuelite: open list tail is not valid in a row expression")
-		case *ast.Comprehension:
+		case *syntax.Comprehension:
 			elems, err := evalRowComprehension(e, scope)
 			if err != nil {
 				return nil, err
@@ -754,30 +708,30 @@ func evalRowList(n *ast.ListLit, scope *rowScope) (*engineValue, error) {
 // is a concrete true; a `for x in list {body}` contributes one body per
 // element, binding x. The two clause forms cover the row corpus (the ternary
 // idiom and the per-peer projection); any other clause is rejected.
-func evalRowComprehension(c *ast.Comprehension, scope *rowScope) ([]*engineValue, error) {
+func evalRowComprehension(c *syntax.Comprehension, scope *rowScope) ([]*engineValue, error) {
 	if len(c.Clauses) != 1 {
 		return nil, fmt.Errorf(
 			"cuelite: unsupported multi-clause comprehension (only a single-clause comprehension is in the subset)")
 	}
 	// The CUE grammar requires a comprehension value to be a brace-delimited
-	// struct (`[for x in xs {…}]`), so the parser always yields a *ast.StructLit
+	// struct (`[for x in xs {…}]`), so the parser always yields a *syntax.StructLit
 	// here.
-	body := c.Value.(*ast.StructLit)
+	body := c.Value.(*syntax.StructLit)
 	// A single-clause comprehension is an `if` or a `for`: a `let` clause cannot
 	// stand alone (it must be followed by another clause, which the len != 1
 	// guard above already rejects), so those two cover every reachable
 	// single-clause shape.
-	if ifc, ok := c.Clauses[0].(*ast.IfClause); ok {
+	if ifc, ok := c.Clauses[0].(*syntax.IfClause); ok {
 		return evalRowIfClause(ifc, body, scope)
 	}
-	return evalRowForClause(c.Clauses[0].(*ast.ForClause), body, scope)
+	return evalRowForClause(c.Clauses[0].(*syntax.ForClause), body, scope)
 }
 
 // evalRowIfClause evaluates an `if cond {body}` comprehension: the condition
 // must reduce to a concrete bool, and the body contributes one value when the
 // condition is true. The body is a single-embed struct (`{expr}`), so it
 // evaluates to that embedded expression's value.
-func evalRowIfClause(clause *ast.IfClause, body *ast.StructLit, scope *rowScope) ([]*engineValue, error) {
+func evalRowIfClause(clause *syntax.IfClause, body *syntax.StructLit, scope *rowScope) ([]*engineValue, error) {
 	cond, err := evalRow(clause.Condition, scope)
 	if err != nil {
 		return nil, err
@@ -800,7 +754,7 @@ func evalRowIfClause(clause *ast.IfClause, body *ast.StructLit, scope *rowScope)
 // element, and contributes the body once per element. A `for` over a
 // non-list, or with a key variable (the two-variable form), is outside the
 // row subset.
-func evalRowForClause(clause *ast.ForClause, body *ast.StructLit, scope *rowScope) ([]*engineValue, error) {
+func evalRowForClause(clause *syntax.ForClause, body *syntax.StructLit, scope *rowScope) ([]*engineValue, error) {
 	if clause.Key != nil {
 		return nil, fmt.Errorf(
 			"cuelite: unsupported for-comprehension key variable (the two-variable for form is not in the subset)")
@@ -840,11 +794,11 @@ func (s *rowScope) with(name string, v *engineValue) *rowScope {
 // literal with a single embedded expression — to that expression's value. The
 // body of a row comprehension is always a single embed (the projected string),
 // so a multi-field or non-embed body is outside the subset.
-func evalRowComprehensionBody(body *ast.StructLit, scope *rowScope) (*engineValue, error) {
+func evalRowComprehensionBody(body *syntax.StructLit, scope *rowScope) (*engineValue, error) {
 	if len(body.Elts) != 1 {
 		return nil, fmt.Errorf("cuelite: comprehension body must be a single expression")
 	}
-	emb, ok := body.Elts[0].(*ast.EmbedDecl)
+	emb, ok := body.Elts[0].(*syntax.EmbedDecl)
 	if !ok {
 		return nil, fmt.Errorf("cuelite: comprehension body must embed an expression")
 	}
@@ -863,8 +817,8 @@ func evalRowComprehensionBody(body *ast.StructLit, scope *rowScope) (*engineValu
 // (`strings.Join`) is never a scope name (the `strings` namespace has no bare
 // alias and the row grammar binds no package), so it goes straight to the
 // builtin registry.
-func evalRowCall(n *ast.CallExpr, scope *rowScope) (*engineValue, error) {
-	if id, ok := n.Fun.(*ast.Ident); ok {
+func evalRowCall(n *syntax.CallExpr, scope *rowScope) (*engineValue, error) {
+	if id, ok := n.Fun.(*syntax.Ident); ok {
 		if shadow, bound := scope.vars[id.Name]; bound {
 			return nil, fmt.Errorf("cuelite: cannot call non-function %s (a %s binding shadows it)",
 				id.Name, shadow.describe())
@@ -892,12 +846,12 @@ func evalRowCall(n *ast.CallExpr, scope *rowScope) (*engineValue, error) {
 // rowCallName renders the call target's name: a bare identifier (`len`) or a
 // package-qualified selector (`strings.Join`). Any other target shape is
 // rejected.
-func rowCallName(fun ast.Expr) (string, error) {
+func rowCallName(fun syntax.Expr) (string, error) {
 	switch f := fun.(type) {
-	case *ast.Ident:
+	case *syntax.Ident:
 		return f.Name, nil
-	case *ast.SelectorExpr:
-		pkg, ok := f.X.(*ast.Ident)
+	case *syntax.SelectorExpr:
+		pkg, ok := f.X.(*syntax.Ident)
 		if !ok {
 			return "", fmt.Errorf("cuelite: unsupported call target %s", exprText(f))
 		}

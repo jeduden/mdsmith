@@ -1,0 +1,663 @@
+package cuelite
+
+// rowcorpus_test.go is the engine-pinned row-expression corpus ported from the
+// deleted internal/cuelitetest surface-C differential arm (plan 240). Each row's
+// expected accept/reject and rendered string was validated against the cuelang
+// oracle while it still existed (the differential run was green at the flip) and
+// is pinned here as the now-canonical behaviour. TestRowCorpus drives them.
+
+func rowCorpus() []rowCase {
+	// Capacity ~100 covers the thirteen category slices without regrowth.
+	rows := make([]rowCase, 0, 100)
+	rows = append(rows, rowCorpusMatrix()...)
+	rows = append(rows, rowCorpusMappingGuides()...)
+	rows = append(rows, rowCorpusInterpolation()...)
+	rows = append(rows, rowCorpusConcatRepeat()...)
+	rows = append(rows, rowCorpusTernaryLoops()...)
+	rows = append(rows, rowCorpusAccess()...)
+	rows = append(rows, rowCorpusBuiltins()...)
+	rows = append(rows, rowCorpusEqualityLen()...)
+	rows = append(rows, rowCorpusHiddenKeys()...)
+	rows = append(rows, rowCorpusScaffolding()...)
+	rows = append(rows, rowCorpusRejections()...)
+	rows = append(rows, rowCorpusFloatEdge()...)
+	rows = append(rows, rowCorpusExtra1()...)
+	return rows
+}
+
+// rowCorpusMatrix groups the big coverage-matrix coverage rows.
+func rowCorpusMatrix() []rowCase {
+	return []rowCase{
+		{
+			name: "big coverage matrix row",
+			expr: "\n  \"| [\\(id)](../../../internal/rules/\" +\n  \"\\(id)-\\(name)/README.md) \\(name)\" +\n  [if " +
+				"status != \"ready\" {\" (not-ready)\"},\n   if status == \"ready\" {\"\"}][0] +\n  \" | \" +\n  [if " +
+				"markdownlint == [] {\"—\"},\n   if markdownlint != [] {\n     strings.Join([for m in markdownlint " +
+				"{\n       \"\\(m.id) \" +\n       [if m.default {\"✅\"}, if !m.default {\"⚪\"}][0] +\n       [if" +
+				" m.id != m.name {\" \\(m.name)\"},\n        if m.id == m.name {\"\"}][0] +\n       [if m.partial {\"" +
+				" (partial)\"},\n        if !m.partial {\"\"}][0]\n     }], \", \")\n   }][0] +\n  \" | \" +\n  [if f" +
+				"m[\"obsidian-linter\"] == [] {\"—\"},\n   if fm[\"obsidian-linter\"] != [] {\n     strings.Join([f" +
+				"or m in fm[\"obsidian-linter\"] {\n       \"\\(m.id) \" +\n       [if m.default {\"✅\"}, if !m.def" +
+				"ault {\"⚪\"}][0]\n     }], \", \")\n   }][0] +\n  \" |\"",
+			scope: "{\n  \"id\": \"MDS064\",\n  \"name\": \"atx-heading-whitespace\",\n  \"status\": \"ready\",\n  \"" +
+				"markdownlint\": [\n    {\"id\": \"MD018\", \"name\": \"no-missing-space-atx\", \"default\": true, \"" +
+				"partial\": false},\n    {\"id\": \"MD020\", \"name\": \"no-missing-space-closed-atx\", \"default\": " +
+				"true, \"partial\": true}\n  ],\n  \"rumdl\": [],\n  \"obsidian-linter\": [\n    {\"id\": \"headings-" +
+				"start-line\", \"name\": \"headings-start-line\", \"default\": false, \"partial\": true}\n  ]\n}",
+			want: exprResult{
+				ok: true,
+				out: "| [MDS064](../../../internal/rules/MDS064-atx-heading-whitespace/README.md) atx-heading-whitesp" +
+					"ace | MD018 ✅ no-missing-space-atx, MD020 ✅ no-missing-space-closed-atx (partial) | headings" +
+					"-start-line ⚪ |",
+			},
+		},
+		{
+			name: "big coverage matrix empty peers",
+			expr: "\n  \"| [\\(id)](../../../internal/rules/\" +\n  \"\\(id)-\\(name)/README.md) \\(name)\" +\n  [if " +
+				"status != \"ready\" {\" (not-ready)\"},\n   if status == \"ready\" {\"\"}][0] +\n  \" | \" +\n  [if " +
+				"markdownlint == [] {\"—\"},\n   if markdownlint != [] {\n     strings.Join([for m in markdownlint " +
+				"{\n       \"\\(m.id) \" +\n       [if m.default {\"✅\"}, if !m.default {\"⚪\"}][0] +\n       [if" +
+				" m.id != m.name {\" \\(m.name)\"},\n        if m.id == m.name {\"\"}][0] +\n       [if m.partial {\"" +
+				" (partial)\"},\n        if !m.partial {\"\"}][0]\n     }], \", \")\n   }][0] +\n  \" | \" +\n  [if f" +
+				"m[\"obsidian-linter\"] == [] {\"—\"},\n   if fm[\"obsidian-linter\"] != [] {\n     strings.Join([f" +
+				"or m in fm[\"obsidian-linter\"] {\n       \"\\(m.id) \" +\n       [if m.default {\"✅\"}, if !m.def" +
+				"ault {\"⚪\"}][0]\n     }], \", \")\n   }][0] +\n  \" |\"",
+			scope: "{\n  \"id\": \"MDS029\",\n  \"name\": \"conciseness-scoring\",\n  \"status\": \"draft\",\n  \"mar" +
+				"kdownlint\": [],\n  \"rumdl\": [],\n  \"obsidian-linter\": []\n}",
+			want: exprResult{
+				ok: true,
+				out: "| [MDS029](../../../internal/rules/MDS029-conciseness-scoring/README.md) conciseness-scoring (n" +
+					"ot-ready) | — | — |",
+			},
+		},
+	}
+}
+
+// rowCorpusMappingGuides groups the markdownlint-mapping and generating-content guide rows.
+func rowCorpusMappingGuides() []rowCase {
+	return []rowCase{
+		{
+			name: "markdownlint mapping row",
+			expr: "\"| \" +\n  strings.Join([for m in markdownlint {\n    \"\\(m.id)\" +\n    [if m.id != m.name {\" " +
+				"\\(m.name)\"},\n     if m.id == m.name {\"\"}][0] +\n    [if m.partial {\" (partial)\"},\n     if !m" +
+				".partial {\"\"}][0]\n  }], \", \") +\n  \" | [\\(id)](../../internal/rules/\\(id)-\\(name)/README.md" +
+				") \\(name) |\"",
+			scope: "{\n  \"id\": \"MDS064\",\n  \"name\": \"atx-heading-whitespace\",\n  \"status\": \"ready\",\n  \"" +
+				"markdownlint\": [\n    {\"id\": \"MD018\", \"name\": \"no-missing-space-atx\", \"default\": true, \"" +
+				"partial\": false},\n    {\"id\": \"MD020\", \"name\": \"no-missing-space-closed-atx\", \"default\": " +
+				"true, \"partial\": true}\n  ],\n  \"rumdl\": [],\n  \"obsidian-linter\": [\n    {\"id\": \"headings-" +
+				"start-line\", \"name\": \"headings-start-line\", \"default\": false, \"partial\": true}\n  ]\n}",
+			want: exprResult{
+				ok: true,
+				out: "| MD018 no-missing-space-atx, MD020 no-missing-space-closed-atx (partial) | [MDS064](../../inte" +
+					"rnal/rules/MDS064-atx-heading-whitespace/README.md) atx-heading-whitespace |",
+			},
+		},
+		{
+			name: "generating-content guide row",
+			expr: "\"| \\(id) | \" +\n  strings.Join(\n    [for m in markdownlint {\n      \"\\(m.id) \\([if m.defaul" +
+				"t {\"✅\"}, if !m.default {\"⚪\"}][0]) \\(m.name)\"\n    }],\n    \", \"\n  ) + \" |\"",
+			scope: "{\n  \"id\": \"MDS064\",\n  \"name\": \"atx-heading-whitespace\",\n  \"status\": \"ready\",\n  \"" +
+				"markdownlint\": [\n    {\"id\": \"MD018\", \"name\": \"no-missing-space-atx\", \"default\": true, \"" +
+				"partial\": false},\n    {\"id\": \"MD020\", \"name\": \"no-missing-space-closed-atx\", \"default\": " +
+				"true, \"partial\": true}\n  ],\n  \"rumdl\": [],\n  \"obsidian-linter\": [\n    {\"id\": \"headings-" +
+				"start-line\", \"name\": \"headings-start-line\", \"default\": false, \"partial\": true}\n  ]\n}",
+			want: exprResult{
+				ok:  true,
+				out: "| MDS064 | MD018 ✅ no-missing-space-atx, MD020 ✅ no-missing-space-closed-atx |",
+			},
+		},
+	}
+}
+
+// rowCorpusInterpolation groups the string-interpolation rows.
+func rowCorpusInterpolation() []rowCase {
+	return []rowCase{
+		{
+			name:  "scalar interpolation",
+			expr:  "\"\\(id) - \\(name)\"",
+			scope: "{\"id\":\"A\",\"name\":\"b\"}",
+			want:  exprResult{ok: true, out: "A - b"},
+		},
+		{
+			name:  "interpolate int",
+			expr:  "\"n=\\(count)\"",
+			scope: "{\"count\":42}",
+			want:  exprResult{ok: true, out: "n=42"},
+		},
+		{
+			name:  "interpolate bool",
+			expr:  "\"on=\\(flag)\"",
+			scope: "{\"flag\":true}",
+			want:  exprResult{ok: true, out: "on=true"},
+		},
+		{
+			name:  "nested interpolation",
+			expr:  "\"\\(\"\\(id)\")\"",
+			scope: "{\"id\":\"X\"}",
+			want:  exprResult{ok: true, out: "X"},
+		},
+		{
+			name:  "interpolation with tab escape",
+			expr:  "\"a\\tb \\(id)\"",
+			scope: "{\"id\":\"Z\"}",
+			want:  exprResult{ok: true, out: "a\tb Z"},
+		},
+		{
+			name:  "multiline interpolation",
+			expr:  "\"\"\"\n  a\\(id)b\n  \"\"\"",
+			scope: "{\"id\":\"X\"}",
+			want:  exprResult{ok: true, out: "aXb"},
+		},
+		{
+			name:  "raw string interpolation",
+			expr:  "#\"a\\#(id)b\"#",
+			scope: "{\"id\":\"X\"}",
+			want:  exprResult{ok: true, out: "aXb"},
+		},
+		{
+			name:  "raw multiline interpolation",
+			expr:  "#\"\"\"\n  a\\#(id)b\n  \"\"\"#",
+			scope: "{\"id\":\"X\"}",
+			want:  exprResult{ok: true, out: "aXb"},
+		},
+	}
+}
+
+// rowCorpusConcatRepeat groups the string concat, unary, and repeat rows.
+func rowCorpusConcatRepeat() []rowCase {
+	return []rowCase{
+		{
+			name:  "bytes interpolation rejected",
+			expr:  "'a\\(id)b'",
+			scope: "{\"id\":\"X\"}",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "multiline interpolation multibyte",
+			expr:  "\"\"\"\n  héllo \\(id)\n  \"\"\"",
+			scope: "{\"id\":\"Z\"}",
+			want:  exprResult{ok: true, out: "héllo Z"},
+		},
+		{
+			name:  "interpolate null is rejected",
+			expr:  "\"\\(x)\"",
+			scope: "{\"x\":null}",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "interpolate list is rejected",
+			expr:  "\"\\(x)\"",
+			scope: "{\"x\":[1,2]}",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "interpolate struct is rejected",
+			expr:  "\"\\(x)\"",
+			scope: "{\"x\":{\"a\":1}}",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "string concat",
+			expr:  "id + \" \" + name",
+			scope: "{\"id\":\"A\",\"name\":\"b\"}",
+			want:  exprResult{ok: true, out: "A b"},
+		},
+		{
+			name:  "number add is not string",
+			expr:  "1 + 1",
+			scope: "",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "mixed add rejected",
+			expr:  "\"a\" + 1",
+			scope: "",
+			want:  exprResult{ok: false, out: ""},
+		},
+	}
+}
+
+// rowCorpusTernaryLoops groups the ternary-guard and comprehension rows.
+func rowCorpusTernaryLoops() []rowCase {
+	return []rowCase{
+		{
+			name:  "unary plus int identity",
+			expr:  "\"\\(+(1+2))\"",
+			scope: "",
+			want:  exprResult{ok: true, out: "3"},
+		},
+		{
+			name:  "unary plus on string rejected",
+			expr:  "+\"a\"",
+			scope: "",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "string repeat empty zero",
+			expr:  "\"\" * 0",
+			scope: "",
+			want:  exprResult{ok: true, out: ""},
+		},
+		{
+			name:  "string repeat three",
+			expr:  "\"ab\" * 3",
+			scope: "",
+			want:  exprResult{ok: true, out: "ababab"},
+		},
+		{
+			name:  "int times string repeats",
+			expr:  "3 * \"ab\"",
+			scope: "",
+			want:  exprResult{ok: true, out: "ababab"},
+		},
+		{
+			name:  "string repeat by float rejected",
+			expr:  "\"x\" * 2.0",
+			scope: "",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "int times int rejected",
+			expr:  "2 * 3",
+			scope: "",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "ternary true",
+			expr:  "[if def {\"on\"}, if !def {\"off\"}][0]",
+			scope: "{\"def\":true}",
+			want:  exprResult{ok: true, out: "on"},
+		},
+	}
+}
+
+// rowCorpusAccess groups the front-matter access and indexing rows.
+func rowCorpusAccess() []rowCase {
+	return []rowCase{
+		{
+			name:  "ternary false",
+			expr:  "[if def {\"on\"}, if !def {\"off\"}][0]",
+			scope: "{\"def\":false}",
+			want:  exprResult{ok: true, out: "off"},
+		},
+		{
+			name:  "ternary chain string eq",
+			expr:  "[if s == \"a\" {\"A\"}, if s == \"b\" {\"B\"}][0]",
+			scope: "{\"s\":\"b\"}",
+			want:  exprResult{ok: true, out: "B"},
+		},
+		{
+			name:  "empty list guard hit",
+			expr:  "[if xs == [] {\"—\"}, if xs != [] {\"full\"}][0]",
+			scope: "{\"xs\":[]}",
+			want:  exprResult{ok: true, out: "—"},
+		},
+		{
+			name:  "empty list guard miss",
+			expr:  "[if xs == [] {\"—\"}, if xs != [] {\"full\"}][0]",
+			scope: "{\"xs\":[\"a\"]}",
+			want:  exprResult{ok: true, out: "full"},
+		},
+		{
+			name:  "for over empty list",
+			expr:  "strings.Join([for x in xs {\"\\(x)\"}], \",\")",
+			scope: "{\"xs\":[]}",
+			want:  exprResult{ok: true, out: ""},
+		},
+		{
+			name:  "for over scalar list",
+			expr:  "strings.Join([for x in xs {\"\\(x)\"}], \"-\")",
+			scope: "{\"xs\":[\"a\",\"b\",\"c\"]}",
+			want:  exprResult{ok: true, out: "a-b-c"},
+		},
+		{
+			name:  "for over struct list",
+			expr:  "strings.Join([for m in xs {\"\\(m.id)\"}], \", \")",
+			scope: "{\"xs\":[{\"id\":\"A\"},{\"id\":\"B\"}]}",
+			want:  exprResult{ok: true, out: "A, B"},
+		},
+		{
+			name:  "fm struct access",
+			expr:  "\"\\(fm.id)\"",
+			scope: "{\"id\":\"MDS001\"}",
+			want:  exprResult{ok: true, out: "MDS001"},
+		},
+	}
+}
+
+// rowCorpusBuiltins groups the builtin-call and shadowing rows.
+func rowCorpusBuiltins() []rowCase {
+	return []rowCase{
+		{
+			name:  "fm quoted key",
+			expr:  "fm[\"my-key\"]",
+			scope: "{\"my-key\":\"value\"}",
+			want:  exprResult{ok: true, out: "value"},
+		},
+		{
+			name:  "fm quoted selector",
+			expr:  "fm.\"my-key\"",
+			scope: "{\"my-key\":\"value\"}",
+			want:  exprResult{ok: true, out: "value"},
+		},
+		{
+			name:  "fm quoted selector ident form",
+			expr:  "fm.\"id\"",
+			scope: "{\"id\":\"MDS001\"}",
+			want:  exprResult{ok: true, out: "MDS001"},
+		},
+		{
+			name:  "fm list index",
+			expr:  "\"\\(fm.xs[0].id)\"",
+			scope: "{\"xs\":[{\"id\":\"MD013\"}]}",
+			want:  exprResult{ok: true, out: "MD013"},
+		},
+		{
+			name:  "selector on absent field",
+			expr:  "\"\\(m.absent)\"",
+			scope: "{\"m\":{\"id\":\"X\"}}",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "list index out of range",
+			expr:  "xs[5]",
+			scope: "{\"xs\":[\"a\"]}",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "strings.Join literals",
+			expr:  "strings.Join([\"a\",\"b\",\"c\"], \"-\")",
+			scope: "",
+			want:  exprResult{ok: true, out: "a-b-c"},
+		},
+		{
+			name:  "len of list",
+			expr:  "\"\\(len(xs))\"",
+			scope: "{\"xs\":[1,2,3]}",
+			want:  exprResult{ok: true, out: "3"},
+		},
+	}
+}
+
+// rowCorpusEqualityLen groups the equality and len rows.
+func rowCorpusEqualityLen() []rowCase {
+	return []rowCase{
+		{
+			name:  "len of string",
+			expr:  "\"\\(len(id))\"",
+			scope: "{\"id\":\"abc\"}",
+			want:  exprResult{ok: true, out: "3"},
+		},
+		{
+			name:  "strings.Join arity error",
+			expr:  "strings.Join([\"a\"])",
+			scope: "",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "len arity error",
+			expr:  "len(\"a\",\"b\")",
+			scope: "",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "scope key len shadows builtin",
+			expr:  "len(xs)",
+			scope: "{\"len\":\"shadowed\",\"xs\":[1,2]}",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "for variable len shadows builtin",
+			expr:  "[for len in xs {\"\\(len(len))\"}][0]",
+			scope: "{\"xs\":[[1,2]]}",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "strings key does not shadow namespace",
+			expr:  "strings.Join([\"a\",\"b\"], \",\")",
+			scope: "{\"strings\":\"sv\"}",
+			want:  exprResult{ok: true, out: "a,b"},
+		},
+		{
+			name:  "struct equality field-wise",
+			expr:  "[if x == y {\"T\"}, if x != y {\"F\"}][0]",
+			scope: "{\"x\":{\"k\":1},\"y\":{\"k\":1}}",
+			want:  exprResult{ok: true, out: "T"},
+		},
+		{
+			name:  "struct inequality field differs",
+			expr:  "[if x == y {\"T\"}, if x != y {\"F\"}][0]",
+			scope: "{\"x\":{\"k\":1},\"y\":{\"k\":2}}",
+			want:  exprResult{ok: true, out: "F"},
+		},
+	}
+}
+
+// rowCorpusHiddenKeys groups the hidden- and reserved-key visibility rows.
+func rowCorpusHiddenKeys() []rowCase {
+	return []rowCase{
+		{
+			name:  "list element equality type-strict",
+			expr:  "[if x == y {\"T\"}, if x != y {\"F\"}][0]",
+			scope: "{\"x\":[2],\"y\":[2.0]}",
+			want:  exprResult{ok: true, out: "F"},
+		},
+		{
+			name:  "scalar numeric equality crosses kinds",
+			expr:  "[if x == y {\"T\"}, if x != y {\"F\"}][0]",
+			scope: "{\"x\":2,\"y\":2.0}",
+			want:  exprResult{ok: true, out: "T"},
+		},
+		{
+			name:  "nested list equality type-strict",
+			expr:  "[if x == y {\"T\"}, if x != y {\"F\"}][0]",
+			scope: "{\"x\":[[2]],\"y\":[[2.0]]}",
+			want:  exprResult{ok: true, out: "F"},
+		},
+		{
+			name:  "len of multibyte string",
+			expr:  "\"\\(len(s))\"",
+			scope: "{\"s\":\"café\"}",
+			want:  exprResult{ok: true, out: "5"},
+		},
+		{
+			name:  "len of emoji string",
+			expr:  "\"\\(len(s))\"",
+			scope: "{\"s\":\"😀\"}",
+			want:  exprResult{ok: true, out: "4"},
+		},
+		{
+			name:  "hidden key not bare addressable",
+			expr:  "_key",
+			scope: "{\"_key\":\"hidden\"}",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "hidden key not via fm selector",
+			expr:  "fm._key",
+			scope: "{\"_key\":\"hidden\"}",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "hidden key via fm index",
+			expr:  "fm[\"_key\"]",
+			scope: "{\"_key\":\"hidden\"}",
+			want:  exprResult{ok: true, out: "hidden"},
+		},
+	}
+}
+
+// rowCorpusScaffolding groups the scaffolding-key and row-out reservation rows.
+func rowCorpusScaffolding() []rowCase {
+	return []rowCase{
+		{
+			name:  "hidden key via fm quoted selector",
+			expr:  "fm.\"_key\"",
+			scope: "{\"_key\":\"hidden\"}",
+			want:  exprResult{ok: true, out: "hidden"},
+		},
+		{
+			name:  "strings key only via fm",
+			expr:  "fm.strings",
+			scope: "{\"strings\":\"sv\"}",
+			want:  exprResult{ok: true, out: "sv"},
+		},
+		{
+			name:  "keyword key not bare",
+			expr:  "for",
+			scope: "{\"for\":\"fv\"}",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "literal fm key dropped",
+			expr:  "fm[\"fm\"]",
+			scope: "{\"fm\":\"lit\"}",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "non-identifier key via fm",
+			expr:  "fm[\"2x\"]",
+			scope: "{\"2x\":\"v\"}",
+			want:  exprResult{ok: true, out: "v"},
+		},
+		{
+			name:  "scaffolding key not bare",
+			expr:  "mdsmith_template_out",
+			scope: "{\"mdsmith_template_out\":\"x\"}",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "scaffolding key dropped from fm",
+			expr:  "fm[\"mdsmith_template_out\"]",
+			scope: "{\"mdsmith_template_out\":\"x\"}",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "row-out key not bare addressable",
+			expr:  "mdsmith_row_out",
+			scope: "{\"mdsmith_row_out\":\"x\"}",
+			want:  exprResult{ok: false, out: ""},
+		},
+	}
+}
+
+// rowCorpusRejections groups the assorted rejection rows.
+func rowCorpusRejections() []rowCase {
+	return []rowCase{
+		{
+			name:  "row-out key not via fm selector",
+			expr:  "fm.mdsmith_row_out",
+			scope: "{\"mdsmith_row_out\":\"x\"}",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "row-out key dropped from fm",
+			expr:  "fm[\"mdsmith_row_out\"]",
+			scope: "{\"mdsmith_row_out\":\"x\"}",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "non-string result",
+			expr:  "42",
+			scope: "",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "missing reference",
+			expr:  "\"\\(missing)\"",
+			scope: "{\"id\":\"X\"}",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "plain string literal",
+			expr:  "\"literal\"",
+			scope: "",
+			want:  exprResult{ok: true, out: "literal"},
+		},
+		{
+			name:  "empty scope literal",
+			expr:  "\"x\"",
+			scope: "",
+			want:  exprResult{ok: true, out: "x"},
+		},
+		{
+			name:  "for-if combined",
+			expr:  "strings.Join([for x in xs if x != \"b\" {x}], \",\")",
+			scope: "{\"xs\":[\"a\",\"b\",\"c\"]}",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "for two-variable",
+			expr:  "strings.Join([for i, x in xs {\"\\(i):\\(x)\"}], \",\")",
+			scope: "{\"xs\":[\"a\",\"b\"]}",
+			want:  exprResult{ok: false, out: ""},
+		},
+	}
+}
+
+// rowCorpusFloatEdge groups the float-display and overflow edge rows.
+func rowCorpusFloatEdge() []rowCase {
+	return []rowCase{
+		{
+			name:  "let multi-clause",
+			expr:  "strings.Join([for x in xs let y = x + x {y}], \",\")",
+			scope: "{\"xs\":[\"a\",\"b\"]}",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "struct literal in expr",
+			expr:  "\"\\({a:1}.a)\"",
+			scope: "",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "float arithmetic",
+			expr:  "\"\\(0.1 + 0.2)\"",
+			scope: "",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "big-int overflow",
+			expr:  "\"\\(x + 1)\"",
+			scope: "{\"x\":9223372036854775807}",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "unary minus int64 min overflow",
+			expr:  "\"\\(-x)\"",
+			scope: "{\"x\":-9223372036854775808}",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "len of struct",
+			expr:  "\"\\(len(m))\"",
+			scope: "{\"m\":{\"k\":\"v\"}}",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "repetition bound",
+			expr:  "\"ab\" * 2000000",
+			scope: "",
+			want:  exprResult{ok: false, out: ""},
+		},
+		{
+			name:  "float display",
+			expr:  "\"\\(x)\"",
+			scope: "{\"x\":1.50}",
+			want:  exprResult{ok: true, out: "1.5"},
+		},
+	}
+}
+
+// rowCorpusExtra1 groups additional row-expression cases.
+func rowCorpusExtra1() []rowCase {
+	return []rowCase{
+		{
+			name:  "whole float display",
+			expr:  "\"\\(x)\"",
+			scope: "{\"x\":2.0}",
+			want:  exprResult{ok: true, out: "2.0"},
+		},
+	}
+}

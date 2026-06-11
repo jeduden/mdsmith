@@ -319,26 +319,13 @@ jobs:
       - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
         with:
           go-version-file: go.mod
-      # Plan 236: the cuelite-versus-CUE differential benchmark (the
-      # in-house path against the direct-CUE oracle) must genuinely run
-      # in CI, not just exist. The phases that flip cuelite to the in-house
-      # engine are judged against these arms.
-      - run: go test -run=^$ -bench=. -benchtime=20x ./internal/cuelitetest/...
-      # Plan 236: the cuelite/cue FACTOR gate. TestFactorGate computes the
-      # cuelite-over-cue ns/op ratio for the hot (validate) and cold
-      # (compile-validate) paths and FAILS when either exceeds its interim
-      # budget (2.5x hot, 2.0x cold) — the ratio cancels runner speed, so a
-      # blowup trips it but a slow runner does not. The gate is an ordinary
-      # `go test` (the per-arm measurement loop lives in Go, no inline shell)
-      # and writes a factor table to GITHUB_STEP_SUMMARY for the run page.
-      # -v so the per-benchmark factor lines (t.Log) land in the job
-      # log on success, not only in the step summary.
-      # CUELITE_FACTOR_GATE=1 arms the gate: it skips everywhere else
-      # (notably the parallel `test` job) because the ratio is only
-      # meaningful on a quiet runner.
-      - run: go test -v -run=TestFactorGate ./internal/cuelitetest/...
-        env:
-          CUELITE_FACTOR_GATE: "1"
+      # Plan 240: the differential oracle left with the cuelang.org
+      # dependency, so the cuelite benchmarks are engine-only and the
+      # old CUE-relative factor gate is replaced by an absolute
+      # allocs/op guard (TestValidateAllocBudget in bench_test.go,
+      # asserted here verbosely so the numbers land in the job log).
+      - run: go test -run=^$ -bench=. -benchtime=20x ./cue/cuelite/...
+      - run: go test -v -run=TestValidateAllocBudget ./cue/cuelite/
 
   # Build-tag A/B job for the vendored goldmark fork (plan 197+198).
   # pkg/goldmark/ is part of the main module — it was a nested module
@@ -530,11 +517,14 @@ jobs:
   # native engine on an in-memory fixture. It SKIPS when node is absent,
   # so it must run in a job that installs node or it never gates. The
   # same `go test` run also enforces the artifact size budget
-  # (size_test.go, a regression guard at the real ~38 MB / 8 MB-gzipped
-  # size) and the Go↔JS method-set parity (methods_test.go). tinygo is
-  # intentionally not built — it cannot compile the engine today; the
-  # CUE-free, under-budget path is follow-up work (see
-  # docs/background/concepts/engine-api.md and plan/218).
+  # (size_test.go, a regression guard now at ~11.2 MB raw / ~2.8 MB
+  # gzipped after cuelang.org/go left the graph) and the Go↔JS method-set
+  # parity (methods_test.go). tinygo is intentionally not built here: the
+  # tinygo wasm target still leaves os.Chmod, os.SameFile, and
+  # os.Symlink/filepath.EvalSymlinks undefined, which pkg/mdsmith reaches
+  # transitively, so the tinygo build does not yet compile. Build-tagging
+  # those calls out of the wasm graph is follow-up work (see
+  # docs/background/concepts/engine-api.md and plan/240).
   wasm:
     runs-on: ubuntu-latest
     steps:
@@ -555,6 +545,48 @@ jobs:
         run: GOOS=js GOARCH=wasm go vet ./cmd/mdsmith-wasm/...
       - name: WASM smoke test, size budget, and method-set parity
         run: go test ./cmd/mdsmith-wasm/...
+
+  # Plan 240: attempt the tinygo wasm build. This is the moment-of-truth
+  # job for the plan's headline criterion (an ≤ 8 MiB tinygo artifact).
+  # The build does NOT yet succeed — tinygo's wasm target leaves os.Chmod,
+  # os.SameFile, and os.Symlink/filepath.EvalSymlinks undefined, and
+  # pkg/mdsmith reaches all three transitively — so the job is
+  # informational (continue-on-error) rather than gating: it surfaces the
+  # exact build errors in the log without blocking PRs on work not yet
+  # done. TestTinyGoWASMArtifactSizeBudget records the same failure and
+  # skips. Build-tagging the os.* calls out of the wasm graph is
+  # scheduled as plan 247 (plan/247_tinygo-wasm-build.md); that plan
+  # drops continue-on-error so the 8 MiB budget gates.
+  tinygo-wasm:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+      - name: Install tinygo (checksum-pinned .deb)
+        env:
+          TINYGO_VERSION: "0.39.0"
+          TINYGO_SHA256: "775f15974e35059c8f3a141266bd9d293b5d556a3e44d5e6356c5602e9f386ab"
+        run: |
+          url="https://github.com/tinygo-org/tinygo/releases/download/v${TINYGO_VERSION}/tinygo_${TINYGO_VERSION}_amd64.deb"
+          curl -fsSL -o /tmp/tinygo.deb "$url"
+          echo "${TINYGO_SHA256}  /tmp/tinygo.deb" | sha256sum -c -
+          sudo dpkg -i /tmp/tinygo.deb
+          tinygo version
+      # Step-level continue-on-error: the build fails today on the
+      # os.* calls plan 247 build-tags away. The errors stay visible in
+      # this step's log while the JOB concludes green, so the known gap
+      # does not block the merge queue.
+      - name: Build the engine with tinygo (informational)
+        continue-on-error: true
+        run: tinygo build -target wasm -o /tmp/mdsmith-tiny.wasm ./cmd/mdsmith-wasm
+      - name: tinygo size budget (skips on the known build failure)
+        run: go test -run TestTinyGoWASMArtifactSizeBudget ./cmd/mdsmith-wasm/...
 
   test:
     runs-on: ubuntu-latest

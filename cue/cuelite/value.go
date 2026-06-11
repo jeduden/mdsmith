@@ -49,11 +49,12 @@ func (v Value) isBottom() (error, bool) {
 	return nil, false
 }
 
-// Compile compiles a CUE-subset source string into a [Value], using
-// cuelang's parser as a syntax frontend and the in-house engine as the
-// evaluator (plan 238). A syntactically invalid source, an unsupported
-// construct, or a value that reduces to ⊥ (a contradiction such as
-// `int & string`) reports an error.
+// Compile compiles a CUE-subset source string into a [Value], using the
+// in-house cue/cuelite/syntax frontend (the hand-rolled lexer and parser that
+// replaced cuelang.org/go in plan 240) and the in-house engine as the
+// evaluator. A syntactically invalid source, an unsupported construct, or a
+// value that reduces to ⊥ (a contradiction such as `int & string`) reports an
+// error.
 func Compile(src string) (Value, error) {
 	ev, err := compileSource(src)
 	if err != nil {

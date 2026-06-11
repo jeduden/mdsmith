@@ -3,8 +3,7 @@ package cuelite
 import (
 	"testing"
 
-	"cuelang.org/go/cue/ast"
-	"cuelang.org/go/cue/token"
+	"github.com/jeduden/mdsmith/cue/cuelite/syntax"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -48,9 +47,9 @@ func TestCompareNum_notEqual(t *testing.T) {
 // TestBoundOpOf_outOfDomain covers boundOpOf's ok=false return for a token
 // outside the relational set.
 func TestBoundOpOf_outOfDomain(t *testing.T) {
-	_, ok := boundOpOf(token.ADD)
+	_, ok := boundOpOf(syntax.ADD)
 	assert.False(t, ok)
-	op, ok := boundOpOf(token.GEQ)
+	op, ok := boundOpOf(syntax.GEQ)
 	require.True(t, ok)
 	assert.Equal(t, opGe, op)
 }
@@ -121,18 +120,18 @@ func TestEvalStruct_fieldPlusEmbedded(t *testing.T) {
 // TestFreeRefs_nilChild covers freeRefs' nil-node walk branch via a field with
 // a nil value.
 func TestFreeRefs_nilChild(t *testing.T) {
-	refs := freeRefs(&ast.UnaryExpr{Op: token.GEQ, X: nil})
+	refs := freeRefs(&syntax.UnaryExpr{Op: syntax.GEQ, X: nil})
 	assert.Empty(t, refs)
 }
 
 // TestCompileBasicLit_directErrors covers compileBasicLit's string-unquote,
 // float-parse, and unsupported-kind branches via constructed literals.
 func TestCompileBasicLit_directErrors(t *testing.T) {
-	_, err := compileBasicLit(&ast.BasicLit{Kind: token.STRING, Value: `"\x"`})
+	_, err := compileBasicLit(&syntax.BasicLit{Kind: syntax.STRING, Value: `"\x"`})
 	assert.Error(t, err, "a malformed string literal fails to unquote")
-	_, err = compileBasicLit(&ast.BasicLit{Kind: token.FLOAT, Value: "1.2.3"})
+	_, err = compileBasicLit(&syntax.BasicLit{Kind: syntax.FLOAT, Value: "1.2.3"})
 	assert.Error(t, err, "a malformed float literal fails to parse")
-	_, err = compileBasicLit(&ast.BasicLit{Kind: token.IDENT, Value: "x"})
+	_, err = compileBasicLit(&syntax.BasicLit{Kind: syntax.NoToken, Value: "x"})
 	assert.Error(t, err, "an unsupported literal kind is rejected")
 }
 
@@ -151,6 +150,6 @@ func TestCheckEmbeddedThunkRefs_declared(t *testing.T) {
 // branch directly.
 func TestEvalIdent_nonConcreteInScope(t *testing.T) {
 	scope := map[string]*engineValue{"n": {kind: kAtom, atom: akInt}}
-	_, err := evalIdent(&ast.Ident{Name: "n"}, scope)
+	_, err := evalIdent(&syntax.Ident{Name: "n"}, scope)
 	assert.ErrorIs(t, err, errUnresolved, "a non-concrete scope value defers")
 }
