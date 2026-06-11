@@ -340,3 +340,33 @@ func TestKindScopedChecker_MultipleKindsShareOneBucketEntry(t *testing.T) {
 	assert.True(t, kindsSeen[ast.KindEmphasis])
 	assert.Len(t, kindsSeen, 2)
 }
+
+func TestPopulateSourceContext_NoDiagnosticsIsNoOp(t *testing.T) {
+	// The empty fast path must not build the per-file line-string
+	// cache: most files produce no diagnostics.
+	f := newTestFile(t, "line1\nline2\n")
+	checker.PopulateSourceContext(f, nil, 2)
+	checker.PopulateSourceContext(f, []lint.Diagnostic{}, 2)
+}
+
+// leavingDiagRule is a generic (kind-less) NodeChecker that emits on
+// the leaving visit of the document node, pinning that the generic
+// path still delivers exit visits and collects their diagnostics.
+type leavingDiagRule struct{ plainRule }
+
+func (r *leavingDiagRule) Check(_ *lint.File) []lint.Diagnostic { return nil }
+func (r *leavingDiagRule) CheckNode(n ast.Node, entering bool, _ *lint.File) []lint.Diagnostic {
+	if !entering && n.Kind() == ast.KindDocument {
+		return []lint.Diagnostic{{Line: 1, RuleID: r.id, Message: "leaving"}}
+	}
+	return nil
+}
+
+func TestGenericNodeChecker_LeavingVisitDiagnosticsCollected(t *testing.T) {
+	f := newTestFile(t, "# Hello\n\nParagraph.\n")
+	r := &leavingDiagRule{plainRule: plainRule{id: "TST001"}}
+	diags, errs := checker.CheckRulesWithIntraFile(f, []rule.Rule{r}, enabled("TST001"), true, 1)
+	assert.Empty(t, errs)
+	require.Len(t, diags, 1)
+	assert.Equal(t, "leaving", diags[0].Message)
+}

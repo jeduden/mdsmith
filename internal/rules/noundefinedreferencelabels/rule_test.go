@@ -530,3 +530,19 @@ func TestShortcutLabelShaped(t *testing.T) {
 		})
 	}
 }
+
+func TestShortcutRef_TargetLookingLabelOnRefDefLine_NotFlagged(t *testing.T) {
+	// The label passes the heuristic, so the scan reaches the
+	// definition-line check — and the line being a definition itself
+	// must suppress the diagnostic.
+	src := "[plan128]: https://example.com\n"
+	assert.Empty(t, check(t, src))
+}
+
+func TestShortcutRef_PlaceholderLabel_NotFlagged(t *testing.T) {
+	// shortcut "always" bypasses the heuristic so the placeholder
+	// filter is the deciding skip for a var-token label.
+	src := "See [{title}] inline.\n"
+	r := &Rule{Shortcut: shortcutAlways, Placeholders: []string{"var-token"}}
+	assert.Empty(t, checkWith(t, src, r))
+}

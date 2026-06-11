@@ -27,8 +27,7 @@ const pooledFixture = "---\ntitle: T\n---\n# H1\n\nPara with [link](u) and `code
 func TestNewFileFromSourcePooled_EquivalentToUnpooled(t *testing.T) {
 	plain, err := NewFileFromSource("doc.md", []byte(pooledFixture), true)
 	require.NoError(t, err)
-	pooled, release, err := NewFileFromSourcePooled("doc.md", []byte(pooledFixture), true)
-	require.NoError(t, err)
+	pooled, release := NewFileFromSourcePooled("doc.md", []byte(pooledFixture), true)
 	defer release()
 
 	assert.Equal(t, plain.LineOffset, pooled.LineOffset)
@@ -42,13 +41,11 @@ func TestNewFileFromSourcePooled_ReuseAfterRelease(t *testing.T) {
 	// Parse, extract everything we need as copies, release, parse the
 	// next file: the second parse must be correct and the extracted
 	// values must stay intact (they must not alias arena memory).
-	f1, release1, err := NewFileFromSourcePooled("a.md", []byte("# First\n\nAlpha beta.\n"), false)
-	require.NoError(t, err)
+	f1, release1 := NewFileFromSourcePooled("a.md", []byte("# First\n\nAlpha beta.\n"), false)
 	kinds1 := walkKinds(t, f1)
 	release1()
 
-	f2, release2, err := NewFileFromSourcePooled("b.md", []byte("- one\n- two\n\n> quote\n"), false)
-	require.NoError(t, err)
+	f2, release2 := NewFileFromSourcePooled("b.md", []byte("- one\n- two\n\n> quote\n"), false)
 	defer release2()
 	kinds2 := walkKinds(t, f2)
 
@@ -59,8 +56,7 @@ func TestNewFileFromSourcePooled_ReuseAfterRelease(t *testing.T) {
 }
 
 func TestNewFileFromSourcePooled_ReleaseIdempotent(t *testing.T) {
-	_, release, err := NewFileFromSourcePooled("a.md", []byte("# H\n"), false)
-	require.NoError(t, err)
+	_, release := NewFileFromSourcePooled("a.md", []byte("# H\n"), false)
 	release()
 	assert.NotPanics(t, release, "second release must be a no-op")
 }
@@ -75,8 +71,7 @@ func TestNewFileFromSourcePooled_ManySequentialParsesStayCorrect(t *testing.T) {
 	}
 	for i := 0; i < 50; i++ {
 		doc := docs[i%len(docs)]
-		f, release, err := NewFileFromSourcePooled("doc.md", []byte(doc), false)
-		require.NoError(t, err)
+		f, release := NewFileFromSourcePooled("doc.md", []byte(doc), false)
 		plain, err := NewFileFromSource("doc.md", []byte(doc), false)
 		require.NoError(t, err)
 		assert.Equal(t, walkKinds(t, plain), walkKinds(t, f), "cycle %d", i)

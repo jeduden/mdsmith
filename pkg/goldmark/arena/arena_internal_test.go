@@ -104,3 +104,49 @@ func TestInlineNodeConstructorsMatchUpstream(t *testing.T) {
 		t.Errorf("nil arena constructors must fall back to heap nodes")
 	}
 }
+
+// TestStructuralSlabsAdvanceCursors overfills the paragraph and
+// segments-object slabs so their cursor-advance paths run, then
+// verifies Reset reuses them like the other slab types.
+func TestStructuralSlabsAdvanceCursors(t *testing.T) {
+	a := New()
+	for i := 0; i < paragraphSlabCap+1; i++ {
+		a.Paragraph()
+	}
+	for i := 0; i < segmentsObjSlabCap+1; i++ {
+		a.Segments()
+	}
+	ps, ss := len(a.paragraphs), len(a.segmentsObjs)
+	if ps < 2 || ss < 2 {
+		t.Fatalf("expected at least 2 slabs each, got %d %d", ps, ss)
+	}
+	a.Reset()
+	for i := 0; i < paragraphSlabCap+1; i++ {
+		a.Paragraph()
+	}
+	for i := 0; i < segmentsObjSlabCap+1; i++ {
+		a.Segments()
+	}
+	if len(a.paragraphs) != ps || len(a.segmentsObjs) != ss {
+		t.Fatalf("slab counts grew across Reset: %d %d", len(a.paragraphs), len(a.segmentsObjs))
+	}
+}
+
+// TestTextsAllocatedCounts pins the introspection helper both ways:
+// nil arena reports zero, and counts track allocations across Reset.
+func TestTextsAllocatedCounts(t *testing.T) {
+	var nilA *Arena
+	if nilA.TextsAllocated() != 0 {
+		t.Fatal("nil arena must report zero")
+	}
+	a := New()
+	a.Text()
+	a.Text()
+	if got := a.TextsAllocated(); got != 2 {
+		t.Fatalf("TextsAllocated = %d, want 2", got)
+	}
+	a.Reset()
+	if got := a.TextsAllocated(); got != 0 {
+		t.Fatalf("after Reset = %d, want 0", got)
+	}
+}

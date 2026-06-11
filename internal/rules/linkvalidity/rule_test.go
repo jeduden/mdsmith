@@ -284,3 +284,11 @@ func TestMultiLineCodeSpanNotFlagged(t *testing.T) {
 	diags := check(t, "# T\n\nuse `(a)\n[b]` here\n")
 	assert.Empty(t, diags)
 }
+
+func TestCheckEmptyNode_NilNode(t *testing.T) {
+	// Struct-literal Files in unit tests can carry a nil AST; the
+	// recursive walker must tolerate the nil root.
+	var diags []lint.Diagnostic
+	(&Rule{}).checkEmptyNode(nil, &lint.File{}, &diags)
+	assert.Empty(t, diags)
+}

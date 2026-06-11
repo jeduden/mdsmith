@@ -706,3 +706,72 @@ func TestDirChainIgnored_MatchesPerPathWalk(t *testing.T) {
 		assert.Equal(t, want, got, "path %q", p)
 	}
 }
+
+// --- cachedGlobMatches fallback and key axes ---
+
+func TestCachedGlobMatches_FallsBackWithoutRunCacheOrBase(t *testing.T) {
+	fsys := fstest.MapFS{
+		"a.md": &fstest.MapFile{Data: []byte("# A\n")},
+		"b.md": &fstest.MapFile{Data: []byte("# B\n")},
+	}
+	res := globResolution{fs: fsys, includes: []string{"*.md"}}
+	f, err := lint.NewFile("host.md", []byte("# H\n"))
+	require.NoError(t, err)
+	f.FS = fsys
+
+	// No RunCache: direct resolution.
+	got := cachedGlobMatches(res, f, map[string]string{})
+	assert.ElementsMatch(t, []string{"a.md", "b.md"}, got)
+
+	// RunCache present but no gitignoreBase: the fs has no stable
+	// identity for a cache key, so resolution stays direct.
+	f.RunCache = lint.NewRunCache()
+	got = cachedGlobMatches(res, f, map[string]string{})
+	assert.ElementsMatch(t, []string{"a.md", "b.md"}, got)
+}
+
+func TestCachedGlobMatches_CachesPerKeyAxes(t *testing.T) {
+	fsys := fstest.MapFS{
+		"a.md": &fstest.MapFile{Data: []byte("# A\n")},
+	}
+	f, err := lint.NewFile("host.md", []byte("# H\n"))
+	require.NoError(t, err)
+	f.FS = fsys
+	f.RunCache = lint.NewRunCache()
+
+	base := globResolution{fs: fsys, includes: []string{"*.md"}, gitignoreBase: "/abs/dir"}
+	first := cachedGlobMatches(base, f, map[string]string{})
+	assert.ElementsMatch(t, []string{"a.md"}, first)
+	// Same key: served from the cache (same backing array).
+	again := cachedGlobMatches(base, f, map[string]string{})
+	require.Len(t, again, 1)
+	assert.Same(t, &first[0], &again[0])
+
+	// Each key axis produces a distinct slot rather than a stale hit:
+	// root-relative flag, gitignore=false param, exclude list.
+	rootRel := base
+	rootRel.rootRelative = true
+	rootRel.fileDir = "docs"
+	_ = cachedGlobMatches(rootRel, f, map[string]string{})
+
+	noGI := base
+	got := cachedGlobMatches(noGI, f, map[string]string{"gitignore": "false"})
+	assert.ElementsMatch(t, []string{"a.md"}, got)
+
+	excl := base
+	excl.excludes = []string{"a.md"}
+	got = cachedGlobMatches(excl, f, map[string]string{})
+	assert.Empty(t, got)
+}
+
+func TestDirChainIgnored_TerminatesAtFilesystemRoot(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".gitignore"),
+		[]byte("nothing-matches/\n"), 0o644))
+	matcher := gitignore.NewMatcher(root)
+	memo := map[string]bool{}
+	// No ancestor matches: the walk must reach the filesystem root and
+	// terminate with a negative verdict for every level.
+	assert.False(t, dirChainIgnored(matcher, filepath.Join(root, "a", "b"), memo))
+	assert.NotEmpty(t, memo)
+}

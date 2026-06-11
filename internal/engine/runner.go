@@ -366,10 +366,7 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 	// Files parsed through its own unpooled path. RunSource (LSP,
 	// stdin) deliberately stays on the unpooled constructor because
 	// its Files outlive the call via the ParseCache.
-	f, release, err := lint.NewFileFromSourcePooled(path, source, r.StripFrontMatter)
-	if err != nil {
-		return fileOutcome{errs: []error{fmt.Errorf("parsing %q: %w", path, err)}}
-	}
+	f, release := lint.NewFileFromSourcePooled(path, source, r.StripFrontMatter)
 	defer release()
 	f.MaxInputBytes = r.MaxInputBytes
 	f.RunCache = cache
