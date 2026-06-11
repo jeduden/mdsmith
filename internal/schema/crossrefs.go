@@ -102,8 +102,8 @@ func collectTextNodes(f *lint.File) []textNode {
 // documentSlugSet returns the set of heading slugs present in f. The
 // slugifier matches mdtext.Slugify; duplicates collapse to one entry
 // because the cross-reference resolver only needs membership.
-func documentSlugSet(f *lint.File) map[string]bool {
-	out := map[string]bool{}
+func documentSlugSet(f *lint.File) map[string]struct{} {
+	out := map[string]struct{}{}
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
@@ -115,7 +115,7 @@ func documentSlugSet(f *lint.File) map[string]bool {
 		text := mdtext.ExtractPlainText(h, f.Source)
 		slug := mdtext.Slugify(text)
 		if slug != "" {
-			out[slug] = true
+			out[slug] = struct{}{}
 		}
 		return ast.WalkContinue, nil
 	})
@@ -124,7 +124,7 @@ func documentSlugSet(f *lint.File) map[string]bool {
 
 func checkCrossRef(
 	f *lint.File, cr CrossRef, re, skipRE *regexp.Regexp,
-	slugs map[string]bool, texts []textNode, mkDiag MakeDiag,
+	slugs map[string]struct{}, texts []textNode, mkDiag MakeDiag,
 ) []lint.Diagnostic {
 	var diags []lint.Diagnostic
 	groupNames := re.SubexpNames()
@@ -143,7 +143,8 @@ func checkCrossRef(
 				continue
 			}
 			slug := mdtext.Slugify(target)
-			if slug == "" || !slugs[slug] {
+			_, ok := slugs[slug]
+			if slug == "" || !ok {
 				diags = append(diags, mkDiag(f.Path, tn.Line,
 					fmt.Sprintf(
 						"cross-reference %q does not resolve to a heading (looked for %q)",

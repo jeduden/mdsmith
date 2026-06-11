@@ -13,22 +13,22 @@ import (
 
 // shellInterpreters is the set of first-token values that indicate a shell
 // interpreter.
-var shellInterpreters = map[string]bool{
-	"sh":            true,
-	"bash":          true,
-	"zsh":           true,
-	"ksh":           true,
-	"fish":          true,
-	"/bin/sh":       true,
-	"/bin/bash":     true,
-	"/bin/zsh":      true,
-	"/bin/ksh":      true,
-	"/bin/fish":     true,
-	"/usr/bin/sh":   true,
-	"/usr/bin/bash": true,
-	"/usr/bin/zsh":  true,
-	"/usr/bin/ksh":  true,
-	"/usr/bin/fish": true,
+var shellInterpreters = map[string]struct{}{
+	"sh":            {},
+	"bash":          {},
+	"zsh":           {},
+	"ksh":           {},
+	"fish":          {},
+	"/bin/sh":       {},
+	"/bin/bash":     {},
+	"/bin/zsh":      {},
+	"/bin/ksh":      {},
+	"/bin/fish":     {},
+	"/usr/bin/sh":   {},
+	"/usr/bin/bash": {},
+	"/usr/bin/zsh":  {},
+	"/usr/bin/ksh":  {},
+	"/usr/bin/fish": {},
 }
 
 // shellOperators are substrings that indicate shell pipeline/redirection when
@@ -222,16 +222,16 @@ func (r *Rule) checkRecipe(filePath, name string, rec recipe) []lint.Diagnostic 
 // (inputs, outputs) declared in params.required or params.optional.
 // Results are in reservedParamNames (alphabetical) order.
 func (r *Rule) checkReservedParams(filePath, name string, rec recipe) []lint.Diagnostic {
-	declared := make(map[string]bool, len(rec.Required)+len(rec.Optional))
+	declared := make(map[string]struct{}, len(rec.Required)+len(rec.Optional))
 	for _, p := range rec.Required {
-		declared[p] = true
+		declared[p] = struct{}{}
 	}
 	for _, p := range rec.Optional {
-		declared[p] = true
+		declared[p] = struct{}{}
 	}
 	var diags []lint.Diagnostic
 	for _, reserved := range reservedParamNames {
-		if declared[reserved] {
+		if _, ok := declared[reserved]; ok {
 			diags = append(diags, r.diag(filePath, lint.Error,
 				fmt.Sprintf("recipe %q: reserved parameter name %q must not be declared in params",
 					name, reserved)))
@@ -242,7 +242,7 @@ func (r *Rule) checkReservedParams(filePath, name string, rec recipe) []lint.Dia
 
 func (r *Rule) checkExecutable(filePath, name, exe string) []lint.Diagnostic {
 	var diags []lint.Diagnostic
-	if shellInterpreters[exe] {
+	if _, ok := shellInterpreters[exe]; ok {
 		diags = append(diags, r.diag(filePath, lint.Error,
 			fmt.Sprintf("recipe %q: command uses shell interpreter %q — use the direct binary",
 				name, exe)))
@@ -316,25 +316,26 @@ func isReservedParamName(name string) bool {
 }
 
 func (r *Rule) checkUnusedParams(filePath, name string, rec recipe) []lint.Diagnostic {
-	declared := make(map[string]bool)
+	declared := make(map[string]struct{}, len(rec.Required)+len(rec.Optional))
 	for _, p := range rec.Required {
-		declared[p] = true
+		declared[p] = struct{}{}
 	}
 	for _, p := range rec.Optional {
-		declared[p] = true
+		declared[p] = struct{}{}
 	}
 	// Reserved names are reported by checkReservedParams; don't also
 	// flag them here as unreferenced.
 	for _, reserved := range reservedParamNames {
 		delete(declared, reserved)
 	}
-	used := make(map[string]bool)
-	for _, m := range placeholderRe.FindAllStringSubmatch(rec.Command, -1) {
-		used[m[1]] = true
+	cmdMatches := placeholderRe.FindAllStringSubmatch(rec.Command, -1)
+	used := make(map[string]struct{}, len(cmdMatches))
+	for _, m := range cmdMatches {
+		used[m[1]] = struct{}{}
 	}
 	var unused []string
 	for p := range declared {
-		if !used[p] {
+		if _, ok := used[p]; !ok {
 			unused = append(unused, p)
 		}
 	}

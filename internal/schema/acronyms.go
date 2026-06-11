@@ -52,18 +52,19 @@ func ValidateAcronyms(
 // during acronym scans so a "## OIDC configuration" heading does
 // not consume the "first use" slot before the body's
 // parenthesised expansion.
-func documentHeadingLines(f *lint.File) map[int]bool {
-	out := map[int]bool{}
-	for _, h := range ExtractDocHeadings(f) {
-		out[h.Line] = true
+func documentHeadingLines(f *lint.File) map[int]struct{} {
+	heads := ExtractDocHeadings(f)
+	out := make(map[int]struct{}, len(heads))
+	for _, h := range heads {
+		out[h.Line] = struct{}{}
 	}
 	return out
 }
 
-func buildKnownSet(list []string) map[string]bool {
-	out := make(map[string]bool, len(list))
+func buildKnownSet(list []string) map[string]struct{} {
+	out := make(map[string]struct{}, len(list))
 	for _, s := range list {
-		out[s] = true
+		out[s] = struct{}{}
 	}
 	return out
 }
@@ -90,9 +91,9 @@ func acronymRanges(f *lint.File, sch *Schema, scope []string, docFM map[string]a
 	rootLevel := sch.EffectiveRootLevel()
 	body := skipBelow(heads, rootLevel)
 
-	matchSet := make(map[string]bool, len(scope))
+	matchSet := make(map[string]struct{}, len(scope))
 	for _, s := range scope {
-		matchSet[s] = true
+		matchSet[s] = struct{}{}
 	}
 
 	var out []lineRange
@@ -111,11 +112,13 @@ func acronymRanges(f *lint.File, sch *Schema, scope []string, docFM map[string]a
 			// not checked separately — the parser sets
 			// `sc.Heading == sc.Matcher.Regex` for mapping-form
 			// entries, so (b) already covers it.
-			if matchSet[headingText] {
+			_, inText := matchSet[headingText]
+			_, inHeading := matchSet[sc.Heading]
+			if inText {
 				out = append(out, lineRange{Start: start, End: end})
 				return
 			}
-			if matchSet[sc.Heading] {
+			if inHeading {
 				out = append(out, lineRange{Start: start, End: end})
 				return
 			}
@@ -170,13 +173,13 @@ func nextSectionLine(heads []DocHeading, idx, level, parentEnd int) int {
 }
 
 func checkAcronymsInRange(
-	f *lint.File, rng lineRange, known map[string]bool,
-	headingLines map[int]bool, mkDiag MakeDiag,
+	f *lint.File, rng lineRange, known map[string]struct{},
+	headingLines map[int]struct{}, mkDiag MakeDiag,
 ) []lint.Diagnostic {
-	seen := map[string]bool{}
+	seen := map[string]struct{}{}
 	var diags []lint.Diagnostic
 	for ln := rng.Start; ln < rng.End && ln-1 < len(f.Lines); ln++ {
-		if headingLines[ln] {
+		if _, ok := headingLines[ln]; ok {
 			continue
 		}
 		// Use the raw []byte slice directly to avoid a whole-line string
@@ -187,10 +190,12 @@ func checkAcronymsInRange(
 		matches := acronymToken.FindAllIndex(lineBytes, -1)
 		for _, m := range matches {
 			tok := string(lineBytes[m[0]:m[1]])
-			if known[tok] || seen[tok] {
+			_, inKnown := known[tok]
+			_, inSeen := seen[tok]
+			if inKnown || inSeen {
 				continue
 			}
-			seen[tok] = true
+			seen[tok] = struct{}{}
 			if hasParenExpansion(lineBytes, m[1]) {
 				continue
 			}

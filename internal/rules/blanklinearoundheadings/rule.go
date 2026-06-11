@@ -2,7 +2,6 @@ package blanklinearoundheadings
 
 import (
 	"bytes"
-	"strings"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -13,6 +12,10 @@ import (
 func init() {
 	rule.Register(&Rule{})
 }
+
+// newlineSep is the bytes.Join separator; a package-level var avoids
+// a heap allocation for []byte("\n") on every Fix call.
+var newlineSep = []byte("\n")
 
 // Rule checks that headings have blank lines before and after them.
 type Rule struct{}
@@ -103,42 +106,38 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		return f.Source
 	}
 
-	lines := make([]string, len(f.Lines))
-	for i, l := range f.Lines {
-		lines[i] = string(l)
-	}
-
-	var result []string
-	for i, line := range lines {
+	// Pre-size to avoid growth allocations; worst case each line gets a
+	// blank before and after. Work directly with []byte to avoid the
+	// O(n) string([]byte) conversion that the previous string-join path
+	// paid for every line in the document.
+	result := make([][]byte, 0, len(f.Lines)+len(insertBefore)+len(insertAfter))
+	for i, line := range f.Lines {
 		lineNum := i + 1
-		if insertBefore[lineNum] {
+		if _, ok := insertBefore[lineNum]; ok {
 			// Avoid inserting a blank line if one was just inserted
 			// after the previous line (prevents double blank lines).
-			if !insertAfter[lineNum-1] {
-				result = append(result, "")
+			if _, ok2 := insertAfter[lineNum-1]; !ok2 {
+				result = append(result, nil)
 			}
 		}
 		result = append(result, line)
-		if insertAfter[lineNum] {
-			result = append(result, "")
+		if _, ok := insertAfter[lineNum]; ok {
+			result = append(result, nil)
 		}
 	}
 
-	return []byte(strings.Join(result, "\n"))
+	return bytes.Join(result, newlineSep)
 }
 
 // collectHeadingBlankLineInsertions walks the AST and returns sets of 1-based
-// line numbers that need a blank line inserted before or after them.
-func collectHeadingBlankLineInsertions(f *lint.File) (insertBefore, insertAfter map[int]bool) {
-	insertBefore = make(map[int]bool)
-	insertAfter = make(map[int]bool)
+// line numbers that need a blank line inserted before or after them. Insertion
+// decisions are made directly inside the walk to avoid an intermediate slice
+// and its growth allocations.
+func collectHeadingBlankLineInsertions(f *lint.File) (insertBefore, insertAfter map[int]struct{}) {
+	insertBefore = make(map[int]struct{})
+	insertAfter = make(map[int]struct{})
 	codeLines := lint.CollectCodeBlockLines(f)
-
-	type headingInfo struct {
-		line     int
-		lastLine int
-	}
-	var headings []headingInfo
+	lines := f.Lines
 
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
@@ -152,19 +151,15 @@ func collectHeadingBlankLineInsertions(f *lint.File) (insertBefore, insertAfter 
 		if _, ok := codeLines[line]; ok {
 			return ast.WalkContinue, nil
 		}
-		headings = append(headings, headingInfo{line: line, lastLine: headingLastLine(heading, f)})
+		lastLine := headingLastLine(heading, f)
+		if line > 1 && isNonBlankLine(lines, line-2) {
+			insertBefore[line] = struct{}{}
+		}
+		if isNonBlankLine(lines, lastLine) {
+			insertAfter[lastLine] = struct{}{}
+		}
 		return ast.WalkContinue, nil
 	})
-
-	lines := f.Lines
-	for _, h := range headings {
-		if h.line > 1 && isNonBlankLine(lines, h.line-2) {
-			insertBefore[h.line] = true
-		}
-		if isNonBlankLine(lines, h.lastLine) {
-			insertAfter[h.lastLine] = true
-		}
-	}
 
 	return insertBefore, insertAfter
 }

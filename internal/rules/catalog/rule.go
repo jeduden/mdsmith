@@ -826,7 +826,7 @@ func resolveGlobMatchesFrom(res globResolution, f *lint.File, params map[string]
 		base = ""
 	}
 
-	seen := make(map[string]bool)
+	seen := make(map[string]struct{}, len(res.includes)*8)
 	var files []string
 	for _, pattern := range res.includes {
 		matches, err := doublestar.Glob(res.fs, pattern)
@@ -834,7 +834,7 @@ func resolveGlobMatchesFrom(res globResolution, f *lint.File, params map[string]
 			continue
 		}
 		for _, m := range matches {
-			if seen[m] {
+			if _, ok := seen[m]; ok {
 				continue
 			}
 			info, err := fs.Stat(res.fs, m)
@@ -847,7 +847,7 @@ func resolveGlobMatchesFrom(res globResolution, f *lint.File, params map[string]
 			if matcher != nil && base != "" && isGitignored(matcher, base, m) {
 				continue
 			}
-			seen[m] = true
+			seen[m] = struct{}{}
 			files = append(files, m)
 		}
 	}
@@ -1543,11 +1543,11 @@ func (r *Rule) checkCaseMismatches(f *lint.File) []lint.Diagnostic {
 // referenced by {field} placeholders in a row template string.
 func extractPlaceholderFields(row string) []string {
 	all := fieldinterp.Fields(row)
-	seen := make(map[string]bool, len(all))
+	seen := make(map[string]struct{}, len(all))
 	var fields []string
 	for _, name := range all {
-		if !seen[name] {
-			seen[name] = true
+		if _, ok := seen[name]; !ok {
+			seen[name] = struct{}{}
 			fields = append(fields, name)
 		}
 	}
