@@ -117,15 +117,22 @@ type rowScope struct {
 // expression resolves to MATCH the direct-CUE oracle exactly. The contract is:
 //
 //   - A key binds as a BARE identifier iff it is a CUE-safe identifier
-//     (^[A-Za-z][A-Za-z0-9_]*$) AND is not reserved. The reserved names are the
-//     `fm` binding itself, the `strings` builtin namespace, and every CUE
-//     keyword: a key colliding with one has no bare alias (bare `strings` is the
-//     builtin, bare `for` is the keyword), exactly as the oracle's buildSource
-//     omitted those aliases. A `_`-prefixed (hidden) key and a non-identifier
-//     key (`my-key`, `2x`) likewise get no bare alias.
+//     (^[A-Za-z][A-Za-z0-9_]*$) AND is not reserved. The reserved names
+//     (rowReserved) are the `fm` binding itself, the `strings` builtin
+//     namespace, every CUE keyword, and the two scaffolding field names
+//     (RowScaffoldFieldNames — the in-house parse wrapper `mdsmith_row_out`
+//     and the oracle result field `mdsmith_template_out`): a key colliding with
+//     one has no bare alias (bare `strings` is the builtin, bare `for` is the
+//     keyword). The differential oracle derives its reserved set from the SAME
+//     RowScaffoldFieldNames source, so the two arms agree on every reserved
+//     name (round 2 fixed the oracle missing `mdsmith_row_out`). A `_`-prefixed
+//     (hidden) key and a non-identifier key (`my-key`, `2x`) likewise get no
+//     bare alias.
 //   - The whole map binds under `fm` as a struct containing every key EXCEPT a
-//     literal key named `fm` (the `fm` binding always wins, so `fm["fm"]` does
-//     not reach the data — the oracle drops it too).
+//     literal `fm` key and the two scaffolding keys (rowDropped): the `fm`
+//     binding always wins, so `fm["fm"]` does not reach the data, and a
+//     scaffolding key is reachable through neither a bare alias nor `fm[...]`.
+//     The oracle drops the same keys.
 //   - In the `fm` struct a `_`-prefixed key is reachable via a string INDEX
 //     (`fm["_key"]`) but NOT via a bare SELECTOR (`fm._key`): CUE hides
 //     `_`-prefixed fields from selection but not from indexing. evalRowSelector
@@ -179,26 +186,53 @@ const fmField = "fm"
 // scope key named like the scaffolding is not addressable.
 const rowScaffoldOutField = "mdsmith_template_out"
 
+// RowScaffoldFieldNames returns the synthetic scaffolding field names neither
+// differential arm exposes as data: the in-house parse-wrapper field
+// (`mdsmith_row_out`) and the oracle result field (`mdsmith_template_out`). It
+// is the SINGLE SOURCE the in-house reserved/dropped sets and the differential
+// oracle both derive these names from, so the two arms cannot drift on which
+// scaffolding keys are reserved and dropped (the round-2 review caught the
+// oracle missing `mdsmith_row_out`). A scope key colliding with one of these
+// gets no bare alias and is dropped from the `fm` struct, so it is reachable
+// through neither a bare alias nor `fm[...]`.
+func RowScaffoldFieldNames() []string {
+	return []string{rowOutField, rowScaffoldOutField}
+}
+
 // rowReserved is the set of names a scope key must NOT bind to as a bare
-// identifier, mirroring the oracle's buildSource reserved set: the `fm` binding,
-// the `strings` builtin namespace, the CUE keywords, and the two scaffolding
-// field names (the in-house parse wrapper and the oracle result field). A key
-// colliding with one stays reachable through `fm` — except the scaffolding and
-// `fm` keys, which are dropped from the `fm` struct entirely (see newRowScope).
-var rowReserved = map[string]bool{
-	fmField: true, "strings": true,
-	"package": true, "import": true, "for": true, "in": true,
-	"if": true, "let": true, "true": true, "false": true, "null": true,
-	"_":         true,
-	rowOutField: true, rowScaffoldOutField: true,
+// identifier, mirroring the oracle's reserved set: the `fm` binding, the
+// `strings` builtin namespace, the CUE keywords, and the scaffolding field
+// names (RowScaffoldFieldNames). A key colliding with one stays reachable
+// through `fm` — except the scaffolding and `fm` keys, which are dropped from
+// the `fm` struct entirely (see newRowScope).
+var rowReserved = buildRowReserved()
+
+func buildRowReserved() map[string]bool {
+	m := map[string]bool{
+		fmField: true, "strings": true,
+		"package": true, "import": true, "for": true, "in": true,
+		"if": true, "let": true, "true": true, "false": true, "null": true,
+		"_": true,
+	}
+	for _, n := range RowScaffoldFieldNames() {
+		m[n] = true
+	}
+	return m
 }
 
 // rowDropped is the set of scope keys dropped from the `fm` struct entirely:
-// `fm` itself (the binding always wins) and the two scaffolding field names
-// (which the oracle filters out of its emitted data, so the in-house arm must
-// too). A dropped key is reachable through neither a bare alias nor `fm[...]`.
-var rowDropped = map[string]bool{
-	fmField: true, rowOutField: true, rowScaffoldOutField: true,
+// `fm` itself (the binding always wins) and the scaffolding field names
+// (RowScaffoldFieldNames), which the oracle filters out of its emitted data so
+// the in-house arm must too. A dropped key is reachable through neither a bare
+// alias nor `fm[...]`.
+var rowDropped = buildRowDropped()
+
+func buildRowDropped() map[string]bool {
+	m := map[string]bool{fmField: true}
+	for _, n := range RowScaffoldFieldNames() {
+		m[n] = true
+	}
+	return m
 }
 
 // bindsAsBareIdent reports whether a scope key binds as a bare identifier: it

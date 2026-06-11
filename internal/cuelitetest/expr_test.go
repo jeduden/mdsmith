@@ -263,6 +263,25 @@ func exprCorpus() []ExprCase {
 			Expr:      `fm["mdsmith_template_out"]`,
 			ScopeJSON: `{"mdsmith_template_out":"x"}`,
 		},
+		// The in-house parse-wrapper field name (mdsmith_row_out) is reserved and
+		// dropped exactly like the oracle result field: a scope key colliding with
+		// it gets no bare alias and is not reachable via fm. All three reference
+		// forms must agree (item 1).
+		{
+			Name:      "row-out key not bare addressable",
+			Expr:      `mdsmith_row_out`,
+			ScopeJSON: `{"mdsmith_row_out":"x"}`,
+		},
+		{
+			Name:      "row-out key not via fm selector",
+			Expr:      `fm.mdsmith_row_out`,
+			ScopeJSON: `{"mdsmith_row_out":"x"}`,
+		},
+		{
+			Name:      "row-out key dropped from fm",
+			Expr:      `fm["mdsmith_row_out"]`,
+			ScopeJSON: `{"mdsmith_row_out":"x"}`,
+		},
 
 		// Result-shape and reference errors.
 		{Name: "non-string result", Expr: `42`, ScopeJSON: ``},
@@ -345,6 +364,9 @@ func FuzzExpr(f *testing.F) {
 		{`fm.strings`, `{"strings":"sv"}`},
 		{`fm["fm"]`, `{"fm":"lit"}`},
 		{`mdsmith_template_out`, `{"mdsmith_template_out":"x"}`},
+		{`mdsmith_row_out`, `{"mdsmith_row_out":"x"}`},
+		{`fm.mdsmith_row_out`, `{"mdsmith_row_out":"x"}`},
+		{`fm["mdsmith_row_out"]`, `{"mdsmith_row_out":"x"}`},
 		{`"\(_strings_used)"`, `{}`},
 		// Builtin shadowing (item 3): scope/for binding named `len` shadows the
 		// builtin; `strings` namespace stays reserved.

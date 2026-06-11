@@ -197,13 +197,42 @@ const oracleFMField = "fm"
 var oracleIdentRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
 
 // oracleReserved lists names the oracle must not alias at top level: CUE
-// keywords, the preimported `strings`, and the scaffolding fields. A
-// front-matter key colliding with one stays reachable via `fm`.
-var oracleReserved = map[string]bool{
-	"package": true, "import": true, "for": true, "in": true,
-	"if": true, "let": true, "true": true, "false": true,
-	"null": true, "_": true, "strings": true,
-	oracleOutField: true, oracleFMField: true,
+// keywords, the preimported `strings`, the `fm` binding, and EVERY scaffolding
+// field name. The scaffolding names come from cuelite.RowScaffoldFieldNames —
+// the SAME single source the in-house rowReserved set uses — so the two arms
+// cannot drift on which scaffolding keys are reserved (round 2 caught the
+// oracle missing `mdsmith_row_out`, which the in-house engine reserves as its
+// parse-wrapper field). A front-matter key colliding with a non-scaffolding
+// reserved name stays reachable via `fm`; a scaffolding key is dropped from
+// `fm` too (oracleBody).
+var oracleReserved = buildOracleReserved()
+
+func buildOracleReserved() map[string]bool {
+	m := map[string]bool{
+		"package": true, "import": true, "for": true, "in": true,
+		"if": true, "let": true, "true": true, "false": true,
+		"null": true, "_": true, "strings": true,
+		oracleFMField: true,
+	}
+	for _, n := range cuelitepkg.RowScaffoldFieldNames() {
+		m[n] = true
+	}
+	return m
+}
+
+// oracleDropped is the set of scope keys the oracle drops from the emitted `fm`
+// struct entirely: the `fm` binding (which always wins) and every scaffolding
+// field name (RowScaffoldFieldNames), matching the in-house rowDropped set so a
+// scaffolding key is reachable through neither a bare alias nor `fm[...]` in
+// either arm.
+var oracleDropped = buildOracleDropped()
+
+func buildOracleDropped() map[string]bool {
+	m := map[string]bool{oracleFMField: true}
+	for _, n := range cuelitepkg.RowScaffoldFieldNames() {
+		m[n] = true
+	}
+	return m
 }
 
 // oracleBody reconstructs the CUE body the row binding model documents — the
@@ -211,15 +240,16 @@ var oracleReserved = map[string]bool{
 // non-reserved key, and the expression in the out field — WITHOUT the leaky
 // `_strings_used` sink the former source carried (OracleExprPath adds the
 // `strings` import in a separate, sink-free pass only when the expression needs
-// it). The `fm` and out-field keys are dropped from the emitted data, matching
-// the in-house engine's rowDropped set, so neither arm exposes a scaffolding
+// it). The `fm` key and BOTH scaffolding field names (oracleDropped, derived
+// from the same cuelite.RowScaffoldFieldNames source as the in-house rowDropped
+// set) are dropped from the emitted data, so neither arm exposes a scaffolding
 // name. Its scope always comes from decodeScope, so every value re-marshals
 // cleanly; a marshal failure cannot occur and the error is dropped.
 func oracleBody(scope map[string]any, expr string) string {
 	emit := make(map[string]any, len(scope))
 	aliases := make([]string, 0, len(scope))
 	for k, v := range scope {
-		if k == oracleFMField || k == oracleOutField {
+		if oracleDropped[k] {
 			continue
 		}
 		emit[k] = v
