@@ -762,6 +762,72 @@ jobs:
             run: |
               eval "$(mise activate bash --shims)"
               mdsmith version
+          - channel: mise-registry
+            # The prefix-less `mise use mdsmith@VER` form (no `ubi:`,
+            # `github:`, or other backend prefix) resolves only once the
+            # jdx/mise curated registry lists mdsmith — the plan 145
+            # follow-up PR. Until that entry merges this command fails on
+            # every release, so the install step is BEST-EFFORT: it
+            # retries, then on repeated failure emits a `::warning::` and
+            # exits 0 rather than reddening the release. The day the
+            # registry PR lands this entry starts passing with no
+            # workflow change, and `mise-registry` is NOT in
+            # RequiredSmokeChannels so the gate never demands it green.
+            container: jdxcode/mise:latest
+            install: |
+              ok=0
+              for attempt in 1 2 3 4 5; do
+                if mise use -g "mdsmith@${VERSION#v}"; then
+                  ok=1; break
+                fi
+                sleep 15
+              done
+              if [ "$ok" -ne 1 ]; then
+                echo "::warning::bare 'mise use mdsmith@${VERSION#v}' did not resolve; the jdx/mise registry entry (plan 145) has not merged yet. The 'mise' channel above (ubi: backend) still verifies the binary."
+                exit 0
+              fi
+            run: |
+              eval "$(mise activate bash --shims)"
+              mdsmith version
+          - channel: asdf
+            # `asdf install mdsmith VER` through the explicit plugin URL
+            # (jeduden/asdf-mdsmith). This works on day one — no registry
+            # follow-up — so a break here must fail the release, hence
+            # `asdf` is in RequiredSmokeChannels. The plugin's bin/list-all
+            # reads this repo's git tags, bin/download fetches the matching
+            # release asset, and bin/install verifies it against
+            # checksums.txt; the ubuntu image carries git+curl, which is
+            # all the plugin needs.
+            container: ubuntu:latest
+            install: |
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                git curl ca-certificates stow unzip
+              git clone https://github.com/asdf-vm/asdf.git \
+                --branch v0.14.1 "$HOME/.asdf"
+              export ASDF_DIR="$HOME/.asdf"
+              . "$HOME/.asdf/asdf.sh"
+              asdf plugin add mdsmith \
+                https://github.com/jeduden/asdf-mdsmith.git
+              # The plugin's bin/list-all reads tags off this repo, but a
+              # freshly pushed tag can take a moment to surface; retry like
+              # the registry loops above.
+              ok=0
+              for attempt in 1 2 3 4 5; do
+                if asdf install mdsmith "${VERSION#v}"; then
+                  ok=1; break
+                fi
+                sleep 15
+              done
+              if [ "$ok" -ne 1 ]; then
+                echo "asdf install never succeeded after 5 attempts" >&2
+                exit 1
+              fi
+              asdf global mdsmith "${VERSION#v}"
+            run: |
+              export ASDF_DIR="$HOME/.asdf"
+              . "$HOME/.asdf/asdf.sh"
+              mdsmith version
           - channel: go
             # Resolve the freshly tagged module through proxy.golang.org
             # and compile it, exactly as `go install` users do — the

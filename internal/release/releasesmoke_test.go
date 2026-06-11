@@ -22,6 +22,8 @@ jobs:
             container: python:3.12-slim
           - channel: mise
             container: jdxcode/mise:latest
+          - channel: asdf
+            container: ubuntu:latest
           - channel: go
             container: golang:1.25
 `
@@ -45,12 +47,36 @@ jobs:
           - channel: npm
           - channel: pip
           - channel: mise
+          - channel: asdf
 `
 	got, err := CheckReleaseSmoke([]byte(wf))
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	assert.Equal(t, smokeJobName, got[0].Job)
 	assert.Contains(t, got[0].Reason, `"go"`)
+}
+
+func TestCheckReleaseSmokeFlagsMissingAsdfChannel(t *testing.T) {
+	// asdf is consumable on day one via the explicit plugin URL
+	// (asdf plugin add mdsmith https://github.com/jeduden/asdf-mdsmith.git),
+	// so a release that breaks the asdf install path must fail its own
+	// pipeline rather than ship unverified.
+	const wf = `
+jobs:
+  smoke-test:
+    strategy:
+      matrix:
+        include:
+          - channel: npm
+          - channel: pip
+          - channel: mise
+          - channel: go
+`
+	got, err := CheckReleaseSmoke([]byte(wf))
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, smokeJobName, got[0].Job)
+	assert.Contains(t, got[0].Reason, `"asdf"`)
 }
 
 func TestCheckReleaseSmokeFlagsEveryMissingChannel(t *testing.T) {
@@ -123,6 +149,7 @@ jobs:
           - channel: npm
           - channel: pip
           - channel: mise
+          - channel: asdf
 `
 	root := t.TempDir()
 	dir := filepath.Join(root, ".github", "workflows")

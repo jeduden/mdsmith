@@ -21,8 +21,14 @@ const smokeJobName = "smoke-test"
 // hard way: v0.40.0's go.mod carried a replace directive, which is
 // fatal only on the `go install m@version` path, and no pre-release
 // job exercises that path (CI's `go install ./cmd/mdsmith` is a
-// directory install, which honors replace directives).
-var RequiredSmokeChannels = []string{"go", "mise", "npm", "pip"}
+// directory install, which honors replace directives). `asdf` installs
+// today through the explicit plugin URL
+// (asdf plugin add mdsmith https://github.com/jeduden/asdf-mdsmith.git),
+// so it is verified on day one; the prefix-less `mise use mdsmith@VER`
+// form is NOT here because it waits on the jdx/mise registry PR — it
+// rides the best-effort `mise-registry` matrix entry instead, which
+// warns rather than fails until that registry entry lands.
+var RequiredSmokeChannels = []string{"asdf", "go", "mise", "npm", "pip"}
 
 type smokeRawJob struct {
 	Strategy struct {
