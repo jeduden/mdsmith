@@ -220,6 +220,10 @@ func atomicWriteIndex(target string, data []byte) error {
 	return nil
 }
 
+// chmodFileMu guards reads and writes of the chmodFile var so tests that
+// swap it can coexist with parallel goroutines that call writeAndRename.
+var chmodFileMu sync.Mutex
+
 func writeAndRename(tmp *os.File, tmpPath, target string, data []byte) error {
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
@@ -228,7 +232,10 @@ func writeAndRename(tmp *os.File, tmpPath, target string, data []byte) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := chmodFile(tmpPath, 0o644); err != nil {
+	chmodFileMu.Lock()
+	fn := chmodFile
+	chmodFileMu.Unlock()
+	if err := fn(tmpPath, 0o644); err != nil {
 		return err
 	}
 	return os.Rename(tmpPath, target)
