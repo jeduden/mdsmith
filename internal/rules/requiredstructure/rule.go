@@ -2412,10 +2412,11 @@ func findRequireDirectiveLine(f *lint.File) int {
 func isSchemaFile(docPath, schemaPath string) bool {
 	docInfo, errDoc := os.Stat(docPath)
 	schemaInfo, errSchema := os.Stat(schemaPath)
-	if errDoc == nil && errSchema == nil {
-		return sameFile(docInfo, schemaInfo)
+	if errDoc == nil && errSchema == nil && sameFile(docInfo, schemaInfo) {
+		return true
 	}
-
+	// Fall back to path equality when Stat fails or sameFile returns false
+	// (e.g. on tinygo/wasm builds where os.SameFile is not implemented).
 	docAbs, errDocAbs := filepath.Abs(docPath)
 	schemaAbs, errSchemaAbs := filepath.Abs(schemaPath)
 	if errDocAbs != nil || errSchemaAbs != nil {

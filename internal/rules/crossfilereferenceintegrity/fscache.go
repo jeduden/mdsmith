@@ -56,7 +56,7 @@ func cachedEvalSymlinks(path string) (string, bool) {
 		r := v.(evalResult)
 		return r.real, r.ok
 	}
-	real, err := evalSymlinksOSCall(path)
+	real, err := evalSymlinks(path)
 	r := evalResult{real: real, ok: err == nil}
 	evalSymlinkCache.Store(path, r)
 	return r.real, r.ok

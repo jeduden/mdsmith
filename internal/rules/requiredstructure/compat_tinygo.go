@@ -4,11 +4,10 @@ package requiredstructure
 
 import "os"
 
-// sameFile compares files by their absolute cleaned paths on tinygo/wasm
-// builds. The wasm sandbox has no hard links or symlinks; path equality
-// is an accurate substitute for os.SameFile there.
+// sameFile returns false on tinygo/wasm builds. os.SameFile is not
+// implemented on tinygo's wasm target; returning false lets isSchemaFile
+// fall through to its path-equality comparison, which is an accurate
+// substitute in the wasm sandbox (no hard links or symlinks).
 func sameFile(_, _ os.FileInfo) bool {
-	// The wasm sandbox has no hard links; the caller falls back to the
-	// cleaned absolute path comparison in the else branch of isSchemaFile.
 	return false
 }

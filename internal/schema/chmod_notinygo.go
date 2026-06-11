@@ -5,7 +5,7 @@ package schema
 import "os"
 
 // chmodFile sets the permission bits of the named file.
-// On non-tinygo builds this is a direct call to os.Chmod.
-func chmodFile(name string, mode os.FileMode) error {
+// Exposed as a variable so tests can inject failures without OS tricks.
+var chmodFile = func(name string, mode os.FileMode) error {
 	return os.Chmod(name, mode)
 }
