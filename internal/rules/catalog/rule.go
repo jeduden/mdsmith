@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"bytes"
 	"fmt"
 	"io/fs"
 	"path"
@@ -1329,12 +1330,23 @@ func includeTargetsOf(
 // can reuse the same parse without duplicating the read logic.
 // lint.NewFile never returns an error (its signature is legacy), so
 // the parse is unwrapped — there is no error path to guard.
+// includeMarkerNeedle is the literal prefix every <?include?> opening
+// marker carries; see scanIncludeTargets' fast path.
+var includeMarkerNeedle = []byte("<?include")
+
 func scanIncludeTargets(fsys fs.FS, filePath string, maxBytes int64) []string {
 	data, err := bytelimit.ReadFSFileLimited(fsys, filePath, maxBytes)
 	if err != nil {
 		return nil
 	}
 	_, content := lint.StripFrontMatter(data)
+	// Every include marker contains the literal "<?include"; a target
+	// without it cannot contribute include edges, so skip the full
+	// markdown parse — the dominant cost of the catalog cycle check,
+	// paid once per glob-matched file per run.
+	if !bytes.Contains(content, includeMarkerNeedle) {
+		return nil
+	}
 	pf, _ := lint.NewFile(filePath, content)
 	pairs, _ := gensection.FindMarkerPairs(
 		pf, "include", "MDS021", "include")
