@@ -7,13 +7,11 @@ import "fmt"
 // literal `[ … ]` holds element expressions, comprehensions, and an optional
 // `...T` open tail.
 
-// parseStructLit parses a `{ … }` struct literal. The opening `{` is the
-// current token.
+// parseStructLit parses a `{ … }` struct literal. Its callers (parsePrimary's
+// tLBrace case and parseComprehension after its own tLBrace check) only invoke
+// it when the current token is `{`, so it consumes that `{` directly.
 func (p *parser) parseStructLit() (*StructLit, error) {
-	if p.peekKind() != tLBrace {
-		return nil, fmt.Errorf("cuelite: expected '{'")
-	}
-	p.take()
+	p.take() // the opening `{` the caller guaranteed
 	decls, err := p.parseDecls(tRBrace)
 	if err != nil {
 		return nil, err
@@ -26,12 +24,11 @@ func (p *parser) parseStructLit() (*StructLit, error) {
 }
 
 // parseListLit parses a `[ … ]` list literal: comma-separated elements, each
-// an expression, a comprehension, or the `...T` open tail.
+// an expression, a comprehension, or the `...T` open tail. Its only caller
+// (parsePrimary's tLBrack case) invokes it when the current token is `[`, so it
+// consumes that `[` directly.
 func (p *parser) parseListLit() (*ListLit, error) {
-	if p.peekKind() != tLBrack {
-		return nil, fmt.Errorf("cuelite: expected '['")
-	}
-	p.take()
+	p.take() // the opening `[` the caller guaranteed
 	var elts []Expr
 	for p.peekKind() != tRBrack && p.peekKind() != tEOF {
 		el, err := p.parseListElem()

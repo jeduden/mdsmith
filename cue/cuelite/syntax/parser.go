@@ -69,13 +69,12 @@ func (p *parser) take() tok {
 	return t
 }
 
-// peekKind returns the kind of the token the expression parser will see next,
-// honoring a pending put-back label.
+// peekKind returns the kind of the token the expression parser will see next.
+// It delegates to peekTok so the pending put-back logic lives in one place
+// (every path that sets pending reads the put-back token through peekTok or
+// take() before any peekKind, so peekKind needs no separate pending branch).
 func (p *parser) peekKind() tokKind {
-	if p.pending {
-		return p.pendingTok.kind
-	}
-	return p.cur.kind
+	return p.peekTok().kind
 }
 
 // peekTok returns the token the expression parser will see next, honoring a
@@ -219,18 +218,16 @@ func labelFromTok(t tok) Label {
 }
 
 // parseFieldRest parses the value of a field whose label has been consumed,
-// with the `:` (and optional `?`) already seen by tryFieldLabel. It consumes
-// the `:` and parses the value expression.
+// with the `:` (and optional `?`) already seen by tryFieldLabel. tryFieldLabel
+// commits to the field form only after the `:`, so cur is guaranteed to be that
+// `:` here; this consumes it and parses the value expression.
 func (p *parser) parseFieldRest(lbl Label) (Decl, error) {
 	constraint := NoToken
 	if ol, ok := lbl.(optionalLabel); ok {
 		constraint = OPTION
 		lbl = ol.Label
 	}
-	// cur is the `:`; consume it.
-	if p.cur.kind != tColon {
-		return nil, fmt.Errorf("cuelite: expected ':' in field declaration")
-	}
+	// cur is the `:` tryFieldLabel committed on; consume it.
 	p.advance()
 	// CUE's nested-field shorthand: `a: b: c` desugars to `a: {b: c}`. When the
 	// value position itself starts another `label:` field, build the implicit
@@ -301,7 +298,9 @@ func (p *parser) parseComprehension() (Decl, error) {
 }
 
 // parseClause parses one comprehension clause: `if cond`, `for x in src`, or
-// `let x = expr`.
+// `let x = expr`. The callers (parseComprehension's entry and loop) only invoke
+// it when the current token is one of those three keywords, so the `let` case
+// is the residual: a non-if/non-for clause is a let.
 func (p *parser) parseClause() (Clause, error) {
 	switch p.cur.text {
 	case "if":
@@ -314,11 +313,9 @@ func (p *parser) parseClause() (Clause, error) {
 	case "for":
 		p.advance()
 		return p.parseForClause()
-	case "let":
+	default: // "let" — the only remaining clause keyword the callers admit
 		p.advance()
 		return p.parseLetClause()
-	default:
-		return nil, fmt.Errorf("cuelite: unsupported comprehension clause %q", p.cur.text)
 	}
 }
 

@@ -252,14 +252,15 @@ func (p *parser) parseInterpolation() (Expr, error) {
 		if p.peekKind() != tRParen {
 			return nil, fmt.Errorf("cuelite: expected ')' to close interpolation")
 		}
-		// Resume the string fragment after the `)`.
+		// Resume the string fragment after the `)`. resumeInterp returns a
+		// tInterpStart (another fragment follows), a tString (the final fragment),
+		// or a tEOF — and a tEOF always carries a recorded scanner error (scanString
+		// body calls s.fail before returning it), so a non-fragment kind here is
+		// exactly that error.
 		p.resume()
 		frag := p.cur
 		if frag.kind != tInterpStart && frag.kind != tString {
-			if p.sc.err != nil {
-				return nil, p.sc.err
-			}
-			return nil, fmt.Errorf("cuelite: malformed interpolation")
+			return nil, p.sc.err
 		}
 		elts = append(elts, &BasicLit{Kind: kInterpFrag, Value: frag.text})
 		if frag.kind == tString {
