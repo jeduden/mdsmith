@@ -161,9 +161,10 @@ up front and opens only the files a task touches. mdsmith's own
 
 **[Build artifacts in sync](docs/features/build-artifacts.md).**
 The `<?build?>` directive declares an artifact and a recipe;
-`mdsmith fix` rebuilds the section body from the recipe output so
-the doc never quotes a stale file. `MDS040` shell-safety-checks
-the recipe without running it.
+`mdsmith fix` rebuilds only the targets whose inputs, recipe, or
+outputs changed, tracking freshness in
+`.mdsmith/build-cache.json`. `MDS040` shell-safety-checks the
+recipe without running it.
 
 **[Markdown as a data source](docs/features/markdown-as-data.md).**
 `mdsmith extract` projects a schema-conformant file to a JSON,
