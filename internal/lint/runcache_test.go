@@ -983,3 +983,57 @@ func TestRunCache_ScopedInvalidationKeepsForeignScopes(t *testing.T) {
 	assert.Equal(t, int32(2), atomic.LoadInt32(&bareCalls),
 		"scopeless entries drop unconditionally")
 }
+
+// --- GlobMatches ---
+
+func TestGlobMatches_MemoizesPerKey(t *testing.T) {
+	c := NewRunCache()
+	builds := 0
+	build := func() []string {
+		builds++
+		return []string{"a.md", "b.md"}
+	}
+	first := c.GlobMatches("dir|*.md", build)
+	second := c.GlobMatches("dir|*.md", build)
+	assert.Equal(t, []string{"a.md", "b.md"}, first)
+	assert.Equal(t, first, second)
+	assert.Equal(t, 1, builds, "same key must build once")
+
+	other := c.GlobMatches("dir|*.markdown", build)
+	assert.Equal(t, 2, builds, "distinct key builds separately")
+	assert.Equal(t, []string{"a.md", "b.md"}, other)
+}
+
+func TestGlobMatches_NilResultCached(t *testing.T) {
+	c := NewRunCache()
+	builds := 0
+	got := c.GlobMatches("k", func() []string { builds++; return nil })
+	assert.Nil(t, got)
+	_ = c.GlobMatches("k", func() []string { builds++; return nil })
+	assert.Equal(t, 1, builds)
+}
+
+func TestInvalidateGlobMatches_DropsAllSlots(t *testing.T) {
+	c := NewRunCache()
+	builds := 0
+	build := func() []string { builds++; return []string{"x.md"} }
+	_ = c.GlobMatches("k1", build)
+	_ = c.GlobMatches("k2", build)
+	require.Equal(t, 2, builds)
+	c.InvalidateGlobMatches()
+	_ = c.GlobMatches("k1", build)
+	_ = c.GlobMatches("k2", build)
+	assert.Equal(t, 4, builds, "tree-change invalidation must drop every slot")
+}
+
+func TestInvalidatePath_LeavesGlobMatchesIntact(t *testing.T) {
+	// Content edits cannot change which files a glob matches, so the
+	// per-path Invalidate must not drop the match lists — the LSP
+	// calls it on every keystroke-driven save.
+	c := NewRunCache()
+	builds := 0
+	_ = c.GlobMatches("k", func() []string { builds++; return nil })
+	c.Invalidate("/some/file.md")
+	_ = c.GlobMatches("k", func() []string { builds++; return nil })
+	assert.Equal(t, 1, builds)
+}

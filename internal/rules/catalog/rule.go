@@ -769,7 +769,7 @@ func buildCatalogEntries(
 	if len(res.diags) > 0 {
 		return nil, res, res.diags
 	}
-	files := resolveGlobMatchesFrom(res, f, params)
+	files := cachedGlobMatches(res, f, params)
 
 	sortKey, descending, numeric := parseSort(params)
 	hasRow := hasRowTemplate(params)
@@ -820,6 +820,46 @@ func buildCatalogEntries(
 // resolveGlobMatchesFrom expands include patterns using the resolved
 // fs.FS, filters out exclude and gitignore matches, and returns
 // deduplicated file paths.
+// cachedGlobMatches resolves the directive's glob matches through the
+// run-wide RunCache when the resolution tree is identifiable: the
+// directory walk and per-match stat/exclude/gitignore filtering are a
+// pure function of the resolution base and the pattern set, yet they
+// re-ran for every host file whose catalogs glob the same tree (the
+// dominant cost of a catalog-heavy check). A resolution with no
+// gitignoreBase has no stable identity for its fs.FS, so it bypasses
+// the cache. Content edits never change a match list; tree-shape
+// changes drop the slots via RunCache.InvalidateGlobMatches (wired to
+// the LSP's watched-files create/delete path).
+func cachedGlobMatches(res globResolution, f *lint.File, params map[string]string) []string {
+	if f.RunCache == nil || res.gitignoreBase == "" {
+		return resolveGlobMatchesFrom(res, f, params)
+	}
+	var key strings.Builder
+	key.Grow(64)
+	key.WriteString(res.gitignoreBase)
+	key.WriteByte(0)
+	key.WriteString(res.fileDir)
+	key.WriteByte(0)
+	if res.rootRelative {
+		key.WriteByte(1)
+	}
+	if params["gitignore"] == "false" {
+		key.WriteByte(2)
+	}
+	for _, p := range res.includes {
+		key.WriteByte(0)
+		key.WriteString(p)
+	}
+	key.WriteByte(0)
+	for _, p := range res.excludes {
+		key.WriteByte(0)
+		key.WriteString(p)
+	}
+	return f.RunCache.GlobMatches(key.String(), func() []string {
+		return resolveGlobMatchesFrom(res, f, params)
+	})
+}
+
 func resolveGlobMatchesFrom(res globResolution, f *lint.File, params map[string]string) []string {
 	matcher := resolveGitignoreMatcher(f, params)
 	base := res.gitignoreBase

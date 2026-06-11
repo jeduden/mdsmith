@@ -917,3 +917,43 @@ func TestRule_RepoScopedDiagnostics(t *testing.T) {
 		"git-hook-sync must declare itself repo-scoped: its diagnostics "+
 			"are anchored to .gitattributes, not the linted host file")
 }
+
+// --- findGitRoot (exec-free repo-root discovery) ---
+
+func TestFindGitRoot_DotGitDirectory(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, ".git"), 0o755))
+	sub := filepath.Join(root, "docs", "deep")
+	require.NoError(t, os.MkdirAll(sub, 0o755))
+
+	got, err := findGitRoot(sub)
+	require.NoError(t, err)
+	assert.Equal(t, root, got)
+}
+
+func TestFindGitRoot_DotGitFile(t *testing.T) {
+	// Linked worktrees and submodules mark their top with a .git FILE.
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".git"),
+		[]byte("gitdir: /elsewhere/.git/worktrees/x\n"), 0o644))
+	sub := filepath.Join(root, "pkg")
+	require.NoError(t, os.MkdirAll(sub, 0o755))
+
+	got, err := findGitRoot(sub)
+	require.NoError(t, err)
+	assert.Equal(t, root, got)
+}
+
+func TestFindGitRoot_NoRepo(t *testing.T) {
+	dir := t.TempDir()
+	_, err := findGitRoot(dir)
+	assert.Error(t, err)
+}
+
+func TestFindGitRoot_AtRootItself(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, ".git"), 0o755))
+	got, err := findGitRoot(root)
+	require.NoError(t, err)
+	assert.Equal(t, root, got)
+}

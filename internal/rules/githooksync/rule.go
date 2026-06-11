@@ -447,11 +447,39 @@ func stagingError(repoRoot string) error {
 }
 
 // gitRepoRoot is the package-level seam tests use to drive the
-// double-check branch deterministically. Production calls
-// githooks.GitRepoRoot; the test in rule_test.go swaps in a
+// double-check branch deterministically. Production resolves the
+// root with findGitRoot — a stat walk, not a `git rev-parse`
+// subprocess: the per-directory cache still spawned one git process
+// per distinct directory, which dominated repo-wide checks of trees
+// with hundreds of directories. The test in rule_test.go swaps in a
 // blocking stub so it can populate the cache mid-flight and force
 // the second cache check to fire.
-var gitRepoRoot = githooks.GitRepoRoot
+var gitRepoRoot = findGitRoot
+
+// findGitRoot returns the closest ancestor of dir (inclusive) that
+// contains a .git entry — a directory for ordinary repositories, a
+// file for linked worktrees and submodules — matching what
+// `git -C dir rev-parse --show-toplevel` reports for those layouts.
+// Errors when no ancestor has one, mirroring git's non-repo failure.
+func findGitRoot(dir string) (string, error) {
+	if dir == "" {
+		dir = "."
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", err
+	}
+	for cur := abs; ; {
+		if _, err := os.Stat(filepath.Join(cur, ".git")); err == nil {
+			return cur, nil
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return "", fmt.Errorf("not a git repository (or any parent): %s", abs)
+		}
+		cur = parent
+	}
+}
 
 // resolveRepoRoot wraps githooks.GitRepoRoot with a per-directory
 // cache so the per-file diagnostic flow does not respawn
