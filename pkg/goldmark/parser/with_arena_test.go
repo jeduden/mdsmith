@@ -1,3 +1,5 @@
+//go:build !goldmark_upstream
+
 package parser_test
 
 import (
