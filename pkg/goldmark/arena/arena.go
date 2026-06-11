@@ -45,6 +45,9 @@ const (
 	paragraphSlabCap   = 32
 	segmentsObjSlabCap = 64
 	segmentSlabCap     = 1024
+	codeSpanSlabCap    = 64
+	linkSlabCap        = 32
+	emphasisSlabCap    = 32
 
 	// Initial Segment-backing capacity handed to a fresh Segments.
 	// Four covers most paragraphs (one to four lines); when a
@@ -62,16 +65,22 @@ type Arena struct {
 	paragraphs   []*paragraphSlab
 	segmentsObjs []*segmentsObjSlab
 	segments     []*segmentSlab
+	codeSpans    []*codeSpanSlab
+	links        []*linkSlab
+	emphases     []*emphasisSlab
 
 	// Per-type cursors index the slab the next allocation fills.
 	// Reset rewinds them to zero so a reused arena (the engine's
 	// per-file pool) refills its existing slabs from the start
 	// instead of only ever reusing the last one and growing the
 	// list on every cycle.
-	textIdx    int
-	paraIdx    int
-	segObjIdx  int
-	segmentIdx int
+	textIdx     int
+	paraIdx     int
+	segObjIdx   int
+	segmentIdx  int
+	codeSpanIdx int
+	linkIdx     int
+	emphasisIdx int
 }
 
 type textSlab struct {
@@ -88,6 +97,18 @@ type segmentsObjSlab struct {
 
 type segmentSlab struct {
 	data []text.Segment
+}
+
+type codeSpanSlab struct {
+	data []ast.CodeSpan
+}
+
+type linkSlab struct {
+	data []ast.Link
+}
+
+type emphasisSlab struct {
+	data []ast.Emphasis
 }
 
 // New returns an empty Arena. The first allocation lazily provisions
@@ -128,10 +149,25 @@ func (a *Arena) Reset() {
 	for _, s := range a.segments {
 		s.data = s.data[:0]
 	}
+	for _, s := range a.codeSpans {
+		clear(s.data)
+		s.data = s.data[:0]
+	}
+	for _, s := range a.links {
+		clear(s.data)
+		s.data = s.data[:0]
+	}
+	for _, s := range a.emphases {
+		clear(s.data)
+		s.data = s.data[:0]
+	}
 	a.textIdx = 0
 	a.paraIdx = 0
 	a.segObjIdx = 0
 	a.segmentIdx = 0
+	a.codeSpanIdx = 0
+	a.linkIdx = 0
+	a.emphasisIdx = 0
 }
 
 // Text returns a zero-initialised *ast.Text from the arena. With a
@@ -253,6 +289,78 @@ func (a *Arena) Grow(old []text.Segment, next text.Segment) []text.Segment {
 	fresh = fresh[:len(old)]
 	copy(fresh, old)
 	return append(fresh, next)
+}
+
+// CodeSpan returns a zero-initialised *ast.CodeSpan from the arena.
+// With a nil receiver falls back to ast.NewCodeSpan.
+func (a *Arena) CodeSpan() *ast.CodeSpan {
+	if a == nil {
+		return ast.NewCodeSpan()
+	}
+	slab := a.currentCodeSpanSlab()
+	slab.data = append(slab.data, ast.CodeSpan{})
+	return &slab.data[len(slab.data)-1]
+}
+
+// Link returns a zero-initialised *ast.Link from the arena. With a
+// nil receiver falls back to ast.NewLink.
+func (a *Arena) Link() *ast.Link {
+	if a == nil {
+		return ast.NewLink()
+	}
+	slab := a.currentLinkSlab()
+	slab.data = append(slab.data, ast.Link{})
+	return &slab.data[len(slab.data)-1]
+}
+
+// Emphasis returns a *ast.Emphasis with the given level from the
+// arena. With a nil receiver falls back to ast.NewEmphasis.
+func (a *Arena) Emphasis(level int) *ast.Emphasis {
+	if a == nil {
+		return ast.NewEmphasis(level)
+	}
+	slab := a.currentEmphasisSlab()
+	slab.data = append(slab.data, ast.Emphasis{Level: level})
+	return &slab.data[len(slab.data)-1]
+}
+
+func (a *Arena) currentCodeSpanSlab() *codeSpanSlab {
+	for a.codeSpanIdx < len(a.codeSpans) {
+		cur := a.codeSpans[a.codeSpanIdx]
+		if len(cur.data) < cap(cur.data) {
+			return cur
+		}
+		a.codeSpanIdx++
+	}
+	s := &codeSpanSlab{data: make([]ast.CodeSpan, 0, codeSpanSlabCap)}
+	a.codeSpans = append(a.codeSpans, s)
+	return s
+}
+
+func (a *Arena) currentLinkSlab() *linkSlab {
+	for a.linkIdx < len(a.links) {
+		cur := a.links[a.linkIdx]
+		if len(cur.data) < cap(cur.data) {
+			return cur
+		}
+		a.linkIdx++
+	}
+	s := &linkSlab{data: make([]ast.Link, 0, linkSlabCap)}
+	a.links = append(a.links, s)
+	return s
+}
+
+func (a *Arena) currentEmphasisSlab() *emphasisSlab {
+	for a.emphasisIdx < len(a.emphases) {
+		cur := a.emphases[a.emphasisIdx]
+		if len(cur.data) < cap(cur.data) {
+			return cur
+		}
+		a.emphasisIdx++
+	}
+	s := &emphasisSlab{data: make([]ast.Emphasis, 0, emphasisSlabCap)}
+	a.emphases = append(a.emphases, s)
+	return s
 }
 
 func (a *Arena) currentTextSlab() *textSlab {
