@@ -53,10 +53,10 @@ func TestRawStringRoundTrip(t *testing.T) {
 // ("illegal '_' in number"). A leading-zero FLOAT (`01.5`, `0e5`) is legal.
 func TestLeadingZeroAndUnderscoreNumbers(t *testing.T) {
 	reject := []string{
-		`a: 010`,  // octal-looking decimal, was silently 8
-		`a: 00`,   // leading zero
-		`a: 0123`, // leading zero
-		`a: 08`,   // leading zero
+		`a: 010`,   // octal-looking decimal, was silently 8
+		`a: 00`,    // leading zero
+		`a: 0123`,  // leading zero
+		`a: 08`,    // leading zero
 		`a: 1_`,    // trailing underscore
 		`a: 1__2`,  // doubled underscore
 		`a: 0x12_`, // trailing underscore in a hex literal
