@@ -887,13 +887,16 @@ func TestCheck_MinLimitTracksHeadingAndCodeBlockMax(t *testing.T) {
 	require.NoError(t, err)
 	diags := r.Check(f)
 	require.NotEmpty(t, diags)
+	// Column is limit+1, so it proves WHICH limit fired on each line.
 	var sawHeading, sawCode bool
 	for _, d := range diags {
 		if d.Line == 1 {
 			sawHeading = true
+			assert.Equal(t, h+1, d.Column, "heading must be judged by HeadingMax")
 		}
 		if d.Line == 6 {
 			sawCode = true
+			assert.Equal(t, c+1, d.Column, "code line must be judged by CodeBlockMax")
 		}
 	}
 	assert.True(t, sawHeading, "heading over HeadingMax must be flagged")

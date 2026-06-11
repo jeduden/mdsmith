@@ -51,6 +51,7 @@ const kindProbeDoc = "# Heading one. #\n" +
 	"\n" +
 	"```\n" +
 	"fenced, no language\n" +
+	"```\n" +
 	"\n" +
 	"<div>html block</div>\n" +
 	"\n" +
@@ -106,6 +107,29 @@ func TestNodeCheckersDeclareEnteringKinds(t *testing.T) {
 func TestEnteringKindsAreSound(t *testing.T) {
 	f, err := lint.NewFile("probe.md", []byte(kindProbeDoc))
 	require.NoError(t, err)
+
+	// Completeness first: every kind any rule declares must actually
+	// occur in the probe document, otherwise the soundness walk below
+	// is vacuous for that rule (an unclosed fence once swallowed the
+	// HTML-block, thematic-break, and table constructs unnoticed).
+	present := map[gmast.NodeKind]bool{}
+	_ = gmast.Walk(f.AST, func(n gmast.Node, entering bool) (gmast.WalkStatus, error) {
+		if entering {
+			present[n.Kind()] = true
+		}
+		return gmast.WalkContinue, nil
+	})
+	for _, nc := range registeredNodeCheckers(t) {
+		ks, ok := nc.(rule.KindScopedChecker)
+		if !ok {
+			continue
+		}
+		for _, k := range ks.EnteringKinds() {
+			assert.True(t, present[k],
+				"%s declares kind %s but the probe document never produces it; "+
+					"extend kindProbeDoc", nc.ID(), k)
+		}
+	}
 
 	for _, nc := range registeredNodeCheckers(t) {
 		if _, ok := nc.(rule.KindScopedChecker); !ok {

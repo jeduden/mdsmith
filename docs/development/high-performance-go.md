@@ -9,18 +9,18 @@ summary: >-
 # High-Performance Go
 
 mdsmith's hot path is the rule set running over every file
-in the workspace. The Large benchmark gate parses 600 files
-through the full rule set. One extra alloc per `Check` is
-tens of thousands of extra allocs per `mdsmith check`. One
-accidental O(n) rescan inside a rule turns a 0.8 s run into
-several seconds. This page is the contributor playbook for
-keeping that path fast.
+in the workspace. The Large gate parses 600 files through
+the full rule set; one extra alloc per `Check` means tens
+of thousands per run, and one accidental O(n) rescan turns
+a fast run into a slow one. This page is the playbook.
 
 This page is the methodology behind the project's budgets.
 The ≤ 10 alloc ceiling lives in
-[Allocation Budget](index.md#allocation-budget). The corpus
-gates and `MDSMITH_CPUPROFILE` workflow live in the
-[benchmark notes](../research/benchmarks/README.md).
+[Allocation Budget](index.md#allocation-budget); the corpus
+gates live in the
+[benchmark notes](../research/benchmarks/README.md); the
+session narrative lives in
+[perf-parity-session](../research/perf-parity-session.md).
 
 ## Process
 
