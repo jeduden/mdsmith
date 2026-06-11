@@ -39,6 +39,14 @@ func NewNodeKind(name string) NodeKind {
 	return kindMax
 }
 
+// NodeKindCount returns the number of registered node kinds plus one,
+// i.e. the size a table indexed by NodeKind must have. Kinds are
+// allocated by NewNodeKind during package init, so after program
+// initialization the value is stable.
+func NodeKindCount() int {
+	return int(kindMax) + 1
+}
+
 // An Attribute is an attribute of the Node.
 type Attribute struct {
 	Name  []byte

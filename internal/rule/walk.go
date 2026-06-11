@@ -24,6 +24,25 @@ type NodeChecker interface {
 	CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic
 }
 
+// KindScopedChecker is an optional refinement of NodeChecker for rules
+// whose CheckNode only ever reacts to a fixed set of node kinds, and
+// only on the entering visit. The engine's shared walk dispatches such
+// a rule exclusively for nodes of those kinds (entering only), instead
+// of calling CheckNode for every node in the tree — with dozens of
+// NodeChecker rules enabled, the per-node interface calls that
+// immediately return nil dominated the walk's cost.
+//
+// Contract: EnteringKinds must return every kind CheckNode can emit a
+// diagnostic for, the result must be constant for the life of the rule
+// (the dispatch table is built from it once per file), and CheckNode
+// must not depend on being called for other kinds or for leaving
+// visits. A rule that needs exit visits or dynamic kind interest
+// should implement plain NodeChecker instead.
+type KindScopedChecker interface {
+	NodeChecker
+	EnteringKinds() []ast.NodeKind
+}
+
 // WalkNodes runs r.CheckNode over a single ast.Walk of f. A
 // NodeChecker's standalone Check delegates here so direct callers
 // (the LSP, unit tests) get behaviour identical to the engine's

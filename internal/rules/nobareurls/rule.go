@@ -150,3 +150,14 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	result = append(result, f.Source[prev:]...)
 	return result
 }
+
+// enteringKinds is the static node-kind interest CheckNode declares
+// via rule.KindScopedChecker; package-level so EnteringKinds returns
+// it without allocating.
+var enteringKinds = []ast.NodeKind{ast.KindText}
+
+// EnteringKinds implements rule.KindScopedChecker: CheckNode only
+// reacts to these node kinds, entering visits only.
+func (r *Rule) EnteringKinds() []ast.NodeKind { return enteringKinds }
+
+var _ rule.KindScopedChecker = (*Rule)(nil)

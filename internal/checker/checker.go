@@ -72,12 +72,7 @@ func CheckRulesWithIntraFile(
 	// splitting per rule would lose the cache locality the multiplex
 	// just won.
 	if len(nodeCheckers) > 0 {
-		_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-			for _, s := range nodeCheckers {
-				s.diags = append(s.diags, s.nc.CheckNode(n, entering, f)...)
-			}
-			return ast.WalkContinue, nil
-		})
+		runNodeCheckers(f, nodeCheckers)
 	}
 
 	var diags []lint.Diagnostic
@@ -150,6 +145,114 @@ func classifyRules(
 		}
 	}
 	return slots, nodeCheckers, errs
+}
+
+// kindTable is the per-file dispatch plan for the shared NodeChecker
+// walk. Kind-scoped rules (rule.KindScopedChecker) are stored in CSR
+// form — scoped[offsets[k]:offsets[k+1]] lists the slots interested in
+// kind k — so the walk callback touches only the rules that can react
+// to the node at hand instead of calling every rule's CheckNode for
+// every node twice. Rules without a kind scope go to generic and keep
+// the historical call-for-everything behaviour. Tables are pooled:
+// the slices are reused across files, so the per-file build allocates
+// nothing once the pool is warm.
+type kindTable struct {
+	offsets []int32     // len = ast.NodeKindCount()+1; CSR row starts
+	scoped  []*ruleSlot // CSR storage, grouped by kind
+	generic []*ruleSlot // no kind scope: every node, both directions
+}
+
+var kindTablePool = sync.Pool{New: func() any { return new(kindTable) }}
+
+// buildKindTable partitions nodeCheckers into the kind-indexed CSR
+// buckets and the generic list. Slots appear in each bucket in input
+// (rule) order. The returned table comes from kindTablePool; the
+// caller must hand it back via releaseKindTable.
+func buildKindTable(nodeCheckers []*ruleSlot) *kindTable {
+	t := kindTablePool.Get().(*kindTable)
+	n := ast.NodeKindCount()
+	if cap(t.offsets) < n+1 {
+		t.offsets = make([]int32, n+1)
+	} else {
+		t.offsets = t.offsets[:n+1]
+		clear(t.offsets)
+	}
+	t.generic = t.generic[:0]
+
+	// Pass 1: count interest per kind into offsets[k+1].
+	total := 0
+	for _, s := range nodeCheckers {
+		ks, ok := s.nc.(rule.KindScopedChecker)
+		if !ok {
+			t.generic = append(t.generic, s)
+			continue
+		}
+		for _, k := range ks.EnteringKinds() {
+			t.offsets[k+1]++
+			total++
+		}
+	}
+	// Prefix-sum the counts into row starts.
+	for i := 1; i <= n; i++ {
+		t.offsets[i] += t.offsets[i-1]
+	}
+	if cap(t.scoped) < total {
+		t.scoped = make([]*ruleSlot, total)
+	} else {
+		t.scoped = t.scoped[:total]
+	}
+	// Pass 2: fill, advancing each row's cursor. After this loop every
+	// offsets[k] has been advanced to the next row's start, i.e. the
+	// slice is shifted one row left; shift it back by walking from the
+	// end so offsets is again the row-start table.
+	for _, s := range nodeCheckers {
+		ks, ok := s.nc.(rule.KindScopedChecker)
+		if !ok {
+			continue
+		}
+		for _, k := range ks.EnteringKinds() {
+			t.scoped[t.offsets[k]] = s
+			t.offsets[k]++
+		}
+	}
+	for i := n; i > 0; i-- {
+		t.offsets[i] = t.offsets[i-1]
+	}
+	t.offsets[0] = 0
+	return t
+}
+
+// releaseKindTable clears the slot pointers (so pooled tables do not
+// pin per-file state) and returns the table to the pool.
+func releaseKindTable(t *kindTable) {
+	clear(t.scoped)
+	clear(t.generic)
+	kindTablePool.Put(t)
+}
+
+// runNodeCheckers drives the single shared walk over f.AST,
+// dispatching each node to the kind-scoped rules registered for its
+// kind (entering visits only) and to every generic NodeChecker (both
+// visit directions), appending diagnostics into each rule's own slot.
+func runNodeCheckers(f *lint.File, nodeCheckers []*ruleSlot) {
+	t := buildKindTable(nodeCheckers)
+	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if entering {
+			k := n.Kind()
+			for _, s := range t.scoped[t.offsets[k]:t.offsets[k+1]] {
+				if ds := s.nc.CheckNode(n, true, f); len(ds) > 0 {
+					s.diags = append(s.diags, ds...)
+				}
+			}
+		}
+		for _, s := range t.generic {
+			if ds := s.nc.CheckNode(n, entering, f); len(ds) > 0 {
+				s.diags = append(s.diags, ds...)
+			}
+		}
+		return ast.WalkContinue, nil
+	})
+	releaseKindTable(t)
 }
 
 // runNonNodeCheckers fills the non-NodeChecker slots' diags fields.

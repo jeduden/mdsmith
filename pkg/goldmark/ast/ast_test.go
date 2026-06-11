@@ -58,3 +58,22 @@ func node(n Node, children ...Node) Node {
 	}
 	return n
 }
+
+func TestNodeKindCount(t *testing.T) {
+	count := NodeKindCount()
+	if count != int(kindMax)+1 {
+		t.Errorf("NodeKindCount() = %d, want kindMax+1 = %d", count, int(kindMax)+1)
+	}
+	// Every registered kind must be a valid index into a table of size
+	// NodeKindCount, including the highest one.
+	if int(KindDocument) >= count || int(kindMax) >= count {
+		t.Errorf("registered kinds must index a NodeKindCount-sized table")
+	}
+	k := NewNodeKind("nodeKindCountProbe")
+	if got := NodeKindCount(); got != count+1 {
+		t.Errorf("NodeKindCount() after NewNodeKind = %d, want %d", got, count+1)
+	}
+	if int(k) != NodeKindCount()-1 {
+		t.Errorf("new kind %d must be the last valid index %d", int(k), NodeKindCount()-1)
+	}
+}
