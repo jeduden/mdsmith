@@ -19,9 +19,9 @@ import (
 // GUARDS set just above the measured size, so an accidental dependency
 // bloat is caught in CI.
 //
-// Measured (Go 1.25, stripped): ~11.2 MB raw / ~2.8 MB gzipped. The
-// ceilings leave headroom for toolchain-version drift while staying
-// under the 18 MB plan-215 budget.
+// Measured (Go 1.25, stripped): ~11.2 MB raw / ~2.8 MB gzipped at
+// DefaultCompression. BestSpeed gives a pessimistic upper bound; at
+// BestSpeed the same binary gzips to ~3.0 MB. Ceiling is 4 MiB.
 const (
 	maxWASMRawBytes  = 14 * 1024 * 1024 // 14 MiB (< 18 MiB plan-215 budget)
 	maxWASMGzipBytes = 4 * 1024 * 1024  // 4 MiB
@@ -47,16 +47,7 @@ func TestWASMArtifactSizeBudget(t *testing.T) {
 		t.Fatalf("reading wasm artifact: %v", err)
 	}
 	raw := len(data)
-
-	var buf bytes.Buffer
-	zw := gzip.NewWriter(&buf)
-	if _, err := zw.Write(data); err != nil {
-		t.Fatalf("gzip write: %v", err)
-	}
-	if err := zw.Close(); err != nil {
-		t.Fatalf("gzip close: %v", err)
-	}
-	gz := buf.Len()
+	gz := gzipLen(t, data)
 
 	const mib = 1024 * 1024
 	t.Logf("wasm artifact: raw=%d bytes (%.1f MiB), gzip=%d bytes (%.1f MiB)",
@@ -114,21 +105,7 @@ func TestTinyGoWASMArtifactSizeBudget(t *testing.T) {
 		t.Fatalf("reading tinygo wasm artifact: %v", err)
 	}
 	raw := len(data)
-
-	// Use BestSpeed to model CDN-delivered transfer cost; the ceiling was
-	// calibrated at this level.
-	var buf bytes.Buffer
-	zw, err := gzip.NewWriterLevel(&buf, gzip.BestSpeed)
-	if err != nil {
-		t.Fatalf("gzip.NewWriterLevel: %v", err)
-	}
-	if _, err := zw.Write(data); err != nil {
-		t.Fatalf("gzip write: %v", err)
-	}
-	if err := zw.Close(); err != nil {
-		t.Fatalf("gzip close: %v", err)
-	}
-	gz := buf.Len()
+	gz := gzipLen(t, data)
 
 	const mib = 1024 * 1024
 	t.Logf("tinygo wasm artifact: raw=%d bytes (%.1f MiB), gzip=%d bytes (%.1f MiB)",
@@ -142,4 +119,23 @@ func TestTinyGoWASMArtifactSizeBudget(t *testing.T) {
 		t.Errorf("tinygo wasm gzip size %d bytes exceeds budget %d (%.1f MiB > %.1f MiB)",
 			gz, maxTinyGoWASMGzipBytes, float64(gz)/mib, float64(maxTinyGoWASMGzipBytes)/mib)
 	}
+}
+
+// gzipLen compresses data at BestSpeed and returns the compressed byte
+// count. BestSpeed is used as a consistent, pessimistic upper bound on
+// transfer size across both size tests.
+func gzipLen(t *testing.T, data []byte) int {
+	t.Helper()
+	var buf bytes.Buffer
+	buf.Grow(len(data))
+	// NewWriterLevel only errors for levels outside [-2, 9]; BestSpeed=1
+	// is always valid, so the error is structurally unreachable.
+	zw, _ := gzip.NewWriterLevel(&buf, gzip.BestSpeed)
+	if _, err := zw.Write(data); err != nil {
+		t.Fatalf("gzip write: %v", err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("gzip close: %v", err)
+	}
+	return buf.Len()
 }
