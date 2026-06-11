@@ -151,18 +151,13 @@ per workspace file.
 - **Reuse loop-local buffers.** `buf = buf[:0]` clears
   length, keeps capacity. See `extractTextBufPool` in
   `internal/mdtext/mdtext.go`.
-- **`sync.Pool` for transient state.** Best for
-  expensive, short-lived state (line scanners, AST
-  scratch). Always reset before `Put`; pool entries can
-  be reaped by GC without notice. Examples:
-  `internal/punkt/tokenizer.go`,
-  `internal/schema/validate_content.go`. The largest
-  win of this shape is the parse-arena pool: AST slab
-  memory was ~40% of all allocation per `check` until
-  `lint.NewFileFromSourcePooled` bounded each File's
-  slabs to `engine.lintFile` and recycled them — pool
-  only where the release point provably outlives every
-  reference (the LSP's cached Files stay unpooled).
+- **`sync.Pool` for transient state.** Always reset
+  before `Put`; entries can be reaped by GC without
+  notice. Examples: `internal/punkt/tokenizer.go`; the
+  parse-arena pool behind `lint.NewFileFromSourcePooled`
+  (~40% of all `check` allocation until `engine.lintFile`
+  became its release boundary). Pool only where the
+  release point provably outlives every reference.
 - **Return `nil`, not `[]T{}`.** Project convention.
   `nil` and a non-nil empty slice are distinguishable in
   tests, JSON, and `reflect`; sticking to `nil` for "no
@@ -226,37 +221,17 @@ substring, or prefix/suffix check, skip `regexp`.
 The cheapest call is the one you never make. Two real
 mdsmith wins live here:
 
-- **Memoize per-input computations.** When a helper runs
-  many times over the same `*lint.File`, cache the result
-  on the File. The cached newline index in
-  `lint.(*File).LineOfOffset` replaced an O(n) rescan per
-  call — ~24% of `check` CPU on long prose before the
-  fix. Same pattern: `CodeSpanContentRanges`,
-  `LineStrings`, and the run-scoped
-  `RunCache.GlobMatches` (one glob walk per pattern set
-  per run instead of one per host file).
+- **Memoize per-input computations.** When a helper
+  recurs over one `*lint.File`, cache the result on the
+  File — `LineOfOffset`'s newline index (~24% of `check`
+  CPU before the fix) and `RunCache.GlobMatches` follow it.
 - **Gate expensive analyzers behind a cheap pre-check.**
-  An upper- or lower-bound check that proves the
-  expensive path can't produce a diagnostic lets you
-  skip it. MDS024's guard skips the sentence tokenizer
-  when no paragraph can violate either limit — ~2 GB of
-  saved allocations on the 600-file gate corpus. A
-  byte-needle works the same way for regex- and
-  parse-shaped work: the reversed-link scan requires the
-  literal `)[`, bare-URL detection requires `http`, and
-  the catalog cycle check requires `<?include` before it
-  parses a target.
-- **Declare interest instead of filtering inside.** A
-  callee that starts with "is this input mine?" still
-  costs the call. `rule.KindScopedChecker` moves that
-  test into a dispatch table the engine consults once
-  per node, so the walk calls only the rules registered
-  for the node's kind.
-- **Never spawn a subprocess on a per-item path.** One
-  `git rev-parse` per directory dominated a whole check
-  run; a stat walk for `.git` replaced it
-  (`githooksync.findGitRoot`). Exec is for one-shot
-  setup, not per-file work.
+  MDS024 skips the sentence tokenizer when no paragraph
+  can violate a limit; byte-needles gate regex paths.
+- **Declare interest instead of filtering inside.**
+  `rule.KindScopedChecker` lifts "is this node mine?"
+  into a per-kind dispatch table. Related: never exec a
+  subprocess per item (`git rev-parse` once did).
 
 ### Inlining
 
