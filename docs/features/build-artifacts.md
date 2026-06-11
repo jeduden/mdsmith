@@ -25,5 +25,26 @@ Recipes are inspected, not trusted. `MDS040` statically checks
 every recipe command for shell-safety at lint time and never
 executes a binary itself.
 
+## Incremental rebuilds
+
+The build pass is incremental. `mdsmith fix` hashes each target's
+recipe spec, input contents, and output set into one ActionID and
+rebuilds only the targets whose ActionID changed or whose outputs
+are missing or hand-edited. A fresh target prints `SKIP`; freshness
+is tracked in `.mdsmith/build-cache.json`. `--build-check-stale`
+turns that into a CI gate, exiting non-zero when any artifact is out
+of date without running a recipe.
+
+The build cache and working directories are machine-local. Add them
+to `.gitignore`. Never ignore the whole `.mdsmith/` folder: its
+`kinds/`, `schemas/`, and `conventions/` subfolders are checked-in
+config.
+
+```text
+.mdsmith/build-cache.json
+.mdsmith/build-logs/
+.mdsmith/build-staging/
+```
+
 See the [build directive guide](../guides/directives/build.md)
 for recipe declaration and the body-template syntax.

@@ -1,7 +1,7 @@
 ---
 id: 103
 title: Build target staleness and dependency tracking
-status: "🔲"
+status: "🔳"
 summary: >-
   Make the `mdsmith fix` build pass
   Make/Bazel-style. Hash `(recipe spec ‖ sorted
@@ -269,48 +269,48 @@ hashing. Parallel builds: plan 2606101547.
 
 ## Acceptance Criteria
 
-- [ ] A second `mdsmith fix` with no source
+- [x] A second `mdsmith fix` with no source
       changes runs zero recipes
-- [ ] Editing a declared input triggers a
+- [x] Editing a declared input triggers a
       rebuild of just that target
-- [ ] Touching mtime without content change
+- [x] Touching mtime without content change
       does not trigger a rebuild
-- [ ] Deleting any declared output triggers a
+- [x] Deleting any declared output triggers a
       rebuild of that target
-- [ ] Editing a recipe `command` invalidates
+- [x] Editing a recipe `command` invalidates
       every target using that recipe
-- [ ] An `inputs:` glob matching zero files
+- [x] An `inputs:` glob matching zero files
       is a build error
-- [ ] Overlapping `outputs:` paths (exact
+- [x] Overlapping `outputs:` paths (exact
       or directory-prefix) is a build error
       reporting both source locations
-- [ ] A recipe's `default-inputs` are folded
+- [x] A recipe's `default-inputs` are folded
       into the input hash
-- [ ] `mdsmith fix --build-force` rebuilds
+- [x] `mdsmith fix --build-force` rebuilds
       every target
-- [ ] `mdsmith fix --build-check-stale`
+- [x] `mdsmith fix --build-check-stale`
       prints stale targets and exits non-zero
       without running any recipe
-- [ ] `mdsmith fix --build-no-cache` rebuilds
+- [x] `mdsmith fix --build-no-cache` rebuilds
       everything; writes nothing to the cache
-- [ ] `mdsmith fix --build-dry-run` prints
+- [x] `mdsmith fix --build-dry-run` prints
       every target's `STALE | FRESH` verdict
-- [ ] Per-target summary distinguishes `OK`,
+- [x] Per-target summary distinguishes `OK`,
       `FAIL`, and `SKIP`
-- [ ] `.mdsmith/build-cache.json` has a
+- [x] `.mdsmith/build-cache.json` has a
       `version` field and per-target entries
       with `outputs[]` (path + content hash),
       `action-id`, `built-at`, `inputs`,
       `recipe`
-- [ ] Hand-editing an artifact triggers a
+- [x] Hand-editing an artifact triggers a
       rebuild on the next `fix` (hash
       mismatch)
-- [ ] ActionID is length-framed: paths with
+- [x] ActionID is length-framed: paths with
       NUL or sentinel bytes cannot collide
       with another input set
-- [ ] Cache writes are atomic (temp+rename);
+- [x] Cache writes are atomic (temp+rename);
       a mid-build crash leaves the previous
       cache readable
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no
       issues
