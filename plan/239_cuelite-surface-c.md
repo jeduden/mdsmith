@@ -227,6 +227,9 @@ issues round 1 left:
   (`identityNumeric`). The unsupported-construct hatch doc now enumerates
   its real members, adding the d45b673 repetition-bound rejection, one
   `FuzzExpr` seed per member.
+- **Unary `-` of int64 min** (sign-off round). The row `-` arm wrapped
+  silently where CUE yields `9223372036854775808`. It now rejects as
+  out-of-subset, like `checkedAddInt64`; a test and a seed pin it.
 
 ### Binding contract (newRowScope)
 
@@ -261,13 +264,12 @@ the scope held a fractional number. Two signature-matched classes in
 - **float-display**: both arms accept and the only differences are
   numeric substrings whose parsed values are equal-ish — the float64
   vs decimal rendering divergence, and nothing else.
-- **unsupported-construct**: the in-house arm rejects with the engine's
-  "unsupported" wording while CUE accepts. It covers for…if combined
-  clauses, `for i, x in`, len(struct), struct literals in exprs, big
-  ints, bytes interpolation, and float arithmetic — every such
-  construct is seeded so the class stays pinned. It never masks an
-  accept-vs-accept string diff or an in-house-accepts/oracle-rejects
-  mismatch.
+- **unsupported-construct**: the in-house arm rejects with the
+  "unsupported" wording while CUE accepts — for…if clauses,
+  `for i, x in`, multi-clause `let`, len(struct), struct literals,
+  int64 overflow (`+`, unary `-` of int64 min), bytes interpolation,
+  float arithmetic, over-bound repetition; each member is seeded. It
+  never masks any other divergence shape.
 
 ### Differential finding
 
@@ -278,11 +280,10 @@ prints `42`. The real front-matter path keeps integers as
 integers. So the harness decodes scope JSON with `UseNumber`, and
 the in-house lifter keeps the int. That removes the artifact.
 
-One genuine divergence remains. A fractional float's
-interpolation form is literal-preserving in CUE (`2.0`, `1.50`),
-but shortest-round-trip in the engine. `FuzzExpr` hatches it,
-scoped to a scope carrying a non-integer number. The real corpus
-never interpolates a float.
+One genuine divergence remains. A fractional float interpolates
+literal-preserving in CUE (`2.0`, `1.50`) but shortest-round-trip
+in the engine. `FuzzExpr` hatches it via the float-display class.
+The real corpus never interpolates a float.
 
 ### Deviations from the rewritten plan
 
