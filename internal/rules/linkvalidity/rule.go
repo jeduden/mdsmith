@@ -203,7 +203,7 @@ func (r *Rule) checkReversed(f *lint.File) []lint.Diagnostic {
 		if skip(ln) {
 			continue
 		}
-		masked := maskLine(line, f.LineStartOffset(i), csRanges)
+		masked := lint.MaskRanges(line, f.LineStartOffset(i), csRanges)
 		for _, mm := range reversedInLine(line, masked) {
 			diags = append(diags, lint.Diagnostic{
 				File:     f.Path,
@@ -231,7 +231,7 @@ func (r *Rule) Fix(f *lint.File) []byte {
 			out[i] = line
 			continue
 		}
-		masked := maskLine(line, f.LineStartOffset(i), csRanges)
+		masked := lint.MaskRanges(line, f.LineStartOffset(i), csRanges)
 		matches := reversedInLine(line, masked)
 		if len(matches) == 0 {
 			out[i] = line
@@ -312,39 +312,6 @@ func (r *Rule) skipPredicate(f *lint.File) func(int) bool {
 		}
 		return false
 	}
-}
-
-// maskLine returns line with any bytes inside a code-span content range
-// (f.CodeSpanContentRanges) replaced by spaces. The original slice is
-// returned unchanged when no range overlaps so the common path
-// allocates nothing.
-func maskLine(line []byte, lineStart int, ranges []lint.Range) []byte {
-	lineEnd := lineStart + len(line)
-	var out []byte
-	for _, rg := range ranges {
-		if rg.End <= lineStart || rg.Start >= lineEnd {
-			continue
-		}
-		if out == nil {
-			out = make([]byte, len(line))
-			copy(out, line)
-		}
-		from := rg.Start - lineStart
-		to := rg.End - lineStart
-		if from < 0 {
-			from = 0
-		}
-		if to > len(out) {
-			to = len(out)
-		}
-		for k := from; k < to; k++ {
-			out[k] = ' '
-		}
-	}
-	if out == nil {
-		return line
-	}
-	return out
 }
 
 var _ rule.FixableRule = (*Rule)(nil)

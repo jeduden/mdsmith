@@ -145,3 +145,21 @@ func TestLineStrings_EmptyFile(t *testing.T) {
 	f := &File{}
 	assert.Nil(t, f.LineStrings())
 }
+
+func TestMaskRanges(t *testing.T) {
+	// No ranges (nil or empty): original slice returned unchanged,
+	// with no allocation — the loop body never runs.
+	in := []byte("abc")
+	assert.Equal(t, in, MaskRanges(in, 0, nil))
+	assert.Equal(t, in, MaskRanges(in, 0, []Range{}))
+	assert.Zero(t, testing.AllocsPerRun(20, func() { _ = MaskRanges(in, 0, nil) }))
+	// Range entirely before the line: skipped, original returned.
+	assert.Equal(t, []byte("abc"),
+		MaskRanges([]byte("abc"), 100, []Range{{Start: 0, End: 5}}))
+	// Range overruns both ends: from clamps to 0, to clamps to len.
+	assert.Equal(t, []byte("     "),
+		MaskRanges([]byte("abcde"), 10, []Range{{Start: 8, End: 30}}))
+	// Range within the line: only the overlap is blanked.
+	assert.Equal(t, []byte("ab cd"),
+		MaskRanges([]byte("abXcd"), 0, []Range{{Start: 2, End: 3}}))
+}

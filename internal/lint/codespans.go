@@ -146,3 +146,32 @@ func BytesView(b []byte) string {
 	}
 	return unsafe.String(&b[0], len(b))
 }
+
+// MaskRanges returns line with any bytes that fall inside one of the
+// given source byte ranges replaced by spaces. lineStart is the
+// line's byte offset in Source (see LineStartOffset). The original
+// slice is returned unchanged when no range overlaps, so the common
+// path allocates nothing. Rules use it to blank code-span content
+// before pattern-matching a line.
+func MaskRanges(line []byte, lineStart int, ranges []Range) []byte {
+	lineEnd := lineStart + len(line)
+	var out []byte
+	for _, rg := range ranges {
+		if rg.End <= lineStart || rg.Start >= lineEnd {
+			continue
+		}
+		if out == nil {
+			out = make([]byte, len(line))
+			copy(out, line)
+		}
+		from := max(rg.Start-lineStart, 0)
+		to := min(rg.End-lineStart, len(out))
+		for k := from; k < to; k++ {
+			out[k] = ' '
+		}
+	}
+	if out == nil {
+		return line
+	}
+	return out
+}

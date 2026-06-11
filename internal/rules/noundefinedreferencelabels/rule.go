@@ -179,8 +179,20 @@ func collectBrackets(source []byte) ([]bracket, *[]bracket) {
 	}
 }
 
-// releaseBrackets returns a collectBrackets buffer to the pool.
+// maxPooledBrackets caps the capacity a returned bracket buffer may
+// carry back into the pool. One pathologically bracket-dense file
+// (the 2 MiB input cap allows ~1M two-byte "[]" pairs, ~32 MiB of
+// entries) would otherwise pin that capacity in the pool for the
+// process lifetime — the LSP runs this rule on every check. Oversized
+// buffers are dropped for the GC instead.
+const maxPooledBrackets = 1 << 16
+
+// releaseBrackets returns a collectBrackets buffer to the pool,
+// dropping buffers whose capacity exceeds maxPooledBrackets.
 func releaseBrackets(bufp *[]bracket) {
+	if cap(*bufp) > maxPooledBrackets {
+		return
+	}
 	bracketBufPool.Put(bufp)
 }
 

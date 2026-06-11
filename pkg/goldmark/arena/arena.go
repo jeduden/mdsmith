@@ -61,54 +61,76 @@ const (
 // per-parser-with-Reset design described above was dropped to
 // keep AST lifetime independent of the parser pool.
 type Arena struct {
-	texts        []*textSlab
-	paragraphs   []*paragraphSlab
-	segmentsObjs []*segmentsObjSlab
+	texts        slabs[ast.Text]
+	paragraphs   slabs[ast.Paragraph]
+	segmentsObjs slabs[text.Segments]
 	segments     []*segmentSlab
-	codeSpans    []*codeSpanSlab
-	links        []*linkSlab
-	emphases     []*emphasisSlab
+	codeSpans    slabs[ast.CodeSpan]
+	links        slabs[ast.Link]
+	emphases     slabs[ast.Emphasis]
 
-	// Per-type cursors index the slab the next allocation fills.
-	// Reset rewinds them to zero so a reused arena (the engine's
-	// per-file pool) refills its existing slabs from the start
-	// instead of only ever reusing the last one and growing the
-	// list on every cycle.
-	textIdx     int
-	paraIdx     int
-	segObjIdx   int
-	segmentIdx  int
-	codeSpanIdx int
-	linkIdx     int
-	emphasisIdx int
+	// segmentIdx is the segment-backing cursor; the node slabs carry
+	// their own cursor inside slabs[T]. Reset rewinds every cursor to
+	// zero so a reused arena (the engine's per-file pool) refills its
+	// existing slabs from the start instead of only ever reusing the
+	// last one and growing the list on every cycle.
+	segmentIdx int
 }
 
-type textSlab struct {
-	data []ast.Text
+// slab is one fixed-capacity block of T values.
+type slab[T any] struct {
+	data []T
 }
 
-type paragraphSlab struct {
-	data []ast.Paragraph
+// slabs is the cursor-managed slab list one node type allocates from.
+type slabs[T any] struct {
+	list []*slab[T]
+	idx  int
 }
 
-type segmentsObjSlab struct {
-	data []text.Segments
+// alloc returns a pointer to a zero T carved from the cursor-selected
+// slab, advancing the cursor past full slabs and appending a new slab
+// of capacity capN when none has room. The returned pointer is stable:
+// slab backing arrays never grow.
+func (ss *slabs[T]) alloc(capN int) *T {
+	for ss.idx < len(ss.list) {
+		cur := ss.list[ss.idx]
+		if len(cur.data) < cap(cur.data) {
+			var zero T
+			cur.data = append(cur.data, zero)
+			return &cur.data[len(cur.data)-1]
+		}
+		ss.idx++
+	}
+	s := &slab[T]{data: make([]T, 0, capN)}
+	var zero T
+	s.data = append(s.data, zero)
+	ss.list = append(ss.list, s)
+	return &s.data[0]
+}
+
+// reset zeroes the used portion of every slab — dropping node
+// pointers so a pooled arena does not pin the prior AST — and
+// rewinds the cursor.
+func (ss *slabs[T]) reset() {
+	for _, s := range ss.list {
+		clear(s.data)
+		s.data = s.data[:0]
+	}
+	ss.idx = 0
+}
+
+// used reports how many T values are currently allocated.
+func (ss *slabs[T]) used() int {
+	n := 0
+	for _, s := range ss.list {
+		n += len(s.data)
+	}
+	return n
 }
 
 type segmentSlab struct {
 	data []text.Segment
-}
-
-type codeSpanSlab struct {
-	data []ast.CodeSpan
-}
-
-type linkSlab struct {
-	data []ast.Link
-}
-
-type emphasisSlab struct {
-	data []ast.Emphasis
 }
 
 // New returns an empty Arena. The first allocation lazily provisions
@@ -124,50 +146,22 @@ func (a *Arena) Reset() {
 	if a == nil {
 		return
 	}
-	// Zero the live portion of each pointer-bearing slab before
-	// reslicing so a reused Arena does not pin the prior AST
-	// through stale parent/sibling pointers (ast.BaseNode et al.)
-	// or through Segments.grow back-pointers. Without clear(), the
-	// GC sees the old structs as still reachable via the slab
-	// array and the previously-parsed tree (plus its arena slabs)
-	// stays alive across Reset.
-	//
-	// text.Segment has no pointers, so the segment-backing slabs
-	// only need their length reset.
-	for _, s := range a.texts {
-		clear(s.data)
-		s.data = s.data[:0]
-	}
-	for _, s := range a.paragraphs {
-		clear(s.data)
-		s.data = s.data[:0]
-	}
-	for _, s := range a.segmentsObjs {
-		clear(s.data)
-		s.data = s.data[:0]
-	}
+	// slabs.reset zeroes the live portion of each pointer-bearing
+	// slab before reslicing so a reused Arena does not pin the prior
+	// AST through stale parent/sibling pointers (ast.BaseNode et al.)
+	// or through Segments.grow back-pointers. text.Segment has no
+	// pointers, so the segment-backing slabs only need their length
+	// reset.
+	a.texts.reset()
+	a.paragraphs.reset()
+	a.segmentsObjs.reset()
+	a.codeSpans.reset()
+	a.links.reset()
+	a.emphases.reset()
 	for _, s := range a.segments {
 		s.data = s.data[:0]
 	}
-	for _, s := range a.codeSpans {
-		clear(s.data)
-		s.data = s.data[:0]
-	}
-	for _, s := range a.links {
-		clear(s.data)
-		s.data = s.data[:0]
-	}
-	for _, s := range a.emphases {
-		clear(s.data)
-		s.data = s.data[:0]
-	}
-	a.textIdx = 0
-	a.paraIdx = 0
-	a.segObjIdx = 0
 	a.segmentIdx = 0
-	a.codeSpanIdx = 0
-	a.linkIdx = 0
-	a.emphasisIdx = 0
 }
 
 // Text returns a zero-initialised *ast.Text from the arena. With a
@@ -176,9 +170,7 @@ func (a *Arena) Text() *ast.Text {
 	if a == nil {
 		return ast.NewText()
 	}
-	slab := a.currentTextSlab()
-	slab.data = append(slab.data, ast.Text{})
-	return &slab.data[len(slab.data)-1]
+	return a.texts.alloc(textSlabCap)
 }
 
 // TextSegment returns a *ast.Text initialised with the given source
@@ -212,9 +204,7 @@ func (a *Arena) Paragraph() *ast.Paragraph {
 	if a == nil {
 		return ast.NewParagraph()
 	}
-	slab := a.currentParagraphSlab()
-	slab.data = append(slab.data, ast.Paragraph{})
-	p := &slab.data[len(slab.data)-1]
+	p := a.paragraphs.alloc(paragraphSlabCap)
 	a.EquipLines(p.Lines())
 	return p
 }
@@ -242,9 +232,7 @@ func (a *Arena) Segments() *text.Segments {
 	if a == nil {
 		return text.NewSegments()
 	}
-	slab := a.currentSegmentsObjSlab()
-	slab.data = append(slab.data, text.Segments{})
-	s := &slab.data[len(slab.data)-1]
+	s := a.segmentsObjs.alloc(segmentsObjSlabCap)
 	a.EquipLines(s)
 	return s
 }
@@ -297,9 +285,7 @@ func (a *Arena) CodeSpan() *ast.CodeSpan {
 	if a == nil {
 		return ast.NewCodeSpan()
 	}
-	slab := a.currentCodeSpanSlab()
-	slab.data = append(slab.data, ast.CodeSpan{})
-	return &slab.data[len(slab.data)-1]
+	return a.codeSpans.alloc(codeSpanSlabCap)
 }
 
 // Link returns a zero-initialised *ast.Link from the arena. With a
@@ -308,9 +294,7 @@ func (a *Arena) Link() *ast.Link {
 	if a == nil {
 		return ast.NewLink()
 	}
-	slab := a.currentLinkSlab()
-	slab.data = append(slab.data, ast.Link{})
-	return &slab.data[len(slab.data)-1]
+	return a.links.alloc(linkSlabCap)
 }
 
 // Emphasis returns a *ast.Emphasis with the given level from the
@@ -319,87 +303,9 @@ func (a *Arena) Emphasis(level int) *ast.Emphasis {
 	if a == nil {
 		return ast.NewEmphasis(level)
 	}
-	slab := a.currentEmphasisSlab()
-	slab.data = append(slab.data, ast.Emphasis{Level: level})
-	return &slab.data[len(slab.data)-1]
-}
-
-func (a *Arena) currentCodeSpanSlab() *codeSpanSlab {
-	for a.codeSpanIdx < len(a.codeSpans) {
-		cur := a.codeSpans[a.codeSpanIdx]
-		if len(cur.data) < cap(cur.data) {
-			return cur
-		}
-		a.codeSpanIdx++
-	}
-	s := &codeSpanSlab{data: make([]ast.CodeSpan, 0, codeSpanSlabCap)}
-	a.codeSpans = append(a.codeSpans, s)
-	return s
-}
-
-func (a *Arena) currentLinkSlab() *linkSlab {
-	for a.linkIdx < len(a.links) {
-		cur := a.links[a.linkIdx]
-		if len(cur.data) < cap(cur.data) {
-			return cur
-		}
-		a.linkIdx++
-	}
-	s := &linkSlab{data: make([]ast.Link, 0, linkSlabCap)}
-	a.links = append(a.links, s)
-	return s
-}
-
-func (a *Arena) currentEmphasisSlab() *emphasisSlab {
-	for a.emphasisIdx < len(a.emphases) {
-		cur := a.emphases[a.emphasisIdx]
-		if len(cur.data) < cap(cur.data) {
-			return cur
-		}
-		a.emphasisIdx++
-	}
-	s := &emphasisSlab{data: make([]ast.Emphasis, 0, emphasisSlabCap)}
-	a.emphases = append(a.emphases, s)
-	return s
-}
-
-func (a *Arena) currentTextSlab() *textSlab {
-	for a.textIdx < len(a.texts) {
-		cur := a.texts[a.textIdx]
-		if len(cur.data) < cap(cur.data) {
-			return cur
-		}
-		a.textIdx++
-	}
-	s := &textSlab{data: make([]ast.Text, 0, textSlabCap)}
-	a.texts = append(a.texts, s)
-	return s
-}
-
-func (a *Arena) currentParagraphSlab() *paragraphSlab {
-	for a.paraIdx < len(a.paragraphs) {
-		cur := a.paragraphs[a.paraIdx]
-		if len(cur.data) < cap(cur.data) {
-			return cur
-		}
-		a.paraIdx++
-	}
-	s := &paragraphSlab{data: make([]ast.Paragraph, 0, paragraphSlabCap)}
-	a.paragraphs = append(a.paragraphs, s)
-	return s
-}
-
-func (a *Arena) currentSegmentsObjSlab() *segmentsObjSlab {
-	for a.segObjIdx < len(a.segmentsObjs) {
-		cur := a.segmentsObjs[a.segObjIdx]
-		if len(cur.data) < cap(cur.data) {
-			return cur
-		}
-		a.segObjIdx++
-	}
-	s := &segmentsObjSlab{data: make([]text.Segments, 0, segmentsObjSlabCap)}
-	a.segmentsObjs = append(a.segmentsObjs, s)
-	return s
+	em := a.emphases.alloc(emphasisSlabCap)
+	em.Level = level
+	return em
 }
 
 // allocSegmentBacking carves out the next n Segment slots from the
@@ -440,9 +346,5 @@ func (a *Arena) TextsAllocated() int {
 	if a == nil {
 		return 0
 	}
-	n := 0
-	for _, s := range a.texts {
-		n += len(s.data)
-	}
-	return n
+	return a.texts.used()
 }

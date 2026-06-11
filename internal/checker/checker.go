@@ -250,15 +250,21 @@ func runNodeCheckers(f *lint.File, nodeCheckers []*ruleSlot) {
 	releaseKindTable(t)
 }
 
-// dispatchKindScoped is the generic-free walk: entering visits only,
-// dispatched straight off the CSR table.
-func dispatchKindScoped(n ast.Node, f *lint.File, t *kindTable) {
+// dispatchScoped runs the kind-scoped rules registered for n's kind
+// (entering visit). Shared by both walk variants below.
+func dispatchScoped(n ast.Node, f *lint.File, t *kindTable) {
 	k := n.Kind()
 	for _, s := range t.scoped[t.offsets[k]:t.offsets[k+1]] {
 		if ds := s.nc.CheckNode(n, true, f); len(ds) > 0 {
 			s.diags = append(s.diags, ds...)
 		}
 	}
+}
+
+// dispatchKindScoped is the generic-free walk: entering visits only,
+// dispatched straight off the CSR table.
+func dispatchKindScoped(n ast.Node, f *lint.File, t *kindTable) {
+	dispatchScoped(n, f, t)
 	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
 		dispatchKindScoped(c, f, t)
 	}
@@ -267,12 +273,7 @@ func dispatchKindScoped(n ast.Node, f *lint.File, t *kindTable) {
 // dispatchWithGeneric preserves the full ast.Walk visit contract for
 // rules without a kind scope: every node, entering and leaving.
 func dispatchWithGeneric(n ast.Node, f *lint.File, t *kindTable) {
-	k := n.Kind()
-	for _, s := range t.scoped[t.offsets[k]:t.offsets[k+1]] {
-		if ds := s.nc.CheckNode(n, true, f); len(ds) > 0 {
-			s.diags = append(s.diags, ds...)
-		}
-	}
+	dispatchScoped(n, f, t)
 	for _, s := range t.generic {
 		if ds := s.nc.CheckNode(n, true, f); len(ds) > 0 {
 			s.diags = append(s.diags, ds...)

@@ -834,30 +834,40 @@ func cachedGlobMatches(res globResolution, f *lint.File, params map[string]strin
 	if f.RunCache == nil || res.gitignoreBase == "" {
 		return resolveGlobMatchesFrom(res, f, params)
 	}
-	var key strings.Builder
-	key.Grow(64)
-	key.WriteString(res.gitignoreBase)
-	key.WriteByte(0)
-	key.WriteString(res.fileDir)
-	key.WriteByte(0)
-	if res.rootRelative {
-		key.WriteByte(1)
-	}
-	if params["gitignore"] == "false" {
-		key.WriteByte(2)
-	}
-	for _, p := range res.includes {
-		key.WriteByte(0)
-		key.WriteString(p)
-	}
-	key.WriteByte(0)
-	for _, p := range res.excludes {
-		key.WriteByte(0)
-		key.WriteString(p)
-	}
-	return f.RunCache.GlobMatches(key.String(), func() []string {
+	return f.RunCache.GlobMatches(globMatchesKey(res, params), func() []string {
 		return resolveGlobMatchesFrom(res, f, params)
 	})
+}
+
+// globMatchesKey encodes the resolution identity unambiguously:
+// every variable-length component is length-prefixed, so a pattern or
+// path containing separator-like bytes (reachable through directive
+// params in hostile markdown) cannot make two different
+// configurations collide on one cache slot.
+func globMatchesKey(res globResolution, params map[string]string) string {
+	var key strings.Builder
+	key.Grow(64)
+	writeKeyPart := func(s string) {
+		key.WriteString(strconv.Itoa(len(s)))
+		key.WriteByte(':')
+		key.WriteString(s)
+	}
+	writeKeyPart(res.gitignoreBase)
+	writeKeyPart(res.fileDir)
+	if res.rootRelative {
+		key.WriteString("r1")
+	}
+	if params["gitignore"] == "false" {
+		key.WriteString("g0")
+	}
+	key.WriteString(strconv.Itoa(len(res.includes)))
+	for _, p := range res.includes {
+		writeKeyPart(p)
+	}
+	for _, p := range res.excludes {
+		writeKeyPart(p)
+	}
+	return key.String()
 }
 
 func resolveGlobMatchesFrom(res globResolution, f *lint.File, params map[string]string) []string {
@@ -1538,32 +1548,16 @@ func isExcluded(filePath string, patterns []string) bool {
 // gitignore semantics for directory-only patterns (e.g. "ignored/"),
 // ancestor directories are also checked with isDir=true.
 // isGitignoredMemo is isGitignored with a per-call directory-verdict
-// memo: matched paths cluster under few directories and share most of
-// their ancestor chains, so the per-path ancestor rescans collapse to
-// one IsIgnored probe per distinct directory. memo must be scoped to
-// one resolveGlobMatchesFrom call (one matcher, one base).
+// memo (gitignore.Matcher.DirChainIgnored): the per-path ancestor
+// rescans collapse to one IsIgnored probe per distinct directory.
+// memo must be scoped to one resolveGlobMatchesFrom call (one
+// matcher, one base).
 func isGitignoredMemo(matcher *gitignore.Matcher, base, matchedPath string, memo map[string]bool) bool {
 	abs := filepath.Join(base, matchedPath)
-	if dirChainIgnored(matcher, filepath.Dir(abs), memo) {
+	if matcher.DirChainIgnored(filepath.Dir(abs), memo) {
 		return true
 	}
 	return matcher.IsIgnored(abs, false)
-}
-
-// dirChainIgnored reports whether dir or any of its ancestors is
-// ignored as a directory, memoizing the verdict per directory.
-func dirChainIgnored(matcher *gitignore.Matcher, dir string, memo map[string]bool) bool {
-	if v, ok := memo[dir]; ok {
-		return v
-	}
-	var v bool
-	if parent := filepath.Dir(dir); parent == dir {
-		v = matcher.IsIgnored(dir, true)
-	} else {
-		v = dirChainIgnored(matcher, parent, memo) || matcher.IsIgnored(dir, true)
-	}
-	memo[dir] = v
-	return v
 }
 
 func isGitignored(matcher *gitignore.Matcher, base, matchedPath string) bool {

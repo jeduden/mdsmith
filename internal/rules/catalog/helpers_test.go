@@ -772,6 +772,39 @@ func TestDirChainIgnored_TerminatesAtFilesystemRoot(t *testing.T) {
 	memo := map[string]bool{}
 	// No ancestor matches: the walk must reach the filesystem root and
 	// terminate with a negative verdict for every level.
-	assert.False(t, dirChainIgnored(matcher, filepath.Join(root, "a", "b"), memo))
+	assert.False(t, matcher.DirChainIgnored(filepath.Join(root, "a", "b"), memo))
 	assert.NotEmpty(t, memo)
+}
+
+// TestGlobMatchesKey_UnambiguousEncoding pins the length-prefixed key
+// scheme: configurations that concatenation-style encodings conflate
+// (separator-like bytes inside patterns, marker bytes at component
+// boundaries) must produce distinct keys.
+func TestGlobMatchesKey_UnambiguousEncoding(t *testing.T) {
+	base := globResolution{gitignoreBase: "/abs/dir", fileDir: "docs"}
+	p := map[string]string{}
+
+	a := base
+	a.includes = []string{"\x01\x00x"}
+	b := base
+	b.includes = []string{"\x01", "x"}
+	assert.NotEqual(t, globMatchesKey(a, p), globMatchesKey(b, p),
+		"split pattern lists must not collide")
+
+	c := base
+	c.includes = []string{"x"}
+	c.rootRelative = true
+	d := base
+	d.includes = []string{"\x01x"}
+	assert.NotEqual(t, globMatchesKey(c, p), globMatchesKey(d, p),
+		"the root-relative marker must not collide with pattern bytes")
+
+	e := base
+	e.includes = []string{"x"}
+	f := base
+	f.excludes = []string{"x"}
+	assert.NotEqual(t, globMatchesKey(e, p), globMatchesKey(f, p),
+		"an include and an exclude of the same pattern must differ")
+
+	assert.Equal(t, globMatchesKey(a, p), globMatchesKey(a, p), "stable for equal inputs")
 }

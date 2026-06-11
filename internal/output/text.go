@@ -64,6 +64,15 @@ func sanitizeSourceLine(s string) string {
 	}, s)
 }
 
+// ANSI escape sequences the colored output is assembled from.
+const (
+	ansiCyan  = "\033[36m"
+	ansiYell  = "\033[33m"
+	ansiDim   = "\033[2m"
+	ansiRed   = "\033[31m"
+	ansiReset = "\033[0m"
+)
+
 // TextFormatter outputs diagnostics in human-readable text format.
 // When Color is true, the file location is printed in cyan and the rule ID in yellow.
 type TextFormatter struct {
@@ -104,11 +113,11 @@ func (f *TextFormatter) appendHeader(d *lint.Diagnostic) {
 	safeFile := sanitizeControl(d.File)
 	safeMsg := sanitizeControl(d.Message)
 	if f.Color {
-		f.buf = append(f.buf, "\033[36m"...)
+		f.buf = append(f.buf, ansiCyan...)
 		f.appendLocation(safeFile, d.Line, d.Column)
-		f.buf = append(f.buf, "\033[0m \033[33m"...)
+		f.buf = append(f.buf, ansiReset+" "+ansiYell...)
 		f.buf = append(f.buf, d.RuleID...)
-		f.buf = append(f.buf, "\033[0m "...)
+		f.buf = append(f.buf, ansiReset+" "...)
 	} else {
 		f.appendLocation(safeFile, d.Line, d.Column)
 		f.buf = append(f.buf, ' ')
@@ -142,9 +151,9 @@ func (f *TextFormatter) appendRelated(locs []lint.RelatedLocation) {
 			continue
 		}
 		if f.Color {
-			f.buf = append(f.buf, "  ↳ \033[2m"...)
+			f.buf = append(f.buf, "  ↳ "+ansiDim...)
 			f.buf = append(f.buf, body...)
-			f.buf = append(f.buf, "\033[0m\n"...)
+			f.buf = append(f.buf, ansiReset+"\n"...)
 		} else {
 			f.buf = append(f.buf, "  ↳ "...)
 			f.buf = append(f.buf, body...)
@@ -200,11 +209,11 @@ func (f *TextFormatter) appendExplanation(e *lint.Explanation) {
 	rule := sanitizeControl(e.Rule)
 	f.buf = append(f.buf, "  └─ "...)
 	if f.Color {
-		f.buf = append(f.buf, "\033[2m"...)
+		f.buf = append(f.buf, ansiDim...)
 		f.buf = append(f.buf, rule...)
 		f.buf = append(f.buf, ": "...)
 		f.buf = append(f.buf, body...)
-		f.buf = append(f.buf, "\033[0m\n"...)
+		f.buf = append(f.buf, ansiReset+"\n"...)
 		return
 	}
 	f.buf = append(f.buf, rule...)
@@ -253,13 +262,13 @@ func (f *TextFormatter) appendSourceLine(gutterWidth, lineNum int, line string, 
 	safeLine := sanitizeSourceLine(line)
 	dim := f.Color && !isDiag
 	if dim {
-		f.buf = append(f.buf, "\033[2m"...)
+		f.buf = append(f.buf, ansiDim...)
 	}
 	f.appendGutterNum(gutterWidth, lineNum)
 	f.buf = append(f.buf, " | "...)
 	f.buf = append(f.buf, safeLine...)
 	if dim {
-		f.buf = append(f.buf, "\033[0m"...)
+		f.buf = append(f.buf, ansiReset...)
 	}
 	f.buf = append(f.buf, '\n')
 }
@@ -295,7 +304,7 @@ func (f *TextFormatter) appendCaretLine(gutterWidth, column int) {
 		f.buf = append(f.buf, caretDots[:2*n]...)
 	}
 	if f.Color {
-		f.buf = append(f.buf, "\033[31m^\033[0m\n"...)
+		f.buf = append(f.buf, ansiRed+"^"+ansiReset+"\n"...)
 		return
 	}
 	f.buf = append(f.buf, "^\n"...)

@@ -546,3 +546,13 @@ func TestShortcutRef_PlaceholderLabel_NotFlagged(t *testing.T) {
 	r := &Rule{Shortcut: shortcutAlways, Placeholders: []string{"var-token"}}
 	assert.Empty(t, checkWith(t, src, r))
 }
+
+func TestReleaseBrackets_DropsOversizedBuffers(t *testing.T) {
+	// An over-cap buffer must not pin its capacity in the pool; the
+	// release is a silent drop and later collects still work.
+	big := make([]bracket, 0, maxPooledBrackets+1)
+	releaseBrackets(&big)
+	brs, buf := collectBrackets([]byte("[a] [b]"))
+	assert.Len(t, brs, 2)
+	releaseBrackets(buf)
+}

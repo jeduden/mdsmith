@@ -16,7 +16,7 @@ func TestResetReusesAllSlabsNotJustLast(t *testing.T) {
 	for i := 0; i < textSlabCap+1; i++ {
 		a.Text()
 	}
-	slabsAfterFill := len(a.texts)
+	slabsAfterFill := len(a.texts.list)
 	if slabsAfterFill < 2 {
 		t.Fatalf("expected at least 2 slabs after overfill, got %d", slabsAfterFill)
 	}
@@ -25,9 +25,9 @@ func TestResetReusesAllSlabsNotJustLast(t *testing.T) {
 		for i := 0; i < textSlabCap+1; i++ {
 			a.Text()
 		}
-		if len(a.texts) != slabsAfterFill {
+		if len(a.texts.list) != slabsAfterFill {
 			t.Fatalf("cycle %d: slab count grew from %d to %d; Reset must reuse earlier slabs",
-				cycle, slabsAfterFill, len(a.texts))
+				cycle, slabsAfterFill, len(a.texts.list))
 		}
 	}
 }
@@ -71,16 +71,16 @@ func TestInlineNodeSlabsReuseAcrossReset(t *testing.T) {
 		}
 	}
 	fill()
-	cs, ln, em := len(a.codeSpans), len(a.links), len(a.emphases)
+	cs, ln, em := len(a.codeSpans.list), len(a.links.list), len(a.emphases.list)
 	if cs < 2 || ln < 2 || em < 2 {
 		t.Fatalf("expected at least 2 slabs each, got %d %d %d", cs, ln, em)
 	}
 	for cycle := 0; cycle < 3; cycle++ {
 		a.Reset()
 		fill()
-		if len(a.codeSpans) != cs || len(a.links) != ln || len(a.emphases) != em {
+		if len(a.codeSpans.list) != cs || len(a.links.list) != ln || len(a.emphases.list) != em {
 			t.Fatalf("cycle %d: slab counts grew: %d %d %d",
-				cycle, len(a.codeSpans), len(a.links), len(a.emphases))
+				cycle, len(a.codeSpans.list), len(a.links.list), len(a.emphases.list))
 		}
 	}
 }
@@ -116,7 +116,7 @@ func TestStructuralSlabsAdvanceCursors(t *testing.T) {
 	for i := 0; i < segmentsObjSlabCap+1; i++ {
 		a.Segments()
 	}
-	ps, ss := len(a.paragraphs), len(a.segmentsObjs)
+	ps, ss := len(a.paragraphs.list), len(a.segmentsObjs.list)
 	if ps < 2 || ss < 2 {
 		t.Fatalf("expected at least 2 slabs each, got %d %d", ps, ss)
 	}
@@ -127,8 +127,8 @@ func TestStructuralSlabsAdvanceCursors(t *testing.T) {
 	for i := 0; i < segmentsObjSlabCap+1; i++ {
 		a.Segments()
 	}
-	if len(a.paragraphs) != ps || len(a.segmentsObjs) != ss {
-		t.Fatalf("slab counts grew across Reset: %d %d", len(a.paragraphs), len(a.segmentsObjs))
+	if len(a.paragraphs.list) != ps || len(a.segmentsObjs.list) != ss {
+		t.Fatalf("slab counts grew across Reset: %d %d", len(a.paragraphs.list), len(a.segmentsObjs.list))
 	}
 }
 

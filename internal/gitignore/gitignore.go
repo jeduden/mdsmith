@@ -240,6 +240,27 @@ func (m *Matcher) IsIgnored(absPath string, isDir bool) bool {
 	return ignored
 }
 
+// DirChainIgnored reports whether dir or any of its ancestors is
+// ignored as a directory, memoizing the per-directory verdict in
+// memo. Matched paths cluster under few directories and share most
+// of their ancestor chains, so callers that test many paths against
+// one matcher (the catalog glob filter) pass one memo per batch and
+// pay one IsIgnored probe per distinct directory. memo must not be
+// shared across matchers.
+func (m *Matcher) DirChainIgnored(dir string, memo map[string]bool) bool {
+	if v, ok := memo[dir]; ok {
+		return v
+	}
+	var v bool
+	if parent := filepath.Dir(dir); parent == dir {
+		v = m.IsIgnored(dir, true)
+	} else {
+		v = m.DirChainIgnored(parent, memo) || m.IsIgnored(dir, true)
+	}
+	memo[dir] = v
+	return v
+}
+
 // matchRule checks whether a single rule matches the given absolute path.
 func matchRule(r ignoreRule, absPath string) bool {
 	// Compute the path relative to the rule's base directory.

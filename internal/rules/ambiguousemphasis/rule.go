@@ -64,7 +64,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		if _, ok := skip[lineNum]; ok {
 			continue
 		}
-		masked := maskCodeSpans(line, f.LineStartOffset(i), codeSpanRanges)
+		masked := lint.MaskRanges(line, f.LineStartOffset(i), codeSpanRanges)
 		diags = append(diags, r.checkLine(f, lineNum, masked)...)
 	}
 
@@ -307,45 +307,6 @@ func gapNonEmptyAllNonWhitespace(b []byte) bool {
 		}
 	}
 	return true
-}
-
-// maskCodeSpans returns a copy of line with bytes that lie inside a
-// code span content range (f.CodeSpanContentRanges) replaced by a
-// space. Spaces never participate in emphasis detection, so the mask
-// removes the bytes from delimiter accounting without disturbing
-// column positions. lineStart is the line's byte offset in source
-// (f.LineStartOffset).
-func maskCodeSpans(line []byte, lineStart int, ranges []lint.Range) []byte {
-	if len(ranges) == 0 {
-		return line
-	}
-	lineEnd := lineStart + len(line)
-
-	var out []byte
-	for _, r := range ranges {
-		if r.End <= lineStart || r.Start >= lineEnd {
-			continue
-		}
-		if out == nil {
-			out = make([]byte, len(line))
-			copy(out, line)
-		}
-		from := r.Start - lineStart
-		to := r.End - lineStart
-		if from < 0 {
-			from = 0
-		}
-		if to > len(out) {
-			to = len(out)
-		}
-		for i := from; i < to; i++ {
-			out[i] = ' '
-		}
-	}
-	if out == nil {
-		return line
-	}
-	return out
 }
 
 // ApplySettings implements rule.Configurable.
