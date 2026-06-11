@@ -21,9 +21,10 @@ trigger false positives.
 | `placeholder-section` | A heading whose text is exactly `...`                            |
 | `cue-frontmatter`     | CUE constraint expressions in front-matter values                |
 
-The vocabulary is closed. Adding a token requires one change in
-`internal/placeholders/placeholders.go` plus per-rule opt-ins; no rule
-hardcodes token names in its own logic.
+The vocabulary is closed: the token list lives in one place inside
+the engine, and no rule hardcodes token names in its own logic.
+Adding a token requires updating that shared list and opting each
+relevant rule in.
 
 ## The `placeholders:` setting contract
 

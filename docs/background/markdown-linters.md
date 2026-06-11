@@ -530,18 +530,6 @@ R Markdown constructs the others flatten away.
 | Front-matter schema     | yes          | no                   | no                   | no           |
 | Quarto / R Markdown     | no           | Quarto flavor        | no                   | yes (CST)    |
 
-**Presentation notes (what to learn).** All three READMEs
-win on focus. mado opens with one sentence and a benchmark
-table — no feature wall before the proof. rumdl leads with
-a single positioning line ("built for speed with Rust"),
-names its inspiration (ruff), and states the drop-in promise
-up front. panache leads with one precise sentence that names
-its three jobs and its one technical edge (the lossless CST).
-mdsmith's own README applies the same lesson: a one-line
-tagline, then a reproducible number (about 0.5 s, an order of
-magnitude faster than Node markdownlint) and a note that it
-does more per file than the Rust linters.
-
 ### Prose and Readability
 
 | Capability        | mdsmith                         | Vale                                  | LLM |
@@ -609,8 +597,8 @@ mdsmith has the strongest cross-file and project-level
 features. None of the Rust linters cross file boundaries:
 they lint each file in isolation. The merge driver and
 regenerable sections are unique to mdsmith. The `list
-query` subcommand ([plan 78][plan78]) selects files by a
-CUE expression over front matter (e.g.
+query` subcommand selects files by a CUE expression over
+front matter (e.g.
 `mdsmith list query 'status: "✅"' plan/`), which no other
 tool in this comparison offers natively.
 
@@ -738,10 +726,10 @@ Most teams benefit from layering tools. Common pairings:
 - **Full stack**: mdsmith (structure + readability) + Vale
   (style) + Prettier (formatting)
 
-mdsmith's conciseness-scoring rule ([MDS029][mds029]) is a
-heuristic prototype aiming to bring LLM-grade quality
-checks into an offline tool. Classifier-backed scoring is
-a future step to bridge static rules and LLM review.
+mdsmith's conciseness-scoring rule ([MDS029][mds029]) is
+an off-by-default, experimental heuristic based on static
+signals. It catches structural verbosity. Semantic issues
+still require an LLM.
 
 ## Front Matter and Document Templates
 
@@ -862,10 +850,8 @@ mdsmith ran a
 [10-finding adversarial review][mdsmith-sec]. It
 covered the parser, front-matter loader, terminal
 output, file walker, include directive, and CUE
-schemas. Findings were addressed in
-[plan 83][plan83] (security hardening batch) and
-[plan 84][plan84] (symlink default-deny). The
-current posture:
+schemas. All findings were fixed. The current
+posture:
 
 | Hardening                          | mdsmith                | markdownlint    | remark-lint      | Prettier         | Vale      |
 | ---------------------------------- | ---------------------- | --------------- | ---------------- | ---------------- | --------- |
@@ -898,26 +884,17 @@ linter as a parser of untrusted input. mdsmith aims to
 fail safely on adversarial input rather than crash or
 escape the repo root.
 
-## Future Plans
+## Versioning
 
-Open work is tracked in [PLAN.md](../../PLAN.md). The
-`<?build?>` directive and its recipe-safety rule already
-ship. The rest of the build subsystem matters most here:
-
-- the `mdsmith build` subcommand ([plan 102][plan102])
-- build-target staleness and dependency tracking
-  ([plan 103][plan103])
-- before/after lifecycle hooks ([plan 104][plan104])
-
-Together they close part of the gap with Hugo: deriving
-artifacts from Markdown sources without leaving the linter.
-
-Pin a version (`go install github.com/jeduden/mdsmith/cmd/mdsmith@vX.Y.Z`) if
-you need a stable rule set while these land.
+The `<?build?>` directive and its recipe-safety rule
+([MDS040][mds040]) ship today. Pin a version
+(`go install github.com/jeduden/mdsmith/cmd/mdsmith@vX.Y.Z`)
+if you need a stable rule set across upgrades.
 
 <!-- mdsmith rule links -->
 [mds001]: ../../internal/rules/MDS001-line-length/README.md
 [mds019]: ../../internal/rules/MDS019-catalog/README.md
+[mds040]: ../../internal/rules/MDS040-recipe-safety/README.md
 [mds020]: ../../internal/rules/MDS020-required-structure/README.md
 [mds021]: ../../internal/rules/MDS021-include/README.md
 [mds023]: ../../internal/rules/MDS023-paragraph-readability/README.md
@@ -988,14 +965,8 @@ you need a stable rule set while these land.
 [rumdl]: https://github.com/rvben/rumdl
 [mado]: https://github.com/akiomik/mado
 [panache]: https://panache.bz/
-<!-- mdsmith plan + security + reference links -->
+<!-- mdsmith security + reference links -->
 [mdsmith-sec]: ../security/2026-04-05-adversarial-markdown/report.md
 [conventions]: ../reference/conventions.md
 [bench]: ../research/benchmarks/README.md
 [mdcov]: ../research/markdownlint-coverage/README.md
-[plan78]: ../../plan/78_query-command.md
-[plan83]: ../../plan/83_security-hardening-batch.md
-[plan84]: ../../plan/84_symlink-default-deny.md
-[plan102]: ../../plan/102_build-subcommand.md
-[plan103]: ../../plan/103_build-staleness-and-deps.md
-[plan104]: ../../plan/104_build-lifecycle-hooks.md
