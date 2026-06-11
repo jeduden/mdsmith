@@ -86,11 +86,15 @@ on `asdf plugin add mdsmith`.
    to drop the "pending follow-up" badge from the
    asdf and short-mise sections once each registry PR
    merges.
-6. Update the release-workflow smoke-test matrix in
-   [release.yml](../.github/workflows/release.yml)
+6. [x] Update the release-workflow smoke-test matrix
+   in [release.yml](../.github/workflows/release.yml)
    to also exercise `asdf install mdsmith X.Y.Z` and
    the bare `mise use mdsmith@X.Y.Z` form, in
-   addition to the `ubi:` form already covered.
+   addition to the `ubi:` form already covered. The
+   `asdf` entry is required (installs day one via the
+   explicit plugin URL); the bare `mise-registry`
+   entry is best-effort — it warns and exits 0 until
+   the jdx/mise registry PR merges.
 
 ## Acceptance Criteria
 
@@ -107,7 +111,10 @@ on `asdf plugin add mdsmith`.
 - [ ] [docs/guides/install.md](../docs/guides/install.md)
       no longer flags asdf or short-form mise as
       pending follow-ups.
-- [ ] The smoke-test matrix in
+- [x] The smoke-test matrix in
       [release.yml](../.github/workflows/release.yml)
       runs `asdf install mdsmith` and bare
       `mise use mdsmith@VER` channels green on a tag.
+      The `asdf` channel is required-green; the bare
+      `mise-registry` channel is best-effort until
+      the jdx/mise registry PR merges.

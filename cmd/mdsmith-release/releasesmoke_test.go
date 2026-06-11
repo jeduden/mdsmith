@@ -15,6 +15,7 @@ jobs:
           - channel: npm
           - channel: pip
           - channel: mise
+          - channel: asdf
           - channel: go
 `
 

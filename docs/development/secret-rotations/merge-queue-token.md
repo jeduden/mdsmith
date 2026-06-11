@@ -8,7 +8,7 @@ periodDays: 335
 provider: GitHub
 issuerUrl: "https://github.com/settings/personal-access-tokens"
 usedBy: "merge-queue.yml (jeduden/merge-queue-action)"
-scope: "Contents: read+write; Pull requests: read+write (jeduden/mdsmith only)"
+scope: "Contents: read+write; Pull requests: read+write; Workflows: read+write (jeduden/mdsmith only)"
 releaseEnvScoped: false
 ---
 # MERGE_QUEUE_TOKEN
@@ -31,6 +31,7 @@ Settings on issuance:
 - **Repository permissions:**
   - Contents: Read and write
   - Pull requests: Read and write
+  - Workflows: Read and write
   - Metadata: Read (automatic)
 - **Expiration:** 1 year.
 
