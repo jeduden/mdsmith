@@ -369,11 +369,12 @@ func (r *Rule) scanShortcutRefs(
 	shortcutMode string,
 ) []lint.Diagnostic {
 	source := f.Source
-	// Build the set of definition-line numbers via a byte scan; the
-	// previous regex-driven helper allocated the regex result plus a
-	// per-line `string` for the destination-presence check on every
-	// candidate line.
-	defLines := collectRefDefLines(source)
+	// The definition-line set is only consulted for candidates that
+	// survive every cheaper filter; on bracket-dense prose almost
+	// none do, so the full-source scan is deferred until the first
+	// survivor needs it.
+	var defLines map[int]struct{}
+	defLinesBuilt := false
 
 	var diags []lint.Diagnostic
 	i := 0
@@ -413,6 +414,10 @@ func (r *Rule) scanShortcutRefs(
 			inCodeSpan(spans, open) || isEscapedBracket(source, open) {
 			i = advanceBracket(brs, i+1, ca)
 			continue
+		}
+		if !defLinesBuilt {
+			defLines = collectRefDefLines(source)
+			defLinesBuilt = true
 		}
 		if _, ok := defLines[line]; ok {
 			i = advanceBracket(brs, i+1, ca)
