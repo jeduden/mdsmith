@@ -115,10 +115,10 @@ func findCodeSpanForTest(n ast.Node, out **ast.CodeSpan) {
 func TestLineStartOffset(t *testing.T) {
 	src := "ab\ncdef\n\nx\n"
 	f := newCodeSpanFile(t, src)
-	assert.Equal(t, 0, f.LineStartOffset(0))  // "ab"
-	assert.Equal(t, 3, f.LineStartOffset(1))  // "cdef"
-	assert.Equal(t, 8, f.LineStartOffset(2))  // ""
-	assert.Equal(t, 9, f.LineStartOffset(3))  // "x"
+	assert.Equal(t, 0, f.LineStartOffset(0)) // "ab"
+	assert.Equal(t, 3, f.LineStartOffset(1)) // "cdef"
+	assert.Equal(t, 8, f.LineStartOffset(2)) // ""
+	assert.Equal(t, 9, f.LineStartOffset(3)) // "x"
 	// Past the last line: clamped to len(Source).
 	assert.Equal(t, len(src), f.LineStartOffset(99))
 	assert.Equal(t, 0, f.LineStartOffset(-1), "negative index clamps to 0")
