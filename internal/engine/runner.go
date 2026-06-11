@@ -157,7 +157,20 @@ func (r *Runner) Run(paths []string) *Result {
 	res.FilesChecked = len(work)
 
 	sink := r.log()
-	for _, o := range r.runFiles(work, cache) {
+	outcomes := r.runFiles(work, cache)
+	// Pre-size the merged slice: appending 50+ files' diagnostics
+	// through append's geometric growth re-copied the whole set
+	// several times on diagnostic-heavy runs.
+	total := len(res.Diagnostics)
+	for i := range outcomes {
+		total += len(outcomes[i].diags)
+	}
+	if cap(res.Diagnostics) < total {
+		merged := make([]lint.Diagnostic, len(res.Diagnostics), total)
+		copy(merged, res.Diagnostics)
+		res.Diagnostics = merged
+	}
+	for _, o := range outcomes {
 		if len(o.log) > 0 && sink.W != nil {
 			_, _ = sink.W.Write(o.log)
 		}

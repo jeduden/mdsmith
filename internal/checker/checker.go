@@ -234,25 +234,58 @@ func releaseKindTable(t *kindTable) {
 // dispatching each node to the kind-scoped rules registered for its
 // kind (entering visits only) and to every generic NodeChecker (both
 // visit directions), appending diagnostics into each rule's own slot.
+//
+// The walk is a direct recursion rather than ast.Walk: the closure
+// indirection and the unconditional leaving-visit callback cost real
+// time at one call per node on every file, and with no generic
+// checkers (the production rule set) the leaving visit dispatches
+// nothing at all. Node order matches ast.Walk's pre-order exactly.
 func runNodeCheckers(f *lint.File, nodeCheckers []*ruleSlot) {
 	t := buildKindTable(nodeCheckers)
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if entering {
-			k := n.Kind()
-			for _, s := range t.scoped[t.offsets[k]:t.offsets[k+1]] {
-				if ds := s.nc.CheckNode(n, true, f); len(ds) > 0 {
-					s.diags = append(s.diags, ds...)
-				}
-			}
-		}
-		for _, s := range t.generic {
-			if ds := s.nc.CheckNode(n, entering, f); len(ds) > 0 {
-				s.diags = append(s.diags, ds...)
-			}
-		}
-		return ast.WalkContinue, nil
-	})
+	if len(t.generic) == 0 {
+		dispatchKindScoped(f.AST, f, t)
+	} else {
+		dispatchWithGeneric(f.AST, f, t)
+	}
 	releaseKindTable(t)
+}
+
+// dispatchKindScoped is the generic-free walk: entering visits only,
+// dispatched straight off the CSR table.
+func dispatchKindScoped(n ast.Node, f *lint.File, t *kindTable) {
+	k := n.Kind()
+	for _, s := range t.scoped[t.offsets[k]:t.offsets[k+1]] {
+		if ds := s.nc.CheckNode(n, true, f); len(ds) > 0 {
+			s.diags = append(s.diags, ds...)
+		}
+	}
+	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+		dispatchKindScoped(c, f, t)
+	}
+}
+
+// dispatchWithGeneric preserves the full ast.Walk visit contract for
+// rules without a kind scope: every node, entering and leaving.
+func dispatchWithGeneric(n ast.Node, f *lint.File, t *kindTable) {
+	k := n.Kind()
+	for _, s := range t.scoped[t.offsets[k]:t.offsets[k+1]] {
+		if ds := s.nc.CheckNode(n, true, f); len(ds) > 0 {
+			s.diags = append(s.diags, ds...)
+		}
+	}
+	for _, s := range t.generic {
+		if ds := s.nc.CheckNode(n, true, f); len(ds) > 0 {
+			s.diags = append(s.diags, ds...)
+		}
+	}
+	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+		dispatchWithGeneric(c, f, t)
+	}
+	for _, s := range t.generic {
+		if ds := s.nc.CheckNode(n, false, f); len(ds) > 0 {
+			s.diags = append(s.diags, ds...)
+		}
+	}
 }
 
 // runNonNodeCheckers fills the non-NodeChecker slots' diags fields.
