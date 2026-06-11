@@ -30,12 +30,12 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	piLines := lint.CollectPIBlockLines(f)
 	var diags []lint.Diagnostic
 	for i, rawLine := range f.Lines {
-		// Candidate gate before the per-line set lookups: checkLine only
-		// acts on lines whose first non-blank byte is '#', and a line
-		// whose first byte is neither '#' nor blank cannot be one. This
-		// one-byte test removes two map probes per ordinary prose line.
-		if len(rawLine) == 0 ||
-			(rawLine[0] != '#' && rawLine[0] != ' ' && rawLine[0] != '\t') {
+		// Candidate gate before the per-line set lookups: checkLine
+		// only acts on lines whose first non-blank byte is '#'.
+		// Running its own prefix test here removes the two map probes
+		// for every prose line, including indented ones.
+		leading := leadingSpaces(rawLine)
+		if leading >= len(rawLine) || rawLine[leading] != '#' {
 			continue
 		}
 		lineNum := i + 1

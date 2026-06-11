@@ -349,12 +349,22 @@ func FilterGeneratedDiags(diags []lint.Diagnostic, ranges []lint.LineRange) []li
 
 // PopulateSourceContext fills each diagnostic's SourceLines and
 // SourceStartLine with surrounding context from f.Lines.
+//
+// Each window is a sub-slice of the File's cached zero-copy line
+// strings (lint.(*File).LineStrings), so populating context costs no
+// allocation per diagnostic. The strings alias the source buffer —
+// see LineStrings for the immutability invariant — and stay valid
+// for as long as the diagnostics live.
 func PopulateSourceContext(f *lint.File, diags []lint.Diagnostic, context int) {
+	if len(diags) == 0 {
+		return
+	}
+	lineStrings := f.LineStrings()
 	// bytes.Split produces an empty trailing element when source ends
 	// with a newline. Exclude it so context windows don't include a
 	// phantom empty line.
-	numLines := len(f.Lines)
-	if numLines > 0 && len(f.Lines[numLines-1]) == 0 {
+	numLines := len(lineStrings)
+	if numLines > 0 && len(lineStrings[numLines-1]) == 0 {
 		numLines--
 	}
 
@@ -365,11 +375,7 @@ func PopulateSourceContext(f *lint.File, diags []lint.Diagnostic, context int) {
 		}
 		start := max(0, lineIdx-context)
 		end := min(numLines, lineIdx+context+1)
-		lines := make([]string, end-start)
-		for j := start; j < end; j++ {
-			lines[j-start] = string(f.Lines[j])
-		}
-		diags[i].SourceLines = lines
+		diags[i].SourceLines = lineStrings[start:end:end]
 		diags[i].SourceStartLine = start + f.LineOffset + 1
 	}
 }

@@ -123,3 +123,25 @@ func TestLineStartOffset(t *testing.T) {
 	assert.Equal(t, len(src), f.LineStartOffset(99))
 	assert.Equal(t, 0, f.LineStartOffset(-1), "negative index clamps to 0")
 }
+
+func TestLineStrings_ZeroCopyViews(t *testing.T) {
+	src := "alpha\nbeta\n\ngamma\n"
+	f := newCodeSpanFile(t, src)
+	ls := f.LineStrings()
+	require.Len(t, ls, len(f.Lines))
+	assert.Equal(t, "alpha", ls[0])
+	assert.Equal(t, "beta", ls[1])
+	assert.Equal(t, "", ls[2])
+	assert.Equal(t, "gamma", ls[3])
+	assert.Equal(t, "", ls[4], "trailing empty split element preserved")
+	// Memoized: same backing on the second call.
+	again := f.LineStrings()
+	assert.Same(t, &ls[0], &again[0])
+	// Zero further allocations once built.
+	assert.Zero(t, testing.AllocsPerRun(50, func() { _ = f.LineStrings() }))
+}
+
+func TestLineStrings_EmptyFile(t *testing.T) {
+	f := &File{}
+	assert.Nil(t, f.LineStrings())
+}

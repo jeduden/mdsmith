@@ -57,28 +57,35 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 // checkEmpty walks real link/image nodes and flags an empty or `#`-only
 // destination, or (links only) empty visible text. Empty image alt text
 // with a valid destination is MDS032's concern, not this rule's.
+// Direct recursion (entering visits only) replaces ast.Walk: the rule
+// only reacts to two node types, and the closure-driven double visit
+// per node was measurable on every file.
 func (r *Rule) checkEmpty(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		switch node := n.(type) {
-		case *ast.Image:
-			if emptyDestination(node.Destination) {
-				diags = append(diags, r.diag(f, nodeLine(node, f), "empty image destination"))
-			}
-		case *ast.Link:
-			switch {
-			case emptyDestination(node.Destination):
-				diags = append(diags, r.diag(f, nodeLine(node, f), "empty link destination"))
-			case !hasVisibleContent(node, f.Source):
-				diags = append(diags, r.diag(f, nodeLine(node, f), "empty link text"))
-			}
-		}
-		return ast.WalkContinue, nil
-	})
+	r.checkEmptyNode(f.AST, f, &diags)
 	return diags
+}
+
+func (r *Rule) checkEmptyNode(n ast.Node, f *lint.File, diags *[]lint.Diagnostic) {
+	if n == nil {
+		return
+	}
+	switch node := n.(type) {
+	case *ast.Image:
+		if emptyDestination(node.Destination) {
+			*diags = append(*diags, r.diag(f, nodeLine(node, f), "empty image destination"))
+		}
+	case *ast.Link:
+		switch {
+		case emptyDestination(node.Destination):
+			*diags = append(*diags, r.diag(f, nodeLine(node, f), "empty link destination"))
+		case !hasVisibleContent(node, f.Source):
+			*diags = append(*diags, r.diag(f, nodeLine(node, f), "empty link text"))
+		}
+	}
+	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+		r.checkEmptyNode(c, f, diags)
+	}
 }
 
 func (r *Rule) diag(f *lint.File, line int, msg string) lint.Diagnostic {

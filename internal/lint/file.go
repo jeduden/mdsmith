@@ -117,6 +117,12 @@ type File struct {
 	codeSpansDone   atomic.Bool
 	codeSpansMu     sync.Mutex
 
+	// lineStrings caches the zero-copy string views of Lines behind
+	// LineStrings. atomic.Bool + mutex matches the caches above.
+	lineStrings     []string
+	lineStringsDone atomic.Bool
+	lineStringsMu   sync.Mutex
+
 	// parseCtx is the goldmark parser.Context produced by the one
 	// parse NewFile already runs. It is the source for LinkReferences
 	// so MDS053/MDS054 no longer each re-parse the whole document

@@ -1,6 +1,8 @@
 package lint
 
 import (
+	"unsafe"
+
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
@@ -105,4 +107,42 @@ func (f *File) LineStartOffset(i int) int {
 		return len(f.Source)
 	}
 	return nl[i-1] + 1
+}
+
+// LineStrings returns f.Lines as zero-copy strings (one per line,
+// same indexes). Computed once per File and cached; the returned
+// slice is shared read-only. Consumers that hand out per-diagnostic
+// context windows slice it instead of allocating a fresh []string
+// with copied lines per diagnostic.
+//
+// The strings alias the source buffer via unsafe.String. Invariant:
+// the source is never mutated after the File is built — check never
+// writes it and fix builds replacement content in fresh buffers — so
+// the views stay valid for as long as any consumer holds them.
+func (f *File) LineStrings() []string {
+	if f.lineStringsDone.Load() {
+		return f.lineStrings
+	}
+	f.lineStringsMu.Lock()
+	defer f.lineStringsMu.Unlock()
+	if !f.lineStringsDone.Load() {
+		defer f.lineStringsDone.Store(true)
+		if len(f.Lines) > 0 {
+			ls := make([]string, len(f.Lines))
+			for i, b := range f.Lines {
+				ls[i] = BytesView(b)
+			}
+			f.lineStrings = ls
+		}
+	}
+	return f.lineStrings
+}
+
+// BytesView returns b's bytes as a string without copying. The caller
+// must guarantee b is never mutated while the string is reachable.
+func BytesView(b []byte) string {
+	if len(b) == 0 {
+		return ""
+	}
+	return unsafe.String(&b[0], len(b))
 }
