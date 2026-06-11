@@ -12,21 +12,19 @@ import (
 // Size budgets for the shipping standard-Go WASM artifact, built with
 // the same -trimpath -ldflags="-s -w" flags as build.sh.
 //
-// These are REGRESSION GUARDS at the artifact's current real size, not
-// the plan's original ≤ 18 MB target. The engine pulls in CUE (95
-// packages) plus protobuf via internal/schema (MDS020), internal/
-// fieldinterp (catalog/include interpolation), and internal/query;
-// none can be build-tagged out without disabling those features.
-// Reaching 18 MB needs a CUE-free engine path, deferred to follow-up
-// work (see plan/218). Until then this test fails only if the artifact
-// GROWS past the ceilings below, so an accidental dependency bloat is
-// caught in CI.
+// With cuelang.org/go removed (plan 218/240 — the in-house cue/cuelite
+// engine replaced it), the artifact dropped from ~37.9 MB raw to the
+// sizes below. The plan-215 standard-Go target was ≤ 18 MB; the
+// artifact now clears it comfortably. These ceilings are REGRESSION
+// GUARDS set just above the measured size, so an accidental dependency
+// bloat is caught in CI.
 //
-// Current (Go 1.25, stripped): ~37.9 MB raw / ~8.2 MB gzipped. The
-// ceilings leave ~10% headroom for toolchain-version drift.
+// Measured (Go 1.25, stripped): ~11.2 MB raw / ~2.8 MB gzipped. The
+// ceilings leave headroom for toolchain-version drift while staying
+// under the 18 MB plan-215 budget.
 const (
-	maxWASMRawBytes  = 42 * 1024 * 1024 // 42 MiB
-	maxWASMGzipBytes = 9 * 1024 * 1024  // 9 MiB
+	maxWASMRawBytes  = 14 * 1024 * 1024 // 14 MiB (< 18 MiB plan-215 budget)
+	maxWASMGzipBytes = 4 * 1024 * 1024  // 4 MiB
 )
 
 // TestWASMArtifactSizeBudget builds the shipping WASM artifact with the
@@ -71,5 +69,38 @@ func TestWASMArtifactSizeBudget(t *testing.T) {
 	if gz > maxWASMGzipBytes {
 		t.Errorf("wasm gzip size %d bytes exceeds budget %d (%.1f MiB > %.1f MiB)",
 			gz, maxWASMGzipBytes, float64(gz)/mib, float64(maxWASMGzipBytes)/mib)
+	}
+}
+
+// maxTinyGoWASMBytes is the plan-215 tinygo budget. With cuelang.org/go
+// removed and the sync.Map.CompareAndDelete lever swapped for a
+// mutex-guarded map (plan 240), `tinygo build -target wasm
+// ./cmd/mdsmith-wasm` is reachable, and the artifact must fit ≤ 8 MiB.
+const maxTinyGoWASMBytes = 8 * 1024 * 1024 // 8 MiB
+
+// TestTinyGoWASMArtifactSizeBudget builds the WASM artifact with tinygo and
+// asserts it stays within the plan-215 8 MiB budget. It SKIPS when tinygo is
+// not installed (the standard-Go test job and the offline dev container have
+// no tinygo), so the tinygo budget is enforced only on a runner that ships
+// tinygo — the release/wasm CI job. The plan-240 dependency drop and the
+// runcache lever are what make this build succeed at all.
+func TestTinyGoWASMArtifactSizeBudget(t *testing.T) {
+	if _, err := exec.LookPath("tinygo"); err != nil {
+		t.Skip("tinygo not installed; the tinygo size budget is enforced on the CI runner that ships tinygo")
+	}
+	out := filepath.Join(t.TempDir(), "mdsmith-tinygo.wasm")
+	cmd := exec.Command("tinygo", "build", "-target", "wasm", "-o", out, ".")
+	if b, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("building tinygo wasm artifact: %v\n%s", err, b)
+	}
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("reading tinygo wasm artifact: %v", err)
+	}
+	const mib = 1024 * 1024
+	t.Logf("tinygo wasm artifact: raw=%d bytes (%.1f MiB)", len(data), float64(len(data))/mib)
+	if len(data) > maxTinyGoWASMBytes {
+		t.Errorf("tinygo wasm raw size %d bytes exceeds budget %d (%.1f MiB > %.1f MiB)",
+			len(data), maxTinyGoWASMBytes, float64(len(data))/mib, float64(maxTinyGoWASMBytes)/mib)
 	}
 }
