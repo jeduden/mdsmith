@@ -62,6 +62,16 @@ type Arena struct {
 	paragraphs   []*paragraphSlab
 	segmentsObjs []*segmentsObjSlab
 	segments     []*segmentSlab
+
+	// Per-type cursors index the slab the next allocation fills.
+	// Reset rewinds them to zero so a reused arena (the engine's
+	// per-file pool) refills its existing slabs from the start
+	// instead of only ever reusing the last one and growing the
+	// list on every cycle.
+	textIdx    int
+	paraIdx    int
+	segObjIdx  int
+	segmentIdx int
 }
 
 type textSlab struct {
@@ -118,6 +128,10 @@ func (a *Arena) Reset() {
 	for _, s := range a.segments {
 		s.data = s.data[:0]
 	}
+	a.textIdx = 0
+	a.paraIdx = 0
+	a.segObjIdx = 0
+	a.segmentIdx = 0
 }
 
 // Text returns a zero-initialised *ast.Text from the arena. With a
@@ -242,11 +256,12 @@ func (a *Arena) Grow(old []text.Segment, next text.Segment) []text.Segment {
 }
 
 func (a *Arena) currentTextSlab() *textSlab {
-	if n := len(a.texts); n > 0 {
-		cur := a.texts[n-1]
+	for a.textIdx < len(a.texts) {
+		cur := a.texts[a.textIdx]
 		if len(cur.data) < cap(cur.data) {
 			return cur
 		}
+		a.textIdx++
 	}
 	s := &textSlab{data: make([]ast.Text, 0, textSlabCap)}
 	a.texts = append(a.texts, s)
@@ -254,11 +269,12 @@ func (a *Arena) currentTextSlab() *textSlab {
 }
 
 func (a *Arena) currentParagraphSlab() *paragraphSlab {
-	if n := len(a.paragraphs); n > 0 {
-		cur := a.paragraphs[n-1]
+	for a.paraIdx < len(a.paragraphs) {
+		cur := a.paragraphs[a.paraIdx]
 		if len(cur.data) < cap(cur.data) {
 			return cur
 		}
+		a.paraIdx++
 	}
 	s := &paragraphSlab{data: make([]ast.Paragraph, 0, paragraphSlabCap)}
 	a.paragraphs = append(a.paragraphs, s)
@@ -266,11 +282,12 @@ func (a *Arena) currentParagraphSlab() *paragraphSlab {
 }
 
 func (a *Arena) currentSegmentsObjSlab() *segmentsObjSlab {
-	if n := len(a.segmentsObjs); n > 0 {
-		cur := a.segmentsObjs[n-1]
+	for a.segObjIdx < len(a.segmentsObjs) {
+		cur := a.segmentsObjs[a.segObjIdx]
 		if len(cur.data) < cap(cur.data) {
 			return cur
 		}
+		a.segObjIdx++
 	}
 	s := &segmentsObjSlab{data: make([]text.Segments, 0, segmentsObjSlabCap)}
 	a.segmentsObjs = append(a.segmentsObjs, s)
@@ -291,11 +308,12 @@ func (a *Arena) allocSegmentBacking(n int) []text.Segment {
 }
 
 func (a *Arena) currentSegmentSlab(needed int) *segmentSlab {
-	if n := len(a.segments); n > 0 {
-		cur := a.segments[n-1]
+	for a.segmentIdx < len(a.segments) {
+		cur := a.segments[a.segmentIdx]
 		if cap(cur.data)-len(cur.data) >= needed {
 			return cur
 		}
+		a.segmentIdx++
 	}
 	sz := segmentSlabCap
 	if needed > sz {
@@ -304,4 +322,19 @@ func (a *Arena) currentSegmentSlab(needed int) *segmentSlab {
 	s := &segmentSlab{data: make([]text.Segment, 0, sz)}
 	a.segments = append(a.segments, s)
 	return s
+}
+
+// TextsAllocated reports how many Text nodes have been carved from
+// the arena since the last Reset. Introspection for tests that need
+// to prove a parse actually drew from a caller-supplied arena;
+// nil-safe like every other method.
+func (a *Arena) TextsAllocated() int {
+	if a == nil {
+		return 0
+	}
+	n := 0
+	for _, s := range a.texts {
+		n += len(s.data)
+	}
+	return n
 }

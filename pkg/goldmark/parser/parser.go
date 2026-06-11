@@ -910,6 +910,14 @@ func (p *parser) addASTTransformer(v util.PrioritizedValue, options map[OptionNa
 // A ParseConfig struct is a data structure that holds configuration of the Parser.Parse.
 type ParseConfig struct {
 	Context Context
+	// Arena, when non-nil, is the caller-owned slab allocator this
+	// Parse draws AST nodes from instead of building a fresh one.
+	// The caller owns the lifetime: it must not Reset or reuse the
+	// arena until every reference to the returned AST is dropped.
+	// Ignored when the parser was built WithNoArena or under the
+	// goldmark_upstream build tag, so the equivalence harness keeps
+	// exercising the genuine upstream allocation path.
+	Arena *arena.Arena
 }
 
 // A ParseOption is a functional option type for the Parser.Parse.
@@ -920,6 +928,17 @@ type ParseOption func(c *ParseConfig)
 func WithContext(context Context) ParseOption {
 	return func(c *ParseConfig) {
 		c.Context = context
+	}
+}
+
+// WithArena is a functional option that supplies a caller-owned
+// arena for this Parse call (see ParseConfig.Arena for the lifetime
+// contract). Callers that parse many short-lived documents — the
+// engine's per-file lint pass — pool arenas across parses so slab
+// memory is reused instead of re-allocated per file.
+func WithArena(a *arena.Arena) ParseOption {
+	return func(c *ParseConfig) {
+		c.Arena = a
 	}
 }
 
@@ -1009,7 +1028,12 @@ func (p *parser) Parse(reader text.Reader, opts ...ParseOption) ast.Node {
 	// output in one binary run.
 	var pa *arena.Arena
 	if !p.noArena {
-		pa = newArenaForParse()
+		// newArenaForParse returns nil under the goldmark_upstream
+		// build tag; gating the caller-supplied arena on it keeps
+		// that harness on the true upstream allocation path.
+		if pa = newArenaForParse(); pa != nil && c.Arena != nil {
+			pa = c.Arena
+		}
 	}
 	if pcImpl, ok := pc.(*parseContext); ok {
 		pcImpl.arena = pa
