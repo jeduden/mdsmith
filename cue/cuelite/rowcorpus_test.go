@@ -7,7 +7,8 @@ package cuelite
 // is pinned here as the now-canonical behaviour. TestRowCorpus drives them.
 
 func rowCorpus() []rowCase {
-	var rows []rowCase
+	// Capacity ~100 covers the thirteen category slices without regrowth.
+	rows := make([]rowCase, 0, 100)
 	rows = append(rows, rowCorpusMatrix()...)
 	rows = append(rows, rowCorpusMappingGuides()...)
 	rows = append(rows, rowCorpusInterpolation()...)
