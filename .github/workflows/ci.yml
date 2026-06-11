@@ -546,6 +546,43 @@ jobs:
       - name: WASM smoke test, size budget, and method-set parity
         run: go test ./cmd/mdsmith-wasm/...
 
+  # Plan 240: attempt the tinygo wasm build. This is the moment-of-truth
+  # job for the plan's headline criterion (an ≤ 8 MiB tinygo artifact).
+  # The build does NOT yet succeed — tinygo's wasm target leaves os.Chmod,
+  # os.SameFile, and os.Symlink/filepath.EvalSymlinks undefined, and
+  # pkg/mdsmith reaches all three transitively — so the job is
+  # informational (continue-on-error) rather than gating: it surfaces the
+  # exact build errors in the log without blocking PRs on work not yet
+  # done. TestTinyGoWASMArtifactSizeBudget records the same failure and
+  # skips. When the os.* calls are build-tagged out of the wasm graph,
+  # drop continue-on-error so the 8 MiB budget gates.
+  tinygo-wasm:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+      - name: Install tinygo (checksum-pinned .deb)
+        env:
+          TINYGO_VERSION: "0.39.0"
+          TINYGO_SHA256: "775f15974e35059c8f3a141266bd9d293b5d556a3e44d5e6356c5602e9f386ab"
+        run: |
+          url="https://github.com/tinygo-org/tinygo/releases/download/v${TINYGO_VERSION}/tinygo_${TINYGO_VERSION}_amd64.deb"
+          curl -fsSL -o /tmp/tinygo.deb "$url"
+          echo "${TINYGO_SHA256}  /tmp/tinygo.deb" | sha256sum -c -
+          sudo dpkg -i /tmp/tinygo.deb
+          tinygo version
+      - name: Build the engine with tinygo (informational)
+        run: tinygo build -target wasm -o /tmp/mdsmith-tiny.wasm ./cmd/mdsmith-wasm
+      - name: tinygo size budget (skips on the known build failure)
+        run: go test -run TestTinyGoWASMArtifactSizeBudget ./cmd/mdsmith-wasm/...
+
   test:
     runs-on: ubuntu-latest
     permissions:
