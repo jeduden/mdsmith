@@ -1,7 +1,7 @@
 ---
 id: 2606111049
 title: Harden WASM size test to match production build
-status: "🔲"
+status: "🔳"
 summary: >-
   size_test.go builds without -no-debug, so it
   tests a larger artifact than ships. Add
@@ -82,23 +82,23 @@ const (
 
 ## Tasks
 
-1. Add `-no-debug` to the `tinygo build` call in
+1. [x] Add `-no-debug` to the `tinygo build` call in
    [`cmd/mdsmith-wasm/size_test.go`](../cmd/mdsmith-wasm/size_test.go).
-2. Add a gzip-size assertion after the raw-size
+2. [x] Add a gzip-size assertion after the raw-size
    check. Use `compress/gzip` at best-speed.
-3. Measure the current production gzip size and
+3. [x] Measure the current production gzip size and
    set `maxGzipBytes` with 10% headroom.
-4. Add a comment explaining both budgets: raw
+4. [x] Add a comment explaining both budgets: raw
    guards tinygo heap and segment fit; gzip
    guards mobile transfer cost.
 
 ## Acceptance Criteria
 
-- [ ] The `tinygo build` call includes
+- [x] The `tinygo build` call includes
       `-no-debug`
-- [ ] The test asserts both a raw-byte limit and
+- [x] The test asserts both a raw-byte limit and
       a gzip-byte limit
-- [ ] `maxGzipBytes` is above the current
+- [x] `maxGzipBytes` is above the current
       production gzip size with ≥10% headroom
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool golangci-lint run` reports no
