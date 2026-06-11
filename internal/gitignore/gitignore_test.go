@@ -282,3 +282,51 @@ func TestMatchRule_OutsideBase(t *testing.T) {
 	// Path outside the base should not match.
 	assert.False(t, matchRule(r, "/other/path/file.md"))
 }
+
+// --- NewMatcher walk pruning ---
+
+func TestNewMatcher_SkipsDotGitContents(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, ".git", "info"), 0o755))
+	// A pattern file inside .git must not be collected: git never
+	// applies .gitignore files from inside the metadata directory.
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".git", "info", ".gitignore"),
+		[]byte("*.md\n"), 0o644))
+
+	m := NewMatcher(root)
+	require.NotNil(t, m)
+	assert.False(t, m.IsIgnored(filepath.Join(root, "doc.md"), false),
+		"a .gitignore inside .git must not contribute rules")
+}
+
+func TestNewMatcher_PrunesIgnoredDirectories(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".gitignore"),
+		[]byte("vendor/\n"), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "vendor", "dep"), 0o755))
+	// Git cannot re-include below an excluded directory, so rules in
+	// there are inert; the walk must not descend (or collect) them.
+	require.NoError(t, os.WriteFile(filepath.Join(root, "vendor", "dep", ".gitignore"),
+		[]byte("*.md\n"), 0o644))
+
+	m := NewMatcher(root)
+	require.NotNil(t, m)
+	// The matcher's contract is per-path: consumers test ancestor
+	// directories themselves (catalog's isGitignored, the workspace
+	// walk), so the vendor/ verdict is what they consult.
+	assert.True(t, m.IsIgnored(filepath.Join(root, "vendor"), true))
+	assert.False(t, m.IsIgnored(filepath.Join(root, "doc.md"), false),
+		"a .gitignore under an ignored directory must not contribute rules")
+}
+
+func TestNewMatcher_StillReadsNestedGitignores(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", ".gitignore"),
+		[]byte("draft.md\n"), 0o644))
+
+	m := NewMatcher(root)
+	require.NotNil(t, m)
+	assert.True(t, m.IsIgnored(filepath.Join(root, "docs", "draft.md"), false))
+	assert.False(t, m.IsIgnored(filepath.Join(root, "docs", "kept.md"), false))
+}
