@@ -536,3 +536,64 @@ func TestCategory(t *testing.T) {
 	r := &Rule{}
 	assert.NotEmpty(t, r.Category())
 }
+
+// --- multiSpaceAfterMarker (the regex-free MD027 prefix scan) ---
+
+func TestMultiSpaceAfterMarker(t *testing.T) {
+	cases := []struct {
+		name    string
+		line    string
+		j       int
+		wantCol int
+		wantHit bool
+	}{
+		{"single space ok", "> text", 0, 0, false},
+		{"two spaces flagged at marker", ">  text", 0, 0, true},
+		{"nested chain flags inner marker", "> >  text", 0, 2, true},
+		{"triple chain run", ">>>  text", 0, 2, true},
+		{"tab after marker not flagged", ">\t  text", 0, 0, false},
+		{"indented chain", "  >  text", 2, 2, true},
+		{"content gt not scanned", "> a >  b", 0, 0, false},
+		{"bare marker", ">", 0, 0, false},
+		{"marker then blank end", ">  ", 0, 0, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			col, hit := multiSpaceAfterMarker([]byte(tc.line), tc.j)
+			assert.Equal(t, tc.wantHit, hit)
+			if tc.wantHit {
+				assert.Equal(t, tc.wantCol, col)
+			}
+		})
+	}
+}
+
+// TestMultiSpaceAfterMarker_MatchesRegexSemantics cross-checks the
+// byte scanner against the original regex pair on a corpus of edge
+// shapes, pinning that the rewrite cannot drift from the regexes the
+// Fix path still uses.
+func TestMultiSpaceAfterMarker_MatchesRegexSemantics(t *testing.T) {
+	lines := []string{
+		"> text", ">  text", "> > text", "> >  text", ">>>  x", ">\t> x",
+		">\t>  x", "  >   deep", "> a >  b", ">", ">  ", "> \t x",
+		">> >x", "> >\t>    y", "no marker", "  no marker either",
+	}
+	for _, s := range lines {
+		line := []byte(s)
+		j := 0
+		for j < len(line) && (line[j] == ' ' || line[j] == '\t') {
+			j++
+		}
+		if j >= len(line) || line[j] != '>' {
+			continue
+		}
+		wantLoc := reMultiSpace.FindIndex(reBlockquotePrefix.Find(line))
+		col, hit := multiSpaceAfterMarker(line, j)
+		if wantLoc == nil {
+			assert.False(t, hit, "line %q: regex found nothing, scanner hit %d", s, col)
+			continue
+		}
+		assert.True(t, hit, "line %q: regex hit at %d, scanner missed", s, wantLoc[0])
+		assert.Equal(t, wantLoc[0], col, "line %q", s)
+	}
+}

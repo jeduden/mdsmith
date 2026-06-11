@@ -139,7 +139,7 @@ func (r *Rule) checkUnusedDefinitions(
 // sufficient and avoids reparsing the file.
 func (r *Rule) checkFootnotes(f *lint.File) []lint.Diagnostic {
 	codeLines := lint.CollectCodeBlockLines(f)
-	codeSpans := collectCodeSpanRanges(f.AST, f.Source)
+	codeSpans := f.CodeSpanLiteralRanges()
 	refs := scanFootnoteReferences(f, codeLines, codeSpans)
 	defs := scanFootnoteDefinitions(f, codeLines)
 
@@ -368,7 +368,7 @@ var footnoteRefRE = regexp.MustCompile(`\[\^([^\]\n]+)\]`)
 var footnoteDefRE = regexp.MustCompile(`(?m)^[ ]{0,3}\[\^([^\]\n]+)\]:`)
 
 func scanFootnoteReferences(
-	f *lint.File, codeLines map[int]struct{}, codeSpans []byteRange,
+	f *lint.File, codeLines map[int]struct{}, codeSpans []lint.Range,
 ) []footnoteOccurrence {
 	source := f.Source
 	matches := footnoteRefRE.FindAllSubmatchIndex(source, -1)
@@ -517,68 +517,13 @@ func isNumericSlug(s string) bool {
 	return true
 }
 
-// byteRange is an inclusive [start, end) byte range in source.
-type byteRange struct {
-	start, end int
-}
-
-func rangeContains(ranges []byteRange, off int) bool {
+func rangeContains(ranges []lint.Range, off int) bool {
 	for _, r := range ranges {
-		if off >= r.start && off < r.end {
+		if off >= r.Start && off < r.End {
 			return true
 		}
 	}
 	return false
-}
-
-// collectCodeSpanRanges returns the byte ranges of inline code spans
-// in the document. Footnote-shaped tokens inside backticks are not
-// real footnote references.
-func collectCodeSpanRanges(root ast.Node, source []byte) []byteRange {
-	var out []byteRange
-	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		span, ok := n.(*ast.CodeSpan)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
-		seg := firstSegment(span)
-		last := lastSegment(span)
-		// Extend backwards to include opening backticks; extend
-		// forwards across closing backticks.
-		start := seg.Start
-		for start > 0 && source[start-1] == '`' {
-			start--
-		}
-		end := last.Stop
-		for end < len(source) && source[end] == '`' {
-			end++
-		}
-		out = append(out, byteRange{start: start, end: end})
-		return ast.WalkContinue, nil
-	})
-	return out
-}
-
-func firstSegment(n ast.Node) text.Segment {
-	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
-		if t, ok := c.(*ast.Text); ok {
-			return t.Segment
-		}
-	}
-	return text.Segment{}
-}
-
-func lastSegment(n ast.Node) text.Segment {
-	var seg text.Segment
-	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
-		if t, ok := c.(*ast.Text); ok {
-			seg = t.Segment
-		}
-	}
-	return seg
 }
 
 // nodePosition returns a 1-based (line, column) for the source

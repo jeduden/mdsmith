@@ -53,16 +53,25 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	// followed by two or more spaces. Only the leading prefix is scanned, so
 	// a > that appears in the actual content of the blockquote is not flagged.
 	for i, line := range f.Lines {
+		// Candidate gate before the per-line set lookup: only lines whose
+		// first non-blank byte is '>' carry a blockquote marker prefix.
+		// Ordinary prose lines skip the map probe and the prefix scan.
+		j := 0
+		for j < len(line) && (line[j] == ' ' || line[j] == '\t') {
+			j++
+		}
+		if j >= len(line) || line[j] != '>' {
+			continue
+		}
 		lineNum := i + 1
 		if _, ok := codeLines[lineNum]; ok {
 			continue
 		}
-		prefix := reBlockquotePrefix.Find(line)
-		if loc := reMultiSpace.FindIndex(prefix); loc != nil {
+		if col, found := multiSpaceAfterMarker(line, j); found {
 			diags = append(diags, lint.Diagnostic{
 				File:     f.Path,
 				Line:     lineNum,
-				Column:   loc[0] + 1,
+				Column:   col + 1,
 				RuleID:   r.ID(),
 				RuleName: r.Name(),
 				Severity: lint.Warning,
@@ -74,6 +83,33 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	// MD028: flag blank-line gaps between adjacent sibling blockquote nodes.
 	diags = append(diags, r.checkBlankBetween(f)...)
 	return diags
+}
+
+// multiSpaceAfterMarker reports the 0-based index of the first '>' in
+// the line's leading marker chain that is followed by two or more
+// spaces. j is the index of the chain's first '>' (caller has skipped
+// the leading blanks). It reproduces, without the two regex passes,
+// `reMultiSpace.FindIndex(reBlockquotePrefix.Find(line))`: the scan
+// stops where the marker-chain prefix ends, so a '>' inside content is
+// never inspected, and only literal spaces (not tabs) directly after a
+// '>' count toward the two-space defect.
+func multiSpaceAfterMarker(line []byte, j int) (int, bool) {
+	for j < len(line) && line[j] == '>' {
+		marker := j
+		j++
+		spaces := 0
+		for j < len(line) && line[j] == ' ' {
+			j++
+			spaces++
+		}
+		if spaces >= 2 {
+			return marker, true
+		}
+		for j < len(line) && (line[j] == ' ' || line[j] == '\t') {
+			j++
+		}
+	}
+	return 0, false
 }
 
 func (r *Rule) checkBlankBetween(f *lint.File) []lint.Diagnostic {

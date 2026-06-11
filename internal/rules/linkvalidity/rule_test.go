@@ -269,13 +269,13 @@ func TestMaskLineDirect(t *testing.T) {
 	assert.Equal(t, []byte("abc"), maskLine([]byte("abc"), 0, nil))
 	// Range entirely before the line: skipped, original returned.
 	assert.Equal(t, []byte("abc"),
-		maskLine([]byte("abc"), 100, []byteRange{{0, 5}}))
+		maskLine([]byte("abc"), 100, []lint.Range{{Start: 0, End: 5}}))
 	// Range overruns both ends: from clamps to 0, to clamps to len.
 	assert.Equal(t, []byte("     "),
-		maskLine([]byte("abcde"), 10, []byteRange{{8, 30}}))
+		maskLine([]byte("abcde"), 10, []lint.Range{{Start: 8, End: 30}}))
 	// Range within the line: only the overlap is blanked.
 	assert.Equal(t, []byte("ab cd"),
-		maskLine([]byte("abXcd"), 0, []byteRange{{2, 3}}))
+		maskLine([]byte("abXcd"), 0, []lint.Range{{Start: 2, End: 3}}))
 }
 
 func TestMultiLineCodeSpanNotFlagged(t *testing.T) {

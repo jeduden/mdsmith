@@ -107,6 +107,16 @@ type File struct {
 	proseRangesDone atomic.Bool
 	proseRangesMu   sync.Mutex
 
+	// codeSpanContent / codeSpanLiteral cache the projections behind
+	// CodeSpanContentRanges / CodeSpanLiteralRanges: each inline code
+	// span's text bounds and its backtick-extended literal range.
+	// Several rules each re-walked the AST for these; one walk now
+	// fills both. atomic.Bool + mutex matches the caches above.
+	codeSpanContent []Range
+	codeSpanLiteral []Range
+	codeSpansDone   atomic.Bool
+	codeSpansMu     sync.Mutex
+
 	// parseCtx is the goldmark parser.Context produced by the one
 	// parse NewFile already runs. It is the source for LinkReferences
 	// so MDS053/MDS054 no longer each re-parse the whole document

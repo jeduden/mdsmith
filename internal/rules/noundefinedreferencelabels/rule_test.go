@@ -5,7 +5,6 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
-	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -333,53 +332,6 @@ func TestFullRef_DoubleBackslashBracket_Flagged(t *testing.T) {
 	diags := check(t, src)
 	require.Len(t, diags, 1)
 	assert.Contains(t, diags[0].Message, `"broken"`)
-}
-
-// TestCollectCodeSpanRangesInto_NilNode pins the nil-node guard on
-// the recursive helper. Production callers never feed nil, but the
-// guard exists so a struct-literal *File with no AST stays safe.
-func TestCollectCodeSpanRangesInto_NilNode(t *testing.T) {
-	var out []byteRange
-	collectCodeSpanRangesInto(nil, nil, &out)
-	assert.Empty(t, out)
-}
-
-// TestCodeSpanTextBounds_NonTextChild pins the inline-code-span
-// case where the child is not an *ast.Text (e.g., an emphasis or
-// a hard-break node nested inside the span). The helper skips
-// non-Text children and continues; the loop body's `continue`
-// branch is otherwise unreachable from the rule's own AST.
-func TestCodeSpanTextBounds_NonTextChild(t *testing.T) {
-	f := newFile(t, "`code`\n")
-	var span *ast.CodeSpan
-	collectCodeSpansForTest(f.AST, &span)
-	require.NotNil(t, span, "fixture must produce a code span")
-	// Manually append a non-Text child so codeSpanTextBounds hits
-	// its `continue` branch; goldmark's own parsed code spans
-	// contain only *ast.Text children, which is why this branch
-	// stays cold without a synthetic child.
-	span.AppendChild(span, ast.NewEmphasis(1))
-	first, last := codeSpanTextBounds(span)
-	assert.GreaterOrEqual(t, first, 0)
-	assert.GreaterOrEqual(t, last, first)
-}
-
-// collectCodeSpansForTest is a tiny test-only walker that returns
-// the first *ast.CodeSpan it encounters.
-func collectCodeSpansForTest(n ast.Node, out **ast.CodeSpan) {
-	if *out != nil {
-		return
-	}
-	if cs, ok := n.(*ast.CodeSpan); ok {
-		*out = cs
-		return
-	}
-	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
-		collectCodeSpansForTest(c, out)
-		if *out != nil {
-			return
-		}
-	}
 }
 
 // TestNextBracket_OrphanOpenBracket pins the "[ opened without

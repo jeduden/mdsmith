@@ -12,7 +12,6 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/placeholders"
 	"github.com/jeduden/mdsmith/internal/rule"
-	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/jeduden/mdsmith/pkg/goldmark/util"
 )
 
@@ -61,7 +60,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 
 	defs := collectNormalisedDefs(f)
 	codeLines := lint.CollectCodeBlockLines(f)
-	codeSpans := collectCodeSpanRanges(f)
+	codeSpans := f.CodeSpanLiteralRanges()
 	piLines := lint.CollectPIBlockLines(f)
 
 	var diags []lint.Diagnostic
@@ -114,67 +113,9 @@ func normalizeLabel(raw []byte) string {
 	return util.ToLinkReference(raw)
 }
 
-// byteRange is a half-open [start, end) byte range.
-type byteRange struct{ start, end int }
-
-// collectCodeSpanRanges returns byte ranges of inline code spans.
-// Code spans are inline nodes; their content is accessed via child
-// Text nodes. The walk uses a recursive helper rather than
-// ast.Walk so the per-Check closure box ast.Walk would otherwise
-// allocate is shed — plan 195 task 7.
-func collectCodeSpanRanges(f *lint.File) []byteRange {
-	var out []byteRange
-	collectCodeSpanRangesInto(f.AST, f.Source, &out)
-	return out
-}
-
-// collectCodeSpanRangesInto descends node n and appends the byte
-// range of every *ast.CodeSpan to out, extending each range
-// outward to include the surrounding backticks (the regex-based
-// scanners later in this file want the full literal span).
-// Recursive descent keeps the helper closure-free.
-func collectCodeSpanRangesInto(n ast.Node, source []byte, out *[]byteRange) {
-	if n == nil {
-		return
-	}
-	if _, ok := n.(*ast.CodeSpan); ok {
-		first, last := codeSpanTextBounds(n)
-		if first >= 0 {
-			start := first
-			for start > 0 && source[start-1] == '`' {
-				start--
-			}
-			end := last
-			for end < len(source) && source[end] == '`' {
-				end++
-			}
-			*out = append(*out, byteRange{start, end})
-		}
-	}
-	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
-		collectCodeSpanRangesInto(c, source, out)
-	}
-}
-
-func codeSpanTextBounds(n ast.Node) (first, last int) {
-	first = -1
-	last = -1
-	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
-		t, ok := c.(*ast.Text)
-		if !ok {
-			continue
-		}
-		if first < 0 {
-			first = t.Segment.Start
-		}
-		last = t.Segment.Stop
-	}
-	return first, last
-}
-
-func inCodeSpan(spans []byteRange, offset int) bool {
+func inCodeSpan(spans []lint.Range, offset int) bool {
 	for _, r := range spans {
-		if offset >= r.start && offset < r.end {
+		if offset >= r.Start && offset < r.End {
 			return true
 		}
 	}
@@ -239,7 +180,7 @@ func nextBracket(source []byte, pos int) (open, contentStart, contentEnd, closeA
 func (r *Rule) scanFullRefs(
 	f *lint.File,
 	defs []string,
-	spans []byteRange,
+	spans []lint.Range,
 	codeLines, piLines map[int]struct{},
 ) []lint.Diagnostic {
 	source := f.Source
@@ -302,7 +243,7 @@ func (r *Rule) scanFullRefs(
 func (r *Rule) scanCollapsedRefs(
 	f *lint.File,
 	defs []string,
-	spans []byteRange,
+	spans []lint.Range,
 	codeLines, piLines map[int]struct{},
 ) []lint.Diagnostic {
 	source := f.Source
@@ -361,7 +302,7 @@ func (r *Rule) scanCollapsedRefs(
 func (r *Rule) scanShortcutRefs(
 	f *lint.File,
 	defs []string,
-	spans []byteRange,
+	spans []lint.Range,
 	codeLines, piLines map[int]struct{},
 	shortcutMode string,
 ) []lint.Diagnostic {

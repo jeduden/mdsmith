@@ -508,13 +508,13 @@
   {
     "id": "MDS047",
     "name": "ambiguous-emphasis",
-    "category": "ast-required",
-    "nil_ast_safe": false,
+    "category": "A-no-skipping",
+    "nil_ast_safe": true,
     "code_block_sensitive": false,
     "fired": true,
     "is_node_checker": false,
-    "uses_ast_walk": true,
-    "reads_file_ast": true
+    "uses_ast_walk": false,
+    "reads_file_ast": false
   },
   {
     "id": "MDS048",
@@ -591,7 +591,7 @@
     "fired": true,
     "is_node_checker": false,
     "uses_ast_walk": false,
-    "reads_file_ast": true
+    "reads_file_ast": false
   },
   {
     "id": "MDS055",
