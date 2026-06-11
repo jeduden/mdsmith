@@ -18,6 +18,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/setutil"
 )
 
 // readFile, atomicWriteFn, and lstatFile are variables so tests can substitute
@@ -371,8 +372,8 @@ func isClosingFence(line []byte, ch byte, openLen int) bool {
 // or hook script that lists the same path twice still compares equal
 // to a deduplicated list.
 func FilesMatch(a, b []string) bool {
-	setA := toSet(a)
-	setB := toSet(b)
+	setA := setutil.FromStrings(a)
+	setB := setutil.FromStrings(b)
 	if len(setA) != len(setB) {
 		return false
 	}
@@ -382,14 +383,6 @@ func FilesMatch(a, b []string) bool {
 		}
 	}
 	return true
-}
-
-func toSet(s []string) map[string]struct{} {
-	m := make(map[string]struct{}, len(s))
-	for _, v := range s {
-		m[v] = struct{}{}
-	}
-	return m
 }
 
 // ExtractHookFiles parses a pre-merge-commit hook script and returns

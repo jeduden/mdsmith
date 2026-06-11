@@ -182,6 +182,21 @@ func TestCheckNode_HeadingInCodeBlockRegion(t *testing.T) {
 	assert.Nil(t, diags, "heading whose line falls inside a code-block region must be skipped")
 }
 
+// TestFix_NoTrailingNewline verifies that Fix preserves the absence of
+// a trailing newline. bytes.Join round-trips a Split that produces no
+// trailing empty element, so the output must not gain a spurious "\n".
+func TestFix_NoTrailingNewline(t *testing.T) {
+	src := []byte("# Title\nSome text")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{}
+	result := r.Fix(f)
+	expected := "# Title\n\nSome text"
+	if string(result) != expected {
+		t.Errorf("expected %q, got %q", expected, string(result))
+	}
+}
+
 // TestFix_HeadingInCodeBlockRegion pins the parallel guard
 // inside collectHeadingBlankLineInsertions (rule.go line ~153):
 // Fix must not insert blank lines around a synthetic heading

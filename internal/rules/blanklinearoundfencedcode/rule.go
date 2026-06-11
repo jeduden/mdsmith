@@ -2,13 +2,16 @@ package blanklinearoundfencedcode
 
 import (
 	"bytes"
-	"strings"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/fencepos"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
+
+// newlineSep is the bytes.Join separator; a package-level var avoids
+// a heap allocation for []byte("\n") on every Fix call.
+var newlineSep = []byte("\n")
 
 func init() {
 	rule.Register(&Rule{})
@@ -99,26 +102,26 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		return f.Source
 	}
 
-	var result []string
+	result := make([][]byte, 0, len(f.Lines)+len(insertBeforeLine)+len(insertAfterLine))
 	for i, line := range f.Lines {
 		lineNum := i + 1
-		if insertBeforeLine[lineNum] {
-			result = append(result, "")
+		if _, ok := insertBeforeLine[lineNum]; ok {
+			result = append(result, nil)
 		}
-		result = append(result, string(line))
-		if insertAfterLine[lineNum] {
-			result = append(result, "")
+		result = append(result, line)
+		if _, ok := insertAfterLine[lineNum]; ok {
+			result = append(result, nil)
 		}
 	}
 
-	return []byte(strings.Join(result, "\n"))
+	return bytes.Join(result, newlineSep)
 }
 
 // collectFenceBlankLineInsertions walks the AST and returns sets of 1-based line
 // numbers that need a blank line inserted before or after them.
-func collectFenceBlankLineInsertions(f *lint.File) (beforeSet, afterSet map[int]bool) {
-	beforeSet = make(map[int]bool)
-	afterSet = make(map[int]bool)
+func collectFenceBlankLineInsertions(f *lint.File) (beforeSet, afterSet map[int]struct{}) {
+	beforeSet = make(map[int]struct{})
+	afterSet = make(map[int]struct{})
 
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
@@ -136,10 +139,10 @@ func collectFenceBlankLineInsertions(f *lint.File) (beforeSet, afterSet map[int]
 		closeLine := f.LineOfOffset(closeStart)
 
 		if needsBlankBefore(f, openLine) {
-			beforeSet[openLine] = true
+			beforeSet[openLine] = struct{}{}
 		}
 		if needsBlankAfter(f, closeLine) {
-			afterSet[closeLine] = true
+			afterSet[closeLine] = struct{}{}
 		}
 
 		return ast.WalkContinue, nil

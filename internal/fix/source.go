@@ -9,6 +9,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/setutil"
 )
 
 // SourceOptions configures an in-memory fix run. The fix functions
@@ -106,10 +107,7 @@ func fixSourceImpl(opts SourceOptions, only []string) ([]byte, error) {
 		return nil, errors.Join(settingsErrs...)
 	}
 	if only != nil {
-		set := make(map[string]struct{}, len(only))
-		for _, n := range only {
-			set[n] = struct{}{}
-		}
+		set := setutil.FromStrings(only)
 		filtered := fixable[:0]
 		for _, r := range fixable {
 			if _, ok := set[r.Name()]; ok {

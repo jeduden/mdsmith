@@ -180,19 +180,17 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	beforeSet, afterSet := r.collectBlankLineInsertions(f)
 
 	if len(beforeSet) == 0 && len(afterSet) == 0 {
-		result := make([]byte, len(f.Source))
-		copy(result, f.Source)
-		return result
+		return f.Source
 	}
 
 	var resultLines [][]byte
 	for i, line := range f.Lines {
 		lineNum := i + 1
-		if beforeSet[lineNum] {
+		if _, ok := beforeSet[lineNum]; ok {
 			resultLines = append(resultLines, []byte{})
 		}
 		resultLines = append(resultLines, line)
-		if afterSet[lineNum] {
+		if _, ok := afterSet[lineNum]; ok {
 			resultLines = append(resultLines, []byte{})
 		}
 	}
@@ -202,9 +200,9 @@ func (r *Rule) Fix(f *lint.File) []byte {
 
 // collectBlankLineInsertions walks the AST and returns sets of 1-based line numbers
 // that need a blank line inserted before or after them.
-func (r *Rule) collectBlankLineInsertions(f *lint.File) (beforeSet, afterSet map[int]bool) {
-	beforeSet = make(map[int]bool)
-	afterSet = make(map[int]bool)
+func (r *Rule) collectBlankLineInsertions(f *lint.File) (beforeSet, afterSet map[int]struct{}) {
+	beforeSet = make(map[int]struct{})
+	afterSet = make(map[int]struct{})
 	codeLines := lint.CollectCodeBlockLines(f)
 
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -229,10 +227,10 @@ func (r *Rule) collectBlankLineInsertions(f *lint.File) (beforeSet, afterSet map
 		}
 
 		if needsBlankAdjacent(f, listStartLine, -1) {
-			beforeSet[listStartLine] = true
+			beforeSet[listStartLine] = struct{}{}
 		}
 		if needsBlankAdjacent(f, listEndLine, +1) {
-			afterSet[listEndLine] = true
+			afterSet[listEndLine] = struct{}{}
 		}
 
 		return ast.WalkContinue, nil

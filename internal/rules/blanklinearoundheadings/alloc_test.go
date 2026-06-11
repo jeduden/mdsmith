@@ -15,8 +15,11 @@ import (
 // the 6-line fixture; the refactored code targets ≤ 8.
 const fixAllocBudget = 8
 
-// fixAllocFixture is a 6-line document that requires four blank-line
-// insertions so the Fix path exercises all insertion branches.
+// fixAllocFixture is a 6-line document that requires five blank-line
+// insertions (insertAfter={1,3,5}, insertBefore={3,5}). The adjacent
+// dedup guard (suppressing insertBefore when insertAfter was set on
+// the previous line) is not triggered here — that path is exercised by
+// TestFix_AdjacentHeadings_NoDoubleBlanks in rule_test.go.
 const fixAllocFixture = "# Title\nSome text\n## Section\nMore text\n## Final\nEnd.\n"
 
 func TestFixAllocBudget(t *testing.T) {

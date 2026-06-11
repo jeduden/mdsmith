@@ -101,13 +101,11 @@ func acronymRanges(heads []DocHeading, f *lint.File, sch *Schema, scope []string
 			// not checked separately — the parser sets
 			// `sc.Heading == sc.Matcher.Regex` for mapping-form
 			// entries, so (b) already covers it.
-			_, inText := matchSet[headingText]
-			_, inHeading := matchSet[sc.Heading]
-			if inText {
+			if _, ok := matchSet[headingText]; ok {
 				out = append(out, lineRange{Start: start, End: end})
 				return
 			}
-			if inHeading {
+			if _, ok := matchSet[sc.Heading]; ok {
 				out = append(out, lineRange{Start: start, End: end})
 				return
 			}

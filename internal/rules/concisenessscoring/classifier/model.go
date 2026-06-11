@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/jeduden/mdsmith/internal/setutil"
 )
 
 // Embedded artifact metadata used for checksum and loading validation.
@@ -486,11 +488,7 @@ func dedupeSorted(values []string) []string {
 }
 
 func wordSetFromSlice(values []string) map[string]struct{} {
-	out := make(map[string]struct{}, len(values))
-	for _, v := range values {
-		out[v] = struct{}{}
-	}
-	return out
+	return setutil.FromStrings(values)
 }
 
 func sigmoid(x float64) float64 {
