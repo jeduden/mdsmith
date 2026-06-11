@@ -305,7 +305,7 @@ func copyFile(src, dst string) error {
 	if info, err := in.Stat(); err == nil {
 		mode = info.Mode().Perm()
 	}
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode) //nolint:gosec // mode mirrors the staged file
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode) //nolint:gosec // mode from stage
 	if err != nil {
 		return err
 	}
