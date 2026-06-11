@@ -18,9 +18,9 @@ next to `.mdsmith.yml` at the workspace root.
 ```text
 .mdsmith.yml                   # unchanged
 .mdsmith/
-  kinds/                       # plan 208
+  kinds/
     audit-log.yaml
-  conventions/                 # plan 209
+  conventions/
     portable-strict.yaml
   schemas/
     rfc-v1.yaml

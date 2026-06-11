@@ -69,8 +69,7 @@ row: "| {title} | `{command}` | {audience} |"
 A bare `mise use mdsmith@latest` needs a registry entry —
 "bare" meaning no backend prefix and no prior
 `mise plugins install`. The short `asdf plugin add mdsmith`
-needs one too. Both are tracked in
-[plan/145](../../plan/145_asdf-mise-registry-submissions.md).
+needs one too. Neither registry entry exists yet.
 Everything else works today: the explicit-URL asdf install,
 Homebrew, and every backend-prefixed mise form below.
 
@@ -200,10 +199,9 @@ The one gap is a bare `mise use mdsmith@latest`: no backend
 prefix, and no prior `mise plugins install` like the asdf
 step above. That form needs an entry in mise's curated
 registry (the `registry/` dir in
-[`jdx/mise`](https://github.com/jdx/mise)), tracked in
-[plan/145](../../plan/145_asdf-mise-registry-submissions.md).
-Until it merges, use a backend-prefixed form, or install the
-plugin first as shown above.
+[`jdx/mise`](https://github.com/jdx/mise)), and no such
+entry exists yet. Use a backend-prefixed form, or install
+the plugin first as shown above.
 
 ## Flatpak
 
@@ -436,7 +434,7 @@ lsp` as a local subprocess. See the
 [telemetry policy](../reference/telemetry.md) for the
 full statement.
 
-The mdsmith marketplace ships six plugins.
+The mdsmith marketplace ships five user-facing plugins.
 Register once, then install whichever you need:
 
 ```text
@@ -534,17 +532,5 @@ similar files without a kind, missing
 
 ```text
 /plugin install mdsmith-audit@mdsmith
-/reload-plugins
-```
-
-### mdsmith-dev-lsp
-
-Go and TypeScript LSP servers for mdsmith
-contributors. Installs `gopls` and the
-TypeScript language server alongside
-`mdsmith lsp` for development.
-
-```text
-/plugin install mdsmith-dev-lsp@mdsmith
 /reload-plugins
 ```

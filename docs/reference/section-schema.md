@@ -206,8 +206,7 @@ would otherwise be starved.
 
 A heading whose text matches a later literal
 entry's `regex:` is claimed for that entry, not
-by an earlier wildcard slot. Mirrors plan 146's
-slot semantics.
+by an earlier wildcard slot.
 
 ## Sibling fields
 
@@ -216,7 +215,7 @@ Each entry can carry:
 - `sections:` — nested entries one heading
   level deeper. Recursive.
 - `content:` — AST-node constraints inside the
-  section body. See plan 149.
+  section body.
 - `rules:` — per-scope rule-config overrides.
 - `closed:` — strictness shorthand. When
   `true`, an unlisted heading inside this

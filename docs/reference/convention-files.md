@@ -20,7 +20,7 @@ root.
 ```text
 .mdsmith.yml                   # unchanged
 .mdsmith/
-  kinds/                       # plan 208
+  kinds/
     audit-log.yaml
   conventions/
     portable-strict.yaml
