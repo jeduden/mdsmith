@@ -30,16 +30,6 @@ Markdown tables and code blocks are skipped.
 
 ## How it works
 
-MDS024 has two execution paths. A constant-time
-**cheap-bounds guard** runs first. It proves a paragraph
-cannot violate either limit. If the proof succeeds, the rule
-returns. If not, the **exact path** runs the trained Punkt
-sentence segmenter. The guard skips the segmenter only when
-the exact path would emit zero diagnostics. The combined
-behavior is fast-or-exact, never approximate.
-
-### Exact diagnostics
-
 When the rule fires, every number in the message is exact.
 
 The sentence count comes from the trained Punkt segmenter
@@ -57,55 +47,14 @@ disagree. Punkt is right. So `paragraph has too many
 sentences (8 > 6)` means eight, and `sentence too long
 (45 > 40 words): "..."` quotes the real over-long sentence.
 
+A constant-time pre-check skips the segmenter when a
+paragraph cannot violate either limit. The pre-check
+never changes which diagnostics the rule reports.
+
+Configured placeholder tokens (`{body}`, `{var-token}`,
+etc.) collapse to neutral words before counting.
+
 [punkt]: https://github.com/neurosnap/sentences
-
-### Cheap-bounds guard
-
-The guard runs one allocation-free pass over the paragraph
-and computes two bounds.
-
-- ``sentenceUB = (count of `.`/`!`/`?`) + 1`` — an upper
-  bound on Punkt's sentence count. Punkt only places
-  boundaries at `.`/`!`/`?` and always yields at least one
-  sentence.
-- `paragraphWords` — the exact whitespace-delimited word
-  count for the whole paragraph. No single sentence has
-  more words than the paragraph.
-
-When both bounds are within the limits, the segmenter
-cannot fire, so the rule returns early. Short paragraphs
-and lightly-punctuated paragraphs clear the guard at zero
-allocations.
-
-Placeholder masking runs before the guard. Configured
-placeholder tokens (`{body}`, `{var-token}`, etc.) collapse
-to neutral words and never trip the cheap path.
-
-## Performance
-
-MDS024 is **opt-in** by default. Short and
-lightly-punctuated paragraphs clear the cheap-bounds
-guard at zero allocations. Long paragraphs that the
-guard cannot rule out pay full Punkt segmentation.
-
-The segmenter is a fork of upstream Punkt vendored
-under [`internal/punkt/`](../../punkt/). The fork is
-byte-identical to upstream over the equivalence
-corpus, but allocation-clean per call. A warm Check
-call against an abbr-heavy paragraph runs at ≤ 10
-allocs/op — pinned by `BenchmarkRule_MDS024` and
-matching the per-rule budget in
-[CLAUDE.md](../../../CLAUDE.md). The `-tags
-mdtext_punkt_upstream` build keeps the original
-pipeline around for A/B comparison.
-
-Plan
-[193](../../../plan/193_mds024-allocation-budget.md)
-records the rework and the measured before/after
-numbers.
-
-Enable when you want exact prose-structure diagnostics.
-Skip when you don't.
 
 ## Config
 
@@ -233,7 +182,7 @@ sentences for the rule to count them correctly.
 - **ID**: MDS024
 - **Name**: `paragraph-structure`
 - **Status**: ready
-- **Default**: disabled (opt-in; see Performance above).
+- **Default**: disabled (opt-in).
   When enabled: max-sentences: 6, max-words-per-sentence: 40
 - **Fixable**: no
 - **Implementation**:

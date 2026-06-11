@@ -15,13 +15,13 @@ than one — should read this page first.
 
 ## TL;DR
 
-| Axis              | Flavor                             | Rule                         | Convention                                               | Kind                              |
-| ----------------- | ---------------------------------- | ---------------------------- | -------------------------------------------------------- | --------------------------------- |
-| What it is        | A renderer's grammar               | A single lint check          | A project-wide bundle of rules                           | A per-file role tag with rules    |
-| Source of truth   | An external spec or implementation | An mdsmith rule package      | The codebase (built-ins; user-defined ships in plan 113) | The user's `.mdsmith.yml`         |
-| Question answered | Will the renderer interpret this?  | Does this match this rule?   | What kind of Markdown do we write?                       | What role does this file play?    |
-| Scope             | Project-wide (one)                 | Per-feature                  | Project-wide (one)                                       | Per-file (zero or many composed)  |
-| Example           | `flavor: gfm` on MDS034            | MDS044 horizontal-rule-style | `convention: portable`                                   | `kinds: { plan: { rules: ... } }` |
+| Axis              | Flavor                             | Rule                         | Convention                                        | Kind                              |
+| ----------------- | ---------------------------------- | ---------------------------- | ------------------------------------------------- | --------------------------------- |
+| What it is        | A renderer's grammar               | A single lint check          | A project-wide bundle of rules                    | A per-file role tag with rules    |
+| Source of truth   | An external spec or implementation | An mdsmith rule package      | Built-ins in the codebase; user-defined in config | The user's `.mdsmith.yml`         |
+| Question answered | Will the renderer interpret this?  | Does this match this rule?   | What kind of Markdown do we write?                | What role does this file play?    |
+| Scope             | Project-wide (one)                 | Per-feature                  | Project-wide (one)                                | Per-file (zero or many composed)  |
+| Example           | `flavor: gfm` on MDS034            | MDS044 horizontal-rule-style | `convention: portable`                            | `kinds: { plan: { rules: ... } }` |
 
 ## What each concept does
 
@@ -55,9 +55,11 @@ built-in conventions ship today: `portable`,
 `parity` convention disables the mdsmith-only rules
 so `mdsmith check` runs the markdownlint-compatible
 class that mado and rumdl also run. A project can
-also define its own in `.mdsmith.yml`
-([plan 113](../../../plan/113_user-defined-profiles.md)).
-See [conventions.md](../../reference/conventions.md).
+also define its own convention inline in
+`.mdsmith.yml` or as a file under
+`.mdsmith/conventions/`.
+See the [conventions reference](../../reference/conventions.md)
+and [convention files](../../reference/convention-files.md).
 
 ### Kind
 

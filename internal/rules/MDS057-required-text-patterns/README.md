@@ -23,8 +23,8 @@ or shallower level, including nested sub-sections.
 
 Each configured regex is tested against the joined text. Patterns
 that do not match emit one diagnostic at the section's heading line.
-Under a schema scope override (plan 146), the per-scope filter keeps
-only diagnostics inside the scope's range.
+Under a [schema scope override](../../../docs/reference/section-schema.md),
+the per-scope filter keeps only diagnostics inside the scope's range.
 
 `skip-indices` exempts named child indices when the rule runs from a
 scope override on a section with `children:`. The setting parses but
@@ -49,7 +49,7 @@ rules:
         message: "every section must declare scope"
 ```
 
-Per-section (via plan 146 schema scope):
+Per-section (via schema scope):
 
 ```yaml
 kinds:

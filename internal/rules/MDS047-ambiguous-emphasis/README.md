@@ -50,13 +50,12 @@ code spans, fenced code blocks, and indented code blocks.
 | `forbid-adjacent-same-delim` | bool | false   | Flag three same-delimiter runs glued by non-whitespace (`*a*b*`, `__a__b__`) |
 
 The defaults make the rule a no-op even when enabled, so it ships safe.
-Profile activation in plan 112 (`portable`, `plain`) sets `max-run: 2`
-and both bool flags to `true`. User overrides on top still win via
-deep-merge.
+The `portable` and `plain` conventions enable this rule and set
+`max-run: 2`. User overrides on top still win via deep-merge.
 
 ## Config
 
-Enable with the active profile values:
+Enable all three detectors:
 
 ```yaml
 rules:

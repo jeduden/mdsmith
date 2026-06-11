@@ -184,6 +184,34 @@ and keep each bullet short — MDS023 flags long
 paragraphs, and a comma-separated list of 20
 rule names is one long sentence.
 
+### What to learn from the peer's README
+
+Read the peer's README before writing the one-line
+summary. Strong READMEs share a pattern:
+
+- **Lead with one sentence, then a number.** mado
+  opens with a benchmark table before any feature
+  list. That ordering tells the reader whether to
+  keep reading in three seconds.
+- **Name the inspiration and the promise up front.**
+  rumdl opens with a single positioning line,
+  names ruff as its model, and states the drop-in
+  promise before any feature detail. A reader who
+  knows ruff immediately grasps the trade-off.
+- **One precise sentence per job.** panache's
+  tagline names three jobs and one technical edge
+  (the lossless CST parser) in a single sentence.
+  Readers who do not care about Quarto stop
+  reading; readers who do have everything they
+  need to proceed.
+
+When mdsmith's own README entry differs — the
+one-line tagline, the reproducible benchmark
+number, the note that it covers more per file than
+the Rust linters — record why. The contrast is the
+differentiator, and the comparison page is the
+right place to state it.
+
 ## 7. Decide on the benchmark
 
 The harness in `docs/research/benchmarks/run.sh`

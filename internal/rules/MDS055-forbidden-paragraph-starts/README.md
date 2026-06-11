@@ -39,7 +39,7 @@ rules:
     starts: ["We ", "The team "]
 ```
 
-Per-section (via plan 146 schema scope):
+Per-section (via [schema scope](../../../docs/reference/section-schema.md)):
 
 ```yaml
 kinds:

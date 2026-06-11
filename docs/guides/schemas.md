@@ -249,11 +249,11 @@ sections:
         max-words: 200
 ```
 
-Two follow-ups land later (plan 146): the override is
-not yet a config-style deep merge (nested maps and
-list append modes behave like a plain ApplySettings
-call), and it stacks on rule defaults rather than the
-rule's full per-file config.
+The override has two limitations: it is not a
+config-style deep merge (nested maps and list append
+modes behave like a plain ApplySettings call), and it
+stacks on rule defaults rather than the rule's full
+per-file config.
 
 If a scope's `rules:` block names a rule that does
 not exist or supplies settings the rule rejects, the

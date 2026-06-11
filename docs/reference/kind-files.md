@@ -97,8 +97,8 @@ inline or file kind — with no extra wiring.
 ## Schema sources
 
 A kind file accepts the same four schema sources
-as an inline kind, and they remain mutually
-exclusive (acceptance criterion #6 of plan 208):
+as an inline kind. The sources are mutually
+exclusive; a kind sets at most one:
 
 - inline `schema:` mapping
 - named `schema:` reference to an entry in the

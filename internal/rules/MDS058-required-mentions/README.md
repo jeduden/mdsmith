@@ -23,8 +23,8 @@ or shallower level, including nested sub-sections.
 
 Each entry in `mentions:` is checked against the joined text. Missing
 mentions emit one diagnostic at the section's heading line. Under a
-schema scope override (plan 146), the per-scope filter keeps only
-diagnostics inside the scope's range.
+[schema scope override](../../../docs/reference/section-schema.md),
+the per-scope filter keeps only diagnostics inside the scope's range.
 
 ## Settings
 
@@ -42,7 +42,7 @@ rules:
     mentions: ["scope: production"]
 ```
 
-Per-section (via plan 146 schema scope):
+Per-section (via schema scope):
 
 ```yaml
 kinds:
