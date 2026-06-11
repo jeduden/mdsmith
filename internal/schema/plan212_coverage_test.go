@@ -230,3 +230,27 @@ func TestWriteAndRename_ChmodErrorSurfaces(t *testing.T) {
 		filepath.Join(dir, "out.json"), []byte("data"))
 	require.Error(t, err)
 }
+
+// TestWriteAndRename_ChmodInjection verifies that chmodFile is read under
+// chmodFileMu so a concurrently injected mock is visible. The injected
+// function returns os.ErrPermission; the error must propagate out of
+// writeAndRename unchanged.
+func TestWriteAndRename_ChmodInjection(t *testing.T) {
+	dir := t.TempDir()
+	tmp, err := os.CreateTemp(dir, "x-*.tmp")
+	require.NoError(t, err)
+	tmpPath := tmp.Name()
+
+	chmodFileMu.Lock()
+	orig := chmodFile
+	chmodFile = func(_ string, _ os.FileMode) error { return os.ErrPermission }
+	chmodFileMu.Unlock()
+	t.Cleanup(func() {
+		chmodFileMu.Lock()
+		chmodFile = orig
+		chmodFileMu.Unlock()
+	})
+
+	err = writeAndRename(tmp, tmpPath, filepath.Join(dir, "out.json"), []byte("data"))
+	require.ErrorIs(t, err, os.ErrPermission)
+}
