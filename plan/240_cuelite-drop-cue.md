@@ -7,9 +7,10 @@ summary: >-
   With every surface flipped, delete cue/cuelite's CUE
   delegation and remove cuelang.org/go from go.mod; replace the
   tinygo-incompatible sync.Map.CompareAndDelete in
-  internal/lint/runcache.go; get the standard-Go and tinygo
-  WASM builds under the plan-215 budgets; update the engine-api
-  page and the layering map.
+  internal/lint/runcache.go; get the standard-Go WASM build
+  under the plan-215 budget (the tinygo build still fails on
+  unimplemented os.* calls — criterion unmet); update the
+  engine-api page and the layering map.
 depends-on: [239]
 ---
 # cuelite phase 4 — drop cuelang.org and enable tinygo
@@ -110,15 +111,22 @@ above the `sonnet` band.
 - [x] Standard-Go WASM artifact ≤ 18 MB — measured ~11.2 MB raw /
       ~2.8 MB gzipped; `cmd/mdsmith-wasm/size_test.go` asserts the
       tightened ceilings (14 MiB raw / 4 MiB gzip).
-- [🔳] `tinygo build -target wasm ./cmd/mdsmith-wasm` succeeds and is
-      ≤ 8 MB; `size_test.go`'s `TestTinyGoWASMArtifactSizeBudget`
-      asserts it. The runcache `sync.Map.CompareAndDelete` lever is
-      swapped for a mutex-guarded map, and no file imports CUE, so the
-      tinygo build is now reachable. tinygo is NOT installable in the
-      offline dev container, so the test SKIPS locally and is
-      CI-verified on the runner that ships tinygo. To verify by hand:
-      `tinygo build -target wasm -o /tmp/m.wasm ./cmd/mdsmith-wasm`
-      then check the size is ≤ 8 MiB.
+- [🔲] `tinygo build -target wasm ./cmd/mdsmith-wasm` succeeds and is
+      ≤ 8 MB. **UNMET.** Removing CUE and swapping the runcache
+      `sync.Map.CompareAndDelete` lever for a mutex-guarded map cleared
+      two earlier walls, but the build still FAILS on standard-library
+      functions tinygo's wasm target does not implement. Verified with
+      tinygo 0.39.0 (go 1.24.7) — the error inventory:
+      `internal/schema/index.go` `os.Chmod`; `internal/fix/fix.go`
+      `os.Chmod`; `internal/githooks/githooks.go` `os.Chmod`,
+      `os.SameFile`; plus `os.Symlink`/`filepath.EvalSymlinks` in
+      `internal/schema`, `internal/lsp`, and the cross-file rule
+      packages — all reached transitively from `pkg/mdsmith`. Making the
+      tinygo build succeed needs those calls build-tagged out of the
+      wasm graph (a multi-package change), which is follow-up work.
+      `size_test.go`'s `TestTinyGoWASMArtifactSizeBudget` now records the
+      build failure and skips rather than faking a pass; the 8 MB budget
+      is unverified.
 - [x] `Capabilities()` is unchanged — `methods_test.go` /
       `smoke_test.go` assert the WASM proxy advertises the same
       capability set as the native session.

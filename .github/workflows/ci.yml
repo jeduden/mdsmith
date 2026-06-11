@@ -517,11 +517,14 @@ jobs:
   # native engine on an in-memory fixture. It SKIPS when node is absent,
   # so it must run in a job that installs node or it never gates. The
   # same `go test` run also enforces the artifact size budget
-  # (size_test.go, a regression guard at the real ~38 MB / 8 MB-gzipped
-  # size) and the Go↔JS method-set parity (methods_test.go). tinygo is
-  # intentionally not built — it cannot compile the engine today; the
-  # CUE-free, under-budget path is follow-up work (see
-  # docs/background/concepts/engine-api.md and plan/218).
+  # (size_test.go, a regression guard now at ~11.2 MB raw / ~2.8 MB
+  # gzipped after cuelang.org/go left the graph) and the Go↔JS method-set
+  # parity (methods_test.go). tinygo is intentionally not built here: the
+  # tinygo wasm target still leaves os.Chmod, os.SameFile, and
+  # os.Symlink/filepath.EvalSymlinks undefined, which pkg/mdsmith reaches
+  # transitively, so the tinygo build does not yet compile. Build-tagging
+  # those calls out of the wasm graph is follow-up work (see
+  # docs/background/concepts/engine-api.md and plan/240).
   wasm:
     runs-on: ubuntu-latest
     steps:

@@ -8,13 +8,13 @@ import (
 	"github.com/jeduden/mdsmith/cue/cuelite/syntax"
 )
 
-// compileSource parses a CUE source string with cuelang's syntax frontend
-// (cue/parser → cue/ast, the recorded plan-238 decision) and walks the
-// resulting AST into the in-house value model. The evaluator — unify,
-// validate, concreteness — is fully in-house; the parser only yields an
-// AST. An unsupported construct returns a clear error naming it, so a
-// future schema using syntax outside the subset fails loudly rather than
-// silently mis-evaluating.
+// compileSource parses a CUE source string with the in-house CUE-subset
+// frontend (cue/cuelite/syntax — the hand-rolled lexer and parser that
+// replaced cuelang.org/go in plan 240) and walks the resulting AST into the
+// in-house value model. The evaluator — unify, validate, concreteness — is
+// fully in-house; the parser only yields an AST. An unsupported construct
+// returns a clear error naming it, so a future schema using syntax outside the
+// subset fails loudly rather than silently mis-evaluating.
 //
 // After building the value, compileSource reduces it (unifying any
 // remaining & operands), so a contradictory constraint like `int & string`

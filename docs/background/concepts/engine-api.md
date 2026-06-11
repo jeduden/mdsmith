@@ -257,7 +257,8 @@ result matches the native engine on the same in-memory fixture.
 ### Size budget
 
 The target budgets are a standard-Go artifact of ≤ 18 MB and a
-`tinygo` artifact of ≤ 8 MB. Both are now met:
+`tinygo` artifact of ≤ 8 MB. The standard-Go budget is met; the tinygo
+budget is not yet reachable.
 
 - The standard Go WASM artifact is about 11.2 MB uncompressed (2.8 MB
   gzipped, the figure that crosses the wire), measured by
@@ -270,15 +271,20 @@ The target budgets are a standard-Go artifact of ≤ 18 MB and a
   of the exact CUE subset those packages use — replaced CUE, so the
   whole dependency graph left `go.mod` (plan 218/240). CUE is no longer
   the dominant WASM cost; nothing is.
-- `tinygo` compiles the engine now that CUE is gone and the one
-  remaining `tinygo` wall — `sync.Map.CompareAndDelete` in
-  `internal/lint/runcache.go` — was replaced with a mutex-guarded map.
-  `tinygo build -target wasm ./cmd/mdsmith-wasm` produces an artifact
-  under the 8 MB budget, asserted by `size_test.go`'s tinygo test on the
-  CI runner that ships tinygo.
+- `tinygo` does NOT yet compile the engine. Removing CUE and replacing
+  the `sync.Map.CompareAndDelete` lever in `internal/lint/runcache.go`
+  with a mutex-guarded map cleared two earlier walls, but
+  `tinygo build -target wasm ./cmd/mdsmith-wasm` still fails on
+  standard-library functions tinygo's wasm target does not implement —
+  `os.Chmod`, `os.SameFile`, and `os.Symlink`/`filepath.EvalSymlinks`,
+  reached transitively through `internal/schema` (atomic index writes),
+  `internal/fix`, `internal/githooks`, and the cross-file rule packages
+  that `pkg/mdsmith` pulls in. Making the tinygo build succeed needs
+  those calls build-tagged out of the wasm graph, which is follow-up
+  work. The 8 MB tinygo budget is therefore unverified.
 
-So the shipping artifact is the standard Go WASM build, with the tinygo
-build available for hosts that want the smaller binary.
+So the shipping artifact is the standard Go WASM build; a smaller tinygo
+binary is not yet available.
 
 ## See also
 
