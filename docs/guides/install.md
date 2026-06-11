@@ -59,7 +59,7 @@ row: "| {title} | `{command}` | {audience} |"
 | uvx             | `uvx mdsmith check .`                                                                                                                     | Ephemeral runs via uv                             |
 | pipx            | `pipx install mdsmith`                                                                                                                    | Isolated CLI install on Python hosts              |
 | Homebrew        | `brew install jeduden/mdsmith/mdsmith`                                                                                                    | macOS and Linux via Homebrew                      |
-| mise            | `mise use -g ubi:jeduden/mdsmith@latest`                                                                                                  | Repos using mise; works today via GitHub releases |
+| mise            | `mise use github:jeduden/mdsmith`                                                                                                         | Repos using mise; works today via GitHub releases |
 | asdf            | `asdf plugin add mdsmith https://github.com/jeduden/asdf-mdsmith.git`                                                                     | Repos standardized on asdf                        |
 | GitHub Releases | `curl -LO https://github.com/jeduden/mdsmith/releases/latest/download/mdsmith-<os>-<arch>`                                                | Air-gapped hosts and direct binary control        |
 | Scoop           | `scoop install mdsmith`                                                                                                                   | Windows users with Scoop installed                |
@@ -164,7 +164,7 @@ brew install mdsmith
 ## mise
 
 ```bash
-mise use -g github:jeduden/mdsmith
+mise use github:jeduden/mdsmith
 mdsmith version
 ```
 
@@ -178,21 +178,21 @@ To reuse the same plugin the asdf install uses:
 
 ```bash
 mise plugins install mdsmith https://github.com/jeduden/asdf-mdsmith.git
-mise use -g mdsmith@latest
+mise use mdsmith@latest
 ```
 
 To build from source with the Go backend (needs a Go
 toolchain):
 
 ```bash
-mise use -g go:github.com/jeduden/mdsmith/cmd/mdsmith
+mise use go:github.com/jeduden/mdsmith/cmd/mdsmith
 ```
 
 The `ubi` backend still works too, though mise has deprecated
 it for new registry entries:
 
 ```bash
-mise use -g ubi:jeduden/mdsmith@latest
+mise use ubi:jeduden/mdsmith@latest
 ```
 
 The one gap is a bare `mise use mdsmith@latest`: no backend

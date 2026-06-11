@@ -56,7 +56,7 @@ row: "- [{summary}](../{filename})"
 - [Per-platform mdsmith binaries plus the .vsix, the checksum file, and a Sigstore signature, attached to a tag-named release.](../docs/development/release-channels/github-releases.md)
 - [`go install` compiles mdsmith from the tagged module source with the host Go 1.25+ toolchain; no prebuilt binary is downloaded.](../docs/development/release-channels/go.md)
 - [The `jeduden/homebrew-mdsmith` tap installs the checksum-verified prebuilt binary for macOS or Linux on Intel or arm64.](../docs/development/release-channels/homebrew.md)
-- [mise's `ubi` backend installs mdsmith from GitHub release assets; the short `mise use mdsmith` form awaits a registry entry.](../docs/development/release-channels/mise.md)
+- [mise's `github` backend installs mdsmith from GitHub release assets; the short `mise use mdsmith` form awaits a registry entry.](../docs/development/release-channels/mise.md)
 - [Root `@mdsmith/cli` plus one platform-specific subpackage per supported host, all published via OIDC Trusted Publishing.](../docs/development/release-channels/npm.md)
 - [`npx @mdsmith/cli` runs mdsmith from the npm package with no global install, caching the platform binary after first use.](../docs/development/release-channels/npx.md)
 - [A `mdsmith-obsidian-<version>.zip` of the plugin's five load files — the WebAssembly engine among them — attached to each GitHub release and installed by unzipping into a vault's `.obsidian/plugins/mdsmith/` folder.](../docs/development/release-channels/obsidian.md)

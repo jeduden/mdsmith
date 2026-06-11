@@ -90,10 +90,10 @@
   url: https://github.com/jeduden/homebrew-mdsmith
   weight: 7
 - title: mise
-  summary: mise's `ubi` backend installs mdsmith from GitHub release assets; the short `mise use mdsmith` form awaits a registry entry.
+  summary: mise's `github` backend installs mdsmith from GitHub release assets; the short `mise use mdsmith` form awaits a registry entry.
   mechanism: pull
   artifact: cli
-  command: mise use -g ubi:jeduden/mdsmith@latest
+  command: mise use github:jeduden/mdsmith
   audience: Repos using mise; works today via GitHub releases
   platforms:
     - macos

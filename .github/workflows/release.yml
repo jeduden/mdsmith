@@ -741,7 +741,7 @@ jobs:
             run: mdsmith version
           - channel: mise
             container: jdxcode/mise:latest
-            # `ubi:jeduden/mdsmith@VER` resolves the binary directly
+            # `github:jeduden/mdsmith@VER` resolves the binary directly
             # off the GitHub release the same `release` job above
             # just published. The shorter `mdsmith@VER` form depends
             # on the mise-plugins/registry follow-up; until that PR
@@ -750,7 +750,7 @@ jobs:
             install: |
               ok=0
               for attempt in 1 2 3 4 5; do
-                if mise use -g "ubi:jeduden/mdsmith@${VERSION#v}"; then
+                if mise use -g "github:jeduden/mdsmith@${VERSION#v}"; then
                   ok=1; break
                 fi
                 sleep 15
