@@ -494,31 +494,6 @@ func TestExplain_InputIsDirectory_ReturnsHashError(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TestExplain_ComputeActionIDError covers the computeActionIDFromResolved error
-// path in Explain. Explain calls hashFileFn once per input in its display loop
-// and then once more inside computeActionIDFromResolved. Letting the first call
-// succeed (display loop) and failing the second (computeActionIDFromResolved)
-// covers the return Explanation{}, err path.
-func TestExplain_ComputeActionIDError(t *testing.T) {
-	root := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(root, "src.txt"), []byte("data"), 0o644))
-
-	callCount := 0
-	orig := hashFileFn
-	hashFileFn = func(p string) (string, error) {
-		callCount++
-		if callCount == 1 {
-			return hashFile(p)
-		}
-		return "", errors.New("injected hash failure")
-	}
-	t.Cleanup(func() { hashFileFn = orig })
-
-	in := newPlan(t, root, "r", "tool", []string{"src.txt"}, []string{"out.txt"}, nil)
-	_, err := Explain(in)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "injected hash failure")
-}
 
 func TestExplain_NoInputsNoOutputs_EmptyFields(t *testing.T) {
 	root := t.TempDir()

@@ -176,21 +176,18 @@ func canonicalPaths(paths []string) string {
 	return b.String()
 }
 
-// computeActionIDFromResolved hashes the ActionID from pre-resolved inputs and
-// outputs, so both ComputeActionID and RecordBuild can resolve paths once.
-func computeActionIDFromResolved(in StalenessInput, inputs, outputs []string) (string, error) {
+// computeActionIDFromSums hashes the ActionID from pre-resolved inputs,
+// outputs, and already-computed per-input content sums. Separating the
+// hashing from the I/O lets callers that already have the sums (e.g.
+// Explain) avoid a second read pass over the input files.
+func computeActionIDFromSums(in StalenessInput, inputs, outputs, sums []string) string {
 	h := sha256.New()
 	frame(h, []byte(in.Command))
 	frame(h, []byte(canonicalParams(in.Target.Params)))
 	frame(h, []byte(canonicalPaths(inputs)))
 
 	var contents strings.Builder
-	for _, rel := range inputs {
-		abs := filepath.Join(in.Target.Root, filepath.FromSlash(rel))
-		sum, err := hashFileFn(abs)
-		if err != nil {
-			return "", err
-		}
+	for _, sum := range sums {
 		contents.WriteString(sum)
 	}
 	frame(h, []byte(contents.String()))
@@ -201,7 +198,22 @@ func computeActionIDFromResolved(in StalenessInput, inputs, outputs []string) (s
 	binary.BigEndian.PutUint64(verBuf[:], uint64(CacheVersion))
 	frame(h, verBuf[:])
 
-	return "sha256-" + hex.EncodeToString(h.Sum(nil)), nil
+	return "sha256-" + hex.EncodeToString(h.Sum(nil))
+}
+
+// computeActionIDFromResolved hashes the ActionID from pre-resolved inputs and
+// outputs, so both ComputeActionID and RecordBuild can resolve paths once.
+func computeActionIDFromResolved(in StalenessInput, inputs, outputs []string) (string, error) {
+	sums := make([]string, len(inputs))
+	for i, rel := range inputs {
+		abs := filepath.Join(in.Target.Root, filepath.FromSlash(rel))
+		sum, err := hashFileFn(abs)
+		if err != nil {
+			return "", err
+		}
+		sums[i] = sum
+	}
+	return computeActionIDFromSums(in, inputs, outputs, sums), nil
 }
 
 // ComputeActionID computes the sha256 ActionID over the recipe command,
@@ -251,18 +263,16 @@ func Explain(in StalenessInput) (Explanation, error) {
 	if err != nil {
 		return Explanation{}, err
 	}
+	sums := make([]string, len(inputs))
 	exInputs := make([]ExplainInput, 0, len(inputs))
-	for _, rel := range inputs {
+	for i, rel := range inputs {
 		abs := filepath.Join(in.Target.Root, filepath.FromSlash(rel))
 		sum, err := hashFileFn(abs)
 		if err != nil {
 			return Explanation{}, err
 		}
+		sums[i] = sum
 		exInputs = append(exInputs, ExplainInput{Path: rel, Hash: "sha256-" + sum})
-	}
-	actionID, err := computeActionIDFromResolved(in, inputs, outputs)
-	if err != nil {
-		return Explanation{}, err
 	}
 	return Explanation{
 		Command:      in.Command,
@@ -270,7 +280,7 @@ func Explain(in StalenessInput) (Explanation, error) {
 		Inputs:       exInputs,
 		Outputs:      outputs,
 		CacheVersion: CacheVersion,
-		ActionID:     actionID,
+		ActionID:     computeActionIDFromSums(in, inputs, outputs, sums),
 	}, nil
 }
 

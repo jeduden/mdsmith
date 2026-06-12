@@ -183,14 +183,16 @@ func verifyTarget(
 
 	vctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	verifyOpts := buildexec.Options{TargetName: targetName(bt), LogRoot: bt.target.Root}
-	id, idErr := buildexec.ComputeActionID(stin)
-	if idErr != nil {
-		_, _ = fmt.Fprintf(w, "WARN %s: verify ActionID failed: %v\n", targetName(bt), idErr)
-		res.Unstable = true
-		return
+	verifyOpts := buildexec.Options{TargetName: targetName(bt)}
+	if !opts.noCache {
+		id, idErr := buildexec.ComputeActionID(stin)
+		if idErr != nil {
+			_, _ = fmt.Fprintf(w, "WARN %s: verify ActionID failed: %v\n", targetName(bt), idErr)
+			return
+		}
+		verifyOpts.LogRoot = bt.target.Root
+		verifyOpts.ActionID = "verify-" + id
 	}
-	verifyOpts.ActionID = "verify-" + id
 	if opts.stream {
 		verifyOpts.LiveSink = w
 	}

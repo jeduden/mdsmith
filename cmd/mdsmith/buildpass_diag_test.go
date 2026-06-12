@@ -487,11 +487,11 @@ func TestRunBuildPass_NoCacheSkipsPruneOrphanLogs(t *testing.T) {
 	assert.False(t, called, "pruneOrphanLogsFn must not be called with --build-no-cache")
 }
 
-// TestVerifyTarget_ComputeActionIDError_SetsUnstable covers the new error
+// TestVerifyTarget_ComputeActionIDError_DoesNotSetUnstable covers the error
 // branch in verifyTarget: when ComputeActionID fails (e.g. missing input),
-// verifyTarget prints a WARN, sets Unstable, and returns without running the
-// recipe a second time.
-func TestVerifyTarget_ComputeActionIDError_SetsUnstable(t *testing.T) {
+// verifyTarget prints a WARN and returns without setting Unstable or running
+// the recipe a second time.
+func TestVerifyTarget_ComputeActionIDError_DoesNotSetUnstable(t *testing.T) {
 	root := t.TempDir()
 	// Output exists so snapshotOutputs can capture it; input is absent so
 	// ComputeActionID's resolveInputs call fails.
@@ -518,10 +518,47 @@ func TestVerifyTarget_ComputeActionIDError_SetsUnstable(t *testing.T) {
 	res := &targetRunResult{}
 	var buf strings.Builder
 	verifyTarget(context.Background(), mock, bt, stin, buildPassOpts{}, time.Second, res, &buf)
-	assert.True(t, res.Unstable)
+	assert.False(t, res.Unstable, "transient ActionID error must not mark output unstable")
 	assert.Contains(t, buf.String(), "WARN")
 	assert.Contains(t, buf.String(), "ActionID")
 	assert.False(t, called, "builder must not be invoked when ActionID computation fails")
+}
+
+// TestVerifyTarget_NoCacheSkipsLogCapture verifies that when noCache is set,
+// verifyTarget skips the ComputeActionID call and log-root assignment so no
+// log directory is created even if the recipe succeeds.
+func TestVerifyTarget_NoCacheSkipsLogCapture(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sh not available on Windows")
+	}
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "src.txt"), []byte("hello"), 0o644))
+
+	script := writeShScript(t, root, "cp.sh", `cp "$1" "$2"`)
+	cmd := script + " {inputs} {outputs}"
+	builder := buildexec.NewCustomBuilder(map[string]buildexec.RecipeSpec{
+		"cp": {Command: cmd},
+	})
+	bt := buildTarget{
+		file: "doc.md",
+		line: 1,
+		target: buildexec.Target{
+			Recipe:  "cp",
+			Root:    root,
+			Inputs:  []string{"src.txt"},
+			Outputs: []string{"out.txt"},
+		},
+	}
+	require.NoError(t, builder.Build(context.Background(), bt.target))
+	stin := buildexec.StalenessInput{Target: bt.target, Command: cmd}
+
+	res := &targetRunResult{}
+	var buf strings.Builder
+	verifyTarget(context.Background(), builder, bt, stin,
+		buildPassOpts{noCache: true}, time.Second, res, &buf)
+	assert.False(t, res.Unstable)
+	_, err := os.Stat(filepath.Join(root, ".mdsmith", "build-logs"))
+	assert.True(t, os.IsNotExist(err), "no log directory must be created when noCache is set")
 }
 
 // TestReportBuildFailure_ActionIDError_NoBuildFields covers the len(Argv)==0
