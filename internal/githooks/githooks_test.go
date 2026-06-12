@@ -1243,9 +1243,9 @@ func TestAtomicWriteGitattributes_ChmodFails_ReturnsError(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".gitattributes")
 
-	orig := chmodFn
-	t.Cleanup(func() { chmodFn = orig })
-	chmodFn = func(string, os.FileMode) error {
+	orig := chmodFile
+	t.Cleanup(func() { chmodFile = orig })
+	chmodFile = func(string, os.FileMode) error {
 		return fmt.Errorf("mock chmod failure")
 	}
 
