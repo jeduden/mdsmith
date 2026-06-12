@@ -1,6 +1,7 @@
 package release
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -90,7 +91,7 @@ func TestPGOWritesProfileToRepoDefault(t *testing.T) {
 	// succeeds and the repo corpus materializes deterministically.
 	stageMinimalRepo(t, root)
 
-	r := &pgoFakeRunner{root: root, workdir: workdir}
+	r := &pgoFakeRunner{}
 	require.NoError(t, NewWithDeps(osFS{}, r).PGO(root, workdir))
 
 	out := filepath.Join(root, "cmd", "mdsmith", "default.pgo")
@@ -123,16 +124,18 @@ func stageMinimalRepo(t *testing.T, root string) {
 // writes the merged profile. It writes through real files so the
 // method's existence checks and the final read see what production
 // would.
-type pgoFakeRunner struct {
-	root    string
-	workdir string
-}
+type pgoFakeRunner struct{}
 
 func (r *pgoFakeRunner) RunCommand(dir, name string, args ...string) error {
 	switch {
 	case name == "go" && len(args) >= 4 && args[0] == "build":
-		// go build -o <bin> ./cmd/mdsmith — args[2] is the output path
-		return os.WriteFile(args[2], []byte("BIN"), 0o755)
+		// go build ... -o <bin> ... — scan for the -o value
+		for i, a := range args {
+			if a == "-o" && i+1 < len(args) {
+				return os.WriteFile(args[i+1], []byte("BIN"), 0o755)
+			}
+		}
+		return fmt.Errorf("no -o flag in go build args: %v", args)
 	case name == "go" && len(args) >= 2 && args[0] == "tool" && args[1] == "pprof":
 		out := pgoOutputFlag(args)
 		return os.WriteFile(out, []byte("MERGED-PGO"), 0o644)

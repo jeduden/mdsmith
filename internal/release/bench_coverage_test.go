@@ -195,8 +195,8 @@ func TestToolkit_copyInto(t *testing.T) {
 
 // TestToolkit_copyMarkdownTree copies only *.md files under the
 // source root, reproducing their relative layout, skips non-markdown
-// files and directories, propagates a WalkDir error on a missing
-// root, and propagates a copyInto failure.
+// files and directories, copies nothing for a missing root (no error),
+// and propagates a copyInto failure.
 func TestToolkit_copyMarkdownTree(t *testing.T) {
 	tk := New()
 

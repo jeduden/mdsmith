@@ -121,7 +121,7 @@ jobs:
           path: cmd/mdsmith/
       - name: Confirm the build is profile-guided
         run: |
-          test -f cmd/mdsmith/default.pgo
+          test -s cmd/mdsmith/default.pgo
           echo "building with PGO profile cmd/mdsmith/default.pgo ($(wc -c < cmd/mdsmith/default.pgo) bytes)"
       - name: Build
         env:

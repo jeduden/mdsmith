@@ -94,7 +94,7 @@ func (t *Toolkit) PGO(root, workdir string) error {
 	mdsmithBin := filepath.Join(binDir, "mdsmith")
 	if !t.exists(mdsmithBin) {
 		fmt.Println("pgo: building mdsmith")
-		if err := t.runner.RunCommand(root, "go", "build", "-o", mdsmithBin, "./cmd/mdsmith"); err != nil {
+		if err := t.runner.RunCommand(root, "go", "build", "-pgo=off", "-o", mdsmithBin, "./cmd/mdsmith"); err != nil {
 			return fmt.Errorf("build mdsmith: %w", err)
 		}
 	}
