@@ -147,8 +147,8 @@ rules (see
 mdsmith runs in mado's class. On the repo corpus the
 `mdsmith-parity` row comes in at mado's time (the two trade
 places run to run within noise), well ahead of rumdl; on the
-longer-prose neutral corpus it trails mado narrowly (the 1.1x
-in the table above) and comes in ahead of rumdl. The `mdsmith` → `mdsmith-parity`
+longer-prose neutral corpus it trails mado narrowly and comes
+in ahead of rumdl. The `mdsmith` → `mdsmith-parity`
 delta is the measured cost of the cross-file and
 generated-content layer — work users opt into, not waste.
 The residual gap to mado on long prose is genuine engine
@@ -196,8 +196,9 @@ files takes longer, so mdsmith's absolute repo-corpus time
 creeps up as the docs grow, with no change to the engine. The
 tell that growth — not a code regression — drives most of the
 move is mado: a fixed-version check-only binary, its repo time
-went from 40 ms over 523 files to 57 ms over 722, about 1.4x,
-almost exactly the 1.38x file growth (722/523). When the
+went from 40 ms over 523 files to 57 ms over 722 across an
+earlier pair of snapshots — about 1.4x, almost exactly the
+1.38x file growth (722/523). When the
 fixed-version tool scales with the file count, the shared cause
 is the file count. (The neutral corpus does not grow — it is
 pinned third-party prose; see below.)

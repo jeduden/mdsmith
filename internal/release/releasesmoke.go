@@ -36,7 +36,10 @@ var RequiredSmokeChannels = []string{"asdf", "go", "mise", "npm", "pip"}
 // step to skip rather than run `mdsmith version` against a binary that
 // was never installed. Only channels outside RequiredSmokeChannels may
 // carry it: a required channel that soft-skips would satisfy the
-// matrix-coverage check while never verifying anything.
+// matrix-coverage check while never verifying anything. Matched as a
+// plain substring — a deliberate tripwire, so even a script comment
+// mentioning the marker in a required channel trips the gate loudly
+// instead of the gate trying to parse shell.
 const softSkipMarker = "skipped=true"
 
 type smokeRawJob struct {
@@ -72,17 +75,14 @@ func CheckReleaseSmoke(workflowYAML []byte) ([]GateViolation, error) {
 				"exist so a broken channel fails the release, not a user",
 		}}, nil
 	}
-	have := make(map[string]bool, len(job.Strategy.Matrix.Include))
-	softSkips := make(map[string]bool)
+	installs := make(map[string]string, len(job.Strategy.Matrix.Include))
 	for _, entry := range job.Strategy.Matrix.Include {
-		have[entry.Channel] = true
-		if strings.Contains(entry.Install, softSkipMarker) {
-			softSkips[entry.Channel] = true
-		}
+		installs[entry.Channel] = entry.Install
 	}
 	var violations []GateViolation
 	for _, channel := range RequiredSmokeChannels {
-		if !have[channel] {
+		install, ok := installs[channel]
+		if !ok {
 			violations = append(violations, GateViolation{
 				Job: smokeJobName,
 				Reason: fmt.Sprintf(
@@ -92,7 +92,7 @@ func CheckReleaseSmoke(workflowYAML []byte) ([]GateViolation, error) {
 			})
 			continue
 		}
-		if softSkips[channel] {
+		if strings.Contains(install, softSkipMarker) {
 			violations = append(violations, GateViolation{
 				Job: smokeJobName,
 				Reason: fmt.Sprintf(

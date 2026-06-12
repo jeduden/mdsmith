@@ -303,7 +303,7 @@ enough.
   conditions, and on any sibling workflow that targets
   the release environments. Runs
   `mdsmith-release check-release-gates`, then
-  `check-release-smoke` (per-channel smoke coverage).
+  `check-release-smoke` (smoke coverage, no soft-skips).
 - **`if: github.repository == 'jeduden/mdsmith'`** on
   every publishing job, so a fork-cloned release
   workflow cannot reach the publish steps.

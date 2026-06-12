@@ -52,12 +52,9 @@ def rows(json_dir: pathlib.Path, corpus: str):
     if not data:
         sys.exit(f"no JSON results for corpus {corpus!r} in {json_dir}")
     if "mado" not in data:
-        sys.exit(f"corpus {corpus!r} has no mado result; the 'vs mado' "
-                 "column needs mado's median as its denominator")
-    # The column is literally "vs mado", so divide by mado's median —
-    # not the fastest tool's. The two coincided until mdsmith-parity
-    # started trading places with mado, at which point a min() here
-    # silently relabeled every ratio.
+        sys.exit(f"no mado result for corpus {corpus!r} in {json_dir}")
+    # Divide by mado's median, not the fastest tool's, to match the
+    # "vs mado" column header.
     mado = data["mado"][0]
     order = sorted(data.items(), key=lambda kv: kv[1][0])
     lines = ["| Tool | Median | Min | vs mado |",

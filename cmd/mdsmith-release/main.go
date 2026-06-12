@@ -54,7 +54,7 @@ Commands:
   stamp <version>                 Rewrite tracked manifests to <version>.
   check                           Verify tracked manifests are at the dev sentinel.
   check-release-gates             Verify release-environment gating across .github/workflows.
-  check-release-smoke             Verify release.yml smoke-tests every required channel.
+  check-release-smoke             Verify release.yml smoke-tests every required channel (no soft-skips).
   build-npm <artifacts> <out>     Build npm platform sub-packages.
   build-wheels <artifacts> <out>  Build platform-tagged Python wheels.
   build-flatpak <art> <out>       Stage the .flatpak bundle's manifest + Linux binaries.
@@ -296,7 +296,9 @@ func runCheckReleaseSmoke(root string, args []string) int {
 			"`mdsmith version` reports the tag, so a channel broken at the\n"+
 			"source — like the go.mod replace directive that made v0.40.0\n"+
 			"uninstallable via `go install` — fails the release pipeline\n"+
-			"instead of a user. Used by the release-gate-guard CI job.\n"+
+			"instead of a user. A required channel must also not write the\n"+
+			"best-effort `skipped=true` output that suppresses the shared\n"+
+			"Verify step. Used by the release-gate-guard CI job.\n"+
 			"Exits non-zero on any violation.\n",
 			strings.Join(release.RequiredSmokeChannels, ", "))
 	}
@@ -317,7 +319,8 @@ func runCheckReleaseSmoke(root string, args []string) int {
 	return reportGuardViolations(violations,
 		"release smoke coverage violated:",
 		"\nevery directly consumable install channel needs a smoke-test matrix\n"+
-			"entry that installs the published version and checks `mdsmith version`.\n"+
+			"entry that installs the published version and checks `mdsmith version`\n"+
+			"without the best-effort skipped=true escape hatch.\n"+
 			"See docs/development/release.md.",
 		"release smoke-test matrix covers every required channel")
 }
