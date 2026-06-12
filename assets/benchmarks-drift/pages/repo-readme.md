@@ -284,6 +284,7 @@ row: "| [`{command}`]({filename}) | {summary} |"
 | [`metrics`](docs/reference/cli/metrics.md)                   | List and rank shared Markdown metrics (file length, token estimate, readability, …).                                                      |
 | [`pre-merge-commit`](docs/reference/cli/pre-merge-commit.md) | Install / manage a pre-merge-commit hook that runs `mdsmith fix` after a merge.                                                           |
 | [`rename`](docs/reference/cli/rename.md)                     | Rename a heading or link-reference label and rewrite every dependent edit.                                                                |
+| [`trust`](docs/reference/cli/trust.md)                       | Review the .mdsmith.yml diff since it was last trusted and update the build trust marker on this clone.                                   |
 | [`version`](docs/reference/cli/version.md)                   | Print the mdsmith build version and exit.                                                                                                 |
 <?/catalog?>
 
