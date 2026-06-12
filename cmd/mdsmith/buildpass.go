@@ -156,10 +156,14 @@ func runBuildPass(
 	}
 
 	// Run before-hooks. A failure aborts the recipe pass and after-hooks.
+	// Use the same per-operation timeout as recipes so a hung hook does not
+	// block the build pass indefinitely.
 	if runHooks && len(cfg.Build.Hooks.Before) > 0 {
 		before := resolveHooks(cfg.Build.Hooks.Before)
-		ctx := context.Background()
-		if result := buildexec.RunHooks(ctx, before, root, w); result != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		result := buildexec.RunHooks(ctx, before, root, w)
+		cancel()
+		if result != nil {
 			return result.ExitCode
 		}
 	}
@@ -180,8 +184,10 @@ func runBuildPass(
 	afterCode := 0
 	if runHooks && len(cfg.Build.Hooks.After) > 0 {
 		after := resolveHooks(cfg.Build.Hooks.After)
-		ctx := context.Background()
-		if result := buildexec.RunAfterHooks(ctx, after, root, w); result != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		result := buildexec.RunAfterHooks(ctx, after, root, w)
+		cancel()
+		if result != nil {
 			afterCode = result.ExitCode
 		}
 	}
@@ -214,7 +220,11 @@ func resolveHooks(hooks []config.HookCfg) []buildexec.HookEntry {
 
 // allFresh returns true when every target's staleness verdict is Fresh.
 // This is used to decide whether to skip hooks under --build-skip-hooks-when-fresh.
+// --build-force and --build-no-cache always force Stale, so hooks run unconditionally.
 func allFresh(targets []buildTarget, cfg *config.Config, cache *buildexec.Cache, opts buildPassOpts) bool {
+	if opts.force || opts.noCache {
+		return false
+	}
 	for _, bt := range targets {
 		stin := stalenessFor(bt, cfg)
 		verdict, err := buildexec.CheckStaleness(stin, cache)
@@ -233,8 +243,10 @@ func allFresh(targets []buildTarget, cfg *config.Config, cache *buildexec.Cache,
 func listHooksForDryRun(listName string, hooks []config.HookCfg, w io.Writer) {
 	for i, h := range hooks {
 		name := h.Name
-		if name == "" && len(strings.Fields(h.Command)) > 0 {
-			name = strings.Fields(h.Command)[0]
+		if name == "" {
+			if fields := strings.Fields(h.Command); len(fields) > 0 {
+				name = fields[0]
+			}
 		}
 		_, _ = fmt.Fprintf(w, "hook %s[%d] %s: DRY-RUN\n", listName, i, name)
 	}
