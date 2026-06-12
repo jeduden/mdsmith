@@ -14,9 +14,10 @@ import (
 // The "Meta-Information" section of every rule README lists the peer
 // Markdown linters this rule covers, one bullet per peer, each linking
 // to that peer's rule documentation. The bullets are derived from the
-// `markdownlint:`/`rumdl:`/`mado:`/`panache:`/`obsidian-linter:` front
-// matter (the same source the coverage matrix reads), so this test is
-// the golden generator and validator that keeps the two in sync.
+// `markdownlint:`/`rumdl:`/`mado:`/`panache:`/`obsidian-linter:`/
+// `gomarklint:` front matter (the same source the coverage matrix
+// reads), so this test is the golden generator and validator that
+// keeps the two in sync.
 //
 // Regenerate after editing peer front matter:
 //
@@ -31,7 +32,7 @@ type peerLinkSpec struct {
 	maps  []RuleMapping
 }
 
-// peerLinkSpecs returns the five peer linters in their canonical bullet
+// peerLinkSpecs returns the six peer linters in their canonical bullet
 // order. The label is the peer's own (lowercase) brand name.
 func peerLinkSpecs(info RuleInfo) []peerLinkSpec {
 	return []peerLinkSpec{
@@ -40,6 +41,7 @@ func peerLinkSpecs(info RuleInfo) []peerLinkSpec {
 		{"mado", info.Mado},
 		{"panache", info.Panache},
 		{"obsidian-linter", info.ObsidianLinter},
+		{"gomarklint", info.Gomarklint},
 	}
 }
 
@@ -87,8 +89,12 @@ func isShortcutPeer(label string) bool {
 // markdownlint, rumdl, and mado prefix the markdownlint-style id so the
 // same `MDxxx` covered by several peers gets a distinct label per peer.
 // Every mado entry shares one label because mado has no per-rule docs,
-// only a single "Supported Rules" table. Shortcut peers (panache,
-// obsidian-linter) use the bare rule name as the label.
+// only a single "Supported Rules" table; gomarklint shares one label the
+// same way (its docs put every rule on a single Rules page), which also
+// keeps its kebab rule names from colliding with a shortcut peer's bare
+// label (obsidian-linter and gomarklint both have a `no-bare-urls`).
+// Shortcut peers (panache, obsidian-linter) use the bare rule name as
+// the label.
 func peerRefID(label string, m RuleMapping) string {
 	switch label {
 	case "markdownlint":
@@ -97,6 +103,8 @@ func peerRefID(label string, m RuleMapping) string {
 		return "rumdl-" + strings.ToLower(m.ID)
 	case "mado":
 		return "mado-rules"
+	case "gomarklint":
+		return "gomarklint-rules"
 	case "panache", "obsidian-linter":
 		return m.Name
 	default:
@@ -115,6 +123,8 @@ func peerRefURL(label string, m RuleMapping) (string, error) {
 		return "https://rumdl.dev/" + strings.ToLower(m.ID) + "/", nil
 	case "mado":
 		return "https://github.com/akiomik/mado#supported-rules", nil
+	case "gomarklint":
+		return "https://shinagawa-web.github.io/gomarklint/docs/rules/", nil
 	case "panache":
 		return "https://panache.bz/reference/linter-rules.html#" + m.Name, nil
 	case "obsidian-linter":
@@ -138,13 +148,18 @@ func (e *peerLinkError) Error() string {
 
 // peerEntry renders the link for one peer mapping. markdownlint-style
 // peers show "[MD013][mdl-md013] (line-length)"; shortcut peers show
-// "[undefined-anchor]". A trailing " (partial)" marks a partial cover,
-// matching the coverage-matrix legend.
+// "[undefined-anchor]". A peer whose id is its kebab name (gomarklint)
+// drops the parenthetical, which would just repeat the id. A trailing
+// " (partial)" marks a partial cover, matching the coverage-matrix
+// legend.
 func peerEntry(label string, m RuleMapping) string {
 	var text string
-	if isShortcutPeer(label) {
+	switch {
+	case isShortcutPeer(label):
 		text = "[" + m.Name + "]"
-	} else {
+	case m.ID == m.Name:
+		text = "[" + m.ID + "][" + peerRefID(label, m) + "]"
+	default:
 		text = "[" + m.ID + "][" + peerRefID(label, m) + "] (" + m.Name + ")"
 	}
 	if m.Partial {
@@ -222,7 +237,7 @@ func renderPeerLinks(info RuleInfo) (string, error) {
 // which has no fixed prefix to scan for; in practice every panache /
 // obsidian-linter rule also has a markdownlint analog, so these still
 // catch a fully de-mapped rule.)
-var peerRefMarkers = []string{"[mdl-", "[rumdl-", "[mado-rules]"}
+var peerRefMarkers = []string{"[mdl-", "[rumdl-", "[mado-rules]", "[gomarklint-rules]"}
 
 const categoryMarker = "\n- **Category**:"
 
@@ -296,6 +311,12 @@ func TestPeerEntry(t *testing.T) {
 		})
 		assert.Equal(t, "[header-increment] (partial)", got)
 	})
+	t.Run("gomarklint id equals name so no parenthetical", func(t *testing.T) {
+		got := peerEntry("gomarklint", RuleMapping{
+			ID: "link-fragments", Name: "link-fragments",
+		})
+		assert.Equal(t, "[link-fragments][gomarklint-rules]", got)
+	})
 }
 
 func TestPeerBullet(t *testing.T) {
@@ -332,6 +353,8 @@ func TestPeerRefURL(t *testing.T) {
 			want: "https://platers.github.io/obsidian-linter/settings/spacing-rules/#trailing-spaces"},
 		{label: "obsidian-linter", m: RuleMapping{ID: "no-bare-urls", Name: "no-bare-urls"},
 			want: "https://platers.github.io/obsidian-linter/settings/content-rules/#no-bare-urls"},
+		{label: "gomarklint", m: RuleMapping{ID: "single-h1", Name: "single-h1"},
+			want: "https://shinagawa-web.github.io/gomarklint/docs/rules/"},
 	}
 	for _, c := range cases {
 		got, err := peerRefURL(c.label, c.m)
@@ -361,6 +384,28 @@ func TestMadoShareSingleRef(t *testing.T) {
 	assert.Equal(t, 1, strings.Count(block, "[mado-rules]: "))
 	assert.Contains(t, block, "[MD018][mado-rules] (no-missing-space-atx)")
 	assert.Contains(t, block, "[MD019][mado-rules] (no-multiple-space-atx)")
+}
+
+func TestGomarklintSharesSingleRef(t *testing.T) {
+	info := RuleInfo{
+		ID:       "MDS012",
+		Category: "link",
+		// The obsidian-linter shortcut label is the bare rule name; the
+		// gomarklint entry for the same upstream name must not collide
+		// with it, which is why gomarklint shares one prefixed label.
+		ObsidianLinter: []RuleMapping{
+			{ID: "no-bare-urls", Name: "no-bare-urls", Default: false},
+		},
+		Gomarklint: []RuleMapping{
+			{ID: "no-bare-urls", Name: "no-bare-urls", Default: true},
+		},
+	}
+	block, err := renderPeerLinks(info)
+	require.NoError(t, err)
+	assert.Equal(t, 1, strings.Count(block, "[gomarklint-rules]: "))
+	assert.Contains(t, block, "- **gomarklint**: [no-bare-urls][gomarklint-rules]")
+	assert.Contains(t, block,
+		"[gomarklint-rules]: https://shinagawa-web.github.io/gomarklint/docs/rules/")
 }
 
 func TestRenderPeerLinks_ConflictingShortcutLabels(t *testing.T) {

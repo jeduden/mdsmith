@@ -29,6 +29,7 @@ type RuleInfo struct {
 	Mado            []RuleMapping
 	Panache         []RuleMapping
 	ObsidianLinter  []RuleMapping
+	Gomarklint      []RuleMapping
 }
 
 // RuleMapping names a rule in a peer Markdown linter that the mdsmith rule
@@ -170,13 +171,12 @@ func lookupRuleFromFS(fsys fs.FS, query string) (string, error) {
 	return "", fmt.Errorf("unknown rule %q", query)
 }
 
-// parseFrontMatter extracts id, name, status, description, and maintainability
-// from YAML front matter. Block scalars (`description: >-`) are folded; any
-// embedded newlines collapse to a single space so summaries render on one line.
-func parseFrontMatter(content string) (RuleInfo, error) {
+// frontMatterLines returns the raw lines between the opening and closing
+// front-matter fences, or an error when either fence is missing.
+func frontMatterLines(content string) ([]string, error) {
 	scanner := bufio.NewScanner(strings.NewReader(content))
 	if !scanner.Scan() || strings.TrimSpace(scanner.Text()) != "---" {
-		return RuleInfo{}, fmt.Errorf("missing front matter")
+		return nil, fmt.Errorf("missing front matter")
 	}
 
 	var front []string
@@ -190,10 +190,21 @@ func parseFrontMatter(content string) (RuleInfo, error) {
 		front = append(front, line)
 	}
 	if err := scanner.Err(); err != nil {
-		return RuleInfo{}, fmt.Errorf("scanning front matter: %w", err)
+		return nil, fmt.Errorf("scanning front matter: %w", err)
 	}
 	if !terminated {
-		return RuleInfo{}, fmt.Errorf("unterminated front matter")
+		return nil, fmt.Errorf("unterminated front matter")
+	}
+	return front, nil
+}
+
+// parseFrontMatter extracts id, name, status, description, and maintainability
+// from YAML front matter. Block scalars (`description: >-`) are folded; any
+// embedded newlines collapse to a single space so summaries render on one line.
+func parseFrontMatter(content string) (RuleInfo, error) {
+	front, err := frontMatterLines(content)
+	if err != nil {
+		return RuleInfo{}, err
 	}
 	var meta struct {
 		ID              string           `yaml:"id"`
@@ -207,6 +218,7 @@ func parseFrontMatter(content string) (RuleInfo, error) {
 		Mado            []RuleMapping    `yaml:"mado"`
 		Panache         []RuleMapping    `yaml:"panache"`
 		ObsidianLinter  []RuleMapping    `yaml:"obsidian-linter"`
+		Gomarklint      []RuleMapping    `yaml:"gomarklint"`
 	}
 	if err := yamlutil.UnmarshalSafe([]byte(strings.Join(front, "\n")), &meta); err != nil {
 		return RuleInfo{}, fmt.Errorf("parsing front matter: %w", err)
@@ -223,6 +235,7 @@ func parseFrontMatter(content string) (RuleInfo, error) {
 		Mado:            meta.Mado,
 		Panache:         meta.Panache,
 		ObsidianLinter:  meta.ObsidianLinter,
+		Gomarklint:      meta.Gomarklint,
 	}
 
 	if info.ID == "" {

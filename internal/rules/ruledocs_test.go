@@ -419,6 +419,10 @@ func TestParseFrontMatter_PeerLinterBlocks(t *testing.T) {
 		"  - id: heading-hierarchy\n" +
 		"    name: heading-hierarchy\n" +
 		"    default: false\n" +
+		"gomarklint:\n" +
+		"  - id: max-line-length\n" +
+		"    name: max-line-length\n" +
+		"    default: false\n" +
 		"---\n# Body\n"
 	info, err := parseFrontMatter(content)
 	require.NoError(t, err)
@@ -433,6 +437,30 @@ func TestParseFrontMatter_PeerLinterBlocks(t *testing.T) {
 	require.Len(t, info.Panache, 1)
 	assert.Equal(t, "heading-hierarchy", info.Panache[0].ID)
 	assert.False(t, info.Panache[0].Default)
+	require.Len(t, info.Gomarklint, 1)
+	assert.Equal(t, "max-line-length", info.Gomarklint[0].ID)
+	assert.False(t, info.Gomarklint[0].Default)
+}
+
+// TestFrontMatterLines covers the fence scanner on its own: the lines
+// between the fences come back verbatim, and a missing opening or
+// closing fence is an error.
+func TestFrontMatterLines(t *testing.T) {
+	t.Run("returns lines between fences", func(t *testing.T) {
+		front, err := frontMatterLines("---\nid: MDS999\nname: example\n---\n# Body\n")
+		require.NoError(t, err)
+		assert.Equal(t, []string{"id: MDS999", "name: example"}, front)
+	})
+	t.Run("missing opening fence", func(t *testing.T) {
+		_, err := frontMatterLines("# Body\n")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "missing front matter")
+	})
+	t.Run("unterminated front matter", func(t *testing.T) {
+		_, err := frontMatterLines("---\nid: MDS999\n# Body\n")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unterminated front matter")
+	})
 }
 
 // TestParseFrontMatter_RejectsYAMLAliases verifies that the safe-YAML wrapper
