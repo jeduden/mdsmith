@@ -65,6 +65,7 @@ func TestRunRejectsBadArity(t *testing.T) {
 		{"package-obsidian without args", []string{"package-obsidian"}},
 		{"package-obsidian with one arg", []string{"package-obsidian", "dist"}},
 		{"build-website with three positionals", []string{"build-website", "a", "b", "c"}},
+		{"pgo with extra args", []string{"pgo", "workdir", "extra"}},
 	}
 	for _, c := range cases {
 		assert.Equal(t, 2, run(c.args), c.name)
@@ -120,6 +121,7 @@ func TestSubcommandHelpExitsZero(t *testing.T) {
 		"test-summary",
 		"bench",
 		"bench-check",
+		"pgo",
 	} {
 		assert.Equal(t, 0, run([]string{sub, "--help"}), "%s --help", sub)
 	}
@@ -147,6 +149,7 @@ func TestSubcommandRejectsUnknownFlag(t *testing.T) {
 		"test-summary",
 		"bench",
 		"bench-check",
+		"pgo",
 	} {
 		assert.Equal(t, 2, run([]string{sub, "--bogus"}), "%s --bogus", sub)
 	}
@@ -406,6 +409,24 @@ func TestRunBuildWheelsReportsError(t *testing.T) {
 	// python-source check passes; missing artifacts trips the
 	// per-build stat check instead.
 	assert.Equal(t, 1, run([]string{"build-wheels", "missing-artifacts", "wheels"}))
+}
+
+// TestRunPGOReportsError dispatches through `run pgo` for the
+// fast-fail path: cwd has no ./cmd/mdsmith package, so go build
+// fails immediately and reportError returns exit code 1. The two
+// sub-cases exercise the no-workdir (default) and explicit-workdir
+// branches of runPGO.
+func TestRunPGOReportsError(t *testing.T) {
+	root := t.TempDir()
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	require.NoError(t, os.Chdir(root))
+
+	// No workdir: workdir defaults to "" inside runPGO.
+	assert.Equal(t, 1, run([]string{"pgo"}))
+	// Explicit workdir: the NArg()==1 branch assigns workdir.
+	assert.Equal(t, 1, run([]string{"pgo", t.TempDir()}))
 }
 
 // TestRunSyncDocsHappyPath dispatches through `run sync-docs` so

@@ -460,6 +460,11 @@ func (t *Toolkit) buildCorpora(root, workdir string) error {
 		}
 		for _, c := range clones {
 			dir := filepath.Join(workdir, c.dir)
+			// Skip if already checked out. If a previous run was
+			// interrupted after MkdirAll but before git-checkout, dir
+			// exists but has no src/ — copyMarkdownTree will silently
+			// no-op, producing an empty neutral corpus. Re-run with a
+			// fresh workdir to recover from that state.
 			if t.exists(dir) {
 				continue
 			}
@@ -522,8 +527,17 @@ func (t *Toolkit) copyInto(src, dst string) error {
 // dstRoot, reproducing the source path under it (leading
 // separator stripped) — the same layout run.sh's
 // `find … | tar … | tar -x` produced, so hyperfine walks an
-// identical corpus.
+// identical corpus. An absent srcRoot copies nothing rather than
+// erroring: in production every srcRoot exists because checkoutPinned
+// fetched it first (a failed fetch errors earlier and loudly), so an
+// absent tree only arises when the corpus was never cloned — the case
+// the hermetic PGO/bench unit tests hit with a fake runner that does
+// not reach the network. countMarkdownFiles already treats an absent
+// corpus as a legitimate zero for the same reason.
 func (t *Toolkit) copyMarkdownTree(srcRoot, dstRoot string) error {
+	if !t.exists(srcRoot) {
+		return nil
+	}
 	return filepath.WalkDir(srcRoot, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err

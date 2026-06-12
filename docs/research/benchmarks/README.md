@@ -70,6 +70,23 @@ docs read.
   `assets` branch so the committed baseline shares the
   release runner's environment)
 
+### No PGO in the benchmark build
+
+The `mdsmith` binary the harness builds is a plain
+`go build ./cmd/mdsmith` with no profile-guided
+optimization, even though the release pipeline now builds the
+shipped binaries with a generated profile (see
+[the PGO page](../../development/pgo-profile.md)). The two are
+deliberately separate. The benchmark measures a reproducible
+build — one whose number depends only on the engine and the
+corpus, not on a profile recorded earlier in the same run —
+so a profile refresh cannot move the published figures
+independently of an engine change. PGO measured within noise
+(~0-2%) on this workload, so building the benchmark binary
+without it costs the comparison nothing meaningful while
+keeping the number honest. The released binaries carry the
+profile; the benchmark binary does not.
+
 ## Results
 
 Numbers below are spliced from

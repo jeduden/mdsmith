@@ -98,11 +98,14 @@ func TestBuildCorpora_NeutralBlock(t *testing.T) {
 		workdir := t.TempDir()
 		require.NoError(t, os.MkdirAll(filepath.Join(workdir, "corpus_repo"), 0o755))
 		// Both clone dirs exist (so checkoutPinned is skipped via
-		// continue) but neither has a src/, so copyMarkdownTree's walk
-		// errors and buildCorpora surfaces it.
-		require.NoError(t, os.MkdirAll(filepath.Join(workdir, "rust-book"), 0o755))
+		// continue) and rust-book/src has a markdown file to copy, but an
+		// injected WriteFile fault makes copyMarkdownTree's copyInto fail,
+		// and buildCorpora surfaces it.
+		touch(t, workdir, "rust-book/src/ch01.md")
 		require.NoError(t, os.MkdirAll(filepath.Join(workdir, "rust-ref"), 0o755))
-		err := NewWithDeps(osFS{}, &fakeRunner{}).buildCorpora(t.TempDir(), workdir)
+		ff := newFakeFS()
+		ff.failOnWriteFileCall = 1
+		err := NewWithFS(ff).buildCorpora(t.TempDir(), workdir)
 		require.Error(t, err)
 	})
 }

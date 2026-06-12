@@ -4,7 +4,8 @@ summary: >-
   `cmd/mdsmith/default.pgo` burdens every merge with a binary
   artifact, and the merge tooling must stay free of
   repo-specific entries. How to generate a profile locally,
-  and the plan that moves generation into the release build.
+  and how the release workflow generates one inside the pipeline
+  so published binaries are profile-guided without a tracked artifact.
 ---
 # PGO and the uncommitted profile
 
@@ -32,16 +33,54 @@ be committed by accident. On this workload PGO measured
 within noise (~0-2%), so plain builds lose nothing
 user-visible.
 
-[Plan 2606120633](../../plan/2606120633_release-built-pgo-profile.md)
-moves profile generation into the release workflow instead,
-so published binaries get PGO without a tracked artifact.
+## How the release build gets a profile
+
+The release workflow generates the profile inside the
+pipeline. So the published binaries are profile-guided
+without a tracked artifact. `release.yml` runs a `pgo` job
+after `preflight` and before the build matrix. The job builds
+`mdsmith-release` and runs `mdsmith-release pgo
+/tmp/mdsmith-pgo`.
+
+That subcommand:
+
+1. Builds the `mdsmith` binary.
+2. Builds the two benchmark corpora using the same plumbing
+   as `mdsmith-release bench`: `corpus_repo` from the repo's
+   tracked Markdown, `corpus_neutral` from the pinned Rust
+   Book and Reference.
+3. Records a CPU profile over each corpus in both the
+   default and `parity`
+   (`bench-parity.mdsmith.yml`) configurations via
+   `MDSMITH_CPUPROFILE` — four runs total.
+4. Merges the four runs with `go tool pprof -proto` into
+   `cmd/mdsmith/default.pgo`.
+
+The `pgo` job uploads that file as the `pgo-profile` artifact.
+Each `build` matrix job downloads it to `cmd/mdsmith/` and
+prints the profile size before running `go build`. Go finds
+`cmd/mdsmith/default.pgo` in the main package directory
+automatically — no flag needed. The file is never committed.
+
+The benchmark harness deliberately does **not** build with
+this profile (see
+[the benchmark page](../research/benchmarks/README.md)). The
+published numbers measure the plain, reproducible build, not
+the PGO-optimized release output.
 
 ## Generating a profile locally
 
-For experiments, record the real workload — both benchmark
-corpora, both configurations — and merge the runs. Staleness
-is safe: samples that match no function are ignored, so an
-old profile cannot break a build; it just helps less.
+The release `pgo` job's logic is also a local command. From
+the repo root, `mdsmith-release pgo [workdir]` runs the whole
+recipe below — build, corpora, four profiled `check` runs,
+merge — and writes `cmd/mdsmith/default.pgo` for you; the
+`workdir` defaults to `/tmp/mdsmith-bench`.
+
+For experiments, the equivalent shell records the real
+workload — both benchmark corpora, both configurations — and
+merges the runs. Staleness is safe: samples that match no
+function are ignored, so an old profile cannot break a build;
+it just helps less.
 
 ```bash
 # Corpora as built by the benchmark harness (run.sh /

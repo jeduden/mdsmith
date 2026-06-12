@@ -26,6 +26,7 @@
 //	mdsmith-release merge-coverage -o <out> <profile>...
 //	mdsmith-release test-summary
 //	mdsmith-release bench [workdir]
+//	mdsmith-release pgo [workdir]
 //	mdsmith-release pull-site-assets
 //	mdsmith-release sync-messaging [--check]
 //	mdsmith-release render-scoop-manifest <version> <checksums-file>
@@ -74,6 +75,7 @@ Commands:
   test-summary                    Tally unit/integration/e2e tests from a go test -json stream on stdin.
   bench [workdir]                 Run the pinned cross-tool benchmark; promote JSON + fragments.
   bench-check <base> <fresh>      Fail if mdsmith regressed vs mado between two benchmark snapshots.
+  pgo [workdir]                   Generate a PGO profile over the bench corpora into cmd/mdsmith/default.pgo.
   pull-site-assets                Fetch the published demo GIF for the site build.
   sync-messaging [--check]        Propagate docs/brand/messaging.md into every tracked surface (or check drift).
   sync-parity-rules [--check]     Regenerate the parity-convention disabled-rules fragment
@@ -185,6 +187,8 @@ func dispatchGenerators(cmd, root string, rest []string) int {
 		return runBench(root, rest)
 	case "bench-check":
 		return runBenchCheck(root, rest)
+	case "pgo":
+		return runPGO(root, rest)
 	default:
 		fmt.Fprintf(os.Stderr, "mdsmith-release: unknown command %q\n%s", cmd, usageText)
 		return 2

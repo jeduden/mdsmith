@@ -57,8 +57,36 @@ jobs:
           fi
           echo "release version: $INPUT_VERSION"
 
-  build:
+  # Generate the PGO profile once, ahead of the build matrix, so every
+  # platform binary is built profile-guided. The profile is recorded
+  # over the two benchmark corpora in both configurations and merged
+  # into cmd/mdsmith/default.pgo — a gitignored path `go build` reads
+  # automatically. It is never committed; it travels to the build jobs
+  # as the `pgo-profile` artifact. See docs/development/pgo-profile.md.
+  pgo:
     needs: [preflight]
+    if: *release_repo_trigger_ok
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Build mdsmith-release
+        run: go build -o mdsmith-release ./cmd/mdsmith-release
+      - name: Generate PGO profile
+        run: ./mdsmith-release pgo /tmp/mdsmith-pgo
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pgo-profile
+          path: cmd/mdsmith/default.pgo
+          if-no-files-found: error
+
+  build:
+    needs: [preflight, pgo]
     if: *release_repo_trigger_ok
     strategy:
       matrix:
@@ -82,6 +110,19 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      # Place the profile the `pgo` job generated so `go build` picks it
+      # up from cmd/mdsmith/default.pgo automatically; the build below is
+      # otherwise unchanged. The path is gitignored, so nothing is
+      # committed.
+      - name: Download PGO profile
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pgo-profile
+          path: cmd/mdsmith/
+      - name: Confirm the build is profile-guided
+        run: |
+          test -s cmd/mdsmith/default.pgo
+          echo "building with PGO profile cmd/mdsmith/default.pgo ($(wc -c < cmd/mdsmith/default.pgo) bytes)"
       - name: Build
         env:
           GOOS: ${{ matrix.goos }}
