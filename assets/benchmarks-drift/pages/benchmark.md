@@ -33,18 +33,18 @@ docs read.
   full default set users actually run.
 - Caches disabled for the tools that have one (`rumdl
   --no-cache`, `panache --no-cache`) so every run is
-  worst-case cold. mdsmith, mado, and markdownlint-cli2 keep
-  no on-disk cache.
+  worst-case cold. mdsmith, mado, gomarklint, and
+  markdownlint-cli2 keep no on-disk cache.
 - `mdsmith` vs the markdownlint tools is not like-for-like
   (it does more per file); `mdsmith-parity` vs them is the
   closest like-for-like, with one residual asymmetry noted
   in [Reading the result](#reading-the-result).
 - Integrity: every comparison binary is fetched at a pinned
   version and verified by SHA-256 before it runs.
-  hyperfine, mado, panache, and rumdl come from pinned
-  GitHub release tarballs (rumdl moved off an unpinned
-  `uv tool install`); markdownlint-cli2 installs via
-  `npm ci` from the committed lockfile in `npm/`. A
+  gomarklint, hyperfine, mado, panache, and rumdl come from
+  pinned GitHub release tarballs (rumdl moved off an
+  unpinned `uv tool install`); markdownlint-cli2 installs
+  via `npm ci` from the committed lockfile in `npm/`. A
   tampered or silently-rebuilt download fails the run loud.
 
 ### Corpora
@@ -111,24 +111,26 @@ better; `vs mado` is the ratio to mado's median):
 
 | Tool              | Median  | Min     | vs mado |
 | ----------------- | ------- | ------- | ------- |
-| mado              | 63 ms   | 62 ms   | 1.0x    |
-| mdsmith-parity    | 66 ms   | 66 ms   | 1.0x    |
-| mdsmith           | 210 ms  | 206 ms  | 3.3x    |
-| rumdl             | 330 ms  | 320 ms  | 5.2x    |
-| panache           | 712 ms  | 597 ms  | 11x     |
-| markdownlint-cli2 | 4750 ms | 4702 ms | 75x     |
+| gomarklint        | 62 ms   | 54 ms   | 1.0x    |
+| mdsmith-parity    | 62 ms   | 62 ms   | 1.0x    |
+| mado              | 63 ms   | 63 ms   | 1.0x    |
+| mdsmith           | 203 ms  | 201 ms  | 3.2x    |
+| rumdl             | 315 ms  | 309 ms  | 5.0x    |
+| panache           | 661 ms  | 585 ms  | 10x     |
+| markdownlint-cli2 | 4556 ms | 4525 ms | 72x     |
 
 **Neutral corpus — 234 files** (Rust Book + Rust Reference,
 longer third-party prose):
 
 | Tool              | Median  | Min     | vs mado |
 | ----------------- | ------- | ------- | ------- |
-| mado              | 48 ms   | 46 ms   | 1.0x    |
-| mdsmith-parity    | 53 ms   | 52 ms   | 1.1x    |
-| mdsmith           | 155 ms  | 149 ms  | 3.2x    |
-| rumdl             | 196 ms  | 194 ms  | 4.1x    |
-| panache           | 561 ms  | 525 ms  | 12x     |
-| markdownlint-cli2 | 3082 ms | 2984 ms | 64x     |
+| gomarklint        | 29 ms   | 28 ms   | 0.6x    |
+| mado              | 46 ms   | 45 ms   | 1.0x    |
+| mdsmith-parity    | 50 ms   | 49 ms   | 1.1x    |
+| mdsmith           | 148 ms  | 145 ms  | 3.2x    |
+| rumdl             | 188 ms  | 186 ms  | 4.1x    |
+| panache           | 555 ms  | 516 ms  | 12x     |
+| markdownlint-cli2 | 2945 ms | 2895 ms | 65x     |
 <?/include?>
 
 ## Reading the result
@@ -279,6 +281,24 @@ The rule-by-rule mapping against the other linters
 lives in the [peer-linter coverage matrix][mdcov]
 instead.
 
+### gomarklint joins the table at the next refresh
+
+gomarklint is wired into the harness: its release tarball
+and SHA-256 are pinned in the `benchTools` manifest
+(`internal/release/bench.go`), and `runHyperfine` drives
+it on bare defaults next to the other tools. From the
+merge onward, the per-merge `benchmark.yml` run and each
+release's `benchmark-publish` job measure it.
+
+The tables above lack a gomarklint row only because they
+render from the committed `data/*.json` snapshot, and
+that snapshot moves when a maintainer re-runs the whole
+harness via `run.sh` and reviews the result in a PR —
+cross-tool ratios are only valid within a single run on
+one machine. The row appears with the next deliberate
+refresh. Until then the rule-by-rule comparison lives in
+the [peer-linter coverage matrix][mdcov].
+
 [mdcov]: ../markdownlint-coverage/README.md
 
 ### Apples-to-apples rule sets
@@ -295,14 +315,15 @@ benchmark-specific layer: which rules `mdsmith` (full)
 runs and which `mdsmith-parity` disables via
 [`bench-parity.mdsmith.yml`](bench-parity.mdsmith.yml).
 
-| Configuration       | Rule class                                               |
-| ------------------- | -------------------------------------------------------- |
-| `mdsmith` (full)    | every default-enabled MDS rule                           |
-| `mdsmith-parity`    | same set minus the 24 rules listed below                 |
-| `mado`              | see the coverage matrix `mado` column                    |
-| `rumdl`             | see the coverage matrix `rumdl` column                   |
-| `panache`           | distinct rule IDs — see coverage matrix `panache` column |
-| `markdownlint-cli2` | canonical markdownlint rule set                          |
+| Configuration       | Rule class                                                   |
+| ------------------- | ------------------------------------------------------------ |
+| `mdsmith` (full)    | every default-enabled MDS rule                               |
+| `mdsmith-parity`    | same set minus the 24 rules listed below                     |
+| `mado`              | see the coverage matrix `mado` column                        |
+| `rumdl`             | see the coverage matrix `rumdl` column                       |
+| `panache`           | distinct rule IDs — see coverage matrix `panache` column     |
+| `gomarklint`        | own kebab-case IDs — see coverage matrix `gomarklint` column |
+| `markdownlint-cli2` | canonical markdownlint rule set                              |
 
 #### Rules the `parity` convention disables
 
