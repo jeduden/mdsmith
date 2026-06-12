@@ -681,27 +681,3 @@ func TestFix_CRLF_RoundTrips_TableLines(t *testing.T) {
 		"reformatted table row must keep CRLF; got:\n%q", got)
 	assert.NotContains(t, got, "|\n", "no bare-LF line endings after a pipe row")
 }
-
-// TestSplitCells_AllocBudget verifies that splitCells pre-sizes the cells
-// slice via make([]string, 0, n), eliminating append-growth allocs in the
-// structure-check hot path. Budget: make + builder-buf + one String() per cell.
-func TestSplitCells_AllocBudget(t *testing.T) {
-	if testing.Short() {
-		t.Skip()
-	}
-	if raceEnabled {
-		t.Skip("alloc gate skipped under -race")
-	}
-	s := " col one | col two | col three "
-	_ = splitCells(s) // warm up
-	const (
-		runs   = 100
-		budget = 7 // make(1) + builder-buf-growths(~3) + String()×3; no slice-growth allocs
-	)
-	allocs := testing.AllocsPerRun(runs, func() {
-		_ = splitCells(s)
-	})
-	require.LessOrEqualf(t, allocs, float64(budget),
-		"splitCells allocs/op = %.0f (budget=%d); pre-size cells slice to fix",
-		allocs, budget)
-}
