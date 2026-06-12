@@ -1,0 +1,163 @@
+package build
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestBuildEnv_DefaultsOnly(t *testing.T) {
+	t.Setenv("HOME", "/home/tester")
+	t.Setenv("LANG", "en_US.UTF-8")
+	t.Setenv("SECRET_TOKEN", "leak-me")
+
+	env := buildEnv(ExecConfig{}, defaultExecConfig())
+
+	got := envMap(env)
+	assert.Equal(t, defaultExecPath, got["PATH"])
+	assert.Equal(t, "/home/tester", got["HOME"])
+	assert.Equal(t, "en_US.UTF-8", got["LANG"])
+	_, leaked := got["SECRET_TOKEN"]
+	assert.False(t, leaked, "non-allowlisted var must not pass through")
+}
+
+func TestBuildEnv_CustomPathAndPassThrough(t *testing.T) {
+	t.Setenv("HOME", "/home/tester")
+	t.Setenv("SOURCE_DATE_EPOCH", "1700000000")
+	t.Setenv("LANG", "C")
+
+	cfg := ExecConfig{
+		Path:           "/opt/bin:/bin",
+		EnvPassThrough: []string{"SOURCE_DATE_EPOCH"},
+	}
+	env := buildEnv(cfg, defaultExecConfig())
+	got := envMap(env)
+	assert.Equal(t, "/opt/bin:/bin", got["PATH"])
+	assert.Equal(t, "1700000000", got["SOURCE_DATE_EPOCH"])
+	// EnvPassThrough replaces the default list; HOME/LANG are not re-listed.
+	_, hasHome := got["HOME"]
+	assert.False(t, hasHome, "custom pass-through replaces defaults, not appends")
+	_, hasLang := got["LANG"]
+	assert.False(t, hasLang)
+}
+
+func TestBuildEnv_UnsetPassThroughIsOmitted(t *testing.T) {
+	_ = os.Unsetenv("LC_ALL")
+	t.Setenv("HOME", "/h")
+	env := buildEnv(ExecConfig{}, defaultExecConfig())
+	got := envMap(env)
+	_, ok := got["LC_ALL"]
+	assert.False(t, ok, "an unset pass-through var produces no entry")
+}
+
+// envMap parses a KEY=VALUE slice into a map.
+func envMap(env []string) map[string]string {
+	m := make(map[string]string, len(env))
+	for _, e := range env {
+		k, v, _ := strings.Cut(e, "=")
+		m[k] = v
+	}
+	return m
+}
+
+func TestRunRecipe_HermeticEnvVisibleToProcess(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sh not available on Windows")
+	}
+	t.Setenv("HOME", "/home/tester")
+	t.Setenv("SECRET_TOKEN", "leak-me")
+
+	stage := t.TempDir()
+	out := filepath.Join(stage, "env.txt")
+	// `env` is a coreutils binary on PATH /usr/bin:/bin.
+	script := writeScript(t, t.TempDir(), "dumpenv.sh", `env | sort > "$1"`)
+
+	err := runRecipe(context.Background(), runOpts{
+		argv:    []string{script, out},
+		dir:     stage,
+		exec:    ExecConfig{},
+		defExec: defaultExecConfig(),
+		timeout: 10 * time.Second,
+	})
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(out)
+	require.NoError(t, err)
+	body := string(data)
+	assert.Contains(t, body, "PATH="+defaultExecPath)
+	assert.Contains(t, body, "HOME=/home/tester")
+	assert.NotContains(t, body, "SECRET_TOKEN")
+}
+
+func TestRunRecipe_CmdDirIsStaging(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sh not available on Windows")
+	}
+	stage := t.TempDir()
+	realStage, err := filepath.EvalSymlinks(stage)
+	require.NoError(t, err)
+	out := filepath.Join(stage, "pwd.txt")
+	script := writeScript(t, t.TempDir(), "pwd.sh", `pwd > "$1"`)
+
+	err = runRecipe(context.Background(), runOpts{
+		argv:    []string{script, out},
+		dir:     stage,
+		exec:    ExecConfig{},
+		defExec: defaultExecConfig(),
+		timeout: 10 * time.Second,
+	})
+	require.NoError(t, err)
+	data, err := os.ReadFile(out)
+	require.NoError(t, err)
+	assert.Equal(t, realStage, strings.TrimSpace(string(data)))
+}
+
+func TestRunRecipe_TimeoutKillsProcessGroup(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("process-group kill tested on Unix")
+	}
+	stage := t.TempDir()
+	pidFile := filepath.Join(stage, "child.pid")
+	// Parent spawns a long-lived child in the background, records its PID,
+	// then sleeps. On timeout the whole group must die, including the child.
+	body := `sleep 120 & echo $! > "` + pidFile + `"; sleep 120`
+	script := writeScript(t, t.TempDir(), "spawn.sh", body)
+
+	start := time.Now()
+	err := runRecipe(context.Background(), runOpts{
+		argv:    []string{script},
+		dir:     stage,
+		exec:    ExecConfig{},
+		defExec: defaultExecConfig(),
+		timeout: 500 * time.Millisecond,
+	})
+	require.Error(t, err)
+	assert.Less(t, time.Since(start), 10*time.Second, "kill should be prompt")
+
+	// Give the kernel a moment to reap.
+	deadline := time.Now().Add(6 * time.Second)
+	var childPID int
+	for time.Now().Before(deadline) {
+		b, rerr := os.ReadFile(pidFile)
+		if rerr == nil {
+			if n, perr := parsePID(strings.TrimSpace(string(b))); perr == nil {
+				childPID = n
+				break
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	require.NotZero(t, childPID, "child pid should have been recorded")
+
+	// The child must no longer be alive: signal 0 probes existence.
+	assert.Eventually(t, func() bool {
+		return !processAlive(childPID)
+	}, 6*time.Second, 100*time.Millisecond, "spawned child should not be orphaned")
+}
