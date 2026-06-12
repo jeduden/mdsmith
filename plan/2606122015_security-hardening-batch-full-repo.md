@@ -2,7 +2,7 @@
 id: 2606122015
 title: "Security hardening batch — 2026-06-12 full-repo audit"
 status: "🔲"
-summary: >
+summary: >-
   Low/informational hardening from the 2026-06-12 full-repo audit:
   make the MDS040 gate non-bypassable by attacker-controlled config
   (S002), fix rename symlink write-through when follow-symlinks is

@@ -2,7 +2,7 @@
 id: 2606122014
 title: "Add SHA256 checksum verification for komac download in release.yml"
 status: "🔲"
-summary: >
+summary: >-
   S001 from the 2026-06-12 full-repo audit: the winget-submit job
   downloads the komac binary with curl and executes it without any
   SHA256 or signature verification, while every other binary download

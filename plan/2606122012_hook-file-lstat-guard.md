@@ -2,7 +2,7 @@
 id: 2606122012
 title: "Add lstat guard to hook-file install, uninstall, and status"
 status: "🔲"
-summary: >
+summary: >-
   S001 from the 2026-06-12 git/LSP audit: ensurePreMergeCommitHook,
   runPreMergeCommitUninstall, and runPreMergeCommitStatus all read,
   write, or remove the hook path without a prior lstat check.

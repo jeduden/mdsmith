@@ -2,7 +2,7 @@
 id: 2606122013
 title: "Security hardening batch — 2026-06-12 git/LSP audit"
 status: "🔲"
-summary: >
+summary: >-
   Low/informational hardening from the 2026-06-12 audit: remove the
   GOPATH binary fallback in resolveInstalledBinary (S003), and add a
   unit test for shellQuote (S002).
