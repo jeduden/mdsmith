@@ -33,6 +33,7 @@ row: "- [{summary}]({filename})"
 - [Install / manage a pre-merge-commit hook that runs `mdsmith fix` after a merge.](cli/pre-merge-commit.md)
 - [Select Markdown files by a CUE expression on front matter.](cli/query.md)
 - [Rename a heading or link-reference label and rewrite every dependent edit.](cli/rename.md)
+- [Review the .mdsmith.yml diff since it was last trusted and update the build trust marker on this clone.](cli/trust.md)
 - [Print the mdsmith build version and exit.](cli/version.md)
 - [Each file under `.mdsmith/conventions/` declares one user convention. The basename is the convention name; the file body carries a `flavor:` plus a `rules:` map. Sits alongside inline `conventions.<name>:` in `.mdsmith.yml`.](convention-files.md)
 - [Built-in Markdown conventions, the rule presets each one applies, and how user config layers on top via deep-merge.](conventions.md)

@@ -130,9 +130,17 @@ build docs/overview.md:30 (pandoc): FAIL: recipe "pandoc" failed: exit status 1
 
 `mdsmith fix` exits non-zero if any recipe fails. A failing recipe
 leaves no partial output: each target stages its outputs in a
-per-target temp directory, and mdsmith renames the staged files into
-place only after the recipe succeeds. A pre-existing output survives
-a failed rebuild untouched.
+random-suffixed per-recipe directory under `.mdsmith/build-staging/`,
+and mdsmith renames the staged files into place only after the recipe
+succeeds and the [output post-conditions](#output-post-conditions)
+pass. A pre-existing output survives a failed rebuild untouched.
+
+The build pass treats `.mdsmith.yml` and every `<?build?>` directive
+as untrusted. Before it runs any recipe it consults the
+[trust gate](#the-trust-gate); each recipe then runs under a
+[hermetic environment](#hermetic-execution-environment) in its own
+process group, and its writes are checked against the declared
+outputs. See [Build safety](#build-safety) for the full model.
 
 The build pass runs *after* the lint-fix pass, so a freshly-edited
 `outputs:` list is built with its new value. The pass runs only from
@@ -172,7 +180,7 @@ path.
 | `--build-force`                 | Rebuild every target; refresh all cache entries                  |
 | `--build-check-stale`           | Print stale targets, exit non-zero if any stale; run no recipe   |
 | `--build-no-cache`              | Treat all targets as stale; do not read or write the cache       |
-| `--build-timeout DUR`           | Per-recipe timeout (default `30s`)                               |
+| `--build-timeout DUR`           | Per-recipe timeout (default `30s`); fires a process-group kill   |
 | `--build-no-hooks`              | Run the build pass but skip both `before` and `after` hook lists |
 | `--build-skip-hooks-when-fresh` | Skip both hook lists when no target is stale; run them otherwise |
 
@@ -276,6 +284,149 @@ mdsmith fix --build-skip-hooks-when-fresh
 Use `--build-no-hooks` to skip hooks entirely and run only the recipe
 pass. Use `--no-build` to skip the build pass including hooks.
 
+## Build safety
+
+The build pass is the only part of mdsmith that runs an external
+process. It treats `.mdsmith.yml` and the `<?build?>` directives as
+untrusted input, so a freshly cloned repository cannot silently run a
+recipe. Four layers cooperate: a trust gate gates execution, a
+hermetic environment bounds what a recipe can read and how it is
+killed, atomic-write hardening protects the project tree from a hostile
+staging path, and output post-conditions reject any write outside the
+declared `outputs:`.
+
+These layers raise the cost of an accidental or hostile recipe; they
+are **not** a sandbox. PATH allowlisting and the staging working
+directory are for build determinism, not filesystem confinement: a
+recipe can still write through an absolute path or `../`, and a write
+into a directory that is not a declared output's parent is not
+detected. Real confinement needs an OS sandbox (a container, `bwrap`,
+or similar). Only run recipes you would run by hand.
+
+### The trust gate
+
+`mdsmith fix` always runs the lint-fix pass. The build pass — the part
+that executes recipes — runs only when the config is trusted on this
+clone:
+
+- The gate is satisfied when a sibling file `.mdsmith.yml.trust`
+  exists and its bytes are identical to the current `.mdsmith.yml`.
+- Any drift (an edit to `.mdsmith.yml` after it was trusted), or a
+  missing marker, makes the build pass abort with a
+  `build not trusted` message and exit code 2. The lint-fix pass has
+  already run, so formatting still happens.
+- `mdsmith fix --no-build` skips the gate and the build pass together.
+- `--build-dry-run` and `--build-check-stale` never consult the gate:
+  they enumerate targets without running anything.
+
+The marker is per-clone, not per-repository: list it in `.gitignore`
+alongside the build cache and staging dir.
+
+```text
+.mdsmith.yml.trust
+```
+
+Run `mdsmith trust` to review and trust a config. It prints a unified
+diff between the stored marker and the current `.mdsmith.yml`, prompts
+for confirmation, and rewrites the marker (mode `0600`) on accept. Pass
+`--yes` to skip the prompt. Re-run it whenever you change `build:`
+settings.
+
+#### CI guidance
+
+CI runners are presumed sandboxed and opt in with an environment
+variable instead of a committed marker:
+
+```sh
+MDSMITH_TRUST_BUILD=1 mdsmith fix .
+```
+
+When `MDSMITH_TRUST_BUILD` is set to any non-empty value the gate is
+satisfied without a marker file. The variable is consumed by the gate
+only; it is **not** passed through to recipes (see the hermetic
+environment below). Set it only on a runner you control.
+
+### Hermetic execution environment
+
+Each recipe runs with a minimal, explicit environment rather than
+inheriting the parent process's:
+
+- `PATH` is `build.exec.path` (default `/usr/bin:/bin`). Nothing else
+  is on the path unless you add its directory.
+- Only the environment variables named in `build.exec.env-pass-through`
+  are forwarded, each with its current value. The default list is
+  `[HOME, LANG, LC_ALL]`. A name that is unset in the parent
+  contributes no entry.
+- The working directory (`Cmd.Dir`) is the per-recipe staging dir.
+
+```yaml
+build:
+  exec:
+    path: "/usr/bin:/bin:/opt/pandoc/bin"
+    env-pass-through: [HOME, LANG, LC_ALL, SOURCE_DATE_EPOCH]
+```
+
+`env-pass-through` *replaces* the default list — it does not append.
+Re-list the defaults you still want; the example above keeps all three
+and adds `SOURCE_DATE_EPOCH` for reproducible builds. MDS040 rejects an
+empty pass-through name or a name containing `=` (which would smuggle in
+a value rather than forward a variable).
+
+The default `build.exec.path` deliberately omits mdsmith's own install
+directory. A recipe that invokes `mdsmith` (for example to run
+`mdsmith extract`) must add the directory holding the binary to
+`build.exec.path`.
+
+Each recipe runs in its own process group (a new session via `Setpgid`
+on Unix; `CREATE_NEW_PROCESS_GROUP` plus a Job Object on Windows). When
+`--build-timeout` expires mdsmith signals the whole group — `SIGTERM`
+on Unix, `CTRL_BREAK_EVENT` on Windows — waits five seconds, then force
+-kills the group (`SIGKILL` / Job Object termination). A recipe that
+spawns a background daemon cannot leave an orphan behind.
+
+### Atomic-write hardening
+
+The staging machinery refuses an unsafe staging root and writes each
+output atomically:
+
+1. `.mdsmith/build-staging/` is created `0700` if absent. If it exists
+   it must be a real directory — a symlink or a non-directory is
+   refused — and on Unix it must not be group- or world-writable, so a
+   hostile co-tenant cannot plant a symlink at a predictable name.
+2. The per-recipe staging dir is created with `os.MkdirTemp`, so its
+   name carries a random suffix.
+3. Each declared output maps to a file inside that staging dir.
+4. Before each output is committed, mdsmith `Lstat`s the destination
+   and refuses to replace an existing symlink. The replace itself is an
+   atomic `rename(2)` (`MoveFileEx` on Windows) for same-volume paths.
+
+Multi-output commit is **not** transactional: if the N+1th rename fails
+after N succeeded, mdsmith reports the partial state, removes the
+staging dir, and exits with `FAIL`. Because no cache entry was written,
+the next `mdsmith fix` reruns the whole recipe.
+
+### Output post-conditions
+
+After a recipe exits 0, two checks run before any file is committed:
+
+- **Every declared output exists** in the staging dir. A recipe that
+  exits 0 without producing a declared output is a build failure
+  (`recipe exited 0 but did not produce X`).
+- **No undeclared write** landed in the project tree. mdsmith snapshots
+  the parent directories of the declared outputs before the recipe
+  (file list, size, mtime, mode, and a sha256 of each file's content)
+  and diffs them after. Any added, removed, or modified file outside
+  the declared `outputs:` is a build failure that names the file.
+  Content hashing catches an edit that preserves size and mtime; mode
+  catches a `chmod`.
+
+Two limits apply. The check covers only the *parent directories* of
+declared outputs, so a write into an unrelated subtree is not seen.
+Symlinks are snapshotted via `Lstat` metadata plus `os.Readlink` and
+never followed. A snapshot scope above 2000 directory entries is a
+build error naming the oversized directory — point the outputs at a
+narrower directory.
+
 ## Staleness and the build cache
 
 The build pass is incremental. By default `mdsmith fix` rebuilds only the
@@ -348,7 +499,12 @@ checked-in config:
 .mdsmith/build-cache.json
 .mdsmith/build-logs/
 .mdsmith/build-staging/
+.mdsmith.yml.trust
 ```
+
+The `.mdsmith.yml.trust` marker is the per-clone build
+[trust gate](#the-trust-gate); it must stay untracked so trust is a
+decision each checkout makes for itself.
 
 ### Recipe default inputs
 

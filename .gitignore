@@ -26,3 +26,9 @@ website/static/img/demo.gif
 # profile burdens every merge with a repo-specific binary artifact.
 # See plan/ for wiring PGO into the release build instead.
 cmd/mdsmith/default.pgo
+
+# Build pass machine-local state (plan 2606101548): the incremental
+# cache, per-recipe staging dirs, and the per-clone build trust marker.
+.mdsmith/build-cache.json
+.mdsmith/build-staging/
+.mdsmith.yml.trust

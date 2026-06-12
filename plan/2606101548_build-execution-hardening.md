@@ -1,7 +1,7 @@
 ---
 id: 2606101548
 title: Build execution hardening
-status: "🔲"
+status: "✅"
 summary: >-
   Layer security on top of plan 2606101546's basic
   builder execution. Trust gate so a freshly
@@ -274,47 +274,47 @@ pass-through names or names containing `=`.
 
 ## Acceptance Criteria
 
-- [ ] Build pass refuses to run when
+- [x] Build pass refuses to run when
       `.mdsmith.yml.trust` is missing or
       stale (and `MDSMITH_TRUST_BUILD=1`
       is not set); lint-fix still runs
-- [ ] `mdsmith trust` shows the config
+- [x] `mdsmith trust` shows the config
       diff and updates the trust marker
       on confirmation
-- [ ] `mdsmith fix --no-build` skips the
+- [x] `mdsmith fix --no-build` skips the
       trust check and the build pass
       together
-- [ ] Recipe writing outside `outputs:`
+- [x] Recipe writing outside `outputs:`
       is a build failure; the undeclared
       file is named in the diagnostic
-- [ ] Recipe exiting 0 without producing
+- [x] Recipe exiting 0 without producing
       every declared output is a build
       failure
-- [ ] Atomic write uses `os.MkdirTemp` with
+- [x] Atomic write uses `os.MkdirTemp` with
       a random suffix under
       `.mdsmith/build-staging/`; that
       staging root is refused if it is a
       symlink, not a directory, or group-
       or world-writable
-- [ ] Rename phase `Lstat`s each output
+- [x] Rename phase `Lstat`s each output
       destination, refuses to replace a
       symlink, then uses `os.Rename`;
       multi-output partial failure cleans
       up the staging dir and exits with
       FAIL (next `fix` reruns the recipe)
-- [ ] Recipe is invoked with `Cmd.Env`
+- [x] Recipe is invoked with `Cmd.Env`
       restricted to the allowlist and
       `Cmd.Dir` set to the per-recipe
       staging dir
-- [ ] A snapshot scope above 2 000
+- [x] A snapshot scope above 2 000
       directory entries is a build error
       naming the oversized dir
-- [ ] Recipe runs in its own process
+- [x] Recipe runs in its own process
       group; timeout fires SIGTERM, then
       SIGKILL after 5 s
-- [ ] `build.exec.path` and
+- [x] `build.exec.path` and
       `build.exec.env-pass-through`
       parse, validate, and take effect
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run`
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run`
       reports no issues

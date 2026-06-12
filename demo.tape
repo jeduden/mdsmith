@@ -164,6 +164,11 @@ Sleep 300ms
 
 Hide
 Set TypingSpeed 0
+# The build trust gate is opted into here (a sandboxed demo); a real
+# clone runs `mdsmith trust` instead. Keep this in the hidden setup so
+# the on-screen `mdsmith fix page.md` runs the recipe unprompted.
+Type "export MDSMITH_TRUST_BUILD=1"
+Enter
 Type "cd $BUILD_DIR && clear"
 Enter
 Sleep 50ms
