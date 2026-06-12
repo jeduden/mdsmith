@@ -51,12 +51,19 @@ def rows(json_dir: pathlib.Path, corpus: str):
             data[r["command"]] = (r["median"] * 1000, r["min"] * 1000)
     if not data:
         sys.exit(f"no JSON results for corpus {corpus!r} in {json_dir}")
-    fastest = min(v[0] for v in data.values())
+    if "mado" not in data:
+        sys.exit(f"corpus {corpus!r} has no mado result; the 'vs mado' "
+                 "column needs mado's median as its denominator")
+    # The column is literally "vs mado", so divide by mado's median —
+    # not the fastest tool's. The two coincided until mdsmith-parity
+    # started trading places with mado, at which point a min() here
+    # silently relabeled every ratio.
+    mado = data["mado"][0]
     order = sorted(data.items(), key=lambda kv: kv[1][0])
     lines = ["| Tool | Median | Min | vs mado |",
              "|---|---|---|---|"]
     for tool, (med, mn) in order:
-        ratio = med / fastest
+        ratio = med / mado
         rs = f"{ratio:.1f}x" if ratio < 10 else f"{round(ratio)}x"
         lines.append(f"| {tool} | {round(med)} ms | "
                      f"{round(mn)} ms | {rs} |")
@@ -82,8 +89,8 @@ def main() -> None:
             "`bench-parity.mdsmith.yml`).\n\n")
     results = (GEN + "\n" + note +
                f"**Repo corpus — {repo_n} Markdown files** (median "
-               "wall time, lower is\nbetter; `vs mado` is the median "
-               "ratio to the fastest tool):\n\n" + repo_tbl + "\n\n"
+               "wall time, lower is\nbetter; `vs mado` is the ratio "
+               "to mado's median):\n\n" + repo_tbl + "\n\n"
                f"**Neutral corpus — {neutral_n} files** (Rust Book + "
                "Rust Reference,\nlonger third-party prose):\n\n"
                + neut_tbl + "\n")

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -30,11 +31,20 @@ const smokeJobName = "smoke-test"
 // warns rather than fails until that registry entry lands.
 var RequiredSmokeChannels = []string{"asdf", "go", "mise", "npm", "pip"}
 
+// softSkipMarker is the GITHUB_OUTPUT line a best-effort channel's
+// install script writes before exiting 0, telling the shared Verify
+// step to skip rather than run `mdsmith version` against a binary that
+// was never installed. Only channels outside RequiredSmokeChannels may
+// carry it: a required channel that soft-skips would satisfy the
+// matrix-coverage check while never verifying anything.
+const softSkipMarker = "skipped=true"
+
 type smokeRawJob struct {
 	Strategy struct {
 		Matrix struct {
 			Include []struct {
 				Channel string `yaml:"channel"`
+				Install string `yaml:"install"`
 			} `yaml:"include"`
 		} `yaml:"matrix"`
 	} `yaml:"strategy"`
@@ -63,21 +73,35 @@ func CheckReleaseSmoke(workflowYAML []byte) ([]GateViolation, error) {
 		}}, nil
 	}
 	have := make(map[string]bool, len(job.Strategy.Matrix.Include))
+	softSkips := make(map[string]bool)
 	for _, entry := range job.Strategy.Matrix.Include {
 		have[entry.Channel] = true
+		if strings.Contains(entry.Install, softSkipMarker) {
+			softSkips[entry.Channel] = true
+		}
 	}
 	var violations []GateViolation
 	for _, channel := range RequiredSmokeChannels {
-		if have[channel] {
+		if !have[channel] {
+			violations = append(violations, GateViolation{
+				Job: smokeJobName,
+				Reason: fmt.Sprintf(
+					"matrix has no entry for channel %q; every directly consumable "+
+						"channel must be installed and version-checked after publication",
+					channel),
+			})
 			continue
 		}
-		violations = append(violations, GateViolation{
-			Job: smokeJobName,
-			Reason: fmt.Sprintf(
-				"matrix has no entry for channel %q; every directly consumable "+
-					"channel must be installed and version-checked after publication",
-				channel),
-		})
+		if softSkips[channel] {
+			violations = append(violations, GateViolation{
+				Job: smokeJobName,
+				Reason: fmt.Sprintf(
+					"channel %q is required but its install script writes %q; a "+
+						"required channel must never soft-skip the Verify step — only "+
+						"best-effort channels outside RequiredSmokeChannels may",
+					channel, softSkipMarker),
+			})
+		}
 	}
 	return violations, nil
 }

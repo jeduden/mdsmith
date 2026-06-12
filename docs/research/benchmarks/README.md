@@ -51,7 +51,7 @@ docs read.
 
 | Corpus  | Files | Source                                            |
 | ------- | ----- | ------------------------------------------------- |
-| repo    | 722   | mdsmith's own tracked Markdown (fixtures dropped) |
+| repo    | 766   | mdsmith's own tracked Markdown (fixtures dropped) |
 | neutral | 234   | Rust Book + Rust Reference `src/` (third-party)   |
 
 ### Environment
@@ -90,7 +90,7 @@ mdsmith-only rules so the work class matches the markdownlint
 tools (see `bench-parity.mdsmith.yml`).
 
 **Repo corpus — 766 Markdown files** (median wall time, lower is
-better; `vs mado` is the median ratio to the fastest tool):
+better; `vs mado` is the ratio to mado's median):
 
 | Tool              | Median  | Min     | vs mado |
 | ----------------- | ------- | ------- | ------- |
@@ -147,8 +147,8 @@ rules (see
 mdsmith runs in mado's class. On the repo corpus the
 `mdsmith-parity` row comes in at mado's time (the two trade
 places run to run within noise), well ahead of rumdl; on the
-longer-prose neutral corpus it trails mado by roughly a tenth
-and comes in ahead of rumdl. The `mdsmith` → `mdsmith-parity`
+longer-prose neutral corpus it trails mado narrowly (the 1.1x
+in the table above) and comes in ahead of rumdl. The `mdsmith` → `mdsmith-parity`
 delta is the measured cost of the cross-file and
 generated-content layer — work users opt into, not waste.
 The residual gap to mado on long prose is genuine engine
@@ -191,7 +191,7 @@ is meant to be read as a result.
 
 **The repo corpus grows.** It is mdsmith's own tracked
 Markdown, and the project keeps adding docs — 523 files when
-this page was first written, 722 now. A linter that checks more
+this page was first written, 766 now. A linter that checks more
 files takes longer, so mdsmith's absolute repo-corpus time
 creeps up as the docs grow, with no change to the engine. The
 tell that growth — not a code regression — drives most of the

@@ -870,6 +870,10 @@ jobs:
         # install with `skipped=true` when the upstream registry entry
         # does not exist yet; verifying a binary that was never
         # installed would fail with exit 127, so skip alongside it.
+        # Hard install failures are covered by the implicit success()
+        # in this expression — do not add continue-on-error to the
+        # Install step, or a failed install would fall through to here
+        # with no skipped output and re-fail as a confusing exit 127.
         if: steps.install.outputs.skipped != 'true'
         run: |
           got=$(${{ matrix.run }})

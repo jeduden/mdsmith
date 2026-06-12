@@ -93,6 +93,64 @@ jobs:
 	require.Len(t, got, len(RequiredSmokeChannels)-1)
 }
 
+func TestCheckReleaseSmokeFlagsRequiredChannelThatSoftSkips(t *testing.T) {
+	// The skipped=true output is the best-effort contract: an install
+	// script writes it and exits 0, and the shared Verify step skips.
+	// A REQUIRED channel carrying that marker would pass the matrix
+	// coverage check while never actually verifying the binary, so the
+	// gate must reject the combination loudly.
+	const wf = `
+jobs:
+  smoke-test:
+    strategy:
+      matrix:
+        include:
+          - channel: npm
+          - channel: pip
+          - channel: mise
+            install: |
+              if ! mise use -g "mdsmith@1.0.0"; then
+                echo "skipped=true" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+          - channel: asdf
+          - channel: go
+`
+	got, err := CheckReleaseSmoke([]byte(wf))
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, smokeJobName, got[0].Job)
+	assert.Contains(t, got[0].Reason, `"mise"`)
+	assert.Contains(t, got[0].Reason, "skipped=true")
+}
+
+func TestCheckReleaseSmokeAcceptsBestEffortSoftSkip(t *testing.T) {
+	// A channel outside RequiredSmokeChannels (mise-registry while the
+	// jdx/mise registry entry is pending) may soft-skip: that is the
+	// designed best-effort path, not a coverage hole.
+	const wf = `
+jobs:
+  smoke-test:
+    strategy:
+      matrix:
+        include:
+          - channel: npm
+          - channel: pip
+          - channel: mise
+          - channel: mise-registry
+            install: |
+              if ! mise use -g "mdsmith@1.0.0"; then
+                echo "skipped=true" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+          - channel: asdf
+          - channel: go
+`
+	got, err := CheckReleaseSmoke([]byte(wf))
+	require.NoError(t, err)
+	assert.Empty(t, got, "a best-effort channel outside RequiredSmokeChannels may soft-skip")
+}
+
 func TestCheckReleaseSmokeFlagsMissingJob(t *testing.T) {
 	const wf = `
 jobs:

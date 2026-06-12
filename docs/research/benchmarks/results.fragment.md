@@ -7,7 +7,7 @@ mdsmith-only rules so the work class matches the markdownlint
 tools (see `bench-parity.mdsmith.yml`).
 
 **Repo corpus — 766 Markdown files** (median wall time, lower is
-better; `vs mado` is the median ratio to the fastest tool):
+better; `vs mado` is the ratio to mado's median):
 
 | Tool              | Median  | Min     | vs mado |
 | ----------------- | ------- | ------- | ------- |
