@@ -1342,7 +1342,7 @@ func TestComputeWouldFixAggregated_DedupesByDiagnosticFile(t *testing.T) {
 		{File: target, Line: 1, Column: 1, RuleID: "MDS048", RuleName: "git-hook-sync", Message: "drift"},
 		{File: target, Line: 1, Column: 1, RuleID: "MDS048", RuleName: "git-hook-sync", Message: "drift"},
 	}
-	allAfter := []lint.Diagnostic{} // fixed across the run
+	allAfter := []lint.Diagnostic{}                      // fixed across the run
 	bytesChangedByPath := map[string]struct{}{hostA: {}} // hostB omitted: bytes unchanged
 
 	files, total := computeWouldFixAggregated(allBefore, allAfter, bytesChangedByPath)

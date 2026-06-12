@@ -198,10 +198,6 @@ const (
 // separatorRe matches a table separator row cell content.
 var separatorRe = regexp.MustCompile(`^:?-+:?$`)
 
-// pipeBytes is the single-byte separator used by bytes.Count to pre-size
-// the cells slice in splitRowBytes without a per-call allocation.
-var pipeBytes = []byte("|")
-
 // ScanTableBoundaries returns the 0-based [start, end] line-index pairs
 // (both inclusive) for each table block found in lines, without parsing
 // cell contents. codeLines maps 1-based line numbers of fenced or
@@ -507,10 +503,11 @@ func splitRowBytes(row []byte) []string {
 		row = row[:len(row)-1]
 	}
 
-	// Pre-size to avoid slice-growth allocs; bytes.Count is SIMD-accelerated
-	// for single-byte separators and over-estimates slightly for escaped
-	// pipes, which is fine for capacity.
-	cells := make([]string, 0, bytes.Count(row, pipeBytes)+1)
+	// Pre-size to avoid slice-growth allocs; over-estimates slightly for
+	// escaped \| pairs (which are not delimiters) but that is fine for
+	// capacity. []byte("|") is a stack-allocated needle; escape analysis
+	// confirms bytes.Count does not retain it.
+	cells := make([]string, 0, bytes.Count(row, []byte("|"))+1)
 	var current strings.Builder
 	for i := 0; i < len(row); i++ {
 		if row[i] == '\\' && i+1 < len(row) && row[i+1] == '|' {
