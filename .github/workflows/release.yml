@@ -768,11 +768,14 @@ jobs:
             # jdx/mise curated registry lists mdsmith — the plan 145
             # follow-up PR. Until that entry merges this command fails on
             # every release, so the install step is BEST-EFFORT: it
-            # retries, then on repeated failure emits a `::warning::` and
-            # exits 0 rather than reddening the release. The day the
-            # registry PR lands this entry starts passing with no
-            # workflow change, and `mise-registry` is NOT in
-            # RequiredSmokeChannels so the gate never demands it green.
+            # retries, then on repeated failure emits a `::warning::`,
+            # writes `skipped=true` (which the shared Verify step keys
+            # off, so it does not run `mdsmith version` against a binary
+            # that was never installed), and exits 0 rather than
+            # reddening the release. The day the registry PR lands this
+            # entry starts passing with no workflow change, and
+            # `mise-registry` is NOT in RequiredSmokeChannels so the
+            # gate never demands it green.
             container: jdxcode/mise:latest
             install: |
               ok=0
@@ -784,6 +787,7 @@ jobs:
               done
               if [ "$ok" -ne 1 ]; then
                 echo "::warning::bare 'mise use mdsmith@${VERSION#v}' did not resolve; the jdx/mise registry entry (plan 145) has not merged yet. The 'mise' channel above (ubi: backend) still verifies the binary."
+                echo "skipped=true" >> "$GITHUB_OUTPUT"
                 exit 0
               fi
             run: |
@@ -859,8 +863,14 @@ jobs:
     container: ${{ matrix.container }}
     steps:
       - name: Install
+        id: install
         run: ${{ matrix.install }}
       - name: Verify version
+        # A best-effort channel (mise-registry today) soft-skips its
+        # install with `skipped=true` when the upstream registry entry
+        # does not exist yet; verifying a binary that was never
+        # installed would fail with exit 127, so skip alongside it.
+        if: steps.install.outputs.skipped != 'true'
         run: |
           got=$(${{ matrix.run }})
           want="mdsmith ${VERSION}"
