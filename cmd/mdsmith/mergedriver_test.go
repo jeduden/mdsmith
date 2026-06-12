@@ -1534,3 +1534,75 @@ func TestVerifyGitattributes_ReadError_ReturnsTwo(t *testing.T) {
 	assert.Contains(t, got, "reading")
 	assert.Contains(t, got, "boom")
 }
+
+// --- PGO profile take-current merge driver ---
+
+func TestRegisterMergeDriver_ConfiguresPGODriver(t *testing.T) {
+	dir := t.TempDir()
+	initTestRepo(t, dir)
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) { return "/usr/local/bin/mdsmith", nil }
+
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	require.NoError(t, registerMergeDriver())
+
+	out, err := exec.Command("git", "-C", dir, "config",
+		"merge."+githooks.PGOMergeDriver+".driver").Output()
+	require.NoError(t, err)
+	assert.Equal(t, "true", strings.TrimSpace(string(out)),
+		"the PGO driver must be the take-current `true` command")
+}
+
+// TestPGOProfileMergesAutomatically is the end-to-end contract: two
+// branches that both refreshed the committed PGO profile merge
+// without a conflict, keeping the current branch's bytes.
+func TestPGOProfileMergesAutomatically(t *testing.T) {
+	dir := t.TempDir()
+	initTestRepo(t, dir)
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, "git %v: %s", args, out)
+	}
+	// The sandbox may enforce commit signing globally; the temp repo
+	// must commit without it, and with a deterministic identity.
+	run("config", "commit.gpgsign", "false")
+	run("config", "user.email", "test@example.com")
+	run("config", "user.name", "test")
+	pgoRel := filepath.FromSlash(githooks.PGOProfilePath)
+	require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(dir, pgoRel)), 0o755))
+	write := func(content string) {
+		t.Helper()
+		require.NoError(t, os.WriteFile(filepath.Join(dir, pgoRel), []byte(content), 0o644))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".gitattributes"),
+		[]byte(githooks.PGOProfilePath+" merge="+githooks.PGOMergeDriver+"\n"), 0o644))
+	run("config", "merge."+githooks.PGOMergeDriver+".name", "keep current PGO profile")
+	run("config", "merge."+githooks.PGOMergeDriver+".driver", "true")
+
+	write("base-profile")
+	run("add", "-A")
+	run("commit", "-q", "-m", "base")
+	run("checkout", "-q", "-b", "feature")
+	write("feature-profile")
+	run("add", "-A")
+	run("commit", "-q", "-m", "feature refresh")
+	run("checkout", "-q", "-")
+	write("main-profile")
+	run("add", "-A")
+	run("commit", "-q", "-m", "main refresh")
+
+	// Both sides changed the file; the driver must resolve silently
+	// and keep the current branch's copy.
+	run("merge", "-q", "--no-edit", "feature")
+
+	got, err := os.ReadFile(filepath.Join(dir, pgoRel))
+	require.NoError(t, err)
+	assert.Equal(t, "main-profile", string(got),
+		"merge must keep the current branch's profile without conflicting")
+}

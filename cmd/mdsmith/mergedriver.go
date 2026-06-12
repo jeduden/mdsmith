@@ -64,6 +64,8 @@ Subcommands:
 
 Git config (set by install / ci-install):
   merge.mdsmith.driver = '/absolute/path/to/mdsmith' merge-driver run %O %A %B %P
+  merge.mdsmith-pgo.driver = true   (keeps the current branch's
+  cmd/mdsmith/default.pgo on merges; the profile is regenerable)
 
   The path is the absolute location of the mdsmith binary at install time,
   shell-quoted so paths with spaces are handled correctly.
@@ -771,6 +773,15 @@ func registerMergeDriver() error {
 		{"git", "config", "merge.mdsmith.name",
 			"mdsmith section-aware Markdown merge"},
 		{"git", "config", "merge.mdsmith.driver", driver},
+		// The PGO profile's driver is plain `true`: exit zero without
+		// touching the merge result, keeping the current branch's
+		// bytes. The profile is regenerable and staleness-tolerant, so
+		// that resolution is always valid and merges never conflict on
+		// it (see docs/development/pgo-profile.md).
+		{"git", "config", "merge." + githooks.PGOMergeDriver + ".name",
+			"keep current branch's PGO profile (regenerable)"},
+		{"git", "config", "merge." + githooks.PGOMergeDriver + ".driver",
+			"true"},
 	}
 	for _, c := range cmds {
 		if err := exec.Command(c[0], c[1:]...).Run(); err != nil {

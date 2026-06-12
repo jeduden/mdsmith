@@ -14,4 +14,5 @@ internal/rules/*/pattern/** -merge
 .claude/worktrees/** -merge
 editors/**/node_modules/** -merge
 editors/**/dist/** -merge
+cmd/mdsmith/default.pgo merge=mdsmith-pgo
 # END mdsmith merge-driver

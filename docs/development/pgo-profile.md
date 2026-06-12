@@ -68,24 +68,30 @@ Then rebuild once more. That way the committed profile and
 the measured binary agree. Re-run the benchmark harness when
 the refresh accompanies a published-number update.
 
-## Resolving merge conflicts
+## Merges resolve automatically
 
-The file is binary (a gzipped protobuf). Git cannot merge two
-profiles. No byte-level resolution is meaningful. Here is the
-procedure when two branches both refreshed it:
+The file is binary (a gzipped protobuf), so git cannot merge
+two profiles. The repository routes it through a take-current
+merge driver instead. `mdsmith merge-driver install` registers
+`merge.mdsmith-pgo.driver = true` next to the Markdown driver,
+and the managed `.gitattributes` block assigns it to this
+file. The `true` command exits zero without touching the merge
+result, so the current branch's bytes win. That resolution is
+always valid: either parent's profile is merely slightly
+stale, and PGO tolerates staleness by design.
 
-1. Take either side to clear the conflict marker — the content
-   does not matter, it is about to be replaced:
+After a merge where both sides refreshed the profile, the
+kept copy is the current branch's. Regenerate with the
+commands above when the merge accompanies a benchmark
+refresh. Otherwise the kept copy is fine.
 
-   ```bash
-   git checkout --theirs cmd/mdsmith/default.pgo
-   git add cmd/mdsmith/default.pgo
-   ```
+On a clone without the driver installed, the merge falls
+back to a plain binary conflict. Take either side to resolve
+it. Regenerate afterwards if you want a fresh profile:
 
-2. Regenerate the profile against the merged code with the
-   commands above, and commit the fresh file with the merge.
+```bash
+git checkout --theirs cmd/mdsmith/default.pgo
+git add cmd/mdsmith/default.pgo
+```
 
-Skipping step 2 is acceptable when in a hurry. Either
-parent's profile is merely slightly stale, and PGO tolerates
-staleness by design. Never hand-edit or concatenate the
-files.
+Never hand-edit or concatenate the files.
