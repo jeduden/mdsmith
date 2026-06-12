@@ -59,8 +59,8 @@ const defaultBenchWorkdir = "/tmp/mdsmith-bench"
 // benchTool is one pinned, integrity-verified comparison binary
 // fetched from a GitHub release tarball. Name is BOTH the
 // hyperfine `--command-name` and the executable's basename inside
-// the archive — true for all four tools (hyperfine, mado,
-// panache, rumdl), whose tarballs differ only in directory
+// the archive — true for all five tools (gomarklint, hyperfine,
+// mado, panache, rumdl), whose tarballs differ only in directory
 // nesting. URL embeds the version tag so a version bump that
 // forgets to refresh the pin trips validateBenchManifest. SHA256
 // is the lowercase-hex digest of the downloaded `.tar.gz`.
@@ -77,11 +77,20 @@ type benchTool struct {
 // joins the same fetch+verify path as the other three rather
 // than needing a separate uv install with no integrity. The
 // digests were recorded by downloading each tarball once;
-// rumdl's was cross-checked against the publisher's `.sha256`.
+// rumdl's was cross-checked against the publisher's `.sha256`,
+// gomarklint's against the publisher's
+// `gomarklint_3.2.3_checksums.txt`.
 // markdownlint-cli2 is intentionally absent — it installs from a
 // committed npm lockfile via `npm ci`, not a tarball.
 func benchTools() []benchTool {
 	return []benchTool{
+		{
+			Name:    "gomarklint",
+			Version: "v3.2.3",
+			URL: "https://github.com/shinagawa-web/gomarklint/releases/download/" +
+				"v3.2.3/gomarklint_Linux_x86_64.tar.gz",
+			SHA256: "96216f058b9d2a0a5d4c395f7885d38fee0b2917393e7359b084e7b586a02301",
+		},
 		{
 			Name:    "hyperfine",
 			Version: "v1.20.0",
@@ -186,11 +195,12 @@ func verifyChecksum(data []byte, want string) error {
 
 // extractTarGzBinary pulls the single executable named binName
 // out of a gzip-compressed tar archive and writes it to dstPath
-// with 0o755. The four tool tarballs nest the binary differently
-// (hyperfine under a versioned dir, panache under "./", mado and
-// rumdl at the root), so the match is on path.Base of a regular
-// file rather than a hardcoded member path — the same robustness
-// run.sh got from `find -name <tool> -type f`.
+// with 0o755. The five tool tarballs nest the binary differently
+// (hyperfine under a versioned dir, panache under "./", mado,
+// rumdl, and gomarklint at the root), so the match is on
+// path.Base of a regular file rather than a hardcoded member
+// path — the same robustness run.sh got from
+// `find -name <tool> -type f`.
 func extractTarGzBinary(r io.Reader, binName, dstPath string) error {
 	gz, err := gzip.NewReader(r)
 	if err != nil {
@@ -638,6 +648,7 @@ func (t *Toolkit) runHyperfine(binDir, outDir, workdir, mdsmithBin, mdlBin, root
 	mado := filepath.Join(binDir, "mado")
 	rumdl := filepath.Join(binDir, "rumdl")
 	panache := filepath.Join(binDir, "panache")
+	gomarklint := filepath.Join(binDir, "gomarklint")
 	for _, corpus := range []string{"corpus_repo", "corpus_neutral"} {
 		cpath := filepath.Join(workdir, corpus)
 		fmt.Printf("bench: hyperfine over %s\n", corpus)
@@ -646,6 +657,9 @@ func (t *Toolkit) runHyperfine(binDir, outDir, workdir, mdsmithBin, mdlBin, root
 			"--command-name", "mado", mado+" check "+cpath,
 			"--command-name", "rumdl", rumdl+" check --no-cache "+cpath,
 			"--command-name", "panache", panache+" lint --no-cache "+cpath,
+			// gomarklint keeps no on-disk cache, so it takes no
+			// cache-disabling flag; bare defaults match the method.
+			"--command-name", "gomarklint", gomarklint+" "+cpath,
 			"--command-name", "mdsmith-parity", mdsmithBin+" check -c "+parity+" "+cpath,
 			"--command-name", "mdsmith", mdsmithBin+" check "+cpath,
 			"--export-json", filepath.Join(outDir, corpus+".json"),

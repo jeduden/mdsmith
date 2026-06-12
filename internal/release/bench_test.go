@@ -27,8 +27,14 @@ func TestBenchManifestInvariants(t *testing.T) {
 
 	tools := benchTools()
 	require.NotEmpty(t, tools)
-	assert.GreaterOrEqual(t, len(tools), 4,
-		"hyperfine, mado, panache, rumdl are all pinned")
+	assert.GreaterOrEqual(t, len(tools), 5,
+		"gomarklint, hyperfine, mado, panache, rumdl are all pinned")
+	names := make(map[string]bool, len(tools))
+	for _, tool := range tools {
+		names[tool.Name] = true
+	}
+	assert.True(t, names["gomarklint"],
+		"gomarklint is pinned so the post-merge benchmark run measures it")
 
 	assert.Error(t, validateBenchManifest(nil), "empty manifest")
 
