@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 const smokeCoveredWorkflow = `
@@ -230,4 +231,29 @@ func TestRepoReleaseWorkflowCoversRequiredSmokeChannels(t *testing.T) {
 	got, err := CheckReleaseSmokeRoot("../..")
 	require.NoError(t, err)
 	assert.Empty(t, got)
+}
+
+// TestRepoReleaseWorkflowSoftSkipMarkerInSync pins the marker contract
+// against the real release.yml. The gate detects soft-skips by
+// grepping install scripts for softSkipMarker, so a rename of the
+// `skipped=true` output in the workflow alone would make the gate
+// vacuous — this test goes red instead. It also pins mise-registry as
+// the best-effort channel: promoting it into RequiredSmokeChannels
+// (the plan 145 follow-up) must be a conscious edit here too, after
+// the install script's soft-skip path is removed.
+func TestRepoReleaseWorkflowSoftSkipMarkerInSync(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("../..", ReleaseWorkflowPath))
+	require.NoError(t, err)
+	var wf smokeRawWorkflow
+	require.NoError(t, yaml.Unmarshal(data, &wf))
+
+	installs := map[string]string{}
+	for _, entry := range wf.Jobs[smokeJobName].Strategy.Matrix.Include {
+		installs[entry.Channel] = entry.Install
+	}
+	require.Contains(t, installs, "mise-registry")
+	assert.Contains(t, installs["mise-registry"], softSkipMarker,
+		"the best-effort channel's install script must write the marker the gate greps for")
+	assert.NotContains(t, RequiredSmokeChannels, "mise-registry",
+		"a channel with a soft-skip path must stay best-effort")
 }
