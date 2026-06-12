@@ -43,24 +43,13 @@ func TestMergeAndClean_FatalMergeError(t *testing.T) {
 	})
 }
 
-func TestMergeAndClean_GuardFailsAfterMerge(t *testing.T) {
+func TestMergeAndClean_ReadResultError(t *testing.T) {
 	dir := t.TempDir()
 	base, ours, theirs := writeMergeInputs(t, dir, false)
-	// Pass the three input-validation guard calls, then fail the post-merge
-	// re-check (the symlink-swap guard before reading the merge result).
-	orig := guardFn
-	calls := 0
-	guardFn = func(string) error {
-		calls++
-		if calls <= 3 {
-			return nil
-		}
-		return errors.New("guard failed")
-	}
-	t.Cleanup(func() { guardFn = orig })
-
+	// A maxBytes smaller than the merged file makes ReadFileLimited fail
+	// after a clean merge — the "reading merge result" branch.
 	captureStderr(func() {
-		_, rc := mergeAndClean(base, ours, theirs, 1<<20)
+		_, rc := mergeAndClean(base, ours, theirs, 1)
 		assert.Equal(t, 2, rc)
 	})
 }
@@ -140,13 +129,13 @@ func TestEnsurePreMergeCommitHook_ChmodError(t *testing.T) {
 
 func TestRunBacklinks_DiscoverError(t *testing.T) {
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "bad.yml"), []byte("not: [valid\n"), 0o644))
-	target := filepath.Join(dir, "target.md")
-	require.NoError(t, os.WriteFile(target, []byte("# T\n"), 0o644))
-	// A bad config makes discoverFiles return exit code 2, which runBacklinks
-	// surfaces rather than treating as an empty result.
+	badYml := filepath.Join(dir, "bad.yml")
+	require.NoError(t, os.WriteFile(badYml, []byte("not: [valid\n"), 0o644))
+	// A workspace-relative target passes validateBacklinksArgs, so we reach
+	// discoverFiles; the bad config makes it return exit code 2, which
+	// runBacklinks surfaces rather than treating as an empty result.
 	captureStderr(func() {
-		code := runBacklinks([]string{"-c", filepath.Join(dir, "bad.yml"), target})
+		code := runBacklinks([]string{"-c", badYml, "target.md"})
 		assert.Equal(t, 2, code)
 	})
 }
