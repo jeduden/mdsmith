@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,6 +11,145 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/config"
 )
+
+// writeMergeInputs writes base/ours/theirs files in dir and returns their
+// paths. content selects a clean merge (identical) or a two-conflict merge.
+func writeMergeInputs(t *testing.T, dir string, conflicting bool) (base, ours, theirs string) {
+	t.Helper()
+	base = filepath.Join(dir, "base")
+	ours = filepath.Join(dir, "ours")
+	theirs = filepath.Join(dir, "theirs")
+	if conflicting {
+		// Two separated conflict regions make git merge-file exit 2, which
+		// this driver treats as a fatal (non-1) merge error.
+		require.NoError(t, os.WriteFile(base, []byte("1\n2\n3\n4\n5\n6\n7\n8\n9\n"), 0o644))
+		require.NoError(t, os.WriteFile(ours, []byte("1\nO2\n3\n4\n5\n6\n7\nO8\n9\n"), 0o644))
+		require.NoError(t, os.WriteFile(theirs, []byte("1\nT2\n3\n4\n5\n6\n7\nT8\n9\n"), 0o644))
+		return base, ours, theirs
+	}
+	body := []byte("hello\nworld\n")
+	require.NoError(t, os.WriteFile(base, body, 0o644))
+	require.NoError(t, os.WriteFile(ours, body, 0o644))
+	require.NoError(t, os.WriteFile(theirs, body, 0o644))
+	return base, ours, theirs
+}
+
+func TestMergeAndClean_FatalMergeError(t *testing.T) {
+	dir := t.TempDir()
+	base, ours, theirs := writeMergeInputs(t, dir, true)
+	captureStderr(func() {
+		_, rc := mergeAndClean(base, ours, theirs, 1<<20)
+		assert.Equal(t, 2, rc, "two-conflict merge is a fatal merge error")
+	})
+}
+
+func TestMergeAndClean_GuardFailsAfterMerge(t *testing.T) {
+	dir := t.TempDir()
+	base, ours, theirs := writeMergeInputs(t, dir, false)
+	// Pass the three input-validation guard calls, then fail the post-merge
+	// re-check (the symlink-swap guard before reading the merge result).
+	orig := guardFn
+	calls := 0
+	guardFn = func(string) error {
+		calls++
+		if calls <= 3 {
+			return nil
+		}
+		return errors.New("guard failed")
+	}
+	t.Cleanup(func() { guardFn = orig })
+
+	captureStderr(func() {
+		_, rc := mergeAndClean(base, ours, theirs, 1<<20)
+		assert.Equal(t, 2, rc)
+	})
+}
+
+func TestRunMergeDriverRun_LoadConfigError(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"), []byte("not: [valid\n"), 0o644))
+	base, ours, theirs := writeMergeInputs(t, dir, false)
+	t.Chdir(dir)
+	captureStderr(func() {
+		assert.Equal(t, 2, runMergeDriverRun([]string{base, ours, theirs, "p.md"}))
+	})
+}
+
+func TestRunMergeDriverRun_MaxInputSizeError(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"),
+		[]byte("max-input-size: not-a-size\n"), 0o644))
+	base, ours, theirs := writeMergeInputs(t, dir, false)
+	t.Chdir(dir)
+	captureStderr(func() {
+		assert.Equal(t, 2, runMergeDriverRun([]string{base, ours, theirs, "p.md"}))
+	})
+}
+
+func TestRunMergeDriverRun_MergeFails(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"), []byte("rules: {}\n"), 0o644))
+	base, ours, theirs := writeMergeInputs(t, dir, true)
+	t.Chdir(dir)
+	captureStderr(func() {
+		// mergeAndClean returns a non-zero code, which runMergeDriverRun
+		// propagates.
+		assert.Equal(t, 2, runMergeDriverRun([]string{base, ours, theirs, "p.md"}))
+	})
+}
+
+func TestRunMergeDriverInstall_RegisterError(t *testing.T) {
+	dir := t.TempDir()
+	initTestRepo(t, dir)
+	orig := executableFunc
+	executableFunc = func() (string, error) { return "", errors.New("no executable") }
+	t.Cleanup(func() { executableFunc = orig })
+	t.Chdir(dir)
+	captureStderr(func() {
+		// In a git repo, but registerMergeDriver fails because the binary
+		// cannot be located.
+		assert.Equal(t, 2, runMergeDriverInstall(nil))
+	})
+}
+
+func TestRegisterMergeDriver_GitConfigError(t *testing.T) {
+	orig := executableFunc
+	executableFunc = func() (string, error) { return "/usr/local/bin/mdsmith", nil }
+	t.Cleanup(func() { executableFunc = orig })
+	// Not a git repository, so `git config` fails.
+	t.Chdir(t.TempDir())
+	err := registerMergeDriver()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "git config")
+}
+
+func TestEnsurePreMergeCommitHook_ChmodError(t *testing.T) {
+	dir := t.TempDir()
+	initTestRepo(t, dir)
+	origExe := executableFunc
+	executableFunc = func() (string, error) { return "/usr/local/bin/mdsmith", nil }
+	t.Cleanup(func() { executableFunc = origExe })
+	origChmod := chmodFunc
+	chmodFunc = func(string, os.FileMode) error { return errors.New("chmod failed") }
+	t.Cleanup(func() { chmodFunc = origChmod })
+
+	err := ensurePreMergeCommitHook(dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "setting permissions")
+}
+
+func TestRunBacklinks_DiscoverError(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "bad.yml"), []byte("not: [valid\n"), 0o644))
+	target := filepath.Join(dir, "target.md")
+	require.NoError(t, os.WriteFile(target, []byte("# T\n"), 0o644))
+	// A bad config makes discoverFiles return exit code 2, which runBacklinks
+	// surfaces rather than treating as an empty result.
+	captureStderr(func() {
+		code := runBacklinks([]string{"-c", filepath.Join(dir, "bad.yml"), target})
+		assert.Equal(t, 2, code)
+	})
+}
 
 // chdirToRemoved changes into a fresh temp dir and then deletes it, so the
 // process has no valid working directory and os.Getwd fails. t.Chdir
