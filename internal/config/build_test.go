@@ -1,11 +1,17 @@
 package config
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestDefaultConfigPath(t *testing.T) {
+	assert.Equal(t, filepath.Join("/some/root", ".mdsmith.yml"), DefaultConfigPath("/some/root"))
+	assert.Equal(t, filepath.Join(".", ".mdsmith.yml"), DefaultConfigPath("."))
+}
 
 // --- build.base-url removal ---
 

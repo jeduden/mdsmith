@@ -1463,6 +1463,46 @@ func TestDispatch(t *testing.T) {
 	assert.Equal(t, 2, code)
 }
 
+// TestDispatch_Trust covers the "trust" arm of the dispatch switch, which
+// calls runTrust → runTrustIO. An already-trusted config returns 0 without
+// reading stdin, so we can drive it without redirecting os.Stdin.
+func TestDispatch_Trust(t *testing.T) {
+	dir := t.TempDir()
+	body := []byte("build: {}\n")
+	cfg := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(cfg, body, 0o644))
+	require.NoError(t, os.WriteFile(cfg+".trust", body, 0o600))
+
+	stdout := captureStdout(func() {
+		code := dispatch("trust", []string{"-c", cfg})
+		assert.Equal(t, 0, code)
+	})
+	assert.Contains(t, stdout, "already trusted")
+}
+
+// TestDiscoverConfigPath covers the discoverConfigPath helper added in this PR.
+func TestDiscoverConfigPath_ExplicitPath(t *testing.T) {
+	assert.Equal(t, "/explicit/cfg.yml", discoverConfigPath("/explicit/cfg.yml"))
+}
+
+func TestDiscoverConfigPath_EmptyFindsConfig(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte("rules: {}\n"), 0o644))
+	t.Chdir(dir)
+
+	got := discoverConfigPath("")
+	assert.Equal(t, cfgPath, got)
+}
+
+func TestDiscoverConfigPath_EmptyNoConfigFallsBack(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	got := discoverConfigPath("")
+	assert.Equal(t, filepath.Join(dir, ".mdsmith.yml"), got)
+}
+
 // --- init config generation ---
 
 func TestDefaultConfigBytes(t *testing.T) {

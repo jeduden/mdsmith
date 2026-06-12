@@ -559,6 +559,48 @@ func TestRunBuildPass_OverlappingOutputsReturnsTwo(t *testing.T) {
 	assert.Contains(t, buf.String(), "overlap")
 }
 
+// TestRunBuildPass_TrustDenied covers the !trust.Trusted branch: the build pass
+// exits 2 with a trust-related message when no trust marker exists.
+func TestRunBuildPass_TrustDenied(t *testing.T) {
+	root := t.TempDir()
+	// Write a config with no trust marker so CheckTrust returns not-trusted.
+	cfgBody := []byte("build:\n  recipes:\n    mk:\n      command: touch {outputs}\n")
+	cfgPath := filepath.Join(root, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(cfgPath, cfgBody, 0o644))
+
+	cfg := buildPassCfg("    mk:\n      command: touch {outputs}\n")
+
+	md := buildPassDirective("mk", "out.txt")
+	p := filepath.Join(root, "doc.md")
+	require.NoError(t, os.WriteFile(p, []byte(md), 0o644))
+
+	var buf strings.Builder
+	// Not dryRun, not checkStale → trust gate runs; no marker → denied.
+	code := runBuildPass(cfg, cfgPath, []string{p}, buildPassOpts{timeout: time.Second}, &buf)
+	assert.Equal(t, 2, code)
+	assert.Contains(t, buf.String(), "mdsmith:")
+}
+
+// TestRunBuildPass_TrustGate_EmptyCfgPath covers the cfgPath=="" branch inside
+// the trust gate, which falls back to ConfigPathForRoot(root).
+func TestRunBuildPass_TrustGate_EmptyCfgPath(t *testing.T) {
+	root := t.TempDir()
+	// Write a root .mdsmith.yml with no trust marker so CheckTrust denies.
+	cfgBody := []byte("build:\n  recipes: {}\n")
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".mdsmith.yml"), cfgBody, 0o644))
+
+	cfg := buildPassCfg("    mk:\n      command: touch {outputs}\n")
+
+	md := buildPassDirective("mk", "out.txt")
+	p := filepath.Join(root, "doc.md")
+	require.NoError(t, os.WriteFile(p, []byte(md), 0o644))
+
+	var buf strings.Builder
+	// cfgPath="" triggers the fallback branch; no trust marker → denied.
+	code := runBuildPass(cfg, "", []string{p}, buildPassOpts{timeout: time.Second}, &buf)
+	assert.Equal(t, 2, code)
+}
+
 // TestDispatchOne_RefreshCacheEntryError covers the refreshCacheEntry error
 // path inside dispatchOne. The mock builder creates the declared output and
 // then replaces the input with a directory; when refreshCacheEntry calls
