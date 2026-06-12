@@ -56,6 +56,61 @@ func TestRejectRemovedBuildKeys_NullDocumentRoot(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// --- build.exec ---
+
+func TestLoad_ExecConfigParses(t *testing.T) {
+	yml := []byte("build:\n  exec:\n    path: \"/opt/bin:/bin\"\n" +
+		"    env-pass-through: [HOME, LANG, SOURCE_DATE_EPOCH]\n")
+	cfg, err := loadFromBytes(yml, "", false)
+	require.NoError(t, err)
+	assert.Equal(t, "/opt/bin:/bin", cfg.Build.Exec.Path)
+	assert.Equal(t, []string{"HOME", "LANG", "SOURCE_DATE_EPOCH"}, cfg.Build.Exec.EnvPassThrough)
+}
+
+func TestValidateBuildConfig_ExecEmptyPassThroughName(t *testing.T) {
+	cfg := &Config{
+		Build: BuildConfig{
+			Exec: ExecCfg{EnvPassThrough: []string{"HOME", ""}},
+		},
+	}
+	err := ValidateBuildConfig(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "env-pass-through")
+	assert.Contains(t, err.Error(), "empty")
+}
+
+func TestValidateBuildConfig_ExecPassThroughNameWithEquals(t *testing.T) {
+	cfg := &Config{
+		Build: BuildConfig{
+			Exec: ExecCfg{EnvPassThrough: []string{"HOME=evil"}},
+		},
+	}
+	err := ValidateBuildConfig(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "env-pass-through")
+	assert.Contains(t, err.Error(), "=")
+}
+
+func TestValidateBuildConfig_ExecValid(t *testing.T) {
+	cfg := &Config{
+		Build: BuildConfig{
+			Exec: ExecCfg{Path: "/usr/bin:/bin", EnvPassThrough: []string{"HOME", "LANG"}},
+		},
+	}
+	assert.NoError(t, ValidateBuildConfig(cfg))
+}
+
+func TestMerge_PreservesExecConfigWithoutRecipes(t *testing.T) {
+	loaded := &Config{
+		Build: BuildConfig{
+			Exec: ExecCfg{Path: "/custom/bin", EnvPassThrough: []string{"FOO"}},
+		},
+	}
+	merged := Merge(Defaults(), loaded)
+	assert.Equal(t, "/custom/bin", merged.Build.Exec.Path)
+	assert.Equal(t, []string{"FOO"}, merged.Build.Exec.EnvPassThrough)
+}
+
 // --- ValidateBuildConfig ---
 
 func TestValidateBuildConfig_Nil(t *testing.T) {

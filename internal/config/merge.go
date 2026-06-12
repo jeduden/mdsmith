@@ -133,6 +133,17 @@ func copyUserConventions(m map[string]UserConvention) map[string]UserConvention 
 // Recipes map, each recipe's Params slices, and the Hooks lists so callers
 // can mutate them independently.
 func copyBuildConfig(b BuildConfig) BuildConfig {
+	exec := ExecCfg{
+		Path:           b.Exec.Path,
+		EnvPassThrough: copyStrings(b.Exec.EnvPassThrough),
+	}
+	hooks := HooksCfg{
+		Before: copyHooks(b.Hooks.Before),
+		After:  copyHooks(b.Hooks.After),
+	}
+	if len(b.Recipes) == 0 {
+		return BuildConfig{Hooks: hooks, Exec: exec}
+	}
 	recipes := make(map[string]RecipeCfg, len(b.Recipes))
 	for name, r := range b.Recipes {
 		recipes[name] = RecipeCfg{
@@ -145,13 +156,7 @@ func copyBuildConfig(b BuildConfig) BuildConfig {
 			DefaultInputs: copyStrings(r.DefaultInputs),
 		}
 	}
-	return BuildConfig{
-		Recipes: recipes,
-		Hooks: HooksCfg{
-			Before: copyHooks(b.Hooks.Before),
-			After:  copyHooks(b.Hooks.After),
-		},
-	}
+	return BuildConfig{Recipes: recipes, Hooks: hooks, Exec: exec}
 }
 
 // copyHooks returns a shallow copy of a hook list.

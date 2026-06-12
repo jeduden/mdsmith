@@ -11,6 +11,10 @@ import (
 type BuildConfig struct {
 	Recipes map[string]RecipeCfg `yaml:"recipes,omitempty"`
 	Hooks   HooksCfg             `yaml:"hooks,omitempty"`
+	// Exec configures the hermetic execution environment recipes run
+	// under (plan 2606101548). Both keys are optional; empty values mean
+	// the build executor's compiled defaults apply.
+	Exec ExecCfg `yaml:"exec,omitempty"`
 }
 
 // HooksCfg holds the before/after hook lists for the build pass.
@@ -24,6 +28,16 @@ type HookCfg struct {
 	Command string            `yaml:"command"`
 	Params  map[string]string `yaml:"params,omitempty"`
 	Name    string            `yaml:"name,omitempty"`
+}
+
+// ExecCfg is the build.exec: section: the allowlisted PATH and the
+// environment-variable names passed through to every recipe. An empty
+// Path or EnvPassThrough means the executor's compiled defaults apply
+// (PATH = /usr/bin:/bin on Unix; pass-through = [HOME, LANG, LC_ALL]).
+// EnvPassThrough *replaces* the default list rather than appending to it.
+type ExecCfg struct {
+	Path           string   `yaml:"path,omitempty"`
+	EnvPassThrough []string `yaml:"env-pass-through,omitempty"`
 }
 
 // RecipeCfg is a single user-defined recipe declaration.
@@ -90,7 +104,7 @@ func ValidateBuildConfig(cfg *Config) error {
 			return err
 		}
 	}
-	return nil
+	return validateExecConfig(cfg.Build.Exec)
 }
 
 // validateHook validates a single hook entry. listName is "before" or "after".
@@ -164,6 +178,24 @@ func validateHookCommandPlaceholders(label, command string, allowed map[string]b
 					label, param,
 				)
 			}
+		}
+	}
+	return nil
+}
+
+// validateExecConfig rejects an env-pass-through entry that is empty or
+// contains an "=" character. An empty name cannot identify an
+// environment variable; an "=" would let a config inject a value rather
+// than name a variable to pass through, defeating the allowlist.
+func validateExecConfig(exec ExecCfg) error {
+	for i, name := range exec.EnvPassThrough {
+		if name == "" {
+			return fmt.Errorf("build.exec.env-pass-through[%d]: name must not be empty", i)
+		}
+		if strings.Contains(name, "=") {
+			return fmt.Errorf(
+				"build.exec.env-pass-through[%d]: name %q must not contain %q", i, name, "=",
+			)
 		}
 	}
 	return nil
