@@ -42,7 +42,7 @@ func TestStreamCapture_LogFilePrefixesStreams(t *testing.T) {
 	assert.Contains(t, text, "[stderr] err line")
 }
 
-func TestStreamCapture_StderrTailReturnsLast20(t *testing.T) {
+func TestStreamCapture_StderrTailRetainsLinesUnderCap(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "action.log")
 	sc, err := newStreamCapture(logPath, "tgt", nil)
@@ -53,8 +53,10 @@ func TestStreamCapture_StderrTailReturnsLast20(t *testing.T) {
 	}
 	require.NoError(t, sc.Close())
 
-	tail := lastN(sc.stderrTail(), 20)
-	assert.Len(t, tail, 20)
+	// The ring buffer caps at ringLines (50); 40 lines all fit, and the
+	// stderr tail returns them in arrival order.
+	tail := sc.stderrTail()
+	assert.Len(t, tail, 40)
 }
 
 func TestStreamCapture_StreamForwardsToWriter(t *testing.T) {
@@ -95,9 +97,4 @@ func TestNewStreamCapture_ErrorWhenLogPathIsDir(t *testing.T) {
 	require.NoError(t, os.MkdirAll(logPath, 0o755))
 	_, err := newStreamCapture(logPath, "tgt", nil)
 	require.Error(t, err)
-}
-
-func TestLastN_FewerElementsThanN_ReturnsAll(t *testing.T) {
-	lines := []string{"a", "b", "c"}
-	assert.Equal(t, lines, lastN(lines, 10))
 }

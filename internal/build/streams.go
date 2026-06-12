@@ -148,14 +148,6 @@ func (l *lineStream) snapshot() []string {
 	return out
 }
 
-// lastN returns the last n elements of lines (or all of them if fewer).
-func lastN(lines []string, n int) []string {
-	if len(lines) <= n {
-		return lines
-	}
-	return lines[len(lines)-n:]
-}
-
 // logFileName returns the log file's base name for a given ActionID. The
 // ActionID is "sha256-<hex>"; that is already a safe file name.
 func logFileName(actionID string) string {

@@ -9,10 +9,10 @@ import (
 	"github.com/jeduden/mdsmith/internal/config"
 )
 
-// concurrentResult is one target's outcome plus the cache entry to apply,
-// kept with the target index so entries apply in declared order.
+// concurrentResult is one target's outcome plus the cache entry to apply.
+// Each worker writes its result into the slot at its target index, so the
+// post-dispatch loop reads them back in declared order.
 type concurrentResult struct {
-	index   int
 	outcome targetOutcome
 	entry   *buildexec.CacheEntry
 }
@@ -52,7 +52,7 @@ func runConcurrent(
 			defer func() { <-sem }()
 			outcome, entry := decideAndRun(
 				builder, bt, opts, stins[i], verdicts[i], verdictErrs[i], timeout, sw)
-			results[i] = concurrentResult{index: i, outcome: outcome, entry: entry}
+			results[i] = concurrentResult{outcome: outcome, entry: entry}
 		}(i, bt)
 	}
 	wg.Wait()

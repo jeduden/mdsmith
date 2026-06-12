@@ -5,7 +5,7 @@
 *.prof
 eval/corpus/config.local.yml
 coverage.out
-cover.out
+cover*.out
 coverage_*.out
 /.tmp/
 docs/research/conciseness/spikes/wasm-embedded-inference/classifier.wasm
