@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -77,6 +78,64 @@ func TestBenchManifestInvariants(t *testing.T) {
 		err := validateBenchManifest(dup)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "duplicate manifest entry")
+	})
+}
+
+// TestRunHyperfine pins the exact hyperfine invocation: one
+// comparison pass per corpus naming every pinned tool (mado,
+// rumdl, panache, gomarklint) plus the two mdsmith rows, and a
+// separate markdownlint-cli2 pass. A tool dropped from the
+// command line — while still fetched via the manifest — would
+// silently vanish from the published tables; this pins the
+// wiring, not just the pin. The error subtests cover both
+// per-pass failure branches.
+func TestRunHyperfine(t *testing.T) {
+	t.Run("commands pin the tool set", func(t *testing.T) {
+		rec := &recordingRunner{}
+		tk := NewWithDeps(osFS{}, rec)
+		require.NoError(t, tk.runHyperfine(
+			"/bin", "/out", "/work", "/bin/mdsmith", "/mdl/markdownlint-cli2", "/root"))
+
+		require.Len(t, rec.calls, 4, "two hyperfine passes per corpus, two corpora")
+		parity := "/root/docs/research/benchmarks/bench-parity.mdsmith.yml"
+		for i, corpus := range []string{"corpus_repo", "corpus_neutral"} {
+			cpath := "/work/" + corpus
+			main := rec.calls[2*i]
+			assert.Equal(t, "/bin/hyperfine", main.name)
+			joined := strings.Join(main.args, " ")
+			assert.Contains(t, joined, "--command-name mado /bin/mado check "+cpath)
+			assert.Contains(t, joined,
+				"--command-name rumdl /bin/rumdl check --no-cache "+cpath)
+			assert.Contains(t, joined,
+				"--command-name panache /bin/panache lint --no-cache "+cpath)
+			assert.Contains(t, joined,
+				"--command-name gomarklint /bin/gomarklint "+cpath)
+			assert.Contains(t, joined,
+				"--command-name mdsmith-parity /bin/mdsmith check -c "+parity+" "+cpath)
+			assert.Contains(t, joined, "--command-name mdsmith /bin/mdsmith check "+cpath)
+			assert.Contains(t, joined, "--export-json /out/"+corpus+".json")
+
+			mdl := rec.calls[2*i+1]
+			assert.Equal(t, "/bin/hyperfine", mdl.name)
+			assert.Contains(t, strings.Join(mdl.args, " "),
+				"--command-name markdownlint-cli2 /mdl/markdownlint-cli2 '"+cpath+"/**/*.md'")
+		}
+	})
+
+	t.Run("comparison pass failure propagates", func(t *testing.T) {
+		tk := NewWithDeps(osFS{}, &fakeRunner{failOnCall: 1})
+		err := tk.runHyperfine("/bin", "/out", "/work", "/bin/mdsmith", "/mdl", "/root")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, errInjected)
+		assert.Contains(t, err.Error(), "hyperfine corpus_repo")
+	})
+
+	t.Run("markdownlint pass failure propagates", func(t *testing.T) {
+		tk := NewWithDeps(osFS{}, &fakeRunner{failOnCall: 2})
+		err := tk.runHyperfine("/bin", "/out", "/work", "/bin/mdsmith", "/mdl", "/root")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, errInjected)
+		assert.Contains(t, err.Error(), "markdownlint")
 	})
 }
 
