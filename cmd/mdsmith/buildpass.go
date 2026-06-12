@@ -143,7 +143,18 @@ func runBuildPass(
 	}
 
 	cache := loadBuildCache(root, opts, w)
+	return dispatchWithHooks(builder, targets, cfg, root, opts, cache, timeout, errs, w)
+}
 
+// dispatchWithHooks coordinates the hook lifecycle around target dispatch:
+// resolve whether hooks run, execute before-hooks (aborting on failure),
+// dispatch recipe targets, then execute after-hooks. It returns the combined
+// exit code following the priority rules (collection > before > recipe > after).
+func dispatchWithHooks(
+	builder buildexec.Builder, targets []buildTarget, cfg *config.Config,
+	root string, opts buildPassOpts, cache *buildexec.Cache,
+	timeout time.Duration, errs []error, w io.Writer,
+) int {
 	// Resolve whether to skip hooks. Dry-run and check-stale never run hooks.
 	runHooks := !opts.noHooks && !opts.dryRun && !opts.checkStale
 
