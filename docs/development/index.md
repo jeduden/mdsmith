@@ -15,6 +15,7 @@ glob:
 sort: title
 row: "- [{title}]({filename})"
 ?>
+- [](pgo-profile.md)
 - [Adding a peer linter](add-peer-linter.md)
 - [Architecture audit log](architecture-audit.md)
 - [Architecture principles](architecture/index.md)

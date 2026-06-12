@@ -50,6 +50,7 @@ row: "- [{summary}](../{filename})"
 - [Build commands, project layout, code style, test fixtures, coverage gate, and merge conflicts.](../docs/development/index.md)
 - [The pkg/markdown public package: parse, produce, and its compatibility policy.](../docs/development/markdown-library.md)
 - [Label-driven merge queue workflow using jeduden/merge-queue-action.](../docs/development/merge-queue.md)
+- [The checked-in PGO profile at `cmd/mdsmith/default.pgo`: every `go build ./cmd/mdsmith` compiles against it automatically, how to regenerate it from the benchmark corpora, and why a merge conflict on it is always resolved by regenerating — never by merging bytes.](../docs/development/pgo-profile.md)
 - [Rebase, CI monitoring, and review comment resolution.](../docs/development/pr-fixup-workflow.md)
 - [The `jeduden/asdf-mdsmith` plugin installs the checksum-verified prebuilt binary; the short form awaits the asdf-plugins registry entry.](../docs/development/release-channels/asdf.md)
 - [A single-file `.flatpak` bundle built in CI from the x86_64 Linux release binary and attached to each GitHub release, installed by file with host filesystem access for the linter.](../docs/development/release-channels/flatpak.md)
@@ -207,6 +208,7 @@ glob:
 sort: title
 row: "- [{title}](../docs/development/{filename})"
 ?>
+- [](../docs/development/pgo-profile.md)
 - [Adding a peer linter](../docs/development/add-peer-linter.md)
 - [Architecture audit log](../docs/development/architecture-audit.md)
 - [Architecture principles](../docs/development/architecture/index.md)
