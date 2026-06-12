@@ -178,12 +178,19 @@ default-Windows reach (WinGet ships with Windows 11).
 
 ## Acceptance Criteria
 
+All in-repo tasks are complete. The two criteria below are
+external-only: the `jeduden/scoop-mdsmith` bucket repo is live and
+self-bumping; the `winget-submit` job submits each release to
+`microsoft/winget-pkgs` automatically. Neither can be end-to-end
+verified from this repo, so they remain unchecked. `✅` reflects that
+all in-repo work is done.
+
 - [ ] `scoop install mdsmith` (after `scoop bucket add`)
       installs the released `.exe`, checksum-verified.
-      (external — needs jeduden/scoop-mdsmith repo)
+      (external — jeduden/scoop-mdsmith repo is live)
 - [ ] `winget install jeduden.mdsmith` installs the released
       `.exe` once the manifest PR is merged.
-      (external — needs microsoft/winget-pkgs PR)
+      (external — submitted automatically via winget-submit job)
 - [x] Manifest generation lives in `mdsmith-release`
       (`render-scoop-manifest`, `render-winget-manifest`),
       not inline workflow shell; the recurring
