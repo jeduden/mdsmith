@@ -279,6 +279,21 @@ The rule-by-rule mapping against the other linters
 lives in the [peer-linter coverage matrix][mdcov]
 instead.
 
+### Why gomarklint is not in the table yet
+
+gomarklint qualifies structurally where obsidian-linter
+does not: it is a static Go binary hyperfine can drive.
+It is absent for a process reason instead. The committed
+`data/*.json` snapshot only moves when a maintainer
+re-runs the whole harness via `run.sh` and reviews the
+result in a PR, because cross-tool ratios are only valid
+within a single run on one machine. Adding gomarklint
+means pinning its release tarball and SHA-256 in the
+`benchTools` manifest (`internal/release/bench.go`), then
+doing that deliberate full refresh. Until that run lands,
+the rule-by-rule comparison lives in the
+[peer-linter coverage matrix][mdcov].
+
 [mdcov]: ../markdownlint-coverage/README.md
 
 ### Apples-to-apples rule sets

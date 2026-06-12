@@ -120,6 +120,58 @@ formatters and linters on code blocks."
   Pandoc, rumdl, mdformat, mado, and markdownlint; see
   [Benchmarks](#benchmarks)
 
+### [gomarklint][]
+
+Go binary, MIT. Tagline: "Catch broken links before your
+readers do — and keep your Markdown clean while you're at
+it." A young, deliberately small linter (v3.2.x as of
+2026-06) with its own kebab-case rule IDs, built for CI
+gates.
+
+- 23 rules: heading structure, blank-line placement,
+  fence/emphasis/list-marker consistency, bare URLs, and
+  link checks. All ship enabled except `external-link` and
+  `max-line-length`
+- `external-link` (opt-in) HTTP-validates external URLs
+  with timeout, retry, and per-host rate-limit settings —
+  the only tool on this page that checks links over the
+  network
+- `link-fragments` resolves `#anchor` links against a
+  configurable heading-slug algorithm (GitHub style by
+  default)
+- Check-only: no autofix and no LSP; a VS Code extension
+  is planned. Output is text or JSON
+- Config: JSON (`.gomarklint.json`); a rule is `true`,
+  `false`, `"warning"`, or an options object; unlisted
+  rules stay enabled
+- Install: Homebrew tap, npm, `go install`, curl script,
+  or GitHub release binaries; ships a GitHub Action and a
+  pre-commit hook
+
+| Aspect        | gomarklint             | mdsmith                          |
+| ------------- | ---------------------- | -------------------------------- |
+| Distribution  | static Go binary       | static Go binary                 |
+| Rule set      | 23, kebab-case IDs     | 67, `MDSxxx` IDs                 |
+| Autofix       | no                     | `mdsmith fix`, multi-pass        |
+| LSP / editor  | no (VS Code planned)   | LSP for any editor               |
+| Config        | `.gomarklint.json`     | `.mdsmith.yml`                   |
+| External URLs | `external-link` (HTTP) | not checked (offline by design)  |
+| Cross-file    | no                     | links, includes, catalogs, kinds |
+| Generated     | no                     | catalog, include, toc, build     |
+
+22 of its 23 rules have an mdsmith analog; the
+[peer-linter coverage matrix][mdcov] lists each pairing.
+The exception is `external-link`: mdsmith makes no network
+calls at runtime (see
+[Security Posture](#security-posture)), so validating that
+an external URL still answers HTTP 200 is deliberately out
+of scope. A repo that wants both layers runs gomarklint's
+`external-link` job next to `mdsmith check` in CI.
+
+gomarklint claims 100,000+ lines in ~170 ms for its
+structural checks. It is not yet in the first-party
+[benchmark](#benchmarks) harness.
+
 ### [Prettier][]
 
 Node.js. Opinionated formatter, not a linter. ~51.7k
@@ -705,6 +757,14 @@ Its lossless CST keeps the Pandoc syntax that Prettier and
 mdformat flatten. It bundles the formatter, linter, and LSP
 for those formats.
 
+**gomarklint** fits a minimal CI gate that must also catch
+dead external links. Its small rule set is check-only, so
+fixes stay manual, but the opt-in `external-link` rule
+HTTP-validates every URL — the one check no other tool
+here performs. Pair it with mdsmith when the same repo
+also needs autofix, cross-file integrity, or generated
+sections.
+
 **obsidian-linter** fits a team that writes notes in
 Obsidian and wants every save to clean up YAML keys,
 heading case, and spacing inside the editor. There is no
@@ -965,6 +1025,8 @@ if you need a stable rule set across upgrades.
 [rumdl]: https://github.com/rvben/rumdl
 [mado]: https://github.com/akiomik/mado
 [panache]: https://panache.bz/
+<!-- gomarklint links -->
+[gomarklint]: https://github.com/shinagawa-web/gomarklint
 <!-- mdsmith security + reference links -->
 [mdsmith-sec]: ../security/2026-04-05-adversarial-markdown/report.md
 [conventions]: ../reference/conventions.md
