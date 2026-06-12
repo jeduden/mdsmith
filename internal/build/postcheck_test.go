@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -59,10 +60,18 @@ func TestDiffSnapshots_DetectsModifiedContent(t *testing.T) {
 
 	before, err := snapshotDirs([]string{root}, snapshotCap)
 	require.NoError(t, err)
-	// Same size, different content (hash catches it).
+	// Same size, different content, with mtime reset to match so only the
+	// eagerly-captured content hash can distinguish the two snapshots —
+	// exercising the content-preserving-rewrite path.
+	fixedTime := time.Unix(1700000000, 0)
 	require.NoError(t, os.WriteFile(other, []byte("bbbbb"), 0o644))
+	require.NoError(t, os.Chtimes(other, fixedTime, fixedTime))
 	after, err := snapshotDirs([]string{root}, snapshotCap)
 	require.NoError(t, err)
+	// Force the before-state mtime to match the after-state mtime.
+	bs := before[other]
+	bs.mtime = after[other].mtime
+	before[other] = bs
 
 	violations := diffSnapshots(before, after, map[string]struct{}{})
 	require.Len(t, violations, 1)

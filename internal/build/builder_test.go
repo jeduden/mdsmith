@@ -481,6 +481,44 @@ func TestVerifyOutputsExist_MissingOutput(t *testing.T) {
 	assert.Contains(t, err.Error(), "did not produce declared output")
 }
 
+func TestBuild_OutputUnderMdsmithRefused(t *testing.T) {
+	root := t.TempDir()
+	b := NewCustomBuilder(map[string]RecipeSpec{"r": recipeCmd("echo hi {outputs}")})
+	err := b.Build(context.Background(), Target{
+		Recipe:  "r",
+		Root:    root,
+		Outputs: []string{".mdsmith/build-cache.json"},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), ".mdsmith/")
+	assert.NoFileExists(t, filepath.Join(root, ".mdsmith", "build-cache.json"))
+}
+
+func TestVerifyOutputsExist_StagedSymlinkRefused(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink semantics")
+	}
+	stageDir := t.TempDir()
+	target := filepath.Join(t.TempDir(), "secret")
+	require.NoError(t, os.WriteFile(target, []byte("x"), 0o644))
+	stage := filepath.Join(stageDir, "out0")
+	require.NoError(t, os.Symlink(target, stage))
+
+	err := verifyOutputsExist([]string{"out.txt"}, []string{stage})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "symlink")
+}
+
+func TestVerifyOutputsExist_StagedDirRefused(t *testing.T) {
+	stageDir := t.TempDir()
+	stage := filepath.Join(stageDir, "out0")
+	require.NoError(t, os.MkdirAll(stage, 0o755))
+
+	err := verifyOutputsExist([]string{"out.txt"}, []string{stage})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "non-regular")
+}
+
 func TestSubstituteParams_PrefixBeforePlaceholder(t *testing.T) {
 	// A token with literal prefix text before a {name} placeholder exercises
 	// the WriteByte branch that copies non-'{' characters one at a time.

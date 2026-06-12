@@ -202,13 +202,13 @@ func (w *closeFailWriter) Close() error                { return errors.New("flus
 func TestWriteTempFile_WriteError(t *testing.T) {
 	err := writeTempFile(&writeFailCloser{}, []byte("data"))
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "writing temp cache file")
+	assert.Contains(t, err.Error(), "writing temp file")
 }
 
 func TestWriteTempFile_CloseError(t *testing.T) {
 	err := writeTempFile(&closeFailWriter{}, []byte("data"))
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "closing temp cache file")
+	assert.Contains(t, err.Error(), "closing temp file")
 }
 
 func TestCache_Save_SortOrder(t *testing.T) {

@@ -57,6 +57,20 @@ func TestBuildEnv_UnsetPassThroughIsOmitted(t *testing.T) {
 	assert.False(t, ok, "an unset pass-through var produces no entry")
 }
 
+func TestBuildEnv_RejectsMalformedPassThroughName(t *testing.T) {
+	t.Setenv("GOOD", "yes")
+	// A name with "=" or a control char is skipped even if such a variable
+	// somehow exists, so it cannot smuggle an entry into the environment.
+	cfg := ExecConfig{EnvPassThrough: []string{"GOOD", "EVIL=injected", "BAD\nNAME"}}
+	env := buildEnv(cfg, defaultExecConfig())
+	got := envMap(env)
+	assert.Equal(t, "yes", got["GOOD"])
+	for k := range got {
+		assert.NotContains(t, k, "=")
+		assert.NotContains(t, k, "\n")
+	}
+}
+
 // envMap parses a KEY=VALUE slice into a map.
 func envMap(env []string) map[string]string {
 	m := make(map[string]string, len(env))
@@ -79,12 +93,13 @@ func TestRunRecipe_HermeticEnvVisibleToProcess(t *testing.T) {
 	// `env` is a coreutils binary on PATH /usr/bin:/bin.
 	script := writeScript(t, t.TempDir(), "dumpenv.sh", `env | sort > "$1"`)
 
-	err := runRecipe(context.Background(), runOpts{
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	err := runRecipe(ctx, runOpts{
 		argv:    []string{script, out},
 		dir:     stage,
 		exec:    ExecConfig{},
 		defExec: defaultExecConfig(),
-		timeout: 10 * time.Second,
 	})
 	require.NoError(t, err)
 
@@ -106,12 +121,13 @@ func TestRunRecipe_CmdDirIsStaging(t *testing.T) {
 	out := filepath.Join(stage, "pwd.txt")
 	script := writeScript(t, t.TempDir(), "pwd.sh", `pwd > "$1"`)
 
-	err = runRecipe(context.Background(), runOpts{
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	err = runRecipe(ctx, runOpts{
 		argv:    []string{script, out},
 		dir:     stage,
 		exec:    ExecConfig{},
 		defExec: defaultExecConfig(),
-		timeout: 10 * time.Second,
 	})
 	require.NoError(t, err)
 	data, err := os.ReadFile(out)
@@ -131,12 +147,13 @@ func TestRunRecipe_TimeoutKillsProcessGroup(t *testing.T) {
 	script := writeScript(t, t.TempDir(), "spawn.sh", body)
 
 	start := time.Now()
-	err := runRecipe(context.Background(), runOpts{
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	err := runRecipe(ctx, runOpts{
 		argv:    []string{script},
 		dir:     stage,
 		exec:    ExecConfig{},
 		defExec: defaultExecConfig(),
-		timeout: 500 * time.Millisecond,
 	})
 	require.Error(t, err)
 	assert.Less(t, time.Since(start), 10*time.Second, "kill should be prompt")
@@ -160,4 +177,48 @@ func TestRunRecipe_TimeoutKillsProcessGroup(t *testing.T) {
 	assert.Eventually(t, func() bool {
 		return !processAlive(childPID)
 	}, 6*time.Second, 100*time.Millisecond, "spawned child should not be orphaned")
+}
+
+func TestRunRecipe_TimeoutErrorMessageIsDeterministic(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sh not available on Windows")
+	}
+	stage := t.TempDir()
+	script := writeScript(t, t.TempDir(), "slow.sh", `sleep 120`)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	err := runRecipe(ctx, runOpts{
+		argv:    []string{script},
+		dir:     stage,
+		exec:    ExecConfig{},
+		defExec: defaultExecConfig(),
+	})
+	require.Error(t, err)
+	// A deadline-bound context reports a timeout, never a bare "cancelled".
+	assert.Contains(t, err.Error(), "timed out")
+	assert.NotContains(t, err.Error(), "cancelled")
+}
+
+func TestRunRecipe_CancellationReported(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sh not available on Windows")
+	}
+	stage := t.TempDir()
+	script := writeScript(t, t.TempDir(), "slow.sh", `sleep 120`)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		cancel()
+	}()
+	err := runRecipe(ctx, runOpts{
+		argv:    []string{script},
+		dir:     stage,
+		exec:    ExecConfig{},
+		defExec: defaultExecConfig(),
+	})
+	require.Error(t, err)
+	// A non-deadline cancellation reports "cancelled", not "timed out".
+	assert.Contains(t, err.Error(), "cancelled")
 }

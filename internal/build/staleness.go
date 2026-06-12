@@ -218,13 +218,14 @@ func ComputeActionID(in StalenessInput) (string, error) {
 	return computeActionIDFromResolved(in, inputs, outputs)
 }
 
-// hashFile returns the lowercase-hex sha256 of a file's content.
+// hashFile returns the lowercase-hex sha256 of a file's content. It
+// streams through the shared hashFileSum primitive so large inputs never
+// have to fit in memory.
 func hashFile(abs string) (string, error) {
-	data, err := os.ReadFile(abs) //nolint:gosec // abs is an in-root input/output path
+	sum, err := hashFileSum(abs)
 	if err != nil {
-		return "", fmt.Errorf("hashing %s: %w", filepath.Base(abs), err)
+		return "", err
 	}
-	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:]), nil
 }
 

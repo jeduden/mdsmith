@@ -4,6 +4,7 @@ package build
 
 import (
 	"os/exec"
+	"sync"
 	"syscall"
 	"unsafe"
 )
@@ -46,16 +47,27 @@ func afterStart(cmd *exec.Cmd) func() {
 		return nil
 	}
 	_ = closeHandle(ph)
+	jobHandlesMu.Lock()
 	jobHandles[cmd] = job
+	jobHandlesMu.Unlock()
 	return func() {
 		_ = closeHandle(job) // KILL_ON_JOB_CLOSE reaps any survivors
+		jobHandlesMu.Lock()
 		delete(jobHandles, cmd)
+		jobHandlesMu.Unlock()
 	}
 }
 
 // jobHandles maps a running command to its Job Object handle so
 // killGroup can terminate the whole job synchronously on timeout.
-var jobHandles = map[*exec.Cmd]syscall.Handle{}
+// jobHandlesMu guards it: Build is an exported method with no
+// single-threaded contract, so afterStart, killGroup, and the cleanup
+// closure may run from different goroutines if a caller dispatches
+// recipes concurrently.
+var (
+	jobHandlesMu sync.Mutex
+	jobHandles   = map[*exec.Cmd]syscall.Handle{}
+)
 
 // killGroup sends CTRL_BREAK_EVENT to the recipe's process group, then
 // terminates the Job Object so any survivors (including grandchildren)
@@ -66,7 +78,10 @@ func killGroup(cmd *exec.Cmd) {
 		return
 	}
 	sendCtrlBreak(cmd.Process.Pid)
-	if job, ok := jobHandles[cmd]; ok {
+	jobHandlesMu.Lock()
+	job, ok := jobHandles[cmd]
+	jobHandlesMu.Unlock()
+	if ok {
 		_ = terminateJob(job)
 	}
 }
@@ -111,6 +126,13 @@ type ioCounters struct {
 	OtherTransferCount  uint64
 }
 
+// jobObjectExtendedLimitInformationStruct mirrors the Win32
+// JOBOBJECT_EXTENDED_LIMIT_INFORMATION layout. Only
+// BasicLimitInformation.LimitFlags is written, but every field below is
+// size- and offset-significant: SetInformationJobObject is passed
+// unsafe.Sizeof(info), so removing a field (or the IoInfo counters) would
+// shrink the struct and make the call fail, leaking survivor processes.
+// Do not prune the unused fields.
 type jobObjectExtendedLimitInformationStruct struct {
 	BasicLimitInformation jobObjectBasicLimitInformation
 	IoInfo                ioCounters

@@ -135,26 +135,16 @@ func (c *Cache) Save(root string) error {
 	data, _ := json.MarshalIndent(c, "", "  ")
 	data = append(data, '\n')
 
-	tmp, err := os.CreateTemp(dir, "build-cache-*.json.tmp")
-	if err != nil {
-		return fmt.Errorf("creating temp cache file: %w", err)
-	}
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName) //nolint:errcheck // best-effort cleanup on the failure path
-
-	if err := writeTempFileVar(tmp, data); err != nil {
-		return err
-	}
-
 	final := filepath.Join(dir, "build-cache.json")
-	if err := os.Rename(tmpName, final); err != nil {
+	if err := atomicWriteFile(final, 0o644, data); err != nil {
 		return fmt.Errorf("committing build cache: %w", err)
 	}
 	return nil
 }
 
-// writeTempFileVar is the writeTempFile implementation used by Save; tests may
-// replace it to inject write failures without file-system tricks.
+// writeTempFileVar is the writeTempFile implementation used by
+// atomicWriteFile; tests may replace it to inject write failures without
+// file-system tricks.
 var writeTempFileVar = writeTempFile
 
 // writeTempFile writes data to wc and closes it. Extracted so tests
@@ -162,10 +152,36 @@ var writeTempFileVar = writeTempFile
 func writeTempFile(wc io.WriteCloser, data []byte) error {
 	if _, err := wc.Write(data); err != nil {
 		_ = wc.Close()
-		return fmt.Errorf("writing temp cache file: %w", err)
+		return fmt.Errorf("writing temp file: %w", err)
 	}
 	if err := wc.Close(); err != nil {
-		return fmt.Errorf("closing temp cache file: %w", err)
+		return fmt.Errorf("closing temp file: %w", err)
+	}
+	return nil
+}
+
+// atomicWriteFile writes data to final atomically: a temp file in the same
+// directory (so the rename is same-volume), chmod'd to mode, then renamed
+// over final. A crash mid-write leaves final untouched. Shared by the
+// build cache and the trust marker so both get the same durability and
+// the same test-injectable inner write.
+func atomicWriteFile(final string, mode os.FileMode, data []byte) error {
+	dir := filepath.Dir(final)
+	tmp, err := os.CreateTemp(dir, filepath.Base(final)+".*.tmp")
+	if err != nil {
+		return fmt.Errorf("creating temp file: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) //nolint:errcheck // best-effort cleanup; harmless once rename succeeds
+	if err := tmp.Chmod(mode); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("setting temp file mode: %w", err)
+	}
+	if err := writeTempFileVar(tmp, data); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, final); err != nil {
+		return fmt.Errorf("committing %s: %w", filepath.Base(final), err)
 	}
 	return nil
 }

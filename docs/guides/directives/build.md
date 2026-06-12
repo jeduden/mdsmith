@@ -309,12 +309,14 @@ or similar). Only run recipes you would run by hand.
 that executes recipes — runs only when the config is trusted on this
 clone:
 
-- The gate is satisfied when a sibling file `.mdsmith.yml.trust`
-  exists and its bytes are identical to the current `.mdsmith.yml`.
-- Any drift (an edit to `.mdsmith.yml` after it was trusted), or a
-  missing marker, makes the build pass abort with a
-  `build not trusted` message and exit code 2. The lint-fix pass has
-  already run, so formatting still happens.
+- The gate is satisfied when a marker named after the loaded config
+  (`.mdsmith.yml.trust` for the default `.mdsmith.yml`, or
+  `<name>.trust` under `mdsmith fix -c <name>`) exists and its bytes
+  are identical to that config.
+- Any drift (an edit to the config after it was trusted), or a missing
+  marker, makes the build pass abort with a `build not trusted` message
+  and exit code 2. The lint-fix pass has already run, so formatting
+  still happens.
 - `mdsmith fix --no-build` skips the gate and the build pass together.
 - `--build-dry-run` and `--build-check-stale` never consult the gate:
   they enumerate targets without running anything.
@@ -399,6 +401,14 @@ output atomically:
 4. Before each output is committed, mdsmith `Lstat`s the destination
    and refuses to replace an existing symlink. The replace itself is an
    atomic `rename(2)` (`MoveFileEx` on Windows) for same-volume paths.
+
+A declared output under `.mdsmith/` is refused by the build pass
+itself, not only by the MDS039 lint rule, so a recipe can never
+overwrite mdsmith's own state (the build cache, the trust marker, or
+the checked-in `kinds/`, `schemas/`, and `conventions/`) even if MDS039
+is disabled in config. A recipe that stages its declared output as a
+symlink or a directory rather than a regular file is also rejected
+before the commit.
 
 Multi-output commit is **not** transactional: if the N+1th rename fails
 after N succeeded, mdsmith reports the partial state, removes the

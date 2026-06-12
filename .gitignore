@@ -31,4 +31,6 @@ cmd/mdsmith/default.pgo
 # cache, per-recipe staging dirs, and the per-clone build trust marker.
 .mdsmith/build-cache.json
 .mdsmith/build-staging/
-.mdsmith.yml.trust
+# The marker plus any crash-orphaned temp file from its atomic write
+# (.mdsmith.yml.trust.NNNN).
+.mdsmith.yml.trust*

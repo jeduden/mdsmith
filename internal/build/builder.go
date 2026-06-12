@@ -19,7 +19,6 @@ import (
 	"sort"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
 
@@ -118,7 +117,6 @@ func (b *CustomBuilder) Build(ctx context.Context, target Target) error {
 		dir:     plan.stageDir,
 		exec:    b.exec,
 		defExec: defaultExecConfig(),
-		timeout: timeoutFromContext(ctx),
 	}); err != nil {
 		return fmt.Errorf("recipe %q failed: %w", target.Recipe, err)
 	}
@@ -208,15 +206,24 @@ func outputParents(finals []string) []string {
 }
 
 // verifyOutputsExist confirms every declared output was produced in the
-// staging dir. A recipe that exits 0 without writing a declared output is
-// a build failure.
+// staging dir as a regular file. A recipe that exits 0 without writing a
+// declared output is a build failure; so is one that stages a symlink or
+// a directory in place of the output, since committing a symlink would
+// redirect the artifact's bytes outside the staging isolation.
 func verifyOutputsExist(outputs, stagePaths []string) error {
 	for i, rel := range outputs {
-		if _, err := os.Lstat(stagePaths[i]); err != nil {
+		info, err := os.Lstat(stagePaths[i])
+		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				return fmt.Errorf("recipe exited 0 but did not produce declared output %q", rel)
 			}
 			return fmt.Errorf("staging output %q: %w", rel, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("recipe staged declared output %q as a symlink; refusing to commit it", rel)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("recipe staged declared output %q as a non-regular file", rel)
 		}
 	}
 	return nil
@@ -245,21 +252,6 @@ func verifyNoUndeclaredWrites(before map[string]fileState, parents, finals []str
 	return fmt.Errorf(
 		"recipe wrote outside its declared outputs: %s", strings.Join(names, ", "),
 	)
-}
-
-// timeoutFromContext derives a positive timeout from the context's
-// deadline so runRecipe can run its own process-group kill timer. A
-// context with no deadline yields 0 (no timeout).
-func timeoutFromContext(ctx context.Context) time.Duration {
-	deadline, ok := ctx.Deadline()
-	if !ok {
-		return 0
-	}
-	d := time.Until(deadline)
-	if d <= 0 {
-		return time.Nanosecond // already past: fire the timeout path promptly
-	}
-	return d
 }
 
 // resolveInputs resolves every inputs: entry. A literal entry is
@@ -306,7 +298,11 @@ func (b *CustomBuilder) resolveInputs(target Target) ([]string, error) {
 }
 
 // resolveOutputs re-checks every outputs: entry against the project
-// root. Outputs may not exist yet, so mustExist is false.
+// root. Outputs may not exist yet, so mustExist is false. An output under
+// .mdsmith/ is refused here, not just in the MDS039 lint rule: the build
+// pass must never let a recipe overwrite mdsmith's own state (the build
+// cache, the trust marker, kinds/schemas/conventions) even when MDS039 is
+// disabled or overridden in config.
 func (b *CustomBuilder) resolveOutputs(target Target) ([]string, error) {
 	out := make([]string, 0, len(target.Outputs))
 	for _, entry := range target.Outputs {
@@ -314,9 +310,19 @@ func (b *CustomBuilder) resolveOutputs(target Target) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
+		if underMdsmithDir(rel) {
+			return nil, fmt.Errorf("output %q is under .mdsmith/; refusing to overwrite mdsmith state", rel)
+		}
 		out = append(out, rel)
 	}
 	return out, nil
+}
+
+// underMdsmithDir reports whether a cleaned, slash-separated
+// project-relative path is the .mdsmith state directory or a file inside
+// it.
+func underMdsmithDir(rel string) bool {
+	return rel == ".mdsmith" || strings.HasPrefix(rel, ".mdsmith/")
 }
 
 // isGlob reports whether a path entry contains doublestar glob meta.

@@ -10,6 +10,7 @@ import (
 	flag "github.com/spf13/pflag"
 
 	buildexec "github.com/jeduden/mdsmith/internal/build"
+	"github.com/jeduden/mdsmith/internal/config"
 )
 
 // runTrust implements the `mdsmith trust` subcommand. It shows the diff
@@ -44,15 +45,17 @@ func runTrustIO(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 	}
 
-	root := rootDirFromConfig(configPath)
+	// Pin the same config file the build pass would load, so `mdsmith trust`
+	// and the gate agree even under -c / config discovery.
+	cfgFile := resolveTrustConfigPath(configPath)
 
-	diff, changed, err := buildexec.TrustDiff(root)
+	diff, changed, err := buildexec.TrustDiff(cfgFile)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "mdsmith: trust: %v\n", err)
 		return 2
 	}
 	if !changed {
-		_, _ = fmt.Fprintf(stdout, "%s is already trusted; no change.\n", buildexec.TrustMarkerPath(root))
+		_, _ = fmt.Fprintf(stdout, "%s is already trusted; no change.\n", buildexec.TrustMarkerPath(cfgFile))
 		return 0
 	}
 
@@ -62,12 +65,30 @@ func runTrustIO(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	if err := buildexec.WriteTrustMarker(root); err != nil {
+	if err := buildexec.WriteTrustMarker(cfgFile); err != nil {
 		_, _ = fmt.Fprintf(stderr, "mdsmith: trust: %v\n", err)
 		return 2
 	}
-	_, _ = fmt.Fprintf(stdout, "Trusted %s.\n", buildexec.TrustMarkerPath(root))
+	_, _ = fmt.Fprintf(stdout, "Trusted %s.\n", buildexec.TrustMarkerPath(cfgFile))
 	return 0
+}
+
+// resolveTrustConfigPath returns the config file the trust marker pins.
+// An explicit --config wins; otherwise it discovers the workspace config
+// the way the other subcommands do, falling back to the default config
+// path under the current directory when none is found.
+func resolveTrustConfigPath(configPath string) string {
+	if configPath != "" {
+		return configPath
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return buildexec.ConfigPathForRoot("")
+	}
+	if discovered, derr := config.Discover(cwd); derr == nil && discovered != "" {
+		return discovered
+	}
+	return buildexec.ConfigPathForRoot(cwd)
 }
 
 // confirmTrust prompts on stdout and reads a yes/no answer from stdin.

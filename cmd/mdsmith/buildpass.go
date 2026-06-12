@@ -143,7 +143,14 @@ func runBuildPass(
 	// trust the build pass is skipped with a clear message; the lint-fix
 	// pass has already run.
 	if !opts.dryRun && !opts.checkStale {
-		if trust := buildexec.CheckTrust(root, envIsSet); !trust.Trusted {
+		// Pin the config file the run actually loaded (cfgPath), so the gate
+		// is correct under `mdsmith fix -c other.yml`. A defaults-only run
+		// (cfgPath == "") falls back to the default config name under root.
+		trustPath := cfgPath
+		if trustPath == "" {
+			trustPath = buildexec.ConfigPathForRoot(root)
+		}
+		if trust := buildexec.CheckTrust(trustPath, envIsSet); !trust.Trusted {
 			_, _ = fmt.Fprintf(w, "mdsmith: %s\n", trust.Reason)
 			return 2
 		}

@@ -2,10 +2,13 @@ package build
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
-	"sort"
+	"slices"
+	"strings"
 	"time"
 )
 
@@ -61,35 +64,32 @@ func buildEnv(cfg, def ExecConfig) []string {
 			// PATH is set explicitly above; an empty name is meaningless.
 			continue
 		}
+		if strings.ContainsAny(name, "=\x00\n\r") {
+			// Defense in depth: config validation already rejects these, but
+			// NewCustomBuilderExec is exported, so re-guard here. A name with
+			// "=" or a control char could smuggle a value or a second entry
+			// into the recipe environment.
+			continue
+		}
 		if v, ok := os.LookupEnv(name); ok {
 			env[name] = v
 		}
 	}
 
 	out := make([]string, 0, len(env))
-	for _, k := range sortedKeysOf(env) {
+	for _, k := range slices.Sorted(maps.Keys(env)) {
 		out = append(out, k+"="+env[k])
 	}
 	return out
 }
 
-// sortedKeysOf returns the map keys in sorted order.
-func sortedKeysOf(m map[string]string) []string {
-	ks := make([]string, 0, len(m))
-	for k := range m {
-		ks = append(ks, k)
-	}
-	sort.Strings(ks)
-	return ks
-}
-
-// runOpts bundles the inputs to runRecipe.
+// runOpts bundles the inputs to runRecipe. The per-recipe timeout is
+// carried by the context's deadline, not a separate field.
 type runOpts struct {
-	argv    []string      // program plus arguments (no shell)
-	dir     string        // working directory (the per-recipe staging dir)
-	exec    ExecConfig    // user-configured exec settings
-	defExec ExecConfig    // compiled defaults to fall back to
-	timeout time.Duration // per-recipe timeout; <=0 means no timeout
+	argv    []string   // program plus arguments (no shell)
+	dir     string     // working directory (the per-recipe staging dir)
+	exec    ExecConfig // user-configured exec settings
+	defExec ExecConfig // compiled defaults to fall back to
 }
 
 // runRecipe executes argv with a hermetic environment, a fixed working
@@ -124,24 +124,20 @@ func runRecipe(ctx context.Context, o runOpts) error {
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 
-	var timeoutCh <-chan time.Time
-	if o.timeout > 0 {
-		t := time.NewTimer(o.timeout)
-		defer t.Stop()
-		timeoutCh = t.C
-	}
-
+	// The context carries the deadline (set by the caller via
+	// context.WithTimeout). We do not bind the command to a context-cancel
+	// kill — that would kill only the leader, not the process group — so on
+	// ctx.Done() we kill the whole group ourselves, then drain the Wait.
 	select {
 	case err := <-done:
 		return err
 	case <-ctx.Done():
 		killGroup(cmd)
 		<-done
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return fmt.Errorf("recipe timed out: %w", ctx.Err())
+		}
 		return fmt.Errorf("recipe cancelled: %w", ctx.Err())
-	case <-timeoutCh:
-		killGroup(cmd)
-		<-done
-		return fmt.Errorf("recipe timed out after %s", o.timeout)
 	}
 }
 

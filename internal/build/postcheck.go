@@ -15,10 +15,13 @@ import (
 const snapshotCap = 2000
 
 // fileState is the recorded metadata for one file in a snapshot. mtime is
-// stored as a Unix-nanosecond value; sha256 is the content hash of a
-// regular file (empty for non-regular entries). link is the symlink
-// target (empty for non-symlinks), captured via Readlink so a symlink is
-// never followed.
+// stored as a Unix-nanosecond value. hash is the sha256 of a regular
+// file's content, captured eagerly: the before-snapshot must record the
+// original bytes because they are gone once the recipe overwrites them,
+// so the content-preserving-rewrite check (same size and mtime, different
+// bytes) cannot be deferred. hash is zero for non-regular entries. link
+// is the symlink target (empty for non-symlinks), captured via Readlink
+// so a symlink is never followed.
 type fileState struct {
 	size  int64
 	mtime int64
@@ -69,9 +72,9 @@ func snapshotDirs(dirs []string, maxEntries int) (map[string]fileState, error) {
 	return snap, nil
 }
 
-// statFile records one path's metadata. A regular file is hashed; a
-// symlink's target is read but never followed; other types record
-// metadata only.
+// statFile records one path's metadata. A regular file is hashed eagerly
+// (see fileState.hash); a symlink's target is read but never followed;
+// other types record metadata only.
 func statFile(path string) (fileState, error) {
 	info, err := os.Lstat(path)
 	if err != nil {
@@ -154,9 +157,10 @@ func diffSnapshots(before, after map[string]fileState, declared map[string]struc
 	return violations
 }
 
-// sameState reports whether two file states are byte-for-byte
-// equivalent: size, mtime, mode, content hash, and symlink target all
-// match.
+// sameState reports whether two file states are equivalent: size, mtime,
+// mode, content hash, and symlink target all match. The hash comparison
+// catches a content-preserving rewrite (same size and mtime, different
+// bytes); the cheap metadata fields short-circuit the common case.
 func sameState(a, b fileState) bool {
 	return a.size == b.size && a.mtime == b.mtime &&
 		a.mode == b.mode && a.hash == b.hash && a.link == b.link
