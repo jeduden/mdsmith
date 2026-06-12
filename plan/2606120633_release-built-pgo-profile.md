@@ -1,7 +1,7 @@
 ---
 id: 2606120633
 title: Wire PGO into the release build without a committed profile
-status: "🔳"
+status: "✅"
 summary: >-
   A committed cmd/mdsmith/default.pgo burdened every
   merge with a repo-specific binary artifact and was
@@ -64,22 +64,27 @@ clones inconsistent and still ships a committed artifact.
 
 ## Tasks
 
-1. Add `mdsmith-release pgo <workdir>` reusing the bench
+1. [x] Add `mdsmith-release pgo [workdir]` reusing the bench
    corpus builders; unit-test the profile-merge step.
-2. Call it from `release.yml` before the build matrix and
+2. [x] Call it from `release.yml` before the build matrix and
    pass the workdir profile into the builds.
-3. Decide whether `mdsmith-release bench` builds with the
+3. [x] Decide whether `mdsmith-release bench` builds with the
    generated profile; document the choice on the benchmark
-   page either way.
-4. Update [the PGO page](../docs/development/pgo-profile.md)
+   page either way. Decision: bench does **not** use PGO — it
+   measures a reproducible build, not the optimized release
+   output. Documented on the benchmark page.
+4. [x] Update [the PGO page](../docs/development/pgo-profile.md)
    to describe the release-generated flow.
 
 ## Acceptance Criteria
 
-- [ ] No `.pgo` file is tracked anywhere in the repository
-- [ ] Release binaries are built with a freshly generated
+- [x] No `.pgo` file is tracked anywhere in the repository
+- [x] Release binaries are built with a freshly generated
       profile and the workflow logs say so
-- [ ] `mdsmith merge-driver install` output is byte-identical
-      in user repositories to its pre-PR-587 output
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] `mdsmith merge-driver install` output is byte-identical
+      in user repositories to its pre-PR-587 output (the `pgo`
+      subcommand writes only to the gitignored
+      `cmd/mdsmith/default.pgo`, so the merge driver is
+      untouched)
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

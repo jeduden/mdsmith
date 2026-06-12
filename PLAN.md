@@ -186,5 +186,5 @@ footer: |
 | 2606111048 | 🔲     |        | [Consolidate tinygo compat stubs into internal/oscompat](plan/2606111048_arch-fix-oscompat-consolidation.md)                            |
 | 2606111049 | 🔳     |        | [Harden WASM size test to match production build](plan/2606111049_wasm-size-test-hardening.md)                                          |
 | 2606111050 | ✅     |        | [Guard schema.chmodFile with a mutex like fix.chmodFile](plan/2606111050_schema-chmodfile-mutex.md)                                     |
-| 2606120633 | 🔳     |        | [Wire PGO into the release build without a committed profile](plan/2606120633_release-built-pgo-profile.md)                             |
+| 2606120633 | ✅     |        | [Wire PGO into the release build without a committed profile](plan/2606120633_release-built-pgo-profile.md)                             |
 <?/catalog?>

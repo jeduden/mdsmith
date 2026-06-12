@@ -40,7 +40,7 @@ func TestPGOProfileRuns(t *testing.T) {
 
 	require.Len(t, runs, 4)
 
-	var profs []string
+	profs := make([]string, 0, len(runs))
 	for _, r := range runs {
 		profs = append(profs, r.prof)
 	}
