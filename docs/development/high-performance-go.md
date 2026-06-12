@@ -128,11 +128,11 @@ nothing; the heap costs an alloc plus future GC scan.
 ### Profile-guided optimization
 
 PGO has been GA since Go 1.21 and lands 2–14% wins on real
-binaries. The committed profile at `cmd/mdsmith/default.pgo`
-makes every `go build ./cmd/mdsmith` profile-guided. See
-[the committed PGO profile](pgo-profile.md) for why it is
-checked in and for the refresh commands. It also covers merge
-conflicts (regenerate — never merge bytes).
+binaries. mdsmith commits no profile — a tracked binary
+artifact burdens every merge. See
+[PGO and the uncommitted profile](pgo-profile.md) for the
+local-generation commands and the plan that moves generation
+into the release build.
 
 ## Patterns to apply
 

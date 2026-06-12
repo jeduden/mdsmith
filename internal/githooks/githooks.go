@@ -605,27 +605,10 @@ func DefaultIncludes() []string {
 	return []string{"*.md", "*.markdown"}
 }
 
-// PGOProfilePath is the committed profile-guided-optimization profile
-// every `go build ./cmd/mdsmith` compiles against. The managed block
-// routes it through PGOMergeDriver so a merge touching it on both
-// sides resolves automatically instead of conflicting — the profile
-// is regenerable and staleness-tolerant, so keeping the current
-// branch's copy is always a valid resolution (see
-// docs/development/pgo-profile.md).
-const PGOProfilePath = "cmd/mdsmith/default.pgo"
-
-// PGOMergeDriver is the git merge-driver name assigned to
-// PGOProfilePath. The driver command is plain `true`: it exits zero
-// without touching the merge result file, which keeps the current
-// branch's bytes — the standard take-ours idiom for regenerable
-// binary artifacts.
-const PGOMergeDriver = "mdsmith-pgo"
-
 // RenderManagedBlock returns the .gitattributes managed block content
 // for globs, including the BEGIN/END markers and a trailing newline.
 // Output is deterministic so drift detection compares it byte-for-byte
-// against the installed block. The block always ends with the PGO
-// profile's take-current driver assignment.
+// against the installed block.
 func RenderManagedBlock(globs Globs) string {
 	var b strings.Builder
 	b.WriteString(gitattributesManagedBlockStart)
@@ -636,7 +619,6 @@ func RenderManagedBlock(globs Globs) string {
 	for _, p := range globs.Exclude {
 		fmt.Fprintf(&b, "%s -merge\n", p)
 	}
-	fmt.Fprintf(&b, "%s merge=%s\n", PGOProfilePath, PGOMergeDriver)
 	b.WriteString(gitattributesManagedBlockEnd)
 	b.WriteString("\n")
 	return b.String()

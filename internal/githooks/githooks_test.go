@@ -475,7 +475,6 @@ func TestWriteGitattributes_CreatesNewFileWithManagedBlock(t *testing.T) {
 	expected := "# BEGIN mdsmith merge-driver\n" +
 		"a.md merge=mdsmith\n" +
 		"b.md merge=mdsmith\n" +
-		"cmd/mdsmith/default.pgo merge=mdsmith-pgo\n" +
 		"# END mdsmith merge-driver\n"
 	assert.Equal(t, expected, string(content))
 }
@@ -500,7 +499,6 @@ func TestWriteGitattributes_PreservesExistingNonMdsmithEntries(t *testing.T) {
 		"*.jpg binary\n" +
 		"# BEGIN mdsmith merge-driver\n" +
 		"test.md merge=mdsmith\n" +
-		"cmd/mdsmith/default.pgo merge=mdsmith-pgo\n" +
 		"# END mdsmith merge-driver\n"
 	assert.Equal(t, expected, string(content))
 }
@@ -528,7 +526,6 @@ func TestWriteGitattributes_ReplacesExistingManagedBlock(t *testing.T) {
 		"# BEGIN mdsmith merge-driver\n" +
 		"new.md merge=mdsmith\n" +
 		"other.md merge=mdsmith\n" +
-		"cmd/mdsmith/default.pgo merge=mdsmith-pgo\n" +
 		"# END mdsmith merge-driver\n" +
 		"*.jpg binary\n"
 	assert.Equal(t, expected, string(content))
@@ -561,7 +558,6 @@ func TestWriteGitattributes_StripsStaleMdsmithEntriesOutsideBlock(t *testing.T) 
 	expected := "*.txt text eol=lf\n" +
 		"# BEGIN mdsmith merge-driver\n" +
 		"new.md merge=mdsmith\n" +
-		"cmd/mdsmith/default.pgo merge=mdsmith-pgo\n" +
 		"# END mdsmith merge-driver\n" +
 		"*.jpg binary\n"
 	assert.Equal(t, expected, string(content))
@@ -591,7 +587,6 @@ func TestWriteGitattributes_StripsStaleMdsmithEntriesWithTrailingAttributes(t *t
 	expected := "*.txt text eol=lf\n" +
 		"# BEGIN mdsmith merge-driver\n" +
 		"new.md merge=mdsmith\n" +
-		"cmd/mdsmith/default.pgo merge=mdsmith-pgo\n" +
 		"# END mdsmith merge-driver\n"
 	assert.Equal(t, expected, string(content))
 }
@@ -621,7 +616,6 @@ func TestWriteGitattributes_PreservesCommentsThatMentionMdsmith(t *testing.T) {
 		"*.txt text eol=lf\n" +
 		"# BEGIN mdsmith merge-driver\n" +
 		"new.md merge=mdsmith\n" +
-		"cmd/mdsmith/default.pgo merge=mdsmith-pgo\n" +
 		"# END mdsmith merge-driver\n"
 	assert.Equal(t, expected, string(content))
 }
@@ -645,7 +639,6 @@ func TestWriteGitattributes_StripsStaleMdsmithEntriesWhenNoBlockExists(t *testin
 	expected := "*.txt text eol=lf\n" +
 		"# BEGIN mdsmith merge-driver\n" +
 		"new.md merge=mdsmith\n" +
-		"cmd/mdsmith/default.pgo merge=mdsmith-pgo\n" +
 		"# END mdsmith merge-driver\n"
 	assert.Equal(t, expected, string(content))
 }
@@ -661,7 +654,6 @@ func TestWriteGitattributes_HandlesEmptyFileList(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := "# BEGIN mdsmith merge-driver\n" +
-		"cmd/mdsmith/default.pgo merge=mdsmith-pgo\n" +
 		"# END mdsmith merge-driver\n"
 	assert.Equal(t, expected, string(content))
 }
@@ -683,7 +675,6 @@ func TestWriteGitattributes_AppendsBlockWhenNoNewlineAtEOF(t *testing.T) {
 	expected := "*.txt text eol=lf\n" +
 		"# BEGIN mdsmith merge-driver\n" +
 		"test.md merge=mdsmith\n" +
-		"cmd/mdsmith/default.pgo merge=mdsmith-pgo\n" +
 		"# END mdsmith merge-driver\n"
 	assert.Equal(t, expected, string(content))
 }
@@ -711,7 +702,6 @@ func TestWriteGitattributes_HandlesEndMarkerWithoutTrailingNewline(t *testing.T)
 	expected := "*.txt text eol=lf\n" +
 		"# BEGIN mdsmith merge-driver\n" +
 		"new.md merge=mdsmith\n" +
-		"cmd/mdsmith/default.pgo merge=mdsmith-pgo\n" +
 		"# END mdsmith merge-driver\n"
 	assert.Equal(t, expected, string(content))
 }
@@ -739,7 +729,6 @@ func TestWriteGitattributes_ReplacesTruncatedBlockMissingEndMarker(t *testing.T)
 	expected := "*.txt text eol=lf\n" +
 		"# BEGIN mdsmith merge-driver\n" +
 		"new.md merge=mdsmith\n" +
-		"cmd/mdsmith/default.pgo merge=mdsmith-pgo\n" +
 		"# END mdsmith merge-driver\n"
 	assert.Equal(t, expected, string(content),
 		"truncated block (BEGIN with no END) must be replaced wholesale, not duplicated")
@@ -767,7 +756,6 @@ func TestWriteGitattributes_DoesNotMatchMarkerInsideOtherComment(t *testing.T) {
 		"*.txt text eol=lf\n" +
 		"# BEGIN mdsmith merge-driver\n" +
 		"new.md merge=mdsmith\n" +
-		"cmd/mdsmith/default.pgo merge=mdsmith-pgo\n" +
 		"# END mdsmith merge-driver\n"
 	assert.Equal(t, expected, string(content),
 		"comment that contains the marker text must not be mistaken for the block start")
@@ -993,7 +981,6 @@ func TestRenderManagedBlock_IncludeAndExclude(t *testing.T) {
 		"*.markdown merge=mdsmith\n" +
 		"demo/** -merge\n" +
 		"vendor/*.md -merge\n" +
-		"cmd/mdsmith/default.pgo merge=mdsmith-pgo\n" +
 		"# END mdsmith merge-driver\n"
 	assert.Equal(t, expected, got)
 }
@@ -1001,7 +988,6 @@ func TestRenderManagedBlock_IncludeAndExclude(t *testing.T) {
 func TestRenderManagedBlock_EmptyGlobs(t *testing.T) {
 	got := RenderManagedBlock(Globs{})
 	expected := "# BEGIN mdsmith merge-driver\n" +
-		"cmd/mdsmith/default.pgo merge=mdsmith-pgo\n" +
 		"# END mdsmith merge-driver\n"
 	assert.Equal(t, expected, got)
 }
@@ -1392,29 +1378,4 @@ func TestHookHasNonCommentLineContaining_IgnoresBlankAndComments(t *testing.T) {
 		"needle",
 	)
 	assert.False(t, got, "comment-only matches must not satisfy the search")
-}
-
-// --- PGO profile merge attribute ---
-
-func TestRenderManagedBlock_AssignsPGOProfileDriver(t *testing.T) {
-	block := RenderManagedBlock(Globs{Include: []string{"*.md"}})
-	assert.Contains(t, block, PGOProfilePath+" merge=mdsmith-pgo\n",
-		"the managed block must route the committed PGO profile through "+
-			"the take-current driver so merges resolve automatically")
-	// The assignment must sit inside the managed block, before END.
-	endIdx := strings.Index(block, "# END mdsmith merge-driver")
-	pgoIdx := strings.Index(block, PGOProfilePath)
-	assert.Greater(t, endIdx, pgoIdx)
-}
-
-func TestExtractGlobs_IgnoresPGOProfileLine(t *testing.T) {
-	block := RenderManagedBlock(Globs{
-		Include: []string{"*.md"},
-		Exclude: []string{"demo/**"},
-	})
-	globs, found := ExtractGlobs(block)
-	assert.True(t, found)
-	assert.Equal(t, []string{"*.md"}, globs.Include)
-	assert.Equal(t, []string{"demo/**"}, globs.Exclude,
-		"the PGO assignment is not a glob and must not round-trip into Globs")
 }

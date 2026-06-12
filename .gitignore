@@ -21,3 +21,8 @@ merged.cov
 # Pulled from the orphan assets branch at site-build time by
 # mdsmith-release pull-site-assets; never committed.
 website/static/img/demo.gif
+
+# PGO profiles are generated locally, never committed: a committed
+# profile burdens every merge with a repo-specific binary artifact.
+# See plan/ for wiring PGO into the release build instead.
+cmd/mdsmith/default.pgo
