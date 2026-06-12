@@ -83,6 +83,7 @@ jobs:
         with:
           name: pgo-profile
           path: cmd/mdsmith/default.pgo
+          if-no-files-found: error
 
   build:
     needs: [preflight, pgo]

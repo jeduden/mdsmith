@@ -3,6 +3,7 @@ package release
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -129,8 +130,8 @@ type pgoFakeRunner struct {
 
 func (r *pgoFakeRunner) RunCommand(dir, name string, args ...string) error {
 	switch {
-	case name == "go" && len(args) >= 2 && args[0] == "build":
-		// -o <bin> ./cmd/mdsmith
+	case name == "go" && len(args) >= 4 && args[0] == "build":
+		// go build -o <bin> ./cmd/mdsmith — args[2] is the output path
 		return os.WriteFile(args[2], []byte("BIN"), 0o755)
 	case name == "go" && len(args) >= 2 && args[0] == "tool" && args[1] == "pprof":
 		out := pgoOutputFlag(args)
@@ -147,10 +148,9 @@ func (r *pgoFakeRunner) RunCommand(dir, name string, args ...string) error {
 
 // pgoOutputFlag extracts the path from the -output=<path> arg.
 func pgoOutputFlag(args []string) string {
-	const prefix = "-output="
 	for _, a := range args {
-		if len(a) > len(prefix) && a[:len(prefix)] == prefix {
-			return a[len(prefix):]
+		if v, ok := strings.CutPrefix(a, "-output="); ok {
+			return v
 		}
 	}
 	return ""

@@ -460,6 +460,11 @@ func (t *Toolkit) buildCorpora(root, workdir string) error {
 		}
 		for _, c := range clones {
 			dir := filepath.Join(workdir, c.dir)
+			// Skip if already checked out. If a previous run was
+			// interrupted after MkdirAll but before git-checkout, dir
+			// exists but has no src/ — copyMarkdownTree will silently
+			// no-op, producing an empty neutral corpus. Re-run with a
+			// fresh workdir to recover from that state.
 			if t.exists(dir) {
 				continue
 			}
