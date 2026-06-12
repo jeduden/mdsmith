@@ -1,6 +1,7 @@
 package build
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -113,6 +114,20 @@ func TestResolvePathInRoot_ExistingOutputOK(t *testing.T) {
 	got, err := ResolvePathInRoot(root, "out.html", false)
 	require.NoError(t, err)
 	assert.Equal(t, "out.html", got)
+}
+
+func TestResolveLongestExistingPrefix_NoExistingPrefix(t *testing.T) {
+	// A real filesystem always resolves the root, so the loop never walks
+	// all the way up without finding an existing ancestor. Force every
+	// evalSymlinks call to fail so the walk reaches parent == cur and falls
+	// back to the lexical clean path.
+	orig := evalSymlinks
+	evalSymlinks = func(string) (string, error) { return "", errors.New("forced failure") }
+	t.Cleanup(func() { evalSymlinks = orig })
+
+	abs := filepath.Join(string(filepath.Separator)+"ghost", "a", "b")
+	got := resolveLongestExistingPrefix(abs)
+	assert.Equal(t, filepath.Clean(abs), got)
 }
 
 func TestResolvePathInRoot_SymlinkWithinRootOK(t *testing.T) {

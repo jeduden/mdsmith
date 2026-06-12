@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -1536,6 +1537,49 @@ func TestReadLimitedConfig_MissingFile(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestReadLimitedConfig_ReadError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("os.Open on a directory + ReadAll error semantics differ on Windows")
+	}
+	// Opening a directory succeeds, but io.ReadAll on the resulting handle
+	// fails ("is a directory"), driving the post-open read-error branch.
+	_, err := readLimitedConfig(t.TempDir())
+	require.Error(t, err)
+}
+
+func TestStatFileSize_StatError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(path, []byte("rules: {}\n"), 0o644))
+	f, err := os.Open(path)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+	// Stat on a closed handle fails, so statFileSize reports -1.
+	assert.Equal(t, int64(-1), statFileSize(f))
+}
+
+func TestReadLimitedConfig_OversizedFileStatFails(t *testing.T) {
+	// When Stat fails, the over-limit error reports the read length instead
+	// of the unknown actual size. Force the Stat-failure path with the seam.
+	orig := statFileSize
+	statFileSize = func(*os.File) int64 { return -1 }
+	t.Cleanup(func() { statFileSize = orig })
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".mdsmith.yml")
+	oversized := make([]byte, maxConfigBytes+1)
+	for i := range oversized {
+		oversized[i] = '#'
+	}
+	require.NoError(t, os.WriteFile(path, oversized, 0o644))
+
+	_, err := readLimitedConfig(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "too large")
+	// The reported size is the read length (maxConfigBytes+1), not a stat size.
+	assert.Contains(t, err.Error(), fmt.Sprintf("%d bytes", maxConfigBytes+1))
+}
+
 func TestLoadMaxInputSizeFromYAML(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, ".mdsmith.yml")
@@ -1591,12 +1635,19 @@ func TestMergeNilLoaded_CopiesExplicitRules(t *testing.T) {
 	assert.False(t, hasCopy, "merged ExplicitRules should be independent copy")
 }
 
-// TestUnmarshalYAML_MappingDecodeError exercises the mapping decode error branch.
-// This is reached when a YAML mapping node cannot be decoded into map[string]any.
-// A mapping with YAML anchors triggers the RejectYAMLAliases check, so we need
-// a different invalid mapping. In practice this branch is very hard to trigger
-// since yaml.Decode on a MappingNode rarely fails; skip if not possible to test.
-// Instead test via the "non-scalar non-mapping" fallthrough branch.
+// TestUnmarshalYAML_MappingDecodeError exercises the mapping decode error
+// branch, reached when a MappingNode cannot decode into map[string]any. A
+// mapping whose key is itself a sequence (a complex YAML key) cannot become a
+// string-keyed map, so Decode fails and the branch wraps it as "invalid rule
+// config".
+func TestUnmarshalYAML_MappingDecodeError(t *testing.T) {
+	input := "rules:\n  line-length:\n    ? [a, b]\n    : c\n"
+	var cfg Config
+	err := yaml.Unmarshal([]byte(input), &cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid rule config")
+}
+
 func TestUnmarshalYAML_NonScalarNonMappingValue(t *testing.T) {
 	// YAML sequence (list) as rule config → should return "rule config must be a bool or a mapping".
 	input := "rules:\n  line-length:\n    - item1\n    - item2\n"

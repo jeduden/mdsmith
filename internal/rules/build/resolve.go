@@ -8,6 +8,11 @@ import (
 	"github.com/jeduden/mdsmith/internal/oscompat"
 )
 
+// evalSymlinks is a var so tests can override it to drive the
+// no-existing-prefix branch of resolveLongestExistingPrefix, which a real
+// filesystem never reaches because the root always resolves.
+var evalSymlinks = oscompat.EvalSymlinks
+
 // MaxGlobMatches is the per-entry cap on how many files one inputs:
 // glob may resolve to. An author who needs more declares several
 // narrower patterns. The build executor (a later plan) enforces this
@@ -39,7 +44,7 @@ func CheckGlobMatchCap(n int) error {
 // slashes before comparison, keeping the slash-only invariant on
 // Windows. A path that resolves outside root is an error.
 func ResolvePathInRoot(root, rel string, mustExist bool) (string, error) {
-	resolvedRoot, err := oscompat.EvalSymlinks(root)
+	resolvedRoot, err := evalSymlinks(root)
 	if err != nil {
 		// Fall back to the lexical absolute root when the root itself
 		// cannot be resolved (e.g. it does not exist in a unit test of
@@ -52,7 +57,7 @@ func ResolvePathInRoot(root, rel string, mustExist bool) (string, error) {
 
 	var resolved string
 	if mustExist {
-		resolved, err = oscompat.EvalSymlinks(abs)
+		resolved, err = evalSymlinks(abs)
 		if err != nil {
 			return "", fmt.Errorf("cannot resolve %q: %w", rel, err)
 		}
@@ -77,7 +82,7 @@ func resolveLongestExistingPrefix(abs string) string {
 	missing := []string{}
 	cur := abs
 	for {
-		if resolved, err := oscompat.EvalSymlinks(cur); err == nil {
+		if resolved, err := evalSymlinks(cur); err == nil {
 			if len(missing) == 0 {
 				return resolved
 			}

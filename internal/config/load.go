@@ -293,6 +293,18 @@ func DumpDefaults() *Config {
 	}
 }
 
+// statFileSize returns the open file's size, or -1 if Stat fails. It is a
+// var so a test can force the Stat-failure path of readLimitedConfig's
+// over-limit size report, which a real filesystem never reaches once Open
+// has succeeded.
+var statFileSize = func(f *os.File) int64 {
+	info, err := f.Stat()
+	if err != nil {
+		return -1
+	}
+	return info.Size()
+}
+
 // readLimitedConfig reads a config file with a size cap to prevent OOM.
 func readLimitedConfig(path string) ([]byte, error) {
 	f, err := os.Open(path)
@@ -302,10 +314,7 @@ func readLimitedConfig(path string) ([]byte, error) {
 	defer f.Close() //nolint:errcheck // best-effort close on read-only file
 
 	// Stat for accurate size in error messages.
-	var actualSize int64 = -1
-	if info, err := f.Stat(); err == nil {
-		actualSize = info.Size()
-	}
+	actualSize := statFileSize(f)
 
 	data, err := io.ReadAll(io.LimitReader(f, maxConfigBytes+1))
 	if err != nil {
