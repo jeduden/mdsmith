@@ -1,7 +1,7 @@
 ---
 id: 234
 title: Distribute mdsmith on Windows via Scoop and WinGet
-status: "🔳"
+status: "✅"
 summary: >-
   Publish the prebuilt `mdsmith-windows-amd64.exe` through
   a Scoop bucket and a WinGet manifest, mirroring the
