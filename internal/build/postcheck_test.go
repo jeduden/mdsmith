@@ -1,6 +1,7 @@
 package build
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -166,19 +167,89 @@ func TestSnapshotDirs_DeduplicatesDirs(t *testing.T) {
 
 func TestSnapshotDirs_ReadDirError(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("Unix permission bits")
+		t.Skip("ENOTDIR semantics differ on Windows")
 	}
-	if os.Getuid() == 0 {
-		t.Skip("running as root — chmod 000 still allows reads")
-	}
+	// Point a "directory" path at a regular file so os.ReadDir returns
+	// ENOTDIR — a non-ErrNotExist error that hits the "scanning" branch
+	// regardless of whether the process runs as root.
 	root := t.TempDir()
-	unreadable := filepath.Join(root, "locked")
-	require.NoError(t, os.Mkdir(unreadable, 0o000))
-	t.Cleanup(func() { _ = os.Chmod(unreadable, 0o700) })
+	notadir := filepath.Join(root, "file")
+	require.NoError(t, os.WriteFile(notadir, []byte("x"), 0o644))
 
-	_, err := snapshotDirs([]string{unreadable}, snapshotCap, nil)
+	_, err := snapshotDirs([]string{notadir}, snapshotCap, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "scanning")
+}
+
+func TestSnapshotDirs_NotExistDir(t *testing.T) {
+	// A not-yet-created output parent contributes nothing and is not an
+	// error: the IsNotExist branch continues past it.
+	snap, err := snapshotDirs([]string{filepath.Join(t.TempDir(), "nonexistent")}, snapshotCap, nil)
+	require.NoError(t, err)
+	assert.Empty(t, snap)
+}
+
+func TestSnapshotDirs_StatFileError(t *testing.T) {
+	old := statFileFn
+	statFileFn = func(string, fileState, bool) (fileState, error) {
+		return fileState{}, errors.New("stat failed")
+	}
+	t.Cleanup(func() { statFileFn = old })
+
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "a.txt"), []byte("x"), 0o644))
+	_, err := snapshotDirs([]string{root}, snapshotCap, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "stat failed")
+}
+
+func TestStatFile_LstatError(t *testing.T) {
+	// A nonexistent path makes os.Lstat fail with ErrNotExist, surfacing the
+	// "inspecting" error branch.
+	_, err := statFile(filepath.Join(t.TempDir(), "nonexistent"), fileState{}, false)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "inspecting")
+}
+
+func TestStatFile_ReadlinkError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink semantics differ on Windows")
+	}
+	old := readlinkFn
+	readlinkFn = func(string) (string, error) { return "", errors.New("readlink failed") }
+	t.Cleanup(func() { readlinkFn = old })
+
+	root := t.TempDir()
+	target := filepath.Join(root, "target.txt")
+	link := filepath.Join(root, "link.txt")
+	require.NoError(t, os.WriteFile(target, []byte("x"), 0o644))
+	require.NoError(t, os.Symlink(target, link))
+
+	_, err := statFile(link, fileState{}, false)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "reading symlink")
+}
+
+func TestStatFile_HashFileSumError(t *testing.T) {
+	old := hashFileSumFn
+	hashFileSumFn = func(string) ([32]byte, error) {
+		return [32]byte{}, errors.New("hash failed")
+	}
+	t.Cleanup(func() { hashFileSumFn = old })
+
+	root := t.TempDir()
+	f := filepath.Join(root, "a.txt")
+	require.NoError(t, os.WriteFile(f, []byte("x"), 0o644))
+
+	_, err := statFile(f, fileState{}, false)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "hash failed")
+}
+
+func TestHashFileSum_OpenError(t *testing.T) {
+	_, err := hashFileSum(filepath.Join(t.TempDir(), "nonexistent.txt"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "hashing")
 }
 
 func TestSnapshotDirs_SymlinkEntry(t *testing.T) {

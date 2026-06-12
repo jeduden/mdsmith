@@ -1,6 +1,7 @@
 package build
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -9,6 +10,26 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestEnsureStagingRoot_MkdirAllError(t *testing.T) {
+	old := osMkdirAllFn
+	osMkdirAllFn = func(string, os.FileMode) error { return errors.New("mkdir failed") }
+	t.Cleanup(func() { osMkdirAllFn = old })
+
+	_, err := ensureStagingRoot(t.TempDir())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "creating staging root")
+}
+
+func TestEnsureStagingRoot_ChmodError(t *testing.T) {
+	old := osChmodFn
+	osChmodFn = func(string, os.FileMode) error { return errors.New("chmod failed") }
+	t.Cleanup(func() { osChmodFn = old })
+
+	_, err := ensureStagingRoot(t.TempDir())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "securing staging root")
+}
 
 func TestEnsureStagingRoot_CreatesWith0700(t *testing.T) {
 	if runtime.GOOS == "windows" {

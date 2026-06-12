@@ -147,6 +147,12 @@ func (c *Cache) Save(root string) error {
 // file-system tricks.
 var writeTempFileVar = writeTempFile
 
+// chmodFileFn indirects the temp-file chmod in atomicWriteFile so a test
+// can inject a chmod failure without filesystem tricks.
+var chmodFileFn = func(f *os.File, mode os.FileMode) error {
+	return f.Chmod(mode)
+}
+
 // writeTempFile writes data to wc and closes it. Extracted so tests
 // can inject a failing io.WriteCloser without needing file-system tricks.
 func writeTempFile(wc io.WriteCloser, data []byte) error {
@@ -173,7 +179,7 @@ func atomicWriteFile(final string, mode os.FileMode, data []byte) error {
 	}
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName) //nolint:errcheck // best-effort cleanup; harmless once rename succeeds
-	if err := tmp.Chmod(mode); err != nil {
+	if err := chmodFileFn(tmp, mode); err != nil {
 		_ = tmp.Close()
 		return fmt.Errorf("setting temp file mode: %w", err)
 	}

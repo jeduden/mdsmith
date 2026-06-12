@@ -237,3 +237,23 @@ func TestCache_Save_WriteTempFileError(t *testing.T) {
 	err := c.Save(root)
 	require.Error(t, err)
 }
+
+func TestAtomicWriteFile_CreateTempError(t *testing.T) {
+	// The temp file is created in the destination's parent dir; a parent that
+	// does not exist makes os.CreateTemp fail.
+	final := filepath.Join(t.TempDir(), "nonexistent", "file.txt")
+	err := atomicWriteFile(final, 0o644, []byte("data"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "creating temp file")
+}
+
+func TestAtomicWriteFile_ChmodError(t *testing.T) {
+	old := chmodFileFn
+	chmodFileFn = func(*os.File, os.FileMode) error { return errors.New("chmod failed") }
+	t.Cleanup(func() { chmodFileFn = old })
+
+	final := filepath.Join(t.TempDir(), "file.txt")
+	err := atomicWriteFile(final, 0o644, []byte("data"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "setting temp file mode")
+}

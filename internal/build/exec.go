@@ -116,7 +116,7 @@ func runRecipe(ctx context.Context, o runOpts) error {
 		return fmt.Errorf("starting recipe: %w", err)
 	}
 
-	jobCleanup := afterStart(cmd)
+	jobCleanup := afterStartFn(cmd)
 	if jobCleanup != nil {
 		defer jobCleanup()
 	}
@@ -142,5 +142,10 @@ func runRecipe(ctx context.Context, o runOpts) error {
 }
 
 // gracePeriod is how long mdsmith waits after the first (polite)
-// termination signal before force-killing the process group.
-const gracePeriod = 5 * time.Second
+// termination signal before force-killing the process group. It is a var,
+// not a const, so a kill-path test can shorten it.
+var gracePeriod = 5 * time.Second
+
+// afterStartFn indirects afterStart so a test can install a non-nil job
+// cleanup and exercise the deferred-cleanup branch on Unix.
+var afterStartFn = afterStart

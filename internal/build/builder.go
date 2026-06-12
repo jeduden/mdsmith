@@ -31,6 +31,24 @@ var mkdirTempFn = os.MkdirTemp
 // builderGlobCapFn is the CheckGlobMatchCap implementation; tests may replace it.
 var builderGlobCapFn = buildrule.CheckGlobMatchCap
 
+// snapshotDirsFn is the snapshotDirs implementation; tests may replace it to
+// inject snapshot failures in the before/after post-condition scan.
+var snapshotDirsFn = snapshotDirs
+
+// lstatFn is the os.Lstat implementation; tests may replace it to inject a
+// stat failure when inspecting an output destination.
+var lstatFn = os.Lstat
+
+// renameFn is the os.Rename implementation; tests may replace it to force the
+// cross-device copy fallback in commitOutputs.
+var renameFn = os.Rename
+
+// copyFileImplFn is the copyFile implementation used by the rename fallback;
+// tests may replace it to inject a copy failure.
+var copyFileImplFn = func(src, dst string) error {
+	return copyFile(src, dst)
+}
+
 // RecipeSpec is the resolved command and tokenized argv for one
 // user-declared recipe. Tokenization happens once at construction so a
 // param value containing whitespace can never re-split.
@@ -107,7 +125,7 @@ func (b *CustomBuilder) Build(ctx context.Context, target Target) error {
 
 	argv := expandArgv(tokens, target.Params, plan.absInputs, plan.stagePaths)
 
-	before, err := snapshotDirs(plan.parents, snapshotCap, nil)
+	before, err := snapshotDirsFn(plan.parents, snapshotCap, nil)
 	if err != nil {
 		return err
 	}
@@ -233,7 +251,7 @@ func verifyOutputsExist(outputs, stagePaths []string) error {
 // the build if any file outside the declared finals was added, removed,
 // or modified by the recipe.
 func verifyNoUndeclaredWrites(before map[string]fileState, parents, finals []string) error {
-	after, err := snapshotDirs(parents, snapshotCap, before)
+	after, err := snapshotDirsFn(parents, snapshotCap, before)
 	if err != nil {
 		return err
 	}
@@ -406,9 +424,9 @@ func commitOutputs(finals, outputs, stagePaths []string) error {
 		if err := os.MkdirAll(filepath.Dir(final), 0o755); err != nil {
 			return fmt.Errorf("creating output dir for %q: %w", rel, err)
 		}
-		if err := os.Rename(stage, final); err != nil {
+		if err := renameFn(stage, final); err != nil {
 			// Cross-device rename can fail; fall back to copy.
-			if cerr := copyFile(stage, final); cerr != nil {
+			if cerr := copyFileImplFn(stage, final); cerr != nil {
 				if i > 0 {
 					return fmt.Errorf(
 						"writing output %q (outputs 0..%d already committed; rerun fix): %w",
@@ -428,7 +446,7 @@ func commitOutputs(finals, outputs, stagePaths []string) error {
 // to the link target — possibly outside the project tree. Refusing up
 // front keeps both paths safe and gives a clear diagnostic.
 func refuseSymlinkDest(final, rel string) error {
-	info, err := os.Lstat(final)
+	info, err := lstatFn(final)
 	if err != nil {
 		// ErrNotExist: nothing to replace. ENOTDIR: a parent component is a
 		// file — there is no symlink at the destination, and the subsequent

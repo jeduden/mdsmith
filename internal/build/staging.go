@@ -16,6 +16,13 @@ var stagingRootRel = filepath.Join(".mdsmith", "build-staging")
 // refusal on Unix.
 const groupWorldWritableMask = 0o022
 
+// osMkdirAllFn and osChmodFn indirect the staging-root creation calls so
+// tests can drive their error branches without filesystem tricks.
+var (
+	osMkdirAllFn = os.MkdirAll
+	osChmodFn    = os.Chmod
+)
+
 // ensureStagingRoot validates (and, if absent, creates) the
 // .mdsmith/build-staging/ directory under root, returning its absolute
 // path. It refuses a staging root that is a symlink, is not a directory,
@@ -32,10 +39,10 @@ func ensureStagingRoot(root string) (string, error) {
 		// Create the parent (.mdsmith) and the staging dir, then tighten
 		// the mode: MkdirAll's mode is filtered by the umask, so an
 		// explicit Chmod is required to guarantee 0o700.
-		if mkErr := os.MkdirAll(dir, 0o700); mkErr != nil {
+		if mkErr := osMkdirAllFn(dir, 0o700); mkErr != nil {
 			return "", fmt.Errorf("creating staging root: %w", mkErr)
 		}
-		if chErr := os.Chmod(dir, 0o700); chErr != nil {
+		if chErr := osChmodFn(dir, 0o700); chErr != nil {
 			return "", fmt.Errorf("securing staging root: %w", chErr)
 		}
 		return dir, nil

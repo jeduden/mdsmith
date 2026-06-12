@@ -3,15 +3,57 @@ package build
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestRunRecipe_StartError(t *testing.T) {
+	// A nonexistent program makes cmd.Start fail before Wait, hitting the
+	// "starting recipe" error branch.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err := runRecipe(ctx, runOpts{
+		argv:    []string{filepath.Join(t.TempDir(), "does-not-exist")},
+		dir:     t.TempDir(),
+		exec:    ExecConfig{},
+		defExec: defaultExecConfig(),
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "starting recipe")
+}
+
+func TestRunRecipe_NonNilJobCleanup(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sh is not available on Windows")
+	}
+	// On Unix afterStart returns nil; inject a non-nil cleanup so runRecipe
+	// installs and runs the deferred-cleanup branch.
+	var ran atomic.Bool
+	old := afterStartFn
+	afterStartFn = func(*exec.Cmd) func() { return func() { ran.Store(true) } }
+	t.Cleanup(func() { afterStartFn = old })
+
+	stage := t.TempDir()
+	script := writeScript(t, t.TempDir(), "noop.sh", `exit 0`)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	err := runRecipe(ctx, runOpts{
+		argv:    []string{script},
+		dir:     stage,
+		exec:    ExecConfig{},
+		defExec: defaultExecConfig(),
+	})
+	require.NoError(t, err)
+	assert.True(t, ran.Load(), "deferred job cleanup must run")
+}
 
 func TestBuildEnv_DefaultsOnly(t *testing.T) {
 	t.Setenv("HOME", "/home/tester")

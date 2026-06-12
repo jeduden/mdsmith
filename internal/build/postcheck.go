@@ -14,6 +14,14 @@ import (
 // huge tree cannot make the post-condition check quadratically slow.
 const snapshotCap = 2000
 
+// statFileFn, readlinkFn, and hashFileSumFn indirect the per-file snapshot
+// reads so tests can drive their error branches without filesystem tricks.
+var (
+	statFileFn    = statFile
+	readlinkFn    = os.Readlink
+	hashFileSumFn = hashFileSum
+)
+
 // fileState is the recorded metadata for one file in a snapshot. mtime is
 // stored as a Unix-nanosecond value. hash is the sha256 of a regular
 // file's content, captured eagerly: the before-snapshot must record the
@@ -71,7 +79,7 @@ func snapshotDirs(dirs []string, maxEntries int, prior map[string]fileState) (ma
 		for _, e := range entries {
 			path := filepath.Join(dir, e.Name())
 			priorState, hadPrior := prior[path]
-			st, err := statFile(path, priorState, hadPrior)
+			st, err := statFileFn(path, priorState, hadPrior)
 			if err != nil {
 				return nil, err
 			}
@@ -102,7 +110,7 @@ func statFile(path string, prior fileState, hadPrior bool) (fileState, error) {
 	}
 	switch {
 	case info.Mode()&os.ModeSymlink != 0:
-		target, lerr := os.Readlink(path)
+		target, lerr := readlinkFn(path)
 		if lerr != nil {
 			return fileState{}, fmt.Errorf("reading symlink %s: %w", path, lerr)
 		}
@@ -113,7 +121,7 @@ func statFile(path string, prior fileState, hadPrior bool) (fileState, error) {
 			// verdict is "modified" without the hash; skip the read.
 			break
 		}
-		h, herr := hashFileSum(path)
+		h, herr := hashFileSumFn(path)
 		if herr != nil {
 			return fileState{}, herr
 		}

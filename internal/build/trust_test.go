@@ -3,7 +3,6 @@ package build
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -157,17 +156,13 @@ func TestCheckTrust_EmptyConfigPath(t *testing.T) {
 }
 
 func TestCheckTrust_MarkerReadError(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Unix permission bits")
-	}
-	if os.Getuid() == 0 {
-		t.Skip("running as root — chmod 000 still allows reads")
-	}
 	dir := t.TempDir()
 	body := []byte("build: {}\n")
 	cfg := cfgIn(t, dir, body)
-	markerPath := cfg + ".trust"
-	require.NoError(t, os.WriteFile(markerPath, body, 0o000))
+	// A directory at the marker path makes os.ReadFile fail with EISDIR — a
+	// non-ErrNotExist error that hits the "cannot read marker" branch
+	// regardless of whether the process runs as root.
+	require.NoError(t, os.Mkdir(cfg+".trust", 0o755))
 
 	res := CheckTrust(cfg, func(string) bool { return false })
 	assert.False(t, res.Trusted)
@@ -214,18 +209,30 @@ func TestTrustDiff_MissingConfig(t *testing.T) {
 }
 
 func TestTrustDiff_MarkerReadError(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Unix permission bits")
-	}
-	if os.Getuid() == 0 {
-		t.Skip("running as root — chmod 000 still allows reads")
-	}
 	dir := t.TempDir()
 	body := []byte("a: 1\n")
 	cfg := cfgIn(t, dir, body)
-	markerPath := cfg + ".trust"
-	require.NoError(t, os.WriteFile(markerPath, []byte("old\n"), 0o000))
+	// A directory at the marker path makes os.ReadFile fail with a
+	// non-ErrNotExist error, hitting the default error branch — and it works
+	// as root, unlike a chmod 000 file.
+	require.NoError(t, os.Mkdir(cfg+".trust", 0o755))
 
 	_, _, err := TrustDiff(cfg)
 	require.Error(t, err)
+}
+
+func TestWriteTrustMarker_AtomicWriteError(t *testing.T) {
+	// A directory at the marker path makes the atomic rename fail (it cannot
+	// replace a non-empty directory), surfacing the "installing trust marker"
+	// error — and it works as root.
+	dir := t.TempDir()
+	body := []byte("build: {}\n")
+	cfg := cfgIn(t, dir, body)
+	markerDir := cfg + ".trust"
+	require.NoError(t, os.Mkdir(markerDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(markerDir, "blocker"), []byte("x"), 0o644))
+
+	err := WriteTrustMarker(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "installing trust marker")
 }
