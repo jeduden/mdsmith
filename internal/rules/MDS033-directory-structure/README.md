@@ -14,6 +14,7 @@ rumdl: []
 mado: []
 panache: []
 obsidian-linter: []
+gomarklint: []
 ---
 # MDS033: directory-structure
 

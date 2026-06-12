@@ -27,6 +27,11 @@ obsidian-linter:
     name: remove-trailing-punctuation-in-heading
     partial: false
     default: false
+gomarklint:
+  - id: no-trailing-punctuation
+    name: no-trailing-punctuation
+    partial: false
+    default: true
 ---
 # MDS017: no-trailing-punctuation-in-heading
 
@@ -98,9 +103,11 @@ Body text.
 - **rumdl**: [MD026][rumdl-md026] (no-trailing-punctuation)
 - **mado**: [MD026][mado-rules] (no-trailing-punctuation)
 - **obsidian-linter**: [remove-trailing-punctuation-in-heading]
+- **gomarklint**: [no-trailing-punctuation][gomarklint-rules]
 
 [mdl-md026]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md026.md
 [rumdl-md026]: https://rumdl.dev/md026/
 [mado-rules]: https://github.com/akiomik/mado#supported-rules
 [remove-trailing-punctuation-in-heading]:
   https://platers.github.io/obsidian-linter/settings/heading-rules/#remove-trailing-punctuation-in-heading
+[gomarklint-rules]: https://shinagawa-web.github.io/gomarklint/docs/rules/

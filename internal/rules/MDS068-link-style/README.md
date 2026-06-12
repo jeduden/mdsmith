@@ -19,6 +19,7 @@ rumdl:
 mado: []
 panache: []
 obsidian-linter: []
+gomarklint: []
 ---
 # MDS068: link-style
 

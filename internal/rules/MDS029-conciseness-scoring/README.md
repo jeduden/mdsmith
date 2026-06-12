@@ -11,6 +11,7 @@ rumdl: []
 mado: []
 panache: []
 obsidian-linter: []
+gomarklint: []
 ---
 # MDS029: conciseness-scoring
 

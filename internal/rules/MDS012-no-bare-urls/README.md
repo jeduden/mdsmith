@@ -27,6 +27,11 @@ obsidian-linter:
     name: no-bare-urls
     partial: false
     default: false
+gomarklint:
+  - id: no-bare-urls
+    name: no-bare-urls
+    partial: false
+    default: true
 ---
 # MDS012: no-bare-urls
 
@@ -94,9 +99,11 @@ Visit [example](https://example.com) for more.
 - **rumdl**: [MD034][rumdl-md034] (no-bare-urls)
 - **mado**: [MD034][mado-rules] (no-bare-urls)
 - **obsidian-linter**: [no-bare-urls]
+- **gomarklint**: [no-bare-urls][gomarklint-rules]
 
 [mdl-md034]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md034.md
 [rumdl-md034]: https://rumdl.dev/md034/
 [mado-rules]: https://github.com/akiomik/mado#supported-rules
 [no-bare-urls]:
   https://platers.github.io/obsidian-linter/settings/content-rules/#no-bare-urls
+[gomarklint-rules]: https://shinagawa-web.github.io/gomarklint/docs/rules/

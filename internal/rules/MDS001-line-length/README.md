@@ -23,6 +23,11 @@ mado:
     default: true
 panache: []
 obsidian-linter: []
+gomarklint:
+  - id: max-line-length
+    name: max-line-length
+    partial: false
+    default: false
 ---
 # MDS001: line-length
 
@@ -271,7 +276,9 @@ This line inside a code block is over 80 characters but within the code-block-ma
 - **markdownlint**: [MD013][mdl-md013] (line-length)
 - **rumdl**: [MD013][rumdl-md013] (line-length)
 - **mado**: [MD013][mado-rules] (line-length)
+- **gomarklint**: [max-line-length][gomarklint-rules]
 
 [mdl-md013]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md013.md
 [rumdl-md013]: https://rumdl.dev/md013/
 [mado-rules]: https://github.com/akiomik/mado#supported-rules
+[gomarklint-rules]: https://shinagawa-web.github.io/gomarklint/docs/rules/

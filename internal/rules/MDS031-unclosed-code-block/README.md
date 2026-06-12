@@ -11,6 +11,11 @@ rumdl: []
 mado: []
 panache: []
 obsidian-linter: []
+gomarklint:
+  - id: unclosed-code-block
+    name: unclosed-code-block
+    partial: false
+    default: true
 ---
 # MDS031: unclosed-code-block
 
@@ -79,3 +84,6 @@ wrap: markdown
 - **Implementation**:
   [source](./)
 - **Category**: code
+- **gomarklint**: [unclosed-code-block][gomarklint-rules]
+
+[gomarklint-rules]: https://shinagawa-web.github.io/gomarklint/docs/rules/

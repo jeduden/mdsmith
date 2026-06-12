@@ -19,6 +19,11 @@ rumdl:
 mado: []
 panache: []
 obsidian-linter: []
+gomarklint:
+  - id: empty-alt-text
+    name: empty-alt-text
+    partial: false
+    default: true
 ---
 # MDS032: no-empty-alt-text
 
@@ -84,6 +89,8 @@ wrap: markdown
 - **Category**: accessibility
 - **markdownlint**: [MD045][mdl-md045] (no-alt-text)
 - **rumdl**: [MD045][rumdl-md045] (no-alt-text)
+- **gomarklint**: [empty-alt-text][gomarklint-rules]
 
 [mdl-md045]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md045.md
 [rumdl-md045]: https://rumdl.dev/md045/
+[gomarklint-rules]: https://shinagawa-web.github.io/gomarklint/docs/rules/

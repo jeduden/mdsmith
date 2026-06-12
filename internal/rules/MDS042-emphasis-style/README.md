@@ -38,6 +38,11 @@ obsidian-linter:
     name: strong-style
     partial: false
     default: false
+gomarklint:
+  - id: consistent-emphasis-style
+    name: consistent-emphasis-style
+    partial: false
+    default: true
 ---
 # MDS042: emphasis-style
 
@@ -163,6 +168,7 @@ The following cases emit diagnostics but are
 - **obsidian-linter**:
   - [emphasis-style]
   - [strong-style]
+- **gomarklint**: [consistent-emphasis-style][gomarklint-rules]
 
 [mdl-md049]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md049.md
 [mdl-md050]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md050.md
@@ -172,3 +178,4 @@ The following cases emit diagnostics but are
   https://platers.github.io/obsidian-linter/settings/content-rules/#emphasis-style
 [strong-style]:
   https://platers.github.io/obsidian-linter/settings/content-rules/#strong-style
+[gomarklint-rules]: https://shinagawa-web.github.io/gomarklint/docs/rules/

@@ -13,6 +13,7 @@ rumdl: []
 mado: []
 panache: []
 obsidian-linter: []
+gomarklint: []
 ---
 # MDS039: build
 

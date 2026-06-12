@@ -22,6 +22,7 @@ rumdl:
 mado: []
 panache: []
 obsidian-linter: []
+gomarklint: []
 ---
 # MDS020: required-structure
 

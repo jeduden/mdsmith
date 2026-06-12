@@ -10,6 +10,7 @@ rumdl: '[...{id: =~"^MD[0-9]{3}$", name: string & != "", partial: bool, default:
 mado: '[...{id: =~"^MD[0-9]{3}$", name: string & != "", partial: bool, default: bool}]'
 panache: '[...{id: =~"^[a-z][a-z0-9-]*$", name: string & != "", partial: bool, default: bool}]'
 obsidian-linter: '[...{id: =~"^[a-z][a-z0-9-]*$", name: string & != "", partial: bool, default: bool}]'
+gomarklint: '[...{id: =~"^[a-z][a-z0-9-]*$", name: string & != "", partial: bool, default: bool}]'
 category: '"accessibility" | "code" | "directive" | "heading" | "line" | "link" | "list" | "prose" | "structural" | "table" | "whitespace"'
 ---
 # {id}: {name}
@@ -22,8 +23,9 @@ category: '"accessibility" | "code" | "directive" | "heading" | "line" | "link" 
      by mdsmith check against the literal CUE union in this file's
      `category:` front matter, which is hand-kept in sync with
      config.ValidCategories.
-     The `markdownlint:`, `rumdl:`, `mado:`, `panache:`, and
-     `obsidian-linter:` keys each list the peer linter's rules
+     The `markdownlint:`, `rumdl:`, `mado:`, `panache:`,
+     `obsidian-linter:`, and `gomarklint:` keys each list the
+     peer linter's rules
      that this mdsmith rule covers. Each entry has `id:`,
      `name:`, a required `partial: bool` (true when the mdsmith
      rule only partly covers the peer check), and a required
@@ -125,23 +127,26 @@ rules:
 
 <!-- Bullets in this order: ID, Name, Status, Default, Fixable,
      Implementation, Category, then one bullet per peer linter the rule
-     covers (markdownlint, rumdl, mado, panache, obsidian-linter), and
-     optionally Concept or Guide.
+     covers (markdownlint, rumdl, mado, panache, obsidian-linter,
+     gomarklint), and optionally Concept or Guide.
      Default may include key settings: "enabled, max: 80".
      Category must match the `category:` front-matter field and one
      of the values in ValidCategories. Pick the narrowest that fits.
 
      The peer-linter bullets above and their link-reference definitions
      are GENERATED from the `markdownlint:`/`rumdl:`/`mado:`/`panache:`/
-     `obsidian-linter:` front matter. Do not hand-write them; edit the
-     front matter and regenerate (the same data feeds the coverage
-     matrix):
+     `obsidian-linter:`/`gomarklint:` front matter. Do not hand-write
+     them; edit the front matter and regenerate (the same data feeds
+     the coverage matrix):
        MDSMITH_UPDATE_PEER_LINKS=1 go test ./internal/rules \
          -run TestRuleREADMEPeerLinks
      One bullet per peer with a non-empty list, one entry per covered
      rule (nested when more than one), "(partial)" marking a partial
      cover. markdownlint/rumdl/mado link the MDxxx id (mado shares one
-     `mado-rules` label -- it has no per-rule docs); panache and
+     `mado-rules` label -- it has no per-rule docs); gomarklint links
+     its kebab rule id through one shared `gomarklint-rules` label (a
+     single Rules page, and the bare name would collide with a shortcut
+     peer's label); panache and
      obsidian-linter use a bare `rule-name` shortcut reference. A
      definition past the line limit wraps onto an indented URL line.
      A rule whose peer lists are all empty has no peer bullets.

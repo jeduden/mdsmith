@@ -23,6 +23,11 @@ mado:
     default: true
 panache: []
 obsidian-linter: []
+gomarklint:
+  - id: single-h1
+    name: single-h1
+    partial: false
+    default: true
 ---
 # MDS051: single-h1
 
@@ -120,7 +125,9 @@ title: My Doc
 - **markdownlint**: [MD025][mdl-md025] (single-h1)
 - **rumdl**: [MD025][rumdl-md025] (single-title)
 - **mado**: [MD025][mado-rules] (single-h1)
+- **gomarklint**: [single-h1][gomarklint-rules]
 
 [mdl-md025]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md025.md
 [rumdl-md025]: https://rumdl.dev/md025/
 [mado-rules]: https://github.com/akiomik/mado#supported-rules
+[gomarklint-rules]: https://shinagawa-web.github.io/gomarklint/docs/rules/

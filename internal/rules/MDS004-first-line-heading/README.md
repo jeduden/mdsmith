@@ -23,6 +23,7 @@ mado:
     default: true
 panache: []
 obsidian-linter: []
+gomarklint: []
 ---
 # MDS004: first-line-heading
 

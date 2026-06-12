@@ -27,6 +27,11 @@ obsidian-linter:
     name: paragraph-blank-lines
     partial: true
     default: false
+gomarklint:
+  - id: blanks-around-lists
+    name: blanks-around-lists
+    partial: false
+    default: true
 ---
 # MDS014: blank-line-around-lists
 
@@ -106,9 +111,11 @@ Content here.
 - **rumdl**: [MD032][rumdl-md032] (blanks-around-lists)
 - **mado**: [MD032][mado-rules] (blanks-around-lists)
 - **obsidian-linter**: [paragraph-blank-lines] (partial)
+- **gomarklint**: [blanks-around-lists][gomarklint-rules]
 
 [mdl-md032]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md032.md
 [rumdl-md032]: https://rumdl.dev/md032/
 [mado-rules]: https://github.com/akiomik/mado#supported-rules
 [paragraph-blank-lines]:
   https://platers.github.io/obsidian-linter/settings/spacing-rules/#paragraph-blank-lines
+[gomarklint-rules]: https://shinagawa-web.github.io/gomarklint/docs/rules/

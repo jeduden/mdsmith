@@ -29,6 +29,7 @@ panache:
     partial: false
     default: true
 obsidian-linter: []
+gomarklint: []
 ---
 # MDS053: no-unused-link-definitions
 

@@ -23,6 +23,11 @@ panache:
     partial: false
     default: true
 obsidian-linter: []
+gomarklint:
+  - id: link-fragments
+    name: link-fragments
+    partial: false
+    default: true
 ---
 # MDS027: cross-file-reference-integrity
 
@@ -203,8 +208,10 @@ See [guide](bad/ref/guide.md#missing-section).
 - **markdownlint**: [MD051][mdl-md051] (link-fragments)
 - **rumdl**: [MD051][rumdl-md051] (link-fragments)
 - **panache**: [undefined-anchor]
+- **gomarklint**: [link-fragments][gomarklint-rules]
 
 [mdl-md051]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md051.md
 [rumdl-md051]: https://rumdl.dev/md051/
 [undefined-anchor]:
   https://panache.bz/reference/linter-rules.html#undefined-anchor
+[gomarklint-rules]: https://shinagawa-web.github.io/gomarklint/docs/rules/

@@ -29,6 +29,7 @@ obsidian-linter:
     name: space-after-list-markers
     partial: false
     default: false
+gomarklint: []
 ---
 # MDS061: list-marker-space
 

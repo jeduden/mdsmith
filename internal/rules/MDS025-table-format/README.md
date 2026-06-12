@@ -39,6 +39,7 @@ obsidian-linter:
     name: empty-line-around-tables
     partial: true
     default: false
+gomarklint: []
 ---
 # MDS025: table-format
 

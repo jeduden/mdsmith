@@ -35,6 +35,7 @@ mado:
     default: false
 panache: []
 obsidian-linter: []
+gomarklint: []
 ---
 # MDS016: list-indent
 

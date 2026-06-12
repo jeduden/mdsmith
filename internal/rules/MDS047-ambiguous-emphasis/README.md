@@ -23,6 +23,7 @@ mado:
     default: true
 panache: []
 obsidian-linter: []
+gomarklint: []
 ---
 # MDS047: ambiguous-emphasis
 

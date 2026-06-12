@@ -19,6 +19,11 @@ rumdl:
 mado: []
 panache: []
 obsidian-linter: []
+gomarklint:
+  - id: consistent-code-fence
+    name: consistent-code-fence
+    partial: false
+    default: true
 ---
 # MDS010: fenced-code-style
 
@@ -137,6 +142,8 @@ fmt.Println("hello")
 - **Category**: code
 - **markdownlint**: [MD048][mdl-md048] (code-fence-style)
 - **rumdl**: [MD048][rumdl-md048] (code-fence-style)
+- **gomarklint**: [consistent-code-fence][gomarklint-rules]
 
 [mdl-md048]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md048.md
 [rumdl-md048]: https://rumdl.dev/md048/
+[gomarklint-rules]: https://shinagawa-web.github.io/gomarklint/docs/rules/

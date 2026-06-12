@@ -21,6 +21,7 @@ rumdl:
 mado: []
 panache: []
 obsidian-linter: []
+gomarklint: []
 ---
 # MDS063: descriptive-link-text
 

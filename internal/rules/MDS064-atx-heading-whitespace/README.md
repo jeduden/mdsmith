@@ -75,6 +75,7 @@ obsidian-linter:
     name: headings-start-line
     partial: true
     default: false
+gomarklint: []
 ---
 # MDS064: atx-heading-whitespace
 

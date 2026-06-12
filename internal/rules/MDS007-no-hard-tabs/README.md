@@ -23,6 +23,11 @@ mado:
     default: true
 panache: []
 obsidian-linter: []
+gomarklint:
+  - id: no-hard-tabs
+    name: no-hard-tabs
+    partial: false
+    default: true
 ---
 # MDS007: no-hard-tabs
 
@@ -94,7 +99,9 @@ No tabs here.
 - **markdownlint**: [MD010][mdl-md010] (no-hard-tabs)
 - **rumdl**: [MD010][rumdl-md010] (no-hard-tabs)
 - **mado**: [MD010][mado-rules] (no-hard-tabs)
+- **gomarklint**: [no-hard-tabs][gomarklint-rules]
 
 [mdl-md010]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md010.md
 [rumdl-md010]: https://rumdl.dev/md010/
 [mado-rules]: https://github.com/akiomik/mado#supported-rules
+[gomarklint-rules]: https://shinagawa-web.github.io/gomarklint/docs/rules/

@@ -23,6 +23,7 @@ panache:
     partial: false
     default: true
 obsidian-linter: []
+gomarklint: []
 ---
 # MDS054: no-undefined-reference-labels
 

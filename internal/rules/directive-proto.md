@@ -10,6 +10,7 @@ rumdl: '[...{id: =~"^MD[0-9]{3}$", name: string & != "", partial: bool, default:
 mado: '[...{id: =~"^MD[0-9]{3}$", name: string & != "", partial: bool, default: bool}]'
 panache: '[...{id: =~"^[a-z][a-z0-9-]*$", name: string & != "", partial: bool, default: bool}]'
 obsidian-linter: '[...{id: =~"^[a-z][a-z0-9-]*$", name: string & != "", partial: bool, default: bool}]'
+gomarklint: '[...{id: =~"^[a-z][a-z0-9-]*$", name: string & != "", partial: bool, default: bool}]'
 category: '"directive"'
 ---
 # {id}: {name}

@@ -27,6 +27,11 @@ obsidian-linter:
     name: heading-blank-lines
     partial: false
     default: false
+gomarklint:
+  - id: blanks-around-headings
+    name: blanks-around-headings
+    partial: false
+    default: true
 ---
 # MDS013: blank-line-around-headings
 
@@ -104,9 +109,11 @@ Content here.
 - **rumdl**: [MD022][rumdl-md022] (blanks-around-headings)
 - **mado**: [MD022][mado-rules] (blanks-around-headings)
 - **obsidian-linter**: [heading-blank-lines]
+- **gomarklint**: [blanks-around-headings][gomarklint-rules]
 
 [mdl-md022]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md022.md
 [rumdl-md022]: https://rumdl.dev/md022/
 [mado-rules]: https://github.com/akiomik/mado#supported-rules
 [heading-blank-lines]:
   https://platers.github.io/obsidian-linter/settings/spacing-rules/#heading-blank-lines
+[gomarklint-rules]: https://shinagawa-web.github.io/gomarklint/docs/rules/

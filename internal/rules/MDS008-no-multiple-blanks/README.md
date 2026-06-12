@@ -27,6 +27,11 @@ obsidian-linter:
     name: consecutive-blank-lines
     partial: false
     default: false
+gomarklint:
+  - id: no-multiple-blank-lines
+    name: no-multiple-blank-lines
+    partial: false
+    default: true
 ---
 # MDS008: no-multiple-blanks
 
@@ -102,9 +107,11 @@ more code with blank lines above
 - **rumdl**: [MD012][rumdl-md012] (no-multiple-blanks)
 - **mado**: [MD012][mado-rules] (no-multiple-blanks)
 - **obsidian-linter**: [consecutive-blank-lines]
+- **gomarklint**: [no-multiple-blank-lines][gomarklint-rules]
 
 [mdl-md012]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md012.md
 [rumdl-md012]: https://rumdl.dev/md012/
 [mado-rules]: https://github.com/akiomik/mado#supported-rules
 [consecutive-blank-lines]:
   https://platers.github.io/obsidian-linter/settings/spacing-rules/#consecutive-blank-lines
+[gomarklint-rules]: https://shinagawa-web.github.io/gomarklint/docs/rules/

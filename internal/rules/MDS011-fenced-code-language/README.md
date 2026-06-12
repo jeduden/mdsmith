@@ -23,6 +23,11 @@ mado:
     default: true
 panache: []
 obsidian-linter: []
+gomarklint:
+  - id: fenced-code-language
+    name: fenced-code-language
+    partial: false
+    default: true
 ---
 # MDS011: fenced-code-language
 
@@ -93,7 +98,9 @@ fmt.Println("hello")
 - **markdownlint**: [MD040][mdl-md040] (fenced-code-language)
 - **rumdl**: [MD040][rumdl-md040] (fenced-code-language)
 - **mado**: [MD040][mado-rules] (fenced-code-language)
+- **gomarklint**: [fenced-code-language][gomarklint-rules]
 
 [mdl-md040]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md040.md
 [rumdl-md040]: https://rumdl.dev/md040/
 [mado-rules]: https://github.com/akiomik/mado#supported-rules
+[gomarklint-rules]: https://shinagawa-web.github.io/gomarklint/docs/rules/

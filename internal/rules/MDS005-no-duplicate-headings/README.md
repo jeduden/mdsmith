@@ -23,6 +23,11 @@ mado:
     default: true
 panache: []
 obsidian-linter: []
+gomarklint:
+  - id: duplicate-heading
+    name: duplicate-heading
+    partial: false
+    default: true
 ---
 # MDS005: no-duplicate-headings
 
@@ -97,7 +102,9 @@ Body two.
 - **markdownlint**: [MD024][mdl-md024] (no-duplicate-heading)
 - **rumdl**: [MD024][rumdl-md024] (multiple-headings)
 - **mado**: [MD024][mado-rules] (no-duplicate-heading)
+- **gomarklint**: [duplicate-heading][gomarklint-rules]
 
 [mdl-md024]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md024.md
 [rumdl-md024]: https://rumdl.dev/md024/
 [mado-rules]: https://github.com/akiomik/mado#supported-rules
+[gomarklint-rules]: https://shinagawa-web.github.io/gomarklint/docs/rules/

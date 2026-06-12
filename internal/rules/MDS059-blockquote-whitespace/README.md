@@ -45,6 +45,7 @@ obsidian-linter:
     name: empty-line-around-blockquotes
     partial: true
     default: false
+gomarklint: []
 ---
 # MDS059: blockquote-whitespace
 

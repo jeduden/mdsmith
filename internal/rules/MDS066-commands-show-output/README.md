@@ -25,6 +25,7 @@ mado:
     default: true
 panache: []
 obsidian-linter: []
+gomarklint: []
 ---
 # MDS066: commands-show-output
 

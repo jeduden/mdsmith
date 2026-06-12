@@ -23,6 +23,11 @@ mado:
     default: false
 panache: []
 obsidian-linter: []
+gomarklint:
+  - id: no-setext-headings
+    name: no-setext-headings
+    partial: false
+    default: true
 ---
 # MDS002: heading-style
 
@@ -170,7 +175,9 @@ Body text.
 - **markdownlint**: [MD003][mdl-md003] (heading-style)
 - **rumdl**: [MD003][rumdl-md003] (heading-style)
 - **mado**: [MD003][mado-rules] (heading-style)
+- **gomarklint**: [no-setext-headings][gomarklint-rules]
 
 [mdl-md003]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md003.md
 [rumdl-md003]: https://rumdl.dev/md003/
 [mado-rules]: https://github.com/akiomik/mado#supported-rules
+[gomarklint-rules]: https://shinagawa-web.github.io/gomarklint/docs/rules/

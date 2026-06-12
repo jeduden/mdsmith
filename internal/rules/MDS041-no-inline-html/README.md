@@ -25,6 +25,7 @@ mado:
     default: true
 panache: []
 obsidian-linter: []
+gomarklint: []
 ---
 # MDS041: no-inline-html
 

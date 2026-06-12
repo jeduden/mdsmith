@@ -27,6 +27,7 @@ obsidian-linter:
     name: ordered-list-style
     partial: false
     default: false
+gomarklint: []
 ---
 # MDS046: ordered-list-numbering
 

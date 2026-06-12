@@ -27,6 +27,11 @@ obsidian-linter:
     name: line-break-at-document-end
     partial: false
     default: false
+gomarklint:
+  - id: final-blank-line
+    name: final-blank-line
+    partial: false
+    default: true
 ---
 # MDS009: single-trailing-newline
 
@@ -102,9 +107,11 @@ is what the rule detects.
 - **rumdl**: [MD047][rumdl-md047] (file-end-newline)
 - **mado**: [MD047][mado-rules] (single-trailing-newline)
 - **obsidian-linter**: [line-break-at-document-end]
+- **gomarklint**: [final-blank-line][gomarklint-rules]
 
 [mdl-md047]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md047.md
 [rumdl-md047]: https://rumdl.dev/md047/
 [mado-rules]: https://github.com/akiomik/mado#supported-rules
 [line-break-at-document-end]:
   https://platers.github.io/obsidian-linter/settings/spacing-rules/#line-break-at-document-end
+[gomarklint-rules]: https://shinagawa-web.github.io/gomarklint/docs/rules/

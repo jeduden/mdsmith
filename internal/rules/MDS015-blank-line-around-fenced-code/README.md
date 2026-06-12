@@ -27,6 +27,11 @@ obsidian-linter:
     name: empty-line-around-code-fences
     partial: false
     default: false
+gomarklint:
+  - id: blanks-around-fences
+    name: blanks-around-fences
+    partial: false
+    default: true
 ---
 # MDS015: blank-line-around-fenced-code
 
@@ -108,9 +113,11 @@ Content here.
 - **rumdl**: [MD031][rumdl-md031] (blanks-around-fences)
 - **mado**: [MD031][mado-rules] (blanks-around-fences)
 - **obsidian-linter**: [empty-line-around-code-fences]
+- **gomarklint**: [blanks-around-fences][gomarklint-rules]
 
 [mdl-md031]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md031.md
 [rumdl-md031]: https://rumdl.dev/md031/
 [mado-rules]: https://github.com/akiomik/mado#supported-rules
 [empty-line-around-code-fences]:
   https://platers.github.io/obsidian-linter/settings/spacing-rules/#empty-line-around-code-fences
+[gomarklint-rules]: https://shinagawa-web.github.io/gomarklint/docs/rules/

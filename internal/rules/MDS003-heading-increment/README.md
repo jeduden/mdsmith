@@ -31,6 +31,11 @@ obsidian-linter:
     name: header-increment
     partial: false
     default: false
+gomarklint:
+  - id: heading-level
+    name: heading-level
+    partial: false
+    default: true
 ---
 # MDS003: heading-increment
 
@@ -113,6 +118,7 @@ Body text.
 - **mado**: [MD001][mado-rules] (heading-increment)
 - **panache**: [heading-hierarchy]
 - **obsidian-linter**: [header-increment]
+- **gomarklint**: [heading-level][gomarklint-rules]
 
 [mdl-md001]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md001.md
 [rumdl-md001]: https://rumdl.dev/md001/
@@ -121,3 +127,4 @@ Body text.
   https://panache.bz/reference/linter-rules.html#heading-hierarchy
 [header-increment]:
   https://platers.github.io/obsidian-linter/settings/heading-rules/#header-increment
+[gomarklint-rules]: https://shinagawa-web.github.io/gomarklint/docs/rules/

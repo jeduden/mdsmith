@@ -19,6 +19,7 @@ rumdl:
 mado: []
 panache: []
 obsidian-linter: []
+gomarklint: []
 ---
 # MDS050: proper-names
 

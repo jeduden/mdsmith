@@ -23,6 +23,11 @@ mado:
     default: true
 panache: []
 obsidian-linter: []
+gomarklint:
+  - id: no-emphasis-as-heading
+    name: no-emphasis-as-heading
+    partial: false
+    default: true
 ---
 # MDS018: no-emphasis-as-heading
 
@@ -123,7 +128,9 @@ wrap: markdown
 - **markdownlint**: [MD036][mdl-md036] (no-emphasis-as-heading)
 - **rumdl**: [MD036][rumdl-md036] (no-emphasis-as-heading)
 - **mado**: [MD036][mado-rules] (no-emphasis-as-heading)
+- **gomarklint**: [no-emphasis-as-heading][gomarklint-rules]
 
 [mdl-md036]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md036.md
 [rumdl-md036]: https://rumdl.dev/md036/
 [mado-rules]: https://github.com/akiomik/mado#supported-rules
+[gomarklint-rules]: https://shinagawa-web.github.io/gomarklint/docs/rules/

@@ -27,6 +27,7 @@ obsidian-linter:
     name: trailing-spaces
     partial: false
     default: false
+gomarklint: []
 ---
 # MDS006: no-trailing-spaces
 

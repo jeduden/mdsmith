@@ -23,6 +23,7 @@ mado:
     default: true
 panache: []
 obsidian-linter: []
+gomarklint: []
 ---
 # MDS049: no-space-in-link-text
 

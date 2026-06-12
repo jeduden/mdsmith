@@ -27,6 +27,11 @@ obsidian-linter:
     name: unordered-list-style
     partial: false
     default: false
+gomarklint:
+  - id: consistent-list-marker
+    name: consistent-list-marker
+    partial: false
+    default: true
 ---
 # MDS045: list-marker-style
 
@@ -170,9 +175,11 @@ Outer uses dash (correct), inner should use asterisk but uses dash.
 - **rumdl**: [MD004][rumdl-md004] (ul-style)
 - **mado**: [MD004][mado-rules] (ul-style)
 - **obsidian-linter**: [unordered-list-style]
+- **gomarklint**: [consistent-list-marker][gomarklint-rules]
 
 [mdl-md004]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md004.md
 [rumdl-md004]: https://rumdl.dev/md004/
 [mado-rules]: https://github.com/akiomik/mado#supported-rules
 [unordered-list-style]:
   https://platers.github.io/obsidian-linter/settings/content-rules/#unordered-list-style
+[gomarklint-rules]: https://shinagawa-web.github.io/gomarklint/docs/rules/

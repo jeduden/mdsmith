@@ -30,6 +30,11 @@ rumdl:
 mado: []
 panache: []
 obsidian-linter: []
+gomarklint:
+  - id: no-empty-links
+    name: no-empty-links
+    partial: false
+    default: true
 ---
 # MDS062: link-validity
 
@@ -179,8 +184,10 @@ The reversed form `(text)[url]` is shown as code, not as a link.
 - **rumdl**:
   - [MD011][rumdl-md011] (reversed-link)
   - [MD042][rumdl-md042] (no-empty-links)
+- **gomarklint**: [no-empty-links][gomarklint-rules]
 
 [mdl-md011]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md011.md
 [mdl-md042]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md042.md
 [rumdl-md011]: https://rumdl.dev/md011/
 [rumdl-md042]: https://rumdl.dev/md042/
+[gomarklint-rules]: https://shinagawa-web.github.io/gomarklint/docs/rules/
