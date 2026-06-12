@@ -44,6 +44,11 @@ var shellOperators = []string{
 // (plan 2606101546) substitutes {outputs}/{inputs} for these lists.
 var reservedParamNames = []string{"inputs", "outputs"}
 
+// bodyTemplateReserved holds placeholder names that are only available in
+// body-template, not in recipe commands or hook commands. Mirrors
+// config.reservedParams in internal/config/build.go.
+var bodyTemplateReserved = map[string]bool{"alt": true}
+
 // placeholderRe matches a {name} placeholder where name is an identifier
 // ([A-Za-z_][A-Za-z0-9_]*), consistent with config validation.
 var placeholderRe = regexp.MustCompile(`\{([A-Za-z_][A-Za-z0-9_]*)\}`)
@@ -367,7 +372,8 @@ func (r *Rule) checkHookTokens(filePath, label string, tokens []string, params m
 }
 
 // checkHookPlaceholders reports errors for reserved collective placeholders
-// ({inputs}/{outputs}) and undeclared {param} tokens in a hook command token.
+// ({inputs}/{outputs}), body-template-only reserved placeholders ({alt}), and
+// undeclared {param} tokens in a hook command token.
 func (r *Rule) checkHookPlaceholders(filePath, label, tok string, params map[string]string) []lint.Diagnostic {
 	var diags []lint.Diagnostic
 	for _, m := range placeholderRe.FindAllStringSubmatch(tok, -1) {
@@ -378,6 +384,13 @@ func (r *Rule) checkHookPlaceholders(filePath, label, tok string, params map[str
 			diags = append(diags, r.diag(filePath, lint.Error,
 				fmt.Sprintf("hook %q: command references {%s} which is not available in hooks "+
 					"(hooks have no directive context)",
+					label, name)))
+			continue
+		}
+		if bodyTemplateReserved[name] {
+			diags = append(diags, r.diag(filePath, lint.Error,
+				fmt.Sprintf("hook %q: command uses reserved placeholder {%s}; "+
+					"reserved placeholders are only available in body-template",
 					label, name)))
 			continue
 		}

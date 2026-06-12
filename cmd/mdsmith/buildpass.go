@@ -56,7 +56,8 @@ func checkMDS040Gate(cfg *config.Config, cfgPath string, w io.Writer) bool {
 	if r == nil {
 		return true
 	}
-	c, ok := r.(interface {
+	clone := rule.CloneRule(r)
+	c, ok := clone.(interface {
 		ApplySettings(map[string]any) error
 		Check(f *lint.File) []lint.Diagnostic
 	})
