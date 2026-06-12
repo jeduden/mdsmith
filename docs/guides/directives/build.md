@@ -117,15 +117,15 @@ list inside a token fragment has no well-defined meaning.
 ## Running the build
 
 `mdsmith fix` runs a build pass after the lint-fix pass. It collects
-every `<?build?>` directive across the files it processed, decides which
-targets are stale (see [Staleness and the build cache](#staleness-and-the-build-cache)),
-rebuilds only those, and prints one `OK`, `SKIP`, or `FAIL` line per
-target:
+every `<?build?>` directive across the files it processed. It then
+decides which targets are stale (see
+[Staleness and the build cache](#staleness-and-the-build-cache)) and
+rebuilds only those. It prints one `OK`, `SKIP`, or `FAIL` line per
+target, named by the target's first declared output:
 
 ```text
-build docs/architecture.md:12 (render): OK
-build docs/guide.md:8 (render): SKIP
-build docs/overview.md:30 (pandoc): FAIL: recipe "pandoc" failed: exit status 1
+OK book.html
+SKIP guide.html
 ```
 
 `mdsmith fix` exits non-zero if any recipe fails. A failing recipe
@@ -170,27 +170,96 @@ path.
 
 ### `mdsmith fix` build flags
 
-| Flag                            | Behavior                                                         |
-| ------------------------------- | ---------------------------------------------------------------- |
-| (none)                          | Lint-fix pass, then build only stale targets                     |
-| `--no-build`                    | Lint-fix pass only; skips the build pass, including hooks        |
-| `--build-only`                  | Build pass only                                                  |
-| `--build-recipe NAME`           | Build only directives whose `recipe:` is `NAME`; hooks still run |
-| `--build-dry-run`               | Print each target's `STALE` or `FRESH` verdict; run no recipe    |
-| `--build-force`                 | Rebuild every target; refresh all cache entries                  |
-| `--build-check-stale`           | Print stale targets, exit non-zero if any stale; run no recipe   |
-| `--build-no-cache`              | Treat all targets as stale; do not read or write the cache       |
-| `--build-timeout DUR`           | Per-recipe timeout (default `30s`); fires a process-group kill   |
-| `--build-no-hooks`              | Run the build pass but skip both `before` and `after` hook lists |
-| `--build-skip-hooks-when-fresh` | Skip both hook lists when no target is stale; run them otherwise |
+| Flag                            | Behavior                                                           |
+| ------------------------------- | ------------------------------------------------------------------ |
+| (none)                          | Lint-fix pass, then build only stale targets                       |
+| `--no-build`                    | Lint-fix pass only; skips the build pass, including hooks          |
+| `--build-only`                  | Build pass only                                                    |
+| `--build-recipe NAME`           | Build only directives whose `recipe:` is `NAME`; hooks still run   |
+| `--build-dry-run`               | Print each target's `STALE` or `FRESH` verdict; run no recipe      |
+| `--build-force`                 | Rebuild every target; refresh all cache entries                    |
+| `--build-check-stale`           | Print stale targets, exit non-zero if any stale; run no recipe     |
+| `--build-no-cache`              | Treat all targets as stale; do not read or write the cache         |
+| `--build-timeout DUR`           | Per-recipe timeout (default `30s`); fires a process-group kill     |
+| `--build-no-hooks`              | Run the build pass but skip both `before` and `after` hook lists   |
+| `--build-skip-hooks-when-fresh` | Skip both hook lists when no target is stale; run them otherwise   |
+| `--build-stream`                | Live-forward each recipe's stdout/stderr, prefixed by target name  |
+| `--build-explain TARGET`        | Print `TARGET`'s ActionID inputs and cache verdict; run no recipe  |
+| `--build-verify`                | Run each recipe twice and warn when the two outputs differ         |
+| `--build-jobs N`                | Run up to `N` recipes concurrently (default `1`)                   |
 
 `--no-build` and `--build-only` are mutually exclusive.
 `--build-force` cannot be combined with `--build-check-stale` or
-`--build-no-cache`.
+`--build-no-cache`. `--build-explain` and `--build-verify` are usage
+errors when combined with each other or with `--build-dry-run` or
+`--build-check-stale`. `--build-jobs` must be at least `1`.
 
 `--build-check-stale` makes artifact freshness a CI signal: it runs no
 recipe and exits non-zero when any declared output is out of date, so a
 build step can fail a pull request that forgot to regenerate.
+
+### Recipe logs and failure diagnostics
+
+Each recipe's stdout and stderr are captured to
+`.mdsmith/build-logs/<action-id>.log`, with every line prefixed
+`[stdout]` or `[stderr]` in arrival order, and the last 50 lines of each
+stream are held in memory for the failure diagnostics. By default a
+recipe runs quietly; `--build-stream` forwards each line to the terminal
+as it arrives, prefixed with the target name (`[book.html] reading
+chapter 1...`), and still writes the log file.
+
+When a recipe exits non-zero or fails an output post-condition, the
+build pass prints a six-field block followed by the last 20 lines of
+stderr:
+
+```text
+FAIL book.html (recipe: pandoc)
+  source:   chapters/intro.md:12 <?build?>
+  argv:     pandoc /proj/chapters/intro.md -o /…/book.html
+  cwd:      /proj
+  exit:     1
+  duration: 2.3s
+  log:      .mdsmith/build-logs/sha256-abc.log
+  --- last 20 lines of stderr ---
+  pandoc: cannot open chapters/intro.md
+```
+
+When `--build-timeout` expires, the pass prints the last 20 lines of
+each stream and a `TIMEOUT` header before the process group is sent
+`SIGTERM`.
+
+A log file lives until its cache entry is invalidated. At the start of
+every `mdsmith fix`, any `.mdsmith/build-logs/<id>.log` whose `<id>`
+matches no cache entry's ActionID is deleted, clearing orphans left by a
+`--build-no-cache` run or a since-replaced cache entry.
+
+### Explaining a freshness verdict
+
+`--build-explain TARGET` prints the inputs that feed a target's ActionID
+— the `recipe.command`, the sorted params, the sorted inputs with each
+input's content sha, the sorted outputs, the `cache.version`, the
+resulting ActionID, and the cache verdict — and runs no recipe. `TARGET`
+matches the target whose first declared output equals it; no match exits
+non-zero. It answers "why is this fresh, or stale?" without reading the
+cache JSON.
+
+### Detecting non-deterministic recipes
+
+`--build-verify` runs each recipe twice in independent staging
+directories and compares the declared output bytes. A mismatch is a
+*warning*, not a failure — some recipes embed timestamps or random
+seeds — and records an `unstable` flag on the target's cache entry. A
+later regular run skips the re-verify but surfaces the flag in
+`--build-explain`.
+
+### Parallel builds
+
+`--build-jobs N` runs up to `N` recipes concurrently (default `1`).
+Overlapping `outputs:` paths are already rejected when the target graph
+loads, so any pair of targets writes to disjoint paths and is safe to
+run in parallel. Per-target `OK`, `FAIL`, and `SKIP` lines print as each
+recipe finishes; the cache is written once, after every recipe
+completes.
 
 ## Build lifecycle hooks
 
