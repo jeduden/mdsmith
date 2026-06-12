@@ -178,12 +178,12 @@ default-Windows reach (WinGet ships with Windows 11).
 
 ## Acceptance Criteria
 
-All in-repo tasks are complete. The two criteria below are
-external-only: the `jeduden/scoop-mdsmith` bucket repo is live and
-self-bumping; the `winget-submit` job submits each release to
-`microsoft/winget-pkgs` automatically. Neither can be end-to-end
-verified from this repo, so they remain unchecked. `✅` reflects that
-all in-repo work is done.
+All in-repo tasks are complete. `✅` reflects that all in-repo work is
+done. The two criteria below remain unchecked because each has an
+external gate. The Scoop bucket (`jeduden/scoop-mdsmith`) self-bumps
+but lives outside this repo. The `winget-submit` job runs here and
+opens the PR, but `winget install jeduden.mdsmith` only works after
+Microsoft moderation merges that PR.
 
 - [ ] `scoop install mdsmith` (after `scoop bucket add`)
       installs the released `.exe`, checksum-verified.
