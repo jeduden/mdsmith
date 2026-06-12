@@ -1,7 +1,7 @@
 ---
 id: 234
 title: Distribute mdsmith on Windows via Scoop and WinGet
-status: "🔳"
+status: "✅"
 summary: >-
   Publish the prebuilt `mdsmith-windows-amd64.exe` through
   a Scoop bucket and a WinGet manifest, mirroring the
@@ -178,12 +178,20 @@ default-Windows reach (WinGet ships with Windows 11).
 
 ## Acceptance Criteria
 
+All in-repo tasks are complete. `✅` reflects that all in-repo work is
+done. The two criteria below remain unchecked because each has an
+external gate. The Scoop bucket (`jeduden/scoop-mdsmith`) self-bumps
+but lives outside this repo. The `winget-submit` job runs here and
+opens the PR, but `winget install jeduden.mdsmith` only works after
+Microsoft moderation merges that PR.
+
 - [ ] `scoop install mdsmith` (after `scoop bucket add`)
       installs the released `.exe`, checksum-verified.
-      (external — needs jeduden/scoop-mdsmith repo)
+      (external — jeduden/scoop-mdsmith repo is live)
 - [ ] `winget install jeduden.mdsmith` installs the released
       `.exe` once the manifest PR is merged.
-      (external — needs microsoft/winget-pkgs PR)
+      (external — winget-submit job opens the PR; Microsoft
+      moderation must merge it before the command works)
 - [x] Manifest generation lives in `mdsmith-release`
       (`render-scoop-manifest`, `render-winget-manifest`),
       not inline workflow shell; the recurring
