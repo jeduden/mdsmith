@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/jeduden/mdsmith/internal/oscompat"
 )
 
 // MDS027 stats and symlink-resolves the same target and root paths
@@ -56,7 +58,7 @@ func cachedEvalSymlinks(path string) (string, bool) {
 		r := v.(evalResult)
 		return r.real, r.ok
 	}
-	real, err := evalSymlinks(path)
+	real, err := oscompat.EvalSymlinks(path)
 	r := evalResult{real: real, ok: err == nil}
 	evalSymlinkCache.Store(path, r)
 	return r.real, r.ok

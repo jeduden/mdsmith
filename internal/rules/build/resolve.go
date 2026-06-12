@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+
+	"github.com/jeduden/mdsmith/internal/oscompat"
 )
 
 // MaxGlobMatches is the per-entry cap on how many files one inputs:
@@ -37,7 +39,7 @@ func CheckGlobMatchCap(n int) error {
 // slashes before comparison, keeping the slash-only invariant on
 // Windows. A path that resolves outside root is an error.
 func ResolvePathInRoot(root, rel string, mustExist bool) (string, error) {
-	resolvedRoot, err := evalSymlinks(root)
+	resolvedRoot, err := oscompat.EvalSymlinks(root)
 	if err != nil {
 		// Fall back to the lexical absolute root when the root itself
 		// cannot be resolved (e.g. it does not exist in a unit test of
@@ -50,7 +52,7 @@ func ResolvePathInRoot(root, rel string, mustExist bool) (string, error) {
 
 	var resolved string
 	if mustExist {
-		resolved, err = evalSymlinks(abs)
+		resolved, err = oscompat.EvalSymlinks(abs)
 		if err != nil {
 			return "", fmt.Errorf("cannot resolve %q: %w", rel, err)
 		}
@@ -75,7 +77,7 @@ func resolveLongestExistingPrefix(abs string) string {
 	missing := []string{}
 	cur := abs
 	for {
-		if resolved, err := evalSymlinks(cur); err == nil {
+		if resolved, err := oscompat.EvalSymlinks(cur); err == nil {
 			if len(missing) == 0 {
 				return resolved
 			}

@@ -11,6 +11,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
+	"github.com/jeduden/mdsmith/internal/oscompat"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 	mdsmith "github.com/jeduden/mdsmith/pkg/mdsmith"
 )
@@ -421,7 +422,7 @@ func resolveAbsAndSymlinks(p string) string {
 	if err != nil {
 		return ""
 	}
-	if real, err := evalSymlinks(abs); err == nil {
+	if real, err := oscompat.EvalSymlinks(abs); err == nil {
 		return real
 	}
 	return filepath.Clean(abs)
