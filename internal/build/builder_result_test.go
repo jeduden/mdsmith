@@ -29,7 +29,7 @@ func TestBuildWithResult_CapturesArgvCwdAndLog(t *testing.T) {
 		Recipe:  "emit",
 		Root:    root,
 		Outputs: []string{"out.txt"},
-	}, BuildOptions{ActionID: "sha256-abc", LogRoot: root})
+	}, Options{ActionID: "sha256-abc", LogRoot: root})
 
 	require.NoError(t, res.Err)
 	assert.Equal(t, 0, res.ExitCode)
@@ -61,7 +61,7 @@ func TestBuildWithResult_FailingRecipeReportsExitCode(t *testing.T) {
 		Recipe:  "boom",
 		Root:    root,
 		Outputs: []string{"out.txt"},
-	}, BuildOptions{ActionID: "sha256-boom", LogRoot: root})
+	}, Options{ActionID: "sha256-boom", LogRoot: root})
 
 	require.Error(t, res.Err)
 	assert.Equal(t, 7, res.ExitCode)
@@ -86,7 +86,7 @@ func TestBuildWithResult_LiveSinkForwardsLines(t *testing.T) {
 		Recipe:  "stream",
 		Root:    root,
 		Outputs: []string{"out.txt"},
-	}, BuildOptions{ActionID: "sha256-s", LogRoot: root, LiveSink: &sink, TargetName: "out.txt"})
+	}, Options{ActionID: "sha256-s", LogRoot: root, LiveSink: &sink, TargetName: "out.txt"})
 
 	require.NoError(t, res.Err)
 	assert.Contains(t, sink.String(), "[out.txt] line-a")
@@ -110,7 +110,7 @@ func TestBuildWithResult_TimeoutFlagSet(t *testing.T) {
 		Recipe:  "hang",
 		Root:    root,
 		Outputs: []string{"out.txt"},
-	}, BuildOptions{ActionID: "sha256-h", LogRoot: root})
+	}, Options{ActionID: "sha256-h", LogRoot: root})
 
 	require.Error(t, res.Err)
 	assert.True(t, res.TimedOut)
@@ -130,7 +130,7 @@ func TestBuildWithResult_LogSetupError(t *testing.T) {
 		Recipe:  "echo",
 		Root:    root,
 		Outputs: []string{"out.txt"},
-	}, BuildOptions{ActionID: "sha256-x", LogRoot: root})
+	}, Options{ActionID: "sha256-x", LogRoot: root})
 
 	require.Error(t, res.Err)
 }

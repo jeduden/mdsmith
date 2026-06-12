@@ -71,21 +71,21 @@ type Target struct {
 	Outputs []string          // project-root-relative, slash-normalized
 }
 
-// BuildOptions controls stream capture and live forwarding for one
+// Options controls stream capture and live forwarding for one
 // BuildWithResult call. A zero value disables log capture (LogRoot empty)
 // and live forwarding (LiveSink nil).
-type BuildOptions struct {
+type Options struct {
 	ActionID   string    // ActionID; names the log file <action-id>.log
 	LogRoot    string    // project root holding .mdsmith/build-logs/
 	LiveSink   io.Writer // when non-nil, each line is forwarded here, prefixed
 	TargetName string    // prefix used on LiveSink lines (the target name)
 }
 
-// BuildResult is the rich outcome of one recipe run: the argv it ran, the
+// Result is the rich outcome of one recipe run: the argv it ran, the
 // cwd, the process exit code, wall-clock duration, the log file path, and
 // the captured stdout/stderr tails. Err is non-nil on any failure
 // (non-zero exit, timeout, or a staging/commit error).
-type BuildResult struct {
+type Result struct {
 	Argv       []string
 	Cwd        string
 	ExitCode   int
@@ -100,7 +100,7 @@ type BuildResult struct {
 // Builder dispatches a single build Target.
 type Builder interface {
 	Build(ctx context.Context, target Target) error
-	BuildWithResult(ctx context.Context, target Target, opts BuildOptions) BuildResult
+	BuildWithResult(ctx context.Context, target Target, opts Options) Result
 }
 
 // CustomBuilder is the sole Builder implementation. It dispatches a
@@ -137,17 +137,17 @@ var _ Builder = (*CustomBuilder)(nil)
 // renames. On any failure before the commit phase the staging dir is
 // removed and no declared output is touched.
 func (b *CustomBuilder) Build(ctx context.Context, target Target) error {
-	return b.BuildWithResult(ctx, target, BuildOptions{}).Err
+	return b.BuildWithResult(ctx, target, Options{}).Err
 }
 
 // BuildWithResult runs the target's recipe like Build but captures the
 // recipe's stdout/stderr (to a log file under opts.LogRoot when set, and
-// to in-memory tails) and returns a rich BuildResult for diagnostics. The
+// to in-memory tails) and returns a rich Result for diagnostics. The
 // staging and atomic-commit contract is identical to Build.
 func (b *CustomBuilder) BuildWithResult(
-	ctx context.Context, target Target, opts BuildOptions,
-) BuildResult {
-	res := BuildResult{}
+	ctx context.Context, target Target, opts Options,
+) Result {
+	res := Result{}
 	spec, ok := b.recipes[target.Recipe]
 	if !ok {
 		res.Err = fmt.Errorf("unknown recipe %q", target.Recipe)
@@ -199,7 +199,7 @@ func (b *CustomBuilder) BuildWithResult(
 // execCaptured runs argv with stream capture, populating res with the
 // exit code, duration, log path, and stdout/stderr tails.
 func (b *CustomBuilder) execCaptured(
-	ctx context.Context, target Target, argv []string, opts BuildOptions, res *BuildResult,
+	ctx context.Context, target Target, argv []string, opts Options, res *Result,
 ) error {
 	var sc *streamCapture
 	if opts.LogRoot != "" && opts.ActionID != "" {

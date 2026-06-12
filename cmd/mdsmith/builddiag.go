@@ -172,7 +172,7 @@ func verifyTarget(
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	verifyOpts := buildexec.BuildOptions{}
+	verifyOpts := buildexec.Options{}
 	second := b.BuildWithResult(ctx, bt.target, verifyOpts)
 	if second.Err != nil {
 		_, _ = fmt.Fprintf(w, "WARN %s: verify re-run failed: %v\n", targetName(bt), second.Err)

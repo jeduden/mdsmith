@@ -568,7 +568,7 @@ func buildCacheEntry(
 // targetRunResult is one recipe run's outcome plus the unstable flag set
 // by --build-verify.
 type targetRunResult struct {
-	buildexec.BuildResult
+	buildexec.Result
 	Unstable bool
 }
 
@@ -580,7 +580,7 @@ func runOneTarget(
 	b buildexec.Builder, bt buildTarget, stin buildexec.StalenessInput,
 	opts buildPassOpts, timeout time.Duration, w io.Writer,
 ) targetRunResult {
-	bopts := buildexec.BuildOptions{LogRoot: bt.target.Root, TargetName: targetName(bt)}
+	bopts := buildexec.Options{LogRoot: bt.target.Root, TargetName: targetName(bt)}
 	if id, err := buildexec.ComputeActionID(stin); err == nil {
 		bopts.ActionID = id
 	}
@@ -589,7 +589,7 @@ func runOneTarget(
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	return targetRunResult{BuildResult: b.BuildWithResult(ctx, bt.target, bopts)}
+	return targetRunResult{Result: b.BuildWithResult(ctx, bt.target, bopts)}
 }
 
 // buildRecipeSpecs converts the loaded config's build.recipes into the

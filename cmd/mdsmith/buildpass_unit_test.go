@@ -27,9 +27,9 @@ func (m *mockBuilder) Build(ctx context.Context, target buildexec.Target) error 
 }
 
 func (m *mockBuilder) BuildWithResult(
-	ctx context.Context, target buildexec.Target, _ buildexec.BuildOptions,
-) buildexec.BuildResult {
-	return buildexec.BuildResult{Err: m.fn(ctx, target)}
+	ctx context.Context, target buildexec.Target, _ buildexec.Options,
+) buildexec.Result {
+	return buildexec.Result{Err: m.fn(ctx, target)}
 }
 
 // buildPassCfg returns a minimal *config.Config with the given recipe
