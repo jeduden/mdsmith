@@ -15,10 +15,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
 
@@ -69,9 +71,36 @@ type Target struct {
 	Outputs []string          // project-root-relative, slash-normalized
 }
 
+// BuildOptions controls stream capture and live forwarding for one
+// BuildWithResult call. A zero value disables log capture (LogRoot empty)
+// and live forwarding (LiveSink nil).
+type BuildOptions struct {
+	ActionID   string    // ActionID; names the log file <action-id>.log
+	LogRoot    string    // project root holding .mdsmith/build-logs/
+	LiveSink   io.Writer // when non-nil, each line is forwarded here, prefixed
+	TargetName string    // prefix used on LiveSink lines (the target name)
+}
+
+// BuildResult is the rich outcome of one recipe run: the argv it ran, the
+// cwd, the process exit code, wall-clock duration, the log file path, and
+// the captured stdout/stderr tails. Err is non-nil on any failure
+// (non-zero exit, timeout, or a staging/commit error).
+type BuildResult struct {
+	Argv       []string
+	Cwd        string
+	ExitCode   int
+	Duration   time.Duration
+	LogPath    string
+	StdoutTail []string
+	StderrTail []string
+	TimedOut   bool
+	Err        error
+}
+
 // Builder dispatches a single build Target.
 type Builder interface {
 	Build(ctx context.Context, target Target) error
+	BuildWithResult(ctx context.Context, target Target, opts BuildOptions) BuildResult
 }
 
 // CustomBuilder is the sole Builder implementation. It dispatches a
@@ -108,45 +137,124 @@ var _ Builder = (*CustomBuilder)(nil)
 // renames. On any failure before the commit phase the staging dir is
 // removed and no declared output is touched.
 func (b *CustomBuilder) Build(ctx context.Context, target Target) error {
+	return b.BuildWithResult(ctx, target, BuildOptions{}).Err
+}
+
+// BuildWithResult runs the target's recipe like Build but captures the
+// recipe's stdout/stderr (to a log file under opts.LogRoot when set, and
+// to in-memory tails) and returns a rich BuildResult for diagnostics. The
+// staging and atomic-commit contract is identical to Build.
+func (b *CustomBuilder) BuildWithResult(
+	ctx context.Context, target Target, opts BuildOptions,
+) BuildResult {
+	res := BuildResult{}
 	spec, ok := b.recipes[target.Recipe]
 	if !ok {
-		return fmt.Errorf("unknown recipe %q", target.Recipe)
+		res.Err = fmt.Errorf("unknown recipe %q", target.Recipe)
+		return res
 	}
 	tokens := strings.Fields(spec.Command)
 	if len(tokens) == 0 {
-		return fmt.Errorf("recipe %q has an empty command", target.Recipe)
+		res.Err = fmt.Errorf("recipe %q has an empty command", target.Recipe)
+		return res
 	}
 
 	plan, cleanup, err := b.stage(target)
 	if err != nil {
-		return err
+		res.Err = err
+		return res
 	}
 	defer cleanup()
 
 	argv := expandArgv(tokens, target.Params, plan.absInputs, plan.stagePaths)
+	res.Argv = argv
+	res.Cwd = target.Root
 
 	before, err := snapshotDirsFn(plan.parents, snapshotCap, nil)
 	if err != nil {
-		return err
+		res.Err = err
+		return res
 	}
 
-	if err := runRecipe(ctx, runOpts{
-		argv:    argv,
-		dir:     plan.stageDir,
-		exec:    b.exec,
-		defExec: defaultExecConfig(),
-	}); err != nil {
-		return fmt.Errorf("recipe %q failed: %w", target.Recipe, err)
+	if err := b.execCaptured(ctx, target, argv, opts, &res); err != nil {
+		res.Err = fmt.Errorf("recipe %q failed: %w", target.Recipe, err)
+		return res
 	}
 
 	if err := verifyOutputsExist(plan.outputs, plan.stagePaths); err != nil {
-		return err
+		res.Err = err
+		return res
 	}
 	if err := verifyNoUndeclaredWrites(before, plan.parents, plan.finals); err != nil {
-		return err
+		res.Err = err
+		return res
+	}
+	if err := commitOutputs(plan.finals, plan.outputs, plan.stagePaths); err != nil {
+		res.Err = err
+		return res
+	}
+	return res
+}
+
+// execCaptured runs argv with stream capture, populating res with the
+// exit code, duration, log path, and stdout/stderr tails.
+func (b *CustomBuilder) execCaptured(
+	ctx context.Context, target Target, argv []string, opts BuildOptions, res *BuildResult,
+) error {
+	var sc *streamCapture
+	if opts.LogRoot != "" && opts.ActionID != "" {
+		res.LogPath = logPathFor(opts.LogRoot, opts.ActionID)
+		var err error
+		sc, err = newStreamCapture(res.LogPath, opts.TargetName, opts.LiveSink)
+		if err != nil {
+			return err
+		}
+		defer sc.Close() //nolint:errcheck // log-file close is best-effort
 	}
 
-	return commitOutputs(plan.finals, plan.outputs, plan.stagePaths)
+	start := time.Now()
+	exitCode, timedOut, err := runRecipeCaptured(ctx, target.Root, argv, sc)
+	res.Duration = time.Since(start)
+	res.ExitCode = exitCode
+	res.TimedOut = timedOut
+	if sc != nil {
+		res.StdoutTail = sc.stdoutTail()
+		res.StderrTail = sc.stderrTail()
+	}
+	return err
+}
+
+// runRecipeCaptured execs argv with the project root as the working
+// directory, teeing stdout/stderr into sc when non-nil (otherwise to
+// os.Stderr). No shell is invoked: argv[0] is the program and argv[1:]
+// its arguments. The context bounds the run; on cancellation the process
+// is killed. It returns the process exit code, whether the run timed out,
+// and the run error.
+func runRecipeCaptured(
+	ctx context.Context, root string, argv []string, sc *streamCapture,
+) (int, bool, error) {
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...) //nolint:gosec // argv is explicit; user-declared recipe
+	cmd.Dir = root
+	if sc != nil {
+		cmd.Stdout = sc.stdout()
+		cmd.Stderr = sc.stderr()
+	} else {
+		cmd.Stdout = os.Stderr
+		cmd.Stderr = os.Stderr
+	}
+	err := cmd.Run()
+	if err == nil {
+		return 0, false, nil
+	}
+	exitCode := -1
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		exitCode = ee.ExitCode()
+	}
+	if ctx.Err() != nil {
+		return exitCode, true, fmt.Errorf("%w (timed out)", ctx.Err())
+	}
+	return exitCode, false, err
 }
 
 // buildPlan holds the resolved paths for one Build call: the recipe's

@@ -26,6 +26,12 @@ func (m *mockBuilder) Build(ctx context.Context, target buildexec.Target) error 
 	return m.fn(ctx, target)
 }
 
+func (m *mockBuilder) BuildWithResult(
+	ctx context.Context, target buildexec.Target, _ buildexec.BuildOptions,
+) buildexec.BuildResult {
+	return buildexec.BuildResult{Err: m.fn(ctx, target)}
+}
+
 // buildPassCfg returns a minimal *config.Config with the given recipe
 // YAML snippet (already indented under recipes:) for buildpass unit tests.
 func buildPassCfg(recipesYAML string) *config.Config {
