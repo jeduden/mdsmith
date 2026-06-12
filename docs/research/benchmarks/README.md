@@ -65,7 +65,10 @@ docs read.
 - mdsmith (Go 1.25.8 build), mado 0.3.0, rumdl 0.1.93,
   panache 2.46.0, markdownlint-cli2 0.22.1 (markdownlint
   0.40.0)
-- Date: 2026-06-06
+- Date: 2026-06-12 (the v0.43.0 release run's
+  `benchmark-publish` measurement, promoted from the
+  `assets` branch so the committed baseline shares the
+  release runner's environment)
 
 ## Results
 
@@ -86,29 +89,29 @@ the harness (run.sh) and `mdsmith fix` to refresh. -->
 mdsmith-only rules so the work class matches the markdownlint
 tools (see `bench-parity.mdsmith.yml`).
 
-**Repo corpus — 763 Markdown files** (median wall time, lower is
+**Repo corpus — 766 Markdown files** (median wall time, lower is
 better; `vs mado` is the median ratio to the fastest tool):
 
 | Tool              | Median  | Min     | vs mado |
 | ----------------- | ------- | ------- | ------- |
-| mdsmith-parity    | 68 ms   | 66 ms   | 1.0x    |
-| mado              | 73 ms   | 70 ms   | 1.1x    |
-| mdsmith           | 205 ms  | 199 ms  | 3.0x    |
-| rumdl             | 283 ms  | 266 ms  | 4.2x    |
-| panache           | 383 ms  | 375 ms  | 5.6x    |
-| markdownlint-cli2 | 6604 ms | 6251 ms | 97x     |
+| mado              | 67 ms   | 64 ms   | 1.0x    |
+| mdsmith-parity    | 67 ms   | 67 ms   | 1.0x    |
+| mdsmith           | 214 ms  | 211 ms  | 3.2x    |
+| rumdl             | 324 ms  | 319 ms  | 4.8x    |
+| panache           | 727 ms  | 600 ms  | 11x     |
+| markdownlint-cli2 | 4740 ms | 4728 ms | 71x     |
 
 **Neutral corpus — 234 files** (Rust Book + Rust Reference,
 longer third-party prose):
 
 | Tool              | Median  | Min     | vs mado |
 | ----------------- | ------- | ------- | ------- |
-| mado              | 56 ms   | 55 ms   | 1.0x    |
-| mdsmith-parity    | 71 ms   | 71 ms   | 1.3x    |
-| mdsmith           | 157 ms  | 154 ms  | 2.8x    |
-| rumdl             | 180 ms  | 169 ms  | 3.2x    |
-| panache           | 403 ms  | 380 ms  | 7.1x    |
-| markdownlint-cli2 | 4217 ms | 3996 ms | 75x     |
+| mado              | 47 ms   | 46 ms   | 1.0x    |
+| mdsmith-parity    | 53 ms   | 53 ms   | 1.1x    |
+| mdsmith           | 154 ms  | 151 ms  | 3.3x    |
+| rumdl             | 195 ms  | 194 ms  | 4.2x    |
+| panache           | 536 ms  | 525 ms  | 11x     |
+| markdownlint-cli2 | 3097 ms | 3031 ms | 66x     |
 <?/include?>
 
 ## Reading the result
@@ -144,7 +147,7 @@ rules (see
 mdsmith runs in mado's class. On the repo corpus the
 `mdsmith-parity` row comes in at mado's time (the two trade
 places run to run within noise), well ahead of rumdl; on the
-longer-prose neutral corpus it trails mado by roughly a third
+longer-prose neutral corpus it trails mado by roughly a tenth
 and comes in ahead of rumdl. The `mdsmith` → `mdsmith-parity`
 delta is the measured cost of the cross-file and
 generated-content layer — work users opt into, not waste.
