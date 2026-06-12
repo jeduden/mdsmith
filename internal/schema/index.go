@@ -11,6 +11,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
+	"github.com/jeduden/mdsmith/internal/oscompat"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
@@ -220,6 +221,10 @@ func atomicWriteIndex(target string, data []byte) error {
 	return nil
 }
 
+// chmodFile sets the permission bits of the named file.
+// Exposed as a variable so tests can inject failures without OS tricks.
+var chmodFile = oscompat.Chmod
+
 // chmodFileMu guards reads and writes of the chmodFile var so tests that
 // swap it can coexist with parallel goroutines that call writeAndRename.
 var chmodFileMu sync.Mutex
@@ -276,7 +281,7 @@ func resolveDir(dir string) string {
 	if abs == "" {
 		abs = filepath.Clean(dir)
 	}
-	if resolved, err := evalSymlinks(abs); err == nil {
+	if resolved, err := oscompat.EvalSymlinks(abs); err == nil {
 		return resolved
 	}
 	return filepath.Clean(abs)

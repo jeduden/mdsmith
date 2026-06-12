@@ -16,6 +16,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/fieldinterp"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/oscompat"
 	"github.com/jeduden/mdsmith/internal/piparser"
 	"github.com/jeduden/mdsmith/internal/placeholders"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -2412,7 +2413,7 @@ func findRequireDirectiveLine(f *lint.File) int {
 func isSchemaFile(docPath, schemaPath string) bool {
 	docInfo, errDoc := os.Stat(docPath)
 	schemaInfo, errSchema := os.Stat(schemaPath)
-	if errDoc == nil && errSchema == nil && sameFile(docInfo, schemaInfo) {
+	if errDoc == nil && errSchema == nil && oscompat.SameFile(docInfo, schemaInfo) {
 		return true
 	}
 	// Fall back to path equality when Stat fails or sameFile returns false

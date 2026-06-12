@@ -8,6 +8,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
+	"github.com/jeduden/mdsmith/internal/oscompat"
 	"github.com/jeduden/mdsmith/internal/rules"
 )
 
@@ -157,7 +158,7 @@ func withinRoot(resolvedRoot, path string) bool {
 // and Clean carries the fallback.
 func resolveSymlinks(p string) string {
 	abs, _ := filepath.Abs(p)
-	if resolved, err := evalSymlinks(abs); err == nil {
+	if resolved, err := oscompat.EvalSymlinks(abs); err == nil {
 		return resolved
 	}
 	return filepath.Clean(abs)

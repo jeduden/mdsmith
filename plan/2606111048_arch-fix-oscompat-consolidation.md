@@ -1,7 +1,7 @@
 ---
 id: 2606111048
 title: Consolidate tinygo compat stubs into internal/oscompat
-status: "🔲"
+status: "✅"
 summary: >-
   Sixteen build-tagged compat files wrapping
   os.Chmod, os.SameFile, and
@@ -105,17 +105,22 @@ expressed by the caller, not the stub.
 
 ## Acceptance Criteria
 
-- [ ] `internal/oscompat` contains the three
+- [x] `internal/oscompat` contains the three
       exported wrappers; no other package has
       its own `_tinygo.go` / `_notinygo.go`
-      pair for these three calls
-- [ ] `go build ./...` succeeds with the
+      pair for these three calls (exception:
+      `internal/githooks` keeps a caller-level
+      `sameFile` seam whose tinygo stub returns
+      `true` — a deliberate TOCTOU trade-off
+      that cannot delegate to `oscompat.SameFile`
+      whose tinygo stub returns `false`)
+- [x] `go build ./...` succeeds with the
       standard toolchain
-- [ ] `tinygo build -target wasm -o /dev/null
+- [x] `tinygo build -target wasm -o /dev/null
       ./cmd/mdsmith-wasm/` compiles without
       errors
-- [ ] No `chmodFn` / `chmodFile` naming split;
+- [x] No `chmodFn` / `chmodFile` naming split;
       all packages use `chmodFile`
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no
       issues

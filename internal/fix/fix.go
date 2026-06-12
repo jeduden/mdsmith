@@ -17,6 +17,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/gitignore"
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
+	"github.com/jeduden/mdsmith/internal/oscompat"
 	"github.com/jeduden/mdsmith/internal/rule"
 )
 
@@ -648,6 +649,10 @@ func (f *Fixer) effectiveWithCategories(
 	}
 	return config.ApplyCategories(effective, categories, func(name string) string { return m[name] }, explicit)
 }
+
+// chmodFile sets the permission bits of the named file.
+// Exposed as a variable so tests can inject failures without OS tricks.
+var chmodFile = oscompat.Chmod
 
 // chmodFileMu guards reads and writes of the chmodFile var so tests that
 // swap it can coexist with parallel tests that call atomicWriteFile.

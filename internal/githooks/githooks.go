@@ -17,6 +17,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/config"
+	"github.com/jeduden/mdsmith/internal/oscompat"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/setutil"
 )
@@ -793,10 +794,11 @@ func writeGitattributesFile(path, content string) error {
 	return nil
 }
 
-// createTempFn, syncTempFn, closeTempFn, chmodFn, and fstatFn are variables
+// createTempFn, syncTempFn, closeTempFn, chmodFile, and fstatFn are variables
 // so tests can inject failures into atomicWriteGitattributes without OS tricks.
-// chmodFn is declared in compat_notinygo.go / compat_tinygo.go so the
-// tinygo/wasm build can substitute a no-op without pulling in os.Chmod.
+// chmodFile delegates to oscompat.Chmod so the tinygo/wasm build uses a no-op
+// without pulling in os.Chmod directly.
+var chmodFile = oscompat.Chmod
 var createTempFn = os.CreateTemp
 var syncTempFn = (*os.File).Sync
 var closeTempFn = (*os.File).Close
@@ -845,7 +847,7 @@ func atomicWriteGitattributes(path string, data []byte, mode os.FileMode) error 
 	if err := closeTempFn(tmp); err != nil {
 		return err
 	}
-	if err := chmodFn(tmpName, mode); err != nil {
+	if err := chmodFile(tmpName, mode); err != nil {
 		return err
 	}
 	return os.Rename(tmpName, path)
