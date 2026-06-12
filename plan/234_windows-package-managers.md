@@ -190,7 +190,8 @@ all in-repo work is done.
       (external — jeduden/scoop-mdsmith repo is live)
 - [ ] `winget install jeduden.mdsmith` installs the released
       `.exe` once the manifest PR is merged.
-      (external — submitted automatically via winget-submit job)
+      (external — winget-submit job opens the PR; Microsoft
+      moderation must merge it before the command works)
 - [x] Manifest generation lives in `mdsmith-release`
       (`render-scoop-manifest`, `render-winget-manifest`),
       not inline workflow shell; the recurring
