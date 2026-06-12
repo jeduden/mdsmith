@@ -86,29 +86,29 @@ the harness (run.sh) and `mdsmith fix` to refresh. -->
 mdsmith-only rules so the work class matches the markdownlint
 tools (see `bench-parity.mdsmith.yml`).
 
-**Repo corpus — 763 Markdown files** (median wall time, lower is
+**Repo corpus — 766 Markdown files** (median wall time, lower is
 better; `vs mado` is the median ratio to the fastest tool):
 
 | Tool              | Median  | Min     | vs mado |
 | ----------------- | ------- | ------- | ------- |
-| mado              | 64 ms   | 64 ms   | 1.0x    |
-| mdsmith-parity    | 111 ms  | 109 ms  | 1.7x    |
-| rumdl             | 332 ms  | 323 ms  | 5.2x    |
-| mdsmith           | 483 ms  | 471 ms  | 7.5x    |
-| panache           | 612 ms  | 600 ms  | 9.5x    |
-| markdownlint-cli2 | 4756 ms | 4669 ms | 74x     |
+| mdsmith-parity    | 63 ms   | 62 ms   | 1.0x    |
+| mado              | 63 ms   | 63 ms   | 1.0x    |
+| mdsmith           | 202 ms  | 201 ms  | 3.2x    |
+| rumdl             | 315 ms  | 306 ms  | 5.0x    |
+| panache           | 728 ms  | 582 ms  | 12x     |
+| markdownlint-cli2 | 4610 ms | 4556 ms | 73x     |
 
 **Neutral corpus — 234 files** (Rust Book + Rust Reference,
 longer third-party prose):
 
 | Tool              | Median  | Min     | vs mado |
 | ----------------- | ------- | ------- | ------- |
-| mado              | 47 ms   | 45 ms   | 1.0x    |
-| mdsmith-parity    | 124 ms  | 123 ms  | 2.6x    |
-| rumdl             | 197 ms  | 194 ms  | 4.2x    |
-| mdsmith           | 244 ms  | 241 ms  | 5.2x    |
-| panache           | 560 ms  | 531 ms  | 12x     |
-| markdownlint-cli2 | 3197 ms | 3072 ms | 68x     |
+| mado              | 46 ms   | 45 ms   | 1.0x    |
+| mdsmith-parity    | 50 ms   | 49 ms   | 1.1x    |
+| mdsmith           | 148 ms  | 145 ms  | 3.2x    |
+| rumdl             | 189 ms  | 187 ms  | 4.1x    |
+| panache           | 554 ms  | 521 ms  | 12x     |
+| markdownlint-cli2 | 3038 ms | 2944 ms | 66x     |
 <?/include?>
 
 ## Reading the result
@@ -129,20 +129,23 @@ check-only port of ~41 markdownlint rules; rumdl and panache
 are per-file linters too. Default mdsmith also resolves the
 cross-file link/anchor graph, scores readability and
 structure, estimates token budgets, and validates generated
-sections. So on its default rule set it lands between the
-Node baseline and the Rust markdownlint tools (see the
-`mdsmith` row) — a gap we are actively closing, not an
-accepted trade-off.
+sections — here under this repository's own `.mdsmith.yml`,
+which switches on opt-in rules a stock install leaves off.
+Even carrying that extra work, the `mdsmith` row now runs in
+the same class as the per-file Rust linters (compare it with
+the `rumdl` row on both corpora) at roughly 3x the
+check-only mado.
 
 **Apples-to-apples: the `parity` convention.** Restricted to
 the rule class the markdownlint tools actually share — the
 built-in `parity` convention, which disables the mdsmith-only
 rules (see
 [Apples-to-apples rule sets](#apples-to-apples-rule-sets)) —
-mdsmith runs in the same class as mado and rumdl. On the repo
-corpus the `mdsmith-parity` row matches mado and comes in
-well ahead of rumdl; on the longer-prose neutral corpus it
-ties rumdl and trails mado. The `mdsmith` → `mdsmith-parity`
+mdsmith runs in mado's class. On the repo corpus the
+`mdsmith-parity` row comes in at mado's time (the two trade
+places run to run within noise), well ahead of rumdl; on the
+longer-prose neutral corpus it trails mado by roughly a third
+and comes in ahead of rumdl. The `mdsmith` → `mdsmith-parity`
 delta is the measured cost of the cross-file and
 generated-content layer — work users opt into, not waste.
 The residual gap to mado on long prose is genuine engine
@@ -378,8 +381,8 @@ job as the others", not "panache at its best".
 
 An earlier performance page cited a sub-300 ms full check
 "of 70-plus Markdown files". That was a narrow scope. The
-repo now tracks ~720 Markdown files; `mdsmith check .` over
-the whole tree is ~1.3 s here, and an 18-file
+repo now tracks ~760 Markdown files; `mdsmith check .` over
+the whole tree is ~0.5 s here, and an 18-file
 `docs/features` subset is ~50 ms. The page has been
 re-scoped, and a CI gate now guards the real number.
 
