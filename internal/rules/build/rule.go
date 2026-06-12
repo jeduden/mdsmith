@@ -376,7 +376,7 @@ func validatePathEntry(p string, allowGlob bool) string {
 	if cleaned == ".." || cleaned == "." || strings.HasPrefix(cleaned, "../") {
 		return `must not contain ".." path components`
 	}
-	if underMdsmithDir(cleaned) {
+	if UnderMdsmithDir(cleaned) {
 		return "must not be under .mdsmith/"
 	}
 	return ""
@@ -398,9 +398,11 @@ func hasReservedDeviceName(p string) bool {
 	return false
 }
 
-// underMdsmithDir reports whether the cleaned, slash-separated path is
-// the .mdsmith state directory or a file inside it.
-func underMdsmithDir(cleaned string) bool {
+// UnderMdsmithDir reports whether the cleaned, slash-separated path is
+// the .mdsmith state directory or a file inside it. Exported so the build
+// executor can apply the same reserved-path guard at exec time that this
+// rule applies at lint time.
+func UnderMdsmithDir(cleaned string) bool {
 	return cleaned == ".mdsmith" || strings.HasPrefix(cleaned, ".mdsmith/")
 }
 

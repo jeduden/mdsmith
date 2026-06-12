@@ -10,7 +10,6 @@ import (
 	flag "github.com/spf13/pflag"
 
 	buildexec "github.com/jeduden/mdsmith/internal/build"
-	"github.com/jeduden/mdsmith/internal/config"
 )
 
 // runTrust implements the `mdsmith trust` subcommand. It shows the diff
@@ -47,7 +46,7 @@ func runTrustIO(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 	// Pin the same config file the build pass would load, so `mdsmith trust`
 	// and the gate agree even under -c / config discovery.
-	cfgFile := resolveTrustConfigPath(configPath)
+	cfgFile := discoverConfigPath(configPath)
 
 	diff, changed, err := buildexec.TrustDiff(cfgFile)
 	if err != nil {
@@ -71,24 +70,6 @@ func runTrustIO(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	_, _ = fmt.Fprintf(stdout, "Trusted %s.\n", buildexec.TrustMarkerPath(cfgFile))
 	return 0
-}
-
-// resolveTrustConfigPath returns the config file the trust marker pins.
-// An explicit --config wins; otherwise it discovers the workspace config
-// the way the other subcommands do, falling back to the default config
-// path under the current directory when none is found.
-func resolveTrustConfigPath(configPath string) string {
-	if configPath != "" {
-		return configPath
-	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		return buildexec.ConfigPathForRoot("")
-	}
-	if discovered, derr := config.Discover(cwd); derr == nil && discovered != "" {
-		return discovered
-	}
-	return buildexec.ConfigPathForRoot(cwd)
 }
 
 // confirmTrust prompts on stdout and reads a yes/no answer from stdin.

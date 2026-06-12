@@ -680,6 +680,27 @@ func sessionForCLI(cfg *config.Config, cfgPath string) *mdsmith.Session {
 	return sess
 }
 
+// discoverConfigPath returns the path to the config file a command would
+// load: an explicit --config wins, otherwise the workspace config
+// discovered from the current directory, otherwise the default config
+// path under the current directory. It mirrors loadConfigRaw's path
+// resolution without loading (and possibly failing to parse) the file,
+// so commands that only need the path — like `mdsmith trust` — agree
+// with the file the build pass actually pins.
+func discoverConfigPath(configPath string) string {
+	if configPath != "" {
+		return configPath
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return config.DefaultConfigPath("")
+	}
+	if discovered, derr := config.Discover(cwd); derr == nil && discovered != "" {
+		return discovered
+	}
+	return config.DefaultConfigPath(cwd)
+}
+
 // rootDirFromConfig returns the project root directory derived from the
 // config file path. If cfgPath is empty, it falls back to the current
 // working directory so that includes with ".." paths still resolve.

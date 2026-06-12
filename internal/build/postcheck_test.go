@@ -14,7 +14,7 @@ func TestSnapshotDirs_RecordsFiles(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, "a.txt"), []byte("hello"), 0o644))
 
-	snap, err := snapshotDirs([]string{root}, snapshotCap)
+	snap, err := snapshotDirs([]string{root}, snapshotCap, nil)
 	require.NoError(t, err)
 	entry, ok := snap[filepath.Join(root, "a.txt")]
 	require.True(t, ok)
@@ -26,7 +26,7 @@ func TestSnapshotDirs_CapExceeded(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		require.NoError(t, os.WriteFile(filepath.Join(root, string(rune('a'+i))+".txt"), []byte("x"), 0o644))
 	}
-	_, err := snapshotDirs([]string{root}, 3)
+	_, err := snapshotDirs([]string{root}, 3, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "2 000")
 	assert.Contains(t, err.Error(), root)
@@ -37,14 +37,14 @@ func TestDiffSnapshots_DetectsAddedFile(t *testing.T) {
 	declared := filepath.Join(root, "declared.txt")
 	require.NoError(t, os.WriteFile(declared, []byte("orig"), 0o644))
 
-	before, err := snapshotDirs([]string{root}, snapshotCap)
+	before, err := snapshotDirs([]string{root}, snapshotCap, nil)
 	require.NoError(t, err)
 
 	// Recipe writes an undeclared sibling.
 	undeclared := filepath.Join(root, "sneaky.txt")
 	require.NoError(t, os.WriteFile(undeclared, []byte("evil"), 0o644))
 
-	after, err := snapshotDirs([]string{root}, snapshotCap)
+	after, err := snapshotDirs([]string{root}, snapshotCap, before)
 	require.NoError(t, err)
 
 	violations := diffSnapshots(before, after, map[string]struct{}{declared: {}})
@@ -58,7 +58,7 @@ func TestDiffSnapshots_DetectsModifiedContent(t *testing.T) {
 	other := filepath.Join(root, "other.txt")
 	require.NoError(t, os.WriteFile(other, []byte("aaaaa"), 0o644))
 
-	before, err := snapshotDirs([]string{root}, snapshotCap)
+	before, err := snapshotDirs([]string{root}, snapshotCap, nil)
 	require.NoError(t, err)
 	// Same size, different content, with mtime reset to match so only the
 	// eagerly-captured content hash can distinguish the two snapshots —
@@ -66,7 +66,7 @@ func TestDiffSnapshots_DetectsModifiedContent(t *testing.T) {
 	fixedTime := time.Unix(1700000000, 0)
 	require.NoError(t, os.WriteFile(other, []byte("bbbbb"), 0o644))
 	require.NoError(t, os.Chtimes(other, fixedTime, fixedTime))
-	after, err := snapshotDirs([]string{root}, snapshotCap)
+	after, err := snapshotDirs([]string{root}, snapshotCap, before)
 	require.NoError(t, err)
 	// Force the before-state mtime to match the after-state mtime.
 	bs := before[other]
@@ -78,14 +78,37 @@ func TestDiffSnapshots_DetectsModifiedContent(t *testing.T) {
 	assert.Equal(t, "modified", violations[0].kind)
 }
 
+func TestSnapshotDirs_AfterSkipsHashWhenCheapFieldsDiffer(t *testing.T) {
+	root := t.TempDir()
+	f := filepath.Join(root, "n.txt")
+	require.NoError(t, os.WriteFile(f, []byte("aaaaa"), 0o644))
+
+	before, err := snapshotDirs([]string{root}, snapshotCap, nil)
+	require.NoError(t, err)
+	require.NotEqual(t, [32]byte{}, before[f].hash, "before-snapshot hashes eagerly")
+
+	// Change the size so the cheap fields differ from the before-snapshot.
+	require.NoError(t, os.WriteFile(f, []byte("bb"), 0o644))
+	after, err := snapshotDirs([]string{root}, snapshotCap, before)
+	require.NoError(t, err)
+	// The after-snapshot skipped the content hash: the cheap fields already
+	// settle the verdict, so no bytes were read.
+	assert.Equal(t, [32]byte{}, after[f].hash)
+
+	// The verdict is still correct.
+	violations := diffSnapshots(before, after, map[string]struct{}{})
+	require.Len(t, violations, 1)
+	assert.Equal(t, "modified", violations[0].kind)
+}
+
 func TestDiffSnapshots_DeclaredOutputIgnored(t *testing.T) {
 	root := t.TempDir()
 	declared := filepath.Join(root, "out.txt")
 
-	before, err := snapshotDirs([]string{root}, snapshotCap)
+	before, err := snapshotDirs([]string{root}, snapshotCap, nil)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(declared, []byte("new"), 0o644))
-	after, err := snapshotDirs([]string{root}, snapshotCap)
+	after, err := snapshotDirs([]string{root}, snapshotCap, before)
 	require.NoError(t, err)
 
 	violations := diffSnapshots(before, after, map[string]struct{}{declared: {}})
@@ -97,10 +120,10 @@ func TestDiffSnapshots_DetectsModeChange(t *testing.T) {
 	f := filepath.Join(root, "m.txt")
 	require.NoError(t, os.WriteFile(f, []byte("x"), 0o644))
 
-	before, err := snapshotDirs([]string{root}, snapshotCap)
+	before, err := snapshotDirs([]string{root}, snapshotCap, nil)
 	require.NoError(t, err)
 	require.NoError(t, os.Chmod(f, 0o600))
-	after, err := snapshotDirs([]string{root}, snapshotCap)
+	after, err := snapshotDirs([]string{root}, snapshotCap, before)
 	require.NoError(t, err)
 
 	violations := diffSnapshots(before, after, map[string]struct{}{})
@@ -113,10 +136,10 @@ func TestDiffSnapshots_DetectsRemoval(t *testing.T) {
 	f := filepath.Join(root, "gone.txt")
 	require.NoError(t, os.WriteFile(f, []byte("x"), 0o644))
 
-	before, err := snapshotDirs([]string{root}, snapshotCap)
+	before, err := snapshotDirs([]string{root}, snapshotCap, nil)
 	require.NoError(t, err)
 	require.NoError(t, os.Remove(f))
-	after, err := snapshotDirs([]string{root}, snapshotCap)
+	after, err := snapshotDirs([]string{root}, snapshotCap, before)
 	require.NoError(t, err)
 
 	violations := diffSnapshots(before, after, map[string]struct{}{})

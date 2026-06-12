@@ -35,7 +35,15 @@ type fileState struct {
 // Symlinks are recorded via Lstat metadata plus Readlink and never
 // followed. A total entry count above cap is a build error naming the
 // offending directory.
-func snapshotDirs(dirs []string, maxEntries int) (map[string]fileState, error) {
+//
+// prior is an earlier snapshot (or nil). When a file's cheap metadata
+// (size, mtime, mode) already differs from its prior entry, the verdict
+// is decided without the content hash, so this snapshot skips hashing
+// that file. The hash is computed only when the cheap fields match the
+// prior — the one case the content-preserving-rewrite check needs it.
+// The before-snapshot (prior == nil) always hashes, because its bytes
+// must be captured before the recipe overwrites them.
+func snapshotDirs(dirs []string, maxEntries int, prior map[string]fileState) (map[string]fileState, error) {
 	snap := make(map[string]fileState)
 	seen := make(map[string]struct{}, len(dirs))
 	total := 0
@@ -62,7 +70,8 @@ func snapshotDirs(dirs []string, maxEntries int) (map[string]fileState, error) {
 		}
 		for _, e := range entries {
 			path := filepath.Join(dir, e.Name())
-			st, err := statFile(path)
+			priorState, hadPrior := prior[path]
+			st, err := statFile(path, priorState, hadPrior)
 			if err != nil {
 				return nil, err
 			}
@@ -72,10 +81,16 @@ func snapshotDirs(dirs []string, maxEntries int) (map[string]fileState, error) {
 	return snap, nil
 }
 
-// statFile records one path's metadata. A regular file is hashed eagerly
-// (see fileState.hash); a symlink's target is read but never followed;
-// other types record metadata only.
-func statFile(path string) (fileState, error) {
+// statFile records one path's metadata. A symlink's target is read but
+// never followed; other non-regular types record metadata only. A
+// regular file is hashed, except that the hash read is skipped when a
+// prior snapshot already recorded this path with *different* size, mtime,
+// or mode: in that case the diff verdict is decided by the cheap fields
+// alone, so the content hash can never matter. When there is no prior
+// entry, or the cheap fields match the prior, the file is hashed — the
+// before-snapshot (hadPrior == false) therefore always hashes, capturing
+// the original bytes before the recipe can overwrite them.
+func statFile(path string, prior fileState, hadPrior bool) (fileState, error) {
 	info, err := os.Lstat(path)
 	if err != nil {
 		return fileState{}, fmt.Errorf("inspecting %s: %w", path, err)
@@ -93,6 +108,11 @@ func statFile(path string) (fileState, error) {
 		}
 		st.link = target
 	case info.Mode().IsRegular():
+		if hadPrior && !cheapFieldsMatch(prior, st) {
+			// Cheap fields already differ from the prior snapshot, so the
+			// verdict is "modified" without the hash; skip the read.
+			break
+		}
 		h, herr := hashFileSum(path)
 		if herr != nil {
 			return fileState{}, herr
@@ -161,7 +181,19 @@ func diffSnapshots(before, after map[string]fileState, declared map[string]struc
 // mode, content hash, and symlink target all match. The hash comparison
 // catches a content-preserving rewrite (same size and mtime, different
 // bytes); the cheap metadata fields short-circuit the common case.
+//
+// The after-snapshot only hashes files whose cheap fields match the
+// before-snapshot (see statFile), so when this returns a hash mismatch
+// both sides carry a real hash; when the cheap fields differ the after
+// hash is zero but a cheap field already differs, so the result is still
+// correct.
 func sameState(a, b fileState) bool {
 	return a.size == b.size && a.mtime == b.mtime &&
 		a.mode == b.mode && a.hash == b.hash && a.link == b.link
+}
+
+// cheapFieldsMatch reports whether two file states share the metadata a
+// snapshot can read without opening the file: size, mtime, and mode.
+func cheapFieldsMatch(a, b fileState) bool {
+	return a.size == b.size && a.mtime == b.mtime && a.mode == b.mode
 }

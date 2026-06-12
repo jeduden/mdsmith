@@ -197,6 +197,12 @@ func validateExecConfig(exec ExecCfg) error {
 				"build.exec.env-pass-through[%d]: name %q must not contain %q", i, name, "=",
 			)
 		}
+		if strings.ContainsAny(name, "\x00\n\r") {
+			return fmt.Errorf(
+				"build.exec.env-pass-through[%d]: name %q must not contain NUL, newline, or carriage return",
+				i, name,
+			)
+		}
 	}
 	return nil
 }

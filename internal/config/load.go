@@ -18,6 +18,13 @@ const maxConfigBytes int64 = 1024 * 1024
 
 const configFileName = ".mdsmith.yml"
 
+// DefaultConfigPath returns the default config path under dir (the
+// conventional .mdsmith.yml). It is the single source of truth for the
+// config filename outside this package.
+func DefaultConfigPath(dir string) string {
+	return filepath.Join(dir, configFileName)
+}
+
 // Load reads and parses a config file at the given path.
 func Load(path string) (*Config, error) {
 	data, err := readLimitedConfig(path)

@@ -107,7 +107,7 @@ func (b *CustomBuilder) Build(ctx context.Context, target Target) error {
 
 	argv := expandArgv(tokens, target.Params, plan.absInputs, plan.stagePaths)
 
-	before, err := snapshotDirs(plan.parents, snapshotCap)
+	before, err := snapshotDirs(plan.parents, snapshotCap, nil)
 	if err != nil {
 		return err
 	}
@@ -233,7 +233,7 @@ func verifyOutputsExist(outputs, stagePaths []string) error {
 // the build if any file outside the declared finals was added, removed,
 // or modified by the recipe.
 func verifyNoUndeclaredWrites(before map[string]fileState, parents, finals []string) error {
-	after, err := snapshotDirs(parents, snapshotCap)
+	after, err := snapshotDirs(parents, snapshotCap, before)
 	if err != nil {
 		return err
 	}
@@ -310,19 +310,12 @@ func (b *CustomBuilder) resolveOutputs(target Target) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		if underMdsmithDir(rel) {
+		if buildrule.UnderMdsmithDir(rel) {
 			return nil, fmt.Errorf("output %q is under .mdsmith/; refusing to overwrite mdsmith state", rel)
 		}
 		out = append(out, rel)
 	}
 	return out, nil
-}
-
-// underMdsmithDir reports whether a cleaned, slash-separated
-// project-relative path is the .mdsmith state directory or a file inside
-// it.
-func underMdsmithDir(rel string) bool {
-	return rel == ".mdsmith" || strings.HasPrefix(rel, ".mdsmith/")
 }
 
 // isGlob reports whether a path entry contains doublestar glob meta.

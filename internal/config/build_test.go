@@ -91,6 +91,18 @@ func TestValidateBuildConfig_ExecPassThroughNameWithEquals(t *testing.T) {
 	assert.Contains(t, err.Error(), "=")
 }
 
+func TestValidateBuildConfig_ExecPassThroughNameWithControlChar(t *testing.T) {
+	cfg := &Config{
+		Build: BuildConfig{
+			Exec: ExecCfg{EnvPassThrough: []string{"FOO\nBAR"}},
+		},
+	}
+	err := ValidateBuildConfig(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "env-pass-through")
+	assert.Contains(t, err.Error(), "newline")
+}
+
 func TestValidateBuildConfig_ExecValid(t *testing.T) {
 	cfg := &Config{
 		Build: BuildConfig{

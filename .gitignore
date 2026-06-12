@@ -29,8 +29,13 @@ cmd/mdsmith/default.pgo
 
 # Build pass machine-local state (plan 2606101548): the incremental
 # cache, per-recipe staging dirs, and the per-clone build trust marker.
-.mdsmith/build-cache.json
+# The trailing-* forms also cover a crash-orphaned atomic-write temp file
+# (build-cache.json.NNNN.tmp / .mdsmith.yml.trust.NNNN.tmp).
+.mdsmith/build-cache.json*
 .mdsmith/build-staging/
-# The marker plus any crash-orphaned temp file from its atomic write
-# (.mdsmith.yml.trust.NNNN).
+# Trust markers are named after the loaded config, so cover both the
+# default and any custom config passed via `mdsmith fix -c <name>.yml`
+# (which writes <name>.yml.trust). Trust is per-clone — never commit it.
 .mdsmith.yml.trust*
+*.yml.trust
+*.yml.trust.*
