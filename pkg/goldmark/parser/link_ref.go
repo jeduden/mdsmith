@@ -59,6 +59,16 @@ func (p *linkReferenceParagraphTransformer) Reset() {
 func (p *linkReferenceParagraphTransformer) Transform(node *ast.Paragraph, reader text.Reader, pc Context) {
 	lines := node.Lines()
 	src := reader.Source()
+	// Definitions are only recognized at the paragraph head, and a
+	// definition's first line must open with '[' after whitespace-only
+	// indent (parseLinkReferenceDefinition rejects >3 spaces; this
+	// check is deliberately laxer, so it can only fall through to the
+	// full parse, never skip a real definition). Nearly every
+	// paragraph fails the check, which saves the BlockReader setup
+	// and definition scan per ordinary prose paragraph.
+	if !headMayOpenDefinition(src, lines) {
+		return
+	}
 	if p.block == nil || !sameByteSlice(p.source, src) {
 		p.block = text.NewBlockReader(src, lines)
 		p.source = src
@@ -249,4 +259,23 @@ func parseLinkReferenceDefinition(block text.Reader, pc Context) (ast.Node, int,
 	ref.Lines().Append(startPos)
 	pc.AddReference(newASTReference(ref))
 	return ref, startLine, endLine + 1
+}
+
+// headMayOpenDefinition reports whether the first line of a
+// paragraph could open a link-reference definition: its first
+// non-blank byte must be '['. Used as Transform's cheap gate.
+func headMayOpenDefinition(src []byte, lines *text.Segments) bool {
+	if lines == nil || lines.Len() == 0 {
+		return false
+	}
+	seg := lines.At(0)
+	for i := seg.Start; i < seg.Stop && i < len(src); i++ {
+		switch src[i] {
+		case ' ', '\t':
+			continue
+		default:
+			return src[i] == '['
+		}
+	}
+	return false
 }

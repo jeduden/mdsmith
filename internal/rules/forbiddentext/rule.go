@@ -132,3 +132,14 @@ var (
 	_ rule.ListMerger   = (*Rule)(nil)
 	_ rule.NodeChecker  = (*Rule)(nil)
 )
+
+// enteringKinds is the static node-kind interest CheckNode declares
+// via rule.KindScopedChecker; package-level so EnteringKinds returns
+// it without allocating.
+var enteringKinds = []ast.NodeKind{ast.KindParagraph}
+
+// EnteringKinds implements rule.KindScopedChecker: CheckNode only
+// reacts to these node kinds, entering visits only.
+func (r *Rule) EnteringKinds() []ast.NodeKind { return enteringKinds }
+
+var _ rule.KindScopedChecker = (*Rule)(nil)

@@ -197,7 +197,7 @@ func (s *linkParser) Parse(parent ast.Node, block text.Reader, pc Context) ast.N
 			_ = popLinkBottom(pc)
 			return nil
 		}
-		link = ast.NewLink()
+		link = ArenaForContext(pc).Link()
 		s.processLinkLabel(parent, link, last, pc)
 		link.Title = ref.Title()
 		link.Destination = ref.Destination()
@@ -294,7 +294,7 @@ func (s *linkParser) parseReferenceLink(parent ast.Node, last *linkLabelState,
 		return nil, true
 	}
 
-	link := ast.NewLink()
+	link := ArenaForContext(pc).Link()
 	s.processLinkLabel(parent, link, last, pc)
 	link.Title = ref.Title()
 	link.Destination = ref.Destination()
@@ -332,7 +332,7 @@ func (s *linkParser) parseLink(parent ast.Node, last *linkLabelState, block text
 		}
 	}
 
-	link := ast.NewLink()
+	link := ArenaForContext(pc).Link()
 	s.processLinkLabel(parent, link, last, pc)
 	link.Destination = destination
 	link.Title = title

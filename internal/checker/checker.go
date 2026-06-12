@@ -72,12 +72,7 @@ func CheckRulesWithIntraFile(
 	// splitting per rule would lose the cache locality the multiplex
 	// just won.
 	if len(nodeCheckers) > 0 {
-		_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-			for _, s := range nodeCheckers {
-				s.diags = append(s.diags, s.nc.CheckNode(n, entering, f)...)
-			}
-			return ast.WalkContinue, nil
-		})
+		runNodeCheckers(f, nodeCheckers)
 	}
 
 	var diags []lint.Diagnostic
@@ -152,6 +147,148 @@ func classifyRules(
 	return slots, nodeCheckers, errs
 }
 
+// kindTable is the per-file dispatch plan for the shared NodeChecker
+// walk. Kind-scoped rules (rule.KindScopedChecker) are stored in CSR
+// form — scoped[offsets[k]:offsets[k+1]] lists the slots interested in
+// kind k — so the walk callback touches only the rules that can react
+// to the node at hand instead of calling every rule's CheckNode for
+// every node twice. Rules without a kind scope go to generic and keep
+// the historical call-for-everything behaviour. Tables are pooled:
+// the slices are reused across files, so the per-file build allocates
+// nothing once the pool is warm.
+type kindTable struct {
+	offsets []int32     // len = ast.NodeKindCount()+1; CSR row starts
+	scoped  []*ruleSlot // CSR storage, grouped by kind
+	generic []*ruleSlot // no kind scope: every node, both directions
+}
+
+var kindTablePool = sync.Pool{New: func() any { return new(kindTable) }}
+
+// buildKindTable partitions nodeCheckers into the kind-indexed CSR
+// buckets and the generic list. Slots appear in each bucket in input
+// (rule) order. The returned table comes from kindTablePool; the
+// caller must hand it back via releaseKindTable.
+func buildKindTable(nodeCheckers []*ruleSlot) *kindTable {
+	t := kindTablePool.Get().(*kindTable)
+	n := ast.NodeKindCount()
+	if cap(t.offsets) < n+1 {
+		t.offsets = make([]int32, n+1)
+	} else {
+		t.offsets = t.offsets[:n+1]
+		clear(t.offsets)
+	}
+	t.generic = t.generic[:0]
+
+	// Pass 1: count interest per kind into offsets[k+1].
+	total := 0
+	for _, s := range nodeCheckers {
+		ks, ok := s.nc.(rule.KindScopedChecker)
+		if !ok {
+			t.generic = append(t.generic, s)
+			continue
+		}
+		for _, k := range ks.EnteringKinds() {
+			t.offsets[k+1]++
+			total++
+		}
+	}
+	// Prefix-sum the counts into row starts.
+	for i := 1; i <= n; i++ {
+		t.offsets[i] += t.offsets[i-1]
+	}
+	if cap(t.scoped) < total {
+		t.scoped = make([]*ruleSlot, total)
+	} else {
+		t.scoped = t.scoped[:total]
+	}
+	// Pass 2: fill, advancing each row's cursor. After this loop every
+	// offsets[k] has been advanced to the next row's start, i.e. the
+	// slice is shifted one row left; shift it back by walking from the
+	// end so offsets is again the row-start table.
+	for _, s := range nodeCheckers {
+		ks, ok := s.nc.(rule.KindScopedChecker)
+		if !ok {
+			continue
+		}
+		for _, k := range ks.EnteringKinds() {
+			t.scoped[t.offsets[k]] = s
+			t.offsets[k]++
+		}
+	}
+	for i := n; i > 0; i-- {
+		t.offsets[i] = t.offsets[i-1]
+	}
+	t.offsets[0] = 0
+	return t
+}
+
+// releaseKindTable clears the slot pointers (so pooled tables do not
+// pin per-file state) and returns the table to the pool.
+func releaseKindTable(t *kindTable) {
+	clear(t.scoped)
+	clear(t.generic)
+	kindTablePool.Put(t)
+}
+
+// runNodeCheckers drives the single shared walk over f.AST,
+// dispatching each node to the kind-scoped rules registered for its
+// kind (entering visits only) and to every generic NodeChecker (both
+// visit directions), appending diagnostics into each rule's own slot.
+//
+// The walk is a direct recursion rather than ast.Walk: the closure
+// indirection and the unconditional leaving-visit callback cost real
+// time at one call per node on every file, and with no generic
+// checkers (the production rule set) the leaving visit dispatches
+// nothing at all. Node order matches ast.Walk's pre-order exactly.
+func runNodeCheckers(f *lint.File, nodeCheckers []*ruleSlot) {
+	t := buildKindTable(nodeCheckers)
+	if len(t.generic) == 0 {
+		dispatchKindScoped(f.AST, f, t)
+	} else {
+		dispatchWithGeneric(f.AST, f, t)
+	}
+	releaseKindTable(t)
+}
+
+// dispatchScoped runs the kind-scoped rules registered for n's kind
+// (entering visit). Shared by both walk variants below.
+func dispatchScoped(n ast.Node, f *lint.File, t *kindTable) {
+	k := n.Kind()
+	for _, s := range t.scoped[t.offsets[k]:t.offsets[k+1]] {
+		if ds := s.nc.CheckNode(n, true, f); len(ds) > 0 {
+			s.diags = append(s.diags, ds...)
+		}
+	}
+}
+
+// dispatchKindScoped is the generic-free walk: entering visits only,
+// dispatched straight off the CSR table.
+func dispatchKindScoped(n ast.Node, f *lint.File, t *kindTable) {
+	dispatchScoped(n, f, t)
+	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+		dispatchKindScoped(c, f, t)
+	}
+}
+
+// dispatchWithGeneric preserves the full ast.Walk visit contract for
+// rules without a kind scope: every node, entering and leaving.
+func dispatchWithGeneric(n ast.Node, f *lint.File, t *kindTable) {
+	dispatchScoped(n, f, t)
+	for _, s := range t.generic {
+		if ds := s.nc.CheckNode(n, true, f); len(ds) > 0 {
+			s.diags = append(s.diags, ds...)
+		}
+	}
+	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+		dispatchWithGeneric(c, f, t)
+	}
+	for _, s := range t.generic {
+		if ds := s.nc.CheckNode(n, false, f); len(ds) > 0 {
+			s.diags = append(s.diags, ds...)
+		}
+	}
+}
+
 // runNonNodeCheckers fills the non-NodeChecker slots' diags fields.
 // With cap<=1, runs serially (matches pre-plan-190 behaviour). With
 // cap>1, runs slots concurrently bounded by a semaphore so no more
@@ -213,12 +350,22 @@ func FilterGeneratedDiags(diags []lint.Diagnostic, ranges []lint.LineRange) []li
 
 // PopulateSourceContext fills each diagnostic's SourceLines and
 // SourceStartLine with surrounding context from f.Lines.
+//
+// Each window is a sub-slice of the File's cached zero-copy line
+// strings (lint.(*File).LineStrings), so populating context costs no
+// allocation per diagnostic. The strings alias the source buffer —
+// see LineStrings for the immutability invariant — and stay valid
+// for as long as the diagnostics live.
 func PopulateSourceContext(f *lint.File, diags []lint.Diagnostic, context int) {
+	if len(diags) == 0 {
+		return
+	}
+	lineStrings := f.LineStrings()
 	// bytes.Split produces an empty trailing element when source ends
 	// with a newline. Exclude it so context windows don't include a
 	// phantom empty line.
-	numLines := len(f.Lines)
-	if numLines > 0 && len(f.Lines[numLines-1]) == 0 {
+	numLines := len(lineStrings)
+	if numLines > 0 && len(lineStrings[numLines-1]) == 0 {
 		numLines--
 	}
 
@@ -229,11 +376,7 @@ func PopulateSourceContext(f *lint.File, diags []lint.Diagnostic, context int) {
 		}
 		start := max(0, lineIdx-context)
 		end := min(numLines, lineIdx+context+1)
-		lines := make([]string, end-start)
-		for j := start; j < end; j++ {
-			lines[j-start] = string(f.Lines[j])
-		}
-		diags[i].SourceLines = lines
+		diags[i].SourceLines = lineStrings[start:end:end]
 		diags[i].SourceStartLine = start + f.LineOffset + 1
 	}
 }

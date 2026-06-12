@@ -511,14 +511,18 @@ func (s *Session) Invalidate(uri string, content ...[]byte) {
 	s.mu.Unlock()
 }
 
-// InvalidateWikilinks drops the cross-file read cache's wikilink index
-// so the next Check rebuilds the candidate set. The LSP calls it when a
-// watched file is created or deleted: a wikilink like `[[NewPage]]`
-// would otherwise resolve against the pre-change set. It is the
-// workspace-shape sibling of [Session.Invalidate], which drops a single
-// path's cached content.
+// InvalidateWikilinks drops the cross-file read cache's
+// workspace-shape artifacts — the wikilink index and the catalog
+// glob match lists — so the next Check rebuilds them against the
+// changed candidate set. The LSP calls it when a watched file is
+// created or deleted: a wikilink like `[[NewPage]]` would otherwise
+// resolve against the pre-change set, and a `<?catalog?>` would keep
+// listing (or missing) the affected file. It is the workspace-shape
+// sibling of [Session.Invalidate], which drops a single path's
+// cached content.
 func (s *Session) InvalidateWikilinks() {
 	s.runCache.InvalidateWikilinks()
+	s.runCache.InvalidateGlobMatches()
 }
 
 // absPath maps a workspace-relative uri to the absolute path the engine

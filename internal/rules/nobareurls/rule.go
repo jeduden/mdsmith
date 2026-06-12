@@ -1,6 +1,7 @@
 package nobareurls
 
 import (
+	"bytes"
 	"regexp"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -13,6 +14,9 @@ func init() {
 }
 
 var urlPattern = regexp.MustCompile(`https?://[^\s)>\]]+`)
+
+// urlNeedle is the literal prefix every urlPattern match carries.
+var urlNeedle = []byte("http")
 
 // Rule checks that bare URLs in text are flagged.
 // URLs inside links, code blocks, code spans, autolinks, or reference
@@ -52,6 +56,12 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 
 	seg := textNode.Segment
 	content := seg.Value(f.Source)
+	// Every urlPattern match starts with "http"; gating on the
+	// literal spares the regex engine on the overwhelming majority
+	// of text nodes.
+	if !bytes.Contains(content, urlNeedle) {
+		return nil
+	}
 	matches := urlPattern.FindAllIndex(content, -1)
 	if len(matches) == 0 {
 		return nil
@@ -150,3 +160,14 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	result = append(result, f.Source[prev:]...)
 	return result
 }
+
+// enteringKinds is the static node-kind interest CheckNode declares
+// via rule.KindScopedChecker; package-level so EnteringKinds returns
+// it without allocating.
+var enteringKinds = []ast.NodeKind{ast.KindText}
+
+// EnteringKinds implements rule.KindScopedChecker: CheckNode only
+// reacts to these node kinds, entering visits only.
+func (r *Rule) EnteringKinds() []ast.NodeKind { return enteringKinds }
+
+var _ rule.KindScopedChecker = (*Rule)(nil)

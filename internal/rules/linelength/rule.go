@@ -275,7 +275,29 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 
 	lc := r.buildCategories(f)
 
-	var diags []lint.Diagnostic
+	// First pass: count byte-length candidates so the diagnostics
+	// slice is allocated once. On diagnostic-heavy corpora the
+	// append-growth re-copies dominated this rule's allocations; the
+	// count is a length comparison per line against the smallest
+	// possibly-active limit.
+	minLimit := baseMax
+	if r.HeadingMax != nil && *r.HeadingMax < minLimit {
+		minLimit = *r.HeadingMax
+	}
+	if r.CodeBlockMax != nil && *r.CodeBlockMax < minLimit {
+		minLimit = *r.CodeBlockMax
+	}
+	candidates := 0
+	for _, line := range f.Lines {
+		if len(line) > minLimit {
+			candidates++
+		}
+	}
+	if candidates == 0 {
+		return nil
+	}
+
+	diags := make([]lint.Diagnostic, 0, candidates)
 	for i, line := range f.Lines {
 		lineNum := i + 1
 		limit := r.activeMax(baseMax, lc, lineNum)
@@ -304,6 +326,9 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		})
 	}
 
+	if len(diags) == 0 {
+		return nil
+	}
 	return diags
 }
 
@@ -384,9 +409,14 @@ func hasSpacePastLimit(line []byte, limit int) bool {
 // buffer rentals were the dominant per-Check allocator for this
 // helper before plan 195.
 func collectTableLines(f *lint.File) map[int]struct{} {
-	lines := map[int]struct{}{}
+	// Allocated lazily on the first table row: a nil map reads as
+	// "no line is a table row", so table-free files skip the alloc.
+	var lines map[int]struct{}
 	for i, line := range f.Lines {
 		if isTableLineStart(line) {
+			if lines == nil {
+				lines = make(map[int]struct{}, 8)
+			}
 			lines[i+1] = struct{}{}
 		}
 	}

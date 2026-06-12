@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"bytes"
 	"fmt"
 	"io/fs"
 	"path"
@@ -768,7 +769,7 @@ func buildCatalogEntries(
 	if len(res.diags) > 0 {
 		return nil, res, res.diags
 	}
-	files := resolveGlobMatchesFrom(res, f, params)
+	files := cachedGlobMatches(res, f, params)
 
 	sortKey, descending, numeric := parseSort(params)
 	hasRow := hasRowTemplate(params)
@@ -819,6 +820,56 @@ func buildCatalogEntries(
 // resolveGlobMatchesFrom expands include patterns using the resolved
 // fs.FS, filters out exclude and gitignore matches, and returns
 // deduplicated file paths.
+// cachedGlobMatches resolves the directive's glob matches through the
+// run-wide RunCache when the resolution tree is identifiable: the
+// directory walk and per-match stat/exclude/gitignore filtering are a
+// pure function of the resolution base and the pattern set, yet they
+// re-ran for every host file whose catalogs glob the same tree (the
+// dominant cost of a catalog-heavy check). A resolution with no
+// gitignoreBase has no stable identity for its fs.FS, so it bypasses
+// the cache. Content edits never change a match list; tree-shape
+// changes drop the slots via RunCache.InvalidateGlobMatches (wired to
+// the LSP's watched-files create/delete path).
+func cachedGlobMatches(res globResolution, f *lint.File, params map[string]string) []string {
+	if f.RunCache == nil || res.gitignoreBase == "" {
+		return resolveGlobMatchesFrom(res, f, params)
+	}
+	return f.RunCache.GlobMatches(globMatchesKey(res, params), func() []string {
+		return resolveGlobMatchesFrom(res, f, params)
+	})
+}
+
+// globMatchesKey encodes the resolution identity unambiguously:
+// every variable-length component is length-prefixed, so a pattern or
+// path containing separator-like bytes (reachable through directive
+// params in hostile markdown) cannot make two different
+// configurations collide on one cache slot.
+func globMatchesKey(res globResolution, params map[string]string) string {
+	var key strings.Builder
+	key.Grow(64)
+	writeKeyPart := func(s string) {
+		key.WriteString(strconv.Itoa(len(s)))
+		key.WriteByte(':')
+		key.WriteString(s)
+	}
+	writeKeyPart(res.gitignoreBase)
+	writeKeyPart(res.fileDir)
+	if res.rootRelative {
+		key.WriteString("r1")
+	}
+	if params["gitignore"] == "false" {
+		key.WriteString("g0")
+	}
+	key.WriteString(strconv.Itoa(len(res.includes)))
+	for _, p := range res.includes {
+		writeKeyPart(p)
+	}
+	for _, p := range res.excludes {
+		writeKeyPart(p)
+	}
+	return key.String()
+}
+
 func resolveGlobMatchesFrom(res globResolution, f *lint.File, params map[string]string) []string {
 	matcher := resolveGitignoreMatcher(f, params)
 	base := res.gitignoreBase
@@ -829,6 +880,10 @@ func resolveGlobMatchesFrom(res globResolution, f *lint.File, params map[string]
 	// 8 is a rough heuristic: each glob pattern typically matches several
 	// files, so pre-sizing avoids the first few growth doublings.
 	seen := make(map[string]struct{}, len(res.includes)*8)
+	var dirVerdicts map[string]bool
+	if matcher != nil && base != "" {
+		dirVerdicts = make(map[string]bool, 16)
+	}
 	var files []string
 	for _, pattern := range res.includes {
 		matches, err := doublestar.Glob(res.fs, pattern)
@@ -846,7 +901,7 @@ func resolveGlobMatchesFrom(res globResolution, f *lint.File, params map[string]
 			if isExcluded(m, res.excludes) {
 				continue
 			}
-			if matcher != nil && base != "" && isGitignored(matcher, base, m) {
+			if matcher != nil && base != "" && isGitignoredMemo(matcher, base, m, dirVerdicts) {
 				continue
 			}
 			seen[m] = struct{}{}
@@ -1329,13 +1384,28 @@ func includeTargetsOf(
 // can reuse the same parse without duplicating the read logic.
 // lint.NewFile never returns an error (its signature is legacy), so
 // the parse is unwrapped — there is no error path to guard.
+// includeMarkerNeedle is the literal prefix every <?include?> opening
+// marker carries; see scanIncludeTargets' fast path.
+var includeMarkerNeedle = []byte("<?include")
+
 func scanIncludeTargets(fsys fs.FS, filePath string, maxBytes int64) []string {
 	data, err := bytelimit.ReadFSFileLimited(fsys, filePath, maxBytes)
 	if err != nil {
 		return nil
 	}
 	_, content := lint.StripFrontMatter(data)
-	pf, _ := lint.NewFile(filePath, content)
+	// Every include marker contains the literal "<?include"; a target
+	// without it cannot contribute include edges, so skip the full
+	// markdown parse — the dominant cost of the catalog cycle check,
+	// paid once per glob-matched file per run.
+	if !bytes.Contains(content, includeMarkerNeedle) {
+		return nil
+	}
+	// Pooled parse: pf and everything aliasing its arena die before
+	// release — ParseDirective's params are substrings of content,
+	// and the joined target paths are fresh strings.
+	pf, release := lint.NewFileFromSourcePooled(filePath, content, false)
+	defer release()
 	pairs, _ := gensection.FindMarkerPairs(
 		pf, "include", "MDS021", "include")
 	var targets []string
@@ -1477,6 +1547,19 @@ func isExcluded(filePath string, patterns []string) bool {
 // base is the pre-computed absolute path of that directory. To match
 // gitignore semantics for directory-only patterns (e.g. "ignored/"),
 // ancestor directories are also checked with isDir=true.
+// isGitignoredMemo is isGitignored with a per-call directory-verdict
+// memo (gitignore.Matcher.DirChainIgnored): the per-path ancestor
+// rescans collapse to one IsIgnored probe per distinct directory.
+// memo must be scoped to one resolveGlobMatchesFrom call (one
+// matcher, one base).
+func isGitignoredMemo(matcher *gitignore.Matcher, base, matchedPath string, memo map[string]bool) bool {
+	abs := filepath.Join(base, matchedPath)
+	if matcher.DirChainIgnored(filepath.Dir(abs), memo) {
+		return true
+	}
+	return matcher.IsIgnored(abs, false)
+}
+
 func isGitignored(matcher *gitignore.Matcher, base, matchedPath string) bool {
 	abs := filepath.Join(base, matchedPath)
 

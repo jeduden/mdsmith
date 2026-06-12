@@ -6,6 +6,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/jeduden/mdsmith/internal/gitignore"
 	"github.com/jeduden/mdsmith/internal/lint"
 
 	"github.com/stretchr/testify/assert"
@@ -674,4 +675,136 @@ func TestAbsMatchedPath_NoBaseReturnsFalse(t *testing.T) {
 	assert.False(t, ok,
 		"empty gitignoreBase must opt out of the run cache; a "+
 			"non-absolute key would break LSP invalidation")
+}
+
+// --- gitignore ancestor memo ---
+
+// TestDirChainIgnored_MatchesPerPathWalk pins that the memoized
+// ancestor walk gives the same answer as the original per-path
+// ancestor scan for every file in a tree with a dir-only ignore
+// pattern, and that the memo actually short-circuits repeat
+// ancestors (one IsIgnored probe per distinct directory).
+func TestDirChainIgnored_MatchesPerPathWalk(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "ignored", "sub"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "kept", "sub"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".gitignore"),
+		[]byte("ignored/\n*.skip.md\n"), 0o644))
+
+	matcher := gitignore.NewMatcher(root)
+	require.NotNil(t, matcher)
+
+	paths := []string{
+		"ignored/a.md", "ignored/sub/b.md",
+		"kept/a.md", "kept/sub/b.md", "kept/c.skip.md",
+		"top.md", "top.skip.md",
+	}
+	memo := map[string]bool{}
+	for _, p := range paths {
+		want := isGitignored(matcher, root, p)
+		got := isGitignoredMemo(matcher, root, p, memo)
+		assert.Equal(t, want, got, "path %q", p)
+	}
+}
+
+// --- cachedGlobMatches fallback and key axes ---
+
+func TestCachedGlobMatches_FallsBackWithoutRunCacheOrBase(t *testing.T) {
+	fsys := fstest.MapFS{
+		"a.md": &fstest.MapFile{Data: []byte("# A\n")},
+		"b.md": &fstest.MapFile{Data: []byte("# B\n")},
+	}
+	res := globResolution{fs: fsys, includes: []string{"*.md"}}
+	f, err := lint.NewFile("host.md", []byte("# H\n"))
+	require.NoError(t, err)
+	f.FS = fsys
+
+	// No RunCache: direct resolution.
+	got := cachedGlobMatches(res, f, map[string]string{})
+	assert.ElementsMatch(t, []string{"a.md", "b.md"}, got)
+
+	// RunCache present but no gitignoreBase: the fs has no stable
+	// identity for a cache key, so resolution stays direct.
+	f.RunCache = lint.NewRunCache()
+	got = cachedGlobMatches(res, f, map[string]string{})
+	assert.ElementsMatch(t, []string{"a.md", "b.md"}, got)
+}
+
+func TestCachedGlobMatches_CachesPerKeyAxes(t *testing.T) {
+	fsys := fstest.MapFS{
+		"a.md": &fstest.MapFile{Data: []byte("# A\n")},
+	}
+	f, err := lint.NewFile("host.md", []byte("# H\n"))
+	require.NoError(t, err)
+	f.FS = fsys
+	f.RunCache = lint.NewRunCache()
+
+	base := globResolution{fs: fsys, includes: []string{"*.md"}, gitignoreBase: "/abs/dir"}
+	first := cachedGlobMatches(base, f, map[string]string{})
+	assert.ElementsMatch(t, []string{"a.md"}, first)
+	// Same key: served from the cache (same backing array).
+	again := cachedGlobMatches(base, f, map[string]string{})
+	require.Len(t, again, 1)
+	assert.Same(t, &first[0], &again[0])
+
+	// Each key axis produces a distinct slot rather than a stale hit:
+	// root-relative flag, gitignore=false param, exclude list.
+	rootRel := base
+	rootRel.rootRelative = true
+	rootRel.fileDir = "docs"
+	_ = cachedGlobMatches(rootRel, f, map[string]string{})
+
+	noGI := base
+	got := cachedGlobMatches(noGI, f, map[string]string{"gitignore": "false"})
+	assert.ElementsMatch(t, []string{"a.md"}, got)
+
+	excl := base
+	excl.excludes = []string{"a.md"}
+	got = cachedGlobMatches(excl, f, map[string]string{})
+	assert.Empty(t, got)
+}
+
+func TestDirChainIgnored_TerminatesAtFilesystemRoot(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".gitignore"),
+		[]byte("nothing-matches/\n"), 0o644))
+	matcher := gitignore.NewMatcher(root)
+	memo := map[string]bool{}
+	// No ancestor matches: the walk must reach the filesystem root and
+	// terminate with a negative verdict for every level.
+	assert.False(t, matcher.DirChainIgnored(filepath.Join(root, "a", "b"), memo))
+	assert.NotEmpty(t, memo)
+}
+
+// TestGlobMatchesKey_UnambiguousEncoding pins the length-prefixed key
+// scheme: configurations that concatenation-style encodings conflate
+// (separator-like bytes inside patterns, marker bytes at component
+// boundaries) must produce distinct keys.
+func TestGlobMatchesKey_UnambiguousEncoding(t *testing.T) {
+	base := globResolution{gitignoreBase: "/abs/dir", fileDir: "docs"}
+	p := map[string]string{}
+
+	a := base
+	a.includes = []string{"\x01\x00x"}
+	b := base
+	b.includes = []string{"\x01", "x"}
+	assert.NotEqual(t, globMatchesKey(a, p), globMatchesKey(b, p),
+		"split pattern lists must not collide")
+
+	c := base
+	c.includes = []string{"x"}
+	c.rootRelative = true
+	d := base
+	d.includes = []string{"\x01x"}
+	assert.NotEqual(t, globMatchesKey(c, p), globMatchesKey(d, p),
+		"the root-relative marker must not collide with pattern bytes")
+
+	e := base
+	e.includes = []string{"x"}
+	f := base
+	f.excludes = []string{"x"}
+	assert.NotEqual(t, globMatchesKey(e, p), globMatchesKey(f, p),
+		"an include and an exclude of the same pattern must differ")
+
+	assert.Equal(t, globMatchesKey(a, p), globMatchesKey(a, p), "stable for equal inputs")
 }

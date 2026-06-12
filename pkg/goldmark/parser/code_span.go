@@ -27,7 +27,7 @@ func (s *codeSpanParser) Parse(parent ast.Node, block text.Reader, pc Context) a
 	}
 	block.Advance(opener)
 	l, pos := block.Position()
-	node := ast.NewCodeSpan()
+	node := ArenaForContext(pc).CodeSpan()
 	for {
 		line, segment := block.PeekLine()
 		if line == nil {

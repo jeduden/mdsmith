@@ -391,6 +391,57 @@ func (w *alwaysErrorWriter) Write(_ []byte) (int, error) {
 	return 0, fmt.Errorf("write failed")
 }
 
+// countingWriter records how many Write calls it receives. Used to pin
+// that the report paths batch their output instead of issuing one
+// syscall-sized Write per formatted line.
+type countingWriter struct {
+	calls int
+	buf   bytes.Buffer
+}
+
+func (w *countingWriter) Write(p []byte) (int, error) {
+	w.calls++
+	return w.buf.Write(p)
+}
+
+// manyDiagnostics builds n distinct diagnostics with populated source
+// context, the shape a large `mdsmith check` run hands the formatter.
+func manyDiagnostics(n int) []lint.Diagnostic {
+	diags := make([]lint.Diagnostic, n)
+	for i := range diags {
+		diags[i] = lint.Diagnostic{
+			File: "f.md", Line: i + 1, Column: 1, RuleID: "MDS001",
+			RuleName: "line-length", Severity: lint.Warning,
+			Message:         "line too long",
+			SourceLines:     []string{"aaa", "bbb", "ccc"},
+			SourceStartLine: i + 1,
+		}
+	}
+	return diags
+}
+
+func TestReportCheckResultTo_BuffersDiagnosticWrites(t *testing.T) {
+	opts := checkCLIOpts{format: "text", noColor: true}
+	result := &engine.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(100)}
+	w := &countingWriter{}
+	code := reportCheckResultTo(result, opts, &vlog.Logger{}, w)
+	assert.Equal(t, 1, code)
+	assert.Contains(t, w.buf.String(), "line too long")
+	// 100 diagnostics × (header + snippet + caret) lines must not become
+	// hundreds of Write calls on the underlying stderr writer.
+	assert.LessOrEqual(t, w.calls, 4)
+}
+
+func TestReportFixResultTo_BuffersDiagnosticWrites(t *testing.T) {
+	opts := fixCLIOpts{format: "text", noColor: true}
+	result := &fixpkg.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(100)}
+	w := &countingWriter{}
+	code := reportFixResultTo(opts, result, &vlog.Logger{}, w)
+	assert.Equal(t, 1, code)
+	assert.Contains(t, w.buf.String(), "line too long")
+	assert.LessOrEqual(t, w.calls, 4)
+}
+
 func TestWriteDryRunJSON_WriteErrorReturns2(t *testing.T) {
 	var code int
 	captureStderr(func() {
@@ -1480,4 +1531,63 @@ func TestConvertedConfigBytes_ParseError(t *testing.T) {
 	_, _, err := convertedConfigBytes(path, &buf)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), ".markdownlintrc")
+}
+
+// failAfterWriter accepts the first n writes, then fails. Drives the
+// buffered report paths' final-flush error branches: content shorter
+// than the buffer only reaches the underlying writer at Flush.
+type failAfterWriter struct {
+	n     int
+	calls int
+}
+
+func (w *failAfterWriter) Write(p []byte) (int, error) {
+	w.calls++
+	if w.calls > w.n {
+		return 0, fmt.Errorf("write failed")
+	}
+	return len(p), nil
+}
+
+func TestReportCheckResultTo_FlushErrorReturns2(t *testing.T) {
+	// No diagnostics: only the run-stats line sits in the buffer, so
+	// the first underlying write happens at the final Flush.
+	code := reportCheckResultTo(&engine.Result{FilesChecked: 1},
+		checkCLIOpts{format: "text"}, &vlog.Logger{}, &failAfterWriter{n: 0})
+	assert.Equal(t, 2, code)
+}
+
+func TestReportFixResultTo_FlushErrorReturns2(t *testing.T) {
+	code := reportFixResultTo(fixCLIOpts{format: "text"},
+		&fixpkg.Result{FilesChecked: 1}, &vlog.Logger{}, &failAfterWriter{n: 0})
+	assert.Equal(t, 2, code)
+}
+
+func TestReportFixResultTo_DryRunJSONWriteErrorFlushes(t *testing.T) {
+	// The dry-run JSON path returns the formatter's error code after
+	// flushing what it can; the underlying writer rejects everything.
+	opts := fixCLIOpts{format: "json", dryRun: true}
+	result := &fixpkg.Result{
+		WouldFixFiles: []fixpkg.WouldFixFile{{Path: "f.md", Count: 1}},
+		Diagnostics:   manyDiagnostics(2000),
+	}
+	code := reportFixResultTo(opts, result, &vlog.Logger{}, &alwaysErrorWriter{})
+	assert.Equal(t, 2, code)
+}
+
+func TestReportCheckResultTo_LargeDiagWriteErrorReturns2(t *testing.T) {
+	// Enough diagnostics to overflow the 64 KiB stderr buffer, so the
+	// formatter itself observes the write failure mid-stream and the
+	// report path takes its early-return branch.
+	opts := checkCLIOpts{format: "text", noColor: true}
+	result := &engine.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(2000)}
+	code := reportCheckResultTo(result, opts, &vlog.Logger{}, &alwaysErrorWriter{})
+	assert.Equal(t, 2, code)
+}
+
+func TestReportFixResultTo_LargeDiagWriteErrorReturns2(t *testing.T) {
+	opts := fixCLIOpts{format: "text", noColor: true}
+	result := &fixpkg.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(2000)}
+	code := reportFixResultTo(opts, result, &vlog.Logger{}, &alwaysErrorWriter{})
+	assert.Equal(t, 2, code)
 }

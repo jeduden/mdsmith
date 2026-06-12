@@ -5,7 +5,6 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
-	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -335,53 +334,6 @@ func TestFullRef_DoubleBackslashBracket_Flagged(t *testing.T) {
 	assert.Contains(t, diags[0].Message, `"broken"`)
 }
 
-// TestCollectCodeSpanRangesInto_NilNode pins the nil-node guard on
-// the recursive helper. Production callers never feed nil, but the
-// guard exists so a struct-literal *File with no AST stays safe.
-func TestCollectCodeSpanRangesInto_NilNode(t *testing.T) {
-	var out []byteRange
-	collectCodeSpanRangesInto(nil, nil, &out)
-	assert.Empty(t, out)
-}
-
-// TestCodeSpanTextBounds_NonTextChild pins the inline-code-span
-// case where the child is not an *ast.Text (e.g., an emphasis or
-// a hard-break node nested inside the span). The helper skips
-// non-Text children and continues; the loop body's `continue`
-// branch is otherwise unreachable from the rule's own AST.
-func TestCodeSpanTextBounds_NonTextChild(t *testing.T) {
-	f := newFile(t, "`code`\n")
-	var span *ast.CodeSpan
-	collectCodeSpansForTest(f.AST, &span)
-	require.NotNil(t, span, "fixture must produce a code span")
-	// Manually append a non-Text child so codeSpanTextBounds hits
-	// its `continue` branch; goldmark's own parsed code spans
-	// contain only *ast.Text children, which is why this branch
-	// stays cold without a synthetic child.
-	span.AppendChild(span, ast.NewEmphasis(1))
-	first, last := codeSpanTextBounds(span)
-	assert.GreaterOrEqual(t, first, 0)
-	assert.GreaterOrEqual(t, last, first)
-}
-
-// collectCodeSpansForTest is a tiny test-only walker that returns
-// the first *ast.CodeSpan it encounters.
-func collectCodeSpansForTest(n ast.Node, out **ast.CodeSpan) {
-	if *out != nil {
-		return
-	}
-	if cs, ok := n.(*ast.CodeSpan); ok {
-		*out = cs
-		return
-	}
-	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
-		collectCodeSpansForTest(c, out)
-		if *out != nil {
-			return
-		}
-	}
-}
-
 // TestNextBracket_OrphanOpenBracket pins the "[ opened without
 // matching ]" advance-and-keep-scanning branch. A line like
 // `[unmatched ... [closed]` must skip the orphan `[` and still
@@ -462,4 +414,145 @@ func TestScanFullRefs_SecondBracketUnclosed(t *testing.T) {
 func TestCheck_NoBracketEarlyExit(t *testing.T) {
 	src := "# Title\n\nProse with no brackets at all.\n"
 	require.Empty(t, check(t, src))
+}
+
+// --- looksLikeRefTarget (alloc-free heuristic) ---
+
+func TestLooksLikeRefTarget_Table(t *testing.T) {
+	cases := []struct {
+		label string
+		want  bool
+	}{
+		{"plan128", true},
+		{"a-b", true},
+		{"a_b", true},
+		{"label1", true},
+		{"just brackets", false},
+		{"plain", false},
+		{"1starts-with-digit", false},
+		{"-leading-dash", false},
+		{"", false},
+		{"héllo-1", true},
+		{"héllo", false}, // letter start but no digit/dash/underscore
+	}
+	for _, tc := range cases {
+		if got := looksLikeRefTarget([]byte(tc.label)); got != tc.want {
+			t.Errorf("looksLikeRefTarget(%q) = %v, want %v", tc.label, got, tc.want)
+		}
+	}
+}
+
+func TestLooksLikeRefTarget_NoAlloc(t *testing.T) {
+	label := []byte("some-plausible-ref_1")
+	if avg := testing.AllocsPerRun(100, func() { looksLikeRefTarget(label) }); avg != 0 {
+		t.Errorf("looksLikeRefTarget allocates %v per run; want 0", avg)
+	}
+}
+
+// --- inCodeSpan binary search ---
+
+func TestInCodeSpan_SortedLookup(t *testing.T) {
+	spans := []lint.Range{{Start: 5, End: 10}, {Start: 20, End: 25}, {Start: 40, End: 41}}
+	for _, tc := range []struct {
+		off  int
+		want bool
+	}{
+		{0, false}, {4, false}, {5, true}, {9, true}, {10, false},
+		{19, false}, {20, true}, {24, true}, {25, false},
+		{40, true}, {41, false}, {100, false},
+	} {
+		if got := inCodeSpan(spans, tc.off); got != tc.want {
+			t.Errorf("inCodeSpan(%d) = %v, want %v", tc.off, got, tc.want)
+		}
+	}
+	if inCodeSpan(nil, 3) {
+		t.Error("empty spans must report false")
+	}
+}
+
+// --- shared bracket enumeration ---
+
+func TestCollectBrackets_MatchesSequentialNextBracket(t *testing.T) {
+	sources := []string{
+		"",
+		"no brackets at all",
+		"[a] mid [b][c] end [d][] tail [^fn][x]",
+		"[unclosed and [closed] later",
+		"[[nested]] and [multi\nline] broken",
+		"x [a][b] y ![img][] z [shortcut] w",
+		"[]: empty [] pairs [] everywhere",
+	}
+	for _, src := range sources {
+		source := []byte(src)
+		var want []bracket
+		pos := 0
+		for {
+			open, cs, ce, ca, ok := nextBracket(source, pos)
+			if !ok {
+				break
+			}
+			want = append(want, bracket{open: open, cs: cs, ce: ce, ca: ca})
+			pos = open + 1 // densest enumeration: try every later '['
+		}
+		// collectBrackets must produce the maximal entries — those a
+		// scan that always advances past each found '[' would yield.
+		got, buf := collectBrackets(source)
+		defer releaseBrackets(buf)
+		require.Equal(t, len(want), len(got), "source %q", src)
+		for i := range want {
+			assert.Equal(t, want[i], got[i], "source %q entry %d", src, i)
+		}
+	}
+}
+
+// --- shortcutLabelShaped (the shortcut scanner's label-class gate) ---
+
+func TestShortcutLabelShaped(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want bool
+	}{
+		{"plain label", "[ref]", true},
+		{"empty label", "[]", false},
+		{"footnote caret", "[^fn]", false},
+		{"full ref follows", "[a][b]", false},
+		{"inline link follows", "[a](u)", false},
+		{"label at end of source", "x [ref]", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			source := []byte(tc.src)
+			brs, buf := collectBrackets(source)
+			defer releaseBrackets(buf)
+			require.NotEmpty(t, brs, "fixture must contain a bracket")
+			assert.Equal(t, tc.want, shortcutLabelShaped(source, brs[0]))
+		})
+	}
+}
+
+func TestShortcutRef_TargetLookingLabelOnRefDefLine_NotFlagged(t *testing.T) {
+	// The label passes the heuristic, so the scan reaches the
+	// definition-line check — and the line being a definition itself
+	// must suppress the diagnostic.
+	src := "[plan128]: https://example.com\n"
+	assert.Empty(t, check(t, src))
+}
+
+func TestShortcutRef_PlaceholderLabel_NotFlagged(t *testing.T) {
+	// shortcut "always" bypasses the heuristic so the placeholder
+	// filter is the deciding skip for a var-token label.
+	src := "See [{title}] inline.\n"
+	r := &Rule{Shortcut: shortcutAlways, Placeholders: []string{"var-token"}}
+	assert.Empty(t, checkWith(t, src, r))
+}
+
+func TestReleaseBrackets_DropsOversizedBuffers(t *testing.T) {
+	// An over-cap buffer must not pin its capacity in the pool; the
+	// release is a silent drop and later collects still work.
+	big := make([]bracket, 0, maxPooledBrackets+1)
+	releaseBrackets(&big)
+	brs, buf := collectBrackets([]byte("[a] [b]"))
+	assert.Len(t, brs, 2)
+	releaseBrackets(buf)
 }

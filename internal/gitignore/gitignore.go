@@ -129,12 +129,28 @@ func NewMatcher(root string) *Matcher {
 		m.rules = append(m.rules, rules...)
 	}
 
-	// Collect .gitignore files within the root directory tree.
-	_ = filepath.Walk(absRoot, func(path string, info os.FileInfo, err error) error {
+	// Collect .gitignore files within the root directory tree. The
+	// walk prunes .git (git never applies ignore files from inside
+	// the metadata directory) and directories the rules collected so
+	// far already ignore — git cannot re-include below an excluded
+	// directory, so their .gitignore files are inert. WalkDir visits
+	// entries lexically, which places a directory's ".gitignore"
+	// before its subdirectories, so each prune decision sees every
+	// rule that can apply to it.
+	_ = filepath.WalkDir(absRoot, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
-		if !info.IsDir() && info.Name() == ".gitignore" {
+		if d.IsDir() {
+			if d.Name() == ".git" && path != absRoot {
+				return filepath.SkipDir
+			}
+			if path != absRoot && m.IsIgnored(path, true) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.Name() == ".gitignore" {
 			rules, parseErr := parseGitignoreFile(path)
 			if parseErr != nil {
 				return nil
@@ -222,6 +238,27 @@ func (m *Matcher) IsIgnored(absPath string, isDir bool) bool {
 		}
 	}
 	return ignored
+}
+
+// DirChainIgnored reports whether dir or any of its ancestors is
+// ignored as a directory, memoizing the per-directory verdict in
+// memo. Matched paths cluster under few directories and share most
+// of their ancestor chains, so callers that test many paths against
+// one matcher (the catalog glob filter) pass one memo per batch and
+// pay one IsIgnored probe per distinct directory. memo must not be
+// shared across matchers.
+func (m *Matcher) DirChainIgnored(dir string, memo map[string]bool) bool {
+	if v, ok := memo[dir]; ok {
+		return v
+	}
+	var v bool
+	if parent := filepath.Dir(dir); parent == dir {
+		v = m.IsIgnored(dir, true)
+	} else {
+		v = m.DirChainIgnored(parent, memo) || m.IsIgnored(dir, true)
+	}
+	memo[dir] = v
+	return v
 }
 
 // matchRule checks whether a single rule matches the given absolute path.

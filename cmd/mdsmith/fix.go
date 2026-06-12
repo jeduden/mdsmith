@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -310,27 +311,34 @@ func reportFixResult(opts fixCLIOpts, fixResult *fixpkg.Result, logger *vlog.Log
 // writeDryRunJSON, and the run-stats helper all route their own
 // write-error messages through the same writer so a fault-injecting
 // writer captures the full stderr surface.
+// All report output goes through one buffered writer, mirroring
+// reportCheckResultTo: per-line writes on an unbuffered stderr cost
+// one syscall each on diagnostic-heavy runs. The buffer is flushed
+// before the verbose logger line to preserve ordering on a shared fd.
 func reportFixResultTo(opts fixCLIOpts, fixResult *fixpkg.Result, logger *vlog.Logger, stderrW io.Writer) int {
-	printErrorsTo(stderrW, fixResult.Errors)
+	bw := bufio.NewWriterSize(stderrW, stderrBufSize)
+	printErrorsTo(bw, fixResult.Errors)
 
 	if opts.dryRun && opts.format == "json" && !opts.quiet {
 		// Match `check --format json` and `fix --format json`: lint
 		// output goes to stderr (see docs/reference/cli.md "Output").
-		if code := writeDryRunJSON(stderrW, fixResult); code != 0 {
+		if code := writeDryRunJSON(bw, fixResult); code != 0 {
+			_ = bw.Flush()
 			return code
 		}
 	} else {
 		if opts.dryRun && !opts.quiet {
-			printDryRunPreview(stderrW, fixResult)
+			printDryRunPreview(bw, fixResult)
 		}
 		if !opts.quiet && len(fixResult.Diagnostics) > 0 {
-			if code := formatDiagnosticsTo(stderrW, fixResult.Diagnostics, opts.format, opts.noColor); code != 0 {
+			if code := formatDiagnosticsTo(bw, fixResult.Diagnostics, opts.format, opts.noColor); code != 0 {
+				_ = bw.Flush()
 				return code
 			}
 		}
 	}
 
-	printRunStatsTo(stderrW, opts.format, opts.quiet, runStats{
+	printRunStatsTo(bw, opts.format, opts.quiet, runStats{
 		Checked:  fixResult.FilesChecked,
 		Fixed:    len(fixResult.Modified),
 		Failures: fixResult.Failures,
@@ -338,6 +346,9 @@ func reportFixResultTo(opts fixCLIOpts, fixResult *fixpkg.Result, logger *vlog.L
 		WouldFix: fixResult.WouldFix,
 		DryRun:   opts.dryRun,
 	})
+	if err := bw.Flush(); err != nil {
+		return 2
+	}
 	logger.Printf("checked %d files, %d issues found", fixResult.FilesChecked, len(fixResult.Diagnostics))
 
 	if len(fixResult.Errors) > 0 && len(fixResult.Diagnostics) == 0 {

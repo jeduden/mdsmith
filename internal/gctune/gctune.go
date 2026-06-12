@@ -16,10 +16,16 @@ import (
 // doubles; on a workspace walk that means re-scanning the pointer-rich
 // AST set constantly — profiling attributed ~40% of executed
 // instructions to GC. A batch run is about to exit, so a laxer target
-// trades a little peak memory for markedly less wall time. 400 was the
-// measured sweet spot on the parity corpus; GOGC=off was slower because
-// an unbounded heap wrecks cache locality.
-const BatchPercent = 400
+// trades a little peak memory for markedly less wall time. GOGC=off is
+// slower than either tuned value because an unbounded heap wrecks
+// cache locality.
+//
+// The sweet spot tracks allocation volume, so re-measure it after any
+// large allocation change: 400 was measured before the parse-arena
+// pool landed; with pooling cutting allocation roughly in half, 300
+// measured both faster and markedly stabler (lower run-to-run
+// variance) on the parity corpus.
+const BatchPercent = 300
 
 // Target returns the GC percent ApplyBatch should set, or -1 to leave
 // the runtime default untouched when the user pinned GOGC explicitly (an

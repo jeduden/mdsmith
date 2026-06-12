@@ -56,6 +56,7 @@ row: "- [{summary}]({filename})"
 - [Build commands, project layout, code style, test fixtures, coverage gate, and merge conflicts.](docs/development/index.md)
 - [The pkg/markdown public package: parse, produce, and its compatibility policy.](docs/development/markdown-library.md)
 - [Label-driven merge queue workflow using jeduden/merge-queue-action.](docs/development/merge-queue.md)
+- [Why no PGO profile is committed: a checked-in `cmd/mdsmith/default.pgo` burdens every merge with a binary artifact, and the merge tooling must stay free of repo-specific entries. How to generate a profile locally, and the plan that moves generation into the release build.](docs/development/pgo-profile.md)
 - [Rebase, CI monitoring, and review comment resolution.](docs/development/pr-fixup-workflow.md)
 - [The `jeduden/asdf-mdsmith` plugin installs the checksum-verified prebuilt binary; the short form awaits the asdf-plugins registry entry.](docs/development/release-channels/asdf.md)
 - [A single-file `.flatpak` bundle built in CI from the x86_64 Linux release binary and attached to each GitHub release, installed by file with host filesystem access for the linter.](docs/development/release-channels/flatpak.md)
@@ -212,6 +213,7 @@ glob:
 sort: title
 row: "- [{title}](docs/development/{filename})"
 ?>
+- [](docs/development/pgo-profile.md)
 - [Adding a peer linter](docs/development/add-peer-linter.md)
 - [Architecture audit log](docs/development/architecture-audit.md)
 - [Architecture principles](docs/development/architecture/index.md)

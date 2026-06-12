@@ -57,28 +57,35 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 // checkEmpty walks real link/image nodes and flags an empty or `#`-only
 // destination, or (links only) empty visible text. Empty image alt text
 // with a valid destination is MDS032's concern, not this rule's.
+// Direct recursion (entering visits only) replaces ast.Walk: the rule
+// only reacts to two node types, and the closure-driven double visit
+// per node was measurable on every file.
 func (r *Rule) checkEmpty(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		switch node := n.(type) {
-		case *ast.Image:
-			if emptyDestination(node.Destination) {
-				diags = append(diags, r.diag(f, nodeLine(node, f), "empty image destination"))
-			}
-		case *ast.Link:
-			switch {
-			case emptyDestination(node.Destination):
-				diags = append(diags, r.diag(f, nodeLine(node, f), "empty link destination"))
-			case !hasVisibleContent(node, f.Source):
-				diags = append(diags, r.diag(f, nodeLine(node, f), "empty link text"))
-			}
-		}
-		return ast.WalkContinue, nil
-	})
+	r.checkEmptyNode(f.AST, f, &diags)
 	return diags
+}
+
+func (r *Rule) checkEmptyNode(n ast.Node, f *lint.File, diags *[]lint.Diagnostic) {
+	if n == nil {
+		return
+	}
+	switch node := n.(type) {
+	case *ast.Image:
+		if emptyDestination(node.Destination) {
+			*diags = append(*diags, r.diag(f, nodeLine(node, f), "empty image destination"))
+		}
+	case *ast.Link:
+		switch {
+		case emptyDestination(node.Destination):
+			*diags = append(*diags, r.diag(f, nodeLine(node, f), "empty link destination"))
+		case !hasVisibleContent(node, f.Source):
+			*diags = append(*diags, r.diag(f, nodeLine(node, f), "empty link text"))
+		}
+	}
+	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+		r.checkEmptyNode(c, f, diags)
+	}
 }
 
 func (r *Rule) diag(f *lint.File, line int, msg string) lint.Diagnostic {
@@ -177,17 +184,26 @@ type revMatch struct {
 	url      []byte
 }
 
+// reversedNeedle is the two-byte sequence every reversedRe match must
+// contain (nothing may sit between `)` and `[`). Lines without it —
+// nearly every line — skip the skip-predicate, the code-span masking,
+// and the regex entirely. Masking only blanks bytes, so it can never
+// introduce the needle on a line that lacked it.
+var reversedNeedle = []byte(")[")
+
 func (r *Rule) checkReversed(f *lint.File) []lint.Diagnostic {
 	skip := r.skipPredicate(f)
-	csRanges := collectCodeSpanRanges(f)
-	lineStarts := computeLineStarts(f.Source)
+	csRanges := f.CodeSpanContentRanges()
 	var diags []lint.Diagnostic
 	for i, line := range f.Lines {
+		if !bytes.Contains(line, reversedNeedle) {
+			continue
+		}
 		ln := i + 1
 		if skip(ln) {
 			continue
 		}
-		masked := maskLine(line, lineStarts[i], csRanges)
+		masked := lint.MaskRanges(line, f.LineStartOffset(i), csRanges)
 		for _, mm := range reversedInLine(line, masked) {
 			diags = append(diags, lint.Diagnostic{
 				File:     f.Path,
@@ -208,15 +224,14 @@ func (r *Rule) checkReversed(f *lint.File) []lint.Diagnostic {
 // untouched.
 func (r *Rule) Fix(f *lint.File) []byte {
 	skip := r.skipPredicate(f)
-	csRanges := collectCodeSpanRanges(f)
-	lineStarts := computeLineStarts(f.Source)
+	csRanges := f.CodeSpanContentRanges()
 	out := make([][]byte, len(f.Lines))
 	for i, line := range f.Lines {
-		if skip(i + 1) {
+		if !bytes.Contains(line, reversedNeedle) || skip(i+1) {
 			out[i] = line
 			continue
 		}
-		masked := maskLine(line, lineStarts[i], csRanges)
+		masked := lint.MaskRanges(line, f.LineStartOffset(i), csRanges)
 		matches := reversedInLine(line, masked)
 		if len(matches) == 0 {
 			out[i] = line
@@ -298,89 +313,6 @@ func (r *Rule) skipPredicate(f *lint.File) func(int) bool {
 		return false
 	}
 }
-
-type byteRange struct{ start, end int } // absolute, half-open
-
-// collectCodeSpanRanges returns the source byte ranges of every code
-// span's content so reversedInLine can blank them before matching.
-func collectCodeSpanRanges(f *lint.File) []byteRange {
-	var ranges []byteRange
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		cs, ok := n.(*ast.CodeSpan)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
-		first, last := -1, -1
-		for c := cs.FirstChild(); c != nil; c = c.NextSibling() {
-			if t, ok := c.(*ast.Text); ok {
-				if first == -1 || t.Segment.Start < first {
-					first = t.Segment.Start
-				}
-				if t.Segment.Stop > last {
-					last = t.Segment.Stop
-				}
-			}
-		}
-		if first >= 0 && last > first {
-			ranges = append(ranges, byteRange{first, last})
-		}
-		return ast.WalkContinue, nil
-	})
-	return ranges
-}
-
-// maskLine returns line with any bytes inside a code-span range replaced
-// by spaces. The original slice is returned unchanged when no range
-// overlaps so the common path allocates nothing.
-func maskLine(line []byte, lineStart int, ranges []byteRange) []byte {
-	lineEnd := lineStart + len(line)
-	var out []byte
-	for _, rg := range ranges {
-		if rg.end <= lineStart || rg.start >= lineEnd {
-			continue
-		}
-		if out == nil {
-			out = make([]byte, len(line))
-			copy(out, line)
-		}
-		from := rg.start - lineStart
-		to := rg.end - lineStart
-		if from < 0 {
-			from = 0
-		}
-		if to > len(out) {
-			to = len(out)
-		}
-		for k := from; k < to; k++ {
-			out[k] = ' '
-		}
-	}
-	if out == nil {
-		return line
-	}
-	return out
-}
-
-// computeLineStarts returns s where s[i] is the 0-based offset in src
-// of the first byte of line i+1; len(s) equals bytes.Split(src,"\n")
-// length. The initial cap of `bytes.Count(src, "\n") + 1` lets the
-// loop append into the right-sized backing without geometric grows,
-// which the engine-bench profile flagged as ~8 grow-allocs per call
-// for the cap-0 starting slice.
-func computeLineStarts(src []byte) []int {
-	starts := make([]int, 1, bytes.Count(src, newline)+1)
-	for i, b := range src {
-		if b == '\n' {
-			starts = append(starts, i+1)
-		}
-	}
-	return starts
-}
-
-var newline = []byte{'\n'}
 
 var _ rule.FixableRule = (*Rule)(nil)
 

@@ -3,6 +3,7 @@ package markdown
 import (
 	"sync"
 
+	"github.com/jeduden/mdsmith/pkg/goldmark/arena"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
 	"github.com/jeduden/mdsmith/pkg/goldmark/text"
@@ -152,4 +153,19 @@ func ParseContext(src []byte, ctx parser.Context) ast.Node {
 		parserPool.Put(pp)
 	}()
 	return pp.parser.Parse(text.NewReader(src), parser.WithContext(ctx))
+}
+
+// ParseContextArena is ParseContext with a caller-owned arena (see
+// parser.WithArena for the lifetime contract): the engine's per-file
+// lint pass pools arenas so slab memory is reused across files
+// instead of re-allocated per parse.
+func ParseContextArena(src []byte, ctx parser.Context, a *arena.Arena) ast.Node {
+	pp := parserPool.Get().(*pooledParser)
+	defer func() {
+		if pp.lrp != nil {
+			pp.lrp.Reset()
+		}
+		parserPool.Put(pp)
+	}()
+	return pp.parser.Parse(text.NewReader(src), parser.WithContext(ctx), parser.WithArena(a))
 }

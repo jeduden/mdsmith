@@ -20,6 +20,7 @@ type RunCache struct {
 	includes     sync.Map // string (absPath) -> *runCacheEntry
 	anchors      sync.Map // string (absPath) -> *anchorEntry
 	wikilinks    sync.Map // string (root key) -> *runCacheEntry
+	globMatches  sync.Map // string (base+patterns key) -> *runCacheEntry
 	parsedSchema sync.Map // string (absPath) -> *runCacheEntry
 	compiledCUE  sync.Map // string (CUE source) -> *runCacheEntry
 
@@ -210,6 +211,30 @@ type anchorEntry struct {
 	mu      sync.Mutex
 	done    bool
 	anchors map[string]struct{}
+}
+
+// GlobMatches returns build's result for key, computed at most once
+// per key in this cache's lifetime. The canonical caller is the
+// catalog rule, which keys the resolved glob match list by the
+// resolution base directory plus the pattern set — the directory
+// walk and per-match filtering otherwise repeat for every host file
+// whose catalogs glob the same tree. Content edits cannot change a
+// match list, so the per-path Invalidate leaves these slots alone;
+// tree-shape changes (create/delete/rename) must drop them via
+// InvalidateGlobMatches, the same lifecycle the wikilink index uses.
+func (c *RunCache) GlobMatches(key string, build func() []string) []string {
+	v := load(&c.globMatches, key, func() any { return build() })
+	return v.([]string)
+}
+
+// InvalidateGlobMatches drops every cached glob match list. Call on
+// file create/delete/rename — the events that change what a glob can
+// match.
+func (c *RunCache) InvalidateGlobMatches() {
+	c.globMatches.Range(func(k, _ any) bool {
+		c.globMatches.Delete(k)
+		return true
+	})
 }
 
 // Wikilinks returns build's result keyed by rootKey, computed at

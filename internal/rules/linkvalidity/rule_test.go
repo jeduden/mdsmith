@@ -264,23 +264,17 @@ func TestReversedInLineGuardsDirect(t *testing.T) {
 	assert.Equal(t, "b", string(got[0].url))
 }
 
-func TestMaskLineDirect(t *testing.T) {
-	// No ranges: original slice returned unchanged.
-	assert.Equal(t, []byte("abc"), maskLine([]byte("abc"), 0, nil))
-	// Range entirely before the line: skipped, original returned.
-	assert.Equal(t, []byte("abc"),
-		maskLine([]byte("abc"), 100, []byteRange{{0, 5}}))
-	// Range overruns both ends: from clamps to 0, to clamps to len.
-	assert.Equal(t, []byte("     "),
-		maskLine([]byte("abcde"), 10, []byteRange{{8, 30}}))
-	// Range within the line: only the overlap is blanked.
-	assert.Equal(t, []byte("ab cd"),
-		maskLine([]byte("abXcd"), 0, []byteRange{{2, 3}}))
-}
-
 func TestMultiLineCodeSpanNotFlagged(t *testing.T) {
 	// A code span whose content spans two lines must still mask the
 	// reversed shape on both lines.
 	diags := check(t, "# T\n\nuse `(a)\n[b]` here\n")
+	assert.Empty(t, diags)
+}
+
+func TestCheckEmptyNode_NilNode(t *testing.T) {
+	// Struct-literal Files in unit tests can carry a nil AST; the
+	// recursive walker must tolerate the nil root.
+	var diags []lint.Diagnostic
+	(&Rule{}).checkEmptyNode(nil, &lint.File{}, &diags)
 	assert.Empty(t, diags)
 }

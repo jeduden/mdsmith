@@ -9,18 +9,18 @@ summary: >-
 # High-Performance Go
 
 mdsmith's hot path is the rule set running over every file
-in the workspace. The Large benchmark gate parses 600 files
-through the full rule set. One extra alloc per `Check` is
-tens of thousands of extra allocs per `mdsmith check`. One
-accidental O(n) rescan inside a rule turns a 0.8 s run into
-several seconds. This page is the contributor playbook for
-keeping that path fast.
+in the workspace. The Large gate parses 600 files through
+the full rule set; one extra alloc per `Check` means tens
+of thousands per run, and one accidental O(n) rescan turns
+a fast run into a slow one. This page is the playbook.
 
 This page is the methodology behind the project's budgets.
 The ≤ 10 alloc ceiling lives in
-[Allocation Budget](index.md#allocation-budget). The corpus
-gates and `MDSMITH_CPUPROFILE` workflow live in the
-[benchmark notes](../research/benchmarks/README.md).
+[Allocation Budget](index.md#allocation-budget); the corpus
+gates live in the
+[benchmark notes](../research/benchmarks/README.md); the
+session narrative lives in
+[perf-parity-session](../research/perf-parity-session.md).
 
 ## Process
 
@@ -128,11 +128,11 @@ nothing; the heap costs an alloc plus future GC scan.
 ### Profile-guided optimization
 
 PGO has been GA since Go 1.21 and lands 2–14% wins on real
-binaries. Run `mdsmith check` over a representative corpus
-with `MDSMITH_CPUPROFILE=cmd/mdsmith/default.pgo`; `go
-build` then picks the file up automatically. Refresh after
-major rule changes. Worth it for release builds, not for
-one-off debug builds.
+binaries. mdsmith commits no profile — a tracked binary
+artifact burdens every merge. See
+[PGO and the uncommitted profile](pgo-profile.md) for the
+local-generation commands and the plan that moves generation
+into the release build.
 
 ## Patterns to apply
 
@@ -151,12 +151,13 @@ per workspace file.
 - **Reuse loop-local buffers.** `buf = buf[:0]` clears
   length, keeps capacity. See `extractTextBufPool` in
   `internal/mdtext/mdtext.go`.
-- **`sync.Pool` for transient state.** Best for
-  expensive, short-lived state (line scanners, AST
-  scratch). Always reset before `Put`; pool entries can
-  be reaped by GC without notice. Examples:
-  `internal/punkt/tokenizer.go`,
-  `internal/schema/validate_content.go`.
+- **`sync.Pool` for transient state.** Always reset
+  before `Put`; entries can be reaped by GC without
+  notice. Examples: `internal/punkt/tokenizer.go`; the
+  parse-arena pool behind `lint.NewFileFromSourcePooled`
+  (~40% of all `check` allocation until `engine.lintFile`
+  became its release boundary). Pool only where the
+  release point provably outlives every reference.
 - **Return `nil`, not `[]T{}`.** Project convention.
   `nil` and a non-nil empty slice are distinguishable in
   tests, JSON, and `reflect`; sticking to `nil` for "no
@@ -220,18 +221,17 @@ substring, or prefix/suffix check, skip `regexp`.
 The cheapest call is the one you never make. Two real
 mdsmith wins live here:
 
-- **Memoize per-input computations.** When a helper runs
-  many times over the same `*lint.File`, cache the result
-  on the File. The cached newline index in
-  `lint.(*File).LineOfOffset` replaced an O(n) rescan per
-  call — ~24% of `check` CPU on long prose before the
-  fix.
+- **Memoize per-input computations.** When a helper
+  recurs over one `*lint.File`, cache the result on the
+  File — `LineOfOffset`'s newline index (~24% of `check`
+  CPU before the fix) and `RunCache.GlobMatches` follow it.
 - **Gate expensive analyzers behind a cheap pre-check.**
-  An upper- or lower-bound check that proves the
-  expensive path can't produce a diagnostic lets you
-  skip it. MDS024's guard skips the sentence tokenizer
-  when no paragraph can violate either limit — ~2 GB of
-  saved allocations on the 600-file gate corpus.
+  MDS024 skips the sentence tokenizer when no paragraph
+  can violate a limit; byte-needles gate regex paths.
+- **Declare interest instead of filtering inside.**
+  `rule.KindScopedChecker` lifts "is this node mine?"
+  into a per-kind dispatch table. Related: never exec a
+  subprocess per item (`git rev-parse` once did).
 
 ### Inlining
 

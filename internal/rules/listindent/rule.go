@@ -269,3 +269,14 @@ var _ rule.NodeChecker = (*Rule)(nil)
 
 // FixTitle implements rule.QuickFixTitler.
 func (r *Rule) FixTitle() string { return "Fix list indentation" }
+
+// enteringKinds is the static node-kind interest CheckNode declares
+// via rule.KindScopedChecker; package-level so EnteringKinds returns
+// it without allocating.
+var enteringKinds = []ast.NodeKind{ast.KindListItem}
+
+// EnteringKinds implements rule.KindScopedChecker: CheckNode only
+// reacts to these node kinds, entering visits only.
+func (r *Rule) EnteringKinds() []ast.NodeKind { return enteringKinds }
+
+var _ rule.KindScopedChecker = (*Rule)(nil)

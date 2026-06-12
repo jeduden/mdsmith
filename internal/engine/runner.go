@@ -157,7 +157,20 @@ func (r *Runner) Run(paths []string) *Result {
 	res.FilesChecked = len(work)
 
 	sink := r.log()
-	for _, o := range r.runFiles(work, cache) {
+	outcomes := r.runFiles(work, cache)
+	// Pre-size the merged slice: appending 50+ files' diagnostics
+	// through append's geometric growth re-copied the whole set
+	// several times on diagnostic-heavy runs.
+	total := len(res.Diagnostics)
+	for i := range outcomes {
+		total += len(outcomes[i].diags)
+	}
+	if cap(res.Diagnostics) < total {
+		merged := make([]lint.Diagnostic, len(res.Diagnostics), total)
+		copy(merged, res.Diagnostics)
+		res.Diagnostics = merged
+	}
+	for _, o := range outcomes {
 		if len(o.log) > 0 && sink.W != nil {
 			_, _ = sink.W.Write(o.log)
 		}
@@ -346,10 +359,15 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 		return fileOutcome{errs: []error{fmt.Errorf("reading %q: %w", path, err)}}
 	}
 
-	f, err := lint.NewFileFromSource(path, source, r.StripFrontMatter)
-	if err != nil {
-		return fileOutcome{errs: []error{fmt.Errorf("parsing %q: %w", path, err)}}
-	}
+	// The pooled parse recycles AST slab memory across files. lintFile
+	// is the documented lifetime boundary: the File and everything
+	// aliasing its arena die before the deferred release — diagnostics
+	// only carry copied strings and ints, and the RunCache stores
+	// Files parsed through its own unpooled path. RunSource (LSP,
+	// stdin) deliberately stays on the unpooled constructor because
+	// its Files outlive the call via the ParseCache.
+	f, release := lint.NewFileFromSourcePooled(path, source, r.StripFrontMatter)
+	defer release()
 	f.MaxInputBytes = r.MaxInputBytes
 	f.RunCache = cache
 	dir := filepath.Dir(path)

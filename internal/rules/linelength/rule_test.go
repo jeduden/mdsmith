@@ -875,3 +875,30 @@ func TestHeadingLineNum_NoTextReturnsZero(t *testing.T) {
 	h := ast.NewHeading(1)
 	assert.Equal(t, 0, headingLineNum(h, f))
 }
+
+func TestCheck_MinLimitTracksHeadingAndCodeBlockMax(t *testing.T) {
+	// The candidate pre-count must use the smallest active limit so a
+	// heading or code line over its tighter cap is still counted.
+	h, c := 10, 8
+	r := &Rule{Max: 80, HeadingMax: &h, CodeBlockMax: &c,
+		Exclude: []string{"tables", "urls"}}
+	src := "# A heading well past ten\n\nshort\n\n```go\na code line past its cap\n```\n"
+	f, err := lint.NewFile("test.md", []byte(src))
+	require.NoError(t, err)
+	diags := r.Check(f)
+	require.NotEmpty(t, diags)
+	// Column is limit+1, so it proves WHICH limit fired on each line.
+	var sawHeading, sawCode bool
+	for _, d := range diags {
+		if d.Line == 1 {
+			sawHeading = true
+			assert.Equal(t, h+1, d.Column, "heading must be judged by HeadingMax")
+		}
+		if d.Line == 6 {
+			sawCode = true
+			assert.Equal(t, c+1, d.Column, "code line must be judged by CodeBlockMax")
+		}
+	}
+	assert.True(t, sawHeading, "heading over HeadingMax must be flagged")
+	assert.True(t, sawCode, "code line over CodeBlockMax must be flagged")
+}

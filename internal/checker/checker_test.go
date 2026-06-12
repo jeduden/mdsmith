@@ -251,3 +251,122 @@ func TestCheckRulesWithIntraFile_concurrent_withNodeChecker(t *testing.T) {
 	assert.Empty(t, errs)
 	assert.NotEmpty(t, diags)
 }
+
+// --- kind-scoped NodeChecker dispatch ---
+
+// visit records one CheckNode invocation.
+type visit struct {
+	kind     ast.NodeKind
+	entering bool
+}
+
+// kindScopedRule is a NodeChecker that declares interest in a fixed
+// set of node kinds and records every CheckNode call it receives.
+type kindScopedRule struct {
+	plainRule
+	kinds  []ast.NodeKind
+	visits []visit
+}
+
+func (r *kindScopedRule) Check(_ *lint.File) []lint.Diagnostic { return nil }
+func (r *kindScopedRule) CheckNode(n ast.Node, entering bool, _ *lint.File) []lint.Diagnostic {
+	r.visits = append(r.visits, visit{kind: n.Kind(), entering: entering})
+	if entering && n.Kind() == ast.KindHeading {
+		return []lint.Diagnostic{{Line: 1, RuleID: r.id, Message: "heading"}}
+	}
+	return nil
+}
+func (r *kindScopedRule) EnteringKinds() []ast.NodeKind { return r.kinds }
+
+var _ rule.KindScopedChecker = (*kindScopedRule)(nil)
+
+func TestKindScopedChecker_DispatchedOnlyForDeclaredKinds(t *testing.T) {
+	f := newTestFile(t, "# Hello\n\nParagraph one.\n\n- item\n")
+	r := &kindScopedRule{
+		plainRule: plainRule{id: "TST001"},
+		kinds:     []ast.NodeKind{ast.KindHeading},
+	}
+	diags, errs := checker.CheckRulesWithIntraFile(f, []rule.Rule{r}, enabled("TST001"), true, 1)
+	assert.Empty(t, errs)
+	require.Len(t, diags, 1)
+	require.NotEmpty(t, r.visits)
+	for _, v := range r.visits {
+		assert.Equal(t, ast.KindHeading, v.kind,
+			"kind-scoped rule must only see its declared kinds")
+		assert.True(t, v.entering,
+			"kind-scoped rule must only see entering visits")
+	}
+}
+
+func TestKindScopedChecker_MixedWithGenericNodeChecker(t *testing.T) {
+	// A kind-scoped rule and a plain NodeChecker run in one walk; the
+	// generic rule still sees every node while the scoped one is
+	// filtered, and both contribute diagnostics in rule order.
+	f := newTestFile(t, "# Hello\n\nParagraph.\n")
+	scoped := &kindScopedRule{
+		plainRule: plainRule{id: "TST001"},
+		kinds:     []ast.NodeKind{ast.KindHeading},
+	}
+	d := lint.Diagnostic{Line: 1, RuleID: "TST002", Message: "node hit"}
+	generic := &nodeCheckerRule{plainRule: plainRule{id: "TST002"}, diag: d}
+	diags, errs := checker.CheckRulesWithIntraFile(
+		f, []rule.Rule{scoped, generic}, enabled("TST001", "TST002"), true, 1)
+	assert.Empty(t, errs)
+	require.NotEmpty(t, diags)
+	assert.Equal(t, "TST001", diags[0].RuleID,
+		"rule-order grouping must survive kind-scoped dispatch")
+	sawGeneric := false
+	for _, dg := range diags {
+		if dg.RuleID == "TST002" {
+			sawGeneric = true
+		}
+	}
+	assert.True(t, sawGeneric)
+}
+
+func TestKindScopedChecker_MultipleKindsShareOneBucketEntry(t *testing.T) {
+	f := newTestFile(t, "# Hello\n\nSome *emphasis* text.\n")
+	r := &kindScopedRule{
+		plainRule: plainRule{id: "TST001"},
+		kinds:     []ast.NodeKind{ast.KindHeading, ast.KindEmphasis},
+	}
+	_, errs := checker.CheckRulesWithIntraFile(f, []rule.Rule{r}, enabled("TST001"), true, 1)
+	assert.Empty(t, errs)
+	kindsSeen := map[ast.NodeKind]bool{}
+	for _, v := range r.visits {
+		kindsSeen[v.kind] = true
+	}
+	assert.True(t, kindsSeen[ast.KindHeading])
+	assert.True(t, kindsSeen[ast.KindEmphasis])
+	assert.Len(t, kindsSeen, 2)
+}
+
+func TestPopulateSourceContext_NoDiagnosticsIsNoOp(t *testing.T) {
+	// The empty fast path must not build the per-file line-string
+	// cache: most files produce no diagnostics.
+	f := newTestFile(t, "line1\nline2\n")
+	checker.PopulateSourceContext(f, nil, 2)
+	checker.PopulateSourceContext(f, []lint.Diagnostic{}, 2)
+}
+
+// leavingDiagRule is a generic (kind-less) NodeChecker that emits on
+// the leaving visit of the document node, pinning that the generic
+// path still delivers exit visits and collects their diagnostics.
+type leavingDiagRule struct{ plainRule }
+
+func (r *leavingDiagRule) Check(_ *lint.File) []lint.Diagnostic { return nil }
+func (r *leavingDiagRule) CheckNode(n ast.Node, entering bool, _ *lint.File) []lint.Diagnostic {
+	if !entering && n.Kind() == ast.KindDocument {
+		return []lint.Diagnostic{{Line: 1, RuleID: r.id, Message: "leaving"}}
+	}
+	return nil
+}
+
+func TestGenericNodeChecker_LeavingVisitDiagnosticsCollected(t *testing.T) {
+	f := newTestFile(t, "# Hello\n\nParagraph.\n")
+	r := &leavingDiagRule{plainRule: plainRule{id: "TST001"}}
+	diags, errs := checker.CheckRulesWithIntraFile(f, []rule.Rule{r}, enabled("TST001"), true, 1)
+	assert.Empty(t, errs)
+	require.Len(t, diags, 1)
+	assert.Equal(t, "leaving", diags[0].Message)
+}

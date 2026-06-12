@@ -13,14 +13,12 @@
 package ambiguousemphasis
 
 import (
-	"bytes"
 	"fmt"
 	"sort"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
-	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
 func init() {
@@ -58,8 +56,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	}
 
 	skip := lint.CollectCodeBlockLines(f)
-	codeSpanRanges := collectCodeSpanRanges(f)
-	lineStarts := computeLineStarts(f.Source)
+	codeSpanRanges := f.CodeSpanContentRanges()
 
 	diags := make([]lint.Diagnostic, 0, len(f.Lines)/4+1)
 	for i, line := range f.Lines {
@@ -67,7 +64,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		if _, ok := skip[lineNum]; ok {
 			continue
 		}
-		masked := maskCodeSpans(line, lineNum, codeSpanRanges, lineStarts)
+		masked := lint.MaskRanges(line, f.LineStartOffset(i), codeSpanRanges)
 		diags = append(diags, r.checkLine(f, lineNum, masked)...)
 	}
 
@@ -310,101 +307,6 @@ func gapNonEmptyAllNonWhitespace(b []byte) bool {
 		}
 	}
 	return true
-}
-
-// codeSpanRange records the half-open [start, end) byte range of one
-// CodeSpan's delimited content within f.Source.
-type codeSpanRange struct {
-	start int // absolute byte offset in source, inclusive
-	end   int // absolute byte offset in source, exclusive
-}
-
-// collectCodeSpanRanges walks the AST and returns the byte ranges of
-// every code span's text content. CodeSpan nodes do not expose a
-// segment directly, so the range spans from the first text-child
-// segment start to the last text-child segment end.
-func collectCodeSpanRanges(f *lint.File) []codeSpanRange {
-	var ranges []codeSpanRange
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		cs, ok := n.(*ast.CodeSpan)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
-		first := -1
-		last := -1
-		for c := cs.FirstChild(); c != nil; c = c.NextSibling() {
-			t, ok := c.(*ast.Text)
-			if !ok {
-				continue
-			}
-			if first == -1 || t.Segment.Start < first {
-				first = t.Segment.Start
-			}
-			if t.Segment.Stop > last {
-				last = t.Segment.Stop
-			}
-		}
-		if first >= 0 && last > first {
-			ranges = append(ranges, codeSpanRange{start: first, end: last})
-		}
-		return ast.WalkContinue, nil
-	})
-	return ranges
-}
-
-// maskCodeSpans returns a copy of line with bytes that lie inside a
-// code span replaced by a space. Spaces never participate in emphasis
-// detection, so the mask removes the bytes from delimiter accounting
-// without disturbing column positions.
-func maskCodeSpans(line []byte, lineNum int, ranges []codeSpanRange, lineStarts []int) []byte {
-	if len(ranges) == 0 {
-		return line
-	}
-	lineStart := lineStarts[lineNum-1]
-	lineEnd := lineStart + len(line)
-
-	var out []byte
-	for _, r := range ranges {
-		if r.end <= lineStart || r.start >= lineEnd {
-			continue
-		}
-		if out == nil {
-			out = make([]byte, len(line))
-			copy(out, line)
-		}
-		from := r.start - lineStart
-		to := r.end - lineStart
-		if from < 0 {
-			from = 0
-		}
-		if to > len(out) {
-			to = len(out)
-		}
-		for i := from; i < to; i++ {
-			out[i] = ' '
-		}
-	}
-	if out == nil {
-		return line
-	}
-	return out
-}
-
-// computeLineStarts returns a slice s such that s[i] is the 0-based
-// byte offset in src of the first character of the (i+1)-th line. The
-// slice has one entry per line so callers can index by line number
-// without rescanning the source.
-func computeLineStarts(src []byte) []int {
-	starts := make([]int, 1, bytes.Count(src, []byte{'\n'})+1)
-	for i, b := range src {
-		if b == '\n' {
-			starts = append(starts, i+1)
-		}
-	}
-	return starts
 }
 
 // ApplySettings implements rule.Configurable.
