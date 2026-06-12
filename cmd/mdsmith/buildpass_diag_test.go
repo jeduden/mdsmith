@@ -282,7 +282,7 @@ func TestVerifyTarget_DeterministicRecipe_NoUnstable(t *testing.T) {
 	}
 	res := &targetRunResult{}
 	var buf strings.Builder
-	verifyTarget(builder, bt, stin, buildPassOpts{}, time.Second, res, &buf)
+	verifyTarget(context.Background(), builder, bt, stin, buildPassOpts{}, time.Second, res, &buf)
 	assert.False(t, res.Unstable)
 }
 
@@ -305,7 +305,7 @@ func TestVerifyTarget_FailingReRunSetsUnstable(t *testing.T) {
 	stin := buildexec.StalenessInput{Target: bt.target}
 	res := &targetRunResult{}
 	var buf strings.Builder
-	verifyTarget(mock, bt, stin, buildPassOpts{}, time.Second, res, &buf)
+	verifyTarget(context.Background(), mock, bt, stin, buildPassOpts{}, time.Second, res, &buf)
 	assert.True(t, res.Unstable)
 	assert.Contains(t, buf.String(), "verify re-run failed")
 }
@@ -342,7 +342,7 @@ func TestVerifyTarget_NonDeterministicOutput_SetsUnstable(t *testing.T) {
 	stin := buildexec.StalenessInput{Target: bt.target}
 	res := &targetRunResult{}
 	var buf strings.Builder
-	verifyTarget(mock, bt, stin, buildPassOpts{}, time.Second, res, &buf)
+	verifyTarget(context.Background(), mock, bt, stin, buildPassOpts{}, time.Second, res, &buf)
 	assert.True(t, res.Unstable, "non-deterministic output must set Unstable")
 	assert.Contains(t, buf.String(), "non-deterministic")
 }
@@ -370,4 +370,156 @@ func TestPrintVerdict_ErrorBranch(t *testing.T) {
 	printVerdict(stin, cache, &buf)
 	out := buf.String()
 	assert.Contains(t, out, "verdict: ERROR:", "missing input must trigger the ERROR branch")
+}
+
+// --- runOneTarget ComputeActionID error ---
+
+// TestRunOneTarget_ComputeActionIDError covers Fix 1: when the input file is
+// removed between verdict and run, ComputeActionID fails and runOneTarget
+// returns a Result with Err set rather than silently ignoring the failure.
+func TestRunOneTarget_ComputeActionIDError(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "src.txt"), []byte("data"), 0o644))
+	bt := buildTarget{
+		file: "doc.md",
+		line: 1,
+		target: buildexec.Target{
+			Recipe:  "cp",
+			Root:    root,
+			Inputs:  []string{"src.txt"},
+			Outputs: []string{"out.txt"},
+		},
+	}
+	stin := buildexec.StalenessInput{
+		Target:  bt.target,
+		Command: "cp {inputs} {outputs}",
+	}
+	called := false
+	builder := &mockBuilder{fn: func(_ context.Context, _ buildexec.Target) error {
+		called = true
+		return nil
+	}}
+	// Delete input so ComputeActionID's resolveInputs call fails.
+	require.NoError(t, os.Remove(filepath.Join(root, "src.txt")))
+
+	var buf strings.Builder
+	res := runOneTarget(builder, bt, stin, buildPassOpts{}, time.Second, &buf)
+	assert.Error(t, res.Err, "must return an error when ComputeActionID fails")
+	assert.False(t, called, "builder must not be invoked when ActionID computation fails")
+}
+
+// TestReportBuildFailure_ErrorPrintedWithStderr verifies that the error: field
+// is printed even when StderrTail is non-empty (Fix 2).
+func TestReportBuildFailure_ErrorPrintedWithStderr(t *testing.T) {
+	bt := buildTarget{
+		file: "doc.md",
+		line: 1,
+		target: buildexec.Target{
+			Recipe:  "cp",
+			Root:    t.TempDir(),
+			Outputs: []string{"out.txt"},
+		},
+	}
+	res := targetRunResult{
+		Result: buildexec.Result{
+			Argv:       []string{"cp", "src.txt", "out.txt"},
+			Cwd:        "/tmp",
+			ExitCode:   1,
+			Err:        errors.New("recipe cp failed: exit status 1"),
+			StderrTail: []string{"some stderr line"},
+		},
+	}
+	var buf strings.Builder
+	reportBuildFailure(bt, res, &buf)
+	out := buf.String()
+	assert.Contains(t, out, "error:", "error: field must appear even when StderrTail is non-empty")
+	assert.Contains(t, out, "some stderr line", "stderr tail must also be printed")
+}
+
+// TestDispatchTargets_JobsWithDryRun_PrintsWarning covers Fix 4: when
+// --build-jobs > 1 and --build-dry-run are both set, a warning is printed.
+func TestDispatchTargets_JobsWithDryRun_PrintsWarning(t *testing.T) {
+	root := t.TempDir()
+	cfg := buildPassCfg("    cp:\n      command: cp {inputs} {outputs}\n")
+	bt := buildTarget{
+		file: "doc.md",
+		line: 1,
+		target: buildexec.Target{
+			Recipe:  "cp",
+			Root:    root,
+			Outputs: []string{"out.txt"},
+		},
+	}
+	builder := &mockBuilder{fn: func(_ context.Context, _ buildexec.Target) error { return nil }}
+	cache := buildexec.NewCache()
+	var buf strings.Builder
+	dispatchTargets(builder, []buildTarget{bt}, cfg, root,
+		buildPassOpts{jobs: 2, dryRun: true},
+		cache, time.Second, &buf)
+	assert.Contains(t, buf.String(), "--build-jobs ignored with --build-dry-run")
+}
+
+// TestRunBuildPass_NoCacheSkipsPruneOrphanLogs covers Fix 3: when
+// --build-no-cache is set, pruneOrphanLogsFn is never called.
+func TestRunBuildPass_NoCacheSkipsPruneOrphanLogs(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("touch not available on Windows")
+	}
+	root := t.TempDir()
+	cfg := buildPassCfg("    mk:\n      command: touch {outputs}\n")
+	cfgPath := filepath.Join(root, ".mdsmith.yml")
+	md := buildPassDirective("mk", "out.txt")
+	p := filepath.Join(root, "doc.md")
+	require.NoError(t, os.WriteFile(p, []byte(md), 0o644))
+
+	orig := pruneOrphanLogsFn
+	called := false
+	pruneOrphanLogsFn = func(_ string, _ *buildexec.Cache) error {
+		called = true
+		return errors.New("should not be called")
+	}
+	t.Cleanup(func() { pruneOrphanLogsFn = orig })
+
+	var buf strings.Builder
+	code := runBuildPass(cfg, cfgPath, []string{p},
+		buildPassOpts{timeout: time.Second, noCache: true}, &buf)
+	assert.Equal(t, 0, code)
+	assert.False(t, called, "pruneOrphanLogsFn must not be called with --build-no-cache")
+}
+
+// TestVerifyTarget_StreamEnabled_ForwardsLiveOutput covers Fix 6: when
+// stream is true, verifyOpts.LiveSink is set so the verify re-run forwards
+// recipe output to w.
+func TestVerifyTarget_StreamEnabled_ForwardsLiveOutput(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sh not available on Windows")
+	}
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "src.txt"), []byte("hello"), 0o644))
+	script := writeShScript(t, root, "emit.sh", `echo "verify-live"; cp "$1" "$2"`)
+
+	cmd := script + " {inputs} {outputs}"
+	builder := buildexec.NewCustomBuilder(map[string]buildexec.RecipeSpec{
+		"cp": {Command: cmd},
+	})
+	bt := buildTarget{
+		file: "doc.md",
+		line: 1,
+		target: buildexec.Target{
+			Recipe:  "cp",
+			Root:    root,
+			Inputs:  []string{"src.txt"},
+			Outputs: []string{"out.txt"},
+		},
+	}
+	// Run the first build so snapshotOutputs captures a committed output.
+	require.NoError(t, builder.Build(context.Background(), bt.target))
+	stin := buildexec.StalenessInput{Target: bt.target, Command: cmd}
+
+	res := &targetRunResult{}
+	var buf strings.Builder
+	verifyTarget(context.Background(), builder, bt, stin,
+		buildPassOpts{stream: true}, time.Second, res, &buf)
+	assert.False(t, res.Unstable)
+	assert.Contains(t, buf.String(), "verify-live")
 }

@@ -254,7 +254,7 @@ func Explain(in StalenessInput) (Explanation, error) {
 	exInputs := make([]ExplainInput, 0, len(inputs))
 	for _, rel := range inputs {
 		abs := filepath.Join(in.Target.Root, filepath.FromSlash(rel))
-		sum, err := hashFile(abs)
+		sum, err := hashFileFn(abs)
 		if err != nil {
 			return Explanation{}, err
 		}

@@ -212,8 +212,10 @@ func runBuildPass(
 	}
 
 	cache := loadBuildCache(root, opts, w)
-	if err := pruneOrphanLogsFn(root, cache); err != nil {
-		_, _ = fmt.Fprintf(w, "mdsmith: %v\n", err)
+	if !opts.noCache {
+		if err := pruneOrphanLogsFn(root, cache); err != nil {
+			_, _ = fmt.Fprintf(w, "mdsmith: %v\n", err)
+		}
 	}
 	return dispatchWithHooks(builder, targets, cfg, root, opts, cache, timeout, errs, w)
 }
@@ -432,6 +434,9 @@ func dispatchTargets(
 		}
 	}
 
+	if opts.jobs > 1 && opts.dryRun {
+		_, _ = fmt.Fprintf(w, "mdsmith: --build-jobs ignored with --build-dry-run\n")
+	}
 	if opts.jobs > 1 && !opts.checkStale && !opts.dryRun {
 		runConcurrent(builder, targets, cfg, opts, cache, timeout, w, fold)
 	} else {
@@ -512,7 +517,7 @@ func decideAndRun(
 		return outcomeFailed, nil
 	}
 	if opts.verify {
-		verifyTarget(builder, bt, stin, opts, timeout, &res, w)
+		verifyTarget(context.Background(), builder, bt, stin, opts, timeout, &res, w)
 	}
 	entry, err := buildCacheEntry(stin, opts, res.Unstable)
 	if err != nil {
@@ -577,16 +582,17 @@ type targetRunResult struct {
 
 // runOneTarget dispatches a single target with a per-recipe timeout,
 // capturing streams to the action-id log file. opts.stream forwards the
-// recipe's lines live to w. A failed ActionID computation is reported as
-// the run error.
+// recipe's lines live to w. A failed ActionID computation is returned as
+// the run error so reportBuildFailure can display it.
 func runOneTarget(
 	b buildexec.Builder, bt buildTarget, stin buildexec.StalenessInput,
 	opts buildPassOpts, timeout time.Duration, w io.Writer,
 ) targetRunResult {
-	bopts := buildexec.Options{LogRoot: bt.target.Root, TargetName: targetName(bt)}
-	if id, err := buildexec.ComputeActionID(stin); err == nil {
-		bopts.ActionID = id
+	id, err := buildexec.ComputeActionID(stin)
+	if err != nil {
+		return targetRunResult{Result: buildexec.Result{Err: err}}
 	}
+	bopts := buildexec.Options{LogRoot: bt.target.Root, TargetName: targetName(bt), ActionID: id}
 	if opts.stream {
 		bopts.LiveSink = w
 	}

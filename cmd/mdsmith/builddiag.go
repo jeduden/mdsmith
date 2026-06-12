@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -115,8 +116,10 @@ func reportBuildFailure(bt buildTarget, res targetRunResult, w io.Writer) {
 	_, _ = fmt.Fprintf(w, "  exit:     %d\n", res.ExitCode)
 	_, _ = fmt.Fprintf(w, "  duration: %s\n", res.Duration.Round(time.Millisecond))
 	_, _ = fmt.Fprintf(w, "  log:      %s\n", relLogPath(bt.target.Root, res.LogPath))
-	if len(res.StderrTail) == 0 && res.LogPath == "" {
+	if res.Err != nil {
 		_, _ = fmt.Fprintf(w, "  error:    %v\n", res.Err)
+	}
+	if len(res.StderrTail) == 0 {
 		return
 	}
 	_, _ = fmt.Fprintf(w, "  --- last %d lines of stderr ---\n", diagTailLines)
@@ -165,15 +168,22 @@ func relLogPath(root, logPath string) string {
 // res.Unstable with a warning when they differ. A mismatch is a warning,
 // not a failure: some recipes embed timestamps or random seeds.
 func verifyTarget(
+	ctx context.Context,
 	b buildexec.Builder, bt buildTarget, stin buildexec.StalenessInput,
 	opts buildPassOpts, timeout time.Duration, res *targetRunResult, w io.Writer,
 ) {
 	first := snapshotOutputs(bt)
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	vctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	verifyOpts := buildexec.Options{}
-	second := b.BuildWithResult(ctx, bt.target, verifyOpts)
+	verifyOpts := buildexec.Options{TargetName: targetName(bt), LogRoot: bt.target.Root}
+	if id, err := buildexec.ComputeActionID(stin); err == nil {
+		verifyOpts.ActionID = "verify-" + id
+	}
+	if opts.stream {
+		verifyOpts.LiveSink = w
+	}
+	second := b.BuildWithResult(vctx, bt.target, verifyOpts)
 	if second.Err != nil {
 		_, _ = fmt.Fprintf(w, "WARN %s: verify re-run failed: %v\n", targetName(bt), second.Err)
 		res.Unstable = true
@@ -211,7 +221,7 @@ func outputsEqual(a, b map[string][]byte) bool {
 	}
 	for k, av := range a {
 		bv, ok := b[k]
-		if !ok || string(av) != string(bv) {
+		if !ok || !bytes.Equal(av, bv) {
 			return false
 		}
 	}
