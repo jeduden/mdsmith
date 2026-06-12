@@ -108,7 +108,12 @@ expressed by the caller, not the stub.
 - [x] `internal/oscompat` contains the three
       exported wrappers; no other package has
       its own `_tinygo.go` / `_notinygo.go`
-      pair for these three calls
+      pair for these three calls (exception:
+      `internal/githooks` keeps a caller-level
+      `sameFile` seam whose tinygo stub returns
+      `true` — a deliberate TOCTOU trade-off
+      that cannot delegate to `oscompat.SameFile`
+      whose tinygo stub returns `false`)
 - [x] `go build ./...` succeeds with the
       standard toolchain
 - [ ] `tinygo build -target wasm -o /dev/null
