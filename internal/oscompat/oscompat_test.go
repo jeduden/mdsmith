@@ -11,12 +11,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/jeduden/mdsmith/internal/oscompat"
+	"github.com/jeduden/mdsmith/internal/testsymlink"
 )
 
 func TestChmod_SetsPermissions(t *testing.T) {
 	f, err := os.CreateTemp(t.TempDir(), "chmod-test")
 	require.NoError(t, err)
-	f.Close()
+	require.NoError(t, f.Close())
 	require.NoError(t, oscompat.Chmod(f.Name(), 0o600))
 	fi, err := os.Stat(f.Name())
 	require.NoError(t, err)
@@ -29,13 +30,12 @@ func TestChmod_NonexistentFile_ReturnsError(t *testing.T) {
 }
 
 func TestEvalSymlinks_ResolvesSymlink(t *testing.T) {
+	testsymlink.SkipIfSymlinkUnsupported(t)
 	dir := t.TempDir()
 	target := filepath.Join(dir, "target")
 	require.NoError(t, os.WriteFile(target, nil, 0o600))
 	link := filepath.Join(dir, "link")
-	if err := os.Symlink(target, link); err != nil {
-		t.Skipf("symlinks not supported: %v", err)
-	}
+	require.NoError(t, os.Symlink(target, link))
 	got, err := oscompat.EvalSymlinks(link)
 	require.NoError(t, err)
 	// Resolve both sides: on macOS t.TempDir() may return a path with a /var
@@ -53,7 +53,7 @@ func TestEvalSymlinks_NonexistentPath_ReturnsError(t *testing.T) {
 func TestSameFile_SameFile_ReturnsTrue(t *testing.T) {
 	f, err := os.CreateTemp(t.TempDir(), "samefile")
 	require.NoError(t, err)
-	f.Close()
+	require.NoError(t, f.Close())
 	fi1, err := os.Stat(f.Name())
 	require.NoError(t, err)
 	fi2, err := os.Stat(f.Name())
