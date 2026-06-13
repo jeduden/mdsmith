@@ -1014,7 +1014,7 @@ jobs:
           # step logs a warning and exits 0.
           KOMAC_VERSION="2.10.0"
           KOMAC_SHA256="523a5c4d685741f540a403e329581ab42c30e2db9b3dd1dd90389f7eefe8a3ba"
-          if ! curl -fsSL \
+          if ! curl -fsSL --max-time 120 --connect-timeout 15 \
             "https://github.com/russellbanks/Komac/releases/download/v${KOMAC_VERSION}/komac-${KOMAC_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
             -o /tmp/komac.tar.gz; then
             echo "::warning::could not download komac; skipping WinGet submission."
@@ -1024,7 +1024,7 @@ jobs:
             echo "::warning::komac checksum mismatch; skipping WinGet submission."
             exit 0
           fi
-          if ! tar -xzf /tmp/komac.tar.gz -C /usr/local/bin/; then
+          if ! tar -xzf /tmp/komac.tar.gz -C /usr/local/bin/ komac; then
             echo "::warning::could not extract komac; skipping WinGet submission."
             exit 0
           fi
