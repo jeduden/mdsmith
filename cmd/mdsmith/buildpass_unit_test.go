@@ -918,7 +918,67 @@ func TestDispatchWithHooks_AfterHookFails_ReturnsNonZero(t *testing.T) {
 	assert.NotEqual(t, 0, code, "after-hook failure exit code must be propagated")
 }
 
-// TestAllFresh_CheckStalenessError_ReturnsFalse covers the error branch
+// --- S002: MDS040 gate hardening ---
+
+// TestCheckMDS040Gate_DisabledRule_WithShellRecipe_ReturnsFalse is the RED
+// test for S002: even when recipe-safety is disabled, a recipe using a shell
+// interpreter must be rejected by checkMDS040Gate.
+func TestCheckMDS040Gate_DisabledRule_WithShellRecipe_ReturnsFalse(t *testing.T) {
+	root := t.TempDir()
+	cfgPath := filepath.Join(root, ".mdsmith.yml")
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"recipe-safety": {Enabled: false},
+		},
+		Build: config.BuildConfig{
+			Recipes: map[string]config.RecipeCfg{
+				"danger": {Command: "sh -c 'echo pwned'"},
+			},
+		},
+	}
+	var buf strings.Builder
+	// The gate must reject this even though recipe-safety is disabled.
+	assert.False(t, checkMDS040Gate(cfg, cfgPath, &buf))
+	assert.Contains(t, buf.String(), "MDS040")
+}
+
+// TestCheckMDS040Gate_NoRule_WithShellRecipe_ReturnsFalse is the RED test for
+// S002: even when recipe-safety is absent from config.Rules, a recipe using a
+// shell interpreter must be rejected by checkMDS040Gate.
+func TestCheckMDS040Gate_NoRule_WithShellRecipe_ReturnsFalse(t *testing.T) {
+	root := t.TempDir()
+	cfgPath := filepath.Join(root, ".mdsmith.yml")
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{},
+		Build: config.BuildConfig{
+			Recipes: map[string]config.RecipeCfg{
+				"danger": {Command: "bash unsafe.sh"},
+			},
+		},
+	}
+	var buf strings.Builder
+	// The gate must reject this even though recipe-safety is absent.
+	assert.False(t, checkMDS040Gate(cfg, cfgPath, &buf))
+	assert.Contains(t, buf.String(), "MDS040")
+}
+
+// TestCheckMDS040Gate_DisabledRule_NoRecipes_ReturnsTrue verifies that the
+// existing bypass (no recipes) still opens the gate when recipe-safety is
+// disabled — this is safe because there are no recipes to execute.
+func TestCheckMDS040Gate_DisabledRule_NoRecipes_ReturnsTrue(t *testing.T) {
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"recipe-safety": {Enabled: false},
+		},
+		Build: config.BuildConfig{
+			Recipes: map[string]config.RecipeCfg{},
+		},
+	}
+	var buf strings.Builder
+	assert.True(t, checkMDS040Gate(cfg, "cfg.yml", &buf))
+}
+
+// --- TestAllFresh_CheckStalenessError_ReturnsFalse covers the error branch
 // (lines 245-247) when CheckStaleness returns an error (glob matching no files).
 func TestAllFresh_CheckStalenessError_ReturnsFalse(t *testing.T) {
 	root := t.TempDir()

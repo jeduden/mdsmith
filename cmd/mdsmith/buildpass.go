@@ -45,30 +45,58 @@ type buildTarget struct {
 
 // checkMDS040Gate runs MDS040 (recipe-safety) against the current config and
 // returns true (gate open) when no errors are found. If errors exist it prints
-// each one to w and returns false. The gate is skipped when cfg.Rules does not
-// have "recipe-safety" enabled (i.e. MDS040 is disabled by the user).
+// each one to w and returns false.
+//
+// The gate is non-bypassable: when cfg.Build.Recipes is non-empty the
+// shell-safety check always runs regardless of whether the recipe-safety rule
+// toggle is enabled or disabled in cfg.Rules. The rule toggle controls only
+// diagnostic reporting; it must never suppress the pre-execution safety gate.
 func checkMDS040Gate(cfg *config.Config, cfgPath string, w io.Writer) bool {
 	rc, ok := cfg.Rules["recipe-safety"]
-	if !ok || !rc.Enabled {
+
+	// When the rule is absent or disabled AND there are no recipes, the gate
+	// is open: nothing will execute so there is nothing to check.
+	if (!ok || !rc.Enabled) && len(cfg.Build.Recipes) == 0 {
 		return true
 	}
+
 	r := rule.ByID("MDS040")
 	if r == nil {
 		return true
 	}
 	clone := rule.CloneRule(r)
-	c, ok := clone.(interface {
+	c, ok2 := clone.(interface {
 		ApplySettings(map[string]any) error
 		Check(f *lint.File) []lint.Diagnostic
 	})
-	if !ok {
+	if !ok2 {
 		return true
 	}
-	if rc.Settings != nil {
-		if err := c.ApplySettings(rc.Settings); err != nil {
-			_, _ = fmt.Fprintf(w, "mdsmith: MDS040 settings error: %v\n", err)
-			return false
+
+	// Determine the settings to apply. When the rule is enabled and has
+	// settings, use them directly (InjectBuildConfig already populated the
+	// recipes/hooks fields). When the rule is disabled or absent, build
+	// minimal settings from cfg.Build.Recipes so the gate still validates
+	// shell-safety even though diagnostic reporting is suppressed.
+	var settings map[string]any
+	if ok && rc.Enabled && rc.Settings != nil {
+		settings = rc.Settings
+	} else {
+		// Build a minimal recipes map for safety checking.
+		recipes := make(map[string]any, len(cfg.Build.Recipes))
+		for name, r := range cfg.Build.Recipes {
+			recipes[name] = map[string]any{"command": r.Command}
 		}
+		settings = map[string]any{
+			"recipes": recipes,
+		}
+		if cfgPath != "" {
+			settings["config-path"] = cfgPath
+		}
+	}
+	if err := c.ApplySettings(settings); err != nil {
+		_, _ = fmt.Fprintf(w, "mdsmith: MDS040 settings error: %v\n", err)
+		return false
 	}
 	// Use an empty config file as the synthetic lint target. MDS040 is a
 	// ConfigTarget rule: it checks only when f.Path matches its ConfigPath.

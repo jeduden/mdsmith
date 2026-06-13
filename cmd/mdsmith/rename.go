@@ -351,12 +351,51 @@ func joinLF(segs [][]byte) []byte {
 	return out
 }
 
-// writeFilePreservingMode overwrites path with data, keeping the
-// file's existing permission bits.
+// writeFilePreservingMode overwrites path with data, keeping the file's
+// existing permission bits.
+//
+// The write uses a temp-file-then-rename pattern: a temporary file is created
+// in the same directory as path, written, then atomically renamed over path.
+// On POSIX, os.Rename replaces the directory entry (symlink) itself rather
+// than following the symlink to its target, so a workspace symlink is replaced
+// with a regular file instead of overwriting the external target. This mirrors
+// the atomicWriteFile pattern used by the fix command.
 func writeFilePreservingMode(path string, data []byte) error {
 	mode := os.FileMode(0o644)
-	if info, err := os.Stat(path); err == nil {
+	if info, err := os.Lstat(path); err == nil {
 		mode = info.Mode().Perm()
+		// Lstat returns the symlink's own mode on POSIX, but we want to
+		// preserve the mode of the file we're writing. Use the symlink target's
+		// mode when the path is a symlink so the replacement regular file gets
+		// sensible permissions; fall back to 0o644 if the target is unreadable.
+		if info.Mode()&os.ModeSymlink != 0 {
+			if tinfo, err := os.Stat(path); err == nil {
+				mode = tinfo.Mode().Perm()
+			} else {
+				mode = 0o644
+			}
+		}
 	}
-	return os.WriteFile(path, data, mode)
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return fmt.Errorf("creating temp file: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) //nolint:errcheck // best-effort cleanup; harmless once rename succeeds
+	if err := tmp.Chmod(mode); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("setting temp file mode: %w", err)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("writing temp file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("closing temp file: %w", err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("committing %s: %w", filepath.Base(path), err)
+	}
+	return nil
 }

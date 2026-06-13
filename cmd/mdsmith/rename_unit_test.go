@@ -304,6 +304,41 @@ func TestWriteFilePreservingMode(t *testing.T) {
 	require.Error(t, writeFilePreservingMode(dir, []byte("x")))
 }
 
+// TestWriteFilePreservingMode_SymlinkDoesNotWriteThrough is the RED test for
+// S007: writeFilePreservingMode must not follow a symlink to an external file.
+// After the fix (atomic rename), os.Rename replaces the symlink itself on
+// POSIX rather than following it to the external target.
+func TestWriteFilePreservingMode_SymlinkDoesNotWriteThrough(t *testing.T) {
+	if os.Getenv("GOOS") == "windows" {
+		t.Skip("symlinks behave differently on Windows")
+	}
+	// Create the external file outside the workspace.
+	external := t.TempDir()
+	extFile := filepath.Join(external, "target.md")
+	const originalContent = "# Original\n"
+	require.NoError(t, os.WriteFile(extFile, []byte(originalContent), 0o644))
+
+	// Create a workspace directory with a symlink pointing to the external file.
+	workspace := t.TempDir()
+	symlink := filepath.Join(workspace, "linked.md")
+	require.NoError(t, os.Symlink(extFile, symlink))
+
+	// Call writeFilePreservingMode on the symlink path.
+	require.NoError(t, writeFilePreservingMode(symlink, []byte("# Rewritten\n")))
+
+	// The external file must NOT have been modified.
+	got, err := os.ReadFile(extFile)
+	require.NoError(t, err)
+	assert.Equal(t, originalContent, string(got),
+		"writeFilePreservingMode must not write through symlinks to external files")
+
+	// The symlink path itself should now read the new content (symlink was
+	// replaced with a regular file by os.Rename).
+	gotLinked, err := os.ReadFile(symlink)
+	require.NoError(t, err)
+	assert.Equal(t, "# Rewritten\n", string(gotLinked))
+}
+
 func TestCliRenameWorkspace_Resolve(t *testing.T) {
 	dir := t.TempDir()
 	abs := filepath.Join(dir, "a.md")
