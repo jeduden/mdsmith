@@ -886,27 +886,37 @@ func resolveGlobMatchesFrom(res globResolution, f *lint.File, params map[string]
 	}
 	var files []string
 	for _, pattern := range res.includes {
-		matches, err := doublestar.Glob(res.fs, pattern)
-		if err != nil {
-			continue
-		}
-		for _, m := range matches {
-			if _, ok := seen[m]; ok {
-				continue
-			}
-			info, err := fs.Stat(res.fs, m)
-			if err != nil || info.IsDir() {
-				continue
-			}
-			if isExcluded(m, res.excludes) {
-				continue
-			}
-			if matcher != nil && base != "" && isGitignoredMemo(matcher, base, m, dirVerdicts) {
-				continue
-			}
-			seen[m] = struct{}{}
-			files = append(files, m)
-		}
+		// GlobWalk hands over the walk's own DirEntry, so the
+		// regular-file check below costs no follow-up stat through
+		// res.fs — the former per-match fs.Stat was several syscalls
+		// per matched file through the os.Root-backed DirFS. Only
+		// symlink entries still stat, to keep the old follow
+		// semantics: a symlink to a file is included, a symlink to a
+		// directory (or a broken one) is skipped.
+		_ = doublestar.GlobWalk(res.fs, pattern,
+			func(m string, d fs.DirEntry) error {
+				if _, ok := seen[m]; ok {
+					return nil
+				}
+				if d.IsDir() {
+					return nil
+				}
+				if d.Type()&fs.ModeSymlink != 0 {
+					info, err := fs.Stat(res.fs, m)
+					if err != nil || info.IsDir() {
+						return nil
+					}
+				}
+				if isExcluded(m, res.excludes) {
+					return nil
+				}
+				if matcher != nil && base != "" && isGitignoredMemo(matcher, base, m, dirVerdicts) {
+					return nil
+				}
+				seen[m] = struct{}{}
+				files = append(files, m)
+				return nil
+			})
 	}
 	return files
 }
