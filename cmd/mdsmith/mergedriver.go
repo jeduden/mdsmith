@@ -902,4 +902,3 @@ func isTemporaryBinary(path string) bool {
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
-
