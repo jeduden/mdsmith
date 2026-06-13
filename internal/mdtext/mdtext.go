@@ -371,15 +371,18 @@ func CountSentences(text string) int {
 		return 0
 	}
 	count := 0
-	runes := []rune(text)
-	for i, r := range runes {
-		if r == '.' || r == '!' || r == '?' {
-			if i == len(runes)-1 {
-				count++
-			} else if IsSpace(runes[i+1]) {
-				count++
-			}
+	// Track whether the previous rune ended a sentence instead of
+	// materialising []rune(text) for lookahead — the rune slice was
+	// one whole-text allocation per call on the check hot path.
+	prevTerminal := false
+	for _, r := range text {
+		if prevTerminal && IsSpace(r) {
+			count++
 		}
+		prevTerminal = r == '.' || r == '!' || r == '?'
+	}
+	if prevTerminal {
+		count++
 	}
 	if count == 0 {
 		return 1

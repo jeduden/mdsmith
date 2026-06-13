@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -39,9 +40,11 @@ func TestTrimTrailingWhitespace_AllWhitespace(t *testing.T) {
 
 // --- relTo tests ---
 
-// TestRelTo_AgreesWithFilepathRel pins the fast prefix-strip path to
-// filepath.Rel's answer for the absolute, cleaned inputs the matcher
-// sees, including paths outside the base.
+// TestRelTo_AgreesWithFilepathRel pins relTo to filepath.Rel's answer
+// for the absolute, cleaned inputs the matcher sees: within-base paths
+// return Rel's result with ok=true, and paths outside the base (where
+// Rel yields "" or a ".."-prefixed result no rule can match) return
+// ok=false.
 func TestRelTo_AgreesWithFilepathRel(t *testing.T) {
 	cases := []struct{ base, path string }{
 		{"/repo", "/repo/file.md"},
@@ -50,13 +53,16 @@ func TestRelTo_AgreesWithFilepathRel(t *testing.T) {
 		{"/repo/sub", "/repo/other/file.md"},
 		{"/repo/sub", "/repo/subdir/file.md"},
 		{"/", "/file.md"},
+		{"/", "/sub/file.md"},
 		{"/a/b", "/a/bc/d"},
+		{"/a/b/c", "/a/b"},
 	}
 	for _, tc := range cases {
 		want, wantErr := filepath.Rel(tc.base, tc.path)
-		got, gotErr := relTo(tc.base, tc.path)
-		assert.Equal(t, wantErr == nil, gotErr == nil, "err for (%q, %q)", tc.base, tc.path)
-		if wantErr == nil {
+		wantOK := wantErr == nil && want != ".." && !strings.HasPrefix(want, "../")
+		got, gotOK := relTo(tc.base, tc.path)
+		assert.Equal(t, wantOK, gotOK, "ok for (%q, %q)", tc.base, tc.path)
+		if wantOK {
 			assert.Equal(t, want, got, "rel for (%q, %q)", tc.base, tc.path)
 		}
 	}
