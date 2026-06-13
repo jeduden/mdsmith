@@ -70,10 +70,11 @@ func (r *Rule) Category() string { return "prose" }
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	budget := r.activeBudget(f.Path)
-	count, modeLabel := r.tokenCountAndMode(string(f.Source))
+	count := r.tokenCount(f.Source)
 	if count <= budget {
 		return nil
 	}
+	modeLabel := r.modeLabel()
 
 	overage := count - budget
 	tpw := r.TokensPerWord
@@ -124,28 +125,46 @@ func (r *Rule) activeBudget(path string) int {
 	return budget
 }
 
-func (r *Rule) tokenCountAndMode(text string) (int, string) {
+// tokenCount estimates the token count of source without copying it.
+// The mode label is built separately by modeLabel, only when a
+// diagnostic is actually emitted — formatting it for every under-budget
+// file was measurable on whole-corpus runs.
+func (r *Rule) tokenCount(source []byte) int {
 	switch normalizeMode(r.Mode) {
 	case "tokenizer":
 		tok := normalizeTokenizer(r.Tokenizer)
 		enc := normalizeEncoding(r.Encoding)
-		count := tokenizerCount(text, tok, enc)
-		return count, fmt.Sprintf("tokenizer:%s/%s", tok, enc)
+		return tokenizerCount(source, tok, enc)
 	default:
 		tpw := r.TokensPerWord
 		if tpw <= 0 {
 			tpw = defaultTokensPerWord
 		}
-		words := mdtext.CountWords(text)
+		words := mdtext.CountWordsBytes(source)
 		count := int(math.Round(float64(words) * tpw))
 		if count < 0 {
 			count = 0
 		}
-		return count, fmt.Sprintf("heuristic:tokens-per-word=%.2f", tpw)
+		return count
 	}
 }
 
-func tokenizerCount(text, tokenizer, encoding string) int {
+// modeLabel names the counting mode for the over-budget diagnostic.
+func (r *Rule) modeLabel() string {
+	switch normalizeMode(r.Mode) {
+	case "tokenizer":
+		return fmt.Sprintf("tokenizer:%s/%s",
+			normalizeTokenizer(r.Tokenizer), normalizeEncoding(r.Encoding))
+	default:
+		tpw := r.TokensPerWord
+		if tpw <= 0 {
+			tpw = defaultTokensPerWord
+		}
+		return fmt.Sprintf("heuristic:tokens-per-word=%.2f", tpw)
+	}
+}
+
+func tokenizerCount(text []byte, tokenizer, encoding string) int {
 	_ = tokenizer // reserved for future tokenizer families.
 
 	var re *regexp.Regexp
@@ -156,7 +175,7 @@ func tokenizerCount(text, tokenizer, encoding string) int {
 		re = cl100kPattern
 	}
 
-	return len(re.FindAllStringIndex(text, -1))
+	return len(re.FindAllIndex(text, -1))
 }
 
 // ApplySettings implements rule.Configurable.

@@ -23,6 +23,11 @@ func TestMatch_Basename(t *testing.T) {
 func TestMatch_CleanedPath(t *testing.T) {
 	assert.True(t, globpath.Match("vendor/**", "vendor/./lib.md"),
 		"cleaned path: vendor/./lib.md should match vendor/**")
+	// "vendor/*.md" cannot match the raw "vendor/./lib.md" (the "."
+	// segment defeats the single-star), so only the cleaned-path
+	// candidate produces this match.
+	assert.True(t, globpath.Match("vendor/*.md", "vendor/./lib.md"),
+		"match must fall through to the cleaned-path candidate")
 }
 
 func TestMatch_DoubleStarRecursion(t *testing.T) {

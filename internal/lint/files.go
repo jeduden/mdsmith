@@ -448,9 +448,11 @@ func addDirFiles(dir string, opts ResolveOpts, addFile func(string)) error {
 
 // walkDir recursively walks a directory and returns all markdown files.
 // When useGitignore is true, files matched by .gitignore patterns are skipped.
-// Symlinks are skipped unless followSymlinks is true. filepath.Walk is
-// Lstat-based, so symlinked directories encountered during the walk are
-// never descended into either way.
+// Symlinks are skipped unless followSymlinks is true. filepath.WalkDir
+// reports the Lstat-based entry type, so symlinked directories
+// encountered during the walk are never descended into either way —
+// and unlike filepath.Walk it costs no extra lstat per entry, which
+// was one syscall per workspace file on the check hot path.
 func walkDir(dir string, useGitignore, followSymlinks bool) ([]string, error) {
 	var matcher *gitignore.Matcher
 	if useGitignore {
@@ -458,15 +460,15 @@ func walkDir(dir string, useGitignore, followSymlinks bool) ([]string, error) {
 	}
 
 	var files []string
-	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 
-		// Symlink entries always have Lstat-based info with
-		// IsDir()==false under filepath.Walk, so a plain return nil
-		// here also means Walk won't try to descend.
-		if info.Mode()&os.ModeSymlink != 0 {
+		// Symlink entries always have an Lstat-based type with
+		// IsDir()==false under filepath.WalkDir, so a plain return nil
+		// here also means WalkDir won't try to descend.
+		if d.Type()&os.ModeSymlink != 0 {
 			if !followSymlinks {
 				return nil
 			}
@@ -481,21 +483,21 @@ func walkDir(dir string, useGitignore, followSymlinks bool) ([]string, error) {
 			}
 		}
 
-		if matcher != nil && isGitignored(matcher, path, info.IsDir()) {
-			if info.IsDir() {
+		if matcher != nil && isGitignored(matcher, path, d.IsDir()) {
+			if d.IsDir() {
 				return filepath.SkipDir
 			}
 			return nil
 		}
 
-		if info.IsDir() {
+		if d.IsDir() {
 			return nil
 		}
 		// Only regular files and opted-in symlinks (target regular,
 		// verified above) are markdown candidates. Skip FIFOs,
 		// devices, and sockets to avoid blocking reads later.
-		isSymlink := info.Mode()&os.ModeSymlink != 0
-		if !isSymlink && !info.Mode().IsRegular() {
+		isSymlink := d.Type()&os.ModeSymlink != 0
+		if !isSymlink && !d.Type().IsRegular() {
 			return nil
 		}
 		if isMarkdown(path) {

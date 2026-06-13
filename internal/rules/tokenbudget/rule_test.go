@@ -40,6 +40,18 @@ func TestCheck_HeuristicBudgetExceeded(t *testing.T) {
 		"message should include words-over-budget estimate, got: %s", d.Message)
 }
 
+func TestCheck_HeuristicZeroTokensPerWord_LabelsDefault(t *testing.T) {
+	// A zero TokensPerWord falls back to the default ratio in both the
+	// count and the diagnostic's mode label.
+	f := mustFile(t, "test.md", "one two three four five six")
+	r := &Rule{Max: 3, Mode: "heuristic"}
+	diags := r.Check(f)
+
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
+	require.Contains(t, diags[0].Message, "mode=heuristic:tokens-per-word=1.33",
+		"label must show the default ratio, got: %s", diags[0].Message)
+}
+
 func TestCheck_HeuristicAtBudget_NoDiagnostic(t *testing.T) {
 	f := mustFile(t, "test.md", "one two three four")
 	r := &Rule{Max: 4, Mode: "heuristic", TokensPerWord: 1.0}

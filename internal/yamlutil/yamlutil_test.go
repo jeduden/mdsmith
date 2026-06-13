@@ -79,6 +79,27 @@ func TestUnmarshalSafe(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "", out.Title)
 	})
+
+	t.Run("rejects undefined alias", func(t *testing.T) {
+		// An alias with no anchor surfaces as a parse error containing
+		// "unknown anchor", which the scan converts to the alias
+		// rejection like a defined one.
+		var out map[string]any
+		err := yamlutil.UnmarshalSafe([]byte("key: *missing\n"), &out)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "anchors/aliases are not permitted")
+	})
+
+	t.Run("syntax error in a later document decodes the first", func(t *testing.T) {
+		// yaml.Unmarshal never reads past the first document, so a
+		// malformed second document must not fail the decode.
+		var out struct {
+			Title string `yaml:"title"`
+		}
+		err := yamlutil.UnmarshalSafe([]byte("title: a\n---\nkey: [unclosed\n"), &out)
+		require.NoError(t, err)
+		assert.Equal(t, "a", out.Title)
+	})
 }
 
 func TestUnmarshalNodeSafe(t *testing.T) {

@@ -197,6 +197,14 @@ func IsSpace(r rune) bool {
 	return unicode.IsSpace(r)
 }
 
+// asciiSpace marks the ASCII bytes [IsSpace] reports as spaces, so the
+// word-count scans below classify ASCII bytes with one table load
+// instead of a rune decode plus comparisons — the same table-driven
+// shape strings.Fields uses for its ASCII fast path.
+var asciiSpace = [utf8.RuneSelf]bool{
+	'\t': true, '\n': true, '\v': true, '\f': true, '\r': true, ' ': true,
+}
+
 // CountWords counts whitespace-delimited words in text. It is exactly
 // len(strings.Fields(text)) — a word is a maximal run of non-space
 // runes, space being [IsSpace] (exactly unicode.IsSpace) — but counts
@@ -205,14 +213,61 @@ func IsSpace(r rune) bool {
 // strings.Fields built only to be discarded was ~0.48 GB over the
 // 600-file check gate (plan 175 profiling).
 func CountWords(text string) int {
+	return countWordsString(text)
+}
+
+// CountWordsBytes is CountWords for a []byte source, so whole-file
+// callers (token-budget's heuristic mode) need not copy the source
+// into a string first.
+func CountWordsBytes(text []byte) int {
 	n := 0
 	inWord := false
-	for _, r := range text {
-		if IsSpace(r) {
-			inWord = false
+	for i := 0; i < len(text); {
+		c := text[i]
+		if c < utf8.RuneSelf {
+			i++
+			if asciiSpace[c] {
+				inWord = false
+			} else if !inWord {
+				inWord = true
+				n++
+			}
 			continue
 		}
-		if !inWord {
+		r, size := utf8.DecodeRune(text[i:])
+		i += size
+		if unicode.IsSpace(r) {
+			inWord = false
+		} else if !inWord {
+			inWord = true
+			n++
+		}
+	}
+	return n
+}
+
+// countWordsString mirrors [CountWordsBytes] for string input; the two
+// loops stay byte-identical in shape so they cannot drift.
+func countWordsString(text string) int {
+	n := 0
+	inWord := false
+	for i := 0; i < len(text); {
+		c := text[i]
+		if c < utf8.RuneSelf {
+			i++
+			if asciiSpace[c] {
+				inWord = false
+			} else if !inWord {
+				inWord = true
+				n++
+			}
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(text[i:])
+		i += size
+		if unicode.IsSpace(r) {
+			inWord = false
+		} else if !inWord {
 			inWord = true
 			n++
 		}
@@ -251,20 +306,34 @@ type wordCounter struct {
 	inWord bool
 }
 
-// writeBytes folds b into the running count, decoding UTF-8 runes
-// one at a time. Equivalent to feeding b through [CountWords] except
-// that the inWord state is shared with later writeBytes / writeSpace
-// calls so two adjacent calls do not introduce a spurious word break.
+// writeBytes folds b into the running count. Equivalent to feeding b
+// through [CountWords] except that the inWord state is shared with
+// later writeBytes / writeSpace calls so two adjacent calls do not
+// introduce a spurious word break. ASCII bytes are classified through
+// the asciiSpace table without a rune decode, the same fast path
+// [CountWordsBytes] uses — this is the per-segment hot path
+// CountWordsInNode drives for every paragraph.
 func (wc *wordCounter) writeBytes(b []byte) {
 	for len(b) > 0 {
+		c := b[0]
+		if c < utf8.RuneSelf {
+			b = b[1:]
+			if asciiSpace[c] {
+				wc.inWord = false
+			} else if !wc.inWord {
+				wc.inWord = true
+				wc.n++
+			}
+			continue
+		}
 		r, size := utf8.DecodeRune(b)
+		b = b[size:]
 		if IsSpace(r) {
 			wc.inWord = false
 		} else if !wc.inWord {
 			wc.inWord = true
 			wc.n++
 		}
-		b = b[size:]
 	}
 }
 
@@ -316,15 +385,18 @@ func CountSentences(text string) int {
 		return 0
 	}
 	count := 0
-	runes := []rune(text)
-	for i, r := range runes {
-		if r == '.' || r == '!' || r == '?' {
-			if i == len(runes)-1 {
-				count++
-			} else if IsSpace(runes[i+1]) {
-				count++
-			}
+	// Track whether the previous rune ended a sentence instead of
+	// materialising []rune(text) for lookahead — the rune slice was
+	// one whole-text allocation per call on the check hot path.
+	prevTerminal := false
+	for _, r := range text {
+		if prevTerminal && IsSpace(r) {
+			count++
 		}
+		prevTerminal = r == '.' || r == '!' || r == '?'
+	}
+	if prevTerminal {
+		count++
 	}
 	if count == 0 {
 		return 1

@@ -187,4 +187,7 @@ footer: |
 | 2606111049 | ✅     |        | [Harden WASM size test to match production build](plan/2606111049_wasm-size-test-hardening.md)                                          |
 | 2606111050 | ✅     |        | [Guard schema.chmodFile with a mutex like fix.chmodFile](plan/2606111050_schema-chmodfile-mutex.md)                                     |
 | 2606120633 | ✅     |        | [Wire PGO into the release build without a committed profile](plan/2606120633_release-built-pgo-profile.md)                             |
+| 2606130836 | 🔲     | opus   | [Pool the per-file source-read buffer across lintFile passes](plan/2606130836_pool-source-read-buffer.md)                               |
+| 2606130837 | 🔲     | opus   | [Fast-path front-matter field reads for cross-file rules](plan/2606130837_frontmatter-fast-scan.md)                                     |
+| 2606130838 | 🔲     | sonnet | [Memoize linkgraph link and image extraction on the File](plan/2606130838_memoize-link-extraction.md)                                   |
 <?/catalog?>

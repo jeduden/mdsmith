@@ -66,28 +66,77 @@ func RejectYAMLAliases(data []byte) error {
 	}
 }
 
+// parseSafeDocuments decodes data document by document into yaml.Node
+// trees, rejecting anchors/aliases anywhere in the stream, and returns
+// the first document's node (nil when the input holds no document).
+// Decoding into yaml.Node does not expand aliases, so the scan is safe
+// even for billion-laughs payloads. A syntax error in the first
+// document is returned for the caller's decode step to surface; a
+// syntax error in a later document ends the scan silently, matching
+// yaml.Unmarshal, which never reads past the first document.
+//
+// This single parse replaces the former RejectYAMLAliases + raw-decode
+// pair inside the wrappers below: front matter and directive bodies
+// are parsed once per call instead of twice.
+func parseSafeDocuments(data []byte) (*yaml.Node, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	var first *yaml.Node
+	for i := 0; ; i++ {
+		var doc yaml.Node
+		err := dec.Decode(&doc)
+		if err == io.EOF {
+			return first, nil
+		}
+		if err != nil {
+			// An undefined alias causes a parse error containing
+			// "unknown anchor". Reject this as evidence of alias usage.
+			if strings.Contains(err.Error(), "unknown anchor") {
+				return nil, fmt.Errorf("yaml anchors/aliases are not permitted")
+			}
+			if i == 0 {
+				return nil, err
+			}
+			return first, nil
+		}
+		if hasYAMLAnchorOrAlias(&doc) {
+			return nil, fmt.Errorf("yaml anchors/aliases are not permitted")
+		}
+		if i == 0 {
+			first = &doc
+		}
+	}
+}
+
 // UnmarshalSafe rejects YAML anchors/aliases then unmarshals data into v.
 // Use this for all user-supplied YAML content (config files, front matter,
 // directive parameters).
 func UnmarshalSafe(data []byte, v any) error {
-	if err := RejectYAMLAliases(data); err != nil {
+	first, err := parseSafeDocuments(data)
+	if err != nil {
 		return err
 	}
-	return yaml.Unmarshal(data, v)
+	if first == nil {
+		// No document: leave v at its zero value, like yaml.Unmarshal.
+		return nil
+	}
+	return first.Decode(v)
 }
 
 // UnmarshalNodeSafe rejects YAML anchors/aliases then unmarshals data into a
 // yaml.Node document node. Use this when raw node inspection is needed before
 // typed decoding (e.g. checking top-level key presence or tag types).
 func UnmarshalNodeSafe(data []byte) (yaml.Node, error) {
-	if err := RejectYAMLAliases(data); err != nil {
+	first, err := parseSafeDocuments(data)
+	if err != nil {
 		return yaml.Node{}, err
 	}
-	var node yaml.Node
-	if err := yaml.Unmarshal(data, &node); err != nil {
-		return yaml.Node{}, err
+	if first == nil {
+		return yaml.Node{}, nil
 	}
-	return node, nil
+	return *first, nil
 }
 
 // Marshal is a thin wrapper around yaml.Marshal for consistency with

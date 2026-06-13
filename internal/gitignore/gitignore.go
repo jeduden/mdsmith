@@ -261,17 +261,54 @@ func (m *Matcher) DirChainIgnored(dir string, memo map[string]bool) bool {
 	return v
 }
 
+// relTo returns path relative to base when path lies within base, with
+// ok=false when it does not (filepath.Rel would have produced a
+// ".."-prefixed result, which no gitignore rule can match). The fast
+// paths are zero-allocation prefix strips — filepath.Rel re-cleans both
+// arguments on every call, which dominated the matcher's CPU when every
+// rule of every .gitignore recomputed it per candidate path. Two
+// distinct rooted Unix paths settle on the prefix alone; anything else
+// (Windows volumes, relative inputs) falls back to filepath.Rel.
+func relTo(base, path string) (rel string, ok bool) {
+	if base == path {
+		return ".", true
+	}
+	if len(path) > len(base) && path[len(base)] == filepath.Separator &&
+		path[:len(base)] == base {
+		return path[len(base)+1:], true
+	}
+	if base == string(filepath.Separator) &&
+		len(path) > 1 && path[0] == filepath.Separator {
+		return path[1:], true
+	}
+	if filepath.Separator == '/' &&
+		strings.HasPrefix(base, "/") && strings.HasPrefix(path, "/") {
+		return "", false
+	}
+	r, err := filepath.Rel(base, path)
+	if err != nil || r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return r, true
+}
+
 // matchRule checks whether a single rule matches the given absolute path.
 func matchRule(r ignoreRule, absPath string) bool {
-	// Compute the path relative to the rule's base directory.
-	rel, err := filepath.Rel(r.base, absPath)
-	if err != nil {
+	// Compute the path relative to the rule's base directory; paths
+	// outside the rule's base never match.
+	rel, ok := relTo(r.base, absPath)
+	if !ok {
 		return false
 	}
 	// Normalize to forward slashes for matching.
 	rel = filepath.ToSlash(rel)
 
-	// Paths outside the rule's base should not match.
+	// A relative form that still begins with ".." never matches: it
+	// either escapes the base or names a top segment literally
+	// starting with "..". relTo's fast path returns the uncleaned
+	// suffix, so this guard also covers an interior ".." in an
+	// uncleaned input — preserving the pre-relTo filepath.Rel form,
+	// which cleaned the path and then rejected a ".." prefix.
 	if strings.HasPrefix(rel, "..") {
 		return false
 	}

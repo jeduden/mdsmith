@@ -14,6 +14,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/bmatcuk/doublestar/v4"
 )
@@ -52,22 +53,48 @@ func ContainsDotDotSegment(p string) bool {
 		strings.Contains(p, "/../")
 }
 
+// validPatterns caches doublestar.ValidatePattern verdicts. Match runs
+// once per pattern per file on the check hot path (ignore lists, kind
+// path-patterns, overrides), and doublestar.Match re-validates its
+// pattern on every call — the validation walk showed up as ~4% of check
+// CPU. Patterns reaching this package come from bounded config
+// surfaces, so the cache stays small for the life of the process.
+var validPatterns sync.Map // pattern string -> bool
+
+// patternValid reports whether pattern is a valid doublestar pattern,
+// memoizing the verdict. LoadOrStore collapses the miss path to one
+// map op and keeps concurrent first-touch callers from each storing
+// their own (identical) verdict.
+func patternValid(pattern string) bool {
+	if v, ok := validPatterns.Load(pattern); ok {
+		return v.(bool)
+	}
+	actual, _ := validPatterns.LoadOrStore(pattern, doublestar.ValidatePattern(pattern))
+	return actual.(bool)
+}
+
 // Match reports whether path matches pattern using the doublestar matcher.
 // It checks the raw path, the cleaned path, and the base name so that
 // patterns without path separators (e.g. "slides.md") match files in any
 // directory.
 // Invalid patterns return false.
 func Match(pattern, path string) bool {
-	cleanPath := filepath.Clean(path)
-	base := filepath.Base(path)
-
-	for _, candidate := range []string{path, cleanPath, base} {
-		if ok, err := doublestar.Match(
-			filepath.ToSlash(pattern),
-			filepath.ToSlash(candidate),
-		); err == nil && ok {
-			return true
-		}
+	pat := filepath.ToSlash(pattern)
+	if !patternValid(pat) {
+		return false
+	}
+	if doublestar.MatchUnvalidated(pat, filepath.ToSlash(path)) {
+		return true
+	}
+	// Identical candidates cannot change the verdict, so the cleaned
+	// path and base name only run when they differ from the raw path.
+	if cleanPath := filepath.Clean(path); cleanPath != path &&
+		doublestar.MatchUnvalidated(pat, filepath.ToSlash(cleanPath)) {
+		return true
+	}
+	if base := filepath.Base(path); base != path &&
+		doublestar.MatchUnvalidated(pat, filepath.ToSlash(base)) {
+		return true
 	}
 	return false
 }

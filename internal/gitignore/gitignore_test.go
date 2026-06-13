@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -35,6 +36,69 @@ func TestTrimTrailingWhitespace_EmptyString(t *testing.T) {
 
 func TestTrimTrailingWhitespace_AllWhitespace(t *testing.T) {
 	assert.Equal(t, "", trimTrailingWhitespace("   "))
+}
+
+// --- relTo tests ---
+
+// TestRelTo_AgreesWithFilepathRel pins relTo to filepath.Rel's answer
+// for the absolute, cleaned inputs the matcher sees: within-base paths
+// return Rel's result with ok=true, and paths outside the base (where
+// Rel yields "" or a ".."-prefixed result no rule can match) return
+// ok=false.
+func TestRelTo_AgreesWithFilepathRel(t *testing.T) {
+	cases := []struct{ base, path string }{
+		{"/repo", "/repo/file.md"},
+		{"/repo", "/repo/sub/dir/file.md"},
+		{"/repo", "/repo"},
+		{"/repo/sub", "/repo/other/file.md"},
+		{"/repo/sub", "/repo/subdir/file.md"},
+		{"/", "/file.md"},
+		{"/", "/sub/file.md"},
+		{"/a/b", "/a/bc/d"},
+		{"/a/b/c", "/a/b"},
+	}
+	for _, tc := range cases {
+		want, wantErr := filepath.Rel(tc.base, tc.path)
+		wantOK := wantErr == nil && want != ".." && !strings.HasPrefix(want, "../")
+		got, gotOK := relTo(tc.base, tc.path)
+		assert.Equal(t, wantOK, gotOK, "ok for (%q, %q)", tc.base, tc.path)
+		if wantOK {
+			assert.Equal(t, want, got, "rel for (%q, %q)", tc.base, tc.path)
+		}
+	}
+}
+
+// TestRelTo_RelativeInputsFallBackToRel pins the filepath.Rel fallback
+// for inputs outside the absolute fast paths: relative bases and paths
+// (defensive — IsIgnored's contract is absolute paths) still resolve
+// exactly as filepath.Rel does, and unrelated relative trees report
+// ok=false.
+func TestRelTo_RelativeInputsFallBackToRel(t *testing.T) {
+	// "./repo" vs "repo/..." defeats the prefix strip but Rel still
+	// resolves it inside the base.
+	got, ok := relTo("./repo", "repo/sub/file.md")
+	require.True(t, ok)
+	assert.Equal(t, filepath.Join("sub", "file.md"), got)
+
+	_, ok = relTo("repo/a", "other/b")
+	assert.False(t, ok, "unrelated relative trees yield a ..-prefixed Rel result")
+}
+
+// TestIsIgnored_DotDotPrefixedNameNeverMatches pins the guard that a
+// within-base entry whose basename begins with ".." is never matched,
+// matching the pre-relTo behavior (filepath.Rel returned "..name" and
+// the matcher rejected any ".."-prefixed relative form).
+func TestIsIgnored_DotDotPrefixedNameNeverMatches(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".gitignore"), []byte("*config\n..cache\n"), 0o644))
+	m := NewMatcher(dir)
+	// Both a "*config" glob and an exact "..cache" rule would match
+	// the basename if the ".." guard were dropped.
+	assert.False(t, m.IsIgnored(filepath.Join(dir, "..config"), false),
+		"a file named ..config must not be gitignore-matched")
+	assert.False(t, m.IsIgnored(filepath.Join(dir, "..cache"), true),
+		"a dir named ..cache must not be gitignore-matched")
 }
 
 // --- NewMatcher tests ---

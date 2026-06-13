@@ -3,6 +3,7 @@ package catalog
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -3710,6 +3711,37 @@ func TestSpec_GitignoreFiltersMatchedFiles(t *testing.T) {
 
 	indexPath := filepath.Join(dir, "index.md")
 	src := "<?catalog\nglob: \"**/*.md\"\n?>\n- [ok.md](sub/ok.md)\n- [visible.md](visible.md)\n<?/catalog?>\n"
+	f, err := lint.NewFile(indexPath, []byte(src))
+	require.NoError(t, err)
+	f.FS = os.DirFS(dir)
+	d := dir // capture for closure
+	f.GitignoreFunc = func() *gitignore.Matcher { return gitignore.NewMatcher(d) }
+
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestSpec_GlobSymlinks_FileFollowedDirAndBrokenSkipped(t *testing.T) {
+	// The glob walk's DirEntry reports symlinks without following
+	// them; the resolver stats those entries so a symlink to a file
+	// is catalogued, while a symlink to a directory and a broken
+	// symlink are skipped — the same follow semantics the per-match
+	// fs.Stat gave before the GlobWalk switch.
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation requires extra privileges on Windows")
+	}
+	dir := t.TempDir()
+
+	writeFile(t, dir, "real.md", "# Real\n")
+	mkdirAll(t, dir, "sub")
+	require.NoError(t, os.Symlink(filepath.Join(dir, "real.md"), filepath.Join(dir, "link.md")))
+	require.NoError(t, os.Symlink(filepath.Join(dir, "sub"), filepath.Join(dir, "dirlink.md")))
+	require.NoError(t, os.Symlink(filepath.Join(dir, "missing.md"), filepath.Join(dir, "broken.md")))
+
+	indexPath := filepath.Join(dir, "index.md")
+	src := "<?catalog\nglob: \"*.md\"\n?>\n" +
+		"- [link.md](link.md)\n- [real.md](real.md)\n<?/catalog?>\n"
 	f, err := lint.NewFile(indexPath, []byte(src))
 	require.NoError(t, err)
 	f.FS = os.DirFS(dir)
