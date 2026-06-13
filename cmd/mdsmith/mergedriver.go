@@ -721,6 +721,16 @@ func ensurePreMergeCommitHook(repoRoot string) error {
 	hooksDir := resolveHooksDir(repoRoot)
 	hookPath := filepath.Join(hooksDir, "pre-merge-commit")
 
+	// Reject symlinks and non-regular files before any I/O to reduce the
+	// risk of following a link to a path outside the repository.
+	if info, err := lstatFn(hookPath); err == nil {
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("%s: not a regular file", hookPath)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("reading existing hook %s: %w", hookPath, err)
+	}
+
 	// Refuse to clobber a hook the user wrote themselves; replace
 	// only hooks that carry our marker. A non-ENOENT read error is
 	// treated as a safety failure to avoid silently overwriting an
@@ -745,14 +755,11 @@ func ensurePreMergeCommitHook(repoRoot string) error {
 	if err := os.MkdirAll(hooksDir, 0o755); err != nil {
 		return fmt.Errorf("creating %s: %w", hooksDir, err)
 	}
-	if err := os.WriteFile(hookPath, []byte(content), 0o755); err != nil {
-		return fmt.Errorf("writing %s: %w", hookPath, err)
-	}
-	// Explicitly set execute permissions after writing. WriteFile's perm
-	// argument is masked by umask on creation and ignored when the file
-	// already exists, so a separate Chmod ensures the hook is executable.
-	if err := chmodFunc(hookPath, 0o755); err != nil {
-		return fmt.Errorf("setting permissions on %s: %w", hookPath, err)
+	// Use atomic temp-then-rename so that even if a symlink is swapped in
+	// between the lstat check and the write, os.Rename replaces the
+	// directory entry rather than following the link.
+	if err := writeHookFile(hookPath, []byte(content)); err != nil {
+		return err
 	}
 	return nil
 }
@@ -787,6 +794,50 @@ var executableFunc = os.Executable
 // chmodFunc is the function used to set file permissions.
 // Overridden in tests to exercise the Chmod error path.
 var chmodFunc = os.Chmod
+
+// hookCreateTempFn is a variable so tests can substitute a failing
+// implementation to exercise the CreateTemp error path in writeHookFile.
+var hookCreateTempFn = os.CreateTemp
+
+// writeHookFile writes content to hookPath using a temp-then-rename strategy
+// so that os.Rename replaces the directory entry rather than following a
+// symlink that may have been introduced between the lstat check in
+// ensurePreMergeCommitHook and this call.
+func writeHookFile(hookPath string, data []byte) error {
+	// Re-check that path is still a regular file (or absent) before writing.
+	if info, err := lstatFn(hookPath); err == nil {
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("writing %s: not a regular file", hookPath)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("writing %s: lstat: %w", hookPath, err)
+	}
+	dir := filepath.Dir(hookPath)
+	tmp, err := hookCreateTempFn(dir, ".mdsmith-hook-*")
+	if err != nil {
+		return fmt.Errorf("writing %s: %w", hookPath, err)
+	}
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("writing %s: %w", hookPath, err)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("writing %s: %w", hookPath, err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("writing %s: %w", hookPath, err)
+	}
+	if err := chmodFunc(tmpName, 0o755); err != nil {
+		return fmt.Errorf("setting permissions on %s: %w", hookPath, err)
+	}
+	if err := os.Rename(tmpName, hookPath); err != nil {
+		return fmt.Errorf("writing %s: %w", hookPath, err)
+	}
+	return nil
+}
 
 // resolveInstalledBinary returns the absolute path to the mdsmith
 // binary to use as the git merge driver. It prefers the current

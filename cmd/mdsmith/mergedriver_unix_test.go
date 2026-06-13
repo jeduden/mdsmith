@@ -116,3 +116,34 @@ func TestFixMergedContent_OursIsSymlink_ExitsTwo(t *testing.T) {
 	_, code := fixMergedContent([]byte("# content\n"), oursLink, "pathname.md", 1<<20)
 	assert.Equal(t, 2, code)
 }
+
+// TestEnsurePreMergeCommitHook_SymlinkAtHookPath_ReturnsError places a symlink
+// at the hook path and asserts ensurePreMergeCommitHook returns an error
+// instead of following the link.
+func TestEnsurePreMergeCommitHook_SymlinkAtHookPath_ReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	external := t.TempDir()
+	hooksDir := filepath.Join(dir, ".git", "hooks")
+	require.NoError(t, os.MkdirAll(hooksDir, 0o755))
+
+	// Create the symlink target outside the repo.
+	target := filepath.Join(external, "external-hook")
+	require.NoError(t, os.WriteFile(target, []byte("#!/bin/sh\n"), 0o644))
+
+	hookPath := filepath.Join(hooksDir, "pre-merge-commit")
+	require.NoError(t, os.Symlink(target, hookPath))
+
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) { return "/usr/local/bin/mdsmith", nil }
+
+	err := ensurePreMergeCommitHook(dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not a regular file")
+
+	// Confirm the external target was not modified.
+	got, readErr := os.ReadFile(target)
+	require.NoError(t, readErr)
+	assert.Equal(t, "#!/bin/sh\n", string(got),
+		"external target must not be rewritten through the symlink")
+}
