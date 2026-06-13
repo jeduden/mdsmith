@@ -139,10 +139,10 @@ func readLimitedInto(r io.Reader, buf *[]byte, max int64) ([]byte, error) {
 }
 
 // readAllInto reads r to EOF into the caller-owned buffer *buf. It
-// reslices *buf to zero length, seeds capacity from sizeHint (like
-// readAllSized) when the buffer is too small, grows only when capacity
-// runs short, and writes the grown backing array back through buf so
-// the next call reuses it. The returned slice aliases *buf.
+// starts from (*buf)[:0], seeds capacity from sizeHint when the buffer
+// is too small, grows only when capacity runs short, and writes the
+// grown backing array back through buf so the next call reuses it.
+// The returned slice aliases *buf.
 func readAllInto(r io.Reader, buf *[]byte, max, sizeHint int64) ([]byte, error) {
 	data := (*buf)[:0]
 	if sizeHint >= 0 && sizeHint <= max {
@@ -167,12 +167,4 @@ func readAllInto(r io.Reader, buf *[]byte, max, sizeHint int64) ([]byte, error) 
 			return data, err
 		}
 	}
-}
-
-// readAllSized reads r to EOF, pre-sizing the buffer from sizeHint.
-// It delegates to readAllInto with a fresh local buffer so the two
-// functions share one grow loop.
-func readAllSized(r io.Reader, sizeHint, max int64) ([]byte, error) {
-	var buf []byte
-	return readAllInto(r, &buf, max, sizeHint)
 }

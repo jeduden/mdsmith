@@ -15,7 +15,7 @@ type errReader struct{ err error }
 
 func (e errReader) Read([]byte) (int, error) { return 0, e.err }
 
-func TestReadAllSized(t *testing.T) {
+func TestReadAllInto(t *testing.T) {
 	tests := []struct {
 		name          string
 		data          string
@@ -29,16 +29,18 @@ func TestReadAllSized(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := readAllSized(strings.NewReader(tc.data), tc.sizeHint, tc.max)
+			var buf []byte
+			got, err := readAllInto(strings.NewReader(tc.data), &buf, tc.max, tc.sizeHint)
 			require.NoError(t, err)
 			assert.Equal(t, tc.data, string(got))
 		})
 	}
 }
 
-func TestReadAllSized_PropagatesReadError(t *testing.T) {
+func TestReadAllInto_PropagatesReadError(t *testing.T) {
 	boom := errors.New("boom")
-	_, err := readAllSized(errReader{err: boom}, 10, 100)
+	var buf []byte
+	_, err := readAllInto(errReader{err: boom}, &buf, 100, 10)
 	require.ErrorIs(t, err, boom)
 }
 
