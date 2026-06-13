@@ -1024,7 +1024,10 @@ jobs:
             echo "::warning::komac checksum mismatch; skipping WinGet submission."
             exit 0
           fi
-          tar -xzf /tmp/komac.tar.gz -C /usr/local/bin/
+          if ! tar -xzf /tmp/komac.tar.gz -C /usr/local/bin/; then
+            echo "::warning::could not extract komac; skipping WinGet submission."
+            exit 0
+          fi
           installer="https://github.com/jeduden/mdsmith/releases/download/${VERSION}/mdsmith-windows-amd64.exe"
           if ! komac update jeduden.mdsmith \
             --version "${VERSION#v}" \
