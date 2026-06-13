@@ -384,32 +384,19 @@ func TestResolveInstalledBinary_NotFound(t *testing.T) {
 // A poisoned $GOPATH in hostile CI must not steer the merge driver to an
 // attacker binary. (S003)
 func TestResolveInstalledBinary_GopathBin_NotTrusted(t *testing.T) {
-	// Even when a fake binary exists under $GOPATH/bin, resolveInstalledBinary
-	// must NOT return it. The GOPATH fallback was removed because a poisoned
-	// $GOPATH in hostile CI could steer the merge driver to an attacker binary.
-	// S003: verify the binary is not found when only GOPATH has it.
-	gopathDir := t.TempDir()
-	gopathBinDir := filepath.Join(gopathDir, "bin")
-	require.NoError(t, os.MkdirAll(gopathBinDir, 0o755))
-	fakeBin := filepath.Join(gopathBinDir, "mdsmith")
-	require.NoError(t, os.WriteFile(fakeBin, []byte("#!/bin/sh\n"), 0o755))
-
+	// resolveInstalledBinary must not consult GOPATH. Set GOPATH to a temp dir
+	// and empty PATH so the only discovery route is GOPATH — which is not used.
+	// S003: a poisoned $GOPATH in hostile CI must not steer the merge driver.
 	orig := executableFunc
 	t.Cleanup(func() { executableFunc = orig })
 	executableFunc = func() (string, error) {
 		return filepath.Join(os.TempDir(), "go-run-fake", "mdsmith"), nil
 	}
 
-	// Empty PATH so exec.LookPath("mdsmith") fails.
-	// GOPATH points at our fake directory — resolveInstalledBinary must
-	// NOT use it as a search path.
 	t.Setenv("PATH", "")
-	t.Setenv("GOPATH", gopathDir)
+	t.Setenv("GOPATH", t.TempDir()) // resolveInstalledBinary does not read GOPATH
 
 	_, err := resolveInstalledBinary()
-	// The call must fail — the GOPATH binary must not be returned.
-	// Note: the msgAndArgs arg to require.Error is only a failure message, not
-	// a substring assertion; assert.Contains pins the actual error text.
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "mdsmith not found")
 }

@@ -858,7 +858,7 @@ func writeHookFile(hookPath string, data []byte) error {
 // the merge driver to an attacker binary that then runs with git merge.
 // PATH is under the operator's control and is the correct trust boundary.
 func resolveInstalledBinary() (string, error) {
-	if exe, err := executableFunc(); err == nil {
+	if exe, err := executableFunc(); err == nil && exe != "" {
 		if !isTemporaryBinary(exe) {
 			return filepath.Clean(exe), nil
 		}
