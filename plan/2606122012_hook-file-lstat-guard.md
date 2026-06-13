@@ -1,7 +1,7 @@
 ---
 id: 2606122012
 title: "Add lstat guard to hook-file install, uninstall, and status"
-status: "🔲"
+status: "✅"
 summary: >-
   S001 from the 2026-06-12 git/LSP audit: ensurePreMergeCommitHook,
   runPreMergeCommitUninstall, and runPreMergeCommitStatus all read,
@@ -35,27 +35,27 @@ temp-then-rename. The hook-file operations should match.
 
 ## Tasks
 
-- [ ] **Red**: write a failing test for `ensurePreMergeCommitHook` that
+- [x] **Red**: write a failing test for `ensurePreMergeCommitHook` that
   places a symlink at `.git/hooks/pre-merge-commit` and asserts the
   function returns an error instead of following the link.
-- [ ] **Green**: add an `os.Lstat` guard in `ensurePreMergeCommitHook`
+- [x] **Green**: add an `os.Lstat` guard in `ensurePreMergeCommitHook`
   before `os.ReadFile`. Replace `os.WriteFile` with an atomic
   temp-then-rename helper (`writeHookFile`) mirroring
   `writeGitattributesFile`.
-- [ ] **Red**: write a failing test for `runPreMergeCommitUninstall`
+- [x] **Red**: write a failing test for `runPreMergeCommitUninstall`
   that places a symlink and asserts `os.Remove` is not called.
-- [ ] **Green**: add lstat guards in `runPreMergeCommitUninstall`
+- [x] **Green**: add lstat guards in `runPreMergeCommitUninstall`
   before `os.ReadFile` and before `os.Remove`; reject if not regular.
-- [ ] **Red/Green**: add lstat guard to the `runPreMergeCommitStatus`
+- [x] **Red/Green**: add lstat guard to the `runPreMergeCommitStatus`
   `os.ReadFile` call; reject symlinks before reading.
-- [ ] Run `go test ./cmd/mdsmith/... ./internal/...`; all pass.
-- [ ] Run `go run ./cmd/mdsmith check .`; no regressions.
+- [x] Run `go test ./cmd/mdsmith/... ./internal/...`; all pass.
+- [x] Run `go run ./cmd/mdsmith check .`; no regressions.
 
 ## Acceptance Criteria
 
-- A symlink at `.git/hooks/pre-merge-commit` causes `merge-driver
+- [x] A symlink at `.git/hooks/pre-merge-commit` causes `merge-driver
   install`, `pre-merge-commit install`, `pre-merge-commit uninstall`,
   and `pre-merge-commit status` to each return a clear error instead
   of following the link.
-- The fix uses the same pattern as `WriteGitattributes`.
-- All existing tests pass.
+- [x] The fix uses the same pattern as `WriteGitattributes`.
+- [x] All existing tests pass.

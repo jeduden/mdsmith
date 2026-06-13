@@ -187,7 +187,7 @@ footer: |
 | 2606111049 | ✅     |        | [Harden WASM size test to match production build](plan/2606111049_wasm-size-test-hardening.md)                                          |
 | 2606111050 | ✅     |        | [Guard schema.chmodFile with a mutex like fix.chmodFile](plan/2606111050_schema-chmodfile-mutex.md)                                     |
 | 2606120633 | ✅     |        | [Wire PGO into the release build without a committed profile](plan/2606120633_release-built-pgo-profile.md)                             |
-| 2606122012 | 🔲     | sonnet | [Add lstat guard to hook-file install, uninstall, and status](plan/2606122012_hook-file-lstat-guard.md)                                 |
+| 2606122012 | ✅     | sonnet | [Add lstat guard to hook-file install, uninstall, and status](plan/2606122012_hook-file-lstat-guard.md)                                 |
 | 2606122013 | 🔲     | sonnet | [Security hardening batch — 2026-06-12 git/LSP audit](plan/2606122013_security-hardening-batch-2026-06-12.md)                           |
 | 2606122014 | 🔲     | sonnet | [Add SHA256 checksum verification for komac download in release.yml](plan/2606122014_komac-sha256-checksum.md)                          |
 | 2606122015 | 🔲     | sonnet | [Security hardening batch — 2026-06-12 full-repo audit](plan/2606122015_security-hardening-batch-full-repo.md)                          |
