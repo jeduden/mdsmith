@@ -6,7 +6,6 @@ package blockquotewhitespace
 import (
 	"bytes"
 	"regexp"
-	"strings"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -164,31 +163,41 @@ func (r *Rule) checkBlankBetween(f *lint.File) []lint.Diagnostic {
 // Fix implements rule.FixableRule. Collapses multiple spaces after > to one
 // space on every non-code-block blockquote line. MD028 violations are not
 // auto-fixed because the intent (one quote vs two) is ambiguous.
+// bqFixedSpace is the canonical single-space replacement for collapsed
+// multi-space runs in blockquote prefixes; defined at package scope to avoid
+// allocating []byte("> ") on every ReplaceAll call.
+var bqFixedSpace = []byte("> ")
+
 func (r *Rule) Fix(f *lint.File) []byte {
 	codeLines := lint.CollectCodeBlockLines(f)
-	lines := make([]string, len(f.Lines))
+	var buf bytes.Buffer
+	buf.Grow(len(f.Source))
 	for i, line := range f.Lines {
+		if i > 0 {
+			buf.WriteByte('\n')
+		}
 		lineNum := i + 1
 		if _, ok := codeLines[lineNum]; ok {
-			lines[i] = string(line)
+			buf.Write(line)
 			continue
 		}
 		prefix := reBlockquotePrefix.Find(line)
 		if !reMultiSpace.Match(prefix) {
-			lines[i] = string(line)
+			buf.Write(line)
 			continue
 		}
-		fixedPrefix := reMultiSpace.ReplaceAll(prefix, []byte("> "))
+		fixedPrefix := reMultiSpace.ReplaceAll(prefix, bqFixedSpace)
 		content := line[len(prefix):]
 		if len(content) == 0 {
 			// No content after the marker chain: trim trailing space so we don't
 			// introduce a trailing-whitespace violation that needs a second pass.
-			lines[i] = strings.TrimRight(string(fixedPrefix), " \t")
+			buf.Write(bytes.TrimRight(fixedPrefix, " \t"))
 		} else {
-			lines[i] = string(fixedPrefix) + string(content)
+			buf.Write(fixedPrefix)
+			buf.Write(content)
 		}
 	}
-	return []byte(strings.Join(lines, "\n"))
+	return buf.Bytes()
 }
 
 // emptyBQLine finds the source line of n, an empty AST blockquote node with

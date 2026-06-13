@@ -391,3 +391,29 @@ func TestCheck_MessageGrammar(t *testing.T) {
 	assert.Contains(t, diags2[0].Message, "1 space")
 	assert.NotContains(t, diags2[0].Message, "1 spaces")
 }
+
+// TestFix_BytesJoinAllocBudget verifies that Fix uses [][]byte + bytes.Join
+// instead of []string + strings.Join, eliminating per-line string-conversion
+// allocs. Budget is below the current 9-alloc baseline.
+func TestFix_BytesJoinAllocBudget(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	src := "-  item one\n-   item two\n*  item three\n"
+	f, err := lint.NewFile("test.md", []byte(src))
+	require.NoError(t, err)
+	r := &Rule{}
+	_ = r.Fix(f) // warm up
+	const (
+		runs   = 100
+		// Current: 9 allocs (string conversions + join + []byte conversion).
+		// After [][]byte refactor: ~5 allocs; budget = 6 is tight enough.
+		budget = 6
+	)
+	allocs := testing.AllocsPerRun(runs, func() {
+		_ = r.Fix(f)
+	})
+	require.LessOrEqualf(t, allocs, float64(budget),
+		"Fix allocs/op = %.0f (budget=%d); use [][]byte + bytes.Join to eliminate string-conversion allocs",
+		allocs, budget)
+}

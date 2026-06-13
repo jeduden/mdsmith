@@ -228,3 +228,32 @@ func TestCheck_EmptyFencedCodeBlockAdjacentToList_NoDiagnostics(t *testing.T) {
 	diags := r.Check(f)
 	assert.Len(t, diags, 0, "expected 0 diagnostics, got %d: %+v", len(diags), diags)
 }
+
+// TestFix_PreSizeAllocBudget verifies that Fix pre-sizes resultLines with
+// make([][]byte, 0, cap) instead of starting from nil, so the backing array
+// is allocated once rather than growing 4× for a file with several insertions.
+// Budget is below the current 8-alloc baseline.
+func TestFix_PreSizeAllocBudget(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	// 4 lines; 2 blank-line insertions required (before list and after list).
+	src := []byte("text\n- item1\n- item2\nmore text\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{}
+	_ = r.Fix(f) // warm up
+	const (
+		runs = 100
+		// Current: 8 allocs (4 growth allocs from nil resultLines + 2-map setup +
+		// bytes.Join). After make(0, cap): growth allocs replaced by 1 make alloc;
+		// budget = 6 requires at least 2 allocs saved.
+		budget = 6
+	)
+	allocs := testing.AllocsPerRun(runs, func() {
+		_ = r.Fix(f)
+	})
+	require.LessOrEqualf(t, allocs, float64(budget),
+		"Fix allocs/op = %.0f (budget=%d); pre-size resultLines with make([][]byte, 0, cap)",
+		allocs, budget)
+}

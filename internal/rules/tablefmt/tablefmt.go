@@ -582,8 +582,8 @@ func formatTable(tbl table, cfg Config) table {
 	colWidths := computeColWidths(normalizedRows, numCols, aligns, cfg)
 	padding := strings.Repeat(" ", cfg.Pad)
 
-	var formattedLines [][]byte
-	var formattedRows []row
+	formattedLines := make([][]byte, 0, len(normalizedRows))
+	formattedRows := make([]row, 0, len(normalizedRows))
 	for _, r := range normalizedRows {
 		var line strings.Builder
 		line.WriteString(tbl.prefix)

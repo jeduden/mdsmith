@@ -183,7 +183,8 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		return f.Source
 	}
 
-	var resultLines [][]byte
+	// Upper bound: each line may need a blank inserted before and after it.
+	resultLines := make([][]byte, 0, len(f.Lines)+len(beforeSet)+len(afterSet))
 	for i, line := range f.Lines {
 		lineNum := i + 1
 		if _, ok := beforeSet[lineNum]; ok {

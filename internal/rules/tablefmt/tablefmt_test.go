@@ -1103,3 +1103,38 @@ func TestSplitRow_AllocBudget(t *testing.T) {
 		"splitRow allocs/op = %.0f (budget=%d); pre-size cells slice to fix",
 		allocs, budget)
 }
+
+// TestFormatTable_PreSizeAllocs verifies that formattedLines and formattedRows
+// are pre-sized with make(0, len(normalizedRows)) so no backing-array growth
+// allocs occur. Budget is set below the current 23-alloc baseline; it passes
+// once the two var declarations are replaced with make calls.
+func TestFormatTable_PreSizeAllocs(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race")
+	}
+	tbl := table{
+		prefix: "",
+		rows: []row{
+			{cells: []string{"Col A", "Col B", "Col C"}},
+			{isSeparator: true, alignments: []align{alignLeft, alignCenter, alignRight}},
+			{cells: []string{"x", "y", "z"}},
+		},
+	}
+	cfg := Config{Pad: 1}
+	_ = formatTable(tbl, cfg) // warm up
+	const (
+		runs = 100
+		// Current allocs: 23 (includes 4 extra from un-pre-sized slice growth).
+		// After pre-sizing: 4 allocs removed, budget ≤ 20 satisfies.
+		budget = 20
+	)
+	allocs := testing.AllocsPerRun(runs, func() {
+		_ = formatTable(tbl, cfg)
+	})
+	require.LessOrEqualf(t, allocs, float64(budget),
+		"formatTable allocs/op = %.0f (budget=%d); pre-size formattedLines and formattedRows with make",
+		allocs, budget)
+}
