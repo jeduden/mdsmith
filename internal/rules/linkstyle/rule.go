@@ -107,7 +107,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	}
 
 	var diags []lint.Diagnostic
-	for _, link := range linkgraph.ExtractLinks(f) {
+	for _, link := range linkgraph.Links(f) {
 		diags = append(diags, r.checkOne(f, link, false)...)
 	}
 	for _, link := range linkgraph.ExtractRefLinkTargets(f) {

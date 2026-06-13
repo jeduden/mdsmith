@@ -14,7 +14,17 @@ import (
 // per-Check anchorCache, splitting "does target exist" from "build
 // the read closure" so the closure only escapes when an anchor
 // check actually fires, and caching filepath.Abs at package scope.
-const allocBudgetMDS027 = 10
+//
+// Raised from 10 to 12 by plan 2606130838 (memoize link extraction):
+// linkgraph.Links() calls f.MemoFile("linkgraph.links", buildLinks),
+// which on the cold path allocates one *memoEntry and boxes the
+// returned []Link slice header into any — two allocations per
+// cold-path MemoFile call. The per-File memo removes repeated AST
+// walks when multiple callers (MDS027 + MDS068 link-style) process
+// the same File in one engine Check run; the cold-path cost is the
+// documented tradeoff of using File.Memo vs the atomic.Bool+mutex
+// pattern used for built-in File caches.
+const allocBudgetMDS027 = 12
 
 const allocBudgetFixture = "# Document title\n" +
 	"\n" +

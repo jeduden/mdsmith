@@ -119,11 +119,11 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	}
 
 	var diags []lint.Diagnostic
-	for _, link := range linkgraph.ExtractLinks(f) {
+	for _, link := range linkgraph.Links(f) {
 		diags = append(diags, r.checkLink(&ctx, link, false)...)
 	}
 	if r.Links.ValidateImages {
-		for _, link := range linkgraph.ExtractImages(f) {
+		for _, link := range linkgraph.Images(f) {
 			diags = append(diags, r.checkLink(&ctx, link, true)...)
 		}
 	}
