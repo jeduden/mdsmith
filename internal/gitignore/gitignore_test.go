@@ -37,6 +37,31 @@ func TestTrimTrailingWhitespace_AllWhitespace(t *testing.T) {
 	assert.Equal(t, "", trimTrailingWhitespace("   "))
 }
 
+// --- relTo tests ---
+
+// TestRelTo_AgreesWithFilepathRel pins the fast prefix-strip path to
+// filepath.Rel's answer for the absolute, cleaned inputs the matcher
+// sees, including paths outside the base.
+func TestRelTo_AgreesWithFilepathRel(t *testing.T) {
+	cases := []struct{ base, path string }{
+		{"/repo", "/repo/file.md"},
+		{"/repo", "/repo/sub/dir/file.md"},
+		{"/repo", "/repo"},
+		{"/repo/sub", "/repo/other/file.md"},
+		{"/repo/sub", "/repo/subdir/file.md"},
+		{"/", "/file.md"},
+		{"/a/b", "/a/bc/d"},
+	}
+	for _, tc := range cases {
+		want, wantErr := filepath.Rel(tc.base, tc.path)
+		got, gotErr := relTo(tc.base, tc.path)
+		assert.Equal(t, wantErr == nil, gotErr == nil, "err for (%q, %q)", tc.base, tc.path)
+		if wantErr == nil {
+			assert.Equal(t, want, got, "rel for (%q, %q)", tc.base, tc.path)
+		}
+	}
+}
+
 // --- NewMatcher tests ---
 
 func TestNewMatcher_NoGitignore(t *testing.T) {

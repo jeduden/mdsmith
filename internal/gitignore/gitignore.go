@@ -261,10 +261,27 @@ func (m *Matcher) DirChainIgnored(dir string, memo map[string]bool) bool {
 	return v
 }
 
+// relTo returns path relative to base, matching filepath.Rel for the
+// inputs the matcher sees (absolute, cleaned paths). The fast path is a
+// zero-allocation prefix strip — filepath.Rel re-cleans both arguments
+// on every call, which dominated the matcher's CPU when every rule of
+// every .gitignore recomputed it per candidate path. Inputs that do not
+// share the base prefix fall back to filepath.Rel for full fidelity.
+func relTo(base, path string) (string, error) {
+	if base == path {
+		return ".", nil
+	}
+	if len(path) > len(base) && path[len(base)] == filepath.Separator &&
+		path[:len(base)] == base {
+		return path[len(base)+1:], nil
+	}
+	return filepath.Rel(base, path)
+}
+
 // matchRule checks whether a single rule matches the given absolute path.
 func matchRule(r ignoreRule, absPath string) bool {
 	// Compute the path relative to the rule's base directory.
-	rel, err := filepath.Rel(r.base, absPath)
+	rel, err := relTo(r.base, absPath)
 	if err != nil {
 		return false
 	}
