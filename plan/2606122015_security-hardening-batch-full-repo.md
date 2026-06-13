@@ -1,7 +1,7 @@
 ---
 id: 2606122015
 title: "Security hardening batch — 2026-06-12 full-repo audit"
-status: "🔲"
+status: "✅"
 summary: >-
   Low/informational hardening from the 2026-06-12 full-repo audit:
   make the MDS040 gate non-bypassable by attacker-controlled config
@@ -37,32 +37,32 @@ rename command is missing the same pattern.
 
 ### S002 — MDS040 gate hardening
 
-- [ ] **Red**: write a test that disables `recipe-safety` in config,
+- [x] **Red**: write a test that disables `recipe-safety` in config,
   adds a recipe with `command: sh -c 'echo pwned'`, and asserts that
   `checkMDS040Gate` still rejects it (returns false / returns an
   error).
-- [ ] **Green** (Option A): when `build.recipes` is non-empty,
+- [x] **Green** (Option A): when `build.recipes` is non-empty,
   always run the shell-safety check regardless of the
   `recipe-safety` rule toggle. The rule can still be disabled for
   diagnostic reporting, but the gate should not be bypassable.
-- [ ] Alternatively (Option B): emit a prominent warning when
+- [x] Alternatively (Option B): emit a prominent warning when
   `mdsmith fix` is run with recipes present and
   `recipe-safety: false` is set in config, telling the user they are
   running recipes without safety checks.
-- [ ] Run `go test ./cmd/mdsmith/... ./internal/...`; all pass.
+- [x] Run `go test ./cmd/mdsmith/... ./internal/...`; all pass.
 
 ### S007 — rename symlink write-through
 
-- [ ] **Red**: write a test that enables `follow-symlinks`, creates a
+- [x] **Red**: write a test that enables `follow-symlinks`, creates a
   symlink in a temp workspace pointing to an external temp file, runs
   `writeFilePreservingMode` on the symlink path, and asserts the
   external file is NOT modified (or the function returns an error).
-- [ ] **Green**: replace `os.WriteFile` in `writeFilePreservingMode`
+- [x] **Green**: replace `os.WriteFile` in `writeFilePreservingMode`
   with the temp-file-then-rename pattern from `atomicWriteFile`
   (fix.go): create a temp file in `filepath.Dir(path)`, write to it,
   then call `os.Rename(tmp, path)`. On POSIX, `os.Rename` replaces
   the symlink itself rather than following it.
-- [ ] Run `go test ./cmd/mdsmith/...`; all pass.
+- [x] Run `go test ./cmd/mdsmith/...`; all pass.
 
 ## Acceptance Criteria
 

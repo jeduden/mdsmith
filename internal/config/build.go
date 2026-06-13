@@ -371,8 +371,8 @@ func InjectBuildConfig(cfg *Config, cfgPath string) {
 			rc.Settings = make(map[string]any)
 		}
 		rc.Settings["recipes"] = recipes
-		rc.Settings["hooks-before"] = serializeHooks(cfg.Build.Hooks.Before)
-		rc.Settings["hooks-after"] = serializeHooks(cfg.Build.Hooks.After)
+		rc.Settings["hooks-before"] = SerializeHooks(cfg.Build.Hooks.Before)
+		rc.Settings["hooks-after"] = SerializeHooks(cfg.Build.Hooks.After)
 		if cfgPath != "" {
 			rc.Settings["config-path"] = cfgPath
 		}
@@ -389,9 +389,10 @@ func InjectBuildConfig(cfg *Config, cfgPath string) {
 	}
 }
 
-// serializeHooks converts a []HookCfg to []any for transport through the
-// generic ApplySettings mechanism.
-func serializeHooks(hooks []HookCfg) []any {
+// SerializeHooks converts a []HookCfg to []any for transport through the
+// generic ApplySettings mechanism. It is exported so callers outside this
+// package can build gate-settings maps when the recipe-safety rule is disabled.
+func SerializeHooks(hooks []HookCfg) []any {
 	out := make([]any, len(hooks))
 	for i, h := range hooks {
 		m := map[string]any{"command": h.Command}

@@ -1180,15 +1180,15 @@ func TestInjectBuildConfig_EmptyHooks_StillInjects(t *testing.T) {
 	assert.Empty(t, before)
 }
 
-// --- serializeHooks ---
+// --- SerializeHooks ---
 
 func TestSerializeHooks_Empty(t *testing.T) {
-	out := serializeHooks(nil)
+	out := SerializeHooks(nil)
 	assert.Empty(t, out)
 }
 
 func TestSerializeHooks_Command(t *testing.T) {
-	out := serializeHooks([]HookCfg{{Command: "make start"}})
+	out := SerializeHooks([]HookCfg{{Command: "make start"}})
 	require.Len(t, out, 1)
 	m, ok := out[0].(map[string]any)
 	require.True(t, ok)
@@ -1198,7 +1198,7 @@ func TestSerializeHooks_Command(t *testing.T) {
 }
 
 func TestSerializeHooks_WithNameAndParams(t *testing.T) {
-	out := serializeHooks([]HookCfg{{
+	out := SerializeHooks([]HookCfg{{
 		Command: "scripts/wait {port}",
 		Name:    "wait for port",
 		Params:  map[string]string{"port": "3000"},

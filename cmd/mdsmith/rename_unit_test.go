@@ -5,6 +5,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
+	"sync"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/rename"
@@ -302,6 +304,130 @@ func TestWriteFilePreservingMode(t *testing.T) {
 
 	// Writing to a directory path fails.
 	require.Error(t, writeFilePreservingMode(dir, []byte("x")))
+}
+
+// TestWriteFilePreservingMode_SymlinkDoesNotWriteThrough is the RED test for
+// S007: writeFilePreservingMode must not follow a symlink to an external file.
+// After the fix (atomic rename), os.Rename replaces the symlink itself on
+// POSIX rather than following it to the external target.
+func TestWriteFilePreservingMode_SymlinkDoesNotWriteThrough(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks behave differently on Windows")
+	}
+	// Create the external file outside the workspace.
+	external := t.TempDir()
+	extFile := filepath.Join(external, "target.md")
+	const originalContent = "# Original\n"
+	require.NoError(t, os.WriteFile(extFile, []byte(originalContent), 0o644))
+
+	// Create a workspace directory with a symlink pointing to the external file.
+	workspace := t.TempDir()
+	symlink := filepath.Join(workspace, "linked.md")
+	require.NoError(t, os.Symlink(extFile, symlink))
+
+	// Call writeFilePreservingMode on the symlink path.
+	require.NoError(t, writeFilePreservingMode(symlink, []byte("# Rewritten\n")))
+
+	// The external file must NOT have been modified.
+	got, err := os.ReadFile(extFile)
+	require.NoError(t, err)
+	assert.Equal(t, originalContent, string(got),
+		"writeFilePreservingMode must not write through symlinks to external files")
+
+	// The symlink itself must have been replaced with a regular file by
+	// os.Rename (not merely redirected to a different symlink target).
+	linfo, err := os.Lstat(symlink)
+	require.NoError(t, err)
+	assert.Zero(t, linfo.Mode()&os.ModeSymlink, "symlink must be replaced by a regular file")
+
+	// The symlink path itself should now read the new content.
+	gotLinked, err := os.ReadFile(symlink)
+	require.NoError(t, err)
+	assert.Equal(t, "# Rewritten\n", string(gotLinked))
+}
+
+// TestWriteFilePreservingMode_DanglingSymlink verifies that writing through a
+// dangling symlink (target does not exist) falls back to 0o644 permissions and
+// replaces the symlink with a new regular file.
+func TestWriteFilePreservingMode_DanglingSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks behave differently on Windows")
+	}
+	workspace := t.TempDir()
+	symlink := filepath.Join(workspace, "dangling.md")
+	// Point symlink at a path that does not exist — os.Stat will fail.
+	require.NoError(t, os.Symlink(filepath.Join(workspace, "nonexistent.md"), symlink))
+
+	require.NoError(t, writeFilePreservingMode(symlink, []byte("# New\n")))
+
+	// Symlink should have been replaced with a regular file containing the data.
+	info, err := os.Lstat(symlink)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0), info.Mode()&os.ModeSymlink, "symlink should be replaced by regular file")
+	got, err := os.ReadFile(symlink)
+	require.NoError(t, err)
+	assert.Equal(t, "# New\n", string(got))
+}
+
+// injectWriteFileFn swaps fn into the given var+mutex pair for the duration of
+// the test and restores the original on cleanup. This follows the chmodFile
+// injection pattern from internal/fix/fix.go.
+func injectWriteFileFn[T any](t *testing.T, mu *sync.Mutex, slot *T, fn T) {
+	t.Helper()
+	mu.Lock()
+	orig := *slot
+	*slot = fn
+	mu.Unlock()
+	t.Cleanup(func() {
+		mu.Lock()
+		*slot = orig
+		mu.Unlock()
+	})
+}
+
+func TestWriteFilePreservingMode_CreateTempError(t *testing.T) {
+	dir := t.TempDir()
+	injectWriteFileFn(t, &writeFileTempFnMu, &writeFileTempFn,
+		func(string, string) (*os.File, error) { return nil, os.ErrPermission })
+	err := writeFilePreservingMode(filepath.Join(dir, "f.md"), []byte("x"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "creating temp file")
+}
+
+func TestWriteFilePreservingMode_ChmodError(t *testing.T) {
+	dir := t.TempDir()
+	injectWriteFileFn(t, &writeFileChmodFnMu, &writeFileChmodFn,
+		func(string, os.FileMode) error { return os.ErrPermission })
+	err := writeFilePreservingMode(filepath.Join(dir, "f.md"), []byte("x"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "setting temp file mode")
+}
+
+func TestWriteFilePreservingMode_WriteError(t *testing.T) {
+	dir := t.TempDir()
+	injectWriteFileFn(t, &writeFileWriteFnMu, &writeFileWriteFn,
+		func(*os.File, []byte) (int, error) { return 0, os.ErrPermission })
+	err := writeFilePreservingMode(filepath.Join(dir, "f.md"), []byte("x"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "writing temp file")
+}
+
+func TestWriteFilePreservingMode_SyncError(t *testing.T) {
+	dir := t.TempDir()
+	injectWriteFileFn(t, &writeFileSyncFnMu, &writeFileSyncFn,
+		func(*os.File) error { return os.ErrPermission })
+	err := writeFilePreservingMode(filepath.Join(dir, "f.md"), []byte("x"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "syncing temp file")
+}
+
+func TestWriteFilePreservingMode_CloseError(t *testing.T) {
+	dir := t.TempDir()
+	injectWriteFileFn(t, &writeFileCloseFnMu, &writeFileCloseFn,
+		func(f *os.File) error { _ = f.Close(); return os.ErrPermission })
+	err := writeFilePreservingMode(filepath.Join(dir, "f.md"), []byte("x"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "closing temp file")
 }
 
 func TestCliRenameWorkspace_Resolve(t *testing.T) {
