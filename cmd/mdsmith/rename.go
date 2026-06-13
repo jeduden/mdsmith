@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 
 	flag "github.com/spf13/pflag"
 
@@ -17,6 +18,42 @@ import (
 	"github.com/jeduden/mdsmith/internal/oscompat"
 	"github.com/jeduden/mdsmith/internal/rename"
 )
+
+// writeFileTempFn creates a named temp file; exposed as a variable so tests
+// can inject failures without OS tricks.
+var writeFileTempFn func(string, string) (*os.File, error) = os.CreateTemp
+
+// writeFileTempFnMu guards reads and writes of writeFileTempFn so tests that
+// swap it can coexist with parallel tests that call writeFilePreservingMode.
+var writeFileTempFnMu sync.Mutex
+
+// writeFileChmodFn sets permission bits on a file; exposed as a variable so
+// tests can inject failures without OS tricks.
+var writeFileChmodFn func(string, os.FileMode) error = oscompat.Chmod
+
+// writeFileChmodFnMu guards reads and writes of writeFileChmodFn.
+var writeFileChmodFnMu sync.Mutex
+
+// writeFileWriteFn writes bytes to a file; exposed as a variable so tests
+// can inject failures without OS tricks.
+var writeFileWriteFn func(*os.File, []byte) (int, error) = (*os.File).Write
+
+// writeFileWriteFnMu guards reads and writes of writeFileWriteFn.
+var writeFileWriteFnMu sync.Mutex
+
+// writeFileSyncFn syncs a file to disk; exposed as a variable so tests can
+// inject failures without OS tricks.
+var writeFileSyncFn func(*os.File) error = (*os.File).Sync
+
+// writeFileSyncFnMu guards reads and writes of writeFileSyncFn.
+var writeFileSyncFnMu sync.Mutex
+
+// writeFileCloseFn closes a file; exposed as a variable so tests can inject
+// failures without OS tricks.
+var writeFileCloseFn func(*os.File) error = (*os.File).Close
+
+// writeFileCloseFnMu guards reads and writes of writeFileCloseFn.
+var writeFileCloseFnMu sync.Mutex
 
 // renameOptions bundles the parsed CLI flags for `rename`.
 type renameOptions struct {
@@ -378,25 +415,40 @@ func writeFilePreservingMode(path string, data []byte) error {
 		}
 	}
 	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".*.tmp")
+	writeFileTempFnMu.Lock()
+	createTemp := writeFileTempFn
+	writeFileTempFnMu.Unlock()
+	tmp, err := createTemp(dir, filepath.Base(path)+".*.tmp")
 	if err != nil {
 		return fmt.Errorf("creating temp file: %w", err)
 	}
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName) //nolint:errcheck // best-effort cleanup; harmless once rename succeeds
-	if err := oscompat.Chmod(tmpName, mode); err != nil {
+	writeFileChmodFnMu.Lock()
+	chmodFn := writeFileChmodFn
+	writeFileChmodFnMu.Unlock()
+	if err := chmodFn(tmpName, mode); err != nil {
 		_ = tmp.Close()
 		return fmt.Errorf("setting temp file mode: %w", err)
 	}
-	if _, err := tmp.Write(data); err != nil {
+	writeFileWriteFnMu.Lock()
+	writeFn := writeFileWriteFn
+	writeFileWriteFnMu.Unlock()
+	if _, err := writeFn(tmp, data); err != nil {
 		_ = tmp.Close()
 		return fmt.Errorf("writing temp file: %w", err)
 	}
-	if err := tmp.Sync(); err != nil {
+	writeFileSyncFnMu.Lock()
+	syncFn := writeFileSyncFn
+	writeFileSyncFnMu.Unlock()
+	if err := syncFn(tmp); err != nil {
 		_ = tmp.Close()
 		return fmt.Errorf("syncing temp file: %w", err)
 	}
-	if err := tmp.Close(); err != nil {
+	writeFileCloseFnMu.Lock()
+	closeFn := writeFileCloseFn
+	writeFileCloseFnMu.Unlock()
+	if err := closeFn(tmp); err != nil {
 		return fmt.Errorf("closing temp file: %w", err)
 	}
 	if err := os.Rename(tmpName, path); err != nil {

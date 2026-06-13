@@ -1015,6 +1015,23 @@ func TestCheckMDS040Gate_DisabledRule_NoRecipesNoHooks_ReturnsTrue(t *testing.T)
 	assert.True(t, checkMDS040Gate(cfg, "cfg.yml", &buf))
 }
 
+// TestCheckMDS040Gate_DisabledRule_EmptyCfgPath_ReturnsFalse covers the
+// cfgPath=="" branch inside the else block (disabled rule, non-empty recipes).
+func TestCheckMDS040Gate_DisabledRule_EmptyCfgPath_ReturnsFalse(t *testing.T) {
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"recipe-safety": {Enabled: false},
+		},
+		Build: config.BuildConfig{
+			Recipes: map[string]config.RecipeCfg{
+				"danger": {Command: "sh -c 'echo pwned'"},
+			},
+		},
+	}
+	var buf strings.Builder
+	assert.False(t, checkMDS040Gate(cfg, "", &buf))
+}
+
 // --- TestAllFresh_CheckStalenessError_ReturnsFalse covers the error branch
 // (lines 245-247) when CheckStaleness returns an error (glob matching no files).
 func TestAllFresh_CheckStalenessError_ReturnsFalse(t *testing.T) {
