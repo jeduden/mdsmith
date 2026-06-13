@@ -864,10 +864,9 @@ func resolveInstalledBinary() (string, error) {
 		}
 	}
 	// Transient go-run binary — search PATH only.
+	// exec.LookPath returns an absolute path (Go 1.19+), so no Abs call needed.
 	if p, err := exec.LookPath("mdsmith"); err == nil {
-		if abs, err := filepath.Abs(p); err == nil {
-			return abs, nil
-		}
+		return p, nil
 	}
 	return "", fmt.Errorf(
 		"mdsmith not found; install it with " +

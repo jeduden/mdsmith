@@ -327,7 +327,7 @@ func TestRunMergeDriverInstall_NoArgsWritesCanonicalGlobs(t *testing.T) {
 func TestResolveInstalledBinary_NonTemporaryExe(t *testing.T) {
 	// Override executableFunc to return a path that is NOT under os.TempDir()
 	// so isTemporaryBinary returns false.  resolveInstalledBinary should use
-	// that path directly without falling through to the PATH/GOPATH lookup.
+	// that path directly without falling through to the PATH lookup.
 	fakePermanent := "/usr/local/bin-test-fake/mdsmith"
 
 	orig := executableFunc
@@ -408,8 +408,10 @@ func TestResolveInstalledBinary_GopathBin_NotTrusted(t *testing.T) {
 
 	_, err := resolveInstalledBinary()
 	// The call must fail — the GOPATH binary must not be returned.
-	require.Error(t, err,
-		"resolveInstalledBinary must not use $GOPATH/bin as a fallback")
+	// Note: the msgAndArgs arg to require.Error is only a failure message, not
+	// a substring assertion; assert.Contains pins the actual error text.
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "mdsmith not found")
 }
 
 // --- isTemporaryBinary ---
