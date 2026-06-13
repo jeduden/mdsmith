@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -79,6 +78,7 @@ type Options struct {
 	LogRoot    string    // project root holding .mdsmith/build-logs/
 	LiveSink   io.Writer // when non-nil, each line is forwarded here, prefixed
 	TargetName string    // prefix used on LiveSink lines (the target name)
+	AllFinals  []string  // all declared finals across concurrent targets; for concurrent-safe post-condition check
 }
 
 // Result is the rich outcome of one recipe run: the argv it ran, the
@@ -168,7 +168,28 @@ func (b *CustomBuilder) BuildWithResult(
 
 	argv := expandArgv(tokens, target.Params, plan.absInputs, plan.stagePaths)
 	res.Argv = argv
-	res.Cwd = target.Root
+	res.Cwd = plan.stageDir
+
+	// Open the log file before the before-snapshot so that creating
+	// .mdsmith/build-logs/ does not appear as an undeclared write in the
+	// post-condition check.
+	var sc *streamCapture
+	if opts.LogRoot != "" && opts.ActionID != "" {
+		res.LogPath = logPathFor(opts.LogRoot, opts.ActionID)
+		sc, err = newStreamCapture(res.LogPath, opts.TargetName, opts.LiveSink)
+		if err != nil {
+			res.Err = err
+			return res
+		}
+		defer sc.Close() //nolint:errcheck // log-file close is best-effort
+	}
+
+	// Determine stdout/stderr for the recipe.
+	var recipeStdout, recipeStderr io.Writer
+	if sc != nil {
+		recipeStdout = sc.stdout()
+		recipeStderr = sc.stderr()
+	}
 
 	before, err := snapshotDirsFn(plan.parents, snapshotCap, nil)
 	if err != nil {
@@ -176,8 +197,24 @@ func (b *CustomBuilder) BuildWithResult(
 		return res
 	}
 
-	if err := b.execCaptured(ctx, target, argv, opts, &res); err != nil {
-		res.Err = fmt.Errorf("recipe %q failed: %w", target.Recipe, err)
+	start := time.Now()
+	exitCode, timedOut, runErr := runRecipe(ctx, runOpts{
+		argv:    argv,
+		dir:     plan.stageDir,
+		exec:    b.exec,
+		defExec: defaultExecConfig(),
+		stdout:  recipeStdout,
+		stderr:  recipeStderr,
+	})
+	res.Duration = time.Since(start)
+	res.ExitCode = exitCode
+	res.TimedOut = timedOut
+	if sc != nil {
+		res.StdoutTail = sc.stdoutTail()
+		res.StderrTail = sc.stderrTail()
+	}
+	if runErr != nil {
+		res.Err = fmt.Errorf("recipe %q failed: %w", target.Recipe, runErr)
 		return res
 	}
 
@@ -185,7 +222,7 @@ func (b *CustomBuilder) BuildWithResult(
 		res.Err = err
 		return res
 	}
-	if err := verifyNoUndeclaredWrites(before, plan.parents, plan.finals); err != nil {
+	if err := verifyNoUndeclaredWrites(before, plan.parents, plan.finals, opts.AllFinals); err != nil {
 		res.Err = err
 		return res
 	}
@@ -194,67 +231,6 @@ func (b *CustomBuilder) BuildWithResult(
 		return res
 	}
 	return res
-}
-
-// execCaptured runs argv with stream capture, populating res with the
-// exit code, duration, log path, and stdout/stderr tails.
-func (b *CustomBuilder) execCaptured(
-	ctx context.Context, target Target, argv []string, opts Options, res *Result,
-) error {
-	var sc *streamCapture
-	if opts.LogRoot != "" && opts.ActionID != "" {
-		res.LogPath = logPathFor(opts.LogRoot, opts.ActionID)
-		var err error
-		sc, err = newStreamCapture(res.LogPath, opts.TargetName, opts.LiveSink)
-		if err != nil {
-			return err
-		}
-		defer sc.Close() //nolint:errcheck // log-file close is best-effort
-	}
-
-	start := time.Now()
-	exitCode, timedOut, err := runRecipeCaptured(ctx, target.Root, argv, sc)
-	res.Duration = time.Since(start)
-	res.ExitCode = exitCode
-	res.TimedOut = timedOut
-	if sc != nil {
-		res.StdoutTail = sc.stdoutTail()
-		res.StderrTail = sc.stderrTail()
-	}
-	return err
-}
-
-// runRecipeCaptured execs argv with the project root as the working
-// directory, teeing stdout/stderr into sc when non-nil (otherwise to
-// os.Stderr). No shell is invoked: argv[0] is the program and argv[1:]
-// its arguments. The context bounds the run; on cancellation the process
-// is killed. It returns the process exit code, whether the run timed out,
-// and the run error.
-func runRecipeCaptured(
-	ctx context.Context, root string, argv []string, sc *streamCapture,
-) (int, bool, error) {
-	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...) //nolint:gosec // argv is explicit; user-declared recipe
-	cmd.Dir = root
-	if sc != nil {
-		cmd.Stdout = sc.stdout()
-		cmd.Stderr = sc.stderr()
-	} else {
-		cmd.Stdout = os.Stderr
-		cmd.Stderr = os.Stderr
-	}
-	err := cmd.Run()
-	if err == nil {
-		return 0, false, nil
-	}
-	exitCode := -1
-	var ee *exec.ExitError
-	if errors.As(err, &ee) {
-		exitCode = ee.ExitCode()
-	}
-	if ctx.Err() != nil {
-		return exitCode, true, fmt.Errorf("%w (timed out)", ctx.Err())
-	}
-	return exitCode, false, err
 }
 
 // buildPlan holds the resolved paths for one Build call: the recipe's
@@ -357,14 +333,18 @@ func verifyOutputsExist(outputs, stagePaths []string) error {
 
 // verifyNoUndeclaredWrites re-snapshots the output parent dirs and fails
 // the build if any file outside the declared finals was added, removed,
-// or modified by the recipe.
-func verifyNoUndeclaredWrites(before map[string]fileState, parents, finals []string) error {
+// or modified by the recipe. extraDeclared lists additional paths (e.g.
+// from concurrent targets) that are exempt from the undeclared-write check.
+func verifyNoUndeclaredWrites(before map[string]fileState, parents, finals, extraDeclared []string) error {
 	after, err := snapshotDirsFn(parents, snapshotCap, before)
 	if err != nil {
 		return err
 	}
-	declared := make(map[string]struct{}, len(finals))
+	declared := make(map[string]struct{}, len(finals)+len(extraDeclared))
 	for _, f := range finals {
+		declared[f] = struct{}{}
+	}
+	for _, f := range extraDeclared {
 		declared[f] = struct{}{}
 	}
 	violations := diffSnapshots(before, after, declared)

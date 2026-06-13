@@ -1226,6 +1226,7 @@ func TestRunBuildPass_PruneOrphanLogsError_ContinuesAndWarns(t *testing.T) {
 		t.Skip("touch not available on Windows")
 	}
 	root := t.TempDir()
+	trustRoot(t, root)
 	cfg := buildPassCfg("    mk:\n      command: touch {outputs}\n")
 	cfgPath := filepath.Join(root, ".mdsmith.yml")
 	md := buildPassDirective("mk", "out.txt")
@@ -1253,6 +1254,7 @@ func TestRunBuildPass_JobsGreaterThanOne_RunsConcurrently(t *testing.T) {
 		t.Skip("touch not available on Windows")
 	}
 	root := t.TempDir()
+	trustRoot(t, root)
 	cfg := buildPassCfg("    mk:\n      command: touch {outputs}\n")
 	cfgPath := filepath.Join(root, ".mdsmith.yml")
 	md := buildPassDirective("mk", "out.txt")

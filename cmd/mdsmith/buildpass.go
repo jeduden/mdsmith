@@ -475,7 +475,7 @@ func dispatchOne(
 ) targetOutcome {
 	stin := stalenessFor(bt, cfg)
 	verdict, serr := targetVerdict(stin, cache, opts)
-	outcome, entry := decideAndRun(builder, bt, opts, stin, verdict, serr, timeout, w)
+	outcome, entry := decideAndRun(builder, bt, opts, stin, verdict, serr, timeout, nil, w)
 	if entry != nil {
 		cache.Put(*entry)
 	}
@@ -487,10 +487,12 @@ func dispatchOne(
 // outcome and an optional cache entry to apply (nil when nothing changed
 // or --build-no-cache is set). It touches no shared cache, so concurrent
 // callers can run it in parallel and apply the returned entries serially.
+// allFinals lists all declared final paths across concurrent targets for
+// the concurrent-safe post-condition check; nil on the serial path.
 func decideAndRun(
 	builder buildexec.Builder, bt buildTarget,
 	opts buildPassOpts, stin buildexec.StalenessInput, verdict buildexec.Verdict, verdictErr error,
-	timeout time.Duration, w io.Writer,
+	timeout time.Duration, allFinals []string, w io.Writer,
 ) (targetOutcome, *buildexec.CacheEntry) {
 	label := fmt.Sprintf("%s:%d (%s)", bt.file, bt.line, bt.target.Recipe)
 
@@ -523,7 +525,7 @@ func decideAndRun(
 			return outcomeFailed, nil
 		}
 	}
-	res := runOneTarget(builder, bt, id, opts, timeout, w)
+	res := runOneTarget(builder, bt, id, opts, timeout, allFinals, w)
 	if res.Err != nil {
 		reportBuildFailure(bt, res, w)
 		return outcomeFailed, nil
@@ -595,12 +597,14 @@ type targetRunResult struct {
 
 // runOneTarget dispatches a single target with a per-recipe timeout. When id
 // is non-empty, streams are captured to the action-id log file under root.
-// opts.stream forwards recipe lines live to w.
+// opts.stream forwards recipe lines live to w. allFinals lists all declared
+// final paths across concurrent targets for the post-condition check; nil on
+// the serial path.
 func runOneTarget(
 	b buildexec.Builder, bt buildTarget, id string,
-	opts buildPassOpts, timeout time.Duration, w io.Writer,
+	opts buildPassOpts, timeout time.Duration, allFinals []string, w io.Writer,
 ) targetRunResult {
-	bopts := buildexec.Options{TargetName: targetName(bt)}
+	bopts := buildexec.Options{TargetName: targetName(bt), AllFinals: allFinals}
 	if id != "" {
 		bopts.LogRoot = bt.target.Root
 		bopts.ActionID = id

@@ -395,7 +395,7 @@ func TestDecideAndRun_ComputeActionIDError_ReportsFail(t *testing.T) {
 	require.NoError(t, os.Remove(filepath.Join(root, "src.txt")))
 
 	var buf strings.Builder
-	outcome, entry := decideAndRun(builder, bt, buildPassOpts{}, stin, buildexec.Stale, nil, time.Second, &buf)
+	outcome, entry := decideAndRun(builder, bt, buildPassOpts{}, stin, buildexec.Stale, nil, time.Second, nil, &buf)
 	assert.Equal(t, outcomeFailed, outcome)
 	assert.Nil(t, entry)
 	assert.False(t, called, "builder must not be invoked when ActionID computation fails")
@@ -460,6 +460,7 @@ func TestRunBuildPass_NoCacheSkipsPruneOrphanLogs(t *testing.T) {
 		t.Skip("touch not available on Windows")
 	}
 	root := t.TempDir()
+	trustRoot(t, root)
 	cfg := buildPassCfg("    mk:\n      command: touch {outputs}\n")
 	cfgPath := filepath.Join(root, ".mdsmith.yml")
 	md := buildPassDirective("mk", "out.txt")
@@ -641,7 +642,7 @@ func TestRunOneTarget_NoCacheDoesNotWriteLogs(t *testing.T) {
 	}
 	var buf strings.Builder
 	// Pass id="" (no-cache path): runOneTarget must not create a log directory.
-	res := runOneTarget(builder, bt, "", buildPassOpts{}, time.Second, &buf)
+	res := runOneTarget(builder, bt, "", buildPassOpts{}, time.Second, nil, &buf)
 	require.NoError(t, res.Err)
 	_, err := os.Stat(filepath.Join(root, ".mdsmith", "build-logs"))
 	assert.True(t, os.IsNotExist(err), "no log directory must be created when id is empty")

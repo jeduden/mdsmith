@@ -20,7 +20,7 @@ func TestRunRecipe_StartError(t *testing.T) {
 	// "starting recipe" error branch.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	err := runRecipe(ctx, runOpts{
+	_, _, err := runRecipe(ctx, runOpts{
 		argv:    []string{filepath.Join(t.TempDir(), "does-not-exist")},
 		dir:     t.TempDir(),
 		exec:    ExecConfig{},
@@ -45,7 +45,7 @@ func TestRunRecipe_NonNilJobCleanup(t *testing.T) {
 	script := writeScript(t, t.TempDir(), "noop.sh", `exit 0`)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	err := runRecipe(ctx, runOpts{
+	_, _, err := runRecipe(ctx, runOpts{
 		argv:    []string{script},
 		dir:     stage,
 		exec:    ExecConfig{},
@@ -153,13 +153,13 @@ func TestRunRecipe_HermeticEnvVisibleToProcess(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	err := runRecipe(ctx, runOpts{
+	_, _, recipeErr := runRecipe(ctx, runOpts{
 		argv:    []string{script, out},
 		dir:     stage,
 		exec:    ExecConfig{},
 		defExec: defaultExecConfig(),
 	})
-	require.NoError(t, err)
+	require.NoError(t, recipeErr)
 
 	data, err := os.ReadFile(out)
 	require.NoError(t, err)
@@ -181,7 +181,7 @@ func TestRunRecipe_CmdDirIsStaging(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	err = runRecipe(ctx, runOpts{
+	_, _, err = runRecipe(ctx, runOpts{
 		argv:    []string{script, out},
 		dir:     stage,
 		exec:    ExecConfig{},
@@ -207,7 +207,7 @@ func TestRunRecipe_TimeoutKillsProcessGroup(t *testing.T) {
 	start := time.Now()
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
-	err := runRecipe(ctx, runOpts{
+	_, _, err := runRecipe(ctx, runOpts{
 		argv:    []string{script},
 		dir:     stage,
 		exec:    ExecConfig{},
@@ -246,7 +246,7 @@ func TestRunRecipe_TimeoutErrorMessageIsDeterministic(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
-	err := runRecipe(ctx, runOpts{
+	_, _, err := runRecipe(ctx, runOpts{
 		argv:    []string{script},
 		dir:     stage,
 		exec:    ExecConfig{},
@@ -270,7 +270,7 @@ func TestRunRecipe_CancellationReported(t *testing.T) {
 		time.Sleep(200 * time.Millisecond)
 		cancel()
 	}()
-	err := runRecipe(ctx, runOpts{
+	_, _, err := runRecipe(ctx, runOpts{
 		argv:    []string{script},
 		dir:     stage,
 		exec:    ExecConfig{},

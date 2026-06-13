@@ -2,6 +2,7 @@ package main
 
 import (
 	"io"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -31,6 +32,14 @@ func runConcurrent(
 ) {
 	sw := &syncWriter{w: w}
 
+	// Collect all finals for concurrent-safe post-condition checks.
+	allFinals := make([]string, 0, len(targets))
+	for _, bt := range targets {
+		for _, rel := range bt.target.Outputs {
+			allFinals = append(allFinals, filepath.Join(bt.target.Root, filepath.FromSlash(rel)))
+		}
+	}
+
 	// Verdicts read the shared cache; compute them serially up front so the
 	// concurrent workers touch no shared cache state.
 	stins := make([]buildexec.StalenessInput, len(targets))
@@ -51,7 +60,7 @@ func runConcurrent(
 			defer wg.Done()
 			defer func() { <-sem }()
 			outcome, entry := decideAndRun(
-				builder, bt, opts, stins[i], verdicts[i], verdictErrs[i], timeout, sw)
+				builder, bt, opts, stins[i], verdicts[i], verdictErrs[i], timeout, allFinals, sw)
 			results[i] = concurrentResult{outcome: outcome, entry: entry}
 		}(i, bt)
 	}

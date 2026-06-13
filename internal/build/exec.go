@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"os/exec"
@@ -90,6 +91,8 @@ type runOpts struct {
 	dir     string     // working directory (the per-recipe staging dir)
 	exec    ExecConfig // user-configured exec settings
 	defExec ExecConfig // compiled defaults to fall back to
+	stdout  io.Writer  // nil means os.Stderr
+	stderr  io.Writer  // nil means os.Stderr
 }
 
 // runRecipe executes argv with a hermetic environment, a fixed working
@@ -101,19 +104,32 @@ type runOpts struct {
 // mdsmith signals the whole group (SIGTERM on Unix, CTRL_BREAK on
 // Windows), waits up to gracePeriod, then force-kills the group, so a
 // recipe that spawns daemons cannot leave orphans behind.
-func runRecipe(ctx context.Context, o runOpts) error {
+//
+// It returns the process exit code, whether the run timed out, and any
+// error. On success it returns (0, false, nil). On non-zero exit it
+// returns the exit code and a non-nil error. On timeout it returns the
+// exit code (or -1 if unavailable), timedOut=true, and a non-nil error.
+func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 	// We manage the timeout and kill path ourselves (process group), so the
 	// command itself is not bound to a context-cancel kill — that would
 	// only kill the leader, not the group.
 	cmd := exec.Command(o.argv[0], o.argv[1:]...) //nolint:gosec // argv is explicit; user-declared recipe
 	cmd.Dir = o.dir
-	cmd.Stdout = os.Stderr
-	cmd.Stderr = os.Stderr
+	if o.stdout != nil {
+		cmd.Stdout = o.stdout
+	} else {
+		cmd.Stdout = os.Stderr
+	}
+	if o.stderr != nil {
+		cmd.Stderr = o.stderr
+	} else {
+		cmd.Stderr = os.Stderr
+	}
 	cmd.Env = buildEnv(o.exec, o.defExec)
 	configureProcessGroup(cmd)
 
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("starting recipe: %w", err)
+		return -1, false, fmt.Errorf("starting recipe: %w", err)
 	}
 
 	jobCleanup := afterStartFn(cmd)
@@ -130,14 +146,27 @@ func runRecipe(ctx context.Context, o runOpts) error {
 	// ctx.Done() we kill the whole group ourselves, then drain the Wait.
 	select {
 	case err := <-done:
-		return err
+		if err == nil {
+			return 0, false, nil
+		}
+		exitCode := -1
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
+			exitCode = ee.ExitCode()
+		}
+		return exitCode, false, err
 	case <-ctx.Done():
 		killGroup(cmd)
-		<-done
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return fmt.Errorf("recipe timed out: %w", ctx.Err())
+		waitErr := <-done
+		exitCode := -1
+		var ee *exec.ExitError
+		if errors.As(waitErr, &ee) {
+			exitCode = ee.ExitCode()
 		}
-		return fmt.Errorf("recipe cancelled: %w", ctx.Err())
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return exitCode, true, fmt.Errorf("recipe timed out: %w", ctx.Err())
+		}
+		return exitCode, true, fmt.Errorf("recipe cancelled: %w", ctx.Err())
 	}
 }
 

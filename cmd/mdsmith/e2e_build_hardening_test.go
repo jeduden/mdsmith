@@ -248,7 +248,7 @@ func TestE2E_Build_TimeoutKillsSpawnedChild(t *testing.T) {
 	_, stderr, code := runBinaryInDir(t, dir, "",
 		"fix", "--no-color", "--build-only", "--build-timeout", "1s", "doc.md")
 	assert.Equal(t, 2, code, stderr)
-	assert.Contains(t, stderr, "FAIL")
+	assert.Contains(t, stderr, "TIMEOUT")
 
 	// The spawned child must be reaped, not orphaned.
 	var childPID int

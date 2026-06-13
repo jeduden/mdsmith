@@ -47,7 +47,7 @@ func TestKillGroup_SIGKILLPath(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	err := runRecipe(ctx, runOpts{
+	_, _, err := runRecipe(ctx, runOpts{
 		argv:    []string{script},
 		dir:     stage,
 		exec:    ExecConfig{},
