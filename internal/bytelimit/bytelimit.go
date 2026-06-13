@@ -56,7 +56,7 @@ func ReadFileLimitedInto(path string, buf *[]byte, max int64) ([]byte, error) {
 	if max <= 0 || max == math.MaxInt64 {
 		return readAllInto(f, buf, math.MaxInt64, statSize(f))
 	}
-	return readLimitedInto(f, path, buf, max)
+	return readLimitedInto(f, buf, max)
 }
 
 // ReadFSFileLimited reads name from fsys, returning an error if the file
@@ -84,31 +84,33 @@ func ReadFSFileLimited(fsys fs.FS, name string, max int64) ([]byte, error) {
 // actual file size in the error message. For non-file readers (or when
 // stat fails), we report the truncated read length.
 func readLimited(r io.Reader, name string, max int64) ([]byte, error) {
-	// Try to get actual file size for a better error message.
-	var actualSize int64 = -1
-	if st, ok := r.(interface{ Stat() (os.FileInfo, error) }); ok {
-		if info, err := st.Stat(); err == nil {
-			actualSize = info.Size()
-		}
-	}
+	actualSize := statSize(r)
 
 	// Pre-size the read buffer from the stat size (like os.ReadFile) so
 	// the common in-cap read is a single allocation rather than
 	// io.ReadAll's repeated grow-and-copy. Read through LimitReader(max+1)
 	// regardless so a file that grew past the cap since the stat is still
 	// flagged as too large.
-	data, err := readAllSized(io.LimitReader(r, max+1), actualSize, max)
+	var buf []byte
+	data, err := readAllInto(io.LimitReader(r, max+1), &buf, max, actualSize)
 	if err != nil {
 		return nil, err
 	}
 	if int64(len(data)) > max {
-		reported := actualSize
-		if reported < 0 {
-			reported = int64(len(data))
-		}
-		return nil, fmt.Errorf("file too large (%d bytes, max %d)", reported, max)
+		return nil, fileTooLargeErr(actualSize, int64(len(data)), max)
 	}
 	return data, nil
+}
+
+// fileTooLargeErr builds the standard "file too large" error. It reports
+// actualSize when it is known (≥ 0); otherwise it falls back to dataLen
+// (the number of bytes actually read through the LimitReader sentinel).
+func fileTooLargeErr(actualSize, dataLen, max int64) error {
+	reported := actualSize
+	if reported < 0 {
+		reported = dataLen
+	}
+	return fmt.Errorf("file too large (%d bytes, max %d)", reported, max)
 }
 
 // statSize returns r's file size, or -1 when it cannot be determined.
@@ -124,18 +126,14 @@ func statSize(r io.Reader) int64 {
 // readLimitedInto mirrors readLimited but fills the caller-owned buffer
 // *buf instead of allocating a fresh slice. The max+1 sentinel read and
 // the too-large error are identical to readLimited.
-func readLimitedInto(r io.Reader, name string, buf *[]byte, max int64) ([]byte, error) {
+func readLimitedInto(r io.Reader, buf *[]byte, max int64) ([]byte, error) {
 	actualSize := statSize(r)
 	data, err := readAllInto(io.LimitReader(r, max+1), buf, max, actualSize)
 	if err != nil {
 		return nil, err
 	}
 	if int64(len(data)) > max {
-		reported := actualSize
-		if reported < 0 {
-			reported = int64(len(data))
-		}
-		return nil, fmt.Errorf("file too large (%d bytes, max %d)", reported, max)
+		return nil, fileTooLargeErr(actualSize, int64(len(data)), max)
 	}
 	return data, nil
 }
@@ -171,35 +169,10 @@ func readAllInto(r io.Reader, buf *[]byte, max, sizeHint int64) ([]byte, error) 
 	}
 }
 
-// readAllSized reads r to EOF. When sizeHint is a usable in-cap file
-// size it seeds the buffer so the whole file lands in one allocation
-// (mirroring os.ReadFile); otherwise it starts small and grows like
-// io.ReadAll. Callers wrap r in a LimitReader, so a file that grew past
-// the cap since the stat is still bounded by the +1 sentinel read.
-//
-// The grow loop is inlined rather than delegating to bytes.Buffer or
-// io.ReadAll: both over-reserve (Buffer keeps MinRead headroom; ReadAll
-// can leave up to 2x slack) or copy on the way out, whereas the goal
-// here is exactly one right-sized sizeHint+1 allocation.
+// readAllSized reads r to EOF, pre-sizing the buffer from sizeHint.
+// It delegates to readAllInto with a fresh local buffer so the two
+// functions share one grow loop.
 func readAllSized(r io.Reader, sizeHint, max int64) ([]byte, error) {
-	capHint := 512
-	if sizeHint >= 0 && sizeHint <= max {
-		if h := sizeHint + 1; int64(int(h)) == h { // +1 for the EOF read; guard int overflow
-			capHint = int(h)
-		}
-	}
-	data := make([]byte, 0, capHint)
-	for {
-		if len(data) >= cap(data) {
-			data = append(data, 0)[:len(data)] // grow, preserve len
-		}
-		n, err := r.Read(data[len(data):cap(data)])
-		data = data[:len(data)+n]
-		if err != nil {
-			if err == io.EOF {
-				err = nil
-			}
-			return data, err
-		}
-	}
+	var buf []byte
+	return readAllInto(r, &buf, max, sizeHint)
 }
