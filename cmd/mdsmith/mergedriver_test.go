@@ -406,13 +406,10 @@ func TestResolveInstalledBinary_GopathBin_NotTrusted(t *testing.T) {
 	t.Setenv("PATH", "")
 	t.Setenv("GOPATH", gopathDir)
 
-	got, err := resolveInstalledBinary()
-	// The call must fail — it must NOT silently return the GOPATH binary.
+	_, err := resolveInstalledBinary()
+	// The call must fail — the GOPATH binary must not be returned.
 	require.Error(t, err,
-		"resolveInstalledBinary must not use $GOPATH/bin as a fallback; "+
-			"got %q instead of an error", got)
-	assert.NotEqual(t, fakeBin, got,
-		"GOPATH binary must not be returned as a trusted path")
+		"resolveInstalledBinary must not use $GOPATH/bin as a fallback")
 }
 
 // --- isTemporaryBinary ---
@@ -1413,10 +1410,10 @@ func TestRunMergeDriver_CIInstall_LoadConfigError(t *testing.T) {
 }
 
 // pathWithOnlyGit points PATH at a temp dir holding just a `git` symlink
-// for the rest of the test. resolveInstalledBinary's PATH and $GOPATH
-// lookups then fail (no `mdsmith`, and no `go` to query GOPATH) while the
-// merge-driver's own `git rev-parse` still resolves. Skips on Windows,
-// where os.Symlink needs privilege; the coverage gate runs on Linux.
+// for the rest of the test. resolveInstalledBinary's PATH lookup then
+// fails (no `mdsmith`) while the merge-driver's own `git rev-parse` still
+// resolves. Skips on Windows, where os.Symlink needs privilege; the
+// coverage gate runs on Linux.
 func pathWithOnlyGit(t *testing.T) {
 	t.Helper()
 	if runtime.GOOS == "windows" {

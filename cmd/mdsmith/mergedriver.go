@@ -870,7 +870,8 @@ func resolveInstalledBinary() (string, error) {
 		}
 	}
 	return "", fmt.Errorf(
-		"mdsmith not found; install it with \"go install ./cmd/mdsmith\" " +
+		"mdsmith not found; install it with " +
+			"\"go install github.com/jeduden/mdsmith/cmd/mdsmith@latest\" " +
 			"or ensure the mdsmith binary is on PATH",
 	)
 }
