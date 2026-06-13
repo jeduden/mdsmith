@@ -723,11 +723,7 @@ func ensurePreMergeCommitHook(repoRoot string) error {
 
 	// Reject symlinks and non-regular files before any I/O to reduce the
 	// risk of following a link to a path outside the repository.
-	if info, err := lstatFn(hookPath); err == nil {
-		if !info.Mode().IsRegular() {
-			return fmt.Errorf("%s: not a regular file", hookPath)
-		}
-	} else if !os.IsNotExist(err) {
+	if err := guardFn(hookPath); err != nil {
 		return fmt.Errorf("reading existing hook %s: %w", hookPath, err)
 	}
 
@@ -799,18 +795,27 @@ var chmodFunc = os.Chmod
 // implementation to exercise the CreateTemp error path in writeHookFile.
 var hookCreateTempFn = os.CreateTemp
 
+// osRenameFn is a variable so tests can substitute a failing implementation
+// to exercise the Rename error path in writeHookFile.
+var osRenameFn = os.Rename
+
+// syncFileFn is a variable so tests can substitute a failing implementation
+// to exercise the Sync error path in writeHookFile.
+var syncFileFn = (*os.File).Sync
+
+// closeFileFn is a variable so tests can substitute a failing implementation
+// to exercise the Close error path in writeHookFile.
+var closeFileFn = (*os.File).Close
+
 // writeHookFile writes content to hookPath using a temp-then-rename strategy
 // so that os.Rename replaces the directory entry rather than following a
 // symlink that may have been introduced between the lstat check in
 // ensurePreMergeCommitHook and this call.
 func writeHookFile(hookPath string, data []byte) error {
 	// Re-check that path is still a regular file (or absent) before writing.
-	if info, err := lstatFn(hookPath); err == nil {
-		if !info.Mode().IsRegular() {
-			return fmt.Errorf("writing %s: not a regular file", hookPath)
-		}
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("writing %s: lstat: %w", hookPath, err)
+	// guardFn returns nil for ENOENT (file absent is fine — we will create it).
+	if err := guardFn(hookPath); err != nil {
+		return fmt.Errorf("writing %s: %w", hookPath, err)
 	}
 	dir := filepath.Dir(hookPath)
 	tmp, err := hookCreateTempFn(dir, ".mdsmith-hook-*")
@@ -818,22 +823,24 @@ func writeHookFile(hookPath string, data []byte) error {
 		return fmt.Errorf("writing %s: %w", hookPath, err)
 	}
 	tmpName := tmp.Name()
+	// Remove the temp file on any early-exit path. After a successful Rename,
+	// tmpName no longer exists so this Remove is a safe no-op.
 	defer func() { _ = os.Remove(tmpName) }()
 	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
+		_ = closeFileFn(tmp)
 		return fmt.Errorf("writing %s: %w", hookPath, err)
 	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
+	if err := syncFileFn(tmp); err != nil {
+		_ = closeFileFn(tmp)
 		return fmt.Errorf("writing %s: %w", hookPath, err)
 	}
-	if err := tmp.Close(); err != nil {
+	if err := closeFileFn(tmp); err != nil {
 		return fmt.Errorf("writing %s: %w", hookPath, err)
 	}
 	if err := chmodFunc(tmpName, 0o755); err != nil {
 		return fmt.Errorf("setting permissions on %s: %w", hookPath, err)
 	}
-	if err := os.Rename(tmpName, hookPath); err != nil {
+	if err := osRenameFn(tmpName, hookPath); err != nil {
 		return fmt.Errorf("writing %s: %w", hookPath, err)
 	}
 	return nil

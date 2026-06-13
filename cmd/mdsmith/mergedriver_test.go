@@ -1534,3 +1534,83 @@ func TestVerifyGitattributes_ReadError_ReturnsTwo(t *testing.T) {
 	assert.Contains(t, got, "reading")
 	assert.Contains(t, got, "boom")
 }
+
+// --- writeHookFile error paths ---
+
+func TestWriteHookFile_GuardFails(t *testing.T) {
+	orig := guardFn
+	t.Cleanup(func() { guardFn = orig })
+	guardFn = func(string) error { return fmt.Errorf("injected guard error") }
+
+	dir := t.TempDir()
+	err := writeHookFile(filepath.Join(dir, "pre-merge-commit"), []byte("content"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "writing")
+}
+
+func TestWriteHookFile_CreateTempFails(t *testing.T) {
+	orig := hookCreateTempFn
+	t.Cleanup(func() { hookCreateTempFn = orig })
+	hookCreateTempFn = func(string, string) (*os.File, error) {
+		return nil, fmt.Errorf("injected createtemp error")
+	}
+
+	dir := t.TempDir()
+	err := writeHookFile(filepath.Join(dir, "pre-merge-commit"), []byte("content"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "writing")
+}
+
+func TestWriteHookFile_WriteFails(t *testing.T) {
+	orig := hookCreateTempFn
+	t.Cleanup(func() { hookCreateTempFn = orig })
+	hookCreateTempFn = func(dir, pattern string) (*os.File, error) {
+		f, err := os.CreateTemp(dir, pattern)
+		if err != nil {
+			return nil, err
+		}
+		_ = f.Close()
+		return f, nil
+	}
+
+	dir := t.TempDir()
+	err := writeHookFile(filepath.Join(dir, "pre-merge-commit"), []byte("content"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "writing")
+}
+
+func TestWriteHookFile_SyncFails(t *testing.T) {
+	orig := syncFileFn
+	t.Cleanup(func() { syncFileFn = orig })
+	syncFileFn = func(*os.File) error { return fmt.Errorf("injected sync error") }
+
+	dir := t.TempDir()
+	err := writeHookFile(filepath.Join(dir, "pre-merge-commit"), []byte("content"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "writing")
+}
+
+func TestWriteHookFile_CloseFails(t *testing.T) {
+	orig := closeFileFn
+	t.Cleanup(func() { closeFileFn = orig })
+	closeFileFn = func(f *os.File) error {
+		_ = f.Close()
+		return fmt.Errorf("injected close error")
+	}
+
+	dir := t.TempDir()
+	err := writeHookFile(filepath.Join(dir, "pre-merge-commit"), []byte("content"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "writing")
+}
+
+func TestWriteHookFile_RenameFails(t *testing.T) {
+	orig := osRenameFn
+	t.Cleanup(func() { osRenameFn = orig })
+	osRenameFn = func(string, string) error { return fmt.Errorf("injected rename error") }
+
+	dir := t.TempDir()
+	err := writeHookFile(filepath.Join(dir, "pre-merge-commit"), []byte("content"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "writing")
+}

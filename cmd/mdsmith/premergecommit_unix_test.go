@@ -68,3 +68,55 @@ func TestRunPreMergeCommitStatus_SymlinkAtHookPath_ReturnsError(t *testing.T) {
 	})
 	assert.Contains(t, got, "not a regular file")
 }
+
+// TestRunPreMergeCommitUninstall_ReadFileFails places a mode-000 file at
+// the hook path so os.ReadFile returns a non-ENOENT error after the lstat
+// guard passes. Skips as root (which bypasses permission checks).
+func TestRunPreMergeCommitUninstall_ReadFileFails(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("running as root: permission checks don't apply")
+	}
+	dir := t.TempDir()
+	initTestRepo(t, dir)
+	hooksDir := resolveHooksDir(dir)
+	require.NoError(t, os.MkdirAll(hooksDir, 0o755))
+	hookPath := filepath.Join(hooksDir, "pre-merge-commit")
+	require.NoError(t, os.WriteFile(hookPath, []byte("#!/bin/sh\n"), 0o644))
+	require.NoError(t, os.Chmod(hookPath, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(hookPath, 0o644) })
+
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	got := captureStderr(func() {
+		assert.Equal(t, 2, runPreMergeCommitUninstall(nil))
+	})
+	assert.Contains(t, got, "reading hook")
+}
+
+// TestRunPreMergeCommitStatus_ReadFileFails places a mode-000 file at the
+// hook path so os.ReadFile returns a non-ENOENT error after the lstat guard
+// passes. Skips as root (which bypasses permission checks).
+func TestRunPreMergeCommitStatus_ReadFileFails(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("running as root: permission checks don't apply")
+	}
+	dir := t.TempDir()
+	initTestRepo(t, dir)
+	hooksDir := resolveHooksDir(dir)
+	require.NoError(t, os.MkdirAll(hooksDir, 0o755))
+	hookPath := filepath.Join(hooksDir, "pre-merge-commit")
+	require.NoError(t, os.WriteFile(hookPath, []byte("#!/bin/sh\n"), 0o644))
+	require.NoError(t, os.Chmod(hookPath, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(hookPath, 0o644) })
+
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	got := captureStderr(func() {
+		assert.Equal(t, 2, runPreMergeCommitStatus(nil))
+	})
+	assert.Contains(t, got, "reading hook")
+}
