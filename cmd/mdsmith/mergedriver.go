@@ -851,36 +851,27 @@ func writeHookFile(hookPath string, data []byte) error {
 // executable when it lives outside the OS temp directory (i.e. it
 // was installed via "go install" or a release download). When the
 // current executable is a transient "go run" binary it falls back
-// to searching PATH and then $GOPATH/bin.
+// to searching PATH only.
+//
+// The $GOPATH/bin fallback that existed in earlier versions has been
+// removed: a poisoned $GOPATH in a hostile CI environment could steer
+// the merge driver to an attacker binary that then runs with git merge.
+// PATH is under the operator's control and is the correct trust boundary.
 func resolveInstalledBinary() (string, error) {
-	if exe, err := executableFunc(); err == nil {
+	if exe, err := executableFunc(); err == nil && exe != "" {
 		if !isTemporaryBinary(exe) {
 			return filepath.Clean(exe), nil
 		}
 	}
-	// Transient go-run binary — try PATH first, then $GOPATH/bin.
+	// Transient go-run binary — search PATH only.
+	// exec.LookPath returns an absolute path (Go 1.19+), so no Abs call needed.
 	if p, err := exec.LookPath("mdsmith"); err == nil {
-		if abs, err := filepath.Abs(p); err == nil {
-			return abs, nil
-		}
-	}
-	gopath, err := goEnvPath()
-	if err == nil {
-		// GOPATH may contain multiple entries separated by os.PathListSeparator.
-		// Check each entry's bin/mdsmith.
-		for _, entry := range filepath.SplitList(gopath) {
-			if entry == "" {
-				continue
-			}
-			candidate := filepath.Join(entry, "bin", "mdsmith")
-			if p, err := exec.LookPath(candidate); err == nil {
-				return p, nil
-			}
-		}
+		return p, nil
 	}
 	return "", fmt.Errorf(
-		"mdsmith not found in PATH or $GOPATH/bin; " +
-			"run \"go install ./cmd/mdsmith\" first",
+		"mdsmith not found; install it with " +
+			"\"go install github.com/jeduden/mdsmith/cmd/mdsmith@latest\" " +
+			"or ensure the mdsmith binary is on PATH",
 	)
 }
 
@@ -910,13 +901,4 @@ func isTemporaryBinary(path string) bool {
 // the git merge.*.driver value.
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
-}
-
-// goEnvPath returns the value of GOPATH by running "go env GOPATH".
-func goEnvPath() (string, error) {
-	out, err := exec.Command("go", "env", "GOPATH").Output()
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(out)), nil
 }

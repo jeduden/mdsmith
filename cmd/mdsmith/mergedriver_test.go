@@ -327,7 +327,7 @@ func TestRunMergeDriverInstall_NoArgsWritesCanonicalGlobs(t *testing.T) {
 func TestResolveInstalledBinary_NonTemporaryExe(t *testing.T) {
 	// Override executableFunc to return a path that is NOT under os.TempDir()
 	// so isTemporaryBinary returns false.  resolveInstalledBinary should use
-	// that path directly without falling through to the PATH/GOPATH lookup.
+	// that path directly without falling through to the PATH lookup.
 	fakePermanent := "/usr/local/bin-test-fake/mdsmith"
 
 	orig := executableFunc
@@ -361,74 +361,16 @@ func TestResolveInstalledBinary_FromPATH(t *testing.T) {
 	assert.Equal(t, fakeBin, got)
 }
 
-func TestResolveInstalledBinary_FromGopathBin(t *testing.T) {
-	// When the current exe is a transient go-run binary and "mdsmith" is
-	// not in PATH, resolveInstalledBinary must fall back to $GOPATH/bin.
-	// Limit PATH to the directory containing "go" so goEnvPath succeeds
-	// but exec.LookPath("mdsmith") fails (no other dirs to search).
-	goBin, err := exec.LookPath("go")
-	require.NoError(t, err)
-
-	gopathDir := t.TempDir()
-	gopathBinDir := filepath.Join(gopathDir, "bin")
-	require.NoError(t, os.MkdirAll(gopathBinDir, 0o755))
-	fakeBin := filepath.Join(gopathBinDir, "mdsmith")
-	require.NoError(t, os.WriteFile(fakeBin, []byte("#!/bin/sh\n"), 0o755))
-
-	orig := executableFunc
-	t.Cleanup(func() { executableFunc = orig })
-	executableFunc = func() (string, error) {
-		return filepath.Join(os.TempDir(), "go-run-fake", "mdsmith"), nil
-	}
-
-	t.Setenv("PATH", filepath.Dir(goBin))
-	t.Setenv("GOPATH", gopathDir)
-
-	got, err := resolveInstalledBinary()
-	require.NoError(t, err)
-	assert.Equal(t, fakeBin, got)
-}
-
-func TestResolveInstalledBinary_GopathListWithEmptyEntries(t *testing.T) {
-	// A multi-entry GOPATH where the second entry contains the binary
-	// must be searched after the first entry comes up empty. An empty
-	// component in the list (resulting from leading/trailing/double
-	// separators) must be skipped instead of producing "/bin/mdsmith".
-	goBin, err := exec.LookPath("go")
-	require.NoError(t, err)
-
-	emptyGopath := t.TempDir() // no bin/ subdir → first lookup fails
-	realGopath := t.TempDir()
-	realBinDir := filepath.Join(realGopath, "bin")
-	require.NoError(t, os.MkdirAll(realBinDir, 0o755))
-	fakeBin := filepath.Join(realBinDir, "mdsmith")
-	require.NoError(t, os.WriteFile(fakeBin, []byte("#!/bin/sh\n"), 0o755))
-
-	orig := executableFunc
-	t.Cleanup(func() { executableFunc = orig })
-	executableFunc = func() (string, error) {
-		return filepath.Join(os.TempDir(), "go-run-fake", "mdsmith"), nil
-	}
-
-	t.Setenv("PATH", filepath.Dir(goBin))
-	sep := string(os.PathListSeparator)
-	t.Setenv("GOPATH", emptyGopath+sep+sep+realGopath)
-
-	got, err := resolveInstalledBinary()
-	require.NoError(t, err)
-	assert.Equal(t, fakeBin, got)
-}
-
 func TestResolveInstalledBinary_NotFound(t *testing.T) {
-	// When the exe is temporary, mdsmith is not in PATH, and GOPATH/bin has
-	// no mdsmith, resolveInstalledBinary should return an error.
+	// When the exe is temporary and mdsmith is not in PATH,
+	// resolveInstalledBinary should return an error.
 	orig := executableFunc
 	t.Cleanup(func() { executableFunc = orig })
 	executableFunc = func() (string, error) {
 		return filepath.Join(os.TempDir(), "go-run-fake", "mdsmith"), nil
 	}
 
-	// Empty PATH so LookPath("mdsmith") fails and go env GOPATH also fails.
+	// Empty PATH so LookPath("mdsmith") fails.
 	t.Setenv("PATH", "")
 
 	_, err := resolveInstalledBinary()
@@ -436,13 +378,27 @@ func TestResolveInstalledBinary_NotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "mdsmith not found")
 }
 
-// --- goEnvPath ---
+// TestResolveInstalledBinary_GopathBin_NotTrusted asserts that a fake binary
+// placed in $GOPATH/bin is NOT returned by resolveInstalledBinary even when
+// os.Executable() returns a transient path and mdsmith is absent from PATH.
+// A poisoned $GOPATH in hostile CI must not steer the merge driver to an
+// attacker binary. (S003)
+func TestResolveInstalledBinary_GopathBin_NotTrusted(t *testing.T) {
+	// resolveInstalledBinary must not consult GOPATH. Set GOPATH to a temp dir
+	// and empty PATH so the only discovery route is GOPATH — which is not used.
+	// S003: a poisoned $GOPATH in hostile CI must not steer the merge driver.
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) {
+		return filepath.Join(os.TempDir(), "go-run-fake", "mdsmith"), nil
+	}
 
-func TestGoEnvPath_GoNotInPATH(t *testing.T) {
-	// When PATH is empty "go" cannot be found, so goEnvPath returns an error.
 	t.Setenv("PATH", "")
-	_, err := goEnvPath()
+	t.Setenv("GOPATH", t.TempDir()) // resolveInstalledBinary does not read GOPATH
+
+	_, err := resolveInstalledBinary()
 	require.Error(t, err)
+	assert.Contains(t, err.Error(), "mdsmith not found")
 }
 
 // --- isTemporaryBinary ---
@@ -620,6 +576,40 @@ func TestShellQuote_ContainsSingleQuote(t *testing.T) {
 
 func TestShellQuote_PathWithSpaces(t *testing.T) {
 	assert.Equal(t, "'/home/my user/bin/mdsmith'", shellQuote("/home/my user/bin/mdsmith"))
+}
+
+// TestShellQuote_RoundTrip verifies that shellQuote produces output that a
+// POSIX shell evaluates back to the original string unchanged. This is the
+// load-bearing property: shellQuote is the only control preventing shell
+// injection when the driver path enters git config (S002).
+func TestShellQuote_RoundTrip(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX /bin/sh not available on Windows")
+	}
+	cases := []struct {
+		name  string
+		input string
+	}{
+		{name: "plain path", input: "/usr/local/bin/mdsmith"},
+		{name: "path with spaces", input: "/home/my user/bin/mdsmith"},
+		{name: "path with single quote", input: "/path/it's/mdsmith"},
+		{name: "dollar sign and backtick", input: "/path/$HOME/`echo bad`/mdsmith"},
+		{name: "multiple single quotes", input: "/it's/a/'trap'/mdsmith"},
+		{name: "empty string", input: ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			quoted := shellQuote(tc.input)
+			// Run the quoted string through a POSIX shell and capture the
+			// result via printf so no trailing newline is added by echo.
+			cmd := exec.Command("/bin/sh", "-c", "printf '%s' "+quoted)
+			out, err := cmd.Output()
+			require.NoError(t, err, "shell rejected quoted value %q", quoted)
+			assert.Equal(t, tc.input, string(out),
+				"shell roundtrip: shellQuote(%q) = %q must evaluate back to the original",
+				tc.input, quoted)
+		})
+	}
 }
 
 func TestEnsurePreMergeCommitHook_UnreadableHook(t *testing.T) {
@@ -1409,10 +1399,10 @@ func TestRunMergeDriver_CIInstall_LoadConfigError(t *testing.T) {
 }
 
 // pathWithOnlyGit points PATH at a temp dir holding just a `git` symlink
-// for the rest of the test. resolveInstalledBinary's PATH and $GOPATH
-// lookups then fail (no `mdsmith`, and no `go` to query GOPATH) while the
-// merge-driver's own `git rev-parse` still resolves. Skips on Windows,
-// where os.Symlink needs privilege; the coverage gate runs on Linux.
+// for the rest of the test. resolveInstalledBinary's PATH lookup then
+// fails (no `mdsmith`) while the merge-driver's own `git rev-parse` still
+// resolves. Skips on Windows, where os.Symlink needs privilege; the
+// coverage gate runs on Linux.
 func pathWithOnlyGit(t *testing.T) {
 	t.Helper()
 	if runtime.GOOS == "windows" {

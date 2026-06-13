@@ -1,7 +1,7 @@
 ---
 id: 2606122013
 title: "Security hardening batch — 2026-06-12 git/LSP audit"
-status: "🔲"
+status: "✅"
 summary: >-
   Low/informational hardening from the 2026-06-12 audit: remove the
   GOPATH binary fallback in resolveInstalledBinary (S003), and add a
@@ -29,17 +29,17 @@ covers paths with single quotes, spaces, or dollar signs.
 
 ### S003 — GOPATH fallback
 
-- [ ] **Red**: add a test that sets `GOPATH` to a directory with a fake
+- [x] **Red**: add a test that sets `GOPATH` to a directory with a fake
   `bin/mdsmith`, makes `os.Executable()` and `LookPath` fail, calls
   `resolveInstalledBinary`, and asserts the fake path is not returned.
-- [ ] **Green**: remove the `goEnvPath` / `GOPATH` fallback. If it is
+- [x] **Green**: remove the `goEnvPath` / `GOPATH` fallback. If it is
   kept for development, gate it: verify the resolved path is in the
   same directory as `os.Executable()` before accepting it.
-- [ ] Run `go test ./cmd/mdsmith/...`; all pass.
+- [x] Run `go test ./cmd/mdsmith/...`; all pass.
 
 ### S002 — shellQuote unit test
 
-- [ ] **Red/Green**: add a table-driven test in
+- [x] **Red/Green**: add a table-driven test in
   `cmd/mdsmith/mergedriver_test.go` covering a path with spaces, a
   path with single quotes, a path with `$VAR` and backticks, and the
   empty string. Each case: pass the `shellQuote` result to

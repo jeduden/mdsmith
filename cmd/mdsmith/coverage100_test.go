@@ -96,8 +96,8 @@ func TestRunMergeDriverInstall_RegisterError(t *testing.T) {
 		return filepath.Join(os.TempDir(), "go-run-fake", "mdsmith"), nil
 	}
 	t.Cleanup(func() { executableFunc = orig })
-	// Restrict PATH to only git so LookPath("mdsmith") and goEnvPath (which
-	// needs "go") both fail, while git rev-parse still resolves.
+	// Restrict PATH to only git so LookPath("mdsmith") fails,
+	// while git rev-parse still resolves.
 	pathWithOnlyGit(t)
 	t.Chdir(dir)
 	captureStderr(func() {
