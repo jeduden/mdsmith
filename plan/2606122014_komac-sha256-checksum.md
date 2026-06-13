@@ -1,7 +1,7 @@
 ---
 id: 2606122014
 title: "Add SHA256 checksum verification for komac download in release.yml"
-status: "🔲"
+status: "✅"
 summary: >-
   S001 from the 2026-06-12 full-repo audit: the winget-submit job
   downloads the komac binary with curl and executes it without any
@@ -34,10 +34,10 @@ that privileged step with no post-download integrity check.
 
 ## Tasks
 
-- [ ] Find the exact komac version pinned in `release.yml` (e.g.
+- [x] Find the exact komac version pinned in `release.yml` (e.g.
   `v1.x.y`) and compute the SHA256 of the Linux amd64 binary for
   that release.
-- [ ] Add a `sha256sum -c` check in `release.yml` immediately after
+- [x] Add a `sha256sum -c` check in `release.yml` immediately after
   the curl line, following the same pattern as tinygo in
   `ci.yml:563-568`:
   `echo "<sha256>  /usr/local/bin/komac" | sha256sum -c`
@@ -48,8 +48,8 @@ that privileged step with no post-download integrity check.
 
 ## Acceptance Criteria
 
-- The winget-submit job verifies the komac binary's SHA256 before
+- [x] The winget-submit job verifies the komac binary's SHA256 before
   executing it.
-- The hardcoded hash matches the komac binary for the pinned version.
-- The pattern matches the one used by other binary downloads in the
+- [x] The hardcoded hash matches the komac binary for the pinned version.
+- [x] The pattern matches the one used by other binary downloads in the
   repository (echo + sha256sum -c, not a separate file).

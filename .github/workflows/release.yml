@@ -1013,13 +1013,18 @@ jobs:
           # fail an otherwise-successful release, so each fallible
           # step logs a warning and exits 0.
           KOMAC_VERSION="2.10.0"
+          KOMAC_SHA256="523a5c4d685741f540a403e329581ab42c30e2db9b3dd1dd90389f7eefe8a3ba"
           if ! curl -fsSL \
-            "https://github.com/russellbanks/Komac/releases/download/v${KOMAC_VERSION}/komac-${KOMAC_VERSION}-x86_64-unknown-linux-musl" \
-            -o /usr/local/bin/komac; then
+            "https://github.com/russellbanks/Komac/releases/download/v${KOMAC_VERSION}/komac-${KOMAC_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
+            -o /tmp/komac.tar.gz; then
             echo "::warning::could not download komac; skipping WinGet submission."
             exit 0
           fi
-          chmod +x /usr/local/bin/komac
+          if ! echo "${KOMAC_SHA256}  /tmp/komac.tar.gz" | sha256sum -c -; then
+            echo "::warning::komac checksum mismatch; skipping WinGet submission."
+            exit 0
+          fi
+          tar -xzf /tmp/komac.tar.gz -C /usr/local/bin/
           installer="https://github.com/jeduden/mdsmith/releases/download/${VERSION}/mdsmith-windows-amd64.exe"
           if ! komac update jeduden.mdsmith \
             --version "${VERSION#v}" \
