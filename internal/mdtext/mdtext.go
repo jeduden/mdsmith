@@ -306,20 +306,34 @@ type wordCounter struct {
 	inWord bool
 }
 
-// writeBytes folds b into the running count, decoding UTF-8 runes
-// one at a time. Equivalent to feeding b through [CountWords] except
-// that the inWord state is shared with later writeBytes / writeSpace
-// calls so two adjacent calls do not introduce a spurious word break.
+// writeBytes folds b into the running count. Equivalent to feeding b
+// through [CountWords] except that the inWord state is shared with
+// later writeBytes / writeSpace calls so two adjacent calls do not
+// introduce a spurious word break. ASCII bytes are classified through
+// the asciiSpace table without a rune decode, the same fast path
+// [CountWordsBytes] uses — this is the per-segment hot path
+// CountWordsInNode drives for every paragraph.
 func (wc *wordCounter) writeBytes(b []byte) {
 	for len(b) > 0 {
+		c := b[0]
+		if c < utf8.RuneSelf {
+			b = b[1:]
+			if asciiSpace[c] {
+				wc.inWord = false
+			} else if !wc.inWord {
+				wc.inWord = true
+				wc.n++
+			}
+			continue
+		}
 		r, size := utf8.DecodeRune(b)
+		b = b[size:]
 		if IsSpace(r) {
 			wc.inWord = false
 		} else if !wc.inWord {
 			wc.inWord = true
 			wc.n++
 		}
-		b = b[size:]
 	}
 }
 

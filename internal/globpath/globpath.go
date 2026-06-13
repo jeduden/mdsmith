@@ -62,14 +62,15 @@ func ContainsDotDotSegment(p string) bool {
 var validPatterns sync.Map // pattern string -> bool
 
 // patternValid reports whether pattern is a valid doublestar pattern,
-// memoizing the verdict.
+// memoizing the verdict. LoadOrStore collapses the miss path to one
+// map op and keeps concurrent first-touch callers from each storing
+// their own (identical) verdict.
 func patternValid(pattern string) bool {
 	if v, ok := validPatterns.Load(pattern); ok {
 		return v.(bool)
 	}
-	v := doublestar.ValidatePattern(pattern)
-	validPatterns.Store(pattern, v)
-	return v
+	actual, _ := validPatterns.LoadOrStore(pattern, doublestar.ValidatePattern(pattern))
+	return actual.(bool)
 }
 
 // Match reports whether path matches pattern using the doublestar matcher.

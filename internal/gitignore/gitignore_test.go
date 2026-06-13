@@ -84,6 +84,23 @@ func TestRelTo_RelativeInputsFallBackToRel(t *testing.T) {
 	assert.False(t, ok, "unrelated relative trees yield a ..-prefixed Rel result")
 }
 
+// TestIsIgnored_DotDotPrefixedNameNeverMatches pins the guard that a
+// within-base entry whose basename begins with ".." is never matched,
+// matching the pre-relTo behavior (filepath.Rel returned "..name" and
+// the matcher rejected any ".."-prefixed relative form).
+func TestIsIgnored_DotDotPrefixedNameNeverMatches(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".gitignore"), []byte("*config\n..cache\n"), 0o644))
+	m := NewMatcher(dir)
+	// Both a "*config" glob and an exact "..cache" rule would match
+	// the basename if the ".." guard were dropped.
+	assert.False(t, m.IsIgnored(filepath.Join(dir, "..config"), false),
+		"a file named ..config must not be gitignore-matched")
+	assert.False(t, m.IsIgnored(filepath.Join(dir, "..cache"), true),
+		"a dir named ..cache must not be gitignore-matched")
+}
+
 // --- NewMatcher tests ---
 
 func TestNewMatcher_NoGitignore(t *testing.T) {

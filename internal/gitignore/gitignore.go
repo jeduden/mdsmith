@@ -303,6 +303,16 @@ func matchRule(r ignoreRule, absPath string) bool {
 	// Normalize to forward slashes for matching.
 	rel = filepath.ToSlash(rel)
 
+	// A relative form that still begins with ".." never matches: it
+	// either escapes the base or names a top segment literally
+	// starting with "..". relTo's fast path returns the uncleaned
+	// suffix, so this guard also covers an interior ".." in an
+	// uncleaned input — preserving the pre-relTo filepath.Rel form,
+	// which cleaned the path and then rejected a ".." prefix.
+	if strings.HasPrefix(rel, "..") {
+		return false
+	}
+
 	if r.hasSlash {
 		// Pattern contains a slash: match against the full relative path.
 		return matchGitignorePattern(r.pattern, rel)
