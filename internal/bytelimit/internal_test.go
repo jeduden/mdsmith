@@ -50,6 +50,13 @@ func TestReadLimited_ReadErrorPropagates(t *testing.T) {
 	require.ErrorIs(t, err, boom)
 }
 
+func TestReadLimitedInto_ReadErrorPropagates(t *testing.T) {
+	boom := errors.New("boom")
+	var buf []byte
+	_, err := readLimitedInto(errReader{err: boom}, &buf, 100)
+	require.ErrorIs(t, err, boom)
+}
+
 func TestReadLimited_TooLargeWithoutStat(t *testing.T) {
 	// A reader with no Stat() leaves the size unknown, so the too-large
 	// error reports the read length (max+1) rather than a stat size.
