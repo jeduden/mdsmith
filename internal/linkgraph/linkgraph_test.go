@@ -260,6 +260,33 @@ func TestImages_NilFile(t *testing.T) {
 	assert.Nil(t, Images(nil))
 }
 
+// TestRefLinkTargets_ReferenceIdentity pins that two calls to RefLinkTargets
+// on the same File return the exact same backing slice.
+func TestRefLinkTargets_ReferenceIdentity(t *testing.T) {
+	f := newFile(t, "# Doc\n\nSee [guide][a] and [ref][b].\n\n[a]: a.md\n[b]: b.md\n")
+	first := RefLinkTargets(f)
+	second := RefLinkTargets(f)
+	require.NotNil(t, first)
+	require.Same(t, &first[0], &second[0],
+		"RefLinkTargets must return the same backing slice on every call for one File")
+}
+
+// TestRefLinkTargets_ContentEquality checks that RefLinkTargets returns
+// byte-identical output to ExtractRefLinkTargets for a representative fixture.
+func TestRefLinkTargets_ContentEquality(t *testing.T) {
+	src := "# Doc\n\nSee [guide][a] and [ref][b].\n\n[a]: a.md\n[b]: b.md\n"
+	f := newFile(t, src)
+	want := ExtractRefLinkTargets(f)
+	got := RefLinkTargets(f)
+	require.Equal(t, want, got,
+		"RefLinkTargets must produce byte-identical output to ExtractRefLinkTargets")
+}
+
+// TestRefLinkTargets_NilFile checks that RefLinkTargets handles a nil file gracefully.
+func TestRefLinkTargets_NilFile(t *testing.T) {
+	assert.Nil(t, RefLinkTargets(nil))
+}
+
 // =====================================================================
 // ExtractImages tests
 // =====================================================================

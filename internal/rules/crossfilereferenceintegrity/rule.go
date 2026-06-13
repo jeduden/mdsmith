@@ -128,7 +128,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		}
 	}
 	if r.Links.ValidateReferenceStyle {
-		for _, link := range linkgraph.ExtractRefLinkTargets(f) {
+		for _, link := range linkgraph.RefLinkTargets(f) {
 			diags = append(diags, r.checkLink(&ctx, link, false)...)
 		}
 	}

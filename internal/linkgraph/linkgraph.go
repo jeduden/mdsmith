@@ -105,11 +105,8 @@ func Links(f *lint.File) []Link {
 	if f == nil {
 		return nil
 	}
-	v := f.MemoFile("linkgraph.links", buildLinks)
-	if v == nil {
-		return nil
-	}
-	return v.([]Link)
+	links, _ := f.MemoFile("linkgraph.links", buildLinks).([]Link)
+	return links
 }
 
 // buildLinks is the MemoFile-style builder for the Links memo. Defined at
@@ -131,11 +128,8 @@ func Images(f *lint.File) []Link {
 	if f == nil {
 		return nil
 	}
-	v := f.MemoFile("linkgraph.images", buildImages)
-	if v == nil {
-		return nil
-	}
-	return v.([]Link)
+	links, _ := f.MemoFile("linkgraph.images", buildImages).([]Link)
+	return links
 }
 
 // buildImages is the MemoFile-style builder for the Images memo.
