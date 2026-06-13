@@ -201,6 +201,66 @@ func TestExtractLinks_LinkWithNoTextChildren(t *testing.T) {
 }
 
 // =====================================================================
+// Memoized accessor tests
+// =====================================================================
+
+// TestLinks_ReferenceIdentity pins that two calls to Links on the same
+// File return the exact same backing slice — the memo ran the AST walk
+// only once. Same pointer is the contract; callers treat the slice as
+// read-only and must not mutate it.
+func TestLinks_ReferenceIdentity(t *testing.T) {
+	f := newFile(t, "# Doc\n\nSee [guide](guide.md) and [ref](other.md).\n")
+	first := Links(f)
+	second := Links(f)
+	require.NotNil(t, first)
+	require.Same(t, &first[0], &second[0],
+		"Links must return the same backing slice on every call for one File")
+}
+
+// TestImages_ReferenceIdentity pins that two calls to Images on the
+// same File return the exact same backing slice.
+func TestImages_ReferenceIdentity(t *testing.T) {
+	f := newFile(t, "# Doc\n\n![logo](logo.png) and ![badge](badge.svg).\n")
+	first := Images(f)
+	second := Images(f)
+	require.NotNil(t, first)
+	require.Same(t, &first[0], &second[0],
+		"Images must return the same backing slice on every call for one File")
+}
+
+// TestLinks_ContentEquality checks that Links returns byte-identical
+// output to ExtractLinks for a representative fixture.
+func TestLinks_ContentEquality(t *testing.T) {
+	src := "# Doc\n\nSee [guide](guide.md#intro), [local](#top), and [ref][label].\n\n[label]: other.md\n"
+	f := newFile(t, src)
+	want := ExtractLinks(f)
+	got := Links(f)
+	require.Equal(t, want, got,
+		"Links must produce byte-identical output to ExtractLinks")
+}
+
+// TestImages_ContentEquality checks that Images returns byte-identical
+// output to ExtractImages for a representative fixture.
+func TestImages_ContentEquality(t *testing.T) {
+	src := "# Doc\n\n![logo](logo.png) and ![alt][ref].\n\n[ref]: badge.svg\n"
+	f := newFile(t, src)
+	want := ExtractImages(f)
+	got := Images(f)
+	require.Equal(t, want, got,
+		"Images must produce byte-identical output to ExtractImages")
+}
+
+// TestLinks_NilFile checks that Links handles a nil file gracefully.
+func TestLinks_NilFile(t *testing.T) {
+	assert.Nil(t, Links(nil))
+}
+
+// TestImages_NilFile checks that Images handles a nil file gracefully.
+func TestImages_NilFile(t *testing.T) {
+	assert.Nil(t, Images(nil))
+}
+
+// =====================================================================
 // ExtractImages tests
 // =====================================================================
 
