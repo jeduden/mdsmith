@@ -22,6 +22,22 @@ import (
 	"github.com/jeduden/mdsmith/internal/rule"
 )
 
+// sourceBufPool recycles the per-file source-read buffer across the
+// engine's lintFile passes. Every file's source bytes used to be a
+// fresh allocation that died with the parsed File — the top allocator
+// on a `mdsmith check` run (~10% of alloc_space on the repo corpus).
+// lintFile draws one *[]byte here, reads the file into it via
+// bytelimit.ReadFileLimitedInto, and returns it from the same release()
+// closure that recycles the parse arena: the File, its Lines, and any
+// output aliasing Source are all dead by then. Buffers are resliced to
+// zero length before going back so a single large file does not pin
+// megabytes; their (possibly grown) capacity is reused on the next draw.
+//
+// Only lintFile uses this. RunSource (LSP ParseCache), RunCache target
+// loads, and mdsmith export keep the plain allocating read because
+// their Files outlive the call.
+var sourceBufPool = sync.Pool{New: func() any { b := make([]byte, 0, 8192); return &b }}
+
 // Runner drives the linting pipeline: for each file it reads the content,
 // builds a File (parsing the AST once), determines the effective rule
 // configuration, runs enabled rules, and collects diagnostics.
@@ -354,8 +370,17 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 	}
 	flog.Printf("file: %s", path)
 
-	source, err := bytelimit.ReadFileLimited(path, r.MaxInputBytes)
+	// Draw a pooled source buffer and read the file into it. The buffer
+	// rides the same lifetime boundary as the parse arena: it is returned
+	// from the release() closure below, after Check has copied every
+	// diagnostic out and the File (its Source/Lines aliasing this buffer)
+	// is dead. On the read-error path nothing aliases the buffer yet, so
+	// return it immediately.
+	bufp := sourceBufPool.Get().(*[]byte)
+	source, err := bytelimit.ReadFileLimitedInto(path, bufp, r.MaxInputBytes)
 	if err != nil {
+		*bufp = (*bufp)[:0]
+		sourceBufPool.Put(bufp)
 		return fileOutcome{errs: []error{fmt.Errorf("reading %q: %w", path, err)}}
 	}
 
@@ -366,7 +391,16 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 	// Files parsed through its own unpooled path. RunSource (LSP,
 	// stdin) deliberately stays on the unpooled constructor because
 	// its Files outlive the call via the ParseCache.
-	f, release := lint.NewFileFromSourcePooled(path, source, r.StripFrontMatter)
+	//
+	// release() recycles both the arena slabs and the source buffer:
+	// the buffer is resliced to zero length so a single large file does
+	// not pin its grown capacity in the pool forever.
+	f, releaseArena := lint.NewFileFromSourcePooled(path, source, r.StripFrontMatter)
+	release := func() {
+		releaseArena()
+		*bufp = (*bufp)[:0]
+		sourceBufPool.Put(bufp)
+	}
 	defer release()
 	f.MaxInputBytes = r.MaxInputBytes
 	f.RunCache = cache
