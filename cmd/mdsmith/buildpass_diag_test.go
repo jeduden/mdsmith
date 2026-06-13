@@ -278,7 +278,7 @@ func TestVerifyTarget_DeterministicRecipe_NoUnstable(t *testing.T) {
 	require.NoError(t, builder.Build(context.Background(), bt.target))
 	res := &targetRunResult{}
 	var buf strings.Builder
-	verifyTarget(context.Background(), builder, bt, "", buildPassOpts{}, time.Second, res, &buf)
+	verifyTarget(builder, bt, "", buildPassOpts{}, time.Second, res, &buf)
 	assert.False(t, res.Unstable)
 }
 
@@ -300,7 +300,7 @@ func TestVerifyTarget_FailingReRunSetsUnstable(t *testing.T) {
 	}
 	res := &targetRunResult{}
 	var buf strings.Builder
-	verifyTarget(context.Background(), mock, bt, "", buildPassOpts{}, time.Second, res, &buf)
+	verifyTarget(mock, bt, "", buildPassOpts{}, time.Second, res, &buf)
 	assert.True(t, res.Unstable)
 	assert.Contains(t, buf.String(), "verify re-run failed")
 }
@@ -336,7 +336,7 @@ func TestVerifyTarget_NonDeterministicOutput_SetsUnstable(t *testing.T) {
 	}
 	res := &targetRunResult{}
 	var buf strings.Builder
-	verifyTarget(context.Background(), mock, bt, "", buildPassOpts{}, time.Second, res, &buf)
+	verifyTarget(mock, bt, "", buildPassOpts{}, time.Second, res, &buf)
 	assert.True(t, res.Unstable, "non-deterministic output must set Unstable")
 	assert.Contains(t, buf.String(), "non-deterministic")
 }
@@ -511,7 +511,7 @@ func TestVerifyTarget_NoCacheSkipsLogCapture(t *testing.T) {
 	res := &targetRunResult{}
 	var buf strings.Builder
 	// Pass id="" (no-cache path): verifyTarget must not create a log directory.
-	verifyTarget(context.Background(), builder, bt, "", buildPassOpts{}, time.Second, res, &buf)
+	verifyTarget(builder, bt, "", buildPassOpts{}, time.Second, res, &buf)
 	assert.False(t, res.Unstable)
 	_, err := os.Stat(filepath.Join(root, ".mdsmith", "build-logs"))
 	assert.True(t, os.IsNotExist(err), "no log directory must be created when id is empty")
@@ -542,6 +542,53 @@ func TestReportBuildFailure_ActionIDError_NoBuildFields(t *testing.T) {
 	assert.Contains(t, out, "error:")
 	assert.NotContains(t, out, "argv:")
 	assert.NotContains(t, out, "exit:")
+}
+
+// TestVerifyTarget_WithID_CreatesVerifyLogFile confirms that verifyTarget
+// creates a verify-<id>.log file under .mdsmith/build-logs/ when id is
+// non-empty, so the verify re-run's output is always persisted alongside
+// the first-run log.
+func TestVerifyTarget_WithID_CreatesVerifyLogFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sh not available on Windows")
+	}
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "src.txt"), []byte("hello"), 0o644))
+	script := writeShScript(t, root, "cp.sh", `cp "$1" "$2"`)
+	cmd := script + " {inputs} {outputs}"
+	builder := buildexec.NewCustomBuilder(map[string]buildexec.RecipeSpec{
+		"cp": {Command: cmd},
+	})
+	bt := buildTarget{
+		file: "doc.md",
+		line: 1,
+		target: buildexec.Target{
+			Recipe:  "cp",
+			Root:    root,
+			Inputs:  []string{"src.txt"},
+			Outputs: []string{"out.txt"},
+		},
+	}
+	require.NoError(t, builder.Build(context.Background(), bt.target))
+	stin := buildexec.StalenessInput{Target: bt.target, Command: cmd}
+	id, err := buildexec.ComputeActionID(stin)
+	require.NoError(t, err)
+
+	res := &targetRunResult{}
+	var buf strings.Builder
+	verifyTarget(builder, bt, id, buildPassOpts{}, time.Second, res, &buf)
+	assert.False(t, res.Unstable)
+
+	logsDir := filepath.Join(root, ".mdsmith", "build-logs")
+	entries, err := os.ReadDir(logsDir)
+	require.NoError(t, err, "build-logs dir must be created")
+	var found bool
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "verify-") && strings.HasSuffix(e.Name(), ".log") {
+			found = true
+		}
+	}
+	assert.True(t, found, "verify-<id>.log must be created in build-logs when id is non-empty")
 }
 
 // TestDispatchTargets_JobsWithCheckStale_PrintsWarning covers the new
@@ -633,7 +680,7 @@ func TestVerifyTarget_StreamEnabled_ForwardsLiveOutput(t *testing.T) {
 
 	res := &targetRunResult{}
 	var buf strings.Builder
-	verifyTarget(context.Background(), builder, bt, id, buildPassOpts{stream: true}, time.Second, res, &buf)
+	verifyTarget(builder, bt, id, buildPassOpts{stream: true}, time.Second, res, &buf)
 	assert.False(t, res.Unstable)
 	assert.Contains(t, buf.String(), "verify-live")
 }

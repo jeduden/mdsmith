@@ -99,10 +99,10 @@ func sortedKeys(m map[string]string) []string {
 // failure and timeout diagnostics.
 const diagTailLines = 20
 
-// printStreamTail writes the last-n-lines header and body for one stream.
-func printStreamTail(label string, lines []string, n int, w io.Writer) {
-	_, _ = fmt.Fprintf(w, "  --- last %d lines of %s ---\n", n, label)
-	for _, line := range lastLines(lines, n) {
+// printStreamTail writes the last diagTailLines header and body for one stream.
+func printStreamTail(label string, lines []string, w io.Writer) {
+	_, _ = fmt.Fprintf(w, "  --- last %d lines of %s ---\n", diagTailLines, label)
+	for _, line := range lastLines(lines, diagTailLines) {
 		_, _ = fmt.Fprintf(w, "  %s\n", line)
 	}
 }
@@ -137,15 +137,15 @@ func reportBuildFailure(bt buildTarget, res targetRunResult, w io.Writer) {
 	if len(res.StderrTail) == 0 {
 		return
 	}
-	printStreamTail("stderr", res.StderrTail, diagTailLines, w)
+	printStreamTail("stderr", res.StderrTail, w)
 }
 
 // reportTimeout prints the hung-recipe diagnostic before the SIGTERM that
 // the context cancellation already sent.
 func reportTimeout(name string, res targetRunResult, w io.Writer) {
 	_, _ = fmt.Fprintf(w, "TIMEOUT %s after %s\n", name, res.Duration.Round(time.Millisecond))
-	printStreamTail("stdout", res.StdoutTail, diagTailLines, w)
-	printStreamTail("stderr", res.StderrTail, diagTailLines, w)
+	printStreamTail("stdout", res.StdoutTail, w)
+	printStreamTail("stderr", res.StderrTail, w)
 	_, _ = fmt.Fprintf(w, "  sent SIGTERM to process group\n")
 }
 
@@ -174,13 +174,12 @@ func relLogPath(root, logPath string) string {
 // res.Unstable with a warning when they differ. A mismatch is a warning,
 // not a failure: some recipes embed timestamps or random seeds.
 func verifyTarget(
-	ctx context.Context,
 	b buildexec.Builder, bt buildTarget, id string,
 	opts buildPassOpts, timeout time.Duration, res *targetRunResult, w io.Writer,
 ) {
 	first := snapshotOutputs(bt)
 
-	vctx, cancel := context.WithTimeout(ctx, timeout)
+	vctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	verifyOpts := buildexec.Options{TargetName: targetName(bt)}
 	if id != "" {

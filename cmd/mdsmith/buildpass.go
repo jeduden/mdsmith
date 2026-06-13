@@ -529,7 +529,7 @@ func decideAndRun(
 		return outcomeFailed, nil
 	}
 	if opts.verify {
-		verifyTarget(context.Background(), builder, bt, id, opts, timeout, &res, w)
+		verifyTarget(builder, bt, id, opts, timeout, &res, w)
 	}
 	entry, err := buildCacheEntry(stin, opts, res.Unstable)
 	if err != nil {
@@ -555,8 +555,9 @@ func targetVerdict(
 	stin buildexec.StalenessInput, cache *buildexec.Cache, opts buildPassOpts,
 ) (buildexec.Verdict, error) {
 	if opts.force || opts.noCache {
-		// Still resolve inputs so a missing input or empty glob is an error.
-		if _, err := buildexec.CheckStaleness(stin, buildexec.NewCache()); err != nil {
+		// Validate inputs without hashing — cheaper than a full staleness check
+		// when the verdict is already known to be Stale.
+		if err := buildexec.ValidateInputs(stin); err != nil {
 			return buildexec.Stale, err
 		}
 		return buildexec.Stale, nil

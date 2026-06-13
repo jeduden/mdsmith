@@ -307,6 +307,27 @@ func TestRecordBuild_HashFileErrorForOutput(t *testing.T) {
 
 // --- ComputeActionID error paths ---
 
+// --- ValidateInputs ---
+
+func TestValidateInputs_MissingLiteralInput_ReturnsError(t *testing.T) {
+	root := t.TempDir()
+	in := newPlan(t, root, "r", "tool", []string{"absent.txt"}, []string{"out.txt"}, nil)
+	require.Error(t, ValidateInputs(in))
+}
+
+func TestValidateInputs_AllInputsPresent_ReturnsNil(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "src.txt", "content")
+	in := newPlan(t, root, "r", "tool", []string{"src.txt"}, []string{"out.txt"}, nil)
+	require.NoError(t, ValidateInputs(in))
+}
+
+func TestValidateInputs_BadInputPath_ReturnsError(t *testing.T) {
+	root := t.TempDir()
+	in := newPlan(t, root, "r", "tool", []string{"../escape.txt"}, []string{"out.txt"}, nil)
+	require.Error(t, ValidateInputs(in))
+}
+
 func TestComputeActionID_BadInputPath(t *testing.T) {
 	root := t.TempDir()
 	in := newPlan(t, root, "r", "tool", []string{"../escape.txt"}, []string{"out.txt"}, nil)

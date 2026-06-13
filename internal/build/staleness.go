@@ -216,6 +216,19 @@ func computeActionIDFromResolved(in StalenessInput, inputs, outputs []string) (s
 	return computeActionIDFromSums(in, inputs, outputs, sums), nil
 }
 
+// ValidateInputs resolves the target's declared inputs and outputs without
+// hashing them. It returns an error if any literal input path is missing or
+// any input glob expands to zero files. Use this before a forced rebuild
+// (--build-force, --build-no-cache) to catch configuration errors cheaply,
+// without the I/O cost of a full staleness check.
+func ValidateInputs(in StalenessInput) error {
+	if _, err := resolveInputs(in); err != nil {
+		return err
+	}
+	_, err := resolveOutputs(in)
+	return err
+}
+
 // ComputeActionID computes the sha256 ActionID over the recipe command,
 // canonical params, sorted relative inputs, each input's content hash,
 // sorted relative outputs, and the cache version. Every field is framed
@@ -240,11 +253,11 @@ type ExplainInput struct {
 	Hash string
 }
 
-// Explanation is the full ActionID-input breakdown for one target: the
+// ActionExplanation is the full ActionID-input breakdown for one target: the
 // recipe command, the canonical params, the resolved inputs with content
 // shas, the resolved outputs, the cache version, and the resulting
 // ActionID. It answers "why is this fresh?" without diving into JSON.
-type Explanation struct {
+type ActionExplanation struct {
 	Command      string
 	Params       map[string]string
 	Inputs       []ExplainInput
@@ -254,14 +267,14 @@ type Explanation struct {
 }
 
 // Explain resolves a target's ActionID inputs and returns the breakdown.
-func Explain(in StalenessInput) (Explanation, error) {
+func Explain(in StalenessInput) (ActionExplanation, error) {
 	inputs, err := resolveInputs(in)
 	if err != nil {
-		return Explanation{}, err
+		return ActionExplanation{}, err
 	}
 	outputs, err := resolveOutputs(in)
 	if err != nil {
-		return Explanation{}, err
+		return ActionExplanation{}, err
 	}
 	sums := make([]string, len(inputs))
 	exInputs := make([]ExplainInput, 0, len(inputs))
@@ -269,12 +282,12 @@ func Explain(in StalenessInput) (Explanation, error) {
 		abs := filepath.Join(in.Target.Root, filepath.FromSlash(rel))
 		sum, err := hashFileFn(abs)
 		if err != nil {
-			return Explanation{}, err
+			return ActionExplanation{}, err
 		}
 		sums[i] = sum
 		exInputs = append(exInputs, ExplainInput{Path: rel, Hash: "sha256-" + sum})
 	}
-	return Explanation{
+	return ActionExplanation{
 		Command:      in.Command,
 		Params:       in.Target.Params,
 		Inputs:       exInputs,
