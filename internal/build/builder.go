@@ -148,14 +148,9 @@ func (b *CustomBuilder) BuildWithResult(
 	ctx context.Context, target Target, opts Options,
 ) Result {
 	res := Result{}
-	spec, ok := b.recipes[target.Recipe]
-	if !ok {
-		res.Err = fmt.Errorf("unknown recipe %q", target.Recipe)
-		return res
-	}
-	tokens := strings.Fields(spec.Command)
-	if len(tokens) == 0 {
-		res.Err = fmt.Errorf("recipe %q has an empty command", target.Recipe)
+	tokens, err := b.buildArgv(target)
+	if err != nil {
+		res.Err = err
 		return res
 	}
 
@@ -171,24 +166,15 @@ func (b *CustomBuilder) BuildWithResult(
 	res.Cwd = plan.stageDir
 
 	// Open the log file before the before-snapshot so that creating
-	// .mdsmith/build-logs/ does not appear as an undeclared write in the
-	// post-condition check.
-	var sc *streamCapture
-	if opts.LogRoot != "" && opts.ActionID != "" {
-		res.LogPath = logPathFor(opts.LogRoot, opts.ActionID)
-		sc, err = newStreamCapture(res.LogPath, opts.TargetName, opts.LiveSink)
-		if err != nil {
-			res.Err = err
-			return res
-		}
-		defer sc.Close() //nolint:errcheck // log-file close is best-effort
+	// .mdsmith/build-logs/ does not appear as an undeclared write.
+	sc, logPath, err := openCapture(opts)
+	if err != nil {
+		res.Err = err
+		return res
 	}
-
-	// Determine stdout/stderr for the recipe.
-	var recipeStdout, recipeStderr io.Writer
 	if sc != nil {
-		recipeStdout = sc.stdout()
-		recipeStderr = sc.stderr()
+		res.LogPath = logPath
+		defer sc.Close() //nolint:errcheck // log-file close is best-effort
 	}
 
 	before, err := snapshotDirsFn(plan.parents, snapshotCap, nil)
@@ -197,27 +183,10 @@ func (b *CustomBuilder) BuildWithResult(
 		return res
 	}
 
-	start := time.Now()
-	exitCode, timedOut, runErr := runRecipe(ctx, runOpts{
-		argv:    argv,
-		dir:     plan.stageDir,
-		exec:    b.exec,
-		defExec: defaultExecConfig(),
-		stdout:  recipeStdout,
-		stderr:  recipeStderr,
-	})
-	res.Duration = time.Since(start)
-	res.ExitCode = exitCode
-	res.TimedOut = timedOut
-	if sc != nil {
-		res.StdoutTail = sc.stdoutTail()
-		res.StderrTail = sc.stderrTail()
-	}
-	if runErr != nil {
+	if runErr := b.execWithCapture(ctx, plan, argv, sc, &res); runErr != nil {
 		res.Err = fmt.Errorf("recipe %q failed: %w", target.Recipe, runErr)
 		return res
 	}
-
 	if err := verifyOutputsExist(plan.outputs, plan.stagePaths); err != nil {
 		res.Err = err
 		return res
@@ -231,6 +200,59 @@ func (b *CustomBuilder) BuildWithResult(
 		return res
 	}
 	return res
+}
+
+// buildArgv looks up the recipe command for target and tokenizes it into argv.
+func (b *CustomBuilder) buildArgv(target Target) ([]string, error) {
+	spec, ok := b.recipes[target.Recipe]
+	if !ok {
+		return nil, fmt.Errorf("unknown recipe %q", target.Recipe)
+	}
+	tokens := strings.Fields(spec.Command)
+	if len(tokens) == 0 {
+		return nil, fmt.Errorf("recipe %q has an empty command", target.Recipe)
+	}
+	return tokens, nil
+}
+
+// openCapture creates a streamCapture for the given options. Returns nil,"",nil
+// when opts has no log root or action ID (capture disabled).
+func openCapture(opts Options) (*streamCapture, string, error) {
+	if opts.LogRoot == "" || opts.ActionID == "" {
+		return nil, "", nil
+	}
+	p := logPathFor(opts.LogRoot, opts.ActionID)
+	sc, err := newStreamCapture(p, opts.TargetName, opts.LiveSink)
+	return sc, p, err
+}
+
+// execWithCapture runs the recipe argv and populates timing and stream-tail
+// fields on res. It returns the raw execution error without wrapping.
+func (b *CustomBuilder) execWithCapture(
+	ctx context.Context, plan buildPlan, argv []string, sc *streamCapture, res *Result,
+) error {
+	var stdout, stderr io.Writer
+	if sc != nil {
+		stdout = sc.stdout()
+		stderr = sc.stderr()
+	}
+	start := time.Now()
+	exitCode, timedOut, err := runRecipe(ctx, runOpts{
+		argv:    argv,
+		dir:     plan.stageDir,
+		exec:    b.exec,
+		defExec: defaultExecConfig(),
+		stdout:  stdout,
+		stderr:  stderr,
+	})
+	res.Duration = time.Since(start)
+	res.ExitCode = exitCode
+	res.TimedOut = timedOut
+	if sc != nil {
+		res.StdoutTail = sc.stdoutTail()
+		res.StderrTail = sc.stderrTail()
+	}
+	return err
 }
 
 // buildPlan holds the resolved paths for one Build call: the recipe's

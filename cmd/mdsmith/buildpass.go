@@ -185,24 +185,8 @@ func runBuildPass(
 		return 0
 	}
 
-	// Trust gate: a freshly cloned repo may declare recipes that run
-	// arbitrary binaries. The gate is consulted only when a recipe would
-	// actually execute — never on --build-dry-run or --build-check-stale,
-	// which enumerate targets without running anything. When it denies
-	// trust the build pass is skipped with a clear message; the lint-fix
-	// pass has already run.
-	if !opts.dryRun && !opts.checkStale {
-		// Pin the config file the run actually loaded (cfgPath), so the gate
-		// is correct under `mdsmith fix -c other.yml`. A defaults-only run
-		// (cfgPath == "") falls back to the default config name under root.
-		trustPath := cfgPath
-		if trustPath == "" {
-			trustPath = buildexec.ConfigPathForRoot(root)
-		}
-		if trust := buildexec.CheckTrust(trustPath, envIsSet); !trust.Trusted {
-			_, _ = fmt.Fprintf(w, "mdsmith: %s\n", trust.Reason)
-			return 2
-		}
+	if !ensureTrusted(opts, cfgPath, root, w) {
+		return 2
 	}
 
 	builder := buildexec.NewCustomBuilderExec(recipes, buildExecConfig(cfg))
@@ -218,6 +202,27 @@ func runBuildPass(
 		}
 	}
 	return dispatchWithHooks(builder, targets, cfg, root, opts, cache, timeout, errs, w)
+}
+
+// ensureTrusted checks the build trust gate and returns false (printing a
+// denial message on w) when recipes must not execute. It is a no-op and
+// returns true when opts suppresses recipe execution (dryRun or checkStale).
+func ensureTrusted(opts buildPassOpts, cfgPath, root string, w io.Writer) bool {
+	if opts.dryRun || opts.checkStale {
+		return true
+	}
+	// Pin the config file the run actually loaded (cfgPath), so the gate
+	// is correct under `mdsmith fix -c other.yml`. A defaults-only run
+	// (cfgPath == "") falls back to the default config name under root.
+	trustPath := cfgPath
+	if trustPath == "" {
+		trustPath = buildexec.ConfigPathForRoot(root)
+	}
+	if trust := buildexec.CheckTrust(trustPath, envIsSet); !trust.Trusted {
+		_, _ = fmt.Fprintf(w, "mdsmith: %s\n", trust.Reason)
+		return false
+	}
+	return true
 }
 
 // dispatchWithHooks coordinates the hook lifecycle around target dispatch:
