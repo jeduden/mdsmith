@@ -28,6 +28,28 @@ type RefLink struct {
 	Label string
 }
 
+// RefLinkTargets returns every reference-style link whose definition has
+// been resolved by the parser, memoized on the per-Check File. Two calls
+// on the same File return the same backing slice; callers must treat it
+// as read-only. The result is byte-identical to ExtractRefLinkTargets.
+// nil is returned for a nil or AST-less File.
+//
+// Memoized via File.MemoFile: buildRefLinkTargets is a package-level
+// function so the call adds no per-Memo-call heap allocation beyond the
+// cold-path memoEntry.
+func RefLinkTargets(f *lint.File) []Link {
+	if f == nil {
+		return nil
+	}
+	links, _ := f.MemoFile("linkgraph.reflinktargets", buildRefLinkTargets).([]Link)
+	return links
+}
+
+// buildRefLinkTargets is the MemoFile-style builder for the RefLinkTargets memo.
+func buildRefLinkTargets(f *lint.File) any {
+	return ExtractRefLinkTargets(f)
+}
+
 // ExtractRefLinkTargets walks f.AST and returns every reference-style
 // link whose definition has been resolved by the parser, as Link values
 // with the resolved destination ready for the same file-existence

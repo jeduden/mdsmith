@@ -107,17 +107,17 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	}
 
 	var diags []lint.Diagnostic
-	for _, link := range linkgraph.ExtractLinks(f) {
+	for _, link := range linkgraph.Links(f) {
 		diags = append(diags, r.checkOne(f, link, false)...)
 	}
-	for _, link := range linkgraph.ExtractRefLinkTargets(f) {
+	for _, link := range linkgraph.RefLinkTargets(f) {
 		diags = append(diags, r.checkOne(f, link, true)...)
 	}
 
 	// The link-image-style axis needs direct AST walking for nodes
 	// not covered by the linkgraph extractors:
 	//   - autolinks (ast.AutoLink): not emitted by ExtractLinks
-	//   - reference sub-forms (full/collapsed/shortcut): ExtractRefLinkTargets
+	//   - reference sub-forms (full/collapsed/shortcut): RefLinkTargets
 	//     resolves the destination but drops the Reference sub-form
 	//   - inline images (ast.Image): not included in link checks above
 	if style.LinkImageStyle.Active {

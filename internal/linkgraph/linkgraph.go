@@ -92,6 +92,51 @@ type Link struct {
 	Target Target
 }
 
+// Links returns every regular Markdown link in document order, memoized
+// on the per-Check File. Two calls on the same File return the same
+// backing slice; callers must treat it as read-only. The result is
+// byte-identical to ExtractLinks. nil is returned for a nil or AST-less
+// File, matching ExtractLinks.
+//
+// Memoized via File.MemoFile (the *File-passing variant of Memo):
+// buildLinks is a package-level function, not a closure, so the call
+// adds no per-Memo-call heap allocation beyond the cold-path memoEntry.
+func Links(f *lint.File) []Link {
+	if f == nil {
+		return nil
+	}
+	links, _ := f.MemoFile("linkgraph.links", buildLinks).([]Link)
+	return links
+}
+
+// buildLinks is the MemoFile-style builder for the Links memo. Defined at
+// package scope so the value passed to MemoFile is a plain function
+// pointer (no closure capturing f), avoiding the per-call closure allocation.
+func buildLinks(f *lint.File) any {
+	return ExtractLinks(f)
+}
+
+// Images returns every Markdown image in document order, memoized on the
+// per-Check File. Two calls on the same File return the same backing slice;
+// callers must treat it as read-only. The result is byte-identical to
+// ExtractImages. nil is returned for a nil or AST-less File.
+//
+// Memoized via File.MemoFile: buildImages is a package-level function so
+// the call adds no per-Memo-call heap allocation beyond the cold-path
+// memoEntry.
+func Images(f *lint.File) []Link {
+	if f == nil {
+		return nil
+	}
+	links, _ := f.MemoFile("linkgraph.images", buildImages).([]Link)
+	return links
+}
+
+// buildImages is the MemoFile-style builder for the Images memo.
+func buildImages(f *lint.File) any {
+	return ExtractImages(f)
+}
+
 // ExtractLinks walks f.AST and returns every regular Markdown link in
 // document order. Lines are body-relative (post front-matter strip);
 // see the Link doc for why.

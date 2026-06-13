@@ -47,6 +47,16 @@ var allocBudgetGrandfathered = map[string]int{
 	// this to the ≤ 10 ceiling needs the single-table-walk refactor
 	// scheduled as a follow-up to plan 181.
 	"MDS025": 60, // table-format; tightened after five byte-native fixes (plan 195 task 3 partial)
+	// MDS027 uses linkgraph.Links() and linkgraph.RefLinkTargets() (both
+	// memoized accessors from plan 2606130838). Each MemoFile call adds
+	// one *memoEntry on the cold path; Links() also boxes a non-nil []Link
+	// header into any (one extra alloc), but RefLinkTargets() returns nil
+	// for the gate fixture (the ref target is an external URL that
+	// ParseTarget rejects), so its boxing is free. Net: +2 cold-path
+	// allocs from Links() only. The memo removes repeated AST walks when
+	// MDS027 and MDS068 run on the same File in one engine Check pass;
+	// the per-solo-rule alloc gate always sees the cold path.
+	"MDS027": 12, // cross-file-reference-integrity; raised by plan 2606130838
 	// MDS026 (table-readability) dropped out: cells-as-byte-offsets
 	// refactor (task 2) landed; rule now lands at the 10-alloc
 	// ceiling on the gate fixture.
