@@ -192,7 +192,7 @@ func (r *Rule) Fix(f *lint.File) []byte {
 			resultLines[i] = line
 		}
 	}
-	return bytes.Join(resultLines, newline)
+	return bytes.Join(resultLines, newlineSep)
 }
 
 // adjustSpaces replaces the spaces between the list marker and item text.
@@ -260,7 +260,9 @@ func pluralSpace(n int) string {
 	return "spaces"
 }
 
-var newline = []byte("\n")
+// newlineSep is the bytes.Join separator; a package-level var avoids
+// a heap allocation for []byte("\n") on every Fix call.
+var newlineSep = []byte("\n")
 
 var (
 	_ rule.Configurable = (*Rule)(nil)
