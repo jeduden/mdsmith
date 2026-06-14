@@ -1,0 +1,49 @@
+name: Action smoke test
+
+# Exercise the root composite action (action.yml) end-to-end on every
+# runner OS it claims to support, so a break in the OS/arch mapping, the
+# checksum verification, or the PATH wiring fails the PR rather than a
+# downstream user's workflow. It installs a pinned past release, so the
+# test is deterministic and does not depend on this PR being released yet.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "action.yml"
+      - ".github/workflows/action-smoke.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "action.yml"
+      - ".github/workflows/action-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Install and run (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - id: mdsmith
+        uses: ./
+        with:
+          # A real, immutable past release so the download is deterministic.
+          version: v0.41.0
+          args: version
+
+      - name: Verify mdsmith stayed on PATH and reported a version
+        shell: bash
+        env:
+          GOT_VERSION: ${{ steps.mdsmith.outputs.version }}
+        run: |
+          mdsmith version
+          test -n "$GOT_VERSION"

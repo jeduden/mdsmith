@@ -1,0 +1,108 @@
+name: mdsmith Markdown linter
+description: >-
+  Install the mdsmith Markdown linter from a checksum-verified GitHub release
+  binary for the runner's OS and architecture, put it on PATH, and optionally
+  run a mdsmith command.
+author: jeduden
+branding:
+  icon: check-square
+  color: purple
+
+inputs:
+  version:
+    description: >-
+      mdsmith release to install: a release tag such as "v0.41.0", or "latest"
+      to fetch the most recent release.
+    required: false
+    default: latest
+  args:
+    description: >-
+      Arguments passed to mdsmith after install, split on whitespace
+      (for example "check ."). Leave empty to only put mdsmith on PATH.
+    required: false
+    default: ""
+  working-directory:
+    description: Directory the mdsmith command runs in when "args" is set.
+    required: false
+    default: "."
+
+outputs:
+  version:
+    description: The version string reported by the installed mdsmith binary.
+    value: ${{ steps.install.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - id: install
+      shell: bash
+      # Inputs flow in through env, never interpolated into the script body,
+      # so a crafted input cannot inject shell commands.
+      env:
+        MDSMITH_VERSION: ${{ inputs.version }}
+      # The binary is downloaded over HTTPS and SHA256-verified against the
+      # release checksums.txt before its directory is appended to PATH, so the
+      # github-path write is safe to ignore.
+      run: | # zizmor: ignore[github-env]
+        set -euo pipefail
+
+        # Map the runner OS/arch onto the published release-asset name.
+        case "$RUNNER_OS" in
+          Linux)   os=linux ;  ext="" ;;
+          macOS)   os=darwin ; ext="" ;;
+          Windows) os=windows; ext=".exe" ;;
+          *) echo "::error::unsupported runner OS: $RUNNER_OS"; exit 1 ;;
+        esac
+        case "$RUNNER_ARCH" in
+          X64)   arch=amd64 ;;
+          ARM64) arch=arm64 ;;
+          *) echo "::error::unsupported runner arch: $RUNNER_ARCH"; exit 1 ;;
+        esac
+        if [ "$os" = windows ] && [ "$arch" != amd64 ]; then
+          echo "::error::mdsmith ships a windows-amd64 build only, not windows-$arch"
+          exit 1
+        fi
+        asset="mdsmith-${os}-${arch}${ext}"
+
+        if [ "$MDSMITH_VERSION" = latest ]; then
+          base="https://github.com/jeduden/mdsmith/releases/latest/download"
+        else
+          base="https://github.com/jeduden/mdsmith/releases/download/${MDSMITH_VERSION}"
+        fi
+
+        dest="${RUNNER_TEMP}/mdsmith-bin"
+        mkdir -p "$dest"
+        curl -fsSL --retry 3 --retry-delay 2 "${base}/${asset}" -o "${dest}/${asset}"
+        curl -fsSL --retry 3 --retry-delay 2 "${base}/checksums.txt" -o "${dest}/checksums.txt"
+
+        # Verify the download against the release checksums file. macOS runners
+        # have shasum but not GNU sha256sum, so fall back to it.
+        expected="$(grep " ${asset}\$" "${dest}/checksums.txt" | awk '{print $1}' | head -n1)"
+        if [ -z "$expected" ]; then
+          echo "::error::${asset} not listed in checksums.txt"
+          exit 1
+        fi
+        if command -v sha256sum >/dev/null 2>&1; then
+          actual="$(sha256sum "${dest}/${asset}" | awk '{print $1}')"
+        else
+          actual="$(shasum -a 256 "${dest}/${asset}" | awk '{print $1}')"
+        fi
+        if [ "$expected" != "$actual" ]; then
+          echo "::error::checksum mismatch for ${asset}: expected ${expected}, got ${actual}"
+          exit 1
+        fi
+
+        bin="mdsmith${ext}"
+        mv "${dest}/${asset}" "${dest}/${bin}"
+        chmod +x "${dest}/${bin}"
+        echo "$dest" >> "$GITHUB_PATH"
+        echo "version=$("${dest}/${bin}" version)" >> "$GITHUB_OUTPUT"
+
+    - if: ${{ inputs.args != '' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        MDSMITH_ARGS: ${{ inputs.args }}
+      # MDSMITH_ARGS is intentionally unquoted so "check ." splits into
+      # separate arguments.
+      run: mdsmith $MDSMITH_ARGS

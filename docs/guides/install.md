@@ -43,6 +43,7 @@ glob:
   - "../development/release-channels/*.md"
   - "!../development/release-channels/proto.md"
   - "!../development/release-channels/winget.md"
+  - "!../development/release-channels/github-actions.md"
 where: 'artifact: "cli"'
 sort: numeric:weight
 header: |
