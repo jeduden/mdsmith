@@ -39,7 +39,7 @@ func (b *listItemParser) Open(parent ast.Node, reader text.Reader, pc Context) (
 	pc.Set(emptyListItemWithBlankLines, nil)
 
 	itemOffset := calcListOffset(line, match)
-	node := ast.NewListItem(match[3] + itemOffset)
+	node := ArenaForContext(pc).ListItem(match[3] + itemOffset)
 	if match[4] < 0 || util.IsBlank(line[match[4]:match[5]]) {
 		return node, NoChildren
 	}

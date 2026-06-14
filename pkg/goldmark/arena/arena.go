@@ -43,6 +43,8 @@ import (
 const (
 	textSlabCap        = 256
 	paragraphSlabCap   = 32
+	headingSlabCap     = 32
+	listItemSlabCap    = 64
 	segmentsObjSlabCap = 64
 	segmentSlabCap     = 1024
 	codeSpanSlabCap    = 64
@@ -63,6 +65,8 @@ const (
 type Arena struct {
 	texts        slabs[ast.Text]
 	paragraphs   slabs[ast.Paragraph]
+	headings     slabs[ast.Heading]
+	listItems    slabs[ast.ListItem]
 	segmentsObjs slabs[text.Segments]
 	segments     []*segmentSlab
 	codeSpans    slabs[ast.CodeSpan]
@@ -154,6 +158,8 @@ func (a *Arena) Reset() {
 	// reset.
 	a.texts.reset()
 	a.paragraphs.reset()
+	a.headings.reset()
+	a.listItems.reset()
 	a.segmentsObjs.reset()
 	a.codeSpans.reset()
 	a.links.reset()
@@ -207,6 +213,34 @@ func (a *Arena) Paragraph() *ast.Paragraph {
 	p := a.paragraphs.alloc(paragraphSlabCap)
 	a.EquipLines(p.Lines())
 	return p
+}
+
+// Heading returns a zero-initialised *ast.Heading with the given
+// level from the arena. The block parsers (atx_heading, setext_headings)
+// build every heading through this so the heading-dense neutral corpus
+// no longer heap-allocates one ast.Heading per heading. With a nil
+// receiver falls back to ast.NewHeading.
+func (a *Arena) Heading(level int) *ast.Heading {
+	if a == nil {
+		return ast.NewHeading(level)
+	}
+	h := a.headings.alloc(headingSlabCap)
+	h.Level = level
+	return h
+}
+
+// ListItem returns a zero-initialised *ast.ListItem with the given
+// offset from the arena. list_item's parser builds every item through
+// this so list-dense documents no longer heap-allocate one
+// ast.ListItem per item. With a nil receiver falls back to
+// ast.NewListItem.
+func (a *Arena) ListItem(offset int) *ast.ListItem {
+	if a == nil {
+		return ast.NewListItem(offset)
+	}
+	li := a.listItems.alloc(listItemSlabCap)
+	li.Offset = offset
+	return li
 }
 
 // RawHTML returns a *ast.RawHTML whose inline Segments is
@@ -347,4 +381,22 @@ func (a *Arena) TextsAllocated() int {
 		return 0
 	}
 	return a.texts.used()
+}
+
+// HeadingsAllocated reports how many Heading nodes have been carved
+// from the arena since the last Reset. Nil-safe like TextsAllocated.
+func (a *Arena) HeadingsAllocated() int {
+	if a == nil {
+		return 0
+	}
+	return a.headings.used()
+}
+
+// ListItemsAllocated reports how many ListItem nodes have been carved
+// from the arena since the last Reset. Nil-safe like TextsAllocated.
+func (a *Arena) ListItemsAllocated() int {
+	if a == nil {
+		return 0
+	}
+	return a.listItems.used()
 }

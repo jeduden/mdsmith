@@ -177,6 +177,16 @@ lacks, so those tools may still do marginally more in this
 mode. Read `mdsmith-parity` as a conservative upper bound on
 mdsmith's same-rules speed, not a byte-identical rule set.
 
+**Why parity trails gomarklint specifically.** gomarklint is
+the fastest tool in the table because it never builds an AST —
+it is a pure line scanner. mdsmith-parity cannot follow it
+there: 27 of parity's 30 rules require the parsed CommonMark
+tree, so the goldmark parse (~35% of parity's wall time) is
+forced. [gomarklint architecture and the parity
+gap](gomarklint-architecture.md) reviews gomarklint's design,
+breaks the parity profile down bucket by bucket, and records
+the optimization levers and their ceilings.
+
 **The gate + profiler loop caught two real bugs.** The
 first run had mdsmith at ~1.0 s on the repo corpus but
 ~1.6 s on the *smaller* 234-file neutral corpus — slower on

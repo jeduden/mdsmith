@@ -92,7 +92,7 @@ func (b *atxHeadingParser) Open(parent ast.Node, reader text.Reader, pc Context)
 		return nil, NoChildren
 	}
 	if i == len(line) { // alone '#' (without a new line character)
-		return ast.NewHeading(level), NoChildren
+		return ArenaForContext(pc).Heading(level), NoChildren
 	}
 	l := util.TrimLeftSpaceLength(line[i:])
 	if l == 0 {
@@ -100,7 +100,7 @@ func (b *atxHeadingParser) Open(parent ast.Node, reader text.Reader, pc Context)
 	}
 
 	start := min(i+l, len(line)-1)
-	node := ast.NewHeading(level)
+	node := ArenaForContext(pc).Heading(level)
 	hl := text.NewSegment(
 		segment.Start+start-segment.Padding,
 		segment.Start+len(line)-segment.Padding)

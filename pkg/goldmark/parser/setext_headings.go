@@ -67,7 +67,7 @@ func (b *setextHeadingParser) Open(parent ast.Node, reader text.Reader, pc Conte
 	if c == '-' {
 		level = 2
 	}
-	node := ast.NewHeading(level)
+	node := ArenaForContext(pc).Heading(level)
 	node.Lines().Append(segment)
 	pc.Set(temporaryParagraphKey, last)
 	return node, NoChildren | RequireParagraph

@@ -26,3 +26,24 @@ func TestParseContextArena(t *testing.T) {
 		t.Fatalf("references = %d, want 1", len(ctx.References()))
 	}
 }
+
+// TestParseContextArenaStructuralNodes pins that a real parse draws its
+// Heading and ListItem nodes from the caller arena, not the heap — the
+// wiring that keeps the heading- and list-heavy neutral benchmark corpus
+// off the per-file allocation path.
+func TestParseContextArenaStructuralNodes(t *testing.T) {
+	src := []byte("# H1\n\nSetext\n======\n\n- one\n- two\n- three\n")
+	a := arena.New()
+	ctx := parser.NewContext()
+	if node := markdown.ParseContextArena(src, ctx, a); node == nil {
+		t.Fatal("nil AST")
+	}
+	// Two headings (ATX "# H1" + setext "Setext\n===") and three list
+	// items must all come from the arena.
+	if got := a.HeadingsAllocated(); got < 2 {
+		t.Fatalf("HeadingsAllocated = %d, want >= 2 (arena unused for headings)", got)
+	}
+	if got := a.ListItemsAllocated(); got < 3 {
+		t.Fatalf("ListItemsAllocated = %d, want >= 3 (arena unused for list items)", got)
+	}
+}
