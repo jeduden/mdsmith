@@ -403,6 +403,9 @@ func (b *CustomBuilder) resolveInputs(target Target) ([]string, error) {
 			if err != nil {
 				return nil, fmt.Errorf("inputs glob %q: %w", entry, err)
 			}
+			if len(matches) == 0 {
+				return nil, fmt.Errorf("inputs glob %q matched no files", entry)
+			}
 			if err := builderGlobCapFn(len(matches)); err != nil {
 				return nil, err
 			}
