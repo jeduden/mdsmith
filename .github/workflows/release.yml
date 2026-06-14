@@ -785,7 +785,7 @@ jobs:
             # `github:jeduden/mdsmith@VER` resolves the binary directly
             # off the GitHub release the same `release` job above
             # just published. The shorter `mdsmith@VER` form depends
-            # on the mise-plugins/registry follow-up; until that PR
+            # on the jdx/mise registry PR; until that PR
             # lands the smoke-test would fail on every release, so
             # exercise the form that works today.
             install: |
@@ -827,7 +827,7 @@ jobs:
                 sleep 15
               done
               if [ "$ok" -ne 1 ]; then
-                echo "::warning::bare 'mise use mdsmith@${VERSION#v}' did not resolve; the jdx/mise registry entry (plan 145) has not merged yet. The 'mise' channel above (ubi: backend) still verifies the binary."
+                echo "::warning::bare 'mise use mdsmith@${VERSION#v}' did not resolve; the jdx/mise registry entry (plan 145) has not merged yet. The 'mise' channel above (github: backend) still verifies the binary."
                 echo "skipped=true" >> "$GITHUB_OUTPUT"
                 exit 0
               fi
