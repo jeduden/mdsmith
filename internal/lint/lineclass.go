@@ -423,11 +423,10 @@ func (p *lc0Pass) markCode(ln int) {
 	p.out.codeBlock[ln] = struct{}{}
 }
 
-// addHeading records ln in the heading-line set.
+// addHeading records ln in the heading-line set. Callers only pass a
+// 1-based line that exists (an ATX line, or a setext underline and the
+// title line above it, both ≥ 1), so no lower-bound guard is needed.
 func (p *lc0Pass) addHeading(ln int) {
-	if ln < 1 {
-		return
-	}
 	if p.out.heading == nil {
 		p.out.heading = make(map[int]struct{}, 8)
 	}

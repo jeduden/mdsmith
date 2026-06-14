@@ -137,6 +137,24 @@ func TestClassifyLines_Empty(t *testing.T) {
 	assert.False(t, ok)
 }
 
+// TestFlatHeadingLines pins both arms of the flat heading-line accessor:
+// an AST-backed File has no classifier and reports (nil, false), so the
+// line-length rule takes its AST walk; a File built on the parse-skip path
+// reports the classifier's heading set.
+func TestFlatHeadingLines(t *testing.T) {
+	astFile, err := NewFile("t.md", []byte("# H\n"))
+	require.NoError(t, err)
+	hl, ok := FlatHeadingLines(astFile)
+	assert.Nil(t, hl)
+	assert.False(t, ok)
+
+	flat, release := NewFileFlatPooled("t.md", []byte("# H1\n\nSetext\n===\n"), false)
+	defer release()
+	hl, ok = FlatHeadingLines(flat)
+	assert.True(t, ok)
+	assert.Equal(t, []int{1, 3, 4}, sortedKeys(hl))
+}
+
 // TestClassifyLines_AllocBudget pins acceptance criterion 1: the flat
 // classifier builds no node tree and stays under the per-rule allocation
 // budget (≤10 allocs/op, CLAUDE.md) on representative input. It allocates
