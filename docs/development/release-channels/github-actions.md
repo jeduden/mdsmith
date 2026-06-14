@@ -8,7 +8,7 @@ summary: >-
   release tag.
 mechanism: push
 artifact: cli
-command: "uses: jeduden/mdsmith@v0.41.0"
+command: "uses: jeduden/mdsmith@vX.Y.Z"
 audience: Linting Markdown inside GitHub Actions CI
 platforms: [linux, macos, windows]
 registry: github.com/marketplace
@@ -26,9 +26,9 @@ The repository root carries an `action.yml`, so a workflow
 step runs mdsmith with:
 
 ```yaml
-- uses: jeduden/mdsmith@<commit-sha>  # v0.41.0
+- uses: jeduden/mdsmith@<commit-sha>  # vX.Y.Z
   with:
-    version: v0.41.0   # mdsmith release to install, or latest
+    version: latest    # which mdsmith release to install (a tag, or latest)
     args: check .      # omit to only put mdsmith on PATH
 ```
 
@@ -55,11 +55,12 @@ one output, `version`, the string `mdsmith version` prints.
 
 Pin `uses:` to a full-length commit SHA for the strongest
 guarantee: a SHA can never move. mdsmith publishes
-immutable releases, so a release-tag pin like `@v0.41.0`
-is a safe, reproducible alternative. GitHub recommends the
-SHA form, and this repository uses it for every
-third-party action. Keep the version in a trailing
-comment, as `# v0.41.0` above.
+immutable releases, so a release-tag pin like `@vX.Y.Z`
+(any release that ships `action.yml`) is a safe,
+reproducible alternative. GitHub recommends the SHA form,
+and this repository uses it for every third-party action.
+Keep the version in a trailing comment, as `# vX.Y.Z`
+above.
 
 The action still verifies the downloaded binary's SHA-256
 against the release `checksums.txt`. So the action and the
@@ -88,5 +89,5 @@ While the listing is pending, the channel stays hidden. It
 sets `unlisted: true`. `sync-channels` then keeps it out of
 the install picker and the "Available on" strip. The
 install-guide and release-pipeline tables exclude it by
-glob. Flip `unlisted` and drop both glob exclusions once the
-listing resolves.
+glob. Once the listing resolves, flip `unlisted`, drop both
+glob exclusions, and set `command` to that release's tag.

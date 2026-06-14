@@ -106,11 +106,14 @@ runs:
         mv "${dest}/${asset}" "${dest}/${bin}"
         chmod +x "${dest}/${bin}"
         echo "$dest" >> "$GITHUB_PATH"
-        # Multiline-safe write, in case `mdsmith version` ever prints more
-        # than the single line it prints today.
+        # Capture first so a non-zero `mdsmith version` aborts here (set -e)
+        # rather than leaving a half-written heredoc in GITHUB_OUTPUT. The
+        # heredoc keeps the write correct even if version output ever grows
+        # past the single line it prints today.
+        ver="$("${dest}/${bin}" version)"
         {
           echo "version<<__MDS_EOF__"
-          "${dest}/${bin}" version
+          echo "$ver"
           echo "__MDS_EOF__"
         } >> "$GITHUB_OUTPUT"
 
