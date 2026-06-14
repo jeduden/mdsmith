@@ -5,7 +5,7 @@ summary: >-
   checksum-verified release binary for the runner's OS and
   architecture, puts `mdsmith` on `PATH`, and runs the
   command in its `args` input; referenced as
-  `uses: jeduden/mdsmith@<ref>`.
+  `uses: jeduden/mdsmith@<commit-sha>`.
 mechanism: pull
 artifact: cli
 command: "uses: jeduden/mdsmith@v0"
@@ -23,10 +23,10 @@ The repository root carries an `action.yml`, so a workflow
 step runs mdsmith with:
 
 ```yaml
-- uses: jeduden/mdsmith@v0
+- uses: jeduden/mdsmith@<commit-sha>  # v0.41.0
   with:
-    version: latest   # a release tag like v0.41.0, or latest
-    args: check .     # omit to only put mdsmith on PATH
+    version: v0.41.0   # mdsmith release to install, or latest
+    args: check .      # omit to only put mdsmith on PATH
 ```
 
 The composite action reads `$RUNNER_OS` and
@@ -50,17 +50,26 @@ later step can call it. `working-directory` sets the
 directory the `args` command runs in. The action exposes
 one output, `version`, the string `mdsmith version` prints.
 
-For a locked-down supply chain, pin `uses:` to a release
-tag or a commit SHA, the way this repository pins every
-third-party action it consumes.
+Pin `uses:` to a full-length commit SHA, not a tag. A SHA
+is immutable; a tag like `@v0` can be repointed at new
+code. GitHub recommends the SHA form, and this repository
+uses it for every third-party action. Keep the version in
+a trailing comment, as `# v0.41.0` above.
 
-The short `uses: jeduden/mdsmith@v0` form needs two
-things. A tagged release must ship this `action.yml`. The
-floating `v0` tag must then move onto it. Until that
-happens, pin the action to a commit SHA or use `@main`.
-You can also skip the action and run the release binary in
-a `run:` step. That repeats by hand the download and
-verify steps the action automates.
+The action still verifies the downloaded binary's SHA-256
+against the release `checksums.txt`. So the action and the
+binary it fetches are both pinned by digest, not by a
+movable name.
+
+No released commit carries the action yet. Pin to a commit
+SHA from this branch, or from `main` once it merges, to use
+it today. After the next release, pin to that release's
+commit. The convenience tag `@v0` comes later: it must be
+created and moved onto a release that ships `action.yml`.
+
+You can also skip the action entirely. Run the release
+binary in a `run:` step. That repeats by hand the download
+and verify steps the action automates.
 
 Because no published tag installs the action yet, this
 channel sets `unlisted: true` in its frontmatter, so
