@@ -37,7 +37,7 @@ const (
 // Export returns a portable, directive-free copy of f's source.
 //
 // rules carries the caller's effective ruleset (already cloned and
-// configured via engine.ConfigureRule, and filtered to enabled rules
+// configured via checker.ConfigureRule, and filtered to enabled rules
 // only — like fix.Fixer.fixableRules). Staleness checks (Check mode)
 // and regeneration (Fix mode) only consult rules in this slice, so a
 // directive disabled in `.mdsmith.yml` neither produces a stale-body
@@ -200,7 +200,7 @@ func hydrate(parsed, orig *lint.File) {
 // Diagnostics whose line falls inside the host file's
 // GeneratedRanges (i.e. inside an outer include/catalog body) are
 // dropped: the host file is not responsible for content pulled in
-// by another directive, matching the suppression `engine.CheckRules`
+// by another directive, matching the suppression `checker.CheckRules`
 // applies on the regular check path.
 //
 // Returned diagnostics carry file-relative line numbers (front

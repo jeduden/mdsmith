@@ -228,7 +228,7 @@ func TestDedupeDiagnostics_RemovesDuplicates(t *testing.T) {
 		d(".gitattributes", 1, 1, "MDS048", "drift"),
 		d("README.md", 5, 1, "MDS001", "long line"),
 	}
-	got := DedupeDiagnostics(in)
+	got := lint.DedupeDiagnostics(in)
 	require.Len(t, got, 2, "duplicates collapse to one entry per (file, line, col, rule, message)")
 	assert.Equal(t, "MDS048", got[0].RuleID)
 	assert.Equal(t, "MDS001", got[1].RuleID)
@@ -242,15 +242,15 @@ func TestDedupeDiagnostics_PreservesDistinctMessages(t *testing.T) {
 		}
 	}
 	in := []lint.Diagnostic{d("a"), d("b"), d("a")}
-	got := DedupeDiagnostics(in)
+	got := lint.DedupeDiagnostics(in)
 	assert.Len(t, got, 2, "different messages at same coordinates remain distinct")
 }
 
 func TestDedupeDiagnostics_HandlesShortInput(t *testing.T) {
-	assert.Nil(t, DedupeDiagnostics(nil))
+	assert.Nil(t, lint.DedupeDiagnostics(nil))
 
 	one := []lint.Diagnostic{{File: "f", RuleID: "X"}}
-	got := DedupeDiagnostics(one)
+	got := lint.DedupeDiagnostics(one)
 	assert.Equal(t, one, got, "single-element input round-trips by content")
 
 	// Result must be a freshly-allocated slice so mutating it does

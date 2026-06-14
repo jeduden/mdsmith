@@ -375,7 +375,7 @@ func subtractPredictedDryRunFixes(
 }
 
 // diagKey is the dedupe identity of a diagnostic, matching
-// engine.DedupeDiagnostics' tuple so subtraction is consistent
+// lint.DedupeDiagnostics' tuple so subtraction is consistent
 // with how repo-scoped diagnostics are merged elsewhere.
 type diagKey struct {
 	File    string

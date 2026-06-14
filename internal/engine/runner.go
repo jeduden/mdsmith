@@ -14,6 +14,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/bytelimit"
+	"github.com/jeduden/mdsmith/internal/checker"
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/explain"
 	"github.com/jeduden/mdsmith/internal/gitignore"
@@ -214,7 +215,7 @@ func (r *Runner) Run(paths []string) *Result {
 	// RunSource (single in-memory file) is exempt: duplicates cannot
 	// arise from a single-file lint.
 	if r.anyRepoScopedEnabled() {
-		res.Diagnostics = DedupeDiagnostics(res.Diagnostics)
+		res.Diagnostics = lint.DedupeDiagnostics(res.Diagnostics)
 	}
 	sortDiagnostics(res.Diagnostics)
 	return res
@@ -454,24 +455,6 @@ func (r *Runner) pooledFileConstructor() func(string, []byte, bool) (*lint.File,
 		return lint.NewFileBlockOnlyPooled
 	}
 	return lint.NewFileFromSourcePooled
-}
-
-// DedupeDiagnostics returns a new slice with duplicate (file, line,
-// column, rule, message) tuples collapsed to a single entry. Repo-
-// level rules (notably MDS048 git-hook-sync) emit a diagnostic
-// anchored to the repository artifact for every linted file in the
-// repo, so a fresh `mdsmith check` over a large tree would otherwise
-// print the same warning N times and duplicate that entry in the
-// returned diagnostics. Earlier-encountered duplicates win so the
-// diagnostic order from the first hit is preserved. The input slice
-// is never modified; nil and empty non-nil inputs return nil; a
-// non-empty input always produces a freshly-allocated slice so
-// callers can keep the original around without worrying about aliasing.
-//
-// Deprecated: call lint.DedupeDiagnostics directly. This wrapper exists
-// so existing callers need not be updated all at once.
-func DedupeDiagnostics(diags []lint.Diagnostic) []lint.Diagnostic {
-	return lint.DedupeDiagnostics(diags)
 }
 
 // RunSource lints in-memory source bytes (e.g. from stdin or an LSP
@@ -907,7 +890,7 @@ func (r *Runner) runConfigTargetRules(res *Result) {
 		if !ok || !cfg.Enabled {
 			continue
 		}
-		configured, err := ConfigureRule(rl, cfg)
+		configured, err := checker.ConfigureRule(rl, cfg)
 		if err != nil {
 			res.Errors = append(res.Errors, err)
 			continue

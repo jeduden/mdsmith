@@ -1,7 +1,7 @@
 ---
 id: 2606141911
 title: Remove deprecated engine wrappers for checker and lint
-status: "🔲"
+status: "✅"
 summary: >-
   internal/engine/check.go and runner.go hold
   deprecated thin wrappers over
@@ -61,14 +61,14 @@ The wrappers and their intended replacements:
 
 ## Acceptance Criteria
 
-- [ ] `internal/engine/check.go` exports no
+- [x] `internal/engine/check.go` exports no
   `ConfigureRule` or `CheckRules` symbol.
-- [ ] `internal/engine/runner.go` exports no
+- [x] `internal/engine/runner.go` exports no
   `DedupeDiagnostics` symbol.
-- [ ] No file references
+- [x] No file references
   `engine.DedupeDiagnostics` in production
   or test code.
-- [ ] Stale comments updated.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports
+- [x] Stale comments updated.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports
   no issues.
