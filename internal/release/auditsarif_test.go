@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// now is a fixed "today" for the selection tests: any audit dated
+// auditNow is a fixed "today" for the selection tests: any audit dated
 // after this is treated as a future-dated typo and ignored.
 var auditNow = time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
 
@@ -26,95 +26,97 @@ func makeAudit(t *testing.T, securityDir, name string, withSarif bool) {
 	}
 }
 
-func TestSelectAuditSarifs(t *testing.T) {
-	tests := []struct {
-		name string
-		// dirs maps an audit directory name to whether it carries a
-		// findings.sarif.
-		dirs map[string]bool
-		want []string
-	}{
-		{
-			name: "single audit with sarif",
-			dirs: map[string]bool{"2026-06-12-full-repo-audit": true},
-			want: []string{"2026-06-12-full-repo-audit"},
-		},
-		{
-			name: "newest date wins over older dates",
-			dirs: map[string]bool{
-				"2026-04-05-adversarial":     true,
-				"2026-05-12-supply-chain":    true,
-				"2026-06-09-full-repo-audit": true,
-				"2026-06-12-full-repo-audit": true,
-			},
-			want: []string{"2026-06-12-full-repo-audit"},
-		},
-		{
-			name: "every directory sharing the newest date is returned, sorted",
-			dirs: map[string]bool{
-				"2026-06-12-git-lsp-audit":   true,
-				"2026-06-12-full-repo-audit": true,
-				"2026-06-09-full-repo-audit": true,
-			},
-			want: []string{"2026-06-12-full-repo-audit", "2026-06-12-git-lsp-audit"},
-		},
-		{
-			name: "directory without findings.sarif is excluded",
-			dirs: map[string]bool{
-				"2026-06-12-full-repo-audit": false,
-				"2026-06-09-full-repo-audit": true,
-			},
-			want: []string{"2026-06-09-full-repo-audit"},
-		},
-		{
-			name: "non-date directory names are ignored",
-			dirs: map[string]bool{
-				"proto":                      true,
-				"notes":                      true,
-				"2026-06-12-full-repo-audit": true,
-			},
-			want: []string{"2026-06-12-full-repo-audit"},
-		},
-		{
-			name: "date run into the slug without a separator is ignored",
-			dirs: map[string]bool{
-				"2026-06-12xfull": true,
-				"2026-06-09-real": true,
-			},
-			want: []string{"2026-06-09-real"},
-		},
-		{
-			name: "bare date directory name without a slug qualifies",
-			dirs: map[string]bool{
-				"2026-06-12":      true,
-				"2026-06-09-real": true,
-			},
-			want: []string{"2026-06-12"},
-		},
-		{
-			name: "invalid calendar date is ignored",
-			dirs: map[string]bool{
-				"2026-13-40-bogus": true,
-				"2026-06-09-real":  true,
-			},
-			want: []string{"2026-06-09-real"},
-		},
-		{
-			name: "future-dated directory does not hijack selection",
-			dirs: map[string]bool{
-				"2099-01-01-typo":            true,
-				"2026-06-12-full-repo-audit": true,
-			},
-			want: []string{"2026-06-12-full-repo-audit"},
-		},
-		{
-			name: "no qualifying directory yields empty",
-			dirs: map[string]bool{"2026-06-12-full-repo-audit": false},
-			want: nil,
-		},
-	}
+// selectAuditCase is one SelectAuditSarifs table row. dirs maps an audit
+// directory name to whether it carries a findings.sarif.
+type selectAuditCase struct {
+	name string
+	dirs map[string]bool
+	want []string
+}
 
-	for _, tt := range tests {
+var selectAuditSarifsCases = []selectAuditCase{
+	{
+		name: "single audit with sarif",
+		dirs: map[string]bool{"2026-06-12-full-repo-audit": true},
+		want: []string{"2026-06-12-full-repo-audit"},
+	},
+	{
+		name: "newest date wins over older dates",
+		dirs: map[string]bool{
+			"2026-04-05-adversarial":     true,
+			"2026-05-12-supply-chain":    true,
+			"2026-06-09-full-repo-audit": true,
+			"2026-06-12-full-repo-audit": true,
+		},
+		want: []string{"2026-06-12-full-repo-audit"},
+	},
+	{
+		name: "every directory sharing the newest date is returned, sorted",
+		dirs: map[string]bool{
+			"2026-06-12-git-lsp-audit":   true,
+			"2026-06-12-full-repo-audit": true,
+			"2026-06-09-full-repo-audit": true,
+		},
+		want: []string{"2026-06-12-full-repo-audit", "2026-06-12-git-lsp-audit"},
+	},
+	{
+		name: "directory without findings.sarif is excluded",
+		dirs: map[string]bool{
+			"2026-06-12-full-repo-audit": false,
+			"2026-06-09-full-repo-audit": true,
+		},
+		want: []string{"2026-06-09-full-repo-audit"},
+	},
+	{
+		name: "non-date directory names are ignored",
+		dirs: map[string]bool{
+			"proto":                      true,
+			"notes":                      true,
+			"2026-06-12-full-repo-audit": true,
+		},
+		want: []string{"2026-06-12-full-repo-audit"},
+	},
+	{
+		name: "date run into the slug without a separator is ignored",
+		dirs: map[string]bool{
+			"2026-06-12xfull": true,
+			"2026-06-09-real": true,
+		},
+		want: []string{"2026-06-09-real"},
+	},
+	{
+		name: "bare date directory name without a slug qualifies",
+		dirs: map[string]bool{
+			"2026-06-12":      true,
+			"2026-06-09-real": true,
+		},
+		want: []string{"2026-06-12"},
+	},
+	{
+		name: "invalid calendar date is ignored",
+		dirs: map[string]bool{
+			"2026-13-40-bogus": true,
+			"2026-06-09-real":  true,
+		},
+		want: []string{"2026-06-09-real"},
+	},
+	{
+		name: "future-dated directory does not hijack selection",
+		dirs: map[string]bool{
+			"2099-01-01-typo":            true,
+			"2026-06-12-full-repo-audit": true,
+		},
+		want: []string{"2026-06-12-full-repo-audit"},
+	},
+	{
+		name: "no qualifying directory yields empty",
+		dirs: map[string]bool{"2026-06-12-full-repo-audit": false},
+		want: nil,
+	},
+}
+
+func TestSelectAuditSarifs(t *testing.T) {
+	for _, tt := range selectAuditSarifsCases {
 		t.Run(tt.name, func(t *testing.T) {
 			securityDir := t.TempDir()
 			for name, withSarif := range tt.dirs {
@@ -131,8 +133,8 @@ func TestSelectAuditSarifs(t *testing.T) {
 	}
 }
 
-// TestSelectAuditSarifsAbsentDir: a missing securityDir is not an
-// error — there is simply nothing to upload.
+// TestSelectAuditSarifsAbsentDir: a missing securityDir is not an error
+// — there is simply nothing to upload.
 func TestSelectAuditSarifsAbsentDir(t *testing.T) {
 	got, err := SelectAuditSarifs(filepath.Join(t.TempDir(), "nope"), auditNow)
 	if err != nil {
@@ -160,9 +162,9 @@ func TestSelectAuditSarifsSarifIsDir(t *testing.T) {
 	}
 }
 
-// TestSelectAuditSarifsSarifIsSymlink: a findings.sarif that is a
-// symlink (even to a regular file) does not qualify — Lstat rejects it
-// rather than following it.
+// TestSelectAuditSarifsSarifIsSymlink: a findings.sarif that is a symlink
+// (even to a regular file) does not qualify — Lstat rejects it rather
+// than following it.
 func TestSelectAuditSarifsSarifIsSymlink(t *testing.T) {
 	securityDir := t.TempDir()
 	dir := filepath.Join(securityDir, "2026-06-12-full-repo-audit")
