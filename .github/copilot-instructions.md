@@ -229,9 +229,9 @@ row: "- [{title}](../docs/development/{filename})"
 
 #### Build & Test Commands
 
-Requires Go 1.25+. Dev tools (golangci-lint, vhs,
+Requires Go 1.25+. Dev tools (golangci-lint and
 gobco) build from `tools/go.mod`, which needs Go
-1.25.8+; `go.mod` itself must stay tool-free so
+1.25.8+; `go.mod` itself stays tool-free so
 `go install` consumers never inherit a dev tool's
 go floor.
 
