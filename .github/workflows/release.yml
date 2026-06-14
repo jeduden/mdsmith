@@ -827,7 +827,7 @@ jobs:
                 sleep 15
               done
               if [ "$ok" -ne 1 ]; then
-                echo "::warning::bare 'mise use mdsmith@${VERSION#v}' did not resolve; the jdx/mise registry entry (plan 145) has not merged yet. The 'mise' channel above (ubi: backend) still verifies the binary."
+                echo "::warning::bare 'mise use mdsmith@${VERSION#v}' did not resolve; the jdx/mise registry entry (plan 145) has not merged yet. The 'mise' channel above (github: backend) still verifies the binary."
                 echo "skipped=true" >> "$GITHUB_OUTPUT"
                 exit 0
               fi

@@ -62,13 +62,12 @@ on `asdf plugin add mdsmith`.
 3. After one successful release cycle, file a PR to
    [`asdf-vm/asdf-plugins`](https://github.com/asdf-vm/asdf-plugins).
    The entry lets `asdf plugin add mdsmith` resolve
-   without an explicit URL. See the Status section
+   without an explicit URL. See the Blockers section
    before filing — adoption is the current gate.
 4. File a PR to mise's curated registry at
    [`jdx/mise`](https://github.com/jdx/mise).
    Each tool gets one TOML file under `registry/`
-   (the former `mise-plugins/registry` repo is
-   archived; PRs go to `jdx/mise` instead).
+   (the former `mise-plugins/registry` is archived).
    Add `registry/mdsmith.toml` with a
    `[tools.mdsmith]` section on the
    `github:jeduden/mdsmith` backend and a `test`
@@ -79,7 +78,7 @@ on `asdf plugin add mdsmith`.
    `mise use mdsmith@latest` resolves without a
    backend prefix.
 
-   **Filed and rejected.** See the Status section
+   **Filed and rejected.** See the Blockers section
    for details and the re-submission trigger.
 5. Update
    [docs/guides/install.md](../docs/guides/install.md)
@@ -91,10 +90,9 @@ on `asdf plugin add mdsmith`.
    to exercise `asdf install mdsmith X.Y.Z` and
    `mise use mdsmith@X.Y.Z` alongside `ubi:`.
    The `asdf` channel must pass (users install day
-   one via the explicit plugin URL). The
-   `mise-registry`
-   channel is best-effort; it warns and exits 0
-   until the registry PR merges.
+   one via the explicit plugin URL).
+   The `mise-registry` channel is best-effort;
+   it warns and exits 0 until the registry PR merges.
 
 ## Acceptance Criteria
 
@@ -119,7 +117,7 @@ on `asdf plugin add mdsmith`.
       `mise-registry` channel is best-effort until
       the jdx/mise registry PR merges.
 
-## Status — blocked upstream
+## Blockers
 
 The remaining work is gated on two curated upstream
 registries, and neither will accept mdsmith at its
@@ -138,7 +136,7 @@ current adoption level:
   gate is adoption. No PR to
   [`asdf-vm/asdf-plugins`](https://github.com/asdf-vm/asdf-plugins)
   has been filed; that index has comparable curation
-  expectations, so a submission now would likely meet
+  expectations, so a submission now would meet
   the same popularity objection that closed the mise
   PR. The `plugins/mdsmith` index entry does not exist.
 - **Docs (Task 5):** because neither registry PR has
@@ -149,10 +147,7 @@ current adoption level:
   resolving. The current "needs a registry entry" notes
   are accurate and stay until a PR lands.
 
-Everything inside this repo's control is done: the
-`jeduden/asdf-mdsmith` plugin, its CI, and the
-release.yml smoke-test matrix. The plan stays open
-pending an upstream-acceptance window; revisit when
-the project's traction clears the registries' bars.
-The next concrete action is a mise re-submission once
-star/fork counts grow, then mirror it to asdf-plugins.
+In-repo work is done: the `jeduden/asdf-mdsmith`
+plugin, its CI, and the release.yml smoke-test matrix.
+The plan stays open until adoption clears the
+registries' bar.
