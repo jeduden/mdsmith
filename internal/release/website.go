@@ -316,6 +316,31 @@ func githubURLForPath(path []byte) string {
 	return githubBlobBase + string(path)
 }
 
+// benchDocReadmeMainURL is the URL rewriteRuleLinks produces for a
+// `../research/benchmarks/README.md` link: research/ is pruned from
+// the site, so repoPrunedDocLink routes it to the committed source on
+// main. benchDocAssetsPageURL is the rendered benchmark page
+// release.yml publishes to the orphan assets branch — the copy
+// carrying each release's freshly measured numbers, where main's
+// committed snapshot lags between deliberate run.sh refreshes.
+const (
+	benchDocReadmeMainURL = githubBlobBase + benchReadmeRel
+	benchDocAssetsPageURL = "https://github.com/jeduden/mdsmith/blob/assets/assets/benchmarks/pages/benchmark.md"
+)
+
+// repointBenchDocToAssets swaps the benchmark-README link (already
+// rewritten to its main source URL by rewriteRuleLinks) for the
+// rendered page on the assets branch. syncDocsFile applies it only to
+// docs/features/performance.md: that feature page's strict 80-column
+// line-length budget rules out carrying the long absolute URL in the
+// source, so the source keeps a short relative link and the site swap
+// alone points it at the fresh-numbers copy. The other docs that cite
+// the benchmark README keep the main source link (maintainer choice).
+func repointBenchDocToAssets(data []byte) []byte {
+	return bytes.ReplaceAll(data,
+		[]byte(benchDocReadmeMainURL), []byte(benchDocAssetsPageURL))
+}
+
 // ruleDirName matches the MDS-prefixed directory names used for
 // per-rule subdirectories under internal/rules/. The prefix guard
 // stops syncRulePages from copying non-rule directories (fixtures,
