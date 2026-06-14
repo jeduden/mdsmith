@@ -906,3 +906,58 @@ func TestBenchCheckCommand(t *testing.T) {
 		assert.Equal(t, 0, run([]string{"bench-check", "--tolerance", "0.5", base, fresh}))
 	})
 }
+
+// captureStdout runs fn with os.Stdout redirected to a pipe and returns
+// everything fn wrote to stdout.
+func captureStdout(t *testing.T, fn func() int) string {
+	t.Helper()
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stdout = w
+	fn()
+	_ = w.Close()
+	os.Stdout = old
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	return buf.String()
+}
+
+// TestRunSelectAuditSarifs drives the select-audit-sarifs subcommand
+// across every branch: --help (0), an unknown flag (2), bad arity (2),
+// a non-directory securityDir that makes SelectAuditSarifs error (1),
+// an empty absolute dir ("[]"), and a relative dir resolved against cwd
+// whose newest-date audit is emitted as a JSON array.
+func TestRunSelectAuditSarifs(t *testing.T) {
+	assert.Equal(t, 0, run([]string{"select-audit-sarifs", "--help"}))
+	assert.Equal(t, 2, run([]string{"select-audit-sarifs", "--bogus"}))
+	assert.Equal(t, 2, run([]string{"select-audit-sarifs"}))
+	assert.Equal(t, 2, run([]string{"select-audit-sarifs", "a", "b"}))
+
+	// Non-directory securityDir → ReadDir error → exit 1.
+	file := filepath.Join(t.TempDir(), "not-a-dir")
+	require.NoError(t, os.WriteFile(file, []byte("x"), 0o644))
+	assert.Equal(t, 1, run([]string{"select-audit-sarifs", file}))
+
+	// Absolute, empty securityDir → "[]" on stdout, exit 0.
+	out := captureStdout(t, func() int {
+		return run([]string{"select-audit-sarifs", t.TempDir()})
+	})
+	assert.Equal(t, "[]\n", out)
+
+	// Relative securityDir → resolved against cwd; the newest-date
+	// audit is emitted as a JSON array.
+	root := t.TempDir()
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	require.NoError(t, os.Chdir(root))
+	audit := filepath.Join("sec", "2026-06-12-full-repo-audit")
+	require.NoError(t, os.MkdirAll(audit, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(audit, "findings.sarif"), []byte("{}"), 0o644))
+	out = captureStdout(t, func() int {
+		return run([]string{"select-audit-sarifs", "sec"})
+	})
+	assert.Equal(t, `["2026-06-12-full-repo-audit"]`+"\n", out)
+}

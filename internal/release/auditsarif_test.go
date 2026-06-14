@@ -187,6 +187,19 @@ func TestSelectAuditSarifsSarifIsSymlink(t *testing.T) {
 	}
 }
 
+// TestSelectAuditSarifsReadError: a securityDir that is a regular file
+// (not a directory) surfaces ReadDir's error rather than silently
+// treating it as "no audits".
+func TestSelectAuditSarifsReadError(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if _, err := SelectAuditSarifs(file, auditNow); err == nil {
+		t.Fatal("expected error for non-directory securityDir, got nil")
+	}
+}
+
 func equalStrings(a, b []string) bool {
 	if len(a) != len(b) {
 		return false

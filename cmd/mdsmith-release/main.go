@@ -751,10 +751,9 @@ func runSelectAuditSarifs(root string, args []string) int {
 	if names == nil {
 		names = []string{}
 	}
-	encoded, err := json.Marshal(names)
-	if err != nil {
-		return reportError(err)
-	}
+	// json.Marshal of a []string cannot fail, so there is no error
+	// branch to drive here (CLAUDE.md: no undrivable defensive code).
+	encoded, _ := json.Marshal(names)
 	fmt.Println(string(encoded))
 	return 0
 }
