@@ -1,4 +1,4 @@
-package build
+package buildpathutil
 
 import (
 	"errors"
@@ -144,4 +144,21 @@ func TestResolvePathInRoot_SymlinkWithinRootOK(t *testing.T) {
 	require.NoError(t, err)
 	// The result is normalised back to forward slashes and stays in-root.
 	assert.Equal(t, "real/in.md", got)
+}
+
+// --- UnderMdsmithDir ---
+
+func TestUnderMdsmithDir_DirectoryItself(t *testing.T) {
+	assert.True(t, UnderMdsmithDir(".mdsmith"))
+}
+
+func TestUnderMdsmithDir_FileInside(t *testing.T) {
+	assert.True(t, UnderMdsmithDir(".mdsmith/state"))
+	assert.True(t, UnderMdsmithDir(".mdsmith/out.png"))
+}
+
+func TestUnderMdsmithDir_OtherPaths(t *testing.T) {
+	assert.False(t, UnderMdsmithDir("docs/README.md"))
+	assert.False(t, UnderMdsmithDir("not.mdsmith"))
+	assert.False(t, UnderMdsmithDir(".mdsmithrc"))
 }

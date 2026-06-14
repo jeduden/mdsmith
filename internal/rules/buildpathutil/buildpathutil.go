@@ -1,4 +1,10 @@
-package build
+// Package buildpathutil holds path-validation and path-resolution
+// helpers shared by the build rule (internal/rules/build) and the
+// build executor (internal/build). Both surfaces need the same cap
+// guards and symlink-safe root containment logic; keeping them here
+// breaks the otherwise-forbidden dependency from internal/build onto a
+// specific rule package.
+package buildpathutil
 
 import (
 	"fmt"
@@ -9,14 +15,13 @@ import (
 )
 
 // evalSymlinks is a var so tests can override it to drive the
-// no-existing-prefix branch of resolveLongestExistingPrefix, which a real
-// filesystem never reaches because the root always resolves.
+// no-existing-prefix branch of resolveLongestExistingPrefix, which a
+// real filesystem never reaches because the root always resolves.
 var evalSymlinks = oscompat.EvalSymlinks
 
 // MaxGlobMatches is the per-entry cap on how many files one inputs:
 // glob may resolve to. An author who needs more declares several
-// narrower patterns. The build executor (a later plan) enforces this
-// during glob resolution via CheckGlobMatchCap.
+// narrower patterns.
 const MaxGlobMatches = 10000
 
 // CheckGlobMatchCap returns an error when an inputs: glob resolved to
@@ -70,6 +75,12 @@ func ResolvePathInRoot(root, rel string, mustExist bool) (string, error) {
 		return "", fmt.Errorf("%q resolves outside the project root", rel)
 	}
 	return filepath.ToSlash(inRoot), nil
+}
+
+// UnderMdsmithDir reports whether the cleaned, slash-separated path is
+// the .mdsmith state directory or a file inside it.
+func UnderMdsmithDir(cleaned string) bool {
+	return cleaned == ".mdsmith" || strings.HasPrefix(cleaned, ".mdsmith/")
 }
 
 // resolveLongestExistingPrefix resolves the longest existing ancestor

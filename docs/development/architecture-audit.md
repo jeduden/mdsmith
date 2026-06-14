@@ -6,7 +6,7 @@ summary: >-
   solid-architecture skill (audit mode)
   appends here; blockers are also filed as
   plans.
-audit-from: 82583fc1cce6f4be8451196f60e5dc6d1e6a5b28
+audit-from: aed18aa950f903263e3517294695101999f56f56
 ---
 # Architecture audit log
 
@@ -301,3 +301,9 @@ Tax: the [tablereadability dedup][2606071930] and
 
 [2606071930]: ../../plan/2606071930_arch-fix-tablereadability-dup.md
 [2606071931]: ../../plan/2606071931_arch-fix-include-helper-tests.md
+
+## Audit 2026-06-14 (range: 82583fc..aed18aa)
+
+Tax: [build→rules DIP](../../plan/2606141910_arch-fix-build-rules-dip.md),
+[engine wrappers](../../plan/2606141911_arch-fix-engine-deprecated-wrappers.md),
+[secreview tests](../../plan/2606141912_arch-fix-secreview-report-tests.md).

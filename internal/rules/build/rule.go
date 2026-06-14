@@ -12,6 +12,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/rules/buildpathutil"
 )
 
 func init() {
@@ -376,7 +377,7 @@ func validatePathEntry(p string, allowGlob bool) string {
 	if cleaned == ".." || cleaned == "." || strings.HasPrefix(cleaned, "../") {
 		return `must not contain ".." path components`
 	}
-	if UnderMdsmithDir(cleaned) {
+	if buildpathutil.UnderMdsmithDir(cleaned) {
 		return "must not be under .mdsmith/"
 	}
 	return ""
@@ -396,14 +397,6 @@ func hasReservedDeviceName(p string) bool {
 		}
 	}
 	return false
-}
-
-// UnderMdsmithDir reports whether the cleaned, slash-separated path is
-// the .mdsmith state directory or a file inside it. Exported so the build
-// executor can apply the same reserved-path guard at exec time that this
-// rule applies at lint time.
-func UnderMdsmithDir(cleaned string) bool {
-	return cleaned == ".mdsmith" || strings.HasPrefix(cleaned, ".mdsmith/")
 }
 
 // hasDriveLetter reports whether p begins with a Windows drive letter (e.g. C: or C:\).

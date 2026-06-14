@@ -20,10 +20,11 @@ import (
 // package and must not be imported by another rule. See
 // docs/development/architecture/index.md.
 var allowedRuleHelpers = map[string]struct{}{
-	"astutil":  {},
-	"settings": {},
-	"fencepos": {},
-	"tablefmt": {},
+	"astutil":       {},
+	"settings":      {},
+	"fencepos":      {},
+	"tablefmt":      {},
+	"buildpathutil": {},
 }
 
 // ruleBoundaryExempt names directories under internal/rules/ whose
@@ -117,4 +118,46 @@ func helperList() string {
 		names = append(names, k)
 	}
 	return strings.Join(names, ", ")
+}
+
+// TestBuildDoesNotImportRulePackages guards the DIP rule that
+// internal/build (the build-pass executor) must not import specific
+// rule packages. It may only import internal/rules/buildpathutil, the
+// shared path-helper package both the executor and the build rule use.
+// See docs/development/architecture/go.md §"Common violations to flag".
+func TestBuildDoesNotImportRulePackages(t *testing.T) {
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	buildPkg := filepath.Clean(filepath.Join(wd, "..", "build"))
+	info, err := os.Stat(buildPkg)
+	require.NoError(t, err, "internal/build must exist at %s", buildPkg)
+	require.True(t, info.IsDir(), "internal/build must be a directory")
+
+	const rulesPrefix = "github.com/jeduden/mdsmith/internal/rules/"
+	const allowedHelper = rulesPrefix + "buildpathutil"
+
+	fset := token.NewFileSet()
+	err = filepath.WalkDir(buildPkg, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		file, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(buildPkg, path)
+		for _, imp := range file.Imports {
+			importPath := strings.Trim(imp.Path.Value, `"`)
+			if strings.HasPrefix(importPath, rulesPrefix) && importPath != allowedHelper {
+				assert.Failf(t, "internal/build imports a rule package",
+					"%s imports %s; internal/build may only import %s from internal/rules/",
+					rel, importPath, allowedHelper)
+			}
+		}
+		return nil
+	})
+	require.NoError(t, err)
 }

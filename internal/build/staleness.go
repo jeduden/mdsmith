@@ -14,11 +14,11 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 
-	buildrule "github.com/jeduden/mdsmith/internal/rules/build"
+	"github.com/jeduden/mdsmith/internal/rules/buildpathutil"
 )
 
 // globCapFn is the CheckGlobMatchCap implementation; tests may replace it.
-var globCapFn = buildrule.CheckGlobMatchCap
+var globCapFn = buildpathutil.CheckGlobMatchCap
 
 // hashFileFn is the hashFile implementation; tests may replace it.
 var hashFileFn = hashFile
@@ -89,7 +89,7 @@ func resolveInputs(in StalenessInput) ([]string, error) {
 				return nil, err
 			}
 			for _, m := range matches {
-				rel, err := buildrule.ResolvePathInRoot(root, m, true)
+				rel, err := buildpathutil.ResolvePathInRoot(root, m, true)
 				if err != nil {
 					return nil, err
 				}
@@ -97,7 +97,7 @@ func resolveInputs(in StalenessInput) ([]string, error) {
 			}
 			continue
 		}
-		rel, err := buildrule.ResolvePathInRoot(root, entry, true)
+		rel, err := buildpathutil.ResolvePathInRoot(root, entry, true)
 		if err != nil {
 			return nil, err
 		}
@@ -105,7 +105,7 @@ func resolveInputs(in StalenessInput) ([]string, error) {
 	}
 
 	for _, entry := range in.DefaultInputs {
-		rel, err := buildrule.ResolvePathInRoot(root, entry, true)
+		rel, err := buildpathutil.ResolvePathInRoot(root, entry, true)
 		if err != nil {
 			return nil, err
 		}
@@ -121,9 +121,12 @@ func resolveInputs(in StalenessInput) ([]string, error) {
 func resolveOutputs(in StalenessInput) ([]string, error) {
 	out := make([]string, 0, len(in.Target.Outputs))
 	for _, entry := range in.Target.Outputs {
-		rel, err := buildrule.ResolvePathInRoot(in.Target.Root, entry, false)
+		rel, err := buildpathutil.ResolvePathInRoot(in.Target.Root, entry, false)
 		if err != nil {
 			return nil, err
+		}
+		if buildpathutil.UnderMdsmithDir(rel) {
+			return nil, fmt.Errorf("output %q is under .mdsmith/; refusing to overwrite mdsmith state", rel)
 		}
 		out = append(out, rel)
 	}

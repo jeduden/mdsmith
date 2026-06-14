@@ -504,6 +504,19 @@ func TestBuild_OutputUnderMdsmithRefused(t *testing.T) {
 	assert.NoFileExists(t, filepath.Join(root, ".mdsmith", "build-cache.json"))
 }
 
+func TestBuild_ZeroMatchGlobIsError(t *testing.T) {
+	root := t.TempDir()
+	b := NewCustomBuilder(map[string]RecipeSpec{"r": recipeCmd("echo hi {outputs}")})
+	err := b.Build(context.Background(), Target{
+		Recipe:  "r",
+		Root:    root,
+		Inputs:  []string{"*.none"},
+		Outputs: []string{"dst.txt"},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "matched no files")
+}
+
 func TestVerifyOutputsExist_StagedSymlinkRefused(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("symlink semantics")

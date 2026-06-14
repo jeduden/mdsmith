@@ -132,6 +132,15 @@ func TestStaleness_GlobMatchingZeroFilesIsError(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestStaleness_OutputUnderMdsmithRefused(t *testing.T) {
+	root := t.TempDir()
+	in := newPlan(t, root, "gen", "echo hi", nil, []string{".mdsmith/cache.json"}, nil)
+	cache := NewCache()
+	_, err := CheckStaleness(in, cache)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), ".mdsmith/")
+}
+
 func TestStaleness_DefaultInputsFoldedIntoHash(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "demo.tape", "v1")
