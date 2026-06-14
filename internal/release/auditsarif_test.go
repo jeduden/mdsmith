@@ -84,6 +84,14 @@ func TestSelectAuditSarifs(t *testing.T) {
 			want: []string{"2026-06-09-real"},
 		},
 		{
+			name: "bare date directory name without a slug qualifies",
+			dirs: map[string]bool{
+				"2026-06-12":      true,
+				"2026-06-09-real": true,
+			},
+			want: []string{"2026-06-12"},
+		},
+		{
 			name: "invalid calendar date is ignored",
 			dirs: map[string]bool{
 				"2026-13-40-bogus": true,
@@ -149,6 +157,31 @@ func TestSelectAuditSarifsSarifIsDir(t *testing.T) {
 	}
 	if got != nil {
 		t.Errorf("got %v, want nil", got)
+	}
+}
+
+// TestSelectAuditSarifsSarifIsSymlink: a findings.sarif that is a
+// symlink (even to a regular file) does not qualify — Lstat rejects it
+// rather than following it.
+func TestSelectAuditSarifsSarifIsSymlink(t *testing.T) {
+	securityDir := t.TempDir()
+	dir := filepath.Join(securityDir, "2026-06-12-full-repo-audit")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	target := filepath.Join(securityDir, "real.sarif")
+	if err := os.WriteFile(target, []byte("{}"), 0o644); err != nil {
+		t.Fatalf("write target: %v", err)
+	}
+	if err := os.Symlink(target, filepath.Join(dir, "findings.sarif")); err != nil {
+		t.Skipf("symlinks unsupported here: %v", err)
+	}
+	got, err := SelectAuditSarifs(securityDir, auditNow)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != nil {
+		t.Errorf("symlinked findings.sarif should be excluded, got %v", got)
 	}
 }
 

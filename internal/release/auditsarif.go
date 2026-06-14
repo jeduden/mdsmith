@@ -23,7 +23,8 @@ const auditDateLayout = "2006-01-02"
 // A directory qualifies when its name begins with a valid YYYY-MM-DD
 // date (followed by end-of-name or a '-' slug separator), that date is
 // not in the future relative to now, and it contains a regular
-// findings.sarif file. "Most recent" is the maximum qualifying date;
+// (non-symlink) findings.sarif file. "Most recent" is the maximum
+// qualifying date;
 // every directory on that date is returned, since one date can hold
 // more than one audit (e.g. a full-repo audit beside a narrower-scope
 // one). The result is sorted. It is empty — not an error — when
@@ -56,9 +57,14 @@ func SelectAuditSarifs(securityDir string, now time.Time) ([]string, error) {
 		if !ok || date.After(today) {
 			continue
 		}
+		// Lstat, not Stat, so a symlinked findings.sarif is rejected
+		// rather than followed: the upload step reads this path
+		// directly, and audit files are meant to be regular in-repo
+		// files. The project's own audits flag symlink-follow (S003,
+		// S007), so the selector holds the same line.
 		sarif := filepath.Join(securityDir, e.Name(), "findings.sarif")
-		info, statErr := os.Stat(sarif)
-		if statErr != nil || !info.Mode().IsRegular() {
+		info, lstatErr := os.Lstat(sarif)
+		if lstatErr != nil || !info.Mode().IsRegular() {
 			continue
 		}
 		cands = append(cands, audit{name: e.Name(), date: date})
