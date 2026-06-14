@@ -1,7 +1,7 @@
 ---
 id: 2606130836
 title: Pool the per-file source-read buffer across lintFile passes
-status: "🔳"
+status: "✅"
 model: opus
 summary: >-
   bytelimit.readAllSized is the top allocator on a check run
