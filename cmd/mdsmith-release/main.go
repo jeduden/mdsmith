@@ -25,6 +25,7 @@
 //	mdsmith-release record-rotation <ENTRY_TITLE> <YYYY-MM-DD>
 //	mdsmith-release merge-coverage -o <out> <profile>...
 //	mdsmith-release test-summary
+//	mdsmith-release select-audit-sarifs <dir>
 //	mdsmith-release bench [workdir]
 //	mdsmith-release render-bench-page <out-path>
 //	mdsmith-release pgo [workdir]
@@ -38,10 +39,12 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -74,6 +77,8 @@ Commands:
   record-rotation <title> <date>  Update lastRotated in a per-secret rotation file.
   merge-coverage -o <out> <p>...  Merge coverage profiles by summing hit counts.
   test-summary                    Tally unit/integration/e2e tests from a go test -json stream on stdin.
+  select-audit-sarifs <dir>       Print the newest audit date's directories under <dir> (those with a
+                                  findings.sarif) as a JSON array, for the security-audit-sarif matrix.
   bench [workdir]                 Run the pinned cross-tool benchmark; promote JSON + fragments.
   bench-check <base> <fresh>      Fail if mdsmith regressed vs mado between two benchmark snapshots.
   render-bench-page <out-path>    Render the benchmark README (links → GitHub) for the assets branch.
@@ -163,6 +168,8 @@ func dispatchMaintenance(cmd, root string, rest []string) int {
 		return runMergeCoverage(root, rest)
 	case "test-summary":
 		return runTestSummary(root, rest)
+	case "select-audit-sarifs":
+		return runSelectAuditSarifs(root, rest)
 	case "pull-site-assets":
 		return runPullSiteAssets(root, rest)
 	default:
@@ -709,6 +716,46 @@ func runRenderBenchPage(root string, args []string) int {
 		return 2
 	}
 	return reportError(release.RenderBenchPage(root, fs.Arg(0)))
+}
+
+func runSelectAuditSarifs(root string, args []string) int {
+	fs := flag.NewFlagSet("select-audit-sarifs", flag.ContinueOnError)
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: mdsmith-release select-audit-sarifs <security-dir>\n\n"+
+			"Print, as a JSON array on stdout, the basenames of the audit\n"+
+			"directories directly under <security-dir> that share the most\n"+
+			"recent audit date and contain a findings.sarif. The\n"+
+			"security-audit-sarif workflow feeds the array into its upload\n"+
+			"matrix, one code-scanning category per directory. Prints `[]`\n"+
+			"(exit 0) when there is nothing to upload; exits non-zero only\n"+
+			"on a genuine read error so the workflow fails loudly.\n")
+	}
+	if err := fs.Parse(args); err != nil {
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith-release: select-audit-sarifs"); code >= 0 {
+			return code
+		}
+	}
+	if fs.NArg() != 1 {
+		fs.Usage()
+		return 2
+	}
+	dir := fs.Arg(0)
+	if !filepath.IsAbs(dir) {
+		dir = filepath.Join(root, dir)
+	}
+	names, err := release.SelectAuditSarifs(dir, time.Now())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith-release: %v\n", err)
+		return 1
+	}
+	if names == nil {
+		names = []string{}
+	}
+	// json.Marshal of a []string cannot fail, so there is no error
+	// branch to drive here (CLAUDE.md: no undrivable defensive code).
+	encoded, _ := json.Marshal(names)
+	fmt.Println(string(encoded))
+	return 0
 }
 
 func runPullSiteAssets(root string, args []string) int {

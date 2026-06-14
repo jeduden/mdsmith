@@ -1,0 +1,59 @@
+name: security-audit-sarif
+
+# Upload the most recent security-audit SARIF (produced by the
+# mdsmith-security-review skill into docs/security/<date-slug>/) to
+# GitHub code scanning, so audit findings surface in the Security tab
+# next to CodeQL and zizmor. The audit log itself stays in-repo; this
+# only mirrors the newest audit date's findings into the alerts feed.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/security/*/findings.sarif"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    name: Select newest audit SARIFs
+    runs-on: ubuntu-latest
+    outputs:
+      dirs: ${{ steps.select.outputs.dirs }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+      - name: Select audit directories sharing the newest date
+        id: select
+        run: |
+          dirs="$(go run ./cmd/mdsmith-release select-audit-sarifs docs/security)"
+          echo "dirs=$dirs" >> "$GITHUB_OUTPUT"
+          echo "Selected: $dirs"
+
+  upload:
+    name: Upload audit SARIF to code scanning
+    needs: discover
+    if: needs.discover.outputs.dirs != '[]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: ${{ fromJSON(needs.discover.outputs.dirs) }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Upload findings.sarif
+        uses: github/codeql-action/upload-sarif@5c8a8a642e79153f5d047b10ec1cba1d1cc65699 # v3
+        with:
+          sarif_file: docs/security/${{ matrix.dir }}/findings.sarif
+          category: mdsmith-security-review/${{ matrix.dir }}
