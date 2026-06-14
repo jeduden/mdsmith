@@ -6,28 +6,28 @@ the harness (run.sh) and `mdsmith fix` to refresh. -->
 mdsmith-only rules so the work class matches the markdownlint
 tools (see `bench-parity.mdsmith.yml`).
 
-**Repo corpus — 768 Markdown files** (median wall time, lower is
+**Repo corpus — 777 Markdown files** (median wall time, lower is
 better; `vs mado` is the ratio to mado's median):
 
 | Tool              | Median  | Min     | vs mado |
 | ----------------- | ------- | ------- | ------- |
-| gomarklint        | 61 ms   | 52 ms   | 0.9x    |
+| gomarklint        | 59 ms   | 52 ms   | 0.9x    |
+| mdsmith-parity    | 60 ms   | 60 ms   | 0.9x    |
 | mado              | 65 ms   | 64 ms   | 1.0x    |
-| mdsmith-parity    | 67 ms   | 65 ms   | 1.0x    |
-| mdsmith           | 215 ms  | 215 ms  | 3.3x    |
-| rumdl             | 333 ms  | 325 ms  | 5.2x    |
-| panache           | 687 ms  | 607 ms  | 11x     |
-| markdownlint-cli2 | 4823 ms | 4756 ms | 75x     |
+| mdsmith           | 176 ms  | 173 ms  | 2.7x    |
+| rumdl             | 323 ms  | 317 ms  | 5.0x    |
+| panache           | 747 ms  | 596 ms  | 11x     |
+| markdownlint-cli2 | 4788 ms | 4740 ms | 74x     |
 
 **Neutral corpus — 234 files** (Rust Book + Rust Reference,
 longer third-party prose):
 
 | Tool              | Median  | Min     | vs mado |
 | ----------------- | ------- | ------- | ------- |
-| gomarklint        | 32 ms   | 30 ms   | 0.7x    |
-| mado              | 46 ms   | 45 ms   | 1.0x    |
-| mdsmith-parity    | 51 ms   | 51 ms   | 1.1x    |
-| mdsmith           | 150 ms  | 147 ms  | 3.2x    |
-| rumdl             | 197 ms  | 195 ms  | 4.2x    |
-| panache           | 562 ms  | 523 ms  | 12x     |
-| markdownlint-cli2 | 3150 ms | 2971 ms | 68x     |
+| gomarklint        | 30 ms   | 29 ms   | 0.6x    |
+| mado              | 46 ms   | 46 ms   | 1.0x    |
+| mdsmith-parity    | 53 ms   | 52 ms   | 1.1x    |
+| mdsmith           | 142 ms  | 141 ms  | 3.1x    |
+| rumdl             | 191 ms  | 188 ms  | 4.1x    |
+| panache           | 555 ms  | 514 ms  | 12x     |
+| markdownlint-cli2 | 3071 ms | 3007 ms | 66x     |
