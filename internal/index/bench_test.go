@@ -123,6 +123,8 @@ func BenchmarkSerialBuild1k(b *testing.B) {
 // times and returns the fastest (minimum) wall-clock time of each. The
 // minimum is the sample least disturbed by a co-scheduled neighbour, so
 // it isolates the build pipeline's own behaviour from host contention.
+// It fails the test if the serial and parallel builds ever disagree on
+// the file count.
 func measureBestBuild(
 	t *testing.T,
 	files []string,
@@ -135,16 +137,12 @@ func measureBestBuild(
 		idxSerial := New("/root")
 		startSerial := time.Now()
 		idxSerial.BuildSerial(files, loader)
-		if d := time.Since(startSerial); d < serial {
-			serial = d
-		}
+		serial = min(serial, time.Since(startSerial))
 
 		idxParallel := New("/root")
 		startParallel := time.Now()
 		idxParallel.Build(files, loader)
-		if d := time.Since(startParallel); d < parallel {
-			parallel = d
-		}
+		parallel = min(parallel, time.Since(startParallel))
 
 		// Sanity-check both variants agree on file count before
 		// comparing wall-clock numbers.
