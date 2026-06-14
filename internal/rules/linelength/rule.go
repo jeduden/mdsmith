@@ -42,13 +42,17 @@ func (r *Rule) Name() string { return "line-length" }
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "line" }
 
-// LineCapable implements rule.LineCapable: line-length reads only f.Lines
-// and the classifier-backed projections (CollectCodeBlockLines, the table
-// byte-scan, and — for an optional per-heading limit — FlatHeadingLines),
-// so it runs on the flat Layer-0 path with no goldmark parse. It is the
-// gate the engine keys its parse-skip on (plan 2606142147); see the flat
-// fallbacks in buildCategories and collectHeadingLines.
-func (r *Rule) LineCapable() bool { return true }
+// LineCapable implements rule.LineCapable: line-length reads f.Lines, the
+// classifier-backed code-block set (CollectCodeBlockLines), and the table
+// byte-scan — all byte-identical to the AST on the flat Layer-0 path. It
+// reports false when a per-heading limit is configured, because the
+// classifier's heading-line set is NOT guaranteed byte-identical to the AST
+// walk (the AST path's collectHeadingLines has container-prefix and
+// multi-line-setext quirks the flat pass does not replicate), so a
+// heading-max config stays on the AST path. The engine consults the
+// configured instance, so HeadingMax is set by the time this is called
+// (plan 2606142147).
+func (r *Rule) LineCapable() bool { return r.HeadingMax == nil }
 
 // isExcluded returns true if the given category is in the Exclude list.
 func (r *Rule) isExcluded(category string) bool {

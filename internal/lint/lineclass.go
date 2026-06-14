@@ -128,6 +128,21 @@ type lc0Pass struct {
 
 	prevParagraph bool // previous emitted line was paragraph text (setext gate)
 	indentCode    bool // currently inside an indented code run
+
+	// openBlockDepth is the container-stack depth at which the current
+	// fenced or HTML block opened. When a later line fails to continue that
+	// many containers, goldmark closes the leaf block at the container
+	// boundary (code and HTML blocks get no lazy continuation), so the
+	// classifier closes it too — see closeBlockAtBoundary.
+	openBlockDepth int
+
+	// pendingBlanks holds blank lines seen while inside an indented code
+	// run. A blank inside indented code belongs to the block only if more
+	// indented content follows, so the lines are held here and flushed into
+	// the code set when the run continues (flushPendingBlanks) or discarded
+	// when it ends (endIndentRun) — matching goldmark, which folds interior
+	// blanks into the block but drops trailing ones.
+	pendingBlanks []int
 }
 
 // run walks every line, handling the optional leading front matter first,
@@ -145,14 +160,16 @@ func (p *lc0Pass) run() {
 // scanFrontMatter consumes a leading `---` fenced YAML block when the very
 // first line is exactly `---`, recording its bounds and marking the lines
 // LineFrontMatter. Returns the index of the first line past it (0 when
-// absent). Mirrors lint.StripFrontMatter's leading-delimiter rule so a
-// whole-file classification agrees with the stripped engine path.
+// absent). The engine strips front matter before the classifier runs
+// (NewFileFlatPooled), so this only fires for a whole-file standalone
+// classification; the exact `---` delimiter (a trailing CR aside, for CRLF)
+// matches markdown.StripFrontMatter's opener so the two agree on that path.
 func (p *lc0Pass) scanFrontMatter() int {
-	if len(p.lines) == 0 || !bytes.Equal(bytes.TrimRight(p.lines[0], " \t"), fmDelim) {
+	if len(p.lines) == 0 || !bytes.Equal(trimTrailingCR(p.lines[0]), fmDelim) {
 		return 0
 	}
 	for i := 1; i < len(p.lines); i++ {
-		if bytes.Equal(bytes.TrimRight(p.lines[i], " \t"), fmDelim) {
+		if bytes.Equal(trimTrailingCR(p.lines[i]), fmDelim) {
 			p.out.fmFrom, p.out.fmTo = 1, i+1
 			for j := 0; j <= i; j++ {
 				p.out.classes[j] = LineFrontMatter
@@ -168,10 +185,22 @@ var fmDelim = []byte("---")
 // classifyLine classifies the 1-based line i+1, threading container and
 // fence state. It is the per-line core of the pass.
 func (p *lc0Pass) classifyLine(i int) {
-	line := p.lines[i]
+	// Trim a trailing CR so CRLF documents are classified on the same
+	// `\r`-free lines goldmark's reader sees; otherwise a `\r` would defeat
+	// fence-close / setext / blank recognition and diverge the code set.
+	line := trimTrailingCR(p.lines[i])
 	ln := i + 1
-	off, _ := p.consumeContainers(line)
+	off, matched := p.consumeContainers(line)
 	rest := line[off:]
+
+	// A fenced or HTML block opened inside a container ends at the first
+	// line that fails to continue that container. goldmark closes the leaf
+	// block at the boundary (no lazy continuation for code/HTML blocks), so
+	// the classifier closes it too, then reclassifies this line at the
+	// reduced container depth.
+	if (p.inFence || p.inHTML) && matched < p.openBlockDepth {
+		p.closeBlockAtBoundary(ln)
+	}
 
 	if p.inFence {
 		p.handleFenceBody(ln, rest)
@@ -184,13 +213,40 @@ func (p *lc0Pass) classifyLine(i int) {
 	if isBlankBytes(rest) {
 		p.out.classes[i] = LineBlank
 		p.prevParagraph = false
-		p.indentCode = false
 		// A blank line ends a paragraph but does not close list items
 		// (CommonMark allows interior blanks); blockquotes that fail to
-		// match were already popped by consumeContainers above.
+		// match were already popped by consumeContainers above. A blank
+		// inside an indented code run is held pending — it is part of the
+		// block only if more indented content follows.
+		if p.indentCode {
+			p.pendingBlanks = append(p.pendingBlanks, ln)
+		}
 		return
 	}
 	p.handleContent(i, ln, line, off, rest)
+}
+
+// closeBlockAtBoundary ends the open fenced or HTML block because the line
+// at ln dropped a container the block lived in. A fence is marked as if it
+// ended just before ln (the goldmark phantom-close behaviour finishFence
+// already implements); an HTML block simply ends (its lines are never code).
+func (p *lc0Pass) closeBlockAtBoundary(ln int) {
+	if p.inFence {
+		p.finishFence(ln)
+		p.inFence = false
+		return
+	}
+	p.inHTML = false
+	p.htmlEnd = nil
+}
+
+// trimTrailingCR returns b without a single trailing carriage return, so a
+// CRLF line is scanned as its `\r`-free content.
+func trimTrailingCR(b []byte) []byte {
+	if n := len(b); n > 0 && b[n-1] == '\r' {
+		return b[:n-1]
+	}
+	return b
 }
 
 // handleFenceBody classifies a line while a fence is open: a matching
@@ -230,6 +286,7 @@ func (p *lc0Pass) tryStartHTML(i int, rest []byte) bool {
 	if !bytes.Contains(rest, end) {
 		p.inHTML = true
 		p.htmlEnd = end
+		p.openBlockDepth = len(p.stack)
 	}
 	return true
 }
@@ -247,17 +304,20 @@ func (p *lc0Pass) handleContent(i, ln int, line []byte, off int, rest []byte) {
 		p.out.classes[i] = LineATXHeading
 		p.addHeading(ln)
 		p.prevParagraph = false
-		p.indentCode = false
+		p.endIndentRun()
 	case indent <= 3 && p.tryOpenFence(ln, rest):
 		// tryOpenFence set inFence and recorded the open line.
 		p.prevParagraph = false
-		p.indentCode = false
+		p.endIndentRun()
 	case indent <= 3 && p.tryStartHTML(i, rest):
 		// tryStartHTML marked the line LineHTML and set inHTML when the
 		// block spans more lines.
 		p.prevParagraph = false
-		p.indentCode = false
+		p.endIndentRun()
 	case p.canStartIndentedCode(indent):
+		// Interior blanks accumulated since the last code line are now
+		// known to be inside the block (more indented content follows).
+		p.flushPendingBlanks()
 		p.out.classes[i] = LineInCode
 		p.markCode(ln)
 		p.indentCode = true
@@ -269,8 +329,24 @@ func (p *lc0Pass) handleContent(i, ln int, line []byte, off int, rest []byte) {
 	default:
 		p.out.classes[i] = LineParagraph
 		p.prevParagraph = true
-		p.indentCode = false
+		p.endIndentRun()
 	}
+}
+
+// endIndentRun closes any in-progress indented code run and discards its
+// pending (trailing) blank lines, which goldmark does not fold into the
+// block once non-indented content follows.
+func (p *lc0Pass) endIndentRun() {
+	p.indentCode = false
+	p.pendingBlanks = p.pendingBlanks[:0]
+}
+
+// flushPendingBlanks adds the held interior-blank lines to the code set.
+func (p *lc0Pass) flushPendingBlanks() {
+	for _, b := range p.pendingBlanks {
+		p.markCode(b)
+	}
+	p.pendingBlanks = p.pendingBlanks[:0]
 }
 
 // openContainers pushes any blockquote / list-item markers that begin at
@@ -359,6 +435,7 @@ func (p *lc0Pass) tryOpenFence(ln int, rest []byte) bool {
 	p.fenceLen = n
 	p.fenceHadInfo = hadInfo
 	p.fenceOpenLine = ln
+	p.openBlockDepth = len(p.stack)
 	p.out.classes[ln-1] = LineFenceOpen
 	return true
 }
@@ -414,8 +491,10 @@ func (p *lc0Pass) canStartIndentedCode(indent int) bool {
 	return !p.prevParagraph
 }
 
-// markCode records ln in the code-block set and sets its class to in-code
-// when no fence-delimiter class was already assigned for that line.
+// markCode records the 1-based ln in the code-block set, lazily allocating
+// it on the first code line. It does not touch the per-line class slice:
+// the caller sets that (LineInCode / LineFenceOpen / LineFenceClose), so a
+// line's class and its code-set membership are assigned at the same site.
 func (p *lc0Pass) markCode(ln int) {
 	if p.out.codeBlock == nil {
 		p.out.codeBlock = make(map[int]struct{}, 16)

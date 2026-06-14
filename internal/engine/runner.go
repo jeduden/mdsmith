@@ -516,7 +516,16 @@ func (r *Runner) computeFlatLayer0Active() bool {
 		if !ok || !cfg.Enabled {
 			continue
 		}
-		lc, ok := rl.(rule.LineCapable)
+		// Apply the rule's effective settings before asking LineCapable:
+		// a rule's line-capability can depend on its config (line-length
+		// is not line-capable once a per-heading limit is set). With no
+		// kinds or overrides, the empty-path effective config is the
+		// rule's settings for every file.
+		configured, err := ConfigureRule(rl, cfg)
+		if err != nil {
+			return false
+		}
+		lc, ok := configured.(rule.LineCapable)
 		if !ok || !lc.LineCapable() {
 			return false
 		}

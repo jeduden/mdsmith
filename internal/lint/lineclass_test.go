@@ -38,6 +38,18 @@ var equivCases = map[string]string{
 	"tab indented code":       "\thello\nworld\n",
 	"cdata block":             "<![CDATA[\n    x\n]]>\n",
 	"no code at all":          "# Title\n\nJust prose, nothing fenced.\n",
+	// Regression guards for the code-review pass (recall): a fence nested
+	// in a container whose interior or close drops the container prefix
+	// must close at that boundary, not run on; an indented code block must
+	// fold its interior blank; and CRLF lines must classify on `\r`-free
+	// content.
+	"bq fence drops prefix":    "> ```\n> a\nb\n> ```\n",
+	"bq fence multi then drop": "> ```\n> a\n> b\nc\n",
+	"list fence dedents":       "- x\n\n  ```\ncode_dedent\n  ```\n",
+	"indented interior blank":  "para\n\n    code1\n\n    code2\n",
+	"indented trailing blank":  "para\n\n    code\n\n",
+	"crlf fenced block":        "```\r\nx\r\n```\r\nafter\r\n",
+	"crlf indented code":       "para\r\n\r\n    code\r\n",
 }
 
 func sortedKeys(m map[int]struct{}) []int {
