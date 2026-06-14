@@ -174,15 +174,3 @@
     - editor
   url: https://github.com/jeduden/mdsmith/releases
   weight: 14
-- title: GitHub Actions
-  summary: 'A composite action at the repository root downloads the checksum-verified release binary for the runner''s OS and architecture and puts `mdsmith` on `PATH`; published to the GitHub Marketplace and referenced as `uses: jeduden/mdsmith@v0`.'
-  mechanism: push
-  artifact: cli
-  command: 'uses: jeduden/mdsmith@v0'
-  audience: Linting Markdown inside GitHub Actions CI
-  platforms:
-    - linux
-    - macos
-    - windows
-  url: https://github.com/marketplace/actions/mdsmith
-  weight: 15

@@ -43,6 +43,7 @@ glob:
   - "../development/release-channels/*.md"
   - "!../development/release-channels/proto.md"
   - "!../development/release-channels/winget.md"
+  - "!../development/release-channels/github-actions.md"
 where: 'artifact: "cli"'
 sort: numeric:weight
 header: |
@@ -64,7 +65,6 @@ row: "| {title} | `{command}` | {audience} |"
 | GitHub Releases | `curl -LO https://github.com/jeduden/mdsmith/releases/latest/download/mdsmith-<os>-<arch>`                                                | Air-gapped hosts and direct binary control        |
 | Scoop           | `scoop install mdsmith`                                                                                                                   | Windows users with Scoop installed                |
 | Flatpak         | `curl -LO https://github.com/jeduden/mdsmith/releases/latest/download/mdsmith-x86_64.flatpak && flatpak install ./mdsmith-x86_64.flatpak` | Sandboxed Linux x86_64 desktops via Flatpak       |
-| GitHub Actions  | `uses: jeduden/mdsmith@v0`                                                                                                                | Linting Markdown inside GitHub Actions CI         |
 <?/catalog?>
 
 A bare `mise use mdsmith@latest` needs a registry entry —

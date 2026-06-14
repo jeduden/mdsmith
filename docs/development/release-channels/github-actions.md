@@ -16,6 +16,7 @@ credential: GITHUB_TOKEN
 job: release
 channelurl: https://github.com/marketplace/actions/mdsmith
 weight: 15
+unlisted: true
 ---
 # GitHub Actions
 
@@ -86,3 +87,10 @@ and `@v0` resolve. Until then, pin to a commit SHA on
 You can also skip the action entirely. Run the release
 binary in a `run:` step. That repeats by hand the download
 and verify steps the action automates.
+
+While the listing is pending, the channel stays hidden. It
+sets `unlisted: true`. `sync-channels` then keeps it out of
+the install picker and the "Available on" strip. The
+install-guide and release-pipeline tables exclude it by
+glob. Flip `unlisted` and drop both glob exclusions once the
+listing resolves.
