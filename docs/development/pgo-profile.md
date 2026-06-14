@@ -1,4 +1,5 @@
 ---
+title: PGO and the uncommitted profile
 summary: >-
   Why no PGO profile is committed: a checked-in
   `cmd/mdsmith/default.pgo` burdens every merge with a binary

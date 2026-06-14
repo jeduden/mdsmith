@@ -15,7 +15,6 @@ glob:
 sort: title
 row: "- [{title}]({filename})"
 ?>
-- [](pgo-profile.md)
 - [Adding a peer linter](add-peer-linter.md)
 - [Architecture audit log](architecture-audit.md)
 - [Architecture principles](architecture/index.md)
@@ -24,6 +23,7 @@ row: "- [{title}]({filename})"
 - [File Placement](file-placement.md)
 - [High-Performance Go](high-performance-go.md)
 - [Merge Queue](merge-queue.md)
+- [PGO and the uncommitted profile](pgo-profile.md)
 - [PR Fixup Workflow](pr-fixup-workflow.md)
 - [Public Markdown Library](markdown-library.md)
 - [Release Pipeline](release.md)
