@@ -50,6 +50,11 @@ directory named `YYYY-MM-DD-<slug>/`. It holds a
 `inline-annotations.json`. The report records the
 scope, the method, the findings, and the follow-up.
 
+The `security-audit-sarif` workflow uploads
+the newest audit date's `findings.sarif` to
+GitHub code scanning. The findings then show
+in the Security tab, beside CodeQL and zizmor.
+
 <?catalog
 glob:
   - "docs/security/*/report.md"
