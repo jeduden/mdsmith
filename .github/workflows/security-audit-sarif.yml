@@ -22,34 +22,24 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       dirs: ${{ steps.select.outputs.dirs }}
-      empty: ${{ steps.select.outputs.empty }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
       - name: Select audit directories sharing the newest date
         id: select
         run: |
-          newest="$(find docs/security -mindepth 1 -maxdepth 1 -type d -name '20*' -printf '%f\n' \
-            | grep -oE '^[0-9]{4}-[0-9]{2}-[0-9]{2}' | sort -u | tail -n1 || true)"
-          dirs="$(find docs/security -mindepth 2 -maxdepth 2 -name findings.sarif \
-            -path "*/${newest}-*/*" -printf '%h\n' | sed 's:.*/::' | sort -u \
-            | jq -R . | jq -cs . || true)"
-          if [ -z "$dirs" ] || [ "$dirs" = "[]" ]; then
-            echo "empty=true" >> "$GITHUB_OUTPUT"
-            echo "dirs=[]" >> "$GITHUB_OUTPUT"
-            echo "No audit findings.sarif found"
-          else
-            echo "empty=false" >> "$GITHUB_OUTPUT"
-            echo "dirs=$dirs" >> "$GITHUB_OUTPUT"
-            echo "Newest audit date: $newest"
-            echo "Selected directories: $dirs"
-          fi
+          dirs="$(go run ./cmd/mdsmith-release select-audit-sarifs docs/security)"
+          echo "dirs=$dirs" >> "$GITHUB_OUTPUT"
+          echo "Selected: $dirs"
 
   upload:
     name: Upload audit SARIF to code scanning
     needs: discover
-    if: needs.discover.outputs.empty == 'false'
+    if: needs.discover.outputs.dirs != '[]'
     runs-on: ubuntu-latest
     permissions:
       contents: read

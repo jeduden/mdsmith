@@ -51,9 +51,9 @@ directory named `YYYY-MM-DD-<slug>/`. It holds a
 scope, the method, the findings, and the follow-up.
 
 The `security-audit-sarif` workflow uploads
-the newest audit date's `findings.sarif` to
-GitHub code scanning. The findings then show
-in the Security tab, beside CodeQL and zizmor.
+every audit on the most recent date to GitHub
+code scanning. The findings then show in the
+Security tab, beside CodeQL and zizmor.
 
 <?catalog
 glob:
