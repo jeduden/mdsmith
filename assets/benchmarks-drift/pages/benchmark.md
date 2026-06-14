@@ -106,31 +106,31 @@ the harness (run.sh) and `mdsmith fix` to refresh. -->
 mdsmith-only rules so the work class matches the markdownlint
 tools (see `bench-parity.mdsmith.yml`).
 
-**Repo corpus — 777 Markdown files** (median wall time, lower is
+**Repo corpus — 778 Markdown files** (median wall time, lower is
 better; `vs mado` is the ratio to mado's median):
 
 | Tool              | Median  | Min     | vs mado |
 | ----------------- | ------- | ------- | ------- |
-| mdsmith-parity    | 57 ms   | 56 ms   | 1.0x    |
-| gomarklint        | 57 ms   | 47 ms   | 1.0x    |
-| mado              | 59 ms   | 58 ms   | 1.0x    |
-| mdsmith           | 165 ms  | 162 ms  | 2.8x    |
-| rumdl             | 337 ms  | 332 ms  | 5.7x    |
-| panache           | 676 ms  | 610 ms  | 11x     |
-| markdownlint-cli2 | 4786 ms | 4647 ms | 81x     |
+| mdsmith-parity    | 64 ms   | 64 ms   | 1.0x    |
+| mado              | 66 ms   | 65 ms   | 1.0x    |
+| gomarklint        | 71 ms   | 53 ms   | 1.1x    |
+| mdsmith           | 181 ms  | 179 ms  | 2.8x    |
+| rumdl             | 342 ms  | 329 ms  | 5.2x    |
+| panache           | 619 ms  | 612 ms  | 9.4x    |
+| markdownlint-cli2 | 4959 ms | 4887 ms | 75x     |
 
 **Neutral corpus — 234 files** (Rust Book + Rust Reference,
 longer third-party prose):
 
 | Tool              | Median  | Min     | vs mado |
 | ----------------- | ------- | ------- | ------- |
-| gomarklint        | 28 ms   | 26 ms   | 0.6x    |
-| mado              | 45 ms   | 44 ms   | 1.0x    |
-| mdsmith-parity    | 53 ms   | 51 ms   | 1.2x    |
-| mdsmith           | 135 ms  | 132 ms  | 3.0x    |
-| rumdl             | 204 ms  | 199 ms  | 4.6x    |
-| panache           | 551 ms  | 527 ms  | 12x     |
-| markdownlint-cli2 | 2964 ms | 2924 ms | 66x     |
+| gomarklint        | 32 ms   | 30 ms   | 0.7x    |
+| mado              | 47 ms   | 46 ms   | 1.0x    |
+| mdsmith-parity    | 56 ms   | 55 ms   | 1.2x    |
+| mdsmith           | 146 ms  | 144 ms  | 3.1x    |
+| rumdl             | 196 ms  | 195 ms  | 4.2x    |
+| panache           | 561 ms  | 529 ms  | 12x     |
+| markdownlint-cli2 | 3112 ms | 3037 ms | 67x     |
 <?/include?>
 
 ## Reading the result
@@ -178,6 +178,16 @@ disable the MD rules rumdl/markdownlint implement but mdsmith
 lacks, so those tools may still do marginally more in this
 mode. Read `mdsmith-parity` as a conservative upper bound on
 mdsmith's same-rules speed, not a byte-identical rule set.
+
+**Why parity trails gomarklint specifically.** gomarklint is
+the fastest tool in the table because it never builds an AST —
+it is a pure line scanner. mdsmith-parity cannot follow it
+there: 27 of parity's 30 rules require the parsed CommonMark
+tree, so the goldmark parse (~35% of parity's wall time) is
+forced. [gomarklint architecture and the parity
+gap](gomarklint-architecture.md) reviews gomarklint's design,
+breaks the parity profile down bucket by bucket, and records
+the optimization levers and their ceilings.
 
 **The gate + profiler loop caught two real bugs.** The
 first run had mdsmith at ~1.0 s on the repo corpus but
