@@ -89,9 +89,17 @@ type File struct {
 	codeBlockLines     map[int]struct{}
 	codeBlockLinesDone atomic.Bool
 	codeBlockLinesMu   sync.Mutex
-	piBlockLines       map[int]struct{}
-	piBlockLinesDone   atomic.Bool
-	piBlockLinesMu     sync.Mutex
+
+	// lineClass, when non-nil, is the flat Layer-0 line classifier built
+	// in place of the goldmark parse on the engine's parse-skip path
+	// (plan 2606142147, Runner.FlatLayer0). CollectCodeBlockLines and
+	// FlatHeadingLines serve from it instead of walking f.AST, which is
+	// nil on that path. Set only by NewFileFlatPooled; nil on every
+	// normal (AST) parse, so the AST fallback is the default everywhere.
+	lineClass        *LineClassifier
+	piBlockLines     map[int]struct{}
+	piBlockLinesDone atomic.Bool
+	piBlockLinesMu   sync.Mutex
 
 	// proseRanges caches the byte-offset projection behind ProseRanges:
 	// the source spans inside prose nodes (paragraph, heading, list-item

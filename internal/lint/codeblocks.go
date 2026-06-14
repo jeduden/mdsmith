@@ -72,6 +72,13 @@ func InCodeOrPI(codeLines, piLines map[int]struct{}, line int) bool {
 // mutex memo avoids the once.Do closure box (see the
 // File.codeBlockLines field comment).
 func CollectCodeBlockLines(f *File) map[int]struct{} {
+	// Flat Layer-0 path (plan 2606142147): when the File was built by the
+	// engine's parse-skip path it carries a flat classifier and no AST, so
+	// serve the code-block set the classifier already computed. The
+	// equivalence gate pins this byte-identical to the AST walk below.
+	if f.lineClass != nil {
+		return f.lineClass.CodeBlockLines()
+	}
 	if f.codeBlockLinesDone.Load() {
 		return f.codeBlockLines
 	}

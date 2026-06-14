@@ -94,6 +94,39 @@ func NewFileBlockOnlyPooled(path string, source []byte, stripFrontMatter bool) (
 	return f, release
 }
 
+// NewFileFlatPooled builds a File for the flat Layer-0 parse-skip path
+// (plan 2606142147): it strips front matter and splits lines exactly like
+// NewFileFromSourcePooled, but runs no goldmark parse at all — f.AST stays
+// nil and a flat LineClassifier is attached instead, so the
+// CollectCodeBlockLines and FlatHeadingLines projections serve from the
+// classifier rather than the tree. The engine reaches it only when every
+// enabled rule is line-capable (Runner.FlatLayer0 plus the eligibility
+// gate), so no rule ever navigates the nil AST.
+//
+// The returned release is a no-op: there is no parse arena to recycle.
+// It keeps NewFileFromSourcePooled's two-value signature so lintFile can
+// swap constructors without special-casing the lifetime boundary.
+func NewFileFlatPooled(path string, source []byte, stripFrontMatter bool) (*File, func()) {
+	var fm []byte
+	var offset int
+	content := source
+	if stripFrontMatter {
+		fm, content = StripFrontMatter(source)
+		offset = CountLines(fm)
+	}
+	lines := bytes.Split(content, []byte("\n"))
+	f := &File{
+		Path:      path,
+		Source:    content,
+		Lines:     lines,
+		lineClass: ClassifyLines(lines),
+	}
+	f.FrontMatter = fm
+	f.LineOffset = offset
+	f.StripFrontMatter = stripFrontMatter
+	return f, func() {}
+}
+
 // newFileBlockOnlyArena mirrors newFileFromSourceArena but parses only
 // the block phase.
 func newFileBlockOnlyArena(path string, source []byte, stripFrontMatter bool, a *arena.Arena) *File {
