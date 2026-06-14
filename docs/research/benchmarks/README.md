@@ -455,8 +455,9 @@ Four gates in CI:
   `benchmark-numbers` artifact (which the website deploy
   bakes in, so each release's site shows its own
   freshly-measured figures) and pushes the numbers plus the
-  rendered benchmark page to the orphan `assets` branch the
-  README links to. GitHub Actions cannot open a PR here, so
+  rendered benchmark page (assets/benchmarks/pages/benchmark.md)
+  to the orphan `assets` branch the performance page links to.
+  GitHub Actions cannot open a PR here, so
   it never touches the committed snapshot. The separate
   `bench-regression-gate` job runs
   `mdsmith-release bench-check`, which compares mdsmith's

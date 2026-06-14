@@ -1154,10 +1154,12 @@ jobs:
         run: go run ./cmd/mdsmith-release bench /tmp/mdsmith-bench
       - name: Normalize the freshly measured fragments
         # Normalize the gen_fragments.py tables to the gate's canonical
-        # form (the same step benchmark.yml runs). No host page is
-        # re-spliced here: the pages job bakes performance.md from the
-        # artifact at deploy time, and the README links to
-        # results.fragment.md directly.
+        # form (the same step benchmark.yml runs). Only the fragments
+        # are touched here — those feed the artifact. The benchmark
+        # README is spliced and link-rewritten later, in the publish
+        # step below, solely to produce the assets-branch prose copy;
+        # the site's own performance.md is baked from the artifact at
+        # deploy time.
         run: |
           go run ./cmd/mdsmith fix \
             docs/research/benchmarks/results.fragment.md \
@@ -1182,10 +1184,11 @@ jobs:
           if-no-files-found: error
       - name: Publish the numbers to the assets branch
         # GitHub Actions cannot open PRs here, but it can push to the
-        # orphan `assets` branch. Push this release's data + fragments
-        # there, so the README's [bench-live] link target
-        # (assets/benchmarks/results.fragment.md) shows the release's
-        # numbers. This job OWNS assets/benchmarks/; demo.yml owns
+        # orphan `assets` branch. Push this release's data, fragments,
+        # and the rendered prose page there, so the performance page's
+        # link to assets/benchmarks/pages/benchmark.md shows the
+        # release's freshly measured numbers. This job OWNS
+        # assets/benchmarks/; demo.yml owns
         # assets/demo.gif and benchmark.yml owns assets/benchmarks-drift/,
         # so the three subtrees are disjoint. Subtree-safe and
         # best-effort: it rewrites only assets/benchmarks/, commits only
@@ -1200,16 +1203,29 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Stage the subtree before switching branches: the raw data and
-          # the two fragments. results.fragment.md is the README's link
-          # target; both render as clean tables with no inner links to
-          # 404 on the assets branch.
+          # Stage the subtree before switching branches: the raw data,
+          # the two fragments, and the rendered prose page. The fragments
+          # render as clean tables with no inner links to 404 on the
+          # assets branch.
           rm -rf /tmp/bench-assets
-          mkdir -p /tmp/bench-assets/data
+          mkdir -p /tmp/bench-assets/data /tmp/bench-assets/pages
           cp docs/research/benchmarks/results.fragment.md \
              docs/research/benchmarks/headline.fragment.md \
              /tmp/bench-assets/
           cp docs/research/benchmarks/data/*.json /tmp/bench-assets/data/
+
+          # Publish the prose research write-up too. Splice this release's
+          # fresh fragments into the README, then rewrite its repo-relative
+          # links to absolute GitHub URLs so none 404 on the assets branch
+          # (the sibling files do not exist there). Lands at
+          # assets/benchmarks/pages/benchmark.md — the rendered, fresh-
+          # numbers copy the performance page links to. Both `go run`s
+          # execute here, on the full source tree, before the branch
+          # switch below; the working-tree README edit is then discarded
+          # by `git checkout -f`, so main's committed snapshot is untouched.
+          go run ./cmd/mdsmith fix docs/research/benchmarks/README.md
+          go run ./cmd/mdsmith-release render-bench-page \
+            /tmp/bench-assets/pages/benchmark.md
 
           # The push authenticates via a masked http.extraheader (checkout
           # ran with persist-credentials: false).

@@ -26,6 +26,7 @@
 //	mdsmith-release merge-coverage -o <out> <profile>...
 //	mdsmith-release test-summary
 //	mdsmith-release bench [workdir]
+//	mdsmith-release render-bench-page <out-path>
 //	mdsmith-release pgo [workdir]
 //	mdsmith-release pull-site-assets
 //	mdsmith-release sync-messaging [--check]
@@ -75,6 +76,7 @@ Commands:
   test-summary                    Tally unit/integration/e2e tests from a go test -json stream on stdin.
   bench [workdir]                 Run the pinned cross-tool benchmark; promote JSON + fragments.
   bench-check <base> <fresh>      Fail if mdsmith regressed vs mado between two benchmark snapshots.
+  render-bench-page <out-path>    Render the benchmark README (links → GitHub) for the assets branch.
   pgo [workdir]                   Generate a PGO profile over the bench corpora into cmd/mdsmith/default.pgo.
   pull-site-assets                Fetch the published demo GIF for the site build.
   sync-messaging [--check]        Propagate docs/brand/messaging.md into every tracked surface (or check drift).
@@ -187,6 +189,8 @@ func dispatchGenerators(cmd, root string, rest []string) int {
 		return runBench(root, rest)
 	case "bench-check":
 		return runBenchCheck(root, rest)
+	case "render-bench-page":
+		return runRenderBenchPage(root, rest)
 	case "pgo":
 		return runPGO(root, rest)
 	default:
@@ -680,6 +684,31 @@ func runBenchCheck(_ string, args []string) int {
 	}
 	return reportError(release.BenchCheck(os.Stdout, fs.Arg(0), fs.Arg(1),
 		release.BenchCheckConfig{Tolerance: tolerance}))
+}
+
+func runRenderBenchPage(root string, args []string) int {
+	fs := flag.NewFlagSet("render-bench-page", flag.ContinueOnError)
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: mdsmith-release render-bench-page <out-path>\n\n"+
+			"Read docs/research/benchmarks/README.md (run `mdsmith fix`\n"+
+			"on it first so its <?include?> tables carry the freshly\n"+
+			"measured numbers), rewrite every repo-relative link to an\n"+
+			"absolute GitHub URL on main, and write the result to\n"+
+			"<out-path>. release.yml's benchmark-publish job publishes\n"+
+			"that file to assets/benchmarks/pages/benchmark.md on the\n"+
+			"orphan assets branch, the rendered fresh-numbers copy the\n"+
+			"performance page links to and whose inner links resolve.\n")
+	}
+	if err := fs.Parse(args); err != nil {
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith-release: render-bench-page"); code >= 0 {
+			return code
+		}
+	}
+	if fs.NArg() != 1 {
+		fs.Usage()
+		return 2
+	}
+	return reportError(release.RenderBenchPage(root, fs.Arg(0)))
 }
 
 func runPullSiteAssets(root string, args []string) int {

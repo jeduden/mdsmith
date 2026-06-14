@@ -65,6 +65,8 @@ func TestRunRejectsBadArity(t *testing.T) {
 		{"package-obsidian without args", []string{"package-obsidian"}},
 		{"package-obsidian with one arg", []string{"package-obsidian", "dist"}},
 		{"build-website with three positionals", []string{"build-website", "a", "b", "c"}},
+		{"render-bench-page without out-path", []string{"render-bench-page"}},
+		{"render-bench-page with extra arg", []string{"render-bench-page", "a", "b"}},
 		{"pgo with extra args", []string{"pgo", "workdir", "extra"}},
 	}
 	for _, c := range cases {
@@ -121,6 +123,7 @@ func TestSubcommandHelpExitsZero(t *testing.T) {
 		"test-summary",
 		"bench",
 		"bench-check",
+		"render-bench-page",
 		"pgo",
 	} {
 		assert.Equal(t, 0, run([]string{sub, "--help"}), "%s --help", sub)
@@ -149,6 +152,7 @@ func TestSubcommandRejectsUnknownFlag(t *testing.T) {
 		"test-summary",
 		"bench",
 		"bench-check",
+		"render-bench-page",
 		"pgo",
 	} {
 		assert.Equal(t, 2, run([]string{sub, "--bogus"}), "%s --bogus", sub)
@@ -818,6 +822,45 @@ func TestPrintCheckResult(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRunRenderBenchPageEndToEnd dispatches through `run
+// render-bench-page` against a staged benchmark README so the
+// subcommand wiring (arity check, default-toolkit handoff,
+// reportError) runs end-to-end and the output carries a GitHub-
+// rewritten link.
+func TestRunRenderBenchPageEndToEnd(t *testing.T) {
+	root := t.TempDir()
+	readme := filepath.Join(root, "docs", "research", "benchmarks", "README.md")
+	require.NoError(t, os.MkdirAll(filepath.Dir(readme), 0o755))
+	require.NoError(t, os.WriteFile(readme,
+		[]byte("# Bench\n\nReproduce with [`run.sh`](run.sh).\n"), 0o644))
+
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	require.NoError(t, os.Chdir(root))
+
+	out := filepath.Join(root, "pages", "benchmark.md")
+	assert.Equal(t, 0, run([]string{"render-bench-page", out}))
+
+	got, err := os.ReadFile(out)
+	require.NoError(t, err)
+	assert.Contains(t, string(got),
+		"https://github.com/jeduden/mdsmith/blob/main/docs/research/benchmarks/run.sh")
+}
+
+// TestRunRenderBenchPageReportsError covers reportError's non-nil
+// branch: no benchmark README in cwd, so RenderBenchPage's ReadFile
+// fails and the subcommand exits 1.
+func TestRunRenderBenchPageReportsError(t *testing.T) {
+	root := t.TempDir()
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	require.NoError(t, os.Chdir(root))
+
+	assert.Equal(t, 1, run([]string{"render-bench-page", filepath.Join(root, "out.md")}))
 }
 
 // writeBenchExport writes a minimal hyperfine export with mdsmith and

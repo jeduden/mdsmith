@@ -48,7 +48,9 @@ gate (`check-bench`, modelled on the LSP latency gate) fails the
 build if a 60- or 600-file synthetic check regresses past its
 budget. See the
 [benchmark research doc](../research/benchmarks/README.md) for the
-full cross-tool comparison.
+full cross-tool comparison — on the published site this link
+resolves to the rendered copy on the `assets` branch, which
+carries each release's freshly measured numbers.
 
 See the [`check`](../reference/cli/check.md) reference for flags
 and exit codes.

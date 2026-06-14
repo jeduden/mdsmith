@@ -69,6 +69,7 @@ setup step.
 | `test-summary`               | `ci.yml` test job                                                 |
 | `bench [workdir]`            | `benchmark.yml` record; `release.yml` benchmark-publish; `run.sh` |
 | `bench-check <base> <fresh>` | `release.yml` benchmark-publish + bench-regression-gate           |
+| `render-bench-page <out>`    | `release.yml` benchmark-publish                                   |
 | `pull-site-assets`           | `pages.yml` deploy job                                            |
 | `sync-messaging [--check]`   | `ci.yml` messaging-drift; local sync                              |
 | `sync-channels [--check]`    | `ci.yml` channels-drift; local sync                               |

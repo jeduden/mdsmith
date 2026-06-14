@@ -347,12 +347,24 @@ func (t *Toolkit) syncDocsFile(src, dst, name, repoDir string) (bool, error) {
 	}
 	if ext == ".md" {
 		data = rewriteSiblingNonPublished(transformMarkdown(data), repoDir)
+		if isPerformanceFeaturePage(repoDir, name) {
+			data = repointBenchDocToAssets(data)
+		}
 	}
 	dstPath := filepath.Join(dst, dstName)
 	if err := t.fs.WriteFile(dstPath, data, 0o644); err != nil {
 		return false, fmt.Errorf("write %s: %w", dstPath, err)
 	}
 	return true, nil
+}
+
+// isPerformanceFeaturePage reports whether the file being synced is
+// docs/features/performance.md — the one page whose benchmark-README
+// link is repointed to the assets branch. repoDir is built with
+// path.Join (forward slashes), so path.Base reads its last segment
+// regardless of the docs-root basename.
+func isPerformanceFeaturePage(repoDir, name string) bool {
+	return name == "performance.md" && path.Base(repoDir) == "features"
 }
 
 // synthesizeSectionIndex writes a minimal front-matter-only
