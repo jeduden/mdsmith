@@ -292,10 +292,10 @@ job measure it.
 Whether a gomarklint row appears here depends on which copy
 you read. The committed `data/*.json` snapshot under this
 directory moves only when a maintainer re-runs `run.sh` and
-reviews the result in a PR. So it can still predate
-gomarklint and omit the row. The per-merge `assets` copy
-re-measures with gomarklint included, so it already carries
-the row.
+reviews the result in a PR. So that snapshot can still
+predate gomarklint and omit the row. The per-merge `assets`
+copy re-measures with gomarklint included, so it already
+carries the row.
 
 Read that row as the lightest-workload entry. gomarklint's
 defaults cover 21 of mdsmith's rules — 22 in all, one off by
@@ -305,9 +305,8 @@ mado covers 28, rumdl and markdownlint 42 each (counts from
 the [peer-linter coverage matrix][mdcov], generated from
 rule front matter). So when gomarklint posts the fastest
 time on both corpora, part of that lead is fewer checks per
-file, not a like-for-like win. Read it as the panache note
-reads panache, in the other direction: same job, lighter
-ruleset.
+file, not a like-for-like win. It runs the same job as the
+others with a lighter rule set.
 
 [mdcov]: ../markdownlint-coverage/README.md
 
