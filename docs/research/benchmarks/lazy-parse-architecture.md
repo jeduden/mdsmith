@@ -132,7 +132,7 @@ source --> cheap scan ──> line classes / code+PI line sets / fm bounds
 - **Layer 1 — light inline index (lazy, on first link/ref/image
   read).** A targeted byte scan for links, autolinks, images, and
   `[label]: url` definitions/uses — not the full emphasis delimiter
-  algorithm. Backs the four reference rules and the bare-URL / alt-
+  algorithm. Backs the three reference rules and the bare-URL / alt-
   text rules.
 - **Layer 2 — full AST (lazy, on first tree navigation).** The
   existing goldmark parse, materialized only when a rule walks the
@@ -169,9 +169,10 @@ says which layer a rule needs *already exists in the rule*:
 
 Eighteen of the twenty-five react only to **block** kinds; the kind
 plus line span is all those rules need. Seven react to an **inline**
-kind. Emphasis semantics — `emphasis-style` and the all-emphasis check
-inside `no-emphasis-as-heading` — need the full delimiter algorithm
-(Layer 2).
+kind. The general rule `emphasis-style` needs the full delimiter
+algorithm (Layer 2). `no-emphasis-as-heading` reads a parsed emphasis
+node too. But it asks only one bounded question: is a whole paragraph a
+single emphasis span?
 
 **Caveat: the scoped kind is the dispatch trigger, not the full data
 need.** A rule scoped to `KindParagraph` still sets its own layer by
@@ -241,11 +242,13 @@ enabled rules force:
   speed, and it covers a large share of real-world `.mdsmith.yml`
   setups.
 - **Parity (the benchmark target).** The prize, and the real work.
-  Parity's block NodeChecker rules must consume the Layer 0 block
-  spans instead of `ast.Node`, and its six inline rules must consume
-  the Layer 1 index. Once every parity rule reads Layer 0/1, the
-  engine skips Layer 2 and parity stops parsing — the only path to
-  beating gomarklint.
+  Parity's block NodeChecker rules must read the Layer 0 block spans,
+  not `ast.Node`. Its link, image, and reference rules read the Layer 1
+  index. One parity rule resists: `no-emphasis-as-heading` reads a
+  parsed `*ast.Emphasis` node, so it sits at Layer 2 today. Parity sheds
+  the parse only if that rule's bounded check — is a whole paragraph one
+  emphasis span? — moves to Layer 1. That one rule gates whether parity
+  beats gomarklint.
 - **Default / full configs.** No change, no regression. Prose,
   cross-file, and deep rules trigger Layer 2; the AST is built once
   and cached, exactly as today. Lazy parsing is a no-op here, which

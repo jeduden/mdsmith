@@ -25,7 +25,7 @@ configs then run with no AST.
 
 See the [lazy-parse research][research]. Rules read
 projections, not the raw tree.
-[CollectCodeBlockLines][cbl] alone backs 16 rules. Those
+[CollectCodeBlockLines][cbl] alone backs 15 rules. Those
 projections are the lazy seam.
 
 Layer 0 is one forward pass over `f.Lines`. It records a

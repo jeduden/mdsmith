@@ -166,11 +166,14 @@ Conclusion: beating gomarklint requires doing what gomarklint does —
 rule/overhead cost below a line scanner's. Nothing short of that
 clears the bar.
 
-## The path that reaches the goal: a parity line-scan pipeline
+## A first route: the parity line-scan pipeline
 
-This is the only design the arithmetic leaves, and it is a real
-multi-PR project, not a single-session tweak. It is gomarklint's
-architecture, applied to the rules parity keeps.
+This was the first design the arithmetic seemed to leave: rewrite the
+parity rules as line scanners and skip goldmark for them. It was then
+refined — rewriting rules forks the API in two — into the one-model
+lazy parse worked out in [the lazy parse
+note](lazy-parse-architecture.md). The staging below is kept for the
+rule inventory and the equivalence discipline it records.
 
 1. **Line-scan structural model.** A single-pass scanner over
    `f.Lines` that yields what the block-structure rules consume:
@@ -214,11 +217,8 @@ The arena extension shipped here is the safe down payment: a correct,
 equivalence-gated allocation win that reduces GC pressure under the
 file pool. It does **not** close the wall-time gap — by the
 measurements above, nothing at the allocation or GC layer can. The
-route to actually beating gomarklint is the line-scan pipeline above,
-scoped as staged work with a hard, measurable acceptance bar.
-
-A separate line-scan path beside the AST was rejected as a design
-(two rule implementations, a forked API). The refined direction — one
-parser that builds the tree lazily and serves the common rules from a
-cheap scan — is worked out in [Lazy parse architecture: build the AST
-only when a rule needs it](lazy-parse-architecture.md).
+route to actually beating gomarklint is the lazy parse — a refinement
+of the line-scan pipeline above that keeps one rule implementation
+instead of forking it — scoped as staged work with a hard, measurable
+acceptance bar. It is worked out in [Lazy parse architecture: build the
+AST only when a rule needs it](lazy-parse-architecture.md).
