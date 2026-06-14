@@ -6,28 +6,28 @@ the harness (run.sh) and `mdsmith fix` to refresh. -->
 mdsmith-only rules so the work class matches the markdownlint
 tools (see `bench-parity.mdsmith.yml`).
 
-**Repo corpus — 787 Markdown files** (median wall time, lower is
+**Repo corpus — 788 Markdown files** (median wall time, lower is
 better; `vs mado` is the ratio to mado's median):
 
 | Tool              | Median  | Min     | vs mado |
 | ----------------- | ------- | ------- | ------- |
-| gomarklint        | 49 ms   | 47 ms   | 0.8x    |
-| mdsmith-parity    | 57 ms   | 56 ms   | 0.9x    |
-| mado              | 61 ms   | 60 ms   | 1.0x    |
-| mdsmith           | 166 ms  | 164 ms  | 2.7x    |
-| rumdl             | 340 ms  | 333 ms  | 5.6x    |
-| panache           | 744 ms  | 620 ms  | 12x     |
-| markdownlint-cli2 | 4749 ms | 4700 ms | 78x     |
+| gomarklint        | 57 ms   | 52 ms   | 0.9x    |
+| mdsmith-parity    | 60 ms   | 59 ms   | 0.9x    |
+| mado              | 66 ms   | 66 ms   | 1.0x    |
+| mdsmith           | 179 ms  | 176 ms  | 2.7x    |
+| rumdl             | 328 ms  | 325 ms  | 5.0x    |
+| panache           | 759 ms  | 605 ms  | 12x     |
+| markdownlint-cli2 | 4756 ms | 4698 ms | 72x     |
 
 **Neutral corpus — 234 files** (Rust Book + Rust Reference,
 longer third-party prose):
 
 | Tool              | Median  | Min     | vs mado |
 | ----------------- | ------- | ------- | ------- |
-| gomarklint        | 28 ms   | 26 ms   | 0.6x    |
-| mado              | 43 ms   | 43 ms   | 1.0x    |
-| mdsmith-parity    | 52 ms   | 51 ms   | 1.2x    |
-| mdsmith           | 135 ms  | 132 ms  | 3.1x    |
-| rumdl             | 203 ms  | 198 ms  | 4.7x    |
-| panache           | 557 ms  | 550 ms  | 13x     |
-| markdownlint-cli2 | 2984 ms | 2944 ms | 69x     |
+| gomarklint        | 29 ms   | 27 ms   | 0.6x    |
+| mado              | 46 ms   | 46 ms   | 1.0x    |
+| mdsmith-parity    | 52 ms   | 52 ms   | 1.1x    |
+| mdsmith           | 140 ms  | 138 ms  | 3.0x    |
+| rumdl             | 190 ms  | 188 ms  | 4.1x    |
+| panache           | 553 ms  | 517 ms  | 12x     |
+| markdownlint-cli2 | 2975 ms | 2952 ms | 64x     |
