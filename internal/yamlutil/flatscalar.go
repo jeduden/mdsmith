@@ -29,47 +29,22 @@ func FlatScalarFrontMatter(body []byte) (map[string]any, bool) {
 	rest := body
 
 	for len(rest) > 0 {
-		var line []byte
-		if idx := bytes.IndexByte(rest, '\n'); idx >= 0 {
-			line = rest[:idx]
-			rest = rest[idx+1:]
-		} else {
-			line = rest
-			rest = nil
-		}
-		// Trim Windows-style CR.
-		if len(line) > 0 && line[len(line)-1] == '\r' {
-			line = line[:len(line)-1]
-		}
+		line, remaining := nextFlatLine(rest)
+		rest = remaining
 
-		if len(line) == 0 {
-			continue // blank line
+		if len(line) == 0 || line[0] == '#' {
+			continue
 		}
-		if line[0] == '#' {
-			continue // comment line
-		}
-		// Multi-doc markers.
 		if bytes.HasPrefix(line, []byte("---")) || bytes.HasPrefix(line, []byte("...")) {
 			return nil, false
 		}
-		// Leading whitespace = nested mapping or sequence continuation.
 		if line[0] == ' ' || line[0] == '\t' {
 			return nil, false
 		}
 
-		// Locate the key separator: first ':' followed by ' ', '\t', or EOL.
-		colonPos := -1
-		for i := 0; i < len(line); i++ {
-			if line[i] != ':' {
-				continue
-			}
-			if i+1 == len(line) || line[i+1] == ' ' || line[i+1] == '\t' {
-				colonPos = i
-				break
-			}
-		}
+		colonPos := findKeyColon(line)
 		if colonPos < 0 {
-			return nil, false // no valid key separator
+			return nil, false
 		}
 
 		key := string(line[:colonPos])
@@ -77,7 +52,6 @@ func FlatScalarFrontMatter(body []byte) (map[string]any, bool) {
 			return nil, false
 		}
 
-		// Raw value: everything after the ': ' (or ':' at EOL).
 		var rawVal []byte
 		if colonPos+1 < len(line) {
 			rawVal = bytes.TrimLeft(line[colonPos+1:], " \t")
@@ -92,7 +66,6 @@ func FlatScalarFrontMatter(body []byte) (map[string]any, bool) {
 			}
 		}
 
-		// Strip trailing inline comment (" # ..." or "\t# ...").
 		rawVal = stripFlatInlineComment(rawVal)
 		rawVal = bytes.TrimRight(rawVal, " \t")
 
@@ -114,6 +87,36 @@ func FlatScalarFrontMatter(body []byte) (map[string]any, bool) {
 	}
 
 	return result, true
+}
+
+// nextFlatLine splits the next line from rest, trimming any trailing CR.
+// It returns the line (without the newline) and the remaining bytes after it.
+func nextFlatLine(rest []byte) (line, remaining []byte) {
+	if idx := bytes.IndexByte(rest, '\n'); idx >= 0 {
+		line = rest[:idx]
+		remaining = rest[idx+1:]
+	} else {
+		line = rest
+	}
+	if len(line) > 0 && line[len(line)-1] == '\r' {
+		line = line[:len(line)-1]
+	}
+	return
+}
+
+// findKeyColon returns the index of the first colon in line that is immediately
+// followed by a space, tab, or end-of-line — the YAML mapping key separator.
+// Returns -1 when no valid separator is found.
+func findKeyColon(line []byte) int {
+	for i := 0; i < len(line); i++ {
+		if line[i] != ':' {
+			continue
+		}
+		if i+1 == len(line) || line[i+1] == ' ' || line[i+1] == '\t' {
+			return i
+		}
+	}
+	return -1
 }
 
 // isValidFlatKey reports whether key is a safe top-level YAML mapping key
@@ -142,7 +145,7 @@ func isValidFlatKey(key string) bool {
 }
 
 // stripFlatInlineComment removes a YAML inline comment from a plain scalar
-// value. A comment starts at the first ' #' or '\t#' sequence. The leading
+// value. A comment starts at the first " #" or "\t#" sequence. The leading
 // space/tab before '#' is consumed along with the comment.
 func stripFlatInlineComment(val []byte) []byte {
 	for i := 1; i < len(val); i++ {
@@ -180,18 +183,18 @@ func parseFlatScalar(raw []byte) (any, bool) {
 }
 
 // parseDoubleQuoted decodes a double-quoted YAML scalar (raw must start and
-// end with '"'). Handles the common escape sequences \\, \", \n, \t, \r,
-// \a, \b, \f, \v, \0, \/. Any other backslash escape causes a bail (false).
-// A closing '"' that is not at the final byte also bails (extra content).
+// end with a double-quote byte). Supported escapes are handled by
+// decodeDoubleEscapeByte; any unrecognised backslash sequence causes a bail
+// (false). An unescaped closing quote before the final byte also bails.
 func parseDoubleQuoted(raw []byte) (string, bool) {
 	if len(raw) < 2 || raw[len(raw)-1] != '"' {
 		return "", false // unclosed or bare "
 	}
-	inner := raw[1 : len(raw)-1] // strip outer "…"
+	inner := raw[1 : len(raw)-1] // strip outer "..."
 
 	// Fast path: no backslash means no escapes to process.
 	if bytes.IndexByte(inner, '\\') < 0 {
-		// Also verify no unescaped closing quote mid-string.
+		// Verify no unescaped closing quote mid-string.
 		if bytes.IndexByte(inner, '"') >= 0 {
 			return "", false // mid-string " — extra content after first close
 		}
@@ -203,8 +206,7 @@ func parseDoubleQuoted(raw []byte) (string, bool) {
 	for i := 0; i < len(inner); i++ {
 		b := inner[i]
 		if b == '"' {
-			// Unescaped closing quote before end of inner.
-			return "", false
+			return "", false // unescaped closing quote before end of inner
 		}
 		if b != '\\' {
 			buf.WriteByte(b)
@@ -214,43 +216,52 @@ func parseDoubleQuoted(raw []byte) (string, bool) {
 		if i >= len(inner) {
 			return "", false // trailing backslash
 		}
-		switch inner[i] {
-		case '\\':
-			buf.WriteByte('\\')
-		case '"':
-			buf.WriteByte('"')
-		case 'n':
-			buf.WriteByte('\n')
-		case 't':
-			buf.WriteByte('\t')
-		case 'r':
-			buf.WriteByte('\r')
-		case 'a':
-			buf.WriteByte('\a')
-		case 'b':
-			buf.WriteByte('\b')
-		case 'f':
-			buf.WriteByte('\f')
-		case 'v':
-			buf.WriteByte('\v')
-		case '0':
-			buf.WriteByte(0)
-		case ' ':
-			buf.WriteByte(' ')
-		default:
+		decoded, ok := decodeDoubleEscapeByte(inner[i])
+		if !ok {
 			return "", false // unknown escape sequence → bail
 		}
+		buf.WriteByte(decoded)
 	}
 	return buf.String(), true
 }
 
-// parseSingleQuoted decodes a single-quoted YAML scalar (raw must start and
-// end with '\''). The only escape sequence in single-quoted YAML strings is
-// '' (two single quotes) representing a literal single quote. Inside the
-// inner content, every ' must therefore be part of a '' pair; a lone ' means
-// the real closing quote was earlier and there is trailing content, so the
-// value is not a single self-contained single-quoted scalar and the function
-// bails (false) for the caller to route through the full parser.
+// decodeDoubleEscapeByte maps the byte after a backslash in a double-quoted
+// YAML string to its decoded value. Returns (0, false) for escape sequences
+// the fast path does not handle — the caller must bail to the full parser.
+func decodeDoubleEscapeByte(ch byte) (byte, bool) {
+	switch ch {
+	case '\\':
+		return '\\', true
+	case '"':
+		return '"', true
+	case 'n':
+		return '\n', true
+	case 't':
+		return '\t', true
+	case 'r':
+		return '\r', true
+	case 'a':
+		return '\a', true
+	case 'b':
+		return '\b', true
+	case 'f':
+		return '\f', true
+	case 'v':
+		return '\v', true
+	case '0':
+		return 0, true
+	case ' ':
+		return ' ', true
+	}
+	return 0, false
+}
+
+// parseSingleQuoted decodes a single-quoted YAML scalar. The only escape
+// sequence in single-quoted strings is two consecutive single quotes, which
+// represent one literal single quote. A lone single quote inside the inner
+// content means the real closing quote was earlier and there is trailing
+// content; the function bails (false) so the caller routes through the full
+// parser.
 func parseSingleQuoted(raw []byte) (string, bool) {
 	if len(raw) < 2 || raw[len(raw)-1] != '\'' {
 		return "", false // unclosed
@@ -269,12 +280,12 @@ func parseSingleQuoted(raw []byte) (string, bool) {
 			buf.WriteByte(inner[i])
 			continue
 		}
-		// A ' must be the first half of a '' escape pair.
+		// A single quote must be the first half of a doubled-quote escape pair.
 		if i+1 >= len(inner) || inner[i+1] != '\'' {
-			return "", false // lone ' → premature close + trailing content
+			return "", false // lone quote → premature close + trailing content
 		}
 		buf.WriteByte('\'')
-		i++ // consume the second ' of the pair
+		i++ // consume the second quote of the pair
 	}
 	return buf.String(), true
 }
@@ -289,7 +300,7 @@ func parsePlainFlatScalar(raw []byte) (any, bool) {
 	// rather than treat the value as a plain string. The first-byte switch
 	// in FlatScalarFrontMatter already rejects | > [ { & * ? ! and quotes;
 	// here we cover the remainder: ',' and '%' (and '@', '`' for safety),
-	// plus '-', '?', ':' when followed by a space or end of value (which
+	// plus '-', '?' and ':' when followed by a space or end of value (which
 	// make them block-sequence / mapping indicators rather than scalars).
 	switch raw[0] {
 	case ',', '%', '@', '`':
@@ -302,35 +313,41 @@ func parsePlainFlatScalar(raw []byte) (any, bool) {
 
 	s := string(raw)
 
-	// Null spellings.
+	if v, ok, done := yamlLiteralValue(s); done {
+		return v, ok
+	}
+
+	return parsePlainNumericOrString(s)
+}
+
+// yamlLiteralValue resolves YAML null, boolean, and special float spellings.
+// When done is true the caller should return (v, ok) immediately. When done
+// is false the value is not a recognised literal and parsing should continue.
+func yamlLiteralValue(s string) (v any, ok bool, done bool) {
 	switch s {
 	case "null", "Null", "NULL", "~":
-		return nil, true
-	}
-
-	// Lowercase-only boolean — exact match so yaml 1.1 alternate spellings
-	// (True, TRUE, yes, no, on, off) fall through to the bail below.
-	switch s {
+		return nil, true, true
 	case "true":
-		return true, true
+		return true, true, true
 	case "false":
-		return false, true
+		return false, true, true
 	}
-
-	// Bail on other yaml.v3/1.1 bool spellings to avoid returning the wrong
-	// type (yaml.v3 returns bool, the fast path would return string).
-	switch strings.ToLower(s) {
+	lower := strings.ToLower(s)
+	switch lower {
 	case "true", "false", "yes", "no", "on", "off":
-		return nil, false
-	}
-
-	// Bail on YAML 1.1 float-special literals.
-	switch strings.ToLower(s) {
+		return nil, false, true // yaml.v3 bool spelling; bail so type matches
 	case ".inf", "-.inf", "+.inf", ".nan":
-		return nil, false
+		return nil, false, true // yaml.v3 float special; bail
 	}
+	return nil, false, false
+}
 
-	// Bail on hex / octal / binary prefixes and underscored numerics.
+// parsePlainNumericOrString parses a plain YAML scalar as an integer or
+// string. The caller has already eliminated YAML literal spellings (null,
+// bool, float specials) and leading YAML indicator bytes.
+func parsePlainNumericOrString(s string) (any, bool) {
+	// Bail on numeric syntax yaml.v3 handles as non-int (hex, octal, binary,
+	// underscore-grouped, float, scientific notation, leading '+').
 	if strings.ContainsRune(s, '_') {
 		return nil, false
 	}
@@ -338,42 +355,61 @@ func parsePlainFlatScalar(raw []byte) (any, bool) {
 		s[1] == 'o' || s[1] == 'O' || s[1] == 'b' || s[1] == 'B') {
 		return nil, false
 	}
-
-	// Bail on float-looking values (contain '.' or 'e'/'E' suggestive of
-	// scientific notation). A leading '+' also defers to yaml.v3.
 	if strings.ContainsAny(s, ".eE") {
 		return nil, false
 	}
-	if len(s) > 0 && s[0] == '+' {
+	if s[0] == '+' {
+		return nil, false
+	}
+	// Bail on YAML timestamp candidates. yaml.v3 resolves plain scalars that
+	// begin with exactly four digits followed by '-' (e.g. "2026-01-01") to a
+	// time.Time, not a string. Timestamp forms with a clock component also
+	// contain ':' and are caught by the metacharacter check below, but the
+	// date-only form has no other indicator, so detect it here.
+	if looksLikeTimestamp(s) {
 		return nil, false
 	}
 
-	// Decimal integer: optional '-', then digits only, no leading zeros.
 	if isDecimalIntStr(s) {
 		n, err := strconv.Atoi(s)
 		if err == nil {
 			return n, true
 		}
-		// Overflow: yaml.v3 would use int64 or float64; bail.
-		return nil, false
+		return nil, false // overflow: yaml.v3 uses int64 or float64
 	}
 
 	// Leading-zero non-integer (e.g. "01", "007") is octal in yaml 1.1.
 	start := 0
-	if len(s) > 0 && s[0] == '-' {
+	if s[0] == '-' {
 		start = 1
 	}
 	if len(s)-start > 1 && s[start] == '0' {
 		return nil, false
 	}
 
-	// Bail on YAML metacharacters that are unsafe in plain scalars.
+	// Plain string — bail on metacharacters that are unsafe in plain scalars.
 	if strings.ContainsAny(s, ":#{}[]!&*@`") {
 		return nil, false
 	}
-
-	// Plain string.
 	return s, true
+}
+
+// looksLikeTimestamp reports whether s could be parsed by yaml.v3 as a YAML
+// timestamp. yaml.v3's parseTimestamp first requires exactly four leading
+// digits followed by '-'; only then does it attempt the allowed timestamp
+// layouts. The fast path uses the same guard and bails conservatively for any
+// such candidate, since it cannot reproduce the time.Time result and a false
+// return is always safe.
+func looksLikeTimestamp(s string) bool {
+	if len(s) < 5 {
+		return false
+	}
+	for i := 0; i < 4; i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return s[4] == '-'
 }
 
 // isDecimalIntStr reports whether s is a valid decimal integer literal:
