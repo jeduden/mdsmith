@@ -28,9 +28,13 @@ rules need inline detail. The link and reference rules
 need links and the reference map. The code-span and
 raw-HTML rules need those spans.
 
-None of these need emphasis. Emphasis stays on Layer 2.
-The scan is a byte pass, not the full delimiter
-algorithm.
+None need general emphasis. The general emphasis rule,
+`emphasis-style`, stays on Layer 2. But one parity rule
+resists: `no-emphasis-as-heading` reads a parsed emphasis
+node. Its real need is bounded. Is a whole paragraph one
+emphasis span? That check belongs on Layer 1. It is the
+gate on parity shedding the parse (see the [research
+note][research]).
 
 Reference matching is the correctness risk. CommonMark
 folds case and collapses whitespace in labels. The index
@@ -50,11 +54,21 @@ normalization as a pure function so the two agree.
    `no-inline-html`, the reference rules) on the index.
 4. Mark each inline rule's resolved layer and extend the
    parse-skip gate.
+5. Add a bounded whole-paragraph-emphasis detector to the
+   index. Re-back `no-emphasis-as-heading` on it. Gate it
+   byte-identical to goldmark's lone-emphasis-child result.
+6. Fallback if an edge case defeats the detector: make
+   Layer 2 per-block. `no-emphasis-as-heading` parses
+   inlines for only the paragraphs whose first non-space
+   byte is `*` or `_`. The gate then keys on "no
+   whole-document parse", not "no Layer 2".
 
 ## Acceptance Criteria
 
 - [ ] With Layer 0 and Layer 1, the full parity config
-      runs with no goldmark parse.
+      runs with no whole-document goldmark parse.
+- [ ] `no-emphasis-as-heading` output is byte-identical to
+      its AST path across the corpus and fixtures.
 - [ ] Reference matching is byte-identical to the AST
       path, including case folding, across the corpus.
 - [ ] All existing rule fixtures pass unchanged.

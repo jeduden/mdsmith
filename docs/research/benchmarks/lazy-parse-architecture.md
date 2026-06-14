@@ -258,6 +258,35 @@ So lazy parsing is not a universal speedup; it is a **floor
 removal** for the configs whose rules never needed the tree, and a
 no-op for the configs that do.
 
+## The MDS018 holdout
+
+`no-emphasis-as-heading` (MDS018) is the one parity rule at Layer 2. It
+flags a paragraph whose only child is an emphasis node — a lone
+`*emphasised line*` posing as a heading. It does not need general
+emphasis resolution. It needs one bounded answer: is the whole
+paragraph a single emphasis span? Two tiers clear it.
+
+**Tier 1 — a constrained Layer 1 detector.** The check is a bounded
+pattern. The paragraph content is exactly `*X*`, `_X_`, `**X**`, or
+`__X__` wrapping the whole paragraph, with the CommonMark flanking
+rules met at the two ends. That is far less than the delimiter
+algorithm. Re-back MDS018 on it. The equivalence gate proves it
+byte-identical to goldmark's lone-emphasis-child result across the
+corpus and the rule fixtures. If it holds, MDS018 moves to Layer 1 and
+parity is fully Layer 0/1.
+
+**Tier 2 — per-block Layer 2, the deeper fix.** If an edge case defeats
+the detector, do not concede the whole parse. Make Layer 2 per-block,
+not per-file. The gate becomes "no rule forces a whole-document parse",
+not "no rule needs Layer 2". MDS018 then parses inlines for only its
+candidate paragraphs — the ones whose first non-space byte is `*` or
+`_`. On real prose that is a handful of blocks. Parity still skips the
+full-document parse.
+
+Tier 2 is worth building even if Tier 1 holds. It future-proofs the
+gate. A later rule that needs deep detail on a few blocks gets a
+localized parse, not a full one.
+
 ## The honest performance bar
 
 Two facts must hold for this to beat gomarklint on parity, and a
