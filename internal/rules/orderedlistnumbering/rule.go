@@ -23,6 +23,8 @@ const (
 	StyleAllOnes    = "all-ones"
 )
 
+var newlineSep = []byte{'\n'}
+
 func init() {
 	rule.Register(&Rule{Style: StyleSequential, Start: 1})
 }
@@ -173,7 +175,7 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		}
 	}
 
-	return bytes.Join(resultLines, []byte("\n"))
+	return bytes.Join(resultLines, newlineSep)
 }
 
 // collectListEdits records marker rewrites and continuation-indent

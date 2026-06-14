@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/jeduden/mdsmith/internal/bytelimit"
@@ -2286,7 +2287,7 @@ func checkBodySync(
 	for i := startLine - 1; i <= endLine && i <= len(f.Lines); i++ {
 		var lineB []byte
 		if i < endLine && i < len(f.Lines) {
-			lineB = bytes.TrimSpace(f.Lines[i])
+			lineB = bytes.TrimFunc(f.Lines[i], unicode.IsSpace)
 			if bytes.Equal(lineB, expectedBytes) {
 				return nil
 			}

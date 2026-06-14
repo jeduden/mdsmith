@@ -550,7 +550,7 @@ func TestFix_AllocBudget_PerLineNotPerEdit(t *testing.T) {
 	allocs := testing.AllocsPerRun(100, func() {
 		_ = r.Fix(f)
 	})
-	// After fix: 2 maps + resultLines + 9 replaceLeadingDigits + bytes.Join (sep+result) ≈ 15.
+	// After fix: 2 maps + resultLines + 10 replaceLeadingDigits + bytes.Join result ≈ 15.
 	// Before: additionally 10 per-line append copies = ~25 allocs.
 	if allocs > 18 {
 		t.Fatalf("Fix allocs per call: want ≤ 18, got %v (copying every line unconditionally)", allocs)
