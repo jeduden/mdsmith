@@ -183,6 +183,41 @@ func TestCheckRulesWithIntraFile_disabledRule(t *testing.T) {
 	assert.Empty(t, diags)
 }
 
+func TestCheckRulesWithIntraFile_AdjustsLineOffset(t *testing.T) {
+	// Front matter is 3 lines → LineOffset=3. Rule reports at body-relative line 1.
+	// AdjustDiagnostics must shift it to absolute line 4.
+	src := "---\ntitle: x\n---\n# Heading\n"
+	f, err := lint.NewFileFromSource("doc.md", []byte(src), true)
+	require.NoError(t, err)
+	f.RootDir = "."
+	f.RunCache = lint.NewRunCache()
+
+	d := lint.Diagnostic{Line: 1, RuleID: "TST001", Message: "raw line"}
+	rules := []rule.Rule{&diagRule{plainRule: plainRule{id: "TST001"}, diag: d}}
+	diags, errs := checker.CheckRulesWithIntraFile(f, rules, enabled("TST001"), true, 1)
+	assert.Empty(t, errs)
+	require.Len(t, diags, 1)
+	assert.Equal(t, 4, diags[0].Line, "AdjustDiagnostics must shift body-relative line 1 to absolute line 4")
+}
+
+func TestCheckRulesWithIntraFile_FiltersGeneratedRanges(t *testing.T) {
+	// Rule emits diags at lines 2 and 3; lines 3-4 are a generated range.
+	// Only the line-2 diagnostic must survive FilterGeneratedDiags.
+	f := newTestFile(t, "line1\nline2\nline3\nline4\n")
+	f.GeneratedRanges = []lint.LineRange{{From: 3, To: 4}}
+
+	d2 := lint.Diagnostic{Line: 2, RuleID: "TST001", Message: "keep"}
+	d3 := lint.Diagnostic{Line: 3, RuleID: "TST002", Message: "drop"}
+	rules := []rule.Rule{
+		&diagRule{plainRule: plainRule{id: "TST001"}, diag: d2},
+		&diagRule{plainRule: plainRule{id: "TST002"}, diag: d3},
+	}
+	diags, errs := checker.CheckRulesWithIntraFile(f, rules, enabled("TST001", "TST002"), true, 1)
+	assert.Empty(t, errs)
+	require.Len(t, diags, 1, "only line-2 diagnostic should survive GeneratedRanges filter")
+	assert.Equal(t, 2, diags[0].Line)
+}
+
 // --- FilterGeneratedDiags ---
 
 func TestFilterGeneratedDiags_noRanges(t *testing.T) {

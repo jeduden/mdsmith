@@ -257,7 +257,7 @@ func snapshotOf(f *lint.File) fileSnapshot {
 // fixPassProbeRule is a fixable rule that records every Check and
 // Fix invocation it receives. Check returns a diagnostic on its
 // second call so that applyFixPasses (which runs Check after the
-// pre-fix engine.CheckRules has already run Check once) sees a
+// pre-fix checker.CheckRules has already run Check once) sees a
 // non-empty diagnostic list and is forced to call Fix. Fix returns
 // the source unchanged so applyFixPasses stabilizes after one
 // iteration.
@@ -301,10 +301,10 @@ var _ rule.FixableRule = (*fixPassProbeRule)(nil)
 // would have validated against.
 //
 // Phase layout (one fixable rule, Fix returns same source):
-//  1. pre-fix engine.CheckRules → Check call #1
+//  1. pre-fix checker.CheckRules → Check call #1
 //  2. applyFixPasses pass 1     → Check call #2, then Fix call #1
 //     (loop sees source unchanged → break)
-//  3. post-fix engine.CheckRules → Check call #3
+//  3. post-fix checker.CheckRules → Check call #3
 //
 // The probe is configured to return a diagnostic on Check call #2 so
 // that step 2's Fix actually fires.

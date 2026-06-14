@@ -124,7 +124,7 @@ func TestRunEquivalenceRepoScopedDedupe(t *testing.T) {
 
 	// Applying DedupeDiagnostics to an already-clean output must be a no-op:
 	// the two slices must be equal, confirming the skip is safe.
-	deduped := DedupeDiagnostics(res.Diagnostics)
+	deduped := lint.DedupeDiagnostics(res.Diagnostics)
 	assert.Equal(t, res.Diagnostics, deduped,
 		"DedupeDiagnostics applied to non-repo-scoped output must be a no-op; "+
 			"skip path produced duplicates when it should not have")

@@ -131,7 +131,7 @@ func doExport(path string, flags exportFlags) int {
 // overrides (and any front-matter `kinds:`), then returns the set of
 // directive rules to consult for staleness/regeneration. Each
 // returned rule is a clone with its per-file settings applied via
-// engine.ConfigureRule, and disabled rules are excluded — matching
+// checker.ConfigureRule, and disabled rules are excluded — matching
 // `mdsmith check`/`fix` so a directive turned off in `.mdsmith.yml`
 // neither flags a stale body nor gets regenerated on `--fix`.
 //

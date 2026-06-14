@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/checker"
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -159,7 +160,7 @@ func TestLintOnce_NoGeneratedSections(t *testing.T) {
 	for _, r := range rules {
 		rulesCfg[r.Name()] = config.RuleCfg{Enabled: true}
 	}
-	diags, _ := CheckRules(f, rules, rulesCfg)
+	diags, _ := checker.CheckRules(f, rules, rulesCfg)
 
 	found := false
 	for _, d := range diags {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/engine"
+	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 
 	// Production rule set, so the gate measures what `mdsmith check`
@@ -306,6 +307,6 @@ func BenchmarkCheckCorpusLargeAlwaysDedupe(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		res := newRunner().Run(paths)
 		// Force the allocation that the skip path avoids.
-		_ = engine.DedupeDiagnostics(res.Diagnostics)
+		_ = lint.DedupeDiagnostics(res.Diagnostics)
 	}
 }

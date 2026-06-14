@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/checker"
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -39,6 +40,14 @@ func (m *mockNodeChecker) CheckNode(n ast.Node, entering bool, f *lint.File) []l
 		RuleID: m.id, RuleName: m.name,
 		Severity: lint.Warning, Message: "heading seen",
 	}}
+}
+
+// checkRules is a test helper that calls checker.CheckRulesWithIntraFile
+// with skipSourceContext=true and intraFileCap=1 (serial).
+func checkRules(
+	f *lint.File, rules []rule.Rule, effective map[string]config.RuleCfg, skipSourceContext bool,
+) ([]lint.Diagnostic, []error) {
+	return checker.CheckRulesWithIntraFile(f, rules, effective, skipSourceContext, 1)
 }
 
 // plainView wraps a NodeChecker but exposes ONLY the Rule interface,
