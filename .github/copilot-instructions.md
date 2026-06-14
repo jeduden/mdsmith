@@ -209,7 +209,7 @@ glob:
 sort: title
 row: "- [{title}](../docs/development/{filename})"
 ?>
-- [](../docs/development/pgo-profile.md)
+- [PGO and the uncommitted profile](../docs/development/pgo-profile.md)
 - [Adding a peer linter](../docs/development/add-peer-linter.md)
 - [Architecture audit log](../docs/development/architecture-audit.md)
 - [Architecture principles](../docs/development/architecture/index.md)
