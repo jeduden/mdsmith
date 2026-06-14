@@ -169,3 +169,23 @@ func ParseContextArena(src []byte, ctx parser.Context, a *arena.Arena) ast.Node 
 	}()
 	return pp.parser.Parse(text.NewReader(src), parser.WithContext(ctx), parser.WithArena(a))
 }
+
+// ParseBlockOnlyContextArena is ParseContextArena restricted to
+// goldmark's block phase (parser.WithBlockOnly): the inline walk and
+// the AST transformers are skipped, so no inline nodes are built. It is
+// a measurement-only seam for the lazy-parse spike (plan 2606141901) —
+// a stand-in for a future Layer-0 block scan — and is never used by a
+// production parse path. Link reference definitions are still recorded
+// in ctx (the paragraph transformer runs during block close), so the
+// transformer Reset on Put is still required.
+func ParseBlockOnlyContextArena(src []byte, ctx parser.Context, a *arena.Arena) ast.Node {
+	pp := parserPool.Get().(*pooledParser)
+	defer func() {
+		if pp.lrp != nil {
+			pp.lrp.Reset()
+		}
+		parserPool.Put(pp)
+	}()
+	return pp.parser.Parse(text.NewReader(src),
+		parser.WithContext(ctx), parser.WithArena(a), parser.WithBlockOnly())
+}

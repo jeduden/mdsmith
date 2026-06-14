@@ -72,3 +72,49 @@ func newFileArena(path string, source []byte, a *arena.Arena) *File {
 		parseCtx: pc,
 	}
 }
+
+// NewFileBlockOnlyPooled is NewFileFromSourcePooled restricted to
+// goldmark's block phase: the returned File's AST carries block nodes
+// but no inline children (see markdown.ParseBlockOnlyContextArena). It
+// is a measurement-only seam for the lazy-parse spike (plan
+// 2606141901) — the engine reaches it only through the opt-in,
+// default-off Runner.BlockOnlyParse flag, never on a production run.
+// The same arena-pool lifetime contract as NewFileFromSourcePooled
+// applies: do not touch the File or its AST after release.
+func NewFileBlockOnlyPooled(path string, source []byte, stripFrontMatter bool) (*File, func()) {
+	a := fileArenaPool.Get().(*arena.Arena)
+	f := newFileBlockOnlyArena(path, source, stripFrontMatter, a)
+	var once sync.Once
+	release := func() {
+		once.Do(func() {
+			a.Reset()
+			fileArenaPool.Put(a)
+		})
+	}
+	return f, release
+}
+
+// newFileBlockOnlyArena mirrors newFileFromSourceArena but parses only
+// the block phase.
+func newFileBlockOnlyArena(path string, source []byte, stripFrontMatter bool, a *arena.Arena) *File {
+	var fm []byte
+	var offset int
+	content := source
+	if stripFrontMatter {
+		fm, content = StripFrontMatter(source)
+		offset = CountLines(fm)
+	}
+	pc := parser.NewContext()
+	node := markdown.ParseBlockOnlyContextArena(content, pc, a)
+	f := &File{
+		Path:     path,
+		Source:   content,
+		Lines:    bytes.Split(content, []byte("\n")),
+		AST:      node,
+		parseCtx: pc,
+	}
+	f.FrontMatter = fm
+	f.LineOffset = offset
+	f.StripFrontMatter = stripFrontMatter
+	return f
+}

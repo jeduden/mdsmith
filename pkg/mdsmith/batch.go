@@ -1,6 +1,8 @@
 package mdsmith
 
 import (
+	"os"
+
 	"github.com/jeduden/mdsmith/internal/engine"
 	fixpkg "github.com/jeduden/mdsmith/internal/fix"
 	vlog "github.com/jeduden/mdsmith/internal/log"
@@ -120,5 +122,13 @@ func (s *Session) newBatchRunner(opts BatchOptions) *engine.Runner {
 		Explain:          opts.Explain,
 		Concurrency:      opts.Concurrency,
 		ConfigPath:       s.cfgPath,
+		// Lazy-parse spike (plan 2606141901) measurement seam: when the
+		// MDSMITH_SPIKE_BLOCK_ONLY environment variable is set, parse only
+		// goldmark's block phase so hyperfine can time "block scan + rules
+		// + overhead" against gomarklint in the real CLI. Off by default —
+		// an unset variable leaves the shipped behaviour byte-identical —
+		// and undocumented. Diagnostics under this flag are not correct
+		// (inline rules see no inline nodes); it exists to measure cost.
+		BlockOnlyParse: os.Getenv("MDSMITH_SPIKE_BLOCK_ONLY") != "",
 	}
 }

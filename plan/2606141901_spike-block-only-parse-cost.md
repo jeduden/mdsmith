@@ -1,7 +1,7 @@
 ---
 id: 2606141901
 title: "Spike: block-only parse cost vs gomarklint"
-status: "🔲"
+status: "✅"
 summary: >-
   Measure whether a block-only parse (no inline, no tree)
   plus the parity structural rules plus per-file overhead
@@ -43,7 +43,11 @@ is recorded.
 
 1. Add a parse path that runs block parsing only —
    suppress the inline walk and skip building inline
-   nodes — reachable from a benchmark, not the CLI.
+   nodes (`parser.WithBlockOnly`, behind the default-off
+   `engine.Runner.BlockOnlyParse`). Reach it from an
+   in-process benchmark, and — to get an apples-to-apples
+   CLI wall-time number against gomarklint — from an
+   off-by-default `MDSMITH_SPIKE_BLOCK_ONLY` env gate too.
 2. Time three things on the pinned neutral corpus:
    block-only parse alone, block-only parse + the
    parity structural rules, and the full parity run,
@@ -54,13 +58,18 @@ is recorded.
 
 ## Acceptance Criteria
 
-- [ ] A measured comparison of block-only parse + parity
+- [x] A measured comparison of block-only parse + parity
       structural rules + overhead against gomarklint on
       benchmark 2, captured in the research doc.
-- [ ] An explicit go/no-go: does Layer 0 alone clear the
+- [x] An explicit go/no-go: does Layer 0 alone clear the
       bar, or must rule/overhead trimming ride along?
-- [ ] No production code path changes; the harness is
-      flagged off or discarded.
+      (No — block-only is ~1.70x gomarklint; rules +
+      overhead alone already exceed it, so trimming must
+      ride along.)
+- [x] No production code path changes; the harness is
+      flagged off or discarded. (`BlockOnlyParse` and the
+      `MDSMITH_SPIKE_BLOCK_ONLY` gate are default-off; the
+      benchmark is gated on `MDSMITH_SPIKE_CORPUS`.)
 
 [research]: ../docs/research/benchmarks/lazy-parse-architecture.md
 [gomarklint]: ../docs/research/benchmarks/gomarklint-architecture.md

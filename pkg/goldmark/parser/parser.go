@@ -950,6 +950,14 @@ type ParseConfig struct {
 	// goldmark_upstream build tag, so the equivalence harness keeps
 	// exercising the genuine upstream allocation path.
 	Arena *arena.Arena
+	// BlockOnly, when true, stops Parse after the block phase: the
+	// inline walk and the AST transformers are skipped, so no inline
+	// nodes (Text, Emphasis, Link, Image, CodeSpan, AutoLink, RawHTML)
+	// are built. It is a measurement-only seam for the lazy-parse spike
+	// (plan 2606141901) — a proxy for a future Layer-0 block scan that a
+	// benchmark can time without a parser rewrite. No production parse
+	// path sets it, so the shipped linter's output is unchanged.
+	BlockOnly bool
 }
 
 // A ParseOption is a functional option type for the Parser.Parse.
@@ -971,6 +979,16 @@ func WithContext(context Context) ParseOption {
 func WithArena(a *arena.Arena) ParseOption {
 	return func(c *ParseConfig) {
 		c.Arena = a
+	}
+}
+
+// WithBlockOnly is a functional option that stops the parse after the
+// block phase (see ParseConfig.BlockOnly). It exists for the lazy-parse
+// spike's measurement harness and is not wired into any production
+// parse path.
+func WithBlockOnly() ParseOption {
+	return func(c *ParseConfig) {
+		c.BlockOnly = true
 	}
 }
 
@@ -1094,6 +1112,16 @@ func (p *parser) Parse(reader text.Reader, opts ...ParseOption) ast.Node {
 	defer clearSegmentsCreator(reader)
 	root := ast.NewDocument()
 	p.parseBlocks(root, reader, pc)
+
+	// BlockOnly returns the block tree before the inline phase runs, so
+	// no inline nodes are materialized. Link reference definitions are
+	// already populated: they are collected by the paragraph transformer
+	// during block close (inside parseBlocks), not by an AST transformer.
+	// Measurement-only seam for the lazy-parse spike; no production caller
+	// sets it (see ParseConfig.BlockOnly).
+	if c.BlockOnly {
+		return root
+	}
 
 	blockReader := text.NewBlockReader(reader.Source(), nil)
 	setSegmentsCreator(blockReader, pa)

@@ -78,3 +78,38 @@ func TestNewFileFromSourcePooled_ManySequentialParsesStayCorrect(t *testing.T) {
 		release()
 	}
 }
+
+// TestNewFileBlockOnlyPooled_SuppressesInlineKeepsBlocks covers the
+// lazy-parse spike's block-only constructor: front matter is stripped and
+// the offset computed (stripFrontMatter=true), the block tree is built,
+// but no inline nodes are — yet link reference definitions still survive.
+func TestNewFileBlockOnlyPooled_SuppressesInlineKeepsBlocks(t *testing.T) {
+	src := []byte("---\ntitle: T\n---\n# H1\n\nPara with [link](u) and `code`.\n\n[link]: http://example.com\n")
+	f, release := NewFileBlockOnlyPooled("doc.md", src, true)
+	defer release()
+
+	assert.Equal(t, "---\ntitle: T\n---\n", string(f.FrontMatter))
+	assert.Positive(t, f.LineOffset)
+	assert.True(t, f.StripFrontMatter)
+
+	kinds := walkKinds(t, f)
+	assert.Contains(t, kinds, "Heading")
+	assert.Contains(t, kinds, "Paragraph")
+	// Block-only: the inline phase never runs, so no inline nodes exist.
+	assert.NotContains(t, kinds, "Text")
+	assert.NotContains(t, kinds, "Link")
+	assert.NotContains(t, kinds, "CodeSpan")
+	// Link reference definitions are collected during block close.
+	assert.NotEmpty(t, f.LinkReferences())
+}
+
+// TestNewFileBlockOnlyPooled_NoFrontMatterReleaseIdempotent covers the
+// stripFrontMatter=false path and the idempotent release closure.
+func TestNewFileBlockOnlyPooled_NoFrontMatterReleaseIdempotent(t *testing.T) {
+	f, release := NewFileBlockOnlyPooled("a.md", []byte("# H\n\nBody.\n"), false)
+	assert.Empty(t, f.FrontMatter)
+	assert.Zero(t, f.LineOffset)
+	assert.False(t, f.StripFrontMatter)
+	release()
+	assert.NotPanics(t, release, "second release must be a no-op")
+}

@@ -108,6 +108,17 @@ type Runner struct {
 	// — install a shared instance so it survives across runLint
 	// calls and call its Invalidate seam on document edits.
 	RunCache *lint.RunCache
+	// BlockOnlyParse, when true, makes lintFile parse only goldmark's
+	// block phase (lint.NewFileBlockOnlyPooled) instead of the full
+	// parse, so no inline nodes are built. It is a measurement-only
+	// flag for the lazy-parse spike (plan 2606141901): the spike
+	// benchmark sets it to time "block scan + rules + overhead" as a
+	// proxy for a future Layer-0 pipeline. It is default-off and set by
+	// no production caller (CLI, LSP, Session), so the shipped lint
+	// path is unaffected. Diagnostics from inline-dependent rules are
+	// not meaningful under this flag — it exists to measure cost, not
+	// to produce correct output.
+	BlockOnlyParse bool
 	// ParseCache memoizes the parsed *lint.File for an in-memory
 	// document so RunSourceWithVersion can skip lint.NewFileFromSource
 	// when a prior call at the same (path, version) already parsed
@@ -395,7 +406,7 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 	// release() recycles both the arena slabs and the source buffer:
 	// the buffer is resliced to zero length so a single large file does
 	// not pin its grown capacity in the pool forever.
-	f, releaseArena := lint.NewFileFromSourcePooled(path, source, r.StripFrontMatter)
+	f, releaseArena := r.pooledFileConstructor()(path, source, r.StripFrontMatter)
 	release := func() {
 		releaseArena()
 		*bufp = (*bufp)[:0]
@@ -431,6 +442,18 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 		explain.Attach(diags, r.Config, path, fmKinds, fmFields)
 	}
 	return fileOutcome{diags: diags, errs: errs}
+}
+
+// pooledFileConstructor returns the per-file parse constructor for this
+// run: the full-parse pooled constructor normally, or the block-only one
+// when the lazy-parse spike flag (Runner.BlockOnlyParse) is set. The flag
+// is default-off and no production caller sets it, so the returned
+// constructor is lint.NewFileFromSourcePooled on every shipped path.
+func (r *Runner) pooledFileConstructor() func(string, []byte, bool) (*lint.File, func()) {
+	if r.BlockOnlyParse {
+		return lint.NewFileBlockOnlyPooled
+	}
+	return lint.NewFileFromSourcePooled
 }
 
 // DedupeDiagnostics returns a new slice with duplicate (file, line,
