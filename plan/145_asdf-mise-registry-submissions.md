@@ -81,6 +81,19 @@ on `asdf plugin add mdsmith`.
    prefix-less `mise use mdsmith@latest` form starts
    resolving on user CLIs without any code change in
    this repo.
+
+   **Filed and rejected.**
+   [jdx/mise#10320](https://github.com/jdx/mise/pull/10320)
+   added `registry/mdsmith.toml` on the
+   `github:jeduden/mdsmith` backend with the required
+   `test` field and a popularity case. The maintainer
+   closed it unmerged on 2026-06-11: at 7 stars the
+   project is below the adoption bar the curated
+   registry applies to new tools. Re-submit only after
+   the repo gathers materially more traction; until
+   then the bare `mise use mdsmith@VER` form stays
+   unavailable and the backend-prefixed forms remain
+   the documented path.
 5. Update
    [docs/guides/install.md](../docs/guides/install.md)
    to drop the "pending follow-up" badge from the
@@ -118,3 +131,38 @@ on `asdf plugin add mdsmith`.
       The `asdf` channel is required-green; the bare
       `mise-registry` channel is best-effort until
       the jdx/mise registry PR merges.
+
+## Status — blocked upstream
+
+The remaining work is gated on two curated upstream
+registries, and neither will accept mdsmith at its
+current adoption level:
+
+- **mise (Task 4):**
+  [jdx/mise#10320](https://github.com/jdx/mise/pull/10320)
+  was filed with the correct `registry/mdsmith.toml`
+  and closed unmerged on 2026-06-11 — 7 stars is below
+  the registry's bar for new tools. The bare
+  `mise use mdsmith@VER` form cannot resolve until a
+  re-submission is accepted.
+- **asdf (Task 3):** no PR to
+  [`asdf-vm/asdf-plugins`](https://github.com/asdf-vm/asdf-plugins)
+  has been filed; that index has comparable curation
+  expectations, so a submission now would likely meet
+  the same popularity objection that closed the mise
+  PR. The `plugins/mdsmith` index entry does not exist.
+- **Docs (Task 5):** because neither registry PR has
+  merged,
+  [docs/guides/install.md](../docs/guides/install.md)
+  must keep flagging the bare `asdf plugin add mdsmith`
+  and bare `mise use mdsmith@VER` forms as not-yet-
+  resolving. The current "needs a registry entry" notes
+  are accurate and stay until a PR lands.
+
+Everything inside this repo's control is done: the
+`jeduden/asdf-mdsmith` plugin, its CI, and the
+release.yml smoke-test matrix. The plan stays open
+pending an upstream-acceptance window; revisit when
+the project's traction clears the registries' bars.
+The next concrete action is a mise re-submission once
+star/fork counts grow, then mirror it to asdf-plugins.
