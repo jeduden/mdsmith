@@ -50,11 +50,14 @@ later step can call it. `working-directory` sets the
 directory the `args` command runs in. The action exposes
 one output, `version`, the string `mdsmith version` prints.
 
-Pin `uses:` to a full-length commit SHA, not a tag. A SHA
-is immutable; a tag like `@v0` can be repointed at new
-code. GitHub recommends the SHA form, and this repository
-uses it for every third-party action. Keep the version in
-a trailing comment, as `# v0.41.0` above.
+Pin `uses:` to a full-length commit SHA for the strongest
+guarantee: a SHA can never move. mdsmith publishes
+immutable releases, so a release-tag pin like `@v0.41.0`
+is a safe, reproducible alternative. Only the floating
+`@v0` tag moves by design. GitHub recommends the SHA form,
+and this repository uses it for every third-party action.
+Keep the version in a trailing comment, as `# v0.41.0`
+above.
 
 The action still verifies the downloaded binary's SHA-256
 against the release `checksums.txt`. So the action and the
