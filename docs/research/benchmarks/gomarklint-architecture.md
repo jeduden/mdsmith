@@ -216,3 +216,9 @@ file pool. It does **not** close the wall-time gap — by the
 measurements above, nothing at the allocation or GC layer can. The
 route to actually beating gomarklint is the line-scan pipeline above,
 scoped as staged work with a hard, measurable acceptance bar.
+
+A separate line-scan path beside the AST was rejected as a design
+(two rule implementations, a forked API). The refined direction — one
+parser that builds the tree lazily and serves the common rules from a
+cheap scan — is worked out in [Lazy parse architecture: build the AST
+only when a rule needs it](lazy-parse-architecture.md).
