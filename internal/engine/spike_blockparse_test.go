@@ -219,25 +219,27 @@ func spikeCollectMarkdown(t *testing.T, root string) []string {
 	return paths
 }
 
-// spikeLoadParityConfig loads the committed benchmark parity profile, so
-// the spike runs the exact rule set `mdsmith check -c parity` does.
+// spikeLoadParityConfig loads the rule config the spike runs. It defaults
+// to the committed benchmark parity profile (so the spike matches
+// `mdsmith check -c parity`), but honours MDSMITH_SPIKE_CONFIG to point at
+// any other config — e.g. a single-rule profile for a per-rule bottleneck
+// study. The defaults are merged in exactly as cmd/mdsmith's loadConfigRaw
+// does, so the structural rules keep their real (enabled) state.
 func spikeLoadParityConfig(t *testing.T) *config.Config {
 	t.Helper()
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller failed")
+	path := os.Getenv("MDSMITH_SPIKE_CONFIG")
+	if path == "" {
+		_, file, _, ok := runtime.Caller(0)
+		if !ok {
+			t.Fatal("runtime.Caller failed")
+		}
+		root := filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
+		path = filepath.Join(root, "docs", "research", "benchmarks", "bench-parity.mdsmith.yml")
 	}
-	root := filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
-	path := filepath.Join(root, "docs", "research", "benchmarks", "bench-parity.mdsmith.yml")
 	loaded, err := config.Load(path)
 	if err != nil {
-		t.Fatalf("load parity config %s: %v", path, err)
+		t.Fatalf("load spike config %s: %v", path, err)
 	}
-	// Merge over the built-in defaults exactly as cmd/mdsmith's
-	// loadConfigRaw does (config.Merge(Defaults(), loaded)). Without
-	// this the structural rules keep their zero-value (disabled) state
-	// and the run emits no diagnostics, so the rule cost would be
-	// measured as ~0 — a wiring artifact, not a real finding.
 	return config.Merge(config.Defaults(), loaded)
 }
 
