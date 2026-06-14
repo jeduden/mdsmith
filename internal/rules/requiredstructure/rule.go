@@ -1431,6 +1431,7 @@ func appendBodySyncFields(
 var (
 	piOpenPrefix = []byte("<?")
 	piClose      = []byte("?>")
+	spaceSep     = []byte{' '}
 )
 
 // fenceOpenRun reports the marker character and run length when a
@@ -2278,24 +2279,21 @@ func checkBodySync(
 	// Convert expected once so per-line comparisons need no string() cast.
 	expectedBytes := []byte(expected)
 
-	// Check each individual line first (fast path).
-	for i := startLine - 1; i < endLine && i < len(f.Lines); i++ {
-		if bytes.Equal(bytes.TrimSpace(f.Lines[i]), expectedBytes) {
-			return nil
-		}
-	}
-
-	// Join consecutive non-blank lines into paragraphs and check each.
-	// Pre-size to the maximum lines in this section to avoid repeated growth allocs.
+	// Single pass: trim each line once, check for a single-line match (fast path),
+	// and accumulate consecutive non-blank lines into paragraphs for a joined match.
+	// Pre-size para to the section line count to avoid growth allocs.
 	para := make([][]byte, 0, max(0, endLine-startLine+1))
 	for i := startLine - 1; i <= endLine && i <= len(f.Lines); i++ {
 		var lineB []byte
 		if i < endLine && i < len(f.Lines) {
 			lineB = bytes.TrimSpace(f.Lines[i])
+			if bytes.Equal(lineB, expectedBytes) {
+				return nil
+			}
 		}
 		if len(lineB) == 0 || i == endLine || i == len(f.Lines) {
 			if len(para) > 0 {
-				if bytes.Equal(bytes.Join(para, []byte{' '}), expectedBytes) {
+				if bytes.Equal(bytes.Join(para, spaceSep), expectedBytes) {
 					return nil
 				}
 				para = para[:0]
