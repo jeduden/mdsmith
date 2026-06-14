@@ -3,21 +3,23 @@ title: GitHub Actions
 summary: >-
   A composite action at the repository root downloads the
   checksum-verified release binary for the runner's OS and
-  architecture, puts `mdsmith` on `PATH`, and runs the
-  command in its `args` input; referenced as
-  `uses: jeduden/mdsmith@<commit-sha>`.
-mechanism: pull
+  architecture and puts `mdsmith` on `PATH`; published to
+  the GitHub Marketplace and referenced as
+  `uses: jeduden/mdsmith@v0`.
+mechanism: push
 artifact: cli
 command: "uses: jeduden/mdsmith@v0"
 audience: Linting Markdown inside GitHub Actions CI
 platforms: [linux, macos, windows]
-channelurl: https://github.com/jeduden/mdsmith
+registry: github.com/marketplace
+credential: GITHUB_TOKEN
+job: release
+channelurl: https://github.com/marketplace/actions/mdsmith
 weight: 15
-unlisted: true
 ---
 # GitHub Actions
 
-Release page: <https://github.com/jeduden/mdsmith>
+Release page: <https://github.com/marketplace/actions/mdsmith>
 
 The repository root carries an `action.yml`, so a workflow
 step runs mdsmith with:
@@ -64,20 +66,23 @@ against the release `checksums.txt`. So the action and the
 binary it fetches are both pinned by digest, not by a
 movable name.
 
-No released commit carries the action yet. Pin to a commit
-SHA from this branch, or from `main` once it merges, to use
-it today. After the next release, pin to that release's
-commit. The convenience tag `@v0` comes later: it must be
-created and moved onto a release that ships `action.yml`.
+The action publishes to the GitHub Marketplace through a
+release. The `release` job drafts a release at the tagged
+commit, which carries this `action.yml`. Publishing that
+draft adds or updates the Marketplace listing.
+
+The first listing is a manual, one-time step. The
+maintainer accepts the Marketplace Developer Agreement and
+enables it on a release. A unique action `name` and
+`branding` are required; `action.yml` sets both.
+
+A `marketplace-major-tag` workflow runs on each published
+release. It moves the `@v0` major tag onto that release, so
+`uses: jeduden/mdsmith@v0` tracks the latest 0.x build. The
+first release that ships this `action.yml` makes the listing
+and `@v0` resolve. Until then, pin to a commit SHA on
+`main`.
 
 You can also skip the action entirely. Run the release
 binary in a `run:` step. That repeats by hand the download
 and verify steps the action automates.
-
-Because no published tag installs the action yet, this
-channel sets `unlisted: true` in its frontmatter, so
-`sync-channels` keeps it out of the website install picker
-and the install-guide table excludes it by glob. The
-`action.yml` and this doc stay; only the user-facing
-listings wait for a release to carry the action. Drop both
-once `uses: jeduden/mdsmith@v0` resolves.

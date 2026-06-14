@@ -12,12 +12,11 @@ summary: >-
 ---
 # Release Pipeline
 
-`.github/workflows/release.yml` publishes mdsmith to
-every channel below. Release-time secrets travel as
-short-lived OIDC tokens. The remaining long-lived
-PATs are gated by the `release` GitHub environment.
-Each channel has its own file under
-`release-channels/`; the catalog re-renders on
+`.github/workflows/release.yml` publishes mdsmith to every
+channel below. Release-time secrets travel as short-lived
+OIDC tokens. The remaining long-lived PATs are gated by the
+`release` GitHub environment. Each channel has its own file
+under `release-channels/`; the catalog re-renders on
 `mdsmith fix`.
 
 <?catalog
@@ -32,6 +31,7 @@ row: "| [{title}]({filename}) | <{channelurl}> | {credential} |"
 | Channel                                                                    | Release page                                                          | Credential              |
 | -------------------------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------- |
 | [Flatpak](release-channels/flatpak.md)                                     | <https://github.com/jeduden/mdsmith/releases>                         | GITHUB_TOKEN + OIDC     |
+| [GitHub Actions](release-channels/github-actions.md)                       | <https://github.com/marketplace/actions/mdsmith>                      | GITHUB_TOKEN            |
 | [GitHub Releases](release-channels/github-releases.md)                     | <https://github.com/jeduden/mdsmith/releases>                         | GITHUB_TOKEN + OIDC     |
 | [npm](release-channels/npm.md)                                             | <https://www.npmjs.com/package/@mdsmith/cli>                          | OIDC Trusted Publishing |
 | [Obsidian](release-channels/obsidian.md)                                   | <https://github.com/jeduden/mdsmith/releases>                         | GITHUB_TOKEN + OIDC     |
