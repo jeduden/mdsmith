@@ -192,6 +192,6 @@ footer: |
 | 2606122014 | 🔲     | sonnet | [Add SHA256 checksum verification for komac download in release.yml](plan/2606122014_komac-sha256-checksum.md)                          |
 | 2606122015 | ✅     | sonnet | [Security hardening batch — 2026-06-12 full-repo audit](plan/2606122015_security-hardening-batch-full-repo.md)                          |
 | 2606130836 | 🔲     | opus   | [Pool the per-file source-read buffer across lintFile passes](plan/2606130836_pool-source-read-buffer.md)                               |
-| 2606130837 | 🔲     | opus   | [Fast-path front-matter field reads for cross-file rules](plan/2606130837_frontmatter-fast-scan.md)                                     |
+| 2606130837 | 🔳     | opus   | [Fast-path front-matter field reads for cross-file rules](plan/2606130837_frontmatter-fast-scan.md)                                     |
 | 2606130838 | ✅     | sonnet | [Memoize linkgraph link and image extraction on the File](plan/2606130838_memoize-link-extraction.md)                                   |
 <?/catalog?>

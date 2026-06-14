@@ -1205,17 +1205,25 @@ func readFrontMatter(fsys fs.FS, path string, maxBytes int64) (map[string]any, e
 		return nil, nil
 	}
 
-	// Extract the YAML between --- delimiters.
-	s := string(prefix)
-	s = strings.TrimPrefix(s, "---\n")
-	idx := strings.Index(s, "---\n")
+	// Extract the YAML between --- delimiters (byte-slice to avoid a
+	// string allocation on the hot cross-file path).
+	delim := []byte("---\n")
+	body := bytes.TrimPrefix(prefix, delim)
+	idx := bytes.Index(body, delim)
 	if idx < 0 {
 		return nil, nil
 	}
-	yamlStr := s[:idx]
+	yamlBody := body[:idx]
+
+	// Fast path: avoid the yaml.v3 parser for files whose front matter
+	// contains only flat key: scalar pairs (common for docs with a single
+	// quoted summary and plan files with id/status/model).
+	if fm, ok := yamlutil.FlatScalarFrontMatter(yamlBody); ok {
+		return fm, nil
+	}
 
 	var raw map[string]any
-	if err := yamlutil.UnmarshalSafe([]byte(yamlStr), &raw); err != nil {
+	if err := yamlutil.UnmarshalSafe(yamlBody, &raw); err != nil {
 		return nil, nil
 	}
 

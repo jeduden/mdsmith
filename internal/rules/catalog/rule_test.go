@@ -4726,3 +4726,60 @@ row-expr: 'title'
 	assert.True(t, found,
 		"expected render error naming docs/bad.md; got %v", diags)
 }
+
+// TestReadFrontMatter_HostileAnchorSafeViaFallback verifies that a target
+// file whose front matter contains YAML anchors/aliases does not expand
+// them through the fast path. The fast path bails (returns false), the
+// caller falls back to UnmarshalSafe which rejects the anchor, and
+// readFrontMatter returns (nil, nil) — no crash, no alias expansion.
+func TestReadFrontMatter_HostileAnchorSafeViaFallback(t *testing.T) {
+	// Front matter with an anchor definition and alias reference.
+	hostile := "---\nbase: &anchor foo\nfield: *anchor\n---\n# body\n"
+	mapFS := fstest.MapFS{
+		"target.md": {Data: []byte(hostile)},
+	}
+	fm, err := readFrontMatter(mapFS, "target.md", 1<<20)
+	assert.NoError(t, err, "readFrontMatter must not propagate yaml alias errors")
+	assert.Nil(t, fm, "hostile front matter must not expand into a non-nil map")
+}
+
+// TestReadFrontMatter_FlatFastPath verifies that flat scalar front matter
+// is returned correctly via the fast path (no yaml.v3 decode needed).
+func TestReadFrontMatter_FlatFastPath(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+		want    map[string]any
+	}{
+		{
+			name:    "integer and quoted string",
+			content: "---\nid: 7\nstatus: \"✅\"\n---\n# body\n",
+			want:    map[string]any{"id": 7, "status": "✅"},
+		},
+		{
+			name:    "plain string model",
+			content: "---\nmodel: opus\n---\n",
+			want:    map[string]any{"model": "opus"},
+		},
+		{
+			name:    "null value",
+			content: "---\nfield: null\n---\n",
+			want:    map[string]any{"field": nil},
+		},
+		{
+			name:    "bool values",
+			content: "---\nflag: true\nother: false\n---\n",
+			want:    map[string]any{"flag": true, "other": false},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mapFS := fstest.MapFS{
+				"doc.md": {Data: []byte(tc.content)},
+			}
+			fm, err := readFrontMatter(mapFS, "doc.md", 1<<20)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, fm)
+		})
+	}
+}

@@ -1,7 +1,7 @@
 ---
 id: 2606130837
 title: Fast-path front-matter field reads for cross-file rules
-status: "🔲"
+status: "🔳"
 model: opus
 summary: >-
   The catalog rule reads every globbed target's front matter
@@ -83,21 +83,21 @@ stays on yaml.
 
 ## Tasks
 
-1. [ ] Add a differential test harness. It runs the fast path and
+1. [x] Add a differential test harness. It runs the fast path and
    `yamlutil.UnmarshalSafe` over one shared sample set. The set
    covers flat scalars and quoted, int, and bool spellings. It also
    covers nesting, sequences, block scalars, multi-doc, anchors,
    and aliases. It asserts equality or fallback.
-2. [ ] Implement the flat-scalar line scanner with the bail-out
+2. [x] Implement the flat-scalar line scanner with the bail-out
    grammar above. Reuse `yamlutil` canonicalization. Fall back to
    `UnmarshalSafe` on any non-flat or metacharacter-bearing input.
-3. [ ] Route
+3. [x] Route
    [`catalog.readFrontMatter`](../internal/rules/catalog/rule.go)
    through the fast path. Keep the RunCache slot and shape so plan
    192 cross-host sharing still holds.
-4. [ ] Add a test that hostile front matter reaching the catalog
+4. [x] Add a test that hostile front matter reaching the catalog
    still has its anchors and aliases rejected, via the fallback.
-5. [ ] Verify behaviour. Run the integration fixtures,
+5. [x] Verify behaviour. Run the integration fixtures,
    `go test ./...`, and `mdsmith check .`. The `CLAUDE.md` and
    `PLAN.md` catalogs must regenerate byte-identically.
 6. [ ] Re-profile both corpora. Record the measured CPU and alloc
@@ -105,19 +105,19 @@ stays on yaml.
 
 ## Acceptance Criteria
 
-- [ ] The fast path returns values byte-identical to
+- [x] The fast path returns values byte-identical to
       `yamlutil.UnmarshalSafe` for every flat-scalar sample. It
       defers for every non-flat or metacharacter-bearing one. The
       differential test pins this.
-- [ ] Anchors and aliases in catalog-read front matter are still
+- [x] Anchors and aliases in catalog-read front matter are still
       rejected, via the fallback. A test pins this.
-- [ ] `CLAUDE.md` and `PLAN.md` catalog bodies regenerate
+- [x] `CLAUDE.md` and `PLAN.md` catalog bodies regenerate
       unchanged under `mdsmith fix`.
 - [ ] Cross-file front-matter CPU and yaml allocations fall
       measurably on the repo-corpus profile. The number is recorded
       here.
-- [ ] `BenchmarkCheckCorpus{Small,Large}` stay within budget.
-- [ ] `mdsmith check .` passes (generated sections in sync).
-- [ ] All tests pass: `go test ./...`
+- [x] `BenchmarkCheckCorpus{Small,Large}` stay within budget.
+- [x] `mdsmith check .` passes (generated sections in sync).
+- [x] All tests pass: `go test ./...`
 - [ ] `go tool -modfile=tools/go.mod golangci-lint run` reports no
-      issues.
+      issues (golangci-lint requires Go 1.25.8+; environment has 1.25.0).
