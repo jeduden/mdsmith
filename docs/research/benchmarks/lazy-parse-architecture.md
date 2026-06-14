@@ -130,20 +130,31 @@ study: **every one of the 25 NodeChecker rules is a
 reacts to. The engine already dispatches by kind. So the metadata that
 says which layer a rule needs *already exists in the rule*:
 
-| Scoped kind(s)            | NodeChecker rules                                                                                                 | Layer |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------- | ----- |
-| Heading                   | blank-line-around-headings, heading-style, no-trailing-punctuation                                                | 0     |
-| FencedCodeBlock           | blank-line-around-fenced-code, fenced-code-style, fenced-code-language, unclosed-code-block, commands-show-output | 0     |
-| List / ListItem           | blank-line-around-lists, list-marker-space, list-marker-style, ordered-list-numbering, list-indent                | 0     |
-| Paragraph                 | no-emphasis-as-heading, forbidden-paragraph-starts, forbidden-text, toc-directive                                 | 0     |
-| ThematicBreak / HTMLBlock | horizontal-rule-style, no-inline-html                                                                             | 0     |
-| Link / Image / CodeSpan   | descriptive-link-text, no-space-in-link-text, no-empty-alt-text, no-space-in-code-spans                           | 1     |
-| Text (URL scan)           | no-bare-urls                                                                                                      | 1     |
-| Emphasis                  | emphasis-style                                                                                                    | 2     |
+| Scoped kind(s)                   | NodeChecker rules                                                                                                 | Layer |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ----- |
+| Heading                          | blank-line-around-headings, heading-style, no-trailing-punctuation                                                | 0     |
+| FencedCodeBlock                  | blank-line-around-fenced-code, fenced-code-style, fenced-code-language, unclosed-code-block, commands-show-output | 0     |
+| List / ListItem                  | blank-line-around-lists, list-marker-space, list-marker-style, ordered-list-numbering, list-indent                | 0     |
+| ThematicBreak                    | horizontal-rule-style                                                                                             | 0     |
+| Paragraph (trigger; body varies) | toc-directive (0), forbidden-paragraph-starts / forbidden-text (1), no-emphasis-as-heading (2)                    | 0–2   |
+| HTMLBlock / RawHTML              | no-inline-html                                                                                                    | 1     |
+| Link / Image / CodeSpan          | descriptive-link-text, no-space-in-link-text, no-empty-alt-text, no-space-in-code-spans                           | 1     |
+| Text (URL scan)                  | no-bare-urls                                                                                                      | 1     |
+| Emphasis                         | emphasis-style                                                                                                    | 2     |
 
 Sixteen of the twenty-five scope to **block** kinds; they need a node's
 kind and line span, nothing inside it. Nine scope to **inline** kinds.
-Only `emphasis-style` needs the full delimiter algorithm (Layer 2).
+Emphasis semantics — `emphasis-style` and the all-emphasis check inside
+`no-emphasis-as-heading` — need the full delimiter algorithm (Layer 2).
+
+**Caveat: the scoped kind is the dispatch trigger, not the full data
+need.** A rule scoped to `KindParagraph` still sets its own layer by
+what it reads *inside* the block: `toc-directive` checks a marker
+(Layer 0), the forbidden-text rules scan prose (Layer 1), and
+`no-emphasis-as-heading` inspects emphasis (Layer 2). So the engine's
+parse-skip gate must key on each rule's *resolved* layer, not its
+trigger kind alone — a one-line per-rule annotation the migration adds
+beside the existing kind scope.
 
 A second finding sharpens the boundary: some block rules reference
 *every* inline type — `blank-line-around-lists` and `list-indent` both
@@ -168,8 +179,8 @@ tree. Two ways to serve them without a full parse:
   keeps the block-tree cost (~23%) — helps default configs, **not
   enough for parity.**
 - **Block skeleton (the parity change).** Present each block as a flat
-  `BlockSpan` (kind + line range + nesting), and adapt the 16
-  block-kind `CheckNode`s to read kind + line from it instead of
+  `BlockSpan` (kind + line range + nesting), and adapt the block-kind
+  `CheckNode`s to read kind + line from it instead of
   `n.(*ast.Heading)`. Mechanical, because they already read only kind +
   position. Removes block + inline cost — the version that can beat
   gomarklint.
@@ -180,11 +191,12 @@ whether any rule forces Layer 1/2, and otherwise run Layer 0 only.
 
 ### Where every rule lands
 
-- **Layer 0 (no parse): ~35 rules.** The pure-line rules, the 16
+- **Layer 0 (no parse): ~33 rules.** The pure-line rules, the
   CollectCodeBlockLines consumers, the astutil section/heading rules,
-  and the 16 block-kind NodeCheckers.
-- **Layer 1 (light inline index): ~10 rules.** The link / image / URL /
-  code-span / reference rules.
+  and the block-kind NodeCheckers whose body stays at block level
+  (~15).
+- **Layer 1 (light inline index): ~12 rules.** The link / image / URL /
+  code-span / raw-HTML / reference / prose-text rules.
 - **Layer 2 (full AST): the rest.** Emphasis semantics, prose
   (readability, structure, token budget, proper names), and the
   cross-file / directive rules (catalog, include, cross-file
