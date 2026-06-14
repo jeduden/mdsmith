@@ -54,7 +54,7 @@ row: "- [{summary}](../{filename})"
 - [Rebase, CI monitoring, and review comment resolution.](../docs/development/pr-fixup-workflow.md)
 - [The `jeduden/asdf-mdsmith` plugin installs the checksum-verified prebuilt binary; the short form awaits the asdf-plugins registry entry.](../docs/development/release-channels/asdf.md)
 - [A single-file `.flatpak` bundle built in CI from the x86_64 Linux release binary and attached to each GitHub release, installed by file with host filesystem access for the linter.](../docs/development/release-channels/flatpak.md)
-- [A composite action at the repository root downloads the checksum-verified release binary for the runner's OS and architecture and puts `mdsmith` on `PATH`; published to the GitHub Marketplace and referenced as `uses: jeduden/mdsmith@v0`.](../docs/development/release-channels/github-actions.md)
+- [A composite action at the repository root downloads the checksum-verified release binary for the runner's OS and architecture and puts `mdsmith` on `PATH`; published to the GitHub Marketplace and pinned by commit SHA or release tag.](../docs/development/release-channels/github-actions.md)
 - [Per-platform mdsmith binaries plus the .vsix, the checksum file, and a Sigstore signature, attached to a tag-named release.](../docs/development/release-channels/github-releases.md)
 - [`go install` compiles mdsmith from the tagged module source with the host Go 1.25+ toolchain; no prebuilt binary is downloaded.](../docs/development/release-channels/go.md)
 - [The `jeduden/homebrew-mdsmith` tap installs the checksum-verified prebuilt binary for macOS or Linux on Intel or arm64.](../docs/development/release-channels/homebrew.md)

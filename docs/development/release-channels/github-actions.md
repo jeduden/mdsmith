@@ -4,11 +4,11 @@ summary: >-
   A composite action at the repository root downloads the
   checksum-verified release binary for the runner's OS and
   architecture and puts `mdsmith` on `PATH`; published to
-  the GitHub Marketplace and referenced as
-  `uses: jeduden/mdsmith@v0`.
+  the GitHub Marketplace and pinned by commit SHA or
+  release tag.
 mechanism: push
 artifact: cli
-command: "uses: jeduden/mdsmith@v0"
+command: "uses: jeduden/mdsmith@v0.41.0"
 audience: Linting Markdown inside GitHub Actions CI
 platforms: [linux, macos, windows]
 registry: github.com/marketplace
@@ -56,11 +56,10 @@ one output, `version`, the string `mdsmith version` prints.
 Pin `uses:` to a full-length commit SHA for the strongest
 guarantee: a SHA can never move. mdsmith publishes
 immutable releases, so a release-tag pin like `@v0.41.0`
-is a safe, reproducible alternative. Only the floating
-`@v0` tag moves by design. GitHub recommends the SHA form,
-and this repository uses it for every third-party action.
-Keep the version in a trailing comment, as `# v0.41.0`
-above.
+is a safe, reproducible alternative. GitHub recommends the
+SHA form, and this repository uses it for every
+third-party action. Keep the version in a trailing
+comment, as `# v0.41.0` above.
 
 The action still verifies the downloaded binary's SHA-256
 against the release `checksums.txt`. So the action and the
@@ -77,12 +76,9 @@ maintainer accepts the Marketplace Developer Agreement and
 enables it on a release. A unique action `name` and
 `branding` are required; `action.yml` sets both.
 
-A `marketplace-major-tag` workflow runs on each published
-release. It moves the `@v0` major tag onto that release, so
-`uses: jeduden/mdsmith@v0` tracks the latest 0.x build. The
-first release that ships this `action.yml` makes the listing
-and `@v0` resolve. Until then, pin to a commit SHA on
-`main`.
+The first release that ships this `action.yml` makes the
+Marketplace listing and its release tags resolve. Until
+then, pin to a commit SHA on `main`.
 
 You can also skip the action entirely. Run the release
 binary in a `run:` step. That repeats by hand the download

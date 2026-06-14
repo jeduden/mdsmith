@@ -40,10 +40,13 @@ jobs:
           version: v0.41.0
           args: version
 
-      - name: Verify mdsmith stayed on PATH and reported a version
+      - name: Verify mdsmith stayed on PATH and reported the pinned version
         shell: bash
         env:
           GOT_VERSION: ${{ steps.mdsmith.outputs.version }}
         run: |
           mdsmith version
-          test -n "$GOT_VERSION"
+          case "$GOT_VERSION" in
+            *0.41.0*) echo "version output OK: $GOT_VERSION" ;;
+            *) echo "::error::unexpected version output: $GOT_VERSION"; exit 1 ;;
+          esac

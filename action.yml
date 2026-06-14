@@ -82,7 +82,12 @@ runs:
 
         # Verify the download against the release checksums file. macOS runners
         # have shasum but not GNU sha256sum, so fall back to it.
-        expected="$(grep " ${asset}\$" "${dest}/checksums.txt" | awk '{print $1}' | head -n1)"
+        # Pull the expected hash for our asset. Match the filename as the last
+        # field, tolerating the binary-mode "*" prefix, and stop at the first
+        # match. awk exits 0 even on no match, so the empty check below still
+        # runs — a grep | head pipeline would trip pipefail + set -e first and
+        # skip the friendly error.
+        expected="$(awk -v a="$asset" '{n = $NF; sub(/^\*/, "", n); if (n == a) {print $1; exit}}' "${dest}/checksums.txt")"
         if [ -z "$expected" ]; then
           echo "::error::${asset} not listed in checksums.txt"
           exit 1
@@ -101,13 +106,19 @@ runs:
         mv "${dest}/${asset}" "${dest}/${bin}"
         chmod +x "${dest}/${bin}"
         echo "$dest" >> "$GITHUB_PATH"
-        echo "version=$("${dest}/${bin}" version)" >> "$GITHUB_OUTPUT"
+        # Multiline-safe write, in case `mdsmith version` ever prints more
+        # than the single line it prints today.
+        {
+          echo "version<<__MDS_EOF__"
+          "${dest}/${bin}" version
+          echo "__MDS_EOF__"
+        } >> "$GITHUB_OUTPUT"
 
     - if: ${{ inputs.args != '' }}
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
         MDSMITH_ARGS: ${{ inputs.args }}
-      # MDSMITH_ARGS is intentionally unquoted so "check ." splits into
-      # separate arguments.
+      # MDSMITH_ARGS is intentionally unquoted so the shell word-splits it
+      # into separate arguments (and expands any globs), e.g. "check .".
       run: mdsmith $MDSMITH_ARGS
