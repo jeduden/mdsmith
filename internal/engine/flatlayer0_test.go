@@ -32,6 +32,18 @@ func lineLengthOnly() []rule.Rule {
 	return nil
 }
 
+// headingMaxConfig returns a config that adds a per-heading limit to
+// line-length. That setting makes the rule depend on the classifier's
+// heading-line set, which is not byte-identical to the AST walk, so the
+// run must NOT take the flat path.
+func headingMaxConfig() *config.Config {
+	cfg := config.Defaults()
+	cfg.Rules = map[string]config.RuleCfg{
+		"line-length": {Enabled: true, Settings: map[string]any{"heading-max": 40}},
+	}
+	return cfg
+}
+
 // TestComputeFlatLayer0Active pins the parse-skip eligibility gate: it
 // fires only with the opt-in flag, an all-line-capable enabled rule set,
 // and a config free of kinds and overrides (either could enable a
@@ -52,6 +64,13 @@ func TestComputeFlatLayer0Active(t *testing.T) {
 		{"full rule set", &Runner{Config: config.Defaults(), Rules: rule.All(), FlatLayer0: true}, false},
 		{"config has kinds", &Runner{Config: withKinds, Rules: lineLengthOnly(), FlatLayer0: true}, false},
 		{"config has overrides", &Runner{Config: withOverrides, Rules: lineLengthOnly(), FlatLayer0: true}, false},
+		// heading-max makes line-length depend on the divergent heading
+		// projection, so the configured rule reports LineCapable()=false.
+		{
+			"line-length heading-max",
+			&Runner{Config: headingMaxConfig(), Rules: lineLengthOnly(), FlatLayer0: true},
+			false,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
