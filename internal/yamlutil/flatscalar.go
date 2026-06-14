@@ -35,44 +35,10 @@ func FlatScalarFrontMatter(body []byte) (map[string]any, bool) {
 		if len(line) == 0 || line[0] == '#' {
 			continue
 		}
-		if bytes.HasPrefix(line, []byte("---")) || bytes.HasPrefix(line, []byte("...")) {
-			return nil, false
-		}
-		if line[0] == ' ' || line[0] == '\t' {
-			return nil, false
-		}
-
-		colonPos := findKeyColon(line)
-		if colonPos < 0 {
-			return nil, false
-		}
-
-		key := string(line[:colonPos])
-		if !isValidFlatKey(key) {
-			return nil, false
-		}
-
-		var rawVal []byte
-		if colonPos+1 < len(line) {
-			rawVal = bytes.TrimLeft(line[colonPos+1:], " \t")
-		}
-
-		// Bail on block scalars, flow collections, anchors, aliases, tags, explicit keys.
-		if len(rawVal) > 0 {
-			switch rawVal[0] {
-			case '|', '>', '[', '{', '&', '*', '?', '!':
-				return nil, false
-			}
-		}
-
-		rawVal = stripFlatInlineComment(rawVal)
-		rawVal = bytes.TrimRight(rawVal, " \t")
-
-		val, ok := parseFlatScalar(rawVal)
+		key, val, ok := parseFlatLine(line)
 		if !ok {
 			return nil, false
 		}
-
 		if result == nil {
 			result = make(map[string]any, 4)
 		}
@@ -84,6 +50,50 @@ func FlatScalarFrontMatter(body []byte) (map[string]any, bool) {
 	}
 
 	return result, true
+}
+
+// parseFlatLine parses a single non-empty, non-comment YAML front-matter line
+// into its key and scalar value. Returns ("", nil, false) when the line
+// requires full YAML parsing.
+func parseFlatLine(line []byte) (string, any, bool) {
+	if bytes.HasPrefix(line, []byte("---")) || bytes.HasPrefix(line, []byte("...")) {
+		return "", nil, false
+	}
+	if line[0] == ' ' || line[0] == '\t' {
+		return "", nil, false
+	}
+
+	colonPos := findKeyColon(line)
+	if colonPos < 0 {
+		return "", nil, false
+	}
+
+	key := string(line[:colonPos])
+	if !isValidFlatKey(key) {
+		return "", nil, false
+	}
+
+	var rawVal []byte
+	if colonPos+1 < len(line) {
+		rawVal = bytes.TrimLeft(line[colonPos+1:], " \t")
+	}
+
+	// Bail on block scalars, flow collections, anchors, aliases, tags, explicit keys.
+	if len(rawVal) > 0 {
+		switch rawVal[0] {
+		case '|', '>', '[', '{', '&', '*', '?', '!':
+			return "", nil, false
+		}
+	}
+
+	rawVal = stripFlatInlineComment(rawVal)
+	rawVal = bytes.TrimRight(rawVal, " \t")
+
+	val, ok := parseFlatScalar(rawVal)
+	if !ok {
+		return "", nil, false
+	}
+	return key, val, true
 }
 
 // nextFlatLine splits the next line from rest, trimming any trailing CR.
