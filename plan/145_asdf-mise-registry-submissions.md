@@ -56,31 +56,23 @@ on `asdf plugin add mdsmith`.
      and places the binary as `bin/mdsmith`.
   - `bin/list-bin-paths` prints `bin`.
 
-2. Add a CI workflow on `jeduden/asdf-mdsmith` that
-   runs `asdf install mdsmith latest` against the
-   most recent release and asserts `mdsmith version`
-   matches the resolved tag.
+2. Add a CI workflow on `jeduden/asdf-mdsmith`.
+   Run `asdf install mdsmith latest` and assert
+   that `mdsmith version` matches the resolved tag.
 3. After one successful release cycle, file a PR to
-   [`asdf-vm/asdf-plugins`](https://github.com/asdf-vm/asdf-plugins)
-   adding mdsmith so `asdf plugin add mdsmith`
-   resolves without an explicit URL.
-4. File a PR to mise's curated registry: the
-   `registry/` directory in
-   [`jdx/mise`](https://github.com/jdx/mise), one
-   TOML file per tool. (The former root
-   `registry.toml` was split into per-tool files;
-   the separate `mise-plugins/registry` repo was
-   archived in Oct 2024.) Add
-   `registry/mdsmith.toml` with a `[tools.mdsmith]`
-   entry on the `github:jeduden/mdsmith` backend
-   (`ubi:` is rejected for new entries; `aqua:` is
-   preferred only for tools already in the aqua
-   registry) and the required `test` field. The PR
-   body must make a popularity/maintenance case,
-   since the registry is curated. Once merged, the
-   prefix-less `mise use mdsmith@latest` form starts
-   resolving on user CLIs without any code change in
-   this repo.
+   [`asdf-vm/asdf-plugins`](https://github.com/asdf-vm/asdf-plugins).
+   The entry lets `asdf plugin add mdsmith` resolve
+   without an explicit URL.
+4. File a PR to mise's curated registry at
+   [`jdx/mise`](https://github.com/jdx/mise).
+   Each tool gets one TOML file under `registry/`.
+   Add `registry/mdsmith.toml` with a
+   `[tools.mdsmith]` section on the
+   `github:jeduden/mdsmith` backend and a `test`
+   field (`ubi:` is rejected for new entries).
+   The PR body must make a popularity case.
+   On merge, `mise use mdsmith@latest`
+   resolves without a backend prefix.
 
    **Filed and rejected.**
    [jdx/mise#10320](https://github.com/jdx/mise/pull/10320)
@@ -101,13 +93,11 @@ on `asdf plugin add mdsmith`.
    merges.
 6. [x] Update the release-workflow smoke-test matrix
    in [release.yml](../.github/workflows/release.yml)
-   to also exercise `asdf install mdsmith X.Y.Z` and
-   the bare `mise use mdsmith@X.Y.Z` form, in
-   addition to the `ubi:` form already covered. The
-   `asdf` entry is required (installs day one via the
-   explicit plugin URL); the bare `mise-registry`
-   entry is best-effort — it warns and exits 0 until
-   the jdx/mise registry PR merges.
+   to exercise `asdf install mdsmith X.Y.Z` and
+   `mise use mdsmith@X.Y.Z` alongside `ubi:`.
+   The `asdf` channel must pass. The `mise-registry`
+   channel is best-effort; it warns and exits 0
+   until the registry PR merges.
 
 ## Acceptance Criteria
 
