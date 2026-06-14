@@ -203,6 +203,42 @@ func TestFlatScalarFrontMatter_AnchorRejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "anchors/aliases are not permitted")
 }
 
+// benchFlatBody is the representative flat front matter that the catalog
+// hot path reads on the repo corpus: a doc summary plus the plan-style
+// id/status/model scalars. Both benchmarks below run it so the fast-path
+// vs. yaml.v3 CPU and alloc delta is directly comparable.
+var benchFlatBody = []byte(
+	"id: 2606130837\n" +
+		"title: \"Fast-path front-matter field reads\"\n" +
+		"status: \"🔳\"\n" +
+		"model: opus\n" +
+		"summary: \"The catalog rule reads every globbed target's front matter.\"\n")
+
+// BenchmarkFlatScalarFrontMatter measures the fast-path line scanner on a
+// representative flat body — the path the catalog rule now takes.
+func BenchmarkFlatScalarFrontMatter(b *testing.B) {
+	b.ReportAllocs()
+	for b.Loop() {
+		_, ok := yamlutil.FlatScalarFrontMatter(benchFlatBody)
+		if !ok {
+			b.Fatal("fast path unexpectedly deferred for flat body")
+		}
+	}
+}
+
+// BenchmarkUnmarshalSafe measures the full yaml.v3 decode on the same body —
+// the cost the fast path replaces. Compare against BenchmarkFlatScalarFrontMatter
+// to read the CPU and alloc delta.
+func BenchmarkUnmarshalSafe(b *testing.B) {
+	b.ReportAllocs()
+	for b.Loop() {
+		var m map[string]any
+		if err := yamlutil.UnmarshalSafe(benchFlatBody, &m); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 // TestFlatScalarFrontMatter_ZeroAllocsOnHit verifies that a warm call to
 // FlatScalarFrontMatter with a simple flat body allocates few times.
 func TestFlatScalarFrontMatter_ZeroAllocsOnHit(t *testing.T) {
