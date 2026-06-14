@@ -70,7 +70,12 @@ runs:
           base="https://github.com/jeduden/mdsmith/releases/download/${MDSMITH_VERSION}"
         fi
 
-        dest="${RUNNER_TEMP}/mdsmith-bin"
+        # Normalize the runner temp path's backslashes to forward slashes.
+        # Windows runners hand back a backslash path, and GNU coreutils
+        # escapes a backslash in a checksummed path by prefixing the hash
+        # with one — which would break the comparison below. The
+        # forward-slash form also resolves cleanly for the PATH write.
+        dest="${RUNNER_TEMP//\\//}/mdsmith-bin"
         mkdir -p "$dest"
         curl -fsSL --retry 3 --retry-delay 2 "${base}/${asset}" -o "${dest}/${asset}"
         curl -fsSL --retry 3 --retry-delay 2 "${base}/checksums.txt" -o "${dest}/checksums.txt"
