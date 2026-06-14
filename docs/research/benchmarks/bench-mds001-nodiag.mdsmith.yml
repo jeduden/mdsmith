@@ -1,0 +1,23 @@
+# Single-rule line-length (MDS001) benchmark profile, 0-diagnostic variant.
+#
+# Identical to bench-mds001.mdsmith.yml but with the limit raised to 10000
+# so line-length still scans every line yet emits no diagnostics. This
+# isolates the lint pipeline (parse / classify + rule scan + per-file
+# overhead) from output rendering, which is the variable the flat Layer-0
+# prototype's pure-lint case measures against gomarklint (plan 2606142147).
+front-matter: true
+categories:
+  prose: false
+  heading: false
+  structural: false
+  link: false
+  whitespace: false
+  directive: false
+  code: false
+  list: false
+  table: false
+  accessibility: false
+rules:
+  line-length:
+    max: 10000
+    exclude: ["code-blocks", "tables", "urls"]

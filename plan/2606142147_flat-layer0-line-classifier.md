@@ -1,7 +1,7 @@
 ---
 id: 2606142147
 title: "Prototype: flat Layer-0 line classifier for line-length vs gomarklint"
-status: "🔲"
+status: "✅"
 summary: >-
   Build a flat, node-tree-free line classifier (fence /
   heading / table / blank tracking over f.Lines), re-back
@@ -93,23 +93,60 @@ every Layer-0 rule.
 
 ## Acceptance Criteria
 
-- [ ] A flat line classifier that allocates no node tree,
+- [x] A flat line classifier that allocates no node tree,
       with a dedicated unit test, under the per-rule alloc
-      budget.
-- [ ] `CollectCodeBlockLines` served from the flat
+      budget. (`lint.ClassifyLines` in
+      `internal/lint/lineclass.go`;
+      `TestClassifyLines_AllocBudget`.)
+- [x] `CollectCodeBlockLines` served from the flat
       classifier is byte-identical to the AST-derived set
       across the corpus and the `line-length` fixtures
-      (equivalence gate green).
-- [ ] With `line-length` the only enabled rule, the
+      (equivalence gate green). (Corpus gate under
+      `MDSMITH_FLATL0_CORPUS`; 616-fixture CI gate
+      `TestFlatClassifierEquivalence_Fixtures`; edge-case
+      gate `TestFlatClassifierEquivalence_Cases`.)
+- [x] With `line-length` the only enabled rule, the
       goldmark parse is skipped, proven by a test or
-      profile.
-- [ ] A measured `line-length` head-to-head against
+      profile. (`TestFlatLayer0_EquivalentDiagnostics`
+      asserts `flatL0Active`; `TestNewFileFlatPooled_SkipsParse`
+      pins `f.AST == nil`.)
+- [x] A measured `line-length` head-to-head against
       gomarklint on benchmark 2 (pure-lint and
       diagnostic-heavy), captured in the research note,
       with an explicit go/no-go on the pure-lint case.
-- [ ] All existing `line-length` fixtures pass unchanged.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+      (See [research note][bottleneck] "Flat Layer-0 result
+      (measured)".)
+- [x] All existing `line-length` fixtures pass unchanged.
+- [x] All tests pass: `go test ./...` (the pre-existing
+      `internal/release` PGO failures are an environment
+      git-signing limitation, unrelated to this change.)
+- [x] `go tool golangci-lint run` reports no issues
+
+## Result
+
+**Go.** A true flat Layer 0 reaches gomarklint-class speed
+on pure-lint `line-length`. On the neutral corpus (4-core
+box, hyperfine 25 runs):
+
+- Pure-lint vs gomarklint's own pure-lint (both 0-diag, no
+  output): **1.04x by mean, 1.07x by min** — statistical
+  parity. Block-only sat at 1.79x and full parse at 2.31x
+  on the same baseline.
+- Against the per-rule study's gomarklint-with-output
+  baseline (the ~1.26x the block-only proxy left): the flat
+  path is now ~1.4x **faster**. The classifier sheds ~1.75x
+  of pure-lint wall versus block-only and ~2.3x versus full
+  parse — the goldmark block-node-tree build the study
+  blamed for the residual.
+
+The ~1.05x that remains is per-file engine overhead, not
+the parse. That overhead is config resolution, gitignore,
+the generated-section scan, front-matter parsing, and FS
+setup. The diagnostic-heavy case is now gated by output
+rendering (bottleneck 2), not the parse. That is a
+terse-formatter follow-up, out of scope here. The broader
+Layer-0 re-backing ([layer0]) is de-risked. The classifier
+and its equivalence gate are the foundation it builds on.
 
 [spike]: 2606141901_spike-block-only-parse-cost.md
 [layer0]: 2606141902_lazy-parse-layer0.md

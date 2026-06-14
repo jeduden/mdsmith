@@ -42,6 +42,14 @@ func (r *Rule) Name() string { return "line-length" }
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "line" }
 
+// LineCapable implements rule.LineCapable: line-length reads only f.Lines
+// and the classifier-backed projections (CollectCodeBlockLines, the table
+// byte-scan, and — for an optional per-heading limit — FlatHeadingLines),
+// so it runs on the flat Layer-0 path with no goldmark parse. It is the
+// gate the engine keys its parse-skip on (plan 2606142147); see the flat
+// fallbacks in buildCategories and collectHeadingLines.
+func (r *Rule) LineCapable() bool { return true }
+
 // isExcluded returns true if the given category is in the Exclude list.
 func (r *Rule) isExcluded(category string) bool {
 	for _, e := range r.Exclude {
@@ -445,9 +453,15 @@ func isTableLineStart(line []byte) bool {
 // setextUnderlineRe matches a Setext heading underline (one or more = or -).
 var setextUnderlineRe = regexp.MustCompile(`^[=-]+$`)
 
-// collectHeadingLines walks the AST and returns a set of 1-based line numbers
-// that are heading lines, including Setext underlines.
+// collectHeadingLines returns a set of 1-based heading line numbers,
+// including Setext underlines. On the flat Layer-0 path (plan 2606142147)
+// it serves the classifier-derived set; otherwise it walks the AST. Both
+// mark the ATX heading line, and for a Setext heading both the title line
+// and its underline, so the two paths agree.
 func collectHeadingLines(f *lint.File) map[int]struct{} {
+	if hl, ok := lint.FlatHeadingLines(f); ok {
+		return hl
+	}
 	lines := map[int]struct{}{}
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {

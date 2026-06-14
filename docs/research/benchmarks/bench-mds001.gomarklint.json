@@ -1,0 +1,9 @@
+{
+  "default": false,
+  "rules": {
+    "max-line-length": { "enabled": true, "lineLength": 80 }
+  },
+  "include": [],
+  "ignore": [],
+  "output": "text"
+}

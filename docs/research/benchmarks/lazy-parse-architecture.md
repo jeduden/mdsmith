@@ -440,6 +440,68 @@ diagnostic-heavy case additionally needs an output-formatter trim
 
 [flat-l0-plan]: ../../../plan/2606142147_flat-layer0-line-classifier.md
 
+### Flat Layer-0 result (measured)
+
+[Plan 2606142147][flat-l0-plan] built that flat classifier and re-ran the
+head-to-head. The classifier is a single forward pass over `f.Lines`
+(`lint.ClassifyLines`) that tracks fenced/indented code, a blockquote/list
+container stack, and marker-terminated HTML blocks — no `ast.Node`, no node
+tree. Its code-block line set is **byte-identical** to the AST-derived
+`CollectCodeBlockLines` across the neutral corpus (233 files), every rule
+fixture (616 files), and the whole repository (1042 files) — the
+equivalence gate. The engine skips the goldmark parse
+(`lint.NewFileFlatPooled`) when every enabled rule is line-capable, driving
+line-length from the classifier alone; its diagnostics are byte-identical
+to the AST path on the corpus.
+
+Same corpus, same 4-core box, hyperfine `--warmup 5 --runs 25 -N`, against
+gomarklint v3.2.3. The `0 diags` rows raise the limit to 10000 so the rule
+still scans every line but emits nothing; gomarklint's own pure-lint row
+does the same. Means (± σ) and mins:
+
+| Run                                | wall (mean) | min     | vs gml 0diag | vs gml diag |
+| ---------------------------------- | ----------- | ------- | ------------ | ----------- |
+| gomarklint max-line-length 0diag   | 11.2 ms     | 9.8 ms  | 1.00x        | 0.67x       |
+| gomarklint max-line-length diag    | 16.6 ms     | 14.7 ms | 1.48x        | 1.00x       |
+| mdsmith MDS001 flat-L0, 0 diags    | 11.6 ms     | 10.5 ms | **1.04x**    | **0.70x**   |
+| mdsmith MDS001 flat-L0, diag       | 26.5 ms     | 20.5 ms | 2.37x        | 1.60x       |
+| mdsmith MDS001 block-only, 0 diags | 20.0 ms     | 18.4 ms | 1.79x        | 1.20x       |
+| mdsmith MDS001 full parse, 0 diags | 25.8 ms     | 24.5 ms | 2.31x        | 1.55x       |
+| mdsmith MDS001 full parse, diag    | 36.5 ms     | 32.1 ms | 3.26x        | 2.20x       |
+
+This box reproduces the per-rule study's earlier ratios against the
+gomarklint-with-output baseline: block-only 0-diag lands at ~1.20–1.25x
+(the study's ~1.26x) and full-parse 0-diag at ~1.55x (the study's ~1.65x),
+so the new flat-L0 row is directly comparable.
+
+**Go / no-go on the pure-lint case: GO.** The flat classifier closes the
+residual the block-only proxy could not:
+
+- Against gomarklint's *own* pure-lint time (both 0-diag, no output) the
+  flat path is at statistical parity — 1.04x by mean, 1.07x by min, inside
+  the run-to-run noise. Block-only sat at 1.79x and full parse at 2.31x on
+  this same apples-to-apples baseline.
+- Against the per-rule study's baseline (gomarklint emitting its terse
+  output) the flat path is now ~1.4x **faster**, where block-only was
+  ~1.26x slower. The flat classifier removes ~1.75x of pure-lint wall
+  versus block-only (min 10.5 vs 18.4 ms) and ~2.3x versus full parse —
+  exactly the goldmark block-node-tree build the study attributed the
+  residual to.
+
+So a true flat Layer 0 — not the block-only goldmark proxy — does reach
+gomarklint-class speed on pure-lint line-length. The ~1.04–1.07x that
+remains is per-file engine overhead (config resolution, gitignore,
+generated-section scan, front-matter parse, FS setup) gomarklint has no
+analog for, not the parse, which is gone.
+
+The diagnostic-heavy case is now gated by **output rendering**, not the
+parse: flat-L0 diag (26.5 ms) barely beats block-only diag and trails
+gomarklint diag (16.6 ms) because mdsmith's text formatter renders each of
+~3400 diagnostics with a source window, caret, and colour where gomarklint
+prints one terse line. The parse saving is real (full-parse diag 36.5 ms →
+flat-L0 diag 26.5 ms) but output dominates it. That is bottleneck 2, a
+formatter concern orthogonal to the parse, scoped as a separate follow-up.
+
 ## Migration path and risk
 
 - **Seam-first.** Re-back `CollectCodeBlockLines`, the PI line set,

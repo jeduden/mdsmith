@@ -201,5 +201,5 @@ footer: |
 | 2606141910 | 🔲     | sonnet | [Extract build path helpers out of internal/rules/build](plan/2606141910_arch-fix-build-rules-dip.md)                                   |
 | 2606141911 | 🔲     | haiku  | [Remove deprecated engine wrappers for checker and lint](plan/2606141911_arch-fix-engine-deprecated-wrappers.md)                        |
 | 2606141912 | 🔲     | haiku  | [Add per-function unit tests for secreview/report.go](plan/2606141912_arch-fix-secreview-report-tests.md)                               |
-| 2606142147 | 🔲     | opus   | [Prototype: flat Layer-0 line classifier for line-length vs gomarklint](plan/2606142147_flat-layer0-line-classifier.md)                 |
+| 2606142147 | ✅     | opus   | [Prototype: flat Layer-0 line classifier for line-length vs gomarklint](plan/2606142147_flat-layer0-line-classifier.md)                 |
 <?/catalog?>

@@ -14,6 +14,22 @@ var generatedDirectiveNames = []string{"include", "catalog"}
 // AuthoredSource. Kept in sync with generatedDirectiveNames.
 var directiveMarkers = [][]byte{[]byte("<?include"), []byte("<?catalog")}
 
+// HasGeneratedDirective reports whether source contains an include or
+// catalog directive opener — the directives whose generated bodies
+// FindAllGeneratedRanges excludes. It is a cheap byte scan with no parse,
+// so callers can decide on the raw bytes whether a file even has a
+// generated section. The engine's flat Layer-0 path (plan 2606142147) uses
+// it to keep files with generated sections on the AST path, where the
+// generated-range suppression is available.
+func HasGeneratedDirective(source []byte) bool {
+	for _, marker := range directiveMarkers {
+		if bytes.Contains(source, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 // FindAllGeneratedRanges returns the content line ranges for all
 // include/catalog generated sections in f. Lines are 1-based and
 // relative to f.Source (i.e. post-front-matter when the file was
@@ -45,14 +61,7 @@ func FindAllGeneratedRanges(f *lint.File) []lint.LineRange {
 // a host file's metric values count only its own content.
 func AuthoredSource(source []byte) []byte {
 	// Quick check: skip the expensive parse when no directive markers are present.
-	found := false
-	for _, marker := range directiveMarkers {
-		if bytes.Contains(source, marker) {
-			found = true
-			break
-		}
-	}
-	if !found {
+	if !HasGeneratedDirective(source) {
 		return source
 	}
 
