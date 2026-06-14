@@ -1,9 +1,10 @@
 ---
 summary: >-
-  First-party hyperfine benchmark of mdsmith against mado,
-  rumdl, panache, and markdownlint-cli2 over two corpora, with
-  the exact commands, environment, and an honest reading of why
-  mdsmith trails the per-file Rust linters.
+  First-party hyperfine benchmark of mdsmith against
+  gomarklint, mado, rumdl, panache, and markdownlint-cli2 over
+  two corpora, with the exact commands, environment, and an
+  honest reading of where mdsmith trails the lighter per-file
+  linters.
 ---
 # Markdown linter benchmark
 
@@ -62,9 +63,9 @@ docs read.
   numbers, which is why the per-tool ratio within one run, not
   the cross-tool absolute time across runs, is the signal (see
   [Why absolute numbers move](#why-absolute-numbers-move-and-how-the-factor-stays-stable)).
-- mdsmith (Go 1.25.8 build), mado 0.3.0, rumdl 0.1.93,
-  panache 2.46.0, markdownlint-cli2 0.22.1 (markdownlint
-  0.40.0)
+- mdsmith (Go 1.25.8 build), gomarklint 3.2.3, mado 0.3.0,
+  rumdl 0.1.93, panache 2.46.0, markdownlint-cli2 0.22.1
+  (markdownlint 0.40.0)
 - Date: 2026-06-12 (the v0.43.0 release run's
   `benchmark-publish` measurement, promoted from the
   `assets` branch so the committed baseline shares the
@@ -106,31 +107,31 @@ the harness (run.sh) and `mdsmith fix` to refresh. -->
 mdsmith-only rules so the work class matches the markdownlint
 tools (see `bench-parity.mdsmith.yml`).
 
-**Repo corpus — 786 Markdown files** (median wall time, lower is
+**Repo corpus — 787 Markdown files** (median wall time, lower is
 better; `vs mado` is the ratio to mado's median):
 
 | Tool              | Median  | Min     | vs mado |
 | ----------------- | ------- | ------- | ------- |
 | mdsmith-parity    | 47 ms   | 46 ms   | 0.9x    |
-| gomarklint        | 51 ms   | 41 ms   | 1.0x    |
+| gomarklint        | 51 ms   | 47 ms   | 1.0x    |
 | mado              | 52 ms   | 51 ms   | 1.0x    |
-| mdsmith           | 136 ms  | 135 ms  | 2.6x    |
-| rumdl             | 252 ms  | 248 ms  | 4.9x    |
-| panache           | 533 ms  | 467 ms  | 10x     |
-| markdownlint-cli2 | 3806 ms | 3659 ms | 74x     |
+| mdsmith           | 137 ms  | 135 ms  | 2.7x    |
+| rumdl             | 250 ms  | 246 ms  | 4.8x    |
+| panache           | 588 ms  | 468 ms  | 11x     |
+| markdownlint-cli2 | 3813 ms | 3765 ms | 74x     |
 
 **Neutral corpus — 234 files** (Rust Book + Rust Reference,
 longer third-party prose):
 
 | Tool              | Median  | Min     | vs mado |
 | ----------------- | ------- | ------- | ------- |
-| gomarklint        | 24 ms   | 23 ms   | 0.7x    |
+| gomarklint        | 23 ms   | 22 ms   | 0.6x    |
 | mado              | 36 ms   | 36 ms   | 1.0x    |
-| mdsmith-parity    | 42 ms   | 41 ms   | 1.2x    |
-| mdsmith           | 109 ms  | 106 ms  | 3.0x    |
-| rumdl             | 146 ms  | 144 ms  | 4.1x    |
-| panache           | 429 ms  | 400 ms  | 12x     |
-| markdownlint-cli2 | 2360 ms | 2325 ms | 66x     |
+| mdsmith-parity    | 41 ms   | 40 ms   | 1.1x    |
+| mdsmith           | 109 ms  | 107 ms  | 3.0x    |
+| rumdl             | 147 ms  | 144 ms  | 4.0x    |
+| panache           | 430 ms  | 400 ms  | 12x     |
+| markdownlint-cli2 | 2373 ms | 2338 ms | 65x     |
 <?/include?>
 
 ## Reading the result
@@ -291,23 +292,33 @@ The rule-by-rule mapping against the other linters
 lives in the [peer-linter coverage matrix][mdcov]
 instead.
 
-### gomarklint joins the table at the next refresh
+### Fairness note on gomarklint
 
 gomarklint is wired into the harness: its release tarball
 and SHA-256 are pinned in the `benchTools` manifest
 (`internal/release/bench.go`), and `runHyperfine` drives
-it on bare defaults next to the other tools. From the
-merge onward, the per-merge `benchmark.yml` run and each
-release's `benchmark-publish` job measure it.
+it on bare defaults next to the other tools. The per-merge
+`benchmark.yml` run and each release's `benchmark-publish`
+job measure it.
 
-The tables above lack a gomarklint row only because they
-render from the committed `data/*.json` snapshot, and
-that snapshot moves when a maintainer re-runs the whole
-harness via `run.sh` and reviews the result in a PR —
-cross-tool ratios are only valid within a single run on
-one machine. The row appears with the next deliberate
-refresh. Until then the rule-by-rule comparison lives in
-the [peer-linter coverage matrix][mdcov].
+Whether a gomarklint row appears here depends on which copy
+you read. The committed `data/*.json` snapshot under this
+directory moves only when a maintainer re-runs `run.sh` and
+reviews the result in a PR. So that snapshot can still
+predate gomarklint and omit the row. The per-merge `assets`
+copy re-measures with gomarklint included, so it already
+carries the row.
+
+Read that row as the lightest-workload entry. gomarklint's
+defaults cover 21 of mdsmith's rules — 22 in all, one off by
+default, every one a full cover. That is the smallest
+default rule set of the markdownlint-family CLI tools here:
+mado covers 28, rumdl and markdownlint 42 each (counts from
+the [peer-linter coverage matrix][mdcov], generated from
+rule front matter). So when gomarklint posts the fastest
+time on both corpora, part of that lead is fewer checks per
+file, not a like-for-like win. It runs the same job as the
+others with a lighter rule set.
 
 [mdcov]: ../markdownlint-coverage/README.md
 
