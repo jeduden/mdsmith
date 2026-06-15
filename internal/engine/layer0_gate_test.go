@@ -18,9 +18,9 @@ import (
 // process environment (which is read only at init).
 func withLayer0Skip(t *testing.T, on bool) {
 	t.Helper()
-	prev := layer0SkipParse
-	layer0SkipParse = on
-	t.Cleanup(func() { layer0SkipParse = prev })
+	prev := layer0SkipOverride
+	layer0SkipOverride = &on
+	t.Cleanup(func() { layer0SkipOverride = prev })
 }
 
 // layer0OnlyConfig is a config whose only enabled rules resolve to Layer 0

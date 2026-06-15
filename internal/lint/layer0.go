@@ -227,14 +227,14 @@ func (s *scanner) scanBlock() {
 // space) to form the quote body, recursively scans that body, and maps the
 // child's code line numbers back onto the parent lines.
 //
-// Known limitation: a non-marker lazy line interior to a block quote whose
-// fenced code block is still open (`> ```\n> code\nlazy\n> ```\n`) is a
-// CommonMark corner whose goldmark-fork behaviour the scan does not exactly
-// reproduce — it ends the quote at the lazy line rather than folding it
-// into the still-open fence. The repository corpus contains no such shape
-// (the equivalence harness is green), and the parse-skip gate that relies
-// on this scan is default-off, so the divergence is latent. Returns false
-// when the cursor line is not a block quote.
+// Known limitation: an unclosed fenced code block nested two or more quote
+// levels deep (`> > ```\n> > x\n`) drops its phantom closing-fence line —
+// the deeper level's phantom falls past this level's body, and the bounds
+// guard skips it rather than panicking. Single-level unclosed fences,
+// closed fences, and lazy continuations are all handled. The repository
+// corpus contains no such shape (the equivalence harness is green) and the
+// parse-skip gate is default-off, so the divergence is latent. Returns
+// false when the cursor line is not a block quote.
 func (s *scanner) tryBlockquote() bool {
 	line := s.lines[s.i]
 	if paragraphLeadKind(line) != BlockQuote {
@@ -280,11 +280,25 @@ func (s *scanner) tryBlockquote() bool {
 		}
 		body = append(body, stripped)
 		parentLine = append(parentLine, s.i)
-		if !codeCapable && lineCanOpenCode(stripped) {
+		// Compute the fence-open once and feed both the codeCapable guard
+		// (does the body need a recursive scan?) and the open-fence tracking
+		// (can the next non-marker line lazily continue, or does the fence
+		// forbid it?), so openingFence runs once per body line, not twice.
+		fi, opensFence := openingFence(stripped)
+		if !codeCapable && (opensFence || lineHasNonFenceCode(stripped)) {
 			codeCapable = true
 		}
-		openFence = updateFenceState(openFence, stripped)
+		openFence = advanceFenceState(openFence, stripped, fi, opensFence)
 		s.i++
+	}
+	// A fence still open when the quote ends has its phantom closing-fence
+	// line one past the last body line — exactly the trailing element
+	// bytes.Split appends at document level. Append that slot to the body
+	// (mapped to the parent line after the last quote line) so the inner
+	// scan records the phantom close at the same parent line the AST does.
+	if openFence != nil && len(parentLine) > 0 {
+		body = append(body, nil)
+		parentLine = append(parentLine, parentLine[len(parentLine)-1]+1)
 	}
 	// Recursively scan the quote body only when it could contain code, and
 	// translate the child's code line numbers (1-based within body) back to
@@ -294,7 +308,16 @@ func (s *scanner) tryBlockquote() bool {
 	if codeCapable {
 		inner := scanLayer0(body)
 		for ln := range inner.CodeBlockLines {
-			s.markCode(parentLine[ln-1])
+			// A phantom closing-fence line from a deeper recursion level can
+			// fall one past this level's body (ln-1 == len(parentLine)); the
+			// bounds check keeps that rare nested-unclosed-fence case from
+			// panicking, at the cost of not marking the phantom line — a
+			// benign under-mark covered by the known-limitation note.
+			if ln-1 < len(parentLine) {
+				if p := parentLine[ln-1]; p < len(s.lines) {
+					s.markCode(p)
+				}
+			}
 		}
 	}
 	s.addSpan(BlockQuote, start, s.i-1, depth)
@@ -302,15 +325,18 @@ func (s *scanner) tryBlockquote() bool {
 	return true
 }
 
-// updateFenceState advances the open-fence tracking for a block quote's
-// stripped body line: when no fence is open, a fence opener starts one;
-// when a fence is open, a matching closing fence ends it. Returns the new
-// state. Used so the quote scan knows a fenced code block is still open and
-// therefore cannot be lazily continued by a non-marker line.
-func updateFenceState(open *fenceInfo, line []byte) *fenceInfo {
+// advanceFenceState advances the open-fence tracking for a block quote's
+// stripped body line, using the fence-open result the caller already
+// computed (opensFence / fi) so openingFence is not re-run. When no fence
+// is open, a fence opener starts one; when a fence is open, a matching
+// closing fence ends it. Used so the quote scan knows a fenced code block
+// is still open and therefore cannot be lazily continued by a non-marker
+// line.
+func advanceFenceState(open *fenceInfo, line []byte, fi fenceInfo, opensFence bool) *fenceInfo {
 	if open == nil {
-		if fi, ok := openingFence(line); ok {
-			return &fi
+		if opensFence {
+			f := fi
+			return &f
 		}
 		return nil
 	}
@@ -339,19 +365,15 @@ func isLazyContinuation(line []byte) bool {
 	return paragraphLeadKind(line) == BlockParagraph
 }
 
-// lineCanOpenCode reports whether line could contribute a code block to a
-// recursively-scanned block-quote body — it opens a fenced code fence,
-// carries a >=4-column indent, or is itself a nested block quote (whose
-// own deeper levels may hold code, which only the recursive scan can
-// reach). A block-quote body with no such line cannot contain a code
-// block, so the scan skips its recursive pass. This may over-report (an
-// indented or quoted line that yields no code), which only costs a
-// recursion that finds nothing; it must never under-report, so the nested
-// block-quote case is included.
-func lineCanOpenCode(line []byte) bool {
-	if _, ok := openingFence(line); ok {
-		return true
-	}
+// lineHasNonFenceCode reports whether line could contribute a code block to
+// a recursively-scanned block-quote body for a reason OTHER than opening a
+// fence — the caller already tested the fence case via openingFence and
+// folds it in separately. It is true when the line carries a >=4-column
+// indent (potential indented code) or is itself a nested block quote
+// (whose deeper levels may hold code only the recursive scan can reach).
+// May over-report (an indented or quoted line that yields no code), which
+// only costs a recursion that finds nothing; it must never under-report.
+func lineHasNonFenceCode(line []byte) bool {
 	if indentWidth(line) >= 4 && !isBlankLine(line) {
 		return true
 	}
