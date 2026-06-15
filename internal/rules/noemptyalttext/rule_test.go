@@ -188,6 +188,8 @@ func TestCheck_NilASTEquivalence(t *testing.T) {
 		{"two-empty", "![](a.png) and ![](b.png)\n"},
 		{"empty-multiline-para", "text\n![](img.png)\n"},
 		{"linked-image-empty", "[![](img.png)](dest)\n"},
+		{"ref-image-empty", "![][ref]\n\n[ref]: http://x/y.png\n"},
+		{"wrapped-image-list", "- ![\n  ](img.png)\n"},
 		{"no-image", "just text\n"},
 	}
 	for _, tc := range cases {

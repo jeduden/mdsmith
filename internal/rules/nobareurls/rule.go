@@ -38,62 +38,25 @@ func (r *Rule) Category() string { return "link" }
 // rule.WalkNodes.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	// On the parse-skipped path (f.AST nil) the AST walk surfaces no
-	// nodes, so drive the per-block dispatch over the Layer 0 block scan:
-	// each inline-bearing span is parsed in isolation and the same
-	// Text-node logic runs over it, with span-local segment offsets mapped
-	// back to the document. Re-using goldmark's own parser per span keeps
-	// the flagged bare-URL set byte-identical to the AST path.
+	// nodes, so serve from the shared run-grouped inline parse: the same
+	// Text-node logic runs over every parsed run, with run-local segment
+	// offsets mapped back to the document. Re-using goldmark's own parser
+	// keeps the flagged bare-URL set byte-identical to the AST path.
 	if f.AST == nil {
-		return rule.WalkBlocks(r, f)
+		var diags []lint.Diagnostic
+		lint.WalkInlineNodes(f, func(n ast.Node, base int) {
+			diags = append(diags, r.flagTextNode(n, f, base)...)
+		})
+		return diags
 	}
 	return rule.WalkNodes(r, f)
 }
 
-// CheckBlock implements rule.BlockChecker. It parses the span's own source
-// bytes in isolation and applies the per-Text-node bare-URL check,
-// translating each span-local offset to the document via the span's start
-// offset. Re-using goldmark's parser on the span reproduces the link,
-// autolink, and code-span context the AST walk relied on to suppress
-// non-bare URLs.
-func (r *Rule) CheckBlock(span lint.BlockSpan, f *lint.File) []lint.Diagnostic {
-	start := f.LineStartOffset(span.Start - 1)
-	end := f.LineEndOffset(span.End - 1)
-	if end <= start {
-		return nil
-	}
-	block := f.Source[start:end]
-	doc := lint.ParseInline(block)
-	diags := make([]lint.Diagnostic, 0)
-	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		diags = append(diags, r.flagTextNode(n, f, start)...)
-		return ast.WalkContinue, nil
-	})
-	if len(diags) == 0 {
-		return nil
-	}
-	return diags
-}
+// InlineCapable implements rule.InlineChecker: Check serves the nil-AST
+// path from lint.WalkInlineNodes (which reads lint.InlineBlocks).
+func (r *Rule) InlineCapable() bool { return true }
 
-// blockKinds is the static block-kind interest CheckBlock declares via
-// rule.BlockChecker; package-level so BlockKinds returns it without
-// allocating. A bare URL can appear in body text under any of these block
-// kinds, so the rule reacts to every inline-bearing span the Layer 0 scan
-// emits.
-var blockKinds = []lint.BlockKind{
-	lint.BlockParagraph,
-	lint.BlockATXHeading,
-	lint.BlockSetextHeading,
-	lint.BlockList,
-	lint.BlockQuote,
-}
-
-// BlockKinds implements rule.BlockChecker.
-func (r *Rule) BlockKinds() []lint.BlockKind { return blockKinds }
-
-var _ rule.BlockChecker = (*Rule)(nil)
+var _ rule.InlineChecker = (*Rule)(nil)
 
 // CheckNode implements rule.NodeChecker. On the AST path the segment
 // offsets are already document-absolute, so the base offset is zero.

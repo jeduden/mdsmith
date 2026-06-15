@@ -183,6 +183,8 @@ func TestCheck_NilASTEquivalence(t *testing.T) {
 		{"quote-bare", "> quoted https://example.com\n"},
 		{"http-and-https", "http://a.com and https://b.com\n"},
 		{"trailing-punct", "see https://example.com.\n"},
+		{"wrapped-list-url", "- see\n  https://example.com\n"},
+		{"bq-multiline-url", "> line one https://a.com\n> line two\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

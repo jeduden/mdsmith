@@ -72,37 +72,33 @@ func (r *Rule) checkEmpty(f *lint.File) []lint.Diagnostic {
 		r.checkEmptyNode(f.AST, f, 0, &diags)
 		return diags
 	}
-	for _, span := range lint.Layer0(f).BlockSpans {
-		if !inlineBearingBlock(span.Kind) {
-			continue
-		}
-		start := f.LineStartOffset(span.Start - 1)
-		end := f.LineEndOffset(span.End - 1)
-		if end <= start {
-			continue
-		}
-		doc := lint.ParseInline(f.Source[start:end])
-		r.checkEmptyNode(doc, f, start, &diags)
-	}
+	// On the parse-skipped path the document tree is unavailable, so the
+	// same per-node check runs over the shared run-grouped inline parse,
+	// with run-local segment offsets mapped to the document via base.
+	lint.WalkInlineNodes(f, func(n ast.Node, base int) {
+		r.checkEmptyNodeOne(n, f, base, &diags)
+	})
 	return diags
 }
 
-// inlineBearingBlock reports whether a Layer 0 block kind can carry inline
-// link or image markup the empty-link check reacts to.
-func inlineBearingBlock(k lint.BlockKind) bool {
-	switch k {
-	case lint.BlockParagraph, lint.BlockATXHeading, lint.BlockSetextHeading,
-		lint.BlockList, lint.BlockQuote:
-		return true
-	default:
-		return false
-	}
-}
-
+// checkEmptyNode recursively applies checkEmptyNodeOne over n's subtree on
+// the AST path, where offsets are document-absolute (base zero).
 func (r *Rule) checkEmptyNode(n ast.Node, f *lint.File, base int, diags *[]lint.Diagnostic) {
 	if n == nil {
 		return
 	}
+	r.checkEmptyNodeOne(n, f, base, diags)
+	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+		r.checkEmptyNode(c, f, base, diags)
+	}
+}
+
+// checkEmptyNodeOne flags a single Link or Image node with an empty/`#`
+// destination, or (links only) empty visible text. base maps the node's
+// segment offsets to the document: zero on the AST path, the run's start
+// offset on the inline-walk path (where WalkInlineNodes already visits
+// every node, so no extra recursion is needed here).
+func (r *Rule) checkEmptyNodeOne(n ast.Node, f *lint.File, base int, diags *[]lint.Diagnostic) {
 	switch node := n.(type) {
 	case *ast.Image:
 		if emptyDestination(node.Destination) {
@@ -115,9 +111,6 @@ func (r *Rule) checkEmptyNode(n ast.Node, f *lint.File, base int, diags *[]lint.
 		case !hasVisibleContent(node, f.Source, base):
 			*diags = append(*diags, r.diag(f, nodeLine(node, f, base), "empty link text"))
 		}
-	}
-	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
-		r.checkEmptyNode(c, f, base, diags)
 	}
 }
 

@@ -30,59 +30,27 @@ func (r *Rule) Category() string { return "accessibility" }
 // rule.WalkNodes.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	// On the parse-skipped path (f.AST nil) the AST walk surfaces no
-	// nodes, so drive the per-block dispatch over the Layer 0 block scan:
-	// each inline-bearing span is parsed in isolation and the same Image
-	// logic runs over it, with span-local segment offsets mapped back to
-	// the document. Re-using goldmark's parser per span keeps the flagged
-	// empty-alt set byte-identical to the AST path.
+	// nodes, so serve from the shared run-grouped inline parse: the same
+	// Image logic runs over every parsed run, with run-local segment
+	// offsets mapped back to the document. Re-using goldmark's parser
+	// keeps the flagged empty-alt set byte-identical to the AST path.
 	if f.AST == nil {
-		return rule.WalkBlocks(r, f)
+		var diags []lint.Diagnostic
+		lint.WalkInlineNodes(f, func(n ast.Node, base int) {
+			if d, ok := r.checkImage(n, f, base); ok {
+				diags = append(diags, d)
+			}
+		})
+		return diags
 	}
 	return rule.WalkNodes(r, f)
 }
 
-// CheckBlock implements rule.BlockChecker. It parses the span's own source
-// bytes in isolation and applies the per-Image empty-alt check, mapping
-// span-local segment offsets to the document via the span's start offset.
-func (r *Rule) CheckBlock(span lint.BlockSpan, f *lint.File) []lint.Diagnostic {
-	start := f.LineStartOffset(span.Start - 1)
-	end := f.LineEndOffset(span.End - 1)
-	if end <= start {
-		return nil
-	}
-	doc := lint.ParseInline(f.Source[start:end])
-	var diags []lint.Diagnostic
-	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		if d, ok := r.checkImage(n, f, start); ok {
-			diags = append(diags, d)
-		}
-		return ast.WalkContinue, nil
-	})
-	if len(diags) == 0 {
-		return nil
-	}
-	return diags
-}
+// InlineCapable implements rule.InlineChecker: Check serves the nil-AST
+// path from lint.WalkInlineNodes (which reads lint.InlineBlocks).
+func (r *Rule) InlineCapable() bool { return true }
 
-// blockKinds is the static block-kind interest CheckBlock declares via
-// rule.BlockChecker; package-level so BlockKinds returns it without
-// allocating. An image can appear in body text under any of these block
-// kinds.
-var blockKinds = []lint.BlockKind{
-	lint.BlockParagraph,
-	lint.BlockATXHeading,
-	lint.BlockSetextHeading,
-	lint.BlockList,
-	lint.BlockQuote,
-}
-
-// BlockKinds implements rule.BlockChecker.
-func (r *Rule) BlockKinds() []lint.BlockKind { return blockKinds }
-
-var _ rule.BlockChecker = (*Rule)(nil)
+var _ rule.InlineChecker = (*Rule)(nil)
 
 // CheckNode implements rule.NodeChecker. On the AST path segment offsets
 // are already document-absolute, so the base offset is zero.

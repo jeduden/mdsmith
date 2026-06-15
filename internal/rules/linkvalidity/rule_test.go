@@ -303,6 +303,9 @@ func TestCheck_NilASTEquivalence(t *testing.T) {
 		{"two-empty", "[a]() and [b]()\n"},
 		{"no-link", "just plain text\n"},
 		{"multiline-para", "text [link]()\nmore text\n"},
+		{"ref-link-empty-text", "[ ][ref]\n\n[ref]: http://example.com\n"},
+		{"wrapped-link-list", "- [\n  ](http://x.com)\n"},
+		{"bq-empty-link", "> [text]()\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -120,16 +120,15 @@ type File struct {
 	inlineIndexDone atomic.Bool
 	inlineIndexMu   sync.Mutex
 
-	// emphasisLines caches the per-block whole-paragraph-emphasis scan
-	// (inline_emphasis.go) behind WholeParagraphEmphasisLines. It is the
-	// Layer 1 projection source for MDS018 (no-emphasis-as-heading) on the
-	// parse-skipped path (f.AST nil), so the rule reads the lone-emphasis
-	// paragraph lines from a bounded per-block parse instead of walking
-	// f.AST. atomic.Bool + mutex matches the caches above for the same
-	// closure-box reason.
-	emphasisLines     []EmphasisParagraph
-	emphasisLinesDone atomic.Bool
-	emphasisLinesMu   sync.Mutex
+	// inlineBlocks caches the run-grouped per-block inline parse
+	// (inline_blocks.go) behind InlineBlocks. It is the single shared
+	// inline-node stream every inline rule consumes on the parse-skipped
+	// path (f.AST nil), so each contiguous run of inline-bearing lines is
+	// parsed once per file rather than once per rule. atomic.Bool + mutex
+	// matches the caches above for the same closure-box reason.
+	inlineBlocks     []InlineBlock
+	inlineBlocksDone atomic.Bool
+	inlineBlocksMu   sync.Mutex
 
 	// proseRanges caches the byte-offset projection behind ProseRanges:
 	// the source spans inside prose nodes (paragraph, heading, list-item

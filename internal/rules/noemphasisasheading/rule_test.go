@@ -219,6 +219,10 @@ func TestCheck_NilASTEquivalence(t *testing.T) {
 		{"placeholder-question", "*?*\n", []string{"?"}},
 		{"placeholder-ellipsis", "*...*\n", []string{"..."}},
 		{"placeholder-no-match", "*real heading*\n", []string{"?"}},
+		{"blockquote-emph", "> *just emphasis*\n", nil},
+		{"wrapped-emph-quote", "> *just\n> emph*\n", nil},
+		{"multi-bq-emph", "> *a*\n>\n> *b*\n", nil},
+		{"list-emph-not-flagged", "- *x*\n", nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

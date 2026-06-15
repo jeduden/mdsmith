@@ -52,9 +52,13 @@ func paragraphFirstLine(para ast.Node, f *File) int {
 
 func indexLoneEmphasisLines(src string) []int {
 	f := NewFileLines("doc.md", []byte(src))
-	out := WholeParagraphEmphasisLines(f)
-	if len(out) == 0 {
+	paras := WholeParagraphEmphasis(f)
+	if len(paras) == 0 {
 		return nil
+	}
+	out := make([]int, len(paras))
+	for i, p := range paras {
+		out[i] = p.Line
 	}
 	return out
 }
@@ -103,5 +107,5 @@ func TestWholeParagraphEmphasis_Equivalence(t *testing.T) {
 // no source) returning nil, matching the empty-document case.
 func TestWholeParagraphEmphasis_NilSource(t *testing.T) {
 	f := &File{}
-	assert.Nil(t, WholeParagraphEmphasisLines(f))
+	assert.Nil(t, WholeParagraphEmphasis(f))
 }
