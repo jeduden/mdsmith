@@ -41,6 +41,20 @@ func (f *File) ensureCodeSpanRanges() {
 	defer f.codeSpansMu.Unlock()
 	if !f.codeSpansDone.Load() {
 		defer f.codeSpansDone.Store(true)
+		// On the parse-skipped path (f.AST nil) the goldmark walk would
+		// surface nothing, so serve from the Layer 1 inline index instead.
+		// A struct-literal File with neither an AST nor a source has no code
+		// spans either way. The corpus equivalence harness pins the two
+		// projection sources byte-identical.
+		if f.AST == nil {
+			if len(f.Source) == 0 {
+				return
+			}
+			idx := InlineIndexProjection(f)
+			f.codeSpanContent = idx.CodeSpanContent
+			f.codeSpanLiteral = idx.CodeSpanLiteral
+			return
+		}
 		collectCodeSpanRangesInto(f.AST, f.Source, &f.codeSpanContent, &f.codeSpanLiteral)
 	}
 }
