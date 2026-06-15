@@ -587,6 +587,18 @@ func TestOpeningFence_TwoCharRunNotAFence(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestScanParagraph_ATXHeadingInterruptsParagraph(t *testing.T) {
+	// An ATX heading can interrupt a paragraph (CommonMark CanInterruptParagraph).
+	// The paragraph span ends before the heading; the heading is its own span.
+	l0 := scan("para text\n## Section\n")
+	kinds := make(map[BlockKind]int)
+	for _, sp := range l0.BlockSpans {
+		kinds[sp.Kind]++
+	}
+	assert.Equal(t, 1, kinds[BlockParagraph], "paragraph before heading")
+	assert.Equal(t, 1, kinds[BlockATXHeading], "ATX heading after paragraph")
+}
+
 func TestScanParagraph_FenceInterruptsParagraph(t *testing.T) {
 	// A fenced code block interrupts an open paragraph without a blank line.
 	// The paragraph span ends before the fence; the fence is its own span.
