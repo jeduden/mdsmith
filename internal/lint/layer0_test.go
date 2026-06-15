@@ -573,7 +573,7 @@ func TestScanParagraph_HTMLInterruptsParagraph(t *testing.T) {
 	// An HTML block (types 1–6) interrupts a paragraph without a blank line.
 	// The paragraph span ends before the HTML line; the HTML is its own span.
 	l0 := scan("para text\n<div>\nmore\n</div>\n")
-	var kinds []BlockKind
+	kinds := make([]BlockKind, 0, len(l0.BlockSpans))
 	for _, sp := range l0.BlockSpans {
 		kinds = append(kinds, sp.Kind)
 	}
@@ -591,7 +591,7 @@ func TestScanParagraph_FenceInterruptsParagraph(t *testing.T) {
 	// A fenced code block interrupts an open paragraph without a blank line.
 	// The paragraph span ends before the fence; the fence is its own span.
 	l0 := scan("para\n```\ncode\n```\n")
-	var kinds []BlockKind
+	kinds := make([]BlockKind, 0, len(l0.BlockSpans))
 	for _, sp := range l0.BlockSpans {
 		kinds = append(kinds, sp.Kind)
 	}
