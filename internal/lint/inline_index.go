@@ -1,5 +1,7 @@
 package lint
 
+import "github.com/jeduden/mdsmith/pkg/goldmark/util"
+
 // Layer 1 inline index: a byte-level scan over File.Source that locates
 // inline code spans without a goldmark parse. It is the parse-skip source
 // for CodeSpanContentRanges / CodeSpanLiteralRanges when f.AST is nil,
@@ -209,7 +211,7 @@ func trimCodeSpanContent(src []byte, start, end int) (int, int) {
 	if !isCodeSpanSpace(src[start]) || !isCodeSpanSpace(src[end-1]) {
 		return start, end
 	}
-	if allCodeSpanSpaces(src, start, end) {
+	if allCodeSpanBlank(src, start, end) {
 		return start, end
 	}
 	return start + 1, end - 1
@@ -223,21 +225,15 @@ func isCodeSpanSpace(b byte) bool {
 	return b == ' ' || b == '\n'
 }
 
-// isCodeSpanBlank reports whether b counts as blank for the "content is
-// entirely spaces" guard that suppresses the single-space trim. goldmark
-// uses util.IsSpace (backed by spaceTable) for this check: it accepts ' ',
-// '\t', '\n', and '\r' (spaceTable indices 32, 9, 10, 13). Using a wider
-// predicate here than isCodeSpanSpace matches goldmark's two-predicate
-// design: narrow for the trim boundary, wide for the all-blank guard.
-func isCodeSpanBlank(b byte) bool {
-	return b == ' ' || b == '\t' || b == '\n' || b == '\r'
-}
-
-// allCodeSpanSpaces reports whether every byte in [start, end) is blank
-// per isCodeSpanBlank; such a span is never trimmed.
-func allCodeSpanSpaces(src []byte, start, end int) bool {
+// allCodeSpanBlank reports whether every byte in [start, end) is blank
+// per goldmark's util.IsSpace (spaceTable: ' ', '\t', '\n', '\r'). A span
+// that is entirely blank is never trimmed — CommonMark §6.1's all-spaces
+// guard — and goldmark checks this via node.IsBlank which calls util.IsBlank
+// which calls util.IsSpace. Delegating to util.IsSpace keeps the predicate
+// in sync with goldmark automatically if spaceTable ever widens.
+func allCodeSpanBlank(src []byte, start, end int) bool {
 	for k := start; k < end; k++ {
-		if !isCodeSpanBlank(src[k]) {
+		if !util.IsSpace(src[k]) {
 			return false
 		}
 	}
