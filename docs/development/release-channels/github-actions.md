@@ -14,13 +14,13 @@ platforms: [linux, macos, windows]
 registry: github.com/marketplace
 credential: GITHUB_TOKEN
 job: release
-channelurl: https://github.com/marketplace/actions/mdsmith
+channelurl: https://github.com/marketplace/actions/mdsmith-markdown-linter
 weight: 15
 unlisted: true
 ---
 # GitHub Actions
 
-Release page: <https://github.com/marketplace/actions/mdsmith>
+Release page: <https://github.com/marketplace/actions/mdsmith-markdown-linter>
 
 The repository root carries an `action.yml`, so a workflow
 step runs mdsmith with:
