@@ -548,3 +548,54 @@ func TestIsThematicBreak_NonMarkerLeadIsFalse(t *testing.T) {
 	// thematic break.
 	assert.False(t, isThematicBreak([]byte("abc")))
 }
+
+func TestOpeningFence_IndentOnlyLineReturnsFalse(t *testing.T) {
+	// A line that is all spaces (indent >= len(line)) is not a fence opener.
+	_, ok := openingFence([]byte("   "))
+	assert.False(t, ok)
+}
+
+func TestTryFence_InfoFenceImmediateClose(t *testing.T) {
+	// An info-string fence closed on the very next line with no content must
+	// mark both the opening and closing fence lines (lastContent==0 path).
+	l0 := scan("```go\n```\n")
+	assert.Equal(t, []int{1, 2}, keysOf(l0.CodeBlockLines))
+}
+
+func TestTryPI_UnclosedAtEOF(t *testing.T) {
+	// A PI block with no closing ?> runs to the trailing-empty-line guard;
+	// all body lines are marked as PI.
+	l0 := scan("<?include\nf: x\n")
+	assert.Equal(t, []int{1, 2}, keysOf(l0.PIBlockLines))
+}
+
+func TestScanParagraph_HTMLInterruptsParagraph(t *testing.T) {
+	// An HTML block (types 1–6) interrupts a paragraph without a blank line.
+	// The paragraph span ends before the HTML line; the HTML is its own span.
+	l0 := scan("para text\n<div>\nmore\n</div>\n")
+	var kinds []BlockKind
+	for _, sp := range l0.BlockSpans {
+		kinds = append(kinds, sp.Kind)
+	}
+	assert.Contains(t, kinds, BlockParagraph)
+	assert.Contains(t, kinds, BlockHTML)
+}
+
+func TestOpeningFence_TwoCharRunNotAFence(t *testing.T) {
+	// A run of only 2 fence characters (length < 3) is not a fence opener.
+	_, ok := openingFence([]byte("``code"))
+	assert.False(t, ok)
+}
+
+func TestScanParagraph_FenceInterruptsParagraph(t *testing.T) {
+	// A fenced code block interrupts an open paragraph without a blank line.
+	// The paragraph span ends before the fence; the fence is its own span.
+	l0 := scan("para\n```\ncode\n```\n")
+	var kinds []BlockKind
+	for _, sp := range l0.BlockSpans {
+		kinds = append(kinds, sp.Kind)
+	}
+	assert.Contains(t, kinds, BlockParagraph)
+	assert.Contains(t, kinds, BlockFencedCode)
+	assert.Equal(t, []int{2, 3, 4}, keysOf(l0.CodeBlockLines))
+}
