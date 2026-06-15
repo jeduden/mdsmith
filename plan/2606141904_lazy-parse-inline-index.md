@@ -98,36 +98,44 @@ Done:
       enabled.
 
 This branch re-backs the hybrid inline rules via a
-**per-block lazy parse**, not a bespoke
+**shared per-block lazy parse**, not a bespoke
 link/image/autolink/raw-HTML byte scanner.
-`lint.ParseInline` re-parses each Layer 0 span with
-goldmark's own parser. The inline tree is then
-byte-identical by construction. The cost stays proportional
-to the inline-bearing blocks. Each rule maps the
-block-local segment offsets back to the document with the
-span's start offset. The NodeChecker rules implement
-`rule.BlockChecker`, so the engine's nil-AST block-span
-dispatch drives them.
+`lint.InlineBlocks` re-parses each contiguous run of
+inline-bearing lines with goldmark's own parser, once per
+file and cached. The inline tree is byte-identical by
+construction. Runs (not single-line Layer 0 spans) keep a
+construct that wraps onto a list or quote continuation line
+whole. The document's link reference definitions are seeded
+into each run's context, so a cross-block `[text][ref]`
+still resolves.
+
+Each rule maps the run-local segment offsets back to the
+document with the run's start offset via
+`lint.WalkInlineNodes`. The NodeChecker rules
+(MDS012/018/032) implement `rule.InlineChecker`. That
+marker routes a NodeChecker to its own `Check` on a nil-AST
+File. `link-validity` (MDS062) is a plain `Check` rule, so
+the engine already calls its `Check` on that path.
 
 Done (this branch):
 
-- [x] `no-emphasis-as-heading` (MDS018): bounded
+- [x] `no-emphasis-as-heading` (MDS018): the
       whole-paragraph-emphasis detector
-      ([inline_emphasis.go][newfile-emph]) parses only the
-      paragraphs whose first non-space byte is `*` or `_`,
-      byte-identical to goldmark's lone-emphasis-child
-      result. This is the per-block fallback the plan calls
-      for. MDS018 implements `rule.BlockChecker`.
-- [x] `no-bare-urls` (MDS012): `CheckBlock` parses each
-      inline-bearing span and applies the Text-node URL
-      check; URLs inside links, autolinks, and code spans
-      are skipped exactly as on the AST path.
-- [x] `no-empty-alt-text` (MDS032): `CheckBlock` parses
-      each span and applies the per-Image empty-alt check
-      with offset remapping.
-- [x] `link-validity` (MDS062): the empty-link check parses
-      each span; the reversed-link check was already
-      byte-level on the re-backed code-span ranges.
+      ([inline_emphasis.go][newfile-emph]) reads the shared
+      run parse and flags every paragraph (including those
+      goldmark nests in a block quote) whose sole inline
+      child is one emphasis span, byte-identical to
+      goldmark's lone-emphasis-child result.
+- [x] `no-bare-urls` (MDS012): the same Text-node URL check
+      runs over the shared run parse; URLs inside links,
+      autolinks, and code spans are skipped exactly as on
+      the AST path.
+- [x] `no-empty-alt-text` (MDS032): the per-Image empty-alt
+      check runs over the shared run parse with offset
+      remapping.
+- [x] `link-validity` (MDS062): the empty-link check runs
+      over the shared run parse; the reversed-link check was
+      already byte-level on the re-backed code-span ranges.
 - [x] All four reclassified `A-no-skipping` by the audit;
       `internal/rulelayer` admits them to Layer 0. Corpus
       and end-to-end gate equivalence

@@ -147,19 +147,14 @@ func (f *File) trailingEmptyLine(i int) bool {
 	return i == len(f.Lines)-1 && len(f.Lines[i]) == 0
 }
 
-// ParseInlineWithRefs parses block as a standalone Markdown document with
-// the given link reference definitions pre-seeded into the parse context,
-// so a reference-style link or image in block resolves against a definition
-// that lives in another block of the document. The returned tree shares no
-// state with the File.
-func ParseInlineWithRefs(block []byte, refs []Reference) ast.Node {
-	return parseInlineWithRefsArena(block, refs, arena.New())
-}
-
-// parseInlineWithRefsArena is ParseInlineWithRefs with a caller-owned arena
-// so consecutive run parses for one file reuse slab memory. The arena must
+// parseInlineWithRefsArena parses block as a standalone Markdown document
+// with the given link reference definitions pre-seeded into the parse
+// context, so a reference-style link or image in block resolves against a
+// definition that lives in another block of the document. The caller-owned
+// arena lets consecutive run parses for one file reuse slab memory; it must
 // outlive every node in the returned tree (the inline scan caches them on
-// the File, so the arena lives with the File).
+// the File, so the arena lives with the File). The returned tree shares no
+// state with the File.
 func parseInlineWithRefsArena(block []byte, refs []Reference, a *arena.Arena) ast.Node {
 	ctx := parser.NewContext()
 	for _, ref := range refs {

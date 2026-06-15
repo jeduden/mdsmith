@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/jeduden/mdsmith/pkg/goldmark/arena"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
 )
@@ -42,7 +43,7 @@ func TestInlineBlocks_EmptySource(t *testing.T) {
 // match the whole-document parse on cross-block references.
 func TestParseInlineWithRefs_ResolvesCrossBlockReference(t *testing.T) {
 	refs := []Reference{parser.NewReference([]byte("ref"), []byte("http://example.com"), nil)}
-	doc := ParseInlineWithRefs([]byte("[text][ref]"), refs)
+	doc := parseInlineWithRefsArena([]byte("[text][ref]"), refs, arena.New())
 	found := false
 	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if entering {
@@ -55,7 +56,7 @@ func TestParseInlineWithRefs_ResolvesCrossBlockReference(t *testing.T) {
 	assert.True(t, found, "seeded reference resolves [text][ref] to a Link node")
 
 	// Without the seed the same source has no Link node — it degrades to text.
-	none := ParseInlineWithRefs([]byte("[text][ref]"), nil)
+	none := parseInlineWithRefsArena([]byte("[text][ref]"), nil, arena.New())
 	hasLink := false
 	_ = ast.Walk(none, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if entering {
@@ -83,4 +84,34 @@ func TestWalkInlineNodes_OffsetMapping(t *testing.T) {
 	})
 	assert.Contains(t, gotText, "http://example.com",
 		"base+segment offsets recover the document bytes")
+}
+
+// TestInlineBlocks_RefDefGate pins the `]:` short-circuit in
+// scanInlineBlocks: a source carrying a reference definition resolves a
+// cross-block reference link to a Link node (the seed fired), while a
+// reference-free source still parses but leaves a bare `[text][ref]` as
+// plain text (no seed, no Link).
+func TestInlineBlocks_RefDefGate(t *testing.T) {
+	countLinks := func(blocks []InlineBlock) int {
+		n := 0
+		for _, b := range blocks {
+			_ = ast.Walk(b.Node, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+				if entering {
+					if _, ok := node.(*ast.Link); ok {
+						n++
+					}
+				}
+				return ast.WalkContinue, nil
+			})
+		}
+		return n
+	}
+
+	withDef := NewFileLines("doc.md", []byte("[text][ref]\n\n[ref]: http://example.com\n"))
+	assert.Equal(t, 1, countLinks(InlineBlocks(withDef)),
+		"a `]:` definition seeds the reference so [text][ref] resolves to a Link")
+
+	noDef := NewFileLines("doc.md", []byte("[text][ref] and more text here\n"))
+	assert.Equal(t, 0, countLinks(InlineBlocks(noDef)),
+		"no `]:` definition leaves [text][ref] as unresolved plain text")
 }
