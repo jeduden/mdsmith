@@ -43,7 +43,10 @@ func TestInlineIndex_CodeSpanEquivalence(t *testing.T) {
 		{"empty-span", "a `` b\n"},
 		{"unclosed-run", "a `code without close\n"},
 		{"mismatched-len", "a ``code` more\n"},
-		{"adjacent", "`one``two`\n"},
+		// One span, not two: single-backtick opener at 0; the double-backtick
+		// run at positions 4-5 has length 2 ≠ 1, so it is interior content,
+		// not a closer. The closer is the single backtick at 9.
+		{"single-span-double-interior", "`one``two`\n"},
 		{"two-spans", "`one` and `two`\n"},
 		{"escaped-backtick", "a \\`not a span\\` b\n"},
 		{"escaped-then-real", "a \\` then `real` b\n"},
@@ -59,10 +62,13 @@ func TestInlineIndex_CodeSpanEquivalence(t *testing.T) {
 		// \r is not in goldmark's isSpaceOrNewline (code_span.go), so a span
 		// whose boundary byte is \r must not be trimmed by the inline scanner.
 		{"crlf-boundary-no-trim", "a `\r x\r` b\n"},
-		// A content of all-blank bytes (including \t) suppresses trim in
-		// goldmark via util.IsBlank / util.IsSpace which includes TAB. The
-		// inline scanner's all-blank guard must use the same wider predicate.
-		{"all-tab-no-trim", "a `\t` b\n"},
+		// \t is not in goldmark's isSpaceOrNewline, so a span whose sole
+		// content byte is \t has a non-space boundary and is returned
+		// without trimming by the early-exit path in trimCodeSpanContent.
+		{"tab-only-no-trim", "a `\t` b\n"},
+		// When boundaries are spaces but the interior contains \t, goldmark's
+		// all-blank guard (util.IsBlank / util.IsSpace, which includes TAB)
+		// fires and suppresses trim. This case exercises allCodeSpanBlank.
 		{"space-tab-space-no-trim", "a ` \t ` b\n"},
 		{"backtick-in-html-block", "<div>\n`not a span`\n</div>\n\n`real`\n"},
 	}
