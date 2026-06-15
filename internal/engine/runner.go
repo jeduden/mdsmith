@@ -572,13 +572,25 @@ func frontMatterPrefix(source []byte, stripFrontMatter bool) []byte {
 	return prefix
 }
 
-// layer0SkipParse is the master toggle for the Layer 0 parse-skip gate. It
-// is seeded from the MDSMITH_LAYER0_SKIP environment variable at process
-// start. Default off: the gate is a benchmarking and CI-equivalence seam
-// for now, not yet a shipped optimization, so a normal run always parses.
-// It is a package var (rather than a const read inline) so the gate's
-// equivalence tests can flip it without mutating the process environment.
-var layer0SkipParse = os.Getenv("MDSMITH_LAYER0_SKIP") != ""
+// layer0SkipOverride, when non-nil, forces the Layer 0 parse-skip gate
+// on (*true) or off (*false), bypassing the environment. The gate's
+// in-package equivalence tests set it so they can flip the toggle without
+// mutating the process environment. nil (the default) defers to
+// MDSMITH_LAYER0_SKIP.
+var layer0SkipOverride *bool
+
+// layer0SkipEnabled reports whether the master Layer 0 parse-skip toggle
+// is on. It honours an in-process override when set, otherwise reads the
+// MDSMITH_LAYER0_SKIP environment variable each call so a test in any
+// package can flip it via t.Setenv. Default off: the gate is a
+// benchmarking and CI-equivalence seam for now, not yet a shipped
+// optimization, so a normal run always parses.
+func layer0SkipEnabled() bool {
+	if layer0SkipOverride != nil {
+		return *layer0SkipOverride
+	}
+	return os.Getenv("MDSMITH_LAYER0_SKIP") != ""
+}
 
 // layer0SkipEligible reports whether this file's run can skip the goldmark
 // parse and lint from the Layer 0 scan alone. Three conditions must hold:
@@ -596,7 +608,7 @@ var layer0SkipParse = os.Getenv("MDSMITH_LAYER0_SKIP") != ""
 func (r *Runner) layer0SkipEligible(
 	source []byte, rules []rule.Rule, effective map[string]config.RuleCfg,
 ) bool {
-	if !layer0SkipParse || r.BlockOnlyParse || r.FlatLayer0 {
+	if !layer0SkipEnabled() || r.BlockOnlyParse || r.FlatLayer0 {
 		return false
 	}
 	if bytes.Contains(source, piOpenScan) {

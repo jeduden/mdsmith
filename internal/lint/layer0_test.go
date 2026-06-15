@@ -121,6 +121,14 @@ func TestLayer0_NestedBlockquotedFencedCodeIsCode(t *testing.T) {
 	assert.Equal(t, []int{1, 2, 3}, keysOf(l0.CodeBlockLines))
 }
 
+func TestLayer0_UnclosedBlockquotedFenceMarksPhantomClose(t *testing.T) {
+	// An unclosed fence inside a block quote records its phantom
+	// closing-fence line on the parent line after the last quote line,
+	// matching the AST.
+	l0 := scan("> ```\n> code\n")
+	assert.Equal(t, []int{1, 2, 3}, keysOf(l0.CodeBlockLines))
+}
+
 func TestLayer0_IndentedLazyContinuationAfterQuoteIsNotCode(t *testing.T) {
 	// An indented line that lazily continues a block quote paragraph is not
 	// an indented code block (goldmark: lazy continuation, not code).
