@@ -126,6 +126,30 @@ func TestNewFileFromSource_StripDisabled(t *testing.T) {
 	assert.Equal(t, string(source), string(f.Source))
 }
 
+func TestNewFileLinesFromSource_WithFrontMatter(t *testing.T) {
+	// The parse-skipping sibling strips front matter, records the prefix and
+	// line offset exactly as NewFileFromSource, and leaves AST nil.
+	source := []byte("---\ntitle: hello\n---\n# Heading\n")
+	f := NewFileLinesFromSource("test.md", source, true)
+
+	assert.Nil(t, f.AST, "parse must be skipped")
+	assert.Equal(t, "---\ntitle: hello\n---\n", string(f.FrontMatter))
+	assert.Equal(t, 3, f.LineOffset)
+	assert.True(t, f.StripFrontMatter)
+	assert.Equal(t, "# Heading\n", string(f.Source))
+}
+
+func TestNewFileLinesFromSource_StripDisabled(t *testing.T) {
+	source := []byte("---\ntitle: hello\n---\n# Heading\n")
+	f := NewFileLinesFromSource("test.md", source, false)
+
+	assert.Nil(t, f.AST, "parse must be skipped")
+	assert.Nil(t, f.FrontMatter)
+	assert.Equal(t, 0, f.LineOffset)
+	assert.False(t, f.StripFrontMatter)
+	assert.Equal(t, string(source), string(f.Source))
+}
+
 func TestAdjustDiagnostics_ShiftsLineNumbers(t *testing.T) {
 	f := &File{LineOffset: 5}
 	diags := []Diagnostic{
