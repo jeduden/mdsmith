@@ -11,6 +11,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/rules/linkvalidity"
 	"github.com/jeduden/mdsmith/internal/rules/nobareurls"
 	"github.com/jeduden/mdsmith/internal/rules/noemphasisasheading"
 	"github.com/jeduden/mdsmith/internal/rules/noemptyalttext"
@@ -25,6 +26,7 @@ func inlineEquivRules() []rule.Rule {
 		&nobareurls.Rule{},
 		&noemphasisasheading.Rule{},
 		&noemptyalttext.Rule{},
+		&linkvalidity.Rule{},
 	}
 }
 

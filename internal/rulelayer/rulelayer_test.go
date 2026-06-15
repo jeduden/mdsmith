@@ -51,7 +51,15 @@ func TestIsLayer0(t *testing.T) {
 	// each implements rule.BlockChecker so the engine's block-span dispatch
 	// drives them on the parse-skipped File. The audit now classes them
 	// "A-no-skipping" and the gate admits both.
-	for _, id := range []string{"MDS012", "MDS018"} {
+	// MDS012 (no-bare-urls), MDS018 (no-emphasis-as-heading), MDS032
+	// (no-empty-alt-text), and MDS062 (link-validity) were "hybrid": each
+	// walked the inline tree and produced no (or different) diagnostics on
+	// a nil AST. Layer 1 re-backs all four via the per-block inline parse
+	// (internal/lint/inline_blocks.go, inline_emphasis.go): the NodeChecker
+	// rules implement rule.BlockChecker so the engine's block-span dispatch
+	// drives them, and MDS062 (a plain Check rule) parses each span in its
+	// own Check. The audit now classes all four "A-no-skipping".
+	for _, id := range []string{"MDS012", "MDS018", "MDS032", "MDS062"} {
 		assert.True(t, IsLayer0(id), "%s should be Layer 0 once re-backed on Layer 1", id)
 		assert.Equal(t, Layer0, Of(id))
 	}

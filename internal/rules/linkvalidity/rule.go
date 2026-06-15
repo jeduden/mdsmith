@@ -60,31 +60,64 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 // Direct recursion (entering visits only) replaces ast.Walk: the rule
 // only reacts to two node types, and the closure-driven double visit
 // per node was measurable on every file.
+//
+// On the parse-skipped path (f.AST nil) the document tree is unavailable,
+// so each inline-bearing Layer 0 block span is parsed in isolation and the
+// same node recursion runs over it, with span-local segment offsets mapped
+// back to the document via the span's start offset. Re-using goldmark's
+// parser per span reproduces the link/image nodes byte-identically.
 func (r *Rule) checkEmpty(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
-	r.checkEmptyNode(f.AST, f, &diags)
+	if f.AST != nil {
+		r.checkEmptyNode(f.AST, f, 0, &diags)
+		return diags
+	}
+	for _, span := range lint.Layer0(f).BlockSpans {
+		if !inlineBearingBlock(span.Kind) {
+			continue
+		}
+		start := f.LineStartOffset(span.Start - 1)
+		end := f.LineEndOffset(span.End - 1)
+		if end <= start {
+			continue
+		}
+		doc := lint.ParseInline(f.Source[start:end])
+		r.checkEmptyNode(doc, f, start, &diags)
+	}
 	return diags
 }
 
-func (r *Rule) checkEmptyNode(n ast.Node, f *lint.File, diags *[]lint.Diagnostic) {
+// inlineBearingBlock reports whether a Layer 0 block kind can carry inline
+// link or image markup the empty-link check reacts to.
+func inlineBearingBlock(k lint.BlockKind) bool {
+	switch k {
+	case lint.BlockParagraph, lint.BlockATXHeading, lint.BlockSetextHeading,
+		lint.BlockList, lint.BlockQuote:
+		return true
+	default:
+		return false
+	}
+}
+
+func (r *Rule) checkEmptyNode(n ast.Node, f *lint.File, base int, diags *[]lint.Diagnostic) {
 	if n == nil {
 		return
 	}
 	switch node := n.(type) {
 	case *ast.Image:
 		if emptyDestination(node.Destination) {
-			*diags = append(*diags, r.diag(f, nodeLine(node, f), "empty image destination"))
+			*diags = append(*diags, r.diag(f, nodeLine(node, f, base), "empty image destination"))
 		}
 	case *ast.Link:
 		switch {
 		case emptyDestination(node.Destination):
-			*diags = append(*diags, r.diag(f, nodeLine(node, f), "empty link destination"))
-		case !hasVisibleContent(node, f.Source):
-			*diags = append(*diags, r.diag(f, nodeLine(node, f), "empty link text"))
+			*diags = append(*diags, r.diag(f, nodeLine(node, f, base), "empty link destination"))
+		case !hasVisibleContent(node, f.Source, base):
+			*diags = append(*diags, r.diag(f, nodeLine(node, f, base), "empty link text"))
 		}
 	}
 	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
-		r.checkEmptyNode(c, f, diags)
+		r.checkEmptyNode(c, f, base, diags)
 	}
 }
 
@@ -110,8 +143,9 @@ func emptyDestination(dest []byte) bool {
 
 // hasVisibleContent reports whether the link renders any visible
 // content: an image, code span, autolink, raw HTML, or non-whitespace
-// text anywhere in its subtree.
-func hasVisibleContent(link *ast.Link, source []byte) bool {
+// text anywhere in its subtree. base maps span-local Text segment offsets
+// to the document on the per-block path (zero on the AST path).
+func hasVisibleContent(link *ast.Link, source []byte, base int) bool {
 	found := false
 	_ = ast.Walk(link, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
@@ -122,7 +156,7 @@ func hasVisibleContent(link *ast.Link, source []byte) bool {
 			found = true
 			return ast.WalkStop, nil
 		case *ast.Text:
-			if len(bytes.TrimSpace(t.Segment.Value(source))) > 0 {
+			if len(bytes.TrimSpace(source[base+t.Segment.Start:base+t.Segment.Stop])) > 0 {
 				found = true
 				return ast.WalkStop, nil
 			}
@@ -134,9 +168,11 @@ func hasVisibleContent(link *ast.Link, source []byte) bool {
 
 // nodeLine returns the 1-based source line of an inline node. Inline
 // nodes carry no position, so it uses the first descendant text segment
-// and falls back to the nearest block ancestor's first line.
-func nodeLine(n ast.Node, f *lint.File) int {
-	if ln := firstTextLine(n, f); ln > 0 {
+// and falls back to the nearest block ancestor's first line. base maps
+// span-local offsets to the document on the per-block path (zero on the
+// AST path).
+func nodeLine(n ast.Node, f *lint.File, base int) int {
+	if ln := firstTextLine(n, f, base); ln > 0 {
 		return ln
 	}
 	for p := n.Parent(); p != nil; p = p.Parent() {
@@ -145,18 +181,18 @@ func nodeLine(n ast.Node, f *lint.File) int {
 		}
 		lines := p.Lines()
 		if lines != nil && lines.Len() > 0 {
-			return f.LineOfOffset(lines.At(0).Start)
+			return f.LineOfOffset(base + lines.At(0).Start)
 		}
 	}
 	return 1
 }
 
-func firstTextLine(n ast.Node, f *lint.File) int {
+func firstTextLine(n ast.Node, f *lint.File, base int) int {
 	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
 		if t, ok := c.(*ast.Text); ok {
-			return f.LineOfOffset(t.Segment.Start)
+			return f.LineOfOffset(base + t.Segment.Start)
 		}
-		if ln := firstTextLine(c, f); ln > 0 {
+		if ln := firstTextLine(c, f, base); ln > 0 {
 			return ln
 		}
 	}
