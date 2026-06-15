@@ -67,6 +67,30 @@ func TestCheckSetextHeadingNotFlagged(t *testing.T) {
 	assert.Empty(t, diags)
 }
 
+// TestCheckNilASTMatchesAST pins the BlockChecker migration: Check on a
+// nil-AST File (the Layer 0 parse-skip path, served from lint.Layer0)
+// must produce byte-identical diagnostics to the AST path for every
+// thematic-break shape the rule flags. This is the per-rule equivalence
+// the corpus gate enforces in aggregate.
+func TestCheckNilASTMatchesAST(t *testing.T) {
+	srcs := [][]byte{
+		[]byte("# Title\n\nText.\n\n---\n\nMore.\n"),
+		[]byte("# Title\n\nText.\n\n***\n\nMore.\n"),
+		[]byte("# Title\n\nText.\n\n- - -\n\nMore.\n"),
+		[]byte("# Title\n\nText.\n\n-----\n\nMore.\n"),
+		[]byte("# Title\n---\n\nText.\n"),
+		[]byte("# Title\n\n---\nText.\n"),
+		[]byte("Title\n=====\n\nText.\n"),
+		[]byte("a\n\n---\n\nb\n\n***\n\nc\n"),
+	}
+	for _, src := range srcs {
+		astDiags := newRule().Check(newFile(t, "f.md", src))
+		l0Diags := newRule().Check(lint.NewFileLines("f.md", src))
+		assert.Equal(t, astDiags, l0Diags,
+			"nil-AST diagnostics must match AST for %q", string(src))
+	}
+}
+
 func TestCheckDisabledByDefault(t *testing.T) {
 	r := &Rule{Style: "dash", Length: 3, RequireBlankLines: true}
 	assert.False(t, r.EnabledByDefault())

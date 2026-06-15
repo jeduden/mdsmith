@@ -134,8 +134,8 @@
   {
     "id": "MDS013",
     "name": "blank-line-around-headings",
-    "category": "hybrid",
-    "nil_ast_safe": false,
+    "category": "A-no-skipping",
+    "nil_ast_safe": true,
     "code_block_sensitive": false,
     "fired": true,
     "is_node_checker": true,
@@ -475,8 +475,8 @@
   {
     "id": "MDS044",
     "name": "horizontal-rule-style",
-    "category": "hybrid",
-    "nil_ast_safe": false,
+    "category": "A-no-skipping",
+    "nil_ast_safe": true,
     "code_block_sensitive": false,
     "fired": true,
     "is_node_checker": true,

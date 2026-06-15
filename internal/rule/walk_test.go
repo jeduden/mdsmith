@@ -87,6 +87,49 @@ func TestWalkNodes_EqualsManualWalk(t *testing.T) {
 	assert.Equal(t, manual, viaHelper)
 }
 
+// blockCheckerStub emits one diagnostic per thematic-break span and
+// records every span kind it is shown, so the test can assert WalkBlocks
+// dispatches only the kinds BlockKinds declares, in document order.
+type blockCheckerStub struct {
+	nodeCheckerStub
+	seenKinds []lint.BlockKind
+}
+
+func (s *blockCheckerStub) CheckBlock(span lint.BlockSpan, f *lint.File) []lint.Diagnostic {
+	s.seenKinds = append(s.seenKinds, span.Kind)
+	return []lint.Diagnostic{{RuleID: s.ID(), Line: span.Start, Message: "block seen"}}
+}
+
+func (s *blockCheckerStub) BlockKinds() []lint.BlockKind {
+	return []lint.BlockKind{lint.BlockThematicBreak}
+}
+
+var _ BlockChecker = (*blockCheckerStub)(nil)
+
+// TestWalkBlocks_DispatchesScopedKindsInOrder pins that WalkBlocks drives
+// CheckBlock only for spans whose kind is in BlockKinds, in document
+// order, on a nil-AST File served from the Layer 0 scan.
+func TestWalkBlocks_DispatchesScopedKindsInOrder(t *testing.T) {
+	f := lint.NewFileLines("t.md", []byte("# Heading\n\ntext\n\n---\n\nmore\n\n***\n"))
+
+	s := &blockCheckerStub{}
+	diags := WalkBlocks(s, f)
+
+	require.Len(t, diags, 2, "one diagnostic per thematic-break span")
+	assert.Equal(t, 5, diags[0].Line, "first break at line 5")
+	assert.Equal(t, 9, diags[1].Line, "second break at line 9")
+	for _, k := range s.seenKinds {
+		assert.Equal(t, lint.BlockThematicBreak, k,
+			"only thematic-break spans are dispatched")
+	}
+}
+
+// TestWalkBlocks_NilFile pins the defensive nil guard so unit-test stubs
+// that pass a nil File do not crash.
+func TestWalkBlocks_NilFile(t *testing.T) {
+	assert.Nil(t, WalkBlocks(&blockCheckerStub{}, nil))
+}
+
 // TestWalkNodes_NilFileAndNilAST pins the defensive nil guard:
 // unit-test stubs that construct `&lint.File{}` literals must not
 // crash WalkNodes. The engine path never produces such files (NewFile

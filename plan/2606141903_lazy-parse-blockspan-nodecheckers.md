@@ -1,7 +1,7 @@
 ---
 id: 2606141903
 title: "Lazy parse: BlockSpan seam for block NodeCheckers"
-status: "🔲"
+status: "✅"
 summary: >-
   Run the block-kind NodeChecker rules over the Layer 0
   BlockSpan model instead of the heap AST, so parity's
@@ -46,14 +46,42 @@ they already read only kind and position.
    `n.(*ast.Heading)` and onto `BlockSpan`.
 4. Extend the parse-skip gate to cover these rules.
 
+## Implementation notes
+
+The seam is `rule.BlockChecker`. It refines `NodeChecker`
+with `CheckBlock` and `BlockKinds`, paired with
+`rule.WalkBlocks`. `internal/checker` adds a block-span
+dispatch. It runs each enabled block checker over the
+Layer 0 spans when `f.AST` is nil. The AST path is
+unchanged.
+
+Two block-only rules were migrated.
+
+- MDS044 (`horizontal-rule-style`) reads a thematic-break
+  span.
+- MDS013 (`blank-line-around-headings`) reads ATX and
+  setext heading spans.
+
+Each keeps `CheckNode` for the parsed path. Each gains a
+`CheckBlock` that resolves the same source lines from the
+span. The output is byte-identical. The other block-kind
+rules read inline content. They stay on the AST path.
+
+The Layer 0 scanner gained ATX-heading paragraph
+interruption in `scanParagraph`. An ATX heading mid-text
+now ends the paragraph and emits its own span, as goldmark
+does. The audit reclassifies both migrated rules
+`A-no-skipping`. So `rulelayer` admits them to Layer 0.
+The gate covers them with no new override.
+
 ## Acceptance Criteria
 
-- [ ] Parity's block NodeCheckers run with no parse when
+- [x] Parity's block NodeCheckers run with no parse when
       no Layer 1 or Layer 2 rule is enabled.
-- [ ] Each migrated rule's diagnostics are byte-identical
+- [x] Each migrated rule's diagnostics are byte-identical
       to its AST output across the corpus and fixtures.
-- [ ] All existing rule fixtures pass unchanged.
-- [ ] The equivalence gate is green.
-- [ ] All tests pass: `go test ./...`
+- [x] All existing rule fixtures pass unchanged.
+- [x] The equivalence gate is green.
+- [x] All tests pass: `go test ./...`
 
 [research]: ../docs/research/benchmarks/lazy-parse-architecture.md

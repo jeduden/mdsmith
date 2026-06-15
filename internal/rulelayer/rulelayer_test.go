@@ -26,7 +26,11 @@ func TestEmbeddedManifestMatchesAuditOracle(t *testing.T) {
 
 func TestIsLayer0(t *testing.T) {
 	// A few representative "A-no-skipping" rules resolve to Layer 0.
-	for _, id := range []string{"MDS006", "MDS007", "MDS022", "MDS064"} {
+	// MDS013 (blank-line-around-headings) and MDS044 (horizontal-rule-
+	// style) were migrated to rule.BlockChecker (plan 2606141903): their
+	// nil-AST paths serve from the Layer 0 block scan, so the audit
+	// reclassified them A-no-skipping and the gate now admits them.
+	for _, id := range []string{"MDS006", "MDS007", "MDS013", "MDS022", "MDS044", "MDS064"} {
 		assert.True(t, IsLayer0(id), "%s should be Layer 0", id)
 		assert.Equal(t, Layer0, Of(id))
 	}

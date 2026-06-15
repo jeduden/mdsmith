@@ -215,6 +215,73 @@ func TestLayer0Gate_CodeSpanRuleForcesParse(t *testing.T) {
 	assert.Empty(t, res.Diagnostics)
 }
 
+// TestLayer0Gate_BlockCheckerRulesSkipParse proves acceptance criterion 1
+// of plan 2606141903: the migrated block NodeCheckers (MDS013
+// blank-line-around-headings, MDS044 horizontal-rule-style) run with no
+// parse. With only those two block rules enabled and the gate on, the
+// File reaches the rules with a nil AST, and the block-span dispatch still
+// produces their diagnostics.
+func TestLayer0Gate_BlockCheckerRulesSkipParse(t *testing.T) {
+	withLayer0Skip(t, true)
+	// A heading with no blank line after (MDS013) and a non-dash thematic
+	// break with surrounding blanks (MDS044). No fence, tab, or four-space
+	// indent, so the gate skips the parse.
+	dir, path := writeDoc(t, "# Title\nbody\n\n***\n\nmore\n")
+
+	probe := &astProbeRule{}
+	cfg := config.Defaults()
+	for name := range cfg.Rules {
+		cfg.Rules[name] = config.RuleCfg{Enabled: false}
+	}
+	cfg.Rules["blank-line-around-headings"] = config.RuleCfg{Enabled: true}
+	cfg.Rules["horizontal-rule-style"] = config.RuleCfg{Enabled: true}
+	cfg.Rules[probe.Name()] = config.RuleCfg{Enabled: true}
+
+	r := &Runner{
+		Config:           cfg,
+		Rules:            append(rule.All(), probe),
+		StripFrontMatter: true,
+		RootDir:          dir,
+	}
+	res := r.Run([]string{path})
+	require.Empty(t, res.Errors)
+	assert.True(t, probe.sawNilAST,
+		"block-checker-only config must skip the parse")
+	assert.NotEmpty(t, res.Diagnostics,
+		"block checkers must still produce diagnostics on the parse-skipped path")
+}
+
+// TestLayer0Gate_BlockCheckerDiagnosticsMatchFullParse is the per-rule
+// equivalence for the migrated block NodeCheckers driven through the real
+// engine: the diagnostics with the gate on (block-span dispatch, nil AST)
+// are identical to the gate off (AST walk).
+func TestLayer0Gate_BlockCheckerDiagnosticsMatchFullParse(t *testing.T) {
+	dir, path := writeDoc(t, "# Title\nbody\n\n***\n\nmore\n\n## Next\nx\n")
+	cfg := config.Defaults()
+	for name := range cfg.Rules {
+		cfg.Rules[name] = config.RuleCfg{Enabled: false}
+	}
+	cfg.Rules["blank-line-around-headings"] = config.RuleCfg{Enabled: true}
+	cfg.Rules["horizontal-rule-style"] = config.RuleCfg{Enabled: true}
+
+	run := func(skip bool) []lint.Diagnostic {
+		withLayer0Skip(t, skip)
+		r := &Runner{
+			Config:           cfg,
+			Rules:            rule.All(),
+			StripFrontMatter: true,
+			RootDir:          dir,
+		}
+		return r.Run([]string{path}).Diagnostics
+	}
+
+	skipped := run(true)
+	parsed := run(false)
+	require.NotEmpty(t, parsed)
+	assert.Equal(t, parsed, skipped,
+		"block-checker parse-skip must match the full parse")
+}
+
 // astProbeRule is a test rule that records whether the File it checked had
 // a nil AST (the parse-skipped state). It declares itself Layer 0 via an
 // id the audit manifest covers... but as a synthetic rule its id is not in

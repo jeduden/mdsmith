@@ -43,6 +43,65 @@ type KindScopedChecker interface {
 	EnteringKinds() []ast.NodeKind
 }
 
+// BlockChecker is an optional capability for a NodeChecker rule whose
+// per-node logic depends only on a block's kind and source line span —
+// never on the inline node tree under it. Such a rule can run from the
+// Layer 0 block scan (lint.Layer0) without a goldmark parse: the engine
+// drives CheckBlock over the block spans of a nil-AST File instead of
+// CheckNode over an AST.
+//
+// Contract: for every File, CheckBlock must return precisely the
+// diagnostics CheckNode would over the same document — same line,
+// column, message, severity — so the two paths are byte-identical
+// (the layer0 equivalence gate enforces this across the corpus).
+// BlockKinds must return every lint.BlockKind CheckBlock can emit a
+// diagnostic for; the engine dispatches a span to a rule only when the
+// span's kind is in that set, exactly as KindScopedChecker.EnteringKinds
+// scopes the AST walk. The result must be constant for the life of the
+// rule.
+type BlockChecker interface {
+	NodeChecker
+	// CheckBlock is invoked once per block span whose Kind is in
+	// BlockKinds(), in document order. It reads the span's kind and
+	// 1-based inclusive line range plus f.Lines; it must not touch
+	// f.AST (which is nil on the Layer 0 path).
+	CheckBlock(span lint.BlockSpan, f *lint.File) []lint.Diagnostic
+	// BlockKinds returns the block kinds CheckBlock reacts to.
+	BlockKinds() []lint.BlockKind
+}
+
+// WalkBlocks runs r.CheckBlock over the Layer 0 block scan of f,
+// dispatching only the spans whose Kind is in r.BlockKinds(), in
+// document order. A BlockChecker's standalone Check delegates here for
+// the nil-AST path so direct callers (unit tests) get behaviour
+// identical to the engine's block dispatch. A nil File returns nil.
+func WalkBlocks(r BlockChecker, f *lint.File) []lint.Diagnostic {
+	if f == nil {
+		return nil
+	}
+	kinds := r.BlockKinds()
+	var diags []lint.Diagnostic
+	for _, span := range lint.Layer0(f).BlockSpans {
+		if !blockKindInSet(span.Kind, kinds) {
+			continue
+		}
+		diags = append(diags, r.CheckBlock(span, f)...)
+	}
+	return diags
+}
+
+// blockKindInSet reports whether k is in kinds. The set is tiny (a rule
+// reacts to one or two block kinds), so a linear scan beats a map and
+// allocates nothing.
+func blockKindInSet(k lint.BlockKind, kinds []lint.BlockKind) bool {
+	for _, want := range kinds {
+		if k == want {
+			return true
+		}
+	}
+	return false
+}
+
 // WalkNodes runs r.CheckNode over a single ast.Walk of f. A
 // NodeChecker's standalone Check delegates here so direct callers
 // (the LSP, unit tests) get behaviour identical to the engine's

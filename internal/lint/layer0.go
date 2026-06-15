@@ -803,7 +803,23 @@ func piName(b []byte) []byte {
 // spaces of indent, followed by a space, tab, or end of line). Headings
 // are a single line. Returns false when the cursor line is not a heading.
 func (s *scanner) tryATXHeading() bool {
-	line := s.lines[s.i]
+	if !isATXHeadingLine(s.lines[s.i]) {
+		return false
+	}
+	start := s.i
+	s.addSpan(BlockATXHeading, start, start, 0)
+	s.i++
+	s.prevNonBlankParagraph = false
+	return true
+}
+
+// isATXHeadingLine reports whether line is an ATX heading: 1–6 `#` after
+// up to 3 spaces of indent, followed by a space, tab, carriage return, or
+// end of line. Mirrors atxHeadingParser.Open and is the same predicate
+// tryATXHeading and scanParagraph (paragraph interruption) both use. It
+// takes a full unstripped line (and so enforces the indent < 4 guard
+// itself), distinct from lineclass_scan.go's indent-stripped isATXHeading.
+func isATXHeadingLine(line []byte) bool {
 	indent := leadingSpaces(line)
 	if indent >= 4 {
 		return false
@@ -816,14 +832,7 @@ func (s *scanner) tryATXHeading() bool {
 	if level < 1 || level > 6 {
 		return false
 	}
-	if j < len(line) && line[j] != ' ' && line[j] != '\t' && line[j] != '\r' {
-		return false
-	}
-	start := s.i
-	s.addSpan(BlockATXHeading, start, start, 0)
-	s.i++
-	s.prevNonBlankParagraph = false
-	return true
+	return j >= len(line) || line[j] == ' ' || line[j] == '\t' || line[j] == '\r'
 }
 
 // tryIndentedCode recognises an indented code block at the cursor. An
@@ -909,6 +918,11 @@ func (s *scanner) scanParagraph() {
 			break
 		}
 		if opensPI(cur) {
+			break
+		}
+		// An ATX heading interrupts a paragraph (atxHeadingParser:
+		// CanInterruptParagraph is true), so the paragraph ends before it.
+		if isATXHeadingLine(cur) {
 			break
 		}
 		// HTML blocks of types 1–6 can interrupt a paragraph (type 7
