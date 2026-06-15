@@ -1,7 +1,7 @@
 ---
 id: 2606141910
 title: Extract build path helpers out of internal/rules/build
-status: "🔲"
+status: "✅"
 summary: >-
   internal/build/builder.go imports
   internal/rules/build for three path helpers,
@@ -63,19 +63,19 @@ specific rule package.
 
 ## Acceptance Criteria
 
-- [ ] `internal/build/builder.go` imports
+- [x] `internal/build/builder.go` imports
   `internal/rules/buildpathutil`, not
   `internal/rules/build`.
-- [ ] `internal/rules/buildpathutil` has a
+- [x] `internal/rules/buildpathutil` has a
   dedicated `buildpathutil_test.go` covering
   each function.
-- [ ] The new contract test in
+- [x] The new contract test in
   `internal/integration/` fails if
   `internal/build` imports any
   `internal/rules/<name>` except
   `buildpathutil`.
-- [ ] `TestRulesDoNotImportEachOther` still
+- [x] `TestRulesDoNotImportEachOther` still
   passes.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports
   no issues.

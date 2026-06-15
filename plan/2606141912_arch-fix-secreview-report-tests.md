@@ -1,7 +1,7 @@
 ---
 id: 2606141912
 title: Add per-function unit tests for secreview/report.go
-status: "🔲"
+status: "✅"
 summary: >-
   internal/secreview/report.go has 13 functions
   with no dedicated TestFunctionName entries in
@@ -54,10 +54,10 @@ names this pattern.
 
 ## Acceptance Criteria
 
-- [ ] `internal/secreview/report_test.go`
+- [x] `internal/secreview/report_test.go`
   exists with one `Test<Name>` per function.
-- [ ] Each test exercises the function in
+- [x] Each test exercises the function in
   isolation with inline string fixtures.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports
   no issues.
