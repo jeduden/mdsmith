@@ -101,6 +101,15 @@ type File struct {
 	piBlockLinesDone atomic.Bool
 	piBlockLinesMu   sync.Mutex
 
+	// layer0 caches the single-pass block scan (layer0.go) behind
+	// Layer0. It is the block-level projection source whenever f.AST is
+	// nil (the parse-skipped path) and the cheap re-backing for
+	// CollectCodeBlockLines / CollectPIBlockLines once computed. atomic.Bool
+	// + mutex matches the caches above for the same closure-box reason.
+	layer0     *Layer0Scan
+	layer0Done atomic.Bool
+	layer0Mu   sync.Mutex
+
 	// proseRanges caches the byte-offset projection behind ProseRanges:
 	// the source spans inside prose nodes (paragraph, heading, list-item
 	// and blockquote text) with code blocks, code spans, HTML, autolinks
@@ -302,6 +311,22 @@ func NewFile(path string, source []byte) (*File, error) {
 		AST:      node,
 		parseCtx: pc,
 	}, nil
+}
+
+// NewFileLines builds a File from source without parsing the goldmark
+// AST: it sets Source and Lines and leaves AST nil. It is the parse-
+// skipped constructor for the Layer 0 gate — when every enabled rule
+// resolves to Layer 0, the block-level projections
+// (CollectCodeBlockLines, CollectPIBlockLines) serve from the Layer 0
+// scan instead of the tree, so the goldmark parse is pure waste. A File
+// built this way must only be linted by rules that never navigate f.AST;
+// the engine gate is responsible for that precondition.
+func NewFileLines(path string, source []byte) *File {
+	return &File{
+		Path:   path,
+		Source: source,
+		Lines:  bytes.Split(source, []byte("\n")),
+	}
 }
 
 // LinkReferences returns the link reference definitions goldmark found

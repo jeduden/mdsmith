@@ -24,10 +24,21 @@ func CollectPIBlockLines(f *File) map[int]struct{} {
 	return f.piBlockLines
 }
 
+// collectPIBlockLines computes the PI line set. It prefers an
+// already-computed Layer 0 scan, falls back to the AST walk when the tree
+// is present, and computes Layer 0 on demand when the parse was skipped
+// (f.AST == nil). The three paths produce a byte-identical set; the Layer
+// 0 equivalence harness gates that invariant across the corpus.
 func collectPIBlockLines(f *File) map[int]struct{} {
-	lines := map[int]struct{}{}
-	collectPIBlockLinesInto(f.AST, f, lines)
-	return lines
+	if f.layer0Done.Load() {
+		return f.layer0.PIBlockLines
+	}
+	if f.AST != nil {
+		lines := map[int]struct{}{}
+		collectPIBlockLinesInto(f.AST, f, lines)
+		return lines
+	}
+	return Layer0(f).PIBlockLines
 }
 
 // collectPIBlockLinesInto descends node n via recursion (not
@@ -91,10 +102,21 @@ func CollectCodeBlockLines(f *File) map[int]struct{} {
 	return f.codeBlockLines
 }
 
+// collectCodeBlockLines computes the code-block line set. It prefers an
+// already-computed Layer 0 scan, falls back to the AST walk when the tree
+// is present, and computes Layer 0 on demand when the parse was skipped
+// (f.AST == nil). The three paths produce a byte-identical set; the Layer
+// 0 equivalence harness gates that invariant across the corpus.
 func collectCodeBlockLines(f *File) map[int]struct{} {
-	lines := map[int]struct{}{}
-	collectCodeBlockLinesInto(f.AST, f, lines)
-	return lines
+	if f.layer0Done.Load() {
+		return f.layer0.CodeBlockLines
+	}
+	if f.AST != nil {
+		lines := map[int]struct{}{}
+		collectCodeBlockLinesInto(f.AST, f, lines)
+		return lines
+	}
+	return Layer0(f).CodeBlockLines
 }
 
 // collectCodeBlockLinesInto descends node n via recursion (no
