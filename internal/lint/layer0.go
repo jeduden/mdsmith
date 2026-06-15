@@ -86,15 +86,26 @@ type BlockSpan struct {
 // block-level projection source when a File was built with a nil AST (the
 // parse-skipped path).
 type Layer0Scan struct {
-	// Classes holds one lineClass per source line, indexed by (line-1).
-	Classes []lineClass
 	// CodeBlockLines is the set of 1-based line numbers inside fenced or
-	// indented code blocks, including fence lines.
+	// indented code blocks, including fence lines. Read by
+	// collectCodeBlockLines on the parse-skipped path.
 	CodeBlockLines map[int]struct{}
 	// PIBlockLines is the set of 1-based line numbers inside
 	// processing-instruction blocks, including the opening and closing
-	// marker lines.
+	// marker lines. Read by collectPIBlockLines on the parse-skipped path.
 	PIBlockLines map[int]struct{}
+
+	// Classes and BlockSpans are the per-line classification and the
+	// ordered block list. They have no production consumer yet — the block
+	// NodeChecker re-backing (plan 2606141903) is their first reader; until
+	// it lands they are exercised only by this package's unit tests. They
+	// are part of this plan's deliverable so the next stage can build on a
+	// stable shape, but a contributor should not assume the block-kind
+	// dispatch that fills them is load-bearing for the shipped projections:
+	// only CodeBlockLines and PIBlockLines are.
+
+	// Classes holds one lineClass per source line, indexed by (line-1).
+	Classes []lineClass
 	// BlockSpans lists every block in document order.
 	BlockSpans []BlockSpan
 }
@@ -211,11 +222,19 @@ func (s *scanner) scanBlock() {
 // its body. goldmark parses block constructs (fenced/indented code, PIs,
 // nested quotes) inside a quote, so a `> ```\n> code\n> ```\n` quote
 // contains a real code block whose lines must land in CodeBlockLines. The
-// scan collects the run of consecutive `>`-prefixed lines, strips one
-// level of `>` (and an optional following space) to form the quote body,
-// recursively scans that body, and maps the child's code and PI line
-// numbers back onto the parent lines. Returns false when the cursor line
-// is not a block quote.
+// scan collects the run of `>`-prefixed lines (plus lazy paragraph
+// continuations), strips one level of `>` (and an optional following
+// space) to form the quote body, recursively scans that body, and maps the
+// child's code line numbers back onto the parent lines.
+//
+// Known limitation: a non-marker lazy line interior to a block quote whose
+// fenced code block is still open (`> ```\n> code\nlazy\n> ```\n`) is a
+// CommonMark corner whose goldmark-fork behaviour the scan does not exactly
+// reproduce — it ends the quote at the lazy line rather than folding it
+// into the still-open fence. The repository corpus contains no such shape
+// (the equivalence harness is green), and the parse-skip gate that relies
+// on this scan is default-off, so the divergence is latent. Returns false
+// when the cursor line is not a block quote.
 func (s *scanner) tryBlockquote() bool {
 	line := s.lines[s.i]
 	if paragraphLeadKind(line) != BlockQuote {
@@ -223,33 +242,120 @@ func (s *scanner) tryBlockquote() bool {
 	}
 	start := s.i
 	depth := blockDepth(line)
-	// Collect the consecutive marker-led lines and their stripped bodies.
-	body := make([][]byte, 0, 4)
-	parentLine := make([]int, 0, 4)
+	// Collect the consecutive marker-led lines, stripping one quote level.
+	// codeCapable records whether any stripped line could open a code block
+	// (a fence or a >=4-column indent); the overwhelmingly common
+	// prose-only block quote sets it false and skips the recursive scan and
+	// its allocations entirely.
+	var body [][]byte
+	var parentLine []int
+	codeCapable := false
+	// openFence tracks whether a fenced code block opened by a marker line
+	// is still open. A fenced code block inside a quote must keep its `>`
+	// marker on every line — it does not accept lazy continuation — so a
+	// non-marker line while a fence is open ends the quote rather than
+	// extending the code.
+	var openFence *fenceInfo
 	for s.i < len(s.lines) {
 		if s.trailingEmptyLine(s.i) {
 			break
 		}
 		cur := s.lines[s.i]
-		if isBlankLine(cur) || paragraphLeadKind(cur) != BlockQuote {
+		if isBlankLine(cur) {
 			break
 		}
-		body = append(body, stripQuoteMarker(cur))
+		var stripped []byte
+		if paragraphLeadKind(cur) == BlockQuote {
+			stripped = stripQuoteMarker(cur)
+		} else if openFence == nil && isLazyContinuation(cur) {
+			// A non-marker plain-text line lazily continues the quote's open
+			// paragraph; it carries no `>` to strip and maps through
+			// verbatim. Suppressed while a fence is open (see openFence).
+			stripped = cur
+		} else {
+			// A line that starts a new top-level block (heading, fence,
+			// list, thematic break, HTML, PI) — or any non-marker line while
+			// a fence is open — interrupts the quote.
+			break
+		}
+		body = append(body, stripped)
 		parentLine = append(parentLine, s.i)
+		if !codeCapable && lineCanOpenCode(stripped) {
+			codeCapable = true
+		}
+		openFence = updateFenceState(openFence, stripped)
 		s.i++
 	}
-	// Recursively scan the quote body and translate the child's code line
-	// numbers (1-based within body) back to parent line numbers. PI blocks
-	// open only at the document root (piBlockParser.Open rejects a
-	// non-Document parent), so a `<?…?>` inside a quote is not a PI —
-	// inner.PIBlockLines is deliberately not translated.
-	inner := scanLayer0(body)
-	for ln := range inner.CodeBlockLines {
-		s.markCode(parentLine[ln-1])
+	// Recursively scan the quote body only when it could contain code, and
+	// translate the child's code line numbers (1-based within body) back to
+	// parent line numbers. PI blocks open only at the document root
+	// (piBlockParser.Open rejects a non-Document parent), so a `<?…?>`
+	// inside a quote is not a PI — inner.PIBlockLines is never translated.
+	if codeCapable {
+		inner := scanLayer0(body)
+		for ln := range inner.CodeBlockLines {
+			s.markCode(parentLine[ln-1])
+		}
 	}
 	s.addSpan(BlockQuote, start, s.i-1, depth)
 	s.prevNonBlankParagraph = false
 	return true
+}
+
+// updateFenceState advances the open-fence tracking for a block quote's
+// stripped body line: when no fence is open, a fence opener starts one;
+// when a fence is open, a matching closing fence ends it. Returns the new
+// state. Used so the quote scan knows a fenced code block is still open and
+// therefore cannot be lazily continued by a non-marker line.
+func updateFenceState(open *fenceInfo, line []byte) *fenceInfo {
+	if open == nil {
+		if fi, ok := openingFence(line); ok {
+			return &fi
+		}
+		return nil
+	}
+	if closingFence(line, *open) {
+		return nil
+	}
+	return open
+}
+
+// isLazyContinuation reports whether line can lazily continue an open
+// block quote paragraph or code block: a non-blank line that does not begin
+// a new top-level block. Per CommonMark, a line starting a fence, PI, HTML
+// block, ATX heading, list, thematic break, or nested quote interrupts the
+// quote instead of continuing it; everything else (plain text, including a
+// 4-space-indented line, which cannot start indented code mid-paragraph)
+// is a lazy continuation. The caller has already handled the quote-marker
+// and blank-line cases, so this only classifies non-marker, non-blank
+// lines.
+func isLazyContinuation(line []byte) bool {
+	if _, ok := openingFence(line); ok {
+		return false
+	}
+	if opensPI(line) || openHTMLBlock(line, true) != htmlNone {
+		return false
+	}
+	return paragraphLeadKind(line) == BlockParagraph
+}
+
+// lineCanOpenCode reports whether line could contribute a code block to a
+// recursively-scanned block-quote body — it opens a fenced code fence,
+// carries a >=4-column indent, or is itself a nested block quote (whose
+// own deeper levels may hold code, which only the recursive scan can
+// reach). A block-quote body with no such line cannot contain a code
+// block, so the scan skips its recursive pass. This may over-report (an
+// indented or quoted line that yields no code), which only costs a
+// recursion that finds nothing; it must never under-report, so the nested
+// block-quote case is included.
+func lineCanOpenCode(line []byte) bool {
+	if _, ok := openingFence(line); ok {
+		return true
+	}
+	if indentWidth(line) >= 4 && !isBlankLine(line) {
+		return true
+	}
+	return paragraphLeadKind(line) == BlockQuote
 }
 
 // stripQuoteMarker removes one block-quote level from line: up to 3 spaces
