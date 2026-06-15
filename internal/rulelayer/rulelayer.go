@@ -52,18 +52,21 @@ var layerByID = buildLayerMap()
 // "A-no-skipping" — they never crash with a nil AST — but which still read
 // an AST-derived projection that Layer 0 does not reproduce, so their
 // output silently diverges on a parse-skipped File. The audit's probe
-// measured crash-safety, not output equivalence: these rules consume the
-// inline code-span ranges (CodeSpanLiteralRanges / CodeSpanContentRanges),
-// which return empty without a parse, causing false positives inside
-// backtick spans. Until Layer 1 projects code spans, they are forced to
-// LayerAST so the parse-skip gate never admits them.
+// measured crash-safety, not output equivalence.
 //
-//   - MDS047 ambiguous-emphasis  → CodeSpanContentRanges
-//   - MDS054 no-undefined-reference-labels → CodeSpanLiteralRanges
-var astProjectionConsumers = map[string]bool{
-	"MDS047": true,
-	"MDS054": true,
-}
+// MDS047 (ambiguous-emphasis) and MDS054 (no-undefined-reference-labels)
+// formerly sat here: both consume the inline code-span ranges
+// (CodeSpanContentRanges / CodeSpanLiteralRanges), which returned empty
+// without a parse and caused false positives inside backtick spans. Layer 1
+// (internal/lint/inline_index.go) now reproduces those ranges byte-
+// identically on the nil-AST path — gated across the parse-skip-eligible
+// corpus by the equivalence harness — so both rules resolve to Layer 0
+// straight from their A-no-skipping audit category and no override remains.
+//
+// The map stays as the seam for any future projection-only consumer the
+// audit marks A-no-skipping but Layer N does not yet back. It is empty
+// today.
+var astProjectionConsumers = map[string]bool{}
 
 // buildLayerMap decodes the embedded manifest into the id→layer table.
 // "A-no-skipping" rules are Layer 0 unless they appear in
