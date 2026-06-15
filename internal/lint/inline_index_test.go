@@ -56,6 +56,15 @@ func TestInlineIndex_CodeSpanEquivalence(t *testing.T) {
 		{"no-spans", "plain paragraph with no code\n"},
 		{"leading-space-only", "a ` x` b\n"},
 		{"trailing-space-only", "a `x ` b\n"},
+		// \r is not in goldmark's isSpaceOrNewline (code_span.go), so a span
+		// whose boundary byte is \r must not be trimmed by the inline scanner.
+		{"crlf-boundary-no-trim", "a `\r x\r` b\n"},
+		// A content of all-blank bytes (including \t) suppresses trim in
+		// goldmark via util.IsBlank / util.IsSpace which includes TAB. The
+		// inline scanner's all-blank guard must use the same wider predicate.
+		{"all-tab-no-trim", "a `\t` b\n"},
+		{"space-tab-space-no-trim", "a ` \t ` b\n"},
+		{"backtick-in-html-block", "<div>\n`not a span`\n</div>\n\n`real`\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

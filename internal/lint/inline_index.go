@@ -215,18 +215,29 @@ func trimCodeSpanContent(src []byte, start, end int) (int, int) {
 	return start + 1, end - 1
 }
 
-// isCodeSpanSpace reports whether b is a byte CommonMark folds to a space
-// inside a code span for the strip-one-space rule: a space or a line ending.
+// isCodeSpanSpace reports whether b matches goldmark's isSpaceOrNewline
+// predicate used for the strip-one-space trim condition: only ' ' and '\n'
+// qualify. '\r' and '\t' are deliberately excluded — goldmark's
+// code_span.go:isSpaceOrNewline is `c == ' ' || c == '\n'`.
 func isCodeSpanSpace(b byte) bool {
-	return b == ' ' || b == '\n' || b == '\r'
+	return b == ' ' || b == '\n'
 }
 
-// allCodeSpanSpaces reports whether every byte in [start, end) is a
-// code-span space byte; such a span is never trimmed (CommonMark keeps an
-// all-space span verbatim).
+// isCodeSpanBlank reports whether b counts as blank for the "content is
+// entirely spaces" guard that suppresses the single-space trim. goldmark
+// uses util.IsSpace (backed by spaceTable) for this check: it accepts ' ',
+// '\t', '\n', and '\r' (spaceTable indices 32, 9, 10, 13). Using a wider
+// predicate here than isCodeSpanSpace matches goldmark's two-predicate
+// design: narrow for the trim boundary, wide for the all-blank guard.
+func isCodeSpanBlank(b byte) bool {
+	return b == ' ' || b == '\t' || b == '\n' || b == '\r'
+}
+
+// allCodeSpanSpaces reports whether every byte in [start, end) is blank
+// per isCodeSpanBlank; such a span is never trimmed.
 func allCodeSpanSpaces(src []byte, start, end int) bool {
 	for k := start; k < end; k++ {
-		if !isCodeSpanSpace(src[k]) {
+		if !isCodeSpanBlank(src[k]) {
 			return false
 		}
 	}
