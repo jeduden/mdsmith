@@ -1,0 +1,168 @@
+package lint
+
+import (
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
+	"github.com/jeduden/mdsmith/pkg/markdown"
+)
+
+// WholeParagraphEmphasisLines returns the 1-based source line of every
+// paragraph whose sole inline child is a single emphasis (or strong
+// emphasis) span — the exact shape MDS018 (no-emphasis-as-heading) flags.
+// It is the Layer 1 projection source for that rule on the parse-skipped
+// path (f.AST nil), so the rule no longer forces a whole-document goldmark
+// parse to read one parsed emphasis node.
+//
+// The detector is bounded: it parses only the paragraphs whose first
+// non-space byte is `*` or `_` (the only bytes that can open emphasis),
+// one block at a time, rather than the whole document. A paragraph that
+// cannot open emphasis is skipped without any parse. This is the per-block
+// lazy parse the plan calls for: re-using goldmark's own inline parser on a
+// single block keeps the lone-emphasis result byte-identical to the AST
+// path by construction, while the byte gate keeps the cost proportional to
+// the rare emphasis-led paragraph rather than every paragraph.
+//
+// The returned slice is in document order. nil when no paragraph qualifies
+// or the File has no source. Computed once per File and cached; the slice
+// is shared read-only and must not be mutated.
+func WholeParagraphEmphasisLines(f *File) []int {
+	if f.emphasisLinesDone.Load() {
+		return f.emphasisLines
+	}
+	f.emphasisLinesMu.Lock()
+	defer f.emphasisLinesMu.Unlock()
+	if !f.emphasisLinesDone.Load() {
+		defer f.emphasisLinesDone.Store(true)
+		f.emphasisLines = scanWholeParagraphEmphasis(f)
+	}
+	return f.emphasisLines
+}
+
+// scanWholeParagraphEmphasis walks the Layer 0 block spans and, for each
+// paragraph whose first non-space byte can open emphasis, parses that
+// block's bytes in isolation to test the lone-emphasis-child shape.
+func scanWholeParagraphEmphasis(f *File) []int {
+	if len(f.Source) == 0 {
+		return nil
+	}
+	l0 := Layer0(f)
+	var out []int
+	for _, span := range l0.BlockSpans {
+		if span.Kind != BlockParagraph {
+			continue
+		}
+		if !paragraphMayOpenEmphasis(f, span) {
+			continue
+		}
+		if line, ok := loneEmphasisParagraphLine(f, span); ok {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+// paragraphMayOpenEmphasis reports whether the first non-space byte of the
+// paragraph's first line is `*` or `_` — the only delimiter characters
+// goldmark's emphasis parser triggers on. Paragraphs that fail this gate
+// can never parse to a lone emphasis child, so they are skipped without a
+// parse.
+func paragraphMayOpenEmphasis(f *File, span BlockSpan) bool {
+	line := f.lineBytes(span.Start)
+	for _, b := range line {
+		switch b {
+		case ' ', '\t':
+			continue
+		case '*', '_':
+			return true
+		default:
+			return false
+		}
+	}
+	return false
+}
+
+// loneEmphasisParagraphLine parses the source bytes of one paragraph block
+// in isolation and, when the parse yields a single paragraph whose only
+// inline child is an emphasis node, returns the paragraph's 1-based source
+// line in the original document. The block is parsed standalone because
+// emphasis resolution is local to a paragraph: the delimiter run, its
+// flanking context, and its closer all lie within the block, so the inline
+// tree is identical to the one the whole-document parse produces for the
+// same paragraph.
+func loneEmphasisParagraphLine(f *File, span BlockSpan) (int, bool) {
+	start := f.LineStartOffset(span.Start - 1)
+	end := f.lineEndOffset(span.End - 1)
+	if end <= start {
+		return 0, false
+	}
+	block := f.Source[start:end]
+	doc := markdown.ParseContext(block, parser.NewContext())
+	para, ok := singleParagraph(doc)
+	if !ok {
+		return 0, false
+	}
+	first := para.FirstChild()
+	if first == nil || first.NextSibling() != nil {
+		return 0, false
+	}
+	if _, isEmph := first.(*ast.Emphasis); !isEmph {
+		return 0, false
+	}
+	// The paragraph's first content line, in the original document's
+	// coordinates: the local paragraph's first text line offset plus the
+	// block's start offset maps back through LineOfOffset.
+	if local := paraLocalFirstLineOffset(para); local >= 0 {
+		return f.LineOfOffset(start + local), true
+	}
+	return span.Start, true
+}
+
+// singleParagraph returns the lone Paragraph child of a parsed standalone
+// block, or ok=false when the block parsed to anything else (no paragraph,
+// several blocks, a heading, a list, …). A lone-emphasis-child shape can
+// only arise inside a single paragraph, so a non-paragraph or multi-block
+// parse is never the emphasis-as-heading shape this detector reports.
+func singleParagraph(doc ast.Node) (*ast.Paragraph, bool) {
+	first := doc.FirstChild()
+	if first == nil || first.NextSibling() != nil {
+		return nil, false
+	}
+	para, ok := first.(*ast.Paragraph)
+	if !ok {
+		return nil, false
+	}
+	return para, true
+}
+
+// paraLocalFirstLineOffset returns the byte offset (within the standalone
+// block) of the paragraph's first content line, or -1 when the node
+// carries no line information.
+func paraLocalFirstLineOffset(para *ast.Paragraph) int {
+	lines := para.Lines()
+	if lines == nil || lines.Len() == 0 {
+		return -1
+	}
+	return lines.At(0).Start
+}
+
+// lineBytes returns the bytes of 1-based source line n (without the line
+// terminator), or nil when n is out of range.
+func (f *File) lineBytes(n int) []byte {
+	if n < 1 || n > len(f.Lines) {
+		return nil
+	}
+	return f.Lines[n-1]
+}
+
+// lineEndOffset returns the byte offset in Source just past the end of
+// 0-based line i (the newline, or len(Source) for the last line).
+func (f *File) lineEndOffset(i int) int {
+	nl := f.lineIndex()
+	if i < 0 {
+		return 0
+	}
+	if i >= len(nl) {
+		return len(f.Source)
+	}
+	return nl[i]
+}
