@@ -110,6 +110,16 @@ type File struct {
 	layer0Done atomic.Bool
 	layer0Mu   sync.Mutex
 
+	// inlineIndex caches the byte-level inline scan (inline_index.go)
+	// behind InlineIndexProjection. It is the inline-projection source
+	// (code-span ranges) whenever f.AST is nil — the parse-skipped path —
+	// so CodeSpanContentRanges / CodeSpanLiteralRanges serve from it
+	// instead of walking f.AST. atomic.Bool + mutex matches the caches
+	// above for the same closure-box reason.
+	inlineIndex     *InlineIndex
+	inlineIndexDone atomic.Bool
+	inlineIndexMu   sync.Mutex
+
 	// proseRanges caches the byte-offset projection behind ProseRanges:
 	// the source spans inside prose nodes (paragraph, heading, list-item
 	// and blockquote text) with code blocks, code spans, HTML, autolinks
