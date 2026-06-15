@@ -2,16 +2,8 @@ package lint
 
 import "bytes"
 
-// leadingSpaces counts the run of ASCII space characters at the start of
-// b. A leading tab stops the count (it is handled as indentation worth a
-// full tab stop by the ≥4 indented-code test, never as a ≤3 fence indent).
-func leadingSpaces(b []byte) int {
-	n := 0
-	for n < len(b) && b[n] == ' ' {
-		n++
-	}
-	return n
-}
+// leadingSpaces (the run of ASCII space characters at the start of a line)
+// is shared with the Layer 0 scanner; its definition lives in layer0.go.
 
 // indentColumns counts the leading whitespace run of b in columns,
 // measured from absolute column startCol so that a tab advances to the
@@ -71,10 +63,13 @@ func isATXHeading(rest []byte) bool {
 	return i >= len(rest) || rest[i] == ' ' || rest[i] == '\t'
 }
 
-// isSetextUnderline reports whether rest is a setext underline: a run of
+// lcIsSetextUnderline reports whether rest is a setext underline: a run of
 // only `=` or only `-` (after ≤3 indent), optionally trailed by spaces.
-// The caller gates this on the previous line being paragraph text.
-func isSetextUnderline(rest []byte) bool {
+// The caller gates this on the previous line being paragraph text. It is
+// kept distinct from the Layer 0 scanner's isSetextUnderline (layer0.go),
+// which takes a full unstripped line; this one operates on the indent-
+// stripped rest the line classifier already holds.
+func lcIsSetextUnderline(rest []byte) bool {
 	i := leadingSpaces(rest)
 	if i >= len(rest) {
 		return false
@@ -167,7 +162,7 @@ func isFenceClose(rest []byte, ch byte, length int) bool {
 func htmlBlockEnd(rest []byte) (end []byte, kind htmlKind) {
 	i := leadingSpaces(rest)
 	if i > 3 || i >= len(rest) || rest[i] != '<' {
-		return nil, htmlNone
+		return nil, htmlBlockNone
 	}
 	s := rest[i:]
 	switch {
@@ -186,18 +181,18 @@ func htmlBlockEnd(rest []byte) (end []byte, kind htmlKind) {
 	case htmlType7Start(s):
 		return nil, htmlTag7
 	}
-	return nil, htmlNone
+	return nil, htmlBlockNone
 }
 
 // htmlKind is how an open HTML block ends.
 type htmlKind uint8
 
 const (
-	htmlNone   htmlKind = iota // not an HTML block
-	htmlMarker                 // types 2–5: closes on the recorded end string
-	htmlRaw                    // type 1 (script/pre/style/textarea): closes on a type-1 closing tag
-	htmlTag6                   // type 6 block-level tag: blank-terminated, may interrupt a paragraph
-	htmlTag7                   // type 7 complete tag: blank-terminated, may not interrupt a paragraph
+	htmlBlockNone htmlKind = iota // not an HTML block
+	htmlMarker                    // types 2–5: closes on the recorded end string
+	htmlRaw                       // type 1 (script/pre/style/textarea): closes on a type-1 closing tag
+	htmlTag6                      // type 6 block-level tag: blank-terminated, may interrupt a paragraph
+	htmlTag7                      // type 7 complete tag: blank-terminated, may not interrupt a paragraph
 )
 
 // htmlType7Start reports whether s is a single complete open or closing HTML

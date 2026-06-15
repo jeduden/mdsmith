@@ -301,7 +301,7 @@ func (p *lc0Pass) htmlBlankTerminated() bool {
 func (p *lc0Pass) endHTMLBlock() {
 	p.inHTML = false
 	p.htmlEnd = nil
-	p.htmlKind = htmlNone
+	p.htmlKind = htmlBlockNone
 }
 
 // htmlBlockCloses reports whether rest carries the closing condition of a
@@ -325,7 +325,7 @@ func (p *lc0Pass) htmlBlockCloses(rest []byte) bool {
 // block cannot interrupt a paragraph. Returns false when rest opens none.
 func (p *lc0Pass) tryStartHTML(i int, rest []byte) bool {
 	end, kind := htmlBlockEnd(rest)
-	if kind == htmlNone || (kind == htmlTag7 && p.prevParagraph) {
+	if kind == htmlBlockNone || (kind == htmlTag7 && p.prevParagraph) {
 		return false
 	}
 	p.out.classes[i] = LineHTML
@@ -387,7 +387,7 @@ func (p *lc0Pass) handleContent(i, ln int, line []byte, off int, rest []byte) {
 		p.out.classes[i] = LineInCode
 		p.markCode(ln)
 		p.indentCode = true
-	case indent <= 3 && p.prevParagraph && isSetextUnderline(rest):
+	case indent <= 3 && p.prevParagraph && lcIsSetextUnderline(rest):
 		p.out.classes[i] = LineSetextUnderline
 		p.addHeading(ln)
 		p.addHeading(ln - 1) // the paragraph line it underlines is the heading

@@ -50,12 +50,12 @@ func TestHeadingScanners(t *testing.T) {
 	assert.False(t, isATXHeading([]byte("#h")))        // no space
 	assert.False(t, isATXHeading([]byte("text")))
 
-	assert.True(t, isSetextUnderline([]byte("===")))
-	assert.True(t, isSetextUnderline([]byte("---")))
-	assert.True(t, isSetextUnderline([]byte("===   "))) // trailing spaces
-	assert.False(t, isSetextUnderline([]byte("")))
-	assert.False(t, isSetextUnderline([]byte("= ="))) // gap then more
-	assert.False(t, isSetextUnderline([]byte("abc")))
+	assert.True(t, lcIsSetextUnderline([]byte("===")))
+	assert.True(t, lcIsSetextUnderline([]byte("---")))
+	assert.True(t, lcIsSetextUnderline([]byte("===   "))) // trailing spaces
+	assert.False(t, lcIsSetextUnderline([]byte("")))
+	assert.False(t, lcIsSetextUnderline([]byte("= ="))) // gap then more
+	assert.False(t, lcIsSetextUnderline([]byte("abc")))
 }
 
 func TestFenceScanners(t *testing.T) {
@@ -113,13 +113,13 @@ func TestHTMLScanners(t *testing.T) {
 	_, kind = htmlBlockEnd([]byte("  <!-- x")) // ≤3 indent still opens
 	assert.Equal(t, htmlMarker, kind)
 	_, kind = htmlBlockEnd([]byte("    <!-- x")) // 4-space indent does not
-	assert.Equal(t, htmlNone, kind)
+	assert.Equal(t, htmlBlockNone, kind)
 	_, kind = htmlBlockEnd([]byte("<!5 not a decl"))
-	assert.Equal(t, htmlNone, kind)
+	assert.Equal(t, htmlBlockNone, kind)
 	_, kind = htmlBlockEnd([]byte("<img> trailing text")) // tag not alone on line → not type-7
-	assert.Equal(t, htmlNone, kind)
+	assert.Equal(t, htmlBlockNone, kind)
 	_, kind = htmlBlockEnd([]byte("text"))
-	assert.Equal(t, htmlNone, kind)
+	assert.Equal(t, htmlBlockNone, kind)
 }
 
 // TestHTMLType7Start exhaustively pins the complete-tag scanner for the

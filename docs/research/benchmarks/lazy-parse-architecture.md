@@ -379,6 +379,39 @@ on its own is necessary, not sufficient.
 
 [spike-plan]: ../../../plan/2606141901_spike-block-only-parse-cost.md
 
+### Layer 0 build: equivalence results
+
+[Plan 2606141902][l0-plan] built the Layer 0 scanner
+(`internal/lint/layer0.go`) and re-backed the block-level projections on
+it. The scanner is one forward pass over `f.Lines`: it tracks fenced and
+indented code blocks, processing-instruction blocks, ATX and setext
+headings, block quotes, lists, HTML blocks (CommonMark types 1–7),
+thematic breaks, and front matter, recording a per-line class bitfield, the
+code-block and PI line sets, the block spans, and the front-matter bounds.
+
+`CollectCodeBlockLines` and `CollectPIBlockLines` now read the cached Layer
+0 scan when `f.AST` is nil (the parse-skipped path), falling back to the
+AST walk when the tree is present. The equivalence harness
+(`TestLayer0Equivalence_Fixtures`,
+`internal/integration/layer0_equivalence_test.go`) diffs both line sets
+between the AST and Layer 0 paths across every Markdown file in the
+repository corpus — rule fixtures, docs, plans, and shared testdata. All
+1043 corpus files produce byte-identical code-block and PI line sets, the
+non-negotiable gate the migration required. The block edge cases that
+needed faithful modelling matched the prediction: an info-less,
+content-less fence emits no lines (goldmark exposes no source position for
+it), an unclosed fence emits a phantom closing-fence line after its last
+content line, indented code cannot interrupt a paragraph, and an HTML
+comment makes its indented interior opaque to the code scanner.
+
+The engine gate (`Runner.layer0SkipEligible`) skips the goldmark parse,
+building the File lines-only via `lint.NewFileLines`, when the
+`MDSMITH_LAYER0_SKIP` toggle is set (default off), every enabled rule
+resolves to Layer 0 (the audit manifest's `A-no-skipping` rules, read
+through `internal/rulelayer`), and the source carries no `<?` directive.
+
+[l0-plan]: ../../../plan/2606141902_lazy-parse-layer0.md
+
 ### Per-rule bottleneck: line-length vs gomarklint
 
 The parity number averages ~30 rules. To see where the floor actually

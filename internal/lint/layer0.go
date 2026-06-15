@@ -142,6 +142,11 @@ func scanLayer0(lines [][]byte) *Layer0Scan {
 		Classes:        make([]lineClass, n),
 		CodeBlockLines: make(map[int]struct{}, n),
 		PIBlockLines:   make(map[int]struct{}, n),
+		// Pre-size the span slice so the common document (one block every
+		// few lines) fills it without the geometric re-grows that
+		// otherwise dominate the scan's allocation count. n/2+1 covers a
+		// dense alternating block/blank layout in one allocation.
+		BlockSpans: make([]BlockSpan, 0, n/2+1),
 	}
 	sc := scanner{lines: lines, l0: l0}
 	sc.run()
