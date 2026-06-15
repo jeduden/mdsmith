@@ -185,6 +185,8 @@ func TestCheck_NilASTEquivalence(t *testing.T) {
 		{"trailing-punct", "see https://example.com.\n"},
 		{"wrapped-list-url", "- see\n  https://example.com\n"},
 		{"bq-multiline-url", "> line one https://a.com\n> line two\n"},
+		{"url-in-html-block", "<div>\nhttps://x.com\n</div>\n"},
+		{"html-block-interrupt", "text https://a.com\n<div>raw</div>\nmore https://b.com\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

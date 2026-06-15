@@ -223,6 +223,7 @@ func TestCheck_NilASTEquivalence(t *testing.T) {
 		{"wrapped-emph-quote", "> *just\n> emph*\n", nil},
 		{"multi-bq-emph", "> *a*\n>\n> *b*\n", nil},
 		{"list-emph-not-flagged", "- *x*\n", nil},
+		{"emph-then-html-block", "*emph*\n<div>x</div>\n", nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

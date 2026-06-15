@@ -3,6 +3,7 @@ package lint
 import (
 	"bytes"
 
+	"github.com/jeduden/mdsmith/pkg/goldmark/arena"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
 	"github.com/jeduden/mdsmith/pkg/markdown"
@@ -78,6 +79,12 @@ func scanInlineBlocks(f *File) []InlineBlock {
 		refs = f.LinkReferences()
 	}
 	skip := nonInlineLines(f)
+	// One arena backs every run's parse for this file. Goldmark draws the
+	// run's inline nodes from it; growing it across runs (never Reset) keeps
+	// every earlier run's nodes valid while reusing slab memory instead of
+	// allocating a fresh node pool per run. The arena outlives this scan via
+	// the parsed nodes cached on the File, so it is per-file, not pooled.
+	a := arena.New()
 	var out []InlineBlock
 	n := len(f.Lines)
 	i := 0
@@ -96,7 +103,7 @@ func scanInlineBlocks(f *File) []InlineBlock {
 			continue
 		}
 		out = append(out, InlineBlock{
-			Node:   ParseInlineWithRefs(f.Source[start:end], refs),
+			Node:   parseInlineWithRefsArena(f.Source[start:end], refs, a),
 			Offset: start,
 		})
 	}
@@ -146,11 +153,19 @@ func (f *File) trailingEmptyLine(i int) bool {
 // that lives in another block of the document. The returned tree shares no
 // state with the File.
 func ParseInlineWithRefs(block []byte, refs []Reference) ast.Node {
+	return parseInlineWithRefsArena(block, refs, arena.New())
+}
+
+// parseInlineWithRefsArena is ParseInlineWithRefs with a caller-owned arena
+// so consecutive run parses for one file reuse slab memory. The arena must
+// outlive every node in the returned tree (the inline scan caches them on
+// the File, so the arena lives with the File).
+func parseInlineWithRefsArena(block []byte, refs []Reference, a *arena.Arena) ast.Node {
 	ctx := parser.NewContext()
 	for _, ref := range refs {
 		ctx.AddReference(ref)
 	}
-	return markdown.ParseContext(block, ctx)
+	return markdown.ParseContextArena(block, ctx, a)
 }
 
 // lineEndOffset returns the byte offset in Source of the newline that ends

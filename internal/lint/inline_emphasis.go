@@ -80,14 +80,21 @@ func loneEmphasisFromParagraph(f *File, para *ast.Paragraph, base int) (Emphasis
 // placeholder check accumulates over the emphasis subtree — so a caller
 // that re-accumulates and tests each prefix reproduces that check
 // byte-identically, including its early stop.
+//
+// Each segment is materialised with t.Segment.Value, the identical call the
+// AST-path helper uses, so any Padding / ForceNewline a segment carries is
+// reproduced rather than dropped. The segment offsets are run-local, so the
+// buffer is f.Source sliced from the run's base; Value reads only
+// [Start, Stop) (plus padding) within it.
 func emphasisTextSegments(source []byte, base int, emph *ast.Emphasis) []string {
+	runBytes := source[base:]
 	var segs []string
 	_ = ast.Walk(emph, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
 		}
 		if t, ok := n.(*ast.Text); ok {
-			segs = append(segs, string(source[base+t.Segment.Start:base+t.Segment.Stop]))
+			segs = append(segs, string(t.Segment.Value(runBytes)))
 		}
 		return ast.WalkContinue, nil
 	})
