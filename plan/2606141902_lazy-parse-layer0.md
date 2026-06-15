@@ -1,7 +1,7 @@
 ---
 id: 2606141902
 title: "Lazy parse: Layer 0 block scanner and parse-skip"
-status: "🔲"
+status: "✅"
 summary: >-
   Build the single-pass block scanner (Layer 0) and
   re-back the block-level projections on it, so a config
@@ -62,13 +62,13 @@ sort by hand. Its `ProseRanges` projection also exists.
 
 ## Acceptance Criteria
 
-- [ ] A line-and-projection-only config skips the parse,
+- [x] A line-and-projection-only config skips the parse,
       proven by a test or profile.
-- [ ] `CollectCodeBlockLines` output is byte-identical
+- [x] `CollectCodeBlockLines` output is byte-identical
       between Layer 0 and the AST across the corpus.
-- [ ] All existing rule fixtures pass unchanged.
-- [ ] The Layer 0 equivalence gate is green.
-- [ ] All tests pass: `go test ./...`
+- [x] All existing rule fixtures pass unchanged.
+- [x] The Layer 0 equivalence gate is green.
+- [x] All tests pass: `go test ./...`
 
 [research]: ../docs/research/benchmarks/lazy-parse-architecture.md
 [audit]: 2606022126_lines-only-rule-audit.md

@@ -195,7 +195,7 @@ footer: |
 | 2606130837 | ✅     | opus   | [Fast-path front-matter field reads for cross-file rules](plan/2606130837_frontmatter-fast-scan.md)                                     |
 | 2606130838 | ✅     | sonnet | [Memoize linkgraph link and image extraction on the File](plan/2606130838_memoize-link-extraction.md)                                   |
 | 2606141901 | ✅     | opus   | [Spike: block-only parse cost vs gomarklint](plan/2606141901_spike-block-only-parse-cost.md)                                            |
-| 2606141902 | 🔲     | opus   | [Lazy parse: Layer 0 block scanner and parse-skip](plan/2606141902_lazy-parse-layer0.md)                                                |
+| 2606141902 | ✅     | opus   | [Lazy parse: Layer 0 block scanner and parse-skip](plan/2606141902_lazy-parse-layer0.md)                                                |
 | 2606141903 | 🔲     | opus   | [Lazy parse: BlockSpan seam for block NodeCheckers](plan/2606141903_lazy-parse-blockspan-nodecheckers.md)                               |
 | 2606141904 | 🔲     | opus   | [Lazy parse: Layer 1 light inline index](plan/2606141904_lazy-parse-inline-index.md)                                                    |
 | 2606141910 | ✅     | sonnet | [Extract build path helpers out of internal/rules/build](plan/2606141910_arch-fix-build-rules-dip.md)                                   |
