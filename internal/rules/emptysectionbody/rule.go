@@ -52,7 +52,7 @@ func (r *Rule) Category() string { return "heading" }
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	minLevel, maxLevel, allowMarker := r.effectiveSettings()
 	allowMarkerDir := r.allowMarkerDirective
-	if allowMarkerDir == "" {
+	if allowMarkerDir == "" || r.AllowMarker != allowMarker {
 		allowMarkerDir = "<?" + allowMarker + "?>"
 	}
 	if f.AST == nil {

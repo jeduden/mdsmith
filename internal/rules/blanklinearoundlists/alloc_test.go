@@ -34,7 +34,6 @@ const allocBudgetFixture = "# Document title\n" +
 
 // TestCheck_BothViolations verifies that when a list has no blank line
 // before and no blank line after, exactly two diagnostics are returned.
-// This also confirms the pre-sized slice handles both entries correctly.
 func TestCheck_BothViolations(t *testing.T) {
 	// Heading immediately before list (no blank), heading immediately after (no blank).
 	src := []byte("## Title\n- item 1\n- item 2\n## After\n")
