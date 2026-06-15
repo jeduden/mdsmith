@@ -46,6 +46,42 @@ func (r *nodeCheckerRule) CheckNode(_ ast.Node, entering bool, _ *lint.File) []l
 
 var _ rule.NodeChecker = (*nodeCheckerRule)(nil)
 
+// blockCheckerRule emits one diagnostic per thematic-break span (block
+// path) and one per ThematicBreak node (AST path), so a test can assert
+// the engine drives the same output through both seams.
+type blockCheckerRule struct {
+	plainRule
+	message string
+}
+
+func (r *blockCheckerRule) Check(f *lint.File) []lint.Diagnostic {
+	if f != nil && f.AST == nil {
+		return rule.WalkBlocks(r, f)
+	}
+	return rule.WalkNodes(r, f)
+}
+
+func (r *blockCheckerRule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
+	if entering && n.Kind() == ast.KindThematicBreak {
+		return []lint.Diagnostic{{Line: 1, RuleID: r.id, Message: r.message}}
+	}
+	return nil
+}
+
+func (r *blockCheckerRule) CheckBlock(span lint.BlockSpan, _ *lint.File) []lint.Diagnostic {
+	return []lint.Diagnostic{{Line: span.Start, RuleID: r.id, Message: r.message}}
+}
+
+func (r *blockCheckerRule) BlockKinds() []lint.BlockKind {
+	return []lint.BlockKind{lint.BlockThematicBreak}
+}
+
+func (r *blockCheckerRule) EnteringKinds() []ast.NodeKind {
+	return []ast.NodeKind{ast.KindThematicBreak}
+}
+
+var _ rule.BlockChecker = (*blockCheckerRule)(nil)
+
 type goodConfigurable struct {
 	plainRule
 	Applied map[string]any
@@ -159,6 +195,48 @@ func TestCheckRulesWithIntraFile_nodeChecker(t *testing.T) {
 	diags, errs := checker.CheckRulesWithIntraFile(f, rules, enabled("TST001"), true, 1)
 	assert.Empty(t, errs)
 	assert.NotEmpty(t, diags)
+}
+
+// TestCheckRulesWithIntraFile_nodeCheckerNilAST exercises the defensive branch
+// in classifySlot where a NodeChecker that is not a BlockChecker runs against a
+// parse-skipped File (AST nil). The rule cannot run, so no diagnostics are emitted.
+func TestCheckRulesWithIntraFile_nodeCheckerNilAST(t *testing.T) {
+	f := lint.NewFileLines("doc.md", []byte("# Hello\n\nParagraph.\n"))
+	f.RootDir = "."
+	f.RunCache = lint.NewRunCache()
+	d := lint.Diagnostic{Line: 1, RuleID: "TST001", Message: "node hit"}
+	rules := []rule.Rule{&nodeCheckerRule{plainRule: plainRule{id: "TST001"}, diag: d}}
+	diags, errs := checker.CheckRulesWithIntraFile(f, rules, enabled("TST001"), true, 1)
+	assert.Empty(t, errs)
+	assert.Empty(t, diags, "NodeChecker without BlockChecker emits nothing on nil-AST path")
+}
+
+// TestCheckRulesWithIntraFile_blockCheckerNilAST pins the BlockSpan
+// dispatch: on a parse-skipped File (AST nil) the engine drives a
+// rule.BlockChecker over the Layer 0 block spans, so its diagnostics
+// still surface even though the shared AST walk has no tree to traverse.
+func TestCheckRulesWithIntraFile_blockCheckerNilAST(t *testing.T) {
+	f := lint.NewFileLines("doc.md", []byte("para\n\n---\n\nmore\n"))
+	f.RootDir = "."
+	f.RunCache = lint.NewRunCache()
+	rules := []rule.Rule{&blockCheckerRule{plainRule: plainRule{id: "TST001"}, message: "hr seen"}}
+	diags, errs := checker.CheckRulesWithIntraFile(f, rules, enabled("TST001"), true, 1)
+	assert.Empty(t, errs)
+	require.Len(t, diags, 1, "block checker fires on the nil-AST path")
+	assert.Equal(t, 3, diags[0].Line, "thematic break at line 3")
+}
+
+// TestCheckRulesWithIntraFile_blockCheckerASTPath pins that the same
+// rule still runs through the shared AST walk when a tree is present, so
+// the migration adds the BlockSpan seam without disturbing the parsed
+// path.
+func TestCheckRulesWithIntraFile_blockCheckerASTPath(t *testing.T) {
+	f := newTestFile(t, "para\n\n---\n\nmore\n")
+	rules := []rule.Rule{&blockCheckerRule{plainRule: plainRule{id: "TST001"}, message: "hr seen"}}
+	diags, errs := checker.CheckRulesWithIntraFile(f, rules, enabled("TST001"), true, 1)
+	assert.Empty(t, errs)
+	require.Len(t, diags, 1, "block checker fires on the AST path")
+	assert.Equal(t, 1, diags[0].Line)
 }
 
 func TestCheckRulesWithIntraFile_settingsError(t *testing.T) {

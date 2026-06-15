@@ -56,7 +56,7 @@ func CheckRulesWithIntraFile(
 	skipSourceContext bool,
 	intraFileCap int,
 ) ([]lint.Diagnostic, []error) {
-	slots, nodeCheckers, errs := classifyRules(rules, effective)
+	slots, nodeCheckers, blockCheckers, errs := classifyRules(f, rules, effective)
 
 	// Run non-NodeChecker rules. With cap=1 the loop stays serial and
 	// matches the legacy code path byte-for-byte. With cap>1, slots
@@ -71,8 +71,15 @@ func CheckRulesWithIntraFile(
 	// goroutine, one walk, one rule per node — fast enough that
 	// splitting per rule would lose the cache locality the multiplex
 	// just won.
+	//
+	// On a parse-skipped File (f.AST nil), classifyRules routes every
+	// rule into blockCheckers instead, so nodeCheckers is empty and the
+	// AST walk is never entered with a nil tree.
 	if len(nodeCheckers) > 0 {
 		runNodeCheckers(f, nodeCheckers)
+	}
+	if len(blockCheckers) > 0 {
+		runBlockCheckers(f, blockCheckers)
 	}
 
 	var diags []lint.Diagnostic
@@ -88,14 +95,16 @@ func CheckRulesWithIntraFile(
 	return diags, errs
 }
 
-// ruleSlot is one rule's diagnostic bucket. NodeCheckers append to
-// it from the shared walk; non-NodeCheckers fill it once via Check.
-// Slots are kept in rules order so the final concatenation reproduces
-// the sequential output exactly. Configure-failed rules never get a
-// slot — they short-circuit in classifyRules with an entry in errs.
+// ruleSlot is one rule's diagnostic bucket. NodeCheckers append to it
+// from the shared AST walk; BlockCheckers from the shared block-span
+// dispatch on a parse-skipped File; non-NodeCheckers fill it once via
+// Check. Slots are kept in rules order so the final concatenation
+// reproduces the sequential output exactly. Configure-failed rules never
+// get a slot — they short-circuit in classifyRules with an entry in errs.
 type ruleSlot struct {
 	nc    rule.NodeChecker
-	check rule.Rule // non-nil for non-NodeChecker slots
+	bc    rule.BlockChecker // non-nil for the nil-AST block-span path
+	check rule.Rule         // non-nil for non-NodeChecker slots
 	diags []lint.Diagnostic
 }
 
@@ -105,11 +114,22 @@ type ruleSlot struct {
 // otherwise the worker's existing clone is reused as-is), and splits
 // the result into per-rule slots. The slots slice keeps every
 // enabled rule in input order (so the final concatenation is
-// deterministic); the nodeCheckers slice is the subset whose group
-// will be filled by the shared walk.
+// deterministic); nodeCheckers and blockCheckers are the subsets the
+// two shared dispatches fill.
+//
+// The two dispatches are mutually exclusive per File: when f.AST is set
+// (the parsed path) a NodeChecker goes to nodeCheckers and the shared
+// AST walk drives its CheckNode; when f.AST is nil (the Layer 0
+// parse-skip path) a rule that is also a rule.BlockChecker goes to
+// blockCheckers and the shared block-span dispatch drives its CheckBlock
+// instead. A nil-AST NodeChecker that is NOT a BlockChecker cannot run
+// on the tree-less File, so it is dropped from both — the engine's gate
+// guarantees that case never reaches here (it parses unless every
+// enabled rule is Layer 0), so dropping it is a defensive belt, not a
+// behaviour the production path relies on.
 func classifyRules(
-	rules []rule.Rule, effective map[string]config.RuleCfg,
-) (slots []ruleSlot, nodeCheckers []*ruleSlot, errs []error) {
+	f *lint.File, rules []rule.Rule, effective map[string]config.RuleCfg,
+) (slots []ruleSlot, nodeCheckers, blockCheckers []*ruleSlot, errs []error) {
 	// Pre-size at the registered-rule count. In production all but a
 	// handful of rules are enabled by default. Allocating slots as a
 	// value slice (rather than a slice of `*ruleSlot`) collapses the
@@ -119,6 +139,7 @@ func classifyRules(
 	// because the slots cap was pre-set to len(rules) — no append
 	// grows the backing, so the index-derived pointers do not
 	// dangle.
+	astNil := f != nil && f.AST == nil
 	slots = make([]ruleSlot, 0, len(rules))
 	for _, rl := range rules {
 		cfg, ok := effective[rl.Name()]
@@ -130,21 +151,42 @@ func classifyRules(
 			errs = append(errs, err)
 			continue
 		}
-		if nc, ok := checkRule.(rule.NodeChecker); ok {
-			slots = append(slots, ruleSlot{nc: nc})
-			continue
-		}
-		slots = append(slots, ruleSlot{check: checkRule})
+		slots = append(slots, classifySlot(checkRule, astNil))
 	}
 	for i := range slots {
-		if slots[i].nc != nil {
+		switch {
+		case slots[i].bc != nil:
+			if blockCheckers == nil {
+				blockCheckers = make([]*ruleSlot, 0, len(slots)/2+1)
+			}
+			blockCheckers = append(blockCheckers, &slots[i])
+		case slots[i].nc != nil:
 			if nodeCheckers == nil {
 				nodeCheckers = make([]*ruleSlot, 0, len(slots)/2+1)
 			}
 			nodeCheckers = append(nodeCheckers, &slots[i])
 		}
 	}
-	return slots, nodeCheckers, errs
+	return slots, nodeCheckers, blockCheckers, errs
+}
+
+// classifySlot builds one rule's slot. On a parse-skipped File (astNil)
+// a rule.BlockChecker is routed to the block-span dispatch; on a parsed
+// File a rule.NodeChecker is routed to the shared AST walk. A non-node
+// rule fills its own slot via Check. A nil-AST NodeChecker that is not a
+// BlockChecker gets an empty slot (no dispatch claims it); see
+// classifyRules for why that path is unreachable in production.
+func classifySlot(checkRule rule.Rule, astNil bool) ruleSlot {
+	if nc, ok := checkRule.(rule.NodeChecker); ok {
+		if astNil {
+			if bc, ok := checkRule.(rule.BlockChecker); ok {
+				return ruleSlot{bc: bc}
+			}
+			return ruleSlot{}
+		}
+		return ruleSlot{nc: nc}
+	}
+	return ruleSlot{check: checkRule}
 }
 
 // kindTable is the per-file dispatch plan for the shared NodeChecker
@@ -287,6 +329,44 @@ func dispatchWithGeneric(n ast.Node, f *lint.File, t *kindTable) {
 			s.diags = append(s.diags, ds...)
 		}
 	}
+}
+
+// runBlockCheckers drives the shared block-span dispatch for a
+// parse-skipped File (f.AST nil): it walks the Layer 0 block scan once,
+// in document order, and for each span calls CheckBlock on every
+// block-checker slot whose rule reacts to that span's kind, appending
+// diagnostics into each rule's own slot. Spans are visited in document
+// order and slots in rule order, so the concatenated result is grouped
+// by rule exactly as the AST walk groups CheckNode output — the byte-
+// identical contract rule.BlockChecker promises.
+//
+// The block-checker count is tiny (the migrated structural rules), so a
+// per-span linear scan over the slots beats building a kind-indexed
+// table and allocates nothing beyond the diagnostics themselves.
+func runBlockCheckers(f *lint.File, blockCheckers []*ruleSlot) {
+	scan := lint.Layer0(f)
+	for _, span := range scan.BlockSpans {
+		for _, s := range blockCheckers {
+			if !blockCheckerReactsTo(s.bc, span.Kind) {
+				continue
+			}
+			if ds := s.bc.CheckBlock(span, f); len(ds) > 0 {
+				s.diags = append(s.diags, ds...)
+			}
+		}
+	}
+}
+
+// blockCheckerReactsTo reports whether bc declares interest in kind. The
+// kind set per rule is tiny (one or two kinds), so a linear scan over
+// BlockKinds() beats a map and allocates nothing.
+func blockCheckerReactsTo(bc rule.BlockChecker, kind lint.BlockKind) bool {
+	for _, want := range bc.BlockKinds() {
+		if want == kind {
+			return true
+		}
+	}
+	return false
 }
 
 // runNonNodeCheckers fills the non-NodeChecker slots' diags fields.

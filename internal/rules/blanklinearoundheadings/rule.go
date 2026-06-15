@@ -29,11 +29,17 @@ func (r *Rule) Name() string { return "blank-line-around-headings" }
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "heading" }
 
-// Check implements rule.Rule. The per-heading logic is pure and
-// stateless, so it is expressed as CheckNode and the engine can fold
-// this rule into one shared AST walk; a direct call still works via
-// rule.WalkNodes.
+// Check implements rule.Rule. The per-heading logic depends only on the
+// heading's line span and the blank lines around it — never on the inline
+// tree — so the rule is a rule.BlockChecker: on a parsed File it folds
+// into the engine's shared AST walk (rule.WalkNodes), and on a parse-
+// skipped File (f.AST nil) it reads the Layer 0 block scan instead
+// (rule.WalkBlocks). Both resolve the same heading line span, so the
+// diagnostics are identical.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	if f != nil && f.AST == nil {
+		return rule.WalkBlocks(r, f)
+	}
 	return rule.WalkNodes(r, f)
 }
 
@@ -59,7 +65,34 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 		return nil
 	}
 	lastLine := headingLastLine(heading, f)
+	return r.checkBlankLines(f, line, lastLine)
+}
 
+// CheckBlock implements rule.BlockChecker. A heading span's 1-based
+// Start is the first heading line (HeadingLine on the AST path) and End
+// is its last line — the underline for a setext heading, the heading
+// line itself for ATX — matching headingLastLine. The Layer 0 scanner
+// never emits a heading span for a line inside a code block, so the
+// AST path's code-line skip has no nil-AST counterpart to reproduce.
+func (r *Rule) CheckBlock(span lint.BlockSpan, f *lint.File) []lint.Diagnostic {
+	return r.checkBlankLines(f, span.Start, span.End)
+}
+
+// blockKinds is the static block-kind interest CheckBlock declares via
+// rule.BlockChecker; package-level so BlockKinds returns it without
+// allocating. ATX and setext headings both map from ast.KindHeading.
+var blockKinds = []lint.BlockKind{lint.BlockATXHeading, lint.BlockSetextHeading}
+
+// BlockKinds implements rule.BlockChecker: CheckBlock reacts to both
+// heading shapes.
+func (r *Rule) BlockKinds() []lint.BlockKind { return blockKinds }
+
+var _ rule.BlockChecker = (*Rule)(nil)
+
+// checkBlankLines is the shared per-heading check both the AST
+// (CheckNode) and Layer 0 (CheckBlock) paths drive: line is the 1-based
+// first heading line, lastLine its 1-based last line.
+func (r *Rule) checkBlankLines(f *lint.File, line, lastLine int) []lint.Diagnostic {
 	var diags []lint.Diagnostic
 
 	// Check blank line before (not needed for line 1)

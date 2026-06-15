@@ -39,11 +39,16 @@ func (r *Rule) Category() string { return "whitespace" }
 // EnabledByDefault implements rule.Defaultable.
 func (r *Rule) EnabledByDefault() bool { return false }
 
-// Check implements rule.Rule. The per-thematic-break logic is pure and
-// stateless, so it is expressed as CheckNode and the engine can fold
-// this rule into one shared AST walk; a direct call still works via
-// rule.WalkNodes.
+// Check implements rule.Rule. The per-thematic-break logic depends only
+// on the rule's source line — never on the inline tree — so the rule is
+// a rule.BlockChecker: on a parsed File it folds into the engine's shared
+// AST walk (rule.WalkNodes), and on a parse-skipped File (f.AST nil) it
+// reads the Layer 0 block scan instead (rule.WalkBlocks). Both paths
+// resolve to the same source line, so the diagnostics are identical.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	if f != nil && f.AST == nil {
+		return rule.WalkBlocks(r, f)
+	}
 	return rule.WalkNodes(r, f)
 }
 
@@ -59,6 +64,24 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 	line := thematicBreakLine(tb, f)
 	return r.checkHR(f, line)
 }
+
+// CheckBlock implements rule.BlockChecker: a thematic-break span's
+// 1-based start line is the source line CheckNode would resolve from the
+// AST node, so it drives the same per-line checks.
+func (r *Rule) CheckBlock(span lint.BlockSpan, f *lint.File) []lint.Diagnostic {
+	return r.checkHR(f, span.Start)
+}
+
+// blockKinds is the static block-kind interest CheckBlock declares via
+// rule.BlockChecker; package-level so BlockKinds returns it without
+// allocating.
+var blockKinds = []lint.BlockKind{lint.BlockThematicBreak}
+
+// BlockKinds implements rule.BlockChecker: CheckBlock only reacts to
+// thematic-break spans.
+func (r *Rule) BlockKinds() []lint.BlockKind { return blockKinds }
+
+var _ rule.BlockChecker = (*Rule)(nil)
 
 func (r *Rule) checkHR(f *lint.File, line int) []lint.Diagnostic {
 	lineIdx := line - 1

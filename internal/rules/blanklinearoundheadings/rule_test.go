@@ -11,6 +11,31 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestCheck_NilASTMatchesAST pins the BlockChecker migration: Check on a
+// nil-AST File (the Layer 0 parse-skip path) must produce byte-identical
+// diagnostics to the AST path for ATX and setext headings alike.
+func TestCheck_NilASTMatchesAST(t *testing.T) {
+	srcs := [][]byte{
+		[]byte("# Title\n\nSome text\n\n## Section\n\nMore text\n"),
+		[]byte("# Title\n\nSome text\n## Section\n\nMore text\n"),
+		[]byte("# Title\nSome text\n"),
+		[]byte("Title\n=====\nText immediately after\n"),
+		[]byte("intro\nTitle\n=====\n\nText.\n"),
+		[]byte("# A\n## B\n### C\n"),
+		[]byte("para\n\n# Only\n"),
+		[]byte("multi\nline\ntitle\n=====\ntext\n"),
+		[]byte("text\n# Mid heading\nmore text\n"),
+	}
+	for _, src := range srcs {
+		astFile, err := lint.NewFile("f.md", src)
+		require.NoError(t, err)
+		astDiags := (&Rule{}).Check(astFile)
+		l0Diags := (&Rule{}).Check(lint.NewFileLines("f.md", src))
+		assert.Equal(t, astDiags, l0Diags,
+			"nil-AST diagnostics must match AST for %q", string(src))
+	}
+}
+
 func TestCheck_ProperBlankLines_NoViolation(t *testing.T) {
 	src := []byte("# Title\n\nSome text\n\n## Section\n\nMore text\n")
 	f, err := lint.NewFile("test.md", src)
