@@ -194,10 +194,12 @@ func firstTextLine(n ast.Node, f *lint.File, base int) int {
 
 // isInlineNode reports whether n is an inline node, whose Lines() would
 // panic. nodeLine skips these while walking ancestors for a block with a
-// source position.
+// source position. *ast.String is included alongside the other inline kinds
+// because it too is a BaseInline whose Lines() panics; omitting it would let
+// the ancestor walk reach lines := p.Lines() on a String node and crash.
 func isInlineNode(n ast.Node) bool {
 	switch n.(type) {
-	case *ast.Text, *ast.CodeSpan, *ast.Emphasis,
+	case *ast.Text, *ast.String, *ast.CodeSpan, *ast.Emphasis,
 		*ast.Link, *ast.Image, *ast.AutoLink, *ast.RawHTML:
 		return true
 	}
