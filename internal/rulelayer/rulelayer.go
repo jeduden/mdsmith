@@ -48,10 +48,29 @@ type auditEntry struct {
 // embedded manifest at package init.
 var layerByID = buildLayerMap()
 
+// astProjectionConsumers lists rules the audit manifest marks
+// "A-no-skipping" — they never crash with a nil AST — but which still read
+// an AST-derived projection that Layer 0 does not reproduce, so their
+// output silently diverges on a parse-skipped File. The audit's probe
+// measured crash-safety, not output equivalence: these rules consume the
+// inline code-span ranges (CodeSpanLiteralRanges / CodeSpanContentRanges),
+// which return empty without a parse, causing false positives inside
+// backtick spans. Until Layer 1 projects code spans, they are forced to
+// LayerAST so the parse-skip gate never admits them.
+//
+//   - MDS047 ambiguous-emphasis  → CodeSpanContentRanges
+//   - MDS054 no-undefined-reference-labels → CodeSpanLiteralRanges
+var astProjectionConsumers = map[string]bool{
+	"MDS047": true,
+	"MDS054": true,
+}
+
 // buildLayerMap decodes the embedded manifest into the id→layer table.
-// "A-no-skipping" rules are Layer 0; every other category needs the AST.
-// A decode failure is a build-time contract violation (the embedded JSON
-// is checked in), so it panics rather than silently degrading.
+// "A-no-skipping" rules are Layer 0 unless they appear in
+// astProjectionConsumers (which need an AST-only inline projection); every
+// other category needs the AST. A decode failure is a build-time contract
+// violation (the embedded JSON is checked in), so it panics rather than
+// silently degrading.
 func buildLayerMap() map[string]Layer {
 	var entries []auditEntry
 	if err := json.Unmarshal(auditJSON, &entries); err != nil {
@@ -59,7 +78,7 @@ func buildLayerMap() map[string]Layer {
 	}
 	m := make(map[string]Layer, len(entries))
 	for _, e := range entries {
-		if e.Category == "A-no-skipping" {
+		if e.Category == "A-no-skipping" && !astProjectionConsumers[e.ID] {
 			m[e.ID] = Layer0
 		} else {
 			m[e.ID] = LayerAST

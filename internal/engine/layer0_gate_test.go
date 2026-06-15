@@ -158,6 +158,35 @@ func TestLayer0Gate_DiagnosticsMatchFullParse(t *testing.T) {
 		"Layer 0 parse-skip must produce identical diagnostics to a full parse")
 }
 
+// TestLayer0Gate_CodeSpanRuleForcesParse guards the soundness fix for the
+// inline-code-span gap: MDS054 (no-undefined-reference-labels) is
+// "A-no-skipping" in the AST-dependence audit but reads code-span ranges
+// that go empty without a parse, so it must force the parse even though it
+// never crashes on a nil AST. Without the parse it would emit a false
+// positive for `[ref]` inside a backtick span.
+func TestLayer0Gate_CodeSpanRuleForcesParse(t *testing.T) {
+	withLayer0Skip(t, true)
+	dir, path := writeDoc(t, "# T\n\nUse `[undefined]` inline.\n")
+
+	probe := &astProbeRule{}
+	cfg := layer0OnlyConfig()
+	cfg.Rules["no-undefined-reference-labels"] = config.RuleCfg{Enabled: true}
+	cfg.Rules[probe.Name()] = config.RuleCfg{Enabled: true}
+
+	r := &Runner{
+		Config:           cfg,
+		Rules:            append(rule.All(), probe),
+		StripFrontMatter: true,
+		RootDir:          dir,
+	}
+	res := r.Run([]string{path})
+	require.Empty(t, res.Errors)
+	assert.False(t, probe.sawNilAST,
+		"a code-span-consuming rule must keep the AST parse")
+	// The bracket text sits inside a code span, so neither path reports it.
+	assert.Empty(t, res.Diagnostics)
+}
+
 // astProbeRule is a test rule that records whether the File it checked had
 // a nil AST (the parse-skipped state). It declares itself Layer 0 via an
 // id the audit manifest covers... but as a synthetic rule its id is not in
