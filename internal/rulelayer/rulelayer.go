@@ -72,8 +72,17 @@ var astProjectionConsumers = map[string]bool{
 // violation (the embedded JSON is checked in), so it panics rather than
 // silently degrading.
 func buildLayerMap() map[string]Layer {
+	return buildLayerMapFrom(auditJSON)
+}
+
+// buildLayerMapFrom decodes manifest JSON into the id→layer table. It is the
+// testable core of buildLayerMap: the package-level builder feeds it the
+// embedded manifest, and a unit test feeds it malformed bytes to drive the
+// decode-failure panic. A decode failure is a build-time contract violation
+// (the embedded JSON is checked in), so it panics rather than degrading.
+func buildLayerMapFrom(manifest []byte) map[string]Layer {
 	var entries []auditEntry
-	if err := json.Unmarshal(auditJSON, &entries); err != nil {
+	if err := json.Unmarshal(manifest, &entries); err != nil {
 		panic(fmt.Sprintf("rulelayer: decoding embedded audit manifest: %v", err))
 	}
 	m := make(map[string]Layer, len(entries))
