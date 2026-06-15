@@ -6,12 +6,23 @@ import (
 	"github.com/jeduden/mdsmith/pkg/markdown"
 )
 
-// WholeParagraphEmphasisLines returns the 1-based source line of every
-// paragraph whose sole inline child is a single emphasis (or strong
-// emphasis) span — the exact shape MDS018 (no-emphasis-as-heading) flags.
-// It is the Layer 1 projection source for that rule on the parse-skipped
-// path (f.AST nil), so the rule no longer forces a whole-document goldmark
-// parse to read one parsed emphasis node.
+// EmphasisParagraph is one paragraph whose sole inline child is a single
+// emphasis (or strong emphasis) span — the exact shape MDS018
+// (no-emphasis-as-heading) flags. Line is the paragraph's 1-based source
+// line; TextSegments are the ordered plain-text values of the emphasis
+// span's Text descendants, so the rule can apply its placeholder filter
+// with the same incremental accumulation the AST path uses without
+// re-parsing.
+type EmphasisParagraph struct {
+	Line         int
+	TextSegments []string
+}
+
+// WholeParagraphEmphasis returns every paragraph whose sole inline child is
+// a single emphasis span, in document order. It is the Layer 1 projection
+// source for MDS018 (no-emphasis-as-heading) on the parse-skipped path
+// (f.AST nil), so the rule no longer forces a whole-document goldmark parse
+// to read one parsed emphasis node.
 //
 // The detector is bounded: it parses only the paragraphs whose first
 // non-space byte is `*` or `_` (the only bytes that can open emphasis),
@@ -22,10 +33,10 @@ import (
 // path by construction, while the byte gate keeps the cost proportional to
 // the rare emphasis-led paragraph rather than every paragraph.
 //
-// The returned slice is in document order. nil when no paragraph qualifies
-// or the File has no source. Computed once per File and cached; the slice
-// is shared read-only and must not be mutated.
-func WholeParagraphEmphasisLines(f *File) []int {
+// nil when no paragraph qualifies or the File has no source. Computed once
+// per File and cached; the slice is shared read-only and must not be
+// mutated.
+func WholeParagraphEmphasis(f *File) []EmphasisParagraph {
 	if f.emphasisLinesDone.Load() {
 		return f.emphasisLines
 	}
@@ -38,15 +49,30 @@ func WholeParagraphEmphasisLines(f *File) []int {
 	return f.emphasisLines
 }
 
+// WholeParagraphEmphasisLines returns just the 1-based source lines of the
+// paragraphs WholeParagraphEmphasis reports, in document order. nil when
+// none qualify.
+func WholeParagraphEmphasisLines(f *File) []int {
+	paras := WholeParagraphEmphasis(f)
+	if len(paras) == 0 {
+		return nil
+	}
+	lines := make([]int, len(paras))
+	for i, p := range paras {
+		lines[i] = p.Line
+	}
+	return lines
+}
+
 // scanWholeParagraphEmphasis walks the Layer 0 block spans and, for each
 // paragraph whose first non-space byte can open emphasis, parses that
 // block's bytes in isolation to test the lone-emphasis-child shape.
-func scanWholeParagraphEmphasis(f *File) []int {
+func scanWholeParagraphEmphasis(f *File) []EmphasisParagraph {
 	if len(f.Source) == 0 {
 		return nil
 	}
 	l0 := Layer0(f)
-	var out []int
+	var out []EmphasisParagraph
 	for _, span := range l0.BlockSpans {
 		if span.Kind != BlockParagraph {
 			continue
@@ -54,8 +80,8 @@ func scanWholeParagraphEmphasis(f *File) []int {
 		if !paragraphMayOpenEmphasis(f, span) {
 			continue
 		}
-		if line, ok := loneEmphasisParagraphLine(f, span); ok {
-			out = append(out, line)
+		if p, ok := loneEmphasisParagraph(f, span); ok {
+			out = append(out, p)
 		}
 	}
 	return out
@@ -81,40 +107,62 @@ func paragraphMayOpenEmphasis(f *File, span BlockSpan) bool {
 	return false
 }
 
-// loneEmphasisParagraphLine parses the source bytes of one paragraph block
-// in isolation and, when the parse yields a single paragraph whose only
-// inline child is an emphasis node, returns the paragraph's 1-based source
-// line in the original document. The block is parsed standalone because
-// emphasis resolution is local to a paragraph: the delimiter run, its
-// flanking context, and its closer all lie within the block, so the inline
-// tree is identical to the one the whole-document parse produces for the
-// same paragraph.
-func loneEmphasisParagraphLine(f *File, span BlockSpan) (int, bool) {
+// loneEmphasisParagraph parses the source bytes of one paragraph block in
+// isolation and, when the parse yields a single paragraph whose only inline
+// child is an emphasis node, returns the paragraph's source line (in the
+// original document's coordinates) and the emphasis span's plain inner
+// text. The block is parsed standalone because emphasis resolution is local
+// to a paragraph: the delimiter run, its flanking context, and its closer
+// all lie within the block, so the inline tree is identical to the one the
+// whole-document parse produces for the same paragraph.
+func loneEmphasisParagraph(f *File, span BlockSpan) (EmphasisParagraph, bool) {
 	start := f.LineStartOffset(span.Start - 1)
 	end := f.lineEndOffset(span.End - 1)
 	if end <= start {
-		return 0, false
+		return EmphasisParagraph{}, false
 	}
 	block := f.Source[start:end]
 	doc := markdown.ParseContext(block, parser.NewContext())
 	para, ok := singleParagraph(doc)
 	if !ok {
-		return 0, false
+		return EmphasisParagraph{}, false
 	}
 	first := para.FirstChild()
 	if first == nil || first.NextSibling() != nil {
-		return 0, false
+		return EmphasisParagraph{}, false
 	}
-	if _, isEmph := first.(*ast.Emphasis); !isEmph {
-		return 0, false
+	emph, isEmph := first.(*ast.Emphasis)
+	if !isEmph {
+		return EmphasisParagraph{}, false
 	}
 	// The paragraph's first content line, in the original document's
 	// coordinates: the local paragraph's first text line offset plus the
 	// block's start offset maps back through LineOfOffset.
+	line := span.Start
 	if local := paraLocalFirstLineOffset(para); local >= 0 {
-		return f.LineOfOffset(start + local), true
+		line = f.LineOfOffset(start + local)
 	}
-	return span.Start, true
+	return EmphasisParagraph{Line: line, TextSegments: emphasisTextSegments(emph, block)}, true
+}
+
+// emphasisTextSegments returns the plain-text value of every Text
+// descendant of the emphasis node, in walk order, against the standalone
+// block bytes the node was parsed from. It mirrors, segment by segment, the
+// incremental text the AST-path placeholder check accumulates over the
+// emphasis subtree — so a caller that re-accumulates and tests each prefix
+// reproduces that check byte-identically, including its early stop.
+func emphasisTextSegments(emph *ast.Emphasis, block []byte) []string {
+	var segs []string
+	_ = ast.Walk(emph, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		if t, ok := n.(*ast.Text); ok {
+			segs = append(segs, string(t.Segment.Value(block)))
+		}
+		return ast.WalkContinue, nil
+	})
+	return segs
 }
 
 // singleParagraph returns the lone Paragraph child of a parsed standalone

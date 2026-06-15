@@ -196,3 +196,39 @@ func TestCheck_TableShapedSingleEmphasisLine_NotFlagged(t *testing.T) {
 	diags := r.Check(f)
 	require.Empty(t, diags, "table-shaped emphasis line must not be flagged")
 }
+
+// TestCheck_NilASTEquivalence pins the parse-skipped path (f.AST nil,
+// served from the Layer 1 whole-paragraph-emphasis index) byte-identical
+// to the AST path across emphasis-as-heading shapes, including the
+// placeholder suppression.
+func TestCheck_NilASTEquivalence(t *testing.T) {
+	cases := []struct {
+		name         string
+		src          string
+		placeholders []string
+	}{
+		{"bold-heading", "**Bold text**\n", nil},
+		{"italic-heading", "*Italic text*\n", nil},
+		{"underscore-heading", "_Italic_\n", nil},
+		{"inline-emphasis-ok", "Some **bold** text here.\n", nil},
+		{"plain-ok", "just plain text\n", nil},
+		{"two-paragraphs", "*one*\n\nplain\n\n**two**\n", nil},
+		{"emphasis-then-text", "*emphasis* and more\n", nil},
+		{"leading-spaces", "   *emphasis*\n", nil},
+		{"multiline-emphasis", "*emphasis\ncontinued*\n", nil},
+		{"placeholder-question", "*?*\n", []string{"?"}},
+		{"placeholder-ellipsis", "*...*\n", []string{"..."}},
+		{"placeholder-no-match", "*real heading*\n", []string{"?"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			astFile, err := lint.NewFile("test.md", []byte(tc.src))
+			require.NoError(t, err)
+			lineFile := lint.NewFileLines("test.md", []byte(tc.src))
+			r1 := &Rule{Placeholders: tc.placeholders}
+			r2 := &Rule{Placeholders: tc.placeholders}
+			assert.Equal(t, r1.Check(astFile), r2.Check(lineFile),
+				"nil-AST diagnostics diverge from AST path")
+		})
+	}
+}

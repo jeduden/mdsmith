@@ -127,7 +127,7 @@ type File struct {
 	// paragraph lines from a bounded per-block parse instead of walking
 	// f.AST. atomic.Bool + mutex matches the caches above for the same
 	// closure-box reason.
-	emphasisLines     []int
+	emphasisLines     []EmphasisParagraph
 	emphasisLinesDone atomic.Bool
 	emphasisLinesMu   sync.Mutex
 
