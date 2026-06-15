@@ -44,6 +44,16 @@ func headingMaxConfig() *config.Config {
 	return cfg
 }
 
+// badSettingsConfig gives line-length a non-integer max, so ConfigureRule
+// fails when the gate applies it — the run must fall back to the AST path.
+func badSettingsConfig() *config.Config {
+	cfg := config.Defaults()
+	cfg.Rules = map[string]config.RuleCfg{
+		"line-length": {Enabled: true, Settings: map[string]any{"max": "not-an-int"}},
+	}
+	return cfg
+}
+
 // TestComputeFlatLayer0Active pins the parse-skip eligibility gate: it
 // fires only with the opt-in flag, an all-line-capable enabled rule set,
 // and a config free of kinds and overrides (either could enable a
@@ -69,6 +79,13 @@ func TestComputeFlatLayer0Active(t *testing.T) {
 		{
 			"line-length heading-max",
 			&Runner{Config: headingMaxConfig(), Rules: lineLengthOnly(), FlatLayer0: true},
+			false,
+		},
+		// Invalid settings make ConfigureRule fail in the gate, which must
+		// conservatively bail to the AST path.
+		{
+			"line-length bad settings",
+			&Runner{Config: badSettingsConfig(), Rules: lineLengthOnly(), FlatLayer0: true},
 			false,
 		},
 	}
