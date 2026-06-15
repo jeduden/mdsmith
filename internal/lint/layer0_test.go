@@ -537,3 +537,14 @@ func TestHTMLBlockCloses_EachType(t *testing.T) {
 	// Types 6 and 7 never close on a terminator (the caller handles blanks).
 	assert.False(t, htmlBlockCloses([]byte("</div>"), htmlType6))
 }
+
+func TestIsOrderedMarker_DigitsThenNonDelimiter(t *testing.T) {
+	// A digit run not followed by `.` or `)` is not an ordered marker.
+	assert.False(t, isOrderedMarker([]byte("12 item"), 0))
+}
+
+func TestIsThematicBreak_NonMarkerLeadIsFalse(t *testing.T) {
+	// A line whose first non-space byte is not `-`, `*`, or `_` is not a
+	// thematic break.
+	assert.False(t, isThematicBreak([]byte("abc")))
+}
