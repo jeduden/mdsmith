@@ -29,48 +29,110 @@ func (r *Rule) Category() string { return "accessibility" }
 // this rule into one shared AST walk; a direct call still works via
 // rule.WalkNodes.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	// On the parse-skipped path (f.AST nil) the AST walk surfaces no
+	// nodes, so drive the per-block dispatch over the Layer 0 block scan:
+	// each inline-bearing span is parsed in isolation and the same Image
+	// logic runs over it, with span-local segment offsets mapped back to
+	// the document. Re-using goldmark's parser per span keeps the flagged
+	// empty-alt set byte-identical to the AST path.
+	if f.AST == nil {
+		return rule.WalkBlocks(r, f)
+	}
 	return rule.WalkNodes(r, f)
 }
 
-// CheckNode implements rule.NodeChecker.
+// CheckBlock implements rule.BlockChecker. It parses the span's own source
+// bytes in isolation and applies the per-Image empty-alt check, mapping
+// span-local segment offsets to the document via the span's start offset.
+func (r *Rule) CheckBlock(span lint.BlockSpan, f *lint.File) []lint.Diagnostic {
+	start := f.LineStartOffset(span.Start - 1)
+	end := f.LineEndOffset(span.End - 1)
+	if end <= start {
+		return nil
+	}
+	doc := lint.ParseInline(f.Source[start:end])
+	var diags []lint.Diagnostic
+	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		if d, ok := r.checkImage(n, f, start); ok {
+			diags = append(diags, d)
+		}
+		return ast.WalkContinue, nil
+	})
+	if len(diags) == 0 {
+		return nil
+	}
+	return diags
+}
+
+// blockKinds is the static block-kind interest CheckBlock declares via
+// rule.BlockChecker; package-level so BlockKinds returns it without
+// allocating. An image can appear in body text under any of these block
+// kinds.
+var blockKinds = []lint.BlockKind{
+	lint.BlockParagraph,
+	lint.BlockATXHeading,
+	lint.BlockSetextHeading,
+	lint.BlockList,
+	lint.BlockQuote,
+}
+
+// BlockKinds implements rule.BlockChecker.
+func (r *Rule) BlockKinds() []lint.BlockKind { return blockKinds }
+
+var _ rule.BlockChecker = (*Rule)(nil)
+
+// CheckNode implements rule.NodeChecker. On the AST path segment offsets
+// are already document-absolute, so the base offset is zero.
 func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
 	if !entering {
 		return nil
 	}
+	if d, ok := r.checkImage(n, f, 0); ok {
+		return []lint.Diagnostic{d}
+	}
+	return nil
+}
+
+var _ rule.NodeChecker = (*Rule)(nil)
+
+// checkImage emits a diagnostic when n is an image with empty (or
+// whitespace-only) alt text. base is added to the node's segment-local
+// offsets to recover document-absolute positions: zero on the AST path,
+// the span's start offset on the per-block path.
+func (r *Rule) checkImage(n ast.Node, f *lint.File, base int) (lint.Diagnostic, bool) {
 	img, ok := n.(*ast.Image)
 	if !ok {
-		return nil
+		return lint.Diagnostic{}, false
 	}
-	alt := imageAltText(img, f)
-	if strings.TrimSpace(alt) != "" {
-		return nil
+	if strings.TrimSpace(imageAltText(img, f, base)) != "" {
+		return lint.Diagnostic{}, false
 	}
-	line := imageLine(img, f)
-	return []lint.Diagnostic{{
+	return lint.Diagnostic{
 		File:     f.Path,
-		Line:     line,
+		Line:     imageLine(img, f, base),
 		Column:   1,
 		RuleID:   r.ID(),
 		RuleName: r.Name(),
 		Severity: lint.Warning,
 		Message:  "image has empty alt text",
-	}}
+	}, true
 }
 
-var _ rule.NodeChecker = (*Rule)(nil)
-
-func imageAltText(img *ast.Image, f *lint.File) string {
+func imageAltText(img *ast.Image, f *lint.File, base int) string {
 	var b strings.Builder
-	collectText(&b, img, f.Source)
+	collectText(&b, img, f.Source, base)
 	return b.String()
 }
 
-func collectText(b *strings.Builder, n ast.Node, source []byte) {
+func collectText(b *strings.Builder, n ast.Node, source []byte, base int) {
 	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
 		if t, ok := c.(*ast.Text); ok {
-			b.Write(t.Segment.Value(source))
+			b.Write(source[base+t.Segment.Start : base+t.Segment.Stop])
 		} else {
-			collectText(b, c, source)
+			collectText(b, c, source, base)
 		}
 	}
 }
@@ -85,9 +147,9 @@ func isInlineNode(n ast.Node) bool {
 	return false
 }
 
-func imageLine(img *ast.Image, f *lint.File) int {
+func imageLine(img *ast.Image, f *lint.File, base int) int {
 	// Try child text nodes first for precise position.
-	line := firstTextLine(img, f)
+	line := firstTextLine(img, f, base)
 	if line > 0 {
 		return line
 	}
@@ -98,18 +160,18 @@ func imageLine(img *ast.Image, f *lint.File) int {
 		}
 		lines := p.Lines()
 		if lines != nil && lines.Len() > 0 {
-			return f.LineOfOffset(lines.At(0).Start)
+			return f.LineOfOffset(base + lines.At(0).Start)
 		}
 	}
 	return 1
 }
 
-func firstTextLine(n ast.Node, f *lint.File) int {
+func firstTextLine(n ast.Node, f *lint.File, base int) int {
 	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
 		if t, ok := c.(*ast.Text); ok {
-			return f.LineOfOffset(t.Segment.Start)
+			return f.LineOfOffset(base + t.Segment.Start)
 		}
-		if line := firstTextLine(c, f); line > 0 {
+		if line := firstTextLine(c, f, base); line > 0 {
 			return line
 		}
 	}

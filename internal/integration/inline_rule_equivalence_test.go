@@ -13,6 +13,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/nobareurls"
 	"github.com/jeduden/mdsmith/internal/rules/noemphasisasheading"
+	"github.com/jeduden/mdsmith/internal/rules/noemptyalttext"
 )
 
 // inlineEquivRules are the inline rules re-backed on the Layer 1 inline
@@ -23,6 +24,7 @@ func inlineEquivRules() []rule.Rule {
 	return []rule.Rule{
 		&nobareurls.Rule{},
 		&noemphasisasheading.Rule{},
+		&noemptyalttext.Rule{},
 	}
 }
 

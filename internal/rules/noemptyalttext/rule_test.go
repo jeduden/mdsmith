@@ -153,7 +153,7 @@ func TestFirstTextLine(t *testing.T) {
 		txt := ast.NewText()
 		txt.Segment = text.NewSegment(0, 1)
 		p.AppendChild(p, txt)
-		assert.Equal(t, 1, firstTextLine(p, f))
+		assert.Equal(t, 1, firstTextLine(p, f, 0))
 	})
 	t.Run("nested Text via Link", func(t *testing.T) {
 		p := ast.NewParagraph()
@@ -162,10 +162,42 @@ func TestFirstTextLine(t *testing.T) {
 		txt.Segment = text.NewSegment(7, 8) // points into line 3
 		link.AppendChild(link, txt)
 		p.AppendChild(p, link)
-		assert.Equal(t, 3, firstTextLine(p, f))
+		assert.Equal(t, 3, firstTextLine(p, f, 0))
 	})
 	t.Run("no descendant text returns zero", func(t *testing.T) {
 		p := ast.NewParagraph()
-		assert.Equal(t, 0, firstTextLine(p, f))
+		assert.Equal(t, 0, firstTextLine(p, f, 0))
 	})
+}
+
+// TestCheck_NilASTEquivalence pins the parse-skipped path (f.AST nil,
+// served from the Layer 1 per-block inline parse) byte-identical to the
+// AST path across image shapes and block contexts.
+func TestCheck_NilASTEquivalence(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+	}{
+		{"empty-alt", "![](img.png)\n"},
+		{"good-alt", "![a cat](img.png)\n"},
+		{"whitespace-alt", "![   ](img.png)\n"},
+		{"empty-in-prose", "see ![](img.png) here\n"},
+		{"empty-in-list", "- item ![](img.png)\n- ok ![alt](x.png)\n"},
+		{"empty-in-heading", "# title ![](img.png)\n"},
+		{"empty-in-quote", "> quote ![](img.png)\n"},
+		{"two-empty", "![](a.png) and ![](b.png)\n"},
+		{"empty-multiline-para", "text\n![](img.png)\n"},
+		{"linked-image-empty", "[![](img.png)](dest)\n"},
+		{"no-image", "just text\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			astFile, err := lint.NewFile("test.md", []byte(tc.src))
+			require.NoError(t, err)
+			lineFile := lint.NewFileLines("test.md", []byte(tc.src))
+			r := &Rule{}
+			assert.Equal(t, r.Check(astFile), r.Check(lineFile),
+				"nil-AST diagnostics diverge from AST path")
+		})
+	}
 }
