@@ -23,6 +23,8 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 		[]byte("intro\nTitle\n=====\n\nText.\n"),
 		[]byte("# A\n## B\n### C\n"),
 		[]byte("para\n\n# Only\n"),
+		[]byte("multi\nline\ntitle\n=====\ntext\n"),
+		[]byte("text\n# Mid heading\nmore text\n"),
 	}
 	for _, src := range srcs {
 		astFile, err := lint.NewFile("f.md", src)
