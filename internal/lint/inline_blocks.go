@@ -153,12 +153,18 @@ func ParseInlineWithRefs(block []byte, refs []Reference) ast.Node {
 	return markdown.ParseContext(block, ctx)
 }
 
-// LineEndOffset returns the byte offset in Source of the newline that ends
-// 0-based source line i (or len(Source) for the last line). Paired with
-// LineStartOffset, it bounds a Layer 0 span's bytes for a per-block parse:
-// a span covering 1-based lines [Start, End] slices
-// Source[LineStartOffset(Start-1):LineEndOffset(End-1)]. i < 0 returns 0;
-// i past the last line returns len(Source).
-func (f *File) LineEndOffset(i int) int {
-	return f.lineEndOffset(i)
+// lineEndOffset returns the byte offset in Source of the newline that ends
+// 0-based source line i (or len(Source) for the last line). It bounds an
+// inline run's bytes: a run of 0-based lines [start, end] slices
+// Source[LineStartOffset(start):lineEndOffset(end)]. i < 0 returns 0; i
+// past the last line returns len(Source).
+func (f *File) lineEndOffset(i int) int {
+	nl := f.lineIndex()
+	if i < 0 {
+		return 0
+	}
+	if i >= len(nl) {
+		return len(f.Source)
+	}
+	return nl[i]
 }

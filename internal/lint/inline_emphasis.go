@@ -104,16 +104,3 @@ func paraLocalFirstLineOffset(para *ast.Paragraph) int {
 	}
 	return lines.At(0).Start
 }
-
-// lineEndOffset returns the byte offset in Source just past the end of
-// 0-based line i (the newline, or len(Source) for the last line).
-func (f *File) lineEndOffset(i int) int {
-	nl := f.lineIndex()
-	if i < 0 {
-		return 0
-	}
-	if i >= len(nl) {
-		return len(f.Source)
-	}
-	return nl[i]
-}

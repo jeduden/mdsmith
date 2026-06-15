@@ -62,10 +62,10 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 // per node was measurable on every file.
 //
 // On the parse-skipped path (f.AST nil) the document tree is unavailable,
-// so each inline-bearing Layer 0 block span is parsed in isolation and the
-// same node recursion runs over it, with span-local segment offsets mapped
-// back to the document via the span's start offset. Re-using goldmark's
-// parser per span reproduces the link/image nodes byte-identically.
+// so the same per-node check runs over the shared run-grouped inline parse
+// (lint.WalkInlineNodes), with run-local segment offsets mapped back to the
+// document via base. Re-using goldmark's parser per run reproduces the
+// link/image nodes byte-identically.
 func (r *Rule) checkEmpty(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
 	if f.AST != nil {
