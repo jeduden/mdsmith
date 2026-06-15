@@ -53,7 +53,7 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 		return nil
 	}
 
-	var diags []lint.Diagnostic
+	diags := make([]lint.Diagnostic, 0, 2)
 	if d, ok := r.checkAdjacentBlank(f, listStartLine, -1, "list should be preceded by a blank line"); ok {
 		diags = append(diags, d)
 	}

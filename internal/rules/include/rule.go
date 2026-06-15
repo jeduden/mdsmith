@@ -401,7 +401,16 @@ func processIncludedContent(
 		if !strings.HasSuffix(text, "\n") {
 			text += "\n"
 		}
-		text = "\n" + fence + wrap + "\n" + text + fence + "\n\n"
+		var b strings.Builder
+		b.Grow(1 + len(fence) + len(wrap) + 1 + len(text) + len(fence) + 2)
+		b.WriteString("\n")
+		b.WriteString(fence)
+		b.WriteString(wrap)
+		b.WriteString("\n")
+		b.WriteString(text)
+		b.WriteString(fence)
+		b.WriteString("\n\n")
+		text = b.String()
 	}
 	return text
 }
