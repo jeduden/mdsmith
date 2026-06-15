@@ -290,3 +290,48 @@ func TestFindFencedOpenLine_FirstContentOnLineOne(t *testing.T) {
 	open := FindFencedOpenLine(f, fcb)
 	assert.GreaterOrEqual(t, open, 0)
 }
+
+// TestCollectCodeBlockLines_NilASTUsesLayer0 pins the parse-skipped path:
+// a File built via NewFileLines has a nil AST, so collectCodeBlockLines
+// falls back to the on-demand Layer 0 scan rather than walking the tree.
+func TestCollectCodeBlockLines_NilASTUsesLayer0(t *testing.T) {
+	f := NewFileLines("t.md", []byte("text\n\n```go\nx := 1\n```\n\nmore\n"))
+	require.Nil(t, f.AST, "NewFileLines must leave AST nil")
+
+	lines := CollectCodeBlockLines(f)
+	assert.Equal(t, []int{3, 4, 5}, keysOf(lines))
+}
+
+// TestCollectCodeBlockLines_PreScannedLayer0 pins the fast path where the
+// Layer 0 scan already ran (f.layer0Done is set), so collectCodeBlockLines
+// serves the cached scan's set directly without re-scanning or walking the
+// tree.
+func TestCollectCodeBlockLines_PreScannedLayer0(t *testing.T) {
+	f := NewFileLines("t.md", []byte("```go\nx := 1\n```\n"))
+	_ = Layer0(f) // prime the cache so layer0Done is set
+	require.True(t, f.layer0Done.Load())
+
+	lines := CollectCodeBlockLines(f)
+	assert.Equal(t, []int{1, 2, 3}, keysOf(lines))
+}
+
+// TestCollectPIBlockLines_NilASTUsesLayer0 mirrors the code-block nil-AST
+// fallback for the processing-instruction line set.
+func TestCollectPIBlockLines_NilASTUsesLayer0(t *testing.T) {
+	f := NewFileLines("t.md", []byte("# H\n\n<?toc?>\n<?/toc?>\n\nbody\n"))
+	require.Nil(t, f.AST, "NewFileLines must leave AST nil")
+
+	lines := CollectPIBlockLines(f)
+	assert.Equal(t, []int{3, 4}, keysOf(lines))
+}
+
+// TestCollectPIBlockLines_PreScannedLayer0 pins the fast path where the
+// Layer 0 scan already ran, so collectPIBlockLines serves the cached set.
+func TestCollectPIBlockLines_PreScannedLayer0(t *testing.T) {
+	f := NewFileLines("t.md", []byte("<?toc?>\n"))
+	_ = Layer0(f)
+	require.True(t, f.layer0Done.Load())
+
+	lines := CollectPIBlockLines(f)
+	assert.Equal(t, []int{1}, keysOf(lines))
+}
