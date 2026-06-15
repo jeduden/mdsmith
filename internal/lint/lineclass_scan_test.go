@@ -158,6 +158,9 @@ func TestContainerConsume(t *testing.T) {
 	next, ok := bq.consume([]byte("> x"), 0)
 	assert.True(t, ok)
 	assert.Equal(t, 2, next)
+	next, ok = bq.consume([]byte(">x"), 0) // marker with no following space
+	assert.True(t, ok)
+	assert.Equal(t, 1, next)
 	next, ok = bq.consume([]byte("   > x"), 0) // ≤3 leading spaces then marker
 	assert.True(t, ok)
 	assert.Equal(t, 5, next)
@@ -170,9 +173,26 @@ func TestContainerConsume(t *testing.T) {
 	next, ok = li.consume([]byte("  x"), 0)
 	assert.True(t, ok)
 	assert.Equal(t, 2, next)
+	next, ok = li.consume([]byte("\tx"), 0)
+	assert.True(t, ok, "a tab satisfies the list-item width in columns")
+	assert.Equal(t, 1, next)
 	next, ok = li.consume([]byte(""), 0)
 	assert.True(t, ok, "a blank line continues a list item")
 	assert.Equal(t, 0, next)
+	_, ok = li.consume([]byte(" x"), 0)
+	assert.False(t, ok, "one space is under the width-2 list item")
 	_, ok = li.consume([]byte("x"), 0)
 	assert.False(t, ok, "a dedented line closes the list item")
+}
+
+// TestHTMLType1Start pins the type-1 raw-block opener recognition: the four
+// names case-insensitively, the boundary after the name, and the rejects.
+func TestHTMLType1Start(t *testing.T) {
+	assert.True(t, htmlType1Start([]byte("<pre>")))
+	assert.True(t, htmlType1Start([]byte("<TEXTAREA")), "EOL right after the name")
+	assert.True(t, htmlType1Start([]byte("<style\tx")), "tab boundary")
+	assert.True(t, htmlType1Start([]byte("<script foo")))
+	assert.False(t, htmlType1Start([]byte("<prefix>")), "name is a prefix of a longer tag")
+	assert.False(t, htmlType1Start([]byte("<div>")))
+	assert.False(t, htmlType1Start([]byte("<pr")), "shorter than any name")
 }

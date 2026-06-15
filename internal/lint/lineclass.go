@@ -461,10 +461,11 @@ func (c lc0Container) consume(line []byte, pos int) (int, bool) {
 		}
 		j++
 	}
-	if col >= c.width {
-		return j, true
-	}
-	return pos, false
+	// The loop only exits here once col reached the width: a non-blank line
+	// (isBlankFrom ruled out an all-whitespace one above) always hits the
+	// default arm before j runs off the end, so col < width cannot reach
+	// this point.
+	return j, true
 }
 
 // tryOpenFence opens a fenced code block when rest is an opening fence.
