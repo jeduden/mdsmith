@@ -7,9 +7,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// allocBudgetMDS014 is the per-CheckNode ceiling for blank-line-around-lists.
-// The rule emits at most 2 diagnostics per list node (one before, one after);
-// diags is pre-sized to cap 2 so no growth allocation occurs.
+// allocBudgetMDS014 is the per-Check ceiling for blank-line-around-lists.
+// The rule uses nil-slice append (no unconditional allocation) so allocs
+// are dominated by lint.CollectCodeBlockLines.
 const allocBudgetMDS014 = 4
 
 const allocBudgetFixture = "# Document title\n" +
