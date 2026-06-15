@@ -1,8 +1,7 @@
-name: mdsmith
+name: mdsmith Markdown linter
 description: >-
-  Install the mdsmith Markdown linter from a checksum-verified GitHub release
-  binary for the runner's OS and architecture, put it on PATH, and optionally
-  run a mdsmith command.
+  Install the mdsmith Markdown linter from a checksum-verified
+  release binary and optionally run it.
 author: jeduden
 branding:
   icon: check-square
