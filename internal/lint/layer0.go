@@ -1028,11 +1028,10 @@ func isThematicBreak(line []byte) bool {
 	}
 	count := 0
 	for j := indent; j < len(line); j++ {
-		c := line[j]
-		switch {
-		case c == ch:
+		switch c := line[j]; c {
+		case ch:
 			count++
-		case c == ' ' || c == '\t' || c == '\r':
+		case ' ', '\t', '\r':
 		default:
 			return false
 		}

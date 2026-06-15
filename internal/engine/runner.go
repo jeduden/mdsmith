@@ -443,19 +443,7 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 		sourceBufPool.Put(bufp)
 	}
 	defer release()
-	f.MaxInputBytes = r.MaxInputBytes
-	f.RunCache = cache
-	dir := filepath.Dir(path)
-	f.FS = os.DirFS(dir)
-	gitignoreDir := dir
-	if r.RootDir != "" {
-		f.SetRootDir(r.RootDir)
-		gitignoreDir = r.RootDir
-	}
-	gd := gitignoreDir // capture for closure
-	f.GitignoreFunc = func() *gitignore.Matcher {
-		return r.cachedGitignore(gd)
-	}
+	r.configureFile(f, path, cache)
 
 	// Generated-section ranges come from a PI walk over the AST. A
 	// parse-skipped File (AST nil) is, by gate construction, free of
@@ -469,6 +457,25 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 		explain.Attach(diags, r.Config, path, fmKinds, fmFields)
 	}
 	return fileOutcome{diags: diags, errs: errs}
+}
+
+// configureFile wires the per-run filesystem references, gitignore, and
+// read-cache onto f. Extracted from lintFile to keep that function under the
+// statement-count threshold enforced by the funlen linter.
+func (r *Runner) configureFile(f *lint.File, path string, cache *lint.RunCache) {
+	f.MaxInputBytes = r.MaxInputBytes
+	f.RunCache = cache
+	dir := filepath.Dir(path)
+	f.FS = os.DirFS(dir)
+	gitignoreDir := dir
+	if r.RootDir != "" {
+		f.SetRootDir(r.RootDir)
+		gitignoreDir = r.RootDir
+	}
+	gd := gitignoreDir // capture for closure
+	f.GitignoreFunc = func() *gitignore.Matcher {
+		return r.cachedGitignore(gd)
+	}
 }
 
 // pooledFileConstructor returns the per-file parse constructor for this
