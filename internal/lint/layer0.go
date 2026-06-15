@@ -5,12 +5,6 @@ import (
 	"regexp"
 )
 
-// regexpMustCompile is a thin alias for regexp.MustCompile, kept so the
-// package-scope HTML-block pattern table reads as a list of literals.
-func regexpMustCompile(pattern string) *regexp.Regexp {
-	return regexp.MustCompile(pattern)
-}
-
 // allowedBlockTags is the CommonMark type-6 HTML block tag set, mirroring
 // parser.allowedBlockTags (unexported there). A type-6 HTML block opens
 // only on one of these tag names; the list must stay in sync with the
@@ -75,8 +69,6 @@ const (
 	classPI
 	// classBlank marks a whitespace-only line.
 	classBlank
-	// classFrontMatter marks a line inside the leading YAML front matter.
-	classFrontMatter
 )
 
 // BlockSpan is one Layer 0 block: its kind, its 1-based inclusive start
@@ -90,9 +82,9 @@ type BlockSpan struct {
 
 // Layer0Scan is the product of one forward pass over File.Lines: a compact
 // per-line classification, the code-block and processing-instruction line
-// sets, the block spans, and the front-matter bounds. It carries no node
-// tree and is the only block-level projection source when a File was built
-// with a nil AST (the parse-skipped path).
+// sets, and the block spans. It carries no node tree and is the only
+// block-level projection source when a File was built with a nil AST (the
+// parse-skipped path).
 type Layer0Scan struct {
 	// Classes holds one lineClass per source line, indexed by (line-1).
 	Classes []lineClass
@@ -105,9 +97,6 @@ type Layer0Scan struct {
 	PIBlockLines map[int]struct{}
 	// BlockSpans lists every block in document order.
 	BlockSpans []BlockSpan
-	// FrontMatterEnd is the 1-based last line of the leading YAML front
-	// matter, or 0 when the document has none.
-	FrontMatterEnd int
 }
 
 var piOpenMarker = []byte("<?")
@@ -168,10 +157,16 @@ type scanner struct {
 	prevNonBlankParagraph bool
 }
 
-// run drives the forward pass: front matter first, then a block loop that
-// dispatches on the line's leading construct.
+// run drives the forward pass: a block loop that dispatches on each line's
+// leading construct. Front matter is intentionally NOT handled here: the
+// goldmark parse this scan must match byte-for-byte never strips front
+// matter (the engine strips it before constructing the File, so the scan
+// receives an already-stripped body), and re-detecting a leading `---`
+// pair here would mis-consume a body that legitimately opens with a
+// thematic break followed by a later `---`. A leading `---` is therefore
+// classified as a thematic break or setext underline, exactly as goldmark
+// classifies it.
 func (s *scanner) run() {
-	s.scanFrontMatter()
 	for s.i < len(s.lines) {
 		s.scanBlock()
 	}
@@ -183,35 +178,6 @@ func (s *scanner) run() {
 func (s *scanner) trailingEmptyLine(i int) bool {
 	return i == len(s.lines)-1 && len(s.lines[i]) == 0
 }
-
-// scanFrontMatter consumes a leading YAML front-matter block delimited by
-// a `---` line at the very top and the next `---` line. It mirrors
-// markdown.StripFrontMatter: only a document that opens with exactly
-// `---` carries front matter, and the block runs through the closing
-// `---`. When no front matter is present, the cursor stays at line 0.
-func (s *scanner) scanFrontMatter() {
-	if len(s.lines) == 0 || !isFrontMatterDelim(s.lines[0]) {
-		return
-	}
-	for j := 1; j < len(s.lines); j++ {
-		if isFrontMatterDelim(s.lines[j]) {
-			for k := 0; k <= j; k++ {
-				s.l0.Classes[k] |= classFrontMatter
-			}
-			s.l0.FrontMatterEnd = j + 1
-			s.i = j + 1
-			return
-		}
-	}
-}
-
-// isFrontMatterDelim reports whether line is a front-matter fence: exactly
-// "---" after trimming a trailing carriage return.
-func isFrontMatterDelim(line []byte) bool {
-	return bytes.Equal(bytes.TrimRight(line, "\r"), frontMatterDelim)
-}
-
-var frontMatterDelim = []byte("---")
 
 // scanBlock recognises the block starting at the cursor and advances past
 // it, recording its span and per-line classes. The dispatch order follows
@@ -235,9 +201,70 @@ func (s *scanner) scanBlock() {
 	case s.tryHTMLBlock(false):
 	case s.tryATXHeading():
 	case s.tryIndentedCode():
+	case s.tryBlockquote():
 	default:
 		s.scanParagraph()
 	}
+}
+
+// tryBlockquote recognises a block quote at the cursor and descends into
+// its body. goldmark parses block constructs (fenced/indented code, PIs,
+// nested quotes) inside a quote, so a `> ```\n> code\n> ```\n` quote
+// contains a real code block whose lines must land in CodeBlockLines. The
+// scan collects the run of consecutive `>`-prefixed lines, strips one
+// level of `>` (and an optional following space) to form the quote body,
+// recursively scans that body, and maps the child's code and PI line
+// numbers back onto the parent lines. Returns false when the cursor line
+// is not a block quote.
+func (s *scanner) tryBlockquote() bool {
+	line := s.lines[s.i]
+	if paragraphLeadKind(line) != BlockQuote {
+		return false
+	}
+	start := s.i
+	depth := blockDepth(line)
+	// Collect the consecutive marker-led lines and their stripped bodies.
+	body := make([][]byte, 0, 4)
+	parentLine := make([]int, 0, 4)
+	for s.i < len(s.lines) {
+		if s.trailingEmptyLine(s.i) {
+			break
+		}
+		cur := s.lines[s.i]
+		if isBlankLine(cur) || paragraphLeadKind(cur) != BlockQuote {
+			break
+		}
+		body = append(body, stripQuoteMarker(cur))
+		parentLine = append(parentLine, s.i)
+		s.i++
+	}
+	// Recursively scan the quote body and translate the child's code line
+	// numbers (1-based within body) back to parent line numbers. PI blocks
+	// open only at the document root (piBlockParser.Open rejects a
+	// non-Document parent), so a `<?…?>` inside a quote is not a PI —
+	// inner.PIBlockLines is deliberately not translated.
+	inner := scanLayer0(body)
+	for ln := range inner.CodeBlockLines {
+		s.markCode(parentLine[ln-1])
+	}
+	s.addSpan(BlockQuote, start, s.i-1, depth)
+	s.prevNonBlankParagraph = false
+	return true
+}
+
+// stripQuoteMarker removes one block-quote level from line: up to 3 spaces
+// of indent, a `>`, and one optional following space. A line with no
+// marker (a lazy continuation) is returned unchanged.
+func stripQuoteMarker(line []byte) []byte {
+	i := leadingSpaces(line)
+	if i >= len(line) || line[i] != '>' {
+		return line
+	}
+	i++
+	if i < len(line) && line[i] == ' ' {
+		i++
+	}
+	return line[i:]
 }
 
 // fenceInfo describes an opening fenced-code fence line.
@@ -418,14 +445,14 @@ const (
 )
 
 var (
-	htmlType1Open  = regexpMustCompile(`(?i)^[ ]{0,3}<(script|pre|style|textarea)(\s|>|/>|$)`)
-	htmlType1Close = regexpMustCompile(`(?i)</(script|pre|style|textarea)>`)
-	htmlType2Open  = regexpMustCompile(`^[ ]{0,3}<!--`)
-	htmlType3Open  = regexpMustCompile(`^[ ]{0,3}<\?`)
-	htmlType4Open  = regexpMustCompile(`^[ ]{0,3}<![A-Za-z]`)
-	htmlType5Open  = regexpMustCompile(`^[ ]{0,3}<!\[CDATA\[`)
-	htmlType6Open  = regexpMustCompile(`^[ ]{0,3}</?([a-zA-Z][a-zA-Z0-9-]*)(\s|>|/>|$)`)
-	htmlType7Open  = regexpMustCompile(`^[ ]{0,3}<(/[ ]*)?[a-zA-Z][a-zA-Z0-9-]*(\s[^>]*)?[ ]*/?>[ \t\r]*$`)
+	htmlType1Open  = regexp.MustCompile(`(?i)^[ ]{0,3}<(script|pre|style|textarea)(\s|>|/>|$)`)
+	htmlType1Close = regexp.MustCompile(`(?i)</(script|pre|style|textarea)>`)
+	htmlType2Open  = regexp.MustCompile(`^[ ]{0,3}<!--`)
+	htmlType3Open  = regexp.MustCompile(`^[ ]{0,3}<\?`)
+	htmlType4Open  = regexp.MustCompile(`^[ ]{0,3}<![A-Za-z]`)
+	htmlType5Open  = regexp.MustCompile(`^[ ]{0,3}<!\[CDATA\[`)
+	htmlType6Open  = regexp.MustCompile(`^[ ]{0,3}</?([a-zA-Z][a-zA-Z0-9-]*)(\s|>|/>|$)`)
+	htmlType7Open  = regexp.MustCompile(`^[ ]{0,3}<(/[ ]*)?[a-zA-Z][a-zA-Z0-9-]*(\s[^>]*)?[ ]*/?>[ \t\r]*$`)
 )
 
 // openHTMLBlock classifies line as an HTML block opener, returning the
@@ -434,6 +461,14 @@ var (
 // or generic tag and unable to interrupt a paragraph), then type 6. The
 // inParagraph flag suppresses type 7, which cannot interrupt a paragraph.
 func openHTMLBlock(line []byte, inParagraph bool) htmlBlockType {
+	// Every HTML-block opener is anchored `^[ ]{0,3}<`, so a line whose
+	// first non-space byte (within the first 4 columns) is not `<` can
+	// never open one. Gate the regexp battery on that cheap byte check so
+	// ordinary prose lines — the overwhelming common case in the Layer 0
+	// hot path — skip up to eight RE2 executions.
+	if !firstNonSpaceIsAngle(line) {
+		return htmlNone
+	}
 	switch {
 	case htmlType1Open.Match(line):
 		return htmlType1
@@ -446,22 +481,74 @@ func openHTMLBlock(line []byte, inParagraph bool) htmlBlockType {
 	case htmlType5Open.Match(line):
 		return htmlType5
 	}
-	if m := htmlType6Open.FindSubmatch(line); m != nil && allowedBlockTags[lowerTag(m[1])] {
+	if m := htmlType6Open.FindSubmatch(line); m != nil && tagInAllowedSet(m[1]) {
 		return htmlType6
 	}
-	if !inParagraph && htmlType7Open.Match(line) {
-		tag := type7Tag(line)
-		if tag != "script" && tag != "style" && tag != "pre" && tag != "textarea" {
-			return htmlType7
-		}
+	if !inParagraph && htmlType7Open.Match(line) && !type7TagIsRawText(line) {
+		return htmlType7
 	}
 	return htmlNone
 }
 
-// type7Tag extracts the lowercased tag name from a type-7 HTML opener so
-// the script/style/pre/textarea exclusion (those are type 1) can be
-// applied.
-func type7Tag(line []byte) string {
+// tagName is a fixed-capacity stack buffer for an ASCII tag name, sized so
+// the longest HTML tag (and longer non-tags, truncated harmlessly) fits
+// without a heap allocation. lowerInto fills it.
+type tagName struct {
+	buf [32]byte
+	n   int
+}
+
+// lowerInto copies the ASCII-lowercased bytes of b into the stack buffer,
+// truncating anything past its capacity (a name that long is not in any
+// recognised set, so truncation cannot cause a false match against the
+// short tag names the sets contain).
+func (t *tagName) lowerInto(b []byte) []byte {
+	t.n = 0
+	for _, c := range b {
+		if t.n >= len(t.buf) {
+			break
+		}
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		t.buf[t.n] = c
+		t.n++
+	}
+	return t.buf[:t.n]
+}
+
+// tagInAllowedSet reports whether b (case-insensitively) is one of the
+// type-6 HTML block tags, lowercasing into a stack buffer so the lookup
+// allocates nothing.
+func tagInAllowedSet(b []byte) bool {
+	var t tagName
+	return allowedBlockTags[string(t.lowerInto(b))]
+}
+
+// type7TagIsRawText reports whether the type-7 opener's tag is one of the
+// raw-text tags (script/style/pre/textarea) that are classified as type 1
+// instead. It lowercases into a stack buffer to avoid an allocation.
+func type7TagIsRawText(line []byte) bool {
+	var t tagName
+	switch string(t.lowerInto(type7TagBytes(line))) {
+	case "script", "style", "pre", "textarea":
+		return true
+	}
+	return false
+}
+
+// firstNonSpaceIsAngle reports whether line's first non-space byte is `<`
+// and sits within the 3-space indent an HTML block opener allows. It is
+// the cheap prefix gate for openHTMLBlock.
+func firstNonSpaceIsAngle(line []byte) bool {
+	indent := leadingSpaces(line)
+	return indent <= 3 && indent < len(line) && line[indent] == '<'
+}
+
+// type7TagBytes returns the tag-name bytes of a type-7 HTML opener (the
+// run of tag bytes after the `<` and any `/` close-tag slash), so the
+// caller can fold and compare them without allocating.
+func type7TagBytes(line []byte) []byte {
 	i := leadingSpaces(line)
 	if i < len(line) && line[i] == '<' {
 		i++
@@ -470,10 +557,10 @@ func type7Tag(line []byte) string {
 		i++
 	}
 	start := i
-	for i < len(line) && (isTagByte(line[i])) {
+	for i < len(line) && isTagByte(line[i]) {
 		i++
 	}
-	return lowerTag(line[start:i])
+	return line[start:i]
 }
 
 // isTagByte reports whether b can appear in an HTML tag name after the
@@ -481,19 +568,6 @@ func type7Tag(line []byte) string {
 func isTagByte(b byte) bool {
 	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') ||
 		(b >= '0' && b <= '9') || b == '-'
-}
-
-// lowerTag lowercases an ASCII tag name without allocating beyond the
-// result string.
-func lowerTag(b []byte) string {
-	out := make([]byte, len(b))
-	for i, c := range b {
-		if c >= 'A' && c <= 'Z' {
-			c += 'a' - 'A'
-		}
-		out[i] = c
-	}
-	return string(out)
 }
 
 // htmlBlockCloses reports whether line closes an HTML block of the given
@@ -657,13 +731,11 @@ func (s *scanner) tryIndentedCode() bool {
 		lastNonBlank = s.i
 		s.i++
 	}
-	// goldmark trims trailing blank lines from the block, so only mark
-	// through the last non-blank indented line as code.
+	// goldmark trims trailing blank lines from the block but keeps blank
+	// lines interior to it (its Continue appends them as content lines).
+	// Mark every line up to the last non-blank indented line as code,
+	// including interior blanks, so the projection matches addBlockLines.
 	for k := start; k <= lastNonBlank; k++ {
-		if isBlankLine(s.lines[k]) {
-			s.l0.Classes[k] |= classBlank
-			continue
-		}
 		s.markCode(k)
 	}
 	// Reset the cursor to just past the last code line; blank lines after

@@ -421,9 +421,15 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 	// the File: the effective rule config (which the parse-skip gate keys
 	// on) depends on the file's kinds/fields, and the strip is a cheap
 	// byte split that does not need the goldmark parse.
+	//
+	// This runs before the File is built, so the pooled source buffer has
+	// no deferred release yet — nothing aliases it on a front-matter error,
+	// so return it to the pool here just as the read-error path above does.
 	fmPrefix := frontMatterPrefix(source, r.StripFrontMatter)
 	fmKinds, fmFields, err := r.parseFrontMatter(path, fmPrefix)
 	if err != nil {
+		*bufp = (*bufp)[:0]
+		sourceBufPool.Put(bufp)
 		return fileOutcome{errs: []error{err}}
 	}
 

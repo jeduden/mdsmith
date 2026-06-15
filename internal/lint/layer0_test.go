@@ -100,16 +100,25 @@ func TestLayer0_HTMLCommentSuppressesIndentedCode(t *testing.T) {
 	assert.Empty(t, l0.CodeBlockLines)
 }
 
-func TestLayer0_FrontMatterBounds(t *testing.T) {
-	// When source still carries front matter, the scan reports its 1-based
-	// closing-delimiter line.
-	l0 := scan("---\ntitle: x\n---\n# H\n")
-	assert.Equal(t, 3, l0.FrontMatterEnd)
+func TestLayer0_LeadingDelimiterPairIsNotFrontMatter(t *testing.T) {
+	// The scan never strips front matter (the engine strips it before
+	// building the File). A body that opens with a `---` thematic break and
+	// contains a later `---` must still surface the fenced code between
+	// them, matching goldmark.
+	l0 := scan("---\n```\ncode\n```\n---\n")
+	assert.Equal(t, []int{2, 3, 4}, keysOf(l0.CodeBlockLines))
 }
 
-func TestLayer0_NoFrontMatter(t *testing.T) {
-	l0 := scan("# H\n")
-	assert.Equal(t, 0, l0.FrontMatterEnd)
+func TestLayer0_BlockquotedFencedCodeIsCode(t *testing.T) {
+	l0 := scan("> ```\n> code\n> ```\n")
+	assert.Equal(t, []int{1, 2, 3}, keysOf(l0.CodeBlockLines))
+}
+
+func TestLayer0_IndentedCodeKeepsInteriorBlank(t *testing.T) {
+	// A blank line interior to an indented code block stays code (goldmark
+	// trims only trailing blanks).
+	l0 := scan("x\n\n    a\n   \n    b\nend\n")
+	assert.Equal(t, []int{3, 4, 5}, keysOf(l0.CodeBlockLines))
 }
 
 func TestLayer0_BlockSpansClassifyHeadingsAndQuotes(t *testing.T) {
