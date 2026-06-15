@@ -12,11 +12,11 @@ import "github.com/jeduden/mdsmith/pkg/goldmark/util"
 //
 // A backtick code span is a run of N backticks (the opener) followed by a
 // content run that contains no run of exactly N backticks, closed by the
-// next run of exactly N backticks. CommonMark converts interior line
-// endings to spaces and, when the content both begins and ends with a
-// space and is not all spaces, strips one space from each side; goldmark
-// records the post-trim bounds as the span's Text-child segments, so the
-// scan reproduces that trim to keep CodeSpanContentRanges identical.
+// next run of exactly N backticks. When the raw content both begins and
+// ends with a space (or '\n') and is not entirely blank, CommonMark strips
+// one byte from each side; goldmark records the post-trim bounds as the
+// span's Text-child segments, so the scan reproduces that trim to keep
+// CodeSpanContentRanges identical.
 //
 // Backticks inside fenced or indented code blocks are not code-span
 // delimiters. The scan skips any byte on a line the Layer 0 scan marks as a
