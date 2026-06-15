@@ -599,3 +599,30 @@ func TestScanParagraph_FenceInterruptsParagraph(t *testing.T) {
 	assert.Contains(t, kinds, BlockFencedCode)
 	assert.Equal(t, []int{2, 3, 4}, keysOf(l0.CodeBlockLines))
 }
+
+func TestSourceMayHaveCodeBlock(t *testing.T) {
+	// Code-free sources: no fence run, tab, or four-space indent.
+	for _, src := range []string{
+		"# Title\n\nplain prose only\n",
+		"- a list\n- with items\n",
+		"> a quote\n\ntrailing space \n",
+		"",
+		"one  two   three\n",        // up to 3 spaces is not a four-space run
+		"text with `inline` span\n", // a single-backtick span is not a code block
+	} {
+		assert.False(t, SourceMayHaveCodeBlock([]byte(src)),
+			"expected code-free: %q", src)
+	}
+	// Sources that may hold a code block — each trips a distinct marker.
+	for _, src := range []string{
+		"```\ncode\n```\n",     // backtick fence
+		"~~~\ncode\n~~~\n",     // tilde fence
+		"a\tb\n",               // tab
+		"    indented code\n",  // four-space indent
+		"- ```\n  c\n  ```\n",  // fence on a list-marker line (the divergence class)
+		"-     deep in item\n", // five spaces after a marker → indented code
+	} {
+		assert.True(t, SourceMayHaveCodeBlock([]byte(src)),
+			"expected may-have-code: %q", src)
+	}
+}

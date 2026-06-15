@@ -55,7 +55,15 @@ sort by hand. Its `ProseRanges` projection also exists.
    annotation beside the existing kind scope).
 4. Add the engine gate. Skip
    [`NewFileFromSourcePooled`][newfile] when every
-   enabled rule resolves to Layer 0.
+   enabled rule resolves to Layer 0. The scanner does not
+   descend into a list item's content, so a fenced or
+   indented code block inside a list item is the one
+   shape where its `CodeBlockLines` can differ from the
+   AST; the gate stays sound by also standing down for
+   any source that may hold a code block
+   (`lint.SourceMayHaveCodeBlock`), skipping the parse
+   only for code-free files until the block-content work
+   in plan 2606141903 lands.
 5. Add an equivalence harness. Diff Layer 0 projections
    against the AST-derived ones across the corpus and
    the rule fixtures.

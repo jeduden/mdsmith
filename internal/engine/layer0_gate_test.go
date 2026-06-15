@@ -136,9 +136,12 @@ func TestLayer0Gate_OffByDefault(t *testing.T) {
 
 // TestLayer0Gate_DiagnosticsMatchFullParse is the equivalence guarantee:
 // the diagnostics a Layer-0-only run produces with the gate on are
-// identical to the same run with the gate off (full parse).
+// identical to the same run with the gate off (full parse). The fixture is
+// code-free (no fence, tab, or four-space indent) so the gate actually skips
+// the parse — a file with a tab or fence would force the parse under the
+// SourceMayHaveCodeBlock guard and make this comparison vacuous.
 func TestLayer0Gate_DiagnosticsMatchFullParse(t *testing.T) {
-	dir, path := writeDoc(t, "# Title\n\nA line with trailing space \nhard\ttab line\n")
+	dir, path := writeDoc(t, "# Title\n\nA line with trailing space \nmore trailing text \n")
 	cfg := layer0OnlyConfig()
 
 	run := func(skip bool) []lint.Diagnostic {
@@ -156,6 +159,31 @@ func TestLayer0Gate_DiagnosticsMatchFullParse(t *testing.T) {
 	parsed := run(false)
 	assert.Equal(t, parsed, skipped,
 		"Layer 0 parse-skip must produce identical diagnostics to a full parse")
+}
+
+// TestLayer0Gate_CodeBlockForcesParse proves the SourceMayHaveCodeBlock
+// guard: the Layer 0 scanner does not descend into a list item's content, so
+// a file that may hold a code block (here a hard tab — also a fence or a
+// four-space indent) forces the full parse rather than risk a CodeBlockLines
+// divergence, even when every enabled rule is otherwise Layer 0.
+func TestLayer0Gate_CodeBlockForcesParse(t *testing.T) {
+	withLayer0Skip(t, true)
+	dir, path := writeDoc(t, "# Title\n\nA line with a hard\ttab.\n")
+
+	probe := &astProbeRule{}
+	cfg := layer0OnlyConfig()
+	cfg.Rules[probe.Name()] = config.RuleCfg{Enabled: true}
+
+	r := &Runner{
+		Config:           cfg,
+		Rules:            append(rule.All(), probe),
+		StripFrontMatter: true,
+		RootDir:          dir,
+	}
+	res := r.Run([]string{path})
+	require.Empty(t, res.Errors)
+	assert.False(t, probe.sawNilAST,
+		"a source that may hold a code block must keep the AST parse")
 }
 
 // TestLayer0Gate_CodeSpanRuleForcesParse guards the soundness fix for the

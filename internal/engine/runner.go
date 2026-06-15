@@ -600,7 +600,7 @@ func layer0SkipEnabled() bool {
 }
 
 // layer0SkipEligible reports whether this file's run can skip the goldmark
-// parse and lint from the Layer 0 scan alone. Three conditions must hold:
+// parse and lint from the Layer 0 scan alone. Four conditions must hold:
 //
 //  1. The MDSMITH_LAYER0_SKIP toggle is set (default off).
 //  2. Every enabled rule resolves to Layer 0 (rulelayer.IsLayer0) — no
@@ -609,6 +609,12 @@ func layer0SkipEnabled() bool {
 //  3. The source carries no `<?` directive marker. Generated-section
 //     suppression walks the AST for processing instructions, so a file
 //     with directives must be parsed.
+//  4. The source may contain no code block (lint.SourceMayHaveCodeBlock is
+//     false). The Layer 0 scanner does not descend into a list item's
+//     content, so a fenced or indented code block inside a list item makes
+//     its CodeBlockLines diverge from the AST; skipping only code-free files
+//     sidesteps that divergence, since a file with no code block has an empty
+//     CodeBlockLines under both paths.
 //
 // The block-only and flat-Layer-0 spike flags force their own
 // constructors, so the gate stands down when either is set.
@@ -619,6 +625,9 @@ func (r *Runner) layer0SkipEligible(
 		return false
 	}
 	if bytes.Contains(source, piOpenScan) {
+		return false
+	}
+	if lint.SourceMayHaveCodeBlock(source) {
 		return false
 	}
 	return allEnabledRulesLayer0(rules, effective)

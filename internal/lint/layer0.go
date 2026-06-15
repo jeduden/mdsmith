@@ -963,6 +963,38 @@ func paragraphLeadKind(line []byte) BlockKind {
 	return BlockParagraph
 }
 
+var (
+	fenceBacktickRun = []byte("```")
+	fenceTildeRun    = []byte("~~~")
+	fourSpaceRun     = []byte("    ")
+)
+
+// SourceMayHaveCodeBlock reports whether source could contain a fenced or
+// indented code block: it holds a fenced-code marker run (``` or ~~~), a tab,
+// or a run of four spaces. Every code block forces one of these bytes —
+// fences need three backticks or tildes; an indented code block needs a
+// four-column indent, which is four spaces or a tab — regardless of how
+// deeply the block nests inside lists or block quotes.
+//
+// The Layer 0 parse-skip gate skips the goldmark parse only when this returns
+// false. A source with none of these markers has no code block, so its
+// CollectCodeBlockLines is empty under both the Layer 0 scan and the AST and
+// the line-based rules behave identically. Any source that might hold code is
+// parsed normally, which sidesteps every Layer 0/AST CodeBlockLines
+// divergence — all of which require a code block to be present (the scanner
+// does not descend into a list item's content, so a fence or indent inside a
+// list item is the known divergence class; this guard makes the gate
+// indifferent to it). The check is deliberately coarse — an inline `code`
+// span or a column of alignment spaces also trips it — but provably sound,
+// allocation-free, and far more robust than re-deriving goldmark's
+// container-aware code-block detection in the gate.
+func SourceMayHaveCodeBlock(source []byte) bool {
+	return bytes.IndexByte(source, '\t') >= 0 ||
+		bytes.Contains(source, fenceBacktickRun) ||
+		bytes.Contains(source, fenceTildeRun) ||
+		bytes.Contains(source, fourSpaceRun)
+}
+
 // blockDepth returns the block-quote nesting depth of line: the number of
 // leading `>` markers (each optionally followed by a space), after up to 3
 // spaces of indent. Non-quote lines are depth 0.
