@@ -157,32 +157,186 @@ func isFenceClose(rest []byte, ch byte, length int) bool {
 // scanner would misread as an indented code block; tracking them keeps
 // those lines out of the code set.
 //
-// The type-6 block-level tag blocks (`<div>`, `<details>`, `<table>`, …) are
-// tracked too, reported via blankTerm=true: they end on a blank line, and
-// tracking them stops a fence placed right after the open tag with no blank
-// line — the GitHub collapsible-code README idiom — from being misread as a
-// code block. Type-7 (arbitrary complete tags) is not tracked.
-func htmlBlockEnd(rest []byte) (end []byte, type1, blankTerm, ok bool) {
+// The type-6 block-level tag blocks (`<div>`, `<details>`, `<table>`, …) and
+// the type-7 blocks (any other complete open/closing tag alone on a line)
+// are tracked too, as htmlTag6 / htmlTag7: they end on a blank line, and
+// tracking them stops a fence placed right after the tag with no blank line
+// — the GitHub collapsible-code / image-then-example README idioms — from
+// being misread as a code block. Type-7 cannot interrupt a paragraph, which
+// the caller enforces via prevParagraph.
+func htmlBlockEnd(rest []byte) (end []byte, kind htmlKind) {
 	i := leadingSpaces(rest)
 	if i > 3 || i >= len(rest) || rest[i] != '<' {
-		return nil, false, false, false
+		return nil, htmlNone
 	}
 	s := rest[i:]
 	switch {
 	case bytes.HasPrefix(s, htmlOpenComment):
-		return htmlCloseComment, false, false, true
+		return htmlCloseComment, htmlMarker
 	case bytes.HasPrefix(s, htmlOpenCDATA):
-		return htmlCloseCDATA, false, false, true
+		return htmlCloseCDATA, htmlMarker
 	case bytes.HasPrefix(s, htmlOpenPI):
-		return htmlClosePI, false, false, true
+		return htmlClosePI, htmlMarker
 	case len(s) >= 3 && s[1] == '!' && isASCIILetterByte(s[2]):
-		return htmlCloseDecl, false, false, true
+		return htmlCloseDecl, htmlMarker
 	case htmlType1Start(s):
-		return nil, true, false, true
+		return nil, htmlRaw
 	case htmlType6Start(s):
-		return nil, false, true, true
+		return nil, htmlTag6
+	case htmlType7Start(s):
+		return nil, htmlTag7
 	}
-	return nil, false, false, false
+	return nil, htmlNone
+}
+
+// htmlKind is how an open HTML block ends.
+type htmlKind uint8
+
+const (
+	htmlNone   htmlKind = iota // not an HTML block
+	htmlMarker                 // types 2–5: closes on the recorded end string
+	htmlRaw                    // type 1 (script/pre/style/textarea): closes on a type-1 closing tag
+	htmlTag6                   // type 6 block-level tag: blank-terminated, may interrupt a paragraph
+	htmlTag7                   // type 7 complete tag: blank-terminated, may not interrupt a paragraph
+)
+
+// htmlType7Start reports whether s is a single complete open or closing HTML
+// tag (any tag name; type-1 names are dispatched earlier) filling the line —
+// only whitespace may follow it. This is the CommonMark type-7 block start.
+func htmlType7Start(s []byte) bool {
+	end, ok := scanHTMLTag(s)
+	if !ok {
+		return false
+	}
+	for _, c := range s[end:] {
+		if c != ' ' && c != '\t' {
+			return false
+		}
+	}
+	return true
+}
+
+// scanHTMLTag scans a complete open or closing HTML tag at the start of s
+// (s[0] == '<') and returns the index just past the closing '>', per the
+// CommonMark open-/closing-tag grammar.
+func scanHTMLTag(s []byte) (int, bool) {
+	if len(s) < 3 || s[0] != '<' {
+		return 0, false
+	}
+	if s[1] == '/' {
+		return scanClosingTag(s, 2)
+	}
+	return scanOpenTag(s, 1)
+}
+
+func scanClosingTag(s []byte, i int) (int, bool) {
+	i, ok := scanTagName(s, i)
+	if !ok {
+		return 0, false
+	}
+	i = skipHTMLWS(s, i)
+	if i < len(s) && s[i] == '>' {
+		return i + 1, true
+	}
+	return 0, false
+}
+
+func scanOpenTag(s []byte, i int) (int, bool) {
+	i, ok := scanTagName(s, i)
+	if !ok {
+		return 0, false
+	}
+	for {
+		ni, ok := scanAttribute(s, i)
+		if !ok {
+			break
+		}
+		i = ni
+	}
+	i = skipHTMLWS(s, i)
+	if i < len(s) && s[i] == '/' {
+		i++
+	}
+	if i < len(s) && s[i] == '>' {
+		return i + 1, true
+	}
+	return 0, false
+}
+
+// scanTagName scans an HTML tag name (`[A-Za-z][A-Za-z0-9-]*`) at i.
+func scanTagName(s []byte, i int) (int, bool) {
+	if i >= len(s) || !isASCIILetterByte(s[i]) {
+		return i, false
+	}
+	i++
+	for i < len(s) && (isASCIIAlnum(s[i]) || s[i] == '-') {
+		i++
+	}
+	return i, true
+}
+
+// scanAttribute scans one whitespace-led HTML attribute (name, optional
+// `=value` with unquoted/single-/double-quoted value) at i.
+func scanAttribute(s []byte, i int) (int, bool) {
+	j := skipHTMLWS(s, i)
+	if j == i { // attributes require leading whitespace
+		return i, false
+	}
+	if j >= len(s) || (!isASCIILetterByte(s[j]) && s[j] != '_' && s[j] != ':') {
+		return i, false
+	}
+	j++
+	for j < len(s) && (isASCIIAlnum(s[j]) || s[j] == '_' || s[j] == '.' || s[j] == ':' || s[j] == '-') {
+		j++
+	}
+	k := skipHTMLWS(s, j)
+	if k < len(s) && s[k] == '=' {
+		return scanAttrValue(s, skipHTMLWS(s, k+1))
+	}
+	return j, true
+}
+
+// scanAttrValue scans an HTML attribute value (unquoted, single-, or
+// double-quoted) at i.
+func scanAttrValue(s []byte, i int) (int, bool) {
+	if i >= len(s) {
+		return i, false
+	}
+	switch s[i] {
+	case '\'', '"':
+		q := s[i]
+		i++
+		for i < len(s) && s[i] != q {
+			i++
+		}
+		if i < len(s) {
+			return i + 1, true
+		}
+		return i, false
+	default:
+		start := i
+		for i < len(s) && !isUnquotedStop(s[i]) {
+			i++
+		}
+		return i, i > start
+	}
+}
+
+// skipHTMLWS returns the index past a run of spaces and tabs at i.
+func skipHTMLWS(s []byte, i int) int {
+	for i < len(s) && (s[i] == ' ' || s[i] == '\t') {
+		i++
+	}
+	return i
+}
+
+// isUnquotedStop reports whether b ends an unquoted attribute value.
+func isUnquotedStop(b byte) bool {
+	switch b {
+	case ' ', '\t', '"', '\'', '=', '<', '>', '`':
+		return true
+	}
+	return false
 }
 
 var (

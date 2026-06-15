@@ -153,3 +153,35 @@ func TestFlatLayer0_EquivalentDiagnostics(t *testing.T) {
 	assert.Equal(t, astRes.Diagnostics, flatRes.Diagnostics,
 		"flat Layer-0 diagnostics must equal the AST path")
 }
+
+// TestFlatLayer0_CodeBlockMaxEquivalent covers the code-block-max settings
+// combination, which keeps line-length line-capable (no heading-max) but
+// drives a per-code-block limit off the classifier's code-block set rather
+// than excluding code. The flat path must match the AST path: the long code
+// line is flagged at code-block-max, the long prose line at max.
+func TestFlatLayer0_CodeBlockMaxEquivalent(t *testing.T) {
+	long := strings.Repeat("x", 30)
+	doc := "# Heading\n\n```\n" + long + "\n```\n\n" + long + "\n"
+	dir := t.TempDir()
+	path := filepath.Join(dir, "doc.md")
+	require.NoError(t, os.WriteFile(path, []byte(doc), 0o644))
+
+	cfg := config.Defaults()
+	cfg.Rules = map[string]config.RuleCfg{
+		"line-length": {Enabled: true, Settings: map[string]any{
+			"max": 20, "code-block-max": 10, "exclude": []any{},
+		}},
+	}
+	astRunner := &Runner{Config: cfg, Rules: lineLengthOnly(), StripFrontMatter: true, RootDir: dir}
+	flatRunner := &Runner{
+		Config: cfg, Rules: lineLengthOnly(),
+		StripFrontMatter: true, RootDir: dir, FlatLayer0: true,
+	}
+	astRes := astRunner.Run([]string{path})
+	flatRes := flatRunner.Run([]string{path})
+
+	assert.True(t, flatRunner.flatL0Active, "code-block-max keeps line-length line-capable")
+	require.Len(t, flatRes.Diagnostics, 2, "the long code line (code-block-max) and the long prose line (max)")
+	assert.Equal(t, astRes.Diagnostics, flatRes.Diagnostics,
+		"flat Layer-0 diagnostics must equal the AST path with code-block-max")
+}

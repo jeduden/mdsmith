@@ -88,44 +88,74 @@ func TestFenceScanners(t *testing.T) {
 }
 
 func TestHTMLScanners(t *testing.T) {
-	end, type1, blankTerm, ok := htmlBlockEnd([]byte("<!-- x"))
-	assert.True(t, ok)
-	assert.False(t, type1)
-	assert.False(t, blankTerm)
+	end, kind := htmlBlockEnd([]byte("<!-- x"))
+	assert.Equal(t, htmlMarker, kind)
 	assert.Equal(t, "-->", string(end))
-	end, _, _, ok = htmlBlockEnd([]byte("<![CDATA[x"))
-	assert.True(t, ok)
+	end, kind = htmlBlockEnd([]byte("<![CDATA[x"))
+	assert.Equal(t, htmlMarker, kind)
 	assert.Equal(t, "]]>", string(end))
-	end, _, _, ok = htmlBlockEnd([]byte("<?php"))
-	assert.True(t, ok)
+	end, kind = htmlBlockEnd([]byte("<?php"))
+	assert.Equal(t, htmlMarker, kind)
 	assert.Equal(t, "?>", string(end))
-	end, _, _, ok = htmlBlockEnd([]byte("<!DOCTYPE html>"))
-	assert.True(t, ok)
+	end, kind = htmlBlockEnd([]byte("<!DOCTYPE html>"))
+	assert.Equal(t, htmlMarker, kind)
 	assert.Equal(t, ">", string(end))
-	_, type1, _, ok = htmlBlockEnd([]byte("<pre>")) // type-1 raw block
-	assert.True(t, ok)
-	assert.True(t, type1)
-	_, type1, _, ok = htmlBlockEnd([]byte("<SCRIPT type=x")) // case-insensitive
-	assert.True(t, ok)
-	assert.True(t, type1)
-	_, _, blankTerm, ok = htmlBlockEnd([]byte("<div>")) // type-6 block tag
-	assert.True(t, ok)
-	assert.True(t, blankTerm)
-	_, _, blankTerm, ok = htmlBlockEnd([]byte("</Details>")) // closing tag, case-insensitive
-	assert.True(t, ok)
-	assert.True(t, blankTerm)
-	_, _, _, ok = htmlBlockEnd([]byte("  <!-- x")) // ≤3 indent still opens
-	assert.True(t, ok)
-	_, _, _, ok = htmlBlockEnd([]byte("    <!-- x")) // 4-space indent does not
-	assert.False(t, ok)
-	_, _, _, ok = htmlBlockEnd([]byte("<!5 not a decl"))
-	assert.False(t, ok)
-	_, _, _, ok = htmlBlockEnd([]byte("<notatag>")) // not in the type-6 set
-	assert.False(t, ok)
-	_, _, _, ok = htmlBlockEnd([]byte("<prefix>")) // not a type-1 tag (no boundary)
-	assert.False(t, ok)
-	_, _, _, ok = htmlBlockEnd([]byte("text"))
-	assert.False(t, ok)
+	_, kind = htmlBlockEnd([]byte("<pre>")) // type-1 raw block
+	assert.Equal(t, htmlRaw, kind)
+	_, kind = htmlBlockEnd([]byte("<SCRIPT type=x")) // case-insensitive
+	assert.Equal(t, htmlRaw, kind)
+	_, kind = htmlBlockEnd([]byte("<div>")) // type-6 block tag
+	assert.Equal(t, htmlTag6, kind)
+	_, kind = htmlBlockEnd([]byte("</Details>")) // closing tag, case-insensitive
+	assert.Equal(t, htmlTag6, kind)
+	_, kind = htmlBlockEnd([]byte(`<img src="x.png">`)) // type-7 complete tag
+	assert.Equal(t, htmlTag7, kind)
+	_, kind = htmlBlockEnd([]byte("  <!-- x")) // ≤3 indent still opens
+	assert.Equal(t, htmlMarker, kind)
+	_, kind = htmlBlockEnd([]byte("    <!-- x")) // 4-space indent does not
+	assert.Equal(t, htmlNone, kind)
+	_, kind = htmlBlockEnd([]byte("<!5 not a decl"))
+	assert.Equal(t, htmlNone, kind)
+	_, kind = htmlBlockEnd([]byte("<img> trailing text")) // tag not alone on line → not type-7
+	assert.Equal(t, htmlNone, kind)
+	_, kind = htmlBlockEnd([]byte("text"))
+	assert.Equal(t, htmlNone, kind)
+}
+
+// TestHTMLType7Start exhaustively pins the complete-tag scanner for the
+// type-7 block start: a single open or closing tag filling the line, with
+// the full attribute grammar (unquoted / single- / double-quoted values,
+// valueless attributes, self-closing), and the rejects.
+func TestHTMLType7Start(t *testing.T) {
+	// Valid type-7 starts.
+	for _, s := range []string{
+		"<img>", "<br>", "<br/>", "<br />", "<span>", "</div>", "</div >",
+		"<a-b>", "<img src=x>", "<img src='x'>", `<img src="x">`,
+		`<img src="x" alt='y'>`, "<input disabled>", "<x a='1' b=\"2\" c=d>",
+		"<img\tsrc=x>", "<col :ns=v>", "<el _x=v>", "<el a.b-c:d=v>",
+		"<img>   ", // trailing whitespace allowed
+	} {
+		assert.Truef(t, htmlType7Start([]byte(s)), "expected type-7 start: %q", s)
+	}
+	// Not type-7 starts.
+	for _, s := range []string{
+		"<img> text after", // not alone on the line
+		"<img src=>",       // '=' with no value
+		"<img src=",        // '=' at end of input, no value
+		`<img src="x`,      // unclosed double quote
+		"<img src='x",      // unclosed single quote
+		"<1tag>",           // name may not start with a digit
+		"< img>",           // space after '<'
+		"<>",               // no name
+		"</>",              // closing with no name
+		"</div",            // closing with no '>'
+		"<img src=\"x\"y>", // missing whitespace before next attribute
+		"<img /x>",         // '/' not immediately before '>'
+		"<img",             // no '>'
+		"<=bad>",           // not a name
+	} {
+		assert.Falsef(t, htmlType7Start([]byte(s)), "expected NOT type-7: %q", s)
+	}
 }
 
 // TestByteClassHelpers pins the small ASCII-class predicates.

@@ -132,10 +132,9 @@ type lc0Pass struct {
 	fenceHadInfo  bool
 	fenceOpenLine int // 1-based
 
-	inHTML        bool   // inside an HTML block
-	htmlEnd       []byte // closing string for a marker-terminated HTML block
-	htmlType1     bool   // the block is a type-1 raw block (script/pre/style/textarea)
-	htmlBlankTerm bool   // the block is a type-6 tag block, terminated by a blank line
+	inHTML   bool     // inside an HTML block
+	htmlEnd  []byte   // closing string for a marker-terminated HTML block (htmlMarker)
+	htmlKind htmlKind // how the open HTML block ends
 
 	prevParagraph bool // previous emitted line was paragraph text (setext gate)
 	indentCode    bool // currently inside an indented code run
@@ -275,61 +274,66 @@ func (p *lc0Pass) handleFenceBody(ln int, rest []byte) {
 	}
 }
 
-// handleHTMLBody classifies a line inside an open HTML block. A type-6 tag
-// block ends at the first blank line, which is NOT part of the block (it is
-// reclassified as blank); every other line is LineHTML, and a
-// marker/type-1 block ends on the line carrying its closing condition.
+// handleHTMLBody classifies a line inside an open HTML block. A
+// blank-terminated tag block (type 6/7) ends at the first blank line, which
+// is NOT part of the block (it is reclassified as blank); every other line
+// is LineHTML, and a marker/raw block ends on the line carrying its closing
+// condition.
 func (p *lc0Pass) handleHTMLBody(i, ln int, rest []byte) {
-	if p.htmlBlankTerm && isBlankBytes(rest) {
+	if p.htmlBlankTerminated() && isBlankBytes(rest) {
 		p.endHTMLBlock()
 		p.markBlank(i, ln)
 		return
 	}
 	p.out.classes[i] = LineHTML
-	if !p.htmlBlankTerm && p.htmlBlockCloses(rest) {
+	if !p.htmlBlankTerminated() && p.htmlBlockCloses(rest) {
 		p.endHTMLBlock()
 	}
+}
+
+// htmlBlankTerminated reports whether the open HTML block is a tag block
+// (type 6/7), which ends on a blank line rather than a marker.
+func (p *lc0Pass) htmlBlankTerminated() bool {
+	return p.htmlKind == htmlTag6 || p.htmlKind == htmlTag7
 }
 
 // endHTMLBlock clears all HTML-block state.
 func (p *lc0Pass) endHTMLBlock() {
 	p.inHTML = false
 	p.htmlEnd = nil
-	p.htmlType1 = false
-	p.htmlBlankTerm = false
+	p.htmlKind = htmlNone
 }
 
 // htmlBlockCloses reports whether rest carries the closing condition of a
-// marker-terminated or type-1 HTML block: any of the type-1 raw-block
-// closing tags (case-insensitive) for a type-1 block, or the recorded
-// closing string otherwise. Not used for type-6 blocks (blank-terminated).
+// marker or raw HTML block: any of the type-1 raw-block closing tags
+// (case-insensitive) for a raw block, or the recorded closing string for a
+// marker block. Not used for tag blocks (blank-terminated).
 func (p *lc0Pass) htmlBlockCloses(rest []byte) bool {
-	if p.htmlType1 {
+	if p.htmlKind == htmlRaw {
 		return containsType1Close(rest)
 	}
 	return bytes.Contains(rest, p.htmlEnd)
 }
 
 // tryStartHTML opens a CommonMark HTML block (the marker-terminated types
-// 1–5, the type-1 raw blocks, and the type-6 block-level tag blocks) when
-// rest begins one. It marks the start line LineHTML and enters block mode
-// unless a marker/type-1 block already closes on its own line, so the
-// interior — which may hold a blank then indented line a fence-only scanner
-// would misread as indented code, or a fence the README collapsible-code
-// idiom places right after a `<details>`/`<div>` — is classified LineHTML,
-// not code. Returns false when rest opens no HTML block.
+// 1–5, the type-1 raw blocks, and the type-6/7 tag blocks) when rest begins
+// one. It marks the start line LineHTML and enters block mode unless a
+// marker/raw block already closes on its own line, so the interior — which
+// may hold a blank then indented line a fence-only scanner would misread as
+// indented code, or a fence a README idiom places right after a
+// `<details>`/`<div>`/`<img>` — is classified LineHTML, not code. A type-7
+// block cannot interrupt a paragraph. Returns false when rest opens none.
 func (p *lc0Pass) tryStartHTML(i int, rest []byte) bool {
-	end, type1, blankTerm, ok := htmlBlockEnd(rest)
-	if !ok {
+	end, kind := htmlBlockEnd(rest)
+	if kind == htmlNone || (kind == htmlTag7 && p.prevParagraph) {
 		return false
 	}
 	p.out.classes[i] = LineHTML
 	p.htmlEnd = end
-	p.htmlType1 = type1
-	p.htmlBlankTerm = blankTerm
-	// A type-6 block is blank-terminated, so its non-blank start line never
-	// closes it; a marker/type-1 block may close on its own start line.
-	if blankTerm || !p.htmlBlockCloses(rest) {
+	p.htmlKind = kind
+	// A tag block is blank-terminated, so its non-blank start line never
+	// closes it; a marker/raw block may close on its own start line.
+	if p.htmlBlankTerminated() || !p.htmlBlockCloses(rest) {
 		p.inHTML = true
 		p.openBlockDepth = len(p.stack)
 	} else {
@@ -347,7 +351,12 @@ func (p *lc0Pass) handleContent(i, ln int, line []byte, off int, rest []byte) {
 	if isBlankBytes(rest) {
 		// Blank once the container markers are stripped — e.g. `>     `, an
 		// empty blockquote line whose trailing spaces would otherwise read
-		// as a ≥4-column indented code block. Not code, not content.
+		// as a ≥4-column indented code block. Reaching here means
+		// openContainers pushed a container, which in CommonMark ends any
+		// in-progress indented code run, so end it before marking blank —
+		// otherwise this line would be (wrongly) folded into that run's
+		// pending blanks. Not code, not content.
+		p.endIndentRun()
 		p.markBlank(i, ln)
 		return
 	}

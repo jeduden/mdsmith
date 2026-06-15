@@ -69,6 +69,13 @@ var equivCases = map[string]string{
 	"details collapsible code":  "<details>\n<summary>x</summary>\n```go\nc\n```\n</details>\n",
 	"div then fence no blank":   "<div>\nx\n</div>\n```\ncode\n```\n",
 	"div block then real fence": "<div>\nx\n\n```\ncode\n```\n",
+	// Fourth code-review pass: a blank container line between indented-code
+	// lines must end the run (not fold into it), and type-7 HTML blocks (any
+	// complete open/void tag alone on a line) fold a following fence in.
+	"bq blank in indented code":   "    code1\n>     \n    code2\n",
+	"type7 img then fence":        "<img src=\"x.png\">\n```go\nx := 1\n```\n",
+	"type7 br then fence":         "<br>\n```\ncode\n```\n",
+	"type7 cannot interrupt para": "a paragraph\n<img src=\"x\">\n```\ncode\n```\n",
 }
 
 func sortedKeys(m map[int]struct{}) []int {
@@ -204,7 +211,8 @@ func TestClassifyLines_AllocBudget(t *testing.T) {
 	// class slice, the code-block and heading maps, the container stack. The
 	// bound's real job is to catch a PER-LINE allocation regression (e.g.
 	// containsType1Close reverting to a bytes.ToLower copy per HTML body
-	// line), which the <pre> block in the fixture would push far past this.
+	// line): the fixture's multi-line <pre> block would then add one alloc
+	// per body line, pushing the count past this bound by a wide margin.
 	assert.LessOrEqualf(t, allocs, float64(12),
 		"ClassifyLines allocates %.1f/op on a feature-rich doc (bound 12, "+
 			"catches per-line allocation)", allocs)
@@ -229,7 +237,11 @@ const allocBudgetClassifierFixture = "# Document title\n" +
 	"- one item\n" +
 	"-     indented code in the item\n" +
 	"\n" +
-	"<pre>\nraw &lt;b&gt; text\n</pre>\n"
+	// A type-1 raw block with several body lines: every line runs through
+	// containsType1Close, so a regression to a per-line bytes.ToLower copy
+	// would add one allocation per line here — pushing well past the bound.
+	"<pre>\nraw line 1\nraw line 2\nraw line 3\n" +
+	"raw line 4\nraw line 5\nraw line 6\n</pre>\n"
 
 // splitLines is the test helper mirroring how lint.File builds f.Lines.
 func splitLines(s string) [][]byte {

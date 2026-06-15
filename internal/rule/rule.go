@@ -60,9 +60,12 @@ type GitIndexMutator interface {
 // non-line-capable rule keeps the whole run on the AST path. Prototype
 // scope: line-length (MDS001) is the only implementer.
 //
-// A rule must report true only when it is line-capable under every
-// settings combination it accepts: the gate consults the registered
-// instance, before per-file settings are applied.
+// The gate calls LineCapable() on the CONFIGURED instance — it applies the
+// rule's effective settings (via ConfigureRule) before asking — so a rule
+// whose line-capability depends on configuration reports it from its own
+// settings. line-length, for example, returns false once a per-heading
+// limit is set, because the classifier's heading-line set is not guaranteed
+// byte-identical to the AST walk.
 type LineCapable interface {
 	LineCapable() bool
 }
