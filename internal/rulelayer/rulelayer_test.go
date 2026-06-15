@@ -56,3 +56,26 @@ func TestUnknownRuleIsNotLayer0(t *testing.T) {
 	assert.False(t, IsLayer0("MDS999"))
 	assert.Equal(t, LayerUnknown, Of("MDS999"))
 }
+
+// TestBuildLayerMapFromPanicsOnMalformedManifest drives the decode-failure
+// branch: malformed manifest JSON is a build-time contract violation, so the
+// builder panics rather than returning a degraded table.
+func TestBuildLayerMapFromPanicsOnMalformedManifest(t *testing.T) {
+	assert.Panics(t, func() {
+		buildLayerMapFrom([]byte("{not json"))
+	})
+}
+
+// TestBuildLayerMapFromClassifies confirms both arms of the category switch:
+// an "A-no-skipping" rule maps to Layer0, an astProjectionConsumer and any
+// other category map to LayerAST.
+func TestBuildLayerMapFromClassifies(t *testing.T) {
+	m := buildLayerMapFrom([]byte(`[
+		{"id":"MDS900","category":"A-no-skipping"},
+		{"id":"MDS047","category":"A-no-skipping"},
+		{"id":"MDS901","category":"ast-required"}
+	]`))
+	assert.Equal(t, Layer0, m["MDS900"])
+	assert.Equal(t, LayerAST, m["MDS047"], "astProjectionConsumer stays AST")
+	assert.Equal(t, LayerAST, m["MDS901"])
+}
