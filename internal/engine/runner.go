@@ -522,7 +522,7 @@ func (r *Runner) computeFlatLayer0Active() bool {
 		// is not line-capable once a per-heading limit is set). With no
 		// kinds or overrides, the empty-path effective config is the
 		// rule's settings for every file.
-		configured, err := ConfigureRule(rl, cfg)
+		configured, err := checker.ConfigureRule(rl, cfg)
 		if err != nil {
 			return false
 		}
