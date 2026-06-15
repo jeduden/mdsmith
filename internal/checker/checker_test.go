@@ -197,6 +197,20 @@ func TestCheckRulesWithIntraFile_nodeChecker(t *testing.T) {
 	assert.NotEmpty(t, diags)
 }
 
+// TestCheckRulesWithIntraFile_nodeCheckerNilAST exercises the defensive branch
+// in classifySlot where a NodeChecker that is not a BlockChecker runs against a
+// parse-skipped File (AST nil). The rule cannot run, so no diagnostics are emitted.
+func TestCheckRulesWithIntraFile_nodeCheckerNilAST(t *testing.T) {
+	f := lint.NewFileLines("doc.md", []byte("# Hello\n\nParagraph.\n"))
+	f.RootDir = "."
+	f.RunCache = lint.NewRunCache()
+	d := lint.Diagnostic{Line: 1, RuleID: "TST001", Message: "node hit"}
+	rules := []rule.Rule{&nodeCheckerRule{plainRule: plainRule{id: "TST001"}, diag: d}}
+	diags, errs := checker.CheckRulesWithIntraFile(f, rules, enabled("TST001"), true, 1)
+	assert.Empty(t, errs)
+	assert.Empty(t, diags, "NodeChecker without BlockChecker emits nothing on nil-AST path")
+}
+
 // TestCheckRulesWithIntraFile_blockCheckerNilAST pins the BlockSpan
 // dispatch: on a parse-skipped File (AST nil) the engine drives a
 // rule.BlockChecker over the Layer 0 block spans, so its diagnostics
