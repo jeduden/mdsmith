@@ -464,19 +464,7 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 		sourceBufPool.Put(bufp)
 	}
 	defer release()
-	f.MaxInputBytes = r.MaxInputBytes
-	f.RunCache = cache
-	dir := filepath.Dir(path)
-	f.FS = os.DirFS(dir)
-	gitignoreDir := dir
-	if r.RootDir != "" {
-		f.SetRootDir(r.RootDir)
-		gitignoreDir = r.RootDir
-	}
-	gd := gitignoreDir // capture for closure
-	f.GitignoreFunc = func() *gitignore.Matcher {
-		return r.cachedGitignore(gd)
-	}
+	r.configureFile(f, path, cache)
 
 	// Generated-section ranges come from a PI walk over the AST. A
 	// parse-skipped File (AST nil) is, by gate construction, free of
@@ -491,13 +479,32 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 }
 
 // populateGeneratedRanges fills f.GeneratedRanges from the include/catalog
-// markers in its AST. The flat Layer-0 path leaves f.AST nil (and only
-// takes that path for files with no such directive, so there are no ranges
-// to find), so the nil guard keeps FindAllGeneratedRanges from walking a
-// nil tree rather than changing behaviour.
+// markers in its AST. The flat Layer-0 and Layer 0 parse-skip paths leave
+// f.AST nil (and only take that path for files with no such directive, so
+// there are no ranges to find), so the nil guard keeps FindAllGeneratedRanges
+// from walking a nil tree rather than changing behaviour.
 func populateGeneratedRanges(f *lint.File) {
 	if f.AST != nil {
 		f.GeneratedRanges = gensection.FindAllGeneratedRanges(f)
+	}
+}
+
+// configureFile wires the per-run filesystem references, gitignore, and
+// read-cache onto f. Extracted from lintFile to keep that function under the
+// statement-count threshold enforced by the funlen linter.
+func (r *Runner) configureFile(f *lint.File, path string, cache *lint.RunCache) {
+	f.MaxInputBytes = r.MaxInputBytes
+	f.RunCache = cache
+	dir := filepath.Dir(path)
+	f.FS = os.DirFS(dir)
+	gitignoreDir := dir
+	if r.RootDir != "" {
+		f.SetRootDir(r.RootDir)
+		gitignoreDir = r.RootDir
+	}
+	gd := gitignoreDir // capture for closure
+	f.GitignoreFunc = func() *gitignore.Matcher {
+		return r.cachedGitignore(gd)
 	}
 }
 
