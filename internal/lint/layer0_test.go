@@ -114,6 +114,20 @@ func TestLayer0_BlockquotedFencedCodeIsCode(t *testing.T) {
 	assert.Equal(t, []int{1, 2, 3}, keysOf(l0.CodeBlockLines))
 }
 
+func TestLayer0_NestedBlockquotedFencedCodeIsCode(t *testing.T) {
+	// A fence two quote levels deep must still be found — the code-capable
+	// guard descends through nested `>` markers.
+	l0 := scan("> > ```\n> > code\n> > ```\n")
+	assert.Equal(t, []int{1, 2, 3}, keysOf(l0.CodeBlockLines))
+}
+
+func TestLayer0_IndentedLazyContinuationAfterQuoteIsNotCode(t *testing.T) {
+	// An indented line that lazily continues a block quote paragraph is not
+	// an indented code block (goldmark: lazy continuation, not code).
+	l0 := scan("> para line\n    lazy continuation\n")
+	assert.Empty(t, l0.CodeBlockLines)
+}
+
 func TestLayer0_IndentedCodeKeepsInteriorBlank(t *testing.T) {
 	// A blank line interior to an indented code block stays code (goldmark
 	// trims only trailing blanks).
