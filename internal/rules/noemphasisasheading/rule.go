@@ -38,42 +38,51 @@ func (r *Rule) Category() string { return "heading" }
 // rule.WalkNodes.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	// On the parse-skipped path (f.AST nil) the AST walk surfaces no
-	// nodes, so serve from the Layer 1 whole-paragraph-emphasis index,
+	// nodes, so drive the per-block dispatch over the Layer 0 block scan,
 	// which the corpus equivalence harness pins byte-identical to the
 	// lone-emphasis-child result this rule reads from the tree.
 	if f.AST == nil {
-		return r.checkFromIndex(f)
+		return rule.WalkBlocks(r, f)
 	}
 	return rule.WalkNodes(r, f)
 }
 
-// checkFromIndex reports one diagnostic per Layer 1 emphasis paragraph,
-// applying the same placeholder suppression the AST path applies. A
-// lone-emphasis paragraph never starts with `|`, so it can never be a
-// GFM table; the AST path's table guard is therefore vacuous here and
-// needs no counterpart.
-func (r *Rule) checkFromIndex(f *lint.File) []lint.Diagnostic {
-	paras := lint.WholeParagraphEmphasis(f)
-	if len(paras) == 0 {
+// CheckBlock implements rule.BlockChecker. It is invoked once per
+// BlockParagraph span on the parse-skipped path. A paragraph is flagged
+// when its inline content (parsed in isolation by the Layer 1 detector) is
+// a single emphasis span, unless the emphasis text holds a configured
+// placeholder token. A lone-emphasis paragraph never starts with `|`, so it
+// can never be a GFM table; the AST path's table guard is therefore vacuous
+// here and needs no counterpart.
+func (r *Rule) CheckBlock(span lint.BlockSpan, f *lint.File) []lint.Diagnostic {
+	p, ok := lint.LoneEmphasisParagraph(f, span)
+	if !ok {
 		return nil
 	}
-	var diags []lint.Diagnostic
-	for _, p := range paras {
-		if segmentsContainPlaceholder(p.TextSegments, r.Placeholders) {
-			continue
-		}
-		diags = append(diags, lint.Diagnostic{
-			File:     f.Path,
-			Line:     p.Line,
-			Column:   1,
-			RuleID:   r.ID(),
-			RuleName: r.Name(),
-			Severity: lint.Warning,
-			Message:  "emphasis used instead of a heading",
-		})
+	if segmentsContainPlaceholder(p.TextSegments, r.Placeholders) {
+		return nil
 	}
-	return diags
+	return []lint.Diagnostic{{
+		File:     f.Path,
+		Line:     p.Line,
+		Column:   1,
+		RuleID:   r.ID(),
+		RuleName: r.Name(),
+		Severity: lint.Warning,
+		Message:  "emphasis used instead of a heading",
+	}}
 }
+
+// blockKinds is the static block-kind interest CheckBlock declares via
+// rule.BlockChecker; package-level so BlockKinds returns it without
+// allocating. Emphasis-as-heading is a paragraph-only shape.
+var blockKinds = []lint.BlockKind{lint.BlockParagraph}
+
+// BlockKinds implements rule.BlockChecker: CheckBlock reacts only to
+// paragraph spans.
+func (r *Rule) BlockKinds() []lint.BlockKind { return blockKinds }
+
+var _ rule.BlockChecker = (*Rule)(nil)
 
 // CheckNode implements rule.NodeChecker.
 func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {

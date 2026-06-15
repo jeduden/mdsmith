@@ -2,8 +2,6 @@ package lint
 
 import (
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
-	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
-	"github.com/jeduden/mdsmith/pkg/markdown"
 )
 
 // EmphasisParagraph is one paragraph whose sole inline child is a single
@@ -77,14 +75,25 @@ func scanWholeParagraphEmphasis(f *File) []EmphasisParagraph {
 		if span.Kind != BlockParagraph {
 			continue
 		}
-		if !paragraphMayOpenEmphasis(f, span) {
-			continue
-		}
-		if p, ok := loneEmphasisParagraph(f, span); ok {
+		if p, ok := LoneEmphasisParagraph(f, span); ok {
 			out = append(out, p)
 		}
 	}
 	return out
+}
+
+// LoneEmphasisParagraph tests one Layer 0 paragraph span for the
+// emphasis-as-heading shape and, when it matches, returns the
+// EmphasisParagraph describing it. It is the per-span entry point the
+// engine's block dispatch drives for MDS018 on the parse-skipped path:
+// CheckBlock(span) calls it once per BlockParagraph span. The span is
+// gated on its first non-space byte being a delimiter before any parse, so
+// a non-emphasis paragraph costs only the cheap byte check.
+func LoneEmphasisParagraph(f *File, span BlockSpan) (EmphasisParagraph, bool) {
+	if span.Kind != BlockParagraph || !paragraphMayOpenEmphasis(f, span) {
+		return EmphasisParagraph{}, false
+	}
+	return loneEmphasisParagraph(f, span)
 }
 
 // paragraphMayOpenEmphasis reports whether the first non-space byte of the
@@ -122,7 +131,7 @@ func loneEmphasisParagraph(f *File, span BlockSpan) (EmphasisParagraph, bool) {
 		return EmphasisParagraph{}, false
 	}
 	block := f.Source[start:end]
-	doc := markdown.ParseContext(block, parser.NewContext())
+	doc := ParseInline(block)
 	para, ok := singleParagraph(doc)
 	if !ok {
 		return EmphasisParagraph{}, false

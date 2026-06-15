@@ -37,14 +37,81 @@ func (r *Rule) Category() string { return "link" }
 // this rule into one shared AST walk; a direct call still works via
 // rule.WalkNodes.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	// On the parse-skipped path (f.AST nil) the AST walk surfaces no
+	// nodes, so drive the per-block dispatch over the Layer 0 block scan:
+	// each inline-bearing span is parsed in isolation and the same
+	// Text-node logic runs over it, with span-local segment offsets mapped
+	// back to the document. Re-using goldmark's own parser per span keeps
+	// the flagged bare-URL set byte-identical to the AST path.
+	if f.AST == nil {
+		return rule.WalkBlocks(r, f)
+	}
 	return rule.WalkNodes(r, f)
 }
 
-// CheckNode implements rule.NodeChecker.
+// CheckBlock implements rule.BlockChecker. It parses the span's own source
+// bytes in isolation and applies the per-Text-node bare-URL check,
+// translating each span-local offset to the document via the span's start
+// offset. Re-using goldmark's parser on the span reproduces the link,
+// autolink, and code-span context the AST walk relied on to suppress
+// non-bare URLs.
+func (r *Rule) CheckBlock(span lint.BlockSpan, f *lint.File) []lint.Diagnostic {
+	start := f.LineStartOffset(span.Start - 1)
+	end := f.LineEndOffset(span.End - 1)
+	if end <= start {
+		return nil
+	}
+	block := f.Source[start:end]
+	doc := lint.ParseInline(block)
+	diags := make([]lint.Diagnostic, 0)
+	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		diags = append(diags, r.flagTextNode(n, f, start)...)
+		return ast.WalkContinue, nil
+	})
+	if len(diags) == 0 {
+		return nil
+	}
+	return diags
+}
+
+// blockKinds is the static block-kind interest CheckBlock declares via
+// rule.BlockChecker; package-level so BlockKinds returns it without
+// allocating. A bare URL can appear in body text under any of these block
+// kinds, so the rule reacts to every inline-bearing span the Layer 0 scan
+// emits.
+var blockKinds = []lint.BlockKind{
+	lint.BlockParagraph,
+	lint.BlockATXHeading,
+	lint.BlockSetextHeading,
+	lint.BlockList,
+	lint.BlockQuote,
+}
+
+// BlockKinds implements rule.BlockChecker.
+func (r *Rule) BlockKinds() []lint.BlockKind { return blockKinds }
+
+var _ rule.BlockChecker = (*Rule)(nil)
+
+// CheckNode implements rule.NodeChecker. On the AST path the segment
+// offsets are already document-absolute, so the base offset is zero.
 func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
 	if !entering {
 		return nil
 	}
+	return r.flagTextNode(n, f, 0)
+}
+
+// flagTextNode emits a diagnostic for each bare URL inside a Text node that
+// is not within a link, autolink, or code span. base is added to the node's
+// segment-local offsets to recover document-absolute positions: zero on the
+// AST path (segments are already absolute), the run's start offset on the
+// per-block path. The node's content is read against f.Source on the AST
+// path and against the same Source via the absolute offsets on the per-block
+// path — both index the identical bytes.
+func (r *Rule) flagTextNode(n ast.Node, f *lint.File, base int) []lint.Diagnostic {
 	textNode, ok := n.(*ast.Text)
 	if !ok {
 		return nil
@@ -55,7 +122,9 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 	}
 
 	seg := textNode.Segment
-	content := seg.Value(f.Source)
+	absStart := base + seg.Start
+	absStop := base + seg.Stop
+	content := f.Source[absStart:absStop]
 	// Every urlPattern match starts with "http"; gating on the
 	// literal spares the regex engine on the overwhelming majority
 	// of text nodes.
@@ -67,9 +136,9 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 		return nil
 	}
 
-	var diags []lint.Diagnostic
+	diags := make([]lint.Diagnostic, 0, len(matches))
 	for _, m := range matches {
-		offset := seg.Start + m[0]
+		offset := absStart + m[0]
 		diags = append(diags, lint.Diagnostic{
 			File:     f.Path,
 			Line:     f.LineOfOffset(offset),

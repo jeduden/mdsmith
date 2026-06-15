@@ -123,8 +123,8 @@
   {
     "id": "MDS012",
     "name": "no-bare-urls",
-    "category": "hybrid",
-    "nil_ast_safe": false,
+    "category": "A-no-skipping",
+    "nil_ast_safe": true,
     "code_block_sensitive": false,
     "fired": true,
     "is_node_checker": true,
@@ -189,13 +189,13 @@
   {
     "id": "MDS018",
     "name": "no-emphasis-as-heading",
-    "category": "hybrid",
-    "nil_ast_safe": false,
+    "category": "A-no-skipping",
+    "nil_ast_safe": true,
     "code_block_sensitive": false,
     "fired": true,
     "is_node_checker": true,
     "uses_ast_walk": true,
-    "reads_file_ast": false
+    "reads_file_ast": true
   },
   {
     "id": "MDS019",

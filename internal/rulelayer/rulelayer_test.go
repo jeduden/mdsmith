@@ -43,6 +43,18 @@ func TestIsLayer0(t *testing.T) {
 		assert.True(t, IsLayer0(id), "%s should be Layer 0 once code spans are backed", id)
 		assert.Equal(t, Layer0, Of(id))
 	}
+	// MDS012 (no-bare-urls) and MDS018 (no-emphasis-as-heading) were
+	// "hybrid": they walked the inline tree (Text nodes for bare URLs, a
+	// lone Emphasis child for emphasis-as-heading) and produced no
+	// diagnostics on a nil AST. Layer 1 re-backs both via the per-block
+	// inline parse (internal/lint/inline_blocks.go + inline_emphasis.go):
+	// each implements rule.BlockChecker so the engine's block-span dispatch
+	// drives them on the parse-skipped File. The audit now classes them
+	// "A-no-skipping" and the gate admits both.
+	for _, id := range []string{"MDS012", "MDS018"} {
+		assert.True(t, IsLayer0(id), "%s should be Layer 0 once re-backed on Layer 1", id)
+		assert.Equal(t, Layer0, Of(id))
+	}
 	// AST-requiring rules are not Layer 0.
 	for _, id := range []string{"MDS001", "MDS019", "MDS023"} {
 		assert.False(t, IsLayer0(id), "%s should require the AST", id)
