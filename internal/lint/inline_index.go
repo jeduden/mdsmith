@@ -109,17 +109,16 @@ func scanInlineIndex(f *File) *InlineIndex {
 // common code-only document allocates nothing extra.
 func nonInlineLines(f *File) map[int]struct{} {
 	l0 := Layer0(f)
-	hasHTML := false
+	htmlLineCount := 0
 	for _, span := range l0.BlockSpans {
 		if span.Kind == BlockHTML {
-			hasHTML = true
-			break
+			htmlLineCount += span.End - span.Start + 1
 		}
 	}
-	if len(l0.PIBlockLines) == 0 && !hasHTML {
+	if len(l0.PIBlockLines) == 0 && htmlLineCount == 0 {
 		return l0.CodeBlockLines
 	}
-	set := make(map[int]struct{}, len(l0.CodeBlockLines)+len(l0.PIBlockLines))
+	set := make(map[int]struct{}, len(l0.CodeBlockLines)+len(l0.PIBlockLines)+htmlLineCount)
 	for ln := range l0.CodeBlockLines {
 		set[ln] = struct{}{}
 	}
@@ -201,9 +200,9 @@ func appendCodeSpan(idx *InlineIndex, src []byte, openStart, closeEnd int) {
 
 // trimCodeSpanContent reproduces CommonMark's code-span content trim that
 // goldmark records: when the content both begins and ends with a space (or
-// line-ending byte goldmark treats as a space) and is not made up entirely
-// of such bytes, one byte is stripped from each side. The returned range is
-// the post-trim content [start, end).
+// line-ending byte goldmark treats as a space) and is not entirely blank per
+// util.IsBlank (which includes '\t' and '\r'), one byte is stripped from each
+// side. The returned range is the post-trim content [start, end).
 func trimCodeSpanContent(src []byte, start, end int) (int, int) {
 	if end <= start {
 		return start, end
@@ -211,7 +210,7 @@ func trimCodeSpanContent(src []byte, start, end int) (int, int) {
 	if !isCodeSpanSpace(src[start]) || !isCodeSpanSpace(src[end-1]) {
 		return start, end
 	}
-	if allCodeSpanBlank(src, start, end) {
+	if util.IsBlank(src[start:end]) {
 		return start, end
 	}
 	return start + 1, end - 1
@@ -223,21 +222,6 @@ func trimCodeSpanContent(src []byte, start, end int) (int, int) {
 // code_span.go:isSpaceOrNewline is `c == ' ' || c == '\n'`.
 func isCodeSpanSpace(b byte) bool {
 	return b == ' ' || b == '\n'
-}
-
-// allCodeSpanBlank reports whether every byte in [start, end) is blank
-// per goldmark's util.IsSpace (spaceTable: ' ', '\t', '\n', '\r'). A span
-// that is entirely blank is never trimmed — CommonMark §6.1's all-spaces
-// guard — and goldmark checks this via node.IsBlank which calls util.IsBlank
-// which calls util.IsSpace. Delegating to util.IsSpace keeps the predicate
-// in sync with goldmark automatically if spaceTable ever widens.
-func allCodeSpanBlank(src []byte, start, end int) bool {
-	for k := start; k < end; k++ {
-		if !util.IsSpace(src[k]) {
-			return false
-		}
-	}
-	return true
 }
 
 // endOfBacktickRun returns the offset just past the run of backticks that
