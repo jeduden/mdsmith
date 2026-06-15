@@ -73,19 +73,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			continue
 		}
 
-		end := len(nodes)
-		for j := i + 1; j < len(nodes); j++ {
-			nextHeading, ok := nodes[j].(*ast.Heading)
-			if !ok {
-				continue
-			}
-			if nextHeading.Level <= heading.Level {
-				end = j
-				break
-			}
-		}
-
-		sectionNodes := nodes[i+1 : end]
+		sectionNodes := nodes[i+1 : findSectionEnd(nodes, i)]
 		if hasAllowMarker(sectionNodes, allowMarker) {
 			continue
 		}
@@ -257,6 +245,16 @@ func topLevelNodes(root ast.Node) []ast.Node {
 		nodes = append(nodes, n)
 	}
 	return nodes
+}
+
+func findSectionEnd(nodes []ast.Node, i int) int {
+	level := nodes[i].(*ast.Heading).Level
+	for j := i + 1; j < len(nodes); j++ {
+		if h, ok := nodes[j].(*ast.Heading); ok && h.Level <= level {
+			return j
+		}
+	}
+	return len(nodes)
 }
 
 func hasAllowMarker(nodes []ast.Node, markerName string) bool {
