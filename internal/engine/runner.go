@@ -20,6 +20,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/rulelayer"
 )
 
 // sourceBufPool recycles the per-file source-read buffer across the
@@ -395,6 +396,25 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 		return fileOutcome{errs: []error{fmt.Errorf("reading %q: %w", path, err)}}
 	}
 
+	// Parse the front matter from the stripped prefix before constructing
+	// the File: the effective rule config (which the parse-skip gate keys
+	// on) depends on the file's kinds/fields, and the strip is a cheap
+	// byte split that does not need the goldmark parse.
+	//
+	// This runs before the File is built, so the pooled source buffer has
+	// no deferred release yet — nothing aliases it on a front-matter error,
+	// so return it to the pool here just as the read-error path above does.
+	fmPrefix := frontMatterPrefix(source, r.StripFrontMatter)
+	fmKinds, fmFields, err := r.parseFrontMatter(path, fmPrefix)
+	if err != nil {
+		*bufp = (*bufp)[:0]
+		sourceBufPool.Put(bufp)
+		return fileOutcome{errs: []error{err}}
+	}
+
+	effective := r.effectiveCached(path, fmKinds, fmFields, rr)
+	logRulesTo(flog, rr.mdRules, effective)
+
 	// The pooled parse recycles AST slab memory across files. lintFile
 	// is the documented lifetime boundary: the File and everything
 	// aliasing its arena die before the deferred release — diagnostics
@@ -403,16 +423,46 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 	// stdin) deliberately stays on the unpooled constructor because
 	// its Files outlive the call via the ParseCache.
 	//
+	// When the Layer 0 gate holds (every enabled rule resolves to Layer 0
+	// and the file has no directives), the goldmark parse is skipped: the
+	// File is built lines-only and there is no arena to release.
+	//
 	// release() recycles both the arena slabs and the source buffer:
 	// the buffer is resliced to zero length so a single large file does
 	// not pin its grown capacity in the pool forever.
-	f, releaseArena := r.pooledFileConstructor()(path, source, r.StripFrontMatter)
+	var f *lint.File
+	releaseArena := func() {}
+	if r.layer0SkipEligible(source, rr.mdRules, effective) {
+		f = lint.NewFileLinesFromSource(path, source, r.StripFrontMatter)
+	} else {
+		f, releaseArena = r.pooledFileConstructor()(path, source, r.StripFrontMatter)
+	}
 	release := func() {
 		releaseArena()
 		*bufp = (*bufp)[:0]
 		sourceBufPool.Put(bufp)
 	}
 	defer release()
+	r.configureFile(f, path, cache)
+
+	// Generated-section ranges come from a PI walk over the AST. A
+	// parse-skipped File (AST nil) is, by gate construction, free of
+	// directives, so it has no generated sections — leave the ranges nil.
+	if f.AST != nil {
+		f.GeneratedRanges = gensection.FindAllGeneratedRanges(f)
+	}
+
+	diags, errs := checkRulesWithIntraFile(f, rr.mdRules, effective, r.SkipSourceContext, intraFileCap)
+	if r.Explain {
+		explain.Attach(diags, r.Config, path, fmKinds, fmFields)
+	}
+	return fileOutcome{diags: diags, errs: errs}
+}
+
+// configureFile wires the per-run filesystem references, gitignore, and
+// read-cache onto f. Extracted from lintFile to keep that function under the
+// statement-count threshold enforced by the funlen linter.
+func (r *Runner) configureFile(f *lint.File, path string, cache *lint.RunCache) {
 	f.MaxInputBytes = r.MaxInputBytes
 	f.RunCache = cache
 	dir := filepath.Dir(path)
@@ -426,22 +476,6 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 	f.GitignoreFunc = func() *gitignore.Matcher {
 		return r.cachedGitignore(gd)
 	}
-
-	fmKinds, fmFields, err := r.parseFrontMatter(path, f.FrontMatter)
-	if err != nil {
-		return fileOutcome{errs: []error{err}}
-	}
-
-	f.GeneratedRanges = gensection.FindAllGeneratedRanges(f)
-
-	effective := r.effectiveCached(path, fmKinds, fmFields, rr)
-	logRulesTo(flog, rr.mdRules, effective)
-
-	diags, errs := checkRulesWithIntraFile(f, rr.mdRules, effective, r.SkipSourceContext, intraFileCap)
-	if r.Explain {
-		explain.Attach(diags, r.Config, path, fmKinds, fmFields)
-	}
-	return fileOutcome{diags: diags, errs: errs}
 }
 
 // pooledFileConstructor returns the per-file parse constructor for this
@@ -454,6 +488,84 @@ func (r *Runner) pooledFileConstructor() func(string, []byte, bool) (*lint.File,
 		return lint.NewFileBlockOnlyPooled
 	}
 	return lint.NewFileFromSourcePooled
+}
+
+// frontMatterPrefix returns the leading YAML front-matter block of source
+// (including its --- delimiters), or nil when stripping is off or source
+// has none. It mirrors what NewFileFromSource stores in File.FrontMatter,
+// computed up front so the parse-skip gate can resolve the effective
+// config before deciding whether to parse.
+func frontMatterPrefix(source []byte, stripFrontMatter bool) []byte {
+	if !stripFrontMatter {
+		return nil
+	}
+	prefix, _ := lint.StripFrontMatter(source)
+	return prefix
+}
+
+// layer0SkipOverride, when non-nil, forces the Layer 0 parse-skip gate
+// on (*true) or off (*false), bypassing the environment. The gate's
+// in-package equivalence tests set it so they can flip the toggle without
+// mutating the process environment. nil (the default) defers to
+// MDSMITH_LAYER0_SKIP.
+var layer0SkipOverride *bool
+
+// layer0SkipEnabled reports whether the master Layer 0 parse-skip toggle
+// is on. It honours an in-process override when set, otherwise reads the
+// MDSMITH_LAYER0_SKIP environment variable each call so a test in any
+// package can flip it via t.Setenv. Default off: the gate is a
+// benchmarking and CI-equivalence seam for now, not yet a shipped
+// optimization, so a normal run always parses.
+func layer0SkipEnabled() bool {
+	if layer0SkipOverride != nil {
+		return *layer0SkipOverride
+	}
+	return os.Getenv("MDSMITH_LAYER0_SKIP") != ""
+}
+
+// layer0SkipEligible reports whether this file's run can skip the goldmark
+// parse and lint from the Layer 0 scan alone. Three conditions must hold:
+//
+//  1. The MDSMITH_LAYER0_SKIP toggle is set (default off).
+//  2. Every enabled rule resolves to Layer 0 (rulelayer.IsLayer0) — no
+//     enabled rule navigates f.AST. An unknown rule id is treated as
+//     AST-requiring, so a rule the audit does not cover is never skipped.
+//  3. The source carries no `<?` directive marker. Generated-section
+//     suppression walks the AST for processing instructions, so a file
+//     with directives must be parsed.
+//
+// The block-only spike flag is mutually exclusive with the gate: it forces
+// its own constructor, so the gate stands down when it is set.
+func (r *Runner) layer0SkipEligible(
+	source []byte, rules []rule.Rule, effective map[string]config.RuleCfg,
+) bool {
+	if !layer0SkipEnabled() || r.BlockOnlyParse {
+		return false
+	}
+	if bytes.Contains(source, piOpenScan) {
+		return false
+	}
+	return allEnabledRulesLayer0(rules, effective)
+}
+
+// piOpenScan is the directive opener the gate scans for; any occurrence
+// disqualifies the parse skip.
+var piOpenScan = []byte("<?")
+
+// allEnabledRulesLayer0 reports whether every enabled rule in effective is
+// a Layer 0 rule. A run with no enabled rules trivially qualifies. A
+// disabled rule is ignored — it will not run, so its layer is irrelevant.
+func allEnabledRulesLayer0(rules []rule.Rule, effective map[string]config.RuleCfg) bool {
+	for _, rl := range rules {
+		cfg, ok := effective[rl.Name()]
+		if !ok || !cfg.Enabled {
+			continue
+		}
+		if !rulelayer.IsLayer0(rl.ID()) {
+			return false
+		}
+	}
+	return true
 }
 
 // DedupeDiagnostics returns a new slice with duplicate (file, line,
