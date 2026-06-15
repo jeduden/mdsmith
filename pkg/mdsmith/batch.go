@@ -130,5 +130,13 @@ func (s *Session) newBatchRunner(opts BatchOptions) *engine.Runner {
 		// and undocumented. Diagnostics under this flag are not correct
 		// (inline rules see no inline nodes); it exists to measure cost.
 		BlockOnlyParse: os.Getenv("MDSMITH_SPIKE_BLOCK_ONLY") != "",
+		// Flat Layer-0 prototype (plan 2606142147) measurement seam: when
+		// MDSMITH_SPIKE_FLAT_L0 is set, an eligible run (line-capable rules
+		// only) skips the goldmark parse and drives line rules from the
+		// flat line classifier, so hyperfine can time the parse-free path
+		// against gomarklint. Off by default and undocumented; on an
+		// ineligible config it is inert (the engine keeps the AST path),
+		// so diagnostics stay correct.
+		FlatLayer0: os.Getenv("MDSMITH_SPIKE_FLAT_L0") != "",
 	}
 }

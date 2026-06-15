@@ -1,0 +1,31 @@
+# Single-rule line-length (MDS001) benchmark profile.
+#
+# The per-rule bottleneck study and the flat Layer-0 prototype (plan
+# 2606142147) measure line-length alone against gomarklint's
+# max-line-length, so this profile disables every other rule by turning
+# off all categories except `line` (line-length is the sole rule in the
+# `line` category) and configures line-length at max 80 — the
+# diagnostic-heavy case (~5455 diagnostics on the neutral corpus).
+#
+# Pair it with MDSMITH_SPIKE_FLAT_L0=1 to select the parse-free flat
+# Layer-0 path, MDSMITH_SPIKE_BLOCK_ONLY=1 for the block-only proxy, or
+# neither for the full-parse baseline. The 0-diagnostic sibling
+# (bench-mds001-nodiag.mdsmith.yml) raises the limit so the rule still
+# scans every line but emits nothing, isolating the lint pipeline from
+# output rendering.
+front-matter: true
+categories:
+  prose: false
+  heading: false
+  structural: false
+  link: false
+  whitespace: false
+  directive: false
+  code: false
+  list: false
+  table: false
+  accessibility: false
+rules:
+  line-length:
+    max: 80
+    exclude: ["code-blocks", "tables", "urls"]

@@ -113,3 +113,32 @@ func TestNewFileBlockOnlyPooled_NoFrontMatterReleaseIdempotent(t *testing.T) {
 	release()
 	assert.NotPanics(t, release, "second release must be a no-op")
 }
+
+// TestNewFileFlatPooled_SkipsParse proves acceptance criterion 3 at the
+// File level: the flat Layer-0 constructor builds NO goldmark AST yet
+// still serves a correct, AST-identical code-block line set from the flat
+// classifier it attaches. Front matter is stripped and its offset recorded
+// exactly as the full constructor does.
+func TestNewFileFlatPooled_SkipsParse(t *testing.T) {
+	src := []byte("---\ntitle: T\n---\n# H1\n\nA long line of prose.\n\n```go\nfenced code line\n```\n")
+	flat, release := NewFileFlatPooled("doc.md", src, true)
+	defer release()
+
+	assert.Nil(t, flat.AST, "flat Layer-0 path must build no AST")
+	assert.Equal(t, "---\ntitle: T\n---\n", string(flat.FrontMatter))
+	assert.Positive(t, flat.LineOffset)
+	assert.True(t, flat.StripFrontMatter)
+
+	// CollectCodeBlockLines serves from the classifier and equals the AST
+	// walk over the same stripped content.
+	astFile, err := NewFileFromSource("doc.md", src, true)
+	require.NoError(t, err)
+	assert.Equal(t, sortedKeys(collectCodeBlockLines(astFile)), sortedKeys(CollectCodeBlockLines(flat)))
+}
+
+// TestNewFileFlatPooled_ReleaseIdempotent covers the no-op release closure.
+func TestNewFileFlatPooled_ReleaseIdempotent(t *testing.T) {
+	_, release := NewFileFlatPooled("a.md", []byte("# H\n"), false)
+	release()
+	assert.NotPanics(t, release, "second release must be a no-op")
+}

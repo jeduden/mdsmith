@@ -119,6 +119,22 @@ type Runner struct {
 	// not meaningful under this flag — it exists to measure cost, not
 	// to produce correct output.
 	BlockOnlyParse bool
+	// FlatLayer0, when true, lets lintFile skip the goldmark parse and
+	// drive a File from the flat Layer-0 line classifier
+	// (lint.NewFileFlatPooled) instead — but only when the run is
+	// eligible: every globally-enabled markdown rule is rule.LineCapable
+	// and the config declares no kinds or overrides (computeFlatLayer0Active).
+	// On an eligible run, a file with no include/catalog directive takes
+	// the parse-free path; a file with one stays on the AST path so its
+	// generated-section suppression still works. Default-off (plan
+	// 2606142147); the CLI exposes it through the MDSMITH_SPIKE_FLAT_L0
+	// env gate for the head-to-head measurement, and RunSource ignores it.
+	FlatLayer0 bool
+	// flatL0Active caches computeFlatLayer0Active for one Run pass. Run
+	// sets it on the calling goroutine before spawning file workers, so
+	// the per-file constructor selection reads it without a lock or a
+	// per-file recompute.
+	flatL0Active bool
 	// ParseCache memoizes the parsed *lint.File for an in-memory
 	// document so RunSourceWithVersion can skip lint.NewFileFromSource
 	// when a prior call at the same (path, version) already parsed
@@ -174,6 +190,10 @@ func (r *Runner) Run(paths []string) *Result {
 	// previous corpus. cache is threaded onto every File the per-file
 	// loop builds.
 	cache := r.runCacheForCall()
+
+	// Resolve flat-Layer-0 eligibility once for this pass, before the
+	// file workers start, so each lintFile reads a stable bool.
+	r.flatL0Active = r.computeFlatLayer0Active()
 
 	// Run config-target rules once against the config file before per-file
 	// markdown processing. These rules (e.g. recipe-safety / MDS040) validate
@@ -406,7 +426,7 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 	// release() recycles both the arena slabs and the source buffer:
 	// the buffer is resliced to zero length so a single large file does
 	// not pin its grown capacity in the pool forever.
-	f, releaseArena := r.pooledFileConstructor()(path, source, r.StripFrontMatter)
+	f, releaseArena := r.pooledFileConstructor(source)(path, source, r.StripFrontMatter)
 	release := func() {
 		releaseArena()
 		*bufp = (*bufp)[:0]
@@ -432,7 +452,7 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 		return fileOutcome{errs: []error{err}}
 	}
 
-	f.GeneratedRanges = gensection.FindAllGeneratedRanges(f)
+	populateGeneratedRanges(f)
 
 	effective := r.effectiveCached(path, fmKinds, fmFields, rr)
 	logRulesTo(flog, rr.mdRules, effective)
@@ -444,16 +464,73 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 	return fileOutcome{diags: diags, errs: errs}
 }
 
+// populateGeneratedRanges fills f.GeneratedRanges from the include/catalog
+// markers in its AST. The flat Layer-0 path leaves f.AST nil (and only
+// takes that path for files with no such directive, so there are no ranges
+// to find), so the nil guard keeps FindAllGeneratedRanges from walking a
+// nil tree rather than changing behaviour.
+func populateGeneratedRanges(f *lint.File) {
+	if f.AST != nil {
+		f.GeneratedRanges = gensection.FindAllGeneratedRanges(f)
+	}
+}
+
 // pooledFileConstructor returns the per-file parse constructor for this
-// run: the full-parse pooled constructor normally, or the block-only one
-// when the lazy-parse spike flag (Runner.BlockOnlyParse) is set. The flag
-// is default-off and no production caller sets it, so the returned
-// constructor is lint.NewFileFromSourcePooled on every shipped path.
-func (r *Runner) pooledFileConstructor() func(string, []byte, bool) (*lint.File, func()) {
+// run. Normally that is the full-parse pooled constructor. The block-only
+// spike flag (Runner.BlockOnlyParse) selects the block-only one. On a
+// flat-Layer-0-eligible run (flatL0Active) a file with no include/catalog
+// directive takes the parse-free flat constructor; a file with such a
+// directive stays on the full parse so its generated-section suppression
+// still works. All three special paths are default-off, so the shipped
+// constructor is lint.NewFileFromSourcePooled on every production run.
+func (r *Runner) pooledFileConstructor(source []byte) func(string, []byte, bool) (*lint.File, func()) {
 	if r.BlockOnlyParse {
 		return lint.NewFileBlockOnlyPooled
 	}
+	if r.flatL0Active && !gensection.HasGeneratedDirective(source) {
+		return lint.NewFileFlatPooled
+	}
 	return lint.NewFileFromSourcePooled
+}
+
+// computeFlatLayer0Active reports whether this run may skip the goldmark
+// parse for line-capable files. It requires the opt-in Runner.FlatLayer0
+// flag and a config simple enough that the globally-enabled rule set is
+// the whole story: every enabled markdown rule must be rule.LineCapable,
+// and the config must declare no kinds or overrides (either could enable a
+// non-line-capable rule for some file that the empty-path effective config
+// does not surface). This conservative gate is sufficient for the prototype
+// (plan 2606142147) measurement, whose single-rule line-length config has
+// neither; the full Layer-0 plan refines it to a per-file resolution.
+func (r *Runner) computeFlatLayer0Active() bool {
+	if !r.FlatLayer0 {
+		return false
+	}
+	if len(r.Config.Kinds) > 0 || len(r.Config.Overrides) > 0 {
+		return false
+	}
+	mdRules := markdownRulesFrom(r.Rules, r.ConfigPath)
+	effective := r.effectiveWithCategories("", nil, nil)
+	for _, rl := range mdRules {
+		cfg, ok := effective[rl.Name()]
+		if !ok || !cfg.Enabled {
+			continue
+		}
+		// Apply the rule's effective settings before asking LineCapable:
+		// a rule's line-capability can depend on its config (line-length
+		// is not line-capable once a per-heading limit is set). With no
+		// kinds or overrides, the empty-path effective config is the
+		// rule's settings for every file.
+		configured, err := ConfigureRule(rl, cfg)
+		if err != nil {
+			return false
+		}
+		lc, ok := configured.(rule.LineCapable)
+		if !ok || !lc.LineCapable() {
+			return false
+		}
+	}
+	return true
 }
 
 // DedupeDiagnostics returns a new slice with duplicate (file, line,
