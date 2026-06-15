@@ -321,6 +321,28 @@ func NewFileLines(path string, source []byte) *File {
 	}
 }
 
+// NewFileLinesFromSource is NewFileFromSource's parse-skipping sibling: it
+// strips front matter (when stripFrontMatter is set), records the prefix
+// and line offset exactly as NewFileFromSource does, and builds the body
+// File via NewFileLines so AST stays nil. The engine's Layer 0 gate uses
+// it when every enabled rule resolves to Layer 0, so the goldmark parse is
+// skipped entirely. The resulting File must only be linted by Layer 0
+// rules — the gate guarantees that precondition.
+func NewFileLinesFromSource(path string, source []byte, stripFrontMatter bool) *File {
+	var fm []byte
+	var offset int
+	content := source
+	if stripFrontMatter {
+		fm, content = StripFrontMatter(source)
+		offset = CountLines(fm)
+	}
+	f := NewFileLines(path, content)
+	f.FrontMatter = fm
+	f.LineOffset = offset
+	f.StripFrontMatter = stripFrontMatter
+	return f
+}
+
 // LinkReferences returns the link reference definitions goldmark found
 // in this document. It is computed once and cached. On the normal path
 // it reads the context from the parse NewFile already performed (no
