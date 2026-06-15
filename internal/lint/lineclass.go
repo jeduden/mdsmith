@@ -92,11 +92,20 @@ func FlatHeadingLines(f *File) (map[int]struct{}, bool) {
 
 // ClassifyLines runs the single forward pass over lines (each a raw line
 // with no trailing newline, as produced by bytes.Split) and returns the
-// classification. It tracks fenced-code state, indented-code runs, and a
-// small blockquote/list container stack so fences nested one or two
-// containers deep are detected exactly as goldmark's block parser places
-// them — the equivalence gate (plan 2606142147) pins this against the
-// AST set across the neutral corpus and the line-length fixtures.
+// classification. It tracks fenced/indented code, marker-terminated and
+// type-1 HTML blocks, CRLF endings, and a blockquote/list container stack
+// (with tab-aware column accounting) so the code-block line set matches
+// goldmark's block parser.
+//
+// It is a flat APPROXIMATION of that parser, not a reimplementation: the
+// equivalence gate (plan 2606142147) pins the code-block set byte-identical
+// to the AST across the neutral corpus, all rule fixtures, and the whole
+// repository — i.e. real-world Markdown — and two adversarial review passes
+// drove a random-input fuzz from ~7% to <1% divergence. The residual is
+// pathological token combinations (deep tab/lazy-continuation interactions)
+// that only a full block parse resolves. That is acceptable because the
+// engine's flat path is a default-off measurement seam (Runner.FlatLayer0):
+// production never takes it, and the corpus it measures is byte-identical.
 func ClassifyLines(lines [][]byte) *LineClassifier {
 	p := &lc0Pass{lines: lines, out: &LineClassifier{classes: make([]LineClass, len(lines))}}
 	p.run()
@@ -123,8 +132,9 @@ type lc0Pass struct {
 	fenceHadInfo  bool
 	fenceOpenLine int // 1-based
 
-	inHTML  bool   // inside a marker-terminated HTML block
-	htmlEnd []byte // the closing string that ends the current HTML block
+	inHTML    bool   // inside an HTML block
+	htmlEnd   []byte // closing string for a marker-terminated HTML block
+	htmlType1 bool   // the block is a type-1 raw block (script/pre/style/textarea)
 
 	prevParagraph bool // previous emitted line was paragraph text (setext gate)
 	indentCode    bool // currently inside an indented code run
@@ -238,6 +248,7 @@ func (p *lc0Pass) closeBlockAtBoundary(ln int) {
 	}
 	p.inHTML = false
 	p.htmlEnd = nil
+	p.htmlType1 = false
 }
 
 // trimTrailingCR returns b without a single trailing carriage return, so a
@@ -265,10 +276,22 @@ func (p *lc0Pass) handleFenceBody(ln int, rest []byte) {
 // contains its closing string.
 func (p *lc0Pass) handleHTMLBody(ln int, rest []byte) {
 	p.out.classes[ln-1] = LineHTML
-	if bytes.Contains(rest, p.htmlEnd) {
+	if p.htmlBlockCloses(rest) {
 		p.inHTML = false
 		p.htmlEnd = nil
+		p.htmlType1 = false
 	}
+}
+
+// htmlBlockCloses reports whether rest carries the closing condition of the
+// open HTML block: any of the type-1 raw-block closing tags
+// (case-insensitive) for a type-1 block, or the recorded closing string
+// otherwise.
+func (p *lc0Pass) htmlBlockCloses(rest []byte) bool {
+	if p.htmlType1 {
+		return containsType1Close(rest)
+	}
+	return bytes.Contains(rest, p.htmlEnd)
 }
 
 // tryStartHTML opens a marker-terminated HTML block (CommonMark types
@@ -278,15 +301,21 @@ func (p *lc0Pass) handleHTMLBody(ln int, rest []byte) {
 // scanner would misread as indented code — is classified LineHTML, not
 // code. Returns false when rest opens no such block.
 func (p *lc0Pass) tryStartHTML(i int, rest []byte) bool {
-	end, ok := htmlBlockEnd(rest)
+	end, type1, ok := htmlBlockEnd(rest)
 	if !ok {
 		return false
 	}
 	p.out.classes[i] = LineHTML
-	if !bytes.Contains(rest, end) {
+	p.htmlEnd = end
+	p.htmlType1 = type1
+	// A start line that already carries the closing condition is a complete
+	// one-line block and never enters block mode.
+	if !p.htmlBlockCloses(rest) {
 		p.inHTML = true
-		p.htmlEnd = end
 		p.openBlockDepth = len(p.stack)
+	} else {
+		p.htmlEnd = nil
+		p.htmlType1 = false
 	}
 	return true
 }
@@ -297,7 +326,10 @@ func (p *lc0Pass) handleContent(i, ln int, line []byte, off int, rest []byte) {
 	// New containers (blockquote / list item) may open before the block
 	// content; push them and re-resolve the inner content slice.
 	rest = p.openContainers(line, off, rest)
-	indent := indentColumns(rest)
+	// rest is a suffix of line, so its start offset is the absolute column
+	// the block content begins at (container prefixes are single-column
+	// bytes) — the base a tab in rest must measure its indent from.
+	indent := indentColumns(rest, len(line)-len(rest))
 
 	switch {
 	case indent <= 3 && isATXHeading(rest):
@@ -412,12 +444,24 @@ func (c lc0Container) consume(line []byte, pos int) (int, bool) {
 	if isBlankFrom(line, pos) {
 		return pos, true
 	}
-	j, sp := pos, 0
-	for j < len(line) && line[j] == ' ' && sp < c.width {
+	// A list item continues when the line is indented to at least the
+	// item's content width. Count indentation in columns so a tab (which
+	// advances to the next four-column stop) satisfies the width like the
+	// equivalent spaces — otherwise a tab-indented continuation (a Makefile
+	// or Go snippet inside a list item) would be read as dropping the list.
+	j, col := pos, 0
+	for j < len(line) && col < c.width {
+		switch line[j] {
+		case ' ':
+			col++
+		case '\t':
+			col += 4 - ((pos + col) % 4)
+		default:
+			return pos, false
+		}
 		j++
-		sp++
 	}
-	if sp == c.width {
+	if col >= c.width {
 		return j, true
 	}
 	return pos, false

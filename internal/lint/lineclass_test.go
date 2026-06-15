@@ -50,6 +50,16 @@ var equivCases = map[string]string{
 	"indented trailing blank":  "para\n\n    code\n\n",
 	"crlf fenced block":        "```\r\nx\r\n```\r\nafter\r\n",
 	"crlf indented code":       "para\r\n\r\n    code\r\n",
+	// Second code-review pass: tab indentation and indented-code-in-list,
+	// plus type-1 raw HTML blocks (script/pre/style), whose interiors a
+	// fence-only or space-only scanner mishandles.
+	"tab fence body in list":  "- ```\n\tcode\n",
+	"tab after blockquote":    "> \tnot code, two cols\n",
+	"tab after list indent":   "- a\n\n  \tnot code\n",
+	"list item indented code": "- a\n-     code\n",
+	"ordered item code":       "1. a\n2.     code\n",
+	"type1 script blank indt": "<script>\n\n    x = 1\n</script>\n",
+	"type1 pre with em":       "<pre><code>a <em>b</em>\n    c\n</code></pre>\n",
 }
 
 func sortedKeys(m map[int]struct{}) []int {

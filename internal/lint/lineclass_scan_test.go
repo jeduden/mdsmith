@@ -17,13 +17,17 @@ func TestLeadingSpacesAndIndent(t *testing.T) {
 	assert.Equal(t, 3, leadingSpaces([]byte("   ")))
 	assert.Equal(t, 0, leadingSpaces([]byte("\tabc")))
 
-	assert.Equal(t, 0, indentColumns([]byte("")))
-	assert.Equal(t, 0, indentColumns([]byte("x")))
-	assert.Equal(t, 1, indentColumns([]byte(" x")))
-	assert.Equal(t, 4, indentColumns([]byte("\tx")))
-	assert.Equal(t, 4, indentColumns([]byte("  \tx"))) // 2 spaces then tab → next stop
-	assert.Equal(t, 4, indentColumns([]byte("    x")))
-	assert.Equal(t, 5, indentColumns([]byte("     "))) // all spaces, no content
+	assert.Equal(t, 0, indentColumns([]byte(""), 0))
+	assert.Equal(t, 0, indentColumns([]byte("x"), 0))
+	assert.Equal(t, 1, indentColumns([]byte(" x"), 0))
+	assert.Equal(t, 4, indentColumns([]byte("\tx"), 0))
+	assert.Equal(t, 4, indentColumns([]byte("  \tx"), 0)) // 2 spaces then tab → next stop
+	assert.Equal(t, 4, indentColumns([]byte("    x"), 0))
+	assert.Equal(t, 5, indentColumns([]byte("     "), 0)) // all spaces, no content
+	// startCol shifts the tab stop: a tab at absolute column 2 advances to
+	// column 4 (2 columns), not a full 4.
+	assert.Equal(t, 2, indentColumns([]byte("\tx"), 2))
+	assert.Equal(t, 3, indentColumns([]byte("\t x"), 2)) // tab→col4 (2) + space (1)
 }
 
 func TestBlankScanners(t *testing.T) {
@@ -84,28 +88,40 @@ func TestFenceScanners(t *testing.T) {
 }
 
 func TestHTMLScanners(t *testing.T) {
-	end, ok := htmlBlockEnd([]byte("<!-- x"))
+	end, type1, ok := htmlBlockEnd([]byte("<!-- x"))
 	assert.True(t, ok)
+	assert.False(t, type1)
 	assert.Equal(t, "-->", string(end))
-	end, ok = htmlBlockEnd([]byte("<![CDATA[x"))
+	end, _, ok = htmlBlockEnd([]byte("<![CDATA[x"))
 	assert.True(t, ok)
 	assert.Equal(t, "]]>", string(end))
-	end, ok = htmlBlockEnd([]byte("<?php"))
+	end, _, ok = htmlBlockEnd([]byte("<?php"))
 	assert.True(t, ok)
 	assert.Equal(t, "?>", string(end))
-	end, ok = htmlBlockEnd([]byte("<!DOCTYPE html>"))
+	end, _, ok = htmlBlockEnd([]byte("<!DOCTYPE html>"))
 	assert.True(t, ok)
 	assert.Equal(t, ">", string(end))
-	_, ok = htmlBlockEnd([]byte("  <!-- x")) // ≤3 indent still opens
+	_, type1, ok = htmlBlockEnd([]byte("<pre>")) // type-1 raw block
 	assert.True(t, ok)
-	_, ok = htmlBlockEnd([]byte("    <!-- x")) // 4-space indent does not
+	assert.True(t, type1)
+	_, type1, ok = htmlBlockEnd([]byte("<SCRIPT type=x")) // case-insensitive
+	assert.True(t, ok)
+	assert.True(t, type1)
+	_, _, ok = htmlBlockEnd([]byte("  <!-- x")) // ≤3 indent still opens
+	assert.True(t, ok)
+	_, _, ok = htmlBlockEnd([]byte("    <!-- x")) // 4-space indent does not
 	assert.False(t, ok)
-	_, ok = htmlBlockEnd([]byte("<!5 not a decl"))
+	_, _, ok = htmlBlockEnd([]byte("<!5 not a decl"))
 	assert.False(t, ok)
-	_, ok = htmlBlockEnd([]byte("<div>"))
-	assert.False(t, ok, "tag blocks are not tracked")
-	_, ok = htmlBlockEnd([]byte("text"))
+	_, _, ok = htmlBlockEnd([]byte("<div>"))
+	assert.False(t, ok, "block-level tag blocks are not tracked")
+	_, _, ok = htmlBlockEnd([]byte("<prefix>")) // not a type-1 tag (no boundary)
 	assert.False(t, ok)
+	_, _, ok = htmlBlockEnd([]byte("text"))
+	assert.False(t, ok)
+
+	assert.True(t, containsType1Close([]byte("x</PRE>y")), "case-insensitive close")
+	assert.False(t, containsType1Close([]byte("x</em>y")))
 
 	assert.True(t, isASCIILetterByte('a'))
 	assert.True(t, isASCIILetterByte('Z'))

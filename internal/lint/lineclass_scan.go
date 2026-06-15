@@ -13,13 +13,15 @@ func leadingSpaces(b []byte) int {
 	return n
 }
 
-// indentColumns counts the column width of the leading whitespace run of
-// b, treating a tab as an advance to the next four-column tab stop (the
-// CommonMark indentation rule). It stops at the first non-whitespace byte.
-// A line whose leading whitespace is four or more columns can open an
-// indented code block; ≤3 columns is the fence/heading/HTML start gate.
-func indentColumns(b []byte) int {
-	col := 0
+// indentColumns counts the leading whitespace run of b in columns,
+// measured from absolute column startCol so that a tab advances to the
+// correct four-column stop after a container prefix (the CommonMark
+// indentation rule: a tab right after `> ` spans fewer columns than one at
+// the line start). It returns the indent relative to startCol and stops at
+// the first non-whitespace byte. Four or more columns can open an indented
+// code block; ≤3 columns is the fence/heading/HTML start gate.
+func indentColumns(b []byte, startCol int) int {
+	col := startCol
 	for _, c := range b {
 		switch c {
 		case ' ':
@@ -27,10 +29,10 @@ func indentColumns(b []byte) int {
 		case '\t':
 			col += 4 - (col % 4)
 		default:
-			return col
+			return col - startCol
 		}
 	}
-	return col
+	return col - startCol
 }
 
 // isBlankBytes reports whether b is empty or only spaces and tabs.
@@ -145,38 +147,39 @@ func isFenceClose(rest []byte, ch byte, length int) bool {
 	return true
 }
 
-// htmlBlockEnd reports the closing string for a marker-terminated
-// CommonMark HTML block (comment, CDATA section, processing instruction,
-// or declaration) beginning at rest after ≤3 indent, and whether rest
-// opens one. These are the HTML blocks whose interior may hold a blank
-// line followed by indented text; a fence-only scanner would misread that
-// text as an indented code block, so the classifier tracks them to keep
+// htmlBlockEnd reports how a CommonMark HTML block beginning at rest (after
+// ≤3 indent) ends, and whether rest opens one. A marker-terminated block
+// (comment, CDATA section, processing instruction, declaration) returns its
+// closing string; a type-1 raw-text block (script/pre/style/textarea)
+// returns type1=true and a nil end (it closes on any of the four closing
+// tags — see containsType1Close). These are the HTML blocks whose interior
+// may hold a blank line followed by indented text, which a fence-only
+// scanner would misread as an indented code block; tracking them keeps
 // those lines out of the code set.
 //
-// The tag blocks (types 1, 6, 7 — script/pre/style and block-level
-// elements) are deliberately not tracked. They are terminated by a blank
-// line and their non-blank interior keeps the paragraph-continuation flag
-// set, which already prevents an indented interior line from being read as
-// code — so tracking them buys no code-set accuracy and the loose closing
-// match it would need (a bare `</`) risks ending a block early on a nested
-// inline tag.
-func htmlBlockEnd(rest []byte) (end []byte, ok bool) {
+// The tag blocks (types 6, 7 — block-level elements) are not tracked: they
+// end on a blank line and their non-blank interior keeps the
+// paragraph-continuation flag set, so an indented interior line is already
+// kept out of the code set without tracking them.
+func htmlBlockEnd(rest []byte) (end []byte, type1, ok bool) {
 	i := leadingSpaces(rest)
 	if i > 3 || i >= len(rest) || rest[i] != '<' {
-		return nil, false
+		return nil, false, false
 	}
 	s := rest[i:]
 	switch {
 	case bytes.HasPrefix(s, htmlOpenComment):
-		return htmlCloseComment, true
+		return htmlCloseComment, false, true
 	case bytes.HasPrefix(s, htmlOpenCDATA):
-		return htmlCloseCDATA, true
+		return htmlCloseCDATA, false, true
 	case bytes.HasPrefix(s, htmlOpenPI):
-		return htmlClosePI, true
+		return htmlClosePI, false, true
 	case len(s) >= 3 && s[1] == '!' && isASCIILetterByte(s[2]):
-		return htmlCloseDecl, true
+		return htmlCloseDecl, false, true
+	case htmlType1Start(s):
+		return nil, true, true
 	}
-	return nil, false
+	return nil, false, false
 }
 
 var (
@@ -187,6 +190,47 @@ var (
 	htmlCloseCDATA   = []byte("]]>")
 	htmlClosePI      = []byte("?>")
 	htmlCloseDecl    = []byte(">")
+)
+
+// htmlType1Start reports whether s opens a CommonMark type-1 raw HTML block:
+// `<script`, `<pre`, `<style`, or `<textarea` (case-insensitive) followed by
+// whitespace, `>`, or end of line.
+func htmlType1Start(s []byte) bool {
+	for _, name := range htmlType1Names {
+		if len(s) < len(name) || !bytes.EqualFold(s[:len(name)], name) {
+			continue
+		}
+		if len(s) == len(name) {
+			return true
+		}
+		switch s[len(name)] {
+		case ' ', '\t', '>':
+			return true
+		}
+	}
+	return false
+}
+
+// containsType1Close reports whether line carries a type-1 raw block's
+// closing tag (`</script>`, `</pre>`, `</style>`, `</textarea>`),
+// case-insensitively — the CommonMark end condition for those blocks.
+func containsType1Close(line []byte) bool {
+	lower := bytes.ToLower(line)
+	for _, c := range htmlType1Closers {
+		if bytes.Contains(lower, c) {
+			return true
+		}
+	}
+	return false
+}
+
+var (
+	htmlType1Names = [][]byte{
+		[]byte("<script"), []byte("<pre"), []byte("<style"), []byte("<textarea"),
+	}
+	htmlType1Closers = [][]byte{
+		[]byte("</script>"), []byte("</pre>"), []byte("</style>"), []byte("</textarea>"),
+	}
 )
 
 // isASCIILetterByte reports whether b is an ASCII letter.
@@ -239,11 +283,20 @@ func listMarkerWidth(rest []byte) int {
 	if i >= len(rest) || (rest[i] != ' ' && rest[i] != '\t') {
 		return 0
 	}
+	markerEnd := i
 	for i < len(rest) && (rest[i] == ' ' || rest[i] == '\t') {
 		i++
 	}
 	if i >= len(rest) {
 		return 0
+	}
+	// CommonMark: 1–4 columns of indentation after the marker join it as
+	// the content width; 5 or more means only the first space belongs to
+	// the marker and the remaining indentation makes the item's content an
+	// indented code block — so the marker width stops after that one space
+	// and the indent is left in rest for the indented-code check.
+	if indentColumns(rest[markerEnd:], markerEnd) >= 5 {
+		return markerEnd + 1
 	}
 	return i
 }
