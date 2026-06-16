@@ -109,3 +109,11 @@ func TestWholeParagraphEmphasis_NilSource(t *testing.T) {
 	f := &File{}
 	assert.Nil(t, WholeParagraphEmphasis(f))
 }
+
+// TestParaLocalFirstLineOffset_NilLines covers the nil/empty Lines guard
+// (lines 109-111 of inline_emphasis.go): a paragraph created without any
+// line information returns -1.
+func TestParaLocalFirstLineOffset_NilLines(t *testing.T) {
+	p := ast.NewParagraph()
+	assert.Equal(t, -1, paraLocalFirstLineOffset(p))
+}

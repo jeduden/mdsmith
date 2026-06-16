@@ -86,6 +86,27 @@ func TestWalkInlineNodes_OffsetMapping(t *testing.T) {
 		"base+segment offsets recover the document bytes")
 }
 
+// TestLineEndOffset_Guards covers both defensive guards in lineEndOffset
+// (lines 173-178 of inline_blocks.go): i<0 returns 0; i past the last
+// newline returns len(Source).
+func TestLineEndOffset_Guards(t *testing.T) {
+	f := NewFileLines("doc.md", []byte("hello\n"))
+	assert.Equal(t, 0, f.lineEndOffset(-1), "i<0 must return 0")
+	assert.Equal(t, len(f.Source), f.lineEndOffset(100), "i past last newline must return len(Source)")
+}
+
+// TestScanInlineBlocks_EndLeStart covers the end<=start guard in
+// scanInlineBlocks (line 102-103 of inline_blocks.go). A File whose
+// Lines[0] is non-blank but whose Source starts with a newline makes
+// lineIndex()[0]==0==LineStartOffset(0), so end==start and the guard fires.
+func TestScanInlineBlocks_EndLeStart(t *testing.T) {
+	f := &File{
+		Source: []byte("\n"),
+		Lines:  [][]byte{[]byte("x"), {}},
+	}
+	assert.Nil(t, scanInlineBlocks(f))
+}
+
 // TestInlineBlocks_RefDefGate pins the `]:` short-circuit in
 // scanInlineBlocks: a source carrying a reference definition resolves a
 // cross-block reference link to a Link node (the seed fired), while a

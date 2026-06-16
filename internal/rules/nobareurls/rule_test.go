@@ -159,6 +159,14 @@ func TestCategory(t *testing.T) {
 	}
 }
 
+// TestInlineCapable_NoBareURLs covers the InlineCapable method (line 57 of
+// rule.go), which is called only by the engine's nil-AST dispatcher and is
+// otherwise skipped by direct Check() calls in unit tests.
+func TestInlineCapable_NoBareURLs(t *testing.T) {
+	r := &Rule{}
+	assert.True(t, r.InlineCapable())
+}
+
 // TestCheck_NilASTEquivalence pins the parse-skipped path (f.AST nil,
 // served from the Layer 1 per-block inline parse) byte-identical to the
 // AST path across the shapes the corpus exercises: plain prose, headings,
@@ -187,6 +195,10 @@ func TestCheck_NilASTEquivalence(t *testing.T) {
 		{"bq-multiline-url", "> line one https://a.com\n> line two\n"},
 		{"url-in-html-block", "<div>\nhttps://x.com\n</div>\n"},
 		{"html-block-interrupt", "text https://a.com\n<div>raw</div>\nmore https://b.com\n"},
+		// "http" appears in the text but no full URL (no "://") follows, so
+		// urlNeedle matches but urlPattern finds no match — exercises the
+		// len(matches)==0 early return (lines 98-100 of rule.go).
+		{"http-no-url", "http scheme used here\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -71,6 +71,13 @@ func TestInlineIndex_CodeSpanEquivalence(t *testing.T) {
 		// fires and suppresses trim. This case exercises allCodeSpanBlank.
 		{"space-tab-space-no-trim", "a ` \t ` b\n"},
 		{"backtick-in-html-block", "<div>\n`not a span`\n</div>\n\n`real`\n"},
+		// An opener backtick on line 1 (normal) has no valid closer because the
+		// backticks on lines 2–4 are all inside a fenced code block (codeLines
+		// set). scanCodeSpanAt encounters each of them and skips them via the
+		// lineInSet branch (lines 156-158 of inline_index.go). The span is
+		// unclosed so no code-span is recorded — matching the AST, which also
+		// finds none (the fenced code interrupts the paragraph on line 1).
+		{"closer-on-code-line", "`opener\n```\ncloser` here\n```\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -80,6 +87,43 @@ func TestInlineIndex_CodeSpanEquivalence(t *testing.T) {
 			assert.Equal(t, wantLiteral, gotLiteral, "literal ranges diverge from AST")
 		})
 	}
+}
+
+// TestNonInlineLines_PIAndCodeBlocks covers the merged path of nonInlineLines
+// (lines 123-128 of inline_index.go): a source with both a PI block and a
+// fenced code block triggers the set-merge branch (rather than the
+// CodeBlockLines direct-return), exercising the CodeBlockLines copy loop and
+// the PIBlockLines copy loop.
+func TestNonInlineLines_PIAndCodeBlocks(t *testing.T) {
+	// Line 1: inline code span (should be found by both AST and index).
+	// Line 3: PI block `<?x?>` → PIBlockLines = {3} → merged path triggered.
+	// Lines 5-7: fenced code block → CodeBlockLines = {5,6,7} → copy loop hit.
+	src := "`real span`\n\n<?x?>\n\n```\n`code`\n```\n"
+	wantContent, wantLiteral := astCodeSpanRanges(t, src)
+	gotContent, gotLiteral := indexCodeSpanRanges(src)
+	assert.Equal(t, wantContent, gotContent, "content ranges diverge from AST")
+	assert.Equal(t, wantLiteral, gotLiteral, "literal ranges diverge from AST")
+}
+
+// TestTrimCodeSpanContent_EqualBounds covers the end<=start guard
+// (lines 208-210 of inline_index.go): when start == end the function
+// returns the range unchanged without inspecting the source bytes.
+func TestTrimCodeSpanContent_EqualBounds(t *testing.T) {
+	src := []byte("hello world")
+	s, e := trimCodeSpanContent(src, 5, 5)
+	assert.Equal(t, 5, s, "start must be unchanged")
+	assert.Equal(t, 5, e, "end must be unchanged")
+}
+
+// TestAppendCodeSpan_ZeroWidthContent covers the ce<=cs early return
+// (lines 187-189 of inline_index.go): a double-backtick opener with
+// closeEnd == 2 gives contentStart=2, contentEnd=0, trimCodeSpanContent
+// returns (2,0), so ce(0) <= cs(2) and nothing is appended.
+func TestAppendCodeSpan_ZeroWidthContent(t *testing.T) {
+	idx := &InlineIndex{}
+	appendCodeSpan(idx, []byte("``"), 0, 2)
+	assert.Nil(t, idx.CodeSpanContent, "zero-width content must not be recorded")
+	assert.Nil(t, idx.CodeSpanLiteral, "zero-width literal must not be recorded")
 }
 
 // TestInlineIndex_NilSourceFile keeps a struct-literal File (no AST, no

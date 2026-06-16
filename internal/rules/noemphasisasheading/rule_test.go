@@ -165,6 +165,14 @@ func TestSettingMergeMode_NoEmphasisAsHeading(t *testing.T) {
 	assert.Equal(t, rule.MergeReplace, r.SettingMergeMode("unknown"))
 }
 
+// TestInlineCapable_NoEmphasisAsHeading covers the InlineCapable method
+// (line 52 of rule.go), which is called only by the engine's nil-AST
+// dispatcher and is otherwise skipped by direct Check() calls in unit tests.
+func TestInlineCapable_NoEmphasisAsHeading(t *testing.T) {
+	r := &Rule{}
+	assert.True(t, r.InlineCapable())
+}
+
 // --- Issue #320: emphasis inside a table cell is intentional inline styling ---
 
 func TestCheck_EmphasisInsideTable_NotFlagged(t *testing.T) {
@@ -224,6 +232,11 @@ func TestCheck_NilASTEquivalence(t *testing.T) {
 		{"multi-bq-emph", "> *a*\n>\n> *b*\n", nil},
 		{"list-emph-not-flagged", "- *x*\n", nil},
 		{"emph-then-html-block", "*emph*\n<div>x</div>\n", nil},
+		// var-token placeholder suppresses the lone-emphasis diagnostic on
+		// the nil-AST path: exercises segmentsContainPlaceholder return-true
+		// (lines 145-147), the checkFromInline continue (lines 68-69), and
+		// the empty-diags early-return (lines 81-83) in rule.go.
+		{"var-token-suppressed", "*{draft}*\n", []string{"var-token"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

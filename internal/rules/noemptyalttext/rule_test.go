@@ -170,6 +170,27 @@ func TestFirstTextLine(t *testing.T) {
 	})
 }
 
+// TestInlineCapable_NoEmptyAltText covers the InlineCapable method (line 51
+// of rule.go), which is called only by the engine's nil-AST dispatcher and
+// is otherwise skipped by direct Check() calls in unit tests.
+func TestInlineCapable_NoEmptyAltText(t *testing.T) {
+	r := &Rule{}
+	assert.True(t, r.InlineCapable())
+}
+
+// TestImageLine_FallbackOne covers the return-1 fallback in imageLine
+// (line 134 of rule.go): an image inside a synthetic paragraph that has no
+// Lines() causes the ancestor walk to exhaust without finding a block offset,
+// so imageLine returns the document-start sentinel 1.
+func TestImageLine_FallbackOne(t *testing.T) {
+	f, err := lint.NewFile("t.md", []byte("# X\n"))
+	require.NoError(t, err)
+	img := ast.NewImage(ast.NewLink())
+	para := ast.NewParagraph() // no Lines set — walk exhausts without match
+	para.AppendChild(para, img)
+	assert.Equal(t, 1, imageLine(img, f, 0))
+}
+
 // TestCheck_NilASTEquivalence pins the parse-skipped path (f.AST nil,
 // served from the Layer 1 per-block inline parse) byte-identical to the
 // AST path across image shapes and block contexts.
