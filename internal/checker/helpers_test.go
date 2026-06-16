@@ -59,7 +59,7 @@ var _ rule.KindScopedChecker = (*htKindScopedRule)(nil)
 
 type htBlockRule struct{ htPlainRule }
 
-func (r *htBlockRule) Check(_ *lint.File) []lint.Diagnostic { return nil }
+func (r *htBlockRule) Check(_ *lint.File) []lint.Diagnostic                         { return nil }
 func (r *htBlockRule) CheckNode(_ ast.Node, _ bool, _ *lint.File) []lint.Diagnostic { return nil }
 func (r *htBlockRule) CheckBlock(span lint.BlockSpan, _ *lint.File) []lint.Diagnostic {
 	return []lint.Diagnostic{{RuleID: r.id, Line: span.Start, Message: "block"}}
@@ -70,7 +70,7 @@ var _ rule.BlockChecker = (*htBlockRule)(nil)
 
 type htInlineRule struct{ htPlainRule }
 
-func (r *htInlineRule) Check(_ *lint.File) []lint.Diagnostic { return nil }
+func (r *htInlineRule) Check(_ *lint.File) []lint.Diagnostic                         { return nil }
 func (r *htInlineRule) CheckNode(_ ast.Node, _ bool, _ *lint.File) []lint.Diagnostic { return nil }
 func (r *htInlineRule) InlineCapable() bool                                          { return true }
 
