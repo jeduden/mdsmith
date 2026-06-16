@@ -33,17 +33,6 @@ const allocBudgetFixture = "# Document title\n" +
 	"\n" +
 	"[ref]: https://example.com/\n"
 
-func TestCheck_MultipleBareURLsPreSized(t *testing.T) {
-	// Correctness: CheckNode with 3 bare URLs must return exactly 3 diagnostics.
-	// Pre-sizing diags with len(matches) should not change the count.
-	src := []byte("Visit https://a.com and https://b.com and https://c.com\n")
-	f, err := lint.NewFile("test.md", src)
-	require.NoError(t, err)
-	r := &Rule{}
-	diags := r.Check(f)
-	require.Len(t, diags, 3, "expected 3 diagnostics for 3 bare URLs")
-}
-
 func TestCheckAllocBudget(t *testing.T) {
 	if testing.Short() {
 		t.Skip("alloc gate skipped in -short mode")

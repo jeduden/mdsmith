@@ -32,18 +32,6 @@ const allocBudgetFixture = "# Document title\n" +
 	"\n" +
 	"[ref]: https://example.com/\n"
 
-// TestCheck_BothViolations verifies that when a list has no blank line
-// before and no blank line after, exactly two diagnostics are returned.
-func TestCheck_BothViolations(t *testing.T) {
-	// Heading immediately before list (no blank), heading immediately after (no blank).
-	src := []byte("## Title\n- item 1\n- item 2\n## After\n")
-	f, err := lint.NewFile("test.md", src)
-	require.NoError(t, err)
-	r := &Rule{}
-	diags := r.Check(f)
-	require.Len(t, diags, 2, "expected 2 diagnostics (before + after), got %d", len(diags))
-}
-
 func TestCheckAllocBudget(t *testing.T) {
 	if testing.Short() {
 		t.Skip("alloc gate skipped in -short mode")

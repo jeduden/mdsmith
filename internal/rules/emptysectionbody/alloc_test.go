@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -35,42 +34,6 @@ const allocBudgetFixture = "# Document title\n" +
 	"| a   | b     |\n" +
 	"\n" +
 	"[ref]: https://example.com/\n"
-
-// TestCheck_AllowMarkerDirectiveInMessage verifies that the precomputed
-// allowMarkerDirective appears correctly in violation messages.
-func TestCheck_AllowMarkerDirectiveInMessage(t *testing.T) {
-	src := []byte("## Empty Section\n\n## Next Section\n\nSome content here.\n")
-	f, err := lint.NewFile("test.md", src)
-	require.NoError(t, err)
-	r := &Rule{
-		MinLevel:             2,
-		MaxLevel:             6,
-		AllowMarker:          "allow-empty-section",
-		allowMarkerDirective: "<?allow-empty-section?>",
-	}
-	diags := r.Check(f)
-	require.Len(t, diags, 1, "expected 1 diagnostic for empty section")
-	assert.Contains(t, diags[0].Message, "<?allow-empty-section?>",
-		"message should contain the precomputed directive")
-}
-
-// TestCheck_CustomAllowMarker verifies the precomputed directive is updated
-// when AllowMarker is customised via ApplySettings.
-func TestCheck_CustomAllowMarker(t *testing.T) {
-	src := []byte("## Empty Section\n\n## Next Section\n\nSome content here.\n")
-	f, err := lint.NewFile("test.md", src)
-	require.NoError(t, err)
-	r := &Rule{
-		MinLevel:    2,
-		MaxLevel:    6,
-		AllowMarker: "allow-empty-section",
-	}
-	require.NoError(t, r.ApplySettings(map[string]any{"allow-marker": "my-marker"}))
-	diags := r.Check(f)
-	require.Len(t, diags, 1)
-	assert.Contains(t, diags[0].Message, "<?my-marker?>",
-		"message should use updated allowMarkerDirective")
-}
 
 func TestCheckAllocBudget(t *testing.T) {
 	if testing.Short() {

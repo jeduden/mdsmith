@@ -159,11 +159,6 @@ func TestCategory(t *testing.T) {
 	}
 }
 
-// TestCheck_NilASTEquivalence pins the parse-skipped path (f.AST nil,
-// served from the Layer 1 per-block inline parse) byte-identical to the
-// AST path across the shapes the corpus exercises: plain prose, headings,
-// list items, links and autolinks (whose URLs must not be flagged), code
-// spans, and multi-line paragraphs.
 // TestInlineCapable_NoBareURLs covers the InlineCapable method.
 func TestInlineCapable_NoBareURLs(t *testing.T) {
 	r := &Rule{}
@@ -217,4 +212,15 @@ func TestCheck_NilASTEquivalence(t *testing.T) {
 				"nil-AST diagnostics diverge from AST path")
 		})
 	}
+}
+
+func TestCheck_MultipleBareURLsPreSized(t *testing.T) {
+	// Three bare URLs must produce exactly three diagnostics; pre-sizing
+	// diags with len(matches) must not affect the count.
+	src := []byte("Visit https://a.com and https://b.com and https://c.com\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{}
+	diags := r.Check(f)
+	require.Len(t, diags, 3, "expected 3 diagnostics for 3 bare URLs")
 }
