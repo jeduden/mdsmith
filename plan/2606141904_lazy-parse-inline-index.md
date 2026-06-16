@@ -69,12 +69,12 @@ normalization as a pure function so the two agree.
       runs with no whole-document goldmark parse.
 - [ ] `no-emphasis-as-heading` output is byte-identical to
       its AST path across the corpus and fixtures.
-- [ ] Reference matching is byte-identical to the AST
+- [x] Reference matching is byte-identical to the AST
       path, including case folding, across the corpus.
 - [ ] All existing rule fixtures pass unchanged.
 - [ ] `mdsmith check -c parity` beats gomarklint on
       benchmark 2.
-- [ ] All tests pass: `go test ./...`
+- [x] All tests pass: `go test ./...`
 
 ## Implementation Status
 

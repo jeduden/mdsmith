@@ -1,7 +1,6 @@
 package parser_test
 
 import (
-	"sort"
 	"testing"
 
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
@@ -104,13 +103,18 @@ func TestScanReferenceDefinitions_MatchesFullParse(t *testing.T) {
 func TestScanReferenceDefinitions_StopsAtNonDefinition(t *testing.T) {
 	src := "[a]: /a\nThis is prose, not a [definition].\n"
 	got := scanWholeDocRefs(src)
-	keys := make([]string, 0, len(got))
-	for k := range got {
-		keys = append(keys, k)
+	want := map[string][2]string{"a": {"/a", ""}}
+	if len(got) != len(want) {
+		t.Fatalf("ref count: got %d want %d\ngot=%v want=%v", len(got), len(want), got, want)
 	}
-	sort.Strings(keys)
-	if len(keys) != 1 || keys[0] != "a" {
-		t.Fatalf("expected only label a, got %v", keys)
+	for k, wv := range want {
+		gv, ok := got[k]
+		if !ok {
+			t.Fatalf("missing label %q", k)
+		}
+		if gv != wv {
+			t.Fatalf("label %q: got %v want %v", k, gv, wv)
+		}
 	}
 }
 
@@ -118,7 +122,14 @@ func TestScanReferenceDefinitions_EmptyIsNoop(t *testing.T) {
 	ctx := parser.NewContext()
 	parser.ScanReferenceDefinitions(nil, nil, ctx)
 	if len(ctx.References()) != 0 {
-		t.Fatalf("expected no refs")
+		t.Fatalf("expected no refs from nil segments")
+	}
+
+	// Non-nil but empty *text.Segments must also be a no-op.
+	empty := text.NewSegments()
+	parser.ScanReferenceDefinitions([]byte("[a]: /a\n"), empty, ctx)
+	if len(ctx.References()) != 0 {
+		t.Fatalf("expected no refs from empty segments")
 	}
 	_ = ast.KindParagraph // keep ast import meaningful
 }

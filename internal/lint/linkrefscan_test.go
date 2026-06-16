@@ -75,6 +75,7 @@ func TestScanLinkReferences_FallbackContainer(t *testing.T) {
 	cases := []string{
 		"> [a]: /a\n",
 		"- item\n\n  [a]: /a\n",
+		"- item\n  [a]: /a\n",
 	}
 	for _, src := range cases {
 		want := astRefs(t, []byte(src))

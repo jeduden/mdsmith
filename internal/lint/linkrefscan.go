@@ -70,18 +70,50 @@ func scanLinkReferences(f *File) []Reference {
 // descend into. When true, LinkReferences parses the whole document
 // instead of trusting the scanner, trading the parse for guaranteed
 // byte-identity on these rare shapes.
+//
+// It also detects tight list continuations: a depth-0 paragraph that
+// immediately follows a BlockList span (no blank line between) is a
+// list item continuation in goldmark's model — both lines belong to
+// the same paragraph, which starts with the item text, so goldmark
+// will not extract a reference definition from the continuation line
+// even if it looks like one. The byte scanner, whose Layer0 is flat,
+// would otherwise admit that paragraph and produce a false positive.
 func scanNeedsFallback(f *File) bool {
 	l0 := Layer0(f)
+	lastListEnd := -1 // 1-based line number where the last BlockList span ended
 	for _, span := range l0.BlockSpans {
-		if span.Kind != BlockQuote && span.Kind != BlockList {
-			continue
-		}
-		lo := span.Start - 1
-		hi := span.End
-		for i := lo; i < hi; i++ {
-			if bytes.Contains(f.Lines[i], refDefMarker) {
-				return true
+		switch span.Kind {
+		case BlockQuote, BlockList:
+			lo := span.Start - 1
+			hi := span.End
+			for i := lo; i < hi; i++ {
+				if bytes.Contains(f.Lines[i], refDefMarker) {
+					return true
+				}
 			}
+			if span.Kind == BlockList {
+				lastListEnd = span.End
+			} else {
+				lastListEnd = -1
+			}
+		case BlockParagraph:
+			// A paragraph that starts on the line immediately after a
+			// BlockList span (span.Start == lastListEnd+1) is a tight list
+			// continuation. Trigger the fallback if it contains `]:` so that
+			// the full parse (which correctly ignores the continuation as a
+			// definition) is used instead of the byte scanner.
+			if lastListEnd >= 0 && span.Start == lastListEnd+1 {
+				lo := span.Start - 1
+				hi := span.End
+				for i := lo; i < hi; i++ {
+					if bytes.Contains(f.Lines[i], refDefMarker) {
+						return true
+					}
+				}
+			}
+			lastListEnd = -1
+		default:
+			lastListEnd = -1
 		}
 	}
 	return false
