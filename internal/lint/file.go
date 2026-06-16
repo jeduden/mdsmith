@@ -379,19 +379,14 @@ func (f *File) LinkReferences() []Reference {
 	defer f.linkRefsMu.Unlock()
 	if !f.linkRefsDone.Load() {
 		defer f.linkRefsDone.Store(true)
-		// The byte-level scanner reads f.Lines (via Layer0). A
-		// struct-literal File may carry Source without Lines; derive
-		// them once here so the scanner path is available to it too.
-		// Layer0 has not run yet for such a File, so populating Lines
-		// before its first use is race-free within this locked section.
-		if f.Lines == nil && f.Source != nil {
-			f.Lines = bytes.Split(f.Source, lineIndexNewline)
-		}
 		switch {
 		case f.parseCtx != nil:
 			f.linkRefs = f.parseCtx.References()
 			f.parseCtx = nil // context no longer needed; let it GC
-		case !scanNeedsFallback(f):
+		case f.Lines != nil && !scanNeedsFallback(f):
+			// byte-level scanner: Lines already populated at construction
+			// (NewFile/NewFileLines), so no write to f.Lines is needed
+			// here and the scanner is safe to call without a data race.
 			f.linkRefs = scanLinkReferences(f)
 		default:
 			ctx := parser.NewContext()

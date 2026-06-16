@@ -11,7 +11,7 @@ import (
 // definition contains: a `]` immediately followed by `:`. A paragraph
 // whose head holds no `]:` cannot open a definition, so the scanner
 // skips it without building any segments. A block quote or list line
-// holding `]:` is the fallback trigger (see scanLinkReferences).
+// holding `]:` is the fallback trigger (see scanNeedsFallback).
 var refDefMarker = []byte("]:")
 
 // scanLinkReferences returns the link reference definitions in f by
@@ -53,16 +53,10 @@ func scanLinkReferences(f *File) []Reference {
 			view = text.NewSegments()
 		}
 		// span.Start/End are 1-based inclusive line numbers; allSegs is
-		// 0-indexed by line. A span may reference the trailing empty line
-		// bytes.Split appends, which has no segment, so clamp to len.
+		// 0-indexed by line. Layer0 guarantees Start <= End and both
+		// within the real line range, so no bounds clamp is needed.
 		lo := span.Start - 1
 		hi := span.End
-		if hi > len(allSegs) {
-			hi = len(allSegs)
-		}
-		if lo < 0 || lo >= hi {
-			continue
-		}
 		view.SetBacking(allSegs[lo:hi], nil)
 		parser.ScanReferenceDefinitions(source, view, ctx)
 	}
@@ -84,10 +78,7 @@ func scanNeedsFallback(f *File) bool {
 		}
 		lo := span.Start - 1
 		hi := span.End
-		if hi > len(f.Lines) {
-			hi = len(f.Lines)
-		}
-		for i := lo; i >= 0 && i < hi; i++ {
+		for i := lo; i < hi; i++ {
 			if bytes.Contains(f.Lines[i], refDefMarker) {
 				return true
 			}
@@ -103,9 +94,6 @@ func scanNeedsFallback(f *File) bool {
 // through to the full definition scan), never skip a real definition.
 func paragraphHeadMayDefine(f *File, span BlockSpan) bool {
 	idx := span.Start - 1
-	if idx < 0 || idx >= len(f.Lines) {
-		return false
-	}
 	line := f.Lines[idx]
 	i := 0
 	for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
@@ -116,11 +104,7 @@ func paragraphHeadMayDefine(f *File, span BlockSpan) bool {
 	}
 	// The `]:` may be on a later line of a multi-line label, so check the
 	// whole span head region rather than only the first line.
-	hi := span.End
-	if hi > len(f.Lines) {
-		hi = len(f.Lines)
-	}
-	for j := idx; j < hi; j++ {
+	for j := idx; j < span.End; j++ {
 		if bytes.Contains(f.Lines[j], refDefMarker) {
 			return true
 		}
@@ -134,7 +118,7 @@ func paragraphHeadMayDefine(f *File, span BlockSpan) bool {
 // newline yields a final segment to len(source). Pre-sized to the line
 // count so the build is a single allocation.
 func buildLineSegments(source []byte) []text.Segment {
-	n := bytes.Count(source, refScanNewline) + 1
+	n := bytes.Count(source, lineIndexNewline) + 1
 	segs := make([]text.Segment, 0, n)
 	start := 0
 	for i := 0; i < len(source); i++ {
@@ -148,5 +132,3 @@ func buildLineSegments(source []byte) []text.Segment {
 	}
 	return segs
 }
-
-var refScanNewline = []byte{'\n'}

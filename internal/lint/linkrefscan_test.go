@@ -54,6 +54,7 @@ func TestScanLinkReferences_Equivalence(t *testing.T) {
 		{"def-not-at-head", "Text line.\n[a]: /a\n"},
 		{"empty", ""},
 		{"crlf", "[a]: /a\r\n"},
+		{"no-trailing-newline", "[a]: /a"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -113,11 +114,13 @@ func TestScanLinkReferences_CorpusEquivalence(t *testing.T) {
 		}
 		src, readErr := os.ReadFile(p)
 		if readErr != nil {
+			t.Errorf("read %s: %v", p, readErr)
 			return nil
 		}
 		files++
 		af, parseErr := NewFile(p, src)
 		if parseErr != nil {
+			t.Errorf("parse %s: %v", p, parseErr)
 			return nil
 		}
 		want := refMap(af.LinkReferences())
