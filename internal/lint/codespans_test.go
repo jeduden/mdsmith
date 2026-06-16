@@ -69,6 +69,72 @@ func TestCodeSpanRanges_NilAST(t *testing.T) {
 	assert.Nil(t, f.CodeSpanLiteralRanges())
 }
 
+// TestCodeSpanRanges_NilASTEquivalence pins the parse-skipped projection
+// (served from the shared run-grouped inline parse, InlineBlocks) byte-
+// identical to the AST walk across the shapes the corpus exercises — in
+// particular the block-boundary cases a flat byte scan got wrong: a code
+// span cannot cross a blank line, an interrupting heading or fence, a
+// thematic break, a nested container lead, or a setext underline, but it may
+// span the continuation lines of its own paragraph, block quote, or list
+// item.
+func TestCodeSpanRanges_NilASTEquivalence(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+	}{
+		{"plain", "before `code` after\n"},
+		{"double-backtick", "a ``code`` b\n"},
+		{"backtick-in-content", "a ``a`b`` c\n"},
+		{"single-space-trim", "a `  x ` b\n"},
+		{"both-space-trim", "a ` x ` b\n"},
+		{"all-spaces", "a `   ` b\n"},
+		{"empty-span", "a `` b\n"},
+		{"unclosed-run", "a `code without close\n"},
+		{"mismatched-len", "a ``code` more\n"},
+		{"single-span-double-interior", "`one``two`\n"},
+		{"two-spans", "`one` and `two`\n"},
+		{"escaped-backtick", "a \\`not a span\\` b\n"},
+		{"span-in-list", "- item `code` here\n"},
+		{"span-after-fence", "```\nx\n```\n\nthen `code`\n"},
+		{"backtick-in-fence", "```\n`not a span`\n```\n\n`real`\n"},
+		{"backtick-in-indented", "    `not a span`\n\n`real`\n"},
+		{"multiline-span", "a `line one\nline two` b\n"},
+		{"triple-backtick-span", "a ```code``` b\n"},
+		{"backtick-in-html-block", "<div>\n`not a span`\n</div>\n\n`real`\n"},
+		{"crlf-boundary-no-trim", "a `\r x\r` b\n"},
+		{"tab-only-no-trim", "a `\t` b\n"},
+		{"space-tab-space-no-trim", "a ` \t ` b\n"},
+		// Block boundaries: no span may cross these.
+		{"open-blank-close", "a `b\n\nc` d\n"},
+		{"open-blank-close-leading", "`a\n\nb`\n"},
+		{"phantom-then-real", "`a\n\nb` and `c` real\n"},
+		{"open-heading-close", "`open\n# heading\nclose`\n"},
+		{"open-fence-close", "`open\n```\ncode\n```\nclose`\n"},
+		{"open-thematic-close", "`a\n***\nb`\n"},
+		{"open-quote-close", "`a\n> quote\nb`\n"},
+		{"open-list-close", "`a\n- list\nb`\n"},
+		{"open-setext-close", "`a\n---\nb`\n"},
+		{"open-setext-equals", "`a\nsetext\n===\nb`\n"},
+		// Continuation lines of the opener's own block: span may extend.
+		{"multiline-three", "`a\nb\nc`\n"},
+		{"quote-multiline", "> `a\n> b\n> c`\n"},
+		{"list-marker-line-span", "- `a\n  b`\n"},
+		{"ordered-list-span", "1. `a\n   b`\n"},
+		{"list-continuation-span", "- item one\n  `a\n  b`\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			astFile, err := NewFile("doc.md", []byte(tc.src))
+			require.NoError(t, err)
+			lines := NewFileLines("doc.md", []byte(tc.src))
+			assert.Equal(t, astFile.CodeSpanContentRanges(), lines.CodeSpanContentRanges(),
+				"content ranges diverge from AST")
+			assert.Equal(t, astFile.CodeSpanLiteralRanges(), lines.CodeSpanLiteralRanges(),
+				"literal ranges diverge from AST")
+		})
+	}
+}
+
 // TestCollectCodeSpanRangesInto_NilNode pins the nil-node guard on
 // the recursive helper: a struct-literal *File with no AST must stay
 // safe.

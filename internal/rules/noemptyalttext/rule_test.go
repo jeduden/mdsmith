@@ -170,25 +170,27 @@ func TestFirstTextLine(t *testing.T) {
 	})
 }
 
-// TestInlineCapable_NoEmptyAltText covers the InlineCapable method (line 51
-// of rule.go), which is called only by the engine's nil-AST dispatcher and
-// is otherwise skipped by direct Check() calls in unit tests.
+// TestInlineCapable_NoEmptyAltText covers the InlineCapable method.
 func TestInlineCapable_NoEmptyAltText(t *testing.T) {
 	r := &Rule{}
 	assert.True(t, r.InlineCapable())
 }
 
-// TestImageLine_FallbackOne covers the return-1 fallback in imageLine
-// (line 134 of rule.go): an image inside a synthetic paragraph that has no
-// Lines() causes the ancestor walk to exhaust without finding a block offset,
-// so imageLine returns the document-start sentinel 1.
-func TestImageLine_FallbackOne(t *testing.T) {
+// TestImageLine_OrphanNoText covers the `return 1` fallback (line 134) in
+// imageLine: an Image with no text children (firstTextLine returns 0) and no
+// ancestors with line information falls back to line 1.
+func TestImageLine_OrphanNoText(t *testing.T) {
+	// Build a minimal File so LineOfOffset is callable.
 	f, err := lint.NewFile("t.md", []byte("# X\n"))
 	require.NoError(t, err)
-	img := ast.NewImage(ast.NewLink())
-	para := ast.NewParagraph() // no Lines set — walk exhausts without match
-	para.AppendChild(para, img)
-	assert.Equal(t, 1, imageLine(img, f, 0))
+
+	// NewImage needs a Link; build an empty Link and an empty Image from it.
+	link := ast.NewLink()
+	img := ast.NewImage(link)
+	// img has no children and no parent — both firstTextLine and the ancestor
+	// walk return nothing, so imageLine falls through to return 1.
+	got := imageLine(img, f, 0)
+	assert.Equal(t, 1, got, "orphan image with no text children must fall back to line 1")
 }
 
 // TestCheck_NilASTEquivalence pins the parse-skipped path (f.AST nil,

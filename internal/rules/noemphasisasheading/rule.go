@@ -48,7 +48,10 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 }
 
 // InlineCapable implements rule.InlineChecker: Check serves the nil-AST
-// path from lint.WholeParagraphEmphasis (which reads lint.InlineBlocks).
+// path from lint.WholeParagraphEmphasis, which reads the shared run-grouped
+// inline parse (lint.InlineBlocks) for list-free documents and falls back to
+// a single whole-document parse when the file contains a list (whose
+// looseness the flat Layer 0 model cannot resolve).
 func (r *Rule) InlineCapable() bool { return true }
 
 var _ rule.InlineChecker = (*Rule)(nil)

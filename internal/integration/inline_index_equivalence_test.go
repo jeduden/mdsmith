@@ -15,18 +15,15 @@ import (
 // TestInlineIndexEquivalence_CodeSpans is the Layer 1 counterpart to
 // TestLayer0Equivalence_Fixtures: for every parse-skip-eligible Markdown
 // file in the repository corpus, the code-span content and literal ranges
-// served from the byte-level inline index (nil-AST File) must be byte-
-// identical to the ones the goldmark AST walk produces.
+// served on the nil-AST path (from the shared run-grouped inline parse,
+// InlineBlocks) must be byte-identical to the ones the goldmark AST walk
+// produces.
 //
 // It restricts the comparison to the files the production parse-skip gate
 // would actually skip — those with no fenced/indented code block
-// (lint.SourceMayHaveCodeBlock) and no `<?` directive marker. The inline
-// scanner does not descend into list-item content, so a code block or
-// directive can shift its code-span detection; the gate forces a full parse
-// for exactly those files, so the divergence is never observable. This test
-// proves the index is byte-identical on precisely the inputs the gate
-// admits — the soundness contract that lets MDS047 and MDS054 resolve to
-// Layer 0.
+// (lint.SourceMayHaveCodeBlock) and no `<?` directive marker — so the test
+// scope matches the inputs the gate admits. That is the soundness contract
+// that lets MDS047 and MDS054 resolve to Layer 0.
 func TestInlineIndexEquivalence_CodeSpans(t *testing.T) {
 	root := repoRoot(t)
 	files := collectMarkdownCorpus(t, root)

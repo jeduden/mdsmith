@@ -57,11 +57,13 @@ var layerByID = buildLayerMap()
 // MDS047 (ambiguous-emphasis) and MDS054 (no-undefined-reference-labels)
 // formerly sat here: both consume the inline code-span ranges
 // (CodeSpanContentRanges / CodeSpanLiteralRanges), which returned empty
-// without a parse and caused false positives inside backtick spans. Layer 1
-// (internal/lint/inline_index.go) now reproduces those ranges byte-
-// identically on the nil-AST path — gated across the parse-skip-eligible
-// corpus by the equivalence harness — so both rules resolve to Layer 0
-// straight from their A-no-skipping audit category and no override remains.
+// without a parse and caused false positives inside backtick spans. Those
+// ranges are now served on the nil-AST path from the shared run-grouped
+// inline parse (lint.InlineBlocks, via collectCodeSpanRangesFromInlineBlocks
+// in internal/lint/codespans.go), byte-identical to the AST walk by
+// construction and gated across the parse-skip-eligible corpus by the
+// equivalence harness — so both rules resolve to Layer 0 straight from their
+// A-no-skipping audit category and no override remains.
 //
 // The map stays as the seam for any future projection-only consumer the
 // audit marks A-no-skipping but Layer N does not yet back. It is empty

@@ -186,15 +186,15 @@ func TestLayer0Gate_CodeBlockForcesParse(t *testing.T) {
 		"a source that may hold a code block must keep the AST parse")
 }
 
-// TestLayer0Gate_CodeSpanRuleSkipsParse proves the Layer 1 inline-index fix
+// TestLayer0Gate_CodeSpanRuleSkipsParse proves the Layer 1 code-span fix
 // closed the old code-span soundness gap: MDS054
 // (no-undefined-reference-labels) is "A-no-skipping" and reads code-span
 // ranges. Those ranges used to go empty without a parse, so the rule was
-// forced to AST; the byte-level inline index now reproduces them on the
-// nil-AST path, so the rule resolves to Layer 0 and skips the parse. The
-// `[undefined]` bracket text sits inside a code span, which the inline index
-// identifies, so the parse-skipped run reports nothing — byte-identical to
-// the full-parse run.
+// forced to AST; the shared run-grouped inline parse (lint.InlineBlocks) now
+// reproduces them on the nil-AST path, so the rule resolves to Layer 0 and
+// skips the whole-document parse. The `[undefined]` bracket text sits inside
+// a code span, which that parse identifies, so the parse-skipped run reports
+// nothing — byte-identical to the full-parse run.
 func TestLayer0Gate_CodeSpanRuleSkipsParse(t *testing.T) {
 	withLayer0Skip(t, true)
 	dir, path := writeDoc(t, "# T\n\nUse `[undefined]` inline.\n")

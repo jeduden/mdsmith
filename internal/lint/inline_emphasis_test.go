@@ -93,6 +93,16 @@ func TestWholeParagraphEmphasis_Equivalence(t *testing.T) {
 		{"emphasis-over-two-lines", "*emphasis\nspanning*\n"},
 		{"thematic-break-not-emphasis", "***\n"},
 		{"star-list-not-paragraph", "* list item\n"},
+		// Loose lists wrap each item's content in a Paragraph node, so a
+		// loose `- *x*` item IS a lone-emphasis paragraph the AST path flags.
+		// The run grouper would parse each blank-separated item as a tight
+		// (paragraph-less) single-item list and miss it, so these exercise
+		// the full-parse fallback in WholeParagraphEmphasis.
+		{"loose-list-lone-emphasis", "- *x*\n\n- *y*\n"},
+		{"loose-ordered-list-lone-emphasis", "1. *x*\n\n2. *y*\n"},
+		{"tight-list-lone-emphasis", "- *x*\n- *y*\n"},
+		{"loose-list-mixed", "- *x*\n\n- text\n\n- **y**\n"},
+		{"loose-list-with-surrounding-paras", "*top*\n\n- *x*\n\n- *y*\n\n*end*\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -103,6 +113,14 @@ func TestWholeParagraphEmphasis_Equivalence(t *testing.T) {
 	}
 }
 
+// TestParaLocalFirstLineOffset_NoLines covers the nil/empty-lines guard: a
+// paragraph built with ast.NewParagraph() carries no line segments, so
+// paraLocalFirstLineOffset must return -1.
+func TestParaLocalFirstLineOffset_NoLines(t *testing.T) {
+	para := ast.NewParagraph()
+	assert.Equal(t, -1, paraLocalFirstLineOffset(para))
+}
+
 // TestWholeParagraphEmphasis_NilSource keeps a struct-literal File (no AST,
 // no source) returning nil, matching the empty-document case.
 func TestWholeParagraphEmphasis_NilSource(t *testing.T) {
@@ -110,10 +128,14 @@ func TestWholeParagraphEmphasis_NilSource(t *testing.T) {
 	assert.Nil(t, WholeParagraphEmphasis(f))
 }
 
-// TestParaLocalFirstLineOffset_NilLines covers the nil/empty Lines guard
-// (lines 109-111 of inline_emphasis.go): a paragraph created without any
-// line information returns -1.
-func TestParaLocalFirstLineOffset_NilLines(t *testing.T) {
-	p := ast.NewParagraph()
-	assert.Equal(t, -1, paraLocalFirstLineOffset(p))
+// TestWholeParagraphEmphasis_Memoized pins the projection to one build per
+// File, including the loose-list full-parse fallback path, so a second
+// caller does not re-parse the document.
+func TestWholeParagraphEmphasis_Memoized(t *testing.T) {
+	f := NewFileLines("doc.md", []byte("- *x*\n\n- *y*\n"))
+	first := WholeParagraphEmphasis(f)
+	second := WholeParagraphEmphasis(f)
+	require.Len(t, first, 2)
+	// Same backing array: the build ran once and the slice header is cached.
+	assert.Equal(t, &first[0], &second[0])
 }

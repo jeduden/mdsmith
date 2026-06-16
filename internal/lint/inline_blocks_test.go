@@ -86,25 +86,19 @@ func TestWalkInlineNodes_OffsetMapping(t *testing.T) {
 		"base+segment offsets recover the document bytes")
 }
 
-// TestLineEndOffset_Guards covers both defensive guards in lineEndOffset
-// (lines 173-178 of inline_blocks.go): i<0 returns 0; i past the last
-// newline returns len(Source).
-func TestLineEndOffset_Guards(t *testing.T) {
-	f := NewFileLines("doc.md", []byte("hello\n"))
-	assert.Equal(t, 0, f.lineEndOffset(-1), "i<0 must return 0")
-	assert.Equal(t, len(f.Source), f.lineEndOffset(100), "i past last newline must return len(Source)")
+// TestLineEndOffset_NegativeIndex covers the i < 0 guard: a negative line
+// index must return 0.
+func TestLineEndOffset_NegativeIndex(t *testing.T) {
+	f := NewFileLines("doc.md", []byte("hello\nworld\n"))
+	assert.Equal(t, 0, f.lineEndOffset(-1))
 }
 
-// TestScanInlineBlocks_EndLeStart covers the end<=start guard in
-// scanInlineBlocks (line 102-103 of inline_blocks.go). A File whose
-// Lines[0] is non-blank but whose Source starts with a newline makes
-// lineIndex()[0]==0==LineStartOffset(0), so end==start and the guard fires.
-func TestScanInlineBlocks_EndLeStart(t *testing.T) {
-	f := &File{
-		Source: []byte("\n"),
-		Lines:  [][]byte{[]byte("x"), {}},
-	}
-	assert.Nil(t, scanInlineBlocks(f))
+// TestLineEndOffset_PastEnd covers the i >= len(nl) guard: an index past the
+// last line must return len(Source).
+func TestLineEndOffset_PastEnd(t *testing.T) {
+	src := []byte("hello\nworld\n")
+	f := NewFileLines("doc.md", src)
+	assert.Equal(t, len(src), f.lineEndOffset(999))
 }
 
 // TestInlineBlocks_RefDefGate pins the `]:` short-circuit in
@@ -135,4 +129,53 @@ func TestInlineBlocks_RefDefGate(t *testing.T) {
 	noDef := NewFileLines("doc.md", []byte("[text][ref] and more text here\n"))
 	assert.Equal(t, 0, countLinks(InlineBlocks(noDef)),
 		"no `]:` definition leaves [text][ref] as unresolved plain text")
+}
+
+// TestNonInlineLines_CodeBlockLinesBody covers the body of the
+// `for ln := range l0.CodeBlockLines` loop (inside the merge path): it runs
+// only when hasHTML || len(PIBlockLines) > 0. An HTML block plus a fenced
+// code block satisfies hasHTML AND provides CodeBlockLines, so the loop body
+// executes and the code-block line numbers are merged into the set.
+func TestNonInlineLines_CodeBlockLinesBody(t *testing.T) {
+	// Line 1: HTML block open, blank line 2, fenced code lines 3-5.
+	src := []byte("<div>\n\n```\ncode\n```\n")
+	f := NewFileLines("doc.md", src)
+	set := nonInlineLines(f)
+	require.NotNil(t, set)
+	found := false
+	for _, ln := range []int{3, 4, 5} {
+		if _, ok := set[ln]; ok {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found,
+		"merged set must contain code-block line numbers when an HTML block is present")
+}
+
+// TestNonInlineLines_PIBlockLinesBody covers the body of the
+// `for ln := range l0.PIBlockLines` loop: it runs when PIBlockLines is
+// non-empty. A PI block (`<?…?>`) is the minimal trigger.
+func TestNonInlineLines_PIBlockLinesBody(t *testing.T) {
+	src := []byte("<?foo\nbar\n?>\n")
+	f := NewFileLines("doc.md", src)
+	set := nonInlineLines(f)
+	require.NotNil(t, set)
+	found := false
+	for _, ln := range []int{1, 2, 3} {
+		if _, ok := set[ln]; ok {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "merged set must contain PI-block line numbers")
+}
+
+// TestNonInlineLines_CodeOnlyNoCopy pins the no-extra-allocation fast path:
+// a document with code blocks but no PI or HTML returns the Layer 0
+// CodeBlockLines map directly.
+func TestNonInlineLines_CodeOnlyNoCopy(t *testing.T) {
+	f := NewFileLines("doc.md", []byte("```\ncode\n```\n"))
+	set := nonInlineLines(f)
+	assert.Equal(t, Layer0(f).CodeBlockLines, set)
 }
