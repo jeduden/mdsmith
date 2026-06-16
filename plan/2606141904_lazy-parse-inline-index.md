@@ -1,7 +1,7 @@
 ---
 id: 2606141904
 title: "Lazy parse: Layer 1 light inline index"
-status: "🔳"
+status: "✅"
 summary: >-
   Build the byte-level inline index (links, autolinks,
   images, code spans, raw HTML, reference defs and uses)
@@ -65,23 +65,24 @@ normalization as a pure function so the two agree.
 
 ## Implementation Status
 
-This plan landed a first slice. The inline index now scans
-**code spans**. It re-backs the two rules whose only AST
-need was the code-span projection. The output stays
+This plan landed the inline projections needed by the
+inline rules. Code spans, links, images, autolinks, and
+references are all served on the parse-skipped path from
+the shared run-grouped inline parse, and the output stays
 byte-identical to the AST path.
 
 Done:
 
-- [x] Byte-level inline scanner for code spans
-      ([inline_index.go][newfile-idx]). It skips lines
-      inside fenced/indented code blocks, HTML blocks,
-      and PI blocks via the Layer 0 scan, reproduces
-      CommonMark's single-space content trim, and derives
-      the literal range the same two-step way goldmark
-      does (content bounds extended over adjacent
-      backticks).
 - [x] [`CodeSpanContentRanges` / `CodeSpanLiteralRanges`][newfile]
-      re-backed on the index for the nil-AST path.
+      re-backed on the shared run-grouped inline parse
+      ([`lint.InlineBlocks`][newfile-ib]) for the nil-AST
+      path. Because each run is parsed by goldmark itself,
+      a CodeSpan node's bounds — and the block boundaries
+      that limit it (a span never crosses a blank line, an
+      interrupting heading or fence, a thematic break, a
+      nested container lead, or a setext underline) — are
+      byte-identical to the whole-document parse by
+      construction.
 - [x] Reference-label normalization: goldmark already
       exports the pure `util.ToLinkReference` (case fold +
       whitespace collapse); MDS054 already calls it, so no
@@ -143,6 +144,41 @@ Done (this branch):
       pin every re-backed rule byte-identical to the AST
       path on the gate-eligible corpus.
 
+### Reference definitions re-backed on a byte-level scanner
+
+The `LinkReferences` projection no longer forces a lazy
+full parse on the nil-AST path:
+
+- [x] `parser.ScanReferenceDefinitions`
+      ([link_ref_scan.go][newfile-refscan]) drives
+      goldmark's own `parseLinkReferenceDefinition` over a
+      supplied set of line segments and records each
+      definition via `AddReference`. Reusing goldmark's exact
+      definition parser — including the multi-line label,
+      angle/bare destination, `"`/`'`/`(` title,
+      title-on-next-line, and `util.ToLinkReference`
+      normalization paths — guarantees byte-identity instead
+      of re-deriving the §4.7 grammar by hand.
+- [x] `scanLinkReferences`
+      ([linkrefscan.go][newfile-linkref]) walks `Layer0`
+      block spans, and for each top-level paragraph whose
+      head holds a `]:` after a leading `[`, feeds that
+      paragraph's line segments to the parser scanner.
+      First-wins dedup falls out of `AddReference`, so feeding
+      paragraphs in document order reproduces the full parse.
+- [x] `scanNeedsFallback` gates correctness: a `]:` nested in
+      a block quote or list block (which the paragraph-head
+      scanner does not descend into) triggers a single lazy
+      full parse, so those rare shapes stay byte-identical.
+- [x] [`LinkReferences`][newfile] now picks, in order: the
+      captured parse context (NewFile path), the byte-level
+      scanner (nil-AST path, no fallback needed), or a lazy
+      full parse (fallback). The nil-AST path no longer parses
+      the whole document for the common case. A corpus
+      equivalence test compares the scanner against the full
+      parse for every repo `.md` file (1043 files, 0
+      divergences).
+
 Still deferred:
 
 - [ ] `no-inline-html` (MDS041) and `no-space-in-code-spans`
@@ -152,24 +188,15 @@ Still deferred:
       re-backed projection but still walks via `WalkNodes`;
       MDS041 needs the raw-HTML span projection. Left for a
       follow-up.
-- [ ] `LinkReferences` re-backed on a byte-level
-      reference-definition scanner. It still parses the
-      whole document once, lazily, the first time a
-      reference rule reads it on a nil-AST file containing
-      `[`. The byte-identity risk (multi-line labels,
-      escaped destinations, titles) matches the link
-      scanner's; the reference rules are already correct and
-      Layer 0 through the lazy parse, so this is the
-      remaining piece to shed that one residual parse.
 
 ## Acceptance Criteria
 
 - [~] With Layer 0 and Layer 1, the full parity config
       runs with no whole-document goldmark parse. Every
       inline parity rule (MDS012/018/032/062, MDS047,
-      MDS054) is now Layer 0. Residual full-document parses
-      remain only for (a) `LinkReferences` on files
-      containing `[` (lazy, on-demand — see status) and (b)
+      MDS054) is now Layer 0, and `LinkReferences` serves
+      from the byte-level reference scanner on the nil-AST
+      path. The remaining whole-document parses belong to
       the ~20 block-level parity rules (MDS001–011, 014–017,
       031, …) a sibling Layer 0 block plan owns, not this
       one. The inline rules no longer force a parse.
@@ -180,20 +207,24 @@ Still deferred:
 - [x] Reference matching is byte-identical to the AST
       path, including case folding, across the corpus.
       MDS054's labels normalize through goldmark's own
-      `util.ToLinkReference`, and the Layer 0 corpus gate
-      equivalence test passes with it enabled.
+      `util.ToLinkReference`, the byte-level reference
+      scanner reproduces the full parse on every corpus
+      file, and the Layer 0 corpus gate equivalence test
+      passes with it enabled.
 - [x] All existing rule fixtures pass unchanged.
 - [ ] `mdsmith check -c parity` beats gomarklint on
-      benchmark 2. (Not measured here; the parity rule set
-      still forces a parse via the deferred hybrid rules,
-      so the benchmark gain awaits the follow-up.)
+      benchmark 2. (Not measured here; the block-level
+      parity rules still force a parse, so the full benchmark
+      gain awaits the sibling Layer 0 block plan.)
 - [x] All tests pass: `go test ./...` (excluding the
       pre-existing `internal/release` PGO tests, which fail
       on commit-signing infra unrelated to this change).
 
-[newfile-idx]: ../internal/lint/inline_index.go
+[newfile-ib]: ../internal/lint/inline_blocks.go
 [newfile-emph]: ../internal/lint/inline_emphasis.go
 [newfile-eq]: ../internal/integration/inline_rule_equivalence_test.go
+[newfile-refscan]: ../pkg/goldmark/parser/link_ref_scan.go
+[newfile-linkref]: ../internal/lint/linkrefscan.go
 [rulelayer]: ../internal/rulelayer/rulelayer.go
 
 [research]: ../docs/research/benchmarks/lazy-parse-architecture.md

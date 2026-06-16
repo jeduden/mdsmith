@@ -61,6 +61,44 @@ func InlineBlocks(f *File) []InlineBlock {
 	return f.inlineBlocks
 }
 
+// nonInlineLines returns the set of 1-based source lines whose bytes carry
+// no inline markup: fenced/indented code-block lines, PI-block lines, and
+// every line inside an HTML block. goldmark parses no inline content on
+// these lines, so they never open or continue an inline run. The set is
+// built from the Layer 0 scan: its CodeBlockLines and PIBlockLines sets plus
+// the line span of every BlockHTML block. Returns the CodeBlockLines map
+// directly (no copy) when there are no PI or HTML lines to add, so the
+// common code-only document allocates nothing extra.
+func nonInlineLines(f *File) map[int]struct{} {
+	l0 := Layer0(f)
+	hasHTML := false
+	for _, span := range l0.BlockSpans {
+		if span.Kind == BlockHTML {
+			hasHTML = true
+			break
+		}
+	}
+	if len(l0.PIBlockLines) == 0 && !hasHTML {
+		return l0.CodeBlockLines
+	}
+	set := make(map[int]struct{}, len(l0.CodeBlockLines)+len(l0.PIBlockLines))
+	for ln := range l0.CodeBlockLines {
+		set[ln] = struct{}{}
+	}
+	for ln := range l0.PIBlockLines {
+		set[ln] = struct{}{}
+	}
+	for _, span := range l0.BlockSpans {
+		if span.Kind != BlockHTML {
+			continue
+		}
+		for ln := span.Start; ln <= span.End; ln++ {
+			set[ln] = struct{}{}
+		}
+	}
+	return set
+}
+
 // scanInlineBlocks groups the inline-bearing lines into runs and parses each
 // run with the document references pre-seeded.
 func scanInlineBlocks(f *File) []InlineBlock {
@@ -99,9 +137,6 @@ func scanInlineBlocks(f *File) []InlineBlock {
 		}
 		start := f.LineStartOffset(runStart)
 		end := f.lineEndOffset(i - 1)
-		if end <= start {
-			continue
-		}
 		out = append(out, InlineBlock{
 			Node:   parseInlineWithRefsArena(f.Source[start:end], refs, a),
 			Offset: start,

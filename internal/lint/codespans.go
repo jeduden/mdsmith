@@ -42,20 +42,43 @@ func (f *File) ensureCodeSpanRanges() {
 	if !f.codeSpansDone.Load() {
 		defer f.codeSpansDone.Store(true)
 		// On the parse-skipped path (f.AST nil) the goldmark walk would
-		// surface nothing, so serve from the Layer 1 inline index instead.
-		// A struct-literal File with neither an AST nor a source has no code
-		// spans either way. The corpus equivalence harness pins the two
-		// projection sources byte-identical.
+		// surface nothing, so serve from the shared run-grouped inline parse
+		// (InlineBlocks) instead. That parse is real goldmark, so its
+		// CodeSpan nodes — and the block boundaries that bound them — are
+		// byte-identical to the whole-document parse by construction, the
+		// same source every other inline rule reads on this path. A
+		// struct-literal File with neither an AST nor a source has no code
+		// spans either way.
 		if f.AST == nil {
 			if len(f.Source) == 0 {
 				return
 			}
-			idx := InlineIndexProjection(f)
-			f.codeSpanContent = idx.CodeSpanContent
-			f.codeSpanLiteral = idx.CodeSpanLiteral
+			f.collectCodeSpanRangesFromInlineBlocks()
 			return
 		}
 		collectCodeSpanRangesInto(f.AST, f.Source, &f.codeSpanContent, &f.codeSpanLiteral)
+	}
+}
+
+// collectCodeSpanRangesFromInlineBlocks fills the code-span projections on
+// the parse-skipped path from the shared run-grouped inline parse. Each run
+// parsed each block's bytes against f.Source[blk.Offset:], so a CodeSpan
+// node's segment offsets are run-local; this adds blk.Offset to map them
+// back to document-absolute offsets. Runs are visited in document order, so
+// the appended ranges stay in document order — matching the whole-document
+// AST walk.
+func (f *File) collectCodeSpanRangesFromInlineBlocks() {
+	for _, blk := range InlineBlocks(f) {
+		var content, literal []Range
+		collectCodeSpanRangesInto(blk.Node, f.Source[blk.Offset:], &content, &literal)
+		for _, r := range content {
+			f.codeSpanContent = append(f.codeSpanContent,
+				Range{Start: r.Start + blk.Offset, End: r.End + blk.Offset})
+		}
+		for _, r := range literal {
+			f.codeSpanLiteral = append(f.codeSpanLiteral,
+				Range{Start: r.Start + blk.Offset, End: r.End + blk.Offset})
+		}
 	}
 }
 

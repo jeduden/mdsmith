@@ -110,16 +110,6 @@ type File struct {
 	layer0Done atomic.Bool
 	layer0Mu   sync.Mutex
 
-	// inlineIndex caches the byte-level inline scan (inline_index.go)
-	// behind InlineIndexProjection. It is the inline-projection source
-	// (code-span ranges) whenever f.AST is nil — the parse-skipped path —
-	// so CodeSpanContentRanges / CodeSpanLiteralRanges serve from it
-	// instead of walking f.AST. atomic.Bool + mutex matches the caches
-	// above for the same closure-box reason.
-	inlineIndex     *InlineIndex
-	inlineIndexDone atomic.Bool
-	inlineIndexMu   sync.Mutex
-
 	// inlineBlocks caches the run-grouped per-block inline parse
 	// (inline_blocks.go) behind InlineBlocks. It is the single shared
 	// inline-node stream every inline rule consumes on the parse-skipped
@@ -129,6 +119,17 @@ type File struct {
 	inlineBlocks     []InlineBlock
 	inlineBlocksDone atomic.Bool
 	inlineBlocksMu   sync.Mutex
+
+	// emphasisParas caches the lone-emphasis-paragraph projection
+	// (inline_emphasis.go) behind WholeParagraphEmphasis, MDS018's
+	// parse-skipped source. The build is the run-grouped inline walk, or a
+	// single full-document parse on the loose-list fallback path; either
+	// way it runs once per file so a list-bearing file is not re-parsed on
+	// a second call. atomic.Bool + mutex matches the caches above for the
+	// same closure-box reason.
+	emphasisParas     []EmphasisParagraph
+	emphasisParasDone atomic.Bool
+	emphasisParasMu   sync.Mutex
 
 	// proseRanges caches the byte-offset projection behind ProseRanges:
 	// the source spans inside prose nodes (paragraph, heading, list-item
@@ -372,11 +373,19 @@ func NewFileLinesFromSource(path string, source []byte, stripFrontMatter bool) *
 }
 
 // LinkReferences returns the link reference definitions goldmark found
-// in this document. It is computed once and cached. On the normal path
-// it reads the context from the parse NewFile already performed (no
-// extra parse); a File built as a struct literal has no such context,
-// so the first call parses Source once. The returned slice is shared
-// read-only.
+// in this document. It is computed once and cached.
+//
+// Three paths, in priority order:
+//
+//  1. The File came from NewFile, so the parse already collected the
+//     references into parseCtx — read them, no extra work.
+//  2. The File has no parse context (the parse-skipped Layer 0/1 path,
+//     or a struct-literal File) AND its block structure is safe for the
+//     byte-level reference scanner (no `]:` nested in a block quote or
+//     list the scanner does not descend into) — scan the paragraph
+//     heads, no goldmark parse.
+//  3. Otherwise fall back to a single lazy full parse, which guarantees
+//     byte-identity for the rare nested-definition shapes.
 //
 // Memoised via the double-checked atomic.Bool + mutex pair rather
 // than sync.Once so the build path does not heap-allocate the
@@ -391,13 +400,20 @@ func (f *File) LinkReferences() []Reference {
 	defer f.linkRefsMu.Unlock()
 	if !f.linkRefsDone.Load() {
 		defer f.linkRefsDone.Store(true)
-		ctx := f.parseCtx
-		if ctx == nil {
-			ctx = parser.NewContext()
+		switch {
+		case f.parseCtx != nil:
+			f.linkRefs = f.parseCtx.References()
+			f.parseCtx = nil // context no longer needed; let it GC
+		case f.Lines != nil && !scanNeedsFallback(f):
+			// byte-level scanner: Lines already populated at construction
+			// (NewFile/NewFileLines), so no write to f.Lines is needed
+			// here and the scanner is safe to call without a data race.
+			f.linkRefs = scanLinkReferences(f)
+		default:
+			ctx := parser.NewContext()
 			markdown.ParseContext(f.Source, ctx)
+			f.linkRefs = ctx.References()
 		}
-		f.linkRefs = ctx.References()
-		f.parseCtx = nil // context no longer needed; let it GC
 	}
 	return f.linkRefs
 }

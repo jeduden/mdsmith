@@ -2,6 +2,8 @@ package lint
 
 import (
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
+	"github.com/jeduden/mdsmith/pkg/markdown"
 )
 
 // EmphasisParagraph is one paragraph whose sole inline child is a single
@@ -26,12 +28,46 @@ type EmphasisParagraph struct {
 // paragraph in every run — including the paragraphs goldmark nests inside a
 // block quote — is tested for the lone-emphasis shape, exactly the set of
 // paragraph nodes the AST walk visits. List items are not paragraphs in
-// goldmark's tight-list model, so a `- *x*` item never qualifies, matching
-// the AST path.
+// goldmark's tight-list model, so a tight `- *x*` item never qualifies,
+// matching the AST path.
+//
+// Loose lists are the exception, and the reason for the fallback below. A
+// loose list item (one whose list has a blank line between items) holds its
+// content in a Paragraph node, so the AST path flags a loose `- *x*` item.
+// The run grouper splits at blank lines, so each loose item parses in
+// isolation as a *tight* single-item list — losing the looseness and the
+// Paragraph wrapper. The flat Layer 0 model cannot tell loose from tight, so
+// when the file contains any list block this projection falls back to a full
+// document parse and walks its real AST, exactly as LinkReferences falls
+// back for container-nested definitions (scanNeedsFallback).
+//
+// It is computed once per File and cached (atomic.Bool + mutex, matching
+// the other File projections), so a list-bearing file that takes the
+// full-parse fallback below is not re-parsed on a second call.
 //
 // nil when no paragraph qualifies or the File has no source. The returned
 // slice is shared read-only and must not be mutated.
 func WholeParagraphEmphasis(f *File) []EmphasisParagraph {
+	if f.emphasisParasDone.Load() {
+		return f.emphasisParas
+	}
+	f.emphasisParasMu.Lock()
+	defer f.emphasisParasMu.Unlock()
+	if !f.emphasisParasDone.Load() {
+		defer f.emphasisParasDone.Store(true)
+		f.emphasisParas = scanWholeParagraphEmphasis(f)
+	}
+	return f.emphasisParas
+}
+
+// scanWholeParagraphEmphasis builds the lone-emphasis-paragraph projection:
+// the run-grouped inline walk, or a single full-document parse when the
+// file contains a list (whose looseness the flat Layer 0 model cannot
+// resolve). See WholeParagraphEmphasis for the contract.
+func scanWholeParagraphEmphasis(f *File) []EmphasisParagraph {
+	if fileHasList(f) {
+		return wholeParagraphEmphasisFullParse(f)
+	}
 	var out []EmphasisParagraph
 	for _, blk := range InlineBlocks(f) {
 		base := blk.Offset
@@ -49,6 +85,47 @@ func WholeParagraphEmphasis(f *File) []EmphasisParagraph {
 			return ast.WalkContinue, nil
 		})
 	}
+	return out
+}
+
+// fileHasList reports whether the Layer 0 scan recorded any list block.
+// List looseness (tight vs loose) decides whether a list item's content is
+// wrapped in a Paragraph node, and the flat Layer 0 model does not capture
+// it, so the lone-emphasis projection cannot trust the per-run parse when a
+// list is present.
+func fileHasList(f *File) bool {
+	for _, span := range Layer0(f).BlockSpans {
+		if span.Kind == BlockList {
+			return true
+		}
+	}
+	return false
+}
+
+// wholeParagraphEmphasisFullParse is the loose-list fallback: it parses the
+// whole document once and walks the real AST, so loose-list paragraphs are
+// classified exactly as the AST path classifies them. base is 0 because the
+// parse spans the whole Source, so paragraph and segment offsets are already
+// document-absolute. f.Source is the front-matter-stripped body (the same
+// bytes NewFileLinesFromSource records), so it is parsed directly via
+// ParseContext rather than markdown.Parse, which would strip front matter a
+// second time and shift every offset.
+func wholeParagraphEmphasisFullParse(f *File) []EmphasisParagraph {
+	root := markdown.ParseContext(f.Source, parser.NewContext())
+	var out []EmphasisParagraph
+	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		para, ok := n.(*ast.Paragraph)
+		if !ok {
+			return ast.WalkContinue, nil
+		}
+		if p, ok := loneEmphasisFromParagraph(f, para, 0); ok {
+			out = append(out, p)
+		}
+		return ast.WalkContinue, nil
+	})
 	return out
 }
 

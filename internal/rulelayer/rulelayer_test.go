@@ -36,9 +36,9 @@ func TestIsLayer0(t *testing.T) {
 	}
 	// MDS047 (ambiguous-emphasis) and MDS054 (no-undefined-reference-labels)
 	// are "A-no-skipping" and formerly forced to AST because they read the
-	// inline code-span ranges. Layer 1 (internal/lint/inline_index.go) now
-	// backs those ranges on the nil-AST path, so the override is gone and both
-	// resolve to Layer 0.
+	// inline code-span ranges. Those ranges are now backed on the nil-AST
+	// path by the shared run-grouped inline parse (lint.InlineBlocks), so the
+	// override is gone and both resolve to Layer 0.
 	for _, id := range []string{"MDS047", "MDS054"} {
 		assert.True(t, IsLayer0(id), "%s should be Layer 0 once code spans are backed", id)
 		assert.Equal(t, Layer0, Of(id))
