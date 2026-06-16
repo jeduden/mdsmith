@@ -227,7 +227,7 @@ func TestEmptyDestLinkWithEmphasisText(t *testing.T) {
 func TestNodeLineDetachedFallback(t *testing.T) {
 	f, err := lint.NewFile("t.md", []byte("x"))
 	require.NoError(t, err)
-	assert.Equal(t, 1, nodeLine(ast.NewLink(), f))
+	assert.Equal(t, 1, nodeLine(ast.NewLink(), f, 0))
 }
 
 func TestFixSkipsFencedBlock(t *testing.T) {
@@ -275,6 +275,47 @@ func TestCheckEmptyNode_NilNode(t *testing.T) {
 	// Struct-literal Files in unit tests can carry a nil AST; the
 	// recursive walker must tolerate the nil root.
 	var diags []lint.Diagnostic
-	(&Rule{}).checkEmptyNode(nil, &lint.File{}, &diags)
+	(&Rule{}).checkEmptyNode(nil, &lint.File{}, 0, &diags)
 	assert.Empty(t, diags)
+}
+
+// TestCheck_NilASTEquivalence pins the parse-skipped path (f.AST nil,
+// served from the Layer 1 per-block inline parse) byte-identical to the
+// AST path across empty-link, empty-image, reversed-link, and visible-
+// content shapes in several block contexts.
+func TestCheck_NilASTEquivalence(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+	}{
+		{"empty-dest", "see [text]() here\n"},
+		{"good-link", "see [text](https://x.com) here\n"},
+		{"hash-dest", "see [text](#) here\n"},
+		{"empty-text", "see [](https://x.com) here\n"},
+		{"empty-image-dest", "![alt]() here\n"},
+		{"reversed", "see (text)[url] here\n"},
+		{"empty-in-list", "- [text]() bad\n- [ok](https://x.com)\n"},
+		{"empty-in-heading", "# title [text]()\n"},
+		{"empty-in-quote", "> quote [text]()\n"},
+		{"empty-in-emphasis", "lead\n\n*[](https://x.com)*\n"},
+		{"emphasis-text-empty-dest", "an [*here*]() link\n"},
+		{"image-in-link", "[![](img.png)](dest)\n"},
+		{"two-empty", "[a]() and [b]()\n"},
+		{"no-link", "just plain text\n"},
+		{"multiline-para", "text [link]()\nmore text\n"},
+		{"ref-link-empty-text", "[ ][ref]\n\n[ref]: http://example.com\n"},
+		{"wrapped-link-list", "- [\n  ](http://x.com)\n"},
+		{"bq-empty-link", "> [text]()\n"},
+		{"empty-link-in-html-block", "<div>\n[a]() text\n</div>\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			astFile, err := lint.NewFile("test.md", []byte(tc.src))
+			require.NoError(t, err)
+			lineFile := lint.NewFileLines("test.md", []byte(tc.src))
+			r := &Rule{}
+			assert.Equal(t, r.Check(astFile), r.Check(lineFile),
+				"nil-AST diagnostics diverge from AST path")
+		})
+	}
 }

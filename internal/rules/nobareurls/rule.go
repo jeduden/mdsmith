@@ -37,14 +37,44 @@ func (r *Rule) Category() string { return "link" }
 // this rule into one shared AST walk; a direct call still works via
 // rule.WalkNodes.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	// On the parse-skipped path (f.AST nil) the AST walk surfaces no
+	// nodes, so serve from the shared run-grouped inline parse: the same
+	// Text-node logic runs over every parsed run, with run-local segment
+	// offsets mapped back to the document. Re-using goldmark's own parser
+	// keeps the flagged bare-URL set byte-identical to the AST path.
+	if f.AST == nil {
+		var diags []lint.Diagnostic
+		lint.WalkInlineNodes(f, func(n ast.Node, base int) {
+			diags = append(diags, r.flagTextNode(n, f, base)...)
+		})
+		return diags
+	}
 	return rule.WalkNodes(r, f)
 }
 
-// CheckNode implements rule.NodeChecker.
+// InlineCapable implements rule.InlineChecker: Check serves the nil-AST
+// path from lint.WalkInlineNodes (which reads lint.InlineBlocks).
+func (r *Rule) InlineCapable() bool { return true }
+
+var _ rule.InlineChecker = (*Rule)(nil)
+
+// CheckNode implements rule.NodeChecker. On the AST path the segment
+// offsets are already document-absolute, so the base offset is zero.
 func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
 	if !entering {
 		return nil
 	}
+	return r.flagTextNode(n, f, 0)
+}
+
+// flagTextNode emits a diagnostic for each bare URL inside a Text node that
+// is not within a link, autolink, or code span. base is added to the node's
+// segment-local offsets to recover document-absolute positions: zero on the
+// AST path (segments are already absolute), the run's start offset on the
+// per-block path. The node's content is read against f.Source on the AST
+// path and against the same Source via the absolute offsets on the per-block
+// path — both index the identical bytes.
+func (r *Rule) flagTextNode(n ast.Node, f *lint.File, base int) []lint.Diagnostic {
 	textNode, ok := n.(*ast.Text)
 	if !ok {
 		return nil
@@ -55,7 +85,9 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 	}
 
 	seg := textNode.Segment
-	content := seg.Value(f.Source)
+	absStart := base + seg.Start
+	absStop := base + seg.Stop
+	content := f.Source[absStart:absStop]
 	// Every urlPattern match starts with "http"; gating on the
 	// literal spares the regex engine on the overwhelming majority
 	// of text nodes.
@@ -67,9 +99,9 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 		return nil
 	}
 
-	var diags []lint.Diagnostic
+	diags := make([]lint.Diagnostic, 0, len(matches))
 	for _, m := range matches {
-		offset := seg.Start + m[0]
+		offset := absStart + m[0]
 		diags = append(diags, lint.Diagnostic{
 			File:     f.Path,
 			Line:     f.LineOfOffset(offset),

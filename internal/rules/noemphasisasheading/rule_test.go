@@ -165,6 +165,14 @@ func TestSettingMergeMode_NoEmphasisAsHeading(t *testing.T) {
 	assert.Equal(t, rule.MergeReplace, r.SettingMergeMode("unknown"))
 }
 
+// TestInlineCapable_NoEmphasisAsHeading covers the InlineCapable method
+// (line 52 of rule.go), which is called only by the engine's nil-AST
+// dispatcher and is otherwise skipped by direct Check() calls in unit tests.
+func TestInlineCapable_NoEmphasisAsHeading(t *testing.T) {
+	r := &Rule{}
+	assert.True(t, r.InlineCapable())
+}
+
 // --- Issue #320: emphasis inside a table cell is intentional inline styling ---
 
 func TestCheck_EmphasisInsideTable_NotFlagged(t *testing.T) {
@@ -195,4 +203,50 @@ func TestCheck_TableShapedSingleEmphasisLine_NotFlagged(t *testing.T) {
 	r := &Rule{}
 	diags := r.Check(f)
 	require.Empty(t, diags, "table-shaped emphasis line must not be flagged")
+}
+
+// TestCheck_NilASTEquivalence pins the parse-skipped path (f.AST nil,
+// served from the Layer 1 whole-paragraph-emphasis index) byte-identical
+// to the AST path across emphasis-as-heading shapes, including the
+// placeholder suppression.
+func TestCheck_NilASTEquivalence(t *testing.T) {
+	cases := []struct {
+		name         string
+		src          string
+		placeholders []string
+	}{
+		{"bold-heading", "**Bold text**\n", nil},
+		{"italic-heading", "*Italic text*\n", nil},
+		{"underscore-heading", "_Italic_\n", nil},
+		{"inline-emphasis-ok", "Some **bold** text here.\n", nil},
+		{"plain-ok", "just plain text\n", nil},
+		{"two-paragraphs", "*one*\n\nplain\n\n**two**\n", nil},
+		{"emphasis-then-text", "*emphasis* and more\n", nil},
+		{"leading-spaces", "   *emphasis*\n", nil},
+		{"multiline-emphasis", "*emphasis\ncontinued*\n", nil},
+		{"placeholder-question", "*?*\n", []string{"?"}},
+		{"placeholder-ellipsis", "*...*\n", []string{"..."}},
+		{"placeholder-no-match", "*real heading*\n", []string{"?"}},
+		{"blockquote-emph", "> *just emphasis*\n", nil},
+		{"wrapped-emph-quote", "> *just\n> emph*\n", nil},
+		{"multi-bq-emph", "> *a*\n>\n> *b*\n", nil},
+		{"list-emph-not-flagged", "- *x*\n", nil},
+		{"emph-then-html-block", "*emph*\n<div>x</div>\n", nil},
+		// var-token placeholder suppresses the lone-emphasis diagnostic on
+		// the nil-AST path: exercises segmentsContainPlaceholder return-true
+		// (lines 145-147), the checkFromInline continue (lines 68-69), and
+		// the empty-diags early-return (lines 81-83) in rule.go.
+		{"var-token-suppressed", "*{draft}*\n", []string{"var-token"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			astFile, err := lint.NewFile("test.md", []byte(tc.src))
+			require.NoError(t, err)
+			lineFile := lint.NewFileLines("test.md", []byte(tc.src))
+			r1 := &Rule{Placeholders: tc.placeholders}
+			r2 := &Rule{Placeholders: tc.placeholders}
+			assert.Equal(t, r1.Check(astFile), r2.Check(lineFile),
+				"nil-AST diagnostics diverge from AST path")
+		})
+	}
 }

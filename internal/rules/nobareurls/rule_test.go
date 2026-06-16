@@ -5,6 +5,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -155,5 +156,58 @@ func TestCategory(t *testing.T) {
 	r := &Rule{}
 	if r.Category() == "" {
 		t.Error("expected non-empty category")
+	}
+}
+
+// TestInlineCapable_NoBareURLs covers the InlineCapable method (line 57 of
+// rule.go), which is called only by the engine's nil-AST dispatcher and is
+// otherwise skipped by direct Check() calls in unit tests.
+func TestInlineCapable_NoBareURLs(t *testing.T) {
+	r := &Rule{}
+	assert.True(t, r.InlineCapable())
+}
+
+// TestCheck_NilASTEquivalence pins the parse-skipped path (f.AST nil,
+// served from the Layer 1 per-block inline parse) byte-identical to the
+// AST path across the shapes the corpus exercises: plain prose, headings,
+// list items, links and autolinks (whose URLs must not be flagged), code
+// spans, and multi-line paragraphs.
+func TestCheck_NilASTEquivalence(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+	}{
+		{"prose-bare", "Visit https://example.com today\n"},
+		{"no-url", "just a plain paragraph\n"},
+		{"linked", "See [example](https://example.com) here\n"},
+		{"autolink", "See <https://example.com> here\n"},
+		{"code-span-url", "Run `https://example.com` here\n"},
+		{"heading-bare", "# See https://example.com\n"},
+		{"list-bare", "- visit https://a.com\n- and https://b.com\n"},
+		{"list-mixed", "- visit https://a.com\n- and [x](https://b.com)\n"},
+		{"link-text-url", "[https://example.com](https://example.com)\n"},
+		{"two-paragraphs", "first https://a.com\n\nsecond https://b.com\n"},
+		{"multiline-para", "line one https://a.com\nline two https://b.com\n"},
+		{"quote-bare", "> quoted https://example.com\n"},
+		{"http-and-https", "http://a.com and https://b.com\n"},
+		{"trailing-punct", "see https://example.com.\n"},
+		{"wrapped-list-url", "- see\n  https://example.com\n"},
+		{"bq-multiline-url", "> line one https://a.com\n> line two\n"},
+		{"url-in-html-block", "<div>\nhttps://x.com\n</div>\n"},
+		{"html-block-interrupt", "text https://a.com\n<div>raw</div>\nmore https://b.com\n"},
+		// "http" appears in the text but no full URL (no "://") follows, so
+		// urlNeedle matches but urlPattern finds no match — exercises the
+		// len(matches)==0 early return (lines 98-100 of rule.go).
+		{"http-no-url", "http scheme used here\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			astFile, err := lint.NewFile("test.md", []byte(tc.src))
+			require.NoError(t, err)
+			lineFile := lint.NewFileLines("test.md", []byte(tc.src))
+			r := &Rule{}
+			assert.Equal(t, r.Check(astFile), r.Check(lineFile),
+				"nil-AST diagnostics diverge from AST path")
+		})
 	}
 }

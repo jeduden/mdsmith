@@ -70,6 +70,28 @@ type BlockChecker interface {
 	BlockKinds() []lint.BlockKind
 }
 
+// InlineChecker is an optional capability for a NodeChecker rule whose
+// Check handles the parse-skipped path (f.AST nil) itself, by reading the
+// shared run-grouped inline parse (lint.InlineBlocks) instead of the tree.
+// The engine routes such a rule to its own Check on a nil-AST File rather
+// than dropping it (a NodeChecker that navigates the tree cannot run on a
+// nil AST) or forcing it onto the block-span dispatch (a rule reacting to
+// inline link/image markup needs the parsed inline nodes, not a block's
+// line span).
+//
+// Contract: on a nil-AST File, Check must return precisely the diagnostics
+// the rule's NodeChecker path would over the same document — same line,
+// column, message, severity — so the two paths are byte-identical (the
+// corpus and gate equivalence harnesses enforce this). InlineCapable is a
+// pure marker; its result must be constant for the life of the rule.
+type InlineChecker interface {
+	NodeChecker
+	// InlineCapable reports that this rule's Check serves the nil-AST
+	// path from lint.InlineBlocks. It is a marker only — the dispatch
+	// decision is made from it, no behaviour hangs off the value.
+	InlineCapable() bool
+}
+
 // WalkBlocks runs r.CheckBlock over the Layer 0 block scan of f,
 // dispatching only the spans whose Kind is in r.BlockKinds(), in
 // document order. A BlockChecker's standalone Check delegates here for

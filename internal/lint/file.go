@@ -110,6 +110,26 @@ type File struct {
 	layer0Done atomic.Bool
 	layer0Mu   sync.Mutex
 
+	// inlineIndex caches the byte-level inline scan (inline_index.go)
+	// behind InlineIndexProjection. It is the inline-projection source
+	// (code-span ranges) whenever f.AST is nil — the parse-skipped path —
+	// so CodeSpanContentRanges / CodeSpanLiteralRanges serve from it
+	// instead of walking f.AST. atomic.Bool + mutex matches the caches
+	// above for the same closure-box reason.
+	inlineIndex     *InlineIndex
+	inlineIndexDone atomic.Bool
+	inlineIndexMu   sync.Mutex
+
+	// inlineBlocks caches the run-grouped per-block inline parse
+	// (inline_blocks.go) behind InlineBlocks. It is the single shared
+	// inline-node stream every inline rule consumes on the parse-skipped
+	// path (f.AST nil), so each contiguous run of inline-bearing lines is
+	// parsed once per file rather than once per rule. atomic.Bool + mutex
+	// matches the caches above for the same closure-box reason.
+	inlineBlocks     []InlineBlock
+	inlineBlocksDone atomic.Bool
+	inlineBlocksMu   sync.Mutex
+
 	// proseRanges caches the byte-offset projection behind ProseRanges:
 	// the source spans inside prose nodes (paragraph, heading, list-item
 	// and blockquote text) with code blocks, code spans, HTML, autolinks
