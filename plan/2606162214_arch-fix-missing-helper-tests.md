@@ -3,7 +3,7 @@ id: 2606162214
 title: >-
   Add named unit tests for unexported
   helpers in new lazy-parse packages
-status: "🔲"
+status: "✅"
 model: sonnet
 depends-on: []
 summary: >-
@@ -68,22 +68,25 @@ names this pattern.
 
 ## Acceptance Criteria
 
-- [ ] `TestBlockKindInSet` in
+- [x] `TestBlockKindInSet` in
       `internal/rule/walk_test.go`.
-- [ ] `TestClassifyRules`,
+- [x] `TestClassifyRules`,
       `TestClassifySlot`,
       `TestBuildKindTable`,
       `TestBlockCheckerReactsTo`,
       `TestRunNonNodeCheckers`,
       `TestRunNodeCheckers`,
       `TestRunBlockCheckers` in
-      `internal/checker/checker_test.go`.
-- [ ] `TestScanNeedsFallback`,
+      `internal/checker/helpers_test.go`
+      (package-internal test file; the
+      helpers are unexported so a separate
+      `package checker` file is required).
+- [x] `TestScanNeedsFallback`,
       `TestParagraphHeadMayDefine`,
       `TestBuildLineSegments` in
       `internal/lint/linkrefscan_test.go`.
-- [ ] `TestBytesView` in
+- [x] `TestBytesView` in
       `internal/lint/codespans_test.go`.
-- [ ] `go test ./...` passes.
+- [x] `go test ./...` passes.
 - [ ] `go tool golangci-lint run`
       reports no issues.
