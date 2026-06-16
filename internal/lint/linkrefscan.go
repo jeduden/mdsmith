@@ -1,0 +1,152 @@
+package lint
+
+import (
+	"bytes"
+
+	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
+)
+
+// refDefMarker is the minimal byte sequence every link reference
+// definition contains: a `]` immediately followed by `:`. A paragraph
+// whose head holds no `]:` cannot open a definition, so the scanner
+// skips it without building any segments. A block quote or list line
+// holding `]:` is the fallback trigger (see scanLinkReferences).
+var refDefMarker = []byte("]:")
+
+// scanLinkReferences returns the link reference definitions in f by
+// scanning the head of every Layer 0 paragraph block, without a full
+// goldmark document parse. It mirrors goldmark's first-wins dedup: the
+// first definition for a normalised label survives, so paragraphs are
+// fed to the shared parser scanner in document order.
+//
+// The scanner only descends into top-level (Depth 0) paragraph blocks.
+// Definitions nested in a block quote or list item are real to goldmark
+// but invisible here, so a caller that needs full coverage must consult
+// scanNeedsFallback first and parse the document when it returns true.
+// scanLinkReferences itself returns whatever the paragraph heads yield;
+// LinkReferences applies the fallback gate.
+func scanLinkReferences(f *File) []Reference {
+	l0 := Layer0(f)
+	source := f.Source
+
+	// Build line segments lazily, only once a candidate paragraph is
+	// found, and reuse the same backing across candidates. Most
+	// documents reach the end without ever allocating it.
+	var allSegs []text.Segment
+	var view *text.Segments
+	ctx := parser.NewContext()
+
+	for _, span := range l0.BlockSpans {
+		if span.Kind != BlockParagraph || span.Depth != 0 {
+			continue
+		}
+		// Cheap reject: a paragraph whose first non-blank byte is not
+		// '[' cannot open a definition, and one with no `]:` anywhere in
+		// its first line cannot either. parseLinkReferenceDefinition will
+		// re-confirm; this only spares the segment build for prose.
+		if !paragraphHeadMayDefine(f, span) {
+			continue
+		}
+		if allSegs == nil {
+			allSegs = buildLineSegments(source)
+			view = text.NewSegments()
+		}
+		// span.Start/End are 1-based inclusive line numbers; allSegs is
+		// 0-indexed by line. A span may reference the trailing empty line
+		// bytes.Split appends, which has no segment, so clamp to len.
+		lo := span.Start - 1
+		hi := span.End
+		if hi > len(allSegs) {
+			hi = len(allSegs)
+		}
+		if lo < 0 || lo >= hi {
+			continue
+		}
+		view.SetBacking(allSegs[lo:hi], nil)
+		parser.ScanReferenceDefinitions(source, view, ctx)
+	}
+
+	return ctx.References()
+}
+
+// scanNeedsFallback reports whether f holds a block quote or list block
+// whose lines contain a `]:` marker — a place a link reference
+// definition could legally live that the paragraph-head scanner does not
+// descend into. When true, LinkReferences parses the whole document
+// instead of trusting the scanner, trading the parse for guaranteed
+// byte-identity on these rare shapes.
+func scanNeedsFallback(f *File) bool {
+	l0 := Layer0(f)
+	for _, span := range l0.BlockSpans {
+		if span.Kind != BlockQuote && span.Kind != BlockList {
+			continue
+		}
+		lo := span.Start - 1
+		hi := span.End
+		if hi > len(f.Lines) {
+			hi = len(f.Lines)
+		}
+		for i := lo; i >= 0 && i < hi; i++ {
+			if bytes.Contains(f.Lines[i], refDefMarker) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// paragraphHeadMayDefine reports whether the first line of the paragraph
+// span could open a link reference definition: its first non-space byte
+// is '[' and the line carries a `]:` marker. A laxer gate than
+// parseLinkReferenceDefinition, so it can only over-admit (falling
+// through to the full definition scan), never skip a real definition.
+func paragraphHeadMayDefine(f *File, span BlockSpan) bool {
+	idx := span.Start - 1
+	if idx < 0 || idx >= len(f.Lines) {
+		return false
+	}
+	line := f.Lines[idx]
+	i := 0
+	for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
+		i++
+	}
+	if i >= len(line) || line[i] != '[' {
+		return false
+	}
+	// The `]:` may be on a later line of a multi-line label, so check the
+	// whole span head region rather than only the first line.
+	hi := span.End
+	if hi > len(f.Lines) {
+		hi = len(f.Lines)
+	}
+	for j := idx; j < hi; j++ {
+		if bytes.Contains(f.Lines[j], refDefMarker) {
+			return true
+		}
+	}
+	return false
+}
+
+// buildLineSegments returns one Segment per source line, each spanning
+// [lineStart, nextLineStart) so its Stop includes the trailing newline —
+// the boundary goldmark's reader produces. A source not ending in a
+// newline yields a final segment to len(source). Pre-sized to the line
+// count so the build is a single allocation.
+func buildLineSegments(source []byte) []text.Segment {
+	n := bytes.Count(source, refScanNewline) + 1
+	segs := make([]text.Segment, 0, n)
+	start := 0
+	for i := 0; i < len(source); i++ {
+		if source[i] == '\n' {
+			segs = append(segs, text.NewSegment(start, i+1))
+			start = i + 1
+		}
+	}
+	if start < len(source) {
+		segs = append(segs, text.NewSegment(start, len(source)))
+	}
+	return segs
+}
+
+var refScanNewline = []byte{'\n'}

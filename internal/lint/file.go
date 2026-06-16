@@ -352,11 +352,19 @@ func NewFileLinesFromSource(path string, source []byte, stripFrontMatter bool) *
 }
 
 // LinkReferences returns the link reference definitions goldmark found
-// in this document. It is computed once and cached. On the normal path
-// it reads the context from the parse NewFile already performed (no
-// extra parse); a File built as a struct literal has no such context,
-// so the first call parses Source once. The returned slice is shared
-// read-only.
+// in this document. It is computed once and cached.
+//
+// Three paths, in priority order:
+//
+//  1. The File came from NewFile, so the parse already collected the
+//     references into parseCtx — read them, no extra work.
+//  2. The File has no parse context (the parse-skipped Layer 0/1 path,
+//     or a struct-literal File) AND its block structure is safe for the
+//     byte-level reference scanner (no `]:` nested in a block quote or
+//     list the scanner does not descend into) — scan the paragraph
+//     heads, no goldmark parse.
+//  3. Otherwise fall back to a single lazy full parse, which guarantees
+//     byte-identity for the rare nested-definition shapes.
 //
 // Memoised via the double-checked atomic.Bool + mutex pair rather
 // than sync.Once so the build path does not heap-allocate the
@@ -371,13 +379,25 @@ func (f *File) LinkReferences() []Reference {
 	defer f.linkRefsMu.Unlock()
 	if !f.linkRefsDone.Load() {
 		defer f.linkRefsDone.Store(true)
-		ctx := f.parseCtx
-		if ctx == nil {
-			ctx = parser.NewContext()
-			markdown.ParseContext(f.Source, ctx)
+		// The byte-level scanner reads f.Lines (via Layer0). A
+		// struct-literal File may carry Source without Lines; derive
+		// them once here so the scanner path is available to it too.
+		// Layer0 has not run yet for such a File, so populating Lines
+		// before its first use is race-free within this locked section.
+		if f.Lines == nil && f.Source != nil {
+			f.Lines = bytes.Split(f.Source, lineIndexNewline)
 		}
-		f.linkRefs = ctx.References()
-		f.parseCtx = nil // context no longer needed; let it GC
+		switch {
+		case f.parseCtx != nil:
+			f.linkRefs = f.parseCtx.References()
+			f.parseCtx = nil // context no longer needed; let it GC
+		case !scanNeedsFallback(f):
+			f.linkRefs = scanLinkReferences(f)
+		default:
+			ctx := parser.NewContext()
+			markdown.ParseContext(f.Source, ctx)
+			f.linkRefs = ctx.References()
+		}
 	}
 	return f.linkRefs
 }
