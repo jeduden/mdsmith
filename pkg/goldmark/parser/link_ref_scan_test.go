@@ -125,10 +125,12 @@ func TestScanReferenceDefinitions_EmptyIsNoop(t *testing.T) {
 		t.Fatalf("expected no refs from nil segments")
 	}
 
-	// Non-nil but empty *text.Segments must also be a no-op.
+	// Non-nil but empty *text.Segments must also be a no-op. Use a fresh
+	// context so a bug in the nil path doesn't shadow the error message.
+	ctx2 := parser.NewContext()
 	empty := text.NewSegments()
-	parser.ScanReferenceDefinitions([]byte("[a]: /a\n"), empty, ctx)
-	if len(ctx.References()) != 0 {
+	parser.ScanReferenceDefinitions([]byte("[a]: /a\n"), empty, ctx2)
+	if len(ctx2.References()) != 0 {
 		t.Fatalf("expected no refs from empty segments")
 	}
 	_ = ast.KindParagraph // keep ast import meaningful

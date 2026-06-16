@@ -67,10 +67,14 @@ func TestScanLinkReferences_Equivalence(t *testing.T) {
 	}
 }
 
-// TestScanLinkReferences_FallbackContainer checks that a definition
-// nested inside a block quote or list — which the byte scanner does not
-// descend into — triggers the full-parse fallback so the result still
-// matches the AST.
+// TestScanLinkReferences_FallbackContainer checks that cases the byte
+// scanner cannot handle correctly trigger the full-parse fallback so the
+// result still matches the AST. Two distinct reasons: block quotes and
+// loose list items hold definitions in a container the paragraph-head
+// scanner never visits; tight list continuations produce a false positive
+// (the scanner sees the continuation as a depth-0 paragraph) that
+// scanNeedsFallback suppresses by detecting the span immediately follows
+// a BlockList span.
 func TestScanLinkReferences_FallbackContainer(t *testing.T) {
 	cases := []string{
 		"> [a]: /a\n",
