@@ -780,7 +780,7 @@ func TestCheck_LinkImageStyle_EmptyAltImagePositionFallback(t *testing.T) {
 func TestAutolinkPosition_EmptyURL(t *testing.T) {
 	f := newFile(t, "# Doc\n\nbody\n")
 	al := ast.NewAutoLink(ast.AutoLinkURL, ast.NewTextSegment(text.NewSegment(0, 0)))
-	line, col := autolinkPosition(f, al)
+	line, col := autolinkPosition(f, al, 0)
 	assert.Equal(t, 1, line)
 	assert.Equal(t, 1, col)
 }
@@ -793,7 +793,7 @@ func TestAutolinkPosition_NotFoundFallsBack(t *testing.T) {
 	f := newFile(t, "# Doc\n\nbody\n")
 	al := ast.NewAutoLink(ast.AutoLinkURL, ast.NewTextSegment(text.NewSegment(0, 4)))
 	al.SetParent(ast.NewParagraph()) // block ancestor with no source lines
-	line, col := autolinkPosition(f, al)
+	line, col := autolinkPosition(f, al, 0)
 	assert.Equal(t, 1, line)
 	assert.Equal(t, 1, col)
 }
@@ -916,4 +916,65 @@ func newFile(t *testing.T, src string) *lint.File {
 	f, err := lint.NewFile("doc.md", []byte(src))
 	require.NoError(t, err)
 	return f
+}
+
+// TestCheck_NilASTMatchesAST pins the parse-skipped path byte-identical to
+// the AST path over link forms in inline edge cases: an inline link in a
+// heading, a reference link, an autolink, an inline image, a link inside
+// emphasis, and a link in a second paragraph (non-zero run base). The nil-AST
+// path re-derives the link set from the inline parse, so any divergence in
+// position, path, form, or link-image-style surfaces here.
+func TestCheck_NilASTMatchesAST(t *testing.T) {
+	allForbidden := LinkImageStyleConfig{Active: true}
+	cases := map[string]struct {
+		src  string
+		rule *Rule
+	}{
+		"absolute link in heading": {
+			src:  "# See [x](/docs/t.md)\n",
+			rule: &Rule{Links: LinksConfig{Style: StyleConfig{Path: "relative"}}},
+		},
+		"reference form": {
+			src:  "See [x][label].\n\n[label]: sub/t.md\n",
+			rule: &Rule{Links: LinksConfig{Style: StyleConfig{Form: "inline"}}},
+		},
+		"link in emphasis": {
+			src:  "A *[x](/abs/t.md)* tail.\n",
+			rule: &Rule{Links: LinksConfig{Style: StyleConfig{Path: "relative"}}},
+		},
+		"second paragraph link": {
+			src:  "First para.\n\nThen [x](/abs/t.md) here.\n",
+			rule: &Rule{Links: LinksConfig{Style: StyleConfig{Path: "relative"}}},
+		},
+		"autolink forbidden": {
+			src:  "Visit <https://example.com> now.\n",
+			rule: &Rule{Links: LinksConfig{Style: StyleConfig{LinkImageStyle: allForbidden}}},
+		},
+		"inline image forbidden": {
+			src:  "An ![alt](/i.png) image.\n",
+			rule: &Rule{Links: LinksConfig{Style: StyleConfig{LinkImageStyle: allForbidden}}},
+		},
+		"inline link forbidden": {
+			src:  "An [x](/t.md) link.\n",
+			rule: &Rule{Links: LinksConfig{Style: StyleConfig{LinkImageStyle: allForbidden}}},
+		},
+		"clean relative link": {
+			src:  "A [x](sub/t.md) link.\n",
+			rule: &Rule{Links: LinksConfig{Style: StyleConfig{Path: "relative"}}},
+		},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			fAST, err := lint.NewFile("test.md", []byte(c.src))
+			require.NoError(t, err)
+			astDiags := c.rule.Check(fAST)
+
+			fNil, err := lint.NewFile("test.md", []byte(c.src))
+			require.NoError(t, err)
+			fNil.AST = nil
+			nilDiags := c.rule.Check(fNil)
+
+			assert.Equal(t, astDiags, nilDiags)
+		})
+	}
 }

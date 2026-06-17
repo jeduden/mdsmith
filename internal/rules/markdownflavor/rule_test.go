@@ -349,3 +349,41 @@ func TestRuleFixIndentedLazyContinuation(t *testing.T) {
 	got := r.Fix(f)
 	assert.Equal(t, "  > lazy content\n", string(got))
 }
+
+// TestCheck_NilASTMatchesAST pins the parse-skipped path byte-identical to
+// the AST path over flavor-specific spans: a bare URL in prose (inline-run
+// detection), a bare URL inside emphasis, a GFM table and strikethrough
+// (dual-parser features, AST-independent), a GitHub alert blockquote (Layer 0
+// span detection), and a clean document. CommonMark rejects all of these, so
+// each fixture flags at least one feature on the AST path.
+func TestCheck_NilASTMatchesAST(t *testing.T) {
+	cases := map[string]string{
+		"bare url in prose":   "See https://example.com for details.\n",
+		"bare url in emphasis": "A *visit https://example.com now* tail.\n",
+		"gfm table":           "| a | b |\n| - | - |\n| 1 | 2 |\n",
+		"strikethrough":       "This is ~~struck~~ text.\n",
+		"github alert":        "> [!NOTE]\n> Body of the note.\n",
+		"bare url second para": "First paragraph.\n\nThen https://example.com here.\n",
+		"clean commonmark":    "# Title\n\nA paragraph of plain prose.\n",
+	}
+	for name, src := range cases {
+		t.Run(name, func(t *testing.T) {
+			mk := func() *Rule {
+				r := &Rule{}
+				require.NoError(t, r.ApplySettings(map[string]any{"flavor": "commonmark"}))
+				return r
+			}
+
+			fAST, err := lint.NewFile("test.md", []byte(src))
+			require.NoError(t, err)
+			astDiags := mk().Check(fAST)
+
+			fNil, err := lint.NewFile("test.md", []byte(src))
+			require.NoError(t, err)
+			fNil.AST = nil
+			nilDiags := mk().Check(fNil)
+
+			assert.Equal(t, astDiags, nilDiags)
+		})
+	}
+}

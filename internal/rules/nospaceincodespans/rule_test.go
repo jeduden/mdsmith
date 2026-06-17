@@ -397,3 +397,34 @@ func TestFix_BacktickPaddingAllocBudget(t *testing.T) {
 		t.Fatalf("Fix allocs per call: want ≤ 4, got %v (double-append allocates intermediate slice)", allocs)
 	}
 }
+
+// TestCheck_NilASTMatchesAST pins the parse-skipped path byte-identical to
+// the AST path over code spans in inline edge cases: a padded code span in a
+// heading, a code span inside emphasis, a code span holding bracket text, and
+// a second-paragraph span (non-zero run base). The nil-AST path maps the
+// run-local code-span bounds back to the document, so any divergence in the
+// inline re-parse surfaces here.
+func TestCheck_NilASTMatchesAST(t *testing.T) {
+	cases := map[string]string{
+		"padded span in heading": "# Use ` x ` now\n",
+		"span in emphasis":       "A *` y `* tail.\n",
+		"bracket text padded":    "Call ` a[0] ` here.\n",
+		"second paragraph":       "First para.\n\nSecond ` z ` para.\n",
+		"clean span":             "A `clean` span.\n",
+	}
+	r := &Rule{}
+	for name, src := range cases {
+		t.Run(name, func(t *testing.T) {
+			fAST, err := lint.NewFile("test.md", []byte(src))
+			require.NoError(t, err)
+			astDiags := r.Check(fAST)
+
+			fNil, err := lint.NewFile("test.md", []byte(src))
+			require.NoError(t, err)
+			fNil.AST = nil
+			nilDiags := r.Check(fNil)
+
+			assert.Equal(t, astDiags, nilDiags)
+		})
+	}
+}

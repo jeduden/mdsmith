@@ -98,6 +98,15 @@ func (r *Rule) DefaultSettings() map[string]any {
 // Check implements rule.Rule. It runs flavor.Detect with an accept
 // predicate that admits only features the configured flavor rejects,
 // then maps each resulting Finding into one engine diagnostic.
+//
+// On the parse-skipped path (f.AST nil) the two AST-walking detectors inside
+// flavor.Detect — bare URLs and GitHub alerts — surface nothing, so the rule
+// supplies their findings from the Layer 0 projections instead: bare URLs from
+// the shared run-grouped inline parse (lint.InlineBlocks) and alert
+// blockquotes from the Layer 0 BlockQuote spans. The dual-parser features
+// detect from the source body and need no AST either way. The union is sorted
+// by byte offset, matching flavor.Detect's own ordering, so the diagnostics
+// are byte-identical to the parsed path.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	if !r.Flavor.IsValid() {
 		return nil
@@ -107,6 +116,9 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	}
 	doc := &markdown.Document{Body: f.Source, AST: f.AST}
 	findings := flavor.Detect(doc, unsupported)
+	if f != nil && f.AST == nil {
+		findings = r.appendLayerFindings(f, unsupported, findings)
+	}
 	if len(findings) == 0 {
 		return nil
 	}
@@ -124,6 +136,50 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		})
 	}
 	return diags
+}
+
+// appendLayerFindings adds the bare-URL and GitHub-alert findings the AST-less
+// flavor.Detect could not produce, then re-sorts the union by byte offset to
+// match flavor.Detect's document-order output. base is the only path-specific
+// input: bare URLs come from each inline run's re-parse (mapped back with the
+// run base), alerts from the Layer 0 BlockQuote spans' first marker line. Each
+// detector runs only when the configured flavor rejects its feature, mirroring
+// flavor.Detect's accept gating.
+func (r *Rule) appendLayerFindings(
+	f *lint.File, accept func(flavor.Feature) bool, findings []flavor.Finding,
+) []flavor.Finding {
+	if accept(flavor.FeatureBareURLAutolinks) {
+		for _, blk := range lint.InlineBlocks(f) {
+			findings = append(findings,
+				flavor.BareURLFindingsInTree(f.Source, blk.Node, blk.Offset)...)
+		}
+	}
+	if accept(flavor.FeatureGitHubAlerts) {
+		findings = append(findings, alertFindingsFromSpans(f)...)
+	}
+	sort.SliceStable(findings, func(i, j int) bool {
+		return findings[i].Start < findings[j].Start
+	})
+	return findings
+}
+
+// alertFindingsFromSpans returns one GitHub-alert finding per Layer 0
+// BlockQuote span whose first line is a GFM alert marker (`> [!TOKEN]`). It is
+// the parse-skipped counterpart to flavor.detectGitHubAlerts: a blockquote
+// always carries a `>` so the parse-skip gate keeps such files on the parse
+// path in production, but the audit drives this branch directly, so it must
+// match the AST detector's anchor (the marker line, column 1).
+func alertFindingsFromSpans(f *lint.File) []flavor.Finding {
+	var out []flavor.Finding
+	for _, span := range lint.Layer0(f).BlockSpans {
+		if span.Kind != lint.BlockQuote {
+			continue
+		}
+		if flavor.IsAlertMarkerLine(f.Lines[span.Start-1]) {
+			out = append(out, flavor.AlertFinding(f.Source, f.LineStartOffset(span.Start-1)))
+		}
+	}
+	return out
 }
 
 // Fix implements rule.FixableRule. It first removes the [!TOKEN]

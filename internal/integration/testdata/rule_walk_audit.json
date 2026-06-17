@@ -365,8 +365,8 @@
   {
     "id": "MDS034",
     "name": "markdown-flavor",
-    "category": "ast-required",
-    "nil_ast_safe": false,
+    "category": "A-no-skipping",
+    "nil_ast_safe": true,
     "code_block_sensitive": false,
     "fired": true,
     "is_node_checker": false,
@@ -541,8 +541,8 @@
   {
     "id": "MDS050",
     "name": "proper-names",
-    "category": "ast-required",
-    "nil_ast_safe": false,
+    "category": "B-prose-only",
+    "nil_ast_safe": true,
     "code_block_sensitive": true,
     "fired": true,
     "is_node_checker": false,
@@ -563,8 +563,8 @@
   {
     "id": "MDS052",
     "name": "no-space-in-code-spans",
-    "category": "hybrid",
-    "nil_ast_safe": false,
+    "category": "B-prose-only",
+    "nil_ast_safe": true,
     "code_block_sensitive": true,
     "fired": true,
     "is_node_checker": true,
@@ -574,8 +574,8 @@
   {
     "id": "MDS053",
     "name": "no-unused-link-definitions",
-    "category": "hybrid",
-    "nil_ast_safe": false,
+    "category": "A-no-skipping",
+    "nil_ast_safe": true,
     "code_block_sensitive": false,
     "fired": true,
     "is_node_checker": false,
@@ -673,13 +673,13 @@
   {
     "id": "MDS063",
     "name": "descriptive-link-text",
-    "category": "hybrid",
-    "nil_ast_safe": false,
+    "category": "A-no-skipping",
+    "nil_ast_safe": true,
     "code_block_sensitive": false,
     "fired": true,
     "is_node_checker": true,
     "uses_ast_walk": true,
-    "reads_file_ast": false
+    "reads_file_ast": true
   },
   {
     "id": "MDS064",
@@ -728,8 +728,8 @@
   {
     "id": "MDS068",
     "name": "link-style",
-    "category": "hybrid",
-    "nil_ast_safe": false,
+    "category": "A-no-skipping",
+    "nil_ast_safe": true,
     "code_block_sensitive": false,
     "fired": true,
     "is_node_checker": false,

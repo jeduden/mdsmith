@@ -251,9 +251,184 @@ func normalizeMatches(matches []wrongMatch) []wrongMatch {
 	return out
 }
 
-// Check implements rule.Rule.
+// collectMatchesInline gathers wrong-cased matches on the parse-skipped path
+// (f.AST nil). It re-parses each inline run on demand (lint.InlineBlocks) and
+// applies the same node switch collectMatches applies on the tree, mapping
+// each run-local segment offset back to the document with the run base so the
+// scan reads f.Source at the same absolute positions. Code blocks and HTML
+// blocks carry no inline markup and are excluded from the runs, so they are
+// scanned separately from the Layer 0 block spans when check-code / check-html
+// is enabled — together reproducing the AST walk's match set.
+func (r *Rule) collectMatchesInline(f *lint.File) []wrongMatch {
+	entries := r.buildNameEntries()
+	if len(entries) == 0 {
+		return nil
+	}
+	var all []wrongMatch
+	for _, blk := range lint.InlineBlocks(f) {
+		base := blk.Offset
+		_ = ast.Walk(blk.Node, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+			if !entering {
+				return ast.WalkContinue, nil
+			}
+			switch v := n.(type) {
+			case *ast.AutoLink:
+				return ast.WalkSkipChildren, nil
+			case *ast.CodeSpan:
+				if r.CheckCode {
+					all = scanCodeSpanChildrenBase(entries, v, f, base, all)
+				}
+				return ast.WalkSkipChildren, nil
+			case *ast.RawHTML:
+				if r.CheckHTML {
+					all = scanRawHTMLSegmentsBase(entries, v, f, base, all)
+				}
+				return ast.WalkSkipChildren, nil
+			case *ast.Text:
+				all = scanTextSegmentBase(entries, v.Segment, f, base, all)
+			}
+			return ast.WalkContinue, nil
+		})
+	}
+	if r.CheckCode || r.CheckHTML {
+		all = r.scanBlockSpans(entries, f, all)
+	}
+	return all
+}
+
+// scanTextSegmentBase scans one run-local text segment at document position
+// base+seg.Start, appending matches to acc.
+func scanTextSegmentBase(entries []nameEntry, seg text.Segment, f *lint.File, base int, acc []wrongMatch) []wrongMatch {
+	abs := base + seg.Start
+	return append(acc, scanBytes(entries, f.Source[abs:base+seg.Stop], abs, f.Source)...)
+}
+
+// scanCodeSpanChildrenBase is scanCodeSpanChildren with a run base added to
+// each child's segment offset.
+func scanCodeSpanChildrenBase(entries []nameEntry, v *ast.CodeSpan, f *lint.File, base int, acc []wrongMatch) []wrongMatch {
+	for c := v.FirstChild(); c != nil; c = c.NextSibling() {
+		t, ok := c.(*ast.Text)
+		if !ok {
+			continue
+		}
+		acc = scanTextSegmentBase(entries, t.Segment, f, base, acc)
+	}
+	return acc
+}
+
+// scanRawHTMLSegmentsBase is scanRawHTMLSegments with a run base added to each
+// segment offset.
+func scanRawHTMLSegmentsBase(entries []nameEntry, v *ast.RawHTML, f *lint.File, base int, acc []wrongMatch) []wrongMatch {
+	for i := 0; i < v.Segments.Len(); i++ {
+		acc = scanTextSegmentBase(entries, v.Segments.At(i), f, base, acc)
+	}
+	return acc
+}
+
+// scanBlockSpans scans the body lines of the Layer 0 code and HTML block spans
+// that the inline runs exclude, so the parse-skipped path covers the same
+// FencedCodeBlock / CodeBlock / HTMLBlock content the AST walk's scanLines
+// covers. The body line range and per-line content offset mirror goldmark's
+// segment bounds: a fenced block excludes its fence lines and strips the
+// fence's leading indent, an indented block strips its four-space / tab
+// indent, and an HTML block keeps its lines verbatim — so each match lands at
+// the same document offset (and thus the same column) the AST path reports.
+func (r *Rule) scanBlockSpans(entries []nameEntry, f *lint.File, acc []wrongMatch) []wrongMatch {
+	for _, span := range lint.Layer0(f).BlockSpans {
+		switch span.Kind {
+		case lint.BlockFencedCode:
+			if r.CheckCode {
+				acc = r.scanFencedSpan(entries, f, span, acc)
+			}
+		case lint.BlockIndentedCode:
+			if r.CheckCode {
+				acc = r.scanIndentedSpan(entries, f, span, acc)
+			}
+		case lint.BlockHTML:
+			if r.CheckHTML {
+				acc = scanRawLines(entries, f, span.Start, span.End, acc)
+			}
+		}
+	}
+	return acc
+}
+
+// scanFencedSpan scans a fenced code block's body lines (fence lines excluded),
+// stripping the opening fence's leading indent from each body line so the
+// content offset matches goldmark's recorded segment.
+func (r *Rule) scanFencedSpan(entries []nameEntry, f *lint.File, span lint.BlockSpan, acc []wrongMatch) []wrongMatch {
+	bodyEnd := span.End
+	if span.Closed {
+		bodyEnd = span.End - 1
+	}
+	indent := leadingSpaces(f.Lines[span.Start-1])
+	for ln := span.Start + 1; ln <= bodyEnd; ln++ {
+		line := f.Lines[ln-1]
+		strip := indent
+		if n := leadingSpaces(line); n < strip {
+			strip = n
+		}
+		start := f.LineStartOffset(ln-1) + strip
+		acc = append(acc, scanBytes(entries, f.Source[start:start+len(line)-strip], start, f.Source)...)
+	}
+	return acc
+}
+
+// scanIndentedSpan scans an indented code block, stripping the leading
+// four-space / single-tab indent goldmark removes from each line.
+func (r *Rule) scanIndentedSpan(entries []nameEntry, f *lint.File, span lint.BlockSpan, acc []wrongMatch) []wrongMatch {
+	for ln := span.Start; ln <= span.End; ln++ {
+		line := f.Lines[ln-1]
+		strip := indentedStrip(line)
+		start := f.LineStartOffset(ln-1) + strip
+		acc = append(acc, scanBytes(entries, f.Source[start:start+len(line)-strip], start, f.Source)...)
+	}
+	return acc
+}
+
+// scanRawLines scans lines [from, to] (1-based inclusive) verbatim, at each
+// line's start offset.
+func scanRawLines(entries []nameEntry, f *lint.File, from, to int, acc []wrongMatch) []wrongMatch {
+	for ln := from; ln <= to; ln++ {
+		start := f.LineStartOffset(ln - 1)
+		acc = append(acc, scanBytes(entries, f.Lines[ln-1], start, f.Source)...)
+	}
+	return acc
+}
+
+// leadingSpaces counts the leading ASCII spaces of line.
+func leadingSpaces(line []byte) int {
+	n := 0
+	for n < len(line) && line[n] == ' ' {
+		n++
+	}
+	return n
+}
+
+// indentedStrip returns the byte count goldmark strips from an indented code
+// line: a leading tab, or up to four leading spaces.
+func indentedStrip(line []byte) int {
+	if len(line) > 0 && line[0] == '\t' {
+		return 1
+	}
+	n := 0
+	for n < 4 && n < len(line) && line[n] == ' ' {
+		n++
+	}
+	return n
+}
+
+// Check implements rule.Rule. On the parse-skipped path (f.AST nil) the match
+// set is gathered from the shared run-grouped inline parse and the Layer 0
+// block spans (collectMatchesInline) rather than the tree, byte-identical to
+// the AST walk.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
-	matches := normalizeMatches(r.collectMatches(f))
+	var matches []wrongMatch
+	if f != nil && f.AST == nil {
+		matches = normalizeMatches(r.collectMatchesInline(f))
+	} else {
+		matches = normalizeMatches(r.collectMatches(f))
+	}
 	if len(matches) == 0 {
 		return nil
 	}

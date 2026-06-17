@@ -87,10 +87,34 @@ func (r *Rule) DefaultSettings() map[string]any {
 // Check implements rule.Rule. The per-link logic is pure and
 // stateless, so it is expressed as CheckNode and the engine can fold
 // this rule into one shared AST walk; a direct call still works via
-// rule.WalkNodes.
+// rule.WalkNodes. On the parse-skipped path (f.AST nil) the AST walk
+// surfaces no link nodes, so the same per-link verdict runs over the links
+// of the shared run-grouped inline parse (lint.InlineBlocks), each link's
+// run-local segment offsets mapped back to the document with the run base so
+// the flagged text and line stay byte-identical to the AST walk.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	if len(r.Banned) == 0 {
+		return nil
+	}
+	if f != nil && f.AST == nil {
+		var diags []lint.Diagnostic
+		lint.WalkInlineNodes(f, func(n ast.Node, base int) {
+			if link, ok := n.(*ast.Link); ok {
+				if d, ok := r.verdict(link, f, base); ok {
+					diags = append(diags, d)
+				}
+			}
+		})
+		return diags
+	}
 	return rule.WalkNodes(r, f)
 }
+
+// InlineCapable implements rule.InlineChecker: Check serves the nil-AST path
+// from lint.WalkInlineNodes (which reads lint.InlineBlocks).
+func (r *Rule) InlineCapable() bool { return true }
+
+var _ rule.InlineChecker = (*Rule)(nil)
 
 // CheckNode implements rule.NodeChecker.
 func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
@@ -104,24 +128,34 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 	if !ok {
 		return nil
 	}
-	if isOnlyImageChild(link) || isOnlyCodeSpanChild(link) {
-		return nil
+	if d, ok := r.verdict(link, f, 0); ok {
+		return []lint.Diagnostic{d}
 	}
+	return nil
+}
 
-	text := collectLinkText(link, f.Source)
-	if !setutil.Contains(r.cachedBannedSet(), normalizeText(text)) {
-		return nil
+// verdict applies the non-descriptive-text check to one link. base maps the
+// link's run-local segment offsets onto f.Source: zero on the AST path, the
+// run's start offset on the nil-AST path. It returns the diagnostic for a
+// banned link text, or ok == false when the link is image-only / code-only or
+// its text is not banned.
+func (r *Rule) verdict(link *ast.Link, f *lint.File, base int) (lint.Diagnostic, bool) {
+	if isOnlyImageChild(link) || isOnlyCodeSpanChild(link) {
+		return lint.Diagnostic{}, false
 	}
-	line := linkLine(link, f)
-	return []lint.Diagnostic{{
+	text := collectLinkText(link, f.Source, base)
+	if !setutil.Contains(r.cachedBannedSet(), normalizeText(text)) {
+		return lint.Diagnostic{}, false
+	}
+	return lint.Diagnostic{
 		File:     f.Path,
-		Line:     line,
+		Line:     linkLine(link, f, base),
 		Column:   1,
 		RuleID:   r.ID(),
 		RuleName: r.Name(),
 		Severity: lint.Warning,
 		Message:  fmt.Sprintf("link text %q is not descriptive", text),
-	}}
+	}, true
 }
 
 // cachedBannedSet returns the lookup form of r.Banned, memoised on
@@ -189,36 +223,39 @@ func isOnlyCodeSpanChild(link *ast.Link) bool {
 }
 
 // collectLinkText returns all plain text within the link node, including
-// text nested inside emphasis or other inline formatting.
-func collectLinkText(n ast.Node, source []byte) string {
+// text nested inside emphasis or other inline formatting. base is added to
+// each Text segment's bounds so run-local offsets (the nil-AST path) read the
+// document; it is zero on the AST path.
+func collectLinkText(n ast.Node, source []byte, base int) string {
 	var b strings.Builder
-	collectText(&b, n, source)
+	collectText(&b, n, source, base)
 	return b.String()
 }
 
-func collectText(b *strings.Builder, n ast.Node, source []byte) {
+func collectText(b *strings.Builder, n ast.Node, source []byte, base int) {
 	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
 		if t, ok := c.(*ast.Text); ok {
-			b.Write(t.Segment.Value(source))
+			b.Write(source[base+t.Segment.Start : base+t.Segment.Stop])
 			if t.SoftLineBreak() || t.HardLineBreak() {
 				b.WriteByte(' ')
 			}
 		} else {
-			collectText(b, c, source)
+			collectText(b, c, source, base)
 		}
 	}
 }
 
 // linkLine returns the 1-based source line of the first text node inside
-// the link, falling back to 1 if none exists.
-func linkLine(link *ast.Link, f *lint.File) int {
-	line := 1
+// the link, falling back to the run's first line if none exists. base maps
+// the run-local Text segment offset onto the document.
+func linkLine(link *ast.Link, f *lint.File, base int) int {
+	line := f.LineOfOffset(base)
 	_ = ast.Walk(link, func(n ast.Node, _ bool) (ast.WalkStatus, error) {
 		t, ok := n.(*ast.Text)
 		if !ok {
 			return ast.WalkContinue, nil
 		}
-		line = f.LineOfOffset(t.Segment.Start)
+		line = f.LineOfOffset(base + t.Segment.Start)
 		return ast.WalkStop, nil
 	})
 	return line
