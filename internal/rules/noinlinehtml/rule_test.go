@@ -325,12 +325,12 @@ func TestRawHTMLBytes_ForceNewline(t *testing.T) {
 // as a different diagnostic set.
 func TestCheck_NilASTMatchesAST(t *testing.T) {
 	cases := map[string]string{
-		"html block":            "# Title\n\n<div>block content</div>\n",
-		"inline span":           "Some text <span>x</span> tail\n",
-		"self-closing inline":   "before<br/>after\n",
-		"inline in emphasis":    "a *strong <b>x</b>* tail\n",
-		"comment block":         "# Title\n\n<!-- a comment -->\n",
-		"clean prose":           "Just plain prose with no HTML.\n",
+		"html block":          "# Title\n\n<div>block content</div>\n",
+		"inline span":         "Some text <span>x</span> tail\n",
+		"self-closing inline": "before<br/>after\n",
+		"inline in emphasis":  "a *strong <b>x</b>* tail\n",
+		"comment block":       "# Title\n\n<!-- a comment -->\n",
+		"clean prose":         "Just plain prose with no HTML.\n",
 	}
 	for name, src := range cases {
 		t.Run(name, func(t *testing.T) {

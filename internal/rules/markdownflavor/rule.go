@@ -116,7 +116,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	}
 	doc := &markdown.Document{Body: f.Source, AST: f.AST}
 	findings := flavor.Detect(doc, unsupported)
-	if f != nil && f.AST == nil {
+	if f.AST == nil {
 		findings = r.appendLayerFindings(f, unsupported, findings)
 	}
 	if len(findings) == 0 {

@@ -358,13 +358,13 @@ func TestRuleFixIndentedLazyContinuation(t *testing.T) {
 // each fixture flags at least one feature on the AST path.
 func TestCheck_NilASTMatchesAST(t *testing.T) {
 	cases := map[string]string{
-		"bare url in prose":   "See https://example.com for details.\n",
+		"bare url in prose":    "See https://example.com for details.\n",
 		"bare url in emphasis": "A *visit https://example.com now* tail.\n",
-		"gfm table":           "| a | b |\n| - | - |\n| 1 | 2 |\n",
-		"strikethrough":       "This is ~~struck~~ text.\n",
-		"github alert":        "> [!NOTE]\n> Body of the note.\n",
+		"gfm table":            "| a | b |\n| - | - |\n| 1 | 2 |\n",
+		"strikethrough":        "This is ~~struck~~ text.\n",
+		"github alert":         "> [!NOTE]\n> Body of the note.\n",
 		"bare url second para": "First paragraph.\n\nThen https://example.com here.\n",
-		"clean commonmark":    "# Title\n\nA paragraph of plain prose.\n",
+		"clean commonmark":     "# Title\n\nA paragraph of plain prose.\n",
 	}
 	for name, src := range cases {
 		t.Run(name, func(t *testing.T) {

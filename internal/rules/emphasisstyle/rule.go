@@ -296,6 +296,7 @@ func (r *Rule) DefaultSettings() map[string]any {
 //     position that lands on an unrelated delimiter.
 //   - The computed position is out of bounds or does not contain a homogeneous
 //     run of '*' or '_' of length em.Level.
+//
 // emphInfo returns the delimiter byte and the run-local open-start index for
 // em. base maps the node's run-local segment offsets onto source so a byte
 // read lands on the document position: zero on the AST path, the run's start

@@ -152,7 +152,9 @@ func (r *Rule) checkFromLayers(f *lint.File) []lint.Diagnostic {
 // (matching node.Lines().At(0)), and the diagnostic anchors at the first `<`
 // on it, exactly as the AST branch does. It also returns that anchor offset so
 // the caller can order block and inline HTML findings by document position.
-func (r *Rule) checkHTMLBlockSpan(f *lint.File, allowed map[string]bool, span lint.BlockSpan) (lint.Diagnostic, int, bool) {
+func (r *Rule) checkHTMLBlockSpan(
+	f *lint.File, allowed map[string]bool, span lint.BlockSpan,
+) (lint.Diagnostic, int, bool) {
 	raw := f.Lines[span.Start-1]
 	offset := f.LineStartOffset(span.Start - 1)
 	if i := bytes.IndexByte(raw, '<'); i >= 0 {
