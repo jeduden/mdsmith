@@ -614,7 +614,7 @@ func layer0SkipEnabled() bool {
 }
 
 // layer0SkipEligible reports whether this file's run can skip the goldmark
-// parse and lint from the Layer 0 scan alone. Four conditions must hold:
+// parse and lint from the Layer 0 scan alone. Five conditions must hold:
 //
 //  1. The MDSMITH_LAYER0_SKIP toggle is set (default off).
 //  2. Every enabled rule resolves to Layer 0 (rulelayer.IsLayer0) — no
@@ -630,6 +630,11 @@ func layer0SkipEnabled() bool {
 //     so a quote-nested heading would be flagged on the AST path but missed
 //     on the parse-skip path; disqualifying quote-bearing files sidesteps
 //     that divergence.
+//  5. The source may contain no list (lint.SourceMayHaveList is false).
+//     The scanner records a list as a single BlockList span and does not
+//     descend into item bodies; a heading or fence nested inside a list
+//     item is invisible to the block scan while the AST path still flags
+//     it, so the same conservative gate applies.
 //
 // Code blocks no longer disqualify the skip: the skip File carries the flat
 // ClassifyLines code-line projection (which handles a fence or indent inside
@@ -649,6 +654,9 @@ func (r *Runner) layer0SkipEligible(
 		return false
 	}
 	if lint.SourceMayHaveBlockQuote(source) {
+		return false
+	}
+	if lint.SourceMayHaveList(source) {
 		return false
 	}
 	return allEnabledRulesSkipSafe(rules, effective)

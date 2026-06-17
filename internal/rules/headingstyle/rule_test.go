@@ -136,6 +136,23 @@ func TestFix_ATXToSetext(t *testing.T) {
 	}
 }
 
+// TestFix_IndentedATXToSetext pins the Fix output for a 1–3 space indented ATX
+// heading converted to setext style. The round-1 lineStartsWithHash fix made
+// Fix rewrite these headings (previously a no-op); this test locks in the
+// intended output so future changes cannot silently alter it.
+func TestFix_IndentedATXToSetext(t *testing.T) {
+	src := []byte("   # Indented H1\n\nSome text\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Style: "setext"}
+	result := r.Fix(f)
+	// The indent is dropped; the heading becomes a plain setext heading.
+	expected := "Indented H1\n===========\n\nSome text\n"
+	if string(result) != expected {
+		t.Errorf("expected %q, got %q", expected, string(result))
+	}
+}
+
 func TestID(t *testing.T) {
 	r := &Rule{}
 	if r.ID() != "MDS002" {
