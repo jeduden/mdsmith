@@ -376,7 +376,7 @@ func TestCheck_IndentedBlockInGeneratedRange_Skipped(t *testing.T) {
 func TestCheck_NilAST_SkipsBlocksInGeneratedRange(t *testing.T) {
 	fencedSrc := []byte("```go\ncode\n```\n")
 	f := lint.NewFileLines("f.md", fencedSrc)
-	f.GeneratedRanges = []lint.LineRange{{From: 1, To: 3}}
+	f.GeneratedRanges = []lint.LineRange{{From: 1, To: 1}}
 	assert.Empty(t, (&Rule{Style: "tilde"}).Check(f),
 		"fenced block in generated range skipped on L0 path")
 

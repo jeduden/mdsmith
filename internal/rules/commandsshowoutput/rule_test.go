@@ -334,6 +334,7 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 		[]byte("```sh\n$ ls\n```\n\nText.\n\n```sh\n$ ls\nfoo\n```\n"),
 		[]byte("   ```sh\n   $ cmd\n   ```\n"),
 		[]byte("```sh\n```\n"),
+		[]byte("```sh\n$ cmd\n"),
 	}
 	for i, src := range srcs {
 		t.Run(fmt.Sprintf("src%d", i), func(t *testing.T) {
@@ -350,7 +351,7 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 func TestCheckBlock_SkipsGeneratedRange_NilAST(t *testing.T) {
 	src := []byte("```sh\n$ ls\n```\n")
 	f := lint.NewFileLines("f.md", src)
-	f.GeneratedRanges = []lint.LineRange{{From: 1, To: 3}}
+	f.GeneratedRanges = []lint.LineRange{{From: 1, To: 1}}
 	assert.Empty(t, (&Rule{}).Check(f), "block in generated range skipped on L0 path")
 }
 
