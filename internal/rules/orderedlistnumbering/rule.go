@@ -119,6 +119,9 @@ func (r *Rule) checkListLines(f *lint.File, listStart int, itemLines []int) []li
 	var diags []lint.Diagnostic
 	startMismatch := listStart != r.Start
 	for i, line := range itemLines {
+		if line <= 0 {
+			continue
+		}
 		if i == 0 && startMismatch {
 			diags = append(diags, r.diag(f, line, fmt.Sprintf(
 				"ordered list starts at %d; configured start is %d",

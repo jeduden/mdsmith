@@ -75,6 +75,9 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 // top-level list's 1-based first and last source lines. A list whose edge
 // sits inside a code block is skipped, matching the AST path.
 func (r *Rule) verdict(f *lint.File, codeLines map[int]struct{}, listStartLine, listEndLine int) []lint.Diagnostic {
+	if listStartLine <= 0 || listEndLine <= 0 {
+		return nil
+	}
 	if lineInSet(codeLines, listStartLine) || lineInSet(codeLines, listEndLine) {
 		return nil
 	}

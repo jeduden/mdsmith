@@ -146,7 +146,7 @@ func (r *Rule) checkLayer0(f *lint.File) []lint.Diagnostic {
 		if span.Kind != lint.BlockQuote {
 			continue
 		}
-		token, line, col, ok := calloutTokenFromLine(f, span.Start)
+		token, line, col, ok := calloutTokenFromLine(f, span.Start, span.Depth)
 		if !ok || allowed[strings.ToLower(token)] {
 			continue
 		}
@@ -156,18 +156,24 @@ func (r *Rule) checkLayer0(f *lint.File) []lint.Diagnostic {
 }
 
 // calloutTokenFromLine reads the `[!type]` token from the 1-based source
-// line lineNum, stripping one blockquote marker level (up to 3 spaces, a
-// `>`, and one optional following space) to reach the paragraph content
-// goldmark feeds calloutRE on the AST path. The column is the 1-based
-// source column of the matched `[`, matching the AST path's
+// line lineNum, stripping depth blockquote marker levels to reach the
+// paragraph content goldmark feeds calloutRE on the AST path. The column
+// is the 1-based source column of the matched `[`, matching the AST path's
 // ColumnOfOffset(seg.Start + m[0]).
-func calloutTokenFromLine(f *lint.File, lineNum int) (token string, line, col int, ok bool) {
+func calloutTokenFromLine(f *lint.File, lineNum int, depth int) (token string, line, col int, ok bool) {
 	idx := lineNum - 1
 	if idx < 0 || idx >= len(f.Lines) {
 		return "", 0, 0, false
 	}
 	raw := f.Lines[idx]
-	contentStart := quoteMarkerLen(raw)
+	contentStart := 0
+	for i := 0; i < depth; i++ {
+		n := quoteMarkerLen(raw[contentStart:])
+		if n == 0 {
+			return "", 0, 0, false
+		}
+		contentStart += n
+	}
 	content := bytes.TrimRight(raw[contentStart:], "\r\n")
 	m := calloutRE.FindSubmatchIndex(content)
 	if m == nil {

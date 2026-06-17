@@ -187,9 +187,9 @@ func TestCheck_AllowSetCachedPerFileAfterApplySettings(t *testing.T) {
 // return ok==false without panicking.
 func TestCalloutTokenFromLine_OOBLine(t *testing.T) {
 	f := lint.NewFileLines("f.md", []byte("> [!NOTE]\n> body\n"))
-	_, _, _, ok := calloutTokenFromLine(f, 0)
+	_, _, _, ok := calloutTokenFromLine(f, 0, 1)
 	assert.False(t, ok, "lineNum 0 (idx -1) must return false")
-	_, _, _, ok = calloutTokenFromLine(f, 99)
+	_, _, _, ok = calloutTokenFromLine(f, 99, 1)
 	assert.False(t, ok, "lineNum past EOF must return false")
 }
 
@@ -216,6 +216,7 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 		"> [!info]\n\n> [!BOGUS]\n",
 		"- a list\n- of items\n\n> [!WAT]\n> body\n",
 		"text\n\n> [!UNKNOWN]\n",
+		"> > [!REVIEW]\n> > doubly nested\n",
 	}
 	for _, src := range srcs {
 		b := []byte(src)

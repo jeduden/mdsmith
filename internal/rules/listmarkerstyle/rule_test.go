@@ -329,6 +329,16 @@ func TestFirstLineOfListItem_ZeroForEmpty(t *testing.T) {
 	assert.Equal(t, 0, r.firstLineOfListItem(f, li))
 }
 
+// TestItemVerdict_ZeroLine covers the line<=0 early-return in itemVerdict,
+// reached when listscan emits an item with no content (empty marker).
+func TestItemVerdict_ZeroLine(t *testing.T) {
+	f, err := lint.NewFile("t.md", []byte("- item\n"))
+	require.NoError(t, err)
+	r := &Rule{Style: StyleDash}
+	_, ok := r.itemVerdict(f, 0, 0)
+	assert.False(t, ok, "line=0 must return no diagnostic")
+}
+
 // --- styleToMarker / markerToStyle ---
 
 // TestStyleToMarker pins every documented style branch including

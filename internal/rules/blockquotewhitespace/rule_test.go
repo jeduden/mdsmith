@@ -12,6 +12,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestCheck_NilFile(t *testing.T) {
+	assert.Nil(t, (&Rule{}).Check(nil))
+}
+
 // --- MD027: multiple spaces after blockquote marker ---
 
 func TestCheck_MD027_TwoSpaces(t *testing.T) {

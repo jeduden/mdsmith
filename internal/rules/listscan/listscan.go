@@ -207,9 +207,6 @@ func (p *parser) consumeFence(open int, fence fenceInfo) int {
 	openLine := open + 1
 	if len(p.stack) > 0 {
 		top := &p.stack[len(p.stack)-1]
-		if p.blankRun > 0 {
-			top.pendingBlank = true
-		}
 		top.blockCount++
 		top.pendingBlank = false
 		if top.blockCount > 1 {
