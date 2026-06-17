@@ -206,4 +206,9 @@ footer: |
 | 2606162214 | ✅     | sonnet | [Add named unit tests for unexported helpers in new lazy-parse packages](plan/2606162214_arch-fix-missing-helper-tests.md)              |
 | 2606171136 | 🔳     | opus   | [Parity perf: per-worker configured-rule cache + the Layer-0 path to gomarklint](plan/2606171136_parity-perf-configured-rule-cache.md)  |
 | 2606171258 | 🔳     | opus   | [Parity Layer-0 parse-skip: migrate the AST-forcing parity rules](plan/2606171258_parity-layer0-parse-skip.md)                          |
+| 2606171400 | 🔲     | opus   | [Parity parse-skip: unify the two Layer-0 gate mechanisms](plan/2606171400_parity-gate-unification.md)                                  |
+| 2606171401 | 🔲     | sonnet | [Parity parse-skip: migrate the Layer-0 heading and front-matter rules](plan/2606171401_parity-layer0-heading-rules.md)                 |
+| 2606171402 | 🔲     | sonnet | [Parity parse-skip: migrate the Layer-0 fenced-code rules](plan/2606171402_parity-layer0-fenced-code-rules.md)                          |
+| 2606171403 | 🔲     | opus   | [Parity parse-skip: migrate the Layer-0 list and blockquote rules](plan/2606171403_parity-layer0-list-quote-rules.md)                   |
+| 2606171404 | 🔲     | opus   | [Parity parse-skip: migrate the Layer-1 inline rules](plan/2606171404_parity-layer1-inline-rules.md)                                    |
 <?/catalog?>
