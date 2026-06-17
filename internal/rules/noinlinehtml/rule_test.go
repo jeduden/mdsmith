@@ -284,6 +284,13 @@ func TestRegisteredDefault_AllowCommentsTrue(t *testing.T) {
 		"registered MDS041 must have AllowComments=true to match DefaultSettings")
 }
 
+// TestInlineCapable pins that MDS041 implements rule.InlineChecker and returns true,
+// so the nil-AST engine path routes it through lint.InlineBlocks and Layer 0 spans.
+func TestInlineCapable(t *testing.T) {
+	r := &Rule{}
+	assert.True(t, r.InlineCapable())
+}
+
 func TestRawHTMLBytes_ZeroSegments(t *testing.T) {
 	// A freshly allocated RawHTML node has no segments; rawHTMLBytes must
 	// return nil rather than a non-nil empty slice.

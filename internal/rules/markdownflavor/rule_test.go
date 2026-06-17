@@ -356,6 +356,24 @@ func TestRuleFixIndentedLazyContinuation(t *testing.T) {
 // (dual-parser features, AST-independent), a GitHub alert blockquote (Layer 0
 // span detection), and a clean document. CommonMark rejects all of these, so
 // each fixture flags at least one feature on the AST path.
+// TestCheck_NilASTBlankBlockquote covers the firstQuoteParagraphLine false-return
+// branch: when a blockquote has only blank content lines (no paragraph text after
+// the '>' markers), alertFindingsFromSpans skips the span without flagging it.
+// This exercises the `if !ok { continue }` path inside alertFindingsFromSpans.
+func TestCheck_NilASTBlankBlockquote(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{"flavor": "commonmark"}))
+	// All-blank blockquote: every line has no content after '>'.
+	// firstQuoteParagraphLine iterates over all lines, finds none with non-blank
+	// content, and returns (0, false) — so no alert finding is produced.
+	src := ">\n>\n"
+	fNil, err := lint.NewFile("test.md", []byte(src))
+	require.NoError(t, err)
+	fNil.AST = nil
+	diags := r.Check(fNil)
+	assert.Empty(t, diags)
+}
+
 func TestCheck_NilASTMatchesAST(t *testing.T) {
 	cases := map[string]string{
 		"bare url in prose":    "See https://example.com for details.\n",

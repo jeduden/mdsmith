@@ -333,6 +333,17 @@ func TestApplySettings_InvalidCheckCode(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// TestCheck_EmptyNames_NilAST covers the early-return in collectMatchesInline
+// when Names is empty: with no configured names, Check on the nil-AST path
+// must return nil without walking any inline runs.
+func TestCheck_EmptyNames_NilAST(t *testing.T) {
+	f, err := lint.NewFile("test.md", []byte("Some Javascript text.\n"))
+	require.NoError(t, err)
+	f.AST = nil
+	r := &Rule{} // Names is nil/empty
+	assert.Nil(t, r.Check(f))
+}
+
 // TestCheck_NilASTMatchesAST pins the parse-skipped path byte-identical to
 // the AST path over proper-name runs in inline edge cases: a name in a
 // heading, a name in link text, a name inside emphasis, a name in a second

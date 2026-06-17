@@ -481,6 +481,7 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 		"duplicate definition": "See [a][label].\n\n[label]: /one\n[label]: /two\n",
 		"ref in nested link":   "Read *[see][lbl]* now.\n\n[lbl]: /url\n",
 		"all used no diag":     "Both [a][x] and [b][y].\n\n[x]: /1\n[y]: /2\n",
+		"image ref used":       "![alt][img].\n\n[img]: /photo.png\n",
 	}
 	for name, src := range cases {
 		t.Run(name, func(t *testing.T) {

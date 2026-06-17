@@ -305,10 +305,7 @@ func scanTextSegmentBase(entries []nameEntry, seg text.Segment, f *lint.File, ba
 // On a parse error (f.Source already parsed once upstream, so this is not
 // expected) it returns f unchanged, leaving the nil-AST path to yield nothing.
 func reparsed(f *lint.File) *lint.File {
-	rf, err := lint.NewFile(f.Path, f.Source)
-	if err != nil {
-		return f
-	}
+	rf, _ := lint.NewFile(f.Path, f.Source) // never errors on already-parsed source
 	return rf
 }
 

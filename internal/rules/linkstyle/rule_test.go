@@ -321,6 +321,7 @@ func invalidApplyCases() []applyErrCase {
 		{"links.style unknown key", styleWith(map[string]any{"unknown": "x"}), "unknown links.style setting"},
 		{"links unknown key", linksWith(map[string]any{"unknown": true}), "unknown links setting"},
 		{"links.external-skip not a list", linksWith(map[string]any{"external-skip": 42}), "links.external-skip"},
+		{"links.external-skip []any with non-string item", linksWith(map[string]any{"external-skip": []any{"ok", 42}}), "links.external-skip"},
 		{"links.style.path non-string", styleWith(map[string]any{"path": 42}), "links.style.path"},
 		{"links.style.extension non-string",
 			styleWith(map[string]any{"extension": 42}), "links.style.extension"},
@@ -960,6 +961,12 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 		},
 		"clean relative link": {
 			src:  "A [x](sub/t.md) link.\n",
+			rule: &Rule{Links: LinksConfig{Style: StyleConfig{Path: "relative"}}},
+		},
+		"external link skipped": {
+			// ParseTarget returns false for URLs with a scheme, so both paths
+			// skip the link — exercises the !ok branch in checkFromInline.
+			src:  "A [link](https://example.com) here.\n",
 			rule: &Rule{Links: LinksConfig{Style: StyleConfig{Path: "relative"}}},
 		},
 	}

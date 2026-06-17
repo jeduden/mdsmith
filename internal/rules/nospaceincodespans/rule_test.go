@@ -361,6 +361,13 @@ func TestFix_WhitespaceOnlyCodeSpan_NoChange(t *testing.T) {
 // Recover does not extend (source[0]=='X', not '`'), so
 // raw == seg == " `x` "; trim → "`x`"; append spaces →
 // " `x` " == raw; branch fires.
+// TestInlineCapable pins that MDS052 implements rule.InlineChecker and returns true,
+// so the nil-AST engine path routes it through lint.InlineBlocks.
+func TestInlineCapable(t *testing.T) {
+	r := &Rule{}
+	assert.True(t, r.InlineCapable())
+}
+
 func TestFix_TrimmedEqualsRaw_NoChange(t *testing.T) {
 	src := []byte("X `x` Y\n")
 	f := newFile(t, string(src))
