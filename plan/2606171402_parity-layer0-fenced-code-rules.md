@@ -64,7 +64,16 @@ For each rule:
       `CheckBlock` flags `!span.Closed`. `A-no-skipping`, corpus gate
       green, with a 10-case unit test for the closure edges the corpus
       barely exercises (lone fence, info-no-content, trailing blank).
-- [ ] MDS065 code-block-style, MDS066 commands-show-output.
+- [ ] MDS065 code-block-style: a whole-document consistency `Check` over
+      fenced *and* indented blocks with an inferred target style. The
+      nil-AST path collects blocks from `BlockFencedCode` and
+      `BlockIndentedCode` spans, then reuses `effectiveStyle`. Risk: the
+      `BlockIndentedCode` span must match goldmark on the indented-code
+      subtleties (a four-space indent inside a list is list content, not
+      code), so verify those spans against the AST before trusting them.
+- [ ] MDS066 commands-show-output: reads a shell fence's info string and
+      body lines (prompt/output structure); `CheckBlock` over the fenced
+      span, but confirm the body-line extraction matches the AST.
 
 ## Acceptance Criteria
 
