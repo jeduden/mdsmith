@@ -1,6 +1,7 @@
 package rulelayer
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -83,6 +84,47 @@ func TestAstProjectionConsumersAreNotLayer0(t *testing.T) {
 		assert.False(t, IsLayer0(id),
 			"%s consumes an AST-only projection; gate must not admit it", id)
 		assert.Equal(t, LayerAST, Of(id))
+	}
+}
+
+// TestKnownNilASTSafeAreLayer0 confirms every rule in the manual
+// knownNilASTSafe override resolves to Layer 0 even though its audit
+// category is not A-no-skipping. MDS069 (unique-frontmatter) is the
+// canonical entry: a cross-file rule the bad-fixture probe cannot fire, so
+// the audit leaves it inconclusive-not-fired, but it never reads f.AST.
+func TestKnownNilASTSafeAreLayer0(t *testing.T) {
+	for id := range knownNilASTSafe {
+		assert.True(t, IsLayer0(id), "%s is in knownNilASTSafe; must be Layer 0", id)
+		assert.Equal(t, Layer0, Of(id))
+	}
+	assert.True(t, knownNilASTSafe["MDS069"], "MDS069 must be in the override set")
+}
+
+// TestKnownNilASTSafeOnlyListsNonASTReaders guards the override's manual
+// commitment: a rule may only be force-classified Layer 0 here when its
+// audit manifest entry reports reads_file_ast: false. A rule that grows an
+// f.AST read trips its static signal and this test fails until the override
+// is reconsidered.
+func TestKnownNilASTSafeOnlyListsNonASTReaders(t *testing.T) {
+	oracle, err := os.ReadFile(filepath.Join(
+		"..", "integration", "testdata", "rule_walk_audit.json"))
+	require.NoError(t, err)
+
+	var entries []struct {
+		ID           string `json:"id"`
+		ReadsFileAST bool   `json:"reads_file_ast"`
+	}
+	require.NoError(t, json.Unmarshal(oracle, &entries))
+
+	readsAST := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		readsAST[e.ID] = e.ReadsFileAST
+	}
+	for id := range knownNilASTSafe {
+		_, present := readsAST[id]
+		assert.True(t, present, "%s in knownNilASTSafe must appear in the audit manifest", id)
+		assert.False(t, readsAST[id],
+			"%s in knownNilASTSafe must have reads_file_ast: false", id)
 	}
 }
 
