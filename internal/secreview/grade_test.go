@@ -203,9 +203,9 @@ func TestForbidFailures_NormSeverityAllocs(t *testing.T) {
 	allocs := testing.AllocsPerRun(20, func() {
 		_ = forbidFailures(fs, forbid)
 	})
-	// fmt.Sprintf boxing of three struct-field strings (3) + result string (1) = 4
-	// A per-call map adds 1 extra alloc; this gate fails until the map is replaced
-	// with a linear search over the ≤5-element forbid list.
+	// strconv.Quote×2 (2 allocs) + concat result (1 alloc) ≤ 4 total.
+	// The old map-based implementation added 1 extra alloc (map construction);
+	// this gate fails until the map is replaced with a linear search.
 	assert.LessOrEqualf(t, allocs, float64(4),
 		"forbidFailures must not build a map per call; got %.0f allocs (want ≤4)", allocs)
 }
