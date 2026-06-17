@@ -208,7 +208,7 @@ footer: |
 | 2606171258 | 🔳     | opus   | [Parity Layer-0 parse-skip: migrate the AST-forcing parity rules](plan/2606171258_parity-layer0-parse-skip.md)                          |
 | 2606171400 | ✅     | opus   | [Parity parse-skip: unify the two Layer-0 gate mechanisms](plan/2606171400_parity-gate-unification.md)                                  |
 | 2606171401 | 🔲     | opus   | [Parity parse-skip: migrate the Layer-0 heading and front-matter rules](plan/2606171401_parity-layer0-heading-rules.md)                 |
-| 2606171402 | 🔳     | sonnet | [Parity parse-skip: migrate the Layer-0 fenced-code rules](plan/2606171402_parity-layer0-fenced-code-rules.md)                          |
+| 2606171402 | ✅     | sonnet | [Parity parse-skip: migrate the Layer-0 fenced-code rules](plan/2606171402_parity-layer0-fenced-code-rules.md)                          |
 | 2606171403 | 🔲     | opus   | [Parity parse-skip: migrate the Layer-0 list and blockquote rules](plan/2606171403_parity-layer0-list-quote-rules.md)                   |
 | 2606171404 | 🔲     | opus   | [Parity parse-skip: migrate the Layer-1 inline rules](plan/2606171404_parity-layer1-inline-rules.md)                                    |
 | 2606171532 | ⛔     | opus   | [Parity perf: fuse the per-line rules into one shared line pass](plan/2606171532_parity-line-rule-fusion.md)                            |

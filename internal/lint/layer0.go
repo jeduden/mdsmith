@@ -104,10 +104,16 @@ type Layer0Scan struct {
 	// Classes and BlockSpans are the per-line classification and the
 	// ordered block list. BlockSpans is now load-bearing in production:
 	// rule.WalkBlocks drives every rule.BlockChecker (e.g. MDS002
-	// heading-style, MDS015 blank-line-around-fenced-code) over these spans
-	// on the parse-skipped path, so the block-kind dispatch that fills them
-	// must stay byte-faithful to goldmark — a change here can alter shipped
-	// diagnostics. Classes remains internal scaffolding for the scan.
+	// heading-style, MDS010 fenced-code-style, MDS011 fenced-code-language,
+	// MDS013 blank-line-around-headings, MDS015 blank-line-around-fenced-code,
+	// MDS031 unclosed-code-block, MDS065 code-block-style, MDS066
+	// commands-show-output) over these spans on the parse-skipped path, so
+	// the block-kind dispatch that fills them must stay byte-faithful to
+	// goldmark — a change here can alter shipped diagnostics. Classes remains
+	// internal scaffolding for the scan.
+	// Note: fenced code blocks nested inside block quotes are not emitted
+	// as BlockFencedCode spans — tryBlockquote maps only CodeBlockLines.
+	// Rules that need nested blocks must force the AST parse.
 
 	// Classes holds one lineClass per source line, indexed by (line-1).
 	Classes []lineClass
