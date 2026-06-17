@@ -193,6 +193,16 @@ func TestCalloutTokenFromLine_OOBLine(t *testing.T) {
 	assert.False(t, ok, "lineNum past EOF must return false")
 }
 
+// TestCalloutTokenFromLine_DepthExceedsMarkers covers the early-return in
+// calloutTokenFromLine when depth exceeds the actual number of blockquote
+// markers on the line (quoteMarkerLen returns 0 before depth is reached).
+func TestCalloutTokenFromLine_DepthExceedsMarkers(t *testing.T) {
+	// Line has only one level of `>` but depth=2 is requested.
+	f := lint.NewFileLines("f.md", []byte("> [!NOTE]\n> body\n"))
+	_, _, _, ok := calloutTokenFromLine(f, 1, 2)
+	assert.False(t, ok, "depth greater than actual marker count must return false")
+}
+
 // TestQuoteMarkerLen_NoMarker covers quoteMarkerLen returning 0 when the
 // line has no '>' (e.g. all spaces, or non-quote content).
 func TestQuoteMarkerLen_NoMarker(t *testing.T) {
@@ -217,6 +227,7 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 		"- a list\n- of items\n\n> [!WAT]\n> body\n",
 		"text\n\n> [!UNKNOWN]\n",
 		"> > [!REVIEW]\n> > doubly nested\n",
+		"> outer\n> > [!BOGUS]\n> > body\n",
 	}
 	for _, src := range srcs {
 		b := []byte(src)

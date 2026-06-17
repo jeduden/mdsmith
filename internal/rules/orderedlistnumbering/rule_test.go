@@ -576,6 +576,7 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 		{src: "1. a\n   ```\n   code\n   ```\n1. b\n", style: "sequential", start: 1},
 		{src: "# Title\n\n1. one\n1. two\n", style: "sequential", start: 1},
 		{src: "- bullets not flagged\n- b\n1. ordered\n2. b\n", style: "sequential", start: 1},
+		{src: "1.\n2. text\n", style: "sequential", start: 1},
 	}
 	for _, tc := range cases {
 		src := []byte(tc.src)

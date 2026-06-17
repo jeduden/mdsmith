@@ -284,6 +284,7 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 		[]byte("```\n- not a list, in code\n```\ntext\n"),
 		[]byte("# H\n\n- only item\n"),
 		[]byte("1. one\n2. two\nimmediately after\n"),
+		[]byte("text\n-\n-\ntext\n"),
 	}
 	for _, src := range srcs {
 		astFile, err := lint.NewFile("f.md", src)

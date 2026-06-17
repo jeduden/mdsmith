@@ -132,27 +132,59 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	return diags
 }
 
-// checkLayer0 is the nil-AST counterpart of the AST walk. It reads the
-// callout token from each Layer 0 BlockQuote span's first line. The
-// AST path examines the blockquote's first paragraph's first line; a
-// BlockQuote span's Start is that same line, so stripping one quote
-// marker level off it and matching calloutRE reproduces the AST's
-// calloutToken byte-for-byte, including the column (the source column
-// of the `[!` token).
+// checkLayer0 is the nil-AST counterpart of the AST walk. It scans
+// source lines directly, tracking blockquote nesting depth. A line
+// whose depth d exceeds the previous non-blank line's depth marks the
+// opening line of a nested blockquote at depth d; calloutRE is applied
+// to its content, matching what the AST path extracts from each
+// blockquote node's first paragraph. Code-block lines are skipped.
+//
+// This line-by-line approach is necessary because Layer0 emits only one
+// BlockQuote span per outermost blockquote run; inner nested spans live
+// only in the throwaway recursive scan and are never surfaced.
 func (r *Rule) checkLayer0(f *lint.File) []lint.Diagnostic {
 	allowed := r.cachedAllowSet(f)
+	codeLines := lint.CollectCodeBlockLines(f)
 	var diags []lint.Diagnostic
-	for _, span := range lint.Layer0(f).BlockSpans {
-		if span.Kind != lint.BlockQuote {
+	prevDepth := 0
+	for lineNum := 1; lineNum <= len(f.Lines); lineNum++ {
+		if _, inCode := codeLines[lineNum]; inCode {
+			prevDepth = 0
 			continue
 		}
-		token, line, col, ok := calloutTokenFromLine(f, span.Start, span.Depth)
+		d := lineQuoteDepth(f.Lines[lineNum-1])
+		if d == 0 {
+			prevDepth = 0
+			continue
+		}
+		if d <= prevDepth {
+			prevDepth = d
+			continue
+		}
+		// d > prevDepth: first content line at this nesting depth.
+		token, line, col, ok := calloutTokenFromLine(f, lineNum, d)
 		if !ok || allowed[strings.ToLower(token)] {
+			prevDepth = d
 			continue
 		}
 		diags = append(diags, r.unknownTypeDiag(f.Path, line, col, token))
+		prevDepth = d
 	}
 	return diags
+}
+
+// lineQuoteDepth counts the number of consecutive blockquote marker
+// levels (stripped one at a time by quoteMarkerLen) on a raw line.
+func lineQuoteDepth(line []byte) int {
+	d, offset := 0, 0
+	for {
+		n := quoteMarkerLen(line[offset:])
+		if n == 0 {
+			return d
+		}
+		d++
+		offset += n
+	}
 }
 
 // calloutTokenFromLine reads the `[!type]` token from the 1-based source
