@@ -37,7 +37,10 @@ func (r *Rule) Category() string { return "code" }
 // On a parse-skipped File (f.AST nil) it reads the Layer 0 block scan
 // (rule.WalkBlocks).
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
-	if f != nil && f.AST == nil {
+	if f == nil {
+		return nil
+	}
+	if f.AST == nil {
 		return rule.WalkBlocks(r, f)
 	}
 	return rule.WalkNodes(r, f)
@@ -285,6 +288,7 @@ func inGeneratedRange(f *lint.File, line int) bool {
 
 var _ rule.FixableRule = (*Rule)(nil)
 var _ rule.NodeChecker = (*Rule)(nil)
+var _ rule.QuickFixTitler = (*Rule)(nil)
 
 // FixTitle implements rule.QuickFixTitler.
 func (r *Rule) FixTitle() string { return "Strip $ prefixes from commands" }

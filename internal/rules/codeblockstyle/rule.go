@@ -77,6 +77,11 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 // lint.Layer0(f).BlockSpans instead of walking the goldmark AST.
 // The lastLine and topLevel fields are not populated — they are only consumed
 // by the Fix path, which requires an AST.
+// Limitation: fenced or indented blocks nested inside block quotes are not
+// emitted as BlockFencedCode/BlockIndentedCode spans by the Layer 0 scanner
+// (see layer0.go). Such blocks are invisible to this path and won't be
+// counted in the consistency check. Files with only blockquote-nested
+// code blocks may silently pass or fail incorrectly on the L0 path.
 func collectBlocksL0(f *lint.File) []blockInfo {
 	var blocks []blockInfo
 	for _, span := range lint.Layer0(f).BlockSpans {

@@ -266,6 +266,10 @@ func TestSplitLeadingWhitespace(t *testing.T) {
 
 // --- Defensive paths ---
 
+func TestCheck_NilFile_NoDiagnostics(t *testing.T) {
+	assert.Nil(t, (&Rule{}).Check(nil))
+}
+
 func TestFix_NilFile_ReturnsNil(t *testing.T) {
 	r := &Rule{}
 	assert.Nil(t, r.Fix(nil))
