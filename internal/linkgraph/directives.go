@@ -1,6 +1,7 @@
 package linkgraph
 
 import (
+	"bytes"
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
@@ -265,11 +266,7 @@ func lineOfOffset(source []byte, offset int) int {
 	if offset > len(source) {
 		offset = len(source)
 	}
-	line := 1
-	for i := 0; i < offset; i++ {
-		if source[i] == '\n' {
-			line++
-		}
-	}
-	return line
+	// bytes.Count special-cases a one-byte separator to a SIMD byte count;
+	// a hand-rolled scan loop is not vectorized.
+	return 1 + bytes.Count(source[:offset], []byte{'\n'})
 }

@@ -413,13 +413,9 @@ func lineOfBodyOffset(body []byte, off int) int {
 	if off > len(body) {
 		off = len(body)
 	}
-	line := 1
-	for i := 0; i < off; i++ {
-		if body[i] == '\n' {
-			line++
-		}
-	}
-	return line
+	// bytes.Count special-cases a one-byte separator to a SIMD byte count;
+	// a hand-rolled scan loop is not vectorized.
+	return 1 + bytes.Count(body[:off], []byte{'\n'})
 }
 
 // bodyLineIndex precomputes every line-start offset so a rename

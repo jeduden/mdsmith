@@ -460,14 +460,23 @@ func collectRefDefLines(source []byte) map[int]struct{} {
 	lines := make(map[int]struct{})
 	lineNum := 1
 	start := 0
-	for i := 0; i <= len(source); i++ {
-		if i == len(source) || source[i] == '\n' {
-			if refDefLineStarts(source, start, i) {
-				lines[lineNum] = struct{}{}
-			}
-			lineNum++
-			start = i + 1
+	// Walk line by line with bytes.IndexByte (SIMD) rather than a
+	// non-vectorized byte-at-a-time scan; the final iteration (no newline)
+	// processes the trailing segment, matching the old i==len(source) case.
+	for start <= len(source) {
+		nl := bytes.IndexByte(source[start:], '\n')
+		end := len(source)
+		if nl >= 0 {
+			end = start + nl
 		}
+		if refDefLineStarts(source, start, end) {
+			lines[lineNum] = struct{}{}
+		}
+		lineNum++
+		if nl < 0 {
+			break
+		}
+		start = end + 1
 	}
 	return lines
 }
