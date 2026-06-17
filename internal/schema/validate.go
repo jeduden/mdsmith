@@ -785,8 +785,8 @@ func outOfOrderDiag(heading, expectedAfter string, sch *Schema) SchemaDiagnostic
 func levelMismatchSchemaDiag(text string, expectedLevel, actualLevel int, sch *Schema) SchemaDiagnostic {
 	return SchemaDiagnostic{
 		Field:     text,
-		Actual:    fmt.Sprintf("h%d", actualLevel),
-		Expected:  fmt.Sprintf("h%d", expectedLevel),
+		Actual:    "h" + strconv.Itoa(actualLevel),
+		Expected:  "h" + strconv.Itoa(expectedLevel),
 		SchemaRef: schemaRef(sch, ""),
 	}
 }

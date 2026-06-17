@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -106,21 +107,29 @@ func Grade(fs []Finding, c Constraints) []string {
 }
 
 // forbidFailures returns one failure per finding whose severity is in the
-// forbidden set.
+// forbidden set. fs must have been normalised by ValidateFindings (all
+// severities lowercase); forbid comes from BuildConstraints which normalises
+// on construction, so a direct string comparison is safe.
+//
+// Performance notes: the ≤5-entry forbid list is scanned linearly (no map
+// needed), and strconv.Quote + string concatenation is used instead of
+// fmt.Sprintf to avoid boxing three struct-field strings into interface{},
+// which otherwise costs three extra heap allocations per matched finding.
 func forbidFailures(fs []Finding, forbid []string) []string {
 	if len(forbid) == 0 {
 		return nil
 	}
-	banned := make(map[string]bool, len(forbid))
-	for _, s := range forbid {
-		banned[s] = true
-	}
 	var out []string
 	for i := range fs {
 		f := &fs[i]
-		if banned[strings.ToLower(f.Severity)] {
-			out = append(out, fmt.Sprintf("forbidden severity %q in finding %s (%q)",
-				f.Severity, orDefault(f.ID, "?"), f.Title))
+		for _, sev := range forbid {
+			if f.Severity == sev {
+				msg := "forbidden severity " + strconv.Quote(f.Severity) +
+					" in finding " + orDefault(f.ID, "?") +
+					" (" + strconv.Quote(f.Title) + ")"
+				out = append(out, msg)
+				break
+			}
 		}
 	}
 	return out
@@ -136,7 +145,7 @@ func requireFailure(fs []Finding, c Constraints) string {
 	floor := severityRank[c.RequireMinSeverity]
 	for i := range fs {
 		f := &fs[i]
-		if severityRank[strings.ToLower(f.Severity)] < floor {
+		if severityRank[f.Severity] < floor {
 			continue
 		}
 		if c.RequireLocationFile != "" && primaryFile(f) != c.RequireLocationFile {
