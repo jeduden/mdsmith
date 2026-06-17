@@ -1,7 +1,7 @@
 ---
 id: 2606171402
 title: "Parity parse-skip: migrate the Layer-0 fenced-code rules"
-status: "🔲"
+status: "🔳"
 summary: >-
   Add a nil-AST path to the parity rules that read only a fenced code
   block's fence lines — MDS010 fenced-code-style, MDS011
@@ -51,6 +51,17 @@ For each rule:
    [rulelayer copy](../internal/rulelayer/rule_walk_audit.json).
 4. Add a `TestCheck_NilASTMatchesAST` unit test with code-bearing
    inputs, including a fence inside a list item.
+
+## Result so far
+
+- [x] MDS010 fenced-code-style: `CheckBlock` reads the fence character
+      from the `BlockFencedCode` span's opening line; `A-no-skipping`,
+      corpus gate green.
+- [x] MDS011 fenced-code-language: `CheckBlock` reads the info string
+      from the opening line; `A-no-skipping`, corpus gate green.
+- [ ] MDS031 unclosed-code-block: needs closed-vs-EOF detection from the
+      span (the span end is a closing fence or the end of file).
+- [ ] MDS065 code-block-style, MDS066 commands-show-output.
 
 ## Acceptance Criteria
 

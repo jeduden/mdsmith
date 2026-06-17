@@ -5,8 +5,33 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestCheck_NilASTMatchesAST pins the Layer-0 migration: Check on a
+// nil-AST File (the parse-skip path, via CheckBlock over the block scan)
+// must produce byte-identical diagnostics to the AST path, for both fence
+// styles and for fences that are and aren't the wanted character.
+func TestCheck_NilASTMatchesAST(t *testing.T) {
+	srcs := [][]byte{
+		[]byte("# H\n\n```go\ncode\n```\n"),
+		[]byte("# H\n\n~~~go\ncode\n~~~\n"),
+		[]byte("# H\n\ntext\n\n```\nplain\n```\n\nmore\n"),
+		[]byte("# H\n\n   ```indented fence\ncode\n   ```\n"),
+		[]byte("# H\n\n````\nnested ``` ticks\n````\n"),
+	}
+	for _, style := range []string{"backtick", "tilde"} {
+		for _, src := range srcs {
+			astFile, err := lint.NewFile("f.md", src)
+			require.NoError(t, err)
+			astDiags := (&Rule{Style: style}).Check(astFile)
+			l0Diags := (&Rule{Style: style}).Check(lint.NewFileLines("f.md", src))
+			assert.Equal(t, astDiags, l0Diags,
+				"nil-AST must match AST for style=%s src=%q", style, string(src))
+		}
+	}
+}
 
 func TestCheck_BacktickDefault_NoViolation(t *testing.T) {
 	src := []byte("# Hello\n\n```go\nfmt.Println()\n```\n")

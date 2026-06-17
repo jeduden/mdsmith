@@ -101,8 +101,8 @@
   {
     "id": "MDS010",
     "name": "fenced-code-style",
-    "category": "hybrid",
-    "nil_ast_safe": false,
+    "category": "A-no-skipping",
+    "nil_ast_safe": true,
     "code_block_sensitive": false,
     "fired": true,
     "is_node_checker": true,
@@ -112,13 +112,13 @@
   {
     "id": "MDS011",
     "name": "fenced-code-language",
-    "category": "hybrid",
-    "nil_ast_safe": false,
+    "category": "A-no-skipping",
+    "nil_ast_safe": true,
     "code_block_sensitive": false,
     "fired": true,
     "is_node_checker": true,
     "uses_ast_walk": false,
-    "reads_file_ast": false
+    "reads_file_ast": true
   },
   {
     "id": "MDS012",
