@@ -477,6 +477,16 @@ func TestCheck_EmptyH1_UnknownOffset_ConservativelyKept(t *testing.T) {
 	assert.Equal(t, "extra H1 heading; only one H1 is allowed per file", diags[0].Message)
 }
 
+// TestFix_NilAST_ReturnsSource verifies Fix returns the original source unchanged
+// when called on a nil-AST file (the parse-skip path). Fix cannot demote headings
+// without AST node positions, so it is a no-op on the nil-AST path.
+func TestFix_NilAST_ReturnsSource(t *testing.T) {
+	src := "# First\n\n# Second\n"
+	f := lint.NewFileLines("test.md", []byte(src))
+	got := (&Rule{}).Fix(f)
+	assert.Equal(t, src, string(got))
+}
+
 // TestFix_InnerAppendAllocBudget verifies Fix does not allocate a temporary
 // intermediate slice per replaced heading. One heading demotion should cost
 // one buffer allocation, not two.
