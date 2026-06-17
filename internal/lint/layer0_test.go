@@ -653,10 +653,10 @@ func TestSourceMayHaveBlockQuote(t *testing.T) {
 	// Sources that may hold a block quote — the coarse `>` scan also trips on
 	// a `>` in prose, an autolink, or raw HTML, which is the sound direction.
 	for _, src := range []string{
-		"> # Quoted heading\n",       // the divergence class
-		"> a quote\n",                // prose quote
+		"> # Quoted heading\n",        // the divergence class
+		"> a quote\n",                 // prose quote
 		"intro\n\n> nested\n> more\n", // multi-line quote
-		"a > b in prose\n",           // bare `>` (over-triggers, still sound)
+		"a > b in prose\n",            // bare `>` (over-triggers, still sound)
 	} {
 		assert.True(t, SourceMayHaveBlockQuote([]byte(src)),
 			"expected may-have-quote: %q", src)
