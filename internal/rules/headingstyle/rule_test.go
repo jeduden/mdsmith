@@ -35,6 +35,21 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 	}
 }
 
+// TestAtxLevelFromLine covers the leading-`#` count the Layer-0 path
+// reads, including the up-to-three leading spaces goldmark allows before
+// an ATX heading.
+func TestAtxLevelFromLine(t *testing.T) {
+	cases := map[string]int{
+		"# one":           1,
+		"## two":          2,
+		"###### six":      6,
+		"   ### indented": 3,
+	}
+	for line, want := range cases {
+		assert.Equal(t, want, atxLevelFromLine([]byte(line)), "line %q", line)
+	}
+}
+
 func TestCheck_ATXStyle_NoViolation(t *testing.T) {
 	src := []byte("# Heading 1\n\n## Heading 2\n\n### Heading 3\n")
 	f, err := lint.NewFile("test.md", src)
