@@ -5,6 +5,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/rules/listscan"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
@@ -24,12 +25,34 @@ func (r *Rule) Name() string { return "blank-line-around-lists" }
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "list" }
 
-// Check implements rule.Rule. The per-list logic is pure and
-// stateless, so it is expressed as CheckNode and the engine can fold
-// this rule into one shared AST walk; a direct call still works via
-// rule.WalkNodes.
+// Check implements rule.Rule. The per-list logic reads only a top-level
+// list's first and last source lines and the blank lines around them —
+// never the inline tree — so on a parsed File it folds into the engine's
+// shared AST walk (rule.WalkNodes), and on a parse-skipped File (f.AST
+// nil) it re-derives the same top-level list spans from f.Lines via
+// listscan (checkLayer0). Both resolve the same span edges, so the
+// diagnostics are identical.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	if f != nil && f.AST == nil {
+		return r.checkLayer0(f)
+	}
 	return rule.WalkNodes(r, f)
+}
+
+// checkLayer0 is the nil-AST counterpart of CheckNode. listscan reports
+// the same top-level lists goldmark would, with the same first and last
+// source lines, so the blank-line verdict around each is byte-identical.
+func (r *Rule) checkLayer0(f *lint.File) []lint.Diagnostic {
+	lists, _ := listscan.Parse(f.Lines)
+	codeLines := lint.CollectCodeBlockLines(f)
+	var diags []lint.Diagnostic
+	for _, l := range lists {
+		if !l.TopLevel {
+			continue
+		}
+		diags = append(diags, r.verdict(f, codeLines, l.FirstLine, l.LastLine)...)
+	}
+	return diags
 }
 
 // CheckNode implements rule.NodeChecker.
@@ -44,15 +67,20 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 	if _, isListItem := list.Parent().(*ast.ListItem); isListItem {
 		return nil
 	}
+	return r.verdict(f, lint.CollectCodeBlockLines(f), lineOfNode(f, list), lastLineOfNode(f, list))
+}
 
-	listStartLine := lineOfNode(f, list)
-	listEndLine := lastLineOfNode(f, list)
-
-	codeLines := lint.CollectCodeBlockLines(f)
+// verdict is the shared per-list check both the AST (CheckNode) and Layer
+// 0 (checkLayer0) paths drive: listStartLine and listEndLine are the
+// top-level list's 1-based first and last source lines. A list whose edge
+// sits inside a code block is skipped, matching the AST path.
+func (r *Rule) verdict(f *lint.File, codeLines map[int]struct{}, listStartLine, listEndLine int) []lint.Diagnostic {
+	if listStartLine <= 0 || listEndLine <= 0 {
+		return nil
+	}
 	if lineInSet(codeLines, listStartLine) || lineInSet(codeLines, listEndLine) {
 		return nil
 	}
-
 	var diags []lint.Diagnostic
 	if d, ok := r.checkAdjacentBlank(f, listStartLine, -1, "list should be preceded by a blank line"); ok {
 		diags = append(diags, d)

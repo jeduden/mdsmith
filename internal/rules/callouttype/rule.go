@@ -94,13 +94,20 @@ var validTypeOrder = []string{
 // underscore).
 var calloutRE = regexp.MustCompile(`^\[!([A-Za-z0-9_-]+)\]`)
 
-// Check implements rule.Rule.
+// Check implements rule.Rule. The callout token lives on a blockquote's
+// first content line — read from the AST's first paragraph on a parsed
+// File and from the Layer 0 BlockQuote span's first line on a parse-
+// skipped File (f.AST nil). Both resolve the same token, line, and
+// column, so the diagnostics are identical.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	if r.AllowUnknown {
 		return nil
 	}
-	if f == nil || f.AST == nil {
+	if f == nil {
 		return nil
+	}
+	if f.AST == nil {
+		return r.checkLayer0(f)
 	}
 	allowed := r.cachedAllowSet(f)
 	var diags []lint.Diagnostic
@@ -123,6 +130,115 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		return ast.WalkContinue, nil
 	})
 	return diags
+}
+
+// checkLayer0 is the nil-AST counterpart of the AST walk. It scans
+// source lines directly, tracking blockquote nesting depth. A line
+// whose depth d exceeds the previous non-blank line's depth marks the
+// opening line of a nested blockquote at depth d; calloutRE is applied
+// to its content, matching what the AST path extracts from each
+// blockquote node's first paragraph. Code-block lines are skipped.
+//
+// This line-by-line approach is necessary because Layer0 emits only one
+// BlockQuote span per outermost blockquote run; inner nested spans live
+// only in the throwaway recursive scan and are never surfaced.
+func (r *Rule) checkLayer0(f *lint.File) []lint.Diagnostic {
+	allowed := r.cachedAllowSet(f)
+	codeLines := lint.CollectCodeBlockLines(f)
+	var diags []lint.Diagnostic
+	prevDepth := 0
+	for lineNum := 1; lineNum <= len(f.Lines); lineNum++ {
+		if _, inCode := codeLines[lineNum]; inCode {
+			prevDepth = 0
+			continue
+		}
+		d := lineQuoteDepth(f.Lines[lineNum-1])
+		if d == 0 {
+			// Only a truly blank line closes the blockquote context;
+			// a non-blank line without `>` is a CommonMark lazy
+			// continuation of the current paragraph and must not reset
+			// the depth, otherwise the next `>` line is mistaken for a
+			// new callout opener inside the same goldmark Blockquote node.
+			if len(bytes.TrimRight(f.Lines[lineNum-1], " \t\r\n")) == 0 {
+				prevDepth = 0
+			}
+			continue
+		}
+		if d <= prevDepth {
+			prevDepth = d
+			continue
+		}
+		// d > prevDepth: first content line at this nesting depth.
+		token, line, col, ok := calloutTokenFromLine(f, lineNum, d)
+		if !ok || allowed[strings.ToLower(token)] {
+			prevDepth = d
+			continue
+		}
+		diags = append(diags, r.unknownTypeDiag(f.Path, line, col, token))
+		prevDepth = d
+	}
+	return diags
+}
+
+// lineQuoteDepth counts the number of consecutive blockquote marker
+// levels (stripped one at a time by quoteMarkerLen) on a raw line.
+func lineQuoteDepth(line []byte) int {
+	d, offset := 0, 0
+	for {
+		n := quoteMarkerLen(line[offset:])
+		if n == 0 {
+			return d
+		}
+		d++
+		offset += n
+	}
+}
+
+// calloutTokenFromLine reads the `[!type]` token from the 1-based source
+// line lineNum, stripping depth blockquote marker levels to reach the
+// paragraph content goldmark feeds calloutRE on the AST path. The column
+// is the 1-based source column of the matched `[`, matching the AST path's
+// ColumnOfOffset(seg.Start + m[0]).
+func calloutTokenFromLine(f *lint.File, lineNum int, depth int) (token string, line, col int, ok bool) {
+	idx := lineNum - 1
+	if idx < 0 || idx >= len(f.Lines) {
+		return "", 0, 0, false
+	}
+	raw := f.Lines[idx]
+	contentStart := 0
+	for i := 0; i < depth; i++ {
+		n := quoteMarkerLen(raw[contentStart:])
+		if n == 0 {
+			return "", 0, 0, false
+		}
+		contentStart += n
+	}
+	content := bytes.TrimRight(raw[contentStart:], "\r\n")
+	m := calloutRE.FindSubmatchIndex(content)
+	if m == nil {
+		return "", 0, 0, false
+	}
+	return string(content[m[2]:m[3]]), lineNum, contentStart + m[0] + 1, true
+}
+
+// quoteMarkerLen returns the byte length of the leading blockquote marker
+// on line: up to 3 spaces of indent, one `>`, and one optional following
+// space. It mirrors goldmark's blockquote-marker consumption so the
+// paragraph content begins at the returned offset. A line with no `>`
+// returns 0.
+func quoteMarkerLen(line []byte) int {
+	i := 0
+	for i < len(line) && i < 3 && line[i] == ' ' {
+		i++
+	}
+	if i >= len(line) || line[i] != '>' {
+		return 0
+	}
+	i++
+	if i < len(line) && line[i] == ' ' {
+		i++
+	}
+	return i
 }
 
 // buildAllowSet constructs the union of the built-in Obsidian types and the

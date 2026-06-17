@@ -25,6 +25,7 @@ var allowedRuleHelpers = map[string]struct{}{
 	"fencepos":      {},
 	"tablefmt":      {},
 	"buildpathutil": {},
+	"listscan":      {},
 }
 
 // ruleBoundaryExempt names directories under internal/rules/ whose

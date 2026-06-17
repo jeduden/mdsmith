@@ -181,3 +181,71 @@ func TestCheck_AllowSetCachedPerFileAfterApplySettings(t *testing.T) {
 	assert.Empty(t, r.Check(f))
 	assert.Empty(t, r.Check(f))
 }
+
+// TestCalloutTokenFromLine_OOBLine covers the idx-out-of-range guard in
+// calloutTokenFromLine: lineNum 0 (idx == -1) and lineNum > lines must
+// return ok==false without panicking.
+func TestCalloutTokenFromLine_OOBLine(t *testing.T) {
+	f := lint.NewFileLines("f.md", []byte("> [!NOTE]\n> body\n"))
+	_, _, _, ok := calloutTokenFromLine(f, 0, 1)
+	assert.False(t, ok, "lineNum 0 (idx -1) must return false")
+	_, _, _, ok = calloutTokenFromLine(f, 99, 1)
+	assert.False(t, ok, "lineNum past EOF must return false")
+}
+
+// TestCalloutTokenFromLine_DepthExceedsMarkers covers the early-return in
+// calloutTokenFromLine when depth exceeds the actual number of blockquote
+// markers on the line (quoteMarkerLen returns 0 before depth is reached).
+func TestCalloutTokenFromLine_DepthExceedsMarkers(t *testing.T) {
+	// Line has only one level of `>` but depth=2 is requested.
+	f := lint.NewFileLines("f.md", []byte("> [!NOTE]\n> body\n"))
+	_, _, _, ok := calloutTokenFromLine(f, 1, 2)
+	assert.False(t, ok, "depth greater than actual marker count must return false")
+}
+
+// TestQuoteMarkerLen_NoMarker covers quoteMarkerLen returning 0 when the
+// line has no '>' (e.g. all spaces, or non-quote content).
+func TestQuoteMarkerLen_NoMarker(t *testing.T) {
+	assert.Equal(t, 0, quoteMarkerLen([]byte("   ")), "spaces-only line has no marker")
+	assert.Equal(t, 0, quoteMarkerLen([]byte("text")), "plain text has no marker")
+	assert.Equal(t, 2, quoteMarkerLen([]byte("> ")), "single marker with space")
+	assert.Equal(t, 1, quoteMarkerLen([]byte(">")), "marker at EOL, no space")
+}
+
+// TestCheck_NilASTMatchesAST pins the nil-AST path: Check on a parse-
+// skipped File (f.AST nil) must produce byte-identical diagnostics to the
+// AST path for callout blockquotes, including the column of the `[!`
+// token and quotes that are not callouts.
+func TestCheck_NilASTMatchesAST(t *testing.T) {
+	srcs := []string{
+		"# Bad Callout\n\n> [!REVIEW]\n> Unknown type.\n",
+		"> [!note]\n> A valid callout.\n",
+		"> [!REVIEW] with trailing text\n> body\n",
+		">[!REVIEW]\n> no space after marker\n",
+		"> just a normal quote\n> second line\n",
+		"> [!info]\n\n> [!BOGUS]\n",
+		"- a list\n- of items\n\n> [!WAT]\n> body\n",
+		"text\n\n> [!UNKNOWN]\n",
+		"> > [!REVIEW]\n> > doubly nested\n",
+		"> outer\n> > [!BOGUS]\n> > body\n",
+		// Lazy continuation: non-blank line without `>` must not reset
+		// depth — the next `>` line is a continuation paragraph, not a
+		// new callout opener.
+		"> [!note]\nlazy continuation line\n> following para\n",
+		// Depth decrease: after a depth-2 line, a depth-1 line ratchets
+		// prevDepth down without emitting a spurious diagnostic.
+		"> > [!REVIEW]\n> outer continues\n",
+		// Code fence at the top level: `>` lines inside the fence must
+		// not produce diagnostics (exercises the inCode branch).
+		"```\n> [!REVIEW]\n```\n",
+	}
+	for _, src := range srcs {
+		b := []byte(src)
+		astFile, err := lint.NewFile("f.md", b)
+		require.NoError(t, err)
+		astDiags := (&Rule{}).Check(astFile)
+		l0Diags := (&Rule{}).Check(lint.NewFileLines("f.md", b))
+		assert.Equal(t, astDiags, l0Diags,
+			"nil-AST diagnostics must match AST for %q", src)
+	}
+}

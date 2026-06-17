@@ -12,6 +12,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestCheck_NilFile(t *testing.T) {
+	assert.Nil(t, (&Rule{}).Check(nil))
+}
+
 // --- MD027: multiple spaces after blockquote marker ---
 
 func TestCheck_MD027_TwoSpaces(t *testing.T) {
@@ -619,4 +623,31 @@ func TestFix_BytesBufferAllocBudget(t *testing.T) {
 	require.LessOrEqualf(t, allocs, float64(budget),
 		"Fix allocs/op = %.0f (budget=%d); use bytes.Buffer to eliminate string-conversion allocs",
 		allocs, budget)
+}
+
+// TestCheck_NilASTMatchesAST pins the nil-AST path: Check on a parse-
+// skipped File (f.AST nil) must produce byte-identical diagnostics to the
+// AST path for both MD027 (multi-space after marker) and MD028 (blank line
+// between adjacent blockquotes).
+func TestCheck_NilASTMatchesAST(t *testing.T) {
+	srcs := [][]byte{
+		[]byte("# Title\n\n> First blockquote.\n\n> Second blockquote.\n"),
+		[]byte(">  Two spaces after the marker.\n"),
+		[]byte("> a\n> b\n\n> c\n"),
+		[]byte("> a\n\n\n> b\n"),
+		[]byte("> a\ntext\n\n> b\n"),
+		[]byte("> ok single space\n\nnot a quote\n\n> another\n"),
+		[]byte("> quote one\n>  two spaces here\n\n> quote two\n"),
+		[]byte("> a\n\n```\n> code not a quote\n```\n\n> b\n"),
+		[]byte("- list item\n- second item\n\n> a\n\n> b\n"),
+		[]byte("> only one quote, no sibling\n"),
+	}
+	for _, src := range srcs {
+		astFile, err := lint.NewFile("f.md", src)
+		require.NoError(t, err)
+		astDiags := (&Rule{}).Check(astFile)
+		l0Diags := (&Rule{}).Check(lint.NewFileLines("f.md", src))
+		assert.Equal(t, astDiags, l0Diags,
+			"nil-AST diagnostics must match AST for %q", string(src))
+	}
 }

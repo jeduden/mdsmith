@@ -556,3 +556,36 @@ func TestFix_AllocBudget_PerLineNotPerEdit(t *testing.T) {
 		t.Fatalf("Fix allocs per call: want ≤ 18, got %v (copying every line unconditionally)", allocs)
 	}
 }
+
+// TestCheck_NilASTMatchesAST pins the nil-AST path: Check on a parse-
+// skipped File (f.AST nil) must produce byte-identical diagnostics to the
+// AST path, including nested ordered lists, a loose list, a width-growing
+// renumber, a non-default start, and a list holding a code fence.
+func TestCheck_NilASTMatchesAST(t *testing.T) {
+	cases := []struct {
+		src   string
+		style string
+		start int
+	}{
+		{src: "1. one\n1. two\n1. three\n", style: "sequential", start: 1},
+		{src: "1. one\n2. two\n", style: "all-ones", start: 1},
+		{src: "3. three\n4. four\n", style: "sequential", start: 1},
+		{src: "1. a\n\n1. b\n1. c\n", style: "sequential", start: 1},
+		{src: "1. a\n   1. nested\n   1. nested2\n1. b\n", style: "sequential", start: 1},
+		{src: "1. ten\n   continuation\n1. eleven\n", style: "sequential", start: 1},
+		{src: "1. a\n   ```\n   code\n   ```\n1. b\n", style: "sequential", start: 1},
+		{src: "# Title\n\n1. one\n1. two\n", style: "sequential", start: 1},
+		{src: "- bullets not flagged\n- b\n1. ordered\n2. b\n", style: "sequential", start: 1},
+		{src: "1.\n2. text\n", style: "sequential", start: 1},
+	}
+	for _, tc := range cases {
+		src := []byte(tc.src)
+		mk := func() *Rule { return &Rule{Style: tc.style, Start: tc.start} }
+		astFile, err := lint.NewFile("f.md", src)
+		require.NoError(t, err)
+		astDiags := mk().Check(astFile)
+		l0Diags := mk().Check(lint.NewFileLines("f.md", src))
+		assert.Equal(t, astDiags, l0Diags,
+			"nil-AST diagnostics must match AST for %q", tc.src)
+	}
+}
