@@ -35,22 +35,93 @@ func (r *Rule) EnabledByDefault() bool { return false }
 
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
-	h1s := collectH1s(f)
+	if f != nil && f.AST == nil {
+		return r.checkNilAST(f)
+	}
 
+	h1s := collectH1s(f)
+	h1Lines := make([]int, len(h1s))
+	for i, h := range h1s {
+		h1Lines[i] = astutil.HeadingLine(h, f)
+	}
+	return r.verdict(f, h1Lines)
+}
+
+// checkNilAST is the parse-skip path: it collects the 1-based line of every
+// authored h1 from the Layer 0 block scan — excluding generated-range
+// headings the way collectH1s does — and runs the same per-line verdict.
+// It reads only heading levels (ATX `#` run, setext `=` underline) plus the
+// front-matter title field, none of which needs the inline tree.
+func (r *Rule) checkNilAST(f *lint.File) []lint.Diagnostic {
+	var h1Lines []int
+	for _, span := range lint.Layer0(f).BlockSpans {
+		if span.Depth != 0 || !isH1Span(f, span) {
+			continue
+		}
+		line := span.Start
+		if len(f.GeneratedRanges) > 0 {
+			generated := false
+			for _, gr := range f.GeneratedRanges {
+				if gr.Contains(line) {
+					generated = true
+					break
+				}
+			}
+			if generated {
+				continue
+			}
+		}
+		h1Lines = append(h1Lines, line)
+	}
+	return r.verdict(f, h1Lines)
+}
+
+// isH1Span reports whether a Layer 0 heading span is a level-1 heading: an
+// ATX heading with a single leading `#`, or a setext heading whose
+// underline is `=`.
+func isH1Span(f *lint.File, span lint.BlockSpan) bool {
+	switch span.Kind {
+	case lint.BlockATXHeading:
+		line := f.Lines[span.Start-1]
+		i := 0
+		for i < len(line) && i < 3 && line[i] == ' ' {
+			i++
+		}
+		level := 0
+		for i < len(line) && line[i] == '#' {
+			level++
+			i++
+		}
+		return level == 1
+	case lint.BlockSetextHeading:
+		line := f.Lines[span.End-1]
+		i := 0
+		for i < len(line) && i < 3 && line[i] == ' ' {
+			i++
+		}
+		return i < len(line) && line[i] == '='
+	default:
+		return false
+	}
+}
+
+// verdict emits the diagnostics for the collected authored-h1 line numbers,
+// shared by the AST and Layer 0 paths so both produce identical output.
+func (r *Rule) verdict(f *lint.File, h1Lines []int) []lint.Diagnostic {
 	hasFMTitle := r.FrontMatterTitle != "" && r.frontMatterHasTitle(f)
 
 	var diags []lint.Diagnostic
 
-	if hasFMTitle && len(h1s) > 0 {
-		diags = append(diags, r.newDiag(f, astutil.HeadingLine(h1s[0], f),
+	if hasFMTitle && len(h1Lines) > 0 {
+		diags = append(diags, r.newDiag(f, h1Lines[0],
 			"h1 heading conflicts with front-matter title"))
-		for _, h := range h1s[1:] {
-			diags = append(diags, r.newDiag(f, astutil.HeadingLine(h, f),
+		for _, line := range h1Lines[1:] {
+			diags = append(diags, r.newDiag(f, line,
 				"extra H1 heading; only one H1 is allowed per file"))
 		}
-	} else if len(h1s) > 1 {
-		for _, h := range h1s[1:] {
-			diags = append(diags, r.newDiag(f, astutil.HeadingLine(h, f),
+	} else if len(h1Lines) > 1 {
+		for _, line := range h1Lines[1:] {
+			diags = append(diags, r.newDiag(f, line,
 				"extra H1 heading; only one H1 is allowed per file"))
 		}
 	}
