@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
@@ -104,19 +105,24 @@ func (r *Rule) InlineCapable() bool { return true }
 var _ rule.InlineChecker = (*Rule)(nil)
 
 // checkFromLayers reconstructs the AST path's HTML diagnostics on the nil-AST
-// File: every BlockHTML span (block-level HTML) in document order, then every
-// RawHTML node from the inline runs. The AST walk visits an HTML block before
-// any inline HTML on a later line, and BlockHTML spans precede their following
-// runs, so this order matches the AST walk's document order.
+// File. The AST walk visits HTML blocks and inline RawHTML interleaved in
+// document order, so the two Layer 0 sources — BlockHTML spans and the inline
+// runs' RawHTML — are gathered with their byte offsets and emitted sorted by
+// offset, reproducing that single document-order stream exactly (matching even
+// the rule's pre-engine-sort Check output, not just the engine's sorted view).
 func (r *Rule) checkFromLayers(f *lint.File) []lint.Diagnostic {
 	allowed := r.cachedAllowSet(f)
-	var diags []lint.Diagnostic
+	type located struct {
+		offset int
+		diag   lint.Diagnostic
+	}
+	var found []located
 	for _, span := range lint.Layer0(f).BlockSpans {
 		if span.Kind != lint.BlockHTML {
 			continue
 		}
-		if d, ok := r.checkHTMLBlockSpan(f, allowed, span); ok {
-			diags = append(diags, d)
+		if d, off, ok := r.checkHTMLBlockSpan(f, allowed, span); ok {
+			found = append(found, located{offset: off, diag: d})
 		}
 	}
 	lint.WalkInlineNodes(f, func(n ast.Node, base int) {
@@ -127,23 +133,33 @@ func (r *Rule) checkFromLayers(f *lint.File) []lint.Diagnostic {
 		seg := node.Segments.At(0)
 		raw := rawHTMLBytes(node, f.Source[base:])
 		if d, ok := r.checkRaw(f, allowed, raw, base+seg.Start); ok {
-			diags = append(diags, d)
+			found = append(found, located{offset: base + seg.Start, diag: d})
 		}
 	})
+	if len(found) == 0 {
+		return nil
+	}
+	sort.SliceStable(found, func(i, j int) bool { return found[i].offset < found[j].offset })
+	diags := make([]lint.Diagnostic, len(found))
+	for i, l := range found {
+		diags[i] = l.diag
+	}
 	return diags
 }
 
 // checkHTMLBlockSpan reproduces the AST path's HTMLBlock branch from a Layer 0
 // BlockHTML span: the span's first line is the block's first content line
 // (matching node.Lines().At(0)), and the diagnostic anchors at the first `<`
-// on it, exactly as the AST branch does.
-func (r *Rule) checkHTMLBlockSpan(f *lint.File, allowed map[string]bool, span lint.BlockSpan) (lint.Diagnostic, bool) {
+// on it, exactly as the AST branch does. It also returns that anchor offset so
+// the caller can order block and inline HTML findings by document position.
+func (r *Rule) checkHTMLBlockSpan(f *lint.File, allowed map[string]bool, span lint.BlockSpan) (lint.Diagnostic, int, bool) {
 	raw := f.Lines[span.Start-1]
 	offset := f.LineStartOffset(span.Start - 1)
 	if i := bytes.IndexByte(raw, '<'); i >= 0 {
 		offset += i
 	}
-	return r.checkRaw(f, allowed, raw, offset)
+	d, ok := r.checkRaw(f, allowed, raw, offset)
+	return d, offset, ok
 }
 
 // CheckNode implements rule.NodeChecker.

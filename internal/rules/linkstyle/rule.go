@@ -313,7 +313,7 @@ func linkImageStyleMsg(lis LinkImageStyleConfig, ref *ast.ReferenceLink, isImage
 func autolinkPosition(f *lint.File, n *ast.AutoLink, base int) (int, int) {
 	url := n.URL(f.Source[base:])
 	if len(url) == 0 {
-		return f.LineOfOffset(base), f.ColumnOfOffset(base)
+		return 1, 1
 	}
 	// Match the literal `<url>` including the closing `>`, so a short
 	// autolink whose URL is a prefix of a neighbour's (e.g. `<a.com>`
@@ -341,12 +341,15 @@ func autolinkPosition(f *lint.File, n *ast.AutoLink, base int) (int, int) {
 		}
 		break
 	}
-	return f.LineOfOffset(base), f.ColumnOfOffset(base)
+	return 1, 1
 }
 
 // linkNodePosition returns the 1-based line and column of a link or
 // image node by locating its first text child, in body-relative
-// coordinates. base maps the run-local segment offset onto f.Source.
+// coordinates. base maps the run-local segment offset onto f.Source. The
+// no-text fallback is (1, 1), matching the AST path's linkgraph.linkPosition
+// and the autolink fallback above, so a textless link is anchored identically
+// on both paths.
 func linkNodePosition(f *lint.File, n ast.Node, base int) (int, int) {
 	offset := -1
 	_ = ast.Walk(n, func(cur ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -361,7 +364,7 @@ func linkNodePosition(f *lint.File, n ast.Node, base int) (int, int) {
 		return ast.WalkContinue, nil
 	})
 	if offset < 0 {
-		return f.LineOfOffset(base), f.ColumnOfOffset(base)
+		return 1, 1
 	}
 	return f.LineOfOffset(base + offset), f.ColumnOfOffset(base + offset)
 }

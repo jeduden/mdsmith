@@ -582,14 +582,15 @@ func detectGitHubAlerts(source []byte, cmAST ast.Node) []Finding {
 // line-level counterpart to IsGitHubAlert for callers that work from the
 // Layer 0 block scan rather than a parsed Blockquote node.
 func IsAlertMarkerLine(line []byte) bool {
-	return alertTokenRe.Match(stripBlockquoteMarkers(line))
+	return alertTokenRe.Match(StripBlockquoteMarkers(line))
 }
 
-// stripBlockquoteMarkers removes a blockquote line's leading indentation and
+// StripBlockquoteMarkers removes a blockquote line's leading indentation and
 // `>` markers (each optionally followed by one space), returning the inner
 // content with trailing line terminators trimmed — mirroring how goldmark
-// records a quoted paragraph's first content line.
-func stripBlockquoteMarkers(line []byte) []byte {
+// records a quoted paragraph's first content line. Exposed so callers working
+// from the Layer 0 block scan can locate a blockquote's first paragraph line.
+func StripBlockquoteMarkers(line []byte) []byte {
 	i := 0
 	for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
 		i++

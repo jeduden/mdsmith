@@ -164,22 +164,45 @@ func (r *Rule) appendLayerFindings(
 }
 
 // alertFindingsFromSpans returns one GitHub-alert finding per Layer 0
-// BlockQuote span whose first line is a GFM alert marker (`> [!TOKEN]`). It is
-// the parse-skipped counterpart to flavor.detectGitHubAlerts: a blockquote
-// always carries a `>` so the parse-skip gate keeps such files on the parse
-// path in production, but the audit drives this branch directly, so it must
-// match the AST detector's anchor (the marker line, column 1).
+// BlockQuote span whose first paragraph opens with a GFM alert marker
+// (`> [!TOKEN]`). It is the parse-skipped counterpart to
+// flavor.detectGitHubAlerts, which anchors on the blockquote's first paragraph
+// first line — not its first physical line. A blockquote can open with one or
+// more blank `>` lines before that paragraph, so the scan skips leading
+// blank-content quote lines and tests the first non-blank one, matching the AST
+// detector's anchor (the marker line, column 1). A blockquote always carries a
+// `>`, so the parse-skip gate keeps such files on the parse path in production;
+// the audit drives this branch directly.
 func alertFindingsFromSpans(f *lint.File) []flavor.Finding {
 	var out []flavor.Finding
 	for _, span := range lint.Layer0(f).BlockSpans {
 		if span.Kind != lint.BlockQuote {
 			continue
 		}
-		if flavor.IsAlertMarkerLine(f.Lines[span.Start-1]) {
-			out = append(out, flavor.AlertFinding(f.Source, f.LineStartOffset(span.Start-1)))
+		ln, ok := firstQuoteParagraphLine(f, span)
+		if !ok {
+			continue
+		}
+		if flavor.IsAlertMarkerLine(f.Lines[ln-1]) {
+			out = append(out, flavor.AlertFinding(f.Source, f.LineStartOffset(ln-1)))
 		}
 	}
 	return out
+}
+
+// firstQuoteParagraphLine returns the 1-based line of the first paragraph line
+// inside a Layer 0 BlockQuote span: the first line in the span whose content,
+// after the `>` markers are stripped, is non-blank. Leading blank quote lines
+// (`>` with nothing after it) do not open a paragraph, so they are skipped —
+// mirroring where goldmark records the blockquote's first paragraph. Returns
+// false when the span carries no non-blank quoted line.
+func firstQuoteParagraphLine(f *lint.File, span lint.BlockSpan) (int, bool) {
+	for ln := span.Start; ln <= span.End; ln++ {
+		if len(bytes.TrimSpace(flavor.StripBlockquoteMarkers(f.Lines[ln-1]))) > 0 {
+			return ln, true
+		}
+	}
+	return 0, false
 }
 
 // Fix implements rule.FixableRule. It first removes the [!TOKEN]

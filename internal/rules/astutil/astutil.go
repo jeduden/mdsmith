@@ -337,11 +337,16 @@ func extractTextBase(n ast.Node, source []byte, base int, buf *bytes.Buffer) {
 
 // HeadingLineBase returns the 1-based source line of a heading whose inline
 // children carry run-local segment offsets (the parse-skipped path). base is
-// the run's start byte offset in f.Source. It mirrors HeadingLine: a re-parsed
-// run is a standalone document, so heading.Lines() is empty and the line comes
-// from the first descendant Text segment, mapped to the document with base.
+// the run's start byte offset in f.Source. It mirrors HeadingLine exactly with
+// every offset shifted by base: prefer heading.Lines().At(0) (setext), else the
+// first descendant Text segment, else the constant 1 — so an empty heading with
+// no Lines and no Text resolves to line 1 on both paths, not the run's line.
 func HeadingLineBase(heading *ast.Heading, f *lint.File, base int) int {
-	line := f.LineOfOffset(base)
+	lines := heading.Lines()
+	if lines.Len() > 0 {
+		return f.LineOfOffset(base + lines.At(0).Start)
+	}
+	line := 1
 	_ = ast.Walk(heading, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering || n == heading {
 			return ast.WalkContinue, nil
