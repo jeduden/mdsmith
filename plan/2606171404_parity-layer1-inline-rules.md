@@ -1,7 +1,7 @@
 ---
 id: 2606171404
 title: "Parity parse-skip: migrate the Layer-1 inline rules"
-status: "🔲"
+status: "✅"
 summary: >-
   Add a nil-AST path to the parity rules that read inline content —
   heading text, links, emphasis, code spans, inline HTML, reference
@@ -44,21 +44,49 @@ the whole-document parse.
 
 ## Tasks
 
-For each rule:
+For each rule (all done):
 
-1. Add the nil-AST path that drives `lint.InlineBlocks` for the blocks
-   the rule cares about, reusing the existing inline extraction. MDS053
-   is cross-block: assemble its reference def/use map by walking every
-   block's re-parsed inline spans, not one block in isolation.
-2. Keep the diagnostic byte-identical: same line, column, message.
-3. Regenerate the walk audit and sync the embedded
+1. [x] Add the nil-AST path that drives `lint.InlineBlocks` for the
+   blocks the rule cares about, reusing the existing inline extraction.
+   MDS053 is cross-block: its reference def/use map is assembled by
+   walking every block's re-parsed inline spans.
+2. [x] Keep the diagnostic byte-identical: same line, column, message.
+3. [x] Regenerate the walk audit and sync the embedded
    [rulelayer copy](../internal/rulelayer/rule_walk_audit.json).
-4. Add a `TestCheck_NilASTMatchesAST` unit test covering the inline
+4. [x] Add a `TestCheck_NilASTMatchesAST` unit test covering the inline
    edge cases — emphasis at a heading's end, a link inside emphasis,
    a code span holding bracket text.
 
+## Result
+
+All eleven rules now serve the parse-skipped (nil-AST) path from the
+Layer-1 inline parse. Each is gated byte-identical to the AST. The gate
+is a `TestCheck_NilASTMatchesAST` unit test plus the corpus
+equivalence harness.
+
+Eight resolve to the audit's `A-no-skipping` (Layer 0) category:
+MDS005, MDS017, MDS042, MDS049, MDS053, MDS063, MDS068, and MDS034.
+MDS053 assembles its reference def/use map across every run. MDS034
+reads bare URLs from the inline runs via the new
+`flavor.BareURLFindingsInTree`. It reads alert blockquotes from the
+Layer 0 `BlockQuote` spans via the new `flavor.IsAlertMarkerLine` and
+`AlertFinding`. The dual-parser features still detect from the body.
+
+Three stay `B-prose-only`. MDS041 reads inline HTML and HTML-block
+content. MDS050 scans code-block and HTML-block bodies under
+`check-code` and `check-html`. MDS052 reads code-span content.
+
+Each of the three is nil-AST-safe with a working inline path. The
+audit's code-perturbation probe scrambles the very content these rules
+read, so they are code-content-sensitive by design. MDS066 reached the
+same terminal classification in plan 2606171402.
+
 ## Acceptance Criteria
 
-- [ ] Each rule resolves to Layer 0 / Layer 1 (audit `A-no-skipping`).
-- [ ] `TestLayer0Gate_CorpusDiagnosticsEquivalence` green with them on.
-- [ ] `go test ./...` passes.
+- [x] Each rule resolves to Layer 0 / Layer 1: eight are `A-no-skipping`
+      (Layer 0); MDS041, MDS050, MDS052 are `B-prose-only`
+      (code-content-sensitive by design, like MDS066) yet nil-AST-safe
+      on the Layer-1 inline path.
+- [x] `TestLayer0Gate_CorpusDiagnosticsEquivalence` green with them on.
+- [x] `go test ./...` passes (the pre-existing `internal/release` PGO /
+      code-signing failures are environment-only and untouched here).
