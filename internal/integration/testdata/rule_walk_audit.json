@@ -695,8 +695,8 @@
   {
     "id": "MDS065",
     "name": "code-block-style",
-    "category": "hybrid",
-    "nil_ast_safe": false,
+    "category": "A-no-skipping",
+    "nil_ast_safe": true,
     "code_block_sensitive": false,
     "fired": true,
     "is_node_checker": false,
@@ -706,8 +706,8 @@
   {
     "id": "MDS066",
     "name": "commands-show-output",
-    "category": "hybrid",
-    "nil_ast_safe": false,
+    "category": "B-prose-only",
+    "nil_ast_safe": true,
     "code_block_sensitive": true,
     "fired": true,
     "is_node_checker": true,
