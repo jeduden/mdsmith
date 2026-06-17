@@ -18,9 +18,9 @@ import (
 func TestCheck_NilASTMatchesAST(t *testing.T) {
 	cases := map[string]string{
 		"emphasis ends in period": "# Done *already.*\n",
-		"link inside emphasis":     "# See *[home.](/h)*\n",
-		"code span brackets":       "# Use `a[0]:`\n",
-		"clean heading":            "# All good *here*\n",
+		"link inside emphasis":    "# See *[home.](/h)*\n",
+		"code span brackets":      "# Use `a[0]:`\n",
+		"clean heading":           "# All good *here*\n",
 	}
 	for name, src := range cases {
 		t.Run(name, func(t *testing.T) {

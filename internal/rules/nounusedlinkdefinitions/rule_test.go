@@ -474,13 +474,13 @@ func TestCheck_MultiDefs_IgnoredLabel(t *testing.T) {
 // surfaces here.
 func TestCheck_NilASTMatchesAST(t *testing.T) {
 	cases := map[string]string{
-		"unused definition":   "Some text.\n\n[label]: /url\n",
-		"used full ref":       "See [text][label].\n\n[label]: /url\n",
-		"used collapsed ref":  "See [label][].\n\n[label]: /url\n",
+		"unused definition":    "Some text.\n\n[label]: /url\n",
+		"used full ref":        "See [text][label].\n\n[label]: /url\n",
+		"used collapsed ref":   "See [label][].\n\n[label]: /url\n",
 		"shortcut in emphasis": "A *[label]* tail.\n\n[label]: /url\n",
 		"duplicate definition": "See [a][label].\n\n[label]: /one\n[label]: /two\n",
-		"ref in nested link":  "Read *[see][lbl]* now.\n\n[lbl]: /url\n",
-		"all used no diag":    "Both [a][x] and [b][y].\n\n[x]: /1\n[y]: /2\n",
+		"ref in nested link":   "Read *[see][lbl]* now.\n\n[lbl]: /url\n",
+		"all used no diag":     "Both [a][x] and [b][y].\n\n[x]: /1\n[y]: /2\n",
 	}
 	for name, src := range cases {
 		t.Run(name, func(t *testing.T) {

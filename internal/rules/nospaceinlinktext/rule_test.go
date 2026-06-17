@@ -624,12 +624,12 @@ func TestFixReferenceImage(t *testing.T) {
 // inline re-parse surfaces here.
 func TestCheck_NilASTMatchesAST(t *testing.T) {
 	cases := map[string]string{
-		"padded link text":      "See [ home ](/h) now.\n",
-		"link in emphasis":      "A *[ spaced ](/h)* tail.\n",
-		"link in heading":       "# Go [ here ](/h)\n",
-		"image padded alt":      "![ logo ](/l.png) caption\n",
-		"code span in link":     "[ `a[0]` ](/h) link.\n",
-		"clean link":            "A [clean](/h) link.\n",
+		"padded link text":  "See [ home ](/h) now.\n",
+		"link in emphasis":  "A *[ spaced ](/h)* tail.\n",
+		"link in heading":   "# Go [ here ](/h)\n",
+		"image padded alt":  "![ logo ](/l.png) caption\n",
+		"code span in link": "[ `a[0]` ](/h) link.\n",
+		"clean link":        "A [clean](/h) link.\n",
 	}
 	r := &Rule{CheckImages: true}
 	for name, src := range cases {

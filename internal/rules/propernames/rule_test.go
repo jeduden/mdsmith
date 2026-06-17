@@ -346,10 +346,10 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 		checkHTML bool
 	}
 	cases := map[string]tc{
-		"name in heading":   {src: "# About Github\n", names: []string{"GitHub"}},
-		"name in link text": {src: "See [Github](https://x) now.\n", names: []string{"GitHub"}},
-		"name in emphasis":  {src: "A *Javascript* lib.\n", names: []string{"JavaScript"}},
-		"second paragraph":  {src: "First line.\n\nThen Javascript here.\n", names: []string{"JavaScript"}},
+		"name in heading":            {src: "# About Github\n", names: []string{"GitHub"}},
+		"name in link text":          {src: "See [Github](https://x) now.\n", names: []string{"GitHub"}},
+		"name in emphasis":           {src: "A *Javascript* lib.\n", names: []string{"JavaScript"}},
+		"second paragraph":           {src: "First line.\n\nThen Javascript here.\n", names: []string{"JavaScript"}},
 		"name in code span no check": {src: "Use `javascript` here.\n", names: []string{"JavaScript"}},
 		"fenced code checked": {
 			src:       "# Title\n\n```sh\njavascript --version\n```\n",
