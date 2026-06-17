@@ -56,7 +56,7 @@ func (r *Rule) checkNilAST(f *lint.File) []lint.Diagnostic {
 	// The gate (layer0SkipEligible) excludes any file that may hold a block
 	// quote or list, so every heading span here is top-level; the scanner
 	// never tags a heading span with a nesting depth.
-	var h1Lines []int
+	h1Lines := make([]int, 0, 4)
 	for _, span := range lint.Layer0(f).BlockSpans {
 		if !isH1Span(f, span) {
 			continue

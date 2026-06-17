@@ -142,10 +142,9 @@ func TestBuildLayerMapFromPanicsOnMalformedManifest(t *testing.T) {
 	})
 }
 
-// TestBuildLayerMapFromClassifies confirms both arms of the category
-// switch: an "A-no-skipping" rule maps to Layer0 and any other category
-// maps to LayerAST. The astProjectionConsumers override is empty today, so
-// the only way to reach LayerAST is a non-"A-no-skipping" category.
+// TestBuildLayerMapFromClassifies confirms the standard category arms of
+// buildLayerMapFrom: an "A-no-skipping" rule maps to Layer0 and any other
+// category maps to LayerAST (absent a knownNilASTSafe override).
 func TestBuildLayerMapFromClassifies(t *testing.T) {
 	m := buildLayerMapFrom([]byte(`[
 		{"id":"MDS900","category":"A-no-skipping"},
@@ -153,6 +152,19 @@ func TestBuildLayerMapFromClassifies(t *testing.T) {
 	]`))
 	assert.Equal(t, Layer0, m["MDS900"])
 	assert.Equal(t, LayerAST, m["MDS901"])
+}
+
+// TestBuildLayerMapFromKnownNilASTSafePromotesToLayer0 exercises the
+// knownNilASTSafe branch of buildLayerMapFrom directly with a synthetic
+// entry, independently of the live layerByID table. A non-A-no-skipping
+// rule listed in knownNilASTSafe must resolve to Layer0.
+func TestBuildLayerMapFromKnownNilASTSafePromotesToLayer0(t *testing.T) {
+	knownNilASTSafe["MDS904"] = true
+	t.Cleanup(func() { delete(knownNilASTSafe, "MDS904") })
+	m := buildLayerMapFrom([]byte(`[
+		{"id":"MDS904","category":"inconclusive-not-fired"}
+	]`))
+	assert.Equal(t, Layer0, m["MDS904"], "knownNilASTSafe promotes non-A-no-skipping rule to Layer0")
 }
 
 // TestAstProjectionConsumerOverrideForcesAST pins the override arm of the
