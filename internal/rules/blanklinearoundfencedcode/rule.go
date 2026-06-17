@@ -29,11 +29,17 @@ func (r *Rule) Name() string { return "blank-line-around-fenced-code" }
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "code" }
 
-// Check implements rule.Rule. The per-block logic is pure and
-// stateless, so it is expressed as CheckNode and the engine can fold
-// this rule into one shared AST walk; a direct call still works via
-// rule.WalkNodes.
+// Check implements rule.Rule. The per-block logic depends only on the
+// fenced block's open and close line and the blank lines around them —
+// never the inline tree — so the rule is a rule.BlockChecker: on a
+// parsed File it folds into the engine's shared AST walk
+// (rule.WalkNodes), and on a parse-skipped File (f.AST nil) it reads the
+// Layer 0 block scan instead (rule.WalkBlocks). Both resolve the same
+// open/close lines, so the diagnostics are identical.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	if f != nil && f.AST == nil {
+		return rule.WalkBlocks(r, f)
+	}
 	return rule.WalkNodes(r, f)
 }
 
@@ -50,9 +56,31 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 	openStart, openEnd := fencepos.OpenLineRange(f.Source, fcb)
 	closeStart, _ := fencepos.CloseLineRange(f.Source, fcb, openEnd)
 
-	openLine := f.LineOfOffset(openStart)
-	closeLine := f.LineOfOffset(closeStart)
+	return r.checkBlanks(f, f.LineOfOffset(openStart), f.LineOfOffset(closeStart))
+}
 
+// CheckBlock implements rule.BlockChecker. A BlockFencedCode span's Start
+// is the opening fence line and End the closing fence line — the same
+// open/close lines fencepos resolves on the AST path — so the blank-line
+// verdict is byte-identical.
+func (r *Rule) CheckBlock(span lint.BlockSpan, f *lint.File) []lint.Diagnostic {
+	return r.checkBlanks(f, span.Start, span.End)
+}
+
+// blockKinds is the static block-kind interest CheckBlock declares via
+// rule.BlockChecker; package-level so BlockKinds returns it without
+// allocating.
+var blockKinds = []lint.BlockKind{lint.BlockFencedCode}
+
+// BlockKinds implements rule.BlockChecker.
+func (r *Rule) BlockKinds() []lint.BlockKind { return blockKinds }
+
+var _ rule.BlockChecker = (*Rule)(nil)
+
+// checkBlanks is the shared per-block check both the AST (CheckNode) and
+// Layer 0 (CheckBlock) paths drive: openLine is the 1-based opening fence
+// line, closeLine the closing fence line.
+func (r *Rule) checkBlanks(f *lint.File, openLine, closeLine int) []lint.Diagnostic {
 	var diags []lint.Diagnostic
 
 	// Check blank line before opening fence

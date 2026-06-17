@@ -156,8 +156,8 @@
   {
     "id": "MDS015",
     "name": "blank-line-around-fenced-code",
-    "category": "hybrid",
-    "nil_ast_safe": false,
+    "category": "A-no-skipping",
+    "nil_ast_safe": true,
     "code_block_sensitive": false,
     "fired": true,
     "is_node_checker": true,
