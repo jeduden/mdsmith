@@ -172,6 +172,13 @@ per workspace file.
   copies. `bytes.IndexByte` and `bytes.Contains` are
   SIMD-accelerated on amd64; faster than `strings.*` once
   you already have bytes.
+- **`bytes.IndexByte` over a hand-rolled byte loop or a
+  regex.** The compiler does not vectorize `for i := range
+  b { if b[i]==c }`; `bytes.IndexByte` is SIMD assembly, so
+  use it to scan `[]byte` forward for one byte. `lineIndex`
+  (behind `LineOfOffset`) was ~5% of a parity check on prose
+  as a manual loop; `IndexByte` erased it. Worth it on big
+  `Source` scans, not short per-line or `[]rune` loops.
 - **`strings.Builder` over `+`.** Concatenation in a loop
   allocates a new backing array each time. Call
   `Grow(n)` first if you know the final size.
@@ -184,13 +191,6 @@ per workspace file.
   zero-copy `[]byte`↔`string`. The caller must guarantee
   the source isn't mutated and outlives the view. Use
   sparingly, with a comment naming the invariant.
-
-### Fixed-string search beats regex
-
-`bytes.IndexByte('#')` is a hardware-assisted single-byte
-scan. `regexp.MustCompile("#").FindIndex` builds an NFA
-and walks it. For anything expressible as a literal,
-substring, or prefix/suffix check, skip `regexp`.
 
 ### Data structures
 

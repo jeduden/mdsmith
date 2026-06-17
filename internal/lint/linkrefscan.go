@@ -164,11 +164,16 @@ func buildLineSegments(source []byte) []text.Segment {
 	n := bytes.Count(source, lineIndexNewline) + 1
 	segs := make([]text.Segment, 0, n)
 	start := 0
-	for i := 0; i < len(source); i++ {
-		if source[i] == '\n' {
-			segs = append(segs, text.NewSegment(start, i+1))
-			start = i + 1
+	// bytes.IndexByte is SIMD-accelerated; a hand-rolled byte loop is not
+	// vectorized. Walk newline to newline over the (whole-document) source.
+	for {
+		i := bytes.IndexByte(source[start:], '\n')
+		if i < 0 {
+			break
 		}
+		nl := start + i
+		segs = append(segs, text.NewSegment(start, nl+1))
+		start = nl + 1
 	}
 	if start < len(source) {
 		segs = append(segs, text.NewSegment(start, len(source)))
