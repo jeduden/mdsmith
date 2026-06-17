@@ -394,3 +394,72 @@ func TestNewMatcher_StillReadsNestedGitignores(t *testing.T) {
 	assert.True(t, m.IsIgnored(filepath.Join(root, "docs", "draft.md"), false))
 	assert.False(t, m.IsIgnored(filepath.Join(root, "docs", "kept.md"), false))
 }
+
+// --- collectAncestorGitignores tests ---
+
+// TestCollectAncestorGitignores_IsWorktreeRoot confirms that when the
+// root passed to collectAncestorGitignores is itself a worktree root
+// (contains a .git entry), the function returns nil immediately and
+// does not collect any ancestor rules — not even from an adjacent
+// .gitignore at the same level.
+func TestCollectAncestorGitignores_IsWorktreeRoot(t *testing.T) {
+	// Layout: root/.git (dir) + root/.gitignore; root is also the leaf.
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".gitignore"), []byte("*.log\n"), 0o644))
+
+	got := collectAncestorGitignores(root)
+	assert.Nil(t, got, "worktree root must return nil, not an empty slice")
+}
+
+// TestCollectAncestorGitignores_OneAncestor covers the single-element
+// case: the reverse loop initialises i=0 and j=0, the condition i<j is
+// immediately false, and the swap body is never entered. The returned
+// slice must still contain the one path unchanged.
+func TestCollectAncestorGitignores_OneAncestor(t *testing.T) {
+	// Layout:
+	//   base/.git          ← worktree boundary (stops the walk)
+	//   base/.gitignore    ← the single ancestor rule file
+	//   base/leaf/         ← root passed to collectAncestorGitignores
+	base := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(base, ".git"), 0o755))
+	giBase := filepath.Join(base, ".gitignore")
+	require.NoError(t, os.WriteFile(giBase, []byte("*.log\n"), 0o644))
+	leaf := filepath.Join(base, "leaf")
+	require.NoError(t, os.MkdirAll(leaf, 0o755))
+
+	got := collectAncestorGitignores(leaf)
+	require.Len(t, got, 1)
+	assert.Equal(t, giBase, got[0])
+}
+
+// TestCollectAncestorGitignores_OrderRootFirst verifies the root-first
+// ordering guarantee and exercises the in-place reverse loop's swap
+// body with two ancestor gitignore files.
+//
+// Layout:
+//
+//	base/.git              ← worktree boundary
+//	base/.gitignore        ← outermost rule file (must appear first)
+//	base/mid/.gitignore    ← inner rule file (must appear second)
+//	base/mid/leaf/         ← root passed to collectAncestorGitignores
+func TestCollectAncestorGitignores_OrderRootFirst(t *testing.T) {
+	base := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(base, ".git"), 0o755))
+	giBase := filepath.Join(base, ".gitignore")
+	require.NoError(t, os.WriteFile(giBase, []byte("*.log\n"), 0o644))
+
+	mid := filepath.Join(base, "mid")
+	require.NoError(t, os.MkdirAll(mid, 0o755))
+	giMid := filepath.Join(mid, ".gitignore")
+	require.NoError(t, os.WriteFile(giMid, []byte("draft.md\n"), 0o644))
+
+	leaf := filepath.Join(mid, "leaf")
+	require.NoError(t, os.MkdirAll(leaf, 0o755))
+
+	got := collectAncestorGitignores(leaf)
+	require.Len(t, got, 2)
+	// Outer (root-of-worktree) gitignore must come first.
+	assert.Equal(t, giBase, got[0], "outermost gitignore must appear first")
+	assert.Equal(t, giMid, got[1], "inner gitignore must appear second")
+}
