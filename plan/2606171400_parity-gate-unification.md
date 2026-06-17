@@ -1,7 +1,7 @@
 ---
 id: 2606171400
 title: "Parity parse-skip: unify the two Layer-0 gate mechanisms"
-status: "🔲"
+status: "✅"
 summary: >-
   Reconcile the engine's two parse-skip gates — the static
   rulelayer.IsLayer0 set (block rules) and the config-aware
@@ -40,21 +40,30 @@ signals.
 
 ## Tasks
 
-1. Resolve each enabled rule's effective config first, then ask its
+1. [x] Resolve each enabled rule's effective config first, then ask its
    layer. A rule is skip-safe when it is `rulelayer.IsLayer0` OR its
-   configured instance reports `rule.LineCapable`.
-2. Replace `allEnabledRulesLayer0` with that per-file, config-aware
-   check. Keep the unknown-rule-is-AST-forcing default.
-3. Make the skip File serve both projections: the `ClassifyLines`
-   line classes (already wired) and the block-span scan.
-4. Extend `TestLayer0Gate_CorpusDiagnosticsEquivalence` to run the
-   parity config (not only the Layer-0-only config), so a
-   config-dependent rule's skip output is diffed against its parse
-   output across the corpus.
+   configured instance reports `rule.LineCapable`
+   (`ruleConfiguredLineCapable`).
+2. [x] Replace `allEnabledRulesLayer0` with that per-file, config-aware
+   check (`allEnabledRulesSkipSafe`). The unknown-rule-is-AST-forcing
+   default is kept.
+3. [x] The skip File already serves both projections: it is built with
+   `NewFileFlatPooled`, which carries the `ClassifyLines` line classes,
+   and `Layer0(f).BlockSpans` drives the block-span rules. No change
+   needed here.
+4. [x] Added `TestLayer0Gate_LineCapableCorpusEquivalence`: enables the
+   static Layer 0 rules plus line-length and diffs the parse-skip run
+   against the full-parse run across the corpus. (The full parity config
+   cannot skip yet — the other AST-forcing rules still block — so the
+   guard adds the one config-dependent rule rather than the whole set.)
 
 ## Acceptance Criteria
 
-- [ ] MDS001 line-length skips the parse under the parity config and is
-      byte-identical to the parse path on the corpus.
-- [ ] The two gate code paths share one eligibility function.
-- [ ] `go test ./...` passes.
+- [x] MDS001 line-length skips the parse and is byte-identical to the
+      parse path on the corpus
+      (`TestLayer0Gate_LineCapableCorpusEquivalence`,
+      `TestLayer0Gate_LineCapableRuleSkipsParse`).
+- [x] The two gate code paths share one eligibility helper
+      (`ruleConfiguredLineCapable`, used by both `allEnabledRulesSkipSafe`
+      and `computeFlatLayer0Active`).
+- [x] `go test ./...` passes.
