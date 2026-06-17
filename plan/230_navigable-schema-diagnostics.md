@@ -149,7 +149,7 @@ top of the file. The guard stays intact. When the
 insertion point sits inside a generated section, or
 there is no preceding heading, the anchor falls back
 to the non-positive `nonBodyDiagLine` value. That way
-[`filterGeneratedDiags`](../internal/engine/check.go)
+`filterGeneratedDiags` in `internal/checker`
 can never drop a missing-section diagnostic.
 
 ### Issue-first hover

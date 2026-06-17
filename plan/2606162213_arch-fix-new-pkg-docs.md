@@ -3,7 +3,7 @@ id: 2606162213
 title: >-
   Document internal/checker and
   internal/rulelayer; remove engine shim
-status: "🔲"
+status: "✅"
 model: sonnet
 depends-on: []
 summary: >-
@@ -69,17 +69,17 @@ Delete the `check.go` forwarding shim.
 
 ## Acceptance Criteria
 
-- [ ] `go.md` SRP table includes entries
+- [x] `go.md` SRP table includes entries
       for both `internal/checker` and
       `internal/rulelayer`.
-- [ ] `index.md` layering diagram lists
+- [x] `index.md` layering diagram lists
       both packages.
-- [ ] `internal/engine/check.go` does not
+- [x] `internal/engine/check.go` does not
       exist.
-- [ ] `runner.go` calls
+- [x] `runner.go` calls
       `checker.CheckRulesWithIntraFile`
       directly (no intermediary function).
-- [ ] `go test ./...` passes.
-- [ ] `go build ./...` succeeds.
-- [ ] `go run ./cmd/mdsmith check .`
+- [x] `go test ./...` passes.
+- [x] `go build ./...` succeeds.
+- [x] `go run ./cmd/mdsmith check .`
       reports 0 failures.

@@ -471,7 +471,7 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 	// directives, so it has no generated sections — leave the ranges nil.
 	populateGeneratedRanges(f)
 
-	diags, errs := checkRulesWithIntraFile(f, rr.mdRules, effective, r.SkipSourceContext, intraFileCap)
+	diags, errs := checker.CheckRulesWithIntraFile(f, rr.mdRules, effective, r.SkipSourceContext, intraFileCap)
 	if r.Explain {
 		explain.Attach(diags, r.Config, path, fmKinds, fmFields)
 	}
@@ -846,7 +846,7 @@ func (r *Runner) runSourceCheckRules(
 	// IntraFileConcurrency knob still overrides — set 1 to keep
 	// the LSP single-threaded for predictability.
 	intraFileCap := resolveIntraFileWorkers(r.IntraFileConcurrency, 0)
-	diags, errs := checkRulesWithIntraFile(f, mdRules, effective, r.SkipSourceContext, intraFileCap)
+	diags, errs := checker.CheckRulesWithIntraFile(f, mdRules, effective, r.SkipSourceContext, intraFileCap)
 	if r.Explain {
 		explain.Attach(diags, r.Config, path, fmKinds, fmFields)
 	}

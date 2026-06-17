@@ -88,9 +88,8 @@ code/HTML spans, and each rule scans those ranges with
   lines of scan logic.
 - Rewriting NodeChecker rules. Their walk is
   shared via the multiplex pass in
-  [check.go](../internal/engine/check.go); cost
-  is already amortized. Target standalone
-  `Check`-implementing rules.
+  `internal/checker`; cost is already amortized.
+  Target standalone `Check`-implementing rules.
 
 ## Approach
 
