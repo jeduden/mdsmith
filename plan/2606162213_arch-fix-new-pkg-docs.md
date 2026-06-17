@@ -1,8 +1,6 @@
 ---
 id: 2606162213
-title: >-
-  Document internal/checker and
-  internal/rulelayer; remove engine shim
+title: "Document internal/checker and internal/rulelayer; remove engine shim"
 status: "✅"
 model: sonnet
 depends-on: []
