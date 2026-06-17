@@ -113,7 +113,7 @@ func isH1Span(f *lint.File, span lint.BlockSpan) bool {
 func (r *Rule) verdict(f *lint.File, h1Lines []int) []lint.Diagnostic {
 	hasFMTitle := r.FrontMatterTitle != "" && r.frontMatterHasTitle(f)
 
-	var diags []lint.Diagnostic
+	diags := make([]lint.Diagnostic, 0, len(h1Lines))
 
 	if hasFMTitle && len(h1Lines) > 0 {
 		diags = append(diags, r.newDiag(f, h1Lines[0],
