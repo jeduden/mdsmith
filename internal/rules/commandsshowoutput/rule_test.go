@@ -333,6 +333,7 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 		[]byte("```sh\n\n$ foo\n\n```\n"),
 		[]byte("```sh\n$ ls\n```\n\nText.\n\n```sh\n$ ls\nfoo\n```\n"),
 		[]byte("   ```sh\n   $ cmd\n   ```\n"),
+		[]byte("```sh\n```\n"),
 	}
 	for i, src := range srcs {
 		t.Run(fmt.Sprintf("src%d", i), func(t *testing.T) {
@@ -344,4 +345,17 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 				"nil-AST must match AST for src=%q", src)
 		})
 	}
+}
+
+func TestCheckBlock_SkipsGeneratedRange_NilAST(t *testing.T) {
+	src := []byte("```sh\n$ ls\n```\n")
+	f := lint.NewFileLines("f.md", src)
+	f.GeneratedRanges = []lint.LineRange{{From: 1, To: 3}}
+	assert.Empty(t, (&Rule{}).Check(f), "block in generated range skipped on L0 path")
+}
+
+func TestAllLinesArePromptsL0_UnclosedFence(t *testing.T) {
+	f := lint.NewFileLines("f.md", []byte("```sh\n$ cmd\n"))
+	span := lint.BlockSpan{Kind: lint.BlockFencedCode, Start: 1, End: 2, Closed: false}
+	assert.True(t, allLinesArePromptsL0(f, span))
 }

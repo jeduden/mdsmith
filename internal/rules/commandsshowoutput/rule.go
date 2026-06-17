@@ -46,9 +46,6 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 // CheckBlock implements rule.BlockChecker for the nil-AST path. It mirrors
 // CheckNode: guards on generated range, then delegates to allLinesArePromptsL0.
 func (r *Rule) CheckBlock(span lint.BlockSpan, f *lint.File) []lint.Diagnostic {
-	if span.Kind != lint.BlockFencedCode {
-		return nil
-	}
 	if inGeneratedRange(f, span.Start) {
 		return nil
 	}
