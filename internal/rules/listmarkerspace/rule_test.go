@@ -424,7 +424,10 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 		ulSingle, ulMulti, olSingle, olMulti int
 	}{
 		{src: "-  two spaces\n- one space\n", ulSingle: 1, ulMulti: 1, olSingle: 1, olMulti: 1},
-		{src: "- First paragraph\n\n  Second paragraph of same item\n\n- Another item\n", ulSingle: 1, ulMulti: 2, olSingle: 1, olMulti: 1},
+		{
+			src:      "- First paragraph\n\n  Second paragraph of same item\n\n- Another item\n",
+			ulSingle: 1, ulMulti: 2, olSingle: 1, olMulti: 1,
+		},
 		{src: "1.  two\n2. one\n", ulSingle: 1, ulMulti: 1, olSingle: 1, olMulti: 1},
 		{src: "- outer\n  -  nested two spaces\n- back\n", ulSingle: 1, ulMulti: 1, olSingle: 1, olMulti: 1},
 		{src: "- item\n  ```\n  code\n  ```\n-  two\n", ulSingle: 1, ulMulti: 1, olSingle: 1, olMulti: 1},

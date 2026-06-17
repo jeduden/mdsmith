@@ -56,7 +56,9 @@ func compareLists(t *testing.T, want []astList, got []List) {
 		w, g := want[i], got[i]
 		if w.ordered != g.Ordered || w.start != g.Start || w.depth != g.Depth ||
 			w.firstLine != g.FirstLine || w.lastLine != g.LastLine || w.topLevel != g.TopLevel {
-			t.Errorf("list %d mismatch:\n AST: ordered=%v start=%d depth=%d first=%d last=%d top=%v\n scan: ordered=%v start=%d depth=%d first=%d last=%d top=%v",
+			t.Errorf(
+				"list %d mismatch:\n AST: ordered=%v start=%d depth=%d first=%d last=%d top=%v"+
+					"\n scan: ordered=%v start=%d depth=%d first=%d last=%d top=%v",
 				i, w.ordered, w.start, w.depth, w.firstLine, w.lastLine, w.topLevel,
 				g.Ordered, g.Start, g.Depth, g.FirstLine, g.LastLine, g.TopLevel)
 		}
@@ -67,7 +69,9 @@ func compareLists(t *testing.T, want []astList, got []List) {
 			wi, gi := w.items[j], g.Items[j]
 			if wi.line != gi.Line || wi.level != gi.Level || wi.ordered != gi.Ordered ||
 				wi.number != gi.Number || wi.multiBlock != gi.MultiBlock {
-				t.Errorf("list %d item %d mismatch:\n AST: line=%d level=%d ord=%v num=%d multi=%v\n scan: line=%d level=%d ord=%v num=%d multi=%v",
+				t.Errorf(
+					"list %d item %d mismatch:\n AST: line=%d level=%d ord=%v num=%d multi=%v"+
+						"\n scan: line=%d level=%d ord=%v num=%d multi=%v",
 					i, j, wi.line, wi.level, wi.ordered, wi.number, wi.multiBlock,
 					gi.Line, gi.Level, gi.Ordered, gi.Number, gi.MultiBlock)
 			}
@@ -80,7 +84,11 @@ func compareLists(t *testing.T, want []astList, got []List) {
 // the same facts as one that walks the lists.
 func assertFlatMatchesLists(t *testing.T, lists []List, flat []Item) {
 	t.Helper()
-	var want []Item
+	total := 0
+	for _, l := range lists {
+		total += len(l.Items)
+	}
+	want := make([]Item, 0, total)
 	for _, l := range lists {
 		want = append(want, l.Items...)
 	}
@@ -310,11 +318,21 @@ func lastLineOfNode(f *lint.File, n ast.Node) int {
 }
 
 // snippets returns the markdown corpus to validate against, keyed by a
-// descriptive name. It includes the prompt's snippets, the stripped
-// bodies of the bad fixtures, and a set of mixed/edge cases.
+// descriptive name. It merges coreSnippets with the bad fixtures.
 func snippets(t *testing.T) map[string]string {
 	t.Helper()
-	m := map[string]string{
+	m := coreSnippets()
+	for k, v := range fixtureSnippets(t) {
+		m[k] = v
+	}
+	return m
+}
+
+// coreSnippets is the hand-written corpus: nested, loose, ordered, and
+// edge-case inputs covering all CommonMark list constructs the five rules
+// exercise.
+func coreSnippets() map[string]string {
+	return map[string]string{
 		"nested-4space":               "- a\n    - nested item\n",
 		"three-deep":                  "- one\n  - two\n    - three\n",
 		"outer-inner":                 "- Outer\n  - Inner\n  - Another\n- Another outer\n",
@@ -370,10 +388,6 @@ func snippets(t *testing.T) map[string]string {
 		"para-blank-para-nested":      "- a\n\n  more\n\n  - sub\n",
 		"tilde-fence-in-item":         "- a\n\n  ~~~\n  x\n  ~~~\n\n- b\n",
 	}
-	for k, v := range fixtureSnippets(t) {
-		m[k] = v
-	}
-	return m
 }
 
 // fixtureSnippets reads the bad fixtures of the five rules and returns

@@ -182,6 +182,26 @@ func TestCheck_AllowSetCachedPerFileAfterApplySettings(t *testing.T) {
 	assert.Empty(t, r.Check(f))
 }
 
+// TestCalloutTokenFromLine_OOBLine covers the idx-out-of-range guard in
+// calloutTokenFromLine: lineNum 0 (idx == -1) and lineNum > lines must
+// return ok==false without panicking.
+func TestCalloutTokenFromLine_OOBLine(t *testing.T) {
+	f := lint.NewFileLines("f.md", []byte("> [!NOTE]\n> body\n"))
+	_, _, _, ok := calloutTokenFromLine(f, 0)
+	assert.False(t, ok, "lineNum 0 (idx -1) must return false")
+	_, _, _, ok = calloutTokenFromLine(f, 99)
+	assert.False(t, ok, "lineNum past EOF must return false")
+}
+
+// TestQuoteMarkerLen_NoMarker covers quoteMarkerLen returning 0 when the
+// line has no '>' (e.g. all spaces, or non-quote content).
+func TestQuoteMarkerLen_NoMarker(t *testing.T) {
+	assert.Equal(t, 0, quoteMarkerLen([]byte("   ")), "spaces-only line has no marker")
+	assert.Equal(t, 0, quoteMarkerLen([]byte("text")), "plain text has no marker")
+	assert.Equal(t, 2, quoteMarkerLen([]byte("> ")), "single marker with space")
+	assert.Equal(t, 1, quoteMarkerLen([]byte(">")), "marker at EOL, no space")
+}
+
 // TestCheck_NilASTMatchesAST pins the nil-AST path: Check on a parse-
 // skipped File (f.AST nil) must produce byte-identical diagnostics to the
 // AST path for callout blockquotes, including the column of the `[!`

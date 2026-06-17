@@ -558,7 +558,7 @@ func parseMarker(line []byte, indent, baseCol int) (markerInfo, bool) {
 			return markerInfo{}, false
 		}
 		j := indent + 1
-		if !(j >= len(line) || line[j] == ' ' || line[j] == '\t' || line[j] == '\r') {
+		if j < len(line) && line[j] != ' ' && line[j] != '\t' && line[j] != '\r' {
 			return markerInfo{}, false
 		}
 		return markerInfo{
@@ -599,7 +599,7 @@ func orderedInfo(line []byte, indent int) (markerInfo, bool) {
 	}
 	marker := line[j]
 	end := j + 1
-	if !(end >= len(line) || line[end] == ' ' || line[end] == '\t' || line[end] == '\r') {
+	if end < len(line) && line[end] != ' ' && line[end] != '\t' && line[end] != '\r' {
 		return markerInfo{}, false
 	}
 	return markerInfo{
