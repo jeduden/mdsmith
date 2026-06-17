@@ -53,9 +53,12 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 // It reads only heading levels (ATX `#` run, setext `=` underline) plus the
 // front-matter title field, none of which needs the inline tree.
 func (r *Rule) checkNilAST(f *lint.File) []lint.Diagnostic {
+	// The gate (layer0SkipEligible) excludes any file that may hold a block
+	// quote or list, so every heading span here is top-level; the scanner
+	// never tags a heading span with a nesting depth.
 	var h1Lines []int
 	for _, span := range lint.Layer0(f).BlockSpans {
-		if span.Depth != 0 || !isH1Span(f, span) {
+		if !isH1Span(f, span) {
 			continue
 		}
 		line := span.Start

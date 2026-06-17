@@ -112,10 +112,10 @@ func (r *Rule) checkNilAST(f *lint.File) []lint.Diagnostic {
 	}
 	var diags []lint.Diagnostic
 	prevLevel := 0
+	// The gate (layer0SkipEligible) excludes any file that may hold a block
+	// quote or list, so every heading span here is top-level (Depth 0); the
+	// scanner never tags a heading span with a nesting depth.
 	for _, span := range lint.Layer0(f).BlockSpans {
-		if span.Depth != 0 {
-			continue
-		}
 		level := 0
 		switch span.Kind {
 		case lint.BlockATXHeading:

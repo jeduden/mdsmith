@@ -23,11 +23,14 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 		[]byte("Some content here.\n\n# Title\n"),
 		[]byte("\n# Title\n"),
 		[]byte(""),
+		[]byte("   \n\n   \n"),
 		[]byte("Setext\n======\n\nText\n"),
 		[]byte("Setext two\n----------\n\nText\n"),
 		[]byte("   # Indented one\n\nText\n"),
+		[]byte("  Indented setext\n  ===============\n"),
 	}
-	for _, level := range []int{1, 2} {
+	// Level 0 exercises the default-to-1 path on both AST and nil-AST.
+	for _, level := range []int{0, 1, 2} {
 		for _, src := range srcs {
 			astFile, err := lint.NewFile("f.md", src)
 			require.NoError(t, err)

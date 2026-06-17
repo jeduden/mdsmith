@@ -25,6 +25,9 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 		[]byte(""),
 		[]byte("# A\n\n## B\n\n#### D\n\n## E\n"),
 		[]byte("###### Six first\n"),
+		// Indented ATX/setext headings (1–3 spaces): both paths must agree.
+		[]byte("   # Indented one\n\n  ### Jump three\n"),
+		[]byte("Title\n=====\n\n  Sub\n  ---\n"),
 	}
 	for _, src := range srcs {
 		astFile, err := lint.NewFile("f.md", src)
