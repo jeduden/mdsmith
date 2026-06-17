@@ -70,16 +70,44 @@ re-parse instead.
 3. Confirm `TestLayer0Gate_CorpusDiagnosticsEquivalence` stays green — it
    enables every Layer-0 rule and diffs parse-skip vs full-parse across
    the corpus, so a divergent rule fails it.
-4. Once the list/quote rules land, drop the gate's code-block guard (the
-   scanner must match the AST on code-in-list first) and re-measure
-   parity vs gomarklint.
+4. ~~Once the list/quote rules land, drop the gate's code-block guard~~
+   Done early — see the measurement below.
+
+## Measurement: the code guard was the wrong fear
+
+A full corpus sweep (1046 files, 453 code-bearing) compared every
+Layer-0 rule's AST output against its nil-AST output, with front matter
+stripped on both sides as the engine does. Result: **one** divergence,
+not the feared code-in-list class. `scanLayer0`'s block spans and the
+flat `ClassifyLines` code-line projection both already match goldmark on
+code, including fences and indents inside list items. The lone
+divergence was MDS002 on a ≤3-space-indented ATX heading: the AST path's
+`lineStartsWithHash` reads column 1 without skipping indent, so it
+flagged a heading scanLayer0 (correctly) treats as ATX. Fixed by keying
+MDS002's `CheckBlock` `isATX` off the raw first byte too.
+
+So the coarse `SourceMayHaveCodeBlock` guard bailed on any fence, tab, or
+four-space run. That was far more conservative than the scanner needed.
+The guard is now gone. The skip File carries the `ClassifyLines`
+projection (via `NewFileFlatPooled`), so code-line rules serve the
+validated classifier. The corpus equivalence gate now engages on
+code-bearing files and stays green.
+
+This does not by itself speed up benchmark 2: `MDSMITH_LAYER0_SKIP` is
+still default-off, and the gate still requires *every* enabled rule to
+be Layer 0 (the remaining migration). But it removes the blocker that
+framed parse-skip on code as a scanner rewrite — it was a one-line rule
+fix plus a guard removal.
 
 ## Result so far
 
-- [x] MDS002 heading-style: reads only `span.Kind` (ATX vs setext) and
-      the leading-`#` level, never the inline tree. `CheckBlock` serves
-      the nil-AST path byte-identically; the corpus gate is green with
-      MDS002 enabled.
+- [x] MDS002 heading-style: reads only the heading line (style + level),
+      never the inline tree. `CheckBlock` serves the nil-AST path
+      byte-identically, including the indented-ATX edge.
+- [x] MDS013, MDS015, MDS044: confirmed byte-identical to the AST on all
+      453 code-bearing corpus files (the sweep above).
+- [x] Code guard removed; skip File carries `ClassifyLines`; the corpus
+      equivalence gate engages on code files and is green.
 
 ## Acceptance Criteria
 

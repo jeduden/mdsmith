@@ -22,6 +22,11 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 		[]byte("# A\n\nSub heading\n-----------\n\nText\n"),
 		[]byte("###### Deep six\n\nText\n"),
 		[]byte("intro\n\nSetext two\n----------\n"),
+		// A ≤3-space-indented ATX heading: goldmark parses it as a heading
+		// (BlockATXHeading span), but MDS002's column-1 isATX test reads it
+		// as non-ATX. Both paths must agree (regression for the one corpus
+		// divergence the code-file equivalence sweep found).
+		[]byte("# Title\n\n   # Indented\n"),
 	}
 	for _, style := range []string{"atx", "setext"} {
 		for _, src := range srcs {

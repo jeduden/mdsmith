@@ -56,17 +56,22 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 	return r.verdict(f, isATXHeading(heading, f.Source), heading.Level, headingLine(heading, f))
 }
 
-// CheckBlock implements rule.BlockChecker. A heading span's Kind already
-// records its style — BlockATXHeading is exactly the AST path's
-// isATXHeading==true, BlockSetextHeading its false — and span.Start is
-// the heading line (headingLine on the AST path). The ATX level the
-// setext branch needs is the leading-`#` run on that line, which goldmark
-// parses the same way, so the verdict is byte-identical.
+// CheckBlock implements rule.BlockChecker. span.Start is the heading line
+// (headingLine on the AST path); the style and ATX level are read from
+// that line's bytes to match the AST path's isATXHeading and
+// heading.Level exactly, so the verdict is byte-identical.
 func (r *Rule) CheckBlock(span lint.BlockSpan, f *lint.File) []lint.Diagnostic {
-	isATX := span.Kind == lint.BlockATXHeading
+	line := f.Lines[span.Start-1]
+	// Match the AST path's isATXHeading exactly: it tests the first byte of
+	// the heading's source line via lineStartsWithHash and does NOT skip
+	// indentation. A ≤3-space-indented ATX heading is a BlockATXHeading span
+	// (goldmark still parses it as a heading), but MDS002's column-1 test
+	// reads it as non-ATX — so isATX keys off the raw first byte, not the
+	// span kind, to keep the two paths byte-identical.
+	isATX := len(line) > 0 && line[0] == '#'
 	level := 0
 	if isATX {
-		level = atxLevelFromLine(f.Lines[span.Start-1])
+		level = atxLevelFromLine(line)
 	}
 	return r.verdict(f, isATX, level, span.Start)
 }

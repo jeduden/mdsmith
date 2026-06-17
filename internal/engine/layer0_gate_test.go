@@ -161,12 +161,14 @@ func TestLayer0Gate_DiagnosticsMatchFullParse(t *testing.T) {
 		"Layer 0 parse-skip must produce identical diagnostics to a full parse")
 }
 
-// TestLayer0Gate_CodeBlockForcesParse proves the SourceMayHaveCodeBlock
-// guard: the Layer 0 scanner does not descend into a list item's content, so
-// a file that may hold a code block (here a hard tab — also a fence or a
-// four-space indent) forces the full parse rather than risk a CodeBlockLines
-// divergence, even when every enabled rule is otherwise Layer 0.
-func TestLayer0Gate_CodeBlockForcesParse(t *testing.T) {
+// TestLayer0Gate_CodeBlockSkipsParse proves the parse-skip now engages on
+// code-bearing files. The old SourceMayHaveCodeBlock guard bailed on any
+// code marker (here a hard tab — also a fence or a four-space indent) to
+// avoid a CodeBlockLines divergence; the skip File now carries the flat
+// ClassifyLines projection (gated byte-identical to the AST on code-bearing
+// corpus files), so a code marker no longer forces the parse when every
+// enabled rule is Layer 0.
+func TestLayer0Gate_CodeBlockSkipsParse(t *testing.T) {
 	withLayer0Skip(t, true)
 	dir, path := writeDoc(t, "# Title\n\nA line with a hard\ttab.\n")
 
@@ -182,8 +184,8 @@ func TestLayer0Gate_CodeBlockForcesParse(t *testing.T) {
 	}
 	res := r.Run([]string{path})
 	require.Empty(t, res.Errors)
-	assert.False(t, probe.sawNilAST,
-		"a source that may hold a code block must keep the AST parse")
+	assert.True(t, probe.sawNilAST,
+		"a code-bearing source with only Layer 0 rules must skip the parse")
 }
 
 // TestLayer0Gate_CodeSpanRuleSkipsParse proves the Layer 1 code-span fix
