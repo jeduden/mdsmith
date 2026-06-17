@@ -187,28 +187,34 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		return f.Source
 	}
 
-	var result []string
+	maxLines := len(f.Lines) + len(insertBefore) + len(insertAfter)
+	result := make([][]byte, 0, maxLines)
 	for i, line := range f.Lines {
 		lineNum := i + 1
 		if blank, ok := insertBefore[lineNum]; ok {
 			// Avoid double blank: if we just inserted after the previous line,
 			// that already provides the blank line above.
 			if _, prev := insertAfter[lineNum-1]; !prev {
-				result = append(result, blank)
+				result = append(result, []byte(blank))
 			}
 		}
 		if repl, ok := replacements[lineNum]; ok {
-			result = append(result, repl)
+			result = append(result, []byte(repl))
 		} else {
-			result = append(result, string(line))
+			// Unchanged line: append slice header only, no string copy.
+			result = append(result, line)
 		}
 		if blank, ok := insertAfter[lineNum]; ok {
-			result = append(result, blank)
+			result = append(result, []byte(blank))
 		}
 	}
 
-	return []byte(strings.Join(result, "\n"))
+	return bytes.Join(result, newlineSep)
 }
+
+// newlineSep is the bytes.Join separator; a package-level var avoids a
+// heap allocation for []byte("\n") on every Fix call.
+var newlineSep = []byte("\n")
 
 func (r *Rule) collectChanges(f *lint.File) (before, after map[int]string, replacements map[int]string) {
 	before = make(map[int]string)

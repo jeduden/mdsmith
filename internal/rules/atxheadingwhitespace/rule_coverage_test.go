@@ -20,7 +20,7 @@ func TestExtractContent_WhitespaceOnly(t *testing.T) {
 func TestNormalizeLine_TooManyHashes(t *testing.T) {
 	// 7 hashes exceed the ATX limit; normalizeLine returns the line unchanged.
 	result := normalizeLine([]byte("####### Heading"))
-	assert.Equal(t, "####### Heading", result)
+	assert.Equal(t, []byte("####### Heading"), result)
 }
 
 func TestCheckClosingATX_AllHashContent(t *testing.T) {
