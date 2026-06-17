@@ -212,6 +212,27 @@ func TestLineStrings_EmptyFile(t *testing.T) {
 	assert.Nil(t, f.LineStrings())
 }
 
+// TestBytesView pins the zero-copy string view: content is preserved,
+// empty/nil inputs return empty string, and the conversion allocates nothing.
+func TestBytesView(t *testing.T) {
+	t.Run("nonEmpty", func(t *testing.T) {
+		b := []byte("hello")
+		s := BytesView(b)
+		assert.Equal(t, "hello", s)
+		assert.Equal(t, len(b), len(s))
+	})
+	t.Run("nilBytes", func(t *testing.T) {
+		assert.Equal(t, "", BytesView(nil))
+	})
+	t.Run("emptySlice", func(t *testing.T) {
+		assert.Equal(t, "", BytesView([]byte{}))
+	})
+	t.Run("zeroAlloc", func(t *testing.T) {
+		b := []byte("test string")
+		assert.Zero(t, testing.AllocsPerRun(50, func() { _ = BytesView(b) }))
+	})
+}
+
 func TestMaskRanges(t *testing.T) {
 	// No ranges (nil or empty): original slice returned unchanged,
 	// with no allocation — the loop body never runs.

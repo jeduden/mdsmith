@@ -146,3 +146,22 @@ func TestWalkNodes_NilFileAndNilAST(t *testing.T) {
 	assert.Nil(t, WalkNodes(stub, &lint.File{Path: "t.md"}))
 	assert.Empty(t, stub.visits, "no nodes visited when AST is nil")
 }
+
+// TestBlockKindInSet pins the linear scan used by WalkBlocks to filter
+// spans: empty set returns false, present kind returns true, absent
+// kind returns false.
+func TestBlockKindInSet(t *testing.T) {
+	t.Run("emptySet", func(t *testing.T) {
+		assert.False(t, blockKindInSet(lint.BlockParagraph, nil))
+		assert.False(t, blockKindInSet(lint.BlockParagraph, []lint.BlockKind{}))
+	})
+	t.Run("present", func(t *testing.T) {
+		kinds := []lint.BlockKind{lint.BlockParagraph, lint.BlockThematicBreak}
+		assert.True(t, blockKindInSet(lint.BlockParagraph, kinds))
+		assert.True(t, blockKindInSet(lint.BlockThematicBreak, kinds))
+	})
+	t.Run("absent", func(t *testing.T) {
+		kinds := []lint.BlockKind{lint.BlockParagraph}
+		assert.False(t, blockKindInSet(lint.BlockATXHeading, kinds))
+	})
+}

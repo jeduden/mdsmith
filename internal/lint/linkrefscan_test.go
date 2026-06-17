@@ -153,6 +153,91 @@ func TestScanLinkReferences_CorpusEquivalence(t *testing.T) {
 	assert.Zero(t, diverged)
 }
 
+// TestScanNeedsFallback pins the detection of block quotes, list items,
+// and tight list continuations that may hide a link reference definition
+// from the paragraph-head byte scanner.
+func TestScanNeedsFallback(t *testing.T) {
+	t.Run("noCandidates", func(t *testing.T) {
+		f := NewFileLines("t.md", []byte("# Heading\n\nparagraph\n"))
+		assert.False(t, scanNeedsFallback(f))
+	})
+	t.Run("plainDef", func(t *testing.T) {
+		f := NewFileLines("t.md", []byte("[a]: /a\n"))
+		assert.False(t, scanNeedsFallback(f))
+	})
+	t.Run("blockQuoteWithDef", func(t *testing.T) {
+		f := NewFileLines("t.md", []byte("> [a]: /a\n"))
+		assert.True(t, scanNeedsFallback(f))
+	})
+	t.Run("listLineWithDef", func(t *testing.T) {
+		f := NewFileLines("t.md", []byte("- [a]: /a\n"))
+		assert.True(t, scanNeedsFallback(f))
+	})
+	t.Run("tightListContinuation", func(t *testing.T) {
+		f := NewFileLines("t.md", []byte("- item\n  [a]: /a\n"))
+		assert.True(t, scanNeedsFallback(f))
+	})
+}
+
+// TestParagraphHeadMayDefine pins the cheap first-line gate that decides
+// whether to build goldmark segments for a paragraph span.
+func TestParagraphHeadMayDefine(t *testing.T) {
+	t.Run("openingBracketWithDef", func(t *testing.T) {
+		f := NewFileLines("t.md", []byte("[a]: /a\n"))
+		span := BlockSpan{Kind: BlockParagraph, Start: 1, End: 1, Depth: 0}
+		assert.True(t, paragraphHeadMayDefine(f, span))
+	})
+	t.Run("leadingSpaceWithBracket", func(t *testing.T) {
+		f := NewFileLines("t.md", []byte("  [a]: /a\n"))
+		span := BlockSpan{Kind: BlockParagraph, Start: 1, End: 1, Depth: 0}
+		assert.True(t, paragraphHeadMayDefine(f, span))
+	})
+	t.Run("noBracket", func(t *testing.T) {
+		f := NewFileLines("t.md", []byte("plain paragraph\n"))
+		span := BlockSpan{Kind: BlockParagraph, Start: 1, End: 1, Depth: 0}
+		assert.False(t, paragraphHeadMayDefine(f, span))
+	})
+	t.Run("bracketNoDef", func(t *testing.T) {
+		f := NewFileLines("t.md", []byte("[not a def]\n"))
+		span := BlockSpan{Kind: BlockParagraph, Start: 1, End: 1, Depth: 0}
+		assert.False(t, paragraphHeadMayDefine(f, span))
+	})
+}
+
+// TestBuildLineSegments pins that one Segment per source line is
+// produced with correct Start/Stop offsets including the trailing
+// newline, and that a source without a trailing newline yields a
+// final segment up to len(source).
+func TestBuildLineSegments(t *testing.T) {
+	t.Run("multiLine", func(t *testing.T) {
+		src := []byte("ab\ncd\nef\n")
+		segs := buildLineSegments(src)
+		require.Len(t, segs, 3)
+		assert.Equal(t, 0, segs[0].Start)
+		assert.Equal(t, 3, segs[0].Stop)
+		assert.Equal(t, 3, segs[1].Start)
+		assert.Equal(t, 6, segs[1].Stop)
+		assert.Equal(t, 6, segs[2].Start)
+		assert.Equal(t, 9, segs[2].Stop)
+	})
+	t.Run("singleLine", func(t *testing.T) {
+		segs := buildLineSegments([]byte("hello\n"))
+		require.Len(t, segs, 1)
+		assert.Equal(t, 0, segs[0].Start)
+		assert.Equal(t, 6, segs[0].Stop)
+	})
+	t.Run("noTrailingNewline", func(t *testing.T) {
+		segs := buildLineSegments([]byte("hello"))
+		require.Len(t, segs, 1)
+		assert.Equal(t, 0, segs[0].Start)
+		assert.Equal(t, 5, segs[0].Stop)
+	})
+	t.Run("empty", func(t *testing.T) {
+		segs := buildLineSegments(nil)
+		assert.Empty(t, segs)
+	})
+}
+
 // repoRoot walks up from the test's working directory to the module
 // root (the directory holding go.mod).
 func repoRoot(t *testing.T) string {
