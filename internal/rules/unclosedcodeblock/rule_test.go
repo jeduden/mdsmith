@@ -10,6 +10,35 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestCheck_NilASTMatchesAST pins the Layer-0 migration: Check on a
+// nil-AST File (the parse-skip path, reading span.Closed) must produce
+// byte-identical diagnostics to the AST path. The corpus has few unclosed
+// fences, so this enumerates the closure edge cases directly: closed,
+// unclosed-to-EOF, unclosed before a trailing blank, tilde fences, a
+// fence with info but no content, a longer closing run, and a lone fence.
+func TestCheck_NilASTMatchesAST(t *testing.T) {
+	srcs := [][]byte{
+		[]byte("# H\n\n```go\ncode\n```\n"),            // closed
+		[]byte("# H\n\n```go\ncode\nno close\n"),       // unclosed to EOF
+		[]byte("# H\n\n```\ncode\n"),                   // unclosed, no info
+		[]byte("# H\n\n```go\ncode\n\n"),               // unclosed before trailing blank
+		[]byte("# H\n\n~~~\ncode\n~~~\n"),              // closed tilde
+		[]byte("# H\n\n~~~py\ncode\n"),                 // unclosed tilde
+		[]byte("# H\n\n````\ncode ```\n````\n"),        // longer fence, closed
+		[]byte("# H\n\n```js\n"),                       // info, no content, unclosed
+		[]byte("# H\n\ntext\n\n```\na\n```\n\nmore\n"), // closed mid-document
+		[]byte("```\nonly\n"),                          // lone unclosed at file start
+	}
+	for _, src := range srcs {
+		astFile, err := lint.NewFile("f.md", src)
+		require.NoError(t, err)
+		astDiags := (&Rule{}).Check(astFile)
+		l0Diags := (&Rule{}).Check(lint.NewFileLines("f.md", src))
+		assert.Equal(t, astDiags, l0Diags,
+			"nil-AST must match AST for src=%q", string(src))
+	}
+}
+
 func TestID(t *testing.T) {
 	r := &Rule{}
 	assert.Equal(t, "MDS031", r.ID())

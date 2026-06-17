@@ -59,13 +59,11 @@ For each rule:
       corpus gate green.
 - [x] MDS011 fenced-code-language: `CheckBlock` reads the info string
       from the opening line; `A-no-skipping`, corpus gate green.
-- [ ] MDS031 unclosed-code-block: the scanner already computes whether a
-      fence `closed` ([layer0.go](../internal/lint/layer0.go) `tryFence`)
-      but does not expose it on the span, and the rule cannot re-derive
-      it without the scanner's unexported `openingFence`/`closingFence`.
-      The clean fix is a `Closed` bool on the fenced `BlockSpan` set by
-      `tryFence`; then `CheckBlock` flags `!span.Closed`. Self-contained
-      scanner change, not a pure rule migration — do it first.
+- [x] MDS031 unclosed-code-block: added a `Closed` bool to the fenced
+      `BlockSpan`, set from the `closed` flag `tryFence` already computes;
+      `CheckBlock` flags `!span.Closed`. `A-no-skipping`, corpus gate
+      green, with a 10-case unit test for the closure edges the corpus
+      barely exercises (lone fence, info-no-content, trailing blank).
 - [ ] MDS065 code-block-style, MDS066 commands-show-output.
 
 ## Acceptance Criteria

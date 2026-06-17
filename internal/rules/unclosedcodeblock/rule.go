@@ -25,11 +25,16 @@ func (r *Rule) Name() string { return "unclosed-code-block" }
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "code" }
 
-// Check implements rule.Rule. The per-block logic is pure and
-// stateless, so it is expressed as CheckNode and the engine can fold
-// this rule into one shared AST walk; a direct call still works via
-// rule.WalkNodes.
+// Check implements rule.Rule. Whether a fenced block is unclosed is a
+// property of its delimiters, not the inline tree, so the rule is a
+// rule.BlockChecker: on a parsed File it folds into the engine's shared
+// AST walk (rule.WalkNodes); on a parse-skipped File (f.AST nil) it reads
+// the Layer 0 block scan, whose fenced spans carry the same closure bit
+// (rule.WalkBlocks).
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	if f != nil && f.AST == nil {
+		return rule.WalkBlocks(r, f)
+	}
 	return rule.WalkNodes(r, f)
 }
 
@@ -45,10 +50,34 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 	if hasClosingFence(f, fcb) {
 		return nil
 	}
-	openLine := fencepos.OpenLine(f, fcb)
+	return r.diag(f, fencepos.OpenLine(f, fcb))
+}
+
+// CheckBlock implements rule.BlockChecker. The Layer 0 scanner sets
+// span.Closed for every BlockFencedCode span — true when it found a
+// matching closing fence, false when the fence ran to end of file — which
+// is exactly the AST path's hasClosingFence verdict, and span.Start is the
+// opening fence line (fencepos.OpenLine). So the diagnostic is identical.
+func (r *Rule) CheckBlock(span lint.BlockSpan, f *lint.File) []lint.Diagnostic {
+	if span.Closed {
+		return nil
+	}
+	return r.diag(f, span.Start)
+}
+
+// blockKinds is the static block-kind interest CheckBlock declares via
+// rule.BlockChecker; package-level so BlockKinds returns it without
+// allocating.
+var blockKinds = []lint.BlockKind{lint.BlockFencedCode}
+
+// BlockKinds implements rule.BlockChecker.
+func (r *Rule) BlockKinds() []lint.BlockKind { return blockKinds }
+
+// diag builds the single-element unclosed-fence diagnostic both paths emit.
+func (r *Rule) diag(f *lint.File, line int) []lint.Diagnostic {
 	return []lint.Diagnostic{{
 		File:     f.Path,
-		Line:     openLine,
+		Line:     line,
 		Column:   1,
 		RuleID:   r.ID(),
 		RuleName: r.Name(),
@@ -57,7 +86,10 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 	}}
 }
 
-var _ rule.NodeChecker = (*Rule)(nil)
+var (
+	_ rule.NodeChecker  = (*Rule)(nil)
+	_ rule.BlockChecker = (*Rule)(nil)
+)
 
 // hasClosingFence checks whether a fenced code block has a proper closing
 // fence line after its content.
