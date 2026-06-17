@@ -189,3 +189,23 @@ func TestValidateFindingsNormalizesSeverity(t *testing.T) {
 	assert.Equal(t, "critical", fs[0].Severity)
 	assert.Equal(t, "high", fs[1].Severity)
 }
+
+// TestForbidFailures_NormSeverityAllocs asserts that forbidFailures replaces
+// the per-call map with a linear search. ValidateFindings normalises severities
+// to lowercase so no strings.ToLower is needed; the map construction is the
+// extra allocation eliminated by this gate.
+func TestForbidFailures_NormSeverityAllocs(t *testing.T) {
+	fs := []Finding{
+		{ID: "A1", Severity: "critical", Title: "t1"},
+		{ID: "A2", Severity: "high", Title: "t2"},
+	}
+	forbid := []string{"critical"}
+	allocs := testing.AllocsPerRun(20, func() {
+		_ = forbidFailures(fs, forbid)
+	})
+	// fmt.Sprintf boxing of three struct-field strings (3) + result string (1) = 4
+	// A per-call map adds 1 extra alloc; this gate fails until the map is replaced
+	// with a linear search over the ≤5-element forbid list.
+	assert.LessOrEqualf(t, allocs, float64(4),
+		"forbidFailures must not build a map per call; got %.0f allocs (want ≤4)", allocs)
+}

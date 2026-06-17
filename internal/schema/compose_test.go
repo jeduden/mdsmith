@@ -1001,3 +1001,12 @@ func TestCompose_ProjectionOrderingSymmetry(t *testing.T) {
 	require.Error(t, err, "the guard fires when the second input carries it")
 	assert.Contains(t, err.Error(), "without a schema-level")
 }
+
+// TestBoundsLabel pins the cardinality string format produced by boundsLabel
+// so a strconv refactor doesn't silently alter the error-message wire format.
+func TestBoundsLabel(t *testing.T) {
+	assert.Equal(t, "5..unbounded", boundsLabel(5, 0), "zero max means unbounded")
+	assert.Equal(t, "0..unbounded", boundsLabel(0, 0), "zero min and max also unbounded")
+	assert.Equal(t, "1..3", boundsLabel(1, 3))
+	assert.Equal(t, "0..1", boundsLabel(0, 1))
+}
