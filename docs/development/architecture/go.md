@@ -31,20 +31,16 @@ question. The current production set:
 - `internal/gitignore` — match a path against .gitignore patterns
   (per-directory and ancestor rules, stopping at the working-tree
   boundary). Split out of `internal/lint`.
-- `internal/bytelimit` — read a file up to a byte cap (`ReadFileLimited`,
-  `ReadFSFileLimited`, `DefaultMaxInputBytes`). Split out of
-  `internal/lint`.
+- `internal/bytelimit` — cap file reads at a byte limit (`ReadFileLimited`,
+  `ReadFSFileLimited`, `DefaultMaxInputBytes`). Split from `internal/lint`.
 - `internal/piparser` — re-export the goldmark processing-instruction
-  (`<?…?>`) block node and parser from `pkg/markdown` for the linter's
-  type switches. Split out of `internal/lint`.
+  (`<?…?>`) block node and parser from `pkg/markdown` for type switches.
+  Split from `internal/lint`.
 - `internal/fix` — produce edits that make a file stop violating rules.
-- `internal/linkgraph` — the canonical Markdown link / directive /
-  reference extractor. MDS027, the `mdsmith list backlinks` CLI, and the
-  workspace symbol index (`internal/index`) all consult it so anchor
-  normalisation, workspace-relative path resolution, and catalog-glob
-  handling stay consistent across surfaces. The per-file extractor is pure
-  (no file reads, no workspace walks) so callers can fan it out across
-  goroutines.
+- `internal/linkgraph` — canonical Markdown link / directive / reference
+  extractor; MDS027, `mdsmith list backlinks`, and `internal/index` all
+  consult it for normalised path and anchor resolution. Pure (no file reads,
+  no workspace walks); callers can fan it out across goroutines.
 - `internal/index` — the workspace symbol / edge graph (headings, link-ref
   defs, directives, front-matter keys, reverse edges); queried by the LSP,
   schema, and the rename / deps surfaces.
@@ -57,6 +53,10 @@ question. The current production set:
 - `internal/punkt` — sentence segmenter (vendored Punkt); only
   `internal/mdtext` imports it.
 - `internal/rule` — interfaces for rules and fixes (the ports package).
+- `internal/checker` — classify, dispatch, and filter checks; shared
+  by `internal/engine` and `internal/fix`.
+- `internal/rulelayer` — maps rule IDs to lazy-parse layers (Layer 0
+  vs. AST-required) from the embedded rule-walk audit manifest.
 - `internal/rules/<rule-name>/` — one Go rule per package, e.g.
   `internal/rules/linelength/`. Docs and fixtures live alongside in
   `internal/rules/MDS###-<rule-name>/` (e.g.

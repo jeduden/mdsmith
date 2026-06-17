@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jeduden/mdsmith/internal/checker"
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -85,8 +86,8 @@ func TestCheckRules_ParallelEqualsSequential(t *testing.T) {
 		"rule-c": {Enabled: true},
 	}
 
-	seq, errs1 := checkRulesWithIntraFile(f1, rules, eff, true, 1)
-	par, errs2 := checkRulesWithIntraFile(f2, rules, eff, true, 4)
+	seq, errs1 := checker.CheckRulesWithIntraFile(f1, rules, eff, true, 1)
+	par, errs2 := checker.CheckRulesWithIntraFile(f2, rules, eff, true, 4)
 
 	require.Empty(t, errs1)
 	require.Empty(t, errs2)
@@ -113,7 +114,7 @@ func TestCheckRules_ParallelRespectsRulesOrder(t *testing.T) {
 		"fast": {Enabled: true},
 	}
 
-	diags, errs := checkRulesWithIntraFile(f, rules, eff, true, 4)
+	diags, errs := checker.CheckRulesWithIntraFile(f, rules, eff, true, 4)
 	require.Empty(t, errs)
 	require.Len(t, diags, 2)
 	assert.Equal(t, "MDS", diags[0].RuleID, "slow rule's group should come first (rules order)")
@@ -146,7 +147,7 @@ func TestCheckRules_ParallelHonorsCap(t *testing.T) {
 		"s5": {Enabled: true},
 	}
 
-	diags, errs := checkRulesWithIntraFile(f, rules, eff, true, limit)
+	diags, errs := checker.CheckRulesWithIntraFile(f, rules, eff, true, limit)
 	require.Empty(t, errs)
 	require.Len(t, diags, 5)
 	assert.LessOrEqual(t, int(peak.Load()), limit, "peak concurrency must not exceed cap=%d", limit)
@@ -171,7 +172,7 @@ func TestCheckRules_ParallelCapOne(t *testing.T) {
 		"s3": {Enabled: true},
 	}
 
-	diags, errs := checkRulesWithIntraFile(f, rules, eff, true, 1)
+	diags, errs := checker.CheckRulesWithIntraFile(f, rules, eff, true, 1)
 	require.Empty(t, errs)
 	require.Len(t, diags, 3)
 	assert.Equal(t, int32(1), peak.Load(), "cap=1 must hold concurrency to 1")

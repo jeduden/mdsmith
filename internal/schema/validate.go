@@ -273,10 +273,10 @@ func validateDeprecatedFieldsWithLines(
 //
 // The previous "anchor at line 1" pattern landed on the first
 // body line in front-matter-stripped mode, which
-// engine.filterGeneratedDiags could mistakenly drop if the
+// checker.FilterGeneratedDiags could mistakenly drop if the
 // document body started with a generated section (e.g. a
 // leading <?catalog?> directive). Using `1 - LineOffset`
-// produces a non-positive body-coord that filterGeneratedDiags
+// produces a non-positive body-coord that FilterGeneratedDiags
 // cannot match against any generated line range, and the
 // engine's AdjustDiagnostics adds the offset back so the
 // surfaced diagnostic still anchors at the file's first line.
@@ -303,7 +303,7 @@ func nonBodyDiagLine(f *lint.File) int {
 // result never exceeds len(f.Lines) and can never map to an
 // out-of-range editor/LSP position. A missing section has no body line
 // of its own, and anchoring inside a generated section would let
-// engine.filterGeneratedDiags drop the diagnostic. When candidate is
+// checker.FilterGeneratedDiags drop the diagnostic. When candidate is
 // unusable, the non-body anchor is
 // used: a non-positive value survives filtering and maps back to file
 // line 1, and a positive value (nothing stripped, line 1) is fine as
@@ -323,7 +323,7 @@ func MissingSectionAnchor(f *lint.File, candidate int) int {
 		return fallback
 	}
 	// fallback is a positive line (nothing stripped) inside a leading
-	// generated range, where filterGeneratedDiags would drop it. Prefer
+	// generated range, where FilterGeneratedDiags would drop it. Prefer
 	// the first body line outside every generated range; fall back to 0
 	// only when the whole file is generated.
 	if line := firstNonGeneratedLine(f); line > 0 {
@@ -387,7 +387,7 @@ func lineInGeneratedRange(f *lint.File, line int) bool {
 // stripped mode that AdjustDiagnostics resolves to the first
 // absolute line of the file. The fallback used to be a flat
 // "1", which landed on the first body line in stripped mode
-// and could be silently dropped by filterGeneratedDiags when
+// and could be silently dropped by FilterGeneratedDiags when
 // the document body started with a generated section
 // (PR #284 Copilot review).
 func fmDiagLine(f *lint.File, path []string, keyLines map[string]int) int {
@@ -1640,7 +1640,7 @@ func validateFilename(
 	}
 	// Filename and path diagnostics describe the document as a
 	// whole, not a body line; use the non-body anchor so the
-	// engine's filterGeneratedDiags can't drop them when the
+	// checker.FilterGeneratedDiags can't drop them when the
 	// document body starts with a generated section.
 	anchor := nonBodyDiagLine(f)
 	base := filepath.Base(f.Path)

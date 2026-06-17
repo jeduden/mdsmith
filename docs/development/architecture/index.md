@@ -86,6 +86,8 @@ cmd/mdsmith              internal/lsp
                               entrypoint)
               └─> internal/engine
               └─> internal/{rule, fix,
+                            checker,
+                            rulelayer,
                             config, output,
                             lint, linkgraph,
                             index,
