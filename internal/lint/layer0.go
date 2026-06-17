@@ -1008,6 +1008,24 @@ func SourceMayHaveCodeBlock(source []byte) bool {
 		bytes.Contains(source, fourSpaceRun)
 }
 
+// SourceMayHaveBlockQuote reports whether source could contain a block
+// quote: it holds at least one `>` byte. A block quote requires a `>`
+// marker, so a source with no `>` has no quote.
+//
+// The Layer 0 parse-skip gate skips the goldmark parse only when this
+// returns false. The scanner collapses a block quote into a single
+// BlockQuote span and does not descend into its body to emit the
+// heading and fenced-code spans block-kind rules (MDS002, MDS015) react
+// to, so a quote-nested heading or fence is invisible to the block scan
+// while the AST path still flags it. Disqualifying any source that might
+// hold a quote sidesteps that divergence the same way the code-block
+// guard handles a list-nested code block. The check is deliberately
+// coarse — a `>` in an autolink, raw HTML, or prose also trips it — but
+// provably sound and allocation-free.
+func SourceMayHaveBlockQuote(source []byte) bool {
+	return bytes.IndexByte(source, '>') >= 0
+}
+
 // blockDepth returns the block-quote nesting depth of line: the number of
 // leading `>` markers (each optionally followed by a space), after up to 3
 // spaces of indent. Non-quote lines are depth 0.

@@ -15,9 +15,9 @@ import (
 //
 // The caches below are keyed by the resolved path and shared at package
 // scope, NOT on the Rule struct: each parallel worker holds its own
-// CloneInstance, and ConfigureRule may re-clone per file, so a
-// per-instance map would neither share across workers nor be safe.
-// sync.Map is the sanctioned concurrency-safe pattern here.
+// CloneInstance, and ConfigureRule may re-clone when applying per-file
+// settings, so a per-instance map would neither share across workers nor
+// be safe. sync.Map is the sanctioned concurrency-safe pattern here.
 //
 // Staleness caveat (mirrors the gitignore matcher cache): the result is
 // stable for the lifetime of a `mdsmith check` process because the
