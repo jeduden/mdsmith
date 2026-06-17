@@ -204,4 +204,5 @@ footer: |
 | 2606142147 | ✅     | opus   | [Prototype: flat Layer-0 line classifier for line-length vs gomarklint](plan/2606142147_flat-layer0-line-classifier.md)                 |
 | 2606162213 | ✅     | sonnet | [Document internal/checker and internal/rulelayer; remove engine shim](plan/2606162213_arch-fix-new-pkg-docs.md)                        |
 | 2606162214 | ✅     | sonnet | [Add named unit tests for unexported helpers in new lazy-parse packages](plan/2606162214_arch-fix-missing-helper-tests.md)              |
+| 2606171136 | 🔳     | opus   | [Parity perf: per-worker configured-rule cache + the Layer-0 path to gomarklint](plan/2606171136_parity-perf-configured-rule-cache.md)  |
 <?/catalog?>

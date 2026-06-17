@@ -339,6 +339,7 @@ func (r *Runner) runFiles(work []string, cache *lint.RunCache) []fileOutcome {
 			mdRules:   markdownRulesFrom(r.Rules, r.ConfigPath),
 			catLookup: catLookup,
 			effCache:  effCache,
+			confCache: map[string]configuredRules{},
 		}
 		for i, path := range work {
 			outcomes[i] = r.lintFile(path, intraCap, cache, rr)
@@ -352,10 +353,13 @@ func (r *Runner) runFiles(work []string, cache *lint.RunCache) []fileOutcome {
 		go func() {
 			defer wg.Done()
 			// Each worker filters its own rule clones once, not per file.
+			// confCache is per-worker (unsynchronised) because the worker
+			// walks its files sequentially.
 			rr := runResolve{
 				mdRules:   markdownRulesFrom(cloneRules(r.Rules), r.ConfigPath),
 				catLookup: catLookup,
 				effCache:  effCache,
+				confCache: map[string]configuredRules{},
 			}
 			for {
 				i := int(next.Add(1)) - 1
@@ -433,7 +437,7 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 		return fileOutcome{errs: []error{err}}
 	}
 
-	effective := r.effectiveCached(path, fmKinds, fmFields, rr)
+	effective, sigKey := r.effectiveCached(path, fmKinds, fmFields, rr)
 	logRulesTo(flog, rr.mdRules, effective)
 
 	// The pooled parse recycles AST slab memory across files. lintFile
@@ -471,11 +475,19 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 	// directives, so it has no generated sections — leave the ranges nil.
 	populateGeneratedRanges(f)
 
-	diags, errs := checker.CheckRulesWithIntraFile(f, rr.mdRules, effective, r.SkipSourceContext, intraFileCap)
+	// Configure the enabled rules once per config signature (cached on the
+	// worker's confCache) and reuse the result across every file that shares
+	// that config, instead of re-cloning every Configurable rule per file.
+	configured, cfgErrs := rr.configured(sigKey, effective)
+	diags := checker.CheckConfiguredRules(f, configured, r.SkipSourceContext, intraFileCap)
 	if r.Explain {
 		explain.Attach(diags, r.Config, path, fmKinds, fmFields)
 	}
-	return fileOutcome{diags: diags, errs: errs}
+	// cfgErrs is the cached configuration-error slice for this signature;
+	// the aggregator copies elements out, never mutates it, so sharing it
+	// across files that hit the same cache entry is safe. It is nil on
+	// every well-formed config (the common path).
+	return fileOutcome{diags: diags, errs: cfgErrs}
 }
 
 // populateGeneratedRanges fills f.GeneratedRanges from the include/catalog
@@ -966,23 +978,58 @@ type runResolve struct {
 	mdRules   []rule.Rule
 	catLookup func(string) string
 	effCache  *effectiveCache
+	// confCache memoizes the configured (cloned + settings-applied) enabled
+	// rule list per effective-config signature. It is private to one worker,
+	// so it needs no lock: each worker builds its own runResolve and walks
+	// its files sequentially. A corpus that shares one config configures its
+	// rules once here instead of once per file — the clone + ApplySettings
+	// work the allocation profile showed as per-file overhead. Reusing a
+	// configured rule across files is safe for the same reason the worker
+	// reuses its mdRules clones across files: a rule's Check holds no state
+	// between calls (see checker.ConfigureEnabledRules).
+	confCache map[string]configuredRules
+}
+
+// configuredRules is one cache entry: the enabled, configured rule list
+// for a config signature plus the settings-application errors that
+// configuring it produced (surfaced once, not re-derived per file).
+type configuredRules struct {
+	rules []rule.Rule
+	errs  []error
+}
+
+// configured returns the configured enabled rule list for the effective
+// config identified by key, building and memoizing it on first use. The
+// map is written through the by-value runResolve copy, which is safe
+// because the map header aliases the one instance the worker created.
+func (rr runResolve) configured(
+	key string, effective map[string]config.RuleCfg,
+) ([]rule.Rule, []error) {
+	if c, ok := rr.confCache[key]; ok {
+		return c.rules, c.errs
+	}
+	rules, errs := checker.ConfigureEnabledRules(rr.mdRules, effective)
+	rr.confCache[key] = configuredRules{rules: rules, errs: errs}
+	return rules, errs
 }
 
 // effectiveCached is the hot-path config resolver: it memoizes the
 // effective rule config on rr.effCache keyed by the file's config
 // signature and reuses the prebuilt rr.catLookup, so a corpus that
-// shares one config resolves it once instead of per file. Cold callers
+// shares one config resolves it once instead of per file. It returns the
+// signature key alongside the config so the caller can reuse it to key the
+// per-worker configured-rule cache without recomputing it. Cold callers
 // (RunSource, config-target, defaults) keep using effectiveWithCategories.
 func (r *Runner) effectiveCached(
 	path string, fmKinds []string, fmFields map[string]any, rr runResolve,
-) map[string]config.RuleCfg {
+) (map[string]config.RuleCfg, string) {
 	key, kinds := config.EffectiveSignature(r.Config, path, fmKinds, fmFields)
 	if v, ok := rr.effCache.get(key); ok {
-		return v
+		return v, key
 	}
 	effective, categories, explicit := config.EffectiveAllForKinds(r.Config, path, kinds)
 	res := config.ApplyCategories(effective, categories, rr.catLookup, explicit)
-	return rr.effCache.loadOrStore(key, res)
+	return rr.effCache.loadOrStore(key, res), key
 }
 
 // runCacheForCall returns the run-scoped read cache to thread through

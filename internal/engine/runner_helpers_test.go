@@ -132,6 +132,7 @@ func (r *Runner) newRunResolve() runResolve {
 		mdRules:   markdownRulesFrom(r.Rules, r.ConfigPath),
 		catLookup: ruleCategoryLookup(r.Rules),
 		effCache:  &effectiveCache{},
+		confCache: map[string]configuredRules{},
 	}
 }
 
@@ -165,8 +166,8 @@ func TestEffectiveCached_MemoizesBySignature(t *testing.T) {
 	rr := r.newRunResolve()
 	// No kinds and no overrides: both files share one signature, so the
 	// second lookup must return the map the first one cached, not a copy.
-	a := r.effectiveCached("a.md", nil, nil, rr)
-	b := r.effectiveCached("b.md", nil, nil, rr)
+	a, _ := r.effectiveCached("a.md", nil, nil, rr)
+	b, _ := r.effectiveCached("b.md", nil, nil, rr)
 	require.NotNil(t, a)
 	assert.Equal(t, reflect.ValueOf(a).Pointer(), reflect.ValueOf(b).Pointer(),
 		"a matching signature must return the memoized map instance")

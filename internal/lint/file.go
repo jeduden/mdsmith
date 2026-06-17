@@ -479,11 +479,20 @@ func (f *File) lineIndex() []int {
 	defer f.newlineOffsetsMu.Unlock()
 	if !f.newlineOffsetsDone.Load() {
 		defer f.newlineOffsetsDone.Store(true)
+		// bytes.IndexByte is SIMD-accelerated; a hand-rolled byte loop is
+		// not vectorized by the compiler and showed up at ~5% of a parity
+		// check on long prose (the Rust Book benchmark corpus). Walk the
+		// newlines with IndexByte instead, pre-sizing from bytes.Count
+		// (also SIMD) so the append never re-grows. Same offsets, no per-
+		// call allocation beyond the one pre-sized slice.
 		nl := make([]int, 0, bytes.Count(f.Source, lineIndexNewline))
-		for i := 0; i < len(f.Source); i++ {
-			if f.Source[i] == '\n' {
-				nl = append(nl, i)
+		for base := 0; ; {
+			i := bytes.IndexByte(f.Source[base:], '\n')
+			if i < 0 {
+				break
 			}
+			nl = append(nl, base+i)
+			base += i + 1
 		}
 		f.newlineOffsets = nl
 	}

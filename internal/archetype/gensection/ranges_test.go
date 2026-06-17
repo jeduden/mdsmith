@@ -143,3 +143,8 @@ func TestLineRange_Contains(t *testing.T) {
 	assert.False(t, r.Contains(4))
 	assert.False(t, r.Contains(9))
 }
+
+func TestFindAllGeneratedRanges_NoDirectiveFastPath(t *testing.T) {
+	f := mustNewFile(t, "doc.md", "# Title\n\nProse with no directive.\n\n## Next\n\nMore.\n")
+	assert.Nil(t, FindAllGeneratedRanges(f), "directive-free file has no generated ranges")
+}
