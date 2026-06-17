@@ -6,8 +6,8 @@ summary: >-
   Add a nil-AST path to the parity rules that read list and blockquote
   structure — MDS014 blank-line-around-lists, MDS016 list-indent,
   MDS045 list-marker-style, MDS046 ordered-list-numbering, MDS061
-  list-marker-space, MDS059 blockquote-whitespace — each gated
-  byte-identical to the AST across the corpus.
+  list-marker-space, MDS059 blockquote-whitespace, MDS067 callout-type
+  — each gated byte-identical to the AST across the corpus.
 model: opus
 depends-on: [2606171258]
 ---
@@ -23,12 +23,15 @@ so they no longer force the parse.
 List and quote spans are the subtle case. CommonMark list parsing
 folds in loose vs tight lists, nesting, and lazy continuation, so a
 Layer-0 span boundary can drift from the AST. The
-[Layer-0 scanner](../internal/lint/layer0.go) emits `BlockList`,
-`BlockListItem`, and `BlockQuote` spans and descends into their bodies.
+[Layer-0 scanner](../internal/lint/layer0.go) emits one `BlockList`
+span per list-item run and one `BlockQuote` span, and descends into
+their bodies. There is no per-item span kind; a rule that needs
+item-level granularity walks the list span's body lines itself.
 
 Each rule needs the marker shape (`-` / `*` / `+`, or `1.` / `1)`),
 the marker indent, and the inter-item spacing — all line-level facts.
-Verify the span boundaries match the AST before trusting them.
+MDS067 callout-type reads only a blockquote's first line, so it lives
+here too. Verify the span boundaries match the AST before trusting them.
 
 | Rule   | Name                    | Reads                     |
 | ------ | ----------------------- | ------------------------- |
@@ -38,6 +41,7 @@ Verify the span boundaries match the AST before trusting them.
 | MDS046 | ordered-list-numbering  | ordered marker sequence   |
 | MDS061 | list-marker-space       | spaces after the marker   |
 | MDS059 | blockquote-whitespace   | `>` marker spacing        |
+| MDS067 | callout-type            | blockquote first line     |
 
 ## Tasks
 

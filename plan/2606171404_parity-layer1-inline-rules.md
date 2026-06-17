@@ -39,7 +39,6 @@ the whole-document parse.
 | MDS052 | no-space-in-code-spans             | code-span content     |
 | MDS053 | no-unused-link-definitions         | ref defs and uses     |
 | MDS063 | descriptive-link-text              | link text             |
-| MDS067 | callout-type                       | blockquote callout    |
 | MDS068 | link-style                         | link form             |
 | MDS034 | markdown-flavor                    | flavor-specific spans |
 
@@ -48,7 +47,9 @@ the whole-document parse.
 For each rule:
 
 1. Add the nil-AST path that drives `lint.InlineBlocks` for the blocks
-   the rule cares about, reusing the existing inline extraction.
+   the rule cares about, reusing the existing inline extraction. MDS053
+   is cross-block: assemble its reference def/use map by walking every
+   block's re-parsed inline spans, not one block in isolation.
 2. Keep the diagnostic byte-identical: same line, column, message.
 3. Regenerate the walk audit and sync the embedded
    [rulelayer copy](../internal/rulelayer/rule_walk_audit.json).
