@@ -567,17 +567,13 @@ func (r *Runner) computeFlatLayer0Active() bool {
 		if !ok || !cfg.Enabled {
 			continue
 		}
-		// Apply the rule's effective settings before asking LineCapable:
-		// a rule's line-capability can depend on its config (line-length
+		// A rule's line-capability can depend on its config (line-length
 		// is not line-capable once a per-heading limit is set). With no
 		// kinds or overrides, the empty-path effective config is the
-		// rule's settings for every file.
-		configured, err := checker.ConfigureRule(rl, cfg)
-		if err != nil {
-			return false
-		}
-		lc, ok := configured.(rule.LineCapable)
-		if !ok || !lc.LineCapable() {
+		// rule's settings for every file. ruleConfiguredLineCapable
+		// applies those settings before asking — the same check the
+		// unified parse-skip gate uses.
+		if !ruleConfiguredLineCapable(rl, cfg) {
 			return false
 		}
 	}
@@ -645,27 +641,56 @@ func (r *Runner) layer0SkipEligible(
 	if bytes.Contains(source, piOpenScan) {
 		return false
 	}
-	return allEnabledRulesLayer0(rules, effective)
+	return allEnabledRulesSkipSafe(rules, effective)
 }
 
 // piOpenScan is the directive opener the gate scans for; any occurrence
 // disqualifies the parse skip.
 var piOpenScan = []byte("<?")
 
-// allEnabledRulesLayer0 reports whether every enabled rule in effective is
-// a Layer 0 rule. A run with no enabled rules trivially qualifies. A
-// disabled rule is ignored — it will not run, so its layer is irrelevant.
-func allEnabledRulesLayer0(rules []rule.Rule, effective map[string]config.RuleCfg) bool {
+// allEnabledRulesSkipSafe reports whether every enabled rule in effective
+// can lint the parse-skipped (nil-AST) File. A rule qualifies two ways,
+// unifying the engine's two parse-skip signals (plan 2606171400):
+//
+//   - It is a static Layer 0 rule (rulelayer.IsLayer0). Block rules serve
+//     the nil-AST path through their rule.BlockChecker dispatch.
+//   - Its configured instance reports rule.LineCapable. Line rules whose
+//     layer depends on config — line-length is line-capable only without a
+//     per-heading limit — serve the nil-AST path through the File's
+//     ClassifyLines projection.
+//
+// A run with no enabled rules trivially qualifies. A disabled rule is
+// ignored. An unknown rule that is neither Layer 0 nor line-capable forces
+// the parse.
+func allEnabledRulesSkipSafe(rules []rule.Rule, effective map[string]config.RuleCfg) bool {
 	for _, rl := range rules {
 		cfg, ok := effective[rl.Name()]
 		if !ok || !cfg.Enabled {
 			continue
 		}
-		if !rulelayer.IsLayer0(rl.ID()) {
-			return false
+		if rulelayer.IsLayer0(rl.ID()) {
+			continue
 		}
+		if ruleConfiguredLineCapable(rl, cfg) {
+			continue
+		}
+		return false
 	}
 	return true
+}
+
+// ruleConfiguredLineCapable reports whether rl, once configured with cfg,
+// can lint from f.Lines alone (rule.LineCapable). A rule's line-capability
+// can depend on its settings, so the rule is configured before the check —
+// line-length is line-capable until a per-heading limit is set. A config
+// error makes the rule non-skip-safe (the parse path surfaces the error).
+func ruleConfiguredLineCapable(rl rule.Rule, cfg config.RuleCfg) bool {
+	configured, err := checker.ConfigureRule(rl, cfg)
+	if err != nil {
+		return false
+	}
+	lc, ok := configured.(rule.LineCapable)
+	return ok && lc.LineCapable()
 }
 
 // RunSource lints in-memory source bytes (e.g. from stdin or an LSP

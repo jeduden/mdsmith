@@ -70,6 +70,44 @@ func layer0OnlyConfigForCorpus() *config.Config {
 	return cfg
 }
 
+// TestLayer0Gate_LineCapableCorpusEquivalence is the gate-unification
+// (plan 2606171400) corpus guard. It enables the static Layer 0 rules plus
+// line-length — a rule that is NOT in the rulelayer Layer 0 set but reports
+// rule.LineCapable under its default config — and asserts the parse-skip
+// run matches the full-parse run across the repository corpus. With the
+// unified gate, line-length no longer forces the parse; its diagnostics
+// must come out byte-identical from the ClassifyLines projection on the
+// parse-skipped File, on real content (over-length lines, code, the lot).
+func TestLayer0Gate_LineCapableCorpusEquivalence(t *testing.T) {
+	root := repoRoot(t)
+	files := collectMarkdownCorpus(t, root)
+	require.NotEmpty(t, files)
+
+	cfg := layer0OnlyConfigForCorpus()
+	cfg.Rules["line-length"] = config.RuleCfg{Enabled: true}
+
+	run := func(skip bool) []lint.Diagnostic {
+		if skip {
+			t.Setenv("MDSMITH_LAYER0_SKIP", "1")
+		} else {
+			t.Setenv("MDSMITH_LAYER0_SKIP", "")
+		}
+		r := &engine.Runner{
+			Config:           cfg,
+			Rules:            rule.All(),
+			StripFrontMatter: true,
+			RootDir:          root,
+		}
+		return r.Run(files).Diagnostics
+	}
+
+	skipped := run(true)
+	parsed := run(false)
+	require.NotEmpty(t, parsed, "line-length must fire somewhere in the corpus")
+	assert.Equal(t, diagKeys(parsed), diagKeys(skipped),
+		"line-capable parse-skip must match the full-parse run across the corpus")
+}
+
 // diagKeys reduces diagnostics to comparable tuples (file, line, column,
 // rule, message) so two runs compare on observable output alone.
 func diagKeys(diags []lint.Diagnostic) [][5]string {

@@ -68,16 +68,77 @@ func TestLayer0Gate_SkipsParseForLayer0OnlyConfig(t *testing.T) {
 	assert.True(t, probe.sawNilAST, "expected the parse to be skipped (nil AST)")
 }
 
-// TestLayer0Gate_ParsesWhenAnASTRuleIsEnabled confirms the gate stands
-// down when any enabled rule needs the AST: line-length (MDS001) is
-// AST-requiring, so the File must carry a parsed tree.
-func TestLayer0Gate_ParsesWhenAnASTRuleIsEnabled(t *testing.T) {
+// TestLayer0Gate_LineCapableRuleSkipsParse proves the gate unification
+// (plan 2606171400): line-length (MDS001) is not in the static rulelayer
+// Layer-0 set, but with no per-heading limit it reports rule.LineCapable,
+// so it lints from f.Lines via the ClassifyLines projection the skip File
+// carries. The gate must therefore skip the parse for a line-capable rule,
+// where the static-only gate forced it.
+func TestLayer0Gate_LineCapableRuleSkipsParse(t *testing.T) {
 	withLayer0Skip(t, true)
 	dir, path := writeDoc(t, "# Title\n\nbody\n")
 
 	probe := &astProbeRule{}
 	cfg := layer0OnlyConfig()
 	cfg.Rules["line-length"] = config.RuleCfg{Enabled: true}
+	cfg.Rules[probe.Name()] = config.RuleCfg{Enabled: true}
+
+	r := &Runner{
+		Config:           cfg,
+		Rules:            append(rule.All(), probe),
+		StripFrontMatter: true,
+		RootDir:          dir,
+	}
+	res := r.Run([]string{path})
+	require.Empty(t, res.Errors)
+	assert.True(t, probe.sawNilAST,
+		"line-capable rule (line-length, no heading limit) must skip the parse")
+}
+
+// TestLayer0Gate_LineCapableDiagnosticsMatchFullParse is the equivalence
+// guarantee for the unification: a config that adds the line-capable
+// line-length rule produces identical diagnostics with the gate on (nil
+// AST, ClassifyLines) and off (full parse). The fixture has an over-length
+// line so line-length actually fires on both paths.
+func TestLayer0Gate_LineCapableDiagnosticsMatchFullParse(t *testing.T) {
+	longLine := "This is a deliberately long prose line that exceeds the default eighty column line-length budget.\n"
+	dir, path := writeDoc(t, "# Title\n\n"+longLine)
+	cfg := layer0OnlyConfig()
+	cfg.Rules["line-length"] = config.RuleCfg{Enabled: true}
+
+	run := func(skip bool) []lint.Diagnostic {
+		withLayer0Skip(t, skip)
+		r := &Runner{
+			Config:           cfg,
+			Rules:            rule.All(),
+			StripFrontMatter: true,
+			RootDir:          dir,
+		}
+		return r.Run([]string{path}).Diagnostics
+	}
+
+	skipped := run(true)
+	parsed := run(false)
+	require.NotEmpty(t, parsed, "line-length must fire so the comparison is not vacuous")
+	assert.Equal(t, parsed, skipped,
+		"line-capable parse-skip must match the full parse")
+}
+
+// TestLayer0Gate_ParsesWhenAnASTRuleIsEnabled confirms the gate stands
+// down when any enabled rule needs the AST: line-length WITH a per-heading
+// limit is not line-capable (it must walk headings), so the File must carry
+// a parsed tree. (Plain line-length, with no heading limit, is line-capable
+// and skips — see TestLayer0Gate_LineCapableRuleSkipsParse.)
+func TestLayer0Gate_ParsesWhenAnASTRuleIsEnabled(t *testing.T) {
+	withLayer0Skip(t, true)
+	dir, path := writeDoc(t, "# Title\n\nbody\n")
+
+	probe := &astProbeRule{}
+	cfg := layer0OnlyConfig()
+	cfg.Rules["line-length"] = config.RuleCfg{
+		Enabled:  true,
+		Settings: map[string]any{"heading-max": 60},
+	}
 	cfg.Rules[probe.Name()] = config.RuleCfg{Enabled: true}
 
 	r := &Runner{
