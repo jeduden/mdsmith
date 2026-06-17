@@ -29,11 +29,9 @@ func init() {
 // maxIncludeDepth is the maximum nesting depth for include chains.
 const maxIncludeDepth = 10
 
-// maxIncludeDepthMsg is the diagnostic message for depth violations. A const
-// avoids the mutability of a package-level var and removes the strconv.Itoa
-// call at package init; the value matches fmt.Sprintf("include depth exceeds
-// maximum (%d)", maxIncludeDepth) with maxIncludeDepth==10.
-const maxIncludeDepthMsg = "include depth exceeds maximum (10)"
+// maxIncludeDepthMsg is derived from maxIncludeDepth at init so the two stay
+// in sync if the limit ever changes.
+var maxIncludeDepthMsg = "include depth exceeds maximum (" + strconv.Itoa(maxIncludeDepth) + ")"
 
 // Rule checks that include sections contain the correct file content.
 //
