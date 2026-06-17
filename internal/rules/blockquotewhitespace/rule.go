@@ -43,8 +43,16 @@ func (r *Rule) Name() string { return "blockquote-whitespace" }
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "whitespace" }
 
-// Check implements rule.Rule.
+// Check implements rule.Rule. MD027 (multiple spaces after the marker)
+// reads only f.Lines and the code-line projection, both of which serve
+// the nil-AST path unchanged. MD028 (blank line between adjacent sibling
+// blockquotes) walks the AST on a parsed File and the Layer 0 BlockQuote
+// spans on a parse-skipped File (f.AST nil); both resolve the same gaps,
+// so the diagnostics are identical.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	if f == nil {
+		return nil
+	}
 	var diags []lint.Diagnostic
 	codeLines := lint.CollectCodeBlockLines(f)
 
@@ -80,8 +88,53 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	}
 
 	// MD028: flag blank-line gaps between adjacent sibling blockquote nodes.
-	diags = append(diags, r.checkBlankBetween(f)...)
+	if f.AST == nil {
+		diags = append(diags, r.checkBlankBetweenLayer0(f)...)
+	} else {
+		diags = append(diags, r.checkBlankBetween(f)...)
+	}
 	return diags
+}
+
+// checkBlankBetweenLayer0 is the nil-AST counterpart of checkBlankBetween.
+// The Layer 0 scanner emits one BlockQuote span per blockquote, splitting
+// on the blank-line gap that ends a quote — exactly the sibling boundary
+// the AST path keys on. Two consecutive BlockQuote spans whose gap is all
+// blank lines are adjacent siblings separated only by blanks (MD028). The
+// diagnostic lands on the first blank line of the gap (prev.End + 1),
+// matching the AST path's scanLine+1, with the same column and message.
+func (r *Rule) checkBlankBetweenLayer0(f *lint.File) []lint.Diagnostic {
+	var diags []lint.Diagnostic
+	var prevEnd int
+	for _, span := range lint.Layer0(f).BlockSpans {
+		if span.Kind != lint.BlockQuote {
+			continue
+		}
+		if prevEnd > 0 && span.Start-prevEnd >= 2 && r.allBlankBetween(f, prevEnd, span.Start) {
+			diags = append(diags, lint.Diagnostic{
+				File:     f.Path,
+				Line:     prevEnd + 1,
+				Column:   1,
+				RuleID:   r.ID(),
+				RuleName: r.Name(),
+				Severity: lint.Warning,
+				Message:  "blank line between blockquotes",
+			})
+		}
+		prevEnd = span.End
+	}
+	return diags
+}
+
+// allBlankBetween reports whether every line strictly between the 1-based
+// lines lo and hi is blank.
+func (r *Rule) allBlankBetween(f *lint.File, lo, hi int) bool {
+	for ln := lo + 1; ln < hi; ln++ {
+		if !isBlankLine(f, ln) {
+			return false
+		}
+	}
+	return true
 }
 
 // multiSpaceAfterMarker reports the 0-based index of the first '>' in

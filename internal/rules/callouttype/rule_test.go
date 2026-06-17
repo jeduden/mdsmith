@@ -181,3 +181,29 @@ func TestCheck_AllowSetCachedPerFileAfterApplySettings(t *testing.T) {
 	assert.Empty(t, r.Check(f))
 	assert.Empty(t, r.Check(f))
 }
+
+// TestCheck_NilASTMatchesAST pins the nil-AST path: Check on a parse-
+// skipped File (f.AST nil) must produce byte-identical diagnostics to the
+// AST path for callout blockquotes, including the column of the `[!`
+// token and quotes that are not callouts.
+func TestCheck_NilASTMatchesAST(t *testing.T) {
+	srcs := []string{
+		"# Bad Callout\n\n> [!REVIEW]\n> Unknown type.\n",
+		"> [!note]\n> A valid callout.\n",
+		"> [!REVIEW] with trailing text\n> body\n",
+		">[!REVIEW]\n> no space after marker\n",
+		"> just a normal quote\n> second line\n",
+		"> [!info]\n\n> [!BOGUS]\n",
+		"- a list\n- of items\n\n> [!WAT]\n> body\n",
+		"text\n\n> [!UNKNOWN]\n",
+	}
+	for _, src := range srcs {
+		b := []byte(src)
+		astFile, err := lint.NewFile("f.md", b)
+		require.NoError(t, err)
+		astDiags := (&Rule{}).Check(astFile)
+		l0Diags := (&Rule{}).Check(lint.NewFileLines("f.md", b))
+		assert.Equal(t, astDiags, l0Diags,
+			"nil-AST diagnostics must match AST for %q", src)
+	}
+}

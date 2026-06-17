@@ -9,6 +9,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/rules/listscan"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
@@ -43,12 +44,37 @@ func (r *Rule) Category() string { return "list" }
 // users pick a project convention and turn the rule on.
 func (r *Rule) EnabledByDefault() bool { return false }
 
-// Check implements rule.Rule. The per-list logic is pure and
-// stateless, so it is expressed as CheckNode and the engine can fold
-// this rule into one shared AST walk; a direct call still works via
-// rule.WalkNodes.
+// Check implements rule.Rule. The per-list logic reads only each item's
+// marker byte from its source line and the list's nesting depth — never
+// the inline tree — so on a parsed File it folds into the engine's shared
+// AST walk (rule.WalkNodes), and on a parse-skipped File (f.AST nil) it
+// re-derives the same lists and item lines from f.Lines via listscan
+// (checkLayer0). Both resolve the same per-item verdict, so the
+// diagnostics are identical.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	if f != nil && f.AST == nil {
+		return r.checkLayer0(f)
+	}
 	return rule.WalkNodes(r, f)
+}
+
+// checkLayer0 is the nil-AST counterpart of CheckNode. listscan groups
+// the same unordered lists goldmark would, with the same depth and item
+// marker lines, so each item's marker verdict is byte-identical.
+func (r *Rule) checkLayer0(f *lint.File) []lint.Diagnostic {
+	lists, _ := listscan.Parse(f.Lines)
+	var diags []lint.Diagnostic
+	for _, l := range lists {
+		if l.Ordered {
+			continue
+		}
+		for _, it := range l.Items {
+			if d, ok := r.itemVerdict(f, l.Depth, it.Line); ok {
+				diags = append(diags, d)
+			}
+		}
+	}
+	return diags
 }
 
 // CheckNode implements rule.NodeChecker.
@@ -69,8 +95,6 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 // list.Marker may not reflect the actual bytes on each source line.
 func (r *Rule) checkList(f *lint.File, list *ast.List) []lint.Diagnostic {
 	depth := r.computeDepth(list)
-	expected := r.expectedMarker(depth)
-
 	var diags []lint.Diagnostic
 	for c := list.FirstChild(); c != nil; c = c.NextSibling() {
 		item := c.(*ast.ListItem)
@@ -78,22 +102,36 @@ func (r *Rule) checkList(f *lint.File, list *ast.List) []lint.Diagnostic {
 		if line <= 0 {
 			continue
 		}
-		actual := r.markerOnLine(f, line)
-		if actual == 0 || actual == expected {
-			continue
+		if d, ok := r.itemVerdict(f, depth, line); ok {
+			diags = append(diags, d)
 		}
-		msg := r.formatMessage(actual, expected, depth)
-		diags = append(diags, lint.Diagnostic{
-			File:     f.Path,
-			Line:     line,
-			Column:   1,
-			RuleID:   r.ID(),
-			RuleName: r.Name(),
-			Severity: lint.Warning,
-			Message:  msg,
-		})
 	}
 	return diags
+}
+
+// itemVerdict is the shared per-item check both the AST (checkList via
+// CheckNode) and Layer 0 (checkLayer0) paths drive: depth is the
+// containing list's nesting depth and line the item's 1-based marker
+// line. It reads the actual marker byte from the source line, so the two
+// paths agree by construction.
+func (r *Rule) itemVerdict(f *lint.File, depth, line int) (lint.Diagnostic, bool) {
+	if line <= 0 {
+		return lint.Diagnostic{}, false
+	}
+	expected := r.expectedMarker(depth)
+	actual := r.markerOnLine(f, line)
+	if actual == 0 || actual == expected {
+		return lint.Diagnostic{}, false
+	}
+	return lint.Diagnostic{
+		File:     f.Path,
+		Line:     line,
+		Column:   1,
+		RuleID:   r.ID(),
+		RuleName: r.Name(),
+		Severity: lint.Warning,
+		Message:  r.formatMessage(actual, expected, depth),
+	}, true
 }
 
 // markerOnLine reads the actual list marker byte from the given 1-based

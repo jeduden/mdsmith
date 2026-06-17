@@ -413,3 +413,34 @@ func TestFix_BytesJoinAllocBudget(t *testing.T) {
 		"Fix allocs/op = %.0f (budget=%d); use [][]byte + bytes.Join to eliminate string-conversion allocs",
 		allocs, budget)
 }
+
+// TestCheck_NilASTMatchesAST pins the nil-AST path: Check on a parse-
+// skipped File (f.AST nil) must produce byte-identical diagnostics to the
+// AST path, including nested lists, a loose/multi-block list, and a list
+// holding a code fence.
+func TestCheck_NilASTMatchesAST(t *testing.T) {
+	cases := []struct {
+		src                                  string
+		ulSingle, ulMulti, olSingle, olMulti int
+	}{
+		{src: "-  two spaces\n- one space\n", ulSingle: 1, ulMulti: 1, olSingle: 1, olMulti: 1},
+		{src: "- First paragraph\n\n  Second paragraph of same item\n\n- Another item\n", ulSingle: 1, ulMulti: 2, olSingle: 1, olMulti: 1},
+		{src: "1.  two\n2. one\n", ulSingle: 1, ulMulti: 1, olSingle: 1, olMulti: 1},
+		{src: "- outer\n  -  nested two spaces\n- back\n", ulSingle: 1, ulMulti: 1, olSingle: 1, olMulti: 1},
+		{src: "- item\n  ```\n  code\n  ```\n-  two\n", ulSingle: 1, ulMulti: 1, olSingle: 1, olMulti: 1},
+		{src: "- a\n  - nested only child\n- b\n", ulSingle: 1, ulMulti: 1, olSingle: 1, olMulti: 1},
+		{src: "text\n-  a\n- b\n", ulSingle: 1, ulMulti: 1, olSingle: 1, olMulti: 1},
+	}
+	for _, tc := range cases {
+		src := []byte(tc.src)
+		mk := func() *Rule {
+			return &Rule{ULSingle: tc.ulSingle, ULMulti: tc.ulMulti, OLSingle: tc.olSingle, OLMulti: tc.olMulti}
+		}
+		astFile, err := lint.NewFile("f.md", src)
+		require.NoError(t, err)
+		astDiags := mk().Check(astFile)
+		l0Diags := mk().Check(lint.NewFileLines("f.md", src))
+		assert.Equal(t, astDiags, l0Diags,
+			"nil-AST diagnostics must match AST for %q", tc.src)
+	}
+}

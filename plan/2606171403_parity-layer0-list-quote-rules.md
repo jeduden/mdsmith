@@ -1,7 +1,7 @@
 ---
 id: 2606171403
 title: "Parity parse-skip: migrate the Layer-0 list and blockquote rules"
-status: "🔲"
+status: "✅"
 summary: >-
   Add a nil-AST path to the parity rules that read list and blockquote
   structure — MDS014 blank-line-around-lists, MDS016 list-indent,
@@ -58,6 +58,38 @@ For each rule:
 
 ## Acceptance Criteria
 
-- [ ] Each rule resolves to Layer 0 (audit `A-no-skipping`).
-- [ ] `TestLayer0Gate_CorpusDiagnosticsEquivalence` green with them on.
-- [ ] `go test ./...` passes.
+- [x] Each rule resolves to Layer 0 (audit `A-no-skipping`).
+- [x] `TestLayer0Gate_CorpusDiagnosticsEquivalence` green with them on.
+- [x] `go test ./...` passes.
+
+## Implementation notes
+
+The seven rules now branch in `Check`. A parsed File takes the AST path.
+A nil-AST File (`f.AST == nil`) takes a Layer-0 path. The blockquote
+rules walk the scanner's `BlockQuote` spans directly. MDS059 detects the
+MD028 blank-line gap between adjacent spans; MDS067 reads the `[!type]`
+token off each span's first line.
+
+The four list rules share a new line-based list parser,
+`internal/rules/listscan`. It re-derives goldmark's list facts from
+`f.Lines`. The facts are: the item marker line, the nesting level, the
+list ordered-ness and `Start`, the per-item literal number, the
+multi-block flag, and the top-level list's first and last line. The block
+scanner cannot supply these. It collapses a list into one single-line
+`BlockList` span per marker, with no nesting.
+
+`listscan.Parse` is checked byte-for-byte against the goldmark AST in
+`listscan_ast_test.go`. The test corpus spans the rules' bad fixtures
+plus nested, loose, and code-fence cases.
+
+Each rule extracts a shared `verdict`/`itemVerdict` helper that both
+paths drive, so the two paths agree by construction. A
+`TestCheck_NilASTMatchesAST` per rule pins it on nested lists, a loose
+list, and a list holding a code fence.
+
+`listscan` does not handle tab-indented lists, lists nested inside block
+quotes, or HTML-block list interruption. The parse-skip gate still forces
+an AST parse for any source containing a list or a `>`
+(`layer0SkipEligible` conditions 4 and 5). So the nil-AST path for these
+rules runs only in the audit and unit tests today. Relaxing those gate
+conditions is the dependent benchmark work, not this plan.

@@ -443,3 +443,41 @@ func TestFix_AllocBudget_PerLineNotPerEdit(t *testing.T) {
 		t.Fatalf("Fix allocs per call: want ≤ 6, got %v (copying every line, not just edited ones)", allocs)
 	}
 }
+
+// TestCheck_NilASTMatchesAST pins the nil-AST path: Check on a parse-
+// skipped File (f.AST nil) must produce byte-identical diagnostics to the
+// AST path, including nested lists, a loose list, and a list holding a
+// code fence.
+func TestCheck_NilASTMatchesAST(t *testing.T) {
+	cases := []struct {
+		src    string
+		style  string
+		nested []string
+	}{
+		{src: "- a\n* b\n+ c\n", style: "dash"},
+		{src: "* a\n* b\n", style: "dash"},
+		{src: "- Outer\n  - Inner\n  - Another\n- Another outer\n", nested: []string{"dash", "asterisk"}},
+		{src: "- a\n\n- b\n* c\n", style: "dash"},
+		{src: "- item\n  ```\n  code\n  ```\n- two\n", style: "dash"},
+		{src: "1. ordered not flagged\n2. b\n- bullet\n", style: "dash"},
+		{src: "- a\n  - b\n    - c\n", nested: []string{"dash", "asterisk", "plus"}},
+		{src: "text\n- a\n* b\n", style: "asterisk"},
+	}
+	for _, tc := range cases {
+		src := []byte(tc.src)
+		mk := func() *Rule {
+			r := &Rule{Style: "dash"}
+			if tc.style != "" {
+				r.Style = tc.style
+			}
+			r.Nested = tc.nested
+			return r
+		}
+		astFile, err := lint.NewFile("f.md", src)
+		require.NoError(t, err)
+		astDiags := mk().Check(astFile)
+		l0Diags := mk().Check(lint.NewFileLines("f.md", src))
+		assert.Equal(t, astDiags, l0Diags,
+			"nil-AST diagnostics must match AST for %q", tc.src)
+	}
+}

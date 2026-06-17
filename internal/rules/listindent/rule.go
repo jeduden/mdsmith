@@ -7,6 +7,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/rules/listscan"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
@@ -29,12 +30,32 @@ func (r *Rule) Name() string { return "list-indent" }
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "list" }
 
-// Check implements rule.Rule. The per-list-item logic is pure and
-// stateless, so it is expressed as CheckNode and the engine can fold
-// this rule into one shared AST walk; a direct call still works via
-// rule.WalkNodes.
+// Check implements rule.Rule. The per-list-item logic reads only the
+// item's marker line and its nesting level — never the inline tree — so
+// on a parsed File it folds into the engine's shared AST walk
+// (rule.WalkNodes), and on a parse-skipped File (f.AST nil) it re-derives
+// the same item line and level from f.Lines via listscan (checkLayer0).
+// Both resolve the same per-item verdict, so the diagnostics are
+// identical.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	if f != nil && f.AST == nil {
+		return r.checkLayer0(f)
+	}
 	return rule.WalkNodes(r, f)
+}
+
+// checkLayer0 is the nil-AST counterpart of CheckNode. listscan parses
+// the same list items goldmark would, with the same marker line and
+// nesting level, so the per-item indent verdict is byte-identical.
+func (r *Rule) checkLayer0(f *lint.File) []lint.Diagnostic {
+	_, items := listscan.Parse(f.Lines)
+	var diags []lint.Diagnostic
+	for _, it := range items {
+		if d, ok := r.verdict(f, it.Level, it.Line); ok {
+			diags = append(diags, d)
+		}
+	}
+	return diags
 }
 
 // CheckNode implements rule.NodeChecker.
@@ -46,24 +67,34 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 	if !ok {
 		return nil
 	}
+	line := firstLineOfListItem(f, listItem)
+	if d, ok := r.verdict(f, nestingLevel(listItem), line); ok {
+		return []lint.Diagnostic{d}
+	}
+	return nil
+}
+
+// verdict is the shared per-item check both the AST (CheckNode) and Layer
+// 0 (checkLayer0) paths drive: level is the item's nesting level and line
+// its 1-based marker line. A top-level item (level 0) or an
+// out-of-range line is skipped.
+func (r *Rule) verdict(f *lint.File, level, line int) (lint.Diagnostic, bool) {
 	spaces := r.Spaces
 	if spaces <= 0 {
 		spaces = 2
 	}
-	level := nestingLevel(listItem)
 	if level == 0 {
-		return nil
+		return lint.Diagnostic{}, false
+	}
+	if line < 1 || line > len(f.Lines) {
+		return lint.Diagnostic{}, false
 	}
 	expectedIndent := level * spaces
-	line := firstLineOfListItem(f, listItem)
-	if line < 1 || line > len(f.Lines) {
-		return nil
-	}
 	actualIndent := countLeadingSpaces(f.Lines[line-1])
 	if actualIndent == expectedIndent {
-		return nil
+		return lint.Diagnostic{}, false
 	}
-	return []lint.Diagnostic{{
+	return lint.Diagnostic{
 		File:     f.Path,
 		Line:     line,
 		Column:   1,
@@ -72,7 +103,7 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 		Severity: lint.Warning,
 		Message: "list indent should be " + strconv.Itoa(expectedIndent) +
 			" spaces, found " + strconv.Itoa(actualIndent),
-	}}
+	}, true
 }
 
 // nestingLevel returns the nesting depth of a ListItem. A top-level list item

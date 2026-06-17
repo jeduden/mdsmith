@@ -94,13 +94,20 @@ var validTypeOrder = []string{
 // underscore).
 var calloutRE = regexp.MustCompile(`^\[!([A-Za-z0-9_-]+)\]`)
 
-// Check implements rule.Rule.
+// Check implements rule.Rule. The callout token lives on a blockquote's
+// first content line — read from the AST's first paragraph on a parsed
+// File and from the Layer 0 BlockQuote span's first line on a parse-
+// skipped File (f.AST nil). Both resolve the same token, line, and
+// column, so the diagnostics are identical.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	if r.AllowUnknown {
 		return nil
 	}
-	if f == nil || f.AST == nil {
+	if f == nil {
 		return nil
+	}
+	if f.AST == nil {
+		return r.checkLayer0(f)
 	}
 	allowed := r.cachedAllowSet(f)
 	var diags []lint.Diagnostic
@@ -123,6 +130,70 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		return ast.WalkContinue, nil
 	})
 	return diags
+}
+
+// checkLayer0 is the nil-AST counterpart of the AST walk. It reads the
+// callout token from each Layer 0 BlockQuote span's first line. The
+// AST path examines the blockquote's first paragraph's first line; a
+// BlockQuote span's Start is that same line, so stripping one quote
+// marker level off it and matching calloutRE reproduces the AST's
+// calloutToken byte-for-byte, including the column (the source column
+// of the `[!` token).
+func (r *Rule) checkLayer0(f *lint.File) []lint.Diagnostic {
+	allowed := r.cachedAllowSet(f)
+	var diags []lint.Diagnostic
+	for _, span := range lint.Layer0(f).BlockSpans {
+		if span.Kind != lint.BlockQuote {
+			continue
+		}
+		token, line, col, ok := calloutTokenFromLine(f, span.Start)
+		if !ok || allowed[strings.ToLower(token)] {
+			continue
+		}
+		diags = append(diags, r.unknownTypeDiag(f.Path, line, col, token))
+	}
+	return diags
+}
+
+// calloutTokenFromLine reads the `[!type]` token from the 1-based source
+// line lineNum, stripping one blockquote marker level (up to 3 spaces, a
+// `>`, and one optional following space) to reach the paragraph content
+// goldmark feeds calloutRE on the AST path. The column is the 1-based
+// source column of the matched `[`, matching the AST path's
+// ColumnOfOffset(seg.Start + m[0]).
+func calloutTokenFromLine(f *lint.File, lineNum int) (token string, line, col int, ok bool) {
+	idx := lineNum - 1
+	if idx < 0 || idx >= len(f.Lines) {
+		return "", 0, 0, false
+	}
+	raw := f.Lines[idx]
+	contentStart := quoteMarkerLen(raw)
+	content := bytes.TrimRight(raw[contentStart:], "\r\n")
+	m := calloutRE.FindSubmatchIndex(content)
+	if m == nil {
+		return "", 0, 0, false
+	}
+	return string(content[m[2]:m[3]]), lineNum, contentStart + m[0] + 1, true
+}
+
+// quoteMarkerLen returns the byte length of the leading blockquote marker
+// on line: up to 3 spaces of indent, one `>`, and one optional following
+// space. It mirrors goldmark's blockquote-marker consumption so the
+// paragraph content begins at the returned offset. A line with no `>`
+// returns 0.
+func quoteMarkerLen(line []byte) int {
+	i := 0
+	for i < len(line) && i < 3 && line[i] == ' ' {
+		i++
+	}
+	if i >= len(line) || line[i] != '>' {
+		return 0
+	}
+	i++
+	if i < len(line) && line[i] == ' ' {
+		i++
+	}
+	return i
 }
 
 // buildAllowSet constructs the union of the built-in Obsidian types and the

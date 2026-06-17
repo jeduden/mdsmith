@@ -13,6 +13,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/fencepos"
+	"github.com/jeduden/mdsmith/internal/rules/listscan"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
@@ -48,12 +49,38 @@ func (r *Rule) Category() string { return "list" }
 // users pick a project convention and turn the rule on.
 func (r *Rule) EnabledByDefault() bool { return false }
 
-// Check implements rule.Rule. The per-list logic is pure and
-// stateless, so it is expressed as CheckNode and the engine can fold
-// this rule into one shared AST walk; a direct call still works via
-// rule.WalkNodes.
+// Check implements rule.Rule. The per-list logic reads only each item's
+// marker line (its literal number) and the list's Start value — never the
+// inline tree — so on a parsed File it folds into the engine's shared AST
+// walk (rule.WalkNodes), and on a parse-skipped File (f.AST nil) it
+// re-derives the same ordered lists, item lines, and Start from f.Lines
+// via listscan (checkLayer0). Both resolve the same per-item verdict, so
+// the diagnostics are identical.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	if f != nil && f.AST == nil {
+		return r.checkLayer0(f)
+	}
 	return rule.WalkNodes(r, f)
+}
+
+// checkLayer0 is the nil-AST counterpart of CheckNode. listscan groups
+// the same ordered lists goldmark would, with the same Start value and
+// item marker lines in order, so each item's numbering verdict is
+// byte-identical.
+func (r *Rule) checkLayer0(f *lint.File) []lint.Diagnostic {
+	lists, _ := listscan.Parse(f.Lines)
+	var diags []lint.Diagnostic
+	for _, l := range lists {
+		if !l.Ordered {
+			continue
+		}
+		lines := make([]int, len(l.Items))
+		for i, it := range l.Items {
+			lines[i] = it.Line
+		}
+		diags = append(diags, r.checkListLines(f, l.Start, lines)...)
+	}
+	return diags
 }
 
 // CheckNode implements rule.NodeChecker.
@@ -77,26 +104,33 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 // "wrong start" would tell the user to renumber items that the start
 // fix would already correct.
 func (r *Rule) checkList(f *lint.File, list *ast.List) []lint.Diagnostic {
-	var diags []lint.Diagnostic
-	startMismatch := list.Start != r.Start
-	i := 0
+	lines := make([]int, 0, list.ChildCount())
 	for c := list.FirstChild(); c != nil; c = c.NextSibling() {
-		item := c.(*ast.ListItem)
-		line := firstLineOfListItem(f, item)
+		lines = append(lines, firstLineOfListItem(f, c.(*ast.ListItem)))
+	}
+	return r.checkListLines(f, list.Start, lines)
+}
+
+// checkListLines is the shared per-list check both the AST (checkList via
+// CheckNode) and Layer 0 (checkLayer0) paths drive: listStart is the
+// list's start value (goldmark list.Start), and itemLines holds each
+// item's 1-based marker line in document order.
+func (r *Rule) checkListLines(f *lint.File, listStart int, itemLines []int) []lint.Diagnostic {
+	var diags []lint.Diagnostic
+	startMismatch := listStart != r.Start
+	for i, line := range itemLines {
 		if i == 0 && startMismatch {
 			diags = append(diags, r.diag(f, line, fmt.Sprintf(
 				"ordered list starts at %d; configured start is %d",
-				list.Start, r.Start,
+				listStart, r.Start,
 			)))
 		}
 		if startMismatch {
-			i++
 			continue
 		}
 		if d, ok := r.checkItem(f, line, i); ok {
 			diags = append(diags, d)
 		}
-		i++
 	}
 	return diags
 }

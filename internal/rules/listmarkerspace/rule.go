@@ -9,6 +9,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/rules/listscan"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
@@ -34,12 +35,36 @@ func (r *Rule) Name() string { return "list-marker-space" }
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "list" }
 
-// Check implements rule.Rule. The per-list logic is pure and
-// stateless, so it is expressed as CheckNode and the engine can fold
-// this rule into one shared AST walk; a direct call still works via
-// rule.WalkNodes.
+// Check implements rule.Rule. The per-item logic reads only the item's
+// marker line (marker plus following spaces), the list's ordered-ness,
+// and whether the item is multi-block — never the inline tree — so on a
+// parsed File it folds into the engine's shared AST walk (rule.WalkNodes),
+// and on a parse-skipped File (f.AST nil) it re-derives the same lists,
+// item lines, and multi-block flag from f.Lines via listscan
+// (checkLayer0). Both resolve the same per-item verdict, so the
+// diagnostics are identical.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	if f != nil && f.AST == nil {
+		return r.checkLayer0(f)
+	}
 	return rule.WalkNodes(r, f)
+}
+
+// checkLayer0 is the nil-AST counterpart of CheckNode. listscan groups
+// the same lists goldmark would, with the same item marker lines,
+// ordered-ness, and multi-block classification, so each item's
+// marker-space verdict is byte-identical.
+func (r *Rule) checkLayer0(f *lint.File) []lint.Diagnostic {
+	lists, _ := listscan.Parse(f.Lines)
+	var diags []lint.Diagnostic
+	for _, l := range lists {
+		for _, it := range l.Items {
+			if d, ok := r.itemVerdict(f, l.Ordered, it.MultiBlock, it.Line); ok {
+				diags = append(diags, d)
+			}
+		}
+	}
+	return diags
 }
 
 // CheckNode implements rule.NodeChecker.
@@ -59,30 +84,39 @@ func (r *Rule) checkList(f *lint.File, list *ast.List) []lint.Diagnostic {
 	ordered := list.IsOrdered()
 	for c := list.FirstChild(); c != nil; c = c.NextSibling() {
 		item := c.(*ast.ListItem)
-		multi := isMultiItem(item)
-		want := r.configuredSpaces(ordered, multi)
-		line := firstLineOfListItem(f, item)
-		if line <= 0 || line > len(f.Lines) {
-			continue
+		if d, ok := r.itemVerdict(f, ordered, isMultiItem(item), firstLineOfListItem(f, item)); ok {
+			diags = append(diags, d)
 		}
-		markerEnd, got := parseMarkerAndSpaces(f.Lines[line-1])
-		if markerEnd == 0 || got == want {
-			continue
-		}
-		diags = append(diags, lint.Diagnostic{
-			File:     f.Path,
-			Line:     line,
-			Column:   1,
-			RuleID:   r.ID(),
-			RuleName: r.Name(),
-			Severity: lint.Warning,
-			Message: fmt.Sprintf(
-				"list marker followed by %d %s; expected %d",
-				got, pluralSpace(got), want,
-			),
-		})
 	}
 	return diags
+}
+
+// itemVerdict is the shared per-item check both the AST (checkList via
+// CheckNode) and Layer 0 (checkLayer0) paths drive: ordered is the list's
+// ordered-ness, multi whether the item is multi-block, and line the
+// item's 1-based marker line. It reads the marker and following spaces
+// from the source line, so the two paths agree by construction.
+func (r *Rule) itemVerdict(f *lint.File, ordered, multi bool, line int) (lint.Diagnostic, bool) {
+	want := r.configuredSpaces(ordered, multi)
+	if line <= 0 || line > len(f.Lines) {
+		return lint.Diagnostic{}, false
+	}
+	markerEnd, got := parseMarkerAndSpaces(f.Lines[line-1])
+	if markerEnd == 0 || got == want {
+		return lint.Diagnostic{}, false
+	}
+	return lint.Diagnostic{
+		File:     f.Path,
+		Line:     line,
+		Column:   1,
+		RuleID:   r.ID(),
+		RuleName: r.Name(),
+		Severity: lint.Warning,
+		Message: fmt.Sprintf(
+			"list marker followed by %d %s; expected %d",
+			got, pluralSpace(got), want,
+		),
+	}, true
 }
 
 func (r *Rule) configuredSpaces(ordered, multi bool) int {
