@@ -6,11 +6,11 @@ summary: >-
   Cache the configured (cloned + settings-applied) enabled rule
   list per config signature on each engine worker, so a corpus
   that shares one config configures each Configurable rule once
-  instead of once per file. Cuts benchmark-2 parity wall time
-  ~40% and standing-gate allocations ~78%, byte-identical. Also
-  records the measured 18-rule AST-forcing inventory and the
-  all-or-nothing Layer-0 gate that the remaining gomarklint gap
-  needs.
+  instead of once per file. Cuts standing-gate allocations ~78%
+  and small-file-corpus wall time ~40%, byte-identical — but only
+  ~3% on the prose-heavy benchmark-2 corpus, where parse and rules
+  dominate. Records the real same-machine gomarklint ratio (~1.78x)
+  and the 18-rule AST-forcing inventory the remaining gap needs.
 model: opus
 depends-on: [2606141904]
 ---
@@ -59,21 +59,33 @@ config signature, the run-scoped-caching pattern from
 
 ## Result
 
-Measured on a 234-file synthetic parity corpus and the standing
-engine gate, on a 4-core box. Diagnostics stay byte-identical:
+Measured two ways, with a correction that matters. Diagnostics stay
+byte-identical throughout.
 
-- Parity check wall time: `~68 ms → ~40 ms`, about 40% faster.
-- `BenchmarkCheckCorpusLarge`: `~553 k → ~120 k` allocs/op, about
-  78% fewer. The p95 fell `~191 ms → ~90 ms`. Small fell
-  `~57 k → ~12.7 k` allocs/op.
+**On a synthetic many-small-files corpus** (the standing engine gate
+uses the same shape): parity wall **~68 ms → ~40 ms (~40%)**.
+`BenchmarkCheckCorpusLarge` allocs/op fell **~553 k → ~120 k (~78%)**,
+its p95 **~191 ms → ~90 ms**, Small **~57 k → ~12.7 k**.
 
-The win is largest where benchmark 2 sits. Parity declares no
-kinds or overrides, so every file shares one config signature.
-Its rules are cheap structural checks, so per-file configuration
-was a large fraction of the work. Configs with many kinds or
-overrides — the repo's own config — reuse less and change less,
-as expected. Full-prose configs are dominated by rule CPU, so the
-change is within noise there.
+**On the real benchmark-2 corpus** (234 Rust Book + Reference files at
+the pinned commits): the wall-time change is **~3%, within noise**
+(~67 ms → ~65 ms). Measured head-to-head on one machine against
+gomarklint 3.2.3, parity is **~1.78×** gomarklint (64 ms vs 36 ms).
+That ratio holds both before and after this change.
+
+The gap between the two corpora is the lesson. The synthetic corpus is
+many tiny files. Per-file config setup (clone, ApplySettings, regex
+compile) is a large fraction there, so caching it wins big. Benchmark 2
+is a few hundred large prose chapters. The parse and prose rules
+dominate, and config setup is negligible, so the cache barely moves the
+wall clock. The real-corpus serial split is read 3%, block parse 18%,
+inline parse 22%, **rules + merge 44%**; the parse-free floor is 47%.
+
+So this change is a **real, durable allocation win (−78%)**. It cuts GC
+pressure and speeds **small-file workloads** — a docs repo of hundreds
+of short files, or CI linting many files. It is **not** a material
+benchmark-2 wall-time win. The honest benchmark-2 levers are the parse
+(40%) and the flat rule+merge cost (44%). This change touches neither.
 
 ## The remaining gap to gomarklint
 
