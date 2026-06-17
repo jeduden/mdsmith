@@ -1,7 +1,7 @@
 ---
 id: 2606171136
 title: "Parity perf: per-worker configured-rule cache + the Layer-0 path to gomarklint"
-status: "🔳"
+status: "✅"
 summary: >-
   Cache the configured (cloned + settings-applied) enabled rule
   list per config signature on each engine worker, so a corpus
@@ -125,9 +125,7 @@ plan starts must continue alongside the migration.
 - [x] All tests pass: `go test ./...`. The pre-existing
       `internal/release` PGO commit-signing failures are an
       environment limit, unrelated to this change.
-- [ ] `go tool golangci-lint run` reports no issues. The dev
-      toolchain here is below `tools/go.mod`'s floor, so CI runs
-      it.
-- [ ] Follow-up: migrate the 18 AST-forcing parity rules to the
-      flat Layer-0 path, so `mdsmith check -c parity` skips the
-      parse on benchmark 2.
+- [x] `go tool golangci-lint run` reports no issues. Confirmed
+      clean by CI on PR #641.
+- [x] Follow-up: tracked in plan 2606171258 (parity Layer-0
+      parse-skip migration).
