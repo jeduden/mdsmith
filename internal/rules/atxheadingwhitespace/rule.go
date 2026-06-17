@@ -140,6 +140,10 @@ func (r *Rule) diag(path string, line, col int, msg string) lint.Diagnostic {
 	}
 }
 
+// newlineSep is the bytes.Join separator; a package-level var avoids a
+// heap allocation for []byte("\n") on every Fix call.
+var newlineSep = []byte("\n")
+
 // Fix implements rule.FixableRule.
 func (r *Rule) Fix(f *lint.File) []byte {
 	codeLines := lint.CollectCodeBlockLines(f)
@@ -158,7 +162,7 @@ func (r *Rule) Fix(f *lint.File) []byte {
 			result = append(result, rawLine)
 		}
 	}
-	return bytes.Join(result, []byte{'\n'})
+	return bytes.Join(result, newlineSep)
 }
 
 func normalizeLine(line []byte) []byte {

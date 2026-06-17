@@ -12,9 +12,9 @@ import (
 // that exercises hasNonBlankLines with a multi-blank-line fenced code block.
 // The dominant allocations are topLevelNodes ([]ast.Node slice), headingLabel
 // (mdtext.ExtractPlainText + strings.Repeat + concatenation), and the
-// diagnostic fmt.Sprintf — not hasNonBlankLines itself, which allocates 0
-// because Go's escape analysis stack-allocates the result of
-// string(seg.Value(source)) when it doesn't escape the comparison.
+// diagnostic fmt.Sprintf — not hasNonBlankLines itself, which allocates 0:
+// it uses bytes.TrimSpace(seg.Value(source)), which returns a sub-slice of
+// the source with no string conversion or copy per line.
 // This budget is a regression guard: it fails if new allocations are added.
 const allocBudgetMDS030 = 14
 
