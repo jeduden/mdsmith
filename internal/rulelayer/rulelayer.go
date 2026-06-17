@@ -104,8 +104,8 @@ func buildLayerMapFrom(manifest []byte) map[string]Layer {
 	}
 	m := make(map[string]Layer, len(entries))
 	for _, e := range entries {
-		if knownNilASTSafe[e.ID] ||
-			(e.Category == "A-no-skipping" && !astProjectionConsumers[e.ID]) {
+		if !astProjectionConsumers[e.ID] &&
+			(knownNilASTSafe[e.ID] || e.Category == "A-no-skipping") {
 			m[e.ID] = Layer0
 		} else {
 			m[e.ID] = LayerAST

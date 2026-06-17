@@ -135,6 +135,9 @@ func (r *Rule) verdict(f *lint.File, h1Lines []int) []lint.Diagnostic {
 // Fix implements rule.FixableRule. Demotes extra H1s to H2. Does not
 // auto-fix front-matter title conflicts.
 func (r *Rule) Fix(f *lint.File) []byte {
+	if f.AST == nil {
+		return f.Source
+	}
 	h1s := collectH1s(f)
 
 	hasFMTitle := r.FrontMatterTitle != "" && r.frontMatterHasTitle(f)

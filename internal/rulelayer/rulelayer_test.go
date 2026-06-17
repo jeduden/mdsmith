@@ -169,3 +169,20 @@ func TestAstProjectionConsumerOverrideForcesAST(t *testing.T) {
 	]`))
 	assert.Equal(t, LayerAST, m["MDS902"], "override forces an A-no-skipping rule to AST")
 }
+
+// TestAstProjectionConsumerOverridesKnownNilASTSafe pins that astProjectionConsumers
+// wins over knownNilASTSafe: a rule in both must still resolve to LayerAST because
+// it reads a projection the nil-AST path does not back, regardless of whether its
+// Check never directly dereferences f.AST.
+func TestAstProjectionConsumerOverridesKnownNilASTSafe(t *testing.T) {
+	astProjectionConsumers["MDS903"] = true
+	knownNilASTSafe["MDS903"] = true
+	t.Cleanup(func() {
+		delete(astProjectionConsumers, "MDS903")
+		delete(knownNilASTSafe, "MDS903")
+	})
+	m := buildLayerMapFrom([]byte(`[
+		{"id":"MDS903","category":"inconclusive-not-fired"}
+	]`))
+	assert.Equal(t, LayerAST, m["MDS903"], "astProjectionConsumers must override knownNilASTSafe")
+}
