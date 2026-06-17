@@ -5,8 +5,31 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestCheck_NilASTMatchesAST pins the Layer-0 migration: Check on a
+// nil-AST File (the parse-skip path, via CheckBlock over the block scan)
+// must produce byte-identical diagnostics to the AST path. The cases
+// exercise the blank-before and blank-after branches of checkBlanks.
+func TestCheck_NilASTMatchesAST(t *testing.T) {
+	srcs := [][]byte{
+		[]byte("text\n\n```\ncode\n```\n\nmore\n"),
+		[]byte("text\n```\ncode\n```\n\nmore\n"),
+		[]byte("text\n\n```\ncode\n```\nmore\n"),
+		[]byte("```\ncode\n```\n"),
+		[]byte("# H\n\n```go\nfn()\n```\n\ntext\n"),
+	}
+	for _, src := range srcs {
+		astFile, err := lint.NewFile("f.md", src)
+		require.NoError(t, err)
+		astDiags := (&Rule{}).Check(astFile)
+		l0Diags := (&Rule{}).Check(lint.NewFileLines("f.md", src))
+		assert.Equal(t, astDiags, l0Diags,
+			"nil-AST must match AST for src=%q", string(src))
+	}
+}
 
 func TestCheck_NoBlankBefore(t *testing.T) {
 	src := []byte("some text\n```go\ncode\n```\n")

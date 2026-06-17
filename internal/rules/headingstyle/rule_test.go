@@ -5,8 +5,50 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestCheck_NilASTMatchesAST pins the Layer-0 migration: Check on a
+// nil-AST File (the parse-skip path, via CheckBlock over the block scan)
+// must produce byte-identical diagnostics to the AST path. Running both
+// style targets exercises the atx branch, the setext branch, and
+// atxLevelFromLine (levels 1-6) on the block path.
+func TestCheck_NilASTMatchesAST(t *testing.T) {
+	srcs := [][]byte{
+		[]byte("# ATX heading\n\nText\n"),
+		[]byte("Setext\n======\n\nText\n"),
+		[]byte("## Level two\n\n### Level three\n\nText\n"),
+		[]byte("# A\n\nSub heading\n-----------\n\nText\n"),
+		[]byte("###### Deep six\n\nText\n"),
+		[]byte("intro\n\nSetext two\n----------\n"),
+	}
+	for _, style := range []string{"atx", "setext"} {
+		for _, src := range srcs {
+			astFile, err := lint.NewFile("f.md", src)
+			require.NoError(t, err)
+			astDiags := (&Rule{Style: style}).Check(astFile)
+			l0Diags := (&Rule{Style: style}).Check(lint.NewFileLines("f.md", src))
+			assert.Equal(t, astDiags, l0Diags,
+				"nil-AST must match AST for style=%s src=%q", style, string(src))
+		}
+	}
+}
+
+// TestAtxLevelFromLine covers the leading-`#` count the Layer-0 path
+// reads, including the up-to-three leading spaces goldmark allows before
+// an ATX heading.
+func TestAtxLevelFromLine(t *testing.T) {
+	cases := map[string]int{
+		"# one":           1,
+		"## two":          2,
+		"###### six":      6,
+		"   ### indented": 3,
+	}
+	for line, want := range cases {
+		assert.Equal(t, want, atxLevelFromLine([]byte(line)), "line %q", line)
+	}
+}
 
 func TestCheck_ATXStyle_NoViolation(t *testing.T) {
 	src := []byte("# Heading 1\n\n## Heading 2\n\n### Heading 3\n")
