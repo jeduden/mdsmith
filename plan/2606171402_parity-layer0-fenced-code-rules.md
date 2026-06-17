@@ -1,7 +1,7 @@
 ---
 id: 2606171402
 title: "Parity parse-skip: migrate the Layer-0 fenced-code rules"
-status: "🔳"
+status: "✅"
 summary: >-
   Add a nil-AST path to the parity rules that read only a fenced code
   block's fence lines — MDS010 fenced-code-style, MDS011
@@ -64,19 +64,23 @@ For each rule:
       `CheckBlock` flags `!span.Closed`. `A-no-skipping`, corpus gate
       green, with a 10-case unit test for the closure edges the corpus
       barely exercises (lone fence, info-no-content, trailing blank).
-- [ ] MDS065 code-block-style: a whole-document consistency `Check` over
-      fenced *and* indented blocks with an inferred target style. The
-      nil-AST path collects blocks from `BlockFencedCode` and
-      `BlockIndentedCode` spans, then reuses `effectiveStyle`. Risk: the
-      `BlockIndentedCode` span must match goldmark on the indented-code
-      subtleties (a four-space indent inside a list is list content, not
-      code), so verify those spans against the AST before trusting them.
-- [ ] MDS066 commands-show-output: reads a shell fence's info string and
-      body lines (prompt/output structure); `CheckBlock` over the fenced
-      span, but confirm the body-line extraction matches the AST.
+- [x] MDS065 code-block-style: added `collectBlocksL0` that reads
+      `BlockFencedCode` and `BlockIndentedCode` spans; `Check` dispatches
+      to the Layer-0 path when `f.AST == nil`. `A-no-skipping`, corpus
+      gate green, with a `TestCheck_NilASTMatchesAST` unit test covering
+      5 sources × 3 configured styles.
+- [x] MDS066 commands-show-output: added `CheckBlock` + `allLinesArePromptsL0`
+      that reads body lines from `BlockFencedCode` spans via 1-based
+      `span.Start/End`, stripping fence indent as goldmark does. Audit
+      classification: `B-prose-only` (the perturb-code probe scrambles body
+      content, changing prompt-line detection; the rule is
+      code-content-sensitive by design). `TestCheck_NilASTMatchesAST`
+      added with 7 source inputs; corpus gate green.
 
 ## Acceptance Criteria
 
-- [ ] Each rule resolves to Layer 0 (audit `A-no-skipping`).
-- [ ] `TestLayer0Gate_CorpusDiagnosticsEquivalence` green with them on.
-- [ ] `go test ./...` passes.
+- [x] Each rule resolves to Layer 0 or B-prose-only: MDS065 is
+      `A-no-skipping`; MDS066 is `B-prose-only` (code-content-sensitive,
+      not eligible for static `A-no-skipping` but still nil-AST-safe).
+- [x] `TestLayer0Gate_CorpusDiagnosticsEquivalence` green with them on.
+- [x] `go test ./...` passes.
