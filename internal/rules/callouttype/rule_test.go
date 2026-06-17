@@ -228,6 +228,16 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 		"text\n\n> [!UNKNOWN]\n",
 		"> > [!REVIEW]\n> > doubly nested\n",
 		"> outer\n> > [!BOGUS]\n> > body\n",
+		// Lazy continuation: non-blank line without `>` must not reset
+		// depth — the next `>` line is a continuation paragraph, not a
+		// new callout opener.
+		"> [!note]\nlazy continuation line\n> following para\n",
+		// Depth decrease: after a depth-2 line, a depth-1 line ratchets
+		// prevDepth down without emitting a spurious diagnostic.
+		"> > [!REVIEW]\n> outer continues\n",
+		// Code fence at the top level: `>` lines inside the fence must
+		// not produce diagnostics (exercises the inCode branch).
+		"```\n> [!REVIEW]\n```\n",
 	}
 	for _, src := range srcs {
 		b := []byte(src)

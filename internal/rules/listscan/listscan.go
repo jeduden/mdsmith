@@ -66,7 +66,7 @@ type List struct {
 func Parse(lines [][]byte) (lists []List, items []Item) {
 	p := &parser{lines: lines}
 	p.run()
-	flat := make([]Item, 0, len(p.items))
+	flat := make([]Item, 0, p.itemCount)
 	for _, l := range p.lists {
 		flat = append(flat, l.Items...)
 	}
@@ -121,8 +121,8 @@ type frame struct {
 type parser struct {
 	lines [][]byte
 	lists []List
-	// items counts items only for sizing the flat slice.
-	items []Item
+	// itemCount counts appended items for sizing the flat slice in Parse.
+	itemCount int
 	// stack holds the currently open list items, outermost first.
 	stack []frame
 	// blankRun counts consecutive blank lines pending before the current
@@ -403,7 +403,7 @@ func (p *parser) appendItem(lineNo, level int, mi markerInfo) (int, int) {
 		Number:  number,
 		Marker:  mi.marker,
 	}
-	p.items = append(p.items, item)
+	p.itemCount++
 
 	if li, ok := p.siblingList(level, mi); ok {
 		p.lists[li].Items = append(p.lists[li].Items, item)

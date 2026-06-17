@@ -154,7 +154,14 @@ func (r *Rule) checkLayer0(f *lint.File) []lint.Diagnostic {
 		}
 		d := lineQuoteDepth(f.Lines[lineNum-1])
 		if d == 0 {
-			prevDepth = 0
+			// Only a truly blank line closes the blockquote context;
+			// a non-blank line without `>` is a CommonMark lazy
+			// continuation of the current paragraph and must not reset
+			// the depth, otherwise the next `>` line is mistaken for a
+			// new callout opener inside the same goldmark Blockquote node.
+			if len(bytes.TrimRight(f.Lines[lineNum-1], " \t\r\n")) == 0 {
+				prevDepth = 0
+			}
 			continue
 		}
 		if d <= prevDepth {
