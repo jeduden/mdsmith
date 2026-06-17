@@ -96,13 +96,12 @@ type Layer0Scan struct {
 	PIBlockLines map[int]struct{}
 
 	// Classes and BlockSpans are the per-line classification and the
-	// ordered block list. They have no production consumer yet — the block
-	// NodeChecker re-backing (plan 2606141903) is their first reader; until
-	// it lands they are exercised only by this package's unit tests. They
-	// are part of this plan's deliverable so the next stage can build on a
-	// stable shape, but a contributor should not assume the block-kind
-	// dispatch that fills them is load-bearing for the shipped projections:
-	// only CodeBlockLines and PIBlockLines are.
+	// ordered block list. BlockSpans is now load-bearing in production:
+	// rule.WalkBlocks drives every rule.BlockChecker (e.g. MDS002
+	// heading-style, MDS015 blank-line-around-fenced-code) over these spans
+	// on the parse-skipped path, so the block-kind dispatch that fills them
+	// must stay byte-faithful to goldmark — a change here can alter shipped
+	// diagnostics. Classes remains internal scaffolding for the scan.
 
 	// Classes holds one lineClass per source line, indexed by (line-1).
 	Classes []lineClass

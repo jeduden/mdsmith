@@ -61,17 +61,10 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 // that line's bytes to match the AST path's isATXHeading and
 // heading.Level exactly, so the verdict is byte-identical.
 func (r *Rule) CheckBlock(span lint.BlockSpan, f *lint.File) []lint.Diagnostic {
-	line := f.Lines[span.Start-1]
-	// Match the AST path's isATXHeading exactly: it tests the first byte of
-	// the heading's source line via lineStartsWithHash and does NOT skip
-	// indentation. A ≤3-space-indented ATX heading is a BlockATXHeading span
-	// (goldmark still parses it as a heading), but MDS002's column-1 test
-	// reads it as non-ATX — so isATX keys off the raw first byte, not the
-	// span kind, to keep the two paths byte-identical.
-	isATX := len(line) > 0 && line[0] == '#'
+	isATX := span.Kind == lint.BlockATXHeading
 	level := 0
 	if isATX {
-		level = atxLevelFromLine(line)
+		level = atxLevelFromLine(f.Lines[span.Start-1])
 	}
 	return r.verdict(f, isATX, level, span.Start)
 }
@@ -256,13 +249,22 @@ func firstTextSegment(n ast.Node) text.Segment {
 }
 
 // lineStartsWithHash returns true if the line containing the byte at offset
-// starts with '#'.
+// is an ATX heading, i.e. begins with '#' after up to three leading spaces.
+// CommonMark lets an ATX heading be indented one to three spaces (four or
+// more would open an indented code block), so the leading-space skip must
+// match the Layer 0 scanner's isATXHeadingLine. Without it the AST path
+// misclassifies an indented ATX heading (e.g. "   # H") as setext, so the
+// parsed and parse-skipped paths emit different MDS002 verdicts.
 func lineStartsWithHash(source []byte, offset int) bool {
 	lineStart := offset
 	for lineStart > 0 && source[lineStart-1] != '\n' {
 		lineStart--
 	}
-	return lineStart < len(source) && source[lineStart] == '#'
+	i := lineStart
+	for i < len(source) && i-lineStart < 3 && source[i] == ' ' {
+		i++
+	}
+	return i < len(source) && source[i] == '#'
 }
 
 func headingLine(heading *ast.Heading, f *lint.File) int {
