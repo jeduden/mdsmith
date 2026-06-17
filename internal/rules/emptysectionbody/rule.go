@@ -22,9 +22,10 @@ var htmlCommentPattern = regexp.MustCompile(`(?s)<!--.*?-->`)
 
 func init() {
 	rule.Register(&Rule{
-		MinLevel:    defaultMinLevel,
-		MaxLevel:    defaultMaxLevel,
-		AllowMarker: defaultAllowMarker,
+		MinLevel:             defaultMinLevel,
+		MaxLevel:             defaultMaxLevel,
+		AllowMarker:          defaultAllowMarker,
+		allowMarkerDirective: "<?" + defaultAllowMarker + "?>",
 	})
 }
 
@@ -33,6 +34,9 @@ type Rule struct {
 	MinLevel    int
 	MaxLevel    int
 	AllowMarker string
+	// allowMarkerDirective is "<?"+AllowMarker+"?>" precomputed so
+	// Check does not call fmt.Sprintf per violation.
+	allowMarkerDirective string
 }
 
 // ID implements rule.Rule.
@@ -47,6 +51,10 @@ func (r *Rule) Category() string { return "heading" }
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	minLevel, maxLevel, allowMarker := r.effectiveSettings()
+	allowMarkerDir := r.allowMarkerDirective
+	if allowMarkerDir == "" || r.AllowMarker != allowMarker {
+		allowMarkerDir = "<?" + allowMarker + "?>"
+	}
 	if f.AST == nil {
 		return nil
 	}
@@ -65,19 +73,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			continue
 		}
 
-		end := len(nodes)
-		for j := i + 1; j < len(nodes); j++ {
-			nextHeading, ok := nodes[j].(*ast.Heading)
-			if !ok {
-				continue
-			}
-			if nextHeading.Level <= heading.Level {
-				end = j
-				break
-			}
-		}
-
-		sectionNodes := nodes[i+1 : end]
+		sectionNodes := nodes[i+1 : findSectionEnd(nodes, i)]
 		if hasAllowMarker(sectionNodes, allowMarker) {
 			continue
 		}
@@ -90,7 +86,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 				"add paragraph, list, table, or code content, "+
 				"or add %q for an intentional empty section",
 			headingLabel(heading, f.Source),
-			fmt.Sprintf("<?%s?>", allowMarker),
+			allowMarkerDir,
 		)
 		diags = append(diags, lint.Diagnostic{
 			File:     f.Path,
@@ -129,6 +125,7 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 	r.MinLevel = minLevel
 	r.MaxLevel = maxLevel
 	r.AllowMarker = allowMarker
+	r.allowMarkerDirective = "<?" + allowMarker + "?>"
 	return nil
 }
 
@@ -240,11 +237,24 @@ func (r *Rule) effectiveSettings() (int, int, string) {
 }
 
 func topLevelNodes(root ast.Node) []ast.Node {
-	var nodes []ast.Node
+	// Pre-size to 8: typical documents have 4–12 top-level AST nodes;
+	// starting with cap 8 avoids 3–4 backing-array reallocations that
+	// nil-slice append would cause (nil→1→2→4→8).
+	nodes := make([]ast.Node, 0, 8)
 	for n := root.FirstChild(); n != nil; n = n.NextSibling() {
 		nodes = append(nodes, n)
 	}
 	return nodes
+}
+
+func findSectionEnd(nodes []ast.Node, i int) int {
+	level := nodes[i].(*ast.Heading).Level
+	for j := i + 1; j < len(nodes); j++ {
+		if h, ok := nodes[j].(*ast.Heading); ok && h.Level <= level {
+			return j
+		}
+	}
+	return len(nodes)
 }
 
 func hasAllowMarker(nodes []ast.Node, markerName string) bool {

@@ -257,3 +257,13 @@ func TestFix_PreSizeAllocBudget(t *testing.T) {
 		"Fix allocs/op = %.0f (budget=%d); pre-size resultLines with make([][]byte, 0, cap)",
 		allocs, budget)
 }
+
+func TestCheck_BothViolations(t *testing.T) {
+	// Heading immediately before list (no blank), heading immediately after (no blank).
+	src := []byte("## Title\n- item 1\n- item 2\n## After\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{}
+	diags := r.Check(f)
+	require.Len(t, diags, 2, "expected 2 diagnostics (before + after), got %d", len(diags))
+}

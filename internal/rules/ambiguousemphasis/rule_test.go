@@ -69,6 +69,14 @@ func TestCheck_AdjacentSameDelim(t *testing.T) {
 	assert.Equal(t, 1, diags[0].Column)
 }
 
+func TestCheck_AdjacentSameDelim_DedupsAfterEmit(t *testing.T) {
+	// Four __ runs: the third triggers the diagnostic; the fourth hits the
+	// dedup continue inside adjacentSameDelimDiags (emitted[k] guard).
+	diags := runOnLine(t, activeRule(), "__a__b__c__")
+	require.Len(t, diags, 1, "dedup should produce exactly one diagnostic for all four runs")
+	assert.Equal(t, "adjacent same-delimiter emphasis is ambiguous", diags[0].Message)
+}
+
 func TestCheck_AdjacentSingleStar(t *testing.T) {
 	diags := runOnLine(t, activeRule(), "*a*b*")
 	require.Len(t, diags, 1)

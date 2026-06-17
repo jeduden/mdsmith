@@ -491,3 +491,37 @@ func TestNodeHasText_ViaLinesDirectCall(t *testing.T) {
 	result := nodeHasText(node, src)
 	assert.True(t, result, "node with non-blank lines should have text")
 }
+
+func TestCheck_AllowMarkerDirectiveInMessage(t *testing.T) {
+	// The precomputed allowMarkerDirective must appear in violation messages.
+	src := []byte("## Empty Section\n\n## Next Section\n\nSome content here.\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{
+		MinLevel:             2,
+		MaxLevel:             6,
+		AllowMarker:          "allow-empty-section",
+		allowMarkerDirective: "<?allow-empty-section?>",
+	}
+	diags := r.Check(f)
+	require.Len(t, diags, 1, "expected 1 diagnostic for empty section")
+	assert.Contains(t, diags[0].Message, "<?allow-empty-section?>",
+		"message should contain the precomputed directive")
+}
+
+func TestCheck_CustomAllowMarker(t *testing.T) {
+	// The precomputed directive must update when AllowMarker is changed via ApplySettings.
+	src := []byte("## Empty Section\n\n## Next Section\n\nSome content here.\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{
+		MinLevel:    2,
+		MaxLevel:    6,
+		AllowMarker: "allow-empty-section",
+	}
+	require.NoError(t, r.ApplySettings(map[string]any{"allow-marker": "my-marker"}))
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "<?my-marker?>",
+		"message should use updated allowMarkerDirective")
+}

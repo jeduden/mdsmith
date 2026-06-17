@@ -165,7 +165,7 @@ func (r *Rule) longRunDiags(f *lint.File, lineNum int, runs []emphRun) []lint.Di
 		char   byte
 		length int
 	}
-	seen := map[key]bool{}
+	seen := map[key]struct{}{}
 	var diags []lint.Diagnostic
 	for _, run := range runs {
 		length := run.length()
@@ -173,10 +173,10 @@ func (r *Rule) longRunDiags(f *lint.File, lineNum int, runs []emphRun) []lint.Di
 			continue
 		}
 		k := key{char: run.char, length: length}
-		if seen[k] {
+		if _, ok := seen[k]; ok {
 			continue
 		}
-		seen[k] = true
+		seen[k] = struct{}{}
 		diags = append(diags, lint.Diagnostic{
 			File:     f.Path,
 			Line:     lineNum,
@@ -242,13 +242,13 @@ func (r *Rule) adjacentSameDelimDiags(f *lint.File, lineNum int, line []byte, ru
 		count int
 	}
 
-	emitted := map[key]bool{}
+	emitted := map[key]struct{}{}
 	states := make(map[key]adjacentRunState)
 	var diags []lint.Diagnostic
 
 	for _, curr := range runs {
 		k := key{char: curr.char, length: curr.length()}
-		if emitted[k] {
+		if _, ok := emitted[k]; ok {
 			continue
 		}
 
@@ -267,7 +267,7 @@ func (r *Rule) adjacentSameDelimDiags(f *lint.File, lineNum int, line []byte, ru
 			state.count++
 			states[k] = state
 			if state.count >= minAdjacentRunsForAmbiguity {
-				emitted[k] = true
+				emitted[k] = struct{}{}
 				diags = append(diags, lint.Diagnostic{
 					File:     f.Path,
 					Line:     lineNum,
