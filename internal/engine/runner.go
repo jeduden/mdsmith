@@ -458,7 +458,13 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 	var f *lint.File
 	releaseArena := func() {}
 	if r.layer0SkipEligible(source, rr.mdRules, effective) {
-		f = lint.NewFileLinesFromSource(path, source, r.StripFrontMatter)
+		// The parse-skip File carries the flat ClassifyLines projection so
+		// CollectCodeBlockLines serves the classifier (gated byte-identical
+		// to the AST across the corpus, code-bearing files included) rather
+		// than an on-demand scanLayer0; block-span rules still read
+		// Layer0(f).BlockSpans. This is what lets the gate engage on files
+		// with code blocks (see layer0SkipEligible).
+		f, _ = lint.NewFileFlatPooled(path, source, r.StripFrontMatter)
 	} else {
 		f, releaseArena = r.pooledFileConstructor(source)(path, source, r.StripFrontMatter)
 	}
@@ -612,7 +618,7 @@ func layer0SkipEnabled() bool {
 }
 
 // layer0SkipEligible reports whether this file's run can skip the goldmark
-// parse and lint from the Layer 0 scan alone. Four conditions must hold:
+// parse and lint from the Layer 0 scan alone. Three conditions must hold:
 //
 //  1. The MDSMITH_LAYER0_SKIP toggle is set (default off).
 //  2. Every enabled rule resolves to Layer 0 (rulelayer.IsLayer0) — no
@@ -621,12 +627,12 @@ func layer0SkipEnabled() bool {
 //  3. The source carries no `<?` directive marker. Generated-section
 //     suppression walks the AST for processing instructions, so a file
 //     with directives must be parsed.
-//  4. The source may contain no code block (lint.SourceMayHaveCodeBlock is
-//     false). The Layer 0 scanner does not descend into a list item's
-//     content, so a fenced or indented code block inside a list item makes
-//     its CodeBlockLines diverge from the AST; skipping only code-free files
-//     sidesteps that divergence, since a file with no code block has an empty
-//     CodeBlockLines under both paths.
+//
+// Code blocks no longer disqualify the skip: the skip File carries the flat
+// ClassifyLines code-line projection (which handles a fence or indent inside
+// a list item) and the block-span scan, both gated byte-identical to the AST
+// across the corpus's code-bearing files by
+// TestLayer0Gate_CorpusDiagnosticsEquivalence.
 //
 // The block-only and flat-Layer-0 spike flags force their own
 // constructors, so the gate stands down when either is set.
@@ -637,9 +643,6 @@ func (r *Runner) layer0SkipEligible(
 		return false
 	}
 	if bytes.Contains(source, piOpenScan) {
-		return false
-	}
-	if lint.SourceMayHaveCodeBlock(source) {
 		return false
 	}
 	return allEnabledRulesLayer0(rules, effective)
