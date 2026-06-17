@@ -39,6 +39,15 @@ func HasGeneratedDirective(source []byte) bool {
 // malformed markers), that directive's ranges are omitted entirely so the
 // engine never suppresses diagnostics based on an ambiguous range boundary.
 func FindAllGeneratedRanges(f *lint.File) []lint.LineRange {
+	// Fast path: a file with no `<?include`/`<?catalog` marker bytes can
+	// hold no generated section, so skip the two AST child-walks
+	// FindMarkerPairs would otherwise run per directive name. The byte scan
+	// is the same one HasGeneratedDirective uses, so the result is identical
+	// to the walk (no markers ⟹ no ranges) — it just avoids the walk on the
+	// common directive-free file.
+	if !HasGeneratedDirective(f.Source) {
+		return nil
+	}
 	var ranges []lint.LineRange
 	for _, name := range generatedDirectiveNames {
 		pairs, diags := FindMarkerPairs(f, name, "", "")
