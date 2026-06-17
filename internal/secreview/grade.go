@@ -119,13 +119,13 @@ func forbidFailures(fs []Finding, forbid []string) []string {
 	if len(forbid) == 0 {
 		return nil
 	}
-	var out []string
+	out := make([]string, 0, len(fs))
 	for i := range fs {
 		f := &fs[i]
 		for _, sev := range forbid {
 			if f.Severity == sev {
 				msg := "forbidden severity " + strconv.Quote(f.Severity) +
-					" in finding " + orDefault(f.ID, "?") +
+					" in finding " + strconv.Quote(orDefault(f.ID, "?")) +
 					" (" + strconv.Quote(f.Title) + ")"
 				out = append(out, msg)
 				break

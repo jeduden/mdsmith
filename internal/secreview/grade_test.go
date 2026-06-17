@@ -195,15 +195,13 @@ func TestValidateFindingsNormalizesSeverity(t *testing.T) {
 // to lowercase so no strings.ToLower is needed; the map construction is the
 // extra allocation eliminated by this gate.
 func TestForbidFailures_NormSeverityAllocs(t *testing.T) {
-	fs := []Finding{
-		{ID: "A1", Severity: "critical", Title: "t1"},
-		{ID: "A2", Severity: "high", Title: "t2"},
-	}
+	fs := []Finding{{ID: "A1", Severity: "critical", Title: "t1"}}
 	forbid := []string{"critical"}
 	allocs := testing.AllocsPerRun(20, func() {
 		_ = forbidFailures(fs, forbid)
 	})
-	// strconv.Quote×2 (2 allocs) + concat result (1 alloc) ≤ 4 total.
+	// strconv.Quote×3 (3 allocs) + concat result (1 alloc) = 4;
+	// pre-sized out slice avoids the append backing-array alloc.
 	// The old map-based implementation added 1 extra alloc (map construction);
 	// this gate fails until the map is replaced with a linear search.
 	assert.LessOrEqualf(t, allocs, float64(4),

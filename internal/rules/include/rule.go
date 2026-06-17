@@ -29,8 +29,8 @@ func init() {
 // maxIncludeDepth is the maximum nesting depth for include chains.
 const maxIncludeDepth = 10
 
-// maxIncludeDepthMsg is derived from maxIncludeDepth at init so the two stay
-// in sync if the limit ever changes.
+// maxIncludeDepthMsg is derived from maxIncludeDepth at package initialization
+// so the two stay in sync if the limit ever changes.
 var maxIncludeDepthMsg = "include depth exceeds maximum (" + strconv.Itoa(maxIncludeDepth) + ")"
 
 // Rule checks that include sections contain the correct file content.
