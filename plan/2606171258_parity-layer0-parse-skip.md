@@ -37,27 +37,40 @@ increment.
 
 ## The AST-forcing parity rules
 
-Measured via the engine's Layer-0 eligibility gate. Layer is the data a
-rule needs, not its trigger kind:
+A scope sweep found 28 parity-enabled rules still forcing the parse.
+That is beyond MDS002 ✅, MDS013 ✅, MDS015 ✅, and MDS044 ✅, which are
+already migrated. The 28 are decomposed into five batch plans, grouped
+by the data each rule reads. Layer is the data a rule needs, not its
+trigger kind:
 
-- **Layer 0 (line / block span):** MDS002 heading-style ✅, MDS003
-  heading-increment (levels), MDS004 first-line-heading (position +
-  level), MDS010 / MDS011 / MDS065 / MDS066 fenced-code, MDS015
-  blank-line-around-fenced-code, MDS031 unclosed-code-block, MDS069
-  unique-frontmatter.
-- **Layer 0 with care (list spans):** MDS014 blank-line-around-lists,
-  MDS016 list-indent, MDS061 list-marker-space, MDS059
-  blockquote-whitespace — list/quote spans are the divergence-prone
-  case CommonMark parsing makes subtle.
-- **Layer 1 (inline text):** MDS005 no-duplicate-headings, MDS017
-  no-trailing-punctuation-in-heading (heading text needs inline
-  flattening), MDS053 no-unused-link-definitions (reference map).
+- Gate unification ([2606171400](2606171400_parity-gate-unification.md)):
+  MDS001 line-length, plus the mechanism that lets a config-dependent
+  line rule count as Layer 0.
+- Layer-0 heading + front matter
+  ([2606171401](2606171401_parity-layer0-heading-rules.md)): MDS003,
+  MDS004, MDS051, MDS069.
+- Layer-0 fenced code
+  ([2606171402](2606171402_parity-layer0-fenced-code-rules.md)): MDS010,
+  MDS011, MDS031, MDS065, MDS066.
+- Layer-0 list + blockquote
+  ([2606171403](2606171403_parity-layer0-list-quote-rules.md)): MDS014,
+  MDS016, MDS045, MDS046, MDS061, MDS059, MDS067.
+- Layer-1 inline
+  ([2606171404](2606171404_parity-layer1-inline-rules.md)): MDS005,
+  MDS017, MDS041, MDS042, MDS049, MDS050, MDS052, MDS053, MDS063,
+  MDS068, MDS034.
 
-A heading rule that reads only the line is Layer 0 — its style, level,
-and position are all on the line. A rule that reads the flattened
-heading *text* is Layer 1. A placeholder token or a trailing emphasis
-span needs the inline tree, so that rule drives the shared inline
-re-parse instead.
+A heading or fence rule that reads only its own line is Layer 0. A rule
+that reads flattened inline *text* — heading text, link text, an
+emphasis run — is Layer 1 and drives the shared inline re-parse.
+
+**Known blocker (found while scoping the heading batch).** `scanLayer0`
+emits heading spans only for top-level headings; it does not descend into
+list-item or blockquote bodies. So any nil-AST path that walks heading
+spans diverges from the AST for a heading nested in a container. The
+heading and single-h1 rules cannot migrate until the scanner emits nested
+heading spans (or the gate excludes container-nested headings). See
+[2606171401](2606171401_parity-layer0-heading-rules.md).
 
 ## Tasks
 
