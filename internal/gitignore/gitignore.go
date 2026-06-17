@@ -197,7 +197,9 @@ func collectAncestorGitignores(root string) []string {
 	for {
 		gi := filepath.Join(dir, ".gitignore")
 		if _, err := os.Stat(gi); err == nil {
-			ancestors = append([]string{gi}, ancestors...)
+			// Collect in walk order (inner → outer); reverse once at the end.
+			// This is O(n) vs the O(n²) copy-on-every-prepend pattern.
+			ancestors = append(ancestors, gi)
 		}
 		// Stop after the working-tree root that root belongs to; rules
 		// above it are in an enclosing repository and do not apply.
@@ -210,8 +212,11 @@ func collectAncestorGitignores(root string) []string {
 		}
 		dir = parent
 	}
-	// Reverse so they go from root-of-tree down to immediate parent.
-	// They are already collected root-first due to prepending, so no reversal needed.
+	// Reverse in-place: the walk goes inner→outer; callers expect outer→inner
+	// (root of working tree first, immediate parent of root last).
+	for i, j := 0, len(ancestors)-1; i < j; i, j = i+1, j-1 {
+		ancestors[i], ancestors[j] = ancestors[j], ancestors[i]
+	}
 	return ancestors
 }
 

@@ -144,23 +144,24 @@ func (r *Rule) diag(path string, line, col int, msg string) lint.Diagnostic {
 func (r *Rule) Fix(f *lint.File) []byte {
 	codeLines := lint.CollectCodeBlockLines(f)
 	piLines := lint.CollectPIBlockLines(f)
-	result := make([]string, 0, len(f.Lines))
+	result := make([][]byte, 0, len(f.Lines))
 	for i, rawLine := range f.Lines {
 		lineNum := i + 1
 		if lint.InCodeOrPI(codeLines, piLines, lineNum) {
-			result = append(result, string(rawLine))
+			result = append(result, rawLine)
 			continue
 		}
 		if diags := r.checkLine("", lineNum, rawLine); len(diags) > 0 {
 			result = append(result, normalizeLine(rawLine))
 		} else {
-			result = append(result, string(rawLine))
+			// Unchanged line: append slice header only, no string copy.
+			result = append(result, rawLine)
 		}
 	}
-	return []byte(strings.Join(result, "\n"))
+	return bytes.Join(result, []byte{'\n'})
 }
 
-func normalizeLine(line []byte) string {
+func normalizeLine(line []byte) []byte {
 	leading := leadingSpaces(line)
 	rest := line[leading:]
 
@@ -169,22 +170,36 @@ func normalizeLine(line []byte) string {
 		level++
 	}
 	if level == 0 || level > 6 {
-		return string(line)
+		// No change needed: return the original slice, no allocation.
+		return line
 	}
 
 	// Preserve a trailing \r so CRLF files don't get mixed line endings when
 	// only some lines are rewritten.
-	cr := ""
-	if len(line) > 0 && line[len(line)-1] == '\r' {
-		cr = "\r"
-	}
+	hasCR := len(line) > 0 && line[len(line)-1] == '\r'
 
-	prefix := strings.Repeat("#", level)
 	content := extractContent(string(rest[level:]))
-	if content == "" {
-		return prefix + cr
+
+	// Pre-size: level '#' chars + optional " " + content + optional '\r'.
+	n := level
+	if content != "" {
+		n += 1 + len(content)
 	}
-	return prefix + " " + content + cr
+	if hasCR {
+		n++
+	}
+	buf := make([]byte, 0, n)
+	for i := 0; i < level; i++ {
+		buf = append(buf, '#')
+	}
+	if content != "" {
+		buf = append(buf, ' ')
+		buf = append(buf, content...)
+	}
+	if hasCR {
+		buf = append(buf, '\r')
+	}
+	return buf
 }
 
 // extractContent strips leading/trailing whitespace and any closing ATX suffix

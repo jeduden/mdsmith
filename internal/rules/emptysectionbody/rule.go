@@ -1,6 +1,7 @@
 package emptysectionbody
 
 import (
+	"bytes"
 	"fmt"
 	"regexp"
 	"strings"
@@ -309,7 +310,8 @@ func hasNonBlankLines(node ast.Node, source []byte) bool {
 	lines := node.Lines()
 	for i := 0; i < lines.Len(); i++ {
 		seg := lines.At(i)
-		if strings.TrimSpace(string(seg.Value(source))) != "" {
+		// bytes.TrimSpace returns a sub-slice — zero allocations per line.
+		if len(bytes.TrimSpace(seg.Value(source))) != 0 {
 			return true
 		}
 	}
