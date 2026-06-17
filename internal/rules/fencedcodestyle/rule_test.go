@@ -9,6 +9,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestFenceCharOfLine covers the fence-character read the Layer-0 path
+// uses, including the leading-space skip and the no-fence fallback (the
+// span guarantees a fence, so that branch is reached only here).
+func TestFenceCharOfLine(t *testing.T) {
+	cases := map[string]byte{
+		"```go":    '`',
+		"~~~":      '~',
+		"   ``` x": '`',
+		"no fence": 0,
+		"":         0,
+		"    ~~~~": '~',
+		"   #not":  0,
+	}
+	for line, want := range cases {
+		assert.Equal(t, want, fenceCharOfLine([]byte(line)), "line %q", line)
+	}
+}
+
 // TestCheck_NilASTMatchesAST pins the Layer-0 migration: Check on a
 // nil-AST File (the parse-skip path, via CheckBlock over the block scan)
 // must produce byte-identical diagnostics to the AST path, for both fence

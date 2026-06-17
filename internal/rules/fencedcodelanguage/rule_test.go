@@ -9,6 +9,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestFenceLineHasInfo covers the info-string read the Layer-0 path uses,
+// including the all-blank and non-fence fallbacks (a real span guarantees
+// a fence, so those branches are reached only here).
+func TestFenceLineHasInfo(t *testing.T) {
+	cases := map[string]bool{
+		"```go":       true,
+		"~~~python":   true,
+		"```":         false,
+		"~~~   ":      false,
+		"   ```js":    true,
+		"        ":    false, // all spaces, no fence
+		"not a fence": false, // first non-space is not a fence char
+	}
+	for line, want := range cases {
+		assert.Equal(t, want, fenceLineHasInfo([]byte(line)), "line %q", line)
+	}
+}
+
 // TestCheck_NilASTMatchesAST pins the Layer-0 migration: Check on a
 // nil-AST File (the parse-skip path) must produce byte-identical
 // diagnostics to the AST path, covering fences with and without an info
