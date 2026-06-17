@@ -49,33 +49,40 @@ const checkCorpusLines = 150
 // Both numbers report as metrics (`p95_ms`, `allocs_per_op`,
 // `us_per_file`) so trends stay visible in the job log.
 //
-// Local baseline (4-core dev box, 2026-05-22, after plan 196's
-// lazy SectionParagraph text — paragraph-readability's minWords
-// gate no longer materialises text for paragraphs below the floor):
+// Local baseline (4-core dev box, 2026-06-17, after the per-worker
+// configured-rule cache — checker.ConfigureEnabledRules memoized on the
+// engine worker's confCache, so a corpus that shares one config clones
+// and ApplySettings each Configurable rule once per config signature
+// instead of once per file):
 //
-//   - Small p95 ~27 ms / ~57 k allocs/op
-//   - Large p95 ~191 ms / ~553 k allocs/op
+//   - Small p95 ~14 ms / ~12.7 k allocs/op
+//   - Large p95 ~90 ms / ~120 k allocs/op
 //
-// Plan 195's baseline was ~65 k / ~634 k; the lazy-extract chunk
-// drops the synthetic-corpus paragraph allocator by ~80 k on the
-// large bench, since most of its paragraphs (the 13-word
-// "synthetic sentence …" body) fall under default minWords=20.
+// The cache cut allocations ~78% (Large ~553 k → ~120 k) and roughly
+// halved wall time on this synthetic full-default corpus, because
+// config.Defaults() declares no kinds or overrides: every file shares
+// one signature, so the previously per-file rule cloning + settings
+// application (regex compiles included, e.g. MDS004) now runs once.
 //
-// Budgets sit at ~15-20% headroom over the measured count so a
-// real algorithmic regression (an extra parse per file, a lost
-// memoization slot, a closure re-escaped to the heap) crosses the
-// alloc ceiling on the first run while CI jitter does not.
+// The prior baseline (2026-05-22, plan 196's lazy SectionParagraph
+// text) was Small ~27 ms / ~57 k and Large ~191 ms / ~553 k.
+//
+// Budgets sit at ~20-25% headroom over the measured count so a real
+// algorithmic regression (an extra parse per file, a lost memoization
+// slot, the configured-rule cache silently bypassed, a closure
+// re-escaped to the heap) crosses the alloc ceiling on the first run
+// while CI jitter does not.
 func BenchmarkCheckCorpusSmall(b *testing.B) {
 	benchCheck(b, 60, checkCorpusLines, checkBudget{
 		Time:   250 * time.Millisecond,
-		Allocs: 70_000,
+		Allocs: 16_000,
 	})
 }
 
 func BenchmarkCheckCorpusLarge(b *testing.B) {
 	benchCheck(b, 600, checkCorpusLines, checkBudget{
 		Time:   2 * time.Second,
-		Allocs: 670_000,
+		Allocs: 150_000,
 	})
 }
 
