@@ -41,10 +41,15 @@ func (r *Rule) Category() string { return "code" }
 
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
-	if f == nil || f.AST == nil {
+	if f == nil {
 		return nil
 	}
-	blocks := collectBlocks(f)
+	var blocks []blockInfo
+	if f.AST == nil {
+		blocks = collectBlocksL0(f)
+	} else {
+		blocks = collectBlocks(f)
+	}
 	want := r.effectiveStyle(blocks)
 	if want == "" {
 		return nil
@@ -65,6 +70,30 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		})
 	}
 	return diags
+}
+
+// collectBlocksL0 collects code block metadata from the Layer 0 block scan
+// for the nil-AST (parse-skipped) path. It mirrors collectBlocks but reads
+// lint.Layer0(f).BlockSpans instead of walking the goldmark AST.
+// The lastLine and topLevel fields are not populated — they are only consumed
+// by the Fix path, which requires an AST.
+func collectBlocksL0(f *lint.File) []blockInfo {
+	var blocks []blockInfo
+	for _, span := range lint.Layer0(f).BlockSpans {
+		switch span.Kind {
+		case lint.BlockFencedCode:
+			if skipBlock(f, span.Start) {
+				continue
+			}
+			blocks = append(blocks, blockInfo{style: "fenced", line: span.Start})
+		case lint.BlockIndentedCode:
+			if skipBlock(f, span.Start) {
+				continue
+			}
+			blocks = append(blocks, blockInfo{style: "indented", line: span.Start})
+		}
+	}
+	return blocks
 }
 
 // Fix implements rule.FixableRule. Only the indented→fenced direction

@@ -1,6 +1,7 @@
 package commandsshowoutput
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -321,4 +322,26 @@ func TestFix_SkipsGeneratedRange(t *testing.T) {
 	r := &Rule{}
 	got := r.Fix(f)
 	assert.Equal(t, string(src), string(got))
+}
+
+func TestCheck_NilASTMatchesAST(t *testing.T) {
+	srcs := [][]byte{
+		[]byte("```sh\n$ echo hello\n```\n"),
+		[]byte("```sh\nhello\n```\n"),
+		[]byte("```sh\n$ foo\n$ bar\n```\n"),
+		[]byte("```sh\n$ foo\noutput\n```\n"),
+		[]byte("```sh\n\n$ foo\n\n```\n"),
+		[]byte("```sh\n$ ls\n```\n\nText.\n\n```sh\n$ ls\nfoo\n```\n"),
+		[]byte("   ```sh\n   $ cmd\n   ```\n"),
+	}
+	for i, src := range srcs {
+		t.Run(fmt.Sprintf("src%d", i), func(t *testing.T) {
+			astFile, err := lint.NewFile("f.md", src)
+			require.NoError(t, err)
+			astDiags := (&Rule{}).Check(astFile)
+			l0Diags := (&Rule{}).Check(lint.NewFileLines("f.md", src))
+			assert.Equal(t, astDiags, l0Diags,
+				"nil-AST must match AST for src=%q", src)
+		})
+	}
 }

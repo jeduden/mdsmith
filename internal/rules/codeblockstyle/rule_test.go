@@ -1,6 +1,7 @@
 package codeblockstyle
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -370,4 +371,26 @@ func TestCheck_IndentedBlockInGeneratedRange_Skipped(t *testing.T) {
 	f.GeneratedRanges = []lint.LineRange{{From: 3, To: 3}}
 	r := &Rule{Style: "fenced"}
 	assert.Empty(t, r.Check(f))
+}
+
+func TestCheck_NilASTMatchesAST(t *testing.T) {
+	srcs := [][]byte{
+		[]byte("```go\ncode\n```\n"),
+		[]byte("    code line\n"),
+		[]byte("```go\nfirst\n```\n\ntext\n\n    second\n"),
+		[]byte("    first\n\ntext\n\n```go\nsecond\n```\n"),
+		[]byte("# Just prose.\n"),
+	}
+	for _, style := range []string{"consistent", "fenced", "indented"} {
+		for j, src := range srcs {
+			t.Run(fmt.Sprintf("style=%s/src=%d", style, j), func(t *testing.T) {
+				astFile, err := lint.NewFile("f.md", src)
+				require.NoError(t, err)
+				astDiags := (&Rule{Style: style}).Check(astFile)
+				l0Diags := (&Rule{Style: style}).Check(lint.NewFileLines("f.md", src))
+				assert.Equal(t, astDiags, l0Diags,
+					"nil-AST must match AST for style=%s src=%q", style, src)
+			})
+		}
+	}
 }

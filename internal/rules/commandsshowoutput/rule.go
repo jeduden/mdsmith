@@ -34,9 +34,94 @@ func (r *Rule) Category() string { return "code" }
 // Check implements rule.Rule. The per-block logic is pure and stateless,
 // so it is expressed as CheckNode and the engine can fold this rule into
 // one shared AST walk; a direct call still works via rule.WalkNodes.
+// On a parse-skipped File (f.AST nil) it reads the Layer 0 block scan
+// (rule.WalkBlocks).
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	if f != nil && f.AST == nil {
+		return rule.WalkBlocks(r, f)
+	}
 	return rule.WalkNodes(r, f)
 }
+
+// CheckBlock implements rule.BlockChecker for the nil-AST path. It mirrors
+// CheckNode: guards on generated range, then delegates to allLinesArePromptsL0.
+func (r *Rule) CheckBlock(span lint.BlockSpan, f *lint.File) []lint.Diagnostic {
+	if span.Kind != lint.BlockFencedCode {
+		return nil
+	}
+	if inGeneratedRange(f, span.Start) {
+		return nil
+	}
+	if !allLinesArePromptsL0(f, span) {
+		return nil
+	}
+	return []lint.Diagnostic{{
+		File:     f.Path,
+		Line:     span.Start,
+		Column:   1,
+		RuleID:   r.ID(),
+		RuleName: r.Name(),
+		Severity: lint.Warning,
+		Message:  "commands shown with $ prefix but no output",
+	}}
+}
+
+// allLinesArePromptsL0 reports whether every non-blank content line of the
+// fenced block described by span starts with "$ " and at least one such line
+// exists. It mirrors allLinesArePrompts but reads from f.Lines using the
+// Layer 0 span rather than goldmark segment positions.
+func allLinesArePromptsL0(f *lint.File, span lint.BlockSpan) bool {
+	// Determine body line range (1-based inclusive).
+	// For a closed block: lines span.Start+1 to span.End-1.
+	// For an unclosed block: lines span.Start+1 to span.End.
+	bodyStart := span.Start + 1
+	var bodyEnd int
+	if span.Closed {
+		bodyEnd = span.End - 1
+	} else {
+		bodyEnd = span.End
+	}
+	if bodyStart > bodyEnd {
+		return false
+	}
+	// Determine the fence's leading indent by counting leading spaces on the
+	// opening fence line (span.Start is 1-based).
+	openLine := f.Lines[span.Start-1]
+	indent := 0
+	for indent < len(openLine) && openLine[indent] == ' ' {
+		indent++
+	}
+	hasPrompt := false
+	for ln := bodyStart; ln <= bodyEnd; ln++ {
+		line := f.Lines[ln-1]
+		// Strip up to indent leading spaces from the body line to match
+		// goldmark's fence-indent stripping.
+		stripped := line
+		for i := 0; i < indent && len(stripped) > 0 && stripped[0] == ' '; i++ {
+			stripped = stripped[1:]
+		}
+		_, content := splitLeadingWhitespace(stripped)
+		content = bytes.TrimRight(content, " \t\r")
+		if len(content) == 0 {
+			continue
+		}
+		if !bytes.HasPrefix(content, []byte("$ ")) {
+			return false
+		}
+		hasPrompt = true
+	}
+	return hasPrompt
+}
+
+// blockKinds is the static block-kind interest CheckBlock declares via
+// rule.BlockChecker; package-level so BlockKinds returns it without
+// allocating.
+var blockKinds = []lint.BlockKind{lint.BlockFencedCode}
+
+// BlockKinds implements rule.BlockChecker.
+func (r *Rule) BlockKinds() []lint.BlockKind { return blockKinds }
+
+var _ rule.BlockChecker = (*Rule)(nil)
 
 // CheckNode implements rule.NodeChecker.
 func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
