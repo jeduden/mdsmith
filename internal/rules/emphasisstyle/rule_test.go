@@ -518,3 +518,16 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 		})
 	}
 }
+
+func TestInlineCapable(t *testing.T) {
+	r := &Rule{}
+	assert.True(t, r.InlineCapable())
+}
+
+func TestCheckNode_ZeroSettings_NilDiag(t *testing.T) {
+	f, err := lint.NewFile("test.md", []byte("# T\n\n*em*\n"))
+	require.NoError(t, err)
+	r := &Rule{}
+	diags := r.CheckNode(ast.NewEmphasis(1), true, f)
+	assert.Nil(t, diags)
+}

@@ -137,3 +137,8 @@ func TestName(t *testing.T) {
 		t.Errorf("expected no-trailing-punctuation-in-heading, got %s", r.Name())
 	}
 }
+
+func TestInlineCapable(t *testing.T) {
+	r := &Rule{}
+	assert.True(t, r.InlineCapable())
+}

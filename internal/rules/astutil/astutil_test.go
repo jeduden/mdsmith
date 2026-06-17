@@ -469,6 +469,38 @@ func TestHeadingTextBase_NestedEmphasis(t *testing.T) {
 	assert.Equal(t, HeadingText(h, src), HeadingTextBase(h, src, 0))
 }
 
+// TestHeadingLineBase_WalkPath covers the ast.Walk fallback when a synthetic
+// heading has no Lines() but a direct *ast.Text child: the walk finds the
+// text segment and returns its line.
+func TestHeadingLineBase_WalkPath(t *testing.T) {
+	src := []byte("# Heading\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+
+	h := ast.NewHeading(1)
+	textNode := ast.NewText()
+	textNode.Segment = text.NewSegment(2, 9) // "Heading" at bytes 2..9 (line 1)
+	h.AppendChild(h, textNode)
+
+	assert.Equal(t, 1, HeadingLineBase(h, f, 0))
+}
+
+// TestHeadingLineBase_WalkNonTextChild covers the !ok branch (non-Text child)
+// and the !entering exit path: when the only child is a non-Text node (here
+// an *ast.Emphasis with no children), the walk visits it on enter (!ok →
+// WalkContinue) and on exit (!entering → WalkContinue), then returns line=1.
+func TestHeadingLineBase_WalkNonTextChild(t *testing.T) {
+	src := []byte("# t\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+
+	h := ast.NewHeading(1)
+	em := ast.NewEmphasis(1) // not *ast.Text; no children
+	h.AppendChild(h, em)
+
+	assert.Equal(t, 1, HeadingLineBase(h, f, 0))
+}
+
 // --- CollectSectionHeadings ---
 
 func TestCollectSectionHeadings_OrdersByLine(t *testing.T) {

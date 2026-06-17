@@ -647,3 +647,8 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 		})
 	}
 }
+
+func TestInlineCapable(t *testing.T) {
+	r := &Rule{}
+	assert.True(t, r.InlineCapable())
+}

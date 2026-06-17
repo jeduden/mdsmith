@@ -338,6 +338,7 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 		"inline in emphasis":  "a *strong <b>x</b>* tail\n",
 		"comment block":       "# Title\n\n<!-- a comment -->\n",
 		"clean prose":         "Just plain prose with no HTML.\n",
+		"block and inline":    "# Title\n\n<div>block</div>\n\ntext <span>x</span> end\n",
 	}
 	for name, src := range cases {
 		t.Run(name, func(t *testing.T) {

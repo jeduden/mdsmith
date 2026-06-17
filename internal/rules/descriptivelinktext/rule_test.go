@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -245,4 +246,17 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 			assert.Equal(t, astDiags, nilDiags)
 		})
 	}
+}
+
+func TestInlineCapable(t *testing.T) {
+	r := &Rule{}
+	assert.True(t, r.InlineCapable())
+}
+
+func TestCheckNode_EmptyBanned_NilDiag(t *testing.T) {
+	f, err := lint.NewFile("test.md", []byte("# T\n\n[click here](x)\n"))
+	require.NoError(t, err)
+	r := &Rule{}
+	diags := r.CheckNode(ast.NewDocument(), true, f)
+	assert.Nil(t, diags)
 }

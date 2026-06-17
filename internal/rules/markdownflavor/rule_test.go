@@ -383,6 +383,7 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 		"github alert":         "> [!NOTE]\n> Body of the note.\n",
 		"bare url second para": "First paragraph.\n\nThen https://example.com here.\n",
 		"clean commonmark":     "# Title\n\nA paragraph of plain prose.\n",
+		"bare url and alert":   "See https://example.com\n\n> [!NOTE]\n> Body.\n",
 	}
 	for name, src := range cases {
 		t.Run(name, func(t *testing.T) {
