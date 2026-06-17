@@ -53,10 +53,33 @@ func (r *Rule) wantChar(level int) byte {
 // Check implements rule.Rule. The per-emphasis logic is pure and
 // stateless, so it is expressed as CheckNode and the engine can fold
 // this rule into one shared AST walk; a direct call still works via
-// rule.WalkNodes.
+// rule.WalkNodes. On the parse-skipped path (f.AST nil) the AST walk
+// surfaces no emphasis nodes, so the same per-emphasis verdict runs over
+// the emphasis of the shared run-grouped inline parse (lint.InlineBlocks),
+// each node's run-local segment offsets mapped back to the document with
+// the run base so the delimiter byte, line, and message stay
+// byte-identical to the AST walk.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	if r.Bold == "" && r.Italic == "" && !r.ForbidMixedNesting {
+		return nil
+	}
+	if f != nil && f.AST == nil {
+		var diags []lint.Diagnostic
+		lint.WalkInlineNodes(f, func(n ast.Node, base int) {
+			if em, ok := n.(*ast.Emphasis); ok {
+				diags = append(diags, r.checkEmphasis(em, f, base)...)
+			}
+		})
+		return diags
+	}
 	return rule.WalkNodes(r, f)
 }
+
+// InlineCapable implements rule.InlineChecker: Check serves the nil-AST path
+// from lint.WalkInlineNodes (which reads lint.InlineBlocks).
+func (r *Rule) InlineCapable() bool { return true }
+
+var _ rule.InlineChecker = (*Rule)(nil)
 
 // CheckNode implements rule.NodeChecker.
 func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
@@ -70,25 +93,28 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 	if !ok {
 		return nil
 	}
-	return r.checkEmphasis(em, f)
+	return r.checkEmphasis(em, f, 0)
 }
 
-func (r *Rule) checkEmphasis(em *ast.Emphasis, f *lint.File) []lint.Diagnostic {
-	delim := emphDelim(em, f.Source)
+// checkEmphasis runs the per-emphasis style and mixed-nesting checks. base is
+// added to the node's segment-local offsets to recover document-absolute
+// positions: zero on the AST path, the run's start offset on the nil-AST path.
+func (r *Rule) checkEmphasis(em *ast.Emphasis, f *lint.File, base int) []lint.Diagnostic {
+	delim := emphDelim(em, f.Source, base)
 	if delim == 0 {
 		return nil
 	}
 	var diags []lint.Diagnostic
-	if d := r.styleViolation(em, f, delim); d != nil {
+	if d := r.styleViolation(em, f, delim, base); d != nil {
 		diags = append(diags, *d)
 	}
-	if d := r.mixedNestingViolation(em, f, delim); d != nil {
+	if d := r.mixedNestingViolation(em, f, delim, base); d != nil {
 		diags = append(diags, *d)
 	}
 	return diags
 }
 
-func (r *Rule) styleViolation(em *ast.Emphasis, f *lint.File, delim byte) *lint.Diagnostic {
+func (r *Rule) styleViolation(em *ast.Emphasis, f *lint.File, delim byte, base int) *lint.Diagnostic {
 	want := r.wantChar(em.Level)
 	if want == 0 || delim == want {
 		return nil
@@ -99,7 +125,7 @@ func (r *Rule) styleViolation(em *ast.Emphasis, f *lint.File, delim byte) *lint.
 	}
 	return &lint.Diagnostic{
 		File:     f.Path,
-		Line:     emphLine(em, f),
+		Line:     emphLine(em, f, base),
 		Column:   1,
 		RuleID:   r.ID(),
 		RuleName: r.Name(),
@@ -111,7 +137,7 @@ func (r *Rule) styleViolation(em *ast.Emphasis, f *lint.File, delim byte) *lint.
 	}
 }
 
-func (r *Rule) mixedNestingViolation(em *ast.Emphasis, f *lint.File, delim byte) *lint.Diagnostic {
+func (r *Rule) mixedNestingViolation(em *ast.Emphasis, f *lint.File, delim byte, base int) *lint.Diagnostic {
 	if !r.ForbidMixedNesting {
 		return nil
 	}
@@ -119,13 +145,13 @@ func (r *Rule) mixedNestingViolation(em *ast.Emphasis, f *lint.File, delim byte)
 	if !ok {
 		return nil
 	}
-	parentDelim := emphDelim(parent, f.Source)
+	parentDelim := emphDelim(parent, f.Source, base)
 	if parentDelim == 0 || parentDelim == delim {
 		return nil
 	}
 	return &lint.Diagnostic{
 		File:     f.Path,
-		Line:     emphLine(em, f),
+		Line:     emphLine(em, f, base),
 		Column:   1,
 		RuleID:   r.ID(),
 		RuleName: r.Name(),
@@ -137,8 +163,8 @@ func (r *Rule) mixedNestingViolation(em *ast.Emphasis, f *lint.File, delim byte)
 	}
 }
 
-func emphLine(em *ast.Emphasis, f *lint.File) int {
-	return f.LineOfOffset(emphOpenStart(em, f.Source))
+func emphLine(em *ast.Emphasis, f *lint.File, base int) int {
+	return f.LineOfOffset(base + emphOpenStart(em, f.Source, base))
 }
 
 type replacement struct {
@@ -186,7 +212,7 @@ func (r *Rule) emphReplacements(em *ast.Emphasis, source []byte) []replacement {
 	if want == 0 {
 		return nil
 	}
-	delim := emphDelim(em, source)
+	delim := emphDelim(em, source, 0)
 	if delim == 0 || delim == want {
 		return nil
 	}
@@ -198,7 +224,7 @@ func (r *Rule) emphReplacements(em *ast.Emphasis, source []byte) []replacement {
 	if parent, ok := em.Parent().(*ast.Emphasis); ok && isTripleRun(parent, source) {
 		return nil
 	}
-	openStart := emphOpenStart(em, source)
+	openStart := emphOpenStart(em, source, 0)
 	closeStart := emphCloseStart(em)
 	if openStart < 0 || closeStart < 0 {
 		return nil
@@ -270,16 +296,21 @@ func (r *Rule) DefaultSettings() map[string]any {
 //     position that lands on an unrelated delimiter.
 //   - The computed position is out of bounds or does not contain a homogeneous
 //     run of '*' or '_' of length em.Level.
-func emphInfo(em *ast.Emphasis, source []byte) (delim byte, openStart int) {
+// emphInfo returns the delimiter byte and the run-local open-start index for
+// em. base maps the node's run-local segment offsets onto source so a byte
+// read lands on the document position: zero on the AST path, the run's start
+// offset on the nil-AST path. The returned openStart is run-local (segment-
+// relative), so a caller recovers a document offset by adding base.
+func emphInfo(em *ast.Emphasis, source []byte, base int) (delim byte, openStart int) {
 	totalLevels := em.Level
 	child := em.FirstChild()
 	for child != nil {
 		switch v := child.(type) {
 		case *ast.Text:
 			pos := v.Segment.Start - totalLevels
-			if pos >= 0 && pos < len(source) {
-				c := source[pos]
-				if (c == '*' || c == '_') && isDelimRun(source, pos, em.Level, c) {
+			if pos >= 0 && base+pos < len(source) {
+				c := source[base+pos]
+				if (c == '*' || c == '_') && isDelimRun(source, base+pos, em.Level, c) {
 					return c, pos
 				}
 			}
@@ -297,13 +328,13 @@ func emphInfo(em *ast.Emphasis, source []byte) (delim byte, openStart int) {
 	return 0, -1
 }
 
-func emphDelim(em *ast.Emphasis, source []byte) byte {
-	d, _ := emphInfo(em, source)
+func emphDelim(em *ast.Emphasis, source []byte, base int) byte {
+	d, _ := emphInfo(em, source, base)
 	return d
 }
 
-func emphOpenStart(em *ast.Emphasis, source []byte) int {
-	_, s := emphInfo(em, source)
+func emphOpenStart(em *ast.Emphasis, source []byte, base int) int {
+	_, s := emphInfo(em, source, base)
 	return s
 }
 
@@ -335,7 +366,7 @@ func isTripleRun(em *ast.Emphasis, source []byte) bool {
 	if !ok || em.FirstChild() != em.LastChild() {
 		return false
 	}
-	openStart := emphOpenStart(em, source)
+	openStart := emphOpenStart(em, source, 0)
 	if openStart < 0 {
 		return false
 	}

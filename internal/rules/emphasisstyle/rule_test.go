@@ -382,7 +382,7 @@ func TestEmphInfo_NegativePos(t *testing.T) {
 	txt := ast.NewText()
 	txt.Segment = text.NewSegment(0, 5) // pos = 0 − 1 = −1
 	em.AppendChild(em, txt)
-	d, pos := emphInfo(em, []byte("hello"))
+	d, pos := emphInfo(em, []byte("hello"), 0)
 	assert.Equal(t, byte(0), d)
 	assert.Equal(t, -1, pos)
 }
@@ -391,7 +391,7 @@ func TestEmphInfo_NegativePos(t *testing.T) {
 // the emphasis has no children, falling through to the final return.
 func TestEmphInfo_NoChildren(t *testing.T) {
 	em := ast.NewEmphasis(1)
-	d, pos := emphInfo(em, []byte("*x*"))
+	d, pos := emphInfo(em, []byte("*x*"), 0)
 	assert.Equal(t, byte(0), d)
 	assert.Equal(t, -1, pos)
 }
@@ -488,4 +488,33 @@ func TestIsDelimRun_NegativeStart(t *testing.T) {
 // (start+length > len(source) branch).
 func TestIsDelimRun_StartPlusLengthOutOfBounds(t *testing.T) {
 	assert.False(t, isDelimRun([]byte("*"), 0, 2, '*'))
+}
+
+// TestCheck_NilASTMatchesAST pins the parse-skipped path byte-identical to
+// the AST path over emphasis in inline edge cases: emphasis at the end of a
+// heading, emphasis nested inside emphasis (mixed-nesting), and emphasis
+// whose delimiter run is read from a run-local Text segment. base mapping
+// drives the delimiter byte and line, so any divergence in the inline
+// re-parse surfaces here.
+func TestCheck_NilASTMatchesAST(t *testing.T) {
+	cases := map[string]string{
+		"bold underscore in heading": "# Title __bold__ tail\n",
+		"italic underscore prose":    "A line with _emphasis_ here.\n",
+		"mixed nesting":              "Outer *wrap _inner_ done* tail.\n",
+		"second paragraph emphasis":  "First para text.\n\nSecond _para_ text.\n",
+		"clean asterisk":             "All *good* here.\n",
+	}
+	r := newRule("asterisk", "asterisk", true)
+	for name, src := range cases {
+		t.Run(name, func(t *testing.T) {
+			fAST := parseFile(t, src)
+			astDiags := r.Check(fAST)
+
+			fNil := parseFile(t, src)
+			fNil.AST = nil
+			nilDiags := r.Check(fNil)
+
+			assert.Equal(t, astDiags, nilDiags)
+		})
+	}
 }

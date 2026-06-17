@@ -316,3 +316,36 @@ func TestRawHTMLBytes_ForceNewline(t *testing.T) {
 	got := rawHTMLBytes(node, source)
 	assert.Equal(t, []byte("<br>\n"), got)
 }
+
+// TestCheck_NilASTMatchesAST pins the parse-skipped path byte-identical to
+// the AST path over both HTML shapes: an HTML block, an inline span, a
+// self-closing inline tag, an inline tag nested inside emphasis, and a
+// comment. The nil-AST path reconstructs block HTML from the Layer 0 spans
+// and inline HTML from the shared inline parse, so any divergence surfaces
+// as a different diagnostic set.
+func TestCheck_NilASTMatchesAST(t *testing.T) {
+	cases := map[string]string{
+		"html block":            "# Title\n\n<div>block content</div>\n",
+		"inline span":           "Some text <span>x</span> tail\n",
+		"self-closing inline":   "before<br/>after\n",
+		"inline in emphasis":    "a *strong <b>x</b>* tail\n",
+		"comment block":         "# Title\n\n<!-- a comment -->\n",
+		"clean prose":           "Just plain prose with no HTML.\n",
+	}
+	for name, src := range cases {
+		t.Run(name, func(t *testing.T) {
+			r := &Rule{AllowComments: false}
+
+			fAST, err := lint.NewFile("test.md", []byte(src))
+			require.NoError(t, err)
+			astDiags := r.Check(fAST)
+
+			fNil, err := lint.NewFile("test.md", []byte(src))
+			require.NoError(t, err)
+			fNil.AST = nil
+			nilDiags := r.Check(fNil)
+
+			assert.Equal(t, astDiags, nilDiags)
+		})
+	}
+}
