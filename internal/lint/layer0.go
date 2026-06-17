@@ -102,13 +102,12 @@ type Layer0Scan struct {
 	PIBlockLines map[int]struct{}
 
 	// Classes and BlockSpans are the per-line classification and the
-	// ordered block list. They have no production consumer yet — the block
-	// NodeChecker re-backing (plan 2606141903) is their first reader; until
-	// it lands they are exercised only by this package's unit tests. They
-	// are part of this plan's deliverable so the next stage can build on a
-	// stable shape, but a contributor should not assume the block-kind
-	// dispatch that fills them is load-bearing for the shipped projections:
-	// only CodeBlockLines and PIBlockLines are.
+	// ordered block list. BlockSpans is now load-bearing in production:
+	// rule.WalkBlocks drives every rule.BlockChecker (e.g. MDS002
+	// heading-style, MDS015 blank-line-around-fenced-code) over these spans
+	// on the parse-skipped path, so the block-kind dispatch that fills them
+	// must stay byte-faithful to goldmark — a change here can alter shipped
+	// diagnostics. Classes remains internal scaffolding for the scan.
 
 	// Classes holds one lineClass per source line, indexed by (line-1).
 	Classes []lineClass
@@ -1016,6 +1015,65 @@ func SourceMayHaveCodeBlock(source []byte) bool {
 		bytes.Contains(source, fenceBacktickRun) ||
 		bytes.Contains(source, fenceTildeRun) ||
 		bytes.Contains(source, fourSpaceRun)
+}
+
+// SourceMayHaveBlockQuote reports whether source could contain a block
+// quote: it holds at least one `>` byte. A block quote requires a `>`
+// marker, so a source with no `>` has no quote.
+//
+// The Layer 0 parse-skip gate skips the goldmark parse only when this
+// returns false. The scanner collapses a block quote into a single
+// BlockQuote span and does not descend into its body to emit the
+// heading and fenced-code spans block-kind rules (MDS002, MDS015) react
+// to, so a quote-nested heading or fence is invisible to the block scan
+// while the AST path still flags it. Disqualifying any source that might
+// hold a quote sidesteps that divergence the same way the code-block
+// guard handles a list-nested code block. The check is deliberately
+// coarse — a `>` in an autolink, raw HTML, or prose also trips it — but
+// provably sound and allocation-free.
+func SourceMayHaveBlockQuote(source []byte) bool {
+	return bytes.IndexByte(source, '>') >= 0
+}
+
+// SourceMayHaveList reports whether source could contain a Markdown list: it
+// holds at least one line that opens a bullet or ordered list item after up to
+// three spaces of indent. A list item requires a bullet (`-`/`*`/`+` + space)
+// or an ordered marker (digits + `.`/`)` + space), so a source with none has
+// no list.
+//
+// The Layer 0 parse-skip gate skips the goldmark parse only when this returns
+// false. The scanner records a list as a single BlockList span and does not
+// descend into the item body; a heading or fenced-code block nested inside a
+// list item is therefore invisible to the block scan while the AST path still
+// flags it. Disqualifying any source that might hold a list sidesteps that
+// divergence, mirroring the block-quote guard.
+func SourceMayHaveList(source []byte) bool {
+	for len(source) > 0 {
+		nl := bytes.IndexByte(source, '\n')
+		var line []byte
+		if nl < 0 {
+			line = source
+			source = nil
+		} else {
+			line = source[:nl]
+			source = source[nl+1:]
+		}
+		indent := leadingSpaces(line)
+		if indent >= 4 || indent >= len(line) {
+			continue
+		}
+		switch line[indent] {
+		case '-', '*', '+':
+			if !isThematicBreak(line) && isBulletMarker(line, indent) {
+				return true
+			}
+		default:
+			if isOrderedMarker(line, indent) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // blockDepth returns the block-quote nesting depth of line: the number of

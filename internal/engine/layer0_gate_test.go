@@ -249,6 +249,61 @@ func TestLayer0Gate_CodeBlockSkipsParse(t *testing.T) {
 		"a code-bearing source with only Layer 0 rules must skip the parse")
 }
 
+// TestLayer0Gate_BlockQuoteForcesParse proves the SourceMayHaveBlockQuote
+// guard: the Layer 0 scanner collapses a block quote into a single
+// BlockQuote span and never emits the heading/fenced-code spans block-kind
+// rules react to for quote-nested content, so a quote-nested heading would
+// be missed on the parse-skip path. A file that may hold a block quote
+// (here `> # Quoted heading`) must force the full parse, even when every
+// enabled rule is otherwise Layer 0.
+func TestLayer0Gate_BlockQuoteForcesParse(t *testing.T) {
+	withLayer0Skip(t, true)
+	dir, path := writeDoc(t, "# Title\n\n> # Quoted heading\n")
+
+	probe := &astProbeRule{}
+	cfg := layer0OnlyConfig()
+	cfg.Rules["heading-style"] = config.RuleCfg{Enabled: true}
+	cfg.Rules[probe.Name()] = config.RuleCfg{Enabled: true}
+
+	r := &Runner{
+		Config:           cfg,
+		Rules:            append(rule.All(), probe),
+		StripFrontMatter: true,
+		RootDir:          dir,
+	}
+	res := r.Run([]string{path})
+	require.Empty(t, res.Errors)
+	assert.False(t, probe.sawNilAST,
+		"a source that may hold a block quote must keep the AST parse")
+}
+
+// TestLayer0Gate_ListForcesParse proves the SourceMayHaveList guard: the
+// Layer 0 scanner records a list as a single BlockList span and does not
+// descend into item bodies, so a heading nested inside a list item is
+// invisible to the block scan while the AST path flags it. A file that may
+// hold a list must force the full parse.
+func TestLayer0Gate_ListForcesParse(t *testing.T) {
+	withLayer0Skip(t, true)
+	// A list-nested heading that violates setext style: AST flags it, skip misses it.
+	dir, path := writeDoc(t, "- item\n\n  # Nested ATX heading\n")
+
+	probe := &astProbeRule{}
+	cfg := layer0OnlyConfig()
+	cfg.Rules["heading-style"] = config.RuleCfg{Enabled: true, Settings: map[string]any{"style": "setext"}}
+	cfg.Rules[probe.Name()] = config.RuleCfg{Enabled: true}
+
+	r := &Runner{
+		Config:           cfg,
+		Rules:            append(rule.All(), probe),
+		StripFrontMatter: true,
+		RootDir:          dir,
+	}
+	res := r.Run([]string{path})
+	require.Empty(t, res.Errors)
+	assert.False(t, probe.sawNilAST,
+		"a source that may hold a list must keep the AST parse")
+}
+
 // TestLayer0Gate_CodeSpanRuleSkipsParse proves the Layer 1 code-span fix
 // closed the old code-span soundness gap: MDS054
 // (no-undefined-reference-labels) is "A-no-skipping" and reads code-span

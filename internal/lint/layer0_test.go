@@ -638,3 +638,58 @@ func TestSourceMayHaveCodeBlock(t *testing.T) {
 			"expected may-have-code: %q", src)
 	}
 }
+
+func TestSourceMayHaveBlockQuote(t *testing.T) {
+	// Quote-free sources: no `>` byte at all.
+	for _, src := range []string{
+		"# Title\n\nplain prose only\n",
+		"- a list\n- with items\n",
+		"",
+		"text with `inline` span\n",
+	} {
+		assert.False(t, SourceMayHaveBlockQuote([]byte(src)),
+			"expected quote-free: %q", src)
+	}
+	// Sources that may hold a block quote — the coarse `>` scan also trips on
+	// a `>` in prose, an autolink, or raw HTML, which is the sound direction.
+	for _, src := range []string{
+		"> # Quoted heading\n",        // the divergence class
+		"> a quote\n",                 // prose quote
+		"intro\n\n> nested\n> more\n", // multi-line quote
+		"a > b in prose\n",            // bare `>` (over-triggers, still sound)
+	} {
+		assert.True(t, SourceMayHaveBlockQuote([]byte(src)),
+			"expected may-have-quote: %q", src)
+	}
+}
+
+func TestSourceMayHaveList(t *testing.T) {
+	for _, src := range []string{
+		"plain paragraph\n",
+		"# ATX heading\n\nText\n",
+		"> block quote\n",
+		"---\n",      // thematic break, not a list
+		"***\n",      // thematic break, not a list
+		"    code\n", // indented code block (4+ spaces), not a list
+		"plain",      // no trailing newline, no list
+		"   ",        // blank line (indent >= len), no list
+	} {
+		assert.False(t, SourceMayHaveList([]byte(src)),
+			"expected list-free: %q", src)
+	}
+	for _, src := range []string{
+		"- bullet\n",
+		"* star\n",
+		"+ plus\n",
+		"1. ordered\n",
+		"2) paren form\n",
+		"  - indented bullet\n",
+		"- item\n\n  # Nested\n",  // list-nested heading (the divergence class)
+		"1. item\n\n   ## Deep\n", // ordered + nested heading
+		"- a\n  # b\n",            // tight nested heading
+		"- bullet",                // no trailing newline, list present
+	} {
+		assert.True(t, SourceMayHaveList([]byte(src)),
+			"expected may-have-list: %q", src)
+	}
+}

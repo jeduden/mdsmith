@@ -22,11 +22,13 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 		[]byte("# A\n\nSub heading\n-----------\n\nText\n"),
 		[]byte("###### Deep six\n\nText\n"),
 		[]byte("intro\n\nSetext two\n----------\n"),
-		// A ≤3-space-indented ATX heading: goldmark parses it as a heading
-		// (BlockATXHeading span), but MDS002's column-1 isATX test reads it
-		// as non-ATX. Both paths must agree (regression for the one corpus
-		// divergence the code-file equivalence sweep found).
+		// ATX headings indented 1–3 spaces: CommonMark still parses these as
+		// ATX. Both paths must agree (regression for the corpus divergence
+		// the code-file equivalence sweep found).
 		[]byte("# Title\n\n   # Indented\n"),
+		[]byte("   # Indented one\n\nText\n"),
+		[]byte("  ## Indented two\n\nText\n"),
+		[]byte(" ### Indented three\n\nText\n"),
 	}
 	for _, style := range []string{"atx", "setext"} {
 		for _, src := range srcs {
@@ -129,6 +131,23 @@ func TestFix_ATXToSetext(t *testing.T) {
 	r := &Rule{Style: "setext"}
 	result := r.Fix(f)
 	expected := "Heading 1\n=========\n\nSome text\n"
+	if string(result) != expected {
+		t.Errorf("expected %q, got %q", expected, string(result))
+	}
+}
+
+// TestFix_IndentedATXToSetext pins the Fix output for a 1–3 space indented ATX
+// heading converted to setext style. The round-1 lineStartsWithHash fix made
+// Fix rewrite these headings (previously a no-op); this test locks in the
+// intended output so future changes cannot silently alter it.
+func TestFix_IndentedATXToSetext(t *testing.T) {
+	src := []byte("   # Indented H1\n\nSome text\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Style: "setext"}
+	result := r.Fix(f)
+	// The indent is dropped; the heading becomes a plain setext heading.
+	expected := "Indented H1\n===========\n\nSome text\n"
 	if string(result) != expected {
 		t.Errorf("expected %q, got %q", expected, string(result))
 	}

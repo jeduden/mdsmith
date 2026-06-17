@@ -52,10 +52,6 @@ func (r *Rule) Category() string { return "heading" }
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	minLevel, maxLevel, allowMarker := r.effectiveSettings()
-	allowMarkerDir := r.allowMarkerDirective
-	if allowMarkerDir == "" || r.AllowMarker != allowMarker {
-		allowMarkerDir = "<?" + allowMarker + "?>"
-	}
 	if f.AST == nil {
 		return nil
 	}
@@ -87,7 +83,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 				"add paragraph, list, table, or code content, "+
 				"or add %q for an intentional empty section",
 			headingLabel(heading, f.Source),
-			allowMarkerDir,
+			r.allowMarkerDir(allowMarker),
 		)
 		diags = append(diags, lint.Diagnostic{
 			File:     f.Path,
@@ -235,6 +231,21 @@ func (r *Rule) effectiveSettings() (int, int, string) {
 	}
 
 	return minLevel, maxLevel, allowMarker
+}
+
+// allowMarkerDir returns "<?"+allowMarker+"?>", reusing the precomputed
+// allowMarkerDirective field (set by init/ApplySettings) when it already
+// matches allowMarker so the common configured path emits the message with
+// no per-violation Sprintf. allowMarker is the effective marker
+// effectiveSettings resolved; when it differs from the field (an empty or
+// out-of-range setting that fell back to the default), the directive is
+// built on the spot. It is only reached when a section is actually empty,
+// so a clean file allocates nothing here.
+func (r *Rule) allowMarkerDir(allowMarker string) string {
+	if r.allowMarkerDirective != "" && r.AllowMarker == allowMarker {
+		return r.allowMarkerDirective
+	}
+	return "<?" + allowMarker + "?>"
 }
 
 func topLevelNodes(root ast.Node) []ast.Node {

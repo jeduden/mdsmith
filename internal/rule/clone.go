@@ -46,9 +46,10 @@ func CloneRule(r Rule) Rule {
 // clones are taken from pristine, idle rule instances before any
 // Check runs — so the copy is a valid, independent lock. The shallow
 // copy shares slice/map backing with the source; that is safe because
-// the engine clones again per file via ConfigureRule before applying
-// per-file settings, and rules do not mutate their own config during
-// Check.
+// ConfigureRule clones again before applying per-file settings (once
+// per config signature, since the engine caches the configured rule
+// set per signature per worker), and rules do not mutate their own
+// config during Check.
 func CloneInstance(r Rule) Rule {
 	rv := reflect.ValueOf(r)
 	if rv.Kind() != reflect.Ptr {
