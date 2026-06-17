@@ -52,11 +52,11 @@ question. The current production set:
   plain-text). `pkg/markdown` produces the node it walks.
 - `internal/punkt` — sentence segmenter (vendored Punkt); only
   `internal/mdtext` imports it.
+- `internal/rule` — interfaces for rules and fixes (the ports package).
 - `internal/checker` — classify, dispatch, and filter checks; shared
   by `internal/engine` and `internal/fix`.
 - `internal/rulelayer` — maps rule IDs to lazy-parse layers (Layer 0
   vs. AST-required) from the embedded rule-walk audit manifest.
-- `internal/rule` — interfaces for rules and fixes (the ports package).
 - `internal/rules/<rule-name>/` — one Go rule per package, e.g.
   `internal/rules/linelength/`. Docs and fixtures live alongside in
   `internal/rules/MDS###-<rule-name>/` (e.g.

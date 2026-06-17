@@ -93,7 +93,7 @@ or to fix.
    `gensection.FindAllGeneratedRanges`)
 2. [x] At diagnostic emit time, drop diagnostics whose
    source file is not the file under lint.
-   (`engine.filterGeneratedDiags`, called from
+   (`checker.FilterGeneratedDiags`, called from
    `CheckRules` before `AdjustDiagnostics`;
    `GeneratedRanges` populated in `runner.Run` /
    `runner.RunSource`)
