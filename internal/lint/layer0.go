@@ -78,6 +78,12 @@ type BlockSpan struct {
 	Start int
 	End   int
 	Depth int
+	// Closed is meaningful only for BlockFencedCode: true when the fence
+	// has a matching closing delimiter, false when it runs to end of file
+	// (or a trailing blank line) unclosed. tryFence already computes this;
+	// MDS031 unclosed-code-block reads it on the parse-skip path. Always
+	// false for every other block kind.
+	Closed bool
 }
 
 // Layer0Scan is the product of one forward pass over File.Lines: a compact
@@ -512,6 +518,9 @@ func (s *scanner) tryFence() bool {
 		s.i++ // advance past the matched closing fence line
 	}
 	s.addSpan(BlockFencedCode, openLine, s.i-1, 0)
+	// Record fence closure for MDS031: closed is local to this scan, so
+	// stamp it on the span tryFence just appended.
+	s.l0.BlockSpans[len(s.l0.BlockSpans)-1].Closed = closed
 	s.prevNonBlankParagraph = false
 	return true
 }

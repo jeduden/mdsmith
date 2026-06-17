@@ -1,7 +1,7 @@
 ---
 id: 2606171402
 title: "Parity parse-skip: migrate the Layer-0 fenced-code rules"
-status: "🔲"
+status: "🔳"
 summary: >-
   Add a nil-AST path to the parity rules that read only a fenced code
   block's fence lines — MDS010 fenced-code-style, MDS011
@@ -51,6 +51,29 @@ For each rule:
    [rulelayer copy](../internal/rulelayer/rule_walk_audit.json).
 4. Add a `TestCheck_NilASTMatchesAST` unit test with code-bearing
    inputs, including a fence inside a list item.
+
+## Result so far
+
+- [x] MDS010 fenced-code-style: `CheckBlock` reads the fence character
+      from the `BlockFencedCode` span's opening line; `A-no-skipping`,
+      corpus gate green.
+- [x] MDS011 fenced-code-language: `CheckBlock` reads the info string
+      from the opening line; `A-no-skipping`, corpus gate green.
+- [x] MDS031 unclosed-code-block: added a `Closed` bool to the fenced
+      `BlockSpan`, set from the `closed` flag `tryFence` already computes;
+      `CheckBlock` flags `!span.Closed`. `A-no-skipping`, corpus gate
+      green, with a 10-case unit test for the closure edges the corpus
+      barely exercises (lone fence, info-no-content, trailing blank).
+- [ ] MDS065 code-block-style: a whole-document consistency `Check` over
+      fenced *and* indented blocks with an inferred target style. The
+      nil-AST path collects blocks from `BlockFencedCode` and
+      `BlockIndentedCode` spans, then reuses `effectiveStyle`. Risk: the
+      `BlockIndentedCode` span must match goldmark on the indented-code
+      subtleties (a four-space indent inside a list is list content, not
+      code), so verify those spans against the AST before trusting them.
+- [ ] MDS066 commands-show-output: reads a shell fence's info string and
+      body lines (prompt/output structure); `CheckBlock` over the fenced
+      span, but confirm the body-line extraction matches the AST.
 
 ## Acceptance Criteria
 

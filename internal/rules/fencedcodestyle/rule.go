@@ -28,11 +28,16 @@ func (r *Rule) Name() string { return "fenced-code-style" }
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "code" }
 
-// Check implements rule.Rule. The per-block logic is pure and
-// stateless, so it is expressed as CheckNode and the engine can fold
-// this rule into one shared AST walk; a direct call still works via
-// rule.WalkNodes.
+// Check implements rule.Rule. The per-block verdict depends only on the
+// fence character of a fenced block's opening line, never the inline
+// tree, so the rule is a rule.BlockChecker: on a parsed File it folds
+// into the engine's shared AST walk (rule.WalkNodes); on a parse-skipped
+// File (f.AST nil) it reads the Layer 0 block scan (rule.WalkBlocks).
+// Both resolve the same per-block verdict, so the diagnostics match.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	if f != nil && f.AST == nil {
+		return rule.WalkBlocks(r, f)
+	}
 	return rule.WalkNodes(r, f)
 }
 
@@ -50,24 +55,59 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 	if openStart >= len(f.Source) {
 		return nil
 	}
+	return r.verdict(f, fencepos.CharAt(f.Source, openStart), f.LineOfOffset(openStart))
+}
 
-	fenceChar := fencepos.CharAt(f.Source, openStart)
-	if fenceChar == 0 {
+// CheckBlock implements rule.BlockChecker. A BlockFencedCode span's Start
+// is the opening fence line (the line LineOfOffset(openStart) yields on
+// the AST path), and the fence character is the first backtick or tilde
+// after any leading spaces — exactly what fencepos.CharAt reads — so the
+// verdict is byte-identical.
+func (r *Rule) CheckBlock(span lint.BlockSpan, f *lint.File) []lint.Diagnostic {
+	return r.verdict(f, fenceCharOfLine(f.Lines[span.Start-1]), span.Start)
+}
+
+// blockKinds is the static block-kind interest CheckBlock declares via
+// rule.BlockChecker; package-level so BlockKinds returns it without
+// allocating.
+var blockKinds = []lint.BlockKind{lint.BlockFencedCode}
+
+// BlockKinds implements rule.BlockChecker.
+func (r *Rule) BlockKinds() []lint.BlockKind { return blockKinds }
+
+var _ rule.BlockChecker = (*Rule)(nil)
+
+// verdict is the shared per-block check both paths drive: fenceChar is
+// the opening fence character (0 when none could be read) and line its
+// 1-based opening line.
+func (r *Rule) verdict(f *lint.File, fenceChar byte, line int) []lint.Diagnostic {
+	if fenceChar == 0 || fenceChar == r.wantChar() {
 		return nil
 	}
+	return []lint.Diagnostic{{
+		File:     f.Path,
+		Line:     line,
+		Column:   1,
+		RuleID:   r.ID(),
+		RuleName: r.Name(),
+		Severity: lint.Warning,
+		Message:  "fenced code block should use " + r.Style + " style",
+	}}
+}
 
-	if fenceChar != r.wantChar() {
-		return []lint.Diagnostic{{
-			File:     f.Path,
-			Line:     f.LineOfOffset(openStart),
-			Column:   1,
-			RuleID:   r.ID(),
-			RuleName: r.Name(),
-			Severity: lint.Warning,
-			Message:  "fenced code block should use " + r.Style + " style",
-		}}
+// fenceCharOfLine returns the opening fence character of a line the
+// Layer 0 scanner classified BlockFencedCode: the first backtick or
+// tilde after any leading spaces, mirroring fencepos.CharAt (which skips
+// all leading spaces from the line start), or 0 if neither is present.
+func fenceCharOfLine(line []byte) byte {
+	i := 0
+	for i < len(line) && line[i] == ' ' {
+		i++
 	}
-	return nil
+	if i < len(line) && (line[i] == '`' || line[i] == '~') {
+		return line[i]
+	}
+	return 0
 }
 
 // Fix implements rule.FixableRule.
