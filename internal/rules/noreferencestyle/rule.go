@@ -14,6 +14,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/setutil"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 	"github.com/jeduden/mdsmith/pkg/goldmark/util"
@@ -634,7 +635,7 @@ func collectDefinitionCuts(f *lint.File, usedLabels map[string]struct{}) []fixCu
 	defs := collectReferenceDefinitions(f)
 	var cuts []fixCut
 	for _, d := range defs {
-		if _, ok := usedLabels[util.ToLinkReference([]byte(d.label))]; !ok {
+		if !setutil.Contains(usedLabels, util.ToLinkReference([]byte(d.label))) {
 			continue
 		}
 		start := d.start

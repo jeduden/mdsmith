@@ -12,6 +12,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 	rulesettings "github.com/jeduden/mdsmith/internal/rules/settings"
+	"github.com/jeduden/mdsmith/internal/setutil"
 )
 
 func init() {
@@ -214,7 +215,7 @@ func (r *Rule) checkRaw(f *lint.File, allowed map[string]struct{}, raw []byte, o
 		// Closing tags produce no extra diagnostic
 		return lint.Diagnostic{}, false
 	default:
-		if _, ok := allowed[tag]; ok {
+		if setutil.Contains(allowed, tag) {
 			return lint.Diagnostic{}, false
 		}
 		return r.diag(f, offset, "<"+tag+">"), true

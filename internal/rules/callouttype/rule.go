@@ -15,6 +15,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
+	"github.com/jeduden/mdsmith/internal/setutil"
 )
 
 func init() {
@@ -123,7 +124,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		if !ok {
 			return ast.WalkContinue, nil
 		}
-		if _, ok := allowed[strings.ToLower(token)]; ok {
+		if setutil.Contains(allowed, strings.ToLower(token)) {
 			return ast.WalkContinue, nil
 		}
 		diags = append(diags, r.unknownTypeDiag(f.Path, line, col, token))
@@ -174,7 +175,7 @@ func (r *Rule) checkLayer0(f *lint.File) []lint.Diagnostic {
 			prevDepth = d
 			continue
 		}
-		if _, inAllowed := allowed[strings.ToLower(token)]; inAllowed {
+		if setutil.Contains(allowed, strings.ToLower(token)) {
 			prevDepth = d
 			continue
 		}

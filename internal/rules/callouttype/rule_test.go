@@ -258,7 +258,5 @@ func TestBuildAllowSet_SetType(t *testing.T) {
 	r := &Rule{}
 	got := reflect.TypeOf(r.buildAllowSet()).String()
 	want := reflect.TypeOf(map[string]struct{}{}).String()
-	if got != want {
-		t.Fatalf("buildAllowSet returns %s; want %s (guideline: use map[K]struct{} for sets)", got, want)
-	}
+	assert.Equal(t, want, got, "buildAllowSet must return map[string]struct{} (guideline: use map[K]struct{} for sets)")
 }

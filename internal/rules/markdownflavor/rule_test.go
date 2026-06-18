@@ -417,10 +417,6 @@ func TestBuildAlertSkipMaps_SetType(t *testing.T) {
 	skipType := reflect.TypeOf(skip).String()
 	addPrefixType := reflect.TypeOf(addPrefix).String()
 	wantType := reflect.TypeOf(map[int]struct{}{}).String()
-	if skipType != wantType {
-		t.Fatalf("skip uses %s; want %s (guideline: use map[K]struct{} for sets)", skipType, wantType)
-	}
-	if addPrefixType != wantType {
-		t.Fatalf("addPrefix uses %s; want %s (guideline: use map[K]struct{} for sets)", addPrefixType, wantType)
-	}
+	assert.Equal(t, wantType, skipType, "skip must be map[int]struct{} (guideline: use map[K]struct{} for sets)")
+	assert.Equal(t, wantType, addPrefixType, "addPrefix must be map[int]struct{} (guideline: use map[K]struct{} for sets)")
 }

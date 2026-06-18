@@ -124,8 +124,7 @@ func TestWrapComment_AllocsPerCall(t *testing.T) {
 	allocs := testing.AllocsPerRun(100, func() {
 		_ = wrapComment(text, 200)
 	})
-	if allocs > 5 {
-		t.Fatalf("wrapComment allocates %.0f/call for 20-word input; want ≤5 "+
+	assert.LessOrEqualf(t, allocs, float64(5),
+		"wrapComment allocates %.0f/call for 20-word input; want ≤5 "+
 			"(guideline: use strings.Builder instead of += in a loop)", allocs)
-	}
 }

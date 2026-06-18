@@ -506,7 +506,5 @@ func TestCollectLinkRewrites_UsedLabels_SetType(t *testing.T) {
 	_, usedLabels := collectLinkRewrites(f)
 	got := reflect.TypeOf(usedLabels).String()
 	want := reflect.TypeOf(map[string]struct{}{}).String()
-	if got != want {
-		t.Fatalf("collectLinkRewrites usedLabels is %s; want %s (guideline: use map[K]struct{} for sets)", got, want)
-	}
+	assert.Equal(t, want, got, "collectLinkRewrites usedLabels must be map[string]struct{} (guideline: use map[K]struct{} for sets)")
 }
