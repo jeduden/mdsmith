@@ -507,4 +507,5 @@ func TestCollectLinkRewrites_UsedLabels_SetType(t *testing.T) {
 	got := reflect.TypeOf(usedLabels).String()
 	want := reflect.TypeOf(map[string]struct{}{}).String()
 	assert.Equal(t, want, got, "usedLabels must be map[string]struct{} per high-performance Go guideline")
+	assert.Contains(t, usedLabels, "ref", "the used reference label must appear in usedLabels")
 }

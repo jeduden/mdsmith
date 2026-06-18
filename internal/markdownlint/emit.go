@@ -53,17 +53,15 @@ func wrapComment(text string, width int) []string {
 	var cur strings.Builder
 	cur.Grow(len(first) + len(text))
 	cur.WriteString(first)
-	prefix := first
 	for _, word := range strings.Fields(text) {
 		sep := ""
-		if cur.Len() != len(prefix) {
+		if cur.Len() != len(first) {
 			sep = " "
 		}
 		if cur.Len()+len(sep)+len(word) > width && sep != "" {
 			lines = append(lines, cur.String())
 			cur.Reset()
 			cur.WriteString(cont)
-			prefix = cont
 			sep = ""
 		}
 		cur.WriteString(sep)

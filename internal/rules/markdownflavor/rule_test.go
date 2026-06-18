@@ -419,4 +419,6 @@ func TestBuildAlertSkipMaps_SetType(t *testing.T) {
 	wantType := reflect.TypeOf(map[int]struct{}{}).String()
 	assert.Equal(t, wantType, skipType, "skip must be map[int]struct{} per high-performance Go guideline")
 	assert.Equal(t, wantType, addPrefixType, "addPrefix must be map[int]struct{} per high-performance Go guideline")
+	assert.Contains(t, skip, 1, "skip must hold the 1-based marker line number")
+	assert.Empty(t, addPrefix, "addPrefix must be empty when body line already has '>' prefix")
 }

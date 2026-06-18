@@ -255,8 +255,11 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 // map[string]struct{} rather than map[string]bool. Per the high-performance
 // Go guidelines: "map[K]struct{} for sets — zero-byte value type."
 func TestBuildAllowSet_SetType(t *testing.T) {
-	r := &Rule{}
-	got := reflect.TypeOf(r.buildAllowSet()).String()
+	r := &Rule{Allow: []string{"custom"}}
+	m := r.buildAllowSet()
+	got := reflect.TypeOf(m).String()
 	want := reflect.TypeOf(map[string]struct{}{}).String()
 	assert.Equal(t, want, got, "buildAllowSet must return map[string]struct{} (guideline: use map[K]struct{} for sets)")
+	assert.Contains(t, m, "note", "built-in type 'note' must be present in the returned set")
+	assert.Contains(t, m, "custom", "user-configured Allow entry must be present")
 }
