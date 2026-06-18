@@ -1,6 +1,7 @@
 package markdownflavor
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -404,5 +405,22 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 
 			assert.Equal(t, astDiags, nilDiags)
 		})
+	}
+}
+
+// TestBuildAlertSkipMaps_SetType verifies that buildAlertSkipMaps returns
+// map[int]struct{} rather than map[int]bool for its skip and addPrefix sets.
+// Per the high-performance Go guidelines: "map[K]struct{} for sets — zero-byte value type."
+func TestBuildAlertSkipMaps_SetType(t *testing.T) {
+	f := mkFile(t, "> [!NOTE]\n> body\n")
+	skip, addPrefix := buildAlertSkipMaps(f)
+	skipType := reflect.TypeOf(skip).String()
+	addPrefixType := reflect.TypeOf(addPrefix).String()
+	wantType := reflect.TypeOf(map[int]struct{}{}).String()
+	if skipType != wantType {
+		t.Fatalf("skip uses %s; want %s (guideline: use map[K]struct{} for sets)", skipType, wantType)
+	}
+	if addPrefixType != wantType {
+		t.Fatalf("addPrefix uses %s; want %s (guideline: use map[K]struct{} for sets)", addPrefixType, wantType)
 	}
 }

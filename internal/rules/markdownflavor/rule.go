@@ -231,13 +231,15 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	return r.fixByteRangeFeatures(current)
 }
 
-// fixGitHubAlerts strips [!TOKEN] alert markers from blockquotes,
-// re-adding "> " on lazy-continuation lines so the blockquote stays
-// well-formed after the marker line goes away. If the marker is the
-// only line in the blockquote, the whole blockquote is removed.
-func (r *Rule) fixGitHubAlerts(f *lint.File) []byte {
-	skip := map[int]bool{}
-	addPrefix := map[int]bool{} // lazy-continuation lines that lose blockquote context
+// buildAlertSkipMaps walks the AST of f and returns two zero-byte-value
+// sets: skip holds the 1-based line numbers of GitHub Alert marker lines
+// that should be dropped, and addPrefix holds the line numbers of lazy-
+// continuation lines that need a "> " prefix re-added after the marker
+// is removed. Using map[int]struct{} rather than map[int]bool follows the
+// high-performance Go guideline "map[K]struct{} for sets — zero-byte value type."
+func buildAlertSkipMaps(f *lint.File) (skip, addPrefix map[int]struct{}) {
+	skip = map[int]struct{}{}
+	addPrefix = map[int]struct{}{} // lazy-continuation lines that lose blockquote context
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
@@ -260,7 +262,7 @@ func (r *Rule) fixGitHubAlerts(f *lint.File) []byte {
 		lines := para.Lines()
 		seg := lines.At(0)
 		markerLine, _ := flavor.LineCol(f.Source, seg.Start)
-		skip[markerLine] = true
+		skip[markerLine] = struct{}{}
 
 		// Remaining lines of the first paragraph may use lazy continuation
 		// (no "> " prefix in the raw source). After removing the marker they
@@ -270,11 +272,20 @@ func (r *Rule) fixGitHubAlerts(f *lint.File) []byte {
 			contLine, _ := flavor.LineCol(f.Source, contSeg.Start)
 			raw := strings.TrimLeft(string(f.Lines[contLine-1]), " \t")
 			if !strings.HasPrefix(raw, ">") {
-				addPrefix[contLine] = true
+				addPrefix[contLine] = struct{}{}
 			}
 		}
 		return ast.WalkContinue, nil
 	})
+	return
+}
+
+// fixGitHubAlerts strips [!TOKEN] alert markers from blockquotes,
+// re-adding "> " on lazy-continuation lines so the blockquote stays
+// well-formed after the marker line goes away. If the marker is the
+// only line in the blockquote, the whole blockquote is removed.
+func (r *Rule) fixGitHubAlerts(f *lint.File) []byte {
+	skip, addPrefix := buildAlertSkipMaps(f)
 
 	if len(skip) == 0 {
 		return f.Source
@@ -283,11 +294,11 @@ func (r *Rule) fixGitHubAlerts(f *lint.File) []byte {
 	var out []string
 	for i, line := range f.Lines {
 		lineNum := i + 1
-		if skip[lineNum] {
+		if _, ok := skip[lineNum]; ok {
 			continue
 		}
 		s := string(line)
-		if addPrefix[lineNum] {
+		if _, ok := addPrefix[lineNum]; ok {
 			trimmed := strings.TrimLeft(s, " \t")
 			s = s[:len(s)-len(trimmed)] + "> " + trimmed
 		}

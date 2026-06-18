@@ -1,6 +1,7 @@
 package noreferencestyle
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -494,5 +495,18 @@ func TestIsFootnoteDefinitionAt(t *testing.T) {
 			assert.Equalf(t, c.want, got,
 				"isFootnoteDefinitionAt(%q, %d)", c.source, c.start)
 		})
+	}
+}
+
+// TestCollectLinkRewrites_UsedLabels_SetType verifies that collectLinkRewrites
+// returns map[string]struct{} for its usedLabels set rather than map[string]bool.
+// Per the high-performance Go guidelines: "map[K]struct{} for sets — zero-byte value type."
+func TestCollectLinkRewrites_UsedLabels_SetType(t *testing.T) {
+	f := newFile(t, "See [example][ref].\n\n[ref]: https://example.com/\n")
+	_, usedLabels := collectLinkRewrites(f)
+	got := reflect.TypeOf(usedLabels).String()
+	want := reflect.TypeOf(map[string]struct{}{}).String()
+	if got != want {
+		t.Fatalf("collectLinkRewrites usedLabels is %s; want %s (guideline: use map[K]struct{} for sets)", got, want)
 	}
 }

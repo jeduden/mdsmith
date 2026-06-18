@@ -50,19 +50,25 @@ func EmitConfig(conv *Conversion, source string) ([]byte, error) {
 func wrapComment(text string, width int) []string {
 	const first, cont = "# - ", "#   "
 	var lines []string
-	line := first
+	var cur strings.Builder
+	cur.Grow(len(first) + len(text))
+	cur.WriteString(first)
+	prefix := first
 	for _, word := range strings.Fields(text) {
 		sep := ""
-		if line != first && line != cont {
+		if cur.Len() != len(prefix) {
 			sep = " "
 		}
-		if len(line)+len(sep)+len(word) > width && sep != "" {
-			lines = append(lines, line)
-			line = cont
+		if cur.Len()+len(sep)+len(word) > width && sep != "" {
+			lines = append(lines, cur.String())
+			cur.Reset()
+			cur.WriteString(cont)
+			prefix = cont
 			sep = ""
 		}
-		line += sep + word
+		cur.WriteString(sep)
+		cur.WriteString(word)
 	}
-	lines = append(lines, line)
+	lines = append(lines, cur.String())
 	return lines
 }

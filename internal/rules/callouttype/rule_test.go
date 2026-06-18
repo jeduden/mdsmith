@@ -1,6 +1,7 @@
 package callouttype
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -247,5 +248,17 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 		l0Diags := (&Rule{}).Check(lint.NewFileLines("f.md", b))
 		assert.Equal(t, astDiags, l0Diags,
 			"nil-AST diagnostics must match AST for %q", src)
+	}
+}
+
+// TestBuildAllowSet_SetType verifies that buildAllowSet returns
+// map[string]struct{} rather than map[string]bool. Per the high-performance
+// Go guidelines: "map[K]struct{} for sets — zero-byte value type."
+func TestBuildAllowSet_SetType(t *testing.T) {
+	r := &Rule{}
+	got := reflect.TypeOf(r.buildAllowSet()).String()
+	want := reflect.TypeOf(map[string]struct{}{}).String()
+	if got != want {
+		t.Fatalf("buildAllowSet returns %s; want %s (guideline: use map[K]struct{} for sets)", got, want)
 	}
 }
