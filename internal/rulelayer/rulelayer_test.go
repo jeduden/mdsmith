@@ -86,6 +86,67 @@ func TestIsLayer0(t *testing.T) {
 	}
 }
 
+// TestBlockSkipSafeAreLayer0 confirms every rule in the blockSkipSafe
+// override resolves to Layer 0 even though its audit category is
+// "B-prose-only". MDS066 (commands-show-output) is the canonical entry: the
+// audit's code-perturbation probe marks it code-content-sensitive
+// ("B-prose-only"), but its only code-content read is the fenced-code body,
+// which the Layer 0 block scan plus f.Lines reproduces byte-identically (a
+// rule.BlockChecker nil-AST path gated across the corpus by
+// TestLayer0Gate_CorpusDiagnosticsEquivalence). Promoting it lets
+// `mdsmith check -c parity` skip the parse: parity enables MDS066 and it was
+// the lone rule still forcing the AST.
+func TestBlockSkipSafeAreLayer0(t *testing.T) {
+	for id := range blockSkipSafe {
+		assert.True(t, IsLayer0(id), "%s is in blockSkipSafe; must be Layer 0", id)
+		assert.Equal(t, Layer0, Of(id))
+	}
+	assert.True(t, blockSkipSafe["MDS066"], "MDS066 must be in the block-skip-safe set")
+}
+
+// TestBlockSkipSafeAreNilASTSafe guards the override's manual commitment: a
+// rule may only be force-classified Layer 0 here when its audit manifest
+// entry reports nil_ast_safe: true (its Check survives a nil AST with the
+// same diagnostics). A rule whose nil-AST path regresses trips its
+// nil_ast_safe signal and this test fails until the override is reconsidered.
+func TestBlockSkipSafeAreNilASTSafe(t *testing.T) {
+	oracle, err := os.ReadFile(filepath.Join(
+		"..", "integration", "testdata", "rule_walk_audit.json"))
+	require.NoError(t, err)
+
+	var entries []struct {
+		ID         string `json:"id"`
+		NilASTSafe bool   `json:"nil_ast_safe"`
+	}
+	require.NoError(t, json.Unmarshal(oracle, &entries))
+
+	nilSafe := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		nilSafe[e.ID] = e.NilASTSafe
+	}
+	for id := range blockSkipSafe {
+		present := false
+		if _, ok := nilSafe[id]; ok {
+			present = true
+		}
+		assert.True(t, present, "%s in blockSkipSafe must appear in the audit manifest", id)
+		assert.True(t, nilSafe[id],
+			"%s in blockSkipSafe must have nil_ast_safe: true", id)
+	}
+}
+
+// TestBuildLayerMapFromBlockSkipSafePromotesToLayer0 exercises the
+// blockSkipSafe branch of buildLayerMapFrom directly with a synthetic entry:
+// a "B-prose-only" rule listed in blockSkipSafe must resolve to Layer0.
+func TestBuildLayerMapFromBlockSkipSafePromotesToLayer0(t *testing.T) {
+	blockSkipSafe["MDS905"] = true
+	t.Cleanup(func() { delete(blockSkipSafe, "MDS905") })
+	m := buildLayerMapFrom([]byte(`[
+		{"id":"MDS905","category":"B-prose-only"}
+	]`))
+	assert.Equal(t, Layer0, m["MDS905"], "blockSkipSafe promotes B-prose-only rule to Layer0")
+}
+
 // TestAstProjectionConsumersAreNotLayer0 guards the parse-skip gate's
 // soundness invariant: any rule the manifest marks "A-no-skipping" yet
 // listed in astProjectionConsumers (because it reads an AST-only projection

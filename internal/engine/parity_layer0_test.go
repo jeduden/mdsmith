@@ -1,0 +1,105 @@
+package engine
+
+import (
+	"sort"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/jeduden/mdsmith/internal/config"
+	"github.com/jeduden/mdsmith/internal/rule"
+)
+
+// parityConfig resolves the built-in `parity` convention the way the CLI
+// does: parse a `.mdsmith.yml` selecting it, then merge it onto the defaults
+// so the convention preset disables the mdsmith-only rules while the
+// markdownlint-parity rules stay enabled.
+func parityConfig(t *testing.T) *config.Config {
+	t.Helper()
+	loaded, err := config.ParseBytes([]byte("convention: parity\n"))
+	require.NoError(t, err)
+	return config.Merge(config.Defaults(), loaded)
+}
+
+// TestParityConvention_AllEnabledRulesSkipSafe is the parent plan's
+// acceptance criterion 1: every parity-enabled rule resolves to a parse-skip
+// layer (rulelayer Layer 0 or, for line-length, configured rule.LineCapable).
+// MDS066 (commands-show-output) was the lone holdout — a "B-prose-only" rule
+// the static category withheld from Layer 0 — until it was promoted via the
+// blockSkipSafe override. If a future parity rule regrows an AST dependency,
+// this fails and names it.
+func TestParityConvention_AllEnabledRulesSkipSafe(t *testing.T) {
+	cfg := parityConfig(t)
+	eff := config.Effective(cfg, "doc.md", nil, nil)
+
+	enabled := 0
+	var notSafe []string
+	for _, rl := range rule.All() {
+		c, ok := eff[rl.Name()]
+		if !ok || !c.Enabled {
+			continue
+		}
+		enabled++
+		if !allEnabledRulesSkipSafe([]rule.Rule{rl}, eff) {
+			notSafe = append(notSafe, rl.ID()+" "+rl.Name())
+		}
+	}
+	sort.Strings(notSafe)
+	require.NotZero(t, enabled, "parity must enable some rules or the check is vacuous")
+	assert.Empty(t, notSafe, "every parity-enabled rule must be parse-skip-safe")
+}
+
+// TestParityConvention_SkipsParse is the parent plan's acceptance criterion
+// 3: with the gate on, `mdsmith check -c parity` skips the goldmark parse for
+// a benchmark-style file (no directive, no list, no block quote — the neutral
+// corpus shape). The probe records whether the File it received had a nil AST.
+func TestParityConvention_SkipsParse(t *testing.T) {
+	withLayer0Skip(t, true)
+	// Headings, prose, and a fenced code block of shell prompts so MDS066
+	// (commands-show-output) is exercised on the parse-skipped path.
+	dir, path := writeDoc(t, "# Title\n\nSome prose paragraph.\n\n```sh\n$ build\n$ test\n```\n")
+
+	probe := &astProbeRule{}
+	cfg := parityConfig(t)
+	cfg.Rules[probe.Name()] = config.RuleCfg{Enabled: true}
+
+	r := &Runner{
+		Config:           cfg,
+		Rules:            append(rule.All(), probe),
+		StripFrontMatter: true,
+		RootDir:          dir,
+	}
+	res := r.Run([]string{path})
+	require.Empty(t, res.Errors)
+	assert.True(t, probe.sawNilAST,
+		"a parity run on a benchmark-shaped file must skip the parse")
+}
+
+// TestParityConvention_DiagnosticsMatchFullParse is the equivalence guarantee
+// for the parity parse-skip: the diagnostics a parity run produces with the
+// gate on (nil AST) are identical to the same run with the gate off (full
+// parse). The fixture trips MDS066 so the comparison is not vacuous.
+func TestParityConvention_DiagnosticsMatchFullParse(t *testing.T) {
+	dir, path := writeDoc(t, "# Title\n\nProse line.\n\n```sh\n$ make\n$ make test\n```\n")
+	cfg := parityConfig(t)
+
+	run := func(skip bool) int {
+		withLayer0Skip(t, skip)
+		r := &Runner{
+			Config:           cfg,
+			Rules:            rule.All(),
+			StripFrontMatter: true,
+			RootDir:          dir,
+		}
+		res := r.Run([]string{path})
+		require.Empty(t, res.Errors)
+		return len(res.Diagnostics)
+	}
+
+	skipped := run(true)
+	parsed := run(false)
+	require.NotZero(t, parsed, "MDS066 must fire so the comparison is not vacuous")
+	assert.Equal(t, parsed, skipped,
+		"parity parse-skip must produce the same diagnostics as a full parse")
+}

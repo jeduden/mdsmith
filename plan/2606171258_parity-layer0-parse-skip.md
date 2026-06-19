@@ -1,7 +1,7 @@
 ---
 id: 2606171258
 title: "Parity Layer-0 parse-skip: migrate the AST-forcing parity rules"
-status: "🔳"
+status: "✅"
 summary: >-
   Move every parity-active rule that still forces the goldmark parse onto
   the Layer-0 / Layer-1 projections so `mdsmith check -c parity` can skip
@@ -122,10 +122,35 @@ fix plus a guard removal.
 - [x] Code guard removed; skip File carries `ClassifyLines`; the corpus
       equivalence gate engages on code files and is green.
 
+## Closing the set: MDS066
+
+The five batch plans landed every rule's nil-AST path. But one rule still
+forced the parse under parity: MDS066 commands-show-output. The walk audit
+marks it `B-prose-only`, because it lints the fenced-code *body* (a block of
+`$ ` prompts) rather than ignoring it. The static category withholds Layer 0
+from any code-content-sensitive rule. So `IsLayer0(MDS066)` stayed false and
+the all-or-nothing gate kept parsing.
+
+MDS066 is nonetheless parse-skip-safe: its `CheckBlock` reads the
+`BlockFencedCode` span's body straight from `f.Lines`, which the Layer 0
+scan delimits exactly as goldmark does. A corpus sweep confirmed its
+nil-AST output is byte-identical to the AST output on all 1054 files (it
+fires on one). MDS066 is the only `B-prose-only` rule parity enables —
+MDS041, MDS050, MDS052 are all disabled by the convention — so it was the
+lone blocker.
+
+The fix is a `blockSkipSafe` override in `rulelayer`, parallel to
+`knownNilASTSafe`. It promotes a nil-AST-safe, block-scan-backed rule to
+Layer 0 from `B-prose-only`. A contract test pins that every entry has
+`nil_ast_safe: true`. The corpus equivalence gate now exercises MDS066 on
+the parse-skipped path.
+
 ## Acceptance Criteria
 
-- [ ] Every AST-forcing parity rule resolves to Layer 0 / Layer 1.
-- [ ] `TestLayer0Gate_CorpusDiagnosticsEquivalence` green with the full
+- [x] Every AST-forcing parity rule resolves to Layer 0 / Layer 1.
+- [x] `TestLayer0Gate_CorpusDiagnosticsEquivalence` green with the full
       parity set enabled.
-- [ ] `mdsmith check -c parity` skips the parse on benchmark 2.
-- [ ] All tests pass: `go test ./...`.
+- [x] `mdsmith check -c parity` skips the parse on benchmark 2
+      (`TestParityConvention_SkipsParse` and
+      `TestParityConvention_AllEnabledRulesSkipSafe`).
+- [x] All tests pass: `go test ./...`.

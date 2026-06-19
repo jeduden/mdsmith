@@ -82,12 +82,38 @@ var knownNilASTSafe = map[string]bool{
 	"MDS069": true, // unique-frontmatter: reads f.FrontMatter + RunCache, never f.AST
 }
 
+// blockSkipSafe lists rules the audit marks "B-prose-only" — nil-AST-safe but
+// code-content-sensitive, so the static category withholds Layer 0 — that are
+// nonetheless safe to skip the parse for, because the only code-content they
+// read is reproduced by the Layer 0 block scan plus f.Lines. The audit's
+// code-perturbation probe measures whether a rule's diagnostics move when
+// code-block bytes change; a rule that lints code-block *bodies* (as opposed
+// to ignoring them) is sensitive by construction and lands in B-prose-only,
+// even when its rule.BlockChecker nil-AST path produces byte-identical output.
+//
+// MDS066 (commands-show-output) is the canonical entry: it flags a fenced
+// block whose every body line is a "$ " prompt. Its CheckBlock reads the
+// BlockFencedCode span's body lines straight from f.Lines, which the Layer 0
+// scan delimits exactly as goldmark does — confirmed byte-identical across the
+// full corpus and gated by TestLayer0Gate_CorpusDiagnosticsEquivalence. It was
+// the lone parity-enabled rule still forcing the AST; promoting it lets
+// `mdsmith check -c parity` skip the parse.
+//
+// Adding a rule here is a manual commitment that (1) its Check is nil-AST-safe
+// (enforced by rulelayer_test.go against the manifest's nil_ast_safe signal)
+// and (2) its nil-AST output matches the AST output across the corpus
+// equivalence gate.
+var blockSkipSafe = map[string]bool{
+	"MDS066": true, // commands-show-output: CheckBlock reads the fenced-code body from f.Lines
+}
+
 // buildLayerMap decodes the embedded manifest into the id→layer table.
 // "A-no-skipping" rules are Layer 0 unless they appear in
-// astProjectionConsumers (which need an AST-only inline projection); every
-// other category needs the AST. A decode failure is a build-time contract
-// violation (the embedded JSON is checked in), so it panics rather than
-// silently degrading.
+// astProjectionConsumers (which need an AST-only inline projection); a rule in
+// knownNilASTSafe or blockSkipSafe is promoted to Layer 0 from another
+// category; every other category needs the AST. A decode failure is a
+// build-time contract violation (the embedded JSON is checked in), so it
+// panics rather than silently degrading.
 func buildLayerMap() map[string]Layer {
 	return buildLayerMapFrom(auditJSON)
 }
@@ -105,7 +131,7 @@ func buildLayerMapFrom(manifest []byte) map[string]Layer {
 	m := make(map[string]Layer, len(entries))
 	for _, e := range entries {
 		if !astProjectionConsumers[e.ID] &&
-			(knownNilASTSafe[e.ID] || e.Category == "A-no-skipping") {
+			(knownNilASTSafe[e.ID] || blockSkipSafe[e.ID] || e.Category == "A-no-skipping") {
 			m[e.ID] = Layer0
 		} else {
 			m[e.ID] = LayerAST
