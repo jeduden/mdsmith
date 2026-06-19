@@ -1,7 +1,7 @@
 ---
 id: 2606171401
 title: "Parity parse-skip: migrate the Layer-0 heading and front-matter rules"
-status: "🔲"
+status: "✅"
 summary: >-
   Add a nil-AST path to the parity rules that read only a heading's
   line or the front matter — MDS003 heading-increment, MDS004
@@ -53,11 +53,21 @@ why the plan now depends on 2606171400.
 flat line classifier — "reading only `f.Lines` and the classifier-backed
 projections", not `Layer0(f).BlockSpans`. A heading rule that reads
 heading *levels* from block spans therefore does not fit the contract as
-written. Resolve this before coding, one of two ways. Option one widens
-the `rule.LineCapable` doc to admit the block-span projection. Option two
-adds a config-aware *block* eligibility to the gate, gating a
-`BlockChecker`'s skip on `len(Placeholders) == 0` so these rules stay
-`BlockChecker`s like MDS002 (cleaner; prefer it).
+written.
+
+**Resolution.** MDS003 and MDS004 take the `LineCapable` path. Each adds
+`LineCapable() bool { return len(r.Placeholders) == 0 }` and a `checkNilAST`
+that walks `lint.Layer0(f).BlockSpans`. Levels come from a leading-`#` run
+or the setext underline. They stay plain `Check` rules that dispatch on
+`f.AST == nil`, not `BlockChecker`s. The config-dependent gate
+(`ruleConfiguredLineCapable`, plan 2606171400) admits them only with empty
+placeholders.
+
+A placeholder-config bad fixture keeps the walk audit from marking these
+two statically Layer 0. The nil-AST probe returns nil for the placeholder
+case, so the audit lands them `hybrid`. That is the `nilDiverged` outcome.
+It is equivalent to `ast-required` for the gate, since both map to
+`LayerAST`.
 
 MDS051 single-h1 is opt-in. It reads only level-1 heading counts plus a
 front-matter title — no placeholder branch — so it is unconditionally
@@ -114,13 +124,26 @@ For each rule:
 
 ## Acceptance Criteria
 
-- [ ] The nested-heading blocker is resolved: a heading inside a list or
-      blockquote yields identical diagnostics on the parse-skip and
-      full-parse paths (scanner extension or gate exclusion).
-- [ ] MDS003, MDS004 skip the parse under parity (empty placeholders) and
-      force it otherwise, byte-identical both ways; MDS051 via the static
-      `BlockChecker` path.
-- [ ] MDS069's nil-AST safety is resolved (audit probe or classification).
-- [ ] `TestLayer0Gate_LineCapableCorpusEquivalence`-style guard green
-      with these rules on.
-- [ ] `go test ./...` passes.
+- [x] The nested-heading blocker is resolved: the gate already excludes
+      container-nested headings (`SourceMayHaveBlockQuote` /
+      `SourceMayHaveList` in `layer0SkipEligible`), so a heading inside a
+      list or blockquote never reaches the nil-AST path and the parse-skip
+      and full-parse paths agree.
+- [x] MDS003, MDS004 skip the parse under parity (empty placeholders) and
+      force it otherwise, byte-identical both ways. Each adds
+      `LineCapable() bool { return len(r.Placeholders) == 0 }` plus a
+      `checkNilAST` path; a placeholder-config bad fixture makes the walk
+      audit classify them `hybrid` (config-dependent), so skip eligibility
+      flows through the `LineCapable` gate, not the static Layer-0 set.
+      MDS051 adds a `checkNilAST` path reading h1 levels and the
+      front-matter title; the audit classifies it `A-no-skipping` (Layer 0)
+      with no config gate.
+- [x] MDS069's nil-AST safety is resolved: a `knownNilASTSafe` override in
+      `rulelayer` force-classifies it Layer 0 (its probe cannot fire), gated
+      by a test that every override entry has `reads_file_ast: false`, plus
+      a `TestCheck_WithNilAST` proving identical diagnostics with a nil AST.
+- [x] The `TestLayer0Gate_*` equivalence guards stay green with these rules
+      on.
+- [x] `go test ./...` passes (the only failures are the pre-existing
+      `internal/release` PGO tests, which create signed git commits the
+      sandbox signing server rejects — unrelated to this change).

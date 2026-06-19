@@ -9,6 +9,52 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestCheck_NilASTMatchesAST pins the Layer-0 migration: with empty
+// placeholders Check on a nil-AST File (the parse-skip path, walking the
+// Layer 0 block scan) must produce byte-identical diagnostics to the AST
+// path across heading-level sequences, setext headings, missing first-h1,
+// and the empty file.
+func TestCheck_NilASTMatchesAST(t *testing.T) {
+	srcs := [][]byte{
+		[]byte("# H1\n\n## H2\n\n### H3\n"),
+		[]byte("# Title\n\n### Subsection\n"),
+		[]byte("## Starts at two\n\nText\n"),
+		[]byte("# A\n\nSub\n---\n\n#### Deep\n"),
+		[]byte("Setext one\n==========\n\nSetext two\n----------\n\n### Three\n"),
+		[]byte("intro\n\nSetext\n------\n"),
+		[]byte(""),
+		[]byte("# A\n\n## B\n\n#### D\n\n## E\n"),
+		[]byte("###### Six first\n"),
+		// Indented ATX/setext headings (1–3 spaces): both paths must agree.
+		[]byte("   # Indented one\n\n  ### Jump three\n"),
+		[]byte("Title\n=====\n\n  Sub\n  ---\n"),
+	}
+	for _, src := range srcs {
+		astFile, err := lint.NewFile("f.md", src)
+		require.NoError(t, err)
+		astDiags := (&Rule{}).Check(astFile)
+		l0Diags := (&Rule{}).Check(lint.NewFileLines("f.md", src))
+		assert.Equal(t, astDiags, l0Diags,
+			"nil-AST must match AST for src=%q", string(src))
+	}
+}
+
+// TestLineCapable reports the rule is line-capable only with no
+// placeholder tokens configured.
+func TestLineCapable(t *testing.T) {
+	assert.True(t, (&Rule{}).LineCapable())
+	assert.False(t, (&Rule{Placeholders: []string{"TODO"}}).LineCapable())
+}
+
+// TestCheck_NilASTWithPlaceholdersReturnsNil pins the defensive branch:
+// with placeholders configured the gate never sends a nil-AST File, but
+// Check must not dereference a nil AST if it ever does.
+func TestCheck_NilASTWithPlaceholdersReturnsNil(t *testing.T) {
+	src := []byte("# Title\n\n### Subsection\n")
+	r := &Rule{Placeholders: []string{"TODO"}}
+	assert.Nil(t, r.Check(lint.NewFileLines("f.md", src)))
+}
+
 func TestCheck_ProperIncrement_NoViolation(t *testing.T) {
 	src := []byte("# H1\n\n## H2\n\n### H3\n")
 	f, err := lint.NewFile("test.md", src)

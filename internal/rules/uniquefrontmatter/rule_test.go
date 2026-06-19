@@ -65,6 +65,33 @@ func TestDuplicateFlagsLaterPathOnly(t *testing.T) {
 		d.Message)
 }
 
+// TestCheck_WithNilAST proves MDS069 never reads f.AST: nilling the AST on
+// the flagged file produces the same diagnostic as the normal path. The
+// rule builds its cross-file index from front matter and the workspace FS
+// via the RunCache, both independent of the parse, so it is nil-AST-safe
+// and belongs in rulelayer's knownNilASTSafe override.
+func TestCheck_WithNilAST(t *testing.T) {
+	fsys := planFS()
+
+	normal := file(t, "plan/b.md", fsys)
+	withAST := r2Check(t, normal)
+
+	nilFile := file(t, "plan/b.md", fsys)
+	nilFile.AST = nil
+	withNil := r2Check(t, nilFile)
+
+	assert.Equal(t, withAST, withNil, "nil-AST must match AST path")
+	require.Len(t, withNil, 1)
+	assert.Equal(t, "MDS069", withNil[0].RuleID)
+}
+
+// r2Check runs a freshly configured rule against f so each call starts from
+// a cold per-File memo, matching how the engine drives the rule per file.
+func r2Check(t *testing.T, f *lint.File) []lint.Diagnostic {
+	t.Helper()
+	return planRule().Check(f)
+}
+
 func TestDistinctValuesPass(t *testing.T) {
 	fsys := planFS()
 	r := planRule()

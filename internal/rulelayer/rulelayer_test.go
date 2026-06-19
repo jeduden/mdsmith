@@ -1,6 +1,7 @@
 package rulelayer
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -100,6 +101,47 @@ func TestAstProjectionConsumersAreNotLayer0(t *testing.T) {
 	}
 }
 
+// TestKnownNilASTSafeAreLayer0 confirms every rule in the manual
+// knownNilASTSafe override resolves to Layer 0 even though its audit
+// category is not A-no-skipping. MDS069 (unique-frontmatter) is the
+// canonical entry: a cross-file rule the bad-fixture probe cannot fire, so
+// the audit leaves it inconclusive-not-fired, but it never reads f.AST.
+func TestKnownNilASTSafeAreLayer0(t *testing.T) {
+	for id := range knownNilASTSafe {
+		assert.True(t, IsLayer0(id), "%s is in knownNilASTSafe; must be Layer 0", id)
+		assert.Equal(t, Layer0, Of(id))
+	}
+	assert.True(t, knownNilASTSafe["MDS069"], "MDS069 must be in the override set")
+}
+
+// TestKnownNilASTSafeOnlyListsNonASTReaders guards the override's manual
+// commitment: a rule may only be force-classified Layer 0 here when its
+// audit manifest entry reports reads_file_ast: false. A rule that grows an
+// f.AST read trips its static signal and this test fails until the override
+// is reconsidered.
+func TestKnownNilASTSafeOnlyListsNonASTReaders(t *testing.T) {
+	oracle, err := os.ReadFile(filepath.Join(
+		"..", "integration", "testdata", "rule_walk_audit.json"))
+	require.NoError(t, err)
+
+	var entries []struct {
+		ID           string `json:"id"`
+		ReadsFileAST bool   `json:"reads_file_ast"`
+	}
+	require.NoError(t, json.Unmarshal(oracle, &entries))
+
+	readsAST := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		readsAST[e.ID] = e.ReadsFileAST
+	}
+	for id := range knownNilASTSafe {
+		_, present := readsAST[id]
+		assert.True(t, present, "%s in knownNilASTSafe must appear in the audit manifest", id)
+		assert.False(t, readsAST[id],
+			"%s in knownNilASTSafe must have reads_file_ast: false", id)
+	}
+}
+
 func TestUnknownRuleIsNotLayer0(t *testing.T) {
 	assert.False(t, IsLayer0("MDS999"))
 	assert.Equal(t, LayerUnknown, Of("MDS999"))
@@ -114,10 +156,9 @@ func TestBuildLayerMapFromPanicsOnMalformedManifest(t *testing.T) {
 	})
 }
 
-// TestBuildLayerMapFromClassifies confirms both arms of the category
-// switch: an "A-no-skipping" rule maps to Layer0 and any other category
-// maps to LayerAST. The astProjectionConsumers override is empty today, so
-// the only way to reach LayerAST is a non-"A-no-skipping" category.
+// TestBuildLayerMapFromClassifies confirms the standard category arms of
+// buildLayerMapFrom: an "A-no-skipping" rule maps to Layer0 and any other
+// category maps to LayerAST (absent a knownNilASTSafe override).
 func TestBuildLayerMapFromClassifies(t *testing.T) {
 	m := buildLayerMapFrom([]byte(`[
 		{"id":"MDS900","category":"A-no-skipping"},
@@ -125,6 +166,19 @@ func TestBuildLayerMapFromClassifies(t *testing.T) {
 	]`))
 	assert.Equal(t, Layer0, m["MDS900"])
 	assert.Equal(t, LayerAST, m["MDS901"])
+}
+
+// TestBuildLayerMapFromKnownNilASTSafePromotesToLayer0 exercises the
+// knownNilASTSafe branch of buildLayerMapFrom directly with a synthetic
+// entry, independently of the live layerByID table. A non-A-no-skipping
+// rule listed in knownNilASTSafe must resolve to Layer0.
+func TestBuildLayerMapFromKnownNilASTSafePromotesToLayer0(t *testing.T) {
+	knownNilASTSafe["MDS904"] = true
+	t.Cleanup(func() { delete(knownNilASTSafe, "MDS904") })
+	m := buildLayerMapFrom([]byte(`[
+		{"id":"MDS904","category":"inconclusive-not-fired"}
+	]`))
+	assert.Equal(t, Layer0, m["MDS904"], "knownNilASTSafe promotes non-A-no-skipping rule to Layer0")
 }
 
 // TestAstProjectionConsumerOverrideForcesAST pins the override arm of the
@@ -140,4 +194,21 @@ func TestAstProjectionConsumerOverrideForcesAST(t *testing.T) {
 		{"id":"MDS902","category":"A-no-skipping"}
 	]`))
 	assert.Equal(t, LayerAST, m["MDS902"], "override forces an A-no-skipping rule to AST")
+}
+
+// TestAstProjectionConsumerOverridesKnownNilASTSafe pins that astProjectionConsumers
+// wins over knownNilASTSafe: a rule in both must still resolve to LayerAST because
+// it reads a projection the nil-AST path does not back, regardless of whether its
+// Check never directly dereferences f.AST.
+func TestAstProjectionConsumerOverridesKnownNilASTSafe(t *testing.T) {
+	astProjectionConsumers["MDS903"] = true
+	knownNilASTSafe["MDS903"] = true
+	t.Cleanup(func() {
+		delete(astProjectionConsumers, "MDS903")
+		delete(knownNilASTSafe, "MDS903")
+	})
+	m := buildLayerMapFrom([]byte(`[
+		{"id":"MDS903","category":"inconclusive-not-fired"}
+	]`))
+	assert.Equal(t, LayerAST, m["MDS903"], "astProjectionConsumers must override knownNilASTSafe")
 }

@@ -24,6 +24,48 @@ func newFileStrip(t *testing.T, src string) *lint.File {
 	return f
 }
 
+// TestCheck_NilASTMatchesAST pins the Layer-0 migration: Check on a
+// nil-AST File (the parse-skip path, walking the Layer 0 block scan) must
+// produce byte-identical diagnostics to the AST path — single h1, two h1s,
+// setext h1s, a front-matter title plus an h1, and no h1.
+func TestCheck_NilASTMatchesAST(t *testing.T) {
+	srcs := []string{
+		"# Title\n\n## Section\n\n### Sub\n",
+		"# First\n\n## Section\n\n# Second\n",
+		"# First\n\n# Second\n\n# Third\n",
+		"# First\n\nBody one.\n\nSecond\n======\n\nBody two.\n",
+		"  Indented\n  ========\n\n  Second\n  ======\n",
+		"## Section\n\n### Sub\n",
+		"   # Indented one\n\n  # Indented two\n",
+		"---\ntitle: Foo\n---\n\n# Title\n",
+		"---\ntitle: Foo\n---\n\n# Title\n\n# Second\n",
+		"Just text.\n",
+	}
+	for _, src := range srcs {
+		astFile := newFile(t, src)
+		astDiags := (&Rule{FrontMatterTitle: "title"}).Check(astFile)
+		l0Diags := (&Rule{FrontMatterTitle: "title"}).Check(lint.NewFileLines("test.md", []byte(src)))
+		assert.Equal(t, astDiags, l0Diags, "nil-AST must match AST for src=%q", src)
+	}
+}
+
+// TestCheck_NilASTGeneratedRangeExcluded pins that the nil-AST path honours
+// generated-section ranges the same way collectH1s does: an h1 inside a
+// generated range is not counted, so a single authored h1 plus a generated
+// h1 raises no diagnostic.
+func TestCheck_NilASTGeneratedRangeExcluded(t *testing.T) {
+	src := "# Authored\n\n# Generated\n"
+	astFile := newFile(t, src)
+	astFile.GeneratedRanges = []lint.LineRange{{From: 3, To: 3}}
+	l0File := lint.NewFileLines("test.md", []byte(src))
+	l0File.GeneratedRanges = []lint.LineRange{{From: 3, To: 3}}
+
+	astDiags := (&Rule{FrontMatterTitle: "title"}).Check(astFile)
+	l0Diags := (&Rule{FrontMatterTitle: "title"}).Check(l0File)
+	assert.Equal(t, astDiags, l0Diags)
+	assert.Empty(t, l0Diags, "generated h1 must not count")
+}
+
 // --- Check tests ---
 
 func TestCheck_OneH1_NoViolation(t *testing.T) {
@@ -433,6 +475,16 @@ func TestCheck_EmptyH1_UnknownOffset_ConservativelyKept(t *testing.T) {
 	// the second should be flagged.
 	require.Len(t, diags, 1)
 	assert.Equal(t, "extra H1 heading; only one H1 is allowed per file", diags[0].Message)
+}
+
+// TestFix_NilAST_ReturnsSource verifies Fix returns the original source unchanged
+// when called on a nil-AST file (the parse-skip path). Fix cannot demote headings
+// without AST node positions, so it is a no-op on the nil-AST path.
+func TestFix_NilAST_ReturnsSource(t *testing.T) {
+	src := "# First\n\n# Second\n"
+	f := lint.NewFileLines("test.md", []byte(src))
+	got := (&Rule{}).Fix(f)
+	assert.Equal(t, src, string(got))
 }
 
 // TestFix_InnerAppendAllocBudget verifies Fix does not allocate a temporary

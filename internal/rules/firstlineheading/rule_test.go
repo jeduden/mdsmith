@@ -11,6 +11,52 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestCheck_NilASTMatchesAST pins the Layer-0 migration: with empty
+// placeholders Check on a nil-AST File (the parse-skip path, reading the
+// Layer 0 block scan) must produce byte-identical diagnostics to the AST
+// path — correct first heading, wrong level, non-heading first, blank
+// first line, and the empty file.
+func TestCheck_NilASTMatchesAST(t *testing.T) {
+	srcs := [][]byte{
+		[]byte("# Title\n\nSome text\n"),
+		[]byte("## Wrong level\n\nText\n"),
+		[]byte("Some content here.\n\n# Title\n"),
+		[]byte("\n# Title\n"),
+		[]byte(""),
+		[]byte("   \n\n   \n"),
+		[]byte("Setext\n======\n\nText\n"),
+		[]byte("Setext two\n----------\n\nText\n"),
+		[]byte("   # Indented one\n\nText\n"),
+		[]byte("  Indented setext\n  ===============\n"),
+	}
+	// Level 0 exercises the default-to-1 path on both AST and nil-AST.
+	for _, level := range []int{0, 1, 2} {
+		for _, src := range srcs {
+			astFile, err := lint.NewFile("f.md", src)
+			require.NoError(t, err)
+			astDiags := (&Rule{Level: level}).Check(astFile)
+			l0Diags := (&Rule{Level: level}).Check(lint.NewFileLines("f.md", src))
+			assert.Equal(t, astDiags, l0Diags,
+				"nil-AST must match AST for level=%d src=%q", level, string(src))
+		}
+	}
+}
+
+// TestLineCapable reports the rule is line-capable only with no
+// placeholder tokens configured.
+func TestLineCapable(t *testing.T) {
+	assert.True(t, (&Rule{Level: 1}).LineCapable())
+	assert.False(t, (&Rule{Level: 1, Placeholders: []string{"var-token"}}).LineCapable())
+}
+
+// TestCheck_NilASTWithPlaceholdersReturnsNil pins the defensive branch:
+// with placeholders configured Check must not dereference a nil AST.
+func TestCheck_NilASTWithPlaceholdersReturnsNil(t *testing.T) {
+	src := []byte("## Wrong level\n\nText\n")
+	r := &Rule{Level: 1, Placeholders: []string{"var-token"}}
+	assert.Nil(t, r.Check(lint.NewFileLines("f.md", src)))
+}
+
 func TestCheck_FirstLineH1_NoViolation(t *testing.T) {
 	src := []byte("# Title\n\nSome text\n")
 	f, err := lint.NewFile("test.md", src)
