@@ -154,7 +154,7 @@ func (r *Rule) checkFromLayers(f *lint.File) []lint.Diagnostic {
 // on it, exactly as the AST branch does. It also returns that anchor offset so
 // the caller can order block and inline HTML findings by document position.
 func (r *Rule) checkHTMLBlockSpan(
-	f *lint.File, allowed map[string]bool, span lint.BlockSpan,
+	f *lint.File, allowed map[string]struct{}, span lint.BlockSpan,
 ) (lint.Diagnostic, int, bool) {
 	raw := f.Lines[span.Start-1]
 	offset := f.LineStartOffset(span.Start - 1)
