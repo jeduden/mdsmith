@@ -1,0 +1,493 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "mdsmith-security-review",
+          "informationUri": "https://github.com/jeduden/mdsmith",
+          "rules": [
+            {
+              "id": "S001",
+              "name": "lsp",
+              "shortDescription": {
+                "text": "LSP: initialize/didOpen/didChangeWatchedFiles are diagnostics-only — no file writes or recipe execution"
+              },
+              "fullDescription": {
+                "text": "handleInitialize (server_lifecycle.go:14) stores rootDir and capabilities only. handleInitialized (server_lifecycle.go:77) calls reloadConfig() (reads config, never writes) and optionally fetches client settings on a goroutine. handleDidOpen (server_documents.go:16) stores the document and schedules a lint pass. handleDidChangeWatchedFiles (server_documents.go:129) reloads config or invalidates caches. None writes files or executes recipes. The 2026-06-12 audit confirmed exec.Command paths are CLI-only. Fix-on-save calls sess.Fix in-process and returns WorkspaceEdit; the client applies the edit."
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "security-severity": "0.0",
+                "tags": [
+                  "security"
+                ]
+              }
+            },
+            {
+              "id": "S002",
+              "name": "lsp",
+              "shortDescription": {
+                "text": "LSP: fix-on-save (source.fixAll.mdsmith) returns WorkspaceEdit for open document only — no writes outside the buffer, no recipe execution"
+              },
+              "fullDescription": {
+                "text": "appendFixAllAction (server_codeaction.go:183) calls sess.Fix(relPath, doc.text) and wraps the result in a WorkspaceEdit covering only the URI of the open document. workspace/executeCommand is absent from the dispatch table (server.go:548-559); unknown methods return method-not-found per LSP spec. There is no server-side file write — the client applies the WorkspaceEdit. The prior audit (S004) confirmed sess.Fix does not import internal/build, so no recipe execution occurs. quickFixBytesFor (server_codeaction.go:232) similarly calls sess.FixRule for per-rule fixes."
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "security-severity": "0.0",
+                "tags": [
+                  "security"
+                ]
+              }
+            },
+            {
+              "id": "S003",
+              "name": "lsp",
+              "shortDescription": {
+                "text": "LSP: per-document panic is contained — does not crash the server"
+              },
+              "fullDescription": {
+                "text": "Three layers of panic containment: (1) dispatchRaw (server.go:343) defers recover() per JSON-RPC frame — a panic in any handler is caught, logged via window/logMessage, and an InternalError response settles the client's pending call; the dispatch loop continues. (2) runLint (server_diagnostics.go:245) defers recoverPanic('lint '+uri) — a rule panic on attacker-controlled content leaves the server running and publishes no diagnostics for that document. (3) fetchClientSettings (server.go:798) defers recoverPanic('fetch client settings'). All three are exercised by tests in panic_recovery_test.go (TestRunLintPanicIsRecovered, TestDispatchRawPanicAllowsNextRequest, TestFetchClientSettingsPanicIsRecovered)."
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "security-severity": "0.0",
+                "tags": [
+                  "security"
+                ]
+              }
+            },
+            {
+              "id": "S004",
+              "name": "vscode",
+              "shortDescription": {
+                "text": "VS Code extension: Workspace Trust baseline holds — untrustedWorkspaces:limited, mdsmith.path/config restricted, all mutating commands gated"
+              },
+              "fullDescription": {
+                "text": "package.json declares capabilities.untrustedWorkspaces.supported='limited' with restrictedConfigurations=['mdsmith.path','mdsmith.config'] (package.json:63-70). All three mutating commands gate on isTrusted() at handler entry (fix-workspace.ts:62, init.ts:23, merge-driver.ts:26) in addition to the package.json commandPalette 'when: isWorkspaceTrusted' conditions (package.json:113-122). Since mdsmith.path is restricted, a workspace-supplied .vscode/settings.json cannot redirect the binary in restricted mode — VS Code returns the default value. The binary resolution in wiring.ts:487-489 reads the setting at server start, but gets the default 'mdsmith' (bundled binary) for untrusted workspaces."
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "security-severity": "0.0",
+                "tags": [
+                  "security"
+                ]
+              }
+            },
+            {
+              "id": "S005",
+              "name": "vscode",
+              "shortDescription": {
+                "text": "VS Code extension: spawn uses argv array, no shell interpolation"
+              },
+              "fullDescription": {
+                "text": "defaultSpawn (runner.ts:21) calls nodeSpawn(binary, args, {cwd, stdio: ['ignore','pipe','pipe']}) with no shell option — it defaults to false. All binary invocations across fix-workspace.ts, init.ts, merge-driver.ts, kinds.ts, virtual-doc.ts, and rule-doc.ts pass a fixed string[] args array with -- separating options from file paths (kinds commands) or rule IDs validated against /^MDS\\d+$/i (rule-doc). No shell interpolation, no exec() variant used."
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "security-severity": "0.0",
+                "tags": [
+                  "security"
+                ]
+              }
+            },
+            {
+              "id": "S006",
+              "name": "vscode",
+              "shortDescription": {
+                "text": "VS Code extension: mdsmith.kinds.resolve and mdsmith.kinds.why run in untrusted workspaces without a trust gate"
+              },
+              "fullDescription": {
+                "text": "The commandPalette 'when' conditions for mdsmith.kinds.resolve and mdsmith.kinds.why omit isWorkspaceTrusted (package.json:125-130). When invoked in an untrusted workspace, wiring.ts:829/838 calls runKindsResolve/runKindsWhy with no isTrusted() guard, spawning 'mdsmith kinds resolve/why --json -- file' (virtual-doc.ts:72). The binary is the bundled binary (mdsmith.path is restricted to default). The subcommands are read-only: they output JSON and exit; no files are written, no recipes are executed. The binary reads .mdsmith.yml to derive kind assignments, so a hostile config can inject attacker-controlled text into the virtual document pane but cannot execute code."
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "security-severity": "3.0",
+                "tags": [
+                  "security",
+                  "CWE-284"
+                ]
+              }
+            },
+            {
+              "id": "S007",
+              "name": "vscode",
+              "shortDescription": {
+                "text": "VS Code extension: mdsmith-rule: virtual document content provider runs without trust gate"
+              },
+              "fullDescription": {
+                "text": "The mdsmith-rule: TextDocumentContentProvider (wiring.ts:906-910) runs 'mdsmith help rule <id>' to render an embedded rule README. It has no trust gate. The id is validated against /^MDS\\d+$/i (rule-doc.ts:35) before being passed as a CLI argument, so arbitrary arg injection is prevented. The binary is the bundled binary (mdsmith.path restricted). 'mdsmith help rule' reads READMEs embedded in the binary and makes no network call, no file writes. The `OPEN_RULE_DOC_COMMAND` constant is triggered by rewritten hover links in MarkdownString blocks with isTrusted set only to `{enabledCommands: ['OPEN_RULE_DOC_COMMAND']}` (rule-doc.ts:115), preventing other commands from being injected. Risk is minimal but the pattern is inconsistent with the trust model."
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "security-severity": "3.0",
+                "tags": [
+                  "security",
+                  "CWE-284"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "S001",
+          "ruleIndex": 0,
+          "level": "note",
+          "message": {
+            "text": "LSP: initialize/didOpen/didChangeWatchedFiles are diagnostics-only — no file writes or recipe execution"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/lsp/server_lifecycle.go"
+                },
+                "region": {
+                  "startLine": 14,
+                  "endLine": 104
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/lsp/server_documents.go"
+                },
+                "region": {
+                  "startLine": 16,
+                  "endLine": 16
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/lsp/server_documents.go"
+                },
+                "region": {
+                  "startLine": 129,
+                  "endLine": 129
+                }
+              }
+            }
+          ],
+          "properties": {
+            "confidence": "confirmed",
+            "severity": "info"
+          }
+        },
+        {
+          "ruleId": "S002",
+          "ruleIndex": 1,
+          "level": "note",
+          "message": {
+            "text": "LSP: fix-on-save (source.fixAll.mdsmith) returns WorkspaceEdit for open document only — no writes outside the buffer, no recipe execution"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/lsp/server_codeaction.go"
+                },
+                "region": {
+                  "startLine": 183,
+                  "endLine": 215
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/lsp/server.go"
+                },
+                "region": {
+                  "startLine": 548,
+                  "endLine": 548
+                }
+              }
+            }
+          ],
+          "properties": {
+            "confidence": "confirmed",
+            "severity": "info"
+          }
+        },
+        {
+          "ruleId": "S003",
+          "ruleIndex": 2,
+          "level": "note",
+          "message": {
+            "text": "LSP: per-document panic is contained — does not crash the server"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/lsp/server.go"
+                },
+                "region": {
+                  "startLine": 343,
+                  "endLine": 358
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/lsp/server_diagnostics.go"
+                },
+                "region": {
+                  "startLine": 245,
+                  "endLine": 245
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/lsp/server.go"
+                },
+                "region": {
+                  "startLine": 798,
+                  "endLine": 798
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/lsp/panic_recovery_test.go"
+                },
+                "region": {
+                  "startLine": 23,
+                  "endLine": 23
+                }
+              }
+            }
+          ],
+          "properties": {
+            "confidence": "confirmed",
+            "severity": "info"
+          }
+        },
+        {
+          "ruleId": "S004",
+          "ruleIndex": 3,
+          "level": "note",
+          "message": {
+            "text": "VS Code extension: Workspace Trust baseline holds — untrustedWorkspaces:limited, mdsmith.path/config restricted, all mutating commands gated"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "editors/vscode/package.json"
+                },
+                "region": {
+                  "startLine": 63,
+                  "endLine": 70
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "editors/vscode/src/commands/fix-workspace.ts"
+                },
+                "region": {
+                  "startLine": 62,
+                  "endLine": 62
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "editors/vscode/src/commands/init.ts"
+                },
+                "region": {
+                  "startLine": 23,
+                  "endLine": 23
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "editors/vscode/src/commands/merge-driver.ts"
+                },
+                "region": {
+                  "startLine": 26,
+                  "endLine": 26
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "editors/vscode/package.json"
+                },
+                "region": {
+                  "startLine": 113,
+                  "endLine": 113
+                }
+              }
+            }
+          ],
+          "properties": {
+            "confidence": "confirmed",
+            "severity": "info"
+          }
+        },
+        {
+          "ruleId": "S005",
+          "ruleIndex": 4,
+          "level": "note",
+          "message": {
+            "text": "VS Code extension: spawn uses argv array, no shell interpolation"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "editors/vscode/src/commands/runner.ts"
+                },
+                "region": {
+                  "startLine": 21,
+                  "endLine": 35
+                }
+              }
+            }
+          ],
+          "properties": {
+            "confidence": "confirmed",
+            "severity": "info"
+          }
+        },
+        {
+          "ruleId": "S006",
+          "ruleIndex": 5,
+          "level": "note",
+          "message": {
+            "text": "VS Code extension: mdsmith.kinds.resolve and mdsmith.kinds.why run in untrusted workspaces without a trust gate"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "editors/vscode/package.json"
+                },
+                "region": {
+                  "startLine": 125,
+                  "endLine": 130
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "editors/vscode/src/wiring.ts"
+                },
+                "region": {
+                  "startLine": 829,
+                  "endLine": 829
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "editors/vscode/src/wiring.ts"
+                },
+                "region": {
+                  "startLine": 838,
+                  "endLine": 838
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "editors/vscode/src/commands/virtual-doc.ts"
+                },
+                "region": {
+                  "startLine": 72,
+                  "endLine": 72
+                }
+              }
+            }
+          ],
+          "properties": {
+            "confidence": "confirmed",
+            "severity": "low"
+          }
+        },
+        {
+          "ruleId": "S007",
+          "ruleIndex": 6,
+          "level": "note",
+          "message": {
+            "text": "VS Code extension: mdsmith-rule: virtual document content provider runs without trust gate"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "editors/vscode/src/wiring.ts"
+                },
+                "region": {
+                  "startLine": 906,
+                  "endLine": 910
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "editors/vscode/src/commands/rule-doc.ts"
+                },
+                "region": {
+                  "startLine": 160,
+                  "endLine": 160
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "editors/vscode/src/commands/rule-doc.ts"
+                },
+                "region": {
+                  "startLine": 35,
+                  "endLine": 35
+                }
+              }
+            }
+          ],
+          "properties": {
+            "confidence": "confirmed",
+            "severity": "low"
+          }
+        }
+      ]
+    }
+  ]
+}

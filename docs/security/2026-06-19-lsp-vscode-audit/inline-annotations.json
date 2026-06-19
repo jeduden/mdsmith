@@ -1,0 +1,58 @@
+[
+  {
+    "path": "editors/vscode/package.json",
+    "line": 125,
+    "side": "RIGHT",
+    "severity": "low",
+    "id": "S006",
+    "body": "**[S006 · low] VS Code extension: mdsmith.kinds.resolve and mdsmith.kinds.why run in untrusted workspaces without a trust gate**\n\nThe commandPalette 'when' conditions for mdsmith.kinds.resolve and mdsmith.kinds.why omit isWorkspaceTrusted (package.json:125-130). When invoked in an untrusted workspace, wiring.ts:829/838 calls runKindsResolve/runKindsWhy with no isTrusted() guard, spawning 'mdsmith kinds resolve/why --json -- file' (virtual-doc.ts:72). The binary is the bundled binary (mdsmith.path is restricted to default). The subcommands are read-only: they output JSON and exit; no files are written, no recipes are executed. The binary reads .mdsmith.yml to derive kind assignments, so a hostile config can inject attacker-controlled text into the virtual document pane but cannot execute code.\n\n**Fix:** Add 'isWorkspaceTrusted' to the commandPalette 'when' conditions for mdsmith.kinds.why and mdsmith.kinds.resolve, and add an isTrusted() guard at the top of runKindsResolve/runKindsWhy — matching the pattern used by fix-workspace, init, and merge-driver. These are informational commands so the restriction is minor friction."
+  },
+  {
+    "path": "editors/vscode/src/wiring.ts",
+    "line": 906,
+    "side": "RIGHT",
+    "severity": "low",
+    "id": "S007",
+    "body": "**[S007 · low] VS Code extension: mdsmith-rule: virtual document content provider runs without trust gate**\n\nThe mdsmith-rule: TextDocumentContentProvider (wiring.ts:906-910) runs 'mdsmith help rule <id>' to render an embedded rule README. It has no trust gate. The id is validated against /^MDS\\d+$/i (rule-doc.ts:35) before being passed as a CLI argument, so arbitrary arg injection is prevented. The binary is the bundled binary (mdsmith.path restricted). 'mdsmith help rule' reads READMEs embedded in the binary and makes no network call, no file writes. The `OPEN_RULE_DOC_COMMAND` constant is triggered by rewritten hover links in MarkdownString blocks with isTrusted set only to `{enabledCommands: ['OPEN_RULE_DOC_COMMAND']}` (rule-doc.ts:115), preventing other commands from being injected. Risk is minimal but the pattern is inconsistent with the trust model.\n\n**Fix:** Low priority. If desired, add a trust check before spawning in provideRuleDocContent / fetchRuleDocContent. Alternatively, embed the rule READMEs directly in the extension's JS bundle to eliminate the spawn entirely for this read-only use case."
+  },
+  {
+    "path": "internal/lsp/server_lifecycle.go",
+    "line": 14,
+    "side": "RIGHT",
+    "severity": "info",
+    "id": "S001",
+    "body": "**[S001 · info] LSP: initialize/didOpen/didChangeWatchedFiles are diagnostics-only — no file writes or recipe execution**\n\nhandleInitialize (server_lifecycle.go:14) stores rootDir and capabilities only. handleInitialized (server_lifecycle.go:77) calls reloadConfig() (reads config, never writes) and optionally fetches client settings on a goroutine. handleDidOpen (server_documents.go:16) stores the document and schedules a lint pass. handleDidChangeWatchedFiles (server_documents.go:129) reloads config or invalidates caches. None writes files or executes recipes. The 2026-06-12 audit confirmed exec.Command paths are CLI-only. Fix-on-save calls sess.Fix in-process and returns WorkspaceEdit; the client applies the edit.\n\n**Fix:** No action required. The LSP fix-on-save path (S002 below) deserves a note: it returns WorkspaceEdit only for the open document, not for workspace-wide file writes."
+  },
+  {
+    "path": "internal/lsp/server_codeaction.go",
+    "line": 183,
+    "side": "RIGHT",
+    "severity": "info",
+    "id": "S002",
+    "body": "**[S002 · info] LSP: fix-on-save (source.fixAll.mdsmith) returns WorkspaceEdit for open document only — no writes outside the buffer, no recipe execution**\n\nappendFixAllAction (server_codeaction.go:183) calls sess.Fix(relPath, doc.text) and wraps the result in a WorkspaceEdit covering only the URI of the open document. workspace/executeCommand is absent from the dispatch table (server.go:548-559); unknown methods return method-not-found per LSP spec. There is no server-side file write — the client applies the WorkspaceEdit. The prior audit (S004) confirmed sess.Fix does not import internal/build, so no recipe execution occurs. quickFixBytesFor (server_codeaction.go:232) similarly calls sess.FixRule for per-rule fixes.\n\n**Fix:** No action required."
+  },
+  {
+    "path": "internal/lsp/server.go",
+    "line": 343,
+    "side": "RIGHT",
+    "severity": "info",
+    "id": "S003",
+    "body": "**[S003 · info] LSP: per-document panic is contained — does not crash the server**\n\nThree layers of panic containment: (1) dispatchRaw (server.go:343) defers recover() per JSON-RPC frame — a panic in any handler is caught, logged via window/logMessage, and an InternalError response settles the client's pending call; the dispatch loop continues. (2) runLint (server_diagnostics.go:245) defers recoverPanic('lint '+uri) — a rule panic on attacker-controlled content leaves the server running and publishes no diagnostics for that document. (3) fetchClientSettings (server.go:798) defers recoverPanic('fetch client settings'). All three are exercised by tests in panic_recovery_test.go (TestRunLintPanicIsRecovered, TestDispatchRawPanicAllowsNextRequest, TestFetchClientSettingsPanicIsRecovered).\n\n**Fix:** No action required."
+  },
+  {
+    "path": "editors/vscode/package.json",
+    "line": 63,
+    "side": "RIGHT",
+    "severity": "info",
+    "id": "S004",
+    "body": "**[S004 · info] VS Code extension: Workspace Trust baseline holds — untrustedWorkspaces:limited, mdsmith.path/config restricted, all mutating commands gated**\n\npackage.json declares capabilities.untrustedWorkspaces.supported='limited' with restrictedConfigurations=['mdsmith.path','mdsmith.config'] (package.json:63-70). All three mutating commands gate on isTrusted() at handler entry (fix-workspace.ts:62, init.ts:23, merge-driver.ts:26) in addition to the package.json commandPalette 'when: isWorkspaceTrusted' conditions (package.json:113-122). Since mdsmith.path is restricted, a workspace-supplied .vscode/settings.json cannot redirect the binary in restricted mode — VS Code returns the default value. The binary resolution in wiring.ts:487-489 reads the setting at server start, but gets the default 'mdsmith' (bundled binary) for untrusted workspaces.\n\n**Fix:** No action required."
+  },
+  {
+    "path": "editors/vscode/src/commands/runner.ts",
+    "line": 21,
+    "side": "RIGHT",
+    "severity": "info",
+    "id": "S005",
+    "body": "**[S005 · info] VS Code extension: spawn uses argv array, no shell interpolation**\n\ndefaultSpawn (runner.ts:21) calls nodeSpawn(binary, args, {cwd, stdio: ['ignore','pipe','pipe']}) with no shell option — it defaults to false. All binary invocations across fix-workspace.ts, init.ts, merge-driver.ts, kinds.ts, virtual-doc.ts, and rule-doc.ts pass a fixed string[] args array with -- separating options from file paths (kinds commands) or rule IDs validated against /^MDS\\d+$/i (rule-doc). No shell interpolation, no exec() variant used.\n\n**Fix:** No action required."
+  }
+]
