@@ -137,6 +137,18 @@ func TestRuleFixAlertAndByteRangeFeatureCompose(t *testing.T) {
 		"> Visit <https://example.com> for old details.\n", got)
 }
 
+// TestFixGitHubAlerts_LazyContinuation verifies that fixGitHubAlerts
+// re-adds the "> " prefix to lazy-continuation lines (lines in the
+// first paragraph that lack a blockquote marker in the raw source)
+// after stripping the [!TYPE] marker line. This exercises the addPrefix
+// map in fixGitHubAlerts.
+func TestFixGitHubAlerts_LazyContinuation(t *testing.T) {
+	// The second line is a CommonMark lazy continuation: no "> " prefix.
+	src := "> [!NOTE]\nThis is lazy-continuation body.\n"
+	got := fixWith(t, "commonmark", src)
+	assert.Equal(t, "> This is lazy-continuation body.\n", got)
+}
+
 // TestRuleFixStrikethroughWithNestedInlineSkips guards the robustness
 // of delimiterPairEdits: a wrapper containing nested inline markup
 // (emphasis, link, code span) cannot be safely unwrapped without

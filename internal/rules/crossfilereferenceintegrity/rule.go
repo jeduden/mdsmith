@@ -987,8 +987,8 @@ func resolveWorkspaceRelTarget(sourcePath, linkPath string) (string, bool) {
 }
 
 func isMarkdownPath(path string) bool {
-	ext := strings.ToLower(filepath.Ext(path))
-	return ext == ".md" || ext == ".markdown"
+	ext := filepath.Ext(path)
+	return strings.EqualFold(ext, ".md") || strings.EqualFold(ext, ".markdown")
 }
 
 func normalizeLinkPath(linkPath string) string {

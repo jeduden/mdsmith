@@ -19,6 +19,22 @@ func newRawHTMLNode() *ast.RawHTML {
 
 // --- extractTag unit tests ---
 
+// TestAllowSet_ContainsLowercasedTags verifies allowSet stores tag names in
+// lowercase and uses struct{} as the zero-byte set value.
+func TestAllowSet_ContainsLowercasedTags(t *testing.T) {
+	r := &Rule{Allow: []string{"DIV", "span"}}
+	m := r.allowSet()
+	if _, ok := m["div"]; !ok {
+		t.Error("allowSet: 'DIV' should be stored as 'div'")
+	}
+	if _, ok := m["span"]; !ok {
+		t.Error("allowSet: 'span' should be present")
+	}
+	if _, ok := m["DIV"]; ok {
+		t.Error("allowSet: original-case 'DIV' should not be present")
+	}
+}
+
 func TestExtractTag_Opening(t *testing.T) {
 	assert.Equal(t, "div", extractTag([]byte("<div>")))
 }

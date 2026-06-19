@@ -119,6 +119,21 @@ func TestApplySettings_AllowUnknown(t *testing.T) {
 	assert.True(t, r.AllowUnknown)
 }
 
+// TestBuildAllowSet_ContainsBuiltInTypes verifies that every built-in
+// type is present and that user-supplied names are stored lowercase.
+func TestBuildAllowSet_ContainsBuiltInTypes(t *testing.T) {
+	r := &Rule{Allow: []string{"CUSTOM"}}
+	allowed := r.buildAllowSet()
+	for want := range builtInTypes {
+		if _, ok := allowed[want]; !ok {
+			t.Errorf("buildAllowSet: missing built-in type %q", want)
+		}
+	}
+	if _, ok := allowed["custom"]; !ok {
+		t.Error("buildAllowSet: user-supplied 'CUSTOM' not stored as 'custom'")
+	}
+}
+
 func TestApplySettings_BadTypes(t *testing.T) {
 	r := &Rule{}
 	err := r.ApplySettings(map[string]any{"allow": "string-not-list"})

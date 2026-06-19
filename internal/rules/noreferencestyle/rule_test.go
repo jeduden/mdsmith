@@ -27,6 +27,19 @@ func TestRuleMetadata(t *testing.T) {
 	assert.False(t, r.EnabledByDefault())
 }
 
+// TestCollectLinkRewrites_UsedLabelsSet verifies that collectLinkRewrites
+// populates the usedLabels set with the normalized reference labels of all
+// reference-style links so that collectDefinitionCuts can remove the
+// corresponding definitions.
+func TestCollectLinkRewrites_UsedLabelsSet(t *testing.T) {
+	src := "[link][ref]\n\n[ref]: https://example.com\n"
+	f := newFile(t, src)
+	_, usedLabels := collectLinkRewrites(f)
+	if _, ok := usedLabels["ref"]; !ok {
+		t.Error("collectLinkRewrites: label 'ref' not in usedLabels set")
+	}
+}
+
 func TestCheck_InlineLink_NoDiagnostic(t *testing.T) {
 	f := newFile(t, "See [example](https://example.com).\n")
 	diags := (&Rule{}).Check(f)
