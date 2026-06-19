@@ -125,10 +125,7 @@ func TestBlockSkipSafeAreNilASTSafe(t *testing.T) {
 		nilSafe[e.ID] = e.NilASTSafe
 	}
 	for id := range blockSkipSafe {
-		present := false
-		if _, ok := nilSafe[id]; ok {
-			present = true
-		}
+		_, present := nilSafe[id]
 		assert.True(t, present, "%s in blockSkipSafe must appear in the audit manifest", id)
 		assert.True(t, nilSafe[id],
 			"%s in blockSkipSafe must have nil_ast_safe: true", id)
@@ -272,4 +269,22 @@ func TestAstProjectionConsumerOverridesKnownNilASTSafe(t *testing.T) {
 		{"id":"MDS903","category":"inconclusive-not-fired"}
 	]`))
 	assert.Equal(t, LayerAST, m["MDS903"], "astProjectionConsumers must override knownNilASTSafe")
+}
+
+// TestAstProjectionConsumerOverridesBlockSkipSafe pins that astProjectionConsumers
+// wins over blockSkipSafe: a rule in both must still resolve to LayerAST because it
+// reads an AST-only projection the Layer 0 block scan does not back, regardless of
+// the block-skip override. This guards the soundness escape hatch — buildLayerMapFrom
+// gates the whole Layer 0 promotion behind !astProjectionConsumers[e.ID].
+func TestAstProjectionConsumerOverridesBlockSkipSafe(t *testing.T) {
+	astProjectionConsumers["MDS904"] = true
+	blockSkipSafe["MDS904"] = true
+	t.Cleanup(func() {
+		delete(astProjectionConsumers, "MDS904")
+		delete(blockSkipSafe, "MDS904")
+	})
+	m := buildLayerMapFrom([]byte(`[
+		{"id":"MDS904","category":"B-prose-only"}
+	]`))
+	assert.Equal(t, LayerAST, m["MDS904"], "astProjectionConsumers must override blockSkipSafe")
 }

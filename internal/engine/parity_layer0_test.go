@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/jeduden/mdsmith/internal/config"
+	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 )
 
@@ -74,17 +75,30 @@ func TestParityConvention_SkipsParse(t *testing.T) {
 	require.Empty(t, res.Errors)
 	assert.True(t, probe.sawNilAST,
 		"a parity run on a benchmark-shaped file must skip the parse")
+
+	firedMDS066 := false
+	for _, d := range res.Diagnostics {
+		if d.RuleID == "MDS066" {
+			firedMDS066 = true
+			break
+		}
+	}
+	assert.True(t, firedMDS066,
+		"MDS066 must fire on the parse-skipped path so the skip is exercised, not just observed")
 }
 
 // TestParityConvention_DiagnosticsMatchFullParse is the equivalence guarantee
 // for the parity parse-skip: the diagnostics a parity run produces with the
 // gate on (nil AST) are identical to the same run with the gate off (full
-// parse). The fixture trips MDS066 so the comparison is not vacuous.
+// parse). The comparison is on the full diagnostic slice — rule id, line,
+// column, message — not just the count, so a regression that moves MDS066's
+// diagnostic or swaps it for another rule's is caught. The fixture trips
+// MDS066 so the comparison is not vacuous.
 func TestParityConvention_DiagnosticsMatchFullParse(t *testing.T) {
 	dir, path := writeDoc(t, "# Title\n\nProse line.\n\n```sh\n$ make\n$ make test\n```\n")
 	cfg := parityConfig(t)
 
-	run := func(skip bool) int {
+	run := func(skip bool) []lint.Diagnostic {
 		withLayer0Skip(t, skip)
 		r := &Runner{
 			Config:           cfg,
@@ -94,12 +108,12 @@ func TestParityConvention_DiagnosticsMatchFullParse(t *testing.T) {
 		}
 		res := r.Run([]string{path})
 		require.Empty(t, res.Errors)
-		return len(res.Diagnostics)
+		return res.Diagnostics
 	}
 
 	skipped := run(true)
 	parsed := run(false)
-	require.NotZero(t, parsed, "MDS066 must fire so the comparison is not vacuous")
+	require.NotEmpty(t, parsed, "MDS066 must fire so the comparison is not vacuous")
 	assert.Equal(t, parsed, skipped,
 		"parity parse-skip must produce the same diagnostics as a full parse")
 }
