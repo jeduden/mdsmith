@@ -14,18 +14,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// panicRule is a test rule whose Check always panics.
+// panicRule is a test rule whose Check panics when a file's path
+// contains a given substring (trigger), so the test can co-locate a
+// hostile file next to normal files in the same run.
 type panicRule struct {
-	id   string
-	name string
-	msg  string
+	id      string
+	name    string
+	msg     string
+	trigger string // path substring that causes the panic; empty = always
 }
 
 func (r *panicRule) ID() string       { return r.id }
 func (r *panicRule) Name() string     { return r.name }
 func (r *panicRule) Category() string { return "test" }
-func (r *panicRule) Check(_ *lint.File) []lint.Diagnostic {
-	panic(r.msg)
+func (r *panicRule) Check(f *lint.File) []lint.Diagnostic {
+	if r.trigger == "" || strings.Contains(f.Path, r.trigger) {
+		panic(r.msg)
+	}
+	return nil
 }
 
 // TestWorkerPanicProducesInternalErrorDiagnostic verifies that a rule
@@ -69,10 +75,12 @@ func TestWorkerPanicProducesInternalErrorDiagnostic(t *testing.T) {
 	runner := &Runner{
 		Config: cfg,
 		Rules: []rule.Rule{
-			&panicRule{id: "MDS998", name: "panic-rule", msg: panicMsg},
+			// panic-rule only panics on files containing "hostile" in their path.
+			&panicRule{id: "MDS998", name: "panic-rule", msg: panicMsg, trigger: "hostile"},
 			&silentRule{id: "MDS997", name: "silent-rule"},
 		},
-		Concurrency: 3, // force parallel workers
+		Concurrency:          3, // force parallel workers
+		IntraFileConcurrency: 1, // keep rules serial so the panic stays on lintFile's goroutine
 	}
 
 	paths := []string{normalA, hostile, normalB}
@@ -121,9 +129,10 @@ func TestWorkerPanicSequentialPathAlsoCaught(t *testing.T) {
 	}
 
 	runner := &Runner{
-		Config:      cfg,
-		Rules:       []rule.Rule{&panicRule{id: "MDS998", name: "panic-rule", msg: panicMsg}},
-		Concurrency: 1, // force the sequential branch
+		Config:               cfg,
+		Rules:                []rule.Rule{&panicRule{id: "MDS998", name: "panic-rule", msg: panicMsg, trigger: "hostile"}},
+		Concurrency:          1, // force the sequential file-level branch
+		IntraFileConcurrency: 1, // keep rules serial so the panic stays on lintFile's goroutine
 	}
 
 	res := runner.Run([]string{hostile})

@@ -1,7 +1,7 @@
 ---
 id: 2606192026
 title: "Add per-goroutine recover() to CLI engine runner worker goroutines"
-status: "🔲"
+status: "🔳"
 summary: >-
   CLI engine worker goroutines in internal/engine/runner.go:353-370 have
   no defer recover(). A panic on adversarial Markdown crashes the whole
@@ -48,12 +48,13 @@ per-file `InternalError` diagnostic, not a crash.
 
 ## Acceptance Criteria
 
-- [ ] A rule panic on file `i` in a multi-file run produces an
+- [x] A rule panic on file `i` in a multi-file run produces an
   `InternalError` diagnostic for file `i` and does not affect the
   outcome of any other file.
-- [ ] `mdsmith check .` on a directory containing a panic-triggering
+- [x] `mdsmith check .` on a directory containing a panic-triggering
   file exits with a non-zero status (InternalError) but does not crash.
-- [ ] The recovered panic includes a stack trace in the diagnostic
+- [x] The recovered panic includes a stack trace in the diagnostic
   message so the bug can be reported.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [ ] `go tool golangci-lint run` reports no issues (blocked: tools/go.mod
+  requires Go 1.25.8+; environment has 1.25.0; `go vet ./...` passes)
