@@ -169,18 +169,7 @@ type fileOutcome struct {
 	log   []byte
 }
 
-// panicOutcome converts a recovered panic value r and the current
-// goroutine's stack trace into a fileOutcome carrying a single
-// InternalError diagnostic anchored at the given file path. This is
-// the recovery sink for the defer inside lintFile: a rule panic on
-// attacker-controlled Markdown must not crash the process; instead it
-// must surface as a diagnosable error on the affected file while
-// leaving other files' outcomes intact.
-//
-// The diagnostic message embeds both the panic value and the stack so
-// the underlying bug is diagnosable from the only artifact recovery
-// leaves. The stack is captured from runtime/debug.Stack, which prints
-// all goroutines but the caller's frame is close to the top.
+// panicOutcome converts a recovered panic into an InternalError fileOutcome for path.
 func panicOutcome(path string, r any) fileOutcome {
 	stack := debug.Stack()
 	msg := fmt.Sprintf("internal error: rule panic: %v\n%s", r, stack)
@@ -423,12 +412,8 @@ func cloneRules(rules []rule.Rule) []rule.Rule {
 // catalog/include rules share one target read across every host file in
 // this pass.
 func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, rr runResolve) (out fileOutcome) {
-	// Catch any panic from a rule's Check method so an attacker-controlled
-	// Markdown file cannot crash the process. The recovered panic is
-	// converted into an InternalError diagnostic anchored at this file,
-	// leaving every other file's outcome intact. The named return allows
-	// the defer to overwrite out after any other defers (e.g. the source
-	// buffer release and the verbose-log flush) have already run.
+	// Catch rule panics that propagate to this goroutine (serial intra-file path).
+	// Parallel intra-file goroutines are covered by checker.runNonNodeCheckers.
 	defer func() {
 		if rv := recover(); rv != nil {
 			out = panicOutcome(path, rv)

@@ -130,9 +130,47 @@ func TestWorkerPanicSequentialPathAlsoCaught(t *testing.T) {
 
 	runner := &Runner{
 		Config:               cfg,
-		Rules:                []rule.Rule{&panicRule{id: "MDS998", name: "panic-rule", msg: panicMsg, trigger: "hostile"}},
+		Rules: []rule.Rule{
+			&panicRule{id: "MDS998", name: "panic-rule", msg: panicMsg, trigger: "hostile"},
+		},
 		Concurrency:          1, // force the sequential file-level branch
 		IntraFileConcurrency: 1, // keep rules serial so the panic stays on lintFile's goroutine
+	}
+
+	res := runner.Run([]string{hostile})
+
+	assert.Empty(t, res.Errors)
+	require.Len(t, res.Diagnostics, 1)
+	d := res.Diagnostics[0]
+	assert.Equal(t, "internal-panic", d.RuleID)
+	assert.Equal(t, lint.Error, d.Severity)
+	assert.Contains(t, d.Message, panicMsg)
+	assert.Contains(t, d.Message, "goroutine")
+}
+
+// TestWorkerPanicIntraFileConcurrencyPath verifies that a rule panic inside a
+// checker.runNonNodeCheckers goroutine (intraFileCap > 1) is caught there and
+// surfaces as an InternalError diagnostic rather than crashing the process.
+func TestWorkerPanicIntraFileConcurrencyPath(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	hostile := filepath.Join(dir, "hostile.md")
+	require.NoError(t, os.WriteFile(hostile, []byte("# Hostile\n"), 0o644))
+
+	const panicMsg = "intra-file panic"
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"panic-rule": {Enabled: true},
+		},
+	}
+
+	runner := &Runner{
+		Config:               cfg,
+		Rules:                []rule.Rule{&panicRule{id: "MDS998", name: "panic-rule", msg: panicMsg}},
+		Concurrency:          1,
+		IntraFileConcurrency: 4, // force parallel intra-file goroutines
 	}
 
 	res := runner.Run([]string{hostile})
