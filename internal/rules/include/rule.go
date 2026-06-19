@@ -29,6 +29,10 @@ func init() {
 // maxIncludeDepth is the maximum nesting depth for include chains.
 const maxIncludeDepth = 10
 
+// maxIncludeDepthMsg is derived from maxIncludeDepth at package initialization
+// so the two stay in sync if the limit ever changes.
+var maxIncludeDepthMsg = "include depth exceeds maximum (" + strconv.Itoa(maxIncludeDepth) + ")"
+
 // Rule checks that include sections contain the correct file content.
 //
 // visited / chain are per-Check state, but the rule is a registered
@@ -272,8 +276,7 @@ func (r *Rule) checkCycleOrDepth(
 		return nil
 	}
 	if len(r.chain) > maxIncludeDepth {
-		return []lint.Diagnostic{makeDiag(filePath, line,
-			fmt.Sprintf("include depth exceeds maximum (%d)", maxIncludeDepth))}
+		return []lint.Diagnostic{makeDiag(filePath, line, maxIncludeDepthMsg)}
 	}
 	if _, inVisited := r.visited[resolvedFile]; inVisited {
 		chain := make([]string, len(r.chain), len(r.chain)+1)

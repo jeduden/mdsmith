@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -302,7 +303,7 @@ func (b *CustomBuilder) stage(target Target) (buildPlan, func(), error) {
 	for i, rel := range outputs {
 		// A flat file named by index, so a recipe writing to {outputs}[i]
 		// writes inside the staging dir.
-		plan.stagePaths[i] = filepath.Join(stageDir, fmt.Sprintf("out%d", i))
+		plan.stagePaths[i] = filepath.Join(stageDir, "out"+strconv.Itoa(i))
 		plan.finals[i] = filepath.Join(target.Root, filepath.FromSlash(rel))
 	}
 	for i, in := range inputs {

@@ -2,6 +2,7 @@ package schema
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -531,9 +532,9 @@ func intersectMax(a, b int) int {
 // messages; a 0 max prints as "unbounded".
 func boundsLabel(min, max int) string {
 	if max == 0 {
-		return fmt.Sprintf("%d..unbounded", min)
+		return strconv.Itoa(min) + "..unbounded"
 	}
-	return fmt.Sprintf("%d..%d", min, max)
+	return strconv.Itoa(min) + ".." + strconv.Itoa(max)
 }
 
 func cloneMatcher(m *Matcher) *Matcher {

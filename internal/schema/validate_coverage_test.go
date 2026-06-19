@@ -367,3 +367,14 @@ func TestPrecedingHeadingLine(t *testing.T) {
 	assert.Equal(t, 7, precedingHeadingLine(heads, 3))
 	assert.Equal(t, 0, precedingHeadingLine(nil, 5))
 }
+
+// TestLevelMismatchSchemaDiag_HeadingLevelFormat pins the "h%d" format used
+// in the Actual and Expected fields so that a refactor replacing fmt.Sprintf
+// with strconv doesn't silently change the wire format.
+func TestLevelMismatchSchemaDiag_HeadingLevelFormat(t *testing.T) {
+	sch := &Schema{RootLevel: 2}
+	d := levelMismatchSchemaDiag("Introduction", 2, 3, sch)
+	assert.Equal(t, "Introduction", d.Field)
+	assert.Equal(t, "h2", d.Expected, "expected heading level must be formatted as h<n>")
+	assert.Equal(t, "h3", d.Actual, "actual heading level must be formatted as h<n>")
+}
