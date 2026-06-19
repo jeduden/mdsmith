@@ -1219,9 +1219,13 @@ func (r *Runner) anyRepoScopedEnabled() bool {
 	return false
 }
 
-// sortDiagnostics sorts diagnostics by file, line, column, then message.
-// sort.SliceStable preserves the input order only for diagnostics that are
-// equal on all compared fields, including Message.
+// sortDiagnostics sorts diagnostics by file, line, column, message, then
+// rule id. The RuleID tiebreak makes the order independent of the walk path
+// that produced the diagnostics: the parse-skip block-walk and the full-parse
+// node-walk can emit two same-position, same-message diagnostics from
+// different rules in different input orders, and the Layer-0 equivalence
+// assertions compare full ordered slices. sort.SliceStable then preserves
+// input order only for diagnostics equal on every compared field.
 func sortDiagnostics(diags []lint.Diagnostic) {
 	sort.SliceStable(diags, func(i, j int) bool {
 		di, dj := diags[i], diags[j]
@@ -1234,6 +1238,9 @@ func sortDiagnostics(diags []lint.Diagnostic) {
 		if di.Column != dj.Column {
 			return di.Column < dj.Column
 		}
-		return di.Message < dj.Message
+		if di.Message != dj.Message {
+			return di.Message < dj.Message
+		}
+		return di.RuleID < dj.RuleID
 	})
 }

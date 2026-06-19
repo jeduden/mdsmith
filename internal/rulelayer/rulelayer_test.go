@@ -10,6 +10,30 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// auditSignal decodes the embedded manifest and returns an id→signal map for
+// one boolean field (selected by sel). It reads auditJSON — the embedded copy
+// TestEmbeddedManifestMatchesAuditOracle keeps byte-identical to the on-disk
+// oracle — so the override-soundness tests share one decode path and no longer
+// duplicate the os.ReadFile/filepath.Join/Unmarshal boilerplate.
+func auditSignal(t *testing.T, sel func(auditSignalEntry) bool) map[string]bool {
+	t.Helper()
+	var entries []auditSignalEntry
+	require.NoError(t, json.Unmarshal(auditJSON, &entries))
+	m := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		m[e.ID] = sel(e)
+	}
+	return m
+}
+
+// auditSignalEntry is the subset of the rule-walk manifest the override tests
+// read: the rule id plus the two boolean signals the override contracts pin.
+type auditSignalEntry struct {
+	ID           string `json:"id"`
+	NilASTSafe   bool   `json:"nil_ast_safe"`
+	ReadsFileAST bool   `json:"reads_file_ast"`
+}
+
 // TestEmbeddedManifestMatchesAuditOracle keeps the embedded copy of the
 // rule-walk manifest byte-identical to the audit oracle the integration
 // gate enforces. If the audit re-classifies a rule, this fails until the
@@ -110,20 +134,7 @@ func TestBlockSkipSafeAreLayer0(t *testing.T) {
 // same diagnostics). A rule whose nil-AST path regresses trips its
 // nil_ast_safe signal and this test fails until the override is reconsidered.
 func TestBlockSkipSafeAreNilASTSafe(t *testing.T) {
-	oracle, err := os.ReadFile(filepath.Join(
-		"..", "integration", "testdata", "rule_walk_audit.json"))
-	require.NoError(t, err)
-
-	var entries []struct {
-		ID         string `json:"id"`
-		NilASTSafe bool   `json:"nil_ast_safe"`
-	}
-	require.NoError(t, json.Unmarshal(oracle, &entries))
-
-	nilSafe := make(map[string]bool, len(entries))
-	for _, e := range entries {
-		nilSafe[e.ID] = e.NilASTSafe
-	}
+	nilSafe := auditSignal(t, func(e auditSignalEntry) bool { return e.NilASTSafe })
 	for id := range blockSkipSafe {
 		_, present := nilSafe[id]
 		assert.True(t, present, "%s in blockSkipSafe must appear in the audit manifest", id)
@@ -178,20 +189,7 @@ func TestKnownNilASTSafeAreLayer0(t *testing.T) {
 // f.AST read trips its static signal and this test fails until the override
 // is reconsidered.
 func TestKnownNilASTSafeOnlyListsNonASTReaders(t *testing.T) {
-	oracle, err := os.ReadFile(filepath.Join(
-		"..", "integration", "testdata", "rule_walk_audit.json"))
-	require.NoError(t, err)
-
-	var entries []struct {
-		ID           string `json:"id"`
-		ReadsFileAST bool   `json:"reads_file_ast"`
-	}
-	require.NoError(t, json.Unmarshal(oracle, &entries))
-
-	readsAST := make(map[string]bool, len(entries))
-	for _, e := range entries {
-		readsAST[e.ID] = e.ReadsFileAST
-	}
+	readsAST := auditSignal(t, func(e auditSignalEntry) bool { return e.ReadsFileAST })
 	for id := range knownNilASTSafe {
 		_, present := readsAST[id]
 		assert.True(t, present, "%s in knownNilASTSafe must appear in the audit manifest", id)
