@@ -10,6 +10,30 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// auditSignal decodes the embedded manifest and returns an id→signal map for
+// one boolean field (selected by sel). It reads auditJSON — the embedded copy
+// TestEmbeddedManifestMatchesAuditOracle keeps byte-identical to the on-disk
+// oracle — so the override-soundness tests share one decode path and no longer
+// duplicate the os.ReadFile/filepath.Join/Unmarshal boilerplate.
+func auditSignal(t *testing.T, sel func(auditSignalEntry) bool) map[string]bool {
+	t.Helper()
+	var entries []auditSignalEntry
+	require.NoError(t, json.Unmarshal(auditJSON, &entries))
+	m := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		m[e.ID] = sel(e)
+	}
+	return m
+}
+
+// auditSignalEntry is the subset of the rule-walk manifest the override tests
+// read: the rule id plus the two boolean signals the override contracts pin.
+type auditSignalEntry struct {
+	ID           string `json:"id"`
+	NilASTSafe   bool   `json:"nil_ast_safe"`
+	ReadsFileAST bool   `json:"reads_file_ast"`
+}
+
 // TestEmbeddedManifestMatchesAuditOracle keeps the embedded copy of the
 // rule-walk manifest byte-identical to the audit oracle the integration
 // gate enforces. If the audit re-classifies a rule, this fails until the
@@ -86,6 +110,51 @@ func TestIsLayer0(t *testing.T) {
 	}
 }
 
+// TestBlockSkipSafeAreLayer0 confirms every rule in the blockSkipSafe
+// override resolves to Layer 0 even though its audit category is
+// "B-prose-only". MDS066 (commands-show-output) is the canonical entry: the
+// audit's code-perturbation probe marks it code-content-sensitive
+// ("B-prose-only"), but its only code-content read is the fenced-code body,
+// which the Layer 0 block scan plus f.Lines reproduces byte-identically (a
+// rule.BlockChecker nil-AST path gated across the corpus by
+// TestLayer0Gate_CorpusDiagnosticsEquivalence). Promoting it lets
+// `mdsmith check -c parity` skip the parse: parity enables MDS066 and it was
+// the lone rule still forcing the AST.
+func TestBlockSkipSafeAreLayer0(t *testing.T) {
+	for id := range blockSkipSafe {
+		assert.True(t, IsLayer0(id), "%s is in blockSkipSafe; must be Layer 0", id)
+		assert.Equal(t, Layer0, Of(id))
+	}
+	assert.True(t, blockSkipSafe["MDS066"], "MDS066 must be in the block-skip-safe set")
+}
+
+// TestBlockSkipSafeAreNilASTSafe guards the override's manual commitment: a
+// rule may only be force-classified Layer 0 here when its audit manifest
+// entry reports nil_ast_safe: true (its Check survives a nil AST with the
+// same diagnostics). A rule whose nil-AST path regresses trips its
+// nil_ast_safe signal and this test fails until the override is reconsidered.
+func TestBlockSkipSafeAreNilASTSafe(t *testing.T) {
+	nilSafe := auditSignal(t, func(e auditSignalEntry) bool { return e.NilASTSafe })
+	for id := range blockSkipSafe {
+		_, present := nilSafe[id]
+		assert.True(t, present, "%s in blockSkipSafe must appear in the audit manifest", id)
+		assert.True(t, nilSafe[id],
+			"%s in blockSkipSafe must have nil_ast_safe: true", id)
+	}
+}
+
+// TestBuildLayerMapFromBlockSkipSafePromotesToLayer0 exercises the
+// blockSkipSafe branch of buildLayerMapFrom directly with a synthetic entry:
+// a "B-prose-only" rule listed in blockSkipSafe must resolve to Layer0.
+func TestBuildLayerMapFromBlockSkipSafePromotesToLayer0(t *testing.T) {
+	blockSkipSafe["MDS905"] = true
+	t.Cleanup(func() { delete(blockSkipSafe, "MDS905") })
+	m := buildLayerMapFrom([]byte(`[
+		{"id":"MDS905","category":"B-prose-only"}
+	]`))
+	assert.Equal(t, Layer0, m["MDS905"], "blockSkipSafe promotes B-prose-only rule to Layer0")
+}
+
 // TestAstProjectionConsumersAreNotLayer0 guards the parse-skip gate's
 // soundness invariant: any rule the manifest marks "A-no-skipping" yet
 // listed in astProjectionConsumers (because it reads an AST-only projection
@@ -120,20 +189,7 @@ func TestKnownNilASTSafeAreLayer0(t *testing.T) {
 // f.AST read trips its static signal and this test fails until the override
 // is reconsidered.
 func TestKnownNilASTSafeOnlyListsNonASTReaders(t *testing.T) {
-	oracle, err := os.ReadFile(filepath.Join(
-		"..", "integration", "testdata", "rule_walk_audit.json"))
-	require.NoError(t, err)
-
-	var entries []struct {
-		ID           string `json:"id"`
-		ReadsFileAST bool   `json:"reads_file_ast"`
-	}
-	require.NoError(t, json.Unmarshal(oracle, &entries))
-
-	readsAST := make(map[string]bool, len(entries))
-	for _, e := range entries {
-		readsAST[e.ID] = e.ReadsFileAST
-	}
+	readsAST := auditSignal(t, func(e auditSignalEntry) bool { return e.ReadsFileAST })
 	for id := range knownNilASTSafe {
 		_, present := readsAST[id]
 		assert.True(t, present, "%s in knownNilASTSafe must appear in the audit manifest", id)
@@ -211,4 +267,22 @@ func TestAstProjectionConsumerOverridesKnownNilASTSafe(t *testing.T) {
 		{"id":"MDS903","category":"inconclusive-not-fired"}
 	]`))
 	assert.Equal(t, LayerAST, m["MDS903"], "astProjectionConsumers must override knownNilASTSafe")
+}
+
+// TestAstProjectionConsumerOverridesBlockSkipSafe pins that astProjectionConsumers
+// wins over blockSkipSafe: a rule in both must still resolve to LayerAST because it
+// reads an AST-only projection the Layer 0 block scan does not back, regardless of
+// the block-skip override. This guards the soundness escape hatch — buildLayerMapFrom
+// gates the whole Layer 0 promotion behind !astProjectionConsumers[e.ID].
+func TestAstProjectionConsumerOverridesBlockSkipSafe(t *testing.T) {
+	astProjectionConsumers["MDS904"] = true
+	blockSkipSafe["MDS904"] = true
+	t.Cleanup(func() {
+		delete(astProjectionConsumers, "MDS904")
+		delete(blockSkipSafe, "MDS904")
+	})
+	m := buildLayerMapFrom([]byte(`[
+		{"id":"MDS904","category":"B-prose-only"}
+	]`))
+	assert.Equal(t, LayerAST, m["MDS904"], "astProjectionConsumers must override blockSkipSafe")
 }
