@@ -1,0 +1,157 @@
+{
+  "target": {
+    "mode": "audit",
+    "repo": "jeduden/mdsmith",
+    "ref": "22f59f731b252e4429ceb1da89b58acf4da68e0f",
+    "scope": "LSP server (internal/lsp, cmd/mdsmith/lsp.go) and VS Code extension (editors/vscode)"
+  },
+  "coverage": "Reviewed: cmd/mdsmith/lsp.go, internal/lsp/server.go, internal/lsp/server_lifecycle.go, internal/lsp/server_documents.go, internal/lsp/server_codeaction.go, internal/lsp/server_diagnostics.go, internal/lsp/panic_recovery_test.go, editors/vscode/package.json, editors/vscode/src/extension.ts, editors/vscode/src/wiring.ts, editors/vscode/src/binary.ts, editors/vscode/src/commands/runner.ts, editors/vscode/src/commands/fix-workspace.ts, editors/vscode/src/commands/init.ts, editors/vscode/src/commands/merge-driver.ts, editors/vscode/src/commands/kinds.ts, editors/vscode/src/commands/virtual-doc.ts, editors/vscode/src/commands/rule-doc.ts. Cross-referenced the 2026-06-12-git-lsp-audit for exec.Command and build-pass findings. Not covered in this audit: Obsidian plugin, distribution wrappers, CUE/YAML evaluation, workspace-walk symlink deny, rename write-safety, ReDoS in rules.",
+  "findings": [
+    {
+      "id": "S001",
+      "title": "LSP: initialize/didOpen/didChangeWatchedFiles are diagnostics-only — no file writes or recipe execution",
+      "severity": "info",
+      "confidence": "confirmed",
+      "surface": "lsp",
+      "cwe": null,
+      "location": {
+        "file": "internal/lsp/server_lifecycle.go",
+        "startLine": 14,
+        "endLine": 104
+      },
+      "related_locations": [
+        {"file": "internal/lsp/server_documents.go", "startLine": 16},
+        {"file": "internal/lsp/server_documents.go", "startLine": 129}
+      ],
+      "description": "handleInitialize (server_lifecycle.go:14) stores rootDir and capabilities only. handleInitialized (server_lifecycle.go:77) calls reloadConfig() (reads config, never writes) and optionally fetches client settings on a goroutine. handleDidOpen (server_documents.go:16) stores the document and schedules a lint pass. handleDidChangeWatchedFiles (server_documents.go:129) reloads config or invalidates caches. None writes files or executes recipes. The 2026-06-12 audit confirmed exec.Command paths are CLI-only. Fix-on-save calls sess.Fix in-process and returns WorkspaceEdit; the client applies the edit.",
+      "impact": "None — positive confirmation that the trust-on-open boundary holds.",
+      "repro": "N/A — not a defect.",
+      "remediation": "No action required. The LSP fix-on-save path (S002 below) deserves a note: it returns WorkspaceEdit only for the open document, not for workspace-wide file writes."
+    },
+    {
+      "id": "S002",
+      "title": "LSP: fix-on-save (source.fixAll.mdsmith) returns WorkspaceEdit for open document only — no writes outside the buffer, no recipe execution",
+      "severity": "info",
+      "confidence": "confirmed",
+      "surface": "lsp",
+      "cwe": null,
+      "location": {
+        "file": "internal/lsp/server_codeaction.go",
+        "startLine": 183,
+        "endLine": 215
+      },
+      "related_locations": [
+        {"file": "internal/lsp/server.go", "startLine": 548}
+      ],
+      "description": "appendFixAllAction (server_codeaction.go:183) calls sess.Fix(relPath, doc.text) and wraps the result in a WorkspaceEdit covering only the URI of the open document. workspace/executeCommand is absent from the dispatch table (server.go:548-559); unknown methods return method-not-found per LSP spec. There is no server-side file write — the client applies the WorkspaceEdit. The prior audit (S004) confirmed sess.Fix does not import internal/build, so no recipe execution occurs. quickFixBytesFor (server_codeaction.go:232) similarly calls sess.FixRule for per-rule fixes.",
+      "impact": "None — positive confirmation.",
+      "repro": "N/A — not a defect.",
+      "remediation": "No action required."
+    },
+    {
+      "id": "S003",
+      "title": "LSP: per-document panic is contained — does not crash the server",
+      "severity": "info",
+      "confidence": "confirmed",
+      "surface": "lsp",
+      "cwe": null,
+      "location": {
+        "file": "internal/lsp/server.go",
+        "startLine": 343,
+        "endLine": 358
+      },
+      "related_locations": [
+        {"file": "internal/lsp/server_diagnostics.go", "startLine": 245},
+        {"file": "internal/lsp/server.go", "startLine": 798},
+        {"file": "internal/lsp/panic_recovery_test.go", "startLine": 23}
+      ],
+      "description": "Three layers of panic containment: (1) dispatchRaw (server.go:343) defers recover() per JSON-RPC frame — a panic in any handler is caught, logged via window/logMessage, and an InternalError response settles the client's pending call; the dispatch loop continues. (2) runLint (server_diagnostics.go:245) defers recoverPanic('lint '+uri) — a rule panic on attacker-controlled content leaves the server running and publishes no diagnostics for that document. (3) fetchClientSettings (server.go:798) defers recoverPanic('fetch client settings'). All three are exercised by tests in panic_recovery_test.go (TestRunLintPanicIsRecovered, TestDispatchRawPanicAllowsNextRequest, TestFetchClientSettingsPanicIsRecovered).",
+      "impact": "None — positive confirmation. An attacker-controlled Markdown file that causes a rule to panic cannot crash the LSP server or hang the editor.",
+      "repro": "N/A — not a defect.",
+      "remediation": "No action required."
+    },
+    {
+      "id": "S004",
+      "title": "VS Code extension: Workspace Trust baseline holds — untrustedWorkspaces:limited, mdsmith.path/config restricted, all mutating commands gated",
+      "severity": "info",
+      "confidence": "confirmed",
+      "surface": "vscode",
+      "cwe": null,
+      "location": {
+        "file": "editors/vscode/package.json",
+        "startLine": 63,
+        "endLine": 70
+      },
+      "related_locations": [
+        {"file": "editors/vscode/src/commands/fix-workspace.ts", "startLine": 62},
+        {"file": "editors/vscode/src/commands/init.ts", "startLine": 23},
+        {"file": "editors/vscode/src/commands/merge-driver.ts", "startLine": 26},
+        {"file": "editors/vscode/package.json", "startLine": 113}
+      ],
+      "description": "package.json declares capabilities.untrustedWorkspaces.supported='limited' with restrictedConfigurations=['mdsmith.path','mdsmith.config'] (package.json:63-70). All three mutating commands gate on isTrusted() at handler entry (fix-workspace.ts:62, init.ts:23, merge-driver.ts:26) in addition to the package.json commandPalette 'when: isWorkspaceTrusted' conditions (package.json:113-122). Since mdsmith.path is restricted, a workspace-supplied .vscode/settings.json cannot redirect the binary in restricted mode — VS Code returns the default value. The binary resolution in wiring.ts:487-489 reads the setting at server start, but gets the default 'mdsmith' (bundled binary) for untrusted workspaces.",
+      "impact": "None — positive confirmation that the baseline defenses hold.",
+      "repro": "N/A — not a defect.",
+      "remediation": "No action required."
+    },
+    {
+      "id": "S005",
+      "title": "VS Code extension: spawn uses argv array, no shell interpolation",
+      "severity": "info",
+      "confidence": "confirmed",
+      "surface": "vscode",
+      "cwe": null,
+      "location": {
+        "file": "editors/vscode/src/commands/runner.ts",
+        "startLine": 21,
+        "endLine": 35
+      },
+      "description": "defaultSpawn (runner.ts:21) calls nodeSpawn(binary, args, {cwd, stdio: ['ignore','pipe','pipe']}) with no shell option — it defaults to false. All binary invocations across fix-workspace.ts, init.ts, merge-driver.ts, kinds.ts, virtual-doc.ts, and rule-doc.ts pass a fixed string[] args array with -- separating options from file paths (kinds commands) or rule IDs validated against /^MDS\\d+$/i (rule-doc). No shell interpolation, no exec() variant used.",
+      "impact": "None — positive confirmation.",
+      "repro": "N/A — not a defect.",
+      "remediation": "No action required."
+    },
+    {
+      "id": "S006",
+      "title": "VS Code extension: mdsmith.kinds.resolve and mdsmith.kinds.why run in untrusted workspaces without a trust gate",
+      "severity": "low",
+      "confidence": "confirmed",
+      "surface": "vscode",
+      "cwe": "CWE-284",
+      "location": {
+        "file": "editors/vscode/package.json",
+        "startLine": 125,
+        "endLine": 130
+      },
+      "related_locations": [
+        {"file": "editors/vscode/src/wiring.ts", "startLine": 829},
+        {"file": "editors/vscode/src/wiring.ts", "startLine": 838},
+        {"file": "editors/vscode/src/commands/virtual-doc.ts", "startLine": 72}
+      ],
+      "description": "The commandPalette 'when' conditions for mdsmith.kinds.resolve and mdsmith.kinds.why omit isWorkspaceTrusted (package.json:125-130). When invoked in an untrusted workspace, wiring.ts:829/838 calls runKindsResolve/runKindsWhy with no isTrusted() guard, spawning 'mdsmith kinds resolve/why --json -- file' (virtual-doc.ts:72). The binary is the bundled binary (mdsmith.path is restricted to default). The subcommands are read-only: they output JSON and exit; no files are written, no recipes are executed. The binary reads .mdsmith.yml to derive kind assignments, so a hostile config can inject attacker-controlled text into the virtual document pane but cannot execute code.",
+      "impact": "Low. In untrusted workspaces a hostile .mdsmith.yml causes mdsmith to output attacker-controlled text into the virtual document pane. No file writes or code execution. The virtual document is read-only in the editor. The binary cannot be redirected (mdsmith.path restricted).",
+      "repro": "Clone a hostile repo with a malformed .mdsmith.yml. Open a .md file. Run 'mdsmith: Explain Rule on This File' from the palette. The virtual document displays content derived from the hostile config.",
+      "remediation": "Add 'isWorkspaceTrusted' to the commandPalette 'when' conditions for mdsmith.kinds.why and mdsmith.kinds.resolve, and add an isTrusted() guard at the top of runKindsResolve/runKindsWhy — matching the pattern used by fix-workspace, init, and merge-driver. These are informational commands so the restriction is minor friction."
+    },
+    {
+      "id": "S007",
+      "title": "VS Code extension: mdsmith-rule: virtual document content provider runs without trust gate",
+      "severity": "low",
+      "confidence": "confirmed",
+      "surface": "vscode",
+      "cwe": "CWE-284",
+      "location": {
+        "file": "editors/vscode/src/wiring.ts",
+        "startLine": 906,
+        "endLine": 910
+      },
+      "related_locations": [
+        {"file": "editors/vscode/src/commands/rule-doc.ts", "startLine": 160},
+        {"file": "editors/vscode/src/commands/rule-doc.ts", "startLine": 35}
+      ],
+      "description": "The mdsmith-rule: TextDocumentContentProvider (wiring.ts:906-910) runs 'mdsmith help rule <id>' to render an embedded rule README. It has no trust gate. The id is validated against /^MDS\\d+$/i (rule-doc.ts:35) before being passed as a CLI argument, so arbitrary arg injection is prevented. The binary is the bundled binary (mdsmith.path restricted). 'mdsmith help rule' reads READMEs embedded in the binary and makes no network call, no file writes. The `OPEN_RULE_DOC_COMMAND` constant is triggered by rewritten hover links in MarkdownString blocks with isTrusted set only to `{enabledCommands: ['OPEN_RULE_DOC_COMMAND']}` (rule-doc.ts:115), preventing other commands from being injected. Risk is minimal but the pattern is inconsistent with the trust model.",
+      "impact": "Very low. The worst case is spawning the bundled mdsmith binary with a validated rule ID argument. The output is embedded README text displayed in a read-only virtual document.",
+      "repro": "Hover over a diagnostic in an untrusted workspace. Click the rewritten rule-docs link. 'mdsmith help rule MDS0XX' runs.",
+      "remediation": "Low priority. If desired, add a trust check before spawning in provideRuleDocContent / fetchRuleDocContent. Alternatively, embed the rule READMEs directly in the extension's JS bundle to eliminate the spawn entirely for this read-only use case."
+    }
+  ]
+}

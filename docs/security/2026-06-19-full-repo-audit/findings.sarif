@@ -1,0 +1,410 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "mdsmith-security-review",
+          "informationUri": "https://github.com/jeduden/mdsmith",
+          "rules": [
+            {
+              "id": "S001",
+              "name": "directive",
+              "shortDescription": {
+                "text": "<?include?> directive follows within-workspace symlinks to files outside the workspace root"
+              },
+              "fullDescription": {
+                "text": "resolveIncludePath (rule.go:253-267) normalizes the path with path.Clean and checks\nstrings.HasPrefix(resolvedFile, \"..\") to block dot-dot escapes. It then opens the file\nthrough f.RootFS, set to os.DirFS(rootDir) at lint/file.go:286 and workspace.go:100.\nos.DirFS in Go 1.25 follows symlinks — confirmed empirically: os.DirFS(\"/root\").Open of\na symlink-to-outside successfully reads the external target (15 bytes returned).\nThere is no filepath.EvalSymlinks containment check. A within-workspace symlink whose\ntarget is outside the root passes the dot-dot check and is opened by os.DirFS.\nDuring mdsmith fix the content is embedded in the generated section;\nduring mdsmith check the rule reads the target to compare the body."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "security-severity": "8.0",
+                "tags": [
+                  "security",
+                  "CWE-73"
+                ]
+              }
+            },
+            {
+              "id": "S002",
+              "name": "directive",
+              "shortDescription": {
+                "text": "<?catalog glob:?> follows within-workspace symlinks to files outside the workspace root"
+              },
+              "fullDescription": {
+                "text": "resolveGlobMatchesFrom (catalog/rule.go:873) calls doublestar.GlobWalk against\nres.fs = f.RootFS = os.DirFS(rootDir). For symlink DirEntries the walk callback\ncalls fs.Stat(res.fs, m) at line 901 to get the target type, and includes the\npath when the target is a regular file. Since res.fs is os.DirFS, fs.Stat follows\nthe symlink through the OS — same os.DirFS symlink-following confirmed for S001.\nAn in-workspace symlink matching the glob pattern causes readFrontMatter\nto read the external target file."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "security-severity": "8.0",
+                "tags": [
+                  "security",
+                  "CWE-73"
+                ]
+              }
+            },
+            {
+              "id": "S003",
+              "name": "cli",
+              "shortDescription": {
+                "text": "CLI engine-runner goroutines lack per-goroutine recover() — rule panic crashes the process"
+              },
+              "fullDescription": {
+                "text": "The parallel worker goroutines in runner.go:353-370 have no defer recover().\nIf a rule's Check or Fix method panics on attacker-controlled Markdown content,\nthe panic propagates to the Go runtime and crashes the entire mdsmith process.\nThe LSP server correctly contains panics via defer s.recoverPanic\n(server_diagnostics.go:246), which covers RunSource calls that stay on the LSP's\ncalling goroutine. The CLI path with N>1 workers spawns goroutines outside any\nrecovery boundary; a panic on file i terminates the process immediately,\nprinting no diagnostics for the remaining files."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "security-severity": "5.5",
+                "tags": [
+                  "security",
+                  "CWE-390"
+                ]
+              }
+            },
+            {
+              "id": "S004",
+              "name": "directive",
+              "shortDescription": {
+                "text": "<?catalog glob:?> has no per-directive file-count cap — large repos can cause OOM"
+              },
+              "fullDescription": {
+                "text": "resolveGlobMatchesFrom accumulates matched file paths with no upper-bound check.\nA glob: \"**/*.md\" in a 100k-file repo causes the catalog rule to read front matter\nfrom every matched file. Each file is bounded at 2 MB, but the count is uncapped.\nThe include rule has maxIncludeDepth = 10; no analogous maxCatalogMatches exists.\nAt 10 KB average size, 100k files = 1 GB of data plus per-file parse overhead."
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "security-severity": "3.0",
+                "tags": [
+                  "security",
+                  "CWE-400"
+                ]
+              }
+            },
+            {
+              "id": "S005",
+              "name": "cli",
+              "shortDescription": {
+                "text": "hasSymlinkAncestor skips ancestor scan when cwd is unresolvable and no .git root exists"
+              },
+              "fullDescription": {
+                "text": "hasSymlinkAncestor uses the nearest .git directory or cwd as its stop boundary\nfor the ancestor Lstat scan. When both os.Getwd() fails (empty) and\ngitProjectRoot returns empty (no .git ancestor), the scan's boundary is empty\nand the ancestor walk is skipped at lines 244-246.\nIn this environment, a path like symlinked-dir/file.md passes the ancestor scan;\nthe leaf Lstat check (line 148) still catches a symlinked leaf file, but a\nsymlinked intermediate directory component is not detected.\nTriggering this requires a pathological environment (failed cwd, no .git) —\nan extremely unlikely production scenario."
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "security-severity": "3.0",
+                "tags": [
+                  "security",
+                  "CWE-61"
+                ]
+              }
+            },
+            {
+              "id": "S006",
+              "name": "directive",
+              "shortDescription": {
+                "text": "<?include?> path validation does not explicitly reject URL schemes — incidentally safe but fragile"
+              },
+              "fullDescription": {
+                "text": "validateIncludeDirective checks filepath.IsAbs(file) to block absolute paths.\nOn Linux, filepath.IsAbs(\"http://example.com/foo\") returns false, so a URL-scheme\ninclude path passes the absolute-path check. The path then reaches os.DirFS which\nmakes no network calls — so http:// paths resolve to a local path that fails to\nopen. The defense is incidental: os.DirFS's lack of network support, not an\nexplicit scheme check. If RootFS were replaced with a network-aware fs.FS\n(e.g. a WASM host adapter that resolves URLs), the SSRF guard would be absent."
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "security-severity": "0.0",
+                "tags": [
+                  "security",
+                  "CWE-918"
+                ]
+              }
+            },
+            {
+              "id": "S007",
+              "name": "git",
+              "shortDescription": {
+                "text": "githooksync rule reads hook and gitattributes files with unbounded os.ReadFile"
+              },
+              "fullDescription": {
+                "text": "The githooksync rule reads .git/hooks/pre-merge-commit, .git/hooks/post-merge,\nand .gitattributes via os.ReadFile without a size cap. A hostile repository could\nplace a very large hook file to cause high memory allocation during check.\nbytelimit.ReadFileLimited is used consistently elsewhere but not in this rule."
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "security-severity": "0.0",
+                "tags": [
+                  "security",
+                  "CWE-400"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "S001",
+          "ruleIndex": 0,
+          "level": "error",
+          "message": {
+            "text": "<?include?> directive follows within-workspace symlinks to files outside the workspace root"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/rules/include/rule.go"
+                },
+                "region": {
+                  "startLine": 253,
+                  "endLine": 267
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/lint/file.go"
+                },
+                "region": {
+                  "startLine": 286,
+                  "endLine": 286
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "pkg/mdsmith/workspace.go"
+                },
+                "region": {
+                  "startLine": 100,
+                  "endLine": 100
+                }
+              }
+            }
+          ],
+          "properties": {
+            "confidence": "confirmed",
+            "severity": "high"
+          }
+        },
+        {
+          "ruleId": "S002",
+          "ruleIndex": 1,
+          "level": "error",
+          "message": {
+            "text": "<?catalog glob:?> follows within-workspace symlinks to files outside the workspace root"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/rules/catalog/rule.go"
+                },
+                "region": {
+                  "startLine": 893,
+                  "endLine": 906
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/lint/file.go"
+                },
+                "region": {
+                  "startLine": 286,
+                  "endLine": 286
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "pkg/mdsmith/workspace.go"
+                },
+                "region": {
+                  "startLine": 100,
+                  "endLine": 100
+                }
+              }
+            }
+          ],
+          "properties": {
+            "confidence": "confirmed",
+            "severity": "high"
+          }
+        },
+        {
+          "ruleId": "S003",
+          "ruleIndex": 2,
+          "level": "warning",
+          "message": {
+            "text": "CLI engine-runner goroutines lack per-goroutine recover() — rule panic crashes the process"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/engine/runner.go"
+                },
+                "region": {
+                  "startLine": 353,
+                  "endLine": 370
+                }
+              }
+            }
+          ],
+          "properties": {
+            "confidence": "confirmed",
+            "severity": "medium"
+          }
+        },
+        {
+          "ruleId": "S004",
+          "ruleIndex": 3,
+          "level": "note",
+          "message": {
+            "text": "<?catalog glob:?> has no per-directive file-count cap — large repos can cause OOM"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/rules/catalog/rule.go"
+                },
+                "region": {
+                  "startLine": 888,
+                  "endLine": 920
+                }
+              }
+            }
+          ],
+          "properties": {
+            "confidence": "confirmed",
+            "severity": "low"
+          }
+        },
+        {
+          "ruleId": "S005",
+          "ruleIndex": 4,
+          "level": "note",
+          "message": {
+            "text": "hasSymlinkAncestor skips ancestor scan when cwd is unresolvable and no .git root exists"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/lint/files.go"
+                },
+                "region": {
+                  "startLine": 244,
+                  "endLine": 246
+                }
+              }
+            }
+          ],
+          "properties": {
+            "confidence": "confirmed",
+            "severity": "low"
+          }
+        },
+        {
+          "ruleId": "S006",
+          "ruleIndex": 5,
+          "level": "note",
+          "message": {
+            "text": "<?include?> path validation does not explicitly reject URL schemes — incidentally safe but fragile"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/rules/include/rule.go"
+                },
+                "region": {
+                  "startLine": 130,
+                  "endLine": 170
+                }
+              }
+            }
+          ],
+          "properties": {
+            "confidence": "confirmed",
+            "severity": "info"
+          }
+        },
+        {
+          "ruleId": "S007",
+          "ruleIndex": 6,
+          "level": "note",
+          "message": {
+            "text": "githooksync rule reads hook and gitattributes files with unbounded os.ReadFile"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/rules/githooksync/rule.go"
+                },
+                "region": {
+                  "startLine": 180,
+                  "endLine": 180
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/rules/githooksync/rule.go"
+                },
+                "region": {
+                  "startLine": 249,
+                  "endLine": 249
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/rules/githooksync/rule.go"
+                },
+                "region": {
+                  "startLine": 295,
+                  "endLine": 295
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/rules/githooksync/rule.go"
+                },
+                "region": {
+                  "startLine": 386,
+                  "endLine": 386
+                }
+              }
+            }
+          ],
+          "properties": {
+            "confidence": "confirmed",
+            "severity": "info"
+          }
+        }
+      ]
+    }
+  ]
+}

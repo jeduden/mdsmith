@@ -1,0 +1,143 @@
+{
+  "target": {
+    "mode": "audit",
+    "repo": "jeduden/mdsmith",
+    "ref": "22f59f731b252e4429ceb1da89b58acf4da68e0f",
+    "scope": "full repo — all seven threat-model surfaces"
+  },
+  "coverage": "All seven surfaces reviewed. Directive engine (include, catalog, build/MDS040, CUE, YAML):\n§0 baselines hold for recipe execution, but include/catalog path resolution follows symlinks\nvia os.DirFS without EvalSymlinks containment check (S001, S002). CLI core and workspace\nwalk: symlink default-deny holds for walk and explicit-arg resolution; CLI engine-runner\ngoroutines lack per-goroutine recover() (S003); catalog glob file-count uncapped (S004).\nLSP server: covered by today's separate 2026-06-19-lsp-vscode-audit; baselines confirmed.\nVS Code extension: covered by 2026-06-19-lsp-vscode-audit. Obsidian plugin: WASM-based\nengine, no binary spawn; configPath still routed to vault.adapter.read without ..\nvalidation (carry-forward tentative finding, not newly confirmed). Distribution: all §0\nsupply-chain baselines hold — komac SHA256 fix confirmed, Actions pinned by SHA, no\npull_request_target with elevated privileges, no postinstall scripts, OIDC Trusted\nPublishing, Sigstore/SLSA attestation present. Git integration: all §0 baselines hold;\nguardFn and temp-then-rename applied to hook writes. All 2026-06-12 findings confirmed\nfixed (komac checksum, MDS040 gate bypass, hook lstat, GOPATH fallback, rename symlink).",
+  "findings": [
+    {
+      "id": "S001",
+      "title": "<?include?> directive follows within-workspace symlinks to files outside the workspace root",
+      "severity": "high",
+      "confidence": "confirmed",
+      "surface": "directive",
+      "cwe": "CWE-73",
+      "location": {
+        "file": "internal/rules/include/rule.go",
+        "startLine": 253,
+        "endLine": 267
+      },
+      "related_locations": [
+        {"file": "internal/lint/file.go", "startLine": 286},
+        {"file": "pkg/mdsmith/workspace.go", "startLine": 100}
+      ],
+      "description": "resolveIncludePath (rule.go:253-267) normalizes the path with path.Clean and checks\nstrings.HasPrefix(resolvedFile, \"..\") to block dot-dot escapes. It then opens the file\nthrough f.RootFS, set to os.DirFS(rootDir) at lint/file.go:286 and workspace.go:100.\nos.DirFS in Go 1.25 follows symlinks — confirmed empirically: os.DirFS(\"/root\").Open of\na symlink-to-outside successfully reads the external target (15 bytes returned).\nThere is no filepath.EvalSymlinks containment check. A within-workspace symlink whose\ntarget is outside the root passes the dot-dot check and is opened by os.DirFS.\nDuring mdsmith fix the content is embedded in the generated section;\nduring mdsmith check the rule reads the target to compare the body.",
+      "impact": "A hostile git repo contains a symlink (docs/sensitive.md -> /home/user/.ssh/id_rsa)\nand a Markdown file with <?include file: docs/sensitive.md ?>.\nWhen a victim clones and runs mdsmith fix, the SSH private key is read from outside\nthe workspace and embedded in the generated section. A subsequent push leaks the key.\nmdsmith check also reads the target (to compare content) without writing it.",
+      "repro": "Create a git repo with: (1) docs/secret.md -> /etc/passwd (symlink),\n(2) README.md containing <?include file: docs/secret.md ?>...<?/include?>.\nClone it. Run mdsmith fix README.md. The /etc/passwd content is embedded in README.md.",
+      "remediation": "Replace os.DirFS(rootDir) with os.OpenRoot(rootDir) (Go 1.24+, available in Go 1.25).\nos.OpenRoot enforces RESOLVE_BENEATH — confirmed to refuse symlinks escaping the root\n(test: root.Open returns 'path escapes from parent'). Wire the *os.Root via root.FS()\nas RootFS in internal/lint/file.go:286 and pkg/mdsmith/workspace.go:100-107.\nAdd an e2e test confirming <?include?> on a within-workspace symlink to an outside\ntarget is refused."
+    },
+    {
+      "id": "S002",
+      "title": "<?catalog glob:?> follows within-workspace symlinks to files outside the workspace root",
+      "severity": "high",
+      "confidence": "confirmed",
+      "surface": "directive",
+      "cwe": "CWE-73",
+      "location": {
+        "file": "internal/rules/catalog/rule.go",
+        "startLine": 893,
+        "endLine": 906
+      },
+      "related_locations": [
+        {"file": "internal/lint/file.go", "startLine": 286},
+        {"file": "pkg/mdsmith/workspace.go", "startLine": 100}
+      ],
+      "description": "resolveGlobMatchesFrom (catalog/rule.go:873) calls doublestar.GlobWalk against\nres.fs = f.RootFS = os.DirFS(rootDir). For symlink DirEntries the walk callback\ncalls fs.Stat(res.fs, m) at line 901 to get the target type, and includes the\npath when the target is a regular file. Since res.fs is os.DirFS, fs.Stat follows\nthe symlink through the OS — same os.DirFS symlink-following confirmed for S001.\nAn in-workspace symlink matching the glob pattern causes readFrontMatter\nto read the external target file.",
+      "impact": "A hostile repo with docs/leak.md -> /home/user/.aws/credentials and a catalog\ndirective matching docs/*.md causes the rule to read the external credentials file.\nFor non-Markdown files with no YAML front matter the result is empty (low impact);\nfor YAML-format config files (e.g. ~/.kube/config), fields could appear in the\ngenerated catalog section.",
+      "repro": "Create a git repo with docs/leaked.md -> ~/.kube/config (symlink) and a Markdown\nfile containing <?catalog glob: docs/*.md ?>...<?/catalog?>.\nRun mdsmith fix. The catalog reads docs/leaked.md through the symlink and attempts\nto extract YAML front matter from ~/.kube/config.",
+      "remediation": "Same fix as S001: replace os.DirFS with os.OpenRoot in all RootFS construction\nsites. RESOLVE_BENEATH enforcement on os.OpenRoot.FS() also contains GlobWalk's\nfs.Stat calls on symlinks, returning an error for targets outside the root."
+    },
+    {
+      "id": "S003",
+      "title": "CLI engine-runner goroutines lack per-goroutine recover() — rule panic crashes the process",
+      "severity": "medium",
+      "confidence": "confirmed",
+      "surface": "cli",
+      "cwe": "CWE-390",
+      "location": {
+        "file": "internal/engine/runner.go",
+        "startLine": 353,
+        "endLine": 370
+      },
+      "description": "The parallel worker goroutines in runner.go:353-370 have no defer recover().\nIf a rule's Check or Fix method panics on attacker-controlled Markdown content,\nthe panic propagates to the Go runtime and crashes the entire mdsmith process.\nThe LSP server correctly contains panics via defer s.recoverPanic\n(server_diagnostics.go:246), which covers RunSource calls that stay on the LSP's\ncalling goroutine. The CLI path with N>1 workers spawns goroutines outside any\nrecovery boundary; a panic on file i terminates the process immediately,\nprinting no diagnostics for the remaining files.",
+      "impact": "A hostile Markdown file that triggers a rule panic causes mdsmith check / fix\nto crash with no output when run against a directory containing that file.\nAn attacker can place a panic-triggering file in a workspace to make linting\nunreliable. This is a DoS of the CLI tool, not code execution.",
+      "repro": "Identify or craft Markdown that causes a rule's Check goroutine to panic\n(e.g. a rule accessing AST nodes without nil guards on a crafted input).\nRun mdsmith check . in a directory containing that file alongside many others.\nThe process crashes rather than reporting all diagnostics.",
+      "remediation": "Wrap each worker goroutine body with a deferred recover that captures panics,\nlogs them, and sets the outcome for that file to an InternalError diagnostic\nrather than terminating the process. Mirror the pattern in\ninternal/lsp/server.go recoverPanic."
+    },
+    {
+      "id": "S004",
+      "title": "<?catalog glob:?> has no per-directive file-count cap — large repos can cause OOM",
+      "severity": "low",
+      "confidence": "confirmed",
+      "surface": "directive",
+      "cwe": "CWE-400",
+      "location": {
+        "file": "internal/rules/catalog/rule.go",
+        "startLine": 888,
+        "endLine": 920
+      },
+      "description": "resolveGlobMatchesFrom accumulates matched file paths with no upper-bound check.\nA glob: \"**/*.md\" in a 100k-file repo causes the catalog rule to read front matter\nfrom every matched file. Each file is bounded at 2 MB, but the count is uncapped.\nThe include rule has maxIncludeDepth = 10; no analogous maxCatalogMatches exists.\nAt 10 KB average size, 100k files = 1 GB of data plus per-file parse overhead.",
+      "impact": "On a very large workspace with a wildcard catalog directive, mdsmith fix/check\ncan run out of memory and be killed by the OS. This is a DoS on the linting pass.",
+      "repro": "Create a repo with 100,000 small .md files and a Markdown file containing `<?catalog glob: **/*.md ?>`. Run mdsmith check. Memory grows proportionally.",
+      "remediation": "Add a maxCatalogMatches constant (e.g. 10,000) and return a diagnostic when\nthe match count exceeds it, analogous to maxIncludeDepth for the include rule.\nDocument the limit in docs/features/self-maintaining-sections.md."
+    },
+    {
+      "id": "S005",
+      "title": "hasSymlinkAncestor skips ancestor scan when cwd is unresolvable and no .git root exists",
+      "severity": "low",
+      "confidence": "confirmed",
+      "surface": "cli",
+      "cwe": "CWE-61",
+      "location": {
+        "file": "internal/lint/files.go",
+        "startLine": 244,
+        "endLine": 246
+      },
+      "description": "hasSymlinkAncestor uses the nearest .git directory or cwd as its stop boundary\nfor the ancestor Lstat scan. When both os.Getwd() fails (empty) and\ngitProjectRoot returns empty (no .git ancestor), the scan's boundary is empty\nand the ancestor walk is skipped at lines 244-246.\nIn this environment, a path like symlinked-dir/file.md passes the ancestor scan;\nthe leaf Lstat check (line 148) still catches a symlinked leaf file, but a\nsymlinked intermediate directory component is not detected.\nTriggering this requires a pathological environment (failed cwd, no .git) —\nan extremely unlikely production scenario.",
+      "impact": "In the edge case (failed cwd + no .git), a symlinked directory component in\nan explicit file path argument could slip through symlink default-deny.\nThe leaf Lstat still catches symlinked leaves. Combined with a crafted workspace,\nthis could allow linting a file through a symlinked directory.",
+      "repro": "Construct an environment where os.Getwd returns an error and there is no .git\nancestor directory. Pass mdsmith check symlinked-dir/real-file.md where\nsymlinked-dir is a symlink to an external directory. The file is processed.",
+      "remediation": "When ancestorStopBoundary is empty, either refuse to scan (return an error)\nor fall back to scanning up to the filesystem root.\nThe current silent skip is too permissive for a security boundary."
+    },
+    {
+      "id": "S006",
+      "title": "<?include?> path validation does not explicitly reject URL schemes — incidentally safe but fragile",
+      "severity": "info",
+      "confidence": "confirmed",
+      "surface": "directive",
+      "cwe": "CWE-918",
+      "location": {
+        "file": "internal/rules/include/rule.go",
+        "startLine": 130,
+        "endLine": 170
+      },
+      "description": "validateIncludeDirective checks filepath.IsAbs(file) to block absolute paths.\nOn Linux, filepath.IsAbs(\"http://example.com/foo\") returns false, so a URL-scheme\ninclude path passes the absolute-path check. The path then reaches os.DirFS which\nmakes no network calls — so http:// paths resolve to a local path that fails to\nopen. The defense is incidental: os.DirFS's lack of network support, not an\nexplicit scheme check. If RootFS were replaced with a network-aware fs.FS\n(e.g. a WASM host adapter that resolves URLs), the SSRF guard would be absent.",
+      "impact": "No impact in current code. Latent risk if the FS abstraction is extended\nto support URL-scheme paths in WASM or plugin contexts.",
+      "repro": "N/A — currently safe due to os.DirFS not making network requests.",
+      "remediation": "Add an explicit check for common URL scheme prefixes (http://, https://, file://)\nin validateIncludeDirective, alongside the filepath.IsAbs check."
+    },
+    {
+      "id": "S007",
+      "title": "githooksync rule reads hook and gitattributes files with unbounded os.ReadFile",
+      "severity": "info",
+      "confidence": "confirmed",
+      "surface": "git",
+      "cwe": "CWE-400",
+      "location": {
+        "file": "internal/rules/githooksync/rule.go",
+        "startLine": 180,
+        "endLine": 180
+      },
+      "related_locations": [
+        {"file": "internal/rules/githooksync/rule.go", "startLine": 249},
+        {"file": "internal/rules/githooksync/rule.go", "startLine": 295},
+        {"file": "internal/rules/githooksync/rule.go", "startLine": 386}
+      ],
+      "description": "The githooksync rule reads .git/hooks/pre-merge-commit, .git/hooks/post-merge,\nand .gitattributes via os.ReadFile without a size cap. A hostile repository could\nplace a very large hook file to cause high memory allocation during check.\nbytelimit.ReadFileLimited is used consistently elsewhere but not in this rule.",
+      "impact": "A .git/hooks/ file of e.g. 100 MB causes githooksync to allocate 100 MB per\nlint pass. Combined with a large workspace, this could contribute to OOM.\nLow practical severity because .git/ files are generally small.",
+      "repro": "Create a repo with a 100 MB .git/hooks/pre-merge-commit file.\nRun mdsmith check. The githooksync rule reads the full file into memory.",
+      "remediation": "Replace the four os.ReadFile calls with bytelimit.ReadFileLimited using a cap\n(e.g. 1 MB, matching the config file cap). Return a diagnostic when exceeded."
+    }
+  ]
+}
