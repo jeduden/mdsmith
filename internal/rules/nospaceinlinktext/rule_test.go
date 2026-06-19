@@ -615,3 +615,40 @@ func TestFixReferenceImage(t *testing.T) {
 	result := fix(t, src, true)
 	assert.Equal(t, "# T\n\n![alt][ref]\n\n[ref]: img.png\n", result)
 }
+
+// TestCheck_NilASTMatchesAST pins the parse-skipped path byte-identical to
+// the AST path over links and images in inline edge cases: a link inside
+// emphasis, a link in a heading, an image with padded alt text, and link
+// text holding a code span with bracket characters. The nil-AST path maps
+// run-local bracket offsets back to the document, so any divergence in the
+// inline re-parse surfaces here.
+func TestCheck_NilASTMatchesAST(t *testing.T) {
+	cases := map[string]string{
+		"padded link text":  "See [ home ](/h) now.\n",
+		"link in emphasis":  "A *[ spaced ](/h)* tail.\n",
+		"link in heading":   "# Go [ here ](/h)\n",
+		"image padded alt":  "![ logo ](/l.png) caption\n",
+		"code span in link": "[ `a[0]` ](/h) link.\n",
+		"clean link":        "A [clean](/h) link.\n",
+	}
+	r := &Rule{CheckImages: true}
+	for name, src := range cases {
+		t.Run(name, func(t *testing.T) {
+			fAST, err := lint.NewFile("test.md", []byte(src))
+			require.NoError(t, err)
+			astDiags := r.Check(fAST)
+
+			fNil, err := lint.NewFile("test.md", []byte(src))
+			require.NoError(t, err)
+			fNil.AST = nil
+			nilDiags := r.Check(fNil)
+
+			assert.Equal(t, astDiags, nilDiags)
+		})
+	}
+}
+
+func TestInlineCapable(t *testing.T) {
+	r := &Rule{}
+	assert.True(t, r.InlineCapable())
+}

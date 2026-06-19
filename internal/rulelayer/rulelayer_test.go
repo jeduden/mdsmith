@@ -64,6 +64,20 @@ func TestIsLayer0(t *testing.T) {
 		assert.True(t, IsLayer0(id), "%s should be Layer 0 once re-backed on Layer 1", id)
 		assert.Equal(t, Layer0, Of(id))
 	}
+	// The inline-content parity rules (plan 2606171404) read heading text,
+	// links, emphasis, reference definitions, or flavor-specific spans. Each
+	// serves the nil-AST path from the shared run-grouped inline parse
+	// (lint.InlineBlocks) — heading rules and MDS053's def/use map walk it,
+	// MDS034 also reads the Layer 0 BlockQuote spans for alert blockquotes —
+	// so the audit classes them "A-no-skipping" and the gate admits them.
+	// MDS041, MDS050, and MDS052 are nil-AST-safe too but stay
+	// "B-prose-only": each reads content the audit's code-perturbation probe
+	// scrambles (inline HTML, code-block bodies, code-span content), so they
+	// are code-content-sensitive by design and do not resolve to Layer 0.
+	for _, id := range []string{"MDS005", "MDS017", "MDS034", "MDS042", "MDS049", "MDS053", "MDS063", "MDS068"} {
+		assert.True(t, IsLayer0(id), "%s should be Layer 0 once re-backed on Layer 1", id)
+		assert.Equal(t, Layer0, Of(id))
+	}
 	// AST-requiring rules are not Layer 0.
 	for _, id := range []string{"MDS001", "MDS019", "MDS023"} {
 		assert.False(t, IsLayer0(id), "%s should require the AST", id)

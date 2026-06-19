@@ -332,3 +332,62 @@ func TestApplySettings_InvalidCheckCode(t *testing.T) {
 	err := r.ApplySettings(map[string]any{"check-code": "yes"})
 	assert.Error(t, err)
 }
+
+// TestCheck_EmptyNames_NilAST covers the early-return in collectMatchesInline
+// when Names is empty: with no configured names, Check on the nil-AST path
+// must return nil without walking any inline runs.
+func TestCheck_EmptyNames_NilAST(t *testing.T) {
+	f, err := lint.NewFile("test.md", []byte("Some Javascript text.\n"))
+	require.NoError(t, err)
+	f.AST = nil
+	r := &Rule{} // Names is nil/empty
+	assert.Nil(t, r.Check(f))
+}
+
+// TestCheck_NilASTMatchesAST pins the parse-skipped path byte-identical to
+// the AST path over proper-name runs in inline edge cases: a name in a
+// heading, a name in link text, a name inside emphasis, a name in a second
+// paragraph (non-zero run base), and — with check-code on — a name inside a
+// fenced code block (served from the Layer 0 span the inline runs exclude).
+func TestCheck_NilASTMatchesAST(t *testing.T) {
+	type tc struct {
+		src       string
+		names     []string
+		checkCode bool
+		checkHTML bool
+	}
+	cases := map[string]tc{
+		"name in heading":            {src: "# About Github\n", names: []string{"GitHub"}},
+		"name in link text":          {src: "See [Github](https://x) now.\n", names: []string{"GitHub"}},
+		"name in emphasis":           {src: "A *Javascript* lib.\n", names: []string{"JavaScript"}},
+		"second paragraph":           {src: "First line.\n\nThen Javascript here.\n", names: []string{"JavaScript"}},
+		"name in code span no check": {src: "Use `javascript` here.\n", names: []string{"JavaScript"}},
+		"fenced code checked": {
+			src:       "# Title\n\n```sh\njavascript --version\n```\n",
+			names:     []string{"JavaScript"},
+			checkCode: true,
+		},
+		"html block checked": {
+			src:       "# Title\n\n<div>Github</div>\n",
+			names:     []string{"GitHub"},
+			checkHTML: true,
+		},
+		"clean prose": {src: "Plain text, nothing here.\n", names: []string{"GitHub"}},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			r := &Rule{Names: c.names, CheckCode: c.checkCode, CheckHTML: c.checkHTML}
+
+			fAST, err := lint.NewFile("test.md", []byte(c.src))
+			require.NoError(t, err)
+			astDiags := r.Check(fAST)
+
+			fNil, err := lint.NewFile("test.md", []byte(c.src))
+			require.NoError(t, err)
+			fNil.AST = nil
+			nilDiags := r.Check(fNil)
+
+			assert.Equal(t, astDiags, nilDiags)
+		})
+	}
+}

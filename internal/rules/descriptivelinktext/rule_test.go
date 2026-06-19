@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -213,4 +214,49 @@ func TestCachedBannedSet_WarmPathSkipsMutex(t *testing.T) {
 	second := r.cachedBannedSet()
 	assert.NotNil(t, first)
 	assert.NotNil(t, second)
+}
+
+// TestCheck_NilASTMatchesAST pins the parse-skipped path byte-identical to
+// the AST path over links in inline edge cases: a banned link in a heading, a
+// banned link inside emphasis, a banned link in a second paragraph (non-zero
+// run base), an image-only link (skipped), and a link whose text holds a code
+// span. The nil-AST path maps run-local link text back to the document, so
+// any divergence surfaces here.
+func TestCheck_NilASTMatchesAST(t *testing.T) {
+	cases := map[string]string{
+		"banned in heading":   "# See [here](/x)\n",
+		"banned in emphasis":  "Text *[click here](/x)* tail.\n",
+		"second paragraph":    "First para.\n\nThen [more](/x) please.\n",
+		"image-only link":     "[![alt](/i.png)](/x)\n",
+		"code-span link text": "[`here`](/x) code.\n",
+		"descriptive link":    "Read the [full guide](/x).\n",
+	}
+	r := &Rule{Banned: append([]string(nil), defaultBanned...)}
+	for name, src := range cases {
+		t.Run(name, func(t *testing.T) {
+			fAST, err := lint.NewFile("test.md", []byte(src))
+			require.NoError(t, err)
+			astDiags := r.Check(fAST)
+
+			fNil, err := lint.NewFile("test.md", []byte(src))
+			require.NoError(t, err)
+			fNil.AST = nil
+			nilDiags := r.Check(fNil)
+
+			assert.Equal(t, astDiags, nilDiags)
+		})
+	}
+}
+
+func TestInlineCapable(t *testing.T) {
+	r := &Rule{}
+	assert.True(t, r.InlineCapable())
+}
+
+func TestCheckNode_EmptyBanned_NilDiag(t *testing.T) {
+	f, err := lint.NewFile("test.md", []byte("# T\n\n[click here](x)\n"))
+	require.NoError(t, err)
+	r := &Rule{}
+	diags := r.CheckNode(ast.NewDocument(), true, f)
+	assert.Nil(t, diags)
 }

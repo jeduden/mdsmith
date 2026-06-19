@@ -274,17 +274,37 @@ func (r *Rule) collectSpans(f *lint.File) []span {
 // Check implements rule.Rule. The per-link/image logic is pure and
 // stateless, so it is expressed as CheckNode and the engine can fold
 // this rule into one shared AST walk; a direct call still works via
-// rule.WalkNodes.
+// rule.WalkNodes. On the parse-skipped path (f.AST nil) the AST walk
+// surfaces no link/image nodes, so the same per-span verdict runs over the
+// links and images of the shared run-grouped inline parse
+// (lint.InlineBlocks), each node's run-local bracket offsets mapped back to
+// the document so the flagged span, line, and column stay byte-identical to
+// the AST walk.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	if f != nil && f.AST == nil {
+		var diags []lint.Diagnostic
+		lint.WalkInlineNodes(f, func(n ast.Node, base int) {
+			if s, ok := r.spanForNode(n, f, base); ok {
+				diags = append(diags, diagsForSpan(s, f, r.ID(), r.Name())...)
+			}
+		})
+		return diags
+	}
 	return rule.WalkNodes(r, f)
 }
+
+// InlineCapable implements rule.InlineChecker: Check serves the nil-AST path
+// from lint.WalkInlineNodes (which reads lint.InlineBlocks).
+func (r *Rule) InlineCapable() bool { return true }
+
+var _ rule.InlineChecker = (*Rule)(nil)
 
 // CheckNode implements rule.NodeChecker.
 func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
 	if !entering {
 		return nil
 	}
-	s, ok := r.spanForNode(n, f)
+	s, ok := r.spanForNode(n, f, 0)
 	if !ok {
 		return nil
 	}
@@ -294,8 +314,11 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 // spanForNode returns the bracket span for a Link or Image node, or
 // false if the node should be skipped (not a Link/Image, images
 // disabled, undetectable bracket position, or located in a generated
-// section).
-func (r *Rule) spanForNode(n ast.Node, f *lint.File) (span, bool) {
+// section). base maps the node's run-local segment offsets onto f.Source:
+// zero on the AST path, the run's start offset on the nil-AST path. The
+// returned span carries document-absolute offsets, so diagsForSpan reads
+// f.Source and f.LineOfOffset the same way for both paths.
+func (r *Rule) spanForNode(n ast.Node, f *lint.File, base int) (span, bool) {
 	switch n.(type) {
 	case *ast.Link, *ast.Image:
 	default:
@@ -305,10 +328,11 @@ func (r *Rule) spanForNode(n ast.Node, f *lint.File) (span, bool) {
 	if img && !r.CheckImages {
 		return span{}, false
 	}
-	open, close := bracketSpan(n, f.Source)
+	open, close := bracketSpan(n, f.Source[base:])
 	if open == -1 {
 		return span{}, false
 	}
+	open, close = open+base, close+base
 	line := f.LineOfOffset(open)
 	for _, gr := range f.GeneratedRanges {
 		if gr.Contains(line) {

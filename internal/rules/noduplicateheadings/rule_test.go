@@ -5,8 +5,40 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestCheck_NilASTMatchesAST pins the parse-skipped path byte-identical to
+// the AST path over headings whose text comes from inline markup: emphasis
+// at a heading's end, a link inside emphasis, and a code span holding
+// bracket text. The flattened heading text drives both the duplicate key
+// and the diagnostic message, so any divergence in the inline re-parse
+// would surface as a different diagnostic set.
+func TestCheck_NilASTMatchesAST(t *testing.T) {
+	cases := map[string]string{
+		"emphasis at end":      "# Title *one*\n\n## Body\n\n# Title *one*\n",
+		"link inside emphasis": "# See *[home](/h)*\n\n## Body\n\n# See *[home](/h)*\n",
+		"code span brackets":   "# Use `a[0]`\n\n## Body\n\n# Use `a[0]`\n",
+		"no duplicates":        "# Alpha *x*\n\n## Beta `y`\n",
+	}
+	for name, src := range cases {
+		t.Run(name, func(t *testing.T) {
+			r := &Rule{}
+
+			fAST, err := lint.NewFile("test.md", []byte(src))
+			require.NoError(t, err)
+			astDiags := r.Check(fAST)
+
+			fNil, err := lint.NewFile("test.md", []byte(src))
+			require.NoError(t, err)
+			fNil.AST = nil
+			nilDiags := r.Check(fNil)
+
+			assert.Equal(t, astDiags, nilDiags)
+		})
+	}
+}
 
 func TestCheck_NoDuplicates_NoViolation(t *testing.T) {
 	src := []byte("# Title\n\n## Section A\n\n## Section B\n")

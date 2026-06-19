@@ -99,11 +99,19 @@ const (
 	msgLISInlineImage = "inline-image style forbidden; link-image-style.inline-image=false"
 )
 
-// Check implements rule.Rule.
+// Check implements rule.Rule. On the parse-skipped path (f.AST nil) the
+// linkgraph extractors and the link-image-style AST walk surface no nodes, so
+// the rule re-derives the same link/ref-link/autolink/image set from the
+// shared run-grouped inline parse (lint.InlineBlocks), mapping each node's
+// run-local offsets back to the document with the run base. The path, form,
+// and link-image-style verdicts are byte-identical to the AST walk.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	style := r.Links.Style
 	if style.Path == "" && style.Extension == "" && style.Form == "" && !style.LinkImageStyle.Active {
 		return nil
+	}
+	if f != nil && f.AST == nil {
+		return r.checkFromInline(f)
 	}
 
 	var diags []lint.Diagnostic
@@ -122,6 +130,51 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	//   - inline images (ast.Image): not included in link checks above
 	if style.LinkImageStyle.Active {
 		diags = append(diags, r.checkLinkImageStyle(f)...)
+	}
+	return diags
+}
+
+// checkFromInline reconstructs the AST path's link verdicts on the nil-AST
+// File by walking the re-parsed inline runs. It reproduces the AST path's
+// global three-phase order exactly: every inline link (linkgraph.Links), then
+// every reference link (linkgraph.RefLinkTargets), then every link-image-style
+// node (checkLinkImageStyle) — each phase sweeping all runs in document order.
+// Each node's run-local offsets are mapped back to the document with the run
+// base, so positions, path/form verdicts, and link-image-style verdicts are
+// byte-identical to the AST walk.
+func (r *Rule) checkFromInline(f *lint.File) []lint.Diagnostic {
+	style := r.Links.Style
+	blocks := lint.InlineBlocks(f)
+	var diags []lint.Diagnostic
+
+	// Phase 1: inline links (Reference == nil). Phase 2: reference links.
+	for _, isRef := range []bool{false, true} {
+		for _, blk := range blocks {
+			base := blk.Offset
+			_ = ast.Walk(blk.Node, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+				if !entering {
+					return ast.WalkContinue, nil
+				}
+				l, ok := n.(*ast.Link)
+				if !ok || (l.Reference != nil) != isRef {
+					return ast.WalkContinue, nil
+				}
+				target, ok := linkgraph.ParseTarget(string(l.Destination))
+				if !ok {
+					return ast.WalkContinue, nil
+				}
+				line, col := linkNodePosition(f, l, base)
+				diags = append(diags, r.checkOne(f, linkgraph.Link{Line: line, Column: col, Target: target}, isRef)...)
+				return ast.WalkContinue, nil
+			})
+		}
+	}
+
+	// Phase 3: the link-image-style axis over autolinks, links, and images.
+	if style.LinkImageStyle.Active {
+		for _, blk := range blocks {
+			diags = append(diags, r.checkLinkImageStyleBlock(f, blk.Node, blk.Offset)...)
+		}
 	}
 	return diags
 }
@@ -158,6 +211,14 @@ func (r *Rule) checkLinkImageStyle(f *lint.File) []lint.Diagnostic {
 	if f == nil || f.AST == nil {
 		return nil
 	}
+	return r.checkLinkImageStyleBlock(f, f.AST, 0)
+}
+
+// checkLinkImageStyleBlock runs the link-image-style switch over root and its
+// descendants. base maps run-local segment offsets onto f.Source: zero when
+// root is f.AST (the AST path), the run's start offset when root is a re-parsed
+// inline run (the nil-AST path).
+func (r *Rule) checkLinkImageStyleBlock(f *lint.File, root ast.Node, base int) []lint.Diagnostic {
 	lis := r.Links.Style.LinkImageStyle
 	var diags []lint.Diagnostic
 	add := func(line, col int, msg string) {
@@ -171,19 +232,19 @@ func (r *Rule) checkLinkImageStyle(f *lint.File) []lint.Diagnostic {
 			Message:  msg,
 		})
 	}
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
 		}
 		switch node := n.(type) {
 		case *ast.AutoLink:
 			if !lis.Autolink {
-				line, col := autolinkPosition(f, node)
+				line, col := autolinkPosition(f, node, base)
 				add(line, col, msgLISAutolink)
 			}
 		case *ast.Link:
 			if msg := linkImageStyleMsg(lis, node.Reference, false); msg != "" {
-				line, col := linkNodePosition(f, node)
+				line, col := linkNodePosition(f, node, base)
 				add(line, col, msg)
 			}
 		case *ast.Image:
@@ -192,7 +253,7 @@ func (r *Rule) checkLinkImageStyle(f *lint.File) []lint.Diagnostic {
 			// is checked against full/collapsed/shortcut; only an
 			// inline image (![alt](src)) uses the inline-image toggle.
 			if msg := linkImageStyleMsg(lis, node.Reference, true); msg != "" {
-				line, col := linkNodePosition(f, node)
+				line, col := linkNodePosition(f, node, base)
 				add(line, col, msg)
 			}
 		}
@@ -245,8 +306,12 @@ func linkImageStyleMsg(lis LinkImageStyleConfig, ref *ast.ReferenceLink, isImage
 // so ast.Walk cannot find its position. Instead we locate the nearest
 // block ancestor with a Lines() set and search its source bytes for
 // the `<url>` pattern to find the `<` offset.
-func autolinkPosition(f *lint.File, n *ast.AutoLink) (int, int) {
-	url := n.URL(f.Source)
+// base maps the node's run-local segment offsets onto f.Source: zero on the
+// AST path, the run's start offset on the nil-AST path. The autolink's URL and
+// the block search both read source at base-shifted positions so the reported
+// position matches the AST path exactly.
+func autolinkPosition(f *lint.File, n *ast.AutoLink, base int) (int, int) {
+	url := n.URL(f.Source[base:])
 	if len(url) == 0 {
 		return 1, 1
 	}
@@ -265,12 +330,12 @@ func autolinkPosition(f *lint.File, n *ast.AutoLink) (int, int) {
 			continue
 		}
 		// Search each source line for the literal `<url>`. If no block
-		// line contains it, fall through to the (1,1) fallback below.
+		// line contains it, fall through to the fallback below.
 		lines := p.Lines()
 		for i := range lines.Len() {
 			seg := lines.At(i)
-			if idx := bytes.Index(seg.Value(f.Source), pat); idx >= 0 {
-				off := seg.Start + idx
+			if idx := bytes.Index(f.Source[base+seg.Start:base+seg.Stop], pat); idx >= 0 {
+				off := base + seg.Start + idx
 				return f.LineOfOffset(off), f.ColumnOfOffset(off)
 			}
 		}
@@ -281,8 +346,11 @@ func autolinkPosition(f *lint.File, n *ast.AutoLink) (int, int) {
 
 // linkNodePosition returns the 1-based line and column of a link or
 // image node by locating its first text child, in body-relative
-// coordinates.
-func linkNodePosition(f *lint.File, n ast.Node) (int, int) {
+// coordinates. base maps the run-local segment offset onto f.Source. The
+// no-text fallback is (1, 1), matching the AST path's linkgraph.linkPosition
+// and the autolink fallback above, so a textless link is anchored identically
+// on both paths.
+func linkNodePosition(f *lint.File, n ast.Node, base int) (int, int) {
 	offset := -1
 	_ = ast.Walk(n, func(cur ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
@@ -298,7 +366,7 @@ func linkNodePosition(f *lint.File, n ast.Node) (int, int) {
 	if offset < 0 {
 		return 1, 1
 	}
-	return f.LineOfOffset(offset), f.ColumnOfOffset(offset)
+	return f.LineOfOffset(base + offset), f.ColumnOfOffset(base + offset)
 }
 
 // checkPath returns a diagnostic message when the configured path

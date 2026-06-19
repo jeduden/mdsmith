@@ -266,3 +266,72 @@ func TestDetectGitHubAlertsOnlyLine(t *testing.T) {
 	fs := findings(t, "> [!WARNING]\n")
 	assert.True(t, hasFeature(fs, FeatureGitHubAlerts))
 }
+
+// --- StripBlockquoteMarkers ---
+
+func TestStripBlockquoteMarkers_Simple(t *testing.T) {
+	assert.Equal(t, []byte("[!NOTE]"), StripBlockquoteMarkers([]byte("> [!NOTE]")))
+}
+
+func TestStripBlockquoteMarkers_LeadingSpaces(t *testing.T) {
+	assert.Equal(t, []byte("content"), StripBlockquoteMarkers([]byte("   > content")))
+}
+
+func TestStripBlockquoteMarkers_TrimsNewline(t *testing.T) {
+	assert.Equal(t, []byte("text"), StripBlockquoteMarkers([]byte("> text\n")))
+}
+
+func TestStripBlockquoteMarkers_Empty(t *testing.T) {
+	assert.Equal(t, []byte(""), StripBlockquoteMarkers([]byte(">")))
+}
+
+func TestStripBlockquoteMarkers_TabAfterMarker(t *testing.T) {
+	// '>' not followed by a space — marker consumed but inner space not stripped
+	assert.Equal(t, []byte("text"), StripBlockquoteMarkers([]byte("> text")))
+}
+
+// --- IsAlertMarkerLine ---
+
+func TestIsAlertMarkerLine_KnownTokens(t *testing.T) {
+	for _, tok := range []string{"NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION"} {
+		assert.True(t, IsAlertMarkerLine([]byte("> [!"+tok+"]")), tok)
+	}
+}
+
+func TestIsAlertMarkerLine_LowercaseNoMatch(t *testing.T) {
+	assert.False(t, IsAlertMarkerLine([]byte("> [!note]")))
+}
+
+func TestIsAlertMarkerLine_PlainText(t *testing.T) {
+	assert.False(t, IsAlertMarkerLine([]byte("> plain text")))
+}
+
+// --- AlertFinding ---
+
+func TestAlertFinding(t *testing.T) {
+	src := []byte("# Title\n\n> [!NOTE]\n> Body.\n")
+	// lineStart == 9: the offset of '>' in '> [!NOTE]' (byte after "# Title\n\n")
+	fin := AlertFinding(src, 9)
+	assert.Equal(t, FeatureGitHubAlerts, fin.Feature)
+	assert.Equal(t, 3, fin.Line)
+	assert.Equal(t, 1, fin.Column)
+	assert.Equal(t, 9, fin.Start)
+	assert.Equal(t, 9, fin.End)
+}
+
+// --- BareURLFindingsInTree nil root ---
+
+func TestBareURLFindingsInTree_NilRoot(t *testing.T) {
+	got := BareURLFindingsInTree([]byte("https://example.com"), nil, 0)
+	assert.Nil(t, got)
+}
+
+// --- detectGitHubAlerts nil-AST guard ---
+
+func TestDetect_NilDocAST_NoGitHubAlerts(t *testing.T) {
+	// When doc.AST is nil, detectGitHubAlerts is called with nil and must
+	// return nil rather than panic — the nil guard added in this PR.
+	doc := &markdown.Document{Body: []byte("> [!NOTE]\n> Body.\n")}
+	findings := Detect(doc, func(f Feature) bool { return f == FeatureGitHubAlerts })
+	assert.Empty(t, findings)
+}

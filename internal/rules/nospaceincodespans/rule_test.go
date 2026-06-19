@@ -361,6 +361,13 @@ func TestFix_WhitespaceOnlyCodeSpan_NoChange(t *testing.T) {
 // Recover does not extend (source[0]=='X', not '`'), so
 // raw == seg == " `x` "; trim → "`x`"; append spaces →
 // " `x` " == raw; branch fires.
+// TestInlineCapable pins that MDS052 implements rule.InlineChecker and returns true,
+// so the nil-AST engine path routes it through lint.InlineBlocks.
+func TestInlineCapable(t *testing.T) {
+	r := &Rule{}
+	assert.True(t, r.InlineCapable())
+}
+
 func TestFix_TrimmedEqualsRaw_NoChange(t *testing.T) {
 	src := []byte("X `x` Y\n")
 	f := newFile(t, string(src))
@@ -395,5 +402,36 @@ func TestFix_BacktickPaddingAllocBudget(t *testing.T) {
 	// Before: []byte{' '} alloc + inner-append growth = 5 allocs.
 	if allocs > 4 {
 		t.Fatalf("Fix allocs per call: want ≤ 4, got %v (double-append allocates intermediate slice)", allocs)
+	}
+}
+
+// TestCheck_NilASTMatchesAST pins the parse-skipped path byte-identical to
+// the AST path over code spans in inline edge cases: a padded code span in a
+// heading, a code span inside emphasis, a code span holding bracket text, and
+// a second-paragraph span (non-zero run base). The nil-AST path maps the
+// run-local code-span bounds back to the document, so any divergence in the
+// inline re-parse surfaces here.
+func TestCheck_NilASTMatchesAST(t *testing.T) {
+	cases := map[string]string{
+		"padded span in heading": "# Use ` x ` now\n",
+		"span in emphasis":       "A *` y `* tail.\n",
+		"bracket text padded":    "Call ` a[0] ` here.\n",
+		"second paragraph":       "First para.\n\nSecond ` z ` para.\n",
+		"clean span":             "A `clean` span.\n",
+	}
+	r := &Rule{}
+	for name, src := range cases {
+		t.Run(name, func(t *testing.T) {
+			fAST, err := lint.NewFile("test.md", []byte(src))
+			require.NoError(t, err)
+			astDiags := r.Check(fAST)
+
+			fNil, err := lint.NewFile("test.md", []byte(src))
+			require.NoError(t, err)
+			fNil.AST = nil
+			nilDiags := r.Check(fNil)
+
+			assert.Equal(t, astDiags, nilDiags)
+		})
 	}
 }

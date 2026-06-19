@@ -347,6 +347,160 @@ func TestHeadingText_AndExtractText_NoChildren(t *testing.T) {
 	assert.Equal(t, "", buf.String())
 }
 
+// --- HeadingLineBase ---
+
+// TestHeadingLineBase_SetextHeading covers the lines.Len() > 0 branch: goldmark
+// sets Lines() on both setext and ATX headings; HeadingLineBase must use
+// base + lines.At(0).Start to map the run-local offset to the document.
+// This test uses a setext heading not at the start of the file so the base
+// computation is non-trivial, then verifies the result matches HeadingLine.
+func TestHeadingLineBase_SetextHeading(t *testing.T) {
+	// "Intro.\n\nTitle\n=====\n": paragraph at line 1, setext heading at line 3.
+	src := []byte("Intro.\n\nTitle\n=====\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+
+	var setext *ast.Heading
+	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		if h, ok := n.(*ast.Heading); ok {
+			setext = h
+			return ast.WalkStop, nil
+		}
+		return ast.WalkContinue, nil
+	})
+	require.NotNil(t, setext, "heading must be found")
+	// HeadingLineBase with base==0 must equal HeadingLine.
+	assert.Equal(t, HeadingLine(setext, f), HeadingLineBase(setext, f, 0))
+	assert.Equal(t, 3, HeadingLineBase(setext, f, 0))
+}
+
+// TestHeadingLineBase_ATXBase pins that base is correctly added for ATX headings:
+// with base == 0 the result must equal HeadingLine (no offset shift).
+func TestHeadingLineBase_ATXBase(t *testing.T) {
+	src := []byte("# Title\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+
+	var h *ast.Heading
+	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		if heading, ok := n.(*ast.Heading); ok {
+			h = heading
+			return ast.WalkStop, nil
+		}
+		return ast.WalkContinue, nil
+	})
+	require.NotNil(t, h)
+	assert.Equal(t, HeadingLine(h, f), HeadingLineBase(h, f, 0))
+}
+
+// TestHeadingLineBase_EmptyFallback covers the constant-1 fallback: a synthetic
+// heading with no Lines and no Text children returns 1 regardless of base,
+// matching HeadingLine's own fallback.
+func TestHeadingLineBase_EmptyFallback(t *testing.T) {
+	src := []byte("# t\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	h := ast.NewHeading(1) // no children, no lines
+	assert.Equal(t, 1, HeadingLineBase(h, f, 99))
+}
+
+// --- HeadingTextBase ---
+
+// TestHeadingTextBase_WithBase pins that HeadingTextBase extracts the correct text
+// when base == 0: the result must equal HeadingText, and the pool
+// get/put path and extractTextBase's *ast.Text branch are both exercised.
+func TestHeadingTextBase_WithBase(t *testing.T) {
+	src := []byte("# My Heading\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+
+	var h *ast.Heading
+	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		if heading, ok := n.(*ast.Heading); ok {
+			h = heading
+			return ast.WalkStop, nil
+		}
+		return ast.WalkContinue, nil
+	})
+	require.NotNil(t, h)
+	want := HeadingText(h, src)
+	got := HeadingTextBase(h, src, 0)
+	assert.Equal(t, want, got)
+	assert.Equal(t, "My Heading", got)
+}
+
+// TestHeadingTextBase_NoChildren covers the empty-heading path: a heading with
+// no children returns "" from HeadingTextBase, matching HeadingText's contract.
+func TestHeadingTextBase_NoChildren(t *testing.T) {
+	h := ast.NewHeading(1)
+	assert.Equal(t, "", HeadingTextBase(h, nil, 0))
+}
+
+// TestHeadingTextBase_NestedEmphasis covers extractTextBase's recursive path:
+// a heading whose child is *ast.Emphasis (not *ast.Text) must recurse into its
+// children to find the text.
+func TestHeadingTextBase_NestedEmphasis(t *testing.T) {
+	src := []byte("# *emph*\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+
+	var h *ast.Heading
+	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		if heading, ok := n.(*ast.Heading); ok {
+			h = heading
+			return ast.WalkStop, nil
+		}
+		return ast.WalkContinue, nil
+	})
+	require.NotNil(t, h)
+	// With base == 0, HeadingTextBase and HeadingText must agree.
+	assert.Equal(t, HeadingText(h, src), HeadingTextBase(h, src, 0))
+}
+
+// TestHeadingLineBase_WalkPath covers the ast.Walk fallback when a synthetic
+// heading has no Lines() but a direct *ast.Text child: the walk finds the
+// text segment and returns its line.
+func TestHeadingLineBase_WalkPath(t *testing.T) {
+	src := []byte("# Heading\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+
+	h := ast.NewHeading(1)
+	textNode := ast.NewText()
+	textNode.Segment = text.NewSegment(2, 9) // "Heading" at bytes 2..9 (line 1)
+	h.AppendChild(h, textNode)
+
+	assert.Equal(t, 1, HeadingLineBase(h, f, 0))
+}
+
+// TestHeadingLineBase_WalkNonTextChild covers the !ok branch (non-Text child)
+// and the !entering exit path: when the only child is a non-Text node (here
+// an *ast.Emphasis with no children), the walk visits it on enter (!ok →
+// WalkContinue) and on exit (!entering → WalkContinue), then returns line=1.
+func TestHeadingLineBase_WalkNonTextChild(t *testing.T) {
+	src := []byte("# t\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+
+	h := ast.NewHeading(1)
+	em := ast.NewEmphasis(1) // not *ast.Text; no children
+	h.AppendChild(h, em)
+
+	assert.Equal(t, 1, HeadingLineBase(h, f, 0))
+}
+
 // --- CollectSectionHeadings ---
 
 func TestCollectSectionHeadings_OrdersByLine(t *testing.T) {

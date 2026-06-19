@@ -110,7 +110,7 @@ func (r *Rule) checkSingleDef(f *lint.File, d referenceDefinition) []lint.Diagno
 	if setutil.Contains(r.ignoredLabels, norm) {
 		return nil
 	}
-	if isLabelUsedInAST(f.AST, norm) {
+	if r.labelUsed(f, norm) {
 		return nil
 	}
 	return []lint.Diagnostic{{
@@ -155,7 +155,7 @@ func (r *Rule) checkMultiDefs(f *lint.File, defs []referenceDefinition) []lint.D
 		}
 		seen[norm] = d.line
 		if !usedLabelsDone {
-			usedLabels = collectUsedLabels(f)
+			usedLabels = r.collectUsedLabels(f)
 			usedLabelsDone = true
 		}
 		if !setutil.Contains(usedLabels, norm) {
@@ -171,6 +171,59 @@ func (r *Rule) checkMultiDefs(f *lint.File, defs []referenceDefinition) []lint.D
 		}
 	}
 	return diags
+}
+
+// labelUsed reports whether any reference-style link or image uses the
+// normalised label target. On the parsed path it walks f.AST; on the
+// parse-skipped path (f.AST nil) it walks the reference uses surfaced by the
+// shared run-grouped inline parse (lint.InlineBlocks), which re-parses each
+// run with the document's reference definitions pre-seeded so a reference
+// link resolves the same way it does on the full parse.
+func (r *Rule) labelUsed(f *lint.File, target string) bool {
+	if f != nil && f.AST == nil {
+		used := false
+		walkInlineReferences(f, func(label string) {
+			if label == target {
+				used = true
+			}
+		})
+		return used
+	}
+	return isLabelUsedInAST(f.AST, target)
+}
+
+// collectUsedLabels returns the set of normalised labels used by a
+// reference-style link or image. It dispatches to the AST walk on the parsed
+// path and to the inline-run walk on the parse-skipped path, so the def/use
+// map is assembled across every block either way.
+func (r *Rule) collectUsedLabels(f *lint.File) map[string]struct{} {
+	if f != nil && f.AST == nil {
+		used := map[string]struct{}{}
+		walkInlineReferences(f, func(label string) { used[label] = struct{}{} })
+		return used
+	}
+	return collectUsedLabels(f)
+}
+
+// walkInlineReferences invokes visit with the normalised label of every
+// reference-style link or image across all inline runs of f, in document
+// order. It is the nil-AST counterpart to the AST reference walk: the inline
+// parse resolves reference links against the document's pre-seeded
+// definitions, so a `[text][label]`, `[text][]`, or `[label]` use is surfaced
+// the same way the full parse surfaces it.
+func walkInlineReferences(f *lint.File, visit func(label string)) {
+	lint.WalkInlineNodes(f, func(n ast.Node, _ int) {
+		switch v := n.(type) {
+		case *ast.Link:
+			if v.Reference != nil {
+				visit(util.ToLinkReference(v.Reference.Value))
+			}
+		case *ast.Image:
+			if v.Reference != nil {
+				visit(util.ToLinkReference(v.Reference.Value))
+			}
+		}
+	})
 }
 
 // isLabelUsedInAST reports whether n or any of its descendants is a

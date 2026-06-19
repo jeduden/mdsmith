@@ -302,3 +302,61 @@ func ExtractText(n ast.Node, source []byte, buf *bytes.Buffer) {
 		ExtractText(c, source, buf)
 	}
 }
+
+// HeadingTextBase returns the plain-text content of a heading whose
+// inline children carry run-local segment offsets, as on the parse-skipped
+// path (lint.InlineBlocks re-parses each run in isolation). base is the
+// run's start byte offset in source; it is added to every Text segment's
+// bounds so the slices index the original document. With base == 0 the
+// result is identical to HeadingText, which the AST path uses.
+func HeadingTextBase(heading *ast.Heading, source []byte, base int) string {
+	buf := headingTextPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer func() {
+		if buf.Cap() <= headingTextMaxPooledCap {
+			headingTextPool.Put(buf)
+		}
+	}()
+	for c := heading.FirstChild(); c != nil; c = c.NextSibling() {
+		extractTextBase(c, source, base, buf)
+	}
+	return buf.String()
+}
+
+// extractTextBase is ExtractText with a base offset added to each Text
+// segment's bounds, so it reads run-local segments off the document source.
+func extractTextBase(n ast.Node, source []byte, base int, buf *bytes.Buffer) {
+	if t, ok := n.(*ast.Text); ok {
+		buf.Write(source[base+t.Segment.Start : base+t.Segment.Stop])
+		return
+	}
+	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+		extractTextBase(c, source, base, buf)
+	}
+}
+
+// HeadingLineBase returns the 1-based source line of a heading whose inline
+// children carry run-local segment offsets (the parse-skipped path). base is
+// the run's start byte offset in f.Source. It mirrors HeadingLine exactly with
+// every offset shifted by base: prefer heading.Lines().At(0) (setext), else the
+// first descendant Text segment, else the constant 1 — so an empty heading with
+// no Lines and no Text resolves to line 1 on both paths, not the run's line.
+func HeadingLineBase(heading *ast.Heading, f *lint.File, base int) int {
+	lines := heading.Lines()
+	if lines.Len() > 0 {
+		return f.LineOfOffset(base + lines.At(0).Start)
+	}
+	line := 1
+	_ = ast.Walk(heading, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering || n == heading {
+			return ast.WalkContinue, nil
+		}
+		t, ok := n.(*ast.Text)
+		if !ok {
+			return ast.WalkContinue, nil
+		}
+		line = f.LineOfOffset(base + t.Segment.Start)
+		return ast.WalkStop, nil
+	})
+	return line
+}

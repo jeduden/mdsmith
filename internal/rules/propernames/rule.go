@@ -251,9 +251,85 @@ func normalizeMatches(matches []wrongMatch) []wrongMatch {
 	return out
 }
 
-// Check implements rule.Rule.
+// collectMatchesInline gathers wrong-cased matches on the parse-skipped path
+// (f.AST nil) for the default configuration, where neither code spans, code
+// blocks, nor HTML is scanned. It walks the shared run-grouped inline parse
+// (lint.InlineBlocks) and applies the same Text / AutoLink switch collectMatches
+// applies on the tree, mapping each run-local segment offset back to the
+// document with the run base. CodeSpan and RawHTML subtrees are skipped (their
+// content is only scanned under check-code / check-html, which take the
+// re-parse path in Check), and code / HTML blocks carry no inline markup so
+// they never appear in the runs — so this reproduces the AST walk's match set
+// for the no-code, no-HTML case.
+func (r *Rule) collectMatchesInline(f *lint.File) []wrongMatch {
+	entries := r.buildNameEntries()
+	if len(entries) == 0 {
+		return nil
+	}
+	var all []wrongMatch
+	for _, blk := range lint.InlineBlocks(f) {
+		base := blk.Offset
+		_ = ast.Walk(blk.Node, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+			if !entering {
+				return ast.WalkContinue, nil
+			}
+			switch v := n.(type) {
+			case *ast.AutoLink, *ast.CodeSpan, *ast.RawHTML:
+				// AutoLink URLs are never scanned; CodeSpan / RawHTML content is
+				// only scanned under check-code / check-html, which Check routes
+				// to the re-parse path. Skip their subtrees, matching the AST
+				// walk's WalkSkipChildren for these nodes when the toggles are off.
+				_ = v
+				return ast.WalkSkipChildren, nil
+			case *ast.Text:
+				all = scanTextSegmentBase(entries, v.Segment, f, base, all)
+			}
+			return ast.WalkContinue, nil
+		})
+	}
+	return all
+}
+
+// scanTextSegmentBase scans one run-local text segment at document position
+// base+seg.Start, appending matches to acc.
+func scanTextSegmentBase(entries []nameEntry, seg text.Segment, f *lint.File, base int, acc []wrongMatch) []wrongMatch {
+	abs := base + seg.Start
+	return append(acc, scanBytes(entries, f.Source[abs:base+seg.Stop], abs, f.Source)...)
+}
+
+// reparsed returns an AST-bearing File over the same source bytes as f, for the
+// check-code / check-html path on a parse-skipped File. collectMatches reads
+// only AST, Source, and Path, and every wrongMatch offset indexes Source — so a
+// File parsed from f.Source yields matches whose offsets are valid in the
+// original f's identical Source, which Check uses for the diagnostic positions.
+// On a parse error (f.Source already parsed once upstream, so this is not
+// expected) it returns f unchanged, leaving the nil-AST path to yield nothing.
+func reparsed(f *lint.File) *lint.File {
+	rf, _ := lint.NewFile(f.Path, f.Source) // never errors on already-parsed source
+	return rf
+}
+
+// Check implements rule.Rule. On the parse-skipped path (f.AST nil) the
+// default configuration gathers its match set from the shared run-grouped
+// inline parse (collectMatchesInline), byte-identical to the AST walk over
+// prose. When check-code or check-html is enabled the rule must also scan
+// code-block, code-span, and HTML content, whose exact byte offsets follow
+// goldmark's tab-aware indent stripping; rather than re-derive that offset
+// math from the Layer 0 line scan, the rule re-parses the document once and
+// reuses the AST collectMatches, so the opt-in path is byte-identical by
+// construction. check-code / check-html are opt-in and MDS050 stays
+// B-prose-only, so the engine keeps such files on the parse path anyway —
+// this branch is reached only by a directly constructed nil-AST File.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
-	matches := normalizeMatches(r.collectMatches(f))
+	var matches []wrongMatch
+	switch {
+	case f != nil && f.AST == nil && (r.CheckCode || r.CheckHTML):
+		matches = normalizeMatches(r.collectMatches(reparsed(f)))
+	case f != nil && f.AST == nil:
+		matches = normalizeMatches(r.collectMatchesInline(f))
+	default:
+		matches = normalizeMatches(r.collectMatches(f))
+	}
 	if len(matches) == 0 {
 		return nil
 	}

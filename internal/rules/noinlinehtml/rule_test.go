@@ -284,6 +284,13 @@ func TestRegisteredDefault_AllowCommentsTrue(t *testing.T) {
 		"registered MDS041 must have AllowComments=true to match DefaultSettings")
 }
 
+// TestInlineCapable pins that MDS041 implements rule.InlineChecker and returns true,
+// so the nil-AST engine path routes it through lint.InlineBlocks and Layer 0 spans.
+func TestInlineCapable(t *testing.T) {
+	r := &Rule{}
+	assert.True(t, r.InlineCapable())
+}
+
 func TestRawHTMLBytes_ZeroSegments(t *testing.T) {
 	// A freshly allocated RawHTML node has no segments; rawHTMLBytes must
 	// return nil rather than a non-nil empty slice.
@@ -315,4 +322,38 @@ func TestRawHTMLBytes_ForceNewline(t *testing.T) {
 	node.Segments.Append(seg)
 	got := rawHTMLBytes(node, source)
 	assert.Equal(t, []byte("<br>\n"), got)
+}
+
+// TestCheck_NilASTMatchesAST pins the parse-skipped path byte-identical to
+// the AST path over both HTML shapes: an HTML block, an inline span, a
+// self-closing inline tag, an inline tag nested inside emphasis, and a
+// comment. The nil-AST path reconstructs block HTML from the Layer 0 spans
+// and inline HTML from the shared inline parse, so any divergence surfaces
+// as a different diagnostic set.
+func TestCheck_NilASTMatchesAST(t *testing.T) {
+	cases := map[string]string{
+		"html block":          "# Title\n\n<div>block content</div>\n",
+		"inline span":         "Some text <span>x</span> tail\n",
+		"self-closing inline": "before<br/>after\n",
+		"inline in emphasis":  "a *strong <b>x</b>* tail\n",
+		"comment block":       "# Title\n\n<!-- a comment -->\n",
+		"clean prose":         "Just plain prose with no HTML.\n",
+		"block and inline":    "# Title\n\n<div>block</div>\n\ntext <span>x</span> end\n",
+	}
+	for name, src := range cases {
+		t.Run(name, func(t *testing.T) {
+			r := &Rule{AllowComments: false}
+
+			fAST, err := lint.NewFile("test.md", []byte(src))
+			require.NoError(t, err)
+			astDiags := r.Check(fAST)
+
+			fNil, err := lint.NewFile("test.md", []byte(src))
+			require.NoError(t, err)
+			fNil.AST = nil
+			nilDiags := r.Check(fNil)
+
+			assert.Equal(t, astDiags, nilDiags)
+		})
+	}
 }

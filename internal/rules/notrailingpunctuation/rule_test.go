@@ -5,8 +5,40 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestCheck_NilASTMatchesAST pins the parse-skipped path byte-identical to
+// the AST path over headings whose trailing text comes from inline markup:
+// emphasis at the end, a link inside emphasis, and a code span holding
+// bracket text. The flattened heading text drives the trailing-punctuation
+// verdict, so any divergence in the inline re-parse would change the
+// diagnostic set.
+func TestCheck_NilASTMatchesAST(t *testing.T) {
+	cases := map[string]string{
+		"emphasis ends in period": "# Done *already.*\n",
+		"link inside emphasis":    "# See *[home.](/h)*\n",
+		"code span brackets":      "# Use `a[0]:`\n",
+		"clean heading":           "# All good *here*\n",
+	}
+	for name, src := range cases {
+		t.Run(name, func(t *testing.T) {
+			r := &Rule{}
+
+			fAST, err := lint.NewFile("test.md", []byte(src))
+			require.NoError(t, err)
+			astDiags := r.Check(fAST)
+
+			fNil, err := lint.NewFile("test.md", []byte(src))
+			require.NoError(t, err)
+			fNil.AST = nil
+			nilDiags := r.Check(fNil)
+
+			assert.Equal(t, astDiags, nilDiags)
+		})
+	}
+}
 
 func TestCheck_NoPunctuation_NoViolation(t *testing.T) {
 	src := []byte("# Title\n\n## Section\n")
@@ -104,4 +136,9 @@ func TestName(t *testing.T) {
 	if r.Name() != "no-trailing-punctuation-in-heading" {
 		t.Errorf("expected no-trailing-punctuation-in-heading, got %s", r.Name())
 	}
+}
+
+func TestInlineCapable(t *testing.T) {
+	r := &Rule{}
+	assert.True(t, r.InlineCapable())
 }

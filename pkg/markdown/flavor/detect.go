@@ -503,8 +503,22 @@ func findHeadingID(source []byte, h *ast.Heading) (Finding, bool) {
 // recognised by CommonMark and appear as ast.AutoLink, so only true
 // bare URLs remain inside Text nodes.
 func detectBareURLs(source []byte, cmAST ast.Node) []Finding {
+	return BareURLFindingsInTree(source, cmAST, 0)
+}
+
+// BareURLFindingsInTree returns one FeatureBareURLAutolinks finding per bare
+// URL in the Text descendants of root that are not inside a link, autolink, or
+// code context. base is added to each Text segment's run-local offsets so a
+// caller that re-parsed an inline run in isolation (the parse-skipped path)
+// recovers document-absolute positions; pass 0 when root is the document's own
+// CommonMark AST. The findings are byte-identical to detectBareURLs by
+// construction, so the AST path and the inline-run path agree.
+func BareURLFindingsInTree(source []byte, root ast.Node, base int) []Finding {
+	if root == nil {
+		return nil
+	}
 	var findings []Finding
-	_ = ast.Walk(cmAST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
 		}
@@ -516,11 +530,11 @@ func detectBareURLs(source []byte, cmAST ast.Node) []Finding {
 			return ast.WalkContinue, nil
 		}
 		seg := t.Segment
-		body := seg.Value(source)
+		body := source[base+seg.Start : base+seg.Stop]
 		matches := bareURLPattern.FindAllIndex(body, -1)
 		for _, m := range matches {
-			start := seg.Start + m[0]
-			end := seg.Start + m[1]
+			start := base + seg.Start + m[0]
+			end := base + seg.Start + m[1]
 			findings = append(findings, makeFinding(source, FeatureBareURLAutolinks, start, end))
 		}
 		return ast.WalkContinue, nil
@@ -542,6 +556,9 @@ func insideNonBareContext(n ast.Node) bool {
 // detectGitHubAlerts walks cmAST for Blockquote nodes whose first
 // paragraph child starts with a GFM alert token (e.g. [!NOTE]).
 func detectGitHubAlerts(source []byte, cmAST ast.Node) []Finding {
+	if cmAST == nil {
+		return nil
+	}
 	var findings []Finding
 	_ = ast.Walk(cmAST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
@@ -557,6 +574,42 @@ func detectGitHubAlerts(source []byte, cmAST ast.Node) []Finding {
 		return ast.WalkContinue, nil
 	})
 	return findings
+}
+
+// IsAlertMarkerLine reports whether line is a GitHub Alert marker line: a
+// blockquote line whose content, after stripping the leading `>` markers and
+// surrounding whitespace, is one of the five GFM alert tokens. It is the
+// line-level counterpart to IsGitHubAlert for callers that work from the
+// Layer 0 block scan rather than a parsed Blockquote node.
+func IsAlertMarkerLine(line []byte) bool {
+	return alertTokenRe.Match(StripBlockquoteMarkers(line))
+}
+
+// StripBlockquoteMarkers removes a blockquote line's leading indentation and
+// `>` markers (each optionally followed by one space), returning the inner
+// content with trailing line terminators trimmed — mirroring how goldmark
+// records a quoted paragraph's first content line. Exposed so callers working
+// from the Layer 0 block scan can locate a blockquote's first paragraph line.
+func StripBlockquoteMarkers(line []byte) []byte {
+	i := 0
+	for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
+		i++
+	}
+	for i < len(line) && line[i] == '>' {
+		i++
+		if i < len(line) && line[i] == ' ' {
+			i++
+		}
+	}
+	return bytes.TrimRight(line[i:], "\r\n")
+}
+
+// AlertFinding builds a FeatureGitHubAlerts finding anchored at the line
+// beginning at lineStart in source — the same anchor blockFinding produces for
+// a parsed alert Blockquote, so the AST path and the Layer 0 line path agree.
+func AlertFinding(source []byte, lineStart int) Finding {
+	line, _ := LineCol(source, lineStart)
+	return Finding{Feature: FeatureGitHubAlerts, Line: line, Column: 1, Start: lineStart, End: lineStart}
 }
 
 // IsGitHubAlert reports whether bq is a GitHub Alert blockquote: its

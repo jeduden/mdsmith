@@ -464,3 +464,39 @@ func TestCheck_MultiDefs_IgnoredLabel(t *testing.T) {
 	// (no diag even though it has no reference link to it).
 	assert.Empty(t, r.Check(newFile(t, src)))
 }
+
+// TestCheck_NilASTMatchesAST pins the parse-skipped path byte-identical to
+// the AST path over reference definitions and uses in inline edge cases: an
+// unused definition, a used full reference, a collapsed reference, a shortcut
+// reference inside emphasis, a duplicate definition, and a reference used only
+// inside a link nested in emphasis. The nil-AST path assembles the def/use map
+// from the re-parsed inline runs (definitions pre-seeded), so any divergence
+// surfaces here.
+func TestCheck_NilASTMatchesAST(t *testing.T) {
+	cases := map[string]string{
+		"unused definition":    "Some text.\n\n[label]: /url\n",
+		"used full ref":        "See [text][label].\n\n[label]: /url\n",
+		"used collapsed ref":   "See [label][].\n\n[label]: /url\n",
+		"shortcut in emphasis": "A *[label]* tail.\n\n[label]: /url\n",
+		"duplicate definition": "See [a][label].\n\n[label]: /one\n[label]: /two\n",
+		"ref in nested link":   "Read *[see][lbl]* now.\n\n[lbl]: /url\n",
+		"all used no diag":     "Both [a][x] and [b][y].\n\n[x]: /1\n[y]: /2\n",
+		"image ref used":       "![alt][img].\n\n[img]: /photo.png\n",
+	}
+	for name, src := range cases {
+		t.Run(name, func(t *testing.T) {
+			r := &Rule{}
+
+			fAST, err := lint.NewFile("test.md", []byte(src))
+			require.NoError(t, err)
+			astDiags := r.Check(fAST)
+
+			fNil, err := lint.NewFile("test.md", []byte(src))
+			require.NoError(t, err)
+			fNil.AST = nil
+			nilDiags := r.Check(fNil)
+
+			assert.Equal(t, astDiags, nilDiags)
+		})
+	}
+}
