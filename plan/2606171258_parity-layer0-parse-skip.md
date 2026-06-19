@@ -139,11 +139,22 @@ fires on one). MDS066 is the only `B-prose-only` rule parity enables —
 MDS041, MDS050, MDS052 are all disabled by the convention — so it was the
 lone blocker.
 
-The fix is a `blockSkipSafe` override in `rulelayer`, parallel to
-`knownNilASTSafe`. It promotes a nil-AST-safe, block-scan-backed rule to
-Layer 0 from `B-prose-only`. A contract test pins that every entry has
-`nil_ast_safe: true`. The corpus equivalence gate now exercises MDS066 on
-the parse-skipped path.
+The fix generalizes the layer mapping rather than special-casing MDS066.
+`rulelayer.nilASTBackable` promotes the whole nil-AST-safe `B-prose-only`
+category to Layer 0, gated on the manifest's `nil_ast_safe` signal. A
+`B-prose-only` rule already matched the AST run on its fixture; a
+divergent rule lands in `hybrid`. The only withheld signal was
+code-sensitivity. The validated `ClassifyLines` and Layer-1 projections
+now reproduce that code content. This admits MDS066, parity's lone
+blocker, plus the opt-in MDS041, MDS050, and MDS052.
+
+`astProjectionConsumers` stays as the veto for a future rule that reads an
+unbacked AST projection. Three guards back the promotion.
+`TestBProseOnlyRulesAreNilASTSafe` pins that every `B-prose-only` entry is
+`nil_ast_safe`. Each rule's `TestCheck_NilASTMatchesAST` checks its own
+nil-AST path against the AST path. For MDS066 — the only one parity
+enables — `TestParityConvention_SkipsParse` drives the nil-AST path on a
+skip-eligible file and asserts it fires.
 
 ## Acceptance Criteria
 
