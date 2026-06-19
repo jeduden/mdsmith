@@ -15,6 +15,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
+	"github.com/jeduden/mdsmith/internal/setutil"
 )
 
 func init() {
@@ -50,34 +51,34 @@ func (r *Rule) EnabledByDefault() bool { return false }
 // vocabulary; the diagnostic message orders names via
 // validTypeOrder below, so map iteration order does not affect
 // output stability.
-var builtInTypes = map[string]bool{
-	"note":      true,
-	"abstract":  true,
-	"summary":   true,
-	"tldr":      true,
-	"info":      true,
-	"todo":      true,
-	"tip":       true,
-	"hint":      true,
-	"important": true,
-	"success":   true,
-	"check":     true,
-	"done":      true,
-	"question":  true,
-	"help":      true,
-	"faq":       true,
-	"warning":   true,
-	"caution":   true,
-	"attention": true,
-	"failure":   true,
-	"fail":      true,
-	"missing":   true,
-	"danger":    true,
-	"error":     true,
-	"bug":       true,
-	"example":   true,
-	"quote":     true,
-	"cite":      true,
+var builtInTypes = map[string]struct{}{
+	"note":      {},
+	"abstract":  {},
+	"summary":   {},
+	"tldr":      {},
+	"info":      {},
+	"todo":      {},
+	"tip":       {},
+	"hint":      {},
+	"important": {},
+	"success":   {},
+	"check":     {},
+	"done":      {},
+	"question":  {},
+	"help":      {},
+	"faq":       {},
+	"warning":   {},
+	"caution":   {},
+	"attention": {},
+	"failure":   {},
+	"fail":      {},
+	"missing":   {},
+	"danger":    {},
+	"error":     {},
+	"bug":       {},
+	"example":   {},
+	"quote":     {},
+	"cite":      {},
 }
 
 // validTypeOrder is the message-facing list of base type names. The
@@ -123,7 +124,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		if !ok {
 			return ast.WalkContinue, nil
 		}
-		if allowed[strings.ToLower(token)] {
+		if setutil.Contains(allowed, strings.ToLower(token)) {
 			return ast.WalkContinue, nil
 		}
 		diags = append(diags, r.unknownTypeDiag(f.Path, line, col, token))
@@ -170,7 +171,11 @@ func (r *Rule) checkLayer0(f *lint.File) []lint.Diagnostic {
 		}
 		// d > prevDepth: first content line at this nesting depth.
 		token, line, col, ok := calloutTokenFromLine(f, lineNum, d)
-		if !ok || allowed[strings.ToLower(token)] {
+		if !ok {
+			prevDepth = d
+			continue
+		}
+		if setutil.Contains(allowed, strings.ToLower(token)) {
 			prevDepth = d
 			continue
 		}
@@ -246,13 +251,13 @@ func quoteMarkerLen(line []byte) int {
 // so it runs at most once per file. Rule instances are shared across concurrent
 // LSP calls, so mutable caching on the Rule struct itself would race; the
 // per-File memo is sync.Map + sync.Once protected and avoids that entirely.
-func (r *Rule) buildAllowSet() map[string]bool {
-	out := make(map[string]bool, len(builtInTypes)+len(r.Allow))
+func (r *Rule) buildAllowSet() map[string]struct{} {
+	out := make(map[string]struct{}, len(builtInTypes)+len(r.Allow))
 	for k := range builtInTypes {
-		out[k] = true
+		out[k] = struct{}{}
 	}
 	for _, name := range r.Allow {
-		out[strings.ToLower(name)] = true
+		out[strings.ToLower(name)] = struct{}{}
 	}
 	return out
 }
@@ -260,9 +265,9 @@ func (r *Rule) buildAllowSet() map[string]bool {
 // cachedAllowSet returns the effective allow set memoised on the per-Check
 // *lint.File, so the map is built at most once per file regardless of how
 // many callout blockquotes the file contains.
-func (r *Rule) cachedAllowSet(f *lint.File) map[string]bool {
+func (r *Rule) cachedAllowSet(f *lint.File) map[string]struct{} {
 	v := f.Memo("MDS067.allowSet", func() any { return r.buildAllowSet() })
-	return v.(map[string]bool)
+	return v.(map[string]struct{})
 }
 
 // calloutToken returns the `[!type]` token, body-relative line, and

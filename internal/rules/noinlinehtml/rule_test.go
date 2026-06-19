@@ -243,7 +243,7 @@ func TestCachedAllowSet(t *testing.T) {
 	require.NoError(t, err)
 
 	first := r.cachedAllowSet(f)
-	require.Equal(t, map[string]bool{"span": true, "div": true, "strong": true}, first,
+	require.Equal(t, map[string]struct{}{"span": {}, "div": {}, "strong": {}}, first,
 		"lookup keys must be lowercase normalisations of r.Allow")
 
 	second := r.cachedAllowSet(f)
@@ -356,4 +356,16 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 			assert.Equal(t, astDiags, nilDiags)
 		})
 	}
+}
+
+// TestAllowSet_SetType verifies that allowSet returns map[string]struct{}
+// rather than map[string]bool. Per the high-performance Go guidelines:
+// “map[K]struct{} for sets — zero-byte value type.”
+func TestAllowSet_SetType(t *testing.T) {
+	r := &Rule{Allow: []string{"kbd"}}
+	m := r.allowSet()
+	got := reflect.TypeOf(m).String()
+	want := reflect.TypeOf(map[string]struct{}{}).String()
+	assert.Equal(t, want, got, "allowSet must return map[string]struct{} (guideline: use map[K]struct{} for sets)")
+	assert.Contains(t, m, "kbd", "allowSet must contain the lowercased Allow entry")
 }

@@ -107,3 +107,24 @@ func TestWrapComment(t *testing.T) {
 	assert.Equal(t, []string{"# - aaaaaaaaaaaaaaaaaaaaaaaa"},
 		wrapComment("aaaaaaaaaaaaaaaaaaaaaaaa", 10))
 }
+
+// TestWrapComment_AllocsPerCall verifies that wrapComment uses strings.Builder
+// rather than += in a loop, keeping allocations low regardless of word count.
+// Per the high-performance Go guidelines: "strings.Builder over +".
+// Before the fix, each iteration allocates a new backing array for the string.
+func TestWrapComment_AllocsPerCall(t *testing.T) {
+	if testing.Short() {
+		t.Skip("alloc count skipped in short mode")
+	}
+	// 20 words all fitting within width=200 — one long line.
+	// With +=, each of the 20 words triggers a string copy (≥20 allocs).
+	// With strings.Builder, the entire call uses ≤3 allocs.
+	text := "one two three four five six seven eight nine ten " +
+		"eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty"
+	allocs := testing.AllocsPerRun(100, func() {
+		_ = wrapComment(text, 200)
+	})
+	assert.LessOrEqualf(t, allocs, float64(5),
+		"wrapComment allocates %.0f/call for 20-word input; want ≤5 "+
+			"(guideline: use strings.Builder instead of += in a loop)", allocs)
+}

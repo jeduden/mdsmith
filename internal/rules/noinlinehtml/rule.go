@@ -12,6 +12,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 	rulesettings "github.com/jeduden/mdsmith/internal/rules/settings"
+	"github.com/jeduden/mdsmith/internal/setutil"
 )
 
 func init() {
@@ -153,7 +154,7 @@ func (r *Rule) checkFromLayers(f *lint.File) []lint.Diagnostic {
 // on it, exactly as the AST branch does. It also returns that anchor offset so
 // the caller can order block and inline HTML findings by document position.
 func (r *Rule) checkHTMLBlockSpan(
-	f *lint.File, allowed map[string]bool, span lint.BlockSpan,
+	f *lint.File, allowed map[string]struct{}, span lint.BlockSpan,
 ) (lint.Diagnostic, int, bool) {
 	raw := f.Lines[span.Start-1]
 	offset := f.LineStartOffset(span.Start - 1)
@@ -199,7 +200,7 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 
 // checkRaw inspects raw HTML bytes and returns a diagnostic if the HTML
 // should be flagged. offset is the byte position of the HTML in f.Source.
-func (r *Rule) checkRaw(f *lint.File, allowed map[string]bool, raw []byte, offset int) (lint.Diagnostic, bool) {
+func (r *Rule) checkRaw(f *lint.File, allowed map[string]struct{}, raw []byte, offset int) (lint.Diagnostic, bool) {
 	tag := extractTag(raw)
 	switch {
 	case tag == "":
@@ -213,17 +214,18 @@ func (r *Rule) checkRaw(f *lint.File, allowed map[string]bool, raw []byte, offse
 	case isClosingTag(raw):
 		// Closing tags produce no extra diagnostic
 		return lint.Diagnostic{}, false
-	case allowed[tag]:
-		return lint.Diagnostic{}, false
 	default:
+		if setutil.Contains(allowed, tag) {
+			return lint.Diagnostic{}, false
+		}
 		return r.diag(f, offset, "<"+tag+">"), true
 	}
 }
 
-func (r *Rule) allowSet() map[string]bool {
-	m := make(map[string]bool, len(r.Allow))
+func (r *Rule) allowSet() map[string]struct{} {
+	m := make(map[string]struct{}, len(r.Allow))
 	for _, t := range r.Allow {
-		m[strings.ToLower(t)] = true
+		m[strings.ToLower(t)] = struct{}{}
 	}
 	return m
 }
@@ -234,9 +236,9 @@ func (r *Rule) allowSet() map[string]bool {
 // the LSP's concurrent reader pattern, where the same rule
 // instance is shared across goroutines (config defaults set
 // cfg.Settings=nil, which makes ConfigureRule a no-op).
-func (r *Rule) cachedAllowSet(f *lint.File) map[string]bool {
+func (r *Rule) cachedAllowSet(f *lint.File) map[string]struct{} {
 	v := f.Memo("MDS041.allowSet", func() any { return r.allowSet() })
-	return v.(map[string]bool)
+	return v.(map[string]struct{})
 }
 
 func (r *Rule) diag(f *lint.File, offset int, display string) lint.Diagnostic {

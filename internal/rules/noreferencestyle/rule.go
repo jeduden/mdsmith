@@ -14,6 +14,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/setutil"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 	"github.com/jeduden/mdsmith/pkg/goldmark/util"
@@ -577,9 +578,9 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	return applyCuts(f.Source, cuts)
 }
 
-func collectLinkRewrites(f *lint.File) ([]fixCut, map[string]bool) {
+func collectLinkRewrites(f *lint.File) ([]fixCut, map[string]struct{}) {
 	var cuts []fixCut
-	usedLabels := map[string]bool{}
+	usedLabels := map[string]struct{}{}
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
@@ -615,7 +616,7 @@ func collectLinkRewrites(f *lint.File) ([]fixCut, map[string]bool) {
 		if isImage && start > 0 && f.Source[start-1] == '!' {
 			start--
 		}
-		usedLabels[util.ToLinkReference(ref.Value)] = true
+		usedLabels[util.ToLinkReference(ref.Value)] = struct{}{}
 		cuts = append(cuts, fixCut{
 			start: start,
 			end:   end,
@@ -626,7 +627,7 @@ func collectLinkRewrites(f *lint.File) ([]fixCut, map[string]bool) {
 	return cuts, usedLabels
 }
 
-func collectDefinitionCuts(f *lint.File, usedLabels map[string]bool) []fixCut {
+func collectDefinitionCuts(f *lint.File, usedLabels map[string]struct{}) []fixCut {
 	if len(usedLabels) == 0 {
 		return nil
 	}
@@ -634,7 +635,7 @@ func collectDefinitionCuts(f *lint.File, usedLabels map[string]bool) []fixCut {
 	defs := collectReferenceDefinitions(f)
 	var cuts []fixCut
 	for _, d := range defs {
-		if !usedLabels[util.ToLinkReference([]byte(d.label))] {
+		if !setutil.Contains(usedLabels, util.ToLinkReference([]byte(d.label))) {
 			continue
 		}
 		start := d.start
