@@ -129,7 +129,7 @@ func TestWorkerPanicSequentialPathAlsoCaught(t *testing.T) {
 	}
 
 	runner := &Runner{
-		Config:               cfg,
+		Config: cfg,
 		Rules: []rule.Rule{
 			&panicRule{id: "MDS998", name: "panic-rule", msg: panicMsg, trigger: "hostile"},
 		},
