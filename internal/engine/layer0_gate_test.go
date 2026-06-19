@@ -11,6 +11,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/rulelayer"
 )
 
 // withLayer0Skip flips the package gate toggle for the duration of a test
@@ -402,6 +403,80 @@ func TestLayer0Gate_BlockCheckerDiagnosticsMatchFullParse(t *testing.T) {
 	require.NotEmpty(t, parsed)
 	assert.Equal(t, parsed, skipped,
 		"block-checker parse-skip must match the full parse")
+}
+
+// parityConfig loads the built-in `parity` convention the way `mdsmith
+// check -c parity` does — a `convention: parity` config file merged onto the
+// registry defaults — so the test exercises the real parity rule set rather
+// than a hand-listed subset.
+func parityConfig(t *testing.T, dir string) *config.Config {
+	t.Helper()
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte("convention: parity\n"), 0o644))
+	loaded, err := config.Load(cfgPath)
+	require.NoError(t, err)
+	return config.Merge(config.Defaults(), loaded)
+}
+
+// TestLayer0Gate_ParitySkipsParse is the headline proof of plan 2606171258's
+// acceptance criterion 3: `mdsmith check -c parity` sheds the goldmark parse.
+// The parity convention enables 30 rules; every one now resolves to Layer 0
+// or reports rule.LineCapable — MDS066 (commands-show-output), a nil-AST-safe
+// B-prose-only rule, was the last AST-forcing member to migrate. With the
+// full set enabled the gate admits the run, so a directive/list/quote-free
+// file (code included) is linted with a nil AST.
+func TestLayer0Gate_ParitySkipsParse(t *testing.T) {
+	withLayer0Skip(t, true)
+	dir := t.TempDir()
+	cfg := parityConfig(t, dir)
+
+	probe := &astProbeRule{}
+	cfg.Rules[probe.Name()] = config.RuleCfg{Enabled: true}
+
+	// Directive-free, list-free, quote-free, but code-bearing so the parity
+	// fenced-code / command rules (MDS010, MDS011, MDS031, MDS065, MDS066)
+	// are in play on the parse-skipped path.
+	path := filepath.Join(dir, "doc.md")
+	doc := "# Title\n\nSome short prose line.\n\n```sh\necho hello\n```\n\nMore prose.\n"
+	require.NoError(t, os.WriteFile(path, []byte(doc), 0o644))
+
+	r := &Runner{
+		Config:           cfg,
+		Rules:            append(rule.All(), probe),
+		StripFrontMatter: true,
+		RootDir:          dir,
+	}
+	res := r.Run([]string{path})
+	require.Empty(t, res.Errors)
+	assert.True(t, probe.sawNilAST,
+		"the full parity rule set must skip the parse on a directive/list/quote-free file")
+}
+
+// TestParityRuleSetIsSkipSafe pins the gate decision behind criterion 3
+// directly: every rule the parity convention enables is either a Layer 0 rule
+// or reports rule.LineCapable, so allEnabledRulesSkipSafe accepts the whole
+// set. This is the all-or-nothing condition the benchmark turns on — if any
+// future parity rule regresses to AST-forcing, this fails before the
+// end-to-end skip test does.
+func TestParityRuleSetIsSkipSafe(t *testing.T) {
+	dir := t.TempDir()
+	cfg := parityConfig(t, dir)
+	r := &Runner{Config: cfg, Rules: rule.All()}
+	mdRules := markdownRulesFrom(r.Rules, r.ConfigPath)
+	effective := r.effectiveWithCategories("", nil, nil)
+
+	var blockers []string
+	for _, rl := range mdRules {
+		c, ok := effective[rl.Name()]
+		if !ok || !c.Enabled {
+			continue
+		}
+		if !rulelayer.IsLayer0(rl.ID()) && !ruleConfiguredLineCapable(rl, c) {
+			blockers = append(blockers, rl.ID()+" "+rl.Name())
+		}
+	}
+	assert.Empty(t, blockers, "parity-enabled rules that still force the parse")
+	assert.True(t, allEnabledRulesSkipSafe(mdRules, effective))
 }
 
 // astProbeRule is a test rule that records whether the File it checked had

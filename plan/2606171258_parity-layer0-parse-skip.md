@@ -1,7 +1,7 @@
 ---
 id: 2606171258
 title: "Parity Layer-0 parse-skip: migrate the AST-forcing parity rules"
-status: "🔳"
+status: "✅"
 summary: >-
   Move every parity-active rule that still forces the goldmark parse onto
   the Layer-0 / Layer-1 projections so `mdsmith check -c parity` can skip
@@ -79,7 +79,11 @@ heading spans (or the gate excludes container-nested headings). See
    reusing the existing extraction where possible.
 2. Regenerate the walk audit (`MDSMITH_REGEN_WALK_AUDIT=1`) and sync the
    embedded [rulelayer copy](../internal/rulelayer/rule_walk_audit.json)
-   so the rule flips to `A-no-skipping`.
+   so the rule flips to `A-no-skipping`. A code-content rule cannot reach
+   `A-no-skipping` (the probe's code perturbation marks it
+   code-sensitive); it terminates at `B-prose-only`, which `rulelayer`
+   now promotes to Layer 0 when `nil_ast_safe` holds (see the closing
+   section).
 3. Confirm `TestLayer0Gate_CorpusDiagnosticsEquivalence` stays green — it
    enables every Layer-0 rule and diffs parse-skip vs full-parse across
    the corpus, so a divergent rule fails it.
@@ -112,7 +116,7 @@ be Layer 0 (the remaining migration). But it removes the blocker that
 framed parse-skip on code as a scanner rewrite — it was a one-line rule
 fix plus a guard removal.
 
-## Result so far
+## Result
 
 - [x] MDS002 heading-style: reads only the heading line (style + level),
       never the inline tree. `CheckBlock` serves the nil-AST path
@@ -121,11 +125,48 @@ fix plus a guard removal.
       453 code-bearing corpus files (the sweep above).
 - [x] Code guard removed; skip File carries `ClassifyLines`; the corpus
       equivalence gate engages on code files and is green.
+- [x] All five batch plans landed
+      ([2606171400](2606171400_parity-gate-unification.md),
+      [2606171401](2606171401_parity-layer0-heading-rules.md),
+      [2606171402](2606171402_parity-layer0-fenced-code-rules.md),
+      [2606171403](2606171403_parity-layer0-list-quote-rules.md),
+      [2606171404](2606171404_parity-layer1-inline-rules.md)). A scope
+      sweep of the merged parity config (30 enabled rules) found **one**
+      remaining gate blocker: MDS066 commands-show-output.
+
+## Closing the all-or-nothing gate: B-prose-only is nil-AST-safe
+
+Four migrated rules read code content: MDS041 no-inline-html, MDS050
+proper-names, MDS052 no-space-in-code-spans, and MDS066
+commands-show-output. Each gained a working nil-AST path. But the audit
+filed them under `B-prose-only`, not `A-no-skipping`. Its probe scrambles
+the very content they read, so they register as code-sensitive.
+
+`rulelayer` mapped only `A-no-skipping` to Layer 0. Parity enables just
+one of the four — MDS066; the rest are opt-in. So MDS066 alone kept
+forcing the parse, and the parity set never qualified for the skip.
+
+Yet `B-prose-only` already means the probe saw *no* nil-AST divergence on
+the unperturbed fixture. (A divergent rule lands in `hybrid` instead.)
+The only extra signal is code-sensitivity. The code guard that made that
+a disqualifier is gone. The measurement above proved the `ClassifyLines`
+and Layer-1 projections reproduce code content byte for byte.
+
+So `rulelayer` now lifts a `B-prose-only` rule to Layer 0 when its
+`nil_ast_safe` signal holds. `astProjectionConsumers` stays as the veto
+for a future rule that reads an unbacked AST projection. Two guards back
+the change: the corpus equivalence harness (now run over the full parity
+set) and each rule's `TestCheck_NilASTMatchesAST`.
 
 ## Acceptance Criteria
 
-- [ ] Every AST-forcing parity rule resolves to Layer 0 / Layer 1.
-- [ ] `TestLayer0Gate_CorpusDiagnosticsEquivalence` green with the full
-      parity set enabled.
-- [ ] `mdsmith check -c parity` skips the parse on benchmark 2.
-- [ ] All tests pass: `go test ./...`.
+- [x] Every AST-forcing parity rule resolves to Layer 0 / Layer 1
+      (`TestParityRuleSetIsSkipSafe`: zero parity-enabled rules force the
+      parse).
+- [x] `TestLayer0Gate_CorpusDiagnosticsEquivalence` green; added
+      `TestLayer0Gate_ParityCorpusDiagnosticsEquivalence` to diff
+      parse-skip vs full-parse across the corpus with the full parity set.
+- [x] `mdsmith check -c parity` skips the parse on benchmark 2
+      (`TestLayer0Gate_ParitySkipsParse`: the parity set lints a
+      code-bearing, directive/list/quote-free file with a nil AST).
+- [x] All tests pass: `go test ./...`.

@@ -1,6 +1,8 @@
 package integration
 
 import (
+	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 
@@ -106,6 +108,50 @@ func TestLayer0Gate_LineCapableCorpusEquivalence(t *testing.T) {
 	require.NotEmpty(t, parsed, "line-length must fire somewhere in the corpus")
 	assert.Equal(t, diagKeys(parsed), diagKeys(skipped),
 		"line-capable parse-skip must match the full-parse run across the corpus")
+}
+
+// TestLayer0Gate_ParityCorpusDiagnosticsEquivalence is plan 2606171258's
+// acceptance criterion 2: the parse-skip run matches the full-parse run
+// across the repository corpus with the FULL parity rule set enabled — not
+// just the static Layer 0 subset. It loads the built-in `parity` convention
+// exactly as `mdsmith check -c parity` does (a `convention: parity` file
+// merged onto the registry defaults) and diffs the two runs. With every
+// parity rule now Layer 0 (MDS066 commands-show-output was the last to
+// migrate), the gate engages for every directive/list/quote-free file, so
+// this exercises the parse-skip path on real corpus content for the whole
+// set the benchmark runs.
+func TestLayer0Gate_ParityCorpusDiagnosticsEquivalence(t *testing.T) {
+	root := repoRoot(t)
+	files := collectMarkdownCorpus(t, root)
+	require.NotEmpty(t, files)
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte("convention: parity\n"), 0o644))
+	loaded, err := config.Load(cfgPath)
+	require.NoError(t, err)
+	cfg := config.Merge(config.Defaults(), loaded)
+
+	run := func(skip bool) []lint.Diagnostic {
+		if skip {
+			t.Setenv("MDSMITH_LAYER0_SKIP", "1")
+		} else {
+			t.Setenv("MDSMITH_LAYER0_SKIP", "")
+		}
+		r := &engine.Runner{
+			Config:           cfg,
+			Rules:            rule.All(),
+			StripFrontMatter: true,
+			RootDir:          root,
+		}
+		return r.Run(files).Diagnostics
+	}
+
+	skipped := run(true)
+	parsed := run(false)
+	require.NotEmpty(t, parsed, "the parity set must fire somewhere in the corpus")
+	assert.Equal(t, diagKeys(parsed), diagKeys(skipped),
+		"parity parse-skip diagnostics must match the full-parse run across the corpus")
 }
 
 // diagKeys reduces diagnostics to comparable tuples (file, line, column,
