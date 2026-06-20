@@ -38,13 +38,22 @@ everywhere. Only ~26 of 234 files carry no `>` at all, so only those skip
 the parse. The bulk of the wall time is the large quote-bearing chapters,
 and they still parse.
 
-**For the files that do skip, the Layer-0 work costs about as much as the
+**For the files that do skip, the Layer-0 work costs as much as the
 parse.** A skipped file does not run goldmark, but it does run three
 forward passes instead: `ClassifyLines` (the code-line projection),
 `scanLayer0` (the block-span scan the heading/fence rules read), and
 `listscan.Parse` (the list-structure parser the list rules read). Goldmark
 is a fast single parse; three line passes plus the rules land in the same
-class. The saving on the few eligible files is within noise.
+class.
+
+This is the decisive measurement, and it isolates cost from eligibility.
+Restricting the corpus to the 26 files that **do** clear the gate and
+benchmarking only those, parse-skip on and off are identical — **15.5 ms
+either way**. So skipping the parse on an eligible file saves nothing: the
+replacement projections cost what the parse cost. Eligibility is therefore
+*not* the lever. Making more files eligible (by descending into block
+quotes so a `>`-bearing file could skip) would widen a wash, not open a
+win, until the projections themselves are made cheaper than one parse.
 
 This matches and sharpens the earlier
 [lazy-parse spike](lazy-parse-architecture.md): a flat Layer-0 line
@@ -80,21 +89,22 @@ So the parse-skip now lints list files correctly. It is kept default-off
 (an opt-in seam, `MDSMITH_LAYER0_SKIP=1`) because correct is not the same
 as faster: on this corpus it is a wash.
 
-## The two levers the real win still needs
+## The one lever the real win needs
 
-1. **Descend into block quotes.** The block-span scanner collapses a
-   quote into one span, so quote-nested headings and fences are invisible
-   and any `>`-bearing file is disqualified. Until the scan emits the
-   nested spans (the way it already maps nested code lines), the `>` guard
-   keeps the corpus's biggest files on the parse path. This is the
-   eligibility lever.
-2. **Make the projections cheaper than the parse.** Three line passes per
-   skipped file is the ceiling found above. The projections would need to
-   fuse into one pass — or the rules read a shared classification computed
-   once — for the skip to beat the parse on the full rule set.
+**Make the Layer-0 projections cheaper than one parse.** The isolation
+measurement above is unambiguous: on eligible files the skip is exactly
+cost-neutral, so the only thing that turns it into a win is cutting the
+Layer-0 cost below goldmark's. Today the skip path runs three independent
+line passes (`ClassifyLines`, `scanLayer0`, `listscan.Parse`) that each
+re-walk the source and re-track the same fenced-code state. They would
+have to fuse into a **single** pass that emits the code-line set, the
+block spans, and the list structure together — and that one pass must come
+in under goldmark's block+inline parse — before the parse-skip pays off.
+Descending into block quotes (the obvious next step for eligibility) is
+worth nothing until then: it only widens a wash.
 
-Even with both, the [gomarklint architecture note](gomarklint-architecture.md)
-bounds parity at ~1.4x gomarklint, because the rule and per-file work
-alone exceed a pure line scanner. Beating gomarklint outright needs that
-trim too, or a smaller parity rule set — a product decision, not an
-optimization.
+Even after a successful fusion, the
+[gomarklint architecture note](gomarklint-architecture.md) bounds parity
+at ~1.4x gomarklint, because the rule and per-file work alone exceed a
+pure line scanner. Beating gomarklint outright needs that trim too, or a
+smaller parity rule set — a product decision, not an optimization.

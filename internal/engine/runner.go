@@ -620,13 +620,13 @@ var layer0SkipOverride *bool
 //
 // Default OFF. The parse-skip path is correct (byte-identical to the parsed
 // path, held so by the TestLayer0Gate_* corpus equivalence gates, now for
-// list-bearing files too), but it is not yet a measured net win: on a
-// quote-heavy corpus only a small fraction of files clear the gate (a `>`
-// anywhere disqualifies them), and for the files that do skip, the Layer-0
-// projections (listscan + ClassifyLines + the block scan) cost about as
-// much as the goldmark parse they replace, so the wall time is a wash. It
-// stays an opt-in seam (MDSMITH_LAYER0_SKIP=1) until a per-file-cost trim
-// and block-quote-descending block scan turn it into a real win — see
+// list-bearing files too), but it is not yet a measured net win. On the
+// files that DO skip, the Layer-0 projections (listscan + ClassifyLines +
+// the block scan) cost as much as the goldmark parse they replace —
+// measured cost-neutral on the eligible subset — so the wall time is a
+// wash, independent of how many files clear the gate. It stays an opt-in
+// seam (MDSMITH_LAYER0_SKIP=1) until those three line passes fuse into one
+// pass cheaper than the parse — see
 // docs/research/benchmarks/parity-parse-skip-findings.md.
 func layer0SkipEnabled() bool {
 	if layer0SkipOverride != nil {
