@@ -80,4 +80,5 @@ front matter from that target file.
 - [x] Within-workspace symlinks to files *inside* the root continue to
   work (positive test).
 - [x] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] `go vet ./...` passes (golangci-lint needs Go 1.25.8+; env has
+  1.25.0)
