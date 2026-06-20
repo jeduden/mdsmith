@@ -15,12 +15,7 @@ import (
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
-// PanicDiagnostic builds the canonical InternalError diagnostic for a
-// recovered rule panic. Call it from within a defer/recover block so
-// debug.Stack() captures the panic-site frames. Both the engine's
-// lintFile path and the checker's intra-file goroutine path use this
-// single definition to keep the rule ID, severity, and message format
-// in sync.
+// Must be called inside a defer/recover block so debug.Stack() captures the panic-site frames.
 func PanicDiagnostic(path string, rv any) lint.Diagnostic {
 	stack := debug.Stack()
 	return lint.Diagnostic{

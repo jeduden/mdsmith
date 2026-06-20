@@ -399,12 +399,7 @@ func cloneRules(rules []rule.Rule) []rule.Rule {
 // catalog/include rules share one target read across every host file in
 // this pass.
 func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, rr runResolve) (out fileOutcome) {
-	// Parallel intra-file goroutines are covered by checker.runNonNodeCheckers.
-	// This defer covers the serial intra-file path and any NodeChecker /
-	// BlockChecker panics that propagate synchronously through
-	// CheckConfiguredRules. It runs after the log-buffer defer (registered
-	// below), so out.log already holds the captured verbose bytes — copy
-	// them into the replacement outcome rather than silently discarding them.
+	// Registered first so it runs last: out.log already holds verbose bytes when we overwrite out.
 	defer func() {
 		if rv := recover(); rv != nil {
 			savedLog := out.log
@@ -1207,10 +1202,7 @@ func (r *Runner) runConfigTargetRules(res *Result) {
 	}
 }
 
-// runConfigRule calls configured.Check(f) with a recover so a panicking
-// config-target rule produces an InternalError diagnostic instead of
-// crashing the process. runConfigTargetRules runs on Run()'s goroutine —
-// outside the lintFile recover boundary — so it needs its own guard.
+// Outside the lintFile recover boundary — runConfigTargetRules runs on Run()'s goroutine.
 func runConfigRule(configured rule.Rule, f *lint.File) (diags []lint.Diagnostic) {
 	defer func() {
 		if rv := recover(); rv != nil {
