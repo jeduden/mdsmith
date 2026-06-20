@@ -6,6 +6,7 @@ package checker
 
 import (
 	"fmt"
+	"runtime/debug"
 	"sync"
 
 	"github.com/jeduden/mdsmith/internal/config"
@@ -456,6 +457,20 @@ func runNonNodeCheckers(f *lint.File, slots []ruleSlot, intraFileCap int) {
 		go func(slot *ruleSlot) {
 			defer wg.Done()
 			defer func() { <-sem }()
+			defer func() {
+				if rv := recover(); rv != nil {
+					stack := debug.Stack()
+					slot.diags = []lint.Diagnostic{{
+						File:     f.Path,
+						Line:     1,
+						RuleID:   "internal-panic",
+						RuleName: "internal-panic",
+						Severity: lint.Error,
+						Message: fmt.Sprintf(
+							"internal error: rule panic: %v\n%s", rv, stack),
+					}}
+				}
+			}()
 			slot.diags = slot.check.Check(f)
 		}(&slots[i])
 	}

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -166,6 +167,22 @@ type fileOutcome struct {
 	diags []lint.Diagnostic
 	errs  []error
 	log   []byte
+}
+
+// panicOutcome converts a recovered panic into an InternalError fileOutcome for path.
+func panicOutcome(path string, r any) fileOutcome {
+	stack := debug.Stack()
+	msg := fmt.Sprintf("internal error: rule panic: %v\n%s", r, stack)
+	return fileOutcome{
+		diags: []lint.Diagnostic{{
+			File:     path,
+			Line:     1,
+			RuleID:   "internal-panic",
+			RuleName: "internal-panic",
+			Severity: lint.Error,
+			Message:  msg,
+		}},
+	}
 }
 
 // Result holds the output of a lint run.
@@ -395,6 +412,14 @@ func cloneRules(rules []rule.Rule) []rule.Rule {
 // catalog/include rules share one target read across every host file in
 // this pass.
 func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, rr runResolve) (out fileOutcome) {
+	// Catch rule panics that propagate to this goroutine (serial intra-file path).
+	// Parallel intra-file goroutines are covered by checker.runNonNodeCheckers.
+	defer func() {
+		if rv := recover(); rv != nil {
+			out = panicOutcome(path, rv)
+		}
+	}()
+
 	// When verbose, log into a per-file buffer instead of the shared
 	// logger; Run flushes these in input order so concurrent workers
 	// don't interleave -v output. The named return + defer attaches

@@ -57,6 +57,13 @@ func (r *htKindScopedRule) EnteringKinds() []ast.NodeKind { return []ast.NodeKin
 
 var _ rule.KindScopedChecker = (*htKindScopedRule)(nil)
 
+type htPanicRule struct {
+	htPlainRule
+	msg string
+}
+
+func (r *htPanicRule) Check(_ *lint.File) []lint.Diagnostic { panic(r.msg) }
+
 type htBlockRule struct{ htPlainRule }
 
 func (r *htBlockRule) Check(_ *lint.File) []lint.Diagnostic                         { return nil }
@@ -235,6 +242,16 @@ func TestRunNonNodeCheckers(t *testing.T) {
 		runNonNodeCheckers(f, slots, 4)
 		require.Len(t, slots[0].diags, 1)
 		assert.Equal(t, "hit", slots[0].diags[0].Message)
+	})
+	t.Run("concurrentPanicIsRecovered", func(t *testing.T) {
+		r := &htPanicRule{htPlainRule: htPlainRule{id: "TST999"}, msg: "test panic"}
+		slots := []ruleSlot{{check: r}}
+		runNonNodeCheckers(f, slots, 4)
+		require.Len(t, slots[0].diags, 1)
+		assert.Equal(t, "internal-panic", slots[0].diags[0].RuleID)
+		assert.Equal(t, lint.Error, slots[0].diags[0].Severity)
+		assert.Contains(t, slots[0].diags[0].Message, "test panic")
+		assert.Contains(t, slots[0].diags[0].Message, "goroutine")
 	})
 }
 
