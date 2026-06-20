@@ -156,5 +156,5 @@ func (o *overlayFS) ReadDir(name string) ([]fs.DirEntry, error) {
 }
 
 func (o *overlayFS) Glob(pattern string) ([]string, error) {
-	return doublestar.Glob(o.disk, pattern)
+	return doublestar.Glob(o.disk, pattern, doublestar.WithFailOnIOErrors())
 }

@@ -512,3 +512,23 @@ func TestDoExport_BadMaxInputSize_ExitsTwo(t *testing.T) {
 	assert.Equal(t, 2, code)
 	assert.Contains(t, stderr, "max-input-size")
 }
+
+// TestPrepareExportFile_DirEqualsRootAliasesRootFS verifies that when a file
+// sits directly at the project root (filepath.Dir(path) == root from cfgPath),
+// prepareExportFile reuses the already-opened FS for RootFS rather than
+// opening a second os.OpenRoot fd, so both seams point to the same fs.FS value.
+func TestPrepareExportFile_DirEqualsRootAliasesRootFS(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte("rules: {}\n"), 0644))
+
+	src := "# Title\n\nNo directives.\n"
+	path := filepath.Join(dir, "doc.md")
+	require.NoError(t, os.WriteFile(path, []byte(src), 0644))
+
+	f, _, err := prepareExportFile(path, []byte(src), minimalConfig(), cfgPath, bytelimit.DefaultMaxInputBytes)
+	require.NoError(t, err)
+	require.NotNil(t, f.RootFS, "RootFS must be set when dir equals project root")
+	require.True(t, f.FS == f.RootFS,
+		"dir==root must alias RootFS to FS (single os.OpenRoot fd)")
+}
