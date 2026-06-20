@@ -907,10 +907,14 @@ export class Wiring {
       // Register the virtual document provider for the mdsmith-rule:
       // scheme, which renders `mdsmith help rule <id>` (the embedded
       // README) offline so the rewritten hover doc link opens without a
-      // browser or network.
+      // browser or network. Guard on isTrusted() so a stale virtual-doc
+      // tab or a crafted mdsmith-rule:// URI cannot trigger the binary
+      // in an untrusted workspace.
       api.workspace.registerTextDocumentContentProvider(RULE_SCHEME, {
-        provideTextDocumentContent: (uri) =>
-          provideRuleDocContent(uri, getBinary(), getWorkspaceRoot(), undefined, isTrusted),
+        provideTextDocumentContent: (uri) => {
+          if (!isTrusted()) return Promise.resolve("");
+          return provideRuleDocContent(uri, getBinary(), getWorkspaceRoot());
+        },
       })
 
       // VS Code automatically re-evaluates the built-in
