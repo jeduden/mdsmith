@@ -160,6 +160,9 @@ func TestCatalogSymlinkEscapeRefused(t *testing.T) {
 	fixed := r.Fix(f)
 	fixedStr := string(fixed)
 
+	// legit.md must appear: the catalog must have run and indexed the real file.
+	assert.Contains(t, fixedStr, "legit",
+		"catalog Fix must include legit.md so we know the catalog actually ran")
 	// leaked.md symlinks to /etc/hostname — must not appear as a catalog row.
 	assert.NotContains(t, fixedStr, "leaked",
 		"catalog Fix must not include a catalog row for a symlink escaping the project root")

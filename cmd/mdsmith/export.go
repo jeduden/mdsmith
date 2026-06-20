@@ -150,6 +150,7 @@ func prepareExportFile(
 	root := rootDirFromConfig(cfgPath)
 	if root != "" {
 		if dir == root {
+			// Reuse the already-opened FS; avoid a second os.OpenRoot for the same dir.
 			f.RootDir = root
 			f.RootFS = f.FS
 		} else {
