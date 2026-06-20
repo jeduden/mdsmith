@@ -1,7 +1,7 @@
 ---
 id: 2606192014
 title: "Security hardening batch — 2026-06-19 LSP/VS Code audit"
-status: "🔲"
+status: "🔳"
 summary: >-
   Low-severity Workspace Trust gaps from the 2026-06-19 audit: gate the
   mdsmith.kinds.resolve/why palette commands and the mdsmith-rule:

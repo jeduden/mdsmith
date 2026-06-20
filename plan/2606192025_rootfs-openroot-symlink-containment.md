@@ -1,7 +1,7 @@
 ---
 id: 2606192025
 title: "Replace os.DirFS with os.OpenRoot to contain symlink escapes"
-status: "🔲"
+status: "🔳"
 summary: >-
   os.DirFS follows symlinks outside the workspace root in Go 1.25.
   Replace with os.OpenRoot (RESOLVE_BENEATH) at all RootFS construction
