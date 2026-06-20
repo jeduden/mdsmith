@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io/fs"
 	"net/url"
-	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -258,7 +257,7 @@ func wikilinkRoot(f *lint.File) fs.FS {
 		return f.RootFS
 	}
 	if f.RootDir != "" {
-		return os.DirFS(f.RootDir)
+		return lint.OpenRootFS(f.RootDir)
 	}
 	return f.FS
 }

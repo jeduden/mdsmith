@@ -106,6 +106,13 @@ func TestIncludeSymlinkInsideRootWorks(t *testing.T) {
 	r := &include.Rule{}
 	diags := r.Check(f)
 	assert.Emptyf(t, diags, "within-root relative-symlink include must not produce diagnostics: %v", diags)
+
+	// Also verify Fix can read through the relative symlink to regenerate the
+	// section body. Fix and Check share the same code path for reading included
+	// files, but testing both ensures no entry-point divergence goes unnoticed.
+	fixed := r.Fix(f)
+	assert.Contains(t, string(fixed), "Hello world",
+		"Fix must embed the symlink target's content for a relative within-root symlink")
 }
 
 // TestCatalogSymlinkEscapeRefused is the S002 acceptance test.

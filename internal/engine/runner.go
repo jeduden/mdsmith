@@ -542,7 +542,13 @@ func (r *Runner) configureFile(f *lint.File, path string, cache *lint.RunCache) 
 	f.FS = lint.OpenRootFS(dir)
 	gitignoreDir := dir
 	if r.RootDir != "" {
-		f.SetRootDir(r.RootDir)
+		if dir == r.RootDir {
+			// Reuse the already-opened FS; avoid a second os.OpenRoot for the same dir.
+			f.RootDir = r.RootDir
+			f.RootFS = f.FS
+		} else {
+			f.SetRootDir(r.RootDir)
+		}
 		gitignoreDir = r.RootDir
 	}
 	gd := gitignoreDir // capture for closure

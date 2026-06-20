@@ -145,7 +145,7 @@ func prepareExportFile(
 	f, _ := lint.NewFileFromSource(path, source, frontMatterEnabled(cfg)) // never errors today
 	f.MaxInputBytes = maxBytes
 	dir := filepath.Dir(path)
-	f.FS = os.DirFS(dir)
+	f.FS = lint.OpenRootFS(dir)
 	gitignoreDir := dir
 	root := rootDirFromConfig(cfgPath)
 	if root != "" {

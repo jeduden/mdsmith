@@ -325,8 +325,7 @@ func extractBacklinksFromSource(
 	// resolution operates on the source-relative path and never reads
 	// f.RootFS, so this is a wikilink-only requirement.
 	if rootDir != "" {
-		f.RootDir = rootDir
-		f.RootFS = os.DirFS(rootDir)
+		f.SetRootDir(rootDir)
 	}
 	var out []backlinkRecord
 	for _, link := range linkgraph.ExtractLinks(f) {
