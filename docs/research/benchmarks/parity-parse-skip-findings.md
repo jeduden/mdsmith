@@ -1,11 +1,11 @@
 ---
 summary: >-
   Measured why the Layer-0 parse-skip is a wash on benchmark 2 even after
-  the list rules are made skip-capable: a quote-heavy corpus clears few
-  files through the gate, and for the files that do skip the Layer-0
-  projections cost about as much as the goldmark parse they replace.
-  Records the dispatch bug this work fixed and the two levers the real win
-  still needs.
+  the list rules are made skip-capable: a profile of the eligible-only run
+  shows the skip path's cost is InlineBlocks re-parsing the content through
+  goldmark per run (~51%), not the line scans (~10%), so skipping the
+  block parse saves nothing. Records the dispatch bug this work fixed and
+  the one lever the real win needs — a light inline scanner.
 ---
 # Parity parse-skip: why it is a wash on benchmark 2
 
@@ -38,22 +38,26 @@ everywhere. Only ~26 of 234 files carry no `>` at all, so only those skip
 the parse. The bulk of the wall time is the large quote-bearing chapters,
 and they still parse.
 
-**For the files that do skip, the Layer-0 work costs as much as the
-parse.** A skipped file does not run goldmark, but it does run three
-forward passes instead: `ClassifyLines` (the code-line projection),
-`scanLayer0` (the block-span scan the heading/fence rules read), and
-`listscan.Parse` (the list-structure parser the list rules read). Goldmark
-is a fast single parse; three line passes plus the rules land in the same
-class.
+**For the files that do skip, the skip path re-parses the content
+anyway.** This is the decisive measurement, and it isolates cost from
+eligibility: restrict the corpus to the 26 files that **do** clear the
+gate and benchmark only those, and parse-skip on and off are identical —
+**15.5 ms either way.** A CPU profile of the skip-on run says why. The
+cheap line scans the skip path was supposed to substitute for the parse
+are negligible (`listscan.Parse` ~5%, `ClassifyLines` and `scanLayer0`
+below the noise floor). The cost is **`lint.InlineBlocks` at ~51%** —
+the shared inline projection the parity link/reference rules
+(`no-bare-urls`, `link-validity`, the two reference-label rules) read on
+the nil-AST path. And `InlineBlocks` is not a light scan: it splits the
+body into runs and calls `parseInlineWithRefsArena` →
+`markdown.ParseContextArena` on each run, i.e. a **full goldmark parse**
+(block phase included — `parseBlocks` shows at ~33% of the skip-on run)
+of every paragraph.
 
-This is the decisive measurement, and it isolates cost from eligibility.
-Restricting the corpus to the 26 files that **do** clear the gate and
-benchmarking only those, parse-skip on and off are identical — **15.5 ms
-either way**. So skipping the parse on an eligible file saves nothing: the
-replacement projections cost what the parse cost. Eligibility is therefore
-*not* the lever. Making more files eligible (by descending into block
-quotes so a `>`-bearing file could skip) would widen a wash, not open a
-win, until the projections themselves are made cheaper than one parse.
+So the "parse skip" does not skip goldmark; it moves goldmark from one
+whole-document parse to a per-run parse of the same content, and the line
+scans ride on top. Total work is unchanged — hence the exact wash. The
+block-structure scan it genuinely avoids is the small part.
 
 This matches and sharpens the earlier
 [lazy-parse spike](lazy-parse-architecture.md): a flat Layer-0 line
@@ -91,20 +95,39 @@ as faster: on this corpus it is a wash.
 
 ## The one lever the real win needs
 
-**Make the Layer-0 projections cheaper than one parse.** The isolation
-measurement above is unambiguous: on eligible files the skip is exactly
-cost-neutral, so the only thing that turns it into a win is cutting the
-Layer-0 cost below goldmark's. Today the skip path runs three independent
-line passes (`ClassifyLines`, `scanLayer0`, `listscan.Parse`) that each
-re-walk the source and re-track the same fenced-code state. They would
-have to fuse into a **single** pass that emits the code-line set, the
-block spans, and the list structure together — and that one pass must come
-in under goldmark's block+inline parse — before the parse-skip pays off.
-Descending into block quotes (the obvious next step for eligibility) is
-worth nothing until then: it only widens a wash.
+**Replace the inline projection's full goldmark parse with a light inline
+scan.** The profile is unambiguous: the skip path's cost is `InlineBlocks`
+re-parsing the content, not the line scans. The
+[lazy-parse note](lazy-parse-architecture.md) anticipated exactly this —
+Layer 1 was specified as "a targeted byte scan for links, autolinks,
+images, and `[label]:` definitions/uses — **not** the full emphasis
+delimiter algorithm" — but the shipped `InlineBlocks` took the easy route
+and runs a real `markdown.ParseContextArena` per run instead. So the work
+is not line-scan fusion (those passes are ~10% combined and already cheap);
+it is building the light inline index Layer 1 was always meant to be:
 
-Even after a successful fusion, the
-[gomarklint architecture note](gomarklint-architecture.md) bounds parity
-at ~1.4x gomarklint, because the rule and per-file work alone exceed a
-pure line scanner. Beating gomarklint outright needs that trim too, or a
-smaller parity rule set — a product decision, not an optimization.
+- A byte scanner that extracts only what the parity inline rules read —
+  links and autolinks (`no-bare-urls`, `link-validity`), images
+  (`no-empty-alt-text`), and reference definitions/uses
+  (`no-unused-link-definitions`, `no-undefined-reference-labels`) — plus
+  the code-span ranges that suppress them. No emphasis delimiter run.
+- Byte-identical to goldmark's inline result for those constructs across
+  the corpus and every rule fixture, the same equivalence discipline the
+  block scan already meets. Link parsing edge cases (nested brackets,
+  backslash escapes, code-span suppression, reference-label folding) are
+  where the risk sits.
+- One holdout: `no-emphasis-as-heading` (MDS018) asks a bounded emphasis
+  question (is a whole paragraph one emphasis span?) that a constrained
+  detector can answer without the full delimiter algorithm; see the
+  lazy-parse note's "MDS018 holdout" section.
+
+Only when `InlineBlocks` is that light scanner does the parse-skip become
+cheaper than the parse. Eligibility (descending into block quotes) is a
+second, smaller step that is worthless until the inline cost is cut —
+it would only widen a wash.
+
+Even then, the [gomarklint architecture note](gomarklint-architecture.md)
+bounds parity at ~1.4x gomarklint, because the rule and per-file work
+alone exceed a pure line scanner. Beating gomarklint outright needs that
+trim too, or a smaller parity rule set — a product decision, not an
+optimization.
