@@ -12,7 +12,19 @@
 // span per marker line, carries no nesting depth, and misclassifies a
 // >=4-space-indented nested item as a paragraph. listscan is a proper
 // line-based list parser whose output is validated byte-for-byte against
-// goldmark's AST in listscan_ast_test.go.
+// goldmark's AST in listscan_ast_test.go and over the whole repository
+// corpus in listscan_corpus_test.go.
+//
+// Known limitation: HTML blocks are not modeled. goldmark treats an HTML
+// block (a comment, a `<div>` … `</div>` run, etc.) as a leaf block whose
+// interior is raw and opaque, so a bullet- or number-shaped line inside one
+// is not a list item, and an HTML block nested in a list item counts as a
+// separate block (making the item multi-block). listscan does not recognize
+// HTML-block boundaries, so it would diverge on such input. The parse-skip
+// gate excludes files containing an HTML block, keeping them off this path;
+// the corpus equivalence test skips them for the same reason. Lifting the
+// limitation means porting goldmark's seven HTML-block open/close rules
+// (already in internal/lint/layer0.go) into this parser.
 package listscan
 
 // Item is one parsed list item.
@@ -131,6 +143,12 @@ type parser struct {
 	// topListIndex is the index of the open top-level list, or -1 when
 	// none is open (a non-list block closed the run).
 	topListIndex int
+	// topInParagraph records whether the previous top-level (stack-empty)
+	// line opened or continued a paragraph with no intervening blank. It
+	// lets markerIsLazyText apply CommonMark's "an ordered list whose first
+	// number is not 1 cannot interrupt a paragraph" rule at the document
+	// root, not only inside a list item.
+	topInParagraph bool
 }
 
 func (p *parser) run() {
@@ -143,6 +161,9 @@ func (p *parser) run() {
 		line := p.lines[i]
 		if isBlankLine(line) {
 			p.blankRun++
+			// A blank line closes any open top-level paragraph, so a marker
+			// after it interrupts nothing and starts a list.
+			p.topInParagraph = false
 			continue
 		}
 		i = p.scanLine(i, line)
@@ -159,13 +180,14 @@ func (p *parser) scanLine(i int, line []byte) int {
 	lineNo := i + 1
 	indent := leadingSpaces(line)
 	markerToken := hasMarkerToken(line, indent)
+	interrupts := interruptsParagraph(line, indent)
 
 	// Close any open item whose content column the line's indent does not
 	// reach, so the surviving stack top is the item this line belongs to.
 	// A lazy paragraph continuation at lower indent keeps the innermost
 	// paragraph item open; a marker or paragraph-interrupting line is
 	// never lazy and closes down to its true level.
-	lazy := !markerToken && !interruptsParagraph(line, indent)
+	lazy := !markerToken && !interrupts
 	for len(p.stack) > 0 && indent < p.stack[len(p.stack)-1].contentCol {
 		if lazy && p.blankRun == 0 && p.stack[len(p.stack)-1].inParagraph {
 			break
@@ -184,14 +206,26 @@ func (p *parser) scanLine(i int, line []byte) int {
 	// item — whose absolute indent is the item's content column — is still
 	// recognized.
 	if fence, ok := openingFenceRel(line, indent, baseCol); ok {
+		// A fenced code block is not a paragraph, so a marker after it (once
+		// the block closes) interrupts nothing.
+		p.topInParagraph = false
 		return p.consumeFence(i, fence)
 	}
 
 	if mi, ok := parseMarker(line, indent, baseCol); ok && !p.markerIsLazyText(indent, mi) {
+		// Opening a list ends any top-level paragraph; the document root is
+		// now in list context.
+		p.topInParagraph = false
 		p.handleMarkerLine(lineNo, mi)
 		return i
 	}
 	p.handleContinuation(lineNo, indent)
+	// Track top-level paragraph state for the next line's interruption test:
+	// when this line lands at the document root, a plain-text line opens or
+	// continues a paragraph while a heading or thematic break does not.
+	if len(p.stack) == 0 {
+		p.topInParagraph = !interrupts
+	}
 	return i
 }
 
@@ -245,12 +279,17 @@ func (p *parser) markerIsLazyText(indent int, mi markerInfo) bool {
 	if !mi.ordered || mi.number == 1 {
 		return false
 	}
-	n := len(p.stack)
-	if n == 0 {
+	if p.blankRun > 0 {
 		return false
 	}
+	n := len(p.stack)
+	if n == 0 {
+		// At the document root the marker is lazy paragraph text when an open
+		// top-level paragraph precedes it with no blank between.
+		return p.topInParagraph
+	}
 	top := p.stack[n-1]
-	if !top.inParagraph || p.blankRun > 0 {
+	if !top.inParagraph {
 		return false
 	}
 	// The marker continues/nests under this item only when its indent

@@ -387,6 +387,15 @@ func coreSnippets() map[string]string {
 		"nested-then-fence-outer":     "- a\n  - b\n\n  ```\n  c\n  ```\n",
 		"para-blank-para-nested":      "- a\n\n  more\n\n  - sub\n",
 		"tilde-fence-in-item":         "- a\n\n  ~~~\n  x\n  ~~~\n\n- b\n",
+		// An ordered marker numbered other than 1 cannot interrupt a
+		// top-level paragraph: goldmark reads "2026." as lazy paragraph text,
+		// not a new list, so listscan must report zero lists here.
+		"ordered-nonone-interrupts-toplevel-para": "Sold in\n2026. No built-in support yet.\n",
+		// A blank line closes the paragraph, so the same marker then starts an
+		// ordered list with Start 2.
+		"ordered-nonone-after-blank": "Some prose.\n\n2. real item\n3. another\n",
+		// An ordered marker numbered 1 always interrupts a paragraph.
+		"ordered-one-interrupts-toplevel-para": "Some prose\n1. interrupts here\n",
 	}
 }
 
