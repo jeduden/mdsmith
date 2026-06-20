@@ -430,7 +430,7 @@ func htmlType6Start(s []byte) bool {
 		}
 		buf[k] = c
 	}
-	if !htmlType6Tags[string(buf[:n])] {
+	if _, ok := htmlType6Tags[string(buf[:n])]; !ok {
 		return false
 	}
 	if i >= len(s) {
@@ -451,20 +451,22 @@ func isASCIIAlnum(b byte) bool {
 }
 
 // htmlType6Tags is the CommonMark type-6 block-level tag set (lowercase).
-var htmlType6Tags = map[string]bool{
-	"address": true, "article": true, "aside": true, "base": true,
-	"basefont": true, "blockquote": true, "body": true, "caption": true,
-	"center": true, "col": true, "colgroup": true, "dd": true, "details": true,
-	"dialog": true, "dir": true, "div": true, "dl": true, "dt": true,
-	"fieldset": true, "figcaption": true, "figure": true, "footer": true,
-	"form": true, "frame": true, "frameset": true, "h1": true, "h2": true,
-	"h3": true, "h4": true, "h5": true, "h6": true, "head": true,
-	"header": true, "hr": true, "html": true, "iframe": true, "legend": true,
-	"li": true, "link": true, "main": true, "menu": true, "menuitem": true,
-	"nav": true, "noframes": true, "ol": true, "optgroup": true, "option": true,
-	"p": true, "param": true, "section": true, "summary": true, "table": true,
-	"tbody": true, "td": true, "tfoot": true, "th": true, "thead": true,
-	"title": true, "tr": true, "track": true, "ul": true,
+// Uses map[string]struct{} (zero-byte value) rather than map[string]bool
+// per the "map[K]struct{} for sets" performance guideline.
+var htmlType6Tags = map[string]struct{}{
+	"address": {}, "article": {}, "aside": {}, "base": {},
+	"basefont": {}, "blockquote": {}, "body": {}, "caption": {},
+	"center": {}, "col": {}, "colgroup": {}, "dd": {}, "details": {},
+	"dialog": {}, "dir": {}, "div": {}, "dl": {}, "dt": {},
+	"fieldset": {}, "figcaption": {}, "figure": {}, "footer": {},
+	"form": {}, "frame": {}, "frameset": {}, "h1": {}, "h2": {},
+	"h3": {}, "h4": {}, "h5": {}, "h6": {}, "head": {},
+	"header": {}, "hr": {}, "html": {}, "iframe": {}, "legend": {},
+	"li": {}, "link": {}, "main": {}, "menu": {}, "menuitem": {},
+	"nav": {}, "noframes": {}, "ol": {}, "optgroup": {}, "option": {},
+	"p": {}, "param": {}, "section": {}, "summary": {}, "table": {},
+	"tbody": {}, "td": {}, "tfoot": {}, "th": {}, "thead": {},
+	"title": {}, "tr": {}, "track": {}, "ul": {},
 }
 
 var (

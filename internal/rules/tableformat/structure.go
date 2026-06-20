@@ -14,8 +14,8 @@ package tableformat
 
 import (
 	"bytes"
+	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -211,7 +211,7 @@ func checkColumnCount(f *lint.File, t tableBlock, ruleID, ruleName string) []lin
 			continue
 		}
 		diags = append(diags, structureDiag(f, row.lineNum, 1, ruleID, ruleName,
-			"table column count; expected "+strconv.Itoa(want)+", got "+strconv.Itoa(row.cells)))
+			fmt.Sprintf("table column count; expected %d, got %d", want, row.cells)))
 	}
 	if len(diags) == 0 {
 		return nil

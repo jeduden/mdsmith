@@ -1,6 +1,7 @@
 package lint
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -255,4 +256,14 @@ func TestHTMLType1Start(t *testing.T) {
 	assert.False(t, htmlType1Start([]byte("<prefix>")), "name is a prefix of a longer tag")
 	assert.False(t, htmlType1Start([]byte("<div>")))
 	assert.False(t, htmlType1Start([]byte("<pr")), "shorter than any name")
+}
+
+// TestHTMLType6Tags_ZeroByteValue verifies that htmlType6Tags uses
+// map[string]struct{} (zero-byte value) rather than map[string]bool
+// (1-byte value), per the "map[K]struct{} for sets" guideline.
+func TestHTMLType6Tags_ZeroByteValue(t *testing.T) {
+	vt := reflect.TypeOf(htmlType6Tags).Elem()
+	if vt.Size() != 0 {
+		t.Fatalf("htmlType6Tags value type %s has size %d bytes, want 0 (use map[string]struct{})", vt, vt.Size())
+	}
 }

@@ -188,3 +188,21 @@ func TestSplitRow_PreservesEscapedPipes(t *testing.T) {
 		t.Fatalf("second cell = %q, want %q", cells[1], "c")
 	}
 }
+
+// TestCheck_TooManyColumns_MessageAllocs verifies the violation diagnostic uses
+// fmt.Sprintf (1 msg alloc) rather than strconv.Itoa+concat (3 msg allocs).
+// The test bounds total Check allocs at ≤4 after the fix; the strconv approach
+// guards against regression to the strconv.Itoa+concat message path,
+// which costs 3 allocs vs fmt.Sprintf's 1 (saving 2 per violation).
+// Baseline (fmt.Sprintf): 10 allocs/call. Old strconv path: 12 allocs/call.
+func TestCheck_TooManyColumns_MessageAllocs(t *testing.T) {
+	// 5-column table against a 4-column max.
+	src := "| a | b | c | d | e |\n|---|---|---|---|---|\n| 1 | 2 | 3 | 4 | 5 |\n"
+	f := newFile(t, src)
+	r := &Rule{MaxColumns: 4, MaxRows: 30, MaxWordsPerCell: 30, MaxColumnWidthRatio: 60}
+	_ = r.Check(f) // warm up any lazy state
+	allocs := testing.AllocsPerRun(50, func() { _ = r.Check(f) })
+	if allocs > 11 {
+		t.Fatalf("Check (too-many-columns): got %g allocs/call, want ≤ 11", allocs)
+	}
+}

@@ -26,9 +26,10 @@ var volumeNameFn = filepath.VolumeName
 var absPathFn = filepath.Abs
 
 // isMarkdown returns true if the file extension is .md or .markdown.
+// strings.EqualFold avoids a heap allocation vs strings.ToLower + ==.
 func isMarkdown(path string) bool {
-	ext := strings.ToLower(filepath.Ext(path))
-	return ext == ".md" || ext == ".markdown"
+	ext := filepath.Ext(path)
+	return strings.EqualFold(ext, ".md") || strings.EqualFold(ext, ".markdown")
 }
 
 // hasGlobChars returns true if the string contains glob meta-characters.
