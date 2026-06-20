@@ -37,5 +37,5 @@ type openRootErrFS struct {
 }
 
 func (e *openRootErrFS) Open(name string) (fs.File, error) {
-	return nil, &fs.PathError{Op: "open", Path: name, Err: e.err}
+	return nil, e.err
 }

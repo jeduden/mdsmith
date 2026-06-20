@@ -20,15 +20,15 @@ import (
 // workspace-relative.
 //
 //   - f.Path is set to the workspace-relative path (e.g. "host.md").
-//   - f.FS is set to an os.DirFS rooted at root (so f.FS != nil, which the
-//     include/catalog rules check before operating).
 //   - f.RootDir and f.RootFS are set via f.SetRootDir(root).
+//   - f.FS is aliased to f.RootFS (same fd, mirrors the dir==root optimisation
+//     in configureFile / prepareFile for files that live at the workspace root).
 //
 // root must be an absolute path to the project root on disk.
 func configureTestFile(f *lint.File, relPath, root string) {
 	f.Path = relPath
-	f.FS = lint.OpenRootFS(root)
 	f.SetRootDir(root)
+	f.FS = f.RootFS
 }
 
 // TestIncludeSymlinkEscapeRefused is the S001 acceptance test.

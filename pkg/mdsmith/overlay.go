@@ -31,9 +31,11 @@ import (
 // OverlayWorkspace is safe for concurrent use. Reads take a read lock;
 // Set and Delete take a write lock.
 type OverlayWorkspace struct {
-	root    string
-	mu      sync.RWMutex
-	overlay map[string][]byte
+	root     string
+	mu       sync.RWMutex
+	overlay  map[string][]byte
+	diskOnce sync.Once
+	diskFS   fs.FS
 }
 
 // NewOverlayWorkspace returns an OverlayWorkspace rooted at root with no
@@ -92,17 +94,20 @@ func (w *OverlayWorkspace) Glob(pattern string) ([]string, error) {
 // lands on the next Check. The snapshot copies only the open-buffer map,
 // not the corpus.
 func (w *OverlayWorkspace) FS() fs.FS {
+	w.diskOnce.Do(func() {
+		root := w.root
+		if root == "" {
+			root = "."
+		}
+		w.diskFS = lint.OpenRootFS(root)
+	})
 	w.mu.RLock()
 	snap := make(map[string][]byte, len(w.overlay))
 	for k, v := range w.overlay {
 		snap[k] = bytes.Clone(v)
 	}
 	w.mu.RUnlock()
-	root := w.root
-	if root == "" {
-		root = "."
-	}
-	return &overlayFS{disk: lint.OpenRootFS(root), overlay: snap}
+	return &overlayFS{disk: w.diskFS, overlay: snap}
 }
 
 // Set stores data (cloned) as the overlay for p, shadowing disk on the
