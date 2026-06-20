@@ -791,6 +791,8 @@ func TestHasSymlinkAncestorWithCwd_GetWdFailureInWalk(t *testing.T) {
 	require.NoError(t, err,
 		"getwdFn failure during walk init must return (false, nil), not propagate the error")
 	assert.False(t, got)
+	assert.Equal(t, 2, callCount,
+		"getwdFn must be called exactly twice: once in absWithCwd and once in the walk init")
 }
 
 // skipIfSymlinkUnsupported forwards to the shared testsymlink helper.

@@ -344,12 +344,24 @@ func isDescendantOf(p, base string) bool {
 // caller-supplied cwd to avoid the per-call `os.Getwd` that
 // `filepath.Abs` performs for relative paths. When cwd is empty
 // it calls getwdFn directly; returns "" if getwdFn fails.
+//
+// Windows volume-relative paths (e.g. "C:foo") are not absolute but
+// require per-drive CWD resolution that os.Getwd cannot provide;
+// filepath.Abs is used for those so the Windows per-drive CWD is
+// consulted correctly. On Unix, filepath.VolumeName is always "".
 func absWithCwd(path, cwd string) string {
 	if filepath.IsAbs(path) {
 		return filepath.Clean(path)
 	}
 	if cwd != "" {
 		return filepath.Clean(filepath.Join(cwd, path))
+	}
+	if filepath.VolumeName(path) != "" {
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			return ""
+		}
+		return filepath.Clean(abs)
 	}
 	wd, err := getwdFn()
 	if err != nil {
