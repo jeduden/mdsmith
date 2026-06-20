@@ -44,14 +44,13 @@ gate. Risk is very low. The pattern is inconsistent with the trust model.
 
 ### S007 — rule-doc content provider trust gate
 
-- [x] Add a trust check in `fetchRuleDocContent` in
-  [editors/vscode/src/commands/rule-doc.ts](
-  ../editors/vscode/src/commands/rule-doc.ts).
-  Return empty content when the workspace is untrusted. Trust gate
-  added as optional `isTrusted?: () => boolean` 5th parameter on both
-  `fetchRuleDocContent` and `provideRuleDocContent`; wiring.ts passes
-  `isTrusted` via the 5th slot (`undefined` for spawn uses the
-  default).
+- [x] Add a trust check in the `mdsmith-rule:` content provider in
+  [editors/vscode/src/wiring.ts](../editors/vscode/src/wiring.ts).
+  Trust gate is an explicit `if (!isTrusted()) return Promise.resolve("")`
+  boundary guard at the top of `provideTextDocumentContent`, matching
+  the KINDS_SCHEME pattern. `fetchRuleDocContent` and
+  `provideRuleDocContent` are pure data-fetching functions with no
+  trust coupling; trust is enforced at the wiring boundary.
 
 ## Acceptance Criteria
 

@@ -493,9 +493,11 @@ function makeFakeApi(overrides?: {
   configuration?: Record<string, unknown>;
   workspaceFolders?: Array<{ uri: { fsPath: string } }>;
   errorMessageChoice?: string;
+  isTrusted?: boolean;
 }) {
   const registeredCommands: string[] = [];
   const registeredSchemes: string[] = [];
+  const contentProviders: Record<string, { provideTextDocumentContent: (uri: unknown) => Promise<string> }> = {};
   const createdWatchers: Array<{ glob: string; disposable: FakeDisposable }> = [];
   const createdChannels: FakeDisposable[] = [];
   const errorMessages: string[] = [];
@@ -512,7 +514,7 @@ function makeFakeApi(overrides?: {
     },
     workspace: {
       workspaceFolders: overrides?.workspaceFolders,
-      isTrusted: true,
+      isTrusted: overrides?.isTrusted ?? true,
       getConfiguration: () => ({
         get: (key: string, dflt?: unknown) => (key in cfg ? cfg[key] : dflt),
       }),
@@ -526,8 +528,9 @@ function makeFakeApi(overrides?: {
         configChangeListener = listener;
         return new FakeDisposable();
       },
-      registerTextDocumentContentProvider: (scheme: string) => {
+      registerTextDocumentContentProvider: (scheme: string, provider: { provideTextDocumentContent: (uri: unknown) => Promise<string> }) => {
         registeredSchemes.push(scheme);
+        contentProviders[scheme] = provider;
         return new FakeDisposable();
       },
       openTextDocument: async () => ({}),
@@ -572,6 +575,7 @@ function makeFakeApi(overrides?: {
     api: api as unknown as VscodeApi,
     registeredCommands,
     registeredSchemes,
+    contentProviders,
     createdWatchers,
     createdChannels,
     errorMessages,
@@ -638,6 +642,24 @@ describe("Wiring.registerPaletteCommands", () => {
     await wiring.activate(makeContext());
     expect(fake.registeredSchemes).toContain("mdsmith-kinds");
     expect(fake.registeredSchemes).toContain("mdsmith-rule");
+  });
+
+  test("mdsmith-kinds provider returns empty string in untrusted workspace", async () => {
+    const { wiring, fake } = makeWiring({ isTrusted: false });
+    await wiring.activate(makeContext());
+    const provider = fake.contentProviders["mdsmith-kinds"];
+    const fakeUri = { toString: () => "mdsmith-kinds://resolve?file=%2Frepo%2Fa.md" };
+    const result = await provider.provideTextDocumentContent(fakeUri);
+    expect(result).toBe("");
+  });
+
+  test("mdsmith-rule provider returns empty string in untrusted workspace", async () => {
+    const { wiring, fake } = makeWiring({ isTrusted: false });
+    await wiring.activate(makeContext());
+    const provider = fake.contentProviders["mdsmith-rule"];
+    const fakeUri = { toString: (_skip?: boolean) => "mdsmith-rule://doc?id=MDS001" };
+    const result = await provider.provideTextDocumentContent(fakeUri);
+    expect(result).toBe("");
   });
 });
 
