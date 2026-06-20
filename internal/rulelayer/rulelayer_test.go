@@ -26,10 +26,12 @@ func auditSignal(t *testing.T, sel func(auditSignalEntry) bool) map[string]bool 
 	return m
 }
 
-// auditSignalEntry is the subset of the rule-walk manifest the override tests
-// read: the rule id plus the two boolean signals the override contracts pin.
+// auditSignalEntry is the subset of the rule-walk manifest the override and
+// promotion tests read: the rule id, its category, and the two boolean signals
+// the soundness contracts pin.
 type auditSignalEntry struct {
 	ID           string `json:"id"`
+	Category     string `json:"category"`
 	NilASTSafe   bool   `json:"nil_ast_safe"`
 	ReadsFileAST bool   `json:"reads_file_ast"`
 }
@@ -95,12 +97,21 @@ func TestIsLayer0(t *testing.T) {
 	// (lint.InlineBlocks) — heading rules and MDS053's def/use map walk it,
 	// MDS034 also reads the Layer 0 BlockQuote spans for alert blockquotes —
 	// so the audit classes them "A-no-skipping" and the gate admits them.
-	// MDS041, MDS050, and MDS052 are nil-AST-safe too but stay
-	// "B-prose-only": each reads content the audit's code-perturbation probe
-	// scrambles (inline HTML, code-block bodies, code-span content), so they
-	// are code-content-sensitive by design and do not resolve to Layer 0.
 	for _, id := range []string{"MDS005", "MDS017", "MDS034", "MDS042", "MDS049", "MDS053", "MDS063", "MDS068"} {
 		assert.True(t, IsLayer0(id), "%s should be Layer 0 once re-backed on Layer 1", id)
+		assert.Equal(t, Layer0, Of(id))
+	}
+	// The "B-prose-only" rules (plan 2606171258) are nil-AST-safe but read
+	// code content the audit's code-perturbation probe scrambles: MDS041
+	// inline HTML / HTML blocks, MDS050 code-block + HTML-block bodies under
+	// check-code / check-html, MDS052 code-span content, MDS066 fenced-code
+	// bodies. The code guard that once forced them to parse is gone and the
+	// validated ClassifyLines / Layer-1 inline projections reproduce that
+	// content byte-identically on the nil-AST File, so nilASTBackable promotes
+	// them to Layer 0 (gated on nil_ast_safe). The corpus equivalence harness
+	// and each rule's TestCheck_NilASTMatchesAST guard the promotion.
+	for _, id := range []string{"MDS041", "MDS050", "MDS052", "MDS066"} {
+		assert.True(t, IsLayer0(id), "%s (B-prose-only, nil-AST-safe) should be Layer 0", id)
 		assert.Equal(t, Layer0, Of(id))
 	}
 	// AST-requiring rules are not Layer 0.
@@ -110,49 +121,73 @@ func TestIsLayer0(t *testing.T) {
 	}
 }
 
-// TestBlockSkipSafeAreLayer0 confirms every rule in the blockSkipSafe
-// override resolves to Layer 0 even though its audit category is
-// "B-prose-only". MDS066 (commands-show-output) is the canonical entry: the
-// audit's code-perturbation probe marks it code-content-sensitive
-// ("B-prose-only"), but its only code-content read is the fenced-code body,
-// which the Layer 0 block scan plus f.Lines reproduces byte-identically (a
-// rule.BlockChecker nil-AST path gated across the corpus by
-// TestLayer0Gate_CorpusDiagnosticsEquivalence). Promoting it lets
-// `mdsmith check -c parity` skip the parse: parity enables MDS066 and it was
-// the lone rule still forcing the AST.
-func TestBlockSkipSafeAreLayer0(t *testing.T) {
-	for id := range blockSkipSafe {
-		assert.True(t, IsLayer0(id), "%s is in blockSkipSafe; must be Layer 0", id)
-		assert.Equal(t, Layer0, Of(id))
-	}
-	assert.True(t, blockSkipSafe["MDS066"], "MDS066 must be in the block-skip-safe set")
+// TestNilASTBackable is the dedicated unit test for nilASTBackable, the
+// predicate buildLayerMapFrom uses to decide Layer 0 promotion (before the
+// astProjectionConsumers veto). It covers all four arms: the knownNilASTSafe
+// override, the "A-no-skipping" category, a nil-AST-safe "B-prose-only" rule
+// (promoted), a "B-prose-only" rule the manifest marks NOT nil-AST-safe
+// (withheld), and an AST-requiring category (withheld).
+func TestNilASTBackable(t *testing.T) {
+	t.Cleanup(func() { delete(knownNilASTSafe, "MDS950") })
+	knownNilASTSafe["MDS950"] = true
+
+	assert.True(t, nilASTBackable(auditEntry{ID: "MDS950", Category: "ast-required"}),
+		"knownNilASTSafe override promotes regardless of category")
+	assert.True(t, nilASTBackable(auditEntry{ID: "MDS951", Category: "A-no-skipping"}),
+		"A-no-skipping is backable")
+	assert.True(t, nilASTBackable(auditEntry{ID: "MDS952", Category: "B-prose-only", NilASTSafe: true}),
+		"nil-AST-safe B-prose-only is backable")
+	assert.False(t, nilASTBackable(auditEntry{ID: "MDS953", Category: "B-prose-only", NilASTSafe: false}),
+		"B-prose-only without nil_ast_safe is not backable")
+	assert.False(t, nilASTBackable(auditEntry{ID: "MDS954", Category: "ast-required", NilASTSafe: true}),
+		"ast-required is not backable even when nil_ast_safe")
 }
 
-// TestBlockSkipSafeAreNilASTSafe guards the override's manual commitment: a
-// rule may only be force-classified Layer 0 here when its audit manifest
-// entry reports nil_ast_safe: true (its Check survives a nil AST with the
-// same diagnostics). A rule whose nil-AST path regresses trips its
-// nil_ast_safe signal and this test fails until the override is reconsidered.
-func TestBlockSkipSafeAreNilASTSafe(t *testing.T) {
-	nilSafe := auditSignal(t, func(e auditSignalEntry) bool { return e.NilASTSafe })
-	for id := range blockSkipSafe {
-		_, present := nilSafe[id]
-		assert.True(t, present, "%s in blockSkipSafe must appear in the audit manifest", id)
-		assert.True(t, nilSafe[id],
-			"%s in blockSkipSafe must have nil_ast_safe: true", id)
+// TestBProseOnlyRulesAreNilASTSafe pins the soundness invariant behind the
+// category-wide B-prose-only promotion: every rule the live manifest marks
+// "B-prose-only" also reports nil_ast_safe: true, so nilASTBackable never
+// promotes a B-prose-only rule whose nil-AST run diverged from the AST run
+// (such a rule lands in "hybrid", not "B-prose-only"). If the audit ever
+// emits a B-prose-only entry with nil_ast_safe: false, this fails and the
+// promotion must be reconsidered.
+func TestBProseOnlyRulesAreNilASTSafe(t *testing.T) {
+	var entries []auditSignalEntry
+	require.NoError(t, json.Unmarshal(auditJSON, &entries))
+	saw := false
+	for _, e := range entries {
+		if e.Category != "B-prose-only" {
+			continue
+		}
+		saw = true
+		assert.True(t, e.NilASTSafe,
+			"%s is B-prose-only; the category promotion requires nil_ast_safe: true", e.ID)
+		assert.True(t, IsLayer0(e.ID), "%s (nil-AST-safe B-prose-only) must resolve to Layer 0", e.ID)
 	}
+	assert.True(t, saw, "manifest must contain at least one B-prose-only rule or the check is vacuous")
 }
 
-// TestBuildLayerMapFromBlockSkipSafePromotesToLayer0 exercises the
-// blockSkipSafe branch of buildLayerMapFrom directly with a synthetic entry:
-// a "B-prose-only" rule listed in blockSkipSafe must resolve to Layer0.
-func TestBuildLayerMapFromBlockSkipSafePromotesToLayer0(t *testing.T) {
-	blockSkipSafe["MDS905"] = true
-	t.Cleanup(func() { delete(blockSkipSafe, "MDS905") })
+// TestBuildLayerMapFromBProseOnlyPromotesToLayer0 exercises the B-prose-only
+// arm of buildLayerMapFrom directly with a synthetic entry: a "B-prose-only"
+// rule reporting nil_ast_safe must resolve to Layer0.
+func TestBuildLayerMapFromBProseOnlyPromotesToLayer0(t *testing.T) {
 	m := buildLayerMapFrom([]byte(`[
-		{"id":"MDS905","category":"B-prose-only"}
+		{"id":"MDS905","category":"B-prose-only","nil_ast_safe":true}
 	]`))
-	assert.Equal(t, Layer0, m["MDS905"], "blockSkipSafe promotes B-prose-only rule to Layer0")
+	assert.Equal(t, Layer0, m["MDS905"], "nil-AST-safe B-prose-only promotes to Layer0")
+}
+
+// TestBuildLayerMapFromBProseOnlyRequiresNilASTSafe pins the nil_ast_safe gate
+// on the B-prose-only arm: a B-prose-only entry the manifest marks NOT
+// nil-AST-safe must stay LayerAST, so a hand-edit that mislabels an
+// AST-fragile rule B-prose-only cannot silently admit it to the parse-skip
+// gate. The live audit never emits this combination, so the guard is
+// exercised here with a synthetic entry.
+func TestBuildLayerMapFromBProseOnlyRequiresNilASTSafe(t *testing.T) {
+	m := buildLayerMapFrom([]byte(`[
+		{"id":"MDS906","category":"B-prose-only","nil_ast_safe":false}
+	]`))
+	assert.Equal(t, LayerAST, m["MDS906"],
+		"a B-prose-only entry without nil_ast_safe must stay AST")
 }
 
 // TestAstProjectionConsumersAreNotLayer0 guards the parse-skip gate's
@@ -213,15 +248,18 @@ func TestBuildLayerMapFromPanicsOnMalformedManifest(t *testing.T) {
 }
 
 // TestBuildLayerMapFromClassifies confirms the standard category arms of
-// buildLayerMapFrom: an "A-no-skipping" rule maps to Layer0 and any other
-// category maps to LayerAST (absent a knownNilASTSafe override).
+// buildLayerMapFrom: an "A-no-skipping" rule maps to Layer0, a nil-AST-safe
+// "B-prose-only" rule maps to Layer0, and any other category maps to LayerAST
+// (absent a knownNilASTSafe override).
 func TestBuildLayerMapFromClassifies(t *testing.T) {
 	m := buildLayerMapFrom([]byte(`[
-		{"id":"MDS900","category":"A-no-skipping"},
-		{"id":"MDS901","category":"ast-required"}
+		{"id":"MDS900","category":"A-no-skipping","nil_ast_safe":true},
+		{"id":"MDS901","category":"ast-required","nil_ast_safe":false},
+		{"id":"MDS907","category":"B-prose-only","nil_ast_safe":true}
 	]`))
 	assert.Equal(t, Layer0, m["MDS900"])
 	assert.Equal(t, LayerAST, m["MDS901"])
+	assert.Equal(t, Layer0, m["MDS907"])
 }
 
 // TestBuildLayerMapFromKnownNilASTSafePromotesToLayer0 exercises the
@@ -269,20 +307,17 @@ func TestAstProjectionConsumerOverridesKnownNilASTSafe(t *testing.T) {
 	assert.Equal(t, LayerAST, m["MDS903"], "astProjectionConsumers must override knownNilASTSafe")
 }
 
-// TestAstProjectionConsumerOverridesBlockSkipSafe pins that astProjectionConsumers
-// wins over blockSkipSafe: a rule in both must still resolve to LayerAST because it
-// reads an AST-only projection the Layer 0 block scan does not back, regardless of
-// the block-skip override. This guards the soundness escape hatch — buildLayerMapFrom
-// gates the whole Layer 0 promotion behind !astProjectionConsumers[e.ID].
-func TestAstProjectionConsumerOverridesBlockSkipSafe(t *testing.T) {
+// TestAstProjectionConsumerOverridesBProseOnly pins that astProjectionConsumers
+// wins over the B-prose-only promotion: a rule in astProjectionConsumers must
+// still resolve to LayerAST because it reads an AST-only projection the Layer 0
+// / Layer 1 path does not back, regardless of its nil-AST-safe B-prose-only
+// category. This guards the soundness escape hatch — buildLayerMapFrom gates
+// the whole Layer 0 promotion behind !astProjectionConsumers[e.ID].
+func TestAstProjectionConsumerOverridesBProseOnly(t *testing.T) {
 	astProjectionConsumers["MDS904"] = true
-	blockSkipSafe["MDS904"] = true
-	t.Cleanup(func() {
-		delete(astProjectionConsumers, "MDS904")
-		delete(blockSkipSafe, "MDS904")
-	})
+	t.Cleanup(func() { delete(astProjectionConsumers, "MDS904") })
 	m := buildLayerMapFrom([]byte(`[
-		{"id":"MDS904","category":"B-prose-only"}
+		{"id":"MDS904","category":"B-prose-only","nil_ast_safe":true}
 	]`))
-	assert.Equal(t, LayerAST, m["MDS904"], "astProjectionConsumers must override blockSkipSafe")
+	assert.Equal(t, LayerAST, m["MDS904"], "astProjectionConsumers must override the B-prose-only promotion")
 }

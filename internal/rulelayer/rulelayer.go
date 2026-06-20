@@ -2,8 +2,8 @@
 // to, derived from the rule-walk audit manifest (plan 2606022126). The
 // engine consults it to decide whether a run can skip the goldmark parse:
 // the parse is skippable only when every enabled rule is a Layer 0 rule —
-// one that reads f.Lines and the block-level projections but never
-// navigates f.AST.
+// one that never *requires* f.AST because it has a nil-AST path served by
+// the Layer-0 line/block scan and the Layer-1 inline index.
 //
 // The manifest is embedded from a checked-in copy of
 // internal/integration/testdata/rule_walk_audit.json; a contract test
@@ -27,9 +27,11 @@ const (
 	// LayerUnknown is the zero value for a rule absent from the manifest.
 	// The engine treats it conservatively as AST-requiring.
 	LayerUnknown Layer = iota
-	// Layer0 means the rule reads only f.Lines and the block-level
-	// projections — it can run with a nil AST. These are the manifest's
-	// "A-no-skipping" rules.
+	// Layer0 means the rule can run with a nil AST: it reads f.Lines, the
+	// block-level projections, and the Layer-1 inline index, never requiring
+	// the goldmark tree. These are the manifest's "A-no-skipping" rules plus
+	// the nil-AST-safe "B-prose-only" rules — rules that read code-block,
+	// code-span, or inline-HTML content the validated projections reproduce.
 	Layer0
 	// LayerAST means the rule needs the goldmark AST (the manifest's
 	// "hybrid", "ast-required", and inconclusive categories). The engine
@@ -38,21 +40,24 @@ const (
 )
 
 // auditEntry is the subset of the rule-walk manifest the layer mapping
-// needs: the rule id and its AST-dependence category.
+// needs: the rule id, its AST-dependence category, and the probe's
+// nil-AST-safety signal (which gates the B-prose-only promotion).
 type auditEntry struct {
-	ID       string `json:"id"`
-	Category string `json:"category"`
+	ID         string `json:"id"`
+	Category   string `json:"category"`
+	NilASTSafe bool   `json:"nil_ast_safe"`
 }
 
 // layerByID maps each rule id to its resolved layer, built once from the
 // embedded manifest at package init.
 var layerByID = buildLayerMap()
 
-// astProjectionConsumers lists rules the audit manifest marks
-// "A-no-skipping" — they never crash with a nil AST — but which still read
-// an AST-derived projection that Layer 0 does not reproduce, so their
-// output silently diverges on a parse-skipped File. The audit's probe
-// measured crash-safety, not output equivalence.
+// astProjectionConsumers lists rules the audit manifest would otherwise
+// promote to Layer 0 ("A-no-skipping" or nil-AST-safe "B-prose-only") — they
+// never crash with a nil AST — but which still read an AST-derived projection
+// that Layer 0 / Layer 1 does not reproduce, so their output silently diverges
+// on a parse-skipped File. The audit's probe measured crash-safety, not output
+// equivalence.
 //
 // MDS047 (ambiguous-emphasis) and MDS054 (no-undefined-reference-labels)
 // formerly sat here: both consume the inline code-span ranges
@@ -82,35 +87,10 @@ var knownNilASTSafe = map[string]bool{
 	"MDS069": true, // unique-frontmatter: reads f.FrontMatter + RunCache, never f.AST
 }
 
-// blockSkipSafe lists rules the audit marks "B-prose-only" — nil-AST-safe but
-// code-content-sensitive, so the static category withholds Layer 0 — that are
-// nonetheless safe to skip the parse for, because the only code-content they
-// read is reproduced by the Layer 0 block scan plus f.Lines. The audit's
-// code-perturbation probe measures whether a rule's diagnostics move when
-// code-block bytes change; a rule that lints code-block *bodies* (as opposed
-// to ignoring them) is sensitive by construction and lands in B-prose-only,
-// even when its rule.BlockChecker nil-AST path produces byte-identical output.
-//
-// MDS066 (commands-show-output) is the canonical entry: it flags a fenced
-// block whose every body line is a "$ " prompt. Its CheckBlock reads the
-// BlockFencedCode span's body lines straight from f.Lines, which the Layer 0
-// scan delimits exactly as goldmark does — confirmed byte-identical across the
-// full corpus and gated by TestLayer0Gate_CorpusDiagnosticsEquivalence. It was
-// the lone parity-enabled rule still forcing the AST; promoting it lets
-// `mdsmith check -c parity` skip the parse.
-//
-// Adding a rule here is a manual commitment that (1) its Check is nil-AST-safe
-// (enforced by rulelayer_test.go against the manifest's nil_ast_safe signal)
-// and (2) its nil-AST output matches the AST output across the corpus
-// equivalence gate.
-var blockSkipSafe = map[string]bool{
-	"MDS066": true, // commands-show-output: CheckBlock reads the fenced-code body from f.Lines
-}
-
 // buildLayerMap decodes the embedded manifest into the id→layer table.
-// "A-no-skipping" rules are Layer 0 unless they appear in
-// astProjectionConsumers (which need an AST-only inline projection); a rule in
-// knownNilASTSafe or blockSkipSafe is promoted to Layer 0 from another
+// "A-no-skipping" and nil-AST-safe "B-prose-only" rules are Layer 0 unless
+// they appear in astProjectionConsumers (which need an AST-only projection
+// Layer N does not back); a rule in knownNilASTSafe is promoted from another
 // category; every other category needs the AST. A decode failure is a
 // build-time contract violation (the embedded JSON is checked in), so it
 // panics rather than silently degrading.
@@ -130,14 +110,47 @@ func buildLayerMapFrom(manifest []byte) map[string]Layer {
 	}
 	m := make(map[string]Layer, len(entries))
 	for _, e := range entries {
-		if !astProjectionConsumers[e.ID] &&
-			(knownNilASTSafe[e.ID] || blockSkipSafe[e.ID] || e.Category == "A-no-skipping") {
+		if !astProjectionConsumers[e.ID] && nilASTBackable(e) {
 			m[e.ID] = Layer0
 		} else {
 			m[e.ID] = LayerAST
 		}
 	}
 	return m
+}
+
+// nilASTBackable reports whether a manifest entry's rule can lint on the
+// parse-skipped (nil-AST) File, before the astProjectionConsumers veto the
+// caller applies. Three classes qualify:
+//
+//   - knownNilASTSafe: a manual override for a rule the bad-fixture probe
+//     cannot fire, confirmed by inspection to never read f.AST
+//     (reads_file_ast: false, enforced by rulelayer_test.go).
+//   - "A-no-skipping": the probe fired the rule, the nil-AST run neither
+//     panicked nor diverged from the AST run, and scrambling code bytes did
+//     not change its output — it reads no code content, so the Layer-0 /
+//     Layer-1 projections back it trivially.
+//   - "B-prose-only" with nil_ast_safe: the probe fired the rule and the
+//     nil-AST run matched the AST run, but the rule is code-content-sensitive
+//     (scrambling code bytes changed its output). It reads code-block bodies,
+//     code spans, or inline HTML — content the validated ClassifyLines and
+//     Layer-1 inline projections reproduce byte-identically on the nil-AST
+//     File (the parse-skip-on-code measurement, plan 2606171258, plus each
+//     rule's TestCheck_NilASTMatchesAST guard). The code guard that once
+//     forced these rules to parse is gone, so code-sensitivity alone no
+//     longer requires the AST. The nil_ast_safe gate is belt-and-braces: the
+//     B-prose-only category already implies it (a divergent rule lands in
+//     "hybrid"), but reading the signal keeps the promotion honest if the
+//     manifest is ever hand-edited, and TestBProseOnlyRulesAreNilASTSafe pins
+//     the live invariant.
+func nilASTBackable(e auditEntry) bool {
+	if knownNilASTSafe[e.ID] {
+		return true
+	}
+	if e.Category == "A-no-skipping" {
+		return true
+	}
+	return e.Category == "B-prose-only" && e.NilASTSafe
 }
 
 // Of returns the resolved layer for a rule id, or LayerUnknown when the id

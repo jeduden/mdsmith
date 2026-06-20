@@ -317,9 +317,11 @@ func reparsed(f *lint.File) *lint.File {
 // goldmark's tab-aware indent stripping; rather than re-derive that offset
 // math from the Layer 0 line scan, the rule re-parses the document once and
 // reuses the AST collectMatches, so the opt-in path is byte-identical by
-// construction. check-code / check-html are opt-in and MDS050 stays
-// B-prose-only, so the engine keeps such files on the parse path anyway —
-// this branch is reached only by a directly constructed nil-AST File.
+// construction. MDS050 now resolves to Layer 0 (a nil-AST-safe B-prose-only
+// rule), so when it is enabled and the engine skips the shared parse this
+// branch is reached in production; the one-shot reparse keeps it
+// byte-identical to the shared-AST path (TestCheck_NilASTMatchesAST covers
+// the check-code and check-html cases).
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	var matches []wrongMatch
 	switch {

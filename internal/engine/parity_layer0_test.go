@@ -27,9 +27,9 @@ func parityConfig(t *testing.T) *config.Config {
 // acceptance criterion 1: every parity-enabled rule resolves to a parse-skip
 // layer (rulelayer Layer 0 or, for line-length, configured rule.LineCapable).
 // MDS066 (commands-show-output) was the lone holdout — a "B-prose-only" rule
-// the static category withheld from Layer 0 — until it was promoted via the
-// blockSkipSafe override. If a future parity rule regrows an AST dependency,
-// this fails and names it.
+// the static category withheld from Layer 0 — until rulelayer.nilASTBackable
+// began promoting the nil-AST-safe "B-prose-only" category. If a future parity
+// rule regrows an AST dependency, this fails and names it.
 func TestParityConvention_AllEnabledRulesSkipSafe(t *testing.T) {
 	cfg := parityConfig(t)
 	eff := config.Effective(cfg, "doc.md", nil, nil)
