@@ -15,7 +15,7 @@ import (
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
-// Must be called inside a defer/recover block so debug.Stack() captures the panic-site frames.
+// PanicDiagnostic converts a recovered panic value into an InternalError diagnostic with stack trace.
 func PanicDiagnostic(path string, rv any) lint.Diagnostic {
 	stack := debug.Stack()
 	return lint.Diagnostic{

@@ -168,9 +168,6 @@ type fileOutcome struct {
 	log   []byte
 }
 
-func panicOutcome(path string, r any) fileOutcome {
-	return fileOutcome{diags: []lint.Diagnostic{checker.PanicDiagnostic(path, r)}}
-}
 
 // Result holds the output of a lint run.
 type Result struct {
@@ -399,12 +396,10 @@ func cloneRules(rules []rule.Rule) []rule.Rule {
 // catalog/include rules share one target read across every host file in
 // this pass.
 func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, rr runResolve) (out fileOutcome) {
-	// Registered first so it runs last: out.log already holds verbose bytes when we overwrite out.
+	// Registered first so it runs last: out.log is set by the log defer before this fires.
 	defer func() {
 		if rv := recover(); rv != nil {
-			savedLog := out.log
-			out = panicOutcome(path, rv)
-			out.log = savedLog
+			out.diags = []lint.Diagnostic{checker.PanicDiagnostic(path, rv)}
 		}
 	}()
 
