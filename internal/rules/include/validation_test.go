@@ -99,6 +99,31 @@ func TestValidateHeadingLevel(t *testing.T) {
 	})
 }
 
+// TestValidateIncludeDirective_URLSchemeRejection pins S006: http://,
+// https://, and file:// prefixes must produce a validation diagnostic
+// alongside the existing absolute-path guard, so that explicit scheme
+// checks do not depend on os.DirFS's incidental refusal to make network
+// calls.
+func TestValidateIncludeDirective_URLSchemeRejection(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		file string
+	}{
+		{"http scheme", "http://example.com/foo.md"},
+		{"https scheme", "https://example.com/foo.md"},
+		{"file scheme", "file:///etc/passwd"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			params := map[string]string{"file": tc.file}
+			diags := validateIncludeDirective("doc.md", 1, params)
+			require.Len(t, diags, 1,
+				"URL scheme %q must produce exactly one diagnostic", tc.file)
+			assert.Contains(t, diags[0].Message, "URL scheme",
+				"diagnostic message must name the URL scheme problem")
+		})
+	}
+}
+
 // TestValidateExtractParam covers the absent-param, empty-value, and
 // valid-value branches of validateExtractParam.
 func TestValidateExtractParam(t *testing.T) {
