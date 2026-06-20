@@ -1255,16 +1255,25 @@ func TestScheduleLintImmediateCancelsPendingDebounce(t *testing.T) {
 	require.Len(t, s.pending, 1)
 	originalEntry := s.pending["file:///x.md"]
 	s.pendingMu.Unlock()
-	// An immediate trigger (e.g. didOpen) replaces the pending
-	// debounce timer with a zero-delay immediate timer instead of
-	// running runLint synchronously (which would block dispatch).
-	// The original timer is Stop()'d.
+	// An immediate trigger (e.g. didOpen) must stop the existing
+	// debounce timer so it cannot fire later and republish stale
+	// diagnostics. scheduleLint calls prev.timer.Stop() inside
+	// pendingMu, then installs a new zero-delay entry.
+	//
+	// We test the stop invariant race-free: time.Timer.Stop returns
+	// false if the timer has already expired or been stopped. The
+	// 10-second debounce cannot have expired naturally in this
+	// timeframe, so false means scheduleLint stopped it (correct).
+	// true would mean the timer is still running — scheduleLint
+	// failed to cancel it.
+	//
+	// We do NOT assert s.pending has exactly 1 entry here: the
+	// zero-delay immediate timer may fire and drain the map before
+	// we acquire pendingMu, making that assertion inherently racy.
 	s.scheduleLint("file:///x.md", lintTriggerOpen)
-	s.pendingMu.Lock()
-	require.Len(t, s.pending, 1, "immediate trigger should replace the pending debounce entry")
-	require.NotSame(t, originalEntry, s.pending["file:///x.md"],
-		"immediate trigger should install a new (zero-delay) entry, not reuse the debounce one")
-	s.pendingMu.Unlock()
+	alreadyStopped := !originalEntry.timer.Stop()
+	assert.True(t, alreadyStopped,
+		"immediate trigger must stop the previous 10-second debounce timer")
 	// Wait briefly for the immediate timer to fire and clear
 	// itself, then assert the pending map is empty.
 	deadline := time.Now().Add(testPollDeadline)

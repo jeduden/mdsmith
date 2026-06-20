@@ -281,10 +281,11 @@ func TestRule_Check_CombinesBothDriftSourcesIntoOneDiagnostic(t *testing.T) {
 
 func TestRule_Check_HookReadErrorIsReported(t *testing.T) {
 	dir := t.TempDir()
-	initTestRepo(t, dir)
+	initRepoWithDriver(t, dir)
 
 	// Make hookPath a directory so os.ReadFile returns a non-ENOENT
-	// error. The rule should surface that as drift instead of
+	// error. With the driver registered, the rule should surface that as
+	// drift instead of
 	// silently passing.
 	hooksDir := githooks.ResolveHooksDir(dir)
 	require.NoError(t, os.MkdirAll(filepath.Join(hooksDir, "pre-merge-commit"), 0o755))
@@ -983,4 +984,84 @@ func TestFindGitRoot_AbsErrorPropagates(t *testing.T) {
 	require.NoError(t, os.Remove(sub))
 	_, err := findGitRoot("relative")
 	assert.Error(t, err)
+}
+
+// TestRule_Check_OversizedHookFileEmitsDiagnostic pins S007: when the
+// merge driver IS registered, a pre-merge-commit hook larger than 1 MB
+// must produce a read-cap diagnostic rather than being read fully into
+// memory. Without a driver the rule skips the check (see
+// TestRule_Check_OversizedHookNoDriverSilent for that invariant).
+func TestRule_Check_OversizedHookFileEmitsDiagnostic(t *testing.T) {
+	dir := t.TempDir()
+	initRepoWithDriver(t, dir)
+
+	// Write a hook file that carries the managed marker so it would
+	// pass drift detection on an uncapped read, but exceeds 1 MB so
+	// ReadFileLimited returns "file too large" and the rule surfaces
+	// that as a read-error diagnostic rather than silently reading it.
+	hooksDir := githooks.ResolveHooksDir(dir)
+	require.NoError(t, os.MkdirAll(hooksDir, 0o755))
+	big := make([]byte, hookMaxReadBytes+1)
+	copy(big, githooks.PreMergeCommitMarker)
+	require.NoError(t, os.WriteFile(
+		filepath.Join(hooksDir, "pre-merge-commit"),
+		big, 0o755,
+	))
+
+	// Invalidate the drift cache so Check recomputes.
+	driftMu.Lock()
+	delete(driftCache, dir)
+	driftMu.Unlock()
+
+	r := &Rule{}
+	f := &lint.File{
+		Path:          filepath.Join(dir, "README.md"),
+		Source:        []byte("# Test\n"),
+		MaxInputBytes: 1048576,
+		FS:            os.DirFS(dir),
+	}
+	diags := r.Check(f)
+	require.NotEmpty(t, diags, "oversized hook file must produce a diagnostic")
+	assert.Contains(t, diags[0].Message, "could not be read",
+		"diagnostic must report the read failure")
+	assert.Contains(t, diags[0].Message, "file too large",
+		"diagnostic must name the cause as file too large")
+}
+
+// TestRule_Check_OversizedHookNoDriverSilent pins the early-exit fix: when
+// the merge driver is NOT registered (user has not opted into mdsmith hook
+// management) and the pre-merge-commit hook exists but exceeds 1 MB, the
+// rule must not emit any diagnostic. The unreadable state of an unmanaged
+// third-party hook is not a problem the rule should report.
+func TestRule_Check_OversizedHookNoDriverSilent(t *testing.T) {
+	dir := t.TempDir()
+	initTestRepo(t, dir)
+	// Do NOT register merge.mdsmith.driver — user has not opted in.
+
+	// Write a >1 MB hook without the managed marker so it would be
+	// classified as unmanaged IF readable, but exceeds the byte cap so
+	// peekHookSource returns hookSourceUnreadable.
+	hooksDir := githooks.ResolveHooksDir(dir)
+	require.NoError(t, os.MkdirAll(hooksDir, 0o755))
+	big := make([]byte, hookMaxReadBytes+1)
+	copy(big, []byte("#!/bin/sh\n# unrelated third-party hook\n"))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(hooksDir, "pre-merge-commit"),
+		big, 0o755,
+	))
+
+	driftMu.Lock()
+	delete(driftCache, dir)
+	driftMu.Unlock()
+
+	r := &Rule{}
+	f := &lint.File{
+		Path:          filepath.Join(dir, "README.md"),
+		Source:        []byte("# Test\n"),
+		MaxInputBytes: 1048576,
+		FS:            os.DirFS(dir),
+	}
+	diags := r.Check(f)
+	assert.Empty(t, diags,
+		"no driver registered: oversized third-party hook must not produce a diagnostic")
 }

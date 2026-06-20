@@ -132,6 +132,16 @@ func validateIncludeDirective(
 			"include directive has absolute file path")}
 	}
 
+	// Reject URL schemes explicitly. os.DirFS incidentally refuses
+	// network calls, but an explicit check removes that incidental
+	// dependency. strings.Contains(file, "://") covers all RFC 3986
+	// scheme forms (http://, https://, ftp://, file://, etc.) without
+	// a scheme list that must be extended per new scheme.
+	if strings.Contains(file, "://") {
+		return []lint.Diagnostic{makeDiag(filePath, line,
+			"include directive has URL scheme in file path")}
+	}
+
 	// Validate wrap parameter if present.
 	if wrap, ok := params["wrap"]; ok && strings.TrimSpace(wrap) == "" {
 		return []lint.Diagnostic{makeDiag(filePath, line,

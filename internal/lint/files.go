@@ -11,6 +11,20 @@ import (
 	"github.com/jeduden/mdsmith/internal/gitignore"
 )
 
+// getwdFn resolves the process working directory. It is a package-level
+// variable so tests can substitute a failing implementation to exercise
+// the os.Getwd-error branches without manipulating the process CWD.
+var getwdFn = os.Getwd
+
+// volumeNameFn extracts the volume component of a path (non-empty only on
+// Windows). Package-level so tests can inject a non-empty volume on Unix.
+var volumeNameFn = filepath.VolumeName
+
+// absPathFn converts a relative path to absolute (used only for the
+// Windows volume-relative branch). Package-level so tests can inject a
+// failure without running on Windows.
+var absPathFn = filepath.Abs
+
 // isMarkdown returns true if the file extension is .md or .markdown.
 func isMarkdown(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
@@ -136,8 +150,10 @@ func resolveArg(arg string, opts ResolveOpts, addFile func(string)) error {
 	// like `linked/dirty.md` reach an external target, since Lstat
 	// on the leaf follows the intermediate symlink during name
 	// resolution. Symlinked directories are always skipped regardless
-	// of FollowSymlinks, per the Option doc.
-	if hasSymlinkAncestor(arg) {
+	// of FollowSymlinks, per the Option doc. When the scan boundary
+	// cannot be determined (no cwd or .git anchor), treat the path
+	// as unverifiable and skip it rather than silently trusting it.
+	if isSymlink, err := hasSymlinkAncestor(arg); err != nil || isSymlink {
 		return nil
 	}
 
@@ -206,11 +222,11 @@ func resolveArg(arg string, opts ResolveOpts, addFile func(string)) error {
 //   - otherwise, the nearest ancestor of the path that contains a
 //     `.git` entry (so an absolute path run from a sibling shell
 //     is still scanned within the target project);
-//   - otherwise, "" (trust the user — no scan).
+//   - otherwise, an error is returned (boundary unverifiable).
 //
 // This keeps system-level symlinks above the boundary (e.g. `/tmp`
 // on macOS) out of the probe.
-func hasSymlinkAncestor(path string) bool {
+func hasSymlinkAncestor(path string) (bool, error) {
 	return hasSymlinkAncestorCached(path, make(map[string]bool))
 }
 
@@ -218,7 +234,7 @@ func hasSymlinkAncestor(path string) bool {
 // hasSymlinkAncestor. Callers that run the check repeatedly (e.g.
 // per glob match) should share a `cache` across invocations to
 // avoid repeated `os.Lstat` calls on the same ancestor directories.
-func hasSymlinkAncestorCached(path string, cache map[string]bool) bool {
+func hasSymlinkAncestorCached(path string, cache map[string]bool) (bool, error) {
 	cwd, _ := os.Getwd() // "" on error; handled downstream
 	return hasSymlinkAncestorWithCwd(path, cwd, cache)
 }
@@ -234,14 +250,26 @@ func hasSymlinkAncestorCached(path string, cache map[string]bool) bool {
 // is a symlinked dir, the walker probes `linked` (detects the
 // symlink) before the `..` pops back; `a/b/../c.md` with no
 // symlinks anywhere is allowed.
-func hasSymlinkAncestorWithCwd(path, cwd string, cache map[string]bool) bool {
+func hasSymlinkAncestorWithCwd(path, cwd string, cache map[string]bool) (bool, error) {
 	abs := absWithCwd(path, cwd)
 	if abs == "" {
-		return false
+		return false, nil
 	}
 	stop := ancestorStopBoundary(abs, cwd)
 	if stop == "" {
-		return false
+		// When the working directory is unknown (cwd=="") and no .git
+		// ancestor anchors the scan, the ancestor walk cannot be bounded:
+		// we have no project root to stop at, so a symlinked directory
+		// outside any project boundary would go undetected. Return an
+		// error so callers can treat the path as unverifiable rather than
+		// silently trusting it. When cwd is non-empty, the path is simply
+		// outside every known project root; that is trusted by design so
+		// system-level symlinks (e.g. /tmp on macOS) stay out of scope.
+		if cwd == "" {
+			return false, fmt.Errorf("cannot determine scan boundary for %q: "+
+				"working directory unavailable and no .git ancestor found", path)
+		}
+		return false, nil
 	}
 
 	// Determine the starting "current" directory for the walk and
@@ -256,9 +284,9 @@ func hasSymlinkAncestorWithCwd(path, cwd string, cache map[string]bool) bool {
 		current = vol + string(filepath.Separator)
 		rest = strings.TrimPrefix(path, vol)
 	} else if current == "" {
-		wd, err := os.Getwd()
+		wd, err := getwdFn()
 		if err != nil {
-			return false
+			return false, nil
 		}
 		current = wd
 	}
@@ -289,7 +317,7 @@ func hasSymlinkAncestorWithCwd(path, cwd string, cache map[string]bool) bool {
 			}
 			if v, ok := cache[current]; ok {
 				if v {
-					return true
+					return true, nil
 				}
 				continue
 			}
@@ -297,11 +325,11 @@ func hasSymlinkAncestorWithCwd(path, cwd string, cache map[string]bool) bool {
 			isSymlink := err == nil && info.Mode()&os.ModeSymlink != 0
 			cache[current] = isSymlink
 			if isSymlink {
-				return true
+				return true, nil
 			}
 		}
 	}
-	return false
+	return false, nil
 }
 
 // isDescendantOf reports whether p is a strict descendant of base.
@@ -324,8 +352,12 @@ func isDescendantOf(p, base string) bool {
 // absWithCwd resolves path to an absolute, cleaned form using the
 // caller-supplied cwd to avoid the per-call `os.Getwd` that
 // `filepath.Abs` performs for relative paths. When cwd is empty
-// (e.g. a Getwd error upstream), it falls back to `filepath.Abs`.
-// Returns "" only on the unreachable `filepath.Abs` failure path.
+// it calls getwdFn directly; returns "" if getwdFn fails.
+//
+// Windows volume-relative paths (e.g. "C:foo") are not absolute but
+// require per-drive CWD resolution that os.Getwd cannot provide;
+// filepath.Abs is used for those so the Windows per-drive CWD is
+// consulted correctly. On Unix, filepath.VolumeName is always "".
 func absWithCwd(path, cwd string) string {
 	if filepath.IsAbs(path) {
 		return filepath.Clean(path)
@@ -333,11 +365,18 @@ func absWithCwd(path, cwd string) string {
 	if cwd != "" {
 		return filepath.Clean(filepath.Join(cwd, path))
 	}
-	abs, err := filepath.Abs(path)
+	if volumeNameFn(path) != "" {
+		abs, err := absPathFn(path)
+		if err != nil {
+			return ""
+		}
+		return filepath.Clean(abs)
+	}
+	wd, err := getwdFn()
 	if err != nil {
 		return ""
 	}
-	return filepath.Clean(abs)
+	return filepath.Clean(filepath.Join(wd, path))
 }
 
 // ancestorStopBoundary returns the directory at which ancestor
@@ -394,8 +433,10 @@ func resolveGlob(pattern string, opts ResolveOpts, addFile func(string)) error {
 		// during expansion, so a pattern like `linked/*.md` will
 		// return paths rooted under a symlinked dir. Reject any
 		// match whose ancestor chain contains a symlink: symlinked
-		// directories are always skipped.
-		if hasSymlinkAncestorWithCwd(m, cwd, ancestorCache) {
+		// directories are always skipped. When the scan boundary
+		// cannot be determined, treat the match as unverifiable
+		// and skip it.
+		if isSymlink, err := hasSymlinkAncestorWithCwd(m, cwd, ancestorCache); err != nil || isSymlink {
 			continue
 		}
 		linfo, lerr := os.Lstat(m)

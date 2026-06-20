@@ -12,10 +12,17 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/githooks"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 )
+
+// hookMaxReadBytes is the byte cap applied to all hook-related file reads
+// (pre-merge-commit hook and .gitattributes). Matches the 1 MB cap used
+// by every other os.ReadFile call in the codebase via bytelimit. A file
+// larger than this limit triggers a diagnostic rather than a full read.
+const hookMaxReadBytes int64 = 1024 * 1024
 
 // preMergeMarkerBytes is the package-level byte slice of PreMergeCommitMarker,
 // hoisted to avoid re-converting the marker constant to []byte on every call.
@@ -177,7 +184,7 @@ const (
 // hook without parsing its contents.
 func peekHookSource(repoRoot string) hookSource {
 	hookPath := filepath.Join(githooks.ResolveHooksDir(repoRoot), "pre-merge-commit")
-	data, err := os.ReadFile(hookPath)
+	data, err := bytelimit.ReadFileLimited(hookPath, hookMaxReadBytes)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return hookSourceAbsent
@@ -207,7 +214,12 @@ func (r *Rule) driftParts(repoRoot string) []string {
 
 	hasDriver := githooks.HasMdsmithMergeDriver(repoRoot)
 	hookState := peekHookSource(repoRoot)
-	if !hasDriver && hookState != hookSourceManaged && hookState != hookSourceUnreadable {
+	// Early-exit when the user has not opted in (no driver) and the hook
+	// is not mdsmith-managed. hookSourceUnreadable (file too large, bad
+	// perms) is included in the early-exit: we cannot verify the hook's
+	// state, but since no driver is registered the user has not opted into
+	// mdsmith hook management, so there is nothing to report.
+	if !hasDriver && hookState != hookSourceManaged {
 		driftMu.Lock()
 		driftCache[repoRoot] = driftResult{}
 		driftMu.Unlock()
@@ -246,7 +258,7 @@ func (r *Rule) mergeDriverDrift(repoRoot string, hasDriver bool, expected githoo
 	if !hasDriver {
 		return ""
 	}
-	data, err := os.ReadFile(filepath.Join(repoRoot, ".gitattributes"))
+	data, err := bytelimit.ReadFileLimited(filepath.Join(repoRoot, ".gitattributes"), hookMaxReadBytes)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Sprintf(
 			"cannot verify merge-driver assignments because .gitattributes could not be read: %v",
@@ -292,7 +304,7 @@ func describeGlobs(patterns []string) string {
 // or IO failures cannot mask real drift.
 func (r *Rule) preMergeCommitHookDrift(repoRoot string) string {
 	hookPath := filepath.Join(githooks.ResolveHooksDir(repoRoot), "pre-merge-commit")
-	data, err := os.ReadFile(hookPath)
+	data, err := bytelimit.ReadFileLimited(hookPath, hookMaxReadBytes)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return ""
@@ -383,7 +395,7 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	// previous run failed to stage, retry the staging step now so the
 	// pending error is given a chance to clear without forcing a
 	// redundant write.
-	data, err := os.ReadFile(attrPath)
+	data, err := bytelimit.ReadFileLimited(attrPath, hookMaxReadBytes)
 	if err == nil {
 		installed, ok := githooks.ExtractGlobs(string(data))
 		if ok && githooks.GlobsEqual(installed, expected) {

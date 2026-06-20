@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io/fs"
 	"path"
@@ -30,6 +31,17 @@ import (
 // parsed as an integer before comparison. The prefix follows any
 // leading "-" descending marker — `-numeric:id`, not `numeric:-id`.
 const numericSortPrefix = "numeric:"
+
+// maxCatalogMatches is the upper bound on the number of files a single
+// catalog directive may match. When the walk exceeds this limit the
+// GlobWalk callback returns errCatalogCapExceeded to abort early, so at
+// most maxCatalogMatches+1 entries are allocated before the diagnostic
+// fires and the excess is discarded.
+const maxCatalogMatches = 10_000
+
+// errCatalogCapExceeded is the sentinel returned from the GlobWalk
+// callback to abort the walk once maxCatalogMatches is exceeded.
+var errCatalogCapExceeded = errors.New("catalog match cap exceeded")
 
 func init() {
 	rule.Register(&Rule{Pad: 1, SeparatorStyle: tablefmt.SeparatorSpaced})
@@ -771,6 +783,12 @@ func buildCatalogEntries(
 	}
 	files := cachedGlobMatches(res, f, params)
 
+	if len(files) > maxCatalogMatches {
+		return nil, res, []lint.Diagnostic{makeDiag(filePath, line,
+			fmt.Sprintf("catalog matched too many files (%d); limit is %d",
+				len(files), maxCatalogMatches))}
+	}
+
 	sortKey, descending, numeric := parseSort(params)
 	hasRow := hasRowTemplate(params)
 	whereExpr := strings.TrimSpace(params["where"])
@@ -915,8 +933,14 @@ func resolveGlobMatchesFrom(res globResolution, f *lint.File, params map[string]
 				}
 				seen[m] = struct{}{}
 				files = append(files, m)
+				if len(files) > maxCatalogMatches {
+					return errCatalogCapExceeded
+				}
 				return nil
 			})
+		if len(files) > maxCatalogMatches {
+			break
+		}
 	}
 	return files
 }
