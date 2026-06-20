@@ -2,6 +2,7 @@ package listscan
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -121,57 +122,32 @@ func corpusASTFacts(f *lint.File) []astList {
 // they match. It compares the same facts compareLists asserts.
 func corpusDiff(want []astList, got []List) string {
 	if len(want) != len(got) {
-		return "  list count: AST=" + itoa(len(want)) + " listscan=" + itoa(len(got)) +
-			"\n  AST:" + fmtAST(want) + "\n  listscan:" + fmtScan(got)
+		return fmt.Sprintf("  list count: AST=%d listscan=%d\n  AST:%s\n  listscan:%s",
+			len(want), len(got), fmtAST(want), fmtScan(got))
 	}
 	for i := range want {
 		w, g := want[i], got[i]
 		if w.ordered != g.Ordered || w.start != g.Start || w.depth != g.Depth ||
 			w.firstLine != g.FirstLine || w.lastLine != g.LastLine || w.topLevel != g.TopLevel {
-			return "  list " + itoa(i) + " facts differ" + fmtAST(want[i:i+1]) + "\n  listscan:" + fmtScan(got[i:i+1])
+			return fmt.Sprintf("  list %d facts differ%s\n  listscan:%s",
+				i, fmtAST(want[i:i+1]), fmtScan(got[i:i+1]))
 		}
 		if len(w.items) != len(g.Items) {
-			return "  list " + itoa(i) + " item count: AST=" + itoa(len(w.items)) + " listscan=" + itoa(len(g.Items))
+			return fmt.Sprintf("  list %d item count: AST=%d listscan=%d", i, len(w.items), len(g.Items))
 		}
 		for j := range w.items {
 			wi, gi := w.items[j], g.Items[j]
-			if wi.line != gi.Line || wi.level != gi.Level || wi.number != gi.Number || wi.multiBlock != gi.MultiBlock {
-				return "  list " + itoa(i) + " item " + itoa(j) +
-					":\n    AST(line=" + itoa(wi.line) + " level=" + itoa(wi.level) + " num=" + itoa(wi.number) + " multi=" + btoa(wi.multiBlock) + ")" +
-					"\n    listscan(line=" + itoa(gi.Line) + " level=" + itoa(gi.Level) + " num=" + itoa(gi.Number) + " multi=" + btoa(gi.MultiBlock) + ")"
+			if wi.line != gi.Line || wi.level != gi.Level ||
+				wi.number != gi.Number || wi.multiBlock != gi.MultiBlock {
+				return fmt.Sprintf("  list %d item %d:\n"+
+					"    AST(line=%d level=%d num=%d multi=%v)\n"+
+					"    listscan(line=%d level=%d num=%d multi=%v)",
+					i, j, wi.line, wi.level, wi.number, wi.multiBlock,
+					gi.Line, gi.Level, gi.Number, gi.MultiBlock)
 			}
 		}
 	}
 	return ""
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	var buf [20]byte
-	i := len(buf)
-	for n > 0 {
-		i--
-		buf[i] = byte('0' + n%10)
-		n /= 10
-	}
-	if neg {
-		i--
-		buf[i] = '-'
-	}
-	return string(buf[i:])
-}
-
-func btoa(b bool) string {
-	if b {
-		return "t"
-	}
-	return "f"
 }
 
 func markdownFiles(t *testing.T, root string) []string {
