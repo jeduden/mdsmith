@@ -20,6 +20,11 @@ generates an index — a list, a table, or any row template — from
 the front matter of files matching a glob. `<?include?>` splices
 in another file.
 
+A `<?catalog?>` directive matches at most 10,000 files. When the
+glob resolves more than that limit, mdsmith emits a diagnostic and
+leaves the generated section unchanged rather than consuming
+unbounded memory.
+
 Generated blocks fight Git merges. `mdsmith merge-driver install`
 registers a driver for them. It re-runs the directive and resolves
 the conflict for you.
