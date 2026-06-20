@@ -152,6 +152,20 @@ func TestCheck_TooManyWordsPerCell(t *testing.T) {
 		"message should include column header name, got: %q", diags[0].Message)
 }
 
+func TestCheck_TooManyWordsPerCell_RaggedTable(t *testing.T) {
+	r := &Rule{MaxColumns: 6, MaxRows: 20, MaxWordsPerCell: 3, MaxColumnWidthRatio: 10}
+	// Data row has more cells than the header row: column 1 has no header,
+	// so columnHeader(1) returns "" and the else branch fires.
+	src := "# Title\n\n| Name |\n|------|\n| ok | this cell has too many words |\n"
+
+	diags := r.Check(newFile(t, src))
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
+	require.Contains(t, diags[0].Message, "table cell has too many words (6 > 3)",
+		"message = %q", diags[0].Message)
+	require.NotContains(t, diags[0].Message, "in column",
+		"message must not name a column for a ragged table, got: %q", diags[0].Message)
+}
+
 func TestCheck_HighWidthRatio(t *testing.T) {
 	r := &Rule{MaxColumns: 6, MaxRows: 20, MaxWordsPerCell: 100, MaxColumnWidthRatio: 1.50}
 	src := `# Title
