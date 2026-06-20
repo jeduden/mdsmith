@@ -168,7 +168,6 @@ type fileOutcome struct {
 	log   []byte
 }
 
-
 // Result holds the output of a lint run.
 type Result struct {
 	// FilesChecked is the number of files processed (after ignore filtering).
