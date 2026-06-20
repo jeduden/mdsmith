@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -4782,4 +4783,40 @@ func TestReadFrontMatter_FlatFastPath(t *testing.T) {
 			assert.Equal(t, tc.want, fm)
 		})
 	}
+}
+
+// TestCatalogFileCountCap pins S004: when a glob matches more than
+// maxCatalogMatches files the rule must emit a diagnostic and leave the
+// generated section unchanged rather than accumulating all matches in memory.
+func TestCatalogFileCountCap(t *testing.T) {
+	// Build a filesystem with maxCatalogMatches+1 files so the cap fires.
+	mapFS := make(fstest.MapFS, maxCatalogMatches+1)
+	for i := range maxCatalogMatches + 1 {
+		name := fmt.Sprintf("docs/file%05d.md", i)
+		mapFS[name] = &fstest.MapFile{Data: []byte("# Doc\n")}
+	}
+
+	// Pre-populate the generated section so we can verify it is left
+	// unchanged when the cap fires.
+	existing := "- [existing](docs/existing.md)\n"
+	src := "<?catalog\nglob: \"docs/*.md\"\n?>\n" + existing + "<?/catalog?>\n"
+
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := newDefaultRule()
+	diags := r.Check(f)
+
+	require.NotEmpty(t, diags, "exceeding maxCatalogMatches must produce a diagnostic")
+	found := false
+	for _, d := range diags {
+		if strings.Contains(d.Message, "too many") || strings.Contains(d.Message, "matches") {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "diagnostic must mention the file-count cap; got: %v", diags)
+
+	// Fix must also leave the generated section unchanged when the cap fires.
+	fixed := r.Fix(f)
+	assert.Equal(t, src, string(fixed),
+		"Fix must not modify the generated section when the cap diagnostic fires")
 }

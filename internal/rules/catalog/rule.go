@@ -31,6 +31,12 @@ import (
 // leading "-" descending marker — `-numeric:id`, not `numeric:-id`.
 const numericSortPrefix = "numeric:"
 
+// maxCatalogMatches is the upper bound on the number of files a single
+// catalog directive may match. Glob walks on large, unfiltered trees can
+// produce tens of thousands of results and exhaust memory; this cap
+// converts an unbounded allocation into a bounded diagnostic.
+const maxCatalogMatches = 10_000
+
 func init() {
 	rule.Register(&Rule{Pad: 1, SeparatorStyle: tablefmt.SeparatorSpaced})
 }
@@ -770,6 +776,12 @@ func buildCatalogEntries(
 		return nil, res, res.diags
 	}
 	files := cachedGlobMatches(res, f, params)
+
+	if len(files) > maxCatalogMatches {
+		return nil, res, []lint.Diagnostic{makeDiag(filePath, line,
+			fmt.Sprintf("catalog matched too many files (%d); limit is %d",
+				len(files), maxCatalogMatches))}
+	}
 
 	sortKey, descending, numeric := parseSort(params)
 	hasRow := hasRowTemplate(params)
