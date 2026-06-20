@@ -115,6 +115,46 @@ func TestIncludeSymlinkInsideRootWorks(t *testing.T) {
 		"Fix must embed the symlink target's content for a relative within-root symlink")
 }
 
+// TestBacklinksRootFSContainsSymlinkEscape verifies that the per-file RootFS
+// wired by f.SetRootDir (the path extractBacklinksFromSource takes) uses a
+// contained FS (lint.OpenRootFS) that blocks opening through absolute symlinks.
+//
+// The backlinks wikilink index (built via linkgraph.WikilinkIndexFor) only
+// enumerates paths through WalkDir, so the index-build path never calls Open.
+// The fallback per-call walk (linkgraph.ResolveWikiLink) also uses WalkDir
+// exclusively. This test verifies the RootFS containment property that would
+// block any future code that calls Open or ReadFile through f.RootFS.
+func TestBacklinksRootFSContainsSymlinkEscape(t *testing.T) {
+	root := t.TempDir()
+	docsDir := filepath.Join(root, "docs")
+	require.NoError(t, os.MkdirAll(docsDir, 0o755))
+
+	// Workspace symlink pointing to an external file.
+	require.NoError(t, os.Symlink("/etc/passwd", filepath.Join(docsDir, "secret.md")))
+
+	// Confirm os.DirFS follows the symlink (the vulnerability).
+	_, errDirFS := fs.ReadFile(os.DirFS(root), "docs/secret.md")
+	require.NoError(t, errDirFS,
+		"test invariant: os.DirFS must be able to read through the symlink")
+
+	// Confirm lint.OpenRootFS blocks the escape — this is the FS that
+	// f.SetRootDir (called by extractBacklinksFromSource) wires onto f.RootFS.
+	rootFS := lint.OpenRootFS(root)
+	_, errContained := rootFS.Open("docs/secret.md")
+	require.Error(t, errContained,
+		"lint.OpenRootFS must block opening through a workspace symlink to an absolute path")
+
+	// Also verify the containment is present on the f.RootFS seam that
+	// the backlinks wikilink fallback path uses. extractBacklinksFromSource
+	// calls f.SetRootDir(rootDir) — mirror that exactly.
+	f, _ := lint.NewFileFromSource(filepath.Join(root, "src.md"), []byte("# Src\n"), false)
+	f.SetRootDir(root)
+	_, errRootFS := f.RootFS.Open("docs/secret.md")
+	require.Error(t, errRootFS,
+		"f.RootFS after SetRootDir must block absolute symlink escape")
+	t.Logf("RootFS correctly refused to open through absolute symlink")
+}
+
 // TestCatalogSymlinkEscapeRefused is the S002 acceptance test.
 //
 // A within-workspace symlink whose target is outside the project root

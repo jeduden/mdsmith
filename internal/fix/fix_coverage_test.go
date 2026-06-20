@@ -509,11 +509,9 @@ type fileCapture struct {
 	last *lint.File
 }
 
-func (r *fileCapture) ID() string   { return r.id }
-func (r *fileCapture) Name() string { return r.name }
-func (r *fileCapture) Category() string {
-	return "test"
-}
+func (r *fileCapture) ID() string                            { return r.id }
+func (r *fileCapture) Name() string                          { return r.name }
+func (r *fileCapture) Category() string                      { return "test" }
 func (r *fileCapture) Check(f *lint.File) []lint.Diagnostic {
 	r.last = f
 	return nil
