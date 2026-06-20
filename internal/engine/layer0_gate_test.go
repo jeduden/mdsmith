@@ -3,6 +3,7 @@ package engine
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -277,32 +278,63 @@ func TestLayer0Gate_BlockQuoteForcesParse(t *testing.T) {
 		"a source that may hold a block quote must keep the AST parse")
 }
 
-// TestLayer0Gate_ListForcesParse proves the SourceMayHaveList guard: the
-// Layer 0 scanner records a list as a single BlockList span and does not
-// descend into item bodies, so a heading nested inside a list item is
-// invisible to the block scan while the AST path flags it. A file that may
-// hold a list must force the full parse.
-func TestLayer0Gate_ListForcesParse(t *testing.T) {
-	withLayer0Skip(t, true)
-	// A list-nested heading that violates setext style: AST flags it, skip misses it.
-	dir, path := writeDoc(t, "- item\n\n  # Nested ATX heading\n")
+// TestLayer0Gate_ListSkipsParse proves a list-bearing file now takes the
+// parse-skip path (the old SourceMayHaveList guard is gone) and stays
+// byte-identical to the parsed path. The list rules re-derive list structure
+// from f.Lines via listscan (rule.LinesChecker routes them to Check on the
+// nil-AST File), and a heading nested in a list item at a <4-space indent is
+// still recorded by the block scan, so MDS002's setext check fires on the
+// skip path exactly as it does on the AST path.
+func TestLayer0Gate_ListSkipsParse(t *testing.T) {
+	// A list, plus a list-nested ATX heading that violates setext style.
+	dir, path := writeDoc(t, "- item\n- item two\n\n  # Nested ATX heading\n")
 
-	probe := &astProbeRule{}
 	cfg := layer0OnlyConfig()
 	cfg.Rules["heading-style"] = config.RuleCfg{Enabled: true, Settings: map[string]any{"style": "setext"}}
-	cfg.Rules[probe.Name()] = config.RuleCfg{Enabled: true}
+	cfg.Rules["list-marker-style"] = config.RuleCfg{Enabled: true, Settings: map[string]any{"style": "asterisk"}}
 
-	r := &Runner{
-		Config:           cfg,
-		Rules:            append(rule.All(), probe),
-		StripFrontMatter: true,
-		RootDir:          dir,
+	runWith := func(skip bool) *Result {
+		probe := &astProbeRule{}
+		c := cfg
+		c.Rules[probe.Name()] = config.RuleCfg{Enabled: true}
+		withLayer0Skip(t, skip)
+		r := &Runner{
+			Config:           c,
+			Rules:            append(rule.All(), probe),
+			StripFrontMatter: true,
+			RootDir:          dir,
+		}
+		res := r.Run([]string{path})
+		require.Empty(t, res.Errors)
+		if skip {
+			assert.True(t, probe.sawNilAST,
+				"a list-only-rule config must now skip the parse on a list file")
+		}
+		return res
 	}
-	res := r.Run([]string{path})
-	require.Empty(t, res.Errors)
-	assert.False(t, probe.sawNilAST,
-		"a source that may hold a list must keep the AST parse")
+
+	skipped := runWith(true)
+	parsed := runWith(false)
+	// Both the list-marker verdict and the nested-heading verdict must appear,
+	// identically, on the parse-skipped and the parsed path.
+	assert.NotEmpty(t, skipped.Diagnostics)
+	assert.Equal(t, diagTriples(parsed.Diagnostics), diagTriples(skipped.Diagnostics),
+		"parse-skip diagnostics on a list file must match the full parse")
 }
+
+// diagTriples reduces diagnostics to comparable (line, col, rule, message)
+// tuples for the list-file equivalence assertion.
+func diagTriples(diags []lint.Diagnostic) [][4]string {
+	out := make([][4]string, 0, len(diags))
+	for _, d := range diags {
+		out = append(out, [4]string{
+			fmtInt(d.Line), fmtInt(d.Column), d.RuleID, d.Message,
+		})
+	}
+	return out
+}
+
+func fmtInt(n int) string { return strconv.Itoa(n) }
 
 // TestLayer0Gate_CodeSpanRuleSkipsParse proves the Layer 1 code-span fix
 // closed the old code-span soundness gap: MDS054

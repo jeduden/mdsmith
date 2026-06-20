@@ -77,6 +77,12 @@ func (r *Rule) checkLayer0(f *lint.File) []lint.Diagnostic {
 	return diags
 }
 
+// LinesCapable implements rule.LinesChecker: the rule's Check serves the
+// nil-AST (parse-skip) path itself by re-deriving list structure from
+// f.Lines via listscan, so the engine routes it to Check on a skipped File
+// instead of dropping it. Always true.
+func (r *Rule) LinesCapable() bool { return true }
+
 // CheckNode implements rule.NodeChecker.
 func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
 	if !entering {

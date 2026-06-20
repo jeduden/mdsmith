@@ -1041,47 +1041,6 @@ func SourceMayHaveBlockQuote(source []byte) bool {
 	return bytes.IndexByte(source, '>') >= 0
 }
 
-// SourceMayHaveList reports whether source could contain a Markdown list: it
-// holds at least one line that opens a bullet or ordered list item after up to
-// three spaces of indent. A list item requires a bullet (`-`/`*`/`+` + space)
-// or an ordered marker (digits + `.`/`)` + space), so a source with none has
-// no list.
-//
-// The Layer 0 parse-skip gate skips the goldmark parse only when this returns
-// false. The scanner records a list as a single BlockList span and does not
-// descend into the item body; a heading or fenced-code block nested inside a
-// list item is therefore invisible to the block scan while the AST path still
-// flags it. Disqualifying any source that might hold a list sidesteps that
-// divergence, mirroring the block-quote guard.
-func SourceMayHaveList(source []byte) bool {
-	for len(source) > 0 {
-		nl := bytes.IndexByte(source, '\n')
-		var line []byte
-		if nl < 0 {
-			line = source
-			source = nil
-		} else {
-			line = source[:nl]
-			source = source[nl+1:]
-		}
-		indent := leadingSpaces(line)
-		if indent >= 4 || indent >= len(line) {
-			continue
-		}
-		switch line[indent] {
-		case '-', '*', '+':
-			if !isThematicBreak(line) && isBulletMarker(line, indent) {
-				return true
-			}
-		default:
-			if isOrderedMarker(line, indent) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // blockDepth returns the block-quote nesting depth of line: the number of
 // leading `>` markers (each optionally followed by a space), after up to 3
 // spaces of indent. Non-quote lines are depth 0.
