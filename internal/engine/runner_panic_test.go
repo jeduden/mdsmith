@@ -184,6 +184,61 @@ func TestWorkerPanicIntraFileConcurrencyPath(t *testing.T) {
 	assert.Contains(t, d.Message, "goroutine")
 }
 
+// panicConfigTargetRule is a ConfigTarget rule whose Check always panics, so
+// TestConfigTargetRulePanicIsRecovered can verify runConfigTargetRules
+// catches the panic and converts it to a diagnostic rather than crashing.
+type panicConfigTargetRule struct {
+	id  string
+	msg string
+}
+
+func (r *panicConfigTargetRule) ID() string                           { return r.id }
+func (r *panicConfigTargetRule) Name() string                         { return r.id }
+func (r *panicConfigTargetRule) Category() string                     { return "test" }
+func (r *panicConfigTargetRule) IsConfigFileRule() bool               { return true }
+func (r *panicConfigTargetRule) Check(_ *lint.File) []lint.Diagnostic { panic(r.msg) }
+
+// TestConfigTargetRulePanicIsRecovered verifies that a panic in a
+// config-target rule's Check method is caught by runConfigTargetRules
+// and converted to an InternalError diagnostic rather than crashing the
+// process. runConfigTargetRules runs on the Run() caller's goroutine —
+// outside the lintFile recover boundary — so it needs its own guard.
+func TestConfigTargetRulePanicIsRecovered(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(""), 0o644))
+
+	const panicMsg = "config-target panic"
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"cfg-panic": {Enabled: true},
+		},
+	}
+
+	runner := &Runner{
+		Config:     cfg,
+		ConfigPath: cfgPath,
+		Rules: []rule.Rule{
+			&panicConfigTargetRule{id: "cfg-panic", msg: panicMsg},
+		},
+	}
+
+	res := runner.Run(nil)
+
+	assert.Empty(t, res.Errors,
+		"config-target rule panic must become a diagnostic, not an error")
+	require.Len(t, res.Diagnostics, 1,
+		"expected exactly one InternalError diagnostic for the panicking config-target rule")
+	d := res.Diagnostics[0]
+	assert.Equal(t, "internal-panic", d.RuleID)
+	assert.Equal(t, lint.Error, d.Severity)
+	assert.Contains(t, d.Message, panicMsg)
+	assert.Contains(t, d.Message, "goroutine")
+}
+
 func formatDiags(diags []lint.Diagnostic) string {
 	var sb strings.Builder
 	for _, d := range diags {

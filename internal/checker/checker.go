@@ -15,6 +15,24 @@ import (
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
+// PanicDiagnostic builds the canonical InternalError diagnostic for a
+// recovered rule panic. Call it from within a defer/recover block so
+// debug.Stack() captures the panic-site frames. Both the engine's
+// lintFile path and the checker's intra-file goroutine path use this
+// single definition to keep the rule ID, severity, and message format
+// in sync.
+func PanicDiagnostic(path string, rv any) lint.Diagnostic {
+	stack := debug.Stack()
+	return lint.Diagnostic{
+		File:     path,
+		Line:     1,
+		RuleID:   "internal-panic",
+		RuleName: "internal-panic",
+		Severity: lint.Error,
+		Message:  fmt.Sprintf("internal error: rule panic: %v\n%s", rv, stack),
+	}
+}
+
 // ConfigureEnabledRules returns the enabled rules from rules, each
 // configured with its effective settings, in input order, plus any
 // settings-application errors. The result depends only on (rules,
@@ -459,16 +477,7 @@ func runNonNodeCheckers(f *lint.File, slots []ruleSlot, intraFileCap int) {
 			defer func() { <-sem }()
 			defer func() {
 				if rv := recover(); rv != nil {
-					stack := debug.Stack()
-					slot.diags = []lint.Diagnostic{{
-						File:     f.Path,
-						Line:     1,
-						RuleID:   "internal-panic",
-						RuleName: "internal-panic",
-						Severity: lint.Error,
-						Message: fmt.Sprintf(
-							"internal error: rule panic: %v\n%s", rv, stack),
-					}}
+					slot.diags = []lint.Diagnostic{PanicDiagnostic(f.Path, rv)}
 				}
 			}()
 			slot.diags = slot.check.Check(f)
