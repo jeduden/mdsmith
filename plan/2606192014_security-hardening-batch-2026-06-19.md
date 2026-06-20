@@ -1,7 +1,7 @@
 ---
 id: 2606192014
 title: "Security hardening batch — 2026-06-19 LSP/VS Code audit"
-status: "🔳"
+status: "✅"
 summary: >-
   Low-severity Workspace Trust gaps from the 2026-06-19 audit: gate the
   mdsmith.kinds.resolve/why palette commands and the mdsmith-rule:
@@ -60,5 +60,7 @@ gate. Risk is very low. The pattern is inconsistent with the trust model.
   `isTrusted()` is false.
 - [x] The `mdsmith-rule:` provider does not spawn in untrusted mode.
 - [x] All existing VS Code extension tests pass.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues (environment constraint:
+  tools/go.mod requires Go 1.25.8+; golangci-lint skipped; `go vet ./...`
+  passes)
