@@ -539,7 +539,7 @@ func (r *Runner) configureFile(f *lint.File, path string, cache *lint.RunCache) 
 	f.MaxInputBytes = r.MaxInputBytes
 	f.RunCache = cache
 	dir := filepath.Dir(path)
-	f.FS = os.DirFS(dir)
+	f.FS = lint.OpenRootFS(dir)
 	gitignoreDir := dir
 	if r.RootDir != "" {
 		f.SetRootDir(r.RootDir)
@@ -892,7 +892,7 @@ func (r *Runner) populateFileFields(f *lint.File, path string) {
 	}
 	// An in-memory workspace (the Session's MemWorkspace, e.g. the WASM
 	// build) has no on-disk RootDir, but its SourceFS is rooted at the
-	// project root — the same contract os.DirFS(RootDir) gives on disk.
+	// project root — the same contract OpenRootFS(RootDir) gives on disk.
 	// Wire it as RootFS so RootFS-aware cross-file rules (include's ".."
 	// resolution, MDS020's schema reads) read through the workspace
 	// instead of falling back to os.*, which is "not implemented on js".

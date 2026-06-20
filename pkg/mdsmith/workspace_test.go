@@ -288,6 +288,35 @@ func TestIndexSlash(t *testing.T) {
 	}
 }
 
+// TestOSWorkspaceFSSymlinkEscapeRefused verifies that OSWorkspace.FS() uses
+// os.OpenRoot containment so that a symlink inside the workspace root that
+// points to a file outside the root cannot be opened through the returned
+// fs.FS. This guards against CWE-73 (path traversal via symlink).
+func TestOSWorkspaceFSSymlinkEscapeRefused(t *testing.T) {
+	root := t.TempDir()
+
+	// Symlink inside the workspace pointing outside the root.
+	symlinkPath := filepath.Join(root, "escape.md")
+	if err := os.Symlink("/etc/passwd", symlinkPath); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	// Confirm os.DirFS can read through the symlink (establishing the baseline
+	// vulnerability that OSWorkspace.FS() must close).
+	_, errDirFS := fs.ReadFile(os.DirFS(root), "escape.md")
+	if errDirFS != nil {
+		t.Skip("test invariant: os.DirFS must be able to read the symlink target; skipping on this platform")
+	}
+
+	// OSWorkspace.FS() must refuse the open.
+	ws := OSWorkspace{Root: root}
+	fsys := ws.FS()
+	_, err := fsys.Open("escape.md")
+	if err == nil {
+		t.Fatal("OSWorkspace.FS().Open(escape.md) succeeded; expected containment error for symlink escaping root")
+	}
+}
+
 // Workspace is satisfied by both implementations.
 var (
 	_ Workspace = OSWorkspace{}
