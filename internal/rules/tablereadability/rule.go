@@ -89,7 +89,10 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		if words, line, col := tbl.maxCellWords(); words > maxWordsPerCell {
 			var msg string
 			if header := tbl.columnHeader(col); header != "" {
-				msg = fmt.Sprintf("table cell has too many words (%d > %d) in column %q", words, maxWordsPerCell, header)
+				msg = fmt.Sprintf(
+					"table cell has too many words (%d > %d) in column %q",
+					words, maxWordsPerCell, header,
+				)
 			} else {
 				msg = fmt.Sprintf("table cell has too many words (%d > %d)", words, maxWordsPerCell)
 			}
