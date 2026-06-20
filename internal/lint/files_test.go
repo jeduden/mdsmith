@@ -1,6 +1,7 @@
 package lint
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -743,6 +744,53 @@ func TestHasSymlinkAncestorWithCwd_EmptyBoundaryReturnsError(t *testing.T) {
 	require.Error(t, err,
 		"empty cwd and no .git ancestor must return an error — the scan "+
 			"boundary is unverifiable so the caller must not silently trust the path")
+}
+
+// TestHasSymlinkAncestorWithCwd_GetWdFailureInAbsResolution covers the
+// abs=="" guard: when getwdFn fails, absWithCwd returns "" and the
+// function must return (false, nil) instead of proceeding.
+func TestHasSymlinkAncestorWithCwd_GetWdFailureInAbsResolution(t *testing.T) {
+	origFn := getwdFn
+	getwdFn = func() (string, error) {
+		return "", errors.New("simulated getwd failure")
+	}
+	t.Cleanup(func() { getwdFn = origFn })
+
+	cache := make(map[string]bool)
+	got, err := hasSymlinkAncestorWithCwd("relative/path.md", "", cache)
+	require.NoError(t, err,
+		"getwdFn failure in abs resolution must return (false, nil), not propagate the error")
+	assert.False(t, got)
+}
+
+// TestHasSymlinkAncestorWithCwd_GetWdFailureInWalk covers the walk-init
+// guard: getwdFn fails on the second call (after absWithCwd already resolved
+// abs using the first call) so the walk cannot determine its starting
+// directory and must return (false, nil).
+func TestHasSymlinkAncestorWithCwd_GetWdFailureInWalk(t *testing.T) {
+	dir := t.TempDir()
+	// .git so ancestorStopBoundary returns a non-empty stop, ensuring
+	// the walk setup code is reached.
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+
+	callCount := 0
+	origFn := getwdFn
+	getwdFn = func() (string, error) {
+		callCount++
+		if callCount == 1 {
+			// First call from absWithCwd: succeed so abs is resolved.
+			return dir, nil
+		}
+		// Second call from the walk's else-if current=="" branch: fail.
+		return "", errors.New("simulated getwd failure in walk")
+	}
+	t.Cleanup(func() { getwdFn = origFn })
+
+	cache := make(map[string]bool)
+	got, err := hasSymlinkAncestorWithCwd("sub/file.md", "", cache)
+	require.NoError(t, err,
+		"getwdFn failure during walk init must return (false, nil), not propagate the error")
+	assert.False(t, got)
 }
 
 // skipIfSymlinkUnsupported forwards to the shared testsymlink helper.

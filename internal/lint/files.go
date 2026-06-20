@@ -11,6 +11,11 @@ import (
 	"github.com/jeduden/mdsmith/internal/gitignore"
 )
 
+// getwdFn resolves the process working directory. It is a package-level
+// variable so tests can substitute a failing implementation to exercise
+// the os.Getwd-error branches without manipulating the process CWD.
+var getwdFn = os.Getwd
+
 // isMarkdown returns true if the file extension is .md or .markdown.
 func isMarkdown(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
@@ -270,7 +275,7 @@ func hasSymlinkAncestorWithCwd(path, cwd string, cache map[string]bool) (bool, e
 		current = vol + string(filepath.Separator)
 		rest = strings.TrimPrefix(path, vol)
 	} else if current == "" {
-		wd, err := os.Getwd()
+		wd, err := getwdFn()
 		if err != nil {
 			return false, nil
 		}
@@ -338,8 +343,7 @@ func isDescendantOf(p, base string) bool {
 // absWithCwd resolves path to an absolute, cleaned form using the
 // caller-supplied cwd to avoid the per-call `os.Getwd` that
 // `filepath.Abs` performs for relative paths. When cwd is empty
-// (e.g. a Getwd error upstream), it falls back to `filepath.Abs`.
-// Returns "" only on the unreachable `filepath.Abs` failure path.
+// it calls getwdFn directly; returns "" if getwdFn fails.
 func absWithCwd(path, cwd string) string {
 	if filepath.IsAbs(path) {
 		return filepath.Clean(path)
@@ -347,11 +351,11 @@ func absWithCwd(path, cwd string) string {
 	if cwd != "" {
 		return filepath.Clean(filepath.Join(cwd, path))
 	}
-	abs, err := filepath.Abs(path)
+	wd, err := getwdFn()
 	if err != nil {
 		return ""
 	}
-	return filepath.Clean(abs)
+	return filepath.Clean(filepath.Join(wd, path))
 }
 
 // ancestorStopBoundary returns the directory at which ancestor
