@@ -15,6 +15,19 @@ import (
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
+// PanicDiagnostic converts a recovered panic value into an InternalError diagnostic with stack trace.
+func PanicDiagnostic(path string, rv any) lint.Diagnostic {
+	stack := debug.Stack()
+	return lint.Diagnostic{
+		File:     path,
+		Line:     1,
+		RuleID:   "internal-panic",
+		RuleName: "internal-panic",
+		Severity: lint.Error,
+		Message:  fmt.Sprintf("internal error: rule panic: %v\n%s", rv, stack),
+	}
+}
+
 // ConfigureEnabledRules returns the enabled rules from rules, each
 // configured with its effective settings, in input order, plus any
 // settings-application errors. The result depends only on (rules,
@@ -459,16 +472,7 @@ func runNonNodeCheckers(f *lint.File, slots []ruleSlot, intraFileCap int) {
 			defer func() { <-sem }()
 			defer func() {
 				if rv := recover(); rv != nil {
-					stack := debug.Stack()
-					slot.diags = []lint.Diagnostic{{
-						File:     f.Path,
-						Line:     1,
-						RuleID:   "internal-panic",
-						RuleName: "internal-panic",
-						Severity: lint.Error,
-						Message: fmt.Sprintf(
-							"internal error: rule panic: %v\n%s", rv, stack),
-					}}
+					slot.diags = []lint.Diagnostic{PanicDiagnostic(f.Path, rv)}
 				}
 			}()
 			slot.diags = slot.check.Check(f)

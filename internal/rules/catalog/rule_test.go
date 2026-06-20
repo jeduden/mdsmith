@@ -4820,3 +4820,18 @@ func TestCatalogFileCountCap(t *testing.T) {
 	assert.Equal(t, src, string(fixed),
 		"Fix must not modify the generated section when the cap diagnostic fires")
 }
+
+// TestValidateGlob_URLSchemeRejected pins S004: a glob pattern that contains
+// a URL scheme (e.g. "https://") must produce a diagnostic rather than being
+// passed to the filesystem glob resolver, where it would either panic or
+// silently return no matches and hide a misconfiguration.
+func TestValidateGlob_URLSchemeRejected(t *testing.T) {
+	src := "<?catalog\nglob: \"https://evil.example/**/*.md\"\n?>\n<?/catalog?>\n"
+	// f.FS must be non-nil so Check doesn't return early before reaching gensection.
+	f := newTestFile(t, "index.md", src, fstest.MapFS{})
+	r := newDefaultRule()
+	diags := r.Check(f)
+	require.NotEmpty(t, diags, "URL scheme in glob must produce a diagnostic")
+	assert.Contains(t, diags[0].Message, "URL scheme",
+		"diagnostic must mention 'URL scheme'; got: %v", diags[0].Message)
+}

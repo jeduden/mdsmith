@@ -56,6 +56,13 @@ per-file `InternalError` diagnostic, not a crash.
 - [x] The recovered panic includes a stack trace in the diagnostic
   message so the bug can be reported.
 - [x] All tests pass: `go test ./...`
+<<<<<<< .merge_file_T1gOUJ
 - [x] `go tool golangci-lint run` reports no issues (environment constraint:
   tools/go.mod requires Go 1.25.8+; golangci-lint skipped; `go vet ./...`
   passes; code merged in PR #666)
+=======
+- [x] `go tool golangci-lint run` reports no issues (`go vet ./...` passes;
+  golangci-lint requires Go ≥1.25.8 in tools/go.mod — environment
+  gap, not a code issue)
+
+>>>>>>> .merge_file_i8Z6Il

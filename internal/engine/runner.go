@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"runtime/debug"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -167,22 +166,6 @@ type fileOutcome struct {
 	diags []lint.Diagnostic
 	errs  []error
 	log   []byte
-}
-
-// panicOutcome converts a recovered panic into an InternalError fileOutcome for path.
-func panicOutcome(path string, r any) fileOutcome {
-	stack := debug.Stack()
-	msg := fmt.Sprintf("internal error: rule panic: %v\n%s", r, stack)
-	return fileOutcome{
-		diags: []lint.Diagnostic{{
-			File:     path,
-			Line:     1,
-			RuleID:   "internal-panic",
-			RuleName: "internal-panic",
-			Severity: lint.Error,
-			Message:  msg,
-		}},
-	}
 }
 
 // Result holds the output of a lint run.
@@ -412,11 +395,10 @@ func cloneRules(rules []rule.Rule) []rule.Rule {
 // catalog/include rules share one target read across every host file in
 // this pass.
 func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, rr runResolve) (out fileOutcome) {
-	// Catch rule panics that propagate to this goroutine (serial intra-file path).
-	// Parallel intra-file goroutines are covered by checker.runNonNodeCheckers.
+	// Registered first so it runs last: out.log is set by the log defer before this fires.
 	defer func() {
 		if rv := recover(); rv != nil {
-			out = panicOutcome(path, rv)
+			out.diags = []lint.Diagnostic{checker.PanicDiagnostic(path, rv)}
 		}
 	}()
 
@@ -1195,6 +1177,14 @@ func (r *Runner) runConfigTargetRules(res *Result) {
 	if r.ConfigPath == "" {
 		return
 	}
+	// Also covers panics in ConfigureRule (ApplySettings, Clone) which run
+	// before runConfigRule's own guard.
+	defer func() {
+		if rv := recover(); rv != nil {
+			res.Diagnostics = append(res.Diagnostics,
+				checker.PanicDiagnostic(r.ConfigPath, rv))
+		}
+	}()
 	effective := r.effectiveWithCategories(r.ConfigPath, nil, nil)
 	f, err := lint.NewFile(r.ConfigPath, []byte{})
 	if err != nil {
@@ -1215,9 +1205,19 @@ func (r *Runner) runConfigTargetRules(res *Result) {
 			res.Errors = append(res.Errors, err)
 			continue
 		}
-		diags := configured.Check(f)
+		diags := runConfigRule(configured, f)
 		res.Diagnostics = append(res.Diagnostics, diags...)
 	}
+}
+
+// Outside the lintFile recover boundary — runConfigTargetRules runs on Run()'s goroutine.
+func runConfigRule(configured rule.Rule, f *lint.File) (diags []lint.Diagnostic) {
+	defer func() {
+		if rv := recover(); rv != nil {
+			diags = []lint.Diagnostic{checker.PanicDiagnostic(f.Path, rv)}
+		}
+	}()
+	return configured.Check(f)
 }
 
 // anyRepoScopedEnabled reports whether any markdown rule (excluding

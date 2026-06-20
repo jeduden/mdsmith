@@ -366,6 +366,10 @@ func validateGlob(filePath string, line int, params map[string]string) []lint.Di
 			return []lint.Diagnostic{makeDiag(filePath, line,
 				"generated section directive has absolute glob path")}
 		}
+		if strings.Contains(pattern, "://") {
+			return []lint.Diagnostic{makeDiag(filePath, line,
+				"generated section directive has URL scheme in glob pattern")}
+		}
 		if !doublestar.ValidatePattern(pattern) {
 			return []lint.Diagnostic{makeDiag(filePath, line,
 				fmt.Sprintf("generated section directive has invalid glob pattern: %s", pattern))}
