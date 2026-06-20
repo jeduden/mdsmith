@@ -149,7 +149,12 @@ func prepareExportFile(
 	gitignoreDir := dir
 	root := rootDirFromConfig(cfgPath)
 	if root != "" {
-		f.SetRootDir(root)
+		if dir == root {
+			f.RootDir = root
+			f.RootFS = f.FS
+		} else {
+			f.SetRootDir(root)
+		}
 		gitignoreDir = root
 	}
 	f.GitignoreFunc = func() *gitignore.Matcher {
