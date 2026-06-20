@@ -229,6 +229,7 @@ function makeDeps(overrides: Partial<KindsWhyHandlerDeps> = {}): {
     pickRule: async (rules) => rules[0],
     openVirtualDoc: async (uri) => { openedUris.push(uri); },
     showError: async (msg) => { errors.push(msg); },
+    isTrusted: () => true,
     ...overrides,
   };
   return { deps, openedUris, errors };

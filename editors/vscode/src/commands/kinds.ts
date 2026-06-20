@@ -30,7 +30,7 @@ export interface KindsResolveHandlerDeps {
   getDiagnostics: (filePath: string) => DiagnosticLike[];
   openVirtualDoc: (uri: string) => Promise<void>;
   showError: (msg: string) => Promise<void>;
-  isTrusted?: () => boolean;
+  isTrusted: () => boolean;
 }
 
 // KindsWhyHandlerDeps extends resolve deps with a rule picker for the why command.
@@ -39,7 +39,7 @@ export interface KindsWhyHandlerDeps extends KindsResolveHandlerDeps {
 }
 
 export async function runKindsResolve(deps: KindsResolveHandlerDeps): Promise<void> {
-  if (deps.isTrusted && !deps.isTrusted()) {
+  if (!deps.isTrusted()) {
     await deps.showError("mdsmith: Show resolved config requires a trusted workspace.");
     return;
   }
@@ -55,7 +55,7 @@ export async function runKindsResolve(deps: KindsResolveHandlerDeps): Promise<vo
 }
 
 export async function runKindsWhy(deps: KindsWhyHandlerDeps): Promise<void> {
-  if (deps.isTrusted && !deps.isTrusted()) {
+  if (!deps.isTrusted()) {
     await deps.showError("mdsmith: Explain rule requires a trusted workspace.");
     return;
   }

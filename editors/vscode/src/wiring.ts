@@ -874,9 +874,12 @@ export class Wiring {
       }),
 
       // Register the virtual document provider for the mdsmith-kinds:
-      // scheme.
+      // scheme. Guard on isTrusted() so that a stale virtual-doc tab
+      // or a crafted mdsmith-kinds:// URI cannot trigger the mdsmith
+      // binary in an untrusted workspace.
       api.workspace.registerTextDocumentContentProvider(KINDS_SCHEME, {
         provideTextDocumentContent: (uri) => {
+          if (!isTrusted()) return Promise.resolve("");
           const uriStr = kindsContentUri(uri);
           const parsed = parseKindsUri(uriStr);
           // Derive the workspace folder from the file encoded in the URI
