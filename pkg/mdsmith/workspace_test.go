@@ -317,6 +317,23 @@ func TestOSWorkspaceFSSymlinkEscapeRefused(t *testing.T) {
 	}
 }
 
+// TestOSWorkspaceFSOpenRootFailFallback verifies that when os.OpenRoot itself
+// fails (e.g. the root directory does not exist), OSWorkspace.FS() falls back
+// to os.DirFS and returns a usable fs.FS rather than panicking.
+func TestOSWorkspaceFSOpenRootFailFallback(t *testing.T) {
+	nonExistent := t.TempDir() + "/does-not-exist"
+	ws := OSWorkspace{Root: nonExistent}
+	fsys := ws.FS()
+	if fsys == nil {
+		t.Fatal("OSWorkspace.FS() returned nil on OpenRoot failure; expected fallback fs.FS")
+	}
+	// Opening any file through the fallback FS must return an error (dir absent).
+	_, err := fsys.Open("any.md")
+	if err == nil {
+		t.Fatal("Open through fallback FS on a non-existent root must return an error")
+	}
+}
+
 // Workspace is satisfied by both implementations.
 var (
 	_ Workspace = OSWorkspace{}
