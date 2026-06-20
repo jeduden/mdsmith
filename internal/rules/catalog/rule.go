@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io/fs"
 	"path"
@@ -32,10 +33,15 @@ import (
 const numericSortPrefix = "numeric:"
 
 // maxCatalogMatches is the upper bound on the number of files a single
-// catalog directive may match. Glob walks on large, unfiltered trees can
-// produce tens of thousands of results and exhaust memory; this cap
-// converts an unbounded allocation into a bounded diagnostic.
+// catalog directive may match. When the walk exceeds this limit the
+// GlobWalk callback returns errCatalogCapExceeded to abort early, so at
+// most maxCatalogMatches+1 entries are allocated before the diagnostic
+// fires and the excess is discarded.
 const maxCatalogMatches = 10_000
+
+// errCatalogCapExceeded is the sentinel returned from the GlobWalk
+// callback to abort the walk once maxCatalogMatches is exceeded.
+var errCatalogCapExceeded = errors.New("catalog match cap exceeded")
 
 func init() {
 	rule.Register(&Rule{Pad: 1, SeparatorStyle: tablefmt.SeparatorSpaced})
@@ -927,8 +933,14 @@ func resolveGlobMatchesFrom(res globResolution, f *lint.File, params map[string]
 				}
 				seen[m] = struct{}{}
 				files = append(files, m)
+				if len(files) > maxCatalogMatches {
+					return errCatalogCapExceeded
+				}
 				return nil
 			})
+		if len(files) > maxCatalogMatches {
+			break
+		}
 	}
 	return files
 }

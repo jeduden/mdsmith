@@ -214,7 +214,12 @@ func (r *Rule) driftParts(repoRoot string) []string {
 
 	hasDriver := githooks.HasMdsmithMergeDriver(repoRoot)
 	hookState := peekHookSource(repoRoot)
-	if !hasDriver && hookState != hookSourceManaged && hookState != hookSourceUnreadable {
+	// Early-exit when the user has not opted in (no driver) and the hook
+	// is not mdsmith-managed. hookSourceUnreadable (file too large, bad
+	// perms) is included in the early-exit: we cannot verify the hook's
+	// state, but since no driver is registered the user has not opted into
+	// mdsmith hook management, so there is nothing to report.
+	if !hasDriver && hookState != hookSourceManaged {
 		driftMu.Lock()
 		driftCache[repoRoot] = driftResult{}
 		driftMu.Unlock()

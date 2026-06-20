@@ -134,12 +134,12 @@ func validateIncludeDirective(
 
 	// Reject URL schemes explicitly. os.DirFS incidentally refuses
 	// network calls, but an explicit check removes that incidental
-	// dependency and closes CWE-918 (SSRF) for all three common schemes.
-	for _, scheme := range []string{"http://", "https://", "file://"} {
-		if strings.HasPrefix(file, scheme) {
-			return []lint.Diagnostic{makeDiag(filePath, line,
-				"include directive has URL scheme in file path")}
-		}
+	// dependency. strings.Contains(file, "://") covers all RFC 3986
+	// scheme forms (http://, https://, ftp://, file://, etc.) without
+	// a scheme list that must be extended per new scheme.
+	if strings.Contains(file, "://") {
+		return []lint.Diagnostic{makeDiag(filePath, line,
+			"include directive has URL scheme in file path")}
 	}
 
 	// Validate wrap parameter if present.
