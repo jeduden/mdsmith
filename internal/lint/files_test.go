@@ -385,10 +385,12 @@ func TestHasSymlinkAncestor_RelativeUnderCwd(t *testing.T) {
 		filepath.Join(dir, "real"), filepath.Join(dir, "linked")))
 
 	t.Chdir(dir)
-	assert.True(t, hasSymlinkAncestor("linked/foo.md"),
-		"linked/foo.md must be flagged as crossing a symlinked ancestor")
-	assert.False(t, hasSymlinkAncestor("real/foo.md"),
-		"real/foo.md has no symlink ancestors")
+	got, err := hasSymlinkAncestor("linked/foo.md")
+	require.NoError(t, err)
+	assert.True(t, got, "linked/foo.md must be flagged as crossing a symlinked ancestor")
+	got, err = hasSymlinkAncestor("real/foo.md")
+	require.NoError(t, err)
+	assert.False(t, got, "real/foo.md has no symlink ancestors")
 }
 
 // TestHasSymlinkAncestor_CacheReusedAcrossSiblings covers the
@@ -403,8 +405,12 @@ func TestHasSymlinkAncestor_CacheReusedAcrossSiblings(t *testing.T) {
 	t.Chdir(dir)
 
 	cache := make(map[string]bool)
-	assert.True(t, hasSymlinkAncestorCached("linked/a.md", cache))
-	assert.True(t, hasSymlinkAncestorCached("linked/b.md", cache))
+	gotA, errA := hasSymlinkAncestorCached("linked/a.md", cache)
+	require.NoError(t, errA)
+	assert.True(t, gotA)
+	gotB, errB := hasSymlinkAncestorCached("linked/b.md", cache)
+	require.NoError(t, errB)
+	assert.True(t, gotB)
 	// The shared parent is cached as "true"; both paths return true
 	// without re-Lstat'ing the ancestor.
 	assert.Contains(t, cache, filepath.Join(dir, "linked"),
@@ -427,24 +433,28 @@ func TestHasSymlinkAncestor_AbsPathOutsideCwdWithGitRoot(t *testing.T) {
 		filepath.Join(project, "linked")))
 
 	t.Chdir(cwd)
-	assert.True(t,
-		hasSymlinkAncestor(filepath.Join(project, "linked", "foo.md")),
-		"abs path into a .git-rooted project must scan its ancestors")
+	got, err := hasSymlinkAncestor(filepath.Join(project, "linked", "foo.md"))
+	require.NoError(t, err)
+	assert.True(t, got, "abs path into a .git-rooted project must scan its ancestors")
 }
 
-// TestHasSymlinkAncestor_SkipsPathOutsideProjects confirms that an
-// absolute path with no cwd or .git anchor is trusted (no probe).
-// This keeps system-level symlinks like /tmp on macOS out of scope.
-func TestHasSymlinkAncestor_SkipsPathOutsideProjects(t *testing.T) {
+// TestHasSymlinkAncestor_TrustsPathOutsideProjectsWhenCwdKnown confirms
+// that an absolute path with no .git anchor but a known cwd is still
+// trusted (no probe). When cwd is available, the "outside every project
+// root" case is intentionally trusted so system-level symlinks like /tmp
+// on macOS stay out of scope.
+func TestHasSymlinkAncestor_TrustsPathOutsideProjectsWhenCwdKnown(t *testing.T) {
 	// cwd and target live in unrelated temp dirs; neither has a
-	// .git ancestor, so hasSymlinkAncestor should find no anchor
-	// and return false. Using temp dirs keeps the test portable
-	// across OSes — unlike a hardcoded `/etc/...` path.
+	// .git ancestor, but cwd is non-empty so ancestorStopBoundary
+	// returns "" with a valid cwd, which means "trusted, no scan".
 	cwd := t.TempDir()
 	outside := t.TempDir()
 	t.Chdir(cwd)
-	assert.False(t, hasSymlinkAncestor(
-		filepath.Join(outside, "nonexistent", "foo.md")))
+	got, err := hasSymlinkAncestor(filepath.Join(outside, "nonexistent", "foo.md"))
+	require.NoError(t, err,
+		"path outside cwd (but with known cwd) must return (false, nil) — "+
+			"outside-project paths are trusted by design")
+	assert.False(t, got)
 }
 
 // TestGitProjectRoot_FindsAncestor and _None cover the boundary
@@ -478,8 +488,9 @@ func TestHasSymlinkAncestor_DotDotAfterSymlinkedDir(t *testing.T) {
 		filepath.Join(dir, "real"), filepath.Join(dir, "linked")))
 	t.Chdir(dir)
 
-	assert.True(t, hasSymlinkAncestor("linked/../dirty.md"),
-		"`linked/../dirty.md` with symlinked `linked` must be flagged")
+	got, err := hasSymlinkAncestor("linked/../dirty.md")
+	require.NoError(t, err)
+	assert.True(t, got, "`linked/../dirty.md` with symlinked `linked` must be flagged")
 }
 
 // TestHasSymlinkAncestor_DotDotAfterRealDir confirms the
@@ -490,8 +501,9 @@ func TestHasSymlinkAncestor_DotDotAfterRealDir(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "a", "b"), 0o755))
 	t.Chdir(dir)
 
-	assert.False(t, hasSymlinkAncestor("a/b/../c.md"),
-		"`..` after a non-symlink dir must not trigger rejection")
+	got, err := hasSymlinkAncestor("a/b/../c.md")
+	require.NoError(t, err)
+	assert.False(t, got, "`..` after a non-symlink dir must not trigger rejection")
 }
 
 // TestAbsWithCwd_EmptyCwdUsesGetwd covers the Getwd fallback.
@@ -599,7 +611,8 @@ func TestHasSymlinkAncestorWithCwd_AbsolutePath_UnderCwd(t *testing.T) {
 
 	cache := make(map[string]bool)
 	abs := filepath.Join(dir, "linked", "foo.md")
-	got := hasSymlinkAncestorWithCwd(abs, dir, cache)
+	got, err := hasSymlinkAncestorWithCwd(abs, dir, cache)
+	require.NoError(t, err)
 	assert.True(t, got,
 		"absolute path through symlinked component must be flagged")
 }
@@ -615,8 +628,10 @@ func TestHasSymlinkAncestorCache_SkipsRepeatLstat(t *testing.T) {
 		filepath.Join(dir, "real"), filepath.Join(dir, "linked")))
 
 	cache := make(map[string]bool)
-	first := hasSymlinkAncestorWithCwd("linked/a.md", dir, cache)
-	second := hasSymlinkAncestorWithCwd("linked/b.md", dir, cache)
+	first, errA := hasSymlinkAncestorWithCwd("linked/a.md", dir, cache)
+	require.NoError(t, errA)
+	second, errB := hasSymlinkAncestorWithCwd("linked/b.md", dir, cache)
+	require.NoError(t, errB)
 	assert.True(t, first)
 	assert.True(t, second)
 	assert.True(t, cache[filepath.Join(dir, "linked")],
@@ -637,7 +652,8 @@ func TestHasSymlinkAncestorWithCwd_EmptyCwdFallsBackToGetwd(t *testing.T) {
 	t.Chdir(dir)
 
 	cache := make(map[string]bool)
-	got := hasSymlinkAncestorWithCwd("linked/a.md", "", cache)
+	got, err := hasSymlinkAncestorWithCwd("linked/a.md", "", cache)
+	require.NoError(t, err)
 	assert.True(t, got,
 		"empty cwd arg must fall back to os.Getwd for resolution")
 }
@@ -666,10 +682,12 @@ func TestHasSymlinkAncestor_NoSymlinkButCached(t *testing.T) {
 	require.NoError(t, os.MkdirAll(sub, 0o755))
 
 	cache := make(map[string]bool)
-	assert.False(t,
-		hasSymlinkAncestorWithCwd("sub/deep/a.md", dir, cache))
-	assert.False(t,
-		hasSymlinkAncestorWithCwd("sub/deep/b.md", dir, cache))
+	gotA, errA := hasSymlinkAncestorWithCwd("sub/deep/a.md", dir, cache)
+	require.NoError(t, errA)
+	assert.False(t, gotA)
+	gotB, errB := hasSymlinkAncestorWithCwd("sub/deep/b.md", dir, cache)
+	require.NoError(t, errB)
+	assert.False(t, gotB)
 	// The non-symlink ancestor is memoised as `false`.
 	for _, d := range []string{
 		filepath.Join(dir, "sub"),
@@ -698,10 +716,33 @@ func TestHasSymlinkAncestorWithCwd_HonorsCwdArg(t *testing.T) {
 	t.Chdir(processCwd)
 
 	cache := make(map[string]bool)
-	got := hasSymlinkAncestorWithCwd("linked/foo.md", target, cache)
+	got, err := hasSymlinkAncestorWithCwd("linked/foo.md", target, cache)
+	require.NoError(t, err)
 	assert.True(t, got,
 		"helper must resolve `linked/foo.md` against the supplied cwd, "+
 			"not os.Getwd; otherwise the precomputed-cwd optimisation is moot")
+}
+
+// TestHasSymlinkAncestorWithCwd_EmptyBoundaryReturnsError pins S005: when
+// ancestorStopBoundary returns "" AND the working directory is unknown
+// (cwd==""), hasSymlinkAncestorWithCwd must return an error rather than
+// silently returning false. When cwd is empty, there is no project
+// boundary to anchor the scan, so a symlinked directory component in an
+// explicit path argument is undetectable and the function cannot safely
+// say "no symlinks found."
+func TestHasSymlinkAncestorWithCwd_EmptyBoundaryReturnsError(t *testing.T) {
+	// Pass cwd="" (simulating an os.Getwd failure) and a path in a
+	// temp dir with no .git ancestor. Both conditions must hold for
+	// the error path to fire.
+	outside := t.TempDir()
+
+	cache := make(map[string]bool)
+	_, err := hasSymlinkAncestorWithCwd(
+		filepath.Join(outside, "sub", "foo.md"), "", cache,
+	)
+	require.Error(t, err,
+		"empty cwd and no .git ancestor must return an error — the scan "+
+			"boundary is unverifiable so the caller must not silently trust the path")
 }
 
 // skipIfSymlinkUnsupported forwards to the shared testsymlink helper.

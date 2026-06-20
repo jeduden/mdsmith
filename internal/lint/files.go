@@ -136,8 +136,10 @@ func resolveArg(arg string, opts ResolveOpts, addFile func(string)) error {
 	// like `linked/dirty.md` reach an external target, since Lstat
 	// on the leaf follows the intermediate symlink during name
 	// resolution. Symlinked directories are always skipped regardless
-	// of FollowSymlinks, per the Option doc.
-	if hasSymlinkAncestor(arg) {
+	// of FollowSymlinks, per the Option doc. When the scan boundary
+	// cannot be determined (no cwd or .git anchor), treat the path
+	// as unverifiable and skip it rather than silently trusting it.
+	if isSymlink, err := hasSymlinkAncestor(arg); err != nil || isSymlink {
 		return nil
 	}
 
@@ -206,11 +208,11 @@ func resolveArg(arg string, opts ResolveOpts, addFile func(string)) error {
 //   - otherwise, the nearest ancestor of the path that contains a
 //     `.git` entry (so an absolute path run from a sibling shell
 //     is still scanned within the target project);
-//   - otherwise, "" (trust the user — no scan).
+//   - otherwise, an error is returned (boundary unverifiable).
 //
 // This keeps system-level symlinks above the boundary (e.g. `/tmp`
 // on macOS) out of the probe.
-func hasSymlinkAncestor(path string) bool {
+func hasSymlinkAncestor(path string) (bool, error) {
 	return hasSymlinkAncestorCached(path, make(map[string]bool))
 }
 
@@ -218,7 +220,7 @@ func hasSymlinkAncestor(path string) bool {
 // hasSymlinkAncestor. Callers that run the check repeatedly (e.g.
 // per glob match) should share a `cache` across invocations to
 // avoid repeated `os.Lstat` calls on the same ancestor directories.
-func hasSymlinkAncestorCached(path string, cache map[string]bool) bool {
+func hasSymlinkAncestorCached(path string, cache map[string]bool) (bool, error) {
 	cwd, _ := os.Getwd() // "" on error; handled downstream
 	return hasSymlinkAncestorWithCwd(path, cwd, cache)
 }
@@ -234,14 +236,26 @@ func hasSymlinkAncestorCached(path string, cache map[string]bool) bool {
 // is a symlinked dir, the walker probes `linked` (detects the
 // symlink) before the `..` pops back; `a/b/../c.md` with no
 // symlinks anywhere is allowed.
-func hasSymlinkAncestorWithCwd(path, cwd string, cache map[string]bool) bool {
+func hasSymlinkAncestorWithCwd(path, cwd string, cache map[string]bool) (bool, error) {
 	abs := absWithCwd(path, cwd)
 	if abs == "" {
-		return false
+		return false, nil
 	}
 	stop := ancestorStopBoundary(abs, cwd)
 	if stop == "" {
-		return false
+		// When the working directory is unknown (cwd=="") and no .git
+		// ancestor anchors the scan, the ancestor walk cannot be bounded:
+		// we have no project root to stop at, so a symlinked directory
+		// outside any project boundary would go undetected. Return an
+		// error so callers can treat the path as unverifiable rather than
+		// silently trusting it. When cwd is non-empty, the path is simply
+		// outside every known project root; that is trusted by design so
+		// system-level symlinks (e.g. /tmp on macOS) stay out of scope.
+		if cwd == "" {
+			return false, fmt.Errorf("cannot determine scan boundary for %q: "+
+				"working directory unavailable and no .git ancestor found", path)
+		}
+		return false, nil
 	}
 
 	// Determine the starting "current" directory for the walk and
@@ -258,7 +272,7 @@ func hasSymlinkAncestorWithCwd(path, cwd string, cache map[string]bool) bool {
 	} else if current == "" {
 		wd, err := os.Getwd()
 		if err != nil {
-			return false
+			return false, nil
 		}
 		current = wd
 	}
@@ -289,7 +303,7 @@ func hasSymlinkAncestorWithCwd(path, cwd string, cache map[string]bool) bool {
 			}
 			if v, ok := cache[current]; ok {
 				if v {
-					return true
+					return true, nil
 				}
 				continue
 			}
@@ -297,11 +311,11 @@ func hasSymlinkAncestorWithCwd(path, cwd string, cache map[string]bool) bool {
 			isSymlink := err == nil && info.Mode()&os.ModeSymlink != 0
 			cache[current] = isSymlink
 			if isSymlink {
-				return true
+				return true, nil
 			}
 		}
 	}
-	return false
+	return false, nil
 }
 
 // isDescendantOf reports whether p is a strict descendant of base.
@@ -394,8 +408,10 @@ func resolveGlob(pattern string, opts ResolveOpts, addFile func(string)) error {
 		// during expansion, so a pattern like `linked/*.md` will
 		// return paths rooted under a symlinked dir. Reject any
 		// match whose ancestor chain contains a symlink: symlinked
-		// directories are always skipped.
-		if hasSymlinkAncestorWithCwd(m, cwd, ancestorCache) {
+		// directories are always skipped. When the scan boundary
+		// cannot be determined, treat the match as unverifiable
+		// and skip it.
+		if isSymlink, err := hasSymlinkAncestorWithCwd(m, cwd, ancestorCache); err != nil || isSymlink {
 			continue
 		}
 		linfo, lerr := os.Lstat(m)
