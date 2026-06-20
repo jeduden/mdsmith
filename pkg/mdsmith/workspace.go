@@ -95,7 +95,6 @@ func (w OSWorkspace) Glob(pattern string) ([]string, error) {
 	return matches, nil
 }
 
-
 // MemWorkspace is an in-memory Workspace backed by a map from
 // slash-separated path to file bytes. It drives WebAssembly (where
 // there is no disk) and native tests. Construct it with
