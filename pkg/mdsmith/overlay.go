@@ -10,6 +10,8 @@ import (
 	"sync"
 
 	"github.com/bmatcuk/doublestar/v4"
+
+	"github.com/jeduden/mdsmith/internal/lint"
 )
 
 // OverlayWorkspace reads from the host filesystem rooted at Root, but
@@ -100,7 +102,7 @@ func (w *OverlayWorkspace) FS() fs.FS {
 	if root == "" {
 		root = "."
 	}
-	return &overlayFS{disk: os.DirFS(root), overlay: snap}
+	return &overlayFS{disk: lint.OpenRootFS(root), overlay: snap}
 }
 
 // Set stores data (cloned) as the overlay for p, shadowing disk on the
