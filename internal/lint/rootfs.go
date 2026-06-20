@@ -14,10 +14,13 @@ import (
 // generation.
 //
 // If os.OpenRoot itself fails (e.g. dir does not exist), the error from
-// every subsequent Open call propagates to the caller.
+// every subsequent Open call propagates to the caller rather than silently
+// falling back to an unconstrained fs.FS.
 //
-// Within-workspace symlinks whose targets are also inside dir continue to
-// work: os.OpenRoot follows symlinks that stay inside the root.
+// Relative within-workspace symlinks whose targets resolve inside dir
+// continue to work. Absolute symlinks are blocked unconditionally by
+// os.OpenRoot (RESOLVE_BENEATH semantics), regardless of whether their
+// target is inside or outside the root.
 func OpenRootFS(dir string) fs.FS {
 	root, err := os.OpenRoot(dir)
 	if err != nil {

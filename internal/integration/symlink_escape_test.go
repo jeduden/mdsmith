@@ -75,8 +75,10 @@ func TestIncludeSymlinkEscapeRefused(t *testing.T) {
 	t.Logf("fixed output (first 500 bytes): %.500s", fixedStr)
 }
 
-// TestIncludeSymlinkInsideRootWorks verifies that a symlink whose target
-// is inside the project root continues to work after the containment fix.
+// TestIncludeSymlinkInsideRootWorks verifies that a relative symlink whose
+// target is inside the project root continues to work after the containment
+// fix. os.OpenRoot blocks absolute symlinks unconditionally (RESOLVE_BENEATH),
+// but relative symlinks that resolve to a path inside the root are allowed.
 func TestIncludeSymlinkInsideRootWorks(t *testing.T) {
 	root := t.TempDir()
 	docsDir := filepath.Join(root, "docs")
@@ -86,12 +88,14 @@ func TestIncludeSymlinkInsideRootWorks(t *testing.T) {
 	realPath := filepath.Join(docsDir, "real.md")
 	require.NoError(t, os.WriteFile(realPath, []byte("Hello world\n"), 0o644))
 
-	// Symlink inside the root pointing to the real file (within-root symlink).
+	// Relative symlink inside the root pointing to the real file.
+	// Must be relative so os.OpenRoot (RESOLVE_BENEATH) follows it.
 	symlinkPath := filepath.Join(docsDir, "alias.md")
-	require.NoError(t, os.Symlink(realPath, symlinkPath))
+	require.NoError(t, os.Symlink("real.md", symlinkPath))
 
-	// Host file that includes the real file (not the symlink).
-	hostSrc := "# Host\n\n<?include\nfile: docs/real.md\n?>\nHello world\n<?/include?>\n"
+	// Host file that includes via the symlink, not the real file directly.
+	// This exercises that os.OpenRoot follows relative within-root symlinks.
+	hostSrc := "# Host\n\n<?include\nfile: docs/alias.md\n?>\nHello world\n<?/include?>\n"
 	hostPath := filepath.Join(root, "host.md")
 	require.NoError(t, os.WriteFile(hostPath, []byte(hostSrc), 0o644))
 
@@ -101,7 +105,7 @@ func TestIncludeSymlinkInsideRootWorks(t *testing.T) {
 
 	r := &include.Rule{}
 	diags := r.Check(f)
-	assert.Emptyf(t, diags, "within-root include must not produce diagnostics: %v", diags)
+	assert.Emptyf(t, diags, "within-root relative-symlink include must not produce diagnostics: %v", diags)
 }
 
 // TestCatalogSymlinkEscapeRefused is the S002 acceptance test.

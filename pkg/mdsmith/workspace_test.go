@@ -318,8 +318,9 @@ func TestOSWorkspaceFSSymlinkEscapeRefused(t *testing.T) {
 }
 
 // TestOSWorkspaceFSOpenRootFailFallback verifies that when os.OpenRoot itself
-// fails (e.g. the root directory does not exist), OSWorkspace.FS() falls back
-// to os.DirFS and returns a usable fs.FS rather than panicking.
+// fails (e.g. the root directory does not exist), OSWorkspace.FS() returns an
+// fs.FS that propagates the error on every Open rather than panicking or
+// silently falling back to an unconstrained fs.FS.
 func TestOSWorkspaceFSOpenRootFailFallback(t *testing.T) {
 	nonExistent := t.TempDir() + "/does-not-exist"
 	ws := OSWorkspace{Root: nonExistent}
