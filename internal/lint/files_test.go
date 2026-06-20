@@ -532,6 +532,36 @@ func TestAbsWithCwd_RelativePathWithExplicitCwd(t *testing.T) {
 	assert.Equal(t, filepath.Clean("/explicit/cwd/sub/foo.md"), got)
 }
 
+// TestAbsWithCwd_VolumeRelative_Success covers the Windows volume-relative
+// branch (filepath.VolumeName != "") by injecting volumeNameFn so the branch
+// is reachable on Unix, and verifies absPathFn is called and returns a result.
+func TestAbsWithCwd_VolumeRelative_Success(t *testing.T) {
+	origVol := volumeNameFn
+	volumeNameFn = func(string) string { return "C:" }
+	t.Cleanup(func() { volumeNameFn = origVol })
+
+	got := absWithCwd("relative/path.md", "")
+	// On Unix absPathFn resolves relative to process CWD; result must be
+	// non-empty and absolute.
+	require.NotEmpty(t, got)
+	assert.True(t, filepath.IsAbs(got))
+}
+
+// TestAbsWithCwd_VolumeRelative_AbsError covers the error return inside the
+// Windows volume-relative branch when absPathFn fails.
+func TestAbsWithCwd_VolumeRelative_AbsError(t *testing.T) {
+	origVol := volumeNameFn
+	volumeNameFn = func(string) string { return "C:" }
+	t.Cleanup(func() { volumeNameFn = origVol })
+
+	origAbs := absPathFn
+	absPathFn = func(string) (string, error) { return "", errors.New("abs failed") }
+	t.Cleanup(func() { absPathFn = origAbs })
+
+	got := absWithCwd("relative/path.md", "")
+	assert.Equal(t, "", got)
+}
+
 // TestResolveArg_SymlinkedAncestorPath_Skipped covers the
 // `hasSymlinkAncestor(arg)` branch in resolveArg via the public
 // ResolveFilesWithOpts API.

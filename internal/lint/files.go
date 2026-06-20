@@ -16,6 +16,15 @@ import (
 // the os.Getwd-error branches without manipulating the process CWD.
 var getwdFn = os.Getwd
 
+// volumeNameFn extracts the volume component of a path (non-empty only on
+// Windows). Package-level so tests can inject a non-empty volume on Unix.
+var volumeNameFn = filepath.VolumeName
+
+// absPathFn converts a relative path to absolute (used only for the
+// Windows volume-relative branch). Package-level so tests can inject a
+// failure without running on Windows.
+var absPathFn = filepath.Abs
+
 // isMarkdown returns true if the file extension is .md or .markdown.
 func isMarkdown(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
@@ -356,8 +365,8 @@ func absWithCwd(path, cwd string) string {
 	if cwd != "" {
 		return filepath.Clean(filepath.Join(cwd, path))
 	}
-	if filepath.VolumeName(path) != "" {
-		abs, err := filepath.Abs(path)
+	if volumeNameFn(path) != "" {
+		abs, err := absPathFn(path)
 		if err != nil {
 			return ""
 		}
