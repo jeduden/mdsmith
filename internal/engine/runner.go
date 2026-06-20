@@ -1177,6 +1177,14 @@ func (r *Runner) runConfigTargetRules(res *Result) {
 	if r.ConfigPath == "" {
 		return
 	}
+	// Also covers panics in ConfigureRule (ApplySettings, Clone) which run
+	// before runConfigRule's own guard.
+	defer func() {
+		if rv := recover(); rv != nil {
+			res.Diagnostics = append(res.Diagnostics,
+				checker.PanicDiagnostic(r.ConfigPath, rv))
+		}
+	}()
 	effective := r.effectiveWithCategories(r.ConfigPath, nil, nil)
 	f, err := lint.NewFile(r.ConfigPath, []byte{})
 	if err != nil {

@@ -151,9 +151,14 @@ func resolveArg(arg string, opts ResolveOpts, addFile func(string)) error {
 	// on the leaf follows the intermediate symlink during name
 	// resolution. Symlinked directories are always skipped regardless
 	// of FollowSymlinks, per the Option doc. When the scan boundary
-	// cannot be determined (no cwd or .git anchor), treat the path
-	// as unverifiable and skip it rather than silently trusting it.
-	if isSymlink, err := hasSymlinkAncestor(arg); err != nil || isSymlink {
+	// cannot be determined (no cwd or .git anchor), propagate the
+	// error so the caller knows the path was skipped rather than silently
+	// returning a zero-file clean run.
+	isSymlinkAnc, symErr := hasSymlinkAncestor(arg)
+	if symErr != nil {
+		return symErr
+	}
+	if isSymlinkAnc {
 		return nil
 	}
 
@@ -235,7 +240,7 @@ func hasSymlinkAncestor(path string) (bool, error) {
 // per glob match) should share a `cache` across invocations to
 // avoid repeated `os.Lstat` calls on the same ancestor directories.
 func hasSymlinkAncestorCached(path string, cache map[string]bool) (bool, error) {
-	cwd, _ := os.Getwd() // "" on error; handled downstream
+	cwd, _ := getwdFn() // "" on error; handled downstream
 	return hasSymlinkAncestorWithCwd(path, cwd, cache)
 }
 
@@ -426,7 +431,7 @@ func resolveGlob(pattern string, opts ResolveOpts, addFile func(string)) error {
 	// ancestorStopBoundary and doesn't change across matches. The
 	// per-directory Lstat cache is shared across every match too,
 	// so each ancestor dir is Lstat'd at most once per expansion.
-	cwd, _ := os.Getwd()
+	cwd, _ := getwdFn()
 	ancestorCache := make(map[string]bool)
 	for _, m := range matches {
 		// filepath.Glob follows symlinked directory components

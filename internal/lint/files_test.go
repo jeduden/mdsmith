@@ -622,6 +622,28 @@ func TestResolveArg_NonexistentNonSymlink_Errors(t *testing.T) {
 		"missing non-symlink path must surface as an error")
 }
 
+// TestResolveArg_UnverifiablePathPropagatesError pins S005: when
+// hasSymlinkAncestor cannot determine the scan boundary (no .git ancestor
+// and cwd is unavailable), resolveArg must propagate the error instead of
+// silently returning a zero-file result that looks like a clean run.
+func TestResolveArg_UnverifiablePathPropagatesError(t *testing.T) {
+	// Make getwdFn fail so hasSymlinkAncestorCached gets cwd=="".
+	origFn := getwdFn
+	getwdFn = func() (string, error) { return "", errors.New("simulated getwd failure") }
+	t.Cleanup(func() { getwdFn = origFn })
+
+	// Use a path in an isolated temp dir that has no .git ancestor, so
+	// ancestorStopBoundary returns "" and the error path fires.
+	dir := t.TempDir()
+	target := filepath.Join(dir, "sub", "doc.md")
+	require.NoError(t, os.MkdirAll(filepath.Dir(target), 0o755))
+	require.NoError(t, os.WriteFile(target, []byte("# Doc\n"), 0o644))
+
+	_, err := ResolveFiles([]string{target})
+	require.Error(t, err,
+		"unverifiable scan boundary must surface as an error, not silently drop the file")
+}
+
 // TestIsDescendantOf_NotADescendant covers the negative path:
 // `filepath.Rel` returns a `..`-prefixed string when p is outside
 // base, and isDescendantOf reports false.

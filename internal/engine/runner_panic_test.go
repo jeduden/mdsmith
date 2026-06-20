@@ -231,6 +231,68 @@ func TestConfigTargetRulePanicIsRecovered(t *testing.T) {
 	assert.Contains(t, d.Message, "goroutine")
 }
 
+// applySettingsPanicSentinel is a hardcoded string used as the panic value in
+// panicApplySettingsRule. CloneRule constructs a zero-value clone, so r.msg
+// would be "" — a package-level constant survives the reflection-based clone.
+const applySettingsPanicSentinel = "apply-settings panic sentinel"
+
+// panicApplySettingsRule is a ConfigTarget rule that also implements
+// Configurable so ConfigureRule attempts to clone it via ApplySettings —
+// which panics. This exercises the outer defer in runConfigTargetRules
+// (the path reached BEFORE runConfigRule's own recover guard).
+type panicApplySettingsRule struct {
+	id string
+}
+
+func (r *panicApplySettingsRule) ID() string                           { return r.id }
+func (r *panicApplySettingsRule) Name() string                         { return r.id }
+func (r *panicApplySettingsRule) Category() string                     { return "test" }
+func (r *panicApplySettingsRule) IsConfigFileRule() bool               { return true }
+func (r *panicApplySettingsRule) Check(_ *lint.File) []lint.Diagnostic { return nil }
+func (r *panicApplySettingsRule) DefaultSettings() map[string]any      { return map[string]any{} }
+func (r *panicApplySettingsRule) ApplySettings(_ map[string]any) error {
+	panic(applySettingsPanicSentinel)
+}
+
+// TestConfigureRulePanicIsRecovered verifies that a panic in ConfigureRule
+// (specifically in CloneRule→ApplySettings, before runConfigRule is entered)
+// is caught by the outer defer in runConfigTargetRules and converted into an
+// InternalError diagnostic rather than crashing the process.
+func TestConfigureRulePanicIsRecovered(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(""), 0o644))
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"cfg-apply-panic": {
+				Enabled:  true,
+				Settings: map[string]any{"x": 1},
+			},
+		},
+	}
+
+	runner := &Runner{
+		Config:     cfg,
+		ConfigPath: cfgPath,
+		Rules:      []rule.Rule{&panicApplySettingsRule{id: "cfg-apply-panic"}},
+	}
+
+	res := runner.Run(nil)
+
+	assert.Empty(t, res.Errors,
+		"ConfigureRule panic must become a diagnostic, not an error")
+	require.Len(t, res.Diagnostics, 1,
+		"expected exactly one InternalError diagnostic")
+	d := res.Diagnostics[0]
+	assert.Equal(t, "internal-panic", d.RuleID)
+	assert.Equal(t, lint.Error, d.Severity)
+	assert.Contains(t, d.Message, applySettingsPanicSentinel)
+	assert.Contains(t, d.Message, "goroutine")
+}
+
 func formatDiags(diags []lint.Diagnostic) string {
 	var sb strings.Builder
 	for _, d := range diags {
