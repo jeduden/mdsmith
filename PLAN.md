@@ -212,8 +212,8 @@ footer: |
 | 2606171403 | ✅     | opus   | [Parity parse-skip: migrate the Layer-0 list and blockquote rules](plan/2606171403_parity-layer0-list-quote-rules.md)                   |
 | 2606171404 | ✅     | opus   | [Parity parse-skip: migrate the Layer-1 inline rules](plan/2606171404_parity-layer1-inline-rules.md)                                    |
 | 2606171532 | ⛔     | opus   | [Parity perf: fuse the per-line rules into one shared line pass](plan/2606171532_parity-line-rule-fusion.md)                            |
-| 2606192014 | 🔲     | sonnet | [Security hardening batch — 2026-06-19 LSP/VS Code audit](plan/2606192014_security-hardening-batch-2026-06-19.md)                       |
+| 2606192014 | 🔳     | sonnet | [Security hardening batch — 2026-06-19 LSP/VS Code audit](plan/2606192014_security-hardening-batch-2026-06-19.md)                       |
 | 2606192025 | 🔲     | sonnet | [Replace os.DirFS with os.OpenRoot to contain symlink escapes](plan/2606192025_rootfs-openroot-symlink-containment.md)                  |
-| 2606192026 | 🔳     | sonnet | [Add per-goroutine recover() to CLI engine runner worker goroutines](plan/2606192026_engine-runner-panic-recovery.md)                   |
+| 2606192026 | ✅     | sonnet | [Add per-goroutine recover() to CLI engine runner worker goroutines](plan/2606192026_engine-runner-panic-recovery.md)                   |
 | 2606192027 | ✅     | sonnet | [Security hardening batch — 2026-06-19 full-repo audit (low/info)](plan/2606192027_security-hardening-batch-2026-06-19-full-repo.md)    |
 <?/catalog?>
