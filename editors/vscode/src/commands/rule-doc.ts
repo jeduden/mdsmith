@@ -126,6 +126,7 @@ export async function fetchRuleDocContent(
   workspaceRoot: string | undefined,
   spawn: SpawnFn = defaultSpawn,
 ): Promise<string> {
+
   const parsed = parseRuleDocUri(uri);
   if (!parsed) {
     return `**mdsmith: malformed rule URI**\n\n~~~\n${uri}\n~~~`;

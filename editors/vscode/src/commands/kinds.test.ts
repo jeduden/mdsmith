@@ -229,6 +229,7 @@ function makeDeps(overrides: Partial<KindsWhyHandlerDeps> = {}): {
     pickRule: async (rules) => rules[0],
     openVirtualDoc: async (uri) => { openedUris.push(uri); },
     showError: async (msg) => { errors.push(msg); },
+    isTrusted: () => true,
     ...overrides,
   };
   return { deps, openedUris, errors };
@@ -264,6 +265,21 @@ describe("runKindsResolve", () => {
     expect(errors).toHaveLength(1);
     expect(errors[0]).toContain("Markdown file");
   });
+
+  test("shows trusted-workspace error and does not open doc when untrusted", async () => {
+    const { deps, openedUris, errors } = makeDeps({ isTrusted: () => false });
+    await runKindsResolve(deps);
+    expect(openedUris).toHaveLength(0);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("trusted workspace");
+  });
+
+  test("opens doc normally when isTrusted returns true", async () => {
+    const { deps, openedUris, errors } = makeDeps({ isTrusted: () => true });
+    await runKindsResolve(deps);
+    expect(openedUris).toHaveLength(1);
+    expect(errors).toHaveLength(0);
+  });
 });
 
 describe("runKindsWhy", () => {
@@ -291,5 +307,23 @@ describe("runKindsWhy", () => {
     const { deps, errors } = makeDeps({ getActiveFilePath: () => undefined });
     await runKindsWhy(deps);
     expect(errors).toHaveLength(1);
+  });
+
+  test("shows trusted-workspace error and does not open doc when untrusted", async () => {
+    const { deps, openedUris, errors } = makeDeps({ isTrusted: () => false });
+    await runKindsWhy(deps);
+    expect(openedUris).toHaveLength(0);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("trusted workspace");
+  });
+
+  test("opens doc normally when isTrusted returns true", async () => {
+    const { deps, openedUris, errors } = makeDeps({
+      isTrusted: () => true,
+      getDiagnostics: () => [{ source: "mdsmith", code: "MDS001" }],
+    });
+    await runKindsWhy(deps);
+    expect(openedUris).toHaveLength(1);
+    expect(errors).toHaveLength(0);
   });
 });

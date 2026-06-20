@@ -123,11 +123,11 @@
         },
         {
           "command": "mdsmith.kinds.why",
-          "when": "editorLangId == markdown && resourceScheme == file"
+          "when": "editorLangId == markdown && resourceScheme == file && isWorkspaceTrusted"
         },
         {
           "command": "mdsmith.kinds.resolve",
-          "when": "editorLangId == markdown && resourceScheme == file"
+          "when": "editorLangId == markdown && resourceScheme == file && isWorkspaceTrusted"
         }
       ]
     },

@@ -832,6 +832,7 @@ export class Wiring {
           getDiagnostics,
           openVirtualDoc,
           showError,
+          isTrusted,
         });
       }),
 
@@ -857,6 +858,7 @@ export class Wiring {
           },
           openVirtualDoc,
           showError,
+          isTrusted,
         });
       }),
 
@@ -872,9 +874,12 @@ export class Wiring {
       }),
 
       // Register the virtual document provider for the mdsmith-kinds:
-      // scheme.
+      // scheme. Guard on isTrusted() so that a stale virtual-doc tab
+      // or a crafted mdsmith-kinds:// URI cannot trigger the mdsmith
+      // binary in an untrusted workspace.
       api.workspace.registerTextDocumentContentProvider(KINDS_SCHEME, {
         provideTextDocumentContent: (uri) => {
+          if (!isTrusted()) return Promise.resolve("");
           const uriStr = kindsContentUri(uri);
           const parsed = parseKindsUri(uriStr);
           // Derive the workspace folder from the file encoded in the URI
@@ -902,10 +907,14 @@ export class Wiring {
       // Register the virtual document provider for the mdsmith-rule:
       // scheme, which renders `mdsmith help rule <id>` (the embedded
       // README) offline so the rewritten hover doc link opens without a
-      // browser or network.
+      // browser or network. Guard on isTrusted() so a stale virtual-doc
+      // tab or a crafted mdsmith-rule:// URI cannot trigger the binary
+      // in an untrusted workspace.
       api.workspace.registerTextDocumentContentProvider(RULE_SCHEME, {
-        provideTextDocumentContent: (uri) =>
-          provideRuleDocContent(uri, getBinary(), getWorkspaceRoot()),
+        provideTextDocumentContent: (uri) => {
+          if (!isTrusted()) return Promise.resolve("");
+          return provideRuleDocContent(uri, getBinary(), getWorkspaceRoot());
+        },
       })
 
       // VS Code automatically re-evaluates the built-in
