@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"regexp"
-	"strconv"
 	"unicode/utf8"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -88,9 +87,11 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		}
 
 		if words, line, col := tbl.maxCellWords(); words > maxWordsPerCell {
-			msg := fmt.Sprintf("table cell has too many words (%d > %d)", words, maxWordsPerCell)
+			var msg string
 			if header := tbl.columnHeader(col); header != "" {
-				msg += " in column " + strconv.Quote(header)
+				msg = fmt.Sprintf("table cell has too many words (%d > %d) in column %q", words, maxWordsPerCell, header)
+			} else {
+				msg = fmt.Sprintf("table cell has too many words (%d > %d)", words, maxWordsPerCell)
 			}
 			diags = append(diags, makeDiag(
 				f,

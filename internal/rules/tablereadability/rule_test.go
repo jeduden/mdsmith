@@ -204,3 +204,17 @@ func TestCheck_TooManyColumns_MessageAllocs(t *testing.T) {
 		t.Fatalf("Check (too-many-columns): got %g allocs/call, want ≤ 11", allocs)
 	}
 }
+
+// TestCheck_TooManyWords_WithHeader_MessageAllocs guards the maxCellWords+header
+// path against regression to the 3-alloc build (fmt.Sprintf + strconv.Quote + concat).
+// The %q verb collapses it to 1 alloc. Baseline: 10 allocs/call.
+func TestCheck_TooManyWords_WithHeader_MessageAllocs(t *testing.T) {
+	src := "| Name |\n|------|\n| one two three four |\n"
+	f := newFile(t, src)
+	r := &Rule{MaxColumns: 5, MaxRows: 30, MaxWordsPerCell: 3, MaxColumnWidthRatio: 60}
+	_ = r.Check(f) // warm up
+	allocs := testing.AllocsPerRun(50, func() { _ = r.Check(f) })
+	if allocs > 11 {
+		t.Fatalf("Check (too-many-words with header): got %g allocs/call, want ≤ 11", allocs)
+	}
+}
