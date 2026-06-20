@@ -1,7 +1,7 @@
 ---
 id: 2606192025
 title: "Replace os.DirFS with os.OpenRoot to contain symlink escapes"
-status: "🔲"
+status: "✅"
 summary: >-
   os.DirFS follows symlinks outside the workspace root in Go 1.25.
   Replace with os.OpenRoot (RESOLVE_BENEATH) at all RootFS construction
@@ -70,14 +70,15 @@ front matter from that target file.
 
 ## Acceptance Criteria
 
-- [ ] `<?include file: symlink-to-outside ?>` on a within-workspace
+- [x] `<?include file: symlink-to-outside ?>` on a within-workspace
   symlink to a path outside the project root is refused (error
   diagnostic, no content embedded).
-- [ ] `<?catalog glob: *.md ?>` on a pattern matching a within-workspace
+- [x] `<?catalog glob: *.md ?>` on a pattern matching a within-workspace
   symlink to an outside file emits no catalog row for that symlink.
-- [ ] `OSWorkspace.FS()` wraps `os.OpenRoot`; `os.DirFS` is no longer
+- [x] `OSWorkspace.FS()` wraps `os.OpenRoot`; `os.DirFS` is no longer
   called in the `RootFS` construction path.
-- [ ] Within-workspace symlinks to files *inside* the root continue to
+- [x] Within-workspace symlinks to files *inside* the root continue to
   work (positive test).
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go vet ./...` passes (golangci-lint needs Go 1.25.8+; env has
+  1.25.0)

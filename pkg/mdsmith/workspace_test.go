@@ -288,6 +288,53 @@ func TestIndexSlash(t *testing.T) {
 	}
 }
 
+// TestOSWorkspaceFSSymlinkEscapeRefused verifies that OSWorkspace.FS() uses
+// os.OpenRoot containment so that a symlink inside the workspace root that
+// points to a file outside the root cannot be opened through the returned
+// fs.FS. This guards against CWE-73 (path traversal via symlink).
+func TestOSWorkspaceFSSymlinkEscapeRefused(t *testing.T) {
+	root := t.TempDir()
+
+	// Symlink inside the workspace pointing outside the root.
+	symlinkPath := filepath.Join(root, "escape.md")
+	if err := os.Symlink("/etc/passwd", symlinkPath); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	// Confirm os.DirFS can read through the symlink (establishing the baseline
+	// vulnerability that OSWorkspace.FS() must close).
+	_, errDirFS := fs.ReadFile(os.DirFS(root), "escape.md")
+	if errDirFS != nil {
+		t.Skip("test invariant: os.DirFS must be able to read the symlink target; skipping on this platform")
+	}
+
+	// OSWorkspace.FS() must refuse the open.
+	ws := OSWorkspace{Root: root}
+	fsys := ws.FS()
+	_, err := fsys.Open("escape.md")
+	if err == nil {
+		t.Fatal("OSWorkspace.FS().Open(escape.md) succeeded; expected containment error for symlink escaping root")
+	}
+}
+
+// TestOSWorkspaceFSOpenRootFailFallback verifies that when os.OpenRoot itself
+// fails (e.g. the root directory does not exist), OSWorkspace.FS() returns an
+// fs.FS that propagates the error on every Open rather than panicking or
+// silently falling back to an unconstrained fs.FS.
+func TestOSWorkspaceFSOpenRootFailFallback(t *testing.T) {
+	nonExistent := t.TempDir() + "/does-not-exist"
+	ws := OSWorkspace{Root: nonExistent}
+	fsys := ws.FS()
+	if fsys == nil {
+		t.Fatal("OSWorkspace.FS() returned nil on OpenRoot failure; expected fallback fs.FS")
+	}
+	// Opening any file through the fallback FS must return an error (dir absent).
+	_, err := fsys.Open("any.md")
+	if err == nil {
+		t.Fatal("Open through fallback FS on a non-existent root must return an error")
+	}
+}
+
 // Workspace is satisfied by both implementations.
 var (
 	_ Workspace = OSWorkspace{}

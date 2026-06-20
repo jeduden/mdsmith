@@ -3,7 +3,6 @@ package lint
 import (
 	"bytes"
 	"io/fs"
-	"os"
 	"sync"
 	"sync/atomic"
 
@@ -281,9 +280,11 @@ func (f *File) MemoFile(key string, build func(*File) any) any {
 type Reference = parser.Reference
 
 // SetRootDir configures the project root directory and its fs.FS together.
+// The returned fs.FS is backed by os.OpenRoot so that symlinks inside the
+// workspace cannot escape to files outside dir (RESOLVE_BENEATH semantics).
 func (f *File) SetRootDir(dir string) {
 	f.RootDir = dir
-	f.RootFS = os.DirFS(dir)
+	f.RootFS = OpenRootFS(dir)
 }
 
 // GetGitignore returns the gitignore matcher for this file, creating it

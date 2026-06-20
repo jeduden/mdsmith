@@ -498,3 +498,52 @@ func TestAtomicWriteFile_NoTempFilesOnEarlyFailure(t *testing.T) {
 			"unexpected leftover temp file: %s", e.Name())
 	}
 }
+
+// --- prepareFile RootFS aliasing ---
+
+// fileCapture is a non-fixable rule that records the last *lint.File it
+// receives in Check so tests can assert on wired file fields.
+type fileCapture struct {
+	id   string
+	name string
+	last *lint.File
+}
+
+func (r *fileCapture) ID() string       { return r.id }
+func (r *fileCapture) Name() string     { return r.name }
+func (r *fileCapture) Category() string { return "test" }
+func (r *fileCapture) Check(f *lint.File) []lint.Diagnostic {
+	r.last = f
+	return nil
+}
+
+var _ rule.Rule = (*fileCapture)(nil)
+
+// TestPrepareFile_DirEqualsRootDirAliasesRootFS verifies that when a file sits
+// directly at the project root (filepath.Dir(path) == RootDir), prepareFile
+// reuses the already-opened FS for RootFS instead of opening a second
+// os.OpenRoot fd, so both seams point to the same fs.FS value.
+func TestPrepareFile_DirEqualsRootDirAliasesRootFS(t *testing.T) {
+	dir := t.TempDir()
+	mdFile := filepath.Join(dir, "test.md")
+	require.NoError(t, os.WriteFile(mdFile, []byte("# Hello\n"), 0o644))
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"file-capture": {Enabled: true},
+		},
+	}
+	snap := &fileCapture{id: "MDS901", name: "file-capture"}
+	fixer := &Fixer{
+		Config:  cfg,
+		Rules:   []rule.Rule{snap},
+		RootDir: dir,
+	}
+
+	result := fixer.Fix([]string{mdFile})
+	require.Empty(t, result.Errors)
+	require.NotNil(t, snap.last, "rule must have seen the file")
+	require.NotNil(t, snap.last.RootFS, "RootFS must be set when dir==RootDir")
+	require.True(t, snap.last.FS == snap.last.RootFS,
+		"dir==RootDir must alias RootFS to FS (single os.OpenRoot fd)")
+}

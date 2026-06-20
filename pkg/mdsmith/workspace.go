@@ -95,16 +95,6 @@ func (w OSWorkspace) Glob(pattern string) ([]string, error) {
 	return matches, nil
 }
 
-// FS returns an os.DirFS rooted at Root, or rooted at "." when Root is
-// empty.
-func (w OSWorkspace) FS() fs.FS {
-	root := w.Root
-	if root == "" {
-		root = "."
-	}
-	return os.DirFS(root)
-}
-
 // MemWorkspace is an in-memory Workspace backed by a map from
 // slash-separated path to file bytes. It drives WebAssembly (where
 // there is no disk) and native tests. Construct it with

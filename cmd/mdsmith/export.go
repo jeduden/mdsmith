@@ -145,11 +145,17 @@ func prepareExportFile(
 	f, _ := lint.NewFileFromSource(path, source, frontMatterEnabled(cfg)) // never errors today
 	f.MaxInputBytes = maxBytes
 	dir := filepath.Dir(path)
-	f.FS = os.DirFS(dir)
+	f.FS = lint.OpenRootFS(dir)
 	gitignoreDir := dir
 	root := rootDirFromConfig(cfgPath)
 	if root != "" {
-		f.SetRootDir(root)
+		if dir == root {
+			// Reuse the already-opened FS; avoid a second os.OpenRoot for the same dir.
+			f.RootDir = root
+			f.RootFS = f.FS
+		} else {
+			f.SetRootDir(root)
+		}
 		gitignoreDir = root
 	}
 	f.GitignoreFunc = func() *gitignore.Matcher {

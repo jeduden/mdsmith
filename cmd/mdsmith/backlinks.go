@@ -265,7 +265,7 @@ func collectBacklinks(
 	// any wikilink rows. Standard Markdown links still surface.
 	var index *linkgraph.WikilinkIndex
 	if rootDir != "" {
-		index = linkgraph.WikilinkIndexFor(nil, "", os.DirFS(rootDir))
+		index = linkgraph.WikilinkIndexFor(nil, "", lint.OpenRootFS(rootDir))
 	}
 
 	var records []backlinkRecord
@@ -325,8 +325,7 @@ func extractBacklinksFromSource(
 	// resolution operates on the source-relative path and never reads
 	// f.RootFS, so this is a wikilink-only requirement.
 	if rootDir != "" {
-		f.RootDir = rootDir
-		f.RootFS = os.DirFS(rootDir)
+		f.SetRootDir(rootDir)
 	}
 	var out []backlinkRecord
 	for _, link := range linkgraph.ExtractLinks(f) {

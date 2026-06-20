@@ -41,6 +41,38 @@ func TestOverlayWorkspaceReadFilePrefersOverlay(t *testing.T) {
 	}
 }
 
+// TestOverlayWorkspaceFSSymlinkEscapeRefused verifies that the disk
+// fall-through layer of OverlayWorkspace.FS() is os.OpenRoot-contained,
+// so a within-workspace symlink pointing outside the root cannot be read
+// through the editor (LSP) path. An unshadowed include/catalog target
+// reads through this disk layer, so it must enforce the same RESOLVE_BENEATH
+// containment the CLI engine gained in OSWorkspace.FS(). Guards CWE-73.
+func TestOverlayWorkspaceFSSymlinkEscapeRefused(t *testing.T) {
+	root := t.TempDir()
+
+	// Symlink inside the workspace pointing outside the root.
+	symlinkPath := filepath.Join(root, "escape.md")
+	if err := os.Symlink("/etc/passwd", symlinkPath); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	// Confirm os.DirFS can read through the symlink (establishes the
+	// baseline vulnerability that the overlay disk layer must close).
+	if _, errDirFS := fs.ReadFile(os.DirFS(root), "escape.md"); errDirFS != nil {
+		t.Skip("test invariant: os.DirFS must be able to read the symlink target; skipping on this platform")
+	}
+
+	// The escaping symlink is not shadowed by an overlay buffer, so the
+	// read falls through to the disk layer — which must refuse it.
+	fsys := NewOverlayWorkspace(root).FS()
+	if _, err := fsys.Open("escape.md"); err == nil {
+		t.Fatal("overlayFS.Open(escape.md) succeeded; expected containment error for symlink escaping root")
+	}
+	if _, err := fs.ReadFile(fsys, "escape.md"); err == nil {
+		t.Fatal("fs.ReadFile(overlayFS, escape.md) succeeded; expected containment error for symlink escaping root")
+	}
+}
+
 // TestOverlayWorkspaceFSPrefersOverlay verifies the fs.FS view also
 // shadows disk with overlay bytes, so cross-file rules (catalog,
 // include) reading through FS see the open-buffer content (footgun 3).

@@ -596,12 +596,18 @@ func (f *Fixer) prepareFile(path string, source []byte) (*lint.File, fs.FS, []st
 		// workspace-relative for config glob matching.
 		dirFS = f.SourceFS
 	} else {
-		dirFS = os.DirFS(dir)
+		dirFS = lint.OpenRootFS(dir)
 	}
 	lf.FS = dirFS
 	gitignoreDir := dir
 	if f.RootDir != "" {
-		lf.SetRootDir(f.RootDir)
+		if dir == f.RootDir {
+			// Reuse the already-opened FS; avoid a second os.OpenRoot for the same dir.
+			lf.RootDir = f.RootDir
+			lf.RootFS = lf.FS
+		} else {
+			lf.SetRootDir(f.RootDir)
+		}
 		gitignoreDir = f.RootDir
 	}
 	gd := gitignoreDir // capture for closure

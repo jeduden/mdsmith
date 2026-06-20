@@ -707,6 +707,35 @@ func TestRunSource_WiresSourceFSAndGitignore(t *testing.T) {
 	require.NotNil(t, matcher)
 }
 
+// TestConfigureFile_DirEqualsRootAliasesRootFS verifies the dir==root
+// optimization in configureFile: when a file lives directly in the
+// workspace root, f.RootFS must be set (the same object as f.FS) so
+// cross-file rules that read f.RootFS receive a contained FS without
+// opening a second os.OpenRoot fd.
+func TestConfigureFile_DirEqualsRootAliasesRootFS(t *testing.T) {
+	root := t.TempDir()
+	// File lives at the workspace root so filepath.Dir(path) == root.
+	mdFile := filepath.Join(root, "host.md")
+	require.NoError(t, os.WriteFile(mdFile, []byte("# Host\n"), 0o644))
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{"snap-rule": {Enabled: true}},
+	}
+	snap := &fileSnapRule{id: "MDS999", name: "snap-rule"}
+	runner := &Runner{
+		Config:  cfg,
+		Rules:   []rule.Rule{snap},
+		RootDir: root,
+	}
+
+	result := runner.Run([]string{mdFile})
+	require.Empty(t, result.Errors)
+	require.NotNil(t, snap.last, "rule must have seen the file")
+	require.NotNil(t, snap.last.RootFS, "RootFS must be set when dir==root")
+	require.True(t, snap.last.FS == snap.last.RootFS,
+		"dir==root must alias RootFS to FS (single os.OpenRoot fd)")
+}
+
 func TestRunSource_FrontMatterLineOffset(t *testing.T) {
 	cfg := &config.Config{
 		Rules: map[string]config.RuleCfg{
