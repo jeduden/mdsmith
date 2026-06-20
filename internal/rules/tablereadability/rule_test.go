@@ -189,11 +189,9 @@ func TestSplitRow_PreservesEscapedPipes(t *testing.T) {
 	}
 }
 
-// TestCheck_TooManyColumns_MessageAllocs verifies the violation diagnostic uses
-// fmt.Sprintf (1 msg alloc) rather than strconv.Itoa+concat (3 msg allocs).
-// The test bounds total Check allocs at ≤4 after the fix; the strconv approach
-// guards against regression to the strconv.Itoa+concat message path,
-// which costs 3 allocs vs fmt.Sprintf's 1 (saving 2 per violation).
+// TestCheck_TooManyColumns_MessageAllocs guards against regression to the
+// strconv.Itoa+concat message path, which costs 3 allocs vs fmt.Sprintf's 1
+// (saving 2 per violation).
 // Baseline (fmt.Sprintf): 10 allocs/call. Old strconv path: 12 allocs/call.
 func TestCheck_TooManyColumns_MessageAllocs(t *testing.T) {
 	// 5-column table against a 4-column max.

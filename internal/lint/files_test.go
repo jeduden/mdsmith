@@ -121,7 +121,6 @@ func TestResolveFiles_Sorted(t *testing.T) {
 func TestIsMarkdown_ZeroAllocs(t *testing.T) {
 	cases := []string{"file.md", "file.MD", "file.Md", "file.markdown", "file.MARKDOWN", "file.txt"}
 	for _, p := range cases {
-		p := p
 		allocs := testing.AllocsPerRun(100, func() { _ = isMarkdown(p) })
 		if allocs != 0 {
 			t.Errorf("isMarkdown(%q): got %g allocs/call, want 0", p, allocs)
