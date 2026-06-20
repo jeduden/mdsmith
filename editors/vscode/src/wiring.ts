@@ -832,6 +832,7 @@ export class Wiring {
           getDiagnostics,
           openVirtualDoc,
           showError,
+          isTrusted,
         });
       }),
 
@@ -857,6 +858,7 @@ export class Wiring {
           },
           openVirtualDoc,
           showError,
+          isTrusted,
         });
       }),
 
@@ -905,7 +907,7 @@ export class Wiring {
       // browser or network.
       api.workspace.registerTextDocumentContentProvider(RULE_SCHEME, {
         provideTextDocumentContent: (uri) =>
-          provideRuleDocContent(uri, getBinary(), getWorkspaceRoot()),
+          provideRuleDocContent(uri, getBinary(), getWorkspaceRoot(), undefined, isTrusted),
       })
 
       // VS Code automatically re-evaluates the built-in

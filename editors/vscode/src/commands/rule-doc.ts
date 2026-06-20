@@ -125,7 +125,10 @@ export async function fetchRuleDocContent(
   binary: string,
   workspaceRoot: string | undefined,
   spawn: SpawnFn = defaultSpawn,
+  isTrusted?: () => boolean,
 ): Promise<string> {
+  if (isTrusted && !isTrusted()) return "";
+
   const parsed = parseRuleDocUri(uri);
   if (!parsed) {
     return `**mdsmith: malformed rule URI**\n\n~~~\n${uri}\n~~~`;
@@ -162,6 +165,7 @@ export function provideRuleDocContent(
   binary: string,
   workspaceRoot: string | undefined,
   spawn: SpawnFn = defaultSpawn,
+  isTrusted?: () => boolean,
 ): Promise<string> {
-  return fetchRuleDocContent(uri.toString(true), binary, workspaceRoot, spawn);
+  return fetchRuleDocContent(uri.toString(true), binary, workspaceRoot, spawn, isTrusted);
 }

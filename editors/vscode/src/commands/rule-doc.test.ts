@@ -159,6 +159,32 @@ describe("fetchRuleDocContent", () => {
     expect(out).toBe("# MDS020: required-structure\n\nbody\n");
   });
 
+  test("returns empty string without spawning when workspace is untrusted", async () => {
+    let spawned = false;
+    const out = await fetchRuleDocContent(
+      buildRuleDocUri("MDS020"),
+      "mdsmith",
+      undefined,
+      fakeSpawn({ stdout: "content" }, () => { spawned = true; }),
+      () => false,
+    );
+    expect(spawned).toBe(false);
+    expect(out).toBe("");
+  });
+
+  test("spawns normally when isTrusted returns true", async () => {
+    let spawned = false;
+    const out = await fetchRuleDocContent(
+      buildRuleDocUri("MDS020"),
+      "mdsmith",
+      undefined,
+      fakeSpawn({ stdout: "content" }, () => { spawned = true; }),
+      () => true,
+    );
+    expect(spawned).toBe(true);
+    expect(out).toBe("content\n");
+  });
+
   test("reports a malformed URI without spawning", async () => {
     let spawned = false;
     const out = await fetchRuleDocContent(
@@ -195,6 +221,20 @@ describe("fetchRuleDocContent", () => {
 // ---- provideRuleDocContent (vscode.Uri round trip) ----
 
 describe("provideRuleDocContent", () => {
+  test("returns empty string without spawning when workspace is untrusted", async () => {
+    const uri = URI.parse(buildRuleDocUri("MDS019"));
+    let spawned = false;
+    const out = await provideRuleDocContent(
+      uri,
+      "mdsmith",
+      undefined,
+      fakeSpawn({ stdout: "content" }, () => { spawned = true; }),
+      () => false,
+    );
+    expect(spawned).toBe(false);
+    expect(out).toBe("");
+  });
+
   test("survives the real vscode.Uri round trip and passes the bare ID", async () => {
     // Regression: clicking a rule's hover doc link opened a virtual
     // document that only read "mdsmith: malformed rule URI". The content
