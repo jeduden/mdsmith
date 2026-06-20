@@ -984,3 +984,43 @@ func TestFindGitRoot_AbsErrorPropagates(t *testing.T) {
 	_, err := findGitRoot("relative")
 	assert.Error(t, err)
 }
+
+// TestRule_Check_OversizedHookFileEmitsDiagnostic pins S007: a
+// pre-merge-commit hook larger than 1 MB must produce a read-cap
+// diagnostic rather than being read fully into memory.
+func TestRule_Check_OversizedHookFileEmitsDiagnostic(t *testing.T) {
+	dir := t.TempDir()
+	initTestRepo(t, dir)
+
+	// Write a hook file that carries the managed marker so it would
+	// pass drift detection on an uncapped read, but exceeds 1 MB so
+	// ReadFileLimited returns "file too large" and the rule surfaces
+	// that as a read-error diagnostic rather than silently reading it.
+	hooksDir := githooks.ResolveHooksDir(dir)
+	require.NoError(t, os.MkdirAll(hooksDir, 0o755))
+	big := make([]byte, hookMaxReadBytes+1)
+	copy(big, githooks.PreMergeCommitMarker)
+	require.NoError(t, os.WriteFile(
+		filepath.Join(hooksDir, "pre-merge-commit"),
+		big, 0o755,
+	))
+
+	// Invalidate the drift cache so Check recomputes.
+	driftMu.Lock()
+	delete(driftCache, dir)
+	driftMu.Unlock()
+
+	r := &Rule{}
+	f := &lint.File{
+		Path:          filepath.Join(dir, "README.md"),
+		Source:        []byte("# Test\n"),
+		MaxInputBytes: 1048576,
+		FS:            os.DirFS(dir),
+	}
+	diags := r.Check(f)
+	require.NotEmpty(t, diags, "oversized hook file must produce a diagnostic")
+	assert.Contains(t, diags[0].Message, "could not be read",
+		"diagnostic must report the read failure")
+	assert.Contains(t, diags[0].Message, "file too large",
+		"diagnostic must name the cause as file too large")
+}
