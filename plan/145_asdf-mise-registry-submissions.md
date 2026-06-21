@@ -132,7 +132,7 @@ current adoption level:
   re-submission is accepted.
 - **asdf (Task 3):** the one-successful-release-cycle
   precondition is now met — the pipeline has shipped
-  through `v0.47.0` (2026-06-14) — so the only remaining
+  through `v0.51.0` (2026-06-20) — so the only remaining
   gate is adoption. No PR to
   [`asdf-vm/asdf-plugins`](https://github.com/asdf-vm/asdf-plugins)
   has been filed; that index has comparable curation
@@ -151,3 +151,24 @@ In-repo work is done: the `jeduden/asdf-mdsmith`
 plugin, its CI, and the release.yml smoke-test matrix.
 The plan stays open until adoption clears the
 registries' bar.
+
+**Review 2026-06-21.** Re-swept the in-repo surfaces.
+These were checked:
+
+- the smoke-test matrix in
+  [release.yml](../.github/workflows/release.yml)
+- `RequiredSmokeChannels` in
+  `internal/release/releasesmoke.go`
+- [docs/guides/install.md](../docs/guides/install.md)
+- the `asdf` and `mise` release-channel docs, whose
+  summaries generate `website/data/channels.yaml`
+
+All are accurate and consistent. The `asdf` channel is
+required-green via the explicit plugin URL. The bare
+`mise-registry` channel stays best-effort with a warning.
+Both docs flag the prefix-less forms as awaiting a
+registry entry.
+
+No stale TODOs or contradictions remain. Both external
+registry PRs are still gated on adoption. Nothing else is
+actionable in-repo, so the plan stays open.
