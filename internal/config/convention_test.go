@@ -345,27 +345,27 @@ func TestApplyConvention_NilCfg(t *testing.T) {
 }
 
 // TestEffectiveRules_ParityConventionDisablesExtras proves the
-// `parity` convention drives the effective config down to the
-// markdownlint-compatible rule class: every rule it names is off,
-// including rules enabled by default, while markdownlint-class rules
-// it does not name stay on. This is the "a convention disables a
-// default-on rule" path, which no built-in convention exercised
-// before parity.
+// `mado-parity` convention drives the effective config down to mado's
+// default rule set: every rule it disables is off, including rules
+// enabled by default, while rules it does not name stay on. This is
+// the "a convention disables a default-on rule" path, which no
+// flavor-only built-in convention exercises.
 func TestEffectiveRules_ParityConventionDisablesExtras(t *testing.T) {
-	loaded := &Config{Convention: "parity"}
+	loaded := &Config{Convention: "mado-parity"}
 	require.NoError(t, applyConvention(loaded))
 	cfg := Merge(Defaults(), loaded)
 	got := Effective(cfg, "doc.md", nil, nil)
 
-	conv, err := convention.Lookup("parity", nil)
+	conv, err := convention.Lookup("mado-parity", nil)
 	require.NoError(t, err)
-	// Every parity rule registered in this build is disabled in the
-	// effective config (opt-in rules absent from this test binary's
-	// registry are simply skipped).
-	for name := range conv.Rules {
+	// Every rule mado-parity disables is off in the effective config;
+	// every rule it enables is on (opt-in rules absent from this test
+	// binary's registry are simply skipped).
+	for name, p := range conv.Rules {
 		if rc, ok := got[name]; ok {
-			assert.False(t, rc.Enabled,
-				"parity must disable %q in effective config", name)
+			assert.Equal(t, p.Enabled, rc.Enabled,
+				"mado-parity must set %q enabled=%v in effective config",
+				name, p.Enabled)
 		}
 	}
 
@@ -377,14 +377,14 @@ func TestEffectiveRules_ParityConventionDisablesExtras(t *testing.T) {
 	} {
 		rc, ok := got[name]
 		require.True(t, ok, "default-on rule %q must be present", name)
-		assert.False(t, rc.Enabled, "parity must disable default-on rule %q", name)
+		assert.False(t, rc.Enabled, "mado-parity must disable default-on rule %q", name)
 	}
 
-	// Markdownlint-class rules parity does not name stay enabled.
-	for _, name := range []string{"line-length", "heading-style", "no-bare-urls"} {
+	// Rules mado-parity does not name stay enabled.
+	for _, name := range []string{"line-length", "heading-increment", "no-bare-urls"} {
 		rc, ok := got[name]
 		require.True(t, ok, "rule %q must be present", name)
-		assert.True(t, rc.Enabled, "parity must leave %q enabled", name)
+		assert.True(t, rc.Enabled, "mado-parity must leave %q enabled", name)
 	}
 }
 
@@ -557,7 +557,7 @@ func TestApplyConvention_UserConvention_Valid(t *testing.T) {
 }
 
 func TestApplyConvention_UserConvention_ReservedName(t *testing.T) {
-	for _, reserved := range []string{"portable", "github", "plain", "parity"} {
+	for _, reserved := range []string{"portable", "github", "plain", "gomarklint-parity"} {
 		t.Run(reserved, func(t *testing.T) {
 			cfg := &Config{
 				Conventions: map[string]UserConvention{

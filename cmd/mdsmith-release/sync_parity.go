@@ -15,22 +15,22 @@ import (
 
 // runSyncParityRules is the entry point for the `sync-parity-rules`
 // subcommand. It regenerates the parity-rules fragment at
-// docs/research/benchmarks/parity-rules.fragment.md from the built-in
-// `parity` convention. The conventions reference and the benchmark
-// page <?include?> that fragment, so one regen keeps both docs in
-// sync with the convention. With --check it makes no edits and exits
-// non-zero if the fragment has drifted.
+// docs/research/benchmarks/parity-rules.fragment.md from the
+// <linter>-parity conventions. The conventions reference and the
+// benchmark page <?include?> that fragment, so one regen keeps both
+// docs in sync with the conventions. With --check it makes no edits
+// and exits non-zero if the fragment has drifted.
 func runSyncParityRules(root string, args []string) int {
 	fs := flag.NewFlagSet("sync-parity-rules", flag.ContinueOnError)
 	check := fs.Bool("check", false,
-		"exit non-zero if the parity-rules fragment has drifted from the convention (no edits)")
+		"exit non-zero if the parity-rules fragment has drifted from the conventions (no edits)")
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: mdsmith-release sync-parity-rules [--check]\n\n"+
-			"Render "+release.ParityRulesFragmentFile+" from the built-in\n"+
-			"`parity` convention (the rules it disables, each with its MDS\n"+
-			"id and mdsmith default-enabled state). Without --check, edits\n"+
-			"the file in place. With --check, makes no edits; reports drift\n"+
-			"and exits non-zero.\n")
+			"Render "+release.ParityRulesFragmentFile+" from the <linter>-parity\n"+
+			"conventions (one table per convention: each rule it sets, with its\n"+
+			"MDS id, mdsmith default state, and whether parity enables or\n"+
+			"disables it). Without --check, edits the file in place. With\n"+
+			"--check, makes no edits; reports drift and exits non-zero.\n")
 	}
 	if err := fs.Parse(args); err != nil {
 		if code := reportFlagParseErr(err, os.Stderr,

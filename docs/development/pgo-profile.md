@@ -51,7 +51,7 @@ That subcommand:
    tracked Markdown, `corpus_neutral` from the pinned Rust
    Book and Reference.
 3. Records a CPU profile over each corpus in both the
-   default and `parity`
+   default and `mado-parity`
    (`bench-parity.mdsmith.yml`) configurations via
    `MDSMITH_CPUPROFILE` — four runs total.
 4. Merges the four runs with `go tool pprof -proto` into

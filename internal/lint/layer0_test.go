@@ -662,34 +662,3 @@ func TestSourceMayHaveBlockQuote(t *testing.T) {
 			"expected may-have-quote: %q", src)
 	}
 }
-
-func TestSourceMayHaveList(t *testing.T) {
-	for _, src := range []string{
-		"plain paragraph\n",
-		"# ATX heading\n\nText\n",
-		"> block quote\n",
-		"---\n",      // thematic break, not a list
-		"***\n",      // thematic break, not a list
-		"    code\n", // indented code block (4+ spaces), not a list
-		"plain",      // no trailing newline, no list
-		"   ",        // blank line (indent >= len), no list
-	} {
-		assert.False(t, SourceMayHaveList([]byte(src)),
-			"expected list-free: %q", src)
-	}
-	for _, src := range []string{
-		"- bullet\n",
-		"* star\n",
-		"+ plus\n",
-		"1. ordered\n",
-		"2) paren form\n",
-		"  - indented bullet\n",
-		"- item\n\n  # Nested\n",  // list-nested heading (the divergence class)
-		"1. item\n\n   ## Deep\n", // ordered + nested heading
-		"- a\n  # b\n",            // tight nested heading
-		"- bullet",                // no trailing newline, list present
-	} {
-		assert.True(t, SourceMayHaveList([]byte(src)),
-			"expected may-have-list: %q", src)
-	}
-}

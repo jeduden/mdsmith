@@ -253,6 +253,12 @@ func classifySlot(checkRule rule.Rule, astNil bool) ruleSlot {
 			if ic, ok := checkRule.(rule.InlineChecker); ok && ic.InlineCapable() {
 				return ruleSlot{check: checkRule}
 			}
+			// A LinesChecker (the list rules) likewise serves the nil-AST
+			// path from its own Check (re-deriving list structure from
+			// f.Lines via listscan); route it to the plain-Check slot too.
+			if lc, ok := checkRule.(rule.LinesChecker); ok && lc.LinesCapable() {
+				return ruleSlot{check: checkRule}
+			}
 			return ruleSlot{}
 		}
 		return ruleSlot{nc: nc}

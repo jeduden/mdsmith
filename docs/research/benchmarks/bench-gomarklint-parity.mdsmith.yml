@@ -1,0 +1,15 @@
+# Head-to-head benchmark profile: mdsmith configured to run the same
+# rule set gomarklint runs by default (20 rules), so a benchmark of
+# mdsmith against gomarklint measures the same per-file work, not a
+# different rule count.
+#
+# Selects the built-in `gomarklint-parity` convention
+# (internal/convention/convention.go), which is the single source of
+# truth for the rule set — this file only selects it, so the two can
+# never drift. gomarklint never parses Markdown; this is the smallest parity set in the family.
+#
+# internal/integration verifies gomarklint-parity against the per-rule
+# gomarklint mappings in the rule README front matter, so the set stays
+# equal to gomarklint's default-on rules.
+front-matter: true
+convention: gomarklint-parity

@@ -85,7 +85,7 @@ Commands:
   pgo [workdir]                   Generate a PGO profile over the bench corpora into cmd/mdsmith/default.pgo.
   pull-site-assets                Fetch the published demo GIF for the site build.
   sync-messaging [--check]        Propagate docs/brand/messaging.md into every tracked surface (or check drift).
-  sync-parity-rules [--check]     Regenerate the parity-convention disabled-rules fragment
+  sync-parity-rules [--check]     Regenerate the <linter>-parity convention rule-table fragment
                                   (or check drift).
   sync-channels [--check]         Regenerate website/data/channels.yaml from the channel files
                                   (or check drift).

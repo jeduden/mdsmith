@@ -110,6 +110,33 @@ func (r *inlineCheckerRule) InlineCapable() bool { return true }
 
 var _ rule.InlineChecker = (*inlineCheckerRule)(nil)
 
+// linesCheckerRule is a NodeChecker that is NOT a BlockChecker but implements
+// rule.LinesChecker: its Check serves the nil-AST path from f.Lines (standing
+// in for the list rules' listscan consumption). It pins that the engine
+// routes such a rule to its own Check on a parse-skipped File.
+type linesCheckerRule struct {
+	plainRule
+	message string
+}
+
+func (r *linesCheckerRule) Check(f *lint.File) []lint.Diagnostic {
+	if f != nil && f.AST == nil {
+		return []lint.Diagnostic{{Line: 1, RuleID: r.id, Message: r.message}}
+	}
+	return rule.WalkNodes(r, f)
+}
+
+func (r *linesCheckerRule) CheckNode(n ast.Node, entering bool, _ *lint.File) []lint.Diagnostic {
+	if entering && n.Kind() == ast.KindParagraph {
+		return []lint.Diagnostic{{Line: 1, RuleID: r.id, Message: r.message}}
+	}
+	return nil
+}
+
+func (r *linesCheckerRule) LinesCapable() bool { return true }
+
+var _ rule.LinesChecker = (*linesCheckerRule)(nil)
+
 type goodConfigurable struct {
 	plainRule
 	Applied map[string]any
@@ -263,6 +290,22 @@ func TestCheckRulesWithIntraFile_inlineCheckerASTPath(t *testing.T) {
 	diags, errs := checker.CheckRulesWithIntraFile(f, rules, enabled("TST001"), true, 1)
 	assert.Empty(t, errs)
 	require.Len(t, diags, 1, "InlineChecker fires through the shared AST walk on the parsed path")
+}
+
+// TestCheckRulesWithIntraFile_linesCheckerNilAST pins the LinesChecker branch
+// of classifySlot: a NodeChecker that is not a BlockChecker but implements
+// rule.LinesChecker (the list rules) is routed to its own Check on a
+// parse-skipped File (AST nil), so its diagnostics surface from f.Lines
+// rather than being dropped — the dead-code defect this capability fixes.
+func TestCheckRulesWithIntraFile_linesCheckerNilAST(t *testing.T) {
+	f := lint.NewFileLines("doc.md", []byte("- item\n- item two\n"))
+	f.RootDir = "."
+	f.RunCache = lint.NewRunCache()
+	rules := []rule.Rule{&linesCheckerRule{plainRule: plainRule{id: "TST002"}, message: "lines hit"}}
+	diags, errs := checker.CheckRulesWithIntraFile(f, rules, enabled("TST002"), true, 1)
+	assert.Empty(t, errs)
+	require.Len(t, diags, 1, "LinesChecker fires through its own Check on the nil-AST path")
+	assert.Equal(t, "lines hit", diags[0].Message)
 }
 
 // TestCheckRulesWithIntraFile_blockCheckerNilAST pins the BlockSpan

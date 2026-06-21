@@ -37,7 +37,8 @@ config key, sibling to `rules:`, `kinds:`, and
 `overrides:`. An unknown name is a config error.
 
 Built-in values: `portable`, `github`, `obsidian`,
-`parity`, `plain`, `no-llm-tells`. The key is
+`plain`, `no-llm-tells`, and the four
+`<linter>-parity` conventions below. The key is
 optional; omit it for no convention.
 
 You may also set `flavor:` inside `markdown-flavor`
@@ -120,21 +121,29 @@ Markdown links. Those rules don't exist yet. When
 they ship, the `plain` convention gains them and
 diverges from `portable`.
 
-### `parity`
+### `<linter>-parity`
 
-Markdown checked the way the
-markdownlint-compatible tools (mado, rumdl) check
-it: `flavor: gfm` plus every mdsmith-only rule
-turned off, leaving the structural style class
-those tools also run. Use it for a like-for-like
-comparison, or as a fast markdownlint gate before
-you adopt the cross-file and generated-section
-layer. The disabled-rule list is generated from the
-convention, so it never drifts — see the
-[benchmark doc][parity-list]. Unlike the other
-built-ins, `parity` leaves `markdown-flavor`
-(MDS034) opt-in.
+Four conventions match a peer linter's default rule
+set, for benchmarks or a fast peer-equivalent gate.
+Each picks `flavor: gfm` and leaves MDS034 opt-in.
 
+| Convention            | Peer         | Rules |
+| --------------------- | ------------ | ----- |
+| `gomarklint-parity`   | gomarklint   | 20    |
+| `mado-parity`         | mado         | 27    |
+| `rumdl-parity`        | rumdl        | 41    |
+| `markdownlint-parity` | markdownlint | 41    |
+
+Each enables the opt-in rules its peer runs and
+disables the defaults it skips. Only full covers
+count: a partial peer mapping does not run the
+heavier mdsmith rule. The CI-checked sets come from
+the [coverage matrix][coverage]. All disable MDS027
+(the peers' `link-fragments` cover same-file anchors
+only), so `gomarklint-parity` and `mado-parity` are
+parse-skip-safe. [Rule tables are generated.][parity-list]
+
+[coverage]: ../research/markdownlint-coverage/README.md
 [parity-list]: ../research/benchmarks/README.md
 
 ### `no-llm-tells`
@@ -263,10 +272,11 @@ convention "our-team" rule "no-inline-html": no-inline-html: unknown setting "al
 ### Reserved names
 
 The built-in names `portable`, `github`,
-`obsidian`, `parity`, `plain`, and `no-llm-tells`
-are reserved. Defining a `conventions.portable`
-entry is a config error. This keeps the built-in
-names stable across docs and tutorials.
+`obsidian`, `plain`, `no-llm-tells`, and the four
+`<linter>-parity` conventions are reserved. Defining
+a `conventions.portable` entry is a config error.
+This keeps the built-in names stable across docs and
+tutorials.
 
 ### Resolution order
 
@@ -277,7 +287,7 @@ is impossible. When neither table matches, the error
 lists both sets:
 
 ```text
-unknown convention "bogus" (valid: github, no-llm-tells, obsidian, our-team, parity, plain, portable)
+unknown convention "bogus" (valid: github, gomarklint-parity, mado-parity, markdownlint-parity, no-llm-tells, obsidian, our-team, plain, portable, rumdl-parity)
 ```
 
 ### Interaction with top-level rules

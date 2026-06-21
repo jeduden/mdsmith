@@ -216,4 +216,6 @@ footer: |
 | 2606192025 | ✅     | sonnet | [Replace os.DirFS with os.OpenRoot to contain symlink escapes](plan/2606192025_rootfs-openroot-symlink-containment.md)                  |
 | 2606192026 | ✅     | sonnet | [Add per-goroutine recover() to CLI engine runner worker goroutines](plan/2606192026_engine-runner-panic-recovery.md)                   |
 | 2606192027 | ✅     | sonnet | [Security hardening batch — 2026-06-19 full-repo audit (low/info)](plan/2606192027_security-hardening-batch-2026-06-19-full-repo.md)    |
+| 2606202100 | 🔲     | opus   | [Parity perf: make InlineBlocks a light inline scan, not a goldmark re-parse](plan/2606202100_parity-light-inline-scan.md)              |
+| 2606210840 | 🔲     | sonnet | [Same-file anchor-resolution rule for true gomarklint parity](plan/2606210840_same-file-anchor-resolution-rule.md)                      |
 <?/catalog?>

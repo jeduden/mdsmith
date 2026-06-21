@@ -23,29 +23,44 @@ func TestRenderParityRulesFragment(t *testing.T) {
 	got, err := RenderParityRulesFragment()
 	require.NoError(t, err)
 
-	// One row per rule the convention disables, plus the generated-by
-	// comment and the two table header lines.
-	conv, err := convention.Lookup("parity", nil)
-	require.NoError(t, err)
+	// One labeled section per parity convention, each with an enabled
+	// and a disabled table.
+	for _, name := range parityConventions {
+		assert.Contains(t, got, "**`"+name+"`**",
+			"fragment must document %q", name)
+	}
+	assert.Equal(t, len(parityConventions),
+		strings.Count(got, "Enabled opt-in rules:"),
+		"one enabled table per convention")
+	assert.Equal(t, len(parityConventions),
+		strings.Count(got, "Disabled defaults:"),
+		"one disabled table per convention")
+
+	// One data row per rule across every convention's preset.
+	totalRules := 0
+	for _, name := range parityConventions {
+		conv, err := convention.Lookup(name, nil)
+		require.NoError(t, err)
+		totalRules += len(conv.Rules)
+	}
 	dataRows := 0
 	for _, line := range strings.Split(strings.TrimSpace(got), "\n") {
 		if strings.HasPrefix(line, "| MDS") {
 			dataRows++
 		}
 	}
-	assert.Equal(t, len(conv.Rules), dataRows,
-		"one table row per disabled rule")
+	assert.Equal(t, totalRules, dataRows, "one table row per preset rule")
 
-	// Spot-check representative rows and the default/opt-in labelling,
-	// which is read from the rule registry, not hand-written.
-	assert.Contains(t, got, "MDS019 catalog")
+	// Spot-check that gomarklint-parity enables an opt-in rule it turns
+	// on and disables a default it skips.
+	assert.Contains(t, got, "MDS042 emphasis-style")
+	assert.Contains(t, got, "MDS001 line-length")
 	assert.Contains(t, got, "MDS027 cross-file-reference-integrity")
-	assert.Regexp(t, `MDS028 token-budget\s+\| default`, got)
-	assert.Regexp(t, `MDS029 conciseness-scoring\s+\| opt-in`, got)
-	assert.Regexp(t, `MDS033 directory-structure\s+\| opt-in`, got)
 
-	// Rows are sorted by MDS id: MDS019 precedes MDS058.
-	assert.Less(t, strings.Index(got, "MDS019"), strings.Index(got, "MDS058"))
+	// Conventions render in parityConventions order (gomarklint first).
+	assert.Less(t,
+		strings.Index(got, "gomarklint-parity"),
+		strings.Index(got, "markdownlint-parity"))
 }
 
 // TestParityRulesFragmentInSync is the drift gate: the committed
@@ -58,19 +73,30 @@ func TestParityRulesFragmentInSync(t *testing.T) {
 	assert.Empty(t, msg, "run `mdsmith-release sync-parity-rules` to refresh")
 }
 
-func TestRenderConventionDisableTable_UnknownConvention(t *testing.T) {
+func TestRenderParityFamilyFragment_PropagatesError(t *testing.T) {
+	// A byName that resolves nothing makes the first convention's first
+	// rule fail to resolve; renderParityFamilyFragment must surface that
+	// error rather than emit a partial fragment.
+	_, err := renderParityFamilyFragment(func(string) rule.Rule { return nil })
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not registered")
+}
+
+func TestRenderConventionRuleTable_UnknownConvention(t *testing.T) {
 	// An unknown convention name surfaces the Lookup error rather than
 	// rendering an empty table.
-	_, err := renderConventionDisableTable("does-not-exist", rule.ByName)
+	var buf bytes.Buffer
+	err := renderConventionRuleTable(&buf, "does-not-exist", rule.ByName)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "does-not-exist")
 }
 
-func TestRenderConventionDisableTable_UnregisteredRule(t *testing.T) {
+func TestRenderConventionRuleTable_UnregisteredRule(t *testing.T) {
 	// A byName that resolves nothing models a rule renamed out of the
 	// registry; the renderer must error, not drop the row.
-	_, err := renderConventionDisableTable(
-		"parity", func(string) rule.Rule { return nil })
+	var buf bytes.Buffer
+	err := renderConventionRuleTable(
+		&buf, "gomarklint-parity", func(string) rule.Rule { return nil })
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not registered")
 }

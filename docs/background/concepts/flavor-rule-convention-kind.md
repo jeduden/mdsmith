@@ -49,12 +49,14 @@ A convention is a named bundle that pairs a flavor
 with a set of rule presets. Selecting a convention
 applies both: MDS034 runs against the named flavor,
 and the named rule presets are applied as a base
-layer beneath the user's own rule config. Five
-built-in conventions ship today: `portable`,
-`github`, `obsidian`, `parity`, and `plain`. The
-`parity` convention disables the mdsmith-only rules
-so `mdsmith check` runs the markdownlint-compatible
-class that mado and rumdl also run. A project can
+layer beneath the user's own rule config. The
+built-in conventions are `portable`, `github`,
+`obsidian`, `plain`, `no-llm-tells`, and four
+`<linter>-parity` conventions. Each one runs the
+rule set a peer linter (gomarklint, mado, rumdl,
+markdownlint) enables by default, so `mdsmith check`
+matches that peer's work for a like-for-like
+comparison. A project can
 also define its own convention inline in
 `.mdsmith.yml` or as a file under
 `.mdsmith/conventions/`.

@@ -1,28 +1,26 @@
-# Apples-to-apples benchmark profile.
+# Apples-to-apples benchmark profile (the "mdsmith-parity" column).
 #
 # The default cross-tool run lets every tool use its own default rule
 # set, so mdsmith pays for cross-file integrity, readability, token
 # budget, and generated-section work that mado / rumdl /
 # markdownlint-cli2 do not do at all. This profile selects the built-in
-# `parity` convention, which disables exactly those mdsmith-only rules —
-# the ones with no markdownlint analog — so the remaining set is the
-# structural style rules every tool in the comparison actually shares
-# (MDS001-018, 031-032, 041-047, 049-054 all map to an MDxxx; see
-# docs/background/markdown-linters.md).
+# `mado-parity` convention, which leaves mdsmith running exactly the
+# rule set mado runs by default, so the "mdsmith-parity" timing
+# measures the same per-file work mado does, not a different rule count.
+#
+# mado is the representative peer for this single shared column because
+# its 28-rule default set is the middle of the markdownlint family
+# (gomarklint 21, mado 28, rumdl / markdownlint 42). The per-linter
+# bench-<linter>-parity.mdsmith.yml profiles select the matching
+# convention for each peer when the harness runs them head to head.
 #
 # The convention (internal/convention/convention.go) is the single
-# source of truth for that rule set: this file only selects it, so the
-# benchmark and the convention can never drift, and the disabled-rule
-# table in the conventions reference and the benchmark page is
-# generated from the same convention (`mdsmith-release
+# source of truth for the rule set: this file only selects it, so the
+# benchmark and the convention can never drift, and the per-convention
+# rule tables in the conventions reference and the benchmark page are
+# generated from the same conventions (`mdsmith-release
 # sync-parity-rules`). Add or drop a rule there and all three move
-# together.
-#
-# It is one-sided on purpose: the convention does NOT also disable the
-# MD rules that rumdl / markdownlint implement but mdsmith does not, so
-# in this profile the other tools may still do marginally more per
-# file. Read "mdsmith-parity" as a conservative (upper-bound) figure
-# for mdsmith's relative speed on the shared rule class, not a claim
-# that the rule sets are byte-for-byte identical.
+# together; internal/integration checks each convention against the
+# coverage matrix, so neither can silently diverge from a peer.
 front-matter: true
-convention: parity
+convention: mado-parity

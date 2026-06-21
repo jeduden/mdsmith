@@ -1,0 +1,15 @@
+# Head-to-head benchmark profile: mdsmith configured to run the same
+# rule set mado runs by default (27 rules), so a benchmark of
+# mdsmith against mado measures the same per-file work, not a
+# different rule count.
+#
+# Selects the built-in `mado-parity` convention
+# (internal/convention/convention.go), which is the single source of
+# truth for the rule set — this file only selects it, so the two can
+# never drift. mado is the Rust markdownlint port with the mid-size default set.
+#
+# internal/integration verifies mado-parity against the per-rule
+# mado mappings in the rule README front matter, so the set stays
+# equal to mado's default-on rules.
+front-matter: true
+convention: mado-parity

@@ -616,9 +616,19 @@ var layer0SkipOverride *bool
 // layer0SkipEnabled reports whether the master Layer 0 parse-skip toggle
 // is on. It honours an in-process override when set, otherwise reads the
 // MDSMITH_LAYER0_SKIP environment variable each call so a test in any
-// package can flip it via t.Setenv. Default off: the gate is a
-// benchmarking and CI-equivalence seam for now, not yet a shipped
-// optimization, so a normal run always parses.
+// package can flip it via t.Setenv.
+//
+// Default OFF. The parse-skip path is correct (byte-identical to the parsed
+// path, held so by the TestLayer0Gate_* corpus equivalence gates, now for
+// list-bearing files too), but it is not yet a measured net win. Profiled
+// on the eligible-only subset it is cost-neutral: the skip path's cost is
+// dominated by lint.InlineBlocks (~51%), which the parity link/reference
+// rules read on the nil-AST path and which still runs a full goldmark parse
+// per run — so skipping the block parse saves almost nothing while the
+// cheap line scans (~10%) ride on top. It stays an opt-in seam
+// (MDSMITH_LAYER0_SKIP=1) until InlineBlocks becomes the light inline scan
+// Layer 1 was meant to be — see
+// docs/research/benchmarks/parity-parse-skip-findings.md.
 func layer0SkipEnabled() bool {
 	if layer0SkipOverride != nil {
 		return *layer0SkipOverride
@@ -637,23 +647,29 @@ func layer0SkipEnabled() bool {
 //     suppression walks the AST for processing instructions, so a file
 //     with directives must be parsed.
 //  4. The source may contain no block quote (lint.SourceMayHaveBlockQuote
-//     is false). The scanner collapses a block quote into a single
-//     BlockQuote span and never emits the heading/fenced-code spans that
-//     block-kind rules (MDS002, MDS015) react to for quote-nested content,
-//     so a quote-nested heading would be flagged on the AST path but missed
-//     on the parse-skip path; disqualifying quote-bearing files sidesteps
-//     that divergence.
-//  5. The source may contain no list (lint.SourceMayHaveList is false).
-//     The scanner records a list as a single BlockList span and does not
-//     descend into item bodies; a heading or fence nested inside a list
-//     item is invisible to the block scan while the AST path still flags
-//     it, so the same conservative gate applies.
+//     is false — i.e. no `>` byte). The block-span scanner collapses a
+//     block quote into a single BlockQuote span and never emits the
+//     heading/fenced-code spans that block-kind rules (MDS002, MDS015)
+//     react to for quote-nested content, so a quote-nested heading would
+//     be flagged on the AST path but missed on the parse-skip path.
+//     This `>`-free condition doubles as the HTML-block guard: every HTML
+//     block opener carries a `>` somewhere it can be excluded on (`<div>`,
+//     a closed `-->` comment, a self-closing `<br/>`), and listscan does
+//     not model an HTML block's opaque interior, so excluding any `>`
+//     keeps those files on the parse path too. A more precise per-line
+//     quote scan (so code-heavy `>`-bearing files could skip) needs the
+//     block-span scanner to descend into block quotes first; until then
+//     the coarse `>` guard is the sound choice.
 //
-// Code blocks no longer disqualify the skip: the skip File carries the flat
-// ClassifyLines code-line projection (which handles a fence or indent inside
-// a list item) and the block-span scan, both gated byte-identical to the AST
-// across the corpus's code-bearing files by
-// TestLayer0Gate_CorpusDiagnosticsEquivalence.
+// Lists no longer disqualify the skip. The list rules (MDS014/016/045/
+// 046/061) re-derive list structure from f.Lines via listscan on the
+// nil-AST path (rule.LinesChecker routes them to Check), and the flat
+// ClassifyLines code-line projection descends into list items, so a fence
+// or indent nested in a list is classified correctly. Block-kind rules
+// read the scanLayer0 block spans, which match goldmark on every
+// list-nested heading/fence the corpus exercises. All of this is held
+// byte-identical to the AST by TestLayer0Gate_CorpusDiagnosticsEquivalence,
+// which now engages on list-bearing files.
 //
 // The block-only and flat-Layer-0 spike flags force their own
 // constructors, so the gate stands down when either is set.
@@ -667,9 +683,6 @@ func (r *Runner) layer0SkipEligible(
 		return false
 	}
 	if lint.SourceMayHaveBlockQuote(source) {
-		return false
-	}
-	if lint.SourceMayHaveList(source) {
 		return false
 	}
 	return allEnabledRulesSkipSafe(rules, effective)

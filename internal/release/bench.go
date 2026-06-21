@@ -644,7 +644,13 @@ func (t *Toolkit) writeCorpusSizes(workdir, dataDir string) error {
 // every regenerated fragment — is identical to run.sh's.
 func (t *Toolkit) runHyperfine(binDir, outDir, workdir, mdsmithBin, mdlBin, root string) error {
 	hyperfine := filepath.Join(binDir, "hyperfine")
-	parity := filepath.Join(root, benchDirRel, "bench-parity.mdsmith.yml")
+	parityCfg := func(peer string) string {
+		return filepath.Join(root, benchDirRel, "bench-"+peer+"-parity.mdsmith.yml")
+	}
+	gomarklintParity := parityCfg("gomarklint")
+	madoParity := parityCfg("mado")
+	rumdlParity := parityCfg("rumdl")
+	markdownlintParity := parityCfg("markdownlint")
 	mado := filepath.Join(binDir, "mado")
 	rumdl := filepath.Join(binDir, "rumdl")
 	panache := filepath.Join(binDir, "panache")
@@ -660,7 +666,17 @@ func (t *Toolkit) runHyperfine(binDir, outDir, workdir, mdsmithBin, mdlBin, root
 			// gomarklint keeps no on-disk cache, so it takes no
 			// cache-disabling flag; bare defaults match the method.
 			"--command-name", "gomarklint", gomarklint+" "+cpath,
-			"--command-name", "mdsmith-parity", mdsmithBin+" check -c "+parity+" "+cpath,
+			// One mdsmith parity column per peer: each runs the rule set
+			// that peer enables by default (bench-<peer>-parity.mdsmith.yml),
+			// so its row is the like-for-like comparison against that peer.
+			"--command-name", "mdsmith-gomarklint-parity",
+			mdsmithBin+" check -c "+gomarklintParity+" "+cpath,
+			"--command-name", "mdsmith-mado-parity",
+			mdsmithBin+" check -c "+madoParity+" "+cpath,
+			"--command-name", "mdsmith-rumdl-parity",
+			mdsmithBin+" check -c "+rumdlParity+" "+cpath,
+			"--command-name", "mdsmith-markdownlint-parity",
+			mdsmithBin+" check -c "+markdownlintParity+" "+cpath,
 			"--command-name", "mdsmith", mdsmithBin+" check "+cpath,
 			"--export-json", filepath.Join(outDir, corpus+".json"),
 			"--export-markdown", filepath.Join(outDir, corpus+".md"),
