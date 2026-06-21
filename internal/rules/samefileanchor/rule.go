@@ -78,12 +78,13 @@ func (r *Rule) checkAST(f *lint.File, slugs map[string]struct{}) []lint.Diagnost
 			// nil/empty: not a same-file fragment, or bare # (top-of-page), always valid
 			return ast.WalkContinue, nil
 		}
-		if _, found := slugs[string(fragment)]; !found {
+		frag := string(fragment)
+		if _, found := slugs[frag]; !found {
 			line := inlineNodeLine(n, f, 0)
 			if line == 0 {
 				line = 1
 			}
-			diags = append(diags, r.diag(f, line, string(fragment)))
+			diags = append(diags, r.diag(f, line, frag))
 		}
 		return ast.WalkContinue, nil
 	})
@@ -107,12 +108,13 @@ func (r *Rule) checkNilAST(f *lint.File, slugs map[string]struct{}) []lint.Diagn
 		if len(fragment) == 0 {
 			return
 		}
-		if _, found := slugs[string(fragment)]; !found {
+		frag := string(fragment)
+		if _, found := slugs[frag]; !found {
 			line := inlineNodeLine(n, f, base)
 			if line == 0 {
 				line = 1
 			}
-			diags = append(diags, r.diag(f, line, string(fragment)))
+			diags = append(diags, r.diag(f, line, frag))
 		}
 	})
 	return diags
@@ -188,6 +190,60 @@ func appendHeadingText(n ast.Node, src []byte, buf []byte) []byte {
 	return buf
 }
 
+// appendHeadingTextRaw strips Markdown link/image destination syntax from raw
+// heading bytes so the Layer0 slug matches the AST slug. Link text and image
+// alt text are kept; link destinations and reference labels are discarded.
+func appendHeadingTextRaw(dst, text []byte) []byte {
+	i := 0
+	for i < len(text) {
+		b := text[i]
+		// '!' immediately before '[' is the image prefix — consume it and let
+		// the '[' branch below collect the alt text as visible text.
+		if b == '!' && i+1 < len(text) && text[i+1] == '[' {
+			i++
+			continue
+		}
+		if b != '[' {
+			dst = append(dst, b)
+			i++
+			continue
+		}
+		// Consume visible text between '[' and ']'.
+		i++ // skip '['
+		for i < len(text) && text[i] != ']' {
+			dst = append(dst, text[i])
+			i++
+		}
+		if i < len(text) {
+			i++ // skip ']'
+		}
+		// Skip optional inline destination '(…)', tracking depth for parens.
+		if i < len(text) && text[i] == '(' {
+			depth := 1
+			i++ // skip '('
+			for i < len(text) && depth > 0 {
+				if text[i] == '(' {
+					depth++
+				} else if text[i] == ')' {
+					depth--
+				}
+				i++
+			}
+		}
+		// Skip optional reference label '[…]'.
+		if i < len(text) && text[i] == '[' {
+			i++ // skip '['
+			for i < len(text) && text[i] != ']' {
+				i++
+			}
+			if i < len(text) {
+				i++ // skip ']'
+			}
+		}
+	}
+	return dst
+}
+
 // insertDisambiguated inserts slug into the set with GitHub-compatible
 // disambiguation: first occurrence is slug, subsequent ones are slug-1, slug-2, …
 func insertDisambiguated(slugs map[string]struct{}, counts map[string]int, slug string) {
@@ -222,14 +278,16 @@ func collectSlugsLayer0(f *lint.File) map[string]struct{} {
 	}
 	slugs := make(map[string]struct{}, headingCount)
 	counts := make(map[string]int, headingCount)
-	// Local buffer — not shared, so concurrent Check calls on different
-	// files cannot race on this slice.
+	// Local buffers — not shared, so concurrent Check calls on different
+	// files cannot race on these slices.
+	var textBuf [256]byte
 	var slugBuf [512]byte
 	for _, span := range l0.BlockSpans {
 		switch span.Kind {
 		case lint.BlockATXHeading:
 			line := f.Lines[span.Start-1]
-			text := atxHeadingText(line)
+			raw := atxHeadingText(line)
+			text := appendHeadingTextRaw(textBuf[:0], raw)
 			slug := appendSlug(slugBuf[:0], text)
 			if len(slug) > 0 {
 				insertDisambiguated(slugs, counts, string(slug))
@@ -239,7 +297,9 @@ func collectSlugsLayer0(f *lint.File) map[string]struct{} {
 			// the underline is the last line.
 			if span.Start <= span.End-1 {
 				line := f.Lines[span.Start-1]
-				slug := appendSlug(slugBuf[:0], bytes.TrimSpace(line))
+				raw := bytes.TrimSpace(line)
+				text := appendHeadingTextRaw(textBuf[:0], raw)
+				slug := appendSlug(slugBuf[:0], text)
 				if len(slug) > 0 {
 					insertDisambiguated(slugs, counts, string(slug))
 				}

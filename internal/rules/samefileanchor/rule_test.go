@@ -314,3 +314,20 @@ func TestRule_InlineNodeLineOnLine1(t *testing.T) {
 	require.Len(t, diags, 1)
 	assert.Equal(t, 1, diags[0].Line)
 }
+
+// TestRule_LinkInHeading verifies that a heading containing an inline link
+// produces a slug from only the link text, not the destination URL. Both the
+// AST path and the Layer0 path must agree on the anchor.
+func TestRule_LinkInHeading(t *testing.T) {
+	src := "# [Click here](url)\n\nSee [link](#click-here).\n"
+	assert.Empty(t, check(t, src))
+	assert.Empty(t, checkLines(t, src))
+}
+
+// TestRule_ImageInHeading verifies that a heading containing an image produces
+// a slug from the alt text, not the image source URL.
+func TestRule_ImageInHeading(t *testing.T) {
+	src := "# ![logo](logo.png) Section\n\nSee [link](#logo-section).\n"
+	assert.Empty(t, check(t, src))
+	assert.Empty(t, checkLines(t, src))
+}
