@@ -295,6 +295,48 @@ func TestScanInlineRun_BailsOnUnterminatedAngleBracketDest(t *testing.T) {
 	assert.False(t, ok, "unterminated angle-bracket destination must fall back")
 }
 
+func TestScanInlineRun_BareCloseBracket(t *testing.T) {
+	// A bare ']' with no opening '[' link is a link-parser trigger that fires
+	// with no result: the scanner flushes pending text before it and the ']'
+	// starts the next text segment (goldmark MergeOrAppend behaviour).
+	recs, ok := recsForRun(t, "foo]bar")
+	require.True(t, ok)
+	assert.Equal(t, []scanRec{
+		{kind: "Text", value: "foo"},
+		{kind: "Text", value: "]bar"},
+	}, recs)
+}
+
+func TestScanInlineRun_BailsOnUnclosedLabel(t *testing.T) {
+	// '[' with no matching ']' must fall back (loop exits without foundClose).
+	_, ok := scanInlineRun([]byte("[unclosed"), arena.New())
+	assert.False(t, ok, "unclosed link label must fall back")
+}
+
+func TestScanInlineRun_BailsOnLabelAtEndOfRun(t *testing.T) {
+	// ']' as the last byte (labelEnd+1 >= len(run)) must fall back.
+	_, ok := scanInlineRun([]byte("[x]"), arena.New())
+	assert.False(t, ok, "shortcut-reference shape must fall back")
+}
+
+func TestScanInlineRun_BailsOnExtraAfterTitle(t *testing.T) {
+	// Content after a valid title but before ')' must fall back.
+	_, ok := scanInlineRun([]byte(`[t](url "title" extra)`), arena.New())
+	assert.False(t, ok, "extra content after title must fall back")
+}
+
+func TestScanInlineRun_BailsOnMissingCloseParen(t *testing.T) {
+	// No closing ')' at all: scanLinkTitle is called with i >= len(run).
+	_, ok := scanInlineRun([]byte("[t](url"), arena.New())
+	assert.False(t, ok, "link without closing paren must fall back")
+}
+
+func TestScanInlineRun_BailsOnParenTitleWithInnerParen(t *testing.T) {
+	// Paren-form title containing an inner '(' must fall back (goldmark rejects it).
+	_, ok := scanInlineRun([]byte("[t](url (outer (inner)))"), arena.New())
+	assert.False(t, ok, "paren title with inner paren must fall back")
+}
+
 func TestCodeSpanTrim_SpacePadded(t *testing.T) {
 	src := []byte(" code ")
 	start, stop := codeSpanTrim(src, 0, len(src))
@@ -309,6 +351,13 @@ func TestCodeSpanTrim_AllBlank(t *testing.T) {
 	assert.Equal(t, 3, stop)
 }
 
+func TestCodeSpanTrim_NoSpaces(t *testing.T) {
+	src := []byte("code")
+	start, stop := codeSpanTrim(src, 0, len(src))
+	assert.Equal(t, 0, start, "content with no edge spaces must not be trimmed")
+	assert.Equal(t, 4, stop)
+}
+
 func TestScanLinkTitle_NewlineInTitle(t *testing.T) {
 	title, _, ok := scanLinkTitle([]byte("\"ti\ntle\""), 0)
 	assert.False(t, ok, "newline inside title must fail")
@@ -319,6 +368,44 @@ func TestScanLinkTitle_Unclosed(t *testing.T) {
 	title, _, ok := scanLinkTitle([]byte(`"unclosed`), 0)
 	assert.False(t, ok, "unterminated title must fail")
 	assert.Nil(t, title)
+}
+
+func TestScanLinkTitle_EmptyRun(t *testing.T) {
+	// i >= len(run) guard: scanLinkTitle called with offset past end of slice.
+	title, _, ok := scanLinkTitle([]byte("url"), 3)
+	assert.False(t, ok, "offset at end of run must fail")
+	assert.Nil(t, title)
+}
+
+func TestScanLinkTitle_ParenWithInnerParen(t *testing.T) {
+	// Paren-form title with inner '(' must fail (goldmark FindClosure Nesting:false).
+	title, _, ok := scanLinkTitle([]byte("(outer (inner))"), 0)
+	assert.False(t, ok, "inner paren in paren-form title must fail")
+	assert.Nil(t, title)
+}
+
+func TestScanLinkDestination_CloseParen(t *testing.T) {
+	// j==i defensive guard: bare destination starting with ')'.
+	dest, _, ok := scanLinkDestination([]byte(")"), 0)
+	assert.False(t, ok)
+	assert.Nil(t, dest)
+}
+
+func TestScanLinkDestination_NewlineInAngleBracket(t *testing.T) {
+	// '\n' inside angle-bracket destination must fail.
+	dest, _, ok := scanLinkDestination([]byte("<has\nnewline>"), 0)
+	assert.False(t, ok)
+	assert.Nil(t, dest)
+}
+
+func TestScanAutolink_EmailAutolink(t *testing.T) {
+	recs, ok := recsForRun(t, "mail <user@example.com> here")
+	require.True(t, ok)
+	assert.Equal(t, []scanRec{
+		{kind: "Text", value: "mail "},
+		{kind: "AutoLink", value: "user@example.com"},
+		{kind: "Text", value: " here"},
+	}, recs)
 }
 
 func TestSetParagraphLines_MultiLine(t *testing.T) {

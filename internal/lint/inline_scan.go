@@ -290,7 +290,7 @@ func scanCodeSpan(run []byte, i int, a *arena.Arena) (ast.Node, int, bool) {
 			closure := k - j
 			if closure == opener {
 				// Found the closing run. Inner content is [contentStart:j).
-				node := ast.NewCodeSpan()
+				node := a.CodeSpan()
 				cStart, cStop := codeSpanTrim(run, contentStart, j)
 				if cStop > cStart {
 					node.AppendChild(node, a.RawTextSegment(text.NewSegment(cStart, cStop)))
@@ -317,7 +317,7 @@ func codeSpanTrim(run []byte, start, stop int) (int, int) {
 	// spaces/newlines.
 	allBlank := true
 	for k := start; k < stop; k++ {
-		if !util.IsBlank(run[k : k+1]) {
+		if !util.IsSpace(run[k]) {
 			allBlank = false
 			break
 		}
@@ -527,6 +527,10 @@ func scanLinkTitle(run []byte, i int) (title []byte, after int, ok bool) {
 	for j < len(run) {
 		c := run[j]
 		if c == '\n' {
+			return nil, 0, false
+		}
+		// Paren-form titles reject an inner '(' (goldmark FindClosure Nesting:false).
+		if opener == '(' && c == '(' {
 			return nil, 0, false
 		}
 		if c == closer {
