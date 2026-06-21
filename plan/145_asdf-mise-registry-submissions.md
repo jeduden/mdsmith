@@ -132,7 +132,7 @@ current adoption level:
   re-submission is accepted.
 - **asdf (Task 3):** the one-successful-release-cycle
   precondition is now met — the pipeline has shipped
-  through `v0.47.0` (2026-06-14) — so the only remaining
+  through `v0.51.0` (2026-06-20) — so the only remaining
   gate is adoption. No PR to
   [`asdf-vm/asdf-plugins`](https://github.com/asdf-vm/asdf-plugins)
   has been filed; that index has comparable curation
@@ -151,3 +151,28 @@ In-repo work is done: the `jeduden/asdf-mdsmith`
 plugin, its CI, and the release.yml smoke-test matrix.
 The plan stays open until adoption clears the
 registries' bar.
+
+**Review 2026-06-21.** No in-repo actions remain. Specific
+verifications:
+
+- `release.yml` smoke-test matrix: the `asdf` channel
+  install script exits non-zero on failure; the
+  `mise-registry` channel emits `::warning::`, sets
+  `skipped=true` in `$GITHUB_OUTPUT`, then exits 0
+  (soft-skip, not gating).
+- [`RequiredSmokeChannels`](../internal/release/releasesmoke.go)
+  in `internal/release/releasesmoke.go`:
+  `{"asdf", "go", "mise", "npm", "pip"}` — includes
+  `"asdf"` and the explicit-URL `"mise"` form; excludes
+  the bare `"mise-registry"` form.
+- `docs/guides/install.md`: "neither registry entry
+  exists yet" note just below the channel-comparison
+  table, and per-section notes warning that bare
+  `asdf plugin add mdsmith` and bare
+  `mise use mdsmith@VER` do not yet resolve.
+- The `asdf` and `mise` release-channel docs: their full
+  frontmatter feeds `website/data/channels.yaml` via
+  `mdsmith-release sync-channels`; both docs carry "needs
+  a registry entry" for the bare forms.
+
+Plan stays open until registry adoption clears.
