@@ -115,7 +115,7 @@ func ResolveFiles(args []string) ([]string, error) {
 // ResolveFilesWithOpts is like ResolveFiles but accepts options to control
 // behavior such as gitignore filtering.
 func ResolveFilesWithOpts(args []string, opts ResolveOpts) ([]string, error) {
-	seen := make(map[string]bool)
+	seen := make(map[string]struct{})
 	var result []string
 
 	addFile := func(path string) {
@@ -123,8 +123,8 @@ func ResolveFilesWithOpts(args []string, opts ResolveOpts) ([]string, error) {
 		if err != nil {
 			abs = path
 		}
-		if !seen[abs] {
-			seen[abs] = true
+		if _, ok := seen[abs]; !ok {
+			seen[abs] = struct{}{}
 			result = append(result, path)
 		}
 	}

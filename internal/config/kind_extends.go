@@ -100,17 +100,17 @@ type schemaChainEntry struct {
 func extendsChainSchemas(
 	kinds map[string]KindBody, name string,
 ) ([]schemaChainEntry, error) {
-	visited := map[string]bool{}
+	visited := make(map[string]struct{})
 	chain := []string{}
 	current := name
 	for current != "" {
-		if visited[current] {
+		if _, ok := visited[current]; ok {
 			chain = append(chain, current)
 			return nil, fmt.Errorf(
 				"kind %q: extends cycle detected: %s",
 				name, strings.Join(chain, " -> "))
 		}
-		visited[current] = true
+		visited[current] = struct{}{}
 		chain = append(chain, current)
 		body, ok := kinds[current]
 		if !ok {
@@ -138,14 +138,14 @@ func extendsChainSchemas(
 // returns a one-element slice containing just its own name. The
 // chain is the inheritance audit list `mdsmith kinds show` prints.
 func KindExtendsChain(kinds map[string]KindBody, name string) []string {
-	visited := map[string]bool{}
-	out := []string{}
+	visited := make(map[string]struct{})
+	var out []string
 	current := name
 	for current != "" {
-		if visited[current] {
+		if _, ok := visited[current]; ok {
 			return out
 		}
-		visited[current] = true
+		visited[current] = struct{}{}
 		out = append(out, current)
 		body, ok := kinds[current]
 		if !ok {

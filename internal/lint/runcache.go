@@ -401,7 +401,7 @@ func (c *RunCache) CompiledCUE(source string, build func() any) any {
 // the workspace; the LSP must InvalidateWikilinks (or build a
 // fresh RunCache) when the filesystem layout changes.
 func (c *RunCache) Invalidate(absPath string) {
-	c.invalidate(absPath, map[string]bool{})
+	c.invalidate(absPath, map[string]struct{}{})
 }
 
 // invalidate is the recursive worker for Invalidate. The visited set
@@ -412,11 +412,11 @@ func (c *RunCache) Invalidate(absPath string) {
 // encounter. The set is per-call (allocated by the public
 // Invalidate entry point) so independent Invalidate calls do not
 // share visited state.
-func (c *RunCache) invalidate(absPath string, visited map[string]bool) {
-	if visited[absPath] {
+func (c *RunCache) invalidate(absPath string, visited map[string]struct{}) {
+	if _, ok := visited[absPath]; ok {
 		return
 	}
-	visited[absPath] = true
+	visited[absPath] = struct{}{}
 
 	c.frontMatter.Delete(absPath)
 	c.includes.Delete(absPath)
@@ -471,7 +471,7 @@ func (c *RunCache) evictSchemaArtifacts(absPath string) (includes []string) {
 // with only the live dependents. The visited set carried through the recursion
 // is the cycle guard — a dependent already invalidated in this top-level call
 // is skipped.
-func (c *RunCache) invalidateDependents(absPath string, visited map[string]bool) {
+func (c *RunCache) invalidateDependents(absPath string, visited map[string]struct{}) {
 	c.depsMu.Lock()
 	set, ok := c.schemaDependents[absPath]
 	c.depsMu.Unlock()

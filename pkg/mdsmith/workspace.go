@@ -264,7 +264,7 @@ func (m memFS) dirEntries(dir string) []fs.DirEntry {
 	if dir != "." {
 		prefix = dir + "/"
 	}
-	seen := make(map[string]bool)
+	seen := make(map[string]struct{})
 	var ents []fs.DirEntry
 	for key := range m {
 		if prefix != "" {
@@ -275,14 +275,14 @@ func (m memFS) dirEntries(dir string) []fs.DirEntry {
 		rest := key[len(prefix):]
 		if i := indexSlash(rest); i >= 0 {
 			name := rest[:i]
-			if name != "" && !seen[name] {
-				seen[name] = true
+			if _, ok := seen[name]; name != "" && !ok {
+				seen[name] = struct{}{}
 				ents = append(ents, memDirEntry{name: name, dir: true})
 			}
 			continue
 		}
-		if rest != "" && !seen[rest] {
-			seen[rest] = true
+		if _, ok := seen[rest]; rest != "" && !ok {
+			seen[rest] = struct{}{}
 			ents = append(ents, memDirEntry{name: rest, size: int64(len(m[key])), dir: false})
 		}
 	}
