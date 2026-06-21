@@ -138,7 +138,7 @@ func scanInlineBlocks(f *File) []InlineBlock {
 		start := f.LineStartOffset(runStart)
 		end := f.lineEndOffset(i - 1)
 		out = append(out, InlineBlock{
-			Node:   parseInlineWithRefsArena(f.Source[start:end], refs, a),
+			Node:   inlineRunNode(f.Source[start:end], refs, a),
 			Offset: start,
 		})
 	}
@@ -180,6 +180,25 @@ func (f *File) skipInlineLine(skip map[int]struct{}, i int) bool {
 // has no corresponding source line, so it never opens a run.
 func (f *File) trailingEmptyLine(i int) bool {
 	return i == len(f.Lines)-1 && len(f.Lines[i]) == 0
+}
+
+// inlineRunNode returns the inline node tree for one inline-bearing run. It
+// first tries the Layer 1 byte scanner (scanInlineRun), which reconstructs
+// the run's inline nodes without any goldmark parse; the scanner succeeds for
+// single-paragraph runs whose only inline constructs are plain text, inline
+// links, inline images, autolinks, and code spans. When the scanner declines
+// (a block marker, emphasis, reference link, raw HTML, backslash escape, or
+// any shape it does not reproduce byte-identically), it falls back to the
+// goldmark parse so the result stays identical to the whole-document parse.
+// The per-run fallback keeps the equivalence gate green by construction: a
+// run the scanner cannot prove identical is parsed by goldmark exactly as
+// before. Reference definitions are only needed on the fallback path (the
+// scanner does not resolve reference links), so refs is forwarded there.
+func inlineRunNode(run []byte, refs []Reference, a *arena.Arena) ast.Node {
+	if node, ok := scanInlineRun(run, a); ok {
+		return node
+	}
+	return parseInlineWithRefsArena(run, refs, a)
 }
 
 // parseInlineWithRefsArena parses block as a standalone Markdown document
