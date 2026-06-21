@@ -157,12 +157,14 @@ verifications:
 
 - `release.yml` smoke-test matrix: the `asdf` channel
   install script exits non-zero on failure; the
-  `mise-registry` channel uses `skipped=true` and
-  `::warning::` then exits 0 (soft-skip, not gating).
-- [`internal/release/releasesmoke.go`](../internal/release/releasesmoke.go)
-  `RequiredSmokeChannels`: `{"asdf", "go", "mise",
-  "npm", "pip"}` — includes `"asdf"` and the explicit-URL
-  `"mise"` form; excludes the bare `"mise-registry"` form.
+  `mise-registry` channel emits `::warning::`, sets
+  `skipped=true` in `$GITHUB_OUTPUT`, then exits 0
+  (soft-skip, not gating).
+- [`RequiredSmokeChannels`](../internal/release/releasesmoke.go)
+  in `internal/release/releasesmoke.go`:
+  `{"asdf", "go", "mise", "npm", "pip"}` — includes
+  `"asdf"` and the explicit-URL `"mise"` form; excludes
+  the bare `"mise-registry"` form.
 - `docs/guides/install.md`: "neither registry entry
   exists yet" note just below the channel-comparison
   table, and per-section notes warning that bare
