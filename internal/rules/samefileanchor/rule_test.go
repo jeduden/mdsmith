@@ -257,3 +257,55 @@ func TestRule_ATXHeadingLeadingSpaces(t *testing.T) {
 	assert.Empty(t, check(t, src))
 	assert.Empty(t, checkLines(t, src))
 }
+
+// TestRule_EmphasisInHeading verifies that text inside inline emphasis is included
+// in the slug so that #bold-section resolves for a heading like # **Bold** Section.
+func TestRule_EmphasisInHeading(t *testing.T) {
+	src := "# **Bold** Section\n\nSee [link](#bold-section).\n"
+	assert.Empty(t, check(t, src))
+	assert.Empty(t, checkLines(t, src))
+}
+
+// TestRule_CodeSpanInHeading verifies that text inside an inline code span is
+// included in the slug, matching GitHub's rendering of # Hello `world`.
+func TestRule_CodeSpanInHeading(t *testing.T) {
+	src := "# Hello `world`\n\nSee [link](#hello-world).\n"
+	assert.Empty(t, check(t, src))
+	assert.Empty(t, checkLines(t, src))
+}
+
+// TestRule_DuplicateHeadings verifies that duplicate headings produce
+// disambiguated anchors (#installation and #installation-1), matching GitHub.
+func TestRule_DuplicateHeadings(t *testing.T) {
+	src := "## Installation\n\n## Installation\n\n" +
+		"See [first](#installation) and [second](#installation-1).\n"
+	assert.Empty(t, check(t, src))
+	assert.Empty(t, checkLines(t, src))
+}
+
+// TestRule_DuplicateHeadingsUnresolved verifies that a link to #installation-2
+// when only two Installation headings exist is flagged as broken.
+func TestRule_DuplicateHeadingsUnresolved(t *testing.T) {
+	src := "## Installation\n\n## Installation\n\nSee [link](#installation-2).\n"
+	diags := check(t, src)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "#installation-2")
+}
+
+// TestRule_TabInHeading verifies that a tab character in a heading is converted
+// to a hyphen in the slug, matching GitHub's tab→space→hyphen algorithm.
+func TestRule_TabInHeading(t *testing.T) {
+	src := "# foo\tbar\n\nSee [link](#foo-bar).\n"
+	assert.Empty(t, check(t, src))
+	assert.Empty(t, checkLines(t, src))
+}
+
+// TestRule_InlineNodeLineOnLine1 verifies that a link with nested inline markup
+// (e.g. [**a**](#missing)) on line 1 reports a diagnostic at line 1, not at a
+// later sibling's line — the old ln>1 sentinel would discard valid line-1 results.
+func TestRule_InlineNodeLineOnLine1(t *testing.T) {
+	src := "[**a** text](#missing).\n"
+	diags := check(t, src)
+	require.Len(t, diags, 1)
+	assert.Equal(t, 1, diags[0].Line)
+}

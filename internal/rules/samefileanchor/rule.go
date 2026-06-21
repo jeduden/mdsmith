@@ -6,6 +6,7 @@ package samefileanchor
 
 import (
 	"bytes"
+	"strconv"
 	"unicode"
 	"unicode/utf8"
 
@@ -43,7 +44,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	// Quick pre-filter: if the source contains no '#' byte there are no
 	// same-file fragment links to check and no fragment-link anchors to
 	// worry about. The early exit avoids building the slug set entirely.
-	if !bytes.ContainsRune(f.Source, '#') {
+	if bytes.IndexByte(f.Source, '#') < 0 {
 		return nil
 	}
 
@@ -79,6 +80,9 @@ func (r *Rule) checkAST(f *lint.File, slugs map[string]struct{}) []lint.Diagnost
 		}
 		if _, found := slugs[string(fragment)]; !found {
 			line := inlineNodeLine(n, f, 0)
+			if line == 0 {
+				line = 1
+			}
 			diags = append(diags, r.diag(f, line, string(fragment)))
 		}
 		return ast.WalkContinue, nil
@@ -105,6 +109,9 @@ func (r *Rule) checkNilAST(f *lint.File, slugs map[string]struct{}) []lint.Diagn
 		}
 		if _, found := slugs[string(fragment)]; !found {
 			line := inlineNodeLine(n, f, base)
+			if line == 0 {
+				line = 1
+			}
 			diags = append(diags, r.diag(f, line, string(fragment)))
 		}
 	})
@@ -136,9 +143,10 @@ func collectSlugs(f *lint.File) map[string]struct{} {
 // Buffers are local so concurrent Check calls on different files don't race.
 func collectSlugsAST(f *lint.File) map[string]struct{} {
 	slugs := make(map[string]struct{}, 4)
+	counts := make(map[string]int, 4)
 	var textBuf [256]byte
 	var slugBuf [512]byte
-	collectSlugsNode(f.AST, f.Source, &slugs, textBuf[:0], slugBuf[:0])
+	collectSlugsNode(f.AST, f.Source, slugs, counts, textBuf[:0], slugBuf[:0])
 	if len(slugs) == 0 {
 		return nil
 	}
@@ -149,25 +157,55 @@ func collectSlugsAST(f *lint.File) map[string]struct{} {
 // Direct recursion (instead of ast.Walk) avoids the per-node closure allocation.
 // textBuf and slugBuf are caller-owned scratch slices threaded through to avoid
 // shared-state races when the engine runs Check on multiple files concurrently.
-func collectSlugsNode(n ast.Node, src []byte, slugs *map[string]struct{}, textBuf, slugBuf []byte) {
+// counts tracks how many times each bare slug has been seen so that duplicate
+// headings are disambiguated the same way GitHub does (intro, intro-1, intro-2).
+func collectSlugsNode(n ast.Node, src []byte, slugs map[string]struct{}, counts map[string]int, textBuf, slugBuf []byte) {
 	if n == nil {
 		return
 	}
 	if h, ok := n.(*ast.Heading); ok {
 		textBuf = textBuf[:0]
-		for c := h.FirstChild(); c != nil; c = c.NextSibling() {
-			if t, ok := c.(*ast.Text); ok {
-				textBuf = append(textBuf, src[t.Segment.Start:t.Segment.Stop]...)
-			}
-		}
+		textBuf = appendHeadingText(h, src, textBuf)
 		slug := appendSlug(slugBuf[:0], textBuf)
 		if len(slug) > 0 {
-			(*slugs)[string(slug)] = struct{}{}
+			insertDisambiguated(slugs, counts, string(slug))
 		}
 	}
 	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
-		collectSlugsNode(c, src, slugs, textBuf, slugBuf)
+		collectSlugsNode(c, src, slugs, counts, textBuf, slugBuf)
 	}
+}
+
+// appendHeadingText recursively appends the text of all *ast.Text descendants
+// of a heading node. Inline markup (Strong, Em, CodeSpan) carries its content
+// as *ast.Text children in the goldmark AST, so the recursion captures them all.
+func appendHeadingText(n ast.Node, src []byte, buf []byte) []byte {
+	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+		if t, ok := c.(*ast.Text); ok {
+			buf = append(buf, src[t.Segment.Start:t.Segment.Stop]...)
+		} else {
+			buf = appendHeadingText(c, src, buf)
+		}
+	}
+	return buf
+}
+
+// insertDisambiguated inserts slug into the set with GitHub-compatible
+// disambiguation: first occurrence is slug, subsequent ones are slug-1, slug-2, …
+func insertDisambiguated(slugs map[string]struct{}, counts map[string]int, slug string) {
+	anchor := slug
+	if _, exists := slugs[anchor]; exists {
+		n := counts[slug]
+		for {
+			n++
+			anchor = slug + "-" + strconv.Itoa(n)
+			if _, exists := slugs[anchor]; !exists {
+				break
+			}
+		}
+		counts[slug] = n
+	}
+	slugs[anchor] = struct{}{}
 }
 
 // collectSlugsLayer0 uses the Layer 0 block spans to collect heading slugs.
@@ -185,6 +223,7 @@ func collectSlugsLayer0(f *lint.File) map[string]struct{} {
 		return nil
 	}
 	slugs := make(map[string]struct{}, headingCount)
+	counts := make(map[string]int, headingCount)
 	// Local buffer — not shared, so concurrent Check calls on different
 	// files cannot race on this slice.
 	var slugBuf [512]byte
@@ -195,7 +234,7 @@ func collectSlugsLayer0(f *lint.File) map[string]struct{} {
 			text := atxHeadingText(line)
 			slug := appendSlug(slugBuf[:0], text)
 			if len(slug) > 0 {
-				slugs[string(slug)] = struct{}{}
+				insertDisambiguated(slugs, counts, string(slug))
 			}
 		case lint.BlockSetextHeading:
 			// The setext heading text is on the first line of the span;
@@ -204,7 +243,7 @@ func collectSlugsLayer0(f *lint.File) map[string]struct{} {
 				line := f.Lines[span.Start-1]
 				slug := appendSlug(slugBuf[:0], bytes.TrimSpace(line))
 				if len(slug) > 0 {
-					slugs[string(slug)] = struct{}{}
+					insertDisambiguated(slugs, counts, string(slug))
 				}
 			}
 		}
@@ -259,7 +298,7 @@ func appendSlug(dst, text []byte) []byte {
 		if b < utf8.RuneSelf {
 			// Single-byte rune (ASCII).
 			switch {
-			case b == ' ':
+			case b == ' ' || b == '\t':
 				dst = append(dst, '-')
 			case b == '-' || (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9'):
 				dst = append(dst, b)
@@ -287,18 +326,18 @@ func appendSlug(dst, text []byte) []byte {
 // inlineNodeLine returns the 1-based source line of an inline node by
 // scanning its children for a Text node with a segment offset. base is
 // added to segment offsets to recover document-absolute positions on the
-// nil-AST (inline-block) path; it is zero on the AST path. Falls back
-// to line 1 when no text child can be found.
+// nil-AST (inline-block) path; it is zero on the AST path. Returns 0
+// when no text child can be found (caller should default to 1).
 func inlineNodeLine(n ast.Node, f *lint.File, base int) int {
 	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
 		if t, ok := c.(*ast.Text); ok {
 			return f.LineOfOffset(base + t.Segment.Start)
 		}
-		if ln := inlineNodeLine(c, f, base); ln > 1 {
+		if ln := inlineNodeLine(c, f, base); ln > 0 {
 			return ln
 		}
 	}
-	return 1
+	return 0
 }
 
 // diag builds a diagnostic for an unresolved fragment.
