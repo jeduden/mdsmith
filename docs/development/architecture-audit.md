@@ -6,7 +6,7 @@ summary: >-
   solid-architecture skill (audit mode)
   appends here; blockers are also filed as
   plans.
-audit-from: 7793b974e35ec7260ae986e9e0dd48cf5df30574
+audit-from: e701b94b5640dfb4f5d07d1fc38d49e0dba23e75
 ---
 # Architecture audit log
 
@@ -132,3 +132,64 @@ Tax: [build→rules DIP](../../plan/2606141910_arch-fix-build-rules-dip.md),
 Lazy-parse series (plans 2606141901–2606141904).
 Tax: [new-pkg-docs](../../plan/2606162213_arch-fix-new-pkg-docs.md),
 [helper-tests](../../plan/2606162214_arch-fix-missing-helper-tests.md).
+
+## Audit 2026-06-21 (range: 7793b97..e701b94)
+
+Parity + Layer-0 parse-skip series; symlink
+containment; engine panic recovery; VS Code
+`kinds` and `rule-doc` commands; security
+hardening batch. 270 Go/TS sources outside
+fixtures.
+
+No blockers. New rule / convention packages
+follow the OCP barrel pattern correctly; no
+rule-to-rule imports added; no DIP violations
+in the new `internal/rules/listscan` helper
+(it follows the established `astutil` /
+`fencepos` pattern).
+
+### tax (2026-06-21)
+
+- `internal/engine/runner.go` (1 290 lines) —
+  SRP violation. Seven concerns in one file:
+  file dispatch, Layer-0 skip gate,
+  config-resolution cache, source-mode lint
+  path, front-matter parsing, config-target
+  rules, and logging. Go arch doc
+  §"Common violations to flag" names engine
+  as a dumping-ground risk. Fixed this cycle:
+  split into `runner_layer0.go`,
+  `runner_cache.go`, `runner_log.go` —
+  [plan/2606211907][2606211907].
+
+- `internal/lint/layer0.go` (1 203 lines) —
+  the full Layer-0 block scanner in one file:
+  types, scanner state machine, HTML-block
+  detection (types 1–7), fence handling, ATX
+  heading, indented code, paragraph. Maintenance
+  risk at this size. Fix: split along
+  block-type sub-parsers —
+  [plan/2606211908][2606211908].
+
+- `internal/lsp/server.go` (1 007 lines) —
+  plan 203 was green but the file has crept
+  back over 1 000 lines with the new `kinds`
+  and `rule-doc` capability wiring. Checklist
+  names it explicitly. Fix: apply the same
+  dispatch-group split plan 203 described —
+  [plan/2606211909][2606211909].
+
+### nice-to-have (2026-06-21)
+
+- `pkg/mdsmith/workspace.go` trivial methods
+  (`memFile.Close`, `memDir.Close`,
+  `memDirEntry.Name`, `memDirEntry.IsDir`,
+  `memFileInfo.Name`, `memFileInfo.Size`) lack
+  the one-line "no test by design" exemption
+  comment the audit policy requires. Tests doc
+  §"Exemptions" — [plan/2606211910][2606211910].
+
+[2606211907]: ../../plan/2606211907_arch-fix-runner-srp-split.md
+[2606211908]: ../../plan/2606211908_arch-fix-layer0-split.md
+[2606211909]: ../../plan/2606211909_arch-fix-lsp-server-split.md
+[2606211910]: ../../plan/2606211910_arch-fix-workspace-exemptions.md
