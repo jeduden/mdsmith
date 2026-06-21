@@ -233,8 +233,9 @@ func (s *scanner) tryBlockquote() bool {
 	// (a fence or a >=4-column indent); the overwhelmingly common
 	// prose-only block quote sets it false and skips the recursive scan and
 	// its allocations entirely.
-	var body [][]byte
-	var parentLine []int
+	remaining := len(s.lines) - s.i
+	body := make([][]byte, 0, remaining)
+	parentLine := make([]int, 0, remaining)
 	codeCapable := false
 	// openFence tracks whether a fenced code block opened by a marker line
 	// is still open. A fenced code block inside a quote must keep its `>`
