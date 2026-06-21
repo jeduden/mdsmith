@@ -53,7 +53,7 @@ The primary file stays under 800 lines.
   800 lines.
 - [x] `go build ./...` passes.
 - [x] `go test ./...` passes.
-- [ ] `go tool golangci-lint run` reports
+- [x] `go tool golangci-lint run` reports
   no new issues.
 - [x] No LSP behaviour changed — pure file
   reorganisation within the `lsp` package.
