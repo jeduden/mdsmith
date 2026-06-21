@@ -155,15 +155,19 @@ registries' bar.
 **Review 2026-06-21.** No in-repo actions remain. Specific
 verifications:
 
-- `release.yml` smoke-test matrix: the `asdf` job is
-  `required: true`; the `mise-registry` job is
-  `required: false` with a `::warning::` soft-skip.
-- `RequiredSmokeChannels` in
-  `internal/release/releasesmoke.go`: includes `"asdf"`,
-  excludes the bare `"mise-registry"` form.
+- `release.yml` smoke-test matrix: the `asdf` channel
+  install script exits non-zero on failure; the
+  `mise-registry` channel uses `skipped=true` and
+  `::warning::` then exits 0 (soft-skip, not gating).
+- [`internal/release/releasesmoke.go`](../internal/release/releasesmoke.go)
+  `RequiredSmokeChannels`: `{"asdf", "go", "mise",
+  "npm", "pip"}` — includes `"asdf"` and the explicit-URL
+  `"mise"` form; excludes the bare `"mise-registry"` form.
 - `docs/guides/install.md`: "neither registry entry
-  exists yet" note at the channel-comparison table, and
-  per-section notes for the bare `asdf` and `mise` forms.
+  exists yet" note just below the channel-comparison
+  table, and per-section notes warning that bare
+  `asdf plugin add mdsmith` and bare
+  `mise use mdsmith@VER` do not yet resolve.
 - The `asdf` and `mise` release-channel docs: their full
   frontmatter feeds `website/data/channels.yaml` via
   `mdsmith-release sync-channels`; both docs carry "needs
