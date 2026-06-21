@@ -521,6 +521,7 @@ row-expr: |
 | [MDS054](../../../internal/rules/MDS054-no-undefined-reference-labels/README.md) no-undefined-reference-labels   | MD052 ✅ reference-links-images                     | MD052 ✅ reference-links-images                 | —                          | undefined-references ✅                              | —               | —                           |
 | [MDS062](../../../internal/rules/MDS062-link-validity/README.md) link-validity                                   | MD011 ✅ no-reversed-links, MD042 ✅ no-empty-links | MD011 ✅ reversed-link, MD042 ✅ no-empty-links | —                          | —                                                    | —               | no-empty-links ✅           |
 | [MDS068](../../../internal/rules/MDS068-link-style/README.md) link-style                                         | MD054 ✅ link-image-style                           | MD054 ✅ link-image-style                       | —                          | —                                                    | —               | —                           |
+| [MDS070](../../../internal/rules/MDS070-same-file-anchor/README.md) same-file-anchor                             | MD051 ✅ link-fragments                             | MD051 ✅ link-fragments                         | —                          | —                                                    | —               | link-fragments ✅           |
 <?/catalog?>
 
 ## Tables

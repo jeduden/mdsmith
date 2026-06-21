@@ -42,7 +42,7 @@ Disabled defaults:
 | MDS066 commands-show-output           |
 | MDS069 unique-frontmatter             |
 
-**`mado-parity`** — enables 8 opt-in rules, disables 23 defaults:
+**`mado-parity`** — enables 8 opt-in rules, disables 24 defaults:
 
 Enabled opt-in rules:
 
@@ -84,6 +84,7 @@ Disabled defaults:
 | MDS054 no-undefined-reference-labels  |
 | MDS062 link-validity                  |
 | MDS069 unique-frontmatter             |
+| MDS070 same-file-anchor               |
 
 **`rumdl-parity`** — enables 12 opt-in rules, disables 13 defaults:
 

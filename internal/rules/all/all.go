@@ -75,6 +75,7 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/requiredmentions"            // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/requiredstructure"           // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/requiredtextpatterns"        // registers rule
+	_ "github.com/jeduden/mdsmith/internal/rules/samefileanchor"              // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/singleh1"                    // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/singletrailingnewline"       // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/tableformat"                 // registers rule
