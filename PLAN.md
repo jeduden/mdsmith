@@ -218,4 +218,8 @@ footer: |
 | 2606192027 | ✅     | sonnet | [Security hardening batch — 2026-06-19 full-repo audit (low/info)](plan/2606192027_security-hardening-batch-2026-06-19-full-repo.md)    |
 | 2606202100 | 🔳     | opus   | [Parity perf: make InlineBlocks a light inline scan, not a goldmark re-parse](plan/2606202100_parity-light-inline-scan.md)              |
 | 2606210840 | ✅     | sonnet | [Same-file anchor-resolution rule for true gomarklint parity](plan/2606210840_same-file-anchor-resolution-rule.md)                      |
+| 2606211907 | ✅     |        | [arch-fix: split internal/engine/runner.go](plan/2606211907_arch-fix-runner-srp-split.md)                                               |
+| 2606211908 | 🔲     |        | [arch-fix: split internal/lint/layer0.go](plan/2606211908_arch-fix-layer0-split.md)                                                     |
+| 2606211909 | 🔲     |        | [arch-fix: split internal/lsp/server.go](plan/2606211909_arch-fix-lsp-server-split.md)                                                  |
+| 2606211910 | 🔲     |        | [arch-fix: add trivial-accessor exemption comments in workspace.go](plan/2606211910_arch-fix-workspace-exemptions.md)                   |
 <?/catalog?>
