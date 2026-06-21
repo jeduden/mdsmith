@@ -367,34 +367,34 @@ func TestCodeSpanTrim_Empty(t *testing.T) {
 
 func TestScanLinkTitle_NewlineInTitle(t *testing.T) {
 	title, _, ok := scanLinkTitle([]byte("\"ti\ntle\""), 0)
-	assert.False(t, ok, "newline inside title must fail")
+	require.False(t, ok, "newline inside title must fail")
 	assert.Nil(t, title)
 }
 
 func TestScanLinkTitle_Unclosed(t *testing.T) {
 	title, _, ok := scanLinkTitle([]byte(`"unclosed`), 0)
-	assert.False(t, ok, "unterminated title must fail")
+	require.False(t, ok, "unterminated title must fail")
 	assert.Nil(t, title)
 }
 
 func TestScanLinkTitle_EmptyRun(t *testing.T) {
 	// i >= len(run) guard: scanLinkTitle called with offset past end of slice.
 	title, _, ok := scanLinkTitle([]byte("url"), 3)
-	assert.False(t, ok, "offset at end of run must fail")
+	require.False(t, ok, "offset at end of run must fail")
 	assert.Nil(t, title)
 }
 
 func TestScanLinkTitle_ParenWithInnerParen(t *testing.T) {
 	// Paren-form title with inner '(' must fail (goldmark FindClosure Nesting:false).
 	title, _, ok := scanLinkTitle([]byte("(outer (inner))"), 0)
-	assert.False(t, ok, "inner paren in paren-form title must fail")
+	require.False(t, ok, "inner paren in paren-form title must fail")
 	assert.Nil(t, title)
 }
 
 func TestScanLinkDestination_NewlineInAngleBracket(t *testing.T) {
 	// '\n' inside angle-bracket destination must fail.
 	dest, _, ok := scanLinkDestination([]byte("<has\nnewline>"), 0)
-	assert.False(t, ok)
+	require.False(t, ok)
 	assert.Nil(t, dest)
 }
 

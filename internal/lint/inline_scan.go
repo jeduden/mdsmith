@@ -86,12 +86,6 @@ func scanRunEligible(run []byte) bool {
 	return !bytes.ContainsAny(run, "*_\\&")
 }
 
-// appendTextSegment emits run[start:end) as a single Text node, the shape
-// goldmark produces for a stretch of plain text on one paragraph line.
-// atParagraphEnd marks the run's final text (ending at len(run)); goldmark
-// trims trailing spaces and tabs from the last line of a paragraph, so the
-// final segment's Stop is pulled back past any trailing whitespace. A segment
-// that trims to empty is dropped (goldmark emits no empty trailing Text).
 // mergeAppendText emits run[start:end) as a Text segment with goldmark's
 // MergeOrAppend semantics: when the parent's last child is a Text node whose
 // segment ends exactly at start (and is not a soft-break), the new bytes are
