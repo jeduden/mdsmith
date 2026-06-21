@@ -12,9 +12,10 @@ import (
 )
 
 // rebuildSession constructs a fresh per-workspace Session over an
-// OverlayWorkspace rooted at the effective project root, disposes the
-// previous one, and re-seeds the new overlay with every open buffer so
-// cross-file rules keep reading unsaved bytes across the rebuild. cfg is
+// OverlayWorkspace rooted at the effective project root and re-seeds the
+// new overlay with every open buffer so cross-file rules keep reading
+// unsaved bytes across the rebuild. The superseded session is NOT
+// disposed — see the note at the end of the function body. cfg is
 // already merged (and carries the include-extract projector / build
 // injection the host applied), so it is handed over with ConfigCompiled
 // and used as-is.
