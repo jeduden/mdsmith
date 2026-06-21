@@ -46,10 +46,6 @@ const (
 var (
 	htmlType1Open  = regexp.MustCompile(`(?i)^[ ]{0,3}<(script|pre|style|textarea)(\s|>|/>|$)`)
 	htmlType1Close = regexp.MustCompile(`(?i)</(script|pre|style|textarea)>`)
-	htmlType2Open  = regexp.MustCompile(`^[ ]{0,3}<!--`)
-	htmlType3Open  = regexp.MustCompile(`^[ ]{0,3}<\?`)
-	htmlType4Open  = regexp.MustCompile(`^[ ]{0,3}<![A-Za-z]`)
-	htmlType5Open  = regexp.MustCompile(`^[ ]{0,3}<!\[CDATA\[`)
 	htmlType6Open  = regexp.MustCompile(`^[ ]{0,3}</?([a-zA-Z][a-zA-Z0-9-]*)(\s|>|/>|$)`)
 	htmlType7Open  = regexp.MustCompile(`^[ ]{0,3}<(/[ ]*)?[a-zA-Z][a-zA-Z0-9-]*(\s[^>]*)?[ ]*/?>[ \t\r]*$`)
 )
@@ -64,20 +60,22 @@ func openHTMLBlock(line []byte, inParagraph bool) htmlBlockType {
 	// first non-space byte (within the first 4 columns) is not `<` can
 	// never open one. Gate the regexp battery on that cheap byte check so
 	// ordinary prose lines — the overwhelming common case in the Layer 0
-	// hot path — skip up to eight RE2 executions.
-	if !firstNonSpaceIsAngle(line) {
+	// hot path — skip all RE2 executions.
+	indent := leadingSpaces(line)
+	if indent > 3 || indent >= len(line) || line[indent] != '<' {
 		return htmlNone
 	}
+	rest := line[indent:]
 	switch {
 	case htmlType1Open.Match(line):
 		return htmlType1
-	case htmlType2Open.Match(line):
+	case bytes.HasPrefix(rest, []byte("<!--")):
 		return htmlType2
-	case htmlType3Open.Match(line):
+	case bytes.HasPrefix(rest, []byte("<?")):
 		return htmlType3
-	case htmlType4Open.Match(line):
+	case len(rest) >= 3 && rest[1] == '!' && (rest[2] >= 'A' && rest[2] <= 'Z' || rest[2] >= 'a' && rest[2] <= 'z'):
 		return htmlType4
-	case htmlType5Open.Match(line):
+	case bytes.HasPrefix(rest, []byte("<![CDATA[")):
 		return htmlType5
 	}
 	if m := htmlType6Open.FindSubmatch(line); m != nil && tagInAllowedSet(m[1]) {
@@ -136,14 +134,6 @@ func type7TagIsRawText(line []byte) bool {
 	return false
 }
 
-// firstNonSpaceIsAngle reports whether line's first non-space byte is `<`
-// and sits within the 3-space indent an HTML block opener allows. It is
-// the cheap prefix gate for openHTMLBlock.
-func firstNonSpaceIsAngle(line []byte) bool {
-	indent := leadingSpaces(line)
-	return indent <= 3 && indent < len(line) && line[indent] == '<'
-}
-
 // type7TagBytes returns the tag-name bytes of a type-7 HTML opener (the
 // run of tag bytes after the `<` and any `/` close-tag slash), so the
 // caller can fold and compare them without allocating.
@@ -183,7 +173,7 @@ func htmlBlockCloses(line []byte, t htmlBlockType) bool {
 	case htmlType3:
 		return bytes.Contains(line, htmlClose3)
 	case htmlType4:
-		return bytes.Contains(line, htmlClose4)
+		return bytes.IndexByte(line, '>') >= 0
 	case htmlType5:
 		return bytes.Contains(line, htmlClose5)
 	}
@@ -193,7 +183,6 @@ func htmlBlockCloses(line []byte, t htmlBlockType) bool {
 var (
 	htmlClose2 = []byte("-->")
 	htmlClose3 = []byte("?>")
-	htmlClose4 = []byte(">")
 	htmlClose5 = []byte("]]>")
 )
 
