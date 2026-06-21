@@ -191,8 +191,7 @@ func appendHeadingText(n ast.Node, src []byte, buf []byte) []byte {
 }
 
 // appendHeadingTextRaw strips Markdown link/image destination syntax from raw
-// heading bytes so the Layer0 slug matches the AST slug. Link text and image
-// alt text are kept; link destinations and reference labels are discarded.
+// heading bytes so the Layer0 slug matches the AST slug.
 func appendHeadingTextRaw(dst, text []byte) []byte {
 	i := 0
 	for i < len(text) {
@@ -217,31 +216,46 @@ func appendHeadingTextRaw(dst, text []byte) []byte {
 		if i < len(text) {
 			i++ // skip ']'
 		}
-		// Skip optional inline destination '(…)', tracking depth for parens.
-		if i < len(text) && text[i] == '(' {
-			depth := 1
-			i++ // skip '('
-			for i < len(text) && depth > 0 {
-				if text[i] == '(' {
-					depth++
-				} else if text[i] == ')' {
-					depth--
-				}
-				i++
-			}
-		}
-		// Skip optional reference label '[…]'.
-		if i < len(text) && text[i] == '[' {
-			i++ // skip '['
-			for i < len(text) && text[i] != ']' {
-				i++
-			}
-			if i < len(text) {
-				i++ // skip ']'
-			}
-		}
+		i = skipLinkDest(text, i)
+		i = skipRefLabel(text, i)
 	}
 	return dst
+}
+
+// skipLinkDest advances i past an inline link destination '(…)'.
+// Parentheses inside the destination are depth-tracked so that URLs containing
+// literal parentheses (e.g. Wikipedia disambiguation links) are consumed correctly.
+func skipLinkDest(text []byte, i int) int {
+	if i >= len(text) || text[i] != '(' {
+		return i
+	}
+	depth := 1
+	i++ // skip '('
+	for i < len(text) && depth > 0 {
+		switch text[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+		}
+		i++
+	}
+	return i
+}
+
+// skipRefLabel advances i past a reference label '[…]'.
+func skipRefLabel(text []byte, i int) int {
+	if i >= len(text) || text[i] != '[' {
+		return i
+	}
+	i++ // skip '['
+	for i < len(text) && text[i] != ']' {
+		i++
+	}
+	if i < len(text) {
+		i++ // skip ']'
+	}
+	return i
 }
 
 // insertDisambiguated inserts slug into the set with GitHub-compatible

@@ -331,3 +331,19 @@ func TestRule_ImageInHeading(t *testing.T) {
 	assert.Empty(t, check(t, src))
 	assert.Empty(t, checkLines(t, src))
 }
+
+// TestRule_RefLinkInHeading verifies that a heading with a reference-style link
+// produces a slug from only the link text; the reference label is discarded.
+func TestRule_RefLinkInHeading(t *testing.T) {
+	src := "# [Section][ref]\n\n[ref]: /page\n\nSee [link](#section).\n"
+	assert.Empty(t, check(t, src))
+	assert.Empty(t, checkLines(t, src))
+}
+
+// TestRule_LinkInHeadingParenURL verifies that a URL containing literal
+// parentheses is consumed fully so that URL letters do not leak into the slug.
+func TestRule_LinkInHeadingParenURL(t *testing.T) {
+	src := "# [Section](url(inner))\n\nSee [link](#section).\n"
+	assert.Empty(t, check(t, src))
+	assert.Empty(t, checkLines(t, src))
+}
