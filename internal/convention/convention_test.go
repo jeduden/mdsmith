@@ -199,54 +199,72 @@ func TestNamesSorted(t *testing.T) {
 	names := Names()
 	assert.True(t, sort.StringsAreSorted(names),
 		"Names should return a sorted slice; got %v", names)
-	assert.ElementsMatch(t, []string{"github", "no-llm-tells", "obsidian", "parity", "plain", "portable"}, names)
+	assert.ElementsMatch(t, []string{
+		"github", "gomarklint-parity", "mado-parity", "markdownlint-parity",
+		"no-llm-tells", "obsidian", "plain", "portable", "rumdl-parity",
+	}, names)
 }
 
-// parityDisabledRules is the canonical set of rules the built-in
-// `parity` convention turns off so mdsmith's work class matches the
-// markdownlint-compatible tools (mado, rumdl). It mirrors the 24
-// rules historically listed in
-// docs/research/benchmarks/bench-parity.mdsmith.yml.
-var parityDisabledRules = []string{
-	"catalog",
-	"include",
-	"required-structure",
-	"max-file-length",
-	"paragraph-readability",
-	"paragraph-structure",
-	"table-readability",
-	"cross-file-reference-integrity",
-	"token-budget",
-	"conciseness-scoring",
-	"empty-section-body",
-	"directory-structure",
-	"toc-directive",
-	"max-section-length",
-	"duplicated-content",
-	"toc",
-	"build",
-	"recipe-safety",
-	"no-reference-style",
-	"git-hook-sync",
-	"forbidden-paragraph-starts",
-	"forbidden-text",
-	"required-text-patterns",
-	"required-mentions",
+// parityFamily lists the four per-linter parity conventions. Each
+// configures mdsmith to run the rule set its peer linter runs by
+// default; internal/integration verifies each against the peer
+// mappings in the rule README front matter.
+var parityFamily = []string{
+	"gomarklint-parity",
+	"mado-parity",
+	"rumdl-parity",
+	"markdownlint-parity",
 }
 
-func TestParityConventionDisablesMarkdownlintExtras(t *testing.T) {
-	c, err := Lookup("parity", nil)
-	require.NoError(t, err)
-	require.Equal(t, "parity", c.Name)
+// gomarklintParityRules pins gomarklint-parity exactly: the opt-in
+// rules it enables and the mdsmith defaults it disables. The full
+// family is cross-checked against the coverage matrix in
+// internal/integration; this guards the convention-package contract
+// (presence + enabled state) without that dependency.
+var gomarklintParityEnabled = []string{
+	"emphasis-style", "list-marker-style", "single-h1",
+}
 
-	// Every parity rule must be present and explicitly disabled.
-	for _, name := range parityDisabledRules {
-		p, ok := c.Rules[name]
-		assert.True(t, ok, "parity must mention rule %q", name)
-		assert.False(t, p.Enabled, "parity must disable rule %q", name)
+var gomarklintParityDisabled = []string{
+	"line-length", "first-line-heading", "no-trailing-spaces", "list-indent",
+	"catalog", "required-structure", "include", "max-file-length",
+	"paragraph-readability", "table-format", "table-readability", "token-budget",
+	"empty-section-body", "toc", "build", "recipe-safety",
+	"no-unused-link-definitions", "no-undefined-reference-labels",
+	"blockquote-whitespace", "list-marker-space", "atx-heading-whitespace",
+	"code-block-style", "commands-show-output", "unique-frontmatter",
+}
+
+func TestParityFamilyResolves(t *testing.T) {
+	for _, name := range parityFamily {
+		c, err := Lookup(name, nil)
+		require.NoError(t, err, "convention %q must resolve", name)
+		assert.Equal(t, name, c.Name)
+		assert.Equal(t, FlavorGFM, c.Flavor, "%s targets GFM", name)
+		assert.NotEmpty(t, c.Rules, "%s must set rule presets", name)
 	}
-	// And it must disable exactly that set — no more, no fewer — so the
-	// convention stays the single source of truth for the parity class.
-	assert.Len(t, c.Rules, len(parityDisabledRules),
-		"parity rule count drifted from parityDisabledRules")
+}
+
+func TestOldParityNameRemoved(t *testing.T) {
+	_, err := Lookup("parity", nil)
+	require.Error(t, err, "the generic parity convention was removed")
+}
+
+func TestGomarklintParityRuleSet(t *testing.T) {
+	c, err := Lookup("gomarklint-parity", nil)
+	require.NoError(t, err)
+
+	for _, name := range gomarklintParityEnabled {
+		p, ok := c.Rules[name]
+		assert.True(t, ok, "gomarklint-parity must mention rule %q", name)
+		assert.True(t, p.Enabled, "gomarklint-parity must enable rule %q", name)
+	}
+	for _, name := range gomarklintParityDisabled {
+		p, ok := c.Rules[name]
+		assert.True(t, ok, "gomarklint-parity must mention rule %q", name)
+		assert.False(t, p.Enabled, "gomarklint-parity must disable rule %q", name)
+	}
+	// Exactly the enabled + disabled set — no more, no fewer.
+	assert.Len(t, c.Rules, len(gomarklintParityEnabled)+len(gomarklintParityDisabled),
+		"gomarklint-parity rule count drifted")
 }

@@ -12,13 +12,20 @@ import (
 	"github.com/jeduden/mdsmith/internal/rule"
 )
 
-// parityConfig resolves the built-in `parity` convention the way the CLI
-// does: parse a `.mdsmith.yml` selecting it, then merge it onto the defaults
-// so the convention preset disables the mdsmith-only rules while the
-// markdownlint-parity rules stay enabled.
+// parityConfig resolves the built-in `mado-parity` convention the way
+// the CLI does: parse a `.mdsmith.yml` selecting it, then merge it onto
+// the defaults so the convention preset disables the rules mado does
+// not run while the rest stay enabled.
+//
+// mado-parity is the representative parity convention for the
+// parse-skip guarantee: of the four <linter>-parity sets it is the
+// only one whose entire enabled rule set is parse-skip-safe. The
+// others enable cross-file-reference-integrity (MDS027) — and, for
+// rumdl/markdownlint, required-structure (MDS020) — which still need
+// the goldmark AST, so they do not skip the parse.
 func parityConfig(t *testing.T) *config.Config {
 	t.Helper()
-	loaded, err := config.ParseBytes([]byte("convention: parity\n"))
+	loaded, err := config.ParseBytes([]byte("convention: mado-parity\n"))
 	require.NoError(t, err)
 	return config.Merge(config.Defaults(), loaded)
 }

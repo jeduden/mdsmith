@@ -225,63 +225,173 @@ var conventions = map[string]Convention{
 			"descriptive-link-text": {Enabled: true},
 		},
 	},
-	// parity restricts mdsmith to the markdownlint-compatible rule
-	// class — the structural style rules the Rust markdownlint ports
-	// (mado, rumdl) also run — by turning off every mdsmith-only rule:
-	// the cross-file link graph, the readability / structure / token
-	// budgets, the generated-section directives, the project-layout and
-	// size policies, and the repo-specific content policies. MDS020 and
-	// MDS027 are disabled too: they carry markdownlint analogs (MD043,
-	// MD051) but cover them at higher fidelity, so parity drops them
-	// rather than claim a like-for-like match.
+	// The <linter>-parity family configures mdsmith to run the same
+	// rule set a specific peer Markdown linter runs by default, so a
+	// benchmark of mdsmith against that peer measures the same work,
+	// not a different rule count. There is one convention per peer:
+	// gomarklint-parity, mado-parity, rumdl-parity, markdownlint-parity.
 	//
-	// This is the source of truth for the parity class:
-	// docs/research/benchmarks/bench-parity.mdsmith.yml selects it, and
-	// the disabled-rule table in the conventions reference and the
-	// benchmark page is generated from it
-	// (`mdsmith-release sync-parity-rules`). A rule added here flows to
-	// all three with no hand edit.
+	// Each set is derived from the per-rule peer mappings in the rule
+	// README front matter (the `gomarklint:`/`mado:`/`rumdl:`/
+	// `markdownlint:` blocks, surfaced in Go by rules.ListRules). A
+	// convention ENABLES the mdsmith opt-in rules the peer runs by
+	// default, and DISABLES the mdsmith default-on rules the peer does
+	// not — leaving mdsmith's effective rule set equal to the peer's
+	// default-on set. internal/integration verifies each convention
+	// against that front matter, so the lists below cannot drift from
+	// the coverage matrix.
 	//
-	// Flavor is gfm — mado and rumdl target GFM — but parity does not
+	// docs/research/benchmarks/bench-<linter>-parity.mdsmith.yml selects
+	// each one, and the per-convention rule tables in the conventions
+	// reference and the benchmark page are generated from these maps
+	// (`mdsmith-release sync-parity-rules`).
+	//
+	// Flavor is gfm — the peers target GFM — but the conventions do not
 	// enable markdown-flavor (MDS034 stays opt-in), so the flavor only
 	// matters if the user also sets rules.markdown-flavor.flavor, which
 	// must then agree.
-	"parity": {
-		Name:   "parity",
+	//
+	// Note: gomarklint-parity keeps cross-file-reference-integrity
+	// (MDS027) enabled because the coverage matrix maps gomarklint's
+	// single-file `link-fragments` check onto it. mdsmith's MDS027 also
+	// walks the workspace, so this is the one place the parity set can
+	// over-represent gomarklint's work; revisit if that mapping is
+	// marked partial.
+	"gomarklint-parity": {
+		Name:   "gomarklint-parity",
 		Flavor: FlavorGFM,
 		Rules: map[string]RulePreset{
-			// Cross-file graph + workspace walk (no markdownlint analog).
+			// Enable the 3 mdsmith opt-in rules gomarklint runs by default.
+			"emphasis-style":    {Enabled: true},
+			"list-marker-style": {Enabled: true},
+			"single-h1":         {Enabled: true},
+			// Disable the 24 mdsmith defaults gomarklint does not run.
+			"line-length":                   {Enabled: false},
+			"first-line-heading":            {Enabled: false},
+			"no-trailing-spaces":            {Enabled: false},
+			"list-indent":                   {Enabled: false},
+			"catalog":                       {Enabled: false},
+			"required-structure":            {Enabled: false},
+			"include":                       {Enabled: false},
+			"max-file-length":               {Enabled: false},
+			"paragraph-readability":         {Enabled: false},
+			"table-format":                  {Enabled: false},
+			"table-readability":             {Enabled: false},
+			"token-budget":                  {Enabled: false},
+			"empty-section-body":            {Enabled: false},
+			"toc":                           {Enabled: false},
+			"build":                         {Enabled: false},
+			"recipe-safety":                 {Enabled: false},
+			"no-unused-link-definitions":    {Enabled: false},
+			"no-undefined-reference-labels": {Enabled: false},
+			"blockquote-whitespace":         {Enabled: false},
+			"list-marker-space":             {Enabled: false},
+			"atx-heading-whitespace":        {Enabled: false},
+			"code-block-style":              {Enabled: false},
+			"commands-show-output":          {Enabled: false},
+			"unique-frontmatter":            {Enabled: false},
+		},
+	},
+	"mado-parity": {
+		Name:   "mado-parity",
+		Flavor: FlavorGFM,
+		Rules: map[string]RulePreset{
+			// Enable the 8 mdsmith opt-in rules mado runs by default.
+			"no-inline-html":         {Enabled: true},
+			"horizontal-rule-style":  {Enabled: true},
+			"list-marker-style":      {Enabled: true},
+			"ordered-list-numbering": {Enabled: true},
+			"ambiguous-emphasis":     {Enabled: true},
+			"no-space-in-link-text":  {Enabled: true},
+			"single-h1":              {Enabled: true},
+			"no-space-in-code-spans": {Enabled: true},
+			// Disable the 22 mdsmith defaults mado does not run.
+			"heading-style":                  {Enabled: false},
+			"fenced-code-style":              {Enabled: false},
+			"blank-line-around-lists":        {Enabled: false},
+			"catalog":                        {Enabled: false},
+			"required-structure":             {Enabled: false},
+			"include":                        {Enabled: false},
+			"max-file-length":                {Enabled: false},
+			"paragraph-readability":          {Enabled: false},
+			"table-format":                   {Enabled: false},
+			"table-readability":              {Enabled: false},
 			"cross-file-reference-integrity": {Enabled: false},
-			// Readability / structure / budget metrics (no analog).
+			"token-budget":                   {Enabled: false},
+			"empty-section-body":             {Enabled: false},
+			"unclosed-code-block":            {Enabled: false},
+			"no-empty-alt-text":              {Enabled: false},
+			"toc":                            {Enabled: false},
+			"build":                          {Enabled: false},
+			"recipe-safety":                  {Enabled: false},
+			"no-unused-link-definitions":     {Enabled: false},
+			"no-undefined-reference-labels":  {Enabled: false},
+			"link-validity":                  {Enabled: false},
+			"unique-frontmatter":             {Enabled: false},
+		},
+	},
+	"rumdl-parity": {
+		Name:   "rumdl-parity",
+		Flavor: FlavorGFM,
+		Rules: map[string]RulePreset{
+			// Enable the 12 mdsmith opt-in rules rumdl runs by default.
+			"no-inline-html":         {Enabled: true},
+			"emphasis-style":         {Enabled: true},
+			"horizontal-rule-style":  {Enabled: true},
+			"list-marker-style":      {Enabled: true},
+			"ordered-list-numbering": {Enabled: true},
+			"ambiguous-emphasis":     {Enabled: true},
+			"no-space-in-link-text":  {Enabled: true},
+			"proper-names":           {Enabled: true},
+			"single-h1":              {Enabled: true},
+			"no-space-in-code-spans": {Enabled: true},
+			"descriptive-link-text":  {Enabled: true},
+			"link-style":             {Enabled: true},
+			// Disable the 12 mdsmith defaults rumdl does not run.
+			"catalog":               {Enabled: false},
+			"include":               {Enabled: false},
+			"max-file-length":       {Enabled: false},
 			"paragraph-readability": {Enabled: false},
-			"paragraph-structure":   {Enabled: false},
+			"table-readability":     {Enabled: false},
 			"token-budget":          {Enabled: false},
-			"conciseness-scoring":   {Enabled: false},
-			"duplicated-content":    {Enabled: false},
-			// Generated-section directives (no analog).
-			"catalog":            {Enabled: false},
-			"include":            {Enabled: false},
-			"required-structure": {Enabled: false},
-			"build":              {Enabled: false},
-			"recipe-safety":      {Enabled: false},
-			"toc":                {Enabled: false},
-			"toc-directive":      {Enabled: false},
-			"git-hook-sync":      {Enabled: false},
-			// Project-layout / size policies (no analog).
-			"directory-structure": {Enabled: false},
-			"max-file-length":     {Enabled: false},
-			"max-section-length":  {Enabled: false},
-			"empty-section-body":  {Enabled: false},
-			// Repo-specific content policies (no analog).
-			"forbidden-paragraph-starts": {Enabled: false},
-			"forbidden-text":             {Enabled: false},
-			"required-text-patterns":     {Enabled: false},
-			"required-mentions":          {Enabled: false},
-			// mdsmith-only style rule with no markdownlint counterpart.
-			"no-reference-style": {Enabled: false},
-			// Table readability heuristic (markdownlint's table rules
-			// differ in kind; excluded to avoid claiming false parity).
-			"table-readability": {Enabled: false},
+			"empty-section-body":    {Enabled: false},
+			"unclosed-code-block":   {Enabled: false},
+			"toc":                   {Enabled: false},
+			"build":                 {Enabled: false},
+			"recipe-safety":         {Enabled: false},
+			"unique-frontmatter":    {Enabled: false},
+		},
+	},
+	"markdownlint-parity": {
+		Name:   "markdownlint-parity",
+		Flavor: FlavorGFM,
+		Rules: map[string]RulePreset{
+			// Enable the 12 mdsmith opt-in rules markdownlint runs by default.
+			"no-inline-html":         {Enabled: true},
+			"emphasis-style":         {Enabled: true},
+			"horizontal-rule-style":  {Enabled: true},
+			"list-marker-style":      {Enabled: true},
+			"ordered-list-numbering": {Enabled: true},
+			"ambiguous-emphasis":     {Enabled: true},
+			"no-space-in-link-text":  {Enabled: true},
+			"proper-names":           {Enabled: true},
+			"single-h1":              {Enabled: true},
+			"no-space-in-code-spans": {Enabled: true},
+			"descriptive-link-text":  {Enabled: true},
+			"link-style":             {Enabled: true},
+			// Disable the 12 mdsmith defaults markdownlint does not run.
+			"catalog":               {Enabled: false},
+			"include":               {Enabled: false},
+			"max-file-length":       {Enabled: false},
+			"paragraph-readability": {Enabled: false},
+			"table-readability":     {Enabled: false},
+			"token-budget":          {Enabled: false},
+			"empty-section-body":    {Enabled: false},
+			"unclosed-code-block":   {Enabled: false},
+			"toc":                   {Enabled: false},
+			"build":                 {Enabled: false},
+			"recipe-safety":         {Enabled: false},
+			"unique-frontmatter":    {Enabled: false},
 		},
 	},
 }
