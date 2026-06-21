@@ -159,10 +159,8 @@ func collectSlugsAST(f *lint.File) map[string]struct{} {
 // shared-state races when the engine runs Check on multiple files concurrently.
 // counts tracks how many times each bare slug has been seen so that duplicate
 // headings are disambiguated the same way GitHub does (intro, intro-1, intro-2).
-func collectSlugsNode(n ast.Node, src []byte, slugs map[string]struct{}, counts map[string]int, textBuf, slugBuf []byte) {
-	if n == nil {
-		return
-	}
+func collectSlugsNode(n ast.Node, src []byte, slugs map[string]struct{},
+	counts map[string]int, textBuf, slugBuf []byte) {
 	if h, ok := n.(*ast.Heading); ok {
 		textBuf = textBuf[:0]
 		textBuf = appendHeadingText(h, src, textBuf)

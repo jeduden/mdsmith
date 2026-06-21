@@ -248,6 +248,11 @@ func TestRule_ImageNoAltFallbackLine(t *testing.T) {
 	require.Len(t, diags, 1)
 	assert.Equal(t, "MDS070", diags[0].RuleID)
 	assert.Equal(t, 1, diags[0].Line)
+
+	diags2 := checkLines(t, src)
+	require.Len(t, diags2, 1)
+	assert.Equal(t, "MDS070", diags2[0].RuleID)
+	assert.Equal(t, 1, diags2[0].Line)
 }
 
 // TestRule_ATXHeadingLeadingSpaces verifies that ATX headings with up to 3
