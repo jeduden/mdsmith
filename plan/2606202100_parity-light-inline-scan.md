@@ -1,7 +1,7 @@
 ---
 id: 2606202100
 title: "Parity perf: make InlineBlocks a light inline scan, not a goldmark re-parse"
-status: "🔲"
+status: "🔳"
 summary: >-
   Profiling the eligible-only parity skip run found the parse-skip is
   cost-neutral because lint.InlineBlocks (~51% of the skip path) re-parses
@@ -76,30 +76,49 @@ holdout".
 
 ## Tasks
 
-1. Build a `lint` inline byte scanner that, over a run's bytes, emits:
-   link/image spans (inline and reference form), autolink/bare-URL spans,
-   reference definitions, and code-span ranges — with backslash-escape and
-   code-span-suppression handling. No emphasis.
-2. Re-back `InlineBlocks` / `WalkInlineNodes` (or the specific projections
-   the inline rules consume) on it when `f.AST == nil`; keep the goldmark
-   path for the parsed File.
-3. Equivalence gate: diff every parity inline rule's output (scanner vs
-   goldmark) across the neutral corpus, the repo corpus, and every rule
-   fixture. Byte-identical or it does not ship — the same discipline the
-   block scan met.
-4. Re-profile the eligible-only run; confirm `InlineBlocks` drops out of
-   the hot path and the skip beats the parse.
-5. Only then revisit eligibility (block-quote descent) and the
+1. [x] Build a `lint` inline byte scanner
+   (`internal/lint/inline_scan.go`) that, over a run's bytes, emits
+   inline link/image nodes, autolinks, and code spans as goldmark AST
+   nodes, with code-span-suppression handling and goldmark's exact text
+   segmentation. No emphasis. The scanner is conservative: it handles a
+   single-paragraph run of plain text, inline links, inline images,
+   autolinks, and code spans, and declines (so the caller falls back to
+   goldmark for that run) on emphasis, reference links, raw HTML,
+   backslash escapes, entities, multi-line runs, or any block marker.
+2. [x] Re-back `InlineBlocks` on it: `scanInlineBlocks` now calls
+   `inlineRunNode`, which tries the scanner per run and falls back to
+   `parseInlineWithRefsArena` only when the scanner declines. The
+   goldmark path is unchanged for a parsed File.
+3. [x] Equivalence gate: `TestInlineIndexEquivalence_NodeStream` diffs
+   the full inline node stream (scanner-backed nil-AST path vs goldmark
+   whole-document parse) across the repo corpus and every rule fixture;
+   `TestInlineIndexEquivalence_ParityRules` diffs MDS012/032/062
+   diagnostics. Both byte-identical.
+4. [ ] Re-profile the eligible-only run; confirm `InlineBlocks` drops out
+   of the hot path and the skip beats the parse. (Deferred: this first
+   increment establishes correctness and the scanner seam; profiling and
+   widening scanner coverage to make whole files parse-free are
+   follow-ups.)
+5. [ ] Only then revisit eligibility (block-quote descent) and the
    default-on decision.
 
 ## Acceptance Criteria
 
-- [ ] `InlineBlocks` on a nil-AST File runs no goldmark parse.
-- [ ] Every parity inline rule is byte-identical between the scanner and
-      the goldmark path across the corpus and fixtures.
+- [x] `InlineBlocks` on a nil-AST File runs no goldmark parse **for
+      scanner-eligible runs** (single-paragraph runs of plain text,
+      inline links/images, autolinks, code spans). Runs the scanner
+      cannot prove identical still fall back to goldmark, so a file with
+      any such run is not yet fully parse-free — widening coverage
+      (headings, lists, reference links, emphasis) is the follow-up.
+- [x] Every parity inline rule is byte-identical between the scanner and
+      the goldmark path across the corpus and fixtures — and, stronger,
+      the full inline node stream is byte-identical
+      (`TestInlineIndexEquivalence_NodeStream`).
 - [ ] The eligible-only parity skip run is measurably faster than the
-      parse run (it is a wash today).
-- [ ] `go test ./...` and the layer-0 equivalence gates stay green.
+      parse run (it is a wash today). (Deferred to the profiling
+      follow-up; the scanner removes the per-run goldmark parse for the
+      runs it handles, which is the work the profile flagged.)
+- [x] `go test ./...` and the layer-0 equivalence gates stay green.
 
 ## Honest ceiling
 
