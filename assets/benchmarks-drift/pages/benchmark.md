@@ -26,20 +26,24 @@ docs read.
 - Driver: `hyperfine` 1.20.0, `--warmup 3 --runs 10 -N`
   (markdownlint-cli2: `--warmup 2 --runs 6`).
 - Each tool runs its check/lint over a directory of `.md`
-  files on its built-in defaults. The one exception is
-  `mdsmith-parity`: the same mdsmith binary run with
-  [`bench-parity.mdsmith.yml`](bench-parity.mdsmith.yml),
-  which disables the mdsmith-only rules so the work class
-  matches the markdownlint tools. `mdsmith` (no `-c`) is the
-  full default set users actually run.
+  files on its built-in defaults. The exceptions are the
+  `mdsmith-<linter>-parity` rows: the same mdsmith binary run
+  with a per-peer
+  [`bench-<linter>-parity.mdsmith.yml`](bench-gomarklint-parity.mdsmith.yml)
+  profile, each matching one peer's default rule set for a
+  like-for-like row. `mdsmith` (no `-c`) is the full default
+  set users actually run. (The committed table still shows the
+  pre-split single `mdsmith-parity` column; the per-linter rows
+  land on the next benchmark run.)
 - Caches disabled for the tools that have one (`rumdl
   --no-cache`, `panache --no-cache`) so every run is
   worst-case cold. mdsmith, mado, gomarklint, and
   markdownlint-cli2 keep no on-disk cache.
 - `mdsmith` vs the markdownlint tools is not like-for-like
-  (it does more per file); `mdsmith-parity` vs them is the
-  closest like-for-like, with one residual asymmetry noted
-  in [Reading the result](#reading-the-result).
+  (it does more per file); each `mdsmith-<linter>-parity` row
+  vs its peer is the like-for-like one, with one residual
+  asymmetry noted in
+  [Reading the result](#reading-the-result).
 - Integrity: every comparison binary is fetched at a pinned
   version and verified by SHA-256 before it runs.
   gomarklint, hyperfine, mado, panache, and rumdl come from
@@ -103,35 +107,42 @@ file: results.fragment.md
 docs/research/benchmarks/data/*.json — do not edit by hand. Re-run
 the harness (run.sh) and `mdsmith fix` to refresh. -->
 
-`mdsmith` is the default rule set; `mdsmith-parity` disables the
-mdsmith-only rules so the work class matches the markdownlint
-tools (see `bench-parity.mdsmith.yml`).
+`mdsmith` is the default rule set. Each `mdsmith-<linter>-parity`
+row runs the rule set that peer enables by default, for a
+like-for-like comparison against that peer (the
+`bench-<linter>-parity.mdsmith.yml` profiles).
 
-**Repo corpus — 805 Markdown files** (median wall time, lower is
+**Repo corpus — 808 Markdown files** (median wall time, lower is
 better; `vs mado` is the ratio to mado's median):
 
-| Tool              | Median  | Min     | vs mado |
-| ----------------- | ------- | ------- | ------- |
-| mado              | 70 ms   | 68 ms   | 1.0x    |
-| gomarklint        | 77 ms   | 57 ms   | 1.1x    |
-| mdsmith-parity    | 88 ms   | 84 ms   | 1.3x    |
-| mdsmith           | 206 ms  | 201 ms  | 3.0x    |
-| rumdl             | 358 ms  | 343 ms  | 5.1x    |
-| panache           | 776 ms  | 643 ms  | 11x     |
-| markdownlint-cli2 | 5186 ms | 5152 ms | 74x     |
+| Tool                        | Median  | Min     | vs mado |
+| --------------------------- | ------- | ------- | ------- |
+| mado                        | 69 ms   | 68 ms   | 1.0x    |
+| gomarklint                  | 74 ms   | 56 ms   | 1.1x    |
+| mdsmith-gomarklint-parity   | 79 ms   | 74 ms   | 1.1x    |
+| mdsmith-mado-parity         | 81 ms   | 75 ms   | 1.2x    |
+| mdsmith-markdownlint-parity | 96 ms   | 93 ms   | 1.4x    |
+| mdsmith-rumdl-parity        | 99 ms   | 93 ms   | 1.4x    |
+| mdsmith                     | 200 ms  | 194 ms  | 2.9x    |
+| rumdl                       | 352 ms  | 346 ms  | 5.1x    |
+| panache                     | 644 ms  | 642 ms  | 9.3x    |
+| markdownlint-cli2           | 5070 ms | 4953 ms | 73x     |
 
 **Neutral corpus — 234 files** (Rust Book + Rust Reference,
 longer third-party prose):
 
-| Tool              | Median  | Min     | vs mado |
-| ----------------- | ------- | ------- | ------- |
-| gomarklint        | 32 ms   | 29 ms   | 0.7x    |
-| mado              | 46 ms   | 45 ms   | 1.0x    |
-| mdsmith-parity    | 58 ms   | 56 ms   | 1.3x    |
-| mdsmith           | 145 ms  | 143 ms  | 3.1x    |
-| rumdl             | 198 ms  | 193 ms  | 4.3x    |
-| panache           | 559 ms  | 527 ms  | 12x     |
-| markdownlint-cli2 | 3188 ms | 3112 ms | 69x     |
+| Tool                        | Median  | Min     | vs mado |
+| --------------------------- | ------- | ------- | ------- |
+| gomarklint                  | 32 ms   | 28 ms   | 0.7x    |
+| mdsmith-gomarklint-parity   | 40 ms   | 39 ms   | 0.9x    |
+| mado                        | 46 ms   | 45 ms   | 1.0x    |
+| mdsmith-mado-parity         | 50 ms   | 49 ms   | 1.1x    |
+| mdsmith-rumdl-parity        | 64 ms   | 63 ms   | 1.4x    |
+| mdsmith-markdownlint-parity | 69 ms   | 63 ms   | 1.5x    |
+| mdsmith                     | 143 ms  | 139 ms  | 3.1x    |
+| rumdl                       | 196 ms  | 192 ms  | 4.3x    |
+| panache                     | 556 ms  | 521 ms  | 12x     |
+| markdownlint-cli2           | 3106 ms | 2973 ms | 68x     |
 <?/include?>
 
 ## Reading the result
@@ -159,10 +170,10 @@ the same class as the per-file Rust linters (compare it with
 the `rumdl` row on both corpora) at roughly 3x the
 check-only mado.
 
-**Apples-to-apples: the `parity` convention.** Restricted to
-the rule class the markdownlint tools actually share — the
-built-in `parity` convention, which disables the mdsmith-only
-rules (see
+**Apples-to-apples: the `mado-parity` convention.** Restricted
+to the rule class the markdownlint tools actually share — the
+built-in `mado-parity` convention, which runs mado's default
+set (see
 [Apples-to-apples rule sets](#apples-to-apples-rule-sets)) —
 mdsmith runs in mado's class. On the repo corpus the
 `mdsmith-parity` row comes in at mado's time (the two trade
@@ -173,22 +184,25 @@ delta is the measured cost of the cross-file and
 generated-content layer — work users opt into, not waste.
 The residual gap to mado on long prose is genuine engine
 headroom: the number to drive down, and the profiler loop
-below is how. One caveat, stated honestly: the parity
-convention only disables mdsmith's extras; it does not also
-disable the MD rules rumdl/markdownlint implement but mdsmith
-lacks, so those tools may still do marginally more in this
-mode. Read `mdsmith-parity` as a conservative upper bound on
-mdsmith's same-rules speed, not a byte-identical rule set.
+below is how. (These figures predate the per-linter split;
+the `mdsmith-parity` column now selects `mado-parity`, whose
+27-rule set is close to the rule class measured here.)
 
 **Why parity trails gomarklint specifically.** gomarklint is
 the fastest tool in the table because it never builds an AST —
-it is a pure line scanner. mdsmith-parity cannot follow it
-there: 27 of parity's 30 rules require the parsed CommonMark
-tree, so the goldmark parse (~35% of parity's wall time) is
-forced. [gomarklint architecture and the parity
+it is a pure line scanner. The `gomarklint-parity` convention
+turns mdsmith down to gomarklint's 20-rule default set, and —
+since the coverage matrix marks gomarklint's single-file
+`link-fragments` check a partial cover of mdsmith's cross-file
+MDS027 — that set excludes MDS027 and is fully parse-skip-safe.
+So mdsmith can follow gomarklint onto the no-parse path here;
+what remains is per-rule and fixed overhead, not the goldmark
+parse. The trade-off is that `gomarklint-parity` then runs no
+anchor check at all, where gomarklint runs a same-file one (see
+plan 2606210840). [gomarklint architecture and the parity
 gap](gomarklint-architecture.md) reviews gomarklint's design,
-breaks the parity profile down bucket by bucket, and records
-the optimization levers and their ceilings.
+breaks the profile down bucket by bucket, and records the
+optimization levers and their ceilings.
 
 **The gate + profiler loop caught two real bugs.** The
 first run had mdsmith at ~1.0 s on the repo corpus but
@@ -333,69 +347,197 @@ default-enabled state, see the
 — generated from rule front matter, so it stays in
 sync with the actual ruleset. This subsection adds the
 benchmark-specific layer: which rules `mdsmith` (full)
-runs and which `mdsmith-parity` disables via
-[`bench-parity.mdsmith.yml`](bench-parity.mdsmith.yml).
+runs and which each `<linter>-parity` convention runs.
 
 | Configuration       | Rule class                                                   |
 | ------------------- | ------------------------------------------------------------ |
 | `mdsmith` (full)    | every default-enabled MDS rule                               |
-| `mdsmith-parity`    | same set minus the 24 rules listed below                     |
+| `mdsmith-parity`    | the `mado-parity` set (27 rules); see below                  |
 | `mado`              | see the coverage matrix `mado` column                        |
 | `rumdl`             | see the coverage matrix `rumdl` column                       |
 | `panache`           | distinct rule IDs — see coverage matrix `panache` column     |
 | `gomarklint`        | own kebab-case IDs — see coverage matrix `gomarklint` column |
 | `markdownlint-cli2` | canonical markdownlint rule set                              |
 
-#### Rules the `parity` convention disables
+#### Per-linter parity rule sets
 
-The built-in `parity` convention disables 24 rules — 22
-mdsmith-only, plus MDS020 and MDS027, which carry
-markdownlint analogs but cover them at higher fidelity (see
-[Residual asymmetries](#residual-asymmetries)). The rows
-marked `default` are the real `mdsmith` → `mdsmith-parity`
-delta: they run in default mdsmith but not in parity. The
-rows marked `opt-in` are off by default anyway; parity
-disables them too so a stray user config cannot switch them
-on during a parity run.
+Each `<linter>-parity` convention runs the rule set its
+peer enables by default. It turns on the mdsmith opt-in
+rules the peer runs. It turns off the mdsmith defaults
+the peer skips. The single `mdsmith-parity` column uses
+`mado-parity`, the mid-size peer. The per-linter
+[`bench-<linter>-parity.mdsmith.yml`](bench-mado-parity.mdsmith.yml)
+profiles drive a head-to-head run against each peer.
 
-The table is generated from the convention itself
-(`mdsmith-release sync-parity-rules`), so it cannot drift
-from the rule set the benchmark runs — the same fragment the
-[conventions reference][conv-parity] embeds:
+The tables are generated from the conventions
+(`mdsmith-release sync-parity-rules`). CI checks each set
+against the coverage matrix, so neither can drift — the
+same fragment the [conventions reference][conv-parity]
+embeds:
 
 <?include
 file: parity-rules.fragment.md
 ?>
-<!-- Generated by `mdsmith-release sync-parity-rules` from the parity
-convention in internal/convention/convention.go. Do not edit by hand;
-re-run that command (then `mdsmith fix`) to refresh. -->
+<!-- Generated by `mdsmith-release sync-parity-rules` from the
+<linter>-parity conventions in internal/convention/convention.go. Do not
+edit by hand; re-run that command (then `mdsmith fix`) to refresh. -->
 
-| Rule                                  | Default in mdsmith |
-| ------------------------------------- | ------------------ |
-| MDS019 catalog                        | default            |
-| MDS020 required-structure             | default            |
-| MDS021 include                        | default            |
-| MDS022 max-file-length                | default            |
-| MDS023 paragraph-readability          | default            |
-| MDS024 paragraph-structure            | opt-in             |
-| MDS026 table-readability              | default            |
-| MDS027 cross-file-reference-integrity | default            |
-| MDS028 token-budget                   | default            |
-| MDS029 conciseness-scoring            | opt-in             |
-| MDS030 empty-section-body             | default            |
-| MDS033 directory-structure            | opt-in             |
-| MDS035 toc-directive                  | opt-in             |
-| MDS036 max-section-length             | opt-in             |
-| MDS037 duplicated-content             | opt-in             |
-| MDS038 toc                            | default            |
-| MDS039 build                          | default            |
-| MDS040 recipe-safety                  | default            |
-| MDS043 no-reference-style             | opt-in             |
-| MDS048 git-hook-sync                  | opt-in             |
-| MDS055 forbidden-paragraph-starts     | opt-in             |
-| MDS056 forbidden-text                 | opt-in             |
-| MDS057 required-text-patterns         | opt-in             |
-| MDS058 required-mentions              | opt-in             |
+**`gomarklint-parity`** — enables 3 opt-in rules, disables 25 defaults:
+
+Enabled opt-in rules:
+
+| Rule                     |
+| ------------------------ |
+| MDS042 emphasis-style    |
+| MDS045 list-marker-style |
+| MDS051 single-h1         |
+
+Disabled defaults:
+
+| Rule                                  |
+| ------------------------------------- |
+| MDS001 line-length                    |
+| MDS004 first-line-heading             |
+| MDS006 no-trailing-spaces             |
+| MDS016 list-indent                    |
+| MDS019 catalog                        |
+| MDS020 required-structure             |
+| MDS021 include                        |
+| MDS022 max-file-length                |
+| MDS023 paragraph-readability          |
+| MDS025 table-format                   |
+| MDS026 table-readability              |
+| MDS027 cross-file-reference-integrity |
+| MDS028 token-budget                   |
+| MDS030 empty-section-body             |
+| MDS038 toc                            |
+| MDS039 build                          |
+| MDS040 recipe-safety                  |
+| MDS053 no-unused-link-definitions     |
+| MDS054 no-undefined-reference-labels  |
+| MDS059 blockquote-whitespace          |
+| MDS061 list-marker-space              |
+| MDS064 atx-heading-whitespace         |
+| MDS065 code-block-style               |
+| MDS066 commands-show-output           |
+| MDS069 unique-frontmatter             |
+
+**`mado-parity`** — enables 8 opt-in rules, disables 23 defaults:
+
+Enabled opt-in rules:
+
+| Rule                          |
+| ----------------------------- |
+| MDS041 no-inline-html         |
+| MDS044 horizontal-rule-style  |
+| MDS045 list-marker-style      |
+| MDS046 ordered-list-numbering |
+| MDS047 ambiguous-emphasis     |
+| MDS049 no-space-in-link-text  |
+| MDS051 single-h1              |
+| MDS052 no-space-in-code-spans |
+
+Disabled defaults:
+
+| Rule                                  |
+| ------------------------------------- |
+| MDS002 heading-style                  |
+| MDS010 fenced-code-style              |
+| MDS014 blank-line-around-lists        |
+| MDS016 list-indent                    |
+| MDS019 catalog                        |
+| MDS020 required-structure             |
+| MDS021 include                        |
+| MDS022 max-file-length                |
+| MDS023 paragraph-readability          |
+| MDS025 table-format                   |
+| MDS026 table-readability              |
+| MDS027 cross-file-reference-integrity |
+| MDS028 token-budget                   |
+| MDS030 empty-section-body             |
+| MDS031 unclosed-code-block            |
+| MDS032 no-empty-alt-text              |
+| MDS038 toc                            |
+| MDS039 build                          |
+| MDS040 recipe-safety                  |
+| MDS053 no-unused-link-definitions     |
+| MDS054 no-undefined-reference-labels  |
+| MDS062 link-validity                  |
+| MDS069 unique-frontmatter             |
+
+**`rumdl-parity`** — enables 12 opt-in rules, disables 13 defaults:
+
+Enabled opt-in rules:
+
+| Rule                          |
+| ----------------------------- |
+| MDS041 no-inline-html         |
+| MDS042 emphasis-style         |
+| MDS044 horizontal-rule-style  |
+| MDS045 list-marker-style      |
+| MDS046 ordered-list-numbering |
+| MDS047 ambiguous-emphasis     |
+| MDS049 no-space-in-link-text  |
+| MDS050 proper-names           |
+| MDS051 single-h1              |
+| MDS052 no-space-in-code-spans |
+| MDS063 descriptive-link-text  |
+| MDS068 link-style             |
+
+Disabled defaults:
+
+| Rule                                  |
+| ------------------------------------- |
+| MDS019 catalog                        |
+| MDS021 include                        |
+| MDS022 max-file-length                |
+| MDS023 paragraph-readability          |
+| MDS026 table-readability              |
+| MDS027 cross-file-reference-integrity |
+| MDS028 token-budget                   |
+| MDS030 empty-section-body             |
+| MDS031 unclosed-code-block            |
+| MDS038 toc                            |
+| MDS039 build                          |
+| MDS040 recipe-safety                  |
+| MDS069 unique-frontmatter             |
+
+**`markdownlint-parity`** — enables 12 opt-in rules, disables 13 defaults:
+
+Enabled opt-in rules:
+
+| Rule                          |
+| ----------------------------- |
+| MDS041 no-inline-html         |
+| MDS042 emphasis-style         |
+| MDS044 horizontal-rule-style  |
+| MDS045 list-marker-style      |
+| MDS046 ordered-list-numbering |
+| MDS047 ambiguous-emphasis     |
+| MDS049 no-space-in-link-text  |
+| MDS050 proper-names           |
+| MDS051 single-h1              |
+| MDS052 no-space-in-code-spans |
+| MDS063 descriptive-link-text  |
+| MDS068 link-style             |
+
+Disabled defaults:
+
+| Rule                                  |
+| ------------------------------------- |
+| MDS019 catalog                        |
+| MDS021 include                        |
+| MDS022 max-file-length                |
+| MDS023 paragraph-readability          |
+| MDS026 table-readability              |
+| MDS027 cross-file-reference-integrity |
+| MDS028 token-budget                   |
+| MDS030 empty-section-body             |
+| MDS031 unclosed-code-block            |
+| MDS038 toc                            |
+| MDS039 build                          |
+| MDS040 recipe-safety                  |
+| MDS069 unique-frontmatter             |
 <?/include?>
 
 [conv-parity]: ../../reference/conventions.md
