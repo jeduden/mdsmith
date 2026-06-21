@@ -289,4 +289,3 @@ func isSetextUnderline(line []byte) bool {
 	}
 	return isBlankLine(line[j:])
 }
-
