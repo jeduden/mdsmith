@@ -60,7 +60,7 @@ func openHTMLBlock(line []byte, inParagraph bool) htmlBlockType {
 	// first non-space byte (within the first 4 columns) is not `<` can
 	// never open one. Gate the regexp battery on that cheap byte check so
 	// ordinary prose lines — the overwhelming common case in the Layer 0
-	// hot path — skip all RE2 executions.
+	// hot path — skip the regexp battery entirely.
 	indent := leadingSpaces(line)
 	if indent > 3 || indent >= len(line) || line[indent] != '<' {
 		return htmlNone

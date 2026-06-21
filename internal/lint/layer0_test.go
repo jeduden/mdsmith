@@ -406,6 +406,16 @@ func TestLayer0_LazyContinuationRejectsPIAndHTML(t *testing.T) {
 	assert.Equal(t, []int{2}, keysOf(l0.PIBlockLines))
 }
 
+func TestLayer0_LazyContinuationRejectsATXHeading(t *testing.T) {
+	// An ATX heading without a > prefix interrupts a block-quote lazy
+	// continuation and is not absorbed into the quote span.
+	l0 := scan("> para\n# heading\n")
+	require.GreaterOrEqual(t, len(l0.BlockSpans), 2)
+	assert.Equal(t, BlockQuote, l0.BlockSpans[0].Kind)
+	assert.Equal(t, 1, l0.BlockSpans[0].End, "quote must end at line 1, before the heading")
+	assert.Equal(t, BlockATXHeading, l0.BlockSpans[1].Kind)
+}
+
 func TestLayer0_ATXHeadingLevels(t *testing.T) {
 	// Each ATX level 1–6 is a single-line heading; a 7-hash run is not.
 	l0 := scan("# h1\n## h2\n### h3\n#### h4\n##### h5\n###### h6\n####### not\n")

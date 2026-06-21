@@ -184,6 +184,9 @@ func isLazyContinuation(line []byte) bool {
 	if _, ok := openingFence(line); ok {
 		return false
 	}
+	if isATXHeadingLine(line) {
+		return false
+	}
 	if opensPI(line) || openHTMLBlock(line, true) != htmlNone {
 		return false
 	}
