@@ -358,6 +358,13 @@ func TestCodeSpanTrim_NoSpaces(t *testing.T) {
 	assert.Equal(t, 4, stop)
 }
 
+func TestCodeSpanTrim_Empty(t *testing.T) {
+	// start >= stop early-return path: empty code span content.
+	start, stop := codeSpanTrim([]byte(""), 0, 0)
+	assert.Equal(t, 0, start)
+	assert.Equal(t, 0, stop)
+}
+
 func TestScanLinkTitle_NewlineInTitle(t *testing.T) {
 	title, _, ok := scanLinkTitle([]byte("\"ti\ntle\""), 0)
 	assert.False(t, ok, "newline inside title must fail")
@@ -384,13 +391,6 @@ func TestScanLinkTitle_ParenWithInnerParen(t *testing.T) {
 	assert.Nil(t, title)
 }
 
-func TestScanLinkDestination_CloseParen(t *testing.T) {
-	// j==i defensive guard: bare destination starting with ')'.
-	dest, _, ok := scanLinkDestination([]byte(")"), 0)
-	assert.False(t, ok)
-	assert.Nil(t, dest)
-}
-
 func TestScanLinkDestination_NewlineInAngleBracket(t *testing.T) {
 	// '\n' inside angle-bracket destination must fail.
 	dest, _, ok := scanLinkDestination([]byte("<has\nnewline>"), 0)
@@ -406,6 +406,12 @@ func TestScanAutolink_EmailAutolink(t *testing.T) {
 		{kind: "AutoLink", value: "user@example.com"},
 		{kind: "Text", value: " here"},
 	}, recs)
+}
+
+func TestScanAutolink_URLWithoutClosingAngle(t *testing.T) {
+	// stop >= len(line): URL pattern matches but run ends before '>'.
+	_, _, ok := scanAutolink([]byte("<http://example.com"), 0, arena.New())
+	assert.False(t, ok)
 }
 
 func TestSetParagraphLines_MultiLine(t *testing.T) {

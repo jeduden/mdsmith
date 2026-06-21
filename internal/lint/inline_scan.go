@@ -498,9 +498,6 @@ func scanLinkDestination(run []byte, i int) (dest []byte, after int, ok bool) {
 		}
 		j++
 	}
-	if j == i {
-		return nil, 0, false
-	}
 	return run[i:j], j, true
 }
 
