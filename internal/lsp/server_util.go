@@ -86,10 +86,10 @@ func uriToPathOnOS(uri, goos string) string {
 		return ""
 	}
 	u, err := url.Parse(uri)
-	// url.Parse only fails on inputs like "%". Anything that passed
-	// the "file://" prefix check above is well-formed enough to
-	// parse; the err-return is defensive and unreachable in
-	// practice.
+	// url.Parse fails on invalid percent-encoded sequences (e.g.
+	// "file://%GH/path" — %GH is not a valid escape). Return ""
+	// so the caller skips the URI, matching the non-file prefix
+	// guard above.
 	if err != nil {
 		return ""
 	}
@@ -114,14 +114,21 @@ func uriToPathOnOS(uri, goos string) string {
 	// fires on platforms that don't have drive letters.
 	if goos == "windows" && hasDriveLetterPrefix(p) {
 		p = p[1:]
+		// A bare drive root ("X:") after stripping the leading slash
+		// needs a separator before filepath.Clean, or Clean("X:")
+		// returns "X:." (treating it as a relative path on drive X).
+		if len(p) == 2 {
+			p += `\`
+		}
 	}
 	return filepath.Clean(p)
 }
 
 // hasDriveLetterPrefix reports whether p starts with "/X:/" or "/X:"
-// where X is an ASCII letter -- i.e. the canonical Windows
-// drive-letter-after-leading-slash pattern produced by url.Parse on a
-// `file:///C:/...` URI.
+// where X is an ASCII letter — the canonical Windows
+// drive-letter-after-leading-slash pattern url.Parse produces for a
+// `file:///C:/...` URI. The bare-root form "/X:" (len==3) is matched
+// so the caller can handle it (appending a separator before Clean).
 func hasDriveLetterPrefix(p string) bool {
 	if len(p) < 3 || p[0] != '/' || p[2] != ':' {
 		return false
