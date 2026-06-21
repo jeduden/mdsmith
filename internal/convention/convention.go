@@ -258,10 +258,11 @@ var conventions = map[string]Convention{
 	// (MDS027). The peers' `link-fragments`/MD051 rules resolve only
 	// same-file anchors, while mdsmith's MDS027 also walks the workspace
 	// for cross-file links, so those mappings are partial. Dropping
-	// MDS027 keeps gomarklint-parity and mado-parity fully
-	// parse-skip-safe; a future same-file-anchors rule could restore a
-	// like-for-like anchor check (plan
-	// 2606210840_same-file-anchor-resolution-rule.md).
+	// MDS027 keeps parity sets fully parse-skip-safe.
+	// MDS070 (same-file-anchor) is the like-for-like same-file anchor
+	// check: gomarklint, markdownlint, and rumdl run it by default so
+	// their parity sets inherit the mdsmith default (enabled); mado has
+	// no peer rule so mado-parity disables it.
 	"gomarklint-parity": {
 		Name:   "gomarklint-parity",
 		Flavor: FlavorGFM,
@@ -311,7 +312,7 @@ var conventions = map[string]Convention{
 			"no-space-in-link-text":  {Enabled: true},
 			"ordered-list-numbering": {Enabled: true},
 			"single-h1":              {Enabled: true},
-			// Disable the 23 mdsmith defaults mado does not run by default.
+			// Disable the 24 mdsmith defaults mado does not run by default.
 			"blank-line-around-lists":        {Enabled: false},
 			"build":                          {Enabled: false},
 			"catalog":                        {Enabled: false},
@@ -329,6 +330,7 @@ var conventions = map[string]Convention{
 			"paragraph-readability":          {Enabled: false},
 			"recipe-safety":                  {Enabled: false},
 			"required-structure":             {Enabled: false},
+			"same-file-anchor":               {Enabled: false},
 			"table-format":                   {Enabled: false},
 			"table-readability":              {Enabled: false},
 			"toc":                            {Enabled: false},
