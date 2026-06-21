@@ -214,6 +214,12 @@ func (s *Server) resolveConfig(override string) (cfg *config.Config, cfgPath, lo
 // Must be called from a goroutine other than the dispatch loop, since
 // the response arrives on the same loop.
 func (s *Server) fetchClientSettings(ctx context.Context) {
+	// This runs on its own goroutine (never the dispatch loop), so a
+	// panic in the response path — config load, schema compile,
+	// session rebuild, the host's OnConfigReload callback — would
+	// kill the whole server without this recover, the same crash
+	// class the lint and dispatch recovers contain.
+	defer s.recoverPanic("fetch client settings")
 	id := s.nextReqID.Add(1)
 	// json.Marshal(int64) cannot fail; ignoring the error is safe.
 	idJSON, _ := json.Marshal(id)

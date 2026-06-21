@@ -552,4 +552,3 @@ func (s *Server) dispatchWorkspace(ctx context.Context, msg *requestMessage) boo
 	}
 	return true
 }
-
