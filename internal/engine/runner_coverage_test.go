@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/config"
@@ -45,6 +46,35 @@ func TestCachedGitignore_CacheHit(t *testing.T) {
 }
 
 // (dead test removed — filepath.Join(dir, ".") normalizes to dir, so both args are identical)
+
+// TestCachedGitignore_AbsPathFallback covers the filepath.Abs error branch by
+// removing the process cwd (only possible on Linux) so os.Getwd fails when
+// given a relative path. Must not run in parallel — mutates the process cwd.
+func TestCachedGitignore_AbsPathFallback(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("deleting cwd only works on Linux")
+	}
+	orig, err := os.Getwd()
+	require.NoError(t, err)
+
+	dir, err := os.MkdirTemp("", "engine-cwd-test-*")
+	require.NoError(t, err)
+
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() {
+		_ = os.Chdir(orig)
+		_ = os.RemoveAll(dir)
+	})
+
+	// Removing the cwd makes os.Getwd (and hence filepath.Abs) fail for
+	// relative paths while leaving the process still operational.
+	require.NoError(t, os.Remove(dir))
+
+	runner := &Runner{Config: &config.Config{}}
+	// Relative path triggers filepath.Abs → os.Getwd error → Clean fallback.
+	m := runner.cachedGitignore(".")
+	require.NotNil(t, m, "expected non-nil matcher even when Abs fails")
+}
 
 func TestCachedGitignore_InitializesNilCache(t *testing.T) {
 	runner := &Runner{
