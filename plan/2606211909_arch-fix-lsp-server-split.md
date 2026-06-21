@@ -36,24 +36,16 @@ The primary file stays under 800 lines.
 
 ## Tasks
 
-  1. - [x] Identify the new capability dispatch
-   blocks added since plan 203 (`kinds`
-   handlers, `rule-doc` / hover-rewrite
-   handlers).
-  2. - [x] Create `internal/lsp/server_kinds.go`:
-   move the `kinds` request handlers and
-   their helpers.
-  3. - [x] Move hover-rewrite and rule-doc
-   registration into a dedicated sibling
-   (or extend the existing one from
-   plan 203).
-  4. - [x] Remove the moved blocks from `server.go`
-   and trim unused imports.
-  5. - [x] Run `go build ./...` — confirm no errors.
-  6. - [x] Run `go test ./...` — confirm no
-   regressions.
-  7. - [x] Confirm `wc -l server.go` is under
-   800 lines.
+1. Identify the new capability dispatch blocks added since plan 203
+   (`kinds` handlers, `rule-doc` / hover-rewrite handlers).
+2. Create `internal/lsp/server_kinds.go`: move the `kinds` request
+   handlers and their helpers.
+3. Move hover-rewrite and rule-doc registration into a dedicated
+   sibling (or extend the existing one from plan 203).
+4. Remove the moved blocks from `server.go` and trim unused imports.
+5. Run `go build ./...` — confirm no errors.
+6. Run `go test ./...` — confirm no regressions.
+7. Confirm `wc -l server.go` is under 800 lines.
 
 ## Acceptance Criteria
 
