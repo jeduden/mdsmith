@@ -152,23 +152,21 @@ plugin, its CI, and the release.yml smoke-test matrix.
 The plan stays open until adoption clears the
 registries' bar.
 
-**Review 2026-06-21.** Re-swept the in-repo surfaces.
-These were checked:
+**Review 2026-06-21.** No in-repo actions remain. Specific
+verifications:
 
-- the smoke-test matrix in
-  [release.yml](../.github/workflows/release.yml)
+- `release.yml` smoke-test matrix: the `asdf` job is
+  `required: true`; the `mise-registry` job is
+  `required: false` with a `::warning::` soft-skip.
 - `RequiredSmokeChannels` in
-  `internal/release/releasesmoke.go`
-- [docs/guides/install.md](../docs/guides/install.md)
-- the `asdf` and `mise` release-channel docs, whose
-  summaries generate `website/data/channels.yaml`
+  `internal/release/releasesmoke.go`: includes `"asdf"`,
+  excludes the bare `"mise-registry"` form.
+- `docs/guides/install.md`: "neither registry entry
+  exists yet" note at the channel-comparison table, and
+  per-section notes for the bare `asdf` and `mise` forms.
+- The `asdf` and `mise` release-channel docs: their full
+  frontmatter feeds `website/data/channels.yaml` via
+  `mdsmith-release sync-channels`; both docs carry "needs
+  a registry entry" for the bare forms.
 
-All are accurate and consistent. The `asdf` channel is
-required-green via the explicit plugin URL. The bare
-`mise-registry` channel stays best-effort with a warning.
-Both docs flag the prefix-less forms as awaiting a
-registry entry.
-
-No stale TODOs or contradictions remain. Both external
-registry PRs are still gated on adoption. Nothing else is
-actionable in-repo, so the plan stays open.
+Plan stays open until registry adoption clears.
