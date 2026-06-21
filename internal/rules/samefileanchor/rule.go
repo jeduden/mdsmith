@@ -78,8 +78,8 @@ func (r *Rule) checkAST(f *lint.File, slugs map[string]struct{}) []lint.Diagnost
 			// nil/empty: not a same-file fragment, or bare # (top-of-page), always valid
 			return ast.WalkContinue, nil
 		}
-		frag := string(fragment)
-		if _, found := slugs[frag]; !found {
+		if _, found := slugs[string(fragment)]; !found {
+			frag := string(fragment)
 			line := inlineNodeLine(n, f, 0)
 			if line == 0 {
 				line = 1
@@ -108,8 +108,8 @@ func (r *Rule) checkNilAST(f *lint.File, slugs map[string]struct{}) []lint.Diagn
 		if len(fragment) == 0 {
 			return
 		}
-		frag := string(fragment)
-		if _, found := slugs[frag]; !found {
+		if _, found := slugs[string(fragment)]; !found {
+			frag := string(fragment)
 			line := inlineNodeLine(n, f, base)
 			if line == 0 {
 				line = 1
@@ -207,14 +207,25 @@ func appendHeadingTextRaw(dst, text []byte) []byte {
 			i++
 			continue
 		}
-		// Consume visible text between '[' and ']'.
+		// Consume visible text between '[' and its matching ']'.
+		// Depth-track nested '[...]' pairs so inner brackets don't
+		// terminate the scan early (e.g. [outer [inner] rest](url)).
 		i++ // skip '['
-		for i < len(text) && text[i] != ']' {
-			dst = append(dst, text[i])
+		depth := 1
+		for i < len(text) && depth > 0 {
+			switch text[i] {
+			case '[':
+				depth++
+				dst = append(dst, text[i])
+			case ']':
+				depth--
+				if depth > 0 {
+					dst = append(dst, text[i])
+				}
+			default:
+				dst = append(dst, text[i])
+			}
 			i++
-		}
-		if i < len(text) {
-			i++ // skip ']'
 		}
 		i = skipLinkDest(text, i)
 		i = skipRefLabel(text, i)

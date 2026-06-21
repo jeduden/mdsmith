@@ -347,3 +347,12 @@ func TestRule_LinkInHeadingParenURL(t *testing.T) {
 	assert.Empty(t, check(t, src))
 	assert.Empty(t, checkLines(t, src))
 }
+
+// TestRule_NestedBracketsInHeading verifies that a heading with nested brackets
+// in link text (e.g. [outer [inner] rest](url)) produces the correct slug from
+// only the visible text — both the AST and Layer0 paths must agree.
+func TestRule_NestedBracketsInHeading(t *testing.T) {
+	src := "# [outer [inner] rest](url)\n\nSee [link](#outer-inner-rest).\n"
+	assert.Empty(t, check(t, src))
+	assert.Empty(t, checkLines(t, src))
+}
