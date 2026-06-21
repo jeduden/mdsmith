@@ -73,8 +73,8 @@ func (r *Rule) checkAST(f *lint.File, slugs map[string]struct{}) []lint.Diagnost
 			return ast.WalkContinue, nil
 		}
 		fragment := sameFileFragment(dest)
-		if fragment == nil || len(fragment) == 0 {
-			// nil: not a same-file fragment; empty: bare # (top-of-page), always valid
+		if len(fragment) == 0 {
+			// nil/empty: not a same-file fragment, or bare # (top-of-page), always valid
 			return ast.WalkContinue, nil
 		}
 		if _, found := slugs[string(fragment)]; !found {
@@ -100,7 +100,7 @@ func (r *Rule) checkNilAST(f *lint.File, slugs map[string]struct{}) []lint.Diagn
 			return
 		}
 		fragment := sameFileFragment(dest)
-		if fragment == nil || len(fragment) == 0 {
+		if len(fragment) == 0 {
 			return
 		}
 		if _, found := slugs[string(fragment)]; !found {
@@ -276,7 +276,7 @@ func appendSlug(dst, text []byte) []byte {
 				dst = append(dst, b)
 			case b >= 'A' && b <= 'Z':
 				dst = append(dst, b+'a'-'A') // lowercase
-			// all other ASCII bytes (punctuation, etc.) are dropped
+				// all other ASCII bytes (punctuation, etc.) are dropped
 			}
 			i++
 			continue
