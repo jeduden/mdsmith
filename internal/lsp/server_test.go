@@ -2035,6 +2035,25 @@ func TestUriToPathOnWindowsStripsDriveLetterSlash(t *testing.T) {
 	assert.Equal(t, "C:/Users/me/foo.md", filepath.ToSlash(got))
 }
 
+func TestUriToPathOnWindowsBareRoot(t *testing.T) {
+	t.Parallel()
+	// file:///C: (bare drive root, no trailing slash or path) must
+	// return "C:\" — the canonical Windows drive root. Without the
+	// fix, filepath.Clean("C:") returns "C:." on Windows, treating
+	// "C:" as a relative path on drive C. The fix returns early,
+	// bypassing filepath.Clean for this one special case.
+	got := uriToPathOnOS("file:///C:", "windows")
+	assert.Equal(t, `C:\`, got)
+}
+
+func TestUriToPathOnWindowsHostOnlyReturnsEmpty(t *testing.T) {
+	t.Parallel()
+	// file://server (no share component) must return "" — "\\server"
+	// is not a navigable UNC path without a share name.
+	got := uriToPathOnOS("file://server", "windows")
+	assert.Equal(t, "", got)
+}
+
 func TestUriToPathOnLinuxLeavesDriveLetterAlone(t *testing.T) {
 	t.Parallel()
 	// On non-Windows the drive-letter rewrite must not fire — the
@@ -3351,6 +3370,18 @@ func TestWatchedFilesTreeChangedSkipsConfig(t *testing.T) {
 		{URI: "file:///proj/.mdsmith.yml", Type: fileChangeCreated},
 	})
 	assert.False(t, got, "a config-only create must not flag a wikilink tree change")
+}
+
+// TestWatchedFilesTreeChangedSkipsNonFileURI pins that a Created/Deleted
+// event with a non-file:// URI (e.g. git://, untitled:) does not trigger
+// a wikilink-index rebuild — uriToPath returns "" for these, and the ""
+// guard prevents them from reaching the type check.
+func TestWatchedFilesTreeChangedSkipsNonFileURI(t *testing.T) {
+	t.Parallel()
+	got := watchedFilesTreeChanged([]fileEvent{
+		{URI: "git://github.com/owner/repo/blob/main/page.md", Type: fileChangeCreated},
+	})
+	assert.False(t, got, "non-file URI Created event must not flag a wikilink tree change")
 }
 
 func TestDocumentStoreGetMissing(t *testing.T) {

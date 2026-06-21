@@ -101,6 +101,15 @@ func uriToPathOnOS(uri, goos string) string {
 	if host != "" {
 		// UNC path on Windows: file://server/share/path -> \\server\share\path
 		if goos == "windows" {
+			// Require at least a share component: p must be longer than
+			// "/" (i.e. the URI must be file://server/share/...). A
+			// host-only URI (file://server or file://server/) yields
+			// p="" or p="/", producing "\\server" — not a navigable UNC
+			// path. Return "" so callers skip it rather than attempting
+			// filesystem operations on a host-only stub.
+			if len(p) <= 1 {
+				return ""
+			}
 			return filepath.Clean(`\\` + host + filepath.FromSlash(p))
 		}
 		// Non-Windows: we cannot resolve a remote share, so refuse.
@@ -115,10 +124,12 @@ func uriToPathOnOS(uri, goos string) string {
 	if goos == "windows" && hasDriveLetterPrefix(p) {
 		p = p[1:]
 		// A bare drive root ("X:") after stripping the leading slash
-		// needs a separator before filepath.Clean, or Clean("X:")
-		// returns "X:." (treating it as a relative path on drive X).
+		// must return "X:\", not "X:." — filepath.Clean("X:") on
+		// Windows treats "X:" as a relative drive path and appends ".".
+		// Return early with the canonical root so we bypass Clean's
+		// platform-dependent behaviour for this one case.
 		if len(p) == 2 {
-			p += `\`
+			return p + `\`
 		}
 	}
 	return filepath.Clean(p)
