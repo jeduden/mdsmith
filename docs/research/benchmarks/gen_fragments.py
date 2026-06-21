@@ -80,10 +80,11 @@ def main() -> None:
     repo_tbl, repo = rows(json_dir, "corpus_repo")
     neut_tbl, _ = rows(json_dir, "corpus_neutral")
 
-    note = ("`mdsmith` is the default rule set; `mdsmith-parity` "
-            "disables the\nmdsmith-only rules so the work class "
-            "matches the markdownlint\ntools (see "
-            "`bench-parity.mdsmith.yml`).\n\n")
+    note = ("`mdsmith` is the default rule set. Each "
+            "`mdsmith-<linter>-parity`\nrow runs the rule set that "
+            "peer enables by default, for a\nlike-for-like comparison "
+            "against that peer (the\n`bench-<linter>-parity.mdsmith.yml` "
+            "profiles).\n\n")
     results = (GEN + "\n" + note +
                f"**Repo corpus — {repo_n} Markdown files** (median "
                "wall time, lower is\nbetter; `vs mado` is the ratio "

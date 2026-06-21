@@ -97,7 +97,9 @@ func TestRunHyperfine(t *testing.T) {
 			"/bin", "/out", "/work", "/bin/mdsmith", "/mdl/markdownlint-cli2", "/root"))
 
 		require.Len(t, rec.calls, 4, "two hyperfine passes per corpus, two corpora")
-		parity := "/root/docs/research/benchmarks/bench-parity.mdsmith.yml"
+		cfg := func(peer string) string {
+			return "/root/docs/research/benchmarks/bench-" + peer + "-parity.mdsmith.yml"
+		}
 		for i, corpus := range []string{"corpus_repo", "corpus_neutral"} {
 			cpath := "/work/" + corpus
 			main := rec.calls[2*i]
@@ -110,8 +112,12 @@ func TestRunHyperfine(t *testing.T) {
 				"--command-name panache /bin/panache lint --no-cache "+cpath)
 			assert.Contains(t, joined,
 				"--command-name gomarklint /bin/gomarklint "+cpath)
-			assert.Contains(t, joined,
-				"--command-name mdsmith-parity /bin/mdsmith check -c "+parity+" "+cpath)
+			// One mdsmith parity column per peer, each pinned to its config.
+			for _, peer := range []string{"gomarklint", "mado", "rumdl", "markdownlint"} {
+				assert.Contains(t, joined,
+					"--command-name mdsmith-"+peer+"-parity /bin/mdsmith check -c "+
+						cfg(peer)+" "+cpath)
+			}
 			assert.Contains(t, joined, "--command-name mdsmith /bin/mdsmith check "+cpath)
 			assert.Contains(t, joined, "--export-json /out/"+corpus+".json")
 

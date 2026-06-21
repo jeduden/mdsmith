@@ -26,20 +26,24 @@ docs read.
 - Driver: `hyperfine` 1.20.0, `--warmup 3 --runs 10 -N`
   (markdownlint-cli2: `--warmup 2 --runs 6`).
 - Each tool runs its check/lint over a directory of `.md`
-  files on its built-in defaults. The one exception is
-  `mdsmith-parity`: the same mdsmith binary run with
-  [`bench-parity.mdsmith.yml`](bench-parity.mdsmith.yml),
-  which disables the mdsmith-only rules so the work class
-  matches the markdownlint tools. `mdsmith` (no `-c`) is the
-  full default set users actually run.
+  files on its built-in defaults. The exceptions are the
+  `mdsmith-<linter>-parity` rows: the same mdsmith binary run
+  with a per-peer
+  [`bench-<linter>-parity.mdsmith.yml`](bench-gomarklint-parity.mdsmith.yml)
+  profile, each matching one peer's default rule set for a
+  like-for-like row. `mdsmith` (no `-c`) is the full default
+  set users actually run. (The committed table still shows the
+  pre-split single `mdsmith-parity` column; the per-linter rows
+  land on the next benchmark run.)
 - Caches disabled for the tools that have one (`rumdl
   --no-cache`, `panache --no-cache`) so every run is
   worst-case cold. mdsmith, mado, gomarklint, and
   markdownlint-cli2 keep no on-disk cache.
 - `mdsmith` vs the markdownlint tools is not like-for-like
-  (it does more per file); `mdsmith-parity` vs them is the
-  closest like-for-like, with one residual asymmetry noted
-  in [Reading the result](#reading-the-result).
+  (it does more per file); each `mdsmith-<linter>-parity` row
+  vs its peer is the like-for-like one, with one residual
+  asymmetry noted in
+  [Reading the result](#reading-the-result).
 - Integrity: every comparison binary is fetched at a pinned
   version and verified by SHA-256 before it runs.
   gomarklint, hyperfine, mado, panache, and rumdl come from
@@ -103,9 +107,10 @@ file: results.fragment.md
 docs/research/benchmarks/data/*.json — do not edit by hand. Re-run
 the harness (run.sh) and `mdsmith fix` to refresh. -->
 
-`mdsmith` is the default rule set; `mdsmith-parity` disables the
-mdsmith-only rules so the work class matches the markdownlint
-tools (see `bench-parity.mdsmith.yml`).
+`mdsmith` is the default rule set. Each `mdsmith-<linter>-parity`
+row runs the rule set that peer enables by default, for a
+like-for-like comparison against that peer (the
+`bench-<linter>-parity.mdsmith.yml` profiles).
 
 **Repo corpus — 766 Markdown files** (median wall time, lower is
 better; `vs mado` is the ratio to mado's median):
