@@ -53,7 +53,7 @@ func scanInlineRun(run []byte, a *arena.Arena) (ast.Node, bool) {
 // scanner only sees plain text, inline links, inline images, autolinks, and
 // code spans — the constructs scanParagraphInlines handles exactly.
 //
-// `[` and `<` and `` ` `` are admitted because the scanner handles inline
+// `[` and `<` and “ ` “ are admitted because the scanner handles inline
 // links/images, autolinks, and code spans; the per-construct parse re-checks
 // each occurrence and bails (via scanParagraphInlines) when one is not the
 // exact shape it reproduces.
@@ -151,77 +151,47 @@ func setParagraphLines(run []byte, para ast.Node) {
 // shape the scanner reproduces exactly. It returns false the moment it meets
 // a `[`, `<`, or backtick that is not a complete inline link, image,
 // autolink, or code span — the signal for the caller to fall back. Text runs
-// between constructs become Text nodes split at line boundaries with the
-// soft/hard line-break flags goldmark sets, so MDS012's per-Text-node URL
-// scan sees identical node bounds.
+// between constructs become Text nodes with goldmark's MergeOrAppend
+// semantics so MDS012's per-Text-node URL scan sees identical node bounds.
 func scanParagraphInlines(run []byte, para ast.Node, a *arena.Arena) bool {
 	// goldmark treats a paragraph line's leading spaces (up to 3; 4+ would be
 	// indented code, which the file-level eligibility gate already excludes)
 	// as block indentation, so the first inline segment starts after them.
-	// Start the scan past the leading spaces to match.
 	i := leadingSpaces(run)
 	textStart := i
-	// mergeBefore flushes the pending text [textStart:i) with goldmark's
-	// MergeOrAppend semantics — the flush goldmark performs both before a
-	// construct it opens and after a trigger byte whose parsers all fail.
-	mergeBefore := func() {
-		mergeAppendText(run, textStart, i, para, a)
-		textStart = i
-	}
 	for i < len(run) {
 		c := run[i]
 		switch c {
 		case '`':
-			node, next, ok := scanCodeSpan(run, i, a)
+			ni, ns, ok := applyCodeSpan(run, i, textStart, para, a)
 			if !ok {
 				return false
 			}
-			mergeBefore()
-			para.AppendChild(para, node)
-			i = next
-			textStart = i
+			i, textStart = ni, ns
 		case '<':
-			node, next, ok := scanAutolink(run, i, a)
+			ni, ns, ok := applyAutolink(run, i, textStart, para, a)
 			if !ok {
 				return false
 			}
-			mergeBefore()
-			para.AppendChild(para, node)
-			i = next
-			textStart = i
+			i, textStart = ni, ns
 		case '!':
-			if i+1 < len(run) && run[i+1] == '[' {
-				node, next, ok := scanLinkOrImage(run, i, true, a)
-				if !ok {
-					return false
-				}
-				mergeBefore()
-				para.AppendChild(para, node)
-				i = next
-				textStart = i
-				continue
-			}
-			// A `!` not opening an image is a link-parser trigger that fails:
-			// goldmark flushes the pending text (MergeOrAppend) at the `!` and
-			// resumes the segment from it. Reproduce that flush so the run's
-			// final text node has the same bounds.
-			mergeBefore()
-			i++
-		case '[':
-			node, next, ok := scanLinkOrImage(run, i, false, a)
+			ni, ns, ok := applyBang(run, i, textStart, para, a)
 			if !ok {
 				return false
 			}
-			mergeBefore()
-			para.AppendChild(para, node)
-			i = next
-			textStart = i
+			i, textStart = ni, ns
+		case '[':
+			ni, ns, ok := applyLink(run, i, textStart, para, a)
+			if !ok {
+				return false
+			}
+			i, textStart = ni, ns
 		case ']':
 			// A bare `]` is a link-parser trigger with no opener the scanner
 			// produced: goldmark flushes the pending text at it (MergeOrAppend)
-			// and continues. `)` carries no inline parser, so it is ordinary
-			// text and does not flush.
-			mergeBefore()
+			// and continues. The `]` byte starts the next text segment.
+			mergeAppendText(run, textStart, i, para, a)
+			textStart = i
 			i++
 		default:
 			i++
@@ -232,6 +202,69 @@ func scanParagraphInlines(run []byte, para ast.Node, a *arena.Arena) bool {
 	// its own Text node.
 	finalAppendText(run, textStart, len(run), para, a)
 	return true
+}
+
+// applyCodeSpan flushes the pending text [textStart:i) and appends a
+// CodeSpan node for the code span beginning at run[i]. Returns the new i and
+// textStart (both equal to next, just past the closing backtick run) and ok.
+// Returns ok=false when scanCodeSpan declines, signalling a goldmark fallback.
+func applyCodeSpan(run []byte, i, textStart int, para ast.Node, a *arena.Arena) (int, int, bool) {
+	node, next, ok := scanCodeSpan(run, i, a)
+	if !ok {
+		return 0, 0, false
+	}
+	mergeAppendText(run, textStart, i, para, a)
+	para.AppendChild(para, node)
+	return next, next, true
+}
+
+// applyAutolink flushes the pending text [textStart:i) and appends an
+// AutoLink node for the autolink beginning at run[i] (a `<`). Returns
+// ok=false when scanAutolink declines (a raw-HTML `<` or unterminated angle
+// bracket), signalling a goldmark fallback.
+func applyAutolink(run []byte, i, textStart int, para ast.Node, a *arena.Arena) (int, int, bool) {
+	node, next, ok := scanAutolink(run, i, a)
+	if !ok {
+		return 0, 0, false
+	}
+	mergeAppendText(run, textStart, i, para, a)
+	para.AppendChild(para, node)
+	return next, next, true
+}
+
+// applyBang handles a `!` at run[i]. If it opens an image (`![…](…)`), it
+// flushes the pending text and appends the Image node. Otherwise, the `!` is
+// a link-parser trigger that failed: goldmark flushes the pending text before
+// it and the `!` starts the next text segment. Returns ok=false when the `!`
+// opens an image whose scan fails, signalling a goldmark fallback.
+func applyBang(run []byte, i, textStart int, para ast.Node, a *arena.Arena) (int, int, bool) {
+	if i+1 < len(run) && run[i+1] == '[' {
+		node, next, ok := scanLinkOrImage(run, i, true, a)
+		if !ok {
+			return 0, 0, false
+		}
+		mergeAppendText(run, textStart, i, para, a)
+		para.AppendChild(para, node)
+		return next, next, true
+	}
+	// `!` not opening an image: flush pending text before `!`; the `!` byte
+	// itself starts the next text segment.
+	mergeAppendText(run, textStart, i, para, a)
+	return i + 1, i, true
+}
+
+// applyLink flushes the pending text [textStart:i) and appends the Link node
+// for the inline link beginning at run[i] (a `[`). Returns ok=false when
+// scanLinkOrImage declines (reference link, nested brackets, or other non-
+// inline form), signalling a goldmark fallback.
+func applyLink(run []byte, i, textStart int, para ast.Node, a *arena.Arena) (int, int, bool) {
+	node, next, ok := scanLinkOrImage(run, i, false, a)
+	if !ok {
+		return 0, 0, false
+	}
+	mergeAppendText(run, textStart, i, para, a)
+	para.AppendChild(para, node)
+	return next, next, true
 }
 
 // scanCodeSpan parses a code span beginning at run[i] (a backtick). It

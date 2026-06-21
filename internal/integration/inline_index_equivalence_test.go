@@ -112,9 +112,9 @@ func TestInlineIndexEquivalence_ParityRules(t *testing.T) {
 // agree on the ordered slice of these records produce identical diagnostics
 // for every parity inline rule, so the slice is the byte-identity oracle.
 type inlineNodeRec struct {
-	kind        string
-	start, stop int
-	dest, title string
+	kind            string
+	start, stop     int
+	dest, title     string
 	soft, hard, raw bool
 }
 

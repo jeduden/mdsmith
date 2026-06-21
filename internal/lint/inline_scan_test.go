@@ -216,6 +216,124 @@ func TestScanInlineRun_BailsOnEmpty(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestScanInlineRun_AngleBracketDestination(t *testing.T) {
+	recs, ok := recsForRun(t, "[text](<http://x.com>)")
+	require.True(t, ok)
+	assert.Equal(t, []scanRec{
+		{kind: "Link", dest: "http://x.com"},
+		{kind: "Text", value: "text"},
+	}, recs)
+}
+
+func TestScanInlineRun_InlineLinkWithSingleQuoteTitle(t *testing.T) {
+	recs, ok := recsForRun(t, "[t](http://x.com 'the title')")
+	require.True(t, ok)
+	assert.Equal(t, []scanRec{
+		{kind: "Link", dest: "http://x.com", title: "the title"},
+		{kind: "Text", value: "t"},
+	}, recs)
+}
+
+func TestScanInlineRun_InlineLinkWithParenTitle(t *testing.T) {
+	recs, ok := recsForRun(t, "[t](http://x.com (the title))")
+	require.True(t, ok)
+	assert.Equal(t, []scanRec{
+		{kind: "Link", dest: "http://x.com", title: "the title"},
+		{kind: "Text", value: "t"},
+	}, recs)
+}
+
+func TestScanInlineRun_InlineLinkBalancedParenDest(t *testing.T) {
+	recs, ok := recsForRun(t, "[t](foo(bar))")
+	require.True(t, ok)
+	assert.Equal(t, []scanRec{
+		{kind: "Link", dest: "foo(bar)"},
+		{kind: "Text", value: "t"},
+	}, recs)
+}
+
+func TestScanInlineRun_ImageEmptyAlt(t *testing.T) {
+	recs, ok := recsForRun(t, "![](pic.png)")
+	require.True(t, ok)
+	assert.Equal(t, []scanRec{
+		{kind: "Image", dest: "pic.png"},
+	}, recs)
+}
+
+func TestScanInlineRun_BailsOnUnclosedLinkTitle(t *testing.T) {
+	_, ok := scanInlineRun([]byte(`[t](url "unclosed`), arena.New())
+	assert.False(t, ok, "unclosed link title must fall back")
+}
+
+func TestScanInlineRun_BailsOnReferenceImage(t *testing.T) {
+	_, ok := scanInlineRun([]byte("![alt][label]"), arena.New())
+	assert.False(t, ok, "reference-style image must fall back")
+}
+
+func TestScanInlineRun_BailsOnNestedBracketsInLabel(t *testing.T) {
+	_, ok := scanInlineRun([]byte("[a[b]](url)"), arena.New())
+	assert.False(t, ok, "nested brackets in label must fall back")
+}
+
+func TestScanInlineRun_BailsOnAngleInLabel(t *testing.T) {
+	_, ok := scanInlineRun([]byte("[a<b>](url)"), arena.New())
+	assert.False(t, ok, "angle bracket in label must fall back")
+}
+
+func TestScanInlineRun_BailsOnInvalidLinkTitleOpener(t *testing.T) {
+	_, ok := scanInlineRun([]byte("[t](url xyz)"), arena.New())
+	assert.False(t, ok, "non-quote title opener must fall back")
+}
+
+func TestScanInlineRun_BailsOnNestedAngleInDest(t *testing.T) {
+	_, ok := scanInlineRun([]byte("[t](<a<b>)"), arena.New())
+	assert.False(t, ok, "nested < in angle-bracket destination must fall back")
+}
+
+func TestScanInlineRun_BailsOnUnterminatedAngleBracketDest(t *testing.T) {
+	_, ok := scanInlineRun([]byte("[t](<unclosed)"), arena.New())
+	assert.False(t, ok, "unterminated angle-bracket destination must fall back")
+}
+
+func TestCodeSpanTrim_SpacePadded(t *testing.T) {
+	src := []byte(" code ")
+	start, stop := codeSpanTrim(src, 0, len(src))
+	assert.Equal(t, 1, start)
+	assert.Equal(t, 5, stop)
+}
+
+func TestCodeSpanTrim_AllBlank(t *testing.T) {
+	src := []byte("   ")
+	start, stop := codeSpanTrim(src, 0, len(src))
+	assert.Equal(t, 0, start, "all-blank content must not be trimmed")
+	assert.Equal(t, 3, stop)
+}
+
+func TestScanLinkTitle_NewlineInTitle(t *testing.T) {
+	title, _, ok := scanLinkTitle([]byte("\"ti\ntle\""), 0)
+	assert.False(t, ok, "newline inside title must fail")
+	assert.Nil(t, title)
+}
+
+func TestScanLinkTitle_Unclosed(t *testing.T) {
+	title, _, ok := scanLinkTitle([]byte(`"unclosed`), 0)
+	assert.False(t, ok, "unterminated title must fail")
+	assert.Nil(t, title)
+}
+
+func TestSetParagraphLines_MultiLine(t *testing.T) {
+	a := arena.New()
+	run := []byte("line one\nline two\n")
+	para := a.Paragraph()
+	setParagraphLines(run, para)
+	lines := para.Lines()
+	require.Equal(t, 2, lines.Len())
+	assert.Equal(t, 0, lines.At(0).Start)
+	assert.Equal(t, 9, lines.At(0).Stop)
+	assert.Equal(t, 9, lines.At(1).Start)
+	assert.Equal(t, 18, lines.At(1).Stop)
+}
+
 // TestInlineBlocks_NoGoldmarkParseForSimpleFile asserts the acceptance
 // criterion: a nil-AST File whose runs are all scanner-eligible produces
 // inline nodes without any goldmark parse. The scanner emits an
