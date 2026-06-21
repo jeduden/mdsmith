@@ -71,6 +71,15 @@ func TestParityRulesFragmentInSync(t *testing.T) {
 	assert.Empty(t, msg, "run `mdsmith-release sync-parity-rules` to refresh")
 }
 
+func TestRenderParityFamilyFragment_PropagatesError(t *testing.T) {
+	// A byName that resolves nothing makes the first convention's first
+	// rule fail to resolve; renderParityFamilyFragment must surface that
+	// error rather than emit a partial fragment.
+	_, err := renderParityFamilyFragment(func(string) rule.Rule { return nil })
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not registered")
+}
+
 func TestRenderConventionRuleTable_UnknownConvention(t *testing.T) {
 	// An unknown convention name surfaces the Lookup error rather than
 	// rendering an empty table.
