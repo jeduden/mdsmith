@@ -173,17 +173,20 @@ The residual gap to mado on long prose is genuine engine
 headroom: the number to drive down, and the profiler loop
 below is how. (These figures predate the per-linter split;
 the `mdsmith-parity` column now selects `mado-parity`, whose
-28-rule set is close to the rule class measured here.)
+27-rule set is close to the rule class measured here.)
 
 **Why parity trails gomarklint specifically.** gomarklint is
 the fastest tool in the table because it never builds an AST —
 it is a pure line scanner. The `gomarklint-parity` convention
-turns mdsmith down to gomarklint's 21-rule default set, and of
-those only one — `cross-file-reference-integrity` (MDS027),
-which the coverage matrix maps onto gomarklint's single-file
-`link-fragments` check — still needs the parsed tree, forcing
-the goldmark parse. By contrast `mado-parity` is fully
-parse-skip-safe. [gomarklint architecture and the parity
+turns mdsmith down to gomarklint's 20-rule default set, and —
+since the coverage matrix marks gomarklint's single-file
+`link-fragments` check a partial cover of mdsmith's cross-file
+MDS027 — that set excludes MDS027 and is fully parse-skip-safe.
+So mdsmith can follow gomarklint onto the no-parse path here;
+what remains is per-rule and fixed overhead, not the goldmark
+parse. The trade-off is that `gomarklint-parity` then runs no
+anchor check at all, where gomarklint runs a same-file one (see
+plan 2606210840). [gomarklint architecture and the parity
 gap](gomarklint-architecture.md) reviews gomarklint's design,
 breaks the profile down bucket by bucket, and records the
 optimization levers and their ceilings.
@@ -336,7 +339,7 @@ runs and which each `<linter>-parity` convention runs.
 | Configuration       | Rule class                                                   |
 | ------------------- | ------------------------------------------------------------ |
 | `mdsmith` (full)    | every default-enabled MDS rule                               |
-| `mdsmith-parity`    | the `mado-parity` set (28 rules); see below                  |
+| `mdsmith-parity`    | the `mado-parity` set (27 rules); see below                  |
 | `mado`              | see the coverage matrix `mado` column                        |
 | `rumdl`             | see the coverage matrix `rumdl` column                       |
 | `panache`           | distinct rule IDs — see coverage matrix `panache` column     |
@@ -366,130 +369,162 @@ file: parity-rules.fragment.md
 <linter>-parity conventions in internal/convention/convention.go. Do not
 edit by hand; re-run that command (then `mdsmith fix`) to refresh. -->
 
-**`gomarklint-parity`** — enables 3 opt-in rules, disables 24 defaults:
+**`gomarklint-parity`** — enables 3 opt-in rules, disables 25 defaults:
 
-| Rule                                 | mdsmith default | Parity   |
-| ------------------------------------ | --------------- | -------- |
-| MDS001 line-length                   | default         | disabled |
-| MDS004 first-line-heading            | default         | disabled |
-| MDS006 no-trailing-spaces            | default         | disabled |
-| MDS016 list-indent                   | default         | disabled |
-| MDS019 catalog                       | default         | disabled |
-| MDS020 required-structure            | default         | disabled |
-| MDS021 include                       | default         | disabled |
-| MDS022 max-file-length               | default         | disabled |
-| MDS023 paragraph-readability         | default         | disabled |
-| MDS025 table-format                  | default         | disabled |
-| MDS026 table-readability             | default         | disabled |
-| MDS028 token-budget                  | default         | disabled |
-| MDS030 empty-section-body            | default         | disabled |
-| MDS038 toc                           | default         | disabled |
-| MDS039 build                         | default         | disabled |
-| MDS040 recipe-safety                 | default         | disabled |
-| MDS042 emphasis-style                | opt-in          | enabled  |
-| MDS045 list-marker-style             | opt-in          | enabled  |
-| MDS051 single-h1                     | opt-in          | enabled  |
-| MDS053 no-unused-link-definitions    | default         | disabled |
-| MDS054 no-undefined-reference-labels | default         | disabled |
-| MDS059 blockquote-whitespace         | default         | disabled |
-| MDS061 list-marker-space             | default         | disabled |
-| MDS064 atx-heading-whitespace        | default         | disabled |
-| MDS065 code-block-style              | default         | disabled |
-| MDS066 commands-show-output          | default         | disabled |
-| MDS069 unique-frontmatter            | default         | disabled |
+Enabled opt-in rules:
 
-**`mado-parity`** — enables 8 opt-in rules, disables 22 defaults:
+| Rule                     |
+| ------------------------ |
+| MDS042 emphasis-style    |
+| MDS045 list-marker-style |
+| MDS051 single-h1         |
 
-| Rule                                  | mdsmith default | Parity   |
-| ------------------------------------- | --------------- | -------- |
-| MDS002 heading-style                  | default         | disabled |
-| MDS010 fenced-code-style              | default         | disabled |
-| MDS014 blank-line-around-lists        | default         | disabled |
-| MDS019 catalog                        | default         | disabled |
-| MDS020 required-structure             | default         | disabled |
-| MDS021 include                        | default         | disabled |
-| MDS022 max-file-length                | default         | disabled |
-| MDS023 paragraph-readability          | default         | disabled |
-| MDS025 table-format                   | default         | disabled |
-| MDS026 table-readability              | default         | disabled |
-| MDS027 cross-file-reference-integrity | default         | disabled |
-| MDS028 token-budget                   | default         | disabled |
-| MDS030 empty-section-body             | default         | disabled |
-| MDS031 unclosed-code-block            | default         | disabled |
-| MDS032 no-empty-alt-text              | default         | disabled |
-| MDS038 toc                            | default         | disabled |
-| MDS039 build                          | default         | disabled |
-| MDS040 recipe-safety                  | default         | disabled |
-| MDS041 no-inline-html                 | opt-in          | enabled  |
-| MDS044 horizontal-rule-style          | opt-in          | enabled  |
-| MDS045 list-marker-style              | opt-in          | enabled  |
-| MDS046 ordered-list-numbering         | opt-in          | enabled  |
-| MDS047 ambiguous-emphasis             | opt-in          | enabled  |
-| MDS049 no-space-in-link-text          | opt-in          | enabled  |
-| MDS051 single-h1                      | opt-in          | enabled  |
-| MDS052 no-space-in-code-spans         | opt-in          | enabled  |
-| MDS053 no-unused-link-definitions     | default         | disabled |
-| MDS054 no-undefined-reference-labels  | default         | disabled |
-| MDS062 link-validity                  | default         | disabled |
-| MDS069 unique-frontmatter             | default         | disabled |
+Disabled defaults:
 
-**`rumdl-parity`** — enables 12 opt-in rules, disables 12 defaults:
+| Rule                                  |
+| ------------------------------------- |
+| MDS001 line-length                    |
+| MDS004 first-line-heading             |
+| MDS006 no-trailing-spaces             |
+| MDS016 list-indent                    |
+| MDS019 catalog                        |
+| MDS020 required-structure             |
+| MDS021 include                        |
+| MDS022 max-file-length                |
+| MDS023 paragraph-readability          |
+| MDS025 table-format                   |
+| MDS026 table-readability              |
+| MDS027 cross-file-reference-integrity |
+| MDS028 token-budget                   |
+| MDS030 empty-section-body             |
+| MDS038 toc                            |
+| MDS039 build                          |
+| MDS040 recipe-safety                  |
+| MDS053 no-unused-link-definitions     |
+| MDS054 no-undefined-reference-labels  |
+| MDS059 blockquote-whitespace          |
+| MDS061 list-marker-space              |
+| MDS064 atx-heading-whitespace         |
+| MDS065 code-block-style               |
+| MDS066 commands-show-output           |
+| MDS069 unique-frontmatter             |
 
-| Rule                          | mdsmith default | Parity   |
-| ----------------------------- | --------------- | -------- |
-| MDS019 catalog                | default         | disabled |
-| MDS021 include                | default         | disabled |
-| MDS022 max-file-length        | default         | disabled |
-| MDS023 paragraph-readability  | default         | disabled |
-| MDS026 table-readability      | default         | disabled |
-| MDS028 token-budget           | default         | disabled |
-| MDS030 empty-section-body     | default         | disabled |
-| MDS031 unclosed-code-block    | default         | disabled |
-| MDS038 toc                    | default         | disabled |
-| MDS039 build                  | default         | disabled |
-| MDS040 recipe-safety          | default         | disabled |
-| MDS041 no-inline-html         | opt-in          | enabled  |
-| MDS042 emphasis-style         | opt-in          | enabled  |
-| MDS044 horizontal-rule-style  | opt-in          | enabled  |
-| MDS045 list-marker-style      | opt-in          | enabled  |
-| MDS046 ordered-list-numbering | opt-in          | enabled  |
-| MDS047 ambiguous-emphasis     | opt-in          | enabled  |
-| MDS049 no-space-in-link-text  | opt-in          | enabled  |
-| MDS050 proper-names           | opt-in          | enabled  |
-| MDS051 single-h1              | opt-in          | enabled  |
-| MDS052 no-space-in-code-spans | opt-in          | enabled  |
-| MDS063 descriptive-link-text  | opt-in          | enabled  |
-| MDS068 link-style             | opt-in          | enabled  |
-| MDS069 unique-frontmatter     | default         | disabled |
+**`mado-parity`** — enables 8 opt-in rules, disables 23 defaults:
 
-**`markdownlint-parity`** — enables 12 opt-in rules, disables 12 defaults:
+Enabled opt-in rules:
 
-| Rule                          | mdsmith default | Parity   |
-| ----------------------------- | --------------- | -------- |
-| MDS019 catalog                | default         | disabled |
-| MDS021 include                | default         | disabled |
-| MDS022 max-file-length        | default         | disabled |
-| MDS023 paragraph-readability  | default         | disabled |
-| MDS026 table-readability      | default         | disabled |
-| MDS028 token-budget           | default         | disabled |
-| MDS030 empty-section-body     | default         | disabled |
-| MDS031 unclosed-code-block    | default         | disabled |
-| MDS038 toc                    | default         | disabled |
-| MDS039 build                  | default         | disabled |
-| MDS040 recipe-safety          | default         | disabled |
-| MDS041 no-inline-html         | opt-in          | enabled  |
-| MDS042 emphasis-style         | opt-in          | enabled  |
-| MDS044 horizontal-rule-style  | opt-in          | enabled  |
-| MDS045 list-marker-style      | opt-in          | enabled  |
-| MDS046 ordered-list-numbering | opt-in          | enabled  |
-| MDS047 ambiguous-emphasis     | opt-in          | enabled  |
-| MDS049 no-space-in-link-text  | opt-in          | enabled  |
-| MDS050 proper-names           | opt-in          | enabled  |
-| MDS051 single-h1              | opt-in          | enabled  |
-| MDS052 no-space-in-code-spans | opt-in          | enabled  |
-| MDS063 descriptive-link-text  | opt-in          | enabled  |
-| MDS068 link-style             | opt-in          | enabled  |
-| MDS069 unique-frontmatter     | default         | disabled |
+| Rule                          |
+| ----------------------------- |
+| MDS041 no-inline-html         |
+| MDS044 horizontal-rule-style  |
+| MDS045 list-marker-style      |
+| MDS046 ordered-list-numbering |
+| MDS047 ambiguous-emphasis     |
+| MDS049 no-space-in-link-text  |
+| MDS051 single-h1              |
+| MDS052 no-space-in-code-spans |
+
+Disabled defaults:
+
+| Rule                                  |
+| ------------------------------------- |
+| MDS002 heading-style                  |
+| MDS010 fenced-code-style              |
+| MDS014 blank-line-around-lists        |
+| MDS016 list-indent                    |
+| MDS019 catalog                        |
+| MDS020 required-structure             |
+| MDS021 include                        |
+| MDS022 max-file-length                |
+| MDS023 paragraph-readability          |
+| MDS025 table-format                   |
+| MDS026 table-readability              |
+| MDS027 cross-file-reference-integrity |
+| MDS028 token-budget                   |
+| MDS030 empty-section-body             |
+| MDS031 unclosed-code-block            |
+| MDS032 no-empty-alt-text              |
+| MDS038 toc                            |
+| MDS039 build                          |
+| MDS040 recipe-safety                  |
+| MDS053 no-unused-link-definitions     |
+| MDS054 no-undefined-reference-labels  |
+| MDS062 link-validity                  |
+| MDS069 unique-frontmatter             |
+
+**`rumdl-parity`** — enables 12 opt-in rules, disables 13 defaults:
+
+Enabled opt-in rules:
+
+| Rule                          |
+| ----------------------------- |
+| MDS041 no-inline-html         |
+| MDS042 emphasis-style         |
+| MDS044 horizontal-rule-style  |
+| MDS045 list-marker-style      |
+| MDS046 ordered-list-numbering |
+| MDS047 ambiguous-emphasis     |
+| MDS049 no-space-in-link-text  |
+| MDS050 proper-names           |
+| MDS051 single-h1              |
+| MDS052 no-space-in-code-spans |
+| MDS063 descriptive-link-text  |
+| MDS068 link-style             |
+
+Disabled defaults:
+
+| Rule                                  |
+| ------------------------------------- |
+| MDS019 catalog                        |
+| MDS021 include                        |
+| MDS022 max-file-length                |
+| MDS023 paragraph-readability          |
+| MDS026 table-readability              |
+| MDS027 cross-file-reference-integrity |
+| MDS028 token-budget                   |
+| MDS030 empty-section-body             |
+| MDS031 unclosed-code-block            |
+| MDS038 toc                            |
+| MDS039 build                          |
+| MDS040 recipe-safety                  |
+| MDS069 unique-frontmatter             |
+
+**`markdownlint-parity`** — enables 12 opt-in rules, disables 13 defaults:
+
+Enabled opt-in rules:
+
+| Rule                          |
+| ----------------------------- |
+| MDS041 no-inline-html         |
+| MDS042 emphasis-style         |
+| MDS044 horizontal-rule-style  |
+| MDS045 list-marker-style      |
+| MDS046 ordered-list-numbering |
+| MDS047 ambiguous-emphasis     |
+| MDS049 no-space-in-link-text  |
+| MDS050 proper-names           |
+| MDS051 single-h1              |
+| MDS052 no-space-in-code-spans |
+| MDS063 descriptive-link-text  |
+| MDS068 link-style             |
+
+Disabled defaults:
+
+| Rule                                  |
+| ------------------------------------- |
+| MDS019 catalog                        |
+| MDS021 include                        |
+| MDS022 max-file-length                |
+| MDS023 paragraph-readability          |
+| MDS026 table-readability              |
+| MDS027 cross-file-reference-integrity |
+| MDS028 token-budget                   |
+| MDS030 empty-section-body             |
+| MDS031 unclosed-code-block            |
+| MDS038 toc                            |
+| MDS039 build                          |
+| MDS040 recipe-safety                  |
+| MDS069 unique-frontmatter             |
 <?/include?>
 
 [conv-parity]: ../../reference/conventions.md

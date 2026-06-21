@@ -129,17 +129,19 @@ Each picks `flavor: gfm` and leaves MDS034 opt-in.
 
 | Convention            | Peer         | Rules |
 | --------------------- | ------------ | ----- |
-| `gomarklint-parity`   | gomarklint   | 21    |
-| `mado-parity`         | mado         | 28    |
-| `rumdl-parity`        | rumdl        | 42    |
-| `markdownlint-parity` | markdownlint | 42    |
+| `gomarklint-parity`   | gomarklint   | 20    |
+| `mado-parity`         | mado         | 27    |
+| `rumdl-parity`        | rumdl        | 41    |
+| `markdownlint-parity` | markdownlint | 41    |
 
 Each enables the opt-in rules its peer runs and
-disables the defaults it skips. The sets come from
-the [coverage matrix][coverage] and are CI-checked.
-`gomarklint-parity` keeps MDS027 on, so it parses;
-`mado-parity` is parse-skip-safe. [Rule tables are
-generated.][parity-list]
+disables the defaults it skips. Only full covers
+count: a partial peer mapping does not run the
+heavier mdsmith rule. The CI-checked sets come from
+the [coverage matrix][coverage]. All disable MDS027
+(the peers' `link-fragments` cover same-file anchors
+only), so `gomarklint-parity` and `mado-parity` are
+parse-skip-safe. [Rule tables are generated.][parity-list]
 
 [coverage]: ../research/markdownlint-coverage/README.md
 [parity-list]: ../research/benchmarks/README.md

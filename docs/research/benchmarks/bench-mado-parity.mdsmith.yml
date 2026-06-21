@@ -1,5 +1,5 @@
 # Head-to-head benchmark profile: mdsmith configured to run the same
-# rule set mado runs by default (28 rules), so a benchmark of
+# rule set mado runs by default (27 rules), so a benchmark of
 # mdsmith against mado measures the same per-file work, not a
 # different rule count.
 #

@@ -76,11 +76,13 @@ func renderParityFamilyFragment(
 }
 
 // renderConventionRuleTable writes one convention's preset as a labeled
-// GFM table: every rule it sets, with that rule's mdsmith default state
-// and whether the convention enables or disables it. Rows are sorted by
-// MDS id. It errors when the convention is unknown, or names a rule
-// byName cannot resolve, so a rename surfaces loudly instead of
-// silently dropping a row.
+// pair of GFM tables: the mdsmith opt-in rules it ENABLES (turns on for
+// peer parity) and the mdsmith defaults it DISABLES (the peer does not
+// run them). Rows in each table are sorted by MDS id. Splitting the two
+// keeps each table within the table-row limit and makes the enable vs
+// disable intent explicit. It errors when the convention is unknown, or
+// names a rule byName cannot resolve, so a rename surfaces loudly
+// instead of silently dropping a row.
 func renderConventionRuleTable(
 	buf *bytes.Buffer, name string, byName func(string) rule.Rule,
 ) error {
@@ -89,9 +91,8 @@ func renderConventionRuleTable(
 		return fmt.Errorf("looking up %q convention: %w", name, err)
 	}
 
-	type prow struct{ id, label, def, state string }
-	prows := make([]prow, 0, len(conv.Rules))
-	enabled, disabled := 0, 0
+	type prow struct{ id, label string }
+	var enabled, disabled []prow
 	for ruleName, p := range conv.Rules {
 		r := byName(ruleName)
 		if r == nil {
@@ -99,33 +100,33 @@ func renderConventionRuleTable(
 				"convention %q names rule %q, which is not registered",
 				name, ruleName)
 		}
-		def := "default"
-		if d, ok := r.(rule.Defaultable); ok && !d.EnabledByDefault() {
-			def = "opt-in"
-		}
-		state := "disabled"
+		row := prow{id: r.ID(), label: r.ID() + " " + ruleName}
 		if p.Enabled {
-			state = "enabled"
-			enabled++
+			enabled = append(enabled, row)
 		} else {
-			disabled++
+			disabled = append(disabled, row)
 		}
-		prows = append(prows, prow{
-			id: r.ID(), label: r.ID() + " " + ruleName, def: def, state: state,
-		})
 	}
-	sort.Slice(prows, func(i, j int) bool { return prows[i].id < prows[j].id })
-
-	rows := make([][]string, 0, len(prows))
-	for _, p := range prows {
-		rows = append(rows, []string{p.label, p.def, p.state})
+	byID := func(rows []prow) {
+		sort.Slice(rows, func(i, j int) bool { return rows[i].id < rows[j].id })
+	}
+	byID(enabled)
+	byID(disabled)
+	toTable := func(rows []prow) [][]string {
+		out := make([][]string, 0, len(rows))
+		for _, r := range rows {
+			out = append(out, []string{r.label})
+		}
+		return out
 	}
 
 	fmt.Fprintf(buf,
 		"**`%s`** — enables %d opt-in rules, disables %d defaults:\n\n",
-		name, enabled, disabled)
-	writePaddedTable(buf,
-		[]string{"Rule", "mdsmith default", "Parity"}, rows)
+		name, len(enabled), len(disabled))
+	buf.WriteString("Enabled opt-in rules:\n\n")
+	writePaddedTable(buf, []string{"Rule"}, toTable(enabled))
+	buf.WriteString("\nDisabled defaults:\n\n")
+	writePaddedTable(buf, []string{"Rule"}, toTable(disabled))
 	return nil
 }
 

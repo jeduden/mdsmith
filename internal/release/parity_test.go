@@ -23,16 +23,18 @@ func TestRenderParityRulesFragment(t *testing.T) {
 	got, err := RenderParityRulesFragment()
 	require.NoError(t, err)
 
-	// One labeled table per parity convention.
+	// One labeled section per parity convention, each with an enabled
+	// and a disabled table.
 	for _, name := range parityConventions {
 		assert.Contains(t, got, "**`"+name+"`**",
 			"fragment must document %q", name)
 	}
-	// Each table heads its state column "Parity" (capitalized only in
-	// the header; convention names use lowercase "-parity").
 	assert.Equal(t, len(parityConventions),
-		strings.Count(got, "Parity"),
-		"one Parity column header per convention table")
+		strings.Count(got, "Enabled opt-in rules:"),
+		"one enabled table per convention")
+	assert.Equal(t, len(parityConventions),
+		strings.Count(got, "Disabled defaults:"),
+		"one disabled table per convention")
 
 	// One data row per rule across every convention's preset.
 	totalRules := 0
@@ -50,10 +52,10 @@ func TestRenderParityRulesFragment(t *testing.T) {
 	assert.Equal(t, totalRules, dataRows, "one table row per preset rule")
 
 	// Spot-check that gomarklint-parity enables an opt-in rule it turns
-	// on and disables a default it skips, with the default/opt-in
-	// labelling read from the rule registry, not hand-written.
-	assert.Regexp(t, `MDS042 emphasis-style\s+\| opt-in\s+\| enabled`, got)
-	assert.Regexp(t, `MDS001 line-length\s+\| default\s+\| disabled`, got)
+	// on and disables a default it skips.
+	assert.Contains(t, got, "MDS042 emphasis-style")
+	assert.Contains(t, got, "MDS001 line-length")
+	assert.Contains(t, got, "MDS027 cross-file-reference-integrity")
 
 	// Conventions render in parityConventions order (gomarklint first).
 	assert.Less(t,

@@ -233,6 +233,9 @@ var gomarklintParityDisabled = []string{
 	"no-unused-link-definitions", "no-undefined-reference-labels",
 	"blockquote-whitespace", "list-marker-space", "atx-heading-whitespace",
 	"code-block-style", "commands-show-output", "unique-frontmatter",
+	// MDS027: gomarklint's link-fragments is a partial cover (same-file
+	// anchors only), so parity disables mdsmith's cross-file rule.
+	"cross-file-reference-integrity",
 }
 
 func TestParityFamilyResolves(t *testing.T) {

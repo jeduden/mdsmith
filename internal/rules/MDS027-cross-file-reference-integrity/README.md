@@ -9,12 +9,12 @@ maintainability: null
 markdownlint:
   - id: MD051
     name: link-fragments
-    partial: false
+    partial: true
     default: true
 rumdl:
   - id: MD051
     name: link-fragments
-    partial: false
+    partial: true
     default: true
 mado: []
 panache:
@@ -26,7 +26,7 @@ obsidian-linter: []
 gomarklint:
   - id: link-fragments
     name: link-fragments
-    partial: false
+    partial: true
     default: true
 ---
 # MDS027: cross-file-reference-integrity
@@ -205,10 +205,10 @@ See [guide](bad/ref/guide.md#missing-section).
 - **Implementation**:
   [source](./)
 - **Category**: link
-- **markdownlint**: [MD051][mdl-md051] (link-fragments)
-- **rumdl**: [MD051][rumdl-md051] (link-fragments)
+- **markdownlint**: [MD051][mdl-md051] (link-fragments) (partial)
+- **rumdl**: [MD051][rumdl-md051] (link-fragments) (partial)
 - **panache**: [undefined-anchor]
-- **gomarklint**: [link-fragments][gomarklint-rules]
+- **gomarklint**: [link-fragments][gomarklint-rules] (partial)
 
 [mdl-md051]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md051.md
 [rumdl-md051]: https://rumdl.dev/md051/

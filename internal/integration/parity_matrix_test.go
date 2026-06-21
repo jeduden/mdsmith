@@ -28,11 +28,15 @@ func peerMappings(ri rules.RuleInfo, peer string) []rules.RuleMapping {
 }
 
 // peerRunsByDefault reports whether the peer linter runs a check that
-// covers this mdsmith rule by default — true when any of the rule's
-// peer mappings carries default: true.
+// FULLY covers this mdsmith rule by default — true when any of the
+// rule's peer mappings carries default: true and partial: false. A
+// partial cover means the peer checks less than the mdsmith rule, so
+// parity does not run the heavier mdsmith rule on the peer's behalf
+// (e.g. the peers' link-fragments rules cover only same-file anchors,
+// not mdsmith's cross-file MDS027).
 func peerRunsByDefault(ri rules.RuleInfo, peer string) bool {
 	for _, m := range peerMappings(ri, peer) {
-		if m.Default {
+		if m.Default && !m.Partial {
 			return true
 		}
 	}

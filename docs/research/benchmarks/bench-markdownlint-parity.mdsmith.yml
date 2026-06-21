@@ -1,5 +1,5 @@
 # Head-to-head benchmark profile: mdsmith configured to run the same
-# rule set markdownlint runs by default (42 rules), so a benchmark of
+# rule set markdownlint runs by default (41 rules), so a benchmark of
 # mdsmith against markdownlint measures the same per-file work, not a
 # different rule count.
 #

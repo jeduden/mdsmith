@@ -1,5 +1,5 @@
 # Head-to-head benchmark profile: mdsmith configured to run the same
-# rule set gomarklint runs by default (21 rules), so a benchmark of
+# rule set gomarklint runs by default (20 rules), so a benchmark of
 # mdsmith against gomarklint measures the same per-file work, not a
 # different rule count.
 #
