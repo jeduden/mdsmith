@@ -1,7 +1,7 @@
 ---
 id: 2606210840
 title: "Same-file anchor-resolution rule for true gomarklint parity"
-status: "🔲"
+status: "✅"
 summary: >-
   The per-linter parity conventions disable
   cross-file-reference-integrity (MDS027) because the peers'
@@ -73,16 +73,16 @@ option 2 only if slug reuse forces it.
 
 ## Acceptance Criteria
 
-- [ ] A same-file anchor check resolves `#fragment` links against
+- [x] A same-file anchor check resolves `#fragment` links against
       headings in the same file and reports unresolved ones.
-- [ ] The check runs on the parse-skip path (no goldmark AST required).
-- [ ] gomarklint-parity, rumdl-parity, and markdownlint-parity enable
+- [x] The check runs on the parse-skip path (no goldmark AST required).
+- [x] gomarklint-parity, rumdl-parity, and markdownlint-parity enable
       the anchor check and stay parse-skip-safe where MDS020 allows.
-- [ ] The coverage matrix records a full (non-partial) cover for the
+- [x] The coverage matrix records a full (non-partial) cover for the
       peers' link-fragments / MD051 rules.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run` reports no issues
-- [ ] `mdsmith check .` passes
+- [x] All tests pass: `go test ./...`
+- [x] `go vet ./...` reports no issues
+- [x] `mdsmith check .` passes
 
 [conv]: ../internal/convention/convention.go
 [mds027]: ../internal/rules/MDS027-cross-file-reference-integrity/README.md

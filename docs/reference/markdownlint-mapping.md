@@ -81,6 +81,7 @@ row-expr: |
 | MD046 code-block-style                                                                                                                                             | [MDS065](../../internal/rules/MDS065-code-block-style/README.md) code-block-style                                     |
 | MD014 commands-show-output                                                                                                                                         | [MDS066](../../internal/rules/MDS066-commands-show-output/README.md) commands-show-output                             |
 | MD054 link-image-style                                                                                                                                             | [MDS068](../../internal/rules/MDS068-link-style/README.md) link-style                                                 |
+| MD051 link-fragments                                                                                                                                               | [MDS070](../../internal/rules/MDS070-same-file-anchor/README.md) same-file-anchor                                     |
 <?/catalog?>
 
 ## See also

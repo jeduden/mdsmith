@@ -88,6 +88,7 @@ row: "| [{id}]({filename}) | `{name}` | {category} | {status} | {description} |"
 | [MDS067](MDS067-callout-type/README.md)                       | `callout-type`                       | structural    | ready     | Validate Obsidian callout types against an allowed set.                                                                                            |
 | [MDS068](MDS068-link-style/README.md)                         | `link-style`                         | link          | ready     | Flag links and images whose path, extension, form, or link-image-style deviates from the project's declared `links.style` policy.                  |
 | [MDS069](MDS069-unique-frontmatter/README.md)                 | `unique-frontmatter`                 | structural    | ready     | Every file in the configured glob scope must hold a distinct value in the configured front-matter field.                                           |
+| [MDS070](MDS070-same-file-anchor/README.md)                   | `same-file-anchor`                   | link          | ready     | Every same-file #fragment link must resolve to a heading present in the same file.                                                                 |
 <?/catalog?>
 
 ## Directive rules
