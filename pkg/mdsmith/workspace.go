@@ -275,15 +275,19 @@ func (m memFS) dirEntries(dir string) []fs.DirEntry {
 		rest := key[len(prefix):]
 		if i := indexSlash(rest); i >= 0 {
 			name := rest[:i]
-			if _, ok := seen[name]; name != "" && !ok {
-				seen[name] = struct{}{}
-				ents = append(ents, memDirEntry{name: name, dir: true})
+			if name != "" {
+				if _, ok := seen[name]; !ok {
+					seen[name] = struct{}{}
+					ents = append(ents, memDirEntry{name: name, dir: true})
+				}
 			}
 			continue
 		}
-		if _, ok := seen[rest]; rest != "" && !ok {
-			seen[rest] = struct{}{}
-			ents = append(ents, memDirEntry{name: rest, size: int64(len(m[key])), dir: false})
+		if rest != "" {
+			if _, ok := seen[rest]; !ok {
+				seen[rest] = struct{}{}
+				ents = append(ents, memDirEntry{name: rest, size: int64(len(m[key])), dir: false})
+			}
 		}
 	}
 	sort.Slice(ents, func(i, j int) bool { return ents[i].Name() < ents[j].Name() })
