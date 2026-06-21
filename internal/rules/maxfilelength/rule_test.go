@@ -206,3 +206,18 @@ func TestCategory(t *testing.T) {
 		)
 	}
 }
+
+// TestCheck_ViolationMessageAllocs guards against regression to the
+// strconv.Itoa+concat message path, which costs 3 allocs vs fmt.Sprintf's 1.
+// Baseline (fmt.Sprintf): 4 allocs/call. Old strconv path: 6 allocs/call.
+func TestCheck_ViolationMessageAllocs(t *testing.T) {
+	src := []byte(nLines(301))
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Max: 300}
+	_ = r.Check(f) // warm up
+	allocs := testing.AllocsPerRun(50, func() { _ = r.Check(f) })
+	if allocs > 5 {
+		t.Fatalf("Check (violation): got %g allocs/call, want ≤ 5", allocs)
+	}
+}

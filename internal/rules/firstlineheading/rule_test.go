@@ -394,3 +394,18 @@ func TestSettingMergeMode_FirstLineHeading(t *testing.T) {
 	assert.Equal(t, rule.MergeReplace, r.SettingMergeMode("level"))
 	assert.Equal(t, rule.MergeReplace, r.SettingMergeMode("unknown"))
 }
+
+// TestCheck_WrongLevel_MessageAllocs verifies that the wrong-level violation
+// diagnostic uses fmt.Sprintf (≤2 allocs: 1 msg + 1 slice) rather than
+// strconv.Itoa+concat (4 allocs: 2×Itoa + 1 concat + 1 slice).
+// Uses the nil-AST (Layer 0) path to isolate message construction allocs.
+func TestCheck_WrongLevel_MessageAllocs(t *testing.T) {
+	src := []byte("## Not H1\n\nText\n")
+	f := lint.NewFileLines("f.md", src)
+	r := &Rule{Level: 1}
+	_ = r.Check(f) // warm up Layer0 cache
+	allocs := testing.AllocsPerRun(50, func() { _ = r.Check(f) })
+	if allocs > 2 {
+		t.Fatalf("Check (nil-AST wrong level): got %g allocs/call, want ≤ 2 (1 msg + 1 slice)", allocs)
+	}
+}

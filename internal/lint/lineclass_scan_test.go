@@ -1,6 +1,7 @@
 package lint
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -255,4 +256,15 @@ func TestHTMLType1Start(t *testing.T) {
 	assert.False(t, htmlType1Start([]byte("<prefix>")), "name is a prefix of a longer tag")
 	assert.False(t, htmlType1Start([]byte("<div>")))
 	assert.False(t, htmlType1Start([]byte("<pr")), "shorter than any name")
+}
+
+// TestHTMLType6Tags_ZeroByteValue guards the map's per-entry memory layout:
+// map[string]bool wastes 1 byte per value (× ~63 entries); struct{} wastes 0.
+// An alloc test cannot distinguish the two because the Go compiler's
+// m[string(b)] optimization applies to both value types equally.
+func TestHTMLType6Tags_ZeroByteValue(t *testing.T) {
+	vt := reflect.TypeOf(htmlType6Tags).Elem()
+	if vt.Size() != 0 {
+		t.Fatalf("htmlType6Tags value type %s has size %d bytes, want 0 (use map[string]struct{})", vt, vt.Size())
+	}
 }

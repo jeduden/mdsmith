@@ -115,6 +115,19 @@ func TestResolveFiles_Sorted(t *testing.T) {
 	assert.True(t, sort.StringsAreSorted(files), "expected sorted files, got %v", files)
 }
 
+// TestIsMarkdown_ZeroAllocs verifies that isMarkdown allocates nothing per call,
+// even for uppercase extensions. The fix replaces strings.ToLower (1 heap alloc
+// when the extension has uppercase letters) with strings.EqualFold (0 allocs).
+func TestIsMarkdown_ZeroAllocs(t *testing.T) {
+	cases := []string{"file.md", "file.MD", "file.Md", "file.markdown", "file.MARKDOWN", "file.txt"}
+	for _, p := range cases {
+		allocs := testing.AllocsPerRun(100, func() { _ = isMarkdown(p) })
+		if allocs != 0 {
+			t.Errorf("isMarkdown(%q): got %g allocs/call, want 0", p, allocs)
+		}
+	}
+}
+
 func TestResolveFiles_MarkdownExtension(t *testing.T) {
 	dir := t.TempDir()
 	mdFile := filepath.Join(dir, "doc.markdown")

@@ -2,7 +2,6 @@ package firstlineheading
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/placeholders"
@@ -51,21 +50,21 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	}
 
 	if len(f.Source) == 0 {
-		return r.diag(f, "first line should be a level "+strconv.Itoa(level)+" heading")
+		return r.diag(f, fmt.Sprintf("first line should be a level %d heading", level))
 	}
 
 	firstChild := f.AST.FirstChild()
 	if firstChild == nil {
-		return r.diag(f, "first line should be a level "+strconv.Itoa(level)+" heading")
+		return r.diag(f, fmt.Sprintf("first line should be a level %d heading", level))
 	}
 
 	heading, ok := firstChild.(*ast.Heading)
 	if !ok {
-		return r.diag(f, "first line should be a level "+strconv.Itoa(level)+" heading")
+		return r.diag(f, fmt.Sprintf("first line should be a level %d heading", level))
 	}
 
 	if headingLine(heading, f) != 1 {
-		return r.diag(f, "first line should be a level "+strconv.Itoa(level)+" heading, found blank line")
+		return r.diag(f, fmt.Sprintf("first line should be a level %d heading, found blank line", level))
 	}
 
 	if heading.Level != level {
@@ -75,7 +74,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		if placeholders.ContainsBodyToken(text, r.Placeholders) {
 			return nil
 		}
-		return r.diag(f, "first heading should be level "+strconv.Itoa(level)+", got "+strconv.Itoa(heading.Level))
+		return r.diag(f, fmt.Sprintf("first heading should be level %d, got %d", level, heading.Level))
 	}
 
 	return nil
@@ -96,23 +95,23 @@ func (r *Rule) checkNilAST(f *lint.File) []lint.Diagnostic {
 	}
 
 	if len(f.Source) == 0 {
-		return r.diag(f, "first line should be a level "+strconv.Itoa(level)+" heading")
+		return r.diag(f, fmt.Sprintf("first line should be a level %d heading", level))
 	}
 
 	spans := lint.Layer0(f).BlockSpans
 	if len(spans) == 0 {
-		return r.diag(f, "first line should be a level "+strconv.Itoa(level)+" heading")
+		return r.diag(f, fmt.Sprintf("first line should be a level %d heading", level))
 	}
 	first := spans[0]
 	if first.Kind != lint.BlockATXHeading && first.Kind != lint.BlockSetextHeading {
-		return r.diag(f, "first line should be a level "+strconv.Itoa(level)+" heading")
+		return r.diag(f, fmt.Sprintf("first line should be a level %d heading", level))
 	}
 	if first.Start != 1 {
-		return r.diag(f, "first line should be a level "+strconv.Itoa(level)+" heading, found blank line")
+		return r.diag(f, fmt.Sprintf("first line should be a level %d heading, found blank line", level))
 	}
 	gotLevel := headingLevelFromSpan(f, first)
 	if gotLevel != level {
-		return r.diag(f, "first heading should be level "+strconv.Itoa(level)+", got "+strconv.Itoa(gotLevel))
+		return r.diag(f, fmt.Sprintf("first heading should be level %d, got %d", level, gotLevel))
 	}
 	return nil
 }
