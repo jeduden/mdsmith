@@ -156,3 +156,104 @@ func TestRule_EmptyFragment(t *testing.T) {
 	assert.Empty(t, check(t, src))
 	assert.Empty(t, checkLines(t, src))
 }
+
+// TestRule_EnabledByDefault verifies the rule is on by default.
+func TestRule_EnabledByDefault(t *testing.T) {
+	r := &samefileanchor.Rule{}
+	assert.True(t, r.EnabledByDefault())
+}
+
+// TestRule_NoHashInSource verifies that a file with no '#' at all returns
+// immediately via the pre-filter, reporting zero diagnostics.
+func TestRule_NoHashInSource(t *testing.T) {
+	src := "Plain text with no hash characters at all.\n"
+	assert.Empty(t, check(t, src))
+	assert.Empty(t, checkLines(t, src))
+}
+
+// TestRule_NoHeadings verifies that a file that has '#' (in a fragment link)
+// but no headings reports every same-file fragment link as unresolved.
+func TestRule_NoHeadings(t *testing.T) {
+	src := "See [link](#something).\n"
+	diags := check(t, src)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "#something")
+
+	diags2 := checkLines(t, src)
+	require.Len(t, diags2, 1)
+	assert.Contains(t, diags2[0].Message, "#something")
+}
+
+// TestRule_PunctuationOnlyHeading verifies that a heading whose text reduces to
+// an empty slug (e.g. "# !!!") is correctly skipped — no slug is added,
+// so any fragment link targeting it is reported unresolved.
+func TestRule_PunctuationOnlyHeading(t *testing.T) {
+	src := "# !!!\n\nSee [link](#something).\n"
+	// The heading "!!!" produces an empty slug and is skipped; "#something" is unresolved.
+	diags := check(t, src)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "#something")
+
+	diags2 := checkLines(t, src)
+	require.Len(t, diags2, 1)
+	assert.Contains(t, diags2[0].Message, "#something")
+}
+
+// TestRule_ATXClosingMarkers verifies that ## Heading ## (closing ## markers) is
+// correctly slugified — the trailing ## and any space before it are stripped.
+func TestRule_ATXClosingMarkers(t *testing.T) {
+	src := "## My Section ##\n\nSee [link](#my-section).\n"
+	assert.Empty(t, check(t, src))
+	assert.Empty(t, checkLines(t, src))
+}
+
+// TestRule_UnicodeHeading verifies that non-ASCII letters are kept and lowercased
+// in slugs (e.g. accented characters).
+func TestRule_UnicodeHeading(t *testing.T) {
+	// 'é' (U+00E9) is a non-ASCII letter; slug keeps it lowercased.
+	src := "# Café Style\n\nSee [link](#café-style).\n"
+	assert.Empty(t, check(t, src))
+	assert.Empty(t, checkLines(t, src))
+}
+
+// TestRule_NonLetterUnicodeDropped verifies that non-letter, non-number Unicode
+// characters are dropped from the slug.
+func TestRule_NonLetterUnicodeDropped(t *testing.T) {
+	// '→' (U+2192) is not a letter/number and is not a space, so it is
+	// dropped. "Test→Value" slugifies to "testvalue" (no hyphen inserted).
+	src := "# Test→Value\n\nSee [link](#testvalue).\n"
+	assert.Empty(t, check(t, src))
+	assert.Empty(t, checkLines(t, src))
+}
+
+// TestRule_InlineNodeLineRecursive verifies that line numbers are found for links
+// whose text children are nested inside inline markup (strong, em).
+func TestRule_InlineNodeLineRecursive(t *testing.T) {
+	// [**bold**](#missing) — the link's direct child is *ast.Strong, not *ast.Text.
+	// inlineNodeLine must recurse into the strong to find the text node's offset.
+	src := "# Section\n\n[**bold**](#missing).\n"
+	diags := check(t, src)
+	require.Len(t, diags, 1)
+	assert.Equal(t, "MDS070", diags[0].RuleID)
+	assert.Equal(t, 3, diags[0].Line)
+}
+
+// TestRule_ImageNoAltFallbackLine verifies that the line-number fallback (line 1)
+// fires when an image node has no text children (empty alt text).
+func TestRule_ImageNoAltFallbackLine(t *testing.T) {
+	// ![]( #missing) — empty alt; the *ast.Image has no text children, so
+	// inlineNodeLine falls back to 1.
+	src := "# Section\n\n![](#missing).\n"
+	diags := check(t, src)
+	require.Len(t, diags, 1)
+	assert.Equal(t, "MDS070", diags[0].RuleID)
+	assert.Equal(t, 1, diags[0].Line)
+}
+
+// TestRule_ATXHeadingLeadingSpaces verifies that ATX headings with up to 3
+// leading spaces are parsed correctly (the leading-space strip path).
+func TestRule_ATXHeadingLeadingSpaces(t *testing.T) {
+	src := "   # Indented Heading\n\nSee [link](#indented-heading).\n"
+	assert.Empty(t, check(t, src))
+	assert.Empty(t, checkLines(t, src))
+}

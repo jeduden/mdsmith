@@ -121,14 +121,6 @@ func sameFileFragment(dest []byte) []byte {
 	return dest[1:]
 }
 
-// slugBuf is a package-level stack buffer used by appendSlug to avoid a
-// heap allocation for the temporary slug bytes before they are interned into
-// the map. Since rules run serially per File (one goroutine per Check call),
-// this is safe without synchronisation. The buffer is 512 bytes — long enough
-// for any realistic heading line (the line-length rule caps lines at 80–120
-// chars for the default settings).
-var slugBuf [512]byte
-
 // collectSlugs builds the set of heading slugs that exist in the file.
 // On the AST path it walks the goldmark tree; on the nil-AST path it uses
 // the Layer 0 block spans. Both paths produce the same slug set.
@@ -141,9 +133,12 @@ func collectSlugs(f *lint.File) map[string]struct{} {
 
 // collectSlugsAST walks the goldmark AST to collect heading slugs.
 // The walk uses direct recursion (not ast.Walk) to avoid the closure alloc.
+// Buffers are local so concurrent Check calls on different files don't race.
 func collectSlugsAST(f *lint.File) map[string]struct{} {
 	slugs := make(map[string]struct{}, 4)
-	collectSlugsNode(f.AST, f.Source, &slugs)
+	var textBuf [256]byte
+	var slugBuf [512]byte
+	collectSlugsNode(f.AST, f.Source, &slugs, textBuf[:0], slugBuf[:0])
 	if len(slugs) == 0 {
 		return nil
 	}
@@ -152,36 +147,27 @@ func collectSlugsAST(f *lint.File) map[string]struct{} {
 
 // collectSlugsNode descends into n and fills the slugs map for every heading.
 // Direct recursion (instead of ast.Walk) avoids the per-node closure allocation.
-func collectSlugsNode(n ast.Node, src []byte, slugs *map[string]struct{}) {
+// textBuf and slugBuf are caller-owned scratch slices threaded through to avoid
+// shared-state races when the engine runs Check on multiple files concurrently.
+func collectSlugsNode(n ast.Node, src []byte, slugs *map[string]struct{}, textBuf, slugBuf []byte) {
 	if n == nil {
 		return
 	}
 	if h, ok := n.(*ast.Heading); ok {
-		text := headingTextFromAST(h, src)
-		slug := appendSlug(slugBuf[:0], text)
+		textBuf = textBuf[:0]
+		for c := h.FirstChild(); c != nil; c = c.NextSibling() {
+			if t, ok := c.(*ast.Text); ok {
+				textBuf = append(textBuf, src[t.Segment.Start:t.Segment.Stop]...)
+			}
+		}
+		slug := appendSlug(slugBuf[:0], textBuf)
 		if len(slug) > 0 {
 			(*slugs)[string(slug)] = struct{}{}
 		}
 	}
 	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
-		collectSlugsNode(c, src, slugs)
+		collectSlugsNode(c, src, slugs, textBuf, slugBuf)
 	}
-}
-
-// headingTextFromAST collects the plain-text content of a heading node by
-// concatenating its Text child segments. It writes into slugBuf2 to avoid
-// an allocation when the heading text is short.
-var slugBuf2 [256]byte
-
-func headingTextFromAST(h *ast.Heading, src []byte) []byte {
-	// Collect text segments into slugBuf2 (reset each call).
-	dst := slugBuf2[:0]
-	for c := h.FirstChild(); c != nil; c = c.NextSibling() {
-		if t, ok := c.(*ast.Text); ok {
-			dst = append(dst, src[t.Segment.Start:t.Segment.Stop]...)
-		}
-	}
-	return dst
 }
 
 // collectSlugsLayer0 uses the Layer 0 block spans to collect heading slugs.
@@ -199,6 +185,9 @@ func collectSlugsLayer0(f *lint.File) map[string]struct{} {
 		return nil
 	}
 	slugs := make(map[string]struct{}, headingCount)
+	// Local buffer — not shared, so concurrent Check calls on different
+	// files cannot race on this slice.
+	var slugBuf [512]byte
 	for _, span := range l0.BlockSpans {
 		switch span.Kind {
 		case lint.BlockATXHeading:
