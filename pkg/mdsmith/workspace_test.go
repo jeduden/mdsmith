@@ -290,6 +290,34 @@ func TestMemFileInfo_Mode(t *testing.T) {
 	}
 }
 
+// TestMemFSDirEntriesIgnoresEmptySegment verifies that a key whose first
+// segment after the directory prefix is empty (produced by a double-slash
+// in the raw key, bypassing NewMemWorkspace cleanup) does not produce an
+// empty-name directory entry. The guard `if name != ""` in dirEntries must
+// be checked before the seen-map probe to prevent probing with key "".
+func TestMemFSDirEntriesIgnoresEmptySegment(t *testing.T) {
+	// Construct memFS directly to bypass NewMemWorkspace path.Clean so the
+	// double-slash key is preserved; "a//b.md" after stripping prefix "a/"
+	// leaves "/b.md", whose first segment is "".
+	m := memFS{
+		"a//b.md": []byte("b"),
+		"a/c.md":  []byte("c"),
+	}
+	ents := m.dirEntries("a")
+	for _, e := range ents {
+		if e.Name() == "" {
+			t.Fatalf("dirEntries emitted an entry with empty name: %#v", e)
+		}
+	}
+	if len(ents) != 1 || ents[0].Name() != "c.md" {
+		names := make([]string, len(ents))
+		for i, e := range ents {
+			names[i] = e.Name()
+		}
+		t.Fatalf("dirEntries(\"a\") with double-slash key = %v, want [c.md]", names)
+	}
+}
+
 // --- indexSlash ---
 
 // TestIndexSlash covers the four boundary cases: no slash, slash at

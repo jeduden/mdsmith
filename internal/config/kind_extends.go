@@ -101,7 +101,7 @@ func extendsChainSchemas(
 	kinds map[string]KindBody, name string,
 ) ([]schemaChainEntry, error) {
 	visited := make(map[string]struct{})
-	chain := []string{}
+	var chain []string
 	current := name
 	for current != "" {
 		if _, ok := visited[current]; ok {

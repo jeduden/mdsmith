@@ -354,10 +354,10 @@ func splitRulesByExplicit(cfg *Config) (defaults, user map[string]RuleCfg) {
 }
 
 func allRuleNames(layers []layerInfo) []string {
-	seen := map[string]bool{}
+	seen := make(map[string]struct{})
 	for _, l := range layers {
 		for name := range l.Rules {
-			seen[name] = true
+			seen[name] = struct{}{}
 		}
 	}
 	names := make([]string, 0, len(seen))

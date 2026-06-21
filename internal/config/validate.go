@@ -76,7 +76,7 @@ func ValidateKinds(cfg *Config) error {
 // deterministic across runs.
 func validateKindExtends(kinds map[string]KindBody, name string) error {
 	visited := make(map[string]struct{})
-	chain := []string{}
+	var chain []string
 	current := name
 	for current != "" {
 		if _, ok := visited[current]; ok {
