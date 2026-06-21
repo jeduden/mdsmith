@@ -928,4 +928,3 @@ func (r *Runner) anyRepoScopedEnabled() bool {
 	}
 	return false
 }
-
