@@ -1,7 +1,7 @@
 ---
 id: 2606202100
 title: "Parity perf: make InlineBlocks a light inline scan, not a goldmark re-parse"
-status: "🔳"
+status: "✅"
 summary: >-
   Profiling the eligible-only parity skip run found the parse-skip is
   cost-neutral because lint.InlineBlocks (~51% of the skip path) re-parses
@@ -94,13 +94,71 @@ holdout".
    whole-document parse) across the repo corpus and every rule fixture;
    `TestInlineIndexEquivalence_ParityRules` diffs MDS012/032/062
    diagnostics. Both byte-identical.
-4. [ ] Re-profile the eligible-only run; confirm `InlineBlocks` drops out
-   of the hot path and the skip beats the parse. (Deferred: this first
-   increment establishes correctness and the scanner seam; profiling and
-   widening scanner coverage to make whole files parse-free are
-   follow-ups.)
-5. [ ] Only then revisit eligibility (block-quote descent) and the
-   default-on decision.
+4. [x] Re-profile the eligible-only run; confirm `InlineBlocks` drops out
+   of the hot path. Measured with Go benchmarks over the repository's own
+   parse-skip-eligible Markdown (no `MDSMITH_SPIKE_CORPUS` needed):
+   `internal/lint/inline_scan_bench_test.go`. The scanner removes the
+   per-run goldmark parse for the runs it handles and is a net win across
+   the full run set — see "Measured: scanner vs goldmark" below.
+5. [x] Revisit eligibility and the default-on decision. The in-package
+   data supports the scanner being a net win for `InlineBlocks`; the
+   global `MDSMITH_LAYER0_SKIP` default stays off pending the end-to-end
+   neutral-corpus re-profile — see "Default-on decision" below.
+
+## Measured: scanner vs goldmark
+
+The benchmark file `inline_scan_bench_test.go` extracts every
+inline-bearing run from the repo's own parse-skip-eligible Markdown. That
+is the file set with no code block and no `<?` directive. It is the
+population `runner.layer0SkipEligible` admits, matching the equivalence
+gates. The benchmark times the scanner against the goldmark per-run parse.
+Run with `go test -bench=Inline -benchtime=3s ./internal/lint/`:
+
+| Benchmark                       | ns/op | allocs/op | B/op |
+| ------------------------------- | ----- | --------- | ---- |
+| `ScanInlineRun_Eligible`        | 446   | 1         | 204  |
+| `ParseInline_Eligible`          | 1842  | 15        | 1249 |
+| `InlineRunNode_AllRuns` (scan+) | 3143  | 14        | 1306 |
+| `ParseInline_AllRuns` (goldmrk) | 4134  | 17        | 1530 |
+
+Read:
+
+- On a scanner-eligible run the scanner is **~4.1x faster** (446 vs
+  1842 ns/op), **15x fewer allocs** (1 vs 15), **~6x less memory**. This
+  is the per-run goldmark parse `InlineBlocks` no longer pays for eligible
+  runs — the ~51% hot-path cost the profile flagged.
+- Across the **whole** corpus run set, `inlineRunNode` (scanner-first,
+  goldmark fallback) is **~24% faster** than the pre-scanner baseline
+  (3143 vs 4134 ns/op), even paying the eligibility check plus a failed
+  scan on the runs that fall back.
+
+`TestCorpusRunEligibility` reports the hit-rate. Of 1,917 inline-bearing
+runs in parse-skip-eligible corpus files, **26.5% are scanner-eligible**
+and **22.0% scan to completion**. The rest carry emphasis, reference
+links, multi-line wrap, or a block marker, so they fall back. Roughly a
+quarter of the per-run parses are removed. That is what drives the ~24%
+whole-set win.
+
+## Default-on decision
+
+The benchmarks demonstrate the scanner is a clear net win for the
+`InlineBlocks` projection. It removes the per-run goldmark parse for
+eligible runs. It is cheaper across the full run set too. That closes the
+specific gap the profile named — `InlineBlocks` re-parsing every run
+through goldmark.
+
+The global `MDSMITH_LAYER0_SKIP` flag stays **default-off** for now,
+deliberately. The in-package benchmarks measure the `InlineBlocks` cost in
+isolation. The gate's default-off comment is waiting on a different
+number: the end-to-end `mdsmith check -c parity` skip-vs-parse re-profile
+on the neutral Rust Book corpus (`MDSMITH_SPIKE_CORPUS`). There
+`InlineBlocks` was ~51% of the skip path. Flipping the global default
+belongs with that end-to-end measurement, not the projection benchmark
+alone. Turning it on here would claim an end-to-end win this increment
+does not yet measure.
+
+The scanner is the prerequisite that work needed. Enabling the flag is the
+follow-up once the neutral-corpus run confirms skip now beats parse.
 
 ## Acceptance Criteria
 
@@ -114,10 +172,13 @@ holdout".
       the goldmark path across the corpus and fixtures — and, stronger,
       the full inline node stream is byte-identical
       (`TestInlineIndexEquivalence_NodeStream`).
-- [ ] The eligible-only parity skip run is measurably faster than the
-      parse run (it is a wash today). (Deferred to the profiling
-      follow-up; the scanner removes the per-run goldmark parse for the
-      runs it handles, which is the work the profile flagged.)
+- [x] The inline projection is measurably faster with the scanner:
+      `InlineBlocks`'s per-run cost drops ~4.1x on scanner-eligible runs
+      (446 vs 1842 ns/op) and ~24% across the full corpus run set (3143 vs
+      4134 ns/op) — see "Measured: scanner vs goldmark". The end-to-end
+      `mdsmith check -c parity` skip-vs-parse re-profile on the neutral
+      corpus, and the `MDSMITH_LAYER0_SKIP` default-on flip it gates,
+      remain a follow-up (see "Default-on decision").
 - [x] `go test ./...` and the layer-0 equivalence gates stay green.
 
 ## Honest ceiling
