@@ -11,12 +11,12 @@ use of LLMs as linters.
 
 ### mdsmith
 
-Go binary with zero runtime deps. It ships 67 rules,
-[MDS001][mds001] through [MDS068][mds068] (MDS060 is
+Go binary with zero runtime deps. It ships 69 rules,
+[MDS001][mds001] through [MDS070][mds070] (MDS060 is
 unused). They cover structure, readability, cross-file
 links, and generated content.
 
-26 of the 67 rules are opt-in (off by default), among them
+26 of the 69 rules are opt-in (off by default), among them
 conciseness-scoring ([MDS029][mds029]); the rest run by
 default.
 
@@ -151,7 +151,7 @@ gates.
 | Aspect        | gomarklint             | mdsmith                          |
 | ------------- | ---------------------- | -------------------------------- |
 | Distribution  | static Go binary       | static Go binary                 |
-| Rule set      | 23, kebab-case IDs     | 67, `MDSxxx` IDs                 |
+| Rule set      | 23, kebab-case IDs     | 69, `MDSxxx` IDs                 |
 | Autofix       | no                     | `mdsmith fix`, multi-pass        |
 | LSP / editor  | no (VS Code planned)   | LSP for any editor               |
 | Config        | `.gomarklint.json`     | `.mdsmith.yml`                   |
@@ -629,7 +629,7 @@ R Markdown constructs the others flatten away.
 | ----------------------- | ------------ | -------------------- | -------------------- | ------------ |
 | Language                | Go           | Rust                 | Rust                 | Rust         |
 | Rule IDs                | own `MDSxxx` | markdownlint `MDxxx` | markdownlint `MDxxx` | own          |
-| Rule count              | 67           | 71                   | ~41                  | unenumerated |
+| Rule count              | 69           | 71                   | ~41                  | unenumerated |
 | Autofix / format        | `fix`        | `--fix`, `fmt`       | no                   | `format`     |
 | LSP / editor            | yes (LSP)    | yes (LSP)            | no                   | yes (LSP)    |
 | Config format           | YAML         | TOML                 | TOML                 | TOML         |
@@ -757,19 +757,20 @@ access and is non-deterministic.
 
 ## Benchmarks
 
-Default mdsmith is substantially faster than
-markdownlint-cli2 on its own Markdown. With the
-mdsmith-only rules disabled (`mdsmith-parity`), it lands
-close to rumdl. See the [benchmark doc][bench] for the
-current ratios.
+Default mdsmith is more than an order of magnitude faster
+than markdownlint-cli2 on its own Markdown. With the
+mdsmith-only rules disabled (`mdsmith-parity`), it runs at
+mado's speed: the two tie on the repo corpus. See the
+[benchmark doc][bench] for the current ratios.
 
-mado and rumdl lead the per-file race. mdsmith trails
-them today because it also walks the cross-file graph,
-scores readability, and validates generated sections.
+mado leads the per-file race. Default mdsmith does more
+per file: it also walks the cross-file graph, scores
+readability, and validates generated sections. Even so, it
+comes in ahead of rumdl and panache on both corpora.
 
-Pick mado or rumdl for raw markdownlint throughput.
-Pick panache for Quarto or R Markdown. Pick mdsmith for
-the cross-file and self-maintaining-section layer.
+Pick mado for raw markdownlint throughput. Pick panache
+for Quarto or R Markdown. Pick mdsmith for the cross-file
+and self-maintaining-section layer.
 
 See the [benchmark doc][bench] for the full method, both
 corpora, every tool's command, the result tables, and
@@ -1020,7 +1021,7 @@ if you need a stable rule set across upgrades.
 [mds025]: ../../internal/rules/MDS025-table-format/README.md
 [mds027]: ../../internal/rules/MDS027-cross-file-reference-integrity/README.md
 [mds067]: ../../internal/rules/MDS067-callout-type/README.md
-[mds068]: ../../internal/rules/MDS068-link-style/README.md
+[mds070]: ../../internal/rules/MDS070-same-file-anchor/README.md
 [mds028]: ../../internal/rules/MDS028-token-budget/README.md
 [mds029]: ../../internal/rules/MDS029-conciseness-scoring/README.md
 [mds035]: ../../internal/rules/MDS035-toc-directive/README.md

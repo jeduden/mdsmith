@@ -163,9 +163,9 @@ validates generated sections, all here under this repository's
 own `.mdsmith.yml`, which enables opt-in rules a stock install
 leaves off.
 
-Even with that extra work, the `mdsmith` row runs in the same
-class as the per-file Rust linters. Compare it with the `rumdl`
-row on both corpora: it lands at roughly 3x the check-only mado.
+Even with that extra work, the `mdsmith` row comes in ahead of
+the `rumdl` and `panache` rows on both corpora, at roughly 3x
+the check-only mado.
 
 ### Like-for-like: the parity conventions
 
@@ -191,8 +191,8 @@ the rule class measured here.)
 
 ### Why parity trails gomarklint
 
-gomarklint is the fastest tool in the table because it never
-builds an AST. It is a pure line scanner. The
+gomarklint is the fastest tool in the benchmark because it
+never builds an AST. It is a pure line scanner. The
 `gomarklint-parity` convention turns mdsmith down to
 gomarklint's 20-rule default set, and that set excludes MDS027:
 the coverage matrix marks gomarklint's single-file
@@ -234,9 +234,10 @@ intended.
 
 ### Which tool to pick
 
-Pick mado or rumdl for raw markdownlint-rule throughput. Pick
+Pick mado for the fastest markdownlint-rule throughput. Pick
 mdsmith when the cross-file graph, readability budgets, and
-self-maintaining sections are the point.
+self-maintaining sections are the point; on full defaults it
+already comes in ahead of rumdl and panache on both corpora.
 
 ## Measurement notes and fairness
 
@@ -337,13 +338,13 @@ it can still predate gomarklint and omit the row. The per-merge
 already carries the row.
 
 Read that row as the lightest-workload entry. gomarklint's
-defaults cover 21 of mdsmith's rules (22 in all, one off by
+defaults cover 22 of mdsmith's rules (23 in all, one off by
 default, every one a full cover). That is the smallest default
 rule set of the markdownlint-family tools here:
 
 - gomarklint: 22
 - mado: 28
-- rumdl and markdownlint: 42 each
+- rumdl and markdownlint: 43 each
 
 (Counts from the [peer-linter coverage matrix][mdcov], generated
 from rule front matter.) So gomarklint's fastest time partly
