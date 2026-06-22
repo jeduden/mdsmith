@@ -6,9 +6,9 @@ import (
 )
 
 // TestStructLayout asserts the optimal size for the Rule struct.
-// The Rule struct currently packs bool fields between larger fields, wasting
-// padding bytes. Reordering to place the bools together reduces size from
-// 128 to 120 bytes and improves cache utilisation across per-Check calls.
+// Moving bool fields to the end (previously between larger fields, wasting
+// padding bytes) reduces size from 128 to 120 bytes and improves cache
+// utilisation across per-Check calls.
 func TestStructLayout(t *testing.T) {
 	got := unsafe.Sizeof(Rule{})
 	const want = uintptr(120)
