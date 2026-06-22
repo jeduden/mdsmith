@@ -112,31 +112,31 @@ inline-bearing run from the repo's own parse-skip-eligible Markdown. That
 is the file set with no code block and no `<?` directive. It is the
 population `runner.layer0SkipEligible` admits, matching the equivalence
 gates. The benchmark times the scanner against the goldmark per-run parse.
-Run with `go test -bench=Inline -benchtime=3s ./internal/lint/`:
+Run with `go test -bench=Inline -benchtime=5s ./internal/lint/`:
 
 | Benchmark                       | ns/op | allocs/op | B/op |
 | ------------------------------- | ----- | --------- | ---- |
-| `ScanInlineRun_Eligible`        | 446   | 1         | 204  |
-| `ParseInline_Eligible`          | 1842  | 15        | 1249 |
-| `InlineRunNode_AllRuns` (scan+) | 3143  | 14        | 1306 |
-| `ParseInline_AllRuns` (goldmrk) | 4134  | 17        | 1530 |
+| `ScanInlineRun_Eligible`        | 462   | 1         | 204  |
+| `ParseInline_Eligible`          | 2196  | 15        | 1251 |
+| `InlineRunNode_AllRuns` (scan+) | 5067  | 14        | 1311 |
+| `ParseInline_AllRuns` (goldmrk) | 5670  | 17        | 1534 |
 
 Read:
 
-- On a scanner-eligible run the scanner is **~4.1x faster** (446 vs
-  1842 ns/op), **15x fewer allocs** (1 vs 15), **~6x less memory**. This
+- On a scanner-eligible run the scanner is **~4.7x faster** (462 vs
+  2196 ns/op), **15x fewer allocs** (1 vs 15), **~6x less memory**. This
   is the per-run goldmark parse `InlineBlocks` no longer pays for eligible
   runs — the ~51% hot-path cost the profile flagged.
 - Across the **whole** corpus run set, `inlineRunNode` (scanner-first,
-  goldmark fallback) is **~24% faster** than the pre-scanner baseline
-  (3143 vs 4134 ns/op), even paying the eligibility check plus a failed
+  goldmark fallback) is **~11% faster** than the pre-scanner baseline
+  (5067 vs 5670 ns/op), even paying the eligibility check plus a failed
   scan on the runs that fall back.
 
 `TestCorpusRunEligibility` reports the hit-rate. Of 1,917 inline-bearing
 runs in parse-skip-eligible corpus files, **26.5% are scanner-eligible**
 and **22.0% scan to completion**. The rest carry emphasis, reference
 links, multi-line wrap, or a block marker, so they fall back. Roughly a
-quarter of the per-run parses are removed. That is what drives the ~24%
+quarter of the per-run parses are removed. That is what drives the ~11%
 whole-set win.
 
 ## Default-on decision
@@ -173,9 +173,9 @@ follow-up once the neutral-corpus run confirms skip now beats parse.
       the full inline node stream is byte-identical
       (`TestInlineIndexEquivalence_NodeStream`).
 - [x] The inline projection is measurably faster with the scanner:
-      `InlineBlocks`'s per-run cost drops ~4.1x on scanner-eligible runs
-      (446 vs 1842 ns/op) and ~24% across the full corpus run set (3143 vs
-      4134 ns/op) — see "Measured: scanner vs goldmark". The end-to-end
+      `InlineBlocks`'s per-run cost drops ~4.7x on scanner-eligible runs
+      (462 vs 2196 ns/op) and ~11% across the full corpus run set (5067 vs
+      5670 ns/op) — see "Measured: scanner vs goldmark". The end-to-end
       `mdsmith check -c parity` skip-vs-parse re-profile on the neutral
       corpus, and the `MDSMITH_LAYER0_SKIP` default-on flip it gates,
       remain a follow-up (see "Default-on decision").
