@@ -35,24 +35,24 @@ type Item struct {
 	// inside a once-nested list, and so on. It matches the count of
 	// *ast.ListItem ancestors in goldmark's tree.
 	Level int
-	// Ordered reports whether the item belongs to an ordered list.
-	Ordered bool
 	// Number is the literal ordered number written on the marker line
 	// (ordered items only; 0 for bullets).
 	Number int
-	// Marker is the marker byte: '-', '*', or '+' for bullets; '.' or
-	// ')' for ordered items.
-	Marker byte
+	// Ordered reports whether the item belongs to an ordered list.
+	Ordered bool
 	// MultiBlock reports whether the item contains more than one block
 	// child, matching goldmark's isMultiItem (ListItem.ChildCount > 1).
 	MultiBlock bool
+	// Marker is the marker byte: '-', '*', or '+' for bullets; '.' or
+	// ')' for ordered items.
+	Marker byte
 }
 
 // List is one parsed list: a maximal run of sibling items at the same
 // nesting level with the same ordered-ness.
 type List struct {
-	// Ordered reports whether this is an ordered list.
-	Ordered bool
+	// Items holds the list's direct child items in document order.
+	Items []Item
 	// Start is the list's start value: for an ordered list, the literal
 	// number of its first item (matching goldmark list.Start); 0 for an
 	// unordered list.
@@ -65,10 +65,10 @@ type List struct {
 	// LastLine is the 1-based source line of the list's last content
 	// line (including continuation and nested-list lines).
 	LastLine int
+	// Ordered reports whether this is an ordered list.
+	Ordered bool
 	// TopLevel reports whether the list has no *ast.ListItem ancestor.
 	TopLevel bool
-	// Items holds the list's direct child items in document order.
-	Items []Item
 }
 
 // Parse scans lines and returns every list in document order plus a flat
@@ -111,6 +111,11 @@ type frame struct {
 	// blockCount counts the item's block children, mirroring goldmark's
 	// ChildCount used by isMultiItem.
 	blockCount int
+	// childListIndex is the index of the open child list nested directly
+	// under this item, or -1 when none is open. It lets a following
+	// nested marker rejoin the same child list instead of starting a new
+	// one.
+	childListIndex int
 	// pendingBlank records a blank line seen while this item is open but
 	// not yet followed by a continuation; it makes the next content line
 	// start a new block child.
@@ -119,11 +124,6 @@ type frame struct {
 	// item was paragraph text, so a following text line at lower indent
 	// can lazily continue it.
 	inParagraph bool
-	// childListIndex is the index of the open child list nested directly
-	// under this item, or -1 when none is open. It lets a following
-	// nested marker rejoin the same child list instead of starting a new
-	// one.
-	childListIndex int
 	// emptyLine is true while the item has no recorded source line yet
 	// (an empty marker line whose content has not arrived). The first
 	// continuation line that attaches content sets the item's Line.
@@ -133,10 +133,10 @@ type frame struct {
 type parser struct {
 	lines [][]byte
 	lists []List
-	// itemCount counts appended items for sizing the flat slice in Parse.
-	itemCount int
 	// stack holds the currently open list items, outermost first.
 	stack []frame
+	// itemCount counts appended items for sizing the flat slice in Parse.
+	itemCount int
 	// blankRun counts consecutive blank lines pending before the current
 	// line.
 	blankRun int
@@ -360,10 +360,10 @@ func hasMarkerToken(line []byte, indent int) bool {
 
 // markerInfo describes a recognized list-item marker on a line.
 type markerInfo struct {
-	ordered    bool
 	number     int
-	marker     byte
 	contentCol int
+	ordered    bool
+	marker     byte
 	// empty reports that the marker line carries no content after the
 	// marker. goldmark gives such an item no source line of its own, so
 	// its recorded Line is 0 until a continuation line attaches content;

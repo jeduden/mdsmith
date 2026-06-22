@@ -33,14 +33,16 @@ type LinksConfig struct {
 
 // Rule checks Markdown links for missing target files and missing heading
 // anchors in linked Markdown files.
+// Fields are ordered large-to-small to eliminate bool-induced padding:
+// slices first, then string, then embedded struct, then bools last.
 type Rule struct {
 	Include       []string
 	Exclude       []string
-	Strict        bool
 	Placeholders  []string // placeholder tokens to treat as opaque
-	Wikilinks     bool     // when true, validate Obsidian-style [[...]] targets
 	WikilinkStyle string   // resolution style; only "obsidian" ships today
 	Links         LinksConfig
+	Strict        bool
+	Wikilinks     bool // when true, validate Obsidian-style [[...]] targets
 }
 
 // ID implements rule.Rule.
@@ -61,15 +63,18 @@ func (r *Rule) Category() string { return "link" }
 // relative-link check needs them and the cache is package-scope
 // (cachedAbsRoot) so the cost is paid once across all Files in
 // one run. Plan 195 task 5.
+// checkCtx fields are ordered so pointer-containing fields (maps, then
+// strings) precede the bool, reducing the GC pointer-scan span from 72 to 56.
 type checkCtx struct {
-	f                *lint.File
-	rule             *Rule
+	f           *lint.File
+	rule        *Rule
+	selfAnchors map[string]struct{}
+	anchorCache map[string]map[string]struct{}
+
 	resolvedRoot     string
 	resolvedSiteRoot string
 
-	selfAnchors      map[string]struct{}
 	selfAnchorsBuilt bool
-	anchorCache      map[string]map[string]struct{}
 }
 
 // ensureSelfAnchors lazily builds the heading-anchor set for f.
@@ -268,12 +273,15 @@ func wikilinkRoot(f *lint.File) fs.FS {
 // via f.RunCache), the resolver serves every lookup from that
 // index — turning N files × M targets × workspace-walk into one
 // walk per workspace.
+// wikilinkResolver fields are ordered so the interface (root) and pointer
+// fields (index, memory) precede the strings, reducing GC pointer-scan span
+// from 64 to 56 bytes.
 type wikilinkResolver struct {
 	root   fs.FS
-	from   string
-	style  string
 	index  *linkgraph.WikilinkIndex
 	memory map[string]wikilinkResolveResult
+	from   string
+	style  string
 }
 
 type wikilinkResolveResult struct {
@@ -766,7 +774,10 @@ func (r *Rule) SettingMergeMode(key string) rule.MergeMode {
 	return rule.MergeReplace
 }
 
+// targetFile fields are ordered so the func field (a single pointer) precedes
+// the strings, reducing the GC pointer-scan span from 40 to 32 bytes.
 type targetFile struct {
+	read func() ([]byte, error)
 	// cacheKey is the per-Check cache key (the `cache` map in
 	// anchorsForFile). Prefixed with "os:" or "fs:" so OS and FS
 	// resolutions of the same path do not collide within one
@@ -779,7 +790,6 @@ type targetFile struct {
 	// runCacheKey signals "skip the RunCache slot, use the
 	// per-Check cache only".
 	runCacheKey string
-	read        func() ([]byte, error)
 }
 
 func anchorsForFile(
