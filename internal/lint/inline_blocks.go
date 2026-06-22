@@ -105,8 +105,8 @@ func nonInlineLines(f *File) map[int]struct{} {
 // and the benchmark helpers.
 func inlineRunBounds(f *File) [][2]int {
 	skip := nonInlineLines(f)
-	var out [][2]int
 	n := len(f.Lines)
+	out := make([][2]int, 0, n)
 	i := 0
 	for i < n {
 		if f.skipInlineLine(skip, i) {
@@ -144,8 +144,11 @@ func scanInlineBlocks(f *File) []InlineBlock {
 	// every earlier run's nodes valid while reusing slab memory instead of
 	// allocating a fresh node pool per run. The arena outlives this scan via
 	// the parsed nodes cached on the File, so it is per-file, not pooled.
-	a := arena.New()
 	bounds := inlineRunBounds(f)
+	if len(bounds) == 0 {
+		return nil
+	}
+	a := arena.New()
 	out := make([]InlineBlock, len(bounds))
 	for k, b := range bounds {
 		out[k] = InlineBlock{

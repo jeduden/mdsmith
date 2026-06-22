@@ -108,10 +108,11 @@ holdout".
 ## Measured: scanner vs goldmark
 
 The benchmark file `inline_scan_bench_test.go` extracts every
-inline-bearing run from the repo's own parse-skip-eligible Markdown. That
-is the file set with no code block and no `<?` directive. It is the
-population `runner.layer0SkipEligible` admits, matching the equivalence
-gates. The benchmark times the scanner against the goldmark per-run parse.
+inline-bearing run from the repo's own Markdown. It uses the same two
+filters as `TestInlineIndexEquivalence_*`: no code block and no `<?`
+directive. (The production gate's coarse `>` guard is intentionally
+omitted — see the `corpusRuns` comment for the rationale.) The benchmark
+times the scanner against the goldmark per-run parse.
 Run with `go test -bench=Inline -benchtime=5s ./internal/lint/`:
 
 | Benchmark                       | ns/op | allocs/op | B/op |

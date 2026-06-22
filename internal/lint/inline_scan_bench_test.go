@@ -11,13 +11,13 @@ import (
 )
 
 // corpusRuns extracts every inline-bearing run's bytes from the repository's
-// own parse-skip-eligible Markdown, grouping lines exactly as scanInlineBlocks
-// does (skip set plus skipInlineLine). It restricts the file set to the
-// population the production parse-skip gate actually admits — no fenced/indented
-// code block and no `<?` directive marker, mirroring runner.layer0SkipEligible
-// and TestInlineIndexEquivalence_* — so the scanner hit-rate and the
-// scanner-vs-goldmark comparison measure the input that drives the default-on
-// decision, without MDSMITH_SPIKE_CORPUS.
+// own Markdown, grouping lines exactly as scanInlineBlocks does (skip set plus
+// skipInlineLine). It applies the same two filters as TestInlineIndexEquivalence_*
+// and the production parse-skip gate: no fenced/indented code block and no `<?`
+// directive marker. It intentionally omits the production gate's coarse
+// SourceMayHaveBlockQuote ('>') guard — that guard excludes block-quote-nested
+// headings from the skip path for correctness, but files with '>' in prose or
+// links are valid inline-scan input and belong in the benchmark corpus.
 func corpusRuns(t testing.TB) [][]byte {
 	root := repoRoot(t)
 	var runs [][]byte
