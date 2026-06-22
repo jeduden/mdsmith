@@ -23,9 +23,11 @@ func init() {
 // singleton and the LSP server may call Check from concurrent
 // goroutines, where a plain check-then-set on the engine field
 // would race.
+// engine sits before engineOnce so the GC pointer-scan span is 8 bytes
+// (just the pointer) rather than 24 (pointer buried after sync.Once).
 type Rule struct {
-	engineOnce sync.Once
 	engine     *gensection.Engine
+	engineOnce sync.Once
 }
 
 // ID implements rule.Rule.

@@ -28,10 +28,12 @@ func init() {
 // Rule gates table well-formedness: edge-pipe style (MD055), column
 // count vs the header (MD056), surrounding blank lines (MD058), and
 // the column-alignment / padding pass that gives the rule its name.
+// Style (a string, containing a pointer) sits first to keep the GC
+// pointer-scan span at 8 bytes instead of 24.
 type Rule struct {
-	Pad            int // spaces on each side of cell content
-	SeparatorStyle tablefmt.SeparatorStyle
 	Style          string // edge-pipe style: one of the Style* constants
+	Pad            int    // spaces on each side of cell content
+	SeparatorStyle tablefmt.SeparatorStyle
 }
 
 // ID implements rule.Rule.
