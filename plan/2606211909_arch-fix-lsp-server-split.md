@@ -1,7 +1,7 @@
 ---
 id: 2606211909
 title: 'arch-fix: split internal/lsp/server.go'
-status: '🔲'
+status: '✅'
 summary: >-
   server.go crept back to 1 007 lines after
   plan 203 green. Split along dispatch groups
@@ -36,32 +36,24 @@ The primary file stays under 800 lines.
 
 ## Tasks
 
-1. Identify the new capability dispatch
-   blocks added since plan 203 (`kinds`
-   handlers, `rule-doc` / hover-rewrite
-   handlers).
-2. Create `internal/lsp/server_kinds.go`:
-   move the `kinds` request handlers and
-   their helpers.
-3. Move hover-rewrite and rule-doc
-   registration into a dedicated sibling
-   (or extend the existing one from
-   plan 203).
-4. Remove the moved blocks from `server.go`
-   and trim unused imports.
+1. Identify the new capability dispatch blocks added since plan 203
+   (`kinds` handlers, `rule-doc` / hover-rewrite handlers).
+2. Create `internal/lsp/server_kinds.go`: move the `kinds` request
+   handlers and their helpers.
+3. Move hover-rewrite and rule-doc registration into a dedicated
+   sibling (or extend the existing one from plan 203).
+4. Remove the moved blocks from `server.go` and trim unused imports.
 5. Run `go build ./...` — confirm no errors.
-6. Run `go test ./...` — confirm no
-   regressions.
-7. Confirm `wc -l server.go` is under
-   800 lines.
+6. Run `go test ./...` — confirm no regressions.
+7. Confirm `wc -l server.go` is under 800 lines.
 
 ## Acceptance Criteria
 
-- [ ] `internal/lsp/server.go` is under
+- [x] `internal/lsp/server.go` is under
   800 lines.
-- [ ] `go build ./...` passes.
-- [ ] `go test ./...` passes.
-- [ ] `go tool golangci-lint run` reports
+- [x] `go build ./...` passes.
+- [x] `go test ./...` passes.
+- [x] `go tool golangci-lint run` reports
   no new issues.
-- [ ] No LSP behaviour changed — pure file
+- [x] No LSP behaviour changed — pure file
   reorganisation within the `lsp` package.

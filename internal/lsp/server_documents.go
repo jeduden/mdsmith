@@ -201,7 +201,14 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 // unit-testable without a live session and its caches.
 func watchedFilesTreeChanged(changes []fileEvent) bool {
 	for _, c := range changes {
-		if strings.HasSuffix(uriToPath(c.URI), ".mdsmith.yml") {
+		path := uriToPath(c.URI)
+		if path == "" {
+			// Non-file URI (e.g. git:// or untitled:) — not a
+			// filesystem event; skip so it cannot trigger an
+			// unnecessary wikilink-index rebuild.
+			continue
+		}
+		if strings.HasSuffix(path, ".mdsmith.yml") {
 			continue
 		}
 		if c.Type == fileChangeCreated || c.Type == fileChangeDeleted {
