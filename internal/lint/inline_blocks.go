@@ -55,8 +55,8 @@ func InlineBlocks(f *File) []InlineBlock {
 	f.inlineBlocksMu.Lock()
 	defer f.inlineBlocksMu.Unlock()
 	if !f.inlineBlocksDone.Load() {
-		defer f.inlineBlocksDone.Store(true)
 		f.inlineBlocks = scanInlineBlocks(f)
+		f.inlineBlocksDone.Store(true)
 	}
 	return f.inlineBlocks
 }
@@ -99,6 +99,29 @@ func nonInlineLines(f *File) map[int]struct{} {
 	return set
 }
 
+// inlineRunBounds returns the [start, end) byte offsets of every inline-bearing
+// run in f. Each pair is [LineStartOffset(runFirst), lineEndOffset(runLast)].
+// The grouping logic is the single authoritative source shared by scanInlineBlocks
+// and the benchmark helpers.
+func inlineRunBounds(f *File) [][2]int {
+	skip := nonInlineLines(f)
+	n := len(f.Lines)
+	out := make([][2]int, 0, n)
+	i := 0
+	for i < n {
+		if f.skipInlineLine(skip, i) {
+			i++
+			continue
+		}
+		runStart := i
+		for i < n && !f.skipInlineLine(skip, i) {
+			i++
+		}
+		out = append(out, [2]int{f.LineStartOffset(runStart), f.lineEndOffset(i - 1)})
+	}
+	return out
+}
+
 // scanInlineBlocks groups the inline-bearing lines into runs and parses each
 // run with the document references pre-seeded.
 func scanInlineBlocks(f *File) []InlineBlock {
@@ -116,31 +139,22 @@ func scanInlineBlocks(f *File) []InlineBlock {
 	if bytes.Contains(f.Source, refDefMarker) {
 		refs = f.LinkReferences()
 	}
-	skip := nonInlineLines(f)
 	// One arena backs every run's parse for this file. Goldmark draws the
 	// run's inline nodes from it; growing it across runs (never Reset) keeps
 	// every earlier run's nodes valid while reusing slab memory instead of
 	// allocating a fresh node pool per run. The arena outlives this scan via
 	// the parsed nodes cached on the File, so it is per-file, not pooled.
+	bounds := inlineRunBounds(f)
+	if len(bounds) == 0 {
+		return nil
+	}
 	a := arena.New()
-	var out []InlineBlock
-	n := len(f.Lines)
-	i := 0
-	for i < n {
-		if f.skipInlineLine(skip, i) {
-			i++
-			continue
+	out := make([]InlineBlock, len(bounds))
+	for k, b := range bounds {
+		out[k] = InlineBlock{
+			Node:   inlineRunNode(f.Source[b[0]:b[1]], refs, a),
+			Offset: b[0],
 		}
-		runStart := i
-		for i < n && !f.skipInlineLine(skip, i) {
-			i++
-		}
-		start := f.LineStartOffset(runStart)
-		end := f.lineEndOffset(i - 1)
-		out = append(out, InlineBlock{
-			Node:   inlineRunNode(f.Source[start:end], refs, a),
-			Offset: start,
-		})
 	}
 	return out
 }
