@@ -7,9 +7,9 @@ import (
 
 // TestRuleFieldOrder asserts that the engine pointer field comes first in the
 // MDS038 Rule struct. The current layout puts engine after engineOnce (a
-// sync.Once = 16 bytes with no pointers), forcing GC to scan 24 bytes.
-// Moving engine first reduces the GC pointer-scan span to 8 bytes.
-// The test fails (red) until fields are reordered.
+// sync.Once = 12 bytes with no pointers, padded to 16 to align the pointer),
+// forcing GC to scan 24 bytes. Moving engine first reduces the GC pointer-scan
+// span to 8 bytes. The test fails (red) until fields are reordered.
 func TestRuleFieldOrder(t *testing.T) {
 	got := unsafe.Offsetof(Rule{}.engine)
 	const want = uintptr(0)
