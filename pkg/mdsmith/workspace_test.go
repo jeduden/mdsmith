@@ -266,6 +266,30 @@ func TestMemFSGlobDoublestar(t *testing.T) {
 	}
 }
 
+// TestMemDirEntry_Type covers both branches of the fs.DirEntry.Type() path.
+func TestMemDirEntry_Type(t *testing.T) {
+	dir := memDirEntry{name: "docs", dir: true}
+	if got := dir.Type(); got != fs.ModeDir {
+		t.Errorf("Type() dir = %v, want %v", got, fs.ModeDir)
+	}
+	file := memDirEntry{name: "a.md", dir: false}
+	if got := file.Type(); got != 0 {
+		t.Errorf("Type() file = %v, want 0", got)
+	}
+}
+
+// TestMemFileInfo_Mode covers both branches of the fs.FileInfo.Mode() path.
+func TestMemFileInfo_Mode(t *testing.T) {
+	dir := memFileInfo{name: "docs", dir: true}
+	if got := dir.Mode(); got != fs.ModeDir|0o555 {
+		t.Errorf("Mode() dir = %v, want %v", got, fs.ModeDir|0o555)
+	}
+	file := memFileInfo{name: "a.md", size: 10, dir: false}
+	if got := file.Mode(); got != 0o444 {
+		t.Errorf("Mode() file = %v, want 0o444", got)
+	}
+}
+
 // --- indexSlash ---
 
 // TestIndexSlash covers the four boundary cases: no slash, slash at

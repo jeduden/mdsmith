@@ -379,7 +379,6 @@ func (e memDirEntry) IsDir() bool {
 	return e.dir
 }
 func (e memDirEntry) Type() fs.FileMode {
-	// no test by design — trivial accessor
 	if e.dir {
 		return fs.ModeDir
 	}
@@ -408,7 +407,6 @@ func (i memFileInfo) Size() int64 {
 	return i.size
 }
 func (i memFileInfo) Mode() fs.FileMode {
-	// no test by design — trivial accessor
 	if i.dir {
 		return fs.ModeDir | 0o555
 	}
