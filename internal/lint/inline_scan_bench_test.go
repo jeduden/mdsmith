@@ -22,7 +22,17 @@ func corpusRuns(t testing.TB) [][]byte {
 	root := repoRoot(t)
 	var runs [][]byte
 	_ = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() || filepath.Ext(p) != ".md" {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			switch d.Name() {
+			case ".git", "node_modules", "dist", "build":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if filepath.Ext(p) != ".md" {
 			return nil
 		}
 		src, readErr := os.ReadFile(p)

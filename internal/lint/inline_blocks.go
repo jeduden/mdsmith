@@ -55,8 +55,8 @@ func InlineBlocks(f *File) []InlineBlock {
 	f.inlineBlocksMu.Lock()
 	defer f.inlineBlocksMu.Unlock()
 	if !f.inlineBlocksDone.Load() {
-		defer f.inlineBlocksDone.Store(true)
 		f.inlineBlocks = scanInlineBlocks(f)
+		f.inlineBlocksDone.Store(true)
 	}
 	return f.inlineBlocks
 }
