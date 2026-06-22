@@ -3,7 +3,7 @@ id: 2606211910
 title: >-
   arch-fix: add trivial-accessor exemption
   comments in workspace.go
-status: '🔲'
+status: '✅'
 summary: >-
   Add one-line "no test by design" comments
   to the trivial one-liner methods in
@@ -55,9 +55,9 @@ Future audits pass without flagging them.
 
 ## Acceptance Criteria
 
-- [ ] Every trivial one-liner method in
+- [x] Every trivial one-liner method in
   `pkg/mdsmith/workspace.go` carries an
   exemption comment.
-- [ ] `go build ./...` passes.
-- [ ] `mdsmith check pkg/mdsmith/workspace.go`
+- [x] `go build ./...` passes.
+- [x] `mdsmith check pkg/mdsmith/workspace.go`
   reports no new violations.

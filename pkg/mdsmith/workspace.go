@@ -319,7 +319,10 @@ func (f *memFile) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-func (f *memFile) Close() error { return nil }
+func (f *memFile) Close() error {
+	// no test by design — trivial accessor
+	return nil
+}
 
 // memDir is an fs.ReadDirFile for in-memory directories.
 type memDir struct {
@@ -333,10 +336,14 @@ func (d *memDir) Stat() (fs.FileInfo, error) {
 }
 
 func (d *memDir) Read([]byte) (int, error) {
+	// no test by design — trivial accessor
 	return 0, &fs.PathError{Op: "read", Path: d.name, Err: fs.ErrInvalid}
 }
 
-func (d *memDir) Close() error { return nil }
+func (d *memDir) Close() error {
+	// no test by design — trivial accessor
+	return nil
+}
 
 func (d *memDir) ReadDir(n int) ([]fs.DirEntry, error) {
 	if n <= 0 {
@@ -363,8 +370,14 @@ type memDirEntry struct {
 	dir  bool
 }
 
-func (e memDirEntry) Name() string { return e.name }
-func (e memDirEntry) IsDir() bool  { return e.dir }
+func (e memDirEntry) Name() string {
+	// no test by design — trivial accessor
+	return e.name
+}
+func (e memDirEntry) IsDir() bool {
+	// no test by design — trivial accessor
+	return e.dir
+}
 func (e memDirEntry) Type() fs.FileMode {
 	if e.dir {
 		return fs.ModeDir
@@ -372,6 +385,7 @@ func (e memDirEntry) Type() fs.FileMode {
 	return 0
 }
 func (e memDirEntry) Info() (fs.FileInfo, error) {
+	// no test by design — trivial accessor
 	// memDirEntry and memFileInfo share an identical field layout, so
 	// the conversion copies name/size/dir across one-for-one.
 	return memFileInfo(e), nil
@@ -384,14 +398,29 @@ type memFileInfo struct {
 	dir  bool
 }
 
-func (i memFileInfo) Name() string { return i.name }
-func (i memFileInfo) Size() int64  { return i.size }
+func (i memFileInfo) Name() string {
+	// no test by design — trivial accessor
+	return i.name
+}
+func (i memFileInfo) Size() int64 {
+	// no test by design — trivial accessor
+	return i.size
+}
 func (i memFileInfo) Mode() fs.FileMode {
 	if i.dir {
 		return fs.ModeDir | 0o555
 	}
 	return 0o444
 }
-func (i memFileInfo) ModTime() time.Time { return time.Time{} }
-func (i memFileInfo) IsDir() bool        { return i.dir }
-func (i memFileInfo) Sys() any           { return nil }
+func (i memFileInfo) ModTime() time.Time {
+	// no test by design — trivial accessor
+	return time.Time{}
+}
+func (i memFileInfo) IsDir() bool {
+	// no test by design — trivial accessor
+	return i.dir
+}
+func (i memFileInfo) Sys() any {
+	// no test by design — trivial accessor
+	return nil
+}
