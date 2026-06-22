@@ -3,7 +3,7 @@ date: "2026-06-19"
 scope: "LSP server and VS Code extension"
 method: "audit"
 title: "LSP server and VS Code extension security audit"
-summary: "Audit of the LSP server and VS Code extension surfaces. No critical, high, or medium findings. Two low-severity gaps in the VS Code Workspace Trust gating for read-only informational commands; five confirmed baseline defenses."
+summary: "Audit of the LSP server and VS Code extension surfaces. No critical, high, or medium findings. Two low-severity gaps in the VS Code Workspace Trust gating for read-only informational commands (S006, S007) — both fixed in PR #670; five confirmed baseline defenses."
 ---
 # mdsmith Security Review
 
@@ -14,17 +14,17 @@ summary: "Audit of the LSP server and VS Code extension surfaces. No critical, h
 
 ## Summary
 
-Critical: 0 | High: 0 | Medium: 0 | Low: 2 | Info: 5
+Critical: 0 | High: 0 | Medium: 0 | Low: 2 (both fixed) | Info: 5
 
-| ID   | Sev  | Conf      | Title                                                                                                                                        | Surface | Location                                      |
-| ---- | ---- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ------- | --------------------------------------------- |
-| S006 | low  | confirmed | VS Code extension: mdsmith.kinds.resolve and mdsmith.kinds.why run in untrusted workspaces without a trust gate                              | vscode  | `editors/vscode/package.json:125-130`         |
-| S007 | low  | confirmed | VS Code extension: mdsmith-rule: virtual document content provider runs without trust gate                                                   | vscode  | `editors/vscode/src/wiring.ts:906-910`        |
-| S001 | info | confirmed | LSP: initialize/didOpen/didChangeWatchedFiles are diagnostics-only — no file writes or recipe execution                                      | lsp     | `internal/lsp/server_lifecycle.go:14-104`     |
-| S002 | info | confirmed | LSP: fix-on-save (source.fixAll.mdsmith) returns WorkspaceEdit for open document only — no writes outside the buffer, no recipe execution    | lsp     | `internal/lsp/server_codeaction.go:183-215`   |
-| S003 | info | confirmed | LSP: per-document panic is contained — does not crash the server                                                                             | lsp     | `internal/lsp/server.go:343-358`              |
-| S004 | info | confirmed | VS Code extension: Workspace Trust baseline holds — untrustedWorkspaces:limited, mdsmith.path/config restricted, all mutating commands gated | vscode  | `editors/vscode/package.json:63-70`           |
-| S005 | info | confirmed | VS Code extension: spawn uses argv array, no shell interpolation                                                                             | vscode  | `editors/vscode/src/commands/runner.ts:21-35` |
+| ID   | Sev  | Conf      | Status | Title                                                                                                                                        | Surface | Location                                      |
+| ---- | ---- | --------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------- | ------- | --------------------------------------------- |
+| S006 | low  | confirmed | fixed  | VS Code extension: mdsmith.kinds.resolve and mdsmith.kinds.why run in untrusted workspaces without a trust gate                              | vscode  | `editors/vscode/package.json:125-130`         |
+| S007 | low  | confirmed | fixed  | VS Code extension: mdsmith-rule: virtual document content provider runs without trust gate                                                   | vscode  | `editors/vscode/src/wiring.ts:906-910`        |
+| S001 | info | confirmed | n/a    | LSP: initialize/didOpen/didChangeWatchedFiles are diagnostics-only — no file writes or recipe execution                                      | lsp     | `internal/lsp/server_lifecycle.go:14-104`     |
+| S002 | info | confirmed | n/a    | LSP: fix-on-save (source.fixAll.mdsmith) returns WorkspaceEdit for open document only — no writes outside the buffer, no recipe execution    | lsp     | `internal/lsp/server_codeaction.go:183-215`   |
+| S003 | info | confirmed | n/a    | LSP: per-document panic is contained — does not crash the server                                                                             | lsp     | `internal/lsp/server.go:343-358`              |
+| S004 | info | confirmed | n/a    | VS Code extension: Workspace Trust baseline holds — untrustedWorkspaces:limited, mdsmith.path/config restricted, all mutating commands gated | vscode  | `editors/vscode/package.json:63-70`           |
+| S005 | info | confirmed | n/a    | VS Code extension: spawn uses argv array, no shell interpolation                                                                             | vscode  | `editors/vscode/src/commands/runner.ts:21-35` |
 
 ## Findings
 
@@ -50,7 +50,7 @@ can inject attacker-controlled text into the virtual document pane but cannot ex
 
 **Repro (sketch).** Clone a hostile repo with a malformed .mdsmith.yml. Open a .md file. Run 'mdsmith: Explain Rule on This File' from the palette. The virtual document displays content derived from the hostile config.
 
-**Fix.** Add 'isWorkspaceTrusted' to the commandPalette 'when' conditions for mdsmith.kinds.why and mdsmith.kinds.resolve, and add an isTrusted() guard at the top of runKindsResolve/runKindsWhy — matching the pattern used by fix-workspace, init, and merge-driver. These are informational commands so the restriction is minor friction.
+**Fix.** Fixed in PR #670. Added `isWorkspaceTrusted` to commandPalette `when` conditions for `mdsmith.kinds.why` and `mdsmith.kinds.resolve` (package.json:125-130), and added `if (!deps.isTrusted())` guard at the top of `runKindsResolve`/`runKindsWhy` in kinds.ts (lines 42, 58).
 
 ### S007 · VS Code extension: mdsmith-rule: virtual document content provider runs without trust gate
 
@@ -74,7 +74,7 @@ Risk is minimal but the pattern is inconsistent with the trust model.
 
 **Repro (sketch).** Hover over a diagnostic in an untrusted workspace. Click the rewritten rule-docs link. 'mdsmith help rule MDS0XX' runs.
 
-**Fix.** Low priority. If desired, add a trust check before spawning in provideRuleDocContent / fetchRuleDocContent. Alternatively, embed the rule READMEs directly in the extension's JS bundle to eliminate the spawn entirely for this read-only use case.
+**Fix.** Fixed in PR #670. Added `if (!isTrusted()) return Promise.resolve("")` at the top of the `RULE_SCHEME` `registerTextDocumentContentProvider` callback in wiring.ts:915.
 
 ## Hardening / Informational
 

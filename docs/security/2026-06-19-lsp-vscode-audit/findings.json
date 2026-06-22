@@ -115,6 +115,8 @@
       "title": "VS Code extension: mdsmith.kinds.resolve and mdsmith.kinds.why run in untrusted workspaces without a trust gate",
       "severity": "low",
       "confidence": "confirmed",
+      "status": "fixed",
+      "fixed_by": "PR #670 — added isWorkspaceTrusted to commandPalette when-conditions (package.json:125-130) and isTrusted() guard at top of runKindsResolve/runKindsWhy (kinds.ts:42,58)",
       "surface": "vscode",
       "cwe": "CWE-284",
       "location": {
@@ -130,13 +132,15 @@
       "description": "The commandPalette 'when' conditions for mdsmith.kinds.resolve and mdsmith.kinds.why omit isWorkspaceTrusted (package.json:125-130). When invoked in an untrusted workspace, wiring.ts:829/838 calls runKindsResolve/runKindsWhy with no isTrusted() guard, spawning 'mdsmith kinds resolve/why --json -- file' (virtual-doc.ts:72). The binary is the bundled binary (mdsmith.path is restricted to default). The subcommands are read-only: they output JSON and exit; no files are written, no recipes are executed. The binary reads .mdsmith.yml to derive kind assignments, so a hostile config can inject attacker-controlled text into the virtual document pane but cannot execute code.",
       "impact": "Low. In untrusted workspaces a hostile .mdsmith.yml causes mdsmith to output attacker-controlled text into the virtual document pane. No file writes or code execution. The virtual document is read-only in the editor. The binary cannot be redirected (mdsmith.path restricted).",
       "repro": "Clone a hostile repo with a malformed .mdsmith.yml. Open a .md file. Run 'mdsmith: Explain Rule on This File' from the palette. The virtual document displays content derived from the hostile config.",
-      "remediation": "Add 'isWorkspaceTrusted' to the commandPalette 'when' conditions for mdsmith.kinds.why and mdsmith.kinds.resolve, and add an isTrusted() guard at the top of runKindsResolve/runKindsWhy — matching the pattern used by fix-workspace, init, and merge-driver. These are informational commands so the restriction is minor friction."
+      "remediation": "Fixed. Added 'isWorkspaceTrusted' to commandPalette when-conditions (package.json:125-130) and isTrusted() guard at top of runKindsResolve/runKindsWhy in kinds.ts."
     },
     {
       "id": "S007",
       "title": "VS Code extension: mdsmith-rule: virtual document content provider runs without trust gate",
       "severity": "low",
       "confidence": "confirmed",
+      "status": "fixed",
+      "fixed_by": "PR #670 — added isTrusted() guard in registerTextDocumentContentProvider for RULE_SCHEME (wiring.ts:915)",
       "surface": "vscode",
       "cwe": "CWE-284",
       "location": {
@@ -151,7 +155,7 @@
       "description": "The mdsmith-rule: TextDocumentContentProvider (wiring.ts:906-910) runs 'mdsmith help rule <id>' to render an embedded rule README. It has no trust gate. The id is validated against /^MDS\\d+$/i (rule-doc.ts:35) before being passed as a CLI argument, so arbitrary arg injection is prevented. The binary is the bundled binary (mdsmith.path restricted). 'mdsmith help rule' reads READMEs embedded in the binary and makes no network call, no file writes. The `OPEN_RULE_DOC_COMMAND` constant is triggered by rewritten hover links in MarkdownString blocks with isTrusted set only to `{enabledCommands: ['OPEN_RULE_DOC_COMMAND']}` (rule-doc.ts:115), preventing other commands from being injected. Risk is minimal but the pattern is inconsistent with the trust model.",
       "impact": "Very low. The worst case is spawning the bundled mdsmith binary with a validated rule ID argument. The output is embedded README text displayed in a read-only virtual document.",
       "repro": "Hover over a diagnostic in an untrusted workspace. Click the rewritten rule-docs link. 'mdsmith help rule MDS0XX' runs.",
-      "remediation": "Low priority. If desired, add a trust check before spawning in provideRuleDocContent / fetchRuleDocContent. Alternatively, embed the rule READMEs directly in the extension's JS bundle to eliminate the spawn entirely for this read-only use case."
+      "remediation": "Fixed. Added if (!isTrusted()) return Promise.resolve('') at the top of the RULE_SCHEME content provider in wiring.ts:915."
     }
   ]
 }
