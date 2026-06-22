@@ -240,7 +240,7 @@ func TestBuildLineSegments(t *testing.T) {
 
 // repoRoot walks up from the test's working directory to the module
 // root (the directory holding go.mod).
-func repoRoot(t *testing.T) string {
+func repoRoot(t testing.TB) string {
 	t.Helper()
 	dir, err := os.Getwd()
 	require.NoError(t, err)

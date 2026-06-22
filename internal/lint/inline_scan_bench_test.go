@@ -19,7 +19,7 @@ import (
 // scanner-vs-goldmark comparison measure the input that drives the default-on
 // decision, without MDSMITH_SPIKE_CORPUS.
 func corpusRuns(t testing.TB) [][]byte {
-	root := repoRootTB(t)
+	root := repoRoot(t)
 	var runs [][]byte
 	_ = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() || filepath.Ext(p) != ".md" {
@@ -40,46 +40,19 @@ func corpusRuns(t testing.TB) [][]byte {
 	return runs
 }
 
-// fileRuns returns one byte slice per inline-bearing run of f, using the same
-// grouping scanInlineBlocks uses.
+// fileRuns returns one byte slice per inline-bearing run of f, delegating the
+// run-grouping to inlineRunBounds so the benchmark measures the same partition
+// that scanInlineBlocks produces.
 func fileRuns(f *File) [][]byte {
-	if len(f.Source) == 0 {
+	bounds := inlineRunBounds(f)
+	if len(bounds) == 0 {
 		return nil
 	}
-	skip := nonInlineLines(f)
-	var runs [][]byte
-	n := len(f.Lines)
-	i := 0
-	for i < n {
-		if f.skipInlineLine(skip, i) {
-			i++
-			continue
-		}
-		runStart := i
-		for i < n && !f.skipInlineLine(skip, i) {
-			i++
-		}
-		start := f.LineStartOffset(runStart)
-		end := f.lineEndOffset(i - 1)
-		runs = append(runs, f.Source[start:end])
+	runs := make([][]byte, len(bounds))
+	for i, b := range bounds {
+		runs[i] = f.Source[b[0]:b[1]]
 	}
 	return runs
-}
-
-// repoRootTB is the testing.TB form of repoRoot so benchmarks can reuse it.
-func repoRootTB(t testing.TB) string {
-	dir, err := os.Getwd()
-	require.NoError(t, err)
-	for {
-		if _, statErr := os.Stat(filepath.Join(dir, "go.mod")); statErr == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			t.Fatal("go.mod not found above test working dir")
-		}
-		dir = parent
-	}
 }
 
 // TestCorpusRunEligibility reports the scanner hit-rate over the repository
