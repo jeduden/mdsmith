@@ -1,7 +1,7 @@
 ---
 id: 2606211908
 title: 'arch-fix: split internal/lint/layer0.go'
-status: '🔲'
+status: "✅"
 summary: >-
   Split layer0.go (1 203 lines) into focused
   sibling files along block-type sub-parsers
@@ -64,11 +64,11 @@ stays under 600 lines.
 
 ## Acceptance Criteria
 
-- [ ] `internal/lint/layer0.go` is under
+- [x] `internal/lint/layer0.go` is under
   600 lines.
-- [ ] `go build ./...` passes.
-- [ ] `go test ./...` passes.
-- [ ] `go tool golangci-lint run` reports
+- [x] `go build ./...` passes.
+- [x] `go test ./...` passes.
+- [x] `go tool golangci-lint run` reports
   no new issues.
-- [ ] No logic changed — pure file
+- [x] No logic changed — pure file
   reorganisation within the `lint` package.
