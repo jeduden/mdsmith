@@ -194,7 +194,7 @@ the rule class measured here.)
 gomarklint is the fastest tool in the benchmark because it
 never builds an AST. It is a pure line scanner. The
 `gomarklint-parity` convention turns mdsmith down to
-gomarklint's 20-rule default set, and that set excludes MDS027:
+gomarklint's 21-rule default set, and that set excludes MDS027:
 the coverage matrix marks gomarklint's single-file
 `link-fragments` check a partial cover of mdsmith's cross-file
 MDS027, so the set is fully parse-skip-safe.
@@ -575,16 +575,17 @@ level playing field:
   enabled in parity. So rumdl and markdownlint, which
   both ship MD054, do marginally more than
   `mdsmith-parity` on that rule.
-- Three mdsmith-only rules (no markdownlint analog) are
-  **not** in the parity disable list:
-  [MDS031 unclosed-code-block](../../../internal/rules/MDS031-unclosed-code-block/README.md)
-  (default, kept on as a cheap structural check),
-  [MDS034 markdown-flavor](../../../internal/rules/MDS034-markdown-flavor/README.md),
+- Two opt-in mdsmith-only rules (no markdownlint analog) sit
+  outside the parity disable lists:
+  [MDS034 markdown-flavor](../../../internal/rules/MDS034-markdown-flavor/README.md)
   and
-  [MDS067 callout-type](../../../internal/rules/MDS067-callout-type/README.md)
-  (opt-in, rely on default-off). A user config that
-  enables MDS034 or MDS067 would slip through
-  `mdsmith-parity`.
+  [MDS067 callout-type](../../../internal/rules/MDS067-callout-type/README.md).
+  Both rely on being off by default, so a user config that
+  enables either would slip through `mdsmith-parity`. The
+  default-on
+  [MDS031 unclosed-code-block](../../../internal/rules/MDS031-unclosed-code-block/README.md),
+  also mdsmith-only, is no longer an exception: the per-linter
+  parity sets (mado, rumdl, markdownlint) all disable it.
 
 ### Fairness note on panache
 
@@ -612,11 +613,11 @@ Four gates run in CI.
 - **Tiered check budgets.** `BenchmarkCheckCorpus{Small,Large}`
   in `internal/engine/bench_test.go` lint a 60-file and a
   600-file synthetic workspace with the full rule set. Small
-  (2 s budget, baseline ~0.09 s) catches per-file overhead;
-  Large (12 s budget, baseline ~0.8 s) catches superlinear
+  (250 ms budget, baseline ~14 ms) catches per-file overhead;
+  Large (2 s budget, baseline ~90 ms) catches superlinear
   scaling. The CI job `check-bench` is modelled on `lsp-bench`.
-  Baselines reflect the two plan-175 fixes (LineOfOffset
-  line-index; MDS024 tokenizer skip).
+  Baselines reflect the plan-175 fixes (LineOfOffset line-index;
+  MDS024 tokenizer skip) and the later engine passes.
 - **Doc-number drift.** The CI job `bench-fragments`
   regenerates the fragments from the committed `data/*.json` via
   `gen_fragments.py`, re-runs `mdsmith fix`, and
