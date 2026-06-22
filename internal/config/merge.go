@@ -293,13 +293,13 @@ func mergeCategories(base, override map[string]bool) map[string]bool {
 // caller has no FM info — such entries simply won't match.
 func EffectiveKinds(cfg *Config, filePath string, fmKinds []string, fmFields map[string]any) []string {
 	if cfg == nil {
-		seen := make(map[string]bool, len(fmKinds))
+		seen := make(map[string]struct{}, len(fmKinds))
 		out := make([]string, 0, len(fmKinds))
 		for _, k := range fmKinds {
-			if seen[k] {
+			if _, ok := seen[k]; ok {
 				continue
 			}
-			seen[k] = true
+			seen[k] = struct{}{}
 			out = append(out, k)
 		}
 		return out
@@ -312,12 +312,12 @@ func EffectiveKinds(cfg *Config, filePath string, fmKinds []string, fmFields map
 // they come first. kind-assignment matches are appended in config order.
 // Duplicate names are dropped after their first occurrence.
 func resolveEffectiveKinds(cfg *Config, filePath string, fmKinds []string, fmFields map[string]any) []string {
-	seen := make(map[string]bool)
+	seen := make(map[string]struct{})
 	var result []string
 
 	add := func(name string) {
-		if !seen[name] {
-			seen[name] = true
+		if _, ok := seen[name]; !ok {
+			seen[name] = struct{}{}
 			result = append(result, name)
 		}
 	}

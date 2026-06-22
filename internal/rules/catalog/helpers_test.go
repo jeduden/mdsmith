@@ -236,7 +236,7 @@ func TestScanIncludesForTargetAbs_DepthLimit(t *testing.T) {
 		"a.md": &fstest.MapFile{Data: []byte("# A\n")},
 	}
 	cf := &lint.File{Path: "host.md", FS: fsys, RunCache: lint.NewRunCache()}
-	visited := map[string]bool{}
+	visited := map[string]struct{}{}
 	got := scanIncludesForTargetAbs(cf, fsys, "/host",
 		"/host/a.md", "/host/target.md",
 		visited, maxIncludeDepth+1, 1024)
@@ -254,7 +254,7 @@ func TestScanIncludesForTargetAbs_DirectMatch(t *testing.T) {
 		"target.md": &fstest.MapFile{Data: []byte("# T\n")},
 	}
 	cf := &lint.File{Path: "host.md", FS: fsys, RunCache: lint.NewRunCache()}
-	visited := map[string]bool{filepath.Join(tmp, "a.md"): true}
+	visited := map[string]struct{}{filepath.Join(tmp, "a.md"): {}}
 	got := scanIncludesForTargetAbs(cf, fsys, tmp,
 		filepath.Join(tmp, "a.md"),
 		filepath.Join(tmp, "target.md"),
@@ -276,7 +276,7 @@ func TestScanIncludesForTargetAbs_VisitedCycleSkipped(t *testing.T) {
 	absA := filepath.Join(tmp, "a.md")
 	absB := filepath.Join(tmp, "b.md")
 	absTarget := filepath.Join(tmp, "target.md")
-	visited := map[string]bool{absA: true, absB: true}
+	visited := map[string]struct{}{absA: {}, absB: {}}
 	got := scanIncludesForTargetAbs(cf, fsys, tmp,
 		absA, absTarget, visited, 0, 1024)
 	assert.False(t, got,
@@ -298,7 +298,7 @@ func TestScanIncludesForTargetAbs_IndirectMatch(t *testing.T) {
 		"target.md": &fstest.MapFile{Data: []byte("# T\n")},
 	}
 	cf := &lint.File{Path: "host.md", FS: fsys, RunCache: lint.NewRunCache()}
-	visited := map[string]bool{filepath.Join(tmp, "a.md"): true}
+	visited := map[string]struct{}{filepath.Join(tmp, "a.md"): {}}
 	got := scanIncludesForTargetAbs(cf, fsys, tmp,
 		filepath.Join(tmp, "a.md"),
 		filepath.Join(tmp, "target.md"),

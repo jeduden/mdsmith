@@ -1376,7 +1376,7 @@ func hostAbsDir(f *lint.File) (string, bool) {
 func fileIncludesTarget(
 	cf *lint.File, fsys fs.FS, filePath, target string, maxBytes int64,
 ) bool {
-	visited := map[string]bool{filePath: true}
+	visited := map[string]struct{}{filePath: {}}
 	return scanIncludesForTarget(cf, fsys, filePath, target, visited, 0, maxBytes)
 }
 
@@ -1394,7 +1394,7 @@ func fileIncludesTargetAbs(
 	cf *lint.File, fsys fs.FS, hostAbsDir, absFilePath, absTarget string,
 	maxBytes int64,
 ) bool {
-	visited := map[string]bool{absFilePath: true}
+	visited := map[string]struct{}{absFilePath: {}}
 	return scanIncludesForTargetAbs(cf, fsys, hostAbsDir,
 		absFilePath, absTarget, visited, 0, maxBytes)
 }
@@ -1523,7 +1523,7 @@ func relToHost(hostAbsDir, absPath string) (string, bool) {
 
 func scanIncludesForTarget(
 	cf *lint.File, fsys fs.FS, filePath, target string,
-	visited map[string]bool, depth int, maxBytes int64,
+	visited map[string]struct{}, depth int, maxBytes int64,
 ) bool {
 	if depth > maxIncludeDepth {
 		return false
@@ -1532,10 +1532,10 @@ func scanIncludesForTarget(
 		if resolved == target {
 			return true
 		}
-		if visited[resolved] {
+		if _, ok := visited[resolved]; ok {
 			continue
 		}
-		visited[resolved] = true
+		visited[resolved] = struct{}{}
 		found := scanIncludesForTarget(cf, fsys, resolved, target, visited, depth+1, maxBytes)
 		delete(visited, resolved)
 		if found {
@@ -1552,7 +1552,7 @@ func scanIncludesForTarget(
 // shares across host files.
 func scanIncludesForTargetAbs(
 	cf *lint.File, fsys fs.FS, hostAbsDir, absFilePath, absTarget string,
-	visited map[string]bool, depth int, maxBytes int64,
+	visited map[string]struct{}, depth int, maxBytes int64,
 ) bool {
 	if depth > maxIncludeDepth {
 		return false
@@ -1561,10 +1561,10 @@ func scanIncludesForTargetAbs(
 		if absResolved == absTarget {
 			return true
 		}
-		if visited[absResolved] {
+		if _, ok := visited[absResolved]; ok {
 			continue
 		}
-		visited[absResolved] = true
+		visited[absResolved] = struct{}{}
 		found := scanIncludesForTargetAbs(cf, fsys, hostAbsDir,
 			absResolved, absTarget, visited, depth+1, maxBytes)
 		delete(visited, absResolved)

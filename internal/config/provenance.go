@@ -354,10 +354,10 @@ func splitRulesByExplicit(cfg *Config) (defaults, user map[string]RuleCfg) {
 }
 
 func allRuleNames(layers []layerInfo) []string {
-	seen := map[string]bool{}
+	seen := make(map[string]struct{})
 	for _, l := range layers {
 		for name := range l.Rules {
-			seen[name] = true
+			seen[name] = struct{}{}
 		}
 	}
 	names := make([]string, 0, len(seen))
@@ -482,13 +482,13 @@ func kindSchemaSourcePath(body KindBody) string {
 }
 
 func resolveKindsWithSources(cfg *Config, filePath string, fmKinds []string, fmFields map[string]any) []ResolvedKind {
-	seen := make(map[string]bool)
+	seen := make(map[string]struct{})
 	var result []ResolvedKind
 	add := func(name string, source KindAssignmentSource, selector string) {
-		if seen[name] {
+		if _, ok := seen[name]; ok {
 			return
 		}
-		seen[name] = true
+		seen[name] = struct{}{}
 		// SourcePath comes from the kind body, not the assignment —
 		// every assignment route to the same name resolves to the
 		// same defining file. SchemaSourcePath, when the kind's schema

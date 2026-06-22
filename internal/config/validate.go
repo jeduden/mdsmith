@@ -75,17 +75,17 @@ func ValidateKinds(cfg *Config) error {
 // order in ValidateKinds is sorted, so the diagnostic stays
 // deterministic across runs.
 func validateKindExtends(kinds map[string]KindBody, name string) error {
-	visited := map[string]bool{}
-	chain := []string{}
+	visited := make(map[string]struct{})
+	var chain []string
 	current := name
 	for current != "" {
-		if visited[current] {
+		if _, ok := visited[current]; ok {
 			chain = append(chain, current)
 			return fmt.Errorf(
 				"kind %q: extends cycle detected: %s",
 				name, strings.Join(chain, " -> "))
 		}
-		visited[current] = true
+		visited[current] = struct{}{}
 		chain = append(chain, current)
 		body, ok := kinds[current]
 		if !ok {

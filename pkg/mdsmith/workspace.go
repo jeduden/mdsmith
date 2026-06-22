@@ -264,7 +264,7 @@ func (m memFS) dirEntries(dir string) []fs.DirEntry {
 	if dir != "." {
 		prefix = dir + "/"
 	}
-	seen := make(map[string]bool)
+	seen := make(map[string]struct{})
 	var ents []fs.DirEntry
 	for key := range m {
 		if prefix != "" {
@@ -275,15 +275,19 @@ func (m memFS) dirEntries(dir string) []fs.DirEntry {
 		rest := key[len(prefix):]
 		if i := indexSlash(rest); i >= 0 {
 			name := rest[:i]
-			if name != "" && !seen[name] {
-				seen[name] = true
-				ents = append(ents, memDirEntry{name: name, dir: true})
+			if name != "" {
+				if _, ok := seen[name]; !ok {
+					seen[name] = struct{}{}
+					ents = append(ents, memDirEntry{name: name, dir: true})
+				}
 			}
 			continue
 		}
-		if rest != "" && !seen[rest] {
-			seen[rest] = true
-			ents = append(ents, memDirEntry{name: rest, size: int64(len(m[key])), dir: false})
+		if rest != "" {
+			if _, ok := seen[rest]; !ok {
+				seen[rest] = struct{}{}
+				ents = append(ents, memDirEntry{name: rest, size: int64(len(m[key])), dir: false})
+			}
 		}
 	}
 	sort.Slice(ents, func(i, j int) bool { return ents[i].Name() < ents[j].Name() })

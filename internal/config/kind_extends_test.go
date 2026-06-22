@@ -357,6 +357,14 @@ func TestResolveLayerInlineSchema_DefensiveFallbackOnResolverError(t *testing.T)
 	assert.Equal(t, "a.md", out["filename"])
 }
 
+// TestKindExtendsChain_EmptyNameReturnsNil pins the project convention
+// that functions return nil, not []T{}, for an empty result.
+// An empty name produces no chain entries, so the return must be nil.
+func TestKindExtendsChain_EmptyNameReturnsNil(t *testing.T) {
+	chain := KindExtendsChain(nil, "")
+	assert.Nil(t, chain, "empty name must return nil, not []string{}")
+}
+
 // TestKindExtendsChain_UnknownIntermediateBreaksChain covers the
 // defensive branch in KindExtendsChain that stops when a parent
 // name is not declared in `kinds`. The chain returned still
