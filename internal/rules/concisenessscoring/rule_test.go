@@ -2,7 +2,6 @@ package concisenessscoring
 
 import (
 	"errors"
-	"strings"
 	"sync"
 	"testing"
 
@@ -314,14 +313,12 @@ func TestCheck_MessageNoConcatenationWhenExamplesPresent(t *testing.T) {
 		t.Skip("model threshold did not trigger on fixture")
 	}
 	msg := diags[0].Message
-	// The message must contain both the score summary and the cue guidance
-	// in a single string (not two separately allocated pieces).
+	// The message must contain both the score summary and the cue guidance.
 	assert.Contains(t, msg, "conciseness score too low")
 	assert.Contains(t, msg, "target >=")
-	// If verbose cues were detected, the formatted examples must also be present.
-	if strings.Contains(msg, "reduce verbose cues") {
-		assert.Contains(t, msg, "e.g.,", "message with cues must include formatted examples")
-	}
+	// verboseParagraph always triggers cue detection; both must be present.
+	assert.Contains(t, msg, "reduce verbose cues")
+	assert.Contains(t, msg, "e.g.,", "message with cues must include formatted examples")
 }
 
 func TestCheck_NoCuesMessage(t *testing.T) {
