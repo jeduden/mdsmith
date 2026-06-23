@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"time"
 )
 
@@ -112,9 +113,9 @@ func locStr(loc *Location) string {
 		s = "?"
 	}
 	if loc.StartLine != 0 {
-		s += fmt.Sprintf(":%d", loc.StartLine)
+		s += ":" + strconv.Itoa(loc.StartLine)
 		if loc.EndLine != 0 && loc.EndLine != loc.StartLine {
-			s += fmt.Sprintf("-%d", loc.EndLine)
+			s += "-" + strconv.Itoa(loc.EndLine)
 		}
 	}
 	return s

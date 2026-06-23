@@ -296,3 +296,53 @@ func TestNewScorer_Success(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, s)
 }
+
+func TestCheck_MessageNoConcatenationWhenExamplesPresent(t *testing.T) {
+	// When verbose cues are found, the diagnostic message must include
+	// the cue examples in a single fmt.Sprintf rather than via `message +=`
+	// concatenation. This test verifies the combined message format so the
+	// implementation cannot silently drop the cue text.
+	src := []byte(verboseParagraph() + "\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+
+	threshold := modelConciseness(t)
+	r := &Rule{MinScore: threshold, MinWords: 20}
+	diags := r.Check(f)
+	if len(diags) == 0 {
+		t.Skip("model threshold did not trigger on fixture")
+	}
+	msg := diags[0].Message
+	// The message must contain both the score summary and the cue guidance.
+	assert.Contains(t, msg, "conciseness score too low")
+	assert.Contains(t, msg, "target >=")
+	// verboseParagraph always triggers cue detection; both must be present.
+	assert.Contains(t, msg, "reduce verbose cues")
+	assert.Contains(t, msg, "e.g.,", "message with cues must include formatted examples")
+}
+
+func TestCheck_NoCuesMessage(t *testing.T) {
+	// Exercises the if examples == "" branch: a paragraph that scores as
+	// verbose but produces no cue phrases yields the base message only.
+	noCuePara := "When the configuration is set, the setting is used by the " +
+		"configuration. The configuration uses the setting and the setting " +
+		"configures the configuration."
+	s, err := NewScorer()
+	require.NoError(t, err)
+	scored := s.Score(noCuePara)
+	if len(scored.Cues) > 0 {
+		t.Skip("scorer detected cues in fixture; model may have drifted")
+	}
+
+	src := []byte(noCuePara + "\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+
+	r := &Rule{MinScore: scored.Conciseness + 0.10, MinWords: 1}
+	diags := r.Check(f)
+	require.Len(t, diags, 1, "expected diagnostic for low-scoring no-cue paragraph")
+	msg := diags[0].Message
+	assert.Contains(t, msg, "conciseness score too low")
+	assert.Contains(t, msg, "target >=")
+	assert.NotContains(t, msg, "reduce verbose cues", "no cues detected, so no cue guidance")
+}

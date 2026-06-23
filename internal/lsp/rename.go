@@ -80,7 +80,8 @@ func isValidRefDefLine(source []byte, line int) bool {
 	if bodyLine < 1 {
 		return false
 	}
-	return rename.ValidRefDefBodyLines(body)[bodyLine]
+	_, ok := rename.ValidRefDefBodyLines(body)[bodyLine]
+	return ok
 }
 
 // headingPrepareRange builds the rename range for an ATX or setext

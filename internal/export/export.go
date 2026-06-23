@@ -244,18 +244,18 @@ func inGeneratedRange(line int, ranges []lint.LineRange) bool {
 // because such PIs sit inside a pair's body range and are skipped
 // here.
 func stripDirectives(f *lint.File, directives []directiveStrip) []byte {
-	stripLines := map[int]bool{}
-	bodyLines := map[int]bool{}
+	stripLines := map[int]struct{}{}
+	bodyLines := map[int]struct{}{}
 
 	for _, d := range directives {
 		pairs, _ := gensection.FindMarkerPairs(f, d.name, d.ruleID, d.ruleName)
 		for _, p := range pairs {
 			for line := p.StartLine; line < p.ContentFrom; line++ {
-				stripLines[line] = true
+				stripLines[line] = struct{}{}
 			}
-			stripLines[p.EndLine] = true
+			stripLines[p.EndLine] = struct{}{}
 			for line := p.ContentFrom; line <= p.ContentTo; line++ {
-				bodyLines[line] = true
+				bodyLines[line] = struct{}{}
 			}
 		}
 	}
@@ -276,7 +276,7 @@ func stripDirectives(f *lint.File, directives []directiveStrip) []byte {
 			continue
 		}
 		for line := startLine; line <= endLine; line++ {
-			stripLines[line] = true
+			stripLines[line] = struct{}{}
 		}
 	}
 
@@ -316,20 +316,20 @@ func piLineRange(pi *piparser.ProcessingInstruction, f *lint.File) (int, int) {
 	return start, f.LineOfOffset(pi.ClosureLine.Start)
 }
 
-func overlapsAny(from, to int, set map[int]bool) bool {
+func overlapsAny(from, to int, set map[int]struct{}) bool {
 	for line := from; line <= to; line++ {
-		if set[line] {
+		if _, ok := set[line]; ok {
 			return true
 		}
 	}
 	return false
 }
 
-func emitLines(srcLines [][]byte, strip map[int]bool) []byte {
+func emitLines(srcLines [][]byte, strip map[int]struct{}) []byte {
 	var b bytes.Buffer
 	for i, line := range srcLines {
 		lineNum := i + 1
-		if strip[lineNum] {
+		if _, ok := strip[lineNum]; ok {
 			continue
 		}
 		b.Write(line)

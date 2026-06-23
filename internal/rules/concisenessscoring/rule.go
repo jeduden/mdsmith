@@ -97,17 +97,15 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		}
 
 		line := astutil.ParagraphLine(para, f)
-		message := fmt.Sprintf(
-			"conciseness score too low (%.2f < %.2f); target >= %.2f",
-			result.Conciseness, r.MinScore, r.MinScore,
-		)
 		examples := formatExamples(result.Cues)
+		var cuesSuffix string
 		if examples != "" {
-			message += fmt.Sprintf(
-				"; reduce verbose cues (e.g., %s)",
-				examples,
-			)
+			cuesSuffix = "; reduce verbose cues (e.g., " + examples + ")"
 		}
+		message := fmt.Sprintf(
+			"conciseness score too low (%.2f < %.2f); target >= %.2f%s",
+			result.Conciseness, r.MinScore, r.MinScore, cuesSuffix,
+		)
 
 		diags = append(diags, lint.Diagnostic{
 			File:     f.Path,

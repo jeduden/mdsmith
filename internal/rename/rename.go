@@ -91,10 +91,10 @@ func LinkRef(source []byte, oldLabel, newName string) ([]Edit, error) {
 // reference definition goldmark accepted (not a code-block
 // look-alike). The LSP prepare-rename gate consults it so the rename
 // UI never surfaces on a `[label]: url`-shaped code sample.
-func ValidRefDefBodyLines(body []byte) map[int]bool {
-	out := map[int]bool{}
+func ValidRefDefBodyLines(body []byte) map[int]struct{} {
+	out := map[int]struct{}{}
 	for _, m := range validRefDefMatches(body) {
-		out[m.bodyLine] = true
+		out[m.bodyLine] = struct{}{}
 	}
 	return out
 }
@@ -169,7 +169,7 @@ func validRefDefMatches(body []byte) []validRefDefMatch {
 	var out []validRefDefMatch
 	for _, m := range index.RefDefRegexpMatches(body) {
 		bodyLine := lineOfBodyOffset(body, m[2])
-		if consumed[bodyLine] {
+		if _, ok := consumed[bodyLine]; ok {
 			continue
 		}
 		raw := body[m[2]:m[3]]
@@ -190,8 +190,8 @@ func validRefDefMatches(body []byte) []validRefDefMatch {
 // is by definition not a def. The Document root and
 // LinkReferenceDefinition nodes are skipped: the former spans the
 // whole buffer, the latter IS the line a real def lives on.
-func contentBlockLines(root ast.Node, body []byte) map[int]bool {
-	out := map[int]bool{}
+func contentBlockLines(root ast.Node, body []byte) map[int]struct{} {
+	out := map[int]struct{}{}
 	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
@@ -206,7 +206,7 @@ func contentBlockLines(root ast.Node, body []byte) map[int]bool {
 		ls := n.Lines()
 		for i := 0; i < ls.Len(); i++ {
 			seg := ls.At(i)
-			out[lineOfBodyOffset(body, seg.Start)] = true
+			out[lineOfBodyOffset(body, seg.Start)] = struct{}{}
 		}
 		return ast.WalkContinue, nil
 	})
