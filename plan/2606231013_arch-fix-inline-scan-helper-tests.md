@@ -77,10 +77,11 @@ test as of commit 1599c9f:
       `TestApplyCodeSpan`, `TestApplyAutolink`,
       `TestApplyBang`, `TestApplyLink`,
       `TestScanCodeSpan`, `TestScanLinkOrImage`,
-      `TestScanLinkParens`, `TestSkipSpacesAt`
-      (12 new test functions).
-- [x] `isSpaceOrNewlineByte` carries a
-      `// no test by design: trivial one-liner`
-      comment in `inline_scan.go`.
+      `TestScanLinkParens`, `TestSkipSpacesAt`,
+      `TestIsSpaceOrNewlineByte` (13 new test functions).
+- [x] `isSpaceOrNewlineByte` has a dedicated test
+      (`TestIsSpaceOrNewlineByte`); the predicate has
+      two branches so the trivial-accessor exemption
+      does not apply.
 - [x] `go test ./internal/lint/...` is green.
 - [x] No new golangci-lint warnings.

@@ -325,7 +325,6 @@ func codeSpanTrim(run []byte, start, stop int) (int, int) {
 	return start, stop
 }
 
-// no test by design: trivial one-liner with no branch.
 func isSpaceOrNewlineByte(c byte) bool {
 	return c == ' ' || c == '\n'
 }

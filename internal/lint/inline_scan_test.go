@@ -704,3 +704,9 @@ func TestSkipSpacesAt(t *testing.T) {
 	allSpace := []byte("   ")
 	assert.Equal(t, 3, skipSpacesAt(allSpace, 0), "all spaces → past end")
 }
+
+func TestIsSpaceOrNewlineByte(t *testing.T) {
+	assert.True(t, isSpaceOrNewlineByte(' '))
+	assert.True(t, isSpaceOrNewlineByte('\n'))
+	assert.False(t, isSpaceOrNewlineByte('\t'), "tab is not a space-or-newline byte")
+}
