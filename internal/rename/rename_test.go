@@ -88,9 +88,12 @@ func TestLinkRef_WithFrontMatterLineOffset(t *testing.T) {
 
 func TestValidRefDefBodyLines(t *testing.T) {
 	body := []byte("para\n\n[a]: u\n\n```\n[b]: v\n```\n")
+	// ValidRefDefBodyLines returns map[int]struct{} — presence means valid def.
 	got := ValidRefDefBodyLines(body)
-	assert.True(t, got[3], "real def on body line 3")
-	assert.False(t, got[6], "fenced def-shaped line is not a def")
+	_, ok3 := got[3]
+	assert.True(t, ok3, "real def on body line 3")
+	_, ok6 := got[6]
+	assert.False(t, ok6, "fenced def-shaped line is not a def")
 }
 
 func TestBodyAndFMOffset(t *testing.T) {

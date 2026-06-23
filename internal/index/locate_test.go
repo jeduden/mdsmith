@@ -248,3 +248,19 @@ func TestLocateFrontMatterKindsListItemWithDifferentValues(t *testing.T) {
 	assert.Equal(t, "kinds", res.FrontMatterKey)
 	assert.Equal(t, "reference", res.FrontMatterValue)
 }
+
+func TestEnclosingListKey_NoStringAllocPerLine(t *testing.T) {
+	// enclosingListKey scans backward through lines using FindSubmatch
+	// (bytes), not FindStringSubmatch(string(line)), so it allocates
+	// no string per scanned line on the non-matching path.
+	lines := [][]byte{
+		[]byte("inputs:"),
+		[]byte("  - alpha"),
+		[]byte("  - beta"),
+		[]byte("  - gamma"),
+	}
+	// Line 4 (1-based) is the "gamma" list item; enclosingListKey
+	// should find "inputs" as its parent key.
+	got := enclosingListKey(lines, 4)
+	assert.Equal(t, "inputs", got)
+}

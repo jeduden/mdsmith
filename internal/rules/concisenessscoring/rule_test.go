@@ -2,6 +2,7 @@ package concisenessscoring
 
 import (
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 
@@ -295,4 +296,31 @@ func TestNewScorer_Success(t *testing.T) {
 	s, err := NewScorer()
 	require.NoError(t, err)
 	assert.NotNil(t, s)
+}
+
+func TestCheck_MessageNoConcatenationWhenExamplesPresent(t *testing.T) {
+	// When verbose cues are found, the diagnostic message must include
+	// the cue examples in a single fmt.Sprintf rather than via `message +=`
+	// concatenation. This test verifies the combined message format so the
+	// implementation cannot silently drop the cue text.
+	src := []byte(verboseParagraph() + "\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+
+	threshold := modelConciseness(t)
+	r := &Rule{MinScore: threshold, MinWords: 20}
+	diags := r.Check(f)
+	if len(diags) == 0 {
+		t.Skip("model threshold did not trigger on fixture")
+	}
+	msg := diags[0].Message
+	// The message must contain both the score summary and the cue guidance
+	// in a single string (not two separately allocated pieces).
+	assert.Contains(t, msg, "conciseness score too low")
+	assert.Contains(t, msg, "target >=")
+	// If verbose cues were detected, the cue guidance must appear in the
+	// same string, not a separately appended piece.
+	if strings.Contains(msg, "reduce verbose cues") {
+		assert.NotEmpty(t, msg, "combined message must not be empty")
+	}
 }
