@@ -449,3 +449,258 @@ func TestInlineBlocks_ScannerHandlesSimpleFile(t *testing.T) {
 		assert.Nil(t, first.NextSibling(), "scanner run has a single paragraph")
 	}
 }
+
+// --- Dedicated helper tests (plan 2606231013) ---
+
+func TestScanRunEligible(t *testing.T) {
+	assert.False(t, scanRunEligible(nil), "nil is not eligible")
+	assert.False(t, scanRunEligible([]byte("")), "empty is not eligible")
+	assert.False(t, scanRunEligible([]byte("line one\nline two")), "multiline not eligible")
+	assert.False(t, scanRunEligible([]byte("# heading")), "ATX heading not eligible")
+	assert.False(t, scanRunEligible([]byte("- list")), "list item not eligible")
+	assert.False(t, scanRunEligible([]byte("> quote")), "block quote not eligible")
+	assert.False(t, scanRunEligible([]byte("*em*")), "emphasis asterisk not eligible")
+	assert.False(t, scanRunEligible([]byte("_em_")), "emphasis underscore not eligible")
+	assert.False(t, scanRunEligible([]byte(`a\b`)), "backslash not eligible")
+	assert.False(t, scanRunEligible([]byte("a&amp;b")), "entity not eligible")
+	assert.True(t, scanRunEligible([]byte("plain text")), "plain text eligible")
+	assert.True(t, scanRunEligible([]byte("[link](url)")), "link chars eligible")
+	assert.True(t, scanRunEligible([]byte("`code`")), "backtick eligible")
+	assert.True(t, scanRunEligible([]byte("<autolink>")), "angle bracket eligible")
+}
+
+func TestMergeAppendText(t *testing.T) {
+	a := arena.New()
+	run := []byte("hello world")
+	para := a.Paragraph()
+
+	// end <= start: no child appended.
+	mergeAppendText(run, 3, 3, para, a)
+	assert.Nil(t, para.FirstChild(), "end==start emits nothing")
+
+	// Normal range: appends a Text node.
+	mergeAppendText(run, 0, 5, para, a)
+	child := para.FirstChild()
+	require.NotNil(t, child, "Text node appended")
+	txt, ok := child.(*ast.Text)
+	require.True(t, ok, "child is *ast.Text")
+	assert.Equal(t, "hello", string(txt.Segment.Value(run)))
+
+	// Adjacent range [5:11): merges into the existing Text node.
+	mergeAppendText(run, 5, 11, para, a)
+	assert.Nil(t, child.NextSibling(), "adjacent text merged, no new sibling")
+	assert.Equal(t, "hello world", string(txt.Segment.Value(run)), "merged bounds")
+}
+
+func TestFinalAppendText(t *testing.T) {
+	a := arena.New()
+	run := []byte("hello   ")
+	para := a.Paragraph()
+
+	// Trailing spaces trimmed: appends "hello".
+	finalAppendText(run, 0, len(run), para, a)
+	child := para.FirstChild()
+	require.NotNil(t, child)
+	txt, ok := child.(*ast.Text)
+	require.True(t, ok)
+	assert.Equal(t, "hello", string(txt.Segment.Value(run)))
+
+	// All whitespace: nothing appended.
+	para2 := a.Paragraph()
+	finalAppendText([]byte("   "), 0, 3, para2, a)
+	assert.Nil(t, para2.FirstChild(), "all-space run appends nothing")
+
+	// end <= start: nothing appended.
+	para3 := a.Paragraph()
+	finalAppendText(run, 5, 5, para3, a)
+	assert.Nil(t, para3.FirstChild(), "empty range appends nothing")
+}
+
+func TestScanParagraphInlines(t *testing.T) {
+	a := arena.New()
+
+	// Plain text: returns true, one Text child.
+	para := a.Paragraph()
+	ok := scanParagraphInlines([]byte("hello"), para, a)
+	require.True(t, ok)
+	require.NotNil(t, para.FirstChild(), "Text child added")
+
+	// Unclosed backtick: scanCodeSpan declines, returns false.
+	para2 := a.Paragraph()
+	ok2 := scanParagraphInlines([]byte("`unclosed"), para2, a)
+	assert.False(t, ok2)
+}
+
+func TestApplyCodeSpan(t *testing.T) {
+	a := arena.New()
+	// Run starts at the backtick so no prior text is flushed first.
+	run := []byte("`code` after")
+	para := a.Paragraph()
+
+	// i=0 points at the opening backtick; textStart=0 so nothing is flushed.
+	ni, ns, ok := applyCodeSpan(run, 0, 0, para, a)
+	require.True(t, ok)
+	assert.Equal(t, 6, ni, "ni just past closing backtick")
+	assert.Equal(t, 6, ns, "textStart reset to ni")
+	child := para.FirstChild()
+	require.NotNil(t, child)
+	_, isCode := child.(*ast.CodeSpan)
+	assert.True(t, isCode, "CodeSpan appended")
+
+	// Unclosed backtick: returns false.
+	para2 := a.Paragraph()
+	_, _, ok2 := applyCodeSpan([]byte("`unclosed"), 0, 0, para2, a)
+	assert.False(t, ok2)
+}
+
+func TestApplyAutolink(t *testing.T) {
+	a := arena.New()
+	run := []byte("<https://example.com>")
+	para := a.Paragraph()
+
+	ni, ns, ok := applyAutolink(run, 0, 0, para, a)
+	require.True(t, ok)
+	assert.Equal(t, len(run), ni)
+	assert.Equal(t, len(run), ns)
+	child := para.FirstChild()
+	require.NotNil(t, child)
+	_, isAL := child.(*ast.AutoLink)
+	assert.True(t, isAL, "AutoLink appended")
+
+	// Raw HTML angle: returns false.
+	para2 := a.Paragraph()
+	_, _, ok2 := applyAutolink([]byte("<div>"), 0, 0, para2, a)
+	assert.False(t, ok2)
+}
+
+func TestApplyBang(t *testing.T) {
+	a := arena.New()
+
+	// `!` without `[`: flushes pending text, returns i+1 with textStart at i.
+	run := []byte("a! text")
+	para := a.Paragraph()
+	ni, ns, ok := applyBang(run, 1, 0, para, a)
+	require.True(t, ok)
+	assert.Equal(t, 2, ni, "i advanced past `!`")
+	assert.Equal(t, 1, ns, "textStart set to position of `!`")
+
+	// `![alt](url)`: appends Image node.
+	run2 := []byte("![alt](url)")
+	para2 := a.Paragraph()
+	ni2, _, ok2 := applyBang(run2, 0, 0, para2, a)
+	require.True(t, ok2)
+	assert.Equal(t, len(run2), ni2)
+	child := para2.FirstChild()
+	require.NotNil(t, child)
+	_, isImg := child.(*ast.Image)
+	assert.True(t, isImg, "Image appended")
+
+	// `![` with unclosed label: returns false.
+	para3 := a.Paragraph()
+	_, _, ok3 := applyBang([]byte("![alt"), 0, 0, para3, a)
+	assert.False(t, ok3)
+}
+
+func TestApplyLink(t *testing.T) {
+	a := arena.New()
+	run := []byte("[text](url)")
+	para := a.Paragraph()
+
+	ni, ns, ok := applyLink(run, 0, 0, para, a)
+	require.True(t, ok)
+	assert.Equal(t, len(run), ni)
+	assert.Equal(t, len(run), ns)
+	child := para.FirstChild()
+	require.NotNil(t, child)
+	_, isLink := child.(*ast.Link)
+	assert.True(t, isLink, "Link appended")
+
+	// Reference link `[text][ref]`: returns false.
+	para2 := a.Paragraph()
+	_, _, ok2 := applyLink([]byte("[text][ref]"), 0, 0, para2, a)
+	assert.False(t, ok2)
+}
+
+func TestScanCodeSpan(t *testing.T) {
+	a := arena.New()
+
+	// Single-backtick span.
+	node, after, ok := scanCodeSpan([]byte("`code`"), 0, a)
+	require.True(t, ok)
+	assert.Equal(t, 6, after)
+	require.NotNil(t, node)
+	_, isCode := node.(*ast.CodeSpan)
+	assert.True(t, isCode)
+
+	// Double-backtick span containing a single backtick.
+	node2, after2, ok2 := scanCodeSpan([]byte("`` a`b ``"), 0, a)
+	require.True(t, ok2)
+	assert.Equal(t, 9, after2)
+	require.NotNil(t, node2)
+
+	// No closing backtick: returns false.
+	_, _, ok3 := scanCodeSpan([]byte("`unclosed"), 0, a)
+	assert.False(t, ok3)
+}
+
+func TestScanLinkOrImage(t *testing.T) {
+	a := arena.New()
+
+	// Inline link.
+	node, after, ok := scanLinkOrImage([]byte("[text](url)"), 0, false, a)
+	require.True(t, ok)
+	assert.Equal(t, 11, after)
+	_, isLink := node.(*ast.Link)
+	assert.True(t, isLink, "Link node")
+
+	// Inline image.
+	node2, _, ok2 := scanLinkOrImage([]byte("![alt](url)"), 0, true, a)
+	require.True(t, ok2)
+	_, isImg := node2.(*ast.Image)
+	assert.True(t, isImg, "Image node")
+
+	// Reference link `[text][ref]`: returns false.
+	_, _, ok3 := scanLinkOrImage([]byte("[text][ref]"), 0, false, a)
+	assert.False(t, ok3)
+
+	// Nested brackets in label: returns false.
+	_, _, ok4 := scanLinkOrImage([]byte("[[a]](url)"), 0, false, a)
+	assert.False(t, ok4)
+}
+
+func TestScanLinkParens(t *testing.T) {
+	// Empty parens.
+	dest, title, after, ok := scanLinkParens([]byte("()"), 0)
+	require.True(t, ok)
+	assert.Nil(t, dest)
+	assert.Nil(t, title)
+	assert.Equal(t, 2, after)
+
+	// Destination only.
+	dest2, title2, after2, ok2 := scanLinkParens([]byte("(url)"), 0)
+	require.True(t, ok2)
+	assert.Equal(t, "url", string(dest2))
+	assert.Nil(t, title2)
+	assert.Equal(t, 5, after2)
+
+	// Destination and title.
+	dest3, title3, after3, ok3 := scanLinkParens([]byte(`(url "ttl")`), 0)
+	require.True(t, ok3)
+	assert.Equal(t, "url", string(dest3))
+	assert.Equal(t, "ttl", string(title3))
+	assert.Equal(t, 11, after3)
+
+	// Missing closing paren.
+	_, _, _, ok4 := scanLinkParens([]byte("(url"), 0)
+	assert.False(t, ok4)
+}
+
+func TestSkipSpacesAt(t *testing.T) {
+	run := []byte("   hello")
+	assert.Equal(t, 3, skipSpacesAt(run, 0), "leading spaces skipped")
+	assert.Equal(t, 3, skipSpacesAt(run, 3), "no spaces from non-space pos")
+	assert.Equal(t, len(run), skipSpacesAt(run, len(run)), "past end stays at end")
+
+	allSpace := []byte("   ")
+	assert.Equal(t, 3, skipSpacesAt(allSpace, 0), "all spaces → past end")
+}

@@ -6,7 +6,7 @@ summary: >-
   solid-architecture skill (audit mode)
   appends here; blockers are also filed as
   plans.
-audit-from: e701b94b5640dfb4f5d07d1fc38d49e0dba23e75
+audit-from: 1599c9f17336b36d4d06d10677b2510bfe33665b
 ---
 # Architecture audit log
 
@@ -193,3 +193,30 @@ in the new `internal/rules/listscan` helper
 [2606211908]: ../../plan/2606211908_arch-fix-layer0-split.md
 [2606211909]: ../../plan/2606211909_arch-fix-lsp-server-split.md
 [2606211910]: ../../plan/2606211910_arch-fix-workspace-exemptions.md
+
+## Audit 2026-06-23 (range: e701b94..1599c9f)
+
+Performance + struct-alignment series;
+inline scanner refinements; benchmark
+additions. No TypeScript changes. 273 Go
+sources outside fixtures.
+
+No blockers. No rule-to-rule imports added.
+No DIP violations. New files are under 800
+lines. Struct alignment and `map[string]struct{}`
+changes are mechanical rewrites with no
+layering impact.
+
+### tax (2026-06-23)
+
+- `internal/lint/inline_scan.go` — 13
+  unexported helpers lack dedicated unit
+  tests. Tests doc §"every function by
+  name" — [plan/2606231013][2606231013].
+
+- `internal/rules/samefileanchor/rule.go`
+  — 12 unexported helpers lack dedicated
+  unit tests — [plan/2606231014][2606231014].
+
+[2606231013]: ../../plan/2606231013_arch-fix-inline-scan-helper-tests.md
+[2606231014]: ../../plan/2606231014_arch-fix-samefileanchor-helper-tests.md
