@@ -98,6 +98,14 @@ func TestInsertDisambiguated(t *testing.T) {
 	insertDisambiguated(slugs, counts, "other")
 	assert.Contains(t, slugs, "other", "different slug inserted without suffix")
 	assert.NotContains(t, slugs, "other-1", "different slug not disambiguated")
+
+	// Pre-seeded collision: "fix-1" already exists before the second "fix"
+	// arrives. The inner loop must skip "fix-1" and land on "fix-2".
+	slugs2 := map[string]struct{}{"fix": {}, "fix-1": {}}
+	counts2 := map[string]int{}
+	insertDisambiguated(slugs2, counts2, "fix")
+	assert.Contains(t, slugs2, "fix-2", "inner loop skips pre-existing fix-1")
+	assert.NotContains(t, slugs2, "fix-3", "stops at first free slot")
 }
 
 func TestAtxHeadingText(t *testing.T) {
@@ -113,7 +121,11 @@ func TestAtxHeadingText(t *testing.T) {
 		{"tab after marker", "#\tTabbed\n", "Tabbed"},
 		{"CRLF ending", "# Heading\r\n", "Heading"},
 		{"empty body", "#\n", ""},
-		// TrimRight strips only \r\n; trailing spaces before ## block detection.
+		// NOTE: CommonMark §4.2 allows trailing spaces after closing ##; the
+		// implementation strips only \r\n before detecting closing hashes, so
+		// spaces that precede ## prevent detection and leak into the text.
+		// This is a known spec deviation: "## Title ##  \n" slugifies to
+		// "title-" on mdsmith but "title" on GitHub. Tracked as a known gap.
 		{"closing hashes with trailing space", "## Title ##  \n", "Title ##"},
 		{"no space after marker", "#NoSpace\n", "NoSpace"},
 	}
@@ -168,7 +180,7 @@ func TestAppendHeadingText(t *testing.T) {
 	src2 := []byte("# **Bold** Section\n")
 	h2 := ast.NewHeading(1)
 	em := ast.NewEmphasis(2)
-	boldTxt := ast.NewTextSegment(goldmarktext.NewSegment(4, 8)) // "Bold" (4..7 inclusive)
+	boldTxt := ast.NewTextSegment(goldmarktext.NewSegment(4, 8)) // src2[4:8] = "Bold"
 	em.AppendChild(em, boldTxt)
 	restTxt := ast.NewTextSegment(goldmarktext.NewSegment(10, 18)) // " Section"
 	h2.AppendChild(h2, em)
@@ -202,7 +214,11 @@ func TestCollectSlugsNode(t *testing.T) {
 	doc.AppendChild(doc, h1)
 	doc.AppendChild(doc, h2)
 
-	collectSlugsNode(doc, src, slugs, counts, nil, nil)
+	// Use stack-allocated backing arrays to match the production calling
+	// pattern in collectSlugsAST (nil works too, but this is more faithful).
+	var textBuf [256]byte
+	var slugBuf [512]byte
+	collectSlugsNode(doc, src, slugs, counts, textBuf[:0], slugBuf[:0])
 	assert.Contains(t, slugs, "first")
 	assert.Contains(t, slugs, "second")
 	assert.Len(t, slugs, 2)
@@ -217,6 +233,12 @@ func TestCollectSlugsAST(t *testing.T) {
 	assert.Contains(t, slugs, "alpha")
 	assert.Contains(t, slugs, "beta")
 	assert.Len(t, slugs, 2)
+
+	// No headings — collectSlugsAST must return nil (not an empty map) so
+	// callers that nil-check the result (e.g. checkAST) work correctly.
+	fEmpty, err := lint.NewFile("test.md", []byte("[link](#x).\n"))
+	require.NoError(t, err)
+	assert.Nil(t, collectSlugsAST(fEmpty), "no headings returns nil")
 }
 
 func TestCollectSlugsLayer0(t *testing.T) {
@@ -225,6 +247,16 @@ func TestCollectSlugsLayer0(t *testing.T) {
 	assert.Contains(t, slugs, "gamma")
 	assert.Contains(t, slugs, "delta")
 	assert.Len(t, slugs, 2)
+
+	// Setext heading — the BlockSetextHeading branch takes the first line of
+	// the span as text and the second as the underline.
+	fSetext := lint.NewFileLines("test.md", []byte("Setext Title\n============\n"))
+	slugsSetext := collectSlugsLayer0(fSetext)
+	assert.Contains(t, slugsSetext, "setext-title", "setext heading slug")
+
+	// No headings — must return nil.
+	fNone := lint.NewFileLines("test.md", []byte("plain paragraph\n"))
+	assert.Nil(t, collectSlugsLayer0(fNone), "no headings returns nil")
 }
 
 func TestCollectSlugs(t *testing.T) {
