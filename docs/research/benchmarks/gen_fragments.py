@@ -80,11 +80,24 @@ def main() -> None:
     repo_tbl, repo = rows(json_dir, "corpus_repo")
     neut_tbl, _ = rows(json_dir, "corpus_neutral")
 
-    note = ("`mdsmith` is the default rule set. Each "
-            "`mdsmith-<linter>-parity`\nrow runs the rule set that "
-            "peer enables by default, for a\nlike-for-like comparison "
-            "against that peer (the\n`bench-<linter>-parity.mdsmith.yml` "
-            "profiles).\n\n")
+    # The parity columns differ across the per-linter split: the pre-split
+    # snapshot carries a single `mdsmith-parity` row, while the current
+    # harness emits one `mdsmith-<peer>-parity` column per peer. Describe
+    # whichever the data actually holds so the note never contradicts the
+    # table below it.
+    per_linter_parity = [c for c in repo if c.startswith("mdsmith-")
+                         and c.endswith("-parity") and c != "mdsmith-parity"]
+    if per_linter_parity:
+        note = ("`mdsmith` is the default rule set. Each "
+                "`mdsmith-<linter>-parity`\nrow runs the rule set that "
+                "peer enables by default, for a\nlike-for-like comparison "
+                "against that peer (the\n`bench-<linter>-parity.mdsmith.yml` "
+                "profiles).\n\n")
+    else:
+        note = ("`mdsmith` is the default rule set. The `mdsmith-parity`\n"
+                "row is the single pre-split parity column; the per-linter\n"
+                "`mdsmith-<linter>-parity` columns, one per peer, land when\n"
+                "the benchmark is next re-run.\n\n")
     results = (GEN + "\n" + note +
                f"**Repo corpus — {repo_n} Markdown files** (median "
                "wall time, lower is\nbetter; `vs mado` is the ratio "
@@ -102,8 +115,8 @@ def main() -> None:
             f"One static Go binary checks {repo_n} Markdown files in "
             f"about\n{ms / 1000:.1f} s. That is roughly {mult}x "
             "faster than Node markdownlint.\nIt does more per file "
-            "than the Rust linters; closing the rest of\nthat gap "
-            "is active work.\n")
+            "than the Rust linters; closing\nthe gap to the fastest "
+            "of them is active work.\n")
     (frag_dir / "headline.fragment.md").write_text(head)
     print(f"fragments regenerated in {frag_dir}")
 

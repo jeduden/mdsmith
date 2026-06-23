@@ -2,55 +2,57 @@
 summary: >-
   First-party hyperfine benchmark of mdsmith against
   gomarklint, mado, rumdl, panache, and markdownlint-cli2 over
-  two corpora, with the exact commands, environment, and an
-  honest reading of where mdsmith trails the lighter per-file
-  linters.
+  two corpora, with the exact commands, the environment, and
+  where mdsmith trails the lighter per-file linters.
 ---
 # Markdown linter benchmark
 
 Our own benchmark run, not a re-quote of each project's README.
 Reproduce it with [`run.sh`](run.sh), a thin wrapper over
-`mdsmith-release bench`. The published numbers come from the
-committed `data/*.json` snapshot in this directory: it is the
-`bench-fragments` gate's source of truth, what the tables below
-render from in-repo, and what the website reads at build time. You
-refresh it deliberately by running `run.sh` and reviewing the
-result in a PR. The same harness also runs on every merge to
-`main`, publishing a re-measured copy to the orphan `assets`
-branch — but that per-merge run is a record-only drift signal (the
-demo.gif-style artifact), not a live source the website or the
-docs read.
+`mdsmith-release bench`.
+
+Two copies of the numbers exist, and they do different jobs:
+
+- **The committed `data/*.json` snapshot** in this directory is
+  the published source. The tables below render from it in-repo,
+  the website reads it at build time, and the `bench-fragments`
+  gate checks it. A maintainer refreshes it on purpose: run
+  `run.sh`, then review the result in a PR.
+- **The per-merge `assets`-branch copy** re-measures on every
+  merge to `main`, the same way `demo.gif` is rebuilt. It is a
+  record-only drift signal, never a live source the website or
+  these docs read.
 
 ## Method
 
-- Driver: `hyperfine` 1.20.0, `--warmup 3 --runs 10 -N`
-  (markdownlint-cli2: `--warmup 2 --runs 6`).
-- Each tool runs its check/lint over a directory of `.md`
-  files on its built-in defaults. The exceptions are the
-  `mdsmith-<linter>-parity` rows: the same mdsmith binary run
-  with a per-peer
+- **Driver.** `hyperfine` 1.20.0 with `--warmup 3 --runs 10
+  -N`. markdownlint-cli2 uses `--warmup 2 --runs 6`.
+- **What each tool runs.** Every tool checks a directory of
+  `.md` files on its built-in defaults. `mdsmith` with no `-c`
+  is the full default set users run.
+- **The parity rows.** Each `mdsmith-<linter>-parity` row is
+  the same mdsmith binary run with a per-peer
   [`bench-<linter>-parity.mdsmith.yml`](bench-gomarklint-parity.mdsmith.yml)
-  profile, each matching one peer's default rule set for a
-  like-for-like row. `mdsmith` (no `-c`) is the full default
-  set users actually run. (The committed table still shows the
-  pre-split single `mdsmith-parity` column; the per-linter rows
-  land on the next benchmark run.)
-- Caches disabled for the tools that have one (`rumdl
-  --no-cache`, `panache --no-cache`) so every run is
-  worst-case cold. mdsmith, mado, gomarklint, and
-  markdownlint-cli2 keep no on-disk cache.
-- `mdsmith` vs the markdownlint tools is not like-for-like
-  (it does more per file); each `mdsmith-<linter>-parity` row
-  vs its peer is the like-for-like one, with one residual
-  asymmetry noted in
+  profile that matches one peer's default rule set. (The
+  committed table still shows the pre-split single
+  `mdsmith-parity` column; the per-linter rows land on the next
+  run.)
+- **Like-for-like.** `mdsmith` on full defaults does more per
+  file, so that row is not like-for-like. Each
+  `mdsmith-<linter>-parity` row against its peer is. One
+  residual asymmetry remains; see
   [Reading the result](#reading-the-result).
-- Integrity: every comparison binary is fetched at a pinned
-  version and verified by SHA-256 before it runs.
-  gomarklint, hyperfine, mado, panache, and rumdl come from
-  pinned GitHub release tarballs (rumdl moved off an
-  unpinned `uv tool install`); markdownlint-cli2 installs
-  via `npm ci` from the committed lockfile in `npm/`. A
-  tampered or silently-rebuilt download fails the run loud.
+- **Cold cache.** Caches are disabled for the tools that have
+  one (`rumdl --no-cache`, `panache --no-cache`), so every run
+  is worst-case cold. mdsmith, mado, gomarklint, and
+  markdownlint-cli2 keep no on-disk cache.
+- **Integrity.** Every comparison binary is fetched at a pinned
+  version and verified by SHA-256 before it runs. gomarklint,
+  hyperfine, mado, panache, and rumdl come from pinned GitHub
+  release tarballs (rumdl moved off an unpinned `uv tool
+  install`). markdownlint-cli2 installs via `npm ci` from the
+  committed lockfile in `npm/`. A tampered or silently-rebuilt
+  download fails the run loudly.
 
 ### Corpora
 
@@ -61,43 +63,43 @@ docs read.
 
 ### Environment
 
-- GitHub Actions `ubuntu-latest`: a shared 4-vCPU runner
-  (Linux 6.18.5 x86_64, Intel Xeon @ 2.10 GHz). Shared, not
-  dedicated — neighbouring load on the host moves the absolute
-  numbers, which is why the per-tool ratio within one run, not
-  the cross-tool absolute time across runs, is the signal (see
-  [Why absolute numbers move](#why-absolute-numbers-move-and-how-the-factor-stays-stable)).
-- mdsmith (Go 1.25.8 build), gomarklint 3.2.3, mado 0.3.0,
-  rumdl 0.1.93, panache 2.46.0, markdownlint-cli2 0.22.1
-  (markdownlint 0.40.0)
-- Date: 2026-06-12 (the v0.43.0 release run's
-  `benchmark-publish` measurement, promoted from the
-  `assets` branch so the committed baseline shares the
-  release runner's environment)
+- Runner: GitHub Actions `ubuntu-latest`, a shared 4-vCPU host
+  (Linux 6.18.5 x86_64, Intel Xeon @ 2.10 GHz). It is shared,
+  not dedicated, so a neighbour's load moves the absolute
+  numbers. Read the per-tool ratio within one run, not the
+  absolute time across runs; see
+  [Why the absolute numbers move](#why-the-absolute-numbers-move).
+- Tools: mdsmith (Go 1.25.8 build), gomarklint 3.2.3, mado
+  0.3.0, rumdl 0.1.93, panache 2.46.0, markdownlint-cli2 0.22.1
+  (markdownlint 0.40.0).
+- Date: 2026-06-12 — the v0.43.0 release run's
+  `benchmark-publish` measurement, promoted from the `assets`
+  branch so the committed baseline shares the release runner's
+  environment.
 
 ### No PGO in the benchmark build
 
-The `mdsmith` binary the harness builds is a plain
-`go build ./cmd/mdsmith` with no profile-guided
-optimization, even though the release pipeline now builds the
-shipped binaries with a generated profile (see
-[the PGO page](../../development/pgo-profile.md)). The two are
-deliberately separate. The benchmark measures a reproducible
-build — one whose number depends only on the engine and the
-corpus, not on a profile recorded earlier in the same run —
-so a profile refresh cannot move the published figures
-independently of an engine change. PGO measured within noise
-(~0-2%) on this workload, so building the benchmark binary
-without it costs the comparison nothing meaningful while
-keeping the number honest. The released binaries carry the
-profile; the benchmark binary does not.
+The harness builds `mdsmith` with a plain
+`go build ./cmd/mdsmith` and no profile-guided optimization.
+The release pipeline does build the shipped binaries with a
+generated profile (see
+[the PGO page](../../development/pgo-profile.md)), so the
+released binary carries the profile and the benchmark binary
+does not. That split is deliberate.
+
+A profile-free build keeps the number reproducible: it depends
+only on the engine and the corpus, not on a profile recorded
+earlier in the same run. So a profile refresh cannot move the
+published figures without an engine change behind it. PGO
+measured within noise (~0-2%) on this workload, so dropping it
+from the benchmark binary costs the comparison nothing.
 
 ## Results
 
-Numbers below are spliced from
-[`results.fragment.md`](results.fragment.md), which
-`run.sh` regenerates from the hyperfine JSON. They are not
-hand-maintained — re-run the harness and `mdsmith fix` to
+The tables below are spliced from
+[`results.fragment.md`](results.fragment.md), which `run.sh`
+regenerates from the hyperfine JSON. They are not
+hand-maintained. Re-run the harness and `mdsmith fix` to
 refresh.
 
 <?include
@@ -107,10 +109,10 @@ file: results.fragment.md
 docs/research/benchmarks/data/*.json — do not edit by hand. Re-run
 the harness (run.sh) and `mdsmith fix` to refresh. -->
 
-`mdsmith` is the default rule set. Each `mdsmith-<linter>-parity`
-row runs the rule set that peer enables by default, for a
-like-for-like comparison against that peer (the
-`bench-<linter>-parity.mdsmith.yml` profiles).
+`mdsmith` is the default rule set. The `mdsmith-parity`
+row is the single pre-split parity column; the per-linter
+`mdsmith-<linter>-parity` columns, one per peer, land when
+the benchmark is next re-run.
 
 **Repo corpus — 766 Markdown files** (median wall time, lower is
 better; `vs mado` is the ratio to mado's median):
@@ -139,141 +141,173 @@ longer third-party prose):
 
 ## Reading the result
 
-Two facts stand out, and both are honest. The numbers are in
-the table above; this section reads them rather than
-restating them, so it cannot drift from the harness output.
+This section reads the numbers in the table above rather than
+restating them, so it cannot drift from the harness output. Two
+results stand out.
 
-**Every native binary crushes the Node baseline.** The table
-puts markdownlint-cli2 more than an order of magnitude behind
-every native tool on both corpora. mado, rumdl, panache, and
-mdsmith are all in the tens of milliseconds; the Node tool is
-in the seconds. If the alternative is a Node markdownlint,
-any of these is a large speed win.
+### Every native binary beats the Node baseline
 
-**Default mdsmith does the most work per run.** mado is a
-check-only port of ~41 markdownlint rules; rumdl and panache
-are per-file linters too. Default mdsmith also resolves the
-cross-file link/anchor graph, scores readability and
-structure, estimates token budgets, and validates generated
-sections — here under this repository's own `.mdsmith.yml`,
-which switches on opt-in rules a stock install leaves off.
-Even carrying that extra work, the `mdsmith` row now runs in
-the same class as the per-file Rust linters (compare it with
-the `rumdl` row on both corpora) at roughly 3x the
-check-only mado.
+Every native tool finishes in tens to hundreds of milliseconds;
+markdownlint-cli2 takes seconds. It runs more than an order of
+magnitude behind the faster native tools and about 6x behind
+even the slowest one, panache. If the alternative is a Node
+markdownlint, any native tool here is a large speed win.
 
-**Apples-to-apples: the `mado-parity` convention.** Restricted
-to the rule class the markdownlint tools actually share — the
-built-in `mado-parity` convention, which runs mado's default
-set (see
-[Apples-to-apples rule sets](#apples-to-apples-rule-sets)) —
-mdsmith runs in mado's class. On the repo corpus the
-`mdsmith-parity` row comes in at mado's time (the two trade
-places run to run within noise), well ahead of rumdl; on the
-longer-prose neutral corpus it trails mado narrowly and comes
-in ahead of rumdl. The `mdsmith` → `mdsmith-parity`
-delta is the measured cost of the cross-file and
-generated-content layer — work users opt into, not waste.
-The residual gap to mado on long prose is genuine engine
-headroom: the number to drive down, and the profiler loop
-below is how. (These figures predate the per-linter split;
-the `mdsmith-parity` column now selects `mado-parity`, whose
-27-rule set is close to the rule class measured here.)
+### Default mdsmith does the most work per run
 
-**Why parity trails gomarklint specifically.** gomarklint is
-the fastest tool in the table because it never builds an AST —
-it is a pure line scanner. The `gomarklint-parity` convention
-turns mdsmith down to gomarklint's 20-rule default set, and —
-since the coverage matrix marks gomarklint's single-file
-`link-fragments` check a partial cover of mdsmith's cross-file
-MDS027 — that set excludes MDS027 and is fully parse-skip-safe.
-So mdsmith can follow gomarklint onto the no-parse path here;
-what remains is per-rule and fixed overhead, not the goldmark
-parse. The trade-off is that `gomarklint-parity` then runs no
-anchor check at all, where gomarklint runs a same-file one (see
-plan 2606210840). [gomarklint architecture and the parity
-gap](gomarklint-architecture.md) reviews gomarklint's design,
-breaks the profile down bucket by bucket, and records the
-optimization levers and their ceilings.
+mado is a check-only port of ~41 markdownlint rules; rumdl and
+panache are per-file linters too. Default mdsmith does more on
+each file. It resolves the cross-file link and anchor graph,
+scores readability and structure, estimates token budgets, and
+validates generated sections, all here under this repository's
+own `.mdsmith.yml`, which enables opt-in rules a stock install
+leaves off.
 
-**The gate + profiler loop caught two real bugs.** The
-first run had mdsmith at ~1.0 s on the repo corpus but
-~1.6 s on the *smaller* 234-file neutral corpus — slower on
-fewer files, the signature of superlinear cost. `profile.sh`
-traced it to `lint.(*File).LineOfOffset` rescanning each
-file from byte 0 on every call (~24% of check CPU, worst on
-long Rust Book prose); plan 175 replaced it with a cached
-newline index + binary search. The next profile showed the
-Punkt sentence tokenizer (`neurosnap/sentences`, behind
-MDS024) allocating ~2 GB across the 600-file gate corpus;
-plan 175 added an allocation-free guard that skips it when a
-paragraph provably cannot violate either limit. That episode
-roughly halved both corpora; later engine passes (plan 175's
-single-core work and the `pkg/markdown` extraction) have
-taken them lower still, and the table above reflects the
-current state. This is the gate → profiler → fix loop
-working as intended.
+Even with that extra work, the `mdsmith` row comes in ahead of
+the `rumdl` and `panache` rows on both corpora, at roughly 3x
+the check-only mado.
 
-Pick mado or rumdl for raw markdownlint-rule throughput;
-pick mdsmith when the cross-file graph, readability budgets,
-and self-maintaining sections are the point.
+### Like-for-like: the parity conventions
 
-### Why absolute numbers move, and how the factor stays stable
+The fair comparison restricts mdsmith to the rule class the
+markdownlint tools share. The built-in `mado-parity` convention
+runs mado's default set (see
+[Apples-to-apples rule sets](#apples-to-apples-rule-sets)), and
+on that footing mdsmith runs in mado's class:
 
-The absolute milliseconds in the table above are not stable
-release to release, and that is expected, not a regression.
-Three things move them; only the per-tool ratio within one run
-is meant to be read as a result.
+- **Repo corpus:** the `mdsmith-parity` row comes in at mado's
+  time. The two trade places run to run within noise, both well
+  ahead of rumdl.
+- **Neutral corpus:** `mdsmith-parity` trails mado narrowly and
+  still comes in ahead of rumdl.
 
-**The repo corpus grows.** It is mdsmith's own tracked
-Markdown, and the project keeps adding docs — 523 files when
-this page was first written, 766 now. A linter that checks more
-files takes longer, so mdsmith's absolute repo-corpus time
-creeps up as the docs grow, with no change to the engine. The
-tell that growth — not a code regression — drives most of the
-move is mado: a fixed-version check-only binary, its repo time
-went from 40 ms over 523 files to 57 ms over 722 across an
-earlier pair of snapshots — about 1.4x, almost exactly the
-1.38x file growth (722/523). When the
-fixed-version tool scales with the file count, the shared cause
-is the file count. (The neutral corpus does not grow — it is
-pinned third-party prose; see below.)
+The `mdsmith` → `mdsmith-parity` delta is the measured cost of
+the cross-file and generated-content layer, work users opt into.
+The residual gap to mado on long prose is engine headroom: the
+number to drive down, and the profiler loop below is how. (These
+figures predate the per-linter split: the single `mdsmith-parity`
+column shown here reads closest to the `mado-parity` 27-rule set,
+and the next refresh replaces it with one column per peer.)
 
-**`ubuntu-latest` is a shared runner.** The benchmark runs on a
-shared 4-vCPU GitHub Actions host, not a dedicated machine, so a
-neighbour's load on the same host slows a run non-uniformly: a
-lean tool that fits in cache might lose ~1.4x between a quiet and
-a contended run, while a memory- or IO-heavy tool (Node
-markdownlint-cli2 at ~400 MB resident is the extreme) can lose
-several-x. So the cross-tool *absolute* times are
-environment-dependent and not comparable across runs. The
-per-tool *ratio* measured inside a single run — every tool hit
-the same contention at the same moment — is the number that
-survives the move, which is why this page reads ratios, not
-raw milliseconds.
+### Why parity trails gomarklint
+
+When the per-merge copy includes it, gomarklint is the fastest
+tool measured, because it never builds an AST: it is a pure line
+scanner. (The committed table omits its row; see the
+[fairness note](#fairness-note-on-gomarklint).) The
+`gomarklint-parity` convention turns mdsmith down to that same
+light footprint: it enables 3 opt-in rules and disables 25
+defaults. The result excludes the cross-file MDS027, because the
+coverage matrix marks gomarklint's single-file `link-fragments`
+a partial cover of it, so the set is fully parse-skip-safe.
+
+On that footing mdsmith follows gomarklint onto the no-parse
+path; what remains is per-rule and fixed overhead, not the
+goldmark parse. The anchor check stays in: `gomarklint-parity`
+keeps the parse-skip-safe MDS070 same-file-anchor rule (plan
+2606210840), which matches gomarklint's own same-file
+`link-fragments`, and both leave the cross-file walk off.
+[gomarklint architecture and the parity
+gap](gomarklint-architecture.md) breaks the profile down bucket
+by bucket and records the optimization levers and their
+ceilings.
+
+### What the gate-and-profiler loop caught
+
+The loop has already caught two real bugs. The first run had
+mdsmith at ~1.0 s on the repo corpus but ~1.6 s on the *smaller*
+234-file neutral corpus: slower on fewer files, the signature of
+superlinear cost. Two profiles, two fixes:
+
+- **Re-scanning from byte 0.** `profile.sh` traced the cost to
+  `lint.(*File).LineOfOffset` rescanning each file from the
+  start on every call (~24% of check CPU, worst on long Rust
+  Book prose). Plan 175 replaced it with a cached newline index
+  plus binary search.
+- **A 2 GB tokenizer.** The next profile showed the Punkt
+  sentence tokenizer (`neurosnap/sentences`, behind MDS024)
+  allocating ~2 GB across the 600-file gate corpus. Plan 175
+  added an allocation-free guard that skips it when a paragraph
+  provably cannot violate either limit.
+
+That episode roughly halved both corpora. Later engine passes
+(plan 175's single-core work and the `pkg/markdown` extraction)
+took them lower still, and the table above reflects the current
+state. This is the gate → profiler → fix loop working as
+intended.
+
+### Which tool to pick
+
+mado and mdsmith on a parity profile run at the same speed: they
+tie on the repo corpus and sit within noise of each other on the
+neutral one, so there is no throughput reason to pick between
+them. gomarklint is quicker still, because it runs the fewest
+rules and builds no AST. rumdl and panache are the ones that
+clearly trail, on both corpora.
+
+So choose on capability, not on these margins. Pick mdsmith when
+the cross-file graph, readability budgets, and self-maintaining
+sections are the point; on full defaults it still comes in ahead
+of rumdl and panache while doing that extra work.
+
+## Measurement notes and fairness
+
+### Why the absolute numbers move
+
+The absolute milliseconds in the table are not stable release
+to release. That is expected, not a regression. Three things
+move them, and only the per-tool ratio within one run is meant
+to be read as a result.
+
+**The repo corpus grows.** It is mdsmith's own tracked Markdown,
+and the project keeps adding docs: 523 files when this page was
+first written, 766 now. A linter that checks more files takes
+longer, so mdsmith's absolute repo-corpus time creeps up as the
+docs grow, with no change to the engine.
+
+mado shows that growth, not a code regression, drives most of
+the move. It is a fixed-version, check-only binary, yet its repo
+time went from 40 ms over 523 files to 57 ms over 722 across an
+earlier pair of snapshots. That is about 1.4x, almost exactly
+the 1.38x file growth (722/523). When a fixed-version tool
+scales with the file count, the file count is the shared cause.
+(The neutral corpus does not grow; it is pinned third-party
+prose.)
+
+**`ubuntu-latest` is a shared runner.** A neighbour's load on
+the same 4-vCPU host slows a run unevenly. A lean tool that fits
+in cache might lose ~1.4x between a quiet and a contended run; a
+memory- or IO-heavy tool can lose several times that (Node
+markdownlint-cli2, at ~400 MB resident, is the extreme). So the
+cross-tool absolute times are environment-dependent and not
+comparable across runs.
+
+The per-tool ratio inside a single run survives the move,
+because every tool hit the same contention at the same moment.
+That is why this page reads ratios, not raw milliseconds.
 
 **The reproducibility holes are closed.** Two inputs that used
-to drift silently no longer do. The neutral corpus is pinned to
-fixed upstream commits of the Rust Book and Rust Reference
-(`rustBookPinnedSHA` / `rustRefPinnedSHA` in
-`internal/release/bench.go`), so its content is identical run to
-run instead of following each repo's moving default branch. And
-the file count in the headings and the headline is computed from
-the corpus the harness actually built (`bench.go` writes
-`data/corpus_sizes.json`, `gen_fragments.py` reads it), never a
-hardcoded literal — so the count cannot quietly go stale as the
-repo's Markdown grows the way the old frozen "523" did.
+to drift silently no longer do:
+
+- The neutral corpus is pinned to fixed upstream commits of the
+  Rust Book and Rust Reference (`rustBookPinnedSHA` /
+  `rustRefPinnedSHA` in `internal/release/bench.go`), so its
+  content is identical run to run instead of following each
+  repo's moving default branch.
+- The file count in the headings and the headline is computed
+  from the corpus the harness actually built (`bench.go` writes
+  `data/corpus_sizes.json`, `gen_fragments.py` reads it), never
+  a hardcoded literal. The count cannot go stale the way the old
+  frozen "523" did.
 
 **The policy this implies.** The published numbers come from the
-committed in-repo snapshot under this directory, refreshed
-deliberately via `run.sh` and reviewed in a PR — one run, one
-machine, one moment of contention, so its cross-tool ratios are
-internally consistent. The per-merge `benchmark.yml` CI run
-re-measures on a fresh, separately-contended runner and is a
-record-only drift signal: it is never a live source the website
-or these docs read. That separation is deliberate; without it,
-the site's headline factor would swing run to run with whatever
-else was sharing the runner.
+committed in-repo snapshot, refreshed deliberately via `run.sh`
+and reviewed in a PR: one run, one machine, one moment of
+contention, so its cross-tool ratios are internally consistent.
+The per-merge `benchmark.yml` run re-measures on a fresh,
+separately-contended runner and stays a record-only drift
+signal. Without that separation, the site's headline factor
+would swing run to run with whatever else shared the runner.
 
 ### Why obsidian-linter is not benchmarked
 
@@ -300,46 +334,47 @@ instead.
 
 ### Fairness note on gomarklint
 
-gomarklint is wired into the harness: its release tarball
-and SHA-256 are pinned in the `benchTools` manifest
-(`internal/release/bench.go`), and `runHyperfine` drives
-it on bare defaults next to the other tools. The per-merge
-`benchmark.yml` run and each release's `benchmark-publish`
-job measure it.
+gomarklint is wired into the harness. Its release tarball and
+SHA-256 are pinned in the `benchTools` manifest
+(`internal/release/bench.go`), and `runHyperfine` drives it on
+bare defaults next to the other tools. The per-merge
+`benchmark.yml` run and each release's `benchmark-publish` job
+measure it.
 
-Whether a gomarklint row appears here depends on which copy
-you read. The committed `data/*.json` snapshot under this
-directory moves only when a maintainer re-runs `run.sh` and
-reviews the result in a PR. So that snapshot can still
-predate gomarklint and omit the row. The per-merge `assets`
-copy re-measures with gomarklint included, so it already
-carries the row.
+Whether a gomarklint row appears here depends on which copy you
+read. The committed `data/*.json` snapshot moves only when a
+maintainer re-runs `run.sh` and reviews the result in a PR, so
+it can still predate gomarklint and omit the row. The per-merge
+`assets` copy re-measures with gomarklint included, so it
+already carries the row.
 
 Read that row as the lightest-workload entry. gomarklint's
-defaults cover 21 of mdsmith's rules — 22 in all, one off by
-default, every one a full cover. That is the smallest
-default rule set of the markdownlint-family CLI tools here:
-mado covers 28, rumdl and markdownlint 42 each (counts from
-the [peer-linter coverage matrix][mdcov], generated from
-rule front matter). So when gomarklint posts the fastest
-time on both corpora, part of that lead is fewer checks per
-file, not a like-for-like win. It runs the same job as the
-others with a lighter rule set.
+defaults cover 22 of mdsmith's rules (23 in all, one off by
+default, every one a full cover). That is the smallest default
+rule set of the markdownlint-family tools here:
+
+- gomarklint: 22
+- mado: 28
+- rumdl and markdownlint: 43 each
+
+(Counts from the [peer-linter coverage matrix][mdcov], generated
+from rule front matter.) So gomarklint's fastest time partly
+reflects fewer checks per file, not a like-for-like win. It runs
+the same job as the others with a lighter rule set.
 
 [mdcov]: ../markdownlint-coverage/README.md
 
 ### Apples-to-apples rule sets
 
-The parity claim above hinges on which rules each
-configuration runs. For the full mdsmith-to-peer rule
-mapping (markdownlint, rumdl, mado, panache,
-obsidian-linter) with each peer's upstream
-default-enabled state, see the
-[peer-linter coverage matrix](../markdownlint-coverage/README.md)
-— generated from rule front matter, so it stays in
-sync with the actual ruleset. This subsection adds the
-benchmark-specific layer: which rules `mdsmith` (full)
-runs and which each `<linter>-parity` convention runs.
+The parity claim above hinges on which rules each configuration
+runs. For the full mdsmith-to-peer rule mapping (markdownlint,
+rumdl, mado, panache, obsidian-linter), with each peer's
+upstream default-enabled state, see the [peer-linter coverage
+matrix](../markdownlint-coverage/README.md). It is generated
+from rule front matter, so it stays in sync with the actual rule
+set. This subsection adds the benchmark-specific layer: which
+rules `mdsmith` (full) runs, and which each `<linter>-parity`
+convention runs.
 
 | Configuration       | Rule class                                                   |
 | ------------------- | ------------------------------------------------------------ |
@@ -353,19 +388,18 @@ runs and which each `<linter>-parity` convention runs.
 
 #### Per-linter parity rule sets
 
-Each `<linter>-parity` convention runs the rule set its
-peer enables by default. It turns on the mdsmith opt-in
-rules the peer runs. It turns off the mdsmith defaults
-the peer skips. The single `mdsmith-parity` column uses
-`mado-parity`, the mid-size peer. The per-linter
+Each `<linter>-parity` convention runs the rule set its peer
+enables by default. It turns on the mdsmith opt-in rules the
+peer runs, and turns off the mdsmith defaults the peer skips.
+The single `mdsmith-parity` column uses `mado-parity`, the
+mid-size peer. The per-linter
 [`bench-<linter>-parity.mdsmith.yml`](bench-mado-parity.mdsmith.yml)
 profiles drive a head-to-head run against each peer.
 
-The tables are generated from the conventions
+These tables are generated from the conventions
 (`mdsmith-release sync-parity-rules`). CI checks each set
-against the coverage matrix, so neither can drift — the
-same fragment the [conventions reference][conv-parity]
-embeds:
+against the coverage matrix, so neither can drift. It is the
+same fragment the [conventions reference][conv-parity] embeds:
 
 <?include
 file: parity-rules.fragment.md
@@ -537,43 +571,42 @@ Disabled defaults:
 
 #### Residual asymmetries
 
-A handful of edge cases the parity profile is honest
-about, not a complete level playing field.
+A few edge cases where the parity profile is not a complete
+level playing field:
 
-- MD043 required-headings → MDS020 required-structure
-  (CUE schema) and MD051 link-fragments → MDS027
-  cross-file-reference-integrity (whole-repo link
-  graph): mdsmith implements both at higher fidelity
-  than the peer markdownlint rule, so `mdsmith-parity`
-  disables them rather than claim parity at higher
-  fidelity. They show up in the table above.
+- MD043 required-headings → MDS020 required-structure (CUE
+  schema), and MD051 link-fragments → MDS027
+  cross-file-reference-integrity (whole-repo link graph):
+  mdsmith implements both at higher fidelity than the peer
+  markdownlint rule. `mdsmith-parity` disables them rather than
+  claim a false parity, so they show up in the table above.
 - MD054 link-image-style is covered only by the opt-in
   [MDS068 link-style](../../../internal/rules/MDS068-link-style/README.md)
   (a partial cover), which is off by default and not
   enabled in parity. So rumdl and markdownlint, which
   both ship MD054, do marginally more than
   `mdsmith-parity` on that rule.
-- Three mdsmith-only rules (no markdownlint analog) are
-  **not** in the parity disable list:
-  [MDS031 unclosed-code-block](../../../internal/rules/MDS031-unclosed-code-block/README.md)
-  (default, kept on as a cheap structural check),
-  [MDS034 markdown-flavor](../../../internal/rules/MDS034-markdown-flavor/README.md),
+- Two opt-in mdsmith-only rules (no markdownlint analog) sit
+  outside the parity disable lists:
+  [MDS034 markdown-flavor](../../../internal/rules/MDS034-markdown-flavor/README.md)
   and
-  [MDS067 callout-type](../../../internal/rules/MDS067-callout-type/README.md)
-  (opt-in, rely on default-off). A user config that
-  enables MDS034 or MDS067 would slip through
-  `mdsmith-parity`.
+  [MDS067 callout-type](../../../internal/rules/MDS067-callout-type/README.md).
+  Both rely on being off by default, so a user config that
+  enables either would slip through `mdsmith-parity`. The
+  default-on
+  [MDS031 unclosed-code-block](../../../internal/rules/MDS031-unclosed-code-block/README.md),
+  also mdsmith-only, is no longer an exception: the per-linter
+  parity sets (mado, rumdl, markdownlint) all disable it.
 
 ### Fairness note on panache
 
 panache benchmarks itself on a small, Pandoc/Quarto-heavy
-corpus — six documents, single-document focused
-([its corpus README][pn-corpus]). Our run points every tool
-at a directory of plain Markdown instead. That is not
-panache's home turf, so its number here reflects
-directory-walk plain-Markdown linting, not the Quarto
-workload it is tuned for. Read it as "panache on the same
-job as the others", not "panache at its best".
+corpus: six documents, single-document focused ([its corpus
+README][pn-corpus]). Our run points every tool at a directory
+of plain Markdown instead. That is not the workload panache is
+tuned for, so its number here reflects directory-walk
+plain-Markdown linting, not Quarto. Read it as "panache on the
+same job as the others", not "panache at its best".
 
 ### The "<300 ms" self-check claim
 
@@ -584,67 +617,63 @@ the whole tree is ~0.5 s here, and an 18-file
 `docs/features` subset is ~50 ms. The page has been
 re-scoped, and a CI gate now guards the real number.
 
-### Gates
+## Gates
 
-Four gates in CI:
+Four gates run in CI.
 
-- **Tiered check budgets** —
-  `BenchmarkCheckCorpus{Small,Large}` in
-  `internal/engine/bench_test.go` lint a 60-file and a
-  600-file synthetic workspace with the full rule set.
-  Small (2 s budget, baseline ~0.09 s) catches per-file
-  overhead; Large (12 s budget, baseline ~0.8 s) catches
-  superlinear scaling. CI job `check-bench`, modelled on
-  `lsp-bench`. Baselines reflect the two plan-175 fixes
-  (LineOfOffset line-index; MDS024 tokenizer skip).
-- **Doc-number drift** — CI job `bench-fragments`
-  regenerates the fragments from the committed
-  `data/*.json` via `gen_fragments.py`, re-runs
-  `mdsmith fix`, and `git diff --exit-code`s. A
-  hand-edited fragment or a stale number fails the build.
-  The committed `data/` only moves when a maintainer
-  promotes fresh JSON locally via `run.sh` and opens a PR;
-  the per-release job publishes to the `assets` branch, not
-  to `main`.
-- **Per-release measure, publish, and regression gate** —
-  on every release, `release.yml`'s `benchmark-publish`
-  job re-measures on the runner and publishes the numbers
-  two ways: it uploads the fragments as the
-  `benchmark-numbers` artifact (which the website deploy
-  bakes in, so each release's site shows its own
-  freshly-measured figures) and pushes the numbers plus the
-  rendered benchmark page (assets/benchmarks/pages/benchmark.md)
-  to the orphan `assets` branch the performance page links to.
-  GitHub Actions cannot open a PR here, so
-  it never touches the committed snapshot. The separate
-  `bench-regression-gate` job runs
-  `mdsmith-release bench-check`, which compares mdsmith's
-  ratio to mado (machine- and corpus-size-independent)
-  against the committed baseline and fails on a real
-  relative slowdown — visibly, but without blocking the
-  deploy, so an honest-but-slower release still ships.
-- **Required checks** — CI runs on every PR and the
-  merge queue, so these jobs gate queue merges. A
-  maintainer must also add `check-bench` and
-  `bench-fragments` (next to `lsp-bench` and the coverage
-  checks) to branch protection's required-checks list for
-  the direct merge-button path.
+- **Tiered check budgets.** `BenchmarkCheckCorpus{Small,Large}`
+  in `internal/engine/bench_test.go` lint a 60-file and a
+  600-file synthetic workspace with the full rule set. Small
+  (250 ms budget, baseline ~14 ms) catches per-file overhead;
+  Large (2 s budget, baseline ~90 ms) catches superlinear
+  scaling. The CI job `check-bench` is modelled on `lsp-bench`.
+  Baselines reflect the plan-175 fixes (LineOfOffset line-index;
+  MDS024 tokenizer skip) and the later engine passes.
+- **Doc-number drift.** The CI job `bench-fragments`
+  regenerates the fragments from the committed `data/*.json` via
+  `gen_fragments.py`, re-runs `mdsmith fix`, and
+  `git diff --exit-code`s. A hand-edited fragment or a stale
+  number fails the build. The committed `data/` moves only when
+  a maintainer promotes fresh JSON locally via `run.sh` and
+  opens a PR; the per-release job publishes to the `assets`
+  branch, not to `main`.
+- **Per-release measure, publish, and regression gate.** On
+  every release, `release.yml`'s `benchmark-publish` job
+  re-measures on the runner and publishes the numbers two ways.
+  It uploads the fragments as the `benchmark-numbers` artifact
+  (the website deploy bakes them in, so each release's site
+  shows its own freshly-measured figures), and it pushes the
+  numbers plus the rendered benchmark page
+  (`assets/benchmarks/pages/benchmark.md`) to the orphan
+  `assets` branch the performance page links to. GitHub Actions
+  cannot open a PR here, so it never touches the committed
+  snapshot. A separate `bench-regression-gate` job runs
+  `mdsmith-release bench-check`: it compares mdsmith's ratio to
+  mado (machine- and corpus-size-independent) against the
+  committed baseline and fails on a real relative slowdown. The
+  failure is visible but does not block the deploy, so a slower
+  release still ships.
+- **Required checks.** CI runs on every PR and the merge queue,
+  so these jobs gate queue merges. For the direct merge-button
+  path, a maintainer must also add `check-bench` and
+  `bench-fragments` to branch protection's required-checks list,
+  next to `lsp-bench` and the coverage checks.
 
-The cross-tool table is a research snapshot; only mdsmith's
-own number is gated.
+The cross-tool table is a research snapshot; only mdsmith's own
+number is gated.
 
 ### Diagnosing a tripped gate
 
 A gate says check got slower; it does not say where.
-`profile.sh` answers that. It runs the gated benchmark
-under `-cpuprofile`/`-memprofile` for function- and
-line-level cost on the exact gated path, then profiles the
-real CLI over this repo through the env hook
-(`MDSMITH_CPUPROFILE` / `MDSMITH_MEMPROFILE`, no CLI flag,
-so the command line stays identical to production) to
-catch startup, workspace-walk, and config cost the
-in-process bench under-exercises. It prints `pprof -top`
-and per-line listings for the hot symbols; drill further
-with `go tool pprof -http=:`.
+`profile.sh` answers that. It runs the gated benchmark under
+`-cpuprofile`/`-memprofile` for function- and line-level cost
+on the exact gated path. It then profiles the real CLI over
+this repo through the env hook (`MDSMITH_CPUPROFILE` /
+`MDSMITH_MEMPROFILE`, no CLI flag, so the command line stays
+identical to production), which catches the startup,
+workspace-walk, and config cost the in-process bench
+under-exercises. It prints `pprof -top` and per-line listings
+for the hot symbols; drill further with
+`go tool pprof -http=:`.
 
 [pn-corpus]: https://github.com/jolars/panache/blob/main/benches/documents/README.md
