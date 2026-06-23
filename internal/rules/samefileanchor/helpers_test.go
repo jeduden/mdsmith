@@ -104,8 +104,8 @@ func TestInsertDisambiguated(t *testing.T) {
 	slugs2 := map[string]struct{}{"fix": {}, "fix-1": {}}
 	counts2 := map[string]int{}
 	insertDisambiguated(slugs2, counts2, "fix")
-	assert.Contains(t, slugs2, "fix-2", "inner loop skips pre-existing fix-1")
-	assert.NotContains(t, slugs2, "fix-3", "stops at first free slot")
+	require.Contains(t, slugs2, "fix-2", "inner loop skips pre-existing fix-1")
+	require.NotContains(t, slugs2, "fix-3", "stops at first free slot")
 	// A follow-up insertion verifies that counts2 was written back correctly
 	// (counts2["fix"]==2 means the next probe starts at 3, not re-scanning from 1).
 	insertDisambiguated(slugs2, counts2, "fix")
@@ -286,4 +286,5 @@ func TestCollectSlugs(t *testing.T) {
 	slugsL0 := collectSlugs(fLines)
 	assert.Contains(t, slugsL0, "one")
 	assert.Contains(t, slugsL0, "two")
+	assert.Equal(t, slugsAST, slugsL0, "AST and Layer0 paths must produce identical slug sets")
 }
