@@ -59,10 +59,10 @@ test as of commit 1599c9f:
 3. Keep each test function short (≤ 15 lines).
    Use table-driven style only when three or
    more cases differ in one dimension.
-4. `isSpaceOrNewlineByte` is a one-liner with
-   no branch; add the one-line "no test by design"
-   exemption comment in `inline_scan.go` instead
-   of a test.
+4. `isSpaceOrNewlineByte` has two boolean branches
+   (`c == ' '` and `c == '\n'`), so the trivial-
+   accessor exemption does not apply. Add
+   `TestIsSpaceOrNewlineByte` instead.
 5. Run `go test ./internal/lint/... -run TestScan`
    to confirm all pass.
 6. Run `go vet ./internal/lint/...` and
