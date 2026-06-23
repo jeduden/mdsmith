@@ -106,6 +106,10 @@ func TestInsertDisambiguated(t *testing.T) {
 	insertDisambiguated(slugs2, counts2, "fix")
 	assert.Contains(t, slugs2, "fix-2", "inner loop skips pre-existing fix-1")
 	assert.NotContains(t, slugs2, "fix-3", "stops at first free slot")
+	// A follow-up insertion verifies that counts2 was written back correctly
+	// (counts2["fix"]==2 means the next probe starts at 3, not re-scanning from 1).
+	insertDisambiguated(slugs2, counts2, "fix")
+	assert.Contains(t, slugs2, "fix-3", "fourth fix uses counts write-back to start at 3")
 }
 
 func TestAtxHeadingText(t *testing.T) {
@@ -254,6 +258,12 @@ func TestCollectSlugsLayer0(t *testing.T) {
 	slugsSetext := collectSlugsLayer0(fSetext)
 	assert.Contains(t, slugsSetext, "setext-title", "setext heading slug")
 
+	// Setext heading with a link in the text — exercises appendHeadingTextRaw
+	// on the setext branch (link destination must be stripped, only alt text kept).
+	fSetextLink := lint.NewFileLines("test.md", []byte("[Click Here](url)\n==================\n"))
+	slugsSetextLink := collectSlugsLayer0(fSetextLink)
+	assert.Contains(t, slugsSetextLink, "click-here", "setext heading with link strips dest")
+
 	// No headings — must return nil.
 	fNone := lint.NewFileLines("test.md", []byte("plain paragraph\n"))
 	assert.Nil(t, collectSlugsLayer0(fNone), "no headings returns nil")
@@ -272,7 +282,7 @@ func TestCollectSlugs(t *testing.T) {
 
 	// nil-AST (Layer0) path.
 	fLines := lint.NewFileLines("test.md", src)
-	assert.Nil(t, fLines.AST, "test requires nil AST")
+	require.Nil(t, fLines.AST, "test requires nil AST")
 	slugsL0 := collectSlugs(fLines)
 	assert.Contains(t, slugsL0, "one")
 	assert.Contains(t, slugsL0, "two")
