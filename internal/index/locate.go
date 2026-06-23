@@ -465,7 +465,7 @@ func enclosingListKey(lines [][]byte, line int) string {
 		// FindSubmatch accepts []byte directly, avoiding a string allocation
 		// per scanned line when the caller passes bytes.
 		m := piArgRE.FindSubmatch(lines[i])
-		if len(m) >= 3 && len(bytes.TrimSpace(m[2])) == 0 {
+		if len(m) >= 3 && len(m[2]) == 0 {
 			return string(m[1])
 		}
 		// A populated `key: value` line or another list item does not

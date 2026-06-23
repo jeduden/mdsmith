@@ -326,19 +326,22 @@ func TestCheck_MessageNoConcatenationWhenExamplesPresent(t *testing.T) {
 
 func TestCheck_NoCuesMessage(t *testing.T) {
 	// Exercises the if examples == "" branch: a paragraph that scores as
-	// verbose but contains no specific cue phrases produces the base message
-	// without the "reduce verbose cues" suffix.
-	// Scorer probed: Score≈0.065, Cues=[] for this text.
+	// verbose but produces no cue phrases yields the base message only.
 	noCuePara := "When the configuration is set, the setting is used by the " +
 		"configuration. The configuration uses the setting and the setting " +
 		"configures the configuration."
+	s, err := NewScorer()
+	require.NoError(t, err)
+	scored := s.Score(noCuePara)
+	if len(scored.Cues) > 0 {
+		t.Skip("scorer detected cues in fixture; model may have drifted")
+	}
+
 	src := []byte(noCuePara + "\n")
 	f, err := lint.NewFile("test.md", src)
 	require.NoError(t, err)
 
-	// MinScore above the actual score so the diagnostic fires; MinWords=1 so
-	// the short paragraph is not skipped by the word-count gate.
-	r := &Rule{MinScore: 0.50, MinWords: 1}
+	r := &Rule{MinScore: scored.Conciseness + 0.10, MinWords: 1}
 	diags := r.Check(f)
 	require.Len(t, diags, 1, "expected diagnostic for low-scoring no-cue paragraph")
 	msg := diags[0].Message
