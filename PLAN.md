@@ -222,4 +222,5 @@ footer: |
 | 2606211908 | ✅     |        | [arch-fix: split internal/lint/layer0.go](plan/2606211908_arch-fix-layer0-split.md)                                                     |
 | 2606211909 | ✅     |        | [arch-fix: split internal/lsp/server.go](plan/2606211909_arch-fix-lsp-server-split.md)                                                  |
 | 2606211910 | ✅     |        | [arch-fix: add trivial-accessor exemption comments in workspace.go](plan/2606211910_arch-fix-workspace-exemptions.md)                   |
+| 2606231014 | ✅     | sonnet | [Add dedicated unit tests for samefileanchor helper functions](plan/2606231014_arch-fix-samefileanchor-helper-tests.md)                 |
 <?/catalog?>
