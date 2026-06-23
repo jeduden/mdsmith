@@ -238,11 +238,17 @@ intended.
 
 ### Which tool to pick
 
-Pick mado for the fastest run of a full markdownlint rule set;
-gomarklint is faster still but checks the least. Pick mdsmith
-when the cross-file graph, readability budgets, and
-self-maintaining sections are the point; on full defaults it
-already comes in ahead of rumdl and panache on both corpora.
+mado and mdsmith on a parity profile run at the same speed: they
+tie on the repo corpus and sit within noise of each other on the
+neutral one, so there is no throughput reason to pick between
+them. gomarklint is quicker still, because it runs the fewest
+rules and builds no AST. rumdl and panache are the ones that
+clearly trail, on both corpora.
+
+So choose on capability, not on these margins. Pick mdsmith when
+the cross-file graph, readability budgets, and self-maintaining
+sections are the point; on full defaults it still comes in ahead
+of rumdl and panache while doing that extra work.
 
 ## Measurement notes and fairness
 
