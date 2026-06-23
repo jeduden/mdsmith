@@ -583,6 +583,7 @@ func TestApplyBang(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, 2, ni, "i advanced past `!`")
 	assert.Equal(t, 1, ns, "textStart set to position of `!`")
+	require.NotNil(t, para.FirstChild(), "pending text flushed as child")
 
 	// `![alt](url)`: appends Image node.
 	run2 := []byte("![alt](url)")
@@ -637,6 +638,8 @@ func TestScanCodeSpan(t *testing.T) {
 	require.True(t, ok2)
 	assert.Equal(t, 9, after2)
 	require.NotNil(t, node2)
+	_, isCode2 := node2.(*ast.CodeSpan)
+	assert.True(t, isCode2, "double-backtick produces CodeSpan")
 
 	// No closing backtick: returns false.
 	_, _, ok3 := scanCodeSpan([]byte("`unclosed"), 0, a)
@@ -654,8 +657,9 @@ func TestScanLinkOrImage(t *testing.T) {
 	assert.True(t, isLink, "Link node")
 
 	// Inline image.
-	node2, _, ok2 := scanLinkOrImage([]byte("![alt](url)"), 0, true, a)
+	node2, after2, ok2 := scanLinkOrImage([]byte("![alt](url)"), 0, true, a)
 	require.True(t, ok2)
+	assert.Equal(t, 11, after2, "image after matches run length")
 	_, isImg := node2.(*ast.Image)
 	assert.True(t, isImg, "Image node")
 
