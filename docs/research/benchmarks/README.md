@@ -147,11 +147,11 @@ results stand out.
 
 ### Every native binary beats the Node baseline
 
-The table puts markdownlint-cli2 more than an order of magnitude
-behind every native tool on both corpora. mado, rumdl, panache,
-and mdsmith all finish in tens of milliseconds; the Node tool
-takes seconds. If the alternative is a Node markdownlint, any
-native tool here is a large speed win.
+Every native tool finishes in tens to hundreds of milliseconds;
+markdownlint-cli2 takes seconds. It runs more than an order of
+magnitude behind the faster native tools and about 6x behind
+even the slowest one, panache. If the alternative is a Node
+markdownlint, any native tool here is a large speed win.
 
 ### Default mdsmith does the most work per run
 
@@ -191,19 +191,23 @@ the rule class measured here.)
 
 ### Why parity trails gomarklint
 
-gomarklint is the fastest tool in the benchmark because it
-never builds an AST. It is a pure line scanner. The
-`gomarklint-parity` convention turns mdsmith down to
-gomarklint's 21-rule default set, and that set excludes MDS027:
-the coverage matrix marks gomarklint's single-file
-`link-fragments` check a partial cover of mdsmith's cross-file
-MDS027, so the set is fully parse-skip-safe.
+When the per-merge copy includes it, gomarklint is the fastest
+tool measured, because it never builds an AST: it is a pure line
+scanner. (The committed table omits its row; see the
+[fairness note](#fairness-note-on-gomarklint).) The
+`gomarklint-parity` convention turns mdsmith down to that same
+light footprint: it enables 3 opt-in rules and disables 25
+defaults. The result excludes the cross-file MDS027, because the
+coverage matrix marks gomarklint's single-file `link-fragments`
+a partial cover of it, so the set is fully parse-skip-safe.
 
-So mdsmith can follow gomarklint onto the no-parse path here.
-What remains is per-rule and fixed overhead, not the goldmark
-parse. The trade-off: `gomarklint-parity` then runs no anchor
-check at all, where gomarklint runs a same-file one (see plan
-2606210840). [gomarklint architecture and the parity
+On that footing mdsmith follows gomarklint onto the no-parse
+path; what remains is per-rule and fixed overhead, not the
+goldmark parse. The anchor check stays in: `gomarklint-parity`
+keeps the parse-skip-safe MDS070 same-file-anchor rule (plan
+2606210840), which matches gomarklint's own same-file
+`link-fragments`, and both leave the cross-file walk off.
+[gomarklint architecture and the parity
 gap](gomarklint-architecture.md) breaks the profile down bucket
 by bucket and records the optimization levers and their
 ceilings.
@@ -234,8 +238,9 @@ intended.
 
 ### Which tool to pick
 
-Pick mado for the fastest markdownlint-rule throughput. Pick
-mdsmith when the cross-file graph, readability budgets, and
+Pick mado for the fastest run of a full markdownlint rule set;
+gomarklint is faster still but checks the least. Pick mdsmith
+when the cross-file graph, readability budgets, and
 self-maintaining sections are the point; on full defaults it
 already comes in ahead of rumdl and panache on both corpora.
 

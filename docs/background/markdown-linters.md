@@ -760,13 +760,15 @@ access and is non-deterministic.
 Default mdsmith is more than an order of magnitude faster
 than markdownlint-cli2 on its own Markdown. With the
 mdsmith-only rules disabled (`mdsmith-parity`), it runs at
-mado's speed: the two tie on the repo corpus. See the
-[benchmark doc][bench] for the current ratios.
+mado's speed: the two tie on the repo corpus, and parity
+trails mado only narrowly on the longer neutral corpus. See
+the [benchmark doc][bench] for the current ratios.
 
-mado leads the per-file race. Default mdsmith does more
-per file: it also walks the cross-file graph, scores
-readability, and validates generated sections. Even so, it
-comes in ahead of rumdl and panache on both corpora.
+Among the Rust linters, mado leads the per-file race.
+Default mdsmith does more per file: it walks the
+cross-file graph, scores readability, and validates
+generated sections. Even so, it comes in ahead of rumdl
+and panache on both corpora.
 
 Pick mado for raw markdownlint throughput. Pick panache
 for Quarto or R Markdown. Pick mdsmith for the cross-file
