@@ -12,6 +12,8 @@
       "title": "<?include?> directive follows within-workspace symlinks to files outside the workspace root",
       "severity": "high",
       "confidence": "confirmed",
+      "status": "fixed",
+      "fixed_by": "PR #670 — replaced os.DirFS with os.OpenRoot(rootDir).FS() via lint.OpenRootFS in internal/lint/file.go; os.OpenRoot enforces RESOLVE_BENEATH semantics, refusing symlinks whose targets escape the workspace root",
       "surface": "directive",
       "cwe": "CWE-73",
       "location": {
@@ -33,6 +35,8 @@
       "title": "<?catalog glob:?> follows within-workspace symlinks to files outside the workspace root",
       "severity": "high",
       "confidence": "confirmed",
+      "status": "fixed",
+      "fixed_by": "PR #670 — same fix as S001: all RootFS construction sites use lint.OpenRootFS backed by os.OpenRoot; os.OpenRoot.FS() denies GlobWalk traversal through symlinks that target paths outside the workspace root",
       "surface": "directive",
       "cwe": "CWE-73",
       "location": {
@@ -54,6 +58,8 @@
       "title": "CLI engine-runner goroutines lack per-goroutine recover() — rule panic crashes the process",
       "severity": "medium",
       "confidence": "confirmed",
+      "status": "fixed",
+      "fixed_by": "PR #670 — added defer recover() at the top of lintFile (internal/engine/runner.go:396-400); panics in any rule's Check or Fix are caught, converted to InternalError diagnostics, and the process continues linting the remaining files",
       "surface": "cli",
       "cwe": "CWE-390",
       "location": {
@@ -71,6 +77,8 @@
       "title": "<?catalog glob:?> has no per-directive file-count cap — large repos can cause OOM",
       "severity": "low",
       "confidence": "confirmed",
+      "status": "fixed",
+      "fixed_by": "PR #670 — added maxCatalogMatches = 10_000 constant in internal/rules/catalog/rule.go:40; resolveGlobMatchesFrom returns errCatalogCapExceeded and emits a user-facing diagnostic once the cap is exceeded",
       "surface": "directive",
       "cwe": "CWE-400",
       "location": {
@@ -88,6 +96,8 @@
       "title": "hasSymlinkAncestor skips ancestor scan when cwd is unresolvable and no .git root exists",
       "severity": "low",
       "confidence": "confirmed",
+      "status": "fixed",
+      "fixed_by": "PR #670 — changed hasSymlinkAncestor in internal/lint/files.go:274-277 to return an error when ancestorStopBoundary is empty (fail-closed); the caller now skips the path rather than silently passing the symlink check",
       "surface": "cli",
       "cwe": "CWE-61",
       "location": {
@@ -105,6 +115,8 @@
       "title": "<?include?> path validation does not explicitly reject URL schemes — incidentally safe but fragile",
       "severity": "info",
       "confidence": "confirmed",
+      "status": "fixed",
+      "fixed_by": "PR #670 — added explicit strings.Contains(file, \"://\") URL-scheme check in validateIncludeDirective (internal/rules/include/rule.go:140-143); URL-scheme paths are now rejected with a diagnostic rather than incidentally failing at os.DirFS",
       "surface": "directive",
       "cwe": "CWE-918",
       "location": {
@@ -122,6 +134,8 @@
       "title": "githooksync rule reads hook and gitattributes files with unbounded os.ReadFile",
       "severity": "info",
       "confidence": "confirmed",
+      "status": "fixed",
+      "fixed_by": "PR #670 — replaced all four os.ReadFile calls in internal/rules/githooksync/rule.go (lines 187, 261, 307, 398) with bytelimit.ReadFileLimited(path, hookMaxReadBytes) where hookMaxReadBytes = 1024*1024",
       "surface": "git",
       "cwe": "CWE-400",
       "location": {
