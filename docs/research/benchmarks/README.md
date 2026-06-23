@@ -109,10 +109,10 @@ file: results.fragment.md
 docs/research/benchmarks/data/*.json — do not edit by hand. Re-run
 the harness (run.sh) and `mdsmith fix` to refresh. -->
 
-`mdsmith` is the default rule set. Each `mdsmith-<linter>-parity`
-row runs the rule set that peer enables by default, for a
-like-for-like comparison against that peer (the
-`bench-<linter>-parity.mdsmith.yml` profiles).
+`mdsmith` is the default rule set. The `mdsmith-parity`
+row is the single pre-split parity column; the per-linter
+`mdsmith-<linter>-parity` columns, one per peer, land when
+the benchmark is next re-run.
 
 **Repo corpus — 766 Markdown files** (median wall time, lower is
 better; `vs mado` is the ratio to mado's median):
@@ -185,9 +185,9 @@ The `mdsmith` → `mdsmith-parity` delta is the measured cost of
 the cross-file and generated-content layer, work users opt into.
 The residual gap to mado on long prose is engine headroom: the
 number to drive down, and the profiler loop below is how. (These
-figures predate the per-linter split; the `mdsmith-parity`
-column now selects `mado-parity`, whose 27-rule set is close to
-the rule class measured here.)
+figures predate the per-linter split: the single `mdsmith-parity`
+column shown here reads closest to the `mado-parity` 27-rule set,
+and the next refresh replaces it with one column per peer.)
 
 ### Why parity trails gomarklint
 
