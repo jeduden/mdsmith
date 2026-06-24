@@ -3,7 +3,7 @@ id: 2606241815
 title: >-
   Add unit tests for three remaining unexported
   helpers in internal/index/locate.go
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   Add TestPiContainsLine, TestRefDefOnLine, and
@@ -65,10 +65,10 @@ needs a unit test by name. See Tests doc
 
 ## Acceptance Criteria
 
-- [ ] `TestPiContainsLine` exists and passes.
-- [ ] `TestRefDefOnLine` exists and passes.
-- [ ] `TestLocateInFrontMatter` exists and passes.
-- [ ] `isGlobPattern` carries "// no test by design".
-- [ ] `go test ./internal/index/...` — green.
-- [ ] `go test ./...` — green.
-- [ ] `mdsmith check .` — 0 failures.
+- [x] `TestPiContainsLine` exists and passes.
+- [x] `TestRefDefOnLine` exists and passes.
+- [x] `TestLocateInFrontMatter` exists and passes.
+- [x] `isGlobPattern` carries "// no test by design".
+- [x] `go test ./internal/index/...` — green.
+- [x] `go test ./...` — green.
+- [x] `mdsmith check .` — 0 failures.
