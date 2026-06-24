@@ -43,13 +43,13 @@ via [markdownlint-github][].
 - Official [VS Code extension][mdl-vscode] and
   [GitHub Action][mdl-action]
 - Custom rules via npm packages
-- Mature ecosystem with Prettier compatibility presets
+- Mature tooling with Prettier compatibility presets
 - ~5.9k GitHub stars (library)
 
 ### [remark-lint][]
 
 Node.js. ~70 rules distributed as individual npm packages.
-Part of the [unified][]/[remark][] AST pipeline ecosystem.
+Part of the [unified][]/[remark][] AST pipeline.
 
 - Architecture: parse to mdast AST, lint, serialize
 - Three maintained presets (consistent, recommended, style)
@@ -754,7 +754,7 @@ nested heading list.
 
 Go-based tools (mdsmith, Vale) have zero runtime
 dependencies. Node.js tools require a runtime but benefit
-from the npm ecosystem. LLM-based linting requires network
+from the npm registry. LLM-based linting requires network
 access and is non-deterministic.
 
 ## Benchmarks
@@ -787,11 +787,11 @@ token budgets, or generated content sections. Its single
 binary makes CI setup simple.
 
 **markdownlint** is the safe default for teams already in the
-Node.js ecosystem. Widest community adoption, most editor
+Node.js world. Widest community adoption, most editor
 integrations, battle-tested rule set.
 
 **remark-lint** suits projects deep in the unified/remark
-ecosystem (MDX, Gatsby, Next.js). Its AST pipeline enables
+stack (MDX, Gatsby, Next.js). Its AST pipeline enables
 custom transformations beyond linting.
 
 **Prettier** is a formatter, not a linter. Use it alongside a
@@ -967,7 +967,7 @@ contributor. It also walks the repo file tree.
 Adversarial input has caused OOMs, YAML
 billion-laughs expansion, ANSI escape injection,
 symlink escapes, and path traversal in the wider
-linter ecosystem.
+linter space.
 
 mdsmith ran a
 [10-finding adversarial review][mdsmith-sec]. It

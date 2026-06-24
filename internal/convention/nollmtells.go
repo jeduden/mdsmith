@@ -53,6 +53,19 @@ func llmVocabulary() []string {
 		"transformative",
 		"profound",
 		"paramount",
+		"honest",
+		"boast",
+		"garner",
+		"bolster",
+		"myriad",
+		"plethora",
+		"endeavor",
+		"spearhead",
+		"revolutionize",
+		"groundbreaking",
+		"cutting-edge",
+		"effortless",
+		"supercharge",
 	}
 }
 

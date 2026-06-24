@@ -121,7 +121,7 @@ are invoked by `name`, with no plugin prefix
 | `/mdsmith-kinds` | [`mdsmith kinds`](../docs/reference/cli/kinds.md) |
 | `/mdsmith-check` | [`mdsmith check`](../docs/reference/cli/check.md) |
 
-`/mdsmith-fix` is the highest-leverage.
+`/mdsmith-fix` is the highest-impact.
 `/mdsmith-check` deliberately duplicates LSP
 diagnostics for users without `mdsmith-lsp`.
 

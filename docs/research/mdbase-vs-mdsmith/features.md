@@ -1362,8 +1362,8 @@ support and grow upward; users know what to expect.
 | Multi-impl interop     | n/a                | yes (any L_n impl reads same files) |
 | User-defined rules     | not yet (plan 113) | not in spec; per-impl               |
 
-mdbase's spec-first model is more robust to
-ecosystem fragmentation. mdsmith's single-impl model
+mdbase's spec-first model is more resilient to
+fragmentation across tools. mdsmith's single-impl model
 is simpler to reason about but creates a single
 point of fork should the project stall.
 

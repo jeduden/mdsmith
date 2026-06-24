@@ -53,7 +53,7 @@ is recorded.
    parity structural rules, and the full parity run,
    each against gomarklint.
 3. Record the numbers and the go/no-go reading in the
-   [research doc][research] "honest performance bar"
+   [research doc][research] "real performance bar"
    section.
 
 ## Acceptance Criteria

@@ -54,7 +54,7 @@ Two shapes are viable. Pick one during implementation:
    must be parse-skip-safe in that mode.
 
 Prefer option 1. It leaves MDS027's cross-file semantics untouched. It
-also gives the coverage matrix an honest full-cover mapping. Fall back to
+also gives the coverage matrix an accurate full-cover mapping. Fall back to
 option 2 only if slug reuse forces it.
 
 ## Tasks

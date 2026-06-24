@@ -21,7 +21,7 @@ the regenerated body, so the conflict never reaches you.
 
 `mdsmith pre-merge-commit install` adds a hook that runs
 `mdsmith fix` after a merge and re-stages the `.md` files. The
-hook itself is kept honest by `MDS048`, which checks the Git
+hook itself is kept in sync by `MDS048`, which checks the Git
 artifacts against the template derived from `.mdsmith.yml`.
 
 See the [merge-driver](../reference/cli/merge-driver.md) and

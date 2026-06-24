@@ -125,7 +125,7 @@ the stable API, surface by surface (D, then A+B, then C, then
 the parser). When a diff contains either a call-site move or an
 engine change but not both, every regression has one suspect.
 
-One honest caveat from the record: phase 1 did not follow the
+One candid caveat from the record: phase 1 did not follow the
 cadence. Plan 237's deviations section records that tasks 1–3
 were collapsed — `fieldinterp` moved onto `cuelite.ParsePath`
 and that `ParsePath` was written in-house in a single pass, with

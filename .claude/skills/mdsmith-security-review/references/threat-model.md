@@ -112,10 +112,10 @@ Grep targets: `cuelang`, `cue.`, `yaml.Unmarshal`,
 
 ---
 
-## 2. CLI core, workspace walk & parser robustness
+## 2. CLI core, workspace walk & parser resilience
 
 Baseline: symlink default-deny exists. Remaining questions are about
-robustness and write-safety:
+resilience and write-safety:
 
 - **Workspace walk**: confirm the default-deny actually covers walk
   + resolve; check `--no-gitignore` (ignore rules are not a security
