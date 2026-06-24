@@ -141,7 +141,7 @@ func FindHeadingLine(source []byte, headingText string) (int, bool) {
 // normalizes `--link-ref oldlabel` through this before calling
 // LinkRef.
 func NormalizeLabel(s string) string {
-	return normalizedLabel([]byte(s))
+	return NormalizedLabel([]byte(s))
 }
 
 // firstControlRune returns the first newline / carriage return in s,

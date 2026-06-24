@@ -80,7 +80,7 @@ func LinkRef(source []byte, oldLabel, newName string) ([]Edit, error) {
 	// → "Docs API") is allowed — it refreshes casing/spacing across
 	// the def and every use. labelConflict matches on the normalized
 	// form so such a rename never collides with itself.
-	newLabel := normalizedLabel([]byte(newName))
+	newLabel := NormalizedLabel([]byte(newName))
 	if conflict := labelConflict(source, oldLabel, newLabel); conflict != "" {
 		return nil, LabelConflictError{Conflict: conflict}
 	}
@@ -124,7 +124,10 @@ func invalidLinkRefRune(s string) rune {
 	return 0
 }
 
-func normalizedLabel(b []byte) string {
+// NormalizedLabel returns the CommonMark-normalized form of a link
+// label — lowercase with internal whitespace collapsed — by delegating
+// to goldmark's util.ToLinkReference.
+func NormalizedLabel(b []byte) string {
 	return string(util.ToLinkReference(b))
 }
 
@@ -173,7 +176,7 @@ func validRefDefMatches(body []byte) []validRefDefMatch {
 			continue
 		}
 		raw := body[m[2]:m[3]]
-		norm := normalizedLabel(raw)
+		norm := NormalizedLabel(raw)
 		out = append(out, validRefDefMatch{
 			bodyLine:  bodyLine,
 			rawLabel:  string(raw),
@@ -246,7 +249,7 @@ func refDefEditsInBody(
 			continue
 		}
 		row := lines[fileLine-1]
-		bracket := refDefBracketBytes(row)
+		bracket := RefDefBracketBytes(row)
 		startCh := mdtext.UTF16FromByteOffset(row, bracket[0])
 		endCh := mdtext.UTF16FromByteOffset(row, bracket[1])
 		out = append(out, Edit{
@@ -276,7 +279,7 @@ func refUseEditsInBody(
 		if !ok || l.Reference == nil {
 			return ast.WalkContinue, nil
 		}
-		if normalizedLabel(l.Reference.Value) != oldLabel {
+		if NormalizedLabel(l.Reference.Value) != oldLabel {
 			return ast.WalkContinue, nil
 		}
 		edit, ok := refUseEdit(l, body, lines, fmOffset, newName, idx)
@@ -376,10 +379,10 @@ func linkTextBounds(l *ast.Link, body []byte) (int, int) {
 	return start, end
 }
 
-// refDefBracketBytes returns the [start, end) byte offsets of the
+// RefDefBracketBytes returns the [start, end) byte offsets of the
 // label inside a CommonMark reference-definition line, or nil when
 // row is not a reference definition.
-func refDefBracketBytes(row []byte) []int {
+func RefDefBracketBytes(row []byte) []int {
 	i := 0
 	for i < len(row) && i < 3 && row[i] == ' ' {
 		i++

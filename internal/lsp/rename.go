@@ -8,7 +8,6 @@ import (
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/mdtext"
 	"github.com/jeduden/mdsmith/internal/rename"
-	"github.com/jeduden/mdsmith/pkg/goldmark/util"
 )
 
 // handlePrepareRename answers textDocument/prepareRename. The
@@ -225,7 +224,7 @@ func refDefPrepareRange(source []byte, line int, _ string) (prepareRenameResult,
 		return prepareRenameResult{}, false
 	}
 	row := lines[line-1]
-	m := refDefBracketBytes(row)
+	m := rename.RefDefBracketBytes(row)
 	if m == nil {
 		return prepareRenameResult{}, false
 	}
@@ -240,34 +239,6 @@ func refDefPrepareRange(source []byte, line int, _ string) (prepareRenameResult,
 	}, true
 }
 
-// refDefBracketBytes returns the [start, end) byte offsets of the
-// label inside a CommonMark reference-definition line, or nil when
-// row is not a reference definition.
-func refDefBracketBytes(row []byte) []int {
-	i := 0
-	for i < len(row) && i < 3 && row[i] == ' ' {
-		i++
-	}
-	if i >= len(row) || row[i] != '[' {
-		return nil
-	}
-	open := i + 1
-	closeIdx := -1
-	for j := open; j < len(row); j++ {
-		if row[j] == ']' {
-			closeIdx = j
-			break
-		}
-	}
-	if closeIdx < 0 || closeIdx == open {
-		return nil
-	}
-	// After `]` we need `:` to qualify as a definition.
-	if closeIdx+1 >= len(row) || row[closeIdx+1] != ':' {
-		return nil
-	}
-	return []int{open, closeIdx}
-}
 
 // refUsePrepareRange builds the rename range for a reference-style
 // link use (`[text][label]`, `[label][]`, or `[label]`). The cursor
@@ -319,7 +290,7 @@ func refUseLabelBytes(row []byte, cursorByte int, label string) (int, int, bool)
 			return start, end, true
 		}
 		// Shortcut `[label]`: this pair's content normalizes to label.
-		if normalizedLabel(row[pr.open+1:pr.close]) == label {
+		if rename.NormalizedLabel(row[pr.open+1:pr.close]) == label {
 			return pr.open + 1, pr.close, true
 		}
 	}
@@ -340,10 +311,10 @@ func matchLeadingPair(row []byte, pairs []bracketPair, i int, label string) (int
 	if next.open != pr.close+1 {
 		return 0, 0, false
 	}
-	if normalizedLabel(row[next.open+1:next.close]) == label {
+	if rename.NormalizedLabel(row[next.open+1:next.close]) == label {
 		return next.open + 1, next.close, true
 	}
-	if next.close == next.open+1 && normalizedLabel(row[pr.open+1:pr.close]) == label {
+	if next.close == next.open+1 && rename.NormalizedLabel(row[pr.open+1:pr.close]) == label {
 		return pr.open + 1, pr.close, true
 	}
 	return 0, 0, false
@@ -363,18 +334,15 @@ func matchTrailingPair(row []byte, pairs []bracketPair, i int, label string) (in
 	if prev.close+1 != pr.open {
 		return 0, 0, false
 	}
-	if pr.close == pr.open+1 && normalizedLabel(row[prev.open+1:prev.close]) == label {
+	if pr.close == pr.open+1 && rename.NormalizedLabel(row[prev.open+1:prev.close]) == label {
 		return prev.open + 1, prev.close, true
 	}
-	if normalizedLabel(row[pr.open+1:pr.close]) == label {
+	if rename.NormalizedLabel(row[pr.open+1:pr.close]) == label {
 		return pr.open + 1, pr.close, true
 	}
 	return 0, 0, false
 }
 
-func normalizedLabel(b []byte) string {
-	return string(util.ToLinkReference(b))
-}
 
 // bracketPairs returns every top-level `[` / `]` pair on row, in
 // left-to-right order. The walker is depth-aware: a `[` opens a new

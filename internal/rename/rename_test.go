@@ -124,3 +124,28 @@ func TestLinkRef_NoMatchingLabel(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, edits)
 }
+
+func TestNormalizedLabel(t *testing.T) {
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{"spec", "spec"},
+		{"Spec", "spec"},
+		{"API Docs", "api docs"},
+		{"API  Docs", "api docs"},
+		{"  leading  ", "leading"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.input, func(t *testing.T) {
+			assert.Equal(t, tc.want, NormalizedLabel([]byte(tc.input)))
+		})
+	}
+}
+
+func TestRefDefBracketBytes_Exported(t *testing.T) {
+	// Exported wrapper: spot-check that the function is reachable and
+	// returns the right label bounds.
+	assert.Equal(t, []int{1, 4}, RefDefBracketBytes([]byte("[lbl]: u")))
+	assert.Nil(t, RefDefBracketBytes([]byte("not a def")))
+}
