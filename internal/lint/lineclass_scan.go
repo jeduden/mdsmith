@@ -463,8 +463,8 @@ var htmlType6Tags = map[string]struct{}{
 	"h3": {}, "h4": {}, "h5": {}, "h6": {}, "head": {},
 	"header": {}, "hr": {}, "html": {}, "iframe": {}, "legend": {},
 	"li": {}, "link": {}, "main": {}, "menu": {}, "menuitem": {},
-	"nav": {}, "noframes": {}, "ol": {}, "optgroup": {}, "option": {},
-	"p": {}, "param": {}, "section": {}, "summary": {}, "table": {},
+	"meta": {}, "nav": {}, "noframes": {}, "ol": {}, "optgroup": {}, "option": {},
+	"p": {}, "param": {}, "search": {}, "section": {}, "summary": {}, "table": {},
 	"tbody": {}, "td": {}, "tfoot": {}, "th": {}, "thead": {},
 	"title": {}, "tr": {}, "track": {}, "ul": {},
 }

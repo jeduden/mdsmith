@@ -30,10 +30,7 @@ func TestDescribe_IntBool_Values(t *testing.T) {
 
 // TestDescribe_Bool_ZeroAlloc pins that describe() on a kBool value must not
 // allocate. strconv.FormatBool returns a string literal ("true"/"false"),
-// which is zero allocations; fmt.Sprintf("%t", v.b) allocates a new string.
-//
-// This test is RED before the fix (fmt.Sprintf path allocates ≥1) and GREEN
-// after (strconv.FormatBool path allocates 0).
+// which is zero allocations.
 func TestDescribe_Bool_ZeroAlloc(t *testing.T) {
 	if testing.Short() {
 		t.Skip("alloc gate skipped in -short mode")

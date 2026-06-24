@@ -1012,10 +1012,7 @@ func TestBoundsLabel(t *testing.T) {
 }
 
 // TestUnionStrings_Dedup verifies that unionStrings returns the ordered union
-// of two slices with duplicates eliminated. The test guards against regressions
-// when the internal seen-set is changed from map[string]bool to
-// map[string]struct{}: the deduplication and ordering semantics must be
-// identical.
+// of two slices with duplicates eliminated.
 func TestUnionStrings_Dedup(t *testing.T) {
 	// disjoint inputs
 	got := unionStrings([]string{"a", "b"}, []string{"c", "d"})

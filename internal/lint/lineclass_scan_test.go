@@ -268,3 +268,14 @@ func TestHTMLType6Tags_ZeroByteValue(t *testing.T) {
 		t.Fatalf("htmlType6Tags value type %s has size %d bytes, want 0 (use map[string]struct{})", vt, vt.Size())
 	}
 }
+
+// TestHTMLType6Tags_CommonMarkComplete verifies that htmlType6Tags contains the
+// complete CommonMark spec type-6 tag list, including tags that are commonly
+// omitted by accident ("meta" is a metadata tag; "search" was added in HTML 5.3).
+func TestHTMLType6Tags_CommonMarkComplete(t *testing.T) {
+	for _, tag := range []string{"meta", "search"} {
+		if _, ok := htmlType6Tags[tag]; !ok {
+			t.Errorf("htmlType6Tags missing CommonMark type-6 tag %q", tag)
+		}
+	}
+}

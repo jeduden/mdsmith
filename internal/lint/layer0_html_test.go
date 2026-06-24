@@ -3,10 +3,7 @@ package lint
 import "testing"
 
 // TestTagInAllowedSet verifies that tagInAllowedSet recognises the CommonMark
-// type-6 HTML block tag set and rejects non-block tags. The test protects
-// against regressions when allowedBlockTags is changed from map[string]bool
-// to map[string]struct{}: the boolean return value of tagInAllowedSet must be
-// identical.
+// type-6 HTML block tag set and rejects non-block tags.
 func TestTagInAllowedSet_KnownTags(t *testing.T) {
 	known := []string{
 		"div", "p", "ul", "ol", "table", "thead", "tbody", "tr", "td", "th",

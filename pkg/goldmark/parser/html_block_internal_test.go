@@ -3,10 +3,7 @@ package parser
 import "testing"
 
 // TestAllowedBlockTags_KnownAndUnknown verifies that allowedBlockTags contains
-// the full CommonMark type-6 tag set and rejects non-block tags. The test
-// protects against regressions when the map value type is changed from
-// map[string]bool to map[string]struct{}: the lookup semantics must be
-// identical.
+// the full CommonMark type-6 tag set and rejects non-block tags.
 func TestAllowedBlockTags_KnownAndUnknown(t *testing.T) {
 	known := []string{
 		"div", "p", "ul", "ol", "table", "thead", "tbody", "tr", "td", "th",
