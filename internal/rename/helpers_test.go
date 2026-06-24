@@ -8,7 +8,6 @@ import (
 	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
 	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestInvalidLabelRuneError_Error(t *testing.T) {
@@ -152,7 +151,7 @@ func TestContentBlockLines_EmptyBody(t *testing.T) {
 	body := []byte{}
 	root := lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
 	got := contentBlockLines(root, body)
-	require.NotNil(t, got)
+	assert.NotNil(t, got)
 	assert.Empty(t, got)
 }
 

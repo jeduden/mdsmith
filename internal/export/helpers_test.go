@@ -4,6 +4,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/jeduden/mdsmith/internal/gitignore"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/piparser"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -61,6 +62,8 @@ func TestHydrate(t *testing.T) {
 	orig.FS = fstest.MapFS{"a.md": &fstest.MapFile{Data: []byte("a")}}
 	orig.RootDir = "/repo"
 	orig.MaxInputBytes = int64(999)
+	orig.RootFS = fstest.MapFS{"b.md": &fstest.MapFile{Data: []byte("b")}}
+	orig.GitignoreFunc = func() *gitignore.Matcher { return nil }
 
 	parsed, err := lint.NewFile("parsed.md", []byte("# World\n"))
 	require.NoError(t, err)
@@ -69,7 +72,9 @@ func TestHydrate(t *testing.T) {
 
 	assert.Equal(t, "/repo", parsed.RootDir)
 	assert.Equal(t, int64(999), parsed.MaxInputBytes)
-	assert.NotNil(t, parsed.FS)
+	assert.Equal(t, orig.FS, parsed.FS)
+	assert.Equal(t, orig.RootFS, parsed.RootFS)
+	assert.NotNil(t, parsed.GitignoreFunc)
 }
 
 func TestCheckStaleness(t *testing.T) {
@@ -152,7 +157,7 @@ func TestPiLineRange(t *testing.T) {
 		pi := helperFirstPI(t, f)
 		start, end := piLineRange(pi, f)
 		assert.Equal(t, 1, start)
-		assert.Greater(t, end, start)
+		assert.Equal(t, 3, end)
 	})
 }
 
@@ -230,17 +235,16 @@ func TestNormalizeBlankLines(t *testing.T) {
 
 	t.Run("result ends with exactly one newline", func(t *testing.T) {
 		got := normalizeBlankLines([]byte("a\nb\n"), noCode)
-		assert.True(t, len(got) > 0 && got[len(got)-1] == '\n')
-		assert.False(t, len(got) >= 2 && got[len(got)-2] == '\n')
+		assert.Equal(t, "a\nb\n", string(got))
 	})
 
 	t.Run("blank lines inside code block preserved", func(t *testing.T) {
-		// Lines 2 and 3 are in a code block; the blank line 3 is treated as
-		// non-blank and survives normalisation.
-		codeLines := map[int]struct{}{2: {}, 3: {}, 4: {}}
+		// Lines 2 and 3 are blank lines inside a code block; normaliseBlankLines
+		// treats inCode blank lines as non-blank so they survive collapse.
+		codeLines := map[int]struct{}{2: {}, 3: {}}
 		src := []byte("text\n\n\ncode blank\ntext2\n")
 		got := normalizeBlankLines(src, codeLines)
-		assert.Contains(t, string(got), "\n\n")
+		assert.Equal(t, "text\n\n\ncode blank\ntext2\n", string(got))
 	})
 
 	t.Run("all blank content normalises to nil", func(t *testing.T) {
