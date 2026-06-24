@@ -6,7 +6,7 @@ summary: >-
   solid-architecture skill (audit mode)
   appends here; blockers are also filed as
   plans.
-audit-from: 09f22d3a59ea9cc07911df1db2d462da7d5fccb1
+audit-from: 3d35b77143a00a378b16dd97c44c03d1ec578c1b
 ---
 # Architecture audit log
 
@@ -272,3 +272,28 @@ violations. No file crossed 1 000 lines.
 [2606240212]: ../../plan/2606240212_arch-fix-lsp-rename-helper-tests.md
 [2606240213]: ../../plan/2606240213_arch-fix-export-helper-tests.md
 [2606240214]: ../../plan/2606240214_arch-fix-rename-dedup.md
+
+## Audit 2026-06-24 (range: 09f22d3..3d35b77)
+
+Plans 2606240211–2606240214 green. Dedup closed.
+No DIP, SRP, or line-count violations.
+
+### tax
+
+- `internal/lsp/rename.go` — `prepareRenameAt`,
+  `renameHeading`, `renameLinkRef`, and
+  `lspRenameWorkspace.Resolve` lack tests.
+  Two one-liners need "// no test by design"
+  — [plan/2606241814][2606241814].
+
+- `internal/index/locate.go` — `piContainsLine`,
+  `refDefOnLine`, `locateInFrontMatter` omitted from
+  plan 2606240211 — [plan/2606241815][2606241815].
+
+### nice-to-have
+
+- `internal/index/locate.go` — `isGlobPattern`
+  still needs "// no test by design".
+
+[2606241814]: ../../plan/2606241814_arch-fix-lsp-rename-dispatch-tests.md
+[2606241815]: ../../plan/2606241815_arch-fix-locate-remaining-helper-tests.md
