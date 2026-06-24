@@ -678,6 +678,8 @@ func TestRefUseLabelBytesAllForms(t *testing.T) {
 		wantLabel string
 	}{
 		{`[text][docs]`, 2, "docs", true, "docs"},  // full: cursor in text
+		{`[text][docs]`, 5, "docs", true, "docs"},  // full: cursor at ] of text (pr.close boundary)
+		{`[text][docs]`, 6, "docs", true, "docs"},  // full: cursor at [ of label (pr.open boundary)
 		{`[text][docs]`, 8, "docs", true, "docs"},  // full: cursor in label
 		{`[docs]`, 2, "docs", true, "docs"},        // shortcut
 		{`[docs][]`, 2, "docs", true, "docs"},      // collapsed: cursor in leading
