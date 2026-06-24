@@ -560,14 +560,14 @@ func cloneContent(c []ContentEntry) []ContentEntry {
 }
 
 func unionStrings(a, b []string) []string {
-	seen := map[string]bool{}
+	seen := map[string]struct{}{}
 	out := make([]string, 0, len(a)+len(b))
 	for _, list := range [][]string{a, b} {
 		for _, s := range list {
-			if seen[s] {
+			if _, ok := seen[s]; ok {
 				continue
 			}
-			seen[s] = true
+			seen[s] = struct{}{}
 			out = append(out, s)
 		}
 	}

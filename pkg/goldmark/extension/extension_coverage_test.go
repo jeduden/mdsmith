@@ -179,3 +179,26 @@ func TestFootnote_UnreferencedDefinitionStillRendered(t *testing.T) {
 	// Orphan footnotes are dropped from the output entirely; just
 	// confirm Convert ran without error.
 }
+
+// TestFootnote_MultiRefRendersRefIndex verifies that when the same footnote
+// is referenced twice the second link carries a non-zero RefIndex in its
+// rendered id attributes (e.g. "fnref2:1"). This exercises the
+// renderFootnoteLink and renderFootnoteBacklink paths that format RefIndex,
+// ensuring strconv.Itoa produces the same output as the prior fmt.Sprintf.
+func TestFootnote_MultiRefRendersRefIndex(t *testing.T) {
+	md := goldmark.New(goldmark.WithExtensions(extension.Footnote))
+	// Reference [^1] twice so the second FootnoteLink has RefIndex = 2.
+	src := []byte("first[^1] and second[^1] reference.\n\n[^1]: the footnote body\n")
+	var buf bytes.Buffer
+	if err := md.Convert(src, &buf); err != nil {
+		t.Fatalf("Convert: %v", err)
+	}
+	out := buf.String()
+	// First reference: id="fnref:1" (RefIndex=0, no suffix).
+	// Second reference: id="fnref1:1" (RefIndex=1, suffix rendered by RefIndex formatting).
+	for _, want := range []string{"fnref:1", "fnref1:1"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("HTML output missing %q (RefIndex not rendered):\n%s", want, out)
+		}
+	}
+}

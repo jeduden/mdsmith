@@ -1010,3 +1010,30 @@ func TestBoundsLabel(t *testing.T) {
 	assert.Equal(t, "1..3", boundsLabel(1, 3))
 	assert.Equal(t, "0..1", boundsLabel(0, 1))
 }
+
+// TestUnionStrings_Dedup verifies that unionStrings returns the ordered union
+// of two slices with duplicates eliminated. The test guards against regressions
+// when the internal seen-set is changed from map[string]bool to
+// map[string]struct{}: the deduplication and ordering semantics must be
+// identical.
+func TestUnionStrings_Dedup(t *testing.T) {
+	// disjoint inputs
+	got := unionStrings([]string{"a", "b"}, []string{"c", "d"})
+	assert.Equal(t, []string{"a", "b", "c", "d"}, got)
+
+	// overlapping inputs: duplicates must appear only once, in first-seen order
+	got = unionStrings([]string{"a", "b", "c"}, []string{"b", "d", "a"})
+	assert.Equal(t, []string{"a", "b", "c", "d"}, got)
+
+	// both empty → nil (project convention: no-result returns nil, not []T{})
+	got = unionStrings(nil, nil)
+	assert.Nil(t, got)
+
+	// one empty
+	got = unionStrings([]string{"x"}, nil)
+	assert.Equal(t, []string{"x"}, got)
+
+	// all duplicates → single element
+	got = unionStrings([]string{"z", "z"}, []string{"z"})
+	assert.Equal(t, []string{"z"}, got)
+}

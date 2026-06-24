@@ -2,7 +2,6 @@ package extension
 
 import (
 	"bytes"
-	"fmt"
 	"strconv"
 
 	"github.com/jeduden/mdsmith/pkg/goldmark"
@@ -534,7 +533,7 @@ func (r *FootnoteHTMLRenderer) renderFootnoteLink(
 		_, _ = w.Write(r.idPrefix(node))
 		_, _ = w.WriteString(`fnref`)
 		if n.RefIndex > 0 {
-			_, _ = w.WriteString(fmt.Sprintf("%v", n.RefIndex))
+			_, _ = w.WriteString(strconv.Itoa(n.RefIndex))
 		}
 		_ = w.WriteByte(':')
 		_, _ = w.WriteString(is)
@@ -566,7 +565,7 @@ func (r *FootnoteHTMLRenderer) renderFootnoteBacklink(
 		_, _ = w.Write(r.idPrefix(node))
 		_, _ = w.WriteString(`fnref`)
 		if n.RefIndex > 0 {
-			_, _ = w.WriteString(fmt.Sprintf("%v", n.RefIndex))
+			_, _ = w.WriteString(strconv.Itoa(n.RefIndex))
 		}
 		_ = w.WriteByte(':')
 		_, _ = w.WriteString(is)
