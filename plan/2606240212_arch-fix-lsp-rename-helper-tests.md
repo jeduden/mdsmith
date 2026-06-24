@@ -1,7 +1,7 @@
 ---
 id: 2606240212
 title: Add dedicated unit tests for lsp/rename.go helpers
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   internal/lsp/rename.go has 13 unexported
@@ -55,18 +55,24 @@ The 13 helpers below need tests:
 
 ## Acceptance Criteria
 
-- [ ] `rename_test.go` contains
-      `TestisValidRefDefLine`,
-      `TestheadingPrepareRange`,
-      `TestatxHeadingTextStart`,
-      `TesttrimTrailingHashRun`,
-      `TestskipLeadingSpaces`,
-      `TesttrimRightSpace`, `TesttrimmedRange`,
-      `TestrefDefPrepareRange`,
-      `TestrefUsePrepareRange`,
-      `TestrefUseLabelBytes`,
-      `TestmatchLeadingPair`,
-      `TestmatchTrailingPair`,
-      `TestbracketPairs`.
-- [ ] `go test ./internal/lsp/...` is green.
-- [ ] `mdsmith check .` is green.
+Go 1.25 enforces that test names start with an uppercase
+letter after `Test`. The originally planned lowercase
+names (`TestisValidRefDefLine`, etc.) do not compile.
+Each test is prefixed with a capital letter or a
+disambiguating suffix (e.g. `Happy`, `ATX`, `Basic`).
+
+- [x] `rename_test.go` contains a dedicated test for
+      each helper: `TestIsValidRefDefLine`,
+      `TestHeadingPrepareRangeATX`,
+      `TestAtxHeadingTextStart`,
+      `TestTrimTrailingHashRun`,
+      `TestSkipLeadingSpaces`,
+      `TestTrimRightSpace`, `TestTrimmedRange`,
+      `TestRefDefPrepareRangeHappy`,
+      `TestRefUsePrepareRangeHappy`,
+      `TestRefUseLabelBytesAllForms`,
+      `TestMatchLeadingPairHappy`,
+      `TestMatchTrailingPairHappy`,
+      `TestBracketPairsBasic`.
+- [x] `go test ./internal/lsp/...` is green.
+- [x] `mdsmith check .` is green.

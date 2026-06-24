@@ -528,3 +528,233 @@ func TestRefUseLabelBytesCollapsedTrailingEmptyBrackets(t *testing.T) {
 	require.True(t, ok, "expected match for cursor inside trailing []")
 	assert.Equal(t, "Docs API", string(row[start:end]))
 }
+
+// TestIsValidRefDefLine drives isValidRefDefLine with a real ref-def
+// line (returns true), a heading line (returns false), and a blank
+// line (returns false).
+func TestIsValidRefDefLine(t *testing.T) {
+	t.Parallel()
+	src := []byte("# T\n\n[docs]: https://example.com\n")
+	assert.True(t, isValidRefDefLine(src, 3))
+	assert.False(t, isValidRefDefLine(src, 1))
+	assert.False(t, isValidRefDefLine(src, 2))
+}
+
+// TestHeadingPrepareRangeATX drives headingPrepareRange with a simple
+// ATX heading and verifies the range covers the text only.
+func TestHeadingPrepareRangeATX(t *testing.T) {
+	t.Parallel()
+	src := []byte("# Hello\n")
+	res, ok := headingPrepareRange(src, 1, "Hello")
+	require.True(t, ok)
+	assert.Equal(t, "Hello", res.Placeholder)
+	assert.Equal(t, 0, res.Range.Start.Line)
+	assert.Equal(t, 2, res.Range.Start.Character)
+	assert.Equal(t, 7, res.Range.End.Character)
+}
+
+// TestAtxHeadingTextStart drives atxHeadingTextStart directly with
+// ATX headings, a no-space header, a too-deep header, and plain text.
+func TestAtxHeadingTextStart(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		row    string
+		wantI  int
+		wantOK bool
+	}{
+		{"# Hello", 2, true},
+		{"## Hi", 3, true},
+		{"###### Six", 7, true},
+		{"   ## Indented", 6, true},
+		{"##\tTab", 3, true},
+		{"#NoSpace", 0, false},
+		{"####### TooMany", 0, false},
+		{"plain text", 0, false},
+		{"", 0, false},
+	}
+	for _, tc := range cases {
+		i, ok := atxHeadingTextStart([]byte(tc.row))
+		assert.Equal(t, tc.wantOK, ok, "row=%q", tc.row)
+		if ok {
+			assert.Equal(t, tc.wantI, i, "row=%q", tc.row)
+		}
+	}
+}
+
+// TestTrimTrailingHashRun drives trimTrailingHashRun with a closing
+// hash run preceded by space (stripped), a hash run without space
+// (kept), and a row with no trailing hash (unchanged).
+func TestTrimTrailingHashRun(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		row        string
+		start, end int
+		want       int
+	}{
+		{"## Setup ###", 3, 12, 8}, // trailing " ###" stripped; text ends at 8
+		{"## Setup ##", 3, 11, 8},  // trailing " ##" stripped
+		{"## Setup #", 3, 10, 8},   // trailing " #" stripped
+		{"## Setup#", 3, 9, 9},     // no preceding space — kept
+		{"## Setup", 3, 8, 8},      // no trailing hash — unchanged
+		{"## Setup   ", 3, 11, 11}, // trailing spaces only, no hash — unchanged
+	}
+	for _, tc := range cases {
+		got := trimTrailingHashRun([]byte(tc.row), tc.start, tc.end)
+		assert.Equal(t, tc.want, got, "row=%q", tc.row)
+	}
+}
+
+// TestSkipLeadingSpaces drives skipLeadingSpaces with no leading
+// spaces, fewer than max spaces, and more than max spaces.
+func TestSkipLeadingSpaces(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, 0, skipLeadingSpaces([]byte("abc"), 3))
+	assert.Equal(t, 2, skipLeadingSpaces([]byte("  abc"), 3))
+	assert.Equal(t, 3, skipLeadingSpaces([]byte("   abc"), 3))
+	assert.Equal(t, 3, skipLeadingSpaces([]byte("    abc"), 3))
+	assert.Equal(t, 0, skipLeadingSpaces([]byte(""), 3))
+}
+
+// TestTrimRightSpace drives trimRightSpace with trailing spaces,
+// trailing tab, no trailing whitespace, and all-whitespace input.
+func TestTrimRightSpace(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, 5, trimRightSpace([]byte("hello  "), 0, 7))
+	assert.Equal(t, 5, trimRightSpace([]byte("hello\t "), 0, 7))
+	assert.Equal(t, 5, trimRightSpace([]byte("hello"), 0, 5))
+	assert.Equal(t, 0, trimRightSpace([]byte("   "), 0, 3))
+}
+
+// TestTrimmedRange drives trimmedRange with leading-and-trailing
+// whitespace, no whitespace, and an all-whitespace row.
+func TestTrimmedRange(t *testing.T) {
+	t.Parallel()
+	start, end := trimmedRange([]byte("  hello  "))
+	assert.Equal(t, 2, start)
+	assert.Equal(t, 7, end)
+	start, end = trimmedRange([]byte("nospace"))
+	assert.Equal(t, 0, start)
+	assert.Equal(t, 7, end)
+	start, end = trimmedRange([]byte("   "))
+	assert.Equal(t, start, end)
+}
+
+// TestRefDefPrepareRangeHappy drives refDefPrepareRange with a
+// well-formed `[label]: url` line and verifies the returned
+// placeholder and range.
+func TestRefDefPrepareRangeHappy(t *testing.T) {
+	t.Parallel()
+	src := []byte("[docs]: https://example.com\n")
+	res, ok := refDefPrepareRange(src, 1, "")
+	require.True(t, ok)
+	assert.Equal(t, "docs", res.Placeholder)
+	assert.Equal(t, 0, res.Range.Start.Line)
+	assert.Equal(t, 1, res.Range.Start.Character)
+	assert.Equal(t, 5, res.Range.End.Character)
+}
+
+// TestRefUsePrepareRangeHappy drives refUsePrepareRange with the
+// cursor inside the trailing `[label]` of a full reference link.
+func TestRefUsePrepareRangeHappy(t *testing.T) {
+	t.Parallel()
+	src := []byte("See [text][docs] here.\n")
+	res, ok := refUsePrepareRange(src, 1, 12, "docs")
+	require.True(t, ok)
+	assert.Equal(t, "docs", res.Placeholder)
+}
+
+// TestRefUseLabelBytesAllForms drives refUseLabelBytes across the
+// four reference forms (full cursor-in-text, full cursor-in-label,
+// shortcut, collapsed) and the no-match case.
+func TestRefUseLabelBytesAllForms(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		row       string
+		cursor    int
+		label     string
+		wantOK    bool
+		wantLabel string
+	}{
+		{`[text][docs]`, 2, "docs", true, "docs"},  // full: cursor in text
+		{`[text][docs]`, 8, "docs", true, "docs"},  // full: cursor in label
+		{`[docs]`, 2, "docs", true, "docs"},        // shortcut
+		{`[docs][]`, 2, "docs", true, "docs"},      // collapsed: cursor in leading
+		{`[docs][]`, 7, "docs", true, "docs"},      // collapsed: cursor in trailing
+		{`[other]`, 2, "docs", false, ""},          // wrong label
+		{`[docs]`, 99, "docs", false, ""},          // cursor outside
+	}
+	for _, tc := range cases {
+		row := []byte(tc.row)
+		start, end, ok := refUseLabelBytes(row, tc.cursor, tc.label)
+		assert.Equal(t, tc.wantOK, ok, "row=%q cursor=%d", tc.row, tc.cursor)
+		if ok {
+			assert.Equal(t, tc.wantLabel, string(row[start:end]), "row=%q cursor=%d", tc.row, tc.cursor)
+		}
+	}
+}
+
+// TestMatchLeadingPairHappy drives matchLeadingPair for the full
+// `[text][label]` case (returns trailing label) and the collapsed
+// `[label][]` case (returns leading pair content).
+func TestMatchLeadingPairHappy(t *testing.T) {
+	t.Parallel()
+	// full: [text][label] — leading pair, returns trailing label
+	row := []byte(`[text][label]`)
+	pairs := bracketPairs(row)
+	require.Len(t, pairs, 2)
+	start, end, ok := matchLeadingPair(row, pairs, 0, "label")
+	require.True(t, ok)
+	assert.Equal(t, "label", string(row[start:end]))
+
+	// collapsed: [label][] — leading pair, returns leading content
+	row2 := []byte(`[label][]`)
+	pairs2 := bracketPairs(row2)
+	require.Len(t, pairs2, 2)
+	start2, end2, ok2 := matchLeadingPair(row2, pairs2, 0, "label")
+	require.True(t, ok2)
+	assert.Equal(t, "label", string(row2[start2:end2]))
+}
+
+// TestMatchTrailingPairHappy drives matchTrailingPair for the full
+// `[text][label]` case (returns trailing label) and the collapsed
+// `[label][]` case (returns leading pair content).
+func TestMatchTrailingPairHappy(t *testing.T) {
+	t.Parallel()
+	// full: [text][label] — trailing pair, returns label
+	row := []byte(`[text][label]`)
+	pairs := bracketPairs(row)
+	require.Len(t, pairs, 2)
+	start, end, ok := matchTrailingPair(row, pairs, 1, "label")
+	require.True(t, ok)
+	assert.Equal(t, "label", string(row[start:end]))
+
+	// collapsed: [label][] — trailing empty pair, returns leading content
+	row2 := []byte(`[label][]`)
+	pairs2 := bracketPairs(row2)
+	require.Len(t, pairs2, 2)
+	start2, end2, ok2 := matchTrailingPair(row2, pairs2, 1, "label")
+	require.True(t, ok2)
+	assert.Equal(t, "label", string(row2[start2:end2]))
+}
+
+// TestBracketPairsBasic drives bracketPairs with a single pair, two
+// adjacent pairs, and an empty row.
+func TestBracketPairsBasic(t *testing.T) {
+	t.Parallel()
+	// single pair
+	pairs := bracketPairs([]byte(`[a]`))
+	require.Len(t, pairs, 1)
+	assert.Equal(t, 0, pairs[0].open)
+	assert.Equal(t, 2, pairs[0].close)
+
+	// two adjacent pairs
+	row := []byte(`[a][b]`)
+	pairs = bracketPairs(row)
+	require.Len(t, pairs, 2)
+	assert.Equal(t, "a", string(row[pairs[0].open+1:pairs[0].close]))
+	assert.Equal(t, "b", string(row[pairs[1].open+1:pairs[1].close]))
+
+	// empty row
+	pairs = bracketPairs([]byte(``))
+	assert.Empty(t, pairs)
+}
