@@ -62,14 +62,17 @@ func (e LabelConflictError) Error() string {
 }
 
 // LinkRef computes the in-file edits that rename a link-reference
-// label from oldLabel (already normalized via util.ToLinkReference)
-// to newName. The rewrite is file-local: the `[label]: url`
-// definition plus every `[text][label]` and shortcut `[label]` use.
+// label from oldLabel to newName. The rewrite is file-local: the
+// `[label]: url` definition plus every `[text][label]` and shortcut
+// `[label]` use. oldLabel is normalized internally (CommonMark
+// link-label normalization: lowercase, whitespace collapsed) so
+// callers may pass raw label text or a pre-normalized form.
 //
 // Returns ErrEmptyLabel, an InvalidLabelRuneError, or a
 // LabelConflictError without producing any edit when the rename is
 // unsafe, so callers can surface the failure before applying.
 func LinkRef(source []byte, oldLabel, newName string) ([]Edit, error) {
+	oldLabel = NormalizedLabel([]byte(oldLabel))
 	if strings.TrimSpace(newName) == "" {
 		return nil, ErrEmptyLabel
 	}
@@ -250,9 +253,6 @@ func refDefEditsInBody(
 		}
 		row := lines[fileLine-1]
 		bracket := RefDefBracketBytes(row)
-		if bracket == nil {
-			continue
-		}
 		startCh := mdtext.UTF16FromByteOffset(row, bracket[0])
 		endCh := mdtext.UTF16FromByteOffset(row, bracket[1])
 		out = append(out, Edit{

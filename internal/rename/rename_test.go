@@ -63,6 +63,15 @@ func TestLinkRef_SameNormalizedFormRefreshesCasing(t *testing.T) {
 	require.Len(t, edits, 2)
 }
 
+func TestLinkRef_NormalizesOldLabel(t *testing.T) {
+	// LinkRef normalizes oldLabel internally, so callers may pass
+	// the raw label text without pre-normalizing it.
+	src := []byte("See [spec].\n\n[spec]: u\n")
+	edits, err := LinkRef(src, "Spec", "rfc")
+	require.NoError(t, err)
+	require.Len(t, edits, 2)
+}
+
 func TestLinkRef_CodeFenceDefNotRewritten(t *testing.T) {
 	src := []byte("Use [spec].\n\n```\n[spec]: fake\n```\n\n[spec]: real\n")
 	edits, err := LinkRef(src, "spec", "rfc")

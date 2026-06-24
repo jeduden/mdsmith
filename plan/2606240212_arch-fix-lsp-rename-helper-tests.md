@@ -4,7 +4,7 @@ title: Add dedicated unit tests for lsp/rename.go helpers
 status: "🔲"
 model: sonnet
 summary: >-
-  internal/lsp/rename.go has 15 unexported
+  internal/lsp/rename.go has 13 unexported
   helpers without dedicated unit tests. Add a
   named test for each so the audit policy is
   satisfied.
@@ -13,7 +13,7 @@ summary: >-
 
 ## Goal
 
-Add a named unit test for each of the 15 unexported
+Add a named unit test for each of the 13 unexported
 helpers in `internal/lsp/rename.go`. The 2026-06-24
 audit requires it.
 
@@ -25,7 +25,11 @@ to have a dedicated test by name. The 2026-06-24 audit
 
 `atxHeadingTextByteRange` already has a test. The
 three trivial pass-through methods on the workspace
-adapter carry exemption comments. The 15 helpers
+adapter carry exemption comments. `refDefBracketBytes`
+and `normalizedLabel` were removed from lsp/rename.go
+in PR claude/youthful-knuth-hsz74x (exported as
+`rename.RefDefBracketBytes` and `rename.NormalizedLabel`
+with tests in `internal/rename`). The 13 helpers
 below need dedicated tests:
 
 - `isValidRefDefLine`
@@ -36,13 +40,11 @@ below need dedicated tests:
 - `trimRightSpace`
 - `trimmedRange`
 - `refDefPrepareRange`
-- `refDefBracketBytes`
 - `refUsePrepareRange`
 - `refUseLabelBytes` (one partial test exists;
   add broader coverage)
 - `matchLeadingPair`
 - `matchTrailingPair`
-- `normalizedLabel`
 - `bracketPairs`
 
 ## Tasks
@@ -64,11 +66,10 @@ below need dedicated tests:
       `TestskipLeadingSpaces`,
       `TesttrimRightSpace`, `TesttrimmedRange`,
       `TestrefDefPrepareRange`,
-      `TestrefDefBracketBytes`,
       `TestrefUsePrepareRange`,
       `TestrefUseLabelBytes`,
       `TestmatchLeadingPair`,
       `TestmatchTrailingPair`,
-      `TestnormalizedLabel`, `TestbracketPairs`.
+      `TestbracketPairs`.
 - [ ] `go test ./internal/lsp/...` is green.
 - [ ] `mdsmith check .` is green.

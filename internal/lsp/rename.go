@@ -239,7 +239,6 @@ func refDefPrepareRange(source []byte, line int, _ string) (prepareRenameResult,
 	}, true
 }
 
-
 // refUsePrepareRange builds the rename range for a reference-style
 // link use (`[text][label]`, `[label][]`, or `[label]`). The cursor
 // position determines whether the user is editing the label or the
@@ -342,7 +341,6 @@ func matchTrailingPair(row []byte, pairs []bracketPair, i int, label string) (in
 	}
 	return 0, 0, false
 }
-
 
 // bracketPairs returns every top-level `[` / `]` pair on row, in
 // left-to-right order. The walker is depth-aware: a `[` opens a new
