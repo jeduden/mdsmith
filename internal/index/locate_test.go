@@ -392,15 +392,55 @@ func TestLinkContainsOffset(t *testing.T) {
 
 func TestLinkCloseOffset(t *testing.T) {
 	t.Parallel()
+	// Inline link via nil (exercises the l==nil path, identical to the
+	// real production path where l!=nil, l.Reference==nil).
 	// "[text](dest)\n": '[' 0, text 1-4, ']' 5, '(' 6, dest 7-10, ')' 11, '\n' 12.
-	// With nil link (inline path): after=5, source[5]=']' so i advances to 6,
-	// source[6]='(' triggers depth scan, ')' found at offset 11.
 	src := []byte("[text](dest)\n")
 	assert.Equal(t, 11, linkCloseOffset(src, nil, 5))
 
 	// Newline before the closing ')' → -1.
 	srcBroken := []byte("[text](dest\nmore\n")
 	assert.Equal(t, -1, linkCloseOffset(srcBroken, nil, 5))
+
+	// Shortcut reference [label]: close must land on the single ']'.
+	root, b := parseDoc("# T\n\n[label]\n\n[label]: https://x.com\n")
+	shortcut := firstLink(root)
+	require.NotNil(t, shortcut)
+	var shortcutAfter int
+	_ = goldast.Walk(shortcut, func(n goldast.Node, entering bool) (goldast.WalkStatus, error) {
+		if !entering {
+			return goldast.WalkContinue, nil
+		}
+		if tx, ok := n.(*goldast.Text); ok {
+			shortcutAfter = tx.Segment.Stop
+			return goldast.WalkStop, nil
+		}
+		return goldast.WalkContinue, nil
+	})
+	off := linkCloseOffset(b, shortcut, shortcutAfter)
+	assert.True(t, off >= 0, "shortcut ref close offset must be ≥ 0")
+	assert.Equal(t, byte(']'), b[off], "shortcut ref must close at ']'")
+
+	// Full reference [text][label]: close must land on the ']' of the label part.
+	root2, b2 := parseDoc("# T\n\n[text][label]\n\n[label]: https://x.com\n")
+	full := firstLink(root2)
+	require.NotNil(t, full)
+	var fullAfter int
+	_ = goldast.Walk(full, func(n goldast.Node, entering bool) (goldast.WalkStatus, error) {
+		if !entering {
+			return goldast.WalkContinue, nil
+		}
+		if tx, ok := n.(*goldast.Text); ok {
+			fullAfter = tx.Segment.Stop
+			return goldast.WalkStop, nil
+		}
+		return goldast.WalkContinue, nil
+	})
+	off2 := linkCloseOffset(b2, full, fullAfter)
+	assert.True(t, off2 >= 0, "full ref close offset must be ≥ 0")
+	assert.Equal(t, byte(']'), b2[off2], "full ref must close at ']' of label part")
+	// The close must be past the text-closing ']' (i.e., farther into the source).
+	assert.Greater(t, off2, fullAfter, "full ref close must be past the text bracket")
 }
 
 func TestScanForByte(t *testing.T) {
@@ -459,6 +499,25 @@ func TestPiToLocate(t *testing.T) {
 	assert.Equal(t, "file", res.DirectiveArg)
 	assert.Equal(t, "x.md", res.DirectiveValue)
 	assert.Equal(t, "x.md", res.DirectiveTargetFile)
+}
+
+func TestPiToLocate_GlobInputSuppressed(t *testing.T) {
+	t.Parallel()
+	// A <?build?> inputs list item that is a glob pattern must NOT populate
+	// DirectiveTargetFile — go-to-definition must not fire on a pattern.
+	src := "# T\n\n<?build\nrecipe: make\ninputs:\n  - \"*.md\"\noutputs:\n  - out.html\n?>\n<?/build?>\n"
+	root, b := parseDoc(src)
+	pi := firstPI(root)
+	require.NotNil(t, pi)
+
+	lines := bytes.Split(b, []byte("\n"))
+	// Line 6 (1-based) is `  - "*.md"` — a glob pattern.
+	res := piToLocate(pi, b, lines, 6, 5)
+	assert.Equal(t, TokenDirectiveArg, res.Tag)
+	assert.Equal(t, "build", res.DirectiveName)
+	assert.Equal(t, "inputs", res.DirectiveArg)
+	assert.Equal(t, "*.md", res.DirectiveValue)
+	assert.Equal(t, "", res.DirectiveTargetFile, "glob pattern must not populate DirectiveTargetFile")
 }
 
 func TestListItemValue(t *testing.T) {
@@ -542,4 +601,7 @@ func TestOffsetAt(t *testing.T) {
 	assert.Equal(t, 5, offsetAt(lines, 2, 2))
 	// Clamp: line < 1 → treated as line 1
 	assert.Equal(t, 0, offsetAt(lines, 0, 1))
+	// Clamp: col past end of line → clamped to line length.
+	// Line 1 "abc" has length 3; col 99 → offset = 0 + 3 = 3.
+	assert.Equal(t, 3, offsetAt(lines, 1, 99))
 }
