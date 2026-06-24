@@ -3,7 +3,7 @@ id: 2606240213
 title: >-
   Add dedicated unit tests for export.go helpers
   and two small rename helpers
-status: "🔲"
+status: "🔳"
 model: sonnet
 summary: >-
   internal/export/export.go has 11 unexported
