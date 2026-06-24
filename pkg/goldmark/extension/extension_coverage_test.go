@@ -182,12 +182,12 @@ func TestFootnote_UnreferencedDefinitionStillRendered(t *testing.T) {
 
 // TestFootnote_MultiRefRendersRefIndex verifies that when the same footnote
 // is referenced twice the second link carries a non-zero RefIndex in its
-// rendered id attributes (e.g. "fnref2:1"). This exercises the
+// rendered id attributes (e.g. "fnref1:1"). This exercises the
 // renderFootnoteLink and renderFootnoteBacklink paths that format RefIndex,
 // ensuring strconv.Itoa produces the same output as the prior fmt.Sprintf.
 func TestFootnote_MultiRefRendersRefIndex(t *testing.T) {
 	md := goldmark.New(goldmark.WithExtensions(extension.Footnote))
-	// Reference [^1] twice so the second FootnoteLink has RefIndex = 2.
+	// Reference [^1] twice so the second FootnoteLink has RefIndex = 1.
 	src := []byte("first[^1] and second[^1] reference.\n\n[^1]: the footnote body\n")
 	var buf bytes.Buffer
 	if err := md.Convert(src, &buf); err != nil {
