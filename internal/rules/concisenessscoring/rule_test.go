@@ -321,6 +321,31 @@ func TestCheck_MessageNoConcatenationWhenExamplesPresent(t *testing.T) {
 	assert.Contains(t, msg, "e.g.,", "message with cues must include formatted examples")
 }
 
+func TestCountClassifierTokens(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+		want  int
+	}{
+		{"empty string", "", 0},
+		{"single word", "hello", 1},
+		{"two words", "hello world", 2},
+		{"apostrophe keeps token together", "can't", 1},
+		{"hyphen splits tokens", "hello-world", 2},
+		{"digit sequence counts as token", "abc 123", 2},
+		{"punctuation separates tokens", "hello, world!", 2},
+		{"leading and trailing spaces", "  hello  ", 1},
+		{"uppercase letters included", "Hello World", 2},
+		{"only punctuation", "!@#$", 0},
+		{"mixed alphanumeric token", "abc123", 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, countClassifierTokens(tc.input))
+		})
+	}
+}
+
 func TestCheck_NoCuesMessage(t *testing.T) {
 	// Exercises the if examples == "" branch: a paragraph that scores as
 	// verbose but produces no cue phrases yields the base message only.
