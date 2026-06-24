@@ -23,14 +23,11 @@ Go arch doc §"Tests" requires every production function
 to have a dedicated test by name. The 2026-06-24 audit
 (range: 1599c9f..09f22d3) flagged this file.
 
-`atxHeadingTextByteRange` already has a test. The
-three trivial pass-through methods on the workspace
-adapter carry exemption comments. `refDefBracketBytes`
-and `normalizedLabel` were removed from lsp/rename.go
-in PR claude/youthful-knuth-hsz74x (exported as
-`rename.RefDefBracketBytes` and `rename.NormalizedLabel`
-with tests in `internal/rename`). The 13 helpers
-below need dedicated tests:
+`atxHeadingTextByteRange` already has a test.
+Three pass-through adapter methods carry exemption
+comments. Two helpers were removed from this file.
+Both now live in `internal/rename` with tests.
+The 13 helpers below need tests:
 
 - `isValidRefDefLine`
 - `headingPrepareRange`
