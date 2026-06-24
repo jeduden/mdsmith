@@ -135,15 +135,6 @@ func FindHeadingLine(source []byte, headingText string) (int, bool) {
 	return 0, false
 }
 
-// NormalizeLabel collapses a link-reference label to its canonical
-// matching form (lowercased, whitespace-collapsed), the same
-// normalization LinkRef expects its oldLabel argument in. The CLI
-// normalizes `--link-ref oldlabel` through this before calling
-// LinkRef.
-func NormalizeLabel(s string) string {
-	return normalizedLabel([]byte(s))
-}
-
 // firstControlRune returns the first newline / carriage return in s,
 // or 0 when s is a single line. Heading text and link-ref labels are
 // single-line surfaces; a control rune would rewrite them into

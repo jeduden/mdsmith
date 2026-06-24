@@ -244,7 +244,7 @@ func computeRenameChanges(
 		}
 		return changes, -1
 	}
-	edits, err := rename.LinkRef(src, rename.NormalizeLabel(oldName), newName)
+	edits, err := rename.LinkRef(src, oldName, newName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return nil, 2

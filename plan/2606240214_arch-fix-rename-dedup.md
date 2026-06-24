@@ -3,7 +3,7 @@ id: 2606240214
 title: >-
   Remove duplicated helpers between lsp/rename.go
   and rename/rename.go
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   normalizedLabel and refDefBracketBytes are
@@ -56,11 +56,11 @@ a compile error.
 
 ## Acceptance Criteria
 
-- [ ] `internal/lsp/rename.go` has no private
+- [x] `internal/lsp/rename.go` has no private
       `normalizedLabel` or `refDefBracketBytes`.
-- [ ] `internal/rename/rename.go` exports
+- [x] `internal/rename/rename.go` exports
       `NormalizedLabel` and `RefDefBracketBytes`.
-- [ ] `internal/rename/rename_test.go` has dedicated
+- [x] `internal/rename/rename_test.go` has dedicated
       tests for both helpers.
-- [ ] `go test ./...` is green.
-- [ ] `mdsmith check .` is green.
+- [x] `go test ./...` is green.
+- [x] `mdsmith check .` is green.
