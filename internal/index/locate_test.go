@@ -269,8 +269,6 @@ func TestEnclosingListKey_FindsParentKey(t *testing.T) {
 	assert.Equal(t, "inputs", got)
 }
 
-// --- Dedicated tests for unexported helpers in locate.go ---
-
 // parseDoc parses body-only markdown (no front matter) and returns root + source.
 func parseDoc(src string) (goldast.Node, []byte) {
 	b := []byte(src)
@@ -334,29 +332,34 @@ func nthHeading(root goldast.Node, n int) *goldast.Heading {
 
 func TestHeadingInfo(t *testing.T) {
 	t.Parallel()
-	src := "# Alpha\n\n# Alpha\n\n## Beta\n"
+	src := "# Alpha\n\n# Alpha\n\n# Alpha\n\n## Beta\n"
 	root, b := parseDoc(src)
 
 	h1 := nthHeading(root, 1)
 	h2 := nthHeading(root, 2)
 	h3 := nthHeading(root, 3)
+	h4 := nthHeading(root, 4)
 	require.NotNil(t, h1)
 	require.NotNil(t, h2)
 	require.NotNil(t, h3)
+	require.NotNil(t, h4)
 
 	anchor, level, name := headingInfo(h1, b, root)
 	assert.Equal(t, "alpha", anchor)
 	assert.Equal(t, 1, level)
 	assert.Equal(t, "Alpha", name)
 
-	// Duplicate slug disambiguated with suffix.
+	// Second and third occurrences get sequential suffixes.
 	anchor2, _, _ := headingInfo(h2, b, root)
 	assert.Equal(t, "alpha-1", anchor2)
 
-	anchor3, level3, name3 := headingInfo(h3, b, root)
-	assert.Equal(t, "beta", anchor3)
-	assert.Equal(t, 2, level3)
-	assert.Equal(t, "Beta", name3)
+	anchor3, _, _ := headingInfo(h3, b, root)
+	assert.Equal(t, "alpha-2", anchor3)
+
+	anchor4, level4, name4 := headingInfo(h4, b, root)
+	assert.Equal(t, "beta", anchor4)
+	assert.Equal(t, 2, level4)
+	assert.Equal(t, "Beta", name4)
 }
 
 func TestLocateInAST(t *testing.T) {
@@ -418,7 +421,7 @@ func TestLinkCloseOffset(t *testing.T) {
 		return goldast.WalkContinue, nil
 	})
 	off := linkCloseOffset(b, shortcut, shortcutAfter)
-	assert.True(t, off >= 0, "shortcut ref close offset must be ≥ 0")
+	require.True(t, off >= 0, "shortcut ref close offset must be ≥ 0")
 	assert.Equal(t, byte(']'), b[off], "shortcut ref must close at ']'")
 
 	// Full reference [text][label]: close must land on the ']' of the label part.
@@ -437,7 +440,7 @@ func TestLinkCloseOffset(t *testing.T) {
 		return goldast.WalkContinue, nil
 	})
 	off2 := linkCloseOffset(b2, full, fullAfter)
-	assert.True(t, off2 >= 0, "full ref close offset must be ≥ 0")
+	require.True(t, off2 >= 0, "full ref close offset must be ≥ 0")
 	assert.Equal(t, byte(']'), b2[off2], "full ref must close at ']' of label part")
 	// The close must be past the text-closing ']' (i.e., farther into the source).
 	assert.Greater(t, off2, fullAfter, "full ref close must be past the text bracket")
@@ -534,6 +537,12 @@ func TestListItemValue(t *testing.T) {
 	assert.False(t, ok)
 
 	_, ok = listItemValue("key: value")
+	assert.False(t, ok)
+
+	// Bare dash without a value does not match (piListItemRE requires
+	// whitespace after the dash); contrast with frontMatterListItem which
+	// accepts bare "-".
+	_, ok = listItemValue("  -")
 	assert.False(t, ok)
 }
 
