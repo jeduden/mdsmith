@@ -10,6 +10,7 @@ func TestTagInAllowedSet_KnownTags(t *testing.T) {
 		"blockquote", "aside", "article", "section", "header", "footer",
 		"nav", "main", "address", "dl", "dt", "dd", "figure", "figcaption",
 		"h1", "h2", "h3", "h4", "h5", "h6", "hr", "html", "body", "form", "li",
+		"meta", "search",
 	}
 	for _, tag := range known {
 		if !tagInAllowedSet([]byte(tag)) {
