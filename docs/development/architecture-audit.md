@@ -6,7 +6,7 @@ summary: >-
   solid-architecture skill (audit mode)
   appends here; blockers are also filed as
   plans.
-audit-from: 1599c9f17336b36d4d06d10677b2510bfe33665b
+audit-from: 09f22d3a59ea9cc07911df1db2d462da7d5fccb1
 ---
 # Architecture audit log
 
@@ -220,3 +220,55 @@ layering impact.
 
 [2606231013]: ../../plan/2606231013_arch-fix-inline-scan-helper-tests.md
 [2606231014]: ../../plan/2606231014_arch-fix-samefileanchor-helper-tests.md
+
+## Audit 2026-06-24 (range: 1599c9f..09f22d3)
+
+Perf series (struct-alignment, Sprintf→strconv,
+`[]byte` FindSubmatch, Builder). Plans 2606231013
+and 2606231014 closed. Benchmark docs and security
+SARIF retired. No TypeScript changes. 273 Go
+sources outside fixtures.
+
+No blockers. No rule-to-rule imports. No DIP
+violations. No file crossed 1 000 lines.
+
+### tax (2026-06-24)
+
+- `internal/index/locate.go` — 12 unexported
+  helpers lack dedicated unit tests. Tests doc
+  §"every function by name" —
+  [plan/2606240211][2606240211].
+
+- `internal/lsp/rename.go` — 15 unexported
+  helpers lack dedicated unit tests. Tests doc
+  §"every function by name" —
+  [plan/2606240212][2606240212].
+
+- `internal/export/export.go` — 11 unexported
+  helpers lack dedicated unit tests. Tests doc
+  §"every function by name" —
+  [plan/2606240213][2606240213].
+
+- `internal/lsp/rename.go` and
+  `internal/rename/rename.go` — `normalizedLabel`
+  and `refDefBracketBytes` are duplicated. Both
+  have identical bodies. Hub §"Anti-patterns" —
+  [plan/2606240214][2606240214].
+
+- `internal/rules/concisenessscoring/rule.go`
+  and `internal/rename/rename.go` —
+  `countClassifierTokens` and
+  `contentBlockLines` lack dedicated unit tests.
+  Batched into [plan/2606240213][2606240213].
+
+### nice-to-have (2026-06-24)
+
+- `internal/index/locate.go` —
+  `isGlobPattern` is a trivial one-liner with no
+  branch. Add "// no test by design" so the audit
+  can distinguish it from forgotten test debt.
+
+[2606240211]: ../../plan/2606240211_arch-fix-locate-helper-tests.md
+[2606240212]: ../../plan/2606240212_arch-fix-lsp-rename-helper-tests.md
+[2606240213]: ../../plan/2606240213_arch-fix-export-helper-tests.md
+[2606240214]: ../../plan/2606240214_arch-fix-rename-dedup.md
