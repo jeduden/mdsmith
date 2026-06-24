@@ -575,9 +575,7 @@ func TestAtxHeadingTextStart(t *testing.T) {
 	for _, tc := range cases {
 		i, ok := atxHeadingTextStart([]byte(tc.row))
 		assert.Equal(t, tc.wantOK, ok, "row=%q", tc.row)
-		if ok {
-			assert.Equal(t, tc.wantI, i, "row=%q", tc.row)
-		}
+		assert.Equal(t, tc.wantI, i, "row=%q", tc.row)
 	}
 }
 
@@ -636,7 +634,8 @@ func TestTrimmedRange(t *testing.T) {
 	assert.Equal(t, 0, start)
 	assert.Equal(t, 7, end)
 	start, end = trimmedRange([]byte("   "))
-	assert.Equal(t, start, end)
+	assert.Equal(t, 3, start)
+	assert.Equal(t, 3, end)
 }
 
 // TestRefDefPrepareRangeHappy drives refDefPrepareRange with a
@@ -661,6 +660,9 @@ func TestRefUsePrepareRangeHappy(t *testing.T) {
 	res, ok := refUsePrepareRange(src, 1, 12, "docs")
 	require.True(t, ok)
 	assert.Equal(t, "docs", res.Placeholder)
+	assert.Equal(t, 0, res.Range.Start.Line)
+	assert.Equal(t, 11, res.Range.Start.Character)
+	assert.Equal(t, 15, res.Range.End.Character)
 }
 
 // TestRefUseLabelBytesAllForms drives refUseLabelBytes across the
@@ -689,6 +691,9 @@ func TestRefUseLabelBytesAllForms(t *testing.T) {
 		assert.Equal(t, tc.wantOK, ok, "row=%q cursor=%d", tc.row, tc.cursor)
 		if ok {
 			assert.Equal(t, tc.wantLabel, string(row[start:end]), "row=%q cursor=%d", tc.row, tc.cursor)
+		} else {
+			assert.Equal(t, 0, start, "row=%q cursor=%d", tc.row, tc.cursor)
+			assert.Equal(t, 0, end, "row=%q cursor=%d", tc.row, tc.cursor)
 		}
 	}
 }
