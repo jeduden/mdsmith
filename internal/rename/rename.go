@@ -250,6 +250,9 @@ func refDefEditsInBody(
 		}
 		row := lines[fileLine-1]
 		bracket := RefDefBracketBytes(row)
+		if bracket == nil {
+			continue
+		}
 		startCh := mdtext.UTF16FromByteOffset(row, bracket[0])
 		endCh := mdtext.UTF16FromByteOffset(row, bracket[1])
 		out = append(out, Edit{

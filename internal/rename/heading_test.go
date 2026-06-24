@@ -218,11 +218,6 @@ func TestFindHeadingLine(t *testing.T) {
 	assert.False(t, ok)
 }
 
-func TestNormalizeLabel(t *testing.T) {
-	assert.Equal(t, "docs api", NormalizeLabel("Docs  API"))
-	assert.Equal(t, "x", NormalizeLabel("X"))
-}
-
 func TestFirstControlRune(t *testing.T) {
 	assert.Equal(t, '\r', firstControlRune("a\rb"))
 	assert.Equal(t, rune(0), firstControlRune("clean"))

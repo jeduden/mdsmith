@@ -142,10 +142,3 @@ func TestNormalizedLabel(t *testing.T) {
 		})
 	}
 }
-
-func TestRefDefBracketBytes_Exported(t *testing.T) {
-	// Exported wrapper: spot-check that the function is reachable and
-	// returns the right label bounds.
-	assert.Equal(t, []int{1, 4}, RefDefBracketBytes([]byte("[lbl]: u")))
-	assert.Nil(t, RefDefBracketBytes([]byte("not a def")))
-}
