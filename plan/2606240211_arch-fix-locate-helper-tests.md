@@ -1,7 +1,7 @@
 ---
 id: 2606240211
 title: Add dedicated unit tests for locate.go helpers
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   internal/index/locate.go has 12 unexported
@@ -42,27 +42,32 @@ Functions without a dedicated test as of 09f22d3:
 `isGlobPattern` is a trivial one-liner with no branch.
 Add a "// no test by design" exemption comment.
 
+Note: Go vet requires test function names to start with
+an uppercase letter after `Test`. The names below follow
+the established codebase pattern (capitalize the first
+letter of the helper name).
+
 ## Tasks
 
-1. For each of the 12 functions above, add at least
+1. [x] For each of the 12 functions above, add at least
    one `TestFunctionName` in
    `internal/index/locate_test.go`. Drive the helper
    directly, not through `Locate`.
-2. Add a `// no test by design` comment on
+2. [x] Add a `// no test by design` comment on
    `isGlobPattern` in `internal/index/locate.go`.
-3. `go test ./internal/index/...` passes.
-4. `go vet ./internal/index/...` passes.
+3. [x] `go test ./internal/index/...` passes.
+4. [x] `go vet ./internal/index/...` passes.
 
 ## Acceptance Criteria
 
-- [ ] `locate_test.go` contains `TestheadingInfo`,
-      `TestlocateInAST`, `TestlinkContainsOffset`,
-      `TestlinkCloseOffset`, `TestscanForByte`,
-      `TestlinkToLocate`, `TestpiToLocate`,
-      `TestlistItemValue`, `TestheadingOnLine`,
-      `TestfrontMatterListItem`,
-      `TestfrontMatterParentKey`, `TestoffsetAt`.
-- [ ] `isGlobPattern` carries a "// no test by
+- [x] `locate_test.go` contains `TestHeadingInfo`,
+      `TestLocateInAST`, `TestLinkContainsOffset`,
+      `TestLinkCloseOffset`, `TestScanForByte`,
+      `TestLinkToLocate`, `TestPiToLocate`,
+      `TestListItemValue`, `TestHeadingOnLine`,
+      `TestFrontMatterListItem`,
+      `TestFrontMatterParentKey`, `TestOffsetAt`.
+- [x] `isGlobPattern` carries a "// no test by
       design" comment.
-- [ ] `go test ./internal/index/...` is green.
-- [ ] `mdsmith check .` is green.
+- [x] `go test ./internal/index/...` is green.
+- [x] `mdsmith check .` is green.
