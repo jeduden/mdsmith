@@ -487,6 +487,7 @@ var piArgRE = regexp.MustCompile(`^\s*([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*?)\s*$`
 var piListItemRE = regexp.MustCompile(`^\s*-\s+(.*?)\s*$`)
 
 // isGlobPattern reports whether p contains doublestar glob metacharacters.
+// no test by design: trivial one-liner with no branch.
 func isGlobPattern(p string) bool { return strings.ContainsAny(p, "*?[{") }
 
 // headingOnLine returns the heading whose first source line equals

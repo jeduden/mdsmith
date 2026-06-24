@@ -1,10 +1,18 @@
 package index
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/piparser"
+	goldast "github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 )
 
 func TestLocateHeading(t *testing.T) {
@@ -259,4 +267,350 @@ func TestEnclosingListKey_FindsParentKey(t *testing.T) {
 	// Line 4 (1-based) is "gamma"; the enclosing key is "inputs".
 	got := enclosingListKey(lines, 4)
 	assert.Equal(t, "inputs", got)
+}
+
+// parseDoc parses body-only markdown (no front matter) and returns root + source.
+func parseDoc(src string) (goldast.Node, []byte) {
+	b := []byte(src)
+	root := lint.NewParser().Parse(text.NewReader(b), parser.WithContext(parser.NewContext()))
+	return root, b
+}
+
+// firstLink returns the first *ast.Link in root, or nil.
+func firstLink(root goldast.Node) *goldast.Link {
+	var found *goldast.Link
+	_ = goldast.Walk(root, func(n goldast.Node, entering bool) (goldast.WalkStatus, error) {
+		if !entering {
+			return goldast.WalkContinue, nil
+		}
+		if l, ok := n.(*goldast.Link); ok {
+			found = l
+			return goldast.WalkStop, nil
+		}
+		return goldast.WalkContinue, nil
+	})
+	return found
+}
+
+// firstPI returns the first *piparser.ProcessingInstruction in root, or nil.
+func firstPI(root goldast.Node) *piparser.ProcessingInstruction {
+	var found *piparser.ProcessingInstruction
+	_ = goldast.Walk(root, func(n goldast.Node, entering bool) (goldast.WalkStatus, error) {
+		if !entering {
+			return goldast.WalkContinue, nil
+		}
+		if pi, ok := n.(*piparser.ProcessingInstruction); ok {
+			found = pi
+			return goldast.WalkStop, nil
+		}
+		return goldast.WalkContinue, nil
+	})
+	return found
+}
+
+// nthHeading returns the n-th (1-based) heading in root, or nil.
+func nthHeading(root goldast.Node, n int) *goldast.Heading {
+	count := 0
+	var found *goldast.Heading
+	_ = goldast.Walk(root, func(node goldast.Node, entering bool) (goldast.WalkStatus, error) {
+		if !entering {
+			return goldast.WalkContinue, nil
+		}
+		h, ok := node.(*goldast.Heading)
+		if !ok {
+			return goldast.WalkContinue, nil
+		}
+		count++
+		if count == n {
+			found = h
+			return goldast.WalkStop, nil
+		}
+		return goldast.WalkContinue, nil
+	})
+	return found
+}
+
+func TestHeadingInfo(t *testing.T) {
+	t.Parallel()
+	src := "# Alpha\n\n# Alpha\n\n# Alpha\n\n## Beta\n"
+	root, b := parseDoc(src)
+
+	h1 := nthHeading(root, 1)
+	h2 := nthHeading(root, 2)
+	h3 := nthHeading(root, 3)
+	h4 := nthHeading(root, 4)
+	require.NotNil(t, h1)
+	require.NotNil(t, h2)
+	require.NotNil(t, h3)
+	require.NotNil(t, h4)
+
+	anchor, level, name := headingInfo(h1, b, root)
+	assert.Equal(t, "alpha", anchor)
+	assert.Equal(t, 1, level)
+	assert.Equal(t, "Alpha", name)
+
+	// Second and third occurrences get sequential suffixes.
+	anchor2, _, _ := headingInfo(h2, b, root)
+	assert.Equal(t, "alpha-1", anchor2)
+
+	anchor3, _, _ := headingInfo(h3, b, root)
+	assert.Equal(t, "alpha-2", anchor3)
+
+	anchor4, level4, name4 := headingInfo(h4, b, root)
+	assert.Equal(t, "beta", anchor4)
+	assert.Equal(t, 2, level4)
+	assert.Equal(t, "Beta", name4)
+}
+
+func TestLocateInAST(t *testing.T) {
+	t.Parallel()
+	src := "# T\n\n[link](./a.md)\n"
+	root, b := parseDoc(src)
+	lines := bytes.Split(b, []byte("\n"))
+
+	// Line 3, col 3 is inside the link text "link".
+	res, ok := locateInAST("doc.md", root, b, lines, 3, 3)
+	assert.True(t, ok)
+	assert.Equal(t, TokenFileLink, res.Tag)
+	assert.Equal(t, "a.md", res.TargetFile)
+
+	// Line 1, col 1 is on the heading — no link or PI.
+	_, ok = locateInAST("doc.md", root, b, lines, 1, 1)
+	assert.False(t, ok)
+}
+
+func TestLinkContainsOffset(t *testing.T) {
+	t.Parallel()
+	// "# T\n\n" = 5 bytes; "[text](./a.md)" starts at offset 5.
+	src := "# T\n\n[text](./a.md)\n"
+	root, b := parseDoc(src)
+	l := firstLink(root)
+	require.NotNil(t, l)
+
+	// Offset 7 is 'e' in "text" — inside the link.
+	assert.True(t, linkContainsOffset(b, l, 7))
+	// Offset 0 is '#' — before the link.
+	assert.False(t, linkContainsOffset(b, l, 0))
+}
+
+func TestLinkCloseOffset(t *testing.T) {
+	t.Parallel()
+	// Inline link via nil (exercises the l==nil path, identical to the
+	// real production path where l!=nil, l.Reference==nil).
+	// "[text](dest)\n": '[' 0, text 1-4, ']' 5, '(' 6, dest 7-10, ')' 11, '\n' 12.
+	src := []byte("[text](dest)\n")
+	assert.Equal(t, 11, linkCloseOffset(src, nil, 5))
+
+	// Newline before the closing ')' → -1.
+	srcBroken := []byte("[text](dest\nmore\n")
+	assert.Equal(t, -1, linkCloseOffset(srcBroken, nil, 5))
+
+	// Shortcut reference [label]: close must land on the single ']'.
+	root, b := parseDoc("# T\n\n[label]\n\n[label]: https://x.com\n")
+	shortcut := firstLink(root)
+	require.NotNil(t, shortcut)
+	var shortcutAfter int
+	_ = goldast.Walk(shortcut, func(n goldast.Node, entering bool) (goldast.WalkStatus, error) {
+		if !entering {
+			return goldast.WalkContinue, nil
+		}
+		if tx, ok := n.(*goldast.Text); ok {
+			shortcutAfter = tx.Segment.Stop
+			return goldast.WalkStop, nil
+		}
+		return goldast.WalkContinue, nil
+	})
+	off := linkCloseOffset(b, shortcut, shortcutAfter)
+	require.True(t, off >= 0, "shortcut ref close offset must be ≥ 0")
+	assert.Equal(t, byte(']'), b[off], "shortcut ref must close at ']'")
+
+	// Full reference [text][label]: close must land on the ']' of the label part.
+	root2, b2 := parseDoc("# T\n\n[text][label]\n\n[label]: https://x.com\n")
+	full := firstLink(root2)
+	require.NotNil(t, full)
+	var fullAfter int
+	_ = goldast.Walk(full, func(n goldast.Node, entering bool) (goldast.WalkStatus, error) {
+		if !entering {
+			return goldast.WalkContinue, nil
+		}
+		if tx, ok := n.(*goldast.Text); ok {
+			fullAfter = tx.Segment.Stop
+			return goldast.WalkStop, nil
+		}
+		return goldast.WalkContinue, nil
+	})
+	off2 := linkCloseOffset(b2, full, fullAfter)
+	require.True(t, off2 >= 0, "full ref close offset must be ≥ 0")
+	assert.Equal(t, byte(']'), b2[off2], "full ref must close at ']' of label part")
+	// The close must be past the text-closing ']' (i.e., farther into the source).
+	assert.Greater(t, off2, fullAfter, "full ref close must be past the text bracket")
+}
+
+func TestScanForByte(t *testing.T) {
+	t.Parallel()
+	src := []byte("ab]cd")
+	assert.Equal(t, 2, scanForByte(src, 0, ']'))
+	// Start past the target.
+	assert.Equal(t, -1, scanForByte(src, 3, ']'))
+	// Newline stops the scan before the target.
+	src2 := []byte("ab\n]")
+	assert.Equal(t, -1, scanForByte(src2, 0, ']'))
+	// Target not present at all.
+	assert.Equal(t, -1, scanForByte(src, 0, 'z'))
+}
+
+func TestLinkToLocate(t *testing.T) {
+	t.Parallel()
+
+	// Inline file link.
+	root, b := parseDoc("# T\n\n[text](./a.md)\n")
+	l := firstLink(root)
+	require.NotNil(t, l)
+	res := linkToLocate("doc.md", l, b)
+	assert.Equal(t, TokenFileLink, res.Tag)
+	assert.Equal(t, "a.md", res.TargetFile)
+
+	// Reference-use link.
+	root2, b2 := parseDoc("# T\n\n[text][label]\n\n[label]: https://x.com\n")
+	l2 := firstLink(root2)
+	require.NotNil(t, l2)
+	res2 := linkToLocate("doc.md", l2, b2)
+	assert.Equal(t, TokenRefUse, res2.Tag)
+	assert.Equal(t, "label", res2.Label)
+
+	// Anchor-only link.
+	root3, b3 := parseDoc("# T\n\n[here](#sec)\n")
+	l3 := firstLink(root3)
+	require.NotNil(t, l3)
+	res3 := linkToLocate("doc.md", l3, b3)
+	assert.Equal(t, TokenAnchorLink, res3.Tag)
+	assert.Equal(t, "sec", res3.TargetAnchor)
+}
+
+func TestPiToLocate(t *testing.T) {
+	t.Parallel()
+	src := "# T\n\n<?include\nfile: \"x.md\"\n?>\n<?/include?>\n"
+	root, b := parseDoc(src)
+	pi := firstPI(root)
+	require.NotNil(t, pi)
+
+	lines := bytes.Split(b, []byte("\n"))
+	// Line 4 is `file: "x.md"`.
+	res := piToLocate(pi, b, lines, 4, 8)
+	assert.Equal(t, TokenDirectiveArg, res.Tag)
+	assert.Equal(t, "include", res.DirectiveName)
+	assert.Equal(t, "file", res.DirectiveArg)
+	assert.Equal(t, "x.md", res.DirectiveValue)
+	assert.Equal(t, "x.md", res.DirectiveTargetFile)
+}
+
+func TestPiToLocate_GlobInputSuppressed(t *testing.T) {
+	t.Parallel()
+	// A <?build?> inputs list item that is a glob pattern must NOT populate
+	// DirectiveTargetFile — go-to-definition must not fire on a pattern.
+	src := "# T\n\n<?build\nrecipe: make\ninputs:\n  - \"*.md\"\noutputs:\n  - out.html\n?>\n<?/build?>\n"
+	root, b := parseDoc(src)
+	pi := firstPI(root)
+	require.NotNil(t, pi)
+
+	lines := bytes.Split(b, []byte("\n"))
+	// Line 6 (1-based) is `  - "*.md"` — a glob pattern.
+	res := piToLocate(pi, b, lines, 6, 5)
+	assert.Equal(t, TokenDirectiveArg, res.Tag)
+	assert.Equal(t, "build", res.DirectiveName)
+	assert.Equal(t, "inputs", res.DirectiveArg)
+	assert.Equal(t, "*.md", res.DirectiveValue)
+	assert.Equal(t, "", res.DirectiveTargetFile, "glob pattern must not populate DirectiveTargetFile")
+}
+
+func TestListItemValue(t *testing.T) {
+	t.Parallel()
+	v, ok := listItemValue("  - foo")
+	assert.True(t, ok)
+	assert.Equal(t, "foo", v)
+
+	v, ok = listItemValue(`  - "bar"`)
+	assert.True(t, ok)
+	assert.Equal(t, "bar", v)
+
+	_, ok = listItemValue("not a list item")
+	assert.False(t, ok)
+
+	_, ok = listItemValue("key: value")
+	assert.False(t, ok)
+
+	// Bare dash without a value does not match (piListItemRE requires
+	// whitespace after the dash); contrast with frontMatterListItem which
+	// accepts bare "-".
+	_, ok = listItemValue("  -")
+	assert.False(t, ok)
+}
+
+func TestHeadingOnLine(t *testing.T) {
+	t.Parallel()
+	src := "# Top\n\nSome text\n\n## Sub\n"
+	root, b := parseDoc(src)
+
+	h := headingOnLine(root, b, 1)
+	require.NotNil(t, h)
+	assert.Equal(t, 1, h.Level)
+
+	h = headingOnLine(root, b, 3)
+	assert.Nil(t, h)
+
+	h = headingOnLine(root, b, 5)
+	require.NotNil(t, h)
+	assert.Equal(t, 2, h.Level)
+}
+
+func TestFrontMatterListItem(t *testing.T) {
+	t.Parallel()
+	v, ok := frontMatterListItem("- foo")
+	assert.True(t, ok)
+	assert.Equal(t, "foo", v)
+
+	v, ok = frontMatterListItem("  - bar")
+	assert.True(t, ok)
+	assert.Equal(t, "bar", v)
+
+	v, ok = frontMatterListItem("-")
+	assert.True(t, ok)
+	assert.Equal(t, "", v)
+
+	_, ok = frontMatterListItem("key: val")
+	assert.False(t, ok)
+}
+
+func TestFrontMatterParentKey(t *testing.T) {
+	t.Parallel()
+	lines := [][]byte{
+		[]byte("kinds:"),
+		[]byte("  - guide"),
+		[]byte("  - reference"),
+	}
+	assert.Equal(t, "kinds", frontMatterParentKey(lines, 2))
+	assert.Equal(t, "kinds", frontMatterParentKey(lines, 1))
+	assert.Equal(t, "", frontMatterParentKey(lines, 0))
+}
+
+func TestOffsetAt(t *testing.T) {
+	t.Parallel()
+	lines := [][]byte{
+		[]byte("abc"),
+		[]byte("de"),
+		[]byte("f"),
+	}
+	// (1,1) → 0
+	assert.Equal(t, 0, offsetAt(lines, 1, 1))
+	// (1,2) → 1
+	assert.Equal(t, 1, offsetAt(lines, 1, 2))
+	// (2,1) → len("abc")+newline = 4
+	assert.Equal(t, 4, offsetAt(lines, 2, 1))
+	// (2,2) → 5
+	assert.Equal(t, 5, offsetAt(lines, 2, 2))
+	// Clamp: line < 1 → treated as line 1
+	assert.Equal(t, 0, offsetAt(lines, 0, 1))
+	// Clamp: col past end of line → clamped to line length.
+	// Line 1 "abc" has length 3; col 99 → offset = 0 + 3 = 3.
+	assert.Equal(t, 3, offsetAt(lines, 1, 99))
 }
