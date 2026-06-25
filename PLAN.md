@@ -228,6 +228,6 @@ footer: |
 | 2606240212 | ✅     | sonnet | [Add dedicated unit tests for lsp/rename.go helpers](plan/2606240212_arch-fix-lsp-rename-helper-tests.md)                                      |
 | 2606240213 | ✅     | sonnet | [Add dedicated unit tests for export.go helpers and two small rename helpers](plan/2606240213_arch-fix-export-helper-tests.md)                 |
 | 2606240214 | ✅     | sonnet | [Remove duplicated helpers between lsp/rename.go and rename/rename.go](plan/2606240214_arch-fix-rename-dedup.md)                               |
-| 2606241814 | 🔲     | sonnet | [Add unit tests for lsp/rename dispatch helpers and workspace adapter methods](plan/2606241814_arch-fix-lsp-rename-dispatch-tests.md)          |
+| 2606241814 | ✅     | sonnet | [Add unit tests for lsp/rename dispatch helpers and workspace adapter methods](plan/2606241814_arch-fix-lsp-rename-dispatch-tests.md)          |
 | 2606241815 | ✅     | sonnet | [Add unit tests for three remaining unexported helpers in internal/index/locate.go](plan/2606241815_arch-fix-locate-remaining-helper-tests.md) |
 <?/catalog?>
