@@ -33,6 +33,14 @@ func (r *Rule) ID() string { return "MDS058" }
 // Name implements rule.Rule.
 func (r *Rule) Name() string { return "required-mentions" }
 
+// WordlistTarget implements rule.WordlistConsumer: resolved `lists:`
+// entries union into this rule's "mentions" setting. The entries are
+// required (each section must mention them), not forbidden — the
+// word-list mechanism is neutral about how a rule reads its list.
+func (r *Rule) WordlistTarget() string { return "mentions" }
+
+var _ rule.WordlistConsumer = (*Rule)(nil)
+
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "prose" }
 

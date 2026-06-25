@@ -100,6 +100,9 @@ func loadFromBytes(data []byte, sourcePath string, mergeKinds bool) (*Config, er
 		if err := mergeConventionFiles(&cfg, sourcePath); err != nil {
 			return nil, fmt.Errorf("loading convention files: %w", err)
 		}
+		if err := mergeWordlistFiles(&cfg, sourcePath); err != nil {
+			return nil, fmt.Errorf("loading wordlist files: %w", err)
+		}
 	}
 
 	if err := mergeAndResolveSchemas(&cfg, sourcePath, mergeKinds); err != nil {
@@ -116,6 +119,12 @@ func loadFromBytes(data []byte, sourcePath string, mergeKinds bool) (*Config, er
 
 	if err := applyConvention(&cfg); err != nil {
 		return nil, fmt.Errorf("applying convention: %w", err)
+	}
+
+	// Runs after applyConvention so the convention preset's `lists:`
+	// references are validated alongside the user's own.
+	if err := validateWordlists(&cfg); err != nil {
+		return nil, fmt.Errorf("validating wordlists: %w", err)
 	}
 
 	return &cfg, nil

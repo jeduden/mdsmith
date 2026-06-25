@@ -103,6 +103,20 @@ type ListMerger interface {
 	SettingMergeMode(key string) MergeMode
 }
 
+// WordlistConsumer is implemented by Configurable rules that accept a
+// generic `lists:` setting naming word-lists (built-in or user-defined
+// under .mdsmith/wordlists/) whose resolved entries union into one of
+// the rule's own list settings. WordlistTarget returns that setting's
+// key — "contains" for forbidden-text, "starts" for
+// forbidden-paragraph-starts, "placeholders" for the placeholder
+// rules, and so on. The config layer reads this through rule.ByName,
+// expands `lists:` into the target key, and strips `lists:` before
+// ApplySettings, so a rule never sees the key and stays unaware of
+// word-lists.
+type WordlistConsumer interface {
+	WordlistTarget() string
+}
+
 // SettingsTranslator is implemented by Configurable rules that
 // rewrite one config layer's settings map before the deep-merge
 // runs. The config merge layer calls TranslateLayerSettings on

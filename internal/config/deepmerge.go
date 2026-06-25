@@ -76,6 +76,13 @@ func mergeAny(ruleName, key string, earlier, later any) any {
 // setting, defaulting to rule.MergeReplace when the rule does not
 // implement rule.ListMerger or is not registered.
 func settingMergeMode(ruleName, settingKey string) rule.MergeMode {
+	// The generic `lists:` setting (word-list references) unions across
+	// config layers for every rule, so a convention's `lists:` and a
+	// project's `lists:` combine rather than replace. Handled here in
+	// the one place all settings merge through, so no rule declares it.
+	if settingKey == "lists" {
+		return rule.MergeAppend
+	}
 	r := rule.ByName(ruleName)
 	if r == nil {
 		return rule.MergeReplace
