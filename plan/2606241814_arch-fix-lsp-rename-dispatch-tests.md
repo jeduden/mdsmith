@@ -3,7 +3,7 @@ id: 2606241814
 title: >-
   Add unit tests for lsp/rename dispatch helpers
   and workspace adapter methods
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   Add TestServer_PrepareRenameAt,
@@ -71,13 +71,13 @@ and §"Exemptions".
 
 ## Acceptance Criteria
 
-- [ ] `TestServer_PrepareRenameAt` exists and passes.
-- [ ] `TestServer_RenameHeading` exists and passes.
-- [ ] `TestServer_RenameLinkRef` exists and passes.
-- [ ] `TestLspRenameWorkspace_Resolve` exists and
+- [x] `TestServer_PrepareRenameAt` exists and passes.
+- [x] `TestServer_RenameHeading` exists and passes.
+- [x] `TestServer_RenameLinkRef` exists and passes.
+- [x] `TestLspRenameWorkspace_Resolve` exists and
       passes.
-- [ ] `IncomingAnchorEdges` and `Files` carry
+- [x] `IncomingAnchorEdges` and `Files` carry
       "// no test by design" comments.
-- [ ] `go test ./internal/lsp/...` — green.
-- [ ] `go test ./...` — green.
-- [ ] `mdsmith check .` — 0 failures.
+- [x] `go test ./internal/lsp/...` — green.
+- [x] `go test ./...` — green.
+- [x] `mdsmith check .` — 0 failures.

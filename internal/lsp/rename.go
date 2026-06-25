@@ -443,9 +443,6 @@ func (w lspRenameWorkspace) IncomingAnchorEdges(file, slug string) []index.Edge 
 // Trivial index pass-through; no dedicated test by design.
 func (w lspRenameWorkspace) Files() []string { return w.idx.Files() }
 
-// Trivial pass-through to resolveURIAndSource; no dedicated test by
-// design (covered via resolveURIAndSource's own tests and the
-// rename behavioral suite).
 func (w lspRenameWorkspace) Resolve(file string) (string, []byte, bool) {
 	return w.s.resolveURIAndSource(file)
 }
