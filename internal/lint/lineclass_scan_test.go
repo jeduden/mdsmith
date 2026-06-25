@@ -268,3 +268,27 @@ func TestHTMLType6Tags_ZeroByteValue(t *testing.T) {
 		t.Fatalf("htmlType6Tags value type %s has size %d bytes, want 0 (use map[string]struct{})", vt, vt.Size())
 	}
 }
+
+// TestHTMLType6Tags_CommonMarkComplete verifies that htmlType6Tags contains the
+// complete CommonMark spec type-6 block tag list. The full enumeration here
+// prevents silent omissions: the map has three independent copies in the
+// codebase and any copy can drift without a full-list gate.
+func TestHTMLType6Tags_CommonMarkComplete(t *testing.T) {
+	// Full CommonMark 0.31.2 type-6 block tag set.
+	want := []string{
+		"address", "article", "aside", "base", "basefont", "blockquote",
+		"body", "caption", "center", "col", "colgroup", "dd", "details",
+		"dialog", "dir", "div", "dl", "dt", "fieldset", "figcaption",
+		"figure", "footer", "form", "frame", "frameset", "h1", "h2", "h3",
+		"h4", "h5", "h6", "head", "header", "hr", "html", "iframe",
+		"legend", "li", "link", "main", "menu", "menuitem", "meta", "nav",
+		"noframes", "ol", "optgroup", "option", "p", "param", "search",
+		"section", "summary", "table", "tbody", "td", "tfoot", "th",
+		"thead", "title", "tr", "track", "ul",
+	}
+	for _, tag := range want {
+		if _, ok := htmlType6Tags[tag]; !ok {
+			t.Errorf("htmlType6Tags missing CommonMark type-6 tag %q", tag)
+		}
+	}
+}

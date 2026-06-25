@@ -9,22 +9,22 @@ import (
 // parser.allowedBlockTags (unexported there). A type-6 HTML block opens
 // only on one of these tag names; the list must stay in sync with the
 // goldmark fork so the Layer 0 scan classifies HTML blocks identically.
-var allowedBlockTags = map[string]bool{
-	"address": true, "article": true, "aside": true, "base": true,
-	"basefont": true, "blockquote": true, "body": true, "caption": true,
-	"center": true, "col": true, "colgroup": true, "dd": true,
-	"details": true, "dialog": true, "dir": true, "div": true,
-	"dl": true, "dt": true, "fieldset": true, "figcaption": true,
-	"figure": true, "footer": true, "form": true, "frame": true,
-	"frameset": true, "h1": true, "h2": true, "h3": true, "h4": true,
-	"h5": true, "h6": true, "head": true, "header": true, "hr": true,
-	"html": true, "iframe": true, "legend": true, "li": true,
-	"link": true, "main": true, "menu": true, "menuitem": true,
-	"meta": true, "nav": true, "noframes": true, "ol": true,
-	"optgroup": true, "option": true, "p": true, "param": true,
-	"search": true, "section": true, "summary": true, "table": true,
-	"tbody": true, "td": true, "tfoot": true, "th": true, "thead": true,
-	"title": true, "tr": true, "track": true, "ul": true,
+var allowedBlockTags = map[string]struct{}{
+	"address": {}, "article": {}, "aside": {}, "base": {},
+	"basefont": {}, "blockquote": {}, "body": {}, "caption": {},
+	"center": {}, "col": {}, "colgroup": {}, "dd": {},
+	"details": {}, "dialog": {}, "dir": {}, "div": {},
+	"dl": {}, "dt": {}, "fieldset": {}, "figcaption": {},
+	"figure": {}, "footer": {}, "form": {}, "frame": {},
+	"frameset": {}, "h1": {}, "h2": {}, "h3": {}, "h4": {},
+	"h5": {}, "h6": {}, "head": {}, "header": {}, "hr": {},
+	"html": {}, "iframe": {}, "legend": {}, "li": {},
+	"link": {}, "main": {}, "menu": {}, "menuitem": {},
+	"meta": {}, "nav": {}, "noframes": {}, "ol": {},
+	"optgroup": {}, "option": {}, "p": {}, "param": {},
+	"search": {}, "section": {}, "summary": {}, "table": {},
+	"tbody": {}, "td": {}, "tfoot": {}, "th": {}, "thead": {},
+	"title": {}, "tr": {}, "track": {}, "ul": {},
 }
 
 // htmlBlockType identifies which of CommonMark's seven HTML block kinds a
@@ -119,7 +119,8 @@ func (t *tagName) lowerInto(b []byte) []byte {
 // allocates nothing.
 func tagInAllowedSet(b []byte) bool {
 	var t tagName
-	return allowedBlockTags[string(t.lowerInto(b))]
+	_, ok := allowedBlockTags[string(t.lowerInto(b))]
+	return ok
 }
 
 // type7TagIsRawText reports whether the type-7 opener's tag is one of the

@@ -3,6 +3,7 @@ package cuelite
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -315,11 +316,11 @@ func (v *engineValue) describe() string {
 	case kString:
 		return fmt.Sprintf("%q", v.str)
 	case kInt:
-		return fmt.Sprintf("%d", v.i)
+		return strconv.FormatInt(v.i, 10)
 	case kFloat:
-		return fmt.Sprintf("%g", v.f)
+		return strconv.FormatFloat(v.f, 'g', -1, 64)
 	case kBool:
-		return fmt.Sprintf("%t", v.b)
+		return strconv.FormatBool(v.b)
 	case kBytes:
 		return fmt.Sprintf("'%s'", string(v.bytes))
 	case kAtom:

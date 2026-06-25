@@ -43,15 +43,15 @@ var shortcutRegistry = map[string]string{
 // every `bool` or `string` frontmatter value in the
 // existing proto.md fixtures would error as an
 // "unknown shortcut".
-var cueBuiltinTypes = map[string]bool{
-	"null":   true,
-	"bool":   true,
-	"int":    true,
-	"float":  true,
-	"string": true,
-	"bytes":  true,
-	"number": true,
-	"_":      true,
+var cueBuiltinTypes = map[string]struct{}{
+	"null":   {},
+	"bool":   {},
+	"int":    {},
+	"float":  {},
+	"string": {},
+	"bytes":  {},
+	"number": {},
+	"_":      {},
 }
 
 // bareNamePattern recognises a YAML scalar value that
@@ -111,7 +111,7 @@ func resolveBareName(s string) (string, bool, error) {
 	if !bareNamePattern.MatchString(s) {
 		return s, false, nil
 	}
-	if cueBuiltinTypes[s] {
+	if _, ok := cueBuiltinTypes[s]; ok {
 		return s, true, nil
 	}
 	if v, ok := shortcutRegistry[s]; ok {
