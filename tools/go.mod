@@ -5,14 +5,13 @@ module github.com/jeduden/mdsmith
 // `go tool -modfile=tools/go.mod <tool>`. Keeping them out of
 // go.mod keeps their large dependency trees out of the module graph
 // that `go install m@version` and library consumers resolve. The go
-// directive is held at 1.25.8 — above the 1.25.0 the linters need —
-// because the skill-eval job reads it via go-version-file to compile
-// a baseline worktree that demands 1.25.8 (see
-// .github/workflows/skill-eval.yml). Tidy with
+// directive is held at 1.25.11 — matching go.mod — because the
+// skill-eval job reads it via go-version-file to compile a baseline
+// worktree. Tidy with
 // `go mod tidy -modfile=tools/go.mod`; the require list is a
 // superset of go.mod because an alternate modfile still covers the
 // repository's own packages.
-go 1.25.8
+go 1.25.11
 
 tool (
 	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
