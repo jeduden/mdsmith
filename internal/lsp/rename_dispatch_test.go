@@ -82,98 +82,101 @@ func awaitRenameResponse(t *testing.T, h *testHarness, id string) parsedResponse
 // and a new name that produces an empty slug.
 func TestServer_RenameHeading(t *testing.T) {
 	t.Parallel()
+	t.Run("happy path rewrites cross-file anchor", testRenameHeading_HappyPath)
+	t.Run("collision returns InvalidParams", testRenameHeading_Collision)
+	t.Run("invalid slug returns InvalidParams", testRenameHeading_InvalidSlug)
+}
 
-	t.Run("happy path rewrites cross-file anchor", func(t *testing.T) {
-		t.Parallel()
-		srcA := "# Alpha\n\n## Setup\n\nbody\n"
-		srcB := "# Beta\n\n[s](./a.md#setup)\n"
-		h, _, rootURI := rootedHarness(t, map[string]string{"a.md": srcA, "b.md": srcB})
-		uriA := rootURI + "/a.md"
-		uriB := rootURI + "/b.md"
-		for _, d := range []struct{ uri, src string }{{uriA, srcA}, {uriB, srcB}} {
-			h.notify("textDocument/didOpen", didOpenTextDocumentParams{
-				TextDocument: textDocumentItem{URI: d.uri, LanguageID: "markdown", Version: 1, Text: d.src},
-			})
-			_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
-		}
-
-		srcABytes := []byte(srcA)
-		line := 3 // 1-based: "## Setup" is line 3
-		res := index.Locator{Path: "a.md"}.Locate(srcABytes, line, 4)
-		require.Equal(t, index.TokenHeading, res.Tag, "locator must tag line 3 as heading")
-
-		msg := &requestMessage{ID: json.RawMessage(`77`)}
-		p := renameParams{
-			TextDocument: textDocumentIdentifier{URI: uriA},
-			Position:     Position{Line: 2, Character: 4},
-			NewName:      "Configuration",
-		}
-		h.srv.renameHeading(msg, p, srcABytes, "a.md", line, res, "Configuration")
-		resp := awaitRenameResponse(t, h, "77")
-
-		require.Nil(t, resp.Resp.Error)
-		var edit workspaceEdit
-		require.NoError(t, json.Unmarshal(resp.Resp.Result, &edit))
-		require.Contains(t, edit.Changes, uriA, "heading edit must appear in a.md")
-		require.Contains(t, edit.Changes, uriB, "anchor edit must appear in b.md")
-		assert.Equal(t, "Configuration", edit.Changes[uriA][0].NewText)
-	})
-
-	t.Run("collision returns InvalidParams", func(t *testing.T) {
-		t.Parallel()
-		src := "# Top\n\n## Foo\n\n## Bar\n"
-		h, _, rootURI := rootedHarness(t, map[string]string{"a.md": src})
-		uri := rootURI + "/a.md"
+func testRenameHeading_HappyPath(t *testing.T) {
+	t.Parallel()
+	srcA := "# Alpha\n\n## Setup\n\nbody\n"
+	srcB := "# Beta\n\n[s](./a.md#setup)\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": srcA, "b.md": srcB})
+	uriA := rootURI + "/a.md"
+	uriB := rootURI + "/b.md"
+	for _, d := range []struct{ uri, src string }{{uriA, srcA}, {uriB, srcB}} {
 		h.notify("textDocument/didOpen", didOpenTextDocumentParams{
-			TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: src},
+			TextDocument: textDocumentItem{URI: d.uri, LanguageID: "markdown", Version: 1, Text: d.src},
 		})
 		_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+	}
 
-		srcBytes := []byte(src)
-		line := 5 // 1-based: "## Bar" is line 5
-		res := index.Locator{Path: "a.md"}.Locate(srcBytes, line, 4)
-		require.Equal(t, index.TokenHeading, res.Tag)
+	srcABytes := []byte(srcA)
+	line := 3 // 1-based: "## Setup" is line 3
+	res := index.Locator{Path: "a.md"}.Locate(srcABytes, line, 4)
+	require.Equal(t, index.TokenHeading, res.Tag, "locator must tag line 3 as heading")
 
-		msg := &requestMessage{ID: json.RawMessage(`78`)}
-		p := renameParams{
-			TextDocument: textDocumentIdentifier{URI: uri},
-			Position:     Position{Line: 4, Character: 4},
-			NewName:      "Foo",
-		}
-		h.srv.renameHeading(msg, p, srcBytes, "a.md", line, res, "Foo")
-		resp := awaitRenameResponse(t, h, "78")
+	msg := &requestMessage{ID: json.RawMessage(`77`)}
+	p := renameParams{
+		TextDocument: textDocumentIdentifier{URI: uriA},
+		Position:     Position{Line: 2, Character: 4},
+		NewName:      "Configuration",
+	}
+	h.srv.renameHeading(msg, p, srcABytes, "a.md", line, res, "Configuration")
+	resp := awaitRenameResponse(t, h, "77")
 
-		require.NotNil(t, resp.Resp.Error)
-		assert.Equal(t, codeInvalidParams, resp.Resp.Error.Code)
+	require.Nil(t, resp.Resp.Error)
+	var edit workspaceEdit
+	require.NoError(t, json.Unmarshal(resp.Resp.Result, &edit))
+	require.Contains(t, edit.Changes, uriA, "heading edit must appear in a.md")
+	require.Contains(t, edit.Changes, uriB, "anchor edit must appear in b.md")
+	assert.Equal(t, "Configuration", edit.Changes[uriA][0].NewText)
+}
+
+func testRenameHeading_Collision(t *testing.T) {
+	t.Parallel()
+	src := "# Top\n\n## Foo\n\n## Bar\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": src})
+	uri := rootURI + "/a.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: src},
 	})
+	_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
 
-	t.Run("invalid slug returns InvalidParams", func(t *testing.T) {
-		t.Parallel()
-		src := "# Top\n\n## Setup\n"
-		h, _, rootURI := rootedHarness(t, map[string]string{"a.md": src})
-		uri := rootURI + "/a.md"
-		h.notify("textDocument/didOpen", didOpenTextDocumentParams{
-			TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: src},
-		})
-		_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+	srcBytes := []byte(src)
+	line := 5 // 1-based: "## Bar" is line 5
+	res := index.Locator{Path: "a.md"}.Locate(srcBytes, line, 4)
+	require.Equal(t, index.TokenHeading, res.Tag)
 
-		srcBytes := []byte(src)
-		line := 3 // 1-based: "## Setup" is line 3
-		res := index.Locator{Path: "a.md"}.Locate(srcBytes, line, 4)
-		require.Equal(t, index.TokenHeading, res.Tag)
+	msg := &requestMessage{ID: json.RawMessage(`78`)}
+	p := renameParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Position:     Position{Line: 4, Character: 4},
+		NewName:      "Foo",
+	}
+	h.srv.renameHeading(msg, p, srcBytes, "a.md", line, res, "Foo")
+	resp := awaitRenameResponse(t, h, "78")
 
-		msg := &requestMessage{ID: json.RawMessage(`79`)}
-		p := renameParams{
-			TextDocument: textDocumentIdentifier{URI: uri},
-			Position:     Position{Line: 2, Character: 4},
-			NewName:      "!!!",
-		}
-		h.srv.renameHeading(msg, p, srcBytes, "a.md", line, res, "!!!")
-		resp := awaitRenameResponse(t, h, "79")
+	require.NotNil(t, resp.Resp.Error)
+	assert.Equal(t, codeInvalidParams, resp.Resp.Error.Code)
+}
 
-		require.NotNil(t, resp.Resp.Error)
-		assert.Equal(t, codeInvalidParams, resp.Resp.Error.Code)
+func testRenameHeading_InvalidSlug(t *testing.T) {
+	t.Parallel()
+	src := "# Top\n\n## Setup\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": src})
+	uri := rootURI + "/a.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: src},
 	})
+	_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+
+	srcBytes := []byte(src)
+	line := 3 // 1-based: "## Setup" is line 3
+	res := index.Locator{Path: "a.md"}.Locate(srcBytes, line, 4)
+	require.Equal(t, index.TokenHeading, res.Tag)
+
+	msg := &requestMessage{ID: json.RawMessage(`79`)}
+	p := renameParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Position:     Position{Line: 2, Character: 4},
+		NewName:      "!!!",
+	}
+	h.srv.renameHeading(msg, p, srcBytes, "a.md", line, res, "!!!")
+	resp := awaitRenameResponse(t, h, "79")
+
+	require.NotNil(t, resp.Resp.Error)
+	assert.Equal(t, codeInvalidParams, resp.Resp.Error.Code)
 }
 
 // TestServer_RenameLinkRef drives renameLinkRef directly: happy path
