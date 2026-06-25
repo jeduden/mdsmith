@@ -82,12 +82,12 @@ func awaitRenameResponse(t *testing.T, h *testHarness, id string) parsedResponse
 // and a new name that produces an empty slug.
 func TestServer_RenameHeading(t *testing.T) {
 	t.Parallel()
-	t.Run("happy path rewrites cross-file anchor", testRenameHeading_HappyPath)
-	t.Run("collision returns InvalidParams", testRenameHeading_Collision)
-	t.Run("invalid slug returns InvalidParams", testRenameHeading_InvalidSlug)
+	t.Run("happy path rewrites cross-file anchor", testRenameHeadingHappyPath)
+	t.Run("collision returns InvalidParams", testRenameHeadingCollision)
+	t.Run("invalid slug returns InvalidParams", testRenameHeadingInvalidSlug)
 }
 
-func testRenameHeading_HappyPath(t *testing.T) {
+func testRenameHeadingHappyPath(t *testing.T) {
 	t.Parallel()
 	srcA := "# Alpha\n\n## Setup\n\nbody\n"
 	srcB := "# Beta\n\n[s](./a.md#setup)\n"
@@ -123,7 +123,7 @@ func testRenameHeading_HappyPath(t *testing.T) {
 	assert.Equal(t, "Configuration", edit.Changes[uriA][0].NewText)
 }
 
-func testRenameHeading_Collision(t *testing.T) {
+func testRenameHeadingCollision(t *testing.T) {
 	t.Parallel()
 	src := "# Top\n\n## Foo\n\n## Bar\n"
 	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": src})
@@ -151,7 +151,7 @@ func testRenameHeading_Collision(t *testing.T) {
 	assert.Equal(t, codeInvalidParams, resp.Resp.Error.Code)
 }
 
-func testRenameHeading_InvalidSlug(t *testing.T) {
+func testRenameHeadingInvalidSlug(t *testing.T) {
 	t.Parallel()
 	src := "# Top\n\n## Setup\n"
 	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": src})
