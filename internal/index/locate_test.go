@@ -614,3 +614,87 @@ func TestOffsetAt(t *testing.T) {
 	// Line 1 "abc" has length 3; col 99 → offset = 0 + 3 = 3.
 	assert.Equal(t, 3, offsetAt(lines, 1, 99))
 }
+
+func TestPiContainsLine(t *testing.T) {
+	t.Parallel()
+
+	// Multi-line PI spanning lines 1-3 of the body source.
+	multiSrc := "<?include\nfile: x.md\n?>\n<?/include?>\n"
+	multiRoot, multiB := parseDoc(multiSrc)
+	multiPI := firstPI(multiRoot)
+	require.NotNil(t, multiPI)
+
+	assert.True(t, piContainsLine(multiB, multiPI, 1), "start line")
+	assert.True(t, piContainsLine(multiB, multiPI, 2), "inner line")
+	assert.True(t, piContainsLine(multiB, multiPI, 3), "closure line")
+	assert.False(t, piContainsLine(multiB, multiPI, 0), "before start")
+	assert.False(t, piContainsLine(multiB, multiPI, 4), "after closure")
+
+	// Single-line PI: only covers its own line.
+	singleSrc := "<?allow-empty-section?>\n"
+	singleRoot, singleB := parseDoc(singleSrc)
+	singlePI := firstPI(singleRoot)
+	require.NotNil(t, singlePI)
+
+	assert.True(t, piContainsLine(singleB, singlePI, 1), "single-line PI: its own line")
+	assert.False(t, piContainsLine(singleB, singlePI, 2), "single-line PI: line after")
+}
+
+func TestRefDefOnLine(t *testing.T) {
+	t.Parallel()
+	body := []byte("[label]: https://example.com\nplain text\n")
+	lines := bytes.Split(body, []byte("\n"))
+
+	// Line 1 is a ref-def — label is returned.
+	res, ok := refDefOnLine(body, lines, 1, 3)
+	assert.True(t, ok)
+	assert.Equal(t, TokenRefDef, res.Tag)
+	assert.Equal(t, "label", res.Label)
+
+	// Line 2 is plain text — no match.
+	_, ok = refDefOnLine(body, lines, 2, 1)
+	assert.False(t, ok)
+
+	// Line 0 is out of range (< 1).
+	_, ok = refDefOnLine(body, lines, 0, 1)
+	assert.False(t, ok)
+
+	// Line far past len(lines) is out of range.
+	_, ok = refDefOnLine(body, lines, 99, 1)
+	assert.False(t, ok)
+}
+
+func TestLocateInFrontMatter(t *testing.T) {
+	t.Parallel()
+	// fm includes the --- delimiters as StripFrontMatter returns.
+	fm := []byte("---\ntitle: Hello\nkinds:\n  - guide\n---\n")
+
+	// Line 2 is "title: Hello". Cursor before the colon → key.
+	res := locateInFrontMatter(fm, 2, 2)
+	assert.Equal(t, TokenFrontMatterKey, res.Tag)
+	assert.Equal(t, "title", res.FrontMatterKey)
+
+	// Cursor after the colon → value.
+	res = locateInFrontMatter(fm, 2, 10)
+	assert.Equal(t, TokenFrontMatterValue, res.Tag)
+	assert.Equal(t, "title", res.FrontMatterKey)
+	assert.Equal(t, "Hello", res.FrontMatterValue)
+
+	// Line 4 is "  - guide" — a list item under "kinds:".
+	res = locateInFrontMatter(fm, 4, 5)
+	assert.Equal(t, TokenFrontMatterValue, res.Tag)
+	assert.Equal(t, "kinds", res.FrontMatterKey)
+	assert.Equal(t, "guide", res.FrontMatterValue)
+
+	// Line out of range → TokenNone.
+	res = locateInFrontMatter(fm, 99, 1)
+	assert.Equal(t, TokenNone, res.Tag)
+
+	// line < 1 guard.
+	res = locateInFrontMatter(fm, 0, 1)
+	assert.Equal(t, TokenNone, res.Tag)
+
+	// Empty fm bytes: no colon on any line → TokenNone.
+	res = locateInFrontMatter([]byte{}, 1, 1)
+	assert.Equal(t, TokenNone, res.Tag)
+}
