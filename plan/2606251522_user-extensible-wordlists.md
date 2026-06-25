@@ -29,7 +29,7 @@ rebuild is the only way to change them. A project can append
 raw words at `forbidden-text.contains`, but it cannot name,
 reuse, or extend the curated set.
 
-Fifteen built-in rules already read a user-supplied list of
+Sixteen built-in rules already read a user-supplied list of
 strings:
 
 - `forbidden-text.contains`
@@ -39,6 +39,7 @@ strings:
 - `descriptive-link-text.banned`
 - `callout-type.allow`
 - `no-unused-link-definitions.ignored-labels`
+- `required-mentions.mentions`
 - the `placeholders` vocabulary, shared by eight rules
 
 Each keeps its list alone. None can point at a shared, named
@@ -71,6 +72,11 @@ and conventions. It reuses their loader pattern.
 - The `no-llm-tells` convention drops its embedded Go
   literals for `forbidden-text: {lists: [ai-speak]}` and
   `forbidden-paragraph-starts: {lists: [ai-openers]}`.
+- A rule decides how it reads its list: `forbidden-text`
+  bans each entry, while `required-mentions` requires each
+  entry in every section. `required-text-patterns` (MDS057)
+  stays out — its `patterns:` are regular expressions, not
+  plain words.
 
 ### File format
 
@@ -137,8 +143,11 @@ the merge layer already uses for `ListMerger` and
    `internal/config/load.go`. Reject an unknown list name, a
    `lists:` on a rule that is not a consumer, a redefined
    built-in name, and an `extends:` cycle.
-7. Give each of the fifteen rules its one-line
+7. Give each of the sixteen rules its one-line
    `WordlistTarget()` method and interface assertion.
+   `required-mentions` targets `mentions`; its entries are
+   required, not forbidden, but the list mechanism is the
+   same.
 8. Repoint `internal/integration/nollmtells_drift_test.go` to
    compare the embedded built-in data against the catalog in
    `.claude/skills/docs-author/slop-patterns.md`.
