@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jeduden/mdsmith/internal/convention"
+	"github.com/jeduden/mdsmith/internal/wordlist"
 	"github.com/stretchr/testify/require"
 )
 
@@ -23,57 +23,34 @@ const slopPatternsPath = "../../.claude/skills/docs-author/slop-patterns.md"
 func TestNoLLMTellsConventionMatchesSlopCatalog(t *testing.T) {
 	catalog := readSlopCatalog(t)
 
-	conv, err := convention.Lookup("no-llm-tells", nil)
-	require.NoError(t, err)
-
-	// MDS056 contains: holds vocabulary tells followed by phrasal tells.
-	contains := conventionStringList(t, conv, "forbidden-text", "contains")
+	// ai-speak holds vocabulary tells followed by phrasal tells.
+	aiSpeak, ok := wordlist.Builtin("ai-speak")
+	require.True(t, ok, "built-in ai-speak word-list must exist")
 	vocabulary := catalog["Vocabulary tells"]
 	phrases := catalog["Phrasal tells"]
-	for _, item := range contains {
+	for _, item := range aiSpeak.Entries {
 		if vocabulary[item] || phrases[item] {
 			continue
 		}
 		t.Errorf(
-			"forbidden-text contains %q is not in slop-patterns.md "+
+			"ai-speak entry %q is not in slop-patterns.md "+
 				"Vocabulary tells or Phrasal tells", item,
 		)
 	}
 
-	// MDS055 starts: holds the banned sentence openers.
-	starts := conventionStringList(t, conv, "forbidden-paragraph-starts", "starts")
+	// ai-openers holds the banned sentence openers.
+	aiOpeners, ok := wordlist.Builtin("ai-openers")
+	require.True(t, ok, "built-in ai-openers word-list must exist")
 	openers := catalog["Sentence openers"]
-	for _, item := range starts {
+	for _, item := range aiOpeners.Entries {
 		if openers[item] {
 			continue
 		}
 		t.Errorf(
-			"forbidden-paragraph-starts starts %q is not in "+
+			"ai-openers entry %q is not in "+
 				"slop-patterns.md Sentence openers", item,
 		)
 	}
-}
-
-// conventionStringList returns the named list setting of the named rule
-// from a convention, as a []string. It fails the test if the setting is
-// missing or not a list of strings.
-func conventionStringList(
-	t *testing.T, conv convention.Convention, ruleName, key string,
-) []string {
-	t.Helper()
-	preset, ok := conv.Rules[ruleName]
-	require.True(t, ok, "convention must preset %s", ruleName)
-	raw, ok := preset.Settings[key]
-	require.True(t, ok, "%s must set %s", ruleName, key)
-	list, ok := raw.([]any)
-	require.True(t, ok, "%s.%s must be a list", ruleName, key)
-	out := make([]string, 0, len(list))
-	for _, v := range list {
-		s, ok := v.(string)
-		require.True(t, ok, "%s.%s entries must be strings", ruleName, key)
-		out = append(out, s)
-	}
-	return out
 }
 
 // readSlopCatalog parses slop-patterns.md into a map from section

@@ -35,8 +35,15 @@ func TestBuiltin_AiSpeak(t *testing.T) {
 	wl, ok := Builtin("ai-speak")
 	require.True(t, ok)
 	assert.Contains(t, wl.Entries, "delve")
-	assert.Contains(t, wl.Entries, "honest")
 	assert.Contains(t, wl.Entries, "it's important to note that")
+	// The expanded AI-speak vocabulary must stay in the built-in list.
+	for _, want := range []string{
+		"honest", "boast", "garner", "bolster", "myriad", "plethora",
+		"endeavor", "spearhead", "revolutionize", "groundbreaking",
+		"cutting-edge", "effortless", "supercharge",
+	} {
+		assert.Contains(t, wl.Entries, want)
+	}
 }
 
 func TestBuiltin_AiOpeners(t *testing.T) {
