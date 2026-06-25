@@ -3,7 +3,7 @@ id: 2606240213
 title: >-
   Add dedicated unit tests for export.go helpers
   and two small rename helpers
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   internal/export/export.go has 11 unexported
@@ -66,16 +66,17 @@ Functions without a dedicated test:
 
 ## Acceptance Criteria
 
-- [ ] `export_test.go` contains
-      `TestselectDirectives`, `TestallDirectiveNames`,
-      `Testregenerate`, `Testhydrate`,
-      `TestcheckStaleness`, `TestinGeneratedRange`,
-      `TeststripDirectives`, `TestpiLineRange`,
-      `TestoverlapsAny`, `TestemitLines`,
-      `TestnormalizeBlankLines`.
-- [ ] `rule_test.go` contains
-      `TestcountClassifierTokens`.
-- [ ] `rename_test.go` contains
-      `TestcontentBlockLines`.
-- [ ] All three `go test` commands are green.
-- [ ] `mdsmith check .` is green.
+- [x] `helpers_test.go` (package export) contains
+      `TestSelectDirectives`, `TestAllDirectiveNames`,
+      `TestRegenerate`, `TestHydrate`,
+      `TestCheckStaleness`, `TestInGeneratedRange`,
+      `TestStripDirectives`, `TestPiLineRange`,
+      `TestOverlapsAny`, `TestEmitLines`,
+      `TestNormalizeBlankLines`. (Go requires
+      uppercase after `Test`; plan names adjusted.)
+- [x] `rule_test.go` contains
+      `TestCountClassifierTokens`.
+- [x] `helpers_test.go` (package rename) contains
+      `TestContentBlockLines`.
+- [x] All three `go test` commands are green.
+- [x] `mdsmith check .` is green.

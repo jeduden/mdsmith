@@ -3,7 +3,10 @@ package rename
 import (
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -127,6 +130,43 @@ func TestRefDefEditsInBody_DefLinePastLineTable(t *testing.T) {
 	body := []byte("[a]: u\n")
 	edits := refDefEditsInBody(body, [][]byte{}, 0, "a", "z")
 	assert.Empty(t, edits)
+}
+
+func TestContentBlockLines(t *testing.T) {
+	// A paragraph's lines are consumed into the AST block; a ref def's are not.
+	// contentBlockLines skips LinkReferenceDefinition nodes, so the ref def
+	// line does not appear in the result.
+	body := []byte("paragraph text\n\n[label]: https://example.com\n")
+	root := lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
+	got := contentBlockLines(root, body)
+
+	_, hasPara := got[1]
+	assert.True(t, hasPara, "paragraph line should appear in content block lines")
+
+	_, hasDef := got[3]
+	assert.False(t, hasDef, "ref def line must not appear (LinkReferenceDefinition skipped)")
+}
+
+func TestContentBlockLines_EmptyBody(t *testing.T) {
+	body := []byte{}
+	root := lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
+	got := contentBlockLines(root, body)
+	assert.NotNil(t, got)
+	assert.Empty(t, got)
+}
+
+func TestContentBlockLines_CodeBlockLinesConsumed(t *testing.T) {
+	// Lines inside a fenced code block are block-level AST nodes;
+	// their lines appear in the result.
+	body := []byte("```\ncode line\n```\n\n[ref]: u\n")
+	root := lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
+	got := contentBlockLines(root, body)
+
+	_, hasCode := got[2]
+	assert.True(t, hasCode, "code block content line should appear in content block lines")
+
+	_, hasDef := got[5]
+	assert.False(t, hasDef, "ref def line must not appear")
 }
 
 func TestLinkRef_EmptyTextReferenceUseSkipped(t *testing.T) {
