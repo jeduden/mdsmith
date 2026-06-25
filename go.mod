@@ -6,7 +6,7 @@ module github.com/jeduden/mdsmith
 // <tool>` — so their dependency trees and go-version floors never
 // constrain consumers. TestRootGoModStaysInstallable and
 // TestRootGoModCarriesNoDevTools enforce both properties.
-go 1.25.0
+go 1.25.11
 
 require (
 	github.com/bmatcuk/doublestar/v4 v4.10.0
