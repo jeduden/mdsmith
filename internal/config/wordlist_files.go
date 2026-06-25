@@ -241,34 +241,10 @@ func validateWordlists(cfg *Config) error {
 		return nil
 	}
 	userMap := toWordlistMap(cfg.Wordlists)
-	check := func(scope string, rules map[string]RuleCfg) error {
-		for ruleName, rc := range rules {
-			raw, ok := rc.Settings["lists"]
-			if !ok {
-				continue
-			}
-			names, ok := anyToStrings(raw)
-			if !ok {
-				return fmt.Errorf("%s: rule %q: lists must be a list of strings", scope, ruleName)
-			}
-			if rule.ByName(ruleName) == nil {
-				return fmt.Errorf("%s: rule %q: lists set on unknown rule", scope, ruleName)
-			}
-			if _, ok := rule.ByName(ruleName).(rule.WordlistConsumer); !ok {
-				return fmt.Errorf("%s: rule %q does not accept lists", scope, ruleName)
-			}
-			for _, ln := range names {
-				if _, err := wordlist.Resolve(ln, userMap); err != nil {
-					return fmt.Errorf("%s: rule %q: %w", scope, ruleName, err)
-				}
-			}
-		}
-		return nil
-	}
-	if err := check("rules", cfg.Rules); err != nil {
+	if err := checkRuleLists("rules", cfg.Rules, userMap); err != nil {
 		return err
 	}
-	if err := check("convention", cfg.ConventionPreset); err != nil {
+	if err := checkRuleLists("convention", cfg.ConventionPreset, userMap); err != nil {
 		return err
 	}
 	kindNames := make([]string, 0, len(cfg.Kinds))
@@ -277,13 +253,46 @@ func validateWordlists(cfg *Config) error {
 	}
 	sort.Strings(kindNames)
 	for _, kn := range kindNames {
-		if err := check("kind "+kn, cfg.Kinds[kn].Rules); err != nil {
+		if err := checkRuleLists("kind "+kn, cfg.Kinds[kn].Rules, userMap); err != nil {
 			return err
 		}
 	}
 	for i, o := range cfg.Overrides {
-		if err := check(fmt.Sprintf("override %d", i), o.Rules); err != nil {
+		if err := checkRuleLists(fmt.Sprintf("override %d", i), o.Rules, userMap); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// checkRuleLists validates the `lists:` setting on every rule in rules.
+// scope labels the config layer for error messages; userMap resolves
+// named lists. It rejects a non-string lists value, a `lists:` on an
+// unknown or non-WordlistConsumer rule, and any list that fails to
+// resolve (unknown name, unknown parent, or extends cycle).
+func checkRuleLists(
+	scope string, rules map[string]RuleCfg, userMap map[string]wordlist.Wordlist,
+) error {
+	for ruleName, rc := range rules {
+		raw, ok := rc.Settings["lists"]
+		if !ok {
+			continue
+		}
+		names, ok := anyToStrings(raw)
+		if !ok {
+			return fmt.Errorf("%s: rule %q: lists must be a list of strings", scope, ruleName)
+		}
+		r := rule.ByName(ruleName)
+		if r == nil {
+			return fmt.Errorf("%s: rule %q: lists set on unknown rule", scope, ruleName)
+		}
+		if _, ok := r.(rule.WordlistConsumer); !ok {
+			return fmt.Errorf("%s: rule %q does not accept lists", scope, ruleName)
+		}
+		for _, ln := range names {
+			if _, err := wordlist.Resolve(ln, userMap); err != nil {
+				return fmt.Errorf("%s: rule %q: %w", scope, ruleName, err)
+			}
 		}
 	}
 	return nil

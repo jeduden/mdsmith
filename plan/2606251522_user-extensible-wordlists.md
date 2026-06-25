@@ -60,7 +60,7 @@ and conventions. It reuses their loader pattern.
   phrases) and `ai-openers` (sentence openers). The data
   moves out of Go into a new `internal/wordlist` package as
   embedded files.
-- User lists live at `.mdsmith/wordlists/<name>.md`, where
+- User lists live at `.mdsmith/wordlists/<name>.yaml`, where
   the basename is the list name. A list may `extends:` a
   built-in or another user list. Built-in names are reserved
   from redefinition but stay open to `extends:`, as
@@ -80,22 +80,26 @@ and conventions. It reuses their loader pattern.
 
 ### File format
 
-A `.mdsmith/wordlists/<name>.md` file carries optional YAML
-front matter for `extends:` only. The body is one entry per
-non-blank line, taken as written after trimming. A line that
-starts with `#` after trimming is a comment. One entry per
-line — not a YAML or bullet list — so phrases and trailing
-commas survive with no quoting or marker stripping. The file
-reads as a plain catalog that mdsmith can lint. The built-in
-lists use this same format as embedded files, so one parser
+A `.mdsmith/wordlists/<name>.yaml` file carries an optional
+`extends:` parent. It also carries a required `entries:`
+list of literal strings. Strict YAML decoding rejects any
+other key. Anchors and aliases are refused, as the other
+`.mdsmith/` loaders do.
+
+YAML keeps these files out of the `**/*.md` lint walk. So a
+project's own denylist file is never flagged by the rule it
+feeds. The built-in `ai-speak` and `ai-openers` lists use
+the same format. They embed as data files, so one parser
 serves both.
 
-```markdown
----
+(This replaces the Markdown body sketched earlier. YAML
+matches the other loaders and avoids self-linting.)
+
+```yaml
 extends: ai-speak
----
-synergy
-circle back
+entries:
+  - synergy
+  - circle back
 ```
 
 ### Resolution
@@ -122,8 +126,8 @@ the merge layer already uses for `ListMerger` and
 1. Add package `internal/wordlist`: the `Wordlist` type, a
    body parser, `Lookup` (user first, then built-in), and
    `Resolve` for the `extends:` chain with cycle and
-   missing-parent detection. Embed `data/ai-speak.md` and
-   `data/ai-openers.md`, ported from the slices in
+   missing-parent detection. Embed `data/ai-speak.yaml` and
+   `data/ai-openers.yaml`, ported from the slices in
    `internal/convention/nollmtells.go`.
 2. Add the `WordlistConsumer` interface to
    `internal/rule/rule.go`.
@@ -159,7 +163,7 @@ the merge layer already uses for `ListMerger` and
 
 ## Acceptance Criteria
 
-- [ ] A `.mdsmith/wordlists/team.md` with `extends: ai-speak`
+- [ ] A `.mdsmith/wordlists/team.yaml` with `extends: ai-speak`
       resolves, and a doc using a team word fails
       `mdsmith check`.
 - [ ] A doc using only built-in words still fails under
