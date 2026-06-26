@@ -6,7 +6,7 @@ summary: >-
   solid-architecture skill (audit mode)
   appends here; blockers are also filed as
   plans.
-audit-from: 3d35b77143a00a378b16dd97c44c03d1ec578c1b
+audit-from: fe7141beb32f9f20d82476fd8d652e0f63d4e4ef
 ---
 # Architecture audit log
 
@@ -275,25 +275,27 @@ violations. No file crossed 1 000 lines.
 
 ## Audit 2026-06-24 (range: 09f22d3..3d35b77)
 
-Plans 2606240211–2606240214 green. Dedup closed.
+Plans 2606241814/2606241815 green.
 No DIP, SRP, or line-count violations.
 
-### tax
+## Audit 2026-06-26 (range: 3d35b77..fe7141b)
 
-- `internal/lsp/rename.go` — `prepareRenameAt`,
-  `renameHeading`, `renameLinkRef`, and
-  `lspRenameWorkspace.Resolve` lack tests.
-  Two one-liners need "// no test by design"
-  — [plan/2606241814][2606241814].
+Go 1.25.11 + x/net CVE bumps; five perf
+fixes (map→struct, fmt→strconv); type-6 tag
+gap fix; plan-2606241814/15 test additions.
+No new production functions, DIP, SRP, or
+line-count violations.
 
-- `internal/index/locate.go` — `piContainsLine`,
-  `refDefOnLine`, `locateInFrontMatter` omitted from
-  plan 2606240211 — [plan/2606241815][2606241815].
+### tax (2026-06-26)
 
-### nice-to-have
+- `internal/lint/layer0_html.go` — seven
+  helpers lack dedicated tests; file entered
+  touched set via perf commit:
+  `openHTMLBlock`, `tagName.lowerInto`,
+  `type7TagIsRawText`, `type7TagBytes`,
+  `isTagByte`, `htmlBlockCloses`,
+  `scanner.tryHTMLBlock`. Tests doc
+  §"every function by name" —
+  [plan/2606260211][2606260211].
 
-- `internal/index/locate.go` — `isGlobPattern`
-  still needs "// no test by design".
-
-[2606241814]: ../../plan/2606241814_arch-fix-lsp-rename-dispatch-tests.md
-[2606241815]: ../../plan/2606241815_arch-fix-locate-remaining-helper-tests.md
+[2606260211]: ../../plan/2606260211_arch-fix-layer0-html-helper-tests.md
