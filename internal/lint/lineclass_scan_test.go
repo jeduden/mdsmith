@@ -190,6 +190,16 @@ func TestHTMLType6AndClose(t *testing.T) {
 	assert.False(t, containsType1Close([]byte("short")), "shorter than any closer")
 }
 
+func TestContainsFold(t *testing.T) {
+	needle := []byte("</pre>")
+	assert.True(t, containsFold([]byte("</PRE>"), needle), "match at position 0")
+	assert.True(t, containsFold([]byte("x</Pre>y"), needle), "match in middle")
+	assert.True(t, containsFold([]byte("x</PRE>"), needle), "match at last window")
+	assert.False(t, containsFold([]byte("x</em>y"), needle), "no match")
+	assert.False(t, containsFold([]byte("</pr"), needle), "needle longer than line")
+	assert.False(t, containsFold([]byte(""), needle), "empty line")
+}
+
 func TestContainerMarkerScanners(t *testing.T) {
 	assert.Equal(t, 2, blockquoteMarker([]byte("> x")))
 	assert.Equal(t, 1, blockquoteMarker([]byte(">x")), "marker with no following space")
@@ -378,6 +388,11 @@ func TestScanTagName(t *testing.T) {
 	// Empty input.
 	_, ok = scanTagName([]byte(""), 0)
 	assert.False(t, ok)
+
+	// Name runs to end of input (no terminator byte).
+	i, ok = scanTagName([]byte("img"), 0)
+	assert.True(t, ok)
+	assert.Equal(t, 3, i)
 }
 
 // TestScanAttribute pins the attribute scanner.
