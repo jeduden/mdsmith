@@ -1,6 +1,7 @@
 ---
 id: 2606260615
 title: >-
+<<<<<<< .merge_file_CyC6Z1
   arch-fix: add dedicated unit tests for
   cue/cuelite/engine.go unexported helpers
 status: "🔲"
@@ -13,6 +14,20 @@ summary: >-
   engineValue.describeBound, and
   bound.describe. This plan adds a
   dedicated TestFoo for each.
+=======
+  Add dedicated unit tests for unexported
+  helpers in cue/cuelite/engine.go
+status: "✅"
+summary: >-
+  Seven unexported helpers in
+  cue/cuelite/engine.go lack dedicated
+  unit tests. Adds TestCombineMode,
+  TestMkBottom, TestTopValue,
+  TestEngineValue_IsBottomV,
+  TestEngineValue_DefaultValue,
+  TestEngineValue_DescribeBound,
+  and TestBound_Describe.
+>>>>>>> .merge_file_rqVTnH
 model: sonnet
 ---
 # arch-fix: cuelite engine helper tests
@@ -49,6 +64,8 @@ by name" requires one.
 
 ## Tasks
 
+<<<<<<< .merge_file_CyC6Z1
+
 1. [ ] Add `TestCombineMode` in
    `cue/cuelite/engine_test.go` or a new
    `engine_helpers_test.go`. Cover all
@@ -71,13 +88,48 @@ by name" requires one.
    Cover a bounded integer (`>=1 & <=10`)
    and a string match constraint.
 7. [ ] Add `TestBound_Describe`. Cover each
+=======
+1. [x] Add `TestCombineMode` in
+   `cue/cuelite/engine_test.go` or a new
+   `engine_helpers_test.go`. Cover all
+   four `combineMode` table entries.
+2. [x] Add `TestMkBottom`. Confirm the
+   returned value satisfies `isBottomV()`
+   and that `describe()` includes the
+   formatted message.
+3. [x] Add `TestTopValue`. Confirm
+   `describe() == "_"` and
+   `isBottomV() == false`.
+4. [x] Add `TestEngineValue_IsBottomV`.
+   Cover `nil` receiver (false), `kBottom`
+   (true), and a non-bottom value (false).
+5. [x] Add `TestEngineValue_DefaultValue`.
+   Cover a value with a default (returns
+   default and `true`) and a value with no
+   default (returns `false`).
+6. [x] Add `TestEngineValue_DescribeBound`.
+   Cover a bounded integer (`>=1 & <=10`)
+   and a string match constraint.
+7. [x] Add `TestBound_Describe`. Cover each
+
+>>>>>>> .merge_file_rqVTnH
    operator (`>=`, `<=`, `>`, `<`, `!=`,
    `=~`, `!~`) and `strings.MinRunes`.
 
 ## Acceptance Criteria
+
+<<<<<<< .merge_file_CyC6Z1
 
 - [ ] Each of the seven functions has a
   dedicated top-level test.
 - [ ] `go test ./cue/cuelite/...` green.
 - [ ] `go vet ./...` clean.
 - [ ] No production code changed; tests only.
+=======
+- [x] Each of the seven functions has a
+  dedicated top-level test.
+- [x] `go test ./cue/cuelite/...` green.
+- [x] `go vet ./...` clean.
+- [x] No production code changed; tests only.
+
+>>>>>>> .merge_file_rqVTnH
