@@ -211,8 +211,8 @@ explicit mention here:
 - **A rule package importing another
   rule package** — always a DIP
   blocker. Helpers belong in
-  `internal/mdtext` or
-  `internal/rules/astutil`.
+  `internal/mdtext`, `internal/rules/astutil`,
+  or `internal/rules/listscan`.
 - **`cmd/mdsmith/main.go` past ~1000
   lines** — handler bodies have crept
   in; relocate to `internal/engine` or
