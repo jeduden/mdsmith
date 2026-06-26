@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCombineMode(t *testing.T) {
@@ -20,13 +21,13 @@ func TestCombineMode(t *testing.T) {
 
 func TestMkBottom(t *testing.T) {
 	v := mkBottom([]string{"a", "b"}, "conflict: %s vs %s", "x", "y")
-	assert.True(t, v.isBottomV())
+	require.True(t, v.isBottomV())
 	assert.Equal(t, "conflict: x vs y", v.reason)
 	assert.Equal(t, []string{"a", "b"}, v.path)
 	assert.Equal(t, "_|_", v.describe())
 
 	v2 := mkBottom(nil, "no path")
-	assert.True(t, v2.isBottomV())
+	require.True(t, v2.isBottomV())
 	assert.Nil(t, v2.path)
 }
 
