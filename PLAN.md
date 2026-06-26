@@ -231,4 +231,6 @@ footer: |
 | 2606241814 | ✅     | sonnet | [Add unit tests for lsp/rename dispatch helpers and workspace adapter methods](plan/2606241814_arch-fix-lsp-rename-dispatch-tests.md)          |
 | 2606241815 | ✅     | sonnet | [Add unit tests for three remaining unexported helpers in internal/index/locate.go](plan/2606241815_arch-fix-locate-remaining-helper-tests.md) |
 | 2606260211 | ✅     | sonnet | [Add dedicated unit tests for layer0_html.go helpers](plan/2606260211_arch-fix-layer0-html-helper-tests.md)                                    |
+| 2606260614 | 🔲     | sonnet | [arch-fix: add dedicated unit tests for lineclass_scan.go HTML-scanning helpers](plan/2606260614_arch-fix-lineclass-scan-helper-tests.md)      |
+| 2606260615 | 🔲     | sonnet | [arch-fix: add dedicated unit tests for cue/cuelite/engine.go unexported helpers](plan/2606260615_arch-fix-cuelite-engine-helper-tests.md)     |
 <?/catalog?>
