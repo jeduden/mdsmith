@@ -23,11 +23,10 @@ func TestCombineMode(t *testing.T) {
 // TestMkBottom verifies that mkBottom builds a ⊥ value carrying the
 // formatted reason and the supplied path.
 func TestMkBottom(t *testing.T) {
-	path := []string{"a", "b"}
-	v := mkBottom(path, "conflict: %s vs %s", "x", "y")
+	v := mkBottom([]string{"a", "b"}, "conflict: %s vs %s", "x", "y")
 	assert.True(t, v.isBottomV(), "mkBottom must produce a ⊥ value")
 	assert.Equal(t, "conflict: x vs y", v.reason)
-	assert.Equal(t, path, v.path)
+	assert.Equal(t, []string{"a", "b"}, v.path)
 	assert.Equal(t, "_|_", v.describe())
 
 	// nil path is preserved as nil.
@@ -136,6 +135,7 @@ func TestBound_Describe(t *testing.T) {
 		{"gt int", bound{op: opGt, num: 0}, ">0"},
 		{"lt int", bound{op: opLt, num: 100}, "<100"},
 		{"ne string", bound{op: opNe, isStr: true, str: ""}, `!=""`},
+		{"ne int", bound{op: opNe, num: 5}, "!=5"},
 		{"match", bound{op: opMatch, src: `^[a-z]+$`}, `=~"^[a-z]+$"`},
 		{"not match", bound{op: opNotMatch, src: `^[0-9]+$`}, `!~"^[0-9]+$"`},
 		{"min runes", bound{op: opMinRunes, num: 5}, "strings.MinRunes(5)"},
