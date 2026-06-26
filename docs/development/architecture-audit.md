@@ -253,12 +253,8 @@ line-count violations.
 ### tax (2026-06-26)
 
 - `internal/lint/layer0_html.go` — seven
-  helpers lack dedicated tests; file entered
-  touched set via perf commit:
-  `openHTMLBlock`, `tagName.lowerInto`,
-  `type7TagIsRawText`, `type7TagBytes`,
-  `isTagByte`, `htmlBlockCloses`,
-  `scanner.tryHTMLBlock`. Tests doc
+  helpers lack dedicated tests. File entered
+  the touched set via a perf commit. Tests doc
   §"every function by name" —
   [plan/2606260211][2606260211].
 
