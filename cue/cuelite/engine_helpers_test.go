@@ -6,8 +6,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestCombineMode verifies that combineMode returns max(a,b) across all
-// pairings of the three defaultMode values.
 func TestCombineMode(t *testing.T) {
 	assert.Equal(t, dfltMaybe, combineMode(dfltMaybe, dfltMaybe))
 	assert.Equal(t, dfltNot, combineMode(dfltMaybe, dfltNot))
@@ -20,42 +18,38 @@ func TestCombineMode(t *testing.T) {
 	assert.Equal(t, dfltIs, combineMode(dfltIs, dfltIs))
 }
 
-// TestMkBottom verifies that mkBottom builds a ⊥ value carrying the
-// formatted reason and the supplied path.
 func TestMkBottom(t *testing.T) {
 	v := mkBottom([]string{"a", "b"}, "conflict: %s vs %s", "x", "y")
-	assert.True(t, v.isBottomV(), "mkBottom must produce a ⊥ value")
+	assert.True(t, v.isBottomV())
 	assert.Equal(t, "conflict: x vs y", v.reason)
 	assert.Equal(t, []string{"a", "b"}, v.path)
 	assert.Equal(t, "_|_", v.describe())
 
-	// nil path is preserved as nil.
 	v2 := mkBottom(nil, "no path")
 	assert.True(t, v2.isBottomV())
 	assert.Nil(t, v2.path)
 }
 
-// TestTopValue verifies that topValue produces the lattice identity: not ⊥,
-// and describing as "_".
 func TestTopValue(t *testing.T) {
 	v := topValue()
 	assert.Equal(t, "_", v.describe())
-	assert.False(t, v.isBottomV(), "topValue must not be ⊥")
+	assert.False(t, v.isBottomV())
 }
 
-// TestEngineValue_IsBottomV covers the nil receiver, a kBottom value, and
-// several non-bottom values.
+// TestEngineValue_IsBottomV pins the nil-safe method contract: a nil receiver
+// must return false, not panic.
 func TestEngineValue_IsBottomV(t *testing.T) {
 	var nilV *engineValue
-	assert.False(t, nilV.isBottomV(), "nil receiver must return false")
+	assert.False(t, nilV.isBottomV())
 	assert.True(t, mkBottom(nil, "x").isBottomV())
 	assert.False(t, topValue().isBottomV())
 	assert.False(t, (&engineValue{kind: kString, str: "hello"}).isBottomV())
 	assert.False(t, (&engineValue{kind: kNull}).isBottomV())
 }
 
-// TestEngineValue_DefaultValue covers no default (returns nil,false), a
-// single default (returns the branch, false), and ambiguous defaults (nil,true).
+// TestEngineValue_DefaultValue pins the ambig bool semantics: false means
+// "zero or one default" while true means "more than one dfltIs branch",
+// which CUE treats as ambiguous and non-concrete.
 func TestEngineValue_DefaultValue(t *testing.T) {
 	a := &engineValue{kind: kString, str: "a"}
 	b := &engineValue{kind: kString, str: "b"}
@@ -71,7 +65,7 @@ func TestEngineValue_DefaultValue(t *testing.T) {
 		assert.False(t, ambig)
 	})
 
-	t.Run("single default", func(t *testing.T) {
+	t.Run("first branch is default", func(t *testing.T) {
 		v := &engineValue{
 			kind:     kDisjoint,
 			branches: []*engineValue{a, b},
@@ -79,6 +73,17 @@ func TestEngineValue_DefaultValue(t *testing.T) {
 		}
 		got, ambig := v.defaultValue()
 		assert.Same(t, a, got)
+		assert.False(t, ambig)
+	})
+
+	t.Run("second branch is default", func(t *testing.T) {
+		v := &engineValue{
+			kind:     kDisjoint,
+			branches: []*engineValue{a, b},
+			modes:    []defaultMode{dfltNot, dfltIs},
+		}
+		got, ambig := v.defaultValue()
+		assert.Same(t, b, got)
 		assert.False(t, ambig)
 	})
 
@@ -94,36 +99,50 @@ func TestEngineValue_DefaultValue(t *testing.T) {
 	})
 }
 
-// TestEngineValue_DescribeBound verifies that describeBound renders the base
-// atom type followed by each bound joined with " & ".
 func TestEngineValue_DescribeBound(t *testing.T) {
-	t.Run("int with two numeric bounds", func(t *testing.T) {
-		v := &engineValue{
-			kind: kBound,
-			atom: akInt,
-			bounds: []bound{
-				{op: opGe, num: 0},
-				{op: opLe, num: 100},
-			},
-		}
-		assert.Equal(t, "int & >=0 & <=100", v.describeBound())
-	})
-	t.Run("string with regex match constraint", func(t *testing.T) {
-		v := &engineValue{
-			kind:   kBound,
-			atom:   akString,
-			bounds: []bound{{op: opMatch, src: `^[a-z]+$`}},
-		}
-		assert.Equal(t, `string & =~"^[a-z]+$"`, v.describeBound())
-	})
-	t.Run("no bounds renders atom only", func(t *testing.T) {
-		v := &engineValue{kind: kBound, atom: akFloat}
-		assert.Equal(t, "float", v.describeBound())
-	})
+	cases := []struct {
+		name string
+		v    *engineValue
+		want string
+	}{
+		{
+			"int with two numeric bounds",
+			&engineValue{kind: kBound, atom: akInt, bounds: []bound{{op: opGe, num: 0}, {op: opLe, num: 100}}},
+			"int & >=0 & <=100",
+		},
+		{
+			"string with regex match constraint",
+			&engineValue{kind: kBound, atom: akString, bounds: []bound{{op: opMatch, src: `^[a-z]+$`}}},
+			`string & =~"^[a-z]+$"`,
+		},
+		{
+			"float atom no bounds",
+			&engineValue{kind: kBound, atom: akFloat},
+			"float",
+		},
+		{
+			"number atom no bounds",
+			&engineValue{kind: kBound, atom: akNumber},
+			"number",
+		},
+		{
+			"bool atom no bounds",
+			&engineValue{kind: kBound, atom: akBool},
+			"bool",
+		},
+		{
+			"bytes atom no bounds",
+			&engineValue{kind: kBound, atom: akBytes},
+			"bytes",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, tc.v.describeBound())
+		})
+	}
 }
 
-// TestBound_Describe covers every boundOp, integral vs float numeric
-// operands, and string operands.
 func TestBound_Describe(t *testing.T) {
 	cases := []struct {
 		name string
