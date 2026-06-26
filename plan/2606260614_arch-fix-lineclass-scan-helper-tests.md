@@ -3,7 +3,7 @@ id: 2606260614
 title: >-
   arch-fix: add dedicated unit tests for
   lineclass_scan.go HTML-scanning helpers
-status: "🔲"
+status: "✅"
 summary: >-
   Nine unexported sub-functions of the
   type-7 HTML block scanning path in
@@ -49,46 +49,46 @@ dedicated test per function.
 
 ## Tasks
 
-1. [ ] Add `TestScanHTMLTag` to
+1. [x] Add `TestScanHTMLTag` to
    `internal/lint/lineclass_scan_test.go`.
    Cover the open-tag path, the closing-tag
    path, and a non-`<` byte that returns
    `(0, false)`.
-2. [ ] Add `TestScanClosingTag`. Cover
+2. [x] Add `TestScanClosingTag`. Cover
    `</tagname>` success, missing `>`, and
    a name starting with a digit.
-3. [ ] Add `TestScanOpenTag`. Cover a
+3. [x] Add `TestScanOpenTag`. Cover a
    minimal `<img>` success, `<img />`, one
    attribute, and failure cases
    (`<img src=>`, unclosed tag).
-4. [ ] Add `TestScanTagName`. Cover a valid
+4. [x] Add `TestScanTagName`. Cover a valid
    name, a name starting with a digit (fail),
    an empty input (fail), and a name
    terminated by `>`.
-5. [ ] Add `TestScanAttribute`. Cover a
+5. [x] Add `TestScanAttribute`. Cover a
    plain valueless attribute, a `key=value`
    pair, a `key="value"` pair, and `=` with
    no value.
-6. [ ] Add `TestScanAttrValue`. Cover bare
+6. [x] Add `TestScanAttrValue`. Cover bare
    unquoted, single-quoted, and
    double-quoted values; an unclosed quote;
    and an empty unquoted value.
-7. [ ] Add `TestSkipHTMLWS`. Cover spaces,
+7. [x] Add `TestSkipHTMLWS`. Cover spaces,
    tabs, a mix, and a non-whitespace byte
    at position 0.
-8. [ ] Add `TestIsUnquotedStop`. Cover bytes
+8. [x] Add `TestIsUnquotedStop`. Cover bytes
    that stop (`"`, `'`, `=`, `>`, `` ` ``,
    control bytes) and bytes that do not.
-9. [ ] Add `TestEqualFoldASCII`. Cover
+9. [x] Add `TestEqualFoldASCII`. Cover
    same-case match, mixed-case match,
    different bytes (no match), and
    different lengths (no match).
 
 ## Acceptance Criteria
 
-- [ ] Each of the nine functions has a
+- [x] Each of the nine functions has a
   dedicated top-level `TestFoo` in
   `internal/lint/lineclass_scan_test.go`.
-- [ ] `go test ./internal/lint/...` green.
-- [ ] `go vet ./...` clean.
-- [ ] No production code changed; tests only.
+- [x] `go test ./internal/lint/...` green.
+- [x] `go vet ./...` clean.
+- [x] No production code changed; tests only.
