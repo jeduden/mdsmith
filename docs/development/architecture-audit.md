@@ -252,20 +252,22 @@ line-count violations.
 
 ### tax (2026-06-26)
 
+Plans 2606260211, 2606260614, 2606260615 green.
+
 - `internal/lint/layer0_html.go` — seven
   helpers lack dedicated tests. File entered
   the touched set via a perf commit. Tests doc
   §"every function by name" —
-  [plan/2606260211][2606260211].
+  [plan/2606260211][2606260211]. ✅
 
 - `internal/lint/lineclass_scan.go` — 9
   unexported helpers lack tests.
   Sub-functions of `htmlType7Start` —
-  [plan/2606260614][2606260614].
+  [plan/2606260614][2606260614]. ✅
 
 - `cue/cuelite/engine.go` — 7 unexported
   helpers lack tests —
-  [plan/2606260615][2606260615].
+  [plan/2606260615][2606260615]. ✅
 
 [2606260211]: ../../plan/2606260211_arch-fix-layer0-html-helper-tests.md
 [2606260614]: ../../plan/2606260614_arch-fix-lineclass-scan-helper-tests.md
