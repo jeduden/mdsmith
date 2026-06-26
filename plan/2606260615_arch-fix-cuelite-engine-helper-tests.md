@@ -1,18 +1,18 @@
 ---
 id: 2606260615
 title: >-
-  arch-fix: add dedicated unit tests for
-  cue/cuelite/engine.go unexported helpers
+  Add dedicated unit tests for unexported
+  helpers in cue/cuelite/engine.go
 status: "✅"
 summary: >-
   Seven unexported helpers in
   cue/cuelite/engine.go lack dedicated
-  unit tests: combineMode, mkBottom,
-  topValue, engineValue.isBottomV,
-  engineValue.defaultValue,
-  engineValue.describeBound, and
-  bound.describe. This plan adds a
-  dedicated TestFoo for each.
+  unit tests. Adds TestCombineMode,
+  TestMkBottom, TestTopValue,
+  TestEngineValue_IsBottomV,
+  TestEngineValue_DefaultValue,
+  TestEngineValue_DescribeBound,
+  and TestBound_Describe.
 model: sonnet
 ---
 # arch-fix: cuelite engine helper tests
