@@ -286,9 +286,9 @@ docs and tutorials.
 ### Resolution order and layering
 
 The lookup checks user-defined conventions first,
-then the built-in table. Collisions with reserved
-names are rejected at load time. When neither matches,
-the error lists both sets:
+then the built-in table. A collision with a reserved
+name is a config error — shadowing is impossible.
+When neither matches, the error lists both sets:
 
 ```text
 unknown convention "bogus" (valid: github, gomarklint-parity, mado-parity, markdownlint-parity, no-llm-tells, obsidian, our-team, plain, portable, rumdl-parity, slidev)

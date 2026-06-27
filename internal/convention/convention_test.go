@@ -217,7 +217,7 @@ func TestLookup_Slidev(t *testing.T) {
 			assert.False(t, p.Enabled, "slidev convention must disable rule %q", rule)
 		}
 	}
-	assert.Len(t, c.Rules, len(disabledRules),
+	require.Len(t, c.Rules, len(disabledRules),
 		"slidev convention rule count drifted")
 }
 
