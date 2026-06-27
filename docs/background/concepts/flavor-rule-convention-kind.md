@@ -51,8 +51,8 @@ applies both: MDS034 runs against the named flavor,
 and the named rule presets are applied as a base
 layer beneath the user's own rule config. The
 built-in conventions are `portable`, `github`,
-`obsidian`, `plain`, `no-llm-tells`, and four
-`<linter>-parity` conventions. Each one runs the
+`obsidian`, `plain`, `no-llm-tells`, `slidev`, and
+four `<linter>-parity` conventions. Each one runs the
 rule set a peer linter (gomarklint, mado, rumdl,
 markdownlint) enables by default, so `mdsmith check`
 matches that peer's work for a like-for-like
