@@ -43,8 +43,11 @@ optional; omit it for no convention.
 
 You may also set `flavor:` inside `markdown-flavor`
 alongside `convention:`. If both are set, they must
-agree — a convention that requires `commonmark`
-rejects `flavor: gfm` at config load.
+agree — a convention that pins a flavor (e.g.
+`portable` requires `commonmark`) rejects a
+conflicting `flavor:` at config load. Conventions
+that pin no flavor (`slidev`, `no-llm-tells`) do not
+enforce this check.
 
 ## Built-in conventions
 
@@ -163,23 +166,21 @@ convention's list instead of replacing it.
 
 Disables eight default-on rules that produce false
 positives on [Slidev](https://sli.dev) files. Slidev
-uses `---` as a slide separator: headings restart per
-slide, layout blocks look like setext headings, and
-layout-only slides carry no body. Pins no flavor.
-The parser-level `---` separator issue is out of
-scope; this convention addresses rule-level false
-positives only.
+uses `---` as a slide separator: the separator is
+parsed as a setext underline, headings restart per
+slide, and layout-only slides carry no body. Pins no
+flavor; the parser-level `---` issue is out of scope.
 
-| Rule                                          | Why disabled                            |
-| --------------------------------------------- | --------------------------------------- |
-| `heading-style` (MDS002)                      | Layout blocks parsed as setext headings |
-| `heading-increment` (MDS003)                  | Each slide restarts at H1               |
-| `first-line-heading` (MDS004)                 | Front matter before first heading       |
-| `no-duplicate-headings` (MDS005)              | Same title on multiple slides           |
-| `blank-line-around-headings` (MDS013)         | Layout blocks interfere                 |
-| `no-trailing-punctuation-in-heading` (MDS017) | Stylistic slide titles                  |
-| `no-emphasis-as-heading` (MDS018)             | Bold used for slide emphasis            |
-| `empty-section-body` (MDS030)                 | Layout-only slides have no body         |
+| Rule                                          | Why disabled                               |
+| --------------------------------------------- | ------------------------------------------ |
+| `heading-style` (MDS002)                      | `---` separator parsed as setext underline |
+| `heading-increment` (MDS003)                  | Each slide restarts at H1                  |
+| `first-line-heading` (MDS004)                 | Front matter before first heading          |
+| `no-duplicate-headings` (MDS005)              | Same title on multiple slides              |
+| `blank-line-around-headings` (MDS013)         | Layout blocks interfere                    |
+| `no-trailing-punctuation-in-heading` (MDS017) | Stylistic slide titles                     |
+| `no-emphasis-as-heading` (MDS018)             | Bold used for slide emphasis               |
+| `empty-section-body` (MDS030)                 | Layout-only slides have no body            |
 
 ## How presets layer with user config
 
