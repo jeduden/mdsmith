@@ -233,4 +233,5 @@ footer: |
 | 2606260211 | ✅     | sonnet | [Add dedicated unit tests for layer0_html.go helpers](plan/2606260211_arch-fix-layer0-html-helper-tests.md)                                    |
 | 2606260614 | ✅     | sonnet | [arch-fix: add dedicated unit tests for lineclass_scan.go HTML-scanning helpers](plan/2606260614_arch-fix-lineclass-scan-helper-tests.md)      |
 | 2606260615 | ✅     | sonnet | [Add dedicated unit tests for unexported helpers in cue/cuelite/engine.go](plan/2606260615_arch-fix-cuelite-engine-helper-tests.md)            |
+| 2606270013 | ✅     | sonnet | [Add built-in Slidev convention](plan/2606270013_slidev-convention.md)                                                                         |
 <?/catalog?>
