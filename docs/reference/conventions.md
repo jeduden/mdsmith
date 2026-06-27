@@ -290,7 +290,7 @@ names are rejected at load time. When neither matches,
 the error lists both sets:
 
 ```text
-unknown convention "bogus" (valid: github, gomarklint-parity, mado-parity, markdownlint-parity, no-llm-tells, obsidian, our-team, plain, portable, rumdl-parity)
+unknown convention "bogus" (valid: github, gomarklint-parity, mado-parity, markdownlint-parity, no-llm-tells, obsidian, our-team, plain, portable, rumdl-parity, slidev)
 ```
 
 User-defined conventions apply as a base layer, like

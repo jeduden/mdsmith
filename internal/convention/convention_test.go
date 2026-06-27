@@ -213,7 +213,7 @@ func TestLookup_Slidev(t *testing.T) {
 	}
 	for _, rule := range disabledRules {
 		p, ok := c.Rules[rule]
-		require.True(t, ok, "slidev convention must mention rule %q", rule)
+		assert.True(t, ok, "slidev convention must mention rule %q", rule)
 		assert.False(t, p.Enabled, "slidev convention must disable rule %q", rule)
 	}
 	assert.Len(t, c.Rules, len(disabledRules),
