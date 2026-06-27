@@ -249,6 +249,7 @@ fixes (map→struct, fmt→strconv); type-6 tag
 gap fix; plan-2606241814/15 test additions.
 No new production functions, DIP, SRP, or
 line-count violations.
+Plans 2606260211, 2606260614, 2606260615 green.
 
 ### tax (2026-06-26)
 
