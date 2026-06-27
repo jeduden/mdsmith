@@ -193,23 +193,27 @@ var conventions = map[string]Convention{
 	// the flavor field never reports; the loader skips the flavor-conflict
 	// guard for a convention whose flavor is FlavorAny.
 	//
-	// The lists are the built-in `ai-speak` (vocabulary + phrases) and
-	// `ai-openers` word-lists in internal/wordlist; their source of
-	// truth is .claude/skills/docs-author/slop-patterns.md, kept in
-	// sync by the drift-checker integration test. A project layers its
-	// own terms by referencing extra `.mdsmith/wordlists/` files in the
-	// rules' `lists:` setting, which unions with the built-ins.
+	// The curated lists live in nollmtells.go; their source of truth is
+	// .claude/skills/docs-author/slop-patterns.md, kept in sync by the
+	// drift-checker integration test. A project layers its own terms by
+	// adding to the rules' inline `contains:`/`starts:` lists (which
+	// append over the preset) or by naming a `.mdsmith/wordlists/` file
+	// in the rules' `lists:` setting.
 	"no-llm-tells": {
 		Name:   "no-llm-tells",
 		Flavor: FlavorAny,
 		Rules: map[string]RulePreset{
 			"forbidden-text": {
-				Enabled:  true,
-				Settings: map[string]any{"lists": []any{"ai-speak"}},
+				Enabled: true,
+				Settings: map[string]any{
+					"contains": toAnySlice(llmVocabularyAndPhrases()),
+				},
 			},
 			"forbidden-paragraph-starts": {
-				Enabled:  true,
-				Settings: map[string]any{"lists": []any{"ai-openers"}},
+				Enabled: true,
+				Settings: map[string]any{
+					"starts": toAnySlice(llmParagraphOpeners()),
+				},
 			},
 			"paragraph-structure": {
 				Enabled: true,

@@ -51,8 +51,7 @@ type UserConvention struct {
 // under the top-level `wordlists:` block in .mdsmith.yml or in a file
 // under `.mdsmith/wordlists/<name>.yaml`. A rule names a list via its
 // `lists:` setting; the resolved entries union into the rule's own
-// list. A list may `extends:` a built-in (ai-speak, ai-openers) or
-// another user list.
+// list. A list may `extends:` another user list.
 type UserWordlist struct {
 	// Extends optionally names a parent list whose entries are
 	// prepended (parent-first, de-duplicated) when this list resolves.
@@ -97,8 +96,8 @@ type Config struct {
 	// top-level `wordlists:` key — the inline equivalent of a
 	// `.mdsmith/wordlists/<name>.yaml` file. A rule references one by
 	// name via its `lists:` setting; the resolved entries union into
-	// the rule's own list. Names must not collide with a built-in list
-	// (ai-speak, ai-openers) or a `.mdsmith/wordlists/` file basename.
+	// the rule's own list. Names must not collide with a
+	// `.mdsmith/wordlists/` file basename.
 	Wordlists map[string]UserWordlist `yaml:"wordlists,omitempty"`
 
 	// Schemas holds named document-structure schemas declared inline

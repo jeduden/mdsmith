@@ -149,6 +149,7 @@ row: "- [{summary}](../{filename})"
 - [mdsmith collects no telemetry, no usage analytics, no error reports, and no identifiers. The CLI and the LSP server make no outbound network calls at runtime.](../docs/reference/telemetry.md)
 - [Settings and troubleshooting for the mdsmith VS Code extension: the five `mdsmith.*` settings, fix-on-save wiring, and fixes for its known failure modes.](../docs/reference/vscode-extension.md)
 - [Each file under `.mdsmith/wordlists/` declares one named word-list: an optional `extends:` parent and an `entries:` list of literal strings. A rule pulls a list in through its `lists:` setting and the entries union with the rule's own list. The built-in `ai-speak` and `ai-openers` lists ship compiled in.](../docs/reference/wordlist-files.md)
+- [Each file under `.mdsmith/wordlists/` declares one named word-list: an optional `extends:` parent and an `entries:` list of literal strings. A rule pulls a list in through its `lists:` setting and the entries union with the rule's own list. No lists ship compiled in; a project declares every list it uses.](../docs/reference/wordlist-files.md)
 <?/catalog?>
 
 ### Development Workflow

@@ -1,14 +1,14 @@
 ---
 id: 2606251522
 title: user-extensible named word-lists
-status: "🔲"
+status: "🔳"
 summary: >-
-  Replace the hardcoded word lists in nollmtells.go with a
-  named word-list resource under `.mdsmith/wordlists/`. Every
-  list-consuming rule gains a `lists:` setting that unions
-  named lists into its inline list; the no-llm-tells
-  convention names the built-in `ai-speak` and `ai-openers`
-  lists, and a project adds or extends lists with no rebuild.
+  Add a named word-list resource under `.mdsmith/wordlists/`.
+  Every list-consuming rule gains a `lists:` setting that
+  unions named lists into its inline list. No lists ship
+  compiled in: the no-llm-tells convention keeps its curated
+  words inline, and a project declares and extends its own
+  lists with no rebuild.
 model: opus
 depends-on: []
 ---
@@ -56,22 +56,20 @@ an optional `extends:` parent. It is the fourth
 user-extensible `.mdsmith/` resource, after kinds, schemas,
 and conventions. It reuses their loader pattern.
 
-- Built-in lists ship embedded: `ai-speak` (tell words plus
-  phrases) and `ai-openers` (sentence openers). The data
-  moves out of Go into a new `internal/wordlist` package as
-  embedded files.
+- No lists ship compiled in. The `no-llm-tells` convention
+  keeps its curated `ai-speak`/`ai-openers` words inline in
+  `internal/convention/nollmtells.go`, as the rules'
+  `contains:`/`starts:` presets.
+- A new `internal/wordlist` package parses, looks up, and
+  resolves user lists (the `extends:` chain, with cycle and
+  missing-parent detection). It ships no embedded data.
 - User lists live at `.mdsmith/wordlists/<name>.yaml`, where
-  the basename is the list name. A list may `extends:` a
-  built-in or another user list. Built-in names are reserved
-  from redefinition but stay open to `extends:`, as
-  convention names are.
+  the basename is the list name. A list may `extends:`
+  another user list.
 - Rules name lists through a new generic `lists:` setting.
   The resolved entries union into the rule's own inline
   list. `lists:` appends across config layers, so a
   convention's `lists:` and a project's `lists:` combine.
-- The `no-llm-tells` convention drops its embedded Go
-  literals for `forbidden-text: {lists: [ai-speak]}` and
-  `forbidden-paragraph-starts: {lists: [ai-openers]}`.
 - A rule decides how it reads its list: `forbidden-text`
   bans each entry, while `required-mentions` requires each
   entry in every section. `required-text-patterns` (MDS057)
@@ -88,15 +86,13 @@ other key. Anchors and aliases are refused, as the other
 
 YAML keeps these files out of the `**/*.md` lint walk. So a
 project's own denylist file is never flagged by the rule it
-feeds. The built-in `ai-speak` and `ai-openers` lists use
-the same format. They embed as data files, so one parser
-serves both.
+feeds.
 
 (This replaces the Markdown body sketched earlier. YAML
 matches the other loaders and avoids self-linting.)
 
 ```yaml
-extends: ai-speak
+extends: house-base
 entries:
   - synergy
   - circle back
@@ -124,16 +120,15 @@ the merge layer already uses for `ListMerger` and
 ## Tasks
 
 1. Add package `internal/wordlist`: the `Wordlist` type, a
-   body parser, `Lookup` (user first, then built-in), and
-   `Resolve` for the `extends:` chain with cycle and
-   missing-parent detection. Embed `data/ai-speak.yaml` and
-   `data/ai-openers.yaml`, ported from the slices in
-   `internal/convention/nollmtells.go`.
+   body parser, `Lookup` (user lists only), and `Resolve`
+   for the `extends:` chain with cycle and missing-parent
+   detection. No embedded data.
 2. Add the `WordlistConsumer` interface to
    `internal/rule/rule.go`.
-3. Rework the `no-llm-tells` entry in
-   `internal/convention/convention.go` to name the two
-   built-in lists. Delete `internal/convention/nollmtells.go`.
+3. Keep the `no-llm-tells` entry in
+   `internal/convention/convention.go` pointed at its inline
+   `contains:`/`starts:` presets, with the curated words in
+   `internal/convention/nollmtells.go`.
 4. Add the user-file loader
    `internal/config/wordlist_files.go`, modeled on
    `internal/config/convention_files.go`. Add
@@ -145,15 +140,16 @@ the merge layer already uses for `ListMerger` and
    `internal/config/merge.go`.
 6. Add `validateWordlists` and call it from
    `internal/config/load.go`. Reject an unknown list name, a
-   `lists:` on a rule that is not a consumer, a redefined
-   built-in name, and an `extends:` cycle.
+   `lists:` on a rule that is not a consumer, and an
+   `extends:` cycle.
 7. Give each of the sixteen rules its one-line
    `WordlistTarget()` method and interface assertion.
    `required-mentions` targets `mentions`; its entries are
    required, not forbidden, but the list mechanism is the
    same.
-8. Repoint `internal/integration/nollmtells_drift_test.go` to
-   compare the embedded built-in data against the catalog in
+8. Keep `internal/integration/nollmtells_drift_test.go`
+   comparing the convention's inline `contains:`/`starts:`
+   lists against the catalog in
    `.claude/skills/docs-author/slop-patterns.md`.
 9. Add `docs/reference/wordlist-files.md`. Update
    `docs/reference/conventions.md`,
@@ -163,16 +159,17 @@ the merge layer already uses for `ListMerger` and
 
 ## Acceptance Criteria
 
-- [ ] A `.mdsmith/wordlists/team.yaml` with `extends: ai-speak`
-      resolves, and a doc using a team word fails
-      `mdsmith check`.
-- [ ] A doc using only built-in words still fails under
+- [ ] A `.mdsmith/wordlists/team.yaml` that `extends:`
+      another file resolves, and a doc using a team word
+      fails `mdsmith check`.
+- [ ] A doc using the convention's curated words fails under
       `convention: no-llm-tells`.
 - [ ] An unknown list name, a `lists:` on a non-consumer
-      rule, a redefined built-in name, and an `extends:` cycle
-      each fail at config load with a clear message.
-- [ ] `internal/convention/nollmtells.go` is gone and the
-      drift test passes against the embedded data.
+      rule, and an `extends:` cycle each fail at config load
+      with a clear message.
+- [ ] `internal/convention/nollmtells.go` carries the curated
+      words and the drift test passes against the
+      convention's inline lists.
 - [ ] `mdsmith check .` stays green (the repo pins
       `convention: no-llm-tells`).
 - [ ] All tests pass: `go test ./...`

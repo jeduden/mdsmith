@@ -19,28 +19,19 @@ func writeWordlistFile(t *testing.T, dir, name, body string) {
 
 func TestMergeWordlistFiles_LoadsAndResolves(t *testing.T) {
 	dir := t.TempDir()
-	writeWordlistFile(t, dir, "team", "extends: ai-speak\nentries:\n  - synergy\n")
+	writeWordlistFile(t, dir, "base", "entries:\n  - delve\n")
+	writeWordlistFile(t, dir, "team", "extends: base\nentries:\n  - synergy\n")
 
 	cfg := &Config{}
 	require.NoError(t, mergeWordlistFiles(cfg, filepath.Join(dir, ".mdsmith.yml")))
 
 	uw, ok := cfg.Wordlists["team"]
 	require.True(t, ok, "team list discovered")
-	assert.Equal(t, "ai-speak", uw.Extends)
+	assert.Equal(t, "base", uw.Extends)
 	assert.Equal(t, []string{"synergy"}, uw.Entries)
 
 	// The discovered list is reachable by the resolver.
 	require.NotNil(t, toWordlistMap(cfg.Wordlists)["team"])
-}
-
-func TestMergeWordlistFiles_ReservedNameRejected(t *testing.T) {
-	dir := t.TempDir()
-	writeWordlistFile(t, dir, "ai-speak", "entries:\n  - x\n")
-
-	cfg := &Config{}
-	err := mergeWordlistFiles(cfg, filepath.Join(dir, ".mdsmith.yml"))
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "reserved")
 }
 
 func TestMergeWordlistFiles_InlineFileCollision(t *testing.T) {

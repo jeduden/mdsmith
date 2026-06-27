@@ -113,13 +113,9 @@ func parseWordlistFile(path string) (UserWordlist, error) {
 
 // mergeWordlistFiles tags every inline word-list with cfgPath for
 // provenance, then discovers file-defined lists under the workspace
-// root (parent of cfgPath) and merges them into cfg.Wordlists. Two
-// collisions are config errors, each naming the offending file:
-//
-//   - a name reserved by a built-in list (ai-speak, ai-openers);
-//   - a name declared both inline and in a file.
-//
-// Load always supplies a non-empty cfgPath.
+// root (parent of cfgPath) and merges them into cfg.Wordlists. A name
+// declared both inline and in a file is a config error naming both
+// sources. Load always supplies a non-empty cfgPath.
 func mergeWordlistFiles(cfg *Config, cfgPath string) error {
 	for name, uw := range cfg.Wordlists {
 		uw.SourcePath = cfgPath
@@ -134,11 +130,6 @@ func mergeWordlistFiles(cfg *Config, cfgPath string) error {
 		return nil
 	}
 
-	reserved := make(map[string]bool, len(wordlist.BuiltinNames()))
-	for _, name := range wordlist.BuiltinNames() {
-		reserved[name] = true
-	}
-
 	if cfg.Wordlists == nil {
 		cfg.Wordlists = make(map[string]UserWordlist, len(discovered))
 	}
@@ -149,11 +140,6 @@ func mergeWordlistFiles(cfg *Config, cfgPath string) error {
 	sort.Strings(names)
 	for _, name := range names {
 		dw := discovered[name]
-		if reserved[name] {
-			return fmt.Errorf(
-				"wordlist %q in %s: name is reserved by a built-in word-list",
-				name, dw.sourcePath)
-		}
 		if existing, clash := cfg.Wordlists[name]; clash {
 			return fmt.Errorf(
 				"wordlist %q is declared both inline in %s and in %s; keep one source",

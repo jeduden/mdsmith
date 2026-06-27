@@ -149,16 +149,16 @@ parse-skip-safe. [Rule tables are generated.][parity-list]
 ### `no-llm-tells`
 
 Flags mechanical LLM-prose tells in CI. MDS056
-blocks the `ai-speak` vocabulary; MDS055 blocks
-the `ai-openers` list; MDS023 and MDS024 tighten
-readability budgets. The lists are sourced from
-[`slop-patterns.md`][slop]; a drift-checker test
-keeps them in sync.
+blocks a curated vocabulary of LLM tell words and
+phrases; MDS055 blocks the banned sentence openers;
+MDS023 and MDS024 tighten readability budgets. The
+lists are sourced from [`slop-patterns.md`][slop]; a
+drift-checker test keeps them in sync.
 
 Pins no flavor; it does not enable `markdown-flavor`
-(MDS034). The convention names each list via a
-rule's `lists:` setting. That setting appends, so a
-project's terms join the built-ins.
+(MDS034). The curated words ship as inline
+`contains:`/`starts:` presets, which append, so a
+project's terms join rather than replace them.
 
 [slop]: ../../.claude/skills/docs-author/slop-patterns.md
 

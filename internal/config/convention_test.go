@@ -117,15 +117,16 @@ func TestApplyConvention_NoLLMTells_EnablesRulesWithSettings(t *testing.T) {
 	ft, ok := cfg.ConventionPreset["forbidden-text"]
 	require.True(t, ok, "preset must contain forbidden-text")
 	assert.True(t, ft.Enabled)
-	ftLists, ok := ft.Settings["lists"].([]any)
-	require.True(t, ok, "forbidden-text must name a wordlist via lists")
-	assert.Contains(t, ftLists, "ai-speak")
+	contains, ok := ft.Settings["contains"].([]any)
+	require.True(t, ok, "contains must be []any")
+	assert.Contains(t, contains, "delve")
+	assert.Contains(t, contains, "it's important to note that")
 
 	fps, ok := cfg.ConventionPreset["forbidden-paragraph-starts"]
 	require.True(t, ok, "preset must contain forbidden-paragraph-starts")
-	fpsLists, ok := fps.Settings["lists"].([]any)
+	starts, ok := fps.Settings["starts"].([]any)
 	require.True(t, ok)
-	assert.Contains(t, fpsLists, "ai-openers")
+	assert.Contains(t, starts, "Moreover,")
 
 	ps, ok := cfg.ConventionPreset["paragraph-structure"]
 	require.True(t, ok)
@@ -212,9 +213,8 @@ func TestEffectiveRules_UserSettingDeepMergesOverConvention(t *testing.T) {
 
 func TestEffectiveRules_NoLLMTells_UserForbiddenTextUnionsWithConvention(t *testing.T) {
 	// A project pins no-llm-tells and adds its own forbidden phrase.
-	// The convention names the ai-speak word-list via lists:; the
-	// user's inline contains: unions with the resolved list entries
-	// rather than replacing them.
+	// MDS056 opts contains: into MergeAppend, so the user's list unions
+	// with the convention's instead of replacing it.
 	cfg := &Config{
 		Convention: "no-llm-tells",
 		Rules: map[string]RuleCfg{

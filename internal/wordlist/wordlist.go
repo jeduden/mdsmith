@@ -1,17 +1,14 @@
 // Package wordlist provides named, user-extensible word-lists. A
 // word-list is an ordered set of literal strings with an optional
-// `extends:` parent. The built-in lists — `ai-speak` (LLM vocabulary
-// and phrase tells) and `ai-openers` (banned sentence openers) — ship
-// embedded as data files; user lists live under
-// `.mdsmith/wordlists/` and may extend a built-in or another user
-// list. Rules consume resolved lists through the `lists:` setting; the
-// config layer expands them, so this package depends on neither the
-// rule nor the config package and stays free of import cycles.
+// `extends:` parent. Lists live under `.mdsmith/wordlists/` (or inline
+// in `.mdsmith.yml`) and may extend another user list. Rules consume
+// resolved lists through the `lists:` setting; the config layer expands
+// them, so this package depends on neither the rule nor the config
+// package and stays free of import cycles.
 package wordlist
 
 import (
 	"bytes"
-	"embed"
 	"errors"
 	"fmt"
 	"io"
@@ -23,9 +20,8 @@ import (
 )
 
 // Wordlist is a named, ordered set of literal string entries with an
-// optional Extends parent. SourcePath records the file a user list was
-// loaded from, for provenance and error messages; it is empty for
-// built-ins.
+// optional Extends parent. SourcePath records the file the list was
+// loaded from, for provenance and error messages.
 type Wordlist struct {
 	Name       string
 	Extends    string
@@ -40,14 +36,6 @@ type fileBody struct {
 	Extends string   `yaml:"extends"`
 	Entries []string `yaml:"entries"`
 }
-
-//go:embed data/ai-speak.yaml data/ai-openers.yaml
-var builtinFS embed.FS
-
-// builtins is the built-in list table, parsed once from the embedded
-// data files at package init. A decode failure is a build-time
-// contract violation (the data is checked in), so it panics.
-var builtins = mustLoadBuiltins()
 
 // Parse decodes a wordlist file body into its `extends:` parent and
 // `entries:`. YAML anchors/aliases are rejected, and decoding is strict
@@ -69,49 +57,11 @@ func Parse(data []byte) (extends string, entries []string, err error) {
 	return body.Extends, body.Entries, nil
 }
 
-func mustLoadBuiltins() map[string]Wordlist {
-	names := []string{"ai-speak", "ai-openers"}
-	m := make(map[string]Wordlist, len(names))
-	for _, n := range names {
-		data, err := builtinFS.ReadFile("data/" + n + ".yaml")
-		if err != nil {
-			panic(fmt.Sprintf("wordlist: reading embedded %q: %v", n, err))
-		}
-		ext, entries, err := Parse(data)
-		if err != nil {
-			panic(fmt.Sprintf("wordlist: parsing embedded %q: %v", n, err))
-		}
-		m[n] = Wordlist{Name: n, Extends: ext, Entries: entries}
-	}
-	return m
-}
-
-// Builtin returns the built-in word-list with the given name.
-func Builtin(name string) (Wordlist, bool) {
-	wl, ok := builtins[name]
-	return wl, ok
-}
-
-// BuiltinNames returns the sorted built-in list names. Callers use it
-// for reserved-name checks: a user file must not redefine a built-in.
-func BuiltinNames() []string {
-	names := make([]string, 0, len(builtins))
-	for n := range builtins {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	return names
-}
-
-// Lookup returns the word-list with the given name. User lists (the
-// passed map, which may be nil) are checked first, then the built-ins.
-// The error lists every valid name from both sets so a typo is easy to
-// fix.
+// Lookup returns the user-defined word-list with the given name (the
+// passed map may be nil). The error lists every valid name so a typo is
+// easy to fix.
 func Lookup(name string, user map[string]Wordlist) (Wordlist, error) {
 	if wl, ok := user[name]; ok {
-		return wl, nil
-	}
-	if wl, ok := builtins[name]; ok {
 		return wl, nil
 	}
 	return Wordlist{}, fmt.Errorf(
@@ -119,17 +69,10 @@ func Lookup(name string, user map[string]Wordlist) (Wordlist, error) {
 	)
 }
 
-// allNames returns the sorted union of user and built-in list names.
+// allNames returns the sorted list of user word-list names.
 func allNames(user map[string]Wordlist) []string {
-	set := make(map[string]struct{}, len(user)+len(builtins))
+	names := make([]string, 0, len(user))
 	for n := range user {
-		set[n] = struct{}{}
-	}
-	for n := range builtins {
-		set[n] = struct{}{}
-	}
-	names := make([]string, 0, len(set))
-	for n := range set {
 		names = append(names, n)
 	}
 	sort.Strings(names)

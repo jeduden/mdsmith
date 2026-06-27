@@ -6,8 +6,8 @@ summary: >-
   named word-list: an optional `extends:` parent and an
   `entries:` list of literal strings. A rule pulls a
   list in through its `lists:` setting and the entries
-  union with the rule's own list. The built-in
-  `ai-speak` and `ai-openers` lists ship compiled in.
+  union with the rule's own list. No lists ship compiled
+  in; a project declares every list it uses.
 ---
 # Word-list files under `.mdsmith/wordlists/`
 
@@ -36,7 +36,6 @@ file.
 
 ```yaml
 # .mdsmith/wordlists/house-banned.yaml
-extends: ai-speak
 entries:
   - "synergy"
   - "circle back"
@@ -45,8 +44,7 @@ entries:
 
 Each entry is matched verbatim by the rule that reads
 it. Quote any entry YAML would otherwise mangle — a
-trailing comma, a leading symbol — as `ai-openers` does
-for its openers.
+trailing comma, a leading symbol.
 
 ## Referencing a list from a rule
 
@@ -84,18 +82,12 @@ The mechanism is neutral about how a rule reads its
 list. `forbidden-text` bans each entry; `required-mentions`
 requires each entry in every section.
 
-## Built-in lists
-
-Two lists ship compiled into the binary:
-
-- `ai-speak` — LLM vocabulary and phrase tells.
-- `ai-openers` — banned sentence openers.
-
-The [`no-llm-tells` convention](conventions.md) selects
-them, as `forbidden-text: {lists: [ai-speak]}` and
-`forbidden-paragraph-starts: {lists: [ai-openers]}`.
-Their source of truth is the docs-author slop catalog; a
-drift test keeps the two in step.
+No lists ship compiled into the binary. Every list a
+rule names is one a project declares — in a file here or
+inline in `.mdsmith.yml`. The [`no-llm-tells`
+convention](conventions.md) is the home for the curated
+anti-slop vocabulary; it ships those words as the rules'
+inline presets, not as a named list you extend.
 
 ## Extending a list
 
@@ -103,11 +95,11 @@ A list may name one parent with `extends:`. The parent's
 entries come first, then the list's own, with duplicates
 dropped. Chains resolve to the root; a cycle or a
 missing parent is a config error. Use `extends:` to
-start from a built-in and add your own terms:
+share one base list across several denylists:
 
 ```yaml
 # .mdsmith/wordlists/our-slop.yaml
-extends: ai-speak
+extends: house-banned
 entries:
   - "best-in-class"
   - "move the needle"
@@ -123,10 +115,6 @@ across both extensions is a config error naming both
 files. Subdirectories and symlinks are rejected. A file
 over 1 MB is rejected.
 
-A built-in name (`ai-speak`, `ai-openers`) is reserved:
-a file may not redefine one, though a list may `extends:`
-it.
-
 ## Composition with `.mdsmith.yml`
 
 An inline `wordlists:` block in `.mdsmith.yml` is a
@@ -141,7 +129,9 @@ wordlists:
 The same name declared in both a file and inline is a
 config error naming both sources. The two do not merge.
 
-See the [conventions reference](conventions.md) for the
-built-in bundles that ship `lists:` presets. The
-[convention files](convention-files.md) page covers the
-sibling directory.
+The [`no-llm-tells` convention](conventions.md) ships a
+curated anti-slop vocabulary as inline rule presets. A
+project that wants those words selects the convention.
+It does not name a list here. The [convention
+files](convention-files.md) page covers the sibling
+`.mdsmith/conventions/` directory.

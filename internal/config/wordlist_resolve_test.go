@@ -19,16 +19,18 @@ func containsOf(t *testing.T, eff map[string]RuleCfg, ruleName string) []string 
 	return got
 }
 
-func TestEffective_ListsResolvesBuiltin(t *testing.T) {
+func TestEffective_ListsResolvesUserList(t *testing.T) {
 	cfg := &Config{
 		Rules: map[string]RuleCfg{
-			"forbidden-text": {Enabled: true, Settings: map[string]any{"lists": []any{"ai-speak"}}},
+			"forbidden-text": {Enabled: true, Settings: map[string]any{"lists": []any{"house"}}},
 		},
 		ExplicitRules: map[string]bool{"forbidden-text": true},
+		Wordlists: map[string]UserWordlist{
+			"house": {Entries: []string{"delve", "it's important to note that"}},
+		},
 	}
 	got := containsOf(t, Effective(cfg, "doc.md", nil, nil), "forbidden-text")
 	assert.Contains(t, got, "delve")
-	assert.Contains(t, got, "honest")
 	assert.Contains(t, got, "it's important to note that")
 }
 
@@ -36,49 +38,54 @@ func TestEffective_ListsUnionWithInline(t *testing.T) {
 	cfg := &Config{
 		Rules: map[string]RuleCfg{
 			"forbidden-text": {Enabled: true, Settings: map[string]any{
-				"lists":    []any{"ai-speak"},
+				"lists":    []any{"house"},
 				"contains": []any{"myword"},
 			}},
 		},
 		ExplicitRules: map[string]bool{"forbidden-text": true},
+		Wordlists: map[string]UserWordlist{
+			"house": {Entries: []string{"delve"}},
+		},
 	}
 	got := containsOf(t, Effective(cfg, "doc.md", nil, nil), "forbidden-text")
 	assert.Contains(t, got, "delve", "from the named list")
 	assert.Contains(t, got, "myword", "from the inline contains")
 }
 
-func TestEffective_UserListExtendsBuiltin(t *testing.T) {
+func TestEffective_UserListExtendsUserList(t *testing.T) {
 	cfg := &Config{
 		Rules: map[string]RuleCfg{
 			"forbidden-text": {Enabled: true, Settings: map[string]any{"lists": []any{"team"}}},
 		},
 		ExplicitRules: map[string]bool{"forbidden-text": true},
 		Wordlists: map[string]UserWordlist{
-			"team": {Extends: "ai-speak", Entries: []string{"synergy"}},
+			"base": {Entries: []string{"delve"}},
+			"team": {Extends: "base", Entries: []string{"synergy"}},
 		},
 	}
 	got := containsOf(t, Effective(cfg, "doc.md", nil, nil), "forbidden-text")
-	assert.Contains(t, got, "delve", "inherited from ai-speak")
+	assert.Contains(t, got, "delve", "inherited from base")
 	assert.Contains(t, got, "synergy", "own entry")
 }
 
 func TestEffective_ConventionListsAndUserListsAppend(t *testing.T) {
-	// Convention preset names ai-speak; the user's explicit rule adds
-	// its own list. Both should resolve into contains.
+	// Convention preset names one list; the user's explicit rule adds
+	// another. Both should resolve into contains.
 	cfg := &Config{
 		ConventionPreset: map[string]RuleCfg{
-			"forbidden-text": {Enabled: true, Settings: map[string]any{"lists": []any{"ai-speak"}}},
+			"forbidden-text": {Enabled: true, Settings: map[string]any{"lists": []any{"house"}}},
 		},
 		Rules: map[string]RuleCfg{
 			"forbidden-text": {Enabled: true, Settings: map[string]any{"lists": []any{"team"}}},
 		},
 		ExplicitRules: map[string]bool{"forbidden-text": true},
 		Wordlists: map[string]UserWordlist{
-			"team": {Entries: []string{"synergy"}},
+			"house": {Entries: []string{"delve"}},
+			"team":  {Entries: []string{"synergy"}},
 		},
 	}
 	got := containsOf(t, Effective(cfg, "doc.md", nil, nil), "forbidden-text")
-	assert.Contains(t, got, "delve", "from the convention's ai-speak")
+	assert.Contains(t, got, "delve", "from the convention's list")
 	assert.Contains(t, got, "synergy", "from the user's team list")
 }
 
@@ -93,7 +100,7 @@ func TestValidateWordlists_UnknownList(t *testing.T) {
 
 func TestValidateWordlists_NonConsumerRule(t *testing.T) {
 	cfg := &Config{Rules: map[string]RuleCfg{
-		"line-length": {Enabled: true, Settings: map[string]any{"lists": []any{"ai-speak"}}},
+		"line-length": {Enabled: true, Settings: map[string]any{"lists": []any{"team"}}},
 	}}
 	err := validateWordlists(cfg)
 	require.Error(t, err)
@@ -121,7 +128,8 @@ func TestValidateWordlists_OK(t *testing.T) {
 			"forbidden-text": {Enabled: true, Settings: map[string]any{"lists": []any{"team"}}},
 		},
 		Wordlists: map[string]UserWordlist{
-			"team": {Extends: "ai-speak", Entries: []string{"synergy"}},
+			"base": {Entries: []string{"delve"}},
+			"team": {Extends: "base", Entries: []string{"synergy"}},
 		},
 	}
 	require.NoError(t, validateWordlists(cfg))
