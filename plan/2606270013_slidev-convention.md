@@ -1,7 +1,7 @@
 ---
 id: 2606270013
 title: Add built-in Slidev convention
-status: "🔲"
+status: "✅"
 summary: >-
   Add a slidev built-in convention that disables the
   eight rules that produce false positives on Slidev
@@ -47,38 +47,38 @@ Eight default-on rules must be disabled:
 
 ## Tasks
 
-1. [ ] Add a `slidev` entry to the `conventions`
+1. [x] Add a `slidev` entry to the `conventions`
    map in
    [`internal/convention/convention.go`](../internal/convention/convention.go).
    Use `FlavorAny` (no flavor enforcement — users
    may use GFM, CommonMark, or Obsidian flavors).
    Disable the eight rules listed above.
-2. [ ] Add `TestLookup_Slidev` in
+2. [x] Add `TestLookup_Slidev` in
    `internal/convention/convention_test.go`.
    Assert that `Lookup("slidev", nil)` resolves
    without error and that all eight rules are
    present with `Enabled: false`.
-3. [ ] Update
+3. [x] Update
    [`docs/reference/conventions.md`](../docs/reference/conventions.md)
    to document the new convention: purpose,
    the eight-rule list, example config, and the
    known limitation (parser-level `---` handling
    is not addressed).
-4. [ ] Run `go run ./cmd/mdsmith fix .` and
+4. [x] Run `go run ./cmd/mdsmith fix .` and
    `go run ./cmd/mdsmith check .` — zero failures.
-5. [ ] Run `go test ./internal/convention/...` and
+5. [x] Run `go test ./internal/convention/...` and
    `go test ./...` — all green.
 
 ## Acceptance Criteria
 
-- [ ] `Lookup("slidev", nil)` returns a convention
+- [x] `Lookup("slidev", nil)` returns a convention
   with eight rules, all `Enabled: false`.
-- [ ] `internal/convention/convention_test.go`
+- [x] `internal/convention/convention_test.go`
   has a `TestLookup_Slidev` that covers all
   eight disabled rules.
-- [ ] `docs/reference/conventions.md` documents
+- [x] `docs/reference/conventions.md` documents
   `slidev` with purpose, rule list, and limitation
   note.
-- [ ] `go test ./...` green.
-- [ ] `go tool golangci-lint run` reports no issues.
-- [ ] `go run ./cmd/mdsmith check .` — 0 failures.
+- [x] `go test ./...` green.
+- [x] `go tool golangci-lint run` reports no issues.
+- [x] `go run ./cmd/mdsmith check .` — 0 failures.
