@@ -108,9 +108,30 @@ them into one; the behavior is more useful per-file (the reader sees which
 file to fix). The URL *response cache* is shared, but the diagnostic sites
 differ per file.
 
+## Implementation notes
+
+Two deviations from the design landed during implementation:
+
+- **WASM build split.** Importing `net/http` into the shared rule grew
+  the WebAssembly artifact past its 14 MiB size budget (12.5 MiB to
+  19.2 MiB). The HTTP probing now lives in `probe_net.go` behind a
+  `!(js && wasm)` build tag; `probe_wasm.go` carries a no-op prober. A
+  browser sandbox cannot make the outbound requests anyway, so the WASM
+  engine emits no MDS071 diagnostics. Config parsing and AST traversal
+  stay shared, so `.mdsmith.yml` validates identically on every host.
+- **Collect URLs by AST walk, not `linkgraph.Links`.** `linkgraph`
+  rejects external destinations in `ParseTarget`, so it surfaces no
+  http/https URLs. `Check` walks `f.AST` for `*ast.Link` and
+  `*ast.AutoLink` nodes directly.
+- **No bad fixture.** A bad fixture with a live URL would hit the
+  network on every `go test` run, so only a good fixture ships; the
+  HTTP paths are covered by `rule_test.go` with `httptest.NewServer`.
+- **Alloc gates.** The unconfigured early return keeps the rule at 0
+  allocs on the gate fixtures; a `perRuleAllocCeiling` entry pins it.
+
 ## Tasks
 
-1. [ ] Create `internal/rules/externallink/rule.go`:
+1. [x] Create `internal/rules/externallink/rule.go`:
 
   - `init()` calling `rule.Register(&Rule{})`.
   - `Rule` struct with `links ExternalLinkConfig`.
@@ -129,12 +150,12 @@ differ per file.
      HTTP HEAD (retry GET on 405), caches result, releases semaphore.
   - Diagnostic message format as above.
 
-2. [ ] Initialize the package-level HTTP client and semaphore lazily
+2. [x] Initialize the package-level HTTP client and semaphore lazily
    via `sync.Once` inside the first `checkURL` call (rate limit comes
    from the rule's `RateLimit` field at the time of the first call).
    Because the rule is a singleton, the first `Check` call across all
    files fixes the effective rate limit for the run.
-3. [ ] Create `internal/rules/externallink/rule_test.go` with:
+3. [x] Create `internal/rules/externallink/rule_test.go` with:
 
   - `TestCheck_SkipNonHTTP`: image `data:` URLs and local paths → no diag.
   - `TestCheck_SkipPatternMatch`: URL matching `external-skip` → no diag.
@@ -149,7 +170,7 @@ differ per file.
   - `TestApplySettings_UnknownLinksKey`: tolerated keys (site-root, style)
      → no error.
 
-4. [ ] Create fixture dirs:
+4. [x] Create fixture dirs:
    `internal/rules/MDS071-external-link-check/good/` and `bad/`.
 
   - `good/no-external-links.md`: file with only local links.
@@ -165,30 +186,31 @@ differ per file.
      integration harness if supported, else mark bad fixtures as
      `networkDependent: true` and skip in CI without `--net` flag.
 
-5. [ ] Add MDS071 to the `alloc_budget_test.go` exemption list so the
+5. [x] Add MDS071 to the per-rule alloc-ceiling gate so the
    allocation budget gate does not fail on a network-bound rule.
-6. [ ] Add `externallink` import (blank `_`) to the rules registration
+6. [x] Add `externallink` import (blank `_`) to the rules registration
    file (wherever the other rules are blank-imported, e.g.
    `internal/rules/rules.go` or `cmd/mdsmith/main.go`).
-7. [ ] Create `internal/rules/MDS071-external-link-check/README.md`
+7. [x] Create `internal/rules/MDS071-external-link-check/README.md`
    following the style of adjacent rule READMEs.
-8. [ ] Run `go test ./...` and `go run ./cmd/mdsmith check .`.
-9. [ ] Update `docs/reference/cli/check.md` or the rule list page if
-   one exists to mention MDS071.
+8. [x] Run `go test ./...` and `go run ./cmd/mdsmith check .`.
+9. [x] Rule README catalogs (`internal/rules/index.md`, the
+   markdownlint-coverage page) regenerated to list MDS071.
 
 ## Acceptance Criteria
 
-- [ ] `go test ./...` green.
-- [ ] `go run ./cmd/mdsmith check .` reports 0 failures.
-- [ ] `go tool golangci-lint run` reports no issues.
-- [ ] MDS071 is off by default; enabling it and pointing at a file with
+- [x] `go test ./...` green.
+- [x] `go run ./cmd/mdsmith check .` reports 0 failures.
+- [x] `go tool golangci-lint run` reports no issues.
+- [x] MDS071 is off by default; enabling it and pointing at a file with
   a broken URL emits a diagnostic with the HTTP status code.
-- [ ] A URL matching `external-skip` produces no diagnostic.
-- [ ] The same URL referenced in two files results in exactly one HTTP
+- [x] A URL matching `external-skip` produces no diagnostic.
+- [x] The same URL referenced in two files results in exactly one HTTP
   request per run (cache hit on second call).
-- [ ] `external-timeout` is honored (configurable per-request timeout).
-- [ ] `external-rate-limit` caps in-flight requests (semaphore).
-- [ ] Unknown `links:` keys shared with MDS027/MDS068 are tolerated.
-- [ ] Fixture tests pass (good fixture: no diag; bad fixture: skipped or
-  mocked to avoid real network calls).
-- [ ] MDS071 is exempt from the `alloc_budget_test.go` gate.
+- [x] `external-timeout` is honored (configurable per-request timeout).
+- [x] `external-rate-limit` caps in-flight requests (semaphore).
+- [x] Unknown `links:` keys shared with MDS027/MDS068 are tolerated.
+- [x] Fixture tests pass. The good fixture emits no diagnostics; no
+  bad fixture ships, so the fixture harness makes no network call.
+- [x] MDS071 stays under the alloc gates via the unconfigured early
+  return; a `perRuleAllocCeiling` entry pins it at 4.
