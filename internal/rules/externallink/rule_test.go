@@ -299,10 +299,26 @@ func TestApplySettings_TrulyUnknownLinksKey(t *testing.T) {
 	assert.Contains(t, err.Error(), "unknown links setting")
 }
 
+func TestIsExternalHTTP_ParseError(t *testing.T) {
+	// An unclosed IPv6 bracket makes url.Parse return an error; the
+	// function must return false without panicking.
+	assert.False(t, isExternalHTTP("http://[invalid"))
+}
+
 func TestToStringSlice_StringSlice(t *testing.T) {
 	got, ok := toStringSlice([]string{"a", "b"})
 	require.True(t, ok)
 	assert.Equal(t, []string{"a", "b"}, got)
+}
+
+func TestApplySettings_SkipListNonString(t *testing.T) {
+	// A []any containing a non-string element must be rejected.
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"links": map[string]any{"external-skip": []any{"valid", 42}},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must be a list of strings")
 }
 
 func TestToInt_Int64(t *testing.T) {
