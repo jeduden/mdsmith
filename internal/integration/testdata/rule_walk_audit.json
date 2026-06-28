@@ -757,5 +757,16 @@
     "is_node_checker": false,
     "uses_ast_walk": true,
     "reads_file_ast": true
+  },
+  {
+    "id": "MDS071",
+    "name": "external-link-check",
+    "category": "inconclusive-not-fired",
+    "nil_ast_safe": false,
+    "code_block_sensitive": false,
+    "fired": false,
+    "is_node_checker": false,
+    "uses_ast_walk": true,
+    "reads_file_ast": true
   }
 ]

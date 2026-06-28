@@ -300,6 +300,7 @@ var perRuleAllocCeiling = map[string]float64{
 	"MDS063": 44,  // descriptive-link-text: ~36 allocs
 	"MDS067": 12,  // callout-type: ~8 allocs
 	"MDS068": 4,   // link-style: 0 allocs
+	"MDS071": 4,   // external-link-check: 0 allocs (unconfigured early return)
 }
 
 // init pins MDS043's allocs ceiling from the build-tagged
