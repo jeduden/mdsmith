@@ -5,11 +5,17 @@
 // cached per URL for the run so a URL referenced in many files costs at
 // most one request. See plan/2606280208_external-link-check.md and
 // issue #47 for the design.
+//
+// The HTTP probing lives in probe_net.go, behind a `!(js && wasm)`
+// build tag. The js/wasm build (probe_wasm.go) carries a stub that
+// makes no network call, so the WebAssembly engine does not pull in
+// net/http (a ~6 MB artifact cost) for a rule a browser sandbox can
+// never run anyway. Config parsing and AST traversal are shared, so
+// `.mdsmith.yml` validates identically on every platform.
 package externallink
 
 import (
 	"fmt"
-	"net/http"
 	"net/url"
 	"regexp"
 	"sync"
@@ -48,12 +54,14 @@ type Rule struct {
 	skipRegs []*regexp.Regexp
 
 	// initOnce guards lazy construction of the semaphore and HTTP
-	// client. The engine shares one Rule singleton across a worker
-	// pool, so the first Check across all files fixes the run's
-	// effective rate limit and timeout.
-	initOnce   sync.Once
-	semaphore  chan struct{}
-	httpClient *http.Client
+	// client (probe_net.go). The engine shares one Rule singleton
+	// across a worker pool, so the first Check across all files fixes
+	// the run's effective rate limit and timeout.
+	initOnce  sync.Once
+	semaphore chan struct{}
+	// http is the probing client, typed as the platform's *http.Client
+	// (probe_net.go) or nil (probe_wasm.go). Set by init.
+	http httpProber
 }
 
 // urlCache is process-global so a URL referenced across many files is
@@ -81,8 +89,9 @@ func (r *Rule) Category() string { return "link" }
 func (r *Rule) EnabledByDefault() bool { return false }
 
 // Check implements rule.Rule. It collects every external http/https
-// URL in f (inline links, reference-resolved destinations via the AST,
-// and autolinks), probes each one, and emits a diagnostic for failures.
+// URL in f (inline links and autolinks; the AST walk resolves the same
+// destinations linkgraph would, plus autolinks linkgraph drops), probes
+// each one, and emits a diagnostic for failures.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	// Unconfigured: ApplySettings was never called (RateLimit zero
 	// value). Return nil with no allocations and, crucially, no
@@ -168,7 +177,7 @@ func (r *Rule) skip(raw string) bool {
 // position returns the 1-based body-relative line and column of an AST
 // node by locating its first descendant text segment. AutoLink stores
 // its text in a private value node, so the walk falls back to the
-// node's own first text child via Lines when present.
+// node's own first text child when present.
 func (r *Rule) position(f *lint.File, n goldast.Node) (int, int) {
 	offset := -1
 	_ = goldast.Walk(n, func(cur goldast.Node, entering bool) (goldast.WalkStatus, error) {
@@ -200,17 +209,10 @@ func failureMessage(raw string, res urlResult) string {
 	return ""
 }
 
-// init lazily builds the rate-limit semaphore and HTTP client from the
-// configured settings. Called once via initOnce on the first Check.
-func (r *Rule) init() {
-	r.semaphore = make(chan struct{}, r.links.RateLimit)
-	r.httpClient = &http.Client{Timeout: r.links.Timeout}
-}
-
 // checkURL probes raw once and caches the result. A cache hit (this run
 // or a sibling file) returns immediately with no network I/O. On a
-// miss it acquires a rate-limit slot, issues a HEAD (retrying with GET
-// on 405), and stores the outcome.
+// miss it acquires a rate-limit slot, delegates to the platform prober,
+// and stores the outcome.
 func (r *Rule) checkURL(raw string) urlResult {
 	if v, ok := urlCache.Load(raw); ok {
 		return v.(urlResult)
@@ -224,38 +226,6 @@ func (r *Rule) checkURL(raw string) urlResult {
 	// stored result rather than racing the map.
 	actual, _ := urlCache.LoadOrStore(raw, res)
 	return actual.(urlResult)
-}
-
-// probe issues the HEAD (then GET on 405) request and maps the outcome
-// to a urlResult.
-func (r *Rule) probe(raw string) urlResult {
-	resp, err := r.do(http.MethodHead, raw)
-	if err != nil {
-		return urlResult{err: err}
-	}
-	if resp.StatusCode == http.StatusMethodNotAllowed {
-		resp, err = r.do(http.MethodGet, raw)
-		if err != nil {
-			return urlResult{err: err}
-		}
-	}
-	return urlResult{statusCode: resp.StatusCode}
-}
-
-// do performs one request with the given method and drains/closes the
-// body so the connection can be reused.
-func (r *Rule) do(method, raw string) (*http.Response, error) {
-	req, err := http.NewRequest(method, raw, nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := r.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	// The status code is all we need; close the body immediately.
-	_ = resp.Body.Close()
-	return resp, nil
 }
 
 // ApplySettings implements rule.Configurable.

@@ -55,7 +55,9 @@ func TestCheck_SkipWhenUnconfigured(t *testing.T) {
 
 func TestCheck_SkipNonHTTP(t *testing.T) {
 	r := newConfiguredRule(t, nil)
-	f := mustFile(t, "# T\n\nLocal [a](other.md) and image ![x](data:image/png;base64,AA==).\n\nMail <mailto:a@b.com>.\n")
+	f := mustFile(t,
+		"# T\n\nLocal [a](other.md) and image ![x](data:image/png;base64,AA==).\n\nMail <mailto:a@b.com>.\n",
+	)
 	require.Nil(t, r.Check(f))
 }
 
