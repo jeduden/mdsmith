@@ -1,7 +1,7 @@
 ---
 id: 2606280208
 title: External URL link checking rule (MDS071)
-status: "🔳"
+status: "✅"
 summary: >-
   Add MDS071 `external-link-check` — an opt-in rule that validates external
   URLs by making HTTP HEAD (fallback GET) requests, caching results for the

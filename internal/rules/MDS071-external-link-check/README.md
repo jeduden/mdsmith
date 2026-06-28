@@ -2,7 +2,7 @@
 id: MDS071
 name: external-link-check
 status: ready
-description: Probe external http and https URLs and flag any that returns a transport error or a 4xx/5xx response.
+description: Probe external http and https URLs; flag any returning a transport error or 4xx/5xx response.
 category: link
 nature: content
 maintainability: null
@@ -19,7 +19,7 @@ gomarklint:
 ---
 # MDS071: external-link-check
 
-Probe external http and https URLs and flag any that returns a transport error or a 4xx/5xx response.
+Probe external http and https URLs; flag any returning a transport error or 4xx/5xx response.
 
 This rule closes the gap with gomarklint's `external-link` check
 (issue #47). It is off by default and opt-in, like MDS068
