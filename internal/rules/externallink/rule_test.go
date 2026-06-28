@@ -232,3 +232,122 @@ func TestMetadata(t *testing.T) {
 	assert.Equal(t, "link", r.Category())
 	assert.False(t, r.EnabledByDefault())
 }
+
+func TestCheck_NilAST(t *testing.T) {
+	r := newConfiguredRule(t, nil)
+	f := &lint.File{Path: "doc.md"} // AST is nil (zero value)
+	require.Nil(t, r.Check(f))
+}
+
+func TestApplySettings_LinksNotMap(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"links": "not-a-map"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "links must be a map")
+}
+
+func TestApplySettings_SkipNotList(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"links": map[string]any{"external-skip": 42},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must be a list of strings")
+}
+
+func TestApplySettings_TimeoutNotString(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"links": map[string]any{"external-timeout": 5},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must be a duration string")
+}
+
+func TestApplySettings_TimeoutInvalidDuration(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"links": map[string]any{"external-timeout": "notaduration"},
+	})
+	require.Error(t, err)
+}
+
+func TestApplySettings_TimeoutNonPositive(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{
+		"links": map[string]any{"external-timeout": "0s"},
+	}))
+	// A non-positive timeout clamps back to the default 5s.
+	assert.Equal(t, 5*time.Second, r.links.Timeout)
+}
+
+func TestApplySettings_RateLimitNotInt(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"links": map[string]any{"external-rate-limit": "bad"},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must be an integer")
+}
+
+func TestApplySettings_TrulyUnknownLinksKey(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"links": map[string]any{"unknown-future-key": true},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown links setting")
+}
+
+func TestToStringSlice_StringSlice(t *testing.T) {
+	got, ok := toStringSlice([]string{"a", "b"})
+	require.True(t, ok)
+	assert.Equal(t, []string{"a", "b"}, got)
+}
+
+func TestToInt_Int64(t *testing.T) {
+	got, ok := toInt(int64(5))
+	require.True(t, ok)
+	assert.Equal(t, 5, got)
+}
+
+func TestToInt_Float64(t *testing.T) {
+	got, ok := toInt(float64(7))
+	require.True(t, ok)
+	assert.Equal(t, 7, got)
+}
+
+func TestDefaultSettings(t *testing.T) {
+	r := &Rule{}
+	s := r.DefaultSettings()
+	links, ok := s["links"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "5s", links["external-timeout"])
+	assert.Equal(t, defaultRateLimit, links["external-rate-limit"])
+}
+
+func TestCheck_HTTP405ThenGETError(t *testing.T) {
+	// When HEAD returns 405 and the GET request fails with a transport
+	// error (hijacked connection closed), the rule must emit a diagnostic.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		switch req.Method {
+		case http.MethodHead:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		case http.MethodGet:
+			hj, ok := w.(http.Hijacker)
+			if !ok {
+				http.Error(w, "hijack unavailable", http.StatusInternalServerError)
+				return
+			}
+			conn, _, _ := hj.Hijack()
+			_ = conn.Close()
+		}
+	}))
+	defer srv.Close()
+
+	r := newConfiguredRule(t, nil)
+	f := mustFile(t, "# T\n\nSee [x]("+srv.URL+"/err).\n")
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "unreachable")
+}
