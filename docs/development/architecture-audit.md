@@ -6,7 +6,7 @@ summary: >-
   solid-architecture skill (audit mode)
   appends here; blockers are also filed as
   plans.
-audit-from: 0ededb39c2adb946a11814540c1409393db040ca
+audit-from: 82583fc444cce4d7ed42ddb15cf32e2390f956ec
 ---
 # Architecture audit log
 
@@ -281,3 +281,19 @@ line-count crossings. Plans 2606260211,
 2606260614, and 2606260615 closed.
 
 No blockers, tax, or nice-to-have.
+
+## Audit 2026-06-28 (range: 0ededb3..82583fc)
+
+Plan 219 routes `cmd/mdsmith` and the LSP
+through `pkg/mdsmith.Session`. Five perf
+hot-path commits land. Plan 233 adds a
+numeric heading-level option to `<?include?>`.
+Plan 217 ships the Obsidian plugin WASM
+runtime. VS Code and LSP TypeScript fixes.
+479 Go sources; 26 TypeScript sources outside
+fixtures.
+
+No blockers. No rule-to-rule DIP violations.
+No SRP breaches. No file crossed 1 000 lines.
+All new production functions have dedicated
+unit tests.
