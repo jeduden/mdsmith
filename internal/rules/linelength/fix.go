@@ -94,9 +94,6 @@ func (r *Rule) reflowParagraph(
 	last := segs.At(segs.Len() - 1)
 	startLine = f.LineOfOffset(first.Start)
 	endLine = f.LineOfOffset(last.Start)
-	if startLine < 1 || endLine > len(f.Lines) || endLine < startLine {
-		return 0, 0, nil, false
-	}
 
 	parent := para.Parent()
 	if parent == nil || parent.Kind() != ast.KindDocument {
@@ -116,10 +113,9 @@ func (r *Rule) reflowParagraph(
 	}
 
 	indent := leadingWhitespace(f.Lines[startLine-1])
+	// A flagged line carries non-whitespace content, so tokenize always
+	// yields at least one token here.
 	tokens := tokenizeParagraph(f.Source, first.Start, last.Stop, spans)
-	if len(tokens) == 0 {
-		return 0, 0, nil, false
-	}
 	out = wrapTokens(tokens, indent, width, r.isAbbrev)
 	return startLine, endLine, out, true
 }

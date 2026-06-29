@@ -47,6 +47,7 @@ func TestIsAbbrev_BuiltinAndHeuristic(t *testing.T) {
 		{"cf.;", true},  // trailing semicolon trimmed, built-in
 		{"etc.", false}, // not built-in, not heuristic
 		{"plain", false},
+		{",", false}, // trims to empty
 	}
 	for _, c := range cases {
 		if got := r.isAbbrev(c.tok); got != c.want {
@@ -103,6 +104,17 @@ func TestTokenizeParagraph_CodeSpanNewlineBecomesSpace(t *testing.T) {
 	spans := []lint.Range{{Start: 2, End: 7}} // "`a\nb`"
 	got := tokenizeParagraph(src, 0, len(src), spans)
 	want := []string{"x", "`a b`", "y"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("tokenizeParagraph = %q, want %q", got, want)
+	}
+}
+
+func TestTokenizeParagraph_SkipsSpansBeforeStart(t *testing.T) {
+	// A code span that ends before the paragraph start is skipped by the
+	// initial advance loop; tokenizing begins cleanly at start.
+	src := []byte("xx foo bar")
+	got := tokenizeParagraph(src, 3, len(src), []lint.Range{{Start: 0, End: 2}})
+	want := []string{"foo", "bar"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("tokenizeParagraph = %q, want %q", got, want)
 	}
