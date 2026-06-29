@@ -137,6 +137,38 @@ func TestCheck_FSFallbackReadsOwnFrontMatter(t *testing.T) {
 	assert.Len(t, r.Check(f2), 1)
 }
 
+func TestCheck_MalformedFrontMatter(t *testing.T) {
+	// Unparseable YAML front matter resolves to no fields, so every
+	// required field reads as missing.
+	r := &Rule{Fields: []string{"type"}}
+	f := fileWith(t, "doc.md", "---\ntype: \"oops\n---\n# B\n")
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Equal(t, `front-matter "type" is required but missing`, diags[0].Message)
+}
+
+func TestExtractYAMLBody(t *testing.T) {
+	cases := map[string]struct{ in, want string }{
+		"newline fence": {"---\ntype: X\n---\n", "type: X\n"},
+		"bare fence":    {"---\ntype: X\n---", "type: X\n"},
+		"no fence":      {"type: X\n", "type: X\n"},
+		"empty":         {"", ""},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, c.want, string(extractYAMLBody([]byte(c.in))))
+		})
+	}
+}
+
+func TestApplySettings_FieldEmptyClears(t *testing.T) {
+	// An empty `field` disables the rule rather than requiring "".
+	r := &Rule{Fields: []string{"stale"}}
+	require.NoError(t, r.ApplySettings(map[string]any{"field": ""}))
+	assert.Empty(t, r.Fields)
+	assert.Nil(t, r.Check(fileWith(t, "doc.md", "# B\n")))
+}
+
 func TestApplySettings_FieldAlias(t *testing.T) {
 	r := &Rule{}
 	require.NoError(t, r.ApplySettings(map[string]any{"field": "type"}))
