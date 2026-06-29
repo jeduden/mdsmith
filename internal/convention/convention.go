@@ -225,6 +225,47 @@ var conventions = map[string]Convention{
 			"descriptive-link-text": {Enabled: true},
 		},
 	},
+	// okf configures mdsmith to author and validate Open Knowledge
+	// Format (OKF) bundles — Google Cloud's vendor-neutral spec for
+	// agent knowledge as a directory of Markdown files with YAML front
+	// matter. See docs/guides/okf.md.
+	//
+	// OKF's one hard conformance rule (every non-reserved .md carries a
+	// non-empty `type`) is enforced by MDS071 (required-frontmatter),
+	// scoped to skip the reserved index.md and log.md files at any
+	// depth. The convention also stands down the prose- and size-opinion
+	// rules mdsmith applies to its own docs but OKF does not mandate:
+	// line length, file length, token budget, paragraph readability and
+	// structure, "the first line must be a heading" (an OKF concept body
+	// may open with prose), and large-table readability (a concept often
+	// tabulates a wide schema). Mechanical hygiene — trailing spaces,
+	// fences, blank-line placement, cross-file link integrity — stays on.
+	//
+	// Flavor is left unset (FlavorAny): OKF is "just markdown",
+	// renderer-agnostic, and its sample bundles use GFM tables, so the
+	// convention must neither force a flavor nor enable MDS034. As with
+	// no-llm-tells, the loader's flavor-conflict guard is skipped for an
+	// FlavorAny convention.
+	"okf": {
+		Name:   "okf",
+		Flavor: FlavorAny,
+		Rules: map[string]RulePreset{
+			"required-frontmatter": {
+				Enabled: true,
+				Settings: map[string]any{
+					"fields":  []any{"type"},
+					"exclude": []any{"index.md", "log.md"},
+				},
+			},
+			"first-line-heading":    {Enabled: false},
+			"line-length":           {Enabled: false},
+			"max-file-length":       {Enabled: false},
+			"token-budget":          {Enabled: false},
+			"paragraph-readability": {Enabled: false},
+			"paragraph-structure":   {Enabled: false},
+			"table-readability":     {Enabled: false},
+		},
+	},
 	// The <linter>-parity family configures mdsmith to run the same
 	// rule set a specific peer Markdown linter runs by default, so a
 	// benchmark of mdsmith against that peer measures the same work,

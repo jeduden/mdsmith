@@ -814,16 +814,17 @@ row-expr: |
    }][0] +
   " |"
 ?>
-| mdsmith                                                                                    | markdownlint               | rumdl                      | mado                    | panache | obsidian-linter | gomarklint |
-| ------------------------------------------------------------------------------------------ | -------------------------- | -------------------------- | ----------------------- | ------- | --------------- | ---------- |
-| [MDS020](../../../internal/rules/MDS020-required-structure/README.md) required-structure   | MD043 ✅ required-headings | MD043 ✅ required-headings | —                       | —       | —               | —          |
-| [MDS022](../../../internal/rules/MDS022-max-file-length/README.md) max-file-length         | —                          | —                          | —                       | —       | —               | —          |
-| [MDS033](../../../internal/rules/MDS033-directory-structure/README.md) directory-structure | —                          | —                          | —                       | —       | —               | —          |
-| [MDS034](../../../internal/rules/MDS034-markdown-flavor/README.md) markdown-flavor         | —                          | —                          | —                       | —       | —               | —          |
-| [MDS041](../../../internal/rules/MDS041-no-inline-html/README.md) no-inline-html           | MD033 ✅ no-inline-html    | MD033 ✅ no-inline-html    | MD033 ✅ no-inline-html | —       | —               | —          |
-| [MDS048](../../../internal/rules/MDS048-git-hook-sync/README.md) git-hook-sync             | —                          | —                          | —                       | —       | —               | —          |
-| [MDS067](../../../internal/rules/MDS067-callout-type/README.md) callout-type               | —                          | —                          | —                       | —       | —               | —          |
-| [MDS069](../../../internal/rules/MDS069-unique-frontmatter/README.md) unique-frontmatter   | —                          | —                          | —                       | —       | —               | —          |
+| mdsmith                                                                                      | markdownlint               | rumdl                      | mado                    | panache | obsidian-linter | gomarklint |
+| -------------------------------------------------------------------------------------------- | -------------------------- | -------------------------- | ----------------------- | ------- | --------------- | ---------- |
+| [MDS020](../../../internal/rules/MDS020-required-structure/README.md) required-structure     | MD043 ✅ required-headings | MD043 ✅ required-headings | —                       | —       | —               | —          |
+| [MDS022](../../../internal/rules/MDS022-max-file-length/README.md) max-file-length           | —                          | —                          | —                       | —       | —               | —          |
+| [MDS033](../../../internal/rules/MDS033-directory-structure/README.md) directory-structure   | —                          | —                          | —                       | —       | —               | —          |
+| [MDS034](../../../internal/rules/MDS034-markdown-flavor/README.md) markdown-flavor           | —                          | —                          | —                       | —       | —               | —          |
+| [MDS041](../../../internal/rules/MDS041-no-inline-html/README.md) no-inline-html             | MD033 ✅ no-inline-html    | MD033 ✅ no-inline-html    | MD033 ✅ no-inline-html | —       | —               | —          |
+| [MDS048](../../../internal/rules/MDS048-git-hook-sync/README.md) git-hook-sync               | —                          | —                          | —                       | —       | —               | —          |
+| [MDS067](../../../internal/rules/MDS067-callout-type/README.md) callout-type                 | —                          | —                          | —                       | —       | —               | —          |
+| [MDS069](../../../internal/rules/MDS069-unique-frontmatter/README.md) unique-frontmatter     | —                          | —                          | —                       | —       | —               | —          |
+| [MDS071](../../../internal/rules/MDS071-required-frontmatter/README.md) required-frontmatter | —                          | —                          | —                       | —       | —               | —          |
 <?/catalog?>
 
 ## Generated sections (directives) (mdsmith-only)

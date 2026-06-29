@@ -23,8 +23,8 @@ see the [conventions reference](../reference/conventions.md).
 
 Start with a built-in convention when one fits. The
 shipped names are `portable`, `github`, `obsidian`,
-`plain`, `no-llm-tells`, and four `<linter>-parity`
-conventions. Each pins a
+`plain`, `no-llm-tells`, `okf`, and four
+`<linter>-parity` conventions. Each pins a
 flavor and a curated rule preset; the
 [conventions reference](../reference/conventions.md)
 lists what every one turns on.

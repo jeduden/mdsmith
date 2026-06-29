@@ -37,7 +37,7 @@ config key, sibling to `rules:`, `kinds:`, and
 `overrides:`. An unknown name is a config error.
 
 Built-in values: `portable`, `github`, `obsidian`,
-`plain`, `no-llm-tells`, and the four
+`plain`, `no-llm-tells`, `okf`, and the four
 `<linter>-parity` conventions below. The key is
 optional; omit it for no convention.
 
@@ -271,8 +271,8 @@ convention "our-team" rule "no-inline-html": no-inline-html: unknown setting "al
 
 ### Reserved names
 
-The built-in names `portable`, `github`,
-`obsidian`, `plain`, `no-llm-tells`, and the four
+The built-in names `portable`, `github`, `obsidian`,
+`plain`, `no-llm-tells`, `okf`, and the four
 `<linter>-parity` conventions are reserved. Defining
 a `conventions.portable` entry is a config error.
 This keeps the built-in names stable across docs and
@@ -287,7 +287,7 @@ is impossible. When neither table matches, the error
 lists both sets:
 
 ```text
-unknown convention "bogus" (valid: github, gomarklint-parity, mado-parity, markdownlint-parity, no-llm-tells, obsidian, our-team, plain, portable, rumdl-parity)
+unknown convention "bogus" (valid: github, gomarklint-parity, mado-parity, markdownlint-parity, no-llm-tells, obsidian, okf, our-team, plain, portable, rumdl-parity)
 ```
 
 ### Interaction with top-level rules
