@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -423,9 +424,17 @@ func writeWordlistScaffolds(w io.Writer) error {
 		return fmt.Errorf("creating %s: %w", dir, err)
 	}
 	for _, s := range scaffolds {
-		if _, err := os.Stat(s.path); err == nil {
+		_, err := os.Stat(s.path)
+		if err == nil {
 			fmt.Fprintf(w, "mdsmith: %s already exists, skipping\n", s.path)
 			continue
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			// A stat error that is not "not exist" — a permission wall, a
+			// symlink loop — means we cannot tell whether the file is
+			// there. Surface it as a stat failure instead of falling
+			// through to a write that misattributes the same error.
+			return fmt.Errorf("checking %s: %w", s.path, err)
 		}
 		if err := os.WriteFile(s.path, s.data, 0o644); err != nil {
 			return fmt.Errorf("writing %s: %w", s.path, err)

@@ -1171,6 +1171,23 @@ func TestWriteWordlistScaffolds_MkdirError(t *testing.T) {
 	assert.Contains(t, err.Error(), filepath.Join(".mdsmith", "wordlists"))
 }
 
+func TestWriteWordlistScaffolds_StatErrorSurfaced(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	wlDir := filepath.Join(dir, ".mdsmith", "wordlists")
+	require.NoError(t, os.MkdirAll(wlDir, 0o755))
+	// A self-referential symlink makes os.Stat fail with ELOOP — a
+	// non-"not exist" error. It must be surfaced as a stat ("checking")
+	// failure, not skipped and not misattributed to the write. ELOOP is
+	// returned regardless of uid, so this holds under root in CI.
+	require.NoError(t, os.Symlink("ai-speak.yaml", filepath.Join(wlDir, "ai-speak.yaml")))
+
+	err := writeWordlistScaffolds(io.Discard)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "checking")
+	assert.Contains(t, err.Error(), "ai-speak.yaml")
+}
+
 // --- runHelp ---
 
 func TestRunHelp_NoArgs_ExitsZero(t *testing.T) {
