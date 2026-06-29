@@ -27,6 +27,8 @@
 // (already in internal/lint/layer0.go) into this parser.
 package listscan
 
+import "bytes"
+
 // Item is one parsed list item.
 type Item struct {
 	// Line is the 1-based source line of the item's marker.
@@ -723,12 +725,8 @@ func openingFenceRel(line []byte, indent, baseCol int) (fenceInfo, bool) {
 	if length < 3 {
 		return fenceInfo{}, false
 	}
-	if ch == '`' {
-		for _, b := range line[j:] {
-			if b == '`' {
-				return fenceInfo{}, false
-			}
-		}
+	if ch == '`' && bytes.IndexByte(line[j:], '`') >= 0 {
+		return fenceInfo{}, false
 	}
 	return fenceInfo{char: ch, length: length, baseCol: baseCol}, true
 }
