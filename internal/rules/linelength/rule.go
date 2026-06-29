@@ -31,6 +31,15 @@ type Rule struct {
 	CodeBlockMax *int
 	Stern        bool
 	Exclude      []string
+
+	// Reflow opts the rule into the auto-fix that rewraps over-long
+	// prose paragraphs to Max. It is off by default so `mdsmith fix`
+	// never reflows paragraphs unless the project asks for it.
+	Reflow bool
+	// Abbreviations extends the built-in forward-gluing abbreviation
+	// set used by the reflow fixer (see defaultAbbreviations). Tokens
+	// listed here are never left dangling at the end of a wrapped line.
+	Abbreviations []string
 }
 
 // ID implements rule.Rule.
@@ -88,9 +97,42 @@ func (r *Rule) applySetting(k string, v any) error {
 		return r.applyExclude(v)
 	case "strict":
 		return r.applyStrict(v)
+	case "reflow":
+		return r.applyReflow(v)
+	case "abbreviations":
+		return r.applyAbbreviations(v)
 	default:
 		return fmt.Errorf("line-length: unknown setting %q", k)
 	}
+}
+
+func (r *Rule) applyReflow(v any) error {
+	b, ok := v.(bool)
+	if !ok {
+		return fmt.Errorf("line-length: reflow must be a bool, got %T", v)
+	}
+	r.Reflow = b
+	return nil
+}
+
+func (r *Rule) applyAbbreviations(v any) error {
+	list, ok := settings.ToStringSlice(v)
+	if !ok {
+		return fmt.Errorf("line-length: abbreviations must be a list of strings, got %T", v)
+	}
+	r.Abbreviations = list
+	return nil
+}
+
+// SettingMergeMode implements rule.ListMerger. The abbreviation
+// vocabulary concatenates across config layers so a kind can extend the
+// inherited list without restating it (the placeholder-vocabulary
+// pattern). The exclude list keeps the default replace semantics.
+func (r *Rule) SettingMergeMode(key string) rule.MergeMode {
+	if key == "abbreviations" {
+		return rule.MergeAppend
+	}
+	return rule.MergeReplace
 }
 
 func (r *Rule) applyMax(v any) error {
@@ -154,9 +196,11 @@ func (r *Rule) applyStrict(v any) error {
 // DefaultSettings implements rule.Configurable.
 func (r *Rule) DefaultSettings() map[string]any {
 	return map[string]any{
-		"max":     80,
-		"exclude": []string{"code-blocks", "tables", "urls"},
-		"stern":   false,
+		"max":           80,
+		"exclude":       []string{"code-blocks", "tables", "urls"},
+		"stern":         false,
+		"reflow":        false,
+		"abbreviations": []string{},
 	}
 }
 

@@ -2,6 +2,8 @@ package punkt
 
 import (
 	"encoding/json"
+	"strings"
+	"unicode/utf8"
 )
 
 // SetString is a string-keyed set matching upstream's JSON shape:
@@ -67,6 +69,38 @@ func (s *Storage) IsAbbr(tokens ...string) bool {
 		}
 	}
 	return false
+}
+
+// abbrTokenCutset is the trailing clause punctuation IsAbbrevToken
+// ignores, so "e.g.," and "cf.;" are judged like "e.g." and "cf.".
+const abbrTokenCutset = ",;:"
+
+// IsAbbrevToken reports whether tok — a single whitespace-delimited
+// word such as "Dr.", "e.g.", or "J." — is an abbreviation under this
+// trained model, without running the full sentence tokenizer. It
+// recognises three shapes the pipeline's type-annotation pass treats as
+// abbreviations: a single-letter initial ("J."), a dotted abbreviation
+// pattern ("e.g.", "U.S.A."), and a member of the trained AbbrevTypes
+// set ("dr", "vs", "no"). Trailing clause punctuation is ignored, and
+// the AbbrevTypes lookup drops the final period and lowercases the word,
+// matching how typeAnnotation keys the set.
+//
+// It exists for callers — line-length reflow is the first — that need
+// the model's per-token abbreviation judgement to decide a wrap, not a
+// sentence boundary.
+func (s *Storage) IsAbbrevToken(tok string) bool {
+	t := strings.TrimRight(tok, abbrTokenCutset)
+	if t == "" {
+		return false
+	}
+	if isInitial(t) || MatchAbbrPattern(t) {
+		return true
+	}
+	if !HasPeriodFinal(t) {
+		return false
+	}
+	_, sz := utf8.DecodeLastRuneInString(t)
+	return s.IsAbbr(strings.ToLower(t[:len(t)-sz]))
 }
 
 // addOrthoContext sets the ortho flag for typ. Used by training

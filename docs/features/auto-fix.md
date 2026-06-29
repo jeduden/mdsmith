@@ -21,6 +21,13 @@ rule, re-parses, and repeats until the document stops changing or
 it has run ten passes. Stabilization means one fix never undoes
 another.
 
+Paragraph reflow is the one fix that stays off by default. Set
+`rules.line-length.reflow: true` to let `mdsmith fix` rewrap
+over-long prose paragraphs to the `max` width. The wrap is
+abbreviation-aware — it never breaks `e.g.` or initials such as
+`J. R. R. Tolkien` across lines — and it leaves headings, lists,
+tables, code, and generated sections untouched.
+
 `mdsmith check` runs the same rules without writing. It is the
 read-only sibling for CI, returning a non-zero exit code when any
 rule fails so a pipeline can block the merge.

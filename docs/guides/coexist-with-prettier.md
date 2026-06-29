@@ -83,9 +83,16 @@ in `.mdsmith.yml`). Both indent with two spaces
 (`tabWidth` and `rules.list-indent.spaces`).
 Prettier's default `proseWrap: "preserve"` leaves
 existing line breaks alone. mdsmith's `line-length`
-rule reports long lines but does not rewrap them.
-At defaults, neither tool reflows paragraphs. Long
-lines are yours to wrap by hand.
+rule reports long lines but does not rewrap them
+unless you opt in. At defaults, neither tool
+reflows paragraphs. Long lines are yours to wrap by
+hand.
+
+Set `rules.line-length.reflow: true` to let
+`mdsmith fix` rewrap prose paragraphs to `max`. Keep
+Prettier on its default `proseWrap: "preserve"` so
+the two tools do not fight over the same line
+breaks.
 
 If you set `proseWrap: "always"`, Prettier rewraps
 paragraphs to `printWidth`. Keep `printWidth` no

@@ -665,7 +665,7 @@ lack determinism.
 | ------------------ | --------------------- | ------------------------ | ------------ | --------------- | ---- | --------------------- | ----------------- |
 | Autofix CLI        | `fix`                 | `--write`                | `--fix`      | `--fix` / `fmt` | no   | `format`              | yes (AST rewrite) |
 | Table alignment    | [MDS025][mds025]      | yes                      | no           | MD055/56/58     | no   | yes                   | via plugin        |
-| Prose wrapping     | no                    | [`proseWrap`][prosewrap] | no           | no              | no   | no                    | no                |
+| Prose wrapping     | opt-in (reflow)       | [`proseWrap`][prosewrap] | no           | no              | no   | no                    | no                |
 | Embedded code fmt  | no                    | JS/TS/CSS/JSON           | no           | no              | no   | delegates to external | no                |
 | Multi-pass fix     | yes                   | single pass              | single pass  | single pass     | no   | single pass           | single pass       |
 | Generated sections | catalog, include, toc | no                       | no           | no              | no   | no                    | no                |
@@ -678,9 +678,11 @@ line per paragraph), or `preserve` (leave as-is, the
 default). remark-lint has no prose-wrap setting, but it
 serializes through its AST when fixing, so paragraphs
 can be incidentally rewrapped to match its stringify
-defaults. The others — mdsmith, markdownlint, rumdl,
-mado, panache — diagnose long lines but preserve the
-existing breaks.
+defaults. mdsmith adds an opt-in reflow fix
+(`line-length.reflow`). It rewraps prose to the width
+you set, and leaves breaks alone otherwise.
+markdownlint, rumdl, mado, and panache flag long
+lines but keep the existing breaks.
 
 Prettier is the strongest pure formatter. rumdl and
 panache bring native autofix to the Rust side; mado is

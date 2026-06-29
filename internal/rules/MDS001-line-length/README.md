@@ -42,6 +42,8 @@ Line exceeds maximum length.
 | `code-block-max` | int  | --                                  | Max length for code block lines; inherits `max` when unset |
 | `stern`          | bool | false                               | Only flag long lines that contain a space past the limit   |
 | `exclude`        | list | `["code-blocks", "tables", "urls"]` | Categories to exclude from checking                        |
+| `reflow`         | bool | false                               | Auto-fix over-long prose paragraphs by rewrapping to `max` |
+| `abbreviations`  | list | `[]`                                | Extra abbreviations the reflow fixer keeps unbroken        |
 
 Valid `exclude` values:
 
@@ -75,6 +77,44 @@ Stern mode applies independently of `exclude`. A line inside a code block that
 is excluded via `exclude: [code-blocks]` is still skipped regardless of stern.
 Stern uses the active max for each line type, so it respects `heading-max` and
 `code-block-max` when set.
+
+### Reflow (auto-fix)
+
+By default the rule reports long lines but does not rewrite them: `mdsmith fix`
+leaves prose untouched. Set `reflow: true` to opt into the auto-fix, which
+rewraps over-long top-level prose paragraphs so every line fits within `max`.
+
+Reflow is deliberately conservative. It rewraps only paragraphs that sit
+directly in the document body and contain a flagged long line. It skips
+headings, list items, block quotes, tables, generated sections, paragraphs that
+carry a Markdown hard line break, and paragraphs that contain inline raw HTML.
+Inline code spans are preserved verbatim, and a single word wider than `max` (a
+long URL or link) keeps its own over-long line rather than being broken.
+
+Wrapping is abbreviation-aware. It never ends a wrapped line on an abbreviation,
+and it never splits a run of initials. So `e.g.` stays with the word it
+introduces, and `J. R. R. Tolkien` is never broken across lines. Detection
+reuses mdsmith's trained abbreviation model — the same one the readability rules
+use to split sentences. It recognises honorifics (`Dr.`, `Mr.`), reference forms
+(`vs.`, `No.`), initials (`J.`), and dotted forms (`e.g.`, `i.e.`, `U.S.A.`). The
+`abbreviations` setting adds project-specific entries the model does not know
+(`etc.`, `approx.`), and append-merges across config layers so a kind can extend
+the inherited list without restating it.
+
+The payoff is clearest at the wrap boundary. A naive word wrap of this line at 80
+columns splits the spaced acronym across the break:
+
+```text
+Historians traced the founding and the early constitutional debates of the U. S.
+A. with real care.
+```
+
+Reflow breaks before the acronym instead, keeping `U. S. A.` whole on one line:
+
+```text
+Historians traced the founding and the early constitutional debates of the
+U. S. A. with real care.
+```
 
 ## Config
 
@@ -126,6 +166,18 @@ rules:
   line-length:
     max: 80
     exclude: []
+```
+
+Custom (enable the reflow auto-fix and add project abbreviations):
+
+```yaml
+rules:
+  line-length:
+    max: 80
+    reflow: true
+    abbreviations:
+      - etc.
+      - approx.
 ```
 
 Custom (skip only code blocks and URLs; check tables):
@@ -269,7 +321,7 @@ This line inside a code block is over 80 characters but within the code-block-ma
 - **Name**: `line-length`
 - **Status**: ready
 - **Default**: enabled, max: 80
-- **Fixable**: no
+- **Fixable**: yes (opt-in via `reflow`)
 - **Implementation**:
   [source](./)
 - **Category**: line
