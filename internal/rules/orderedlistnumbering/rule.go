@@ -24,6 +24,10 @@ const (
 	StyleAllOnes    = "all-ones"
 )
 
+// commonMarkMaxOrderedDigits is the CommonMark spec limit on the number of
+// digits in an ordered-list marker (CommonMark §5.3).
+const commonMarkMaxOrderedDigits = 9
+
 var newlineSep = []byte{'\n'}
 
 func init() {
@@ -341,9 +345,9 @@ func parseListItemNumber(line []byte) (number int, digitStart, digitEnd int, mar
 	if line[i] != '.' && line[i] != ')' {
 		return 0, 0, 0, 0, false
 	}
-	// CommonMark caps ordered-list markers at 9 digits; reject longer runs
-	// so overflowed values never flow into Fix on 32-bit targets.
-	if digitEnd-digitStart > 9 {
+	// Reject digit runs longer than the CommonMark cap so overflowed values
+	// never flow into Fix on 32-bit targets.
+	if digitEnd-digitStart > commonMarkMaxOrderedDigits {
 		return 0, 0, 0, 0, false
 	}
 	n := 0

@@ -1,6 +1,11 @@
 package orderedlistnumbering
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
 
 func TestCountLeadingSpaces(t *testing.T) {
 	cases := []struct {
@@ -14,9 +19,7 @@ func TestCountLeadingSpaces(t *testing.T) {
 		{[]byte(" \tabc"), 1}, // tab is not a space; counting stops
 	}
 	for _, tc := range cases {
-		if got := countLeadingSpaces(tc.in); got != tc.want {
-			t.Errorf("countLeadingSpaces(%q) = %d, want %d", tc.in, got, tc.want)
-		}
+		assert.Equal(t, tc.want, countLeadingSpaces(tc.in), "countLeadingSpaces(%q)", tc.in)
 	}
 }
 
@@ -34,42 +37,27 @@ func TestIsBlank(t *testing.T) {
 		{[]byte(" x"), false},
 	}
 	for _, tc := range cases {
-		if got := isBlank(tc.in); got != tc.want {
-			t.Errorf("isBlank(%q) = %v, want %v", tc.in, got, tc.want)
-		}
+		assert.Equal(t, tc.want, isBlank(tc.in), "isBlank(%q)", tc.in)
 	}
 }
 
-// TestParseListItemNumber_ZeroAllocs verifies that parseListItemNumber does not
-// allocate on the heap. The string([]byte) conversion in the old implementation
-// allocated once per call; this test catches any regression back to that shape.
 func TestParseListItemNumber_ZeroAllocs(t *testing.T) {
 	line := []byte("42. item text")
 	allocs := testing.AllocsPerRun(100, func() {
 		parseListItemNumber(line)
 	})
-	if allocs != 0 {
-		t.Fatalf("parseListItemNumber allocated %.0f times per call, want 0", allocs)
-	}
+	require.Zero(t, allocs, "parseListItemNumber must not allocate")
 }
 
 func TestParseListItemNumber_LongDigitRun(t *testing.T) {
-	// More than 9 digits must be rejected (overflow / non-CommonMark marker).
 	line := []byte("1234567890. item")
 	_, _, _, _, ok := parseListItemNumber(line)
-	if ok {
-		t.Error("expected ok=false for >9 digit run")
-	}
+	assert.False(t, ok, "digit run > commonMarkMaxOrderedDigits must be rejected")
 }
 
 func TestParseListItemNumber_NineDigits(t *testing.T) {
-	// Exactly 9 digits is the CommonMark cap and must be accepted.
 	line := []byte("999999999. item")
 	n, _, _, _, ok := parseListItemNumber(line)
-	if !ok {
-		t.Fatal("expected ok=true for 9-digit marker")
-	}
-	if n != 999999999 {
-		t.Errorf("got number %d, want 999999999", n)
-	}
+	require.True(t, ok, "9-digit marker must be accepted")
+	assert.Equal(t, 999999999, n)
 }

@@ -1,6 +1,10 @@
 package noreferencestyle
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func TestIsBlankLine(t *testing.T) {
 	cases := []struct {
@@ -16,8 +20,6 @@ func TestIsBlankLine(t *testing.T) {
 		{[]byte(" x"), false},
 	}
 	for _, tc := range cases {
-		if got := isBlankLine(tc.in); got != tc.want {
-			t.Errorf("isBlankLine(%q) = %v, want %v", tc.in, got, tc.want)
-		}
+		assert.Equal(t, tc.want, isBlankLine(tc.in), "isBlankLine(%q)", tc.in)
 	}
 }

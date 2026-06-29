@@ -1,6 +1,10 @@
 package listindent
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func TestCountLeadingSpaces(t *testing.T) {
 	cases := []struct {
@@ -14,8 +18,6 @@ func TestCountLeadingSpaces(t *testing.T) {
 		{[]byte(" \tabc"), 1}, // tab is not a space; counting stops
 	}
 	for _, tc := range cases {
-		if got := countLeadingSpaces(tc.in); got != tc.want {
-			t.Errorf("countLeadingSpaces(%q) = %d, want %d", tc.in, got, tc.want)
-		}
+		assert.Equal(t, tc.want, countLeadingSpaces(tc.in), "countLeadingSpaces(%q)", tc.in)
 	}
 }
