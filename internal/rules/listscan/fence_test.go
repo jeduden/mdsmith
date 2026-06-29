@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestOpeningFenceRel_BacktickInInfoString(t *testing.T) {
@@ -16,11 +15,17 @@ func TestOpeningFenceRel_BacktickInInfoString(t *testing.T) {
 func TestOpeningFenceRel_CleanInfoString(t *testing.T) {
 	line := []byte("```go")
 	_, ok := openingFenceRel(line, 0, 0)
-	require.True(t, ok, "valid backtick fence must be recognized")
+	assert.True(t, ok, "valid backtick fence must be recognized")
 }
 
 func TestOpeningFenceRel_TildeAllowsBacktickInInfo(t *testing.T) {
 	line := []byte("~~~go`extra")
 	_, ok := openingFenceRel(line, 0, 0)
-	require.True(t, ok, "tilde fence allows backtick in info string")
+	assert.True(t, ok, "tilde fence allows backtick in info string")
+}
+
+func TestOpeningFenceRel_BareFence(t *testing.T) {
+	line := []byte("```")
+	_, ok := openingFenceRel(line, 0, 0)
+	assert.True(t, ok, "bare backtick fence with no info string must be a valid opener")
 }
