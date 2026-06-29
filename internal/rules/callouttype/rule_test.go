@@ -278,3 +278,7 @@ func TestBuildAllowSet_SetType(t *testing.T) {
 	assert.Contains(t, m, "note", "built-in type 'note' must be present in the returned set")
 	assert.Contains(t, m, "custom", "user-configured Allow entry must be present")
 }
+
+func TestWordlistTarget(t *testing.T) {
+	assert.Equal(t, "allow", (&Rule{}).WordlistTarget())
+}

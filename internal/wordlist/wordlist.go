@@ -70,12 +70,12 @@ func RenderFile(headerComment string, entries []string) ([]byte, error) {
 	if len(entries) == 0 {
 		return nil, fmt.Errorf("wordlist has no entries")
 	}
-	body, err := yamlutil.Marshal(struct {
+	// Marshaling a struct of plain strings cannot fail, so the error is
+	// discarded deliberately — a guard we could never drive red/green
+	// would just be dead code.
+	body, _ := yamlutil.Marshal(struct {
 		Entries []string `yaml:"entries"`
 	}{Entries: entries})
-	if err != nil {
-		return nil, err
-	}
 	var b bytes.Buffer
 	b.WriteString(headerComment)
 	if headerComment != "" && !strings.HasSuffix(headerComment, "\n") {

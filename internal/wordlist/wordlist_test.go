@@ -32,6 +32,16 @@ func TestParse_RejectsAliases(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestParse_EmptyErrors(t *testing.T) {
+	_, _, err := Parse([]byte(""))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "empty")
+}
+
+func TestDedup_Empty(t *testing.T) {
+	assert.Nil(t, dedup(nil))
+}
+
 func TestRenderFile_RoundTrips(t *testing.T) {
 	// Entries with an apostrophe and a trailing comma must survive the
 	// marshal/parse round-trip unchanged.

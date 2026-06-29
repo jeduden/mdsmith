@@ -500,3 +500,7 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 		})
 	}
 }
+
+func TestWordlistTarget(t *testing.T) {
+	assert.Equal(t, "ignored-labels", (&Rule{}).WordlistTarget())
+}

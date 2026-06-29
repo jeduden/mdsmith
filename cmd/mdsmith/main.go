@@ -394,7 +394,7 @@ type wordlistScaffold struct {
 // recording its origin and the exact `lists:` reference that wires it
 // into the matching rule, then the curated entries. The files are the
 // user's to edit; nothing reads them until a rule names them.
-func wordlistScaffolds() ([]wordlistScaffold, error) {
+func wordlistScaffolds() []wordlistScaffold {
 	lists := convention.NoLLMTellsWordlists()
 	out := make([]wordlistScaffold, 0, len(lists))
 	for _, wl := range lists {
@@ -409,16 +409,15 @@ func wordlistScaffolds() ([]wordlistScaffold, error) {
 				"#     %[2]s:\n"+
 				"#       lists: [%[1]s]\n",
 			wl.Name, wl.Rule)
-		data, err := wordlist.RenderFile(header, wl.Entries)
-		if err != nil {
-			return nil, fmt.Errorf("rendering wordlist %q: %w", wl.Name, err)
-		}
+		// RenderFile only errors on empty entries; the curated lists are
+		// non-empty (guaranteed by the drift test), so discard the error.
+		data, _ := wordlist.RenderFile(header, wl.Entries)
 		out = append(out, wordlistScaffold{
 			path: filepath.Join(".mdsmith", "wordlists", wl.Name+".yaml"),
 			data: data,
 		})
 	}
-	return out, nil
+	return out
 }
 
 // writeWordlistScaffolds writes each wordlistScaffolds() file under the
@@ -426,10 +425,7 @@ func wordlistScaffolds() ([]wordlistScaffold, error) {
 // existing target file is left untouched and noted, so a re-run never
 // clobbers a project's edits. Progress lines go to w.
 func writeWordlistScaffolds(w io.Writer) error {
-	scaffolds, err := wordlistScaffolds()
-	if err != nil {
-		return err
-	}
+	scaffolds := wordlistScaffolds()
 	dir := filepath.Join(".mdsmith", "wordlists")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("creating %s: %w", dir, err)

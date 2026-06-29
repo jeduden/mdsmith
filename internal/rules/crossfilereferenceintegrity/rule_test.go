@@ -1597,3 +1597,7 @@ func (w *walkCountingFS) Open(name string) (fs.File, error) {
 	}
 	return w.inner.Open(name)
 }
+
+func TestWordlistTarget(t *testing.T) {
+	assert.Equal(t, "placeholders", (&Rule{}).WordlistTarget())
+}

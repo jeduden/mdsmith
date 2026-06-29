@@ -1125,11 +1125,49 @@ func TestRunInit_Wordlists_ExistingConfigScaffoldsAnyway(t *testing.T) {
 	}
 }
 
+func TestRunInit_Wordlists_ScaffoldError(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	// .mdsmith is a regular file, so scaffolding's MkdirAll fails and
+	// runInit must surface it as exit 2.
+	require.NoError(t, os.WriteFile(".mdsmith", []byte("x"), 0o644))
+
+	captureStderr(func() {
+		code := runInit([]string{"--wordlists"})
+		assert.Equal(t, 2, code)
+	})
+}
+
+func TestRunInit_FromMarkdownlint_NoConfig_ExitsTwo(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	// No markdownlint config to discover -> initConfigBytes errors ->
+	// writeInitConfig propagates it -> exit 2.
+	captureStderr(func() {
+		code := runInit([]string{"--from-markdownlint"})
+		assert.Equal(t, 2, code)
+	})
+}
+
+func TestRunInit_FromMarkdownlint_Converts(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	require.NoError(t, os.WriteFile(".markdownlint.json", []byte(`{"MD013": false}`), 0o644))
+
+	captureStderr(func() {
+		code := runInit([]string{"--from-markdownlint"})
+		assert.Equal(t, 0, code)
+	})
+	// The converted config ("created from" branch of writeInitConfig) was
+	// written.
+	_, err := os.Stat(filepath.Join(dir, ".mdsmith.yml"))
+	require.NoError(t, err)
+}
+
 // --- wordlistScaffolds / writeWordlistScaffolds ---
 
 func TestWordlistScaffolds(t *testing.T) {
-	got, err := wordlistScaffolds()
-	require.NoError(t, err)
+	got := wordlistScaffolds()
 
 	lists := convention.NoLLMTellsWordlists()
 	require.Len(t, got, len(lists))

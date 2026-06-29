@@ -490,3 +490,7 @@ func TestEnabledByDefault(t *testing.T) {
 	assert.False(t, r.EnabledByDefault(),
 		"MDS024 must be opt-in — see EnabledByDefault godoc for cost rationale")
 }
+
+func TestWordlistTarget(t *testing.T) {
+	assert.Equal(t, "placeholders", (&Rule{}).WordlistTarget())
+}
