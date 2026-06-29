@@ -9,8 +9,8 @@
 //
 // The canonical use is the Open Knowledge Format (OKF): every concept
 // document must declare a non-empty `type`, while the reserved
-// `index.md` and `log.md` files are excluded. The built-in `okf`
-// convention configures the rule for exactly that case.
+// `index.md` and `log.md` files are excluded. The `okf` starter
+// (`mdsmith init --starter okf`) scaffolds exactly that configuration.
 package requiredfrontmatter
 
 import (

@@ -52,34 +52,6 @@ func TestLookup_Plain(t *testing.T) {
 		"plain convention forbids HTML comments")
 }
 
-func TestLookup_OKF(t *testing.T) {
-	c, err := Lookup("okf", nil)
-	require.NoError(t, err)
-	assert.Equal(t, "okf", c.Name)
-	// OKF is renderer-agnostic; the convention must not force a flavor.
-	assert.Equal(t, FlavorAny, c.Flavor)
-	// It must not enable MDS034, so the flavor never reports.
-	_, hasFlavor := c.Rules["markdown-flavor"]
-	assert.False(t, hasFlavor, "okf must not enable markdown-flavor")
-
-	rf, ok := c.Rules["required-frontmatter"]
-	require.True(t, ok)
-	assert.True(t, rf.Enabled)
-	assert.Equal(t, []any{"type"}, rf.Settings["fields"])
-	assert.Equal(t, []any{"index.md", "log.md"}, rf.Settings["exclude"])
-
-	// The prose/size opinion rules OKF does not mandate are stood down.
-	for _, name := range []string{
-		"first-line-heading", "line-length", "max-file-length",
-		"token-budget", "paragraph-readability", "paragraph-structure",
-		"table-readability",
-	} {
-		p, ok := c.Rules[name]
-		require.True(t, ok, "okf must mention %q", name)
-		assert.False(t, p.Enabled, "okf must disable %q", name)
-	}
-}
-
 func TestLookup_Unknown(t *testing.T) {
 	_, err := Lookup("bogus", nil)
 	require.Error(t, err)
@@ -229,7 +201,7 @@ func TestNamesSorted(t *testing.T) {
 		"Names should return a sorted slice; got %v", names)
 	assert.ElementsMatch(t, []string{
 		"github", "gomarklint-parity", "mado-parity", "markdownlint-parity",
-		"no-llm-tells", "obsidian", "okf", "plain", "portable", "rumdl-parity",
+		"no-llm-tells", "obsidian", "plain", "portable", "rumdl-parity",
 	}, names)
 }
 

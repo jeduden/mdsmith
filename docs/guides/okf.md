@@ -2,11 +2,11 @@
 title: Open Knowledge Format (OKF) bundles
 weight: 82
 summary: >-
-  Author and validate Open Knowledge Format bundles with mdsmith: pin
-  the `okf` convention to require a non-empty `type` on every concept
-  document, validate bundle-relative cross-links with
-  `links.site-root`, and generate the `index.md` listing with
-  `<?catalog?>`.
+  Author and validate Open Knowledge Format bundles with mdsmith:
+  scaffold the config with `mdsmith init --starter okf` to require a
+  non-empty `type` on every concept document, validate bundle-relative
+  cross-links with `links.site-root`, and generate the `index.md`
+  listing with `<?catalog?>`.
 ---
 # Open Knowledge Format (OKF) bundles
 
@@ -63,41 +63,58 @@ timestamp: 2026-05-28T00:00:00Z
 Part of the [sales dataset](/datasets/sales.md).
 ```
 
-## Pin the `okf` convention
+## Scaffold the config
 
-Drop a `.mdsmith.yml` at the bundle root and select the `okf`
-convention:
+Run this once at the bundle root:
 
-```yaml
-convention: okf
+```bash
+mdsmith init --starter okf
 ```
 
-That one line applies a curated rule preset suited to knowledge
-bundles. It does two things.
+It writes a ready-to-edit `.mdsmith.yml` — a plain mdsmith config, no
+special OKF runtime — that does two things.
 
-First, it requires a non-empty `type` on every concept document. The
-check is [MDS071 `required-frontmatter`][mds071], scoped to skip the
-reserved files. A file with no `type`, an empty `type`, or no front
-matter at all fails `mdsmith check`:
+First, it requires a non-empty `type` on every concept document:
+
+```yaml
+rules:
+  required-frontmatter:
+    fields: [type]
+    exclude: [index.md, log.md]
+```
+
+The check is [MDS071 `required-frontmatter`][mds071], scoped to skip
+the reserved files. A file with no `type`, an empty `type`, or no
+front matter at all fails `mdsmith check`:
 
 ```text
 sales/tables/orders.md:1:1 MDS071 front-matter "type" is required but missing
 ```
 
-Second, it stands down the prose- and size-opinion rules that fit a
-documentation site but not a data bundle: line length, file length,
-token budget, paragraph readability and structure, the "first line
-must be a heading" rule (an OKF concept body may open with prose), and
-large-table readability (a schema concept often tabulates a wide
-table). Mechanical hygiene — trailing whitespace, code fences, blank
-lines, link integrity — stays on. The
-[conventions reference](../reference/conventions.md) lists the full
-preset.
+Second, it turns off the prose- and size-opinion rules that suit a
+documentation site but not a data bundle. An OKF concept body may open
+with prose, so the "first line must be a heading" rule steps aside.
+Long lines, large files, dense tables, and tight token budgets are all
+fine in a knowledge bundle, so those checks stand down too:
 
-The convention pins no Markdown flavor, so GFM tables in concept
-bodies are never flagged. If you want a stricter `type` vocabulary —
-say, an enum of allowed types — layer a [kind](#tighten-per-type-structure-with-a-kind)
-on top, as shown below.
+```yaml
+rules:
+  first-line-heading: false
+  line-length: false
+  max-file-length: false
+  token-budget: false
+  paragraph-readability: false
+  paragraph-structure: false
+  table-readability: false
+```
+
+Mechanical hygiene — trailing whitespace, code fences, blank lines,
+link integrity — stays on. The starter pins no Markdown flavor, so GFM
+tables in concept bodies are never flagged. Everything past this point
+is the rest of what the starter writes (or what you would add by hand);
+edit any line to fit your bundle. If you want a stricter `type`
+vocabulary — say, an enum of allowed types — layer a
+[kind](#tighten-per-type-structure-with-a-kind) on top, as shown below.
 
 ## Validate cross-links
 
@@ -114,11 +131,10 @@ The spec supports two forms, and mdsmith handles each:
   not checked.
 
 To validate bundle-relative links, point mdsmith at the bundle root
-with `links.site-root`. When you run `mdsmith check` from the bundle
-root, that root is the current directory:
+with `links.site-root`. The starter already sets this — `"."` is the
+directory you run `mdsmith check` from:
 
 ```yaml
-convention: okf
 rules:
   cross-file-reference-integrity:
     links:
@@ -160,7 +176,8 @@ every concept's front matter and rewrites the bullet list between the
 markers; the reserved files are excluded by the `!` globs. The bundle
 root's `index.md` is also the one place OKF allows front matter — an
 `okf_version: "0.1"` line declaring the target spec version — and the
-`okf` convention does not require a `type` there, so it passes.
+starter's `required-frontmatter` excludes `index.md`, so it needs no
+`type` there.
 
 The directive markers are mdsmith-specific. To hand a consumer a
 pristine, directive-free copy of the bundle, run
@@ -181,20 +198,20 @@ date-grouped entries, newest first, under `YYYY-MM-DD` headings:
 ```
 
 mdsmith does not generate `log.md` — it is authored by hand or by your
-producer — but the `okf` convention excludes it from the `type`
-requirement and lints it like any other Markdown file, so its
-headings, lists, and links stay well formed.
+producer — but the starter excludes it from the `type` requirement and
+lints it like any other Markdown file, so its headings, lists, and
+links stay well formed.
 
 ## Tighten per-type structure with a kind
 
-The `okf` convention enforces OKF's single hard requirement. To go
-further — make the recommended fields mandatory for your project, pin
-`type` to an enum, or require a heading structure per concept type —
-declare a [kind with a schema](file-kinds.md). A kind matches files by
-a path pattern and validates their front matter and headings:
+The starter enforces OKF's single hard requirement. To go further —
+make the recommended fields mandatory for your project, pin `type` to
+an enum, or require a heading structure per concept type — declare a
+[kind with a schema](file-kinds.md). A kind matches files by a path
+pattern and validates their front matter and headings. The starter
+ships this block commented out; uncomment and adapt it:
 
 ```yaml
-convention: okf
 kinds:
   bq-table:
     path-pattern: "tables/*.md"
@@ -215,8 +232,8 @@ kind-assignment:
 Now a `tables/*.md` file whose `type` is not exactly `BigQuery Table`,
 or that omits `title`, or that lacks a `Schema` section, fails
 `mdsmith check` with a [schema](schemas.md) diagnostic. The kind layers
-over the convention: the convention's `type` requirement still applies
-to every other directory.
+over the base config: the starter's `type` requirement still applies to
+every other directory.
 
 ## Run it in CI
 
@@ -227,27 +244,40 @@ mdsmith fix .     # rebuild every index.md, normalize formatting
 mdsmith check .   # read-only: non-zero exit on any violation
 ```
 
-`mdsmith check .` is the gate. It walks the bundle, applies the `okf`
-convention, and exits non-zero if any concept document is missing its
+`mdsmith check .` is the gate. It walks the bundle, applies your
+config, and exits non-zero if any concept document is missing its
 `type`, any cross-link is broken, or any `index.md` is stale relative
 to the front matter it indexes. Wire it into the same pre-commit hook
 or CI step you use for the rest of the repository.
 
 ## Full example
 
-A complete `.mdsmith.yml` for a bundle whose root is the repository:
+`mdsmith init --starter okf` writes this complete `.mdsmith.yml` for a
+bundle whose root is the repository:
 
 ```yaml
-convention: okf
+front-matter: true
+
 rules:
+  required-frontmatter:
+    fields: [type]
+    exclude: [index.md, log.md]
   cross-file-reference-integrity:
     links:
       site-root: "."
+  first-line-heading: false
+  line-length: false
+  max-file-length: false
+  token-budget: false
+  paragraph-readability: false
+  paragraph-structure: false
+  table-readability: false
 ```
 
-That is the whole configuration. The `okf` convention carries the
-`type` requirement and the rule relaxations; the one explicit rule
-turns on bundle-relative link validation. Everything else — index
+That is the whole configuration — ordinary, editable mdsmith config.
+`required-frontmatter` carries the `type` requirement, `site-root`
+turns on bundle-relative link validation, and the disabled rules keep
+mdsmith's prose opinions off a data bundle. Everything else — index
 generation, formatting, change-log linting — follows from the
 directives and reserved-file conventions in the bundle itself.
 

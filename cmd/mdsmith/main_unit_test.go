@@ -1517,12 +1517,29 @@ func TestDefaultConfigBytes(t *testing.T) {
 
 func TestInitConfigBytes_EmptyFlagUsesDefaults(t *testing.T) {
 	var buf bytes.Buffer
-	data, source, err := initConfigBytes("", &buf)
+	data, source, err := initConfigBytes("", "", &buf)
 	require.NoError(t, err)
 
 	assert.Empty(t, source)
 	assert.Contains(t, string(data), "rules:")
 	assert.Empty(t, buf.String(), "defaults conversion emits no notes")
+}
+
+func TestInitConfigBytes_Starter(t *testing.T) {
+	var buf bytes.Buffer
+	data, source, err := initConfigBytes("", "okf", &buf)
+	require.NoError(t, err)
+
+	assert.Equal(t, "the okf starter", source)
+	assert.Contains(t, string(data), "required-frontmatter")
+	assert.Empty(t, buf.String(), "starter emits no notes")
+}
+
+func TestInitConfigBytes_UnknownStarter(t *testing.T) {
+	var buf bytes.Buffer
+	_, _, err := initConfigBytes("", "nope", &buf)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown starter")
 }
 
 func TestInitConfigBytes_ConvertsNamedConfig(t *testing.T) {
@@ -1532,7 +1549,7 @@ func TestInitConfigBytes_ConvertsNamedConfig(t *testing.T) {
 		[]byte(`{"MD013": {"line_length": 120}, "MD024": {"siblings_only": true}}`), 0o644))
 
 	var buf bytes.Buffer
-	data, source, err := initConfigBytes(path, &buf)
+	data, source, err := initConfigBytes(path, "", &buf)
 	require.NoError(t, err)
 
 	assert.Equal(t, path, source)

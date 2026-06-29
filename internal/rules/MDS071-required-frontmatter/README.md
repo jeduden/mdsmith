@@ -34,8 +34,8 @@ fields.
 
 The canonical use is the Open Knowledge Format (OKF), where every
 concept document must carry a non-empty `type` and the reserved
-`index.md` and `log.md` files are excluded. The built-in `okf`
-convention wires the rule for exactly that.
+`index.md` and `log.md` files are excluded. The `okf` starter
+(`mdsmith init --starter okf`) scaffolds exactly that.
 
 ## Settings
 

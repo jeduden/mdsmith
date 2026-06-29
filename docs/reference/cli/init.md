@@ -2,8 +2,9 @@
 command: init
 summary: >-
   Generate a default `.mdsmith.yml` config in the current
-  directory, or convert an existing markdownlint config
-  with `--from-markdownlint`.
+  directory, scaffold a workflow config with `--starter`,
+  or convert an existing markdownlint config with
+  `--from-markdownlint`.
 ---
 # `mdsmith init`
 
@@ -13,18 +14,34 @@ settings, so individual rules can be flipped off or
 overridden with a clear diff.
 
 ```text
-mdsmith init [--from-markdownlint[=path]]
+mdsmith init [--starter <name>] [--from-markdownlint[=path]]
 ```
 
 Refuses to overwrite an existing `.mdsmith.yml`. Takes no
-positional arguments.
+positional arguments. `--starter` and `--from-markdownlint`
+are mutually exclusive.
 
 ## Flags
 
 | Flag                        | Effect                                                       |
 | --------------------------- | ------------------------------------------------------------ |
+| `--starter=$name`           | Scaffold a ready-to-edit config for a workflow               |
 | `--from-markdownlint`       | Convert a markdownlint config found in the current directory |
 | `--from-markdownlint=$path` | Convert the markdownlint config at `$path`                   |
+
+## Starters
+
+`--starter <name>` writes a hand-authored, commented
+`.mdsmith.yml` tuned for one authoring workflow, instead of
+the rule-by-rule defaults. Available starters:
+
+| Name  | Scaffolds                                                  |
+| ----- | ---------------------------------------------------------- |
+| `okf` | [Open Knowledge Format](../../guides/okf.md) bundle config |
+
+An unknown name fails with exit code 2 and lists the valid
+names. A starter is a starting *configuration*; it is
+unrelated to the `<?build?>` directive's recipe.
 
 With `--from-markdownlint` and no `=path`, the command
 probes the same file names markdownlint-cli does, in
@@ -58,6 +75,13 @@ mdsmith init
 $EDITOR .mdsmith.yml
 ```
 
+Scaffold an OKF bundle config:
+
+```bash
+mdsmith init --starter okf
+$EDITOR .mdsmith.yml
+```
+
 Convert a markdownlint config:
 
 ```bash
@@ -71,7 +95,7 @@ for a worked conversion, including the emitted notes.
 
 ## Exit codes
 
-| Code | Meaning                                                             |
-| ---- | ------------------------------------------------------------------- |
-| 0    | Config written (conversion notes may still be present)              |
-| 2    | `.mdsmith.yml` exists, no markdownlint config found, or parse error |
+| Code | Meaning                                                                                                 |
+| ---- | ------------------------------------------------------------------------------------------------------- |
+| 0    | Config written (conversion notes may still be present)                                                  |
+| 2    | `.mdsmith.yml` exists, unknown starter, conflicting flags, no markdownlint config found, or parse error |
