@@ -123,9 +123,24 @@ func TestWrapTokens_GluePreventsBreakAfterAbbrev(t *testing.T) {
 	}
 
 	gotGlue := wrapTokens(tokens, "", 9, glue)
-	wantGlue := []string{"aaaa e.g. bbbb"} // abbreviation kept with next word
+	// "e.g. bbbb" is one unit; it does not fit after "aaaa", so it wraps
+	// whole — the abbreviation is never left at a line end, and the line
+	// never overflows width.
+	wantGlue := []string{"aaaa", "e.g. bbbb"}
 	if !reflect.DeepEqual(gotGlue, wantGlue) {
 		t.Errorf("wrapTokens(glue) = %q, want %q", gotGlue, wantGlue)
+	}
+}
+
+func TestWrapTokens_GluedUnitWrapsWholeNoOverflow(t *testing.T) {
+	// A run of initials glued to the following word forms one unit that
+	// wraps as a whole rather than overflowing the line.
+	tokens := []string{"shelved", "J.", "R.", "R.", "Tolkien", "today"}
+	initialGlue := func(prev string) bool { return prev == "J." || prev == "R." }
+	got := wrapTokens(tokens, "", 16, initialGlue)
+	want := []string{"shelved", "J. R. R. Tolkien", "today"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("wrapTokens = %q, want %q", got, want)
 	}
 }
 

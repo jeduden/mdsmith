@@ -101,6 +101,21 @@ use to split sentences. It recognises honorifics (`Dr.`, `Mr.`), reference forms
 (`etc.`, `approx.`), and append-merges across config layers so a kind can extend
 the inherited list without restating it.
 
+The payoff is clearest at the wrap boundary. A naive word wrap of this line at 80
+columns splits the spaced acronym across the break:
+
+```text
+Historians traced the founding and the early constitutional debates of the U. S.
+A. with real care.
+```
+
+Reflow breaks before the acronym instead, keeping `U. S. A.` whole on one line:
+
+```text
+Historians traced the founding and the early constitutional debates of the
+U. S. A. with real care.
+```
+
 ## Config
 
 Enable (default):

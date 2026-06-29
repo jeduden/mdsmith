@@ -66,7 +66,9 @@ func TestFix_TwoParagraphsOnlyLongOne(t *testing.T) {
 func TestFix_AbbreviationKeptWithFollowingWord(t *testing.T) {
 	r := &Rule{Max: 12, Reflow: true}
 	src := "We met Dr. Watson today."
-	want := "We met Dr. Watson\ntoday."
+	// "Dr. Watson" is one unit; it does not fit after "We met", so it
+	// wraps whole onto its own line.
+	want := "We met\nDr. Watson\ntoday."
 	got := fixSource(t, r, src)
 	assert.Equal(t, want, got)
 	for _, line := range strings.Split(got, "\n") {

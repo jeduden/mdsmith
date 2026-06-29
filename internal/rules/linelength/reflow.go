@@ -101,33 +101,57 @@ func tokenizeParagraph(src []byte, start, end int, spans []lint.Range) []string 
 }
 
 // wrapTokens greedily packs tokens into lines no wider than width runes,
-// each prefixed with indent. glue(prev) reports whether the token after
-// prev must stay on the same line regardless of width, which keeps an
-// abbreviation joined to the word that follows it. A single token wider
-// than width still occupies its own line (it cannot be broken). Returns
-// nil for an empty token list.
+// each prefixed with indent. It first coalesces tokens into wrap units:
+// a unit is a maximal run of tokens where glue(token) holds at every
+// internal boundary, so an abbreviation (and its following word) stays
+// in one unit. Units are the atomic wrap elements — a unit never splits
+// across lines, and a unit wider than width still occupies its own line.
+//
+// Wrapping by unit (rather than gluing token by token) means a glued run
+// that does not fit breaks *before* the unit instead of overflowing past
+// width: "U. S. A." moves to the next line whole rather than dragging
+// the line over the limit. Returns nil for an empty token list.
 func wrapTokens(tokens []string, indent string, width int, glue func(prev string) bool) []string {
 	if len(tokens) == 0 {
 		return nil
 	}
+	units := buildWrapUnits(tokens, glue)
 	indentW := utf8.RuneCountInString(indent)
 	var lines []string
-	cur := indent + tokens[0]
-	curW := indentW + utf8.RuneCountInString(tokens[0])
-	prev := tokens[0]
-	for _, tok := range tokens[1:] {
-		tokW := utf8.RuneCountInString(tok)
-		if glue(prev) || curW+1+tokW <= width {
-			cur += " " + tok
-			curW += 1 + tokW
+	cur := indent + units[0]
+	curW := indentW + utf8.RuneCountInString(units[0])
+	for _, u := range units[1:] {
+		uW := utf8.RuneCountInString(u)
+		if curW+1+uW <= width {
+			cur += " " + u
+			curW += 1 + uW
 		} else {
 			lines = append(lines, cur)
-			cur = indent + tok
-			curW = indentW + tokW
+			cur = indent + u
+			curW = indentW + uW
 		}
-		prev = tok
 	}
 	return append(lines, cur)
+}
+
+// buildWrapUnits coalesces tokens into space-joined units. A new token
+// joins the current unit while glue holds for the unit's last token, so
+// an abbreviation never ends a unit (and thus never ends a wrapped
+// line). Every token lands in exactly one unit, so the joined units
+// reproduce the original word sequence.
+func buildWrapUnits(tokens []string, glue func(prev string) bool) []string {
+	units := make([]string, 0, len(tokens))
+	for i := 0; i < len(tokens); {
+		unit := tokens[i]
+		j := i
+		for j < len(tokens)-1 && glue(tokens[j]) {
+			j++
+			unit += " " + tokens[j]
+		}
+		units = append(units, unit)
+		i = j + 1
+	}
+	return units
 }
 
 // leadingWhitespace returns the run of spaces and tabs at the start of

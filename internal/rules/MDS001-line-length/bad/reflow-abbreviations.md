@@ -4,8 +4,8 @@ settings:
 diagnostics:
   - line: 3
     column: 81
-    message: "line too long (160 > 80)"
+    message: "line too long (99 > 80)"
 ---
-# Abbreviations
+# Initials
 
-The report from Dr. Watson summarizes the findings and lists the next steps that the wider team should follow during the upcoming review of the release process.
+Historians traced the founding and the early constitutional debates of the U. S. A. with real care.
