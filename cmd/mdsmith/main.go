@@ -342,23 +342,9 @@ func runInit(args []string) int {
 		return 2
 	}
 
-	if configExists {
-		fmt.Fprintf(os.Stderr, "mdsmith: %s already exists, leaving it unchanged\n", configFile)
-	} else {
-		data, source, err := initConfigBytes(fromMarkdownlint, os.Stderr)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
-			return 2
-		}
-		if err := os.WriteFile(configFile, data, 0644); err != nil {
-			fmt.Fprintf(os.Stderr, "mdsmith: writing %s: %v\n", configFile, err)
-			return 2
-		}
-		if source != "" {
-			fmt.Fprintf(os.Stderr, "mdsmith: created %s from %s\n", configFile, source)
-		} else {
-			fmt.Fprintf(os.Stderr, "mdsmith: created %s\n", configFile)
-		}
+	if err := writeInitConfig(configFile, fromMarkdownlint, configExists, os.Stderr); err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		return 2
 	}
 
 	if withWordlists {
@@ -368,6 +354,31 @@ func runInit(args []string) int {
 		}
 	}
 	return 0
+}
+
+// writeInitConfig writes the .mdsmith.yml for init, unless it already
+// exists. An existing config is left untouched — so `init --wordlists`
+// can add word-lists to an already-initialized project — otherwise the
+// defaults, or a --from-markdownlint conversion, are written. Progress
+// and any conversion notes go to w.
+func writeInitConfig(configFile, fromMarkdownlint string, configExists bool, w io.Writer) error {
+	if configExists {
+		_, _ = fmt.Fprintf(w, "mdsmith: %s already exists, leaving it unchanged\n", configFile)
+		return nil
+	}
+	data, source, err := initConfigBytes(fromMarkdownlint, w)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(configFile, data, 0644); err != nil {
+		return fmt.Errorf("writing %s: %w", configFile, err)
+	}
+	if source != "" {
+		_, _ = fmt.Fprintf(w, "mdsmith: created %s from %s\n", configFile, source)
+	} else {
+		_, _ = fmt.Fprintf(w, "mdsmith: created %s\n", configFile)
+	}
+	return nil
 }
 
 // wordlistScaffold is one file `mdsmith init --wordlists` writes: a
@@ -426,7 +437,7 @@ func writeWordlistScaffolds(w io.Writer) error {
 	for _, s := range scaffolds {
 		_, err := os.Stat(s.path)
 		if err == nil {
-			fmt.Fprintf(w, "mdsmith: %s already exists, skipping\n", s.path)
+			_, _ = fmt.Fprintf(w, "mdsmith: %s already exists, skipping\n", s.path)
 			continue
 		}
 		if !errors.Is(err, fs.ErrNotExist) {
@@ -439,7 +450,7 @@ func writeWordlistScaffolds(w io.Writer) error {
 		if err := os.WriteFile(s.path, s.data, 0o644); err != nil {
 			return fmt.Errorf("writing %s: %w", s.path, err)
 		}
-		fmt.Fprintf(w, "mdsmith: created %s\n", s.path)
+		_, _ = fmt.Fprintf(w, "mdsmith: created %s\n", s.path)
 	}
 	return nil
 }
