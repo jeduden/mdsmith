@@ -147,3 +147,17 @@ func TestFix_CodeBlockNotReflowed(t *testing.T) {
 		t.Errorf("code block content must not be reflowed:\n%q", got)
 	}
 }
+
+func TestFix_PreservesCRLFLineEndings(t *testing.T) {
+	r := &Rule{Max: 40, Reflow: true}
+	// CRLF source: a short unchanged paragraph followed by a long paragraph
+	// that triggers reflow.  The unchanged lines retain their \r from
+	// bytes.Split; the fix must not mix CRLF and bare-LF in the output.
+	src := "short\r\n\r\n" + strings.Repeat("word ", 20) + "\r\n"
+	got := fixSource(t, r, src)
+	// After removing all \r\n, no bare \n may remain.
+	stripped := strings.ReplaceAll(got, "\r\n", "")
+	assert.False(t, strings.Contains(stripped, "\n"),
+		"CRLF source must not produce bare LF in output: %q", got)
+	assert.Contains(t, got, "\r\n", "CRLF source must produce CRLF output")
+}

@@ -7,7 +7,6 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestFixTitle(t *testing.T) {
@@ -123,5 +122,5 @@ func TestTokenizeParagraph_SpanClampedToEnd(t *testing.T) {
 	src := []byte("a `bcdefg`")
 	got := tokenizeParagraph(src, 0, 5, []lint.Range{{Start: 2, End: 10}})
 	want := []string{"a", "`bc"}
-	require.Equal(t, want, got)
+	assert.Equal(t, want, got)
 }

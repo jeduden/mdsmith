@@ -58,11 +58,21 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		return cloneBytes(f.Source)
 	}
 
+	// bytes.Split(source, "\n") leaves a trailing \r on each line of a CRLF
+	// file. Detect the original style so we can strip those \r bytes and
+	// re-join with the matching separator — otherwise unchanged lines and
+	// newly reflowed lines would use different endings in the same output.
+	crlf := bytes.Contains(f.Source, []byte("\r\n"))
+	sep := []byte("\n")
+	if crlf {
+		sep = []byte("\r\n")
+	}
+
 	out := make([][]byte, 0, len(f.Lines))
 	li := 0 // 0-based index into f.Lines
 	for _, rp := range repls {
 		for li < rp.startLine-1 {
-			out = append(out, f.Lines[li])
+			out = append(out, trimTrailingCR(f.Lines[li], crlf))
 			li++
 		}
 		for _, s := range rp.lines {
@@ -71,10 +81,10 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		li = rp.endLine // skip the paragraph's original lines
 	}
 	for li < len(f.Lines) {
-		out = append(out, f.Lines[li])
+		out = append(out, trimTrailingCR(f.Lines[li], crlf))
 		li++
 	}
-	return bytes.Join(out, []byte("\n"))
+	return bytes.Join(out, sep)
 }
 
 // reflowParagraph computes replacement lines for one paragraph. It
@@ -155,6 +165,16 @@ func overlapsGeneratedRange(f *lint.File, startLine, endLine int) bool {
 		}
 	}
 	return false
+}
+
+// trimTrailingCR strips the trailing \r from b when crlf is true.
+// bytes.Split(source, "\n") leaves \r on each line of a CRLF file; stripping
+// here lets every line in the output be re-joined uniformly with sep.
+func trimTrailingCR(b []byte, crlf bool) []byte {
+	if crlf && len(b) > 0 && b[len(b)-1] == '\r' {
+		return b[:len(b)-1]
+	}
+	return b
 }
 
 // cloneBytes returns a copy of b so callers never alias the file source.

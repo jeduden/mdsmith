@@ -46,7 +46,7 @@ func TestParseListItemNumber_ZeroAllocs(t *testing.T) {
 	allocs := testing.AllocsPerRun(100, func() {
 		parseListItemNumber(line)
 	})
-	require.Zero(t, allocs, "parseListItemNumber must not allocate")
+	assert.Zero(t, allocs, "parseListItemNumber must not allocate")
 }
 
 func TestParseListItemNumber_LongDigitRun(t *testing.T) {
