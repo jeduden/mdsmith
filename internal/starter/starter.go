@@ -14,6 +14,7 @@ package starter
 import (
 	"embed"
 	"fmt"
+	"io/fs"
 	"sort"
 	"strings"
 )
@@ -32,8 +33,10 @@ func Get(name string) (data []byte, ok bool) {
 }
 
 // Names returns the available starter names, sorted.
-func Names() []string {
-	entries, err := templatesFS.ReadDir("templates")
+func Names() []string { return namesFrom(templatesFS) }
+
+func namesFrom(fsys fs.FS) []string {
+	entries, err := fs.ReadDir(fsys, "templates")
 	if err != nil {
 		return nil
 	}
