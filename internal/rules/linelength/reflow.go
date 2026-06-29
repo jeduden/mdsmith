@@ -3,89 +3,49 @@ package linelength
 import (
 	"bytes"
 	"strings"
-	"unicode"
+	"sync"
 	"unicode/utf8"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/punkt"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
-// defaultAbbreviations is the built-in set of forward-gluing
-// abbreviations: tokens that precede content and so must not be left
-// dangling at the end of a wrapped line. The reflow wrapper keeps the
-// word after one of these on the same line. Initials ("J.") and
-// internal-dot abbreviations ("e.g.", "i.e.", "a.m.") are recognised by
-// looksLikeAbbrev instead, so they need not be listed here. Users extend
-// this set through the `abbreviations` setting (append-merged across
-// config layers); they cannot remove a built-in entry.
-var defaultAbbreviations = []string{
-	"Mr.", "Mrs.", "Ms.", "Dr.", "Prof.", "Sr.", "Jr.", "St.", "Rev.",
-	"vs.", "cf.", "No.", "Vol.", "Ch.", "Sec.", "Fig.", "Eq.", "pp.",
-}
-
-// abbrevTrimCutset is the trailing punctuation stripped before an
-// abbreviation lookup, so "e.g.," and "cf.;" still glue forward.
+// abbrevTrimCutset is the trailing clause punctuation stripped before a
+// user-list abbreviation lookup, so a configured "e.g." also matches
+// "e.g.,". punkt.Storage.IsAbbrevToken applies the same trim internally
+// for the trained-model path.
 const abbrevTrimCutset = ",;:"
 
+// englishAbbrevStorage lazily loads the trained Punkt model — the same
+// abbreviation knowledge the readability rules use to split sentences —
+// the first time a reflow fix needs it. Loading is deferred so a plain
+// `mdsmith check` (or a fix with reflow off) never pays the english.json
+// parse.
+var englishAbbrevStorage = sync.OnceValue(func() *punkt.Storage {
+	return punkt.NewEnglish().Storage
+})
+
 // isAbbrev reports whether tok is an abbreviation that must stay glued
-// to the word that follows it during reflow. It checks the rule's
-// configured set (built-ins plus any `abbreviations` additions) and the
-// structural looksLikeAbbrev heuristic. Trailing clause punctuation is
-// trimmed first so "e.g.," matches "e.g.".
+// to the word that follows it during reflow, so reflow never ends a
+// wrapped line on it. Detection defers to the trained Punkt model
+// (honorifics like "Dr."/"Mr.", reference forms like "vs."/"No.",
+// initials like "J.", and dotted forms like "e.g."/"i.e."/"U.S.A.").
+// The configured Abbreviations list adds project-specific entries the
+// model does not know ("etc.", "approx."); they are matched after
+// trimming trailing clause punctuation, the same normalization the
+// model applies.
 func (r *Rule) isAbbrev(tok string) bool {
 	t := strings.TrimRight(tok, abbrevTrimCutset)
 	if t == "" {
 		return false
 	}
-	if _, ok := r.abbrevSet()[t]; ok {
-		return true
-	}
-	return looksLikeAbbrev(t)
-}
-
-// abbrevSet returns the effective abbreviation set: the built-in
-// defaults unioned with the configured Abbreviations list. The built-ins
-// are always present so a user `abbreviations` list extends rather than
-// replaces them, even on the byte-level config path that does not run
-// the append merge.
-func (r *Rule) abbrevSet() map[string]struct{} {
-	set := make(map[string]struct{}, len(defaultAbbreviations)+len(r.Abbreviations))
-	for _, a := range defaultAbbreviations {
-		set[a] = struct{}{}
-	}
 	for _, a := range r.Abbreviations {
-		if a != "" {
-			set[a] = struct{}{}
+		if a == t {
+			return true
 		}
 	}
-	return set
-}
-
-// looksLikeAbbrev recognises abbreviations by shape rather than by an
-// explicit list: a single-letter initial ("J.", "e.") or a token built
-// only of letters and periods carrying an internal period ("e.g.",
-// "i.e.", "U.S.A.", "a.m."). A plain word ending a sentence ("cat.",
-// "Go.") has one trailing period and more than one letter, so it is not
-// matched — reflow may end a line on it.
-func looksLikeAbbrev(t string) bool {
-	if !strings.HasSuffix(t, ".") {
-		return false
-	}
-	letters, dots := 0, 0
-	for _, c := range t {
-		switch {
-		case c == '.':
-			dots++
-		case unicode.IsLetter(c):
-			letters++
-		default:
-			return false
-		}
-	}
-	if letters == 0 || letters > 3 {
-		return false
-	}
-	return letters == 1 || dots >= 2
+	return englishAbbrevStorage().IsAbbrevToken(tok)
 }
 
 // tokenizeParagraph splits the source bytes in [start, end) into

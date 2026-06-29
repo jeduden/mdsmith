@@ -92,12 +92,14 @@ Inline code spans are preserved verbatim, and a single word wider than `max` (a
 long URL or link) keeps its own over-long line rather than being broken.
 
 Wrapping is abbreviation-aware. It never ends a wrapped line on an abbreviation,
-and it never splits a spaced abbreviation or a run of initials. So `e.g.` stays
-with the word it introduces, and `J. R. R. Tolkien` is never broken across lines.
-A built-in set (`Dr.`, `vs.`, `Fig.`, and similar) plus a structural heuristic
-for initials and internal-dot forms (`e.g.`, `i.e.`, `a.m.`) drive this. The
-`abbreviations` setting adds project-specific entries and append-merges across
-config layers, so a kind can extend the inherited list without restating it.
+and it never splits a run of initials. So `e.g.` stays with the word it
+introduces, and `J. R. R. Tolkien` is never broken across lines. Detection
+reuses mdsmith's trained abbreviation model — the same one the readability rules
+use to split sentences. It recognises honorifics (`Dr.`, `Mr.`), reference forms
+(`vs.`, `No.`), initials (`J.`), and dotted forms (`e.g.`, `i.e.`, `U.S.A.`). The
+`abbreviations` setting adds project-specific entries the model does not know
+(`etc.`, `approx.`), and append-merges across config layers so a kind can extend
+the inherited list without restating it.
 
 ## Config
 

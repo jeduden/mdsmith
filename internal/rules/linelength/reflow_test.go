@@ -7,45 +7,21 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 )
 
-func TestLooksLikeAbbrev(t *testing.T) {
-	cases := []struct {
-		tok  string
-		want bool
-	}{
-		{"e.g.", true},    // internal-dot abbreviation
-		{"i.e.", true},    // internal-dot abbreviation
-		{"a.m.", true},    // internal-dot abbreviation
-		{"U.S.A.", true},  // three letters, internal dots
-		{"J.", true},      // single-letter initial
-		{"e.", true},      // single-letter initial
-		{"etc.", false},   // single trailing dot, 3 letters
-		{"cat.", false},   // ordinary word ending a sentence
-		{"Go.", false},    // ordinary word ending a sentence
-		{"word", false},   // no trailing period
-		{"co-op.", false}, // contains a hyphen
-		{".", false},      // no letters
-	}
-	for _, c := range cases {
-		if got := looksLikeAbbrev(c.tok); got != c.want {
-			t.Errorf("looksLikeAbbrev(%q) = %v, want %v", c.tok, got, c.want)
-		}
-	}
-}
-
-func TestIsAbbrev_BuiltinAndHeuristic(t *testing.T) {
+func TestIsAbbrev_TrainedModel(t *testing.T) {
 	r := &Rule{}
 	cases := []struct {
 		tok  string
 		want bool
 	}{
-		{"Dr.", true},   // built-in set
-		{"vs.", true},   // built-in set
-		{"Fig.", true},  // built-in set
-		{"e.g.", true},  // heuristic
-		{"J.", true},    // heuristic
+		{"Dr.", true},   // trained honorific
+		{"vs.", true},   // trained reference form
+		{"Mr.", true},   // trained honorific
+		{"e.g.", true},  // dotted pattern
+		{"i.e.", true},  // dotted pattern
+		{"J.", true},    // initial
 		{"e.g.,", true}, // trailing comma trimmed
-		{"cf.;", true},  // trailing semicolon trimmed, built-in
-		{"etc.", false}, // not built-in, not heuristic
+		{"etc.", false}, // not in the trained model (needs config)
+		{"cat.", false}, // ordinary word ending a sentence
 		{"plain", false},
 		{",", false}, // trims to empty
 	}
@@ -57,6 +33,8 @@ func TestIsAbbrev_BuiltinAndHeuristic(t *testing.T) {
 }
 
 func TestIsAbbrev_ConfiguredExtension(t *testing.T) {
+	// "etc." and "approx." are not in the trained model, so they prove
+	// the configured list extends detection.
 	r := &Rule{Abbreviations: []string{"etc.", "approx."}}
 	if !r.isAbbrev("etc.") {
 		t.Errorf("configured abbreviation etc. should glue")
@@ -64,9 +42,12 @@ func TestIsAbbrev_ConfiguredExtension(t *testing.T) {
 	if !r.isAbbrev("approx.") {
 		t.Errorf("configured abbreviation approx. should glue")
 	}
-	// Built-ins remain even with a configured extension list.
+	if !r.isAbbrev("etc.,") {
+		t.Errorf("configured abbreviation should match after trimming punctuation")
+	}
+	// Trained entries still glue alongside a configured extension list.
 	if !r.isAbbrev("Dr.") {
-		t.Errorf("built-in Dr. should still glue alongside extensions")
+		t.Errorf("trained Dr. should still glue alongside extensions")
 	}
 }
 
