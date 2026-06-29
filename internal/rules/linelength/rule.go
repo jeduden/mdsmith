@@ -294,9 +294,7 @@ func isURLOnlyLine(line []byte) bool {
 	default:
 		return false
 	}
-	// bytes.IndexAny is SIMD-accelerated on amd64 for small character sets;
-	// faster than a hand-rolled byte loop over the same four ASCII chars.
-	return len(line) > 0 && bytes.IndexAny(line, " \t\n\r") < 0
+	return len(line) > 0 && !bytes.ContainsAny(line, " \t\n\r")
 }
 
 var (
