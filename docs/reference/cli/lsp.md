@@ -296,5 +296,7 @@ the p95 latency benchmarks (150 ms on 1 000-line, 500 ms on
 
 - [`mdsmith check`](check.md) — the CLI surface that the server reuses
 - [`mdsmith fix`](fix.md) — the fix pipeline behind both code actions
-- [VS Code guide](../../guides/editors/vscode.md) — install,
-  settings, troubleshooting
+- [VS Code guide](../../guides/editors/vscode.md) — what the
+  extension does and how to install it
+- [VS Code extension reference](../vscode-extension.md) — the
+  settings table and troubleshooting

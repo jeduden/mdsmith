@@ -7,18 +7,23 @@ summary: >-
 ---
 # mdsmith for VS Code
 
-The mdsmith extension puts the linter, the formatter, and
-cross-file navigation in your editor. It runs the same rule
-engine as `mdsmith check` on the command line and in CI, so a
-file that is clean as you edit is clean in the pipeline.
-Diagnostics, quick fixes, and navigation all come from one
-bundled binary, with nothing else to install.
+mdsmith is a Markdown linter and formatter that runs inside
+VS Code. It flags style, readability, structure, and broken
+cross-file links as you type, and fixes what fixes cleanly on
+save. The editor runs the same rule engine as `mdsmith check`
+on the command line and in CI, so a file that is clean as you
+edit is clean in the pipeline.
 
 If you use markdownlint today, mdsmith covers the same style
-rules and adds cross-file checks. `mdsmith init
+rules and adds checks markdownlint has no model for: links
+and anchors across files, generated sections, heading and
+front-matter schemas, and readability budgets. `mdsmith init
 --from-markdownlint` converts your config in one command; the
 [migration guide](../migrate-from-markdownlint.md) covers the
 rest of the move.
+
+Diagnostics, quick fixes, and navigation all come from one
+bundled binary, with nothing else to install.
 
 ## What you get
 
@@ -51,15 +56,8 @@ clicked.
 
 Each save then fixes trailing whitespace, heading style, code
 fences, bare URLs, list indentation, and table alignment.
-
-**Preview fix-on-save.** Enable `mdsmith.previewFix` and
-fix-on-save routes through VS Code's Refactor Preview pane, so
-you see the diff and confirm it before `source.fixAll.mdsmith`
-writes it on save. Interactive lightbulb quick fixes always
-apply immediately — they are the one fix you just chose, so
-there is nothing to confirm. To preview a single quick fix,
-use VS Code's built-in lightbulb Preview (the chevron, or
-Ctrl+Enter).
+Enable `mdsmith.previewFix` to see the diff in VS Code's
+Refactor Preview before each save writes.
 
 **Hover for help.** Hover a diagnostic for the rule's one-line
 summary plus a link that opens its full documentation offline:
@@ -124,75 +122,29 @@ codium --install-extension jeduden.mdsmith
 code --install-extension mdsmith-<version>.vsix
 ```
 
-You need VS Code 1.85 or later. A config file is optional:
-mdsmith lints with built-in defaults, so the extension works
-as soon as you install it. To tune the rules, run the
-**mdsmith: Initialize Config** command, which writes a starter
-`.mdsmith.yml`. The server then finds that file by walking up
-from the workspace root to the nearest `.mdsmith.yml` or
-`.git`, the same as `mdsmith check`. See
+You need VS Code 1.85 or later. See
 [Installation: VS Code extension](../install.md#vs-code-extension)
 for the channel-by-channel breakdown.
 
-## Settings
+## Settings and troubleshooting
 
-Project overrides go in `.vscode/settings.json`; global
-preferences go in your user settings. Changing any setting
-takes effect on the next document event, with no window
-reload.
+A config file is optional: mdsmith lints with built-in
+defaults, so the extension works as soon as you install it. To
+tune the rules, run the **mdsmith: Initialize Config** command,
+which writes a starter `.mdsmith.yml`. The server then finds
+that file by walking up from the workspace root to the nearest
+`.mdsmith.yml` or `.git`, the same as `mdsmith check`.
 
-| Setting                | Default   | Purpose                                                                                   |
-| ---------------------- | --------- | ----------------------------------------------------------------------------------------- |
-| `mdsmith.run`          | `onType`  | When to lint: `onType` (default), `onSave`, or `off` (off stops automatic linting)        |
-| `mdsmith.previewFix`   | `false`   | Show the diff (Refactor Preview) before fix-on-save writes; quick fixes apply immediately |
-| `mdsmith.config`       | `""`      | Override the `.mdsmith.yml` path (absolute or workspace)                                  |
-| `mdsmith.path`         | `mdsmith` | Pin a binary; the default runs the bundled per-platform one                               |
-| `mdsmith.trace.server` | `off`     | LSP trace verbosity: `off`, `messages`, or `verbose`                                      |
-
-`mdsmith.run` defaults to `onType`, so diagnostics update live
-as you type; `onSave` defers them to save, and `off` stops
-them entirely (quick fixes still work on demand).
-
-Fix-on-save is configured through VS Code's native
-`editor.codeActionsOnSave`, shown above under **Fix on save** —
-not through an mdsmith setting. The former `mdsmith.fixOnSave`
-toggle is now a deprecated no-op. Fix-on-save runs independently
-of `mdsmith.run`, and `mdsmith.previewFix` decides whether each
-save shows the diff before writing. `mdsmith.previewFix` governs
-fix-on-save only; interactive lightbulb quick fixes always apply
-immediately (use the lightbulb's own Preview to inspect one).
-
-## Troubleshooting
-
-**No diagnostics appear.** Confirm the binary resolves: open
-the integrated terminal and run `mdsmith version`. If it is
-not found, set `mdsmith.path` to an absolute path. Set
-`mdsmith.trace.server` to `messages` and read the "mdsmith"
-Output channel.
-
-**`spawn mdsmith ENOENT`.** Reachable only when you set
-`mdsmith.path` to a bare name and your platform was not
-bundled. The extension host does not source `~/.bashrc`, so a
-`go install` location such as `~/go/bin` is invisible to it.
-Clear `mdsmith.path` to use the bundled binary, or set it to
-an absolute path.
-
-**Server crashed too many times.** The restart limiter
-tripped because the binary crashes on every request. Open the
-"mdsmith" Output channel for the stack trace, fix the cause,
-then run `mdsmith: Restart Language Server`.
-
-**Two mdsmith servers running; I want one.** A reload or
-update can leave the old extension host alive next to the new
-one, each running its own server. The newest server wins: it
-claims the workspace and the older one exits, sending an
-`mdsmith/superseded` notice first so the client does not
-restart it. If an older build left an orphan, kill its
-extension host once — not the `mdsmith` process, which the
-host respawns.
+For the full settings table — `mdsmith.run`, `mdsmith.path`,
+`mdsmith.config`, `mdsmith.previewFix`, and
+`mdsmith.trace.server` — and fixes for common failure modes,
+see the
+[VS Code extension reference](../../reference/vscode-extension.md).
 
 ## See also
 
+- [VS Code extension reference](../../reference/vscode-extension.md)
+  — the settings table and troubleshooting
 - [`mdsmith lsp`](../../reference/cli/lsp.md) — the protocol
   reference: capabilities, diagnostic mapping, symbol
   navigation, and the latency budget
