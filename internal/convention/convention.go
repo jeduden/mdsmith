@@ -179,6 +179,42 @@ var conventions = map[string]Convention{
 			},
 		},
 	},
+	// slidev disables the eight default-on rules that produce false
+	// positives on Slidev presentation Markdown files. Slidev uses
+	// `---` as a slide separator, which causes heading rules to fire
+	// across slide boundaries: heading level restarts per slide,
+	// the same H1 title may appear on multiple slides, layout blocks
+	// are parsed as setext headings, emphasis stands in for headings,
+	// and layout-only slides have no body text. The eight disabled
+	// rules are: heading-style (MDS002), heading-increment (MDS003),
+	// first-line-heading (MDS004), no-duplicate-headings (MDS005),
+	// blank-line-around-headings (MDS013),
+	// no-trailing-punctuation-in-heading (MDS017),
+	// no-emphasis-as-heading (MDS018), and empty-section-body (MDS030).
+	//
+	// Flavor is FlavorAny: Slidev authors may render with GFM,
+	// CommonMark, or any other flavor, and the convention must not
+	// force a flavor change. The convention does not enable
+	// markdown-flavor (MDS034); the loader skips the flavor-conflict
+	// guard for a convention whose flavor is FlavorAny.
+	//
+	// Parser-level handling of `---` as a page separator is out of
+	// scope. This convention silences the rule-level false positives
+	// only.
+	"slidev": {
+		Name:   "slidev",
+		Flavor: FlavorAny,
+		Rules: map[string]RulePreset{
+			"heading-style":                      {Enabled: false},
+			"heading-increment":                  {Enabled: false},
+			"first-line-heading":                 {Enabled: false},
+			"no-duplicate-headings":              {Enabled: false},
+			"blank-line-around-headings":         {Enabled: false},
+			"no-trailing-punctuation-in-heading": {Enabled: false},
+			"no-emphasis-as-heading":             {Enabled: false},
+			"empty-section-body":                 {Enabled: false},
+		},
+	},
 	// no-llm-tells ships the mechanical layer of the docs-author
 	// anti-slop catalog as a one-key convention. It enables MDS056
 	// (forbidden-text) with a curated list of LLM vocabulary and phrase

@@ -195,6 +195,32 @@ func TestLookup_UnknownListsUserAndBuiltin(t *testing.T) {
 	assert.Contains(t, err.Error(), "portable", "error must list built-in name")
 }
 
+func TestLookup_Slidev(t *testing.T) {
+	c, err := Lookup("slidev", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "slidev", c.Name)
+	assert.Equal(t, FlavorAny, c.Flavor)
+
+	disabledRules := []string{
+		"heading-style",
+		"heading-increment",
+		"first-line-heading",
+		"no-duplicate-headings",
+		"blank-line-around-headings",
+		"no-trailing-punctuation-in-heading",
+		"no-emphasis-as-heading",
+		"empty-section-body",
+	}
+	for _, rule := range disabledRules {
+		p, ok := c.Rules[rule]
+		if assert.True(t, ok, "slidev convention must mention rule %q", rule) {
+			assert.False(t, p.Enabled, "slidev convention must disable rule %q", rule)
+		}
+	}
+	require.Len(t, c.Rules, len(disabledRules),
+		"slidev convention rule count drifted")
+}
+
 func TestNamesSorted(t *testing.T) {
 	names := Names()
 	assert.True(t, sort.StringsAreSorted(names),
@@ -202,6 +228,7 @@ func TestNamesSorted(t *testing.T) {
 	assert.ElementsMatch(t, []string{
 		"github", "gomarklint-parity", "mado-parity", "markdownlint-parity",
 		"no-llm-tells", "obsidian", "plain", "portable", "rumdl-parity",
+		"slidev",
 	}, names)
 }
 

@@ -141,6 +141,42 @@ func TestApplyConvention_NoLLMTells_EnablesRulesWithSettings(t *testing.T) {
 	assert.True(t, dlt.Enabled)
 }
 
+func TestApplyConvention_Slidev_FlavorAnyAllowsUserFlavor(t *testing.T) {
+	// slidev uses FlavorAny — it imposes no renderer requirement and
+	// must not reject a user's markdown-flavor setting.
+	cfg := &Config{
+		Convention: "slidev",
+		Rules: map[string]RuleCfg{
+			"markdown-flavor": {Enabled: true, Settings: map[string]any{"flavor": "gfm"}},
+		},
+	}
+	require.NoError(t, applyConvention(cfg))
+	require.NotNil(t, cfg.ConventionPreset)
+}
+
+func TestApplyConvention_Slidev_DisablesEightRulesInPreset(t *testing.T) {
+	cfg := &Config{Convention: "slidev"}
+	require.NoError(t, applyConvention(cfg))
+	require.NotNil(t, cfg.ConventionPreset)
+
+	disabledRules := []string{
+		"heading-style",
+		"heading-increment",
+		"first-line-heading",
+		"no-duplicate-headings",
+		"blank-line-around-headings",
+		"no-trailing-punctuation-in-heading",
+		"no-emphasis-as-heading",
+		"empty-section-body",
+	}
+	for _, rule := range disabledRules {
+		p, ok := cfg.ConventionPreset[rule]
+		if assert.True(t, ok, "slidev preset must contain rule %q", rule) {
+			assert.False(t, p.Enabled, "slidev preset must disable rule %q", rule)
+		}
+	}
+}
+
 func TestApplyConvention_FlavorAgreeAccepted(t *testing.T) {
 	cfg := &Config{
 		Convention: "github",
