@@ -61,9 +61,12 @@ file's header shows the exact `lists:` reference. Nothing
 reads a file until a rule names it.
 
 No word-list ships compiled into the binary; this flag is
-how you put the curated set on disk. An existing file is
-left untouched, so a re-run never clobbers your edits.
-`init` does not edit `.mdsmith.yml` to reference the files.
+how you put the curated set on disk. It works on an
+already-initialized project: an existing `.mdsmith.yml` is
+left unchanged, not treated as an error. An existing list
+file is left untouched too, so a re-run never clobbers your
+edits. `init` does not edit `.mdsmith.yml` to reference the
+files.
 
 ## Examples
 

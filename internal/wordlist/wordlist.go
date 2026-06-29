@@ -58,13 +58,19 @@ func Parse(data []byte) (extends string, entries []string, err error) {
 }
 
 // RenderFile returns the YAML body for a `.mdsmith/wordlists/<name>.yaml`
-// file: the headerComment verbatim (the caller includes the `#` prefixes
-// and trailing newline, or passes "" for none) followed by an `entries:`
-// block holding the given strings. The output round-trips through Parse,
-// so any quoting the YAML needs — a leading symbol, an embedded colon —
-// is applied by the marshaller rather than the caller.
+// file: the headerComment (a `#` comment block, or "" for none) followed
+// by an `entries:` block holding the given strings. A separator newline
+// is inserted when the header does not already end in one, so the output
+// always round-trips through Parse regardless of how the caller formats
+// the header. Any quoting the YAML needs — a leading symbol, an embedded
+// colon — is applied by the marshaller rather than the caller. It errors
+// on empty entries: a list with no entries cannot be referenced
+// meaningfully, the same invariant Parse enforces.
 func RenderFile(headerComment string, entries []string) ([]byte, error) {
-	body, err := yaml.Marshal(struct {
+	if len(entries) == 0 {
+		return nil, fmt.Errorf("wordlist has no entries")
+	}
+	body, err := yamlutil.Marshal(struct {
 		Entries []string `yaml:"entries"`
 	}{Entries: entries})
 	if err != nil {
@@ -72,6 +78,9 @@ func RenderFile(headerComment string, entries []string) ([]byte, error) {
 	}
 	var b bytes.Buffer
 	b.WriteString(headerComment)
+	if headerComment != "" && !strings.HasSuffix(headerComment, "\n") {
+		b.WriteByte('\n')
+	}
 	b.Write(body)
 	return b.Bytes(), nil
 }
@@ -83,8 +92,12 @@ func Lookup(name string, user map[string]Wordlist) (Wordlist, error) {
 	if wl, ok := user[name]; ok {
 		return wl, nil
 	}
+	valid := allNames(user)
+	if len(valid) == 0 {
+		return Wordlist{}, fmt.Errorf("unknown wordlist %q (no word-lists are declared)", name)
+	}
 	return Wordlist{}, fmt.Errorf(
-		"unknown wordlist %q (valid: %s)", name, strings.Join(allNames(user), ", "),
+		"unknown wordlist %q (valid: %s)", name, strings.Join(valid, ", "),
 	)
 }
 

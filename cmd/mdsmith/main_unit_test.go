@@ -1089,51 +1089,86 @@ func TestRunInit_AlreadyExists_ExitsTwo(t *testing.T) {
 
 func TestRunInit_Wordlists_ScaffoldsCuratedFiles(t *testing.T) {
 	dir := t.TempDir()
-	oldWd, err := os.Getwd()
-	require.NoError(t, err)
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(dir))
+	t.Chdir(dir)
 
 	captureStderr(func() {
 		code := runInit([]string{"--wordlists"})
 		assert.Equal(t, 0, code)
 	})
 
-	// Each curated list lands as an editable, parseable file whose
-	// entries match the no-llm-tells convention.
-	for _, wl := range convention.NoLLMTellsWordlists() {
-		path := filepath.Join(dir, ".mdsmith", "wordlists", wl.Name+".yaml")
-		data, err := os.ReadFile(path)
-		require.NoErrorf(t, err, "scaffolded %s", wl.Name)
-		_, entries, err := wordlist.Parse(data)
-		require.NoError(t, err)
-		assert.Equal(t, wl.Entries, entries)
-		assert.Contains(t, string(data), "lists: ["+wl.Name+"]",
-			"header shows how to reference the list")
+	// init --wordlists wires through to scaffolding: every curated list
+	// lands on disk. (Content is covered by TestWordlistScaffolds.)
+	for _, name := range []string{"ai-speak", "ai-openers"} {
+		_, err := os.Stat(filepath.Join(dir, ".mdsmith", "wordlists", name+".yaml"))
+		assert.NoErrorf(t, err, "%s.yaml scaffolded", name)
 	}
 }
 
-func TestRunInit_Wordlists_SkipsExistingFile(t *testing.T) {
+func TestRunInit_Wordlists_ExistingConfigScaffoldsAnyway(t *testing.T) {
 	dir := t.TempDir()
-	oldWd, err := os.Getwd()
-	require.NoError(t, err)
-	defer func() { _ = os.Chdir(oldWd) }()
-	require.NoError(t, os.Chdir(dir))
-
-	// A pre-existing list file must not be clobbered by a re-run.
-	wlDir := filepath.Join(dir, ".mdsmith", "wordlists")
-	require.NoError(t, os.MkdirAll(wlDir, 0o755))
-	existing := filepath.Join(wlDir, "ai-speak.yaml")
-	require.NoError(t, os.WriteFile(existing, []byte("entries:\n  - mine\n"), 0o644))
+	t.Chdir(dir)
+	// Already-initialized project: .mdsmith.yml exists. --wordlists must
+	// still scaffold rather than exit 2 on the existing config.
+	require.NoError(t, os.WriteFile(".mdsmith.yml", []byte("rules: {}\n"), 0o644))
 
 	captureStderr(func() {
 		code := runInit([]string{"--wordlists"})
-		assert.Equal(t, 0, code)
+		assert.Equal(t, 0, code, "--wordlists must work on an initialized project")
 	})
 
-	data, err := os.ReadFile(existing)
+	cfg, err := os.ReadFile(".mdsmith.yml")
 	require.NoError(t, err)
-	assert.Equal(t, "entries:\n  - mine\n", string(data), "existing file preserved")
+	assert.Equal(t, "rules: {}\n", string(cfg), "existing config left unchanged")
+	for _, name := range []string{"ai-speak", "ai-openers"} {
+		_, err := os.Stat(filepath.Join(dir, ".mdsmith", "wordlists", name+".yaml"))
+		assert.NoErrorf(t, err, "%s.yaml scaffolded", name)
+	}
+}
+
+// --- wordlistScaffolds / writeWordlistScaffolds ---
+
+func TestWordlistScaffolds(t *testing.T) {
+	got, err := wordlistScaffolds()
+	require.NoError(t, err)
+
+	lists := convention.NoLLMTellsWordlists()
+	require.Len(t, got, len(lists))
+	for i, wl := range lists {
+		assert.Equal(t, filepath.Join(".mdsmith", "wordlists", wl.Name+".yaml"), got[i].path)
+		// Header points the reader at the exact lists: reference and rule.
+		assert.Contains(t, string(got[i].data), "lists: ["+wl.Name+"]")
+		assert.Contains(t, string(got[i].data), wl.Rule)
+		// Body round-trips to the curated entries.
+		_, entries, err := wordlist.Parse(got[i].data)
+		require.NoError(t, err)
+		assert.Equal(t, wl.Entries, entries)
+	}
+}
+
+func TestWriteWordlistScaffolds_WritesAndSkips(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	require.NoError(t, writeWordlistScaffolds(io.Discard))
+	for _, name := range []string{"ai-speak", "ai-openers"} {
+		_, err := os.Stat(filepath.Join(dir, ".mdsmith", "wordlists", name+".yaml"))
+		require.NoErrorf(t, err, "%s.yaml written", name)
+	}
+	// A second call skips the now-existing files rather than erroring or
+	// clobbering them.
+	require.NoError(t, writeWordlistScaffolds(io.Discard))
+}
+
+func TestWriteWordlistScaffolds_MkdirError(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	// .mdsmith is a regular file, so MkdirAll(.mdsmith/wordlists) fails
+	// with ENOTDIR — driving the directory-creation error branch.
+	require.NoError(t, os.WriteFile(".mdsmith", []byte("x"), 0o644))
+
+	err := writeWordlistScaffolds(io.Discard)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), filepath.Join(".mdsmith", "wordlists"))
 }
 
 // --- runHelp ---

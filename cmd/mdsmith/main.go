@@ -326,27 +326,38 @@ func runInit(args []string) int {
 
 	const configFile = ".mdsmith.yml"
 
-	// Check if config file already exists.
+	configExists := false
 	if _, err := os.Stat(configFile); err == nil {
+		configExists = true
+	}
+
+	// An existing config is the whole no-op for a plain init, so it stays
+	// an error. With --wordlists the user is adding the curated lists to
+	// an already-initialized project, so the existing config is left
+	// untouched and scaffolding still runs — otherwise the flag would be
+	// unreachable for every project that already ran init.
+	if configExists && !withWordlists {
 		fmt.Fprintf(os.Stderr, "mdsmith: %s already exists\n", configFile)
 		return 2
 	}
 
-	data, source, err := initConfigBytes(fromMarkdownlint, os.Stderr)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
-		return 2
-	}
-
-	if err := os.WriteFile(configFile, data, 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: writing %s: %v\n", configFile, err)
-		return 2
-	}
-
-	if source != "" {
-		fmt.Fprintf(os.Stderr, "mdsmith: created %s from %s\n", configFile, source)
+	if configExists {
+		fmt.Fprintf(os.Stderr, "mdsmith: %s already exists, leaving it unchanged\n", configFile)
 	} else {
-		fmt.Fprintf(os.Stderr, "mdsmith: created %s\n", configFile)
+		data, source, err := initConfigBytes(fromMarkdownlint, os.Stderr)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+			return 2
+		}
+		if err := os.WriteFile(configFile, data, 0644); err != nil {
+			fmt.Fprintf(os.Stderr, "mdsmith: writing %s: %v\n", configFile, err)
+			return 2
+		}
+		if source != "" {
+			fmt.Fprintf(os.Stderr, "mdsmith: created %s from %s\n", configFile, source)
+		} else {
+			fmt.Fprintf(os.Stderr, "mdsmith: created %s\n", configFile)
+		}
 	}
 
 	if withWordlists {

@@ -56,6 +56,26 @@ func TestRenderFile_NoHeader(t *testing.T) {
 	assert.Equal(t, []string{"a", "b"}, got)
 }
 
+func TestRenderFile_HeaderWithoutTrailingNewlineStillParses(t *testing.T) {
+	// A header lacking a trailing newline must not glue onto the
+	// `entries:` block; RenderFile inserts the separator so the output
+	// still round-trips.
+	data, err := RenderFile("# no trailing newline", []string{"a", "b"})
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "# no trailing newline\nentries:")
+
+	_, got, err := Parse(data)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"a", "b"}, got)
+}
+
+func TestRenderFile_EmptyEntriesErrors(t *testing.T) {
+	_, err := RenderFile("", nil)
+	require.Error(t, err)
+	_, err = RenderFile("# h\n", []string{})
+	require.Error(t, err)
+}
+
 func TestLookup_UserList(t *testing.T) {
 	user := map[string]Wordlist{"mine": {Name: "mine", Entries: []string{"x"}}}
 	wl, err := Lookup("mine", user)
@@ -72,6 +92,14 @@ func TestLookup_UnknownListsValidNames(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "alpha")
 	assert.Contains(t, err.Error(), "beta")
+}
+
+func TestLookup_UnknownNoListsDeclared(t *testing.T) {
+	// With no user lists declared the error must not degrade to a bare
+	// "(valid: )" tail.
+	_, err := Lookup("ai-speak", nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no word-lists are declared")
 }
 
 func TestResolve_ExtendsChainParentFirstDeduped(t *testing.T) {
