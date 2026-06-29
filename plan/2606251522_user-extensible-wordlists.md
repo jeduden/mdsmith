@@ -75,6 +75,12 @@ and conventions. It reuses their loader pattern.
   entry in every section. `required-text-patterns` (MDS057)
   stays out — its `patterns:` are regular expressions, not
   plain words.
+- `mdsmith init --wordlists` scaffolds the curated
+  `ai-speak`/`ai-openers` set into `.mdsmith/wordlists/` as
+  editable files, rendered from the convention's built-in
+  data via `wordlist.RenderFile`. It is the only way mdsmith
+  writes a curated list to disk; the resolver still has no
+  built-ins, and an existing file is left untouched.
 
 ### File format
 
@@ -170,6 +176,9 @@ the merge layer already uses for `ListMerger` and
 - [ ] `internal/convention/nollmtells.go` carries the curated
       words and the drift test passes against the
       convention's inline lists.
+- [ ] `mdsmith init --wordlists` writes editable
+      `.mdsmith/wordlists/ai-speak.yaml` and `ai-openers.yaml`,
+      and skips a file that already exists.
 - [ ] `mdsmith check .` stays green (the repo pins
       `convention: no-llm-tells`).
 - [ ] All tests pass: `go test ./...`

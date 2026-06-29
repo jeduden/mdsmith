@@ -1,6 +1,7 @@
 package wordlist
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -29,6 +30,30 @@ func TestParse_RejectsUnknownKey(t *testing.T) {
 func TestParse_RejectsAliases(t *testing.T) {
 	_, _, err := Parse([]byte("entries: &a [x]\nmore: *a\n"))
 	require.Error(t, err)
+}
+
+func TestRenderFile_RoundTrips(t *testing.T) {
+	// Entries with an apostrophe and a trailing comma must survive the
+	// marshal/parse round-trip unchanged.
+	entries := []string{"delve", "it's important to note that", "Moreover,"}
+	data, err := RenderFile("# header line\n#\n# more\n", entries)
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(string(data), "# header line\n#\n# more\n"))
+
+	ext, got, err := Parse(data)
+	require.NoError(t, err)
+	assert.Equal(t, "", ext)
+	assert.Equal(t, entries, got)
+}
+
+func TestRenderFile_NoHeader(t *testing.T) {
+	data, err := RenderFile("", []string{"a", "b"})
+	require.NoError(t, err)
+	assert.False(t, strings.HasPrefix(string(data), "#"))
+
+	_, got, err := Parse(data)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"a", "b"}, got)
 }
 
 func TestLookup_UserList(t *testing.T) {

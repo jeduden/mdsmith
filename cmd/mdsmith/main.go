@@ -12,6 +12,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/config"
+	"github.com/jeduden/mdsmith/internal/convention"
 	"github.com/jeduden/mdsmith/internal/discovery"
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
@@ -19,6 +20,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/output"
 	"github.com/jeduden/mdsmith/internal/profiling"
 	"github.com/jeduden/mdsmith/internal/query"
+	"github.com/jeduden/mdsmith/internal/wordlist"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 	mdsmith "github.com/jeduden/mdsmith/pkg/mdsmith"
 
@@ -294,14 +296,20 @@ func runInit(args []string) int {
 	fs.StringVar(&fromMarkdownlint, "from-markdownlint", "",
 		"Convert a markdownlint config instead of writing defaults (optionally --from-markdownlint=<path>)")
 	fs.Lookup("from-markdownlint").NoOptDefVal = "auto"
+	var withWordlists bool
+	fs.BoolVar(&withWordlists, "wordlists", false,
+		"Also scaffold the curated .mdsmith/wordlists/ files (ai-speak, ai-openers) for editing")
 
 	fs.Usage = func() {
-		fmt.Fprint(os.Stderr, "Usage: mdsmith init [--from-markdownlint[=path]]\n\n"+
+		fmt.Fprint(os.Stderr, "Usage: mdsmith init [--from-markdownlint[=path]] [--wordlists]\n\n"+
 			"Generate a default .mdsmith.yml config file in the current directory.\n\n"+
 			"With --from-markdownlint, convert an existing markdownlint config\n"+
 			"(.markdownlint.jsonc/.json/.yaml/.yml or .markdownlintrc) instead of\n"+
 			"writing the defaults. Without =path the config is auto-discovered in\n"+
-			"the current directory.\n\nFlags:\n")
+			"the current directory.\n\n"+
+			"With --wordlists, also write .mdsmith/wordlists/ai-speak.yaml and\n"+
+			"ai-openers.yaml from the built-in no-llm-tells vocabulary, as editable\n"+
+			"files you own and reference from a rule's lists: key.\n\nFlags:\n")
 		fs.PrintDefaults()
 	}
 
@@ -340,7 +348,80 @@ func runInit(args []string) int {
 	} else {
 		fmt.Fprintf(os.Stderr, "mdsmith: created %s\n", configFile)
 	}
+
+	if withWordlists {
+		if err := writeWordlistScaffolds(os.Stderr); err != nil {
+			fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+			return 2
+		}
+	}
 	return 0
+}
+
+// wordlistScaffold is one file `mdsmith init --wordlists` writes: a
+// workspace-relative path and the YAML body to put there.
+type wordlistScaffold struct {
+	path string
+	data []byte
+}
+
+// wordlistScaffolds renders the curated word-list files `mdsmith init
+// --wordlists` writes — one `.mdsmith/wordlists/<name>.yaml` per
+// built-in no-llm-tells list. Each body carries a header comment
+// recording its origin and the exact `lists:` reference that wires it
+// into the matching rule, then the curated entries. The files are the
+// user's to edit; nothing reads them until a rule names them.
+func wordlistScaffolds() ([]wordlistScaffold, error) {
+	lists := convention.NoLLMTellsWordlists()
+	out := make([]wordlistScaffold, 0, len(lists))
+	for _, wl := range lists {
+		header := fmt.Sprintf(
+			"# .mdsmith/wordlists/%[1]s.yaml\n"+
+				"#\n"+
+				"# Scaffolded by `mdsmith init --wordlists` from the built-in\n"+
+				"# no-llm-tells vocabulary. This file is yours: add or remove\n"+
+				"# entries freely. Reference it from a rule's lists: key, e.g.\n"+
+				"#\n"+
+				"#   rules:\n"+
+				"#     %[2]s:\n"+
+				"#       lists: [%[1]s]\n",
+			wl.Name, wl.Rule)
+		data, err := wordlist.RenderFile(header, wl.Entries)
+		if err != nil {
+			return nil, fmt.Errorf("rendering wordlist %q: %w", wl.Name, err)
+		}
+		out = append(out, wordlistScaffold{
+			path: filepath.Join(".mdsmith", "wordlists", wl.Name+".yaml"),
+			data: data,
+		})
+	}
+	return out, nil
+}
+
+// writeWordlistScaffolds writes each wordlistScaffolds() file under the
+// current directory, creating `.mdsmith/wordlists/` as needed. An
+// existing target file is left untouched and noted, so a re-run never
+// clobbers a project's edits. Progress lines go to w.
+func writeWordlistScaffolds(w io.Writer) error {
+	scaffolds, err := wordlistScaffolds()
+	if err != nil {
+		return err
+	}
+	dir := filepath.Join(".mdsmith", "wordlists")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("creating %s: %w", dir, err)
+	}
+	for _, s := range scaffolds {
+		if _, err := os.Stat(s.path); err == nil {
+			fmt.Fprintf(w, "mdsmith: %s already exists, skipping\n", s.path)
+			continue
+		}
+		if err := os.WriteFile(s.path, s.data, 0o644); err != nil {
+			return fmt.Errorf("writing %s: %w", s.path, err)
+		}
+		fmt.Fprintf(w, "mdsmith: created %s\n", s.path)
+	}
+	return nil
 }
 
 // initConfigBytes produces the .mdsmith.yml contents for init. An empty

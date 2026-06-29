@@ -16,12 +16,14 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/config"
+	"github.com/jeduden/mdsmith/internal/convention"
 	"github.com/jeduden/mdsmith/internal/engine"
 	fixpkg "github.com/jeduden/mdsmith/internal/fix"
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
 	"github.com/jeduden/mdsmith/internal/query"
 	ruledocs "github.com/jeduden/mdsmith/internal/rules"
+	"github.com/jeduden/mdsmith/internal/wordlist"
 )
 
 // captureStderr temporarily redirects os.Stderr and returns the written content.
@@ -1083,6 +1085,55 @@ func TestRunInit_AlreadyExists_ExitsTwo(t *testing.T) {
 		code := runInit(nil)
 		assert.Equal(t, 2, code)
 	})
+}
+
+func TestRunInit_Wordlists_ScaffoldsCuratedFiles(t *testing.T) {
+	dir := t.TempDir()
+	oldWd, err := os.Getwd()
+	require.NoError(t, err)
+	defer func() { _ = os.Chdir(oldWd) }()
+	require.NoError(t, os.Chdir(dir))
+
+	captureStderr(func() {
+		code := runInit([]string{"--wordlists"})
+		assert.Equal(t, 0, code)
+	})
+
+	// Each curated list lands as an editable, parseable file whose
+	// entries match the no-llm-tells convention.
+	for _, wl := range convention.NoLLMTellsWordlists() {
+		path := filepath.Join(dir, ".mdsmith", "wordlists", wl.Name+".yaml")
+		data, err := os.ReadFile(path)
+		require.NoErrorf(t, err, "scaffolded %s", wl.Name)
+		_, entries, err := wordlist.Parse(data)
+		require.NoError(t, err)
+		assert.Equal(t, wl.Entries, entries)
+		assert.Contains(t, string(data), "lists: ["+wl.Name+"]",
+			"header shows how to reference the list")
+	}
+}
+
+func TestRunInit_Wordlists_SkipsExistingFile(t *testing.T) {
+	dir := t.TempDir()
+	oldWd, err := os.Getwd()
+	require.NoError(t, err)
+	defer func() { _ = os.Chdir(oldWd) }()
+	require.NoError(t, os.Chdir(dir))
+
+	// A pre-existing list file must not be clobbered by a re-run.
+	wlDir := filepath.Join(dir, ".mdsmith", "wordlists")
+	require.NoError(t, os.MkdirAll(wlDir, 0o755))
+	existing := filepath.Join(wlDir, "ai-speak.yaml")
+	require.NoError(t, os.WriteFile(existing, []byte("entries:\n  - mine\n"), 0o644))
+
+	captureStderr(func() {
+		code := runInit([]string{"--wordlists"})
+		assert.Equal(t, 0, code)
+	})
+
+	data, err := os.ReadFile(existing)
+	require.NoError(t, err)
+	assert.Equal(t, "entries:\n  - mine\n", string(data), "existing file preserved")
 }
 
 // --- runHelp ---

@@ -87,7 +87,10 @@ rule names is one a project declares — in a file here or
 inline in `.mdsmith.yml`. The [`no-llm-tells`
 convention](conventions.md) is the home for the curated
 anti-slop vocabulary; it ships those words as the rules'
-inline presets, not as a named list you extend.
+inline presets, not as a named list you extend. To start
+from that curated set as editable files, run [`mdsmith init
+--wordlists`](cli/init.md). It scaffolds `ai-speak.yaml`
+and `ai-openers.yaml` here for you to own.
 
 ## Extending a list
 

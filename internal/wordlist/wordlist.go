@@ -57,6 +57,25 @@ func Parse(data []byte) (extends string, entries []string, err error) {
 	return body.Extends, body.Entries, nil
 }
 
+// RenderFile returns the YAML body for a `.mdsmith/wordlists/<name>.yaml`
+// file: the headerComment verbatim (the caller includes the `#` prefixes
+// and trailing newline, or passes "" for none) followed by an `entries:`
+// block holding the given strings. The output round-trips through Parse,
+// so any quoting the YAML needs — a leading symbol, an embedded colon —
+// is applied by the marshaller rather than the caller.
+func RenderFile(headerComment string, entries []string) ([]byte, error) {
+	body, err := yaml.Marshal(struct {
+		Entries []string `yaml:"entries"`
+	}{Entries: entries})
+	if err != nil {
+		return nil, err
+	}
+	var b bytes.Buffer
+	b.WriteString(headerComment)
+	b.Write(body)
+	return b.Bytes(), nil
+}
+
 // Lookup returns the user-defined word-list with the given name (the
 // passed map may be nil). The error lists every valid name so a typo is
 // easy to fix.

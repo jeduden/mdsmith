@@ -42,6 +42,21 @@ func TestNoLLMTells_VocabularyIncludesExpandedAISpeak(t *testing.T) {
 	}
 }
 
+func TestNoLLMTellsWordlists(t *testing.T) {
+	lists := NoLLMTellsWordlists()
+	require.Len(t, lists, 2)
+
+	assert.Equal(t, "ai-speak", lists[0].Name)
+	assert.Equal(t, "forbidden-text", lists[0].Rule)
+	assert.Contains(t, lists[0].Entries, "delve")
+	assert.Contains(t, lists[0].Entries, "honest")
+	assert.Contains(t, lists[0].Entries, "it's important to note that")
+
+	assert.Equal(t, "ai-openers", lists[1].Name)
+	assert.Equal(t, "forbidden-paragraph-starts", lists[1].Rule)
+	assert.Contains(t, lists[1].Entries, "Moreover,")
+}
+
 func TestLookup_Portable(t *testing.T) {
 	c, err := Lookup("portable", nil)
 	require.NoError(t, err)
