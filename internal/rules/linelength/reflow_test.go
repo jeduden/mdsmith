@@ -158,6 +158,13 @@ const buildWrapUnitsAllocBudget = 2
 // (rather than through wrapTokens) so the budget isolates the
 // coalescing loop from the line-packing pass around it.
 func TestBuildWrapUnitsAllocBudget(t *testing.T) {
+	if testing.Short() {
+		t.Skip("alloc gate skipped in -short mode")
+	}
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race; the race detector " +
+			"adds allocation bookkeeping that perturbs the count")
+	}
 	tokens := []string{
 		"shelved", "J.", "R.", "R.", "R.", "R.", "R.", "R.", "R.",
 		"Tolkien", "today",

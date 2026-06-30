@@ -32,6 +32,13 @@ func multiLineParagraphFixture() []byte {
 const extractParagraphsAllocBudget = 6
 
 func TestExtractParagraphsAllocBudget(t *testing.T) {
+	if testing.Short() {
+		t.Skip("alloc gate skipped in -short mode")
+	}
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race; the race detector " +
+			"adds allocation bookkeeping that perturbs the count")
+	}
 	f, err := lint.NewFile("p.md", multiLineParagraphFixture())
 	require.NoError(t, err)
 
