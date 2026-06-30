@@ -141,14 +141,29 @@ func wrapTokens(tokens []string, indent string, width int, glue func(prev string
 // reproduce the original word sequence.
 func buildWrapUnits(tokens []string, glue func(prev string) bool) []string {
 	units := make([]string, 0, len(tokens))
+	var b strings.Builder
 	for i := 0; i < len(tokens); {
-		unit := tokens[i]
 		j := i
 		for j < len(tokens)-1 && glue(tokens[j]) {
 			j++
-			unit += " " + tokens[j]
 		}
-		units = append(units, unit)
+		if j == i {
+			units = append(units, tokens[i])
+		} else {
+			size := j - i // one space per glued token
+			for k := i; k <= j; k++ {
+				size += len(tokens[k])
+			}
+			b.Reset()
+			b.Grow(size)
+			for k := i; k <= j; k++ {
+				if k > i {
+					b.WriteByte(' ')
+				}
+				b.WriteString(tokens[k])
+			}
+			units = append(units, b.String())
+		}
 		i = j + 1
 	}
 	return units
