@@ -151,7 +151,7 @@ func TestWrapTokens_GluedUnitWrapsWholeNoOverflow(t *testing.T) {
 // new backing array each step — see
 // docs/development/high-performance-go.md "Strings and bytes" /
 // "strings.Builder over +". Measured baseline after switching to
-// strings.Builder: 2 allocs/op (down from 9) on an 8-token glued run.
+// strings.Builder: 2 allocs/op (down from 9) on a 9-token glued run.
 const buildWrapUnitsAllocBudget = 2
 
 // TestBuildWrapUnitsAllocBudget exercises buildWrapUnits directly

@@ -655,6 +655,9 @@ const classifyAllocBudget = 100
 // that lands without `-bench` still trips. Skipped under `-race`
 // because the race detector's bookkeeping perturbs the count.
 func TestClassifyAllocBudget(t *testing.T) {
+	if testing.Short() {
+		t.Skip("alloc gate skipped in -short mode")
+	}
 	if raceEnabled {
 		t.Skip("alloc gate skipped under -race; the race detector " +
 			"adds allocation bookkeeping that perturbs the count")
