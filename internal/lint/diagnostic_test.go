@@ -10,11 +10,12 @@ import (
 
 // isGCPointerKind reports whether a reflect.Kind needs GC pointer
 // scanning (string/slice/map/ptr/interface headers all carry at
-// least one pointer word).
+// least one pointer word; UnsafePointer is a bare pointer word too).
 func isGCPointerKind(k reflect.Kind) bool {
 	switch k {
 	case reflect.String, reflect.Slice, reflect.Map, reflect.Ptr,
-		reflect.Interface, reflect.Chan, reflect.Func:
+		reflect.Interface, reflect.Chan, reflect.Func,
+		reflect.UnsafePointer:
 		return true
 	default:
 		return false
