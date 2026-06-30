@@ -158,6 +158,12 @@ func (r *Rule) Fix(f *lint.File) []byte {
 
 		seg := textNode.Segment
 		content := seg.Value(f.Source)
+		// Same gate as flagTextNode: every urlPattern match starts with
+		// "http", so this spares the regex engine on the overwhelming
+		// majority of text nodes.
+		if !bytes.Contains(content, urlNeedle) {
+			return ast.WalkContinue, nil
+		}
 		matches := urlPattern.FindAllIndex(content, -1)
 		for _, m := range matches {
 			absStart := seg.Start + m[0]
@@ -179,8 +185,10 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	}
 
 	// Build result by applying replacements in order (they are already in
-	// document order from the AST walk).
-	var result []byte
+	// document order from the AST walk). Each replacement adds exactly
+	// two bytes (`<` and `>`) over the source it wraps, so the final
+	// size is known before the first append.
+	result := make([]byte, 0, len(f.Source)+2*len(replacements))
 	prev := 0
 	for _, rep := range replacements {
 		result = append(result, f.Source[prev:rep.start]...)
