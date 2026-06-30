@@ -209,7 +209,13 @@ func extractParagraphs(f *lint.File, minChars int) []paragraph {
 		if inGeneratedRange(lines.At(0).Start, genRanges) {
 			return ast.WalkSkipChildren, nil
 		}
+		size := 0
+		for i := 0; i < lines.Len(); i++ {
+			seg := lines.At(i)
+			size += seg.Stop - seg.Start
+		}
 		var b strings.Builder
+		b.Grow(size)
 		for i := 0; i < lines.Len(); i++ {
 			seg := lines.At(i)
 			b.Write(seg.Value(f.Source))
