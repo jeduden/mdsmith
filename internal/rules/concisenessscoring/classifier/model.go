@@ -75,20 +75,21 @@ type lexiconArtifact struct {
 }
 
 type compiledLexicon struct {
-	fillerWords    map[string]struct{}
-	modalWords     map[string]struct{}
-	vagueWords     map[string]struct{}
-	actionWords    map[string]struct{}
-	stopWords      map[string]struct{}
-	hedgePhrases   []string
-	verbosePhrases []string
+	fillerWords map[string]struct{}
+	modalWords  map[string]struct{}
+	vagueWords  map[string]struct{}
+	actionWords map[string]struct{}
+	stopWords   map[string]struct{}
 	// hedgeMarkers and verboseMarkers are phraseMarker(phrase) applied
-	// to hedgePhrases and verbosePhrases once, here, instead of on
-	// every Classify call. The phrase lexicon is fixed once the model
-	// loads, so re-deriving each phrase's marker (lowercase + tokenize
-	// + join) per paragraph was pure repeated work — see
+	// to the configured hedge/verbose phrase lists once, here, instead
+	// of on every Classify call. The phrase lexicon is fixed once the
+	// model loads, so re-deriving each phrase's marker (lowercase +
+	// tokenize + join) per paragraph was pure repeated work — see
 	// docs/development/high-performance-go.md "Memoize per-input
-	// computations".
+	// computations". buildPhraseMarkers is length-preserving, so
+	// len(hedgeMarkers)/len(verboseMarkers) also serve as the phrase
+	// counts (see LexiconCounts) without keeping the raw phrase slices
+	// around too.
 	hedgeMarkers   []string
 	verboseMarkers []string
 }
@@ -178,8 +179,8 @@ func (m *Model) LexiconCounts() LexiconCounts {
 		VagueWords:     len(m.lexicon.vagueWords),
 		ActionWords:    len(m.lexicon.actionWords),
 		StopWords:      len(m.lexicon.stopWords),
-		HedgePhrases:   len(m.lexicon.hedgePhrases),
-		VerbosePhrases: len(m.lexicon.verbosePhrases),
+		HedgePhrases:   len(m.lexicon.hedgeMarkers),
+		VerbosePhrases: len(m.lexicon.verboseMarkers),
 	}
 }
 
@@ -303,8 +304,6 @@ func compileLexicon(raw lexiconArtifact) (compiledLexicon, error) {
 		vagueWords:     wordSetFromSlice(vagueWords),
 		actionWords:    wordSetFromSlice(actionWords),
 		stopWords:      wordSetFromSlice(stopWords),
-		hedgePhrases:   hedgePhrases,
-		verbosePhrases: verbosePhrases,
 		hedgeMarkers:   buildPhraseMarkers(hedgePhrases),
 		verboseMarkers: buildPhraseMarkers(verbosePhrases),
 	}, nil
