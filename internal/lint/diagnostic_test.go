@@ -1,11 +1,56 @@
 package lint
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// isGCPointerKind reports whether a reflect.Kind needs GC pointer
+// scanning (string/slice/map/ptr/interface headers all carry at
+// least one pointer word).
+func isGCPointerKind(k reflect.Kind) bool {
+	switch k {
+	case reflect.String, reflect.Slice, reflect.Map, reflect.Ptr,
+		reflect.Interface, reflect.Chan, reflect.Func:
+		return true
+	default:
+		return false
+	}
+}
+
+// assertPointerFieldsLeading fails if typ declares a pointer-
+// containing field after a scalar field. Go's GC computes a struct's
+// ptrdata as the byte offset through its last pointer-containing
+// field, so a scalar sandwiched between pointer fields forces the
+// scanner to walk (and the type's metadata to describe) bytes that
+// hold no pointer — see docs/development/high-performance-go.md
+// "Struct layout". Grouping every pointer field first keeps ptrdata
+// minimal.
+func assertPointerFieldsLeading(t *testing.T, typ reflect.Type) {
+	t.Helper()
+	sawScalar := false
+	for i := 0; i < typ.NumField(); i++ {
+		f := typ.Field(i)
+		if isGCPointerKind(f.Type.Kind()) {
+			if sawScalar {
+				t.Errorf("%s.%s is a pointer-containing field declared "+
+					"after a scalar field; move it before every scalar "+
+					"field to keep ptrdata minimal", typ.Name(), f.Name)
+			}
+			continue
+		}
+		sawScalar = true
+	}
+}
+
+func TestDiagnosticFieldLayout_PointerFieldsLeading(t *testing.T) {
+	assertPointerFieldsLeading(t, reflect.TypeOf(Diagnostic{}))
+	assertPointerFieldsLeading(t, reflect.TypeOf(RelatedLocation{}))
+	assertPointerFieldsLeading(t, reflect.TypeOf(Explanation{}))
+}
 
 func TestDiagnosticFields(t *testing.T) {
 	d := Diagnostic{

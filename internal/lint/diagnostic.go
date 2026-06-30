@@ -21,26 +21,30 @@ func (r LineRange) Contains(l int) bool {
 }
 
 // Diagnostic represents a single lint finding.
+//
+// Fields are ordered pointer-containing (string/slice/pointer) first,
+// then scalar (int/bool) last. Go's GC computes a struct's ptrdata —
+// the byte span it scans for pointers — as the offset through the
+// last pointer-containing field; interleaving scalars among the
+// pointer fields (as an earlier layout did) forces ptrdata to cover
+// those scalar bytes too. Grouping pointer fields first keeps ptrdata
+// minimal on this, the most frequently allocated type in mdsmith (one
+// per lint finding, across every rule and file). See
+// docs/development/high-performance-go.md "Struct layout".
 type Diagnostic struct {
-	File            string
-	Line            int
-	Column          int
-	RuleID          string
-	RuleName        string
-	Severity        Severity
-	Message         string
-	SourceLines     []string // context lines around the diagnostic; empty if unavailable
-	SourceStartLine int      // 1-based line number of first entry in SourceLines
+	File     string
+	RuleID   string
+	RuleName string
+	Severity Severity
+	Message  string
+
+	// SourceLines holds context lines around the diagnostic; empty if
+	// unavailable.
+	SourceLines []string
+
 	// Explanation, when non-nil, attaches per-leaf provenance for the
 	// rule that fired. Populated by the CLI when --explain is on.
 	Explanation *Explanation
-
-	// Deprecated reports whether the diagnostic flags a schema field
-	// that has been marked deprecated. LSP clients and CI scripts read
-	// this flag to route the diagnostic without parsing the message
-	// text. Populated by MDS020 when a deprecated frontmatter field is
-	// present in a document; zero on every other diagnostic.
-	Deprecated bool
 
 	// ReplacedBy carries the schema's `replaced-by:` hint when the
 	// deprecation declares one. Empty on non-deprecation diagnostics
@@ -59,6 +63,20 @@ type Diagnostic struct {
 	// is not stored here: it is fully derived from RuleID at the LSP
 	// surface (see rules.DocURL), so there is no per-diagnostic field.
 	RelatedLocations []RelatedLocation
+
+	Line   int
+	Column int
+
+	// SourceStartLine is the 1-based line number of the first entry in
+	// SourceLines.
+	SourceStartLine int
+
+	// Deprecated reports whether the diagnostic flags a schema field
+	// that has been marked deprecated. LSP clients and CI scripts read
+	// this flag to route the diagnostic without parsing the message
+	// text. Populated by MDS020 when a deprecated frontmatter field is
+	// present in a document; zero on every other diagnostic.
+	Deprecated bool
 }
 
 // DisplayLine returns Line clamped to at least 1 for user-facing output
@@ -86,15 +104,15 @@ type RelatedLocation struct {
 	// file itself or a separate schema source.
 	File string
 
+	// Message describes why the location is related, e.g.
+	// `schema requires one of: "open", "in-progress"`.
+	Message string
+
 	// Line is the 1-based line of the related location.
 	Line int
 
 	// Column is the 1-based column, or 0 when only the line is known.
 	Column int
-
-	// Message describes why the location is related, e.g.
-	// `schema requires one of: "open", "in-progress"`.
-	Message string
 }
 
 // Explanation describes the provenance of a rule's effective config at
@@ -130,10 +148,10 @@ func DedupeDiagnostics(diags []Diagnostic) []Diagnostic {
 	}
 	type key struct {
 		File    string
-		Line    int
-		Column  int
 		RuleID  string
 		Message string
+		Line    int
+		Column  int
 	}
 	seen := make(map[key]struct{}, len(diags))
 	out := make([]Diagnostic, 0, len(diags))
