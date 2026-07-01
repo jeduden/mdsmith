@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/wordlist"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -30,8 +31,11 @@ func TestMergeWordlistFiles_LoadsAndResolves(t *testing.T) {
 	assert.Equal(t, "base", uw.Extends)
 	assert.Equal(t, []string{"synergy"}, uw.Entries)
 
-	// The discovered list is reachable by the resolver.
-	require.NotNil(t, toWordlistMap(cfg.Wordlists)["team"])
+	// The discovered list resolves through its extends chain (parent
+	// entries first, then its own).
+	resolved, err := wordlist.Resolve("team", toWordlistMap(cfg.Wordlists))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"delve", "synergy"}, resolved)
 }
 
 func TestMergeWordlistFiles_InlineFileCollision(t *testing.T) {

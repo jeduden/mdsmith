@@ -39,8 +39,10 @@ type fileBody struct {
 
 // Parse decodes a wordlist file body into its `extends:` parent and
 // `entries:`. YAML anchors/aliases are rejected, and decoding is strict
-// (an unknown top-level key is an error). An empty body is an error:
-// a list with no entries cannot be referenced meaningfully.
+// (an unknown top-level key is an error). A body with no entries — an
+// empty body, or a missing or empty `entries:` — is an error: a list
+// with no entries cannot be referenced meaningfully, and `entries:` is
+// required even when `extends:` is present.
 func Parse(data []byte) (extends string, entries []string, err error) {
 	if err := yamlutil.RejectYAMLAliases(data); err != nil {
 		return "", nil, err
@@ -53,6 +55,9 @@ func Parse(data []byte) (extends string, entries []string, err error) {
 			return "", nil, fmt.Errorf("empty wordlist")
 		}
 		return "", nil, err
+	}
+	if len(body.Entries) == 0 {
+		return "", nil, fmt.Errorf("wordlist has no entries")
 	}
 	return body.Extends, body.Entries, nil
 }

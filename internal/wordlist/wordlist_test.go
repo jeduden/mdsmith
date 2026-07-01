@@ -38,6 +38,13 @@ func TestParse_EmptyErrors(t *testing.T) {
 	assert.Contains(t, err.Error(), "empty")
 }
 
+func TestParse_NoEntriesErrors(t *testing.T) {
+	// `entries:` is required even with an `extends:` parent.
+	_, _, err := Parse([]byte("extends: base\n"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no entries")
+}
+
 func TestDedup_Empty(t *testing.T) {
 	assert.Nil(t, dedup(nil))
 }

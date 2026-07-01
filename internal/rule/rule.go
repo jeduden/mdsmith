@@ -104,9 +104,9 @@ type ListMerger interface {
 }
 
 // WordlistConsumer is implemented by Configurable rules that accept a
-// generic `lists:` setting naming word-lists (built-in or user-defined
-// under .mdsmith/wordlists/) whose resolved entries union into one of
-// the rule's own list settings. WordlistTarget returns that setting's
+// generic `lists:` setting naming user-defined word-lists (inline
+// `wordlists:` in .mdsmith.yml or under .mdsmith/wordlists/) whose
+// resolved entries union into one of the rule's own list settings. WordlistTarget returns that setting's
 // key — "contains" for forbidden-text, "starts" for
 // forbidden-paragraph-starts, "placeholders" for the placeholder
 // rules, and so on. The config layer reads this through rule.ByName,
