@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, blockCrossOrigin } from "./hermetic";
 
 /**
  * ⌘K documentation search end-to-end tests.
@@ -196,6 +196,9 @@ test.describe("⌘K search", () => {
     browser,
   }) => {
     const ctx = await browser.newContext({ javaScriptEnabled: false });
+    // With JS disabled the hero's lazy badge images load eagerly and
+    // gate the load event on third-party hosts; see hermetic.ts.
+    await blockCrossOrigin(ctx);
     const page = await ctx.newPage();
     await page.goto("/");
 
