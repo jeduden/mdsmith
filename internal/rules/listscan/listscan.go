@@ -27,6 +27,8 @@
 // (already in internal/lint/layer0.go) into this parser.
 package listscan
 
+import "bytes"
+
 // Item is one parsed list item.
 type Item struct {
 	// Line is the 1-based source line of the item's marker.
@@ -620,6 +622,10 @@ func markerLineEmpty(line []byte, afterMarker int) bool {
 	return true
 }
 
+// maxOrderedDigits is the CommonMark §5.3 limit on the number of digits in
+// an ordered-list marker (1–9 arabic digits).
+const maxOrderedDigits = 9
+
 func orderedInfo(line []byte, indent int) (markerInfo, bool) {
 	j := indent
 	digits := 0
@@ -627,7 +633,7 @@ func orderedInfo(line []byte, indent int) (markerInfo, bool) {
 		j++
 		digits++
 	}
-	if digits == 0 || digits > 9 {
+	if digits == 0 || digits > maxOrderedDigits {
 		return markerInfo{}, false
 	}
 	if j >= len(line) || (line[j] != '.' && line[j] != ')') {
@@ -667,11 +673,7 @@ func contentColumn(line []byte, afterMarker int) int {
 }
 
 func leadingSpaces(line []byte) int {
-	i := 0
-	for i < len(line) && line[i] == ' ' {
-		i++
-	}
-	return i
+	return len(line) - len(bytes.TrimLeft(line, " "))
 }
 
 func isBlankLine(line []byte) bool {
@@ -723,12 +725,8 @@ func openingFenceRel(line []byte, indent, baseCol int) (fenceInfo, bool) {
 	if length < 3 {
 		return fenceInfo{}, false
 	}
-	if ch == '`' {
-		for _, b := range line[j:] {
-			if b == '`' {
-				return fenceInfo{}, false
-			}
-		}
+	if ch == '`' && bytes.IndexByte(line[j:], '`') >= 0 {
+		return fenceInfo{}, false
 	}
 	return fenceInfo{char: ch, length: length, baseCol: baseCol}, true
 }

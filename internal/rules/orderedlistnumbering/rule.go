@@ -24,6 +24,10 @@ const (
 	StyleAllOnes    = "all-ones"
 )
 
+// commonMarkMaxOrderedDigits is the CommonMark spec limit on the number of
+// digits in an ordered-list marker (CommonMark §5.3).
+const commonMarkMaxOrderedDigits = 9
+
 var newlineSep = []byte{'\n'}
 
 func init() {
@@ -284,12 +288,7 @@ func applyIndentShift(line []byte, shift int) []byte {
 }
 
 func isBlank(line []byte) bool {
-	for _, b := range line {
-		if b != ' ' && b != '\t' {
-			return false
-		}
-	}
-	return true
+	return len(bytes.TrimLeft(line, " \t")) == 0
 }
 
 // replaceLeadingDigits replaces a run of digits at the start of a line
@@ -346,9 +345,14 @@ func parseListItemNumber(line []byte) (number int, digitStart, digitEnd int, mar
 	if line[i] != '.' && line[i] != ')' {
 		return 0, 0, 0, 0, false
 	}
-	n, err := strconv.Atoi(string(line[digitStart:digitEnd]))
-	if err != nil {
+	// Reject digit runs longer than the CommonMark cap so overflowed values
+	// never flow into Fix on 32-bit targets.
+	if digitEnd-digitStart > commonMarkMaxOrderedDigits {
 		return 0, 0, 0, 0, false
+	}
+	n := 0
+	for _, c := range line[digitStart:digitEnd] {
+		n = n*10 + int(c-'0')
 	}
 	number = n
 	markerChar = line[i]
@@ -372,14 +376,7 @@ func digitWidth(n int) int {
 }
 
 func countLeadingSpaces(line []byte) int {
-	n := 0
-	for _, b := range line {
-		if b != ' ' {
-			break
-		}
-		n++
-	}
-	return n
+	return len(line) - len(bytes.TrimLeft(line, " "))
 }
 
 // firstLineOfListItem returns the 1-based source line of an item's

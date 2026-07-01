@@ -498,12 +498,7 @@ func paragraphEndLine(lines [][]byte, line int, defLines map[int]struct{}) int {
 }
 
 func isBlankLine(line []byte) bool {
-	for _, b := range line {
-		if b != ' ' && b != '\t' {
-			return false
-		}
-	}
-	return true
+	return len(bytes.TrimLeft(line, " \t")) == 0
 }
 
 func isNumericSlug(s string) bool {

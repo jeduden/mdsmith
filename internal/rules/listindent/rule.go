@@ -182,15 +182,7 @@ func firstLineOfChild(f *lint.File, n ast.Node) int {
 }
 
 func countLeadingSpaces(line []byte) int {
-	count := 0
-	for _, b := range line {
-		if b == ' ' {
-			count++
-		} else {
-			break
-		}
-	}
-	return count
+	return len(line) - len(bytes.TrimLeft(line, " "))
 }
 
 // Fix implements rule.FixableRule.

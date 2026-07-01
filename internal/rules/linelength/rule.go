@@ -294,27 +294,7 @@ func isURLOnlyLine(line []byte) bool {
 	default:
 		return false
 	}
-	if len(line) == 0 {
-		return false
-	}
-	for _, b := range line {
-		if isASCIISpace(b) {
-			return false
-		}
-	}
-	return true
-}
-
-// isASCIISpace covers the ASCII whitespace bytes that interrupt a
-// URL's `\S+` body in the original regex. Edge trimming uses
-// bytes.TrimSpace (Unicode-aware) so this helper only fires on
-// the inner-byte scan.
-func isASCIISpace(b byte) bool {
-	switch b {
-	case ' ', '\t', '\n', '\r':
-		return true
-	}
-	return false
+	return len(line) > 0 && !bytes.ContainsAny(line, " \t\n\r")
 }
 
 var (
