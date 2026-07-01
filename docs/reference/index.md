@@ -24,7 +24,7 @@ row: "- [{summary}]({filename})"
 - [Emit a schema-conformant Markdown file as a JSON/YAML/msgpack data tree.](cli/extract.md)
 - [Auto-fix lint issues in Markdown files in place.](cli/fix.md)
 - [Show built-in documentation for rules, metrics, and concept pages.](cli/help.md)
-- [Generate a default `.mdsmith.yml` config in the current directory, or convert an existing markdownlint config with `--from-markdownlint`.](cli/init.md)
+- [Generate a default `.mdsmith.yml` config in the current directory, scaffold a workflow config with `--starter`, or convert an existing markdownlint config with `--from-markdownlint`.](cli/init.md)
 - [Inspect declared file kinds and resolve effective rule config per file.](cli/kinds.md)
 - [Selection-style commands that walk the workspace and emit matches.](cli/list.md)
 - [Run a Language Server Protocol server on stdio for editor integrations.](cli/lsp.md)

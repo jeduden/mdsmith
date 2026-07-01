@@ -68,6 +68,7 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/paragraphstructure"
 	_ "github.com/jeduden/mdsmith/internal/rules/propernames"
 	_ "github.com/jeduden/mdsmith/internal/rules/recipesafety"
+	_ "github.com/jeduden/mdsmith/internal/rules/requiredfrontmatter"
 	_ "github.com/jeduden/mdsmith/internal/rules/requiredmentions"
 	_ "github.com/jeduden/mdsmith/internal/rules/requiredstructure"
 	_ "github.com/jeduden/mdsmith/internal/rules/requiredtextpatterns"

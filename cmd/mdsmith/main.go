@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"strings"
 
 	flag "github.com/spf13/pflag"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/output"
 	"github.com/jeduden/mdsmith/internal/profiling"
 	"github.com/jeduden/mdsmith/internal/query"
+	"github.com/jeduden/mdsmith/internal/starter"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 	mdsmith "github.com/jeduden/mdsmith/pkg/mdsmith"
 
@@ -49,7 +51,7 @@ Commands:
   merge-driver      Git merge driver for regenerable sections
   pre-merge-commit  Install/manage pre-merge-commit hook
   kinds             Inspect declared kinds and resolve effective config per file
-  init              Generate .mdsmith.yml (--from-markdownlint converts an existing config)
+  init              Generate .mdsmith.yml (--starter scaffolds; --from-markdownlint converts)
   lsp               Run the Language Server Protocol server on stdio
   trust             Review the .mdsmith.yml diff and trust the build pass on this clone
   version           Print version and exit
@@ -294,14 +296,19 @@ func runInit(args []string) int {
 	fs.StringVar(&fromMarkdownlint, "from-markdownlint", "",
 		"Convert a markdownlint config instead of writing defaults (optionally --from-markdownlint=<path>)")
 	fs.Lookup("from-markdownlint").NoOptDefVal = "auto"
+	var starterName string
+	fs.StringVar(&starterName, "starter", "",
+		"Scaffold a workflow config instead of the defaults (e.g. --starter okf)")
 
 	fs.Usage = func() {
-		fmt.Fprint(os.Stderr, "Usage: mdsmith init [--from-markdownlint[=path]]\n\n"+
+		fmt.Fprintf(os.Stderr, "Usage: mdsmith init [--starter <name>] [--from-markdownlint[=path]]\n\n"+
 			"Generate a default .mdsmith.yml config file in the current directory.\n\n"+
+			"With --starter, scaffold a ready-to-edit config for a workflow\n"+
+			"(available: %s) instead of the rule-by-rule defaults.\n\n"+
 			"With --from-markdownlint, convert an existing markdownlint config\n"+
 			"(.markdownlint.jsonc/.json/.yaml/.yml or .markdownlintrc) instead of\n"+
 			"writing the defaults. Without =path the config is auto-discovered in\n"+
-			"the current directory.\n\nFlags:\n")
+			"the current directory.\n\nFlags:\n", strings.Join(starter.Names(), ", "))
 		fs.PrintDefaults()
 	}
 
@@ -324,7 +331,7 @@ func runInit(args []string) int {
 		return 2
 	}
 
-	data, source, err := initConfigBytes(fromMarkdownlint, os.Stderr)
+	data, source, err := initConfigBytes(fromMarkdownlint, starterName, os.Stderr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return 2
@@ -343,17 +350,28 @@ func runInit(args []string) int {
 	return 0
 }
 
-// initConfigBytes produces the .mdsmith.yml contents for init. An empty
-// fromMarkdownlint yields the full defaults dump; otherwise the named
-// markdownlint config ("auto" = discover in the current directory) is
-// converted, its notes echoed to w, and source reports which file fed
-// the conversion.
-func initConfigBytes(fromMarkdownlint string, w io.Writer) (data []byte, source string, err error) {
-	if fromMarkdownlint == "" {
+// initConfigBytes produces the .mdsmith.yml contents for init. With a
+// starterName it returns that starter's embedded template; with a
+// fromMarkdownlint path ("auto" = discover in the current directory) it
+// converts that config, echoing notes to w; otherwise it dumps the full
+// defaults. source reports the provenance for the confirmation message.
+// --starter and --from-markdownlint are mutually exclusive.
+func initConfigBytes(fromMarkdownlint, starterName string, w io.Writer) (data []byte, source string, err error) {
+	switch {
+	case starterName != "" && fromMarkdownlint != "":
+		return nil, "", errors.New("--starter and --from-markdownlint are mutually exclusive")
+	case starterName != "":
+		b, ok := starter.Get(starterName)
+		if !ok {
+			return nil, "", starter.ErrUnknown(starterName)
+		}
+		return b, "the " + starterName + " starter", nil
+	case fromMarkdownlint != "":
+		return convertedConfigBytes(fromMarkdownlint, w)
+	default:
 		data, err = defaultConfigBytes()
 		return data, "", err
 	}
-	return convertedConfigBytes(fromMarkdownlint, w)
 }
 
 // defaultConfigBytes marshals the built-in defaults, the plain
