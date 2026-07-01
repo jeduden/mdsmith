@@ -10,9 +10,11 @@ import (
 	"io/fs"
 	gopath "path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/jeduden/mdsmith/internal/bytelimit"
@@ -195,9 +197,30 @@ func inGeneratedRange(offset int, ranges [][2]int) bool {
 // (a shape goldmark never produces today, but cheap to guard), ones
 // shorter than the threshold, and paragraphs inside generated sections
 // (<?include?> or <?catalog?> bodies) are skipped.
+//
+// raw and norm are scratch []byte buffers reused across every paragraph
+// in the file (reset via buf[:0], never reallocated down). A prior
+// version rebuilt a fresh strings.Builder per paragraph for line-
+// gathering, another fresh one inside normalize for whitespace/case
+// folding, and a []byte(normalized) copy before hashing — three
+// allocations on every paragraph, none of them reusable because
+// strings.Builder.Reset drops its backing array (immutability: a
+// string already handed to a caller via String() must not be
+// invalidated by a later Write). Working end to end in []byte and
+// hashing sha256.Sum256(norm) directly (no string round-trip) lets the
+// same two buffers serve the whole file: their capacity stabilizes at
+// the largest paragraph seen, so later paragraphs allocate nothing.
+// slices.Grow before the first append into each buffer keeps the very
+// first (or largest-yet) paragraph in a file from paying incremental
+// regrowth the way a bare append from nil would — the segment-length
+// sum needed for it is pure arithmetic over already-fetched start/stop
+// offsets, not a second pass over the source bytes. See
+// docs/development/high-performance-go.md "Reuse loop-local buffers"
+// and "Pre-size slices".
 func extractParagraphs(f *lint.File, minChars int) []paragraph {
 	genRanges := generatedRanges(f)
 	var out []paragraph
+	var raw, norm []byte
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering || n.Kind() != ast.KindParagraph {
 			return ast.WalkContinue, nil
@@ -214,17 +237,21 @@ func extractParagraphs(f *lint.File, minChars int) []paragraph {
 			seg := lines.At(i)
 			size += seg.Stop - seg.Start
 		}
-		var b strings.Builder
-		b.Grow(size)
+		raw = slices.Grow(raw[:0], size)
 		for i := 0; i < lines.Len(); i++ {
 			seg := lines.At(i)
-			b.Write(seg.Value(f.Source))
+			raw = append(raw, seg.Value(f.Source)...)
 		}
-		normalized := normalize(b.String())
-		if runeLen(normalized) < minChars {
+		// Whitespace collapse only shrinks, and lowercasing a rune
+		// essentially never grows its UTF-8 encoding, so len(raw) is a
+		// good capacity estimate — not a hard guarantee, so append
+		// still grows norm on its own in the rare case this undersizes
+		// it, exactly as it would without the hint.
+		norm = appendNormalized(slices.Grow(norm[:0], len(raw)), raw)
+		if utf8.RuneCount(norm) < minChars {
 			return ast.WalkSkipChildren, nil
 		}
-		sum := sha256.Sum256([]byte(normalized))
+		sum := sha256.Sum256(norm)
 		out = append(out, paragraph{
 			fingerprint: hex.EncodeToString(sum[:]),
 			line:        f.LineOfOffset(lines.At(0).Start),
@@ -234,33 +261,30 @@ func extractParagraphs(f *lint.File, minChars int) []paragraph {
 	return out
 }
 
-// normalize collapses runs of whitespace to single spaces, lowercases
-// letters, and trims leading/trailing space. The goal is to treat
+// appendNormalized appends the normalized form of src onto dst: runs of
+// whitespace collapse to a single space, letters lowercase, and neither
+// a leading nor a trailing space survives. The goal is to treat
 // paragraphs that differ only by reflow or case as duplicates.
-func normalize(s string) string {
-	var b strings.Builder
-	b.Grow(len(s))
+func appendNormalized(dst, src []byte) []byte {
+	start := len(dst)
 	inSpace := false
-	for _, r := range s {
+	for i := 0; i < len(src); {
+		r, size := utf8.DecodeRune(src[i:])
+		i += size
 		if unicode.IsSpace(r) {
-			if !inSpace && b.Len() > 0 {
-				b.WriteRune(' ')
+			if !inSpace && len(dst) > start {
+				dst = append(dst, ' ')
 			}
 			inSpace = true
 			continue
 		}
-		b.WriteRune(unicode.ToLower(r))
+		dst = utf8.AppendRune(dst, unicode.ToLower(r))
 		inSpace = false
 	}
-	return strings.TrimSpace(b.String())
-}
-
-func runeLen(s string) int {
-	n := 0
-	for range s {
-		n++
+	if n := len(dst); n > start && dst[n-1] == ' ' {
+		dst = dst[:n-1]
 	}
-	return n
+	return dst
 }
 
 // resolveCorpus picks the filesystem to scan and the path of the current
