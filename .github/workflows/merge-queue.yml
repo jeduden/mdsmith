@@ -29,7 +29,7 @@ jobs:
     # run for routine labels like Dependabot's `dependencies`/`go`, where
     # secrets.MERGE_QUEUE_TOKEN is withheld from the run and the action fails
     # with "Input required and not supplied: token". Guarding on the label
-    # name skips those events cleanly instead of exposing the token.
+    # name skips those events cleanly instead of failing on the absent token.
     if: >-
       github.event_name == 'workflow_dispatch' ||
       github.event.label.name == 'queue'
