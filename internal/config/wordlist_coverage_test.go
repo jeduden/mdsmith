@@ -117,6 +117,20 @@ func TestExpandWordlists_EmptyResultReturns(t *testing.T) {
 	expandWordlists(map[string]RuleCfg{}, nil) // early return; must not panic
 }
 
+func TestExpandWordlists_EmptyListsIsNoop(t *testing.T) {
+	// An empty lists: is stripped but adds no target entries.
+	result := map[string]RuleCfg{
+		"forbidden-text": {Enabled: true, Settings: map[string]any{"lists": []any{}}},
+	}
+	expandWordlists(result, nil)
+
+	got := result["forbidden-text"].Settings
+	_, hasLists := got["lists"]
+	assert.False(t, hasLists, "lists key stripped")
+	_, hasContains := got["contains"]
+	assert.False(t, hasContains, "no target added for empty lists")
+}
+
 func TestExpandWordlists_LeavesInvalidTargetUntouched(t *testing.T) {
 	// A non-list target value (a user type error) must not be silently
 	// replaced by the expanded entries; leave it so ApplySettings can

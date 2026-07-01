@@ -185,39 +185,57 @@ func expandWordlists(result map[string]RuleCfg, userLists map[string]UserWordlis
 		if _, ok := rc.Settings["lists"]; !ok {
 			continue
 		}
-		newSettings := make(map[string]any, len(rc.Settings))
-		for k, v := range rc.Settings {
-			if k == "lists" {
-				continue
-			}
-			newSettings[k] = v
-		}
+		newSettings := stripLists(rc.Settings)
 		if wc, ok := rule.ByName(name).(rule.WordlistConsumer); ok {
-			if listNames, ok := anyToStrings(rc.Settings["lists"]); ok && len(listNames) > 0 {
-				if userMap == nil {
-					userMap = toWordlistMap(userLists)
-				}
-				target := wc.WordlistTarget()
-				var resolved []string
-				for _, ln := range listNames {
-					entries, err := wordlist.Resolve(ln, userMap)
-					if err != nil {
-						continue
-					}
-					resolved = append(resolved, entries...)
-				}
-				// Only union into the target when it is absent or already
-				// a string list. If it holds an invalid (non-list) type,
-				// leave it untouched so the rule's ApplySettings surfaces
-				// the type error instead of the expansion masking it —
-				// `lists:` is stripped either way.
-				if existing, ok := anyToStrings(newSettings[target]); ok {
-					newSettings[target] = stringsToAny(dedupStrings(append(resolved, existing...)))
-				}
+			if userMap == nil {
+				userMap = toWordlistMap(userLists)
 			}
+			expandRuleLists(rc.Settings["lists"], wc.WordlistTarget(), newSettings, userMap)
 		}
 		rc.Settings = newSettings
 		result[name] = rc
+	}
+}
+
+// stripLists returns a copy of settings without the `lists:` key.
+func stripLists(settings map[string]any) map[string]any {
+	out := make(map[string]any, len(settings))
+	for k, v := range settings {
+		if k != "lists" {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+// resolveListEntries resolves each named list against userMap and returns
+// the concatenated entries. A list that fails to resolve is skipped —
+// validateWordlists reports the real error at config load.
+func resolveListEntries(listNames []string, userMap map[string]wordlist.Wordlist) []string {
+	var resolved []string
+	for _, ln := range listNames {
+		entries, err := wordlist.Resolve(ln, userMap)
+		if err != nil {
+			continue
+		}
+		resolved = append(resolved, entries...)
+	}
+	return resolved
+}
+
+// expandRuleLists resolves listsValue and unions the entries into
+// settings[target] (resolved first, then the target's own, de-duplicated).
+// It only unions when the target is absent or already a string list; an
+// invalid (non-list) target is left untouched so the rule's ApplySettings
+// surfaces the type error rather than the expansion masking it.
+func expandRuleLists(listsValue any, target string, settings map[string]any, userMap map[string]wordlist.Wordlist) {
+	listNames, ok := anyToStrings(listsValue)
+	if !ok || len(listNames) == 0 {
+		return
+	}
+	resolved := resolveListEntries(listNames, userMap)
+	if existing, ok := anyToStrings(settings[target]); ok {
+		settings[target] = stringsToAny(dedupStrings(append(resolved, existing...)))
 	}
 }
 
