@@ -150,7 +150,7 @@ validation at type-check time.
 pure-functional imports — shareable rule packs
 that cannot hang the linter. Strong types.
 
-**Weaknesses.** Tiny ecosystem; no Markdown
+**Weaknesses.** Tiny community; no Markdown
 integrations. Lack of recursion (only
 `List/fold` primitives) makes describing
 arbitrary AST trees awkward. Termination

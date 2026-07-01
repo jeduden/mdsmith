@@ -409,3 +409,7 @@ func TestCheck_WrongLevel_MessageAllocs(t *testing.T) {
 		t.Fatalf("Check (nil-AST wrong level): got %g allocs/call, want ≤ 2 (1 msg + 1 slice)", allocs)
 	}
 }
+
+func TestWordlistTarget(t *testing.T) {
+	assert.Equal(t, "placeholders", (&Rule{}).WordlistTarget())
+}

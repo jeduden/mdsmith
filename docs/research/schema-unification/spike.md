@@ -444,7 +444,7 @@ covers grammar, the other 50+ rules cover
 cross-cutting checks. The "one language for
 both" goal fights this established pattern.
 **Lesson:** a unified language for grammar +
-rules is rare in practice. The robust choice is
+rules is rare in practice. The resilient choice is
 "one language for the grammar, named rules for
 the cross-cutting" — which is approximately
 what plans 146–143 already encode.
@@ -481,7 +481,7 @@ expressivity.
 No off-the-shelf language has body validation
 for Markdown that matches plan 146's ambition.
 Astro's Zod-on-frontmatter is the closest in
-the JS ecosystem and stops at FM.
+the JS world and stops at FM.
 
 Whatever direction we pick, the body
 validator is **mdsmith's to write**. The

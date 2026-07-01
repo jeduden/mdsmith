@@ -31,6 +31,12 @@ func (r *Rule) ID() string { return "MDS055" }
 // Name implements rule.Rule.
 func (r *Rule) Name() string { return "forbidden-paragraph-starts" }
 
+// WordlistTarget implements rule.WordlistConsumer: resolved `lists:`
+// entries union into this rule's "starts" setting.
+func (r *Rule) WordlistTarget() string { return "starts" }
+
+var _ rule.WordlistConsumer = (*Rule)(nil)
+
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "prose" }
 

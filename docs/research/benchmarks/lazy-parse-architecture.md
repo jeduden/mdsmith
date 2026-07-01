@@ -231,7 +231,7 @@ whether any rule forces Layer 1/2, and otherwise run Layer 0 only.
 
 ## Feasibility verdict, by scenario
 
-The honest answer to "fast for simple, expensive only when needed"
+The real answer to "fast for simple, expensive only when needed"
 is per active rule set, because the engine builds whatever the
 enabled rules force:
 
@@ -287,7 +287,7 @@ Tier 2 is worth building even if Tier 1 holds. It future-proofs the
 gate. A later rule that needs deep detail on a few blocks gets a
 localized parse, not a full one.
 
-## The honest performance bar
+## The real performance bar
 
 Two facts must hold for this to beat gomarklint on parity, and a
 spike should confirm both before the parser is touched for real:
@@ -365,7 +365,7 @@ trimming must ride alongside it.** Three readings converge on it:
   parity at ~45 ms — still ~1.4x gomarklint.
 - The parse-free floor (read + rules + overhead) is ~63% of the lint
   CPU, ~37 ms of equivalent wall — already above gomarklint's ~31 ms.
-  This is the honest bar's point 2, now measured: rules + overhead alone
+  This is the real bar's point 2, now measured: rules + overhead alone
   exceed gomarklint.
 
 The lazy parse is still worth building for the reason the rest of this

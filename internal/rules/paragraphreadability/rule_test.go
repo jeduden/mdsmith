@@ -321,3 +321,7 @@ func TestSettingMergeMode_ParagraphReadability(t *testing.T) {
 	assert.Equal(t, rule.MergeReplace, r.SettingMergeMode("max-index"))
 	assert.Equal(t, rule.MergeReplace, r.SettingMergeMode("unknown"))
 }
+
+func TestWordlistTarget(t *testing.T) {
+	assert.Equal(t, "placeholders", (&Rule{}).WordlistTarget())
+}

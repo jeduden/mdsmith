@@ -53,6 +53,15 @@ fact, leave it — context decides.
 - multifaceted, nuanced, intricate
 - paradigm, ecosystem, transformative
 - vital, profound, paramount
+- honest, boast, garner, bolster
+- myriad, plethora, endeavor, spearhead
+- revolutionize, groundbreaking, cutting-edge
+- effortless, supercharge
+
+`honest` is the credibility tell: an LLM reaches for
+"the honest answer", "to be honest", or "honest
+truth" to vouch for a claim instead of stating it.
+Drop the framing and state the fact.
 
 Fix recipe: recast so the word is not the bearer
 of the claim. *"X plays a pivotal role"* → *"X

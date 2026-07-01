@@ -195,7 +195,10 @@ var conventions = map[string]Convention{
 	//
 	// The curated lists live in nollmtells.go; their source of truth is
 	// .claude/skills/docs-author/slop-patterns.md, kept in sync by the
-	// drift-checker integration test.
+	// drift-checker integration test. A project layers its own terms by
+	// adding to the rules' inline `contains:`/`starts:` lists (which
+	// append over the preset) or by naming a `.mdsmith/wordlists/` file
+	// in the rules' `lists:` setting.
 	"no-llm-tells": {
 		Name:   "no-llm-tells",
 		Flavor: FlavorAny,

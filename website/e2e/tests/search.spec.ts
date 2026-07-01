@@ -197,6 +197,10 @@ test.describe("⌘K search", () => {
   }) => {
     const ctx = await browser.newContext({ javaScriptEnabled: false });
     const page = await ctx.newPage();
+    // Abort external badge hosts (as home.spec does) so the page's `load`
+    // event never blocks on their latency — this fresh context has no
+    // request blocking of its own.
+    await page.route(/^https?:\/\/(?!localhost)/, route => route.abort());
     await page.goto("/");
 
     // Without html.js the trigger collapses to display:none; the docs

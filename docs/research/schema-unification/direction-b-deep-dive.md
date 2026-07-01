@@ -11,7 +11,7 @@ summary: >-
 ---
 # Direction B: YAML DSL with CUE escape
 
-This is the deep dive of
+This is the detailed treatment of
 [Direction B from the spike](spike.md). It
 spells out the surface, walks five worked
 schemas (RFC, runbook, plan, deck, ADR), shows
@@ -569,7 +569,7 @@ schema: kinds[runbook] / acronyms (scope: Expected)
 ```
 
 Both flow through `lint.Diagnostic`. The LSP
-client highlights the missing-section spot
+client marks the missing-section spot
 on line of "## References" (the next-best
 anchor) and the BIOS line at its source
 position.

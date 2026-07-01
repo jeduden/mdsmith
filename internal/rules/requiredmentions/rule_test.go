@@ -113,3 +113,7 @@ func TestApplyDefaultSettings_ClearsMentions(t *testing.T) {
 	require.NoError(t, r.ApplySettings(r.DefaultSettings()))
 	assert.Empty(t, r.Mentions)
 }
+
+func TestWordlistTarget(t *testing.T) {
+	assert.Equal(t, "mentions", (&Rule{}).WordlistTarget())
+}

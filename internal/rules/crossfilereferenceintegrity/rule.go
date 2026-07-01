@@ -51,6 +51,13 @@ func (r *Rule) ID() string { return "MDS027" }
 // Name implements rule.Rule.
 func (r *Rule) Name() string { return "cross-file-reference-integrity" }
 
+// WordlistTarget implements rule.WordlistConsumer: resolved `lists:`
+// entries union into this rule's "placeholders" setting (its
+// include/exclude settings are globs, not word-lists).
+func (r *Rule) WordlistTarget() string { return "placeholders" }
+
+var _ rule.WordlistConsumer = (*Rule)(nil)
+
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "link" }
 

@@ -28,7 +28,7 @@ Three questions guide the structure:
 
 ## What gets typed (full enforcement surface)
 
-The honest answer requires looking at **all** the
+The real answer requires looking at **all** the
 mechanisms each tool ships, not just the ones
 labelled "type system". mdbase has a single
 mechanism (the type system in `_types/`).
@@ -332,7 +332,7 @@ rule-and-directive surface includes generated
 content and template-driven validation.
 
 For the question "what does each tool offer to
-keep FM and body in sync?", the honest answer
+keep FM and body in sync?", the real answer
 is: **mdsmith ships explicit FM↔body sync
 mechanisms across schemas and directives;
 mdbase offers FM↔filename via `path_pattern`

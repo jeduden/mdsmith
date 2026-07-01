@@ -119,7 +119,7 @@ errors at config load with both source names.
 
 A schema shared across kinds is shared via
 `extends:` — the inheritance chain works
-seamlessly across sources. A file kind may extend
+cleanly across sources. A file kind may extend
 an inline kind and the reverse. The cycle detector
 runs on the merged kinds map.
 

@@ -206,3 +206,7 @@ func TestSettingMergeMode_HeadingIncrement(t *testing.T) {
 	assert.Equal(t, rule.MergeAppend, r.SettingMergeMode("placeholders"))
 	assert.Equal(t, rule.MergeReplace, r.SettingMergeMode("unknown"))
 }
+
+func TestWordlistTarget(t *testing.T) {
+	assert.Equal(t, "placeholders", (&Rule{}).WordlistTarget())
+}

@@ -20,7 +20,7 @@ Markdown includes and `mdsmith-release sync-messaging` to
 propagate the change to every non-Markdown surface. CI runs
 `sync-messaging --check` and fails the build on drift.
 
-The Headline keeps exactly one `*emphasized*` span (single
+The Headline keeps exactly one `*text*` emphasis span (single
 asterisks, not `**`). The hero template splits the line on that
 span, and `sync-messaging --check` fails if the span is missing
 or doubled.

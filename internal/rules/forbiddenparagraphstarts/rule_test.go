@@ -124,3 +124,7 @@ func TestSettingMergeMode(t *testing.T) {
 	assert.Equal(t, rule.MergeAppend, r.SettingMergeMode("starts"))
 	assert.Equal(t, rule.MergeReplace, r.SettingMergeMode("unknown"))
 }
+
+func TestWordlistTarget(t *testing.T) {
+	assert.Equal(t, "starts", (&Rule{}).WordlistTarget())
+}

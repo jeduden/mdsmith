@@ -87,7 +87,7 @@ This skill runs in two modes. Decide first; if unclear, ask.
    `docs/security/2026-06-09-full-repo-audit/`). Author the findings
    as `<dir>/findings.json` per the schema in
    `references/output-formats.md`. One finding = one defect. Assign
-   severity using the rubric below and record `confidence` honestly
+   severity using the rubric below and record `confidence` accurately
    (`confirmed` only if you traced the code path or built a repro;
    otherwise `likely` / `tentative`).
 
@@ -142,7 +142,7 @@ This skill runs in two modes. Decide first; if unclear, ask.
      scope. In **audit mode**, file plans for every actionable
      finding.
 
-7. **Summarize honestly.** Lead with the highest-severity confirmed
+7. **Summarize plainly.** Lead with the highest-severity confirmed
    findings. Separate confirmed defects from hardening suggestions.
    List the plan files you filed. If you could not reach a
    conclusion on an in-scope area (e.g. you couldn't find the

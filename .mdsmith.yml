@@ -1,6 +1,18 @@
 front-matter: true
 
+# Enforce the mechanical anti-slop layer repo-wide: forbidden-text
+# (MDS056) flags any paragraph containing a curated AI-speak word or
+# phrase, and forbidden-paragraph-starts (MDS055) flags banned
+# sentence openers. The curated lists live in the no-llm-tells
+# convention (internal/convention/nollmtells.go), sourced from
+# .claude/skills/docs-author/slop-patterns.md. paragraph-readability
+# and paragraph-structure presets the convention also carries are
+# overridden by the project settings below; descriptive-link-text is
+# out of scope for the vocabulary check and stays off.
+convention: no-llm-tells
+
 rules:
+  descriptive-link-text: false
   line-length:
     max: 80
     exclude:
@@ -313,6 +325,23 @@ overrides:
     rules:
       first-line-heading: false
       heading-increment: false
+  - glob: [".claude/skills/docs-author/slop-patterns.md",
+           "docs/research/conciseness/spikes/*/corpus/*.md",
+           "docs/guides/metrics-tradeoffs.md"]
+    # These files contain AI-speak vocabulary by design:
+    # slop-patterns.md is the catalog that *defines* the banned
+    # words (it lists them as examples), the conciseness corpus
+    # carries intentionally slop-laden samples used to benchmark
+    # weasel detection, and metrics-tradeoffs.md carries worked
+    # before/after prose examples (Examples A–E) that the
+    # readability table below them grades — including a
+    # deliberately padded one that opens with "Basically,". The
+    # convention's forbidden-text and forbidden-paragraph-starts
+    # checks would flag the very content these files exist to
+    # hold, so they step aside here.
+    rules:
+      forbidden-text: false
+      forbidden-paragraph-starts: false
 
 ignore:
   - ".git/**"

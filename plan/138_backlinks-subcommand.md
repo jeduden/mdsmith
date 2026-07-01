@@ -23,7 +23,7 @@ MDS027; this plan exposes it.
 
 Plan **L-4** in the
 [mdbase research](../docs/research/mdbase-vs-mdsmith/learn-from-mdbase.md)
-records this as a small, high-leverage surface.
+records this as a small, high-impact surface.
 The trigger is the first agent or docs-team
 question of the form "what depends on this
 file?".

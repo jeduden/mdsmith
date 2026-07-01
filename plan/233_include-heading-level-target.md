@@ -6,9 +6,9 @@ summary: >-
   Extend the `<?include?>` directive's `heading-level`
   parameter (MDS021) to accept an integer 1-6 that pins
   the shallowest embedded heading to that level, beside
-  the existing `"absolute"` keyword. A pinned target is
-  robust to source-file changes where `heading-offset`
-  (a delta) is not.
+  the existing `"absolute"` keyword. A pinned target
+  stays correct across source-file changes where
+  `heading-offset` (a delta) does not.
 model: opus
 depends-on: [232]
 ---
@@ -44,7 +44,7 @@ instead of derived from the parent. So the value reads as
 explicit.
 
 Why keep all three instead of one? It is an owner call. A
-target is robust when the source changes: it always lands
+target stays correct when the source changes: it always lands
 at N. A delta keeps a hand-set relationship instead. And
 `"absolute"` is the no-setup default for the common case —
 nesting under the current section.

@@ -37,7 +37,7 @@ shipped fork. The PoC branch is throwaway. The plan
 either schedules plan 198 with the review's full target
 list and the PoC's measured savings as justification,
 or closes 197 as ⛔ with a Results section that explains
-why the leverage is not there.
+why the payoff is not there.
 
 ## Background
 
@@ -79,7 +79,7 @@ with no pool":
 Three of the five top allocators look structural,
 not tactical. A naive "add a sync.Pool" fix to each
 one would land savings. But the structural shape may
-unlock a multiple. A single arena that retires on
+yield a multiple. A single arena that retires on
 parse end could eat the cost of four pools and a
 goroutine of pool bookkeeping.
 

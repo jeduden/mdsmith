@@ -49,6 +49,12 @@ func (r *Rule) ID() string { return "MDS063" }
 // Name implements rule.Rule.
 func (r *Rule) Name() string { return "descriptive-link-text" }
 
+// WordlistTarget implements rule.WordlistConsumer: resolved `lists:`
+// entries union into this rule's "banned" setting.
+func (r *Rule) WordlistTarget() string { return "banned" }
+
+var _ rule.WordlistConsumer = (*Rule)(nil)
+
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "prose" }
 

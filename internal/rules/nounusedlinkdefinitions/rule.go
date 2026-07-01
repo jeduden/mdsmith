@@ -32,6 +32,12 @@ func (r *Rule) ID() string { return "MDS053" }
 // Name implements rule.Rule.
 func (r *Rule) Name() string { return "no-unused-link-definitions" }
 
+// WordlistTarget implements rule.WordlistConsumer: resolved `lists:`
+// entries union into this rule's "ignored-labels" setting.
+func (r *Rule) WordlistTarget() string { return "ignored-labels" }
+
+var _ rule.WordlistConsumer = (*Rule)(nil)
+
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "link" }
 

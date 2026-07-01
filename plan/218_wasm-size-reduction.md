@@ -151,7 +151,7 @@ One simplification falls out. A CUE value is tied to a
 `*cue.Context` and cannot cross contexts. That forces the
 context-pairing plumbing in
 [compile_cache.go](../internal/schema/compile_cache.go).
-The phase-0 façade pays an honest interim cost for this. Each
+The phase-0 façade pays a real interim cost for this. Each
 compiled `Value` owns a fresh `*cue.Context`, since CUE v0.16.1
 documents that values from one context are neither
 concurrency-safe nor memory-bounded. `Unify` rebuilds whichever

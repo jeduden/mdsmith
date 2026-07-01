@@ -196,7 +196,7 @@ newer external binary while running an older extension that sends
 no token. In that window the singleton is off, so the leaked-host
 orphan is not reaped — and that orphan is the one case the
 subsystem exists for. EOF and the `processId` watchdog still
-handle normal exits. The honest cost is: for the override case
+handle normal exits. The real cost is: for the override case
 only, the "Two mdsmith servers running" note can recur until the
 extension updates.
 
