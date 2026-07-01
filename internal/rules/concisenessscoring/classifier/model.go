@@ -75,13 +75,23 @@ type lexiconArtifact struct {
 }
 
 type compiledLexicon struct {
-	fillerWords    map[string]struct{}
-	modalWords     map[string]struct{}
-	vagueWords     map[string]struct{}
-	actionWords    map[string]struct{}
-	stopWords      map[string]struct{}
-	hedgePhrases   []string
-	verbosePhrases []string
+	fillerWords map[string]struct{}
+	modalWords  map[string]struct{}
+	vagueWords  map[string]struct{}
+	actionWords map[string]struct{}
+	stopWords   map[string]struct{}
+	// hedgeMarkers and verboseMarkers are phraseMarker(phrase) applied
+	// to the configured hedge/verbose phrase lists once, here, instead
+	// of on every Classify call. The phrase lexicon is fixed once the
+	// model loads, so re-deriving each phrase's marker (lowercase +
+	// tokenize + join) per paragraph was pure repeated work — see
+	// docs/development/high-performance-go.md "Memoize per-input
+	// computations". buildPhraseMarkers is length-preserving, so
+	// len(hedgeMarkers)/len(verboseMarkers) also serve as the phrase
+	// counts (see LexiconCounts) without keeping the raw phrase slices
+	// around too.
+	hedgeMarkers   []string
+	verboseMarkers []string
 }
 
 // LexiconCounts captures loaded cue-list sizes for quality and drift checks.
@@ -169,8 +179,8 @@ func (m *Model) LexiconCounts() LexiconCounts {
 		VagueWords:     len(m.lexicon.vagueWords),
 		ActionWords:    len(m.lexicon.actionWords),
 		StopWords:      len(m.lexicon.stopWords),
-		HedgePhrases:   len(m.lexicon.hedgePhrases),
-		VerbosePhrases: len(m.lexicon.verbosePhrases),
+		HedgePhrases:   len(m.lexicon.hedgeMarkers),
+		VerbosePhrases: len(m.lexicon.verboseMarkers),
 	}
 }
 
@@ -294,9 +304,20 @@ func compileLexicon(raw lexiconArtifact) (compiledLexicon, error) {
 		vagueWords:     wordSetFromSlice(vagueWords),
 		actionWords:    wordSetFromSlice(actionWords),
 		stopWords:      wordSetFromSlice(stopWords),
-		hedgePhrases:   hedgePhrases,
-		verbosePhrases: verbosePhrases,
+		hedgeMarkers:   buildPhraseMarkers(hedgePhrases),
+		verboseMarkers: buildPhraseMarkers(verbosePhrases),
 	}, nil
+}
+
+// buildPhraseMarkers applies phraseMarker to every entry in phrases,
+// once, so countPhraseMatches never re-tokenizes a configured phrase
+// at match time.
+func buildPhraseMarkers(phrases []string) []string {
+	markers := make([]string, len(phrases))
+	for i, phrase := range phrases {
+		markers[i] = phraseMarker(phrase)
+	}
+	return markers
 }
 
 func normalizeCueList(
@@ -379,9 +400,9 @@ func extractLexiconFeatures(
 	contentCount := countContentTokens(tokens, lexicon.stopWords)
 
 	normText := " " + strings.Join(tokens, " ") + " "
-	hedgeCount, hedgeCues := countPhraseMatches(normText, lexicon.hedgePhrases)
+	hedgeCount, hedgeCues := countPhraseMatches(normText, lexicon.hedgeMarkers)
 	verboseCount, verboseCues := countPhraseMatches(
-		normText, lexicon.verbosePhrases,
+		normText, lexicon.verboseMarkers,
 	)
 
 	features["filler_rate"] = float64(fillerCount) / wordCount
@@ -444,11 +465,12 @@ func countContentTokens(tokens []string, stopWords map[string]struct{}) int {
 	return count
 }
 
-func countPhraseMatches(normText string, phrases []string) (int, []string) {
+// countPhraseMatches counts occurrences of each precomputed phrase
+// marker (see buildPhraseMarkers) within normText.
+func countPhraseMatches(normText string, markers []string) (int, []string) {
 	count := 0
 	cues := make([]string, 0, 4)
-	for _, phrase := range phrases {
-		marker := phraseMarker(phrase)
+	for _, marker := range markers {
 		if marker == "" {
 			continue
 		}

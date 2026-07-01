@@ -144,6 +144,46 @@ func TestWrapTokens_GluedUnitWrapsWholeNoOverflow(t *testing.T) {
 	}
 }
 
+// buildWrapUnitsAllocBudget pins buildWrapUnits's allocation count for
+// a long glued run (an initials-heavy unit, the case that exercises
+// the inner coalescing loop the most). The loop used to grow `unit`
+// with `unit += " " + tokens[j]` on every glued token, allocating a
+// new backing array each step — see
+// docs/development/high-performance-go.md "Strings and bytes" /
+// "strings.Builder over +". Measured baseline after switching to
+// strings.Builder: 2 allocs/op (down from 9) on a 9-token glued run.
+const buildWrapUnitsAllocBudget = 2
+
+// TestBuildWrapUnitsAllocBudget exercises buildWrapUnits directly
+// (rather than through wrapTokens) so the budget isolates the
+// coalescing loop from the line-packing pass around it.
+func TestBuildWrapUnitsAllocBudget(t *testing.T) {
+	if testing.Short() {
+		t.Skip("alloc gate skipped in -short mode")
+	}
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race; the race detector " +
+			"adds allocation bookkeeping that perturbs the count")
+	}
+	tokens := []string{
+		"shelved", "J.", "R.", "R.", "R.", "R.", "R.", "R.", "R.",
+		"Tolkien", "today",
+	}
+	glue := func(prev string) bool {
+		return len(prev) == 2 && prev[1] == '.'
+	}
+	allocs := testing.AllocsPerRun(100, func() {
+		_ = buildWrapUnits(tokens, glue)
+	})
+	t.Logf("buildWrapUnits allocs/op = %.0f (budget = %d)",
+		allocs, buildWrapUnitsAllocBudget)
+	if allocs > float64(buildWrapUnitsAllocBudget) {
+		t.Fatalf("buildWrapUnits allocs/op = %.0f, budget = %d; see "+
+			"docs/development/high-performance-go.md",
+			allocs, buildWrapUnitsAllocBudget)
+	}
+}
+
 func TestWrapTokens_LongTokenOwnsLine(t *testing.T) {
 	tokens := []string{"short", "thisisaverylongunbreakabletoken", "tail"}
 	got := wrapTokens(tokens, "", 10, func(string) bool { return false })
