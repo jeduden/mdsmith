@@ -144,16 +144,14 @@ func buildWrapUnits(tokens []string, glue func(prev string) bool) []string {
 	var b strings.Builder
 	for i := 0; i < len(tokens); {
 		j := i
+		size := len(tokens[i])
 		for j < len(tokens)-1 && glue(tokens[j]) {
 			j++
+			size += 1 + len(tokens[j]) // +1 for the space separator
 		}
 		if j == i {
 			units = append(units, tokens[i])
 		} else {
-			size := j - i // one space per glued token
-			for k := i; k <= j; k++ {
-				size += len(tokens[k])
-			}
 			b.Reset()
 			b.Grow(size)
 			for k := i; k <= j; k++ {
