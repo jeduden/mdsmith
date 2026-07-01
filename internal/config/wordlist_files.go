@@ -206,8 +206,14 @@ func expandWordlists(result map[string]RuleCfg, userLists map[string]UserWordlis
 					}
 					resolved = append(resolved, entries...)
 				}
-				existing, _ := anyToStrings(newSettings[target])
-				newSettings[target] = stringsToAny(dedupStrings(append(resolved, existing...)))
+				// Only union into the target when it is absent or already
+				// a string list. If it holds an invalid (non-list) type,
+				// leave it untouched so the rule's ApplySettings surfaces
+				// the type error instead of the expansion masking it —
+				// `lists:` is stripped either way.
+				if existing, ok := anyToStrings(newSettings[target]); ok {
+					newSettings[target] = stringsToAny(dedupStrings(append(resolved, existing...)))
+				}
 			}
 		}
 		rc.Settings = newSettings

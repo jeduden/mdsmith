@@ -117,6 +117,25 @@ func TestExpandWordlists_EmptyResultReturns(t *testing.T) {
 	expandWordlists(map[string]RuleCfg{}, nil) // early return; must not panic
 }
 
+func TestExpandWordlists_LeavesInvalidTargetUntouched(t *testing.T) {
+	// A non-list target value (a user type error) must not be silently
+	// replaced by the expanded entries; leave it so ApplySettings can
+	// surface the error. lists: is still stripped.
+	result := map[string]RuleCfg{
+		"forbidden-text": {Enabled: true, Settings: map[string]any{
+			"lists":    []any{"team"},
+			"contains": "notalist",
+		}},
+	}
+	users := map[string]UserWordlist{"team": {Entries: []string{"delve"}}}
+	expandWordlists(result, users)
+
+	got := result["forbidden-text"].Settings
+	_, hasLists := got["lists"]
+	assert.False(t, hasLists, "lists key stripped")
+	assert.Equal(t, "notalist", got["contains"], "invalid target left untouched")
+}
+
 func TestExpandWordlists_SkipsUnresolvableList(t *testing.T) {
 	// A list that fails to resolve is skipped during expansion (the real
 	// error is reported by validateWordlists); the lists: key is still
