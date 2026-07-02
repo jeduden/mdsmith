@@ -52,11 +52,13 @@ warning twice.
 
 A check belongs to mdsmith when it is literal and repeatable:
 a fixed word, a fixed phrase, a name cased one way, a term
-that must appear in a section. mdsmith reads these from named
-word-lists and rewrites the mechanical ones under
-`mdsmith fix`. The `no-llm-tells` convention bundles the
-common denylist; `proper-names` and `required-mentions` cover
-the casing and required-term cases.
+that must appear in a section. `forbidden-text` and
+`forbidden-paragraph-starts` flag banned words and openers.
+`proper-names` flags miscased names. `required-mentions`
+flags a missing required term. The `no-llm-tells` convention
+bundles the common denylist. Each check fires on a literal
+match, so its result is exact. These rules flag today; they
+do not rewrite.
 
 A check belongs to Vale when it needs judgment: is a sentence
 passive, is a tone off-brand, would other phrasing read more
@@ -64,10 +66,10 @@ plainly. Those answers depend on context, not a lookup, so
 they stay with Vale's language-aware engine.
 
 The line moves as mdsmith adds deterministic prose rules.
-Bounded repetition, over-used words, and mechanical
-word-choice swaps are all list-driven and fixable, so they
-trend toward mdsmith. Voice and subjective clarity stay with
-Vale.
+Bounded repetition and over-used-word checks are planned as
+flag-only. Mechanical word-choice swaps are planned with
+auto-fix. All are list-driven, so they trend toward mdsmith.
+Voice and subjective clarity stay with Vale.
 
 ## CI pipeline
 
@@ -93,12 +95,11 @@ single workspace.
   mdsmith covers the formatting checks remark presets
   ship.
 - Drop **Vale** if your prose rules are all literal: banned
-  words, required terms, proper-noun casing, mechanical
-  swaps. mdsmith's `forbidden-text`, `proper-names`,
-  `required-mentions`, and the `no-llm-tells` convention
-  cover those, and `mdsmith fix` rewrites the fixable ones.
-  Keep Vale for brand voice, passive-voice, and context-aware
-  suggestions.
+  words, banned openers, proper-noun casing, required terms.
+  mdsmith's `forbidden-text`, `forbidden-paragraph-starts`,
+  `proper-names`, `required-mentions`, and the `no-llm-tells`
+  convention cover those today. Keep Vale for brand voice,
+  passive-voice, and context-aware suggestions.
 - Drop **mdsmith** if your only need is prose voice and
   you have no cross-file linking, generated sections,
   or release-gating on doc metrics. Vale is the simpler

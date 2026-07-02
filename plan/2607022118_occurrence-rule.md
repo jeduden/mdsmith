@@ -55,8 +55,9 @@ Settings:
   it; matching the scope model MDS058 already walks.
 - `tokens`: a list of literal strings to count. This is the
   `WordlistTarget()` key, so `lists:` entries union into it.
-- `pattern`: an alternative single Go RE2 pattern, compiled at
-  package scope (mutually exclusive with `tokens`).
+- `pattern`: an alternative single Go RE2 pattern, compiled
+  once in `ApplySettings` and cached on the rule (mutually
+  exclusive with `tokens`).
 - `min` / `max`: inclusive bounds on the per-scope count.
   Omitted `min` is 0; omitted `max` is unbounded.
 - `count`: `each` (bound each token separately, the default)
@@ -85,9 +86,10 @@ mechanically fixable — cutting the third em dash or the fourth
 "leverage" is an authoring choice. Auto-fix for word choice is
 the separate substitution rule (plan 2607022120).
 
-Allocation budget: the pattern compiles at package scope. The
-scope walk reuses a loop-local counter. So `Check` stays within
-the ≤10-alloc budget on representative input.
+Allocation budget: a configured pattern compiles once in
+`ApplySettings`, not per `Check`. The scope walk reuses a
+loop-local counter. So `Check` stays within the ≤10-alloc
+budget on representative input.
 
 ## Tasks
 

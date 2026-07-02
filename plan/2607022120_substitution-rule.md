@@ -56,12 +56,14 @@ Settings:
 
 Matching walks `f.AST` and skips inline-code spans, fenced and
 indented code blocks, autolinks, and link destinations, so a
-command or a URL is never rewritten. Each swap compiles to a
-package-scope pattern once.
+command or a URL is never rewritten. Each swap compiles once
+in `ApplySettings` and is cached on the rule for reuse in
+`Check`.
 
-The rule reports one diagnostic per hit (`use "X" instead of
-"Y"`) in check mode. Under `mdsmith fix` it emits the byte
-edits its fixer applies. The multi-pass loop already re-runs
+The rule reports one diagnostic per hit. For the swap
+`utilise` → `use`, it names the preferred term first:
+`use "use", not "utilise"`. Under `mdsmith fix` it emits the
+byte edits its fixer applies. The multi-pass loop already re-runs
 rules until edits stabilize, so a swap that exposes a second
 swap is handled with no extra machinery.
 
