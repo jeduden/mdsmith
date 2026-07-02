@@ -529,12 +529,13 @@ The **current surface difference** has narrowed
 on the link layer. mdsmith now renames headings
 and link-reference labels with every dependent
 link rewritten (`mdsmith rename`), and walks the
-link graph both ways (`mdsmith list backlinks`,
-`mdsmith deps --incoming`). mdbase alone still
-ships the file-move rename, typed CRUD, watch
-mode, and the optional SQLite index. mdsmith
-alone still ships the prose, structure, and
-generated-content rules. Either surface is a
+link graph both ways (`mdsmith deps` for outgoing
+edges, `mdsmith list backlinks` for incoming).
+mdbase alone still ships the file-move rename,
+typed CRUD, watch mode, and the optional SQLite
+index. mdsmith alone still ships the prose,
+structure, and generated-content rules. Either
+surface is a
 snapshot, not a charter — see the deep-dive for
 evolutionary candidates either way.
 
