@@ -169,9 +169,6 @@ Patterns of arrangement, not vocabulary.
   (parameter tables in list form); flagged in
   how-to, tutorial, and background when used as
   the page's main shape.
-- **Em-dash overuse.** Cap at 1 per paragraph,
-  2 per page. Replace runs of em-dashes with
-  shorter sentences or parentheses.
 - **Emoji as bullet.** Banned. mdsmith front
   matter uses `status: ✅` as data, not as
   decoration; emoji never lead a list item.
