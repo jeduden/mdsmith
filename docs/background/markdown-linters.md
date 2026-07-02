@@ -529,13 +529,13 @@ The **current surface difference** has narrowed
 on the link layer. mdsmith now renames headings
 and link-reference labels with every dependent
 link rewritten (`mdsmith rename`). It lists a
-file's incoming Markdown links (`mdsmith list
-backlinks`), and walks the wider dependency graph
-— includes, catalogs, builds, and links — in both
-directions (`mdsmith deps`,
-`mdsmith deps --incoming`). mdbase alone still
-ships the file-move rename, typed CRUD, watch
-mode, and the optional SQLite index.
+file's incoming Markdown links with
+`mdsmith list backlinks`, and walks a file's
+wider dependency edges — includes, catalogs,
+builds, and links — with `mdsmith deps`, outgoing
+by default or incoming with `--incoming`. mdbase
+alone still ships the file-move rename, typed
+CRUD, watch mode, and the optional SQLite index.
 mdsmith alone still ships the prose, structure,
 and generated-content rules. Either surface is a
 snapshot, not a charter — see the deep-dive for
