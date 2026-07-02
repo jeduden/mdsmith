@@ -532,9 +532,10 @@ link rewritten (`mdsmith rename`). It lists a
 file's incoming Markdown links (`mdsmith list
 backlinks`), and walks the wider dependency graph
 — includes, catalogs, builds, and links — in both
-directions (`mdsmith deps`, `--incoming`). mdbase
-alone still ships the file-move rename, typed
-CRUD, watch mode, and the optional SQLite index.
+directions (`mdsmith deps`,
+`mdsmith deps --incoming`). mdbase alone still
+ships the file-move rename, typed CRUD, watch
+mode, and the optional SQLite index.
 mdsmith alone still ships the prose, structure,
 and generated-content rules. Either surface is a
 snapshot, not a charter — see the deep-dive for
