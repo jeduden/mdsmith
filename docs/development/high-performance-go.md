@@ -207,14 +207,14 @@ per workspace file.
 ### Struct layout
 
 - **Order fields large-to-small** to minimize padding.
-  The `fieldalignment` analyzer in `golang.org/x/tools`
-  flags layouts with wasted bytes and can rewrite them.
+  The `fieldalignment` analyzer flags and rewrites waste.
 - **Hot/cold split.** Frequently-read fields in one
-  struct, rarely-read in another behind a pointer.
-  Better cache utilization in the hot path.
+  struct, rarely-read fields in another, behind a pointer.
 - **Prefer `[]Foo` over `[]*Foo`.** A value slice is one
   GC-scanned allocation with zero internal pointers; the
   pointer slice forces N pointer scans every cycle.
+- **Group pointer fields first, scalars last** — GC
+  `ptrdata` spans through the last pointer field.
 
 ### Skip work you don't need
 

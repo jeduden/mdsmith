@@ -222,14 +222,16 @@ func normalizeText(text string) string {
 }
 
 func TestCountPhraseMatches_UsesBoundaries(t *testing.T) {
+	markers := buildPhraseMarkers([]string{"in order to"})
+
 	norm := normalizeText("This statement is in order too noisy to match the cue.")
-	count, cues := countPhraseMatches(norm, []string{"in order to"})
+	count, cues := countPhraseMatches(norm, markers)
 	if count != 0 {
 		t.Fatalf("expected 0 phrase matches, got %d (cues=%v)", count, cues)
 	}
 
 	norm = normalizeText("This statement is in order to reduce noise.")
-	count, cues = countPhraseMatches(norm, []string{"in order to"})
+	count, cues = countPhraseMatches(norm, markers)
 	if count != 1 {
 		t.Fatalf("expected 1 phrase match, got %d (cues=%v)", count, cues)
 	}
@@ -591,8 +593,9 @@ func TestPhraseMarker_PunctuationOnly(t *testing.T) {
 // =====================================================================
 
 func TestCountPhraseMatches_EmptyMarkerSkipped(t *testing.T) {
-	// Pass a phrase that yields no tokens → phraseMarker returns "" → skipped.
-	count, cues := countPhraseMatches(" foo bar ", []string{"!!!", "foo bar"})
+	// "!!!" yields no tokens → buildPhraseMarkers produces "" → skipped.
+	markers := buildPhraseMarkers([]string{"!!!", "foo bar"})
+	count, cues := countPhraseMatches(" foo bar ", markers)
 	// "!!!" produces empty marker (skipped), "foo bar" matches " foo bar "
 	if count != 1 {
 		t.Fatalf("expected count=1, got %d", count)
@@ -628,8 +631,54 @@ func BenchmarkClassify(b *testing.B) {
 		"the same idea in order to make it very clear, and it " +
 		"appears that we are really saying very little new " +
 		"information overall."
+	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		model.Classify(text)
+	}
+}
+
+// classifyAllocBudget pins Model.Classify's per-call allocation count.
+// Every call used to rebuild each configured hedge/verbose phrase's
+// matcher (lowercase + tokenize + join) from scratch, even though the
+// phrase lexicon is fixed once the model loads — see
+// docs/development/high-performance-go.md "Memoize per-input
+// computations". Markers are now precomputed once in compileLexicon,
+// so Classify only pays for the per-paragraph matching, not the
+// per-phrase tokenization. Measured baseline after the fix: 97
+// allocs/op (down from 248) on the embedded artifact's 13 hedge + 11
+// verbose phrases.
+const classifyAllocBudget = 100
+
+// TestClassifyAllocBudget pins Model.Classify's allocation count under
+// a normal `go test` run, not only under `-bench`, so a regression
+// that lands without `-bench` still trips. Skipped under `-race`
+// because the race detector's bookkeeping perturbs the count.
+func TestClassifyAllocBudget(t *testing.T) {
+	if testing.Short() {
+		t.Skip("alloc gate skipped in -short mode")
+	}
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race; the race detector " +
+			"adds allocation bookkeeping that perturbs the count")
+	}
+	model, err := LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded returned error: %v", err)
+	}
+	text := "Basically, it seems that we are just trying to explain " +
+		"the same idea in order to make it very clear, and it " +
+		"appears that we are really saying very little new " +
+		"information overall."
+
+	allocs := testing.AllocsPerRun(100, func() {
+		model.Classify(text)
+	})
+	t.Logf("Classify allocs/op = %.0f (budget = %d)",
+		allocs, classifyAllocBudget)
+	if allocs > float64(classifyAllocBudget) {
+		t.Fatalf("Classify allocs/op = %.0f, budget = %d; see "+
+			"docs/development/high-performance-go.md",
+			allocs, classifyAllocBudget)
 	}
 }
