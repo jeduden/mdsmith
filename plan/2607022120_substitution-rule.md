@@ -40,19 +40,25 @@ replacement, so the author never has to pick one.
 ## Design
 
 A new rule, `substitution` (next free ID, e.g. MDS072), holds
-an ordered map of swaps and registers a fixer.
+a set of swaps and registers a fixer.
 
 Settings:
 
 - `swaps`: a map from a banned term to its replacement, e.g.
-  `{"utilise": "use", "in order to": "to"}`. Order is
-  preserved so a longer phrase wins before a substring of it.
+  `{"utilise": "use", "in order to": "to"}`. A YAML map has no
+  guaranteed order, so `ApplySettings` normalizes it into a
+  slice sorted longest-key-first. A longer phrase then always
+  matches before a substring of it.
 - `case-sensitive`: default false. When false, a match folds
   case and the replacement mirrors the source case — `Utilise`
   becomes `Use`, `UTILISE` becomes `USE`, `utilise` becomes
   `use`.
 - `whole-word`: default true. Word boundaries only, so
   `use` does not rewrite the middle of `causes`.
+- `swaps-from` / `default-replacement`: the `WordlistTarget()`
+  key and its fallback. A `lists:` set unions banned terms into
+  `swaps-from`; each maps to `default-replacement`. Explicit
+  `swaps` pairs win over a list default.
 
 Matching walks `f.AST` and skips inline-code spans, fenced and
 indented code blocks, autolinks, and link destinations, so a
@@ -76,17 +82,16 @@ Two guardrails keep the swap safe:
   capitalized forms. A mixed-case source (`uTiLiSe`) is
   reported but left for the author, never guessed.
 
-The banned side of a swap may also be sourced from a named
-list. `WordlistTarget()` returns `swaps-from`; a `lists:` entry
-supplies banned terms that map to a single configured default
-replacement, for the "ban this whole list, replace with X"
-case. Explicit `swaps` pairs always win over a list default.
+The `swaps-from` list (above) handles the "ban this whole
+list, replace with X" case. A curated denylist maps every
+entry to one `default-replacement`.
 
 ## Tasks
 
 1. Add package `internal/rules/substitution`: `Rule`,
-   `ApplySettings` (swaps, case-sensitive, whole-word), and
-   `Check`. Red/green per setting.
+   `ApplySettings` (swaps, case-sensitive, whole-word,
+   swaps-from, default-replacement), and `Check`. `ApplySettings`
+   sorts swaps longest-key-first. Red/green per setting.
 2. Add the AST-scope skip (code spans, code blocks, URLs) and
    the case-mirroring replacement helper, each unit-tested.
 3. Register the fixer so `mdsmith fix` applies the swaps in the

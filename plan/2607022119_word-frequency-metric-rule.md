@@ -46,11 +46,13 @@ in every rule.
 Two artifacts, one shared tokenizer.
 
 **MET007 word-frequency (metric).** A new metric under
-`internal/metrics/` that emits the top-N content words and
-their counts for a file. It folds case, strips inline-code and
-code blocks, splits on Unicode word boundaries, and drops a
-built-in default stopword set plus any list-supplied additions.
-It reports a small structured distribution so
+`internal/metrics/` that emits the top-N words and their counts
+for a file. It folds case, strips inline-code and code blocks,
+and splits on Unicode word boundaries. It applies `min-length`
+(default 4 runes), which already drops the shortest function
+words. No stopword list ships compiled in, matching the
+no-built-in-lists direction. It reports a small structured
+distribution so
 `mdsmith metrics rank --metric word-frequency` can rank files
 by their single most-repeated content word (the "most
 repetitive file" query a release gate wants).
@@ -64,8 +66,11 @@ section`). Settings:
 - `max`: the per-word ceiling (e.g. 4 per section).
 - `min-length`: ignore words shorter than N runes (default 4),
   so short connectors never dominate.
-- `stopwords`: the `WordlistTarget()` key; `lists:` unions a
-  shared stopword list into it, subtracted before counting.
+- `stopwords`: the `WordlistTarget()` key. A `lists:` set
+  unions a shared stopword list into it, subtracted before
+  counting. With no list, only `min-length` filters.
+  `mdsmith init --wordlists` can scaffold a starter stopword
+  list.
 
 Both share one unexported tokenizer so the metric and the rule
 never disagree on what a "word" is. The rule flags; it does not
@@ -77,8 +82,10 @@ scope with reused buffers, keeping `Check` within the
 ## Tasks
 
 1. Add the shared tokenizer (case-fold, strip code, split on
-   word boundaries, apply `min-length` and a default stopword
-   set) as an unexported helper reused by both artifacts.
+   word boundaries, apply `min-length`) as an unexported helper
+   reused by both artifacts. Stopword subtraction is the rule's
+   job, from its `lists:` set; the tokenizer ships no compiled
+   stopword list.
 2. Add MET007 under `internal/metrics/` with its
    `MET007-word-frequency/` README and registry wiring; make it
    rankable through `mdsmith metrics rank`.
