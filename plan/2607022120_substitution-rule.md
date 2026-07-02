@@ -9,7 +9,7 @@ summary: >-
   edge. Swaps preserve case and word boundaries and skip code
   spans, code blocks, and URLs.
 model: opus
-depends-on: []
+depends-on: [2606251522]
 ---
 # Substitution rule — deterministic word-choice swaps with auto-fix
 

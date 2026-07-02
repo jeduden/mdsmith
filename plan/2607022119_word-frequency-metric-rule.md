@@ -9,7 +9,7 @@ summary: >-
   past a threshold within a scope. A stopword `lists:` set is
   subtracted first so common words never trip it.
 model: sonnet
-depends-on: []
+depends-on: [2606251522]
 ---
 # Word-frequency metric and over-repetition rule
 

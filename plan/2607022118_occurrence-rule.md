@@ -9,7 +9,7 @@ summary: >-
   a term-density check as presets, and reads its match set
   from named `lists:`. Counting only — flag, do not rewrite.
 model: sonnet
-depends-on: []
+depends-on: [2606251522]
 ---
 # General occurrence rule — bound how often a pattern appears per scope
 
