@@ -514,8 +514,7 @@ What each tool **does** with the same bytes:
 | `status: in-progress`                     | available to `mdsmith list query`                                                                  | filterable in Bases queries; appears in backlink graphs   |
 | `due: 2026-06-01`                         | available to query                                                                                 | filterable with date arithmetic (`due <= today() + "7d"`) |
 | `mdsmith fix` runs                        | reformats tables, regenerates TOC/catalog                                                          | n/a                                                       |
-| `mdsmith rename` runs                     | renames a heading or link-ref label and rewrites every dependent link                              | n/a                                                       |
-| `mdbase rename` runs                      | n/a (`mdsmith rename` covers headings and labels, not file moves)                                  | moves the file and rewrites every incoming link           |
+| Rename                                    | renames a heading or link-ref label and rewrites every dependent link; no file moves               | moves the file and rewrites every incoming link           |
 | Body readability, structure, token budget | yes (MDS023 ARI, MDS024 sentences, MDS028 token budget)                                            | no                                                        |
 
 The **shared** layer is the YAML front matter.
