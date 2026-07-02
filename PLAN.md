@@ -234,4 +234,7 @@ footer: |
 | 2606260614 | ✅     | sonnet | [arch-fix: add dedicated unit tests for lineclass_scan.go HTML-scanning helpers](plan/2606260614_arch-fix-lineclass-scan-helper-tests.md)      |
 | 2606260615 | ✅     | sonnet | [Add dedicated unit tests for unexported helpers in cue/cuelite/engine.go](plan/2606260615_arch-fix-cuelite-engine-helper-tests.md)            |
 | 2606292015 | 🔲     | opus   | [Scope the LSP workspace singleton per client so instances coexist](plan/2606292015_lsp-multi-instance-coexistence.md)                         |
+| 2607022118 | 🔲     | sonnet | [General occurrence rule — bound how often a pattern appears per scope](plan/2607022118_occurrence-rule.md)                                    |
+| 2607022119 | 🔲     | sonnet | [Word-frequency metric and over-repetition rule](plan/2607022119_word-frequency-metric-rule.md)                                                |
+| 2607022120 | 🔲     | opus   | [Substitution rule — deterministic word-choice swaps with auto-fix](plan/2607022120_substitution-rule.md)                                      |
 <?/catalog?>
