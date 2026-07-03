@@ -3,11 +3,11 @@ id: 2607022119
 title: Word-frequency metric and over-repetition rule
 status: "🔲"
 summary: >-
-  Add a MET007 word-frequency metric that ranks a file's
-  content words by count (feeding `mdsmith metrics rank`),
-  plus an opt-in rule that flags any content word repeated
-  past a threshold within a scope. A stopword `lists:` set is
-  subtracted first so common words never trip it.
+  Add a MET007 word-frequency metric (the highest repeat count
+  of any content word in a file) that ranks files by their
+  most-repeated word, plus an opt-in rule that flags any word
+  repeated past a threshold within a scope. A stopword `lists:`
+  set is subtracted first so common words never trip it.
 model: sonnet
 depends-on: [2606251522]
 ---
@@ -15,10 +15,10 @@ depends-on: [2606251522]
 
 ## Goal
 
-Rank the content words in a file by how often they appear.
-Fail when one non-stopword word repeats past a threshold in a
-scope. This catches accidental over-repetition that no
-banned-word list anticipates.
+Rank files by how often their most-repeated content word
+recurs. Fail when one non-stopword word repeats past a
+threshold in a scope. This catches accidental over-repetition
+that no banned-word list anticipates.
 
 ## Context
 
@@ -33,8 +33,8 @@ is broader — frequency density across a scope.
 mdsmith already ships a metrics subsystem: bytes, lines,
 words, headings, token estimate, and conciseness (MET001
 through MET006). All rank via `mdsmith metrics rank`. Word
-frequency is the natural MET007. It is a per-file distribution,
-not a single scalar.
+frequency is the natural MET007: one scalar per file, the
+highest repeat count of any content word.
 
 The rule reuses the named word-list mechanism for its stopword
 set (`lists:`, plan 2606251522 / PR #694). A project points at
@@ -45,17 +45,20 @@ in every rule.
 
 Two artifacts, one shared tokenizer.
 
-**MET007 word-frequency (metric).** A new metric under
-`internal/metrics/` that emits the top-N words and their counts
-for a file. It folds case, strips inline-code and code blocks,
-and splits on Unicode word boundaries. It applies `min-length`
-(default 4 runes), which already drops the shortest function
-words. No stopword list ships compiled in, matching the
-no-built-in-lists direction. It reports a small structured
-distribution so
-`mdsmith metrics rank --metric word-frequency` can rank files
-by their single most-repeated content word (the "most
-repetitive file" query a release gate wants).
+**MET007 word-frequency (metric).** A new file-scope metric
+under `internal/metrics/`. Its value is the highest repeat
+count of any single content word in the file. That is one
+scalar, so it fits the existing `metrics.Value` and ranks with
+the current CLI.
+
+It folds case, strips inline-code and code blocks, and splits
+on Unicode word boundaries. It applies
+`min-length` (default 4 runes), which already drops the
+shortest function words. No stopword list ships compiled in,
+matching the no-built-in-lists direction.
+`mdsmith metrics rank --metrics word-frequency` then ranks
+files by their most-repeated word (the "most repetitive file"
+query a release gate wants).
 
 **over-repetition (rule, opt-in, off by default).** A rule that
 runs the same tokenizer per scope and fails when any surviving
@@ -105,7 +108,7 @@ scope with reused buffers, keeping `Check` within the
 
 ## Acceptance Criteria
 
-- [ ] `mdsmith metrics rank --metric word-frequency` ranks a
+- [ ] `mdsmith metrics rank --metrics word-frequency` ranks a
       corpus by each file's most-repeated content word.
 - [ ] A section repeating one content word five times fails
       over-repetition at `max: 4`; the same word inside a code
