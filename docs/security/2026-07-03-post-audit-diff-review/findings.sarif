@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "mdsmith-security-review",
+          "informationUri": "https://github.com/jeduden/mdsmith",
+          "rules": [
+            {
+              "id": "F001",
+              "name": "directive",
+              "shortDescription": {
+                "text": "Workspace.ReadFile (OSWorkspace/OverlayWorkspace) reads through a caller-supplied path with no symlink containment, unlike the sibling FS() view"
+              },
+              "fullDescription": {
+                "text": "OverlayWorkspace.FS() and OSWorkspace's FS() view were rewired in this window to build their fs.FS through lint.OpenRootFS (os.OpenRoot, RESOLVE_BENEATH semantics).\noverlay_test.go:61-72 confirms a within-workspace symlink to an outside target is refused through FS().\nBut the sibling ReadFile methods (workspace.go:72-74, overlay.go:57-66) still call plain os.ReadFile against Join(Root, path), justified only by a `//nolint:gosec // path is caller-controlled` comment.\nNo OpenRoot, no containment check — a symlink is followed.\nThe two seams are documented as mirroring each other but only one enforces containment."
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "security-severity": "3.0",
+                "tags": [
+                  "security",
+                  "CWE-61"
+                ]
+              }
+            },
+            {
+              "id": "F002",
+              "name": "cli",
+              "shortDescription": {
+                "text": "Unbounded block-quote recursion in the Layer-0 parse-skip scanner can trigger a fatal (unrecoverable) stack overflow, but the path is gated behind an unwired internal spike flag"
+              },
+              "fullDescription": {
+                "text": "tryBlockquote (layer0.go:224) recurses into scanLayer0(body) once per block-quote nesting level whenever codeCapable is true (layer0.go:295-296).\ncodeCapable is set by lineHasNonFenceCode (layer0_para.go:204-209), which returns true for *any* nested block-quote marker line, not just actual code content.\nA single line of N nested `>` markers drives N recursive calls with no depth cap.\nGo cannot recover() a stack overflow — a fatal runtime error, not a panic — so this would bypass the panic-recovery hardening added elsewhere in this window (runner.go:397, checker.go:480).\nscanLayer0/tryBlockquote only runs when f.AST is nil, which requires the MDSMITH_LAYER0_SKIP or MDSMITH_SPIKE_FLAT_L0 env vars (runner_layer0.go:45, batch.go:134-140) — both internal, undocumented spike flags with no CLI flag, config key, or LSP setting wired anywhere (confirmed by grep).\nDefault check/fix/lsp never sets these, so the path is unreachable today."
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "security-severity": "3.0",
+                "tags": [
+                  "security",
+                  "CWE-674"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "F001",
+          "ruleIndex": 0,
+          "level": "note",
+          "message": {
+            "text": "Workspace.ReadFile (OSWorkspace/OverlayWorkspace) reads through a caller-supplied path with no symlink containment, unlike the sibling FS() view"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "pkg/mdsmith/workspace.go"
+                },
+                "region": {
+                  "startLine": 72,
+                  "endLine": 74
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "pkg/mdsmith/overlay.go"
+                },
+                "region": {
+                  "startLine": 57,
+                  "endLine": 66
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "pkg/mdsmith/session.go"
+                },
+                "region": {
+                  "startLine": 430,
+                  "endLine": 436
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "pkg/mdsmith/overlay.go"
+                },
+                "region": {
+                  "startLine": 96,
+                  "endLine": 111
+                }
+              }
+            }
+          ],
+          "properties": {
+            "confidence": "confirmed",
+            "severity": "low"
+          }
+        },
+        {
+          "ruleId": "F002",
+          "ruleIndex": 1,
+          "level": "note",
+          "message": {
+            "text": "Unbounded block-quote recursion in the Layer-0 parse-skip scanner can trigger a fatal (unrecoverable) stack overflow, but the path is gated behind an unwired internal spike flag"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/lint/layer0.go"
+                },
+                "region": {
+                  "startLine": 224,
+                  "endLine": 296
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/lint/layer0_para.go"
+                },
+                "region": {
+                  "startLine": 204,
+                  "endLine": 209
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/engine/runner_layer0.go"
+                },
+                "region": {
+                  "startLine": 45,
+                  "endLine": 45
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "pkg/mdsmith/batch.go"
+                },
+                "region": {
+                  "startLine": 134,
+                  "endLine": 140
+                }
+              }
+            }
+          ],
+          "properties": {
+            "confidence": "confirmed",
+            "severity": "low"
+          }
+        }
+      ]
+    }
+  ]
+}

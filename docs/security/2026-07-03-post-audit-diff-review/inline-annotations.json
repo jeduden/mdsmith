@@ -1,0 +1,18 @@
+[
+  {
+    "path": "pkg/mdsmith/workspace.go",
+    "line": 72,
+    "side": "RIGHT",
+    "severity": "low",
+    "id": "F001",
+    "body": "**[F001 · low] Workspace.ReadFile (OSWorkspace/OverlayWorkspace) reads through a caller-supplied path with no symlink containment, unlike the sibling FS() view**\n\nOverlayWorkspace.FS() and OSWorkspace's FS() view were rewired in this window to build their fs.FS through lint.OpenRootFS (os.OpenRoot, RESOLVE_BENEATH semantics).\noverlay_test.go:61-72 confirms a within-workspace symlink to an outside target is refused through FS().\nBut the sibling ReadFile methods (workspace.go:72-74, overlay.go:57-66) still call plain os.ReadFile against Join(Root, path), justified only by a `//nolint:gosec // path is caller-controlled` comment.\nNo OpenRoot, no containment check — a symlink is followed.\nThe two seams are documented as mirroring each other but only one enforces containment.\n\n**Fix:** Route OSWorkspace.ReadFile and OverlayWorkspace.ReadFile through the same lint.OpenRootFS-backed containment as their FS() methods (e.g. implement ReadFile in terms of fs.ReadFile(w.FS(), relPath) when Root is set, or share a single resolved-and-contained open helper), so the two seams can no longer diverge. Add a test mirroring overlay_test.go's FS()-containment test but calling ReadFile directly, for both OSWorkspace and OverlayWorkspace."
+  },
+  {
+    "path": "internal/lint/layer0.go",
+    "line": 224,
+    "side": "RIGHT",
+    "severity": "low",
+    "id": "F002",
+    "body": "**[F002 · low] Unbounded block-quote recursion in the Layer-0 parse-skip scanner can trigger a fatal (unrecoverable) stack overflow, but the path is gated behind an unwired internal spike flag**\n\ntryBlockquote (layer0.go:224) recurses into scanLayer0(body) once per block-quote nesting level whenever codeCapable is true (layer0.go:295-296).\ncodeCapable is set by lineHasNonFenceCode (layer0_para.go:204-209), which returns true for *any* nested block-quote marker line, not just actual code content.\nA single line of N nested `>` markers drives N recursive calls with no depth cap.\nGo cannot recover() a stack overflow — a fatal runtime error, not a panic — so this would bypass the panic-recovery hardening added elsewhere in this window (runner.go:397, checker.go:480).\nscanLayer0/tryBlockquote only runs when f.AST is nil, which requires the MDSMITH_LAYER0_SKIP or MDSMITH_SPIKE_FLAT_L0 env vars (runner_layer0.go:45, batch.go:134-140) — both internal, undocumented spike flags with no CLI flag, config key, or LSP setting wired anywhere (confirmed by grep).\nDefault check/fix/lsp never sets these, so the path is unreachable today.\n\n**Fix:** Add a depth cap to tryBlockquote's recursion (mirroring the existing maxIncludeDepth pattern used for <?include?>) before either MDSMITH_LAYER0_SKIP or MDSMITH_SPIKE_FLAT_L0 is exposed as a supported, non-experimental path. Not urgent while both remain internal-only and unwired."
+  }
+]
