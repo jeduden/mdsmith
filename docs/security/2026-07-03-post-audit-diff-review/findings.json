@@ -12,6 +12,8 @@
       "title": "Workspace.ReadFile (OSWorkspace/OverlayWorkspace) reads through a caller-supplied path with no symlink containment, unlike the sibling FS() view",
       "severity": "low",
       "confidence": "confirmed",
+      "status": "fixed",
+      "fixed_by": "plan/2607031500 — OSWorkspace.ReadFile and OverlayWorkspace.ReadFile now route through the OpenRootFS-backed FS() (fs.ReadFile(w.FS(), relPath)) for workspace-relative paths, so a symlink escaping the root is refused the same way FS() already refuses it; absolute paths keep their pre-existing unconstrained passthrough",
       "surface": "directive",
       "cwe": "CWE-61",
       "location": {
@@ -34,6 +36,8 @@
       "title": "Unbounded block-quote recursion in the Layer-0 parse-skip scanner can trigger a fatal (unrecoverable) stack overflow, but the path is gated behind an unwired internal spike flag",
       "severity": "low",
       "confidence": "confirmed",
+      "status": "fixed",
+      "fixed_by": "plan/2607031500 — added the maxBlockquoteDepth (100) constant and threaded a depth counter through tryBlockquote's recursion into scanLayer0Depth, refusing to recurse past the cap so a pathologically nested `>` line can no longer drive unbounded stack growth",
       "surface": "cli",
       "cwe": "CWE-674",
       "location": {

@@ -369,6 +369,28 @@ func TestOSWorkspaceFSSymlinkEscapeRefused(t *testing.T) {
 	}
 }
 
+// TestOSWorkspaceReadFileSymlinkEscapeRefused verifies that
+// OSWorkspace.ReadFile shares FS()'s os.OpenRoot containment, so a
+// within-workspace symlink pointing outside Root is refused rather than
+// followed. This guards against CWE-73 (path traversal via symlink).
+func TestOSWorkspaceReadFileSymlinkEscapeRefused(t *testing.T) {
+	root := t.TempDir()
+
+	symlinkPath := filepath.Join(root, "escape.md")
+	if err := os.Symlink("/etc/passwd", symlinkPath); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	if _, errDirFS := os.ReadFile(symlinkPath); errDirFS != nil {
+		t.Skip("test invariant: the symlink target must be readable; skipping on this platform")
+	}
+
+	ws := OSWorkspace{Root: root}
+	if _, err := ws.ReadFile("escape.md"); err == nil {
+		t.Fatal("OSWorkspace.ReadFile(escape.md) succeeded; expected containment error for symlink escaping root")
+	}
+}
+
 // TestOSWorkspaceFSOpenRootFailFallback verifies that when os.OpenRoot itself
 // fails (e.g. the root directory does not exist), OSWorkspace.FS() returns an
 // fs.FS that propagates the error on every Open rather than panicking or

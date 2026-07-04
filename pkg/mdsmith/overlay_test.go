@@ -73,6 +73,28 @@ func TestOverlayWorkspaceFSSymlinkEscapeRefused(t *testing.T) {
 	}
 }
 
+// TestOverlayWorkspaceReadFileSymlinkEscapeRefused verifies that
+// OverlayWorkspace.ReadFile's disk fall-through shares FS()'s
+// os.OpenRoot containment, so an unshadowed within-workspace symlink
+// pointing outside the root is refused. Guards CWE-73.
+func TestOverlayWorkspaceReadFileSymlinkEscapeRefused(t *testing.T) {
+	root := t.TempDir()
+
+	symlinkPath := filepath.Join(root, "escape.md")
+	if err := os.Symlink("/etc/passwd", symlinkPath); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	if _, errDirFS := os.ReadFile(symlinkPath); errDirFS != nil {
+		t.Skip("test invariant: the symlink target must be readable; skipping on this platform")
+	}
+
+	ws := NewOverlayWorkspace(root)
+	if _, err := ws.ReadFile("escape.md"); err == nil {
+		t.Fatal("OverlayWorkspace.ReadFile(escape.md) succeeded; expected containment error for symlink escaping root")
+	}
+}
+
 // TestOverlayWorkspaceFSPrefersOverlay verifies the fs.FS view also
 // shadows disk with overlay bytes, so cross-file rules (catalog,
 // include) reading through FS see the open-buffer content (footgun 3).
@@ -182,14 +204,14 @@ func TestOverlayWorkspaceGlobBadPattern(t *testing.T) {
 	}
 }
 
-// TestOverlayWorkspaceReadFileAbsolutePath covers diskPath's
-// passthrough branch: an absolute path is read unchanged (not re-rooted
-// under Root), mirroring OSWorkspace.resolve so an absolute-path caller
-// reaches the file it named.
+// TestOverlayWorkspaceReadFileAbsolutePath covers ReadFile's
+// absolute-path passthrough branch: an absolute path is read unchanged
+// (not re-rooted under Root), mirroring OSWorkspace so an absolute-path
+// caller reaches the file it named.
 func TestOverlayWorkspaceReadFileAbsolutePath(t *testing.T) {
 	root := t.TempDir()
-	// A file OUTSIDE Root, addressed by its absolute path. If diskPath
-	// wrongly joined it under Root, this read would miss.
+	// A file OUTSIDE Root, addressed by its absolute path. If the
+	// passthrough branch wrongly joined it under Root, this read would miss.
 	other := t.TempDir()
 	abs := filepath.Join(other, "elsewhere.md")
 	if err := os.WriteFile(abs, []byte("absolute"), 0o600); err != nil {

@@ -2,6 +2,7 @@ package lint
 
 import (
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -190,6 +191,18 @@ func TestLayer0_NestedBlockquoteDepth(t *testing.T) {
 	require.Len(t, l0.BlockSpans, 1)
 	assert.Equal(t, BlockQuote, l0.BlockSpans[0].Kind)
 	assert.Equal(t, 2, l0.BlockSpans[0].Depth)
+}
+
+func TestLayer0_BlockquoteRecursionDepthCapped(t *testing.T) {
+	// A fence nested past maxBlockquoteDepth quote levels must not recurse
+	// arbitrarily far: the recursive scan into the quote body stops at the
+	// cap, so the fence past it is never reached and its lines are not
+	// marked as code. This guards against unbounded stack growth on a
+	// pathological line of deeply nested `>` markers (CWE-674).
+	prefix := strings.Repeat("> ", maxBlockquoteDepth+5)
+	src := prefix + "```\n" + prefix + "code\n" + prefix + "```\n"
+	l0 := scan(src)
+	assert.Empty(t, l0.CodeBlockLines, "fence nested past the depth cap must not be recursed into")
 }
 
 // spanKinds returns the set of block kinds present in the scan, counted.

@@ -100,6 +100,14 @@ var piOpenMarker = []byte("<?")
 
 var piCloseMarker = []byte("?>")
 
+// maxBlockquoteDepth caps tryBlockquote's recursion into nested quote
+// bodies. Every level of `>` nesting recurses once (see tryBlockquote),
+// with no cap a single line of enough nested markers could exhaust the
+// goroutine stack — a fatal, unrecoverable error, not a panic recover()
+// can catch. Legitimate documents never nest this deep; the cap only
+// blocks the pathological case.
+const maxBlockquoteDepth = 100
+
 // Layer0 returns the cached single-pass block scan for f, computing it
 // once on first use. The atomic.Bool + mutex memo matches the other
 // File projections (see the File.codeBlockLines field comment) so the
@@ -123,6 +131,14 @@ func Layer0(f *File) *Layer0Scan {
 // or PI blocks for a code-heavy file) does not re-grow the map, keeping
 // the scan inside the rule allocation budget.
 func scanLayer0(lines [][]byte) *Layer0Scan {
+	return scanLayer0Depth(lines, 0)
+}
+
+// scanLayer0Depth is scanLayer0's depth-tracking core. depth is the
+// number of tryBlockquote recursions already taken to reach lines;
+// tryBlockquote refuses to recurse past maxBlockquoteDepth so a
+// pathologically nested `>` line cannot exhaust the stack.
+func scanLayer0Depth(lines [][]byte, depth int) *Layer0Scan {
 	n := len(lines)
 	l0 := &Layer0Scan{
 		Classes:        make([]lineClass, n),
@@ -134,7 +150,7 @@ func scanLayer0(lines [][]byte) *Layer0Scan {
 		// dense alternating block/blank layout in one allocation.
 		BlockSpans: make([]BlockSpan, 0, n/2+1),
 	}
-	sc := scanner{lines: lines, l0: l0}
+	sc := scanner{lines: lines, l0: l0, depth: depth}
 	sc.run()
 	return l0
 }
@@ -152,6 +168,9 @@ type scanner struct {
 	// indented line starts a code block (goldmark: indented code cannot
 	// interrupt a paragraph).
 	prevNonBlankParagraph bool
+	// depth is the number of tryBlockquote recursions taken to reach this
+	// scan. See maxBlockquoteDepth.
+	depth int
 }
 
 // run drives the forward pass: a block loop that dispatches on each line's
@@ -292,8 +311,11 @@ func (s *scanner) tryBlockquote() bool {
 	// parent line numbers. PI blocks open only at the document root
 	// (piBlockParser.Open rejects a non-Document parent), so a `<?…?>`
 	// inside a quote is not a PI — inner.PIBlockLines is never translated.
-	if codeCapable {
-		inner := scanLayer0(body)
+	// The depth cap refuses to recurse past maxBlockquoteDepth: a fence
+	// nested deeper is silently not marked as code rather than growing the
+	// stack further (see maxBlockquoteDepth).
+	if codeCapable && s.depth < maxBlockquoteDepth {
+		inner := scanLayer0Depth(body, s.depth+1)
 		for ln := range inner.CodeBlockLines {
 			// A phantom closing-fence line from a deeper recursion level can
 			// fall one past this level's body (ln-1 == len(parentLine)); the

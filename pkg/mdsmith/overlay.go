@@ -51,9 +51,10 @@ func cleanKey(p string) string {
 }
 
 // ReadFile returns the overlaid bytes for p when a buffer shadows it,
-// otherwise it reads from disk resolved against Root (an absolute path
-// is read unchanged), mirroring OSWorkspace so the on-disk fall-through
-// and the FS view name the same file for one uri.
+// otherwise it falls through to disk. The disk fall-through reads
+// through FS() so a symlink escaping Root is refused the same way FS()
+// refuses it (RESOLVE_BENEATH containment), mirroring OSWorkspace so the
+// on-disk fall-through and the FS view name the same file for one uri.
 func (w *OverlayWorkspace) ReadFile(p string) ([]byte, error) {
 	key := cleanKey(p)
 	w.mu.RLock()
@@ -62,17 +63,10 @@ func (w *OverlayWorkspace) ReadFile(p string) ([]byte, error) {
 	if ok {
 		return bytes.Clone(data), nil
 	}
-	return os.ReadFile(w.diskPath(p)) //nolint:gosec // path is caller-controlled; this is the native disk seam
-}
-
-// diskPath maps a workspace-relative path to an absolute on-disk path
-// rooted at Root, matching OSWorkspace.resolve. Absolute paths and an
-// empty Root pass through unchanged.
-func (w *OverlayWorkspace) diskPath(p string) string {
 	if w.root == "" || filepath.IsAbs(p) {
-		return p
+		return os.ReadFile(p) //nolint:gosec // path is caller-controlled; this is the native disk seam
 	}
-	return filepath.Join(w.root, filepath.FromSlash(p))
+	return fs.ReadFile(w.FS(), key)
 }
 
 // Glob expands a doublestar pattern against the on-disk tree rooted at

@@ -66,23 +66,16 @@ type OSWorkspace struct {
 }
 
 // ReadFile reads path from the host filesystem. When Root is set and
-// path is workspace-relative, it is resolved against Root so ReadFile
-// and FS (which is rooted at Root) name the same file for one uri — see
-// the Root field doc. An absolute path is read unchanged.
+// path is workspace-relative, it is read through FS() so a symlink
+// escaping Root is refused the same way FS() refuses it (RESOLVE_BENEATH
+// containment) — see the Root field doc. An absolute path, or any path
+// when Root is empty, is read unchanged with no workspace boundary to
+// enforce.
 func (w OSWorkspace) ReadFile(p string) ([]byte, error) {
-	return os.ReadFile(w.resolve(p)) //nolint:gosec // path is caller-controlled; OSWorkspace is the native disk seam
-}
-
-// resolve maps a workspace-relative path to an absolute one rooted at
-// Root, mirroring how FS (os.DirFS(Root)) interprets the same path.
-// An absolute path, or any path when Root is empty, is returned
-// unchanged so the zero-value workspace and absolute-path callers keep
-// reading paths exactly as passed.
-func (w OSWorkspace) resolve(p string) string {
 	if w.Root == "" || filepath.IsAbs(p) {
-		return p
+		return os.ReadFile(p) //nolint:gosec // path is caller-controlled; OSWorkspace is the native disk seam
 	}
-	return filepath.Join(w.Root, filepath.FromSlash(p))
+	return fs.ReadFile(w.FS(), path.Clean(filepath.ToSlash(p)))
 }
 
 // Glob expands a doublestar pattern against the host filesystem.

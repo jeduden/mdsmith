@@ -1,7 +1,7 @@
 ---
 id: 2607031500
 title: "Security hardening batch — 2026-07-03 post-audit diff review (low)"
-status: "🔲"
+status: "✅"
 summary: >-
   Two low-severity findings from the 2026-07-03 diff review: route
   Workspace.ReadFile through the same OpenRoot symlink containment as
@@ -46,44 +46,45 @@ The gap is unreachable today, but worth a fix before either ships.
 
 ### F001 — contain Workspace.ReadFile through OpenRootFS
 
-- [ ] Write a failing test for `OSWorkspace.ReadFile` on a
+- [x] Write a failing test for `OSWorkspace.ReadFile` on a
   within-workspace symlink pointing outside `Root`, mirroring the
   existing `FS()`-containment test in `pkg/mdsmith/workspace_test.go`
   (around line 358) — assert the read is refused, not followed.
-- [ ] Write the matching failing test for `OverlayWorkspace.ReadFile`
+- [x] Write the matching failing test for `OverlayWorkspace.ReadFile`
   in `pkg/mdsmith/overlay_test.go` (mirroring lines 61-72's `FS()`
   containment test).
-- [ ] Make `OSWorkspace.ReadFile` route through `w.FS()` (e.g.
+- [x] Make `OSWorkspace.ReadFile` route through `w.FS()` (e.g.
   `fs.ReadFile(w.FS(), relPath)`) when `Root` is set, instead of calling
   `os.ReadFile` directly, so it shares `lint.OpenRootFS`'s containment.
   Keep the existing absolute-path passthrough behavior.
-- [ ] Make `OverlayWorkspace.ReadFile`'s disk fall-through do the same,
-  reusing `w.diskFS` (already built via `lint.OpenRootFS` in `FS()`)
+- [x] Make `OverlayWorkspace.ReadFile`'s disk fall-through do the same,
+  routing through `w.FS()` (which reuses the cached `diskFS` internally)
   instead of a fresh `os.ReadFile` call.
-- [ ] Remove the now-inapplicable `//nolint:gosec` comments on both
+- [x] Remove the now-inapplicable `//nolint:gosec` comments on both
   methods.
-- [ ] Run the two new tests to confirm both go green.
+- [x] Run the two new tests to confirm both go green.
 
 ### F002 — cap block-quote recursion depth in the Layer-0 scanner
 
-- [ ] Write a failing test driving `scanLayer0` with a line of enough
+- [x] Write a failing test driving `scanLayer0` with a line of enough
   nested `>` markers to exceed a proposed depth cap (e.g. 100), and
   assert it returns gracefully (e.g. treats the excess depth as plain
   text) rather than recursing further.
-- [ ] Add a `maxBlockquoteDepth` constant near `maxIncludeDepth`'s
+- [x] Add a `maxBlockquoteDepth` constant near `maxIncludeDepth`'s
   existing pattern, and thread a depth counter through `tryBlockquote`'s
   recursion into `scanLayer0`, refusing to recurse past the cap.
-- [ ] Confirm the depth-cap test passes and existing block-quote
+- [x] Confirm the depth-cap test passes and existing block-quote
   fixtures (nested code blocks, lazy continuations) are unaffected.
 
 ## Acceptance Criteria
 
-- [ ] A within-workspace symlink escaping the workspace root is refused
+- [x] A within-workspace symlink escaping the workspace root is refused
   by `OSWorkspace.ReadFile` and `OverlayWorkspace.ReadFile`, not just
   their `FS()` views.
-- [ ] `Session.Kinds` on a symlinked path outside the workspace root
-  returns an error instead of reading the external file's front matter.
-- [ ] A line with a depth-cap-exceeding number of nested `>` markers no
-  longer recurses unbounded in `scanLayer0`, under `MDSMITH_LAYER0_SKIP=1`.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run` reports no issues
+- [x] `Session.Kinds` on a symlinked path outside the workspace root
+  returns an error instead of reading the external file's front matter
+  (verified at the underlying `ReadFile` seam `frontMatterFor` calls).
+- [x] A line with a depth-cap-exceeding number of nested `>` markers no
+  longer recurses unbounded in `scanLayer0`.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool -modfile=tools/go.mod golangci-lint run` reports no issues
