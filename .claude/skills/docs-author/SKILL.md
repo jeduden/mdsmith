@@ -440,7 +440,7 @@ covers:
   padded.
 - **Formatting tells** — bulleted lists with
   bolded label-and-colon openers used as the
-  default rhythm.
+  default rhythm; em-dash overuse.
 
 Rewriting rules:
 
@@ -463,6 +463,8 @@ Rewriting rules:
 
 ## Tensions to know up front
 
+- **Em dashes.** Allowed; capped. ≤ 1 per
+  paragraph, ≤ 2 per page.
 - **Hedging language** (*may, in some cases*).
   Allowed in background; restricted in how-to
   and reference where the answer must be
