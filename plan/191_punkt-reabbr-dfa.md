@@ -151,7 +151,7 @@ Both `BenchmarkSplitSentences*` clear the ≥10% threshold.
 `BenchmarkCheckCorpus{Small,Large}` stay well under the
 2 s / 12 s budgets in either build. MDS024 is opt-in, so
 the corpus gate does not exercise the segmenter. The two
-builds are essentially identical there.
+builds are near-identical there.
 
 CPU profile attribution before the change (regex-heavy
 frames, from `BenchmarkSplitSentences` on the equivalence

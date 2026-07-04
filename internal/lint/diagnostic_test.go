@@ -1,11 +1,79 @@
 package lint
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// isGCPointerKind reports whether a reflect.Kind needs GC pointer
+// scanning (string/slice/map/ptr/interface headers all carry at
+// least one pointer word; UnsafePointer is a bare pointer word too).
+func isGCPointerKind(k reflect.Kind) bool {
+	switch k {
+	case reflect.String, reflect.Slice, reflect.Map, reflect.Ptr,
+		reflect.Interface, reflect.Chan, reflect.Func,
+		reflect.UnsafePointer:
+		return true
+	default:
+		return false
+	}
+}
+
+// typeContainsPointer reports whether t itself is a pointer kind, or
+// (recursively) a struct or array that embeds one. A struct field
+// whose own reflect.Kind is Struct or Array still needs GC pointer
+// scanning if any of its fields/elements do — checking only the
+// field's own top-level Kind would miss that.
+func typeContainsPointer(t reflect.Type) bool {
+	if isGCPointerKind(t.Kind()) {
+		return true
+	}
+	switch t.Kind() {
+	case reflect.Struct:
+		for i := 0; i < t.NumField(); i++ {
+			if typeContainsPointer(t.Field(i).Type) {
+				return true
+			}
+		}
+	case reflect.Array:
+		return typeContainsPointer(t.Elem())
+	}
+	return false
+}
+
+// assertPointerFieldsLeading fails if typ declares a pointer-
+// containing field after a scalar field. Go's GC computes a struct's
+// ptrdata as the byte offset through its last pointer-containing
+// field, so a scalar sandwiched between pointer fields forces the
+// scanner to walk (and the type's metadata to describe) bytes that
+// hold no pointer — see docs/development/high-performance-go.md
+// "Struct layout". Grouping every pointer field first keeps ptrdata
+// minimal.
+func assertPointerFieldsLeading(t *testing.T, typ reflect.Type) {
+	t.Helper()
+	sawScalar := false
+	for i := 0; i < typ.NumField(); i++ {
+		f := typ.Field(i)
+		if typeContainsPointer(f.Type) {
+			if sawScalar {
+				t.Errorf("%s.%s is a pointer-containing field declared "+
+					"after a scalar field; move it before every scalar "+
+					"field to keep ptrdata minimal", typ.Name(), f.Name)
+			}
+			continue
+		}
+		sawScalar = true
+	}
+}
+
+func TestDiagnosticFieldLayout_PointerFieldsLeading(t *testing.T) {
+	assertPointerFieldsLeading(t, reflect.TypeOf(Diagnostic{}))
+	assertPointerFieldsLeading(t, reflect.TypeOf(RelatedLocation{}))
+	assertPointerFieldsLeading(t, reflect.TypeOf(Explanation{}))
+}
 
 func TestDiagnosticFields(t *testing.T) {
 	d := Diagnostic{

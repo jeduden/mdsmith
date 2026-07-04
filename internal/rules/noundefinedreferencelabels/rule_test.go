@@ -556,3 +556,7 @@ func TestReleaseBrackets_DropsOversizedBuffers(t *testing.T) {
 	assert.Len(t, brs, 2)
 	releaseBrackets(buf)
 }
+
+func TestWordlistTarget(t *testing.T) {
+	assert.Equal(t, "placeholders", (&Rule{}).WordlistTarget())
+}

@@ -84,7 +84,7 @@ new heading text collides with an existing one.
 `prepareProvider` is true because the rename range
 for a heading excludes the leading `#`s and the
 trailing closing `#`s (if any). The client needs
-the explicit range so the rename popup highlights
+the explicit range so the rename popup marks
 only the heading text.
 
 ### `textDocument/prepareRename`

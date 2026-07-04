@@ -53,6 +53,19 @@ func llmVocabulary() []string {
 		"transformative",
 		"profound",
 		"paramount",
+		"honest",
+		"boast",
+		"garner",
+		"bolster",
+		"myriad",
+		"plethora",
+		"endeavor",
+		"spearhead",
+		"revolutionize",
+		"groundbreaking",
+		"cutting-edge",
+		"effortless",
+		"supercharge",
 	}
 }
 
@@ -114,6 +127,34 @@ func llmParagraphOpeners() []string {
 		"In conclusion,",
 		"To summarize,",
 		"To sum up,",
+	}
+}
+
+// NamedWordlist is a curated word-list behind the no-llm-tells
+// convention, paired with the list-consuming rule it feeds. `mdsmith
+// init --wordlists` scaffolds each one into an editable
+// `.mdsmith/wordlists/<Name>.yaml` file, so a project can start from
+// the curated set and customize it without the words being compiled
+// into its active config.
+type NamedWordlist struct {
+	// Name is the list basename (e.g. "ai-speak").
+	Name string
+	// Rule is the list-consuming rule the convention feeds this list
+	// into (e.g. "forbidden-text"), used to show an accurate `lists:`
+	// reference in the scaffolded file's header.
+	Rule string
+	// Entries are the curated literal strings, in convention order.
+	Entries []string
+}
+
+// NoLLMTellsWordlists returns the curated word-lists behind the
+// no-llm-tells convention, in a stable order, for `mdsmith init` to
+// scaffold as user-owned files. The entries match the convention's
+// inline forbidden-text/forbidden-paragraph-starts presets.
+func NoLLMTellsWordlists() []NamedWordlist {
+	return []NamedWordlist{
+		{Name: "ai-speak", Rule: "forbidden-text", Entries: llmVocabularyAndPhrases()},
+		{Name: "ai-openers", Rule: "forbidden-paragraph-starts", Entries: llmParagraphOpeners()},
 	}
 }
 

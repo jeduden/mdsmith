@@ -87,18 +87,13 @@ func loadFromBytes(data []byte, sourcePath string, mergeKinds bool) (*Config, er
 	detectFilesKeyDeprecations(&cfg)
 	detectMetaCategoryDeprecations(&cfg)
 
-	// mergeKindFiles and mergeConventionFiles each tag their inline
-	// entries with sourcePath for provenance, then merge any
-	// file-defined entries from `.mdsmith/{kinds,conventions}/`
-	// (plans 208 and 209), erroring on name collisions. Both are
-	// gated by mergeKinds so the in-memory ParseBytes path performs
-	// no filesystem discovery.
+	// Merge file-defined kinds, conventions, and word-lists from the
+	// `.mdsmith/` resource directories (plans 208, 209). Gated by
+	// mergeKinds so the in-memory ParseBytes path performs no
+	// filesystem discovery.
 	if mergeKinds {
-		if err := mergeKindFiles(&cfg, sourcePath); err != nil {
-			return nil, fmt.Errorf("loading kind files: %w", err)
-		}
-		if err := mergeConventionFiles(&cfg, sourcePath); err != nil {
-			return nil, fmt.Errorf("loading convention files: %w", err)
+		if err := mergeFileResources(&cfg, sourcePath); err != nil {
+			return nil, err
 		}
 	}
 
@@ -118,7 +113,30 @@ func loadFromBytes(data []byte, sourcePath string, mergeKinds bool) (*Config, er
 		return nil, fmt.Errorf("applying convention: %w", err)
 	}
 
+	// Runs after applyConvention so the convention preset's `lists:`
+	// references are validated alongside the user's own.
+	if err := validateWordlists(&cfg); err != nil {
+		return nil, fmt.Errorf("validating wordlists: %w", err)
+	}
+
 	return &cfg, nil
+}
+
+// mergeFileResources merges file-defined kinds, conventions, and
+// word-lists from `.mdsmith/{kinds,conventions,wordlists}/`. Each merge
+// tags inline entries with sourcePath for provenance and errors on name
+// collisions.
+func mergeFileResources(cfg *Config, sourcePath string) error {
+	if err := mergeKindFiles(cfg, sourcePath); err != nil {
+		return fmt.Errorf("loading kind files: %w", err)
+	}
+	if err := mergeConventionFiles(cfg, sourcePath); err != nil {
+		return fmt.Errorf("loading convention files: %w", err)
+	}
+	if err := mergeWordlistFiles(cfg, sourcePath); err != nil {
+		return fmt.Errorf("loading wordlist files: %w", err)
+	}
+	return nil
 }
 
 // mergeAndResolveSchemas builds the named-schema registry, then

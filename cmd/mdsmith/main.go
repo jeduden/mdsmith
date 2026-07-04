@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/config"
+	"github.com/jeduden/mdsmith/internal/convention"
 	"github.com/jeduden/mdsmith/internal/discovery"
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
@@ -19,6 +21,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/output"
 	"github.com/jeduden/mdsmith/internal/profiling"
 	"github.com/jeduden/mdsmith/internal/query"
+	"github.com/jeduden/mdsmith/internal/wordlist"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 	mdsmith "github.com/jeduden/mdsmith/pkg/mdsmith"
 
@@ -294,14 +297,20 @@ func runInit(args []string) int {
 	fs.StringVar(&fromMarkdownlint, "from-markdownlint", "",
 		"Convert a markdownlint config instead of writing defaults (optionally --from-markdownlint=<path>)")
 	fs.Lookup("from-markdownlint").NoOptDefVal = "auto"
+	var withWordlists bool
+	fs.BoolVar(&withWordlists, "wordlists", false,
+		"Also scaffold the curated .mdsmith/wordlists/ files (ai-speak, ai-openers) for editing")
 
 	fs.Usage = func() {
-		fmt.Fprint(os.Stderr, "Usage: mdsmith init [--from-markdownlint[=path]]\n\n"+
+		fmt.Fprint(os.Stderr, "Usage: mdsmith init [--from-markdownlint[=path]] [--wordlists]\n\n"+
 			"Generate a default .mdsmith.yml config file in the current directory.\n\n"+
 			"With --from-markdownlint, convert an existing markdownlint config\n"+
 			"(.markdownlint.jsonc/.json/.yaml/.yml or .markdownlintrc) instead of\n"+
 			"writing the defaults. Without =path the config is auto-discovered in\n"+
-			"the current directory.\n\nFlags:\n")
+			"the current directory.\n\n"+
+			"With --wordlists, also write .mdsmith/wordlists/ai-speak.yaml and\n"+
+			"ai-openers.yaml from the built-in no-llm-tells vocabulary, as editable\n"+
+			"files you own and reference from a rule's lists: key.\n\nFlags:\n")
 		fs.PrintDefaults()
 	}
 
@@ -318,29 +327,128 @@ func runInit(args []string) int {
 
 	const configFile = ".mdsmith.yml"
 
-	// Check if config file already exists.
+	configExists := false
 	if _, err := os.Stat(configFile); err == nil {
+		configExists = true
+	}
+
+	// An existing config is the whole no-op for a plain init, so it stays
+	// an error. With --wordlists the user is adding the curated lists to
+	// an already-initialized project, so the existing config is left
+	// untouched and scaffolding still runs — otherwise the flag would be
+	// unreachable for every project that already ran init.
+	if configExists && !withWordlists {
 		fmt.Fprintf(os.Stderr, "mdsmith: %s already exists\n", configFile)
 		return 2
 	}
 
-	data, source, err := initConfigBytes(fromMarkdownlint, os.Stderr)
-	if err != nil {
+	if err := writeInitConfig(configFile, fromMarkdownlint, configExists, os.Stderr); err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return 2
 	}
 
-	if err := os.WriteFile(configFile, data, 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: writing %s: %v\n", configFile, err)
-		return 2
-	}
-
-	if source != "" {
-		fmt.Fprintf(os.Stderr, "mdsmith: created %s from %s\n", configFile, source)
-	} else {
-		fmt.Fprintf(os.Stderr, "mdsmith: created %s\n", configFile)
+	if withWordlists {
+		if err := writeWordlistScaffolds(os.Stderr); err != nil {
+			fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+			return 2
+		}
 	}
 	return 0
+}
+
+// writeInitConfig writes the .mdsmith.yml for init, unless it already
+// exists. An existing config is left untouched — so `init --wordlists`
+// can add word-lists to an already-initialized project — otherwise the
+// defaults, or a --from-markdownlint conversion, are written. Progress
+// and any conversion notes go to w.
+func writeInitConfig(configFile, fromMarkdownlint string, configExists bool, w io.Writer) error {
+	if configExists {
+		_, _ = fmt.Fprintf(w, "mdsmith: %s already exists, leaving it unchanged\n", configFile)
+		return nil
+	}
+	data, source, err := initConfigBytes(fromMarkdownlint, w)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(configFile, data, 0644); err != nil {
+		return fmt.Errorf("writing %s: %w", configFile, err)
+	}
+	if source != "" {
+		_, _ = fmt.Fprintf(w, "mdsmith: created %s from %s\n", configFile, source)
+	} else {
+		_, _ = fmt.Fprintf(w, "mdsmith: created %s\n", configFile)
+	}
+	return nil
+}
+
+// wordlistScaffold is one file `mdsmith init --wordlists` writes: a
+// workspace-relative path and the YAML body to put there.
+type wordlistScaffold struct {
+	path string
+	data []byte
+}
+
+// wordlistScaffolds renders the curated word-list files `mdsmith init
+// --wordlists` writes — one `.mdsmith/wordlists/<name>.yaml` per
+// built-in no-llm-tells list. Each body carries a header comment
+// recording its origin and the exact `lists:` reference that wires it
+// into the matching rule, then the curated entries. The files are the
+// user's to edit; nothing reads them until a rule names them.
+func wordlistScaffolds() []wordlistScaffold {
+	lists := convention.NoLLMTellsWordlists()
+	out := make([]wordlistScaffold, 0, len(lists))
+	for _, wl := range lists {
+		header := fmt.Sprintf(
+			"# .mdsmith/wordlists/%[1]s.yaml\n"+
+				"#\n"+
+				"# Scaffolded by `mdsmith init --wordlists` from the built-in\n"+
+				"# no-llm-tells vocabulary. This file is yours: add or remove\n"+
+				"# entries freely. Reference it from a rule's lists: key, e.g.\n"+
+				"#\n"+
+				"#   rules:\n"+
+				"#     %[2]s:\n"+
+				"#       lists: [%[1]s]\n",
+			wl.Name, wl.Rule)
+		// RenderFile only errors on empty entries; the curated lists are
+		// non-empty (guaranteed by the drift test), so discard the error.
+		data, _ := wordlist.RenderFile(header, wl.Entries)
+		out = append(out, wordlistScaffold{
+			path: filepath.Join(".mdsmith", "wordlists", wl.Name+".yaml"),
+			data: data,
+		})
+	}
+	return out
+}
+
+// writeWordlistScaffolds writes each wordlistScaffolds() file under the
+// current directory, creating `.mdsmith/wordlists/` as needed. An
+// existing target file is left untouched and noted, so a re-run never
+// clobbers a project's edits. Progress lines go to w.
+func writeWordlistScaffolds(w io.Writer) error {
+	scaffolds := wordlistScaffolds()
+	dir := filepath.Join(".mdsmith", "wordlists")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("creating %s: %w", dir, err)
+	}
+	for _, s := range scaffolds {
+		_, err := os.Stat(s.path)
+		if err == nil {
+			_, _ = fmt.Fprintf(w, "mdsmith: %s already exists, skipping\n", s.path)
+			continue
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			// A stat error that is not "not exist" — a permission wall, a
+			// symlink loop — means we cannot tell whether the file is
+			// there. Surface it as a stat failure instead of falling
+			// through to a write that misattributes the same error.
+			return fmt.Errorf("checking %s: %w", s.path, err)
+		}
+		if err := os.WriteFile(s.path, s.data, 0o644); err != nil {
+			return fmt.Errorf("writing %s: %w", s.path, err)
+		}
+		_, _ = fmt.Fprintf(w, "mdsmith: created %s\n", s.path)
+	}
+	return nil
 }
 
 // initConfigBytes produces the .mdsmith.yml contents for init. An empty

@@ -84,7 +84,7 @@ inline parse 22%, **rules + merge 44%**; the parse-free floor is 47%.
 So this change is a **real, durable allocation win (−78%)**. It cuts GC
 pressure and speeds **small-file workloads** — a docs repo of hundreds
 of short files, or CI linting many files. It is **not** a material
-benchmark-2 wall-time win. The honest benchmark-2 levers are the parse
+benchmark-2 wall-time win. The real benchmark-2 levers are the parse
 (40%) and the flat rule+merge cost (44%). This change touches neither.
 
 ## The remaining gap to gomarklint

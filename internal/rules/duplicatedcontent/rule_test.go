@@ -91,6 +91,38 @@ func TestCheck_NormalizesWhitespaceAndCase(t *testing.T) {
 	assert.Contains(t, diags[0].Message, "b.md")
 }
 
+func TestAppendNormalized(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{"basic", "Hello World", "hello world"},
+		{"collapses whitespace runs", "a   b\t\tc\n\nd", "a b c d"},
+		{"trims leading and trailing space", "  hi there  ", "hi there"},
+		{"whitespace-only input yields empty", "   \t\n  ", ""},
+		{"empty input yields empty", "", ""},
+		{"unicode letters lowercase", "CAFÉ ZÜRICH", "café zürich"},
+		{"unicode whitespace collapses", "a  b", "a b"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := string(appendNormalized(nil, []byte(tc.src)))
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestAppendNormalized_ReusedBufferNoBleedThrough(t *testing.T) {
+	var buf []byte
+	buf = appendNormalized(buf[:0], []byte("First Paragraph"))
+	first := string(buf)
+	buf = appendNormalized(buf[:0], []byte("hi"))
+	second := string(buf)
+	assert.Equal(t, "first paragraph", first)
+	assert.Equal(t, "hi", second)
+}
+
 func TestCheck_ReportsLineOfDuplicateInSelf(t *testing.T) {
 	dir := t.TempDir()
 	p := longParagraph("the quick brown fox jumps over the lazy dog")

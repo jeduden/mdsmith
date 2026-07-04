@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./hermetic";
 
 /**
  * Homepage positioning and audience-path tests.

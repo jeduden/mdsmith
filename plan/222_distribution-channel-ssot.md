@@ -185,7 +185,7 @@ loads each file through `extract`, the way
 
 Add a Hugo partial `install-picker.html` to the install
 page. It reads `website/data/channels.yaml`. It filters
-channels by OS and ecosystem, using the `platforms`
+channels by OS and packaging community, using the `platforms`
 tags. It then shows the matching `command` with a copy
 button, reusing the `.install-row` styling in
 [app.css](../website/static/css/app.css). A picker keeps

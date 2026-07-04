@@ -8,6 +8,55 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// expandedLLMVocabulary lists the AI-speak vocabulary tells that must
+// stay in the no-llm-tells convention. "honest" is the motivating
+// addition (LLM prose reaches for "the honest answer" / "to be
+// honest" as a credibility tell); the rest extend the curated set so
+// the convention catches more of the catalog without a model in the
+// loop. Each must also appear in slop-patterns.md (enforced by the
+// drift-checker integration test).
+var expandedLLMVocabulary = []string{
+	"honest",
+	"boast",
+	"garner",
+	"bolster",
+	"myriad",
+	"plethora",
+	"endeavor",
+	"spearhead",
+	"revolutionize",
+	"groundbreaking",
+	"cutting-edge",
+	"effortless",
+	"supercharge",
+}
+
+func TestNoLLMTells_VocabularyIncludesExpandedAISpeak(t *testing.T) {
+	vocab := make(map[string]bool, len(llmVocabulary()))
+	for _, w := range llmVocabulary() {
+		vocab[w] = true
+	}
+	for _, want := range expandedLLMVocabulary {
+		assert.True(t, vocab[want],
+			"no-llm-tells vocabulary must forbid AI-speak word %q", want)
+	}
+}
+
+func TestNoLLMTellsWordlists(t *testing.T) {
+	lists := NoLLMTellsWordlists()
+	require.Len(t, lists, 2)
+
+	assert.Equal(t, "ai-speak", lists[0].Name)
+	assert.Equal(t, "forbidden-text", lists[0].Rule)
+	assert.Contains(t, lists[0].Entries, "delve")
+	assert.Contains(t, lists[0].Entries, "honest")
+	assert.Contains(t, lists[0].Entries, "it's important to note that")
+
+	assert.Equal(t, "ai-openers", lists[1].Name)
+	assert.Equal(t, "forbidden-paragraph-starts", lists[1].Rule)
+	assert.Contains(t, lists[1].Entries, "Moreover,")
+}
+
 func TestLookup_Portable(t *testing.T) {
 	c, err := Lookup("portable", nil)
 	require.NoError(t, err)

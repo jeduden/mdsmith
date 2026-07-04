@@ -376,7 +376,7 @@ func sanitizeTerminal(s string) string {
 ```
 
 **Verdict:** Right approach, incomplete character set. The
-`strings.Map` version is more robust with similar complexity.
+`strings.Map` version is more resilient with similar complexity.
 
 ---
 
@@ -663,7 +663,7 @@ symlinks by default. Vale explicitly follows symlinks in a custom
 `Walk()` function. mdsmith's M4 (default-deny) would match Prettier's
 stance.
 
-**5. Config-as-code is "by design" everywhere in the Node.js ecosystem.**
+**5. Config-as-code is "by design" everywhere in the Node.js world.**
 markdownlint, remark-lint, textlint, and Prettier all load `.js`/`.cjs`
 config files via `require()`/`import()` with no sandboxing. This is
 documented and intentional — the security boundary is "don't run linters

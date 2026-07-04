@@ -39,8 +39,8 @@ Mirror the `internal/fix` pattern exactly:
 var chmodFileMu sync.Mutex
 ```
 
-Production callers lock, copy, and unlock before
-calling:
+Production callers lock, copy, then release the lock
+before calling:
 
 ```go
 chmodFileMu.Lock()
@@ -61,7 +61,7 @@ assignment and the cleanup restore.
    file that already imports the `chmodFile`
    var).
 2. [x] Wrap every production call to `chmodFile` in
-   `internal/schema` with the lock/copy/unlock
+   `internal/schema` with the lock/copy/release
    pattern.
 3. [x] If a coverage test for the schema chmod error
    path does not yet exist, add one — holding

@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, blockCrossOrigin } from "./hermetic";
 
 /**
  * ⌘K documentation search end-to-end tests.
@@ -196,7 +196,14 @@ test.describe("⌘K search", () => {
     browser,
   }) => {
     const ctx = await browser.newContext({ javaScriptEnabled: false });
+    // With JS disabled the hero's lazy badge images load eagerly and
+    // gate the load event on third-party hosts; see hermetic.ts.
+    await blockCrossOrigin(ctx);
     const page = await ctx.newPage();
+    // Abort external badge hosts (as home.spec does) so the page's `load`
+    // event never blocks on their latency — this fresh context has no
+    // request blocking of its own.
+    await page.route(/^https?:\/\/(?!localhost)/, route => route.abort());
     await page.goto("/");
 
     // Without html.js the trigger collapses to display:none; the docs

@@ -80,6 +80,12 @@ func (r *Rule) ID() string { return "MDS020" }
 // Name implements rule.Rule.
 func (r *Rule) Name() string { return "required-structure" }
 
+// WordlistTarget implements rule.WordlistConsumer: resolved `lists:`
+// entries union into this rule's "placeholders" setting.
+func (r *Rule) WordlistTarget() string { return "placeholders" }
+
+var _ rule.WordlistConsumer = (*Rule)(nil)
+
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "structural" }
 

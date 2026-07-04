@@ -18,6 +18,15 @@ var urlPattern = regexp.MustCompile(`https?://[^\s)>\]]+`)
 // urlNeedle is the literal prefix every urlPattern match carries.
 var urlNeedle = []byte("http")
 
+// mayContainURL reports whether content could contain a urlPattern
+// match. Every match starts with "http", so this literal check spares
+// the regex engine on the overwhelming majority of text nodes. Shared
+// by flagTextNode (Check) and Fix so the two paths can't drift apart
+// on which nodes get scanned.
+func mayContainURL(content []byte) bool {
+	return bytes.Contains(content, urlNeedle)
+}
+
 // Rule checks that bare URLs in text are flagged.
 // URLs inside links, code blocks, code spans, autolinks, or reference
 // definitions are not considered bare.
@@ -88,10 +97,7 @@ func (r *Rule) flagTextNode(n ast.Node, f *lint.File, base int) []lint.Diagnosti
 	absStart := base + seg.Start
 	absStop := base + seg.Stop
 	content := f.Source[absStart:absStop]
-	// Every urlPattern match starts with "http"; gating on the
-	// literal spares the regex engine on the overwhelming majority
-	// of text nodes.
-	if !bytes.Contains(content, urlNeedle) {
+	if !mayContainURL(content) {
 		return nil
 	}
 	matches := urlPattern.FindAllIndex(content, -1)
@@ -158,6 +164,9 @@ func (r *Rule) Fix(f *lint.File) []byte {
 
 		seg := textNode.Segment
 		content := seg.Value(f.Source)
+		if !mayContainURL(content) {
+			return ast.WalkContinue, nil
+		}
 		matches := urlPattern.FindAllIndex(content, -1)
 		for _, m := range matches {
 			absStart := seg.Start + m[0]
@@ -179,8 +188,10 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	}
 
 	// Build result by applying replacements in order (they are already in
-	// document order from the AST walk).
-	var result []byte
+	// document order from the AST walk). Each replacement adds exactly
+	// two bytes (`<` and `>`) over the source it wraps, so the final
+	// size is known before the first append.
+	result := make([]byte, 0, len(f.Source)+2*len(replacements))
 	prev := 0
 	for _, rep := range replacements {
 		result = append(result, f.Source[prev:rep.start]...)

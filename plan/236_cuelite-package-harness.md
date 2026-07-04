@@ -73,7 +73,7 @@ Three choices differ from the sketch in plan 218:
   MUTATED by the cross-context `Unify` (the rebuilt operand is
   compiled into it), so two `Value`s sharing a context are not
   concurrency-safe and a long-lived `Value` accumulates one
-  compiled document per cross-context `Unify`. This is the honest
+  compiled document per cross-context `Unify`. This is the real
   interim cost — one context per compiled `Value`, one rebuild of
   a cross-context operand per `Unify`, and the caller's duty to
   synchronize or per-goroutine-compile a shared schema. The flip

@@ -237,7 +237,7 @@ for combining both.
 For a design exercise, read
 [learn-from-mdbase.md](learn-from-mdbase.md):
 every gap with a mini-plan and a trigger. Then
-dive into
+work through
 [aggregation-use-cases.md](aggregation-use-cases.md)
 for the toughest open question — when an index
 pays — including a serious look at stateless-fast

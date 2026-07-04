@@ -39,6 +39,12 @@ func (r *Rule) ID() string { return "MDS050" }
 // Name implements rule.Rule.
 func (r *Rule) Name() string { return "proper-names" }
 
+// WordlistTarget implements rule.WordlistConsumer: resolved `lists:`
+// entries union into this rule's "names" setting.
+func (r *Rule) WordlistTarget() string { return "names" }
+
+var _ rule.WordlistConsumer = (*Rule)(nil)
+
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "prose" }
 

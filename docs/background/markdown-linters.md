@@ -43,13 +43,13 @@ via [markdownlint-github][].
 - Official [VS Code extension][mdl-vscode] and
   [GitHub Action][mdl-action]
 - Custom rules via npm packages
-- Mature ecosystem with Prettier compatibility presets
+- Mature tooling with Prettier compatibility presets
 - ~5.9k GitHub stars (library)
 
 ### [remark-lint][]
 
 Node.js. ~70 rules distributed as individual npm packages.
-Part of the [unified][]/[remark][] AST pipeline ecosystem.
+Part of the [unified][]/[remark][] AST pipeline.
 
 - Architecture: parse to mdast AST, lint, serialize
 - Three maintained presets (consistent, recommended, style)
@@ -506,16 +506,16 @@ See the [migration log](./auth-migration-log.md).
 
 What each tool **does** with the same bytes:
 
-| Layer                                     | mdsmith                                                 | mdbase                                                    |
-| ----------------------------------------- | ------------------------------------------------------- | --------------------------------------------------------- |
-| YAML front matter                         | reads it; can validate shape via CUE schema             | reads it; validates against `_types/task.md`              |
-| Body content (prose, headings)            | lints line length, headings, prose, links               | not in scope                                              |
-| Cross-file link                           | flags broken `auth-migration-log.md` (MDS027)           | flags broken link (L4) and rewrites it on rename (L5)     |
-| `status: in-progress`                     | available to `mdsmith list query`                       | filterable in Bases queries; appears in backlink graphs   |
-| `due: 2026-06-01`                         | available to query                                      | filterable with date arithmetic (`due <= today() + "7d"`) |
-| `mdsmith fix` runs                        | reformats tables, regenerates TOC/catalog               | n/a                                                       |
-| `mdbase rename` runs                      | n/a                                                     | moves the file and rewrites every incoming link           |
-| Body readability, structure, token budget | yes (MDS023 ARI, MDS024 sentences, MDS028 token budget) | no                                                        |
+| Layer                                     | mdsmith                                                                                                                                                                  | mdbase                                                    |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
+| YAML front matter                         | reads it; can validate shape via CUE schema                                                                                                                              | reads it; validates against `_types/task.md`              |
+| Body content (prose, headings)            | lints line length, headings, prose, links                                                                                                                                | not in scope                                              |
+| Cross-file link                           | flags broken `./auth-migration-log.md` (MDS027); `mdsmith list backlinks` queries the link graph in reverse                                                              | flags broken link (L4) and rewrites it on rename (L5)     |
+| `status: in-progress`                     | available to `mdsmith list query`                                                                                                                                        | filterable in Bases queries; appears in backlink graphs   |
+| `due: 2026-06-01`                         | available to query                                                                                                                                                       | filterable with date arithmetic (`due <= today() + "7d"`) |
+| `mdsmith fix` runs                        | reformats tables, regenerates TOC/catalog                                                                                                                                | n/a                                                       |
+| Rename                                    | renames a heading (rewriting every workspace anchor link) or a link-ref label within one file; no file moves — after a `git mv`, MDS027 flags every broken incoming link | moves the file and rewrites every incoming link           |
+| Body readability, structure, token budget | yes (MDS023 ARI, MDS024 sentences, MDS028 token budget)                                                                                                                  | no                                                        |
 
 The **shared** layer is the YAML front matter.
 Both tools read `status`, `priority`, `due` as
@@ -524,11 +524,19 @@ out of the box via `_types/`. mdsmith does the
 same when a CUE schema is wired up via MDS020;
 without one, it treats them as plain YAML.
 
-The **current surface difference** sits in the
-body and the link graph. mdsmith ships prose,
-structure, and generated-content rules today.
-mdbase ships rename refactoring, the link graph,
-and richer queries today. Either surface is a
+The **current surface difference** has narrowed
+on the link layer. mdsmith now renames a heading
+with every workspace anchor link rewritten, or a
+link-reference label within its own file
+(`mdsmith rename`). It lists a file's incoming
+Markdown links with `mdsmith list backlinks`, and
+its wider dependency edges — includes, catalogs,
+builds, and links — with `mdsmith deps`, outgoing
+by default or incoming with `--incoming`. mdbase
+alone still ships the file-move rename, typed
+CRUD, watch mode, and the optional SQLite index.
+mdsmith alone still ships the prose, structure,
+and generated-content rules. Either surface is a
 snapshot, not a charter — see the deep-dive for
 evolutionary candidates either way.
 
@@ -754,7 +762,7 @@ nested heading list.
 
 Go-based tools (mdsmith, Vale) have zero runtime
 dependencies. Node.js tools require a runtime but benefit
-from the npm ecosystem. LLM-based linting requires network
+from the npm registry. LLM-based linting requires network
 access and is non-deterministic.
 
 ## Benchmarks
@@ -787,11 +795,11 @@ token budgets, or generated content sections. Its single
 binary makes CI setup simple.
 
 **markdownlint** is the safe default for teams already in the
-Node.js ecosystem. Widest community adoption, most editor
+Node.js world. Widest community adoption, most editor
 integrations, battle-tested rule set.
 
 **remark-lint** suits projects deep in the unified/remark
-ecosystem (MDX, Gatsby, Next.js). Its AST pipeline enables
+stack (MDX, Gatsby, Next.js). Its AST pipeline enables
 custom transformations beyond linting.
 
 **Prettier** is a formatter, not a linter. Use it alongside a
@@ -967,7 +975,7 @@ contributor. It also walks the repo file tree.
 Adversarial input has caused OOMs, YAML
 billion-laughs expansion, ANSI escape injection,
 symlink escapes, and path traversal in the wider
-linter ecosystem.
+linter space.
 
 mdsmith ran a
 [10-finding adversarial review][mdsmith-sec]. It
