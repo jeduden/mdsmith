@@ -2591,3 +2591,7 @@ func TestLegacyPrecedingLine(t *testing.T) {
 	assert.Equal(t, 2, legacyPrecedingLine(heads, 1))
 	assert.Equal(t, 5, legacyPrecedingLine(heads, 2))
 }
+
+func TestWordlistTarget(t *testing.T) {
+	assert.Equal(t, "placeholders", (&Rule{}).WordlistTarget())
+}

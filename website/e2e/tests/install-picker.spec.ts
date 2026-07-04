@@ -161,6 +161,10 @@ test.describe("install picker", () => {
     // gate the load event on third-party hosts; see hermetic.ts.
     await blockCrossOrigin(ctx);
     const page = await ctx.newPage();
+    // Abort external badge hosts (as home.spec does) so the page's `load`
+    // event never blocks on their latency — this fresh context has no
+    // request blocking of its own.
+    await page.route(/^https?:\/\/(?!localhost)/, route => route.abort());
     await page.goto("/");
 
     // The <noscript> block should be visible and show the Windows .exe line.

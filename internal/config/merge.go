@@ -56,6 +56,7 @@ func Merge(defaults, loaded *Config) *Config {
 		Convention:             loaded.Convention,
 		Conventions:            copyUserConventions(loaded.Conventions),
 		ConventionPreset:       copyConventionPreset(loaded.ConventionPreset),
+		Wordlists:              copyWordlists(loaded.Wordlists),
 	}
 }
 
@@ -109,7 +110,25 @@ func copyConfig(cfg *Config) *Config {
 		Convention:             cfg.Convention,
 		Conventions:            copyUserConventions(cfg.Conventions),
 		ConventionPreset:       copyConventionPreset(cfg.ConventionPreset),
+		Wordlists:              copyWordlists(cfg.Wordlists),
 	}
+}
+
+// copyWordlists returns a deep copy of a user-defined word-lists map.
+// Returns nil when the input is nil.
+func copyWordlists(m map[string]UserWordlist) map[string]UserWordlist {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]UserWordlist, len(m))
+	for k, v := range m {
+		out[k] = UserWordlist{
+			Extends:    v.Extends,
+			Entries:    copyStrings(v.Entries),
+			SourcePath: v.SourcePath,
+		}
+	}
+	return out
 }
 
 // copyUserConventions returns a deep copy of a user-defined
@@ -475,6 +494,11 @@ func effectiveRules(cfg *Config, filePath string, kinds []string) map[string]Rul
 			}
 		}
 	}
+	// Final pass: expand each rule's `lists:` (word-list references)
+	// into its target list setting and strip the key, so rules never
+	// see it. Runs after the whole layer chain so every layer's
+	// `lists:` (append-merged) is included.
+	expandWordlists(result, cfg.Wordlists)
 	return result
 }
 

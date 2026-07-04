@@ -448,7 +448,7 @@ The bridge tool would round-trip the common cases
 and emit warnings where one side has constraints
 the other cannot represent. This is a clear
 opportunity for a small contribution to either
-ecosystem.
+community.
 
 ## 8. When to skip one tool
 

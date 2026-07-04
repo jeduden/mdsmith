@@ -32,6 +32,12 @@ func (r *Rule) ID() string { return "MDS056" }
 // Name implements rule.Rule.
 func (r *Rule) Name() string { return "forbidden-text" }
 
+// WordlistTarget implements rule.WordlistConsumer: resolved `lists:`
+// entries union into this rule's "contains" setting.
+func (r *Rule) WordlistTarget() string { return "contains" }
+
+var _ rule.WordlistConsumer = (*Rule)(nil)
+
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "prose" }
 

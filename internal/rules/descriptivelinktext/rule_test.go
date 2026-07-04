@@ -260,3 +260,7 @@ func TestCheckNode_EmptyBanned_NilDiag(t *testing.T) {
 	diags := r.CheckNode(ast.NewDocument(), true, f)
 	assert.Nil(t, diags)
 }
+
+func TestWordlistTarget(t *testing.T) {
+	assert.Equal(t, "banned", (&Rule{}).WordlistTarget())
+}

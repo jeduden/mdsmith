@@ -264,3 +264,7 @@ func TestCheck_NilASTEquivalence(t *testing.T) {
 		})
 	}
 }
+
+func TestWordlistTarget(t *testing.T) {
+	assert.Equal(t, "placeholders", (&Rule{}).WordlistTarget())
+}

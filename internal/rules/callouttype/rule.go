@@ -37,6 +37,12 @@ func (r *Rule) ID() string { return "MDS067" }
 // Name implements rule.Rule.
 func (r *Rule) Name() string { return "callout-type" }
 
+// WordlistTarget implements rule.WordlistConsumer: resolved `lists:`
+// entries union into this rule's "allow" setting.
+func (r *Rule) WordlistTarget() string { return "allow" }
+
+var _ rule.WordlistConsumer = (*Rule)(nil)
+
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "structural" }
 

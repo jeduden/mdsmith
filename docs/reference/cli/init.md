@@ -13,7 +13,7 @@ settings, so individual rules can be flipped off or
 overridden with a clear diff.
 
 ```text
-mdsmith init [--from-markdownlint[=path]]
+mdsmith init [--from-markdownlint[=path]] [--wordlists]
 ```
 
 Refuses to overwrite an existing `.mdsmith.yml`. Takes no
@@ -25,6 +25,7 @@ positional arguments.
 | --------------------------- | ------------------------------------------------------------ |
 | `--from-markdownlint`       | Convert a markdownlint config found in the current directory |
 | `--from-markdownlint=$path` | Convert the markdownlint config at `$path`                   |
+| `--wordlists`               | Also scaffold the curated `.mdsmith/wordlists/` files        |
 
 With `--from-markdownlint` and no `=path`, the command
 probes the same file names markdownlint-cli does, in
@@ -49,6 +50,24 @@ reported as notes — on stderr and as a `# Not converted:`
 comment block in the generated file. Notes do not fail the
 command.
 
+## Word-list scaffolding
+
+With `--wordlists`, `init` also writes
+`.mdsmith/wordlists/ai-speak.yaml` and `ai-openers.yaml`
+from the built-in [`no-llm-tells`](../conventions.md)
+vocabulary. These are the same curated tell words and
+sentence openers, but as editable files you own. Each
+file's header shows the exact `lists:` reference. Nothing
+reads a file until a rule names it.
+
+No word-list ships compiled into the binary; this flag is
+how you put the curated set on disk. It works on an
+already-initialized project: an existing `.mdsmith.yml` is
+left unchanged, not treated as an error. An existing list
+file is left untouched too, so a re-run never clobbers your
+edits. `init` does not edit `.mdsmith.yml` to reference the
+files.
+
 ## Examples
 
 Default config:
@@ -63,6 +82,13 @@ Convert a markdownlint config:
 ```bash
 mdsmith init --from-markdownlint
 $EDITOR .mdsmith.yml
+```
+
+Scaffold the curated word-lists for editing:
+
+```bash
+mdsmith init --wordlists
+$EDITOR .mdsmith/wordlists/ai-speak.yaml
 ```
 
 See

@@ -385,3 +385,7 @@ func TestAllowSet_SetType(t *testing.T) {
 	assert.Equal(t, want, got, "allowSet must return map[string]struct{} (guideline: use map[K]struct{} for sets)")
 	assert.Contains(t, m, "kbd", "allowSet must contain the lowercased Allow entry")
 }
+
+func TestWordlistTarget(t *testing.T) {
+	assert.Equal(t, "allow", (&Rule{}).WordlistTarget())
+}
