@@ -7,8 +7,8 @@ status: "🔲"
 model: opus
 summary: >-
   New `mdsmith move <src> <dst>` subcommand. Moves the
-  file via `git mv` when it is tracked in a git work
-  tree, plain rename otherwise, and rewrites every
+  file via `git mv` when it is tracked in the current
+  Git repository, plain rename otherwise, and rewrites every
   incoming workspace reference (links, ref-defs,
   wikilinks, include/build paths) in one atomic
   operation. Closes gap C-4/L-3 from the mdbase
@@ -37,9 +37,10 @@ move never leaves a broken link behind.
 
 ## Design decisions
 
-- **Move mechanics.** When `<src>` is tracked in a git
-  work tree, exec `git mv` so the index records the
-  rename. Otherwise use a plain filesystem rename. A
+- **Move mechanics.** When `<src>` is tracked in the
+  current Git repository, exec `git mv` so the index
+  records the rename. Otherwise use a plain filesystem
+  rename. A
   failing `git mv` aborts the whole operation; no
   half-moved state.
 - **Rewrites.** Incoming `[text](path)` and
