@@ -83,8 +83,8 @@ convention/rule config, no new Go per preset):
 
 The rule counts; it does not rewrite. A count is not
 mechanically fixable — cutting the third em dash or the fourth
-"leverage" is an authoring choice. Auto-fix for word choice is
-the separate substitution rule (plan 2607022120).
+use of a term is an authoring choice. Auto-fix for word choice
+is the separate substitution rule (plan 2607022120).
 
 Allocation budget: a configured pattern compiles once in
 `ApplySettings`, not per `Check`. The scope walk reuses a
