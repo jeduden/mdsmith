@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -92,6 +93,33 @@ func TestOverlayWorkspaceReadFileSymlinkEscapeRefused(t *testing.T) {
 	ws := NewOverlayWorkspace(root)
 	if _, err := ws.ReadFile("escape.md"); err == nil {
 		t.Fatal("OverlayWorkspace.ReadFile(escape.md) succeeded; expected containment error for symlink escaping root")
+	}
+}
+
+// TestOverlayWorkspaceReadFileDiskFallthroughSkipsOverlaySnapshot verifies
+// that ReadFile's disk fall-through does not pay FS()'s per-call overlay-map
+// clone (see FS's doc comment): with many open buffers, a disk-fallback read
+// must stay O(1), not O(len(overlay)).
+func TestOverlayWorkspaceReadFileDiskFallthroughSkipsOverlaySnapshot(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "disk.md"), []byte("disk"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	ws := NewOverlayWorkspace(root)
+	const openBuffers = 500
+	for i := range openBuffers {
+		ws.Set(strconv.Itoa(i)+".md", []byte("x"))
+	}
+	if _, err := ws.ReadFile("disk.md"); err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+
+	allocs := testing.AllocsPerRun(50, func() {
+		_, _ = ws.ReadFile("disk.md")
+	})
+	if allocs > 20 {
+		t.Fatalf("ReadFile disk fall-through allocated %.0f times per call with %d open buffers; "+
+			"expected O(1), not O(overlay size) from cloning the overlay map", allocs, openBuffers)
 	}
 }
 

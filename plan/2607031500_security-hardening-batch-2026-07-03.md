@@ -73,6 +73,16 @@ The gap is unreachable today, but worth a fix before either ships.
   already memoizes the handle via `sync.Once`. Added
   `TestOSWorkspaceReadFileDoesNotLeakRootHandles` (Linux-only,
   `/proc/self/fd` count) as a red/green regression test.
+- [x] Follow-up Copilot review flagged that `OverlayWorkspace.ReadFile`'s
+  disk fall-through still called `w.FS()`, which clones the whole
+  overlay map on every call (O(len(open buffers)) per miss) even though
+  the cached `diskFS` never changes. Extracted `ensureDiskFS` (the
+  `sync.Once`-cached disk view `FS()` already built) and had `ReadFile`
+  read through it directly, skipping the overlay snapshot. Added
+  `TestOverlayWorkspaceReadFileDiskFallthroughSkipsOverlaySnapshot`
+  (`testing.AllocsPerRun` with 500 open buffers) as a red/green
+  regression test, plus `TestOverlayWorkspaceFSEmptyRoot` for the
+  extracted method's empty-root branch.
 
 ### F002 — cap block-quote recursion depth in the Layer-0 scanner
 

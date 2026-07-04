@@ -446,6 +446,17 @@ func TestOSWorkspaceFSOpenRootFailFallback(t *testing.T) {
 	}
 }
 
+// TestOSWorkspaceReadFileOpenRootFails verifies that ReadFile propagates the
+// os.OpenRoot error (e.g. a non-existent Root) rather than panicking, when
+// resolving a workspace-relative path through readFileRooted.
+func TestOSWorkspaceReadFileOpenRootFails(t *testing.T) {
+	nonExistent := t.TempDir() + "/does-not-exist"
+	ws := OSWorkspace{Root: nonExistent}
+	if _, err := ws.ReadFile("any.md"); err == nil {
+		t.Fatal("ReadFile on a non-existent root must return an error")
+	}
+}
+
 // Workspace is satisfied by both implementations.
 var (
 	_ Workspace = OSWorkspace{}
