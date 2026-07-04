@@ -53,16 +53,26 @@ The gap is unreachable today, but worth a fix before either ships.
 - [x] Write the matching failing test for `OverlayWorkspace.ReadFile`
   in `pkg/mdsmith/overlay_test.go` (mirroring lines 61-72's `FS()`
   containment test).
-- [x] Make `OSWorkspace.ReadFile` route through `w.FS()` (e.g.
-  `fs.ReadFile(w.FS(), relPath)`) when `Root` is set, instead of calling
-  `os.ReadFile` directly, so it shares `lint.OpenRootFS`'s containment.
-  Keep the existing absolute-path passthrough behavior.
+- [x] Make `OSWorkspace.ReadFile` route through a contained read when
+  `Root` is set, instead of calling `os.ReadFile` directly, so it
+  shares `lint.OpenRootFS`'s containment. Keep the existing
+  absolute-path passthrough behavior.
 - [x] Make `OverlayWorkspace.ReadFile`'s disk fall-through do the same,
   routing through `w.FS()` (which reuses the cached `diskFS` internally)
   instead of a fresh `os.ReadFile` call.
 - [x] Remove the now-inapplicable `//nolint:gosec` comments on both
   methods.
 - [x] Run the two new tests to confirm both go green.
+- [x] Copilot review on PR #720 flagged that routing
+  `OSWorkspace.ReadFile` through `w.FS()` calls `lint.OpenRootFS` (a
+  fresh `os.OpenRoot` per call) with no matching `Close`, leaking one
+  directory handle per read. Added `readFileRooted` (build-tag split
+  across `workspace_fs.go` / `workspace_fs_tinygo.go`) that opens,
+  reads, and closes the `os.Root` handle per call instead of caching an
+  `fs.FS`; `OverlayWorkspace.ReadFile` was unaffected since its `FS()`
+  already memoizes the handle via `sync.Once`. Added
+  `TestOSWorkspaceReadFileDoesNotLeakRootHandles` (Linux-only,
+  `/proc/self/fd` count) as a red/green regression test.
 
 ### F002 — cap block-quote recursion depth in the Layer-0 scanner
 

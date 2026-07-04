@@ -18,3 +18,11 @@ func (w OSWorkspace) FS() fs.FS {
 	}
 	return os.DirFS(root)
 }
+
+// readFileRooted reads relPath from disk rooted at root. os.DirFS opens and
+// closes its own file handle per Open call, so there is no per-call handle
+// to accumulate here the way the !tinygo os.OpenRoot-backed variant must
+// guard against.
+func readFileRooted(root, relPath string) ([]byte, error) {
+	return fs.ReadFile(os.DirFS(root), relPath)
+}

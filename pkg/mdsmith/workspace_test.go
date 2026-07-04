@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"testing"
 
@@ -388,6 +389,42 @@ func TestOSWorkspaceReadFileSymlinkEscapeRefused(t *testing.T) {
 	ws := OSWorkspace{Root: root}
 	if _, err := ws.ReadFile("escape.md"); err == nil {
 		t.Fatal("OSWorkspace.ReadFile(escape.md) succeeded; expected containment error for symlink escaping root")
+	}
+}
+
+// TestOSWorkspaceReadFileDoesNotLeakRootHandles verifies that repeated
+// ReadFile calls do not accumulate open os.Root directory handles. A naive
+// containment fix that calls w.FS() (which opens a fresh os.Root per call
+// and never closes it) leaks one file descriptor per read; ReadFile must
+// close the Root handle it opens before returning.
+func TestOSWorkspaceReadFileDoesNotLeakRootHandles(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("fd counting via /proc/self/fd is Linux-only")
+	}
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "a.md"), []byte("x"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	ws := OSWorkspace{Root: root}
+
+	countFDs := func() int {
+		entries, err := os.ReadDir("/proc/self/fd")
+		if err != nil {
+			t.Skipf("cannot read /proc/self/fd: %v", err)
+		}
+		return len(entries)
+	}
+
+	before := countFDs()
+	const reads = 200
+	for range reads {
+		if _, err := ws.ReadFile("a.md"); err != nil {
+			t.Fatalf("ReadFile: %v", err)
+		}
+	}
+	after := countFDs()
+	if after-before >= reads/2 {
+		t.Fatalf("ReadFile leaked root handles: %d fds open before %d reads, %d after", before, reads, after)
 	}
 }
 
