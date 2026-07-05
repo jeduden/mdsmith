@@ -50,3 +50,11 @@ func splitSentencesInto(dst []string, text string) []string {
 	}
 	return dst
 }
+
+// isAbbrevToken is the default-build backend for IsAbbrevToken. It
+// reuses forkTokenizer's Storage instead of loading a second trained
+// model, so a caller like linelength's reflow fix pays no extra
+// english.json parse beyond the one SplitSentences already needs.
+func isAbbrevToken(tok string) bool {
+	return forkTokenizer.Storage.IsAbbrevToken(tok)
+}

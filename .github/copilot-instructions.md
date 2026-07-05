@@ -36,6 +36,7 @@ row: "- [{summary}](../{filename})"
 - [How mdsmith compares to other Markdown linters.](../docs/background/markdown-linters.md)
 - [How to wire a new peer Markdown linter into mdsmith's comparison docs, the per-rule coverage matrix, and the benchmark page.](../docs/development/add-peer-linter.md)
 - [Release new directive syntax and bump the pinned CI baseline before checked-in Markdown uses it, so the `mdsmith-fixed-version` job stays green.](../docs/development/adopt-new-directive-syntax.md)
+- [Older entries moved out of architecture-audit.md to keep it under the project's file-length budget. Every finding here is resolved; the linked plans are the detailed record.](../docs/development/architecture-audit-archive.md)
 - [Running log of SOLID and clean-architecture findings on origin/main. The solid-architecture skill (audit mode) appends here; blockers are also filed as plans.](../docs/development/architecture-audit.md)
 - [Checklist for sweeping origin/main for SOLID and boundary violations. Records findings in the audit log; schedules blockers as new plan files.](../docs/development/architecture/audit-checklist.md)
 - [External-surface contracts: LSP, CLI, .mdsmith.yml, generated markers, plugin manifest, distribution shims. Public APIs.](../docs/development/architecture/cross-system.md)
@@ -214,6 +215,7 @@ row: "- [{title}](../docs/development/{filename})"
 ?>
 - [Adding a peer linter](../docs/development/add-peer-linter.md)
 - [Architecture audit log](../docs/development/architecture-audit.md)
+- [Architecture audit log archive](../docs/development/architecture-audit-archive.md)
 - [Architecture principles](../docs/development/architecture/index.md)
 - [Coverage Gate](../docs/development/coverage.md)
 - [Design system](../docs/development/design-system.md)

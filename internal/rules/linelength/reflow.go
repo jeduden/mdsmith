@@ -3,28 +3,18 @@ package linelength
 import (
 	"bytes"
 	"strings"
-	"sync"
 	"unicode/utf8"
 
 	"github.com/jeduden/mdsmith/internal/lint"
-	"github.com/jeduden/mdsmith/internal/punkt"
+	"github.com/jeduden/mdsmith/internal/mdtext"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
 // abbrevTrimCutset is the trailing clause punctuation stripped before a
 // user-list abbreviation lookup, so a configured "e.g." also matches
-// "e.g.,". punkt.Storage.IsAbbrevToken applies the same trim internally
-// for the trained-model path.
+// "e.g.,". mdtext.IsAbbrevToken applies the same trim internally for
+// the trained-model path.
 const abbrevTrimCutset = ",;:"
-
-// englishAbbrevStorage lazily loads the trained Punkt model — the same
-// abbreviation knowledge the readability rules use to split sentences —
-// the first time a reflow fix needs it. Loading is deferred so a plain
-// `mdsmith check` (or a fix with reflow off) never pays the english.json
-// parse.
-var englishAbbrevStorage = sync.OnceValue(func() *punkt.Storage {
-	return punkt.NewEnglish().Storage
-})
 
 // isAbbrev reports whether tok is an abbreviation that must stay glued
 // to the word that follows it during reflow, so reflow never ends a
@@ -45,7 +35,7 @@ func (r *Rule) isAbbrev(tok string) bool {
 			return true
 		}
 	}
-	return englishAbbrevStorage().IsAbbrevToken(tok)
+	return mdtext.IsAbbrevToken(tok)
 }
 
 // tokenizeParagraph splits the source bytes in [start, end) into

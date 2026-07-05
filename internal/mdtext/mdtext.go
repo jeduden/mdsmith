@@ -456,6 +456,17 @@ func SplitSentencesInto(dst []string, text string) []string {
 	return splitSentencesInto(dst, text)
 }
 
+// IsAbbrevToken reports whether tok is a known abbreviation per the
+// trained Punkt model (honorifics like "Dr.", reference forms like
+// "vs.", initials like "J.", and dotted forms like "e.g."). Callers
+// that need abbreviation-aware behavior, such as line-length reflow,
+// use this instead of loading their own internal/punkt model — only
+// mdtext is allowed to import internal/punkt directly.
+func IsAbbrevToken(tok string) bool {
+	initTokenizerOnce()
+	return isAbbrevToken(tok)
+}
+
 // CountCharacters counts letters and digits in text
 // (no spaces or punctuation).
 func CountCharacters(text string) int {

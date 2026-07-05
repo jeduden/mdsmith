@@ -292,6 +292,23 @@ func TestSplitSentences_Abbreviation(t *testing.T) {
 	require.Len(t, got, 1)
 }
 
+func TestIsAbbrevToken(t *testing.T) {
+	cases := []struct {
+		tok  string
+		want bool
+	}{
+		{"Dr.", true},   // trained honorific
+		{"vs.", true},   // trained reference form
+		{"e.g.", true},  // dotted pattern
+		{"cat.", false}, // ordinary word ending a sentence
+		{"plain", false},
+	}
+	for _, c := range cases {
+		assert.Equalf(t, c.want, mdtext.IsAbbrevToken(c.tok),
+			"IsAbbrevToken(%q)", c.tok)
+	}
+}
+
 func TestSplitSentences_Decimal(t *testing.T) {
 	got := mdtext.SplitSentences("The value is 3.14 today.")
 	require.Len(t, got, 1)

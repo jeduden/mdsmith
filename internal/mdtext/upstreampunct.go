@@ -4,9 +4,12 @@ package mdtext
 
 import (
 	"strings"
+	"sync"
 
 	sentlib "github.com/neurosnap/sentences"
 	"github.com/neurosnap/sentences/english"
+
+	"github.com/jeduden/mdsmith/internal/punkt"
 )
 
 // upstreamTok is the upstream-build singleton — the unmodified
@@ -42,4 +45,18 @@ func splitSentencesInto(dst []string, text string) []string {
 		}
 	}
 	return dst
+}
+
+// upstreamAbbrevStorage lazily loads internal/punkt's trained Storage
+// for abbreviation lookups only. The upstream comparison tokenizer
+// (neurosnap/sentences) has no equivalent public API, so this build
+// tag — used only for local A/B comparison, never in shipped builds —
+// loads the same trained model isAbbrevToken needs on its own.
+var upstreamAbbrevStorage = sync.OnceValue(func() *punkt.Storage {
+	return punkt.NewEnglish().Storage
+})
+
+// isAbbrevToken is the upstream-build backend for IsAbbrevToken.
+func isAbbrevToken(tok string) bool {
+	return upstreamAbbrevStorage().IsAbbrevToken(tok)
 }
