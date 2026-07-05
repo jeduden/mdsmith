@@ -178,7 +178,11 @@ Blocker:
   build-tag-independent `abbrev.go`, so both the
   fork and upstream builds share one `Storage`.
   `fastpunct_init.go`'s `forkTokenizer` now builds
-  from that same `Storage` too. `reflow.go` calls
+  from that same `Storage` too. Exported
+  `punkt.AbbrevTokenCutset` and re-exported it as
+  `mdtext.AbbrevTrimCutset`, so `reflow.go` no
+  longer keeps its own copy of that punkt-owned
+  constant. `reflow.go` calls
   `mdtext.IsAbbrevToken` instead of loading its own
   model.
 

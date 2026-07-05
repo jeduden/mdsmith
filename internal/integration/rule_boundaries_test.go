@@ -162,3 +162,52 @@ func TestBuildDoesNotImportRulePackages(t *testing.T) {
 	})
 	require.NoError(t, err)
 }
+
+// TestOnlyMdtextImportsPunkt guards the DIP rule that internal/punkt
+// (the vendored Punkt sentence segmenter) is a low-level library only
+// internal/mdtext may import directly — every other package gets
+// sentence/abbreviation behavior through mdtext.SplitSentences or
+// mdtext.IsAbbrevToken instead of loading its own trained model. See
+// docs/development/architecture/go.md. Flagged by the 2026-07-05
+// architecture audit after internal/rules/linelength/reflow.go
+// imported internal/punkt directly.
+func TestOnlyMdtextImportsPunkt(t *testing.T) {
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	internalRoot := filepath.Clean(filepath.Join(wd, ".."))
+
+	const punktImport = "github.com/jeduden/mdsmith/internal/punkt"
+	const allowedPkg = "mdtext"
+
+	fset := token.NewFileSet()
+	err = filepath.WalkDir(internalRoot, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		rel, err := filepath.Rel(internalRoot, path)
+		if err != nil {
+			return err
+		}
+		owningPkg := strings.SplitN(filepath.ToSlash(rel), "/", 2)[0]
+		if owningPkg == "punkt" || owningPkg == allowedPkg {
+			return nil
+		}
+		file, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		for _, imp := range file.Imports {
+			importPath := strings.Trim(imp.Path.Value, `"`)
+			if importPath == punktImport {
+				assert.Failf(t, "package imports internal/punkt directly",
+					"%s imports %s; only internal/%s may import internal/punkt",
+					rel, importPath, allowedPkg)
+			}
+		}
+		return nil
+	})
+	require.NoError(t, err)
+}
