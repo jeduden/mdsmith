@@ -50,9 +50,11 @@ func loadEnglishStorage(raw []byte) *Storage {
 	return storage
 }
 
-// New constructs a Tokenizer over an arbitrary Storage. Used by
-// tests that need a hermetic, synthetic Storage; production code
-// goes through NewEnglish.
+// New constructs a Tokenizer over an arbitrary Storage. Tests use it
+// with a hermetic, synthetic Storage; internal/mdtext's default-build
+// tokenizer uses it with the trained English Storage so the Tokenizer
+// shares that Storage instance with other English-model callers
+// instead of NewEnglish parsing a second copy.
 func New(s *Storage) *Tokenizer {
 	t := &Tokenizer{Storage: s}
 	t.ortho = &OrthoContext{Storage: s}

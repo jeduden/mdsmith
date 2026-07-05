@@ -48,3 +48,16 @@ func TestInitTokenizer_DefaultBuild(t *testing.T) {
 		assert.Equal(t, "She did not.", got[1])
 	})
 }
+
+// TestInitTokenizer_SharesAbbrevStorage locks the single-parse
+// contract: forkTokenizer must be built from abbrevStorage's cached
+// Storage (abbrev.go), not a second punkt.NewEnglish() call, whichever
+// of SplitSentences/IsAbbrevToken a caller reaches first. A regression
+// here (e.g. reverting to punkt.NewEnglish() in initTokenizer) would
+// silently reintroduce the double english.json parse the 2026-07-05
+// architecture audit fixed.
+func TestInitTokenizer_SharesAbbrevStorage(t *testing.T) {
+	_ = SplitSentences("warm.")
+	require.Same(t, abbrevStorage(), forkTokenizer.Storage,
+		"forkTokenizer.Storage must be the same instance abbrevStorage caches")
+}

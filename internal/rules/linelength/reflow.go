@@ -10,12 +10,6 @@ import (
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
-// abbrevTrimCutset is the trailing clause punctuation stripped before a
-// user-list abbreviation lookup, so a configured "e.g." also matches
-// "e.g.,". mdtext.IsAbbrevToken applies the same trim internally for
-// the trained-model path.
-const abbrevTrimCutset = ",;:"
-
 // isAbbrev reports whether tok is an abbreviation that must stay glued
 // to the word that follows it during reflow, so reflow never ends a
 // wrapped line on it. Detection defers to the trained Punkt model
@@ -26,7 +20,7 @@ const abbrevTrimCutset = ",;:"
 // trimming trailing clause punctuation, the same normalization the
 // model applies.
 func (r *Rule) isAbbrev(tok string) bool {
-	t := strings.TrimRight(tok, abbrevTrimCutset)
+	t := strings.TrimRight(tok, mdtext.AbbrevTrimCutset)
 	if t == "" {
 		return false
 	}

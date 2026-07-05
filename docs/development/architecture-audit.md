@@ -174,9 +174,13 @@ Blocker:
   [go.md][go].
 - It built a second trained Punkt `Storage`, so
   `reflow: true` parsed `english.json` twice.
-- Fixed: added `mdtext.IsAbbrevToken`, backed by
-  the existing singleton. `reflow.go` now calls
-  that.
+- Fixed: added `mdtext.IsAbbrevToken` in a new,
+  build-tag-independent `abbrev.go`, so both the
+  fork and upstream builds share one `Storage`.
+  `fastpunct_init.go`'s `forkTokenizer` now builds
+  from that same `Storage` too. `reflow.go` calls
+  `mdtext.IsAbbrevToken` instead of loading its own
+  model.
 
 [go]: architecture/go.md
 

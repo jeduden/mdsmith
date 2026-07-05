@@ -19,6 +19,13 @@ var abbrevStorage = sync.OnceValue(func() *punkt.Storage {
 	return punkt.NewEnglish().Storage
 })
 
+// AbbrevTrimCutset is the trailing clause punctuation IsAbbrevToken
+// ignores internally, re-exported so a caller normalizing its own
+// abbreviation list (e.g. line-length reflow's configured
+// Abbreviations) can match the same trim instead of keeping a second
+// copy of the cutset.
+const AbbrevTrimCutset = punkt.AbbrevTokenCutset
+
 // IsAbbrevToken reports whether tok is a known abbreviation per the
 // trained Punkt model (honorifics like "Dr.", reference forms like
 // "vs.", initials like "J.", and dotted forms like "e.g."). Callers
