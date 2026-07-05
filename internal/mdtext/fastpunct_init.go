@@ -25,9 +25,12 @@ var forkTokenizer *punkt.Tokenizer
 
 // initTokenizer assembles the default-build tokenizer. The upstream
 // build tag (mdtext_punkt_upstream) provides its own initTokenizer in
-// upstreampunct.go.
+// upstreampunct.go. It builds forkTokenizer from abbrevStorage's
+// Storage (abbrev.go) instead of calling punkt.NewEnglish() again, so
+// IsAbbrevToken's lazy load and SplitSentences's tokenizer construction
+// never parse english.json twice regardless of which one runs first.
 func initTokenizer() {
-	forkTokenizer = punkt.NewEnglish()
+	forkTokenizer = punkt.New(abbrevStorage())
 }
 
 // splitSentencesInto is the default-build segmentation
@@ -49,12 +52,4 @@ func splitSentencesInto(dst []string, text string) []string {
 		}
 	}
 	return dst
-}
-
-// isAbbrevToken is the default-build backend for IsAbbrevToken. It
-// reuses forkTokenizer's Storage instead of loading a second trained
-// model, so a caller like linelength's reflow fix pays no extra
-// english.json parse beyond the one SplitSentences already needs.
-func isAbbrevToken(tok string) bool {
-	return forkTokenizer.Storage.IsAbbrevToken(tok)
 }
