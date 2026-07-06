@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"strings"
 
 	flag "github.com/spf13/pflag"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/output"
 	"github.com/jeduden/mdsmith/internal/profiling"
 	"github.com/jeduden/mdsmith/internal/query"
+	"github.com/jeduden/mdsmith/internal/starter"
 	"github.com/jeduden/mdsmith/internal/wordlist"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 	mdsmith "github.com/jeduden/mdsmith/pkg/mdsmith"
@@ -52,7 +54,7 @@ Commands:
   merge-driver      Git merge driver for regenerable sections
   pre-merge-commit  Install/manage pre-merge-commit hook
   kinds             Inspect declared kinds and resolve effective config per file
-  init              Generate .mdsmith.yml (--from-markdownlint converts an existing config)
+  init              Generate .mdsmith.yml (--starter scaffolds; --from-markdownlint converts)
   lsp               Run the Language Server Protocol server on stdio
   trust             Review the .mdsmith.yml diff and trust the build pass on this clone
   version           Print version and exit
@@ -288,6 +290,24 @@ func readFrontMatterRaw(path string, maxBytes int64) (map[string]any, error) {
 	return raw, nil
 }
 
+// setInitUsage installs the `mdsmith init` usage text on fs.
+func setInitUsage(fs *flag.FlagSet) {
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: mdsmith init [--starter <name>] [--from-markdownlint[=path]] [--wordlists]\n\n"+
+			"Generate a default .mdsmith.yml config file in the current directory.\n\n"+
+			"With --starter, scaffold a ready-to-edit config for a workflow\n"+
+			"(available: %s) instead of the rule-by-rule defaults.\n\n"+
+			"With --from-markdownlint, convert an existing markdownlint config\n"+
+			"(.markdownlint.jsonc/.json/.yaml/.yml or .markdownlintrc) instead of\n"+
+			"writing the defaults. Without =path the config is auto-discovered in\n"+
+			"the current directory.\n\n"+
+			"With --wordlists, also write .mdsmith/wordlists/ai-speak.yaml and\n"+
+			"ai-openers.yaml from the built-in no-llm-tells vocabulary, as editable\n"+
+			"files you own and reference from a rule's lists: key.\n\nFlags:\n", strings.Join(starter.Names(), ", "))
+		fs.PrintDefaults()
+	}
+}
+
 // runInit implements the "init" subcommand: generate .mdsmith.yml,
 // either from the built-in defaults or converted from an existing
 // markdownlint config (--from-markdownlint).
@@ -297,22 +317,13 @@ func runInit(args []string) int {
 	fs.StringVar(&fromMarkdownlint, "from-markdownlint", "",
 		"Convert a markdownlint config instead of writing defaults (optionally --from-markdownlint=<path>)")
 	fs.Lookup("from-markdownlint").NoOptDefVal = "auto"
+	var starterName string
+	fs.StringVar(&starterName, "starter", "",
+		"Scaffold a workflow config instead of the defaults (e.g. --starter okf)")
 	var withWordlists bool
 	fs.BoolVar(&withWordlists, "wordlists", false,
 		"Also scaffold the curated .mdsmith/wordlists/ files (ai-speak, ai-openers) for editing")
-
-	fs.Usage = func() {
-		fmt.Fprint(os.Stderr, "Usage: mdsmith init [--from-markdownlint[=path]] [--wordlists]\n\n"+
-			"Generate a default .mdsmith.yml config file in the current directory.\n\n"+
-			"With --from-markdownlint, convert an existing markdownlint config\n"+
-			"(.markdownlint.jsonc/.json/.yaml/.yml or .markdownlintrc) instead of\n"+
-			"writing the defaults. Without =path the config is auto-discovered in\n"+
-			"the current directory.\n\n"+
-			"With --wordlists, also write .mdsmith/wordlists/ai-speak.yaml and\n"+
-			"ai-openers.yaml from the built-in no-llm-tells vocabulary, as editable\n"+
-			"files you own and reference from a rule's lists: key.\n\nFlags:\n")
-		fs.PrintDefaults()
-	}
+	setInitUsage(fs)
 
 	if err := fs.Parse(args); err != nil {
 		if code := reportFlagParseErr(err, os.Stderr, "mdsmith: init"); code >= 0 {
@@ -342,7 +353,7 @@ func runInit(args []string) int {
 		return 2
 	}
 
-	if err := writeInitConfig(configFile, fromMarkdownlint, configExists, os.Stderr); err != nil {
+	if err := writeInitConfig(configFile, fromMarkdownlint, starterName, configExists, os.Stderr); err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return 2
 	}
@@ -359,14 +370,14 @@ func runInit(args []string) int {
 // writeInitConfig writes the .mdsmith.yml for init, unless it already
 // exists. An existing config is left untouched — so `init --wordlists`
 // can add word-lists to an already-initialized project — otherwise the
-// defaults, or a --from-markdownlint conversion, are written. Progress
-// and any conversion notes go to w.
-func writeInitConfig(configFile, fromMarkdownlint string, configExists bool, w io.Writer) error {
+// defaults, a --starter scaffold, or a --from-markdownlint conversion
+// are written. Progress and any conversion notes go to w.
+func writeInitConfig(configFile, fromMarkdownlint, starterName string, configExists bool, w io.Writer) error {
 	if configExists {
 		_, _ = fmt.Fprintf(w, "mdsmith: %s already exists, leaving it unchanged\n", configFile)
 		return nil
 	}
-	data, source, err := initConfigBytes(fromMarkdownlint, w)
+	data, source, err := initConfigBytes(fromMarkdownlint, starterName, w)
 	if err != nil {
 		return err
 	}
@@ -451,17 +462,28 @@ func writeWordlistScaffolds(w io.Writer) error {
 	return nil
 }
 
-// initConfigBytes produces the .mdsmith.yml contents for init. An empty
-// fromMarkdownlint yields the full defaults dump; otherwise the named
-// markdownlint config ("auto" = discover in the current directory) is
-// converted, its notes echoed to w, and source reports which file fed
-// the conversion.
-func initConfigBytes(fromMarkdownlint string, w io.Writer) (data []byte, source string, err error) {
-	if fromMarkdownlint == "" {
+// initConfigBytes produces the .mdsmith.yml contents for init. With a
+// starterName it returns that starter's embedded template; with a
+// fromMarkdownlint path ("auto" = discover in the current directory) it
+// converts that config, echoing notes to w; otherwise it dumps the full
+// defaults. source reports the provenance for the confirmation message.
+// --starter and --from-markdownlint are mutually exclusive.
+func initConfigBytes(fromMarkdownlint, starterName string, w io.Writer) (data []byte, source string, err error) {
+	switch {
+	case starterName != "" && fromMarkdownlint != "":
+		return nil, "", errors.New("--starter and --from-markdownlint are mutually exclusive")
+	case starterName != "":
+		b, ok := starter.Get(starterName)
+		if !ok {
+			return nil, "", starter.ErrUnknown(starterName)
+		}
+		return b, "the " + starterName + " starter", nil
+	case fromMarkdownlint != "":
+		return convertedConfigBytes(fromMarkdownlint, w)
+	default:
 		data, err = defaultConfigBytes()
 		return data, "", err
 	}
-	return convertedConfigBytes(fromMarkdownlint, w)
 }
 
 // defaultConfigBytes marshals the built-in defaults, the plain

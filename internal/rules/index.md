@@ -89,6 +89,7 @@ row: "| [{id}]({filename}) | `{name}` | {category} | {status} | {description} |"
 | [MDS068](MDS068-link-style/README.md)                         | `link-style`                         | link          | ready     | Flag links and images whose path, extension, form, or link-image-style deviates from the project's declared `links.style` policy.                  |
 | [MDS069](MDS069-unique-frontmatter/README.md)                 | `unique-frontmatter`                 | structural    | ready     | Every file in the configured glob scope must hold a distinct value in the configured front-matter field.                                           |
 | [MDS070](MDS070-same-file-anchor/README.md)                   | `same-file-anchor`                   | link          | ready     | Every same-file #fragment link must resolve to a heading present in the same file.                                                                 |
+| [MDS071](MDS071-required-frontmatter/README.md)               | `required-frontmatter`               | structural    | ready     | Every file in the configured glob scope must declare each named front-matter field with a present, non-empty value.                                |
 <?/catalog?>
 
 ## Directive rules

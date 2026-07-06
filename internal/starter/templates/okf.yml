@@ -1,0 +1,53 @@
+# mdsmith starter config for Open Knowledge Format (OKF) bundles.
+#
+# OKF represents agent knowledge as a directory of Markdown concept
+# documents with YAML front matter. Run mdsmith from the bundle root.
+# Spec:  https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md
+# Guide: https://mdsmith.dev/guides/okf/
+front-matter: true
+
+rules:
+  # OKF's one hard rule: every concept document declares a non-empty
+  # `type`. The reserved index.md and log.md files are exempt.
+  required-frontmatter:
+    fields:
+      - type
+    exclude:
+      - index.md
+      - log.md
+
+  # Validate bundle-relative links (those beginning with "/") against
+  # the bundle root. "." is the directory you run mdsmith from.
+  cross-file-reference-integrity:
+    links:
+      site-root: "."
+
+  # OKF is a portability and structure format, not a prose-style guide,
+  # so the opinion rules below stand down. Delete a line to re-enable
+  # that rule for your bundle.
+  first-line-heading: false   # a concept body may open with prose
+  line-length: false
+  max-file-length: false
+  token-budget: false
+  paragraph-readability: false
+  paragraph-structure: false
+  table-readability: false    # schema concepts tabulate wide tables
+
+# Optional: require a richer structure per concept type. Uncomment and
+# adapt — a kind matches files by path and validates their front matter
+# and headings. See https://mdsmith.dev/guides/file-kinds/.
+#
+# kinds:
+#   bq-table:
+#     path-pattern: "tables/*.md"
+#     schema:
+#       frontmatter:
+#         type: '"BigQuery Table"'
+#         title: nonEmpty
+#         description: nonEmpty
+#       sections:
+#         - heading: null
+#         - heading: { regex: '^Schema$' }
+# kind-assignment:
+#   - glob: ["tables/*.md"]
+#     kinds: [bq-table]
