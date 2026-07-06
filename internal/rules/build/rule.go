@@ -13,6 +13,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/buildpathutil"
+	"github.com/jeduden/mdsmith/internal/setutil"
 )
 
 func init() {
@@ -257,7 +258,7 @@ func (r *Rule) warnUnknownParams(
 
 	var unknown []string
 	for k := range params {
-		if _, ok := known[k]; !ok {
+		if !setutil.Contains(known, k) {
 			unknown = append(unknown, k)
 		}
 	}
@@ -392,7 +393,7 @@ func hasReservedDeviceName(p string) bool {
 		if dot := strings.IndexByte(seg, '.'); dot >= 0 {
 			seg = seg[:dot]
 		}
-		if _, ok := reservedDeviceNames[strings.ToUpper(seg)]; ok {
+		if setutil.Contains(reservedDeviceNames, strings.ToUpper(seg)) {
 			return true
 		}
 	}
