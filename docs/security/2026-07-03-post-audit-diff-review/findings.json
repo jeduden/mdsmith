@@ -13,7 +13,7 @@
       "severity": "low",
       "confidence": "confirmed",
       "status": "fixed",
-      "fixed_by": "plan/2607031500 — OSWorkspace.ReadFile and OverlayWorkspace.ReadFile now route through the OpenRootFS-backed FS() (fs.ReadFile(w.FS(), relPath)) for workspace-relative paths, so a symlink escaping the root is refused the same way FS() already refuses it; absolute paths keep their pre-existing unconstrained passthrough",
+      "fixed_by": "plan/2607031500 — OSWorkspace.ReadFile now reads workspace-relative paths through readFileRooted, which opens a short-lived os.OpenRoot handle, reads through it, and closes it per call (avoiding the handle leak an FS()-per-call approach would cause); OverlayWorkspace.ReadFile's disk fall-through reads through ensureDiskFS, the same sync.Once-cached lint.OpenRootFS handle FS() already builds, skipping FS()'s per-call overlay-map clone. Both refuse a symlink escaping the root the same way FS() already refuses it; absolute paths keep their pre-existing unconstrained passthrough",
       "surface": "directive",
       "cwe": "CWE-61",
       "location": {

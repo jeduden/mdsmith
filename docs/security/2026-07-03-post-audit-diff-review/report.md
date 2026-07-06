@@ -3,7 +3,7 @@ date: "2026-07-03"
 scope: "diff since the 2026-06-19 full-repo audit — directive engine, CLI/engine core, LSP, VS Code extension, CI/supply chain"
 method: "audit"
 title: "mdsmith post-audit diff review — 2026-07-03"
-summary: "Diff review of ~250 commits merged since the 2026-06-19 full-repo audit. The os.OpenRoot symlink-containment fix and the new panic-recovery hardening both hold; no Critical/High/Medium findings. Two low findings: Workspace.ReadFile bypasses the containment its sibling FS() view enforces (F001), and an unbounded block-quote recursion in the Layer-0 scanner could stack-overflow the process, but only behind an unwired internal spike flag (F002)."
+summary: "Diff review of ~250 commits merged since the 2026-06-19 full-repo audit. The os.OpenRoot symlink-containment fix and the new panic-recovery hardening both hold; no Critical/High/Medium findings. Two low findings, both fixed in plan/2607031500: Workspace.ReadFile bypassed the containment its sibling FS() view enforces (F001), and an unbounded block-quote recursion in the Layer-0 scanner could have stack-overflowed the process, though only behind an unwired internal spike flag (F002)."
 ---
 # mdsmith Security Review
 
