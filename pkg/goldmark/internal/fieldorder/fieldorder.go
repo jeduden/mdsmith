@@ -7,7 +7,10 @@
 // copy of the same reflection logic.
 package fieldorder
 
-import "reflect"
+import (
+	"reflect"
+	"testing"
+)
 
 // IsPointerish reports whether a field's kind carries at least one
 // pointer word that the GC must scan (a pointer, interface, slice,
@@ -19,4 +22,26 @@ func IsPointerish(k reflect.Kind) bool {
 		return true
 	}
 	return false
+}
+
+// AssertPointersBeforeScalars checks that, among typ's fields
+// starting at index skip (use 1 to skip an embedded base struct), no
+// scalar (non-pointerish) field is followed by a pointerish one. A
+// pointerish field declared after a scalar field extends the struct's
+// GC ptrdata past that scalar for no reason.
+func AssertPointersBeforeScalars(t testing.TB, typ reflect.Type, skip int) {
+	t.Helper()
+	seenScalar := false
+	for i := skip; i < typ.NumField(); i++ {
+		f := typ.Field(i)
+		if IsPointerish(f.Type.Kind()) {
+			if seenScalar {
+				t.Errorf("field %s (%s, pointer-ish) is declared after a scalar field; "+
+					"pointer fields should precede scalars to shrink GC ptrdata",
+					f.Name, f.Type)
+			}
+		} else {
+			seenScalar = true
+		}
+	}
 }
