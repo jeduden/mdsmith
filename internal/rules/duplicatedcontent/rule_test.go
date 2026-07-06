@@ -695,6 +695,48 @@ func TestCheck_RunCacheReusesCorpusParseAcrossHostFiles(t *testing.T) {
 	}
 }
 
+// TestCheck_RunCacheAppliesFrontMatterOffsetOnce pins that a corpus
+// candidate's front-matter line offset is baked into its cached
+// paragraphs exactly once: candidateParagraphs adds other.LineOffset
+// inside the RunCache build closure, which runs at most once per key.
+// Checking the same host file twice against a shared RunCache drives
+// the offset-add on the first call (cache miss, build runs) and
+// reads the cached value on the second (cache hit) — a double-add
+// regression would report b.md at line 10 (7 + 3) on the second call
+// instead of 7 on both.
+func TestCheck_RunCacheAppliesFrontMatterOffsetOnce(t *testing.T) {
+	dir := t.TempDir()
+	p := longParagraph("shared paragraph text for the offset cache test")
+	fm := "---\ntitle: B\n---\n"
+	// b.md's paragraph sits at raw line 7: front matter lines 1-3,
+	// blank line 4, heading line 5 ("# B"), blank line 6, paragraph
+	// line 7. Stripping front matter (stripFrontMatter=true) removes
+	// lines 1-3 before the AST walk, so extractParagraphs sees the
+	// paragraph at line 4 and other.LineOffset must add 3 back to
+	// report the correct raw line.
+	writeFile(t, filepath.Join(dir, "b.md"), fm+"\n# B\n\n"+p+"\n")
+	writeFile(t, filepath.Join(dir, "a.md"), "# A\n\n"+p+"\n")
+
+	runCache := lint.NewRunCache()
+	data, err := os.ReadFile(filepath.Join(dir, "a.md"))
+	require.NoError(t, err)
+
+	for i := 0; i < 2; i++ {
+		f, err := lint.NewFileFromSource(filepath.Join(dir, "a.md"), data, true)
+		require.NoError(t, err)
+		f.FS = os.DirFS(dir)
+		f.RootDir = dir
+		f.RootFS = os.DirFS(dir)
+		f.RunCache = runCache
+
+		diags := (&Rule{}).Check(f)
+		require.Len(t, diags, 1)
+		assert.Contains(t, diags[0].Message, "b.md:7",
+			"b.md's paragraph line must include its front-matter offset "+
+				"on every Check call sharing the RunCache, not just the first")
+	}
+}
+
 func TestApplySettings_RejectsBadExcludeType(t *testing.T) {
 	r := &Rule{}
 	err := r.ApplySettings(map[string]any{"exclude": "not-a-list"})

@@ -367,6 +367,10 @@ func buildCorpusIndex(
 	stripFrontMatter bool,
 	include, exclude []string,
 ) map[string][]externalMatch {
+	// keySuffix is the same for every candidate file in this walk
+	// (minChars is fixed for the whole Check call), so it is built
+	// once here rather than on every indexFileIfEligible call.
+	keySuffix := "\x00" + strconv.Itoa(minChars)
 	index := make(map[string][]externalMatch)
 	_ = fs.WalkDir(corpus, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -377,7 +381,7 @@ func buildCorpusIndex(
 		}
 		indexFileIfEligible(
 			index, runCache, rootDir, corpus, path, selfName,
-			maxBytes, minChars, stripFrontMatter,
+			maxBytes, minChars, keySuffix, stripFrontMatter,
 			include, exclude,
 		)
 		return nil
@@ -430,6 +434,7 @@ func indexFileIfEligible(
 	path, selfName string,
 	maxBytes int64,
 	minChars int,
+	keySuffix string,
 	stripFrontMatter bool,
 	include, exclude []string,
 ) {
@@ -440,7 +445,7 @@ func indexFileIfEligible(
 		return
 	}
 	for _, p := range candidateParagraphs(
-		runCache, rootDir, corpus, path, maxBytes, minChars, stripFrontMatter,
+		runCache, rootDir, corpus, path, maxBytes, minChars, keySuffix, stripFrontMatter,
 	) {
 		index[p.fingerprint] = append(index[p.fingerprint], externalMatch{
 			path: path,
@@ -453,11 +458,12 @@ func indexFileIfEligible(
 // paragraphs, adjusted for its own front-matter line offset. When
 // runCache and rootDir are both available, the result is memoized on
 // runCache keyed by the candidate's absolute on-disk path plus
-// minChars (the one rule setting that can vary per file kind and
-// therefore change which paragraphs qualify) — RunCache.Invalidate
-// evicts by the absPath prefix, so an LSP document edit still refreshes
-// the right slot. Without a stable absolute path (in-memory FS, or no
-// RunCache at all), every call reads and re-parses the file directly.
+// keySuffix (built from minChars, the one rule setting that can vary
+// per file kind and therefore change which paragraphs qualify) —
+// RunCache.Invalidate evicts by the absPath prefix, so an LSP
+// document edit still refreshes the right slot. Without a stable
+// absolute path (in-memory FS, or no RunCache at all), every call
+// reads and re-parses the file directly.
 func candidateParagraphs(
 	runCache *lint.RunCache,
 	rootDir string,
@@ -465,6 +471,7 @@ func candidateParagraphs(
 	path string,
 	maxBytes int64,
 	minChars int,
+	keySuffix string,
 	stripFrontMatter bool,
 ) []paragraph {
 	build := func() []paragraph {
@@ -478,10 +485,8 @@ func candidateParagraphs(
 		// the signature for future-proofing but is dead here.
 		other, _ := lint.NewFileFromSource(path, data, stripFrontMatter) //nolint:errcheck
 		paragraphs := extractParagraphs(other, minChars)
-		if other.LineOffset != 0 {
-			for i := range paragraphs {
-				paragraphs[i].line += other.LineOffset
-			}
+		for i := range paragraphs {
+			paragraphs[i].line += other.LineOffset
 		}
 		return paragraphs
 	}
@@ -489,8 +494,7 @@ func candidateParagraphs(
 		return build()
 	}
 	absPath := filepath.Join(rootDir, filepath.FromSlash(path))
-	key := absPath + "\x00" + strconv.Itoa(minChars)
-	v := runCache.DuplicateParagraphs(key, func() any { return build() })
+	v := runCache.DuplicateParagraphs(absPath+keySuffix, func() any { return build() })
 	paragraphs, _ := v.([]paragraph)
 	return paragraphs
 }
