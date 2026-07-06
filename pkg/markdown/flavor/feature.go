@@ -73,13 +73,28 @@ func (f Feature) Name() string {
 	return ""
 }
 
-// support maps (flavor, feature) to whether the flavor accepts it.
+// flavorCount and featureCount size the support table below: one
+// slot per declared Flavor / Feature constant, indexed directly by
+// the enum's underlying int.
+const (
+	flavorCount  = FlavorMyST + 1
+	featureCount = FeatureGitHubAlerts + 1
+)
+
+// support indexes (flavor, feature) to whether the flavor accepts it.
 // CommonMark rejects every tracked feature. GFM adds tables, task
 // lists, strikethrough, and bare-URL autolinks. The goldmark flavor
 // further adds heading IDs. Pandoc, PHP Markdown Extra, MultiMarkdown,
 // and MyST each pick a different combination of the optional
 // features; FlavorAny is handled specially in Supports.
-var support = map[Flavor]map[Feature]bool{
+//
+// A flat array instead of map[Flavor]map[Feature]bool: both Flavor
+// and Feature are small dense int enums, so direct indexing removes
+// two map-indirection lookups from every Supports call (Supports runs
+// per candidate AST node during flavor detection — see
+// docs/development/high-performance-go.md's "Sorted slice + binary
+// search beats a map for n < ~100" and small-fixed-set guidance).
+var support = [flavorCount][featureCount]bool{
 	FlavorGFM: {
 		FeatureTables:           true,
 		FeatureTaskLists:        true,
@@ -136,10 +151,16 @@ var support = map[Flavor]map[Feature]bool{
 
 // Supports reports whether the flavor accepts the given feature.
 // FlavorAny accepts every feature; other flavors consult the support
-// table.
+// table. An f or feat outside the declared enum range (pkg/markdown
+// is a public package, so a caller-supplied value is not guaranteed
+// in range) returns false rather than panicking on an out-of-bounds
+// array index — the same behavior a map's missing-key lookup gave.
 func Supports(f Flavor, feat Feature) bool {
 	if f == FlavorAny {
 		return true
+	}
+	if f < 0 || f >= flavorCount || feat < 0 || feat >= featureCount {
+		return false
 	}
 	return support[f][feat]
 }
