@@ -24,27 +24,17 @@ type DelimiterProcessor interface {
 }
 
 // A Delimiter struct represents a delimiter like '*' of the Markdown text.
+//
+// Pointer-bearing fields (PreviousDelimiter, NextDelimiter, Processor)
+// are declared before the scalar fields (Segment, CanOpen, CanClose,
+// Length, OriginalLength, Char): GC ptrdata spans through the last
+// pointer field, so this ordering keeps the scalar tail out of the
+// pointer scan. One Delimiter is allocated per emphasis-run candidate
+// in every file's inline parse. See
+// docs/development/high-performance-go.md "Group pointer fields
+// first, scalars last".
 type Delimiter struct {
 	ast.BaseInline
-
-	Segment text.Segment
-
-	// CanOpen is set true if this delimiter can open a span for a new node.
-	// See https://spec.commonmark.org/0.30/#can-open-emphasis for details.
-	CanOpen bool
-
-	// CanClose is set true if this delimiter can close a span for a new node.
-	// See https://spec.commonmark.org/0.30/#can-open-emphasis for details.
-	CanClose bool
-
-	// Length is a remaining length of this delimiter.
-	Length int
-
-	// OriginalLength is a original length of this delimiter.
-	OriginalLength int
-
-	// Char is a character of this delimiter.
-	Char byte
 
 	// PreviousDelimiter is a previous sibling delimiter node of this delimiter.
 	PreviousDelimiter *Delimiter
@@ -54,6 +44,25 @@ type Delimiter struct {
 
 	// Processor is a DelimiterProcessor associated with this delimiter.
 	Processor DelimiterProcessor
+
+	Segment text.Segment
+
+	// Length is a remaining length of this delimiter.
+	Length int
+
+	// OriginalLength is a original length of this delimiter.
+	OriginalLength int
+
+	// CanOpen is set true if this delimiter can open a span for a new node.
+	// See https://spec.commonmark.org/0.30/#can-open-emphasis for details.
+	CanOpen bool
+
+	// CanClose is set true if this delimiter can close a span for a new node.
+	// See https://spec.commonmark.org/0.30/#can-open-emphasis for details.
+	CanClose bool
+
+	// Char is a character of this delimiter.
+	Char byte
 }
 
 // Inline implements Inline.Inline.

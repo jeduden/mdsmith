@@ -19,11 +19,16 @@ func NewFencedCodeBlockParser() BlockParser {
 	return defaultFencedCodeBlockParser
 }
 
+// node (a pointer-bearing interface) is declared first so the GC
+// ptrdata scan does not extend across the scalar fields that follow;
+// see docs/development/high-performance-go.md "Group pointer fields
+// first, scalars last". One instance is allocated per fenced-code-
+// block open.
 type fenceData struct {
+	node   ast.Node
 	char   byte
 	indent int
 	length int
-	node   ast.Node
 }
 
 var fencedCodeBlockInfoKey = NewContextKey()
@@ -60,7 +65,12 @@ func (b *fencedCodeBlockParser) Open(parent ast.Node, reader text.Reader, pc Con
 		}
 	}
 	node := ast.NewFencedCodeBlock(info)
-	pc.Set(fencedCodeBlockInfoKey, &fenceData{fenceChar, findent, oFenceLength, node})
+	pc.Set(fencedCodeBlockInfoKey, &fenceData{
+		node:   node,
+		char:   fenceChar,
+		indent: findent,
+		length: oFenceLength,
+	})
 	return node, NoChildren
 
 }
