@@ -9,17 +9,9 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/jeduden/mdsmith/pkg/goldmark/internal/fieldorder"
 	"github.com/stretchr/testify/assert"
 )
-
-func isPointerish(k reflect.Kind) bool {
-	switch k {
-	case reflect.Ptr, reflect.Interface, reflect.Slice, reflect.Map,
-		reflect.Chan, reflect.Func, reflect.String, reflect.UnsafePointer:
-		return true
-	}
-	return false
-}
 
 // assertOwnFieldsPointersBeforeScalars checks that, among typ's
 // fields starting at index skip (use 1 to skip an embedded base
@@ -30,7 +22,7 @@ func assertOwnFieldsPointersBeforeScalars(t *testing.T, typ reflect.Type, skip i
 	seenScalar := false
 	for i := skip; i < typ.NumField(); i++ {
 		f := typ.Field(i)
-		if isPointerish(f.Type.Kind()) {
+		if fieldorder.IsPointerish(f.Type.Kind()) {
 			assert.Falsef(t, seenScalar,
 				"field %s (%s, pointer-ish) is declared after a scalar field; "+
 					"pointer fields should precede scalars to shrink GC ptrdata",
