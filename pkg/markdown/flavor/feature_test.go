@@ -117,14 +117,21 @@ func TestFeatureCount_MatchesAllFeatures(t *testing.T) {
 	assert.Equal(t, len(AllFeatures()), int(featureCount))
 }
 
+// flavorScanSlack is how far past the last declared Flavor constant
+// TestFlavorCount_CoversEveryValidFlavor scans. New Flavor constants
+// are added one (or a small handful) at a time, so a slack of 10
+// comfortably catches the next one added without a matching
+// flavorCount bump; it is not tied to any specific count.
+const flavorScanSlack = 10
+
 // TestFlavorCount_CoversEveryValidFlavor pins flavorCount against
 // every Flavor value Flavor.String (and so IsValid) recognises — the
-// Flavor equivalent of TestFeatureCount_MatchesAllFeatures. Scans a
-// generous range past the last declared constant so a newly added
-// Flavor with no matching flavorCount bump fails this test instead of
-// silently losing its row in the support table.
+// Flavor equivalent of TestFeatureCount_MatchesAllFeatures. Scans past
+// the last declared constant so a newly added Flavor with no matching
+// flavorCount bump fails this test instead of silently losing its row
+// in the support table.
 func TestFlavorCount_CoversEveryValidFlavor(t *testing.T) {
-	for f := Flavor(0); f <= FlavorMyST+10; f++ {
+	for f := Flavor(0); f <= FlavorMyST+flavorScanSlack; f++ {
 		if f.IsValid() {
 			assert.Lessf(t, int(f), flavorCount,
 				"flavor %s (%d) is valid but falls outside the support table bounds", f, int(f))
