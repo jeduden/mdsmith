@@ -94,10 +94,18 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	// f.FS when RootFS is missing or rootRelative fails.
 	corpus, selfName, rootDir := resolveCorpus(f)
 
-	index := buildCorpusIndex(
-		f.RunCache, rootDir, corpus, selfName, f.MaxInputBytes, minChars,
-		f.StripFrontMatter, r.Include, r.Exclude,
-	)
+	index := buildCorpusIndex(corpusScanConfig{
+		runCache:         f.RunCache,
+		rootDir:          rootDir,
+		corpus:           corpus,
+		selfName:         selfName,
+		maxBytes:         f.MaxInputBytes,
+		minChars:         minChars,
+		keySuffix:        "\x00" + strconv.Itoa(minChars),
+		stripFrontMatter: f.StripFrontMatter,
+		include:          r.Include,
+		exclude:          r.Exclude,
+	})
 
 	var diags []lint.Diagnostic
 	for _, p := range self {
@@ -345,45 +353,51 @@ func rootRelative(rootDir, path string) (string, bool) {
 	return slash, true
 }
 
-// buildCorpusIndex walks corpus for .md files (excluding selfName) and
-// returns a map from paragraph fingerprint to every occurrence found.
-// Files that can't be read or parsed are silently skipped — this rule is
-// advisory and should never fail a run because a sibling file is
-// malformed or oversize.
+// corpusScanConfig bundles the settings buildCorpusIndex,
+// indexFileIfEligible, and candidateParagraphs all need to walk one
+// corpus for one host file's Check call. Building it once in Check
+// instead of re-threading each setting as its own positional
+// parameter keeps a future setting addition (RunCache and keySuffix
+// were both added this way) from growing an already-long parameter
+// list further.
+type corpusScanConfig struct {
+	runCache *lint.RunCache
+	corpus   fs.FS
+	// rootDir is the absolute on-disk directory corpus is rooted at,
+	// or "" for the FS-only fallback (no stable absolute path) —
+	// candidateParagraphs skips the RunCache in that case.
+	rootDir  string
+	selfName string
+	maxBytes int64
+	minChars int
+	// keySuffix is "\x00"+minChars, built once per Check call since
+	// minChars is fixed for the whole corpus walk.
+	keySuffix        string
+	stripFrontMatter bool
+	include, exclude []string
+}
+
+// buildCorpusIndex walks cfg.corpus for .md files (excluding
+// cfg.selfName) and returns a map from paragraph fingerprint to every
+// occurrence found. Files that can't be read or parsed are silently
+// skipped — this rule is advisory and should never fail a run because
+// a sibling file is malformed or oversize.
 //
-// runCache and rootDir (both from resolveCorpus) let
-// candidateParagraphs memoize each sibling's fingerprinted paragraphs
-// on the engine's RunCache: a workspace of N files enabling MDS037
-// otherwise re-reads and re-parses every sibling from scratch on
-// every host file's Check, an O(N^2) cost across the run. rootDir =="
-// "" (FS-only fallback, no stable absolute path) skips the cache.
-func buildCorpusIndex(
-	runCache *lint.RunCache,
-	rootDir string,
-	corpus fs.FS,
-	selfName string,
-	maxBytes int64,
-	minChars int,
-	stripFrontMatter bool,
-	include, exclude []string,
-) map[string][]externalMatch {
-	// keySuffix is the same for every candidate file in this walk
-	// (minChars is fixed for the whole Check call), so it is built
-	// once here rather than on every indexFileIfEligible call.
-	keySuffix := "\x00" + strconv.Itoa(minChars)
+// cfg.runCache and cfg.rootDir let candidateParagraphs memoize each
+// sibling's fingerprinted paragraphs on the engine's RunCache: a
+// workspace of N files enabling MDS037 otherwise re-reads and
+// re-parses every sibling from scratch on every host file's Check, an
+// O(N^2) cost across the run.
+func buildCorpusIndex(cfg corpusScanConfig) map[string][]externalMatch {
 	index := make(map[string][]externalMatch)
-	_ = fs.WalkDir(corpus, ".", func(path string, d fs.DirEntry, err error) error {
+	_ = fs.WalkDir(cfg.corpus, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
 		if d.IsDir() {
-			return walkDirDecision(path, exclude)
+			return walkDirDecision(path, cfg.exclude)
 		}
-		indexFileIfEligible(
-			index, runCache, rootDir, corpus, path, selfName,
-			maxBytes, minChars, keySuffix, stripFrontMatter,
-			include, exclude,
-		)
+		indexFileIfEligible(index, cfg, path)
 		return nil
 	})
 
@@ -426,27 +440,14 @@ func walkDirDecision(p string, exclude []string) error {
 // Markdown, match the current file, fail include/exclude, are
 // unreadable, or unparseable are silently dropped — this rule is
 // advisory and must not fail a run because of a sibling.
-func indexFileIfEligible(
-	index map[string][]externalMatch,
-	runCache *lint.RunCache,
-	rootDir string,
-	corpus fs.FS,
-	path, selfName string,
-	maxBytes int64,
-	minChars int,
-	keySuffix string,
-	stripFrontMatter bool,
-	include, exclude []string,
-) {
-	if !isMarkdownPath(path) || path == selfName {
+func indexFileIfEligible(index map[string][]externalMatch, cfg corpusScanConfig, path string) {
+	if !isMarkdownPath(path) || path == cfg.selfName {
 		return
 	}
-	if !matchesFilters(path, include, exclude) {
+	if !matchesFilters(path, cfg.include, cfg.exclude) {
 		return
 	}
-	for _, p := range candidateParagraphs(
-		runCache, rootDir, corpus, path, maxBytes, minChars, keySuffix, stripFrontMatter,
-	) {
+	for _, p := range candidateParagraphs(cfg, path) {
 		index[p.fingerprint] = append(index[p.fingerprint], externalMatch{
 			path: path,
 			line: p.line,
@@ -456,26 +457,17 @@ func indexFileIfEligible(
 
 // candidateParagraphs returns a corpus candidate's fingerprinted
 // paragraphs, adjusted for its own front-matter line offset. When
-// runCache and rootDir are both available, the result is memoized on
-// runCache keyed by the candidate's absolute on-disk path plus
-// keySuffix (built from minChars, the one rule setting that can vary
-// per file kind and therefore change which paragraphs qualify) —
-// RunCache.Invalidate evicts by the absPath prefix, so an LSP
-// document edit still refreshes the right slot. Without a stable
+// cfg.runCache and cfg.rootDir are both available, the result is
+// memoized on the RunCache keyed by the candidate's absolute on-disk
+// path plus cfg.keySuffix (built from minChars, the one rule setting
+// that can vary per file kind and therefore change which paragraphs
+// qualify) — RunCache.Invalidate evicts by the absPath prefix, so an
+// LSP document edit still refreshes the right slot. Without a stable
 // absolute path (in-memory FS, or no RunCache at all), every call
 // reads and re-parses the file directly.
-func candidateParagraphs(
-	runCache *lint.RunCache,
-	rootDir string,
-	corpus fs.FS,
-	path string,
-	maxBytes int64,
-	minChars int,
-	keySuffix string,
-	stripFrontMatter bool,
-) []paragraph {
+func candidateParagraphs(cfg corpusScanConfig, path string) []paragraph {
 	build := func() []paragraph {
-		data, err := bytelimit.ReadFSFileLimited(corpus, path, maxBytes)
+		data, err := bytelimit.ReadFSFileLimited(cfg.corpus, path, cfg.maxBytes)
 		if err != nil {
 			return nil
 		}
@@ -483,18 +475,18 @@ func candidateParagraphs(
 		// out of ReadFSFileLimited successfully; goldmark's parser
 		// does not error on any input. The error return is kept in
 		// the signature for future-proofing but is dead here.
-		other, _ := lint.NewFileFromSource(path, data, stripFrontMatter) //nolint:errcheck
-		paragraphs := extractParagraphs(other, minChars)
+		other, _ := lint.NewFileFromSource(path, data, cfg.stripFrontMatter) //nolint:errcheck
+		paragraphs := extractParagraphs(other, cfg.minChars)
 		for i := range paragraphs {
 			paragraphs[i].line += other.LineOffset
 		}
 		return paragraphs
 	}
-	if runCache == nil || rootDir == "" {
+	if cfg.runCache == nil || cfg.rootDir == "" {
 		return build()
 	}
-	absPath := filepath.Join(rootDir, filepath.FromSlash(path))
-	v := runCache.DuplicateParagraphs(absPath+keySuffix, func() any { return build() })
+	absPath := filepath.Join(cfg.rootDir, filepath.FromSlash(path))
+	v := cfg.runCache.DuplicateParagraphs(absPath+cfg.keySuffix, func() any { return build() })
 	paragraphs, _ := v.([]paragraph)
 	return paragraphs
 }
