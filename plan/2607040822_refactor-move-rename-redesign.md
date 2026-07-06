@@ -277,7 +277,7 @@ over the vault's `MemWorkspace`.
     Update the mdbase
     [comparison](../docs/background/markdown-linters.md) and
     mark C-4/L-3 scheduled.
-11. Run `mdsmith fix PLAN.md` and `mdsmith check .`.
+10. Run `mdsmith fix PLAN.md` and `mdsmith check .`.
 
 ## Acceptance Criteria
 
@@ -316,4 +316,3 @@ over the vault's `MemWorkspace`.
 - **Guard aggressiveness.** The `.md`-suffix heuristic trips
   a heading titled `config.md`. Confirm it is worth the rare
   false positive, or gate on the missing-symbol case alone.
-</content>
