@@ -106,6 +106,32 @@ func TestSupports_OutOfRangeReturnsFalse(t *testing.T) {
 	assert.False(t, Supports(FlavorGFM, Feature(-1)))
 }
 
+// TestFeatureCount_MatchesAllFeatures pins featureCount (sizing the
+// support array) against the actual number of declared Feature
+// constants. featureCount = FeatureGitHubAlerts + 1 is a "last enum
+// value" idiom: adding a new Feature constant without also touching
+// this line would silently undersize the array, and every flavor
+// would report false for the new feature with no compile error. This
+// test fails the moment that drift happens.
+func TestFeatureCount_MatchesAllFeatures(t *testing.T) {
+	assert.Equal(t, len(AllFeatures()), int(featureCount))
+}
+
+// TestFlavorCount_CoversEveryValidFlavor pins flavorCount against
+// every Flavor value Flavor.String (and so IsValid) recognises — the
+// Flavor equivalent of TestFeatureCount_MatchesAllFeatures. Scans a
+// generous range past the last declared constant so a newly added
+// Flavor with no matching flavorCount bump fails this test instead of
+// silently losing its row in the support table.
+func TestFlavorCount_CoversEveryValidFlavor(t *testing.T) {
+	for f := Flavor(0); f <= FlavorMyST+10; f++ {
+		if f.IsValid() {
+			assert.Lessf(t, int(f), flavorCount,
+				"flavor %s (%d) is valid but falls outside the support table bounds", f, int(f))
+		}
+	}
+}
+
 func TestFeatureName(t *testing.T) {
 	assert.Equal(t, "tables", FeatureTables.Name())
 	assert.Equal(t, "task lists", FeatureTaskLists.Name())
