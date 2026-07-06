@@ -3,18 +3,25 @@ id: 2607040635
 title: >-
   Add mdsmith move: move a file and rewrite every
   incoming reference
-status: "🔲"
+status: "⛔"
 model: opus
 summary: >-
-  New `mdsmith move <src> <dst>` subcommand. Moves the
-  file via `git mv` when it is tracked in the current
-  Git repository, plain rename otherwise, and rewrites every
-  incoming workspace reference (links, ref-defs,
-  wikilinks, include/build paths) in one atomic
-  operation. Closes gap C-4/L-3 from the mdbase
-  comparison.
+  Superseded by the refactor engine redesign
+  (plan/2607040822), which unifies move and rename behind
+  one Plan across the CLI, LSP, and WASM hosts instead of
+  bolting a standalone move command onto rename. The move
+  behavior described here — `git mv` when tracked, incoming
+  reference rewrites, closing C-4/L-3 — carries forward
+  into that plan.
 ---
 # Add mdsmith move
+
+> **Superseded by
+> [the refactor engine redesign](2607040822_refactor-move-rename-redesign.md).**
+> That plan treats move and rename as one operation over
+> different identity kinds and adds the LSP and extension
+> surfaces. The original single-command scope below is kept
+> for history.
 
 ## Context
 
