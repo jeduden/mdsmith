@@ -114,17 +114,23 @@ func (r *Rule) diag(f *lint.File, line int, msg string) lint.Diagnostic {
 }
 
 // docFrontMatter returns the file's parsed top-level front matter, or
-// nil when none is available. It prefers f.FrontMatter, which the
-// engine populates in production. When that is empty — files built via
-// lint.NewFile in unit and fixture tests, or a real file with no front
-// matter — it falls back to reading the file from the workspace FS so a
-// file's own front matter is still visible. An unreadable path yields
-// nil, which Check treats as "every field missing".
+// nil when none is available. It reads, in order: f.FrontMatter (the
+// engine populates it when it strips front matter); f.Source (a File
+// parsed without stripping — e.g. lint.NewFile — keeps the prefix
+// inline, so use that in-memory copy rather than a disk re-read); and
+// finally the file re-read from f.FS (the fixture harness builds a File
+// from an already-stripped body, so the original on disk still carries
+// the front matter). An unreadable path yields nil, which Check treats
+// as "every field missing".
 func (r *Rule) docFrontMatter(f *lint.File) map[string]any {
 	fmBytes := f.FrontMatter
-	if len(fmBytes) == 0 && f.FS != nil && f.Path != "" {
-		if data, err := fs.ReadFile(f.FS, filepath.ToSlash(f.Path)); err == nil {
-			fmBytes, _ = lint.StripFrontMatter(data)
+	if len(fmBytes) == 0 {
+		if prefix, _ := lint.StripFrontMatter(f.Source); len(prefix) > 0 {
+			fmBytes = prefix
+		} else if f.FS != nil && f.Path != "" {
+			if data, err := fs.ReadFile(f.FS, filepath.ToSlash(f.Path)); err == nil {
+				fmBytes, _ = lint.StripFrontMatter(data)
+			}
 		}
 	}
 	body := extractYAMLBody(fmBytes)

@@ -119,21 +119,35 @@ func TestCheck_ExcludeReservedFiles(t *testing.T) {
 	assert.Len(t, r.Check(f), 1)
 }
 
-func TestCheck_FSFallbackReadsOwnFrontMatter(t *testing.T) {
-	// When f.FrontMatter is empty (files built via lint.NewFile), the
-	// rule reads the file from f.FS so its own front matter is visible.
-	src := "---\ntype: Playbook\n---\n# Steps\n"
-	f, err := lint.NewFile("play.md", []byte(src))
-	require.NoError(t, err)
-	f.FS = fstest.MapFS{"play.md": &fstest.MapFile{Data: []byte(src)}}
+func TestCheck_ReadsFrontMatterFromSource(t *testing.T) {
+	// A File parsed without stripping (lint.NewFile) keeps its front
+	// matter in f.Source; the rule reads it with no f.FS wired.
 	r := &Rule{Fields: []string{"type"}}
+	f, err := lint.NewFile("play.md", []byte("---\ntype: Playbook\n---\n# Steps\n"))
+	require.NoError(t, err)
 	assert.Nil(t, r.Check(f))
 
-	// Same file path but the on-disk copy lacks type → flagged.
-	bad := "---\ntitle: x\n---\n# Steps\n"
-	f2, err := lint.NewFile("play.md", []byte(bad))
+	f2, err := lint.NewFile("play.md", []byte("---\ntitle: x\n---\n# Steps\n"))
 	require.NoError(t, err)
-	f2.FS = fstest.MapFS{"play.md": &fstest.MapFile{Data: []byte(bad)}}
+	assert.Len(t, r.Check(f2), 1)
+}
+
+func TestCheck_FSFallbackWhenSourceStripped(t *testing.T) {
+	// The fixture harness builds a File from an already-stripped body, so
+	// f.Source carries no front matter; the rule re-reads the original
+	// from f.FS to see the file's own front matter.
+	r := &Rule{Fields: []string{"type"}}
+	f, err := lint.NewFile("play.md", []byte("# Steps\n"))
+	require.NoError(t, err)
+	f.FS = fstest.MapFS{"play.md": &fstest.MapFile{
+		Data: []byte("---\ntype: Playbook\n---\n# Steps\n")}}
+	assert.Nil(t, r.Check(f))
+
+	// Same path, but the on-disk copy lacks type → flagged.
+	f2, err := lint.NewFile("play.md", []byte("# Steps\n"))
+	require.NoError(t, err)
+	f2.FS = fstest.MapFS{"play.md": &fstest.MapFile{
+		Data: []byte("---\ntitle: x\n---\n# Steps\n")}}
 	assert.Len(t, r.Check(f2), 1)
 }
 
