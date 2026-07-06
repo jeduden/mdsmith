@@ -66,11 +66,14 @@ type OSWorkspace struct {
 }
 
 // ReadFile reads path from the host filesystem. When Root is set and path
-// is workspace-relative, it is read through a short-lived, RESOLVE_BENEATH
-// containment (readFileRooted) so a symlink escaping Root is refused the
-// same way FS() refuses it — see the Root field doc — without leaking an
-// open directory handle per call the way repeatedly fetching FS() would
-// (see FS's doc comment). An absolute path, or any path when Root is
+// is workspace-relative, it is read through readFileRooted so a symlink
+// escaping Root is refused the same way FS() refuses it — see the Root
+// field doc — without leaking an open directory handle per call the way
+// repeatedly fetching FS() would (see FS's doc comment). This containment
+// is RESOLVE_BENEATH via os.OpenRoot on non-tinygo builds; readFileRooted's
+// tinygo variant uses os.DirFS with no containment, matching FS()'s own
+// per-build-tag split (OSWorkspace is not used in wasm builds — see
+// workspace_fs_tinygo.go). An absolute path, or any path when Root is
 // empty, is read unchanged with no workspace boundary to enforce.
 func (w OSWorkspace) ReadFile(p string) ([]byte, error) {
 	if w.Root == "" || filepath.IsAbs(p) {
