@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -638,6 +639,60 @@ func TestCheck_MultipleMatchesSortDeterministically(t *testing.T) {
 	require.Len(t, diags, 2)
 	assert.Contains(t, diags[0].Message, "b.md")
 	assert.Contains(t, diags[1].Message, "c.md")
+}
+
+// countingFS wraps an fs.FS and counts Open calls per name, so a test
+// can assert a file is read from disk at most once across several
+// Check calls that share one lint.RunCache.
+type countingFS struct {
+	fs.FS
+	mu    sync.Mutex
+	opens map[string]int
+}
+
+func (c *countingFS) Open(name string) (fs.File, error) {
+	c.mu.Lock()
+	c.opens[name]++
+	c.mu.Unlock()
+	return c.FS.Open(name)
+}
+
+// TestCheck_RunCacheReusesCorpusParseAcrossHostFiles pins the fix for
+// MDS037's O(N^2) corpus rebuild: buildCorpusIndex used to re-read,
+// re-parse, and re-fingerprint every sibling file from scratch on
+// every host file's Check call. When host files share one RunCache
+// (the engine's per-Run cache), each sibling's fingerprinted
+// paragraphs must be computed at most once across the whole run.
+func TestCheck_RunCacheReusesCorpusParseAcrossHostFiles(t *testing.T) {
+	dir := t.TempDir()
+	p := longParagraph("shared paragraph text for the run cache test")
+	writeFile(t, filepath.Join(dir, "a.md"), "# A\n\n"+p+"\n")
+	writeFile(t, filepath.Join(dir, "b.md"), "# B\n\n"+p+"\n")
+	writeFile(t, filepath.Join(dir, "c.md"), "# C\n\nunrelated short text\n")
+
+	counting := &countingFS{FS: os.DirFS(dir), opens: map[string]int{}}
+	runCache := lint.NewRunCache()
+
+	for _, name := range []string{"a.md", "b.md", "c.md"} {
+		data, err := os.ReadFile(filepath.Join(dir, name))
+		require.NoError(t, err)
+		// f.Path must be absolute (as a discovered-root CLI run would
+		// produce it) so rootRelative resolves it against dir instead
+		// of the test process's working directory.
+		f, err := lint.NewFile(filepath.Join(dir, name), data)
+		require.NoError(t, err)
+		f.FS = counting
+		f.RootDir = dir
+		f.RootFS = counting
+		f.RunCache = runCache
+		_ = (&Rule{}).Check(f)
+	}
+
+	for _, name := range []string{"a.md", "b.md", "c.md"} {
+		assert.LessOrEqualf(t, counting.opens[name], 1,
+			"expected %s to be read from disk at most once across Check "+
+				"calls sharing a RunCache, got %d opens", name, counting.opens[name])
+	}
 }
 
 func TestApplySettings_RejectsBadExcludeType(t *testing.T) {

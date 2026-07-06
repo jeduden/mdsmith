@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -91,10 +92,10 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	// resolveCorpus is guaranteed non-nil here: the f.FS == nil
 	// guard above short-circuits, and resolveCorpus falls back to
 	// f.FS when RootFS is missing or rootRelative fails.
-	corpus, selfName := resolveCorpus(f)
+	corpus, selfName, rootDir := resolveCorpus(f)
 
 	index := buildCorpusIndex(
-		corpus, selfName, f.MaxInputBytes, minChars,
+		f.RunCache, rootDir, corpus, selfName, f.MaxInputBytes, minChars,
 		f.StripFrontMatter, r.Include, r.Exclude,
 	)
 
@@ -290,7 +291,11 @@ func appendNormalized(dst, src []byte) []byte {
 // resolveCorpus picks the filesystem to scan and the path of the current
 // file within it. RootFS (the project root) is preferred; otherwise the
 // file's own directory is used. The returned selfName is forward-slash,
-// fs.FS-style so it can be compared to fs.WalkDir's path argument.
+// fs.FS-style so it can be compared to fs.WalkDir's path argument. The
+// returned rootDir is f.RootDir when RootFS is in play, or "" for the
+// FS-only fallback — buildCorpusIndex uses it to form the absolute
+// on-disk path that keys the per-file RunCache memo; an empty rootDir
+// signals "no stable absolute path, skip the RunCache".
 //
 // f.Path may be absolute (CLI runs with a discovered root) or relative
 // to the project root (ResolveFiles returns things like "./docs/a.md").
@@ -299,13 +304,13 @@ func appendNormalized(dst, src []byte) []byte {
 // falls through to the FS scope rather than walking the whole project
 // root behind the user's back. Callers guarantee f.FS != nil before
 // invoking this.
-func resolveCorpus(f *lint.File) (fs.FS, string) {
+func resolveCorpus(f *lint.File) (corpus fs.FS, selfName string, rootDir string) {
 	if f.RootFS != nil && f.RootDir != "" {
 		if selfName, ok := rootRelative(f.RootDir, f.Path); ok {
-			return f.RootFS, selfName
+			return f.RootFS, selfName, f.RootDir
 		}
 	}
-	return f.FS, filepath.Base(f.Path)
+	return f.FS, filepath.Base(f.Path), ""
 }
 
 // rootRelative returns path expressed relative to rootDir using forward
@@ -345,7 +350,16 @@ func rootRelative(rootDir, path string) (string, bool) {
 // Files that can't be read or parsed are silently skipped — this rule is
 // advisory and should never fail a run because a sibling file is
 // malformed or oversize.
+//
+// runCache and rootDir (both from resolveCorpus) let
+// candidateParagraphs memoize each sibling's fingerprinted paragraphs
+// on the engine's RunCache: a workspace of N files enabling MDS037
+// otherwise re-reads and re-parses every sibling from scratch on
+// every host file's Check, an O(N^2) cost across the run. rootDir =="
+// "" (FS-only fallback, no stable absolute path) skips the cache.
 func buildCorpusIndex(
+	runCache *lint.RunCache,
+	rootDir string,
 	corpus fs.FS,
 	selfName string,
 	maxBytes int64,
@@ -362,7 +376,7 @@ func buildCorpusIndex(
 			return walkDirDecision(path, exclude)
 		}
 		indexFileIfEligible(
-			index, corpus, path, selfName,
+			index, runCache, rootDir, corpus, path, selfName,
 			maxBytes, minChars, stripFrontMatter,
 			include, exclude,
 		)
@@ -410,6 +424,8 @@ func walkDirDecision(p string, exclude []string) error {
 // advisory and must not fail a run because of a sibling.
 func indexFileIfEligible(
 	index map[string][]externalMatch,
+	runCache *lint.RunCache,
+	rootDir string,
 	corpus fs.FS,
 	path, selfName string,
 	maxBytes int64,
@@ -423,21 +439,60 @@ func indexFileIfEligible(
 	if !matchesFilters(path, include, exclude) {
 		return
 	}
-	data, err := bytelimit.ReadFSFileLimited(corpus, path, maxBytes)
-	if err != nil {
-		return
-	}
-	// NewFileFromSource cannot fail for in-memory bytes that came
-	// out of ReadFSFileLimited successfully; goldmark's parser does
-	// not error on any input. The error return is kept in the
-	// signature for future-proofing but is dead here.
-	other, _ := lint.NewFileFromSource(path, data, stripFrontMatter) //nolint:errcheck
-	for _, p := range extractParagraphs(other, minChars) {
+	for _, p := range candidateParagraphs(
+		runCache, rootDir, corpus, path, maxBytes, minChars, stripFrontMatter,
+	) {
 		index[p.fingerprint] = append(index[p.fingerprint], externalMatch{
 			path: path,
-			line: p.line + other.LineOffset,
+			line: p.line,
 		})
 	}
+}
+
+// candidateParagraphs returns a corpus candidate's fingerprinted
+// paragraphs, adjusted for its own front-matter line offset. When
+// runCache and rootDir are both available, the result is memoized on
+// runCache keyed by the candidate's absolute on-disk path plus
+// minChars (the one rule setting that can vary per file kind and
+// therefore change which paragraphs qualify) — RunCache.Invalidate
+// evicts by the absPath prefix, so an LSP document edit still refreshes
+// the right slot. Without a stable absolute path (in-memory FS, or no
+// RunCache at all), every call reads and re-parses the file directly.
+func candidateParagraphs(
+	runCache *lint.RunCache,
+	rootDir string,
+	corpus fs.FS,
+	path string,
+	maxBytes int64,
+	minChars int,
+	stripFrontMatter bool,
+) []paragraph {
+	build := func() []paragraph {
+		data, err := bytelimit.ReadFSFileLimited(corpus, path, maxBytes)
+		if err != nil {
+			return nil
+		}
+		// NewFileFromSource cannot fail for in-memory bytes that came
+		// out of ReadFSFileLimited successfully; goldmark's parser
+		// does not error on any input. The error return is kept in
+		// the signature for future-proofing but is dead here.
+		other, _ := lint.NewFileFromSource(path, data, stripFrontMatter) //nolint:errcheck
+		paragraphs := extractParagraphs(other, minChars)
+		if other.LineOffset != 0 {
+			for i := range paragraphs {
+				paragraphs[i].line += other.LineOffset
+			}
+		}
+		return paragraphs
+	}
+	if runCache == nil || rootDir == "" {
+		return build()
+	}
+	absPath := filepath.Join(rootDir, filepath.FromSlash(path))
+	key := absPath + "\x00" + strconv.Itoa(minChars)
+	v := runCache.DuplicateParagraphs(key, func() any { return build() })
+	paragraphs, _ := v.([]paragraph)
+	return paragraphs
 }
 
 func isMarkdownPath(p string) bool {

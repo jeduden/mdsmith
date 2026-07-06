@@ -1,6 +1,9 @@
 package lint
 
-import "sync"
+import (
+	"strings"
+	"sync"
+)
 
 // RunCache memoizes per-target-file reads (front matter, include
 // adjacency) across every host file processed in one engine.Run pass.
@@ -16,13 +19,14 @@ import "sync"
 // lifetime and calls Invalidate when a document edit could change
 // what the next Check would read from disk.
 type RunCache struct {
-	frontMatter  sync.Map // string (absPath) -> *runCacheEntry
-	includes     sync.Map // string (absPath) -> *runCacheEntry
-	anchors      sync.Map // string (absPath) -> *anchorEntry
-	wikilinks    sync.Map // string (root key) -> *runCacheEntry
-	globMatches  sync.Map // string (base+patterns key) -> *runCacheEntry
-	parsedSchema sync.Map // string (absPath) -> *runCacheEntry
-	compiledCUE  sync.Map // string (CUE source) -> *runCacheEntry
+	frontMatter         sync.Map // string (absPath) -> *runCacheEntry
+	includes            sync.Map // string (absPath) -> *runCacheEntry
+	anchors             sync.Map // string (absPath) -> *anchorEntry
+	wikilinks           sync.Map // string (root key) -> *runCacheEntry
+	globMatches         sync.Map // string (base+patterns key) -> *runCacheEntry
+	parsedSchema        sync.Map // string (absPath) -> *runCacheEntry
+	compiledCUE         sync.Map // string (CUE source) -> *runCacheEntry
+	duplicateParagraphs sync.Map // string (absPath+"\x00"+settings key) -> *runCacheEntry
 
 	// uniqueFieldIndex memoizes MDS069's per-scope value→first-file
 	// index. Keys encode a rule scope (field + globs), not a path.
@@ -160,6 +164,19 @@ func (c *RunCache) dropUniqueFieldIndexes(absPath string) {
 	})
 }
 
+// dropDuplicateParagraphs evicts every DuplicateParagraphs slot whose
+// key was built from absPath, regardless of the settings suffix
+// (e.g. min-chars) a caller appended after the "\x00" separator.
+func (c *RunCache) dropDuplicateParagraphs(absPath string) {
+	prefix := absPath + "\x00"
+	c.duplicateParagraphs.Range(func(k, _ any) bool {
+		if key, ok := k.(string); ok && strings.HasPrefix(key, prefix) {
+			c.duplicateParagraphs.Delete(k)
+		}
+		return true
+	})
+}
+
 // Includes returns build's result for absPath. The value is the list
 // of absolute filesystem paths every <?include?> in the file at
 // absPath resolves to. Position-independent so two host files whose
@@ -235,6 +252,24 @@ func (c *RunCache) InvalidateGlobMatches() {
 		c.globMatches.Delete(k)
 		return true
 	})
+}
+
+// DuplicateParagraphs returns build's result for key, computed at
+// most once per key in this cache's lifetime. The canonical caller
+// is MDS037 (duplicated-content): a corpus file's fingerprinted
+// paragraphs are a pure function of its bytes plus the rule's
+// min-chars setting, so memoizing them here collapses the per-host-
+// file corpus walk from re-reading and re-parsing every sibling file
+// to reading each sibling at most once per Run.
+//
+// key must be the target's absolute on-disk path followed by a NUL
+// byte and a settings suffix (e.g. min-chars), never a bare path —
+// Invalidate(absPath) below drops every slot whose key starts with
+// "absPath\x00" so an LSP document edit evicts the right entries
+// regardless of which settings suffix produced them. A caller with
+// no stable absolute path (an in-memory FS) must not use this cache.
+func (c *RunCache) DuplicateParagraphs(key string, build func() any) any {
+	return load(&c.duplicateParagraphs, key, build)
 }
 
 // Wikilinks returns build's result keyed by rootKey, computed at
@@ -421,6 +456,7 @@ func (c *RunCache) invalidate(absPath string, visited map[string]struct{}) {
 	c.frontMatter.Delete(absPath)
 	c.includes.Delete(absPath)
 	c.anchors.Delete(absPath)
+	c.dropDuplicateParagraphs(absPath)
 
 	c.dropUniqueFieldIndexes(absPath)
 
