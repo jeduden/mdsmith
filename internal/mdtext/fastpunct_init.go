@@ -25,9 +25,12 @@ var forkTokenizer *punkt.Tokenizer
 
 // initTokenizer assembles the default-build tokenizer. The upstream
 // build tag (mdtext_punkt_upstream) provides its own initTokenizer in
-// upstreampunct.go.
+// upstreampunct.go. It builds forkTokenizer from abbrevStorage's
+// Storage (abbrev.go) instead of calling punkt.NewEnglish() again, so
+// IsAbbrevToken's lazy load and SplitSentences's tokenizer construction
+// never parse english.json twice regardless of which one runs first.
 func initTokenizer() {
-	forkTokenizer = punkt.NewEnglish()
+	forkTokenizer = punkt.New(abbrevStorage())
 }
 
 // splitSentencesInto is the default-build segmentation

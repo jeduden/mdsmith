@@ -71,9 +71,12 @@ func (s *Storage) IsAbbr(tokens ...string) bool {
 	return false
 }
 
-// abbrTokenCutset is the trailing clause punctuation IsAbbrevToken
+// AbbrevTokenCutset is the trailing clause punctuation IsAbbrevToken
 // ignores, so "e.g.," and "cf.;" are judged like "e.g." and "cf.".
-const abbrTokenCutset = ",;:"
+// Exported so a caller normalizing its own abbreviation list (e.g.
+// line-length reflow's configured Abbreviations) can match this
+// trim exactly instead of keeping a second copy of the cutset.
+const AbbrevTokenCutset = ",;:"
 
 // IsAbbrevToken reports whether tok — a single whitespace-delimited
 // word such as "Dr.", "e.g.", or "J." — is an abbreviation under this
@@ -89,7 +92,7 @@ const abbrTokenCutset = ",;:"
 // the model's per-token abbreviation judgement to decide a wrap, not a
 // sentence boundary.
 func (s *Storage) IsAbbrevToken(tok string) bool {
-	t := strings.TrimRight(tok, abbrTokenCutset)
+	t := strings.TrimRight(tok, AbbrevTokenCutset)
 	if t == "" {
 		return false
 	}
