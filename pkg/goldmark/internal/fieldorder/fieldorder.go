@@ -12,14 +12,27 @@ import (
 	"testing"
 )
 
-// IsPointerish reports whether a field's kind carries at least one
-// pointer word that the GC must scan (a pointer, interface, slice,
-// map, chan, func, string header, or unsafe.Pointer).
-func IsPointerish(k reflect.Kind) bool {
-	switch k {
+// IsPointerish reports whether t carries at least one pointer word
+// that the GC must scan: directly (a pointer, interface, slice, map,
+// chan, func, string header, or unsafe.Pointer), or indirectly
+// through a struct field or array element of such a type, checked
+// recursively. A struct's reflect.Kind is always reflect.Struct
+// regardless of what its fields hold, so a Kind-only check would
+// misclassify e.g. a struct wrapping a []byte as scalar.
+func IsPointerish(t reflect.Type) bool {
+	switch t.Kind() {
 	case reflect.Ptr, reflect.Interface, reflect.Slice, reflect.Map,
 		reflect.Chan, reflect.Func, reflect.String, reflect.UnsafePointer:
 		return true
+	case reflect.Struct:
+		for i := 0; i < t.NumField(); i++ {
+			if IsPointerish(t.Field(i).Type) {
+				return true
+			}
+		}
+		return false
+	case reflect.Array:
+		return IsPointerish(t.Elem())
 	}
 	return false
 }
@@ -34,7 +47,7 @@ func AssertPointersBeforeScalars(t testing.TB, typ reflect.Type, skip int) {
 	seenScalar := false
 	for i := skip; i < typ.NumField(); i++ {
 		f := typ.Field(i)
-		if IsPointerish(f.Type.Kind()) {
+		if IsPointerish(f.Type) {
 			if seenScalar {
 				t.Errorf("field %s (%s, pointer-ish) is declared after a scalar field; "+
 					"pointer fields should precede scalars to shrink GC ptrdata",
