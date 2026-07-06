@@ -1,6 +1,7 @@
 package build
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -764,4 +765,16 @@ func TestValidatePathEntry_InputsAcceptGlobChars(t *testing.T) {
 	} {
 		assert.Empty(t, validatePathEntry(p, true), "path %q should be accepted for inputs", p)
 	}
+}
+
+// TestReservedDeviceNames_ZeroByteValues pins reservedDeviceNames as a
+// map[string]struct{} membership set rather than map[string]bool: the
+// set is only ever probed for presence, and struct{} is a zero-byte
+// value type per docs/development/high-performance-go.md "map[K]struct{}
+// for sets".
+func TestReservedDeviceNames_ZeroByteValues(t *testing.T) {
+	typ := reflect.TypeOf(reservedDeviceNames)
+	require.Equal(t, reflect.Map, typ.Kind())
+	assert.Equal(t, uintptr(0), typ.Elem().Size(),
+		"reservedDeviceNames values should be zero-byte struct{}, not bool")
 }
