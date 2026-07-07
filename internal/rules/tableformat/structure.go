@@ -57,7 +57,7 @@ func (t tableBlock) end() int   { return t.rows[len(t.rows)-1].lineNum }
 func structureDiagnostics(f *lint.File, style, ruleID, ruleName string) []lint.Diagnostic {
 	skip := structureSkipFunc(f)
 	tables := findStructureTables(f.Lines, skip)
-	diags := make([]lint.Diagnostic, 0, len(tables))
+	var diags []lint.Diagnostic
 	for _, t := range tables {
 		diags = append(diags, checkPipeStyle(f, t, style, ruleID, ruleName)...)
 		diags = append(diags, checkColumnCount(f, t, ruleID, ruleName)...)
