@@ -68,7 +68,19 @@ func (p SectionParagraph) ExtractText(source []byte) string {
 // CollectSectionHeadings returns every heading in the document
 // ordered by source line. Used by content rules (MDS057, MDS058)
 // that need to walk heading-bounded sections.
+//
+// Memoized per File via lint.File.MemoFile, mirroring
+// CollectSectionParagraphs: MDS057 and MDS058 both enabled would
+// otherwise re-walk the same AST for the same result.
 func CollectSectionHeadings(f *lint.File) []SectionHeading {
+	return f.MemoFile("astutil.sectionHeadings", buildSectionHeadings).([]SectionHeading)
+}
+
+// buildSectionHeadings is the MemoFile-style builder for the
+// section-headings memo. Defined at package scope so the value passed
+// to MemoFile is a plain function pointer, matching
+// buildSectionParagraphs.
+func buildSectionHeadings(f *lint.File) any {
 	var out []SectionHeading
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
