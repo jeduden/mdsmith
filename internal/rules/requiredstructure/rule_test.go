@@ -2006,8 +2006,8 @@ func TestHeadingText_WithLink(t *testing.T) {
 // TestExtractHeadings_Memoized pins that repeated calls on the same
 // File share the same backing slice: a composed schema with N extends
 // sources calls extractHeadings once per source (bodySyncDiagnostics)
-// plus once from checkSingleFileSchemaFromData/checkSync/fixBodySyncIn,
-// so an unmemoized walk re-scans the same AST N+ times per Check.
+// plus once from checkSingleFileSchemaFromData/fixBodySyncIn, so an
+// unmemoized walk re-scans the same AST N+ times per Check.
 func TestExtractHeadings_Memoized(t *testing.T) {
 	f := newTestFile(t, "doc.md", "# H1\n\n## H2\n\n### H3\n")
 	h1 := extractHeadings(f)
