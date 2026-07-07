@@ -2003,6 +2003,20 @@ func TestHeadingText_WithLink(t *testing.T) {
 	assert.Contains(t, headings[0].Text, "link text")
 }
 
+// TestExtractHeadings_Memoized pins that repeated calls on the same
+// File share the same backing slice: a composed schema with N extends
+// sources calls extractHeadings once per source (bodySyncDiagnostics)
+// plus once from checkSingleFileSchemaFromData/checkSync/fixBodySyncIn,
+// so an unmemoized walk re-scans the same AST N+ times per Check.
+func TestExtractHeadings_Memoized(t *testing.T) {
+	f := newTestFile(t, "doc.md", "# H1\n\n## H2\n\n### H3\n")
+	h1 := extractHeadings(f)
+	h2 := extractHeadings(f)
+	require.Len(t, h1, 3)
+	assert.Same(t, &h1[0], &h2[0],
+		"repeated calls must return the cached slice")
+}
+
 // matchesSchema: schemaHeading with field text but compiled == nil falls
 // through to the exact-text comparison and does not match, without panicking.
 func TestMatchesSchema_CompiledNil_NoMatch(t *testing.T) {
