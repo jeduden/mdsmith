@@ -101,9 +101,9 @@ func TestScanFootnoteDefinitions_PresizedAllocs(t *testing.T) {
 // docs/development/high-performance-go.md's "return nil, not []T{}"
 // convention for the zero-match case: make([]footnoteOccurrence, 0,
 // len(matches)) with len(matches) == 0 still returns a non-nil empty
-// slice in Go, so the pre-sizing fix must special-case the no-match
-// return to stay nil, matching the convention this same PR applies to
-// headingincrement and tableformat.
+// slice in Go, so the pre-sizing fix checks len(out) == 0 after the
+// filter loop and returns nil, matching the convention this same PR
+// applies to headingincrement and tableformat.
 func TestScanFootnoteReferences_NoMatches_ReturnsNil(t *testing.T) {
 	f, err := lint.NewFile("clean.md", []byte("No footnotes here.\n"))
 	require.NoError(t, err)
@@ -116,4 +116,28 @@ func TestScanFootnoteDefinitions_NoMatches_ReturnsNil(t *testing.T) {
 	require.NoError(t, err)
 	out := scanFootnoteDefinitions(f, map[int]struct{}{})
 	assert.Nil(t, out, "scanFootnoteDefinitions must return nil when there are no matches")
+}
+
+// TestScanFootnoteReferences_AllFilteredOut_ReturnsNil and
+// TestScanFootnoteDefinitions_AllFilteredOut_ReturnsNil cover the case
+// the zero-match guard alone misses: matches is non-empty, but every
+// entry is filtered out by isFootnoteDefinitionAt/codeLines/codeSpans
+// (here, a footnote-shaped token inside a code span). The result must
+// still be nil, not the pre-sized empty backing array. Caught by code
+// review round 3.
+func TestScanFootnoteReferences_AllFilteredOut_ReturnsNil(t *testing.T) {
+	f, err := lint.NewFile("codespan.md", []byte("Use the `[^1]` token.\n"))
+	require.NoError(t, err)
+	codeSpans := f.CodeSpanLiteralRanges()
+	out := scanFootnoteReferences(f, map[int]struct{}{}, codeSpans)
+	assert.Nil(t, out, "scanFootnoteReferences must return nil when every match is filtered out")
+}
+
+func TestScanFootnoteDefinitions_AllFilteredOut_ReturnsNil(t *testing.T) {
+	src := "Example:\n\n```text\n[^1]: not a real definition\n```\n"
+	f, err := lint.NewFile("codeblock.md", []byte(src))
+	require.NoError(t, err)
+	codeLines := lint.CollectCodeBlockLines(f)
+	out := scanFootnoteDefinitions(f, codeLines)
+	assert.Nil(t, out, "scanFootnoteDefinitions must return nil when every match is filtered out")
 }
