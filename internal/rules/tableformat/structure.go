@@ -57,6 +57,7 @@ func (t tableBlock) end() int   { return t.rows[len(t.rows)-1].lineNum }
 func structureDiagnostics(f *lint.File, style, ruleID, ruleName string) []lint.Diagnostic {
 	skip := structureSkipFunc(f)
 	tables := findStructureTables(f.Lines, skip)
+	//nolint:prealloc // most tables are well-formed; nil stays nil instead of an allocated empty slice
 	var diags []lint.Diagnostic
 	for _, t := range tables {
 		diags = append(diags, checkPipeStyle(f, t, style, ruleID, ruleName)...)
