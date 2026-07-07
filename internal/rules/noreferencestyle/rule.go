@@ -373,6 +373,9 @@ func scanFootnoteReferences(
 ) []footnoteOccurrence {
 	source := f.Source
 	matches := footnoteRefRE.FindAllSubmatchIndex(source, -1)
+	if len(matches) == 0 {
+		return nil
+	}
 	out := make([]footnoteOccurrence, 0, len(matches))
 	for _, m := range matches {
 		start := m[0]
@@ -403,6 +406,9 @@ func scanFootnoteDefinitions(
 ) []footnoteOccurrence {
 	source := f.Source
 	matches := footnoteDefRE.FindAllSubmatchIndex(source, -1)
+	if len(matches) == 0 {
+		return nil
+	}
 	out := make([]footnoteOccurrence, 0, len(matches))
 	for _, m := range matches {
 		start := m[0]

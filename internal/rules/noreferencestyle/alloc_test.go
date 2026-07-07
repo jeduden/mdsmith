@@ -95,3 +95,25 @@ func TestScanFootnoteDefinitions_PresizedAllocs(t *testing.T) {
 	assert.LessOrEqualf(t, allocs, 43.0,
 		"scanFootnoteDefinitions allocs regressed: got %v, want <= 43", allocs)
 }
+
+// TestScanFootnoteReferences_NoMatches_ReturnsNil and
+// TestScanFootnoteDefinitions_NoMatches_ReturnsNil pin
+// docs/development/high-performance-go.md's "return nil, not []T{}"
+// convention for the zero-match case: make([]footnoteOccurrence, 0,
+// len(matches)) with len(matches) == 0 still returns a non-nil empty
+// slice in Go, so the pre-sizing fix must special-case the no-match
+// return to stay nil, matching the convention this same PR applies to
+// headingincrement and tableformat.
+func TestScanFootnoteReferences_NoMatches_ReturnsNil(t *testing.T) {
+	f, err := lint.NewFile("clean.md", []byte("No footnotes here.\n"))
+	require.NoError(t, err)
+	out := scanFootnoteReferences(f, map[int]struct{}{}, nil)
+	assert.Nil(t, out, "scanFootnoteReferences must return nil when there are no matches")
+}
+
+func TestScanFootnoteDefinitions_NoMatches_ReturnsNil(t *testing.T) {
+	f, err := lint.NewFile("clean.md", []byte("No footnotes here.\n"))
+	require.NoError(t, err)
+	out := scanFootnoteDefinitions(f, map[int]struct{}{})
+	assert.Nil(t, out, "scanFootnoteDefinitions must return nil when there are no matches")
+}

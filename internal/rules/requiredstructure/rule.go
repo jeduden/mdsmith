@@ -1874,12 +1874,15 @@ type docHeading struct {
 }
 
 // extractHeadings walks the AST and collects all headings. Memoized
-// per File via lint.File.MemoFile: on the document File, this is
-// called from checkSingleFileSchemaFromData, the per-source loop in
-// checkComposedSources (via bodySyncDiagnostics), and fixBodySyncIn,
-// so a document validated against a composed schema with N extends
-// sources would otherwise re-walk the same AST N+ times per Check.
-// parseSchemaWithRootFS also calls this, but on a throwaway
+// per File via lint.File.MemoFile: within one Check, the document
+// File sees this called once, from checkSingleFileSchemaFromData,
+// when the rule has a single schema source, or once per source from
+// checkComposedSources's bodySyncDiagnostics loop when the rule
+// composes N>=2 extends sources — Check's dispatch on len(sources)
+// makes the two paths mutually exclusive, so a document composing N
+// extends sources would otherwise re-walk the same AST N times per
+// Check. fixBodySyncIn (the Fix path, single-source only) calls this
+// too. parseSchemaWithRootFS also calls this, but on a throwaway
 // schema-content File built fresh per call, so the memo there is a
 // no-op rather than a shared cache.
 func extractHeadings(f *lint.File) []docHeading {
