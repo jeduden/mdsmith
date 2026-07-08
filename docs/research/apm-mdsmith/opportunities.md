@@ -27,15 +27,15 @@ plan files (linked inline); the rest wait on their triggers.
 
 ### Author a package (A)
 
-| ID  | Opportunity                                        | Status | Effort | Trigger                                             |
-| --- | -------------------------------------------------- | ------ | ------ | --------------------------------------------------- |
-| A-1 | APM primitive kind pack (schemas for the 4 types)  | exists | S–M    | first author wants their `.apm/` tree linted        |
-| A-2 | Numeric body budgets per primitive kind            | exists | S      | folds into A-1                                      |
-| A-3 | `${input:name}` placeholder token                  | new    | S      | first prompt body false-positives on a content rule |
-| A-4 | Closed frontmatter (flag keys `apm compile` drops) | new    | M      | an author ships a key APM silently drops            |
-| A-5 | Filename ↔ frontmatter-field agreement             | new    | M      | a `SKILL.md` `name` drifts from its directory       |
-| A-6 | Prompt-input declaration/usage cross-check rule    | new    | M      | a typo'd `${input:Scope}` reaches an LLM verbatim   |
-| A-7 | Dead `applyTo` glob detection                      | new    | M      | an instruction compiles to a rule no file activates |
+| ID  | Opportunity                                        | Status | Effort | Trigger                                              |
+| --- | -------------------------------------------------- | ------ | ------ | ---------------------------------------------------- |
+| A-1 | APM primitive kind pack (schemas for the 4 types)  | exists | S–M    | first author wants their `.apm/` tree linted         |
+| A-2 | Numeric body budgets per primitive kind            | exists | S      | folds into A-1                                       |
+| A-3 | `${input:name}` placeholder token                  | new    | S      | first prompt body false-positives on a content rule  |
+| A-4 | Closed frontmatter (flag keys `apm compile` drops) | new    | M      | an author ships a key `apm compile` drops at compile |
+| A-5 | Filename ↔ frontmatter-field agreement             | new    | M      | a `SKILL.md` `name` drifts from its directory        |
+| A-6 | Prompt-input declaration/usage cross-check rule    | new    | M      | a typo'd `${input:Scope}` reaches an LLM verbatim    |
+| A-7 | Dead `applyTo` glob detection                      | new    | M      | an instruction compiles to a rule no file activates  |
 
 ### Compile and coexist (C)
 
@@ -117,8 +117,9 @@ match a frontmatter field.
 MDS020 diagnose any frontmatter key not declared in the
 `frontmatter:` map — `closed:` exists but applies only to sections
 (`docs/reference/section-schema.md:243`), and on a frontmatter-only
-kind it is dropped. This catches the sixth `.prompt.md` key APM
-silently drops. (b) `\#(fmvar(name))` interpolation inside the
+kind it is dropped. This catches the sixth `.prompt.md` key at edit
+time, where `apm compile` flags it only at compile time, after the
+file ships. (b) `\#(fmvar(name))` interpolation inside the
 schema `path-pattern:` / `filename:` matcher, reusing the existing
 `fmvar` resolver that already works in heading regexes — so
 `path-pattern: ".apm/skills/\#(fmvar(name))/SKILL.md"` enforces

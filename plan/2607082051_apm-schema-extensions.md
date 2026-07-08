@@ -28,12 +28,13 @@ verified against the schema engine:
 - `.apm/prompts/*.prompt.md` preserves exactly five
   frontmatter keys (`description`, `input`,
   `allowed-tools`, `model`, `argument-hint`); `apm
-  compile` silently drops every other key. Catching a
-  dropped key at author time needs a closed
-  frontmatter check, but mdsmith's `closed:` applies
-  only to sections
+  compile` drops every other key with a diagnostic,
+  but only at compile time, after the file is written
+  and shipped. Catching a dropped key at author time
+  needs a closed frontmatter check, and mdsmith's
+  `closed:` applies only to sections
   ([section-schema.md](../docs/reference/section-schema.md)),
-  and on a frontmatter-only kind the setting is
+  so on a frontmatter-only kind the setting is
   dropped.
 - `.apm/skills/<name>/SKILL.md` requires the `name`
   field to equal the directory name. mdsmith's
