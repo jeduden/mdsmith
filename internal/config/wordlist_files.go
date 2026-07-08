@@ -235,7 +235,7 @@ func expandRuleLists(listsValue any, target string, settings map[string]any, use
 	}
 	resolved := resolveListEntries(listNames, userMap)
 	if existing, ok := anyToStrings(settings[target]); ok {
-		settings[target] = stringsToAny(dedupStrings(append(resolved, existing...)))
+		settings[target] = wordlist.ToAnySlice(wordlist.Dedup(append(resolved, existing...)))
 	}
 }
 
@@ -331,33 +331,4 @@ func anyToStrings(v any) ([]string, bool) {
 	default:
 		return nil, false
 	}
-}
-
-// stringsToAny widens a []string to the []any shape settings maps carry
-// after YAML decode, so a rule's ApplySettings sees the same type
-// whether the list came from YAML or from word-list expansion.
-func stringsToAny(ss []string) []any {
-	out := make([]any, len(ss))
-	for i, s := range ss {
-		out[i] = s
-	}
-	return out
-}
-
-// dedupStrings returns ss with later duplicates removed, preserving the
-// first occurrence's position. Returns nil for an empty input.
-func dedupStrings(ss []string) []string {
-	if len(ss) == 0 {
-		return nil
-	}
-	seen := make(map[string]struct{}, len(ss))
-	out := make([]string, 0, len(ss))
-	for _, s := range ss {
-		if _, ok := seen[s]; ok {
-			continue
-		}
-		seen[s] = struct{}{}
-		out = append(out, s)
-	}
-	return out
 }

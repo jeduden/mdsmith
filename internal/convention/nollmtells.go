@@ -157,14 +157,3 @@ func NoLLMTellsWordlists() []NamedWordlist {
 		{Name: "ai-openers", Rule: "forbidden-paragraph-starts", Entries: llmParagraphOpeners()},
 	}
 }
-
-// toAnySlice converts a []string to []any so it can populate a
-// convention RulePreset Settings map (which the config loader treats
-// as []any after YAML decode).
-func toAnySlice(ss []string) []any {
-	out := make([]any, len(ss))
-	for i, s := range ss {
-		out[i] = s
-	}
-	return out
-}

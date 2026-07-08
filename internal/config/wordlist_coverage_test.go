@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/wordlist"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -237,11 +238,11 @@ func TestAnyToStrings_Variants(t *testing.T) {
 	assert.False(t, ok, "non-list rejected")
 }
 
-// --- dedupStrings branches ---
+// --- wordlist.Dedup branches (formerly dedupStrings) ---
 
 func TestDedupStrings_EmptyAndDuplicates(t *testing.T) {
-	assert.Nil(t, dedupStrings(nil))
-	assert.Equal(t, []string{"a", "b"}, dedupStrings([]string{"a", "b", "a"}))
+	assert.Nil(t, wordlist.Dedup(nil))
+	assert.Equal(t, []string{"a", "b"}, wordlist.Dedup([]string{"a", "b", "a"}))
 }
 
 // --- load.go error branches ---

@@ -46,7 +46,20 @@ func TestParse_NoEntriesErrors(t *testing.T) {
 }
 
 func TestDedup_Empty(t *testing.T) {
-	assert.Nil(t, dedup(nil))
+	assert.Nil(t, Dedup(nil))
+}
+
+func TestDedup_PreservesFirstOccurrence(t *testing.T) {
+	assert.Equal(t, []string{"a", "b"}, Dedup([]string{"a", "b", "a"}))
+}
+
+func TestToAnySlice_Empty(t *testing.T) {
+	assert.Equal(t, []any{}, ToAnySlice([]string{}))
+}
+
+func TestToAnySlice_Strings(t *testing.T) {
+	got := ToAnySlice([]string{"foo", "bar"})
+	assert.Equal(t, []any{"foo", "bar"}, got)
 }
 
 func TestRenderFile_RoundTrips(t *testing.T) {

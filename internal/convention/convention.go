@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/jeduden/mdsmith/internal/wordlist"
 )
 
 // Convention is an opinionated bundle that pairs a Markdown flavor
@@ -206,13 +208,13 @@ var conventions = map[string]Convention{
 			"forbidden-text": {
 				Enabled: true,
 				Settings: map[string]any{
-					"contains": toAnySlice(llmVocabularyAndPhrases()),
+					"contains": wordlist.ToAnySlice(llmVocabularyAndPhrases()),
 				},
 			},
 			"forbidden-paragraph-starts": {
 				Enabled: true,
 				Settings: map[string]any{
-					"starts": toAnySlice(llmParagraphOpeners()),
+					"starts": wordlist.ToAnySlice(llmParagraphOpeners()),
 				},
 			},
 			"paragraph-structure": {

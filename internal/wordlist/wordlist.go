@@ -125,7 +125,7 @@ func Resolve(name string, user map[string]Wordlist) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return dedup(raw), nil
+	return Dedup(raw), nil
 }
 
 // flatten walks the (single-parent) extends chain parent-first,
@@ -154,9 +154,9 @@ func flatten(name string, user map[string]Wordlist, seen map[string]bool) ([]str
 	return out, nil
 }
 
-// dedup returns ss with later duplicates removed, preserving the first
+// Dedup returns ss with later duplicates removed, preserving the first
 // occurrence's position. Returns nil for an empty input.
-func dedup(ss []string) []string {
+func Dedup(ss []string) []string {
 	if len(ss) == 0 {
 		return nil
 	}
@@ -168,6 +168,17 @@ func dedup(ss []string) []string {
 		}
 		seen[s] = struct{}{}
 		out = append(out, s)
+	}
+	return out
+}
+
+// ToAnySlice widens a []string to the []any shape settings maps carry
+// after YAML decode, so a rule's ApplySettings sees the same type
+// whether the list came from YAML or from word-list expansion.
+func ToAnySlice(ss []string) []any {
+	out := make([]any, len(ss))
+	for i, s := range ss {
+		out[i] = s
 	}
 	return out
 }
