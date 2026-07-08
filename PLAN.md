@@ -245,7 +245,7 @@ footer: |
 | 2607051920 | 🔲     | sonnet | [Consolidate duplicated leading-space/blank-line rule helpers into internal/rules/astutil](plan/2607051920_arch-fix-rule-whitespace-helpers-astutil.md) |
 | 2607082048 | 🔲     | sonnet | [Placeholder token for APM `${input:name}` prompt parameters](plan/2607082048_apm-input-placeholder-token.md)                                           |
 | 2607082049 | 🔲     | opus   | [Foreign managed-region protection for `mdsmith fix`](plan/2607082049_foreign-managed-regions.md)                                                       |
-| 2607082050 | 🔲     | sonnet | [Coexist-with-APM guide and primitive kind pack](plan/2607082050_apm-coexist-guide-and-kind-pack.md)                                                    |
+| 2607082050 | 🔲     | sonnet | [APM coexistence: `mdsmith init --apm`, guide, and kind pack](plan/2607082050_apm-coexist-guide-and-kind-pack.md)                                       |
 | 2607082051 | 🔲     | opus   | [Schema extensions: closed frontmatter and filename agreement](plan/2607082051_apm-schema-extensions.md)                                                |
 | 2607082052 | 🔲     | sonnet | [SARIF output format for `mdsmith check`](plan/2607082052_check-sarif-output.md)                                                                        |
 <?/catalog?>

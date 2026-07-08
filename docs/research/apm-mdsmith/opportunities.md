@@ -42,7 +42,7 @@ plan files (linked inline); the rest wait on their triggers.
 | ID  | Opportunity                                         | Status  | Effort | Trigger                                         |
 | --- | --------------------------------------------------- | ------- | ------ | ----------------------------------------------- |
 | C-1 | Foreign managed-region protection (`apm:start/end`) | new     | M      | `mdsmith fix` corrupts an APM-managed block     |
-| C-2 | Coexist-with-APM guide + preset config              | partial | S      | first repo runs both tools and hits fix-vs-hash |
+| C-2 | `mdsmith init --apm` template + coexist guide       | partial | S      | first repo runs both tools and hits fix-vs-hash |
 | C-3 | Token/size budget canary on compiled context files  | exists  | S      | an assembled `AGENTS.md` blows a context window |
 | C-4 | Wrap `apm compile` in a `<?build?>` recipe          | exists  | S      | a team wants edit-time compile freshness        |
 
@@ -83,9 +83,8 @@ for its own `skill` and `plan` kinds. A-2 layers `max-file-length`
 and `token-budget` per kind (`SKILL.md` 500 lines / 5000 tokens,
 agents 300 lines).
 
-**Surface.** A copy-paste `.mdsmith.yml` block in the
-coexist-with-APM guide (C-2), plus optionally an `.mdsmith/kinds/`
-file set. Ships together with C-2's guide as
+**Surface.** The `.mdsmith/kinds/apm-*` files that `mdsmith init
+--apm` writes (C-2). Ships together with C-2's template and guide as
 [plan 2607082050](../../../plan/2607082050_apm-coexist-guide-and-kind-pack.md).
 
 ### A-3 — `${input:name}` placeholder token (new)
@@ -163,10 +162,15 @@ Ship the canonical `ignore:` list naming APM's deploy dirs
 `apm_modules/**`) so `mdsmith fix` never rewrites a hash-pinned
 file, plus `overrides:` disabling fix-capable rules on the compiled
 root files, plus the A-1 kind pack for the `.apm/` source tree. The
-config exists today; the guide that assembles it does not.
+config exists today; the command that assembles it does not. So the
+plan ships it as an `mdsmith init --apm` template — additive and
+non-clobbering, on the `--wordlists` model — that writes the
+`.mdsmith/kinds/apm-*` pack and the coexistence posture, scoped to
+the harness directories the repo actually has. The guide documents
+what the template writes.
 
-**Surface.** `docs/guides/coexist-with-apm.md` and a preset config
-block. Scheduled as
+**Surface.** An `mdsmith init --apm` flag plus
+`docs/guides/coexist-with-apm.md`. Scheduled as
 [plan 2607082050](../../../plan/2607082050_apm-coexist-guide-and-kind-pack.md).
 
 ### G-2 — SARIF output for `mdsmith check` (partial)
