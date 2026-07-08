@@ -53,6 +53,10 @@ func TestDedup_PreservesFirstOccurrence(t *testing.T) {
 	assert.Equal(t, []string{"a", "b"}, Dedup([]string{"a", "b", "a"}))
 }
 
+func TestToAnySlice_Nil(t *testing.T) {
+	assert.Equal(t, []any{}, ToAnySlice(nil))
+}
+
 func TestToAnySlice_Empty(t *testing.T) {
 	assert.Equal(t, []any{}, ToAnySlice([]string{}))
 }
