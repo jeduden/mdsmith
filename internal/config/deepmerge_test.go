@@ -199,6 +199,22 @@ func TestToAnySlice_StringSlice(t *testing.T) {
 	assert.Equal(t, []any{"c"}, got.Settings["words"])
 }
 
+func TestToAnySlice_NilStringSlice(t *testing.T) {
+	// Pin the nil []string → []any{} contract at the deepmerge layer so a
+	// change to wordlist.ToAnySlice's nil semantics doesn't silently alter
+	// merge behavior.
+	earlier := RuleCfg{
+		Enabled:  true,
+		Settings: map[string]any{"words": ([]string)(nil)},
+	}
+	later := RuleCfg{
+		Enabled:  true,
+		Settings: map[string]any{"words": []string{"c"}},
+	}
+	got := mergeRuleCfg("some-rule", earlier, later)
+	assert.Equal(t, []any{"c"}, got.Settings["words"])
+}
+
 // --- effectiveRules deep-merge through the layer chain ---
 
 func TestEffectiveTwoKindsContributeDifferentKeys(t *testing.T) {
