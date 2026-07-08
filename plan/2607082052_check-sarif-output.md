@@ -7,7 +7,7 @@ summary: >-
   Add `-f sarif` to `mdsmith check` (and `fix --dry-run`) so its
   diagnostics land in the same GitHub Code Scanning dashboard APM's
   `apm audit --ci -f sarif` feeds. Generalize the SARIF machinery
-  the security-review engine already ships. Opportunity G-2.
+  that the security-review engine already ships. Opportunity G-2.
 depends-on: []
 ---
 # SARIF output for `mdsmith check`

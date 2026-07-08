@@ -42,9 +42,9 @@ repo that lints its Markdown:
 - Links: deployed files point into the gitignored `apm_modules/`,
   so MDS027 (cross-file reference integrity) sees dangling targets
   on a fresh clone until `apm install` runs. `find` and `deps`
-  answer provenance questions that [mdsmith
-  deps](../../reference/cli/deps.md) answers for include/link
-  graphs — the two graphs never join today.
+  answer provenance questions that
+  [mdsmith deps](../../reference/cli/deps.md) answers for
+  include/link graphs — the two graphs never join today.
 - Staleness: `uninstall`/`prune` delete files that other Markdown
   may link to; nothing rewrites those incoming references.
 
