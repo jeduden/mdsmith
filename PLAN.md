@@ -243,4 +243,9 @@ footer: |
 | 2607051918 | 🔲     | sonnet | [Export wordlist.Dedup and remove the identical dedupStrings copy in internal/config](plan/2607051918_arch-fix-wordlist-config-dedup.md)                |
 | 2607051919 | 🔲     | sonnet | [Add dedicated unit tests for helpers added by the word-list and reflow features](plan/2607051919_arch-fix-new-helper-tests.md)                         |
 | 2607051920 | 🔲     | sonnet | [Consolidate duplicated leading-space/blank-line rule helpers into internal/rules/astutil](plan/2607051920_arch-fix-rule-whitespace-helpers-astutil.md) |
+| 2607082048 | 🔲     | sonnet | [Placeholder token for APM `${input:name}` prompt parameters](plan/2607082048_apm-input-placeholder-token.md)                                           |
+| 2607082049 | 🔲     | opus   | [Foreign managed-region protection for `mdsmith fix`](plan/2607082049_foreign-managed-regions.md)                                                       |
+| 2607082050 | 🔲     | sonnet | [Coexist-with-APM guide and primitive kind pack](plan/2607082050_apm-coexist-guide-and-kind-pack.md)                                                    |
+| 2607082051 | 🔲     | opus   | [Schema extensions: closed frontmatter and filename agreement](plan/2607082051_apm-schema-extensions.md)                                                |
+| 2607082052 | 🔲     | sonnet | [SARIF output format for `mdsmith check`](plan/2607082052_check-sarif-output.md)                                                                        |
 <?/catalog?>
