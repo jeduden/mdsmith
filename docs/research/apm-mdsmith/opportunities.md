@@ -201,8 +201,12 @@ editor, before the file is ever committed.
 **Sketch.** APM's only content check is the install/audit-time
 hidden-Unicode scan; `apm compile` does not run it after hand-edits,
 and detection happens only when an APM command runs. mdsmith has no
-rule here (verified: nothing under `internal/rules/` scans for
-invisible characters). A new default-enabled rule mirroring APM's
+rule dedicated to hidden-Unicode detection: no check flags bidi
+overrides, tag characters, or zero-width payloads as a finding.
+(A few rules recognize specific invisible characters incidentally —
+`line-length` counts NBSP and ZWJ for word-wrapping, `table-format`
+handles Unicode whitespace — but none reports them.) A new
+default-enabled rule mirroring APM's
 three severity tiers (critical: tag chars, bidi overrides,
 variation selectors 17–256; warning: zero-width, VS 1–15; info:
 NBSP, ZWJ), with a `Fix()` that strips flagged characters —

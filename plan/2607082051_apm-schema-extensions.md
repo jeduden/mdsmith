@@ -5,7 +5,7 @@ status: "🔲"
 model: opus
 summary: >-
   Two MDS020 schema-engine features for APM's primitive contracts: a
-  `frontmatter-closed: true` flag that flags undeclared frontmatter
+  `frontmatter-closed: true` flag that reports undeclared frontmatter
   keys, and `\#(fmvar(name))` interpolation in the schema
   path/filename matcher. Opportunities A-4 and A-5.
 depends-on: []
