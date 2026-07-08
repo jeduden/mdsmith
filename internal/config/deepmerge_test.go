@@ -184,6 +184,21 @@ func TestToAnySlice_IntSlice(t *testing.T) {
 	assert.Equal(t, []any{3}, got.Settings["nums"])
 }
 
+func TestToAnySlice_StringSlice(t *testing.T) {
+	// Exercise the []string case in toAnySlice via mergeAny (replace path,
+	// non-ListMerger rule), symmetric to TestToAnySlice_IntSlice.
+	earlier := RuleCfg{
+		Enabled:  true,
+		Settings: map[string]any{"words": []string{"a", "b"}},
+	}
+	later := RuleCfg{
+		Enabled:  true,
+		Settings: map[string]any{"words": []string{"c"}},
+	}
+	got := mergeRuleCfg("some-rule", earlier, later)
+	assert.Equal(t, []any{"c"}, got.Settings["words"])
+}
+
 // --- effectiveRules deep-merge through the layer chain ---
 
 func TestEffectiveTwoKindsContributeDifferentKeys(t *testing.T) {

@@ -172,9 +172,9 @@ func Dedup(ss []string) []string {
 	return out
 }
 
-// ToAnySlice widens a []string to the []any shape settings maps carry
-// after YAML decode, so a rule's ApplySettings sees the same type
-// whether the list came from YAML or from word-list expansion.
+// ToAnySlice widens ss to the []any shape that YAML-decoded and
+// programmatically-constructed settings maps both use, so callers
+// receive a uniform type regardless of how the list was built.
 func ToAnySlice(ss []string) []any {
 	out := make([]any, len(ss))
 	for i, s := range ss {

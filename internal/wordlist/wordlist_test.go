@@ -47,6 +47,7 @@ func TestParse_NoEntriesErrors(t *testing.T) {
 
 func TestDedup_Empty(t *testing.T) {
 	assert.Nil(t, Dedup(nil))
+	assert.Nil(t, Dedup([]string{}))
 }
 
 func TestDedup_PreservesFirstOccurrence(t *testing.T) {
