@@ -2,6 +2,7 @@ package firstlineheading
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/placeholders"
@@ -10,6 +11,26 @@ import (
 	"github.com/jeduden/mdsmith/internal/rules/settings"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
+
+// msgWantLevel builds the "first line should be a level N heading"
+// message. Heading levels are always 1-6, so strconv.Itoa never
+// allocates on this input (Go caches formatted results for 0-99); the
+// win over fmt.Sprintf is CPU only (skips reflection), not allocs. See
+// docs/development/high-performance-go.md "strconv over fmt.Sprintf".
+func msgWantLevel(level int) string {
+	return "first line should be a level " + strconv.Itoa(level) + " heading"
+}
+
+// msgWantLevelBlankLine builds the blank-line variant of msgWantLevel.
+func msgWantLevelBlankLine(level int) string {
+	return "first line should be a level " + strconv.Itoa(level) + " heading, found blank line"
+}
+
+// msgWrongLevel builds the "first heading should be level N, got M"
+// message.
+func msgWrongLevel(level, got int) string {
+	return "first heading should be level " + strconv.Itoa(level) + ", got " + strconv.Itoa(got)
+}
 
 func init() {
 	rule.Register(&Rule{Level: 1})
@@ -56,21 +77,21 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	}
 
 	if len(f.Source) == 0 {
-		return r.diag(f, fmt.Sprintf("first line should be a level %d heading", level))
+		return r.diag(f, msgWantLevel(level))
 	}
 
 	firstChild := f.AST.FirstChild()
 	if firstChild == nil {
-		return r.diag(f, fmt.Sprintf("first line should be a level %d heading", level))
+		return r.diag(f, msgWantLevel(level))
 	}
 
 	heading, ok := firstChild.(*ast.Heading)
 	if !ok {
-		return r.diag(f, fmt.Sprintf("first line should be a level %d heading", level))
+		return r.diag(f, msgWantLevel(level))
 	}
 
 	if headingLine(heading, f) != 1 {
-		return r.diag(f, fmt.Sprintf("first line should be a level %d heading, found blank line", level))
+		return r.diag(f, msgWantLevelBlankLine(level))
 	}
 
 	if heading.Level != level {
@@ -80,7 +101,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		if placeholders.ContainsBodyToken(text, r.Placeholders) {
 			return nil
 		}
-		return r.diag(f, fmt.Sprintf("first heading should be level %d, got %d", level, heading.Level))
+		return r.diag(f, msgWrongLevel(level, heading.Level))
 	}
 
 	return nil
@@ -101,23 +122,23 @@ func (r *Rule) checkNilAST(f *lint.File) []lint.Diagnostic {
 	}
 
 	if len(f.Source) == 0 {
-		return r.diag(f, fmt.Sprintf("first line should be a level %d heading", level))
+		return r.diag(f, msgWantLevel(level))
 	}
 
 	spans := lint.Layer0(f).BlockSpans
 	if len(spans) == 0 {
-		return r.diag(f, fmt.Sprintf("first line should be a level %d heading", level))
+		return r.diag(f, msgWantLevel(level))
 	}
 	first := spans[0]
 	if first.Kind != lint.BlockATXHeading && first.Kind != lint.BlockSetextHeading {
-		return r.diag(f, fmt.Sprintf("first line should be a level %d heading", level))
+		return r.diag(f, msgWantLevel(level))
 	}
 	if first.Start != 1 {
-		return r.diag(f, fmt.Sprintf("first line should be a level %d heading, found blank line", level))
+		return r.diag(f, msgWantLevelBlankLine(level))
 	}
 	gotLevel := headingLevelFromSpan(f, first)
 	if gotLevel != level {
-		return r.diag(f, fmt.Sprintf("first heading should be level %d, got %d", level, gotLevel))
+		return r.diag(f, msgWrongLevel(level, gotLevel))
 	}
 	return nil
 }

@@ -395,9 +395,15 @@ func TestSettingMergeMode_FirstLineHeading(t *testing.T) {
 	assert.Equal(t, rule.MergeReplace, r.SettingMergeMode("unknown"))
 }
 
-// TestCheck_WrongLevel_MessageAllocs verifies that the wrong-level violation
-// diagnostic uses fmt.Sprintf (≤2 allocs: 1 msg + 1 slice) rather than
-// strconv.Itoa+concat (4 allocs: 2×Itoa + 1 concat + 1 slice).
+// TestCheck_WrongLevel_MessageAllocs pins the wrong-level violation
+// diagnostic's per-call allocation count (≤2: 1 msg + 1 slice). A
+// prior session measured strconv.Itoa+concat at 4 allocs here and
+// reverted to fmt.Sprintf; re-measured on the current Go toolchain,
+// strconv.Itoa caches formatted results for 0-99 (heading levels are
+// always 1-6), so both approaches cost the same 2 allocs — strconv's
+// win is CPU only (skips fmt's reflection), confirmed via
+// BenchmarkCheck_WrongLevel + benchstat. See
+// docs/development/high-performance-go.md "strconv over fmt.Sprintf".
 // Uses the nil-AST (Layer 0) path to isolate message construction allocs.
 func TestCheck_WrongLevel_MessageAllocs(t *testing.T) {
 	src := []byte("## Not H1\n\nText\n")

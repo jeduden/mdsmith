@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
@@ -98,14 +99,8 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		RuleID:   r.ID(),
 		RuleName: r.Name(),
 		Severity: lint.Warning,
-		Message: fmt.Sprintf(
-			"token budget exceeded (%d > %d, mode=%s); ~%d %s over budget",
-			count,
-			budget,
-			modeLabel,
-			wordsOver,
-			wordLabel,
-		),
+		Message: "token budget exceeded (" + strconv.Itoa(count) + " > " + strconv.Itoa(budget) +
+			", mode=" + modeLabel + "); ~" + strconv.Itoa(wordsOver) + " " + wordLabel + " over budget",
 	}}
 }
 
@@ -153,14 +148,13 @@ func (r *Rule) tokenCount(source []byte) int {
 func (r *Rule) modeLabel() string {
 	switch normalizeMode(r.Mode) {
 	case "tokenizer":
-		return fmt.Sprintf("tokenizer:%s/%s",
-			normalizeTokenizer(r.Tokenizer), normalizeEncoding(r.Encoding))
+		return "tokenizer:" + normalizeTokenizer(r.Tokenizer) + "/" + normalizeEncoding(r.Encoding)
 	default:
 		tpw := r.TokensPerWord
 		if tpw <= 0 {
 			tpw = defaultTokensPerWord
 		}
-		return fmt.Sprintf("heuristic:tokens-per-word=%.2f", tpw)
+		return "heuristic:tokens-per-word=" + strconv.FormatFloat(tpw, 'f', 2, 64)
 	}
 }
 
