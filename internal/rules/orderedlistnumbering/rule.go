@@ -133,10 +133,9 @@ func (r *Rule) checkListLines(f *lint.File, listStart int, itemLines []int) []li
 			continue
 		}
 		if i == 0 && startMismatch {
-			diags = append(diags, r.diag(f, line, fmt.Sprintf(
-				"ordered list starts at %d; configured start is %d",
-				listStart, r.Start,
-			)))
+			diags = append(diags, r.diag(f, line,
+				"ordered list starts at "+strconv.Itoa(listStart)+
+					"; configured start is "+strconv.Itoa(r.Start)))
 		}
 		if startMismatch {
 			continue
@@ -162,10 +161,9 @@ func (r *Rule) checkItem(f *lint.File, line, i int) (lint.Diagnostic, bool) {
 	if literal == expected {
 		return lint.Diagnostic{}, false
 	}
-	return r.diag(f, line, fmt.Sprintf(
-		"ordered list item %d numbered %d; expected %d",
-		i+1, literal, expected,
-	)), true
+	return r.diag(f, line,
+		"ordered list item "+strconv.Itoa(i+1)+" numbered "+strconv.Itoa(literal)+
+			"; expected "+strconv.Itoa(expected)), true
 }
 
 func (r *Rule) diag(f *lint.File, line int, msg string) lint.Diagnostic {
