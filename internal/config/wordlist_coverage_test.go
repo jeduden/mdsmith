@@ -240,7 +240,7 @@ func TestAnyToStrings_Variants(t *testing.T) {
 
 // --- wordlist.Dedup branches (formerly dedupStrings) ---
 
-func TestDedupStrings_EmptyAndDuplicates(t *testing.T) {
+func TestWordlistDedup_EmptyAndDuplicates(t *testing.T) {
 	assert.Nil(t, wordlist.Dedup(nil))
 	assert.Equal(t, []string{"a", "b"}, wordlist.Dedup([]string{"a", "b", "a"}))
 }

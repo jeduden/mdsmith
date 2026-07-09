@@ -200,19 +200,22 @@ func TestToAnySlice_StringSlice(t *testing.T) {
 }
 
 func TestToAnySlice_NilStringSlice(t *testing.T) {
-	// Pin the nil []string → []any{} contract at the deepmerge layer so a
-	// change to wordlist.ToAnySlice's nil semantics doesn't silently alter
-	// merge behavior.
+	// Verify that nil []string is normalized to []any{} by toAnySlice so the
+	// MergeAppend path sees an empty accumulator rather than bypassing list-merge
+	// entirely (which would leave a []string in the output instead of []any).
+	// If nil []string were treated as a non-slice value (ok=false), cloneAny
+	// would return []string{} here instead of the expected []any{}.
 	earlier := RuleCfg{
 		Enabled:  true,
-		Settings: map[string]any{"words": ([]string)(nil)},
+		Settings: map[string]any{"placeholders": ([]string)(nil)},
 	}
 	later := RuleCfg{
 		Enabled:  true,
-		Settings: map[string]any{"words": []string{"c"}},
+		Settings: map[string]any{"placeholders": ([]string)(nil)},
 	}
-	got := mergeRuleCfg("some-rule", earlier, later)
-	assert.Equal(t, []any{"c"}, got.Settings["words"])
+	got := mergeRuleCfg("first-line-heading", earlier, later)
+	assert.Equal(t, []any{}, got.Settings["placeholders"],
+		"nil []string must normalize to []any{}, not bypass the list-merge path")
 }
 
 // --- effectiveRules deep-merge through the layer chain ---
