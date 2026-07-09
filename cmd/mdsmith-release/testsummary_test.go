@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -21,7 +20,7 @@ func feedStdin(t *testing.T, s string) {
 	t.Cleanup(func() { os.Stdin = old })
 	os.Stdin = r
 	go func() {
-		_, _ = io.WriteString(w, s)
+		_, _ = w.WriteString(s)
 		_ = w.Close()
 	}()
 }

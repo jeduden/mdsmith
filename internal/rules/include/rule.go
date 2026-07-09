@@ -293,7 +293,7 @@ func (r *Rule) checkCycleOrDepth(
 		copy(chain, r.chain)
 		chain = append(chain, resolvedFile)
 		return []lint.Diagnostic{makeDiag(filePath, line,
-			fmt.Sprintf("cyclic include: %s", strings.Join(chain, " -> ")))}
+			"cyclic include: "+strings.Join(chain, " -> "))}
 	}
 	return nil
 }

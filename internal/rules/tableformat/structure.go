@@ -328,8 +328,10 @@ func findStructureTables(lines [][]byte, skip func(int) bool) []tableBlock {
 		}
 
 		t := tableBlock{prefix: prefix}
-		t.rows = append(t.rows, parseRow(lines[hdrNum-1], hdrNum, prefix))
-		t.rows = append(t.rows, parseRow(lines[sepNum-1], sepNum, prefix))
+		t.rows = append(t.rows,
+			parseRow(lines[hdrNum-1], hdrNum, prefix),
+			parseRow(lines[sepNum-1], sepNum, prefix),
+		)
 
 		next := sepNum + 1
 		for next <= len(lines) {

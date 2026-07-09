@@ -96,13 +96,15 @@ func (t *Toolkit) TrackedManifests(root string) []Manifest {
 			}
 		}
 	}
-	out = append(out, Manifest{filepath.Join(root, "python", "pyproject.toml"), ManifestTOML, nil})
-	// website/hugo.toml carries the version the deployed
-	// mdsmith.dev site renders in topnav and elsewhere. The
-	// pages-deploy workflow re-runs Stamp before `hugo --minify`
-	// so the site always reflects the release tag rather than
-	// the dev sentinel.
-	out = append(out, Manifest{filepath.Join(root, "website", "hugo.toml"), ManifestTOML, nil})
+	out = append(out,
+		Manifest{filepath.Join(root, "python", "pyproject.toml"), ManifestTOML, nil},
+		// website/hugo.toml carries the version the deployed
+		// mdsmith.dev site renders in topnav and elsewhere. The
+		// pages-deploy workflow re-runs Stamp before `hugo --minify`
+		// so the site always reflects the release tag rather than
+		// the dev sentinel.
+		Manifest{filepath.Join(root, "website", "hugo.toml"), ManifestTOML, nil},
+	)
 	return out
 }
 
@@ -247,7 +249,7 @@ func (t *Toolkit) checkManifest(m Manifest, note func(string)) {
 	body, err := t.fs.ReadFile(m.Path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			note(fmt.Sprintf("%s: required manifest missing", m.Path))
+			note(m.Path + ": required manifest missing")
 			return
 		}
 		note(fmt.Sprintf("read %s: %v", m.Path, err))
@@ -255,7 +257,7 @@ func (t *Toolkit) checkManifest(m Manifest, note func(string)) {
 	}
 	sub := versionRegexp(m.Kind).FindSubmatch(body)
 	if sub == nil {
-		note(fmt.Sprintf("%s: no version field found", m.Path))
+		note(m.Path + ": no version field found")
 		return
 	}
 	if string(sub[2]) != DevSentinel {

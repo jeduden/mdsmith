@@ -187,7 +187,7 @@ func validateBenchManifest(tools []benchTool) error {
 func verifyChecksum(data []byte, want string) error {
 	sum := sha256.Sum256(data)
 	got := hex.EncodeToString(sum[:])
-	if got != strings.ToLower(want) {
+	if !strings.EqualFold(got, want) {
 		return fmt.Errorf("checksum mismatch: got %s, want %s", got, want)
 	}
 	return nil

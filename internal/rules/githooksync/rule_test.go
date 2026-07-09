@@ -1044,7 +1044,7 @@ func TestRule_Check_OversizedHookNoDriverSilent(t *testing.T) {
 	hooksDir := githooks.ResolveHooksDir(dir)
 	require.NoError(t, os.MkdirAll(hooksDir, 0o755))
 	big := make([]byte, hookMaxReadBytes+1)
-	copy(big, []byte("#!/bin/sh\n# unrelated third-party hook\n"))
+	copy(big, "#!/bin/sh\n# unrelated third-party hook\n")
 	require.NoError(t, os.WriteFile(
 		filepath.Join(hooksDir, "pre-merge-commit"),
 		big, 0o755,

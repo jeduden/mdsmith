@@ -96,7 +96,7 @@ func collectLeaves(v *engineValue, path []string, out []*PathError) []*PathError
 	case kAtom:
 		return append(out, newPathError(path, fmt.Sprintf("incomplete value %s", v.atom), nil))
 	case kBound:
-		return append(out, newPathError(path, fmt.Sprintf("incomplete value %s", v.describeBound()), nil))
+		return append(out, newPathError(path, "incomplete value "+v.describeBound(), nil))
 	case kDisjoint:
 		// A disjunction with a single effective default resolves to it when
 		// nothing else pins it (e.g. an absent `unlisted: bool | *false` field
@@ -106,7 +106,7 @@ func collectLeaves(v *engineValue, path []string, out []*PathError) []*PathError
 		if def, _ := v.defaultValue(); def != nil {
 			return collectLeaves(def, path, out)
 		}
-		return append(out, newPathError(path, fmt.Sprintf("incomplete value %s", v.describe()), nil))
+		return append(out, newPathError(path, "incomplete value "+v.describe(), nil))
 	case kThunk:
 		// An unforced thunk awaited data that never arrived (validating a schema
 		// alone, or a reference left unresolved). It is incomplete.

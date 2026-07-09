@@ -1677,7 +1677,7 @@ func validateFilename(
 		d := SchemaDiagnostic{
 			Field:     "filename",
 			Actual:    fmt.Sprintf("%q", base),
-			Expected:  fmt.Sprintf("filename matching glob %s", pattern),
+			Expected:  "filename matching glob " + pattern,
 			SchemaRef: schemaRef(sch, ""),
 		}
 		return []lint.Diagnostic{d.Emit(mkDiag, f.Path, anchor)}

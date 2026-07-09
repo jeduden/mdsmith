@@ -227,11 +227,11 @@ func TestUsageErr_ErrorReturnsMsg(t *testing.T) {
 	}
 }
 
-// TestIsUsageError_NonUsage pins the negative path: a plain
-// fmt.Errorf is not a usageErr and must not be treated as one.
+// TestIsUsageError_NonUsage pins the negative path: a plain error is
+// not a usageErr and must not be treated as one.
 func TestIsUsageError_NonUsage(t *testing.T) {
 	t.Parallel()
-	err := fmt.Errorf("plain error")
+	err := errors.New("plain error")
 	if isUsageError(err) {
 		t.Errorf("isUsageError must return false for a non-usageErr")
 	}
