@@ -44,18 +44,26 @@ const (
 )
 
 // Symbol is one entry in a file's outline.
+//
+// Fields are ordered pointer-containing (string) first, then scalar
+// (int) last: Go's GC ptrdata spans from offset 0 through the last
+// pointer-containing field, so a scalar between two strings would
+// force that span to cover it too. See
+// docs/development/high-performance-go.md "Struct layout". Symbol is
+// allocated once per heading/link-ref/front-matter-key/directive,
+// several per file across the whole workspace index.
 type Symbol struct {
 	// File is the workspace-relative path of the containing file
 	// (forward slashes, no leading `./`). Index lookups key on this.
 	File string
-	// Kind is the symbol category.
-	Kind SymbolKind
 	// Name is the human-readable label (heading text, key, label,
 	// directive name).
 	Name string
 	// Anchor is the normalized identifier used for cross-document
 	// lookups: heading slug, link-ref label, or "" for other kinds.
 	Anchor string
+	// Kind is the symbol category.
+	Kind SymbolKind
 	// Level is the heading level (1–6) for SymbolHeading; 0 otherwise.
 	Level int
 	// StartLine, EndLine are 1-based line numbers covering the
@@ -101,13 +109,21 @@ const (
 // queries (IncomingEdges / BacklinksFor) skip unresolved edges so
 // catalog directives don't surface as phantom self-backlinks the way
 // empty-TargetFile placeholders did before plan 153.
+//
+// Fields are ordered pointer-containing (string) first, then scalar
+// (int/bool) last, per docs/development/high-performance-go.md
+// "Struct layout" — Go's GC ptrdata spans through the last
+// pointer-containing field, so interleaving scalars among the
+// strings would force that span to cover them too. Edge is
+// allocated once per link/anchor/ref/include/catalog/build
+// reference, across every file in a workspace index build.
 type Edge struct {
 	SourceFile   string
-	SourceLine   int // 1-based
-	SourceCol    int // 1-based
 	TargetFile   string
 	TargetAnchor string
 	TargetLabel  string
+	SourceLine   int // 1-based
+	SourceCol    int // 1-based
 	Kind         EdgeKind
 	Unresolved   bool
 }
