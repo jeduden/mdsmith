@@ -16,6 +16,15 @@ func TestIsMarkdownPath(t *testing.T) {
 		{"README.md", true},
 		{"", false},
 		{".md", true},
+		// Windows-native paths (filepath.FromSlash output): a dot must
+		// be found relative to the LAST separator of either kind, not
+		// just '/'. Regression cases for the path.Ext-only bug described
+		// in IsMarkdownPath's doc comment.
+		{`docs\README.md`, true},
+		{`docs\README.MD`, true},
+		{`some.dir\README`, false},
+		{`some.dir\README.md`, true},
+		{`a/b.dir\c\README.md`, true},
 	}
 	for _, tc := range cases {
 		if got := IsMarkdownPath(tc.path); got != tc.want {

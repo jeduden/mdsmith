@@ -16,6 +16,9 @@ import (
 // expect exactly 2 allocs (the two string conversions) rather than the
 // original 3 (bytes.Split slice + 2 string conversions).
 func TestCollectBodySyncPoints_NoByteSplitAlloc(t *testing.T) {
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race")
+	}
 	content := []byte("## Section One\n\nSome prose without fields.\n\n## Section Two\n\nMore prose.\n")
 	headings := []docHeading{
 		{Text: "Section One", Level: 2, Line: 1},
