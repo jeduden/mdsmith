@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode"
 
 	"github.com/bmatcuk/doublestar/v4"
@@ -787,11 +788,22 @@ func resolveBodySyncLine(
 	return patchedLine{}, false
 }
 
+// fieldPatternCache caches compiled field-interpolation regexes by body
+// text, keyed the same way compiledPatterns is in maxsectionlength and
+// requiredtextpatterns. appendBodySyncFields calls buildFieldPattern once
+// per {field}-bearing body line; a schema whose body repeats the same
+// template line (e.g. a table row pattern) would otherwise rebuild an
+// identical NFA on every match.
+var fieldPatternCache sync.Map // map[string]*regexp.Regexp
+
 // buildFieldPattern compiles a regex that matches a body line whose
 // {field} placeholders have been replaced by any non-empty run.
 // The pattern is always valid: each part is regexp.QuoteMeta'd and
 // joined with ".+", so regexp.MustCompile never panics here.
 func buildFieldPattern(bodyText string) *regexp.Regexp {
+	if cached, ok := fieldPatternCache.Load(bodyText); ok {
+		return cached.(*regexp.Regexp)
+	}
 	parts := fieldinterp.SplitOnFields(bodyText)
 	var patBuf strings.Builder
 	patBuf.WriteString("^")
@@ -802,7 +814,9 @@ func buildFieldPattern(bodyText string) *regexp.Regexp {
 		}
 	}
 	patBuf.WriteString("$")
-	return regexp.MustCompile(patBuf.String())
+	compiled := regexp.MustCompile(patBuf.String())
+	actual, _ := fieldPatternCache.LoadOrStore(bodyText, compiled)
+	return actual.(*regexp.Regexp)
 }
 
 // buildSchemaHeading constructs a schemaHeading from a docHeading,
