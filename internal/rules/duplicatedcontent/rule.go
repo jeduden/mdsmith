@@ -21,6 +21,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/globpath"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/mdpath"
 	"github.com/jeduden/mdsmith/internal/piparser"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
@@ -441,7 +442,7 @@ func walkDirDecision(p string, exclude []string) error {
 // unreadable, or unparseable are silently dropped — this rule is
 // advisory and must not fail a run because of a sibling.
 func indexFileIfEligible(index map[string][]externalMatch, cfg corpusScanConfig, path string) {
-	if !isMarkdownPath(path) || path == cfg.selfName {
+	if !mdpath.IsMarkdownPath(path) || path == cfg.selfName {
 		return
 	}
 	if !matchesFilters(path, cfg.include, cfg.exclude) {
@@ -489,11 +490,6 @@ func candidateParagraphs(cfg corpusScanConfig, path string) []paragraph {
 	v := cfg.runCache.DuplicateParagraphs(absPath+cfg.keySuffix, func() any { return build() })
 	paragraphs, _ := v.([]paragraph)
 	return paragraphs
-}
-
-func isMarkdownPath(p string) bool {
-	ext := filepath.Ext(p)
-	return strings.EqualFold(ext, ".md") || strings.EqualFold(ext, ".markdown")
 }
 
 // shouldSkipDir reports whether a directory path matches one of the

@@ -11,7 +11,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"unicode"
 
 	"github.com/bmatcuk/doublestar/v4"
@@ -788,21 +787,29 @@ func resolveBodySyncLine(
 	return patchedLine{}, false
 }
 
-// fieldPatternCache caches compiled field-interpolation regexes by body
-// text, keyed the same way compiledPatterns is in maxsectionlength and
-// requiredtextpatterns. appendBodySyncFields calls buildFieldPattern once
-// per {field}-bearing body line; a schema whose body repeats the same
-// template line (e.g. a table row pattern) would otherwise rebuild an
-// identical NFA on every match.
-var fieldPatternCache sync.Map // map[string]*regexp.Regexp
-
 // buildFieldPattern compiles a regex that matches a body line whose
-// {field} placeholders have been replaced by any non-empty run.
-// The pattern is always valid: each part is regexp.QuoteMeta'd and
-// joined with ".+", so regexp.MustCompile never panics here.
-func buildFieldPattern(bodyText string) *regexp.Regexp {
-	if cached, ok := fieldPatternCache.Load(bodyText); ok {
-		return cached.(*regexp.Regexp)
+// {field} placeholders have been replaced by any non-empty run. The
+// pattern is always valid: each part is regexp.QuoteMeta'd and joined
+// with ".+", so regexp.MustCompile never panics here.
+//
+// cache, when non-nil, is consulted and populated by bodyText: within
+// one parseSchemaWithRootFS call, buildSchemaHeading and
+// collectBodySyncPoints can both hit the same {field} template text
+// (e.g. a repeated table-row pattern), so a call-scoped cache avoids
+// rebuilding an identical NFA. The cache is deliberately NOT a
+// package-level var: bodyText is schema-authored Markdown, which
+// churns during interactive editing in mdsmith lsp, unlike the
+// bounded, static config patterns compiledPatterns caches in
+// maxsectionlength and requiredtextpatterns — a process-lifetime
+// cache here would grow with edit history instead of workspace size.
+// parseSchemaWithCache already caches and invalidates the
+// *parsedSchema this produces, so a fresh per-call cache costs
+// nothing extra on the (already cached) common path.
+func buildFieldPattern(bodyText string, cache map[string]*regexp.Regexp) *regexp.Regexp {
+	if cache != nil {
+		if cached, ok := cache[bodyText]; ok {
+			return cached
+		}
 	}
 	parts := fieldinterp.SplitOnFields(bodyText)
 	var patBuf strings.Builder
@@ -815,19 +822,22 @@ func buildFieldPattern(bodyText string) *regexp.Regexp {
 	}
 	patBuf.WriteString("$")
 	compiled := regexp.MustCompile(patBuf.String())
-	actual, _ := fieldPatternCache.LoadOrStore(bodyText, compiled)
-	return actual.(*regexp.Regexp)
+	if cache != nil {
+		cache[bodyText] = compiled
+	}
+	return compiled
 }
 
 // buildSchemaHeading constructs a schemaHeading from a docHeading,
 // pre-compiling the field-interpolation regex when the text contains
 // {field} references so matchesSchema pays no per-call compile cost.
 // Pattern construction is delegated to buildFieldPattern, which owns
-// the QuoteMeta+".+" logic and its MustCompile invariant.
-func buildSchemaHeading(h docHeading) schemaHeading {
+// the QuoteMeta+".+" logic and its MustCompile invariant. cache is
+// forwarded to buildFieldPattern; see its doc comment.
+func buildSchemaHeading(h docHeading, cache map[string]*regexp.Regexp) schemaHeading {
 	sh := schemaHeading{Level: h.Level, Text: h.Text}
 	if fieldinterp.ContainsField(h.Text) {
-		sh.compiled = buildFieldPattern(h.Text)
+		sh.compiled = buildFieldPattern(h.Text, cache)
 	}
 	return sh
 }
@@ -1346,9 +1356,11 @@ func cueFieldLabel(key string) string {
 // collectBodySyncPoints scans body content for {field} references and
 // adds them to the syncPoints map under their nearest preceding heading.
 // Iterates over content bytes directly to avoid the bytes.Split allocation.
+// fieldCache is forwarded to appendBodySyncFields; see buildFieldPattern's
+// doc comment.
 func collectBodySyncPoints(
 	content []byte, headings []docHeading,
-	syncPoints map[int][]syncPoint,
+	syncPoints map[int][]syncPoint, fieldCache map[string]*regexp.Regexp,
 ) {
 	currentHeading := -1
 	// inPIBlock is true while scanning the lines of a multi-line
@@ -1412,7 +1424,7 @@ func collectBodySyncPoints(
 			continue
 		}
 		if currentHeading >= 0 {
-			appendBodySyncFields(syncPoints, currentHeading, string(lineB))
+			appendBodySyncFields(syncPoints, currentHeading, string(lineB), fieldCache)
 		}
 	}
 }
@@ -1430,15 +1442,17 @@ func headingIndexForLine(headings []docHeading, line string) int {
 
 // appendBodySyncFields records a body-sync point under heading idx for
 // each `{field}` token found in the body line. Lines with no token add
-// nothing.
+// nothing. fieldCache is forwarded to buildFieldPattern; see its doc
+// comment.
 func appendBodySyncFields(
 	syncPoints map[int][]syncPoint, idx int, trimmed string,
+	fieldCache map[string]*regexp.Regexp,
 ) {
 	fields := fieldinterp.Fields(trimmed)
 	if len(fields) == 0 {
 		return
 	}
-	compiled := buildFieldPattern(trimmed)
+	compiled := buildFieldPattern(trimmed, fieldCache)
 	for _, f := range fields {
 		syncPoints[idx] = append(syncPoints[idx],
 			syncPoint{Field: f, InBody: true, BodyText: trimmed, compiled: compiled})
@@ -1647,15 +1661,21 @@ func parseSchemaWithRootFS(
 
 	schHeadings := make([]schemaHeading, len(headings))
 	syncPoints := make(map[int][]syncPoint)
+	// fieldCache is scoped to this one parse: it dedupes repeated
+	// {field} template text within this schema's headings and body,
+	// then is discarded with the rest of this call's locals. See
+	// buildFieldPattern's doc comment for why this isn't a package
+	// var.
+	fieldCache := make(map[string]*regexp.Regexp)
 
 	for i, h := range headings {
-		schHeadings[i] = buildSchemaHeading(h)
+		schHeadings[i] = buildSchemaHeading(h, fieldCache)
 		for _, f := range fieldinterp.Fields(h.Text) {
 			syncPoints[i] = append(syncPoints[i], syncPoint{Field: f})
 		}
 	}
 
-	collectBodySyncPoints(content, headings, syncPoints)
+	collectBodySyncPoints(content, headings, syncPoints, fieldCache)
 
 	return &parsedSchema{
 		Config:     cfg,

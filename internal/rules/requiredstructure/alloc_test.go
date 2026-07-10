@@ -27,7 +27,7 @@ func TestCollectBodySyncPoints_NoByteSplitAlloc(t *testing.T) {
 		for k := range syncPoints {
 			delete(syncPoints, k)
 		}
-		collectBodySyncPoints(content, headings, syncPoints)
+		collectBodySyncPoints(content, headings, syncPoints, nil)
 	})
 	// After removing bytes.Split: 2 string() casts for 2 headings, no split alloc.
 	assert.LessOrEqual(t, allocs, 2.0,

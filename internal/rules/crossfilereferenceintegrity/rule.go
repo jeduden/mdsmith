@@ -13,6 +13,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/globpath"
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/mdpath"
 	"github.com/jeduden/mdsmith/internal/placeholders"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/setutil"
@@ -194,7 +195,7 @@ func (r *Rule) checkWikilinkAnchor(
 	root fs.FS,
 	anchorCache map[string]map[string]struct{},
 ) []lint.Diagnostic {
-	if wl.Anchor == "" || !isMarkdownPath(resolved) {
+	if wl.Anchor == "" || !mdpath.IsMarkdownPath(resolved) {
 		return nil
 	}
 	anchors, err := wikilinkAnchorsForTarget(f, root, resolved, anchorCache)
@@ -478,7 +479,7 @@ func (r *Rule) checkLink(
 		return r.checkSiteAbsoluteLink(ctx.f, link, linkPath, ctx.resolvedSiteRoot)
 	}
 
-	if !isImage && !r.Strict && !isMarkdownPath(linkPath) {
+	if !isImage && !r.Strict && !mdpath.IsMarkdownPath(linkPath) {
 		return nil
 	}
 
@@ -501,7 +502,7 @@ func (r *Rule) checkRelativeTarget(
 	// readable targetFile" step so we only pay for the read
 	// closure (which would otherwise escape to the heap) when an
 	// anchor actually has to be resolved. Plan 195 task 5.
-	if target.Anchor == "" || !isMarkdownPath(linkPath) {
+	if target.Anchor == "" || !mdpath.IsMarkdownPath(linkPath) {
 		if !targetExists(ctx.f, linkPath, ctx.resolvedRoot) {
 			if ctx.resolvedRoot != "" && linkEscapesRoot(ctx.f, linkPath, ctx.resolvedRoot) {
 				return nil
@@ -1000,11 +1001,6 @@ func resolveWorkspaceRelTarget(sourcePath, linkPath string) (string, bool) {
 		return "", false
 	}
 	return rel, true
-}
-
-func isMarkdownPath(path string) bool {
-	ext := filepath.Ext(path)
-	return strings.EqualFold(ext, ".md") || strings.EqualFold(ext, ".markdown")
 }
 
 func normalizeLinkPath(linkPath string) string {
