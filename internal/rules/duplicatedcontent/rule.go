@@ -492,9 +492,8 @@ func candidateParagraphs(cfg corpusScanConfig, path string) []paragraph {
 }
 
 func isMarkdownPath(p string) bool {
-	lower := strings.ToLower(p)
-	return strings.HasSuffix(lower, ".md") ||
-		strings.HasSuffix(lower, ".markdown")
+	ext := filepath.Ext(p)
+	return strings.EqualFold(ext, ".md") || strings.EqualFold(ext, ".markdown")
 }
 
 // shouldSkipDir reports whether a directory path matches one of the
