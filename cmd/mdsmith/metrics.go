@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -152,7 +153,7 @@ func parseMetricsRankOptions(args []string) (metricsRankOptions, []string, error
 		return metricsRankOptions{}, nil, err
 	}
 	if opts.top < 0 {
-		return metricsRankOptions{}, nil, fmt.Errorf("--top must be >= 0")
+		return metricsRankOptions{}, nil, errors.New("--top must be >= 0")
 	}
 	opts.followSymlinks = followSymlinksOverride(fs, followSymlinks)
 

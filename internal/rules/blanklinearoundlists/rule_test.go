@@ -1,6 +1,7 @@
 package blanklinearoundlists
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -138,7 +139,7 @@ func TestFix_NoChange(t *testing.T) {
 	require.NoError(t, err)
 	r := &Rule{}
 	result := r.Fix(f)
-	if string(result) != string(src) {
+	if !bytes.Equal(result, src) {
 		t.Errorf("expected no change, got %q", string(result))
 	}
 }
@@ -167,7 +168,7 @@ func TestFix_FencedCodeBlockWithYAMLList_NoCorruption(t *testing.T) {
 	require.NoError(t, err)
 	r := &Rule{}
 	result := r.Fix(f)
-	if string(result) != string(src) {
+	if !bytes.Equal(result, src) {
 		t.Errorf("fix corrupted code block content:\nexpected: %q\ngot:      %q", string(src), string(result))
 	}
 }

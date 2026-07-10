@@ -349,8 +349,7 @@ func TestState_ResetClearsTokAndTextReferences(t *testing.T) {
 	st := newTestState()
 	// Use a string literal we can identify in the backing arrays.
 	const sentinel = "MDS024-PIN"
-	st.tokens = append(st.tokens, Token{Tok: sentinel, Position: 1})
-	st.tokens = append(st.tokens, Token{Tok: "another", Position: 2})
+	st.tokens = append(st.tokens, Token{Tok: sentinel, Position: 1}, Token{Tok: "another", Position: 2})
 	st.ptrs = append(st.ptrs, &st.tokens[0], &st.tokens[1])
 	st.pairs = append(st.pairs, [2]*Token{&st.tokens[0], &st.tokens[1]})
 	st.sents = append(st.sents, Sentence{Start: 0, End: 1, Text: sentinel})

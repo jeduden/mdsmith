@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -929,7 +930,7 @@ row: "- [{title}]({filename})"
 	f2 := newTestFile(t, "index.md", string(result1), mapFS)
 	result2 := r.Fix(f2)
 
-	if string(result1) != string(result2) {
+	if !bytes.Equal(result1, result2) {
 		t.Errorf("Fix is not idempotent.\nFirst:\n%s\nSecond:\n%s", string(result1), string(result2))
 	}
 }
@@ -1932,7 +1933,7 @@ func TestSplitLines(t *testing.T) {
 func TestSplitLines_Empty(t *testing.T) {
 	lines := splitLines([]byte(""))
 	require.Len(t, lines, 1, "expected 1 line for empty input, got %d", len(lines))
-	if string(lines[0]) != "" {
+	if len(lines[0]) != 0 {
 		t.Errorf("expected empty line, got %q", string(lines[0]))
 	}
 }
@@ -1940,10 +1941,10 @@ func TestSplitLines_Empty(t *testing.T) {
 func TestSplitLines_SingleNewline(t *testing.T) {
 	lines := splitLines([]byte("\n"))
 	require.Len(t, lines, 2, "expected 2 lines for single newline, got %d", len(lines))
-	if string(lines[0]) != "" {
+	if len(lines[0]) != 0 {
 		t.Errorf("expected empty first line, got %q", string(lines[0]))
 	}
-	if string(lines[1]) != "" {
+	if len(lines[1]) != 0 {
 		t.Errorf("expected empty second line, got %q", string(lines[1]))
 	}
 }
@@ -1957,7 +1958,7 @@ func TestSplitLines_TrailingNewline(t *testing.T) {
 	if string(lines[1]) != "b" {
 		t.Errorf("line 1: got %q", string(lines[1]))
 	}
-	if string(lines[2]) != "" {
+	if len(lines[2]) != 0 {
 		t.Errorf("line 2: expected empty, got %q", string(lines[2]))
 	}
 }

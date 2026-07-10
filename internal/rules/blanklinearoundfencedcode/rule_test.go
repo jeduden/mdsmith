@@ -1,6 +1,7 @@
 package blanklinearoundfencedcode
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -109,7 +110,7 @@ func TestFix_InsertBlankBefore(t *testing.T) {
 	}
 	result := r.Fix(f)
 	// Verify the fix added a blank line
-	if string(result) == string(src) {
+	if bytes.Equal(result, src) {
 		t.Error("expected fix to change the source")
 	}
 }
@@ -145,7 +146,7 @@ func TestFix_NoChangeNeeded(t *testing.T) {
 	require.NoError(t, err)
 	r := &Rule{}
 	result := r.Fix(f)
-	if string(result) != string(src) {
+	if !bytes.Equal(result, src) {
 		t.Errorf("expected no change, got %q", string(result))
 	}
 }

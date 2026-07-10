@@ -101,9 +101,9 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 
 func formatMessage(p Pattern) string {
 	if p.Message != "" {
-		return fmt.Sprintf("required text missing: %s", p.Message)
+		return "required text missing: " + p.Message
 	}
-	return fmt.Sprintf("required text pattern not matched: %s", p.Source)
+	return "required text pattern not matched: " + p.Source
 }
 
 // ApplySettings implements rule.Configurable.

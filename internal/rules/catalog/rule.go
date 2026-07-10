@@ -372,7 +372,7 @@ func validateGlob(filePath string, line int, params map[string]string) []lint.Di
 		}
 		if !doublestar.ValidatePattern(pattern) {
 			return []lint.Diagnostic{makeDiag(filePath, line,
-				fmt.Sprintf("generated section directive has invalid glob pattern: %s", pattern))}
+				"generated section directive has invalid glob pattern: "+pattern)}
 		}
 		if containsDotDotInsideBraces(pattern) {
 			// path.Clean does not expand `{a,b}` alternatives, so a

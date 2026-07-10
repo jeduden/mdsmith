@@ -1,6 +1,7 @@
 package nomultipleblanks
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -112,7 +113,7 @@ func TestFix_PreservesNoBlanks(t *testing.T) {
 	require.NoError(t, err)
 	r := &Rule{}
 	result := r.Fix(f)
-	if string(result) != string(src) {
+	if !bytes.Equal(result, src) {
 		t.Errorf("expected %q, got %q", string(src), string(result))
 	}
 }
@@ -123,7 +124,7 @@ func TestFix_PreservesSingleBlanks(t *testing.T) {
 	require.NoError(t, err)
 	r := &Rule{}
 	result := r.Fix(f)
-	if string(result) != string(src) {
+	if !bytes.Equal(result, src) {
 		t.Errorf("expected %q, got %q", string(src), string(result))
 	}
 }

@@ -16,9 +16,17 @@ import (
 
 // DocHeading is a heading collected from the document under
 // validation.
+//
+// Fields are ordered pointer-containing (string) first, then scalar
+// (int) last, per docs/development/high-performance-go.md "Struct
+// layout" — Go's GC ptrdata spans through the last pointer-containing
+// field, so a scalar between Text and the surrounding ints would
+// force that span to cover it too. ExtractDocHeadings returns a
+// []DocHeading per document, so the layout affects every element the
+// GC scans in that slice.
 type DocHeading struct {
-	Level int
 	Text  string
+	Level int
 	Line  int
 }
 
@@ -1669,7 +1677,7 @@ func validateFilename(
 		d := SchemaDiagnostic{
 			Field:     "filename",
 			Actual:    fmt.Sprintf("%q", base),
-			Expected:  fmt.Sprintf("filename matching glob %s", pattern),
+			Expected:  "filename matching glob " + pattern,
 			SchemaRef: schemaRef(sch, ""),
 		}
 		return []lint.Diagnostic{d.Emit(mkDiag, f.Path, anchor)}

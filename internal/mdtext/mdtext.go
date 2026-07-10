@@ -36,10 +36,16 @@ func Slugify(s string) string {
 }
 
 // TOCItem represents a single heading entry for table-of-contents generation.
+// Fields are ordered pointer-containing (string) first, then scalar
+// (int) last, per docs/development/high-performance-go.md "Struct
+// layout" — Go's GC ptrdata spans through the last pointer-containing
+// field, so a scalar between two strings would force that span to
+// cover it too. CollectTOCItems builds one per heading for every
+// <?toc?> directive fix pass.
 type TOCItem struct {
-	Level  int
 	Text   string
 	Anchor string
+	Level  int
 }
 
 // CollectTOCItems returns all headings from the AST as TOC items, in document

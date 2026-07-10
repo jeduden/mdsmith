@@ -2483,7 +2483,7 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 		d := schema.SchemaDiagnostic{
 			Field:     "path",
 			Actual:    fmt.Sprintf("%q", rel),
-			Expected:  fmt.Sprintf("path matching glob %s", pp.Pattern),
+			Expected:  "path matching glob " + pp.Pattern,
 			SchemaRef: fmt.Sprintf("kinds[%s] / path-pattern", pp.Kind),
 		}
 		diags = append(diags, d.Emit(makeDiag, f.Path, schema.NonBodyDiagLine(f)))
@@ -2550,7 +2550,7 @@ func checkFilenamePattern(
 		d := schema.SchemaDiagnostic{
 			Field:     "filename",
 			Actual:    fmt.Sprintf("%q", base),
-			Expected:  fmt.Sprintf("filename matching glob %s", pattern),
+			Expected:  "filename matching glob " + pattern,
 			SchemaRef: buildSchemaRefForLegacy(schemaSource),
 		}
 		return []lint.Diagnostic{d.Emit(makeDiag, f.Path, anchor)}

@@ -13,12 +13,14 @@ linters:
     - errcheck
     - funlen
     - gocognit
+    - gocritic
     - govet
     - staticcheck
     - unused
     - ineffassign
     - misspell
     - lll
+    - perfsprint
     - prealloc
     - revive
   settings:
@@ -30,6 +32,49 @@ linters:
       statements: 40
     gocognit:
       min-complexity: 30
+    gocritic:
+      # docs/development/high-performance-go.md Tooling: "gocritic
+      # performance group are worth enabling". golangci-lint rejects
+      # combining disable-all with either disabled-tags or
+      # disabled-checks, so enabled-tags: [performance] can't be
+      # paired with a disabled-checks carve-out; enabled-checks
+      # spells out go-critic v0.14.3's full performance-tagged set
+      # (checkers/*.go Tags + checkers/rules/rules.go doc:tags)
+      # minus hugeParam/rangeValCopy instead.
+      #
+      # hugeParam/rangeValCopy flag 263 existing by-value struct
+      # params and for-range loops across cmd/mdsmith, internal/build,
+      # internal/config, and internal/schema — genuine wins, but each
+      # fix touches a function signature or call sites, and some
+      # types are used across package boundaries. That is a much
+      # larger, separately reviewable pass than a single perf-audit
+      # PR; tracked as follow-up debt per
+      # docs/development/high-performance-go.md Tooling rather than
+      # grandfathered silently. (golangci-lint's default
+      # max-same-issues/max-issues-per-linter caps hide the true
+      # count in a plain `run`; pass --max-issues-per-linter=0
+      # --max-same-issues=0 to see all of them.)
+      disable-all: true
+      enabled-checks:
+        - appendCombine
+        - rangeExprCopy
+        - preferDecodeRune
+        - stringXbytes
+        - indexAlloc
+        - preferWriteByte
+        - preferFprint
+        - preferStringWriter
+        - sliceClear
+        - equalFold
+        - zeroByteRepeat
+    perfsprint:
+      # error-format (fmt.Errorf → errors.New) fires ~180 times
+      # across the whole codebase, almost entirely on cold
+      # error-construction paths unrelated to a hot-path performance
+      # audit. string-format (fmt.Sprintf → string concatenation) is
+      # the check docs/development/high-performance-go.md actually
+      # calls out ("strconv over fmt.Sprintf"); kept on.
+      error-format: false
     revive:
       rules:
         - name: exported

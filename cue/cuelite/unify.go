@@ -1,6 +1,7 @@
 package cuelite
 
 import (
+	"bytes"
 	"strconv"
 	"unicode/utf8"
 )
@@ -115,7 +116,7 @@ func concreteEqual(a, b *engineValue) bool {
 	case kBool:
 		return a.b == b.b
 	case kBytes:
-		return string(a.bytes) == string(b.bytes)
+		return bytes.Equal(a.bytes, b.bytes)
 	case kNull:
 		return true
 	}

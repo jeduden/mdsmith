@@ -670,7 +670,7 @@ func describeEntry(e ContentEntry) string {
 	switch e.Kind {
 	case ContentKindCodeBlock:
 		if e.Lang != "" {
-			return fmt.Sprintf("code-block lang=%s", e.Lang)
+			return "code-block lang=" + e.Lang
 		}
 		return "code-block"
 	case ContentKindTable:
@@ -703,7 +703,7 @@ func describeNode(f *lint.File, n ast.Node) string {
 	case *ast.FencedCodeBlock:
 		lang := string(x.Language(f.Source))
 		if lang != "" {
-			return fmt.Sprintf("code-block lang=%s", lang)
+			return "code-block lang=" + lang
 		}
 		return "code-block"
 	case *extast.Table:

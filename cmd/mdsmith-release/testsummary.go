@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"os"
 
 	flag "github.com/spf13/pflag"
@@ -58,6 +57,6 @@ func appendFile(path, s string) error {
 		return err
 	}
 	defer f.Close() //nolint:errcheck // append-only; write error is reported below
-	_, err = io.WriteString(f, s)
+	_, err = f.WriteString(s)
 	return err
 }

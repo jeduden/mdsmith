@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -868,7 +869,7 @@ func resolveInstalledBinary() (string, error) {
 	if p, err := exec.LookPath("mdsmith"); err == nil {
 		return p, nil
 	}
-	return "", fmt.Errorf(
+	return "", errors.New(
 		"mdsmith not found; install it with " +
 			"\"go install github.com/jeduden/mdsmith/cmd/mdsmith@latest\" " +
 			"or ensure the mdsmith binary is on PATH",
