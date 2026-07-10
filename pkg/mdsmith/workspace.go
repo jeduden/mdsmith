@@ -65,24 +65,21 @@ type OSWorkspace struct {
 	Root string
 }
 
-// ReadFile reads path from the host filesystem. When Root is set and
-// path is workspace-relative, it is resolved against Root so ReadFile
-// and FS (which is rooted at Root) name the same file for one uri — see
-// the Root field doc. An absolute path is read unchanged.
+// ReadFile reads path from the host filesystem. When Root is set and path
+// is workspace-relative, it is read through readFileRooted so a symlink
+// escaping Root is refused the same way FS() refuses it — see the Root
+// field doc — without leaking an open directory handle per call the way
+// repeatedly fetching FS() would (see FS's doc comment). This containment
+// is RESOLVE_BENEATH via os.OpenRoot on non-tinygo builds; readFileRooted's
+// tinygo variant uses os.DirFS with no containment, matching FS()'s own
+// per-build-tag split (OSWorkspace is not used in wasm builds — see
+// workspace_fs_tinygo.go). An absolute path, or any path when Root is
+// empty, is read unchanged with no workspace boundary to enforce.
 func (w OSWorkspace) ReadFile(p string) ([]byte, error) {
-	return os.ReadFile(w.resolve(p)) //nolint:gosec // path is caller-controlled; OSWorkspace is the native disk seam
-}
-
-// resolve maps a workspace-relative path to an absolute one rooted at
-// Root, mirroring how FS (os.DirFS(Root)) interprets the same path.
-// An absolute path, or any path when Root is empty, is returned
-// unchanged so the zero-value workspace and absolute-path callers keep
-// reading paths exactly as passed.
-func (w OSWorkspace) resolve(p string) string {
 	if w.Root == "" || filepath.IsAbs(p) {
-		return p
+		return os.ReadFile(p) //nolint:gosec // path is caller-controlled; OSWorkspace is the native disk seam
 	}
-	return filepath.Join(w.Root, filepath.FromSlash(p))
+	return readFileRooted(w.Root, path.Clean(filepath.ToSlash(p)))
 }
 
 // Glob expands a doublestar pattern against the host filesystem.

@@ -45,6 +45,14 @@ func TestOSWorkspaceFS(t *testing.T) {
 	}
 }
 
+// TestOverlayWorkspaceFSEmptyRoot covers ensureDiskFS's empty-root default
+// ("."), the same root-defaulting branch OSWorkspace.FS covers above.
+func TestOverlayWorkspaceFSEmptyRoot(t *testing.T) {
+	if NewOverlayWorkspace("").FS() == nil {
+		t.Fatal("NewOverlayWorkspace(\"\").FS() (root defaulting to \".\") returned nil")
+	}
+}
+
 // TestWorkspaceGlobErrors covers the error return of both Glob
 // implementations on a malformed doublestar pattern.
 func TestWorkspaceGlobErrors(t *testing.T) {

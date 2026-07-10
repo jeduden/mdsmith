@@ -238,6 +238,7 @@ footer: |
 | 2607022118 | 🔲     | sonnet | [General occurrence rule — bound how often a pattern appears per scope](plan/2607022118_occurrence-rule.md)                                             |
 | 2607022119 | 🔲     | sonnet | [Word-frequency metric and over-repetition rule](plan/2607022119_word-frequency-metric-rule.md)                                                         |
 | 2607022120 | 🔲     | opus   | [Substitution rule — deterministic word-choice swaps with auto-fix](plan/2607022120_substitution-rule.md)                                               |
+| 2607031500 | ✅     | sonnet | [Security hardening batch — 2026-07-03 post-audit diff review (low)](plan/2607031500_security-hardening-batch-2026-07-03.md)                            |
 | 2607040635 | ⛔     | opus   | [Add mdsmith move: move a file and rewrite every incoming reference](plan/2607040635_move-command.md)                                                   |
 | 2607040822 | 🔲     | opus   | [Refactor engine redesign: unify move and rename behind one Plan, across CLI, LSP, and WASM hosts](plan/2607040822_refactor-move-rename-redesign.md)    |
 | 2607051918 | 🔲     | sonnet | [Export wordlist.Dedup and remove the identical dedupStrings copy in internal/config](plan/2607051918_arch-fix-wordlist-config-dedup.md)                |

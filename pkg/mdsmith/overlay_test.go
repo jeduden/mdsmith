@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -70,6 +71,55 @@ func TestOverlayWorkspaceFSSymlinkEscapeRefused(t *testing.T) {
 	}
 	if _, err := fs.ReadFile(fsys, "escape.md"); err == nil {
 		t.Fatal("fs.ReadFile(overlayFS, escape.md) succeeded; expected containment error for symlink escaping root")
+	}
+}
+
+// TestOverlayWorkspaceReadFileSymlinkEscapeRefused verifies that
+// OverlayWorkspace.ReadFile's disk fall-through shares FS()'s
+// os.OpenRoot containment, so an unshadowed within-workspace symlink
+// pointing outside the root is refused. Guards CWE-73.
+func TestOverlayWorkspaceReadFileSymlinkEscapeRefused(t *testing.T) {
+	root := t.TempDir()
+
+	symlinkPath := filepath.Join(root, "escape.md")
+	if err := os.Symlink("/etc/passwd", symlinkPath); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	if _, errDirFS := os.ReadFile(symlinkPath); errDirFS != nil {
+		t.Skip("test invariant: the symlink target must be readable; skipping on this platform")
+	}
+
+	ws := NewOverlayWorkspace(root)
+	if _, err := ws.ReadFile("escape.md"); err == nil {
+		t.Fatal("OverlayWorkspace.ReadFile(escape.md) succeeded; expected containment error for symlink escaping root")
+	}
+}
+
+// TestOverlayWorkspaceReadFileDiskFallthroughSkipsOverlaySnapshot verifies
+// that ReadFile's disk fall-through does not pay FS()'s per-call overlay-map
+// clone (see FS's doc comment): with many open buffers, a disk-fallback read
+// must stay O(1), not O(len(overlay)).
+func TestOverlayWorkspaceReadFileDiskFallthroughSkipsOverlaySnapshot(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "disk.md"), []byte("disk"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	ws := NewOverlayWorkspace(root)
+	const openBuffers = 500
+	for i := range openBuffers {
+		ws.Set(strconv.Itoa(i)+".md", []byte("x"))
+	}
+	if _, err := ws.ReadFile("disk.md"); err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+
+	allocs := testing.AllocsPerRun(50, func() {
+		_, _ = ws.ReadFile("disk.md")
+	})
+	if allocs > 20 {
+		t.Fatalf("ReadFile disk fall-through allocated %.0f times per call with %d open buffers; "+
+			"expected O(1), not O(overlay size) from cloning the overlay map", allocs, openBuffers)
 	}
 }
 
@@ -182,14 +232,14 @@ func TestOverlayWorkspaceGlobBadPattern(t *testing.T) {
 	}
 }
 
-// TestOverlayWorkspaceReadFileAbsolutePath covers diskPath's
-// passthrough branch: an absolute path is read unchanged (not re-rooted
-// under Root), mirroring OSWorkspace.resolve so an absolute-path caller
-// reaches the file it named.
+// TestOverlayWorkspaceReadFileAbsolutePath covers ReadFile's
+// absolute-path passthrough branch: an absolute path is read unchanged
+// (not re-rooted under Root), mirroring OSWorkspace so an absolute-path
+// caller reaches the file it named.
 func TestOverlayWorkspaceReadFileAbsolutePath(t *testing.T) {
 	root := t.TempDir()
-	// A file OUTSIDE Root, addressed by its absolute path. If diskPath
-	// wrongly joined it under Root, this read would miss.
+	// A file OUTSIDE Root, addressed by its absolute path. If the
+	// passthrough branch wrongly joined it under Root, this read would miss.
 	other := t.TempDir()
 	abs := filepath.Join(other, "elsewhere.md")
 	if err := os.WriteFile(abs, []byte("absolute"), 0o600); err != nil {

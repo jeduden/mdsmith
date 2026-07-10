@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"testing"
 
@@ -369,6 +370,64 @@ func TestOSWorkspaceFSSymlinkEscapeRefused(t *testing.T) {
 	}
 }
 
+// TestOSWorkspaceReadFileSymlinkEscapeRefused verifies that
+// OSWorkspace.ReadFile shares FS()'s os.OpenRoot containment, so a
+// within-workspace symlink pointing outside Root is refused rather than
+// followed. This guards against CWE-73 (path traversal via symlink).
+func TestOSWorkspaceReadFileSymlinkEscapeRefused(t *testing.T) {
+	root := t.TempDir()
+
+	symlinkPath := filepath.Join(root, "escape.md")
+	if err := os.Symlink("/etc/passwd", symlinkPath); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	if _, errDirFS := os.ReadFile(symlinkPath); errDirFS != nil {
+		t.Skip("test invariant: the symlink target must be readable; skipping on this platform")
+	}
+
+	ws := OSWorkspace{Root: root}
+	if _, err := ws.ReadFile("escape.md"); err == nil {
+		t.Fatal("OSWorkspace.ReadFile(escape.md) succeeded; expected containment error for symlink escaping root")
+	}
+}
+
+// TestOSWorkspaceReadFileDoesNotLeakRootHandles verifies that repeated
+// ReadFile calls do not accumulate open os.Root directory handles. A naive
+// containment fix that calls w.FS() (which opens a fresh os.Root per call
+// and never closes it) leaks one file descriptor per read; ReadFile must
+// close the Root handle it opens before returning.
+func TestOSWorkspaceReadFileDoesNotLeakRootHandles(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("fd counting via /proc/self/fd is Linux-only")
+	}
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "a.md"), []byte("x"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	ws := OSWorkspace{Root: root}
+
+	countFDs := func() int {
+		entries, err := os.ReadDir("/proc/self/fd")
+		if err != nil {
+			t.Skipf("cannot read /proc/self/fd: %v", err)
+		}
+		return len(entries)
+	}
+
+	before := countFDs()
+	const reads = 200
+	for range reads {
+		if _, err := ws.ReadFile("a.md"); err != nil {
+			t.Fatalf("ReadFile: %v", err)
+		}
+	}
+	after := countFDs()
+	if after-before >= reads/2 {
+		t.Fatalf("ReadFile leaked root handles: %d fds open before %d reads, %d after", before, reads, after)
+	}
+}
+
 // TestOSWorkspaceFSOpenRootFailFallback verifies that when os.OpenRoot itself
 // fails (e.g. the root directory does not exist), OSWorkspace.FS() returns an
 // fs.FS that propagates the error on every Open rather than panicking or
@@ -384,6 +443,17 @@ func TestOSWorkspaceFSOpenRootFailFallback(t *testing.T) {
 	_, err := fsys.Open("any.md")
 	if err == nil {
 		t.Fatal("Open through fallback FS on a non-existent root must return an error")
+	}
+}
+
+// TestOSWorkspaceReadFileOpenRootFails verifies that ReadFile propagates the
+// os.OpenRoot error (e.g. a non-existent Root) rather than panicking, when
+// resolving a workspace-relative path through readFileRooted.
+func TestOSWorkspaceReadFileOpenRootFails(t *testing.T) {
+	nonExistent := t.TempDir() + "/does-not-exist"
+	ws := OSWorkspace{Root: nonExistent}
+	if _, err := ws.ReadFile("any.md"); err == nil {
+		t.Fatal("ReadFile on a non-existent root must return an error")
 	}
 }
 
