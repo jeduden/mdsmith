@@ -523,6 +523,21 @@ func TestCollectSectionHeadings_NoHeadings(t *testing.T) {
 	assert.Empty(t, CollectSectionHeadings(f))
 }
 
+// TestCollectSectionHeadings_Memoized pins that repeated calls share
+// the same backing slice — MDS057 and MDS058 both enabled should pay
+// the AST walk once, not twice, mirroring
+// TestCollectSectionParagraphsWithText_Memoized below.
+func TestCollectSectionHeadings_Memoized(t *testing.T) {
+	src := []byte("# H1\n\n## H2\n\n### H3\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	h1 := CollectSectionHeadings(f)
+	h2 := CollectSectionHeadings(f)
+	require.Len(t, h1, 3)
+	assert.Same(t, &h1[0], &h2[0],
+		"repeated calls must return the cached slice")
+}
+
 // --- CollectSectionParagraphs ---
 
 func TestCollectSectionParagraphs_SkipsTables(t *testing.T) {

@@ -62,6 +62,19 @@ func TestCheck_ProperIncrement_NoViolation(t *testing.T) {
 	r := &Rule{}
 	diags := r.Check(f)
 	require.Len(t, diags, 0, "expected 0 diagnostics, got %d: %+v", len(diags), diags)
+	assert.Nil(t, diags, "Check must return nil, not an empty slice, when nothing is flagged")
+}
+
+// TestCheck_NilAST_ProperIncrement_ReturnsNil mirrors
+// TestCheck_ProperIncrement_NoViolation for the parse-skip path
+// (checkNilAST): a clean heading sequence must return nil, not a
+// pre-allocated empty slice, per docs/development/high-performance-go.md
+// ("Return nil, not []T{}").
+func TestCheck_NilAST_ProperIncrement_ReturnsNil(t *testing.T) {
+	src := []byte("# H1\n\n## H2\n\n### H3\n")
+	r := &Rule{}
+	diags := r.Check(lint.NewFileLines("test.md", src))
+	assert.Nil(t, diags, "checkNilAST must return nil, not an empty slice, when nothing is flagged")
 }
 
 func TestCheck_SkipsLevel(t *testing.T) {

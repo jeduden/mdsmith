@@ -81,6 +81,15 @@ func TestConsistentBorderedClean(t *testing.T) {
 	assert.Empty(t, check(t, StyleConsistent, src))
 }
 
+// TestStructureDiagnostics_WellFormedTable_ReturnsNil pins
+// docs/development/high-performance-go.md's "return nil, not []T{}"
+// convention: a well-formed table must not leave structureDiagnostics
+// returning a pre-allocated empty slice.
+func TestStructureDiagnostics_WellFormedTable_ReturnsNil(t *testing.T) {
+	src := "# T\n\n| A | B |\n| - | - |\n| 1 | 2 |\n"
+	assert.Nil(t, check(t, StyleConsistent, src))
+}
+
 func TestConsistentBorderlessClean(t *testing.T) {
 	src := "# T\n\nA | B\n- | -\n1 | 2\n"
 	assert.Empty(t, check(t, StyleConsistent, src))

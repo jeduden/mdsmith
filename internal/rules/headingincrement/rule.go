@@ -49,7 +49,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	if f != nil && f.AST == nil {
 		return r.checkNilAST(f)
 	}
-	diags := make([]lint.Diagnostic, 0, 4)
+	var diags []lint.Diagnostic
 	prevLevel := 0
 
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -116,7 +116,7 @@ func (r *Rule) checkNilAST(f *lint.File) []lint.Diagnostic {
 	if len(r.Placeholders) > 0 {
 		return nil
 	}
-	diags := make([]lint.Diagnostic, 0, 4)
+	var diags []lint.Diagnostic
 	prevLevel := 0
 	// The gate (layer0SkipEligible) excludes any file that may hold a block
 	// quote or list, so every heading span here is top-level (Depth 0); the
