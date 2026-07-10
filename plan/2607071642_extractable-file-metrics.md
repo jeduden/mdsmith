@@ -90,6 +90,60 @@ a reader takes `.[0].readability`. A single-file object view is
 out of scope here; the list shape stays consistent and pipeable,
 and it is noted as a possible follow-up.
 
+## Example output
+
+Reading one file's readability score as JSON:
+
+```console
+$ mdsmith metrics rank --metrics readability -f json README.md
+[
+  {
+    "path": "README.md",
+    "readability": 11.2
+  }
+]
+```
+
+The same query as YAML:
+
+```console
+$ mdsmith metrics rank --metrics readability -f yaml README.md
+- path: README.md
+  readability: 11.2
+```
+
+Several new metrics at once, ranked by readability:
+
+```console
+$ mdsmith metrics rank \
+    --metrics readability,sentences,avg-words-per-sentence \
+    --by readability -f json docs/guides/install.md
+[
+  {
+    "path": "docs/guides/install.md",
+    "readability": 9.4,
+    "sentences": 148,
+    "avg-words-per-sentence": 14.6
+  }
+]
+```
+
+`mdsmith metrics list` gains the three rows (opt-in, so
+`DEFAULT` is `false`):
+
+```console
+$ mdsmith metrics list
+ID      NAME                    SCOPE  ORDER  DEFAULT  DESCRIPTION
+...
+MET008  readability             file   desc   false    Automated Readability Index ...
+MET009  sentences               file   desc   false    Sentence count ...
+MET010  avg-words-per-sentence  file   desc   false    Mean words per sentence ...
+```
+
+A single unavailable value (an unreadable or empty file) prints
+`null` in json and yaml and `-` in text, matching the current
+metrics behavior.
+
 ## Tasks
 
 1. Add `mdtext.ARI` with a unit test. Rewrite
