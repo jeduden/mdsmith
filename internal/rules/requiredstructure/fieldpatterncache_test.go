@@ -55,22 +55,39 @@ func TestBuildFieldPattern_CacheHitZeroAllocs(t *testing.T) {
 	}
 }
 
-// TestFieldPatternCache_LazyAllocation confirms the zero-value cache
-// never allocates a backing map until the first put — a schema with no
-// {field} text must not pay for a map that's never populated.
-func TestFieldPatternCache_LazyAllocation(t *testing.T) {
-	var cache fieldPatternCache
-	if cache.m != nil {
-		t.Fatal("zero-value fieldPatternCache must not pre-allocate its map")
+// TestFieldPatternCache_Get covers get's three paths: a nil receiver
+// (the "no cache" contract buildFieldPattern relies on), a miss on a
+// zero-value cache, and a miss must not allocate the backing map — a
+// schema with no {field} text must not pay for a map that's never
+// populated.
+func TestFieldPatternCache_Get(t *testing.T) {
+	var nilCache *fieldPatternCache
+	if _, ok := nilCache.get("anything"); ok {
+		t.Fatal("get on a nil *fieldPatternCache must report a miss")
 	}
+
+	var cache fieldPatternCache
 	if _, ok := cache.get("anything"); ok {
 		t.Fatal("get on an empty cache must report a miss")
 	}
 	if cache.m != nil {
 		t.Fatal("get on a miss must not allocate the backing map")
 	}
+}
+
+// TestFieldPatternCache_Put covers put's three paths: a nil receiver is
+// a no-op (never panics), the first put lazily allocates the backing
+// map, and a put entry is retrievable via get.
+func TestFieldPatternCache_Put(t *testing.T) {
+	var nilCache *fieldPatternCache
+	nilCache.put("key", nil) // must not panic
+
+	var cache fieldPatternCache
 	cache.put("key", nil)
 	if cache.m == nil {
 		t.Fatal("put must lazily allocate the backing map on first use")
+	}
+	if _, ok := cache.get("key"); !ok {
+		t.Fatal("a put entry must be retrievable via get")
 	}
 }

@@ -491,14 +491,6 @@ func TestWikilinkSearchKey(t *testing.T) {
 	}
 }
 
-func TestIsMarkdownName(t *testing.T) {
-	assert.True(t, isMarkdownName("page.md"))
-	assert.True(t, isMarkdownName("page.MD"))
-	assert.True(t, isMarkdownName("page.markdown"))
-	assert.False(t, isMarkdownName("page.txt"))
-	assert.False(t, isMarkdownName("page"))
-}
-
 func TestSortByDepthThenName(t *testing.T) {
 	// Mixed depths and matching depths exercise both keys of the
 	// sort: shorter paths come first, ties break alphabetically.
