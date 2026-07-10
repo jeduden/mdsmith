@@ -150,11 +150,12 @@ var support = [flavorCount][featureCount]bool{
 }
 
 // Supports reports whether the flavor accepts the given feature.
-// FlavorAny accepts every feature; other flavors consult the support
-// table. An f or feat outside the declared enum range (pkg/markdown
-// is a public package, so a caller-supplied value is not guaranteed
-// in range) returns false rather than panicking on an out-of-bounds
-// array index — the same behavior a map's missing-key lookup gave.
+// FlavorAny is special-cased to accept every feature and never
+// reaches the bounds check below. For every other f, an f or feat
+// outside the declared enum range (pkg/markdown is a public package,
+// so a caller-supplied value is not guaranteed in range) returns
+// false rather than panicking on an out-of-bounds array index — the
+// same behavior a map's missing-key lookup gave.
 func Supports(f Flavor, feat Feature) bool {
 	if f == FlavorAny {
 		return true
