@@ -89,8 +89,15 @@ func TestAllFeaturesComplete(t *testing.T) {
 // search beats a map for n < ~100" / small fixed-set guidance.
 func TestSupportTable_IsArrayNotMap(t *testing.T) {
 	typ := reflect.TypeOf(support)
-	assert.Equal(t, reflect.Array, typ.Kind(),
+	require.Equal(t, reflect.Array, typ.Kind(),
 		"support table should be a flat array, not a nested map")
+	// Pin the element type too: a regression to [flavorCount]map[Feature]bool
+	// would still satisfy the outer Array check above while reintroducing a
+	// per-call map lookup for every row.
+	require.Equal(t, reflect.Array, typ.Elem().Kind(),
+		"support table's rows should be arrays, not maps")
+	assert.Equal(t, reflect.Bool, typ.Elem().Elem().Kind(),
+		"support table should hold bool values directly, not through another indirection")
 }
 
 // TestSupports_OutOfRangeReturnsFalse pins Supports' documented
