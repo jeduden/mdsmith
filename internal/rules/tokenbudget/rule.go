@@ -140,17 +140,23 @@ func (r *Rule) activeBudget(path string) int {
 // never produces a false "under budget" when the real count would
 // exceed it.
 func (r *Rule) definitelyUnderBudget(source []byte, budget int) bool {
-	n := float64(len(source))
 	switch normalizeMode(r.Mode) {
 	case "tokenizer":
-		return n <= float64(budget)
+		return len(source) <= budget
 	default:
-		tpw := r.TokensPerWord
-		if tpw <= 0 {
-			tpw = defaultTokensPerWord
-		}
-		return math.Round(n*tpw) <= float64(budget)
+		return math.Round(float64(len(source))*r.effectiveTokensPerWord()) <= float64(budget)
 	}
+}
+
+// effectiveTokensPerWord returns r.TokensPerWord, falling back to
+// defaultTokensPerWord when unset — the same resolution definitelyUnderBudget,
+// tokenCount, and modeLabel all need for heuristic mode.
+func (r *Rule) effectiveTokensPerWord() float64 {
+	tpw := r.TokensPerWord
+	if tpw <= 0 {
+		tpw = defaultTokensPerWord
+	}
+	return tpw
 }
 
 // tokenCount estimates the token count of source without copying it.
@@ -164,12 +170,8 @@ func (r *Rule) tokenCount(source []byte) int {
 		enc := normalizeEncoding(r.Encoding)
 		return tokenizerCount(source, tok, enc)
 	default:
-		tpw := r.TokensPerWord
-		if tpw <= 0 {
-			tpw = defaultTokensPerWord
-		}
 		words := mdtext.CountWordsBytes(source)
-		count := int(math.Round(float64(words) * tpw))
+		count := int(math.Round(float64(words) * r.effectiveTokensPerWord()))
 		if count < 0 {
 			count = 0
 		}
@@ -183,11 +185,7 @@ func (r *Rule) modeLabel() string {
 	case "tokenizer":
 		return "tokenizer:" + normalizeTokenizer(r.Tokenizer) + "/" + normalizeEncoding(r.Encoding)
 	default:
-		tpw := r.TokensPerWord
-		if tpw <= 0 {
-			tpw = defaultTokensPerWord
-		}
-		return "heuristic:tokens-per-word=" + strconv.FormatFloat(tpw, 'f', 2, 64)
+		return "heuristic:tokens-per-word=" + strconv.FormatFloat(r.effectiveTokensPerWord(), 'f', 2, 64)
 	}
 }
 
