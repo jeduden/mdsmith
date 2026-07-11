@@ -156,7 +156,7 @@ func BuildMatchTree(f *lint.File, sch *Schema, docFM map[string]any) *MatchTree 
 		blocks = topLevelBlocks(f, parseWithTableExt(f.Source))
 	}
 
-	claimed := make(map[int]bool)
+	claimed := make(map[int]struct{})
 	buildScopeMatches(
 		f, sch.Sections, heads, rootLevel, 1, len(f.Lines)+1,
 		claimed, blocks, docFM, blocksDefault, mt.Root,
@@ -180,10 +180,10 @@ func BuildMatchTree(f *lint.File, sch *Schema, docFM map[string]any) *MatchTree 
 // each unclaimed root heading's body reaches every section. Plan 246.
 func collectUnlistedBlockMatches(
 	heads []DocHeading, rootLevel, docEnd int,
-	claimed map[int]bool, blocks []contentBlock, parent *ScopeMatch,
+	claimed map[int]struct{}, blocks []contentBlock, parent *ScopeMatch,
 ) {
 	for i, dh := range heads {
-		if claimed[i] || dh.Level != rootLevel {
+		if isClaimed(claimed, i) || dh.Level != rootLevel {
 			continue
 		}
 		end := contentScopeEndLine(heads, i, dh.Level, docEnd)
@@ -219,7 +219,7 @@ func anyScopeProjectsBlocks(scopes []Scope) bool {
 func buildScopeMatches(
 	f *lint.File, scopes []Scope, heads []DocHeading,
 	expectedLevel, parentStart, parentEnd int,
-	claimed map[int]bool, blocks []contentBlock,
+	claimed map[int]struct{}, blocks []contentBlock,
 	docFM map[string]any, blocksDefault bool, parent *ScopeMatch,
 ) {
 	for i := range scopes {
@@ -238,7 +238,7 @@ func buildScopeMatches(
 			scopes, i, heads, expectedLevel, parentStart, parentEnd, claimed, docFM,
 		) {
 			dh := heads[matched]
-			claimed[matched] = true
+			claimed[matched] = struct{}{}
 			end := contentScopeEndLine(heads, matched, dh.Level, parentEnd)
 			sm := &ScopeMatch{
 				Scope:    sc,

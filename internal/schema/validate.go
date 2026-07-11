@@ -672,6 +672,17 @@ func skipBelow(heads []DocHeading, rootLevel int) []DocHeading {
 	return out
 }
 
+// isClaimed reports whether idx is a member of claimed. claimed is a
+// set — every entry is written exactly once, via claimed[idx] =
+// struct{}{} — so map[int]struct{} (zero-byte value) replaces the
+// map[int]bool every read/write site in this file, matchtree.go, and
+// validate_content.go used to spell as a truthy map read. See
+// docs/development/high-performance-go.md "map[K]struct{} for sets".
+func isClaimed(claimed map[int]struct{}, idx int) bool {
+	_, ok := claimed[idx]
+	return ok
+}
+
 // validateScopes walks scopes (the listed children of a single level)
 // against docHeads starting at docIdx. expectedLevel is the heading
 // level these scopes should appear at. Returns the new docIdx
@@ -687,7 +698,7 @@ func validateScopes(
 	mkDiag MakeDiag,
 ) (int, []lint.Diagnostic) {
 	var diags []lint.Diagnostic
-	claimed := make(map[int]bool)
+	claimed := make(map[int]struct{})
 	claimCounts := make(map[int]int)
 	allowExtra := false
 
@@ -696,15 +707,15 @@ func validateScopes(
 			// The preamble has no heading to match. Its rules: are
 			// applied by the per-scope walker in MDS020 against the
 			// [parent-start, first-child-heading) line range.
-			claimed[i] = true
+			claimed[i] = struct{}{}
 			continue
 		}
 		if isSlotMatcher(sc.Matcher) {
 			allowExtra = true
-			claimed[i] = true
+			claimed[i] = struct{}{}
 			continue
 		}
-		if claimed[i] {
+		if isClaimed(claimed, i) {
 			continue
 		}
 		newIdx, scDiags, claimedThis := matchScope(
@@ -714,7 +725,7 @@ func validateScopes(
 		docIdx = newIdx
 		if claimedThis {
 			allowExtra = false
-		} else if !claimed[i] && sc.Required() {
+		} else if !isClaimed(claimed, i) && sc.Required() {
 			// Anchor the missing section at the heading it should
 			// follow (the preceding document heading), so the
 			// squiggle lands where the section belongs rather than
@@ -808,7 +819,7 @@ func levelMismatchSchemaDiag(text string, expectedLevel, actualLevel int, sch *S
 // closed: flagged as unexpected in closed scopes, silently
 // consumed in open ones.
 func handleLeftoverHeadings(
-	f *lint.File, sch *Schema, scopes []Scope, claimed map[int]bool, claimCounts map[int]int,
+	f *lint.File, sch *Schema, scopes []Scope, claimed map[int]struct{}, claimCounts map[int]int,
 	docHeads []DocHeading, docIdx, expectedLevel int,
 	closed, allowExtra bool, docFM map[string]any, mkDiag MakeDiag,
 ) (int, []lint.Diagnostic) {
@@ -883,11 +894,11 @@ func handleLeftoverHeadings(
 // Unbounded matchers (`max == 0`) never exceed; they return
 // `(idx, false)` so callers can still detect non-contiguity.
 func claimedScopeMatches(
-	scopes []Scope, dh DocHeading, claimed map[int]bool,
+	scopes []Scope, dh DocHeading, claimed map[int]struct{},
 	claimCounts map[int]int, docFM map[string]any,
 ) (int, bool) {
 	for i, sc := range scopes {
-		if !claimed[i] {
+		if !isClaimed(claimed, i) {
 			continue
 		}
 		if sc.Preamble || isSlotMatcher(sc.Matcher) {
@@ -922,14 +933,14 @@ func claimedScopeMatches(
 func claimLateScope(
 	f *lint.File, sch *Schema, scopes []Scope, idx, expectedLevel int,
 	docHeads []DocHeading, docIdx int,
-	claimed map[int]bool, claimCounts map[int]int,
+	claimed map[int]struct{}, claimCounts map[int]int,
 	docFM map[string]any, mkDiag MakeDiag,
 ) (int, []lint.Diagnostic) {
 	sc := scopes[idx]
 	dh := docHeads[docIdx]
 	diags := []lint.Diagnostic{outOfOrderDiag(
 		formatHeading(dh.Level, dh.Text), "", sch).Emit(mkDiag, f.Path, dh.Line)}
-	claimed[idx] = true
+	claimed[idx] = struct{}{}
 	claimCounts[idx]++
 	docIdx++
 	if len(sc.Sections) > 0 {
@@ -946,11 +957,11 @@ func claimLateScope(
 // non-slot, non-preamble scope whose matcher accepts dh, or -1
 // when no listed scope is a candidate.
 func unclaimedListedScope(
-	scopes []Scope, dh DocHeading, claimed map[int]bool,
+	scopes []Scope, dh DocHeading, claimed map[int]struct{},
 	docFM map[string]any,
 ) int {
 	for i, sc := range scopes {
-		if claimed[i] || sc.Preamble || isSlotMatcher(sc.Matcher) {
+		if isClaimed(claimed, i) || sc.Preamble || isSlotMatcher(sc.Matcher) {
 			continue
 		}
 		if scopeMatchesHeading(sc, dh, docFM) {
@@ -969,7 +980,7 @@ func unclaimedListedScope(
 func matchScope(
 	f *lint.File, sch *Schema, scopes []Scope, idx, expectedLevel int,
 	docHeads []DocHeading, docIdx int,
-	claimed map[int]bool, claimCounts map[int]int,
+	claimed map[int]struct{}, claimCounts map[int]int,
 	allowExtra, closed bool,
 	docFM map[string]any, mkDiag MakeDiag,
 ) (int, []lint.Diagnostic, bool) {
@@ -1014,8 +1025,8 @@ func (s *matchRun) finishRun() {
 	}
 	// A run that consumed fewer than min matches falls short of
 	// the matcher's cardinality contract. The outer loop's
-	// missing-required check only fires when `claimed[idx]` is
-	// false; a partially-claimed run needs its own diagnostic.
+	// missing-required check only fires when `claimed[idx]` is unset;
+	// a partially-claimed run needs its own diagnostic.
 	if s.consumed > 0 && s.consumed < s.min {
 		s.diags = append(s.diags, s.mkDiag(s.f.Path, 1,
 			fmt.Sprintf("section %q matched %d times, required at least %d",
@@ -1074,7 +1085,7 @@ type matchRun struct {
 	scopes        []Scope
 	idx           int
 	expectedLevel int
-	claimed       map[int]bool
+	claimed       map[int]struct{}
 	claimCounts   map[int]int
 	allowExtra    bool
 	closed        bool
@@ -1167,7 +1178,7 @@ func (s *matchRun) claimMatch(docHeads []DocHeading, docIdx int, captured string
 	sc := s.scopes[s.idx]
 	dh := docHeads[docIdx]
 	s.diags = append(s.diags, levelDiagIfNeeded(s.f, s.sch, dh, s.expectedLevel, s.mkDiag)...)
-	s.claimed[s.idx] = true
+	s.claimed[s.idx] = struct{}{}
 	s.claimCounts[s.idx]++
 	if len(sc.Sections) > 0 {
 		newIdx, childDiags := validateScopes(
@@ -1291,11 +1302,11 @@ func laterScopeMatches(
 // keeps broad matchers in the search.
 func anyLaterScopeClaims(
 	scopes []Scope, startIdx int, dh DocHeading,
-	claimed map[int]bool, docFM map[string]any,
+	claimed map[int]struct{}, docFM map[string]any,
 ) bool {
 	for i := startIdx; i < len(scopes); i++ {
 		sc := scopes[i]
-		if claimed[i] || sc.Preamble || isSlotMatcher(sc.Matcher) {
+		if isClaimed(claimed, i) || sc.Preamble || isSlotMatcher(sc.Matcher) {
 			continue
 		}
 		if scopeMatchesHeading(sc, dh, docFM) {
@@ -1315,11 +1326,11 @@ func anyLaterScopeClaims(
 // catch-all steal a heading from a specific predecessor.
 func claimsLaterLiteral(
 	scopes []Scope, startIdx int, dh DocHeading,
-	claimed map[int]bool, docFM map[string]any,
+	claimed map[int]struct{}, docFM map[string]any,
 ) bool {
 	for i := startIdx; i < len(scopes); i++ {
 		sc := scopes[i]
-		if claimed[i] || sc.Preamble ||
+		if isClaimed(claimed, i) || sc.Preamble ||
 			isSlotMatcher(sc.Matcher) || isBroadMatcher(sc.Matcher) {
 			continue
 		}
@@ -1371,7 +1382,7 @@ func levelDiagIfNeeded(
 func claimOutOfOrder(
 	f *lint.File, sch *Schema, scopes []Scope, idx, ooIdx, expectedLevel int,
 	docHeads []DocHeading, docIdx int,
-	claimed map[int]bool, claimCounts map[int]int,
+	claimed map[int]struct{}, claimCounts map[int]int,
 	docFM map[string]any, mkDiag MakeDiag,
 ) (int, []lint.Diagnostic) {
 	sc := scopes[idx]
@@ -1405,7 +1416,7 @@ func claimOutOfOrder(
 					"natural position for sequential checks",
 				formatHeading(expectedLevel, displayHeading(ooSc)))))
 	}
-	claimed[ooIdx] = true
+	claimed[ooIdx] = struct{}{}
 	claimCounts[ooIdx]++
 	docIdx++
 	if len(ooSc.Sections) > 0 {
@@ -1450,11 +1461,11 @@ func countMatchingRun(
 // minIdx that matches dh.
 func findOutOfOrderIdx(
 	scopes []Scope, dh DocHeading,
-	claimed map[int]bool, minIdx int, docFM map[string]any,
+	claimed map[int]struct{}, minIdx int, docFM map[string]any,
 ) int {
 	for i := minIdx; i < len(scopes); i++ {
 		sc := scopes[i]
-		if claimed[i] || sc.Preamble || isSlotMatcher(sc.Matcher) {
+		if isClaimed(claimed, i) || sc.Preamble || isSlotMatcher(sc.Matcher) {
 			continue
 		}
 		if scopeMatchesHeading(sc, dh, docFM) {
@@ -1487,7 +1498,7 @@ func findOutOfOrderIdx(
 func ScopeRunIndices(
 	scopes []Scope, currentIdx int, heads []DocHeading,
 	expectedLevel, parentStart, parentEnd int,
-	claimed map[int]bool, docFM map[string]any,
+	claimed map[int]struct{}, docFM map[string]any,
 ) []int {
 	sc := scopes[currentIdx]
 	if sc.Matcher == nil {
@@ -1518,7 +1529,7 @@ func ScopeRunIndices(
 func scanScopeRunAtLevel(
 	scopes []Scope, currentIdx int, heads []DocHeading,
 	expectedLevel, parentStart, parentEnd int,
-	claimed map[int]bool, docFM map[string]any,
+	claimed map[int]struct{}, docFM map[string]any,
 ) []int {
 	sc := scopes[currentIdx]
 	min, max := sc.Matcher.Repeat.Bounds()
@@ -1526,7 +1537,7 @@ func scanScopeRunAtLevel(
 	var out []int
 	started := false
 	for i, h := range heads {
-		if claimed[i] {
+		if isClaimed(claimed, i) {
 			continue
 		}
 		if h.Line < parentStart || h.Line >= parentEnd {
@@ -1568,13 +1579,13 @@ func scanScopeRunAtLevel(
 func firstWrongLevelMatch(
 	sc Scope, heads []DocHeading,
 	expectedLevel, parentStart, parentEnd int,
-	claimed map[int]bool, docFM map[string]any,
+	claimed map[int]struct{}, docFM map[string]any,
 ) int {
 	if isBroadMatcher(sc.Matcher) {
 		return -1
 	}
 	for i, h := range heads {
-		if claimed[i] {
+		if isClaimed(claimed, i) {
 			continue
 		}
 		if h.Line < parentStart || h.Line >= parentEnd {
