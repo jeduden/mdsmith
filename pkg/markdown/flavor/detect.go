@@ -338,6 +338,9 @@ func nodeByteRange(n ast.Node) (int, int) {
 }
 
 func lineStartOf(source []byte, offset int) int {
+	if offset < 0 {
+		offset = 0
+	}
 	if offset > len(source) {
 		offset = len(source)
 	}

@@ -46,6 +46,14 @@ func TestLineStartOfMidLine(t *testing.T) {
 	assert.Equal(t, 6, lineStartOf(src, 8))
 }
 
+// TestLineStartOfClampsNegativeOffset mirrors LineCol's negative-offset
+// clamp (TestLineColClampsNegativeOffset): a caller that subtracts past
+// the start of source must get 0 back, not a slice-bounds panic.
+func TestLineStartOfClampsNegativeOffset(t *testing.T) {
+	src := []byte("hello\nworld\n")
+	assert.Equal(t, 0, lineStartOf(src, -5))
+}
+
 // TestFirstTextStartReturnsNegativeForEmptySubtree covers the
 // sentinel return path when no Text node can be found under n.
 func TestFirstTextStartReturnsNegativeForEmptySubtree(t *testing.T) {
