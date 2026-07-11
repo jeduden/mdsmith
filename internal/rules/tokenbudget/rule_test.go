@@ -409,3 +409,79 @@ func TestActiveBudget(t *testing.T) {
 		}
 	})
 }
+
+// TestDefinitelyUnderBudget pins the cheap pre-check that lets Check
+// skip mdtext.CountWordsBytes / the tokenizer regex pass entirely for
+// a file that cannot possibly exceed budget — see
+// docs/development/high-performance-go.md "Gate expensive analyzers
+// behind a cheap pre-check". Both modes bound the real count by
+// len(source): a heuristic-mode word, and every tokenizer-mode regex
+// alternative, consumes at least one source byte and words/matches
+// never overlap, so the true count can never exceed a cheap function
+// of len(source) alone.
+func TestDefinitelyUnderBudget(t *testing.T) {
+	t.Run("heuristic: tiny file under a large budget skips the scan", func(t *testing.T) {
+		r := &Rule{Mode: "heuristic", TokensPerWord: 1.33}
+		require.True(t, r.definitelyUnderBudget([]byte("short"), 8000))
+	})
+	t.Run("heuristic: must fall through when the upper bound exceeds budget", func(t *testing.T) {
+		r := &Rule{Mode: "heuristic", TokensPerWord: 1.33}
+		require.False(t, r.definitelyUnderBudget([]byte(strings.Repeat("x", 100)), 3))
+	})
+	t.Run("heuristic: upper bound never produces a false skip", func(t *testing.T) {
+		// 4 words, tpw 3.0 -> 12 tokens actual (see
+		// TestCheck_WordsOverBudget_NeverZero). len(source) = 19 bytes,
+		// so the upper bound (19*3.0 = 57, rounded) must NOT report
+		// "definitely under" an 11-token budget the real count exceeds.
+		r := &Rule{Mode: "heuristic", TokensPerWord: 3.0}
+		require.False(t, r.definitelyUnderBudget([]byte("one two three four"), 11))
+	})
+	t.Run("heuristic: zero TokensPerWord falls back to the default ratio", func(t *testing.T) {
+		r := &Rule{Mode: "heuristic"}
+		require.True(t, r.definitelyUnderBudget([]byte("short"), 8000))
+	})
+	t.Run("tokenizer: tiny file under a large budget skips the scan", func(t *testing.T) {
+		r := &Rule{Mode: "tokenizer", Tokenizer: "builtin", Encoding: "cl100k_base"}
+		require.True(t, r.definitelyUnderBudget([]byte("short"), 8000))
+	})
+	t.Run("tokenizer: must fall through when the upper bound exceeds budget", func(t *testing.T) {
+		r := &Rule{Mode: "tokenizer", Tokenizer: "builtin", Encoding: "cl100k_base"}
+		require.False(t, r.definitelyUnderBudget([]byte(strings.Repeat("x ", 100)), 3))
+	})
+	t.Run("empty source is always under budget", func(t *testing.T) {
+		r := &Rule{Mode: "heuristic", TokensPerWord: 1.33}
+		require.True(t, r.definitelyUnderBudget(nil, 1))
+	})
+}
+
+// TestCheck_PreCheckDoesNotChangeOutcomes runs every existing
+// Check-outcome fixture through a matrix of budgets that straddle the
+// pre-check's skip threshold, confirming definitelyUnderBudget's fast
+// path never changes which files get flagged.
+func TestCheck_PreCheckDoesNotChangeOutcomes(t *testing.T) {
+	cases := []struct {
+		name   string
+		src    string
+		mode   string
+		tpw    float64
+		budget int
+		want   int
+	}{
+		{"heuristic under tiny budget", "one two three four five six", "heuristic", 1.0, 3, 1},
+		{"heuristic at budget", "one two three four", "heuristic", 1.0, 4, 0},
+		{"heuristic well under huge budget", "one two three four", "heuristic", 1.0, 8000, 0},
+		{"tokenizer over tiny budget", "Alpha beta, gamma!", "tokenizer", 0, 1, 1},
+		{"tokenizer well under huge budget", "Alpha beta, gamma!", "tokenizer", 0, 8000, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := mustFile(t, "test.md", tc.src)
+			r := &Rule{
+				Max: tc.budget, Mode: tc.mode, TokensPerWord: tc.tpw,
+				Tokenizer: "builtin", Encoding: "cl100k_base",
+			}
+			diags := r.Check(f)
+			require.Len(t, diags, tc.want)
+		})
+	}
+}

@@ -71,6 +71,9 @@ func (r *Rule) Category() string { return "prose" }
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	budget := r.activeBudget(f.Path)
+	if r.definitelyUnderBudget(f.Source, budget) {
+		return nil
+	}
 	count := r.tokenCount(f.Source)
 	if count <= budget {
 		return nil
@@ -118,6 +121,36 @@ func (r *Rule) activeBudget(path string) int {
 		}
 	}
 	return budget
+}
+
+// definitelyUnderBudget reports whether source is provably under
+// budget without running the real count — mdtext.CountWordsBytes for
+// heuristic mode, or the tokenizer regex pass for tokenizer mode. This
+// rule is enabled by default and runs on every file in the workspace,
+// so most files (well under budget) can skip that scan entirely: see
+// docs/development/high-performance-go.md "Gate expensive analyzers
+// behind a cheap pre-check".
+//
+// The bound is safe in both modes because a heuristic-mode word, and
+// every tokenizer-mode regex alternative, consumes at least one source
+// byte and matches never overlap — so the real count can never exceed
+// len(source) matches, scaled by tokens-per-word for heuristic mode.
+// tokenCount's own rounding (math.Round) is monotonic, so bounding the
+// input to that rounding (len(source) in place of the true word count)
+// never produces a false "under budget" when the real count would
+// exceed it.
+func (r *Rule) definitelyUnderBudget(source []byte, budget int) bool {
+	n := float64(len(source))
+	switch normalizeMode(r.Mode) {
+	case "tokenizer":
+		return n <= float64(budget)
+	default:
+		tpw := r.TokensPerWord
+		if tpw <= 0 {
+			tpw = defaultTokensPerWord
+		}
+		return math.Round(n*tpw) <= float64(budget)
+	}
 }
 
 // tokenCount estimates the token count of source without copying it.

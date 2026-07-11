@@ -24,3 +24,23 @@ func TestCheck_AllocBudget_OverBudget(t *testing.T) {
 		t.Fatalf("Check allocs per call: want <= 6, got %v", allocs)
 	}
 }
+
+// TestCheck_AllocBudget_UnderBudget pins Check's per-call allocation
+// count for the common case docs/development/high-performance-go.md's
+// "cheap pre-check" pattern targets: a small file under the default
+// 8000-token budget. definitelyUnderBudget's len(source)-only check
+// lets Check return before mdtext.CountWordsBytes ever scans the
+// file's words, so this stays at 0 allocs/op regardless of file size
+// (as long as it is under budget) — unlike TestCheck_AllocBudget_OverBudget,
+// which must run the real scan and therefore allocates.
+func TestCheck_AllocBudget_UnderBudget(t *testing.T) {
+	src := []byte(strings.Repeat("some prose word ", 200))
+	f := mustFile(t, "test.md", string(src))
+	r := &Rule{Max: defaultMax, Mode: "heuristic", TokensPerWord: defaultTokensPerWord}
+	allocs := testing.AllocsPerRun(200, func() {
+		_ = r.Check(f)
+	})
+	if allocs > 0 {
+		t.Fatalf("Check allocs per call for an under-budget file: want 0, got %v", allocs)
+	}
+}
