@@ -81,11 +81,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	modeLabel := r.modeLabel()
 
 	overage := count - budget
-	tpw := r.TokensPerWord
-	if tpw <= 0 {
-		tpw = defaultTokensPerWord
-	}
-	wordsOver := int(math.Ceil(float64(overage) / tpw))
+	wordsOver := int(math.Ceil(float64(overage) / r.effectiveTokensPerWord()))
 	if wordsOver < 1 {
 		wordsOver = 1
 	}
@@ -149,8 +145,8 @@ func (r *Rule) definitelyUnderBudget(source []byte, budget int) bool {
 }
 
 // effectiveTokensPerWord returns r.TokensPerWord, falling back to
-// defaultTokensPerWord when unset — the same resolution definitelyUnderBudget,
-// tokenCount, and modeLabel all need for heuristic mode.
+// defaultTokensPerWord when unset — the same resolution Check,
+// definitelyUnderBudget, tokenCount, and modeLabel all need.
 func (r *Rule) effectiveTokensPerWord() float64 {
 	tpw := r.TokensPerWord
 	if tpw <= 0 {

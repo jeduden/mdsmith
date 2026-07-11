@@ -338,13 +338,21 @@ func nodeByteRange(n ast.Node) (int, int) {
 }
 
 func lineStartOf(source []byte, offset int) int {
+	offset = clampOffset(source, offset)
+	return bytes.LastIndexByte(source[:offset], '\n') + 1
+}
+
+// clampOffset bounds offset to [0, len(source)] so a caller that
+// looks at byte -1 or one past EOF still gets a valid index to slice
+// or index with. Shared by lineStartOf and LineCol.
+func clampOffset(source []byte, offset int) int {
 	if offset < 0 {
-		offset = 0
+		return 0
 	}
 	if offset > len(source) {
-		offset = len(source)
+		return len(source)
 	}
-	return bytes.LastIndexByte(source[:offset], '\n') + 1
+	return offset
 }
 
 // firstTextStart returns the byte offset of the first descendant Text
@@ -388,12 +396,7 @@ func isASCIISpace(b byte) bool {
 // line numbers when producing line-level edits; also used internally
 // by every block / inline / makeFinding helper.
 func LineCol(source []byte, offset int) (line, col int) {
-	if offset < 0 {
-		offset = 0
-	}
-	if offset > len(source) {
-		offset = len(source)
-	}
+	offset = clampOffset(source, offset)
 	// bytes.Count and bytes.LastIndexByte are SIMD-accelerated on
 	// amd64; a manual byte-by-byte loop over the same prefix does not
 	// vectorize. See docs/development/high-performance-go.md
