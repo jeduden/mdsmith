@@ -1210,12 +1210,12 @@ func TestRunInit_UnknownFlag_ExitsTwo(t *testing.T) {
 	assert.Contains(t, out, "unknown flag")
 }
 
-func TestRunInit_Force_WriteError(t *testing.T) {
+func TestRunInit_ConfigPathIsDir_WriteError(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	// .mdsmith.yml is a directory. --force skips the "leave unchanged"
-	// short-circuit and tries to write, which fails because the path is a
-	// directory — exercising writeInitConfig's write-error branch.
+	// .mdsmith.yml is a directory, which statTarget reports as absent, so
+	// init proceeds to write and os.WriteFile fails with "is a directory" —
+	// exercising writeInitConfig's write-error branch.
 	require.NoError(t, os.Mkdir(".mdsmith.yml", 0o755))
 
 	var code int
@@ -1237,6 +1237,19 @@ func TestRunInit_SymlinkConfig_Refused(t *testing.T) {
 	assert.Contains(t, out, "symlink")
 	_, statErr := os.Stat(filepath.Join(dir, "target.yml"))
 	assert.True(t, os.IsNotExist(statErr), "must not write through the symlink")
+}
+
+func TestRunInit_Add_TrimsWhitespace(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	// pflag splits "wordlists, " on the comma into ["wordlists", " "]; the
+	// blank entry and the surrounding space must be normalized away so the
+	// pack still resolves instead of failing as an unknown name.
+	var code int
+	captureStderr(func() { code = runInit([]string{"--add", "wordlists, "}) })
+	assert.Equal(t, 0, code)
+	_, err := os.Stat(filepath.Join(dir, ".mdsmith", "wordlists", "ai-speak.yaml"))
+	require.NoError(t, err, "trimmed pack name still scaffolds")
 }
 
 func TestRunInit_Add_UnknownPack_ExitsTwo(t *testing.T) {
@@ -1383,6 +1396,13 @@ func TestStatTarget(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "symlink")
 
+	// A directory is not a regular file: reported absent (no error) so the
+	// caller's write runs and fails clearly instead of silently skipping.
+	require.NoError(t, os.Mkdir("adir", 0o755))
+	exists, err = statTarget("adir")
+	require.NoError(t, err)
+	assert.False(t, exists, "a directory is not treated as an existing file")
+
 	// A non-ENOENT lstat failure — a path component is a file, so ENOTDIR —
 	// is surfaced as a checking error rather than read as absent.
 	_, err = statTarget(filepath.Join("real.yml", "child"))
@@ -1396,6 +1416,27 @@ func TestApplyPacks_UnknownPack(t *testing.T) {
 	err := applyPacks([]string{"bogus"}, io.Discard)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `unknown pack "bogus"`)
+}
+
+func TestWriteScaffolds_WriteError(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	// The target path is itself a directory, so statTarget reports it
+	// absent and os.WriteFile then fails with "is a directory" —
+	// exercising the write-error branch.
+	require.NoError(t, os.MkdirAll(filepath.Join(".mdsmith", "wordlists", "a.yaml"), 0o755))
+
+	files := []pack.File{{Path: filepath.Join(".mdsmith", "wordlists", "a.yaml"), Data: []byte("entries:\n  - x\n")}}
+	err := writeScaffolds(files, io.Discard)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "writing")
+	assert.Contains(t, err.Error(), "a.yaml")
+}
+
+func TestNormalizePackNames(t *testing.T) {
+	assert.Equal(t, []string{"wordlists", "stopwords"},
+		normalizePackNames([]string{"wordlists", " stopwords", "  ", ""}))
+	assert.Empty(t, normalizePackNames([]string{"  ", ""}))
 }
 
 // --- runHelp ---

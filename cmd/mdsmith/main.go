@@ -352,6 +352,11 @@ func runInit(args []string) int {
 		return 2
 	}
 
+	// Normalize --add values so a comma-joined "--add wordlists, stopwords"
+	// resolves the same as two separate flags: pflag keeps the surrounding
+	// space, so trim it and drop empties before validating or applying.
+	addPacks = normalizePackNames(addPacks)
+
 	// Validate every --add name before touching the filesystem, so an
 	// unknown pack fails fast instead of after a config is already written.
 	for _, name := range addPacks {
@@ -417,6 +422,20 @@ func writeInitConfig(configFile, fromMarkdownlint, starterName string, force boo
 	return nil
 }
 
+// normalizePackNames trims surrounding whitespace from each --add value
+// and drops the empties, so a comma-joined value pflag splits into
+// ["wordlists", " stopwords"] — or a stray trailing comma — resolves to
+// clean pack names.
+func normalizePackNames(names []string) []string {
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		if n = strings.TrimSpace(n); n != "" {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
 // applyPacks scaffolds each named pack's sidecar files under the current
 // directory. Packs are additive and non-clobbering, so applying them
 // over an already-configured project — or re-running init — never
@@ -464,12 +483,15 @@ func writeScaffolds(files []pack.File, w io.Writer) error {
 	return nil
 }
 
-// statTarget reports whether path already exists as a regular
-// (non-symlink) entry. It uses Lstat so a symlink is never followed: a
-// symlink — even a dangling one — is refused with an error rather than
-// written through, which would let a planted link divert an init write
-// outside the working directory. A missing path returns (false, nil);
-// any other stat failure is surfaced as a "checking" error.
+// statTarget reports whether path already exists as a regular file — the
+// only kind of entry init treats as "already there, leave it alone". It
+// uses Lstat so a symlink is never followed: a symlink, even a dangling
+// one, is refused with an error rather than written through, which would
+// let a planted link divert an init write outside the working directory.
+// A missing path returns (false, nil). A non-regular, non-symlink entry
+// such as a directory also returns (false, nil), so the caller's write
+// runs and surfaces a clear "is a directory" failure rather than being
+// silently skipped. Any other lstat failure becomes a "checking" error.
 func statTarget(path string) (exists bool, err error) {
 	info, err := os.Lstat(path)
 	switch {
@@ -480,7 +502,7 @@ func statTarget(path string) (exists bool, err error) {
 	case info.Mode()&fs.ModeSymlink != 0:
 		return false, fmt.Errorf("%s is a symlink; refusing to write through it", path)
 	default:
-		return true, nil
+		return info.Mode().IsRegular(), nil
 	}
 }
 
