@@ -504,7 +504,6 @@ func paragraphEndLine(lines [][]byte, line int, defLines map[int]struct{}) int {
 	return end
 }
 
-
 func isNumericSlug(s string) bool {
 	if s == "" {
 		return false
