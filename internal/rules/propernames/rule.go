@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"sync"
+	"sync/atomic"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -21,6 +23,18 @@ func init() {
 
 // Rule reports occurrences of configured proper names that do not match
 // their canonical casing (e.g. "Javascript" when "JavaScript" is configured).
+//
+// The nameEntry form of Names is memoised on the rule instance behind
+// entriesPtr + entriesMu (a double-checked-lock pattern, not
+// sync.Once: ApplySettings is allowed to swap Names and the cache
+// must follow — same pattern as MDS063's bannedSetPtr). Rule
+// instances are shared across concurrent LSP calls, but every
+// concurrent reader during a Check sees the same entries; ApplySettings
+// runs only during config load, before any Check, so the swap path
+// never races a reader. Moving the cache off the per-Check call
+// (buildNameEntries rebuilt a fresh []byte plus an asciiToLower copy
+// per name on every Check) to the per-rule instance pays that cost
+// once per rule instance instead of once per file.
 type Rule struct {
 	// Names is the list of proper names with their canonical casing.
 	// The names list appends across config layers so kind layers extend
@@ -31,6 +45,9 @@ type Rule struct {
 	CheckCode bool
 	// CheckHTML enables checking inside raw HTML and HTML blocks.
 	CheckHTML bool
+
+	entriesPtr atomic.Pointer[[]nameEntry]
+	entriesMu  sync.Mutex
 }
 
 // ID implements rule.Rule.
@@ -89,6 +106,27 @@ type nameEntry struct {
 	canonical []byte // original spelling, e.g. []byte("JavaScript")
 	lower     []byte // ASCII-lowercased, e.g. []byte("javascript")
 	str       string // canonical as string, used in diagnostics
+}
+
+// cachedNameEntries returns the nameEntry form of r.Names, memoised on
+// the rule instance behind an atomic pointer guarded by a mutex. The
+// warm path is a single atomic load and serves every Check after the
+// cache is populated. The cold path serialises on the mutex so
+// concurrent first-callers see one another's build instead of
+// multiple racing builds; on the extremely narrow window where two
+// goroutines see the pointer nil before either acquires the mutex,
+// the second one will rebuild the same entries after the first
+// releases — a one-shot cost, vastly cheaper than paying it on every
+// Check (see MDS063's cachedBannedSet, the model for this pattern).
+func (r *Rule) cachedNameEntries() []nameEntry {
+	if p := r.entriesPtr.Load(); p != nil {
+		return *p
+	}
+	r.entriesMu.Lock()
+	defer r.entriesMu.Unlock()
+	entries := r.buildNameEntries()
+	r.entriesPtr.Store(&entries)
+	return entries
 }
 
 // buildNameEntries precomputes nameEntry values for all configured names.
@@ -191,9 +229,10 @@ func scanRawHTMLSegments(entries []nameEntry, v *ast.RawHTML, f *lint.File, acc 
 }
 
 // collectMatches walks the AST and gathers all wrong-cased matches.
-// nameEntry values are precomputed once here and reused across all segments.
+// nameEntry values are precomputed once per rule instance (cachedNameEntries)
+// and reused across all segments and all files that instance checks.
 func (r *Rule) collectMatches(f *lint.File) []wrongMatch {
-	entries := r.buildNameEntries()
+	entries := r.cachedNameEntries()
 	if len(entries) == 0 {
 		return nil
 	}
@@ -272,7 +311,7 @@ func normalizeMatches(matches []wrongMatch) []wrongMatch {
 // they never appear in the runs — so this reproduces the AST walk's match set
 // for the no-code, no-HTML case.
 func (r *Rule) collectMatchesInline(f *lint.File) []wrongMatch {
-	entries := r.buildNameEntries()
+	entries := r.cachedNameEntries()
 	if len(entries) == 0 {
 		return nil
 	}
@@ -413,6 +452,10 @@ func (r *Rule) ApplySettings(s map[string]any) error {
 			return fmt.Errorf("proper-names: unknown setting %q", k)
 		}
 	}
+	// Invalidate the entries cache so the next Check rebuilds against
+	// the new Names; ApplySettings is the only path that mutates
+	// r.Names, so clearing here is sufficient.
+	r.entriesPtr.Store(nil)
 	return nil
 }
 

@@ -1,6 +1,7 @@
 package propernames
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -394,4 +395,33 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 
 func TestWordlistTarget(t *testing.T) {
 	assert.Equal(t, "names", (&Rule{}).WordlistTarget())
+}
+
+// TestCachedNameEntries pins the per-rule memoization contract:
+// subsequent calls on the same rule return the same cached slice
+// (reference identity); ApplySettings invalidates the cache so the
+// next call rebuilds against the new Names. The cache lives on the
+// rule instance, not on the per-Check File, so multiple Checks on the
+// same rule instance share one build.
+func TestCachedNameEntries(t *testing.T) {
+	r := &Rule{Names: []string{"JavaScript", "GitHub"}}
+
+	first := r.cachedNameEntries()
+	require.Len(t, first, 2)
+
+	second := r.cachedNameEntries()
+	assert.Equal(t,
+		reflect.ValueOf(first).Pointer(),
+		reflect.ValueOf(second).Pointer(),
+		"subsequent calls on the same rule must return the same cached entries")
+
+	// ApplySettings invalidates the cache; the next call rebuilds.
+	require.NoError(t, r.ApplySettings(map[string]any{"names": []string{"TypeScript"}}))
+	third := r.cachedNameEntries()
+	assert.NotEqual(t,
+		reflect.ValueOf(first).Pointer(),
+		reflect.ValueOf(third).Pointer(),
+		"ApplySettings must clear the cache so the next call rebuilds")
+	require.Len(t, third, 1)
+	assert.Equal(t, "TypeScript", third[0].str)
 }
