@@ -34,6 +34,7 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/duplicatedcontent"           // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/emphasisstyle"               // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/emptysectionbody"            // registers rule
+	_ "github.com/jeduden/mdsmith/internal/rules/externallink"                // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/fencedcodelanguage"          // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/fencedcodestyle"             // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/firstlineheading"            // registers rule
