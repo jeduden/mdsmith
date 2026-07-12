@@ -72,11 +72,15 @@ func asciiToLower(b []byte) []byte {
 	return out
 }
 
-// wrongMatch holds one wrong-cased occurrence.
+// wrongMatch holds one wrong-cased occurrence. name is ordered first:
+// it is the struct's only pointer-bearing field, and grouping pointer
+// fields first keeps the GC's per-word ptrdata scan region to one word
+// instead of spanning through the trailing scalars
+// (docs/development/high-performance-go.md#struct-layout).
 type wrongMatch struct {
+	name   string
 	start  int // byte offset in f.Source
 	length int
-	name   string
 }
 
 // nameEntry holds the precomputed byte representations of one configured name.

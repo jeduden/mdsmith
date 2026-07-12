@@ -2486,7 +2486,7 @@ func TestFix_BodySync_HeadingFollowedByAnother(t *testing.T) {
 func TestResolveBodySyncLine_NilPath(t *testing.T) {
 	sp := syncPoint{
 		Field: "", InBody: true, BodyText: "- **Category**: {category}",
-		compiled: buildFieldPattern("- **Category**: {category}"),
+		compiled: buildFieldPattern("- **Category**: {category}", nil),
 	}
 	_, ok := resolveBodySyncLine(sp, map[string]any{"category": "structural"}, nil, 1, 1)
 	assert.False(t, ok, "empty field should yield ok=false")

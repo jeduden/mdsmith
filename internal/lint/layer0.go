@@ -48,11 +48,17 @@ const (
 
 // BlockSpan is one Layer 0 block: its kind, its 1-based inclusive start
 // and end source lines, and its block-quote/list nesting depth.
+//
+// Fields are ordered large-to-small (the three ints, then the two
+// byte-sized fields together) so the struct packs into 32 bytes instead
+// of 40 — BlockSpan is built once per block by Layer0 and read by
+// rule.WalkBlocks across every default rule that walks the parse-skip
+// path (docs/development/high-performance-go.md#struct-layout).
 type BlockSpan struct {
-	Kind  BlockKind
 	Start int
 	End   int
 	Depth int
+	Kind  BlockKind
 	// Closed is meaningful only for BlockFencedCode: true when the fence
 	// has a matching closing delimiter, false when it runs to end of file
 	// (or a trailing blank line) unclosed. tryFence already computes this;

@@ -787,33 +787,16 @@ func resolveBodySyncLine(
 	return patchedLine{}, false
 }
 
-// buildFieldPattern compiles a regex that matches a body line whose
-// {field} placeholders have been replaced by any non-empty run.
-// The pattern is always valid: each part is regexp.QuoteMeta'd and
-// joined with ".+", so regexp.MustCompile never panics here.
-func buildFieldPattern(bodyText string) *regexp.Regexp {
-	parts := fieldinterp.SplitOnFields(bodyText)
-	var patBuf strings.Builder
-	patBuf.WriteString("^")
-	for i, part := range parts {
-		patBuf.WriteString(regexp.QuoteMeta(part))
-		if i < len(parts)-1 {
-			patBuf.WriteString(".+")
-		}
-	}
-	patBuf.WriteString("$")
-	return regexp.MustCompile(patBuf.String())
-}
-
 // buildSchemaHeading constructs a schemaHeading from a docHeading,
 // pre-compiling the field-interpolation regex when the text contains
 // {field} references so matchesSchema pays no per-call compile cost.
 // Pattern construction is delegated to buildFieldPattern, which owns
-// the QuoteMeta+".+" logic and its MustCompile invariant.
-func buildSchemaHeading(h docHeading) schemaHeading {
+// the QuoteMeta+".+" logic and its MustCompile invariant. cache is
+// forwarded to buildFieldPattern; see its doc comment.
+func buildSchemaHeading(h docHeading, cache *fieldPatternCache) schemaHeading {
 	sh := schemaHeading{Level: h.Level, Text: h.Text}
 	if fieldinterp.ContainsField(h.Text) {
-		sh.compiled = buildFieldPattern(h.Text)
+		sh.compiled = buildFieldPattern(h.Text, cache)
 	}
 	return sh
 }
@@ -1332,9 +1315,11 @@ func cueFieldLabel(key string) string {
 // collectBodySyncPoints scans body content for {field} references and
 // adds them to the syncPoints map under their nearest preceding heading.
 // Iterates over content bytes directly to avoid the bytes.Split allocation.
+// fieldCache is forwarded to appendBodySyncFields; see buildFieldPattern's
+// doc comment.
 func collectBodySyncPoints(
 	content []byte, headings []docHeading,
-	syncPoints map[int][]syncPoint,
+	syncPoints map[int][]syncPoint, fieldCache *fieldPatternCache,
 ) {
 	currentHeading := -1
 	// inPIBlock is true while scanning the lines of a multi-line
@@ -1398,7 +1383,7 @@ func collectBodySyncPoints(
 			continue
 		}
 		if currentHeading >= 0 {
-			appendBodySyncFields(syncPoints, currentHeading, string(lineB))
+			appendBodySyncFields(syncPoints, currentHeading, string(lineB), fieldCache)
 		}
 	}
 }
@@ -1416,15 +1401,17 @@ func headingIndexForLine(headings []docHeading, line string) int {
 
 // appendBodySyncFields records a body-sync point under heading idx for
 // each `{field}` token found in the body line. Lines with no token add
-// nothing.
+// nothing. fieldCache is forwarded to buildFieldPattern; see its doc
+// comment.
 func appendBodySyncFields(
 	syncPoints map[int][]syncPoint, idx int, trimmed string,
+	fieldCache *fieldPatternCache,
 ) {
 	fields := fieldinterp.Fields(trimmed)
 	if len(fields) == 0 {
 		return
 	}
-	compiled := buildFieldPattern(trimmed)
+	compiled := buildFieldPattern(trimmed, fieldCache)
 	for _, f := range fields {
 		syncPoints[idx] = append(syncPoints[idx],
 			syncPoint{Field: f, InBody: true, BodyText: trimmed, compiled: compiled})
@@ -1633,15 +1620,21 @@ func parseSchemaWithRootFS(
 
 	schHeadings := make([]schemaHeading, len(headings))
 	syncPoints := make(map[int][]syncPoint)
+	// fieldCache is scoped to this one parse: it dedupes repeated
+	// {field} template text within this schema's headings and body,
+	// then is discarded with the rest of this call's locals. See
+	// fieldPatternCache's doc comment for why this isn't a package var;
+	// the zero value costs nothing when the schema has no {field} text.
+	var fieldCache fieldPatternCache
 
 	for i, h := range headings {
-		schHeadings[i] = buildSchemaHeading(h)
+		schHeadings[i] = buildSchemaHeading(h, &fieldCache)
 		for _, f := range fieldinterp.Fields(h.Text) {
 			syncPoints[i] = append(syncPoints[i], syncPoint{Field: f})
 		}
 	}
 
-	collectBodySyncPoints(content, headings, syncPoints)
+	collectBodySyncPoints(content, headings, syncPoints, &fieldCache)
 
 	return &parsedSchema{
 		Config:     cfg,

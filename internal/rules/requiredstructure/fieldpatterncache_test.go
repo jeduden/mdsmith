@@ -1,0 +1,93 @@
+package requiredstructure
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
+
+// TestBuildFieldPattern_CachesCompiledRegex guards against buildFieldPattern
+// rebuilding the NFA for a {field} body-sync line that recurs within one
+// schema parse — e.g. a repeated template row in a proto.md schema.
+// appendBodySyncFields calls buildFieldPattern once per matching body line
+// (docs/development/high-performance-go.md#allocations, "Compile regexes at
+// package scope"); two calls with identical body text and the same cache
+// must return the same *regexp.Regexp instance instead of compiling twice.
+// The cache is caller-supplied (see fieldPatternCache's doc comment for why
+// it isn't a package-level var): a nil cache must still return a correct,
+// freshly compiled pattern every call.
+func TestBuildFieldPattern_CachesCompiledRegex(t *testing.T) {
+	const body = "Cache test body line with a {field} placeholder for FPCacheTest."
+	var cache fieldPatternCache
+	re1 := buildFieldPattern(body, &cache)
+	re2 := buildFieldPattern(body, &cache)
+	assert.Same(t, re1, re2, "expected second call to reuse the cached *regexp.Regexp")
+}
+
+func TestBuildFieldPattern_NilCacheStillCorrect(t *testing.T) {
+	const body = "Nil-cache body line with a {field} placeholder."
+	re1 := buildFieldPattern(body, nil)
+	re2 := buildFieldPattern(body, nil)
+	assert.NotSame(t, re1, re2, "a nil cache must not be written to")
+	assert.True(t, re1.MatchString("Nil-cache body line with a replaced-value placeholder."))
+}
+
+// TestBuildFieldPattern_CacheHitZeroAllocs proves the cache actually
+// avoids the recompile, the way checkextension_alloc_test.go and
+// internal/mdpath's alloc test prove their EqualFold fixes avoid a
+// ToLower allocation: a cache hit is a plain map[string]*regexp.Regexp
+// read, so it must cost 0 allocs once the entry is warm.
+func TestBuildFieldPattern_CacheHitZeroAllocs(t *testing.T) {
+	if testing.Short() {
+		t.Skip("alloc gate skipped in -short mode")
+	}
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race")
+	}
+	const body = "Alloc test body line with a {field} placeholder for FPAllocTest."
+	var cache fieldPatternCache
+	buildFieldPattern(body, &cache) // warm the cache
+	allocs := testing.AllocsPerRun(100, func() {
+		_ = buildFieldPattern(body, &cache)
+	})
+	if allocs > 0 {
+		t.Fatalf("buildFieldPattern: expected 0 allocs/op on a cache hit, got %.0f", allocs)
+	}
+}
+
+// TestFieldPatternCache_Get covers get's three paths: a nil receiver
+// (the "no cache" contract buildFieldPattern relies on), a miss on a
+// zero-value cache, and a miss must not allocate the backing map — a
+// schema with no {field} text must not pay for a map that's never
+// populated.
+func TestFieldPatternCache_Get(t *testing.T) {
+	var nilCache *fieldPatternCache
+	if _, ok := nilCache.get("anything"); ok {
+		t.Fatal("get on a nil *fieldPatternCache must report a miss")
+	}
+
+	var cache fieldPatternCache
+	if _, ok := cache.get("anything"); ok {
+		t.Fatal("get on an empty cache must report a miss")
+	}
+	if cache.m != nil {
+		t.Fatal("get on a miss must not allocate the backing map")
+	}
+}
+
+// TestFieldPatternCache_Put covers put's three paths: a nil receiver is
+// a no-op (never panics), the first put lazily allocates the backing
+// map, and a put entry is retrievable via get.
+func TestFieldPatternCache_Put(t *testing.T) {
+	var nilCache *fieldPatternCache
+	nilCache.put("key", nil) // must not panic
+
+	var cache fieldPatternCache
+	cache.put("key", nil)
+	if cache.m == nil {
+		t.Fatal("put must lazily allocate the backing map on first use")
+	}
+	if _, ok := cache.get("key"); !ok {
+		t.Fatal("a put entry must be retrievable via get")
+	}
+}

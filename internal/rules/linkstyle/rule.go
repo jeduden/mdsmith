@@ -407,8 +407,8 @@ func checkExtension(policy, targetPath string) string {
 	if base == "." || base == ".." {
 		return ""
 	}
-	ext := strings.ToLower(path.Ext(base))
-	isMD := ext == ".md" || ext == ".markdown"
+	ext := path.Ext(base)
+	isMD := strings.EqualFold(ext, ".md") || strings.EqualFold(ext, ".markdown")
 	hasOtherExt := ext != "" && !isMD
 	if hasOtherExt {
 		return ""

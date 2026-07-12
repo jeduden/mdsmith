@@ -10,6 +10,7 @@ import (
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/mdpath"
 )
 
 // WikiLink is one parsed Obsidian-style wikilink occurrence.
@@ -216,7 +217,7 @@ func NewWikilinkIndex(root fs.FS) *WikilinkIndex {
 		base := path.Base(p)
 		lcName := strings.ToLower(base)
 		idx.names[lcName] = append(idx.names[lcName], p)
-		if isMarkdownName(base) {
+		if mdpath.IsMarkdownPath(base) {
 			stem := strings.TrimSuffix(base, path.Ext(base))
 			lcStem := strings.ToLower(stem)
 			idx.stems[lcStem] = append(idx.stems[lcStem], p)
@@ -361,7 +362,7 @@ func ResolveWikiLink(root fs.FS, from, target string) (string, bool) {
 		base := path.Base(p)
 		if stemMode {
 			stem := strings.TrimSuffix(base, path.Ext(base))
-			if strings.EqualFold(stem, wantStem) && isMarkdownName(base) {
+			if strings.EqualFold(stem, wantStem) && mdpath.IsMarkdownPath(base) {
 				matches = append(matches, p)
 			}
 			return nil
@@ -406,9 +407,4 @@ func wikilinkSearchKey(target string) (wantName, wantStem string, stemMode bool)
 	default:
 		return base, "", false
 	}
-}
-
-func isMarkdownName(name string) bool {
-	ext := strings.ToLower(path.Ext(name))
-	return ext == ".md" || ext == ".markdown"
 }
