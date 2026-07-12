@@ -1269,8 +1269,8 @@ func TestRunInit_Add_UnknownPack_ExitsTwo(t *testing.T) {
 func TestRunInit_Add_ScaffoldError(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	// .mdsmith is a regular file, so the pack's MkdirAll fails and runInit
-	// must surface it as exit 2.
+	// .mdsmith is a regular file, so the pack's parent-directory checks
+	// fail and runInit must surface the scaffold error as exit 2.
 	require.NoError(t, os.WriteFile(".mdsmith", []byte("x"), 0o644))
 
 	captureStderr(func() {
@@ -1344,14 +1344,18 @@ func TestWriteScaffolds_WritesAndSkips(t *testing.T) {
 func TestWriteScaffolds_MkdirError(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	// .mdsmith is a regular file, so MkdirAll(.mdsmith/wordlists) fails
-	// with ENOTDIR — driving the directory-creation error branch.
-	require.NoError(t, os.WriteFile(".mdsmith", []byte("x"), 0o644))
+	// .mdsmith is a real directory, but .mdsmith/wordlists is a regular
+	// file. The parent chain has no symlink, so refuseSymlinkedParents
+	// passes and MkdirAll(.mdsmith/wordlists) then fails because the target
+	// already exists as a file — driving the directory-creation error
+	// branch.
+	require.NoError(t, os.Mkdir(".mdsmith", 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(".mdsmith", "wordlists"), []byte("x"), 0o644))
 
 	files := []pack.File{{Path: filepath.Join(".mdsmith", "wordlists", "a.yaml"), Data: []byte("entries:\n  - x\n")}}
 	err := writeScaffolds(files, io.Discard)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), filepath.Join(".mdsmith", "wordlists"))
+	assert.Contains(t, err.Error(), "creating "+filepath.Join(".mdsmith", "wordlists"))
 }
 
 func TestWriteScaffolds_RefusesSymlink(t *testing.T) {
@@ -1480,6 +1484,53 @@ func TestWriteScaffolds_RefusesSymlinkedMdsmithDir(t *testing.T) {
 	assert.Contains(t, err.Error(), "symlink")
 	_, statErr := os.Stat(filepath.Join(target, "wordlists", "a.yaml"))
 	assert.True(t, os.IsNotExist(statErr), "nothing written through the symlinked .mdsmith")
+}
+
+func TestWriteScaffolds_RefusesSymlinkedIntermediateDir(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	require.NoError(t, os.Mkdir(".mdsmith", 0o755))
+	target := filepath.Join(dir, "elsewhere")
+	require.NoError(t, os.Mkdir(target, 0o755))
+	// .mdsmith is a real directory, but an intermediate component
+	// (.mdsmith/wordlists) is a symlink out of tree. The write must still
+	// be refused rather than following it.
+	require.NoError(t, os.Symlink(target, filepath.Join(".mdsmith", "wordlists")))
+
+	files := []pack.File{{Path: filepath.Join(".mdsmith", "wordlists", "a.yaml"), Data: []byte("x")}}
+	err := writeScaffolds(files, io.Discard)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "symlink")
+	_, statErr := os.Stat(filepath.Join(target, "a.yaml"))
+	assert.True(t, os.IsNotExist(statErr), "nothing written through the intermediate symlink")
+}
+
+func TestRefuseSymlinkedParents(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	// A path whose parent is the cwd (dir == ".") has nothing to check.
+	require.NoError(t, refuseSymlinkedParents("a.yaml"))
+
+	// Parents that don't exist yet are fine — MkdirAll makes them real.
+	require.NoError(t, refuseSymlinkedParents(filepath.Join(".mdsmith", "wordlists", "a.yaml")))
+
+	// A fully real parent chain passes.
+	require.NoError(t, os.MkdirAll(filepath.Join(".mdsmith", "wordlists"), 0o755))
+	require.NoError(t, refuseSymlinkedParents(filepath.Join(".mdsmith", "wordlists", "a.yaml")))
+
+	// A symlinked component is refused.
+	require.NoError(t, os.Symlink(dir, filepath.Join(".mdsmith", "link")))
+	err := refuseSymlinkedParents(filepath.Join(".mdsmith", "link", "a.yaml"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "symlink")
+
+	// A non-ENOENT lstat error — a component is a file, so ENOTDIR — is
+	// surfaced as a checking error.
+	require.NoError(t, os.WriteFile(filepath.Join(".mdsmith", "afile"), []byte("x"), 0o644))
+	err = refuseSymlinkedParents(filepath.Join(".mdsmith", "afile", "child", "a.yaml"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "checking")
 }
 
 // --- runHelp ---

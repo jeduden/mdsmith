@@ -460,17 +460,15 @@ func applyPacks(names []string, w io.Writer) error {
 // Existence is checked with statTarget, which refuses a symlinked target
 // rather than following it — a planted link must not divert the write
 // outside the pack directory. Each path is validated against the pack
-// contract (relative, under .mdsmith/) first, and a symlinked .mdsmith
-// directory is refused up front, so a buggy or hostile pack cannot write
-// out of tree. Progress lines go to w.
+// contract (relative, under .mdsmith/) and every existing parent
+// component is checked for a symlink first, so a buggy or hostile pack
+// cannot write out of tree. Progress lines go to w.
 func writeScaffolds(files []pack.File, w io.Writer) error {
-	// A symlinked .mdsmith directory would let MkdirAll/WriteFile follow it
-	// and land pack files wherever it points; refuse it before any write.
-	if info, err := os.Lstat(mdsmithDir); err == nil && info.Mode()&fs.ModeSymlink != 0 {
-		return fmt.Errorf("%s is a symlink; refusing to write pack files through it", mdsmithDir)
-	}
 	for _, f := range files {
 		if err := validatePackPath(f.Path); err != nil {
+			return err
+		}
+		if err := refuseSymlinkedParents(f.Path); err != nil {
 			return err
 		}
 		if dir := filepath.Dir(f.Path); dir != "." {
@@ -490,6 +488,35 @@ func writeScaffolds(files []pack.File, w io.Writer) error {
 			return fmt.Errorf("writing %s: %w", f.Path, err)
 		}
 		_, _ = fmt.Fprintf(w, "mdsmith: created %s\n", f.Path)
+	}
+	return nil
+}
+
+// refuseSymlinkedParents fails if any existing directory component of p —
+// from the top-level .mdsmith down to its immediate parent — is a
+// symlink. A symlinked component (.mdsmith itself, or an intermediate
+// like .mdsmith/wordlists -> /tmp/out) would let the following MkdirAll
+// and WriteFile resolve p to a location outside .mdsmith/, so pack writes
+// must refuse it before touching the filesystem. Components that do not
+// exist yet are fine: MkdirAll creates them as real directories, and once
+// a component is absent everything below it is absent too.
+func refuseSymlinkedParents(p string) error {
+	dir := filepath.Dir(p)
+	if dir == "." {
+		return nil
+	}
+	components := strings.Split(dir, string(filepath.Separator))
+	for i := range components {
+		prefix := filepath.Join(components[:i+1]...)
+		info, err := os.Lstat(prefix)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			return nil
+		case err != nil:
+			return fmt.Errorf("checking %s: %w", prefix, err)
+		case info.Mode()&fs.ModeSymlink != 0:
+			return fmt.Errorf("%s is a symlink; refusing to write pack files through it", prefix)
+		}
 	}
 	return nil
 }
