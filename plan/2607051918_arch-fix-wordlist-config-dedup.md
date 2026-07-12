@@ -3,7 +3,7 @@ id: 2607051918
 title: >-
   Export wordlist.Dedup and remove the identical
   dedupStrings copy in internal/config
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   internal/wordlist.dedup and
@@ -86,11 +86,11 @@ import just for `internal/config`'s copy.
 
 ## Acceptance Criteria
 
-- [ ] `internal/wordlist` exports `Dedup` and
+- [x] `internal/wordlist` exports `Dedup` and
       `ToAnySlice`, each with a dedicated test.
-- [ ] `internal/config/wordlist_files.go` has no private
+- [x] `internal/config/wordlist_files.go` has no private
       `dedupStrings` or `stringsToAny`.
-- [ ] `internal/convention/nollmtells.go` has no private
+- [x] `internal/convention/nollmtells.go` has no private
       `toAnySlice`.
-- [ ] `go test ./...` is green.
-- [ ] `mdsmith check .` is green.
+- [x] `go test ./...` is green.
+- [x] `mdsmith check .` is green.

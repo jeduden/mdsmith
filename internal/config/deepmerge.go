@@ -1,6 +1,9 @@
 package config
 
-import "github.com/jeduden/mdsmith/internal/rule"
+import (
+	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/wordlist"
+)
 
 // mergeRuleCfg deep-merges later on top of earlier and returns the
 // result. Both layers configure the same rule; later sits after earlier
@@ -106,11 +109,7 @@ func toAnySlice(v any) ([]any, bool) {
 		}
 		return out, true
 	case []string:
-		out := make([]any, len(x))
-		for i, s := range x {
-			out[i] = s
-		}
-		return out, true
+		return wordlist.ToAnySlice(x), true
 	case []int:
 		out := make([]any, len(x))
 		for i, n := range x {

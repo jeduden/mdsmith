@@ -184,6 +184,40 @@ func TestToAnySlice_IntSlice(t *testing.T) {
 	assert.Equal(t, []any{3}, got.Settings["nums"])
 }
 
+func TestToAnySlice_StringSlice(t *testing.T) {
+	// Exercise the []string case in toAnySlice via mergeAny (replace path,
+	// non-ListMerger rule), symmetric to TestToAnySlice_IntSlice.
+	earlier := RuleCfg{
+		Enabled:  true,
+		Settings: map[string]any{"words": []string{"a", "b"}},
+	}
+	later := RuleCfg{
+		Enabled:  true,
+		Settings: map[string]any{"words": []string{"c"}},
+	}
+	got := mergeRuleCfg("some-rule", earlier, later)
+	assert.Equal(t, []any{"c"}, got.Settings["words"])
+}
+
+func TestToAnySlice_NilStringSlice(t *testing.T) {
+	// Verify that nil []string is normalized to []any{} by toAnySlice so the
+	// MergeAppend path sees an empty accumulator rather than bypassing list-merge
+	// entirely (which would leave a []string in the output instead of []any).
+	// If nil []string were treated as a non-slice value (ok=false), cloneAny
+	// would return []string{} here instead of the expected []any{}.
+	earlier := RuleCfg{
+		Enabled:  true,
+		Settings: map[string]any{"placeholders": ([]string)(nil)},
+	}
+	later := RuleCfg{
+		Enabled:  true,
+		Settings: map[string]any{"placeholders": ([]string)(nil)},
+	}
+	got := mergeRuleCfg("first-line-heading", earlier, later)
+	assert.Equal(t, []any{}, got.Settings["placeholders"],
+		"nil []string must normalize to []any{}, not bypass the list-merge path")
+}
+
 // --- effectiveRules deep-merge through the layer chain ---
 
 func TestEffectiveTwoKindsContributeDifferentKeys(t *testing.T) {
