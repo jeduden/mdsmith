@@ -274,19 +274,15 @@ func TestLeadingWhitespace(t *testing.T) {
 }
 
 func TestParagraphHasRawHTML_NoHTML(t *testing.T) {
-	doc := ast.NewDocument()
 	p := ast.NewParagraph()
-	doc.AppendChild(doc, p)
 	if paragraphHasRawHTML(p) {
 		t.Errorf("paragraphHasRawHTML = true for paragraph without raw HTML, want false")
 	}
 }
 
 func TestParagraphHasRawHTML_WithHTML(t *testing.T) {
-	doc := ast.NewDocument()
 	p := ast.NewParagraph()
 	p.AppendChild(p, ast.NewRawHTML())
-	doc.AppendChild(doc, p)
 	if !paragraphHasRawHTML(p) {
 		t.Errorf("paragraphHasRawHTML = false for paragraph with raw HTML, want true")
 	}

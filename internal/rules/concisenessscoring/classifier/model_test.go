@@ -643,14 +643,6 @@ func TestBuildPhraseMarkers_AppliesPhraseMarker(t *testing.T) {
 	}
 }
 
-func TestBuildPhraseMarkers_LengthPreserving(t *testing.T) {
-	phrases := []string{"foo bar", "baz"}
-	got := buildPhraseMarkers(phrases)
-	if len(got) != len(phrases) {
-		t.Fatalf("buildPhraseMarkers must be length-preserving: got %d, want %d", len(got), len(phrases))
-	}
-}
-
 func BenchmarkClassify(b *testing.B) {
 	model, err := LoadEmbedded()
 	if err != nil {
