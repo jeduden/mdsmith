@@ -13,12 +13,23 @@
 package ambiguousemphasis
 
 import (
+	"bytes"
 	"fmt"
 	"sort"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
+)
+
+// starNeedle and underscoreNeedle are single-byte needles for
+// bytes.Count, held at package scope so scanLine never allocates a
+// slice literal per call (docs/development/high-performance-go.md
+// "Compile regexes at package scope" applies equally to byte
+// needles).
+var (
+	starNeedle       = []byte{'*'}
+	underscoreNeedle = []byte{'_'}
 )
 
 func init() {
@@ -98,16 +109,37 @@ type escape struct {
 
 // scanLine walks line bytes tracking backslash-escape state and
 // returns the unescaped delimiter runs and escaped-delimiter
-// positions.
+// positions. A cheap byte count gates the walk: a line with no '*' or
+// '_' at all can hold no run or escape, so it returns immediately
+// without touching the per-byte loop
+// (docs/development/high-performance-go.md "Gate expensive analyzers
+// behind a cheap pre-check"). When delimiters are present, the count
+// also bounds runs' capacity — no run can exceed the total delimiter
+// byte count — so the common multi-emphasis line (`**bold** *and*
+// _more_`) fills runs via one pre-sized slice instead of growing it
+// through repeated append reallocations.
 func scanLine(line []byte) ([]emphRun, []escape) {
-	var runs []emphRun
+	numDelims := bytes.Count(line, starNeedle) + bytes.Count(line, underscoreNeedle)
+	if numDelims == 0 {
+		return nil, nil
+	}
+
+	runs := make([]emphRun, 0, numDelims)
 	var escapes []escape
 
-	var cur *emphRun
+	// cur/open track the in-progress run by value instead of *emphRun:
+	// taking the address of a composite literal reassigned across loop
+	// iterations forces the compiler to heap-allocate a fresh emphRun
+	// per delimiter run (docs/development/high-performance-go.md
+	// "Fixed-size arrays beat slices" / avoid unnecessary pointers). A
+	// value plus a bool keeps the in-progress run on the stack; only
+	// the copy appended to runs is ever observed outside this loop.
+	var cur emphRun
+	open := false
 	closeRun := func() {
-		if cur != nil {
-			runs = append(runs, *cur)
-			cur = nil
+		if open {
+			runs = append(runs, cur)
+			open = false
 		}
 	}
 
@@ -127,11 +159,12 @@ func scanLine(line []byte) ([]emphRun, []escape) {
 			escaped = true
 			closeRun()
 		case '*', '_':
-			if cur != nil && cur.char == b {
+			if open && cur.char == b {
 				cur.end = i + 1
 			} else {
 				closeRun()
-				cur = &emphRun{char: b, start: i, end: i + 1}
+				cur = emphRun{char: b, start: i, end: i + 1}
+				open = true
 			}
 		default:
 			closeRun()
