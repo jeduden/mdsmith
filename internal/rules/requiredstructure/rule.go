@@ -1985,7 +1985,7 @@ func walkRequiredHeadings(
 	requiredByText map[string][]int, ref string,
 ) ([]lint.Diagnostic, int, bool) {
 	var diags []lint.Diagnostic
-	claimed := make(map[int]bool)
+	claimed := make(map[int]struct{})
 	docIdx := 0
 	allowExtra := false
 	for schIdx, req := range sch.Headings {
@@ -1993,7 +1993,7 @@ func walkRequiredHeadings(
 			allowExtra = true
 			continue
 		}
-		if claimed[schIdx] {
+		if _, ok := claimed[schIdx]; ok {
 			continue
 		}
 		// Save the position before the scan so that a missing-section
@@ -2009,7 +2009,7 @@ func walkRequiredHeadings(
 		if found {
 			allowExtra = false
 		}
-		if !found && !claimed[schIdx] {
+		if _, ok := claimed[schIdx]; !found && !ok {
 			diags = append(diags, missingSectionDiagLegacy(
 				f, req, ref, legacyPrecedingLine(docHeadings, preScanIdx)))
 		}
@@ -2088,7 +2088,7 @@ func matchRequired(
 	docHeadings []docHeading,
 	docIdx, schIdx int,
 	requiredByText map[string][]int,
-	claimed map[int]bool,
+	claimed map[int]struct{},
 	allowExtra bool,
 	schemaRef string,
 ) ([]lint.Diagnostic, int, bool) {
@@ -2100,7 +2100,7 @@ func matchRequired(
 			if dh.Level != req.Level {
 				diags = append(diags, levelMismatchDiag(f, dh, req, schemaRef))
 			}
-			claimed[schIdx] = true
+			claimed[schIdx] = struct{}{}
 			return diags, docIdx + 1, true
 		}
 		if ooIdx := nextUnclaimed(requiredByText[dh.Text], claimed, schIdx+1); ooIdx >= 0 {
@@ -2116,7 +2116,7 @@ func matchRequired(
 			if dh.Level != other.Level {
 				diags = append(diags, levelMismatchDiag(f, dh, other, schemaRef))
 			}
-			claimed[ooIdx] = true
+			claimed[ooIdx] = struct{}{}
 			docIdx++
 			continue
 		}
@@ -2151,9 +2151,12 @@ func levelMismatchDiag(
 
 // nextUnclaimed returns the first index in candidates that is >= minIdx
 // and not yet claimed, or -1 if none qualifies.
-func nextUnclaimed(candidates []int, claimed map[int]bool, minIdx int) int {
+func nextUnclaimed(candidates []int, claimed map[int]struct{}, minIdx int) int {
 	for _, idx := range candidates {
-		if idx >= minIdx && !claimed[idx] {
+		if idx < minIdx {
+			continue
+		}
+		if _, ok := claimed[idx]; !ok {
 			return idx
 		}
 	}

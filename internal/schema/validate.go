@@ -205,15 +205,15 @@ func dedupedCUEErrorDiags(
 	cueErrs []*cuelite.PathError, keyLines map[string]int, mkDiag MakeDiag,
 ) []lint.Diagnostic {
 	type dedupKey struct{ field, actual, expected string }
-	seen := make(map[dedupKey]bool, len(cueErrs))
+	seen := make(map[dedupKey]struct{}, len(cueErrs))
 	out := make([]lint.Diagnostic, 0, len(cueErrs))
 	for _, ce := range cueErrs {
 		d := schemaDiagFromCUEError(sch, docFM, ce)
 		key := dedupKey{field: d.Field, actual: d.Actual, expected: d.Expected}
-		if seen[key] {
+		if _, ok := seen[key]; ok {
 			continue
 		}
-		seen[key] = true
+		seen[key] = struct{}{}
 		out = append(out, d.Emit(mkDiag, f.Path, fmDiagLine(f, ce.Path(), keyLines)))
 	}
 	return out

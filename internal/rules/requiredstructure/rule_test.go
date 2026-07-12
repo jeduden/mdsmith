@@ -2609,3 +2609,17 @@ func TestLegacyPrecedingLine(t *testing.T) {
 func TestWordlistTarget(t *testing.T) {
 	assert.Equal(t, "placeholders", (&Rule{}).WordlistTarget())
 }
+
+// TestNextUnclaimed_SetValueType pins claimed's value type at
+// map[int]struct{} rather than map[int]bool: claimed is a pure
+// presence set (only ever written struct{}{}/true, never explicitly
+// cleared), so the zero-byte value type is the right one
+// (docs/development/high-performance-go.md "map[K]struct{} for
+// sets"). This test only compiles once nextUnclaimed's signature
+// uses map[int]struct{}.
+func TestNextUnclaimed_SetValueType(t *testing.T) {
+	claimed := map[int]struct{}{1: {}, 3: {}}
+	assert.Equal(t, 0, nextUnclaimed([]int{0, 1, 2, 3}, claimed, 0))
+	assert.Equal(t, 2, nextUnclaimed([]int{1, 2, 3}, claimed, 0))
+	assert.Equal(t, -1, nextUnclaimed([]int{1, 3}, claimed, 0))
+}
