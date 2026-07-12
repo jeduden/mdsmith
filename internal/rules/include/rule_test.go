@@ -86,16 +86,12 @@ func TestRule_Name(t *testing.T) {
 
 func TestRule_RuleID(t *testing.T) {
 	r := &Rule{}
-	if r.RuleID() != "MDS021" {
-		t.Errorf("expected RuleID MDS021, got %s", r.RuleID())
-	}
+	assert.Equal(t, "MDS021", r.RuleID())
 }
 
 func TestRule_RuleName(t *testing.T) {
 	r := &Rule{}
-	if r.RuleName() != "include" {
-		t.Errorf("expected RuleName include, got %s", r.RuleName())
-	}
+	assert.Equal(t, "include", r.RuleName())
 }
 
 // =====================================================================

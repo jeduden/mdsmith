@@ -418,11 +418,12 @@ func TestIndex_File(t *testing.T) {
 	require.True(t, ok, "expected File to normalize path separators and ./ prefixes")
 	require.NotNil(t, fe)
 
-	fe.Title = "mutated"
 	fe2, ok := idx.File("docs/a.md")
 	require.True(t, ok)
-	assert.NotEqual(t, "mutated", fe2.Title,
+	assert.NotSame(t, fe, fe2,
 		"File must return a copy so callers cannot mutate the stored entry")
+	fe.Title = "mutated"
+	assert.NotEqual(t, "mutated", fe2.Title)
 }
 
 func TestRootAndFilesOnNilIndex(t *testing.T) {

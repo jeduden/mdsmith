@@ -128,9 +128,9 @@ set.
   `config.ApplyCategories` pattern; only `Runner`'s
   reuses a shared lookup helper.
 - SRP file-size bloat past the point of easy review:
-  `internal/rules/requiredstructure/rule.go` (2606
+  `internal/rules/requiredstructure/rule.go` (2605
   lines, 5 concerns), `internal/rules/catalog/rule.go`
-  (1761 lines, ~6 concerns beyond what the package's
+  (1760 lines, ~6 concerns beyond what the package's
   existing file split already covers),
   `internal/rules/crossfilereferenceintegrity/rule.go`
   (~1130 lines, 3 concerns), `internal/schema/validate.go`
@@ -139,7 +139,7 @@ set.
   lines, 4 concerns), `cmd/mdsmith/main.go` (911 lines,
   nearing the ~1000-line smell threshold, with real
   domain logic that could move to `internal/*`),
-  `internal/release/bench.go` (701 lines, 5 concerns).
+  `internal/release/bench.go` (700 lines, 5 concerns).
   None are DIP violations; all are readability/review-cost
   friction, split candidates along the seams each
   finding's source agent already named.
