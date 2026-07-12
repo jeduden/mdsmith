@@ -21,6 +21,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/piparser"
 	"github.com/jeduden/mdsmith/internal/placeholders"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	rulesettings "github.com/jeduden/mdsmith/internal/rules/settings"
 	"github.com/jeduden/mdsmith/internal/schema"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
@@ -1437,7 +1438,7 @@ func fenceOpenRun(raw, lineB []byte) (byte, int) {
 	if len(lineB) == 0 || (lineB[0] != '`' && lineB[0] != '~') {
 		return 0, 0
 	}
-	if lineIndent(raw) > 3 {
+	if astutil.CountLeadingSpaces(raw) > 3 {
 		return 0, 0
 	}
 	n := fenceRun(lineB, lineB[0])
@@ -1452,7 +1453,7 @@ func fenceOpenRun(raw, lineB []byte) (byte, int) {
 // opener, nothing but the run on the trimmed line, and at most three
 // spaces of indentation.
 func fenceClose(raw, lineB []byte, ch byte, openLen int) bool {
-	if lineIndent(raw) > 3 {
+	if astutil.CountLeadingSpaces(raw) > 3 {
 		return false
 	}
 	n := fenceRun(lineB, ch)
@@ -1468,18 +1469,13 @@ func fenceRun(line []byte, ch byte) int {
 	return n
 }
 
-// lineIndent returns the number of leading spaces on the raw line.
-func lineIndent(raw []byte) int {
-	return len(raw) - len(bytes.TrimLeft(raw, " "))
-}
-
 // isPIOpenLine reports whether a raw body line opens a processing
 // instruction, mirroring the block parser in pkg/markdown: at most
 // three spaces of indentation, a `<?` opener, and a non-empty name
 // (the bytes up to the first whitespace or `?>`). An indented code
 // example showing a directive is therefore not mistaken for one.
 func isPIOpenLine(raw []byte) bool {
-	if lineIndent(raw) > 3 {
+	if astutil.CountLeadingSpaces(raw) > 3 {
 		return false
 	}
 	trimmed := bytes.TrimLeft(raw, " ")

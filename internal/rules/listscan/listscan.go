@@ -27,7 +27,11 @@
 // (already in internal/lint/layer0.go) into this parser.
 package listscan
 
-import "bytes"
+import (
+	"bytes"
+
+	"github.com/jeduden/mdsmith/internal/rules/astutil"
+)
 
 // Item is one parsed list item.
 type Item struct {
@@ -180,7 +184,7 @@ func (p *parser) run() {
 // new list item, or a continuation line.
 func (p *parser) scanLine(i int, line []byte) int {
 	lineNo := i + 1
-	indent := leadingSpaces(line)
+	indent := astutil.CountLeadingSpaces(line)
 	markerToken := hasMarkerToken(line, indent)
 	interrupts := interruptsParagraph(line, indent)
 
@@ -672,10 +676,6 @@ func contentColumn(line []byte, afterMarker int) int {
 	return afterMarker + spaces
 }
 
-func leadingSpaces(line []byte) int {
-	return len(line) - len(bytes.TrimLeft(line, " "))
-}
-
 func isBlankLine(line []byte) bool {
 	for _, c := range line {
 		if c != ' ' && c != '\t' && c != '\r' {
@@ -735,7 +735,7 @@ func openingFenceRel(line []byte, indent, baseCol int) (fenceInfo, bool) {
 // fence run sits no more than 3 columns past fi.baseCol, runs >= fi.length
 // identical fence characters, and is followed only by whitespace.
 func closingFence(line []byte, fi fenceInfo) bool {
-	indent := leadingSpaces(line)
+	indent := astutil.CountLeadingSpaces(line)
 	if indent-fi.baseCol >= 4 {
 		return false
 	}
@@ -752,7 +752,7 @@ func closingFence(line []byte, fi fenceInfo) bool {
 // isThematicBreak reports whether line is a thematic break (3+ of a
 // single -, *, or _ with only spaces between), which is not a list item.
 func isThematicBreak(line []byte) bool {
-	indent := leadingSpaces(line)
+	indent := astutil.CountLeadingSpaces(line)
 	if indent >= 4 || indent >= len(line) {
 		return false
 	}

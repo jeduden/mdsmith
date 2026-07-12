@@ -14,6 +14,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	"github.com/jeduden/mdsmith/internal/setutil"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/jeduden/mdsmith/pkg/goldmark/text"
@@ -494,17 +495,13 @@ func footnotePlacementMessage(
 // end of file. lines is f.Lines (pre-split by lint.NewFile).
 func paragraphEndLine(lines [][]byte, line int, defLines map[int]struct{}) int {
 	end := line
-	for end < len(lines) && !isBlankLine(lines[end]) {
+	for end < len(lines) && !astutil.IsBlank(lines[end]) {
 		if _, ok := defLines[end+1]; ok {
 			break
 		}
 		end++
 	}
 	return end
-}
-
-func isBlankLine(line []byte) bool {
-	return len(bytes.TrimLeft(line, " \t")) == 0
 }
 
 func isNumericSlug(s string) bool {
