@@ -1203,6 +1203,42 @@ func TestRunInit_FromMarkdownlintWithAdd_ExistingConfigSkipsConfigButScaffolds(t
 	}
 }
 
+func TestRunInit_UnknownFlag_ExitsTwo(t *testing.T) {
+	var code int
+	out := captureStderr(func() { code = runInit([]string{"--definitely-not-a-flag"}) })
+	assert.Equal(t, 2, code)
+	assert.Contains(t, out, "unknown flag")
+}
+
+func TestRunInit_Force_WriteError(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	// .mdsmith.yml is a directory. --force skips the "leave unchanged"
+	// short-circuit and tries to write, which fails because the path is a
+	// directory — exercising writeInitConfig's write-error branch.
+	require.NoError(t, os.Mkdir(".mdsmith.yml", 0o755))
+
+	var code int
+	out := captureStderr(func() { code = runInit([]string{"--force"}) })
+	assert.Equal(t, 2, code)
+	assert.Contains(t, out, "writing .mdsmith.yml")
+}
+
+func TestRunInit_SymlinkConfig_Refused(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	// A symlinked .mdsmith.yml must not be written through, even with
+	// --force: init refuses instead of following the link out of the tree.
+	require.NoError(t, os.Symlink(filepath.Join(dir, "target.yml"), ".mdsmith.yml"))
+
+	var code int
+	out := captureStderr(func() { code = runInit([]string{"--force"}) })
+	assert.Equal(t, 2, code)
+	assert.Contains(t, out, "symlink")
+	_, statErr := os.Stat(filepath.Join(dir, "target.yml"))
+	assert.True(t, os.IsNotExist(statErr), "must not write through the symlink")
+}
+
 func TestRunInit_Add_UnknownPack_ExitsTwo(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -1305,22 +1341,61 @@ func TestWriteScaffolds_MkdirError(t *testing.T) {
 	assert.Contains(t, err.Error(), filepath.Join(".mdsmith", "wordlists"))
 }
 
-func TestWriteScaffolds_StatErrorSurfaced(t *testing.T) {
+func TestWriteScaffolds_RefusesSymlink(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	wlDir := filepath.Join(dir, ".mdsmith", "wordlists")
 	require.NoError(t, os.MkdirAll(wlDir, 0o755))
-	// A self-referential symlink makes os.Stat fail with ELOOP — a
-	// non-"not exist" error. It must be surfaced as a stat ("checking")
-	// failure, not skipped and not misattributed to the write. ELOOP is
-	// returned regardless of uid, so this holds under root in CI.
-	require.NoError(t, os.Symlink("a.yaml", filepath.Join(wlDir, "a.yaml")))
+	// A symlink at the target path must be refused, not followed: writing
+	// through it would land the pack file wherever the link points. Even a
+	// dangling link (its target does not exist) is refused rather than
+	// treated as absent-and-writable.
+	require.NoError(t, os.Symlink(filepath.Join(dir, "escape.yaml"), filepath.Join(wlDir, "a.yaml")))
 
 	files := []pack.File{{Path: filepath.Join(".mdsmith", "wordlists", "a.yaml"), Data: []byte("entries:\n  - x\n")}}
 	err := writeScaffolds(files, io.Discard)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "checking")
+	assert.Contains(t, err.Error(), "symlink")
 	assert.Contains(t, err.Error(), "a.yaml")
+	// The link's target was never written.
+	_, statErr := os.Stat(filepath.Join(dir, "escape.yaml"))
+	assert.True(t, os.IsNotExist(statErr), "must not write through the symlink")
+}
+
+func TestStatTarget(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	// Missing path: absent, no error.
+	exists, err := statTarget("missing.yml")
+	require.NoError(t, err)
+	assert.False(t, exists)
+
+	// A regular file exists.
+	require.NoError(t, os.WriteFile("real.yml", []byte("x"), 0o644))
+	exists, err = statTarget("real.yml")
+	require.NoError(t, err)
+	assert.True(t, exists)
+
+	// A symlink is refused, never followed.
+	require.NoError(t, os.Symlink("real.yml", "link.yml"))
+	_, err = statTarget("link.yml")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "symlink")
+
+	// A non-ENOENT lstat failure — a path component is a file, so ENOTDIR —
+	// is surfaced as a checking error rather than read as absent.
+	_, err = statTarget(filepath.Join("real.yml", "child"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "checking")
+}
+
+func TestApplyPacks_UnknownPack(t *testing.T) {
+	// applyPacks re-checks each name defensively; a bogus name returns an
+	// unknown-pack error even though runInit validates first.
+	err := applyPacks([]string{"bogus"}, io.Discard)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown pack "bogus"`)
 }
 
 // --- runHelp ---

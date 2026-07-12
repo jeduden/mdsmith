@@ -393,7 +393,11 @@ func printInitCatalog(w io.Writer) {
 // force is set, so init stays idempotent and never silently clobbers a
 // project's config. Progress and any conversion notes go to w.
 func writeInitConfig(configFile, fromMarkdownlint, starterName string, force bool, w io.Writer) error {
-	if _, err := os.Stat(configFile); err == nil && !force {
+	exists, err := statTarget(configFile)
+	if err != nil {
+		return err
+	}
+	if exists && !force {
 		_, _ = fmt.Fprintf(w,
 			"mdsmith: %s already exists, leaving it unchanged (use --force to overwrite)\n", configFile)
 		return nil
@@ -433,10 +437,10 @@ func applyPacks(names []string, w io.Writer) error {
 
 // writeScaffolds writes each sidecar file under the current directory,
 // creating parent directories as needed. An existing target is left
-// untouched and noted, so a re-run never clobbers a project's edits. A
-// stat error that is not "not exist" — a permission wall, a symlink loop
-// — is surfaced rather than misattributed to a later write. Progress
-// lines go to w.
+// untouched and noted, so a re-run never clobbers a project's edits.
+// Existence is checked with statTarget, which refuses a symlinked target
+// rather than following it — a planted link must not divert the write
+// outside the pack directory. Progress lines go to w.
 func writeScaffolds(files []pack.File, w io.Writer) error {
 	for _, f := range files {
 		if dir := filepath.Dir(f.Path); dir != "." {
@@ -444,13 +448,13 @@ func writeScaffolds(files []pack.File, w io.Writer) error {
 				return fmt.Errorf("creating %s: %w", dir, err)
 			}
 		}
-		_, err := os.Stat(f.Path)
-		if err == nil {
+		exists, err := statTarget(f.Path)
+		if err != nil {
+			return err
+		}
+		if exists {
 			_, _ = fmt.Fprintf(w, "mdsmith: %s already exists, skipping\n", f.Path)
 			continue
-		}
-		if !errors.Is(err, fs.ErrNotExist) {
-			return fmt.Errorf("checking %s: %w", f.Path, err)
 		}
 		if err := os.WriteFile(f.Path, f.Data, 0o644); err != nil {
 			return fmt.Errorf("writing %s: %w", f.Path, err)
@@ -458,6 +462,26 @@ func writeScaffolds(files []pack.File, w io.Writer) error {
 		_, _ = fmt.Fprintf(w, "mdsmith: created %s\n", f.Path)
 	}
 	return nil
+}
+
+// statTarget reports whether path already exists as a regular
+// (non-symlink) entry. It uses Lstat so a symlink is never followed: a
+// symlink — even a dangling one — is refused with an error rather than
+// written through, which would let a planted link divert an init write
+// outside the working directory. A missing path returns (false, nil);
+// any other stat failure is surfaced as a "checking" error.
+func statTarget(path string) (exists bool, err error) {
+	info, err := os.Lstat(path)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return false, nil
+	case err != nil:
+		return false, fmt.Errorf("checking %s: %w", path, err)
+	case info.Mode()&fs.ModeSymlink != 0:
+		return false, fmt.Errorf("%s is a symlink; refusing to write through it", path)
+	default:
+		return true, nil
+	}
 }
 
 // initConfigBytes produces the .mdsmith.yml contents for init. With a
