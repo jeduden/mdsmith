@@ -1,25 +1,48 @@
 ---
 command: init
 summary: >-
-  Generate a default `.mdsmith.yml` config in the current
-  directory, scaffold a workflow config with `--starter`,
-  or convert an existing markdownlint config with
-  `--from-markdownlint`.
+  Write `.mdsmith.yml` from the built-in defaults, a
+  `--starter` scaffold, or a `--from-markdownlint`
+  conversion; add curated `.mdsmith/` bundles with `--add`;
+  `--force` overwrites an existing config and `--list`
+  prints every starter and pack.
 ---
 # `mdsmith init`
 
-Writes `.mdsmith.yml` in the current directory. Without
-flags, the file lists every rule with its built-in default
-settings, so individual rules can be flipped off or
-overridden with a clear diff.
+Sets up mdsmith config in the current directory. It has two
+independent jobs: write `.mdsmith.yml`, and scaffold
+additive `.mdsmith/` packs beside it.
 
 ```text
-mdsmith init [--starter <name>] [--from-markdownlint[=path]] [--wordlists]
+mdsmith init [--starter <name>] [--from-markdownlint[=path]] [--add <pack>] [--force] [--list]
 ```
 
-Refuses to overwrite an existing `.mdsmith.yml`. Takes no
-positional arguments. `--starter` and `--from-markdownlint`
-are mutually exclusive.
+## The config
+
+`init` writes `.mdsmith.yml` from one source. The default
+lists every rule with its built-in settings, so a rule is
+easy to flip off or override with a clear diff. `--starter`
+writes a workflow scaffold instead. `--from-markdownlint`
+converts a peer config. The last two cannot combine.
+
+An existing `.mdsmith.yml` is left unchanged, with a notice,
+and the run still exits 0. Pass `--force` to overwrite it.
+
+## Additive packs
+
+`--add <pack>` scaffolds a curated bundle of `.mdsmith/`
+files beside the config. It is repeatable and comma-joined,
+so `--add wordlists --add stopwords` and
+`--add wordlists,stopwords` both work. A pack never
+overwrites an existing file, and it does not write the
+config, so it pairs with any source and works on an
+already-initialized project. An unknown pack name fails
+before anything is written.
+
+## Discovery
+
+`mdsmith init --list` prints every starter and pack with a
+one-line description, then exits without writing anything.
 
 ## Flags
 
@@ -28,7 +51,9 @@ are mutually exclusive.
 | `--starter=$name`           | Scaffold a ready-to-edit config for a workflow               |
 | `--from-markdownlint`       | Convert a markdownlint config found in the current directory |
 | `--from-markdownlint=$path` | Convert the markdownlint config at `$path`                   |
-| `--wordlists`               | Also scaffold the curated `.mdsmith/wordlists/` files        |
+| `--add=$pack`               | Also scaffold a curated `.mdsmith/` pack (repeatable)        |
+| `--force`                   | Overwrite an existing `.mdsmith.yml` instead of skipping it  |
+| `--list`                    | Print the available starters and packs, then exit            |
 
 ## Starters
 
@@ -67,9 +92,16 @@ reported as notes — on stderr and as a `# Not converted:`
 comment block in the generated file. Notes do not fail the
 command.
 
-## Word-list scaffolding
+## Packs
 
-With `--wordlists`, `init` also writes
+`--add <pack>` writes a curated bundle you own and edit.
+Available packs:
+
+| Name        | Scaffolds                                       |
+| ----------- | ----------------------------------------------- |
+| `wordlists` | The `no-llm-tells` word-lists as editable files |
+
+The `wordlists` pack writes
 `.mdsmith/wordlists/ai-speak.yaml` and `ai-openers.yaml`
 from the built-in [`no-llm-tells`](../conventions.md)
 vocabulary. These are the same curated tell words and
@@ -77,13 +109,10 @@ sentence openers, but as editable files you own. Each
 file's header shows the exact `lists:` reference. Nothing
 reads a file until a rule names it.
 
-No word-list ships compiled into the binary; this flag is
-how you put the curated set on disk. It works on an
-already-initialized project: an existing `.mdsmith.yml` is
-left unchanged, not treated as an error. An existing list
-file is left untouched too, so a re-run never clobbers your
-edits. `init` does not edit `.mdsmith.yml` to reference the
-files.
+No word-list ships compiled into the binary; this pack is
+how you put the curated set on disk. An existing list file
+is left untouched, so a re-run never clobbers your edits.
+`init` does not edit `.mdsmith.yml` to reference the files.
 
 ## Examples
 
@@ -108,11 +137,17 @@ mdsmith init --from-markdownlint
 $EDITOR .mdsmith.yml
 ```
 
-Scaffold the curated word-lists for editing:
+Add the curated word-lists to an existing project:
 
 ```bash
-mdsmith init --wordlists
+mdsmith init --add wordlists
 $EDITOR .mdsmith/wordlists/ai-speak.yaml
+```
+
+List everything init can produce:
+
+```bash
+mdsmith init --list
 ```
 
 See
@@ -121,7 +156,7 @@ for a worked conversion, including the emitted notes.
 
 ## Exit codes
 
-| Code | Meaning                                                                                                 |
-| ---- | ------------------------------------------------------------------------------------------------------- |
-| 0    | Config written (conversion notes may still be present)                                                  |
-| 2    | `.mdsmith.yml` exists, unknown starter, conflicting flags, no markdownlint config found, or parse error |
+| Code | Meaning                                                                         |
+| ---- | ------------------------------------------------------------------------------- |
+| 0    | Config written or skipped; packs applied (conversion notes may show)            |
+| 2    | Unknown starter or pack, conflicting sources, no config found, or a write error |

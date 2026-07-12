@@ -163,13 +163,13 @@ Ship the canonical `ignore:` list naming APM's deploy dirs
 file, plus `overrides:` disabling fix-capable rules on the compiled
 root files, plus the A-1 kind pack for the `.apm/` source tree. The
 config exists today; the command that assembles it does not. So the
-plan ships it as an `mdsmith init --apm` template — additive and
-non-clobbering, on the `--wordlists` model — that writes the
-`.mdsmith/kinds/apm-*` pack and the coexistence posture, scoped to
-the harness directories the repo actually has. The guide documents
-what the template writes.
+plan ships it as an `mdsmith init --add apm` pack — additive and
+non-clobbering, the same mechanism as `--add wordlists` — that writes
+the `.mdsmith/kinds/apm-*` files and the coexistence posture, scoped
+to the harness directories the repo actually has. The guide documents
+what the pack writes.
 
-**Surface.** An `mdsmith init --apm` flag plus
+**Surface.** An `mdsmith init --add apm` pack plus
 `docs/guides/coexist-with-apm.md`. Scheduled as
 [plan 2607082050](../../../plan/2607082050_apm-coexist-guide-and-kind-pack.md).
 

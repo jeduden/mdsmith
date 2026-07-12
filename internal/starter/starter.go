@@ -35,6 +35,17 @@ func Get(name string) (data []byte, ok bool) {
 // Names returns the available starter names, sorted.
 func Names() []string { return namesFrom(templatesFS) }
 
+// descriptions gives each starter a one-line summary for `mdsmith init
+// --list`. Every embedded template must have an entry here; enforced by
+// TestEveryStarterHasDescription.
+var descriptions = map[string]string{
+	"okf": "Open Knowledge Format bundle config",
+}
+
+// Describe returns the one-line summary for the named starter, or "" if
+// the name is unknown.
+func Describe(name string) string { return descriptions[name] }
+
 func namesFrom(fsys fs.FS) []string {
 	entries, err := fs.ReadDir(fsys, "templates")
 	if err != nil {
