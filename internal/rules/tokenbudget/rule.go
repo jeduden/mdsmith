@@ -71,6 +71,9 @@ func (r *Rule) Category() string { return "prose" }
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	budget := r.activeBudget(f.Path)
+	if r.definitelyUnderBudget(f.Source, budget) {
+		return nil
+	}
 	count := r.tokenCount(f.Source)
 	if count <= budget {
 		return nil
@@ -78,11 +81,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	modeLabel := r.modeLabel()
 
 	overage := count - budget
-	tpw := r.TokensPerWord
-	if tpw <= 0 {
-		tpw = defaultTokensPerWord
-	}
-	wordsOver := int(math.Ceil(float64(overage) / tpw))
+	wordsOver := int(math.Ceil(float64(overage) / r.effectiveTokensPerWord()))
 	if wordsOver < 1 {
 		wordsOver = 1
 	}
@@ -120,6 +119,42 @@ func (r *Rule) activeBudget(path string) int {
 	return budget
 }
 
+// definitelyUnderBudget reports whether source is provably under
+// budget without running the real count — mdtext.CountWordsBytes for
+// heuristic mode, or the tokenizer regex pass for tokenizer mode. This
+// rule is enabled by default and runs on every file in the workspace,
+// so most files (well under budget) can skip that scan entirely: see
+// docs/development/high-performance-go.md "Gate expensive analyzers
+// behind a cheap pre-check".
+//
+// The bound is safe in both modes because a heuristic-mode word, and
+// every tokenizer-mode regex alternative, consumes at least one source
+// byte and matches never overlap — so the real count can never exceed
+// len(source) matches, scaled by tokens-per-word for heuristic mode.
+// tokenCount's own rounding (math.Round) is monotonic, so bounding the
+// input to that rounding (len(source) in place of the true word count)
+// never produces a false "under budget" when the real count would
+// exceed it.
+func (r *Rule) definitelyUnderBudget(source []byte, budget int) bool {
+	switch normalizeMode(r.Mode) {
+	case "tokenizer":
+		return len(source) <= budget
+	default:
+		return math.Round(float64(len(source))*r.effectiveTokensPerWord()) <= float64(budget)
+	}
+}
+
+// effectiveTokensPerWord returns r.TokensPerWord, falling back to
+// defaultTokensPerWord when unset — the same resolution Check,
+// definitelyUnderBudget, tokenCount, and modeLabel all need.
+func (r *Rule) effectiveTokensPerWord() float64 {
+	tpw := r.TokensPerWord
+	if tpw <= 0 {
+		tpw = defaultTokensPerWord
+	}
+	return tpw
+}
+
 // tokenCount estimates the token count of source without copying it.
 // The mode label is built separately by modeLabel, only when a
 // diagnostic is actually emitted — formatting it for every under-budget
@@ -131,12 +166,8 @@ func (r *Rule) tokenCount(source []byte) int {
 		enc := normalizeEncoding(r.Encoding)
 		return tokenizerCount(source, tok, enc)
 	default:
-		tpw := r.TokensPerWord
-		if tpw <= 0 {
-			tpw = defaultTokensPerWord
-		}
 		words := mdtext.CountWordsBytes(source)
-		count := int(math.Round(float64(words) * tpw))
+		count := int(math.Round(float64(words) * r.effectiveTokensPerWord()))
 		if count < 0 {
 			count = 0
 		}
@@ -150,11 +181,7 @@ func (r *Rule) modeLabel() string {
 	case "tokenizer":
 		return "tokenizer:" + normalizeTokenizer(r.Tokenizer) + "/" + normalizeEncoding(r.Encoding)
 	default:
-		tpw := r.TokensPerWord
-		if tpw <= 0 {
-			tpw = defaultTokensPerWord
-		}
-		return "heuristic:tokens-per-word=" + strconv.FormatFloat(tpw, 'f', 2, 64)
+		return "heuristic:tokens-per-word=" + strconv.FormatFloat(r.effectiveTokensPerWord(), 'f', 2, 64)
 	}
 }
 

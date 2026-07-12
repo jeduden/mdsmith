@@ -64,6 +64,100 @@ type Fixer struct {
 	// matching the engine.Runner cache contract that catalog and
 	// other gitignore-aware rules expect.
 	gitignoreCache map[string]*gitignore.Matcher
+
+	// effCache memoizes the effective rule config by config signature
+	// (config.EffectiveSignature) across a fix run. fixOnce walks paths
+	// sequentially in one goroutine, so a plain map needs no lock —
+	// mirrors engine.effectiveCache, which needs sync.Map only because
+	// the engine's workers run concurrently.
+	effCache map[string]map[string]config.RuleCfg
+
+	// confCache memoizes the configured (cloned + settings-applied)
+	// enabled rule list, and its FixableRule subset, per config
+	// signature — mirrors engine.runResolve.confCache. A fix run over
+	// many files that share one config configures its rules (including
+	// any rule-owned regexp.Compile in ApplySettings) once instead of
+	// once per file, and once instead of once per fixFile call site
+	// (fixableRules plus the pre- and post-fix CheckRules calls all
+	// used to reconfigure independently).
+	confCache map[string]fixerConfigured
+
+	// categoryByRule memoizes the rule-name → category lookup
+	// effectiveCachedForFix's ApplyCategories call needs, built once
+	// (lazily) instead of once per file.
+	categoryByRule map[string]string
+}
+
+// fixerConfigured is one confCache entry: the enabled, configured rule
+// list for a config signature (from checker.ConfigureEnabledRules), its
+// FixableRule subset sorted by ID, and any settings-application errors
+// produced while configuring it.
+type fixerConfigured struct {
+	all     []rule.Rule
+	fixable []rule.FixableRule
+	errs    []error
+}
+
+// effectiveCachedForFix is fixFile's hot-path config resolver: it
+// memoizes the effective rule config on f.effCache keyed by the file's
+// config signature, so a fix run over many files sharing one config
+// resolves it once instead of once per file. Returns the signature key
+// alongside the config so the caller can reuse it for configuredFor
+// without recomputing it. Mirrors engine.Runner.effectiveCached.
+func (f *Fixer) effectiveCachedForFix(
+	path string, fmKinds []string, fmFields map[string]any,
+) (map[string]config.RuleCfg, string) {
+	key, kinds := config.EffectiveSignature(f.Config, path, fmKinds, fmFields)
+	if v, ok := f.effCache[key]; ok {
+		return v, key
+	}
+	effective, categories, explicit := config.EffectiveAllForKinds(f.Config, path, kinds)
+	res := config.ApplyCategories(effective, categories, f.categoryLookup(), explicit)
+	if f.effCache == nil {
+		f.effCache = make(map[string]map[string]config.RuleCfg)
+	}
+	f.effCache[key] = res
+	return res, key
+}
+
+// categoryLookup builds (once, lazily) the rule-name → category map
+// ApplyCategories needs, so a fix run over many files builds it once
+// instead of once per file.
+func (f *Fixer) categoryLookup() func(string) string {
+	if f.categoryByRule == nil {
+		f.categoryByRule = make(map[string]string, len(f.Rules))
+		for _, rl := range f.Rules {
+			f.categoryByRule[rl.Name()] = rl.Category()
+		}
+	}
+	m := f.categoryByRule
+	return func(name string) string { return m[name] }
+}
+
+// configuredFor returns the configured enabled rule list (and its
+// FixableRule subset) for the effective config identified by key,
+// building and memoizing it on first use. Reusing a configured rule
+// across files and across fixFile's own call sites is safe for the same
+// reason checker.CheckConfiguredRules' doc comment gives: a rule's
+// Check/Fix holds no state between calls.
+func (f *Fixer) configuredFor(key string, effective map[string]config.RuleCfg) fixerConfigured {
+	if fc, ok := f.confCache[key]; ok {
+		return fc
+	}
+	all, errs := checker.ConfigureEnabledRules(f.Rules, effective)
+	fixable := make([]rule.FixableRule, 0, len(all))
+	for _, rl := range all {
+		if fr, ok := rl.(rule.FixableRule); ok {
+			fixable = append(fixable, fr)
+		}
+	}
+	sort.Slice(fixable, func(i, j int) bool { return fixable[i].ID() < fixable[j].ID() })
+	fc := fixerConfigured{all: all, fixable: fixable, errs: errs}
+	if f.confCache == nil {
+		f.confCache = make(map[string]fixerConfigured)
+	}
+	f.confCache[key] = fc
+	return fc
 }
 
 // cachedGitignore returns a *gitignore.Matcher for the given directory,
@@ -301,16 +395,16 @@ func (f *Fixer) fixFile(path string) (
 		return nil, nil, "", false, []error{prepErr}
 	}
 
-	effective := f.effectiveWithCategories(path, fmKinds, fmFields)
+	effective, key := f.effectiveCachedForFix(path, fmKinds, fmFields)
 
 	f.logRules(effective)
 
-	fixable, settingsErrs := f.fixableRules(effective)
+	fc := f.configuredFor(key, effective)
 	lf.GeneratedRanges = gensection.FindAllGeneratedRanges(lf)
-	beforeDiags, checkErrs := checker.CheckRules(lf, f.Rules, effective)
-	errs = append(errs, append(settingsErrs, checkErrs...)...)
+	beforeDiags := checker.CheckConfiguredRules(lf, fc.all, false, 1)
+	errs = append(errs, fc.errs...)
 
-	current := f.applyFixPasses(path, lf.Source, fixable, lf, dirFS, &errs)
+	current := f.applyFixPasses(path, lf.Source, fc.fixable, lf, dirFS, &errs)
 
 	bytesChanged := !bytes.Equal(lf.Source, current)
 	var modified string
@@ -329,10 +423,9 @@ func (f *Fixer) fixFile(path string) (
 
 	finalFile := buildPostFixFile(path, current, lf, dirFS)
 
-	diags, checkErrs := checker.CheckRules(finalFile, f.Rules, effective)
-	errs = append(errs, checkErrs...)
+	diags := checker.CheckConfiguredRules(finalFile, fc.all, false, 1)
 	if f.DryRun {
-		diags = subtractPredictedDryRunFixes(diags, fixable, finalFile)
+		diags = subtractPredictedDryRunFixes(diags, fc.fixable, finalFile)
 	}
 	if f.Explain {
 		explain.Attach(diags, f.Config, path, fmKinds, fmFields)

@@ -32,7 +32,7 @@ func TestClaimsLaterLiteral_Branches(t *testing.T) {
 		// idx 3: required literal that matches the heading
 		literalScope("References"),
 	}
-	claimed := map[int]bool{}
+	claimed := map[int]struct{}{}
 	dh := DocHeading{Text: "References", Level: 2}
 	assert.True(t,
 		claimsLaterLiteral(scopes, 0, dh, claimed, nil),
@@ -50,7 +50,7 @@ func TestClaimsLaterLiteral_Branches(t *testing.T) {
 		"no scopes at or after startIdx => no claim")
 
 	// Already-claimed literal — not eligible.
-	claimed[3] = true
+	claimed[3] = struct{}{}
 	assert.False(t,
 		claimsLaterLiteral(scopes, 0, dh, claimed, nil),
 		"a claimed later literal must not reserve again")
@@ -213,7 +213,7 @@ func TestFirstWrongLevelMatch_SkipsClaimedAndOutOfRange(t *testing.T) {
 		{Level: 3, Text: "Step", Line: 15}, // 3: the wrong-level match
 	}
 	sc := Scope{Heading: "Step", Matcher: &Matcher{Regex: "Step"}}
-	claimed := map[int]bool{0: true}
+	claimed := map[int]struct{}{0: {}}
 	idx := firstWrongLevelMatch(sc, heads, 2, 3, 100, claimed, nil)
 	assert.Equal(t, 3, idx,
 		"claimed heads, out-of-range heads, and same-level heads "+
@@ -408,7 +408,7 @@ func TestFirstWrongLevelMatch_BroadMatcherReturnsMinusOne(t *testing.T) {
 			Repeat: Repeat{Set: true, Min: 0},
 		},
 	}
-	idx := firstWrongLevelMatch(sc, heads, 3, 1, 100, map[int]bool{}, nil)
+	idx := firstWrongLevelMatch(sc, heads, 3, 1, 100, map[int]struct{}{}, nil)
 	assert.Equal(t, -1, idx,
 		"a broad matcher must not salvage a wrong-level heading")
 }
@@ -425,7 +425,7 @@ func TestAnyLaterScopeClaims_SkipsAlreadyClaimed(t *testing.T) {
 		{Heading: "B", Matcher: &Matcher{Regex: "B"}},
 	}
 	dh := DocHeading{Level: 2, Text: "B", Line: 5}
-	claimed := map[int]bool{1: true}
+	claimed := map[int]struct{}{1: {}}
 	assert.False(t, anyLaterScopeClaims(scopes, 0, dh, claimed, nil),
 		"a claimed scope must not register as a yield target")
 }
@@ -451,7 +451,7 @@ func TestScanScopeRunAtLevel_BreaksOnShallowAfterStart(t *testing.T) {
 	}
 	out := scanScopeRunAtLevel(
 		[]Scope{sc}, 0, heads, 3, 1, 100,
-		map[int]bool{}, nil)
+		map[int]struct{}{}, nil)
 	assert.Equal(t, []int{0}, out,
 		"the run must close at the shallower heading; index 2 "+
 			"must not be claimed even though its text matches")
@@ -597,7 +597,7 @@ func TestScopeRunIndices_NilMatcherReturnsNil(t *testing.T) {
 	scopes := []Scope{{Preamble: true}}
 	got := ScopeRunIndices(scopes, 0,
 		[]DocHeading{{Level: 2, Text: "X", Line: 1}},
-		2, 1, 100, map[int]bool{}, nil)
+		2, 1, 100, map[int]struct{}{}, nil)
 	assert.Nil(t, got)
 }
 

@@ -235,40 +235,39 @@ func (r *silentRule) Name() string                         { return r.name }
 func (r *silentRule) Category() string                     { return "test" }
 func (r *silentRule) Check(_ *lint.File) []lint.Diagnostic { return nil }
 
-// mockFlakyConfigurableRule succeeds on the first non-default ApplySettings
-// call, fails on the second, then succeeds again.
+// mockBadSettingsRule fails ApplySettings whenever it is configured
+// with real (non-default) settings.
 //
-// This exercises the fix path that runs CheckRules before and after fixing:
-// the error on the pre-fix check must be collected.
-type mockFlakyConfigurableRule struct {
+// This exercises the fix path that runs CheckRules before fixing: the
+// error from configuring this rule for the run must be collected. It
+// deliberately fails deterministically (not on a specific call number):
+// fixFile configures each Configurable rule once per config signature
+// for the whole run (not once per file, nor once per internal
+// fixableRules/CheckRules call site — see confCache/effectiveCachedForFix),
+// so a counter-based "fails on the Nth call" rule would no longer have
+// a stable N to target.
+type mockBadSettingsRule struct {
 	id   string
 	name string
 }
 
-var flakyConfigurableApplyCalls int
-
-func (r *mockFlakyConfigurableRule) ID() string       { return r.id }
-func (r *mockFlakyConfigurableRule) Name() string     { return r.name }
-func (r *mockFlakyConfigurableRule) Category() string { return "test" }
-func (r *mockFlakyConfigurableRule) Check(_ *lint.File) []lint.Diagnostic {
+func (r *mockBadSettingsRule) ID() string       { return r.id }
+func (r *mockBadSettingsRule) Name() string     { return r.name }
+func (r *mockBadSettingsRule) Category() string { return "test" }
+func (r *mockBadSettingsRule) Check(_ *lint.File) []lint.Diagnostic {
 	return nil
 }
-func (r *mockFlakyConfigurableRule) DefaultSettings() map[string]any {
+func (r *mockBadSettingsRule) DefaultSettings() map[string]any {
 	return map[string]any{"mode": "default"}
 }
-func (r *mockFlakyConfigurableRule) ApplySettings(settings map[string]any) error {
+func (r *mockBadSettingsRule) ApplySettings(settings map[string]any) error {
 	if settings["mode"] == "default" {
 		return nil
 	}
-
-	flakyConfigurableApplyCalls++
-	if flakyConfigurableApplyCalls == 2 {
-		return errors.New("flaky settings failure")
-	}
-	return nil
+	return errors.New("bad settings failure")
 }
 
-var _ rule.Configurable = (*mockFlakyConfigurableRule)(nil)
+var _ rule.Configurable = (*mockBadSettingsRule)(nil)
 
 // --- tests ---
 
@@ -524,12 +523,9 @@ func TestFix_PreFixCheckRulesErrorsCollected(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	flakyConfigurableApplyCalls = 0
-	t.Cleanup(func() { flakyConfigurableApplyCalls = 0 })
-
 	cfg := &config.Config{
 		Rules: map[string]config.RuleCfg{
-			"mock-flaky-config": {
+			"mock-bad-config": {
 				Enabled:  true,
 				Settings: map[string]any{"mode": "custom"},
 			},
@@ -538,14 +534,14 @@ func TestFix_PreFixCheckRulesErrorsCollected(t *testing.T) {
 
 	fixer := &Fixer{
 		Config: cfg,
-		Rules:  []rule.Rule{&mockFlakyConfigurableRule{id: "MDS997", name: "mock-flaky-config"}},
+		Rules:  []rule.Rule{&mockBadSettingsRule{id: "MDS997", name: "mock-bad-config"}},
 	}
 
 	result := fixer.Fix([]string{mdFile})
 	require.Len(t, result.Errors, 1,
 		"expected 1 pre-fix CheckRules error, got %d: %v", len(result.Errors), result.Errors)
-	require.Contains(t, result.Errors[0].Error(), "flaky settings failure",
-		"expected flaky settings error, got: %v", result.Errors[0])
+	require.Contains(t, result.Errors[0].Error(), "bad settings failure",
+		"expected bad-settings error, got: %v", result.Errors[0])
 	require.Len(t, result.Diagnostics, 0, "expected 0 diagnostics, got %d", len(result.Diagnostics))
 	require.Len(t, result.Modified, 0, "expected 0 modified files, got %d", len(result.Modified))
 }
@@ -1366,6 +1362,89 @@ func TestComputeWouldFixAggregated_NoChanges(t *testing.T) {
 	files, total := computeWouldFixAggregated(nil, nil, nil)
 	assert.Equal(t, 0, total)
 	assert.Empty(t, files)
+}
+
+// countingConfigurableApplyCalls counts ApplySettings calls across
+// countingConfigurableFixableRule clones. It must be a package-level
+// counter, not a struct field: rule.CloneRule builds a Configurable
+// clone from a zero-value instance (see clone.go), so any struct field
+// on the original — including a pointer — does not survive the clone.
+var countingConfigurableApplyCalls int
+
+// countingConfigurableFixableRule is a fixable, configurable rule that
+// counts ApplySettings calls. Used to pin the number of times a fix run
+// configures (clones + ApplySettings) a rule across files that share one
+// config signature — see docs/development/high-performance-go.md's
+// "memoize per-input computations" pattern.
+type countingConfigurableFixableRule struct {
+	id, name string
+}
+
+func (r *countingConfigurableFixableRule) ID() string       { return r.id }
+func (r *countingConfigurableFixableRule) Name() string     { return r.name }
+func (r *countingConfigurableFixableRule) Category() string { return "test" }
+func (r *countingConfigurableFixableRule) Check(_ *lint.File) []lint.Diagnostic {
+	return nil
+}
+func (r *countingConfigurableFixableRule) Fix(f *lint.File) []byte { return f.Source }
+func (r *countingConfigurableFixableRule) DefaultSettings() map[string]any {
+	return map[string]any{"mode": "default"}
+}
+func (r *countingConfigurableFixableRule) ApplySettings(settings map[string]any) error {
+	// rule.CloneRule applies DefaultSettings to seed each clone before
+	// ConfigureRule applies the real cfg.Settings (checker.go's
+	// ConfigureRule); only the latter should count as "configuring
+	// this rule" for the assertion below.
+	if settings["mode"] == "default" {
+		return nil
+	}
+	countingConfigurableApplyCalls++
+	return nil
+}
+
+var _ rule.FixableRule = (*countingConfigurableFixableRule)(nil)
+var _ rule.Configurable = (*countingConfigurableFixableRule)(nil)
+
+// TestFix_ConfiguresRulesOncePerConfigSignature pins the fix pipeline to
+// the same "configure once per config signature" contract
+// internal/engine already holds (see BenchmarkCheckCorpusSmall's comment
+// on checker.ConfigureEnabledRules memoization): a Fix() run over many
+// files that all share one effective config must clone and
+// ApplySettings each Configurable rule once, not once per file (and not
+// once per file per internal CheckRules/fixableRules call site).
+func TestFix_ConfiguresRulesOncePerConfigSignature(t *testing.T) {
+	countingConfigurableApplyCalls = 0
+	t.Cleanup(func() { countingConfigurableApplyCalls = 0 })
+
+	dir := t.TempDir()
+	var paths []string
+	for i := 0; i < 4; i++ {
+		p := filepath.Join(dir, fmt.Sprintf("doc%d.md", i))
+		require.NoError(t, os.WriteFile(p, []byte("# Hello\n"), 0o644))
+		paths = append(paths, p)
+	}
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"counting-rule": {
+				Enabled:  true,
+				Settings: map[string]any{"mode": "custom"},
+			},
+		},
+	}
+	fixer := &Fixer{
+		Config: cfg,
+		Rules: []rule.Rule{
+			&countingConfigurableFixableRule{id: "MDS998", name: "counting-rule"},
+		},
+	}
+
+	result := fixer.Fix(paths)
+	require.Empty(t, result.Errors)
+	assert.Equal(t, 1, countingConfigurableApplyCalls,
+		"ApplySettings should run once for the whole run (one config signature "+
+			"shared by every file), got %d calls across %d files",
+		countingConfigurableApplyCalls, len(paths))
 }
 
 func TestFix_DryRun_OmitsFilesWithNoFixes(t *testing.T) {

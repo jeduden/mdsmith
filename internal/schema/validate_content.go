@@ -41,7 +41,7 @@ func ValidateContent(
 	blocks := topLevelBlocks(f, root)
 
 	var diags []lint.Diagnostic
-	claimed := make(map[int]bool)
+	claimed := make(map[int]struct{})
 	walkContentScopes(
 		f, sch.Sections, heads, rootLevel, 1, len(f.Lines)+1,
 		claimed, blocks, docFM, mkDiag, &diags,
@@ -236,7 +236,7 @@ func blockLine(f *lint.File, n ast.Node) int {
 func walkContentScopes(
 	f *lint.File, scopes []Scope, heads []DocHeading,
 	expectedLevel, parentStart, parentEnd int,
-	claimed map[int]bool, blocks []contentBlock,
+	claimed map[int]struct{}, blocks []contentBlock,
 	docFM map[string]any, mkDiag MakeDiag, diags *[]lint.Diagnostic,
 ) {
 	for i, sc := range scopes {
@@ -260,7 +260,7 @@ func walkContentScopes(
 		for _, matched := range ScopeRunIndices(
 			scopes, i, heads, expectedLevel, parentStart, parentEnd, claimed, docFM) {
 			dh := heads[matched]
-			claimed[matched] = true
+			claimed[matched] = struct{}{}
 			end := contentScopeEndLine(heads, matched, dh.Level, parentEnd)
 			runContent(f, sc, dh.Line, dh.Level, dh.Line+1, end, blocks, mkDiag, diags)
 			if len(sc.Sections) > 0 {
@@ -365,7 +365,7 @@ func validateContentEntries(
 		sectionLevel: sectionLevel,
 		nodes:        nodes,
 		mkDiag:       mkDiag,
-		claimed:      make(map[int]bool, len(sc.Content)),
+		claimed:      make(map[int]struct{}, len(sc.Content)),
 	}
 	w.run(&diags)
 	return diags
@@ -384,7 +384,7 @@ type contentWalker struct {
 	mkDiag       MakeDiag
 
 	nodeIdx    int
-	claimed    map[int]bool
+	claimed    map[int]struct{}
 	allowExtra bool
 }
 
@@ -394,7 +394,7 @@ func (w *contentWalker) run(diags *[]lint.Diagnostic) {
 			w.allowExtra = true
 			continue
 		}
-		if w.claimed[i] {
+		if isClaimed(w.claimed, i) {
 			continue
 		}
 		w.matchEntry(i, entry, diags)
@@ -406,9 +406,9 @@ func (w *contentWalker) run(diags *[]lint.Diagnostic) {
 // entry's kind. Intervening nodes are either claimed as an
 // out-of-order match for a later listed entry, flagged as unexpected
 // (closed scope, no open slot), or silently consumed. On loop exit
-// w.claimed[i] reports whether the entry was paired with a node; an
-// unclaimed required entry emits a "missing required" diagnostic
-// anchored at the section's heading line.
+// Whether entry i ends up in w.claimed reports whether it was paired
+// with a node; an unclaimed required entry emits a "missing required"
+// diagnostic anchored at the section's heading line.
 func (w *contentWalker) matchEntry(
 	i int, entry ContentEntry, diags *[]lint.Diagnostic,
 ) {
@@ -416,7 +416,7 @@ func (w *contentWalker) matchEntry(
 		n := w.nodes[w.nodeIdx]
 		if nodeMatchesKind(entry.Kind, n.node) {
 			*diags = append(*diags, shapeDiags(w.f, entry, n, w.mkDiag)...)
-			w.claimed[i] = true
+			w.claimed[i] = struct{}{}
 			w.nodeIdx++
 			w.allowExtra = false
 			return
@@ -431,7 +431,7 @@ func (w *contentWalker) matchEntry(
 				fmt.Sprintf("content %q out of order: expected after %q",
 					describeNode(w.f, n.node), describeEntry(entry))))
 			*diags = append(*diags, shapeDiags(w.f, ooEntry, n, w.mkDiag)...)
-			w.claimed[ooIdx] = true
+			w.claimed[ooIdx] = struct{}{}
 			w.nodeIdx++
 			continue
 		}
@@ -445,7 +445,7 @@ func (w *contentWalker) matchEntry(
 		}
 		w.nodeIdx++
 	}
-	if !w.claimed[i] && entry.Required {
+	if !isClaimed(w.claimed, i) && entry.Required {
 		*diags = append(*diags, w.mkDiag(
 			w.f.Path, w.sectionLine,
 			fmt.Sprintf("missing required content %q inside %s",
@@ -460,7 +460,7 @@ func (w *contentWalker) matchEntry(
 // node by kind.
 func (w *contentWalker) findLaterEntry(startIdx int, n ast.Node) int {
 	for j := startIdx; j < len(w.sc.Content); j++ {
-		if w.claimed[j] {
+		if isClaimed(w.claimed, j) {
 			continue
 		}
 		e := w.sc.Content[j]

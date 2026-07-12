@@ -29,7 +29,7 @@ func (r *Rule) applyScopeRules(
 	rootLevel := sch.EffectiveRootLevel()
 	body := skipBelow(heads, rootLevel)
 	var diags []lint.Diagnostic
-	claimed := make(map[int]bool, len(body))
+	claimed := make(map[int]struct{}, len(body))
 	walkScopes(sch.Sections, body, rootLevel, 1, len(f.Lines)+1, claimed, docFM,
 		func(sc schema.Scope, startLine, endLine int) {
 			if len(sc.Rules) == 0 {
@@ -70,7 +70,7 @@ func skipBelow(heads []schema.DocHeading, rootLevel int) []schema.DocHeading {
 func walkScopes(
 	scopes []schema.Scope, heads []schema.DocHeading,
 	expectedLevel, parentStart, parentEnd int,
-	claimed map[int]bool, docFM map[string]any,
+	claimed map[int]struct{}, docFM map[string]any,
 	visit func(sc schema.Scope, startLine, endLine int),
 ) {
 	for i, sc := range scopes {
@@ -93,7 +93,7 @@ func walkScopes(
 		for _, matched := range schema.ScopeRunIndices(
 			scopes, i, heads, expectedLevel, parentStart, parentEnd, claimed, docFM) {
 			dh := heads[matched]
-			claimed[matched] = true
+			claimed[matched] = struct{}{}
 			// The section's end boundary follows the doc heading's
 			// real level, not the schema's expectedLevel. When the
 			// two differ (level-mismatch fallback), basing the end

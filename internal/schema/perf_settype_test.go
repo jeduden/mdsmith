@@ -53,3 +53,23 @@ func TestDocumentSlugSetReturnsStructSet(t *testing.T) {
 		t.Fatalf("expected slug another-heading in set, got %v", got)
 	}
 }
+
+// TestScopeRunIndicesAcceptsStructSet pins ScopeRunIndices' exported
+// "claimed" parameter to map[int]struct{}, not map[int]bool. claimed
+// is a set threaded through the whole matching engine (validate.go,
+// matchtree.go, validate_content.go, acronyms.go, and
+// internal/rules/requiredstructure/scope_rules.go, across the package
+// boundary) — every entry is written exactly once via claimed[idx] =
+// struct{}{}, so the zero-byte value drops per-entry map overhead
+// versus the 1-byte-plus-padding a bool value costs. See
+// docs/development/high-performance-go.md "map[K]struct{} for sets".
+func TestScopeRunIndicesAcceptsStructSet(t *testing.T) {
+	// Compile-time check: passing ScopeRunIndices into this explicitly
+	// typed parameter enforces the exact signature; if claimed were
+	// map[int]bool, this would not compile.
+	accept := func(
+		func([]Scope, int, []DocHeading, int, int, int, map[int]struct{}, map[string]any) []int,
+	) {
+	}
+	accept(ScopeRunIndices)
+}

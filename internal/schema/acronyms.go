@@ -126,7 +126,7 @@ func walkRanges(
 	docFM map[string]any,
 	visit func(sc Scope, headingText string, start, end int),
 ) {
-	claimed := make(map[int]bool, len(heads))
+	claimed := make(map[int]struct{}, len(heads))
 	for i, sc := range scopes {
 		if sc.Preamble || isSlotMatcher(sc.Matcher) {
 			continue
@@ -136,7 +136,7 @@ func walkRanges(
 		// broad-and-after-min yielding to later named scopes.
 		for _, idx := range ScopeRunIndices(
 			scopes, i, heads, expectedLevel, parentStart, parentEnd, claimed, docFM) {
-			claimed[idx] = true
+			claimed[idx] = struct{}{}
 			start := heads[idx].Line
 			end := nextSectionLine(heads, idx, heads[idx].Level, parentEnd)
 			visit(sc, heads[idx].Text, start, end)

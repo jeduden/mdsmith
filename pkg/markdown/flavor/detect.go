@@ -338,15 +338,21 @@ func nodeByteRange(n ast.Node) (int, int) {
 }
 
 func lineStartOf(source []byte, offset int) int {
+	offset = clampOffset(source, offset)
+	return bytes.LastIndexByte(source[:offset], '\n') + 1
+}
+
+// clampOffset bounds offset to [0, len(source)] so a caller that
+// looks at byte -1 or one past EOF still gets a valid index to slice
+// or index with. Shared by lineStartOf and LineCol.
+func clampOffset(source []byte, offset int) int {
+	if offset < 0 {
+		return 0
+	}
 	if offset > len(source) {
-		offset = len(source)
+		return len(source)
 	}
-	for i := offset - 1; i >= 0; i-- {
-		if source[i] == '\n' {
-			return i + 1
-		}
-	}
-	return 0
+	return offset
 }
 
 // firstTextStart returns the byte offset of the first descendant Text
@@ -390,22 +396,23 @@ func isASCIISpace(b byte) bool {
 // line numbers when producing line-level edits; also used internally
 // by every block / inline / makeFinding helper.
 func LineCol(source []byte, offset int) (line, col int) {
-	if offset < 0 {
-		offset = 0
-	}
-	if offset > len(source) {
-		offset = len(source)
-	}
-	line = 1
-	lineStart := 0
-	for i := 0; i < offset; i++ {
-		if source[i] == '\n' {
-			line++
-			lineStart = i + 1
-		}
-	}
+	offset = clampOffset(source, offset)
+	// bytes.Count and bytes.LastIndexByte are SIMD-accelerated on
+	// amd64; a manual byte-by-byte loop over the same prefix does not
+	// vectorize. See docs/development/high-performance-go.md
+	// "bytes.IndexByte over a hand-rolled byte loop". lineStart
+	// defaults to 0 when no '\n' precedes offset, matching
+	// LastIndexByte's -1-not-found sentinel plus 1.
+	prefix := source[:offset]
+	line = 1 + bytes.Count(prefix, newline)
+	lineStart := bytes.LastIndexByte(prefix, '\n') + 1
 	return line, offset - lineStart + 1
 }
+
+// newline is the single-byte needle LineCol counts with
+// bytes.Count — a package-level slice avoids allocating a fresh
+// one-element slice literal on every call.
+var newline = []byte{'\n'}
 
 // dedupe collapses consecutive findings of the same feature at the
 // same offset (goldmark's extension nodes sometimes nest, e.g. each
