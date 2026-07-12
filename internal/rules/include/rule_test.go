@@ -84,6 +84,16 @@ func TestRule_Name(t *testing.T) {
 	}
 }
 
+func TestRule_RuleID(t *testing.T) {
+	r := &Rule{}
+	assert.Equal(t, "MDS021", r.RuleID())
+}
+
+func TestRule_RuleName(t *testing.T) {
+	r := &Rule{}
+	assert.Equal(t, "include", r.RuleName())
+}
+
 // =====================================================================
 // Basic include
 // =====================================================================

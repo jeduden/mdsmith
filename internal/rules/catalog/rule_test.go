@@ -89,6 +89,29 @@ func TestRule_Name(t *testing.T) {
 	}
 }
 
+func TestRule_RuleID(t *testing.T) {
+	r := &Rule{}
+	assert.Equal(t, "MDS019", r.RuleID())
+}
+
+func TestRule_RuleName(t *testing.T) {
+	r := &Rule{}
+	assert.Equal(t, "catalog", r.RuleName())
+}
+
+func TestRule_Validate(t *testing.T) {
+	r := &Rule{}
+
+	diags := r.Validate("f.md", 1,
+		map[string]string{"row": "{name}", "glob": "*.md"}, nil)
+	assert.Empty(t, diags, "expected no diagnostics for a valid directive")
+
+	diags = r.Validate("f.md", 1,
+		map[string]string{"row": "{name}", "row-expr": "name"}, nil)
+	expectDiags(t, diags, 1)
+	expectDiagMsg(t, diags, `sets both "row" and "row-expr"; choose one`)
+}
+
 // =====================================================================
 // Core rendering
 // =====================================================================

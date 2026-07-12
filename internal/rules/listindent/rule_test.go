@@ -162,6 +162,16 @@ func TestCategory(t *testing.T) {
 	}
 }
 
+func TestID(t *testing.T) {
+	r := &Rule{}
+	assert.Equal(t, "MDS016", r.ID())
+}
+
+func TestName(t *testing.T) {
+	r := &Rule{}
+	assert.Equal(t, "list-indent", r.Name())
+}
+
 // TestFirstLineOfListItem_LinesPath pins the
 // `li.Lines().Len() > 0` branch. Goldmark's parser does not
 // populate Lines() on ListItem nodes in normal source — content

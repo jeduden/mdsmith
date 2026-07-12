@@ -398,6 +398,33 @@ func TestRootAndFiles(t *testing.T) {
 	assert.ElementsMatch(t, []string{"a.md", "b.md"}, idx.Files())
 }
 
+func TestNew(t *testing.T) {
+	t.Parallel()
+	idx := New("/root")
+	assert.Equal(t, "/root", idx.Root())
+	assert.Empty(t, idx.Files())
+}
+
+func TestIndex_File(t *testing.T) {
+	t.Parallel()
+	idx := New("/root")
+
+	_, ok := idx.File("missing.md")
+	assert.False(t, ok, "expected miss on an unindexed path")
+
+	idx.Update("./docs/a.md", []byte("# A\n"))
+	fe, ok := idx.File("docs\\a.md")
+	require.True(t, ok, "expected File to normalize path separators and ./ prefixes")
+	require.NotNil(t, fe)
+
+	fe2, ok := idx.File("docs/a.md")
+	require.True(t, ok)
+	assert.NotSame(t, fe, fe2,
+		"File must return a copy so callers cannot mutate the stored entry")
+	fe.Title = "mutated"
+	assert.NotEqual(t, "mutated", fe2.Title)
+}
+
 func TestRootAndFilesOnNilIndex(t *testing.T) {
 	t.Parallel()
 	var idx *Index

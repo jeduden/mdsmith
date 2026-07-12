@@ -158,3 +158,87 @@ rule-to-rule imports, or DIP violations.
 [2606211908]: ../../plan/2606211908_arch-fix-layer0-split.md
 [2606211909]: ../../plan/2606211909_arch-fix-lsp-server-split.md
 [2606211910]: ../../plan/2606211910_arch-fix-workspace-exemptions.md
+
+## Audit 2026-06-23 (range: e701b94..1599c9f)
+
+Performance + struct-alignment series;
+inline scanner refinements; benchmark
+additions. No TypeScript changes. 273 Go
+sources outside fixtures.
+
+No blockers. No rule-to-rule imports added.
+No DIP violations. New files are under 800
+lines. Struct alignment and `map[string]struct{}`
+changes are mechanical rewrites with no
+layering impact.
+
+### tax (2026-06-23)
+
+- `internal/lint/inline_scan.go` — 13
+  unexported helpers lack dedicated unit
+  tests. Tests doc §"every function by
+  name" — [plan/2606231013][2606231013].
+
+- `internal/rules/samefileanchor/rule.go`
+  — 12 unexported helpers lack dedicated
+  unit tests — [plan/2606231014][2606231014].
+
+[2606231013]: ../../plan/2606231013_arch-fix-inline-scan-helper-tests.md
+[2606231014]: ../../plan/2606231014_arch-fix-samefileanchor-helper-tests.md
+
+## Audit 2026-06-24 (range: 1599c9f..09f22d3)
+
+Perf series (struct-alignment, Sprintf→strconv,
+`[]byte` FindSubmatch, Builder). Plans 2606231013
+and 2606231014 closed. Benchmark docs and security
+SARIF retired. No TypeScript changes. 273 Go
+sources outside fixtures.
+
+No blockers. No rule-to-rule imports. No DIP
+violations. No file crossed 1 000 lines.
+
+### tax (2026-06-24)
+
+- `internal/index/locate.go` — 12 unexported
+  helpers lack dedicated unit tests. Tests doc
+  §"every function by name" —
+  [plan/2606240211][2606240211].
+
+- `internal/lsp/rename.go` — 15 unexported
+  helpers lack dedicated unit tests. Tests doc
+  §"every function by name" —
+  [plan/2606240212][2606240212].
+
+- `internal/export/export.go` — 11 unexported
+  helpers lack dedicated unit tests. Tests doc
+  §"every function by name" —
+  [plan/2606240213][2606240213].
+
+- `internal/lsp/rename.go` and
+  `internal/rename/rename.go` — `normalizedLabel`
+  and `refDefBracketBytes` are duplicated. Both
+  have identical bodies. Hub §"Anti-patterns" —
+  [plan/2606240214][2606240214].
+
+- `internal/rules/concisenessscoring/rule.go`
+  and `internal/rename/rename.go` —
+  `countClassifierTokens` and
+  `contentBlockLines` lack dedicated unit tests.
+  Batched into [plan/2606240213][2606240213].
+
+### nice-to-have (2026-06-24)
+
+- `internal/index/locate.go` —
+  `isGlobPattern` is a trivial one-liner with no
+  branch. Add "// no test by design" so the audit
+  can distinguish it from forgotten test debt.
+
+[2606240211]: ../../plan/2606240211_arch-fix-locate-helper-tests.md
+[2606240212]: ../../plan/2606240212_arch-fix-lsp-rename-helper-tests.md
+[2606240213]: ../../plan/2606240213_arch-fix-export-helper-tests.md
+[2606240214]: ../../plan/2606240214_arch-fix-rename-dedup.md
+
+## Audit 2026-06-24 (range: 09f22d3..3d35b77)
+
+Plans 2606241814/2606241815 green.
+No DIP, SRP, or line-count violations.
