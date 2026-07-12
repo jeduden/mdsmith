@@ -170,3 +170,61 @@ func TestResolve_MissingParent(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ghost")
 }
+
+func TestAllNames_Empty(t *testing.T) {
+	assert.Empty(t, allNames(nil))
+	assert.Empty(t, allNames(map[string]Wordlist{}))
+}
+
+func TestAllNames_Single(t *testing.T) {
+	user := map[string]Wordlist{"solo": {Name: "solo"}}
+	assert.Equal(t, []string{"solo"}, allNames(user))
+}
+
+func TestAllNames_Sorted(t *testing.T) {
+	user := map[string]Wordlist{
+		"zebra": {Name: "zebra"},
+		"alpha": {Name: "alpha"},
+		"beta":  {Name: "beta"},
+	}
+	got := allNames(user)
+	assert.Equal(t, []string{"alpha", "beta", "zebra"}, got)
+}
+
+func TestFlatten_Single(t *testing.T) {
+	user := map[string]Wordlist{
+		"a": {Name: "a", Entries: []string{"x", "y"}},
+	}
+	got, err := flatten("a", user, map[string]bool{})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"x", "y"}, got)
+}
+
+func TestFlatten_ExtendsChain(t *testing.T) {
+	user := map[string]Wordlist{
+		"base":  {Name: "base", Entries: []string{"a", "b"}},
+		"child": {Name: "child", Extends: "base", Entries: []string{"c"}},
+	}
+	got, err := flatten("child", user, map[string]bool{})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"a", "b", "c"}, got)
+}
+
+func TestFlatten_Cycle(t *testing.T) {
+	user := map[string]Wordlist{
+		"a": {Name: "a", Extends: "b", Entries: []string{"1"}},
+		"b": {Name: "b", Extends: "a", Entries: []string{"2"}},
+	}
+	_, err := flatten("a", user, map[string]bool{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cycle")
+}
+
+func TestFlatten_UnknownParent(t *testing.T) {
+	user := map[string]Wordlist{
+		"a": {Name: "a", Extends: "ghost", Entries: []string{"1"}},
+	}
+	_, err := flatten("a", user, map[string]bool{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ghost")
+}

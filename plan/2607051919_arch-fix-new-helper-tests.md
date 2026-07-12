@@ -3,7 +3,7 @@ id: 2607051919
 title: >-
   Add dedicated unit tests for helpers added by the
   word-list and reflow features
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   Several unexported helpers added for word-lists,
@@ -75,7 +75,7 @@ needed here.
 
 ## Acceptance Criteria
 
-- [ ] Every helper named above has a dedicated test by
+- [x] Every helper named above has a dedicated test by
       name in a sibling `_test.go` file.
-- [ ] `go test ./...` is green.
-- [ ] `mdsmith check .` is green.
+- [x] `go test ./...` is green.
+- [x] `mdsmith check .` is green.

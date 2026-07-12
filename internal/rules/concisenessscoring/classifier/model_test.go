@@ -622,6 +622,35 @@ func TestDedupeSorted_DuplicatesRemoved(t *testing.T) {
 	}
 }
 
+func TestBuildPhraseMarkers_EmptyInput(t *testing.T) {
+	got := buildPhraseMarkers(nil)
+	if len(got) != 0 {
+		t.Fatalf("expected empty markers for nil input, got %v", got)
+	}
+}
+
+func TestBuildPhraseMarkers_AppliesPhraseMarker(t *testing.T) {
+	phrases := []string{"in order to", "at this point"}
+	got := buildPhraseMarkers(phrases)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 markers, got %d", len(got))
+	}
+	if got[0] != " in order to " {
+		t.Errorf("marker[0] = %q, want %q", got[0], " in order to ")
+	}
+	if got[1] != " at this point " {
+		t.Errorf("marker[1] = %q, want %q", got[1], " at this point ")
+	}
+}
+
+func TestBuildPhraseMarkers_LengthPreserving(t *testing.T) {
+	phrases := []string{"foo bar", "baz"}
+	got := buildPhraseMarkers(phrases)
+	if len(got) != len(phrases) {
+		t.Fatalf("buildPhraseMarkers must be length-preserving: got %d, want %d", len(got), len(phrases))
+	}
+}
+
 func BenchmarkClassify(b *testing.B) {
 	model, err := LoadEmbedded()
 	if err != nil {
