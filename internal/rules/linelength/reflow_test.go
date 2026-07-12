@@ -184,6 +184,43 @@ func TestBuildWrapUnitsAllocBudget(t *testing.T) {
 	}
 }
 
+// wrapTokensAllocBudget pins wrapTokens's allocation count for a wide
+// line that packs many short units onto one output line. The
+// line-packing loop used to grow `cur` with `cur += " " + u` on every
+// packed unit, allocating a new backing array each step — the same
+// anti-pattern buildWrapUnits was fixed for above, left unconverted
+// in the surrounding loop. See docs/development/high-performance-go.md
+// "Strings and bytes" / "strings.Builder over +".
+const wrapTokensAllocBudget = 6
+
+// TestWrapTokensAllocBudget exercises wrapTokens with a width wide
+// enough that every unit packs onto a single output line, maximizing
+// the number of times the line-packing loop grows `cur`.
+func TestWrapTokensAllocBudget(t *testing.T) {
+	if testing.Short() {
+		t.Skip("alloc gate skipped in -short mode")
+	}
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race; the race detector " +
+			"adds allocation bookkeeping that perturbs the count")
+	}
+	tokens := []string{
+		"one", "two", "three", "four", "five", "six", "seven",
+		"eight", "nine", "ten",
+	}
+	noGlue := func(string) bool { return false }
+	allocs := testing.AllocsPerRun(100, func() {
+		_ = wrapTokens(tokens, "", 200, noGlue)
+	})
+	t.Logf("wrapTokens allocs/op = %.0f (budget = %d)",
+		allocs, wrapTokensAllocBudget)
+	if allocs > float64(wrapTokensAllocBudget) {
+		t.Fatalf("wrapTokens allocs/op = %.0f, budget = %d; see "+
+			"docs/development/high-performance-go.md",
+			allocs, wrapTokensAllocBudget)
+	}
+}
+
 func TestWrapTokens_LongTokenOwnsLine(t *testing.T) {
 	tokens := []string{"short", "thisisaverylongunbreakabletoken", "tail"}
 	got := wrapTokens(tokens, "", 10, func(string) bool { return false })

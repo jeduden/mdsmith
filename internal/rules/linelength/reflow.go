@@ -102,20 +102,25 @@ func wrapTokens(tokens []string, indent string, width int, glue func(prev string
 	units := buildWrapUnits(tokens, glue)
 	indentW := utf8.RuneCountInString(indent)
 	var lines []string
-	cur := indent + units[0]
+	var b strings.Builder
+	b.WriteString(indent)
+	b.WriteString(units[0])
 	curW := indentW + utf8.RuneCountInString(units[0])
 	for _, u := range units[1:] {
 		uW := utf8.RuneCountInString(u)
 		if curW+1+uW <= width {
-			cur += " " + u
+			b.WriteByte(' ')
+			b.WriteString(u)
 			curW += 1 + uW
 		} else {
-			lines = append(lines, cur)
-			cur = indent + u
+			lines = append(lines, b.String())
+			b.Reset()
+			b.WriteString(indent)
+			b.WriteString(u)
 			curW = indentW + uW
 		}
 	}
-	return append(lines, cur)
+	return append(lines, b.String())
 }
 
 // buildWrapUnits coalesces tokens into space-joined units. A new token
