@@ -8,12 +8,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// allocBudgetMDS050 pins Check's steady-state allocation cost when
-// the rule is configured with real names. buildNameEntries()
-// rebuilds every nameEntry (a fresh []byte plus an asciiToLower copy
-// per name) on every single Check call, even though r.Names is
-// immutable for the life of the Rule instance — a per-Rule
-// memoization case, not a per-file one
+// allocBudgetMDS050 pins Check's steady-state allocation cost once
+// the rule is configured with real names via ApplySettings (which
+// precomputes entries once — see effectiveEntries). Before that fix,
+// buildNameEntries() rebuilt every nameEntry (a fresh []byte plus an
+// asciiToLower copy per name) on every single Check call, even
+// though r.Names is immutable for the life of the Rule instance — a
+// per-Rule memoization case, not a per-file one
 // (docs/development/high-performance-go.md "Memoize per-input
 // computations"). The shared integration alloc-budget fixture never
 // sets Names, so len(entries)==0 short-circuits before any of this
@@ -91,7 +92,11 @@ func TestCheckAllocBudget(t *testing.T) {
 	for i := range names {
 		names[i] = fmt.Sprintf("ProperName%d", i)
 	}
-	r := &Rule{Names: names}
+	// Construct via ApplySettings, not a struct literal: entries is
+	// only precomputed on that path (see effectiveEntries), matching
+	// how the engine configures every rule before Check ever runs.
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{"names": names}))
 	allocs := checkAllocsPerOpMDS050(t, r)
 	t.Logf("MDS050 Check allocs/op = %.0f (budget = %d)",
 		allocs, allocBudgetMDS050)

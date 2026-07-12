@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
-	"sync"
-	"sync/atomic"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -24,17 +22,21 @@ func init() {
 // Rule reports occurrences of configured proper names that do not match
 // their canonical casing (e.g. "Javascript" when "JavaScript" is configured).
 //
-// The nameEntry form of Names is memoised on the rule instance behind
-// entriesPtr + entriesMu (a double-checked-lock pattern, not
-// sync.Once: ApplySettings is allowed to swap Names and the cache
-// must follow — same pattern as MDS063's bannedSetPtr). Rule
-// instances are shared across concurrent LSP calls, but every
-// concurrent reader during a Check sees the same entries; ApplySettings
-// runs only during config load, before any Check, so the swap path
-// never races a reader. Moving the cache off the per-Check call
-// (buildNameEntries rebuilt a fresh []byte plus an asciiToLower copy
-// per name on every Check) to the per-rule instance pays that cost
-// once per rule instance instead of once per file.
+// The nameEntry form of Names is precomputed once by ApplySettings into
+// the plain entries/entriesReady fields below, rather than lazily
+// memoised behind a mutex/atomic pointer on first Check (the pattern
+// MDS063's cachedBannedSet uses): internal/rule.CloneInstance produces
+// a worker's copy of a rule via a raw, unsynchronized field-by-field
+// copy (reflect.Value.Set), which races the target/source's own field
+// writes if anything can still be writing them concurrently. A
+// lazily-built cache guarded by a mutex or atomic.Pointer is exactly
+// such a field — go test -race catches CloneInstance's copy racing a
+// concurrent Check's first cache build every time. Building entries
+// once, synchronously, inside ApplySettings — which always finishes
+// before any Check or CloneInstance touches the instance — avoids the
+// hazard entirely: entries/entriesReady become plain, write-once,
+// read-only-after-setup fields, exactly as safe for CloneInstance to
+// shallow-copy as Names itself.
 type Rule struct {
 	// Names is the list of proper names with their canonical casing.
 	// The names list appends across config layers so kind layers extend
@@ -46,8 +48,12 @@ type Rule struct {
 	// CheckHTML enables checking inside raw HTML and HTML blocks.
 	CheckHTML bool
 
-	entriesPtr atomic.Pointer[[]nameEntry]
-	entriesMu  sync.Mutex
+	// entries and entriesReady are set together, once, by ApplySettings.
+	// A Rule built directly (bypassing ApplySettings, as most unit
+	// tests do) leaves entriesReady false; effectiveEntries falls back
+	// to building entries fresh on every call in that case.
+	entries      []nameEntry
+	entriesReady bool
 }
 
 // ID implements rule.Rule.
@@ -108,25 +114,15 @@ type nameEntry struct {
 	str       string // canonical as string, used in diagnostics
 }
 
-// cachedNameEntries returns the nameEntry form of r.Names, memoised on
-// the rule instance behind an atomic pointer guarded by a mutex. The
-// warm path is a single atomic load and serves every Check after the
-// cache is populated. The cold path serialises on the mutex so
-// concurrent first-callers see one another's build instead of
-// multiple racing builds; on the extremely narrow window where two
-// goroutines see the pointer nil before either acquires the mutex,
-// the second one will rebuild the same entries after the first
-// releases — a one-shot cost, vastly cheaper than paying it on every
-// Check (see MDS063's cachedBannedSet, the model for this pattern).
-func (r *Rule) cachedNameEntries() []nameEntry {
-	if p := r.entriesPtr.Load(); p != nil {
-		return *p
+// effectiveEntries returns the nameEntry form of r.Names: the
+// precomputed entries field when ApplySettings has run, or a freshly
+// built one otherwise (a directly-constructed *Rule, as most unit
+// tests use).
+func (r *Rule) effectiveEntries() []nameEntry {
+	if r.entriesReady {
+		return r.entries
 	}
-	r.entriesMu.Lock()
-	defer r.entriesMu.Unlock()
-	entries := r.buildNameEntries()
-	r.entriesPtr.Store(&entries)
-	return entries
+	return r.buildNameEntries()
 }
 
 // buildNameEntries precomputes nameEntry values for all configured names.
@@ -229,10 +225,11 @@ func scanRawHTMLSegments(entries []nameEntry, v *ast.RawHTML, f *lint.File, acc 
 }
 
 // collectMatches walks the AST and gathers all wrong-cased matches.
-// nameEntry values are precomputed once per rule instance (cachedNameEntries)
-// and reused across all segments and all files that instance checks.
+// nameEntry values are precomputed once per rule instance
+// (effectiveEntries) and reused across all segments and all files
+// that instance checks.
 func (r *Rule) collectMatches(f *lint.File) []wrongMatch {
-	entries := r.cachedNameEntries()
+	entries := r.effectiveEntries()
 	if len(entries) == 0 {
 		return nil
 	}
@@ -311,7 +308,7 @@ func normalizeMatches(matches []wrongMatch) []wrongMatch {
 // they never appear in the runs — so this reproduces the AST walk's match set
 // for the no-code, no-HTML case.
 func (r *Rule) collectMatchesInline(f *lint.File) []wrongMatch {
-	entries := r.cachedNameEntries()
+	entries := r.effectiveEntries()
 	if len(entries) == 0 {
 		return nil
 	}
@@ -436,6 +433,12 @@ func (r *Rule) ApplySettings(s map[string]any) error {
 				return fmt.Errorf("proper-names: names must be a list of strings, got %T", v)
 			}
 			r.Names = names
+			// Rebuild entries immediately, in lockstep with r.Names, so
+			// a later key failing this same ApplySettings call (map
+			// iteration order is unspecified) can never leave entries
+			// stale relative to the Names this call already committed.
+			r.entries = r.buildNameEntries()
+			r.entriesReady = true
 		case "check-code":
 			b, ok := v.(bool)
 			if !ok {
@@ -452,10 +455,6 @@ func (r *Rule) ApplySettings(s map[string]any) error {
 			return fmt.Errorf("proper-names: unknown setting %q", k)
 		}
 	}
-	// Invalidate the entries cache so the next Check rebuilds against
-	// the new Names; ApplySettings is the only path that mutates
-	// r.Names, so clearing here is sufficient.
-	r.entriesPtr.Store(nil)
 	return nil
 }
 
