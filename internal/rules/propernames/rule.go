@@ -21,6 +21,22 @@ func init() {
 
 // Rule reports occurrences of configured proper names that do not match
 // their canonical casing (e.g. "Javascript" when "JavaScript" is configured).
+//
+// The nameEntry form of Names is precomputed once by ApplySettings into
+// the plain entries/entriesReady fields below, rather than lazily
+// memoised behind a mutex/atomic pointer on first Check (the pattern
+// MDS063's cachedBannedSet uses): internal/rule.CloneInstance produces
+// a worker's copy of a rule via a raw, unsynchronized field-by-field
+// copy (reflect.Value.Set), which races the target/source's own field
+// writes if anything can still be writing them concurrently. A
+// lazily-built cache guarded by a mutex or atomic.Pointer is exactly
+// such a field — go test -race catches CloneInstance's copy racing a
+// concurrent Check's first cache build every time. Building entries
+// once, synchronously, inside ApplySettings — which always finishes
+// before any Check or CloneInstance touches the instance — avoids the
+// hazard entirely: entries/entriesReady become plain, write-once,
+// read-only-after-setup fields, exactly as safe for CloneInstance to
+// shallow-copy as Names itself.
 type Rule struct {
 	// Names is the list of proper names with their canonical casing.
 	// The names list appends across config layers so kind layers extend
@@ -31,6 +47,13 @@ type Rule struct {
 	CheckCode bool
 	// CheckHTML enables checking inside raw HTML and HTML blocks.
 	CheckHTML bool
+
+	// entries and entriesReady are set together, once, by ApplySettings.
+	// A Rule built directly (bypassing ApplySettings, as most unit
+	// tests do) leaves entriesReady false; effectiveEntries falls back
+	// to building entries fresh on every call in that case.
+	entries      []nameEntry
+	entriesReady bool
 }
 
 // ID implements rule.Rule.
@@ -89,6 +112,17 @@ type nameEntry struct {
 	canonical []byte // original spelling, e.g. []byte("JavaScript")
 	lower     []byte // ASCII-lowercased, e.g. []byte("javascript")
 	str       string // canonical as string, used in diagnostics
+}
+
+// effectiveEntries returns the nameEntry form of r.Names: the
+// precomputed entries field when ApplySettings has run, or a freshly
+// built one otherwise (a directly-constructed *Rule, as most unit
+// tests use).
+func (r *Rule) effectiveEntries() []nameEntry {
+	if r.entriesReady {
+		return r.entries
+	}
+	return r.buildNameEntries()
 }
 
 // buildNameEntries precomputes nameEntry values for all configured names.
@@ -191,9 +225,11 @@ func scanRawHTMLSegments(entries []nameEntry, v *ast.RawHTML, f *lint.File, acc 
 }
 
 // collectMatches walks the AST and gathers all wrong-cased matches.
-// nameEntry values are precomputed once here and reused across all segments.
+// nameEntry values are precomputed once per rule instance
+// (effectiveEntries) and reused across all segments and all files
+// that instance checks.
 func (r *Rule) collectMatches(f *lint.File) []wrongMatch {
-	entries := r.buildNameEntries()
+	entries := r.effectiveEntries()
 	if len(entries) == 0 {
 		return nil
 	}
@@ -272,7 +308,7 @@ func normalizeMatches(matches []wrongMatch) []wrongMatch {
 // they never appear in the runs — so this reproduces the AST walk's match set
 // for the no-code, no-HTML case.
 func (r *Rule) collectMatchesInline(f *lint.File) []wrongMatch {
-	entries := r.buildNameEntries()
+	entries := r.effectiveEntries()
 	if len(entries) == 0 {
 		return nil
 	}
@@ -397,6 +433,12 @@ func (r *Rule) ApplySettings(s map[string]any) error {
 				return fmt.Errorf("proper-names: names must be a list of strings, got %T", v)
 			}
 			r.Names = names
+			// Rebuild entries immediately, in lockstep with r.Names, so
+			// a later key failing this same ApplySettings call (map
+			// iteration order is unspecified) can never leave entries
+			// stale relative to the Names this call already committed.
+			r.entries = r.buildNameEntries()
+			r.entriesReady = true
 		case "check-code":
 			b, ok := v.(bool)
 			if !ok {

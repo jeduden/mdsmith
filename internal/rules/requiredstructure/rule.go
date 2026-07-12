@@ -1592,7 +1592,7 @@ func parseSchemaWithRootFS(
 	var includes []string
 	if schemaPath != "" {
 		cleanPath := filepath.Clean(schemaPath)
-		visited := map[string]bool{cleanPath: true}
+		visited := map[string]struct{}{cleanPath: {}}
 		chain := []string{cleanPath}
 		var fp string
 		headings, fp, includes, err = extractSchemaHeadings(f, schemaPath, visited, chain, maxBytes, rootFS)
@@ -1656,7 +1656,7 @@ func parseSchemaWithRootFS(
 // transitive set appended after the fragment's own path.
 func extractSchemaHeadings(
 	schemaFile *lint.File, schemaPath string,
-	visited map[string]bool, chain []string, maxBytes int64, rootFS fs.FS,
+	visited map[string]struct{}, chain []string, maxBytes int64, rootFS fs.FS,
 ) ([]docHeading, string, []string, error) {
 	var headings []docHeading
 	var filenamePattern string
@@ -1758,7 +1758,7 @@ func resolveSchemaIncludePath(
 // full dependency footprint on RunCache's reverse-include index.
 func expandSchemaInclude(
 	pi *piparser.ProcessingInstruction, source []byte,
-	schemaPath string, visited map[string]bool, chain []string, maxBytes int64, rootFS fs.FS,
+	schemaPath string, visited map[string]struct{}, chain []string, maxBytes int64, rootFS fs.FS,
 ) ([]docHeading, string, string, []string, error) {
 	includedPath, err := resolveSchemaIncludePath(pi, source, schemaPath)
 	if err != nil {
@@ -1775,7 +1775,7 @@ func expandSchemaInclude(
 		return nil, "", includedPath, nil, fmt.Errorf(
 			"schema include depth exceeds maximum (%d)", maxSchemaIncludeDepth)
 	}
-	if visited[includedPath] {
+	if _, ok := visited[includedPath]; ok {
 		chainCopy := make([]string, len(chain), len(chain)+1)
 		copy(chainCopy, chain)
 		chainCopy = append(chainCopy, includedPath)
@@ -1801,7 +1801,7 @@ func expandSchemaInclude(
 		return nil, "", includedPath, nil, err
 	}
 
-	visited[includedPath] = true
+	visited[includedPath] = struct{}{}
 	chain = append(chain, includedPath)
 	fragHeadings, fp2, subIncludes, err := extractSchemaHeadings(
 		fragFile, includedPath, visited, chain, maxBytes, rootFS)
@@ -1985,7 +1985,7 @@ func walkRequiredHeadings(
 	requiredByText map[string][]int, ref string,
 ) ([]lint.Diagnostic, int, bool) {
 	var diags []lint.Diagnostic
-	claimed := make(map[int]bool)
+	claimed := make(map[int]struct{})
 	docIdx := 0
 	allowExtra := false
 	for schIdx, req := range sch.Headings {
@@ -1993,7 +1993,7 @@ func walkRequiredHeadings(
 			allowExtra = true
 			continue
 		}
-		if claimed[schIdx] {
+		if isClaimed(claimed, schIdx) {
 			continue
 		}
 		// Save the position before the scan so that a missing-section
@@ -2009,7 +2009,7 @@ func walkRequiredHeadings(
 		if found {
 			allowExtra = false
 		}
-		if !found && !claimed[schIdx] {
+		if !found && !isClaimed(claimed, schIdx) {
 			diags = append(diags, missingSectionDiagLegacy(
 				f, req, ref, legacyPrecedingLine(docHeadings, preScanIdx)))
 		}
@@ -2088,7 +2088,7 @@ func matchRequired(
 	docHeadings []docHeading,
 	docIdx, schIdx int,
 	requiredByText map[string][]int,
-	claimed map[int]bool,
+	claimed map[int]struct{},
 	allowExtra bool,
 	schemaRef string,
 ) ([]lint.Diagnostic, int, bool) {
@@ -2100,7 +2100,7 @@ func matchRequired(
 			if dh.Level != req.Level {
 				diags = append(diags, levelMismatchDiag(f, dh, req, schemaRef))
 			}
-			claimed[schIdx] = true
+			claimed[schIdx] = struct{}{}
 			return diags, docIdx + 1, true
 		}
 		if ooIdx := nextUnclaimed(requiredByText[dh.Text], claimed, schIdx+1); ooIdx >= 0 {
@@ -2116,7 +2116,7 @@ func matchRequired(
 			if dh.Level != other.Level {
 				diags = append(diags, levelMismatchDiag(f, dh, other, schemaRef))
 			}
-			claimed[ooIdx] = true
+			claimed[ooIdx] = struct{}{}
 			docIdx++
 			continue
 		}
@@ -2149,11 +2149,24 @@ func levelMismatchDiag(
 	return d.Emit(makeDiag, f.Path, dh.Line)
 }
 
+// isClaimed reports whether idx is a member of claimed. claimed is a
+// set — every entry is written exactly once, via claimed[idx] =
+// struct{}{} — so map[int]struct{} (zero-byte value) replaces the
+// map[int]bool this file used to spell as a truthy map read. Mirrors
+// internal/schema/validate.go's isClaimed for the identical pattern.
+func isClaimed(claimed map[int]struct{}, idx int) bool {
+	_, ok := claimed[idx]
+	return ok
+}
+
 // nextUnclaimed returns the first index in candidates that is >= minIdx
 // and not yet claimed, or -1 if none qualifies.
-func nextUnclaimed(candidates []int, claimed map[int]bool, minIdx int) int {
+func nextUnclaimed(candidates []int, claimed map[int]struct{}, minIdx int) int {
 	for _, idx := range candidates {
-		if idx >= minIdx && !claimed[idx] {
+		if idx < minIdx {
+			continue
+		}
+		if !isClaimed(claimed, idx) {
 			return idx
 		}
 	}

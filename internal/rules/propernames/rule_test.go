@@ -1,6 +1,7 @@
 package propernames
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -394,4 +395,65 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 
 func TestWordlistTarget(t *testing.T) {
 	assert.Equal(t, "names", (&Rule{}).WordlistTarget())
+}
+
+// TestEffectiveEntries_PrecomputedByApplySettings pins the per-rule
+// memoization contract: ApplySettings precomputes entries once, and
+// effectiveEntries then returns that same slice (reference identity)
+// on every call rather than rebuilding it — the cache lives on the
+// rule instance, not the per-Check File, so multiple Checks on the
+// same rule instance share one build. A second ApplySettings call
+// rebuilds entries in lockstep with the new Names.
+func TestEffectiveEntries_PrecomputedByApplySettings(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{"names": []string{"JavaScript", "GitHub"}}))
+
+	first := r.effectiveEntries()
+	require.Len(t, first, 2)
+
+	second := r.effectiveEntries()
+	assert.Equal(t,
+		reflect.ValueOf(first).Pointer(),
+		reflect.ValueOf(second).Pointer(),
+		"subsequent calls on the same rule must return the same precomputed entries")
+
+	require.NoError(t, r.ApplySettings(map[string]any{"names": []string{"TypeScript"}}))
+	third := r.effectiveEntries()
+	assert.NotEqual(t,
+		reflect.ValueOf(first).Pointer(),
+		reflect.ValueOf(third).Pointer(),
+		"a second ApplySettings call must rebuild entries against the new Names")
+	require.Len(t, third, 1)
+	assert.Equal(t, "TypeScript", third[0].str)
+}
+
+// TestEffectiveEntries_DirectlyConstructedRuleFallsBack pins the
+// fallback path a directly-constructed *Rule takes (as every other
+// test in this file does): with entriesReady never set, effectiveEntries
+// builds fresh on every call instead of reading a stale zero value.
+func TestEffectiveEntries_DirectlyConstructedRuleFallsBack(t *testing.T) {
+	r := &Rule{Names: []string{"JavaScript"}}
+	entries := r.effectiveEntries()
+	require.Len(t, entries, 1)
+	assert.Equal(t, "JavaScript", entries[0].str)
+}
+
+// TestApplySettings_EntriesSurviveUnrelatedFailedReconfigure pins
+// that a later ApplySettings call which fails on a key other than
+// "names" leaves the already-committed Names/entries pair untouched,
+// rather than the old design's trailing-only invalidation silently
+// desyncing them. Uses two sequential single-key calls (rather than
+// one multi-key map) so the scenario is deterministic: Go map
+// iteration order is unspecified, so a single call combining "names"
+// and an invalid key would process them in a random order.
+func TestApplySettings_EntriesSurviveUnrelatedFailedReconfigure(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{"names": []string{"JavaScript"}}))
+	warmed := r.effectiveEntries()
+
+	err := r.ApplySettings(map[string]any{"check-code": "not-a-bool"})
+	require.Error(t, err)
+
+	assert.Equal(t, []string{"JavaScript"}, r.Names)
+	assert.Equal(t, warmed, r.effectiveEntries())
 }
