@@ -39,6 +39,35 @@ func TestRule_Name(t *testing.T) {
 	assert.Equal(t, "build", (&Rule{}).Name())
 }
 
+func TestRule_RuleID(t *testing.T) {
+	assert.Equal(t, "MDS039", (&Rule{}).RuleID())
+}
+
+func TestRule_RuleName(t *testing.T) {
+	assert.Equal(t, "build", (&Rule{}).RuleName())
+}
+
+func TestRule_Validate(t *testing.T) {
+	r := ruleWithRender()
+
+	diags := r.Validate("test.md", 1,
+		map[string]string{"recipe": "render", "outputs": "out.png", "source": "a.svg"}, nil)
+	assert.Empty(t, diags, "expected no diagnostics for a valid directive")
+
+	diags = r.Validate("test.md", 1, map[string]string{"outputs": "out.png"}, nil)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, `missing required "recipe"`)
+}
+
+func TestRule_Generate(t *testing.T) {
+	r := ruleWithRender()
+
+	body, diags := r.Generate(nil, "test.md", 1,
+		map[string]string{"recipe": "render", "outputs": "out.png", "source": "a.svg"}, nil)
+	assert.Empty(t, diags)
+	assert.Equal(t, "![render output: out.png](out.png)\n", body)
+}
+
 func TestRule_Category(t *testing.T) {
 	assert.Equal(t, "directive", (&Rule{}).Category())
 }
