@@ -734,6 +734,50 @@ func TestE2E_Init_FromMarkdownlint(t *testing.T) {
 	assert.Equal(t, 0, exitCode, "converted config must load cleanly; stderr: %s", stderr)
 }
 
+func TestE2E_Init_Starter_OKF(t *testing.T) {
+	dir := t.TempDir()
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "init", "--starter", "okf")
+	assert.Equal(t, 0, exitCode, "expected exit code 0, got %d; stderr: %s", exitCode, stderr)
+	assert.Contains(t, stderr, "created .mdsmith.yml from the okf starter",
+		"expected starter source in confirmation, got: %s", stderr)
+
+	content, err := os.ReadFile(filepath.Join(dir, ".mdsmith.yml"))
+	require.NoError(t, err, "reading starter config")
+	assert.Contains(t, string(content), "required-frontmatter",
+		"okf starter must configure required-frontmatter, got: %s", content)
+
+	// The scaffolded config must enforce OKF: a concept doc with no
+	// `type` fails, and a conformant one passes.
+	writeFixture(t, dir, "orders.md",
+		"---\ntype: BigQuery Table\ntitle: Orders\n---\n# Schema\n\nA table.\n")
+	_, stderr, exitCode = runBinaryInDir(t, dir, "", "check", "orders.md")
+	assert.Equal(t, 0, exitCode, "conformant concept must pass; stderr: %s", stderr)
+
+	writeFixture(t, dir, "notype.md",
+		"---\ntitle: No Type\n---\n# Schema\n\nA table with no type.\n")
+	_, stderr, exitCode = runBinaryInDir(t, dir, "", "check", "notype.md")
+	assert.Equal(t, 1, exitCode, "missing type must fail; stderr: %s", stderr)
+	assert.Contains(t, stderr, "MDS071", "expected MDS071 on a missing type, got: %s", stderr)
+}
+
+func TestE2E_Init_Starter_Unknown(t *testing.T) {
+	dir := t.TempDir()
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "init", "--starter", "bogus")
+	assert.Equal(t, 2, exitCode, "expected exit code 2, got %d", exitCode)
+	assert.Contains(t, stderr, `unknown starter "bogus"`,
+		"expected unknown-starter error listing valid names, got: %s", stderr)
+	assert.Contains(t, stderr, "okf", "error must list the available starters, got: %s", stderr)
+}
+
+func TestE2E_Init_Starter_ConflictsWithMarkdownlint(t *testing.T) {
+	dir := t.TempDir()
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "init", "--starter", "okf", "--from-markdownlint")
+	assert.Equal(t, 2, exitCode, "expected exit code 2, got %d", exitCode)
+	assert.Contains(t, stderr, "mutually exclusive",
+		"expected mutual-exclusion error, got: %s", stderr)
+}
+
 func TestE2E_Init_FromMarkdownlint_ExplicitPath(t *testing.T) {
 	dir := t.TempDir()
 	writeFixture(t, dir, "mdl-config.yaml", "MD012:\n  maximum: 2\n")
