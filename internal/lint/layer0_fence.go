@@ -2,11 +2,15 @@ package lint
 
 import "bytes"
 
-// fenceInfo describes an opening fenced-code fence line.
+// fenceInfo describes an opening fenced-code fence line. Fields are
+// ordered large-to-small (both ints before the two single-byte
+// fields) to avoid the padding a byte-then-int layout would cost;
+// openingFence returns this by value on the hottest per-line scan
+// path (docs/development/high-performance-go.md "Struct layout").
 type fenceInfo struct {
-	char   byte
 	indent int
 	length int
+	char   byte
 	// hasInfo records whether the opening fence carries a non-empty info
 	// string after the fence run. goldmark exposes no source position for
 	// an info-less, content-less fence, so the projection emits no lines
