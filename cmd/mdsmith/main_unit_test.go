@@ -1439,6 +1439,49 @@ func TestNormalizePackNames(t *testing.T) {
 	assert.Empty(t, normalizePackNames([]string{"  ", ""}))
 }
 
+func TestValidatePackPath(t *testing.T) {
+	// Under .mdsmith/ is the contract; an internal ".." that stays inside
+	// is harmless and allowed.
+	require.NoError(t, validatePackPath(filepath.Join(".mdsmith", "wordlists", "a.yaml")))
+	require.NoError(t, validatePackPath(filepath.Join(".mdsmith", "kinds", "..", "a.yaml")))
+
+	// Absolute paths and any escape out of .mdsmith/ are refused.
+	assert.Error(t, validatePackPath(filepath.FromSlash("/etc/passwd")))
+	assert.Error(t, validatePackPath(filepath.Join("..", "evil.yaml")))
+	assert.Error(t, validatePackPath(filepath.Join(".mdsmith", "..", "..", "evil.yaml")))
+	assert.Error(t, validatePackPath(filepath.Join("other", "a.yaml")))
+}
+
+func TestWriteScaffolds_RejectsEscapingPath(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	// A pack that returns a path escaping .mdsmith/ is refused before any
+	// write, so nothing lands outside the workspace.
+	files := []pack.File{{Path: filepath.Join("..", "escape.yaml"), Data: []byte("x")}}
+	err := writeScaffolds(files, io.Discard)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "under .mdsmith/")
+	_, statErr := os.Stat(filepath.Join(filepath.Dir(dir), "escape.yaml"))
+	assert.True(t, os.IsNotExist(statErr), "nothing written outside the workspace")
+}
+
+func TestWriteScaffolds_RefusesSymlinkedMdsmithDir(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	// .mdsmith itself is a symlink to another directory; pack writes must
+	// not be redirected through it.
+	target := filepath.Join(dir, "elsewhere")
+	require.NoError(t, os.Mkdir(target, 0o755))
+	require.NoError(t, os.Symlink(target, ".mdsmith"))
+
+	files := []pack.File{{Path: filepath.Join(".mdsmith", "wordlists", "a.yaml"), Data: []byte("x")}}
+	err := writeScaffolds(files, io.Discard)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "symlink")
+	_, statErr := os.Stat(filepath.Join(target, "wordlists", "a.yaml"))
+	assert.True(t, os.IsNotExist(statErr), "nothing written through the symlinked .mdsmith")
+}
+
 // --- runHelp ---
 
 func TestRunHelp_NoArgs_ExitsZero(t *testing.T) {

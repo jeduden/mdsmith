@@ -459,9 +459,20 @@ func applyPacks(names []string, w io.Writer) error {
 // untouched and noted, so a re-run never clobbers a project's edits.
 // Existence is checked with statTarget, which refuses a symlinked target
 // rather than following it — a planted link must not divert the write
-// outside the pack directory. Progress lines go to w.
+// outside the pack directory. Each path is validated against the pack
+// contract (relative, under .mdsmith/) first, and a symlinked .mdsmith
+// directory is refused up front, so a buggy or hostile pack cannot write
+// out of tree. Progress lines go to w.
 func writeScaffolds(files []pack.File, w io.Writer) error {
+	// A symlinked .mdsmith directory would let MkdirAll/WriteFile follow it
+	// and land pack files wherever it points; refuse it before any write.
+	if info, err := os.Lstat(mdsmithDir); err == nil && info.Mode()&fs.ModeSymlink != 0 {
+		return fmt.Errorf("%s is a symlink; refusing to write pack files through it", mdsmithDir)
+	}
 	for _, f := range files {
+		if err := validatePackPath(f.Path); err != nil {
+			return err
+		}
 		if dir := filepath.Dir(f.Path); dir != "." {
 			if err := os.MkdirAll(dir, 0o755); err != nil {
 				return fmt.Errorf("creating %s: %w", dir, err)
@@ -479,6 +490,29 @@ func writeScaffolds(files []pack.File, w io.Writer) error {
 			return fmt.Errorf("writing %s: %w", f.Path, err)
 		}
 		_, _ = fmt.Fprintf(w, "mdsmith: created %s\n", f.Path)
+	}
+	return nil
+}
+
+// mdsmithDir is the workspace subdirectory every additive pack writes
+// under; validatePackPath keeps pack files confined to it.
+const mdsmithDir = ".mdsmith"
+
+// validatePackPath enforces the pack contract at the write boundary: a
+// pack file must be a relative path under .mdsmith/. A pack that returns
+// an absolute path, or one that escapes the workspace with "..", is
+// rejected before any directory is created or file written, so init's
+// writes cannot be diverted out of tree. A "../" that stays within
+// .mdsmith after cleaning is harmless and allowed; any escape leaves a
+// first component other than .mdsmith and is refused.
+func validatePackPath(p string) error {
+	clean := filepath.Clean(p)
+	if filepath.IsAbs(clean) {
+		return fmt.Errorf("pack file path %q must be relative", p)
+	}
+	first, _, _ := strings.Cut(clean, string(filepath.Separator))
+	if first != mdsmithDir {
+		return fmt.Errorf("pack file path %q must be under %s/", p, mdsmithDir)
 	}
 	return nil
 }
