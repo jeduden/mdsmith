@@ -1125,6 +1125,37 @@ func TestRunInit_Wordlists_ExistingConfigScaffoldsAnyway(t *testing.T) {
 	}
 }
 
+func TestRunInit_Starter_ExistingConfigErrors(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	require.NoError(t, os.WriteFile(".mdsmith.yml", []byte("rules: {}\n"), 0o644))
+
+	var code int
+	out := captureStderr(func() { code = runInit([]string{"--starter", "okf"}) })
+	assert.Equal(t, 2, code, "--starter over an existing config must error")
+	assert.Contains(t, out, "already exists")
+	cfg, err := os.ReadFile(".mdsmith.yml")
+	require.NoError(t, err)
+	assert.Equal(t, "rules: {}\n", string(cfg), "existing config left unchanged")
+}
+
+func TestRunInit_StarterWithWordlists_ExistingConfigErrors(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	require.NoError(t, os.WriteFile(".mdsmith.yml", []byte("rules: {}\n"), 0o644))
+
+	// A config source over an existing config errors even alongside
+	// --wordlists — the requested config cannot be written, so the run
+	// fails loudly rather than silently dropping --starter.
+	var code int
+	out := captureStderr(func() { code = runInit([]string{"--starter", "okf", "--wordlists"}) })
+	assert.Equal(t, 2, code)
+	assert.Contains(t, out, "already exists")
+	_, err := os.Stat(filepath.Join(dir, ".mdsmith", "wordlists", "ai-speak.yaml"))
+	assert.True(t, os.IsNotExist(err),
+		"wordlists must not scaffold when the run errors out")
+}
+
 func TestRunInit_Wordlists_ScaffoldError(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)

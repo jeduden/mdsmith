@@ -17,9 +17,16 @@ overridden with a clear diff.
 mdsmith init [--starter <name>] [--from-markdownlint[=path]] [--wordlists]
 ```
 
-Refuses to overwrite an existing `.mdsmith.yml`. Takes no
-positional arguments. `--starter` and `--from-markdownlint`
-are mutually exclusive.
+`init` writes `.mdsmith.yml` from one of three sources: the
+built-in defaults, a `--starter` scaffold, or a
+`--from-markdownlint` conversion. The last two cannot
+combine. None overwrites an existing file.
+
+`--wordlists` is additive. It scaffolds curated word-list
+files beside the config, so it pairs with any source. On its
+own, in a project that already has a config, it adds the
+lists and leaves the config as-is. `init` takes no
+positional arguments.
 
 ## Flags
 

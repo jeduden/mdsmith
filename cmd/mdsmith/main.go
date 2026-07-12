@@ -332,7 +332,7 @@ func runInit(args []string) int {
 	}
 
 	if fs.NArg() > 0 {
-		fmt.Fprintf(os.Stderr, "mdsmith: init takes no arguments (use --from-markdownlint=<path> to name a config)\n")
+		fmt.Fprintf(os.Stderr, "mdsmith: init takes no arguments; use flags like --starter or --from-markdownlint\n")
 		return 2
 	}
 
@@ -343,12 +343,13 @@ func runInit(args []string) int {
 		configExists = true
 	}
 
-	// An existing config is the whole no-op for a plain init, so it stays
-	// an error. With --wordlists the user is adding the curated lists to
-	// an already-initialized project, so the existing config is left
-	// untouched and scaffolding still runs — otherwise the flag would be
-	// unreachable for every project that already ran init.
-	if configExists && !withWordlists {
+	// A run that writes a config — the defaults, a --starter scaffold, or a
+	// --from-markdownlint conversion — cannot proceed over an existing file,
+	// so it stays an error rather than silently dropping the request. Only a
+	// bare `--wordlists` run tolerates an existing config: it adds curated
+	// lists to an already-initialized project and leaves the config as-is.
+	bareWordlists := withWordlists && starterName == "" && fromMarkdownlint == ""
+	if configExists && !bareWordlists {
 		fmt.Fprintf(os.Stderr, "mdsmith: %s already exists\n", configFile)
 		return 2
 	}
