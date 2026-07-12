@@ -87,13 +87,16 @@ file and emits a single object, not an array — the shape a
 single-document read wants. It reuses `metrics.Collect` with a
 one-path slice and the existing `JSONValue` conversion.
 
-- By default it emits every registered file-scope metric, since a
-  single-file read has no column-bloat concern. So `readability`
-  appears with no flag.
-- `--metrics a,b` narrows to a subset.
-- `-f json|yaml|text` picks the format. Text is an aligned
-  `name  value` table.
-- Exactly one file argument; zero or many is a usage error.
+- It emits every registered file-scope metric. There is no metric
+  selector: a single-file read has no column-bloat concern, and a
+  reader narrows downstream with `jq` or `yq` — exactly as
+  [`mdsmith extract`][extractdoc] emits its whole projection. So
+  `readability` appears with no flag, and the surface stays as
+  small as `extract`'s.
+- `-f json|yaml|text` picks the format, the same short and long
+  flag `extract` uses. Text is an aligned `name  value` table.
+- Exactly one positional file, like `extract` / `export` / `deps`.
+  Zero or many is a usage error.
 
 **Add the `yaml` format.** `get`, `rank`, and `list` all accept
 `yaml`. Encode the same map the json path builds, through the
@@ -101,27 +104,31 @@ shared YAML encoder that [`mdsmith extract`][extractdoc] uses, so
 json and yaml stay structurally identical. Each `unknown format`
 message reads `text, json, yaml`.
 
+## CLI design
+
+Every choice above is derived from an existing command, not
+invented, so the surface stays predictable. The rules:
+
+- **Match the grammar.** `mdsmith`'s single-file emitters —
+  `extract`, `export`, `deps` — take a positional `<file>` and,
+  for data, `-f/--format`. `get` copies that exactly.
+- **Least surprise.** `get` adds no flag that a neighbour command
+  does not already have. It has no metric selector because
+  `extract` has no field selector; filtering is a downstream
+  `jq`/`yq` job. `rank` keeps `--metrics` because it alone needs
+  it (columns and the `--by` sort key across many files).
+- **One direction per stream.** Data to stdout, errors to stderr,
+  exit `0` on success and `2` on a usage or runtime error, as the
+  other emitters do.
+- **Discoverable.** `mdsmith help metrics` and the usage text name
+  `get`, its one argument, and its formats.
+- **Proven by running it.** Acceptance runs `metrics get` on a
+  real repo file and checks the printed object, not just the
+  tests.
+
 ## Example output
 
-Reading one file's readability score as JSON:
-
-```console
-$ mdsmith metrics get --metrics readability -f json README.md
-{
-  "path": "README.md",
-  "readability": 11.2
-}
-```
-
-The same query as YAML:
-
-```console
-$ mdsmith metrics get --metrics readability -f yaml README.md
-path: README.md
-readability: 11.2
-```
-
-With no `--metrics`, every registered metric is emitted:
+One file's metrics as a single YAML object:
 
 ```console
 $ mdsmith metrics get -f yaml docs/guides/install.md
@@ -137,13 +144,36 @@ sentences: 148
 avg-words-per-sentence: 14.6
 ```
 
+The same file as JSON:
+
+```console
+$ mdsmith metrics get -f json README.md
+{
+  "path": "README.md",
+  "bytes": 4096,
+  ...
+  "readability": 11.2
+}
+```
+
+Just the readability score is a downstream filter, as with
+`extract`:
+
+```console
+$ mdsmith metrics get -f json README.md | jq .readability
+11.2
+```
+
 The text format is an aligned table:
 
 ```console
-$ mdsmith metrics get --metrics readability,sentences README.md
-NAME         VALUE
-readability  11.2
-sentences    96
+$ mdsmith metrics get README.md
+NAME                    VALUE
+bytes                   4096
+...
+readability             11.2
+sentences               96
+avg-words-per-sentence  14.2
 ```
 
 An unavailable value (an unreadable or empty file) prints `null`
@@ -160,29 +190,32 @@ behavior.
    test covers the value on a known fixture.
 3. Add MET009 `sentences` and MET010 `avg-words-per-sentence`
    with their READMEs and registry tests.
-4. Add the `metrics get` subcommand: flag parsing (one file,
-   `--metrics`, `-f`), single-object json/yaml/text writers, and
-   unit tests. Route it from `runMetrics` beside `list` and
-   `rank`.
+4. Add the `metrics get` subcommand: parse exactly one positional
+   file and `-f`, emit single-object json/yaml/text writers, and
+   unit tests including the zero-and-many-argument usage errors.
+   Route it from `runMetrics` beside `list` and `rank`, and name
+   it in the `metrics` usage text and `mdsmith help metrics`.
 5. Add the `yaml` format to `get`, `rank`, and `list`. Extend the
    format switches, the `unknown format` errors, and the unit
    tests ([`metrics_unit_test.go`][mtest]). Assert json and yaml
    agree structurally.
 6. Add [`docs/reference/cli/metrics.md`][rankdoc] coverage for
-   `get` (flags, an example) and the new metrics. Update
-   [`docs/guides/metrics-tradeoffs.md`][tradeoffs]. Regenerate the
-   `CLAUDE.md` and `PLAN.md` catalogs with `mdsmith fix`.
+   `get` (its one argument, its formats, an example) and the new
+   metrics. Update [`docs/guides/metrics-tradeoffs.md`][tradeoffs].
+   Regenerate the `CLAUDE.md` and `PLAN.md` catalogs with
+   `mdsmith fix`.
 
 ## Acceptance Criteria
 
-- [ ] `mdsmith metrics get --metrics readability -f json FILE`
-      prints a single JSON object with the file's ARI score under
-      a `readability` key — an object, not an array.
-- [ ] `mdsmith metrics get -f yaml FILE` prints every registered
-      metric as a YAML mapping; a test pins json and yaml
-      together.
+- [ ] `mdsmith metrics get -f json FILE` prints a single JSON
+      object (not an array) carrying every registered metric,
+      including the file's ARI score under a `readability` key.
+- [ ] `mdsmith metrics get -f yaml FILE` prints the same values as
+      a YAML mapping; a test pins json and yaml together.
 - [ ] `mdsmith metrics get` with zero or two file arguments is a
-      usage error.
+      usage error; the command takes no metric-selector flag.
+- [ ] Running `mdsmith metrics get` on a real repo file (dogfood,
+      not only unit tests) prints the expected object.
 - [ ] `mdsmith metrics list` shows `readability`, `sentences`,
       and `avg-words-per-sentence`; none appears in a
       no-`--metrics` `rank` run.
