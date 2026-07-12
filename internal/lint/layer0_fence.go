@@ -82,8 +82,7 @@ func closingFence(line []byte, fi fenceInfo) bool {
 func advanceFenceState(open *fenceInfo, line []byte, fi fenceInfo, opensFence bool) *fenceInfo {
 	if open == nil {
 		if opensFence {
-			f := fi
-			return &f
+			return &fi
 		}
 		return nil
 	}
