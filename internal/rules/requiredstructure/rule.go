@@ -1475,10 +1475,10 @@ func fenceRun(line []byte, ch byte) int {
 // (the bytes up to the first whitespace or `?>`). An indented code
 // example showing a directive is therefore not mistaken for one.
 func isPIOpenLine(raw []byte) bool {
-	trimmed := bytes.TrimLeft(raw, " ")
-	if len(raw)-len(trimmed) > 3 {
+	if astutil.CountLeadingSpaces(raw) > 3 {
 		return false
 	}
+	trimmed := bytes.TrimLeft(raw, " ")
 	trimmed = bytes.TrimRight(trimmed, " \t\r\n")
 	if !bytes.HasPrefix(trimmed, piOpenPrefix) {
 		return false
