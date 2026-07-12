@@ -2622,4 +2622,8 @@ func TestNextUnclaimed_SetValueType(t *testing.T) {
 	assert.Equal(t, 0, nextUnclaimed([]int{0, 1, 2, 3}, claimed, 0))
 	assert.Equal(t, 2, nextUnclaimed([]int{1, 2, 3}, claimed, 0))
 	assert.Equal(t, -1, nextUnclaimed([]int{1, 3}, claimed, 0))
+	// A candidate below minIdx is skipped without a claimed lookup: 0
+	// and 1 are both < minIdx here, so the first index actually
+	// considered is 2 (unclaimed).
+	assert.Equal(t, 2, nextUnclaimed([]int{0, 1, 2, 3}, claimed, 2))
 }
