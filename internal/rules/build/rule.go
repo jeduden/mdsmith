@@ -13,6 +13,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/buildpathutil"
+	"github.com/jeduden/mdsmith/internal/setutil"
 )
 
 func init() {
@@ -247,17 +248,17 @@ func (r *Rule) warnUnknownParams(
 	recipeName string, schema recipeSchema,
 	params map[string]string,
 ) []lint.Diagnostic {
-	known := map[string]bool{"recipe": true, "outputs": true, "inputs": true}
+	known := map[string]struct{}{"recipe": {}, "outputs": {}, "inputs": {}}
 	for _, p := range schema.Required {
-		known[p] = true
+		known[p] = struct{}{}
 	}
 	for _, p := range schema.Optional {
-		known[p] = true
+		known[p] = struct{}{}
 	}
 
 	var unknown []string
 	for k := range params {
-		if !known[k] {
+		if !setutil.Contains(known, k) {
 			unknown = append(unknown, k)
 		}
 	}
@@ -318,12 +319,12 @@ func (r *Rule) resolveRecipe(name string) (recipeSchema, bool) {
 // reservedDeviceNames is the set of Windows reserved device names,
 // rejected on every platform so a path that is harmless on Linux does
 // not become a device handle when the same repo is built on Windows.
-var reservedDeviceNames = map[string]bool{
-	"CON": true, "PRN": true, "AUX": true, "NUL": true,
-	"COM1": true, "COM2": true, "COM3": true, "COM4": true, "COM5": true,
-	"COM6": true, "COM7": true, "COM8": true, "COM9": true,
-	"LPT1": true, "LPT2": true, "LPT3": true, "LPT4": true, "LPT5": true,
-	"LPT6": true, "LPT7": true, "LPT8": true, "LPT9": true,
+var reservedDeviceNames = map[string]struct{}{
+	"CON": {}, "PRN": {}, "AUX": {}, "NUL": {},
+	"COM1": {}, "COM2": {}, "COM3": {}, "COM4": {}, "COM5": {},
+	"COM6": {}, "COM7": {}, "COM8": {}, "COM9": {},
+	"LPT1": {}, "LPT2": {}, "LPT3": {}, "LPT4": {}, "LPT5": {},
+	"LPT6": {}, "LPT7": {}, "LPT8": {}, "LPT9": {},
 }
 
 // splitList splits a newline-joined directive list value (the form
@@ -392,7 +393,7 @@ func hasReservedDeviceName(p string) bool {
 		if dot := strings.IndexByte(seg, '.'); dot >= 0 {
 			seg = seg[:dot]
 		}
-		if reservedDeviceNames[strings.ToUpper(seg)] {
+		if setutil.Contains(reservedDeviceNames, strings.ToUpper(seg)) {
 			return true
 		}
 	}

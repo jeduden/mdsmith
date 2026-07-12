@@ -11,12 +11,14 @@ import (
 
 var linkLabelStateKey = NewContextKey()
 
+// linkLabelState's pointer-bearing fields (Prev, Next, First, Last)
+// are declared before the scalar fields (Segment, IsImage) to keep
+// the GC ptrdata scan from spanning the whole struct; see
+// docs/development/high-performance-go.md "Group pointer fields
+// first, scalars last". One instance is allocated per bracket
+// candidate during every file's inline parse.
 type linkLabelState struct {
 	ast.BaseInline
-
-	Segment text.Segment
-
-	IsImage bool
 
 	Prev *linkLabelState
 
@@ -25,6 +27,10 @@ type linkLabelState struct {
 	First *linkLabelState
 
 	Last *linkLabelState
+
+	Segment text.Segment
+
+	IsImage bool
 }
 
 func newLinkLabelState(segment text.Segment, isImage bool) *linkLabelState {

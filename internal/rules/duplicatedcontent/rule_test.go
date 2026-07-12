@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -638,6 +639,102 @@ func TestCheck_MultipleMatchesSortDeterministically(t *testing.T) {
 	require.Len(t, diags, 2)
 	assert.Contains(t, diags[0].Message, "b.md")
 	assert.Contains(t, diags[1].Message, "c.md")
+}
+
+// countingFS wraps an fs.FS and counts Open calls per name, so a test
+// can assert a file is read from disk at most once across several
+// Check calls that share one lint.RunCache.
+type countingFS struct {
+	fs.FS
+	mu    sync.Mutex
+	opens map[string]int
+}
+
+func (c *countingFS) Open(name string) (fs.File, error) {
+	c.mu.Lock()
+	c.opens[name]++
+	c.mu.Unlock()
+	return c.FS.Open(name)
+}
+
+// TestCheck_RunCacheReusesCorpusParseAcrossHostFiles pins the fix for
+// MDS037's O(N^2) corpus rebuild: buildCorpusIndex used to re-read,
+// re-parse, and re-fingerprint every sibling file from scratch on
+// every host file's Check call. When host files share one RunCache
+// (the engine's per-Run cache), each sibling's fingerprinted
+// paragraphs must be computed at most once across the whole run.
+func TestCheck_RunCacheReusesCorpusParseAcrossHostFiles(t *testing.T) {
+	dir := t.TempDir()
+	p := longParagraph("shared paragraph text for the run cache test")
+	writeFile(t, filepath.Join(dir, "a.md"), "# A\n\n"+p+"\n")
+	writeFile(t, filepath.Join(dir, "b.md"), "# B\n\n"+p+"\n")
+	writeFile(t, filepath.Join(dir, "c.md"), "# C\n\nunrelated short text\n")
+
+	counting := &countingFS{FS: os.DirFS(dir), opens: map[string]int{}}
+	runCache := lint.NewRunCache()
+
+	for _, name := range []string{"a.md", "b.md", "c.md"} {
+		data, err := os.ReadFile(filepath.Join(dir, name))
+		require.NoError(t, err)
+		// f.Path must be absolute (as a discovered-root CLI run would
+		// produce it) so rootRelative resolves it against dir instead
+		// of the test process's working directory.
+		f, err := lint.NewFile(filepath.Join(dir, name), data)
+		require.NoError(t, err)
+		f.FS = counting
+		f.RootDir = dir
+		f.RootFS = counting
+		f.RunCache = runCache
+		_ = (&Rule{}).Check(f)
+	}
+
+	for _, name := range []string{"a.md", "b.md", "c.md"} {
+		assert.LessOrEqualf(t, counting.opens[name], 1,
+			"expected %s to be read from disk at most once across Check "+
+				"calls sharing a RunCache, got %d opens", name, counting.opens[name])
+	}
+}
+
+// TestCheck_RunCacheAppliesFrontMatterOffsetOnce pins that a corpus
+// candidate's front-matter line offset is baked into its cached
+// paragraphs exactly once: candidateParagraphs adds other.LineOffset
+// inside the RunCache build closure, which runs at most once per key.
+// Checking the same host file twice against a shared RunCache drives
+// the offset-add on the first call (cache miss, build runs) and
+// reads the cached value on the second (cache hit) — a double-add
+// regression would report b.md at line 10 (7 + 3) on the second call
+// instead of 7 on both.
+func TestCheck_RunCacheAppliesFrontMatterOffsetOnce(t *testing.T) {
+	dir := t.TempDir()
+	p := longParagraph("shared paragraph text for the offset cache test")
+	fm := "---\ntitle: B\n---\n"
+	// b.md's paragraph sits at raw line 7: front matter lines 1-3,
+	// blank line 4, heading line 5 ("# B"), blank line 6, paragraph
+	// line 7. Stripping front matter (stripFrontMatter=true) removes
+	// lines 1-3 before the AST walk, so extractParagraphs sees the
+	// paragraph at line 4 and other.LineOffset must add 3 back to
+	// report the correct raw line.
+	writeFile(t, filepath.Join(dir, "b.md"), fm+"\n# B\n\n"+p+"\n")
+	writeFile(t, filepath.Join(dir, "a.md"), "# A\n\n"+p+"\n")
+
+	runCache := lint.NewRunCache()
+	data, err := os.ReadFile(filepath.Join(dir, "a.md"))
+	require.NoError(t, err)
+
+	for i := 0; i < 2; i++ {
+		f, err := lint.NewFileFromSource(filepath.Join(dir, "a.md"), data, true)
+		require.NoError(t, err)
+		f.FS = os.DirFS(dir)
+		f.RootDir = dir
+		f.RootFS = os.DirFS(dir)
+		f.RunCache = runCache
+
+		diags := (&Rule{}).Check(f)
+		require.Len(t, diags, 1)
+		assert.Contains(t, diags[0].Message, "b.md:7",
+			"b.md's paragraph line must include its front-matter offset "+
+				"on every Check call sharing the RunCache, not just the first")
+	}
 }
 
 func TestApplySettings_RejectsBadExcludeType(t *testing.T) {

@@ -1037,3 +1037,37 @@ func TestInvalidatePath_LeavesGlobMatchesIntact(t *testing.T) {
 	_ = c.GlobMatches("k", func() []string { builds++; return nil })
 	assert.Equal(t, 1, builds)
 }
+
+func TestDuplicateParagraphs_BuildsOncePerKey(t *testing.T) {
+	c := NewRunCache()
+	builds := 0
+	build := func() any { builds++; return []string{"p1"} }
+	first := c.DuplicateParagraphs("/root/a.md\x0010", build)
+	second := c.DuplicateParagraphs("/root/a.md\x0010", build)
+	assert.Equal(t, first, second)
+	assert.Equal(t, 1, builds, "same key must build once")
+
+	_ = c.DuplicateParagraphs("/root/a.md\x0050", build)
+	assert.Equal(t, 2, builds, "a distinct min-chars suffix builds separately")
+}
+
+func TestDuplicateParagraphs_InvalidateDropsEveryKeyForPath(t *testing.T) {
+	// A content edit to /root/a.md must drop every cached slot built
+	// from it, regardless of which min-chars suffix produced the key
+	// — Invalidate does not know which suffixes are in use.
+	c := NewRunCache()
+	builds := 0
+	build := func() any { builds++; return []string{"p1"} }
+	_ = c.DuplicateParagraphs("/root/a.md\x0010", build)
+	_ = c.DuplicateParagraphs("/root/a.md\x0050", build)
+	_ = c.DuplicateParagraphs("/root/b.md\x0010", build)
+	require.Equal(t, 3, builds)
+
+	c.Invalidate("/root/a.md")
+
+	_ = c.DuplicateParagraphs("/root/a.md\x0010", build)
+	_ = c.DuplicateParagraphs("/root/a.md\x0050", build)
+	_ = c.DuplicateParagraphs("/root/b.md\x0010", build)
+	assert.Equal(t, 5, builds,
+		"both a.md keys must rebuild; b.md's slot must survive untouched")
+}

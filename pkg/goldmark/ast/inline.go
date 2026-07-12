@@ -588,15 +588,22 @@ const (
 )
 
 // An AutoLink struct represents an autolink of the Markdown text.
+//
+// Protocol and value (pointer-bearing) are declared before
+// AutoLinkType (a scalar) so the GC ptrdata scan does not extend
+// across it; see docs/development/high-performance-go.md "Group
+// pointer fields first, scalars last". One AutoLink is allocated per
+// autolink node parsed.
 type AutoLink struct {
 	BaseInline
-	// Type is a type of this autolink.
-	AutoLinkType AutoLinkType
 
 	// Protocol specified a protocol of the link.
 	Protocol []byte
 
 	value *Text
+
+	// Type is a type of this autolink.
+	AutoLinkType AutoLinkType
 }
 
 // Inline implements Inline.Inline.
