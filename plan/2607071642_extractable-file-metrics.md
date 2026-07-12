@@ -1,25 +1,24 @@
 ---
 id: 2607071642
-title: Extractable per-file metrics (readability first) with YAML output
+title: Single-file metric extraction via `mdsmith metrics get` (readability first)
 status: "🔲"
 summary: >-
-  Make per-file Markdown measurements extractable as structured
-  data: add a readability metric (Automated Readability Index over
-  the file's plain text) plus sentence-count and
-  words-per-sentence metrics, teach `mdsmith metrics rank` and
-  `metrics list` a `yaml` output format alongside `json`, and move
-  the ARI formula into `internal/mdtext` so the metrics package
-  never imports a rule package.
+  Add a `mdsmith metrics get <file>` command that emits one file's
+  metrics as a single JSON or YAML object, add a readability metric
+  (Automated Readability Index over the file's plain text) plus
+  sentence-count and words-per-sentence metrics, and move the ARI
+  formula into `internal/mdtext` so the metrics package never
+  imports a rule package.
 model: sonnet
 depends-on: []
 ---
-# Extractable per-file metrics (readability first) with YAML output
+# Single-file metric extraction via `mdsmith metrics get`
 
 ## Goal
 
 Let a caller read one file's readability score as JSON or YAML
-from a single command. Make the next metric cheap to add: one
-registry entry plus a README.
+from a command built for a single file. Make the next metric cheap
+to add: one registry entry plus a README.
 
 ## Context
 
@@ -33,12 +32,17 @@ The data-shaped subsystem is [`internal/metrics`][metrics]. It is
 a registry of file-scope metrics. The current set is MET001 bytes,
 MET002 lines, MET003 words, MET004 headings, MET005
 token-estimate, and MET006 conciseness.
-[`mdsmith metrics rank`][rankdoc] computes them and prints them.
 
-Two gaps block the request. First, no metric reports readability.
-Second, `metrics rank` and `metrics list` print only `text` and
-`json`. There is no `yaml`. Yet [`mdsmith extract`][extractdoc]
-already offers both json and yaml.
+The only command that emits them is
+[`mdsmith metrics rank`][rankdoc]. Rank is a cross-file ordering.
+It sorts many files by a metric and prints a JSON array. Asking it
+for one file is a category error: ranking a single document is
+meaningless, and the output is a one-element array a caller must
+unwrap. There is no command that reads one file's metrics.
+
+Two more gaps block the request. No metric reports readability.
+And no metrics command prints `yaml`, though
+[`mdsmith extract`][extractdoc] already offers both json and yaml.
 
 MET007 is reserved by plan [2607022119][wordfreq]. So this plan
 takes MET008 onward.
@@ -51,7 +55,8 @@ sentence, and character counters already live there.
 
 ## Design
 
-Three parts: move the formula, add metrics, add the format.
+Four parts: move the formula, add metrics, add the command, add
+the format.
 
 **Move ARI into `mdtext`.** Add `mdtext.ARI(text string) float64`
 holding the current formula and returning zero on zero words. The
@@ -72,77 +77,78 @@ Document's cached `PlainText()`:
 - MET010 `avg-words-per-sentence` — words over sentences, or zero
   with no sentences. Float, precision 1, `desc`.
 
-All three ship `Default: false`. So the default `metrics rank`
-table keeps its six columns. A caller opts in with
-`--metrics readability`. They still show in `metrics list`, which
-lists every registered metric.
+The three ship `Default: false` so the default `rank` table keeps
+its six columns. That flag governs `rank` only. `metrics get` and
+`metrics list` show every registered metric.
 
-**Add the `yaml` format.** Extend `writeRankOutput` and the
-`metrics list` switch to accept `yaml`. Encode the same map the
-json path builds. Use the shared YAML encoder that
-[`mdsmith extract`][extractdoc] uses. So json and yaml stay
-structurally identical. Update the two `unknown format` messages
-to read `text, json, yaml`.
+**Add `metrics get`.** A new subcommand for one file:
+`mdsmith metrics get [flags] <file>`. It computes metrics for that
+file and emits a single object, not an array — the shape a
+single-document read wants. It reuses `metrics.Collect` with a
+one-path slice and the existing `JSONValue` conversion.
 
-**Single-file usage.** `mdsmith metrics rank <file> -f yaml`
-already targets one file, and its output is a one-element list, so
-a reader takes `.[0].readability`. A single-file object view is
-out of scope here; the list shape stays consistent and pipeable,
-and it is noted as a possible follow-up.
+- By default it emits every registered file-scope metric, since a
+  single-file read has no column-bloat concern. So `readability`
+  appears with no flag.
+- `--metrics a,b` narrows to a subset.
+- `-f json|yaml|text` picks the format. Text is an aligned
+  `name  value` table.
+- Exactly one file argument; zero or many is a usage error.
+
+**Add the `yaml` format.** `get`, `rank`, and `list` all accept
+`yaml`. Encode the same map the json path builds, through the
+shared YAML encoder that [`mdsmith extract`][extractdoc] uses, so
+json and yaml stay structurally identical. Each `unknown format`
+message reads `text, json, yaml`.
 
 ## Example output
 
 Reading one file's readability score as JSON:
 
 ```console
-$ mdsmith metrics rank --metrics readability -f json README.md
-[
-  {
-    "path": "README.md",
-    "readability": 11.2
-  }
-]
+$ mdsmith metrics get --metrics readability -f json README.md
+{
+  "path": "README.md",
+  "readability": 11.2
+}
 ```
 
 The same query as YAML:
 
 ```console
-$ mdsmith metrics rank --metrics readability -f yaml README.md
-- path: README.md
-  readability: 11.2
+$ mdsmith metrics get --metrics readability -f yaml README.md
+path: README.md
+readability: 11.2
 ```
 
-Several new metrics at once, ranked by readability:
+With no `--metrics`, every registered metric is emitted:
 
 ```console
-$ mdsmith metrics rank \
-    --metrics readability,sentences,avg-words-per-sentence \
-    --by readability -f json docs/guides/install.md
-[
-  {
-    "path": "docs/guides/install.md",
-    "readability": 9.4,
-    "sentences": 148,
-    "avg-words-per-sentence": 14.6
-  }
-]
+$ mdsmith metrics get -f yaml docs/guides/install.md
+path: docs/guides/install.md
+bytes: 5120
+lines: 132
+words: 812
+headings: 14
+token-estimate: 609
+conciseness: 71.5
+readability: 9.4
+sentences: 148
+avg-words-per-sentence: 14.6
 ```
 
-`mdsmith metrics list` gains the three rows (opt-in, so
-`DEFAULT` is `false`):
+The text format is an aligned table:
 
 ```console
-$ mdsmith metrics list
-ID      NAME                    SCOPE  ORDER  DEFAULT  DESCRIPTION
-...
-MET008  readability             file   desc   false    Automated Readability Index ...
-MET009  sentences               file   desc   false    Sentence count ...
-MET010  avg-words-per-sentence  file   desc   false    Mean words per sentence ...
+$ mdsmith metrics get --metrics readability,sentences README.md
+NAME         VALUE
+readability  11.2
+sentences    96
 ```
 
-A single unavailable value (an unreadable or empty file) prints
-`null` in json and yaml and `-` in text, matching the current
-metrics behavior.
+An unavailable value (an unreadable or empty file) prints `null`
+in json and yaml and `-` in text, matching the current metrics
+behavior.
 
 ## Tasks
 
@@ -154,22 +160,29 @@ metrics behavior.
    test covers the value on a known fixture.
 3. Add MET009 `sentences` and MET010 `avg-words-per-sentence`
    with their READMEs and registry tests.
-4. Add the `yaml` format to `metrics rank` and `metrics list`.
-   Extend the format switches, the `unknown format` errors, and
-   the unit tests ([`metrics_unit_test.go`][mtest]). Assert json
-   and yaml agree structurally.
-5. Update [`docs/reference/cli/metrics.md`][rankdoc]: the format
-   flags, the metric list, a readability example. Update
+4. Add the `metrics get` subcommand: flag parsing (one file,
+   `--metrics`, `-f`), single-object json/yaml/text writers, and
+   unit tests. Route it from `runMetrics` beside `list` and
+   `rank`.
+5. Add the `yaml` format to `get`, `rank`, and `list`. Extend the
+   format switches, the `unknown format` errors, and the unit
+   tests ([`metrics_unit_test.go`][mtest]). Assert json and yaml
+   agree structurally.
+6. Add [`docs/reference/cli/metrics.md`][rankdoc] coverage for
+   `get` (flags, an example) and the new metrics. Update
    [`docs/guides/metrics-tradeoffs.md`][tradeoffs]. Regenerate the
    `CLAUDE.md` and `PLAN.md` catalogs with `mdsmith fix`.
 
 ## Acceptance Criteria
 
-- [ ] `mdsmith metrics rank --metrics readability -f json FILE`
-      prints the file's ARI score under a `readability` key.
-- [ ] `mdsmith metrics rank --metrics readability -f yaml FILE`
-      prints the same value as YAML; a test pins json and yaml
+- [ ] `mdsmith metrics get --metrics readability -f json FILE`
+      prints a single JSON object with the file's ARI score under
+      a `readability` key — an object, not an array.
+- [ ] `mdsmith metrics get -f yaml FILE` prints every registered
+      metric as a YAML mapping; a test pins json and yaml
       together.
+- [ ] `mdsmith metrics get` with zero or two file arguments is a
+      usage error.
 - [ ] `mdsmith metrics list` shows `readability`, `sentences`,
       and `avg-words-per-sentence`; none appears in a
       no-`--metrics` `rank` run.

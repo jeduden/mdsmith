@@ -243,5 +243,5 @@ footer: |
 | 2607051918 | 🔲     | sonnet | [Export wordlist.Dedup and remove the identical dedupStrings copy in internal/config](plan/2607051918_arch-fix-wordlist-config-dedup.md)                |
 | 2607051919 | 🔲     | sonnet | [Add dedicated unit tests for helpers added by the word-list and reflow features](plan/2607051919_arch-fix-new-helper-tests.md)                         |
 | 2607051920 | 🔲     | sonnet | [Consolidate duplicated leading-space/blank-line rule helpers into internal/rules/astutil](plan/2607051920_arch-fix-rule-whitespace-helpers-astutil.md) |
-| 2607071642 | 🔲     | sonnet | [Extractable per-file metrics (readability first) with YAML output](plan/2607071642_extractable-file-metrics.md)                                        |
+| 2607071642 | 🔲     | sonnet | [Single-file metric extraction via `mdsmith metrics get` (readability first)](plan/2607071642_extractable-file-metrics.md)                              |
 <?/catalog?>
