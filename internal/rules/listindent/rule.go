@@ -7,6 +7,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	"github.com/jeduden/mdsmith/internal/rules/listscan"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
@@ -96,7 +97,7 @@ func (r *Rule) verdict(f *lint.File, level, line int) (lint.Diagnostic, bool) {
 		return lint.Diagnostic{}, false
 	}
 	expectedIndent := level * spaces
-	actualIndent := countLeadingSpaces(f.Lines[line-1])
+	actualIndent := astutil.CountLeadingSpaces(f.Lines[line-1])
 	if actualIndent == expectedIndent {
 		return lint.Diagnostic{}, false
 	}
@@ -181,10 +182,6 @@ func firstLineOfChild(f *lint.File, n ast.Node) int {
 	return 0
 }
 
-func countLeadingSpaces(line []byte) int {
-	return len(line) - len(bytes.TrimLeft(line, " "))
-}
-
 // Fix implements rule.FixableRule.
 func (r *Rule) Fix(f *lint.File) []byte {
 	spaces := r.Spaces
@@ -246,7 +243,7 @@ func collectIndentAdjustments(f *lint.File, spaces int) map[int]int {
 			return ast.WalkContinue, nil
 		}
 
-		if countLeadingSpaces(f.Lines[line-1]) != expectedIndent {
+		if astutil.CountLeadingSpaces(f.Lines[line-1]) != expectedIndent {
 			adjMap[line] = expectedIndent
 		}
 

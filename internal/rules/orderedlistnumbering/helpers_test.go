@@ -3,6 +3,7 @@ package orderedlistnumbering
 import (
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -19,7 +20,7 @@ func TestCountLeadingSpaces(t *testing.T) {
 		{[]byte(" \tabc"), 1}, // tab is not a space; counting stops
 	}
 	for _, tc := range cases {
-		assert.Equal(t, tc.want, countLeadingSpaces(tc.in), "countLeadingSpaces(%q)", tc.in)
+		assert.Equal(t, tc.want, astutil.CountLeadingSpaces(tc.in), "CountLeadingSpaces(%q)", tc.in)
 	}
 }
 
@@ -37,7 +38,7 @@ func TestIsBlank(t *testing.T) {
 		{[]byte(" x"), false},
 	}
 	for _, tc := range cases {
-		assert.Equal(t, tc.want, isBlank(tc.in), "isBlank(%q)", tc.in)
+		assert.Equal(t, tc.want, astutil.IsBlank(tc.in), "IsBlank(%q)", tc.in)
 	}
 }
 

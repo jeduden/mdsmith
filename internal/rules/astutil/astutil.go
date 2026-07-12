@@ -347,6 +347,17 @@ func extractTextBase(n ast.Node, source []byte, base int, buf *bytes.Buffer) {
 	}
 }
 
+// CountLeadingSpaces returns the number of leading space characters
+// (ASCII 0x20 only) in line.
+func CountLeadingSpaces(line []byte) int {
+	return len(line) - len(bytes.TrimLeft(line, " "))
+}
+
+// IsBlank reports whether line contains only space and tab characters.
+func IsBlank(line []byte) bool {
+	return len(bytes.TrimLeft(line, " \t")) == 0
+}
+
 // HeadingLineBase returns the 1-based source line of a heading whose inline
 // children carry run-local segment offsets (the parse-skipped path). base is
 // the run's start byte offset in f.Source. It mirrors HeadingLine exactly with

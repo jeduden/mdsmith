@@ -12,6 +12,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	"github.com/jeduden/mdsmith/internal/rules/fencepos"
 	"github.com/jeduden/mdsmith/internal/rules/listscan"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
@@ -271,7 +272,7 @@ func (r *Rule) collectItemEdits(
 // existing leading whitespace are ignored to avoid eating non-space
 // content.
 func applyIndentShift(line []byte, shift int) []byte {
-	if shift == 0 || isBlank(line) {
+	if shift == 0 || astutil.IsBlank(line) {
 		return line
 	}
 	if shift > 0 {
@@ -279,20 +280,16 @@ func applyIndentShift(line []byte, shift int) []byte {
 		return append(pad, line...)
 	}
 	n := -shift
-	if countLeadingSpaces(line) < n {
+	if astutil.CountLeadingSpaces(line) < n {
 		return line
 	}
 	return line[n:]
 }
 
-func isBlank(line []byte) bool {
-	return len(bytes.TrimLeft(line, " \t")) == 0
-}
-
 // replaceLeadingDigits replaces a run of digits at the start of a line
 // (after any leading whitespace) with the decimal form of n.
 func replaceLeadingDigits(line []byte, n int) []byte {
-	leading := countLeadingSpaces(line)
+	leading := astutil.CountLeadingSpaces(line)
 	digitStart := leading
 	digitEnd := leading
 	for digitEnd < len(line) && isDigit(line[digitEnd]) {
@@ -371,10 +368,6 @@ func digitWidth(n int) int {
 		w++
 	}
 	return w
-}
-
-func countLeadingSpaces(line []byte) int {
-	return len(line) - len(bytes.TrimLeft(line, " "))
 }
 
 // firstLineOfListItem returns the 1-based source line of an item's

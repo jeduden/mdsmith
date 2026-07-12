@@ -3,7 +3,7 @@ id: 2607051920
 title: >-
   Consolidate duplicated leading-space/blank-line rule
   helpers into internal/rules/astutil
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   countLeadingSpaces and isBlank/isBlankLine are
@@ -75,11 +75,11 @@ stays as-is.
 
 ## Acceptance Criteria
 
-- [ ] `internal/rules/astutil` exports the shared
+- [x] `internal/rules/astutil` exports the shared
       leading-space and blank-line helpers, each with a
       dedicated test.
-- [ ] `listindent`, `orderedlistnumbering`, and
+- [x] `listindent`, `orderedlistnumbering`, and
       `noreferencestyle` no longer define their own
       copies.
-- [ ] `go test ./...` is green.
-- [ ] `mdsmith check .` is green.
+- [x] `go test ./...` is green.
+- [x] `mdsmith check .` is green.

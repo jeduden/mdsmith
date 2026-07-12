@@ -3,6 +3,7 @@ package noreferencestyle
 import (
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -20,6 +21,6 @@ func TestIsBlankLine(t *testing.T) {
 		{[]byte(" x"), false},
 	}
 	for _, tc := range cases {
-		assert.Equal(t, tc.want, isBlankLine(tc.in), "isBlankLine(%q)", tc.in)
+		assert.Equal(t, tc.want, astutil.IsBlank(tc.in), "IsBlank(%q)", tc.in)
 	}
 }

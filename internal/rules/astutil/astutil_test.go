@@ -813,3 +813,22 @@ func TestCollectSectionParagraphs_MemoizedPerFile(t *testing.T) {
 	require.Len(t, o, 1)
 	assert.Equal(t, "Different.", o[0].ExtractText(f2.Source))
 }
+
+// --- CountLeadingSpaces ---
+
+func TestCountLeadingSpaces(t *testing.T) {
+	assert.Equal(t, 0, CountLeadingSpaces([]byte("abc")))
+	assert.Equal(t, 2, CountLeadingSpaces([]byte("  abc")))
+	assert.Equal(t, 0, CountLeadingSpaces([]byte("")))
+	assert.Equal(t, 3, CountLeadingSpaces([]byte("   ")))
+}
+
+// --- IsBlank ---
+
+func TestIsBlank(t *testing.T) {
+	assert.True(t, IsBlank([]byte("")))
+	assert.True(t, IsBlank([]byte("   ")))
+	assert.True(t, IsBlank([]byte(" \t ")))
+	assert.False(t, IsBlank([]byte("a")))
+	assert.False(t, IsBlank([]byte("  a")))
+}
