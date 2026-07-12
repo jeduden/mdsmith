@@ -1151,9 +1151,30 @@ func TestRunInit_StarterWithWordlists_ExistingConfigErrors(t *testing.T) {
 	out := captureStderr(func() { code = runInit([]string{"--starter", "okf", "--wordlists"}) })
 	assert.Equal(t, 2, code)
 	assert.Contains(t, out, "already exists")
-	_, err := os.Stat(filepath.Join(dir, ".mdsmith", "wordlists", "ai-speak.yaml"))
-	assert.True(t, os.IsNotExist(err),
-		"wordlists must not scaffold when the run errors out")
+	for _, name := range []string{"ai-speak", "ai-openers"} {
+		_, err := os.Stat(filepath.Join(dir, ".mdsmith", "wordlists", name+".yaml"))
+		assert.Truef(t, os.IsNotExist(err),
+			"%s must not scaffold when the run errors out", name)
+	}
+}
+
+func TestRunInit_FromMarkdownlintWithWordlists_ExistingConfigErrors(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	require.NoError(t, os.WriteFile(".mdsmith.yml", []byte("rules: {}\n"), 0o644))
+
+	// The other config source behaves identically: --from-markdownlint
+	// over an existing config errors even with --wordlists, before any
+	// conversion or scaffolding runs.
+	var code int
+	out := captureStderr(func() { code = runInit([]string{"--from-markdownlint", "--wordlists"}) })
+	assert.Equal(t, 2, code)
+	assert.Contains(t, out, "already exists")
+	for _, name := range []string{"ai-speak", "ai-openers"} {
+		_, err := os.Stat(filepath.Join(dir, ".mdsmith", "wordlists", name+".yaml"))
+		assert.Truef(t, os.IsNotExist(err),
+			"%s must not scaffold when the run errors out", name)
+	}
 }
 
 func TestRunInit_Wordlists_ScaffoldError(t *testing.T) {
