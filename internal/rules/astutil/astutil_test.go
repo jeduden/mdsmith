@@ -534,6 +534,7 @@ func TestCollectSectionHeadings_Memoized(t *testing.T) {
 	h1 := CollectSectionHeadings(f)
 	h2 := CollectSectionHeadings(f)
 	require.Len(t, h1, 3)
+	require.Len(t, h2, 3)
 	assert.Same(t, &h1[0], &h2[0],
 		"repeated calls must return the cached slice")
 }
@@ -821,6 +822,7 @@ func TestCountLeadingSpaces(t *testing.T) {
 	assert.Equal(t, 2, CountLeadingSpaces([]byte("  abc")))
 	assert.Equal(t, 0, CountLeadingSpaces([]byte("")))
 	assert.Equal(t, 3, CountLeadingSpaces([]byte("   ")))
+	assert.Equal(t, 1, CountLeadingSpaces([]byte(" \tabc")))
 }
 
 // --- IsBlank ---
