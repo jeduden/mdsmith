@@ -16,14 +16,13 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/config"
-	"github.com/jeduden/mdsmith/internal/convention"
 	"github.com/jeduden/mdsmith/internal/engine"
 	fixpkg "github.com/jeduden/mdsmith/internal/fix"
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
+	"github.com/jeduden/mdsmith/internal/pack"
 	"github.com/jeduden/mdsmith/internal/query"
 	ruledocs "github.com/jeduden/mdsmith/internal/rules"
-	"github.com/jeduden/mdsmith/internal/wordlist"
 )
 
 // captureStderr temporarily redirects os.Stderr and returns the written content.
@@ -1073,7 +1072,7 @@ func TestRunInit_CreatesConfigFile(t *testing.T) {
 	require.NoError(t, yaml.Unmarshal(data, &out))
 }
 
-func TestRunInit_AlreadyExists_ExitsTwo(t *testing.T) {
+func TestRunInit_AlreadyExists_SkipsAndExitsZero(t *testing.T) {
 	dir := t.TempDir()
 	oldWd, err := os.Getwd()
 	require.NoError(t, err)
@@ -1081,39 +1080,48 @@ func TestRunInit_AlreadyExists_ExitsTwo(t *testing.T) {
 	require.NoError(t, os.Chdir(dir))
 	require.NoError(t, os.WriteFile(".mdsmith.yml", []byte("rules: {}\n"), 0644))
 
-	captureStderr(func() {
-		code := runInit(nil)
-		assert.Equal(t, 2, code)
-	})
+	// A bare re-run over an existing config is idempotent: it leaves the
+	// config unchanged, notes it, and exits 0 (use --force to overwrite).
+	var code int
+	out := captureStderr(func() { code = runInit(nil) })
+	assert.Equal(t, 0, code)
+	assert.Contains(t, out, "already exists")
+	assert.Contains(t, out, "--force")
+	cfg, err := os.ReadFile(".mdsmith.yml")
+	require.NoError(t, err)
+	assert.Equal(t, "rules: {}\n", string(cfg), "existing config left unchanged")
 }
 
-func TestRunInit_Wordlists_ScaffoldsCuratedFiles(t *testing.T) {
+func TestRunInit_Add_Wordlists_ScaffoldsCuratedFiles(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 
 	captureStderr(func() {
-		code := runInit([]string{"--wordlists"})
+		code := runInit([]string{"--add", "wordlists"})
 		assert.Equal(t, 0, code)
 	})
 
-	// init --wordlists wires through to scaffolding: every curated list
-	// lands on disk. (Content is covered by TestWordlistScaffolds.)
+	// A fresh project: init writes the default config and --add wordlists
+	// lands every curated list on disk. (Content is covered in the pack
+	// package's TestWordlistsPack_Files.)
+	_, err := os.Stat(filepath.Join(dir, ".mdsmith.yml"))
+	require.NoError(t, err, "default config written alongside the pack")
 	for _, name := range []string{"ai-speak", "ai-openers"} {
 		_, err := os.Stat(filepath.Join(dir, ".mdsmith", "wordlists", name+".yaml"))
 		assert.NoErrorf(t, err, "%s.yaml scaffolded", name)
 	}
 }
 
-func TestRunInit_Wordlists_ExistingConfigScaffoldsAnyway(t *testing.T) {
+func TestRunInit_Add_ExistingConfigScaffoldsAnyway(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	// Already-initialized project: .mdsmith.yml exists. --wordlists must
-	// still scaffold rather than exit 2 on the existing config.
+	// Already-initialized project: .mdsmith.yml exists. --add must still
+	// scaffold and leave the config unchanged (exit 0, no --force needed).
 	require.NoError(t, os.WriteFile(".mdsmith.yml", []byte("rules: {}\n"), 0o644))
 
 	captureStderr(func() {
-		code := runInit([]string{"--wordlists"})
-		assert.Equal(t, 0, code, "--wordlists must work on an initialized project")
+		code := runInit([]string{"--add", "wordlists"})
+		assert.Equal(t, 0, code, "--add must work on an initialized project")
 	})
 
 	cfg, err := os.ReadFile(".mdsmith.yml")
@@ -1125,69 +1133,112 @@ func TestRunInit_Wordlists_ExistingConfigScaffoldsAnyway(t *testing.T) {
 	}
 }
 
-func TestRunInit_Starter_ExistingConfigErrors(t *testing.T) {
+func TestRunInit_Starter_ExistingConfigSkips(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	require.NoError(t, os.WriteFile(".mdsmith.yml", []byte("rules: {}\n"), 0o644))
 
+	// A config source over an existing config no longer errors: the config
+	// is left unchanged with a notice and the run exits 0.
 	var code int
 	out := captureStderr(func() { code = runInit([]string{"--starter", "okf"}) })
-	assert.Equal(t, 2, code, "--starter over an existing config must error")
+	assert.Equal(t, 0, code, "--starter over an existing config skips, not errors")
 	assert.Contains(t, out, "already exists")
+	assert.Contains(t, out, "--force")
 	cfg, err := os.ReadFile(".mdsmith.yml")
 	require.NoError(t, err)
 	assert.Equal(t, "rules: {}\n", string(cfg), "existing config left unchanged")
 }
 
-func TestRunInit_StarterWithWordlists_ExistingConfigErrors(t *testing.T) {
+func TestRunInit_Force_Overwrites(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	require.NoError(t, os.WriteFile(".mdsmith.yml", []byte("rules: {}\n"), 0o644))
 
-	// A config source over an existing config errors even alongside
-	// --wordlists — the requested config cannot be written, so the run
-	// fails loudly rather than silently dropping --starter.
-	var code int
-	out := captureStderr(func() { code = runInit([]string{"--starter", "okf", "--wordlists"}) })
-	assert.Equal(t, 2, code)
-	assert.Contains(t, out, "already exists")
-	for _, name := range []string{"ai-speak", "ai-openers"} {
-		_, err := os.Stat(filepath.Join(dir, ".mdsmith", "wordlists", name+".yaml"))
-		assert.Truef(t, os.IsNotExist(err),
-			"%s must not scaffold when the run errors out", name)
-	}
+	captureStderr(func() {
+		code := runInit([]string{"--starter", "okf", "--force"})
+		assert.Equal(t, 0, code)
+	})
+	cfg, err := os.ReadFile(".mdsmith.yml")
+	require.NoError(t, err)
+	assert.Contains(t, string(cfg), "required-frontmatter", "--force overwrote with the okf starter")
 }
 
-func TestRunInit_FromMarkdownlintWithWordlists_ExistingConfigErrors(t *testing.T) {
+func TestRunInit_StarterWithAdd_ExistingConfigSkipsConfigButScaffolds(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	require.NoError(t, os.WriteFile(".mdsmith.yml", []byte("rules: {}\n"), 0o644))
 
-	// The other config source behaves identically: --from-markdownlint
-	// over an existing config errors even with --wordlists, before any
-	// conversion or scaffolding runs.
+	// The config source is skipped over the existing file, but the additive
+	// pack still applies — the two axes are independent, so a combined run
+	// no longer aborts the way it once did.
 	var code int
-	out := captureStderr(func() { code = runInit([]string{"--from-markdownlint", "--wordlists"}) })
-	assert.Equal(t, 2, code)
-	assert.Contains(t, out, "already exists")
+	captureStderr(func() { code = runInit([]string{"--starter", "okf", "--add", "wordlists"}) })
+	assert.Equal(t, 0, code)
+	cfg, err := os.ReadFile(".mdsmith.yml")
+	require.NoError(t, err)
+	assert.Equal(t, "rules: {}\n", string(cfg), "existing config left unchanged")
 	for _, name := range []string{"ai-speak", "ai-openers"} {
 		_, err := os.Stat(filepath.Join(dir, ".mdsmith", "wordlists", name+".yaml"))
-		assert.Truef(t, os.IsNotExist(err),
-			"%s must not scaffold when the run errors out", name)
+		assert.NoErrorf(t, err, "%s scaffolded despite the config skip", name)
 	}
 }
 
-func TestRunInit_Wordlists_ScaffoldError(t *testing.T) {
+func TestRunInit_FromMarkdownlintWithAdd_ExistingConfigSkipsConfigButScaffolds(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	// .mdsmith is a regular file, so scaffolding's MkdirAll fails and
-	// runInit must surface it as exit 2.
+	require.NoError(t, os.WriteFile(".mdsmith.yml", []byte("rules: {}\n"), 0o644))
+
+	// The other config source behaves identically: the existing config is
+	// skipped (no markdownlint discovery even runs) while --add scaffolds.
+	var code int
+	captureStderr(func() { code = runInit([]string{"--from-markdownlint", "--add", "wordlists"}) })
+	assert.Equal(t, 0, code)
+	cfg, err := os.ReadFile(".mdsmith.yml")
+	require.NoError(t, err)
+	assert.Equal(t, "rules: {}\n", string(cfg), "existing config left unchanged")
+	for _, name := range []string{"ai-speak", "ai-openers"} {
+		_, err := os.Stat(filepath.Join(dir, ".mdsmith", "wordlists", name+".yaml"))
+		assert.NoErrorf(t, err, "%s scaffolded despite the config skip", name)
+	}
+}
+
+func TestRunInit_Add_UnknownPack_ExitsTwo(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	var code int
+	out := captureStderr(func() { code = runInit([]string{"--add", "bogus"}) })
+	assert.Equal(t, 2, code)
+	assert.Contains(t, out, `unknown pack "bogus"`)
+	// Fails before writing anything: an invalid pack name never touches the
+	// config or the .mdsmith directory.
+	_, err := os.Stat(filepath.Join(dir, ".mdsmith.yml"))
+	assert.True(t, os.IsNotExist(err), "no config written when a pack name is invalid")
+}
+
+func TestRunInit_Add_ScaffoldError(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	// .mdsmith is a regular file, so the pack's MkdirAll fails and runInit
+	// must surface it as exit 2.
 	require.NoError(t, os.WriteFile(".mdsmith", []byte("x"), 0o644))
 
 	captureStderr(func() {
-		code := runInit([]string{"--wordlists"})
+		code := runInit([]string{"--add", "wordlists"})
 		assert.Equal(t, 2, code)
 	})
+}
+
+func TestRunInit_List(t *testing.T) {
+	out := captureStdout(func() {
+		code := runInit([]string{"--list"})
+		assert.Equal(t, 0, code)
+	})
+	assert.Contains(t, out, "Starters")
+	assert.Contains(t, out, "okf")
+	assert.Contains(t, out, "Packs")
+	assert.Contains(t, out, "wordlists")
 }
 
 func TestRunInit_FromMarkdownlint_NoConfig_ExitsTwo(t *testing.T) {
@@ -1216,52 +1267,45 @@ func TestRunInit_FromMarkdownlint_Converts(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// --- wordlistScaffolds / writeWordlistScaffolds ---
+// --- applyPacks / writeScaffolds ---
 
-func TestWordlistScaffolds(t *testing.T) {
-	got := wordlistScaffolds()
-
-	lists := convention.NoLLMTellsWordlists()
-	require.Len(t, got, len(lists))
-	for i, wl := range lists {
-		assert.Equal(t, filepath.Join(".mdsmith", "wordlists", wl.Name+".yaml"), got[i].path)
-		// Header points the reader at the exact lists: reference and rule.
-		assert.Contains(t, string(got[i].data), "lists: ["+wl.Name+"]")
-		assert.Contains(t, string(got[i].data), wl.Rule)
-		// Body round-trips to the curated entries.
-		_, entries, err := wordlist.Parse(got[i].data)
-		require.NoError(t, err)
-		assert.Equal(t, wl.Entries, entries)
-	}
-}
-
-func TestWriteWordlistScaffolds_WritesAndSkips(t *testing.T) {
+func TestWriteScaffolds_WritesAndSkips(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-
-	require.NoError(t, writeWordlistScaffolds(io.Discard))
-	for _, name := range []string{"ai-speak", "ai-openers"} {
-		_, err := os.Stat(filepath.Join(dir, ".mdsmith", "wordlists", name+".yaml"))
-		require.NoErrorf(t, err, "%s.yaml written", name)
+	files := []pack.File{
+		{Path: filepath.Join(".mdsmith", "wordlists", "a.yaml"), Data: []byte("entries:\n  - x\n")},
 	}
-	// A second call skips the now-existing files rather than erroring or
-	// clobbering them.
-	require.NoError(t, writeWordlistScaffolds(io.Discard))
+
+	var buf bytes.Buffer
+	require.NoError(t, writeScaffolds(files, &buf))
+	assert.Contains(t, buf.String(), "created")
+	_, err := os.Stat(files[0].Path)
+	require.NoError(t, err, "file written")
+
+	// A second call skips the now-existing file rather than erroring or
+	// clobbering it.
+	buf.Reset()
+	require.NoError(t, writeScaffolds(files, &buf))
+	assert.Contains(t, buf.String(), "already exists, skipping")
+	got, err := os.ReadFile(files[0].Path)
+	require.NoError(t, err)
+	assert.Equal(t, "entries:\n  - x\n", string(got), "existing file not clobbered")
 }
 
-func TestWriteWordlistScaffolds_MkdirError(t *testing.T) {
+func TestWriteScaffolds_MkdirError(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	// .mdsmith is a regular file, so MkdirAll(.mdsmith/wordlists) fails
 	// with ENOTDIR — driving the directory-creation error branch.
 	require.NoError(t, os.WriteFile(".mdsmith", []byte("x"), 0o644))
 
-	err := writeWordlistScaffolds(io.Discard)
+	files := []pack.File{{Path: filepath.Join(".mdsmith", "wordlists", "a.yaml"), Data: []byte("entries:\n  - x\n")}}
+	err := writeScaffolds(files, io.Discard)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), filepath.Join(".mdsmith", "wordlists"))
 }
 
-func TestWriteWordlistScaffolds_StatErrorSurfaced(t *testing.T) {
+func TestWriteScaffolds_StatErrorSurfaced(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	wlDir := filepath.Join(dir, ".mdsmith", "wordlists")
@@ -1270,12 +1314,13 @@ func TestWriteWordlistScaffolds_StatErrorSurfaced(t *testing.T) {
 	// non-"not exist" error. It must be surfaced as a stat ("checking")
 	// failure, not skipped and not misattributed to the write. ELOOP is
 	// returned regardless of uid, so this holds under root in CI.
-	require.NoError(t, os.Symlink("ai-speak.yaml", filepath.Join(wlDir, "ai-speak.yaml")))
+	require.NoError(t, os.Symlink("a.yaml", filepath.Join(wlDir, "a.yaml")))
 
-	err := writeWordlistScaffolds(io.Discard)
+	files := []pack.File{{Path: filepath.Join(".mdsmith", "wordlists", "a.yaml"), Data: []byte("entries:\n  - x\n")}}
+	err := writeScaffolds(files, io.Discard)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "checking")
-	assert.Contains(t, err.Error(), "ai-speak.yaml")
+	assert.Contains(t, err.Error(), "a.yaml")
 }
 
 // --- runHelp ---

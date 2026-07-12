@@ -132,7 +132,7 @@ func llmParagraphOpeners() []string {
 
 // NamedWordlist is a curated word-list behind the no-llm-tells
 // convention, paired with the list-consuming rule it feeds. `mdsmith
-// init --wordlists` scaffolds each one into an editable
+// init --add wordlists` scaffolds each one into an editable
 // `.mdsmith/wordlists/<Name>.yaml` file, so a project can start from
 // the curated set and customize it without the words being compiled
 // into its active config.

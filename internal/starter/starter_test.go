@@ -32,6 +32,20 @@ func TestErrUnknown_ListsNames(t *testing.T) {
 	assert.Contains(t, err.Error(), "okf")
 }
 
+func TestDescribe_OKF(t *testing.T) {
+	assert.NotEmpty(t, starter.Describe("okf"))
+	assert.Empty(t, starter.Describe("bogus"))
+}
+
+// TestEveryStarterHasDescription guards the --list contract: every
+// embedded template must carry a one-line description, so `mdsmith init
+// --list` never shows a starter with a blank summary.
+func TestEveryStarterHasDescription(t *testing.T) {
+	for _, name := range starter.Names() {
+		assert.NotEmptyf(t, starter.Describe(name), "starter %q needs a description", name)
+	}
+}
+
 // TestEveryStarterIsValidConfig guards the contract every starter must
 // keep: the embedded template must parse as a valid .mdsmith.yml, so a
 // typo in a starter fails CI instead of a user's first `mdsmith check`.

@@ -698,15 +698,20 @@ func TestE2E_Init_CreatesConfig(t *testing.T) {
 	assert.Contains(t, s, "line-length", "config file should contain 'line-length', got: %s", s)
 }
 
-func TestE2E_Init_RefusesIfExists(t *testing.T) {
+func TestE2E_Init_SkipsIfExists(t *testing.T) {
 	dir := t.TempDir()
 
 	// Create an existing config file.
 	writeFixture(t, dir, ".mdsmith.yml", "rules: {}\n")
 
 	_, stderr, exitCode := runBinaryInDir(t, dir, "", "init")
-	assert.Equal(t, 2, exitCode, "expected exit code 2, got %d", exitCode)
-	assert.Contains(t, stderr, "already exists", "expected 'already exists' error, got: %s", stderr)
+	assert.Equal(t, 0, exitCode, "an existing config is skipped, not an error; stderr: %s", stderr)
+	assert.Contains(t, stderr, "already exists", "expected skip notice, got: %s", stderr)
+	assert.Contains(t, stderr, "--force", "notice should point at --force, got: %s", stderr)
+
+	content, err := os.ReadFile(filepath.Join(dir, ".mdsmith.yml"))
+	require.NoError(t, err)
+	assert.Equal(t, "rules: {}\n", string(content), "existing config left unchanged")
 }
 
 func TestE2E_Init_FromMarkdownlint(t *testing.T) {
@@ -776,6 +781,75 @@ func TestE2E_Init_Starter_ConflictsWithMarkdownlint(t *testing.T) {
 	assert.Equal(t, 2, exitCode, "expected exit code 2, got %d", exitCode)
 	assert.Contains(t, stderr, "mutually exclusive",
 		"expected mutual-exclusion error, got: %s", stderr)
+}
+
+func TestE2E_Init_Force_Overwrites(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, ".mdsmith.yml", "rules: {}\n")
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "init", "--starter", "okf", "--force")
+	assert.Equal(t, 0, exitCode, "expected exit code 0, got %d; stderr: %s", exitCode, stderr)
+
+	content, err := os.ReadFile(filepath.Join(dir, ".mdsmith.yml"))
+	require.NoError(t, err, "reading overwritten config")
+	assert.Contains(t, string(content), "required-frontmatter",
+		"--force must overwrite with the okf starter, got: %s", content)
+}
+
+func TestE2E_Init_Add_Wordlists(t *testing.T) {
+	dir := t.TempDir()
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "init", "--add", "wordlists")
+	assert.Equal(t, 0, exitCode, "expected exit code 0, got %d; stderr: %s", exitCode, stderr)
+	assert.Contains(t, stderr, "created .mdsmith.yml", "default config written, got: %s", stderr)
+
+	for _, name := range []string{"ai-speak", "ai-openers"} {
+		content, err := os.ReadFile(filepath.Join(dir, ".mdsmith", "wordlists", name+".yaml"))
+		require.NoErrorf(t, err, "%s.yaml scaffolded", name)
+		assert.Contains(t, string(content), "lists: ["+name+"]",
+			"header must show the lists: reference, got: %s", content)
+	}
+}
+
+func TestE2E_Init_Add_ExistingConfigScaffoldsAnyway(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, ".mdsmith.yml", "rules: {}\n")
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "init", "--add", "wordlists")
+	assert.Equal(t, 0, exitCode, "adding a pack to an existing project must succeed; stderr: %s", stderr)
+
+	content, err := os.ReadFile(filepath.Join(dir, ".mdsmith.yml"))
+	require.NoError(t, err)
+	assert.Equal(t, "rules: {}\n", string(content), "config left unchanged")
+	_, err = os.Stat(filepath.Join(dir, ".mdsmith", "wordlists", "ai-speak.yaml"))
+	require.NoError(t, err, "pack still scaffolded over an existing config")
+}
+
+func TestE2E_Init_Add_UnknownPack(t *testing.T) {
+	dir := t.TempDir()
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "init", "--add", "bogus")
+	assert.Equal(t, 2, exitCode, "expected exit code 2, got %d", exitCode)
+	assert.Contains(t, stderr, `unknown pack "bogus"`,
+		"expected unknown-pack error, got: %s", stderr)
+	assert.Contains(t, stderr, "wordlists", "error must list valid packs, got: %s", stderr)
+
+	_, err := os.Stat(filepath.Join(dir, ".mdsmith.yml"))
+	assert.True(t, os.IsNotExist(err), "an invalid pack name writes no config")
+}
+
+func TestE2E_Init_List(t *testing.T) {
+	dir := t.TempDir()
+
+	stdout, _, exitCode := runBinaryInDir(t, dir, "", "init", "--list")
+	assert.Equal(t, 0, exitCode, "expected exit code 0, got %d", exitCode)
+	assert.Contains(t, stdout, "Starters", "got: %s", stdout)
+	assert.Contains(t, stdout, "okf", "got: %s", stdout)
+	assert.Contains(t, stdout, "Packs", "got: %s", stdout)
+	assert.Contains(t, stdout, "wordlists", "got: %s", stdout)
+
+	_, err := os.Stat(filepath.Join(dir, ".mdsmith.yml"))
+	assert.True(t, os.IsNotExist(err), "--list writes nothing")
 }
 
 func TestE2E_Init_FromMarkdownlint_ExplicitPath(t *testing.T) {
