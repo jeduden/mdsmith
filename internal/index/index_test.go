@@ -401,9 +401,8 @@ func TestRootAndFiles(t *testing.T) {
 func TestNew(t *testing.T) {
 	t.Parallel()
 	idx := New("/root")
-	assert.Equal(t, "/root", idx.root)
-	assert.NotNil(t, idx.files)
-	assert.Empty(t, idx.files)
+	assert.Equal(t, "/root", idx.Root())
+	assert.Empty(t, idx.Files())
 }
 
 func TestIndex_File(t *testing.T) {
