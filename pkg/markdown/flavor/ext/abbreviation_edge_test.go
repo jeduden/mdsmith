@@ -33,7 +33,7 @@ func TestRewriteTextOrphanParent(t *testing.T) {
 func TestBestMatchAtWordBoundaryRejectsSuffix(t *testing.T) {
 	tbl := abbrTable{"API": []byte("Application Programming Interface")}
 	body := []byte("APIserver does things")
-	_, ok := bestMatchAt(body, 0, tbl)
+	_, ok := bestMatchAt(body, 0, tableTerms(tbl))
 	assert.False(t, ok,
 		"API followed by word byte 's' must not match")
 }

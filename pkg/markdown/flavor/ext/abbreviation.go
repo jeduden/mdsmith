@@ -225,17 +225,45 @@ func rewriteText(t *ast.Text, table abbrTable, source []byte) {
 	applyMatches(parent, t, seg, body, matches)
 }
 
+// tableTerm pairs a defined term's precomputed []byte form (used for
+// the prefix probe) with its original string form (stored on a match,
+// matching buildReference's []byte(m.term) conversion).
+type tableTerm struct {
+	bytes []byte
+	str   string
+}
+
+// tableTerms converts every key of table to its []byte form once.
+// findMatches calls bestMatchAt once per word-boundary candidate
+// position in a Text node's body, and bestMatchAt used to convert
+// every term from its map key to []byte on every such call — the
+// dominant allocator on documents with defined abbreviations, since
+// positions vastly outnumber terms. Precomputing here, once per
+// findMatches call, keeps that per-(position, term) probe alloc-free
+// (docs/development/high-performance-go.md "Stay in []byte").
+func tableTerms(table abbrTable) []tableTerm {
+	terms := make([]tableTerm, 0, len(table))
+	for term := range table {
+		terms = append(terms, tableTerm{bytes: []byte(term), str: term})
+	}
+	return terms
+}
+
 // findMatches scans body for the longest whole-word match of any
 // defined term at each word-boundary position and advances past each
 // hit so occurrences never overlap.
 func findMatches(body []byte, table abbrTable) []abbrMatch {
+	if len(table) == 0 {
+		return nil
+	}
+	terms := tableTerms(table)
 	var matches []abbrMatch
 	for i := 0; i < len(body); {
 		if i > 0 && isWordByte(body[i-1]) {
 			i++
 			continue
 		}
-		m, ok := bestMatchAt(body, i, table)
+		m, ok := bestMatchAt(body, i, terms)
 		if !ok {
 			i++
 			continue
@@ -246,21 +274,20 @@ func findMatches(body []byte, table abbrTable) []abbrMatch {
 	return matches
 }
 
-// bestMatchAt returns the longest term in table that matches body
+// bestMatchAt returns the longest term in terms that matches body
 // starting at i, requiring a word boundary after the term.
-func bestMatchAt(body []byte, i int, table abbrTable) (abbrMatch, bool) {
+func bestMatchAt(body []byte, i int, terms []tableTerm) (abbrMatch, bool) {
 	best := abbrMatch{start: -1}
-	for term := range table {
-		tb := []byte(term)
-		if !bytes.HasPrefix(body[i:], tb) {
+	for _, term := range terms {
+		if !bytes.HasPrefix(body[i:], term.bytes) {
 			continue
 		}
-		endIdx := i + len(tb)
+		endIdx := i + len(term.bytes)
 		if endIdx < len(body) && isWordByte(body[endIdx]) {
 			continue
 		}
-		if len(tb) > best.end-best.start {
-			best = abbrMatch{start: i, end: endIdx, term: term}
+		if len(term.bytes) > best.end-best.start {
+			best = abbrMatch{start: i, end: endIdx, term: term.str}
 		}
 	}
 	if best.start < 0 {
