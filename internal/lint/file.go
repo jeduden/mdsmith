@@ -149,15 +149,6 @@ type File struct {
 	// rather than via NewFile; LinkReferences then parses once on
 	// demand. Released once linkRefs is materialized.
 	parseCtx parser.Context
-	linkRefs []Reference
-
-	// scratch backs Memo: per-Check rule memoization. A *File is
-	// built fresh for each Check and discarded after, so values
-	// cached here never outlive a single Check — no cross-file or
-	// cross-run staleness, the same scope as the cross-file rule's
-	// per-Check cache. sync.Map keeps it safe for the concurrent
-	// readers the LSP may run against one document.
-	scratch sync.Map
 
 	// RunCache is the engine-owned read cache shared by every File
 	// processed in one engine.Run pass. Catalog and include rules
@@ -174,6 +165,23 @@ type File struct {
 	// facets of the parsed-file model, not standalone utilities, so
 	// they belong with File anyway. See plan/224.
 	RunCache *RunCache
+
+	// scratch backs Memo: per-Check rule memoization. A *File is
+	// built fresh for each Check and discarded after, so values
+	// cached here never outlive a single Check — no cross-file or
+	// cross-run staleness, the same scope as the cross-file rule's
+	// per-Check cache. sync.Map keeps it safe for the concurrent
+	// readers the LSP may run against one document.
+	scratch sync.Map
+
+	// linkRefs is declared last among the pointer-bearing fields on
+	// purpose: as a slice, only its 8-byte data-pointer word is
+	// GC-scanned when nothing after it holds a pointer, so its
+	// trailing len/cap words (16 bytes) fall outside ptrdata for
+	// free — unlike ending on a bare pointer field (e.g. RunCache),
+	// whose single word carries no such free tail. See parseCtx's
+	// comment above for what linkRefs caches.
+	linkRefs []Reference
 
 	// --- lazy-init guards -------------------------------------------
 	// Every *Done atomic.Bool / *Mu sync.Mutex pair below guards the
