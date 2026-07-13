@@ -14,10 +14,11 @@ import (
 // across every file in the workspace. The four scalar fields
 // (LineOffset, MaxInputBytes, StripFrontMatter, DryRun) previously
 // sat at the top of the struct, interleaved with 8-byte-aligned
-// pointer/slice/string fields; large-to-small ordering — pointer and
-// slice fields first, the two 8-byte scalars next, the two
-// byte-sized bools last — packs the struct into 640 bytes instead of
-// 688 (docs/development/high-performance-go.md#struct-layout).
+// pointer/slice/string fields; grouping every pointer-bearing field
+// first, then the two byte-sized bools (packed alongside the other
+// 4-byte-aligned lazy-init guards), then the two 8-byte scalars last
+// — packs the struct into 640 bytes instead of 688
+// (docs/development/high-performance-go.md#struct-layout).
 const fileSizeBudget = 640
 
 func TestFile_SizeBudget(t *testing.T) {
