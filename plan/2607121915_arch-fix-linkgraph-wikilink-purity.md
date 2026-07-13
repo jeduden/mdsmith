@@ -3,7 +3,7 @@ id: 2607121915
 title: >-
   Resolve the internal/linkgraph purity-contract
   mismatch for wikilink resolution
-status: "🔲"
+status: "🔳"
 model: sonnet
 summary: >-
   go.md documents internal/linkgraph as pure (no file

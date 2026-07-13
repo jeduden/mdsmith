@@ -298,92 +298,16 @@ func sortByDepthThenName(paths []string) {
 
 // ResolveWikiLink resolves an Obsidian-style wikilink target against
 // root, returning the workspace-relative path of the resolved file.
+// Delegates to NewWikilinkIndex so the walk/match algorithm lives in
+// one place. For repeated resolutions against the same root, build
+// a WikilinkIndex once (via WikilinkIndexFor) and call Resolve
+// directly instead.
 //
-// Resolution rules:
-//
-//   - When target has no extension or ends in `.md`/`.markdown`, the
-//     search matches files whose stem (filename minus extension)
-//     equals target, case-insensitive. The target itself is also
-//     considered a stem when it lacks an extension.
-//   - When target has any other extension (an embed like `image.png`),
-//     the search matches files by exact filename, case-insensitive.
-//   - Ties are broken by the shortest path (fewest separators); then
-//     alphabetically. Two matches at the same depth never both win.
-//   - The walk is sandboxed to root: paths that would escape via `..`
-//     are rejected before the walk starts.
-//
-// from is the workspace-relative path of the source file. It is
-// reserved for future per-directory resolution preference; today it
-// only blocks empty targets the same way `ParseTarget` does for
-// regular links.
+// from is reserved for future per-directory resolution preference and
+// is currently unused.
 func ResolveWikiLink(root fs.FS, from, target string) (string, bool) {
-	if root == nil || target == "" {
-		return "", false
-	}
-	target = strings.TrimSpace(target)
-	if target == "" {
-		return "", false
-	}
-	// Reject Windows-style absolute forms (drive-letter, UNC) before
-	// path.Clean — those would otherwise pass the POSIX guards below
-	// and be searched as workspace-relative names on POSIX hosts.
-	if isDriveOrUNC(target) {
-		return "", false
-	}
-	// Normalize backslashes manually: filepath.ToSlash is OS-dependent
-	// (no-op on POSIX), so a Windows-authored `[[sub\page]]` would
-	// otherwise stay as a single literal segment on Linux CI and
-	// never resolve. Match the strings.ReplaceAll pattern
-	// ResolveRelTarget uses for the same reason.
-	target = strings.ReplaceAll(target, `\`, `/`)
-	cleaned := path.Clean(target)
-	if cleaned == "." || strings.HasPrefix(cleaned, "/") {
-		return "", false
-	}
-	// path.Clean reduces "../x" to "../x", "../../x" to "../../x", and
-	// "a/../b" to "b" — so the only escape forms left after Clean are a
-	// leading ".." segment or the bare "..". A name like "v1..v2" never
-	// produces either; this rejects only real parent-directory traversal.
-	if cleaned == ".." || strings.HasPrefix(cleaned, "../") {
-		return "", false
-	}
-
-	wantName, wantStem, stemMode := wikilinkSearchKey(target)
 	_ = from
-
-	var matches []string
-	walkErr := fs.WalkDir(root, ".", func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			return skipHeavyDirs(p)
-		}
-		base := path.Base(p)
-		if stemMode {
-			stem := strings.TrimSuffix(base, path.Ext(base))
-			if strings.EqualFold(stem, wantStem) && mdpath.IsMarkdownPath(base) {
-				matches = append(matches, p)
-			}
-			return nil
-		}
-		if strings.EqualFold(base, wantName) {
-			matches = append(matches, p)
-		}
-		return nil
-	})
-	if walkErr != nil || len(matches) == 0 {
-		return "", false
-	}
-	sort.Slice(matches, func(i, j int) bool {
-		di := strings.Count(matches[i], "/")
-		dj := strings.Count(matches[j], "/")
-		if di != dj {
-			return di < dj
-		}
-		return matches[i] < matches[j]
-	})
-	return matches[0], true
+	return NewWikilinkIndex(root).Resolve(target)
 }
 
 // wikilinkSearchKey splits target into the lookup parameters
