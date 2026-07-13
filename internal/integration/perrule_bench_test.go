@@ -115,10 +115,14 @@ func optInRules() []rule.Rule {
 
 // isNetworkBound reports whether a rule performs outbound network I/O in
 // Check and must be excluded from the per-rule alloc/timing gates. Those
-// gates call Check directly on a shared fixture, and the fixture carries
-// an external URL, so a network-bound rule would issue a real request
-// mid-test. MDS072 (external-link-check) is the only such rule; the plan
-// (2606280208) documents the exclusion.
+// gates call Check directly on a shared fixture. The alloc-budget
+// fixture carries an external URL (`[ref]: https://example.com/`), so a
+// network-bound rule there would issue a real request mid-test; the
+// per-rule bench doc currently has no external URL, so the skip is
+// defensive against a future fixture edit and keeps a network-bound
+// rule's timings out of the measured baseline either way. MDS072
+// (external-link-check) is the only such rule; the plan (2606280208)
+// documents the exclusion.
 func isNetworkBound(id string) bool { return id == "MDS072" }
 
 // perRuleBenchMakeFile returns a factory that builds a fresh lint.File

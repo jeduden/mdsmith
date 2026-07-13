@@ -241,6 +241,12 @@ func firstTextOffset(n goldast.Node) int {
 // autolink's nearest block ancestor and returns its line/column. Lines()
 // panics on inline nodes, so only block ancestors are searched; a URL
 // that is not found (e.g. a synthesized node) falls back to (1, 1).
+//
+// It reports the FIRST `<url>` occurrence in the block, so two identical
+// autolinks in one block both anchor to the first — a minor column
+// inaccuracy on the duplicate (the URL is still correctly flagged and
+// deduped by the cache). This matches linkstyle.autolinkPosition; a
+// rare case not worth per-occurrence bookkeeping.
 func autolinkPosition(f *lint.File, n goldast.Node, rawURL string) (int, int) {
 	if rawURL == "" {
 		return 1, 1

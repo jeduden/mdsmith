@@ -169,10 +169,20 @@ in the first implementation:
 - **Images added.** External image destinations (`![alt](url)`) are now
   probed alongside links and autolinks.
 
-Known follow-up (not fixed here): the result cache lives for the process
-lifetime. That fits the short-lived CLI. A long-running native
-`mdsmith lsp` session, though, keeps a probed URL's result for its whole
-lifetime and never re-checks it. Eviction is left as a future change.
+Known limitations (accepted, not fixed here):
+
+- **Process-lifetime probe state.** The result cache and the global
+  rate-limit semaphore are sized/populated once and live for the
+  process. That fits the short-lived CLI. A long-running native
+  `mdsmith lsp` session, though, keeps a probed URL's result for its
+  whole lifetime and never re-checks it, and freezes the concurrency cap
+  at the first run's `external-rate-limit`. Per-run eviction and
+  re-sizing are left as a future change.
+- **Duplicate-autolink column.** Two identical autolinks in one block
+  both anchor their diagnostic to the first occurrence's column (the URL
+  is still flagged correctly and probed once). This matches
+  `linkstyle.autolinkPosition`; per-occurrence bookkeeping is not worth
+  it for so rare a case.
 
 ## Tasks
 
