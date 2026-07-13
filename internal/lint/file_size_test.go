@@ -1,8 +1,11 @@
 package lint
 
 import (
+	"reflect"
 	"testing"
 	"unsafe"
+
+	"github.com/jeduden/mdsmith/internal/structlayout"
 )
 
 // fileSizeBudget pins File's struct size. File is allocated exactly
@@ -23,4 +26,14 @@ func TestFile_SizeBudget(t *testing.T) {
 		t.Fatalf("unsafe.Sizeof(File{}) = %d, budget = %d (field order wastes padding)",
 			got, fileSizeBudget)
 	}
+}
+
+// TestFile_PointerFieldsPrecedeScalars guards the ordering half of
+// the same layout: every pointer/slice/map/interface field (and the
+// lazy-init guards, all pointer-free) must precede the four trailing
+// scalars. TestFile_SizeBudget alone would not catch a future edit
+// that keeps total size at 640 bytes while moving a pointer-bearing
+// field below a scalar guard field.
+func TestFile_PointerFieldsPrecedeScalars(t *testing.T) {
+	structlayout.AssertPointerFieldsFirst(t, reflect.TypeOf(File{}))
 }
