@@ -2,47 +2,54 @@
 
 package externallink
 
-import "net/http"
+import (
+	"context"
+	"io"
+	"net/http"
+	"time"
+)
 
-// httpProber is the platform probe interface. On non-wasm builds it is
-// satisfied by *http.Client.
-type httpProber = *http.Client
+// client is the shared probing client. One client (not one per request)
+// lets the transport pool keep-alive connections across URLs on the same
+// host. Redirects are followed by default, so a URL that 30x-es to a
+// healthy target passes. The per-request timeout is applied through a
+// context, not client.Timeout, so a single shared client serves every
+// configured timeout.
+var client = &http.Client{}
 
-// init lazily builds the rate-limit semaphore and HTTP client from the
-// configured settings. Called once via initOnce on the first Check.
-func (r *Rule) init() {
-	r.semaphore = make(chan struct{}, r.links.RateLimit)
-	r.http = &http.Client{Timeout: r.links.Timeout}
+// maxDrain caps how many bytes of a GET-fallback body are read back
+// before Close. Draining lets the connection return to the keep-alive
+// pool; capping it avoids reading a large page in full when all we need
+// is the status code.
+const maxDrain = 64 << 10
+
+// probe issues a HEAD request (falling back to GET on 405) and maps the
+// outcome to a urlResult. timeout bounds each individual request.
+func probe(raw string, timeout time.Duration) urlResult {
+	res := do(http.MethodHead, raw, timeout)
+	if res.err == nil && res.statusCode == http.StatusMethodNotAllowed {
+		res = do(http.MethodGet, raw, timeout)
+	}
+	return res
 }
 
-// probe issues the HEAD (then GET on 405) request and maps the outcome
-// to a urlResult.
-func (r *Rule) probe(raw string) urlResult {
-	resp, err := r.do(http.MethodHead, raw)
+// do performs one request with the given method and a context timeout,
+// draining a bounded prefix of the body and closing it so the connection
+// can be reused.
+func do(method, raw string, timeout time.Duration) urlResult {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, method, raw, nil)
 	if err != nil {
 		return urlResult{err: err}
 	}
-	if resp.StatusCode == http.StatusMethodNotAllowed {
-		resp, err = r.do(http.MethodGet, raw)
-		if err != nil {
-			return urlResult{err: err}
-		}
-	}
-	return urlResult{statusCode: resp.StatusCode}
-}
-
-// do performs one request with the given method and closes the body so
-// the connection can be reused.
-func (r *Rule) do(method, raw string) (*http.Response, error) {
-	req, err := http.NewRequest(method, raw, nil)
+	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return urlResult{err: err}
 	}
-	resp, err := r.http.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	// The status code is all we need; close the body immediately.
+	// Drain a bounded prefix of the body before closing so the transport
+	// can reuse the connection; the status code is all we consume.
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxDrain))
 	_ = resp.Body.Close()
-	return resp, nil
+	return urlResult{statusCode: resp.StatusCode}
 }

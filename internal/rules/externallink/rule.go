@@ -12,14 +12,30 @@
 // net/http (a ~6 MB artifact cost) for a rule a browser sandbox can
 // never run anyway. Config parsing and AST traversal are shared, so
 // `.mdsmith.yml` validates identically on every platform.
+//
+// Concurrency: the engine clones one Rule per worker, so the rate-limit
+// semaphore and the per-URL result cache are PACKAGE-LEVEL (not Rule
+// fields) — otherwise each worker's clone would hold its own semaphore
+// and the configured concurrency cap would bound nothing. A
+// singleflight group collapses concurrent probes of the same URL onto a
+// single request, so the "one request per URL per run" guarantee holds
+// even when two workers hit the same URL at once.
+//
+// Cache lifetime: the result cache lives for the process. That fits the
+// short-lived CLI, but a long-lived native `mdsmith lsp` session keeps a
+// probed URL's result for the editor's lifetime and never re-checks it;
+// eviction is a documented follow-up, not implemented here.
 package externallink
 
 import (
+	"bytes"
 	"fmt"
 	"net/url"
 	"regexp"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 
 	goldast "github.com/jeduden/mdsmith/pkg/goldmark/ast"
 
@@ -28,7 +44,17 @@ import (
 )
 
 func init() {
-	rule.Register(&Rule{})
+	rule.Register(newRule())
+}
+
+// newRule builds a Rule with the built-in defaults already applied, so
+// an instance that is enabled with the bare `external-link-check: true`
+// form — which never calls ApplySettings (checker.ConfigureRule returns
+// the rule unchanged when cfg.Settings is nil) — still probes with a 5s
+// timeout and a concurrency of 10. CloneInstance copies these fields, so
+// every per-worker clone inherits them too.
+func newRule() *Rule {
+	return &Rule{links: externalLinkConfig{Timeout: defaultTimeout, RateLimit: defaultRateLimit}}
 }
 
 const (
@@ -39,9 +65,7 @@ const (
 // externalLinkConfig holds the keys MDS072 reads from the shared
 // `links:` block. Skip is the list of regex patterns from
 // `external-skip`; Timeout is `external-timeout` (default 5s);
-// RateLimit is `external-rate-limit` (default 10, min 1). RateLimit's
-// zero value doubles as the "ApplySettings never ran" sentinel that
-// Check uses for its no-network early return.
+// RateLimit is `external-rate-limit` (default 10, min 1).
 type externalLinkConfig struct {
 	Skip      []string
 	Timeout   time.Duration
@@ -52,22 +76,24 @@ type externalLinkConfig struct {
 type Rule struct {
 	links    externalLinkConfig
 	skipRegs []*regexp.Regexp
-
-	// initOnce guards lazy construction of the semaphore and HTTP
-	// client (probe_net.go). The engine shares one Rule singleton
-	// across a worker pool, so the first Check across all files fixes
-	// the run's effective rate limit and timeout.
-	initOnce  sync.Once
-	semaphore chan struct{}
-	// http is the probing client, typed as the platform's *http.Client
-	// (probe_net.go) or nil (probe_wasm.go). Set by init.
-	http httpProber
 }
 
-// urlCache is process-global so a URL referenced across many files is
-// fetched once per run. The CLI is short-lived, so a per-process cache
-// needs no eviction. Keys are raw URL strings; values are urlResult.
-var urlCache sync.Map
+// Package-level probe state, shared across every per-worker Rule clone.
+//
+//   - urlCache stores each URL's outcome so a URL referenced across many
+//     files is fetched once per run.
+//   - probeGroup collapses concurrent probes of the same URL onto one
+//     request (the cache alone is check-then-act and would let two
+//     workers double-probe).
+//   - semaphore is the global in-flight cap. It is sized once, on the
+//     first probe, from that Rule's RateLimit; one config per run makes
+//     that deterministic.
+var (
+	urlCache   sync.Map
+	probeGroup singleflight.Group
+	semaphore  chan struct{}
+	semOnce    sync.Once
+)
 
 // urlResult is one cached probe outcome. statusCode is the final HTTP
 // status (0 when err is non-nil); err is the transport error, if any.
@@ -88,21 +114,20 @@ func (r *Rule) Category() string { return "link" }
 // EnabledByDefault implements rule.Defaultable.
 func (r *Rule) EnabledByDefault() bool { return false }
 
-// Check implements rule.Rule. It collects every external http/https
-// URL in f (inline links and autolinks; the AST walk resolves the same
-// destinations linkgraph would, plus autolinks linkgraph drops), probes
-// each one, and emits a diagnostic for failures.
+// Check implements rule.Rule. It collects every external http/https URL
+// in f (inline links, autolinks, and images; the AST walk resolves the
+// same destinations linkgraph would, plus autolinks linkgraph drops),
+// probes each one, and emits a diagnostic for failures.
+//
+// The engine only calls Check on an enabled rule, so there is no
+// "unconfigured" guard here: a registered or cloned Rule always carries
+// the built-in defaults (see newRule), so RateLimit is never zero on a
+// real run. The network-bound alloc/bench gates skip this rule rather
+// than measure a rule that would otherwise hit the network.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
-	// Unconfigured: ApplySettings was never called (RateLimit zero
-	// value). Return nil with no allocations and, crucially, no
-	// network I/O so the alloc-budget gate can run this rule.
-	if r.links.RateLimit == 0 {
-		return nil
-	}
 	if f == nil || f.AST == nil {
 		return nil
 	}
-	r.initOnce.Do(r.init)
 
 	var diags []lint.Diagnostic
 	_ = goldast.Walk(f.AST, func(n goldast.Node, entering bool) (goldast.WalkStatus, error) {
@@ -118,7 +143,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		}
 		res := r.checkURL(raw)
 		if msg := failureMessage(raw, res); msg != "" {
-			line, col := r.position(f, n)
+			line, col := r.position(f, n, raw)
 			diags = append(diags, lint.Diagnostic{
 				File:     f.Path,
 				Line:     line,
@@ -135,13 +160,15 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 }
 
 // externalURL returns the raw http/https destination of an AST node
-// (link or autolink) when it carries one, or ok=false otherwise.
+// (link, autolink, or image) when it carries one, or ok=false otherwise.
 // Non-http(s) schemes (mailto:, data:) and local destinations are
 // rejected here so the caller never probes them.
 func externalURL(n goldast.Node, source []byte) (string, bool) {
 	var raw string
 	switch node := n.(type) {
 	case *goldast.Link:
+		raw = string(node.Destination)
+	case *goldast.Image:
 		raw = string(node.Destination)
 	case *goldast.AutoLink:
 		raw = string(node.URL(source))
@@ -175,10 +202,26 @@ func (r *Rule) skip(raw string) bool {
 }
 
 // position returns the 1-based body-relative line and column of an AST
-// node by locating its first descendant text segment. AutoLink stores
-// its text in a private value node, so the walk falls back to the
-// node's own first text child when present.
-func (r *Rule) position(f *lint.File, n goldast.Node) (int, int) {
+// node. A Link or Image carries its text in a descendant *Text segment,
+// so the first-text-offset walk locates it. An AutoLink stores its text
+// in a private value node with no walkable child, so the walk would find
+// nothing and collapse every autolink diagnostic onto (1, 1); for those
+// the literal `<url>` is located in the enclosing block's source
+// instead.
+func (r *Rule) position(f *lint.File, n goldast.Node, raw string) (int, int) {
+	if _, ok := n.(*goldast.AutoLink); ok {
+		return autolinkPosition(f, n, raw)
+	}
+	offset := firstTextOffset(n)
+	if offset < 0 {
+		return 1, 1
+	}
+	return f.LineOfOffset(offset), f.ColumnOfOffset(offset)
+}
+
+// firstTextOffset returns the source offset of n's earliest descendant
+// text segment, or -1 when n has none.
+func firstTextOffset(n goldast.Node) int {
 	offset := -1
 	_ = goldast.Walk(n, func(cur goldast.Node, entering bool) (goldast.WalkStatus, error) {
 		if !entering {
@@ -191,10 +234,36 @@ func (r *Rule) position(f *lint.File, n goldast.Node) (int, int) {
 		}
 		return goldast.WalkContinue, nil
 	})
-	if offset < 0 {
+	return offset
+}
+
+// autolinkPosition locates the literal `<url>` in the source of the
+// autolink's nearest block ancestor and returns its line/column. Lines()
+// panics on inline nodes, so only block ancestors are searched; a URL
+// that is not found (e.g. a synthesized node) falls back to (1, 1).
+func autolinkPosition(f *lint.File, n goldast.Node, rawURL string) (int, int) {
+	if rawURL == "" {
 		return 1, 1
 	}
-	return f.LineOfOffset(offset), f.ColumnOfOffset(offset)
+	pat := make([]byte, 0, len(rawURL)+2)
+	pat = append(pat, '<')
+	pat = append(pat, rawURL...)
+	pat = append(pat, '>')
+	for p := n.Parent(); p != nil; p = p.Parent() {
+		if p.Type() != goldast.TypeBlock {
+			continue
+		}
+		lines := p.Lines()
+		for i := range lines.Len() {
+			seg := lines.At(i)
+			if idx := bytes.Index(f.Source[seg.Start:seg.Stop], pat); idx >= 0 {
+				off := seg.Start + idx
+				return f.LineOfOffset(off), f.ColumnOfOffset(off)
+			}
+		}
+		break
+	}
+	return 1, 1
 }
 
 // failureMessage returns the diagnostic message for a probe result, or
@@ -210,30 +279,46 @@ func failureMessage(raw string, res urlResult) string {
 }
 
 // checkURL probes raw once and caches the result. A cache hit (this run
-// or a sibling file) returns immediately with no network I/O. On a
-// miss it acquires a rate-limit slot, delegates to the platform prober,
-// and stores the outcome.
+// or a sibling file) returns immediately with no network I/O. On a miss
+// the probe runs inside a singleflight group keyed by the URL, so
+// concurrent workers that miss the same URL share one request rather
+// than each issuing their own; the probe itself acquires a global
+// rate-limit slot. Once the first probe stores its result, every later
+// caller takes the outer cache-hit path, so no second request is issued.
 func (r *Rule) checkURL(raw string) urlResult {
 	if v, ok := urlCache.Load(raw); ok {
 		return v.(urlResult)
 	}
-
-	r.semaphore <- struct{}{}
-	res := r.probe(raw)
-	<-r.semaphore
-
-	// LoadOrStore so concurrent probes of the same URL converge on one
-	// stored result rather than racing the map.
-	actual, _ := urlCache.LoadOrStore(raw, res)
-	return actual.(urlResult)
+	v, _, _ := probeGroup.Do(raw, func() (any, error) {
+		r.acquire()
+		defer r.release()
+		res := probe(raw, r.links.Timeout)
+		urlCache.Store(raw, res)
+		return res, nil
+	})
+	return v.(urlResult)
 }
+
+// acquire takes a global rate-limit slot, sizing the semaphore on first
+// use from this Rule's RateLimit (min 1). release returns the slot.
+func (r *Rule) acquire() {
+	semOnce.Do(func() {
+		n := r.links.RateLimit
+		if n < 1 {
+			n = 1
+		}
+		semaphore = make(chan struct{}, n)
+	})
+	semaphore <- struct{}{}
+}
+
+func (r *Rule) release() { <-semaphore }
 
 // ApplySettings implements rule.Configurable.
 func (r *Rule) ApplySettings(settings map[string]any) error {
-	// Defaults take effect whenever ApplySettings runs, so an enabled
-	// rule with no `links:` block still probes with a 5s timeout and a
-	// concurrency of 10 — and RateLimit is non-zero so Check does not
-	// take its unconfigured early return.
+	// Defaults take effect whenever ApplySettings runs, so a rule
+	// configured with a partial `links:` block still probes with a 5s
+	// timeout and a concurrency of 10.
 	r.links.Timeout = defaultTimeout
 	r.links.RateLimit = defaultRateLimit
 

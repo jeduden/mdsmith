@@ -28,10 +28,11 @@ hot path. It reads the shared `links:` config block — the same block
 MDS027 and MDS068 read. So `external-skip`, `external-timeout`, and
 `external-rate-limit` sit beside `site-root` and `style` per kind.
 
-The rule checks inline links (`[text](url)`) and autolinks
-(`<https://example.com>`). It does not run in the WebAssembly engine.
-The browser sandbox forbids the outbound requests it needs. So the
-Obsidian plugin and other WASM hosts emit no MDS072 diagnostics.
+The rule checks inline links (`[text](url)`), autolinks
+(`<https://example.com>`), and images (`![alt](url)`). It does not run
+in the WebAssembly engine. The browser sandbox forbids the outbound
+requests it needs. So the Obsidian plugin and other WASM hosts emit no
+MDS072 diagnostics.
 
 ## Settings
 

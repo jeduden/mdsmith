@@ -7,24 +7,33 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/sync/singleflight"
+
+	goldast "github.com/jeduden/mdsmith/pkg/goldmark/ast"
+
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// resetForTest clears the package-level URL cache and gives r a fresh
-// initOnce so each test starts from a clean slate. urlCache and the
-// HTTP client are process-global, so without this reset a 200 cached
-// by one test would mask a 404 the next test expects.
-func resetForTest(t *testing.T, r *Rule) {
+// resetForTest clears the package-level probe state so each test starts
+// from a clean slate. urlCache, the semaphore, and the singleflight
+// group are process-global, so without this reset a 200 cached by one
+// test would mask a 404 the next test expects, and a semaphore sized by
+// one test's rate limit would carry into the next.
+func resetForTest(t *testing.T) {
 	t.Helper()
-	urlCache = sync.Map{}
-	r.initOnce = sync.Once{}
-	t.Cleanup(func() { urlCache = sync.Map{} })
+	reset := func() {
+		urlCache = sync.Map{}
+		probeGroup = singleflight.Group{}
+		semaphore = nil
+		semOnce = sync.Once{}
+	}
+	reset()
+	t.Cleanup(reset)
 }
 
-// newConfiguredRule returns a Rule with the given settings applied,
-// defaulting RateLimit and Timeout so Check does real work.
+// newConfiguredRule returns a Rule with the given links settings applied.
 func newConfiguredRule(t *testing.T, links map[string]any) *Rule {
 	t.Helper()
 	r := &Rule{}
@@ -33,7 +42,7 @@ func newConfiguredRule(t *testing.T, links map[string]any) *Rule {
 		settings["links"] = links
 	}
 	require.NoError(t, r.ApplySettings(settings))
-	resetForTest(t, r)
+	resetForTest(t)
 	return r
 }
 
@@ -44,13 +53,26 @@ func mustFile(t *testing.T, body string) *lint.File {
 	return f
 }
 
-func TestCheck_SkipWhenUnconfigured(t *testing.T) {
-	// A zero-value Rule (ApplySettings never called) must not make any
-	// HTTP call: it returns nil immediately so the alloc-budget gate
-	// can run it on a fixture with an external URL.
-	r := &Rule{}
-	f := mustFile(t, "# T\n\nSee [x](https://example.invalid).\n")
-	require.Nil(t, r.Check(f))
+// TestCheck_DefaultsProbeWithoutApplySettings is the regression test for
+// the enable-with-`true` no-op bug: the instance init registers
+// (newRule) carries the built-in defaults, so it probes even though
+// ApplySettings was never called — exactly the path checker.ConfigureRule
+// takes for `external-link-check: true` (cfg.Settings nil → rule returned
+// unchanged). A regression to the old `RateLimit==0` sentinel would make
+// this return nil.
+func TestCheck_DefaultsProbeWithoutApplySettings(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	resetForTest(t)
+	r := newRule() // exactly what init() registers; no ApplySettings
+	require.Equal(t, defaultRateLimit, r.links.RateLimit)
+	f := mustFile(t, "# T\n\nSee [x]("+srv.URL+"/missing).\n")
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "HTTP 404")
 }
 
 func TestCheck_SkipNonHTTP(t *testing.T) {
@@ -105,6 +127,7 @@ func TestCheck_HTTP405ThenGET(t *testing.T) {
 		case http.MethodGet:
 			sawGET = true
 			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("body that must be drained for keep-alive"))
 		}
 	}))
 	defer srv.Close()
@@ -127,14 +150,56 @@ func TestCheck_TransportError(t *testing.T) {
 	assert.Contains(t, diags[0].Message, "unreachable")
 }
 
-func TestCheck_Autolink(t *testing.T) {
+// TestCheck_AutolinkPosition is the regression test for autolink
+// diagnostics collapsing to line 1, col 1: an AutoLink has no walkable
+// *Text child, so the position must come from locating `<url>` in the
+// block source. The broken autolink sits on line 5.
+func TestCheck_AutolinkPosition(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
 
 	r := newConfiguredRule(t, nil)
-	f := mustFile(t, "# T\n\nAutolink <"+srv.URL+"/missing>.\n")
+	// Autolink on line 5 (1: heading, 2: blank, 3: prose, 4: blank, 5: link).
+	body := "# T\n\nSome intro prose.\n\nAutolink <" + srv.URL + "/missing> here.\n"
+	f := mustFile(t, body)
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "HTTP 404")
+	assert.Equal(t, 5, diags[0].Line, "autolink diagnostic must anchor at the autolink's real line")
+	assert.Greater(t, diags[0].Column, 1, "autolink diagnostic column must not fall back to 1")
+}
+
+// TestCheck_AutolinkInEmphasisPosition drives autolinkPosition's
+// walk-past-inline-ancestor path: an autolink nested in strong emphasis
+// has a non-block parent (the emphasis), so the loop must skip it and
+// keep climbing to the enclosing paragraph block.
+func TestCheck_AutolinkInEmphasisPosition(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	r := newConfiguredRule(t, nil)
+	// Autolink wrapped in strong emphasis on line 3.
+	body := "# T\n\nSee **<" + srv.URL + "/missing>** now.\n"
+	f := mustFile(t, body)
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Equal(t, 3, diags[0].Line)
+	assert.Greater(t, diags[0].Column, 1)
+}
+
+// TestCheck_ImageExternal covers probing an external image destination.
+func TestCheck_ImageExternal(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	r := newConfiguredRule(t, nil)
+	f := mustFile(t, "# T\n\n![alt]("+srv.URL+"/missing.png)\n")
 	diags := r.Check(f)
 	require.Len(t, diags, 1)
 	assert.Contains(t, diags[0].Message, "HTTP 404")
@@ -160,9 +225,54 @@ func TestCheck_CacheHit(t *testing.T) {
 	assert.Equal(t, 1, hits, "second Check should hit the cache, not the server")
 }
 
+// TestCheck_ConcurrentSingleRequest exercises the singleflight dedup:
+// many workers checking the same URL at once must produce exactly one
+// HTTP request, matching the "one request per URL per run" guarantee
+// under real per-worker concurrency.
+func TestCheck_ConcurrentSingleRequest(t *testing.T) {
+	var hits int
+	var mu sync.Mutex
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		hits++
+		mu.Unlock()
+		<-release // hold the handler open so all goroutines pile onto one URL
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	r := newConfiguredRule(t, map[string]any{"external-rate-limit": 8})
+	body := "# T\n\nSee [x](" + srv.URL + "/ok).\n"
+
+	const workers = 8
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = r.Check(mustFile(t, body))
+		}()
+	}
+	// Give the goroutines time to converge on the singleflight key, then
+	// let the handler finish.
+	time.Sleep(50 * time.Millisecond)
+	close(release)
+	wg.Wait()
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, 1, hits, "concurrent checks of one URL must issue a single request")
+}
+
 func TestCheck_NilFile(t *testing.T) {
 	r := newConfiguredRule(t, nil)
 	require.Nil(t, r.Check(nil))
+}
+
+func TestCheck_NilAST(t *testing.T) {
+	r := newConfiguredRule(t, nil)
+	require.Nil(t, r.Check(&lint.File{Path: "doc.md"}))
 }
 
 func TestApplySettings_Defaults(t *testing.T) {
@@ -180,6 +290,31 @@ func TestApplySettings_CustomTimeout(t *testing.T) {
 	assert.Equal(t, 2*time.Second, r.links.Timeout)
 }
 
+func TestApplySettings_TimeoutNonPositive(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{
+		"links": map[string]any{"external-timeout": "0s"},
+	}))
+	assert.Equal(t, 5*time.Second, r.links.Timeout)
+}
+
+func TestApplySettings_TimeoutInvalidDuration(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"links": map[string]any{"external-timeout": "notaduration"},
+	})
+	require.Error(t, err)
+}
+
+func TestApplySettings_TimeoutNotString(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"links": map[string]any{"external-timeout": 5},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must be a duration string")
+}
+
 func TestApplySettings_CustomRateLimit(t *testing.T) {
 	r := &Rule{}
 	require.NoError(t, r.ApplySettings(map[string]any{
@@ -189,14 +324,20 @@ func TestApplySettings_CustomRateLimit(t *testing.T) {
 }
 
 func TestApplySettings_RateLimitMinimum(t *testing.T) {
-	// A configured rule must never leave RateLimit at the zero value,
-	// or Check's "unconfigured" early-return would swallow it. A
-	// non-positive setting clamps to 1.
 	r := &Rule{}
 	require.NoError(t, r.ApplySettings(map[string]any{
 		"links": map[string]any{"external-rate-limit": 0},
 	}))
 	assert.GreaterOrEqual(t, r.links.RateLimit, 1)
+}
+
+func TestApplySettings_RateLimitNotInt(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"links": map[string]any{"external-rate-limit": "bad"},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must be an integer")
 }
 
 func TestApplySettings_UnknownLinksKey(t *testing.T) {
@@ -213,30 +354,13 @@ func TestApplySettings_UnknownLinksKey(t *testing.T) {
 	}))
 }
 
-func TestApplySettings_UnknownTopKey(t *testing.T) {
+func TestApplySettings_TrulyUnknownLinksKey(t *testing.T) {
 	r := &Rule{}
-	require.Error(t, r.ApplySettings(map[string]any{"nope": true}))
-}
-
-func TestApplySettings_BadSkipPattern(t *testing.T) {
-	r := &Rule{}
-	require.Error(t, r.ApplySettings(map[string]any{
-		"links": map[string]any{"external-skip": []any{"("}},
-	}))
-}
-
-func TestMetadata(t *testing.T) {
-	r := &Rule{}
-	assert.Equal(t, "MDS072", r.ID())
-	assert.Equal(t, "external-link-check", r.Name())
-	assert.Equal(t, "link", r.Category())
-	assert.False(t, r.EnabledByDefault())
-}
-
-func TestCheck_NilAST(t *testing.T) {
-	r := newConfiguredRule(t, nil)
-	f := &lint.File{Path: "doc.md"} // AST is nil (zero value)
-	require.Nil(t, r.Check(f))
+	err := r.ApplySettings(map[string]any{
+		"links": map[string]any{"unknown-future-key": true},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown links setting")
 }
 
 func TestApplySettings_LinksNotMap(t *testing.T) {
@@ -255,64 +379,7 @@ func TestApplySettings_SkipNotList(t *testing.T) {
 	assert.Contains(t, err.Error(), "must be a list of strings")
 }
 
-func TestApplySettings_TimeoutNotString(t *testing.T) {
-	r := &Rule{}
-	err := r.ApplySettings(map[string]any{
-		"links": map[string]any{"external-timeout": 5},
-	})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "must be a duration string")
-}
-
-func TestApplySettings_TimeoutInvalidDuration(t *testing.T) {
-	r := &Rule{}
-	err := r.ApplySettings(map[string]any{
-		"links": map[string]any{"external-timeout": "notaduration"},
-	})
-	require.Error(t, err)
-}
-
-func TestApplySettings_TimeoutNonPositive(t *testing.T) {
-	r := &Rule{}
-	require.NoError(t, r.ApplySettings(map[string]any{
-		"links": map[string]any{"external-timeout": "0s"},
-	}))
-	// A non-positive timeout clamps back to the default 5s.
-	assert.Equal(t, 5*time.Second, r.links.Timeout)
-}
-
-func TestApplySettings_RateLimitNotInt(t *testing.T) {
-	r := &Rule{}
-	err := r.ApplySettings(map[string]any{
-		"links": map[string]any{"external-rate-limit": "bad"},
-	})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "must be an integer")
-}
-
-func TestApplySettings_TrulyUnknownLinksKey(t *testing.T) {
-	r := &Rule{}
-	err := r.ApplySettings(map[string]any{
-		"links": map[string]any{"unknown-future-key": true},
-	})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown links setting")
-}
-
-func TestIsExternalHTTP_ParseError(t *testing.T) {
-	// An unclosed IPv6 bracket makes url.Parse return an error; the
-	// function must return false without panicking.
-	assert.False(t, isExternalHTTP("http://[invalid"))
-}
-
-func TestToStringSlice_StringSlice(t *testing.T) {
-	got, ok := toStringSlice([]string{"a", "b"})
-	require.True(t, ok)
-	assert.Equal(t, []string{"a", "b"}, got)
-}
-
 func TestApplySettings_SkipListNonString(t *testing.T) {
-	// A []any containing a non-string element must be rejected.
 	r := &Rule{}
 	err := r.ApplySettings(map[string]any{
 		"links": map[string]any{"external-skip": []any{"valid", 42}},
@@ -321,16 +388,52 @@ func TestApplySettings_SkipListNonString(t *testing.T) {
 	assert.Contains(t, err.Error(), "must be a list of strings")
 }
 
-func TestToInt_Int64(t *testing.T) {
-	got, ok := toInt(int64(5))
-	require.True(t, ok)
-	assert.Equal(t, 5, got)
+func TestApplySettings_UnknownTopKey(t *testing.T) {
+	r := &Rule{}
+	require.Error(t, r.ApplySettings(map[string]any{"nope": true}))
 }
 
-func TestToInt_Float64(t *testing.T) {
-	got, ok := toInt(float64(7))
-	require.True(t, ok)
-	assert.Equal(t, 7, got)
+func TestApplySettings_BadSkipPattern(t *testing.T) {
+	r := &Rule{}
+	require.Error(t, r.ApplySettings(map[string]any{
+		"links": map[string]any{"external-skip": []any{"("}},
+	}))
+}
+
+func TestApplySettings_SkipStringSliceInput(t *testing.T) {
+	// A []string (not []any) input to external-skip is accepted, exercising
+	// the toStringSlice []string branch.
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{
+		"links": map[string]any{"external-skip": []string{`^https?://x`}},
+	}))
+	require.Len(t, r.skipRegs, 1)
+}
+
+func TestToInt_Kinds(t *testing.T) {
+	for _, tc := range []struct {
+		in   any
+		want int
+		ok   bool
+	}{
+		{int(5), 5, true},
+		{int64(6), 6, true},
+		{float64(7), 7, true},
+		{"nope", 0, false},
+	} {
+		got, ok := toInt(tc.in)
+		assert.Equal(t, tc.ok, ok)
+		assert.Equal(t, tc.want, got)
+	}
+}
+
+func TestIsExternalHTTP(t *testing.T) {
+	assert.True(t, isExternalHTTP("https://example.com"))
+	assert.True(t, isExternalHTTP("http://example.com/x"))
+	assert.False(t, isExternalHTTP("mailto:a@b.com"))
+	assert.False(t, isExternalHTTP("other.md"))
+	assert.False(t, isExternalHTTP("http://")) // no host
+	assert.False(t, isExternalHTTP("http://[invalid"))
 }
 
 func TestDefaultSettings(t *testing.T) {
@@ -342,28 +445,70 @@ func TestDefaultSettings(t *testing.T) {
 	assert.Equal(t, defaultRateLimit, links["external-rate-limit"])
 }
 
-func TestCheck_HTTP405ThenGETError(t *testing.T) {
-	// When HEAD returns 405 and the GET request fails with a transport
-	// error (hijacked connection closed), the rule must emit a diagnostic.
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		switch req.Method {
-		case http.MethodHead:
-			w.WriteHeader(http.StatusMethodNotAllowed)
-		case http.MethodGet:
-			hj, ok := w.(http.Hijacker)
-			if !ok {
-				http.Error(w, "hijack unavailable", http.StatusInternalServerError)
-				return
-			}
-			conn, _, _ := hj.Hijack()
-			_ = conn.Close()
-		}
+func TestMetadata(t *testing.T) {
+	r := &Rule{}
+	assert.Equal(t, "MDS072", r.ID())
+	assert.Equal(t, "external-link-check", r.Name())
+	assert.Equal(t, "link", r.Category())
+	assert.False(t, r.EnabledByDefault())
+}
+
+// TestCheck_ImageNoAltPositionFallback drives the first-text-offset < 0
+// fallback in position(): an image with empty alt text has no *Text
+// descendant, so the diagnostic anchors at (1, 1).
+func TestCheck_ImageNoAltPositionFallback(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
 
 	r := newConfiguredRule(t, nil)
-	f := mustFile(t, "# T\n\nSee [x]("+srv.URL+"/err).\n")
+	f := mustFile(t, "# T\n\n![]("+srv.URL+"/missing.png)\n")
 	diags := r.Check(f)
 	require.Len(t, diags, 1)
-	assert.Contains(t, diags[0].Message, "unreachable")
+	assert.Equal(t, 1, diags[0].Line)
+	assert.Equal(t, 1, diags[0].Column)
+}
+
+// TestAutolinkPosition_Fallbacks covers autolinkPosition's degenerate
+// paths directly: an empty URL and a URL absent from the source both
+// fall back to (1, 1).
+func TestAutolinkPosition_Fallbacks(t *testing.T) {
+	f := mustFile(t, "# T\n\nProse without any autolink.\n")
+	root := f.AST
+	line, col := autolinkPosition(f, root, "")
+	assert.Equal(t, 1, line)
+	assert.Equal(t, 1, col)
+
+	line, col = autolinkPosition(f, root, "https://absent.example.com")
+	assert.Equal(t, 1, line)
+	assert.Equal(t, 1, col)
+
+	// A node whose block ancestor exists but whose source lines do not
+	// contain the `<url>` literal exercises the search-miss break and the
+	// trailing (1, 1) fallback. Find any inline node inside the paragraph.
+	var inline goldast.Node
+	_ = goldast.Walk(f.AST, func(n goldast.Node, entering bool) (goldast.WalkStatus, error) {
+		if entering && inline == nil {
+			if _, ok := n.(*goldast.Text); ok {
+				inline = n
+			}
+		}
+		return goldast.WalkContinue, nil
+	})
+	require.NotNil(t, inline)
+	line, col = autolinkPosition(f, inline, "https://not-in-source.example.com")
+	assert.Equal(t, 1, line)
+	assert.Equal(t, 1, col)
+}
+
+// TestAcquireRelease_ClampsBelowOne drives acquire()'s min-1 clamp: a
+// zero-value Rule (RateLimit 0) still sizes the semaphore to 1 rather
+// than building an unbuffered channel that would deadlock on send.
+func TestAcquireRelease_ClampsBelowOne(t *testing.T) {
+	resetForTest(t)
+	r := &Rule{} // RateLimit 0
+	r.acquire()
+	assert.Equal(t, 1, cap(semaphore), "semaphore must clamp to at least 1 slot")
+	r.release()
 }

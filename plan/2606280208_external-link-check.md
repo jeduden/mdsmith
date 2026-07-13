@@ -121,13 +121,58 @@ Two deviations from the design landed during implementation:
   stay shared, so `.mdsmith.yml` validates identically on every host.
 - **Collect URLs by AST walk, not `linkgraph.Links`.** `linkgraph`
   rejects external destinations in `ParseTarget`, so it surfaces no
-  http/https URLs. `Check` walks `f.AST` for `*ast.Link` and
-  `*ast.AutoLink` nodes directly.
+  http/https URLs. `Check` walks `f.AST` for `*ast.Link`, `*ast.Image`,
+  and `*ast.AutoLink` nodes directly.
 - **No bad fixture.** A bad fixture with a live URL would hit the
   network on every `go test` run, so only a good fixture ships; the
   HTTP paths are covered by `rule_test.go` with `httptest.NewServer`.
-- **Alloc gates.** The unconfigured early return keeps the rule at 0
-  allocs on the gate fixtures; a `perRuleAllocCeiling` entry pins it.
+- **Alloc/timing gates skip the rule.** The rule is network-bound, so
+  the per-rule alloc and timing gates (`alloc_budget_test.go`,
+  `perrule_bench_test.go`) exclude it via an `isNetworkBound` predicate
+  rather than measuring a Check that would issue a real request against
+  the gate fixture's external URL.
+
+## Review fixes (post-implementation)
+
+A three-angle `code-review xhigh` pass found and fixed several defects
+in the first implementation:
+
+- **Enable-with-`true` was a silent no-op (critical).** The bare
+  `external-link-check: true` form leaves `cfg.Settings` nil, so
+  `checker.ConfigureRule` returns the rule without calling
+  `ApplySettings`. The original `RateLimit==0` "unconfigured" sentinel
+  therefore fired for the documented enable path and probed nothing.
+  Fixed by baking the defaults into the registered instance (`newRule`)
+  — `CloneInstance` and the bare-enable path both inherit them — and
+  removing the sentinel. `Check` now runs whenever the engine invokes it
+  (i.e. when enabled); the network-bound gates skip the rule instead.
+  Regression-tested end-to-end in
+  `internal/integration/externallink_enable_test.go`.
+- **Autolink diagnostics anchored at (1, 1).** An `AutoLink` stores its
+  text in a private value node with no walkable `*Text` child, so the
+  first-text-offset walk found nothing. Fixed with an autolink-aware
+  `position` that locates the literal `<url>` in the enclosing block's
+  source (the technique linkstyle already uses for autolinks).
+- **`external-rate-limit` capped nothing.** The semaphore was a per-Rule
+  field, but the engine clones one Rule per worker, so each clone held
+  its own semaphore and the global concurrency was bounded only by the
+  worker count. Moved the semaphore (and the result cache) to package
+  scope so the cap is global.
+- **Concurrent double-probe.** The cache was check-then-act, so two
+  workers hitting the same URL both missed and both issued a request. A
+  `singleflight.Group` keyed by URL now collapses concurrent probes onto
+  one request, restoring the "one request per URL per run" guarantee.
+- **Body not drained / no keep-alive; missing `defer`.** The shared
+  probe client now drains a bounded prefix of each response before Close
+  (so connections return to the pool) and releases the rate-limit slot
+  with `defer`, so a probe panic cannot leak a slot.
+- **Images added.** External image destinations (`![alt](url)`) are now
+  probed alongside links and autolinks.
+
+Known follow-up (not fixed here): the result cache lives for the process
+lifetime. That fits the short-lived CLI. A long-running native
+`mdsmith lsp` session, though, keeps a probed URL's result for its whole
+lifetime and never re-checks it. Eviction is left as a future change.
 
 ## Tasks
 
