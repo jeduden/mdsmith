@@ -13,7 +13,18 @@ import (
 	"github.com/jeduden/mdsmith/pkg/markdown"
 )
 
-// File holds a parsed Markdown document and its source.
+// File holds a parsed Markdown document and its source. File is
+// allocated once per NewFile call — the single most common
+// allocation across the engine's per-file Check path — so its field
+// order follows docs/development/high-performance-go.md#struct-layout
+// large-to-small: every pointer/slice/map/interface field first,
+// then the block of 4-byte-aligned lazy-init guards (gitignoreOnce,
+// every *Done atomic.Bool, every *Mu sync.Mutex, and the two bools),
+// then the two remaining 8-byte scalars last. Each guard field still
+// documents which cache slice/map above it protects; only the
+// declaration site moved, to let same-size fields pack without the
+// per-pair padding that interleaving them costs. See
+// file_size_test.go for the pinned budget.
 type File struct {
 	Path        string
 	Source      []byte
@@ -23,26 +34,6 @@ type File struct {
 	RootFS      fs.FS
 	RootDir     string
 	FrontMatter []byte
-	LineOffset  int
-
-	// StripFrontMatter records whether this file was parsed in
-	// front-matter-stripping mode. Rules that read other files
-	// from the corpus should mirror the same mode so that line
-	// numbers in cross-file diagnostics are computed against the
-	// same coordinate system as the current file.
-	StripFrontMatter bool
-
-	// DryRun, when true, signals that the surrounding fix run must
-	// not touch the filesystem or the git index. Fixable rules whose
-	// Fix method has side effects beyond returning the new file
-	// bytes (e.g. writing a sibling repo file, staging via git)
-	// must check this flag and skip the side effect.
-	DryRun bool
-
-	// MaxInputBytes is the maximum file size in bytes that rules
-	// should enforce when reading secondary files (includes, schemas,
-	// cross-references). Zero or negative means unlimited.
-	MaxInputBytes int64
 
 	// GitignoreFunc is a lazy factory for the gitignore matcher.
 	// It is called at most once (on first access via GetGitignore)
@@ -50,7 +41,6 @@ type File struct {
 	// never trigger matcher construction. sync.Once keeps the lazy
 	// build race-free if a *File is shared across goroutines.
 	GitignoreFunc func() *gitignore.Matcher
-	gitignoreOnce sync.Once
 	gitignoreVal  *gitignore.Matcher
 
 	// GeneratedRanges records the content line ranges of generated
@@ -73,9 +63,9 @@ type File struct {
 	// runs at most once, concurrent callers serialise on the mutex,
 	// a panic inside build leaves `done` set so subsequent calls
 	// observe the (zero-valued) cached result rather than retrying.
-	newlineOffsets     []int
-	newlineOffsetsDone atomic.Bool
-	newlineOffsetsMu   sync.Mutex
+	// newlineOffsetsDone / newlineOffsetsMu live in the guard block
+	// below.
+	newlineOffsets []int
 
 	// codeBlockLines / piBlockLines cache the line-set walks behind
 	// CollectCodeBlockLines / CollectPIBlockLines. Both are pure
@@ -84,10 +74,9 @@ type File struct {
 	// walks per file over the 600-file check gate (plan 175
 	// profiling). The cached map is shared read-only with every
 	// caller; no caller mutates it. atomic.Bool + mutex matches
-	// newlineOffsets above for the same closure-box reason.
-	codeBlockLines     map[int]struct{}
-	codeBlockLinesDone atomic.Bool
-	codeBlockLinesMu   sync.Mutex
+	// newlineOffsets above for the same closure-box reason, in the
+	// guard block below.
+	codeBlockLines map[int]struct{}
 
 	// lineClass, when non-nil, is the flat Layer-0 line classifier built
 	// in place of the goldmark parse on the engine's parse-skip path
@@ -95,29 +84,25 @@ type File struct {
 	// FlatHeadingLines serve from it instead of walking f.AST, which is
 	// nil on that path. Set only by NewFileFlatPooled; nil on every
 	// normal (AST) parse, so the AST fallback is the default everywhere.
-	lineClass        *LineClassifier
-	piBlockLines     map[int]struct{}
-	piBlockLinesDone atomic.Bool
-	piBlockLinesMu   sync.Mutex
+	lineClass    *LineClassifier
+	piBlockLines map[int]struct{}
 
 	// layer0 caches the single-pass block scan (layer0.go) behind
 	// Layer0. It is the block-level projection source whenever f.AST is
 	// nil (the parse-skipped path) and the cheap re-backing for
-	// CollectCodeBlockLines / CollectPIBlockLines once computed. atomic.Bool
-	// + mutex matches the caches above for the same closure-box reason.
-	layer0     *Layer0Scan
-	layer0Done atomic.Bool
-	layer0Mu   sync.Mutex
+	// CollectCodeBlockLines / CollectPIBlockLines once computed.
+	// atomic.Bool + mutex matches the caches above for the same
+	// closure-box reason, in the guard block below.
+	layer0 *Layer0Scan
 
 	// inlineBlocks caches the run-grouped per-block inline parse
 	// (inline_blocks.go) behind InlineBlocks. It is the single shared
 	// inline-node stream every inline rule consumes on the parse-skipped
 	// path (f.AST nil), so each contiguous run of inline-bearing lines is
 	// parsed once per file rather than once per rule. atomic.Bool + mutex
-	// matches the caches above for the same closure-box reason.
-	inlineBlocks     []InlineBlock
-	inlineBlocksDone atomic.Bool
-	inlineBlocksMu   sync.Mutex
+	// matches the caches above for the same closure-box reason, in the
+	// guard block below.
+	inlineBlocks []InlineBlock
 
 	// emphasisParas caches the lone-emphasis-paragraph projection
 	// (inline_emphasis.go) behind WholeParagraphEmphasis, MDS018's
@@ -125,10 +110,8 @@ type File struct {
 	// single full-document parse on the loose-list fallback path; either
 	// way it runs once per file so a list-bearing file is not re-parsed on
 	// a second call. atomic.Bool + mutex matches the caches above for the
-	// same closure-box reason.
-	emphasisParas     []EmphasisParagraph
-	emphasisParasDone atomic.Bool
-	emphasisParasMu   sync.Mutex
+	// same closure-box reason, in the guard block below.
+	emphasisParas []EmphasisParagraph
 
 	// proseRanges caches the byte-offset projection behind ProseRanges:
 	// the source spans inside prose nodes (paragraph, heading, list-item
@@ -138,27 +121,24 @@ type File struct {
 	// (proper-name casing, forbidden text, …) through it instead of each
 	// rule re-walking the tree to rediscover the same code-skipping
 	// filter: one walk per file, amortized across all of them. atomic.Bool
-	// + mutex matches codeBlockLines above for the same closure-box reason
-	// (sync.Once would heap-allocate the build closure on the alloc gate).
-	proseRanges     []Range
-	proseRangesDone atomic.Bool
-	proseRangesMu   sync.Mutex
+	// + mutex matches codeBlockLines above for the same closure-box
+	// reason, in the guard block below (sync.Once would heap-allocate
+	// the build closure on the alloc gate).
+	proseRanges []Range
 
 	// codeSpanContent / codeSpanLiteral cache the projections behind
 	// CodeSpanContentRanges / CodeSpanLiteralRanges: each inline code
 	// span's text bounds and its backtick-extended literal range.
 	// Several rules each re-walked the AST for these; one walk now
-	// fills both. atomic.Bool + mutex matches the caches above.
+	// fills both. atomic.Bool + mutex matches the caches above, in the
+	// guard block below.
 	codeSpanContent []Range
 	codeSpanLiteral []Range
-	codeSpansDone   atomic.Bool
-	codeSpansMu     sync.Mutex
 
 	// lineStrings caches the zero-copy string views of Lines behind
-	// LineStrings. atomic.Bool + mutex matches the caches above.
-	lineStrings     []string
-	lineStringsDone atomic.Bool
-	lineStringsMu   sync.Mutex
+	// LineStrings. atomic.Bool + mutex matches the caches above, in
+	// the guard block below.
+	lineStrings []string
 
 	// parseCtx is the goldmark parser.Context produced by the one
 	// parse NewFile already runs. It is the source for LinkReferences
@@ -168,10 +148,8 @@ type File struct {
 	// 175 profiling). nil when the File was built as a struct literal
 	// rather than via NewFile; LinkReferences then parses once on
 	// demand. Released once linkRefs is materialized.
-	parseCtx     parser.Context
-	linkRefs     []Reference
-	linkRefsDone atomic.Bool
-	linkRefsMu   sync.Mutex
+	parseCtx parser.Context
+	linkRefs []Reference
 
 	// scratch backs Memo: per-Check rule memoization. A *File is
 	// built fresh for each Check and discarded after, so values
@@ -196,6 +174,56 @@ type File struct {
 	// facets of the parsed-file model, not standalone utilities, so
 	// they belong with File anyway. See plan/224.
 	RunCache *RunCache
+
+	// --- lazy-init guards -------------------------------------------
+	// Every *Done atomic.Bool / *Mu sync.Mutex pair below guards the
+	// same-named cache field above; see that field's comment for what
+	// it caches and why. Grouping every guard here (instead of beside
+	// its cache field) lets the two 4-byte-aligned kinds pack without
+	// the padding a pointer-sized field would force between them —
+	// see file_size_test.go.
+	gitignoreOnce      sync.Once
+	newlineOffsetsDone atomic.Bool
+	codeBlockLinesDone atomic.Bool
+	piBlockLinesDone   atomic.Bool
+	layer0Done         atomic.Bool
+	inlineBlocksDone   atomic.Bool
+	emphasisParasDone  atomic.Bool
+	proseRangesDone    atomic.Bool
+	codeSpansDone      atomic.Bool
+	lineStringsDone    atomic.Bool
+	linkRefsDone       atomic.Bool
+	newlineOffsetsMu   sync.Mutex
+	codeBlockLinesMu   sync.Mutex
+	piBlockLinesMu     sync.Mutex
+	layer0Mu           sync.Mutex
+	inlineBlocksMu     sync.Mutex
+	emphasisParasMu    sync.Mutex
+	proseRangesMu      sync.Mutex
+	codeSpansMu        sync.Mutex
+	lineStringsMu      sync.Mutex
+	linkRefsMu         sync.Mutex
+
+	// StripFrontMatter records whether this file was parsed in
+	// front-matter-stripping mode. Rules that read other files
+	// from the corpus should mirror the same mode so that line
+	// numbers in cross-file diagnostics are computed against the
+	// same coordinate system as the current file.
+	StripFrontMatter bool
+
+	// DryRun, when true, signals that the surrounding fix run must
+	// not touch the filesystem or the git index. Fixable rules whose
+	// Fix method has side effects beyond returning the new file
+	// bytes (e.g. writing a sibling repo file, staging via git)
+	// must check this flag and skip the side effect.
+	DryRun bool
+
+	LineOffset int
+
+	// MaxInputBytes is the maximum file size in bytes that rules
+	// should enforce when reading secondary files (includes, schemas,
+	// cross-references). Zero or negative means unlimited.
+	MaxInputBytes int64
 }
 
 // memoEntry guards a single Memo key so build runs exactly once even
