@@ -37,10 +37,18 @@ type SectionHeading struct {
 // ""). [CollectSectionParagraphsWithText] sets it so per-heading
 // SectionBody sweeps hit the cache for every paragraph,
 // regardless of whether the extracted text is empty.
+//
+// Node and Text are declared before Line/HasText: buildSectionParagraphs
+// allocates one SectionParagraph per document paragraph, so this is
+// among the highest-frequency struct constructions in the rule set
+// (MDS023, MDS024). Node (an interface) and Text (a string) are the
+// struct's only pointer-bearing fields; declaring the plain-int Line
+// field ahead of them would force the GC's per-word ptrdata scan to
+// cover Line's word too. See sectionparagraph_layout_test.go.
 type SectionParagraph struct {
-	Line    int
 	Node    ast.Node
 	Text    string
+	Line    int
 	HasText bool
 }
 
