@@ -391,18 +391,6 @@ func hasDriveLetterPrefix(p string) bool {
 		((p[0] >= 'A' && p[0] <= 'Z') || (p[0] >= 'a' && p[0] <= 'z'))
 }
 
-// indexMaxBytes returns the read cap ValidateIndex applies to the
-// on-disk index side-output, falling back to
-// bytelimit.DefaultMaxInputBytes when f carries no explicit limit —
-// mirroring FileReader.readPath in parse_file.go so every
-// cross-file read in this package respects the same contract.
-func indexMaxBytes(f *lint.File) int64 {
-	if f.MaxInputBytes > 0 {
-		return f.MaxInputBytes
-	}
-	return bytelimit.DefaultMaxInputBytes
-}
-
 // ValidateIndex compares the on-disk index file (if any) against
 // the bytes BuildIndex would emit. When the file is missing or its
 // content differs, a diagnostic asks the user to run `mdsmith fix`
@@ -434,7 +422,7 @@ func ValidateIndex(f *lint.File, sch *Schema, mkDiag MakeDiag) []lint.Diagnostic
 				"index side-output %q write failed on the last `mdsmith fix`: %v",
 				sch.Index.Output, writeErr))}
 	}
-	got, readErr := bytelimit.ReadFileLimited(target, indexMaxBytes(f))
+	got, readErr := bytelimit.ReadFileLimited(target, f.MaxInputBytes)
 	if readErr != nil {
 		if os.IsNotExist(readErr) {
 			return []lint.Diagnostic{mkDiag(f.Path, 1,

@@ -40,3 +40,35 @@ func TestValidateIndex_RespectsMaxInputBytes(t *testing.T) {
 	assert.Contains(t, diags[0].Message, "cannot be read")
 	assert.Contains(t, diags[0].Message, "too large")
 }
+
+// TestValidateIndex_ZeroMaxInputBytesIsUnlimited pins the "zero or
+// negative means unlimited" contract lint.File.MaxInputBytes
+// documents, and that every other f.MaxInputBytes consumer in the
+// codebase honors by passing it straight into bytelimit.Read*Limited
+// with no fallback. An on-disk index larger than
+// bytelimit.DefaultMaxInputBytes must still read successfully when
+// f.MaxInputBytes is left at its zero value: a caller (the LSP
+// server, a direct pkg/mdsmith.Session, --max-input-size 0) that
+// asked for no cap must not have one silently reimposed for this one
+// read path.
+func TestValidateIndex_ZeroMaxInputBytesIsUnlimited(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "doc.md")
+	require.NoError(t, os.WriteFile(path, []byte("# T\n"), 0o644))
+	big := strings.Repeat("x", int(2*1024*1024)+100) // over the 2 MB default cap
+	require.NoError(t, os.WriteFile(filepath.Join(root, "out.json"), []byte(big), 0o644))
+
+	f, err := lint.NewFile(path, []byte("# T\n"))
+	require.NoError(t, err)
+	f.RootDir = root
+	require.Zero(t, f.MaxInputBytes)
+
+	sch := &Schema{Source: "test", RootLevel: 2, Index: &IndexSpec{
+		Output:  "out.json",
+		Include: []string{IndexIncludeHeadingsFlat},
+	}}
+	diags := ValidateIndex(f, sch, makeDiagForTest)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "out of date")
+	assert.NotContains(t, diags[0].Message, "too large")
+}
