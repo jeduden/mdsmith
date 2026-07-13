@@ -3,7 +3,7 @@ id: 2607121915
 title: >-
   Resolve the internal/linkgraph purity-contract
   mismatch for wikilink resolution
-status: "🔳"
+status: "✅"
 model: sonnet
 summary: >-
   go.md documents internal/linkgraph as pure (no file
@@ -81,10 +81,10 @@ resolve both in the same pass.
 
 ## Acceptance Criteria
 
-- [ ] go.md's description of `internal/linkgraph` matches
+- [x] go.md's description of `internal/linkgraph` matches
       the package's actual behavior.
-- [ ] `NewWikilinkIndex` and `ResolveWikiLink` no longer
+- [x] `NewWikilinkIndex` and `ResolveWikiLink` no longer
       maintain two independent copies of the walk/match
       algorithm.
-- [ ] `go test ./...` is green.
-- [ ] `mdsmith check .` is green.
+- [x] `go test ./...` is green.
+- [x] `mdsmith check .` is green.

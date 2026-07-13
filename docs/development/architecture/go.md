@@ -39,8 +39,8 @@ question. The current production set:
 - `internal/fix` — produce edits that make a file stop violating rules.
 - `internal/linkgraph` — canonical Markdown link / directive / reference
   extractor; MDS027, `mdsmith list backlinks`, and `internal/index` consult
-  it. Per-file functions are pure and goroutine-safe; `NewWikilinkIndex` and
-  `ResolveWikiLink` walk the workspace (prefer `WikilinkIndexFor` per run).
+  it. Per-file extractors are pure and goroutine-safe; `NewWikilinkIndex` and
+  `ResolveWikiLink` walk the workspace; `WikilinkIndexFor` memoizes per run.
 - `internal/index` — the workspace symbol / edge graph (headings, link-ref
   defs, directives, front-matter keys, reverse edges); queried by the LSP,
   schema, and the rename / deps surfaces.

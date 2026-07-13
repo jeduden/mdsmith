@@ -184,12 +184,11 @@ type WikilinkIndex struct {
 }
 
 // NewWikilinkIndex walks root once and returns a lookup table that
-// future ResolveWikiLink-style queries can serve from memory.
-// Returns nil when root is nil or the workspace walk itself fails
-// (e.g. Open(".") on root returns an error). A nil return lets the
-// caller fall back to per-call walks via ResolveWikiLink rather
-// than serving an empty index that would silently report every
-// target as "not found".
+// future Resolve calls can serve from memory. Returns nil when root
+// is nil or the workspace walk itself fails (e.g. Open(".") on root
+// returns an error). A nil return causes Resolve to return ("", false)
+// for every target; this is preferable to returning an empty index that
+// would silently report every target as not found.
 func NewWikilinkIndex(root fs.FS) *WikilinkIndex {
 	if root == nil {
 		return nil
@@ -303,25 +302,21 @@ func sortByDepthThenName(paths []string) {
 // a WikilinkIndex once (via WikilinkIndexFor) and call Resolve
 // directly instead.
 //
-// from is reserved for future per-directory resolution preference and
-// is currently unused.
-func ResolveWikiLink(root fs.FS, from, target string) (string, bool) {
-	_ = from
+// from is reserved for future per-directory resolution preference
+// and is currently unused.
+func ResolveWikiLink(root fs.FS, _ string, target string) (string, bool) {
 	return NewWikilinkIndex(root).Resolve(target)
 }
 
 // wikilinkSearchKey splits target into the lookup parameters
-// ResolveWikiLink walks the FS with.
+// WikilinkIndex.Resolve uses. target must already have backslashes
+// normalised to forward slashes (Resolve does this before calling).
 //
 // stemMode true means "match by filename stem against .md/.markdown
 // files only" — the bare-page case (`[[Notes]]` or
 // `[[Notes.md]]`). stemMode false means "match by exact filename"
 // — the typed-extension case (`![[diagram.png]]`).
 func wikilinkSearchKey(target string) (wantName, wantStem string, stemMode bool) {
-	// Match the host-independent normalisation ResolveWikiLink uses
-	// up front so a Windows-authored `[[sub\page]]` reaches this
-	// helper as `sub/page`.
-	target = strings.ReplaceAll(target, `\`, `/`)
 	base := path.Base(target)
 	ext := strings.ToLower(path.Ext(base))
 	switch ext {
