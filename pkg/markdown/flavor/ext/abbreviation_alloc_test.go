@@ -25,3 +25,26 @@ func TestBestMatchAt_AllocBudget(t *testing.T) {
 		t.Fatalf("bestMatchAt allocs per call: want 0, got %v", allocs)
 	}
 }
+
+// TestFindMatches_AllocBudget pins findMatches's own per-call
+// allocation count given a precomputed terms slice. Transform builds
+// terms once per document via tableTerms and threads it through
+// rewriteText into findMatches, which is otherwise called once per
+// Text node in the document (one or more per paragraph/heading/
+// list-item) — tableTerms itself must not run again inside
+// findMatches, or the per-node cost this hoist is meant to eliminate
+// would reappear (docs/development/high-performance-go.md "Skip work
+// you don't need").
+func TestFindMatches_AllocBudget(t *testing.T) {
+	tbl := abbrTable{
+		"HTML": nil, "CSS": nil, "API": nil, "URL": nil, "SQL": nil,
+	}
+	terms := tableTerms(tbl)
+	body := []byte("some plain prose with no matching terms at all")
+	allocs := testing.AllocsPerRun(1000, func() {
+		_ = findMatches(body, terms)
+	})
+	if allocs > 0 {
+		t.Fatalf("findMatches allocs per call: want 0, got %v", allocs)
+	}
+}

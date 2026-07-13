@@ -174,6 +174,12 @@ func (t *abbreviationTransformer) Transform(doc *ast.Document, reader text.Reade
 	if len(table) == 0 {
 		return
 	}
+	// Precomputed once per Transform call (per document) rather than
+	// once per Text node: table is fixed for the whole walk below, so
+	// rebuilding the []byte term forms per node would repeat the same
+	// conversion once per paragraph/heading/list-item instead of once
+	// total (docs/development/high-performance-go.md "Stay in []byte").
+	terms := tableTerms(table)
 	source := reader.Source()
 
 	// Walk every Text descendant in the document and rewrite
@@ -190,7 +196,7 @@ func (t *abbreviationTransformer) Transform(doc *ast.Document, reader text.Reade
 			*AbbreviationDefinition:
 			return ast.WalkSkipChildren, nil
 		case *ast.Text:
-			rewriteText(node, table, source)
+			rewriteText(node, terms, source)
 			return ast.WalkSkipChildren, nil
 		}
 		return ast.WalkContinue, nil
@@ -208,13 +214,13 @@ type abbrMatch struct {
 // inserts AbbreviationReference nodes in their place. The original
 // Text node's segment is shrunk to the prefix before the first
 // match; subsequent content is appended as sibling nodes.
-func rewriteText(t *ast.Text, table abbrTable, source []byte) {
+func rewriteText(t *ast.Text, terms []tableTerm, source []byte) {
 	seg := t.Segment
 	body := seg.Value(source)
 	if len(body) == 0 {
 		return
 	}
-	matches := findMatches(body, table)
+	matches := findMatches(body, terms)
 	if len(matches) == 0 {
 		return
 	}
@@ -234,12 +240,14 @@ type tableTerm struct {
 }
 
 // tableTerms converts every key of table to its []byte form once.
-// findMatches calls bestMatchAt once per word-boundary candidate
-// position in a Text node's body, and bestMatchAt used to convert
-// every term from its map key to []byte on every such call — the
+// Transform calls this once per document (table is fixed for the
+// whole AST walk) and threads the result through rewriteText and
+// findMatches, which otherwise call bestMatchAt once per
+// word-boundary candidate position in every Text node's body —
+// without precomputing, that per-(position, term) probe converts
+// every term from its map key to []byte on every single call, the
 // dominant allocator on documents with defined abbreviations, since
-// positions vastly outnumber terms. Precomputing here, once per
-// findMatches call, keeps that per-(position, term) probe alloc-free
+// positions vastly outnumber terms
 // (docs/development/high-performance-go.md "Stay in []byte").
 func tableTerms(table abbrTable) []tableTerm {
 	terms := make([]tableTerm, 0, len(table))
@@ -252,11 +260,7 @@ func tableTerms(table abbrTable) []tableTerm {
 // findMatches scans body for the longest whole-word match of any
 // defined term at each word-boundary position and advances past each
 // hit so occurrences never overlap.
-func findMatches(body []byte, table abbrTable) []abbrMatch {
-	if len(table) == 0 {
-		return nil
-	}
-	terms := tableTerms(table)
+func findMatches(body []byte, terms []tableTerm) []abbrMatch {
 	var matches []abbrMatch
 	for i := 0; i < len(body); {
 		if i > 0 && isWordByte(body[i-1]) {

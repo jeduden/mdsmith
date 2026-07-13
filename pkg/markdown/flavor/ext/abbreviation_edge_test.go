@@ -15,7 +15,7 @@ func TestRewriteTextEmptyBody(t *testing.T) {
 	tbl := abbrTable{"HTML": []byte("Hyper Text Markup Language")}
 	src := []byte("")
 	tn := ast.NewTextSegment(text.NewSegment(0, 0))
-	assert.NotPanics(t, func() { rewriteText(tn, tbl, src) })
+	assert.NotPanics(t, func() { rewriteText(tn, tableTerms(tbl), src) })
 }
 
 // TestRewriteTextOrphanParent covers the early-return when the Text
@@ -24,7 +24,7 @@ func TestRewriteTextOrphanParent(t *testing.T) {
 	src := []byte("HTML")
 	tbl := abbrTable{"HTML": []byte("Hyper Text Markup Language")}
 	tn := ast.NewTextSegment(text.NewSegment(0, len(src)))
-	assert.NotPanics(t, func() { rewriteText(tn, tbl, src) })
+	assert.NotPanics(t, func() { rewriteText(tn, tableTerms(tbl), src) })
 }
 
 // TestBestMatchAtWordBoundaryRejectsSuffix exercises the
