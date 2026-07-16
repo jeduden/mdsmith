@@ -292,27 +292,27 @@ func TestFix_NoOffendingBlocks_ReturnsSourceUnchanged(t *testing.T) {
 }
 
 func TestStripPromptAfter_NoPrompt_Unchanged(t *testing.T) {
-	assert.Equal(t, "not a prompt", stripPromptAfter([]byte("not a prompt"), 0))
+	assert.Equal(t, []byte("not a prompt"), stripPromptAfter([]byte("not a prompt"), 0))
 }
 
 func TestStripPromptAfter_Indented_PreservesLeadingWhitespace(t *testing.T) {
-	assert.Equal(t, "  ls", stripPromptAfter([]byte("  $ ls"), 0))
+	assert.Equal(t, []byte("  ls"), stripPromptAfter([]byte("  $ ls"), 0))
 }
 
 func TestStripPromptAfter_BlankLine_Unchanged(t *testing.T) {
-	assert.Equal(t, "   ", stripPromptAfter([]byte("   "), 0))
+	assert.Equal(t, []byte("   "), stripPromptAfter([]byte("   "), 0))
 }
 
 func TestStripPromptAfter_WithBlockquotePrefix(t *testing.T) {
 	// contentCol=2 marks the parser-stripped "> " prefix.
-	assert.Equal(t, "> ls", stripPromptAfter([]byte("> $ ls"), 2))
+	assert.Equal(t, []byte("> ls"), stripPromptAfter([]byte("> $ ls"), 2))
 }
 
 func TestStripPromptAfter_ContentColPastEnd_Unchanged(t *testing.T) {
 	// Defensive: a content column past the raw line length passes
 	// through untouched (can happen when goldmark strips a trailing
 	// container marker that the parser logically consumed).
-	assert.Equal(t, "> ", stripPromptAfter([]byte("> "), 10))
+	assert.Equal(t, []byte("> "), stripPromptAfter([]byte("> "), 10))
 }
 
 // TestFix_SkipsGeneratedRange covers the inGeneratedRange guard in
