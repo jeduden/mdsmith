@@ -254,6 +254,9 @@ func stripPromptAfter(line []byte, contentCol int) []byte {
 	if !bytes.HasPrefix(stripped, []byte("$ ")) {
 		return line
 	}
+	// content[2:] and the -2 below are safe because stripped is a
+	// right-trim of content, so the "$ " prefix just matched on stripped
+	// is also content's own first two bytes.
 	out := make([]byte, 0, contentCol+len(leading)+len(content)-2)
 	out = append(out, prefix...)
 	out = append(out, leading...)

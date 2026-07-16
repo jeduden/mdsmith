@@ -772,10 +772,9 @@ func resolveBodySyncLine(
 	if _, err := fieldinterp.ResolvePath(docFM, path); err != nil {
 		return patchedLine{}, false
 	}
-	expected := resolveFields(sp.BodyText, docFM)
-	// Convert expected once so per-line comparisons need no string() cast,
-	// matching checkBodySync's convention for the same pattern.
-	expectedBytes := []byte(expected)
+	// Convert expected once so per-line comparisons and the eventual
+	// replacement both work from the same []byte, no string() cast.
+	expectedBytes := []byte(resolveFields(sp.BodyText, docFM))
 	re := sp.compiled
 	for i := startLine - 1; i < endLine && i < len(work); i++ {
 		trimmed := bytes.TrimSpace(work[i])
@@ -783,9 +782,11 @@ func resolveBodySyncLine(
 			continue // already correct; keep scanning for stale duplicates
 		}
 		if re.Match(trimmed) {
-			orig := string(work[i])
-			leadLen := len(orig) - len(strings.TrimLeft(orig, " \t"))
-			return patchedLine{idx: i, val: []byte(orig[:leadLen] + expected)}, true
+			leadLen := len(work[i]) - len(bytes.TrimLeft(work[i], " \t"))
+			val := make([]byte, leadLen, leadLen+len(expectedBytes))
+			copy(val, work[i][:leadLen])
+			val = append(val, expectedBytes...)
+			return patchedLine{idx: i, val: val}, true
 		}
 	}
 	return patchedLine{}, false
