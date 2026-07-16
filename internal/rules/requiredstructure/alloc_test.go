@@ -37,6 +37,51 @@ func TestCollectBodySyncPoints_NoByteSplitAlloc(t *testing.T) {
 		"collectBodySyncPoints allocs: want ≤ 2 (string casts only), got %v", allocs)
 }
 
+// TestResolveBodySyncLine_NoPerLineStringAlloc confirms resolveBodySyncLine
+// (the Fix-path counterpart to checkBodySync, run per body-sync-point line
+// in fixBodySyncIn) does not allocate a string per scanned line. Before the
+// fix, every line paid strings.TrimSpace(string(work[i])) even when it
+// neither matched expected nor the field pattern; bytes.TrimSpace +
+// bytes.Equal + re.Match stay in []byte for that common non-matching case,
+// same convention as checkBodySync's expectedBytes precomputation.
+func TestResolveBodySyncLine_NoPerLineStringAlloc(t *testing.T) {
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race")
+	}
+
+	bodyText := "Version: {version}"
+	sp := syncPoint{
+		Field:    "version",
+		InBody:   true,
+		BodyText: bodyText,
+		compiled: buildFieldPattern(bodyText, nil),
+	}
+	docFM := map[string]any{"version": "2.0"}
+
+	// 20 lines of unrelated prose: none equal the expected text or match
+	// the field pattern, so the scan reaches every line without finding
+	// anything to patch — the worst case for a per-line allocation.
+	work := make([][]byte, 20)
+	for i := range work {
+		work[i] = []byte("unrelated prose that never matches the template")
+	}
+
+	allocs := testing.AllocsPerRun(100, func() {
+		_, ok := resolveBodySyncLine(sp, docFM, work, 1, len(work))
+		if ok {
+			t.Fatal("expected no match against unrelated prose")
+		}
+	})
+	t.Logf("resolveBodySyncLine allocs/op = %.0f", allocs)
+	// 7 fixed allocs (expectedBytes, ParseCUEPath, etc.) plus zero per-line
+	// allocations is the measured floor after the fix; the old
+	// strings.TrimSpace(string(work[i])) cast paid one alloc per scanned
+	// line on top of that (27 for this 20-line fixture).
+	require.LessOrEqualf(t, allocs, 10.0,
+		"resolveBodySyncLine allocs/op = %.0f; want no per-line string() allocation across 20 scanned lines",
+		allocs)
+}
+
 // TestCheckBodySync_NoBytesPerLineAlloc confirms checkBodySync does not
 // allocate a string per body line. A 6-line body section with no matching
 // line must stay within budget: expectedBytes (1) + make(para) (1) +
