@@ -249,10 +249,11 @@ func (r *Rule) allowMarkerDir(allowMarker string) string {
 }
 
 func topLevelNodes(root ast.Node) []ast.Node {
-	// Pre-size to 8: typical documents have 4–12 top-level AST nodes;
-	// starting with cap 8 avoids 3–4 backing-array reallocations that
-	// nil-slice append would cause (nil→1→2→4→8).
-	nodes := make([]ast.Node, 0, 8)
+	// root.ChildCount() is an O(1) field read (goldmark tracks it per
+	// node), so the exact count is known before the walk starts —
+	// pre-sizing to it avoids any backing-array regrowth regardless of
+	// document length, unlike a fixed heuristic capacity.
+	nodes := make([]ast.Node, 0, root.ChildCount())
 	for n := root.FirstChild(); n != nil; n = n.NextSibling() {
 		nodes = append(nodes, n)
 	}
