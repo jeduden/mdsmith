@@ -72,8 +72,9 @@ var layerByID = buildLayerMap()
 //
 // The map stays as the seam for any future projection-only consumer the
 // audit marks A-no-skipping but Layer N does not yet back. It is empty
-// today.
-var astProjectionConsumers = map[string]bool{}
+// today. map[string]struct{} because membership is all that is ever
+// checked — no entry's value is read.
+var astProjectionConsumers = map[string]struct{}{}
 
 // knownNilASTSafe lists rules confirmed nil-AST-safe by code inspection but
 // whose walk-audit probe cannot fire them, so the audit classifies them
@@ -83,8 +84,10 @@ var astProjectionConsumers = map[string]bool{}
 // signals prove nothing. Adding a rule here is a manual commitment that its
 // Check never dereferences f.AST — keep it limited to rules whose manifest
 // entry has reads_file_ast: false (enforced by rulelayer_test.go).
-var knownNilASTSafe = map[string]bool{
-	"MDS069": true, // unique-frontmatter: reads f.FrontMatter + RunCache, never f.AST
+// map[string]struct{} because membership is all that is ever checked —
+// no entry's value is read.
+var knownNilASTSafe = map[string]struct{}{
+	"MDS069": {}, // unique-frontmatter: reads f.FrontMatter + RunCache, never f.AST
 }
 
 // buildLayerMap decodes the embedded manifest into the id→layer table.
@@ -110,7 +113,8 @@ func buildLayerMapFrom(manifest []byte) map[string]Layer {
 	}
 	m := make(map[string]Layer, len(entries))
 	for _, e := range entries {
-		if !astProjectionConsumers[e.ID] && nilASTBackable(e) {
+		_, isProjectionConsumer := astProjectionConsumers[e.ID]
+		if !isProjectionConsumer && nilASTBackable(e) {
 			m[e.ID] = Layer0
 		} else {
 			m[e.ID] = LayerAST
@@ -144,7 +148,7 @@ func buildLayerMapFrom(manifest []byte) map[string]Layer {
 //     manifest is ever hand-edited, and TestBProseOnlyRulesAreNilASTSafe pins
 //     the live invariant.
 func nilASTBackable(e auditEntry) bool {
-	if knownNilASTSafe[e.ID] {
+	if _, ok := knownNilASTSafe[e.ID]; ok {
 		return true
 	}
 	if e.Category == "A-no-skipping" {
