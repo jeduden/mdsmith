@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
 func TestIsAbbrev_TrainedModel(t *testing.T) {
@@ -269,5 +270,20 @@ func TestLeadingWhitespace(t *testing.T) {
 	}
 	if got := leadingWhitespace([]byte("text")); got != "" {
 		t.Errorf("leadingWhitespace = %q, want empty", got)
+	}
+}
+
+func TestParagraphHasRawHTML_NoHTML(t *testing.T) {
+	p := ast.NewParagraph()
+	if paragraphHasRawHTML(p) {
+		t.Errorf("paragraphHasRawHTML = true for paragraph without raw HTML, want false")
+	}
+}
+
+func TestParagraphHasRawHTML_WithHTML(t *testing.T) {
+	p := ast.NewParagraph()
+	p.AppendChild(p, ast.NewRawHTML())
+	if !paragraphHasRawHTML(p) {
+		t.Errorf("paragraphHasRawHTML = false for paragraph with raw HTML, want true")
 	}
 }

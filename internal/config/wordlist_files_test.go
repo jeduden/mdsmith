@@ -61,3 +61,76 @@ func TestParseWordlistFile_RejectsUnknownKey(t *testing.T) {
 	_, err := parseWordlistFile(filepath.Join(dir, ".mdsmith", "wordlists", "bad.yaml"))
 	require.Error(t, err)
 }
+
+func TestToWordlistMap_Nil(t *testing.T) {
+	assert.Nil(t, toWordlistMap(nil))
+	assert.Nil(t, toWordlistMap(map[string]UserWordlist{}))
+}
+
+func TestToWordlistMap_Populated(t *testing.T) {
+	m := map[string]UserWordlist{
+		"team": {Extends: "base", Entries: []string{"delve"}, SourcePath: "/cfg"},
+	}
+	got := toWordlistMap(m)
+	require.Len(t, got, 1)
+	wl := got["team"]
+	assert.Equal(t, "team", wl.Name)
+	assert.Equal(t, "base", wl.Extends)
+	assert.Equal(t, []string{"delve"}, wl.Entries)
+	assert.Equal(t, "/cfg", wl.SourcePath)
+}
+
+func TestStripLists_RemovesKey(t *testing.T) {
+	in := map[string]any{"lists": []any{"x"}, "contains": []any{"y"}}
+	out := stripLists(in)
+	_, hasLists := out["lists"]
+	assert.False(t, hasLists, "lists key must be absent after strip")
+	assert.Equal(t, []any{"y"}, out["contains"])
+}
+
+func TestStripLists_NoListsKey(t *testing.T) {
+	in := map[string]any{"contains": []any{"a"}}
+	out := stripLists(in)
+	assert.Equal(t, map[string]any{"contains": []any{"a"}}, out)
+}
+
+func TestResolveListEntries_Empty(t *testing.T) {
+	assert.Nil(t, resolveListEntries(nil, nil))
+}
+
+func TestResolveListEntries_SkipsUnresolvable(t *testing.T) {
+	got := resolveListEntries([]string{"ghost"}, nil)
+	assert.Nil(t, got)
+}
+
+func TestResolveListEntries_ResolvesEntry(t *testing.T) {
+	userMap := map[string]wordlist.Wordlist{
+		"base": {Name: "base", Entries: []string{"delve", "robust"}},
+	}
+	got := resolveListEntries([]string{"base"}, userMap)
+	assert.Equal(t, []string{"delve", "robust"}, got)
+}
+
+func TestExpandRuleLists_NonListValueIsNoop(t *testing.T) {
+	settings := map[string]any{"contains": []any{"existing"}}
+	expandRuleLists("not-a-list", "contains", settings, nil)
+	assert.Equal(t, []any{"existing"}, settings["contains"])
+}
+
+func TestExpandRuleLists_UnionsResolvedFirst(t *testing.T) {
+	userMap := map[string]wordlist.Wordlist{
+		"base": {Name: "base", Entries: []string{"delve"}},
+	}
+	settings := map[string]any{"contains": []any{"robust"}}
+	expandRuleLists([]any{"base"}, "contains", settings, userMap)
+	assert.Equal(t, []any{"delve", "robust"}, settings["contains"])
+}
+
+func TestExpandRuleLists_DeduplicatesEntries(t *testing.T) {
+	userMap := map[string]wordlist.Wordlist{
+		"base": {Name: "base", Entries: []string{"delve", "robust"}},
+	}
+	settings := map[string]any{"contains": []any{"delve"}}
+	expandRuleLists([]any{"base"}, "contains", settings, userMap)
+	assert.Equal(t, []any{"delve", "robust"}, settings["contains"])
+}

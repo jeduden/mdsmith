@@ -161,3 +161,56 @@ func TestFix_PreservesCRLFLineEndings(t *testing.T) {
 		"CRLF source must not produce bare LF in output: %q", got)
 	assert.Contains(t, got, "\r\n", "CRLF source must produce CRLF output")
 }
+
+func TestOverlapsGeneratedRange_NoRanges(t *testing.T) {
+	f := &lint.File{}
+	assert.False(t, overlapsGeneratedRange(f, 1, 5))
+}
+
+func TestOverlapsGeneratedRange_Disjoint(t *testing.T) {
+	f := &lint.File{GeneratedRanges: []lint.LineRange{{From: 10, To: 20}}}
+	assert.False(t, overlapsGeneratedRange(f, 1, 5))
+	assert.False(t, overlapsGeneratedRange(f, 21, 25))
+}
+
+func TestOverlapsGeneratedRange_Overlaps(t *testing.T) {
+	f := &lint.File{GeneratedRanges: []lint.LineRange{{From: 5, To: 10}}}
+	assert.True(t, overlapsGeneratedRange(f, 1, 5), "touches lower bound")
+	assert.True(t, overlapsGeneratedRange(f, 10, 15), "touches upper bound")
+	assert.True(t, overlapsGeneratedRange(f, 6, 9), "fully inside")
+	assert.True(t, overlapsGeneratedRange(f, 1, 20), "range spans the generated block")
+}
+
+func TestTrimTrailingCR_CRLFMode(t *testing.T) {
+	assert.Equal(t, []byte("line"), trimTrailingCR([]byte("line\r"), true))
+}
+
+func TestTrimTrailingCR_CRLFModeNoCR(t *testing.T) {
+	assert.Equal(t, []byte("line"), trimTrailingCR([]byte("line"), true))
+}
+
+func TestTrimTrailingCR_NonCRLFModePreservesCR(t *testing.T) {
+	assert.Equal(t, []byte("line\r"), trimTrailingCR([]byte("line\r"), false))
+}
+
+func TestTrimTrailingCR_EmptySlice(t *testing.T) {
+	assert.Equal(t, []byte{}, trimTrailingCR([]byte{}, true))
+}
+
+func TestCloneBytes_ProducesEqualContent(t *testing.T) {
+	src := []byte("hello world")
+	got := cloneBytes(src)
+	assert.Equal(t, src, got)
+}
+
+func TestCloneBytes_IsolatesFromSource(t *testing.T) {
+	src := []byte("hello")
+	got := cloneBytes(src)
+	got[0] = 'X'
+	assert.Equal(t, byte('h'), src[0], "mutating clone must not affect source")
+}
+
+func TestCloneBytes_Nil(t *testing.T) {
+	got := cloneBytes(nil)
+	assert.Equal(t, []byte{}, got)
+}
