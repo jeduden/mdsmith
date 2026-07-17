@@ -19,9 +19,21 @@ This guide compares existing mdsmith rules that touch readability and length wit
 | [MDS028](../../internal/rules/MDS028-token-budget/README.md) `token-budget`                   | Estimated token count per file (`heuristic` or `tokenizer` mode)             | `max: 8000`, `mode: heuristic`                   | Exact model token parity; tokenizer mode is still approximate   |
 | [MDS001](../../internal/rules/MDS001-line-length/README.md) `line-length`                     | Characters per line                                                          | `max: 80`                                        | Verbosity and paragraph complexity                              |
 
-## Planned metrics (not implemented)
+## File-scope readability metrics (MET008–MET010)
 
-No additional metrics are planned at this time.
+Three opt-in metrics expose the same readability signals at file
+scope that `MDS023 paragraph-readability` exposes per paragraph:
+
+| Metric (ID)                       | Measures                                       |
+| --------------------------------- | ---------------------------------------------- |
+| `readability` (MET008)            | ARI over the whole file's extracted plain text |
+| `sentences` (MET009)              | Total sentence count                           |
+| `avg-words-per-sentence` (MET010) | Average words per sentence                     |
+
+Use `mdsmith metrics get -f json <file>` to read all three at once
+for a single file, or `mdsmith metrics rank --metrics readability`
+to rank a directory. These metrics are not in the default rank
+table — pass them explicitly with `--metrics`.
 
 ## What token budget awareness is trying to measure
 

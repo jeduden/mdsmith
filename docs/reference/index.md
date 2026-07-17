@@ -29,7 +29,7 @@ row: "- [{summary}]({filename})"
 - [Selection-style commands that walk the workspace and emit matches.](cli/list.md)
 - [Run a Language Server Protocol server on stdio for editor integrations.](cli/lsp.md)
 - [Git merge driver that resolves conflicts inside generated sections.](cli/merge-driver.md)
-- [List and rank shared Markdown metrics (file length, token estimate, readability, …).](cli/metrics.md)
+- [List, rank, and get shared Markdown metrics (file length, token estimate, readability, …).](cli/metrics.md)
 - [Install / manage a pre-merge-commit hook that runs `mdsmith fix` after a merge.](cli/pre-merge-commit.md)
 - [Select Markdown files by a CUE expression on front matter.](cli/query.md)
 - [Rename a heading or link-reference label and rewrite every dependent edit.](cli/rename.md)

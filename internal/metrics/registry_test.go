@@ -95,6 +95,70 @@ func TestBuiltins_Computable(t *testing.T) {
 	}
 }
 
+func TestReadabilityMetric_Computable(t *testing.T) {
+	def, ok := LookupScope(ScopeFile, "readability")
+	require.True(t, ok, "readability metric not found in registry")
+	require.Equal(t, "MET008", def.ID)
+	require.False(t, def.Default, "readability should not be a default metric")
+	require.Equal(t, KindFloat, def.Kind)
+
+	src := []byte("The cat sat on the mat. Simple text here.\n")
+	val, err := def.Compute(NewDocument("test.md", src))
+	require.NoError(t, err)
+	require.True(t, val.Available)
+}
+
+func TestSentencesMetric_Computable(t *testing.T) {
+	def, ok := LookupScope(ScopeFile, "sentences")
+	require.True(t, ok, "sentences metric not found in registry")
+	require.Equal(t, "MET009", def.ID)
+	require.False(t, def.Default, "sentences should not be a default metric")
+	require.Equal(t, KindInteger, def.Kind)
+
+	src := []byte("Hello world. How are you?\n")
+	val, err := def.Compute(NewDocument("test.md", src))
+	require.NoError(t, err)
+	require.True(t, val.Available)
+	require.Equal(t, float64(2), val.Number)
+}
+
+func TestAvgWordsPerSentenceMetric_Computable(t *testing.T) {
+	def, ok := LookupScope(ScopeFile, "avg-words-per-sentence")
+	require.True(t, ok, "avg-words-per-sentence metric not found in registry")
+	require.Equal(t, "MET010", def.ID)
+	require.False(t, def.Default, "avg-words-per-sentence should not be a default metric")
+	require.Equal(t, KindFloat, def.Kind)
+
+	// "Hello world." = 2 words, 1 sentence => 2.0
+	src := []byte("Hello world.\n")
+	val, err := def.Compute(NewDocument("test.md", src))
+	require.NoError(t, err)
+	require.True(t, val.Available)
+	require.InDelta(t, 2.0, val.Number, 0.01)
+}
+
+func TestAvgWordsPerSentenceMetric_ZeroSentences(t *testing.T) {
+	def, ok := LookupScope(ScopeFile, "avg-words-per-sentence")
+	require.True(t, ok, "avg-words-per-sentence metric not found in registry")
+
+	// Empty file => 0 sentences => avg should be 0
+	src := []byte("")
+	val, err := def.Compute(NewDocument("test.md", src))
+	require.NoError(t, err)
+	require.True(t, val.Available)
+	require.Equal(t, 0.0, val.Number)
+}
+
+func TestNewMetrics_NotInDefaults(t *testing.T) {
+	defaults := Defaults(ScopeFile)
+	for _, def := range defaults {
+		switch def.ID {
+		case "MET008", "MET009", "MET010":
+			t.Errorf("metric %s (%s) should not be a default metric", def.ID, def.Name)
+		}
+	}
+}
+
 func TestConciseness_DenseBeatsVerbose(t *testing.T) {
 	def, ok := LookupScope(ScopeFile, "conciseness")
 	require.True(t, ok, "conciseness metric not found")
