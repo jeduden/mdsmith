@@ -160,7 +160,7 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		return f.Source
 	}
 
-	rewriteLines := map[int]string{}
+	rewriteLines := map[int][]byte{}
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
@@ -193,7 +193,7 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	buf.Grow(len(f.Source))
 	for i, raw := range f.Lines {
 		if rewritten, ok := rewriteLines[i+1]; ok {
-			buf.WriteString(rewritten)
+			buf.Write(rewritten)
 		} else {
 			buf.Write(raw)
 		}
@@ -237,21 +237,31 @@ func allLinesArePrompts(f *lint.File, fcb *ast.FencedCodeBlock) bool {
 // line, preserving the parser-stripped container prefix
 // (line[:contentCol], e.g. "> " for a blockquote, "  " for a list
 // indent) and any leading whitespace inside the content. Blank lines
-// and lines without a prompt pass through unchanged.
-func stripPromptAfter(line []byte, contentCol int) string {
+// and lines without a prompt pass through unchanged: line is returned
+// as-is rather than copied through string(line), so the common case
+// inside a flagged block (blank separator lines between commands)
+// costs no allocation.
+func stripPromptAfter(line []byte, contentCol int) []byte {
 	if contentCol > len(line) {
-		return string(line)
+		return line
 	}
 	prefix := line[:contentCol]
 	leading, content := splitLeadingWhitespace(line[contentCol:])
 	stripped := bytes.TrimRight(content, " \t\r")
 	if len(stripped) == 0 {
-		return string(line)
+		return line
 	}
 	if !bytes.HasPrefix(stripped, []byte("$ ")) {
-		return string(line)
+		return line
 	}
-	return string(prefix) + string(leading) + string(content[2:])
+	// content[2:] and the -2 below are safe because stripped is a
+	// right-trim of content, so the "$ " prefix just matched on stripped
+	// is also content's own first two bytes.
+	out := make([]byte, 0, contentCol+len(leading)+len(content)-2)
+	out = append(out, prefix...)
+	out = append(out, leading...)
+	out = append(out, content[2:]...)
+	return out
 }
 
 // contentOffsetInLine returns the byte column (0-based) on the line

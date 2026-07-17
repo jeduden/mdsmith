@@ -129,7 +129,7 @@ func TestIsLayer0(t *testing.T) {
 // (withheld), and an AST-requiring category (withheld).
 func TestNilASTBackable(t *testing.T) {
 	t.Cleanup(func() { delete(knownNilASTSafe, "MDS950") })
-	knownNilASTSafe["MDS950"] = true
+	knownNilASTSafe["MDS950"] = struct{}{}
 
 	assert.True(t, nilASTBackable(auditEntry{ID: "MDS950", Category: "ast-required"}),
 		"knownNilASTSafe override promotes regardless of category")
@@ -215,7 +215,8 @@ func TestKnownNilASTSafeAreLayer0(t *testing.T) {
 		assert.True(t, IsLayer0(id), "%s is in knownNilASTSafe; must be Layer 0", id)
 		assert.Equal(t, Layer0, Of(id))
 	}
-	assert.True(t, knownNilASTSafe["MDS069"], "MDS069 must be in the override set")
+	_, ok := knownNilASTSafe["MDS069"]
+	assert.True(t, ok, "MDS069 must be in the override set")
 }
 
 // TestKnownNilASTSafeOnlyListsNonASTReaders guards the override's manual
@@ -267,7 +268,7 @@ func TestBuildLayerMapFromClassifies(t *testing.T) {
 // entry, independently of the live layerByID table. A non-A-no-skipping
 // rule listed in knownNilASTSafe must resolve to Layer0.
 func TestBuildLayerMapFromKnownNilASTSafePromotesToLayer0(t *testing.T) {
-	knownNilASTSafe["MDS904"] = true
+	knownNilASTSafe["MDS904"] = struct{}{}
 	t.Cleanup(func() { delete(knownNilASTSafe, "MDS904") })
 	m := buildLayerMapFrom([]byte(`[
 		{"id":"MDS904","category":"inconclusive-not-fired"}
@@ -282,7 +283,7 @@ func TestBuildLayerMapFromKnownNilASTSafePromotesToLayer0(t *testing.T) {
 // package map for the duration of one buildLayerMapFrom call so the test
 // does not depend on a live override entry.
 func TestAstProjectionConsumerOverrideForcesAST(t *testing.T) {
-	astProjectionConsumers["MDS902"] = true
+	astProjectionConsumers["MDS902"] = struct{}{}
 	t.Cleanup(func() { delete(astProjectionConsumers, "MDS902") })
 	m := buildLayerMapFrom([]byte(`[
 		{"id":"MDS902","category":"A-no-skipping"}
@@ -295,8 +296,8 @@ func TestAstProjectionConsumerOverrideForcesAST(t *testing.T) {
 // it reads a projection the nil-AST path does not back, regardless of whether its
 // Check never directly dereferences f.AST.
 func TestAstProjectionConsumerOverridesKnownNilASTSafe(t *testing.T) {
-	astProjectionConsumers["MDS903"] = true
-	knownNilASTSafe["MDS903"] = true
+	astProjectionConsumers["MDS903"] = struct{}{}
+	knownNilASTSafe["MDS903"] = struct{}{}
 	t.Cleanup(func() {
 		delete(astProjectionConsumers, "MDS903")
 		delete(knownNilASTSafe, "MDS903")
@@ -314,7 +315,7 @@ func TestAstProjectionConsumerOverridesKnownNilASTSafe(t *testing.T) {
 // category. This guards the soundness escape hatch — buildLayerMapFrom gates
 // the whole Layer 0 promotion behind !astProjectionConsumers[e.ID].
 func TestAstProjectionConsumerOverridesBProseOnly(t *testing.T) {
-	astProjectionConsumers["MDS904"] = true
+	astProjectionConsumers["MDS904"] = struct{}{}
 	t.Cleanup(func() { delete(astProjectionConsumers, "MDS904") })
 	m := buildLayerMapFrom([]byte(`[
 		{"id":"MDS904","category":"B-prose-only","nil_ast_safe":true}

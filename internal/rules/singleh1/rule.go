@@ -161,7 +161,9 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	result := make([]byte, len(f.Source))
 	copy(result, f.Source)
 
-	var reps []rep
+	// len(toDemote) is a hard upper bound: each iteration appends at
+	// most one entry, so pre-sizing to it avoids append's grow+copy.
+	reps := make([]rep, 0, len(toDemote))
 
 	for _, h := range toDemote {
 		if r, ok := buildDemoteReplacement(h, f.Source); ok {
