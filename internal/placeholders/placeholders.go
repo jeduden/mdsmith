@@ -6,20 +6,27 @@
 // Configurable interface. When checking a node it calls ContainsBodyToken
 // or MaskBodyTokens to decide whether to skip or neutralize the content.
 //
-// The four initial tokens are:
+// The five tokens are:
 //
-//   - var-token       — {identifier} interpolation placeholders
-//   - heading-question — headings whose text is exactly "?"
+//   - var-token           — {identifier} interpolation placeholders
+//   - heading-question    — headings whose text is exactly "?"
 //   - placeholder-section — headings whose text is exactly "..."
-//   - cue-frontmatter  — CUE constraint expressions in front-matter values
+//   - cue-frontmatter     — CUE constraint expressions in front-matter values
+//   - apm-input-token     — APM ${input:NAME} prompt parameters
 package placeholders
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/fieldinterp"
 )
+
+// apmInputPrefix is the byte sequence that uniquely opens an APM input parameter.
+const apmInputPrefix = "${input:"
+
+var apmInputRe = regexp.MustCompile(`\$\{input:[A-Za-z][\w-]{0,63}\}`)
 
 // Named placeholder tokens.
 const (
@@ -27,6 +34,7 @@ const (
 	HeadingQuestion    = "heading-question"
 	PlaceholderSection = "placeholder-section"
 	CUEFrontmatter     = "cue-frontmatter"
+	APMInputToken      = "apm-input-token"
 )
 
 // neutralText is the neutral replacement per body token.
@@ -34,12 +42,13 @@ var neutralText = map[string]string{
 	VarToken:           "word",
 	HeadingQuestion:    "Placeholder",
 	PlaceholderSection: "Placeholder Section",
+	APMInputToken:      "word",
 }
 
 // IsKnown reports whether name is a recognized token name.
 func IsKnown(name string) bool {
 	switch name {
-	case VarToken, HeadingQuestion, PlaceholderSection, CUEFrontmatter:
+	case VarToken, HeadingQuestion, PlaceholderSection, CUEFrontmatter, APMInputToken:
 		return true
 	}
 	return false
@@ -72,6 +81,10 @@ func ContainsBodyToken(text string, tokens []string) bool {
 			if strings.TrimSpace(text) == "..." {
 				return true
 			}
+		case APMInputToken:
+			if strings.Contains(text, apmInputPrefix) && apmInputRe.MatchString(text) {
+				return true
+			}
 		}
 	}
 	return false
@@ -80,8 +93,8 @@ func ContainsBodyToken(text string, tokens []string) bool {
 // MaskBodyTokens replaces placeholder token patterns in text with neutral
 // content. cue-frontmatter is not a body token and is left unchanged.
 // Whole-text tokens (heading-question, placeholder-section) replace the
-// entire text when they match; substring tokens (var-token) replace each
-// occurrence in place.
+// entire text when they match; substring tokens (var-token, apm-input-token)
+// replace each occurrence in place.
 func MaskBodyTokens(text string, tokens []string) string {
 	for _, tok := range tokens {
 		switch tok {
@@ -95,6 +108,10 @@ func MaskBodyTokens(text string, tokens []string) string {
 		case PlaceholderSection:
 			if strings.TrimSpace(text) == "..." {
 				return neutralText[PlaceholderSection]
+			}
+		case APMInputToken:
+			if strings.Contains(text, apmInputPrefix) {
+				text = apmInputRe.ReplaceAllLiteralString(text, neutralText[APMInputToken])
 			}
 		}
 	}
@@ -128,6 +145,10 @@ func stripBodyTokens(text string, tokens []string) string {
 		case PlaceholderSection:
 			if strings.TrimSpace(text) == "..." {
 				return ""
+			}
+		case APMInputToken:
+			if strings.Contains(text, apmInputPrefix) {
+				text = apmInputRe.ReplaceAllLiteralString(text, "")
 			}
 		}
 	}

@@ -14,12 +14,13 @@ trigger false positives.
 
 ## Token vocabulary
 
-| Token name            | Matches                                                          |
-| --------------------- | ---------------------------------------------------------------- |
-| `var-token`           | `{identifier}` interpolation placeholders (`{title}`, `{a.b.c}`) |
-| `heading-question`    | A heading whose text is exactly `?`                              |
-| `placeholder-section` | A heading whose text is exactly `...`                            |
-| `cue-frontmatter`     | CUE constraint expressions in front-matter values                |
+| Token name            | Matches                                                                                    |
+| --------------------- | ------------------------------------------------------------------------------------------ |
+| `var-token`           | `{identifier}` interpolation placeholders (`{title}`, `{a.b.c}`)                           |
+| `heading-question`    | A heading whose text is exactly `?`                                                        |
+| `placeholder-section` | A heading whose text is exactly `...`                                                      |
+| `cue-frontmatter`     | CUE constraint expressions in front-matter values                                          |
+| `apm-input-token`     | APM prompt parameters of the form `${input:NAME}` where NAME matches `[A-Za-z][\w-]{0,63}` |
 
 The vocabulary is closed: the token list lives in one place inside
 the engine, and no rule hardcodes token names in its own logic.
@@ -71,12 +72,12 @@ from `internal/placeholders`:
 
 ## Opt-in rules
 
-| Rule ID | Rule name                        | Useful tokens                                          |
-| ------- | -------------------------------- | ------------------------------------------------------ |
-| MDS003  | `heading-increment`              | `heading-question`, `placeholder-section`, `var-token` |
-| MDS004  | `first-line-heading`             | `heading-question`, `var-token`, `placeholder-section` |
-| MDS018  | `no-emphasis-as-heading`         | `var-token`, `heading-question`, `placeholder-section` |
-| MDS020  | `required-structure`             | `cue-frontmatter`                                      |
-| MDS023  | `paragraph-readability`          | `var-token`, `heading-question`, `placeholder-section` |
-| MDS024  | `paragraph-structure`            | `var-token`, `heading-question`, `placeholder-section` |
-| MDS027  | `cross-file-reference-integrity` | `var-token`, `heading-question`, `placeholder-section` |
+| Rule ID | Rule name                        | Useful tokens                                                             |
+| ------- | -------------------------------- | ------------------------------------------------------------------------- |
+| MDS003  | `heading-increment`              | `heading-question`, `placeholder-section`, `var-token`, `apm-input-token` |
+| MDS004  | `first-line-heading`             | `heading-question`, `var-token`, `placeholder-section`, `apm-input-token` |
+| MDS018  | `no-emphasis-as-heading`         | `var-token`, `heading-question`, `placeholder-section`, `apm-input-token` |
+| MDS020  | `required-structure`             | `cue-frontmatter`                                                         |
+| MDS023  | `paragraph-readability`          | `var-token`, `heading-question`, `placeholder-section`, `apm-input-token` |
+| MDS024  | `paragraph-structure`            | `var-token`, `heading-question`, `placeholder-section`, `apm-input-token` |
+| MDS027  | `cross-file-reference-integrity` | `var-token`, `heading-question`, `placeholder-section`, `apm-input-token` |

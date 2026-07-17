@@ -1,7 +1,7 @@
 ---
 id: 2607082048
 title: "Placeholder token for APM `${input:name}` prompt parameters"
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   Add one token to the closed placeholder vocabulary that matches
@@ -77,17 +77,17 @@ in the
 
 ## Acceptance Criteria
 
-- [ ] A paragraph whose only non-prose content is
+- [x] A paragraph whose only non-prose content is
       `${input:pr_url}` produces no MDS023 or MDS024
       diagnostic when the token is configured.
-- [ ] The token name appears in the placeholder
+- [x] The token name appears in the placeholder
       vocabulary table and the opt-in rule list.
-- [ ] The matcher rejects `${notinput:x}` and
+- [x] The matcher rejects `${notinput:x}` and
       `${input:bad name}` (space is outside the
       grammar).
-- [ ] `Check` stays within the allocation budget
+- [x] `Check` stays within the allocation budget
       (regexp compiled at package scope).
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool -modfile=tools/go.mod golangci-lint
+- [x] All tests pass: `go test ./...`
+- [x] `go tool -modfile=tools/go.mod golangci-lint
       run` reports no issues.
-- [ ] `mdsmith check .` — 0 failures.
+- [x] `mdsmith check .` — 0 failures.
