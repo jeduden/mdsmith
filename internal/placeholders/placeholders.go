@@ -110,7 +110,7 @@ func MaskBodyTokens(text string, tokens []string) string {
 				return neutralText[PlaceholderSection]
 			}
 		case APMInputToken:
-			if strings.Contains(text, apmInputPrefix) && apmInputRe.MatchString(text) {
+			if strings.Contains(text, apmInputPrefix) {
 				text = apmInputRe.ReplaceAllLiteralString(text, neutralText[APMInputToken])
 			}
 		}
@@ -147,7 +147,7 @@ func stripBodyTokens(text string, tokens []string) string {
 				return ""
 			}
 		case APMInputToken:
-			if strings.Contains(text, apmInputPrefix) && apmInputRe.MatchString(text) {
+			if strings.Contains(text, apmInputPrefix) {
 				text = apmInputRe.ReplaceAllLiteralString(text, "")
 			}
 		}

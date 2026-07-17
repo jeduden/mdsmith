@@ -25,7 +25,7 @@ Paragraphs must not exceed sentence and word limits.
 | `max-words-per-sentence` | int  | 40      | Maximum words per sentence                                                                                                 |
 | `placeholders`           | list | `[]`    | Placeholder tokens to treat as opaque; see [placeholder grammar](../../../docs/background/concepts/placeholder-grammar.md) |
 
-Useful tokens: `var-token`, `heading-question`, `placeholder-section`.
+Useful tokens: `var-token`, `heading-question`, `placeholder-section`, `apm-input-token`.
 
 Markdown tables and code blocks are skipped.
 

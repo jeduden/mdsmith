@@ -44,7 +44,7 @@ Links to local files and heading anchors must resolve.
 | `wikilinks`      | bool   | `false`      | Validate Obsidian-style `[[Page]]`, `[[Page#anchor]]`, `[[Page\|alias]]`, and `![[file.png]]` targets against the workspace. |
 | `wikilink-style` | string | `"obsidian"` | Resolution style for wikilinks. Only `obsidian` ships today; other values are rejected at config load.                       |
 
-Useful tokens: `var-token`, `heading-question`, `placeholder-section`.
+Useful tokens: `var-token`, `heading-question`, `placeholder-section`, `apm-input-token`.
 
 With `strict: false`, only Markdown targets (`.md`, `.markdown`)
 are checked (except images — see `links.validate-images`).

@@ -25,7 +25,7 @@ Paragraph readability index must not exceed a threshold.
 | `min-words`    | int   | 20      | Minimum word count to check a paragraph                                                                                    |
 | `placeholders` | list  | `[]`    | Placeholder tokens to treat as opaque; see [placeholder grammar](../../../docs/background/concepts/placeholder-grammar.md) |
 
-Useful tokens: `var-token`, `heading-question`, `placeholder-section`.
+Useful tokens: `var-token`, `heading-question`, `placeholder-section`, `apm-input-token`.
 
 Paragraphs with fewer words than `min-words` are skipped.
 Markdown tables and code blocks are skipped.
