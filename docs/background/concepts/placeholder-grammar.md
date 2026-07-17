@@ -75,7 +75,7 @@ from `internal/placeholders`:
 | Rule ID | Rule name                        | Useful tokens                                                             |
 | ------- | -------------------------------- | ------------------------------------------------------------------------- |
 | MDS003  | `heading-increment`              | `heading-question`, `placeholder-section`, `var-token`                    |
-| MDS004  | `first-line-heading`             | `heading-question`, `var-token`, `placeholder-section`                    |
+| MDS004  | `first-line-heading`             | `heading-question`, `var-token`, `placeholder-section`, `apm-input-token` |
 | MDS018  | `no-emphasis-as-heading`         | `var-token`, `heading-question`, `placeholder-section`, `apm-input-token` |
 | MDS020  | `required-structure`             | `cue-frontmatter`                                                         |
 | MDS023  | `paragraph-readability`          | `var-token`, `heading-question`, `placeholder-section`, `apm-input-token` |

@@ -12,6 +12,7 @@ func TestIsKnown(t *testing.T) {
 	assert.True(t, placeholders.IsKnown(placeholders.HeadingQuestion))
 	assert.True(t, placeholders.IsKnown(placeholders.PlaceholderSection))
 	assert.True(t, placeholders.IsKnown(placeholders.CUEFrontmatter))
+	assert.True(t, placeholders.IsKnown(placeholders.APMInputToken))
 	assert.False(t, placeholders.IsKnown("unknown-token"))
 	assert.False(t, placeholders.IsKnown(""))
 }
@@ -25,6 +26,7 @@ func TestValidate(t *testing.T) {
 		placeholders.HeadingQuestion,
 		placeholders.PlaceholderSection,
 		placeholders.CUEFrontmatter,
+		placeholders.APMInputToken,
 	}))
 	err := placeholders.Validate([]string{"bad-token"})
 	assert.ErrorContains(t, err, `unknown placeholder token "bad-token"`)
