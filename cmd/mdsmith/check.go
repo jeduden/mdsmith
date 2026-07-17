@@ -223,7 +223,9 @@ func reportCheckResultTo(result *engine.Result, opts checkCLIOpts, logger *vlog.
 	bw := bufio.NewWriterSize(stderrW, stderrBufSize)
 	printErrorsTo(bw, result.Errors)
 
-	if !opts.quiet && len(result.Diagnostics) > 0 {
+	// SARIF must be emitted even with zero diagnostics so the file is valid
+	// SARIF 2.1.0 (not an empty byte stream) when uploaded to Code Scanning.
+	if !opts.quiet && (len(result.Diagnostics) > 0 || opts.format == "sarif") {
 		if code := formatDiagnosticsTo(bw, result.Diagnostics, opts.format, opts.noColor); code != 0 {
 			_ = bw.Flush()
 			return code

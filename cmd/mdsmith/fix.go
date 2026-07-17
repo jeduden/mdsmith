@@ -373,7 +373,8 @@ func reportFixResultTo(opts fixCLIOpts, fixResult *fixpkg.Result, logger *vlog.L
 		if opts.dryRun && !opts.quiet {
 			printDryRunPreview(bw, fixResult)
 		}
-		if !opts.quiet && len(fixResult.Diagnostics) > 0 {
+		// SARIF must be emitted even with zero diagnostics (same reason as check).
+		if !opts.quiet && (len(fixResult.Diagnostics) > 0 || opts.format == "sarif") {
 			if code := formatDiagnosticsTo(bw, fixResult.Diagnostics, opts.format, opts.noColor); code != 0 {
 				_ = bw.Flush()
 				return code

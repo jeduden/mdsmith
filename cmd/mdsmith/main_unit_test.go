@@ -645,6 +645,51 @@ func TestReportFixResult_DryRunJSONQuietSuppressesOutput(t *testing.T) {
 	assert.NotContains(t, stderr, "{", "--quiet must suppress dry-run JSON on stderr too")
 }
 
+func TestReportCheckResult_SARIFEmittedWhenNoDiagnostics(t *testing.T) {
+	// SARIF must always be emitted so github/codeql-action/upload-sarif
+	// receives a valid document (not an empty file) on a clean codebase.
+	opts := checkCLIOpts{format: "sarif"}
+	result := &engine.Result{FilesChecked: 3}
+	var code int
+	var stdout string
+	stderr := captureStderr(func() {
+		stdout = captureStdout(func() {
+			code = reportCheckResult(result, opts, &vlog.Logger{})
+		})
+	})
+	assert.Equal(t, 0, code)
+	assert.Empty(t, stdout, "SARIF must go to stderr")
+
+	var doc map[string]any
+	require.NoError(t, json.Unmarshal([]byte(strings.TrimSpace(stderr)), &doc),
+		"must emit valid SARIF even with zero diagnostics")
+	assert.Equal(t, "2.1.0", doc["version"])
+	runs := doc["runs"].([]any)
+	results := runs[0].(map[string]any)["results"].([]any)
+	assert.Empty(t, results, "zero diagnostics → empty results array")
+}
+
+func TestReportFixResult_SARIFEmittedWhenNoDiagnostics(t *testing.T) {
+	// Same invariant as check: fix -f sarif must produce a valid SARIF
+	// document even when fixing resolved all issues (Diagnostics empty).
+	opts := fixCLIOpts{format: "sarif"}
+	result := &fixpkg.Result{FilesChecked: 2, Modified: []string{"f.md"}}
+	var code int
+	var stdout string
+	stderr := captureStderr(func() {
+		stdout = captureStdout(func() {
+			code = reportFixResult(opts, result, &vlog.Logger{})
+		})
+	})
+	assert.Equal(t, 0, code)
+	assert.Empty(t, stdout)
+
+	var doc map[string]any
+	require.NoError(t, json.Unmarshal([]byte(strings.TrimSpace(stderr)), &doc),
+		"must emit valid SARIF even after all issues are fixed")
+	assert.Equal(t, "2.1.0", doc["version"])
+}
+
 func TestReportFixResult_DiagnosticsReturnsCode1(t *testing.T) {
 	opts := fixCLIOpts{format: "text"}
 	result := &fixpkg.Result{
