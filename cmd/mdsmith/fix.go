@@ -155,7 +155,7 @@ func parseFixFlags(args []string) (fixCLIOpts, []string, bool, int) {
 	var bf buildFixFlags
 
 	fs.StringVarP(&configPath, "config", "c", "", "Override config file path")
-	fs.StringVarP(&format, "format", "f", "text", "Output format: text, json")
+	fs.StringVarP(&format, "format", "f", "text", "Output format: text, json, sarif")
 	fs.BoolVar(&noColor, "no-color", false, "Disable ANSI colors")
 	fs.BoolVarP(&quiet, "quiet", "q", false, "Suppress non-error output")
 	fs.BoolVarP(&verbose, "verbose", "v", false, "Show config, files, and rules on stderr")
@@ -361,11 +361,20 @@ func reportFixResultTo(opts fixCLIOpts, fixResult *fixpkg.Result, logger *vlog.L
 			_ = bw.Flush()
 			return code
 		}
+	} else if opts.dryRun && opts.format == "sarif" && !opts.quiet {
+		// SARIF dry-run: emit diagnostics in SARIF format without the
+		// text preview — mixing prose and structured JSON would produce
+		// invalid output.
+		if code := formatDiagnosticsTo(bw, fixResult.Diagnostics, opts.format, opts.noColor); code != 0 {
+			_ = bw.Flush()
+			return code
+		}
 	} else {
 		if opts.dryRun && !opts.quiet {
 			printDryRunPreview(bw, fixResult)
 		}
-		if !opts.quiet && len(fixResult.Diagnostics) > 0 {
+		// SARIF must be emitted even with zero diagnostics (same reason as check).
+		if !opts.quiet && (len(fixResult.Diagnostics) > 0 || opts.format == "sarif") {
 			if code := formatDiagnosticsTo(bw, fixResult.Diagnostics, opts.format, opts.noColor); code != 0 {
 				_ = bw.Flush()
 				return code
