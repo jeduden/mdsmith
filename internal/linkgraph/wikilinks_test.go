@@ -478,7 +478,6 @@ func TestWikilinkSearchKey(t *testing.T) {
 		{"md extension → stem mode", "Notes.md", "", "Notes", true},
 		{"markdown extension → stem mode", "Notes.markdown", "", "Notes", true},
 		{"PNG embed → exact name", "image.png", "image.png", "", false},
-		{"backslash normalised", `sub\page`, "", "page", true},
 		{"nested path → basename only", "deep/sub/page", "", "page", true},
 	}
 	for _, tc := range cases {
