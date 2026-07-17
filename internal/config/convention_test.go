@@ -175,6 +175,12 @@ func TestApplyConvention_Slidev_DisablesEightRulesInPreset(t *testing.T) {
 			assert.False(t, p.Enabled, "slidev preset must disable rule %q", rule)
 		}
 	}
+
+	// slidev also enables the opt-in slide-structure rule.
+	ss, ok := cfg.ConventionPreset["slide-structure"]
+	if assert.True(t, ok, "slidev preset must contain slide-structure") {
+		assert.True(t, ss.Enabled, "slidev preset must enable slide-structure")
+	}
 }
 
 func TestApplyConvention_FlavorAgreeAccepted(t *testing.T) {

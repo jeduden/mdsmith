@@ -97,12 +97,23 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		return nil
 	}
 	// Zero-alloc pre-scan: with no slide separator and no slot marker
-	// there is nothing Slidev-specific to check. This keeps ordinary
-	// Markdown off the parse path and under the alloc budget.
-	if !hasSlidevMarkers(f.Lines) {
+	// there is nothing Slidev-specific to check — unless the engine
+	// stripped a headmatter block that itself declares a layout. Check
+	// f.FrontMatter first so a single-slide deck whose only layout
+	// lives in the (stripped) headmatter is still validated.
+	if !hasSlidevMarkers(f.Lines) && len(f.FrontMatter) == 0 {
 		return nil
 	}
 	slides := parseSlides(f.Lines)
+	// The engine strips the deck's headmatter — the first slide's own
+	// frontmatter — into f.FrontMatter. Fold it back onto slide 0 so
+	// the first slide's layout, slots, and keys are checked like any
+	// other. Its source lines are gone, so headmatter diagnostics
+	// anchor at the first body line (startLine).
+	if len(f.FrontMatter) > 0 && len(slides) > 0 {
+		slides[0].fm = parseFrontMatterBytes(f.FrontMatter)
+		slides[0].fmLine = nil
+	}
 	var diags []lint.Diagnostic
 	for i := range slides {
 		diags = r.checkSlide(&slides[i], f, diags)
@@ -110,12 +121,44 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	return diags
 }
 
-// hasSlidevMarkers reports whether any line is a `---` fence or a
-// `::name::` slot separator. Pure byte scans, no allocation.
+// parseFrontMatterBytes parses a stripped headmatter block (with or
+// without its `---` fences) into key -> raw value. Only the simple
+// `key: value` lines a slide's frontmatter uses are read; nested YAML
+// is ignored, which is all the layout/slot/field checks need.
+func parseFrontMatterBytes(b []byte) map[string]string {
+	fm := map[string]string{}
+	for _, ln := range bytes.Split(b, []byte("\n")) {
+		t := bytes.TrimSpace(ln)
+		if len(t) == 0 || bytes.Equal(t, fenceBytes) {
+			continue
+		}
+		c := bytes.IndexByte(t, ':')
+		if c <= 0 {
+			continue
+		}
+		// Skip indented (nested) keys — top-level slide keys only.
+		if ln[0] == ' ' || ln[0] == '\t' || ln[0] == '-' {
+			continue
+		}
+		fm[string(bytes.TrimSpace(t[:c]))] = string(bytes.TrimSpace(t[c+1:]))
+	}
+	return fm
+}
+
+// hasSlidevMarkers reports whether any line outside a fenced code
+// block is a `---` fence or a `::name::` slot separator. Pure byte
+// scans, no allocation.
 func hasSlidevMarkers(lines [][]byte) bool {
+	inCode := false
 	for _, ln := range lines {
-		t := bytes.TrimRight(ln, "\r")
-		if bytes.Equal(t, fenceBytes) {
+		if isCodeFence(ln) {
+			inCode = !inCode
+			continue
+		}
+		if inCode {
+			continue
+		}
+		if isFence(ln) {
 			return true
 		}
 		if _, ok := slotName(ln); ok {
@@ -123,6 +166,15 @@ func hasSlidevMarkers(lines [][]byte) bool {
 		}
 	}
 	return false
+}
+
+// isCodeFence reports whether a line opens or closes a fenced code
+// block (``` or ~~~, three or more). A `---` or `::slot::` inside such
+// a block is literal content — a slide showing YAML or a diff — not a
+// separator, so the scanners skip it.
+func isCodeFence(line []byte) bool {
+	t := bytes.TrimLeft(line, " ")
+	return bytes.HasPrefix(t, []byte("```")) || bytes.HasPrefix(t, []byte("~~~"))
 }
 
 // slide is one logical slide with its frontmatter and slot markers.
@@ -151,7 +203,17 @@ func parseSlides(lines [][]byte) []slide {
 		cur.fm, cur.fmLine, i = readFrontmatter(lines, 0)
 		cur.startLine = i + 1
 	}
+	inCode := false
 	for i < len(lines) {
+		if isCodeFence(lines[i]) {
+			inCode = !inCode
+			i++
+			continue
+		}
+		if inCode {
+			i++
+			continue
+		}
 		if isFence(lines[i]) {
 			slides = append(slides, cur)
 			if hasFrontmatterAfter(lines, i) {
@@ -281,7 +343,7 @@ func (r *Rule) checkSlide(s *slide, f *lint.File, diags []lint.Diagnostic) []lin
 	if field, ok := layoutRequiredField[effLayout]; ok {
 		if _, present := s.fm[field]; !present {
 			diags = append(diags, r.diag(f, anchor, fmt.Sprintf(
-				"layout %q requires a %q field", effLayout, field)))
+				"layout %q requires the %q frontmatter field", effLayout, field)))
 		}
 	}
 

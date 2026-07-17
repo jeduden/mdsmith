@@ -103,7 +103,7 @@ func TestMissingImageField(t *testing.T) {
 	src := "---\nlayout: image-left\n---\n\n# No image\n"
 	diags := check(t, src)
 	require.Len(t, diags, 1, "got: %s", messages(diags))
-	assert.Contains(t, diags[0].Message, "layout \"image-left\" requires a \"image\" field")
+	assert.Contains(t, diags[0].Message, "layout \"image-left\" requires the \"image\" frontmatter field")
 }
 
 func TestImageLeft_WithImage_OK(t *testing.T) {
@@ -130,6 +130,43 @@ func TestMultipleSlides_IndependentFrontmatter(t *testing.T) {
 	require.Len(t, diags, 2, "got: %s", messages(diags))
 	assert.Contains(t, diags[0].Message, "::right:: slot")
 	assert.Contains(t, diags[1].Message, "unknown Slidev layout \"centre\"")
+}
+
+func TestHeadmatterLayout_ReadFromFrontMatter_NoFalsePositive(t *testing.T) {
+	// The engine strips the deck headmatter into f.FrontMatter. A first
+	// slide whose layout lives there, with a matching ::right::, must
+	// NOT be flagged as an orphaned slot.
+	body := "# Left\n\n::right::\n\n# Right\n"
+	f := &lint.File{
+		Path:        "slides.md",
+		Source:      []byte(body),
+		Lines:       splitLines(body),
+		FrontMatter: []byte("---\nlayout: two-cols\n---\n"),
+	}
+	assert.Empty(t, (&Rule{}).Check(f),
+		"headmatter layout two-cols + ::right:: is valid: %s", messages((&Rule{}).Check(f)))
+}
+
+func TestHeadmatterLayout_MissingSlot_Flagged(t *testing.T) {
+	body := "# Left only\n\nBody.\n"
+	f := &lint.File{
+		Path:        "slides.md",
+		Source:      []byte(body),
+		Lines:       splitLines(body),
+		FrontMatter: []byte("---\nlayout: two-cols\n---\n"),
+	}
+	diags := (&Rule{}).Check(f)
+	require.Len(t, diags, 1, "got: %s", messages(diags))
+	assert.Contains(t, diags[0].Message, "requires a ::right:: slot")
+}
+
+func TestCodeBlock_SeparatorsAndSlotsIgnored(t *testing.T) {
+	// A slide that shows a YAML frontmatter example and a ::right::
+	// inside a fenced code block must not be parsed as real slide
+	// structure — no false positives.
+	src := "# Demo\n\n```md\n---\nlayout: two-cols\n---\n\n::right::\n```\n\nProse.\n"
+	diags := check(t, src)
+	assert.Empty(t, diags, "code-block content must be literal: %s", messages(diags))
 }
 
 func TestApplySettings_RejectsUnknownAndBadType(t *testing.T) {

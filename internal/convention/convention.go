@@ -201,8 +201,14 @@ var conventions = map[string]Convention{
 	// guard for a convention whose flavor is FlavorAny.
 	//
 	// Parser-level handling of `---` as a page separator is out of
-	// scope. This convention silences the rule-level false positives
-	// only.
+	// scope for the disabled rules above.
+	//
+	// Beyond silencing false positives, the convention enables
+	// slide-structure (MDS072): a Slidev-aware rule that adds checks
+	// the built-in rules cannot express — unmatched ::slot:: markers,
+	// unknown layouts, missing layout-required fields, and typo'd
+	// per-slide frontmatter keys. MDS072 is opt-in (off by default),
+	// so the convention is what turns it on for decks.
 	"slidev": {
 		Name:   "slidev",
 		Flavor: FlavorAny,
@@ -215,6 +221,7 @@ var conventions = map[string]Convention{
 			"no-trailing-punctuation-in-heading": {Enabled: false},
 			"no-emphasis-as-heading":             {Enabled: false},
 			"empty-section-body":                 {Enabled: false},
+			"slide-structure":                    {Enabled: true},
 		},
 	},
 	// no-llm-tells ships the mechanical layer of the docs-author

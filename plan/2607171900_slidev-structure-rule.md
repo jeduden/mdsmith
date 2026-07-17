@@ -19,10 +19,10 @@ summary: >-
 ## Goal
 
 Move mdsmith's Slidev support past the `slidev`
-convention (which only *disables* eight noisy
-rules) to a rule that *adds* value: catch the
-Slidev silent-failure modes that render wrong or
-empty output with no error.
+convention. That convention only *disables* eight
+noisy rules. This rule *adds* value. It catches the
+Slidev silent failures — the ones that render wrong
+or empty output with no error.
 
 Slidev's parser is permissive — an unmatched slot
 drops its content, a misspelled `layout:` renders
@@ -34,8 +34,8 @@ linter catches them.
 
 A new opt-in rule `MDS072 slide-structure`,
 enabled by the `slidev` convention. It splits a
-deck into slides on `---` separators, parses each
-slide's frontmatter, and checks:
+deck into slides on `---` separators. It parses
+each slide's frontmatter. Then it checks:
 
 1. **Unknown layout** — `layout:` not in the
    built-in set (or the user's `custom-layouts`),
@@ -108,7 +108,7 @@ it never resolves theme packages.
    `docs/reference/conventions.md` (the `slidev`
    section) and the rule reference.
 
-## Acceptance criteria
+## Acceptance Criteria
 
 - [ ] `go test ./...` green, including the
   per-rule fixture and alloc-budget gates.
