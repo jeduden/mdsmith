@@ -568,6 +568,63 @@ func TestReportFixResult_DryRunJSONOutput(t *testing.T) {
 	assert.Equal(t, "f.md", records[0]["path"])
 }
 
+func TestReportFixResult_DryRunSARIFOutput(t *testing.T) {
+	opts := fixCLIOpts{dryRun: true, format: "sarif"}
+	result := &fixpkg.Result{
+		FilesChecked: 1,
+		WouldFix:     1,
+		WouldFixFiles: []fixpkg.WouldFixFile{
+			{Path: "f.md", Count: 1, Rules: []fixpkg.RuleFixCount{{RuleID: "MDS001", Count: 1}}},
+		},
+		Diagnostics: []lint.Diagnostic{
+			{
+				File: "f.md", Line: 5, RuleID: "MDS002", RuleName: "no-fix-rule",
+				Severity: lint.Warning, Message: "unfixable",
+			},
+		},
+	}
+	var code int
+	var stdout string
+	stderr := captureStderr(func() {
+		stdout = captureStdout(func() {
+			code = reportFixResult(opts, result, &vlog.Logger{})
+		})
+	})
+	assert.Equal(t, 1, code, "unfixable diagnostics → exit 1")
+	assert.Empty(t, stdout, "SARIF must go to stderr, not stdout")
+
+	var doc map[string]any
+	require.NoError(t, json.Unmarshal([]byte(strings.TrimSpace(stderr)), &doc),
+		"dry-run SARIF output must be valid JSON")
+	assert.Equal(t, "2.1.0", doc["version"])
+	runs := doc["runs"].([]any)
+	results := runs[0].(map[string]any)["results"].([]any)
+	assert.Len(t, results, 1, "only unfixable diagnostics appear in dry-run SARIF")
+}
+
+func TestReportFixResult_DryRunSARIFQuietSuppressesOutput(t *testing.T) {
+	opts := fixCLIOpts{dryRun: true, format: "sarif", quiet: true}
+	result := &fixpkg.Result{
+		WouldFix: 1,
+		WouldFixFiles: []fixpkg.WouldFixFile{
+			{Path: "f.md", Count: 1},
+		},
+		Diagnostics: []lint.Diagnostic{
+			{File: "f.md", Line: 1, RuleID: "MDS001", RuleName: "r", Severity: lint.Error, Message: "m"},
+		},
+	}
+	var code int
+	var stdout string
+	stderr := captureStderr(func() {
+		stdout = captureStdout(func() {
+			code = reportFixResult(opts, result, &vlog.Logger{})
+		})
+	})
+	assert.Equal(t, 1, code)
+	assert.Empty(t, stdout)
+	assert.NotContains(t, stderr, "{", "--quiet must suppress dry-run SARIF on stderr too")
+}
+
 func TestReportFixResult_DryRunJSONQuietSuppressesOutput(t *testing.T) {
 	opts := fixCLIOpts{dryRun: true, format: "json", quiet: true}
 	result := &fixpkg.Result{

@@ -70,7 +70,7 @@ Code Scanning dashboard ingests directly. Upload with
 
 ```yaml
 - name: Run mdsmith
-  run: mdsmith check -f sarif . > report.sarif || true
+  run: mdsmith check -f sarif . 2> report.sarif || true
 - name: Upload SARIF
   uses: github/codeql-action/upload-sarif@v3
   with:
