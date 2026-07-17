@@ -292,3 +292,60 @@ func TestHasCUEFrontmatter(t *testing.T) {
 	assert.False(t, placeholders.HasCUEFrontmatter(nil))
 	assert.False(t, placeholders.HasCUEFrontmatter([]string{}))
 }
+
+func TestAPMInputToken_IsKnown(t *testing.T) {
+	assert.True(t, placeholders.IsKnown(placeholders.APMInputToken))
+}
+
+func TestAPMInputToken_ContainsBodyToken(t *testing.T) {
+	tok := []string{placeholders.APMInputToken}
+	tests := []struct {
+		name string
+		text string
+		want bool
+	}{
+		{"simple input param", "${input:pr_url}", true},
+		{"hyphenated name", "${input:focus-area}", true},
+		{"mixed case start", "${input:FocusArea}", true},
+		{"embedded in sentence", "review ${input:pr_url} now", true},
+		{"multiple tokens", "${input:a} and ${input:b}", true},
+		{"non-matching form output", "${output:x}", false},
+		{"no dollar", "{input:x}", false},
+		{"space in name", "${input:bad name}", false},
+		{"not input prefix", "${notinput:x}", false},
+		{"empty text", "", false},
+		{"plain text", "some prose", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, placeholders.ContainsBodyToken(tt.text, tok))
+		})
+	}
+}
+
+func TestAPMInputToken_MaskBodyTokens(t *testing.T) {
+	tok := []string{placeholders.APMInputToken}
+	tests := []struct {
+		name string
+		text string
+		want string
+	}{
+		{"single token replaced", "${input:pr_url}", "word"},
+		{"token in sentence", "review ${input:pr_url} now", "review word now"},
+		{"two tokens replaced", "${input:a} and ${input:b}", "word and word"},
+		{"non-matching unchanged", "${output:x}", "${output:x}"},
+		{"plain text unchanged", "some prose", "some prose"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, placeholders.MaskBodyTokens(tt.text, tok))
+		})
+	}
+}
+
+func TestAPMInputToken_IsAllBodyTokens(t *testing.T) {
+	tok := []string{placeholders.APMInputToken}
+	assert.True(t, placeholders.IsAllBodyTokens("${input:pr_url}", tok))
+	assert.True(t, placeholders.IsAllBodyTokens("${input:a} ${input:b}", tok))
+	assert.False(t, placeholders.IsAllBodyTokens("${input:a} extra", tok))
+}
