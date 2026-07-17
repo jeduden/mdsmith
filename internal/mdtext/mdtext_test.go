@@ -1,6 +1,7 @@
 package mdtext_test
 
 import (
+	"math"
 	"strings"
 	"testing"
 
@@ -374,6 +375,37 @@ func TestSplitSentencesInto_ReusesDstCapacity(t *testing.T) {
 	assert.GreaterOrEqual(t, cap(dst), c0,
 		"second call must reuse (or grow from) the existing capacity, "+
 			"not allocate a brand new backing array")
+}
+
+// --- ARI tests ---
+
+func TestARI_Empty(t *testing.T) {
+	got := mdtext.ARI("")
+	assert.Equal(t, 0.0, got, "ARI of empty text: got %.2f, want 0", got)
+}
+
+func TestARI_SingleWord(t *testing.T) {
+	got := mdtext.ARI("hello")
+	// 1 word, 1 sentence, 5 chars
+	// 4.71*(5/1) + 0.5*(1/1) - 21.43 = 23.55 + 0.5 - 21.43 = 2.62
+	expected := 2.62
+	if math.Abs(got-expected) > 0.5 {
+		t.Errorf("ARI of single word: got %.2f, want ~%.2f", got, expected)
+	}
+}
+
+func TestARI_SimpleText(t *testing.T) {
+	got := mdtext.ARI("The cat sat on the mat.")
+	expected := -5.08
+	if math.Abs(got-expected) > 0.5 {
+		t.Errorf("ARI of simple text: got %.2f, want ~%.2f", got, expected)
+	}
+}
+
+func TestARI_ZeroWords(t *testing.T) {
+	// whitespace only — CountWords returns 0 => ARI returns 0
+	got := mdtext.ARI("   ")
+	assert.Equal(t, 0.0, got)
 }
 
 // --- CountCharacters tests ---

@@ -462,6 +462,22 @@ func SplitSentencesInto(dst []string, text string) []string {
 	return splitSentencesInto(dst, text)
 }
 
+// ARI computes the Automated Readability Index for the given plain text.
+// Formula: 4.71*(characters/words) + 0.5*(words/sentences) - 21.43
+// Characters = letters and digits only.
+// Returns 0 if text has no words.
+func ARI(text string) float64 {
+	words := CountWords(text)
+	if words == 0 {
+		return 0
+	}
+	sentences := CountSentences(text)
+	characters := CountCharacters(text)
+	return 4.71*float64(characters)/float64(words) +
+		0.5*float64(words)/float64(sentences) -
+		21.43
+}
+
 // CountCharacters counts letters and digits in text
 // (no spaces or punctuation).
 func CountCharacters(text string) int {
