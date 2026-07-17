@@ -24,7 +24,9 @@ var client = &http.Client{}
 const maxDrain = 64 << 10
 
 // probe issues a HEAD request (falling back to GET on 405) and maps the
-// outcome to a urlResult. timeout bounds each individual request.
+// outcome to a urlResult. timeout bounds each individual request. The
+// native prober always reaches the network, so every result it returns
+// is probed=true.
 func probe(raw string, timeout time.Duration) urlResult {
 	res := do(http.MethodHead, raw, timeout)
 	if res.err == nil && res.statusCode == http.StatusMethodNotAllowed {
@@ -41,15 +43,15 @@ func do(method, raw string, timeout time.Duration) urlResult {
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, method, raw, nil)
 	if err != nil {
-		return urlResult{err: err}
+		return urlResult{probed: true, err: err}
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return urlResult{err: err}
+		return urlResult{probed: true, err: err}
 	}
 	// Drain a bounded prefix of the body before closing so the transport
 	// can reuse the connection; the status code is all we consume.
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxDrain))
 	_ = resp.Body.Close()
-	return urlResult{statusCode: resp.StatusCode}
+	return urlResult{probed: true, statusCode: resp.StatusCode}
 }

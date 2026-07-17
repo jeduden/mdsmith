@@ -1,7 +1,7 @@
 ---
 id: 2607170527
 title: External link checking on WASM hosts (MDS072)
-status: "🔲"
+status: "🔳"
 summary: >-
   Replace MDS072's fake-healthy WASM probe with honest behavior: never
   report a broken URL as OK, and make the rule functional on hosts that
@@ -108,10 +108,10 @@ doing nothing.
 
 ## Tasks
 
-1. [ ] Make the probe outcome tri-state in the shared rule. Only a
+1. [x] Make the probe outcome tri-state in the shared rule. Only a
    probed failure emits a diagnostic; a not-probed URL emits nothing.
    Add unit tests for all three states.
-2. [ ] Replace the fake-`200` WASM probe with a not-probed result, so
+2. [x] Replace the fake-`200` WASM probe with a not-probed result, so
    the WASM build never reports a URL as healthy. Test that the WASM
    path emits no diagnostics for a broken URL.
 3. [ ] Extract the prober into a seam (interface or func var) with three

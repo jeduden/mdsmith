@@ -7,11 +7,14 @@
 // issue #47 for the design.
 //
 // The HTTP probing lives in probe_net.go, behind a `!(js && wasm)`
-// build tag. The js/wasm build (probe_wasm.go) carries a stub that
-// makes no network call, so the WebAssembly engine does not pull in
-// net/http (a ~6 MB artifact cost) for a rule a browser sandbox can
-// never run anyway. Config parsing and AST traversal are shared, so
-// `.mdsmith.yml` validates identically on every platform.
+// build tag. The js/wasm build (probe_wasm.go) cannot reach the network,
+// so it returns a not-probed result (probed=false) that yields no
+// diagnostic — the rule reports a URL as neither broken nor healthy
+// rather than faking a 200. That keeps net/http out of the WebAssembly
+// artifact (a ~6 MB cost) while staying honest: a future host bridge
+// (plan 2607170527) will let a wasm host supply real probed results.
+// Config parsing and AST traversal are shared, so `.mdsmith.yml`
+// validates identically on every platform.
 //
 // Concurrency: the engine clones one Rule per worker, so the rate-limit
 // semaphore and the per-URL result cache are PACKAGE-LEVEL (not Rule
@@ -95,9 +98,14 @@ var (
 	semOnce    sync.Once
 )
 
-// urlResult is one cached probe outcome. statusCode is the final HTTP
-// status (0 when err is non-nil); err is the transport error, if any.
+// urlResult is one cached probe outcome. probed reports whether the URL
+// was actually reached: a prober that cannot make network requests (the
+// wasm build with no host bridge) returns probed=false, and a not-probed
+// URL never produces a diagnostic — neither a false failure nor a false
+// pass. When probed is true, statusCode is the final HTTP status (0 when
+// err is non-nil) and err is the transport error, if any.
 type urlResult struct {
+	probed     bool
 	statusCode int
 	err        error
 }
@@ -273,8 +281,13 @@ func autolinkPosition(f *lint.File, n goldast.Node, rawURL string) (int, int) {
 }
 
 // failureMessage returns the diagnostic message for a probe result, or
-// "" when the URL is healthy (a 2xx or 3xx response).
+// "" when the URL is healthy (a 2xx or 3xx response) or was not probed.
+// A not-probed URL (probed=false) is never reported: a host that cannot
+// reach the network must not flag every link, nor pass every link.
 func failureMessage(raw string, res urlResult) string {
+	if !res.probed {
+		return ""
+	}
 	if res.err != nil {
 		return fmt.Sprintf("external URL unreachable: %s (%v)", raw, res.err)
 	}

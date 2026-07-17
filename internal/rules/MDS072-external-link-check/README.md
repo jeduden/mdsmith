@@ -29,10 +29,12 @@ MDS027 and MDS068 read. So `external-skip`, `external-timeout`, and
 `external-rate-limit` sit beside `site-root` and `style` per kind.
 
 The rule checks inline links (`[text](url)`), autolinks
-(`<https://example.com>`), and images (`![alt](url)`). It does not run
-in the WebAssembly engine. The browser sandbox forbids the outbound
-requests it needs. So the Obsidian plugin and other WASM hosts emit no
-MDS072 diagnostics.
+(`<https://example.com>`), and images (`![alt](url)`). It probes over
+the network only on native builds. The WebAssembly engine cannot reach
+the network, so it treats every URL as not-probed and emits no MDS072
+diagnostics. It never reports a URL as healthy on faith. A future host
+bridge will let a WASM host such as the Obsidian plugin supply real
+probe results.
 
 ## Settings
 

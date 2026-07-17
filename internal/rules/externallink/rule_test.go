@@ -453,6 +453,29 @@ func TestMetadata(t *testing.T) {
 	assert.False(t, r.EnabledByDefault())
 }
 
+// TestFailureMessage_TriState pins the three probe outcomes. A probed
+// failure (transport error or 4xx/5xx) yields a message; a probed
+// healthy response yields none; and a NOT-probed result yields none even
+// when statusCode/err look actionable. The not-probed state is what a
+// host without a probe bridge returns, so it must never be reported as a
+// broken link — nor as a false pass.
+func TestFailureMessage_TriState(t *testing.T) {
+	// probed failures
+	assert.NotEmpty(t, failureMessage("http://x", urlResult{probed: true, statusCode: 404}))
+	assert.NotEmpty(t, failureMessage("http://x", urlResult{probed: true, err: assertErr{}}))
+	// probed healthy
+	assert.Empty(t, failureMessage("http://x", urlResult{probed: true, statusCode: 200}))
+	assert.Empty(t, failureMessage("http://x", urlResult{probed: true, statusCode: 301}))
+	// NOT probed: never a diagnostic, whatever the other fields say
+	assert.Empty(t, failureMessage("http://x", urlResult{probed: false, statusCode: 404}))
+	assert.Empty(t, failureMessage("http://x", urlResult{probed: false, err: assertErr{}}))
+	assert.Empty(t, failureMessage("http://x", urlResult{}))
+}
+
+type assertErr struct{}
+
+func (assertErr) Error() string { return "boom" }
+
 // TestCheck_ImageNoAltPositionFallback drives the first-text-offset < 0
 // fallback in position(): an image with empty alt text has no *Text
 // descendant, so the diagnostic anchors at (1, 1).

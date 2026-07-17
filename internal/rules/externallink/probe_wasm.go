@@ -4,12 +4,15 @@ package externallink
 
 import "time"
 
-// probe is a no-op on wasm: external link checking needs outbound HTTP,
-// which the browser sandbox forbids (CORS, no raw sockets). It reports a
-// healthy result so the WebAssembly engine emits no MDS072 diagnostics
-// rather than failing every URL. Keeping the probe in a build-tagged
-// file is what keeps net/http out of the WebAssembly artifact; the
-// shared Check/checkURL code carries no net/http reference.
+// probe cannot reach the network on wasm: the browser sandbox forbids
+// the outbound HTTP it needs (CORS, no raw sockets). It returns a
+// not-probed result (probed=false), which yields NO diagnostic — the URL
+// is reported as neither broken nor healthy. Returning a fake 200 here
+// would silently pass every external link, granting false confidence;
+// returning a failure would flag every link. Neither is honest, so the
+// rule stays inert until a host supplies probed results through the
+// bridge (see plan 2607170527). Keeping the probe in a build-tagged file
+// is what keeps net/http out of the WebAssembly artifact.
 func probe(_ string, _ time.Duration) urlResult {
-	return urlResult{statusCode: 200}
+	return urlResult{probed: false}
 }
