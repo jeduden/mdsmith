@@ -17,6 +17,8 @@ import (
 	metricspkg "github.com/jeduden/mdsmith/internal/metrics"
 )
 
+var errUnknownFormat = errors.New("unknown format")
+
 const metricsUsageText = `Usage: mdsmith metrics <command> [flags] [files...]
 
 Commands:
@@ -208,7 +210,7 @@ func executeMetricsRank(opts metricsRankOptions, fileArgs []string) int {
 	rows = metricspkg.LimitRows(rows, opts.top)
 
 	if err := writeRankOutput(os.Stdout, opts.format, rows, defs); err != nil {
-		if strings.Contains(err.Error(), "unknown format") {
+		if errors.Is(err, errUnknownFormat) {
 			fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 			return 2
 		}
@@ -285,7 +287,7 @@ func writeRankOutput(
 	case "yaml":
 		return writeMetricsRankYAML(w, rows, defs)
 	default:
-		return fmt.Errorf("unknown format %q (supported: text, json, yaml)", format)
+		return fmt.Errorf("%w %q (supported: text, json, yaml)", errUnknownFormat, format)
 	}
 }
 
@@ -334,6 +336,7 @@ func writeMetricsListJSON(w io.Writer, defs []metricspkg.Definition) error {
 	}
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
+	enc.SetEscapeHTML(false)
 	return enc.Encode(items)
 }
 
@@ -376,7 +379,17 @@ func writeMetricsRankJSON(w io.Writer, rows []metricspkg.Row, defs []metricspkg.
 	}
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
+	enc.SetEscapeHTML(false)
 	return enc.Encode(items)
+}
+
+func writeYAML(w io.Writer, v any) error {
+	enc := yaml.NewEncoder(w)
+	enc.SetIndent(2)
+	if err := enc.Encode(v); err != nil {
+		return err
+	}
+	return enc.Close()
 }
 
 func writeMetricsListYAML(w io.Writer, defs []metricspkg.Definition) error {
@@ -391,12 +404,7 @@ func writeMetricsListYAML(w io.Writer, defs []metricspkg.Definition) error {
 			"default_order": def.DefaultOrder,
 		})
 	}
-	enc := yaml.NewEncoder(w)
-	enc.SetIndent(2)
-	if err := enc.Encode(items); err != nil {
-		return err
-	}
-	return enc.Close()
+	return writeYAML(w, items)
 }
 
 func writeMetricsRankYAML(w io.Writer, rows []metricspkg.Row, defs []metricspkg.Definition) error {
@@ -410,12 +418,7 @@ func writeMetricsRankYAML(w io.Writer, rows []metricspkg.Row, defs []metricspkg.
 		}
 		items = append(items, item)
 	}
-	enc := yaml.NewEncoder(w)
-	enc.SetIndent(2)
-	if err := enc.Encode(items); err != nil {
-		return err
-	}
-	return enc.Close()
+	return writeYAML(w, items)
 }
 
 // metricsGetOptions holds parsed options for the metrics get subcommand.
@@ -453,7 +456,7 @@ func runMetricsGet(args []string) int {
 	}
 
 	if err := writeGetOutput(os.Stdout, opts.format, rows[0], defs); err != nil {
-		if strings.Contains(err.Error(), "unknown format") {
+		if errors.Is(err, errUnknownFormat) {
 			fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 			return 2
 		}
@@ -487,10 +490,7 @@ func parseMetricsGetOptions(args []string) (metricsGetOptions, string, error) {
 		return metricsGetOptions{}, "", err
 	}
 
-	if fs.NArg() == 0 {
-		return metricsGetOptions{}, "", errors.New("metrics get requires exactly one file argument")
-	}
-	if fs.NArg() > 1 {
+	if fs.NArg() != 1 {
 		return metricsGetOptions{}, "", errors.New("metrics get takes exactly one file argument")
 	}
 
@@ -511,7 +511,7 @@ func writeGetOutput(
 	case "yaml":
 		return writeMetricsGetYAML(w, row, defs)
 	default:
-		return fmt.Errorf("unknown format %q (supported: text, json, yaml)", format)
+		return fmt.Errorf("%w %q (supported: text, json, yaml)", errUnknownFormat, format)
 	}
 }
 
@@ -533,6 +533,7 @@ func writeMetricsGetJSON(w io.Writer, row metricspkg.Row, defs []metricspkg.Defi
 	}
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
+	enc.SetEscapeHTML(false)
 	return enc.Encode(item)
 }
 
@@ -541,12 +542,7 @@ func writeMetricsGetYAML(w io.Writer, row metricspkg.Row, defs []metricspkg.Defi
 	for _, def := range defs {
 		item[def.Name] = metricspkg.JSONValue(def, row.Metrics[def.Name])
 	}
-	enc := yaml.NewEncoder(w)
-	enc.SetIndent(2)
-	if err := enc.Encode(item); err != nil {
-		return err
-	}
-	return enc.Close()
+	return writeYAML(w, item)
 }
 
 func runHelpMetrics(args []string) int {

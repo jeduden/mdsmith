@@ -27,6 +27,10 @@ type Document struct {
 	wordCountReady bool
 	wordCountErr   error
 
+	sentenceCount      int
+	sentenceCountReady bool
+	sentenceCountErr   error
+
 	headingCount      int
 	headingCountReady bool
 	headingCountErr   error
@@ -109,6 +113,24 @@ func (d *Document) WordCount() (int, error) {
 	d.wordCount = mdtext.CountWords(text)
 	d.wordCountReady = true
 	return d.wordCount, nil
+}
+
+// SentenceCount returns sentence count on extracted plain text.
+func (d *Document) SentenceCount() (int, error) {
+	if d.sentenceCountReady {
+		return d.sentenceCount, d.sentenceCountErr
+	}
+
+	text, err := d.PlainText()
+	if err != nil {
+		d.sentenceCountErr = err
+		d.sentenceCountReady = true
+		return 0, err
+	}
+
+	d.sentenceCount = mdtext.CountSentences(text)
+	d.sentenceCountReady = true
+	return d.sentenceCount, nil
 }
 
 // HeadingCount returns number of heading nodes.

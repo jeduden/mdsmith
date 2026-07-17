@@ -133,11 +133,11 @@ var registry = []Definition{
 		Default:      false,
 		DefaultOrder: OrderDesc,
 		Compute: func(doc *Document) (Value, error) {
-			text, err := doc.PlainText()
+			n, err := doc.SentenceCount()
 			if err != nil {
 				return UnavailableValue(), err
 			}
-			return AvailableValue(float64(mdtext.CountSentences(text))), nil
+			return AvailableValue(float64(n)), nil
 		},
 	},
 	{
@@ -150,15 +150,17 @@ var registry = []Definition{
 		Default:      false,
 		DefaultOrder: OrderDesc,
 		Compute: func(doc *Document) (Value, error) {
-			text, err := doc.PlainText()
+			sentences, err := doc.SentenceCount()
 			if err != nil {
 				return UnavailableValue(), err
 			}
-			sentences := mdtext.CountSentences(text)
 			if sentences == 0 {
 				return AvailableValue(0), nil
 			}
-			words := mdtext.CountWords(text)
+			words, err := doc.WordCount()
+			if err != nil {
+				return UnavailableValue(), err
+			}
 			return AvailableValue(float64(words) / float64(sentences)), nil
 		},
 	},
