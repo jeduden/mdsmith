@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
 	"github.com/jeduden/mdsmith/internal/oscompat"
@@ -421,7 +422,7 @@ func ValidateIndex(f *lint.File, sch *Schema, mkDiag MakeDiag) []lint.Diagnostic
 				"index side-output %q write failed on the last `mdsmith fix`: %v",
 				sch.Index.Output, writeErr))}
 	}
-	got, readErr := os.ReadFile(target)
+	got, readErr := bytelimit.ReadFileLimited(target, f.MaxInputBytes)
 	if readErr != nil {
 		if os.IsNotExist(readErr) {
 			return []lint.Diagnostic{mkDiag(f.Path, 1,

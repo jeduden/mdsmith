@@ -174,6 +174,12 @@ func (t *abbreviationTransformer) Transform(doc *ast.Document, reader text.Reade
 	if len(table) == 0 {
 		return
 	}
+	// Precomputed once per Transform call (per document) rather than
+	// once per Text node: table is fixed for the whole walk below, so
+	// rebuilding the []byte term forms per node would repeat the same
+	// conversion once per paragraph/heading/list-item instead of once
+	// total (docs/development/high-performance-go.md "Stay in []byte").
+	terms := tableTerms(table)
 	source := reader.Source()
 
 	// Walk every Text descendant in the document and rewrite
@@ -190,7 +196,7 @@ func (t *abbreviationTransformer) Transform(doc *ast.Document, reader text.Reade
 			*AbbreviationDefinition:
 			return ast.WalkSkipChildren, nil
 		case *ast.Text:
-			rewriteText(node, table, source)
+			rewriteText(node, terms, source)
 			return ast.WalkSkipChildren, nil
 		}
 		return ast.WalkContinue, nil
@@ -208,13 +214,13 @@ type abbrMatch struct {
 // inserts AbbreviationReference nodes in their place. The original
 // Text node's segment is shrunk to the prefix before the first
 // match; subsequent content is appended as sibling nodes.
-func rewriteText(t *ast.Text, table abbrTable, source []byte) {
+func rewriteText(t *ast.Text, terms []tableTerm, source []byte) {
 	seg := t.Segment
 	body := seg.Value(source)
 	if len(body) == 0 {
 		return
 	}
-	matches := findMatches(body, table)
+	matches := findMatches(body, terms)
 	if len(matches) == 0 {
 		return
 	}
@@ -225,17 +231,43 @@ func rewriteText(t *ast.Text, table abbrTable, source []byte) {
 	applyMatches(parent, t, seg, body, matches)
 }
 
+// tableTerm pairs a defined term's precomputed []byte form (used for
+// the prefix probe) with its original string form (stored on a match,
+// matching buildReference's []byte(m.term) conversion).
+type tableTerm struct {
+	bytes []byte
+	str   string
+}
+
+// tableTerms converts every key of table to its []byte form once.
+// Transform calls this once per document (table is fixed for the
+// whole AST walk) and threads the result through rewriteText and
+// findMatches, which otherwise call bestMatchAt once per
+// word-boundary candidate position in every Text node's body —
+// without precomputing, that per-(position, term) probe converts
+// every term from its map key to []byte on every single call, the
+// dominant allocator on documents with defined abbreviations, since
+// positions vastly outnumber terms
+// (docs/development/high-performance-go.md "Stay in []byte").
+func tableTerms(table abbrTable) []tableTerm {
+	terms := make([]tableTerm, 0, len(table))
+	for term := range table {
+		terms = append(terms, tableTerm{bytes: []byte(term), str: term})
+	}
+	return terms
+}
+
 // findMatches scans body for the longest whole-word match of any
 // defined term at each word-boundary position and advances past each
 // hit so occurrences never overlap.
-func findMatches(body []byte, table abbrTable) []abbrMatch {
+func findMatches(body []byte, terms []tableTerm) []abbrMatch {
 	var matches []abbrMatch
 	for i := 0; i < len(body); {
 		if i > 0 && isWordByte(body[i-1]) {
 			i++
 			continue
 		}
-		m, ok := bestMatchAt(body, i, table)
+		m, ok := bestMatchAt(body, i, terms)
 		if !ok {
 			i++
 			continue
@@ -246,21 +278,20 @@ func findMatches(body []byte, table abbrTable) []abbrMatch {
 	return matches
 }
 
-// bestMatchAt returns the longest term in table that matches body
+// bestMatchAt returns the longest term in terms that matches body
 // starting at i, requiring a word boundary after the term.
-func bestMatchAt(body []byte, i int, table abbrTable) (abbrMatch, bool) {
+func bestMatchAt(body []byte, i int, terms []tableTerm) (abbrMatch, bool) {
 	best := abbrMatch{start: -1}
-	for term := range table {
-		tb := []byte(term)
-		if !bytes.HasPrefix(body[i:], tb) {
+	for _, term := range terms {
+		if !bytes.HasPrefix(body[i:], term.bytes) {
 			continue
 		}
-		endIdx := i + len(tb)
+		endIdx := i + len(term.bytes)
 		if endIdx < len(body) && isWordByte(body[endIdx]) {
 			continue
 		}
-		if len(tb) > best.end-best.start {
-			best = abbrMatch{start: i, end: endIdx, term: term}
+		if len(term.bytes) > best.end-best.start {
+			best = abbrMatch{start: i, end: endIdx, term: term.str}
 		}
 	}
 	if best.start < 0 {

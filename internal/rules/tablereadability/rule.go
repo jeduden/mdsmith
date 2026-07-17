@@ -198,9 +198,14 @@ func positiveFloatOrDefault(value, fallback float64) float64 {
 	return value
 }
 
+// table holds one parsed table. rows precedes startLine so the
+// GC's ptrdata scan does not also cover the scalar int — mirroring
+// tablefmt.table, which this local copy otherwise duplicates
+// (docs/development/high-performance-go.md#struct-layout; see
+// layout_test.go).
 type table struct {
-	startLine int
 	rows      []tableRow
+	startLine int
 }
 
 // tableRow holds one parsed source row. cells are sub-slices into
@@ -208,10 +213,12 @@ type table struct {
 // row pays one slice allocation rather than one per cell — the
 // dominant per-Check allocator on table-bearing files (plan 195
 // task 2). Consumers convert to string only when emitting a
-// diagnostic message, never on the hot count/width paths.
+// diagnostic message, never on the hot count/width paths. cells
+// precedes line/isSeparator so the GC's ptrdata scan does not also
+// cover those scalars — mirroring tablefmt.row (see layout_test.go).
 type tableRow struct {
-	line        int
 	cells       [][]byte
+	line        int
 	isSeparator bool
 }
 
