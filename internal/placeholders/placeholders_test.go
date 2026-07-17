@@ -335,6 +335,7 @@ func TestAPMInputToken_MaskBodyTokens(t *testing.T) {
 		{"single token replaced", "${input:pr_url}", "word"},
 		{"token in sentence", "review ${input:pr_url} now", "review word now"},
 		{"two tokens replaced", "${input:a} and ${input:b}", "word and word"},
+		{"malformed prefix unchanged", "${input:}", "${input:}"},
 		{"non-matching unchanged", "${output:x}", "${output:x}"},
 		{"plain text unchanged", "some prose", "some prose"},
 	}

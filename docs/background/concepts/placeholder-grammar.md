@@ -74,10 +74,10 @@ from `internal/placeholders`:
 
 | Rule ID | Rule name                        | Useful tokens                                                             |
 | ------- | -------------------------------- | ------------------------------------------------------------------------- |
-| MDS003  | `heading-increment`              | `heading-question`, `placeholder-section`, `var-token`                    |
+| MDS003  | `heading-increment`              | `heading-question`, `placeholder-section`, `var-token`, `apm-input-token` |
 | MDS004  | `first-line-heading`             | `heading-question`, `var-token`, `placeholder-section`, `apm-input-token` |
 | MDS018  | `no-emphasis-as-heading`         | `var-token`, `heading-question`, `placeholder-section`, `apm-input-token` |
 | MDS020  | `required-structure`             | `cue-frontmatter`                                                         |
 | MDS023  | `paragraph-readability`          | `var-token`, `heading-question`, `placeholder-section`, `apm-input-token` |
 | MDS024  | `paragraph-structure`            | `var-token`, `heading-question`, `placeholder-section`, `apm-input-token` |
-| MDS027  | `cross-file-reference-integrity` | `var-token`, `heading-question`, `placeholder-section`                    |
+| MDS027  | `cross-file-reference-integrity` | `var-token`, `heading-question`, `placeholder-section`, `apm-input-token` |

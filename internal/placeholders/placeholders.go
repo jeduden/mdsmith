@@ -23,8 +23,9 @@ import (
 	"github.com/jeduden/mdsmith/internal/fieldinterp"
 )
 
-// apmInputRe matches APM ${input:NAME} prompt parameters.
-// NAME must start with a letter and contain only letters, digits, underscores, and hyphens.
+// apmInputPrefix is the byte sequence that uniquely opens an APM input parameter.
+const apmInputPrefix = "${input:"
+
 var apmInputRe = regexp.MustCompile(`\$\{input:[A-Za-z][\w-]{0,63}\}`)
 
 // Named placeholder tokens.
@@ -81,7 +82,7 @@ func ContainsBodyToken(text string, tokens []string) bool {
 				return true
 			}
 		case APMInputToken:
-			if strings.Contains(text, "${input:") && apmInputRe.MatchString(text) {
+			if strings.Contains(text, apmInputPrefix) && apmInputRe.MatchString(text) {
 				return true
 			}
 		}
@@ -109,7 +110,7 @@ func MaskBodyTokens(text string, tokens []string) string {
 				return neutralText[PlaceholderSection]
 			}
 		case APMInputToken:
-			if strings.Contains(text, "${input:") {
+			if strings.Contains(text, apmInputPrefix) && apmInputRe.MatchString(text) {
 				text = apmInputRe.ReplaceAllLiteralString(text, neutralText[APMInputToken])
 			}
 		}
@@ -146,7 +147,7 @@ func stripBodyTokens(text string, tokens []string) string {
 				return ""
 			}
 		case APMInputToken:
-			if strings.Contains(text, "${input:") {
+			if strings.Contains(text, apmInputPrefix) && apmInputRe.MatchString(text) {
 				text = apmInputRe.ReplaceAllLiteralString(text, "")
 			}
 		}
