@@ -60,7 +60,7 @@ func parseCheckFlags(args []string) (checkCLIOpts, []string, bool, int) {
 	)
 
 	fs.StringVarP(&configPath, "config", "c", "", "Override config file path")
-	fs.StringVarP(&format, "format", "f", "text", "Output format: text, json")
+	fs.StringVarP(&format, "format", "f", "text", "Output format: text, json, sarif")
 	fs.BoolVar(&noColor, "no-color", false, "Disable ANSI colors")
 	fs.BoolVarP(&quiet, "quiet", "q", false, "Suppress non-error output")
 	fs.BoolVarP(&verbose, "verbose", "v", false, "Show config, files, and rules on stderr")

@@ -1,7 +1,7 @@
 ---
 id: 2607082052
 title: "SARIF output format for `mdsmith check`"
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   Add `-f sarif` to `mdsmith check` (and `fix --dry-run`) so its
@@ -54,41 +54,42 @@ work `partial`, not new.
 
 ## Tasks
 
-1. Red/green: extract the SARIF structs shared by
+1. [x] Red/green: extract the SARIF structs shared by
    `internal/secreview` and `internal/release` into a
    shared internal package with a stable rendering
    test.
-2. Red/green: `formatDiagnostics` tests for a `sarif`
+2. [x] Red/green: `formatDiagnostics` tests for a `sarif`
    format that maps each diagnostic to a SARIF 2.1.0
    result — `ruleId = MDS###`, `physicalLocation`
    region from file/line/column, `level` from
    severity.
-3. Emit one `reportingDescriptor` per fired rule with
+3. [x] Emit one `reportingDescriptor` per fired rule with
    a `helpUri` to the rule's doc page, and
    `tool.driver.name = mdsmith` with the build
    version.
-4. Add `sarif` to the `-f`/`--format` value set on
+4. [x] Add `sarif` to the `-f`/`--format` value set on
    `check` and on `fix --dry-run`; update
    [check.md](../docs/reference/cli/check.md) and
    [fix.md](../docs/reference/cli/fix.md).
-5. Show the GitHub Actions upload snippet in the
-   coexist-with-APM guide's CI section.
-6. Run `mdsmith fix PLAN.md` and `mdsmith check .`.
+5. [x] Show the GitHub Actions upload snippet in the
+   `check` reference page (coexist-with-APM guide
+   landing in plan 2607082050).
+6. [x] Run `mdsmith fix PLAN.md` and `mdsmith check .`.
 
 ## Acceptance Criteria
 
-- [ ] `mdsmith check -f sarif docs/` emits valid
+- [x] `mdsmith check -f sarif docs/` emits valid
       SARIF 2.1.0 with one result per diagnostic and
       correct file/line/column regions.
-- [ ] Each fired rule appears once in
+- [x] Each fired rule appears once in
       `tool.driver.rules` with a `helpUri`.
-- [ ] `fix --dry-run -f sarif` emits the same shape
+- [x] `fix --dry-run -f sarif` emits the same shape
       for the diagnostics it would fix.
-- [ ] `text` remains the default when `-f` is
+- [x] `text` remains the default when `-f` is
       omitted.
-- [ ] The `check` and `fix` reference pages list the
+- [x] The `check` and `fix` reference pages list the
       `sarif` value.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool -modfile=tools/go.mod golangci-lint
+- [x] All tests pass: `go test ./...`
+- [x] `go tool -modfile=tools/go.mod golangci-lint
       run` reports no issues.
-- [ ] `mdsmith check .` — 0 failures.
+- [x] `mdsmith check .` — 0 failures.

@@ -21,7 +21,7 @@ files are discovered from `.mdsmith.yml` `files:` patterns.
 | Flag                | Default | Description                            |
 | ------------------- | ------- | -------------------------------------- |
 | `-c`, `--config`    | auto    | Override config path (auto-discovers)  |
-| `-f`, `--format`    | `text`  | `text` or `json`                       |
+| `-f`, `--format`    | `text`  | `text`, `json`, or `sarif`             |
 | `--max-input-size`  | `2MB`   | Max file size (e.g. `2MB`, `0`=none)   |
 | `--no-color`        | false   | Plain output                           |
 | `--follow-symlinks` | config  | Follow symlinks; tri-state — see below |
