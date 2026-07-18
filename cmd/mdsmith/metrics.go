@@ -82,28 +82,24 @@ func runMetricsList(args []string) int {
 	}
 
 	defs := metricspkg.ForScope(scope)
-	switch format {
-	case "text":
-		if err := writeMetricsListText(os.Stdout, defs); err != nil {
-			fmt.Fprintf(os.Stderr, "mdsmith: writing output: %v\n", err)
-			return 2
-		}
-	case "json":
-		if err := writeMetricsListJSON(os.Stdout, defs); err != nil {
-			fmt.Fprintf(os.Stderr, "mdsmith: writing output: %v\n", err)
-			return 2
-		}
-	case "yaml":
-		if err := writeMetricsListYAML(os.Stdout, defs); err != nil {
-			fmt.Fprintf(os.Stderr, "mdsmith: writing output: %v\n", err)
-			return 2
-		}
-	default:
-		fmt.Fprintf(os.Stderr, "mdsmith: unknown format %q (supported: text, json, yaml)\n", format)
+	if err := writeListOutput(os.Stdout, format, defs); err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return 2
 	}
-
 	return 0
+}
+
+func writeListOutput(w io.Writer, format string, defs []metricspkg.Definition) error {
+	switch format {
+	case "text":
+		return writeMetricsListText(w, defs)
+	case "json":
+		return writeMetricsListJSON(w, defs)
+	case "yaml":
+		return writeMetricsListYAML(w, defs)
+	default:
+		return fmt.Errorf("unknown format %q (supported: text, json, yaml)", format)
+	}
 }
 
 type metricsRankOptions struct {

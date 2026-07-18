@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -479,6 +480,20 @@ func TestRunMetricsList_UnknownFormat_MentionsYAML(t *testing.T) {
 		})
 	})
 	assert.Contains(t, stderr, "yaml")
+}
+
+// --- writeListOutput ---
+
+func TestWriteListOutput_YAMLWriteError_ReturnsError(t *testing.T) {
+	defs := metricspkg.ForScope(metricspkg.ScopeFile)
+	err := writeListOutput(&alwaysErrorWriter{}, "yaml", defs)
+	require.Error(t, err)
+}
+
+func TestWriteListOutput_UnknownFormat_ReturnsError(t *testing.T) {
+	err := writeListOutput(io.Discard, "toml", nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown format")
 }
 
 // --- writeMetricsRankYAML ---

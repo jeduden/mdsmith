@@ -271,6 +271,25 @@ func TestMET010_AvgWordsPerSentence_WordCountError(t *testing.T) {
 	assert.False(t, v.Available)
 }
 
+func TestMET010_AvgWordsPerSentence_PlainTextErrorAfterWordCountSuccess(t *testing.T) {
+	def, ok := Lookup("MET010")
+	require.True(t, ok, "MET010 must be registered")
+
+	doc := NewDocument("test.md", []byte("# Hello\n"))
+	sentinel := errors.New("plain-text failure")
+	// WordCount succeeds (cached), but the subsequent PlainText call fails.
+	doc.wordCountReady = true
+	doc.wordCount = 5
+	doc.wordCountErr = nil
+	doc.plainTextReady = true
+	doc.plainTextErr = sentinel
+
+	v, err := def.Compute(doc)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, sentinel)
+	assert.False(t, v.Available)
+}
+
 func TestMET010_AvgWordsPerSentence_ZeroSentences(t *testing.T) {
 	// An empty document produces 0 words and 0 sentences → result is 0.
 	def, ok := Lookup("MET010")
