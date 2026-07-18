@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/mdtext"
+	"github.com/jeduden/mdsmith/internal/rules/paragraphreadability"
 	"github.com/jeduden/mdsmith/pkg/goldmark"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/jeduden/mdsmith/pkg/goldmark/text"
@@ -509,5 +510,6 @@ func TestARI_AgreesWithParagraphReadabilityDelegate(t *testing.T) {
 	// paragraphreadability (which now delegates here).
 	text := "I am here. You are there."
 	got := mdtext.ARI(text)
-	assert.InDelta(t, -5.8, got, 0.5)
+	gotPR := paragraphreadability.ARI(text)
+	assert.InDelta(t, got, gotPR, 0.0001, "mdtext.ARI and paragraphreadability.ARI must agree")
 }

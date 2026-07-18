@@ -244,7 +244,7 @@ func TestMET008_Readability_PlainTextError(t *testing.T) {
 	doc.plainTextErr = sentinel
 
 	v, err := def.Compute(doc)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.ErrorIs(t, err, sentinel)
 	assert.False(t, v.Available)
 }
@@ -259,7 +259,7 @@ func TestMET009_Sentences_PlainTextError(t *testing.T) {
 	doc.plainTextErr = sentinel
 
 	v, err := def.Compute(doc)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.ErrorIs(t, err, sentinel)
 	assert.False(t, v.Available)
 }
@@ -277,7 +277,7 @@ func TestMET010_AvgWordsPerSentence_WordCountError(t *testing.T) {
 	doc.plainTextErr = sentinel
 
 	v, err := def.Compute(doc)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.ErrorIs(t, err, sentinel)
 	assert.False(t, v.Available)
 }
@@ -296,7 +296,7 @@ func TestMET010_AvgWordsPerSentence_PlainTextErrorAfterWordCountSuccess(t *testi
 	doc.plainTextErr = sentinel
 
 	v, err := def.Compute(doc)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.ErrorIs(t, err, sentinel)
 	assert.False(t, v.Available)
 }

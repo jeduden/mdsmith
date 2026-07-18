@@ -115,12 +115,16 @@ var registry = []Definition{
 		Default:      false,
 		DefaultOrder: OrderDesc,
 		Compute: func(doc *Document) (Value, error) {
-			text, err := doc.PlainText()
+			words, err := doc.WordCount()
 			if err != nil {
 				return UnavailableValue(), err
 			}
-			if mdtext.CountWords(text) == 0 {
+			if words == 0 {
 				return UnavailableValue(), nil
+			}
+			text, err := doc.PlainText()
+			if err != nil {
+				return UnavailableValue(), err
 			}
 			return AvailableValue(mdtext.ARI(text)), nil
 		},
