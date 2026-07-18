@@ -505,12 +505,10 @@ func writeMetricsGetYAML(w io.Writer, item map[string]any) error {
 
 func writeMetricsGetText(w io.Writer, item map[string]any, defs []metricspkg.Definition) error {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	if _, err := fmt.Fprintln(tw, "NAME\tVALUE"); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(tw, "path\t%s\n", item["path"]); err != nil {
-		return err
-	}
+	// tabwriter buffers all writes internally; only Flush reaches the
+	// underlying writer, so intermediate write errors are not possible.
+	_, _ = fmt.Fprintln(tw, "NAME\tVALUE")
+	_, _ = fmt.Fprintf(tw, "path\t%s\n", item["path"])
 	for _, def := range defs {
 		v := item[def.Name]
 		var display string
@@ -522,13 +520,9 @@ func writeMetricsGetText(w io.Writer, item map[string]any, defs []metricspkg.Def
 				display = fmt.Sprintf("%.*f", def.Precision, n)
 			case int64:
 				display = strconv.FormatInt(n, 10)
-			default:
-				display = "-"
 			}
 		}
-		if _, err := fmt.Fprintf(tw, "%s\t%s\n", def.Name, display); err != nil {
-			return err
-		}
+		_, _ = fmt.Fprintf(tw, "%s\t%s\n", def.Name, display)
 	}
 	return tw.Flush()
 }

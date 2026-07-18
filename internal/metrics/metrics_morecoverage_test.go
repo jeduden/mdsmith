@@ -77,7 +77,7 @@ func TestListDocsFromFS_SkipsDirWithoutReadme(t *testing.T) {
 
 func TestParseFrontMatter_MissingOpenDelimiter(t *testing.T) {
 	_, err := parseFrontMatter("# No front matter\n")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing front matter")
 }
 
@@ -85,7 +85,7 @@ func TestParseFrontMatter_MissingOpenDelimiter(t *testing.T) {
 
 func TestParseFrontMatter_MissingID(t *testing.T) {
 	_, err := parseFrontMatter("---\nname: test\ndescription: desc.\n---\n")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing id")
 }
 
@@ -93,7 +93,7 @@ func TestParseFrontMatter_MissingID(t *testing.T) {
 
 func TestParseFrontMatter_MissingName(t *testing.T) {
 	_, err := parseFrontMatter("---\nid: MET001\ndescription: desc.\n---\n")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing name")
 }
 
@@ -145,7 +145,7 @@ func TestCollect_ComputeError(t *testing.T) {
 	}
 
 	_, err := Collect([]string{path}, defs, 0)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "computing")
 }
 
@@ -193,7 +193,7 @@ func TestLookupDocFromFS_UnknownReturnsError(t *testing.T) {
 	}
 
 	_, err := lookupDocFromFS(fsys, "MET000")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown metric")
 }
 
@@ -210,14 +210,14 @@ func TestListDocsFromFS_ReadDirError(t *testing.T) {
 	// errFS implements fs.FS but ReadDir fails because Open(".")
 	// returns an error, causing fs.ReadDir to fail.
 	_, err := listDocsFromFS(errFS{})
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "reading metrics directory")
 }
 
 func TestLookupDocFromFS_ListDocsError(t *testing.T) {
 	// When listDocsFromFS fails, lookupDocFromFS returns the error.
 	_, err := lookupDocFromFS(errFS{}, "MET001")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "reading metrics directory")
 }
 
