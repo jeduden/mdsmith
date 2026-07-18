@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
@@ -520,7 +521,12 @@ func writeMetricsGetText(w io.Writer, item map[string]any, defs []metricspkg.Def
 		if v == nil {
 			display = "-"
 		} else {
-			display = fmt.Sprintf("%v", v)
+			switch n := v.(type) {
+			case float64:
+				display = fmt.Sprintf("%.*f", def.Precision, n)
+			case int64:
+				display = strconv.FormatInt(n, 10)
+			}
 		}
 		fmt.Fprintf(tw, "%s\t%s\n", def.Name, display) //nolint:errcheck
 	}

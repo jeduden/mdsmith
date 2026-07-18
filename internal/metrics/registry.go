@@ -119,6 +119,9 @@ var registry = []Definition{
 			if err != nil {
 				return UnavailableValue(), err
 			}
+			if mdtext.CountWords(text) == 0 {
+				return UnavailableValue(), nil
+			}
 			return AvailableValue(mdtext.ARI(text)), nil
 		},
 	},

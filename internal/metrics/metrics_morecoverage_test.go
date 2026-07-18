@@ -223,6 +223,17 @@ func TestLookupDocFromFS_ListDocsError(t *testing.T) {
 
 // --- MET008/MET009/MET010 compute error paths ---
 
+func TestMET008_Readability_NoWords_ReturnsUnavailable(t *testing.T) {
+	def, ok := Lookup("MET008")
+	require.True(t, ok, "MET008 must be registered")
+
+	// Empty document has no words; readability must be unavailable, not 0.
+	doc := NewDocument("test.md", []byte(""))
+	v, err := def.Compute(doc)
+	require.NoError(t, err)
+	assert.False(t, v.Available)
+}
+
 func TestMET008_Readability_PlainTextError(t *testing.T) {
 	def, ok := Lookup("MET008")
 	require.True(t, ok, "MET008 must be registered")

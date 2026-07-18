@@ -560,6 +560,14 @@ func TestWriteMetricsGetText_NilValue_ShowsDash(t *testing.T) {
 	assert.Contains(t, buf.String(), "-")
 }
 
+func TestWriteMetricsGetText_Float64Value_UsesPrecision(t *testing.T) {
+	defs := []metricspkg.Definition{{Name: "conciseness", Kind: metricspkg.KindFloat, Precision: 1}}
+	item := map[string]any{"path": "foo.md", "conciseness": float64(75.0)}
+	var buf bytes.Buffer
+	require.NoError(t, writeMetricsGetText(&buf, item, defs))
+	assert.Contains(t, buf.String(), "75.0")
+}
+
 // --- runMetricsGet ---
 
 func TestRunMetricsGet_NoArgs_ExitsTwo(t *testing.T) {
@@ -577,9 +585,10 @@ func TestRunMetricsGet_TwoArgs_ExitsTwo(t *testing.T) {
 }
 
 func TestRunMetricsGet_UnknownFormat_ExitsTwo(t *testing.T) {
+	path := testMetricsFile(t)
 	captureStderr(func() {
 		captureStdout(func() {
-			code := runMetricsGet([]string{"-f", "toml", "README.md"})
+			code := runMetricsGet([]string{"-f", "toml", path})
 			assert.Equal(t, 2, code)
 		})
 	})
