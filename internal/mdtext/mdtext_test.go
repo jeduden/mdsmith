@@ -479,3 +479,35 @@ func TestCollectTOCItems_HeadingWithEmptySlug(t *testing.T) {
 	require.Len(t, items, 1, "heading with empty slug should be skipped")
 	assert.Equal(t, "Normal", items[0].Text)
 }
+
+func TestARI_Empty(t *testing.T) {
+	assert.Equal(t, 0.0, mdtext.ARI(""))
+}
+
+func TestARI_ZeroWords(t *testing.T) {
+	assert.Equal(t, 0.0, mdtext.ARI("   "))
+}
+
+func TestARI_SimpleText(t *testing.T) {
+	// "The cat sat on the mat." -> 6 words, 1 sentence, 17 chars
+	got := mdtext.ARI("The cat sat on the mat.")
+	assert.InDelta(t, -5.08, got, 0.5)
+}
+
+func TestARI_ComplexText(t *testing.T) {
+	text := "The implementation of concurrent distributed systems " +
+		"requires sophisticated understanding of fundamental " +
+		"computational paradigms. Synchronization mechanisms " +
+		"must guarantee linearizability across heterogeneous " +
+		"processing environments."
+	got := mdtext.ARI(text)
+	assert.Greater(t, got, 14.0, "complex text should have ARI > 14")
+}
+
+func TestARI_AgreesWithParagraphReadabilityDelegate(t *testing.T) {
+	// ARI in mdtext must produce the same result as the one in
+	// paragraphreadability (which now delegates here).
+	text := "I am here. You are there."
+	got := mdtext.ARI(text)
+	assert.InDelta(t, -5.8, got, 0.5)
+}

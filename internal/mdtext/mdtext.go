@@ -473,3 +473,19 @@ func CountCharacters(text string) int {
 	}
 	return count
 }
+
+// ARI computes the Automated Readability Index for plain text.
+// Formula: 4.71*(characters/words) + 0.5*(words/sentences) - 21.43
+// where characters = letters and digits only.
+// Returns 0 when the text has no words.
+func ARI(text string) float64 {
+	words := CountWords(text)
+	if words == 0 {
+		return 0
+	}
+	sentences := CountSentences(text)
+	characters := CountCharacters(text)
+	return 4.71*float64(characters)/float64(words) +
+		0.5*float64(words)/float64(sentences) -
+		21.43
+}
