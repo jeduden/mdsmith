@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -218,4 +219,66 @@ func TestLookupDocFromFS_ListDocsError(t *testing.T) {
 	_, err := lookupDocFromFS(errFS{}, "MET001")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "reading metrics directory")
+}
+
+// --- MET008/MET009/MET010 compute error paths ---
+
+func TestMET008_Readability_PlainTextError(t *testing.T) {
+	def, ok := Lookup("MET008")
+	require.True(t, ok, "MET008 must be registered")
+
+	doc := NewDocument("test.md", []byte("# Hello\n"))
+	sentinel := errors.New("plain-text failure")
+	doc.plainTextReady = true
+	doc.plainTextErr = sentinel
+
+	v, err := def.Compute(doc)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, sentinel)
+	assert.False(t, v.Available)
+}
+
+func TestMET009_Sentences_PlainTextError(t *testing.T) {
+	def, ok := Lookup("MET009")
+	require.True(t, ok, "MET009 must be registered")
+
+	doc := NewDocument("test.md", []byte("# Hello\n"))
+	sentinel := errors.New("plain-text failure")
+	doc.plainTextReady = true
+	doc.plainTextErr = sentinel
+
+	v, err := def.Compute(doc)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, sentinel)
+	assert.False(t, v.Available)
+}
+
+func TestMET010_AvgWordsPerSentence_WordCountError(t *testing.T) {
+	def, ok := Lookup("MET010")
+	require.True(t, ok, "MET010 must be registered")
+
+	doc := NewDocument("test.md", []byte("# Hello\n"))
+	sentinel := errors.New("word-count failure")
+	doc.wordCountReady = true
+	doc.wordCountErr = sentinel
+	// PlainText must also be primed to fail so WordCount propagates it.
+	doc.plainTextReady = true
+	doc.plainTextErr = sentinel
+
+	v, err := def.Compute(doc)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, sentinel)
+	assert.False(t, v.Available)
+}
+
+func TestMET010_AvgWordsPerSentence_ZeroSentences(t *testing.T) {
+	// An empty document produces 0 words and 0 sentences → result is 0.
+	def, ok := Lookup("MET010")
+	require.True(t, ok, "MET010 must be registered")
+
+	doc := NewDocument("test.md", []byte(""))
+	v, err := def.Compute(doc)
+	require.NoError(t, err)
+	assert.True(t, v.Available)
+	assert.Equal(t, 0.0, v.Number)
 }
