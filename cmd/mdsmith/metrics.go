@@ -451,6 +451,10 @@ func runMetricsGet(args []string) int {
 		return 2
 	}
 
+	return executeMetricsGet(os.Stdout, format, path)
+}
+
+func executeMetricsGet(w io.Writer, format, path string) int {
 	defs := metricspkg.ForScope(metricspkg.ScopeFile)
 	rows, err := metricspkg.Collect([]string{path}, defs, bytelimit.DefaultMaxInputBytes)
 	if err != nil {
@@ -458,7 +462,7 @@ func runMetricsGet(args []string) int {
 		return 2
 	}
 
-	if err := writeGetOutput(os.Stdout, format, rows[0], defs); err != nil {
+	if err := writeGetOutput(w, format, rows[0], defs); err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: writing output: %v\n", err)
 		return 2
 	}

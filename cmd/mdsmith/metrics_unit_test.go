@@ -168,6 +168,16 @@ func TestResolveRankSelection_ByNotInDefaultsGetsAppended(t *testing.T) {
 	assert.True(t, containsMetric(defs, byDef.ID))
 }
 
+// --- executeMetricsRank ---
+
+func TestExecuteMetricsRank_UnknownFormat_ExitsTwo(t *testing.T) {
+	captureStderr(func() {
+		opts := metricsRankOptions{format: "toml"}
+		code := executeMetricsRank(opts, nil)
+		assert.Equal(t, 2, code)
+	})
+}
+
 // --- writeRankOutput ---
 
 func TestWriteRankOutput_UnknownFormat_Error(t *testing.T) {
@@ -639,6 +649,14 @@ func TestRunMetricsGet_RealFile_YAMLContainsSentences(t *testing.T) {
 	})
 	assert.Contains(t, out, "sentences")
 	assert.Contains(t, out, "readability")
+}
+
+func TestExecuteMetricsGet_WriteError_ExitsTwo(t *testing.T) {
+	path := testMetricsFile(t)
+	captureStderr(func() {
+		code := executeMetricsGet(&alwaysErrorWriter{}, "json", path)
+		assert.Equal(t, 2, code)
+	})
 }
 
 func TestRunMetricsGet_RealFile_JSONAndYAMLAgreeOnSentences(t *testing.T) {
