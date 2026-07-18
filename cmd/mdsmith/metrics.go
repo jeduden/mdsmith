@@ -450,11 +450,15 @@ func runMetricsGet(args []string) int {
 		return 2
 	}
 
-	return writeGetOutput(os.Stdout, format, item, defs)
+	if err := writeGetOutput(os.Stdout, format, item, defs); err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: writing output: %v\n", err)
+		return 2
+	}
+	return 0
 }
 
 func collectGetItem(path string, defs []metricspkg.Definition) (map[string]any, error) {
-	source, err := bytelimit.ReadFileLimited(path, 0)
+	source, err := bytelimit.ReadFileLimited(path, bytelimit.DefaultMaxInputBytes)
 	if err != nil {
 		return nil, fmt.Errorf("reading %q: %w", path, err)
 	}
@@ -471,28 +475,17 @@ func collectGetItem(path string, defs []metricspkg.Definition) (map[string]any, 
 	return item, nil
 }
 
-func writeGetOutput(w io.Writer, format string, item map[string]any, defs []metricspkg.Definition) int {
+func writeGetOutput(w io.Writer, format string, item map[string]any, defs []metricspkg.Definition) error {
 	switch format {
 	case "json":
-		if err := writeMetricsGetJSON(w, item); err != nil {
-			fmt.Fprintf(os.Stderr, "mdsmith: writing output: %v\n", err)
-			return 2
-		}
+		return writeMetricsGetJSON(w, item)
 	case "yaml":
-		if err := writeMetricsGetYAML(w, item); err != nil {
-			fmt.Fprintf(os.Stderr, "mdsmith: writing output: %v\n", err)
-			return 2
-		}
+		return writeMetricsGetYAML(w, item)
 	case "text":
-		if err := writeMetricsGetText(w, item, defs); err != nil {
-			fmt.Fprintf(os.Stderr, "mdsmith: writing output: %v\n", err)
-			return 2
-		}
+		return writeMetricsGetText(w, item, defs)
 	default:
-		fmt.Fprintf(os.Stderr, "mdsmith: unknown format %q (supported: text, json, yaml)\n", format)
-		return 2
+		return fmt.Errorf("unknown format %q (supported: text, json, yaml)", format)
 	}
-	return 0
 }
 
 func writeMetricsGetJSON(w io.Writer, item map[string]any) error {
@@ -512,9 +505,12 @@ func writeMetricsGetYAML(w io.Writer, item map[string]any) error {
 
 func writeMetricsGetText(w io.Writer, item map[string]any, defs []metricspkg.Definition) error {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	// tabwriter buffers to internal memory; writes only reach w at Flush().
-	fmt.Fprintln(tw, "NAME\tVALUE")             //nolint:errcheck
-	fmt.Fprintf(tw, "path\t%s\n", item["path"]) //nolint:errcheck
+	if _, err := fmt.Fprintln(tw, "NAME\tVALUE"); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(tw, "path\t%s\n", item["path"]); err != nil {
+		return err
+	}
 	for _, def := range defs {
 		v := item[def.Name]
 		var display string
@@ -526,9 +522,13 @@ func writeMetricsGetText(w io.Writer, item map[string]any, defs []metricspkg.Def
 				display = fmt.Sprintf("%.*f", def.Precision, n)
 			case int64:
 				display = strconv.FormatInt(n, 10)
+			default:
+				display = "-"
 			}
 		}
-		fmt.Fprintf(tw, "%s\t%s\n", def.Name, display) //nolint:errcheck
+		if _, err := fmt.Fprintf(tw, "%s\t%s\n", def.Name, display); err != nil {
+			return err
+		}
 	}
 	return tw.Flush()
 }

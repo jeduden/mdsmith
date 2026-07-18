@@ -709,29 +709,23 @@ func TestWriteMetricsGetText_WriteError_ReturnsError(t *testing.T) {
 
 // --- writeGetOutput error returns ---
 
-func TestWriteGetOutput_JSONWriteError_ReturnsTwo(t *testing.T) {
+func TestWriteGetOutput_JSONWriteError_ReturnsError(t *testing.T) {
 	item := map[string]any{"path": "foo.md"}
-	captureStderr(func() {
-		code := writeGetOutput(&alwaysErrorWriter{}, "json", item, nil)
-		assert.Equal(t, 2, code)
-	})
+	err := writeGetOutput(&alwaysErrorWriter{}, "json", item, nil)
+	require.Error(t, err)
 }
 
-func TestWriteGetOutput_YAMLWriteError_ReturnsTwo(t *testing.T) {
+func TestWriteGetOutput_YAMLWriteError_ReturnsError(t *testing.T) {
 	item := map[string]any{"path": "foo.md"}
-	captureStderr(func() {
-		code := writeGetOutput(&alwaysErrorWriter{}, "yaml", item, nil)
-		assert.Equal(t, 2, code)
-	})
+	err := writeGetOutput(&alwaysErrorWriter{}, "yaml", item, nil)
+	require.Error(t, err)
 }
 
-func TestWriteGetOutput_TextWriteError_ReturnsTwo(t *testing.T) {
+func TestWriteGetOutput_TextWriteError_ReturnsError(t *testing.T) {
 	defs := []metricspkg.Definition{{ID: "bytes", Name: "bytes"}}
 	item := map[string]any{"path": "foo.md", "bytes": int64(42)}
-	captureStderr(func() {
-		code := writeGetOutput(&alwaysErrorWriter{}, "text", item, defs)
-		assert.Equal(t, 2, code)
-	})
+	err := writeGetOutput(&alwaysErrorWriter{}, "text", item, defs)
+	require.Error(t, err)
 }
 
 // --- runMetricsGet flag parse error ---
@@ -767,10 +761,9 @@ func TestCollectGetItem_ComputeError_ReturnsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "computing")
 }
 
-func TestWriteGetOutput_UnknownFormat_ReturnsTwo(t *testing.T) {
+func TestWriteGetOutput_UnknownFormat_ReturnsError(t *testing.T) {
 	item := map[string]any{"path": "foo.md"}
-	captureStderr(func() {
-		code := writeGetOutput(&bytes.Buffer{}, "xml", item, nil)
-		assert.Equal(t, 2, code)
-	})
+	err := writeGetOutput(&bytes.Buffer{}, "xml", item, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown format")
 }
