@@ -105,6 +105,10 @@ func loadFromBytes(data []byte, sourcePath string, mergeKinds bool) (*Config, er
 		return nil, fmt.Errorf("validating config: %w", err)
 	}
 
+	if err := validateForeignRegions(&cfg); err != nil {
+		return nil, fmt.Errorf("validating config: %w", err)
+	}
+
 	if err := checkBuildConfig(data, &cfg); err != nil {
 		return nil, err
 	}

@@ -1,7 +1,7 @@
 ---
 id: 2607082049
 title: "Foreign managed-region protection for `mdsmith fix`"
-status: "🔲"
+status: "🔳"
 model: opus
 summary: >-
   Add a `foreign-regions:` config listing `{start, end}` marker
