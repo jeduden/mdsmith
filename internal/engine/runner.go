@@ -15,6 +15,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/checker"
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/explain"
+	"github.com/jeduden/mdsmith/internal/foreignregion"
 	"github.com/jeduden/mdsmith/internal/gitignore"
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
@@ -485,11 +486,18 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 	// directives, so it has no generated sections — leave the ranges nil.
 	populateGeneratedRanges(f)
 
+	// Foreign-region ranges extend the same exclusion set from a plain
+	// line scan (no AST needed), so style rules skip diagnostics inside a
+	// marker pair another generator owns. Malformed pairs surface as
+	// MDS073 diagnostics appended after the rule check.
+	foreignDiags := foreignregion.Apply(f, r.Config, path)
+
 	// Configure the enabled rules once per config signature (cached on the
 	// worker's confCache) and reuse the result across every file that shares
 	// that config, instead of re-cloning every Configurable rule per file.
 	configured, cfgErrs := rr.configured(sigKey, effective)
 	diags := checker.CheckConfiguredRules(f, configured, r.SkipSourceContext, intraFileCap)
+	diags = append(diags, foreignDiags...)
 	if r.Explain {
 		explain.Attach(diags, r.Config, path, fmKinds, fmFields)
 	}
@@ -737,6 +745,10 @@ func (r *Runner) populateFileFields(f *lint.File, path string) {
 		}
 	}
 	f.GeneratedRanges = gensection.FindAllGeneratedRanges(f)
+	// Extend the exclusion set with foreign-region spans before the *File
+	// is published to the parse cache, so the read-only diagnostic pass
+	// (runSourceCheckRules) never has to mutate the shared File.
+	foreignregion.AppendRanges(f, r.Config, path)
 }
 
 // runSourceCheckRules wraps the post-parse check pipeline for
@@ -765,6 +777,7 @@ func (r *Runner) runSourceCheckRules(
 		explain.Attach(diags, r.Config, path, fmKinds, fmFields)
 	}
 	res.Diagnostics = append(res.Diagnostics, diags...)
+	res.Diagnostics = append(res.Diagnostics, foreignregion.Diagnostics(f, r.Config, path)...)
 	res.Errors = append(res.Errors, errs...)
 }
 

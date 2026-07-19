@@ -45,6 +45,55 @@ func Scan(f *lint.File, regions []config.ForeignRegion) ([]lint.LineRange, []lin
 	return ranges, diags
 }
 
+// Apply appends the foreign-region spans for path to f.GeneratedRanges —
+// the same exclusion set that keeps style rules and fixers out of
+// `<?include?>` / `<?catalog?>` bodies — and returns the malformed-region
+// diagnostics with File and the file's front-matter line offset already
+// applied, ready to append to the file's diagnostic set after the rule
+// check has run. It is the single-scan entry point for the pooled check
+// and fix paths, where f is local to one goroutine. Returns nil when no
+// marker pairs apply to path.
+func Apply(f *lint.File, cfg *config.Config, path string) []lint.Diagnostic {
+	ranges, diags := resolve(f, cfg, path)
+	f.GeneratedRanges = append(f.GeneratedRanges, ranges...)
+	return diags
+}
+
+// AppendRanges appends the foreign-region spans for path to
+// f.GeneratedRanges and discards the malformed diagnostics. The
+// RunSource (LSP) path uses it to populate the exclusion set once,
+// before f is published to the parse cache, so the diagnostic pass can
+// stay read-only on the shared *File (see Diagnostics).
+func AppendRanges(f *lint.File, cfg *config.Config, path string) {
+	ranges, _ := resolve(f, cfg, path)
+	f.GeneratedRanges = append(f.GeneratedRanges, ranges...)
+}
+
+// Diagnostics returns the malformed-region diagnostics for path without
+// mutating f. The RunSource path calls it during the check pass, whose
+// contract forbids writing to the cached *File; AppendRanges has already
+// set the ranges, so re-scanning here only rebuilds the diagnostics.
+func Diagnostics(f *lint.File, cfg *config.Config, path string) []lint.Diagnostic {
+	_, diags := resolve(f, cfg, path)
+	return diags
+}
+
+// resolve scans f for the marker pairs that apply to path and returns
+// their ranges plus the malformed diagnostics, with each diagnostic's
+// File set and Line shifted into display coordinates by f.LineOffset.
+func resolve(f *lint.File, cfg *config.Config, path string) ([]lint.LineRange, []lint.Diagnostic) {
+	regions := config.EffectiveForeignRegions(cfg, path)
+	if len(regions) == 0 {
+		return nil, nil
+	}
+	ranges, diags := Scan(f, regions)
+	for i := range diags {
+		diags[i].File = path
+		diags[i].Line += f.LineOffset
+	}
+	return ranges, diags
+}
+
 // scanOne walks f.Lines once for a single marker pair, matching a line
 // against a marker by trimmed-line equality so leading indentation does
 // not defeat the match while incidental in-prose mentions do not.

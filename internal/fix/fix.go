@@ -14,6 +14,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/checker"
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/explain"
+	"github.com/jeduden/mdsmith/internal/foreignregion"
 	"github.com/jeduden/mdsmith/internal/gitignore"
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
@@ -401,10 +402,16 @@ func (f *Fixer) fixFile(path string) (
 
 	fc := f.configuredFor(key, effective)
 	lf.GeneratedRanges = gensection.FindAllGeneratedRanges(lf)
+	foreignDiags := foreignregion.Apply(lf, f.Config, path)
 	beforeDiags := checker.CheckConfiguredRules(lf, fc.all, false, 1)
+	beforeDiags = append(beforeDiags, foreignDiags...)
 	errs = append(errs, fc.errs...)
 
 	current := f.applyFixPasses(path, lf.Source, fc.fixable, lf, dirFS, &errs)
+	// Undo any fixer edit that landed inside a declared foreign region —
+	// the owning generator's bytes must round-trip unchanged even when a
+	// fixer ignores GeneratedRanges (e.g. trailing-space trimming).
+	current = foreignregion.Restore(lf.Source, current, config.EffectiveForeignRegions(f.Config, path))
 
 	bytesChanged := !bytes.Equal(lf.Source, current)
 	var modified string
@@ -421,9 +428,10 @@ func (f *Fixer) fixFile(path string) (
 		modified = path
 	}
 
-	finalFile := buildPostFixFile(path, current, lf, dirFS)
+	finalFile := buildPostFixFile(path, current, lf, dirFS, f.Config)
 
 	diags := checker.CheckConfiguredRules(finalFile, fc.all, false, 1)
+	diags = append(diags, foreignregion.Diagnostics(finalFile, f.Config, path)...)
 	if f.DryRun {
 		diags = subtractPredictedDryRunFixes(diags, fc.fixable, finalFile)
 	}
@@ -592,7 +600,7 @@ func countByRule(diags []lint.Diagnostic) map[string]int {
 // different post-fix bytes than `mdsmith check` would have validated,
 // and side-effect-only fixers (e.g. MDS048 checking DryRun) would see
 // DryRun=false on re-parsed files and ignore the contract.
-func hydrateLintFile(parsed *lint.File, lf *lint.File, dirFS fs.FS) {
+func hydrateLintFile(parsed *lint.File, lf *lint.File, dirFS fs.FS, cfg *config.Config, path string) {
 	parsed.FS = dirFS
 	parsed.RootFS = lf.RootFS
 	parsed.RootDir = lf.RootDir
@@ -603,14 +611,18 @@ func hydrateLintFile(parsed *lint.File, lf *lint.File, dirFS fs.FS) {
 	parsed.DryRun = lf.DryRun
 	parsed.GitignoreFunc = lf.GitignoreFunc
 	parsed.GeneratedRanges = gensection.FindAllGeneratedRanges(parsed)
+	// Extend the exclusion set with foreign-region spans so fixable
+	// rules skip a marker pair another generator owns, exactly as the
+	// pre-fix lf did (see fixFile).
+	foreignregion.AppendRanges(parsed, cfg, path)
 }
 
 // buildPostFixFile parses post-fix bytes and hydrates them with the
 // per-file context from lf so the post-fix CheckRules call sees the
 // same lint.File the runner would.
-func buildPostFixFile(path string, source []byte, lf *lint.File, dirFS fs.FS) *lint.File {
+func buildPostFixFile(path string, source []byte, lf *lint.File, dirFS fs.FS, cfg *config.Config) *lint.File {
 	finalFile, _ := lint.NewFile(path, source) // NewFile never errors with current implementation
-	hydrateLintFile(finalFile, lf, dirFS)
+	hydrateLintFile(finalFile, lf, dirFS, cfg, path)
 	return finalFile
 }
 
@@ -629,7 +641,7 @@ func (f *Fixer) applyFixPasses(
 				*errs = append(*errs, fmt.Errorf("parsing %q: %w", path, err))
 				break
 			}
-			hydrateLintFile(parsedFile, lf, dirFS)
+			hydrateLintFile(parsedFile, lf, dirFS, f.Config, path)
 
 			diags := fr.Check(parsedFile)
 			if len(diags) == 0 {
