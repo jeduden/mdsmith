@@ -826,6 +826,7 @@ row-expr: |
 | [MDS067](../../../internal/rules/MDS067-callout-type/README.md) callout-type                 | —                          | —                          | —                       | —       | —               | —          |
 | [MDS069](../../../internal/rules/MDS069-unique-frontmatter/README.md) unique-frontmatter     | —                          | —                          | —                       | —       | —               | —          |
 | [MDS071](../../../internal/rules/MDS071-required-frontmatter/README.md) required-frontmatter | —                          | —                          | —                       | —       | —               | —          |
+| [MDS073](../../../internal/rules/MDS073-slide-structure/README.md) slide-structure           | —                          | —                          | —                       | —       | —               | —          |
 <?/catalog?>
 
 ## Generated sections (directives) (mdsmith-only)

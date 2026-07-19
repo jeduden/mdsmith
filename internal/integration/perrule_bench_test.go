@@ -315,6 +315,7 @@ var perRuleAllocCeiling = map[string]float64{
 	"MDS071": 4,   // required-frontmatter: 0 allocs (inert without fields)
 	// MDS072 (external-link-check) is network-bound and excluded from
 	// this gate via isNetworkBound; it has no alloc ceiling here.
+	"MDS073": 4, // slide-structure: 0 allocs (inert without slide markers)
 }
 
 // init pins MDS043's allocs ceiling from the build-tagged

@@ -76,6 +76,7 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/samefileanchor"
 	_ "github.com/jeduden/mdsmith/internal/rules/singleh1"
 	_ "github.com/jeduden/mdsmith/internal/rules/singletrailingnewline"
+	_ "github.com/jeduden/mdsmith/internal/rules/slidevstructure"
 	_ "github.com/jeduden/mdsmith/internal/rules/tableformat"
 	_ "github.com/jeduden/mdsmith/internal/rules/tablereadability"
 	_ "github.com/jeduden/mdsmith/internal/rules/toc"

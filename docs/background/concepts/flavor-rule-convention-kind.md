@@ -45,14 +45,14 @@ conventions or kinds.
 
 ### Convention
 
-A convention is a named bundle that pairs a flavor
-with a set of rule presets. Selecting a convention
-applies both: MDS034 runs against the named flavor,
-and the named rule presets are applied as a base
-layer beneath the user's own rule config. The
+A convention is a named bundle of rule presets that
+optionally pins a flavor. Selecting a convention
+applies both: when a flavor is pinned, MDS034 runs
+against it; the named rule presets are applied as a
+base layer beneath the user's own rule config. The
 built-in conventions are `portable`, `github`,
-`obsidian`, `plain`, `no-llm-tells`, and four
-`<linter>-parity` conventions. Each one runs the
+`obsidian`, `plain`, `no-llm-tells`, `slidev`, and
+four `<linter>-parity` conventions. Each one runs the
 rule set a peer linter (gomarklint, mado, rumdl,
 markdownlint) enables by default, so `mdsmith check`
 matches that peer's work for a like-for-like

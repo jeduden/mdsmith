@@ -234,6 +234,7 @@ footer: |
 | 2606260211 | ✅     | sonnet | [Add dedicated unit tests for layer0_html.go helpers](plan/2606260211_arch-fix-layer0-html-helper-tests.md)                                             |
 | 2606260614 | ✅     | sonnet | [arch-fix: add dedicated unit tests for lineclass_scan.go HTML-scanning helpers](plan/2606260614_arch-fix-lineclass-scan-helper-tests.md)               |
 | 2606260615 | ✅     | sonnet | [Add dedicated unit tests for unexported helpers in cue/cuelite/engine.go](plan/2606260615_arch-fix-cuelite-engine-helper-tests.md)                     |
+| 2606270013 | ✅     | sonnet | [Add built-in Slidev convention](plan/2606270013_slidev-convention.md)                                                                                  |
 | 2606280208 | ✅     | opus   | [External URL link checking rule (MDS072)](plan/2606280208_external-link-check.md)                                                                      |
 | 2606292015 | 🔲     | opus   | [Scope the LSP workspace singleton per client so instances coexist](plan/2606292015_lsp-multi-instance-coexistence.md)                                  |
 | 2607022118 | 🔲     | sonnet | [General occurrence rule — bound how often a pattern appears per scope](plan/2607022118_occurrence-rule.md)                                             |
@@ -253,6 +254,7 @@ footer: |
 | 2607082052 | ✅     | sonnet | [SARIF output format for `mdsmith check`](plan/2607082052_check-sarif-output.md)                                                                        |
 | 2607121915 | ✅     | sonnet | [Resolve the internal/linkgraph purity-contract mismatch for wikilink resolution](plan/2607121915_arch-fix-linkgraph-wikilink-purity.md)                |
 | 2607170527 | 🔳     | opus   | [External link checking on WASM hosts (MDS072)](plan/2607170527_wasm-external-link-check.md)                                                            |
+| 2607171900 | 🔳     | opus   | [Slidev structure rule (MDS073) — validate layouts, slots, fields, and frontmatter keys per slide](plan/2607171900_slidev-structure-rule.md)            |
 | 2607191917 | 🔲     | haiku  | [Add dedicated unit tests for printInitCatalog and setInitUsage](plan/2607191917_arch-fix-printinitcatalog-unit-test.md)                                |
 | 2607191918 | 🔲     | haiku  | [Deduplicate isClaimed between internal/schema and requiredstructure](plan/2607191918_arch-fix-isclaimed-dedup.md)                                      |
 <?/catalog?>
