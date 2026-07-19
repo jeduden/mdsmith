@@ -28,6 +28,17 @@ func EffectiveForeignRegions(cfg *Config, filePath string) []ForeignRegion {
 	return out
 }
 
+// validateConfigSemantics runs the post-parse structural checks that
+// depend on the fully-decoded config: kind graph validity and
+// foreign-region marker-pair well-formedness. Kept together so
+// loadFromBytes carries one call site rather than one per check.
+func validateConfigSemantics(cfg *Config) error {
+	if err := ValidateKinds(cfg); err != nil {
+		return err
+	}
+	return validateForeignRegions(cfg)
+}
+
 // validateForeignRegions rejects malformed marker-pair declarations:
 // a blank start or end marker, or a pair whose start equals its end
 // (the scanner could never tell which line opens and which closes a

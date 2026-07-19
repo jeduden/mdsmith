@@ -486,18 +486,11 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 	// directives, so it has no generated sections — leave the ranges nil.
 	populateGeneratedRanges(f)
 
-	// Foreign-region ranges extend the same exclusion set from a plain
-	// line scan (no AST needed), so style rules skip diagnostics inside a
-	// marker pair another generator owns. Malformed pairs surface as
-	// MDS073 diagnostics appended after the rule check.
-	foreignDiags := foreignregion.Apply(f, r.Config, path)
-
 	// Configure the enabled rules once per config signature (cached on the
 	// worker's confCache) and reuse the result across every file that shares
 	// that config, instead of re-cloning every Configurable rule per file.
 	configured, cfgErrs := rr.configured(sigKey, effective)
-	diags := checker.CheckConfiguredRules(f, configured, r.SkipSourceContext, intraFileCap)
-	diags = append(diags, foreignDiags...)
+	diags := r.checkWithForeignRegions(f, configured, path, intraFileCap)
 	if r.Explain {
 		explain.Attach(diags, r.Config, path, fmKinds, fmFields)
 	}
@@ -506,6 +499,19 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 	// across files that hit the same cache entry is safe. It is nil on
 	// every well-formed config (the common path).
 	return fileOutcome{diags: diags, errs: cfgErrs}
+}
+
+// checkWithForeignRegions extends f.GeneratedRanges with the foreign-
+// region spans that apply to path (a plain line scan, no AST needed) so
+// style rules skip diagnostics inside a marker pair another generator
+// owns, runs the configured rules, and appends the malformed-region
+// (MDS073) diagnostics for any unmatched or duplicated marker.
+func (r *Runner) checkWithForeignRegions(
+	f *lint.File, configured []rule.Rule, path string, intraFileCap int,
+) []lint.Diagnostic {
+	foreignDiags := foreignregion.Apply(f, r.Config, path)
+	diags := checker.CheckConfiguredRules(f, configured, r.SkipSourceContext, intraFileCap)
+	return append(diags, foreignDiags...)
 }
 
 // populateGeneratedRanges fills f.GeneratedRanges from the include/catalog
