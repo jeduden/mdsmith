@@ -10,7 +10,10 @@
 // in this file rather than a hunt across a dozen packages.
 package mdpath
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // extensions is the canonical, lowercased Markdown extension set — each
 // element including the leading dot. It is unexported so callers cannot
@@ -22,7 +25,7 @@ var extensions = []string{".md", ".markdown"}
 // list (each element includes the leading dot, lowercased), so callers
 // may sort or append without disturbing the shared source of truth.
 func Extensions() []string {
-	return append([]string(nil), extensions...)
+	return slices.Clone(extensions)
 }
 
 // FileGlobs returns a basename glob per Markdown extension — "*.md",
