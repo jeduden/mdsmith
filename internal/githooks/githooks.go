@@ -216,6 +216,36 @@ func GlobsFromConfig(cfg *config.Config) (Globs, []string) {
 	return g, skipped
 }
 
+// LegacyGlobs renders cfg.Ignore the pre-#750 way: the default include
+// set plus each representable ignore pattern copied verbatim, without
+// markdown scoping (`demo/** -merge`). This is the managed block that a
+// mdsmith release from before the markdown-scoping change produces and
+// expects — including the pinned CI baseline that validates
+// .gitattributes in the merge queue via `merge-driver ci-install`.
+//
+// It exists only for the transition window (see
+// docs/development/adopt-new-directive-syntax.md): a change to the
+// managed-block format cannot reach main through the merge queue while
+// the queue is gated by a pinned binary that predates the format. So
+// the repository keeps its committed .gitattributes in this legacy form
+// — validated by TestRepoGitattributesInSyncWithConfig against this
+// render — while GlobsFromConfig renders the markdown-scoped form that
+// `install` now writes for users and that the repository itself adopts
+// once the feature ships in a release and the pin is bumped.
+func LegacyGlobs(cfg *config.Config) Globs {
+	g := Globs{Include: DefaultIncludes()}
+	if cfg == nil || len(cfg.Ignore) == 0 {
+		return g
+	}
+	g.Exclude = make([]string, 0, len(cfg.Ignore))
+	for _, p := range cfg.Ignore {
+		if isRepresentableGitattributesPattern(p) {
+			g.Exclude = append(g.Exclude, p)
+		}
+	}
+	return g
+}
+
 // scopeExcludeToMarkdown rewrites one .mdsmith.yml ignore pattern into
 // the .gitattributes exclude patterns that turn off the mdsmith merge
 // driver for the Markdown files the pattern grandfathers — and only
