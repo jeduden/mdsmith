@@ -19,7 +19,9 @@ import (
 )
 
 // setInitUsage installs the `mdsmith init` usage text on fs, writing to w.
+// It also calls fs.SetOutput(w) so fs.PrintDefaults() flows to the same writer.
 func setInitUsage(fs *flag.FlagSet, w io.Writer) {
+	fs.SetOutput(w)
 	fs.Usage = func() {
 		fmt.Fprintf(w,
 			"Usage: mdsmith init [--starter <name>] [--from-markdownlint[=path]] [--add <pack>] [--force] [--list]\n\n"+

@@ -33,9 +33,7 @@ func TestPrintInitCatalog(t *testing.T) {
 func TestSetInitUsage(t *testing.T) {
 	var buf bytes.Buffer
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
-	fs.SetOutput(&buf)
-	var force bool
-	fs.BoolVar(&force, "force", false, "overwrite existing .mdsmith.yml")
+	fs.BoolVar(new(bool), "force", false, "overwrite existing .mdsmith.yml")
 	setInitUsage(fs, &buf)
 	fs.Usage()
 	out := buf.String()
@@ -44,6 +42,8 @@ func TestSetInitUsage(t *testing.T) {
 	assert.Contains(t, out, "--add")
 	assert.Contains(t, out, "--force")
 	assert.Contains(t, out, "--list")
+	// Pins that fs.PrintDefaults() ran: description only appears via PrintDefaults, not the static header.
+	assert.Contains(t, out, "overwrite existing .mdsmith.yml")
 }
 
 // --- runInit ---
