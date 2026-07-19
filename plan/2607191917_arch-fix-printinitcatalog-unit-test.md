@@ -68,11 +68,12 @@ method — both are helpers `runInit` wires up.
 2. Add `TestSetInitUsage` in
    [init_unit_test.go](../cmd/mdsmith/init_unit_test.go),
    building a `*pflag.FlagSet`, calling `setInitUsage`, then
-   invoking `fs.Usage()` with a captured `os.Stderr` (or by
-   redirecting the closure's writer, whichever the existing
-   test helpers in this file support) and asserting the
-   printed text names `--starter`, `--from-markdownlint`,
-   `--add`, `--force`, and `--list`.
+   invoking `fs.Usage()` inside `captureStderr` (the closure
+   writes to the hardcoded `os.Stderr`, so this is the only
+   viable capture point — see the other `runInit` tests in
+   this file for the pattern) and asserting the printed text
+   names `--starter`, `--from-markdownlint`, `--add`,
+   `--force`, and `--list`.
 3. Leave the existing e2e `--list` and `--help` tests in
    place — they still cover the full CLI dispatch path — but
    do not duplicate the content assertions there beyond a
