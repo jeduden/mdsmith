@@ -318,8 +318,12 @@ func TestRunMergeDriverInstall_NoArgsWritesCanonicalGlobs(t *testing.T) {
 	content := string(attrs)
 	assert.Contains(t, content, "*.md merge=mdsmith")
 	assert.Contains(t, content, "*.markdown merge=mdsmith")
-	assert.Contains(t, content, "vendor/** -merge",
-		"ignore patterns from .mdsmith.yml must appear as -merge overrides")
+	assert.Contains(t, content, "vendor/**/*.md -merge",
+		"ignore patterns from .mdsmith.yml must appear as markdown-scoped -merge overrides")
+	assert.Contains(t, content, "vendor/**/*.markdown -merge",
+		"ignore patterns are scoped to every markdown include extension")
+	assert.NotContains(t, content, "vendor/** -merge",
+		"a bare -merge line would disable git's merge for non-markdown files (issue #750)")
 }
 
 // --- resolveInstalledBinary ---
@@ -773,8 +777,10 @@ func TestRunMergeDriverInstall_DropsAndWarnsForUnrepresentableIgnore(t *testing.
 	attrs, err := os.ReadFile(filepath.Join(dir, ".gitattributes"))
 	require.NoError(t, err)
 	content := string(attrs)
-	assert.Contains(t, content, "vendor/** -merge",
-		"representable ignore patterns survive")
+	assert.Contains(t, content, "vendor/**/*.md -merge",
+		"representable ignore patterns survive, scoped to markdown")
+	assert.Contains(t, content, "vendor/**/*.markdown -merge",
+		"representable ignore patterns survive, scoped to every markdown extension")
 	assert.NotContains(t, content, "with space.md",
 		"unrepresentable ignore patterns are dropped from the managed block")
 	assert.NotContains(t, content, "!negated.md",

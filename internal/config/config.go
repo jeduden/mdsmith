@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/jeduden/mdsmith/internal/mdpath"
 )
 
 // ValidCategories lists the recognized rule category names.
@@ -22,8 +24,10 @@ var ValidCategories = []string{
 }
 
 // DefaultFiles is the built-in list of glob patterns used for file
-// discovery when no file arguments are given on the command line.
-var DefaultFiles = []string{"**/*.md", "**/*.markdown"}
+// discovery when no file arguments are given on the command line. It is
+// derived from the canonical Markdown extension set in mdpath so the
+// linter's default scope tracks that single source of truth.
+var DefaultFiles = mdpath.RecursiveGlobs()
 
 // UserConvention is a user-defined convention bundle declared either
 // inline under the top-level `conventions:` block in .mdsmith.yml or

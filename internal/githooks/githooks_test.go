@@ -921,6 +921,109 @@ func TestDefaultIncludes(t *testing.T) {
 	assert.Equal(t, []string{"*.md", "*.markdown"}, DefaultIncludes())
 }
 
+func TestSplitLastSegment(t *testing.T) {
+	cases := []struct {
+		in       string
+		dir      string
+		lastPart string
+	}{
+		{"demo/**", "demo/", "**"},
+		{"editors/**/dist/**", "editors/**/dist/", "**"},
+		{"vendor/*", "vendor/", "*"},
+		{"generated", "", "generated"},
+		{"**", "", "**"},
+		{"a/b/c.md", "a/b/", "c.md"},
+	}
+	for _, tc := range cases {
+		dir, last := splitLastSegment(tc.in)
+		assert.Equal(t, tc.dir, dir, "dir for %q", tc.in)
+		assert.Equal(t, tc.lastPart, last, "last for %q", tc.in)
+	}
+}
+
+func TestScopeExcludeToMarkdown(t *testing.T) {
+	exts := []string{".md", ".markdown"}
+	cases := []struct {
+		name    string
+		pattern string
+		want    []string
+	}{
+		{
+			name:    "recursive tree",
+			pattern: "demo/**",
+			want:    []string{"demo/**/*.md", "demo/**/*.markdown"},
+		},
+		{
+			name:    "recursive tree with intermediate glob",
+			pattern: "internal/rules/*/bad/**",
+			want: []string{
+				"internal/rules/*/bad/**/*.md",
+				"internal/rules/*/bad/**/*.markdown",
+			},
+		},
+		{
+			name:    "single level glob",
+			pattern: "vendor/*",
+			want:    []string{"vendor/*.md", "vendor/*.markdown"},
+		},
+		{
+			// A gitignore-style trailing-slash directory must not
+			// produce a `build//**/*.md` double slash.
+			name:    "trailing slash directory",
+			pattern: "build/",
+			want:    []string{"build/**/*.md", "build/**/*.markdown"},
+		},
+		{
+			name:    "bare recursive glob",
+			pattern: "**",
+			want:    []string{"**/*.md", "**/*.markdown"},
+		},
+		{
+			name:    "already markdown md",
+			pattern: "internal/rules/*/bad.md",
+			want:    []string{"internal/rules/*/bad.md"},
+		},
+		{
+			name:    "already markdown markdown",
+			pattern: "notes/draft.markdown",
+			want:    []string{"notes/draft.markdown"},
+		},
+		{
+			name:    "bare directory name treated as a tree",
+			pattern: "generated",
+			want:    []string{"generated/**/*.md", "generated/**/*.markdown"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, scopeExcludeToMarkdown(tc.pattern, exts))
+		})
+	}
+}
+
+func TestScopeExcludeToMarkdown_AlwaysMarkdownScoped(t *testing.T) {
+	// The safety invariant: every emitted exclude ends in a Markdown
+	// extension, so a derived -merge line can never match a
+	// non-Markdown file — regardless of the ignore pattern's shape.
+	exts := []string{".md", ".markdown"}
+	patterns := []string{
+		"demo/**", "vendor/*", "src", "a/b/c", "weird/*.txt", "**", "x/",
+	}
+	for _, p := range patterns {
+		for _, got := range scopeExcludeToMarkdown(p, exts) {
+			hasMarkdownExt := false
+			for _, ext := range exts {
+				if strings.HasSuffix(got, ext) {
+					hasMarkdownExt = true
+					break
+				}
+			}
+			assert.True(t, hasMarkdownExt,
+				"exclude %q derived from ignore %q must end in a Markdown extension", got, p)
+		}
+	}
+}
+
 func TestGlobsFromConfig_NilConfig(t *testing.T) {
 	got, skipped := GlobsFromConfig(nil)
 	assert.Equal(t, DefaultIncludes(), got.Include)
@@ -932,8 +1035,63 @@ func TestGlobsFromConfig_TranslatesIgnore(t *testing.T) {
 	cfg := &config.Config{Ignore: []string{"demo/**", "vendor/**"}}
 	got, skipped := GlobsFromConfig(cfg)
 	assert.Equal(t, DefaultIncludes(), got.Include)
-	assert.Equal(t, []string{"demo/**", "vendor/**"}, got.Exclude)
+	// Each recursive ignore tree is scoped to the Markdown include
+	// extensions so the -merge lines never disable git's merge for
+	// non-Markdown files in that tree (issue #750).
+	assert.Equal(t, []string{
+		"demo/**/*.md", "demo/**/*.markdown",
+		"vendor/**/*.md", "vendor/**/*.markdown",
+	}, got.Exclude)
 	assert.Empty(t, skipped, "representable patterns must not be reported as skipped")
+}
+
+func TestLegacyGlobs(t *testing.T) {
+	// The pre-#750 render: representable ignore patterns copied verbatim
+	// and unscoped, with negation/whitespace patterns dropped — exactly
+	// what the pinned merge-queue baseline produces and expects.
+	cfg := &config.Config{Ignore: []string{"demo/**", "vendor/*.md", "!neg.md", "with space"}}
+	got := LegacyGlobs(cfg)
+	assert.Equal(t, DefaultIncludes(), got.Include)
+	assert.Equal(t, []string{"demo/**", "vendor/*.md"}, got.Exclude)
+}
+
+func TestLegacyGlobs_NilAndEmpty(t *testing.T) {
+	got := LegacyGlobs(nil)
+	assert.Equal(t, DefaultIncludes(), got.Include)
+	assert.Empty(t, got.Exclude)
+
+	got = LegacyGlobs(&config.Config{})
+	assert.Equal(t, DefaultIncludes(), got.Include)
+	assert.Empty(t, got.Exclude)
+}
+
+func TestGlobsFromConfig_KeepsMarkdownScopedIgnoreVerbatim(t *testing.T) {
+	// An ignore pattern that already targets a specific Markdown
+	// extension can only affect Markdown, so its -merge line is safe
+	// as-is and must not be doubled or rewritten.
+	cfg := &config.Config{Ignore: []string{"vendor/*.md", "notes/draft.markdown"}}
+	got, skipped := GlobsFromConfig(cfg)
+	assert.Equal(t, []string{"vendor/*.md", "notes/draft.markdown"}, got.Exclude)
+	assert.Empty(t, skipped)
+}
+
+func TestGlobsFromConfig_MixedIgnoreShapes(t *testing.T) {
+	// A mix of a recursive tree, a single-level glob, an already-
+	// Markdown pattern, and a bare directory name — each scoped so
+	// every emitted exclude ends in a Markdown extension.
+	cfg := &config.Config{Ignore: []string{
+		"demo/**",
+		"vendor/*",
+		"internal/rules/*/bad.md",
+		"generated",
+	}}
+	got, _ := GlobsFromConfig(cfg)
+	assert.Equal(t, []string{
+		"demo/**/*.md", "demo/**/*.markdown",
+		"vendor/*.md", "vendor/*.markdown",
+		"internal/rules/*/bad.md",
+		"generated/**/*.md", "generated/**/*.markdown",
+	}, got.Exclude)
 }
 
 func TestGlobsFromConfig_IsolatesIgnoreSlice(t *testing.T) {
@@ -958,7 +1116,10 @@ func TestLoadGlobs_ReadsIgnorePatterns(t *testing.T) {
 		[]byte("ignore:\n  - \"demo/**\"\n  - \"vendor/**\"\n"), 0644))
 	got := LoadGlobs(dir)
 	assert.Equal(t, DefaultIncludes(), got.Include)
-	assert.Equal(t, []string{"demo/**", "vendor/**"}, got.Exclude)
+	assert.Equal(t, []string{
+		"demo/**/*.md", "demo/**/*.markdown",
+		"vendor/**/*.md", "vendor/**/*.markdown",
+	}, got.Exclude)
 }
 
 func TestLoadGlobs_UnparseableConfigFallsBackToDefaults(t *testing.T) {
@@ -1139,8 +1300,11 @@ func TestGlobsFromConfig_DropsUnrepresentablePatterns(t *testing.T) {
 		"vendor/**",
 	}}
 	got, skipped := GlobsFromConfig(cfg)
-	assert.Equal(t, []string{"demo/**", "vendor/**"}, got.Exclude,
-		"only representable patterns survive the validation filter")
+	assert.Equal(t, []string{
+		"demo/**/*.md", "demo/**/*.markdown",
+		"vendor/**/*.md", "vendor/**/*.markdown",
+	}, got.Exclude,
+		"only representable patterns survive the validation filter, each scoped to Markdown")
 	assert.Equal(t, []string{"!docs/*.md", "with space"}, skipped,
 		"dropped patterns are returned in input order so callers can warn")
 }

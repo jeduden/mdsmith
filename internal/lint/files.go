@@ -9,6 +9,7 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/jeduden/mdsmith/internal/gitignore"
+	"github.com/jeduden/mdsmith/internal/mdpath"
 )
 
 // getwdFn resolves the process working directory. It is a package-level
@@ -25,11 +26,12 @@ var volumeNameFn = filepath.VolumeName
 // failure without running on Windows.
 var absPathFn = filepath.Abs
 
-// isMarkdown returns true if the file extension is .md or .markdown.
-// strings.EqualFold avoids a heap allocation vs strings.ToLower + ==.
+// isMarkdown returns true if the file has a recognised Markdown
+// extension. Membership is delegated to mdpath, the single source of
+// truth for the extension set; mdpath.HasMarkdownExt folds case without
+// the heap allocation strings.ToLower would make.
 func isMarkdown(path string) bool {
-	ext := filepath.Ext(path)
-	return strings.EqualFold(ext, ".md") || strings.EqualFold(ext, ".markdown")
+	return mdpath.HasMarkdownExt(filepath.Ext(path))
 }
 
 // hasGlobChars returns true if the string contains glob meta-characters.

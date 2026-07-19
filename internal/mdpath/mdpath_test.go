@@ -1,6 +1,56 @@
 package mdpath
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
+
+func TestExtensions(t *testing.T) {
+	got := Extensions()
+	want := []string{".md", ".markdown"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Extensions() = %v, want %v", got, want)
+	}
+	// Must return a fresh slice each call so a mutating caller cannot
+	// corrupt the shared source of truth.
+	got[0] = "mutated"
+	if Extensions()[0] != ".md" {
+		t.Fatalf("Extensions() returned a slice aliasing the package state")
+	}
+}
+
+func TestFileGlobs(t *testing.T) {
+	if got, want := FileGlobs(), []string{"*.md", "*.markdown"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("FileGlobs() = %v, want %v", got, want)
+	}
+}
+
+func TestRecursiveGlobs(t *testing.T) {
+	if got, want := RecursiveGlobs(), []string{"**/*.md", "**/*.markdown"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("RecursiveGlobs() = %v, want %v", got, want)
+	}
+}
+
+func TestHasMarkdownExt(t *testing.T) {
+	cases := []struct {
+		ext  string
+		want bool
+	}{
+		{".md", true},
+		{".markdown", true},
+		{".MD", true},
+		{".Markdown", true},
+		{".mdx", false},
+		{".txt", false},
+		{"", false},
+		{"md", false}, // missing leading dot
+	}
+	for _, tc := range cases {
+		if got := HasMarkdownExt(tc.ext); got != tc.want {
+			t.Errorf("HasMarkdownExt(%q) = %v, want %v", tc.ext, got, tc.want)
+		}
+	}
+}
 
 func TestIsMarkdownPath(t *testing.T) {
 	cases := []struct {
