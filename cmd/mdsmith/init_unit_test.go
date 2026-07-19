@@ -25,7 +25,9 @@ func TestPrintInitCatalog(t *testing.T) {
 	assert.Contains(t, out, "Starters (mdsmith init --starter <name>):")
 	assert.Contains(t, out, "Packs (mdsmith init --add <name>):")
 	assert.Contains(t, out, "okf")
+	assert.Contains(t, out, "Open Knowledge Format bundle config")
 	assert.Contains(t, out, "wordlists")
+	assert.Contains(t, out, "Curated no-llm-tells word-lists")
 }
 
 // --- setInitUsage ---
@@ -33,7 +35,7 @@ func TestPrintInitCatalog(t *testing.T) {
 func TestSetInitUsage(t *testing.T) {
 	var buf bytes.Buffer
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
-	fs.BoolVar(new(bool), "force", false, "overwrite existing .mdsmith.yml")
+	fs.BoolVar(new(bool), "force", false, "Overwrite an existing .mdsmith.yml instead of leaving it unchanged")
 	setInitUsage(fs, &buf)
 	fs.Usage()
 	out := buf.String()
@@ -43,7 +45,7 @@ func TestSetInitUsage(t *testing.T) {
 	assert.Contains(t, out, "--force")
 	assert.Contains(t, out, "--list")
 	// Pins that fs.PrintDefaults() ran: description only appears via PrintDefaults, not the static header.
-	assert.Contains(t, out, "overwrite existing .mdsmith.yml")
+	assert.Contains(t, out, "Overwrite an existing .mdsmith.yml instead of leaving it unchanged")
 }
 
 // --- runInit ---
