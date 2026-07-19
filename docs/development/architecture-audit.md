@@ -65,14 +65,17 @@ None.
   matching `init_unit_test.go`. `main.go` is now 678 lines.
   No behavior change; `go test ./...` and
   `go tool golangci-lint run` are green.
-- `printInitCatalog` (`cmd/mdsmith/init.go`) has no
-  dedicated unit test — only the e2e `mdsmith init --list`
-  subprocess test exercises it.
+- `printInitCatalog` and `setInitUsage`
+  (`cmd/mdsmith/init.go`) have no dedicated unit test —
+  only e2e subprocess tests (`mdsmith init --list` and
+  `--help`) exercise them.
   [tests.md][tests]: "A new function lands together with
   its dedicated unit test by name," and an e2e test
   reachable without the process boundary is an inverted
-  pyramid. Not a public surface itself (a `runInit`
-  helper), so tax not blocker —
+  pyramid. Neither is a public surface itself (both are
+  `runInit` helpers), so tax not blocker. The
+  `setInitUsage` half of this surfaced during this cycle's
+  3x code-review pass on the fix, not the original sweep —
   [plan/2607191917][2607191917].
 - `internal/rules/requiredstructure/rule.go`'s `isClaimed`
   is a byte-for-byte copy of

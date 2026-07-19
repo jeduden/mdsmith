@@ -140,7 +140,7 @@ func writeInitConfig(configFile, fromMarkdownlint, starterName string, force boo
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(configFile, data, 0644); err != nil {
+	if err := os.WriteFile(configFile, data, 0o644); err != nil {
 		return fmt.Errorf("writing %s: %w", configFile, err)
 	}
 	if source != "" {
