@@ -66,9 +66,10 @@ The flavor must be a recognised flavor string such as
 own schema check, exactly as an inline convention does.
 
 Rules in a convention file can also use `lists:` to name
-[word-lists](wordlist-files.md). The convention presets
-which lists a rule should draw from. The workspace's
-`.mdsmith/wordlists/` directory supplies the entries:
+[word-lists](wordlist-files.md). The `lists:` key in the
+convention's `rules:` block specifies which named lists each
+rule draws from. The workspace's `.mdsmith/wordlists/`
+directory supplies the entries:
 
 ```yaml
 # .mdsmith/conventions/house-style.yaml

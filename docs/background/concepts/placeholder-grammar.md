@@ -96,7 +96,10 @@ entries:
   - var-token
   - heading-question
   - placeholder-section
+```
 
+```yaml
+# .mdsmith.yml (or a convention file)
 rules:
   heading-increment:
     lists: [template-tokens]
