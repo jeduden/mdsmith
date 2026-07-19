@@ -10,7 +10,9 @@ import (
 	"text/tabwriter"
 
 	flag "github.com/spf13/pflag"
+	"gopkg.in/yaml.v3"
 
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/lint"
 	metricspkg "github.com/jeduden/mdsmith/internal/metrics"
@@ -19,6 +21,7 @@ import (
 const metricsUsageText = `Usage: mdsmith metrics <command> [flags] [files...]
 
 Commands:
+  get      Emit all metrics for a single file as a data object
   list     List available metrics from the shared registry
   rank     Rank files by selected metrics
 `
@@ -30,6 +33,8 @@ func runMetrics(args []string) int {
 	}
 
 	switch args[0] {
+	case "get":
+		return runMetricsGet(args[1:])
 	case "list":
 		return runMetricsList(args[1:])
 	case "rank":
@@ -48,7 +53,7 @@ func runMetricsList(args []string) int {
 	)
 
 	fs.StringVar(&scopeRaw, "scope", "file", "Metric scope: file")
-	fs.StringVarP(&format, "format", "f", "text", "Output format: text, json")
+	fs.StringVarP(&format, "format", "f", "text", "Output format: text, json, yaml")
 	fs.Usage = func() {
 		fmt.Fprintf(
 			os.Stderr,
@@ -76,23 +81,24 @@ func runMetricsList(args []string) int {
 	}
 
 	defs := metricspkg.ForScope(scope)
-	switch format {
-	case "text":
-		if err := writeMetricsListText(os.Stdout, defs); err != nil {
-			fmt.Fprintf(os.Stderr, "mdsmith: writing output: %v\n", err)
-			return 2
-		}
-	case "json":
-		if err := writeMetricsListJSON(os.Stdout, defs); err != nil {
-			fmt.Fprintf(os.Stderr, "mdsmith: writing output: %v\n", err)
-			return 2
-		}
-	default:
-		fmt.Fprintf(os.Stderr, "mdsmith: unknown format %q (supported: text, json)\n", format)
+	if err := writeListOutput(os.Stdout, format, defs); err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return 2
 	}
-
 	return 0
+}
+
+func writeListOutput(w io.Writer, format string, defs []metricspkg.Definition) error {
+	switch format {
+	case "text":
+		return writeMetricsListText(w, defs)
+	case "json":
+		return writeMetricsListJSON(w, defs)
+	case "yaml":
+		return writeMetricsListYAML(w, defs)
+	default:
+		return fmt.Errorf("unknown format %q (supported: text, json, yaml)", format)
+	}
 }
 
 type metricsRankOptions struct {
@@ -130,7 +136,7 @@ func parseMetricsRankOptions(args []string) (metricsRankOptions, []string, error
 	fs.StringVar(&opts.byRaw, "by", "", "Metric to sort by")
 	fs.StringVar(&opts.orderRaw, "order", "", "Sort order: asc or desc (defaults by metric)")
 	fs.IntVar(&opts.top, "top", 0, "Limit results to top N files (0 = all)")
-	fs.StringVarP(&opts.format, "format", "f", "text", "Output format: text, json")
+	fs.StringVarP(&opts.format, "format", "f", "text", "Output format: text, json, yaml")
 	fs.BoolVar(&opts.noGitignore, "no-gitignore", false, "Disable .gitignore filtering when walking directories")
 	fs.BoolVar(&followSymlinks, "follow-symlinks", false,
 		"Follow symlinks; omitted defers to follow-symlinks config (default skip); "+
@@ -166,6 +172,11 @@ func parseMetricsRankOptions(args []string) (metricsRankOptions, []string, error
 }
 
 func executeMetricsRank(opts metricsRankOptions, fileArgs []string) int {
+	if err := validateOutputFormat(opts.format); err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		return 2
+	}
+
 	defs, byDef, order, err := resolveRankSelection(opts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
@@ -199,15 +210,20 @@ func executeMetricsRank(opts metricsRankOptions, fileArgs []string) int {
 	rows = metricspkg.LimitRows(rows, opts.top)
 
 	if err := writeRankOutput(os.Stdout, opts.format, rows, defs); err != nil {
-		if strings.Contains(err.Error(), "unknown format") {
-			fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
-			return 2
-		}
 		fmt.Fprintf(os.Stderr, "mdsmith: writing output: %v\n", err)
 		return 2
 	}
 
 	return 0
+}
+
+func validateOutputFormat(format string) error {
+	switch format {
+	case "text", "json", "yaml":
+		return nil
+	default:
+		return fmt.Errorf("unknown format %q (supported: text, json, yaml)", format)
+	}
 }
 
 func resolveRankSelection(
@@ -273,8 +289,10 @@ func writeRankOutput(
 		return writeMetricsRankText(w, rows, defs)
 	case "json":
 		return writeMetricsRankJSON(w, rows, defs)
+	case "yaml":
+		return writeMetricsRankYAML(w, rows, defs)
 	default:
-		return fmt.Errorf("unknown format %q (supported: text, json)", format)
+		return fmt.Errorf("unknown format %q (supported: text, json, yaml)", format)
 	}
 }
 
@@ -289,11 +307,10 @@ func containsMetric(defs []metricspkg.Definition, id string) bool {
 
 func writeMetricsListText(w io.Writer, defs []metricspkg.Definition) error {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	if _, err := fmt.Fprintln(tw, "ID\tNAME\tSCOPE\tORDER\tDEFAULT\tDESCRIPTION"); err != nil {
-		return err
-	}
+	// tabwriter buffers all writes internally; only Flush reaches the underlying writer.
+	_, _ = fmt.Fprintln(tw, "ID\tNAME\tSCOPE\tORDER\tDEFAULT\tDESCRIPTION")
 	for _, def := range defs {
-		if _, err := fmt.Fprintf(
+		_, _ = fmt.Fprintf(
 			tw,
 			"%s\t%s\t%s\t%s\t%t\t%s\n",
 			def.ID,
@@ -302,9 +319,7 @@ func writeMetricsListText(w io.Writer, defs []metricspkg.Definition) error {
 			def.DefaultOrder,
 			def.Default,
 			def.Description,
-		); err != nil {
-			return err
-		}
+		)
 	}
 	return tw.Flush()
 }
@@ -323,20 +338,19 @@ func writeMetricsListJSON(w io.Writer, defs []metricspkg.Definition) error {
 	}
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
+	enc.SetEscapeHTML(false)
 	return enc.Encode(items)
 }
 
 func writeMetricsRankText(w io.Writer, rows []metricspkg.Row, defs []metricspkg.Definition) error {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-
+	// tabwriter buffers all writes internally; only Flush reaches the underlying writer.
 	headers := make([]string, 0, len(defs)+1)
 	for _, def := range defs {
 		headers = append(headers, strings.ToUpper(def.Name))
 	}
 	headers = append(headers, "PATH")
-	if _, err := fmt.Fprintln(tw, strings.Join(headers, "\t")); err != nil {
-		return err
-	}
+	_, _ = fmt.Fprintln(tw, strings.Join(headers, "\t"))
 
 	for _, row := range rows {
 		cols := make([]string, 0, len(defs)+1)
@@ -344,9 +358,7 @@ func writeMetricsRankText(w io.Writer, rows []metricspkg.Row, defs []metricspkg.
 			cols = append(cols, metricspkg.FormatValue(def, row.Metrics[def.Name]))
 		}
 		cols = append(cols, row.Path)
-		if _, err := fmt.Fprintln(tw, strings.Join(cols, "\t")); err != nil {
-			return err
-		}
+		_, _ = fmt.Fprintln(tw, strings.Join(cols, "\t"))
 	}
 
 	return tw.Flush()
@@ -365,7 +377,145 @@ func writeMetricsRankJSON(w io.Writer, rows []metricspkg.Row, defs []metricspkg.
 	}
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
+	enc.SetEscapeHTML(false)
 	return enc.Encode(items)
+}
+
+func writeMetricsListYAML(w io.Writer, defs []metricspkg.Definition) error {
+	items := make([]map[string]any, 0, len(defs))
+	for _, def := range defs {
+		items = append(items, map[string]any{
+			"id":            def.ID,
+			"name":          def.Name,
+			"description":   def.Description,
+			"scope":         def.Scope,
+			"default":       def.Default,
+			"default_order": def.DefaultOrder,
+		})
+	}
+	enc := yaml.NewEncoder(w)
+	enc.SetIndent(2)
+	if err := enc.Encode(items); err != nil {
+		return err
+	}
+	return enc.Close()
+}
+
+func writeMetricsRankYAML(w io.Writer, rows []metricspkg.Row, defs []metricspkg.Definition) error {
+	items := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		item := map[string]any{
+			"path": row.Path,
+		}
+		for _, def := range defs {
+			item[def.Name] = metricspkg.JSONValue(def, row.Metrics[def.Name])
+		}
+		items = append(items, item)
+	}
+	enc := yaml.NewEncoder(w)
+	enc.SetIndent(2)
+	if err := enc.Encode(items); err != nil {
+		return err
+	}
+	return enc.Close()
+}
+
+func runMetricsGet(args []string) int {
+	fs := flag.NewFlagSet("metrics get", flag.ContinueOnError)
+	var format string
+
+	fs.StringVarP(&format, "format", "f", "text", "Output format: text, json, yaml")
+	fs.Usage = func() {
+		fmt.Fprintf(
+			os.Stderr,
+			"Usage: mdsmith metrics get [flags] <file>\n\n"+
+				"Emit all registered metrics for a single Markdown file.\n\n"+
+				"Flags:\n",
+		)
+		fs.PrintDefaults()
+	}
+
+	if err := fs.Parse(args); err != nil {
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith: metrics get"); code >= 0 {
+			return code
+		}
+	}
+	if fs.NArg() != 1 {
+		fmt.Fprintf(os.Stderr, "mdsmith: metrics get requires exactly one file argument\n")
+		return 2
+	}
+	path := fs.Arg(0)
+
+	if err := validateOutputFormat(format); err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		return 2
+	}
+
+	return executeMetricsGet(os.Stdout, format, path)
+}
+
+func executeMetricsGet(w io.Writer, format, path string) int {
+	defs := metricspkg.ForScope(metricspkg.ScopeFile)
+	rows, err := metricspkg.Collect([]string{path}, defs, bytelimit.DefaultMaxInputBytes)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		return 2
+	}
+
+	if err := writeGetOutput(w, format, rows[0], defs); err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: writing output: %v\n", err)
+		return 2
+	}
+	return 0
+}
+
+func writeGetOutput(w io.Writer, format string, row metricspkg.Row, defs []metricspkg.Definition) error {
+	switch format {
+	case "json":
+		return writeMetricsGetJSON(w, row, defs)
+	case "yaml":
+		return writeMetricsGetYAML(w, row, defs)
+	case "text":
+		return writeMetricsGetText(w, row, defs)
+	default:
+		return fmt.Errorf("unknown format %q (supported: text, json, yaml)", format)
+	}
+}
+
+func writeMetricsGetJSON(w io.Writer, row metricspkg.Row, defs []metricspkg.Definition) error {
+	item := map[string]any{"path": row.Path}
+	for _, def := range defs {
+		item[def.Name] = metricspkg.JSONValue(def, row.Metrics[def.Name])
+	}
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	enc.SetEscapeHTML(false)
+	return enc.Encode(item)
+}
+
+func writeMetricsGetYAML(w io.Writer, row metricspkg.Row, defs []metricspkg.Definition) error {
+	item := map[string]any{"path": row.Path}
+	for _, def := range defs {
+		item[def.Name] = metricspkg.JSONValue(def, row.Metrics[def.Name])
+	}
+	enc := yaml.NewEncoder(w)
+	enc.SetIndent(2)
+	if err := enc.Encode(item); err != nil {
+		return err
+	}
+	return enc.Close()
+}
+
+func writeMetricsGetText(w io.Writer, row metricspkg.Row, defs []metricspkg.Definition) error {
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	// tabwriter buffers all writes internally; only Flush reaches the
+	// underlying writer, so intermediate write errors are not possible.
+	_, _ = fmt.Fprintln(tw, "NAME\tVALUE")
+	_, _ = fmt.Fprintf(tw, "path\t%s\n", row.Path)
+	for _, def := range defs {
+		_, _ = fmt.Fprintf(tw, "%s\t%s\n", def.Name, metricspkg.FormatValue(def, row.Metrics[def.Name]))
+	}
+	return tw.Flush()
 }
 
 func runHelpMetrics(args []string) int {

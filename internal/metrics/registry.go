@@ -5,6 +5,8 @@ import (
 	"math"
 	"sort"
 	"strings"
+
+	"github.com/jeduden/mdsmith/internal/mdtext"
 )
 
 var registry = []Definition{
@@ -101,6 +103,72 @@ var registry = []Definition{
 				return UnavailableValue(), err
 			}
 			return AvailableValue(concisenessScore(text)), nil
+		},
+	},
+	{
+		ID:           "MET008",
+		Name:         "readability",
+		Description:  "Automated Readability Index (ARI) over the file's plain text. Higher means harder to read.",
+		Scope:        ScopeFile,
+		Kind:         KindFloat,
+		Precision:    1,
+		Default:      false,
+		DefaultOrder: OrderDesc,
+		Compute: func(doc *Document) (Value, error) {
+			words, err := doc.WordCount()
+			if err != nil {
+				return UnavailableValue(), err
+			}
+			if words == 0 {
+				return UnavailableValue(), nil
+			}
+			text, err := doc.PlainText()
+			if err != nil {
+				return UnavailableValue(), err
+			}
+			return AvailableValue(mdtext.ARI(text)), nil
+		},
+	},
+	{
+		ID:           "MET009",
+		Name:         "sentences",
+		Description:  "Sentence count from extracted plain text.",
+		Scope:        ScopeFile,
+		Kind:         KindInteger,
+		Precision:    0,
+		Default:      false,
+		DefaultOrder: OrderDesc,
+		Compute: func(doc *Document) (Value, error) {
+			text, err := doc.PlainText()
+			if err != nil {
+				return UnavailableValue(), err
+			}
+			return AvailableValue(float64(mdtext.CountSentences(text))), nil
+		},
+	},
+	{
+		ID:           "MET010",
+		Name:         "avg-words-per-sentence",
+		Description:  "Average words per sentence (words ÷ sentences). Zero when there are no sentences.",
+		Scope:        ScopeFile,
+		Kind:         KindFloat,
+		Precision:    1,
+		Default:      false,
+		DefaultOrder: OrderDesc,
+		Compute: func(doc *Document) (Value, error) {
+			words, err := doc.WordCount()
+			if err != nil {
+				return UnavailableValue(), err
+			}
+			text, err := doc.PlainText()
+			if err != nil {
+				return UnavailableValue(), err
+			}
+			sentences := mdtext.CountSentences(text)
+			if sentences == 0 {
+				return AvailableValue(0), nil
+			}
+			return AvailableValue(float64(words) / float64(sentences)), nil
 		},
 	},
 }

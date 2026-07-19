@@ -3,12 +3,15 @@ package main
 import (
 	"bytes"
 	"errors"
+	"io"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 	metricspkg "github.com/jeduden/mdsmith/internal/metrics"
 )
 
@@ -163,6 +166,16 @@ func TestResolveRankSelection_ByNotInDefaultsGetsAppended(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "lines", byDef.Name)
 	assert.True(t, containsMetric(defs, byDef.ID))
+}
+
+// --- executeMetricsRank ---
+
+func TestExecuteMetricsRank_UnknownFormat_ExitsTwo(t *testing.T) {
+	captureStderr(func() {
+		opts := metricsRankOptions{format: "toml"}
+		code := executeMetricsRank(opts, nil)
+		assert.Equal(t, 2, code)
+	})
 }
 
 // --- writeRankOutput ---
@@ -430,4 +443,353 @@ func TestWriteMetricsRankText_MultipleMetrics(t *testing.T) {
 	out := buf.String()
 	assert.True(t, strings.Contains(out, "a.md"))
 	assert.True(t, strings.Contains(out, "b.md"))
+}
+
+// --- writeRankOutput yaml ---
+
+func TestWriteRankOutput_YAMLFormat_NoError(t *testing.T) {
+	assert.NoError(t, writeRankOutput(&bytes.Buffer{}, "yaml", nil, nil))
+}
+
+func TestWriteRankOutput_UnknownFormat_MentionsYAML(t *testing.T) {
+	err := writeRankOutput(&bytes.Buffer{}, "xml", nil, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "yaml")
+}
+
+// --- writeMetricsListYAML ---
+
+func TestWriteMetricsListYAML_ValidYAML(t *testing.T) {
+	defs := []metricspkg.Definition{
+		{ID: "m1", Name: "Metric One", Description: "desc"},
+	}
+	var buf bytes.Buffer
+	require.NoError(t, writeMetricsListYAML(&buf, defs))
+	out := buf.String()
+	assert.Contains(t, out, "m1")
+	assert.Contains(t, out, "Metric One")
+}
+
+func TestWriteMetricsListYAML_EmptyDefs_NoError(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, writeMetricsListYAML(&buf, nil))
+}
+
+// --- runMetricsList yaml ---
+
+func TestRunMetricsList_YAMLFormat_ExitsZero(t *testing.T) {
+	captureStdout(func() {
+		code := runMetricsList([]string{"-f", "yaml"})
+		assert.Equal(t, 0, code)
+	})
+}
+
+func TestRunMetricsList_UnknownFormat_MentionsYAML(t *testing.T) {
+	stderr := captureStderr(func() {
+		captureStdout(func() {
+			runMetricsList([]string{"-f", "toml"})
+		})
+	})
+	assert.Contains(t, stderr, "yaml")
+}
+
+// --- writeListOutput ---
+
+func TestWriteListOutput_YAMLWriteError_ReturnsError(t *testing.T) {
+	defs := metricspkg.ForScope(metricspkg.ScopeFile)
+	err := writeListOutput(&alwaysErrorWriter{}, "yaml", defs)
+	require.Error(t, err)
+}
+
+func TestWriteListOutput_UnknownFormat_ReturnsError(t *testing.T) {
+	err := writeListOutput(io.Discard, "toml", nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown format")
+}
+
+// --- writeMetricsRankYAML ---
+
+func TestWriteMetricsRankYAML_ValidYAML(t *testing.T) {
+	defs := []metricspkg.Definition{{ID: "bytes", Name: "bytes"}}
+	rows := []metricspkg.Row{
+		{Path: "a.md", Metrics: map[string]metricspkg.Value{"bytes": metricspkg.AvailableValue(100)}},
+	}
+	var buf bytes.Buffer
+	require.NoError(t, writeMetricsRankYAML(&buf, rows, defs))
+	out := buf.String()
+	assert.Contains(t, out, "a.md")
+	assert.Contains(t, out, "bytes")
+}
+
+func TestWriteMetricsRankYAML_Empty_NoError(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, writeMetricsRankYAML(&buf, nil, nil))
+}
+
+// --- writeMetricsGetJSON ---
+
+func TestWriteMetricsGetJSON_ValidJSON(t *testing.T) {
+	defs := []metricspkg.Definition{{ID: "MET001", Name: "bytes", Kind: metricspkg.KindInteger}}
+	row := metricspkg.Row{Path: "foo.md", Metrics: map[string]metricspkg.Value{"bytes": metricspkg.AvailableValue(42)}}
+	var buf bytes.Buffer
+	require.NoError(t, writeMetricsGetJSON(&buf, row, defs))
+	out := buf.String()
+	assert.Contains(t, out, `"path"`)
+	assert.Contains(t, out, `"foo.md"`)
+}
+
+// --- writeMetricsGetYAML ---
+
+func TestWriteMetricsGetYAML_ValidYAML(t *testing.T) {
+	defs := []metricspkg.Definition{{ID: "MET001", Name: "bytes", Kind: metricspkg.KindInteger}}
+	row := metricspkg.Row{Path: "foo.md", Metrics: map[string]metricspkg.Value{"bytes": metricspkg.AvailableValue(42)}}
+	var buf bytes.Buffer
+	require.NoError(t, writeMetricsGetYAML(&buf, row, defs))
+	out := buf.String()
+	assert.Contains(t, out, "path")
+	assert.Contains(t, out, "foo.md")
+}
+
+// --- writeMetricsGetText ---
+
+func TestWriteMetricsGetText_PrintsNameValue(t *testing.T) {
+	defs := []metricspkg.Definition{{ID: "bytes", Name: "bytes", Kind: metricspkg.KindInteger}}
+	row := metricspkg.Row{Path: "foo.md", Metrics: map[string]metricspkg.Value{"bytes": metricspkg.AvailableValue(100)}}
+	var buf bytes.Buffer
+	require.NoError(t, writeMetricsGetText(&buf, row, defs))
+	out := buf.String()
+	assert.Contains(t, out, "NAME")
+	assert.Contains(t, out, "VALUE")
+	assert.Contains(t, out, "foo.md")
+	assert.Contains(t, out, "bytes")
+	assert.Contains(t, out, "100")
+}
+
+func TestWriteMetricsGetText_NilValue_ShowsDash(t *testing.T) {
+	defs := []metricspkg.Definition{{ID: "readability", Name: "readability"}}
+	row := metricspkg.Row{Path: "foo.md", Metrics: map[string]metricspkg.Value{}}
+	var buf bytes.Buffer
+	require.NoError(t, writeMetricsGetText(&buf, row, defs))
+	assert.Contains(t, buf.String(), "-")
+}
+
+func TestWriteMetricsGetText_Float64Value_UsesPrecision(t *testing.T) {
+	defs := []metricspkg.Definition{{Name: "conciseness", Kind: metricspkg.KindFloat, Precision: 1}}
+	row := metricspkg.Row{
+		Path:    "foo.md",
+		Metrics: map[string]metricspkg.Value{"conciseness": metricspkg.AvailableValue(75.0)},
+	}
+	var buf bytes.Buffer
+	require.NoError(t, writeMetricsGetText(&buf, row, defs))
+	assert.Contains(t, buf.String(), "75.0")
+}
+
+// --- runMetricsGet ---
+
+func TestRunMetricsGet_NoArgs_ExitsTwo(t *testing.T) {
+	captureStderr(func() {
+		code := runMetricsGet(nil)
+		assert.Equal(t, 2, code)
+	})
+}
+
+func TestRunMetricsGet_TwoArgs_ExitsTwo(t *testing.T) {
+	captureStderr(func() {
+		code := runMetricsGet([]string{"a.md", "b.md"})
+		assert.Equal(t, 2, code)
+	})
+}
+
+func TestRunMetricsGet_UnknownFormat_ExitsTwo(t *testing.T) {
+	path := testMetricsFile(t)
+	captureStderr(func() {
+		captureStdout(func() {
+			code := runMetricsGet([]string{"-f", "toml", path})
+			assert.Equal(t, 2, code)
+		})
+	})
+}
+
+func TestRunMetricsGet_NonExistentFile_ExitsTwo(t *testing.T) {
+	captureStderr(func() {
+		code := runMetricsGet([]string{"no-such-file.md"})
+		assert.Equal(t, 2, code)
+	})
+}
+
+func testMetricsFile(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := dir + "/sample.md"
+	content := "# Hello\n\nThis is a sample document. It has two sentences.\n\n" +
+		"Another paragraph with more words and a complete sentence.\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("writing test file: %v", err)
+	}
+	return path
+}
+
+func TestRunMetricsGet_RealFile_JSONContainsReadability(t *testing.T) {
+	path := testMetricsFile(t)
+	out := captureStdout(func() {
+		code := runMetricsGet([]string{"-f", "json", path})
+		require.Equal(t, 0, code)
+	})
+	assert.Contains(t, out, `"readability"`)
+	assert.Contains(t, out, `"sentences"`)
+	assert.Contains(t, out, `"avg-words-per-sentence"`)
+	assert.Contains(t, out, `"path"`)
+}
+
+func TestRunMetricsGet_RealFile_YAMLContainsSentences(t *testing.T) {
+	path := testMetricsFile(t)
+	out := captureStdout(func() {
+		code := runMetricsGet([]string{"-f", "yaml", path})
+		require.Equal(t, 0, code)
+	})
+	assert.Contains(t, out, "sentences")
+	assert.Contains(t, out, "readability")
+}
+
+func TestExecuteMetricsGet_WriteError_ExitsTwo(t *testing.T) {
+	path := testMetricsFile(t)
+	captureStderr(func() {
+		code := executeMetricsGet(&alwaysErrorWriter{}, "json", path)
+		assert.Equal(t, 2, code)
+	})
+}
+
+func TestRunMetricsGet_RealFile_JSONAndYAMLAgreeOnSentences(t *testing.T) {
+	path := testMetricsFile(t)
+	jsonOut := captureStdout(func() {
+		runMetricsGet([]string{"-f", "json", path})
+	})
+	yamlOut := captureStdout(func() {
+		runMetricsGet([]string{"-f", "yaml", path})
+	})
+	for _, key := range []string{"sentences", "readability", "avg-words-per-sentence"} {
+		assert.Contains(t, jsonOut, key, "json missing key %q", key)
+		assert.Contains(t, yamlOut, key, "yaml missing key %q", key)
+	}
+}
+
+// --- new metrics in list ---
+
+func TestRunMetricsList_ShowsReadabilityMetrics(t *testing.T) {
+	out := captureStdout(func() {
+		code := runMetricsList([]string{"-f", "text"})
+		assert.Equal(t, 0, code)
+	})
+	assert.Contains(t, out, "readability")
+	assert.Contains(t, out, "sentences")
+	assert.Contains(t, out, "avg-words-per-sentence")
+}
+
+// --- runMetrics get subcommand dispatch ---
+
+func TestRunMetrics_GetSubcommand_ExitsZeroOnRealFile(t *testing.T) {
+	path := testMetricsFile(t)
+	captureStdout(func() {
+		code := runMetrics([]string{"get", path})
+		assert.Equal(t, 0, code)
+	})
+}
+
+// --- write error paths ---
+
+func TestWriteMetricsListYAML_WriteError_ReturnsError(t *testing.T) {
+	defs := []metricspkg.Definition{{ID: "m1", Name: "test", Description: "d"}}
+	err := writeMetricsListYAML(&alwaysErrorWriter{}, defs)
+	require.Error(t, err)
+}
+
+func TestWriteMetricsRankYAML_WriteError_ReturnsError(t *testing.T) {
+	defs := []metricspkg.Definition{{ID: "bytes", Name: "bytes"}}
+	rows := []metricspkg.Row{
+		{Path: "a.md", Metrics: map[string]metricspkg.Value{"bytes": metricspkg.AvailableValue(100)}},
+	}
+	err := writeMetricsRankYAML(&alwaysErrorWriter{}, rows, defs)
+	require.Error(t, err)
+}
+
+func TestWriteMetricsGetJSON_WriteError_ReturnsError(t *testing.T) {
+	defs := []metricspkg.Definition{{ID: "MET001", Name: "bytes", Kind: metricspkg.KindInteger}}
+	row := metricspkg.Row{Path: "foo.md", Metrics: map[string]metricspkg.Value{"bytes": metricspkg.AvailableValue(42)}}
+	err := writeMetricsGetJSON(&alwaysErrorWriter{}, row, defs)
+	require.Error(t, err)
+}
+
+func TestWriteMetricsGetYAML_WriteError_ReturnsError(t *testing.T) {
+	defs := []metricspkg.Definition{{ID: "MET001", Name: "bytes", Kind: metricspkg.KindInteger}}
+	row := metricspkg.Row{Path: "foo.md", Metrics: map[string]metricspkg.Value{"bytes": metricspkg.AvailableValue(42)}}
+	err := writeMetricsGetYAML(&alwaysErrorWriter{}, row, defs)
+	require.Error(t, err)
+}
+
+func TestWriteMetricsGetText_WriteError_ReturnsError(t *testing.T) {
+	defs := []metricspkg.Definition{{ID: "bytes", Name: "bytes", Kind: metricspkg.KindInteger}}
+	row := metricspkg.Row{Path: "foo.md", Metrics: map[string]metricspkg.Value{"bytes": metricspkg.AvailableValue(42)}}
+	err := writeMetricsGetText(&alwaysErrorWriter{}, row, defs)
+	require.Error(t, err)
+}
+
+// --- writeGetOutput error returns ---
+
+func TestWriteGetOutput_JSONWriteError_ReturnsError(t *testing.T) {
+	row := metricspkg.Row{Path: "foo.md", Metrics: map[string]metricspkg.Value{}}
+	err := writeGetOutput(&alwaysErrorWriter{}, "json", row, nil)
+	require.Error(t, err)
+}
+
+func TestWriteGetOutput_YAMLWriteError_ReturnsError(t *testing.T) {
+	row := metricspkg.Row{Path: "foo.md", Metrics: map[string]metricspkg.Value{}}
+	err := writeGetOutput(&alwaysErrorWriter{}, "yaml", row, nil)
+	require.Error(t, err)
+}
+
+func TestWriteGetOutput_TextWriteError_ReturnsError(t *testing.T) {
+	defs := []metricspkg.Definition{{ID: "bytes", Name: "bytes", Kind: metricspkg.KindInteger}}
+	row := metricspkg.Row{Path: "foo.md", Metrics: map[string]metricspkg.Value{"bytes": metricspkg.AvailableValue(42)}}
+	err := writeGetOutput(&alwaysErrorWriter{}, "text", row, defs)
+	require.Error(t, err)
+}
+
+// --- runMetricsGet flag parse error ---
+
+func TestRunMetricsGet_UnknownFlag_ExitsTwo(t *testing.T) {
+	captureStderr(func() {
+		code := runMetricsGet([]string{"--no-such-flag", "foo.md"})
+		assert.Equal(t, 2, code)
+	})
+}
+
+func TestRunMetricsGet_HelpFlag_ExitsZero(t *testing.T) {
+	captureStderr(func() {
+		code := runMetricsGet([]string{"--help"})
+		assert.Equal(t, 0, code)
+	})
+}
+
+// --- collectGetItem compute error ---
+
+func TestMetricsCollect_ComputeError_ReturnsError(t *testing.T) {
+	path := testMetricsFile(t)
+	defs := []metricspkg.Definition{
+		{
+			Name: "failing",
+			Compute: func(_ *metricspkg.Document) (metricspkg.Value, error) {
+				return metricspkg.UnavailableValue(), errors.New("compute failed")
+			},
+		},
+	}
+	_, err := metricspkg.Collect([]string{path}, defs, bytelimit.DefaultMaxInputBytes)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "computing")
+}
+
+func TestWriteGetOutput_UnknownFormat_ReturnsError(t *testing.T) {
+	row := metricspkg.Row{Path: "foo.md", Metrics: map[string]metricspkg.Value{}}
+	err := writeGetOutput(&bytes.Buffer{}, "xml", row, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown format")
 }
