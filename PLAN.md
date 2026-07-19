@@ -253,4 +253,6 @@ footer: |
 | 2607082052 | ✅     | sonnet | [SARIF output format for `mdsmith check`](plan/2607082052_check-sarif-output.md)                                                                        |
 | 2607121915 | ✅     | sonnet | [Resolve the internal/linkgraph purity-contract mismatch for wikilink resolution](plan/2607121915_arch-fix-linkgraph-wikilink-purity.md)                |
 | 2607170527 | 🔳     | opus   | [External link checking on WASM hosts (MDS072)](plan/2607170527_wasm-external-link-check.md)                                                            |
+| 2607191917 | 🔲     | haiku  | [Add dedicated unit tests for printInitCatalog and setInitUsage](plan/2607191917_arch-fix-printinitcatalog-unit-test.md)                                |
+| 2607191918 | 🔲     | haiku  | [Deduplicate isClaimed between internal/schema and requiredstructure](plan/2607191918_arch-fix-isclaimed-dedup.md)                                      |
 <?/catalog?>
