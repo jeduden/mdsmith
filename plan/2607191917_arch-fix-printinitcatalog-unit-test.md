@@ -3,7 +3,7 @@ id: 2607191917
 title: >-
   Add dedicated unit tests for printInitCatalog and
   setInitUsage
-status: "🔲"
+status: "✅"
 model: haiku
 summary: >-
   printInitCatalog and setInitUsage (cmd/mdsmith/init.go)
@@ -83,11 +83,11 @@ method — both are helpers `runInit` wires up.
 
 ## Acceptance Criteria
 
-- [ ] `TestPrintInitCatalog` exists in
+- [x] `TestPrintInitCatalog` exists in
       [init_unit_test.go](../cmd/mdsmith/init_unit_test.go) and
       exercises `printInitCatalog` directly (no subprocess).
-- [ ] `TestSetInitUsage` exists in
+- [x] `TestSetInitUsage` exists in
       [init_unit_test.go](../cmd/mdsmith/init_unit_test.go) and
       exercises `setInitUsage` directly (no subprocess).
-- [ ] `go test ./...` is green.
-- [ ] `mdsmith check .` is green.
+- [x] `go test ./...` is green.
+- [x] `mdsmith check .` is green.
