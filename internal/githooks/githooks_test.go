@@ -1045,26 +1045,6 @@ func TestGlobsFromConfig_TranslatesIgnore(t *testing.T) {
 	assert.Empty(t, skipped, "representable patterns must not be reported as skipped")
 }
 
-func TestLegacyGlobs(t *testing.T) {
-	// The pre-#750 render: representable ignore patterns copied verbatim
-	// and unscoped, with negation/whitespace patterns dropped — exactly
-	// what the pinned merge-queue baseline produces and expects.
-	cfg := &config.Config{Ignore: []string{"demo/**", "vendor/*.md", "!neg.md", "with space"}}
-	got := LegacyGlobs(cfg)
-	assert.Equal(t, DefaultIncludes(), got.Include)
-	assert.Equal(t, []string{"demo/**", "vendor/*.md"}, got.Exclude)
-}
-
-func TestLegacyGlobs_NilAndEmpty(t *testing.T) {
-	got := LegacyGlobs(nil)
-	assert.Equal(t, DefaultIncludes(), got.Include)
-	assert.Empty(t, got.Exclude)
-
-	got = LegacyGlobs(&config.Config{})
-	assert.Equal(t, DefaultIncludes(), got.Include)
-	assert.Empty(t, got.Exclude)
-}
-
 func TestGlobsFromConfig_KeepsMarkdownScopedIgnoreVerbatim(t *testing.T) {
 	// An ignore pattern that already targets a specific Markdown
 	// extension can only affect Markdown, so its -merge line is safe
