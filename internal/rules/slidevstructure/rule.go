@@ -286,12 +286,10 @@ func readFrontmatter(lines [][]byte, open int) (map[string]string, map[string]in
 // line is one. A bare `::` or an empty name does not count.
 func slotName(line []byte) (string, bool) {
 	t := bytes.TrimSpace(line)
+	// len >= 5 guarantees a non-empty name between the `::` fences
+	// (`::x::` is the shortest slot line; `::::` is only 4 bytes).
 	if len(t) >= 5 && bytes.HasPrefix(t, []byte("::")) && bytes.HasSuffix(t, []byte("::")) {
-		inner := t[2 : len(t)-2]
-		if len(inner) == 0 {
-			return "", false
-		}
-		return string(inner), true
+		return string(t[2 : len(t)-2]), true
 	}
 	return "", false
 }

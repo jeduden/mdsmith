@@ -177,3 +177,90 @@ func TestApplySettings_RejectsUnknownAndBadType(t *testing.T) {
 func TestEnabledByDefault_False(t *testing.T) {
 	assert.False(t, (&Rule{}).EnabledByDefault(), "MDS073 is opt-in")
 }
+
+// --- coverage for trivial methods and edge-case parsing branches ---
+
+func TestTrivialAndDefaults(t *testing.T) {
+	r := &Rule{}
+	assert.Equal(t, "MDS073", r.ID())
+	assert.Equal(t, "slide-structure", r.Name())
+	assert.Equal(t, "structural", r.Category())
+	assert.False(t, r.EnabledByDefault())
+	ds := r.DefaultSettings()
+	assert.Contains(t, ds, "custom-layouts")
+
+	// Check's guard clauses: nil file and a file with no lines.
+	assert.Nil(t, r.Check(nil))
+	assert.Nil(t, r.Check(&lint.File{Path: "empty.md"}))
+}
+
+func TestParseSlides_LeadingHeadmatterFenceInLines(t *testing.T) {
+	// f.Lines itself starts with the headmatter fence (front matter not
+	// stripped): parseSlides must read it as slide 0's frontmatter.
+	src := "---\nlayout: two-cols\n---\n\n# Left\n\n::right::\n\n# Right\n"
+	assert.Empty(t, check(t, src), "leading-fence headmatter with ::right:: is valid")
+}
+
+func TestParseSlides_PlainSeparatorNoFrontmatter(t *testing.T) {
+	// A `---` padded by blank lines is a plain separator, not frontmatter.
+	src := "# A\n\nBody.\n\n---\n\n# B\n\nBody two.\n"
+	assert.Empty(t, check(t, src))
+}
+
+func TestParseSlides_CodeFenceWithRealSeparatorPresent(t *testing.T) {
+	// A real separator makes the rule parse; a `---` inside a later code
+	// block must be skipped by parseSlides' fence tracking (not counted
+	// as a slide boundary or frontmatter).
+	src := "# A\n\n---\nlayout: center\n---\n\n# Real\n\n```md\n---\nnot a separator\n---\n```\n\nProse.\n"
+	assert.Empty(t, check(t, src))
+}
+
+func TestHasFrontmatterAfter_ProseAfterSeparator(t *testing.T) {
+	// `---` immediately followed by a prose line (no key, no blank) is a
+	// plain separator, not a frontmatter block.
+	src := "# A\n\nBody.\n\n---\nJust prose, not a key\n\n# B\n"
+	assert.Empty(t, check(t, src))
+}
+
+func TestHasFrontmatterAfter_KeysToEndOfFile(t *testing.T) {
+	// A separator followed by key lines that run to EOF with no closing
+	// fence is not a valid frontmatter block.
+	src := "# A\n\nBody.\n\n---\nlayout: center\nzoom: 2"
+	assert.Empty(t, check(t, src))
+}
+
+func TestReadFrontmatter_SkipsNonKeyLine(t *testing.T) {
+	// A line without a colon inside the frontmatter block is skipped.
+	src := "---\nlayout: center\nnocolonhere\n---\n\n# Slide\n"
+	assert.Empty(t, check(t, src))
+}
+
+func TestParseFrontMatterBytes_SkipsFenceIndentedAndNonKey(t *testing.T) {
+	// Stripped headmatter (f.FrontMatter) with fences, an indented nested
+	// key, and a non-key line — only the top-level layout key is read.
+	body := "# Left only\n\nBody.\n"
+	f := &lint.File{
+		Path:        "slides.md",
+		Source:      []byte(body),
+		Lines:       splitLines(body),
+		FrontMatter: []byte("---\nlayout: two-cols\n  nested: x\nnocolon\n---\n"),
+	}
+	diags := (&Rule{}).Check(f)
+	require.Len(t, diags, 1, "got: %s", messages(diags))
+	assert.Contains(t, diags[0].Message, "::right:: slot")
+}
+
+func TestEmptyLayoutValue_FlaggedAndDidYouMeanOnEmpty(t *testing.T) {
+	// `layout:` with an empty value: unknown layout, and nearest("") must
+	// not panic (exercises editDistance's empty-string branch).
+	src := "---\nlayout:\n---\n\n# Slide\n"
+	diags := check(t, src)
+	require.Len(t, diags, 1, "got: %s", messages(diags))
+	assert.Contains(t, diags[0].Message, "unknown Slidev layout")
+}
+
+func TestEditDistance_EmptyStrings(t *testing.T) {
+	assert.Equal(t, 3, editDistance("", "abc"))
+	assert.Equal(t, 3, editDistance("abc", ""))
+	assert.Equal(t, 0, editDistance("", ""))
+}
