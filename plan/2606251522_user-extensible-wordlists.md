@@ -161,7 +161,13 @@ the merge layer already uses for `ListMerger` and
    `docs/reference/conventions.md`,
    `docs/reference/convention-files.md`, and
    `docs/background/concepts/placeholder-grammar.md`. Add
-   fixture cases driven by a `lists:` setting.
+   an integration test (not a fixture test) driven by a
+   `lists:` setting. Fixture tests call `ApplySettings`
+   directly and bypass the `effectiveRules` pipeline where
+   `lists:` is resolved and stripped, so they cannot
+   exercise this feature; a contract-level integration test
+   in `internal/integration/wordlist_file_contract_test.go`
+   is the correct level.
 
 ## Acceptance Criteria
 

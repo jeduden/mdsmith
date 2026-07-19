@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -16,14 +17,14 @@ import (
 
 // wordlistFileContractFixture stages a workspace with a config file
 // and optional wordlist files under `.mdsmith/wordlists/`. Returns
-// the workspace root directory path.
+// the `.mdsmith.yml` path (use filepath.Dir to get the workspace dir).
 func wordlistFileContractFixture(
 	t *testing.T, configBody string, wordlistFiles map[string]string,
 ) string {
 	t.Helper()
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(
-		filepath.Join(dir, ".mdsmith.yml"), []byte(configBody), 0o644))
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(configBody), 0o644))
 	if len(wordlistFiles) > 0 {
 		require.NoError(t, os.MkdirAll(
 			filepath.Join(dir, ".mdsmith", "wordlists"), 0o755))
@@ -33,7 +34,7 @@ func wordlistFileContractFixture(
 				[]byte(body), 0o644))
 		}
 	}
-	return dir
+	return cfgPath
 }
 
 // TestWordlistFileContract_ExtendsChainResolvesAndDiagnosticFires locks
@@ -41,12 +42,13 @@ func wordlistFileContractFixture(
 // another resolves the chain, and all three entry sources (inherited,
 // direct child, and inline contains) fire MDS056 diagnostics.
 func TestWordlistFileContract_ExtendsChainResolvesAndDiagnosticFires(t *testing.T) {
-	dir := wordlistFileContractFixture(t,
+	cfgPath := wordlistFileContractFixture(t,
 		"rules:\n  forbidden-text:\n    contains: [no-magic]\n    lists: [team]\n",
 		map[string]string{
 			"base.yaml": "entries:\n  - synergy\n",
 			"team.yaml": "extends: base\nentries:\n  - circle back\n",
 		})
+	dir := filepath.Dir(cfgPath)
 	require.NoError(t, os.WriteFile(
 		filepath.Join(dir, "doc.md"),
 		[]byte("# Title\n\nWe need synergy. Let us circle back. Avoid no-magic.\n"), 0o644))
@@ -55,7 +57,7 @@ func TestWordlistFileContract_ExtendsChainResolvesAndDiagnosticFires(t *testing.
 
 	// synergy=inherited via team->base, "circle back"=team's own entries, no-magic=inline merge.
 	for _, word := range []string{"synergy", "circle back", "no-magic"} {
-		require.True(t, slices.ContainsFunc(diags, func(d diagKey) bool {
+		assert.True(t, slices.ContainsFunc(diags, func(d diagKey) bool {
 			return d.rule == "MDS056" && strings.Contains(d.message, word)
 		}), "expected MDS056 diagnostic mentioning %q; got %v", word, diags)
 	}
