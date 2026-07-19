@@ -33,7 +33,7 @@ Clean surfaces, verified:
   `Formatter` interface as `JSONFormatter` and
   `TextFormatter`. It is documented in
   `docs/reference/cli/check.md` and `fix.md`
-  (`-f sarif`). 12 tests lock its shape.
+  (`-f sarif`). 16 tests lock its shape.
 - `internal/pack` is a small registry package,
   mirroring `internal/starter`.
 - `internal/rules/externallink`'s wasm/net build-tag
