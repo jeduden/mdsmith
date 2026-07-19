@@ -31,9 +31,14 @@ func TestPrintInitCatalog(t *testing.T) {
 // --- setInitUsage ---
 
 func TestSetInitUsage(t *testing.T) {
+	var buf bytes.Buffer
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
-	setInitUsage(fs)
-	out := captureStderr(func() { fs.Usage() })
+	fs.SetOutput(&buf)
+	var force bool
+	fs.BoolVar(&force, "force", false, "overwrite existing .mdsmith.yml")
+	setInitUsage(fs, &buf)
+	fs.Usage()
+	out := buf.String()
 	assert.Contains(t, out, "--starter")
 	assert.Contains(t, out, "--from-markdownlint")
 	assert.Contains(t, out, "--add")
