@@ -82,6 +82,15 @@ type Config struct {
 	KindAssignment []KindAssignmentEntry `yaml:"kind-assignment,omitempty"`
 	Build          BuildConfig           `yaml:"build,omitempty"`
 
+	// ForeignRegions lists marker pairs that bound content another
+	// generator owns (e.g. APM's `<!-- apm:start -->` /
+	// `<!-- apm:end -->`). The fix pipeline treats the bytes inside a
+	// matched pair as opaque — no fixer rewrites them and style rules
+	// skip diagnostics there — while whole-file rules (MDS022, MDS028)
+	// still count the bytes. Glob-scopable via `overrides:`, which
+	// append their own pairs to this base list per matching file.
+	ForeignRegions []ForeignRegion `yaml:"foreign-regions,omitempty"`
+
 	// Convention names a Markdown convention bundle. Built-in
 	// values: "portable", "github", "plain". User-defined
 	// conventions may also be referenced here after being declared
@@ -159,6 +168,19 @@ type Override struct {
 	Files      []string           `yaml:"files,omitempty"`
 	Rules      map[string]RuleCfg `yaml:"rules"`
 	Categories map[string]bool    `yaml:"categories"`
+	// ForeignRegions are marker pairs scoped to this override's glob.
+	// They append to the top-level `foreign-regions:` list for files
+	// matching Patterns(); see config.EffectiveForeignRegions.
+	ForeignRegions []ForeignRegion `yaml:"foreign-regions,omitempty"`
+}
+
+// ForeignRegion declares one foreign-owned marker pair. Start and End
+// are matched against whole trimmed source lines; the bytes spanned by
+// a matched pair (markers included) are treated as opaque by the fix
+// pipeline and skipped by style rules.
+type ForeignRegion struct {
+	Start string `yaml:"start"`
+	End   string `yaml:"end"`
 }
 
 // Patterns returns the effective set of glob patterns for the override.

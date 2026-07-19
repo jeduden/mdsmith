@@ -1,7 +1,7 @@
 ---
 id: 2607082049
 title: "Foreign managed-region protection for `mdsmith fix`"
-status: "🔲"
+status: "✅"
 model: opus
 summary: >-
   Add a `foreign-regions:` config listing `{start, end}` marker
@@ -87,20 +87,20 @@ metrics still count those bytes.
 
 ## Acceptance Criteria
 
-- [ ] `mdsmith fix` leaves bytes between a declared
+- [x] `mdsmith fix` leaves bytes between a declared
       `{start, end}` pair unchanged, including
       otherwise-fixable trailing spaces and table
       misalignment.
-- [ ] A style-rule violation inside the region emits
+- [x] A style-rule violation inside the region emits
       no diagnostic; the same violation outside it
       still does.
-- [ ] MDS022 and MDS028 still count the region's
+- [x] MDS022 and MDS028 still count the region's
       bytes toward file length and token budget.
-- [ ] A start marker with no matching end marker
+- [x] A start marker with no matching end marker
       produces a diagnostic.
-- [ ] The region config is glob-scopable via
+- [x] The region config is glob-scopable via
       `overrides:`.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool -modfile=tools/go.mod golangci-lint
+- [x] All tests pass: `go test ./...`
+- [x] `go tool -modfile=tools/go.mod golangci-lint
       run` reports no issues.
-- [ ] `mdsmith check .` — 0 failures.
+- [x] `mdsmith check .` — 0 failures.

@@ -37,6 +37,7 @@ row: "- [{summary}]({filename})"
 - [Print the mdsmith build version and exit.](cli/version.md)
 - [Each file under `.mdsmith/conventions/` declares one user convention. The basename is the convention name; the file body carries a `flavor:` plus a `rules:` map. Sits alongside inline `conventions.<name>:` in `.mdsmith.yml`.](convention-files.md)
 - [Built-in Markdown conventions, the rule presets each one applies, and how user config layers on top via deep-merge.](conventions.md)
+- [The top-level `foreign-regions:` config lists `{start, end}` marker pairs whose spanned bytes mdsmith treats as opaque — style rules skip diagnostics inside a matched pair and fixers never rewrite it, while whole-file rules still count the bytes. Glob-scopable via `overrides:`; a start with no matching end reports MDS073.](foreign-regions.md)
 - [Glob pattern syntax across mdsmith config, directives, and CLI argument expansion, with the supported exclusion semantics for each surface.](globs.md)
 - [Each file under `.mdsmith/kinds/` declares one kind. The basename is the kind name; the file body carries the full `KindBody` — schema, rules, `path-pattern:`, `extends:`. Sits alongside inline `kinds.<name>:` in `.mdsmith.yml`.](kind-files.md)
 - [Every markdownlint rule and the mdsmith rule that covers it, generated from the rule README front matter — the same data `mdsmith init --from-markdownlint` reads.](markdownlint-mapping.md)

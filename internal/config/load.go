@@ -101,7 +101,7 @@ func loadFromBytes(data []byte, sourcePath string, mergeKinds bool) (*Config, er
 		return nil, err
 	}
 
-	if err := ValidateKinds(&cfg); err != nil {
+	if err := validateConfigSemantics(&cfg); err != nil {
 		return nil, fmt.Errorf("validating config: %w", err)
 	}
 
