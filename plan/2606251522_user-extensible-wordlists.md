@@ -165,22 +165,22 @@ the merge layer already uses for `ListMerger` and
 
 ## Acceptance Criteria
 
-- [ ] A `.mdsmith/wordlists/team.yaml` that `extends:`
+- [x] A `.mdsmith/wordlists/team.yaml` that `extends:`
       another file resolves, and a doc using a team word
       fails `mdsmith check`.
-- [ ] A doc using the convention's curated words fails under
+- [x] A doc using the convention's curated words fails under
       `convention: no-llm-tells`.
-- [ ] An unknown list name, a `lists:` on a non-consumer
+- [x] An unknown list name, a `lists:` on a non-consumer
       rule, and an `extends:` cycle each fail at config load
       with a clear message.
-- [ ] `internal/convention/nollmtells.go` carries the curated
+- [x] `internal/convention/nollmtells.go` carries the curated
       words and the drift test passes against the
       convention's inline lists.
-- [ ] `mdsmith init --wordlists` writes editable
+- [x] `mdsmith init --wordlists` writes editable
       `.mdsmith/wordlists/ai-speak.yaml` and `ai-openers.yaml`,
       and skips a file that already exists.
-- [ ] `mdsmith check .` stays green (the repo pins
+- [x] `mdsmith check .` stays green (the repo pins
       `convention: no-llm-tells`).
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run`
+- [x] All tests pass: `go test ./...`
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues.
