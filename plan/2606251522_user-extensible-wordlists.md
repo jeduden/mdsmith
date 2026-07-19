@@ -1,7 +1,7 @@
 ---
 id: 2606251522
 title: user-extensible named word-lists
-status: "🔳"
+status: "✅"
 summary: >-
   Add a named word-list resource under `.mdsmith/wordlists/`.
   Every list-consuming rule gains a `lists:` setting that
