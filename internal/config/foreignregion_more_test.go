@@ -52,6 +52,46 @@ func TestParseForeignRegionsOverrideInvalidRejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "start marker must not be empty")
 }
 
+// TestParseForeignRegionsOverrideErrorNamesOverride reports which
+// override carries a malformed marker pair, not an ambiguous top-level
+// index.
+func TestParseForeignRegionsOverrideErrorNamesOverride(t *testing.T) {
+	yml := `overrides:
+  - glob: ["README.md"]
+  - glob: ["AGENTS.md"]
+    foreign-regions:
+      - start: "<!-- gen:start -->"
+        end: ""
+`
+	_, err := ParseBytes([]byte(yml))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "overrides[1].foreign-regions[0]")
+	assert.Contains(t, err.Error(), "end marker must not be empty")
+}
+
+// TestEffectiveForeignRegionsDedupes collapses a marker pair declared
+// both top-level and on a matching override into a single entry, so the
+// check path (which does not dedup per-file MDS073 diagnostics) does not
+// double-report or double-protect it.
+func TestEffectiveForeignRegionsDedupes(t *testing.T) {
+	cfg := &Config{
+		ForeignRegions: []ForeignRegion{{Start: "<!-- a -->", End: "<!-- b -->"}},
+		Overrides: []Override{
+			{
+				Glob: []string{"AGENTS.md"},
+				ForeignRegions: []ForeignRegion{
+					{Start: "<!-- a -->", End: "<!-- b -->"}, // duplicate of top-level
+					{Start: "<!-- c -->", End: "<!-- d -->"}, // distinct
+				},
+			},
+		},
+	}
+	got := EffectiveForeignRegions(cfg, "AGENTS.md")
+	require.Len(t, got, 2)
+	assert.Equal(t, ForeignRegion{Start: "<!-- a -->", End: "<!-- b -->"}, got[0])
+	assert.Equal(t, ForeignRegion{Start: "<!-- c -->", End: "<!-- d -->"}, got[1])
+}
+
 // TestCopyForeignRegionsNil returns nil for a nil input.
 func TestCopyForeignRegionsNil(t *testing.T) {
 	assert.Nil(t, copyForeignRegions(nil))

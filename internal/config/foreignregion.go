@@ -16,16 +16,41 @@ func EffectiveForeignRegions(cfg *Config, filePath string) []ForeignRegion {
 		return nil
 	}
 	var out []ForeignRegion
-	out = append(out, cfg.ForeignRegions...)
+	for _, r := range cfg.ForeignRegions {
+		if !containsForeignRegion(out, r) {
+			out = append(out, r)
+		}
+	}
 	for _, o := range cfg.Overrides {
 		if len(o.ForeignRegions) == 0 {
 			continue
 		}
-		if matchesAny(o.Patterns(), filePath) {
-			out = append(out, o.ForeignRegions...)
+		if !matchesAny(o.Patterns(), filePath) {
+			continue
+		}
+		for _, r := range o.ForeignRegions {
+			if !containsForeignRegion(out, r) {
+				out = append(out, r)
+			}
 		}
 	}
 	return out
+}
+
+// containsForeignRegion reports whether list already holds an identical
+// marker pair. EffectiveForeignRegions dedups with it so a pair declared
+// both top-level and on a matching override (or repeated within a list)
+// contributes one protected span and one MDS073 diagnostic, not two —
+// the check path does not otherwise dedup per-file diagnostics. The
+// marker-pair lists are short (a handful of entries), so the linear scan
+// is cheaper than allocating a set on this per-file hot path.
+func containsForeignRegion(list []ForeignRegion, r ForeignRegion) bool {
+	for _, e := range list {
+		if e == r {
+			return true
+		}
+	}
+	return false
 }
 
 // validateConfigSemantics runs the post-parse structural checks that
@@ -44,31 +69,36 @@ func validateConfigSemantics(cfg *Config) error {
 // (the scanner could never tell which line opens and which closes a
 // region). It checks the top-level list and every override's list.
 func validateForeignRegions(cfg *Config) error {
-	if err := checkForeignRegionList(cfg.ForeignRegions); err != nil {
+	if err := checkForeignRegionList("foreign-regions", cfg.ForeignRegions); err != nil {
 		return err
 	}
 	for i := range cfg.Overrides {
-		if err := checkForeignRegionList(cfg.Overrides[i].ForeignRegions); err != nil {
+		label := fmt.Sprintf("overrides[%d].foreign-regions", i)
+		if err := checkForeignRegionList(label, cfg.Overrides[i].ForeignRegions); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func checkForeignRegionList(regions []ForeignRegion) error {
+// checkForeignRegionList validates one marker-pair list. label names the
+// list's location in the config ("foreign-regions" or
+// "overrides[i].foreign-regions") so an error points at the offending
+// override rather than an ambiguous top-level index.
+func checkForeignRegionList(label string, regions []ForeignRegion) error {
 	for i, r := range regions {
 		start := strings.TrimSpace(r.Start)
 		end := strings.TrimSpace(r.End)
 		if start == "" {
-			return fmt.Errorf("foreign-regions[%d]: start marker must not be empty", i)
+			return fmt.Errorf("%s[%d]: start marker must not be empty", label, i)
 		}
 		if end == "" {
-			return fmt.Errorf("foreign-regions[%d]: end marker must not be empty", i)
+			return fmt.Errorf("%s[%d]: end marker must not be empty", label, i)
 		}
 		if start == end {
 			return fmt.Errorf(
-				"foreign-regions[%d]: start and end markers must differ (both %q)",
-				i, start)
+				"%s[%d]: start and end markers must differ (both %q)",
+				label, i, start)
 		}
 	}
 	return nil
