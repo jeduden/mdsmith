@@ -252,4 +252,5 @@ footer: |
 | 2607082051 | 🔲     | opus   | [Schema extensions: closed frontmatter and filename agreement](plan/2607082051_apm-schema-extensions.md)                                                |
 | 2607082052 | 🔲     | sonnet | [SARIF output format for `mdsmith check`](plan/2607082052_check-sarif-output.md)                                                                        |
 | 2607121915 | ✅     | sonnet | [Resolve the internal/linkgraph purity-contract mismatch for wikilink resolution](plan/2607121915_arch-fix-linkgraph-wikilink-purity.md)                |
+| 2607171900 | 🔳     | opus   | [Slidev structure rule (MDS072) — validate layouts, slots, fields, and frontmatter keys per slide](plan/2607171900_slidev-structure-rule.md)            |
 <?/catalog?>

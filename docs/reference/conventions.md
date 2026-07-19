@@ -165,11 +165,11 @@ project's terms join rather than replace them.
 ### `slidev`
 
 Disables eight default-on rules that produce false
-positives on [Slidev](https://sli.dev) files. Slidev
-uses `---` as a slide separator: the separator is
-parsed as a setext underline, headings restart per
-slide, and layout-only slides carry no body. Pins no
-flavor; the parser-level `---` issue is out of scope.
+positives on [Slidev](https://sli.dev) files, and
+enables `slide-structure` (MDS072) to validate
+per-slide layouts, slots, fields, and keys. Slidev
+uses `---` as a slide separator (parsed as a setext
+underline); headings restart per slide. Pins no flavor.
 
 | Rule                                          | Why disabled                               |
 | --------------------------------------------- | ------------------------------------------ |

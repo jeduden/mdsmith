@@ -266,7 +266,15 @@ func TestLookup_Slidev(t *testing.T) {
 			assert.False(t, p.Enabled, "slidev convention must disable rule %q", rule)
 		}
 	}
-	require.Len(t, c.Rules, len(disabledRules),
+
+	// Beyond the eight disabled rules, slidev enables the opt-in
+	// slide-structure rule (MDS072) — the additive Slidev check.
+	ss, ok := c.Rules["slide-structure"]
+	if assert.True(t, ok, "slidev convention must mention slide-structure") {
+		assert.True(t, ss.Enabled, "slidev convention must enable slide-structure")
+	}
+
+	require.Len(t, c.Rules, len(disabledRules)+1,
 		"slidev convention rule count drifted")
 }
 
