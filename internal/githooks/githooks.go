@@ -160,9 +160,25 @@ const configFileName = ".mdsmith.yml"
 
 // GlobsFromConfig returns the canonical merge-driver glob set for a
 // repository: every markdown extension is included, and the project's
-// .mdsmith.yml ignore patterns are translated as exclude patterns.
-// Last-match-wins in .gitattributes lets the excludes override the
-// broader markdown includes. cfg may be nil (no exclusions then).
+// .mdsmith.yml ignore patterns are translated into markdown-scoped
+// exclude patterns. Last-match-wins in .gitattributes lets the excludes
+// override the broader markdown includes. cfg may be nil (no exclusions
+// then).
+//
+// Each representable ignore pattern is intersected with the include
+// set's markdown extensions before it becomes an exclude line, so a
+// coarse directory ignore like `demo/**` emits
+//
+//	demo/**/*.md -merge
+//	demo/**/*.markdown -merge
+//
+// rather than a bare `demo/** -merge`. The `ignore:` list scopes the
+// markdown linter (files: is *.md / *.markdown), so an ignore pattern
+// is only ever meant to affect markdown; a bare `-merge` line, by
+// contrast, is not extension-scoped and would disable git's 3-way
+// merge for every file in the tree — including source code that
+// nobody asked to grandfather (issue #750). scopeExcludeToMarkdown
+// guarantees every emitted exclude ends in a markdown extension.
 //
 // Patterns that cannot be represented directly in .gitattributes
 // are dropped from the exclude set so MDS048's auto-fix never
@@ -186,16 +202,84 @@ func GlobsFromConfig(cfg *config.Config) (Globs, []string) {
 	if cfg == nil || len(cfg.Ignore) == 0 {
 		return g, nil
 	}
-	g.Exclude = make([]string, 0, len(cfg.Ignore))
+	exts := defaultMarkdownExtensions()
+	g.Exclude = make([]string, 0, len(cfg.Ignore)*len(exts))
 	var skipped []string
 	for _, p := range cfg.Ignore {
 		if !isRepresentableGitattributesPattern(p) {
 			skipped = append(skipped, p)
 			continue
 		}
-		g.Exclude = append(g.Exclude, p)
+		g.Exclude = append(g.Exclude, scopeExcludeToMarkdown(p, exts)...)
 	}
 	return g, skipped
+}
+
+// defaultMarkdownExtensions returns the extension suffix (including the
+// leading dot) of each DefaultIncludes glob — ".md" and ".markdown".
+// Deriving them from DefaultIncludes keeps the exclude scoping in
+// GlobsFromConfig aligned with the include set it pairs with, so a
+// change to the include globs flows through to the excludes.
+func defaultMarkdownExtensions() []string {
+	inc := DefaultIncludes()
+	exts := make([]string, 0, len(inc))
+	for _, g := range inc {
+		exts = append(exts, strings.TrimPrefix(g, "*"))
+	}
+	return exts
+}
+
+// scopeExcludeToMarkdown rewrites one .mdsmith.yml ignore pattern into
+// the .gitattributes exclude patterns that turn off the mdsmith merge
+// driver for the Markdown files the pattern grandfathers — and only
+// those files (issue #750).
+//
+// A pattern that already ends in one of exts targets a specific
+// Markdown extension, so its -merge line can only affect Markdown; it
+// is returned unchanged. Otherwise the pattern is treated as a path
+// scope and one exclude is emitted per extension, keyed on the final
+// path segment:
+//
+//   - `dir/**` -> `dir/**/*.md`, `dir/**/*.markdown` (recursive tree)
+//   - `dir/*`  -> `dir/*.md`,    `dir/*.markdown`    (one level)
+//   - `dir`    -> `dir/**/*.md`, `dir/**/*.markdown` (name as a tree)
+//
+// Every branch appends a Markdown extension to the emitted pattern, so
+// the invariant "a derived -merge line never matches a non-Markdown
+// file" holds for any input.
+func scopeExcludeToMarkdown(pattern string, exts []string) []string {
+	for _, ext := range exts {
+		if strings.HasSuffix(pattern, ext) {
+			return []string{pattern}
+		}
+	}
+	dir, last := splitLastSegment(pattern)
+	out := make([]string, 0, len(exts))
+	for _, ext := range exts {
+		switch last {
+		case "**":
+			// Recursive tree: all Markdown under dir at any depth.
+			out = append(out, dir+"**/*"+ext)
+		case "*":
+			// Single segment: Markdown directly under dir.
+			out = append(out, dir+"*"+ext)
+		default:
+			// A plain directory name (or any other shape) is treated
+			// as a directory scope covering all Markdown beneath it.
+			out = append(out, pattern+"/**/*"+ext)
+		}
+	}
+	return out
+}
+
+// splitLastSegment splits p at the final "/" into the directory prefix
+// (including the trailing slash; empty when p has no slash) and the
+// final path segment.
+func splitLastSegment(p string) (dir, last string) {
+	if i := strings.LastIndexByte(p, '/'); i >= 0 {
+		return p[:i+1], p[i+1:]
+	}
+	return "", p
 }
 
 // isRepresentableGitattributesPattern reports whether pattern can be
@@ -589,6 +673,12 @@ func findManagedBlockLines(lines []string) (int, int) {
 // -merge`. .gitattributes uses last-match-wins, so an exclude line
 // after the include lines effectively removes the merge driver from
 // any path the include patterns matched.
+//
+// Exclude patterns derived from .mdsmith.yml ignore entries are
+// markdown-scoped (see GlobsFromConfig): a `-merge` line only ever
+// matches a markdown file, so it disables the mdsmith driver for
+// grandfathered markdown without touching git's default merge for
+// non-markdown files in the same tree (issue #750).
 //
 // `.gitattributes` itself does not support negative patterns (`!*.md`
 // is a syntax error there). Order-sensitive override via -merge is the

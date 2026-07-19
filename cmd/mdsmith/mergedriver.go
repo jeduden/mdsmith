@@ -32,8 +32,13 @@ Subcommands:
         Register the merge driver in git config and ensure
         .gitattributes assigns it. The managed block uses globs
         derived from the project's .mdsmith.yml: include patterns
-        (default: *.md and *.markdown) followed by an exclude line
-        for each ignore pattern (last-match-wins overrides).
+        (default: *.md and *.markdown) followed by markdown-scoped
+        exclude lines for each ignore pattern (last-match-wins
+        overrides). Each ignore pattern is intersected with the
+        markdown include extensions, so an ignore of demo/** emits
+        demo/**/*.md -merge and demo/**/*.markdown -merge rather
+        than a bare demo/** -merge that would also disable git's
+        merge for non-markdown files in that tree.
 
         Optional positional args replace the default include set
         when callers want to scope the merge driver to a custom
@@ -466,16 +471,18 @@ func hasConflictMarkers(content []byte) bool {
 // resolveManagedGlobs returns the merge-driver glob set for an
 // install command. With no args, the default include set
 // (`*.md`, `*.markdown`) is used and the project's .mdsmith.yml
-// `ignore:` patterns become exclude overrides — patterns that
-// cannot appear verbatim in `.gitattributes` (whitespace, leading
-// `!`) are silently dropped by `GlobsFromConfig`. Explicit args
-// replace the include set so callers can scope the merge driver to
-// a custom pattern (e.g. `docs/**/*.md`); whitespace in any
-// caller-provided include is rejected up front because
-// .gitattributes splits attribute lines on whitespace and the bad
-// pattern would corrupt the managed block. The second return is
-// the process exit code: 0 on success, 2 on a user-facing error
-// (already printed to stderr).
+// `ignore:` patterns become markdown-scoped exclude overrides —
+// each pattern is intersected with the markdown include extensions
+// (see githooks.GlobsFromConfig) so a `-merge` line never disables
+// git's merge for non-markdown files. Patterns that cannot appear
+// verbatim in `.gitattributes` (whitespace, leading `!`) are
+// silently dropped by `GlobsFromConfig`. Explicit args replace the
+// include set so callers can scope the merge driver to a custom
+// pattern (e.g. `docs/**/*.md`); whitespace in any caller-provided
+// include is rejected up front because .gitattributes splits
+// attribute lines on whitespace and the bad pattern would corrupt
+// the managed block. The second return is the process exit code: 0
+// on success, 2 on a user-facing error (already printed to stderr).
 func resolveManagedGlobs(_ string, args []string) (githooks.Globs, int) {
 	cfg, _, err := loadConfig("")
 	if err != nil {
