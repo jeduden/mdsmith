@@ -42,3 +42,15 @@ func TestRestoreMultipleRegions(t *testing.T) {
 	got := Restore([]byte(original), []byte(fixed), []config.ForeignRegion{apm})
 	assert.Equal(t, original, string(got))
 }
+
+// TestRestoreDuplicateStartProtectsFirstSpan mirrors Scan's duplicate-start
+// pairing on the byte path: the first start pairs with the following end, so
+// a fixer's edit inside that span is restored even though the region is
+// malformed (a second start opened before it closed).
+func TestRestoreDuplicateStartProtectsFirstSpan(t *testing.T) {
+	s, e := apm.Start, apm.End
+	original := s + "\nA   \n" + s + "\nB   \n" + e + "\n"
+	fixed := s + "\nA\n" + s + "\nB\n" + e + "\n"
+	got := Restore([]byte(original), []byte(fixed), []config.ForeignRegion{apm})
+	assert.Equal(t, original, string(got))
+}

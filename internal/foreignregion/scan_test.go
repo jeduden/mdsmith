@@ -65,14 +65,20 @@ func TestScanOrphanedEnd(t *testing.T) {
 }
 
 // TestScanDuplicateStart reports a diagnostic when a second start marker
-// opens before the first region closes.
+// opens before the first region closes, and still pairs the first start
+// with the following end so that span stays protected (the duplicate
+// marker only draws the diagnostic).
 func TestScanDuplicateStart(t *testing.T) {
 	src := "<!-- apm:start -->\na\n<!-- apm:start -->\nb\n<!-- apm:end -->\n"
 	f := newFile(t, src)
-	_, diags := Scan(f, []config.ForeignRegion{apm})
-	require.NotEmpty(t, diags)
+	ranges, diags := Scan(f, []config.ForeignRegion{apm})
+	require.Len(t, diags, 1)
 	assert.Contains(t, diags[0].Message, "duplicate")
 	assert.Equal(t, 3, diags[0].Line)
+	// The first start (line 1) still pairs with the end (line 5): the
+	// span is protected even though the region is flagged malformed.
+	require.Len(t, ranges, 1)
+	assert.Equal(t, lint.LineRange{From: 1, To: 5}, ranges[0])
 }
 
 // TestScanMultiplePairs returns a range for each independent matched

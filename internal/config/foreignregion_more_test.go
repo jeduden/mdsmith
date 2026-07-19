@@ -92,6 +92,28 @@ func TestEffectiveForeignRegionsDedupes(t *testing.T) {
 	assert.Equal(t, ForeignRegion{Start: "<!-- c -->", End: "<!-- d -->"}, got[1])
 }
 
+// TestEffectiveForeignRegionsDedupesWhitespaceVariant collapses two pairs
+// that differ only in surrounding marker whitespace into one entry: the
+// scanner compares markers by trimmed-line equality, so the variant scans
+// identically and must protect one span and report one MDS073, not two.
+func TestEffectiveForeignRegionsDedupesWhitespaceVariant(t *testing.T) {
+	cfg := &Config{
+		ForeignRegions: []ForeignRegion{{Start: "<!-- a -->", End: "<!-- b -->"}},
+		Overrides: []Override{
+			{
+				Glob: []string{"AGENTS.md"},
+				ForeignRegions: []ForeignRegion{
+					// Same markers, extra surrounding whitespace.
+					{Start: "  <!-- a -->", End: "<!-- b -->  "},
+				},
+			},
+		},
+	}
+	got := EffectiveForeignRegions(cfg, "AGENTS.md")
+	require.Len(t, got, 1)
+	assert.Equal(t, ForeignRegion{Start: "<!-- a -->", End: "<!-- b -->"}, got[0])
+}
+
 // TestCopyForeignRegionsNil returns nil for a nil input.
 func TestCopyForeignRegionsNil(t *testing.T) {
 	assert.Nil(t, copyForeignRegions(nil))

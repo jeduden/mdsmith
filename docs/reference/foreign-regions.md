@@ -76,13 +76,17 @@ opaque to editing, not invisible to size accounting.
 ## Malformed regions (MDS073)
 
 APM requires each marker exactly once. mdsmith reports **MDS073** on a
-malformed region and protects no bytes for it:
+malformed region:
 
-| Condition                                       | Reported on                |
-| ----------------------------------------------- | -------------------------- |
-| A `start` marker with no matching `end`         | the `start` line           |
-| An `end` marker with no preceding `start`       | the `end` line             |
-| A second `start` before the first region closes | the duplicate `start` line |
+| Condition                                       | Reported on                | Bytes protected                              |
+| ----------------------------------------------- | -------------------------- | -------------------------------------------- |
+| A `start` marker with no matching `end`         | the `start` line           | none                                         |
+| An `end` marker with no preceding `start`       | the `end` line             | none                                         |
+| A second `start` before the first region closes | the duplicate `start` line | the first `start` through the matching `end` |
+
+An unmatched `start` or `end` protects no bytes. A duplicate `start`
+still pairs the first `start` with the next `end`, so that span is
+protected while the extra marker only draws the diagnostic.
 
 ## Non-goals
 

@@ -37,16 +37,25 @@ func EffectiveForeignRegions(cfg *Config, filePath string) []ForeignRegion {
 	return out
 }
 
-// containsForeignRegion reports whether list already holds an identical
+// containsForeignRegion reports whether list already holds an equivalent
 // marker pair. EffectiveForeignRegions dedups with it so a pair declared
 // both top-level and on a matching override (or repeated within a list)
 // contributes one protected span and one MDS073 diagnostic, not two —
-// the check path does not otherwise dedup per-file diagnostics. The
-// marker-pair lists are short (a handful of entries), so the linear scan
-// is cheaper than allocating a set on this per-file hot path.
+// the check path does not otherwise dedup per-file diagnostics.
+//
+// Equivalence is by trimmed markers, matching how the scanner compares a
+// marker against a source line (whole-line equality after TrimSpace). Two
+// pairs that differ only in surrounding whitespace — e.g. "<!-- x -->" and
+// " <!-- x -->" — scan identically, so they must dedup to one span and one
+// diagnostic; a raw `==` comparison would let the whitespace variant slip
+// past and re-introduce the double report. The marker-pair lists are short
+// (a handful of entries), so the linear scan is cheaper than allocating a
+// set on this per-file hot path.
 func containsForeignRegion(list []ForeignRegion, r ForeignRegion) bool {
+	start := strings.TrimSpace(r.Start)
+	end := strings.TrimSpace(r.End)
 	for _, e := range list {
-		if e == r {
+		if strings.TrimSpace(e.Start) == start && strings.TrimSpace(e.End) == end {
 			return true
 		}
 	}
