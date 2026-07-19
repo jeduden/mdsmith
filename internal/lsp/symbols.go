@@ -10,6 +10,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/discovery"
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/mdpath"
 	"github.com/jeduden/mdsmith/internal/mdtext"
 	"github.com/jeduden/mdsmith/internal/oscompat"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
@@ -232,7 +233,7 @@ func (s *Server) indexReloadFromDisk(absOrRel string) {
 // vendored content, fixtures, and generated trees stay out of the
 // outline / symbol picker.
 func indexPatterns() []string {
-	return []string{"**/*.md", "**/*.markdown"}
+	return mdpath.RecursiveGlobs()
 }
 
 // filterIgnored drops paths matching cfg.Ignore from files. The
@@ -428,11 +429,11 @@ func resolveAbsAndSymlinks(p string) string {
 	return filepath.Clean(abs)
 }
 
-// isMarkdownExt reports whether p has a .md or .markdown extension.
-// Case-insensitive.
+// isMarkdownExt reports whether p has a recognised Markdown extension.
+// Membership is delegated to mdpath, the single source of truth;
+// mdpath.HasMarkdownExt folds case without allocating.
 func isMarkdownExt(p string) bool {
-	ext := strings.ToLower(filepath.Ext(p))
-	return ext == ".md" || ext == ".markdown"
+	return mdpath.HasMarkdownExt(filepath.Ext(p))
 }
 
 // rangeForLines returns an LSP Range covering 1-based start..end

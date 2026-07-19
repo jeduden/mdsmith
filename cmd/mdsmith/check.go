@@ -60,7 +60,7 @@ func parseCheckFlags(args []string) (checkCLIOpts, []string, bool, int) {
 	)
 
 	fs.StringVarP(&configPath, "config", "c", "", "Override config file path")
-	fs.StringVarP(&format, "format", "f", "text", "Output format: text, json")
+	fs.StringVarP(&format, "format", "f", "text", "Output format: text, json, sarif")
 	fs.BoolVar(&noColor, "no-color", false, "Disable ANSI colors")
 	fs.BoolVarP(&quiet, "quiet", "q", false, "Suppress non-error output")
 	fs.BoolVarP(&verbose, "verbose", "v", false, "Show config, files, and rules on stderr")
@@ -223,7 +223,9 @@ func reportCheckResultTo(result *engine.Result, opts checkCLIOpts, logger *vlog.
 	bw := bufio.NewWriterSize(stderrW, stderrBufSize)
 	printErrorsTo(bw, result.Errors)
 
-	if !opts.quiet && len(result.Diagnostics) > 0 {
+	// SARIF must be emitted even with zero diagnostics so the file is valid
+	// SARIF 2.1.0 (not an empty byte stream) when uploaded to Code Scanning.
+	if !opts.quiet && (len(result.Diagnostics) > 0 || opts.format == "sarif") {
 		if code := formatDiagnosticsTo(bw, result.Diagnostics, opts.format, opts.noColor); code != 0 {
 			_ = bw.Flush()
 			return code

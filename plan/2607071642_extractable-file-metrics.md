@@ -1,7 +1,7 @@
 ---
 id: 2607071642
 title: Single-file metric extraction via `mdsmith metrics get` (readability first)
-status: "🔲"
+status: "✅"
 summary: >-
   Add a `mdsmith metrics get <file>` command that emits one file's
   metrics as a single JSON or YAML object, add a readability metric
@@ -207,25 +207,25 @@ behavior.
 
 ## Acceptance Criteria
 
-- [ ] `mdsmith metrics get -f json FILE` prints a single JSON
+- [x] `mdsmith metrics get -f json FILE` prints a single JSON
       object (not an array) carrying every registered metric,
       including the file's ARI score under a `readability` key.
-- [ ] `mdsmith metrics get -f yaml FILE` prints the same values as
+- [x] `mdsmith metrics get -f yaml FILE` prints the same values as
       a YAML mapping; a test pins json and yaml together.
-- [ ] `mdsmith metrics get` with zero or two file arguments is a
+- [x] `mdsmith metrics get` with zero or two file arguments is a
       usage error; the command takes no metric-selector flag.
-- [ ] Running `mdsmith metrics get` on a real repo file (dogfood,
+- [x] Running `mdsmith metrics get` on a real repo file (dogfood,
       not only unit tests) prints the expected object.
-- [ ] `mdsmith metrics list` shows `readability`, `sentences`,
+- [x] `mdsmith metrics list` shows `readability`, `sentences`,
       and `avg-words-per-sentence`; none appears in a
       no-`--metrics` `rank` run.
-- [ ] `internal/metrics` imports `mdtext` for ARI and no rule
+- [x] `internal/metrics` imports `mdtext` for ARI and no rule
       package (a test or the import audit proves it); MDS023
       behavior is unchanged.
-- [ ] An unknown `-f` value reports `text, json, yaml`.
-- [ ] All Markdown passes: `mdsmith check .`
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run` reports
+- [x] An unknown `-f` value reports `text, json, yaml`.
+- [x] All Markdown passes: `mdsmith check .`
+- [x] All tests pass: `go test ./...`
+- [x] `go tool -modfile=tools/go.mod golangci-lint run` reports
       no issues.
 
 [mds023]: ../internal/rules/MDS023-paragraph-readability/README.md

@@ -217,10 +217,10 @@ rules:
     allow: [sub, sup]
 ```
 
-Lists default to replace, so the effective
-allowlist becomes `[sub, sup]`. To keep the
-preset's entries, list them explicitly:
-`allow: [details, summary, sub, sup]`.
+Lists default to replace, so the effective allowlist becomes `[sub,
+sup]`. To keep the preset's entries, explicitly list all of them:
+`allow: [details, summary, sub, sup]`. The `lists:` key is separate
+and always appends — see [word-list files](wordlist-files.md).
 
 ## Disabling MDS034
 

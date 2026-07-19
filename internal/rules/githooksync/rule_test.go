@@ -140,7 +140,10 @@ func TestRule_Check_HonorsConfigIgnorePatterns(t *testing.T) {
 
 	expectedBlock := githooks.RenderManagedBlock(githooks.Globs{
 		Include: githooks.DefaultIncludes(),
-		Exclude: []string{"demo/**", "vendor/**"},
+		Exclude: []string{
+			"demo/**/*.md", "demo/**/*.markdown",
+			"vendor/**/*.md", "vendor/**/*.markdown",
+		},
 	})
 	require.NoError(t, os.WriteFile(filepath.Join(dir, ".gitattributes"),
 		[]byte(expectedBlock), 0o644))
@@ -566,7 +569,10 @@ func TestRule_Fix_EncodesConfigIgnoreAsExcludes(t *testing.T) {
 	require.NoError(t, err)
 	expected := githooks.RenderManagedBlock(githooks.Globs{
 		Include: githooks.DefaultIncludes(),
-		Exclude: []string{"demo/**", "vendor/**"},
+		Exclude: []string{
+			"demo/**/*.md", "demo/**/*.markdown",
+			"vendor/**/*.md", "vendor/**/*.markdown",
+		},
 	})
 	assert.Equal(t, expected, string(content))
 }

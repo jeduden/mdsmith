@@ -167,6 +167,7 @@ func TestE2E_Metrics_NoArgs_PrintsUsage(t *testing.T) {
 	assert.Contains(t, stderr, "Usage:", "expected usage in stderr, got: %s", stderr)
 	assert.Contains(t, stderr, "list", "expected 'list' in usage, got: %s", stderr)
 	assert.Contains(t, stderr, "rank", "expected 'rank' in usage, got: %s", stderr)
+	assert.Contains(t, stderr, "get", "expected 'get' in usage, got: %s", stderr)
 }
 
 func TestE2E_Metrics_UnknownSubcommand_ExitsTwo(t *testing.T) {

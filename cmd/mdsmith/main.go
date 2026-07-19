@@ -641,6 +641,8 @@ func formatDiagnosticsTo(w io.Writer, diags []lint.Diagnostic, format string, no
 	switch format {
 	case "json":
 		formatter = &output.JSONFormatter{}
+	case "sarif":
+		formatter = &output.SARIFFormatter{ToolVersion: version}
 	default:
 		formatter = &output.TextFormatter{Color: !noColor}
 	}
@@ -691,7 +693,7 @@ func printRunStats(format string, quiet bool, stats runStats) {
 
 // printRunStatsTo writes the stats line to the supplied writer.
 func printRunStatsTo(w io.Writer, format string, quiet bool, stats runStats) {
-	if quiet || format == "json" {
+	if quiet || format == "json" || format == "sarif" {
 		return
 	}
 	if stats.DryRun {

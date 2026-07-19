@@ -91,6 +91,7 @@ func runCheckOnDoc(t *testing.T, workspaceDir string) []diagKey {
 		RootDir:          workspaceDir,
 	}
 	result := runner.Run([]string{filepath.Join(workspaceDir, "doc.md")})
+	require.Empty(t, result.Errors, "runner reported errors: %v", result.Errors)
 
 	out := make([]diagKey, 0, len(result.Diagnostics))
 	for _, d := range result.Diagnostics {

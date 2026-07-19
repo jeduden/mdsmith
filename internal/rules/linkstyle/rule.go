@@ -14,6 +14,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/mdpath"
 	"github.com/jeduden/mdsmith/internal/rule"
 )
 
@@ -408,7 +409,7 @@ func checkExtension(policy, targetPath string) string {
 		return ""
 	}
 	ext := path.Ext(base)
-	isMD := strings.EqualFold(ext, ".md") || strings.EqualFold(ext, ".markdown")
+	isMD := mdpath.HasMarkdownExt(ext)
 	hasOtherExt := ext != "" && !isMD
 	if hasOtherExt {
 		return ""

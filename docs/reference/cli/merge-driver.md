@@ -20,14 +20,23 @@ mdsmith merge-driver <subcommand> [args]
 ### `install [globs...]`
 
 Register the merge driver in `git config` and ensure
-`.gitattributes` assigns it. The managed block uses globs
-derived from `.mdsmith.yml`: include patterns (default
-`*.md` and `*.markdown`) followed by an `-merge` exclude
-line for each representable `ignore:` pattern (last-match
-wins). `ignore:` entries that cannot be expressed in
-`.gitattributes` — `!` negation patterns and patterns
-containing whitespace — are skipped, so the hook's scope
-may include files the merge driver isn't registered for.
+`.gitattributes` assigns it. The managed block is derived
+from `.mdsmith.yml`. It lists include patterns first
+(default `*.md` and `*.markdown`). Then it lists one
+`-merge` exclude line per representable `ignore:` pattern.
+Last match wins.
+
+Each `ignore:` pattern is scoped to the markdown include
+extensions. So `ignore: ["demo/**"]` emits
+`demo/**/*.md -merge` and `demo/**/*.markdown -merge`. A
+bare `demo/** -merge` is not used. It would also turn off
+git's 3-way merge for the source code in that tree.
+
+Some `ignore:` entries cannot be expressed in
+`.gitattributes`: `!` negation patterns and patterns with
+whitespace. Those are skipped. As a result, the hook's
+scope may include files the merge driver isn't registered
+for.
 
 Optional positional args replace the default include set
 when scoping to a custom pattern (e.g. `docs/**/*.md`).

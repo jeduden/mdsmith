@@ -42,10 +42,13 @@ and avoid conflicts. Two artifacts cooperate:
 
 - `.gitattributes` assigns the `mdsmith` merge driver to
   markdown files. The managed block uses globs (e.g.
-  `*.md merge=mdsmith`) plus exclude overrides
-  (`<pattern> -merge`) so the assignment scope tracks
-  `.mdsmith.yml` ignore patterns rather than enumerating
-  individual files.
+  `*.md merge=mdsmith`) plus markdown-scoped exclude
+  overrides (e.g. `demo/**/*.md -merge`) so the assignment
+  scope tracks `.mdsmith.yml` ignore patterns rather than
+  enumerating individual files. Each ignore pattern is
+  intersected with the markdown include extensions, so an
+  exclude line never disables git's merge for a
+  non-markdown file in a grandfathered tree.
 - The pre-merge-commit hook re-runs `mdsmith fix .` once
   every per-file merge has resolved, so generated sections
   reflect the final merged state. The hook script is
@@ -82,8 +85,9 @@ The rule:
 
 1. Reads `.mdsmith.yml` ignore patterns and computes the
    canonical glob set: include patterns (default: `*.md`,
-   `*.markdown`) followed by an exclude pattern for each
-   `ignore:` entry.
+   `*.markdown`) followed by markdown-scoped exclude
+   patterns for each `ignore:` entry (a `demo/**` ignore
+   becomes `demo/**/*.md` and `demo/**/*.markdown`).
 2. If `merge.mdsmith.driver` is registered in git config,
    reads `.gitattributes` and compares the BEGIN/END
    managed block against the canonical render.
@@ -169,8 +173,10 @@ ignore:
 # BEGIN mdsmith merge-driver
 *.md merge=mdsmith
 *.markdown merge=mdsmith
-demo/** -merge
-vendor/** -merge
+demo/**/*.md -merge
+demo/**/*.markdown -merge
+vendor/**/*.md -merge
+vendor/**/*.markdown -merge
 # END mdsmith merge-driver
 ```
 

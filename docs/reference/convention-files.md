@@ -65,6 +65,20 @@ The flavor must be a recognised flavor string such as
 `rules:` must name a registered rule and pass that rule's
 own schema check, exactly as an inline convention does.
 
+Rules in a convention file can also use `lists:` to name
+[word-lists](wordlist-files.md). The `lists:` key in the
+convention's `rules:` block specifies which named lists each
+rule draws from. The workspace's `.mdsmith/wordlists/`
+directory supplies the entries:
+
+```yaml
+# .mdsmith/conventions/house-style.yaml
+flavor: commonmark
+rules:
+  forbidden-text:
+    lists: [house-banned]
+```
+
 Select the convention the same way as any other — with
 the top-level `convention:` key in `.mdsmith.yml`:
 

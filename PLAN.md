@@ -230,11 +230,12 @@ footer: |
 | 2606240214 | ✅     | sonnet | [Remove duplicated helpers between lsp/rename.go and rename/rename.go](plan/2606240214_arch-fix-rename-dedup.md)                                        |
 | 2606241814 | ✅     | sonnet | [Add unit tests for lsp/rename dispatch helpers and workspace adapter methods](plan/2606241814_arch-fix-lsp-rename-dispatch-tests.md)                   |
 | 2606241815 | ✅     | sonnet | [Add unit tests for three remaining unexported helpers in internal/index/locate.go](plan/2606241815_arch-fix-locate-remaining-helper-tests.md)          |
-| 2606251522 | 🔳     | opus   | [user-extensible named word-lists](plan/2606251522_user-extensible-wordlists.md)                                                                        |
+| 2606251522 | ✅     | opus   | [user-extensible named word-lists](plan/2606251522_user-extensible-wordlists.md)                                                                        |
 | 2606260211 | ✅     | sonnet | [Add dedicated unit tests for layer0_html.go helpers](plan/2606260211_arch-fix-layer0-html-helper-tests.md)                                             |
 | 2606260614 | ✅     | sonnet | [arch-fix: add dedicated unit tests for lineclass_scan.go HTML-scanning helpers](plan/2606260614_arch-fix-lineclass-scan-helper-tests.md)               |
 | 2606260615 | ✅     | sonnet | [Add dedicated unit tests for unexported helpers in cue/cuelite/engine.go](plan/2606260615_arch-fix-cuelite-engine-helper-tests.md)                     |
 | 2606270013 | ✅     | sonnet | [Add built-in Slidev convention](plan/2606270013_slidev-convention.md)                                                                                  |
+| 2606280208 | ✅     | opus   | [External URL link checking rule (MDS072)](plan/2606280208_external-link-check.md)                                                                      |
 | 2606292015 | 🔲     | opus   | [Scope the LSP workspace singleton per client so instances coexist](plan/2606292015_lsp-multi-instance-coexistence.md)                                  |
 | 2607022118 | 🔲     | sonnet | [General occurrence rule — bound how often a pattern appears per scope](plan/2607022118_occurrence-rule.md)                                             |
 | 2607022119 | 🔲     | sonnet | [Word-frequency metric and over-repetition rule](plan/2607022119_word-frequency-metric-rule.md)                                                         |
@@ -245,12 +246,13 @@ footer: |
 | 2607051918 | ✅     | sonnet | [Export wordlist.Dedup and remove the identical dedupStrings copy in internal/config](plan/2607051918_arch-fix-wordlist-config-dedup.md)                |
 | 2607051919 | ✅     | sonnet | [Add dedicated unit tests for helpers added by the word-list and reflow features](plan/2607051919_arch-fix-new-helper-tests.md)                         |
 | 2607051920 | ✅     | sonnet | [Consolidate duplicated leading-space/blank-line rule helpers into internal/rules/astutil](plan/2607051920_arch-fix-rule-whitespace-helpers-astutil.md) |
-| 2607071642 | 🔲     | sonnet | [Single-file metric extraction via `mdsmith metrics get` (readability first)](plan/2607071642_extractable-file-metrics.md)                              |
+| 2607071642 | ✅     | sonnet | [Single-file metric extraction via `mdsmith metrics get` (readability first)](plan/2607071642_extractable-file-metrics.md)                              |
 | 2607082048 | ✅     | sonnet | [Placeholder token for APM `${input:name}` prompt parameters](plan/2607082048_apm-input-placeholder-token.md)                                           |
 | 2607082049 | 🔲     | opus   | [Foreign managed-region protection for `mdsmith fix`](plan/2607082049_foreign-managed-regions.md)                                                       |
 | 2607082050 | 🔲     | sonnet | [APM coexistence: `mdsmith init --apm`, guide, and kind pack](plan/2607082050_apm-coexist-guide-and-kind-pack.md)                                       |
 | 2607082051 | 🔲     | opus   | [Schema extensions: closed frontmatter and filename agreement](plan/2607082051_apm-schema-extensions.md)                                                |
-| 2607082052 | 🔲     | sonnet | [SARIF output format for `mdsmith check`](plan/2607082052_check-sarif-output.md)                                                                        |
+| 2607082052 | ✅     | sonnet | [SARIF output format for `mdsmith check`](plan/2607082052_check-sarif-output.md)                                                                        |
 | 2607121915 | ✅     | sonnet | [Resolve the internal/linkgraph purity-contract mismatch for wikilink resolution](plan/2607121915_arch-fix-linkgraph-wikilink-purity.md)                |
+| 2607170527 | 🔳     | opus   | [External link checking on WASM hosts (MDS072)](plan/2607170527_wasm-external-link-check.md)                                                            |
 | 2607171900 | 🔳     | opus   | [Slidev structure rule (MDS073) — validate layouts, slots, fields, and frontmatter keys per slide](plan/2607171900_slidev-structure-rule.md)            |
 <?/catalog?>
