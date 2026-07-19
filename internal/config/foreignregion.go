@@ -57,16 +57,18 @@ func validateForeignRegions(cfg *Config) error {
 
 func checkForeignRegionList(regions []ForeignRegion) error {
 	for i, r := range regions {
-		if strings.TrimSpace(r.Start) == "" {
+		start := strings.TrimSpace(r.Start)
+		end := strings.TrimSpace(r.End)
+		if start == "" {
 			return fmt.Errorf("foreign-regions[%d]: start marker must not be empty", i)
 		}
-		if strings.TrimSpace(r.End) == "" {
+		if end == "" {
 			return fmt.Errorf("foreign-regions[%d]: end marker must not be empty", i)
 		}
-		if strings.TrimSpace(r.Start) == strings.TrimSpace(r.End) {
+		if start == end {
 			return fmt.Errorf(
 				"foreign-regions[%d]: start and end markers must differ (both %q)",
-				i, strings.TrimSpace(r.Start))
+				i, start)
 		}
 	}
 	return nil

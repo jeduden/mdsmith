@@ -27,19 +27,24 @@ func Restore(original, fixed []byte, regions []config.ForeignRegion) []byte {
 		if len(origSpans) == 0 || len(origSpans) != len(fixedSpans) {
 			continue
 		}
-		// Replace from the last span to the first so each splice leaves
-		// the earlier spans' byte offsets valid.
-		for i := len(fixedSpans) - 1; i >= 0; i-- {
-			origText := original[origSpans[i].start:origSpans[i].end]
-			fs := fixedSpans[i]
-			out := make([]byte, 0, len(fixed)-(fs.end-fs.start)+len(origText))
-			out = append(out, fixed[:fs.start]...)
-			out = append(out, origText...)
-			out = append(out, fixed[fs.end:]...)
-			fixed = out
-		}
+		fixed = spliceSpans(original, fixed, origSpans, fixedSpans)
 	}
 	return fixed
+}
+
+// spliceSpans rebuilds fixed in one pass, replacing each fixed span with
+// the corresponding original span's bytes. Spans are in document order,
+// so a single forward walk suffices — one allocation instead of the
+// per-span full-buffer rebuild a reverse splice would cost.
+func spliceSpans(original, fixed []byte, origSpans, fixedSpans []byteSpan) []byte {
+	out := make([]byte, 0, len(fixed))
+	prev := 0
+	for i, fs := range fixedSpans {
+		out = append(out, fixed[prev:fs.start]...)
+		out = append(out, original[origSpans[i].start:origSpans[i].end]...)
+		prev = fs.end
+	}
+	return append(out, fixed[prev:]...)
 }
 
 // byteSpan is a half-open [start, end) byte range within a buffer.
