@@ -14,6 +14,11 @@ links here once its own length approaches the
 300-line file budget. Entries below are moved,
 not summarized — nothing was reworded.
 
+This archive itself hit the budget on 2026-07-19.
+Entries from 2026-07-12 through 2026-07-05 moved
+on to
+[the second archive](architecture-audit-archive-2.md).
+
 ## Audit 2026-05-13 (range: 6af677fb..7464d273)
 
 1 107 files; 425 Go/TS sources outside fixtures.
