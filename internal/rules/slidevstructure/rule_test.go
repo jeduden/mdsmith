@@ -49,7 +49,7 @@ func TestMissingRightSlot_TwoCols(t *testing.T) {
 	diags := check(t, src)
 	require.Len(t, diags, 1, "got: %s", messages(diags))
 	assert.Contains(t, diags[0].Message, "requires a ::right:: slot")
-	assert.Equal(t, "MDS072", diags[0].RuleID)
+	assert.Equal(t, "MDS073", diags[0].RuleID)
 }
 
 func TestTwoCols_WithRightSlot_OK(t *testing.T) {
@@ -175,5 +175,5 @@ func TestApplySettings_RejectsUnknownAndBadType(t *testing.T) {
 }
 
 func TestEnabledByDefault_False(t *testing.T) {
-	assert.False(t, (&Rule{}).EnabledByDefault(), "MDS072 is opt-in")
+	assert.False(t, (&Rule{}).EnabledByDefault(), "MDS073 is opt-in")
 }

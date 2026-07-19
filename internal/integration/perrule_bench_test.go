@@ -301,7 +301,7 @@ var perRuleAllocCeiling = map[string]float64{
 	"MDS067": 12,  // callout-type: ~8 allocs
 	"MDS068": 4,   // link-style: 0 allocs
 	"MDS071": 4,   // required-frontmatter: 0 allocs (inert without fields)
-	"MDS072": 4,   // slide-structure: 0 allocs (inert without slide markers)
+	"MDS073": 4,   // slide-structure: 0 allocs (inert without slide markers)
 }
 
 // init pins MDS043's allocs ceiling from the build-tagged

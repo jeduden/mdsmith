@@ -1,5 +1,5 @@
 ---
-id: MDS072
+id: MDS073
 name: slide-structure
 status: ready
 description: >-
@@ -17,7 +17,7 @@ obsidian-linter: []
 gomarklint: []
 category: structural
 ---
-# MDS072: slide-structure
+# MDS073: slide-structure
 
 Flags Slidev slide-structure errors: unknown
 layouts, missing or orphaned slot separators,
@@ -30,7 +30,7 @@ each slide may carry its own frontmatter block. Its
 parser is permissive — an unmatched `::slot::`
 drops its content, a misspelled `layout:` renders
 blank, and an unknown frontmatter key passes
-through as data. None of these error. MDS072 splits
+through as data. None of these error. MDS073 splits
 the deck into slides and reports the failures
 Slidev never does.
 
@@ -132,7 +132,7 @@ Thanks for watching.
 
 ## Meta-Information
 
-- **ID**: MDS072
+- **ID**: MDS073
 - **Name**: `slide-structure`
 - **Status**: ready
 - **Default**: disabled

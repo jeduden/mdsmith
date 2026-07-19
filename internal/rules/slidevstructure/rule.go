@@ -1,4 +1,4 @@
-// Package slidevstructure implements MDS072 (slide-structure): a
+// Package slidevstructure implements MDS073 (slide-structure): a
 // per-slide structural check for Slidev (https://sli.dev) decks.
 //
 // Slidev's renderer is deliberately permissive — an unmatched
@@ -28,7 +28,7 @@ func init() {
 	rule.Register(&Rule{})
 }
 
-// Rule implements MDS072.
+// Rule implements MDS073.
 type Rule struct {
 	// CustomLayouts names theme/addon layouts that must be treated as
 	// known (no unknown-layout diagnostic). Sorted for stable output.
@@ -36,7 +36,7 @@ type Rule struct {
 }
 
 // ID implements rule.Rule.
-func (r *Rule) ID() string { return "MDS072" }
+func (r *Rule) ID() string { return "MDS073" }
 
 // Name implements rule.Rule.
 func (r *Rule) Name() string { return "slide-structure" }
@@ -44,7 +44,7 @@ func (r *Rule) Name() string { return "slide-structure" }
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "structural" }
 
-// EnabledByDefault implements rule.Defaultable. MDS072 is opt-in: it
+// EnabledByDefault implements rule.Defaultable. MDS073 is opt-in: it
 // only makes sense for Slidev decks, so it ships off and is turned on
 // by the `slidev` convention.
 func (r *Rule) EnabledByDefault() bool { return false }

@@ -770,7 +770,7 @@
     "reads_file_ast": false
   },
   {
-    "id": "MDS072",
+    "id": "MDS073",
     "name": "slide-structure",
     "category": "A-no-skipping",
     "nil_ast_safe": true,

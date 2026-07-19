@@ -166,7 +166,7 @@ project's terms join rather than replace them.
 
 Disables eight default-on rules that produce false
 positives on [Slidev](https://sli.dev) files, and
-enables `slide-structure` (MDS072) to validate
+enables `slide-structure` (MDS073) to validate
 per-slide layouts, slots, fields, and keys. Slidev
 uses `---` as a slide separator (parsed as a setext
 underline); headings restart per slide. Pins no flavor.

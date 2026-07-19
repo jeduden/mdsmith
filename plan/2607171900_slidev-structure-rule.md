@@ -1,7 +1,7 @@
 ---
 id: 2607171900
 title: >-
-  Slidev structure rule (MDS072) — validate
+  Slidev structure rule (MDS073) — validate
   layouts, slots, fields, and frontmatter keys
   per slide
 status: "🔳"
@@ -14,7 +14,7 @@ summary: >-
   and unknown frontmatter keys — the silent
   failures Slidev renders without ever reporting.
 ---
-# Slidev structure rule (MDS072)
+# Slidev structure rule (MDS073)
 
 ## Goal
 
@@ -32,7 +32,7 @@ linter catches them.
 
 ## Scope
 
-A new opt-in rule `MDS072 slide-structure`,
+A new opt-in rule `MDS073 slide-structure`,
 enabled by the `slidev` convention. It splits a
 deck into slides on `---` separators. It parses
 each slide's frontmatter. Then it checks:
@@ -98,7 +98,7 @@ it never resolves theme packages.
    the `slidev` convention so the convention finally
    adds a check.
 7. [ ] Fixtures under
-   `internal/rules/MDS072-slide-structure/` —
+   `internal/rules/MDS073-slide-structure/` —
    `bad/` with expected diagnostics, `good/` a
    clean deck that also passes all default rules.
 8. [ ] Rule `README.md` with the meta-information
@@ -112,7 +112,7 @@ it never resolves theme packages.
 
 - [ ] `go test ./...` green, including the
   per-rule fixture and alloc-budget gates.
-- [ ] `MDS072` stays ≤ 10 allocs/op on the shared
+- [ ] `MDS073` stays ≤ 10 allocs/op on the shared
   alloc-budget fixture.
 - [ ] `go run ./cmd/mdsmith check .` — 0 failures.
 - [ ] The `slidev` convention enables
