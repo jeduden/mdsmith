@@ -3,6 +3,8 @@ package lsp
 import (
 	"context"
 	"encoding/json"
+
+	"github.com/jeduden/mdsmith/internal/mdpath"
 )
 
 // LSP lifecycle handlers: initialize, initialized, and the dynamic
@@ -119,16 +121,21 @@ func (s *Server) registerWatchers() {
 	id := s.nextReqID.Add(1)
 	// json.Marshal(int64) cannot fail; ignoring the error is safe.
 	idJSON, _ := json.Marshal(id)
+	// Watch .mdsmith.yml plus every Markdown file, the extension set
+	// derived from mdpath so the watch scope tracks the single source
+	// of truth alongside discovery and the merge driver.
+	globs := mdpath.RecursiveGlobs()
+	watchers := make([]fileSystemWatcher, 0, len(globs)+1)
+	watchers = append(watchers, fileSystemWatcher{GlobPattern: "**/.mdsmith.yml"})
+	for _, g := range globs {
+		watchers = append(watchers, fileSystemWatcher{GlobPattern: g})
+	}
 	_ = s.t.writeRequest(idJSON, "client/registerCapability",
 		registrationParams{Registrations: []registration{{
 			ID:     "mdsmith-watch",
 			Method: "workspace/didChangeWatchedFiles",
 			RegisterOptions: didChangeWatchedFilesRegistrationOptions{
-				Watchers: []fileSystemWatcher{
-					{GlobPattern: "**/.mdsmith.yml"},
-					{GlobPattern: "**/*.md"},
-					{GlobPattern: "**/*.markdown"},
-				},
+				Watchers: watchers,
 			},
 		}}})
 }

@@ -921,12 +921,6 @@ func TestDefaultIncludes(t *testing.T) {
 	assert.Equal(t, []string{"*.md", "*.markdown"}, DefaultIncludes())
 }
 
-func TestDefaultMarkdownExtensions(t *testing.T) {
-	// Derived from DefaultIncludes so the exclude scoping stays aligned
-	// with the include set: strip the leading "*" from each glob.
-	assert.Equal(t, []string{".md", ".markdown"}, defaultMarkdownExtensions())
-}
-
 func TestSplitLastSegment(t *testing.T) {
 	cases := []struct {
 		in       string

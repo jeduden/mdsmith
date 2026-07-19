@@ -17,6 +17,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/config"
+	"github.com/jeduden/mdsmith/internal/mdpath"
 	"github.com/jeduden/mdsmith/internal/oscompat"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/setutil"
@@ -117,7 +118,7 @@ func DiscoverFiles(repoRoot string, maxBytes int64) []string {
 			return nil
 		}
 		name := info.Name()
-		if !strings.HasSuffix(name, ".md") && !strings.HasSuffix(name, ".markdown") {
+		if !mdpath.IsMarkdownPath(name) {
 			return nil
 		}
 		rel, err := filepath.Rel(repoRoot, path)
@@ -202,7 +203,7 @@ func GlobsFromConfig(cfg *config.Config) (Globs, []string) {
 	if cfg == nil || len(cfg.Ignore) == 0 {
 		return g, nil
 	}
-	exts := defaultMarkdownExtensions()
+	exts := mdpath.Extensions()
 	g.Exclude = make([]string, 0, len(cfg.Ignore)*len(exts))
 	var skipped []string
 	for _, p := range cfg.Ignore {
@@ -213,21 +214,6 @@ func GlobsFromConfig(cfg *config.Config) (Globs, []string) {
 		g.Exclude = append(g.Exclude, scopeExcludeToMarkdown(p, exts)...)
 	}
 	return g, skipped
-}
-
-// defaultMarkdownExtensions returns the extension suffix (including the
-// leading dot) of each DefaultIncludes glob — ".md" and ".markdown".
-// Deriving them from DefaultIncludes keeps the exclude scoping in
-// GlobsFromConfig aligned with the include set it pairs with, so a
-// change to the include globs (say, adding "*.mdx") flows through to
-// the excludes automatically.
-func defaultMarkdownExtensions() []string {
-	inc := DefaultIncludes()
-	exts := make([]string, 0, len(inc))
-	for _, g := range inc {
-		exts = append(exts, filepath.Ext(g))
-	}
-	return exts
 }
 
 // scopeExcludeToMarkdown rewrites one .mdsmith.yml ignore pattern into
@@ -697,11 +683,13 @@ type Globs struct {
 	Exclude []string
 }
 
-// DefaultIncludes is the canonical include pattern set: every
-// markdown extension mdsmith processes. Kept as a function so callers
-// always get a fresh slice rather than sharing a package-level value.
+// DefaultIncludes is the canonical merge-driver include pattern set:
+// one basename glob per markdown extension mdsmith processes. It is
+// derived from mdpath, the single source of truth for the extension
+// set, and returns a fresh slice each call so callers may mutate it
+// without sharing a package-level value.
 func DefaultIncludes() []string {
-	return []string{"*.md", "*.markdown"}
+	return mdpath.FileGlobs()
 }
 
 // RenderManagedBlock returns the .gitattributes managed block content

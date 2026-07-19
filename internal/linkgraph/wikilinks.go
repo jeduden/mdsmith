@@ -318,12 +318,12 @@ func ResolveWikiLink(root fs.FS, _ string, target string) (string, bool) {
 // — the typed-extension case (`![[diagram.png]]`).
 func wikilinkSearchKey(target string) (wantName, wantStem string, stemMode bool) {
 	base := path.Base(target)
-	ext := strings.ToLower(path.Ext(base))
-	switch ext {
-	case "", ".md", ".markdown":
-		stem := strings.TrimSuffix(base, path.Ext(base))
-		return "", stem, true
-	default:
-		return base, "", false
+	ext := path.Ext(base)
+	// An empty extension (bare page, e.g. [[Notes]]) or a Markdown
+	// extension resolves by stem; a typed non-Markdown extension
+	// (e.g. ![[diagram.png]]) resolves by exact filename.
+	if ext == "" || mdpath.HasMarkdownExt(ext) {
+		return "", strings.TrimSuffix(base, ext), true
 	}
+	return base, "", false
 }
