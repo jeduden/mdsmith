@@ -18,6 +18,7 @@ row: "- [{title}]({filename})"
 - [Adding a peer linter](add-peer-linter.md)
 - [Architecture audit log](architecture-audit.md)
 - [Architecture audit log archive](architecture-audit-archive.md)
+- [Architecture audit log archive (2)](architecture-audit-archive-2.md)
 - [Architecture principles](architecture/index.md)
 - [Coverage Gate](coverage.md)
 - [Design system](design-system.md)

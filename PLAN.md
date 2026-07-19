@@ -248,11 +248,13 @@ footer: |
 | 2607051920 | ✅     | sonnet | [Consolidate duplicated leading-space/blank-line rule helpers into internal/rules/astutil](plan/2607051920_arch-fix-rule-whitespace-helpers-astutil.md) |
 | 2607071642 | ✅     | sonnet | [Single-file metric extraction via `mdsmith metrics get` (readability first)](plan/2607071642_extractable-file-metrics.md)                              |
 | 2607082048 | ✅     | sonnet | [Placeholder token for APM `${input:name}` prompt parameters](plan/2607082048_apm-input-placeholder-token.md)                                           |
-| 2607082049 | 🔲     | opus   | [Foreign managed-region protection for `mdsmith fix`](plan/2607082049_foreign-managed-regions.md)                                                       |
+| 2607082049 | ✅     | opus   | [Foreign managed-region protection for `mdsmith fix`](plan/2607082049_foreign-managed-regions.md)                                                       |
 | 2607082050 | 🔲     | sonnet | [APM coexistence: `mdsmith init --apm`, guide, and kind pack](plan/2607082050_apm-coexist-guide-and-kind-pack.md)                                       |
 | 2607082051 | 🔲     | opus   | [Schema extensions: closed frontmatter and filename agreement](plan/2607082051_apm-schema-extensions.md)                                                |
 | 2607082052 | ✅     | sonnet | [SARIF output format for `mdsmith check`](plan/2607082052_check-sarif-output.md)                                                                        |
 | 2607121915 | ✅     | sonnet | [Resolve the internal/linkgraph purity-contract mismatch for wikilink resolution](plan/2607121915_arch-fix-linkgraph-wikilink-purity.md)                |
 | 2607170527 | 🔳     | opus   | [External link checking on WASM hosts (MDS072)](plan/2607170527_wasm-external-link-check.md)                                                            |
 | 2607171900 | 🔳     | opus   | [Slidev structure rule (MDS073) — validate layouts, slots, fields, and frontmatter keys per slide](plan/2607171900_slidev-structure-rule.md)            |
+| 2607191917 | 🔲     | haiku  | [Add dedicated unit tests for printInitCatalog and setInitUsage](plan/2607191917_arch-fix-printinitcatalog-unit-test.md)                                |
+| 2607191918 | 🔲     | haiku  | [Deduplicate isClaimed between internal/schema and requiredstructure](plan/2607191918_arch-fix-isclaimed-dedup.md)                                      |
 <?/catalog?>

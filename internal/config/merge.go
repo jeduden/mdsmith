@@ -53,6 +53,7 @@ func Merge(defaults, loaded *Config) *Config {
 		Kinds:                  copyKinds(loaded.Kinds),
 		KindAssignment:         copyKindAssignment(loaded.KindAssignment),
 		Build:                  copyBuildConfig(loaded.Build),
+		ForeignRegions:         copyForeignRegions(loaded.ForeignRegions),
 		Convention:             loaded.Convention,
 		Conventions:            copyUserConventions(loaded.Conventions),
 		ConventionPreset:       copyConventionPreset(loaded.ConventionPreset),
@@ -107,6 +108,7 @@ func copyConfig(cfg *Config) *Config {
 		Kinds:                  copyKinds(cfg.Kinds),
 		KindAssignment:         copyKindAssignment(cfg.KindAssignment),
 		Build:                  copyBuildConfig(cfg.Build),
+		ForeignRegions:         copyForeignRegions(cfg.ForeignRegions),
 		Convention:             cfg.Convention,
 		Conventions:            copyUserConventions(cfg.Conventions),
 		ConventionPreset:       copyConventionPreset(cfg.ConventionPreset),
@@ -255,6 +257,18 @@ func copyKindAssignment(entries []KindAssignmentEntry) []KindAssignmentEntry {
 		}
 	}
 	return result
+}
+
+// copyForeignRegions returns a copy of a foreign-region marker-pair
+// slice. Returns nil if the input is nil. Each ForeignRegion is a pure
+// value (two strings), so a shallow slice copy fully isolates it.
+func copyForeignRegions(regions []ForeignRegion) []ForeignRegion {
+	if regions == nil {
+		return nil
+	}
+	out := make([]ForeignRegion, len(regions))
+	copy(out, regions)
+	return out
 }
 
 // copyStrings returns a copy of a string slice. Returns nil if the input is nil.
