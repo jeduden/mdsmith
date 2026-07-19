@@ -60,19 +60,7 @@ func TestRepoGitattributesInSyncWithConfig(t *testing.T) {
 	// misleading "run merge-driver install" message).
 	cfg, err := config.Load(filepath.Join(root, ".mdsmith.yml"))
 	require.NoError(t, err, "repository .mdsmith.yml must load and parse")
-
-	// During the transition to markdown-scoped merge-driver excludes
-	// (#750), the committed .gitattributes deliberately stays in the
-	// legacy bare form (`demo/** -merge`). The merge queue validates it
-	// with `mdsmith merge-driver ci-install` run by the *pinned* release
-	// baseline (see .github/actions/setup-mdsmith-pinned-version), which
-	// predates markdown scoping and expects that legacy render — so the
-	// committed file must match LegacyGlobs, not the branch's
-	// markdown-scoped GlobsFromConfig. Once the scoped format ships in a
-	// release and the pin is bumped, regenerate .gitattributes with
-	// `mdsmith merge-driver install` and switch this assertion to
-	// GlobsFromConfig. See docs/development/adopt-new-directive-syntax.md.
-	expected := githooks.LegacyGlobs(cfg)
+	expected, _ := githooks.GlobsFromConfig(cfg)
 
 	data, err := os.ReadFile(filepath.Join(root, ".gitattributes"))
 	require.NoError(t, err, "repository .gitattributes must exist")
@@ -82,9 +70,8 @@ func TestRepoGitattributesInSyncWithConfig(t *testing.T) {
 		"committed .gitattributes has no mdsmith merge-driver managed block")
 
 	assert.True(t, githooks.GlobsEqual(installed, expected),
-		"committed .gitattributes is out of sync with .mdsmith.yml's legacy "+
-			"(pinned-baseline) render — keep it in the bare form the pinned "+
-			"merge-queue binary expects until the pin is bumped.\n"+
-			"  committed: include=%v exclude=%v\n  expected:  include=%v exclude=%v",
+		"committed .gitattributes is out of sync with .mdsmith.yml — run "+
+			"`mdsmith merge-driver install` (or `mdsmith fix`) and commit the "+
+			"result.\n  committed: include=%v exclude=%v\n  expected:  include=%v exclude=%v",
 		installed.Include, installed.Exclude, expected.Include, expected.Exclude)
 }

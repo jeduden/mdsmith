@@ -4,14 +4,23 @@
 # BEGIN mdsmith merge-driver
 *.md merge=mdsmith
 *.markdown merge=mdsmith
-.git/** -merge
-demo/** -merge
-internal/rules/*/bad/** -merge
+.git/**/*.md -merge
+.git/**/*.markdown -merge
+demo/**/*.md -merge
+demo/**/*.markdown -merge
+internal/rules/*/bad/**/*.md -merge
+internal/rules/*/bad/**/*.markdown -merge
 internal/rules/*/bad.md -merge
-internal/rules/*/good/** -merge
-internal/rules/*/fixed/** -merge
-internal/rules/*/pattern/** -merge
-.claude/worktrees/** -merge
-editors/**/node_modules/** -merge
-editors/**/dist/** -merge
+internal/rules/*/good/**/*.md -merge
+internal/rules/*/good/**/*.markdown -merge
+internal/rules/*/fixed/**/*.md -merge
+internal/rules/*/fixed/**/*.markdown -merge
+internal/rules/*/pattern/**/*.md -merge
+internal/rules/*/pattern/**/*.markdown -merge
+.claude/worktrees/**/*.md -merge
+.claude/worktrees/**/*.markdown -merge
+editors/**/node_modules/**/*.md -merge
+editors/**/node_modules/**/*.markdown -merge
+editors/**/dist/**/*.md -merge
+editors/**/dist/**/*.markdown -merge
 # END mdsmith merge-driver
