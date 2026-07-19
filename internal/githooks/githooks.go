@@ -219,12 +219,13 @@ func GlobsFromConfig(cfg *config.Config) (Globs, []string) {
 // leading dot) of each DefaultIncludes glob — ".md" and ".markdown".
 // Deriving them from DefaultIncludes keeps the exclude scoping in
 // GlobsFromConfig aligned with the include set it pairs with, so a
-// change to the include globs flows through to the excludes.
+// change to the include globs (say, adding "*.mdx") flows through to
+// the excludes automatically.
 func defaultMarkdownExtensions() []string {
 	inc := DefaultIncludes()
 	exts := make([]string, 0, len(inc))
 	for _, g := range inc {
-		exts = append(exts, strings.TrimPrefix(g, "*"))
+		exts = append(exts, filepath.Ext(g))
 	}
 	return exts
 }
@@ -241,6 +242,7 @@ func defaultMarkdownExtensions() []string {
 // path segment:
 //
 //   - `dir/**` -> `dir/**/*.md`, `dir/**/*.markdown` (recursive tree)
+//   - `dir/`   -> `dir/**/*.md`, `dir/**/*.markdown` (trailing slash)
 //   - `dir/*`  -> `dir/*.md`,    `dir/*.markdown`    (one level)
 //   - `dir`    -> `dir/**/*.md`, `dir/**/*.markdown` (name as a tree)
 //
@@ -254,20 +256,26 @@ func scopeExcludeToMarkdown(pattern string, exts []string) []string {
 		}
 	}
 	dir, last := splitLastSegment(pattern)
+	var base string
+	switch last {
+	case "**", "":
+		// Recursive tree (`dir/**`) or a bare directory with a trailing
+		// slash (`dir/`, where the final segment is empty): all Markdown
+		// under dir at any depth. Folding the empty segment in here also
+		// avoids the `dir//**` double slash the default branch would
+		// produce for a trailing-slash pattern.
+		base = dir + "**/*"
+	case "*":
+		// Single segment (`dir/*`): Markdown directly under dir.
+		base = dir + "*"
+	default:
+		// A plain directory name (or any other shape) is treated as a
+		// directory scope covering all Markdown beneath it.
+		base = pattern + "/**/*"
+	}
 	out := make([]string, 0, len(exts))
 	for _, ext := range exts {
-		switch last {
-		case "**":
-			// Recursive tree: all Markdown under dir at any depth.
-			out = append(out, dir+"**/*"+ext)
-		case "*":
-			// Single segment: Markdown directly under dir.
-			out = append(out, dir+"*"+ext)
-		default:
-			// A plain directory name (or any other shape) is treated
-			// as a directory scope covering all Markdown beneath it.
-			out = append(out, pattern+"/**/*"+ext)
-		}
+		out = append(out, base+ext)
 	}
 	return out
 }

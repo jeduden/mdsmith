@@ -973,6 +973,13 @@ func TestScopeExcludeToMarkdown(t *testing.T) {
 			want:    []string{"vendor/*.md", "vendor/*.markdown"},
 		},
 		{
+			// A gitignore-style trailing-slash directory must not
+			// produce a `build//**/*.md` double slash.
+			name:    "trailing slash directory",
+			pattern: "build/",
+			want:    []string{"build/**/*.md", "build/**/*.markdown"},
+		},
+		{
 			name:    "bare recursive glob",
 			pattern: "**",
 			want:    []string{"**/*.md", "**/*.markdown"},
