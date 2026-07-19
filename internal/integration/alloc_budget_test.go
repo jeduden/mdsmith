@@ -181,6 +181,13 @@ func TestPerRuleAllocBudget(t *testing.T) {
 	for _, r := range rules {
 		r := r
 		t.Run(r.ID()+"_"+r.Name(), func(t *testing.T) {
+			// A network-bound rule (external-link-check) would issue a
+			// real HTTP request against the fixture's external URL when
+			// Check runs here, so it is excluded from the alloc gate. See
+			// plan 2606280208.
+			if r.ID() == "MDS072" {
+				t.Skip("network-bound rule; excluded from the alloc gate")
+			}
 			allocs := allocsForRule(t, r)
 			budget := float64(allocBudgetCeiling)
 			if g, ok := allocBudgetGrandfathered[r.ID()]; ok {
