@@ -81,3 +81,35 @@ from `internal/placeholders`:
 | MDS023  | `paragraph-readability`          | `var-token`, `heading-question`, `placeholder-section`, `apm-input-token` |
 | MDS024  | `paragraph-structure`            | `var-token`, `heading-question`, `placeholder-section`, `apm-input-token` |
 | MDS027  | `cross-file-reference-integrity` | `var-token`, `heading-question`, `placeholder-section`, `apm-input-token` |
+
+## Extending `placeholders:` via word-lists
+
+Each opt-in rule above also implements `WordlistConsumer`
+with a `placeholders` target. A project can define a named
+[word-list](../../../docs/reference/wordlist-files.md) of
+token names. Reference it via `lists:` instead of inlining
+the same tokens in every rule:
+
+```yaml
+# .mdsmith/wordlists/template-tokens.yaml
+entries:
+  - var-token
+  - heading-question
+  - placeholder-section
+```
+
+```yaml
+# .mdsmith.yml (or a convention file)
+rules:
+  heading-increment:
+    lists: [template-tokens]
+  first-line-heading:
+    lists: [template-tokens]
+  paragraph-readability:
+    lists: [template-tokens]
+```
+
+The `lists:` key appends across config layers. A convention
+that names `template-tokens` and a project that adds its own
+list both contribute entries. Each rule's `placeholders:`
+setting receives them both.
