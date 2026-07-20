@@ -238,11 +238,8 @@ func (r *Rule) countToken(text string, ti int) int {
 	return strings.Count(text, tok)
 }
 
-// countPattern counts regexp matches in text.
+// countPattern counts regexp matches in text. Caller must ensure r.Pattern != nil.
 func (r *Rule) countPattern(text string) int {
-	if r.Pattern == nil {
-		return 0
-	}
 	return len(r.Pattern.FindAllStringIndex(text, -1))
 }
 

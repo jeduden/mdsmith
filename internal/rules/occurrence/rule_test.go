@@ -388,6 +388,13 @@ func TestApplySettings_MinWrongType(t *testing.T) {
 	assert.Contains(t, err.Error(), "min")
 }
 
+func TestCheck_Paragraph_EmptyToken_NoDiagnostic(t *testing.T) {
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"tokens": []any{""}, "max": 1, "count": "each"})
+	// empty token always returns count 0 → within any max
+	assert.Empty(t, r.Check(mustFile(t, "# T\n\nsome text.\n")))
+}
+
 // --- paragraph scope: pattern with count=each ---
 
 func TestCheck_Paragraph_PatternEach_ExceedsMax(t *testing.T) {
