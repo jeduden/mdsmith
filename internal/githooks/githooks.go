@@ -231,7 +231,7 @@ func GlobsFromConfig(cfg *config.Config) (Globs, []string) {
 // `merge=text` attribute.
 //
 // A pattern that already ends in one of exts targets a specific
-// Markdown extension, so its -merge line can only affect Markdown; it
+// Markdown extension, so its exclude line can only affect Markdown; it
 // is returned unchanged. Otherwise the pattern is treated as a path
 // scope and one exclude is emitted per extension, keyed on the final
 // path segment:
