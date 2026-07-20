@@ -4,7 +4,7 @@ title: >-
   Slidev structure rule (MDS073) — validate
   layouts, slots, fields, and frontmatter keys
   per slide
-status: "🔳"
+status: "✅"
 model: opus
 depends-on: []
 summary: >-
@@ -77,46 +77,46 @@ it never resolves theme packages.
 
 ## Tasks
 
-1. [ ] `internal/rules/slidevstructure/` — rule
+1. [x] `internal/rules/slidevstructure/` — rule
    package. `Check` does a zero-alloc pre-scan of
    `f.Lines`; returns `nil` when the file has no
    `---` fence and no `::slot::` line (keeps the
    ≤10 allocs/op budget on ordinary Markdown).
-2. [ ] Slide parser: split `f.Lines` into slides,
+2. [x] Slide parser: split `f.Lines` into slides,
    parse each per-slide frontmatter block, collect
    `::slot::` markers, with body-relative line
    numbers.
-3. [ ] The five checks above, each a table-driven
+3. [x] The five checks above, each a table-driven
    unit test (red then green).
-4. [ ] Register the rule; add to
+4. [x] Register the rule; add to
    `internal/rules/all/all.go` and the integration
    import list. `EnabledByDefault() == false`.
-5. [ ] `Configurable`: `custom-layouts` list
+5. [x] `Configurable`: `custom-layouts` list
    setting with `ApplySettings` validation and a
    `DefaultSettings`.
-6. [ ] Wire `slide-structure: {Enabled: true}` into
+6. [x] Wire `slide-structure: {Enabled: true}` into
    the `slidev` convention so the convention finally
    adds a check.
-7. [ ] Fixtures under
+7. [x] Fixtures under
    `internal/rules/MDS073-slide-structure/` —
    `bad/` with expected diagnostics, `good/` a
    clean deck that also passes all default rules.
-8. [ ] Rule `README.md` with the meta-information
+8. [x] Rule `README.md` with the meta-information
    front matter (MDS169) and peer-linter mapping
    (all empty — no peer covers this).
-9. [ ] Document the rule in
+9. [x] Document the rule in
    `docs/reference/conventions.md` (the `slidev`
    section) and the rule reference.
 
 ## Acceptance Criteria
 
-- [ ] `go test ./...` green, including the
+- [x] `go test ./...` green, including the
   per-rule fixture and alloc-budget gates.
-- [ ] `MDS073` stays ≤ 10 allocs/op on the shared
+- [x] `MDS073` stays ≤ 10 allocs/op on the shared
   alloc-budget fixture.
-- [ ] `go run ./cmd/mdsmith check .` — 0 failures.
-- [ ] The `slidev` convention enables
+- [x] `go run ./cmd/mdsmith check .` — 0 failures.
+- [x] The `slidev` convention enables
   `slide-structure`; a deck with a missing
   `::right::`, an unknown layout, and a typo'd key
   produces three diagnostics with precise lines.
-- [ ] `go vet ./...` clean.
+- [x] `go vet ./...` clean.
