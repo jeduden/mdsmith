@@ -17,6 +17,7 @@ package slidevstructure
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -221,7 +222,10 @@ func parseSlides(lines [][]byte) []slide {
 	cur := slide{startLine: 1}
 	if isFence(lines[0]) {
 		cur.fm, cur.fmLine, i = readFrontmatter(lines, 0)
-		cur.startLine = i + 1
+		// Clamp: a headmatter block with no closing fence causes i to
+		// exceed len(lines); cap startLine so it stays in valid range.
+		cur.startLine = min(i+1, len(lines)+1)
+		i = min(i, len(lines))
 	}
 	inCode := false
 	for i < len(lines) {
@@ -263,11 +267,11 @@ func isFence(line []byte) bool {
 // index sep is a YAML frontmatter block: key/list lines closed by a
 // second `---` with no blank line breaking into body first.
 //
-// A line is treated as a YAML key line only when the raw (untrimmed)
-// line starts with a non-whitespace, non-dash character and the portion
-// before the colon is a YAML-safe identifier (letters, digits, dash,
-// underscore). List entries (`- …`) are accepted only after at least
-// one key line has been seen, as continuation values of a sequence.
+// A line is treated as a key line when the portion before the colon
+// contains no spaces — this accepts both standard Slidev keys
+// (layout, transition) and arbitrary pass-through data keys with dots
+// or digits (v1.url, 2col-data), while rejecting prose sentences whose
+// key part would contain spaces ("Visit the site: foo").
 func hasFrontmatterAfter(lines [][]byte, sep int) bool {
 	sawKey := false
 	for j := sep + 1; j < len(lines); j++ {
@@ -294,37 +298,16 @@ func hasFrontmatterAfter(lines [][]byte, sep int) bool {
 			}
 			return false
 		}
-		// Accept as a key line only when a colon follows a valid YAML
-		// identifier (letters, digits, dash, underscore; no spaces).
+		// Accept as a key line when colon is present and the key part
+		// contains no spaces (distinguishes keys from prose sentences).
 		c := bytes.IndexByte(t, ':')
-		if c > 0 && isYAMLIdent(t[:c]) {
+		if c > 0 && bytes.IndexByte(t[:c], ' ') < 0 {
 			sawKey = true
 			continue
 		}
 		return false
 	}
 	return false
-}
-
-// isYAMLIdent reports whether b looks like a bare YAML mapping key:
-// starts with a letter or underscore, contains only letters, digits,
-// dashes, and underscores. This excludes prose sentences from being
-// misidentified as frontmatter keys.
-func isYAMLIdent(b []byte) bool {
-	if len(b) == 0 {
-		return false
-	}
-	c := b[0]
-	if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_') {
-		return false
-	}
-	for _, c := range b[1:] {
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-			(c >= '0' && c <= '9') || c == '-' || c == '_') {
-			return false
-		}
-	}
-	return true
 }
 
 // readFrontmatter parses a `---`\nYAML\n`---` block opening at index
@@ -398,7 +381,7 @@ func (r *Rule) checkSlide(s *slide, f *lint.File, diags []lint.Diagnostic) []lin
 	// layout is unknown so we cannot know what slots it requires.
 	if !unknownLayout {
 		for _, need := range layoutSlots[effLayout] {
-			if !slotProvided(s.slots, need) {
+			if !slices.ContainsFunc(s.slots, func(sl slotRef) bool { return sl.name == need }) {
 				diags = append(diags, r.diag(f, anchor, fmt.Sprintf(
 					"layout %q requires a ::%s:: slot — that column will be empty",
 					effLayout, need)))
@@ -411,7 +394,7 @@ func (r *Rule) checkSlide(s *slide, f *lint.File, diags []lint.Diagnostic) []lin
 	if !unknownLayout {
 		accepted := layoutSlots[effLayout]
 		for _, sl := range s.slots {
-			if !contains(accepted, sl.name) {
+			if !slices.Contains(accepted, sl.name) {
 				diags = append(diags, r.diag(f, sl.line, fmt.Sprintf(
 					"::%s:: has no matching slot in layout %q — this content will not render",
 					sl.name, effLayout)))
@@ -428,19 +411,29 @@ func (r *Rule) checkSlide(s *slide, f *lint.File, diags []lint.Diagnostic) []lin
 	}
 
 	// 5. Unknown frontmatter key (typo — passes through silently in Slidev).
-	for _, k := range sortedKeys(s.fm) {
-		if knownFMKeys[k] {
-			continue
+	// Pre-scan without allocating; only call sortedKeys when unknown keys exist.
+	hasUnknown := false
+	for k := range s.fm {
+		if !knownFMKeys[k] {
+			hasUnknown = true
+			break
 		}
-		lineNo := s.startLine
-		if s.fmLine != nil {
-			if ln, ok := s.fmLine[k]; ok {
-				lineNo = ln
+	}
+	if hasUnknown {
+		for _, k := range sortedKeys(s.fm) {
+			if knownFMKeys[k] {
+				continue
 			}
-		}
-		if sug := nearest(k, sortedKnownFMKeys); sug != "" {
-			diags = append(diags, r.diag(f, lineNo, fmt.Sprintf(
-				"unknown Slidev frontmatter key %q — did you mean %q", k, sug)))
+			lineNo := s.startLine
+			if s.fmLine != nil {
+				if ln, ok := s.fmLine[k]; ok {
+					lineNo = ln
+				}
+			}
+			if sug := nearest(k, sortedKnownFMKeys); sug != "" {
+				diags = append(diags, r.diag(f, lineNo, fmt.Sprintf(
+					"unknown Slidev frontmatter key %q — did you mean %q", k, sug)))
+			}
 		}
 	}
 
@@ -466,24 +459,6 @@ func (r *Rule) diag(f *lint.File, line int, msg string) lint.Diagnostic {
 		Severity: lint.Warning,
 		Message:  msg,
 	}
-}
-
-func slotProvided(slots []slotRef, name string) bool {
-	for _, s := range slots {
-		if s.name == name {
-			return true
-		}
-	}
-	return false
-}
-
-func contains(list []string, v string) bool {
-	for _, s := range list {
-		if s == v {
-			return true
-		}
-	}
-	return false
 }
 
 func sortedKeys(m map[string]string) []string {

@@ -264,3 +264,14 @@ func TestEditDistance_EmptyStrings(t *testing.T) {
 	assert.Equal(t, 3, editDistance("abc", ""))
 	assert.Equal(t, 0, editDistance("", ""))
 }
+
+func TestDottedPassThroughKey_DoesNotBlockFrontmatterParsing(t *testing.T) {
+	// A mid-deck frontmatter block that contains a dotted pass-through data
+	// key (valid in Slidev, not a pure YAML identifier) must not cause the
+	// entire block to be dropped. The layout key in the same block must still
+	// be parsed and checked.
+	src := "# Slide 1\n\n---\nlayout: image-left\nv1.data: foo\n---\n\n# Slide 2\n"
+	diags := check(t, src)
+	require.Len(t, diags, 1, "got: %s", messages(diags))
+	assert.Contains(t, diags[0].Message, `layout "image-left" requires the "image" frontmatter field`)
+}
