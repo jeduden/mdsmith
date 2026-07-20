@@ -2153,7 +2153,6 @@ func levelMismatchDiag(
 	return d.Emit(makeDiag, f.Path, dh.Line)
 }
 
-
 // nextUnclaimed returns the first index in candidates that is >= minIdx
 // and not yet claimed, or -1 if none qualifies.
 func nextUnclaimed(candidates []int, claimed map[int]struct{}, minIdx int) int {
