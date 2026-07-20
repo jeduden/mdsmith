@@ -23,14 +23,25 @@ Register the merge driver in `git config` and ensure
 `.gitattributes` assigns it. The managed block is derived
 from `.mdsmith.yml`. It lists include patterns first
 (default `*.md` and `*.markdown`). Then it lists one
-`-merge` exclude line per representable `ignore:` pattern.
-Last match wins.
+`merge=text` exclude line per representable `ignore:`
+pattern. Last match wins.
+
+The exclude lines use `merge=text`, git's built-in 3-way
+text merge, not `-merge`. Both take the mdsmith driver off
+the path, but `-merge` unsets the `merge` attribute — which
+declares the file binary and leaves it whole-file-conflicting.
+An ignored path is Markdown that mdsmith never lints, so it
+carries no generated sections for the driver to reconcile;
+`merge=text` keeps ordinary edits merging and avoids that
+class of conflict. A `.gitattributes` written by an older
+mdsmith that still lists `-merge` is read the same way, so
+it does not report as drift until it is regenerated.
 
 Each `ignore:` pattern is scoped to the markdown include
 extensions. So `ignore: ["demo/**"]` emits
-`demo/**/*.md -merge` and `demo/**/*.markdown -merge`. A
-bare `demo/** -merge` is not used. It would also turn off
-git's 3-way merge for the source code in that tree.
+`demo/**/*.md merge=text` and `demo/**/*.markdown merge=text`.
+A bare `demo/** merge=text` is not used. It would also change
+git's merge for the source code in that tree.
 
 Some `ignore:` entries cannot be expressed in
 `.gitattributes`: `!` negation patterns and patterns with

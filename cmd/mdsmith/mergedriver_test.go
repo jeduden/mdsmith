@@ -295,7 +295,7 @@ func TestRunMergeDriverInstall_RejectsWhitespacePath(t *testing.T) {
 func TestRunMergeDriverInstall_NoArgsWritesCanonicalGlobs(t *testing.T) {
 	dir := t.TempDir()
 	initTestRepo(t, dir)
-	// .mdsmith.yml ignore patterns become -merge overrides.
+	// .mdsmith.yml ignore patterns become merge=text overrides.
 	require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"),
 		[]byte("ignore:\n  - \"vendor/**\"\n"), 0o644))
 
@@ -318,12 +318,14 @@ func TestRunMergeDriverInstall_NoArgsWritesCanonicalGlobs(t *testing.T) {
 	content := string(attrs)
 	assert.Contains(t, content, "*.md merge=mdsmith")
 	assert.Contains(t, content, "*.markdown merge=mdsmith")
-	assert.Contains(t, content, "vendor/**/*.md -merge",
-		"ignore patterns from .mdsmith.yml must appear as markdown-scoped -merge overrides")
-	assert.Contains(t, content, "vendor/**/*.markdown -merge",
+	assert.Contains(t, content, "vendor/**/*.md merge=text",
+		"ignore patterns from .mdsmith.yml must appear as markdown-scoped merge=text overrides")
+	assert.Contains(t, content, "vendor/**/*.markdown merge=text",
 		"ignore patterns are scoped to every markdown include extension")
-	assert.NotContains(t, content, "vendor/** -merge",
-		"a bare -merge line would disable git's merge for non-markdown files (issue #750)")
+	assert.NotContains(t, content, "vendor/** merge=text",
+		"a bare exclude line would change git's merge for non-markdown files (issue #750)")
+	assert.NotContains(t, content, "-merge",
+		"excludes use merge=text, not -merge, so ignored Markdown still gets git's text merge (issue #755)")
 }
 
 // --- resolveInstalledBinary ---
@@ -777,9 +779,9 @@ func TestRunMergeDriverInstall_DropsAndWarnsForUnrepresentableIgnore(t *testing.
 	attrs, err := os.ReadFile(filepath.Join(dir, ".gitattributes"))
 	require.NoError(t, err)
 	content := string(attrs)
-	assert.Contains(t, content, "vendor/**/*.md -merge",
+	assert.Contains(t, content, "vendor/**/*.md merge=text",
 		"representable ignore patterns survive, scoped to markdown")
-	assert.Contains(t, content, "vendor/**/*.markdown -merge",
+	assert.Contains(t, content, "vendor/**/*.markdown merge=text",
 		"representable ignore patterns survive, scoped to every markdown extension")
 	assert.NotContains(t, content, "with space.md",
 		"unrepresentable ignore patterns are dropped from the managed block")

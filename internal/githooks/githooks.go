@@ -170,16 +170,23 @@ const configFileName = ".mdsmith.yml"
 // set's markdown extensions before it becomes an exclude line, so a
 // coarse directory ignore like `demo/**` emits
 //
-//	demo/**/*.md -merge
-//	demo/**/*.markdown -merge
+//	demo/**/*.md merge=text
+//	demo/**/*.markdown merge=text
 //
-// rather than a bare `demo/** -merge`. The `ignore:` list scopes the
-// markdown linter (files: is *.md / *.markdown), so an ignore pattern
-// is only ever meant to affect markdown; a bare `-merge` line, by
-// contrast, is not extension-scoped and would disable git's 3-way
-// merge for every file in the tree — including source code that
+// rather than a bare `demo/** merge=text`. The `ignore:` list scopes
+// the markdown linter (files: is *.md / *.markdown), so an ignore
+// pattern is only ever meant to affect markdown; a bare exclude line,
+// by contrast, is not extension-scoped and would change git's merge
+// behaviour for every file in the tree — including source code that
 // nobody asked to grandfather (issue #750). scopeExcludeToMarkdown
 // guarantees every emitted exclude ends in a markdown extension.
+//
+// The exclude lines carry `merge=text` (git's built-in 3-way text
+// merge), not `-merge` (merge unset). Both take the mdsmith driver out
+// of the picture for the path, but `-merge` also forfeits git's text
+// merge and leaves the file binary-conflicting; the ignore-derived
+// paths are Markdown with no generated sections, so `merge=text` is
+// the correct, conflict-avoiding fallback (issue #755).
 //
 // Patterns that cannot be represented directly in .gitattributes
 // are dropped from the exclude set so MDS048's auto-fix never
@@ -217,9 +224,11 @@ func GlobsFromConfig(cfg *config.Config) (Globs, []string) {
 }
 
 // scopeExcludeToMarkdown rewrites one .mdsmith.yml ignore pattern into
-// the .gitattributes exclude patterns that turn off the mdsmith merge
-// driver for the Markdown files the pattern grandfathers — and only
-// those files (issue #750).
+// the .gitattributes exclude patterns that fall back to git's built-in
+// text merge (merge=text) for the Markdown files the pattern
+// grandfathers — and only those files (issue #750). The returned
+// patterns are the path field; RenderManagedBlock appends the
+// `merge=text` attribute.
 //
 // A pattern that already ends in one of exts targets a specific
 // Markdown extension, so its -merge line can only affect Markdown; it
@@ -233,7 +242,7 @@ func GlobsFromConfig(cfg *config.Config) (Globs, []string) {
 //   - `dir`    -> `dir/**/*.md`, `dir/**/*.markdown` (name as a tree)
 //
 // Every branch appends a Markdown extension to the emitted pattern, so
-// the invariant "a derived -merge line never matches a non-Markdown
+// the invariant "a derived exclude line never matches a non-Markdown
 // file" holds for any input.
 func scopeExcludeToMarkdown(pattern string, exts []string) []string {
 	for _, ext := range exts {
@@ -664,20 +673,26 @@ func findManagedBlockLines(lines []string) (int, int) {
 // Globs describes the set of paths the mdsmith merge driver applies
 // to. Each Include pattern is written as `<pattern> merge=mdsmith`
 // and each Exclude pattern is written after them as `<pattern>
-// -merge`. .gitattributes uses last-match-wins, so an exclude line
-// after the include lines effectively removes the merge driver from
-// any path the include patterns matched.
+// merge=text`. .gitattributes uses last-match-wins, so an exclude line
+// after the include lines effectively removes the mdsmith merge driver
+// from any path the include patterns matched, falling back to git's
+// built-in 3-way text merge.
 //
 // Exclude patterns derived from .mdsmith.yml ignore entries are
-// markdown-scoped (see GlobsFromConfig): a `-merge` line only ever
-// matches a markdown file, so it disables the mdsmith driver for
+// markdown-scoped (see GlobsFromConfig): a `merge=text` line only ever
+// matches a markdown file, so it takes the mdsmith driver off
 // grandfathered markdown without touching git's default merge for
-// non-markdown files in the same tree (issue #750).
+// non-markdown files in the same tree (issue #750). Emitting
+// `merge=text` rather than `-merge` also keeps git's text merge for
+// those files instead of declaring them binary-conflicting (#755).
+//
+// ExtractGlobs still reads the legacy `-merge` exclude form so a
+// `.gitattributes` written by an older mdsmith round-trips unchanged.
 //
 // `.gitattributes` itself does not support negative patterns (`!*.md`
-// is a syntax error there). Order-sensitive override via -merge is the
-// supported way to express exclusions, which is why Globs keeps
-// Include and Exclude as separate ordered slices.
+// is a syntax error there). Order-sensitive override via a trailing
+// exclude line is the supported way to express exclusions, which is
+// why Globs keeps Include and Exclude as separate ordered slices.
 type Globs struct {
 	Include []string
 	Exclude []string
@@ -704,7 +719,17 @@ func RenderManagedBlock(globs Globs) string {
 		fmt.Fprintf(&b, "%s merge=mdsmith\n", p)
 	}
 	for _, p := range globs.Exclude {
-		fmt.Fprintf(&b, "%s -merge\n", p)
+		// Emit `merge=text`, not `-merge`. Both turn the mdsmith driver
+		// off for the path (last-match-wins over the include lines), but
+		// `-merge` also unsets git's built-in merge — declaring the file
+		// has no well-defined merge semantics, which is only correct for
+		// binaries and leaves these Markdown files binary-conflicting.
+		// `merge=text` selects git's built-in 3-way text merge instead.
+		// The excludes are ignore-derived Markdown paths (see
+		// GlobsFromConfig): they are never linted, so they carry no
+		// generated sections for the driver to reconcile, and the text
+		// merge is strictly safe (issue #755).
+		fmt.Fprintf(&b, "%s merge=text\n", p)
 	}
 	b.WriteString(gitattributesManagedBlockEnd)
 	b.WriteString("\n")
@@ -740,7 +765,14 @@ func ExtractGlobs(content string) (Globs, bool) {
 			switch attr {
 			case "merge=mdsmith":
 				globs.Include = append(globs.Include, pattern)
-			case "-merge":
+			case "merge=text", "-merge":
+				// `merge=text` is the current exclude form; `-merge` is
+				// the legacy form still found in blocks written by an
+				// older mdsmith (or the pinned CI baseline). Both mean
+				// "turn the mdsmith driver off for this path", so both
+				// map to an exclude — an unmigrated `-merge` block then
+				// extracts to the same glob set as a freshly rendered
+				// `merge=text` one and does not read as drift (#755).
 				globs.Exclude = append(globs.Exclude, pattern)
 			default:
 				continue

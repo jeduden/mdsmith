@@ -36,14 +36,18 @@ Subcommands:
         exclude lines for each ignore pattern (last-match-wins
         overrides). Each ignore pattern is intersected with the
         markdown include extensions, so an ignore of demo/** emits
-        demo/**/*.md -merge and demo/**/*.markdown -merge rather
-        than a bare demo/** -merge that would also disable git's
-        merge for non-markdown files in that tree.
+        demo/**/*.md merge=text and demo/**/*.markdown merge=text
+        rather than a bare demo/** merge=text that would also change
+        git's merge for non-markdown files in that tree. The
+        excludes use merge=text (git's built-in 3-way text merge),
+        not -merge (merge unset): both take the mdsmith driver off
+        the path, but -merge leaves these Markdown files binary-
+        conflicting while merge=text keeps ordinary edits merging.
 
         Optional positional args replace the default include set
         when callers want to scope the merge driver to a custom
         pattern (e.g. docs/**/*.md); .mdsmith.yml ignore
-        patterns still apply on top via -merge overrides. Custom
+        patterns still apply on top via merge=text overrides. Custom
         include globs are not compatible with the MDS048
         git-hook-sync rule's auto-fix, which restores the
         canonical default include set plus ignore-derived
@@ -473,8 +477,8 @@ func hasConflictMarkers(content []byte) bool {
 // (`*.md`, `*.markdown`) is used and the project's .mdsmith.yml
 // `ignore:` patterns become markdown-scoped exclude overrides —
 // each pattern is intersected with the markdown include extensions
-// (see githooks.GlobsFromConfig) so a `-merge` line never disables
-// git's merge for non-markdown files. Patterns that cannot appear
+// (see githooks.GlobsFromConfig) so a `merge=text` line never
+// changes git's merge for non-markdown files. Patterns that cannot appear
 // verbatim in `.gitattributes` (whitespace, leading `!`) are
 // silently dropped by `GlobsFromConfig`. Explicit args replace the
 // include set so callers can scope the merge driver to a custom
@@ -604,7 +608,7 @@ func runMergeDriverCIInstall(args []string) int {
 	// Compute the expected glob set exactly as install would write it,
 	// so the two commands can never disagree on what "in sync" means.
 	// nil args means the canonical default include set plus the
-	// .mdsmith.yml ignore-derived -merge overrides.
+	// .mdsmith.yml ignore-derived merge=text overrides.
 	expected, rc := resolveManagedGlobs(repoRoot, nil)
 	if rc != 0 {
 		return rc
