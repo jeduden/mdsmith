@@ -1997,7 +1997,7 @@ func walkRequiredHeadings(
 			allowExtra = true
 			continue
 		}
-		if isClaimed(claimed, schIdx) {
+		if schema.IsClaimed(claimed, schIdx) {
 			continue
 		}
 		// Save the position before the scan so that a missing-section
@@ -2013,7 +2013,7 @@ func walkRequiredHeadings(
 		if found {
 			allowExtra = false
 		}
-		if !found && !isClaimed(claimed, schIdx) {
+		if !found && !schema.IsClaimed(claimed, schIdx) {
 			diags = append(diags, missingSectionDiagLegacy(
 				f, req, ref, legacyPrecedingLine(docHeadings, preScanIdx)))
 		}
@@ -2153,15 +2153,6 @@ func levelMismatchDiag(
 	return d.Emit(makeDiag, f.Path, dh.Line)
 }
 
-// isClaimed reports whether idx is a member of claimed. claimed is a
-// set — every entry is written exactly once, via claimed[idx] =
-// struct{}{} — so map[int]struct{} (zero-byte value) replaces the
-// map[int]bool this file used to spell as a truthy map read. Mirrors
-// internal/schema/validate.go's isClaimed for the identical pattern.
-func isClaimed(claimed map[int]struct{}, idx int) bool {
-	_, ok := claimed[idx]
-	return ok
-}
 
 // nextUnclaimed returns the first index in candidates that is >= minIdx
 // and not yet claimed, or -1 if none qualifies.
@@ -2170,7 +2161,7 @@ func nextUnclaimed(candidates []int, claimed map[int]struct{}, minIdx int) int {
 		if idx < minIdx {
 			continue
 		}
-		if !isClaimed(claimed, idx) {
+		if !schema.IsClaimed(claimed, idx) {
 			return idx
 		}
 	}

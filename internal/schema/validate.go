@@ -683,6 +683,13 @@ func isClaimed(claimed map[int]struct{}, idx int) bool {
 	return ok
 }
 
+// IsClaimed reports whether idx is a member of claimed. Exported so
+// callers outside the schema package (e.g. requiredstructure) share the
+// same set-membership helper without duplicating it.
+func IsClaimed(claimed map[int]struct{}, idx int) bool {
+	return isClaimed(claimed, idx)
+}
+
 // validateScopes walks scopes (the listed children of a single level)
 // against docHeads starting at docIdx. expectedLevel is the heading
 // level these scopes should appear at. Returns the new docIdx
