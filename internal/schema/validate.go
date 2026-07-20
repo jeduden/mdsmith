@@ -672,12 +672,7 @@ func skipBelow(heads []DocHeading, rootLevel int) []DocHeading {
 	return out
 }
 
-// IsClaimed reports whether idx is a member of claimed. claimed is a
-// set — every entry is written exactly once, via claimed[idx] =
-// struct{}{} — so map[int]struct{} (zero-byte value) replaces the
-// map[int]bool every read/write site in this file, matchtree.go, and
-// validate_content.go used to spell as a truthy map read. See
-// docs/development/high-performance-go.md "map[K]struct{} for sets".
+// IsClaimed reports whether idx is a member of the claimed set.
 func IsClaimed(claimed map[int]struct{}, idx int) bool {
 	_, ok := claimed[idx]
 	return ok
