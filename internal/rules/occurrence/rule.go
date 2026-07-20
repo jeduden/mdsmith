@@ -297,88 +297,116 @@ func (r *Rule) ApplySettings(s map[string]any) error {
 	// before the pattern is compiled.
 	rawPattern := ""
 	for k, v := range s {
+		var err error
 		switch k {
 		case "scope":
-			str, ok := v.(string)
-			if !ok {
-				return fmt.Errorf("occurrence: scope must be a string, got %T", v)
-			}
-			switch str {
-			case "file", "section", "paragraph":
-				r.Scope = str
-			default:
-				return fmt.Errorf("occurrence: scope must be file, section, or paragraph, got %q", str)
-			}
+			err = r.applyScope(v)
 		case "tokens":
-			ss, ok := settings.ToStringSlice(v)
-			if !ok {
-				return fmt.Errorf("occurrence: tokens must be a list of strings, got %T", v)
-			}
-			r.Tokens = ss
-			// tokens uses the default replace merge mode (not append); no
-			// SettingMergeMode override is needed.
+			err = r.applyTokens(v)
 		case "pattern":
-			str, ok := v.(string)
-			if !ok {
-				return fmt.Errorf("occurrence: pattern must be a string, got %T", v)
-			}
-			rawPattern = str
+			rawPattern, err = extractPattern(v)
 		case "min":
-			n, ok := settings.ToInt(v)
-			if !ok {
-				return fmt.Errorf("occurrence: min must be an integer, got %T", v)
-			}
-			if n < 0 {
-				return fmt.Errorf("occurrence: min must be >= 0, got %d", n)
-			}
-			r.Min = n
+			err = r.applyMin(v)
 		case "max":
-			n, ok := settings.ToInt(v)
-			if !ok {
-				return fmt.Errorf("occurrence: max must be an integer, got %T", v)
-			}
-			r.Max = n
+			err = r.applyMax(v)
 		case "count":
-			str, ok := v.(string)
-			if !ok {
-				return fmt.Errorf("occurrence: count must be a string, got %T", v)
-			}
-			switch str {
-			case "each", "combined":
-				r.Count = str
-			default:
-				return fmt.Errorf("occurrence: count must be each or combined, got %q", str)
-			}
+			err = r.applyCount(v)
 		case "case-sensitive":
-			b, ok := v.(bool)
-			if !ok {
-				return fmt.Errorf("occurrence: case-sensitive must be a bool, got %T", v)
-			}
-			r.CaseSensitive = b
+			err = r.applyCaseSensitive(v)
 		default:
 			return fmt.Errorf("occurrence: unknown setting %q", k)
 		}
+		if err != nil {
+			return err
+		}
 	}
-	// Compile pattern after all scalar settings are applied so CaseSensitive
-	// is final when deciding the (?i) prefix.
+	return r.finalizeSettings(rawPattern)
+}
+
+func (r *Rule) applyScope(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("occurrence: scope must be a string, got %T", v)
+	}
+	switch str {
+	case "file", "section", "paragraph":
+		r.Scope = str
+		return nil
+	default:
+		return fmt.Errorf("occurrence: scope must be file, section, or paragraph, got %q", str)
+	}
+}
+
+func (r *Rule) applyTokens(v any) error {
+	ss, ok := settings.ToStringSlice(v)
+	if !ok {
+		return fmt.Errorf("occurrence: tokens must be a list of strings, got %T", v)
+	}
+	// tokens uses the default replace merge mode (not append); no
+	// SettingMergeMode override is needed.
+	r.Tokens = ss
+	return nil
+}
+
+func extractPattern(v any) (string, error) {
+	str, ok := v.(string)
+	if !ok {
+		return "", fmt.Errorf("occurrence: pattern must be a string, got %T", v)
+	}
+	return str, nil
+}
+
+func (r *Rule) applyMin(v any) error {
+	n, ok := settings.ToInt(v)
+	if !ok {
+		return fmt.Errorf("occurrence: min must be an integer, got %T", v)
+	}
+	if n < 0 {
+		return fmt.Errorf("occurrence: min must be >= 0, got %d", n)
+	}
+	r.Min = n
+	return nil
+}
+
+func (r *Rule) applyMax(v any) error {
+	n, ok := settings.ToInt(v)
+	if !ok {
+		return fmt.Errorf("occurrence: max must be an integer, got %T", v)
+	}
+	r.Max = n
+	return nil
+}
+
+func (r *Rule) applyCount(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("occurrence: count must be a string, got %T", v)
+	}
+	switch str {
+	case "each", "combined":
+		r.Count = str
+		return nil
+	default:
+		return fmt.Errorf("occurrence: count must be each or combined, got %q", str)
+	}
+}
+
+func (r *Rule) applyCaseSensitive(v any) error {
+	b, ok := v.(bool)
+	if !ok {
+		return fmt.Errorf("occurrence: case-sensitive must be a bool, got %T", v)
+	}
+	r.CaseSensitive = b
+	return nil
+}
+
+// finalizeSettings compiles the pattern (if any) and builds lowerTokens.
+// Called after all scalar settings are applied so CaseSensitive is final.
+func (r *Rule) finalizeSettings(rawPattern string) error {
 	if rawPattern != "" {
-		r.patternSource = rawPattern
-		src := rawPattern
-		if !r.CaseSensitive {
-			src = "(?i)" + rawPattern
+		if err := r.compileAndSetPattern(rawPattern); err != nil {
+			return err
 		}
-		var compiled *regexp.Regexp
-		if actual, loaded := compiledPatterns.Load(src); loaded {
-			compiled = actual.(*regexp.Regexp)
-		} else {
-			re, err := regexp.Compile(src)
-			if err != nil {
-				return fmt.Errorf("occurrence: pattern %q is not a valid Go RE2 regex: %w", rawPattern, err)
-			}
-			actual, _ := compiledPatterns.LoadOrStore(src, re)
-			compiled = actual.(*regexp.Regexp)
-		}
-		r.Pattern = compiled
 	}
 	if len(r.Tokens) > 0 && r.Pattern != nil {
 		return fmt.Errorf("occurrence: tokens and pattern are mutually exclusive")
@@ -389,6 +417,28 @@ func (r *Rule) ApplySettings(s map[string]any) error {
 			r.lowerTokens[i] = strings.ToLower(t)
 		}
 	}
+	return nil
+}
+
+// compileAndSetPattern compiles rawPattern (with (?i) prefix when not
+// CaseSensitive) and stores the result in r.Pattern and r.patternSource.
+func (r *Rule) compileAndSetPattern(rawPattern string) error {
+	src := rawPattern
+	if !r.CaseSensitive {
+		src = "(?i)" + rawPattern
+	}
+	if actual, loaded := compiledPatterns.Load(src); loaded {
+		r.patternSource = rawPattern
+		r.Pattern = actual.(*regexp.Regexp)
+		return nil
+	}
+	re, err := regexp.Compile(src)
+	if err != nil {
+		return fmt.Errorf("occurrence: pattern %q is not a valid Go RE2 regex: %w", rawPattern, err)
+	}
+	actual, _ := compiledPatterns.LoadOrStore(src, re)
+	r.patternSource = rawPattern
+	r.Pattern = actual.(*regexp.Regexp)
 	return nil
 }
 

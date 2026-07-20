@@ -277,3 +277,147 @@ func TestDefaultSettings_Keys(t *testing.T) {
 	assert.Contains(t, d, "count")
 	assert.Contains(t, d, "case-sensitive")
 }
+
+// --- file scope, each mode ---
+
+func TestCheck_File_EachToken_ExceedsMax(t *testing.T) {
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"tokens": []any{"word"}, "max": 3, "scope": "file", "count": "each"})
+	// "word" total: 2 + 2 = 4 > max 3
+	src := "# Title\n\nword word.\n\nalso word word.\n"
+	diags := r.Check(mustFile(t, src))
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "file")
+}
+
+func TestCheck_File_EachToken_UnderMax_NoDiagnostic(t *testing.T) {
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"tokens": []any{"word"}, "max": 3, "scope": "file", "count": "each"})
+	src := "# Title\n\nword word.\n\nalso word here.\n"
+	assert.Empty(t, r.Check(mustFile(t, src)))
+}
+
+func TestCheck_File_EachPattern_ExceedsMax(t *testing.T) {
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"pattern": "—", "max": 2, "scope": "file", "count": "each"})
+	// 3 em-dashes across two paragraphs → exceeds max 2
+	src := "# T\n\nFirst — second.\n\nThird — fourth — end.\n"
+	diags := r.Check(mustFile(t, src))
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "file")
+}
+
+// --- section scope: combined and pattern ---
+
+func TestCheck_Section_NoHeadings_NoDiagnostic(t *testing.T) {
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"tokens": []any{"word"}, "max": 1, "scope": "section", "count": "each"})
+	// no headings → no sections → no diagnostics
+	src := "plain paragraph word word word.\n"
+	assert.Empty(t, r.Check(mustFile(t, src)))
+}
+
+func TestCheck_Section_Combined_ExceedsMax(t *testing.T) {
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"tokens": []any{"a", "b"}, "max": 3, "scope": "section", "count": "combined"})
+	// "a" × 3, "b" × 1 → combined 4 > max 3
+	src := "# Title\n\na a a b.\n"
+	diags := r.Check(mustFile(t, src))
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "section")
+}
+
+func TestCheck_Section_Pattern_ExceedsMax(t *testing.T) {
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"pattern": "—", "max": 2, "scope": "section", "count": "each"})
+	// 3 em-dashes in the section → exceeds max 2
+	src := "# Title\n\nFirst — second — third — end.\n"
+	diags := r.Check(mustFile(t, src))
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "section")
+}
+
+// --- ApplySettings type-error paths ---
+
+func TestApplySettings_ScopeWrongType(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"scope": 42})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "scope")
+}
+
+func TestApplySettings_TokensWrongType(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"tokens": "word"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "tokens")
+}
+
+func TestApplySettings_PatternWrongType(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"pattern": 42})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "pattern")
+}
+
+func TestApplySettings_MaxWrongType(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"max": "two"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "max")
+}
+
+func TestApplySettings_CountWrongType(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"count": 42})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "count")
+}
+
+func TestApplySettings_CaseSensitiveWrongType(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"case-sensitive": "yes"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "case-sensitive")
+}
+
+func TestApplySettings_MinWrongType(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"min": "two"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "min")
+}
+
+// --- paragraph scope: pattern with count=each ---
+
+func TestCheck_Paragraph_PatternEach_ExceedsMax(t *testing.T) {
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"pattern": "—", "max": 2, "count": "each"})
+	src := "# Title\n\nFirst — second — third — end.\n"
+	diags := r.Check(mustFile(t, src))
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "3")
+	assert.Contains(t, diags[0].Message, "max 2")
+}
+
+// --- section scope: combined with multiple sections (exercises range-skip) ---
+
+func TestCheck_Section_Combined_MultipleHeadings(t *testing.T) {
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"tokens": []any{"a", "b"}, "max": 3, "scope": "section", "count": "combined"})
+	// section A: "a"×3 + "b"×1 = 4 > max 3; section B: "a"×1 = 1 ≤ max 3
+	src := "# A\n\na a a b.\n\n## B\n\na once.\n"
+	diags := r.Check(mustFile(t, src))
+	require.Len(t, diags, 1)
+	assert.Equal(t, 1, diags[0].Line)
+}
+
+func TestCheck_Section_PatternMultipleHeadings(t *testing.T) {
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"pattern": "—", "max": 2, "scope": "section", "count": "each"})
+	// section A: 3 dashes > max 2; section B: 1 dash ≤ max 2
+	src := "# A\n\nFirst — second — third — end.\n\n## B\n\nOnly — one.\n"
+	diags := r.Check(mustFile(t, src))
+	require.Len(t, diags, 1)
+	assert.Equal(t, 1, diags[0].Line)
+}
