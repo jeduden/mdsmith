@@ -26,6 +26,18 @@ import (
 
 func init() {
 	rule.Register(&Rule{})
+
+	sortedBuiltinLayouts = make([]string, 0, len(builtinLayouts))
+	for k := range builtinLayouts {
+		sortedBuiltinLayouts = append(sortedBuiltinLayouts, k)
+	}
+	sort.Strings(sortedBuiltinLayouts)
+
+	sortedKnownFMKeys = make([]string, 0, len(knownFMKeys))
+	for k := range knownFMKeys {
+		sortedKnownFMKeys = append(sortedKnownFMKeys, k)
+	}
+	sort.Strings(sortedKnownFMKeys)
 }
 
 // Rule implements MDS073.
@@ -49,7 +61,7 @@ func (r *Rule) Category() string { return "structural" }
 // by the `slidev` convention.
 func (r *Rule) EnabledByDefault() bool { return false }
 
-// builtinLayouts is the set of Slidev's 18 built-in layout names.
+// builtinLayouts is the set of Slidev's 19 built-in layout names.
 var builtinLayouts = map[string]bool{
 	"center": true, "cover": true, "default": true, "end": true,
 	"fact": true, "full": true, "image": true, "image-left": true,
@@ -58,6 +70,10 @@ var builtinLayouts = map[string]bool{
 	"section": true, "statement": true, "two-cols": true,
 	"two-cols-header": true,
 }
+
+// sortedBuiltinLayouts is the sorted slice of builtinLayouts keys,
+// populated by init. Avoids re-building from map on every call.
+var sortedBuiltinLayouts []string
 
 // layoutSlots maps a layout to the named slots it exposes. A ::slot::
 // for any other name is orphaned — its content will not render. The
@@ -88,6 +104,10 @@ var knownFMKeys = map[string]bool{
 	"transition": true, "background": true, "backgroundSize": true,
 	"name": true, "image": true, "url": true, "default": true,
 }
+
+// sortedKnownFMKeys is the sorted slice of knownFMKeys keys, populated
+// by init. Avoids rebuilding the candidate list on every check-5 call.
+var sortedKnownFMKeys []string
 
 var fenceBytes = []byte("---")
 
@@ -136,8 +156,8 @@ func parseFrontMatterBytes(b []byte) map[string]string {
 		if c <= 0 {
 			continue
 		}
-		// Skip indented (nested) keys — top-level slide keys only.
-		if ln[0] == ' ' || ln[0] == '\t' || ln[0] == '-' {
+		// Skip indented (nested) keys and list entries — top-level slide keys only.
+		if len(ln) > 0 && (ln[0] == ' ' || ln[0] == '\t' || ln[0] == '-') {
 			continue
 		}
 		fm[string(bytes.TrimSpace(t[:c]))] = string(bytes.TrimSpace(t[c+1:]))
@@ -242,23 +262,69 @@ func isFence(line []byte) bool {
 // hasFrontmatterAfter reports whether the block after a boundary at
 // index sep is a YAML frontmatter block: key/list lines closed by a
 // second `---` with no blank line breaking into body first.
+//
+// A line is treated as a YAML key line only when the raw (untrimmed)
+// line starts with a non-whitespace, non-dash character and the portion
+// before the colon is a YAML-safe identifier (letters, digits, dash,
+// underscore). List entries (`- …`) are accepted only after at least
+// one key line has been seen, as continuation values of a sequence.
 func hasFrontmatterAfter(lines [][]byte, sep int) bool {
 	sawKey := false
 	for j := sep + 1; j < len(lines); j++ {
-		if isFence(lines[j]) {
+		raw := lines[j]
+		if isFence(raw) {
 			return sawKey
 		}
-		t := bytes.TrimSpace(lines[j])
+		t := bytes.TrimSpace(raw)
 		if len(t) == 0 {
 			return false
 		}
-		if bytes.IndexByte(t, ':') >= 0 || bytes.HasPrefix(t, []byte("- ")) {
+		// Indented lines are nested YAML values; not evidence of a new key.
+		if len(raw) > 0 && (raw[0] == ' ' || raw[0] == '\t') {
+			if sawKey {
+				continue
+			}
+			return false
+		}
+		// List entries (`- value`) are accepted only after a key has been
+		// seen; a block that opens with a list item is not a mapping.
+		if bytes.HasPrefix(t, []byte("- ")) {
+			if sawKey {
+				continue
+			}
+			return false
+		}
+		// Accept as a key line only when a colon follows a valid YAML
+		// identifier (letters, digits, dash, underscore; no spaces).
+		c := bytes.IndexByte(t, ':')
+		if c > 0 && isYAMLIdent(t[:c]) {
 			sawKey = true
 			continue
 		}
 		return false
 	}
 	return false
+}
+
+// isYAMLIdent reports whether b looks like a bare YAML mapping key:
+// starts with a letter or underscore, contains only letters, digits,
+// dashes, and underscores. This excludes prose sentences from being
+// misidentified as frontmatter keys.
+func isYAMLIdent(b []byte) bool {
+	if len(b) == 0 {
+		return false
+	}
+	c := b[0]
+	if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_') {
+		return false
+	}
+	for _, c := range b[1:] {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+			(c >= '0' && c <= '9') || c == '-' || c == '_') {
+			return false
+		}
+	}
+	return true
 }
 
 // readFrontmatter parses a `---`\nYAML\n`---` block opening at index
@@ -269,7 +335,13 @@ func readFrontmatter(lines [][]byte, open int) (map[string]string, map[string]in
 	fmLine := map[string]int{}
 	j := open + 1
 	for ; j < len(lines) && !isFence(lines[j]); j++ {
-		t := bytes.TrimSpace(lines[j])
+		raw := lines[j]
+		// Skip indented (nested) values and list entries — same guard as
+		// parseFrontMatterBytes so both parsers treat the same lines as keys.
+		if len(raw) > 0 && (raw[0] == ' ' || raw[0] == '\t' || raw[0] == '-') {
+			continue
+		}
+		t := bytes.TrimSpace(raw)
 		c := bytes.IndexByte(t, ':')
 		if c <= 0 {
 			continue
@@ -300,15 +372,19 @@ func (r *Rule) checkSlide(s *slide, f *lint.File, diags []lint.Diagnostic) []lin
 		layout, hasLayout = s.fm["layout"]
 	}
 	anchor := s.startLine
-	if ln, ok := s.fmLine["layout"]; ok {
-		anchor = ln
+	if s.fmLine != nil {
+		if ln, ok := s.fmLine["layout"]; ok {
+			anchor = ln
+		}
 	}
 
 	// 1. Unknown layout name.
+	unknownLayout := false
 	if hasLayout && !builtinLayouts[layout] && !r.isCustomLayout(layout) {
+		unknownLayout = true
 		msg := fmt.Sprintf("unknown Slidev layout %q", layout)
 		if sug := nearest(layout, r.layoutCandidates()); sug != "" {
-			msg += fmt.Sprintf(" — did you mean %q?", sug)
+			msg += fmt.Sprintf(" — did you mean %q", sug)
 		}
 		diags = append(diags, r.diag(f, anchor, msg))
 	}
@@ -318,22 +394,28 @@ func (r *Rule) checkSlide(s *slide, f *lint.File, diags []lint.Diagnostic) []lin
 		effLayout = "default"
 	}
 
-	// 2. Missing required slot(s).
-	for _, need := range layoutSlots[effLayout] {
-		if !slotProvided(s.slots, need) {
-			diags = append(diags, r.diag(f, anchor, fmt.Sprintf(
-				"layout %q requires a ::%s:: slot — that column will be empty",
-				effLayout, need)))
+	// 2. Missing required slot(s). Skip when check 1 already fired: the
+	// layout is unknown so we cannot know what slots it requires.
+	if !unknownLayout {
+		for _, need := range layoutSlots[effLayout] {
+			if !slotProvided(s.slots, need) {
+				diags = append(diags, r.diag(f, anchor, fmt.Sprintf(
+					"layout %q requires a ::%s:: slot — that column will be empty",
+					effLayout, need)))
+			}
 		}
 	}
 
-	// 3. Orphaned slot(s): content that will not render.
-	accepted := layoutSlots[effLayout]
-	for _, sl := range s.slots {
-		if !contains(accepted, sl.name) {
-			diags = append(diags, r.diag(f, sl.line, fmt.Sprintf(
-				"::%s:: has no matching slot in layout %q — this content will not render",
-				sl.name, effLayout)))
+	// 3. Orphaned slot(s): content that will not render. Skip when check 1
+	// already fired: the layout is unknown so we cannot judge valid slots.
+	if !unknownLayout {
+		accepted := layoutSlots[effLayout]
+		for _, sl := range s.slots {
+			if !contains(accepted, sl.name) {
+				diags = append(diags, r.diag(f, sl.line, fmt.Sprintf(
+					"::%s:: has no matching slot in layout %q — this content will not render",
+					sl.name, effLayout)))
+			}
 		}
 	}
 
@@ -345,14 +427,20 @@ func (r *Rule) checkSlide(s *slide, f *lint.File, diags []lint.Diagnostic) []lin
 		}
 	}
 
-	// 5. Unknown frontmatter key (typo — passes through silently).
+	// 5. Unknown frontmatter key (typo — passes through silently in Slidev).
 	for _, k := range sortedKeys(s.fm) {
 		if knownFMKeys[k] {
 			continue
 		}
-		if sug := nearest(k, knownKeyList()); sug != "" {
-			diags = append(diags, r.diag(f, s.fmLine[k], fmt.Sprintf(
-				"unknown Slidev frontmatter key %q — did you mean %q?", k, sug)))
+		lineNo := s.startLine
+		if s.fmLine != nil {
+			if ln, ok := s.fmLine[k]; ok {
+				lineNo = ln
+			}
+		}
+		if sug := nearest(k, sortedKnownFMKeys); sug != "" {
+			diags = append(diags, r.diag(f, lineNo, fmt.Sprintf(
+				"unknown Slidev frontmatter key %q — did you mean %q", k, sug)))
 		}
 	}
 
@@ -411,21 +499,15 @@ func sortedKeys(m map[string]string) []string {
 }
 
 // layoutCandidates returns builtin plus custom layout names for
-// did-you-mean matching.
+// did-you-mean matching. The builtin portion comes from the package-level
+// sorted var; CustomLayouts are appended (sorted by ApplySettings).
 func (r *Rule) layoutCandidates() []string {
-	out := make([]string, 0, len(builtinLayouts)+len(r.CustomLayouts))
-	for k := range builtinLayouts {
-		out = append(out, k)
+	if len(r.CustomLayouts) == 0 {
+		return sortedBuiltinLayouts
 	}
+	out := make([]string, 0, len(sortedBuiltinLayouts)+len(r.CustomLayouts))
+	out = append(out, sortedBuiltinLayouts...)
 	out = append(out, r.CustomLayouts...)
-	return out
-}
-
-func knownKeyList() []string {
-	out := make([]string, 0, len(knownFMKeys))
-	for k := range knownFMKeys {
-		out = append(out, k)
-	}
 	return out
 }
 
@@ -440,6 +522,9 @@ func nearest(s string, cands []string) string {
 	return best
 }
 
+// editDistance computes the Levenshtein edit distance between a and b.
+// Uses fixed-size stack arrays for inputs up to 64 bytes (all Slidev
+// identifiers are shorter), avoiding heap allocations on the hot path.
 func editDistance(a, b string) int {
 	la, lb := len(a), len(b)
 	if la == 0 {
@@ -448,8 +533,12 @@ func editDistance(a, b string) int {
 	if lb == 0 {
 		return la
 	}
-	prev := make([]int, lb+1)
-	cur := make([]int, lb+1)
+	if la > 64 || lb > 64 {
+		return la + lb
+	}
+	var prevBuf, curBuf [65]int
+	prev := prevBuf[:lb+1]
+	cur := curBuf[:lb+1]
 	for j := 0; j <= lb; j++ {
 		prev[j] = j
 	}
