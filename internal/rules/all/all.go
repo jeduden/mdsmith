@@ -68,6 +68,7 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/notrailingspaces"            // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/noundefinedreferencelabels"  // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/nounusedlinkdefinitions"     // registers rule
+	_ "github.com/jeduden/mdsmith/internal/rules/occurrence"                  // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/orderedlistnumbering"        // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/paragraphreadability"        // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/paragraphstructure"          // registers rule
