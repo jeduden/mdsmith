@@ -211,7 +211,19 @@ func resolveArg(arg string, opts ResolveOpts, addFile func(string)) error {
 		return nil
 	}
 
-	// Explicitly named files are never filtered by gitignore.
+	// Skip files that are not Markdown even when named explicitly, so
+	// an explicit path matches the walk (walkDir) and glob (resolveGlob)
+	// branches, both of which gate on isMarkdown. Without this, `mdsmith
+	// check .gitattributes` lints a git-config file as Markdown and
+	// `mdsmith fix` rewrites it — including the merge-driver block
+	// mdsmith generates there (issue #759). The extension is the only
+	// signal available at resolve time; content sniffing would be both
+	// slower and ambiguous.
+	if !isMarkdown(arg) {
+		return nil
+	}
+
+	// Explicitly named Markdown files are never filtered by gitignore.
 	addFile(arg)
 	return nil
 }

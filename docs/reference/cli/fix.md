@@ -16,6 +16,10 @@ Files can be paths, directories (walked recursively for
 rejected — files must be writable. With no file arguments,
 files are discovered from `.mdsmith.yml` `files:` patterns.
 
+Only Markdown files are fixed. A non-Markdown path (such
+as `.gitattributes`) is skipped whether the walk reaches
+it or you name it explicitly, so `fix` never rewrites it.
+
 ## Flags
 
 | Flag                | Default | Description                            |

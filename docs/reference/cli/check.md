@@ -19,6 +19,10 @@ read from stdin. With no file arguments, files are
 discovered from `.mdsmith.yml` `files:` patterns
 (default: `**/*.md`, `**/*.markdown`).
 
+Only Markdown files are linted. A non-Markdown path
+(such as `.gitattributes`) is skipped whether the walk
+reaches it or you name it explicitly.
+
 ## Flags
 
 | Flag                | Default | Description                            |

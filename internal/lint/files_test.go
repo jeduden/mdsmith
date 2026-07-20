@@ -29,10 +29,33 @@ func TestResolveFiles_NonMarkdownFile(t *testing.T) {
 	txtFile := filepath.Join(dir, "test.txt")
 	require.NoError(t, os.WriteFile(txtFile, []byte("hello"), 0o644))
 
-	// Non-markdown files are still returned when given explicitly as args.
+	// A non-Markdown file named explicitly is skipped, matching the
+	// directory walk and glob expansion — mdsmith cannot meaningfully
+	// lint a file that is not Markdown, and fixing one rewrites content
+	// it never should touch (issue #759, e.g. .gitattributes).
 	files, err := ResolveFiles([]string{txtFile})
 	require.NoError(t, err)
+	require.Empty(t, files)
+}
+
+// TestResolveFiles_MixedMarkdownAndNonMarkdown pins that an explicit
+// argument list keeps its Markdown members and drops the rest, so a
+// caller that names both a real doc and a config file (or shell-globs a
+// wider set) still lints exactly the Markdown ones. Regression guard for
+// issue #759.
+func TestResolveFiles_MixedMarkdownAndNonMarkdown(t *testing.T) {
+	dir := t.TempDir()
+	mdFile := filepath.Join(dir, "doc.md")
+	txtFile := filepath.Join(dir, "notes.txt")
+	attrFile := filepath.Join(dir, ".gitattributes")
+	require.NoError(t, os.WriteFile(mdFile, []byte("# Hello"), 0o644))
+	require.NoError(t, os.WriteFile(txtFile, []byte("hello"), 0o644))
+	require.NoError(t, os.WriteFile(attrFile, []byte("*.md merge=mdsmith\n"), 0o644))
+
+	files, err := ResolveFiles([]string{mdFile, txtFile, attrFile})
+	require.NoError(t, err)
 	require.Len(t, files, 1)
+	assert.Equal(t, mdFile, files[0])
 }
 
 func TestResolveFiles_Directory(t *testing.T) {
