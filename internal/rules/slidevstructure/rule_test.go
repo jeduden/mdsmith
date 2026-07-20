@@ -265,6 +265,32 @@ func TestEditDistance_EmptyStrings(t *testing.T) {
 	assert.Equal(t, 0, editDistance("", ""))
 }
 
+func TestFrontmatterWithBlankLineBetweenKeys_OK(t *testing.T) {
+	// YAML 1.2 allows blank lines between mapping entries. A frontmatter block
+	// like "layout: cover\n\nbackground: /bg.png" must not be dropped — the
+	// blank line should not terminate the block early.
+	src := "# Slide 1\n\n---\nlayout: image-left\n\nimage: ./bg.png\n---\n\n# Content\n"
+	diags := check(t, src)
+	assert.Empty(t, diags, "frontmatter with blank line between keys is valid: %s", messages(diags))
+}
+
+func TestFrontmatterWithBlankLine_MissingField_Flagged(t *testing.T) {
+	// Blank line inside frontmatter does not swallow the layout key: if the
+	// required image field is absent, MDS073 must still report it.
+	src := "# Slide 1\n\n---\nlayout: image-left\n\n---\n\n# Content\n"
+	diags := check(t, src)
+	require.Len(t, diags, 1, "got: %s", messages(diags))
+	assert.Contains(t, diags[0].Message, `"image" frontmatter field`)
+}
+
+func TestFrontmatterWithYAMLComment_OK(t *testing.T) {
+	// YAML comment lines (# …) are valid inside a frontmatter block and must
+	// not cause the block to be misidentified as plain prose.
+	src := "# Slide 1\n\n---\n# set by theme\nlayout: center\n---\n\n# Content\n"
+	diags := check(t, src)
+	assert.Empty(t, diags, "frontmatter with YAML comment is valid: %s", messages(diags))
+}
+
 func TestDottedPassThroughKey_DoesNotBlockFrontmatterParsing(t *testing.T) {
 	// A mid-deck frontmatter block that contains a dotted pass-through data
 	// key (valid in Slidev, not a pure YAML identifier) must not cause the

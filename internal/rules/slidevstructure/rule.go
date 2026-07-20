@@ -217,7 +217,15 @@ type slotRef struct {
 // treated as the first slide's frontmatter (headmatter, when the
 // engine has not already stripped it).
 func parseSlides(lines [][]byte) []slide {
-	var slides []slide
+	// Pre-count fence lines as an upper bound on slide count so the slice
+	// is allocated once rather than growing via repeated appends.
+	n := 0
+	for _, ln := range lines {
+		if isFence(ln) {
+			n++
+		}
+	}
+	slides := make([]slide, 0, n+1)
 	i := 0
 	cur := slide{startLine: 1}
 	if isFence(lines[0]) {
@@ -281,7 +289,15 @@ func hasFrontmatterAfter(lines [][]byte, sep int) bool {
 		}
 		t := bytes.TrimSpace(raw)
 		if len(t) == 0 {
+			// Blank lines between YAML keys are allowed (YAML 1.2 §8.1.2).
+			if sawKey {
+				continue
+			}
 			return false
+		}
+		// YAML comment lines are valid inside a mapping block.
+		if bytes.HasPrefix(t, []byte("#")) {
+			continue
 		}
 		// Indented lines are nested YAML values; not evidence of a new key.
 		if len(raw) > 0 && (raw[0] == ' ' || raw[0] == '\t') {
@@ -441,12 +457,7 @@ func (r *Rule) checkSlide(s *slide, f *lint.File, diags []lint.Diagnostic) []lin
 }
 
 func (r *Rule) isCustomLayout(name string) bool {
-	for _, c := range r.CustomLayouts {
-		if c == name {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(r.CustomLayouts, name)
 }
 
 func (r *Rule) diag(f *lint.File, line int, msg string) lint.Diagnostic {
@@ -524,21 +535,11 @@ func editDistance(a, b string) int {
 			if a[i-1] == b[j-1] {
 				cost = 0
 			}
-			cur[j] = min3(prev[j]+1, cur[j-1]+1, prev[j-1]+cost)
+			cur[j] = min(prev[j]+1, cur[j-1]+1, prev[j-1]+cost)
 		}
 		prev, cur = cur, prev
 	}
 	return prev[lb]
-}
-
-func min3(a, b, c int) int {
-	if b < a {
-		a = b
-	}
-	if c < a {
-		a = c
-	}
-	return a
 }
 
 // ApplySettings implements rule.Configurable.
