@@ -370,64 +370,99 @@ func (r *Rule) checkSlide(s *slide, f *lint.File, diags []lint.Diagnostic) []lin
 	if s.fm != nil {
 		layout, hasLayout = s.fm["layout"]
 	}
-	anchor := s.startLine
-	if s.fmLine != nil {
-		if ln, ok := s.fmLine["layout"]; ok {
-			anchor = ln
-		}
-	}
+	anchor := r.slideAnchor(s)
 
-	// 1. Unknown layout name.
-	unknownLayout := false
-	if hasLayout && !builtinLayouts[layout] && !r.isCustomLayout(layout) {
-		unknownLayout = true
-		msg := fmt.Sprintf("unknown Slidev layout %q", layout)
-		if sug := nearest(layout, r.layoutCandidates()); sug != "" {
-			msg += fmt.Sprintf(" — did you mean %q", sug)
-		}
-		diags = append(diags, r.diag(f, anchor, msg))
-	}
-
+	unknownLayout, diags := r.checkUnknownLayout(f, diags, layout, hasLayout, anchor)
 	effLayout := layout
 	if !hasLayout {
 		effLayout = "default"
 	}
-
-	// 2. Missing required slot(s). Skip when check 1 already fired: the
-	// layout is unknown so we cannot know what slots it requires.
 	if !unknownLayout {
-		for _, need := range layoutSlots[effLayout] {
-			if !slices.ContainsFunc(s.slots, func(sl slotRef) bool { return sl.name == need }) {
-				diags = append(diags, r.diag(f, anchor, fmt.Sprintf(
-					"layout %q requires a ::%s:: slot — that column will be empty",
-					effLayout, need)))
-			}
+		diags = r.checkMissingSlots(s, f, diags, effLayout, anchor)
+		diags = r.checkOrphanedSlots(s, f, diags, effLayout)
+	}
+	diags = r.checkRequiredField(s, f, diags, effLayout, anchor)
+	diags = r.checkUnknownFMKeys(s, f, diags)
+	return diags
+}
+
+func (r *Rule) slideAnchor(s *slide) int {
+	if s.fmLine != nil {
+		if ln, ok := s.fmLine["layout"]; ok {
+			return ln
 		}
 	}
+	return s.startLine
+}
 
-	// 3. Orphaned slot(s): content that will not render. Skip when check 1
-	// already fired: the layout is unknown so we cannot judge valid slots.
-	if !unknownLayout {
-		accepted := layoutSlots[effLayout]
-		for _, sl := range s.slots {
-			if !slices.Contains(accepted, sl.name) {
-				diags = append(diags, r.diag(f, sl.line, fmt.Sprintf(
-					"::%s:: has no matching slot in layout %q — this content will not render",
-					sl.name, effLayout)))
-			}
-		}
+// checkUnknownLayout emits a diagnostic when the layout name is not
+// a builtin or declared custom layout, and returns whether it fired.
+func (r *Rule) checkUnknownLayout(
+	f *lint.File, diags []lint.Diagnostic,
+	layout string, hasLayout bool, anchor int,
+) (bool, []lint.Diagnostic) {
+	if !hasLayout || builtinLayouts[layout] || r.isCustomLayout(layout) {
+		return false, diags
 	}
+	msg := fmt.Sprintf("unknown Slidev layout %q", layout)
+	if sug := nearest(layout, r.layoutCandidates()); sug != "" {
+		msg += fmt.Sprintf(" — did you mean %q", sug)
+	}
+	return true, append(diags, r.diag(f, anchor, msg))
+}
 
-	// 4. Missing layout-required field.
-	if field, ok := layoutRequiredField[effLayout]; ok {
-		if _, present := s.fm[field]; !present {
+// checkMissingSlots emits a diagnostic for each named slot that the
+// layout requires but the slide body does not provide.
+func (r *Rule) checkMissingSlots(
+	s *slide, f *lint.File, diags []lint.Diagnostic,
+	effLayout string, anchor int,
+) []lint.Diagnostic {
+	for _, need := range layoutSlots[effLayout] {
+		if !slices.ContainsFunc(s.slots, func(sl slotRef) bool { return sl.name == need }) {
 			diags = append(diags, r.diag(f, anchor, fmt.Sprintf(
-				"layout %q requires the %q frontmatter field", effLayout, field)))
+				"layout %q requires a ::%s:: slot — that column will be empty",
+				effLayout, need)))
 		}
 	}
+	return diags
+}
 
-	// 5. Unknown frontmatter key (typo — passes through silently in Slidev).
-	// Pre-scan without allocating; only call sortedKeys when unknown keys exist.
+// checkOrphanedSlots emits a diagnostic for each ::slot:: the slide
+// declares that the effective layout does not expose.
+func (r *Rule) checkOrphanedSlots(s *slide, f *lint.File, diags []lint.Diagnostic, effLayout string) []lint.Diagnostic {
+	accepted := layoutSlots[effLayout]
+	for _, sl := range s.slots {
+		if !slices.Contains(accepted, sl.name) {
+			diags = append(diags, r.diag(f, sl.line, fmt.Sprintf(
+				"::%s:: has no matching slot in layout %q — this content will not render",
+				sl.name, effLayout)))
+		}
+	}
+	return diags
+}
+
+// checkRequiredField emits a diagnostic when the layout demands a
+// specific frontmatter field (e.g. image:) and it is absent.
+func (r *Rule) checkRequiredField(
+	s *slide, f *lint.File, diags []lint.Diagnostic,
+	effLayout string, anchor int,
+) []lint.Diagnostic {
+	field, ok := layoutRequiredField[effLayout]
+	if !ok {
+		return diags
+	}
+	if _, present := s.fm[field]; !present {
+		diags = append(diags, r.diag(f, anchor, fmt.Sprintf(
+			"layout %q requires the %q frontmatter field", effLayout, field)))
+	}
+	return diags
+}
+
+// checkUnknownFMKeys emits a did-you-mean diagnostic for each
+// frontmatter key that is not in the known-key set and is within
+// edit distance 2 of a real key (typos only — arbitrary pass-through
+// data keys that are far from any real key are not flagged).
+func (r *Rule) checkUnknownFMKeys(s *slide, f *lint.File, diags []lint.Diagnostic) []lint.Diagnostic {
 	hasUnknown := false
 	for k := range s.fm {
 		if !knownFMKeys[k] {
@@ -435,24 +470,24 @@ func (r *Rule) checkSlide(s *slide, f *lint.File, diags []lint.Diagnostic) []lin
 			break
 		}
 	}
-	if hasUnknown {
-		for _, k := range sortedKeys(s.fm) {
-			if knownFMKeys[k] {
-				continue
-			}
-			lineNo := s.startLine
-			if s.fmLine != nil {
-				if ln, ok := s.fmLine[k]; ok {
-					lineNo = ln
-				}
-			}
-			if sug := nearest(k, sortedKnownFMKeys); sug != "" {
-				diags = append(diags, r.diag(f, lineNo, fmt.Sprintf(
-					"unknown Slidev frontmatter key %q — did you mean %q", k, sug)))
+	if !hasUnknown {
+		return diags
+	}
+	for _, k := range sortedKeys(s.fm) {
+		if knownFMKeys[k] {
+			continue
+		}
+		lineNo := s.startLine
+		if s.fmLine != nil {
+			if ln, ok := s.fmLine[k]; ok {
+				lineNo = ln
 			}
 		}
+		if sug := nearest(k, sortedKnownFMKeys); sug != "" {
+			diags = append(diags, r.diag(f, lineNo, fmt.Sprintf(
+				"unknown Slidev frontmatter key %q — did you mean %q", k, sug)))
+		}
 	}
-
 	return diags
 }
 
@@ -473,9 +508,6 @@ func (r *Rule) diag(f *lint.File, line int, msg string) lint.Diagnostic {
 }
 
 func sortedKeys(m map[string]string) []string {
-	if len(m) == 0 {
-		return nil
-	}
 	out := make([]string, 0, len(m))
 	for k := range m {
 		out = append(out, k)
