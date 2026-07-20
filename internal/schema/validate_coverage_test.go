@@ -409,3 +409,11 @@ func TestDedupedCUEErrorDiags_DuplicateKeyCollapses(t *testing.T) {
 	diags := dedupedCUEErrorDiags(f, sch, docFM, dup, keyLines, makeDiagForTest)
 	assert.Len(t, diags, 1, "two identical cueErrs entries must collapse to one diagnostic")
 }
+
+// TestIsClaimed covers both branches of IsClaimed: a present idx
+// reports true; an absent idx reports false.
+func TestIsClaimed(t *testing.T) {
+	claimed := map[int]struct{}{3: {}}
+	assert.True(t, IsClaimed(claimed, 3), "present idx must be claimed")
+	assert.False(t, IsClaimed(claimed, 7), "absent idx must not be claimed")
+}

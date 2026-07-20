@@ -394,7 +394,7 @@ func (w *contentWalker) run(diags *[]lint.Diagnostic) {
 			w.allowExtra = true
 			continue
 		}
-		if isClaimed(w.claimed, i) {
+		if IsClaimed(w.claimed, i) {
 			continue
 		}
 		w.matchEntry(i, entry, diags)
@@ -445,7 +445,7 @@ func (w *contentWalker) matchEntry(
 		}
 		w.nodeIdx++
 	}
-	if !isClaimed(w.claimed, i) && entry.Required {
+	if !IsClaimed(w.claimed, i) && entry.Required {
 		*diags = append(*diags, w.mkDiag(
 			w.f.Path, w.sectionLine,
 			fmt.Sprintf("missing required content %q inside %s",
@@ -460,7 +460,7 @@ func (w *contentWalker) matchEntry(
 // node by kind.
 func (w *contentWalker) findLaterEntry(startIdx int, n ast.Node) int {
 	for j := startIdx; j < len(w.sc.Content); j++ {
-		if isClaimed(w.claimed, j) {
+		if IsClaimed(w.claimed, j) {
 			continue
 		}
 		e := w.sc.Content[j]
