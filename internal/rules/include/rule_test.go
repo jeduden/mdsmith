@@ -1136,6 +1136,31 @@ func TestCheck_NoFS(t *testing.T) {
 	expectDiags(t, diags, 0)
 }
 
+// TestFix_NoFS covers Fix's early-return when f.FS is nil (a
+// stdin/source-only check has no filesystem context to resolve
+// includes against), the same branch TestCheck_NoFS pins for Check.
+func TestFix_NoFS(t *testing.T) {
+	src := "# Hello\n\n<?include\nfile: data.md\n?>\n<?/include?>\n"
+	f, err := lint.NewFile("test.md", []byte(src))
+	require.NoError(t, err)
+	r := &Rule{}
+	got := r.Fix(f)
+	assert.Equal(t, src, string(got))
+}
+
+// TestFix_NoIncludeDirective covers Fix's cheap-needle gate: a file
+// with no "<?include" anywhere must come back byte-for-byte
+// unchanged, the same guarantee TestCheck_NoIncludeDirectiveAllocatesNothing
+// pins for Check.
+func TestFix_NoIncludeDirective(t *testing.T) {
+	fsys := fstest.MapFS{}
+	src := "# Doc\n\nJust a plain paragraph with no directives.\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	got := r.Fix(f)
+	assert.Equal(t, src, string(got))
+}
+
 func TestCategory(t *testing.T) {
 	r := &Rule{}
 	assert.Equal(t, "directive", r.Category())
