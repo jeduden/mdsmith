@@ -121,6 +121,9 @@ func TestCheck_IncludeUpToDate(t *testing.T) {
 // docs/development/high-performance-go.md, applied to the alloc+lock
 // setup rather than a regex.
 func TestCheck_NoIncludeDirectiveAllocatesNothing(t *testing.T) {
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race")
+	}
 	fsys := fstest.MapFS{}
 	src := "# Doc\n\nJust a plain paragraph with no directives.\n"
 	f := newTestFile(t, "doc.md", src, fsys)
