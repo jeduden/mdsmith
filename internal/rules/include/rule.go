@@ -22,14 +22,31 @@ import (
 // sourceDirKey is hoisted to avoid allocating a new slice on each inner-loop iteration.
 var sourceDirKey = []byte("source-dir:")
 
-// includeNeedle gates Check/Fix on a cheap byte scan: a file with no
-// "<?include" anywhere in its source cannot contain a well-formed
-// include directive, so there is nothing for the engine to find. MDS021
-// is default-enabled, so every host file in a workspace run pays this
-// check; skipping the mutex and the per-call visited/chain allocation
-// for the common no-include case avoids serialising the engine's
-// per-file parallel fan-out on files this rule has nothing to do with.
-var includeNeedle = []byte("<?include")
+// includeStartNeedle and includeEndNeedle gate Check/Fix on a cheap
+// byte scan: a file carrying neither substring cannot contain a start
+// marker, an end marker, or an orphaned end marker with no matching
+// start, so there is nothing for the engine to find. Both needles are
+// required — "<?/include" does not contain "<?include" as a substring
+// ("/" sits where the start needle expects "i"), so a file with only a
+// dangling <?/include?> (no opening <?include?>) would otherwise
+// false-negative past the gate and silently drop the engine's
+// "unexpected generated section end marker" diagnostic (caught by
+// code review). MDS021 is default-enabled, so every host file in a
+// workspace run pays this check; skipping the mutex and the per-call
+// visited/chain allocation for the common no-include case avoids
+// serialising the engine's per-file parallel fan-out on files this
+// rule has nothing to do with.
+var (
+	includeStartNeedle = []byte("<?include")
+	includeEndNeedle   = []byte("<?/include")
+)
+
+// mayContainIncludeDirective reports whether source could contain any
+// include start marker, end marker, or orphaned end marker.
+func mayContainIncludeDirective(source []byte) bool {
+	return bytes.Contains(source, includeStartNeedle) ||
+		bytes.Contains(source, includeEndNeedle)
+}
 
 func init() {
 	rule.Register(&Rule{})
@@ -82,7 +99,7 @@ func (r *Rule) getEngine() *gensection.Engine {
 
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
-	if f.FS == nil || !bytes.Contains(f.Source, includeNeedle) {
+	if f.FS == nil || !mayContainIncludeDirective(f.Source) {
 		return nil
 	}
 	r.mu.Lock()
@@ -96,7 +113,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 
 // Fix implements rule.FixableRule.
 func (r *Rule) Fix(f *lint.File) []byte {
-	if f.FS == nil || !bytes.Contains(f.Source, includeNeedle) {
+	if f.FS == nil || !mayContainIncludeDirective(f.Source) {
 		return f.Source
 	}
 	r.mu.Lock()

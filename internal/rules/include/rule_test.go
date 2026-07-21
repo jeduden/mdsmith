@@ -1161,6 +1161,23 @@ func TestFix_NoIncludeDirective(t *testing.T) {
 	assert.Equal(t, src, string(got))
 }
 
+// TestCheck_OrphanedEndMarkerStillFlagged pins that Check still
+// reports a dangling <?/include?> end marker with no matching start.
+// The bytes "<?/include" do not contain the substring "<?include"
+// (the "/" sits where the needle expects "i"), so a needle gate that
+// checks only for "<?include" would false-negative on this file and
+// silently drop the "unexpected generated section end marker"
+// diagnostic engine.Check would otherwise emit — caught by code
+// review round 1.
+func TestCheck_OrphanedEndMarkerStillFlagged(t *testing.T) {
+	fsys := fstest.MapFS{}
+	src := "# Title\n\nSome prose.\n\n<?/include?>\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiagMsg(t, diags, "unexpected generated section end marker")
+}
+
 func TestCategory(t *testing.T) {
 	r := &Rule{}
 	assert.Equal(t, "directive", r.Category())
