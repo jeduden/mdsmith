@@ -103,3 +103,49 @@ func TestScanIndentedMarkerMatches(t *testing.T) {
 	require.Len(t, ranges, 1)
 	assert.Equal(t, lint.LineRange{From: 1, To: 3}, ranges[0])
 }
+
+// TestScanMultipleRegions_AllocsScaleWithLinesNotRegions pins
+// docs/development/high-performance-go.md's "stay in []byte" and
+// "skip redundant re-scanning" patterns for Scan with more than one
+// declared region. Before this test, Scan called scanOne once per
+// region, and each scanOne call re-walked the whole f.Lines slice
+// converting every line via strings.TrimSpace(string(line)) — an
+// O(regions x lines) cost with one string allocation per line per
+// region, even though a single per-line trim can be checked against
+// every region's markers in the same pass.
+//
+// The assertion: allocs for 5 regions must not exceed roughly what 1
+// region costs by more than a small per-region constant (each region
+// still needs its own open-marker state and, on this fixture, no
+// diagnostics) — a multi-pass implementation would instead scale
+// allocs linearly with len(f.Lines) times len(regions).
+func TestScanMultipleRegions_AllocsScaleWithLinesNotRegions(t *testing.T) {
+	var src []byte
+	for i := 0; i < 100; i++ {
+		src = append(src, []byte("A representative line of prose in the file.\n")...)
+	}
+	f := newFile(t, string(src))
+
+	oneRegion := []config.ForeignRegion{apm}
+	fiveRegions := []config.ForeignRegion{
+		apm,
+		{Start: "<!-- r2:start -->", End: "<!-- r2:end -->"},
+		{Start: "<!-- r3:start -->", End: "<!-- r3:end -->"},
+		{Start: "<!-- r4:start -->", End: "<!-- r4:end -->"},
+		{Start: "<!-- r5:start -->", End: "<!-- r5:end -->"},
+	}
+
+	oneAllocs := testing.AllocsPerRun(20, func() { Scan(f, oneRegion) })
+	fiveAllocs := testing.AllocsPerRun(20, func() { Scan(f, fiveRegions) })
+
+	// A single-pass, []byte-only scan pays a near-constant per-region
+	// setup cost (a states slice entry) regardless of file size; a
+	// multi-pass, string()-converting scan pays roughly 5x oneAllocs
+	// (100 lines re-converted per extra region). 3x oneAllocs+10 is
+	// comfortably below the multi-pass cost and above single-pass
+	// noise.
+	assert.LessOrEqualf(t, fiveAllocs, oneAllocs*3+10,
+		"Scan with 5 regions allocs (%v) must not scale with lines-per-region "+
+			"(1-region allocs: %v) — each region should reuse one per-line trim",
+		fiveAllocs, oneAllocs)
+}
