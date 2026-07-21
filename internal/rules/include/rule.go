@@ -22,6 +22,15 @@ import (
 // sourceDirKey is hoisted to avoid allocating a new slice on each inner-loop iteration.
 var sourceDirKey = []byte("source-dir:")
 
+// includeNeedle gates Check/Fix on a cheap byte scan: a file with no
+// "<?include" anywhere in its source cannot contain a well-formed
+// include directive, so there is nothing for the engine to find. MDS021
+// is default-enabled, so every host file in a workspace run pays this
+// check; skipping the mutex and the per-call visited/chain allocation
+// for the common no-include case avoids serialising the engine's
+// per-file parallel fan-out on files this rule has nothing to do with.
+var includeNeedle = []byte("<?include")
+
 func init() {
 	rule.Register(&Rule{})
 }
@@ -73,7 +82,7 @@ func (r *Rule) getEngine() *gensection.Engine {
 
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
-	if f.FS == nil {
+	if f.FS == nil || !bytes.Contains(f.Source, includeNeedle) {
 		return nil
 	}
 	r.mu.Lock()
@@ -87,7 +96,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 
 // Fix implements rule.FixableRule.
 func (r *Rule) Fix(f *lint.File) []byte {
-	if f.FS == nil {
+	if f.FS == nil || !bytes.Contains(f.Source, includeNeedle) {
 		return f.Source
 	}
 	r.mu.Lock()

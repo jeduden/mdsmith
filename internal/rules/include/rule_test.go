@@ -109,6 +109,42 @@ func TestCheck_IncludeUpToDate(t *testing.T) {
 	expectDiags(t, diags, 0)
 }
 
+// TestCheck_NoIncludeDirectiveAllocatesNothing pins Check's cost on a
+// file with no <?include?> directive at zero allocs. MDS021 is
+// default-enabled, so every host file in a workspace pays this path
+// even when it never uses the directive. Before this test, Check
+// unconditionally allocated a fresh `visited` map and `chain` slice
+// (and took the rule-wide mutex, serialising this rule's Check calls
+// across the engine's per-file parallel fan-out) before ever checking
+// whether the file could contain an include marker — the "gate
+// expensive analyzers behind a cheap pre-check" pattern documented in
+// docs/development/high-performance-go.md, applied to the alloc+lock
+// setup rather than a regex.
+func TestCheck_NoIncludeDirectiveAllocatesNothing(t *testing.T) {
+	fsys := fstest.MapFS{}
+	src := "# Doc\n\nJust a plain paragraph with no directives.\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+
+	allocs := testing.AllocsPerRun(200, func() {
+		g, err := lint.NewFile("doc.md", []byte(src))
+		require.NoError(t, err)
+		g.FS = fsys
+		g.RootFS = fsys
+		_ = r.Check(g)
+	})
+	parseAllocs := testing.AllocsPerRun(200, func() {
+		g, err := lint.NewFile("doc.md", []byte(src))
+		require.NoError(t, err)
+		_ = g
+	})
+	assert.Zero(t, allocs-parseAllocs,
+		"Check must not allocate on a file with no include directive")
+}
+
 func TestCheck_IncludeOutOfDate(t *testing.T) {
 	fsys := fstest.MapFS{
 		"data.md": {Data: []byte("Updated content\n")},
