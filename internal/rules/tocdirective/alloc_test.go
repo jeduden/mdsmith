@@ -11,8 +11,11 @@ import (
 // 195 task 14 replaces the per-File re-parse helper
 // (hasTOCLinkReference) with a linear scan over the parsed
 // f.LinkReferences() table, eliminating ~200 alloc/op the
-// extra parse paid for on every fresh File.
-const allocBudgetMDS035 = 10
+// extra parse paid for on every fresh File. matchVariant scanning
+// []byte directly (docs/development/high-performance-go.md) instead
+// of converting each paragraph line to a string before regexp
+// matching dropped the remaining 6 allocs/op to 0.
+const allocBudgetMDS035 = 0
 
 const allocBudgetFixture = "# Document title\n" +
 	"\n" +
