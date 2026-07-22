@@ -280,6 +280,14 @@ func TestColumnOfOffset_PastEOFClamps(t *testing.T) {
 	assert.Equal(t, 4, f.ColumnOfOffset(999))
 }
 
+func TestColumnOfOffset_NegativeOffsetClamps(t *testing.T) {
+	// A negative offset clamps to the start of the file (column 1),
+	// mirroring the upper-bound EOF clamp above.
+	f := &File{Source: []byte("line1\nline2\n")}
+	assert.Equal(t, 1, f.ColumnOfOffset(-1))
+	assert.Equal(t, 1, f.ColumnOfOffset(-100))
+}
+
 func TestColumnOfOffset_AtNewline(t *testing.T) {
 	// The newline itself sits at the end of its line.
 	f := &File{Source: []byte("ab\nc")}

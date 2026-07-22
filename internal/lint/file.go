@@ -554,6 +554,9 @@ func (f *File) ColumnOfOffset(offset int) int {
 	if offset > len(f.Source) {
 		offset = len(f.Source)
 	}
+	if offset < 0 {
+		offset = 0
+	}
 	// Reuses LineOfOffset's cached newline index via the same binary
 	// search instead of scanning backward from offset byte by byte —
 	// O(log n) in the newline count instead of O(line length). A single
