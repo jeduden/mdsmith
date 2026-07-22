@@ -5,12 +5,11 @@ import (
 	"testing"
 )
 
-// BenchmarkColumnOfOffset_LongLine exercises the worst case for
-// ColumnOfOffset: an offset near the end of a very long line, forcing a
-// full backward scan to find the line start. Per
-// docs/development/high-performance-go.md, a hand-rolled byte-at-a-time
-// scan is not vectorized by the compiler; bytes.LastIndexByte is SIMD
-// assembly on amd64.
+// BenchmarkColumnOfOffset_LongLine exercises the former worst case for
+// ColumnOfOffset: an offset near the end of a very long line, which used
+// to force a full backward byte-at-a-time scan to find the line start.
+// ColumnOfOffset now reuses LineOfOffset's cached newline index via a
+// binary search instead (docs/development/high-performance-go.md).
 func BenchmarkColumnOfOffset_LongLine(b *testing.B) {
 	line := bytes.Repeat([]byte("x"), 8192)
 	src := append(append([]byte("prefix\n"), line...), '\n')
