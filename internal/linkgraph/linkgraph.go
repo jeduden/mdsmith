@@ -251,10 +251,10 @@ func linkPosition(f *lint.File, n ast.Node) (int, int) {
 	if offset < 0 {
 		return 1, 1
 	}
-	// f.ColumnOfOffset scans backward from offset to the previous
-	// newline, so it's O(column) per call instead of the O(offset)
-	// forward scan a hand-rolled version would do — meaningful for
-	// `mdsmith list backlinks` which can call this many times per file.
+	// f.ColumnOfOffset binary-searches the cached newline index, so
+	// it's O(log lines) per call instead of the O(column) backward scan
+	// a hand-rolled version would do — meaningful for `mdsmith list
+	// backlinks` which can call this many times per file.
 	return f.LineOfOffset(offset), f.ColumnOfOffset(offset)
 }
 
