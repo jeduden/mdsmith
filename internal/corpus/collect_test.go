@@ -210,23 +210,30 @@ func TestCollect_ErrorPath(t *testing.T) {
 	}
 }
 
-// TestCollect_OversizedFile_ReturnsError guards against an unbounded
+// TestCollect_OversizedFile_SkippedNotFatal guards against an unbounded
 // os.ReadFile on a corpus source: collectFile ingests markdown from
 // cloned third-party repositories, which are untrusted input
 // (docs/development/high-performance-go.md — "os.ReadFile on huge
 // inputs: one giant alloc, all resident"). A file over the shared
-// bytelimit.DefaultMaxInputBytes cap must fail the walk rather than
-// being read into memory in full.
-func TestCollect_OversizedFile_ReturnsError(t *testing.T) {
+// bytelimit.DefaultMaxInputBytes cap must be skipped rather than read
+// into memory in full — and, since a real source repository can contain
+// one large file among many good ones (a big CHANGELOG, a vendored
+// spec), skipping it must not abort collection of the rest of that
+// source or of sources collected earlier in the same run.
+func TestCollect_OversizedFile_SkippedNotFatal(t *testing.T) {
 	t.Parallel()
 
 	root := filepath.Join(t.TempDir(), "docs")
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	oversized := bytes.Repeat([]byte("a"), int(bytelimit.DefaultMaxInputBytes)+1)
+	oversized := bytes.Repeat([]byte("a "), int(bytelimit.DefaultMaxInputBytes)/2+1)
 	if err := os.WriteFile(filepath.Join(root, "huge.md"), oversized, 0o644); err != nil {
 		t.Fatalf("write oversized markdown: %v", err)
+	}
+	normalContent := []byte("# Title\n\nword word word word word word\n")
+	if err := os.WriteFile(filepath.Join(root, "normal.md"), normalContent, 0o644); err != nil {
+		t.Fatalf("write normal markdown: %v", err)
 	}
 
 	cfg := &Config{
@@ -243,9 +250,15 @@ func TestCollect_OversizedFile_ReturnsError(t *testing.T) {
 		}},
 	}
 
-	_, err := Collect(cfg, t.TempDir())
-	if err == nil {
-		t.Fatal("Collect: expected an error for a file over the byte-limit cap, got nil")
+	records, err := Collect(cfg, t.TempDir())
+	if err != nil {
+		t.Fatalf("Collect: unexpected error, oversized file should be skipped: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("record count = %d, want 1 (only normal.md; huge.md must be skipped)", len(records))
+	}
+	if records[0].Path != "normal.md" {
+		t.Fatalf("Path = %q, want normal.md", records[0].Path)
 	}
 }
 

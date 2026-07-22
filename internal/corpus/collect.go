@@ -176,6 +176,24 @@ func collectFile(
 		return Record{}, false, nil
 	}
 
+	// Skip files over the shared byte-limit cap rather than failing the
+	// whole source: collectFromRoot's caller aborts the entire walk (and
+	// every record already collected from every source before it, since
+	// Collect returns on the first error) on any error from this
+	// function. A cloned third-party repository can legitimately contain
+	// one oversized file (a large CHANGELOG, a vendored spec) without
+	// that file being reason to discard the rest of the corpus build.
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		return Record{}, false, fmt.Errorf("stat file %s: %w", fullPath, err)
+	}
+	if info.Size() > bytelimit.DefaultMaxInputBytes {
+		reportProgress(cfg, fmt.Sprintf(
+			"skipping %s: %d bytes exceeds the %d byte limit",
+			relPath, info.Size(), bytelimit.DefaultMaxInputBytes))
+		return Record{}, false, nil
+	}
+
 	content, err := bytelimit.ReadFileLimited(fullPath, bytelimit.DefaultMaxInputBytes)
 	if err != nil {
 		return Record{}, false, fmt.Errorf("read file %s: %w", fullPath, err)
