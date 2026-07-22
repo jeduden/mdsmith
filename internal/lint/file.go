@@ -543,13 +543,38 @@ var lineIndexNewline = []byte{'\n'}
 // strictly before offset (a newline exactly at offset starts the
 // next line, so it does not count) — identical to a linear scan,
 // but O(log n) via binary search over the cached newline index.
-// The search is inlined (sort.Search would force the comparison
-// callback to capture `nl` and `offset` and escape to the heap;
-// engine-bench profiling attributed ~64 k allocations per
-// 10-iteration run to that closure box before plan 195 inlined
-// the binary search here).
 func (f *File) LineOfOffset(offset int) int {
 	nl := f.lineIndex()
+	return 1 + newlineSearch(nl, offset)
+}
+
+// ColumnOfOffset converts a byte offset in Source to a 1-based column
+// number on its line.
+func (f *File) ColumnOfOffset(offset int) int {
+	if offset > len(f.Source) {
+		offset = len(f.Source)
+	}
+	// Reuses LineOfOffset's cached newline index via the same binary
+	// search instead of scanning backward from offset byte by byte —
+	// O(log n) in the newline count instead of O(line length). A single
+	// very long line (a minified table, a long URL list) used to make
+	// every diagnostic on that line pay for a full backward scan.
+	nl := f.lineIndex()
+	lo := newlineSearch(nl, offset)
+	start := 0
+	if lo > 0 {
+		start = nl[lo-1] + 1
+	}
+	return offset - start + 1
+}
+
+// newlineSearch returns the index of the first entry in nl (a sorted
+// list of newline byte offsets) that is >= offset, or len(nl) if none.
+// Inlined rather than sort.Search: sort.Search's comparison closure
+// would capture nl and offset and escape to the heap (engine-bench
+// profiling attributed ~64 k allocations per 10-iteration run to that
+// closure box before plan 195 inlined the binary search here).
+func newlineSearch(nl []int, offset int) int {
 	lo, hi := 0, len(nl)
 	for lo < hi {
 		mid := int(uint(lo+hi) >> 1)
@@ -559,18 +584,5 @@ func (f *File) LineOfOffset(offset int) int {
 			lo = mid + 1
 		}
 	}
-	return 1 + lo
-}
-
-// ColumnOfOffset converts a byte offset in Source to a 1-based column
-// number on its line.
-func (f *File) ColumnOfOffset(offset int) int {
-	if offset > len(f.Source) {
-		offset = len(f.Source)
-	}
-	start := offset
-	for start > 0 && f.Source[start-1] != '\n' {
-		start--
-	}
-	return offset - start + 1
+	return lo
 }
