@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 )
 
 // Collect gathers markdown records from configured sources.
@@ -174,7 +176,7 @@ func collectFile(
 		return Record{}, false, nil
 	}
 
-	content, err := os.ReadFile(fullPath)
+	content, err := bytelimit.ReadFileLimited(fullPath, bytelimit.DefaultMaxInputBytes)
 	if err != nil {
 		return Record{}, false, fmt.Errorf("read file %s: %w", fullPath, err)
 	}

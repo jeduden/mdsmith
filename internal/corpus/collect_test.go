@@ -1,9 +1,12 @@
 package corpus
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 )
 
 func TestCollect_HappyPath(t *testing.T) {
@@ -204,6 +207,45 @@ func TestCollect_ErrorPath(t *testing.T) {
 	_, err := Collect(cfg, t.TempDir())
 	if err == nil {
 		t.Fatal("expected resolve error")
+	}
+}
+
+// TestCollect_OversizedFile_ReturnsError guards against an unbounded
+// os.ReadFile on a corpus source: collectFile ingests markdown from
+// cloned third-party repositories, which are untrusted input
+// (docs/development/high-performance-go.md — "os.ReadFile on huge
+// inputs: one giant alloc, all resident"). A file over the shared
+// bytelimit.DefaultMaxInputBytes cap must fail the walk rather than
+// being read into memory in full.
+func TestCollect_OversizedFile_ReturnsError(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Join(t.TempDir(), "docs")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	oversized := bytes.Repeat([]byte("a"), int(bytelimit.DefaultMaxInputBytes)+1)
+	if err := os.WriteFile(filepath.Join(root, "huge.md"), oversized, 0o644); err != nil {
+		t.Fatalf("write oversized markdown: %v", err)
+	}
+
+	cfg := &Config{
+		CollectedAt:      "2026-02-16",
+		MinWords:         1,
+		MinChars:         1,
+		LicenseAllowlist: []string{"MIT"},
+		Sources: []SourceConfig{{
+			Name:       "seed",
+			Repository: "github.com/acme/seed",
+			Root:       root,
+			CommitSHA:  "abc123",
+			License:    "MIT",
+		}},
+	}
+
+	_, err := Collect(cfg, t.TempDir())
+	if err == nil {
+		t.Fatal("Collect: expected an error for a file over the byte-limit cap, got nil")
 	}
 }
 
