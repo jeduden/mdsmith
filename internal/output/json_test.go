@@ -170,12 +170,12 @@ func TestJSONFormatter_ExactOutput(t *testing.T) {
 	expected := `[
   {
     "file": "README.md",
-    "line": 10,
-    "column": 5,
     "rule": "MDS001",
     "name": "line-length",
     "severity": "error",
-    "message": "line too long (120 \u003e 80)"
+    "message": "line too long (120 \u003e 80)",
+    "line": 10,
+    "column": 5
   }
 ]
 `

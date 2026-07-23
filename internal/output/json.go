@@ -10,22 +10,24 @@ import (
 // JSONFormatter outputs diagnostics as a JSON array.
 type JSONFormatter struct{}
 
+// Fields are ordered pointer-containing (string/slice/pointer) first,
+// then scalar (int/bool) last, matching internal/lint.Diagnostic's
+// layout. Go's GC computes a struct's ptrdata as the offset through
+// the last pointer-containing field; one of these is built per
+// diagnostic on every `--format json` run. See
+// docs/development/high-performance-go.md "Struct layout".
 type jsonDiagnostic struct {
-	File            string           `json:"file"`
-	Line            int              `json:"line"`
-	Column          int              `json:"column"`
-	Rule            string           `json:"rule"`
-	Name            string           `json:"name"`
-	Severity        string           `json:"severity"`
-	Message         string           `json:"message"`
-	SourceLines     []string         `json:"source_lines,omitempty"`
-	SourceStartLine int              `json:"source_start_line,omitempty"`
-	Explanation     *jsonExplanation `json:"explanation,omitempty"`
-	// Deprecated and ReplacedBy mirror lint.Diagnostic's plan-136
-	// fields so CI scripts can route a deprecation warning without
-	// scanning the message body. Both are omitempty so non-
-	// deprecation diagnostics stay unchanged on the wire.
-	Deprecated bool   `json:"deprecated,omitempty"`
+	File        string           `json:"file"`
+	Rule        string           `json:"rule"`
+	Name        string           `json:"name"`
+	Severity    string           `json:"severity"`
+	Message     string           `json:"message"`
+	SourceLines []string         `json:"source_lines,omitempty"`
+	Explanation *jsonExplanation `json:"explanation,omitempty"`
+	// ReplacedBy mirrors lint.Diagnostic's plan-136 field so CI
+	// scripts can route a deprecation warning without scanning the
+	// message body. omitempty so non-deprecation diagnostics stay
+	// unchanged on the wire.
 	ReplacedBy string `json:"replaced_by,omitempty"`
 	// RelatedLocations mirrors lint.Diagnostic's plan-230 field so CI
 	// scripts can read the schema-constraint location without parsing
@@ -33,13 +35,20 @@ type jsonDiagnostic struct {
 	// unchanged on the wire. The rule-doc URL is not emitted here — it
 	// is derivable from the `rule` field and is an editor (LSP) concern.
 	RelatedLocations []jsonRelatedLocation `json:"related_locations,omitempty"`
+
+	Line            int  `json:"line"`
+	Column          int  `json:"column"`
+	SourceStartLine int  `json:"source_start_line,omitempty"`
+	Deprecated      bool `json:"deprecated,omitempty"`
 }
 
+// File and Message (pointer-containing) precede Line and Column
+// (scalar) for the same GC-ptrdata reason as jsonDiagnostic above.
 type jsonRelatedLocation struct {
 	File    string `json:"file,omitempty"`
+	Message string `json:"message"`
 	Line    int    `json:"line,omitempty"`
 	Column  int    `json:"column,omitempty"`
-	Message string `json:"message"`
 }
 
 type jsonExplanation struct {
