@@ -147,18 +147,14 @@ func ReplaceContent(f *lint.File, mp MarkerPair, content string) []byte {
 	return result
 }
 
-// SplitLines splits source into lines (like bytes.Split but returns [][]byte).
+// SplitLines splits source into lines on []byte instead of
+// hand-rolling a byte-by-byte scan: bytes.Split uses the same
+// SIMD-accelerated IndexByte the standard library relies on
+// everywhere else in mdsmith, and it pre-sizes the result in one
+// pass instead of growing it via repeated append. See
+// docs/development/high-performance-go.md "Strings and bytes".
 func SplitLines(source []byte) [][]byte {
-	var lines [][]byte
-	start := 0
-	for i, b := range source {
-		if b == '\n' {
-			lines = append(lines, source[start:i])
-			start = i + 1
-		}
-	}
-	lines = append(lines, source[start:])
-	return lines
+	return bytes.Split(source, []byte{'\n'})
 }
 
 // EnsureTrailingNewline appends \n if s does not already end with \n.

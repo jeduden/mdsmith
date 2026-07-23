@@ -491,6 +491,60 @@ func TestSplitLines_Empty(t *testing.T) {
 	require.Len(t, lines, 1, "expected 1 line, got %d", len(lines))
 }
 
+// splitLinesAllocBudget pins SplitLines to a single allocation per
+// call. A hand-rolled append loop over each '\n' reallocates its
+// backing array as the line count grows past each capacity doubling;
+// bytes.Split pre-counts separators in one pass and allocates the
+// result slice exactly once. See
+// docs/development/high-performance-go.md "Strings and bytes".
+const splitLinesAllocBudget = 1
+
+// representativeMarkdownSource is a 50-line body sized like a real
+// Markdown file passed through Engine.Fix — enough lines that a
+// growth-only append loop needs several reallocations, but not an
+// artificial stress size.
+func representativeMarkdownSource() []byte {
+	var b strings.Builder
+	for i := 0; i < 50; i++ {
+		b.WriteString("this is a representative line of markdown prose\n")
+	}
+	return []byte(b.String())
+}
+
+// TestSplitLines_AllocBudget pins the per-call allocation count so a
+// regression back to the manual append loop fails CI.
+func TestSplitLines_AllocBudget(t *testing.T) {
+	if testing.Short() {
+		t.Skip("alloc gate skipped in -short mode")
+	}
+	src := representativeMarkdownSource()
+	allocs := testing.AllocsPerRun(100, func() {
+		_ = SplitLines(src)
+	})
+	require.LessOrEqualf(t, allocs, float64(splitLinesAllocBudget),
+		"SplitLines allocs/op = %.0f, budget = %d", allocs, splitLinesAllocBudget)
+}
+
+// BenchmarkSplitLines reports allocs/op for SplitLines on a
+// representative 50-line body and fails the run if it regresses past
+// splitLinesAllocBudget, matching the project's "benchmarks that
+// always run" convention.
+func BenchmarkSplitLines(b *testing.B) {
+	src := representativeMarkdownSource()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = SplitLines(src)
+	}
+	b.StopTimer()
+
+	allocs := testing.AllocsPerRun(100, func() {
+		_ = SplitLines(src)
+	})
+	if allocs > float64(splitLinesAllocBudget) {
+		b.Fatalf("SplitLines allocs/op = %.0f, budget = %d", allocs, splitLinesAllocBudget)
+	}
+}
+
 func TestParseColumnConfig_Basic(t *testing.T) {
 	raw := map[string]any{
 		"desc": map[string]any{
