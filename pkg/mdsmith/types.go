@@ -10,19 +10,25 @@ import (
 // `--format json` CLI and the LSP server, so a JavaScript host decodes
 // it without a second schema. Column is a 1-based UTF-16 code-unit
 // offset (the LSP default), measured once on the Go side.
+//
+// Fields are ordered pointer-containing (string/slice/pointer) first,
+// then scalar (int/bool) last, matching internal/lint.Diagnostic's
+// layout. Go's GC computes a struct's ptrdata as the offset through
+// the last pointer-containing field; this type is built once per
+// diagnostic in toDiagnostics, on every Session.Check/Session.Fix
+// call across the WASM binding, the Obsidian plugin, and any other
+// embedder of this package. See
+// docs/development/high-performance-go.md "Struct layout".
 type Diagnostic struct {
-	File            string       `json:"file"`
-	Line            int          `json:"line"`
-	Column          int          `json:"column"`
-	Rule            string       `json:"rule"`
-	Name            string       `json:"name"`
-	Severity        string       `json:"severity"`
-	Message         string       `json:"message"`
-	SourceLines     []string     `json:"source_lines,omitempty"`
-	SourceStartLine int          `json:"source_start_line,omitempty"`
-	Explanation     *Explanation `json:"explanation,omitempty"`
-	Deprecated      bool         `json:"deprecated,omitempty"`
-	ReplacedBy      string       `json:"replaced_by,omitempty"`
+	File        string   `json:"file"`
+	Rule        string   `json:"rule"`
+	Name        string   `json:"name"`
+	Severity    string   `json:"severity"`
+	Message     string   `json:"message"`
+	SourceLines []string `json:"source_lines,omitempty"`
+
+	Explanation *Explanation `json:"explanation,omitempty"`
+	ReplacedBy  string       `json:"replaced_by,omitempty"`
 
 	// RelatedLocations carries secondary source locations — for MDS020,
 	// the schema constraint a value violated — matching the CLI
@@ -35,17 +41,25 @@ type Diagnostic struct {
 	// that want the rule identifier without parsing JSON. It is not
 	// serialized; use Rule for the wire field.
 	RuleID string `json:"-"`
+
+	Line            int  `json:"line"`
+	Column          int  `json:"column"`
+	SourceStartLine int  `json:"source_start_line,omitempty"`
+	Deprecated      bool `json:"deprecated,omitempty"`
 }
 
 // RelatedLocation is a secondary source location attached to a
 // Diagnostic — for a schema violation, the line of the schema
 // constraint. File may differ from the owning Diagnostic.File (the
 // schema lives in a separate proto.md, kind file, or config).
+//
+// File and Message (pointer-containing) precede Line and Column
+// (scalar) for the same GC-ptrdata reason as Diagnostic above.
 type RelatedLocation struct {
 	File    string `json:"file,omitempty"`
+	Message string `json:"message"`
 	Line    int    `json:"line,omitempty"`
 	Column  int    `json:"column,omitempty"`
-	Message string `json:"message"`
 }
 
 // Explanation attaches per-leaf rule provenance to a Diagnostic. It is
