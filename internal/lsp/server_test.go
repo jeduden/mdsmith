@@ -2124,6 +2124,39 @@ func TestDocumentEndPositionEmpty(t *testing.T) {
 	assert.Equal(t, 0, endChar)
 }
 
+// representativeLSPDocument is a 2000-line trailing-newline body sized
+// like a real document passed through fullFileEdit on every "fix all"
+// whole-document code action.
+func representativeLSPDocument() []byte {
+	var b strings.Builder
+	for i := 0; i < 2000; i++ {
+		b.WriteString("this is a representative line of markdown prose\n")
+	}
+	return []byte(b.String())
+}
+
+// BenchmarkDocumentEndPosition pins documentEndPosition to zero
+// allocations on the trailing-newline path so a regression back to an
+// allocating implementation fails CI. The newline count itself uses
+// bytes.Count's SIMD-accelerated scan instead of a scalar per-byte Go
+// loop; see docs/development/high-performance-go.md "Strings and
+// bytes".
+func BenchmarkDocumentEndPosition(b *testing.B) {
+	src := representativeLSPDocument()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = documentEndPosition(src)
+	}
+	b.StopTimer()
+
+	allocs := testing.AllocsPerRun(100, func() {
+		_, _ = documentEndPosition(src)
+	})
+	if allocs > 0 {
+		b.Fatalf("documentEndPosition allocs/op = %.0f, budget = 0", allocs)
+	}
+}
+
 func TestReloadConfigEmptyRoot(t *testing.T) {
 	t.Parallel()
 	s := New(Options{Reader: nil, Writer: io.Discard})
