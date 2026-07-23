@@ -177,13 +177,20 @@ const (
 )
 
 // Diagnostic is the LSP wire shape produced by the server.
+//
+// Fields are ordered pointer-containing (string/slice/pointer/struct-
+// with-pointer-field) first, then scalar (int) last, matching
+// internal/lint.Diagnostic's layout. Go's GC computes a struct's
+// ptrdata as the offset through the last pointer-containing field;
+// this type is built once per diagnostic on the LSP's keystroke hot
+// path (every publishDiagnostics call), so keeping the scalar fields
+// out of that span matters here. See
+// docs/development/high-performance-go.md "Struct layout".
 type Diagnostic struct {
-	Range    Range              `json:"range"`
-	Severity DiagnosticSeverity `json:"severity,omitempty"`
-	Code     string             `json:"code,omitempty"`
-	Source   string             `json:"source,omitempty"`
-	Message  string             `json:"message"`
-	Data     *diagnosticData    `json:"data,omitempty"`
+	Code    string          `json:"code,omitempty"`
+	Source  string          `json:"source,omitempty"`
+	Message string          `json:"message"`
+	Data    *diagnosticData `json:"data,omitempty"`
 	// RelatedInformation surfaces secondary locations (plan 230): for
 	// MDS020, the proto.md / kind-file line that declares the violated
 	// constraint, which the editor renders as a navigable entry.
@@ -194,6 +201,9 @@ type Diagnostic struct {
 	// to its documentation. Href must be an http(s) URL per the LSP
 	// spec; clients render it next to the code.
 	CodeDescription *codeDescription `json:"codeDescription,omitempty"`
+
+	Range    Range              `json:"range"`
+	Severity DiagnosticSeverity `json:"severity,omitempty"`
 }
 
 // diagnosticRelatedInformation is one entry of Diagnostic.relatedInformation
