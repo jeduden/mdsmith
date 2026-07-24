@@ -155,14 +155,19 @@ func TestMayContainFootnote(t *testing.T) {
 	assert.True(t, mayContainFootnote([]byte("[^note]: a definition.\n")))
 }
 
-// TestCheckFootnotes_NoNeedle_SkipsBothRegexPasses benchmarks
-// checkFootnotes on prose with no footnote syntax to demonstrate the
-// gate's real effect: without it, footnoteRefRE and footnoteDefRE each
-// run a full FindAllSubmatchIndex over the whole file on every Check
-// call, unconditionally, even though this rule (MDS043) is opt-in and
-// so only runs for workspaces that enabled it. b.Fatalf pins a budget
-// so a future regression that removes the gate is caught in CI rather
-// than by a human re-running benchstat.
+// footnoteCheckBudgetNs pins the gate's real effect: without it,
+// footnoteRefRE and footnoteDefRE each run a full FindAllSubmatchIndex
+// over the whole file on every Check call. Gated: ~1us (one
+// bytes.Contains scan). Ungated: ~580us (two full regex passes over
+// ~28KB). The budget keeps roughly the same ~15-20x headroom over the
+// gated baseline that BenchmarkCheckCorpusSmall/Large use (see
+// internal/engine/bench_test.go), well above measurement noise, while
+// staying two orders of magnitude below the ungated cost.
+const footnoteCheckBudgetNs = 50_000
+
+// BenchmarkCheckFootnotes_NoNeedle exercises checkFootnotes on prose with
+// no footnote syntax; benchstat-friendly (no assertion), consumed by
+// TestCheckFootnotes_NoNeedleBudget below for the enforced gate.
 func BenchmarkCheckFootnotes_NoNeedle(b *testing.B) {
 	var src []byte
 	for i := 0; i < 200; i++ {
@@ -175,18 +180,36 @@ func BenchmarkCheckFootnotes_NoNeedle(b *testing.B) {
 	require.NoError(b, err)
 	r := &Rule{}
 
-	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		r.checkFootnotes(f)
 	}
-	perOp := float64(b.Elapsed().Nanoseconds()) / float64(b.N)
-	// Gated: ~1µs (one bytes.Contains scan). Ungated: ~580µs (two full
-	// regex passes over ~28KB). 50µs stays far above measurement noise
-	// while catching a dropped gate by two orders of magnitude.
-	const budgetNsPerOp = 50_000
-	if perOp > budgetNsPerOp {
-		b.Fatalf("checkFootnotes on a no-footnote file: %.0f ns/op, budget = %d; "+
+}
+
+// TestCheckFootnotes_NoNeedleBudget pins the ns/op regression gate under
+// a normal `go test` run. CI's check-bench/markdown-bench jobs only run
+// `-bench` against internal/engine, pkg/markdown, internal/lsp, and
+// cue/cuelite (see .github/workflows/ci.yml) — a plain
+// BenchmarkCheckFootnotes_NoNeedle with an inline b.Fatalf would never
+// execute in CI and the assertion would be dead code. testing.Benchmark
+// runs the benchmark function programmatically so the assertion lands
+// in a Test that `go test ./...` (and therefore CI) actually runs,
+// matching paragraphstructure.TestCheckAllocBudget's rationale for its
+// own Benchmark/Test pair.
+func TestCheckFootnotes_NoNeedleBudget(t *testing.T) {
+	if testing.Short() {
+		t.Skip("perf gate skipped in -short mode")
+	}
+	if raceEnabled {
+		t.Skip("perf gate skipped under -race; the race detector's " +
+			"instrumentation overhead perturbs the ns/op measurement")
+	}
+	result := testing.Benchmark(BenchmarkCheckFootnotes_NoNeedle)
+	perOp := float64(result.NsPerOp())
+	t.Logf("checkFootnotes on a no-footnote file = %.0f ns/op (budget = %d)",
+		perOp, footnoteCheckBudgetNs)
+	if perOp > footnoteCheckBudgetNs {
+		t.Fatalf("checkFootnotes on a no-footnote file: %.0f ns/op, budget = %d; "+
 			"the mayContainFootnote gate may have been removed or bypassed",
-			perOp, budgetNsPerOp)
+			perOp, footnoteCheckBudgetNs)
 	}
 }
