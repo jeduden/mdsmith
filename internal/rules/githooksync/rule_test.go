@@ -1071,3 +1071,32 @@ func TestRule_Check_OversizedHookNoDriverSilent(t *testing.T) {
 	assert.Empty(t, diags,
 		"no driver registered: oversized third-party hook must not produce a diagnostic")
 }
+
+// TestDriftParts_ResolvesHooksDirOnce pins that a driftParts cache miss
+// spawns `git rev-parse --git-path hooks` exactly once, shared between
+// peekHookSource and preMergeCommitHookDrift, instead of once for each.
+func TestDriftParts_ResolvesHooksDirOnce(t *testing.T) {
+	dir := t.TempDir()
+	initRepoWithDriver(t, dir)
+	installCanonicalHook(t, dir)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".gitattributes"),
+		[]byte(canonicalManagedBlock()), 0o644))
+
+	driftMu.Lock()
+	delete(driftCache, dir)
+	driftMu.Unlock()
+
+	calls := 0
+	orig := resolveHooksDir
+	resolveHooksDir = func(repoRoot string) string {
+		calls++
+		return orig(repoRoot)
+	}
+	defer func() { resolveHooksDir = orig }()
+
+	r := &Rule{}
+	parts := r.driftParts(dir)
+	assert.Empty(t, parts, "canonical repo must report no drift")
+	assert.Equal(t, 1, calls,
+		"driftParts must resolve the hooks directory once, not once per drift check")
+}
