@@ -353,12 +353,13 @@ func (r *Rule) checkURL(raw string) urlResult {
 		if r.links.MaxProbes > 0 {
 			probeMaxOnce.Do(func() { probeMax = r.links.MaxProbes })
 			// Atomically claim a probe slot. If the new count exceeds the
-			// ceiling, give back the slot and return a capped result without
-			// storing it in the cache — the URL should remain retriable if the
-			// ceiling is raised in a subsequent run.
+			// ceiling, give back the slot and cache the capped result so
+			// subsequent calls for the same URL take the fast cache-hit path.
 			if probeCount.Add(1) > int64(probeMax) {
 				probeCount.Add(-1)
-				return urlResult{capped: true}, nil
+				res := urlResult{capped: true}
+				urlCache.Store(raw, res)
+				return res, nil
 			}
 		}
 		r.acquire()
@@ -392,10 +393,13 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 	// timeout and a concurrency of 10. AllowInternal resets to false
 	// (SSRF guard on) and MaxProbes resets to defaultMaxProbes so a
 	// partial override never silently disables the guard or the ceiling.
+	// Skip resets to nil so that removing external-skip from the config
+	// takes effect without a process restart.
 	r.links.Timeout = defaultTimeout
 	r.links.RateLimit = defaultRateLimit
 	r.links.AllowInternal = false
 	r.links.MaxProbes = defaultMaxProbes
+	r.links.Skip = nil
 
 	for k, v := range settings {
 		switch k {

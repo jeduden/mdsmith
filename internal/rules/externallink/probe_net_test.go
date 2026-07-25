@@ -3,7 +3,6 @@
 package externallink
 
 import (
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -20,7 +19,7 @@ import (
 // token character) fails before any network I/O.
 func TestDoWithClient_NewRequestError(t *testing.T) {
 	res := doWithClient(permissiveClient, "BAD METHOD", "http://localhost/", time.Second)
-	require.Error(t, res.err)
+	assert.Error(t, res.err)
 }
 
 // TestProbe_HeadOK covers the happy HEAD path through probe().
@@ -41,7 +40,7 @@ func TestProbe_HeadOK(t *testing.T) {
 func TestProbe_HeadErrorSkipsGet(t *testing.T) {
 	// TEST-NET-1 (192.0.2.0/24) does not route; allowInternal is irrelevant.
 	res := probe("http://192.0.2.1:9/down", 100*time.Millisecond, false)
-	require.Error(t, res.err)
+	assert.Error(t, res.err)
 	assert.Equal(t, 0, res.statusCode)
 }
 
@@ -66,7 +65,7 @@ func TestProbe_405FallbackGetError(t *testing.T) {
 	defer srv.Close()
 
 	res := probe(srv.URL, time.Second, true)
-	require.Error(t, res.err)
+	assert.Error(t, res.err)
 }
 
 // TestIsRestrictedIP_Blocked verifies that all blocked IP classes return true.
@@ -88,7 +87,7 @@ func TestIsRestrictedIP_Blocked(t *testing.T) {
 		"fdff:ffff::1",    // ULA IPv6 high end
 		"100.64.0.1",      // CGN (RFC6598)
 		"100.127.255.254", // CGN high end
-		"100.100.100.200", // Alibaba Cloud metadata
+		"100.100.100.200", // Alibaba Cloud metadata (inside CGN range)
 		"0.0.0.0",         // unspecified
 		"::",              // unspecified IPv6
 		"224.0.0.1",       // multicast
@@ -126,7 +125,7 @@ func TestSSRFControl_LoopbackDenied(t *testing.T) {
 // TestSSRFControl_ExternalAllowed confirms ssrfControl allows public IPs.
 func TestSSRFControl_ExternalAllowed(t *testing.T) {
 	err := ssrfControl("tcp", "1.1.1.1:443", syscall.RawConn(nil))
-	require.NoError(t, err)
+	assert.NoError(t, err)
 }
 
 // TestSSRFCheckRedirect_IPLiteralLoopback confirms ssrfCheckRedirect blocks
@@ -139,33 +138,26 @@ func TestSSRFCheckRedirect_IPLiteralLoopback(t *testing.T) {
 	assert.Contains(t, err.Error(), "denied")
 }
 
-// TestSSRFCheckRedirect_PrivateRangeResolved confirms ssrfCheckRedirect
-// blocks a redirect whose hostname resolves to a private-range IP. We test
-// this by checking the loopback hostname "localhost", which always resolves
-// to 127.0.0.1 or ::1.
-func TestSSRFCheckRedirect_PrivateRangeResolved(t *testing.T) {
-	// Some CI environments resolve "localhost" to public IPs; skip if so.
-	addrs, err := net.LookupHost("localhost")
-	if err != nil || len(addrs) == 0 {
-		t.Skip("cannot resolve localhost")
-	}
-	allPrivate := true
-	for _, a := range addrs {
-		ip, _ := netip.ParseAddr(a)
-		if !isRestrictedIP(ip) {
-			allPrivate = false
-			break
-		}
-	}
-	if !allPrivate {
-		t.Skip("localhost resolves to a non-private address in this environment")
-	}
-
+// TestSSRFCheckRedirect_HostnamePassesThrough confirms ssrfCheckRedirect
+// returns nil for hostname redirect targets. Hostname-based SSRF checks
+// happen at the TCP dial via ssrfControl; no DNS lookup here avoids the
+// double-resolution TOCTOU window.
+func TestSSRFCheckRedirect_HostnamePassesThrough(t *testing.T) {
 	req, err := http.NewRequest(http.MethodGet, "http://localhost/target", nil)
 	require.NoError(t, err)
 	err = ssrfCheckRedirect(req, nil)
+	assert.NoError(t, err)
+}
+
+// TestSSRFCheckRedirect_HopLimitExceeded confirms ssrfCheckRedirect stops
+// after 10 redirect hops.
+func TestSSRFCheckRedirect_HopLimitExceeded(t *testing.T) {
+	req, err := http.NewRequest(http.MethodGet, "http://example.com/final", nil)
+	require.NoError(t, err)
+	via := make([]*http.Request, 10)
+	err = ssrfCheckRedirect(req, via)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "denied")
+	assert.Contains(t, err.Error(), "10 redirects")
 }
 
 // TestProbe_LoopbackBlocked confirms that probe() with allowInternal=false
@@ -177,8 +169,8 @@ func TestProbe_LoopbackBlocked(t *testing.T) {
 	defer srv.Close()
 
 	res := probe(srv.URL, time.Second, false)
-	require.True(t, res.probed, "a blocked probe is still a probed result")
-	require.Error(t, res.err, "loopback must be denied by the SSRF guard")
+	assert.True(t, res.probed, "a blocked probe is still a probed result")
+	assert.Error(t, res.err, "loopback must be denied by the SSRF guard")
 }
 
 // TestProbe_AllowInternalBypassesGuard confirms that allowInternal=true

@@ -4,6 +4,7 @@ package externallink
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -13,30 +14,22 @@ import (
 	"time"
 )
 
-// restrictedPrefixes are the IP ranges the SSRF guard blocks when
-// external-allow-internal is false (the default). Includes loopback,
-// RFC1918 private, link-local, ULA, CGN shared-address, and the
-// cloud-metadata link-local range.
+// restrictedPrefixes are the IP ranges blocked when external-allow-internal is
+// false (the default). ip.IsLoopback(), ip.IsUnspecified(), and
+// ip.IsMulticast() cover loopback (127.0.0.0/8, ::1), unspecified (0.0.0.0,
+// ::), and multicast; the prefixes below cover the remaining restricted ranges.
 var restrictedPrefixes = []netip.Prefix{
-	netip.MustParsePrefix("127.0.0.0/8"),    // loopback IPv4
-	netip.MustParsePrefix("::1/128"),        // loopback IPv6
 	netip.MustParsePrefix("10.0.0.0/8"),     // private (RFC1918)
 	netip.MustParsePrefix("172.16.0.0/12"),  // private (RFC1918)
 	netip.MustParsePrefix("192.168.0.0/16"), // private (RFC1918)
-	netip.MustParsePrefix("169.254.0.0/16"), // link-local IPv4 (includes 169.254.169.254 metadata)
+	netip.MustParsePrefix("169.254.0.0/16"), // link-local IPv4 (cloud metadata: 169.254.169.254)
 	netip.MustParsePrefix("fe80::/10"),      // link-local IPv6
 	netip.MustParsePrefix("fc00::/7"),       // ULA IPv6
-	netip.MustParsePrefix("100.64.0.0/10"),  // shared address space (CGN, RFC6598)
-}
-
-// cloudMetadataAddrs are SSRF targets not covered by restrictedPrefixes.
-var cloudMetadataAddrs = []netip.Addr{
-	netip.MustParseAddr("100.100.100.200"), // Alibaba Cloud metadata
+	netip.MustParsePrefix("100.64.0.0/10"),  // CGN (RFC6598; covers Alibaba metadata 100.100.100.200)
 }
 
 // isRestrictedIP reports whether ip is loopback, unspecified, multicast,
-// in a restricted prefix, or a known cloud-metadata address. The guard
-// applies after IPv4-in-IPv6 unmapping.
+// or in a restricted prefix. The guard applies after IPv4-in-IPv6 unmapping.
 func isRestrictedIP(ip netip.Addr) bool {
 	ip = ip.Unmap()
 	if ip.IsLoopback() || ip.IsUnspecified() || ip.IsMulticast() {
@@ -44,11 +37,6 @@ func isRestrictedIP(ip netip.Addr) bool {
 	}
 	for _, prefix := range restrictedPrefixes {
 		if prefix.Contains(ip) {
-			return true
-		}
-	}
-	for _, meta := range cloudMetadataAddrs {
-		if ip == meta {
 			return true
 		}
 	}
@@ -60,14 +48,9 @@ func isRestrictedIP(ip netip.Addr) bool {
 // new TCP dial — initial connections and redirect hops to a new host —
 // so the guard reasserts containment on each hop.
 func ssrfControl(_ string, address string, _ syscall.RawConn) error {
-	host, _, err := net.SplitHostPort(address)
-	if err != nil {
-		return fmt.Errorf("external-link-check: ssrf guard: bad address %q: %w", address, err)
-	}
-	ip, err := netip.ParseAddr(host)
-	if err != nil {
-		return fmt.Errorf("external-link-check: ssrf guard: bad IP %q: %w", host, err)
-	}
+	// The dialer always passes a resolved "ip:port"; both calls are infallible.
+	host, _, _ := net.SplitHostPort(address)
+	ip, _ := netip.ParseAddr(host)
 	if isRestrictedIP(ip) {
 		return fmt.Errorf("external-link-check: connection to %s denied (SSRF guard;"+
 			" set links.external-allow-internal: true to allow)", host)
@@ -75,33 +58,20 @@ func ssrfControl(_ string, address string, _ syscall.RawConn) error {
 	return nil
 }
 
-// ssrfCheckRedirect is a http.Client.CheckRedirect function that resolves
-// each redirect target and refuses hops to restricted IP ranges. It
-// provides defense-in-depth alongside ssrfControl: the dialer fires on
-// the new connection, while this fires at the HTTP layer (earlier, clearer
-// error message, handles IP literals without a DNS round-trip).
-func ssrfCheckRedirect(req *http.Request, _ []*http.Request) error {
+// ssrfCheckRedirect caps the redirect chain and blocks redirects to restricted
+// IP literals. Hostname-based redirect targets are checked at the TCP dial by
+// ssrfControl, so no DNS round-trip is needed here.
+func ssrfCheckRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("external-link-check: stopped after 10 redirects")
+	}
 	host := req.URL.Hostname()
-	// If the redirect target is an IP literal, check it directly.
-	if ip, err := netip.ParseAddr(host); err == nil {
-		if isRestrictedIP(ip) {
-			return fmt.Errorf("external-link-check: redirect to %s denied (SSRF guard)", host)
-		}
+	ip, err := netip.ParseAddr(host)
+	if err != nil {
 		return nil
 	}
-	// Otherwise resolve and check each address.
-	addrs, err := net.LookupHost(host)
-	if err != nil {
-		return err
-	}
-	for _, a := range addrs {
-		ip, err := netip.ParseAddr(a)
-		if err != nil {
-			continue
-		}
-		if isRestrictedIP(ip) {
-			return fmt.Errorf("external-link-check: redirect to %s denied (SSRF guard: %s is restricted)", host, a)
-		}
+	if isRestrictedIP(ip) {
+		return fmt.Errorf("external-link-check: redirect to %s denied (SSRF guard)", host)
 	}
 	return nil
 }
@@ -116,7 +86,11 @@ var permissiveClient = &http.Client{}
 
 func buildGuardedClient() *http.Client {
 	dialer := &net.Dialer{Control: ssrfControl}
-	transport := &http.Transport{DialContext: dialer.DialContext}
+	transport := &http.Transport{
+		DialContext:     dialer.DialContext,
+		Proxy:           http.ProxyFromEnvironment,
+		IdleConnTimeout: 90 * time.Second,
+	}
 	return &http.Client{
 		Transport:     transport,
 		CheckRedirect: ssrfCheckRedirect,

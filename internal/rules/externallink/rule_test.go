@@ -313,6 +313,20 @@ func TestApplySettings_Defaults(t *testing.T) {
 	assert.Equal(t, defaultMaxProbes, r.links.MaxProbes)
 }
 
+// TestApplySettings_SkipReset verifies that calling ApplySettings a second
+// time without external-skip clears a previously compiled skip-pattern list,
+// so removing the setting from config takes effect without a restart.
+func TestApplySettings_SkipReset(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{
+		"links": map[string]any{"external-skip": []any{`^https://skip`}},
+	}))
+	require.NotNil(t, r.links.Skip)
+
+	require.NoError(t, r.ApplySettings(map[string]any{}))
+	assert.Nil(t, r.links.Skip, "ApplySettings must clear skip patterns when external-skip is absent")
+}
+
 func TestApplySettings_CustomTimeout(t *testing.T) {
 	r := &Rule{}
 	require.NoError(t, r.ApplySettings(map[string]any{
@@ -692,6 +706,52 @@ func TestCheck_MaxProbesCap(t *testing.T) {
 		}
 	}
 	assert.Equal(t, 1, capped, "exactly the N+1th URL should be reported as unchecked")
+}
+
+// TestCheck_MaxProbesCap_CachedResult verifies that a URL capped in one Check
+// call returns the cached capped result on a subsequent call without issuing
+// another request or recounting against the probe ceiling.
+func TestCheck_MaxProbesCap_CachedResult(t *testing.T) {
+	const maxProbes = 1
+	var mu sync.Mutex
+	requestCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		requestCount++
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	r := newConfiguredRule(t, map[string]any{"external-max-probes": maxProbes})
+	cappedURL := srv.URL + "/capped"
+
+	// First check: one URL gets probed, one gets capped.
+	doc1 := fmt.Sprintf("# T\n\nSee [a](%s/ok) and [b](%s).\n", srv.URL, cappedURL)
+	diags1 := r.Check(mustFile(t, doc1))
+	capped1 := 0
+	for _, d := range diags1 {
+		if strings.Contains(d.Message, "per-run limit reached") {
+			capped1++
+		}
+	}
+	assert.Equal(t, 1, capped1, "first check: one URL must be capped")
+
+	// Second check: same capped URL appears again — must not issue a new request.
+	doc2 := fmt.Sprintf("# T\n\nSee [b2](%s).\n", cappedURL)
+	diags2 := r.Check(mustFile(t, doc2))
+	capped2 := 0
+	for _, d := range diags2 {
+		if strings.Contains(d.Message, "per-run limit reached") {
+			capped2++
+		}
+	}
+	assert.Equal(t, 1, capped2, "second check: cached capped result must still report the URL as unchecked")
+
+	mu.Lock()
+	got := requestCount
+	mu.Unlock()
+	assert.Equal(t, maxProbes, got, "total requests must equal max-probes, not grow on repeated capped URL")
 }
 
 // TestFailureMessage_Capped pins the capped-result diagnostic message.

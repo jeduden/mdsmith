@@ -38,13 +38,13 @@ probe results.
 
 ## Settings
 
-| Setting                          | Type   | Default | Description                                                     |
-| -------------------------------- | ------ | ------- | --------------------------------------------------------------- |
-| `links.external-skip`            | list   | `[]`    | Regex patterns; a matching URL is not probed                    |
-| `links.external-timeout`         | string | `"5s"`  | Per-request timeout as a Go duration                            |
-| `links.external-rate-limit`      | int    | `10`    | Maximum concurrent in-flight requests; minimum `1`              |
-| `links.external-allow-internal`  | bool   | `false` | Allow probing loopback, private, link-local, and metadata IPs   |
-| `links.external-max-probes`      | int    | `1000`  | Maximum distinct URLs probed per run; `0` means unlimited       |
+| Setting                         | Type   | Default | Description                                                   |
+| ------------------------------- | ------ | ------- | ------------------------------------------------------------- |
+| `links.external-skip`           | list   | `[]`    | Regex patterns; a matching URL is not probed                  |
+| `links.external-timeout`        | string | `"5s"`  | Per-request timeout as a Go duration                          |
+| `links.external-rate-limit`     | int    | `10`    | Maximum concurrent in-flight requests; minimum `1`            |
+| `links.external-allow-internal` | bool   | `false` | Allow probing loopback, private, link-local, and metadata IPs |
+| `links.external-max-probes`     | int    | `1000`  | Maximum distinct URLs probed per run; `0` means unlimited     |
 
 Each external URL is probed once per run with an HTTP HEAD request. A
 URL whose HEAD returns 405 (Method Not Allowed) is retried with GET.
@@ -58,13 +58,13 @@ rate limit below `1` clamps to `1`.
 When `links.external-allow-internal` is `false` (the default), the
 rule refuses to connect to any IP in a restricted range:
 
-- **Loopback**: `127.0.0.0/8`, `::1/128`
+- **Loopback**: `127.0.0.0/8`, `::1/128` (via `ip.IsLoopback()`)
 - **Private (RFC1918)**: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`
 - **Link-local**: `169.254.0.0/16` (covers AWS/GCP/Azure metadata at
   `169.254.169.254`), `fe80::/10`
 - **ULA**: `fc00::/7`
-- **CGN shared-address space**: `100.64.0.0/10`
-- **Alibaba Cloud metadata**: `100.100.100.200`
+- **CGN shared-address space**: `100.64.0.0/10` (covers Alibaba Cloud
+  metadata at `100.100.100.200`)
 
 The guard fires on both the initial connection and every redirect hop,
 so a redirect bounce from an allowed URL to an internal endpoint is
@@ -72,10 +72,9 @@ also blocked. Redirects to restricted IP literals are caught at the
 HTTP layer before the TCP dial.
 
 A document link to a restricted address yields a `"external URL
-unreachable"` diagnostic (the connection is denied by the guard) rather
-than a false pass. Set `links.external-allow-internal: true` only when
-you are deliberately linting an internal documentation site from a
-trusted network position.
+unreachable"` diagnostic. The guard denies the connection rather than
+issuing a false pass. Set `links.external-allow-internal: true` only
+when you deliberately lint an internal site from a trusted network.
 
 ## Egress ceiling
 
