@@ -1,0 +1,26 @@
+[
+  {
+    "path": "internal/rules/externallink/rule.go",
+    "line": 192,
+    "side": "RIGHT",
+    "severity": "medium",
+    "id": "S001",
+    "body": "**[S001 · medium] MDS072 external-link-check probes document-supplied URLs with no private/loopback/link-local/metadata filtering (SSRF), and follows redirects with the default client**\n\nWhen the opt-in external-link-check rule (MDS072) is enabled in .mdsmith.yml, Check walks the document AST\nand extracts every http/https destination from links, autolinks, and images (externalURL, rule.go:174),\nthen issues a live HEAD (GET on 405) request to each one (checkURL -> probe -> http.Client.Do,\nprobe_net.go:41).\n\nThe only gate on the target is isExternalHTTP (rule.go:194), which checks solely that the scheme is\nhttp/https and Host is non-empty. There is no allowlist and no rejection of RFC1918 / loopback / link-local\n/ ULA hosts, so a document link to `http://169.254.169.254/latest/meta-data/`, `http://127.0.0.1:6379/`,\n`http://[::1]/`, or an internal hostname is probed against the host running mdsmith. The shared client is\nthe zero-value http.Client (probe_net.go:18) with no CheckRedirect, so it follows up to 10 redirects by\ndefault — an external URL that a reviewer or the external-skip denylist deems safe can 30x-bounce to an\ninternal target, and no per-hop containment is reapplied.\n\nThe rule runs anywhere Check runs: `mdsmith check` (CI), `mdsmith fix`, and the LSP diagnostics pipeline\n(server_diagnostics.go schedules a lint on didOpen/didSave and the session runs rule.All()). The native\n`mdsmith lsp` used by Neovim has no Workspace-Trust equivalent, so opening a hostile repo whose .mdsmith.yml\nenables MDS072 fires the probes on file open. Both the enabling config and the malicious URLs are\nattacker-controlled in the hostile-repo threat model, so 'requires non-default config' is weak mitigation —\nthe attacker ships the config.\n\n**Fix:** Before probing, resolve the target host and refuse any address in a private/loopback/link-local/ULA/\nunspecified range and the cloud-metadata IPs. Guard both the initial connection and every redirect hop via\nhttp.Client.CheckRedirect plus a net.Dialer.Control hook that re-validates the resolved IP, closing the\nDNS-rebinding and redirect-bounce gaps. Consider making deny-internal the default and gating any internal\nprobing behind an explicit, documented opt-in. In the LSP, treat MDS072 as trust-sensitive (do not run it\nagainst an untrusted workspace without an explicit trust signal)."
+  },
+  {
+    "path": "internal/rules/externallink/rule.go",
+    "line": 300,
+    "side": "RIGHT",
+    "severity": "low",
+    "id": "S002",
+    "body": "**[S002 · low] MDS072 caps probe concurrency but not the total number of outbound requests per run, so a hostile document is an egress/DoS amplifier**\n\nThe rate-limit semaphore (external-rate-limit, default 10) bounds only how many probes are in flight at once\n(acquire/release, rule.go:323). Nothing bounds the total number of distinct URLs probed in a run. A single\ndocument (or a workspace of documents) can contain an unbounded number of unique http/https URLs; the\nper-URL cache collapses duplicates but not distinct hosts. With the default 5s per-request timeout and a slow\nor non-responding attacker-chosen server, N unique URLs take roughly N/rate-limit * timeout seconds, all as\noutbound requests the victim's host is made to send.\n\n**Fix:** Add a per-run (and/or per-file) ceiling on the number of URLs actually probed, reporting the remaining links\nas unchecked once the cap is hit (mirroring how other size caps degrade). Pair with a shorter default timeout\nor a global deadline for the probing phase."
+  },
+  {
+    "path": "docs/reference/telemetry.md",
+    "line": 10,
+    "side": "RIGHT",
+    "severity": "info",
+    "id": "S003",
+    "body": "**[S003 · info] Telemetry / network-policy docs still assert zero runtime egress and do not disclose the opt-in MDS072 network access**\n\ntelemetry.md states 'The CLI and the LSP server make zero outbound network calls during normal operation'\nand 'A locked-down or air-gapped CI runner can run mdsmith check . with no outbound access and the run\ncompletes normally.' Since MDS072 external-link-check landed, that is no longer unconditionally true:\nenabling the rule makes check/fix and the LSP issue outbound HTTP. The claim is defensible for the default\nconfiguration (the rule is off by default), but the page never carves out the exception, and the rule's own\ndocumentation does not warn that it performs network access against document-controlled URLs (the SSRF\nsurface of S001).\n\n**Fix:** Add an explicit carve-out to telemetry.md naming MDS072 external-link-check as the single opt-in rule that\nperforms runtime network access, and add an SSRF/internal-target warning to the rule's user documentation\nonce the S001 filtering is in place."
+  }
+]

@@ -1,0 +1,70 @@
+{
+  "target": {
+    "mode": "audit",
+    "repo": "jeduden/mdsmith",
+    "ref": "d4af5d5",
+    "scope": "Diff review of everything merged since the 2026-07-17 post-audit diff review (base d496596) — the new MDS072 external-link-check network-probing rule, the MDS073 slidev slide-structure rule, foreign managed-region protection for fix, the merge-driver -merge scoping fix, the init.go split, and CI pinned-baseline bump"
+  },
+  "coverage": "The 110 files changed between the 2026-07-17 review base (d496596) and HEAD (d4af5d5) were mapped to the\nthreat-model surfaces by changed file, then each surface read against references/threat-model.md.\n\nHeadline surface — NEW runtime network egress (internal/rules/externallink/, MDS072 external-link-check).\nThis is the first mdsmith rule that makes outbound HTTP requests at lint time. It is opt-in\n(EnabledByDefault=false; not enabled by any built-in convention — confirmed against internal/convention and\ninternal/rulelayer). When enabled via .mdsmith.yml it issues a HEAD/GET probe to every http/https URL found\nin document content (inline links, autolinks, images) and reports transport errors and 4xx/5xx. The full\npath document -> externalURL -> checkURL -> probe -> http.Client.Do(rawURL) was traced. Findings: S001 (SSRF:\nno private/loopback/link-local/metadata target validation, and the default client follows redirects so\ncontainment cannot be reasserted per hop), S002 (concurrency is bounded but the total probe count per run is\nnot), and S003 (the telemetry/network-policy docs still assert zero runtime egress and never mention this\nopt-in exception).\n\nMDS073 slidev slide-structure rule (internal/rules/slidevstructure/): a pure AST/line parser, no\npackage-level regexp, no exec. parseSlides indexes lines[0] without an explicit len>0 guard, but the engine\nwraps every rule's Check in a per-file recover() (internal/engine/runner.go lintFile -> PanicDiagnostic), so\nany panic is contained to a single-file diagnostic rather than crashing the run or the LSP — the panic\ncontainment baseline is reconfirmed.\n\nForeign managed-region protection for fix (internal/foreignregion/, internal/fix/): marker-pair parsing over\ndocument content; no path resolution, exec, or network sink introduced. The merge-driver -merge scoping fix\n(PR #752) and the init.go split (PR #751) are refactors with no new exec/path/network sink. The one CI change\n(.github/actions/setup-mdsmith-pinned-version/action.yml) is a version+SHA256 bump of the pinned baseline\nbinary; the download stays HTTPS + SHA256-verified before PATH exposure.\n\n§0 baseline reconfirmed by exclusion: no recipe/exec sink was added anywhere in the diff (no new\nexec.Command/child_process/spawn); recipes remain non-executed by the tool. The VS Code extension, Obsidian\nplugin, npm/PyPI wrappers, and merge-driver/pre-merge-commit source did not change this window and were not\nre-reviewed (last covered by the 2026-06-19 and 2026-07-03 reviews). The single new runtime-egress rule is\nthe whole security story of this window.",
+  "findings": [
+    {
+      "id": "S001",
+      "title": "MDS072 external-link-check probes document-supplied URLs with no private/loopback/link-local/metadata filtering (SSRF), and follows redirects with the default client",
+      "severity": "medium",
+      "confidence": "confirmed",
+      "surface": "cli",
+      "cwe": "CWE-918",
+      "location": {
+        "file": "internal/rules/externallink/rule.go",
+        "startLine": 192,
+        "endLine": 200
+      },
+      "related_locations": [
+        {"file": "internal/rules/externallink/rule.go", "startLine": 135, "endLine": 168},
+        {"file": "internal/rules/externallink/rule.go", "startLine": 307, "endLine": 319},
+        {"file": "internal/rules/externallink/probe_net.go", "startLine": 18, "endLine": 57}
+      ],
+      "description": "When the opt-in external-link-check rule (MDS072) is enabled in .mdsmith.yml, Check walks the document AST\nand extracts every http/https destination from links, autolinks, and images (externalURL, rule.go:174),\nthen issues a live HEAD (GET on 405) request to each one (checkURL -> probe -> http.Client.Do,\nprobe_net.go:41).\n\nThe only gate on the target is isExternalHTTP (rule.go:194), which checks solely that the scheme is\nhttp/https and Host is non-empty. There is no allowlist and no rejection of RFC1918 / loopback / link-local\n/ ULA hosts, so a document link to `http://169.254.169.254/latest/meta-data/`, `http://127.0.0.1:6379/`,\n`http://[::1]/`, or an internal hostname is probed against the host running mdsmith. The shared client is\nthe zero-value http.Client (probe_net.go:18) with no CheckRedirect, so it follows up to 10 redirects by\ndefault — an external URL that a reviewer or the external-skip denylist deems safe can 30x-bounce to an\ninternal target, and no per-hop containment is reapplied.\n\nThe rule runs anywhere Check runs: `mdsmith check` (CI), `mdsmith fix`, and the LSP diagnostics pipeline\n(server_diagnostics.go schedules a lint on didOpen/didSave and the session runs rule.All()). The native\n`mdsmith lsp` used by Neovim has no Workspace-Trust equivalent, so opening a hostile repo whose .mdsmith.yml\nenables MDS072 fires the probes on file open. Both the enabling config and the malicious URLs are\nattacker-controlled in the hostile-repo threat model, so 'requires non-default config' is weak mitigation —\nthe attacker ships the config.",
+      "impact": "A hostile repository (or a fork PR that edits .mdsmith.yml plus a Markdown file) turns the victim's mdsmith\nrun into an SSRF request generator against the victim's network position. On a CI runner or a developer's\nLSP session this reaches internal-only services and cloud metadata endpoints (169.254.169.254).\n\nBecause the diagnostic reports the HTTP status code and the transport error, the attacker learns whether an\ninternal host/port exists and responds — internal service and port discovery from the victim's vantage. The\nresponse body is drained to io.Discard and is never surfaced, so this is a blind SSRF probe\n(existence/timing/status oracle), not a body-exfil primitive; that is the deciding factor keeping this\nMedium rather than High. It would rise to High if the diagnostic ever echoed response bodies, or if MDS072\nwere enabled by a default convention (making it zero-config) instead of opt-in.",
+      "repro": "In a scratch repo, write .mdsmith.yml enabling the rule (rules: external-link-check: true) and a README.md\ncontaining a link to `http://169.254.169.254/latest/meta-data/` and one to `http://127.0.0.1:6379/`. Run\n`mdsmith check .` (or open the repo in Neovim with mdsmith lsp). Observe that mdsmith issues outbound\nrequests to the link-local and loopback targets and that the resulting diagnostic distinguishes 'unreachable'\nfrom an HTTP status, i.e. it reveals whether the internal endpoint answered.",
+      "remediation": "Before probing, resolve the target host and refuse any address in a private/loopback/link-local/ULA/\nunspecified range and the cloud-metadata IPs. Guard both the initial connection and every redirect hop via\nhttp.Client.CheckRedirect plus a net.Dialer.Control hook that re-validates the resolved IP, closing the\nDNS-rebinding and redirect-bounce gaps. Consider making deny-internal the default and gating any internal\nprobing behind an explicit, documented opt-in. In the LSP, treat MDS072 as trust-sensitive (do not run it\nagainst an untrusted workspace without an explicit trust signal)."
+    },
+    {
+      "id": "S002",
+      "title": "MDS072 caps probe concurrency but not the total number of outbound requests per run, so a hostile document is an egress/DoS amplifier",
+      "severity": "low",
+      "confidence": "confirmed",
+      "surface": "cli",
+      "cwe": "CWE-770",
+      "location": {
+        "file": "internal/rules/externallink/rule.go",
+        "startLine": 300,
+        "endLine": 334
+      },
+      "related_locations": [
+        {"file": "internal/rules/externallink/rule.go", "startLine": 135, "endLine": 168}
+      ],
+      "description": "The rate-limit semaphore (external-rate-limit, default 10) bounds only how many probes are in flight at once\n(acquire/release, rule.go:323). Nothing bounds the total number of distinct URLs probed in a run. A single\ndocument (or a workspace of documents) can contain an unbounded number of unique http/https URLs; the\nper-URL cache collapses duplicates but not distinct hosts. With the default 5s per-request timeout and a slow\nor non-responding attacker-chosen server, N unique URLs take roughly N/rate-limit * timeout seconds, all as\noutbound requests the victim's host is made to send.",
+      "impact": "When MDS072 is enabled, a hostile file with tens of thousands of unique URLs makes mdsmith emit tens of\nthousands of outbound requests and can stall a check/fix run or an LSP diagnostics pass for a long time (each\nmiss blocks up to the timeout behind the concurrency cap). Combined with S001 this makes the victim's CI a\nlow-rate request cannon against a third party or an internal network. Impact is bounded by the opt-in config\nand the concurrency cap (so it is slow rather than a resource spike), hence Low.",
+      "repro": "With external-link-check enabled, generate a Markdown file with 20000 distinct `http://` links pointing at a\nslow/blackholed server, then run `mdsmith check` on it and observe the run issue one request per unique URL\nwith no aggregate ceiling.",
+      "remediation": "Add a per-run (and/or per-file) ceiling on the number of URLs actually probed, reporting the remaining links\nas unchecked once the cap is hit (mirroring how other size caps degrade). Pair with a shorter default timeout\nor a global deadline for the probing phase."
+    },
+    {
+      "id": "S003",
+      "title": "Telemetry / network-policy docs still assert zero runtime egress and do not disclose the opt-in MDS072 network access",
+      "severity": "info",
+      "confidence": "confirmed",
+      "surface": "cli",
+      "cwe": "CWE-1059",
+      "location": {
+        "file": "docs/reference/telemetry.md",
+        "startLine": 10,
+        "endLine": 26
+      },
+      "description": "telemetry.md states 'The CLI and the LSP server make zero outbound network calls during normal operation'\nand 'A locked-down or air-gapped CI runner can run mdsmith check . with no outbound access and the run\ncompletes normally.' Since MDS072 external-link-check landed, that is no longer unconditionally true:\nenabling the rule makes check/fix and the LSP issue outbound HTTP. The claim is defensible for the default\nconfiguration (the rule is off by default), but the page never carves out the exception, and the rule's own\ndocumentation does not warn that it performs network access against document-controlled URLs (the SSRF\nsurface of S001).",
+      "impact": "An operator relying on the telemetry page to certify mdsmith as network-silent (e.g. for an air-gapped or\negress-restricted environment) could enable external-link-check without realizing it introduces outbound\nrequests to attacker-influenced URLs. Documentation-accuracy / security-transparency gap; no direct exploit.",
+      "repro": "Read docs/reference/telemetry.md against the behavior of internal/rules/externallink: the doc's 'zero\noutbound network calls' claim omits the one rule that makes them.",
+      "remediation": "Add an explicit carve-out to telemetry.md naming MDS072 external-link-check as the single opt-in rule that\nperforms runtime network access, and add an SSRF/internal-target warning to the rule's user documentation\nonce the S001 filtering is in place."
+    }
+  ]
+}
