@@ -21,7 +21,10 @@ discovered from `.mdsmith.yml` `files:` patterns
 
 Only Markdown files are linted. A non-Markdown path
 (such as `.gitattributes`) is skipped whether the walk
-reaches it or you name it explicitly.
+reaches it or you name it explicitly. Naming one
+explicitly prints a `skipping …: not a Markdown file`
+warning on stderr, so the skip is never a silent no-op;
+`--quiet` and the `json`/`sarif` formats suppress it.
 
 ## Flags
 

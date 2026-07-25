@@ -89,6 +89,16 @@ type ResolveOpts struct {
 	// root) as well as FIFOs, devices, and sockets (reading them
 	// during linting could block or fail unexpectedly).
 	FollowSymlinks bool
+
+	// OnSkipNonMarkdown, when non-nil, is called with each
+	// explicitly named path dropped because it is not Markdown, so a
+	// caller can warn instead of leaving `mdsmith fix .gitattributes`
+	// a silent no-op (issue #759). It fires ONLY for a directly named
+	// file: entries filtered out during a directory walk or glob
+	// expansion are skipped silently, because the user named the
+	// directory or pattern, not the individual file. The argument is
+	// the path exactly as it was passed.
+	OnSkipNonMarkdown func(path string)
 }
 
 // DefaultResolveOpts returns options with defaults applied.
@@ -218,8 +228,13 @@ func resolveArg(arg string, opts ResolveOpts, addFile func(string)) error {
 	// `mdsmith fix` rewrites it — including the merge-driver block
 	// mdsmith generates there (issue #759). The extension is the only
 	// signal available at resolve time; content sniffing would be both
-	// slower and ambiguous.
+	// slower and ambiguous. Unlike the walk and glob paths, a directly
+	// named file gets an OnSkipNonMarkdown notification so the caller
+	// can warn rather than silently doing nothing.
 	if !isMarkdown(arg) {
+		if opts.OnSkipNonMarkdown != nil {
+			opts.OnSkipNonMarkdown(arg)
+		}
 		return nil
 	}
 

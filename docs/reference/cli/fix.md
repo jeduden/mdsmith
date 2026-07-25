@@ -19,6 +19,9 @@ files are discovered from `.mdsmith.yml` `files:` patterns.
 Only Markdown files are fixed. A non-Markdown path (such
 as `.gitattributes`) is skipped whether the walk reaches
 it or you name it explicitly, so `fix` never rewrites it.
+Naming one explicitly prints a `skipping …: not a
+Markdown file` warning on stderr; `--quiet` and the
+`json`/`sarif` formats suppress it.
 
 ## Flags
 

@@ -113,6 +113,7 @@ func parseCheckFlags(args []string) (checkCLIOpts, []string, bool, int) {
 func checkFiles(fileArgs []string, opts checkCLIOpts) int {
 	cfg, cfgPath, logger, files, maxBytes, code := loadAndResolve(
 		fileArgs, opts.configPath, opts.verbose, opts.walk, opts.maxInputSize,
+		nonMarkdownSkipWarner(os.Stderr, opts.format, opts.quiet),
 	)
 	if code >= 0 {
 		return code
