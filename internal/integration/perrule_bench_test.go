@@ -309,6 +309,7 @@ var perRuleAllocCeiling = map[string]float64{
 	"MDS056": 4,   // forbidden-text: 0 allocs
 	"MDS057": 4,   // required-text-patterns: 0 allocs
 	"MDS058": 4,   // required-mentions: 0 allocs
+	"MDS060": 4,   // occurrence: 0 allocs (inert without tokens or pattern)
 	"MDS063": 44,  // descriptive-link-text: ~36 allocs
 	"MDS067": 12,  // callout-type: ~8 allocs
 	"MDS068": 4,   // link-style: 0 allocs
