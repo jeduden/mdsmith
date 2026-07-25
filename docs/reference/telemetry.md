@@ -40,8 +40,8 @@ Network access only happens when the user installs the binary:
 - The VS Code Marketplace or Open VSX downloads the `.vsix`.
 
 None of these channels run a `postinstall` script that calls home.
-After install, the binary is a static Go executable; running it
-makes no network calls.
+After install, the binary is a static Go executable. In the
+default configuration, running it makes no outbound network calls.
 
 The [install guide](../guides/install.md#github-release-direct-download)
 covers the GitHub-release direct-download path for air-gapped hosts.
@@ -77,25 +77,21 @@ remote scoring, no embedding lookups.
 ## Opt-in network access: MDS072 external-link-check
 
 One opt-in rule makes runtime network calls:
-[`external-link-check` (MDS072)][mds072-readme]. The rule is
-off by default. When enabled, it issues an HTTP HEAD request
-(with a GET fallback on 405 Method Not Allowed) to each http or
-https URL found in documents it lints. Results are cached per URL
-for the run, so the same URL across many files costs one request.
+`external-link-check` (MDS072). The rule is off by default.
+When enabled, it issues an HTTP HEAD request (with a GET fallback
+on 405 Method Not Allowed) to each http or https URL found in
+documents it lints. Results are cached per URL for the run, so
+the same URL across many files costs one request.
 
 **SSRF risk.** The rule probes URLs taken from document content.
 When enabled on untrusted content, a hostile document can include
 URLs targeting internal hosts — loopback addresses, RFC 1918
 private ranges, link-local addresses, or cloud-metadata endpoints.
 Use `links.external-skip` to exclude internal address patterns,
-or keep the rule disabled when linting untrusted workspaces. See
-the [rule README][mds072-readme] for mitigation details.
+or keep the rule disabled when linting untrusted workspaces.
 
 With `external-link-check` disabled (the default), no outbound
 traffic is generated and the air-gapped CI claim above holds.
-
-[mds072-readme]:
-  ../../internal/rules/MDS072-external-link-check/README.md
 
 ## How to verify
 
