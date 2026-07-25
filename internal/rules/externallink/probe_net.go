@@ -26,17 +26,38 @@ var restrictedPrefixes = []netip.Prefix{
 	netip.MustParsePrefix("fe80::/10"),      // link-local IPv6
 	netip.MustParsePrefix("fc00::/7"),       // ULA IPv6
 	netip.MustParsePrefix("100.64.0.0/10"),  // CGN (RFC6598; covers Alibaba metadata 100.100.100.200)
+	netip.MustParsePrefix("2002::/16"),      // 6to4 (RFC3056; embeds IPv4 in bits 16-47)
 }
 
 // isRestrictedIP reports whether ip is invalid, loopback, unspecified,
 // multicast, or in a restricted prefix. The guard applies after IPv4-in-IPv6
 // unmapping and zone-ID stripping; netip.Prefix.Contains returns false for
 // any zone-carrying Addr, so the zone must be removed before prefix checks.
+//
+// IPv4-compatible addresses (::x.x.x.x, deprecated RFC 4291 §2.5.5.1) are
+// not converted by Unmap (which only handles ::ffff: / IPv4-mapped form). The
+// check extracts the embedded IPv4 from the low 32 bits and re-runs the guard
+// against it so that, e.g., ::a9fe:a9fe (::169.254.169.254) is blocked.
 func isRestrictedIP(ip netip.Addr) bool {
 	ip = ip.Unmap()
 	ip = ip.WithZone("") // Prefix.Contains requires a zone-free Addr
 	if !ip.IsValid() || ip.IsLoopback() || ip.IsUnspecified() || ip.IsMulticast() {
 		return true
+	}
+	// Detect IPv4-compatible form: 96 zero bits followed by a 32-bit IPv4.
+	if ip.Is6() {
+		b := ip.As16()
+		if b[0]|b[1]|b[2]|b[3]|b[4]|b[5]|b[6]|b[7]|b[8]|b[9]|b[10]|b[11] == 0 {
+			v4 := netip.AddrFrom4([4]byte{b[12], b[13], b[14], b[15]})
+			if v4.IsLoopback() || v4.IsUnspecified() || v4.IsMulticast() {
+				return true
+			}
+			for _, p := range restrictedPrefixes {
+				if p.Contains(v4) {
+					return true
+				}
+			}
+		}
 	}
 	for _, prefix := range restrictedPrefixes {
 		if prefix.Contains(ip) {
@@ -85,7 +106,15 @@ var guardedClient = buildGuardedClient()
 
 // permissiveClient performs no SSRF filtering. Used only when
 // external-allow-internal is true.
-var permissiveClient = &http.Client{}
+var permissiveClient = buildPermissiveClient()
+
+func buildPermissiveClient() *http.Client {
+	transport := &http.Transport{
+		Proxy:           http.ProxyFromEnvironment,
+		IdleConnTimeout: 90 * time.Second,
+	}
+	return &http.Client{Transport: transport}
+}
 
 func buildGuardedClient() *http.Client {
 	dialer := &net.Dialer{Control: ssrfControl}

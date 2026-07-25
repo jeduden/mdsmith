@@ -71,27 +71,32 @@ func TestProbe_405FallbackGetError(t *testing.T) {
 // TestIsRestrictedIP_Blocked verifies that all blocked IP classes return true.
 func TestIsRestrictedIP_Blocked(t *testing.T) {
 	blocked := []string{
-		"127.0.0.1",       // loopback IPv4
-		"127.255.255.254", // loopback IPv4 high end
-		"::1",             // loopback IPv6
-		"10.0.0.1",        // private RFC1918
-		"10.255.255.255",  // private RFC1918
-		"172.16.0.1",      // private RFC1918
-		"172.31.255.254",  // private RFC1918
-		"192.168.0.1",     // private RFC1918
-		"192.168.255.255", // private RFC1918
-		"169.254.1.1",     // link-local IPv4
-		"169.254.169.254", // cloud metadata (AWS/GCP/Azure)
-		"fe80::1",         // link-local IPv6
-		"fc00::1",         // ULA IPv6
-		"fdff:ffff::1",    // ULA IPv6 high end
-		"100.64.0.1",      // CGN (RFC6598)
-		"100.127.255.254", // CGN high end
-		"100.100.100.200", // Alibaba Cloud metadata (inside CGN range)
-		"0.0.0.0",         // unspecified
-		"::",              // unspecified IPv6
-		"224.0.0.1",       // multicast
-		"fe80::1%eth0",    // zone-scoped link-local (zone stripped before prefix check)
+		"127.0.0.1",        // loopback IPv4
+		"127.255.255.254",  // loopback IPv4 high end
+		"::1",              // loopback IPv6
+		"10.0.0.1",         // private RFC1918
+		"10.255.255.255",   // private RFC1918
+		"172.16.0.1",       // private RFC1918
+		"172.31.255.254",   // private RFC1918
+		"192.168.0.1",      // private RFC1918
+		"192.168.255.255",  // private RFC1918
+		"169.254.1.1",      // link-local IPv4
+		"169.254.169.254",  // cloud metadata (AWS/GCP/Azure)
+		"fe80::1",          // link-local IPv6
+		"fc00::1",          // ULA IPv6
+		"fdff:ffff::1",     // ULA IPv6 high end
+		"100.64.0.1",       // CGN (RFC6598)
+		"100.127.255.254",  // CGN high end
+		"100.100.100.200",  // Alibaba Cloud metadata (inside CGN range)
+		"0.0.0.0",          // unspecified
+		"::",               // unspecified IPv6
+		"224.0.0.1",        // multicast
+		"fe80::1%eth0",     // zone-scoped link-local (zone stripped before prefix check)
+		"::a9fe:a9fe",      // IPv4-compatible 169.254.169.254 (cloud metadata)
+		"::a00:1",          // IPv4-compatible 10.0.1 (private RFC1918)
+		"::7f00:1",         // IPv4-compatible 127.0.0.1 (loopback)
+		"2002:a9fe:a9fe::", // 6to4 encoding 169.254.169.254
+		"2002:c0a8:101::",  // 6to4 encoding 192.168.1.1
 	}
 	for _, addr := range blocked {
 		ip, err := netip.ParseAddr(addr)

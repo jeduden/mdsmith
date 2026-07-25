@@ -365,6 +365,11 @@ func (r *Rule) checkURL(raw string) urlResult {
 		r.acquire()
 		defer r.release()
 		res := probe(raw, r.links.Timeout, r.links.AllowInternal)
+		// WASM stub returns probed=false without network I/O; give back the
+		// probe slot so the ceiling only counts real network requests.
+		if !res.probed && r.links.MaxProbes > 0 {
+			probeCount.Add(-1)
+		}
 		urlCache.Store(raw, res)
 		return res, nil
 	})
