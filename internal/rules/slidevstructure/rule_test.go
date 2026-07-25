@@ -264,3 +264,93 @@ func TestEditDistance_EmptyStrings(t *testing.T) {
 	assert.Equal(t, 3, editDistance("abc", ""))
 	assert.Equal(t, 0, editDistance("", ""))
 }
+
+func TestFrontmatterWithBlankLineBetweenKeys_OK(t *testing.T) {
+	// YAML 1.2 allows blank lines between mapping entries. A frontmatter block
+	// like "layout: cover\n\nbackground: /bg.png" must not be dropped — the
+	// blank line should not terminate the block early.
+	src := "# Slide 1\n\n---\nlayout: image-left\n\nimage: ./bg.png\n---\n\n# Content\n"
+	diags := check(t, src)
+	assert.Empty(t, diags, "frontmatter with blank line between keys is valid: %s", messages(diags))
+}
+
+func TestFrontmatterWithBlankLine_MissingField_Flagged(t *testing.T) {
+	// Blank line inside frontmatter does not swallow the layout key: if the
+	// required image field is absent, MDS073 must still report it.
+	src := "# Slide 1\n\n---\nlayout: image-left\n\n---\n\n# Content\n"
+	diags := check(t, src)
+	require.Len(t, diags, 1, "got: %s", messages(diags))
+	assert.Contains(t, diags[0].Message, `"image" frontmatter field`)
+}
+
+func TestFrontmatterWithYAMLComment_OK(t *testing.T) {
+	// YAML comment lines (# …) are valid inside a frontmatter block and must
+	// not cause the block to be misidentified as plain prose.
+	src := "# Slide 1\n\n---\n# set by theme\nlayout: center\n---\n\n# Content\n"
+	diags := check(t, src)
+	assert.Empty(t, diags, "frontmatter with YAML comment is valid: %s", messages(diags))
+}
+
+func TestDottedPassThroughKey_DoesNotBlockFrontmatterParsing(t *testing.T) {
+	// A mid-deck frontmatter block that contains a dotted pass-through data
+	// key (valid in Slidev, not a pure YAML identifier) must not cause the
+	// entire block to be dropped. The layout key in the same block must still
+	// be parsed and checked.
+	src := "# Slide 1\n\n---\nlayout: image-left\nv1.data: foo\n---\n\n# Slide 2\n"
+	diags := check(t, src)
+	require.Len(t, diags, 1, "got: %s", messages(diags))
+	assert.Contains(t, diags[0].Message, `layout "image-left" requires the "image" frontmatter field`)
+}
+
+func TestHasFrontmatterAfter_IndentedLineBeforeKey_NotFrontmatter(t *testing.T) {
+	// An indented line that appears BEFORE any key in the block that follows a
+	// separator causes hasFrontmatterAfter to return false — the block is plain
+	// content, not a frontmatter mapping.  The separator is treated as a
+	// horizontal rule so neither slide gains a layout and no diagnostic fires.
+	src := "# A\n\n---\n  nested: x\nlayout: center\n---\n\n# B\n"
+	assert.Empty(t, check(t, src))
+}
+
+func TestHasFrontmatterAfter_IndentedLineAfterKey_OK(t *testing.T) {
+	// An indented line that appears AFTER at least one key is a nested YAML
+	// value; hasFrontmatterAfter continues past it and the block is parsed as
+	// frontmatter normally.
+	src := "# A\n\n---\nlayout: center\n  nested: x\n---\n\n# B\n"
+	assert.Empty(t, check(t, src))
+}
+
+func TestHasFrontmatterAfter_ListEntryBeforeKey_NotFrontmatter(t *testing.T) {
+	// A list entry (`- value`) before any key means the block is a YAML
+	// sequence, not a mapping — hasFrontmatterAfter returns false and the
+	// separator is treated as a horizontal rule.
+	src := "# A\n\n---\n- list-item\nlayout: center\n---\n\n# B\n"
+	assert.Empty(t, check(t, src))
+}
+
+func TestFrontmatterWithListEntry_AfterKey_OK(t *testing.T) {
+	// A list entry that appears after a real key (e.g. a YAML multi-value
+	// field) is accepted by hasFrontmatterAfter (sawKey=true) and skipped by
+	// readFrontmatter — the layout key is still parsed correctly.
+	src := "# A\n\n---\nlayout: center\n- list-item\n---\n\n# B\n"
+	assert.Empty(t, check(t, src))
+}
+
+func TestLayoutCandidates_WithCustomLayouts_DidYouMean(t *testing.T) {
+	// When custom layouts are declared, layoutCandidates merges them with the
+	// builtins so a near-miss against a custom name is suggested.
+	src := "---\nlayout: my-typo\n---\n\n# Slide\n"
+	f := &lint.File{Path: "slides.md", Source: []byte(src), Lines: splitLines(src)}
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{"custom-layouts": []any{"my-type"}}))
+	diags := r.Check(f)
+	require.Len(t, diags, 1, "got: %s", messages(diags))
+	assert.Contains(t, diags[0].Message, `did you mean "my-type"`)
+}
+
+func TestEditDistance_LongStrings(t *testing.T) {
+	// Strings longer than 64 bytes are handled by the fast-path guard that
+	// returns la+lb without running the DP table.
+	long := "a string that is definitely longer than sixty-four characters total!"
+	assert.Equal(t, len(long)+1, editDistance(long, "x"))
+	assert.Equal(t, 1+len(long), editDistance("x", long))
+}
