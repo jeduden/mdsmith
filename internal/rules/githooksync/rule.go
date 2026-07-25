@@ -28,6 +28,12 @@ const hookMaxReadBytes int64 = 1024 * 1024
 // hoisted to avoid re-converting the marker constant to []byte on every call.
 var preMergeMarkerBytes = []byte(githooks.PreMergeCommitMarker)
 
+// resolveHooksDir is a package variable so tests can substitute a
+// counting stub and assert driftParts resolves the hooks directory
+// exactly once per cache miss, instead of once for peekHookSource and
+// again for preMergeCommitHookDrift (each a `git rev-parse` subprocess).
+var resolveHooksDir = githooks.ResolveHooksDir
+
 func init() {
 	rule.Register(&Rule{})
 }
@@ -181,9 +187,12 @@ const (
 )
 
 // peekHookSource reports the current state of the pre-merge-commit
-// hook without parsing its contents.
-func peekHookSource(repoRoot string) hookSource {
-	hookPath := filepath.Join(githooks.ResolveHooksDir(repoRoot), "pre-merge-commit")
+// hook without parsing its contents. hooksDir is the repo's resolved
+// hooks directory (githooks.ResolveHooksDir), passed in so a caller
+// that also needs it (driftParts) resolves it once rather than
+// spawning a second `git rev-parse` for the same repo.
+func peekHookSource(hooksDir string) hookSource {
+	hookPath := filepath.Join(hooksDir, "pre-merge-commit")
 	data, err := bytelimit.ReadFileLimited(hookPath, hookMaxReadBytes)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -213,7 +222,8 @@ func (r *Rule) driftParts(repoRoot string) []string {
 	driftMu.Unlock()
 
 	hasDriver := githooks.HasMdsmithMergeDriver(repoRoot)
-	hookState := peekHookSource(repoRoot)
+	hooksDir := resolveHooksDir(repoRoot)
+	hookState := peekHookSource(hooksDir)
 	// Early-exit when the user has not opted in (no driver) and the hook
 	// is not mdsmith-managed. hookSourceUnreadable (file too large, bad
 	// perms) is included in the early-exit: we cannot verify the hook's
@@ -231,7 +241,7 @@ func (r *Rule) driftParts(repoRoot string) []string {
 	if msg := r.mergeDriverDrift(repoRoot, hasDriver, expectedGlobs); msg != "" {
 		parts = append(parts, msg)
 	}
-	if msg := r.preMergeCommitHookDrift(repoRoot); msg != "" {
+	if msg := r.preMergeCommitHookDrift(hooksDir); msg != "" {
 		parts = append(parts, msg)
 	}
 
@@ -301,9 +311,12 @@ func describeGlobs(patterns []string) string {
 // hook content. Returns an empty string if no hook is installed, the
 // hook is not mdsmith-managed, or the content matches. A non-ENOENT
 // read error is surfaced rather than silently passing so permission
-// or IO failures cannot mask real drift.
-func (r *Rule) preMergeCommitHookDrift(repoRoot string) string {
-	hookPath := filepath.Join(githooks.ResolveHooksDir(repoRoot), "pre-merge-commit")
+// or IO failures cannot mask real drift. hooksDir is the repo's
+// resolved hooks directory, shared with peekHookSource by driftParts
+// so the two checks spawn only one `git rev-parse` per repo instead
+// of one each.
+func (r *Rule) preMergeCommitHookDrift(hooksDir string) string {
+	hookPath := filepath.Join(hooksDir, "pre-merge-commit")
 	data, err := bytelimit.ReadFileLimited(hookPath, hookMaxReadBytes)
 	if err != nil {
 		if os.IsNotExist(err) {

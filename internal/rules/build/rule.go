@@ -393,6 +393,12 @@ func hasReservedDeviceName(p string) bool {
 		if dot := strings.IndexByte(seg, '.'); dot >= 0 {
 			seg = seg[:dot]
 		}
+		// Every reserved name is 3-4 bytes; gate the ToUpper allocation
+		// behind a length check so an ordinary (usually longer) path
+		// segment never pays for the case-fold copy.
+		if len(seg) < 3 || len(seg) > 4 {
+			continue
+		}
 		if setutil.Contains(reservedDeviceNames, strings.ToUpper(seg)) {
 			return true
 		}
