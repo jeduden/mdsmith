@@ -4,53 +4,159 @@ package externallink
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/netip"
+	"syscall"
 	"time"
 )
 
-// client is the shared probing client. One client (not one per request)
-// lets the transport pool keep-alive connections across URLs on the same
-// host. Redirects are followed by default, so a URL that 30x-es to a
-// healthy target passes. The per-request timeout is applied through a
-// context, not client.Timeout, so a single shared client serves every
-// configured timeout.
-var client = &http.Client{}
+// restrictedPrefixes are the IP ranges the SSRF guard blocks when
+// external-allow-internal is false (the default). Includes loopback,
+// RFC1918 private, link-local, ULA, CGN shared-address, and the
+// cloud-metadata link-local range.
+var restrictedPrefixes = []netip.Prefix{
+	netip.MustParsePrefix("127.0.0.0/8"),    // loopback IPv4
+	netip.MustParsePrefix("::1/128"),        // loopback IPv6
+	netip.MustParsePrefix("10.0.0.0/8"),     // private (RFC1918)
+	netip.MustParsePrefix("172.16.0.0/12"),  // private (RFC1918)
+	netip.MustParsePrefix("192.168.0.0/16"), // private (RFC1918)
+	netip.MustParsePrefix("169.254.0.0/16"), // link-local IPv4 (includes 169.254.169.254 metadata)
+	netip.MustParsePrefix("fe80::/10"),      // link-local IPv6
+	netip.MustParsePrefix("fc00::/7"),       // ULA IPv6
+	netip.MustParsePrefix("100.64.0.0/10"),  // shared address space (CGN, RFC6598)
+}
+
+// cloudMetadataAddrs are SSRF targets not covered by restrictedPrefixes.
+var cloudMetadataAddrs = []netip.Addr{
+	netip.MustParseAddr("100.100.100.200"), // Alibaba Cloud metadata
+}
+
+// isRestrictedIP reports whether ip is loopback, unspecified, multicast,
+// in a restricted prefix, or a known cloud-metadata address. The guard
+// applies after IPv4-in-IPv6 unmapping.
+func isRestrictedIP(ip netip.Addr) bool {
+	ip = ip.Unmap()
+	if ip.IsLoopback() || ip.IsUnspecified() || ip.IsMulticast() {
+		return true
+	}
+	for _, prefix := range restrictedPrefixes {
+		if prefix.Contains(ip) {
+			return true
+		}
+	}
+	for _, meta := range cloudMetadataAddrs {
+		if ip == meta {
+			return true
+		}
+	}
+	return false
+}
+
+// ssrfControl is a net.Dialer.Control function that refuses connections
+// whose resolved remote IP is in a restricted range. It fires on every
+// new TCP dial — initial connections and redirect hops to a new host —
+// so the guard reasserts containment on each hop.
+func ssrfControl(_ string, address string, _ syscall.RawConn) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return fmt.Errorf("external-link-check: ssrf guard: bad address %q: %w", address, err)
+	}
+	ip, err := netip.ParseAddr(host)
+	if err != nil {
+		return fmt.Errorf("external-link-check: ssrf guard: bad IP %q: %w", host, err)
+	}
+	if isRestrictedIP(ip) {
+		return fmt.Errorf("external-link-check: connection to %s denied (SSRF guard;"+
+			" set links.external-allow-internal: true to allow)", host)
+	}
+	return nil
+}
+
+// ssrfCheckRedirect is a http.Client.CheckRedirect function that resolves
+// each redirect target and refuses hops to restricted IP ranges. It
+// provides defense-in-depth alongside ssrfControl: the dialer fires on
+// the new connection, while this fires at the HTTP layer (earlier, clearer
+// error message, handles IP literals without a DNS round-trip).
+func ssrfCheckRedirect(req *http.Request, _ []*http.Request) error {
+	host := req.URL.Hostname()
+	// If the redirect target is an IP literal, check it directly.
+	if ip, err := netip.ParseAddr(host); err == nil {
+		if isRestrictedIP(ip) {
+			return fmt.Errorf("external-link-check: redirect to %s denied (SSRF guard)", host)
+		}
+		return nil
+	}
+	// Otherwise resolve and check each address.
+	addrs, err := net.LookupHost(host)
+	if err != nil {
+		return err
+	}
+	for _, a := range addrs {
+		ip, err := netip.ParseAddr(a)
+		if err != nil {
+			continue
+		}
+		if isRestrictedIP(ip) {
+			return fmt.Errorf("external-link-check: redirect to %s denied (SSRF guard: %s is restricted)", host, a)
+		}
+	}
+	return nil
+}
+
+// guardedClient blocks connections and redirects to restricted IP ranges.
+// Used when external-allow-internal is false (the default).
+var guardedClient = buildGuardedClient()
+
+// permissiveClient performs no SSRF filtering. Used only when
+// external-allow-internal is true.
+var permissiveClient = &http.Client{}
+
+func buildGuardedClient() *http.Client {
+	dialer := &net.Dialer{Control: ssrfControl}
+	transport := &http.Transport{DialContext: dialer.DialContext}
+	return &http.Client{
+		Transport:     transport,
+		CheckRedirect: ssrfCheckRedirect,
+	}
+}
 
 // maxDrain caps how many bytes of a GET-fallback body are read back
 // before Close. Draining lets the connection return to the keep-alive
-// pool; capping it avoids reading a large page in full when all we need
-// is the status code.
+// pool; capping it avoids reading a large page in full.
 const maxDrain = 64 << 10
 
 // probe issues a HEAD request (falling back to GET on 405) and maps the
-// outcome to a urlResult. timeout bounds each individual request. The
-// native prober always reaches the network, so every result it returns
-// is probed=true.
-func probe(raw string, timeout time.Duration) urlResult {
-	res := do(http.MethodHead, raw, timeout)
+// outcome to a urlResult. timeout bounds each individual request.
+// allowInternal selects the guarded (SSRF-blocking) or permissive client.
+func probe(raw string, timeout time.Duration, allowInternal bool) urlResult {
+	c := guardedClient
+	if allowInternal {
+		c = permissiveClient
+	}
+	res := doWithClient(c, http.MethodHead, raw, timeout)
 	if res.err == nil && res.statusCode == http.StatusMethodNotAllowed {
-		res = do(http.MethodGet, raw, timeout)
+		res = doWithClient(c, http.MethodGet, raw, timeout)
 	}
 	return res
 }
 
-// do performs one request with the given method and a context timeout,
-// draining a bounded prefix of the body and closing it so the connection
-// can be reused.
-func do(method, raw string, timeout time.Duration) urlResult {
+// doWithClient performs one request with the given client, method, and a
+// context timeout, draining a bounded prefix of the body and closing it
+// so the connection can be reused.
+func doWithClient(c *http.Client, method, raw string, timeout time.Duration) urlResult {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, method, raw, nil)
 	if err != nil {
 		return urlResult{probed: true, err: err}
 	}
-	resp, err := client.Do(req)
+	resp, err := c.Do(req)
 	if err != nil {
 		return urlResult{probed: true, err: err}
 	}
-	// Drain a bounded prefix of the body before closing so the transport
-	// can reuse the connection; the status code is all we consume.
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxDrain))
 	_ = resp.Body.Close()
 	return urlResult{probed: true, statusCode: resp.StatusCode}

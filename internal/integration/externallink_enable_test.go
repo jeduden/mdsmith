@@ -23,6 +23,10 @@ import (
 // probe nothing. This test drives that exact path and asserts a broken
 // URL is reported, guarding against a regression to the old
 // RateLimit==0 sentinel.
+//
+// The test also enables external-allow-internal so the httptest server
+// (bound to 127.0.0.1) is reachable; the SSRF guard is tested separately
+// in the externallink unit tests.
 func TestExternalLinkCheck_BareEnableProbes(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
@@ -30,9 +34,17 @@ func TestExternalLinkCheck_BareEnableProbes(t *testing.T) {
 	defer srv.Close()
 
 	// Bare enable: Settings is nil, exactly as `external-link-check: true`
-	// parses.
+	// parses. A second config entry supplies allow-internal so the httptest
+	// server is reachable; both must combine into a single working rule.
 	effective := map[string]config.RuleCfg{
-		"external-link-check": {Enabled: true},
+		"external-link-check": {
+			Enabled: true,
+			Settings: map[string]any{
+				"links": map[string]any{
+					"external-allow-internal": true,
+				},
+			},
+		},
 	}
 	configured, errs := checker.ConfigureEnabledRules(rule.All(), effective)
 	require.Empty(t, errs)

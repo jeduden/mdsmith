@@ -1,8 +1,10 @@
 package externallink
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -17,10 +19,10 @@ import (
 )
 
 // resetForTest clears the package-level probe state so each test starts
-// from a clean slate. urlCache, the semaphore, and the singleflight
-// group are process-global, so without this reset a 200 cached by one
-// test would mask a 404 the next test expects, and a semaphore sized by
-// one test's rate limit would carry into the next.
+// from a clean slate. urlCache, the semaphore, the probe counter, and
+// the singleflight group are process-global, so without this reset a
+// 200 cached by one test would mask a 404 the next test expects, and a
+// semaphore sized by one test's rate limit would carry into the next.
 func resetForTest(t *testing.T) {
 	t.Helper()
 	reset := func() {
@@ -28,13 +30,34 @@ func resetForTest(t *testing.T) {
 		probeGroup = singleflight.Group{}
 		semaphore = nil
 		semOnce = sync.Once{}
+		probeCount.Store(0)
+		probeMax = 0
+		probeMaxOnce = sync.Once{}
 	}
 	reset()
 	t.Cleanup(reset)
 }
 
 // newConfiguredRule returns a Rule with the given links settings applied.
+// It always sets external-allow-internal: true so tests can use httptest
+// servers (which bind to 127.0.0.1) without the SSRF guard blocking them.
+// Tests that specifically verify SSRF behaviour use newSSRFAwareRule.
 func newConfiguredRule(t *testing.T, links map[string]any) *Rule {
+	t.Helper()
+	r := &Rule{}
+	merged := map[string]any{"external-allow-internal": true}
+	for k, v := range links {
+		merged[k] = v
+	}
+	require.NoError(t, r.ApplySettings(map[string]any{"links": merged}))
+	resetForTest(t)
+	return r
+}
+
+// newSSRFAwareRule returns a Rule with SSRF guard enabled (the default)
+// and the given links settings applied. Use this for tests that verify
+// guard behaviour rather than HTTP protocol details.
+func newSSRFAwareRule(t *testing.T, links map[string]any) *Rule {
 	t.Helper()
 	r := &Rule{}
 	settings := map[string]any{}
@@ -60,6 +83,11 @@ func mustFile(t *testing.T, body string) *lint.File {
 // takes for `external-link-check: true` (cfg.Settings nil → rule returned
 // unchanged). A regression to the old `RateLimit==0` sentinel would make
 // this return nil.
+//
+// The rule is manually configured with AllowInternal=true here because
+// httptest binds to 127.0.0.1 and the SSRF guard (the default) would
+// block it; this test is about the "defaults survive without ApplySettings"
+// path, not about the guard.
 func TestCheck_DefaultsProbeWithoutApplySettings(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
@@ -67,7 +95,8 @@ func TestCheck_DefaultsProbeWithoutApplySettings(t *testing.T) {
 	defer srv.Close()
 
 	resetForTest(t)
-	r := newRule() // exactly what init() registers; no ApplySettings
+	r := newRule()               // exactly what init() registers; no ApplySettings
+	r.links.AllowInternal = true // allow loopback for httptest server
 	require.Equal(t, defaultRateLimit, r.links.RateLimit)
 	f := mustFile(t, "# T\n\nSee [x]("+srv.URL+"/missing).\n")
 	diags := r.Check(f)
@@ -280,6 +309,8 @@ func TestApplySettings_Defaults(t *testing.T) {
 	require.NoError(t, r.ApplySettings(map[string]any{}))
 	assert.Equal(t, 5*time.Second, r.links.Timeout)
 	assert.Equal(t, 10, r.links.RateLimit)
+	assert.False(t, r.links.AllowInternal, "SSRF guard must be on by default")
+	assert.Equal(t, defaultMaxProbes, r.links.MaxProbes)
 }
 
 func TestApplySettings_CustomTimeout(t *testing.T) {
@@ -443,6 +474,8 @@ func TestDefaultSettings(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "5s", links["external-timeout"])
 	assert.Equal(t, defaultRateLimit, links["external-rate-limit"])
+	assert.Equal(t, false, links["external-allow-internal"])
+	assert.Equal(t, defaultMaxProbes, links["external-max-probes"])
 }
 
 func TestMetadata(t *testing.T) {
@@ -534,4 +567,137 @@ func TestAcquireRelease_ClampsBelowOne(t *testing.T) {
 	r.acquire()
 	assert.Equal(t, 1, cap(semaphore), "semaphore must clamp to at least 1 slot")
 	r.release()
+}
+
+// TestCheck_SSRFGuardBlocksLoopback verifies that the SSRF guard (on by
+// default) prevents probing a loopback address. The check must fail with
+// a transport error (the connection is denied), not a false pass.
+func TestCheck_SSRFGuardBlocksLoopback(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	// SSRF guard is on: newSSRFAwareRule does not set AllowInternal.
+	r := newSSRFAwareRule(t, nil)
+	f := mustFile(t, "# T\n\nSee [x]("+srv.URL+"/ok).\n")
+	diags := r.Check(f)
+	require.Len(t, diags, 1, "loopback probe must be denied")
+	assert.Contains(t, diags[0].Message, "unreachable", "denied connection must be reported as unreachable")
+}
+
+// TestCheck_AllowInternalEnablesLoopback confirms that external-allow-internal:
+// true bypasses the SSRF guard so a loopback httptest server can be probed.
+func TestCheck_AllowInternalEnablesLoopback(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	r := newSSRFAwareRule(t, map[string]any{"external-allow-internal": true})
+	f := mustFile(t, "# T\n\nSee [x]("+srv.URL+"/ok).\n")
+	require.Nil(t, r.Check(f), "allow-internal must permit loopback probes")
+}
+
+// TestApplySettings_AllowInternal verifies that external-allow-internal is
+// parsed correctly and defaults to false.
+func TestApplySettings_AllowInternal(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{
+		"links": map[string]any{"external-allow-internal": true},
+	}))
+	assert.True(t, r.links.AllowInternal)
+
+	// Reset and verify false is the default.
+	require.NoError(t, r.ApplySettings(map[string]any{}))
+	assert.False(t, r.links.AllowInternal)
+}
+
+// TestApplySettings_AllowInternalNotBool confirms the type guard.
+func TestApplySettings_AllowInternalNotBool(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"links": map[string]any{"external-allow-internal": "yes"},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must be a bool")
+}
+
+// TestApplySettings_MaxProbes verifies external-max-probes parsing.
+func TestApplySettings_MaxProbes(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{
+		"links": map[string]any{"external-max-probes": 50},
+	}))
+	assert.Equal(t, 50, r.links.MaxProbes)
+
+	// 0 means unlimited.
+	require.NoError(t, r.ApplySettings(map[string]any{
+		"links": map[string]any{"external-max-probes": 0},
+	}))
+	assert.Equal(t, 0, r.links.MaxProbes)
+
+	// Negative clamps to 0.
+	require.NoError(t, r.ApplySettings(map[string]any{
+		"links": map[string]any{"external-max-probes": -1},
+	}))
+	assert.Equal(t, 0, r.links.MaxProbes)
+}
+
+// TestApplySettings_MaxProbesNotInt confirms the type guard.
+func TestApplySettings_MaxProbesNotInt(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"links": map[string]any{"external-max-probes": "many"},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must be an integer")
+}
+
+// TestCheck_MaxProbesCap verifies that a run with N+1 distinct URLs issues
+// at most N requests when external-max-probes is N. The N+1th URL must be
+// reported as unchecked (capped diagnostic) rather than silently omitted.
+func TestCheck_MaxProbesCap(t *testing.T) {
+	const maxProbes = 3
+	var mu sync.Mutex
+	requestCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		requestCount++
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	r := newConfiguredRule(t, map[string]any{"external-max-probes": maxProbes})
+
+	// Build a document with maxProbes+1 distinct URLs.
+	var sb strings.Builder
+	sb.WriteString("# T\n\n")
+	for i := range maxProbes + 1 {
+		fmt.Fprintf(&sb, "See [x%d](%s/path%d).\n\n", i, srv.URL, i)
+	}
+	diags := r.Check(mustFile(t, sb.String()))
+
+	mu.Lock()
+	got := requestCount
+	mu.Unlock()
+
+	assert.LessOrEqual(t, got, maxProbes, "must issue at most external-max-probes requests")
+
+	capped := 0
+	for _, d := range diags {
+		if strings.Contains(d.Message, "per-run limit reached") {
+			capped++
+		}
+	}
+	assert.Equal(t, 1, capped, "exactly the N+1th URL should be reported as unchecked")
+}
+
+// TestFailureMessage_Capped pins the capped-result diagnostic message.
+func TestFailureMessage_Capped(t *testing.T) {
+	msg := failureMessage("https://example.com/page", urlResult{capped: true})
+	assert.Contains(t, msg, "not probed")
+	assert.Contains(t, msg, "per-run limit reached")
+	assert.Contains(t, msg, "https://example.com/page")
 }
