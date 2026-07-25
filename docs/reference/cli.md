@@ -154,13 +154,13 @@ path (`····^`) pointing to the exact column.
 [
   {
     "file": "README.md",
-    "line": 10,
-    "column": 81,
     "rule": "MDS001",
     "name": "line-length",
     "severity": "error",
     "message": "line too long (120 > 80)",
     "source_lines": ["Previous line.", "Another context.", "The long line...", "Next.", "Another."],
+    "line": 10,
+    "column": 81,
     "source_start_line": 8
   }
 ]

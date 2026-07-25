@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"bytes"
 	"encoding/json"
 	"strings"
 
@@ -425,14 +426,11 @@ func documentEndPosition(source []byte) (int, int) {
 	}
 	if source[len(source)-1] == '\n' {
 		// Count newlines; the position past the final \n is the
-		// one-past-the-end line, character 0.
-		nl := 0
-		for _, b := range source {
-			if b == '\n' {
-				nl++
-			}
-		}
-		return nl, 0
+		// one-past-the-end line, character 0. bytes.Count uses the
+		// same SIMD-accelerated scan as bytes.IndexByte instead of a
+		// scalar per-byte Go loop — see
+		// docs/development/high-performance-go.md "Strings and bytes".
+		return bytes.Count(source, []byte{'\n'}), 0
 	}
 	// No trailing newline: end at last line's UTF-16 length. source
 	// is non-empty here (checked above), so splitLines always yields
