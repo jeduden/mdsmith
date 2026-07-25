@@ -36,6 +36,7 @@ import (
 	"net/url"
 	"regexp"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sync/singleflight"
@@ -57,22 +58,35 @@ func init() {
 // timeout and a concurrency of 10. CloneInstance copies these fields, so
 // every per-worker clone inherits them too.
 func newRule() *Rule {
-	return &Rule{links: externalLinkConfig{Timeout: defaultTimeout, RateLimit: defaultRateLimit}}
+	return &Rule{links: externalLinkConfig{
+		Timeout:   defaultTimeout,
+		RateLimit: defaultRateLimit,
+		MaxProbes: defaultMaxProbes,
+	}}
 }
 
 const (
 	defaultTimeout   = 5 * time.Second
 	defaultRateLimit = 10
+	defaultMaxProbes = 1000
 )
 
 // externalLinkConfig holds the keys MDS072 reads from the shared
-// `links:` block. Skip is the list of regex patterns from
-// `external-skip`; Timeout is `external-timeout` (default 5s);
-// RateLimit is `external-rate-limit` (default 10, min 1).
+// `links:` block.
+//
+//   - Skip: regex patterns from `external-skip`
+//   - Timeout: `external-timeout` (default 5s)
+//   - RateLimit: `external-rate-limit` (default 10, min 1)
+//   - AllowInternal: `external-allow-internal` (default false); when false the
+//     SSRF guard blocks loopback, private, link-local, ULA, and metadata IPs
+//   - MaxProbes: `external-max-probes` (default 1000); bounds total distinct
+//     URLs probed per run; 0 means unlimited
 type externalLinkConfig struct {
-	Skip      []string
-	Timeout   time.Duration
-	RateLimit int
+	Skip          []string
+	Timeout       time.Duration
+	RateLimit     int
+	AllowInternal bool
+	MaxProbes     int
 }
 
 // Rule validates external URLs over HTTP.
@@ -91,11 +105,22 @@ type Rule struct {
 //   - semaphore is the global in-flight cap. It is sized once, on the
 //     first probe, from that Rule's RateLimit; one config per run makes
 //     that deterministic.
+//   - probeCount is the number of distinct URLs actually probed this run.
+//     It is incremented inside the singleflight fn (once per unique URL)
+//     and compared against probeMax to enforce external-max-probes.
+//   - probeMax is set once (probeMaxOnce) from the first Rule's MaxProbes.
 var (
-	urlCache   sync.Map
-	probeGroup singleflight.Group
-	semaphore  chan struct{}
-	semOnce    sync.Once
+	urlCache     sync.Map
+	probeGroup   singleflight.Group
+	semaphore    chan struct{}
+	semOnce      sync.Once
+	probeCount   atomic.Int64
+	probeMax     int
+	probeMaxOnce sync.Once
+	// probeURL is the network probe function. It is a package-level variable
+	// so tests can replace it with a stub that returns probed=false, making
+	// the WASM-ceiling-rollback branch reachable in native test builds.
+	probeURL = probe
 )
 
 // urlResult is one cached probe outcome. probed reports whether the URL
@@ -104,10 +129,17 @@ var (
 // URL never produces a diagnostic — neither a false failure nor a false
 // pass. When probed is true, statusCode is the final HTTP status (0 when
 // err is non-nil) and err is the transport error, if any.
+//
+// capped is set when the URL was skipped because the per-run probe ceiling
+// (external-max-probes) was reached. A capped URL is neither probed=true
+// nor probed=false in the normal sense: it was not attempted at all, and
+// failureMessage surfaces it as "not probed: per-run limit reached" so the
+// user knows their coverage was truncated.
 type urlResult struct {
 	probed     bool
 	statusCode int
 	err        error
+	capped     bool
 }
 
 // ID implements rule.Rule.
@@ -282,9 +314,17 @@ func autolinkPosition(f *lint.File, n goldast.Node, rawURL string) (int, int) {
 
 // failureMessage returns the diagnostic message for a probe result, or
 // "" when the URL is healthy (a 2xx or 3xx response) or was not probed.
-// A not-probed URL (probed=false) is never reported: a host that cannot
-// reach the network must not flag every link, nor pass every link.
+// A not-probed URL (probed=false, capped=false) is never reported: a
+// host that cannot reach the network must not flag every link, nor pass
+// every link.
+//
+// A capped URL (capped=true) yields a distinct "not probed: per-run
+// limit reached" message so the user knows their coverage was truncated
+// rather than assuming all un-flagged URLs were verified healthy.
 func failureMessage(raw string, res urlResult) string {
+	if res.capped {
+		return "external URL not probed: per-run limit reached (links.external-max-probes): " + raw
+	}
 	if !res.probed {
 		return ""
 	}
@@ -304,14 +344,36 @@ func failureMessage(raw string, res urlResult) string {
 // than each issuing their own; the probe itself acquires a global
 // rate-limit slot. Once the first probe stores its result, every later
 // caller takes the outer cache-hit path, so no second request is issued.
+//
+// When the per-run probe ceiling (external-max-probes) is reached, the
+// fn returns a capped result without probing. The ceiling is set once
+// (probeMaxOnce) from this Rule's MaxProbes; probeCount tracks distinct
+// URLs probed so far.
 func (r *Rule) checkURL(raw string) urlResult {
 	if v, ok := urlCache.Load(raw); ok {
 		return v.(urlResult)
 	}
 	v, _, _ := probeGroup.Do(raw, func() (any, error) {
+		if r.links.MaxProbes > 0 {
+			probeMaxOnce.Do(func() { probeMax = r.links.MaxProbes })
+			// Atomically claim a probe slot. If the new count exceeds the
+			// ceiling, give back the slot and cache the capped result so
+			// subsequent calls for the same URL take the fast cache-hit path.
+			if probeCount.Add(1) > int64(probeMax) {
+				probeCount.Add(-1)
+				res := urlResult{capped: true}
+				urlCache.Store(raw, res)
+				return res, nil
+			}
+		}
 		r.acquire()
 		defer r.release()
-		res := probe(raw, r.links.Timeout)
+		res := probeURL(raw, r.links.Timeout, r.links.AllowInternal)
+		// WASM stub returns probed=false without network I/O; give back the
+		// probe slot so the ceiling only counts real network requests.
+		if !res.probed && r.links.MaxProbes > 0 {
+			probeCount.Add(-1)
+		}
 		urlCache.Store(raw, res)
 		return res, nil
 	})
@@ -337,9 +399,16 @@ func (r *Rule) release() { <-semaphore }
 func (r *Rule) ApplySettings(settings map[string]any) error {
 	// Defaults take effect whenever ApplySettings runs, so a rule
 	// configured with a partial `links:` block still probes with a 5s
-	// timeout and a concurrency of 10.
+	// timeout and a concurrency of 10. AllowInternal resets to false
+	// (SSRF guard on) and MaxProbes resets to defaultMaxProbes so a
+	// partial override never silently disables the guard or the ceiling.
+	// Skip resets to nil so that removing external-skip from the config
+	// takes effect without a process restart.
 	r.links.Timeout = defaultTimeout
 	r.links.RateLimit = defaultRateLimit
+	r.links.AllowInternal = false
+	r.links.MaxProbes = defaultMaxProbes
+	r.links.Skip = nil
 
 	for k, v := range settings {
 		switch k {
@@ -393,6 +462,23 @@ func (r *Rule) applyLinks(m map[string]any) error {
 				n = 1
 			}
 			r.links.RateLimit = n
+		case "external-allow-internal":
+			b, ok := v.(bool)
+			if !ok {
+				return fmt.Errorf(
+					"external-link-check: links.external-allow-internal must be a bool, got %T", v)
+			}
+			r.links.AllowInternal = b
+		case "external-max-probes":
+			n, ok := toInt(v)
+			if !ok {
+				return fmt.Errorf(
+					"external-link-check: links.external-max-probes must be an integer, got %T", v)
+			}
+			if n < 0 {
+				n = 0
+			}
+			r.links.MaxProbes = n
 		// Keys owned by MDS027 and MDS068; tolerated so one shared
 		// links: block configures every link rule. No-ops here.
 		case "style", "site-root", "validate-images", "validate-reference-style":
@@ -423,9 +509,11 @@ func (r *Rule) compileSkip() error {
 func (r *Rule) DefaultSettings() map[string]any {
 	return map[string]any{
 		"links": map[string]any{
-			"external-skip":       []string{},
-			"external-timeout":    "5s",
-			"external-rate-limit": defaultRateLimit,
+			"external-skip":           []string{},
+			"external-timeout":        "5s",
+			"external-rate-limit":     defaultRateLimit,
+			"external-allow-internal": false,
+			"external-max-probes":     defaultMaxProbes,
 		},
 	}
 }

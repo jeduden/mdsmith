@@ -13,6 +13,7 @@ import "time"
 // rule stays inert until a host supplies probed results through the
 // bridge (see plan 2607170527). Keeping the probe in a build-tagged file
 // is what keeps net/http out of the WebAssembly artifact.
-func probe(_ string, _ time.Duration) urlResult {
+// allowInternal is accepted to match the native signature but ignored.
+func probe(_ string, _ time.Duration, _ bool) urlResult {
 	return urlResult{probed: false}
 }
