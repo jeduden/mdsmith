@@ -323,6 +323,30 @@ func ExtractText(n ast.Node, source []byte, buf *bytes.Buffer) {
 	}
 }
 
+// HeadingTextCached is HeadingText memoized per (f, heading) via
+// lint.File.HeadingTextCache. Several default rules read a heading's
+// text this way — no-trailing-punctuation and no-duplicate-headings
+// for every heading; heading-increment and first-line-heading too, on
+// a subset gated by their own rule-specific conditions — so more than
+// one can independently call HeadingText for the same heading within
+// one Check pass over f; caching lets only the first caller pay for
+// the child walk and buf.String() conversion. Cached under base 0,
+// matching HeadingTextBase(h, src, 0)'s documented equivalence to
+// HeadingText(h, src) — see HeadingTextBaseCached.
+func HeadingTextCached(f *lint.File, heading *ast.Heading) string {
+	return f.HeadingTextCache(heading, 0, func() string { return HeadingText(heading, f.Source) })
+}
+
+// HeadingTextBaseCached is HeadingTextBase memoized per (f, heading,
+// base); see HeadingTextCached. base is part of the cache key (not
+// just captured by the compute closure), so a heading queried at two
+// different bases — which HeadingText/HeadingTextBase would
+// themselves disagree on — gets two independent cache entries rather
+// than the second caller silently reading the first caller's answer.
+func HeadingTextBaseCached(f *lint.File, heading *ast.Heading, base int) string {
+	return f.HeadingTextCache(heading, base, func() string { return HeadingTextBase(heading, f.Source, base) })
+}
+
 // HeadingTextBase returns the plain-text content of a heading whose
 // inline children carry run-local segment offsets, as on the parse-skipped
 // path (lint.InlineBlocks re-parses each run in isolation). base is the
