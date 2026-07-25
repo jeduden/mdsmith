@@ -2,19 +2,22 @@
 title: Telemetry and runtime network access
 summary: >-
   mdsmith collects no telemetry, no usage analytics, no error
-  reports, and no identifiers. The CLI and the LSP server make
-  no outbound network calls at runtime.
+  reports, and no identifiers. In the default configuration,
+  the CLI and LSP make zero outbound network calls. MDS072
+  external-link-check is the one opt-in exception.
 ---
 # Telemetry and runtime network access
 
-mdsmith does not phone home. The CLI and the LSP server make zero
-outbound network calls during normal operation. No telemetry, no
-analytics, no error reports, no anonymous identifiers, no update
-checks.
+mdsmith does not phone home. In the default configuration, the
+CLI and the LSP server make zero outbound network calls at
+runtime. No telemetry, no analytics, no error reports, no
+anonymous identifiers, no update checks.
 
 ## What runs offline
 
-- `mdsmith check` walks the workspace and reads files. No network.
+- `mdsmith check` walks the workspace and reads files. No network
+  by default. (`external-link-check` is the one opt-in exception;
+  see below.)
 - `mdsmith fix` rewrites files in place. No network from mdsmith
   itself. Its build pass runs user-declared recipes (see below).
 - `mdsmith lsp` speaks LSP over stdio to the parent editor. No
@@ -22,8 +25,8 @@ checks.
 - `mdsmith deps`, `mdsmith rename`, `mdsmith metrics`, `mdsmith query`,
   and every other subcommand stay local.
 
-A locked-down or air-gapped CI runner can run `mdsmith check .`
-with no outbound access and the run completes normally.
+In the default configuration, a locked-down or air-gapped CI
+runner can run `mdsmith check .` with no outbound access.
 
 ## Install-time network access
 
@@ -69,6 +72,29 @@ The five rules grouped under
 (`MDS022`, `MDS023`, `MDS024`, `MDS028`, `MDS037`) are pure
 heuristics. They run inside the Go binary. No model inference, no
 remote scoring, no embedding lookups.
+
+## Opt-in network access: MDS072 external-link-check
+
+One opt-in rule makes runtime network calls:
+[`external-link-check` (MDS072)][mds072-readme]. The rule is
+off by default. When enabled, it issues an HTTP HEAD request
+(with a GET fallback on 405 Method Not Allowed) to each http or
+https URL found in documents it lints. Results are cached per URL
+for the run, so the same URL across many files costs one request.
+
+**SSRF risk.** The rule probes URLs taken from document content.
+When enabled on untrusted content, a hostile document can include
+URLs targeting internal hosts — loopback addresses, RFC 1918
+private ranges, link-local addresses, or cloud-metadata endpoints.
+Use `links.external-skip` to exclude internal address patterns,
+or keep the rule disabled when linting untrusted workspaces. See
+the [rule README][mds072-readme] for mitigation details.
+
+With `external-link-check` disabled (the default), no outbound
+traffic is generated and the air-gapped CI claim above holds.
+
+[mds072-readme]:
+  ../../internal/rules/MDS072-external-link-check/README.md
 
 ## How to verify
 
