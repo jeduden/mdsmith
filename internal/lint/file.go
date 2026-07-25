@@ -95,14 +95,15 @@ type File struct {
 	// BenchmarkCheckCorpusLarge.
 	//
 	// These two fields push unsafe.Sizeof(File{}) from 640 to 656
-	// bytes, crossing a Go allocator size-class boundary (641-704 all
-	// round up to 704, measured) — every *File allocation costs 64
-	// bytes more than the raw field growth suggests. An alternative
-	// that avoids the class jump by routing the map through a single
-	// Memo-cached container (paying one scratch entry per File instead
-	// of dedicated fields) was benchmarked directly against this one:
-	// it kept File at 640 bytes but cost 2 extra small heap objects
-	// (the memo entry and the container) on every file that touches a
+	// bytes — 16 bytes of field growth — but 640 sits exactly on a Go
+	// allocator size-class boundary and 641-704 all round up to the
+	// 704-byte class (measured), so the real heap cost per *File
+	// allocation is 64 bytes, not 16. An alternative that avoids the
+	// class jump by routing the map through a single Memo-cached
+	// container (paying one scratch entry per File instead of
+	// dedicated fields) was benchmarked directly against this one: it
+	// kept File at 640 bytes but cost 2 extra small heap objects (the
+	// memo entry and the container) on every file that touches a
 	// heading, which measured worse on both allocs/op and B/op than
 	// this simpler direct-field version despite avoiding the class
 	// jump — the extra per-file object overhead outweighed the 64

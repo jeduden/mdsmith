@@ -46,9 +46,10 @@ func ExtractDocHeadings(f *lint.File) []DocHeading {
 }
 
 // buildDocHeadings is the MemoFile builder behind ExtractDocHeadings,
-// defined at package scope so the value passed to MemoFile is a plain
-// function pointer — a `func(*lint.File) any { ... }` literal would
-// allocate a closure box on every call.
+// defined at package scope to match astutil.buildSectionParagraphs'
+// convention: a package-level function value documents the intent to
+// avoid a per-call closure even where this particular literal
+// wouldn't capture anything and so wouldn't itself allocate.
 func buildDocHeadings(f *lint.File) any {
 	var out []DocHeading
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
