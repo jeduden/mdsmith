@@ -1117,13 +1117,50 @@ func TestRenderManagedBlock_IncludeAndExclude(t *testing.T) {
 		Include: []string{"*.md", "*.markdown"},
 		Exclude: []string{"demo/**", "vendor/*.md"},
 	})
+	// Excludes are emitted as `merge=text`, not `-merge`: the ignore-
+	// derived paths are Markdown (well-defined text-merge semantics) and
+	// carry no generated sections, so falling back to git's built-in
+	// 3-way text merge avoids the binary-style conflicts `-merge` forces
+	// (issue #755). Last-match-wins still turns the mdsmith driver off.
 	expected := "# BEGIN mdsmith merge-driver\n" +
 		"*.md merge=mdsmith\n" +
 		"*.markdown merge=mdsmith\n" +
+		"demo/** merge=text\n" +
+		"vendor/*.md merge=text\n" +
+		"# END mdsmith merge-driver\n"
+	assert.Equal(t, expected, got)
+}
+
+func TestExtractGlobs_ParsesMergeTextExcludes(t *testing.T) {
+	// The current render form: excludes carry `merge=text`. ExtractGlobs
+	// must read them back as excludes so a freshly written block round-
+	// trips and drift detection does not report perpetual drift.
+	content := "# BEGIN mdsmith merge-driver\n" +
+		"*.md merge=mdsmith\n" +
+		"demo/** merge=text\n" +
+		"vendor/*.md merge=text\n" +
+		"# END mdsmith merge-driver\n"
+	got, ok := ExtractGlobs(content)
+	require.True(t, ok)
+	assert.Equal(t, []string{"*.md"}, got.Include)
+	assert.Equal(t, []string{"demo/**", "vendor/*.md"}, got.Exclude)
+}
+
+func TestExtractGlobs_ParsesLegacyDashMergeExcludes(t *testing.T) {
+	// Backward compatibility: a `.gitattributes` written by an older
+	// mdsmith (or by the pinned CI baseline) uses `-merge` for excludes.
+	// ExtractGlobs must still read those as excludes so an unmigrated
+	// committed block extracts to the same glob set as the merge=text
+	// form and does not read as drift.
+	content := "# BEGIN mdsmith merge-driver\n" +
+		"*.md merge=mdsmith\n" +
 		"demo/** -merge\n" +
 		"vendor/*.md -merge\n" +
 		"# END mdsmith merge-driver\n"
-	assert.Equal(t, expected, got)
+	got, ok := ExtractGlobs(content)
+	require.True(t, ok)
+	assert.Equal(t, []string{"*.md"}, got.Include)
+	assert.Equal(t, []string{"demo/**", "vendor/*.md"}, got.Exclude)
 }
 
 func TestRenderManagedBlock_EmptyGlobs(t *testing.T) {
@@ -1165,8 +1202,9 @@ func TestExtractGlobs_IgnoresCommentsAndBlankLinesInBlock(t *testing.T) {
 }
 
 func TestExtractGlobs_IgnoresUnknownAttributes(t *testing.T) {
-	// A line inside the managed block that is not a merge=mdsmith
-	// or -merge assignment must be ignored, not counted as a glob.
+	// A line inside the managed block that is not a merge=mdsmith,
+	// merge=text, or -merge assignment must be ignored, not counted
+	// as a glob.
 	content := "# BEGIN mdsmith merge-driver\n" +
 		"*.md merge=mdsmith\n" +
 		"*.txt text\n" +
@@ -1291,8 +1329,9 @@ func TestGlobsFromConfig_DropsUnrepresentablePatterns(t *testing.T) {
 
 func TestExtractGlobs_SkipsSingleFieldLines(t *testing.T) {
 	// A managed-block line with only a pattern (no attribute) is
-	// not a valid merge=mdsmith or -merge assignment; ExtractGlobs
-	// must skip it instead of treating the lone token as a glob.
+	// not a valid merge=mdsmith, merge=text, or -merge assignment;
+	// ExtractGlobs must skip it instead of treating the lone token
+	// as a glob.
 	content := "# BEGIN mdsmith merge-driver\n" +
 		"orphan-token\n" +
 		"*.md merge=mdsmith\n" +
