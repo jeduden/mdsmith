@@ -21,7 +21,7 @@ anonymous identifiers, no update checks.
 - `mdsmith fix` rewrites files in place. No network from mdsmith
   itself. Its build pass runs user-declared recipes (see below).
 - `mdsmith lsp` speaks LSP over stdio to the parent editor. No
-  network.
+  network by default. (Same opt-in exception as `mdsmith check`.)
 - `mdsmith deps`, `mdsmith rename`, `mdsmith metrics`, `mdsmith query`,
   and every other subcommand stay local.
 
@@ -60,10 +60,11 @@ without running any recipe. `mdsmith check` never runs a recipe.
 ## What about the Claude Code plugin?
 
 The Claude Code plugin is an optional editor surface. mdsmith
-itself never calls an LLM or any external service at runtime. The
-plugin spawns `mdsmith lsp` as a local subprocess and feeds its
-JSON-RPC output to the editor. The diagnostics, fixes, and
-navigation all come from the local Go binary.
+itself never calls an LLM at runtime. In the default
+configuration, it contacts no external service either. The plugin
+spawns `mdsmith lsp` as a local subprocess and feeds its JSON-RPC
+output to the editor. Diagnostics, fixes, and navigation all come
+from the local Go binary.
 
 ## What about the "size and readability limits"?
 
@@ -100,4 +101,5 @@ traffic is generated and the air-gapped CI claim above holds.
 
 Run `mdsmith check .` under a network-monitoring tool of your
 choice (`strace -e trace=network`, `tcpdump`, your firewall) and
-inspect the output. No outbound traffic appears.
+inspect the output. In the default configuration, no outbound
+traffic appears.

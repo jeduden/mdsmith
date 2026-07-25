@@ -120,9 +120,9 @@ untrusted input, those URLs are attacker-controlled.
 
 **SSRF risk.** A hostile document can target internal hosts.
 These include loopback (`127.0.0.1`), RFC 1918 private ranges,
-and cloud-metadata IPs (`169.254.169.254`). The rule also
-follows up to 10 redirects, so an external URL can bounce
-inward.
+link-local addresses, and cloud-metadata IPs (`169.254.169.254`).
+The rule also follows up to 10 redirects, so an external URL can
+bounce inward.
 
 Configure `links.external-skip` to block internal patterns.
 Keep the rule off when linting workspaces you do not control.
