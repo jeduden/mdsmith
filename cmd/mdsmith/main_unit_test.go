@@ -1630,3 +1630,38 @@ func TestReportFixResultTo_LargeDiagWriteErrorReturns2(t *testing.T) {
 	code := reportFixResultTo(opts, result, &vlog.Logger{}, &alwaysErrorWriter{})
 	assert.Equal(t, 2, code)
 }
+
+func TestNonMarkdownSkipWarner_TextEmitsAndDedupes(t *testing.T) {
+	var buf bytes.Buffer
+	warn := nonMarkdownSkipWarner(&buf, "text", false)
+	require.NotNil(t, warn, "text, non-quiet should produce an active warner")
+
+	warn(".gitattributes")
+	warn(".gitattributes") // duplicate: must not warn twice
+	warn("Makefile")
+
+	out := buf.String()
+	assert.Equal(t, 1, strings.Count(out, `skipping ".gitattributes"`),
+		"a repeated path must warn only once")
+	assert.Contains(t, out, `skipping "Makefile"`)
+	// The recognized extensions are surfaced so a user with a
+	// near-miss name (e.g. notes.mdown) understands why it was skipped.
+	assert.Contains(t, out, ".md, .markdown")
+}
+
+func TestNonMarkdownSkipWarner_SuppressedForQuietAndNonText(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		format string
+		quiet  bool
+	}{
+		{"quiet", "text", true},
+		{"json", "json", false},
+		{"sarif", "sarif", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Nil(t, nonMarkdownSkipWarner(io.Discard, tc.format, tc.quiet),
+				"warner must be disabled to avoid non-error output / corrupting structured formats")
+		})
+	}
+}

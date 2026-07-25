@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"strings"
 
 	flag "github.com/spf13/pflag"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/discovery"
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
+	"github.com/jeduden/mdsmith/internal/mdpath"
 	"github.com/jeduden/mdsmith/internal/output"
 	"github.com/jeduden/mdsmith/internal/profiling"
 	"github.com/jeduden/mdsmith/internal/query"
@@ -385,7 +387,7 @@ func printRunStatsTo(w io.Writer, format string, quiet bool, stats runStats) {
 func loadAndResolve(
 	fileArgs []string, configPath string,
 	verbose bool, walk walkCLI,
-	maxInputSize string,
+	maxInputSize string, onSkipNonMarkdown func(string),
 ) (*config.Config, string, *vlog.Logger, []string, int64, int) {
 	logger := &vlog.Logger{Enabled: verbose, W: os.Stderr}
 
@@ -399,6 +401,7 @@ func loadAndResolve(
 	}
 
 	opts := resolveOpts(cfg, walk)
+	opts.OnSkipNonMarkdown = onSkipNonMarkdown
 	files, err := lint.ResolveFilesWithOpts(fileArgs, opts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
@@ -415,6 +418,34 @@ func loadAndResolve(
 	}
 
 	return cfg, cfgPath, logger, files, maxBytes, -1
+}
+
+// nonMarkdownSkipWarner returns the OnSkipNonMarkdown hook for check and
+// fix: a function that writes one stderr line per explicitly named
+// non-Markdown file that was skipped, so `mdsmith fix .gitattributes` is
+// a visible no-op instead of a silent one (issue #759).
+//
+// It returns nil — disabling the notification entirely — when the run is
+// --quiet (a skipped file is non-error output) or the format is not
+// text. check and fix emit their diagnostics, including `--format json`
+// and `--format sarif`, on stderr; a prose warning on the same stream
+// would corrupt that structured output, so the human notice is limited
+// to the text format. Repeated names are de-duplicated so a doubled
+// argument does not double the warning.
+func nonMarkdownSkipWarner(w io.Writer, format string, quiet bool) func(string) {
+	if quiet || format != "text" {
+		return nil
+	}
+	exts := strings.Join(mdpath.Extensions(), ", ")
+	seen := make(map[string]struct{})
+	return func(path string) {
+		if _, dup := seen[path]; dup {
+			return
+		}
+		seen[path] = struct{}{}
+		// Write error swallowed: see printErrorsTo rationale.
+		_, _ = fmt.Fprintf(w, "mdsmith: skipping %q: not a Markdown file (expected %s)\n", path, exts)
+	}
 }
 
 // splitStdinArg separates a "-" argument (stdin) from file arguments.

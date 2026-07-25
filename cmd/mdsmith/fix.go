@@ -226,6 +226,7 @@ type fixCLIOpts struct {
 func fixFiles(fileArgs []string, opts fixCLIOpts) int {
 	cfg, cfgPath, logger, files, maxBytes, code := loadAndResolve(
 		fileArgs, opts.configPath, opts.verbose, opts.walk, opts.maxInputSize,
+		nonMarkdownSkipWarner(os.Stderr, opts.format, opts.quiet),
 	)
 	if code >= 0 {
 		return code

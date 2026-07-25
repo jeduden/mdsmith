@@ -29,10 +29,61 @@ func TestResolveFiles_NonMarkdownFile(t *testing.T) {
 	txtFile := filepath.Join(dir, "test.txt")
 	require.NoError(t, os.WriteFile(txtFile, []byte("hello"), 0o644))
 
-	// Non-markdown files are still returned when given explicitly as args.
+	// A non-Markdown file named explicitly is skipped, matching the
+	// directory walk and glob expansion — mdsmith cannot meaningfully
+	// lint a file that is not Markdown, and fixing one rewrites content
+	// it never should touch (issue #759, e.g. .gitattributes).
 	files, err := ResolveFiles([]string{txtFile})
 	require.NoError(t, err)
+	require.Empty(t, files)
+}
+
+// TestResolveFiles_MixedMarkdownAndNonMarkdown pins that an explicit
+// argument list keeps its Markdown members and drops the rest, so a
+// caller that names both a real doc and a config file (or shell-globs a
+// wider set) still lints exactly the Markdown ones. Regression guard for
+// issue #759.
+func TestResolveFiles_MixedMarkdownAndNonMarkdown(t *testing.T) {
+	dir := t.TempDir()
+	mdFile := filepath.Join(dir, "doc.md")
+	txtFile := filepath.Join(dir, "notes.txt")
+	attrFile := filepath.Join(dir, ".gitattributes")
+	require.NoError(t, os.WriteFile(mdFile, []byte("# Hello"), 0o644))
+	require.NoError(t, os.WriteFile(txtFile, []byte("hello"), 0o644))
+	require.NoError(t, os.WriteFile(attrFile, []byte("*.md merge=mdsmith\n"), 0o644))
+
+	files, err := ResolveFiles([]string{mdFile, txtFile, attrFile})
+	require.NoError(t, err)
 	require.Len(t, files, 1)
+	assert.Equal(t, mdFile, files[0])
+}
+
+// TestResolveFiles_OnSkipNonMarkdown_ExplicitOnly verifies the
+// OnSkipNonMarkdown hook fires once per explicitly named non-Markdown
+// file (so the CLI can warn instead of a silent no-op), but never for a
+// Markdown file, and never for non-Markdown entries filtered out by a
+// directory walk — the walk skips those by design and the user did not
+// name them. Guards the warning wiring for issue #759.
+func TestResolveFiles_OnSkipNonMarkdown_ExplicitOnly(t *testing.T) {
+	dir := t.TempDir()
+	mdFile := filepath.Join(dir, "doc.md")
+	txtFile := filepath.Join(dir, "notes.txt")
+	require.NoError(t, os.WriteFile(mdFile, []byte("# Hello"), 0o644))
+	require.NoError(t, os.WriteFile(txtFile, []byte("hello"), 0o644))
+	// A non-Markdown file inside a walked directory must NOT trigger
+	// the hook: the walk drops it silently and the user named the dir,
+	// not the file.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "walked.txt"), []byte("x"), 0o644))
+
+	var skipped []string
+	opts := DefaultResolveOpts()
+	opts.OnSkipNonMarkdown = func(p string) { skipped = append(skipped, p) }
+
+	files, err := ResolveFilesWithOpts([]string{mdFile, txtFile, dir}, opts)
+	require.NoError(t, err)
+	require.Equal(t, []string{mdFile}, files)
+	assert.Equal(t, []string{txtFile}, skipped,
+		"only the explicitly named non-Markdown file should be reported")
 }
 
 func TestResolveFiles_Directory(t *testing.T) {
