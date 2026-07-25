@@ -355,9 +355,15 @@ func tryParseTable(lines [][]byte, start int, codeLines map[int]struct{}) (*tabl
 		return nil, start
 	}
 
-	// Collect all table rows.
-	var rawLines [][]byte
-	var rows []row
+	// Collect all table rows. dataRows counts the run of consecutive
+	// data-row lines without allocating (mirrors the loop below's
+	// stopping condition), so rawLines/rows can be pre-sized for the
+	// header, separator, and every data row up front — the capture
+	// loop below never triggers a slice-growth realloc
+	// (docs/development/high-performance-go.md).
+	dataRows := countDataRows(lines, prefix, start+2, codeLines)
+	rawLines := make([][]byte, 0, 2+dataRows)
+	rows := make([]row, 0, 2+dataRows)
 
 	// Header row.
 	headerCells := splitRowBytes(content)
@@ -391,6 +397,25 @@ func tryParseTable(lines [][]byte, start int, codeLines map[int]struct{}) (*tabl
 		prefix:    prefix,
 		rows:      rows,
 	}, end
+}
+
+// countDataRows returns the number of consecutive data-row lines starting
+// at i, mirroring the stopping condition of the data-row capture loop in
+// tryParseTable without allocating. Used only to pre-size that loop's
+// output slices.
+func countDataRows(lines [][]byte, prefix string, i int, codeLines map[int]struct{}) int {
+	n := 0
+	for i < len(lines) {
+		if _, ok := codeLines[i+1]; ok { // i is 0-based, codeLines is 1-based
+			break
+		}
+		if !isTableRow(stripPrefix(lines[i], prefix)) {
+			break
+		}
+		n++
+		i++
+	}
+	return n
 }
 
 // detectPrefix extracts the blockquote or list prefix from a line.

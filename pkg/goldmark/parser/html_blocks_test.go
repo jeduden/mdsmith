@@ -56,6 +56,38 @@ func TestHTMLBlock_AllSevenTypes(t *testing.T) {
 	}
 }
 
+// TestHTMLBlock_TagCaseInsensitive drives the full Open() path (not just
+// the tagInAllowedSet/isRawTextTag unit tests) with mixed-case tag names,
+// so a wiring mistake in html_block.go's tag lookups (e.g. swapping which
+// helper a call site uses) would be caught here even though
+// TestHTMLBlock_AllSevenTypes only exercises lowercase tags.
+func TestHTMLBlock_TagCaseInsensitive(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		kind ast.NodeKind
+	}{
+		{"type1-script-mixed-case", "<Script>alert('x')</Script>\n", ast.KindHTMLBlock},
+		{"type6-block-tag-uppercase", "<DIV>\nblock\n</DIV>\n", ast.KindHTMLBlock},
+		{"type7-tag-mixed-case", "<A href=\"x\">\n\n", ast.KindHTMLBlock},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := parseWithDefaults(tc.src)
+			found := false
+			_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+				if entering && n.Kind() == tc.kind {
+					found = true
+				}
+				return ast.WalkContinue, nil
+			})
+			if !found {
+				t.Errorf("expected %v for %q", tc.kind, tc.src)
+			}
+		})
+	}
+}
+
 func TestRawHTML_InlineTags(t *testing.T) {
 	cases := []struct {
 		name string

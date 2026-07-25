@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"fmt"
 	"regexp"
-	"strings"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -109,9 +108,7 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 	lines := para.Lines()
 	for i := 0; i < lines.Len(); i++ {
 		seg := lines.At(i)
-		lineText := strings.TrimRight(
-			string(seg.Value(f.Source)), "\r\n",
-		)
+		lineText := bytes.TrimRight(seg.Value(f.Source), "\r\n")
 		v, matched := matchVariant(lineText)
 		if !matched {
 			continue
@@ -134,9 +131,9 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 
 var _ rule.NodeChecker = (*Rule)(nil)
 
-func matchVariant(line string) (tocVariant, bool) {
+func matchVariant(line []byte) (tocVariant, bool) {
 	for _, v := range variants {
-		if v.pattern.MatchString(line) {
+		if v.pattern.Match(line) {
 			return v, true
 		}
 	}
@@ -187,9 +184,7 @@ func collectReplacements(f *lint.File, hasTOCRef bool) []struct{ start, end int 
 		lines := para.Lines()
 		for i := 0; i < lines.Len(); i++ {
 			seg := lines.At(i)
-			lineText := strings.TrimRight(
-				string(seg.Value(f.Source)), "\r\n",
-			)
+			lineText := bytes.TrimRight(seg.Value(f.Source), "\r\n")
 			v, matched := matchVariant(lineText)
 			if !matched {
 				continue

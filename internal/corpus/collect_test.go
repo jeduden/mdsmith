@@ -1,9 +1,12 @@
 package corpus
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 )
 
 func TestCollect_HappyPath(t *testing.T) {
@@ -204,6 +207,144 @@ func TestCollect_ErrorPath(t *testing.T) {
 	_, err := Collect(cfg, t.TempDir())
 	if err == nil {
 		t.Fatal("expected resolve error")
+	}
+}
+
+// TestCollect_OversizedFile_SkippedNotFatal guards against an unbounded
+// os.ReadFile on a corpus source: collectFile ingests markdown from
+// cloned third-party repositories, which are untrusted input
+// (docs/development/high-performance-go.md — "os.ReadFile on huge
+// inputs: one giant alloc, all resident"). A file over the shared
+// bytelimit.DefaultMaxInputBytes cap must be skipped rather than read
+// into memory in full — and, since a real source repository can contain
+// one large file among many good ones (a big CHANGELOG, a vendored
+// spec), skipping it must not abort collection of the rest of that
+// source, or of sources collected *earlier* in the same run (Collect's
+// loop over cfg.Sources returns on the first error, discarding every
+// record gathered so far — so this uses two sources, not one, to prove
+// the first source's record survives a later source's oversized file).
+func TestCollect_OversizedFile_SkippedNotFatal(t *testing.T) {
+	t.Parallel()
+
+	const prose = "# Title\n\nword word word word word word\n"
+
+	goodRoot := filepath.Join(t.TempDir(), "good")
+	mustMkdirAll(t, goodRoot)
+	mustWriteFile(t, filepath.Join(goodRoot, "early.md"), []byte(prose))
+
+	mixedRoot := filepath.Join(t.TempDir(), "mixed")
+	mustMkdirAll(t, mixedRoot)
+	oversized := bytes.Repeat([]byte("a "), int(bytelimit.DefaultMaxInputBytes)/2+1)
+	mustWriteFile(t, filepath.Join(mixedRoot, "huge.md"), oversized)
+	mustWriteFile(t, filepath.Join(mixedRoot, "normal.md"), []byte(prose))
+
+	cfg := &Config{
+		CollectedAt:      "2026-02-16",
+		MinWords:         1,
+		MinChars:         1,
+		LicenseAllowlist: []string{"MIT"},
+		Sources: []SourceConfig{
+			{
+				Name:       "early",
+				Repository: "github.com/acme/early",
+				Root:       goodRoot,
+				CommitSHA:  "abc123",
+				License:    "MIT",
+			},
+			{
+				Name:       "mixed",
+				Repository: "github.com/acme/mixed",
+				Root:       mixedRoot,
+				CommitSHA:  "def456",
+				License:    "MIT",
+			},
+		},
+	}
+
+	records, err := Collect(cfg, t.TempDir())
+	if err != nil {
+		t.Fatalf("Collect: unexpected error, oversized file should be skipped: %v", err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("record count = %d, want 2 (early.md from the first source, "+
+			"normal.md from the second; huge.md must be skipped)", len(records))
+	}
+	paths := make([]string, len(records))
+	for i, r := range records {
+		paths[i] = r.Source + "/" + r.Path
+	}
+	if paths[0] != "early/early.md" || paths[1] != "mixed/normal.md" {
+		t.Fatalf("records = %v, want [early/early.md mixed/normal.md]", paths)
+	}
+}
+
+// mustMkdirAll creates dir and all parents, failing the test on error.
+func mustMkdirAll(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", dir, err)
+	}
+}
+
+// mustWriteFile writes content to path, failing the test on error.
+func mustWriteFile(t *testing.T, path string, content []byte) {
+	t.Helper()
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+}
+
+// TestCollectFile_StatError_SkippedNotFatal covers collectFile's os.Stat
+// error branch directly: a file that vanishes between WalkDir listing it
+// and the Stat call inside collectFile (or any other stat failure) must
+// be skipped, not treated as fatal — the same reasoning as the oversized-
+// file case above.
+func TestCollectFile_StatError_SkippedNotFatal(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	missing := filepath.Join(root, "gone.md")
+
+	cfg := &Config{MinWords: 1, MinChars: 1}
+	record, keep, err := collectFile(cfg, SourceConfig{Name: "seed"}, missing, "gone.md", root)
+	if err != nil {
+		t.Fatalf("collectFile: unexpected error for a stat failure: %v", err)
+	}
+	if keep {
+		t.Fatal("collectFile: keep = true, want false for a stat failure")
+	}
+	if record != (Record{}) {
+		t.Fatalf("collectFile: record = %+v, want zero value", record)
+	}
+}
+
+// TestCollectFile_ReadError_SkippedNotFatal covers collectFile's fallback
+// bytelimit.ReadFileLimited error branch directly: a path that passes the
+// Stat-based size pre-check but then fails to read must be skipped, not
+// treated as fatal — the same reasoning as the stat-failure and
+// oversized-file cases above. A directory Stats successfully (size 0,
+// under the cap) but fails to Read as a file ("is a directory"),
+// deterministically reaching this branch regardless of the running
+// user's privileges (unlike a permission-bit test, which root ignores).
+func TestCollectFile_ReadError_SkippedNotFatal(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	notAFile := filepath.Join(root, "not-a-file.md")
+	if err := os.Mkdir(notAFile, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	cfg := &Config{MinWords: 1, MinChars: 1}
+	record, keep, err := collectFile(cfg, SourceConfig{Name: "seed"}, notAFile, "not-a-file.md", root)
+	if err != nil {
+		t.Fatalf("collectFile: unexpected error reading a directory as a file: %v", err)
+	}
+	if keep {
+		t.Fatal("collectFile: keep = true, want false when the read fails")
+	}
+	if record != (Record{}) {
+		t.Fatalf("collectFile: record = %+v, want zero value", record)
 	}
 }
 

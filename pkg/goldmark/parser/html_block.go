@@ -3,7 +3,6 @@ package parser
 import (
 	"bytes"
 	"regexp"
-	"strings"
 
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/jeduden/mdsmith/pkg/goldmark/text"
@@ -76,6 +75,54 @@ var allowedBlockTags = map[string]struct{}{
 	"ul":         {},
 }
 
+// tagBuf is a fixed-capacity stack buffer for an ASCII tag name, sized so
+// the longest HTML tag (and longer non-tags, truncated harmlessly) fits
+// without a heap allocation.
+type tagBuf struct {
+	buf [32]byte
+	n   int
+}
+
+// lowerInto copies the ASCII-lowercased bytes of b into the stack buffer,
+// truncating anything past its capacity (a name that long is not in
+// allowedBlockTags or the raw-text set, so truncation cannot cause a
+// false match against the short tag names they contain).
+func (t *tagBuf) lowerInto(b []byte) []byte {
+	t.n = 0
+	for _, c := range b {
+		if t.n >= len(t.buf) {
+			break
+		}
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		t.buf[t.n] = c
+		t.n++
+	}
+	return t.buf[:t.n]
+}
+
+// tagInAllowedSet reports whether b is (case-insensitively) one of the
+// type-6 HTML block tags, lowercasing into a stack buffer so the lookup
+// allocates nothing — strings.ToLower(string(b)) allocated a new string
+// on every trigger candidate line (docs/development/high-performance-go.md).
+func tagInAllowedSet(b []byte) bool {
+	var t tagBuf
+	_, ok := allowedBlockTags[string(t.lowerInto(b))]
+	return ok
+}
+
+// isRawTextTag reports whether b is (case-insensitively) one of the
+// raw-text tags that type-7 openers defer to type 1 for.
+func isRawTextTag(b []byte) bool {
+	var t tagBuf
+	switch string(t.lowerInto(b)) {
+	case "script", "style", "pre":
+		return true
+	}
+	return false
+}
+
 var htmlBlockType1OpenRegexp = regexp.MustCompile(`(?i)^[ ]{0,3}<(script|pre|style|textarea)(?:\s.*|>.*|/>.*|)(?:\r\n|\n)?$`) //nolint:golint,lll
 var htmlBlockType1CloseRegexp = regexp.MustCompile(`(?i)^.*</(?:script|pre|style|textarea)>.*`)
 
@@ -128,20 +175,17 @@ func (b *htmlBlockParser) Open(parent ast.Node, reader text.Reader, pc Context) 
 	} else if match := htmlBlockType7Regexp.FindSubmatchIndex(line); match != nil {
 		isCloseTag := match[2] > -1 && bytes.Equal(line[match[2]:match[3]], []byte("/"))
 		hasAttr := match[6] != match[7]
-		tagName := strings.ToLower(string(line[match[4]:match[5]]))
-		_, ok := allowedBlockTags[tagName]
-		if ok {
+		tagBytes := line[match[4]:match[5]]
+		if tagInAllowedSet(tagBytes) {
 			node = ast.NewHTMLBlock(ast.HTMLBlockType6)
-		} else if tagName != "script" && tagName != "style" &&
-			tagName != "pre" && !ast.IsParagraph(last) && !(isCloseTag && hasAttr) { // type 7 can not interrupt paragraph
+		} else if !isRawTextTag(tagBytes) &&
+			!ast.IsParagraph(last) && !(isCloseTag && hasAttr) { // type 7 can not interrupt paragraph
 			node = ast.NewHTMLBlock(ast.HTMLBlockType7)
 		}
 	}
 	if node == nil {
 		if match := htmlBlockType6Regexp.FindSubmatchIndex(line); match != nil {
-			tagName := string(line[match[2]:match[3]])
-			_, ok := allowedBlockTags[strings.ToLower(tagName)]
-			if ok {
+			if tagInAllowedSet(line[match[2]:match[3]]) {
 				node = ast.NewHTMLBlock(ast.HTMLBlockType6)
 			}
 		}

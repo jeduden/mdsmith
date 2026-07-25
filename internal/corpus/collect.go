@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 )
 
 // Collect gathers markdown records from configured sources.
@@ -174,9 +176,35 @@ func collectFile(
 		return Record{}, false, nil
 	}
 
-	content, err := os.ReadFile(fullPath)
+	// Skip a file this function cannot read — oversized, vanished, or
+	// permission-denied — rather than failing the whole source:
+	// collectFromRoot's caller aborts the entire walk (and every record
+	// already collected from every source before it, since Collect
+	// returns on the first error) on any error from this function. A
+	// cloned third-party repository can legitimately contain one
+	// oversized or racy file (a large CHANGELOG, a vendored spec, a file
+	// removed mid-walk) without that file being reason to discard the
+	// rest of the corpus build.
+	info, err := os.Stat(fullPath)
 	if err != nil {
-		return Record{}, false, fmt.Errorf("read file %s: %w", fullPath, err)
+		reportProgress(cfg, fmt.Sprintf("skipping %s: %v", relPath, err))
+		return Record{}, false, nil
+	}
+	if info.Size() > bytelimit.DefaultMaxInputBytes {
+		reportProgress(cfg, fmt.Sprintf(
+			"skipping %s: %d bytes exceeds the %d byte limit",
+			relPath, info.Size(), bytelimit.DefaultMaxInputBytes))
+		return Record{}, false, nil
+	}
+
+	// bytelimit.ReadFileLimited re-checks the size on the actual read,
+	// so a file that grows past the cap in the window between the Stat
+	// above and this call (or otherwise becomes unreadable) is caught
+	// here too — skipped the same way, not treated as fatal.
+	content, err := bytelimit.ReadFileLimited(fullPath, bytelimit.DefaultMaxInputBytes)
+	if err != nil {
+		reportProgress(cfg, fmt.Sprintf("skipping %s: %v", relPath, err))
+		return Record{}, false, nil
 	}
 	raw := normalizeContent(string(content))
 	words := countWords(raw)
