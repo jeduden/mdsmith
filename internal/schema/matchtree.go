@@ -183,7 +183,7 @@ func collectUnlistedBlockMatches(
 	claimed map[int]struct{}, blocks []contentBlock, parent *ScopeMatch,
 ) {
 	for i, dh := range heads {
-		if isClaimed(claimed, i) || dh.Level != rootLevel {
+		if IsClaimed(claimed, i) || dh.Level != rootLevel {
 			continue
 		}
 		end := contentScopeEndLine(heads, i, dh.Level, docEnd)

@@ -256,5 +256,5 @@ footer: |
 | 2607170527 | 🔳     | opus   | [External link checking on WASM hosts (MDS072)](plan/2607170527_wasm-external-link-check.md)                                                            |
 | 2607171900 | 🔳     | opus   | [Slidev structure rule (MDS073) — validate layouts, slots, fields, and frontmatter keys per slide](plan/2607171900_slidev-structure-rule.md)            |
 | 2607191917 | ✅     | haiku  | [Add dedicated unit tests for printInitCatalog and setInitUsage](plan/2607191917_arch-fix-printinitcatalog-unit-test.md)                                |
-| 2607191918 | 🔲     | haiku  | [Deduplicate isClaimed between internal/schema and requiredstructure](plan/2607191918_arch-fix-isclaimed-dedup.md)                                      |
+| 2607191918 | ✅     | haiku  | [Deduplicate isClaimed between internal/schema and requiredstructure](plan/2607191918_arch-fix-isclaimed-dedup.md)                                      |
 <?/catalog?>

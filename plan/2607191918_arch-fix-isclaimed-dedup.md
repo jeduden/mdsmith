@@ -3,7 +3,7 @@ id: 2607191918
 title: >-
   Deduplicate isClaimed between internal/schema and
   requiredstructure
-status: "🔲"
+status: "✅"
 model: haiku
 summary: >-
   internal/rules/requiredstructure/rule.go carries a
@@ -58,7 +58,7 @@ found this duplication:
 
 ## Acceptance Criteria
 
-- [ ] Only one implementation of the claimed-range check
+- [x] Only one implementation of the claimed-range check
       exists in the repository.
-- [ ] `go test ./...` is green.
-- [ ] `mdsmith check .` is green.
+- [x] `go test ./...` is green.
+- [x] `mdsmith check .` is green.

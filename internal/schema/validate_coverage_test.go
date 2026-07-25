@@ -409,3 +409,28 @@ func TestDedupedCUEErrorDiags_DuplicateKeyCollapses(t *testing.T) {
 	diags := dedupedCUEErrorDiags(f, sch, docFM, dup, keyLines, makeDiagForTest)
 	assert.Len(t, diags, 1, "two identical cueErrs entries must collapse to one diagnostic")
 }
+
+// TestIsClaimed covers both branches of IsClaimed: a present idx
+// reports true; an absent idx reports false.
+func TestIsClaimed(t *testing.T) {
+	claimed := map[int]struct{}{3: {}}
+	assert.True(t, IsClaimed(claimed, 3), "present idx must be claimed")
+	assert.False(t, IsClaimed(claimed, 7), "absent idx must not be claimed")
+}
+
+func TestIsClaimed_Nil(t *testing.T) {
+	assert.False(t, IsClaimed(nil, 0))
+}
+
+func TestIsClaimed_Empty(t *testing.T) {
+	assert.False(t, IsClaimed(map[int]struct{}{}, 0))
+}
+
+// TestIsClaimedAcceptsStructSet pins IsClaimed's "claimed" parameter to
+// map[int]struct{}, not map[int]bool. The struct{} value drops per-entry
+// map overhead versus bool. See
+// docs/development/high-performance-go.md "map[K]struct{} for sets".
+func TestIsClaimedAcceptsStructSet(t *testing.T) {
+	accept := func(func(map[int]struct{}, int) bool) {}
+	accept(IsClaimed)
+}

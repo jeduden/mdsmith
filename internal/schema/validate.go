@@ -672,13 +672,8 @@ func skipBelow(heads []DocHeading, rootLevel int) []DocHeading {
 	return out
 }
 
-// isClaimed reports whether idx is a member of claimed. claimed is a
-// set — every entry is written exactly once, via claimed[idx] =
-// struct{}{} — so map[int]struct{} (zero-byte value) replaces the
-// map[int]bool every read/write site in this file, matchtree.go, and
-// validate_content.go used to spell as a truthy map read. See
-// docs/development/high-performance-go.md "map[K]struct{} for sets".
-func isClaimed(claimed map[int]struct{}, idx int) bool {
+// IsClaimed reports whether idx is a member of the claimed set.
+func IsClaimed(claimed map[int]struct{}, idx int) bool {
 	_, ok := claimed[idx]
 	return ok
 }
@@ -715,7 +710,7 @@ func validateScopes(
 			claimed[i] = struct{}{}
 			continue
 		}
-		if isClaimed(claimed, i) {
+		if IsClaimed(claimed, i) {
 			continue
 		}
 		newIdx, scDiags, claimedThis := matchScope(
@@ -725,7 +720,7 @@ func validateScopes(
 		docIdx = newIdx
 		if claimedThis {
 			allowExtra = false
-		} else if !isClaimed(claimed, i) && sc.Required() {
+		} else if !IsClaimed(claimed, i) && sc.Required() {
 			// Anchor the missing section at the heading it should
 			// follow (the preceding document heading), so the
 			// squiggle lands where the section belongs rather than
@@ -898,7 +893,7 @@ func claimedScopeMatches(
 	claimCounts map[int]int, docFM map[string]any,
 ) (int, bool) {
 	for i, sc := range scopes {
-		if !isClaimed(claimed, i) {
+		if !IsClaimed(claimed, i) {
 			continue
 		}
 		if sc.Preamble || isSlotMatcher(sc.Matcher) {
@@ -961,7 +956,7 @@ func unclaimedListedScope(
 	docFM map[string]any,
 ) int {
 	for i, sc := range scopes {
-		if isClaimed(claimed, i) || sc.Preamble || isSlotMatcher(sc.Matcher) {
+		if IsClaimed(claimed, i) || sc.Preamble || isSlotMatcher(sc.Matcher) {
 			continue
 		}
 		if scopeMatchesHeading(sc, dh, docFM) {
@@ -1306,7 +1301,7 @@ func anyLaterScopeClaims(
 ) bool {
 	for i := startIdx; i < len(scopes); i++ {
 		sc := scopes[i]
-		if isClaimed(claimed, i) || sc.Preamble || isSlotMatcher(sc.Matcher) {
+		if IsClaimed(claimed, i) || sc.Preamble || isSlotMatcher(sc.Matcher) {
 			continue
 		}
 		if scopeMatchesHeading(sc, dh, docFM) {
@@ -1330,7 +1325,7 @@ func claimsLaterLiteral(
 ) bool {
 	for i := startIdx; i < len(scopes); i++ {
 		sc := scopes[i]
-		if isClaimed(claimed, i) || sc.Preamble ||
+		if IsClaimed(claimed, i) || sc.Preamble ||
 			isSlotMatcher(sc.Matcher) || isBroadMatcher(sc.Matcher) {
 			continue
 		}
@@ -1465,7 +1460,7 @@ func findOutOfOrderIdx(
 ) int {
 	for i := minIdx; i < len(scopes); i++ {
 		sc := scopes[i]
-		if isClaimed(claimed, i) || sc.Preamble || isSlotMatcher(sc.Matcher) {
+		if IsClaimed(claimed, i) || sc.Preamble || isSlotMatcher(sc.Matcher) {
 			continue
 		}
 		if scopeMatchesHeading(sc, dh, docFM) {
@@ -1537,7 +1532,7 @@ func scanScopeRunAtLevel(
 	var out []int
 	started := false
 	for i, h := range heads {
-		if isClaimed(claimed, i) {
+		if IsClaimed(claimed, i) {
 			continue
 		}
 		if h.Line < parentStart || h.Line >= parentEnd {
@@ -1585,7 +1580,7 @@ func firstWrongLevelMatch(
 		return -1
 	}
 	for i, h := range heads {
-		if isClaimed(claimed, i) {
+		if IsClaimed(claimed, i) {
 			continue
 		}
 		if h.Line < parentStart || h.Line >= parentEnd {
