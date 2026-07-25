@@ -79,18 +79,21 @@ type File struct {
 	codeBlockLines map[int]struct{}
 
 	// headingTextCache memoizes HeadingTextCache's compute result per
-	// heading node. Unlike the caches above, it is not a single
-	// lazily-built value: entries accumulate one per heading as rules
-	// visit them, so a plain mutex-guarded map fits better than the
-	// atomic.Bool "build once" pattern (there is no single build to
-	// gate) — see headingTextCacheMu in the guard block below. A plain
-	// map beats routing through the sync.Map-backed scratch/Memo
-	// facility here: scratch's per-key Store path is tuned for a
-	// read-mostly, stable keyset, but headings are a write-once,
-	// read-a-few-times keyset per File, and sync.Map's per-insert
-	// entry/dirty-map bookkeeping cost more than it saved when
-	// benchmarked against BenchmarkCheckCorpusLarge.
-	headingTextCache map[*ast.Heading]string
+	// (heading, base) key — see headingTextCacheKey; base disambiguates
+	// the AST path (always base 0) from the parse-skipped path's
+	// run-local offsets so the two never collide on one heading
+	// pointer. Unlike the caches above, it is not a single lazily-built
+	// value: entries accumulate one per heading as rules visit them,
+	// so a plain mutex-guarded map fits better than the atomic.Bool
+	// "build once" pattern (there is no single build to gate) — see
+	// headingTextCacheMu in the guard block below. A plain map beats
+	// routing through the sync.Map-backed scratch/Memo facility here:
+	// scratch's per-key Store path is tuned for a read-mostly, stable
+	// keyset, but headings are a write-once, read-a-few-times keyset
+	// per File, and sync.Map's per-insert entry/dirty-map bookkeeping
+	// cost more than it saved when benchmarked against
+	// BenchmarkCheckCorpusLarge.
+	headingTextCache map[headingTextCacheKey]string
 
 	// lineClass, when non-nil, is the flat Layer-0 line classifier built
 	// in place of the goldmark parse on the engine's parse-skip path
@@ -344,35 +347,56 @@ func (f *File) MemoFile(key string, build func(*File) any) any {
 	return e.val
 }
 
-// HeadingTextCache memoizes compute's result for heading, keyed by
-// the heading node's own pointer identity. A plain mutex-guarded map
-// is used rather than the sync.Map-backed scratch facility behind
-// Memo/MemoFile: headings are a write-once, read-a-few-times keyset
-// per File (a handful of headings, each queried by a handful of
-// rules), and sync.Map's per-insert entry/dirty-map bookkeeping cost
-// more in benchmarking than the redundant computation it avoided —
-// sync.Map is tuned for a stable, read-mostly keyset, not this shape.
+// headingTextCacheKey pairs a heading node with the base offset its
+// text was (or would be) extracted with. HeadingText and
+// HeadingTextBase agree on a heading's text only when base == 0
+// (HeadingTextBase(h, src, 0) == HeadingText(h, src), per
+// astutil_test.go's own equivalence tests), so a heading pointer
+// alone is not a safe cache key: the AST path always queries base 0,
+// but the parse-skipped path can query the same physical node — a
+// goldmark inline-block re-parse can, in principle, hand back a node
+// pointer another call already cached against a different base — at
+// a nonzero offset. Including base keeps those two cache entries
+// distinct instead of the second caller silently reading the first
+// caller's answer.
+type headingTextCacheKey struct {
+	heading *ast.Heading
+	base    int
+}
+
+// HeadingTextCache memoizes compute's result for (heading, base),
+// keyed by the heading node's pointer identity plus base — see
+// headingTextCacheKey. A plain mutex-guarded map is used rather than
+// the sync.Map-backed scratch facility behind Memo/MemoFile: headings
+// are a write-once, read-a-few-times keyset per File (a handful of
+// headings, each queried by a handful of rules), and sync.Map's
+// per-insert entry/dirty-map bookkeeping cost more in benchmarking
+// than the redundant computation it avoided — sync.Map is tuned for a
+// stable, read-mostly keyset, not this shape.
 //
-// Several default rules (no-trailing-punctuation, no-duplicate-
-// headings, heading-increment, first-line-heading) each
-// independently walk the same heading's children to extract its
-// text within one Check pass over f. astutil.HeadingText's
-// buf.String() alone was 28% of BenchmarkCheckCorpusLarge's total
-// allocations (68% of that from HeadingText/HeadingTextBase, per
-// docs/development/high-performance-go.md's memoization guidance) —
-// this cache lets only the first caller for a given heading pay for
-// the walk and the string conversion.
-func (f *File) HeadingTextCache(heading *ast.Heading, compute func() string) string {
+// Several default rules read a heading's text this way — no-trailing-
+// punctuation and no-duplicate-headings for every heading;
+// heading-increment and first-line-heading too, on a subset gated by
+// their own rule-specific conditions — so more than one can
+// independently walk the same heading's children within one Check
+// pass over f. astutil.HeadingText's buf.String() alone was 28% of
+// BenchmarkCheckCorpusLarge's total allocations (68% of that from
+// HeadingText/HeadingTextBase, per docs/development/high-performance
+// -go.md's memoization guidance) — this cache lets only the first
+// caller for a given (heading, base) pay for the walk and the string
+// conversion.
+func (f *File) HeadingTextCache(heading *ast.Heading, base int, compute func() string) string {
+	key := headingTextCacheKey{heading: heading, base: base}
 	f.headingTextCacheMu.Lock()
 	defer f.headingTextCacheMu.Unlock()
-	if v, ok := f.headingTextCache[heading]; ok {
+	if v, ok := f.headingTextCache[key]; ok {
 		return v
 	}
 	v := compute()
 	if f.headingTextCache == nil {
-		f.headingTextCache = make(map[*ast.Heading]string, 4)
+		f.headingTextCache = make(map[headingTextCacheKey]string, 4)
 	}
-	f.headingTextCache[heading] = v
+	f.headingTextCache[key] = v
 	return v
 }
 

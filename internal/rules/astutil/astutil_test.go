@@ -3,6 +3,7 @@ package astutil
 import (
 	"bytes"
 	"testing"
+	"unsafe"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
@@ -494,9 +495,13 @@ func TestHeadingTextCached_MemoizesPerHeading(t *testing.T) {
 		"second call must serve the cached value, not re-walk the mutated source")
 }
 
-// TestHeadingTextBaseCached_MemoizesPerHeading is HeadingTextCached's
-// coverage for the run-local-offset variant used on the parse-skipped
-// path.
+// TestHeadingTextBaseCached_MemoizesPerHeading covers
+// HeadingTextBaseCached's cache-hit path at base == 0, where it must
+// agree with HeadingText/HeadingTextCached exactly (the AST and
+// parse-skipped paths are equivalent at base 0 — see
+// TestHeadingTextBase_NestedEmphasis). See
+// TestHeadingTextBaseCached_NonzeroBase_ParseSkippedPath for coverage
+// of the actual parse-skipped, nonzero-base shape production uses.
 func TestHeadingTextBaseCached_MemoizesPerHeading(t *testing.T) {
 	src := []byte("# My Heading\n")
 	f, err := lint.NewFile("test.md", src)
@@ -512,6 +517,70 @@ func TestHeadingTextBaseCached_MemoizesPerHeading(t *testing.T) {
 	again := HeadingTextBaseCached(f, h, 0)
 	assert.Equal(t, "My Heading", again,
 		"second call must serve the cached value, not re-walk the mutated source")
+}
+
+// TestHeadingTextBaseCached_NonzeroBase_ParseSkippedPath exercises
+// HeadingTextBaseCached the way production actually calls it: via
+// lint.WalkInlineNodes on a parse-skipped (f.AST == nil) File, where a
+// heading past the first block gets a nonzero run-local base. Unlike
+// the mutation trick the base-0 tests use (offsets there are simple
+// enough to hand-compute), this proves caching by comparing the two
+// returned strings' backing data pointers with unsafe.StringData: a
+// recomputed (rather than cached) second call would read the same
+// bytes into a distinct string value.
+func TestHeadingTextBaseCached_NonzeroBase_ParseSkippedPath(t *testing.T) {
+	src := []byte("# First\n\nSome prose paragraph.\n\n# My Heading\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	f.AST = nil
+
+	var heading *ast.Heading
+	var base int
+	found := 0
+	lint.WalkInlineNodes(f, func(n ast.Node, b int) {
+		if h, ok := n.(*ast.Heading); ok {
+			found++
+			if found == 2 {
+				heading, base = h, b
+			}
+		}
+	})
+	require.NotNil(t, heading, "expected a second heading on the parse-skipped path")
+	require.Positive(t, base, "the second heading must carry a nonzero run-local base")
+
+	got := HeadingTextBaseCached(f, heading, base)
+	require.Equal(t, "My Heading", got)
+
+	again := HeadingTextBaseCached(f, heading, base)
+	assert.Equal(t, "My Heading", again)
+	assert.Same(t, unsafe.StringData(got), unsafe.StringData(again),
+		"second call must serve the cached string, not a freshly re-walked one")
+}
+
+// TestHeadingTextBaseCached_DistinctBasesIndependent pins that the
+// same heading pointer queried at two different bases — the shape a
+// shared map keyed on the heading pointer alone would collide on —
+// gets two independent cache entries.
+func TestHeadingTextBaseCached_DistinctBasesIndependent(t *testing.T) {
+	src := []byte("# My Heading\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	h := firstHeading(t, f)
+
+	got0 := HeadingTextBaseCached(f, h, 0)
+	assert.Equal(t, "My Heading", got0)
+
+	// base 1 shifts every segment's read window 1 byte into the
+	// source (past "# M"), so the same heading pointer at a different
+	// base must not reuse base 0's cached answer.
+	got1 := HeadingTextBaseCached(f, h, 1)
+	assert.Equal(t, "y Heading\n", got1)
+	assert.NotEqual(t, got0, got1,
+		"a different base must not read base 0's cached entry")
+
+	again0 := HeadingTextBaseCached(f, h, 0)
+	assert.Equal(t, "My Heading", again0,
+		"base 0's own cached entry must survive an intervening call at base 1")
 }
 
 // TestHeadingTextCached_DistinctHeadingsIndependent pins that two

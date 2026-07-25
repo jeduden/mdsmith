@@ -416,9 +416,9 @@ func TestFile_HeadingTextCache_ComputesOnce(t *testing.T) {
 		return "Title"
 	}
 
-	require.Equal(t, "Title", f.HeadingTextCache(heading, compute))
-	require.Equal(t, "Title", f.HeadingTextCache(heading, compute))
-	require.Equal(t, "Title", f.HeadingTextCache(heading, compute))
+	require.Equal(t, "Title", f.HeadingTextCache(heading, 0, compute))
+	require.Equal(t, "Title", f.HeadingTextCache(heading, 0, compute))
+	require.Equal(t, "Title", f.HeadingTextCache(heading, 0, compute))
 	assert.Equal(t, int32(1), atomic.LoadInt32(&calls),
 		"compute must run exactly once per heading node")
 }
@@ -431,12 +431,32 @@ func TestFile_HeadingTextCache_IndependentHeadings(t *testing.T) {
 	f := &File{Path: "t.md"}
 	h1, h2 := &ast.Heading{}, &ast.Heading{}
 
-	got1 := f.HeadingTextCache(h1, func() string { return "First" })
-	got2 := f.HeadingTextCache(h2, func() string { return "Second" })
+	got1 := f.HeadingTextCache(h1, 0, func() string { return "First" })
+	got2 := f.HeadingTextCache(h2, 0, func() string { return "Second" })
 	assert.Equal(t, "First", got1)
 	assert.Equal(t, "Second", got2)
 	// Re-querying h1 must still serve its own cached value, not h2's.
-	assert.Equal(t, "First", f.HeadingTextCache(h1, func() string { return "wrong" }))
+	assert.Equal(t, "First", f.HeadingTextCache(h1, 0, func() string { return "wrong" }))
+}
+
+// TestFile_HeadingTextCache_IndependentBases pins that the same
+// heading pointer queried at two different base offsets gets two
+// independent cache entries. HeadingText (the AST path) always
+// queries base 0; HeadingTextBase (the parse-skipped path) queries
+// whatever run-local base applies. Without base in the key, whichever
+// call reaches a given heading first would permanently decide every
+// later caller's answer regardless of the base it asked for.
+func TestFile_HeadingTextCache_IndependentBases(t *testing.T) {
+	f := &File{Path: "t.md"}
+	heading := &ast.Heading{}
+
+	got0 := f.HeadingTextCache(heading, 0, func() string { return "base-zero" })
+	got5 := f.HeadingTextCache(heading, 5, func() string { return "base-five" })
+	assert.Equal(t, "base-zero", got0)
+	assert.Equal(t, "base-five", got5)
+	// Re-querying base 0 must still serve its own cached value, not
+	// base 5's answer.
+	assert.Equal(t, "base-zero", f.HeadingTextCache(heading, 0, func() string { return "wrong" }))
 }
 
 // TestFile_HeadingTextCache_ConcurrentSingleBuild pins that compute
@@ -453,7 +473,7 @@ func TestFile_HeadingTextCache_ConcurrentSingleBuild(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			v := f.HeadingTextCache(heading, func() string {
+			v := f.HeadingTextCache(heading, 0, func() string {
 				atomic.AddInt32(&calls, 1)
 				return "once"
 			})
