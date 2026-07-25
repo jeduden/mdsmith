@@ -18,8 +18,9 @@ anonymous identifiers, no update checks.
 - `mdsmith check` walks the workspace and reads files. No network
   by default. (`external-link-check` is the one opt-in exception;
   see below.)
-- `mdsmith fix` rewrites files in place. No network from mdsmith
-  itself. Its build pass runs user-declared recipes (see below).
+- `mdsmith fix` rewrites files in place. No network by default.
+  (Same opt-in exception as `mdsmith check`.) Its build pass runs
+  user-declared recipes (see below).
 - `mdsmith lsp` speaks LSP over stdio to the parent editor. No
   network by default. (Same opt-in exception as `mdsmith check`.)
 - `mdsmith deps`, `mdsmith rename`, `mdsmith metrics`, `mdsmith query`,
@@ -87,6 +88,9 @@ the same URL across many files costs one request.
 When enabled on untrusted content, a hostile document can include
 URLs targeting internal hosts — loopback addresses, RFC 1918
 private ranges, link-local addresses, or cloud-metadata endpoints.
+External URLs can also redirect inward: the rule follows up to
+10 redirects, so a pattern in `links.external-skip` that matches
+the initial URL does not block a redirect to an internal host.
 Use `links.external-skip` to exclude internal address patterns,
 or keep the rule disabled when linting untrusted workspaces.
 
