@@ -91,6 +91,7 @@ func TestIsRestrictedIP_Blocked(t *testing.T) {
 		"0.0.0.0",         // unspecified
 		"::",              // unspecified IPv6
 		"224.0.0.1",       // multicast
+		"fe80::1%eth0",    // zone-scoped link-local (zone stripped before prefix check)
 	}
 	for _, addr := range blocked {
 		ip, err := netip.ParseAddr(addr)
@@ -112,6 +113,12 @@ func TestIsRestrictedIP_Allowed(t *testing.T) {
 		require.NoErrorf(t, err, "parsing %s", addr)
 		assert.Falsef(t, isRestrictedIP(ip), "expected %s to be allowed", addr)
 	}
+}
+
+// TestIsRestrictedIP_ZeroAddr verifies that the zero netip.Addr (invalid) is
+// blocked — isRestrictedIP must fail closed, not open.
+func TestIsRestrictedIP_ZeroAddr(t *testing.T) {
+	assert.True(t, isRestrictedIP(netip.Addr{}), "zero (invalid) Addr must be blocked")
 }
 
 // TestSSRFControl_LoopbackDenied confirms ssrfControl returns an error for

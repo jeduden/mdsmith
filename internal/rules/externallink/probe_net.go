@@ -28,11 +28,14 @@ var restrictedPrefixes = []netip.Prefix{
 	netip.MustParsePrefix("100.64.0.0/10"),  // CGN (RFC6598; covers Alibaba metadata 100.100.100.200)
 }
 
-// isRestrictedIP reports whether ip is loopback, unspecified, multicast,
-// or in a restricted prefix. The guard applies after IPv4-in-IPv6 unmapping.
+// isRestrictedIP reports whether ip is invalid, loopback, unspecified,
+// multicast, or in a restricted prefix. The guard applies after IPv4-in-IPv6
+// unmapping and zone-ID stripping; netip.Prefix.Contains returns false for
+// any zone-carrying Addr, so the zone must be removed before prefix checks.
 func isRestrictedIP(ip netip.Addr) bool {
 	ip = ip.Unmap()
-	if ip.IsLoopback() || ip.IsUnspecified() || ip.IsMulticast() {
+	ip = ip.WithZone("") // Prefix.Contains requires a zone-free Addr
+	if !ip.IsValid() || ip.IsLoopback() || ip.IsUnspecified() || ip.IsMulticast() {
 		return true
 	}
 	for _, prefix := range restrictedPrefixes {
