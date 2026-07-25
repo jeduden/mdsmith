@@ -33,6 +33,7 @@ func resetForTest(t *testing.T) {
 		probeCount.Store(0)
 		probeMax = 0
 		probeMaxOnce = sync.Once{}
+		probeURL = probe
 	}
 	reset()
 	t.Cleanup(reset)
@@ -760,4 +761,26 @@ func TestFailureMessage_Capped(t *testing.T) {
 	assert.Contains(t, msg, "not probed")
 	assert.Contains(t, msg, "per-run limit reached")
 	assert.Contains(t, msg, "https://example.com/page")
+}
+
+// TestCheck_ProbeURLRollback verifies that when probeURL returns probed=false
+// (the WASM stub behaviour), the probe slot is returned so the per-run ceiling
+// only counts actual network requests. Without the rollback, 1000 WASM
+// no-ops would permanently cap the rule after defaultMaxProbes calls.
+func TestCheck_ProbeURLRollback(t *testing.T) {
+	r := newConfiguredRule(t, map[string]any{"external-max-probes": 2})
+
+	// Replace probeURL with a stub that never fires network I/O.
+	probeURL = func(_ string, _ time.Duration, _ bool) urlResult {
+		return urlResult{} // probed=false, no error, no status
+	}
+
+	// Probe two URLs — if slots are not returned, the ceiling would be hit.
+	r.checkURL("http://example.com/1")
+	r.checkURL("http://example.com/2")
+
+	// A third distinct URL must not be capped: probeCount should be 0.
+	res := r.checkURL("http://example.com/3")
+	assert.False(t, res.capped, "ceiling must not trigger when probe is a no-op (probed=false)")
+	assert.Equal(t, int64(0), probeCount.Load(), "probeCount must be 0 after WASM-stub rollbacks")
 }

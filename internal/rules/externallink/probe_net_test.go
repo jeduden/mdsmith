@@ -161,6 +161,17 @@ func TestSSRFCheckRedirect_HostnamePassesThrough(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+// TestSSRFCheckRedirect_PublicIPAllowed confirms ssrfCheckRedirect returns nil
+// when the redirect target is a public (non-restricted) IP literal. The SSRF
+// check at the HTTP layer only denies restricted IP literals; public ones are
+// re-checked at the TCP dial by ssrfControl.
+func TestSSRFCheckRedirect_PublicIPAllowed(t *testing.T) {
+	req, err := http.NewRequest(http.MethodGet, "http://1.1.1.1/target", nil)
+	require.NoError(t, err)
+	err = ssrfCheckRedirect(req, nil)
+	assert.NoError(t, err)
+}
+
 // TestSSRFCheckRedirect_HopLimitExceeded confirms ssrfCheckRedirect stops
 // after 10 redirect hops.
 func TestSSRFCheckRedirect_HopLimitExceeded(t *testing.T) {

@@ -117,6 +117,10 @@ var (
 	probeCount   atomic.Int64
 	probeMax     int
 	probeMaxOnce sync.Once
+	// probeURL is the network probe function. It is a package-level variable
+	// so tests can replace it with a stub that returns probed=false, making
+	// the WASM-ceiling-rollback branch reachable in native test builds.
+	probeURL = probe
 )
 
 // urlResult is one cached probe outcome. probed reports whether the URL
@@ -364,7 +368,7 @@ func (r *Rule) checkURL(raw string) urlResult {
 		}
 		r.acquire()
 		defer r.release()
-		res := probe(raw, r.links.Timeout, r.links.AllowInternal)
+		res := probeURL(raw, r.links.Timeout, r.links.AllowInternal)
 		// WASM stub returns probed=false without network I/O; give back the
 		// probe slot so the ceiling only counts real network requests.
 		if !res.probed && r.links.MaxProbes > 0 {
