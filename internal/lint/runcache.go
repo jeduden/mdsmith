@@ -3,6 +3,7 @@ package lint
 import (
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 // RunCache memoizes per-target-file reads (front matter, include
@@ -73,10 +74,16 @@ type RunCache struct {
 }
 
 // runCacheEntry guards a single cache slot so build runs exactly once
-// per key even when multiple goroutines race for it.
+// per key even when multiple goroutines race for it. atomic.Bool +
+// mutex is used instead of sync.Once, matching file.go's memoEntry:
+// once.Do takes a func() argument, and the closure load would pass
+// (`func() { e.val = build() }`) captures e and build, so it
+// allocates on every call regardless of whether Do's internal check
+// makes it a no-op.
 type runCacheEntry struct {
-	once sync.Once
 	val  any
+	done atomic.Bool
+	mu   sync.Mutex
 }
 
 // ParsedSchemaMetadata is the optional interface a parsed-schema
@@ -583,10 +590,33 @@ func (c *RunCache) InvalidateWikilinks() {
 	})
 }
 
-// load is the shared LoadOrStore + sync.Once primitive for both maps.
+// load is the shared cache-slot primitive for every RunCache map. It
+// checks Load before LoadOrStore so the warm (already-built) path
+// never constructs the throwaway &runCacheEntry{} that LoadOrStore's
+// second argument would otherwise allocate on every call — the same
+// value gets discarded whenever the key is already present, but Go
+// evaluates that argument before LoadOrStore can say so. build is
+// invoked directly (no wrapping closure), mirroring file.go's Memo.
 func load(m *sync.Map, key string, build func() any) any {
+	if v, ok := m.Load(key); ok {
+		return loadEntry(v.(*runCacheEntry), build)
+	}
 	ei, _ := m.LoadOrStore(key, &runCacheEntry{})
-	e := ei.(*runCacheEntry)
-	e.once.Do(func() { e.val = build() })
+	return loadEntry(ei.(*runCacheEntry), build)
+}
+
+// loadEntry runs build at most once for e, then returns the cached
+// value. The atomic.Bool fast path costs one atomic load on every
+// warm call; the mutex only guards the cold build.
+func loadEntry(e *runCacheEntry, build func() any) any {
+	if e.done.Load() {
+		return e.val
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if !e.done.Load() {
+		defer e.done.Store(true)
+		e.val = build()
+	}
 	return e.val
 }

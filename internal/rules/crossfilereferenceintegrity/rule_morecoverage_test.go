@@ -335,3 +335,48 @@ func TestCheckRelativeTarget_AnchorBranchMissingTargetInRoot(t *testing.T) {
 	require.Len(t, diags, 1)
 	require.Contains(t, diags[0].Message, "missing.md")
 }
+
+// TestCachedGlobSettingsErr_MemoizesAcrossCalls pins that
+// cachedGlobSettingsErr runs validateGlobSettings at most once per
+// Rule instance: Check calls it once per file across the whole
+// workspace, but Include/Exclude are static once ApplySettings (or a
+// test's direct field assignment) has run, so re-validating on every
+// file is pure waste. Mutating Include after the first call and
+// asserting the cached error is unchanged proves the cache — not a
+// fresh recompute — served the second call.
+func TestCachedGlobSettingsErr_MemoizesAcrossCalls(t *testing.T) {
+	r := &Rule{Include: []string{"["}}
+	err1 := r.cachedGlobSettingsErr()
+	require.Error(t, err1)
+
+	r.Include = []string{"*.md"} // now valid; a fresh run would return nil
+	err2 := r.cachedGlobSettingsErr()
+	require.Equal(t, err1, err2, "second call must serve the cached first result")
+}
+
+// TestCachedGlobSettingsErr_WarmPathAllocatesNothing pins the
+// cache-hit cost at zero allocs. MDS027 is default-enabled and calls
+// this once per file across the workspace, so a per-call allocation
+// on the warm path multiplies by the corpus size.
+func TestCachedGlobSettingsErr_WarmPathAllocatesNothing(t *testing.T) {
+	r := &Rule{Include: []string{"docs/**/*.md"}, Exclude: []string{"docs/research/**"}}
+	_ = r.cachedGlobSettingsErr() // warm the cache
+
+	allocs := testing.AllocsPerRun(200, func() {
+		_ = r.cachedGlobSettingsErr()
+	})
+	require.Zero(t, allocs, "cachedGlobSettingsErr's warm path must not allocate")
+}
+
+// TestApplySettings_RevalidatesOnReconfigure pins that a second
+// ApplySettings call recomputes the cached glob-validity error instead
+// of serving a stale verdict from the rule's previous configuration.
+func TestApplySettings_RevalidatesOnReconfigure(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{"include": []string{"*.md"}}))
+	require.NoError(t, r.cachedGlobSettingsErr())
+
+	require.Error(t, r.ApplySettings(map[string]any{"include": []string{"["}}))
+	require.Error(t, r.cachedGlobSettingsErr(),
+		"the cache must reflect the newly applied (invalid) settings, not the first ApplySettings' verdict")
+}

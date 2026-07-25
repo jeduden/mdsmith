@@ -109,6 +109,45 @@ func TestCheck_IncludeUpToDate(t *testing.T) {
 	expectDiags(t, diags, 0)
 }
 
+// TestCheck_NoIncludeDirectiveAllocatesNothing pins Check's cost on a
+// file with no <?include?> directive at zero allocs. MDS021 is
+// default-enabled, so every host file in a workspace pays this path
+// even when it never uses the directive. Before this test, Check
+// unconditionally allocated a fresh `visited` map and `chain` slice
+// (and took the rule-wide mutex, serialising this rule's Check calls
+// across the engine's per-file parallel fan-out) before ever checking
+// whether the file could contain an include marker — the "gate
+// expensive analyzers behind a cheap pre-check" pattern documented in
+// docs/development/high-performance-go.md, applied to the alloc+lock
+// setup rather than a regex.
+func TestCheck_NoIncludeDirectiveAllocatesNothing(t *testing.T) {
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race")
+	}
+	fsys := fstest.MapFS{}
+	src := "# Doc\n\nJust a plain paragraph with no directives.\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+
+	allocs := testing.AllocsPerRun(200, func() {
+		g, err := lint.NewFile("doc.md", []byte(src))
+		require.NoError(t, err)
+		g.FS = fsys
+		g.RootFS = fsys
+		_ = r.Check(g)
+	})
+	parseAllocs := testing.AllocsPerRun(200, func() {
+		g, err := lint.NewFile("doc.md", []byte(src))
+		require.NoError(t, err)
+		_ = g
+	})
+	assert.Zero(t, allocs-parseAllocs,
+		"Check must not allocate on a file with no include directive")
+}
+
 func TestCheck_IncludeOutOfDate(t *testing.T) {
 	fsys := fstest.MapFS{
 		"data.md": {Data: []byte("Updated content\n")},
@@ -1098,6 +1137,48 @@ func TestCheck_NoFS(t *testing.T) {
 	r := &Rule{}
 	diags := r.Check(f)
 	expectDiags(t, diags, 0)
+}
+
+// TestFix_NoFS covers Fix's early-return when f.FS is nil (a
+// stdin/source-only check has no filesystem context to resolve
+// includes against), the same branch TestCheck_NoFS pins for Check.
+func TestFix_NoFS(t *testing.T) {
+	src := "# Hello\n\n<?include\nfile: data.md\n?>\n<?/include?>\n"
+	f, err := lint.NewFile("test.md", []byte(src))
+	require.NoError(t, err)
+	r := &Rule{}
+	got := r.Fix(f)
+	assert.Equal(t, src, string(got))
+}
+
+// TestFix_NoIncludeDirective covers Fix's cheap-needle gate: a file
+// with no "<?include" anywhere must come back byte-for-byte
+// unchanged, the same guarantee TestCheck_NoIncludeDirectiveAllocatesNothing
+// pins for Check.
+func TestFix_NoIncludeDirective(t *testing.T) {
+	fsys := fstest.MapFS{}
+	src := "# Doc\n\nJust a plain paragraph with no directives.\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	got := r.Fix(f)
+	assert.Equal(t, src, string(got))
+}
+
+// TestCheck_OrphanedEndMarkerStillFlagged pins that Check still
+// reports a dangling <?/include?> end marker with no matching start.
+// The bytes "<?/include" do not contain the substring "<?include"
+// (the "/" sits where the needle expects "i"), so a needle gate that
+// checks only for "<?include" would false-negative on this file and
+// silently drop the "unexpected generated section end marker"
+// diagnostic engine.Check would otherwise emit — caught by code
+// review round 1.
+func TestCheck_OrphanedEndMarkerStillFlagged(t *testing.T) {
+	fsys := fstest.MapFS{}
+	src := "# Title\n\nSome prose.\n\n<?/include?>\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiagMsg(t, diags, "unexpected generated section end marker")
 }
 
 func TestCategory(t *testing.T) {

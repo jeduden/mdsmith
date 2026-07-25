@@ -1071,3 +1071,31 @@ func TestDuplicateParagraphs_InvalidateDropsEveryKeyForPath(t *testing.T) {
 	assert.Equal(t, 5, builds,
 		"both a.md keys must rebuild; b.md's slot must survive untouched")
 }
+
+// TestLoad_WarmPathAllocatesNothing pins load's cache-hit cost at zero
+// allocs. Every RunCache accessor (FrontMatter, Includes, GlobMatches,
+// ParsedSchema, DuplicateParagraphs, Wikilinks, CompiledCUE,
+// UniqueFieldIndex) is called at least once per host file across a
+// workspace run, so a per-call allocation on the warm path multiplies
+// by the corpus size.
+//
+// Before this test, load's warm path paid two allocations per call
+// regardless of hit/miss: LoadOrStore's second argument (&runCacheEntry{})
+// is constructed before the call and discarded on a hit, and
+// e.once.Do(func() { e.val = build() }) allocates the wrapping closure
+// as an argument even when Do's internal check makes it a no-op — the
+// exact closure-box anti-pattern file.go's memoEntry doc comment
+// describes fixing for File.Memo, which had the same gap: a Load-first
+// check before the throwaway LoadOrStore value must run first.
+func TestLoad_WarmPathAllocatesNothing(t *testing.T) {
+	var m sync.Map
+	build := func() any { return 42 }
+
+	// Warm the entry.
+	load(&m, "k", build)
+
+	allocs := testing.AllocsPerRun(200, func() {
+		load(&m, "k", build)
+	})
+	assert.Zero(t, allocs, "load's cache-hit path must not allocate")
+}

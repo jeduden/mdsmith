@@ -141,3 +141,52 @@ func TestScanFootnoteDefinitions_AllFilteredOut_ReturnsNil(t *testing.T) {
 	out := scanFootnoteDefinitions(f, codeLines)
 	assert.Nil(t, out, "scanFootnoteDefinitions must return nil when every match is filtered out")
 }
+
+// TestMayContainFootnote pins the cheap byte-needle gate that lets
+// checkFootnotes skip both regex passes on a file that cannot possibly
+// contain footnote syntax — the same "gate expensive analyzers behind
+// a cheap pre-check" pattern nobareurls' mayContainURL already applies
+// (docs/development/high-performance-go.md). Every footnoteRefRE/
+// footnoteDefRE match requires the literal bytes "[^" somewhere in the
+// source, so their absence rules out both regexes without running them.
+func TestMayContainFootnote(t *testing.T) {
+	assert.False(t, mayContainFootnote([]byte("No footnotes here, just prose.\n")))
+	assert.True(t, mayContainFootnote([]byte("See [^note] for details.\n")))
+	assert.True(t, mayContainFootnote([]byte("[^note]: a definition.\n")))
+}
+
+// TestCheckFootnotes_NoNeedle_SkipsBothRegexPasses benchmarks
+// checkFootnotes on prose with no footnote syntax to demonstrate the
+// gate's real effect: without it, footnoteRefRE and footnoteDefRE each
+// run a full FindAllSubmatchIndex over the whole file on every Check
+// call, unconditionally, even though this rule (MDS043) is opt-in and
+// so only runs for workspaces that enabled it. b.Fatalf pins a budget
+// so a future regression that removes the gate is caught in CI rather
+// than by a human re-running benchstat.
+func BenchmarkCheckFootnotes_NoNeedle(b *testing.B) {
+	var src []byte
+	for i := 0; i < 200; i++ {
+		src = append(src, []byte(
+			"This is a representative paragraph of prose with no "+
+				"footnote syntax at all, just regular Markdown text.\n\n",
+		)...)
+	}
+	f, err := lint.NewFile("prose.md", src)
+	require.NoError(b, err)
+	r := &Rule{}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		r.checkFootnotes(f)
+	}
+	perOp := float64(b.Elapsed().Nanoseconds()) / float64(b.N)
+	// Gated: ~1µs (one bytes.Contains scan). Ungated: ~580µs (two full
+	// regex passes over ~28KB). 50µs stays far above measurement noise
+	// while catching a dropped gate by two orders of magnitude.
+	const budgetNsPerOp = 50_000
+	if perOp > budgetNsPerOp {
+		b.Fatalf("checkFootnotes on a no-footnote file: %.0f ns/op, budget = %d; "+
+			"the mayContainFootnote gate may have been removed or bypassed",
+			perOp, budgetNsPerOp)
+	}
+}

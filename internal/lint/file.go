@@ -263,6 +263,11 @@ type memoEntry struct {
 //
 // build is invoked directly (no wrapping closure) so the call adds
 // no per-Memo-call allocation beyond the cold-path memoEntry itself.
+// The warm path checks Load before LoadOrStore for the same reason:
+// LoadOrStore's second argument (&memoEntry{}) is constructed before
+// the call and discarded whenever the key already exists, so a plain
+// LoadOrStore would allocate one on every call regardless of hit or
+// miss.
 //
 // Panic safety mirrors sync.Once: if build panics, the entry is
 // still marked done (via the deferred Store) and the mutex is
@@ -271,8 +276,16 @@ type memoEntry struct {
 // Subsequent calls on the same key serve the zero-value cached
 // result instead of re-running build, matching upstream sync.Once.
 func (f *File) Memo(key string, build func() any) any {
+	if v, ok := f.scratch.Load(key); ok {
+		return memoLoad(v.(*memoEntry), build)
+	}
 	ei, _ := f.scratch.LoadOrStore(key, &memoEntry{})
-	e := ei.(*memoEntry)
+	return memoLoad(ei.(*memoEntry), build)
+}
+
+// memoLoad runs build at most once for e, then returns the cached
+// value — the double-checked-lock body shared by Memo and MemoFile.
+func memoLoad(e *memoEntry, build func() any) any {
 	if e.done.Load() {
 		return e.val
 	}
@@ -294,10 +307,16 @@ func (f *File) Memo(key string, build func() any) any {
 //
 // Panic safety matches Memo's contract: defer Unlock + defer
 // done.Store(true) keep the per-entry mutex from leaking a lock and
-// match sync.Once's "panic still marks done" semantics.
+// match sync.Once's "panic still marks done" semantics. The warm
+// path checks Load before LoadOrStore for the same reason Memo does.
 func (f *File) MemoFile(key string, build func(*File) any) any {
-	ei, _ := f.scratch.LoadOrStore(key, &memoEntry{})
-	e := ei.(*memoEntry)
+	var e *memoEntry
+	if v, ok := f.scratch.Load(key); ok {
+		e = v.(*memoEntry)
+	} else {
+		ei, _ := f.scratch.LoadOrStore(key, &memoEntry{})
+		e = ei.(*memoEntry)
+	}
 	if e.done.Load() {
 		return e.val
 	}

@@ -9,6 +9,7 @@
 package foreignregion
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 
@@ -35,14 +36,78 @@ func Scan(f *lint.File, regions []config.ForeignRegion) ([]lint.LineRange, []lin
 	if len(regions) == 0 || f == nil {
 		return nil, nil
 	}
+	states := make([]regionScanState, len(regions))
+	for i, reg := range regions {
+		states[i] = regionScanState{
+			start: []byte(strings.TrimSpace(reg.Start)),
+			end:   []byte(strings.TrimSpace(reg.End)),
+		}
+	}
+
 	var ranges []lint.LineRange
 	var diags []lint.Diagnostic
-	for _, reg := range regions {
-		rs, ds := scanOne(f, reg)
-		ranges = append(ranges, rs...)
-		diags = append(diags, ds...)
+	for i, line := range f.Lines {
+		lineNum := i + 1
+		trimmed := bytes.TrimSpace(line)
+		for s := range states {
+			rs, ds := states[s].step(trimmed, lineNum)
+			ranges = append(ranges, rs...)
+			diags = append(diags, ds...)
+		}
+	}
+	for s := range states {
+		if ds := states[s].unclosed(); ds != nil {
+			diags = append(diags, ds...)
+		}
 	}
 	return ranges, diags
+}
+
+// regionScanState tracks one declared region's marker pair across a
+// single walk of f.Lines. A single pass evaluates every region's
+// state against the line's shared trim, instead of Scan walking
+// f.Lines once per region and re-converting every line to a string
+// each time — the redundant re-scanning docs/development/
+// high-performance-go.md calls out.
+type regionScanState struct {
+	start, end []byte
+	openLine   int // 1-based line of the current unclosed start; 0 when none
+}
+
+// step evaluates one already-trimmed line against this region's
+// markers and returns any newly closed range or malformed-region
+// diagnostic.
+func (st *regionScanState) step(trimmed []byte, lineNum int) ([]lint.LineRange, []lint.Diagnostic) {
+	switch {
+	case bytes.Equal(trimmed, st.start):
+		if st.openLine != 0 {
+			return nil, []lint.Diagnostic{diag(lineNum, fmt.Sprintf(
+				"duplicate foreign-region start marker %q before %q closed the open region",
+				st.start, st.end))}
+		}
+		st.openLine = lineNum
+	case bytes.Equal(trimmed, st.end):
+		if st.openLine == 0 {
+			return nil, []lint.Diagnostic{diag(lineNum, fmt.Sprintf(
+				"foreign-region end marker %q without a matching start marker %q",
+				st.end, st.start))}
+		}
+		r := lint.LineRange{From: st.openLine, To: lineNum}
+		st.openLine = 0
+		return []lint.LineRange{r}, nil
+	}
+	return nil, nil
+}
+
+// unclosed reports the missing-end diagnostic for a region whose
+// start marker was never closed, once the whole file has been walked.
+func (st *regionScanState) unclosed() []lint.Diagnostic {
+	if st.openLine == 0 {
+		return nil
+	}
+	return []lint.Diagnostic{diag(st.openLine, fmt.Sprintf(
+		"foreign-region start marker %q has no matching end marker %q",
+		st.start, st.end))}
 }
 
 // Apply appends the foreign-region spans for path to f.GeneratedRanges —
@@ -90,46 +155,6 @@ func resolve(f *lint.File, cfg *config.Config, path string) ([]lint.LineRange, [
 	for i := range diags {
 		diags[i].File = path
 		diags[i].Line += f.LineOffset
-	}
-	return ranges, diags
-}
-
-// scanOne walks f.Lines once for a single marker pair, matching a line
-// against a marker by trimmed-line equality so leading indentation does
-// not defeat the match while incidental in-prose mentions do not.
-func scanOne(f *lint.File, reg config.ForeignRegion) ([]lint.LineRange, []lint.Diagnostic) {
-	start := strings.TrimSpace(reg.Start)
-	end := strings.TrimSpace(reg.End)
-	var ranges []lint.LineRange
-	var diags []lint.Diagnostic
-	openLine := 0 // 1-based line of the current unclosed start; 0 when none
-	for i, line := range f.Lines {
-		lineNum := i + 1
-		trimmed := strings.TrimSpace(string(line))
-		switch trimmed {
-		case start:
-			if openLine != 0 {
-				diags = append(diags, diag(lineNum, fmt.Sprintf(
-					"duplicate foreign-region start marker %q before %q closed the open region",
-					start, end)))
-				continue
-			}
-			openLine = lineNum
-		case end:
-			if openLine == 0 {
-				diags = append(diags, diag(lineNum, fmt.Sprintf(
-					"foreign-region end marker %q without a matching start marker %q",
-					end, start)))
-				continue
-			}
-			ranges = append(ranges, lint.LineRange{From: openLine, To: lineNum})
-			openLine = 0
-		}
-	}
-	if openLine != 0 {
-		diags = append(diags, diag(openLine, fmt.Sprintf(
-			"foreign-region start marker %q has no matching end marker %q",
-			start, end)))
 	}
 	return ranges, diags
 }

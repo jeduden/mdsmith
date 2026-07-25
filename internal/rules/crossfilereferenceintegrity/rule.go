@@ -7,6 +7,8 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/jeduden/mdsmith/internal/bytelimit"
@@ -37,13 +39,16 @@ type LinksConfig struct {
 // Fields are ordered large-to-small to eliminate bool-induced padding:
 // slices first, then string, then embedded struct, then bools last.
 type Rule struct {
-	Include       []string
-	Exclude       []string
-	Placeholders  []string // placeholder tokens to treat as opaque
-	WikilinkStyle string   // resolution style; only "obsidian" ships today
-	Links         LinksConfig
-	Strict        bool
-	Wikilinks     bool // when true, validate Obsidian-style [[...]] targets
+	Include          []string
+	Exclude          []string
+	Placeholders     []string // placeholder tokens to treat as opaque
+	globSettingsErr  error    // cached validateGlobSettings verdict, see cachedGlobSettingsErr
+	WikilinkStyle    string   // resolution style; only "obsidian" ships today
+	Links            LinksConfig
+	globSettingsMu   sync.Mutex
+	globSettingsDone atomic.Bool
+	Strict           bool
+	Wikilinks        bool // when true, validate Obsidian-style [[...]] targets
 }
 
 // ID implements rule.Rule.
@@ -119,7 +124,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		return nil
 	}
 
-	if err := r.validateGlobSettings(); err != nil {
+	if err := r.cachedGlobSettingsErr(); err != nil {
 		return []lint.Diagnostic{configDiag(f.Path, r, err)}
 	}
 
@@ -606,7 +611,35 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 			return err
 		}
 	}
-	return r.validateGlobSettings()
+	// Force a fresh validation for the settings just applied: without
+	// this reset, a Rule instance reconfigured after an earlier
+	// ApplySettings (or after Check already ran once) would keep
+	// serving the previous verdict from cachedGlobSettingsErr's cache.
+	r.globSettingsDone.Store(false)
+	return r.cachedGlobSettingsErr()
+}
+
+// cachedGlobSettingsErr returns validateGlobSettings' verdict for the
+// rule's current Include/Exclude, computed once and cached. Check
+// calls this once per file across the whole workspace, but
+// Include/Exclude are a pure function of static config that does not
+// change between files in one run, so validatePatterns re-running the
+// same doublestar validation on every file is pure waste — the
+// "redundant re-scanning that could be memoized" anti-pattern
+// docs/development/high-performance-go.md calls out. atomic.Bool +
+// mutex avoids the closure-box sync.Once would force on every call
+// (matching internal/lint's memoEntry/runCacheEntry pattern).
+func (r *Rule) cachedGlobSettingsErr() error {
+	if r.globSettingsDone.Load() {
+		return r.globSettingsErr
+	}
+	r.globSettingsMu.Lock()
+	defer r.globSettingsMu.Unlock()
+	if !r.globSettingsDone.Load() {
+		defer r.globSettingsDone.Store(true)
+		r.globSettingsErr = r.validateGlobSettings()
+	}
+	return r.globSettingsErr
 }
 
 func (r *Rule) applyOneSetting(key string, v any) error {

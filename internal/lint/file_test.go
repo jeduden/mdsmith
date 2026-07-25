@@ -266,6 +266,30 @@ func TestFile_Memo(t *testing.T) {
 		"a distinct key must not re-run the first key's build")
 }
 
+// TestFile_Memo_WarmPathAllocatesNothing pins Memo's cache-hit cost at
+// zero allocs. MemoFile.CollectSectionParagraphs feeds every
+// paragraph-aware rule, so a per-call allocation on the warm path
+// multiplies by every rule pass that re-touches an already-memoized
+// key on the same File.
+//
+// Before this test, the warm path still paid for the throwaway
+// &memoEntry{} that f.scratch.LoadOrStore's second argument
+// constructs before the call — Go evaluates that argument whether or
+// not the key is already present, and the freshly built entry is
+// discarded on a hit. A Load-first check must run ahead of
+// LoadOrStore to avoid it.
+func TestFile_Memo_WarmPathAllocatesNothing(t *testing.T) {
+	f := &File{Path: "t.md"}
+	build := func() any { return 42 }
+
+	f.Memo("k", build)
+
+	allocs := testing.AllocsPerRun(200, func() {
+		f.Memo("k", build)
+	})
+	assert.Zero(t, allocs, "Memo's cache-hit path must not allocate")
+}
+
 // TestFile_Memo_ConcurrentSingleBuild pins that build runs exactly
 // once even under the concurrent readers the LSP can run against a
 // single document.

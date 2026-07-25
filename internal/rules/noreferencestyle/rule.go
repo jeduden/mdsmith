@@ -140,6 +140,9 @@ func (r *Rule) checkUnusedDefinitions(
 // regex over source bytes (filtered against code-block ranges) is
 // sufficient and avoids reparsing the file.
 func (r *Rule) checkFootnotes(f *lint.File) []lint.Diagnostic {
+	if !mayContainFootnote(f.Source) {
+		return nil
+	}
 	codeLines := lint.CollectCodeBlockLines(f)
 	codeSpans := f.CodeSpanLiteralRanges()
 	refs := scanFootnoteReferences(f, codeLines, codeSpans)
@@ -368,6 +371,20 @@ var footnoteRefRE = regexp.MustCompile(`\[\^([^\]\n]+)\]`)
 // footnoteDefRE matches a footnote definition line: optional indent,
 // `[^slug]:` then any text.
 var footnoteDefRE = regexp.MustCompile(`(?m)^[ ]{0,3}\[\^([^\]\n]+)\]:`)
+
+// footnoteNeedle is the literal byte sequence every footnoteRefRE and
+// footnoteDefRE match carries. Hoisted so mayContainFootnote does not
+// allocate the needle on each call.
+var footnoteNeedle = []byte("[^")
+
+// mayContainFootnote reports whether source could contain a
+// footnoteRefRE or footnoteDefRE match, mirroring nobareurls'
+// mayContainURL: every match starts with "[^", so this cheap scan
+// spares both regex engines on the overwhelming majority of files
+// that use neither footnote references nor definitions.
+func mayContainFootnote(source []byte) bool {
+	return bytes.Contains(source, footnoteNeedle)
+}
 
 func scanFootnoteReferences(
 	f *lint.File, codeLines map[int]struct{}, codeSpans []lint.Range,
