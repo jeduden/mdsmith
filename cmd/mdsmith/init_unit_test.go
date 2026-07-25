@@ -11,8 +11,42 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
+	flag "github.com/spf13/pflag"
+
 	"github.com/jeduden/mdsmith/internal/pack"
 )
+
+// --- printInitCatalog ---
+
+func TestPrintInitCatalog(t *testing.T) {
+	var buf bytes.Buffer
+	printInitCatalog(&buf)
+	out := buf.String()
+	assert.Contains(t, out, "Starters (mdsmith init --starter <name>):")
+	assert.Contains(t, out, "Packs (mdsmith init --add <name>):")
+	assert.Contains(t, out, "okf")
+	assert.Contains(t, out, "Open Knowledge Format bundle config")
+	assert.Contains(t, out, "wordlists")
+	assert.Contains(t, out, "Curated no-llm-tells word-lists")
+}
+
+// --- setInitUsage ---
+
+func TestSetInitUsage(t *testing.T) {
+	var buf bytes.Buffer
+	fs := flag.NewFlagSet("init", flag.ContinueOnError)
+	fs.BoolVar(new(bool), "force", false, "Overwrite an existing .mdsmith.yml instead of leaving it unchanged")
+	setInitUsage(fs, &buf)
+	fs.Usage()
+	out := buf.String()
+	assert.Contains(t, out, "--starter")
+	assert.Contains(t, out, "--from-markdownlint")
+	assert.Contains(t, out, "--add")
+	assert.Contains(t, out, "--force")
+	assert.Contains(t, out, "--list")
+	// Pins that fs.PrintDefaults() ran: description only appears via PrintDefaults, not the static header.
+	assert.Contains(t, out, "Overwrite an existing .mdsmith.yml instead of leaving it unchanged")
+}
 
 // --- runInit ---
 

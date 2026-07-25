@@ -18,10 +18,12 @@ import (
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 )
 
-// setInitUsage installs the `mdsmith init` usage text on fs.
-func setInitUsage(fs *flag.FlagSet) {
+// setInitUsage installs the `mdsmith init` usage text on fs, writing to w.
+// It also calls fs.SetOutput(w) so fs.PrintDefaults() flows to the same writer.
+func setInitUsage(fs *flag.FlagSet, w io.Writer) {
+	fs.SetOutput(w)
 	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr,
+		_, _ = fmt.Fprintf(w,
 			"Usage: mdsmith init [--starter <name>] [--from-markdownlint[=path]] [--add <pack>] [--force] [--list]\n\n"+
 				"Write .mdsmith.yml in the current directory and, optionally, scaffold\n"+
 				"additive .mdsmith/ packs beside it.\n\n"+
@@ -62,7 +64,7 @@ func runInit(args []string) int {
 	var list bool
 	fs.BoolVar(&list, "list", false,
 		"List the available starters and packs, then exit")
-	setInitUsage(fs)
+	setInitUsage(fs, os.Stderr)
 
 	if err := fs.Parse(args); err != nil {
 		if code := reportFlagParseErr(err, os.Stderr, "mdsmith: init"); code >= 0 {
