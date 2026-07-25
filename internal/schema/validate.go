@@ -30,9 +30,26 @@ type DocHeading struct {
 	Line  int
 }
 
-// ExtractDocHeadings walks the document AST and collects every
-// heading in source order, with its source line.
+// ExtractDocHeadings returns every heading in the document, in
+// source order, computed once per File via MemoFile: Validate,
+// ValidateContent, ValidateAcronyms, BuildMatchTree, and
+// requiredstructure.applyScopeRules each need this list within one
+// schema Check pass over the same File, and before this memoization
+// each independently re-walked f.AST and re-extracted every heading's
+// text — the exact redundant-computation shape
+// docs/development/high-performance-go.md's "memoize per-input
+// computations" pattern calls out (the same one already applied to
+// astutil.CollectSectionParagraphs). The returned slice is shared
+// read-only with every caller; no caller mutates it.
 func ExtractDocHeadings(f *lint.File) []DocHeading {
+	return f.MemoFile("schema.docHeadings", buildDocHeadings).([]DocHeading)
+}
+
+// buildDocHeadings is the MemoFile builder behind ExtractDocHeadings,
+// defined at package scope so the value passed to MemoFile is a plain
+// function pointer — a `func(*lint.File) any { ... }` literal would
+// allocate a closure box on every call.
+func buildDocHeadings(f *lint.File) any {
 	var out []DocHeading
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
