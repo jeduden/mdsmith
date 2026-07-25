@@ -93,6 +93,21 @@ type File struct {
 	// per File, and sync.Map's per-insert entry/dirty-map bookkeeping
 	// cost more than it saved when benchmarked against
 	// BenchmarkCheckCorpusLarge.
+	//
+	// These two fields push unsafe.Sizeof(File{}) from 640 to 656
+	// bytes, crossing a Go allocator size-class boundary (641-704 all
+	// round up to 704, measured) — every *File allocation costs 64
+	// bytes more than the raw field growth suggests. An alternative
+	// that avoids the class jump by routing the map through a single
+	// Memo-cached container (paying one scratch entry per File instead
+	// of dedicated fields) was benchmarked directly against this one:
+	// it kept File at 640 bytes but cost 2 extra small heap objects
+	// (the memo entry and the container) on every file that touches a
+	// heading, which measured worse on both allocs/op and B/op than
+	// this simpler direct-field version despite avoiding the class
+	// jump — the extra per-file object overhead outweighed the 64
+	// bytes it saved. Kept as fields for that reason; see PR #770's
+	// review discussion for the numbers.
 	headingTextCache map[headingTextCacheKey]string
 
 	// lineClass, when non-nil, is the flat Layer-0 line classifier built
@@ -353,12 +368,14 @@ func (f *File) MemoFile(key string, build func(*File) any) any {
 // (HeadingTextBase(h, src, 0) == HeadingText(h, src), per
 // astutil_test.go's own equivalence tests), so a heading pointer
 // alone is not a safe cache key: the AST path always queries base 0,
-// but the parse-skipped path can query the same physical node — a
-// goldmark inline-block re-parse can, in principle, hand back a node
-// pointer another call already cached against a different base — at
-// a nonzero offset. Including base keeps those two cache entries
-// distinct instead of the second caller silently reading the first
-// caller's answer.
+// and the parse-skipped path always queries its own run-local base,
+// and today the two are mutually exclusive per File (every caller
+// gates on f.AST == nil, and internal/lint's inline-block arena never
+// recycles a node pointer within one File's lifetime) — but nothing
+// in the type system enforces that invariant. Including base means a
+// future caller that queries the same heading at two different bases
+// gets two independent entries instead of the second one silently
+// reading the first one's answer.
 type headingTextCacheKey struct {
 	heading *ast.Heading
 	base    int

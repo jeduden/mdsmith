@@ -550,6 +550,15 @@ func TestHeadingTextBaseCached_NonzeroBase_ParseSkippedPath(t *testing.T) {
 
 	got := HeadingTextBaseCached(f, heading, base)
 	require.Equal(t, "My Heading", got)
+	// unsafe.StringData identity is only a valid proof of sharing for
+	// strings long enough that Go can't satisfy them from static/
+	// interned storage independently of caching (measured: length 0
+	// and 1 strings can share a data pointer across unrelated
+	// conversions; length >= 2 cannot). Guard the precondition so a
+	// future fixture edit can't silently turn this into a vacuous
+	// pass.
+	require.Greater(t, len(got), 1,
+		"fixture must produce a string long enough for StringData identity to be meaningful")
 
 	again := HeadingTextBaseCached(f, heading, base)
 	assert.Equal(t, "My Heading", again)
