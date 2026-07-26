@@ -197,15 +197,33 @@ func apmPostureBlock(ignoreGlobs []string) []byte {
 	return []byte(b.String())
 }
 
-// appendAPMPosture opens configFile for appending and writes the APM
-// coexistence posture block. It is called on a freshly written config.
+// appendAPMPosture writes the APM coexistence posture into configFile.
+// The default-config output always emits "ignore: []" for an empty ignore
+// list; blindly appending a second "ignore:" key would produce a YAML file
+// with duplicate keys that every YAML parser rejects. To handle this, the
+// function reads the file, replaces the empty "ignore: []" line in-place
+// with the APM block, and rewrites. If no such line is present (e.g. a
+// --starter or --from-markdownlint output), it falls back to appending the
+// full posture block at the end of the file.
 func appendAPMPosture(configFile string, ignoreGlobs []string) error {
+	data, err := os.ReadFile(configFile)
+	if err != nil {
+		return fmt.Errorf("appending APM posture to %s: %w", configFile, err)
+	}
+	posture := apmPostureBlock(ignoreGlobs)
+	// Replace the empty "ignore: []" line emitted by the default marshaler so
+	// we never produce two "ignore:" keys in the same YAML document.
+	const emptyIgnore = "\nignore: []\n"
+	if updated := strings.Replace(string(data), emptyIgnore, string(posture), 1); updated != string(data) {
+		return os.WriteFile(configFile, []byte(updated), 0o644)
+	}
+	// No empty ignore list found (starter or converted config); append.
 	f, err := os.OpenFile(configFile, os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("appending APM posture to %s: %w", configFile, err)
 	}
 	defer f.Close() //nolint:errcheck // best-effort close on defer
-	if _, err := f.Write(apmPostureBlock(ignoreGlobs)); err != nil {
+	if _, err := f.Write(posture); err != nil {
 		return fmt.Errorf("appending APM posture to %s: %w", configFile, err)
 	}
 	return nil

@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -318,6 +319,11 @@ func TestRunInit_APM_FreshRepo_WritesKindFilesAndPosture(t *testing.T) {
 	assert.Contains(t, body, "CLAUDE.md", "compiled root file in ignore")
 	assert.Contains(t, body, "GEMINI.md", "compiled root file in ignore")
 
+	// The default config already has "ignore: []"; the APM flag must not add
+	// a second "ignore:" key — that would produce invalid YAML.
+	assert.Equal(t, 1, strings.Count(body, "\nignore:"),
+		"exactly one ignore: key in the config (no duplicate from APM posture)")
+
 	// All four kind files must be scaffolded.
 	for _, name := range []string{"apm-skill", "apm-prompt", "apm-instruction", "apm-agent"} {
 		_, statErr := os.Stat(filepath.Join(dir, ".mdsmith", "kinds", name+".yaml"))
@@ -415,12 +421,14 @@ func TestRunInit_APM_Force_AppendsPostureToNewConfig(t *testing.T) {
 		assert.Equal(t, 0, code)
 	})
 
-	// --force overwrites, so the posture is appended to the new config.
+	// --force overwrites, so the posture is written into the new config.
 	data, err := os.ReadFile(filepath.Join(dir, ".mdsmith.yml"))
 	require.NoError(t, err)
 	body := string(data)
 	assert.Contains(t, body, "apm_modules/**",
 		"--apm --force must write posture to the new overwritten config")
+	assert.Equal(t, 1, strings.Count(body, "\nignore:"),
+		"--apm --force must not produce duplicate ignore: keys")
 }
 
 func TestRunInit_APM_WithAdd_BothApply(t *testing.T) {
@@ -439,6 +447,30 @@ func TestRunInit_APM_WithAdd_BothApply(t *testing.T) {
 	}
 	_, err := os.Stat(filepath.Join(dir, ".mdsmith", "wordlists", "ai-speak.yaml"))
 	assert.NoError(t, err, "wordlists scaffolded alongside apm")
+}
+
+func TestRunInit_APM_AllHarnessDirs_AllGlobsPresent(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	// Create all six harness directories so every conditional glob is included.
+	for _, d := range []string{".github", ".claude", ".agents", ".windsurf", ".kiro", ".cursor"} {
+		require.NoError(t, os.Mkdir(d, 0o755))
+	}
+
+	captureStderr(func() {
+		code := runInit([]string{"--apm"})
+		assert.Equal(t, 0, code)
+	})
+
+	data, err := os.ReadFile(filepath.Join(dir, ".mdsmith.yml"))
+	require.NoError(t, err)
+	body := string(data)
+	assert.Contains(t, body, ".github/prompts/**")
+	assert.Contains(t, body, ".claude/rules/**")
+	assert.Contains(t, body, ".agents/skills/**")
+	assert.Contains(t, body, ".windsurf/rules/**")
+	assert.Contains(t, body, ".kiro/steering/**")
+	assert.Contains(t, body, ".cursor/rules/**")
 }
 
 func TestSetInitUsage_IncludesAPMFlag(t *testing.T) {

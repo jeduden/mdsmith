@@ -18,12 +18,10 @@ func TestAPMPack_Registered(t *testing.T) {
 
 func TestAPMPack_InNamesAndAll(t *testing.T) {
 	assert.Contains(t, pack.Names(), "apm")
-	names := pack.Names()
 	found := false
 	for _, p := range pack.All() {
 		if p.Name == "apm" {
 			found = true
-			assert.Equal(t, names[indexOfName(names, "apm")], p.Name)
 			break
 		}
 	}
@@ -184,14 +182,4 @@ func findFile(files []pack.File, path string) []byte {
 		}
 	}
 	return nil
-}
-
-// indexOfName returns the index of name in names, or -1.
-func indexOfName(names []string, name string) int {
-	for i, n := range names {
-		if n == name {
-			return i
-		}
-	}
-	return -1
 }

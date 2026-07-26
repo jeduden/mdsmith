@@ -145,4 +145,3 @@ config to get the updated merge hint for the new `ignore:` entries.
   analysis of mdsmith and APM workflows.
 - [Init reference](../reference/cli/init.md) — all `mdsmith init`
   flags.
-</content>
