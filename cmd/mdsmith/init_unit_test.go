@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -812,4 +813,64 @@ func TestConvertedConfigBytes_ParseError(t *testing.T) {
 	_, _, err := convertedConfigBytes(path, &buf)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), ".markdownlintrc")
+}
+
+// --- appendAPMPosture ---
+
+func TestAppendAPMPosture_NoEmptyIgnore_Appends(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, ".mdsmith.yml")
+	// A config with no "ignore: []" line (e.g. a starter output).
+	require.NoError(t, os.WriteFile(cfg, []byte("rules: {}\n"), 0o644))
+
+	require.NoError(t, appendAPMPosture(cfg, []string{"apm_modules/**"}))
+
+	data, err := os.ReadFile(cfg)
+	require.NoError(t, err)
+	body := string(data)
+	assert.Contains(t, body, "rules: {}", "original content preserved")
+	assert.Contains(t, body, "apm_modules/**", "posture appended")
+}
+
+func TestAppendAPMPosture_ReadError(t *testing.T) {
+	err := appendAPMPosture(filepath.Join(t.TempDir(), "nonexistent.yml"), []string{"apm_modules/**"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "appending APM posture")
+}
+
+func TestAppendAPMPosture_OpenFileError(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, ".mdsmith.yml")
+	// A config with no "ignore: []" so the fallback os.OpenFile path is taken.
+	// Use the immutable attribute (chattr +i): the file can still be read but
+	// cannot be opened for writing — even by root — so os.OpenFile(O_WRONLY)
+	// returns EPERM. Restore mutability in cleanup so the temp dir can be removed.
+	require.NoError(t, os.WriteFile(cfg, []byte("rules: {}\n"), 0o644))
+	out, chErr := exec.Command("chattr", "+i", cfg).CombinedOutput()
+	if chErr != nil {
+		t.Skipf("chattr +i not supported: %s", out)
+	}
+	t.Cleanup(func() { exec.Command("chattr", "-i", cfg).Run() }) //nolint:errcheck
+
+	err := appendAPMPosture(cfg, []string{"apm_modules/**"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "appending APM posture")
+}
+
+func TestRunInit_APM_Force_Starter_AppendsPosture(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	captureStderr(func() {
+		code := runInit([]string{"--apm", "--force", "--starter", "okf"})
+		assert.Equal(t, 0, code)
+	})
+
+	// The okf starter has no "ignore: []" line, so appendAPMPosture falls
+	// back to the os.OpenFile append path rather than the in-place replace.
+	data, err := os.ReadFile(filepath.Join(dir, ".mdsmith.yml"))
+	require.NoError(t, err)
+	body := string(data)
+	assert.Contains(t, body, "required-frontmatter", "okf starter content written")
+	assert.Contains(t, body, "apm_modules/**", "APM posture appended via fallback path")
 }
