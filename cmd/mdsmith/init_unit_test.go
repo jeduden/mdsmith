@@ -839,20 +839,49 @@ func TestAppendAPMPosture_ReadError(t *testing.T) {
 }
 
 func TestAppendAPMPosture_OpenFileError(t *testing.T) {
-	dir := t.TempDir()
-	cfg := filepath.Join(dir, ".mdsmith.yml")
-	// A config with no "ignore: []" so the fallback os.OpenFile path is taken.
-	// Use the immutable attribute (chattr +i): the file can still be read but
-	// cannot be opened for writing — even by root — so os.OpenFile(O_WRONLY)
-	// returns EPERM. Restore mutability in cleanup so the temp dir can be removed.
-	require.NoError(t, os.WriteFile(cfg, []byte("rules: {}\n"), 0o644))
-	out, chErr := exec.Command("chattr", "+i", cfg).CombinedOutput()
-	if chErr != nil {
-		t.Skipf("chattr +i not supported: %s", out)
+	// /proc/version is readable on Linux but rejects O_WRONLY (EINVAL) even as
+	// root. Its content has no "ignore: []", so appendAPMPosture reaches the
+	// fallback os.OpenFile call and hits the error branch (line 223).
+	if _, err := os.Stat("/proc/version"); err != nil {
+		t.Skip("/proc/version not available")
 	}
-	t.Cleanup(func() { exec.Command("chattr", "-i", cfg).Run() }) //nolint:errcheck
+	err := appendAPMPosture("/proc/version", []string{"apm_modules/**"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "appending APM posture")
+}
 
-	err := appendAPMPosture(cfg, []string{"apm_modules/**"})
+func TestAppendAPMPosture_WriteError(t *testing.T) {
+	// Mount a 16k tmpfs, write a config file that exactly fills one 4k page
+	// (so any append overflows into a new page), then fill the remaining three
+	// pages with a filler file. appendAPMPosture's fallback OpenFile succeeds
+	// but f.Write fails with ENOSPC — covering the write-error branch (line 227).
+	// Skip gracefully when mounting is unavailable.
+	mntDir := t.TempDir()
+	out, mountErr := exec.Command("mount", "-t", "tmpfs", "-o", "size=16k", "tmpfs", mntDir).CombinedOutput()
+	if mountErr != nil {
+		t.Skipf("cannot mount tmpfs: %v %s", mountErr, out)
+	}
+	t.Cleanup(func() { exec.Command("umount", mntDir).Run() }) //nolint:errcheck
+
+	cfg := filepath.Join(mntDir, ".mdsmith.yml")
+	// Exactly 4096 bytes — fills one page, no "ignore: []" content.
+	require.NoError(t, os.WriteFile(cfg, []byte(strings.Repeat("#", 4095)+"\n"), 0o644))
+
+	// Fill remaining three 4k pages with a filler file so the tmpfs is full.
+	filler := filepath.Join(mntDir, "filler")
+	f, err := os.Create(filler)
+	require.NoError(t, err)
+	buf := make([]byte, 4096)
+	for {
+		if _, werr := f.Write(buf); werr != nil {
+			break
+		}
+	}
+	f.Close()
+
+	// The config occupies one full page; any append needs a new page which is
+	// unavailable — os.File.Write returns ENOSPC.
+	err = appendAPMPosture(cfg, []string{"apm_modules/**"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "appending APM posture")
 }
