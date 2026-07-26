@@ -24,7 +24,8 @@ func setInitUsage(fs *flag.FlagSet, w io.Writer) {
 	fs.SetOutput(w)
 	fs.Usage = func() {
 		_, _ = fmt.Fprintf(w,
-			"Usage: mdsmith init [--starter <name>] [--from-markdownlint[=path]] [--add <pack>] [--force] [--list]\n\n"+
+			"Usage: mdsmith init [--starter <name>] [--from-markdownlint[=path]]"+
+				" [--apm] [--add <pack>] [--force] [--list]\n\n"+
 				"Write .mdsmith.yml in the current directory and, optionally, scaffold\n"+
 				"additive .mdsmith/ packs beside it.\n\n"+
 				"Config source (pick at most one; the built-in defaults if omitted):\n"+
@@ -32,6 +33,9 @@ func setInitUsage(fs *flag.FlagSet, w io.Writer) {
 				"  --from-markdownlint   convert a markdownlint config (.markdownlint.jsonc/\n"+
 				"                        .json/.yaml/.yml or .markdownlintrc; =path names one)\n\n"+
 				"An existing .mdsmith.yml is left unchanged unless --force is given.\n\n"+
+				"APM coexistence:\n"+
+				"  --apm                 scaffold the APM kind pack and write the\n"+
+				"                        coexistence ignore: posture to .mdsmith.yml\n\n"+
 				"Additive packs (repeatable; never overwrite existing files):\n"+
 				"  --add <pack>          scaffold a curated .mdsmith/ bundle (available: %s)\n\n"+
 				"Run `mdsmith init --list` to print every starter and pack.\n\nFlags:\n",
@@ -46,6 +50,9 @@ func setInitUsage(fs *flag.FlagSet, w io.Writer) {
 // packs of .mdsmith/ sidecar files. The two axes are independent: an
 // existing config is left unchanged (unless --force) while packs still
 // apply, so init composes and stays idempotent on a second run.
+// --apm additionally scaffolds the APM kind pack and writes the
+// coexistence ignore: posture to .mdsmith.yml (or prints a merge hint
+// when the config already exists).
 func runInit(args []string) int {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
 	var fromMarkdownlint string
@@ -64,6 +71,9 @@ func runInit(args []string) int {
 	var list bool
 	fs.BoolVar(&list, "list", false,
 		"List the available starters and packs, then exit")
+	var apmFlag bool
+	fs.BoolVar(&apmFlag, "apm", false,
+		"Scaffold the APM kind pack and write the coexistence ignore: posture")
 	setInitUsage(fs, os.Stderr)
 
 	if err := fs.Parse(args); err != nil {
@@ -83,22 +93,21 @@ func runInit(args []string) int {
 		return 2
 	}
 
-	// Normalize --add values so a comma-joined "--add wordlists, stopwords"
-	// resolves the same as two separate flags: pflag keeps the surrounding
-	// space, so trim it and drop empties before validating or applying.
+	// --apm implicitly scaffolds the kind pack via the "apm" pack entry.
+	if apmFlag {
+		addPacks = append(addPacks, "apm")
+	}
+	// Normalize comma-joined values: pflag keeps surrounding spaces, so
+	// trim and drop empties before validating or applying.
 	addPacks = normalizePackNames(addPacks)
-
-	// Validate every --add name before touching the filesystem, so an
-	// unknown pack fails fast instead of after a config is already written.
+	// Validate all pack names before touching the filesystem.
 	for _, name := range addPacks {
 		if _, ok := pack.Get(name); !ok {
 			fmt.Fprintf(os.Stderr, "mdsmith: %v\n", pack.ErrUnknown(name))
 			return 2
 		}
 	}
-
-	const configFile = ".mdsmith.yml"
-	if err := writeInitConfig(configFile, fromMarkdownlint, starterName, force, os.Stderr); err != nil {
+	if err := runInitConfig(".mdsmith.yml", fromMarkdownlint, starterName, force, apmFlag, os.Stderr); err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return 2
 	}
@@ -107,6 +116,107 @@ func runInit(args []string) int {
 		return 2
 	}
 	return 0
+}
+
+// runInitConfig writes .mdsmith.yml from the chosen source, then handles
+// the APM posture when apmFlag is set: it checks whether the file existed
+// before writing so it can append the ignore: block (fresh) or print a
+// merge hint (existing). Progress and error output go to w.
+func runInitConfig(configFile, fromMarkdownlint, starterName string, force, apmFlag bool, w io.Writer) error {
+	configExisted, err := statTarget(configFile)
+	if err != nil {
+		return err
+	}
+	if err := writeInitConfig(configFile, fromMarkdownlint, starterName, force, w); err != nil {
+		return err
+	}
+	if apmFlag {
+		return applyAPMPosture(configFile, configExisted, force, w)
+	}
+	return nil
+}
+
+// applyAPMPosture writes or prints the APM coexistence posture. When the
+// config already existed and was not forced, it prints a merge hint to w.
+// Otherwise it appends the ignore: block to configFile.
+func applyAPMPosture(configFile string, configExisted, force bool, w io.Writer) error {
+	globs := apmIgnoreGlobs()
+	if configExisted && !force {
+		printAPMMergeHint(w, globs)
+		return nil
+	}
+	return appendAPMPosture(configFile, globs)
+}
+
+// apmIgnoreGlobs returns the ignore glob patterns for APM-deployed files,
+// scoped to the harness directories actually present in the current directory.
+// The APM module cache and compiled root files are always included; per-harness
+// directories are added only when the harness directory exists on disk.
+func apmIgnoreGlobs() []string {
+	out := make([]string, 0, 12)
+	// APM module cache and compiled root files are always included.
+	// Compiled roots are ignored until plan 2607082049
+	// (foreign-managed-regions) provides inline protection.
+	out = append(out, "apm_modules/**", "AGENTS.md", "CLAUDE.md", "GEMINI.md")
+	// Harness-scoped entries: add each glob set only when the harness
+	// directory is present, replicating the detection `apm targets` uses.
+	type harness struct {
+		dir   string
+		globs []string
+	}
+	for _, h := range []harness{
+		{".github", []string{
+			".github/prompts/**",
+			".github/instructions/**",
+			".github/copilot-instructions.md",
+		}},
+		{".claude", []string{".claude/rules/**"}},
+		{".agents", []string{".agents/skills/**"}},
+		{".windsurf", []string{".windsurf/rules/**"}},
+		{".kiro", []string{".kiro/steering/**"}},
+		{".cursor", []string{".cursor/rules/**"}},
+	} {
+		if _, err := os.Stat(h.dir); err == nil {
+			out = append(out, h.globs...)
+		}
+	}
+	return out
+}
+
+// apmPostureBlock formats the APM coexistence posture as a YAML block
+// with a comment header, ready to append to .mdsmith.yml.
+func apmPostureBlock(ignoreGlobs []string) []byte {
+	var b strings.Builder
+	b.WriteString("\n# APM coexistence posture — written by mdsmith init --apm\n")
+	b.WriteString("# Keeps mdsmith fix off APM-deployed and APM-compiled files.\n")
+	b.WriteString("# Remove entries for harness directories your repo does not use.\n")
+	b.WriteString("ignore:\n")
+	for _, g := range ignoreGlobs {
+		fmt.Fprintf(&b, "  - %s\n", g)
+	}
+	return []byte(b.String())
+}
+
+// appendAPMPosture opens configFile for appending and writes the APM
+// coexistence posture block. It is called on a freshly written config.
+func appendAPMPosture(configFile string, ignoreGlobs []string) error {
+	f, err := os.OpenFile(configFile, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("appending APM posture to %s: %w", configFile, err)
+	}
+	defer f.Close() //nolint:errcheck // best-effort close on defer
+	if _, err := f.Write(apmPostureBlock(ignoreGlobs)); err != nil {
+		return fmt.Errorf("appending APM posture to %s: %w", configFile, err)
+	}
+	return nil
+}
+
+// printAPMMergeHint writes the APM posture block to w with a preamble
+// instructing the user to merge it by hand into their existing .mdsmith.yml.
+// This is called when the config already exists and was not overwritten.
+func printAPMMergeHint(w io.Writer, ignoreGlobs []string) {
+	_, _ = fmt.Fprintln(w, "mdsmith: --apm: .mdsmith.yml already exists; merge the posture block by hand:")
+	_, _ = w.Write(apmPostureBlock(ignoreGlobs))
 }
 
 // printInitCatalog lists every config starter and additive pack init can
