@@ -197,6 +197,10 @@ func apmPostureBlock(ignoreGlobs []string) []byte {
 	return []byte(b.String())
 }
 
+// openFileForAppend is the os.OpenFile function used by appendAPMPosture.
+// Overridable in tests to inject write failures.
+var openFileForAppend = os.OpenFile
+
 // appendAPMPosture writes the APM coexistence posture into configFile.
 // The default-config output always emits "ignore: []" for an empty ignore
 // list; blindly appending a second "ignore:" key would produce a YAML file
@@ -218,7 +222,7 @@ func appendAPMPosture(configFile string, ignoreGlobs []string) error {
 		return os.WriteFile(configFile, []byte(updated), 0o644)
 	}
 	// No empty ignore list found (starter or converted config); append.
-	f, err := os.OpenFile(configFile, os.O_APPEND|os.O_WRONLY, 0o644)
+	f, err := openFileForAppend(configFile, os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("appending APM posture to %s: %w", configFile, err)
 	}

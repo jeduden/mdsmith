@@ -3,8 +3,8 @@ package main
 import (
 	"bytes"
 	"io"
+	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -851,37 +851,25 @@ func TestAppendAPMPosture_OpenFileError(t *testing.T) {
 }
 
 func TestAppendAPMPosture_WriteError(t *testing.T) {
-	// Mount a 16k tmpfs, write a config file that exactly fills one 4k page
-	// (so any append overflows into a new page), then fill the remaining three
-	// pages with a filler file. appendAPMPosture's fallback OpenFile succeeds
-	// but f.Write fails with ENOSPC — covering the write-error branch (line 227).
-	// Skip gracefully when mounting is unavailable.
-	mntDir := t.TempDir()
-	out, mountErr := exec.Command("mount", "-t", "tmpfs", "-o", "size=16k", "tmpfs", mntDir).CombinedOutput()
-	if mountErr != nil {
-		t.Skipf("cannot mount tmpfs: %v %s", mountErr, out)
-	}
-	t.Cleanup(func() { exec.Command("umount", mntDir).Run() }) //nolint:errcheck
+	// Override openFileForAppend to return a file whose fd is already closed, so
+	// the subsequent f.Write call fails with "file already closed" — covering the
+	// write-error branch without requiring root or a full filesystem.
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(cfg, []byte("rules: {}\n"), 0o644))
 
-	cfg := filepath.Join(mntDir, ".mdsmith.yml")
-	// Exactly 4096 bytes — fills one page, no "ignore: []" content.
-	require.NoError(t, os.WriteFile(cfg, []byte(strings.Repeat("#", 4095)+"\n"), 0o644))
-
-	// Fill remaining three 4k pages with a filler file so the tmpfs is full.
-	filler := filepath.Join(mntDir, "filler")
-	f, err := os.Create(filler)
-	require.NoError(t, err)
-	buf := make([]byte, 4096)
-	for {
-		if _, werr := f.Write(buf); werr != nil {
-			break
+	orig := openFileForAppend
+	openFileForAppend = func(name string, flag int, perm fs.FileMode) (*os.File, error) {
+		f, err := orig(name, flag, perm)
+		if err != nil {
+			return nil, err
 		}
+		f.Close() //nolint:errcheck // close immediately so f.Write fails
+		return f, nil
 	}
-	f.Close() //nolint:errcheck
+	t.Cleanup(func() { openFileForAppend = orig })
 
-	// The config occupies one full page; any append needs a new page which is
-	// unavailable — os.File.Write returns ENOSPC.
-	err = appendAPMPosture(cfg, []string{"apm_modules/**"})
+	err := appendAPMPosture(cfg, []string{"apm_modules/**"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "appending APM posture")
 }
