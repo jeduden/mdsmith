@@ -877,7 +877,7 @@ func TestAppendAPMPosture_WriteError(t *testing.T) {
 			break
 		}
 	}
-	f.Close()
+	f.Close() //nolint:errcheck
 
 	// The config occupies one full page; any append needs a new page which is
 	// unavailable — os.File.Write returns ENOSPC.
