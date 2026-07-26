@@ -44,6 +44,21 @@ budget.
 - **Plan status sentinel**: `🔲` for
   "not started" (see
   [plan/proto.md](../../../plan/proto.md)).
+- **Blocker fixed within the same
+  audit run**: the skill's generic
+  checklist files one plan per blocker
+  group. Skip the plan file when the
+  fix is small, already verified by
+  passing tests, and lands in the same
+  commit or PR as the audit entry.
+  Record the entry under `### blockers`
+  as usual, but write "Fixed directly
+  in this cycle" plus what changed in
+  place of a plan link — the log entry
+  is the record. File a plan instead
+  whenever the fix does not land in the
+  same cycle, spans multiple PRs, or
+  needs design discussion.
 - **Lint command after recording**: run
   `mdsmith fix .` from the workspace
   root so the audit-log entry refreshes
