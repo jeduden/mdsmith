@@ -187,7 +187,10 @@ unit test" entry.
   contract, or makes a future refactor
   materially harder. Schedule a fix
   before the next release. File a plan
-  with a back-link to the audit entry.
+  with a back-link to the audit entry —
+  unless the project's audit-checklist
+  page documents an exception for a fix
+  that already landed in this cycle.
 - **tax** — works today but adds
   friction (a function in the wrong
   package, a one-off setting).
@@ -230,9 +233,13 @@ Group blockers by the structural fix
 they need. One plan covers one fix,
 even if it resolves several audit
 entries; the plan lists each entry it
-closes.
+closes. Skip the plan for a group
+already fixed in this cycle when the
+project's audit-checklist page opts
+into that exception; record the fix
+in the log entry instead (see Step 4).
 
-For each group:
+For each remaining group:
 
 - Create a new plan file in the
   project's plan directory using the
