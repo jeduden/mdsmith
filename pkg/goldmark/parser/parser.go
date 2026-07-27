@@ -141,9 +141,13 @@ func (s *ids) Generate(value []byte, kind ast.NodeKind) []byte {
 	for i := 1; ; i++ {
 		buf = strconv.AppendInt(buf[:prefixLen], int64(i), 10)
 		if _, ok := s.values[util.BytesToReadOnlyString(buf)]; !ok {
-			key := string(buf)
-			s.values[key] = struct{}{}
-			return []byte(key)
+			// The map key must be an immutable copy (buf is reused across
+			// loop iterations via buf[:prefixLen]), but buf itself is not
+			// retained anywhere else once decided, so it can be returned
+			// directly instead of round-tripping through a second []byte
+			// conversion of the same bytes.
+			s.values[string(buf)] = struct{}{}
+			return buf
 		}
 	}
 }

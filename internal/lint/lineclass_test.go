@@ -12,12 +12,13 @@ import (
 	"github.com/jeduden/mdsmith/internal/structlayout"
 )
 
-// TestLC0Pass_PointerFieldsFirst pins lc0Pass's layout. lc0Pass is
-// heap-allocated once per ClassifyLines call — the flat-path
-// classifier that runs on every file's Layer-0 pass — so a scalar
-// sandwiched between pointer fields costs one GC-scanned struct per
-// file for nothing. See docs/development/high-performance-go.md
-// "Struct layout".
+// TestLC0Pass_PointerFieldsFirst pins lc0Pass's layout. lc0Pass
+// itself does not escape to the heap today (ClassifyLines is a
+// default-off measurement seam, not part of the default lint path),
+// so a scalar sandwiched between pointer fields costs nothing right
+// now; this pins the layout as hygiene per
+// docs/development/high-performance-go.md "Struct layout" so it
+// stays correct if that ever changes.
 func TestLC0Pass_PointerFieldsFirst(t *testing.T) {
 	structlayout.AssertPointerFieldsFirst(t, reflect.TypeOf(lc0Pass{}))
 }
