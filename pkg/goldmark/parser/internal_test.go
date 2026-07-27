@@ -93,6 +93,10 @@ func TestIDs_Generate_AllocBudget(t *testing.T) {
 	if testing.Short() {
 		t.Skip("alloc budget skipped in -short mode")
 	}
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race; the race detector " +
+			"adds allocation bookkeeping that perturbs the count")
+	}
 	const seedDepth = 30
 
 	s := newIDs().(*ids)
