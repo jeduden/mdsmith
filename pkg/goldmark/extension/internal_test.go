@@ -5,6 +5,7 @@ package extension
 // internals.
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
@@ -104,5 +105,36 @@ func TestIsTableDelim_AllBranches(t *testing.T) {
 				t.Errorf("isTableDelim(%q) = %v, want %v", c.in, got, c.want)
 			}
 		})
+	}
+}
+
+// TestParseDelimiter_AllocBudget pins parseDelimiter's allocation
+// cost on a wide table row. cols is already known before the
+// alignment loop (bytes.Split has already produced it), so growing
+// alignments via a bare append() forces repeated reallocation-and-copy
+// as the slice doubles past its initial nil capacity. Pre-sizing with
+// make([]ast.Alignment, 0, len(cols)) allocates once. See
+// docs/development/high-performance-go.md "Pre-size slices".
+func TestParseDelimiter_AllocBudget(t *testing.T) {
+	if testing.Short() {
+		t.Skip("alloc budget skipped in -short mode")
+	}
+	const cols = 40
+	row := strings.Repeat("---|", cols)
+	reader := newTextReader(row)
+	seg := text.NewSegment(0, len(row))
+
+	allocs := testing.AllocsPerRun(20, func() {
+		got := defaultTableParagraphTransformer.parseDelimiter(seg, reader)
+		if len(got) != cols {
+			t.Fatalf("parseDelimiter returned %d alignments, want %d", len(got), cols)
+		}
+	})
+	// One alloc for the pre-sized alignments slice, plus bytes.Split's
+	// own backing array; a doubling append would add several more
+	// reallocations on a 40-column row.
+	if allocs > 3 {
+		t.Errorf("parseDelimiter allocates %.1f/op on a %d-column row (bound 3); "+
+			"want alignments pre-sized to len(cols) instead of grown via append", allocs, cols)
 	}
 }

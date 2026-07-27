@@ -269,7 +269,10 @@ func (b *tableParagraphTransformer) parseDelimiter(segment text.Segment, reader 
 		cols = cols[:len(cols)-1]
 	}
 
-	var alignments []ast.Alignment
+	// cols is already known here, so alignments is pre-sized to its
+	// length instead of growing via a doubling append. See
+	// docs/development/high-performance-go.md "Pre-size slices".
+	alignments := make([]ast.Alignment, 0, len(cols))
 	for _, col := range cols {
 		if tableDelimLeft.Match(col) {
 			alignments = append(alignments, ast.AlignLeft)
