@@ -29,9 +29,9 @@ func TestConcisenessScore_PunctuationOnly(t *testing.T) {
 // --- concisenessScore: sentences < 1 → set to 1 branch ---
 
 func TestConcisenessScore_NoSentenceEnding(t *testing.T) {
-	// A phrase with no sentence-ending punctuation: the caller's
-	// sentence count (from mdtext.CountSentences) may be 0, which is
-	// then clamped to 1 inside concisenessScore.
+	// A phrase with no sentence-ending punctuation: mdtext.CountSentences
+	// would return 0 for it, so the caller passes 0 directly here to
+	// drive the sentences < 1 clamp inside concisenessScore.
 	score := concisenessScore("hello world foo bar", 0)
 	assert.GreaterOrEqual(t, score, 0.0)
 	assert.LessOrEqual(t, score, 100.0)
@@ -262,6 +262,26 @@ func TestMET008_Readability_PlainTextErrorAfterWordCountSuccess(t *testing.T) {
 	doc.wordCountErr = nil
 	doc.plainTextReady = true
 	doc.plainTextErr = sentinel
+
+	v, err := def.Compute(doc)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, sentinel)
+	assert.False(t, v.Available)
+}
+
+func TestMET006_Conciseness_SentenceCountError(t *testing.T) {
+	def, ok := Lookup("MET006")
+	require.True(t, ok, "MET006 must be registered")
+
+	doc := NewDocument("test.md", []byte("# Hello\n\nSome text.\n"))
+	sentinel := errors.New("sentence-count failure")
+	// MET006's own PlainText() call succeeds first, so the only way to
+	// reach its SentenceCount() error check is to prime SentenceCount's
+	// own cache directly: SentenceCount's internal PlainText() call
+	// would otherwise share the same already-successful PlainText()
+	// cache slot MET006 just populated.
+	doc.sentenceCountReady = true
+	doc.sentenceCountErr = sentinel
 
 	v, err := def.Compute(doc)
 	require.Error(t, err)
