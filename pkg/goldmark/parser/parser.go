@@ -3,6 +3,7 @@ package parser
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -128,13 +129,22 @@ func (s *ids) Generate(value []byte, kind ast.NodeKind) []byte {
 		s.values[util.BytesToReadOnlyString(result)] = struct{}{}
 		return result
 	}
+	// Reuse one buffer across attempted suffixes instead of building a
+	// new string per attempt with fmt.Sprintf: a collision N deep would
+	// otherwise allocate N times just walking this loop, on every
+	// document with a repeated heading. strconv.AppendInt also skips
+	// fmt's reflection overhead. See
+	// docs/development/high-performance-go.md "strconv over
+	// fmt.Sprintf".
+	buf := append(result, '-')
+	prefixLen := len(buf)
 	for i := 1; ; i++ {
-		newResult := fmt.Sprintf("%s-%d", result, i)
-		if _, ok := s.values[newResult]; !ok {
-			s.values[newResult] = struct{}{}
-			return []byte(newResult)
+		buf = strconv.AppendInt(buf[:prefixLen], int64(i), 10)
+		if _, ok := s.values[util.BytesToReadOnlyString(buf)]; !ok {
+			key := string(buf)
+			s.values[key] = struct{}{}
+			return []byte(key)
 		}
-
 	}
 }
 
