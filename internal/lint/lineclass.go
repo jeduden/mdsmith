@@ -121,10 +121,27 @@ type lc0Container struct {
 }
 
 // lc0Pass carries the mutable state of one ClassifyLines walk.
+//
+// The pointer-containing fields (lines, out, stack, htmlEnd,
+// pendingBlanks) are grouped first, followed by every scalar field:
+// GC ptrdata spans through the last pointer-containing field, so
+// interleaving them — as htmlEnd and pendingBlanks previously were —
+// forces the scan across the whole struct on every heap-allocated
+// instance. See docs/development/high-performance-go.md "Struct
+// layout".
 type lc0Pass struct {
-	lines [][]byte
-	out   *LineClassifier
-	stack []lc0Container
+	lines   [][]byte
+	out     *LineClassifier
+	stack   []lc0Container
+	htmlEnd []byte // closing string for a marker-terminated HTML block (htmlMarker)
+
+	// pendingBlanks holds blank lines seen while inside an indented code
+	// run. A blank inside indented code belongs to the block only if more
+	// indented content follows, so the lines are held here and flushed into
+	// the code set when the run continues (flushPendingBlanks) or discarded
+	// when it ends (endIndentRun) — matching goldmark, which folds interior
+	// blanks into the block but drops trailing ones.
+	pendingBlanks []int
 
 	inFence       bool
 	fenceChar     byte
@@ -133,7 +150,6 @@ type lc0Pass struct {
 	fenceOpenLine int // 1-based
 
 	inHTML   bool     // inside an HTML block
-	htmlEnd  []byte   // closing string for a marker-terminated HTML block (htmlMarker)
 	htmlKind htmlKind // how the open HTML block ends
 
 	prevParagraph bool // previous emitted line was paragraph text (setext gate)
@@ -145,14 +161,6 @@ type lc0Pass struct {
 	// boundary (code and HTML blocks get no lazy continuation), so the
 	// classifier closes it too — see closeBlockAtBoundary.
 	openBlockDepth int
-
-	// pendingBlanks holds blank lines seen while inside an indented code
-	// run. A blank inside indented code belongs to the block only if more
-	// indented content follows, so the lines are held here and flushed into
-	// the code set when the run continues (flushPendingBlanks) or discarded
-	// when it ends (endIndentRun) — matching goldmark, which folds interior
-	// blanks into the block but drops trailing ones.
-	pendingBlanks []int
 }
 
 // run walks every line, handling the optional leading front matter first,
