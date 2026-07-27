@@ -29,9 +29,10 @@ func TestConcisenessScore_PunctuationOnly(t *testing.T) {
 // --- concisenessScore: sentences < 1 → set to 1 branch ---
 
 func TestConcisenessScore_NoSentenceEnding(t *testing.T) {
-	// A phrase with no sentence-ending punctuation: mdtext.CountSentences
-	// would return 0 for it, so the caller passes 0 directly here to
-	// drive the sentences < 1 clamp inside concisenessScore.
+	// The caller passes 0 directly here to drive the sentences < 1
+	// clamp inside concisenessScore; mdtext.CountSentences itself
+	// returns at least 1 for any non-empty text, so no real input
+	// produces 0 — this only exercises the clamp in isolation.
 	score := concisenessScore("hello world foo bar", 0)
 	assert.GreaterOrEqual(t, score, 0.0)
 	assert.LessOrEqual(t, score, 100.0)
