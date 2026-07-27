@@ -124,11 +124,11 @@ func TestParseDelimiter_AllocBudget(t *testing.T) {
 	reader := newTextReader(row)
 	seg := text.NewSegment(0, len(row))
 
+	if got := defaultTableParagraphTransformer.parseDelimiter(seg, reader); len(got) != cols {
+		t.Fatalf("parseDelimiter returned %d alignments, want %d", len(got), cols)
+	}
 	allocs := testing.AllocsPerRun(20, func() {
-		got := defaultTableParagraphTransformer.parseDelimiter(seg, reader)
-		if len(got) != cols {
-			t.Fatalf("parseDelimiter returned %d alignments, want %d", len(got), cols)
-		}
+		defaultTableParagraphTransformer.parseDelimiter(seg, reader)
 	})
 	// One alloc for the pre-sized alignments slice, plus bytes.Split's
 	// own backing array; a doubling append would add several more
@@ -136,5 +136,23 @@ func TestParseDelimiter_AllocBudget(t *testing.T) {
 	if allocs > 3 {
 		t.Errorf("parseDelimiter allocates %.1f/op on a %d-column row (bound 3); "+
 			"want alignments pre-sized to len(cols) instead of grown via append", allocs, cols)
+	}
+}
+
+// TestParseDelimiter_EmptyColsReturnsNil pins parseDelimiter's nil
+// contract for a delimiter line with no columns (e.g. a bare "|").
+// Transform (table.go) uses `alignments == nil` as its "not a
+// delimiter row" sentinel; a pre-sized-but-empty non-nil slice would
+// satisfy isTableDelim and bytes.Split down to zero columns, pass
+// that sentinel check, then fail the header child-count check and
+// return — aborting the whole paragraph's table scan instead of just
+// skipping this line.
+func TestParseDelimiter_EmptyColsReturnsNil(t *testing.T) {
+	row := "|"
+	reader := newTextReader(row)
+	seg := text.NewSegment(0, len(row))
+	got := defaultTableParagraphTransformer.parseDelimiter(seg, reader)
+	if got != nil {
+		t.Errorf("parseDelimiter(%q) = %#v, want nil", row, got)
 	}
 }
