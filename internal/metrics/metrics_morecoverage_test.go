@@ -16,22 +16,23 @@ import (
 
 func TestConcisenessScore_EmptyText(t *testing.T) {
 	// Empty text produces no tokens — should return 100.0.
-	score := concisenessScore("")
+	score := concisenessScore("", 0)
 	assert.Equal(t, 100.0, score)
 }
 
 func TestConcisenessScore_PunctuationOnly(t *testing.T) {
 	// Only punctuation: no token-pattern matches → returns 100.0.
-	score := concisenessScore("!!! ??? ---")
+	score := concisenessScore("!!! ??? ---", 0)
 	assert.Equal(t, 100.0, score)
 }
 
 // --- concisenessScore: sentences < 1 → set to 1 branch ---
 
 func TestConcisenessScore_NoSentenceEnding(t *testing.T) {
-	// A phrase with no sentence-ending punctuation: CountSentences may
-	// return 0, which is then clamped to 1 inside concisenessScore.
-	score := concisenessScore("hello world foo bar")
+	// A phrase with no sentence-ending punctuation: the caller's
+	// sentence count (from mdtext.CountSentences) may be 0, which is
+	// then clamped to 1 inside concisenessScore.
+	score := concisenessScore("hello world foo bar", 0)
 	assert.GreaterOrEqual(t, score, 0.0)
 	assert.LessOrEqual(t, score, 100.0)
 }
