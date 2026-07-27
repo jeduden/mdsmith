@@ -126,9 +126,12 @@ type lc0Container struct {
 // pendingBlanks) are grouped first, followed by every scalar field:
 // GC ptrdata spans through the last pointer-containing field, so
 // interleaving them — as htmlEnd and pendingBlanks previously were —
-// forces the scan across the whole struct on every heap-allocated
-// instance. See docs/development/high-performance-go.md "Struct
-// layout".
+// would force the scan across the whole struct on any instance that
+// escapes to the heap. lc0Pass does not escape today (ClassifyLines
+// is a default-off measurement seam; see its doc comment above), so
+// this is layout hygiene per docs/development/high-performance-go.md
+// "Struct layout" rather than a measured GC win — insurance against
+// the day it does escape.
 type lc0Pass struct {
 	lines   [][]byte
 	out     *LineClassifier
