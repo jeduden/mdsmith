@@ -539,6 +539,43 @@ func TestCollectSectionHeadings_Memoized(t *testing.T) {
 		"repeated calls must return the cached slice")
 }
 
+// --- CollectHeadingNodes ---
+
+func TestCollectHeadingNodes_OrdersByLine(t *testing.T) {
+	src := []byte("# H1\n\n## H2\n\n### H3\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	got := CollectHeadingNodes(f)
+	require.Len(t, got, 3)
+	assert.Equal(t, 1, got[0].Level)
+	assert.Equal(t, 2, got[1].Level)
+	assert.Equal(t, 3, got[2].Level)
+	assert.Equal(t, 1, HeadingLine(got[0], f))
+	assert.Equal(t, 3, HeadingLine(got[1], f))
+	assert.Equal(t, 5, HeadingLine(got[2], f))
+}
+
+func TestCollectHeadingNodes_NoHeadings(t *testing.T) {
+	f, err := lint.NewFile("test.md", []byte("just text\n"))
+	require.NoError(t, err)
+	assert.Empty(t, CollectHeadingNodes(f))
+}
+
+// TestCollectHeadingNodes_Memoized pins that repeated calls share the
+// same backing slice — MDS003 and MDS005 both enabled should pay the
+// AST walk once, not twice, mirroring TestCollectSectionHeadings_Memoized.
+func TestCollectHeadingNodes_Memoized(t *testing.T) {
+	src := []byte("# H1\n\n## H2\n\n### H3\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	h1 := CollectHeadingNodes(f)
+	h2 := CollectHeadingNodes(f)
+	require.Len(t, h1, 3)
+	require.Len(t, h2, 3)
+	assert.Same(t, h1[0], h2[0],
+		"repeated calls must return the cached slice")
+}
+
 // --- CollectSectionParagraphs ---
 
 func TestCollectSectionParagraphs_SkipsTables(t *testing.T) {
