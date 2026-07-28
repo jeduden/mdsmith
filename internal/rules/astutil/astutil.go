@@ -110,6 +110,14 @@ func buildSectionHeadings(f *lint.File) any {
 	return out
 }
 
+// HeadingNodesMemoKey is CollectHeadingNodes's MemoFile key. Exported
+// (rather than inlined at each use) so the shared-walk regression test
+// in sharedheadingwalk_bench_test.go — which lives in the external
+// astutil_test package because it exercises concrete rule packages
+// (headingincrement, noduplicateheadings) that import astutil — can
+// pre-seed the same cache entry without duplicating the string.
+const HeadingNodesMemoKey = "astutil.headingNodes"
+
 // CollectHeadingNodes returns every *ast.Heading node in the document,
 // in source order. Unlike CollectSectionHeadings (which only exposes
 // Level and Line), this keeps the node itself so a caller can extract
@@ -122,7 +130,7 @@ func buildSectionHeadings(f *lint.File) any {
 // the tree (docs/development/high-performance-go.md, "memoize
 // per-input computations").
 func CollectHeadingNodes(f *lint.File) []*ast.Heading {
-	return f.MemoFile("astutil.headingNodes", buildHeadingNodes).([]*ast.Heading)
+	return f.MemoFile(HeadingNodesMemoKey, buildHeadingNodes).([]*ast.Heading)
 }
 
 // buildHeadingNodes is the MemoFile-style builder for the heading-nodes

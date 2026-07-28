@@ -1,7 +1,9 @@
 // Package astutil_test benchmarks cross-rule use of astutil's shared,
 // memoized AST collectors. It lives in the external test package
 // because it exercises concrete rule packages (headingincrement,
-// noduplicateheadings) rather than astutil internals.
+// noduplicateheadings) rather than astutil internals — importing
+// them from an internal (non-_test-suffixed) test file would be an
+// import cycle, since those packages import astutil's production code.
 package astutil_test
 
 import (
@@ -9,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	"github.com/jeduden/mdsmith/internal/rules/headingincrement"
 	"github.com/jeduden/mdsmith/internal/rules/noduplicateheadings"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
@@ -37,8 +40,8 @@ func manyHeadingsSource(n int) []byte {
 //
 // f.MemoFile's contract is first-build-wins (internal/lint/file.go):
 // once a key is populated, later calls with a different builder still
-// return the original cached value. So pre-seeding the
-// "astutil.headingNodes" key with an empty slice before either rule
+// return the original cached value. So pre-seeding
+// astutil.HeadingNodesMemoKey with an empty slice before either rule
 // runs means a rule that goes through the shared cache sees zero
 // headings and emits nothing, while a rule that still does its own
 // ast.Walk would see the real (diagnostic-triggering) headings
@@ -51,7 +54,7 @@ func TestHeadingRulesTogether_ShareMemoizedHeadingNodes(t *testing.T) {
 	f, err := lint.NewFile("test.md", src)
 	require.NoError(t, err)
 
-	_ = f.MemoFile("astutil.headingNodes", func(*lint.File) any {
+	_ = f.MemoFile(astutil.HeadingNodesMemoKey, func(*lint.File) any {
 		return []*ast.Heading(nil)
 	})
 
