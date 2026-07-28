@@ -270,8 +270,8 @@ func buildAlertSkipMaps(f *lint.File) (skip, addPrefix map[int]struct{}) {
 		for i := 1; i < lines.Len(); i++ {
 			contSeg := lines.At(i)
 			contLine, _ := flavor.LineCol(f.Source, contSeg.Start)
-			raw := strings.TrimLeft(string(f.Lines[contLine-1]), " \t")
-			if !strings.HasPrefix(raw, ">") {
+			raw := bytes.TrimLeft(f.Lines[contLine-1], " \t")
+			if len(raw) == 0 || raw[0] != '>' {
 				addPrefix[contLine] = struct{}{}
 			}
 		}
@@ -291,7 +291,7 @@ func (r *Rule) fixGitHubAlerts(f *lint.File) []byte {
 		return f.Source
 	}
 
-	var out []string
+	out := make([]string, 0, len(f.Lines))
 	for i, line := range f.Lines {
 		lineNum := i + 1
 		if _, ok := skip[lineNum]; ok {
