@@ -3054,6 +3054,15 @@ func TestExtractPlaceholderFields_NoFields(t *testing.T) {
 	assert.Empty(t, fields)
 }
 
+// TestExtractPlaceholderFields_NoFields_ReturnsNil pins
+// docs/development/high-performance-go.md's "return nil, not []T{}"
+// convention: pre-sizing fields via make([]string, 0, len(all)) would
+// otherwise return a non-nil empty slice when row has no placeholders.
+func TestExtractPlaceholderFields_NoFields_ReturnsNil(t *testing.T) {
+	fields := extractPlaceholderFields("plain text")
+	assert.Nil(t, fields)
+}
+
 func TestCheckFieldCaseMismatches_Exact(t *testing.T) {
 	entries := []fileEntry{
 		{fields: map[string]any{"filename": "a.md", "title": "A"}},
