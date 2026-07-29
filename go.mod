@@ -11,7 +11,7 @@ go 1.25.11
 require (
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/hexops/gotextdiff v1.0.3
-	github.com/mattn/go-runewidth v0.0.24
+	github.com/mattn/go-runewidth v0.0.27
 	github.com/neurosnap/sentences v1.1.2
 	github.com/pelletier/go-toml v1.9.5
 	github.com/spf13/pflag v1.0.10
