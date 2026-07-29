@@ -2468,8 +2468,14 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 		// basename, which would let `path-pattern: README.md` pass
 		// for `docs/README.md` — defeating the documented root-
 		// anchored semantics.
-		ok, err := doublestar.Match(filepath.ToSlash(pp.Pattern), rel)
-		if err == nil && ok {
+		//
+		// MatchUnvalidated (not Match) because pp.Pattern already
+		// passed doublestar.ValidatePattern once, at config-parse
+		// time (parsePathPatterns); Match's own internal validation
+		// step re-runs on every call whenever matching reaches the
+		// end of rel before the end of the pattern — the common case
+		// for a mismatching kind, which is most kinds for most files.
+		if doublestar.MatchUnvalidated(filepath.ToSlash(pp.Pattern), rel) {
 			continue
 		}
 		// path-pattern checks the workspace-relative path (which may
