@@ -1576,12 +1576,21 @@ func scanIncludesForTargetAbs(
 }
 
 // isExcluded checks whether a file path matches any of the exclude patterns.
+//
+// MatchUnvalidated (not Match) because doublestar.Match's internal
+// validation step re-runs on every call whenever matching reaches the
+// end of filePath before the end of pattern — the common case here,
+// since isExcluded runs once per exclude pattern per glob-matched
+// candidate, and most candidates match none of a catalog's exclude
+// patterns. A malformed pattern (one that would fail
+// doublestar.ValidatePattern) still safely reports no match, the same
+// outcome Match's error branch produced.
 func isExcluded(filePath string, patterns []string) bool {
 	for _, pattern := range patterns {
 		if pattern == "" {
 			continue
 		}
-		if ok, _ := doublestar.Match(pattern, filePath); ok {
+		if doublestar.MatchUnvalidated(pattern, filePath) {
 			return true
 		}
 	}
