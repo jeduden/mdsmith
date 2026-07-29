@@ -1045,6 +1045,20 @@ func TestCheck_PathPattern_BraceAlternateWithSyntaxErrorUsesMatchVerdict(t *test
 	expectDiags(t, diags, 1)
 }
 
+// TestCheck_PathPattern_BraceAlternateThatMatchesSucceeds covers the
+// safe path's success branch: a well-formed brace-alternate pattern
+// that doublestar.Match matches cleanly (no syntax-error abort) must
+// still be treated as a match by checkPathPatterns' fallback.
+func TestCheck_PathPattern_BraceAlternateThatMatchesSucceeds(t *testing.T) {
+	root := t.TempDir()
+	f := newRootedFile(t, root, "docs/README.markdown", "# Docs\n")
+	r := &Rule{PathPatterns: []PathPattern{
+		{Kind: "readme", Pattern: "docs/*.{md,markdown}"},
+	}}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
 // TestCheck_PathPattern_EmptyRootDirFallsBackToPath covers the
 // `f.RootDir == ""` branch of workspaceRelPath: with no workspace
 // root configured, the glob compares against f.Path verbatim.

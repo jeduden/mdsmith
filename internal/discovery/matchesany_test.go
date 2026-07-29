@@ -44,6 +44,16 @@ func TestMatchesAny_BraceAlternateWithSyntaxErrorFallsBackToMatch(t *testing.T) 
 			"for a pattern using brace alternation")
 }
 
+// TestMatchesAny_BraceAlternateThatMatchesSucceeds covers the safe
+// path's success branch: a well-formed brace-alternate pattern that
+// doublestar.Match matches cleanly (no syntax-error abort) must still
+// report a match through matchesAny's fallback.
+func TestMatchesAny_BraceAlternateThatMatchesSucceeds(t *testing.T) {
+	w := &walker{patterns: []string{"*.{md,markdown}"}}
+	assert.True(t, w.matchesAny("README.md"))
+	assert.False(t, w.matchesAny("README.txt"))
+}
+
 // TestMatchesAny_BraceFreePatternUsesFastPath is a sanity check that
 // the fast MatchUnvalidated path still runs (and still matches) for an
 // ordinary pattern with no brace syntax — the common case this
