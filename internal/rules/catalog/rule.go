@@ -1575,22 +1575,32 @@ func scanIncludesForTargetAbs(
 	return false
 }
 
-// isExcluded checks whether a file path matches any of the exclude patterns.
+// isExcluded checks whether a file path matches any of the exclude
+// patterns.
 //
-// MatchUnvalidated (not Match) because doublestar.Match's internal
-// validation step re-runs on every call whenever matching reaches the
-// end of filePath before the end of pattern — the common case here,
-// since isExcluded runs once per exclude pattern per glob-matched
-// candidate, and most candidates match none of a catalog's exclude
-// patterns. A malformed pattern (one that would fail
-// doublestar.ValidatePattern) still safely reports no match, the same
-// outcome Match's error branch produced.
+// Uses doublestar.Match, not MatchUnvalidated, despite the doc's "skip
+// work you don't need" guidance: unlike discovery.matchesAny and
+// requiredstructure.checkPathPatterns (whose patterns are always
+// validated before they can reach the match call), isExcluded can be
+// reached with a pattern that never passed doublestar.ValidatePattern —
+// checkInjection and checkCaseMismatches read a directive's raw params
+// directly, bypassing the gensection engine's Validate pass
+// (validateGlob) that runs on the Generate path. For most malformed
+// patterns MatchUnvalidated safely returns false like Match's error
+// branch, but for some (e.g. an unmatched brace-alternate like
+// "{x[,a}") it returns true where Match would report false with an
+// error — confirmed directly against the vendored doublestar source,
+// not assumed. Gating MatchUnvalidated behind a cached validity check
+// (mirroring internal/globpath's patternValid) closes that gap but
+// measures identically to plain Match here (benchstat, n=10: p=0.669) —
+// the cache lookup costs about what the skipped revalidation saves, so
+// it is not a real optimization once made correct. Kept as Match.
 func isExcluded(filePath string, patterns []string) bool {
 	for _, pattern := range patterns {
 		if pattern == "" {
 			continue
 		}
-		if doublestar.MatchUnvalidated(pattern, filePath) {
+		if ok, _ := doublestar.Match(pattern, filePath); ok {
 			return true
 		}
 	}
