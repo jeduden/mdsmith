@@ -164,10 +164,13 @@ func (w *walker) isGitignored(path string, info os.FileInfo) bool {
 }
 
 // matchesAny returns true if rel matches any of the configured patterns.
+// w.patterns has already passed doublestar.ValidatePattern once, in
+// validatePatterns; doublestar.Match re-validates its pattern argument
+// on every call, so matching through MatchUnvalidated here skips paying
+// that cost again for every file the walk visits.
 func (w *walker) matchesAny(rel string) bool {
 	for _, p := range w.patterns {
-		matched, err := doublestar.Match(p, rel)
-		if err == nil && matched {
+		if doublestar.MatchUnvalidated(p, rel) {
 			return true
 		}
 	}
