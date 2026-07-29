@@ -17,3 +17,12 @@ func TestAutoLink_PointerFieldsBeforeScalars(t *testing.T) {
 	// declared fields are checked here.
 	fieldorder.AssertPointersBeforeScalars(t, reflect.TypeOf(AutoLink{}), 1)
 }
+
+// TestBaseNode_PointerFieldsBeforeScalars pins BaseNode's own field
+// order. BaseNode is embedded in every AST node type (Document,
+// Heading, Paragraph, Text, List, Link, Image, ...), so it is
+// instantiated once per node on every parse of every file — the
+// hottest struct in the codebase.
+func TestBaseNode_PointerFieldsBeforeScalars(t *testing.T) {
+	fieldorder.AssertPointersBeforeScalars(t, reflect.TypeOf(BaseNode{}), 0)
+}

@@ -216,8 +216,8 @@ type BaseNode struct {
 	parent     Node
 	next       Node
 	prev       Node
-	childCount int
 	attributes []Attribute
+	childCount int
 	pos        pos
 }
 
