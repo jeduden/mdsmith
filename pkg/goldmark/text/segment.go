@@ -300,6 +300,12 @@ func (s *Segments) Value(buffer []byte) []byte {
 	total := 0
 	for _, v := range s.values {
 		total += v.Len()
+		if v.ForceNewline {
+			// Value appends a trailing '\n' when the segment doesn't
+			// already end with one; Len() has no buffer to check that
+			// against, so budget the extra byte unconditionally.
+			total++
+		}
 	}
 	result := make([]byte, 0, total)
 	for _, v := range s.values {
