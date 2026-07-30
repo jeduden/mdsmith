@@ -314,5 +314,12 @@ func (s *Segments) Value(buffer []byte) []byte {
 	for _, v := range s.values {
 		result = append(result, v.Value(buffer)...)
 	}
+	if len(result) == 0 {
+		// total's ForceNewline budget is an upper bound: Value only
+		// appends the newline when the segment's own bytes are
+		// non-empty, so a zero-length ForceNewline segment leaves
+		// total > 0 with nothing actually written.
+		return nil
+	}
 	return result
 }

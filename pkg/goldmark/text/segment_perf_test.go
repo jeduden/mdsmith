@@ -78,3 +78,16 @@ func TestSegments_Value_EmptyReturnsNil(t *testing.T) {
 	got := segs.Value([]byte("unused"))
 	require.Nil(t, got)
 }
+
+// TestSegments_Value_ZeroLengthForceNewlineReturnsNil covers the
+// case the total==0 fast path can't see: a zero-length ForceNewline
+// segment (e.g. an empty fenced code block, "```\n```") makes total
+// budget one byte for a newline that Value never actually appends —
+// ForceNewline only fires when the segment's own bytes are
+// non-empty — so the real output is empty even though total > 0.
+func TestSegments_Value_ZeroLengthForceNewlineReturnsNil(t *testing.T) {
+	var segs text.Segments
+	segs.Append(text.Segment{Start: 5, Stop: 5, ForceNewline: true})
+	got := segs.Value([]byte("unused"))
+	require.Nil(t, got)
+}
