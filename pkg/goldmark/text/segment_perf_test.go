@@ -67,3 +67,14 @@ func TestSegments_Value_ForceNewlineStaysPreSized(t *testing.T) {
 	assert.LessOrEqualf(t, allocs, float64(1),
 		"expected a single pre-sized allocation even with a ForceNewline segment; got %v", allocs)
 }
+
+// TestSegments_Value_EmptyReturnsNil guards the project convention
+// "return nil, not []T{}, on no diagnostics" (CLAUDE.md), which
+// applies equally to this "no output" case: pre-sizing from a
+// computed total must not force a non-nil, zero-length result when
+// the collection has no segments (or only zero-length ones).
+func TestSegments_Value_EmptyReturnsNil(t *testing.T) {
+	var segs text.Segments
+	got := segs.Value([]byte("unused"))
+	require.Nil(t, got)
+}

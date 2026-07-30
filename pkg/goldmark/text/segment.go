@@ -307,6 +307,9 @@ func (s *Segments) Value(buffer []byte) []byte {
 			total++
 		}
 	}
+	if total == 0 {
+		return nil
+	}
 	result := make([]byte, 0, total)
 	for _, v := range s.values {
 		result = append(result, v.Value(buffer)...)
