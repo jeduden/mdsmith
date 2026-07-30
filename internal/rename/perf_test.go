@@ -1,6 +1,7 @@
 package rename
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -16,7 +17,7 @@ func noRefDefBody() []byte {
 	var b strings.Builder
 	for i := 0; i < 40; i++ {
 		b.WriteString("## Heading number ")
-		b.WriteString(strings.Repeat("x", 1))
+		b.WriteString(strconv.Itoa(i))
 		b.WriteString("\n\n")
 		b.WriteString(strings.Repeat(
 			"This is an ordinary paragraph of prose with no reference "+
