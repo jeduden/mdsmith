@@ -297,7 +297,11 @@ func (s *Segments) Unshift(v Segment) {
 
 // Value returns a string value of the collection.
 func (s *Segments) Value(buffer []byte) []byte {
-	var result []byte
+	total := 0
+	for _, v := range s.values {
+		total += v.Len()
+	}
+	result := make([]byte, 0, total)
 	for _, v := range s.values {
 		result = append(result, v.Value(buffer)...)
 	}
