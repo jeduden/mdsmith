@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jeduden/mdsmith/internal/bytelimit"
@@ -381,14 +382,55 @@ func (s *Server) resolveMaxInputBytes(cfg *config.Config) int64 {
 // severity is mapped to the matching window/logMessage type so
 // warnings stay distinguishable from errors in the editor's
 // output channel.
+//
+// runLint calls this on every lint pass, so a per-diagnostic
+// Printf/writeNotification pair (format + lock + I/O, and a JSON-RPC
+// round-trip, per diagnostic) would re-log and re-notify every
+// config-target finding on every keystroke anywhere in the workspace.
+// messageTypeForLint only ever returns one of two values (Warning or
+// Error), so diags is grouped by that value and each group is emitted
+// as a single logger.Printf call and a single window/logMessage
+// notification — at most two of each, regardless of len(diags).
 func (s *Server) surfaceForeignDiagnostics(uri string, diags []lint.Diagnostic) {
-	for _, d := range diags {
-		s.logger.Printf("lint %s: %s:%d %s [%s]", uri, d.File, d.Line, d.Message, d.RuleName)
-		_ = s.t.writeNotification("window/logMessage", logMessageParams{
-			Type:    messageTypeForLint(d.Severity),
-			Message: fmt.Sprintf("mdsmith: %s:%d %s [%s]", d.File, d.Line, d.Message, d.RuleName),
-		})
+	if len(diags) == 0 {
+		return
 	}
+	var warnLines, errLines strings.Builder
+	sizeOf := func(d lint.Diagnostic) int { return len(d.File) + len(d.Message) + len(d.RuleName) + 24 }
+	for _, d := range diags {
+		if messageTypeForLint(d.Severity) == messageTypeWarning {
+			warnLines.Grow(sizeOf(d))
+		} else {
+			errLines.Grow(sizeOf(d))
+		}
+	}
+	for _, d := range diags {
+		b := &errLines
+		if messageTypeForLint(d.Severity) == messageTypeWarning {
+			b = &warnLines
+		}
+		if b.Len() > 0 {
+			b.WriteByte('\n')
+		}
+		fmt.Fprintf(b, "%s:%d %s [%s]", d.File, d.Line, d.Message, d.RuleName)
+	}
+	s.surfaceForeignGroup(uri, messageTypeWarning, warnLines.String())
+	s.surfaceForeignGroup(uri, messageTypeError, errLines.String())
+}
+
+// surfaceForeignGroup emits the single logger.Printf call and
+// window/logMessage notification for one messageType group of
+// surfaceForeignDiagnostics. A no-op when body is empty (that
+// severity had no diagnostics in this batch).
+func (s *Server) surfaceForeignGroup(uri string, mt messageType, body string) {
+	if body == "" {
+		return
+	}
+	s.logger.Printf("lint %s:\n%s", uri, body)
+	_ = s.t.writeNotification("window/logMessage", logMessageParams{
+		Type:    mt,
+		Message: "mdsmith:\n" + body,
+	})
 }
 
 // messageTypeForLint maps a lint severity to the
