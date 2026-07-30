@@ -99,6 +99,9 @@ func TestSurfaceForeignDiagnosticsBatchesBySeverity(t *testing.T) {
 // diagnostics is large enough that the gap between "sum-then-Grow"
 // and "Grow-per-diagnostic" clears measurement noise.
 func TestSurfaceForeignDiagnosticsGrowIsPreSized(t *testing.T) {
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race")
+	}
 	diags := make([]lint.Diagnostic, 100)
 	for i := range diags {
 		diags[i] = lint.Diagnostic{
