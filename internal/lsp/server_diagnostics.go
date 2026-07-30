@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -415,7 +416,14 @@ func (s *Server) surfaceForeignDiagnostics(uri string, diags []lint.Diagnostic) 
 		if b.Len() > 0 {
 			b.WriteByte('\n')
 		}
-		fmt.Fprintf(b, "%s:%d %s [%s]", d.File, d.Line, d.Message, d.RuleName)
+		b.WriteString(d.File)
+		b.WriteByte(':')
+		b.WriteString(strconv.Itoa(d.Line))
+		b.WriteByte(' ')
+		b.WriteString(d.Message)
+		b.WriteString(" [")
+		b.WriteString(d.RuleName)
+		b.WriteByte(']')
 	}
 	s.surfaceForeignGroup(uri, messageTypeWarning, warnLines.String())
 	s.surfaceForeignGroup(uri, messageTypeError, errLines.String())

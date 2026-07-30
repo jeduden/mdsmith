@@ -88,3 +88,32 @@ func TestSurfaceForeignDiagnosticsBatchesBySeverity(t *testing.T) {
 	assert.Contains(t, out.String(), `"type":1`, "an Error-severity group must be sent")
 	assert.Contains(t, out.String(), `"type":2`, "a Warning-severity group must be sent")
 }
+
+// Regression: surfaceForeignDiagnostics's per-severity Grow calls
+// must reserve the group's *total* size, not just the largest single
+// diagnostic. Grow(n) reserves space beyond the builder's *current*
+// length, so calling it once per diagnostic on an otherwise-empty
+// builder only ever reserves room for one item — summing each
+// group's size before a single Grow call is what actually avoids
+// the repeated backing-buffer reallocations. 100 same-severity
+// diagnostics is large enough that the gap between "sum-then-Grow"
+// and "Grow-per-diagnostic" clears measurement noise.
+func TestSurfaceForeignDiagnosticsGrowIsPreSized(t *testing.T) {
+	diags := make([]lint.Diagnostic, 100)
+	for i := range diags {
+		diags[i] = lint.Diagnostic{
+			File: "/repo/.mdsmith.yml", Line: i + 1, Message: "m", RuleName: "r", Severity: lint.Warning,
+		}
+	}
+
+	var out safeBuffer
+	s := New(Options{Reader: nil, Writer: &out})
+	allocs := testing.AllocsPerRun(30, func() {
+		s.surfaceForeignDiagnostics("file:///doc.md", diags)
+	})
+	t.Logf("allocs/op=%.1f", allocs)
+	assert.LessOrEqualf(t, allocs, float64(13),
+		"surfaceForeignDiagnostics allocated %v times per call for 100 same-severity "+
+			"diagnostics; expected the per-group Grow to be sized from the group's "+
+			"total, not called once per diagnostic on an empty builder", allocs)
+}
