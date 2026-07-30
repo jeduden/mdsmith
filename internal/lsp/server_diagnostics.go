@@ -397,13 +397,16 @@ func (s *Server) surfaceForeignDiagnostics(uri string, diags []lint.Diagnostic) 
 	}
 	var warnLines, errLines strings.Builder
 	sizeOf := func(d lint.Diagnostic) int { return len(d.File) + len(d.Message) + len(d.RuleName) + 24 }
+	warnTotal, errTotal := 0, 0
 	for _, d := range diags {
 		if messageTypeForLint(d.Severity) == messageTypeWarning {
-			warnLines.Grow(sizeOf(d))
+			warnTotal += sizeOf(d)
 		} else {
-			errLines.Grow(sizeOf(d))
+			errTotal += sizeOf(d)
 		}
 	}
+	warnLines.Grow(warnTotal)
+	errLines.Grow(errTotal)
 	for _, d := range diags {
 		b := &errLines
 		if messageTypeForLint(d.Severity) == messageTypeWarning {
