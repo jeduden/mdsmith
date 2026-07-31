@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
+
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 )
 
 // Workspace is the filesystem seam the engine reads through. The same
@@ -80,6 +82,20 @@ func (w OSWorkspace) ReadFile(p string) ([]byte, error) {
 		return os.ReadFile(p) //nolint:gosec // path is caller-controlled; OSWorkspace is the native disk seam
 	}
 	return readFileRooted(w.Root, path.Clean(filepath.ToSlash(p)))
+}
+
+// readFileLimited is ReadFile's bounded counterpart: it stops reading at
+// max+1 bytes via bytelimit rather than loading an oversized file fully
+// into memory first, and returns a "file too large" error when the file
+// exceeds max. frontMatterFor uses it so resolving a file's kind never
+// pulls an arbitrarily large document fully resident just to read its
+// leading front-matter block. Shares ReadFile's Root/absolute-path
+// dispatch and containment.
+func (w OSWorkspace) readFileLimited(p string, max int64) ([]byte, error) {
+	if w.Root == "" || filepath.IsAbs(p) {
+		return bytelimit.ReadFileLimited(p, max)
+	}
+	return readFileRootedLimited(w.Root, path.Clean(filepath.ToSlash(p)), max)
 }
 
 // Glob expands a doublestar pattern against the host filesystem.

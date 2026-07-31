@@ -129,6 +129,11 @@ a `Root`, `ReadFile` resolves a relative URI against it, exactly as the
 different files. An absolute path is read unchanged, and an empty `Root`
 reads paths as passed. `MemWorkspace` keys both paths off the same map.
 
+`Session.Kinds` caps its front-matter read at the session's
+`max-input-size`, the same cap `Check`/`Fix` already apply to the
+engine's parse input. A file over the cap resolves the same lenient way
+a missing file does: no error, and no front-matter-derived kinds.
+
 A third implementation, `OverlayWorkspace`, is the LSP server's. It
 reads disk rooted at `Root` but lets `Set(uri, bytes)` shadow a path's
 content with an editor's unsaved buffer, so cross-file rules read the
