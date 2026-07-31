@@ -199,7 +199,8 @@ func TestSessionKindsOversizedFileTreatedLikeMissing(t *testing.T) {
 	}
 	for _, k := range res.Kinds {
 		if k.Name == "doc" {
-			t.Fatalf("Kinds on oversized file: front matter should not have been read, got kind %q assigned via front matter", k.Name)
+			t.Fatalf("Kinds on oversized file: front matter should not have been read, "+
+				"got kind %q assigned via front matter", k.Name)
 		}
 	}
 }
