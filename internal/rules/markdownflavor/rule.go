@@ -13,7 +13,6 @@ import (
 	"bytes"
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 
@@ -270,8 +269,12 @@ func buildAlertSkipMaps(f *lint.File) (skip, addPrefix map[int]struct{}) {
 		for i := 1; i < lines.Len(); i++ {
 			contSeg := lines.At(i)
 			contLine, _ := flavor.LineCol(f.Source, contSeg.Start)
-			raw := strings.TrimLeft(string(f.Lines[contLine-1]), " \t")
-			if !strings.HasPrefix(raw, ">") {
+			// bytes.TrimLeft + a first-byte check replace the earlier
+			// strings.TrimLeft(string(...), ...) + strings.HasPrefix,
+			// which copied every paragraph line in this loop just to
+			// test its first non-blank byte.
+			raw := bytes.TrimLeft(f.Lines[contLine-1], " \t")
+			if len(raw) == 0 || raw[0] != '>' {
 				addPrefix[contLine] = struct{}{}
 			}
 		}
@@ -291,20 +294,33 @@ func (r *Rule) fixGitHubAlerts(f *lint.File) []byte {
 		return f.Source
 	}
 
-	var out []string
+	// A single buffer grown to len(f.Source) — the removed marker lines
+	// make this an overestimate, never a re-grow — replaces the earlier
+	// []string+strings.Join, which cost one string() copy per surviving
+	// line plus the join's own allocation. Mirrors blockquotewhitespace's
+	// Fix, the sibling rule that already made this switch.
+	var buf bytes.Buffer
+	buf.Grow(len(f.Source))
+	wroteLine := false
 	for i, line := range f.Lines {
 		lineNum := i + 1
 		if _, ok := skip[lineNum]; ok {
 			continue
 		}
-		s := string(line)
-		if _, ok := addPrefix[lineNum]; ok {
-			trimmed := strings.TrimLeft(s, " \t")
-			s = s[:len(s)-len(trimmed)] + "> " + trimmed
+		if wroteLine {
+			buf.WriteByte('\n')
 		}
-		out = append(out, s)
+		wroteLine = true
+		if _, ok := addPrefix[lineNum]; ok {
+			trimmed := bytes.TrimLeft(line, " \t")
+			buf.Write(line[:len(line)-len(trimmed)])
+			buf.WriteString("> ")
+			buf.Write(trimmed)
+		} else {
+			buf.Write(line)
+		}
 	}
-	return []byte(strings.Join(out, "\n"))
+	return buf.Bytes()
 }
 
 var (
