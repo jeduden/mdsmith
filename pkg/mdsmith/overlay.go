@@ -2,7 +2,9 @@ package mdsmith
 
 import (
 	"bytes"
+	"fmt"
 	"io/fs"
+	"math"
 	"os"
 	"path"
 	"path/filepath"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/lint"
 )
 
@@ -68,6 +71,31 @@ func (w *OverlayWorkspace) ReadFile(p string) ([]byte, error) {
 		return os.ReadFile(p) //nolint:gosec // path is caller-controlled; this is the native disk seam
 	}
 	return fs.ReadFile(w.ensureDiskFS(), key)
+}
+
+// readFileLimited is ReadFile's bounded counterpart: an overlaid buffer
+// over max is rejected with a "file too large" error (the buffer is
+// already resident — Set copies open-editor bytes the LSP already
+// holds — so this is a size-cap check, not a read reduction), and the
+// disk fall-through is capped via bytelimit so an oversized on-disk file
+// is never fully read into memory. frontMatterFor uses this so
+// resolving a file's kind never pulls an arbitrarily large document
+// fully resident just to read its leading front-matter block.
+func (w *OverlayWorkspace) readFileLimited(p string, max int64) ([]byte, error) {
+	key := cleanKey(p)
+	w.mu.RLock()
+	data, ok := w.overlay[key]
+	w.mu.RUnlock()
+	if ok {
+		if max > 0 && max != math.MaxInt64 && int64(len(data)) > max {
+			return nil, fmt.Errorf("file too large (%d bytes, max %d)", len(data), max)
+		}
+		return bytes.Clone(data), nil
+	}
+	if w.root == "" || filepath.IsAbs(p) {
+		return bytelimit.ReadFileLimited(p, max)
+	}
+	return bytelimit.ReadFSFileLimited(w.ensureDiskFS(), key, max)
 }
 
 // Glob expands a doublestar pattern against the on-disk tree rooted at

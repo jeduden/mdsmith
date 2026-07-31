@@ -422,3 +422,53 @@ func TestSessionOverlayBufferReachesCrossFileRule(t *testing.T) {
 		t.Fatalf("Fix 2: open-buffer summary did not reach the catalog rule:\n%s", res2.Source)
 	}
 }
+
+// TestOverlayWorkspaceReadFileLimitedOverlayHit verifies readFileLimited
+// applies the same cap to an overlaid buffer as it does to a disk read,
+// and returns the buffer bytes unchanged when under the cap.
+func TestOverlayWorkspaceReadFileLimitedOverlayHit(t *testing.T) {
+	ws := NewOverlayWorkspace(t.TempDir())
+	ws.Set("a.md", []byte("buffer-a"))
+
+	got, err := ws.readFileLimited("a.md", 100)
+	if err != nil {
+		t.Fatalf("readFileLimited within limit: %v", err)
+	}
+	if string(got) != "buffer-a" {
+		t.Fatalf("readFileLimited = %q, want %q", got, "buffer-a")
+	}
+
+	if _, err := ws.readFileLimited("a.md", 3); err == nil {
+		t.Fatal("readFileLimited over limit on overlaid buffer: want error, got nil")
+	} else if !strings.Contains(err.Error(), "file too large") {
+		t.Fatalf("readFileLimited over limit: got err %q, want it to mention 'file too large'", err)
+	}
+}
+
+// TestOverlayWorkspaceReadFileLimitedDiskFallthrough verifies
+// readFileLimited rejects an oversized on-disk file (the non-overlaid
+// fall-through path) instead of reading it fully into memory.
+func TestOverlayWorkspaceReadFileLimitedDiskFallthrough(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "huge.md"), make([]byte, 100), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	ws := NewOverlayWorkspace(root)
+
+	if _, err := ws.readFileLimited("huge.md", 50); err == nil {
+		t.Fatal("readFileLimited over limit on disk fall-through: want error, got nil")
+	} else if !strings.Contains(err.Error(), "file too large") {
+		t.Fatalf("readFileLimited over limit: got err %q, want it to mention 'file too large'", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(root, "small.md"), []byte("ok"), 0o600); err != nil {
+		t.Fatalf("WriteFile small: %v", err)
+	}
+	got, err := ws.readFileLimited("small.md", 50)
+	if err != nil {
+		t.Fatalf("readFileLimited within limit: %v", err)
+	}
+	if string(got) != "ok" {
+		t.Fatalf("readFileLimited = %q, want %q", got, "ok")
+	}
+}

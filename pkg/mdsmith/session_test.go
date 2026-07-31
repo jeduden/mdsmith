@@ -1,6 +1,8 @@
 package mdsmith
 
 import (
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -161,6 +163,44 @@ func TestSessionKindsResolvesKind(t *testing.T) {
 	}
 	if !hasDoc {
 		t.Fatalf("Kinds: expected kind 'doc' for docs/guide.md, got %+v", res.Kinds)
+	}
+}
+
+// TestSessionKindsOversizedFileTreatedLikeMissing verifies frontMatterFor
+// caps its read at the session's max-input-size instead of loading an
+// oversized file fully into memory to parse its front matter. Kinds
+// must resolve the same lenient "no front-matter inputs" way it already
+// does for a missing file (frontMatterFor's documented contract), not
+// surface a size error.
+func TestSessionKindsOversizedFileTreatedLikeMissing(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "docs"), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	huge := append([]byte("---\nkinds: [doc]\n---\n"), make([]byte, 200)...)
+	if err := os.WriteFile(filepath.Join(root, "docs", "guide.md"), huge, 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	cfg := "max-input-size: \"50\"\n" +
+		"kinds:\n  doc: {}\n"
+	s, err := NewSession(SessionOptions{
+		Workspace: OSWorkspace{Root: root},
+		Config:    ConfigYAML(cfg),
+	})
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	t.Cleanup(s.Dispose)
+
+	res, err := s.Kinds("docs/guide.md")
+	if err != nil {
+		t.Fatalf("Kinds on oversized file: want no error (treated like missing), got %v", err)
+	}
+	for _, k := range res.Kinds {
+		if k.Name == "doc" {
+			t.Fatalf("Kinds on oversized file: front matter should not have been read, got kind %q assigned via front matter", k.Name)
+		}
 	}
 }
 

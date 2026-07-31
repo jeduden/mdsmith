@@ -14,7 +14,9 @@ package mdsmith
 
 import (
 	"bytes"
+	"fmt"
 	"hash/fnv"
+	"math"
 	"path/filepath"
 	"sync"
 
@@ -423,16 +425,51 @@ func (s *Session) ResolveFile(uri string, fmKinds []string, fmFields map[string]
 	return config.ResolveFile(s.cfg, uri, fmKinds, fmFields)
 }
 
+// boundedWorkspaceReader is the optional Workspace capability that reads
+// a file capped at a byte limit without first loading an oversized file
+// fully into memory. OSWorkspace and OverlayWorkspace (the two disk-
+// backed implementations) implement it via bytelimit; frontMatterFor
+// uses it through readBoundedFrontMatterSource so resolving a file's
+// kind never pulls an arbitrarily large document fully resident just to
+// read its leading front-matter block.
+type boundedWorkspaceReader interface {
+	readFileLimited(path string, max int64) ([]byte, error)
+}
+
+// readBoundedFrontMatterSource reads uri from ws, capped at max bytes.
+// It prefers ws's bounded read when available (avoiding a full read of
+// an oversized file); otherwise it falls back to a plain ReadFile
+// followed by a size check, for any Workspace implementation that does
+// not opt into the bounded capability (e.g. a host-supplied one, or
+// MemWorkspace, whose bytes are already resident regardless).
+func readBoundedFrontMatterSource(ws Workspace, uri string, max int64) ([]byte, error) {
+	if br, ok := ws.(boundedWorkspaceReader); ok {
+		return br.readFileLimited(uri, max)
+	}
+	data, err := ws.ReadFile(uri)
+	if err != nil {
+		return nil, err
+	}
+	if max > 0 && max != math.MaxInt64 && int64(len(data)) > max {
+		return nil, fmt.Errorf("file too large (%d bytes, max %d)", len(data), max)
+	}
+	return data, nil
+}
+
 // frontMatterFor reads uri through the workspace and parses its
 // front-matter kinds and fields. A workspace miss is not an error: the
 // file may be unsaved or new, so resolution proceeds with no
-// front-matter inputs.
+// front-matter inputs. A file over the session's max-input-size is
+// treated the same lenient way — see readBoundedFrontMatterSource,
+// which caps the read so an oversized file is never fully loaded just
+// to read its leading front-matter block.
 func (s *Session) frontMatterFor(uri string) ([]string, map[string]any, error) {
-	source, err := s.ws.ReadFile(uri)
+	source, err := readBoundedFrontMatterSource(s.ws, uri, s.maxBytes)
 	if err != nil {
-		// Treat a missing file as "no front matter" rather than an
-		// error so Kinds works for unsaved buffers.
-		return nil, nil, nil //nolint:nilerr // intentional: missing file means empty front matter
+		// Treat a missing or oversized file as "no front matter" rather
+		// than an error so Kinds works for unsaved buffers and never
+		// surfaces a size error from a read-only resolution call.
+		return nil, nil, nil //nolint:nilerr // intentional: missing/oversized file means empty front matter
 	}
 	// Extract the front-matter block directly. lint.StripFrontMatter is
 	// the same extraction NewFileFromSource performs; the full document
