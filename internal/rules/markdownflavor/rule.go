@@ -301,11 +301,13 @@ func (r *Rule) fixGitHubAlerts(f *lint.File) []byte {
 		return f.Source
 	}
 
-	// A single buffer grown to len(f.Source) — the removed marker lines
-	// make this an overestimate, never a re-grow — replaces the earlier
-	// []string+strings.Join, which cost one string() copy per surviving
-	// line plus the join's own allocation. Mirrors blockquotewhitespace's
-	// Fix, the sibling rule that already made this switch.
+	// A single buffer grown to len(f.Source) — usually an overestimate
+	// since marker lines are dropped, though a heavily lazy-continuation
+	// alert (many 2-byte "> " insertions from addPrefix) can still make
+	// buf re-grow once — replaces the earlier []string+strings.Join,
+	// which cost one string() copy per surviving line plus the join's
+	// own allocation. Mirrors blockquotewhitespace's Fix, the sibling
+	// rule that already made this switch.
 	var buf bytes.Buffer
 	buf.Grow(len(f.Source))
 	wroteLine := false

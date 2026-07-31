@@ -16,17 +16,29 @@ import (
 // "Pre-size slices") joined via strings.Join (one string() copy per
 // line plus the join), and buildAlertSkipMaps converted every
 // continuation line to a string just to test its first byte. Both are
-// now byte-native.
-const allocBudgetFixGitHubAlerts = 4
+// now byte-native. Baseline measured 10 on this mixed prefixed/lazy-
+// continuation fixture (the buf.Grow estimate under-shoots once
+// addPrefix lines are present, so one re-grow is expected — see the
+// comment on the buf.Grow call in fixGitHubAlerts); +4 headroom follows
+// the project's "baseline plus max(20%, 4)" convention so an unrelated
+// +1 doesn't turn CI red.
+const allocBudgetFixGitHubAlerts = 14
 
 // fixGitHubAlertsFixture is a single alert blockquote with many content
 // lines, so both the unpresized `out` slice and the per-line string()
 // conversion in buildAlertSkipMaps would have scaled with line count.
+// Every fourth line drops the "> " prefix (a lazy continuation), so the
+// fixture also exercises fixGitHubAlerts' addPrefix rewrite branch
+// instead of only the pass-through branch.
 func fixGitHubAlertsFixture(lines int) string {
 	var b strings.Builder
 	b.WriteString("> [!NOTE]\n")
 	for i := 0; i < lines; i++ {
-		b.WriteString("> content line " + strconv.Itoa(i) + "\n")
+		if i%4 == 3 {
+			b.WriteString("content line " + strconv.Itoa(i) + "\n")
+		} else {
+			b.WriteString("> content line " + strconv.Itoa(i) + "\n")
+		}
 	}
 	return b.String()
 }
@@ -38,11 +50,17 @@ func TestFixGitHubAlertsAllocBudget(t *testing.T) {
 	if testing.Short() {
 		t.Skip("alloc gate skipped in -short mode")
 	}
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race")
+	}
 	src := fixGitHubAlertsFixture(63)
 	r := &Rule{}
 
 	f := mkFile(t, src)
-	_ = r.fixGitHubAlerts(f) // warm up any cached state
+	got := r.fixGitHubAlerts(f) // warm up any cached state
+	if !strings.Contains(string(got), "> content line 3\n") {
+		t.Fatalf("fixGitHubAlerts did not re-add the \"> \" prefix on a lazy-continuation line:\n%s", got)
+	}
 
 	const runs = 50
 	allocs := testing.AllocsPerRun(runs, func() {

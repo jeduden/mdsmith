@@ -299,9 +299,14 @@ func reversedInLine(orig, masked []byte) []revMatch {
 	if idx == nil {
 		return nil
 	}
-	// idx already gives the exact match count, so out's upper bound is
-	// known before the loop starts.
-	out := make([]revMatch, 0, len(idx))
+	// idx already gives the exact upper bound on match count, but every
+	// entry can still be dropped by the guards below (e.g. an ordinary
+	// [text](url)[ref] — a link immediately followed by a reference or
+	// footnote). Allocate lazily on the first survivor so an all-filtered
+	// line costs nothing extra and returns nil, not a discarded non-nil
+	// empty slice — see docs/development/high-performance-go.md
+	// "Return nil, not []T{}."
+	var out []revMatch
 	for _, m := range idx {
 		s, e := m[0], m[1]
 		if s > 0 && orig[s-1] == '\\' {
@@ -312,6 +317,9 @@ func reversedInLine(orig, masked []byte) []revMatch {
 		}
 		if e < len(orig) && orig[e] == '(' {
 			continue // [text](url) — a normal link, not reversed
+		}
+		if out == nil {
+			out = make([]revMatch, 0, len(idx))
 		}
 		out = append(out, revMatch{
 			col0:     s,
