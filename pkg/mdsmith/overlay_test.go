@@ -472,3 +472,31 @@ func TestOverlayWorkspaceReadFileLimitedDiskFallthrough(t *testing.T) {
 		t.Fatalf("readFileLimited = %q, want %q", got, "ok")
 	}
 }
+
+// TestOverlayWorkspaceReadFileLimitedAbsolutePathIgnoresRoot verifies
+// readFileLimited's absolute-path branch: an absolute path bypasses the
+// rooted disk FS the same way ReadFile's does, even when Root is set,
+// and still enforces the size cap via bytelimit.ReadFileLimited.
+func TestOverlayWorkspaceReadFileLimitedAbsolutePathIgnoresRoot(t *testing.T) {
+	root := t.TempDir()
+	other := t.TempDir()
+	abs := filepath.Join(other, "x.md")
+	if err := os.WriteFile(abs, []byte("absolute"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	ws := NewOverlayWorkspace(root)
+
+	got, err := ws.readFileLimited(abs, 50)
+	if err != nil {
+		t.Fatalf("readFileLimited(abs) within limit: %v", err)
+	}
+	if string(got) != "absolute" {
+		t.Fatalf("readFileLimited(abs) = %q, want %q", got, "absolute")
+	}
+
+	if _, err := ws.readFileLimited(abs, 3); err == nil {
+		t.Fatal("readFileLimited(abs) over limit: want error, got nil")
+	} else if !strings.Contains(err.Error(), "file too large") {
+		t.Fatalf("readFileLimited(abs) over limit: got err %q, want it to mention 'file too large'", err)
+	}
+}

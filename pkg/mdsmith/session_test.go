@@ -205,6 +205,37 @@ func TestSessionKindsOversizedFileTreatedLikeMissing(t *testing.T) {
 	}
 }
 
+// TestSessionKindsOversizedFileOnUnboundedWorkspaceFallback verifies
+// readBoundedFrontMatterSource's fallback path: a Workspace that does
+// not implement boundedWorkspaceReader (MemWorkspace here) still gets
+// the same lenient oversized-file treatment via the post-read size
+// check, not just the bytelimit-backed OSWorkspace/OverlayWorkspace
+// fast path.
+func TestSessionKindsOversizedFileOnUnboundedWorkspaceFallback(t *testing.T) {
+	huge := append([]byte("---\nkinds: [doc]\n---\n"), make([]byte, 200)...)
+	cfg := "max-input-size: \"50\"\n" +
+		"kinds:\n  doc: {}\n"
+	s, err := NewSession(SessionOptions{
+		Workspace: NewMemWorkspace(map[string][]byte{"docs/guide.md": huge}),
+		Config:    ConfigYAML(cfg),
+	})
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	t.Cleanup(s.Dispose)
+
+	res, err := s.Kinds("docs/guide.md")
+	if err != nil {
+		t.Fatalf("Kinds on oversized file (MemWorkspace fallback): want no error, got %v", err)
+	}
+	for _, k := range res.Kinds {
+		if k.Name == "doc" {
+			t.Fatalf("Kinds on oversized file (MemWorkspace fallback): front matter should not "+
+				"have been read, got kind %q assigned via front matter", k.Name)
+		}
+	}
+}
+
 func TestSessionCapabilities(t *testing.T) {
 	s := newTestSession(t, "", nil)
 

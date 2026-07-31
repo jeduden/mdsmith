@@ -519,3 +519,15 @@ func TestOSWorkspaceReadFileLimitedOverLimit(t *testing.T) {
 		t.Fatalf("readFileLimited(absolute) over limit: got err %q, want it to mention 'file too large'", err)
 	}
 }
+
+// TestOSWorkspaceReadFileLimitedOpenRootFails mirrors
+// TestOSWorkspaceReadFileOpenRootFails for the bounded read path:
+// readFileLimited must propagate the os.OpenRoot error (e.g. a
+// non-existent Root) through readFileRootedLimited rather than panic.
+func TestOSWorkspaceReadFileLimitedOpenRootFails(t *testing.T) {
+	nonExistent := t.TempDir() + "/does-not-exist"
+	ws := OSWorkspace{Root: nonExistent}
+	if _, err := ws.readFileLimited("any.md", 100); err == nil {
+		t.Fatal("readFileLimited on a non-existent root must return an error")
+	}
+}
