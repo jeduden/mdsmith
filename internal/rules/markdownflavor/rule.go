@@ -260,7 +260,14 @@ func buildAlertSkipMaps(f *lint.File) (skip, addPrefix map[int]struct{}) {
 		para := bq.FirstChild().(*ast.Paragraph)
 		lines := para.Lines()
 		seg := lines.At(0)
-		markerLine, _ := flavor.LineCol(f.Source, seg.Start)
+		// f.LineOfOffset is f's memoized, binary-search line index —
+		// flavor.LineCol recomputes with a fresh bytes.Count/LastIndexByte
+		// scan of source[:offset] on every call, so calling it once per
+		// continuation line below made this loop O(n) per line (O(n^2)
+		// over a long alert paragraph) instead of O(log n). Both share the
+		// same "newlines strictly before offset" line-1 contract, so the
+		// swap is exact, not approximate.
+		markerLine := f.LineOfOffset(seg.Start)
 		skip[markerLine] = struct{}{}
 
 		// Remaining lines of the first paragraph may use lazy continuation
@@ -268,7 +275,7 @@ func buildAlertSkipMaps(f *lint.File) (skip, addPrefix map[int]struct{}) {
 		// would no longer be inside a blockquote, so re-add the prefix.
 		for i := 1; i < lines.Len(); i++ {
 			contSeg := lines.At(i)
-			contLine, _ := flavor.LineCol(f.Source, contSeg.Start)
+			contLine := f.LineOfOffset(contSeg.Start)
 			// bytes.TrimLeft + a first-byte check replace the earlier
 			// strings.TrimLeft(string(...), ...) + strings.HasPrefix,
 			// which copied every paragraph line in this loop just to
