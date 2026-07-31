@@ -299,7 +299,9 @@ func reversedInLine(orig, masked []byte) []revMatch {
 	if idx == nil {
 		return nil
 	}
-	var out []revMatch
+	// idx already gives the exact match count, so out's upper bound is
+	// known before the loop starts.
+	out := make([]revMatch, 0, len(idx))
 	for _, m := range idx {
 		s, e := m[0], m[1]
 		if s > 0 && orig[s-1] == '\\' {
