@@ -24,6 +24,13 @@ import (
 // +1 doesn't turn CI red.
 const allocBudgetFixGitHubAlerts = 14
 
+// fixGitHubAlertsFixtureLinePadding pads each fixture line's content
+// past 32 bytes: Go's compiler keeps a short, non-escaping string(b)
+// conversion on the stack (no allocation), so a fixture with short
+// lines cannot tell an unfixed strings.TrimLeft(string(line), …) apart
+// from the byte-native bytes.TrimLeft this gate exists to lock in.
+const fixGitHubAlertsFixtureLinePadding = "with enough padding text to exceed the stack-conversion threshold "
+
 // fixGitHubAlertsFixture is a single alert blockquote with many content
 // lines, so both the unpresized `out` slice and the per-line string()
 // conversion in buildAlertSkipMaps would have scaled with line count.
@@ -31,13 +38,14 @@ const allocBudgetFixGitHubAlerts = 14
 // fixture also exercises fixGitHubAlerts' addPrefix rewrite branch
 // instead of only the pass-through branch.
 func fixGitHubAlertsFixture(lines int) string {
+	const padding = fixGitHubAlertsFixtureLinePadding
 	var b strings.Builder
 	b.WriteString("> [!NOTE]\n")
 	for i := 0; i < lines; i++ {
 		if i%4 == 3 {
-			b.WriteString("content line " + strconv.Itoa(i) + "\n")
+			b.WriteString("content line " + padding + strconv.Itoa(i) + "\n")
 		} else {
-			b.WriteString("> content line " + strconv.Itoa(i) + "\n")
+			b.WriteString("> content line " + padding + strconv.Itoa(i) + "\n")
 		}
 	}
 	return b.String()
@@ -58,7 +66,8 @@ func TestFixGitHubAlertsAllocBudget(t *testing.T) {
 
 	f := mkFile(t, src)
 	got := r.fixGitHubAlerts(f) // warm up any cached state
-	if !strings.Contains(string(got), "> content line 3\n") {
+	wantPrefixed := "> content line " + fixGitHubAlertsFixtureLinePadding + "3\n"
+	if !strings.Contains(string(got), wantPrefixed) {
 		t.Fatalf("fixGitHubAlerts did not re-add the \"> \" prefix on a lazy-continuation line:\n%s", got)
 	}
 

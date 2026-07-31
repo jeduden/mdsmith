@@ -7,10 +7,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
-	"strings"
 	"testing"
 
 	"github.com/bmatcuk/doublestar/v4"
+
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 )
 
 func TestMemWorkspaceReadFile(t *testing.T) {
@@ -507,16 +508,16 @@ func TestOSWorkspaceReadFileLimitedOverLimit(t *testing.T) {
 	rooted := OSWorkspace{Root: root}
 	if _, err := rooted.readFileLimited("huge.md", 50); err == nil {
 		t.Fatal("readFileLimited(rooted) over limit: want error, got nil")
-	} else if !strings.Contains(err.Error(), "file too large") {
-		t.Fatalf("readFileLimited(rooted) over limit: got err %q, want it to mention 'file too large'", err)
+	} else if !errors.Is(err, bytelimit.ErrFileTooLarge) {
+		t.Fatalf("readFileLimited(rooted) over limit: got err %v, want it to wrap bytelimit.ErrFileTooLarge", err)
 	}
 
 	abs := filepath.Join(root, "huge.md")
 	unrooted := OSWorkspace{}
 	if _, err := unrooted.readFileLimited(abs, 50); err == nil {
 		t.Fatal("readFileLimited(absolute) over limit: want error, got nil")
-	} else if !strings.Contains(err.Error(), "file too large") {
-		t.Fatalf("readFileLimited(absolute) over limit: got err %q, want it to mention 'file too large'", err)
+	} else if !errors.Is(err, bytelimit.ErrFileTooLarge) {
+		t.Fatalf("readFileLimited(absolute) over limit: got err %v, want it to wrap bytelimit.ErrFileTooLarge", err)
 	}
 }
 

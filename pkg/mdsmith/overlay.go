@@ -2,7 +2,6 @@ package mdsmith
 
 import (
 	"bytes"
-	"fmt"
 	"io/fs"
 	"math"
 	"os"
@@ -88,7 +87,7 @@ func (w *OverlayWorkspace) readFileLimited(p string, max int64) ([]byte, error) 
 	w.mu.RUnlock()
 	if ok {
 		if max > 0 && max != math.MaxInt64 && int64(len(data)) > max {
-			return nil, fmt.Errorf("file too large (%d bytes, max %d)", len(data), max)
+			return nil, bytelimit.FileTooLargeError(int64(len(data)), max)
 		}
 		return bytes.Clone(data), nil
 	}

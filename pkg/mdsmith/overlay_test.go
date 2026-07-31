@@ -1,6 +1,7 @@
 package mdsmith
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -8,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 )
 
 // TestOverlayWorkspaceReadFilePrefersOverlay verifies an
@@ -440,8 +443,8 @@ func TestOverlayWorkspaceReadFileLimitedOverlayHit(t *testing.T) {
 
 	if _, err := ws.readFileLimited("a.md", 3); err == nil {
 		t.Fatal("readFileLimited over limit on overlaid buffer: want error, got nil")
-	} else if !strings.Contains(err.Error(), "file too large") {
-		t.Fatalf("readFileLimited over limit: got err %q, want it to mention 'file too large'", err)
+	} else if !errors.Is(err, bytelimit.ErrFileTooLarge) {
+		t.Fatalf("readFileLimited over limit: got err %v, want it to wrap bytelimit.ErrFileTooLarge", err)
 	}
 }
 
@@ -457,8 +460,8 @@ func TestOverlayWorkspaceReadFileLimitedDiskFallthrough(t *testing.T) {
 
 	if _, err := ws.readFileLimited("huge.md", 50); err == nil {
 		t.Fatal("readFileLimited over limit on disk fall-through: want error, got nil")
-	} else if !strings.Contains(err.Error(), "file too large") {
-		t.Fatalf("readFileLimited over limit: got err %q, want it to mention 'file too large'", err)
+	} else if !errors.Is(err, bytelimit.ErrFileTooLarge) {
+		t.Fatalf("readFileLimited over limit: got err %v, want it to wrap bytelimit.ErrFileTooLarge", err)
 	}
 
 	if err := os.WriteFile(filepath.Join(root, "small.md"), []byte("ok"), 0o600); err != nil {
@@ -496,7 +499,7 @@ func TestOverlayWorkspaceReadFileLimitedAbsolutePathIgnoresRoot(t *testing.T) {
 
 	if _, err := ws.readFileLimited(abs, 3); err == nil {
 		t.Fatal("readFileLimited(abs) over limit: want error, got nil")
-	} else if !strings.Contains(err.Error(), "file too large") {
-		t.Fatalf("readFileLimited(abs) over limit: got err %q, want it to mention 'file too large'", err)
+	} else if !errors.Is(err, bytelimit.ErrFileTooLarge) {
+		t.Fatalf("readFileLimited(abs) over limit: got err %v, want it to wrap bytelimit.ErrFileTooLarge", err)
 	}
 }

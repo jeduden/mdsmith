@@ -14,7 +14,6 @@ package mdsmith
 
 import (
 	"bytes"
-	"fmt"
 	"hash/fnv"
 	"math"
 	"path/filepath"
@@ -436,6 +435,16 @@ type boundedWorkspaceReader interface {
 	readFileLimited(path string, max int64) ([]byte, error)
 }
 
+// Pins that the two disk-backed Workspace implementations actually
+// satisfy boundedWorkspaceReader, so a future refactor that drops or
+// renames readFileLimited on either fails to compile here instead of
+// silently falling back to readBoundedFrontMatterSource's unbounded
+// ws.ReadFile path with no test failure to catch it.
+var (
+	_ boundedWorkspaceReader = OSWorkspace{}
+	_ boundedWorkspaceReader = (*OverlayWorkspace)(nil)
+)
+
 // readBoundedFrontMatterSource reads uri from ws, capped at max bytes.
 // It prefers ws's bounded read when available (avoiding a full read of
 // an oversized file); otherwise it falls back to a plain ReadFile
@@ -451,7 +460,7 @@ func readBoundedFrontMatterSource(ws Workspace, uri string, max int64) ([]byte, 
 		return nil, err
 	}
 	if max > 0 && max != math.MaxInt64 && int64(len(data)) > max {
-		return nil, fmt.Errorf("file too large (%d bytes, max %d)", len(data), max)
+		return nil, bytelimit.FileTooLargeError(int64(len(data)), max)
 	}
 	return data, nil
 }

@@ -4,6 +4,7 @@
 package bytelimit
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -13,6 +14,21 @@ import (
 
 // DefaultMaxInputBytes is the default file-size cap (2 MB, binary).
 const DefaultMaxInputBytes int64 = 2 * 1024 * 1024
+
+// ErrFileTooLarge is the sentinel every "file too large" error wraps, so
+// a caller can test for it with errors.Is instead of matching the
+// message text. Callers outside this package that build their own
+// oversized-file error against a Workspace's own read path (e.g.
+// pkg/mdsmith's post-read size check for a Workspace that does not
+// implement a bounded read) use [FileTooLargeError] so the same
+// sentinel and message shape apply everywhere.
+var ErrFileTooLarge = errors.New("file too large")
+
+// FileTooLargeError formats the standard "file too large" error for a
+// file of size bytes against a max cap, wrapping [ErrFileTooLarge].
+func FileTooLargeError(size, max int64) error {
+	return fmt.Errorf("%w (%d bytes, max %d)", ErrFileTooLarge, size, max)
+}
 
 // ReadFileLimited reads path from disk, returning an error if the file
 // exceeds max bytes. When max <= 0 or max == math.MaxInt64 no limit is
@@ -110,7 +126,7 @@ func fileTooLargeErr(actualSize, dataLen, max int64) error {
 	if reported < 0 {
 		reported = dataLen
 	}
-	return fmt.Errorf("file too large (%d bytes, max %d)", reported, max)
+	return FileTooLargeError(reported, max)
 }
 
 // statSize returns r's file size, or -1 when it cannot be determined.

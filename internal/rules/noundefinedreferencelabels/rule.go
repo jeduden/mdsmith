@@ -9,22 +9,12 @@ import (
 	"sync"
 	"unicode"
 	"unicode/utf8"
-	"unsafe"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/placeholders"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/pkg/goldmark/util"
 )
-
-// bytesToString returns a zero-copy string view of b, avoiding the
-// allocating copy string(b) would make. Safe here: every caller passes
-// a sub-slice of f.Source, which Check treats as read-only for the
-// duration of the call and which outlives it — the invariant
-// unsafe.String requires (see docs/development/high-performance-go.md).
-func bytesToString(b []byte) string {
-	return unsafe.String(unsafe.SliceData(b), len(b))
-}
 
 func init() {
 	rule.Register(&Rule{})
@@ -324,7 +314,8 @@ func (r *Rule) scanFullRefs(
 			continue
 		}
 		label := source[cs2:ce2]
-		if len(r.Placeholders) > 0 && placeholders.ContainsBodyToken(bytesToString(label), r.Placeholders) {
+		if len(r.Placeholders) > 0 &&
+			placeholders.ContainsBodyToken(util.BytesToReadOnlyString(label), r.Placeholders) {
 			i = advanceBracket(brs, i, ca2)
 			continue
 		}
@@ -378,7 +369,7 @@ func (r *Rule) scanCollapsedRefs(
 			i = advanceBracket(brs, i+1, ca+2)
 			continue
 		}
-		if len(r.Placeholders) > 0 && placeholders.ContainsBodyToken(bytesToString(text), r.Placeholders) {
+		if len(r.Placeholders) > 0 && placeholders.ContainsBodyToken(util.BytesToReadOnlyString(text), r.Placeholders) {
 			i = advanceBracket(brs, i+1, ca+2)
 			continue
 		}
@@ -450,7 +441,8 @@ func (r *Rule) scanShortcutRefs(
 			i = advanceBracket(brs, i+1, ca)
 			continue
 		}
-		if len(r.Placeholders) > 0 && placeholders.ContainsBodyToken(bytesToString(label), r.Placeholders) {
+		if len(r.Placeholders) > 0 &&
+			placeholders.ContainsBodyToken(util.BytesToReadOnlyString(label), r.Placeholders) {
 			i = advanceBracket(brs, i+1, ca)
 			continue
 		}

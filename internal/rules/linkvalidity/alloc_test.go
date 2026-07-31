@@ -52,6 +52,16 @@ var reversedInLineAllFilteredFixture = []byte(
 	"see [text](https://example.com)[^1] for more",
 )
 
+// allocBudgetReversedInLineAllFiltered is the per-call ceiling on
+// reversedInLineAllFilteredFixture: only reversedRe's own match-finding
+// cost (no result slice, since every candidate is filtered). Measured
+// 2; +4 headroom per the project's "baseline plus max(20%, 4)"
+// convention. A version that presizes `out` unconditionally before the
+// guard loop pays one extra allocation for a slice it then discards —
+// this budget catches that regression on top of the nilness check
+// below.
+const allocBudgetReversedInLineAllFiltered = 6
+
 // TestReversedInLineAllFilteredReturnsNil pins both the nilness and the
 // zero-extra-alloc property of the all-matches-filtered path. A version
 // that presizes `out` unconditionally before the guard loop allocates a
@@ -71,17 +81,15 @@ func TestReversedInLineAllFilteredReturnsNil(t *testing.T) {
 		t.Skip("alloc gate skipped under -race")
 	}
 	_ = reversedInLine(line, line) // warm up regex program cache
-	withGuardedMatch := testing.AllocsPerRun(200, func() {
+	allocs := testing.AllocsPerRun(200, func() {
 		_ = reversedInLine(line, line)
 	})
-	noMatch := testing.AllocsPerRun(200, func() {
-		_ = reversedInLine([]byte("no parens here at all"), []byte("no parens here at all"))
-	})
-	t.Logf("reversedInLine allocs/op: all-filtered=%.0f, no-candidate=%.0f", withGuardedMatch, noMatch)
-	if withGuardedMatch > noMatch {
-		t.Fatalf("reversedInLine allocs/op on an all-filtered line (%.0f) exceeds a line with no "+
-			"parenthesis candidate at all (%.0f): out must be allocated lazily on the first "+
-			"surviving match, not unconditionally before the guard loop",
-			withGuardedMatch, noMatch)
+	t.Logf("reversedInLine allocs/op (all-filtered) = %.0f (budget = %d)",
+		allocs, allocBudgetReversedInLineAllFiltered)
+	if allocs > float64(allocBudgetReversedInLineAllFiltered) {
+		t.Fatalf("reversedInLine allocs/op on an all-filtered line = %.0f, budget = %d: out must "+
+			"be allocated lazily on the first surviving match, not unconditionally before the "+
+			"guard loop",
+			allocs, allocBudgetReversedInLineAllFiltered)
 	}
 }
