@@ -9,10 +9,15 @@ import (
 // submatch-index slice) already gives the exact upper bound on match
 // count before the result loop starts, so out's final size is knowable
 // up front — see docs/development/high-performance-go.md "Pre-size
-// slices." Baseline measured 6; +4 headroom follows the project's
-// "baseline plus max(20%, 4)" convention so an unrelated +1 (regexp
-// internals, GOARCH) doesn't turn CI red.
-const allocBudgetReversedInLine = 10
+// slices." Baseline measured 6. The project's usual "baseline plus
+// max(20%, 4)" headroom (from internal/integration/perrule_bench_test.go,
+// which governs whole-rule Check ceilings with 20+ alloc baselines) does
+// NOT transfer here: this gate's entire regression signal is the +2
+// allocs an unpresized nil-append pays growing 1→2→4 elements, which a
+// flat +4 headroom fully absorbs — verified by reverting the presize fix
+// and confirming the gate stayed green at the wider budget. +1 keeps the
+// gate meaningful while still tolerating one incidental alloc.
+const allocBudgetReversedInLine = 7
 
 // reversedInLineMultiMatchFixture has four reversed-link matches on one
 // line, so an unpresized `out` (starting nil, doubling via append) pays
@@ -54,13 +59,15 @@ var reversedInLineAllFilteredFixture = []byte(
 
 // allocBudgetReversedInLineAllFiltered is the per-call ceiling on
 // reversedInLineAllFilteredFixture: only reversedRe's own match-finding
-// cost (no result slice, since every candidate is filtered). Measured
-// 2; +4 headroom per the project's "baseline plus max(20%, 4)"
-// convention. A version that presizes `out` unconditionally before the
-// guard loop pays one extra allocation for a slice it then discards —
-// this budget catches that regression on top of the nilness check
-// below.
-const allocBudgetReversedInLineAllFiltered = 6
+// cost (no result slice, since every candidate is filtered). Measured 2.
+// Kept tight (+1, not the usual "baseline plus max(20%, 4)" — see
+// allocBudgetReversedInLine's comment on why that convention doesn't
+// transfer to a micro-gate): a version that presizes `out`
+// unconditionally before the guard loop pays exactly one extra
+// allocation for a slice it then discards, and a +4 headroom would
+// absorb that regression entirely. This budget catches it on top of the
+// nilness check below.
+const allocBudgetReversedInLineAllFiltered = 3
 
 // TestReversedInLineAllFilteredReturnsNil pins both the nilness and the
 // zero-extra-alloc property of the all-matches-filtered path. A version

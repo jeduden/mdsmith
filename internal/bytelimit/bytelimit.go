@@ -15,13 +15,20 @@ import (
 // DefaultMaxInputBytes is the default file-size cap (2 MB, binary).
 const DefaultMaxInputBytes int64 = 2 * 1024 * 1024
 
-// ErrFileTooLarge is the sentinel every "file too large" error wraps, so
-// a caller can test for it with errors.Is instead of matching the
-// message text. Callers outside this package that build their own
-// oversized-file error against a Workspace's own read path (e.g.
-// pkg/mdsmith's post-read size check for a Workspace that does not
-// implement a bounded read) use [FileTooLargeError] so the same
-// sentinel and message shape apply everywhere.
+// ErrFileTooLarge is the sentinel every error this package's read
+// functions return for an oversized file wraps, so a caller can test
+// for it with errors.Is instead of matching the message text. Callers
+// outside this package that build their own oversized-file error
+// against a Workspace's own read path (e.g. pkg/mdsmith's post-read
+// size check for a Workspace that does not implement a bounded read)
+// use [FileTooLargeError] so the same sentinel and message shape apply.
+//
+// Not every "file too large" message in the repository wraps this
+// sentinel: cmd/mdsmith's stdin path, internal/engine's in-memory
+// source path, and internal/fix's FixSource each format their own
+// oversized-input error independently of this package. Do not assume
+// errors.Is(err, ErrFileTooLarge) covers every size-limit failure in
+// mdsmith — only ones that read through bytelimit or [FileTooLargeError].
 var ErrFileTooLarge = errors.New("file too large")
 
 // FileTooLargeError formats the standard "file too large" error for a

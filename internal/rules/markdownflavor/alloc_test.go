@@ -17,11 +17,13 @@ import (
 // line plus the join), and buildAlertSkipMaps converted every
 // continuation line to a string just to test its first byte. Both are
 // now byte-native. Baseline measured 10 on this mixed prefixed/lazy-
-// continuation fixture (the buf.Grow estimate under-shoots once
-// addPrefix lines are present, so one re-grow is expected — see the
-// comment on the buf.Grow call in fixGitHubAlerts); +4 headroom follows
-// the project's "baseline plus max(20%, 4)" convention so an unrelated
-// +1 doesn't turn CI red.
+// continuation fixture (bytes.Buffer.Grow rounds up to a size class
+// that already absorbs this fixture's addPrefix overrun, so no re-grow
+// actually occurs here — see the comment on the buf.Grow call in
+// fixGitHubAlerts for the general case, which can re-grow on a fixture
+// with more addPrefix lines relative to len(f.Source)); +4 headroom
+// follows the project's "baseline plus max(20%, 4)" convention so an
+// unrelated +1 doesn't turn CI red.
 const allocBudgetFixGitHubAlerts = 14
 
 // fixGitHubAlertsFixtureLinePadding pads each fixture line's content

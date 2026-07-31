@@ -11,9 +11,11 @@ import (
 // Plan 195 task 7 landed: collectNormalisedDefs returns a sized
 // []string instead of a map, labelDefined linear-scans it, the
 // no-bracket early-exit short-circuits prose files, and the
-// `len(r.Placeholders) > 0 &&` guard avoids the per-match
-// `string(label)` cast when no placeholder vocabulary is
-// configured (the default).
+// `len(r.Placeholders) > 0 &&` guard skips the ContainsBodyToken call
+// (and, since this PR, the zero-copy util.BytesToReadOnlyString view it
+// takes its argument through) when no placeholder vocabulary is
+// configured (the default) — see allocBudgetMDS054PlaceholdersMarginal
+// below for the placeholders-configured case this budget does not cover.
 const allocBudgetMDS054 = 10
 
 // allocBudgetFixture mirrors the integration alloc-budget fixture
