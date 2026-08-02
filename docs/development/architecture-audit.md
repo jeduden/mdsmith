@@ -109,8 +109,8 @@ is now exported and `requiredstructure` calls it directly.
   coverage exists, only the naming convention drifts.
 - `stagingHelperShellFunc` (`internal/githooks/githooks.go`)
   contains "Helper" in its name — go.md flags this as a
-  smell, though the function is well-scoped. Rename on next
-  touch.
+  smell, though the constant is well-scoped. Rename on
+  next touch.
 - `Override.Patterns()` / `KindAssignmentEntry.Patterns()`
   (`internal/config/config.go`) are two-line branching
   methods exercised only inside larger config tests, not by
