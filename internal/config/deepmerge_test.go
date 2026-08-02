@@ -62,6 +62,29 @@ func TestMergeRuleCfgListReplacedByDefault(t *testing.T) {
 	assert.Equal(t, []any{"c"}, got.Settings["exclude"], "list defaults to replace")
 }
 
+// TestMergeAny_ListReplace_AllocBudget pins mergeAny's per-call
+// allocation count for the common list-replace path (a rule's list
+// setting with no ListMerger opt-in). mergeAny used to deep-clone the
+// discarded `earlier` side via toAnySlice even though the default
+// replace mode never uses it, and then made a second independent copy
+// of the already-independent `later` clone before returning it. See
+// docs/development/high-performance-go.md "Skip work you don't need".
+// This runs once per list-typed settings leaf present on both layers
+// being merged, on every config-signature cache miss.
+func TestMergeAny_ListReplace_AllocBudget(t *testing.T) {
+	earlier := []any{"a", "b", "c"}
+	later := []any{"d", "e"}
+	allocs := testing.AllocsPerRun(200, func() {
+		got := mergeAny("line-length", "exclude", earlier, later)
+		if len(got.([]any)) != 2 {
+			t.Fatalf("unexpected result: %v", got)
+		}
+	})
+	if allocs > 3 {
+		t.Fatalf("mergeAny (replace mode) allocs per call: want <= 3, got %v", allocs)
+	}
+}
+
 func TestMergeRuleCfgListAppendedWhenRuleOptsIn(t *testing.T) {
 	earlier := RuleCfg{
 		Enabled:  true,

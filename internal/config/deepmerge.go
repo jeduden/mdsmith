@@ -55,24 +55,47 @@ func mergeSettingsMap(ruleName string, earlier, later map[string]any) map[string
 // mergeAny merges later onto earlier for a single settings leaf or
 // nested value. Maps recurse, lists honor the rule's declared merge
 // mode, and everything else is replaced wholesale by later.
+//
+// The default merge mode (rule.MergeReplace) is by far the common
+// case — MergeAppend is an opt-in a rule declares via
+// rule.ListMerger. toAnySlice(earlier) fully deep-clones the earlier
+// side, so it is only called when settingMergeMode says the clone
+// will actually be used (the append branch); the replace branch
+// returns later's clone (ll) directly instead of copying it a second
+// time — toAnySlice already gives every case (`[]any`, `[]string`,
+// `[]int`) a fresh, independent backing array, so a second copy adds
+// nothing. See docs/development/high-performance-go.md "Skip work
+// you don't need".
 func mergeAny(ruleName, key string, earlier, later any) any {
 	if em, ok := earlier.(map[string]any); ok {
 		if lm, ok := later.(map[string]any); ok {
 			return mergeSettingsMap(ruleName, em, lm)
 		}
 	}
-	if el, ok := toAnySlice(earlier); ok {
+	if isAnySliceType(earlier) {
 		if ll, ok := toAnySlice(later); ok {
 			if settingMergeMode(ruleName, key) == rule.MergeAppend {
+				el, _ := toAnySlice(earlier)
 				merged := make([]any, 0, len(el)+len(ll))
 				merged = append(merged, el...)
 				merged = append(merged, ll...)
 				return merged
 			}
-			return append([]any(nil), ll...)
+			return ll
 		}
 	}
 	return cloneAny(later)
+}
+
+// isAnySliceType reports whether v is one of the slice types
+// toAnySlice normalizes, without cloning it. Mirrors toAnySlice's
+// type switch exactly.
+func isAnySliceType(v any) bool {
+	switch v.(type) {
+	case []any, []string, []int:
+		return true
+	}
+	return false
 }
 
 // settingMergeMode returns the merge mode for a list-typed rule
