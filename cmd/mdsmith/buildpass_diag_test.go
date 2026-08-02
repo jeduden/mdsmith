@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"os"
 	"path/filepath"
@@ -160,48 +161,54 @@ func TestSnapshotOutputs_ExistingFile(t *testing.T) {
 	}
 	snap := snapshotOutputs(bt)
 	require.Len(t, snap, 1)
-	assert.Equal(t, []byte("hello"), snap["out.txt"])
+	want := hashOutputFile(filepath.Join(root, "out.txt"))
+	assert.True(t, want.ok)
+	assert.Equal(t, want, snap["out.txt"])
 }
 
-func TestSnapshotOutputs_MissingFile_ReturnsNil(t *testing.T) {
+func TestSnapshotOutputs_MissingFile_ReturnsZeroValue(t *testing.T) {
 	root := t.TempDir()
 	bt := buildTarget{
 		target: buildexec.Target{Root: root, Outputs: []string{"absent.txt"}},
 	}
 	snap := snapshotOutputs(bt)
 	require.Len(t, snap, 1)
-	assert.Nil(t, snap["absent.txt"])
+	assert.False(t, snap["absent.txt"].ok)
 }
 
 // --- outputsEqual ---
 
+func hashOf(s string) outputHash {
+	return outputHash{hash: sha256.Sum256([]byte(s)), ok: true}
+}
+
 func TestOutputsEqual_IdenticalMaps_ReturnsTrue(t *testing.T) {
-	a := map[string][]byte{"a.txt": []byte("x"), "b.txt": []byte("y")}
-	b := map[string][]byte{"a.txt": []byte("x"), "b.txt": []byte("y")}
+	a := map[string]outputHash{"a.txt": hashOf("x"), "b.txt": hashOf("y")}
+	b := map[string]outputHash{"a.txt": hashOf("x"), "b.txt": hashOf("y")}
 	assert.True(t, outputsEqual(a, b))
 }
 
 func TestOutputsEqual_DifferentContent_ReturnsFalse(t *testing.T) {
-	a := map[string][]byte{"a.txt": []byte("x")}
-	b := map[string][]byte{"a.txt": []byte("y")}
+	a := map[string]outputHash{"a.txt": hashOf("x")}
+	b := map[string]outputHash{"a.txt": hashOf("y")}
 	assert.False(t, outputsEqual(a, b))
 }
 
 func TestOutputsEqual_DifferentKeys_ReturnsFalse(t *testing.T) {
-	a := map[string][]byte{"a.txt": []byte("x")}
-	b := map[string][]byte{"b.txt": []byte("x")}
+	a := map[string]outputHash{"a.txt": hashOf("x")}
+	b := map[string]outputHash{"b.txt": hashOf("x")}
 	assert.False(t, outputsEqual(a, b))
 }
 
 func TestOutputsEqual_DifferentLength_ReturnsFalse(t *testing.T) {
-	a := map[string][]byte{"a.txt": []byte("x"), "b.txt": []byte("y")}
-	b := map[string][]byte{"a.txt": []byte("x")}
+	a := map[string]outputHash{"a.txt": hashOf("x"), "b.txt": hashOf("y")}
+	b := map[string]outputHash{"a.txt": hashOf("x")}
 	assert.False(t, outputsEqual(a, b))
 }
 
-func TestOutputsEqual_BothNilValue_ReturnsTrue(t *testing.T) {
-	a := map[string][]byte{"a.txt": nil}
-	b := map[string][]byte{"a.txt": nil}
+func TestOutputsEqual_BothMissingValue_ReturnsTrue(t *testing.T) {
+	a := map[string]outputHash{"a.txt": {}}
+	b := map[string]outputHash{"a.txt": {}}
 	assert.True(t, outputsEqual(a, b))
 }
 
