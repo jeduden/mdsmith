@@ -28,6 +28,11 @@ func init() {
 	rule.Register(&Rule{})
 }
 
+// newlineSep is the bytes.Join separator in fixGitHubAlerts; a
+// package-level var avoids a heap allocation for []byte("\n") on
+// every Fix call.
+var newlineSep = []byte("\n")
+
 // Rule implements MDS034, validating Markdown against a declared
 // target flavor and flagging syntax the renderer does not interpret
 // as a feature. The rule reads only the flavor; project-level
@@ -291,20 +296,28 @@ func (r *Rule) fixGitHubAlerts(f *lint.File) []byte {
 		return f.Source
 	}
 
-	var out []string
+	// Pre-size from f.Lines and stay in []byte: only lines needing the
+	// "> " prefix rewrite pay a copy, every other line passes through
+	// unchanged (docs/development/high-performance-go.md "Pre-size
+	// slices" / "Stay in []byte").
+	out := make([][]byte, 0, len(f.Lines))
 	for i, line := range f.Lines {
 		lineNum := i + 1
 		if _, ok := skip[lineNum]; ok {
 			continue
 		}
-		s := string(line)
 		if _, ok := addPrefix[lineNum]; ok {
-			trimmed := strings.TrimLeft(s, " \t")
-			s = s[:len(s)-len(trimmed)] + "> " + trimmed
+			trimmed := bytes.TrimLeft(line, " \t")
+			rewritten := make([]byte, 0, len(line)+2)
+			rewritten = append(rewritten, line[:len(line)-len(trimmed)]...)
+			rewritten = append(rewritten, "> "...)
+			rewritten = append(rewritten, trimmed...)
+			out = append(out, rewritten)
+			continue
 		}
-		out = append(out, s)
+		out = append(out, line)
 	}
-	return []byte(strings.Join(out, "\n"))
+	return bytes.Join(out, newlineSep)
 }
 
 var (
