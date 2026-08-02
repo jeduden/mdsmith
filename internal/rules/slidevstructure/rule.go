@@ -401,8 +401,10 @@ func (r *Rule) checkUnknownLayout(
 	f *lint.File, diags []lint.Diagnostic,
 	layout string, hasLayout bool, anchor int,
 ) (bool, []lint.Diagnostic) {
-	_, isBuiltin := builtinLayouts[layout]
-	if !hasLayout || isBuiltin || r.isCustomLayout(layout) {
+	if !hasLayout {
+		return false, diags
+	}
+	if _, isBuiltin := builtinLayouts[layout]; isBuiltin || r.isCustomLayout(layout) {
 		return false, diags
 	}
 	msg := fmt.Sprintf("unknown Slidev layout %q", layout)
