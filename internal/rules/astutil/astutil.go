@@ -116,6 +116,13 @@ func buildSectionHeadings(f *lint.File) any {
 // extension is absent; those are filtered so cell text does not
 // pollute section bodies.
 //
+// The result is in ascending Line order — an artifact of the
+// depth-first AST walk order combined with lint's parser config,
+// which installs no extension (e.g. footnotes) that relocates nodes
+// out of document order. SectionBodies depends on this ordering for
+// its forward-only cursor; do not pass it a hand-built or
+// externally-sorted slice.
+//
 // Memoized per File via lint.File.MemoFile (the *File-passing
 // variant of Memo): the AST walk is shared across the prose rules
 // (MDS023 paragraph-readability, MDS024 paragraph-structure, MDS057
@@ -232,6 +239,66 @@ func SectionBody(paragraphs []SectionParagraph, source []byte, start, end int) s
 		parts = append(parts, p.ExtractText(source))
 	}
 	return strings.Join(parts, " ")
+}
+
+// SectionBodies returns SectionBody's result for every heading in
+// headings, in order — the concatenated plain text of the paragraphs
+// each heading's [start, SectionEnd(...)) range covers.
+//
+// Calling SectionBody once per heading rescans the full paragraphs
+// slice from index 0 every time: O(headings × paragraphs). Since
+// headings are in document order, each start line is non-decreasing
+// across the loop, so a single cursor into paragraphs can advance
+// forward-only and never revisit a paragraph it has already passed —
+// O(headings + paragraphs) for the skip-ahead work, with the
+// per-heading collection cost bounded by that heading's own section
+// size (unavoidable: nested headings' bodies legitimately repeat
+// their descendants' paragraphs). See
+// docs/development/high-performance-go.md "Skip work you don't need".
+//
+// Trade-off: unlike the per-heading loop it replaces, every returned
+// body string stays live for the whole call instead of becoming
+// garbage as soon as its heading is processed. On a deeply nested
+// document this raises peak live memory roughly to
+// heading-depth × prose-size rather than max-section-size. Both
+// current callers (MDS057, MDS058) are opt-in rules.
+//
+// The per-heading `parts` buffer is hoisted out of the loop and
+// reused via `parts[:0]` rather than re-declared per heading — a
+// per-heading `var parts []string` would regrow from nil every
+// iteration (see docs/development/high-performance-go.md "Reuse
+// loop-local buffers"), which measured as more allocations overall
+// than the per-heading SectionBody loop this function replaces.
+//
+// Precondition: both headings and paragraphs must already be in
+// ascending Line order — [CollectSectionHeadings] sorts its result
+// explicitly, and [CollectSectionParagraphs] documents the same
+// guarantee. Unlike SectionBody, which tolerates an unordered slice
+// (it scans every entry unconditionally), the forward-only cursor
+// here relies on both orderings: an out-of-order heading would leave
+// `lo` already advanced past paragraphs a later heading needs, and
+// an out-of-order paragraph past a heading's end would be silently
+// skipped. Either produces a silently truncated body, not a panic.
+func SectionBodies(headings []SectionHeading, paragraphs []SectionParagraph, source []byte, totalLines int) []string {
+	if len(headings) == 0 {
+		return nil
+	}
+	bodies := make([]string, len(headings))
+	lo := 0
+	var parts []string
+	for i := range headings {
+		start := headings[i].Line
+		end := SectionEnd(headings, i, totalLines)
+		for lo < len(paragraphs) && paragraphs[lo].Line < start {
+			lo++
+		}
+		parts = parts[:0]
+		for j := lo; j < len(paragraphs) && paragraphs[j].Line < end; j++ {
+			parts = append(parts, paragraphs[j].ExtractText(source))
+		}
+		bodies[i] = strings.Join(parts, " ")
+	}
+	return bodies
 }
 
 // HeadingLine returns the 1-based source line of a heading node.
