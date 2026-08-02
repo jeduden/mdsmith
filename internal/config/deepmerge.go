@@ -81,6 +81,15 @@ func mergeAny(ruleName, key string, earlier, later any) any {
 				merged = append(merged, ll...)
 				return merged
 			}
+			if len(ll) == 0 {
+				// toAnySlice always returns a non-nil make([]any, 0, ...)
+				// even for an empty input; append([]any(nil), ll...)
+				// used to fold that back to nil for a zero-length ll.
+				// Preserve that so an empty later list still merges to
+				// nil, not an observably different empty slice (JSON,
+				// reflect).
+				return []any(nil)
+			}
 			return ll
 		}
 	}

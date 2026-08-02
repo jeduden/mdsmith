@@ -85,6 +85,21 @@ func TestMergeAny_ListReplace_AllocBudget(t *testing.T) {
 	}
 }
 
+// TestMergeAny_ListReplace_EmptyLaterStaysNil pins that replacing
+// with an empty later list produces a nil []any, matching what
+// append([]any(nil), ll...) produced for a zero-length ll before
+// mergeAny started returning toAnySlice's clone directly.
+// toAnySlice returns a non-nil make([]any, 0) for an empty input, so
+// returning it unchanged would silently turn a merged nil into a
+// non-nil empty slice — observable in JSON (`null` vs `[]`) and
+// reflect, which docs/development/high-performance-go.md calls out
+// as exactly the distinction the project's nil-for-empty convention
+// exists to preserve.
+func TestMergeAny_ListReplace_EmptyLaterStaysNil(t *testing.T) {
+	got := mergeAny("line-length", "exclude", []any{"a", "b"}, []any{})
+	assert.Nil(t, got, "empty later list must merge to nil, not an empty slice")
+}
+
 func TestMergeRuleCfgListAppendedWhenRuleOptsIn(t *testing.T) {
 	earlier := RuleCfg{
 		Enabled:  true,
