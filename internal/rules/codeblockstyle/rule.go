@@ -82,9 +82,26 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 // (see layer0.go). Such blocks are invisible to this path and won't be
 // counted in the consistency check. Files with only blockquote-nested
 // code blocks may silently pass or fail incorrectly on the L0 path.
+//
+// BlockSpans covers every block kind (headings, paragraphs, lists,
+// quotes, code, ...), so presizing blocks to len(BlockSpans) would
+// over-allocate on the common case — most files have few or no code
+// blocks against dozens of other spans. A first counting pass over
+// the same slice (a cheap switch, no allocation) gets an exact upper
+// bound instead, so a code-block-free file allocates nothing at all.
 func collectBlocksL0(f *lint.File) []blockInfo {
 	spans := lint.Layer0(f).BlockSpans
-	blocks := make([]blockInfo, 0, len(spans))
+	n := 0
+	for _, span := range spans {
+		switch span.Kind {
+		case lint.BlockFencedCode, lint.BlockIndentedCode:
+			n++
+		}
+	}
+	if n == 0 {
+		return nil
+	}
+	blocks := make([]blockInfo, 0, n)
 	for _, span := range spans {
 		switch span.Kind {
 		case lint.BlockFencedCode:
