@@ -829,6 +829,35 @@ func TestSectionBodies_EmptyHeadings(t *testing.T) {
 	assert.Empty(t, got)
 }
 
+// TestSectionBodies_AllocBudget pins that SectionBodies reuses its
+// per-heading `parts` buffer across iterations instead of
+// re-declaring it fresh every heading. A per-heading `var parts
+// []string` regrows from nil on every iteration; an xhigh-severity
+// review pass on PR #785 measured that as MORE total allocations than
+// the per-heading SectionBody loop this function replaces, on a
+// nested-heading document — 10 allocs versus 6 for the fixture below.
+// See docs/development/high-performance-go.md "Reuse loop-local
+// buffers".
+func TestSectionBodies_AllocBudget(t *testing.T) {
+	src := []byte("# H1\n\na.\n\nb.\n\n## H2\n\nc.\n\nd.\n\n## H2b\n\ne.\n\nf.\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	headings := CollectSectionHeadings(f)
+	paragraphs := CollectSectionParagraphsWithText(f)
+	require.Len(t, headings, 3)
+	totalLines := len(f.Lines)
+	if totalLines > 0 && len(f.Lines[totalLines-1]) == 0 {
+		totalLines--
+	}
+
+	allocs := testing.AllocsPerRun(100, func() {
+		_ = SectionBodies(headings, paragraphs, f.Source, totalLines)
+	})
+	if allocs > 6 {
+		t.Fatalf("SectionBodies allocs per call: want <= 6, got %v", allocs)
+	}
+}
+
 // TestCollectSectionParagraphs_MemoizedPerFile pins that the
 // AST-walking collector runs once per File and serves a cached result
 // thereafter. On prose-heavy corpora (the neutral Rust Book

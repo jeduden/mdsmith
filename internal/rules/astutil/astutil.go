@@ -260,9 +260,15 @@ func SectionBody(paragraphs []SectionParagraph, source []byte, start, end int) s
 // body string stays live for the whole call instead of becoming
 // garbage as soon as its heading is processed. On a deeply nested
 // document this raises peak live memory roughly to
-// heading-depth × prose-size rather than max-section-size; total
-// allocation volume is unchanged. Both current callers (MDS057,
-// MDS058) are opt-in rules.
+// heading-depth × prose-size rather than max-section-size. Both
+// current callers (MDS057, MDS058) are opt-in rules.
+//
+// The per-heading `parts` buffer is hoisted out of the loop and
+// reused via `parts[:0]` rather than re-declared per heading — a
+// per-heading `var parts []string` would regrow from nil every
+// iteration (see docs/development/high-performance-go.md "Reuse
+// loop-local buffers"), which measured as more allocations overall
+// than the per-heading SectionBody loop this function replaces.
 //
 // Precondition: both headings and paragraphs must already be in
 // ascending Line order — [CollectSectionHeadings] sorts its result
@@ -279,13 +285,14 @@ func SectionBodies(headings []SectionHeading, paragraphs []SectionParagraph, sou
 	}
 	bodies := make([]string, len(headings))
 	lo := 0
+	var parts []string
 	for i := range headings {
 		start := headings[i].Line
 		end := SectionEnd(headings, i, totalLines)
 		for lo < len(paragraphs) && paragraphs[lo].Line < start {
 			lo++
 		}
-		var parts []string
+		parts = parts[:0]
 		for j := lo; j < len(paragraphs) && paragraphs[j].Line < end; j++ {
 			parts = append(parts, paragraphs[j].ExtractText(source))
 		}
