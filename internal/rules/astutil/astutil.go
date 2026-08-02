@@ -116,6 +116,13 @@ func buildSectionHeadings(f *lint.File) any {
 // extension is absent; those are filtered so cell text does not
 // pollute section bodies.
 //
+// The result is in ascending Line order — an artifact of the
+// depth-first AST walk order combined with lint's parser config,
+// which installs no extension (e.g. footnotes) that relocates nodes
+// out of document order. SectionBodies depends on this ordering for
+// its forward-only cursor; do not pass it a hand-built or
+// externally-sorted slice.
+//
 // Memoized per File via lint.File.MemoFile (the *File-passing
 // variant of Memo): the AST walk is shared across the prose rules
 // (MDS023 paragraph-readability, MDS024 paragraph-structure, MDS057
@@ -248,6 +255,14 @@ func SectionBody(paragraphs []SectionParagraph, source []byte, start, end int) s
 // size (unavoidable: nested headings' bodies legitimately repeat
 // their descendants' paragraphs). See
 // docs/development/high-performance-go.md "Skip work you don't need".
+//
+// Precondition: paragraphs must already be in ascending Line order —
+// the guarantee [CollectSectionParagraphs] documents. Unlike
+// SectionBody, which tolerates an unordered slice (it scans every
+// entry unconditionally), the forward-only cursor here breaks out of
+// each heading's collection as soon as it sees a Line past that
+// heading's end, so an out-of-order paragraph after that point would
+// be silently skipped.
 func SectionBodies(headings []SectionHeading, paragraphs []SectionParagraph, source []byte, totalLines int) []string {
 	if len(headings) == 0 {
 		return nil
