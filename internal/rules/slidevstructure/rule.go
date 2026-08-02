@@ -63,13 +63,13 @@ func (r *Rule) Category() string { return "structural" }
 func (r *Rule) EnabledByDefault() bool { return false }
 
 // builtinLayouts is the set of Slidev's 19 built-in layout names.
-var builtinLayouts = map[string]bool{
-	"center": true, "cover": true, "default": true, "end": true,
-	"fact": true, "full": true, "image": true, "image-left": true,
-	"image-right": true, "iframe": true, "iframe-left": true,
-	"iframe-right": true, "intro": true, "none": true, "quote": true,
-	"section": true, "statement": true, "two-cols": true,
-	"two-cols-header": true,
+var builtinLayouts = map[string]struct{}{
+	"center": {}, "cover": {}, "default": {}, "end": {},
+	"fact": {}, "full": {}, "image": {}, "image-left": {},
+	"image-right": {}, "iframe": {}, "iframe-left": {},
+	"iframe-right": {}, "intro": {}, "none": {}, "quote": {},
+	"section": {}, "statement": {}, "two-cols": {},
+	"two-cols-header": {},
 }
 
 // sortedBuiltinLayouts is the sorted slice of builtinLayouts keys,
@@ -97,13 +97,13 @@ var layoutRequiredField = map[string]string{
 // check. Pass-through data keys that are within edit distance 2 of a
 // real key are the false-positive risk, which is why the check only
 // fires on a near miss, never on an arbitrary unrecognized key.
-var knownFMKeys = map[string]bool{
-	"layout": true, "class": true, "clicks": true, "clicksStart": true,
-	"preload": true, "hide": true, "disabled": true, "hideInToc": true,
-	"title": true, "level": true, "routeAlias": true, "zoom": true,
-	"clickAnimation": true, "dragPos": true, "src": true,
-	"transition": true, "background": true, "backgroundSize": true,
-	"name": true, "image": true, "url": true, "default": true,
+var knownFMKeys = map[string]struct{}{
+	"layout": {}, "class": {}, "clicks": {}, "clicksStart": {},
+	"preload": {}, "hide": {}, "disabled": {}, "hideInToc": {},
+	"title": {}, "level": {}, "routeAlias": {}, "zoom": {},
+	"clickAnimation": {}, "dragPos": {}, "src": {},
+	"transition": {}, "background": {}, "backgroundSize": {},
+	"name": {}, "image": {}, "url": {}, "default": {},
 }
 
 // sortedKnownFMKeys is the sorted slice of knownFMKeys keys, populated
@@ -401,7 +401,8 @@ func (r *Rule) checkUnknownLayout(
 	f *lint.File, diags []lint.Diagnostic,
 	layout string, hasLayout bool, anchor int,
 ) (bool, []lint.Diagnostic) {
-	if !hasLayout || builtinLayouts[layout] || r.isCustomLayout(layout) {
+	_, isBuiltin := builtinLayouts[layout]
+	if !hasLayout || isBuiltin || r.isCustomLayout(layout) {
 		return false, diags
 	}
 	msg := fmt.Sprintf("unknown Slidev layout %q", layout)
@@ -465,7 +466,7 @@ func (r *Rule) checkRequiredField(
 func (r *Rule) checkUnknownFMKeys(s *slide, f *lint.File, diags []lint.Diagnostic) []lint.Diagnostic {
 	hasUnknown := false
 	for k := range s.fm {
-		if !knownFMKeys[k] {
+		if _, known := knownFMKeys[k]; !known {
 			hasUnknown = true
 			break
 		}
@@ -474,7 +475,7 @@ func (r *Rule) checkUnknownFMKeys(s *slide, f *lint.File, diags []lint.Diagnosti
 		return diags
 	}
 	for _, k := range sortedKeys(s.fm) {
-		if knownFMKeys[k] {
+		if _, known := knownFMKeys[k]; known {
 			continue
 		}
 		lineNo := s.startLine
