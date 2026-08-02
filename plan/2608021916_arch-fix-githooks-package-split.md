@@ -35,7 +35,7 @@ found this SRP smell:
   refactor-moves section: "Split a package by question.
   If the package doc comment requires 'and' to describe
   ... the package wants to be two."
-- The file is 1,347 lines and cleanly separates into:
+- The file is 1,346 lines and cleanly separates into:
   - hook-script generation/validation
     (`BuildHookScript`, `HookMatchesCanonical`,
     the staging shell-function builder);

@@ -836,18 +836,22 @@ func TestRunCheck_Stdin_ChecksSource(t *testing.T) {
 	oldStdin := os.Stdin
 	r, w, err := os.Pipe()
 	require.NoError(t, err)
+	defer r.Close() //nolint:errcheck // best-effort close on read-only pipe end
 	os.Stdin = r
 	defer func() { os.Stdin = oldStdin }()
 	go func() {
-		_, _ = w.WriteString("# Title\n\nContent here.\n")
+		// Trailing spaces trigger a diagnostic, so a passing exit code
+		// alone can't mask a routing bug that skips reading stdin.
+		_, _ = w.WriteString("# Title\n\nHello   \n")
 		_ = w.Close()
 	}()
 
 	var code int
-	captureStderr(func() {
+	stderr := captureStderr(func() {
 		code = runCheck([]string{"-"})
 	})
-	assert.Equal(t, 0, code)
+	assert.Equal(t, 1, code)
+	assert.Contains(t, stderr, "<stdin>")
 }
 
 func TestRunCheck_Files_ExitsOneOnDiagnostics(t *testing.T) {
@@ -868,15 +872,18 @@ func TestRunCheck_Discovered_ChecksConfiguredFiles(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"),
 		[]byte("files: [\"**/*.md\"]\n"), 0o644))
+	// Trailing spaces trigger a diagnostic, so a passing exit code alone
+	// can't mask a discovery bug that silently finds zero files.
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "test.md"),
-		[]byte("# Title\n\nContent here.\n"), 0o644))
+		[]byte("# Title\n\nHello   \n"), 0o644))
 	t.Chdir(dir)
 
 	var code int
-	captureStderr(func() {
+	stderr := captureStderr(func() {
 		code = runCheck(nil)
 	})
-	assert.Equal(t, 0, code)
+	assert.Equal(t, 1, code)
+	assert.Contains(t, stderr, "test.md")
 }
 
 // --- runFix ---

@@ -19,7 +19,7 @@ every finding there is resolved.
 
 ## Audit 2026-08-02 (range: 6680ff5..2ab4b29)
 
-134 touched files. Notable new surfaces: MDS073
+148 touched files. Notable new surfaces: MDS073
 slide-structure and MDS060 occurrence. MDS073 was
 renamed from MDS072; no leftover duplication was
 found. Also new: foreign-managed regions and
