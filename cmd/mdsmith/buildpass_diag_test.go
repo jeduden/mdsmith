@@ -166,6 +166,18 @@ func TestSnapshotOutputs_ExistingFile(t *testing.T) {
 	assert.Equal(t, want, snap["out.txt"])
 }
 
+func TestHashOutputFile_UnreadablePath_ReturnsZeroValue(t *testing.T) {
+	// os.Open succeeds on a directory; the failure surfaces on the
+	// subsequent io.Copy read, exercising hashOutputFile's second
+	// error branch (distinct from the os.Open error in the missing-
+	// file case above).
+	root := t.TempDir()
+	sub := filepath.Join(root, "a-directory")
+	require.NoError(t, os.Mkdir(sub, 0o755))
+	got := hashOutputFile(sub)
+	assert.False(t, got.ok)
+}
+
 func TestSnapshotOutputs_MissingFile_ReturnsZeroValue(t *testing.T) {
 	root := t.TempDir()
 	bt := buildTarget{
