@@ -811,6 +811,16 @@ func TestFixDiscovered_BadMaxInputSize_ExitsTwo(t *testing.T) {
 	assert.Contains(t, stderr, "max-input-size")
 }
 
+// gitBoundary marks dir as a repo root for config.Discover (see
+// internal/config/load.go), so a test with no .mdsmith.yml of its own
+// stops its upward config search at dir instead of walking to the
+// filesystem root and, in principle, picking up an unrelated ancestor
+// config.
+func gitBoundary(t *testing.T, dir string) {
+	t.Helper()
+	require.NoError(t, os.Mkdir(filepath.Join(dir, ".git"), 0o755))
+}
+
 // --- runCheck ---
 //
 // runCheck is the "check" subcommand entry dispatched from dispatch() in
@@ -831,7 +841,9 @@ func TestRunCheck_UnknownFlag_ExitsTwo(t *testing.T) {
 }
 
 func TestRunCheck_Stdin_ChecksSource(t *testing.T) {
-	t.Chdir(t.TempDir())
+	dir := t.TempDir()
+	gitBoundary(t, dir)
+	t.Chdir(dir)
 
 	oldStdin := os.Stdin
 	r, w, err := os.Pipe()
@@ -856,6 +868,7 @@ func TestRunCheck_Stdin_ChecksSource(t *testing.T) {
 
 func TestRunCheck_Files_ExitsOneOnDiagnostics(t *testing.T) {
 	dir := t.TempDir()
+	gitBoundary(t, dir)
 	t.Chdir(dir)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "dirty.md"),
 		[]byte("# Title\n\nHello   \n"), 0o644))
@@ -914,6 +927,7 @@ func TestRunFix_StdinArg_ExitsTwo(t *testing.T) {
 
 func TestRunFix_Files_FixesGivenFile(t *testing.T) {
 	dir := t.TempDir()
+	gitBoundary(t, dir)
 	t.Chdir(dir)
 	path := filepath.Join(dir, "fixme.md")
 	require.NoError(t, os.WriteFile(path, []byte("# Title\n\nHello   \n"), 0o644))
