@@ -161,9 +161,11 @@ func TestSnapshotOutputs_ExistingFile(t *testing.T) {
 	}
 	snap := snapshotOutputs(bt)
 	require.Len(t, snap, 1)
-	want := hashOutputFile(filepath.Join(root, "out.txt"))
-	assert.True(t, want.ok)
-	assert.Equal(t, want, snap["out.txt"])
+	// hashOf is an independent oracle (sha256.Sum256 directly), not the
+	// hashOutputFile helper snapshotOutputs itself delegates to — this
+	// ties the digest to the actual file content, not just to
+	// snapshotOutputs calling hashOutputFile with the right path.
+	assert.Equal(t, hashOf("hello"), snap["out.txt"])
 }
 
 func TestHashOutputFile_UnreadablePath_ReturnsZeroValue(t *testing.T) {
@@ -222,6 +224,19 @@ func TestOutputsEqual_BothMissingValue_ReturnsTrue(t *testing.T) {
 	a := map[string]outputHash{"a.txt": {}}
 	b := map[string]outputHash{"a.txt": {}}
 	assert.True(t, outputsEqual(a, b))
+}
+
+// TestOutputsEqual_MissingVsEmpty_ReturnsFalse pins the deliberate
+// tightening documented on outputHash: a first run that leaves a
+// declared output absent and a second that leaves it present-but-empty
+// (or vice versa) is real non-determinism, so it must not compare
+// equal the way bytes.Equal(nil, []byte{}) treated the pre-streaming
+// code's os.ReadFile results.
+func TestOutputsEqual_MissingVsEmpty_ReturnsFalse(t *testing.T) {
+	missing := map[string]outputHash{"a.txt": {}}
+	empty := map[string]outputHash{"a.txt": hashOf("")}
+	assert.False(t, outputsEqual(missing, empty))
+	assert.False(t, outputsEqual(empty, missing))
 }
 
 // --- printVerdict ---

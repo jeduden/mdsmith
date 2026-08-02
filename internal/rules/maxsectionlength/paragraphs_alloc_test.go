@@ -23,7 +23,10 @@ func manyParagraphsSource(n int) string {
 // its text, so it must use mdtext.CountWordsInNode (which counts
 // directly off the AST) instead of ExtractPlainText(...) +
 // CountWords(...), which materializes and then discards a string per
-// paragraph. Guards a regression back to the string-round-trip form.
+// paragraph. It must also reuse astutil.CollectSectionParagraphs's
+// per-File memoized walk instead of re-walking the AST itself.
+// Guards a regression back to either the string-round-trip form or a
+// second walk.
 func TestCollectParagraphs_SkipsTextExtraction(t *testing.T) {
 	if testing.Short() {
 		t.Skip("alloc gate skipped in -short mode")
@@ -37,9 +40,11 @@ func TestCollectParagraphs_SkipsTextExtraction(t *testing.T) {
 		collectParagraphs(f)
 	})
 	// Baseline before this fix: 36 allocs on 30 paragraphs (~1/paragraph,
-	// ExtractPlainText's buf.String() copy). After: 6 (walk-closure box,
-	// growing []paragraph, sort, and CountWordsInNode's own small
-	// bookkeeping). Budget with headroom over the measured post-fix count.
-	assert.LessOrEqualf(t, allocs, 10.0,
-		"collectParagraphs allocs regressed: got %v, want <= 10", allocs)
+	// ExtractPlainText's buf.String() copy, on top of collectParagraphs'
+	// own ast.Walk). After: 1 (the presized []paragraph result itself —
+	// AllocsPerRun reuses the same *lint.File across all 50 runs, so the
+	// underlying walk warms astutil's memo on the first call and every
+	// later call is a cache hit). Budget with headroom over that.
+	assert.LessOrEqualf(t, allocs, 4.0,
+		"collectParagraphs allocs regressed: got %v, want <= 4", allocs)
 }

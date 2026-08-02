@@ -275,6 +275,21 @@ func TestRuleFixGitHubAlertsOnlyLine(t *testing.T) {
 	assert.Equal(t, "", string(got))
 }
 
+// TestFixGitHubAlerts_WholeFileAlert_ReturnsNil pins fixGitHubAlerts'
+// direct return value (not routed through r.Fix's later passes) for a
+// document that reduces to nothing: bytes.Join([][]byte{{}}, sep)
+// returns nil, matching the project's "return nil, not []T{}"
+// convention (docs/development/high-performance-go.md) rather than the
+// non-nil empty slice the pre-fix strings.Join([]string{""}, "\n")
+// path produced. No caller (fix.go, export.go) distinguishes nil from
+// an empty slice, so this is intentional, not a behavior regression.
+func TestFixGitHubAlerts_WholeFileAlert_ReturnsNil(t *testing.T) {
+	r := &Rule{}
+	f := mkFile(t, "> [!WARNING]\n")
+	got := r.fixGitHubAlerts(f)
+	assert.Nil(t, got)
+}
+
 func TestRuleFixGitHubAlertsGFMNoChange(t *testing.T) {
 	r := &Rule{}
 	require.NoError(t, r.ApplySettings(map[string]any{"flavor": "gfm"}))

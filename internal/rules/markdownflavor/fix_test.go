@@ -149,6 +149,16 @@ func TestFixGitHubAlerts_LazyContinuation(t *testing.T) {
 	assert.Equal(t, "> This is lazy-continuation body.\n", got)
 }
 
+// TestFixGitHubAlerts_IndentedLazyContinuation covers the leading-
+// whitespace branch of the addPrefix rewrite (rule.go's
+// line[:len(line)-len(trimmed)] slice): the continuation line's
+// existing indent must be preserved ahead of the re-added "> ".
+func TestFixGitHubAlerts_IndentedLazyContinuation(t *testing.T) {
+	src := "> [!NOTE]\n   indented lazy continuation body.\n"
+	got := fixWith(t, "commonmark", src)
+	assert.Equal(t, "   > indented lazy continuation body.\n", got)
+}
+
 // TestRuleFixStrikethroughWithNestedInlineSkips guards the robustness
 // of delimiterPairEdits: a wrapper containing nested inline markup
 // (emphasis, link, code span) cannot be safely unwrapped without

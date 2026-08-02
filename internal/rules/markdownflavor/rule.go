@@ -28,11 +28,6 @@ func init() {
 	rule.Register(&Rule{})
 }
 
-// newlineSep is the bytes.Join separator in fixGitHubAlerts; a
-// package-level var avoids a heap allocation for []byte("\n") on
-// every Fix call.
-var newlineSep = []byte("\n")
-
 // Rule implements MDS034, validating Markdown against a declared
 // target flavor and flagging syntax the renderer does not interpret
 // as a feature. The rule reads only the flavor; project-level
@@ -317,7 +312,7 @@ func (r *Rule) fixGitHubAlerts(f *lint.File) []byte {
 		}
 		out = append(out, line)
 	}
-	return bytes.Join(out, newlineSep)
+	return bytes.Join(out, []byte("\n"))
 }
 
 var (

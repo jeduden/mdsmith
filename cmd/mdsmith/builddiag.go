@@ -207,8 +207,16 @@ func verifyTarget(
 }
 
 // outputHash is one declared output's verify-pass fingerprint: ok is
-// false when the file is missing or unreadable (mirroring the old nil
-// []byte), true with hash holding its sha256 otherwise.
+// false when the file is missing or unreadable, true with hash
+// holding its sha256 otherwise. A missing output (ok == false) now
+// compares unequal to a present-but-empty one (ok == true, the sha256
+// of zero bytes) in outputsEqual — a deliberate tightening versus the
+// pre-streaming code, whose bytes.Equal(nil, []byte{}) treated the two
+// as the same "no content" case. A recipe whose first run leaves an
+// output absent and whose second leaves it present-but-empty (or vice
+// versa) is exactly the non-determinism --build-verify exists to
+// catch, so the stricter comparison is intentional (see
+// TestOutputsEqual_MissingVsEmpty_ReturnsFalse).
 type outputHash struct {
 	hash [sha256.Size]byte
 	ok   bool
