@@ -811,6 +811,136 @@ func TestFixDiscovered_BadMaxInputSize_ExitsTwo(t *testing.T) {
 	assert.Contains(t, stderr, "max-input-size")
 }
 
+// --- runCheck ---
+//
+// runCheck is the "check" subcommand entry dispatched from dispatch() in
+// main.go; go.md/audit-checklist.md name a CLI subcommand entry as a
+// public surface, so a missing dedicated test here is a blocker, not tax.
+// These exercise the three branches it routes to (flag error, stdin,
+// explicit files, config-discovered files) in-process, mirroring the
+// TestRunInit_* pattern in init_unit_test.go rather than relying solely
+// on the binary-spawn e2e tests in e2e_coverage_test.go.
+
+func TestRunCheck_UnknownFlag_ExitsTwo(t *testing.T) {
+	var code int
+	stderr := captureStderr(func() {
+		code = runCheck([]string{"--definitely-not-a-flag"})
+	})
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "unknown flag")
+}
+
+func TestRunCheck_Stdin_ChecksSource(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	oldStdin := os.Stdin
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stdin = r
+	defer func() { os.Stdin = oldStdin }()
+	go func() {
+		_, _ = w.WriteString("# Title\n\nContent here.\n")
+		_ = w.Close()
+	}()
+
+	var code int
+	captureStderr(func() {
+		code = runCheck([]string{"-"})
+	})
+	assert.Equal(t, 0, code)
+}
+
+func TestRunCheck_Files_ExitsOneOnDiagnostics(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "dirty.md"),
+		[]byte("# Title\n\nHello   \n"), 0o644))
+
+	var code int
+	stderr := captureStderr(func() {
+		code = runCheck([]string{"dirty.md"})
+	})
+	assert.Equal(t, 1, code)
+	assert.Contains(t, stderr, "dirty.md")
+}
+
+func TestRunCheck_Discovered_ChecksConfiguredFiles(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"),
+		[]byte("files: [\"**/*.md\"]\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "test.md"),
+		[]byte("# Title\n\nContent here.\n"), 0o644))
+	t.Chdir(dir)
+
+	var code int
+	captureStderr(func() {
+		code = runCheck(nil)
+	})
+	assert.Equal(t, 0, code)
+}
+
+// --- runFix ---
+//
+// runFix is the "fix" subcommand entry, the same public-surface tier as
+// runCheck above. These cover the stdin-rejection branch and the two
+// file-resolution branches (explicit files, config-discovered files) that
+// runCheck's tests exercise, plus the disk write that runCheck has no
+// equivalent of.
+
+func TestRunFix_UnknownFlag_ExitsTwo(t *testing.T) {
+	var code int
+	stderr := captureStderr(func() {
+		code = runFix([]string{"--definitely-not-a-flag"})
+	})
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "unknown flag")
+}
+
+func TestRunFix_StdinArg_ExitsTwo(t *testing.T) {
+	var code int
+	stderr := captureStderr(func() {
+		code = runFix([]string{"-"})
+	})
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "cannot fix stdin in place")
+}
+
+func TestRunFix_Files_FixesGivenFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	path := filepath.Join(dir, "fixme.md")
+	require.NoError(t, os.WriteFile(path, []byte("# Title\n\nHello   \n"), 0o644))
+
+	var code int
+	captureStderr(func() {
+		code = runFix([]string{"fixme.md"})
+	})
+	assert.Equal(t, 0, code)
+
+	fixed, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, "# Title\n\nHello\n", string(fixed))
+}
+
+func TestRunFix_Discovered_FixesConfiguredFiles(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"),
+		[]byte("files: [\"**/*.md\"]\n"), 0o644))
+	path := filepath.Join(dir, "fixme.md")
+	require.NoError(t, os.WriteFile(path, []byte("# Title\n\nHello   \n"), 0o644))
+	t.Chdir(dir)
+
+	var code int
+	captureStderr(func() {
+		code = runFix(nil)
+	})
+	assert.Equal(t, 0, code)
+
+	fixed, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, "# Title\n\nHello\n", string(fixed))
+}
+
 // --- printErrors ---
 
 func TestPrintErrors_Empty_NoOutput(t *testing.T) {
