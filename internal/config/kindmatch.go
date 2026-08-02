@@ -16,18 +16,32 @@ import "strings"
 // surfaced through provenance output. For an unmatched entry it is
 // always the empty string.
 func matchKindAssignmentEntry(entry KindAssignmentEntry, filePath string, fmFields map[string]any) (bool, string) {
-	hasGlob := len(entry.Patterns()) > 0
-	hasFields := len(entry.FieldsPresent) > 0
-	if !hasGlob && !hasFields {
-		return false, ""
-	}
-	if hasGlob && !matchesAny(entry.Patterns(), filePath) {
-		return false, ""
-	}
-	if hasFields && !allFieldsPresent(entry.FieldsPresent, fmFields) {
+	if !kindAssignmentEntryMatches(entry, filePath, fmFields) {
 		return false, ""
 	}
 	return true, formatSelector(entry)
+}
+
+// kindAssignmentEntryMatches is matchKindAssignmentEntry's bool-only
+// verdict, with no provenance selector built. resolveEffectiveKinds
+// calls this on every workspace file for every kind-assignment entry
+// and never needs the selector text, so building and discarding it
+// there wasted an allocation per matching entry per file. Only
+// provenance.go needs the selector, so it still calls
+// matchKindAssignmentEntry directly.
+func kindAssignmentEntryMatches(entry KindAssignmentEntry, filePath string, fmFields map[string]any) bool {
+	hasGlob := len(entry.Patterns()) > 0
+	hasFields := len(entry.FieldsPresent) > 0
+	if !hasGlob && !hasFields {
+		return false
+	}
+	if hasGlob && !matchesAny(entry.Patterns(), filePath) {
+		return false
+	}
+	if hasFields && !allFieldsPresent(entry.FieldsPresent, fmFields) {
+		return false
+	}
+	return true
 }
 
 // allFieldsPresent reports whether every required key is set to a
