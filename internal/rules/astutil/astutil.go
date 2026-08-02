@@ -234,6 +234,41 @@ func SectionBody(paragraphs []SectionParagraph, source []byte, start, end int) s
 	return strings.Join(parts, " ")
 }
 
+// SectionBodies returns SectionBody's result for every heading in
+// headings, in order — the concatenated plain text of the paragraphs
+// each heading's [start, SectionEnd(...)) range covers.
+//
+// Calling SectionBody once per heading rescans the full paragraphs
+// slice from index 0 every time: O(headings × paragraphs). Since
+// headings are in document order, each start line is non-decreasing
+// across the loop, so a single cursor into paragraphs can advance
+// forward-only and never revisit a paragraph it has already passed —
+// O(headings + paragraphs) for the skip-ahead work, with the
+// per-heading collection cost bounded by that heading's own section
+// size (unavoidable: nested headings' bodies legitimately repeat
+// their descendants' paragraphs). See
+// docs/development/high-performance-go.md "Skip work you don't need".
+func SectionBodies(headings []SectionHeading, paragraphs []SectionParagraph, source []byte, totalLines int) []string {
+	if len(headings) == 0 {
+		return nil
+	}
+	bodies := make([]string, len(headings))
+	lo := 0
+	for i := range headings {
+		start := headings[i].Line
+		end := SectionEnd(headings, i, totalLines)
+		for lo < len(paragraphs) && paragraphs[lo].Line < start {
+			lo++
+		}
+		var parts []string
+		for j := lo; j < len(paragraphs) && paragraphs[j].Line < end; j++ {
+			parts = append(parts, paragraphs[j].ExtractText(source))
+		}
+		bodies[i] = strings.Join(parts, " ")
+	}
+	return bodies
+}
+
 // HeadingLine returns the 1-based source line of a heading node.
 // Setext headings expose their line via Lines(); ATX headings are found
 // by walking inline descendants until the first text segment. Returns 1
