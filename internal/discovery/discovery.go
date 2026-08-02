@@ -8,6 +8,7 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/jeduden/mdsmith/internal/gitignore"
+	"github.com/jeduden/mdsmith/internal/globpath"
 )
 
 // Options controls how file discovery behaves.
@@ -164,10 +165,16 @@ func (w *walker) isGitignored(path string, info os.FileInfo) bool {
 }
 
 // matchesAny returns true if rel matches any of the configured patterns.
+// Patterns are pre-validated by validatePatterns, so this uses
+// globpath.MatchRaw's cached-validation path rather than
+// doublestar.Match, which re-validates its pattern on every call —
+// this runs once per pattern for every file the workspace walk
+// visits. globpath.MatchRaw preserves doublestar.Match's raw-path
+// semantics (no basename/cleaned-path fallback), matching the
+// top-level `files:` key's documented behavior (docs/reference/globs.md).
 func (w *walker) matchesAny(rel string) bool {
 	for _, p := range w.patterns {
-		matched, err := doublestar.Match(p, rel)
-		if err == nil && matched {
+		if globpath.MatchRaw(p, rel) {
 			return true
 		}
 	}

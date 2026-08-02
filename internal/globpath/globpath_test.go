@@ -3,8 +3,10 @@ package globpath_test
 import (
 	"testing"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/jeduden/mdsmith/internal/globpath"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMatch_Basic(t *testing.T) {
@@ -157,6 +159,44 @@ func TestContainsDotDotSegment(t *testing.T) {
 	}
 	for input, want := range cases {
 		assert.Equal(t, want, globpath.ContainsDotDotSegment(input), input)
+	}
+}
+
+func TestMatchRaw_Basic(t *testing.T) {
+	assert.True(t, globpath.MatchRaw("vendor/**", "vendor/lib.md"))
+	assert.True(t, globpath.MatchRaw("vendor/**", "vendor/sub/lib.md"))
+	assert.False(t, globpath.MatchRaw("vendor/**", "src/main.md"))
+}
+
+func TestMatchRaw_NoBasenameFallback(t *testing.T) {
+	// Unlike Match, MatchRaw has no cleaned-path or basename fallback
+	// — it is for surfaces documented (docs/reference/globs.md) to use
+	// doublestar.Match's raw-path semantics directly, such as the
+	// top-level `files:` discovery key.
+	assert.False(t, globpath.MatchRaw("CHANGELOG.md", "sub/CHANGELOG.md"),
+		"MatchRaw must not fall back to basename matching")
+	assert.True(t, globpath.MatchRaw("CHANGELOG.md", "CHANGELOG.md"))
+}
+
+func TestMatchRaw_InvalidPattern(t *testing.T) {
+	assert.False(t, globpath.MatchRaw("[invalid", "test.md"),
+		"invalid pattern should return false")
+}
+
+func TestMatchRaw_AgreesWithDoublestarMatch(t *testing.T) {
+	cases := []struct {
+		pattern, path string
+	}{
+		{"docs/**/*.md", "docs/a/b/c.md"},
+		{"docs/**/*.md", "other/foo.md"},
+		{"*.{md,markdown}", "README.markdown"},
+		{"plan/[0-9]*_*.md", "plan/96_kinds.md"},
+		{"plan/[0-9]*_*.md", "plan/kinds.md"},
+	}
+	for _, c := range cases {
+		want, err := doublestar.Match(c.pattern, c.path)
+		require.NoError(t, err)
+		assert.Equal(t, want, globpath.MatchRaw(c.pattern, c.path), "pattern=%q path=%q", c.pattern, c.path)
 	}
 }
 
