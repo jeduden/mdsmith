@@ -13,7 +13,6 @@ import (
 	"bytes"
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 
@@ -270,8 +269,12 @@ func buildAlertSkipMaps(f *lint.File) (skip, addPrefix map[int]struct{}) {
 		for i := 1; i < lines.Len(); i++ {
 			contSeg := lines.At(i)
 			contLine, _ := flavor.LineCol(f.Source, contSeg.Start)
-			raw := strings.TrimLeft(string(f.Lines[contLine-1]), " \t")
-			if !strings.HasPrefix(raw, ">") {
+			// Stay in []byte: a string(line) copy here allocates on
+			// every continuation line scanned, in the walk this
+			// function already pays for once per file (docs/
+			// development/high-performance-go.md "Stay in []byte").
+			raw := bytes.TrimLeft(f.Lines[contLine-1], " \t")
+			if len(raw) == 0 || raw[0] != '>' {
 				addPrefix[contLine] = struct{}{}
 			}
 		}
@@ -291,20 +294,28 @@ func (r *Rule) fixGitHubAlerts(f *lint.File) []byte {
 		return f.Source
 	}
 
-	var out []string
+	// Pre-size from f.Lines and stay in []byte: only lines needing the
+	// "> " prefix rewrite pay a copy, every other line passes through
+	// unchanged (docs/development/high-performance-go.md "Pre-size
+	// slices" / "Stay in []byte").
+	out := make([][]byte, 0, len(f.Lines))
 	for i, line := range f.Lines {
 		lineNum := i + 1
 		if _, ok := skip[lineNum]; ok {
 			continue
 		}
-		s := string(line)
 		if _, ok := addPrefix[lineNum]; ok {
-			trimmed := strings.TrimLeft(s, " \t")
-			s = s[:len(s)-len(trimmed)] + "> " + trimmed
+			trimmed := bytes.TrimLeft(line, " \t")
+			rewritten := make([]byte, 0, len(line)+2)
+			rewritten = append(rewritten, line[:len(line)-len(trimmed)]...)
+			rewritten = append(rewritten, "> "...)
+			rewritten = append(rewritten, trimmed...)
+			out = append(out, rewritten)
+			continue
 		}
-		out = append(out, s)
+		out = append(out, line)
 	}
-	return []byte(strings.Join(out, "\n"))
+	return bytes.Join(out, []byte("\n"))
 }
 
 var (
