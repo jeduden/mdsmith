@@ -328,10 +328,13 @@ func collectParagraphs(f *lint.File) []paragraph {
 		if astutil.IsTable(p, f) {
 			return ast.WalkContinue, nil
 		}
-		text := mdtext.ExtractPlainText(p, f.Source)
+		// Only the word count is needed here, never the text itself, so
+		// count straight off the AST instead of materializing and
+		// discarding an ExtractPlainText string per paragraph (docs/
+		// development/high-performance-go.md "skip work you don't need").
 		out = append(out, paragraph{
 			line:  astutil.ParagraphLine(p, f),
-			words: mdtext.CountWords(text),
+			words: mdtext.CountWordsInNode(p, f.Source),
 		})
 		return ast.WalkContinue, nil
 	})
