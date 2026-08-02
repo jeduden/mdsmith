@@ -89,11 +89,15 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 // blocks against dozens of other spans. A first counting pass over
 // the same slice (a cheap switch, no allocation) gets an exact upper
 // bound instead, so a code-block-free file allocates nothing at all.
+// The counting pass indexes (`spans[i].Kind`) rather than
+// range-copying each BlockSpan value: BlockSpan is a 32-byte struct,
+// and range-by-value materializes a full copy on the stack every
+// iteration just to read one field.
 func collectBlocksL0(f *lint.File) []blockInfo {
 	spans := lint.Layer0(f).BlockSpans
 	n := 0
-	for _, span := range spans {
-		switch span.Kind {
+	for i := range spans {
+		switch spans[i].Kind {
 		case lint.BlockFencedCode, lint.BlockIndentedCode:
 			n++
 		}
