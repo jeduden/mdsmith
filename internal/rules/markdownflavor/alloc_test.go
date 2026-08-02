@@ -41,12 +41,12 @@ func TestFixGitHubAlerts_LowAllocs(t *testing.T) {
 	})
 	// Measured on this addPrefix-heavy 50-alert fixture: 176 allocs on
 	// the pre-fix code (one string(line) copy per source line plus an
-	// unsized, growing []string), 120 after (the remaining allocs are
-	// buildAlertSkipMaps's own map/AST-walk bookkeeping plus one
-	// presized rewritten-line buffer per addPrefix line — the blank
-	// and skip lines that pass through unchanged no longer pay a
-	// string(line) copy). Budget with headroom over the measured
-	// post-fix count.
-	assert.LessOrEqualf(t, allocs, 150.0,
-		"fixGitHubAlerts allocs regressed: got %v, want <= 150", allocs)
+	// unsized, growing []string), 70 after — fixGitHubAlerts' own
+	// rewrite loop (one presized rewritten-line buffer per addPrefix
+	// line, no string(line) copy for the blank/skip lines that pass
+	// through unchanged) plus buildAlertSkipMaps' walk, which also
+	// stays in []byte for its continuation-line scan. Budget with
+	// headroom over the measured post-fix count.
+	assert.LessOrEqualf(t, allocs, 90.0,
+		"fixGitHubAlerts allocs regressed: got %v, want <= 90", allocs)
 }

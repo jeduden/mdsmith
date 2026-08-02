@@ -13,7 +13,6 @@ import (
 	"bytes"
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 
@@ -270,8 +269,12 @@ func buildAlertSkipMaps(f *lint.File) (skip, addPrefix map[int]struct{}) {
 		for i := 1; i < lines.Len(); i++ {
 			contSeg := lines.At(i)
 			contLine, _ := flavor.LineCol(f.Source, contSeg.Start)
-			raw := strings.TrimLeft(string(f.Lines[contLine-1]), " \t")
-			if !strings.HasPrefix(raw, ">") {
+			// Stay in []byte: a string(line) copy here allocates on
+			// every continuation line scanned, in the walk this
+			// function already pays for once per file (docs/
+			// development/high-performance-go.md "Stay in []byte").
+			raw := bytes.TrimLeft(f.Lines[contLine-1], " \t")
+			if !bytes.HasPrefix(raw, []byte(">")) {
 				addPrefix[contLine] = struct{}{}
 			}
 		}

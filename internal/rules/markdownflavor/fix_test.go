@@ -151,8 +151,12 @@ func TestFixGitHubAlerts_LazyContinuation(t *testing.T) {
 
 // TestFixGitHubAlerts_IndentedLazyContinuation covers the leading-
 // whitespace branch of the addPrefix rewrite (rule.go's
-// line[:len(line)-len(trimmed)] slice): the continuation line's
-// existing indent must be preserved ahead of the re-added "> ".
+// line[:len(line)-len(trimmed)] slice) for an indent within
+// CommonMark's 0-3-space lazy-continuation range, where the line
+// stays part of the blockquote paragraph and its existing indent must
+// be preserved ahead of the re-added "> ". A continuation indented 4
+// or more spaces is CommonMark indented code and is a pre-existing,
+// separate limitation this rewrite does not change or fix.
 func TestFixGitHubAlerts_IndentedLazyContinuation(t *testing.T) {
 	src := "> [!NOTE]\n   indented lazy continuation body.\n"
 	got := fixWith(t, "commonmark", src)

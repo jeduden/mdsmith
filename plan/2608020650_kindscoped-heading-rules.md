@@ -28,9 +28,9 @@ rules that run on every file with headings.
 
 This plan grew out of a [High-Performance Go][hpg]
 audit of origin/main. Three subagents scanned in
-parallel, one per category: allocations, strings and
-bytes, struct layout, skipped work, and concurrency.
-This double-walk was their top hit.
+parallel across five categories: allocations, strings
+and bytes, struct layout, skipped work, and
+concurrency. This double-walk was their top hit.
 
 ## Background
 
