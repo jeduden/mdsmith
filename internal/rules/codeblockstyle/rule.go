@@ -83,8 +83,9 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 // counted in the consistency check. Files with only blockquote-nested
 // code blocks may silently pass or fail incorrectly on the L0 path.
 func collectBlocksL0(f *lint.File) []blockInfo {
-	var blocks []blockInfo
-	for _, span := range lint.Layer0(f).BlockSpans {
+	spans := lint.Layer0(f).BlockSpans
+	blocks := make([]blockInfo, 0, len(spans))
+	for _, span := range spans {
 		switch span.Kind {
 		case lint.BlockFencedCode:
 			if skipBlock(f, span.Start) {
