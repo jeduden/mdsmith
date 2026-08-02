@@ -208,6 +208,28 @@ func TestCloneSettingsNil(t *testing.T) {
 	assert.Nil(t, cloneSettings(nil))
 }
 
+// TestIsAnySliceType_AgreesWithToAnySlice pins that isAnySliceType's
+// type switch stays in sync with toAnySlice's. isAnySliceType exists
+// so mergeAny can test "is earlier slice-shaped" without paying for
+// toAnySlice's clone on the common Replace path; if a future slice
+// type (e.g. []float64) were added to toAnySlice/cloneAny without a
+// matching case here, mergeAny would silently fall through to
+// cloneAny(later) instead of merging -- a config-merge behavior
+// change with no other test to catch it. Round 3 of an xhigh-severity
+// review pass on PR #785 flagged the missing coverage.
+func TestIsAnySliceType_AgreesWithToAnySlice(t *testing.T) {
+	cases := []any{
+		[]any{"a"}, []any(nil),
+		[]string{"a"}, []string(nil),
+		[]int{1}, []int(nil),
+		"not a slice", 42, nil, map[string]any{},
+	}
+	for _, c := range cases {
+		_, wantOK := toAnySlice(c)
+		assert.Equal(t, wantOK, isAnySliceType(c), "case %#v", c)
+	}
+}
+
 func TestToAnySlice_IntSlice(t *testing.T) {
 	// Exercise the []int case in toAnySlice via mergeAny.
 	earlier := RuleCfg{
