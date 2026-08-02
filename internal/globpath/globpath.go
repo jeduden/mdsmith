@@ -99,21 +99,6 @@ func Match(pattern, path string) bool {
 	return false
 }
 
-// MatchRaw reports whether path matches pattern using doublestar's
-// raw-path semantics only — no cleaned-path or basename fallback
-// (unlike Match). It exists for surfaces documented to use
-// doublestar.Match directly, such as the top-level `files:` discovery
-// key (docs/reference/globs.md), that still want the pattern's
-// validation verdict memoized: doublestar.Match re-validates its
-// pattern on every call, and this runs once per pattern per file
-// during workspace discovery.
-func MatchRaw(pattern, path string) bool {
-	if !patternValid(pattern) {
-		return false
-	}
-	return doublestar.MatchUnvalidated(pattern, path)
-}
-
 // MatchAny reports whether path matches any of the given patterns.
 // A pattern prefixed with "!" is an exclusion pattern. The path matches
 // when at least one non-negated pattern matches and no exclusion pattern
