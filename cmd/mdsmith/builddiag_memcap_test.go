@@ -20,6 +20,9 @@ import (
 // streamed content hash serves that without an alloc proportional to
 // the output's size.
 func TestSnapshotOutputs_LargeFile_BoundedMemory(t *testing.T) {
+	if testing.Short() {
+		t.Skip("large-file memory gate skipped in -short mode")
+	}
 	const size = 8 * 1024 * 1024 // 8 MiB
 	root := t.TempDir()
 	big := make([]byte, size)

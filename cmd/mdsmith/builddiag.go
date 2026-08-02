@@ -255,7 +255,10 @@ func hashOutputFile(abs string) outputHash {
 	}
 	var oh outputHash
 	oh.ok = true
-	copy(oh.hash[:], h.Sum(nil))
+	// Sum appends to its argument; passing the fixed array's own
+	// zero-length slice fills it in place instead of allocating a new
+	// 32-byte slice to then copy from.
+	h.Sum(oh.hash[:0])
 	return oh
 }
 

@@ -274,7 +274,7 @@ func buildAlertSkipMaps(f *lint.File) (skip, addPrefix map[int]struct{}) {
 			// function already pays for once per file (docs/
 			// development/high-performance-go.md "Stay in []byte").
 			raw := bytes.TrimLeft(f.Lines[contLine-1], " \t")
-			if !bytes.HasPrefix(raw, []byte(">")) {
+			if len(raw) == 0 || raw[0] != '>' {
 				addPrefix[contLine] = struct{}{}
 			}
 		}
