@@ -256,13 +256,23 @@ func SectionBody(paragraphs []SectionParagraph, source []byte, start, end int) s
 // their descendants' paragraphs). See
 // docs/development/high-performance-go.md "Skip work you don't need".
 //
-// Precondition: paragraphs must already be in ascending Line order —
-// the guarantee [CollectSectionParagraphs] documents. Unlike
-// SectionBody, which tolerates an unordered slice (it scans every
-// entry unconditionally), the forward-only cursor here breaks out of
-// each heading's collection as soon as it sees a Line past that
-// heading's end, so an out-of-order paragraph after that point would
-// be silently skipped.
+// Trade-off: unlike the per-heading loop it replaces, every returned
+// body string stays live for the whole call instead of becoming
+// garbage as soon as its heading is processed. On a deeply nested
+// document this raises peak live memory roughly to
+// heading-depth × prose-size rather than max-section-size; total
+// allocation volume is unchanged. Both current callers (MDS057,
+// MDS058) are opt-in rules.
+//
+// Precondition: both headings and paragraphs must already be in
+// ascending Line order — [CollectSectionHeadings] sorts its result
+// explicitly, and [CollectSectionParagraphs] documents the same
+// guarantee. Unlike SectionBody, which tolerates an unordered slice
+// (it scans every entry unconditionally), the forward-only cursor
+// here relies on both orderings: an out-of-order heading would leave
+// `lo` already advanced past paragraphs a later heading needs, and
+// an out-of-order paragraph past a heading's end would be silently
+// skipped. Either produces a silently truncated body, not a panic.
 func SectionBodies(headings []SectionHeading, paragraphs []SectionParagraph, source []byte, totalLines int) []string {
 	if len(headings) == 0 {
 		return nil
