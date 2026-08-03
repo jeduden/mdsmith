@@ -57,6 +57,17 @@ func NewSourceConfigCache() *SourceConfigCache {
 // LoadOrStore, mirroring runResolve.configured's per-worker cache;
 // every caller — cache hit or miss — still gets its own cloneRules
 // copy of that template, never the template itself.
+//
+// rules and effective are consulted only on a cache miss — the first
+// caller under a given key determines the template every later caller
+// with that key reuses, unconditionally. That is safe for the same
+// reason runResolve.configured's per-worker cache is: a caller with a
+// stable rule set (one Session's Runner.Rules, fixed for the Session's
+// lifetime — see Runner.SourceConfigCache) plus
+// config.EffectiveSignature's own guarantee — equal signatures imply
+// equal effective content — means any caller sharing key would have
+// built an equivalent template anyway. Do not share one
+// SourceConfigCache across Runners with different rule sets.
 func (c *SourceConfigCache) configured(
 	key string, rules []rule.Rule, effective map[string]config.RuleCfg,
 ) ([]rule.Rule, []error) {
