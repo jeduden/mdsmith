@@ -796,14 +796,17 @@ func (r *Runner) runSourceCheckRules(
 }
 
 // checkRulesForSource configures mdRules against effective and runs them
-// against f. When r.SourceConfigCache is installed, the configured
-// (cloned + settings-applied) rule list is memoized by the effective-
-// config signature (config.EffectiveSignature) so a caller that re-lints
-// the same document under an unchanged config — the LSP's per-keystroke
-// RunSourceWithVersion — reuses the prior clone instead of paying
-// checker.ConfigureEnabledRules' reflect-based rule.CloneRule again. nil
-// (the default) falls straight through to CheckRulesWithIntraFile,
-// preserving the exact pre-existing behavior for every other caller.
+// against f. When r.SourceConfigCache is installed, the settings-
+// application work (rule.CloneRule's reflect.New plus two ApplySettings
+// passes) is memoized by the effective-config signature
+// (config.EffectiveSignature) so a caller that re-lints the same
+// document under an unchanged config — the LSP's per-keystroke
+// RunSourceWithVersion — skips paying it again; SourceConfigCache still
+// hands back a private per-call clone of every rule, so this stays safe
+// even when two documents that share an effective config are checked
+// concurrently (see SourceConfigCache's doc comment). nil (the default)
+// falls straight through to CheckRulesWithIntraFile, preserving the
+// exact pre-existing behavior for every other caller.
 func (r *Runner) checkRulesForSource(
 	f *lint.File, mdRules []rule.Rule, effective map[string]config.RuleCfg,
 	path string, fmKinds []string, fmFields map[string]any, intraFileCap int,

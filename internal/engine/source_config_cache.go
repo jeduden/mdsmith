@@ -8,17 +8,32 @@ import (
 	"github.com/jeduden/mdsmith/internal/rule"
 )
 
-// SourceConfigCache memoizes checker.ConfigureEnabledRules' result for
-// RunSource / RunSourceWithVersion, keyed by config.EffectiveSignature.
+// SourceConfigCache memoizes the expensive half of
+// checker.ConfigureEnabledRules — the reflect.New plus two
+// ApplySettings passes rule.CloneRule spends per Configurable rule
+// with settings — for RunSource / RunSourceWithVersion, keyed by
+// config.EffectiveSignature.
 //
 // runFiles already avoids repeat rule configuration: its per-worker
 // runResolve.confCache spares a corpus-wide `mdsmith check` from
-// re-cloning a Configurable rule (rule.CloneRule — a reflect.New plus
-// ApplySettings) once per file, because one worker walks many files
-// sequentially under runFiles' loop. RunSource has no such loop — the
-// LSP calls it once per debounced edit — so nothing amortizes the
-// reflect cost across calls; every keystroke's re-lint paid it fresh
-// for every Configurable rule with settings.
+// re-cloning a Configurable rule once per file, because one worker
+// walks many files sequentially under runFiles' loop. RunSource has no
+// such loop — the LSP calls it once per debounced edit — so nothing
+// amortized the reflect cost across calls; every keystroke's re-lint
+// paid it fresh for every Configurable rule with settings.
+//
+// A cached entry is a template, never handed out directly: configured
+// clones it per call via cloneRules (rule.CloneInstance — a plain
+// reflect.New plus a shallow field copy, no ApplySettings) before
+// returning, so no two callers ever share a *Rule pointer. That
+// matches the isolation runFiles' own cloneRules already gives every
+// CLI worker, and is why this is safe even though RunSourceWithVersion
+// can be called concurrently for different documents that resolve to
+// the same effective config (the LSP session doc explicitly promises
+// concurrent-safe calls) — a rule with per-Check mutable state (e.g.
+// internal/rules/include's visited/chain) never observes two Check
+// calls racing on the same instance. Only the settings-application
+// work is shared; the instances handed to Check are not.
 //
 // A long-lived caller installs one SourceConfigCache and reuses it
 // across calls (the Session wires it the same way it wires RunCache
@@ -35,19 +50,21 @@ func NewSourceConfigCache() *SourceConfigCache {
 	return &SourceConfigCache{}
 }
 
-// configured returns the configured enabled rule list for the effective
-// config identified by key, configuring and memoizing it on first use.
-// Concurrent misses on the same key converge on one shared clone via
-// LoadOrStore, mirroring runResolve.configured's per-worker cache.
+// configured returns a private, per-call clone of the configured
+// enabled rule list for the effective config identified by key,
+// configuring and memoizing the template on first use. Concurrent
+// misses on the same key converge on one shared template via
+// LoadOrStore, mirroring runResolve.configured's per-worker cache;
+// every caller — cache hit or miss — still gets its own cloneRules
+// copy of that template, never the template itself.
 func (c *SourceConfigCache) configured(
 	key string, rules []rule.Rule, effective map[string]config.RuleCfg,
 ) ([]rule.Rule, []error) {
-	if v, ok := c.m.Load(key); ok {
-		cr := v.(configuredRules)
-		return cr.rules, cr.errs
+	v, ok := c.m.Load(key)
+	if !ok {
+		configuredList, errs := checker.ConfigureEnabledRules(rules, effective)
+		v, _ = c.m.LoadOrStore(key, configuredRules{rules: configuredList, errs: errs})
 	}
-	configuredList, errs := checker.ConfigureEnabledRules(rules, effective)
-	actual, _ := c.m.LoadOrStore(key, configuredRules{rules: configuredList, errs: errs})
-	cr := actual.(configuredRules)
-	return cr.rules, cr.errs
+	cr := v.(configuredRules)
+	return cloneRules(cr.rules), cr.errs
 }
