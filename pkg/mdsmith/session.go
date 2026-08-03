@@ -144,6 +144,15 @@ type Session struct {
 	// parseHits counts version-keyed parse-cache hits CheckVersion
 	// observed. Test seam (parseCacheHits); not part of the public API.
 	parseHits int
+	// sourceConfigCache memoizes the configured (cloned + settings-
+	// applied) enabled rule list RunSource / RunSourceWithVersion needs,
+	// keyed by the effective-config signature. Without it, every
+	// CheckVersion call — the LSP's per-keystroke entry point — paid
+	// checker.ConfigureEnabledRules' reflect-based rule.CloneRule again
+	// for every Configurable rule with settings, even though the
+	// session's config never changes between edits. Created once in
+	// NewSession, mirroring runCache and parseCache.
+	sourceConfigCache *engine.SourceConfigCache
 }
 
 // cachedCheck is one memoized Check result: the content hash it was
@@ -182,15 +191,16 @@ func NewSession(opts SessionOptions) (*Session, error) {
 		cfg = config.Merge(config.Defaults(), loaded)
 	}
 	return &Session{
-		ws:         opts.Workspace,
-		cfg:        cfg,
-		cfgPath:    src.configPath(),
-		rules:      rule.All(),
-		rootDir:    rootDirOf(opts.Workspace),
-		maxBytes:   resolveSessionMaxBytes(cfg),
-		checkCache: make(map[string]cachedCheck),
-		runCache:   lint.NewRunCache(),
-		parseCache: lint.NewParseCache(),
+		ws:                opts.Workspace,
+		cfg:               cfg,
+		cfgPath:           src.configPath(),
+		rules:             rule.All(),
+		rootDir:           rootDirOf(opts.Workspace),
+		maxBytes:          resolveSessionMaxBytes(cfg),
+		checkCache:        make(map[string]cachedCheck),
+		runCache:          lint.NewRunCache(),
+		parseCache:        lint.NewParseCache(),
+		sourceConfigCache: engine.NewSourceConfigCache(),
 	}, nil
 }
 
@@ -246,6 +256,9 @@ func (s *Session) newRunner() *engine.Runner {
 		// Shared cross-file read cache: a catalog/include target read by
 		// one operation is reused by the next until Invalidate drops it.
 		RunCache: s.runCache,
+		// Shared configured-rule cache: see sourceConfigCache's doc
+		// comment on the Session struct.
+		SourceConfigCache: s.sourceConfigCache,
 	}
 }
 
