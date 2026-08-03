@@ -14,8 +14,8 @@ import (
 // with the same incremental accumulation the AST path uses without
 // re-parsing.
 type EmphasisParagraph struct {
-	Line         int
 	TextSegments []string
+	Line         int
 }
 
 // WholeParagraphEmphasis returns every paragraph whose sole inline child is
