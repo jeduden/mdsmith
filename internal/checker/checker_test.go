@@ -31,6 +31,16 @@ func (r *diagRule) Check(_ *lint.File) []lint.Diagnostic {
 	return []lint.Diagnostic{r.diag}
 }
 
+// multiDiagRule returns a fixed batch of diagnostics per Check call, so a
+// test can build many rule slots that each contribute several diagnostics
+// without needing real rule logic.
+type multiDiagRule struct {
+	plainRule
+	diags []lint.Diagnostic
+}
+
+func (r *multiDiagRule) Check(_ *lint.File) []lint.Diagnostic { return r.diags }
+
 type nodeCheckerRule struct {
 	plainRule
 	diag lint.Diagnostic
@@ -230,6 +240,56 @@ func TestCheckRulesWithIntraFile_serial(t *testing.T) {
 	assert.Empty(t, errs)
 	require.Len(t, diags, 1)
 	assert.Equal(t, "TST001", diags[0].RuleID)
+}
+
+// TestCheckConfiguredRules_MergeAllocBudget pins the allocation cost of
+// merging many rule slots' diagnostics into the final slice.
+// CheckConfiguredRules previously grew that slice with a bare `append`
+// (no pre-sizing), unlike the analogous cross-file merge in
+// internal/engine/runner.go (runFiles), which explicitly pre-sizes to
+// avoid the geometric-growth reallocations append triggers when the
+// final size is knowable up front
+// (docs/development/high-performance-go.md "Pre-size slices"). With
+// many rule slots each contributing several diagnostics — representative
+// of a real workspace file with many enabled rules — the unsized append
+// regrows and copies the accumulator slice repeatedly.
+func TestCheckConfiguredRules_MergeAllocBudget(t *testing.T) {
+	if testing.Short() {
+		t.Skip("alloc gate skipped in -short mode")
+	}
+	const numRules = 40
+	const diagsPerRule = 5
+	rules := make([]rule.Rule, 0, numRules)
+	ids := make([]string, 0, numRules)
+	for i := 0; i < numRules; i++ {
+		id := "TST" + string(rune('A'+i%26)) + string(rune('0'+i/26))
+		diags := make([]lint.Diagnostic, diagsPerRule)
+		for j := range diags {
+			diags[j] = lint.Diagnostic{Line: j + 1, RuleID: id, Message: "hit"}
+		}
+		rules = append(rules, &multiDiagRule{plainRule: plainRule{id: id}, diags: diags})
+		ids = append(ids, id)
+	}
+	eff := enabled(ids...)
+	f := newTestFile(t, "# Hello\n\nParagraph.\n")
+
+	// Warm up once so the measured loop reflects steady state.
+	diags, errs := checker.CheckRulesWithIntraFile(f, rules, eff, true, 1)
+	require.Empty(t, errs)
+	require.Len(t, diags, numRules*diagsPerRule)
+
+	const runs = 50
+	allocs := testing.AllocsPerRun(runs, func() {
+		_, _ = checker.CheckRulesWithIntraFile(f, rules, eff, true, 1)
+	})
+	const budget = 6
+	t.Logf("CheckRulesWithIntraFile allocs/op with %d rules x %d diags = %.0f (budget = %d)",
+		numRules, diagsPerRule, allocs, budget)
+	require.LessOrEqualf(t, allocs, float64(budget),
+		"CheckRulesWithIntraFile allocs/op = %.0f, budget = %d; the final "+
+			"diagnostic merge should pre-size like internal/engine/runner.go "+
+			"does (see docs/development/high-performance-go.md)",
+		allocs, budget)
 }
 
 func TestCheckRulesWithIntraFile_concurrent(t *testing.T) {
