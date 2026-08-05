@@ -35,6 +35,10 @@ func TestResolveEffectiveKindsAllocBudget(t *testing.T) {
 	if testing.Short() {
 		t.Skip("alloc gate skipped in -short mode")
 	}
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race; the race detector " +
+			"adds allocation bookkeeping that perturbs the count")
+	}
 	const numEntries = 30
 	cfg := &Config{KindAssignment: manyKindAssignmentEntries(numEntries)}
 

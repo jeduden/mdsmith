@@ -27,6 +27,10 @@ func TestNormalizeBlankLinesAllocBudget(t *testing.T) {
 	if testing.Short() {
 		t.Skip("alloc gate skipped in -short mode")
 	}
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race; the race detector " +
+			"adds allocation bookkeeping that perturbs the count")
+	}
 	src := normalizeBlankLinesFixture()
 	codeBlockLines := map[int]struct{}{}
 

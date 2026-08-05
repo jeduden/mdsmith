@@ -55,6 +55,16 @@ func installIncludeExtractProjector(cfgPath string) {
 	// that work once per entry, on every check/fix/export pass
 	// (docs/development/high-performance-go.md "Memoize per-input
 	// computations").
+	//
+	// sync.OnceValues caches a load error the same way it caches a
+	// success: a failing config.Load surfaces the same error to every
+	// directive resolved under this generation instead of retrying
+	// per directive. That is the desired behavior for the expected
+	// failure mode (a malformed .mdsmith.yml, which cannot become
+	// valid mid-run) and matches every other one-shot config-derived
+	// cache in this codebase; it only degrades gracefully for the
+	// pathological case of a transient disk-read error, which the
+	// next config reload clears.
 	loadCfg := sync.OnceValues(func() (*config.Config, error) {
 		return config.Load(cfgPath)
 	})

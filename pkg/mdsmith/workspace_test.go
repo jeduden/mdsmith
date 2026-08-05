@@ -319,6 +319,35 @@ func TestMemFSDirEntriesIgnoresEmptySegment(t *testing.T) {
 	}
 }
 
+// TestMemFSDirEntriesIgnoresTrailingSlashKey verifies that a key
+// ending in "/" (no filename after the last segment, again bypassing
+// NewMemWorkspace's path.Clean) does not produce an empty-name file
+// entry. buildDirIndex's file branch (`i < 0`) passes the remainder
+// after the last "/" straight to addDirEntry as the file name; for a
+// trailing-slash key that remainder is "", so addDirEntry's `name ==
+// ""` guard must reject it the same way dirEntries' `name != ""`
+// guard rejected the analogous empty-segment case before this
+// package indexed the whole tree up front.
+func TestMemFSDirEntriesIgnoresTrailingSlashKey(t *testing.T) {
+	m := newMemFS(map[string][]byte{
+		"docs/":     []byte("x"),
+		"docs/a.md": []byte("y"),
+	})
+	ents := m.dirEntries("docs")
+	for _, e := range ents {
+		if e.Name() == "" {
+			t.Fatalf("dirEntries emitted an entry with empty name: %#v", e)
+		}
+	}
+	if len(ents) != 1 || ents[0].Name() != "a.md" {
+		names := make([]string, len(ents))
+		for i, e := range ents {
+			names[i] = e.Name()
+		}
+		t.Fatalf("dirEntries(\"docs\") with trailing-slash key = %v, want [a.md]", names)
+	}
+}
+
 // TestMemFSWalkDirAllocBudget pins the allocation cost of a full
 // fs.WalkDir traversal over a nested MemWorkspace FS view.
 // memFS.dirEntries rescanned every entry in the workspace on every
@@ -331,6 +360,10 @@ func TestMemFSDirEntriesIgnoresEmptySegment(t *testing.T) {
 func TestMemFSWalkDirAllocBudget(t *testing.T) {
 	if testing.Short() {
 		t.Skip("alloc gate skipped in -short mode")
+	}
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race; the race detector " +
+			"adds allocation bookkeeping that perturbs the count")
 	}
 	const dirs = 50
 	const filesPerDir = 5

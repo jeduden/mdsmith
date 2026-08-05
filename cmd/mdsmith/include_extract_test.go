@@ -97,6 +97,10 @@ func TestInstallIncludeExtractProjector_CachesConfigAcrossDirectives(t *testing.
 	if testing.Short() {
 		t.Skip("alloc gate skipped in -short mode")
 	}
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race; the race detector " +
+			"adds allocation bookkeeping that perturbs the count")
+	}
 	dir := chdirToConfig(t, includeExtractTestCfg)
 	cfgPath := filepath.Join(dir, ".mdsmith.yml")
 	writeFixture(t, dir, "docs/brand/messaging.md", messagingFixtureForInclude)

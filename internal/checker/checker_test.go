@@ -257,6 +257,10 @@ func TestCheckConfiguredRules_MergeAllocBudget(t *testing.T) {
 	if testing.Short() {
 		t.Skip("alloc gate skipped in -short mode")
 	}
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race; the race detector " +
+			"adds allocation bookkeeping that perturbs the count")
+	}
 	const numRules = 40
 	const diagsPerRule = 5
 	rules := make([]rule.Rule, 0, numRules)
