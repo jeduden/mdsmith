@@ -81,6 +81,64 @@ func TestInstallIncludeExtractProjector_NonEmptyPathInstallsClosure(t *testing.T
 		"installed projector did not run with captured cfgPath")
 }
 
+// TestInstallIncludeExtractProjector_CachesConfigAcrossDirectives pins
+// the allocation cost of resolving repeated `<?include extract:?>`
+// directives under one installed projector generation.
+// projectIncludeExtract called config.Load(cfgPath) fresh on every
+// directive resolution -- re-reading .mdsmith.yml from disk and
+// re-running its full YAML-parse + kind/convention/wordlist merge --
+// even though cfgPath (and therefore the loaded Config) is fixed for
+// the lifetime of one installIncludeExtractProjector closure. A
+// workspace catalog with many include-extract entries re-does that
+// work once per entry, on every check/fix/export pass
+// (docs/development/high-performance-go.md "Memoize per-input
+// computations").
+func TestInstallIncludeExtractProjector_CachesConfigAcrossDirectives(t *testing.T) {
+	if testing.Short() {
+		t.Skip("alloc gate skipped in -short mode")
+	}
+	dir := chdirToConfig(t, includeExtractTestCfg)
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
+	writeFixture(t, dir, "docs/brand/messaging.md", messagingFixtureForInclude)
+	t.Cleanup(func() { include.SetExtractProjector(nil) })
+
+	installIncludeExtractProjector(cfgPath)
+
+	src := "# Doc\n\n<?include\nfile: docs/brand/messaging.md\n" +
+		"extract: tagline.text\n?>\nold\n<?/include?>\n"
+	r := &include.Rule{}
+	newHostDoc := func(tb testing.TB) *lint.File {
+		tb.Helper()
+		hostDoc, err := lint.NewFileFromSource("README.md", []byte(src), false)
+		require.NoError(tb, err)
+		hostDoc.FS = dirFSForInclude(dir)
+		hostDoc.RootDir = dir
+		return hostDoc
+	}
+
+	// Warm-up call so the measured loop reflects steady state under one
+	// installed projector generation. Each measured iteration uses a
+	// fresh *lint.File, matching how the engine hands every workspace
+	// file its own File — the reused-File case hits an unrelated
+	// generated-section no-op path that never re-invokes the projector.
+	out := r.Fix(newHostDoc(t))
+	require.Contains(t, string(out), "Tagline text.")
+
+	const runs = 30
+	allocs := testing.AllocsPerRun(runs, func() {
+		_ = r.Fix(newHostDoc(t))
+	})
+	const budget = 800
+	t.Logf("include-extract Fix allocs/op under one installed projector = %.0f (budget = %d)",
+		allocs, budget)
+	require.LessOrEqualf(t, allocs, float64(budget),
+		"include-extract Fix allocs/op = %.0f, budget = %d; "+
+			"projectIncludeExtract should not re-run config.Load(cfgPath) "+
+			"once the config has already been loaded for this projector "+
+			"generation (see docs/development/high-performance-go.md)",
+		allocs, budget)
+}
+
 // =====================================================================
 // decodeTargetFrontMatter: byte-only frontmatter parse
 // =====================================================================

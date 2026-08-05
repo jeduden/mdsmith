@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io/fs"
+	"sync"
 
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/extract"
@@ -44,23 +45,49 @@ func installIncludeExtractProjector(cfgPath string) {
 		include.SetExtractProjector(nil)
 		return
 	}
+	// Memoized once per installed-projector generation: cfgPath is
+	// fixed for the life of this closure, and a config reload calls
+	// installIncludeExtractProjector again with a fresh closure (see
+	// the cfgPath-capture note above), which naturally invalidates
+	// this cache. Without it, every <?include extract:?> directive
+	// resolved under one generation re-read and re-parsed .mdsmith.yml
+	// from disk — a workspace catalog with many extract entries redid
+	// that work once per entry, on every check/fix/export pass
+	// (docs/development/high-performance-go.md "Memoize per-input
+	// computations").
+	loadCfg := sync.OnceValues(func() (*config.Config, error) {
+		return config.Load(cfgPath)
+	})
 	include.SetExtractProjector(func(
 		host *lint.File, readFS fs.FS, targetFile string, data []byte,
 	) (any, error) {
-		return projectIncludeExtract(
-			cfgPath, host, readFS, targetFile, data)
+		return projectIncludeExtractWithConfig(
+			loadCfg, host, readFS, targetFile, data)
 	})
 }
 
 // projectIncludeExtract runs the full schema-compose + extract
-// projection on targetFile. Split from the closure above so the
-// pipeline is testable as a plain function without resetting the
-// rule's package-level projector.
+// projection on targetFile, loading cfgPath fresh on every call. Split
+// from the closure above so the pipeline is testable as a plain
+// function without resetting the rule's package-level projector.
 func projectIncludeExtract(
 	cfgPath string,
 	host *lint.File, readFS fs.FS, targetFile string, data []byte,
 ) (any, error) {
-	cfg, err := config.Load(cfgPath)
+	return projectIncludeExtractWithConfig(
+		func() (*config.Config, error) { return config.Load(cfgPath) },
+		host, readFS, targetFile, data)
+}
+
+// projectIncludeExtractWithConfig is projectIncludeExtract with the
+// config-loading step factored out behind loadCfg, so
+// installIncludeExtractProjector can pass a memoized loader shared
+// across every directive resolved under one projector generation.
+func projectIncludeExtractWithConfig(
+	loadCfg func() (*config.Config, error),
+	host *lint.File, readFS fs.FS, targetFile string, data []byte,
+) (any, error) {
+	cfg, err := loadCfg()
 	if err != nil {
 		return nil, fmt.Errorf("loading config: %w", err)
 	}
