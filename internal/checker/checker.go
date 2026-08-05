@@ -143,7 +143,16 @@ func CheckConfiguredRules(
 		runBlockCheckers(f, blockCheckers)
 	}
 
-	var diags []lint.Diagnostic
+	// Pre-size the merged slice: with many enabled rules on a
+	// diagnostic-heavy file, an unsized append regrows and re-copies
+	// the accumulator slice repeatedly (docs/development/high-performance-go.md
+	// "Pre-size slices"), the same fix runner.go's cross-file merge
+	// already applies.
+	total := 0
+	for _, s := range slots {
+		total += len(s.diags)
+	}
+	diags := make([]lint.Diagnostic, 0, total)
 	for _, s := range slots {
 		diags = append(diags, s.diags...)
 	}
