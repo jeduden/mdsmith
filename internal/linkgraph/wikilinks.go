@@ -1,6 +1,7 @@
 package linkgraph
 
 import (
+	"bytes"
 	"io/fs"
 	"path"
 	"regexp"
@@ -51,6 +52,9 @@ var wikilinkRE = regexp.MustCompile(
 // tree, so a missing AST would otherwise panic.
 func ExtractWikiLinks(f *lint.File) []WikiLink {
 	if f == nil || len(f.Source) == 0 || f.AST == nil {
+		return nil
+	}
+	if !bytes.Contains(f.Source, []byte("[[")) {
 		return nil
 	}
 	codeLines := lint.CollectCodeBlockLines(f)
