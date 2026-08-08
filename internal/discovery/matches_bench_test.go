@@ -17,9 +17,16 @@ var matchesAnyBenchPatterns = []string{
 }
 
 // BenchmarkMatchesAny exercises walker.matchesAny on a path several
-// directories deep that matches none of the configured patterns —
-// benchstat-friendly (no assertion), consumed by
-// TestMatchesAny_NoRevalidationBudget below for the enforced gate.
+// directories deep that matches none of the configured patterns.
+// benchstat-friendly (no assertion): run before/after a change to
+// matchesAny with `go test -run=^$ -bench=BenchmarkMatchesAny
+// -count=10` and compare with benchstat, per
+// docs/development/high-performance-go.md's Process section. This
+// operates in the 150-450 ns/op range, too fine-grained for a hard
+// CI budget assertion — GitHub Actions' shared runners under
+// -covermode=atomic measured up to ~450 ns/op for the fast path
+// alone, more than doublestar.Match's own uninstrumented baseline,
+// so no fixed threshold reliably separates fast from slow there.
 func BenchmarkMatchesAny(b *testing.B) {
 	w := &walker{patterns: matchesAnyBenchPatterns}
 	rel := "cmd/mdsmith/internal/tooling/deeply/nested/file.go"
