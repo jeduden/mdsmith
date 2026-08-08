@@ -2,8 +2,9 @@ package flavor
 
 import (
 	"bytes"
+	"cmp"
 	"regexp"
-	"sort"
+	"slices"
 
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	extast "github.com/jeduden/mdsmith/pkg/goldmark/extension/ast"
@@ -67,6 +68,15 @@ var bareURLPattern = regexp.MustCompile(
 		"`" + `]*)?`,
 )
 
+// schemeSeparator is the cheap byte-needle every bareURLPattern match
+// must contain ("://"). Gating the regex behind
+// bytes.Contains(body, schemeSeparator) skips the regex engine
+// entirely for the overwhelming majority of Text nodes, which have
+// no URL at all — the same "gate expensive analyzers behind a cheap
+// pre-check" pattern docs/development/high-performance-go.md
+// documents for MDS024/MDS043.
+var schemeSeparator = []byte("://")
+
 // Detect runs every feature detector against doc and returns findings
 // in document-body order. accept is an optional predicate: when
 // non-nil, only features for which accept(feat) returns true are
@@ -100,10 +110,19 @@ func Detect(doc *markdown.Document, accept func(Feature) bool) []Finding {
 		out = append(out, detectGitHubAlerts(source, doc.AST)...)
 	}
 
-	sort.SliceStable(out, func(i, j int) bool {
-		return out[i].Start < out[j].Start
-	})
+	sortFindingsByStart(out)
 	return out
+}
+
+// sortFindingsByStart orders findings by byte offset in place.
+// slices.SortStableFunc sorts the concrete Finding values directly,
+// unlike sort.SliceStable, which drives reflect.Swapper under the
+// hood — see docs/development/high-performance-go.md's "reflect in
+// hot paths" anti-pattern.
+func sortFindingsByStart(findings []Finding) {
+	slices.SortStableFunc(findings, func(a, b Finding) int {
+		return cmp.Compare(a.Start, b.Start)
+	})
 }
 
 // dualFindings runs the dual parser via the package-shared pool,
@@ -538,6 +557,9 @@ func BareURLFindingsInTree(source []byte, root ast.Node, base int) []Finding {
 		}
 		seg := t.Segment
 		body := source[base+seg.Start : base+seg.Stop]
+		if !bytes.Contains(body, schemeSeparator) {
+			return ast.WalkContinue, nil
+		}
 		matches := bareURLPattern.FindAllIndex(body, -1)
 		for _, m := range matches {
 			start := base + seg.Start + m[0]
