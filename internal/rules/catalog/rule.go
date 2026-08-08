@@ -2,11 +2,13 @@ package catalog
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
 	"io/fs"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1068,6 +1070,15 @@ func parseSort(params map[string]string) (key string, descending, numeric bool) 
 	return sortVal, descending, numeric
 }
 
+// sortable pairs a fileEntry with its pre-computed lowercase sort and
+// tiebreaker keys, avoiding O(n log n) string allocations inside the
+// sort comparator.
+type sortable struct {
+	entry         fileEntry
+	sortKey       string // lowercase primary sort key (empty for numeric mode)
+	tiebreakerKey string // lowercase filename for stable tiebreaker
+}
+
 // sortEntries sorts file entries by the given key. When numeric is
 // true and every entry's value parses as an int, entries are ordered
 // by the integer value; any parse failure falls back to string
@@ -1076,13 +1087,6 @@ func parseSort(params map[string]string) (key string, descending, numeric bool) 
 func sortEntries(entries []fileEntry, key string, descending, numeric bool) {
 	useInts := numeric && allParseAsInt(entries, key)
 
-	// Pre-compute lowercase keys once per entry to avoid O(n log n)
-	// string allocations inside the comparator.
-	type sortable struct {
-		entry         fileEntry
-		sortKey       string // lowercase primary sort key (empty for numeric mode)
-		tiebreakerKey string // lowercase filename for stable tiebreaker
-	}
 	sortables := make([]sortable, len(entries))
 	for i, e := range entries {
 		var sk string
@@ -1096,36 +1100,36 @@ func sortEntries(entries []fileEntry, key string, descending, numeric bool) {
 		}
 	}
 
-	sort.SliceStable(sortables, func(i, j int) bool {
-		var cmp int
-		if useInts {
-			// Re-parse from the moved entry — SliceStable reorders the
-			// slice during sort, so sortables[i].entry is always current.
-			ni, _ := parseSortInt(sortables[i].entry, key)
-			nj, _ := parseSortInt(sortables[j].entry, key)
-			switch {
-			case ni < nj:
-				cmp = -1
-			case ni > nj:
-				cmp = 1
-			}
-		} else {
-			cmp = strings.Compare(sortables[i].sortKey, sortables[j].sortKey)
-		}
-		if cmp == 0 {
-			// Tiebreaker: path ascending, case-insensitive.
-			return sortables[i].tiebreakerKey < sortables[j].tiebreakerKey
-		}
-
-		if descending {
-			return cmp > 0
-		}
-		return cmp < 0
-	})
+	sortSortables(sortables, key, useInts, descending)
 
 	for i, s := range sortables {
 		entries[i] = s.entry
 	}
+}
+
+// sortSortables orders sortables in place. slices.SortStableFunc sorts
+// the concrete sortable values directly, unlike sort.SliceStable,
+// which drives reflect.Swapper under the hood — see
+// docs/development/high-performance-go.md's "reflect in hot paths"
+// anti-pattern.
+func sortSortables(sortables []sortable, key string, useInts, descending bool) {
+	slices.SortStableFunc(sortables, func(a, b sortable) int {
+		var c int
+		if useInts {
+			na, _ := parseSortInt(a.entry, key)
+			nb, _ := parseSortInt(b.entry, key)
+			c = cmp.Compare(na, nb)
+		} else {
+			c = strings.Compare(a.sortKey, b.sortKey)
+		}
+		if c == 0 {
+			// Tiebreaker: path ascending, case-insensitive.
+			c = strings.Compare(a.tiebreakerKey, b.tiebreakerKey)
+		} else if descending {
+			c = -c
+		}
+		return c
+	})
 }
 
 // allParseAsInt reports whether every entry's value for key parses
