@@ -163,11 +163,15 @@ func (w *walker) isGitignored(path string, info os.FileInfo) bool {
 	return w.git.IsIgnored(absPath, info.IsDir())
 }
 
-// matchesAny returns true if rel matches any of the configured patterns.
+// matchesAny returns true if rel matches any of the configured
+// patterns. Patterns are already known-valid (Discover filters them
+// through validatePatterns before the walk starts), so
+// MatchUnvalidated skips doublestar.Match's per-call pattern
+// revalidation — see internal/globpath's identical fix, which
+// measured the revalidation walk at ~4% of check CPU.
 func (w *walker) matchesAny(rel string) bool {
 	for _, p := range w.patterns {
-		matched, err := doublestar.Match(p, rel)
-		if err == nil && matched {
+		if doublestar.MatchUnvalidated(p, rel) {
 			return true
 		}
 	}
