@@ -61,7 +61,8 @@ func TestExtractWikiLinks_GateSkipsCodeBlockCollection(t *testing.T) {
 	})
 	t.Logf("ExtractWikiLinks (no marker, warm File) allocs/op = %.0f", allocs)
 	require.LessOrEqualf(t, allocs, float64(0),
-		"ExtractWikiLinks allocs/op = %.0f on a no-wikilink file, want 0 (gate should skip all collection work)", allocs)
+		"ExtractWikiLinks allocs/op = %.0f on a no-wikilink file, want 0 "+
+			"(gate should skip all collection work)", allocs)
 }
 
 func TestExtractWikiLinks_StillFindsRealWikilinks(t *testing.T) {
