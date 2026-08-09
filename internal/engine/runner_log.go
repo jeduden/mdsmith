@@ -9,22 +9,14 @@ import (
 	"github.com/jeduden/mdsmith/internal/rule"
 )
 
-// disabledLogger is the shared fallback log() returns when no Logger
-// is configured. lintFile calls log() once per file, so allocating a
-// fresh *vlog.Logger there would cost one alloc per workspace file for
-// a value nothing ever mutates; every disabled Logger is
-// behaviorally identical (Printf no-ops without touching W or mu), so
-// one shared instance is safe to hand out to every caller, including
-// concurrently from the parallel lint pipeline.
-var disabledLogger = &vlog.Logger{}
-
-// log returns the runner's logger. If no logger is set, it returns a
-// disabled logger so callers don't need nil checks.
+// log returns the runner's logger. If no logger is set, it returns
+// vlog.Disabled — a shared instance, not a fresh allocation, since
+// lintFile calls log() once per file (see vlog.Disabled's doc).
 func (r *Runner) log() *vlog.Logger {
 	if r.Logger != nil {
 		return r.Logger
 	}
-	return disabledLogger
+	return vlog.Disabled
 }
 
 // logRules logs each enabled rule in the effective config from the provided slice.

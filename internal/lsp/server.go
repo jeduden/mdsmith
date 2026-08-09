@@ -227,7 +227,7 @@ func New(opts Options) *Server {
 	}
 	logger := opts.Logger
 	if logger == nil {
-		logger = &vlog.Logger{}
+		logger = vlog.Disabled
 	}
 	s := &Server{
 		t:              newTransport(opts.Reader, opts.Writer),

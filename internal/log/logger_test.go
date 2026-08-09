@@ -9,6 +9,24 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// TestDisabled pins the invariant every caller of the shared Disabled
+// singleton (internal/engine.Runner.log, internal/fix.Fixer.log,
+// internal/lsp's default logger) relies on: it stays off and its
+// Printf is a safe no-op, including concurrently.
+func TestDisabled(t *testing.T) {
+	assert.False(t, Disabled.Enabled)
+
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			Disabled.Printf("should never write: %d", 1)
+		}()
+	}
+	wg.Wait()
+}
+
 func TestPrintf_Enabled(t *testing.T) {
 	var buf bytes.Buffer
 	l := &Logger{Enabled: true, W: &buf}

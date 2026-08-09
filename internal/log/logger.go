@@ -30,3 +30,14 @@ func (l *Logger) Printf(format string, args ...any) {
 	defer l.mu.Unlock()
 	_, _ = fmt.Fprintf(l.W, format+"\n", args...)
 }
+
+// Disabled is a shared, always-off Logger for callers that need a
+// non-nil fallback when no Logger is configured. Every disabled
+// Logger is behaviorally identical (Printf no-ops without touching W
+// or mu), so a caller that resolves a fallback on a per-item hot path
+// (once per file, once per request) should return this shared
+// instance instead of allocating a fresh &Logger{} each time — see
+// docs/development/high-performance-go.md, "the cheapest call is the
+// one you never make". Never mutate a Logger reachable through this
+// var; every caller expects it to stay disabled.
+var Disabled = &Logger{}
