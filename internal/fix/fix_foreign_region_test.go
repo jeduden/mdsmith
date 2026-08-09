@@ -116,7 +116,7 @@ func TestFix_ForeignRegionWholeFileRulesStillCount(t *testing.T) {
 }
 
 // TestFix_ForeignRegionMalformedDiagnostic proves a start marker with no
-// matching end produces an MDS073 diagnostic.
+// matching end produces an MDS074 diagnostic.
 func TestFix_ForeignRegionMalformedDiagnostic(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "AGENTS.md")
@@ -140,7 +140,7 @@ func TestFix_ForeignRegionMalformedDiagnostic(t *testing.T) {
 			assert.Equal(t, 3, d.Line)
 		}
 	}
-	assert.True(t, found, "expected a malformed foreign-region diagnostic (MDS073)")
+	assert.True(t, found, "expected a malformed foreign-region diagnostic (MDS074)")
 }
 
 var _ = lint.File{}

@@ -505,7 +505,7 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 // region spans that apply to path (a plain line scan, no AST needed) so
 // style rules skip diagnostics inside a marker pair another generator
 // owns, runs the configured rules, and appends the malformed-region
-// (MDS073) diagnostics for any unmatched or duplicated marker.
+// (MDS074) diagnostics for any unmatched or duplicated marker.
 func (r *Runner) checkWithForeignRegions(
 	f *lint.File, configured []rule.Rule, path string, intraFileCap int,
 ) []lint.Diagnostic {

@@ -3,7 +3,7 @@ id: 2608091910
 title: >-
   Resolve the MDS073 rule-ID collision between
   slidevstructure and foreignregion
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   internal/rules/slidevstructure and
@@ -96,21 +96,21 @@ highest claimed ID across `internal/rules/*/rule.go` is
 
 ## Acceptance Criteria
 
-- [ ] `internal/foreignregion` reports `MDS074`, not
+- [x] `internal/foreignregion` reports `MDS074`, not
       `MDS073`, for malformed marker pairs.
-- [ ] `internal/rules/slidevstructure` still reports
+- [x] `internal/rules/slidevstructure` still reports
       `MDS073`, unchanged.
-- [ ] `docs/reference/foreign-regions.md` reflects the new
+- [x] `docs/reference/foreign-regions.md` reflects the new
       ID with no stale `MDS073` references to the
       foreign-region feature.
-- [ ] A new contract test fails if any two registered rule
+- [x] A new contract test fails if any two registered rule
       IDs (including out-of-band IDs like
       `foreignregion.RuleID`) collide, and passes on the
       fixed code.
-- [ ] `go test ./...` is green.
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run`
+- [x] `go test ./...` is green.
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues.
-- [ ] `mdsmith check .` is green.
+- [x] `mdsmith check .` is green.
 
 [audit-log]: ../docs/development/architecture-audit.md
 [slidev]: ../internal/rules/slidevstructure/rule.go
