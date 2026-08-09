@@ -658,13 +658,21 @@ func (f *Fixer) applyFixPasses(
 	return current
 }
 
+// disabledLogger is the shared fallback log() returns when no Logger
+// is configured. The fixOnce loop calls log() once per file, so
+// allocating a fresh *vlog.Logger there would cost one alloc per
+// workspace file for a value nothing ever mutates; every disabled
+// Logger is behaviorally identical (Printf no-ops without touching W
+// or mu), so one shared instance is safe to hand out to every caller.
+var disabledLogger = &vlog.Logger{}
+
 // log returns the fixer's logger. If no logger is set, it returns a
 // disabled logger so callers don't need nil checks.
 func (f *Fixer) log() *vlog.Logger {
 	if f.Logger != nil {
 		return f.Logger
 	}
-	return &vlog.Logger{}
+	return disabledLogger
 }
 
 // logRules logs each enabled fixable rule in the effective config.
