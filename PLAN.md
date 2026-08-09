@@ -259,4 +259,6 @@ footer: |
 | 2607191918 | ✅     | haiku  | [Deduplicate isClaimed between internal/schema and requiredstructure](plan/2607191918_arch-fix-isclaimed-dedup.md)                                      |
 | 2607242010 | 🔲     | sonnet | [MDS072 external-link-check: SSRF and egress hardening](plan/2607242010_mds072-ssrf-network-hardening.md)                                               |
 | 2607242011 | 🔲     | haiku  | [Security hardening batch — 2026-07-24](plan/2607242011_security-hardening-batch-2026-07-24.md)                                                         |
+| 2608091910 | 🔲     | sonnet | [Resolve the MDS073 rule-ID collision between slidevstructure and foreignregion](plan/2608091910_arch-fix-mds073-collision.md)                          |
+| 2608091911 | 🔲     | haiku  | [Add dedicated unit tests for occurrence and slidevstructure private helpers](plan/2608091911_arch-fix-missing-unit-tests.md)                           |
 <?/catalog?>
