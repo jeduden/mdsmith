@@ -67,6 +67,11 @@ var bareURLPattern = regexp.MustCompile(
 		"`" + `]*)?`,
 )
 
+// schemeSeparator is the byte needle every bareURLPattern alternative
+// shares — a package-level slice avoids allocating a fresh one on
+// every BareURLFindingsInTree Text-node check.
+var schemeSeparator = []byte("://")
+
 // Detect runs every feature detector against doc and returns findings
 // in document-body order. accept is an optional predicate: when
 // non-nil, only features for which accept(feat) returns true are
@@ -86,18 +91,19 @@ func Detect(doc *markdown.Document, accept func(Feature) bool) []Finding {
 	}
 
 	source := doc.Body
+	lineCol := newLazyLineCol(source)
 	var out []Finding
 
 	if anyDualFeatureAccepted(keep) {
-		out = append(out, dualFindings(source, keep)...)
+		out = append(out, dualFindings(source, lineCol, keep)...)
 	}
 
 	if keep(FeatureBareURLAutolinks) {
-		out = append(out, detectBareURLs(source, doc.AST)...)
+		out = append(out, detectBareURLs(source, lineCol, doc.AST)...)
 	}
 
 	if keep(FeatureGitHubAlerts) {
-		out = append(out, detectGitHubAlerts(source, doc.AST)...)
+		out = append(out, detectGitHubAlerts(source, lineCol, doc.AST)...)
 	}
 
 	sort.SliceStable(out, func(i, j int) bool {
@@ -113,11 +119,11 @@ func Detect(doc *markdown.Document, accept func(Feature) bool) []Finding {
 // the pool so source bytes are not pinned between calls. Returns nil
 // (not an empty slice) when no finding passes keep, matching the
 // project's allocation-budget rule.
-func dualFindings(source []byte, keep func(Feature) bool) []Finding {
+func dualFindings(source []byte, lineCol func(int) (int, int), keep func(Feature) bool) []Finding {
 	var out []Finding
 	WithSharedParser(func(p parser.Parser) {
 		dualDoc := p.Parse(text.NewReader(source))
-		for _, fin := range detectFromDual(source, dualDoc) {
+		for _, fin := range detectFromDual(source, lineCol, dualDoc) {
 			if keep(fin.Feature) {
 				out = append(out, fin)
 			}
@@ -149,13 +155,13 @@ func anyDualFeatureAccepted(keep func(Feature) bool) bool {
 // strikethrough, task lists, footnotes, definition lists, heading
 // IDs) plus the five MDS034 custom extensions (superscript,
 // subscript, math block, math inline, abbreviations).
-func detectFromDual(source []byte, doc ast.Node) []Finding {
+func detectFromDual(source []byte, lineCol func(int) (int, int), doc ast.Node) []Finding {
 	var findings []Finding
 	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
 		}
-		fin, status := featureFindingFor(source, n)
+		fin, status := featureFindingFor(source, lineCol, n)
 		if fin != nil {
 			findings = append(findings, *fin)
 		}
@@ -167,11 +173,11 @@ func detectFromDual(source []byte, doc ast.Node) []Finding {
 // featureFindingFor maps an AST node to at most one Finding plus the
 // walk-status to return for the rest of the walk. A nil pointer means
 // "no finding for this node".
-func featureFindingFor(source []byte, n ast.Node) (*Finding, ast.WalkStatus) {
-	if fin, status, ok := builtinFindingFor(source, n); ok {
+func featureFindingFor(source []byte, lineCol func(int) (int, int), n ast.Node) (*Finding, ast.WalkStatus) {
+	if fin, status, ok := builtinFindingFor(source, lineCol, n); ok {
 		return fin, status
 	}
-	if fin, status, ok := customFindingFor(source, n); ok {
+	if fin, status, ok := customFindingFor(source, lineCol, n); ok {
 		return fin, status
 	}
 	return nil, ast.WalkContinue
@@ -179,32 +185,32 @@ func featureFindingFor(source []byte, n ast.Node) (*Finding, ast.WalkStatus) {
 
 // builtinFindingFor handles the six features detected via goldmark's
 // built-in extensions plus the heading-ID attribute parser.
-func builtinFindingFor(source []byte, n ast.Node) (*Finding, ast.WalkStatus, bool) {
+func builtinFindingFor(source []byte, lineCol func(int) (int, int), n ast.Node) (*Finding, ast.WalkStatus, bool) {
 	switch node := n.(type) {
 	case *extast.Table:
-		fin := blockFinding(source, n, FeatureTables)
+		fin := blockFinding(source, lineCol, n, FeatureTables)
 		return &fin, ast.WalkSkipChildren, true
 	case *extast.TaskCheckBox:
-		fin := inlineExtFinding(source, n, FeatureTaskLists)
+		fin := inlineExtFinding(lineCol, n, FeatureTaskLists)
 		return &fin, ast.WalkContinue, true
 	case *extast.Strikethrough:
-		fin := strikethroughFinding(source, n)
+		fin := strikethroughFinding(source, lineCol, n)
 		return &fin, ast.WalkContinue, true
 	case *extast.FootnoteLink:
-		fin := inlineExtFinding(source, n, FeatureFootnotes)
+		fin := inlineExtFinding(lineCol, n, FeatureFootnotes)
 		return &fin, ast.WalkContinue, true
 	case *extast.Footnote:
-		fin := blockFinding(source, n, FeatureFootnotes)
+		fin := blockFinding(source, lineCol, n, FeatureFootnotes)
 		return &fin, ast.WalkSkipChildren, true
 	case *extast.FootnoteList:
 		// Walk children so Footnote definitions report their own
 		// locations; skip emitting a wrapper finding.
 		return nil, ast.WalkContinue, true
 	case *extast.DefinitionList:
-		fin := blockFinding(source, n, FeatureDefinitionLists)
+		fin := blockFinding(source, lineCol, n, FeatureDefinitionLists)
 		return &fin, ast.WalkSkipChildren, true
 	case *ast.Heading:
-		if hf, ok := findHeadingID(source, node); ok {
+		if hf, ok := findHeadingID(source, lineCol, node); ok {
 			return &hf, ast.WalkContinue, true
 		}
 		return nil, ast.WalkContinue, true
@@ -215,28 +221,28 @@ func builtinFindingFor(source []byte, n ast.Node) (*Finding, ast.WalkStatus, boo
 // customFindingFor handles the five features covered by MDS034
 // custom extensions: superscript, subscript, math block / inline,
 // and abbreviations (both definition and reference).
-func customFindingFor(source []byte, n ast.Node) (*Finding, ast.WalkStatus, bool) {
+func customFindingFor(source []byte, lineCol func(int) (int, int), n ast.Node) (*Finding, ast.WalkStatus, bool) {
 	switch n.(type) {
 	case *ext.SuperscriptNode:
-		fin := markerInlineFinding(source, n, FeatureSuperscript, '^')
+		fin := markerInlineFinding(source, lineCol, n, FeatureSuperscript, '^')
 		return &fin, ast.WalkContinue, true
 	case *ext.SubscriptNode:
-		fin := markerInlineFinding(source, n, FeatureSubscript, '~')
+		fin := markerInlineFinding(source, lineCol, n, FeatureSubscript, '~')
 		return &fin, ast.WalkContinue, true
 	case *ext.MathBlockNode:
-		fin := blockFinding(source, n, FeatureMathBlock)
+		fin := blockFinding(source, lineCol, n, FeatureMathBlock)
 		return &fin, ast.WalkSkipChildren, true
 	case *ext.MathInlineNode:
-		fin := markerInlineFinding(source, n, FeatureMathInline, '$')
+		fin := markerInlineFinding(source, lineCol, n, FeatureMathInline, '$')
 		return &fin, ast.WalkContinue, true
 	case *ext.AbbreviationDefinition:
-		fin := blockFinding(source, n, FeatureAbbreviations)
+		fin := blockFinding(source, lineCol, n, FeatureAbbreviations)
 		return &fin, ast.WalkSkipChildren, true
 	case *ext.AbbreviationReference:
 		// The reference carries a child Text with the term's exact
 		// source segment, so inlineFinding pulls the real column
 		// rather than the enclosing paragraph start.
-		fin := inlineFinding(source, n, FeatureAbbreviations)
+		fin := inlineFinding(lineCol, n, FeatureAbbreviations)
 		return &fin, ast.WalkContinue, true
 	}
 	return nil, ast.WalkContinue, false
@@ -244,8 +250,8 @@ func customFindingFor(source []byte, n ast.Node) (*Finding, ast.WalkStatus, bool
 
 // strikethroughFinding backs up past the opening "~~" so the
 // diagnostic points at the marker, not at the content character.
-func strikethroughFinding(source []byte, n ast.Node) Finding {
-	fin := inlineFinding(source, n, FeatureStrikethrough)
+func strikethroughFinding(source []byte, lineCol func(int) (int, int), n ast.Node) Finding {
+	fin := inlineFinding(lineCol, n, FeatureStrikethrough)
 	if fin.Start >= 2 && source[fin.Start-1] == '~' && source[fin.Start-2] == '~' {
 		fin.Start -= 2
 		fin.Column -= 2
@@ -257,8 +263,8 @@ func strikethroughFinding(source []byte, n ast.Node) Finding {
 // the first text descendant. Used for superscript / subscript /
 // inline-math spans where the first child text starts after the
 // single-byte marker.
-func markerInlineFinding(source []byte, n ast.Node, feat Feature, marker byte) Finding {
-	fin := inlineFinding(source, n, feat)
+func markerInlineFinding(source []byte, lineCol func(int) (int, int), n ast.Node, feat Feature, marker byte) Finding {
+	fin := inlineFinding(lineCol, n, feat)
 	if fin.Start >= 1 && source[fin.Start-1] == marker {
 		fin.Start--
 		fin.Column--
@@ -268,10 +274,10 @@ func markerInlineFinding(source []byte, n ast.Node, feat Feature, marker byte) F
 
 // blockFinding reports a block-level feature starting at column 1 of
 // the line containing the node's first text descendant.
-func blockFinding(source []byte, n ast.Node, feat Feature) Finding {
+func blockFinding(source []byte, lineCol func(int) (int, int), n ast.Node, feat Feature) Finding {
 	start, end := nodeByteRange(n)
 	lineStart := lineStartOf(source, start)
-	line, _ := LineCol(source, lineStart)
+	line, _ := lineCol(lineStart)
 	return Finding{Feature: feat, Line: line, Column: 1, Start: lineStart, End: end}
 }
 
@@ -279,9 +285,9 @@ func blockFinding(source []byte, n ast.Node, feat Feature) Finding {
 // segment (e.g. FootnoteLink, TaskCheckBox). It uses the first
 // ancestor block's first-line position instead of firstTextStart,
 // which would return zero for a childless inline.
-func inlineExtFinding(source []byte, n ast.Node, feat Feature) Finding {
+func inlineExtFinding(lineCol func(int) (int, int), n ast.Node, feat Feature) Finding {
 	if p := NearestBlockAncestor(n); p != nil {
-		return findingFromBlock(source, p, feat)
+		return findingFromBlock(lineCol, p, feat)
 	}
 	return Finding{Feature: feat, Line: 1, Column: 1}
 }
@@ -305,20 +311,20 @@ func NearestBlockAncestor(n ast.Node) ast.Node {
 
 // findingFromBlock builds an inline-style finding (exact line/col of
 // the block's first line) for features emitted from a block ancestor.
-func findingFromBlock(source []byte, block ast.Node, feat Feature) Finding {
+func findingFromBlock(lineCol func(int) (int, int), block ast.Node, feat Feature) Finding {
 	lines := block.Lines()
 	if lines == nil || lines.Len() == 0 {
 		return Finding{Feature: feat, Line: 1, Column: 1}
 	}
 	start := lines.At(0).Start
-	line, col := LineCol(source, start)
+	line, col := lineCol(start)
 	return Finding{Feature: feat, Line: line, Column: col, Start: start, End: start}
 }
 
 // inlineFinding reports an inline feature at its exact source column.
-func inlineFinding(source []byte, n ast.Node, feat Feature) Finding {
+func inlineFinding(lineCol func(int) (int, int), n ast.Node, feat Feature) Finding {
 	start, end := nodeByteRange(n)
-	line, col := LineCol(source, start)
+	line, col := lineCol(start)
 	return Finding{Feature: feat, Line: line, Column: col, Start: start, End: end}
 }
 
@@ -372,9 +378,9 @@ func firstTextStart(n ast.Node) int {
 }
 
 // makeFinding converts a byte range to a Finding with line and column
-// derived from source.
-func makeFinding(source []byte, feat Feature, start, end int) Finding {
-	line, col := LineCol(source, start)
+// resolved via lineCol.
+func makeFinding(lineCol func(int) (int, int), feat Feature, start, end int) Finding {
+	line, col := lineCol(start)
 	return Finding{Feature: feat, Line: line, Column: col, Start: start, End: end}
 }
 
@@ -393,8 +399,11 @@ func isASCIISpace(b byte) bool {
 // within source. Out-of-range offsets are clamped so callers that
 // look at byte -1 or one past EOF still get a valid position.
 // Exposed for rewriters that need to translate byte offsets into
-// line numbers when producing line-level edits; also used internally
-// by every block / inline / makeFinding helper.
+// line numbers when producing line-level edits — a single-lookup use
+// case, so it always rescans source directly rather than building a
+// lineIndex (which only pays off when reused across many lookups; see
+// lineIndex and newLazyLineCol below, used internally by Detect and
+// BareURLFindingsInTree).
 func LineCol(source []byte, offset int) (line, col int) {
 	offset = clampOffset(source, offset)
 	// bytes.Count and bytes.LastIndexByte are SIMD-accelerated on
@@ -413,6 +422,85 @@ func LineCol(source []byte, offset int) (line, col int) {
 // bytes.Count — a package-level slice avoids allocating a fresh
 // one-element slice literal on every call.
 var newline = []byte{'\n'}
+
+// lineIndex is a cached, sorted list of newline byte offsets in a
+// source buffer, giving O(log n) lineCol lookups instead of LineCol's
+// O(offset) rescan from byte 0 on every call. A single Detect or
+// BareURLFindingsInTree run can produce many findings scattered across
+// the document; LineCol degrades toward O(n^2) total across them,
+// mirroring the anti-pattern internal/lint.File.LineOfOffset was
+// rewritten to fix (docs/development/high-performance-go.md "memoize
+// per-input computations").
+type lineIndex struct {
+	source   []byte
+	newlines []int
+}
+
+// newLineIndex scans source for every '\n' byte and records its
+// offset, mirroring internal/lint.File.lineIndex. bytes.Count
+// pre-sizes the slice (also SIMD-accelerated) so the append loop never
+// regrows; bytes.IndexByte is SIMD-accelerated on amd64 where a
+// hand-rolled byte loop is not.
+func newLineIndex(source []byte) *lineIndex {
+	nl := make([]int, 0, bytes.Count(source, newline))
+	for base := 0; ; {
+		i := bytes.IndexByte(source[base:], '\n')
+		if i < 0 {
+			break
+		}
+		nl = append(nl, base+i)
+		base += i + 1
+	}
+	return &lineIndex{source: source, newlines: nl}
+}
+
+// lineCol returns the 1-based (line, column) position of offset,
+// matching LineCol's semantics exactly (clamped offset; a newline
+// exactly at offset starts the next line).
+func (idx *lineIndex) lineCol(offset int) (line, col int) {
+	offset = clampOffset(idx.source, offset)
+	lo := newlineSearch(idx.newlines, offset)
+	line = lo + 1
+	start := 0
+	if lo > 0 {
+		start = idx.newlines[lo-1] + 1
+	}
+	return line, offset - start + 1
+}
+
+// newlineSearch returns the count of entries in nl (a sorted list of
+// newline byte offsets) that are strictly less than offset — the
+// number of newlines preceding offset. Inlined rather than
+// sort.Search, mirroring internal/lint.newlineSearch: sort.Search's
+// comparison closure would capture nl and offset and escape to the
+// heap.
+func newlineSearch(nl []int, offset int) int {
+	lo, hi := 0, len(nl)
+	for lo < hi {
+		mid := int(uint(lo+hi) >> 1)
+		if nl[mid] >= offset {
+			hi = mid
+		} else {
+			lo = mid + 1
+		}
+	}
+	return lo
+}
+
+// newLazyLineCol returns a lineCol lookup function that builds and
+// caches a lineIndex for source on first use. A call that produces
+// zero findings (the common case for a well-formed doc against a
+// permissive flavor) never pays for the newline scan; a call that
+// produces many findings pays for it once instead of once per finding.
+func newLazyLineCol(source []byte) func(offset int) (line, col int) {
+	var idx *lineIndex
+	return func(offset int) (int, int) {
+		if idx == nil {
+			idx = newLineIndex(source)
+		}
+		return idx.lineCol(offset)
+	}
+}
 
 // dedupe collapses consecutive findings of the same feature at the
 // same offset (goldmark's extension nodes sometimes nest, e.g. each
@@ -442,7 +530,7 @@ func dedupe(in []Finding) []Finding {
 // or has no `{` on its first line. Used by rewriters that want to
 // drop the attribute block without consuming a full Detect run.
 func FindHeadingID(source []byte, h *ast.Heading) (HeadingIDExtra, bool) {
-	fin, ok := findHeadingID(source, h)
+	fin, ok := findHeadingID(source, func(offset int) (int, int) { return LineCol(source, offset) }, h)
 	if !ok {
 		return HeadingIDExtra{}, false
 	}
@@ -457,7 +545,7 @@ func FindHeadingID(source []byte, h *ast.Heading) (HeadingIDExtra, bool) {
 // goldmark attribute parser consumed. The Heading node's Lines segment
 // only covers the inner text, so we scan the raw line in source from
 // the segment start forward to the next newline.
-func findHeadingID(source []byte, h *ast.Heading) (Finding, bool) {
+func findHeadingID(source []byte, lineCol func(int) (int, int), h *ast.Heading) (Finding, bool) {
 	if h == nil {
 		return Finding{}, false
 	}
@@ -494,7 +582,7 @@ func findHeadingID(source []byte, h *ast.Heading) (Finding, bool) {
 	for attrEnd > attrStart && isASCIISpace(source[attrEnd-1]) {
 		attrEnd--
 	}
-	line, col := LineCol(source, attrStart)
+	line, col := lineCol(attrStart)
 	return Finding{
 		Feature: FeatureHeadingIDs,
 		Line:    line,
@@ -509,8 +597,8 @@ func findHeadingID(source []byte, h *ast.Heading) (Finding, bool) {
 // extensions) for bare URL text. Bracketed <url> autolinks are
 // recognised by CommonMark and appear as ast.AutoLink, so only true
 // bare URLs remain inside Text nodes.
-func detectBareURLs(source []byte, cmAST ast.Node) []Finding {
-	return BareURLFindingsInTree(source, cmAST, 0)
+func detectBareURLs(source []byte, lineCol func(int) (int, int), cmAST ast.Node) []Finding {
+	return bareURLFindingsInTree(source, lineCol, cmAST, 0)
 }
 
 // BareURLFindingsInTree returns one FeatureBareURLAutolinks finding per bare
@@ -520,7 +608,18 @@ func detectBareURLs(source []byte, cmAST ast.Node) []Finding {
 // recovers document-absolute positions; pass 0 when root is the document's own
 // CommonMark AST. The findings are byte-identical to detectBareURLs by
 // construction, so the AST path and the inline-run path agree.
+//
+// Builds its own lazy line index (see newLazyLineCol) scoped to this call —
+// external callers may invoke this once per re-parsed block, so the index
+// must not be built until a match is actually found.
 func BareURLFindingsInTree(source []byte, root ast.Node, base int) []Finding {
+	return bareURLFindingsInTree(source, newLazyLineCol(source), root, base)
+}
+
+// bareURLFindingsInTree is the shared core behind BareURLFindingsInTree and
+// detectBareURLs. lineCol lets Detect's callers reuse an already-built
+// lineIndex instead of paying for a fresh one per call.
+func bareURLFindingsInTree(source []byte, lineCol func(int) (int, int), root ast.Node, base int) []Finding {
 	if root == nil {
 		return nil
 	}
@@ -538,11 +637,20 @@ func BareURLFindingsInTree(source []byte, root ast.Node, base int) []Finding {
 		}
 		seg := t.Segment
 		body := source[base+seg.Start : base+seg.Stop]
+		// Every alternative in bareURLPattern (http/https/ftp) shares the
+		// "://" scheme separator, so a Text segment that lacks it can
+		// never match. Gate the regex behind this cheap byte scan per
+		// docs/development/high-performance-go.md "gate expensive
+		// analyzers behind a cheap pre-check" — most prose Text nodes
+		// carry no URL at all.
+		if !bytes.Contains(body, schemeSeparator) {
+			return ast.WalkContinue, nil
+		}
 		matches := bareURLPattern.FindAllIndex(body, -1)
 		for _, m := range matches {
 			start := base + seg.Start + m[0]
 			end := base + seg.Start + m[1]
-			findings = append(findings, makeFinding(source, FeatureBareURLAutolinks, start, end))
+			findings = append(findings, makeFinding(lineCol, FeatureBareURLAutolinks, start, end))
 		}
 		return ast.WalkContinue, nil
 	})
@@ -562,7 +670,7 @@ func insideNonBareContext(n ast.Node) bool {
 
 // detectGitHubAlerts walks cmAST for Blockquote nodes whose first
 // paragraph child starts with a GFM alert token (e.g. [!NOTE]).
-func detectGitHubAlerts(source []byte, cmAST ast.Node) []Finding {
+func detectGitHubAlerts(source []byte, lineCol func(int) (int, int), cmAST ast.Node) []Finding {
 	if cmAST == nil {
 		return nil
 	}
@@ -576,7 +684,7 @@ func detectGitHubAlerts(source []byte, cmAST ast.Node) []Finding {
 			return ast.WalkContinue, nil
 		}
 		if IsGitHubAlert(bq, source) {
-			findings = append(findings, blockFinding(source, bq, FeatureGitHubAlerts))
+			findings = append(findings, blockFinding(source, lineCol, bq, FeatureGitHubAlerts))
 		}
 		return ast.WalkContinue, nil
 	})
