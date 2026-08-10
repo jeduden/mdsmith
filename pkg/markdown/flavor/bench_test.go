@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/jeduden/mdsmith/pkg/markdown"
 )
 
@@ -179,5 +180,74 @@ func BenchmarkDetectManyFindings(b *testing.B) {
 	if median > detectManyFindingsBudget {
 		b.Fatalf("Detect many-findings median = %s/op, budget %s — see docs/development/high-performance-go.md",
 			median, detectManyFindingsBudget)
+	}
+}
+
+// BenchmarkBareURLFindingsInTree_PerBlockCallPattern guards
+// BareURLFindingsInTree's real production call pattern:
+// internal/rules/markdownflavor/rule.go's parse-skipped path calls it
+// once per lint.InlineBlocks entry (often dozens of calls per file,
+// each with at most a handful of matches), not once per document like
+// Detect. An earlier version of the newline-index optimization above
+// made BareURLFindingsInTree build a full source-length lineIndex on
+// every call that found a match — cheap for Detect's single
+// many-findings call, but a ~4.8x regression here since most calls
+// produce zero or one finding and never amortize the index build.
+// BareURLFindingsInTree now uses the plain LineCol oracle instead (see
+// its doc comment); this benchmark pins that choice.
+//
+// The gate below takes the MEDIAN of many small timed rounds, matching
+// this file's other real-content benchmarks.
+//
+// Baseline (2026-08-10, 500 paragraphs / ~32KB source, 1-in-20
+// carrying a bare URL, lazy per-call lineIndex): ~450-490µs/op median.
+// With the plain-LineCol fix: ~100-130µs/op median.
+const (
+	bareURLPerBlockBudget   = 300 * time.Microsecond
+	bareURLPerBlockRounds   = 30
+	bareURLPerBlockPerRound = 5
+)
+
+func BenchmarkBareURLFindingsInTree_PerBlockCallPattern(b *testing.B) {
+	var sb strings.Builder
+	for i := 0; i < 500; i++ {
+		if i%20 == 0 {
+			sb.WriteString("See https://example.com/path for details on this paragraph.\n\n")
+		} else {
+			sb.WriteString("This paragraph has no link at all, just plain prose text here.\n\n")
+		}
+	}
+	src := []byte(sb.String())
+	doc := markdown.Parse(src)
+	var roots []ast.Node
+	_ = ast.Walk(doc.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if entering {
+			if _, ok := n.(*ast.Paragraph); ok {
+				roots = append(roots, n)
+			}
+		}
+		return ast.WalkContinue, nil
+	})
+	callOnce := func() {
+		for _, root := range roots {
+			_ = BareURLFindingsInTree(src, root, 0)
+		}
+	}
+	callOnce() // warm the page cache before timing
+
+	samples := make([]time.Duration, bareURLPerBlockRounds)
+	for i := range samples {
+		start := time.Now()
+		for j := 0; j < bareURLPerBlockPerRound; j++ {
+			callOnce()
+		}
+		samples[i] = time.Since(start) / bareURLPerBlockPerRound
+	}
+	sort.Slice(samples, func(i, j int) bool { return samples[i] < samples[j] })
+	median := samples[len(samples)/2]
+	b.ReportMetric(float64(median.Nanoseconds()), "ns/op_median")
+	if median > bareURLPerBlockBudget {
+		b.Fatalf("BareURLFindingsInTree per-block median = %s/op, budget %s — see "+
+			"docs/development/high-performance-go.md", median, bareURLPerBlockBudget)
 	}
 }

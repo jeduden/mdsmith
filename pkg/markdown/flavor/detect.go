@@ -609,11 +609,17 @@ func detectBareURLs(source []byte, lineCol func(int) (int, int), cmAST ast.Node)
 // CommonMark AST. The findings are byte-identical to detectBareURLs by
 // construction, so the AST path and the inline-run path agree.
 //
-// Builds its own lazy line index (see newLazyLineCol) scoped to this call —
-// external callers may invoke this once per re-parsed block, so the index
-// must not be built until a match is actually found.
+// Uses the plain LineCol oracle rather than a lineIndex: markdownflavor's
+// parse-skipped path (internal/rules/markdownflavor/rule.go) calls this once
+// per lint.InlineBlocks entry — often dozens of calls per file, each with at
+// most a handful of matches — so building a full source-length index inside
+// every call would cost more than it saves; only Detect's single call
+// producing many findings across the whole document (via detectBareURLs
+// below, which shares Detect's own lineIndex) benefits from amortizing the
+// index build.
 func BareURLFindingsInTree(source []byte, root ast.Node, base int) []Finding {
-	return bareURLFindingsInTree(source, newLazyLineCol(source), root, base)
+	lineCol := func(offset int) (int, int) { return LineCol(source, offset) }
+	return bareURLFindingsInTree(source, lineCol, root, base)
 }
 
 // bareURLFindingsInTree is the shared core behind BareURLFindingsInTree and
