@@ -695,6 +695,51 @@ func TestCheck_RunCacheReusesCorpusParseAcrossHostFiles(t *testing.T) {
 	}
 }
 
+// TestCheck_RunCacheReusesCorpusWalkAcrossHostFiles pins the fix for
+// buildCorpusIndex's remaining O(N) cost per host file: even after
+// candidateParagraphs memoized each sibling's fingerprinted paragraphs
+// (TestCheck_RunCacheReusesCorpusParseAcrossHostFiles above),
+// buildCorpusIndex still re-walked the corpus directory tree with
+// fs.WalkDir from scratch on every host file's Check call. The
+// resolved corpus file list depends only on the tree shape (which
+// files exist) and the rule's include/exclude settings, not on any
+// file's content, so it belongs on RunCache.GlobMatches — the same
+// tree-shape-only cache the catalog rule and the wikilink index use.
+// A workspace of N files enabling MDS037 must walk the corpus tree at
+// most once per run, not once per host file.
+func TestCheck_RunCacheReusesCorpusWalkAcrossHostFiles(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "sub"), 0o755))
+	p := longParagraph("shared paragraph text for the corpus walk test")
+	writeFile(t, filepath.Join(dir, "a.md"), "# A\n\n"+p+"\n")
+	writeFile(t, filepath.Join(dir, "b.md"), "# B\n\n"+p+"\n")
+	writeFile(t, filepath.Join(dir, "sub", "c.md"), "# C\n\nunrelated short text\n")
+
+	counting := &countingFS{FS: os.DirFS(dir), opens: map[string]int{}}
+	runCache := lint.NewRunCache()
+
+	for _, name := range []string{"a.md", "b.md", filepath.Join("sub", "c.md")} {
+		data, err := os.ReadFile(filepath.Join(dir, name))
+		require.NoError(t, err)
+		f, err := lint.NewFile(filepath.Join(dir, name), data)
+		require.NoError(t, err)
+		f.FS = counting
+		f.RootDir = dir
+		f.RootFS = counting
+		f.RunCache = runCache
+		_ = (&Rule{}).Check(f)
+	}
+
+	// fs.WalkDir opens the root twice on a genuinely fresh walk (once
+	// for the initial fs.Stat, once for fs.ReadDir, since countingFS
+	// implements neither StatFS nor ReadDirFS) — allow that much, but
+	// no more: a per-host-file re-walk would multiply this by the
+	// number of host files checked (3).
+	assert.LessOrEqualf(t, counting.opens["."], 2,
+		"expected the corpus root directory to be walked at most once across "+
+			"Check calls sharing a RunCache, got %d opens of \".\"", counting.opens["."])
+}
+
 // TestCheck_RunCacheAppliesFrontMatterOffsetOnce pins that a corpus
 // candidate's front-matter line offset is baked into its cached
 // paragraphs exactly once: candidateParagraphs adds other.LineOffset
