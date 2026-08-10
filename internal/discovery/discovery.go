@@ -29,8 +29,8 @@ type Options struct {
 	//
 	// Symlinks resolving to anything other than a regular file
 	// (directories, FIFOs, devices, sockets) are always skipped.
-	// filepath.Walk is Lstat-based, so symlinked directories are
-	// never descended into regardless of this flag.
+	// filepath.WalkDir reports symlinks via Lstat, so symlinked
+	// directories are never descended into regardless of this flag.
 	FollowSymlinks bool
 }
 

@@ -181,6 +181,38 @@ func TestCheck_HonorsIncludePattern(t *testing.T) {
 	assert.Contains(t, diags[0].Message, "scoped.md")
 }
 
+// TestCheck_HonorsIncludeExcludePattern_WithRunCache exercises
+// corpusFilesKey's include/exclude loops: newLintFileWithRoot leaves
+// f.RunCache nil, so TestCheck_HonorsIncludePattern and
+// TestCheck_HonorsExcludePattern above never route through
+// corpusFiles' RunCache.GlobMatches branch and never build a cache
+// key from a non-empty include/exclude list. Setting f.RunCache here
+// pins that include and exclude are still honored when corpusFiles is
+// cached, not just when it walks directly.
+func TestCheck_HonorsIncludeExcludePattern_WithRunCache(t *testing.T) {
+	dir := t.TempDir()
+	p := longParagraph("the quick brown fox jumps over the lazy dog")
+	writeFile(t, filepath.Join(dir, "a.md"), "# A\n\n"+p+"\n")
+	writeFile(t, filepath.Join(dir, "scoped.md"), "# Scoped\n\n"+p+"\n")
+	writeFile(t, filepath.Join(dir, "other.md"), "# Other\n\n"+p+"\n")
+	writeFile(t, filepath.Join(dir, "ignored.md"), "# Ignored\n\n"+p+"\n")
+
+	runCache := lint.NewRunCache()
+
+	f := newLintFileWithRoot(t, filepath.Join(dir, "a.md"), dir)
+	f.RunCache = runCache
+	rInclude := &Rule{Include: []string{"scoped.md"}}
+	diags := rInclude.Check(f)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "scoped.md")
+
+	f2 := newLintFileWithRoot(t, filepath.Join(dir, "a.md"), dir)
+	f2.RunCache = runCache
+	rExclude := &Rule{Exclude: []string{"scoped.md", "other.md", "ignored.md"}}
+	diags2 := rExclude.Check(f2)
+	assert.Empty(t, diags2, "every sibling must be excluded")
+}
+
 func TestCheck_NilASTIsNoop(t *testing.T) {
 	// An uninitialized File (no parse) must not panic.
 	f := &lint.File{Path: "x.md"}
