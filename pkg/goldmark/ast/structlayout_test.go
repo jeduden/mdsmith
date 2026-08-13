@@ -17,3 +17,9 @@ func TestAutoLink_PointerFieldsBeforeScalars(t *testing.T) {
 	// declared fields are checked here.
 	fieldorder.AssertPointersBeforeScalars(t, reflect.TypeOf(AutoLink{}), 1)
 }
+
+func TestBaseNode_PointerFieldsBeforeScalars(t *testing.T) {
+	// BaseNode is embedded in every AST node of every parse, so any
+	// wasted GC ptrdata here multiplies across the whole tree.
+	fieldorder.AssertPointersBeforeScalars(t, reflect.TypeOf(BaseNode{}), 0)
+}

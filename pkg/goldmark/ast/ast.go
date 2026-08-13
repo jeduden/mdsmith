@@ -210,14 +210,19 @@ func (p *pos) SetPos(v int) {
 }
 
 // A BaseNode struct implements the Node interface partialliy.
+//
+// Pointer-bearing fields precede scalars (docs/development/
+// high-performance-go.md, "Group pointer fields first, scalars
+// last") so GC ptrdata doesn't span past childCount/pos for no
+// reason; BaseNode is embedded in every AST node of every parse.
 type BaseNode struct {
 	firstChild Node
 	lastChild  Node
 	parent     Node
 	next       Node
 	prev       Node
-	childCount int
 	attributes []Attribute
+	childCount int
 	pos        pos
 }
 
