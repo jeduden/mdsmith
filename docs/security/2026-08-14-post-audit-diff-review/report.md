@@ -26,8 +26,9 @@ threat-model surfaces by changed file and each surface read against references/t
 security defect was found in this window; the changes are overwhelmingly behavior-preserving performance
 work plus one merge-driver hardening and one DoS hardening. Details by surface:
 
-§0 baseline reconfirmed by exclusion. `git diff fe9bbae..HEAD | grep '^+.*(exec.Command|os/exec|sh -c|
-/bin/sh)'` returns nothing: no execution sink was added anywhere in the diff. The recipe executor
+§0 baseline reconfirmed by exclusion. Grepping the added lines of the diff for the execution sinks the threat
+model enumerates (exec.Command, os/exec, sh -c, /bin/sh) returns nothing: no execution sink was added anywhere
+in the diff. The recipe executor
 (internal/build/exec.go, hooks.go) and every explicit-argv git/go/gh call site are untouched this window, so
 recipes remain non-executed by the tool and no zero-interaction path (LSP fix-on-save, merge driver, editor
 open) gained an exec sink.
