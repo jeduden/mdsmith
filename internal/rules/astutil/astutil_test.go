@@ -948,6 +948,80 @@ func TestSectionBody_ExtractsFromNodeWhenTextEmpty(t *testing.T) {
 	assert.Equal(t, "first paragraph here. second paragraph too.", got)
 }
 
+// --- SectionBodies ---
+
+// TestSectionBodies_MatchesPerHeadingSectionBody pins that the batch
+// SectionBodies helper produces the exact same output as calling
+// SectionBody once per heading with SectionEnd's range — the O(H+P)
+// two-pointer sweep must be observationally identical to the O(H×P)
+// per-heading rescan it replaces. Nested headings (H1 > H2 > H3) make
+// ranges overlap, which is the case a naive single forward-only
+// pointer would get wrong.
+func TestSectionBodies_MatchesPerHeadingSectionBody(t *testing.T) {
+	src := []byte("# H1\n\nalpha.\n\n## H2\n\nbeta.\n\n### H3\n\ngamma.\n\n## H2b\n\ndelta.\n\n# H1b\n\nepsilon.\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	headings := CollectSectionHeadings(f)
+	require.Len(t, headings, 5)
+	paragraphs := CollectSectionParagraphsWithText(f)
+	require.Len(t, paragraphs, 5)
+
+	totalLines := len(f.Lines)
+	if totalLines > 0 && len(f.Lines[totalLines-1]) == 0 {
+		totalLines--
+	}
+
+	want := make([]string, len(headings))
+	for i, h := range headings {
+		end := SectionEnd(headings, i, totalLines)
+		want[i] = SectionBody(paragraphs, f.Source, h.Line, end)
+	}
+
+	got := SectionBodies(headings, paragraphs, f.Source, totalLines)
+	assert.Equal(t, want, got)
+	// Sanity: a nested section's body includes its own descendants
+	// (H2 covers H3's paragraph too), and the outer H1 body includes
+	// every descendant paragraph transitively.
+	assert.Equal(t, "beta. gamma.", want[1])
+	assert.Contains(t, want[0], "gamma.")
+}
+
+// TestSectionBodies_EmptyHeadings pins the degenerate case: no
+// headings means no bodies, regardless of paragraph count.
+func TestSectionBodies_EmptyHeadings(t *testing.T) {
+	got := SectionBodies(nil, []SectionParagraph{{Line: 1, Text: "x"}}, nil, 10)
+	assert.Empty(t, got)
+}
+
+// TestSectionBodies_AllocBudget pins that SectionBodies reuses its
+// per-heading `parts` buffer across iterations instead of
+// re-declaring it fresh every heading. A per-heading `var parts
+// []string` regrows from nil on every iteration; an xhigh-severity
+// review pass on PR #785 measured that as MORE total allocations than
+// the per-heading SectionBody loop this function replaces, on a
+// nested-heading document — 10 allocs versus 6 for the fixture below.
+// See docs/development/high-performance-go.md "Reuse loop-local
+// buffers".
+func TestSectionBodies_AllocBudget(t *testing.T) {
+	src := []byte("# H1\n\na.\n\nb.\n\n## H2\n\nc.\n\nd.\n\n## H2b\n\ne.\n\nf.\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	headings := CollectSectionHeadings(f)
+	paragraphs := CollectSectionParagraphsWithText(f)
+	require.Len(t, headings, 3)
+	totalLines := len(f.Lines)
+	if totalLines > 0 && len(f.Lines[totalLines-1]) == 0 {
+		totalLines--
+	}
+
+	allocs := testing.AllocsPerRun(100, func() {
+		_ = SectionBodies(headings, paragraphs, f.Source, totalLines)
+	})
+	if allocs > 6 {
+		t.Fatalf("SectionBodies allocs per call: want <= 6, got %v", allocs)
+	}
+}
+
 // TestCollectSectionParagraphs_MemoizedPerFile pins that the
 // AST-walking collector runs once per File and serves a cached result
 // thereafter. On prose-heavy corpora (the neutral Rust Book

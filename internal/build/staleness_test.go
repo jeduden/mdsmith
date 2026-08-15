@@ -66,6 +66,41 @@ func TestStaleness_FreshAfterBuild(t *testing.T) {
 	assert.Equal(t, Fresh, res2.Verdict)
 }
 
+// TestCheckStaleness_ResolvesInputsAndOutputsOnce pins that
+// CheckStaleness resolves each target's inputs and outputs exactly
+// once. ComputeActionID used to re-run resolveInputs/resolveOutputs
+// internally even though CheckStaleness had already resolved them a
+// few lines above, doubling the glob-expansion and symlink-resolution
+// filesystem work on every staleness check — see
+// docs/development/high-performance-go.md "Skip work you don't need".
+func TestCheckStaleness_ResolvesInputsAndOutputsOnce(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "src.txt", "hello")
+	writeFile(t, root, "dst.txt", "hello")
+	in := newPlan(t, root, "copy", "cp {inputs} {outputs}", []string{"src.txt"}, []string{"dst.txt"}, nil)
+	cache := NewCache()
+
+	origIn, origOut := resolveInputsFn, resolveOutputsFn
+	var inCalls, outCalls int
+	resolveInputsFn = func(in StalenessInput) ([]string, error) {
+		inCalls++
+		return origIn(in)
+	}
+	resolveOutputsFn = func(in StalenessInput) ([]string, error) {
+		outCalls++
+		return origOut(in)
+	}
+	t.Cleanup(func() {
+		resolveInputsFn = origIn
+		resolveOutputsFn = origOut
+	})
+
+	_, err := CheckStaleness(in, cache)
+	require.NoError(t, err)
+	assert.Equal(t, 1, inCalls, "CheckStaleness must resolve inputs once per call")
+	assert.Equal(t, 1, outCalls, "CheckStaleness must resolve outputs once per call")
+}
+
 func TestStaleness_InputContentChangeIsStale(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "src.txt", "hello")

@@ -359,7 +359,7 @@ func resolveEffectiveKinds(cfg *Config, filePath string, fmKinds []string, fmFie
 		add(k)
 	}
 	for _, entry := range cfg.KindAssignment {
-		if matched, _ := matchKindAssignmentEntry(entry, filePath, fmFields); matched {
+		if kindAssignmentEntryMatches(entry, filePath, fmFields) {
 			for _, k := range entry.Kinds {
 				add(k)
 			}
