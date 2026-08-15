@@ -33,6 +33,11 @@ func (r *Rule) Category() string { return "heading" }
 // mapped back to the document. WalkInlineNodes visits the runs in
 // document order, so the first-occurrence line each duplicate names is
 // byte-identical to the AST walk's.
+//
+// The parsed path reads astutil.CollectHeadingNodes instead of running
+// its own ast.Walk: that collector is memoized per File, so when
+// heading-increment (MDS003) also runs against the same File, only the
+// first of the two rules pays for the tree walk.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	if f != nil && f.AST == nil {
 		return r.checkFromInline(f)
@@ -41,23 +46,13 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
 	seen := make(map[string]int) // text -> first occurrence line
 
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		heading, ok := n.(*ast.Heading)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
-
+	for _, heading := range astutil.CollectHeadingNodes(f) {
 		text := astutil.HeadingTextCached(f, heading)
 		line := astutil.HeadingLine(heading, f)
 		if d, ok := r.verdict(f, text, line, seen); ok {
 			diags = append(diags, d)
 		}
-
-		return ast.WalkContinue, nil
-	})
+	}
 
 	return diags
 }

@@ -1679,12 +1679,15 @@ func (r *Rule) checkCaseMismatches(f *lint.File) []lint.Diagnostic {
 func extractPlaceholderFields(row string) []string {
 	all := fieldinterp.Fields(row)
 	seen := make(map[string]struct{}, len(all))
-	var fields []string
+	fields := make([]string, 0, len(all))
 	for _, name := range all {
 		if _, ok := seen[name]; !ok {
 			seen[name] = struct{}{}
 			fields = append(fields, name)
 		}
+	}
+	if len(fields) == 0 {
+		return nil
 	}
 	return fields
 }
