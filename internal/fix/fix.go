@@ -626,7 +626,21 @@ func buildPostFixFile(path string, source []byte, lf *lint.File, dirFS fs.FS, cf
 	return finalFile
 }
 
-// applyFixPasses repeatedly applies fixable rules until the content stabilizes.
+// applyFixPasses repeatedly applies fixable rules until the content
+// stabilizes.
+//
+// Within a pass, parsedFile is reused across fixable rules until a
+// Fix call actually changes current: most rules in most passes find
+// nothing to fix (the common case is a mostly-clean file, or the tail
+// of rules that never apply), so re-parsing before every single
+// rule's Check — as if every rule had just changed the content — was
+// an O(fixable-rule-count) reparse of unchanged bytes. Setting
+// parsedFile to nil right after a Fix call still forces a fresh parse
+// before the next rule's Check, so every rule keeps seeing a File
+// that reflects the bytes as of its own Check call — identical
+// results, dozens fewer parses on a file with few or no fixes. See
+// docs/development/high-performance-go.md, "Skip work you don't
+// need".
 func (f *Fixer) applyFixPasses(
 	path string, source []byte, fixable []rule.FixableRule, lf *lint.File, dirFS fs.FS, errs *[]error,
 ) []byte {
@@ -635,13 +649,17 @@ func (f *Fixer) applyFixPasses(
 	for pass := 0; pass < maxPasses; pass++ {
 		f.log().Printf("fix: pass %d on %s", pass+1, path)
 		before := current
+		var parsedFile *lint.File
 		for _, fr := range fixable {
-			parsedFile, err := lint.NewFile(path, current)
-			if err != nil {
-				*errs = append(*errs, fmt.Errorf("parsing %q: %w", path, err))
-				break
+			if parsedFile == nil {
+				var err error
+				parsedFile, err = lint.NewFile(path, current)
+				if err != nil {
+					*errs = append(*errs, fmt.Errorf("parsing %q: %w", path, err))
+					break
+				}
+				hydrateLintFile(parsedFile, lf, dirFS, f.Config, path)
 			}
-			hydrateLintFile(parsedFile, lf, dirFS, f.Config, path)
 
 			diags := fr.Check(parsedFile)
 			if len(diags) == 0 {
@@ -649,6 +667,7 @@ func (f *Fixer) applyFixPasses(
 			}
 
 			current = fr.Fix(parsedFile)
+			parsedFile = nil
 		}
 		if bytes.Equal(before, current) {
 			f.log().Printf("fix: %s stable after %d passes", path, pass+1)
