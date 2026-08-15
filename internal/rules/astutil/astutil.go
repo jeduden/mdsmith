@@ -223,12 +223,23 @@ func SectionEnd(headings []SectionHeading, i, totalLines int) int {
 // matcher. The source byte slice is required because
 // SectionParagraph's text is materialised lazily through
 // [SectionParagraph.ExtractText] (plan 196); callers pass f.Source.
+//
+// paragraphs must be sorted ascending by Line, as
+// [CollectSectionParagraphs] returns them (document order). Callers
+// that loop once per heading (MDS057, MDS058) each call this over the
+// same paragraph slice with a monotonically non-decreasing start, so a
+// binary search bounds the matching range in O(log len(paragraphs))
+// instead of a full O(len(paragraphs)) scan per call — turning the
+// per-file cost from O(headings * paragraphs) into
+// O(headings * log paragraphs).
 func SectionBody(paragraphs []SectionParagraph, source []byte, start, end int) string {
-	var parts []string
-	for _, p := range paragraphs {
-		if p.Line < start || p.Line >= end {
-			continue
-		}
+	lo := sort.Search(len(paragraphs), func(i int) bool { return paragraphs[i].Line >= start })
+	hi := sort.Search(len(paragraphs), func(i int) bool { return paragraphs[i].Line >= end })
+	if lo >= hi {
+		return ""
+	}
+	parts := make([]string, 0, hi-lo)
+	for _, p := range paragraphs[lo:hi] {
 		parts = append(parts, p.ExtractText(source))
 	}
 	return strings.Join(parts, " ")
