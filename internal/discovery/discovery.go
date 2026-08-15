@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/jeduden/mdsmith/internal/gitignore"
@@ -168,15 +169,33 @@ func (w *walker) isGitignored(path string, isDir bool) bool {
 }
 
 // matchesAny returns true if rel matches any of the configured patterns.
-// w.patterns is already the validatePatterns-filtered set, so matching
-// uses MatchUnvalidated rather than Match: Match re-runs
-// doublestar.ValidatePattern's parse walk on every call, and that cost
-// is paid once per pattern per visited file across the whole workspace
-// walk (see internal/globpath's validPatterns cache for the same fix
-// applied to the config-driven glob surfaces).
+// w.patterns has already passed doublestar.ValidatePattern once, in
+// validatePatterns; doublestar.Match re-validates its pattern argument
+// on every call, so matching through MatchUnvalidated here skips paying
+// that cost again for every file the walk visits (see
+// internal/globpath's validPatterns cache for the same fix applied to
+// the config-driven glob surfaces).
+//
+// A pattern already passing ValidatePattern does not guarantee Match
+// and MatchUnvalidated agree: a brace alternative (e.g.
+// "{[!mdb[],docs/**/*.md}") can contain a syntax error in a non-final
+// alternative that Match's internal validation aborts on before trying
+// later alternatives, while MatchUnvalidated tries them all — a
+// divergence confirmed directly against the vendored doublestar
+// source, not assumed. That divergence requires brace syntax: a 1.3M+
+// -case differential fuzz over brace-free, ValidatePattern-accepted
+// patterns found zero disagreement. Patterns without "{" take the fast
+// MatchUnvalidated path; a pattern using brace expansion falls back to
+// the safe (slower, but provably correct) Match.
 func (w *walker) matchesAny(rel string) bool {
 	for _, p := range w.patterns {
-		if doublestar.MatchUnvalidated(p, rel) {
+		if strings.IndexByte(p, '{') < 0 {
+			if doublestar.MatchUnvalidated(p, rel) {
+				return true
+			}
+			continue
+		}
+		if matched, err := doublestar.Match(p, rel); err == nil && matched {
 			return true
 		}
 	}

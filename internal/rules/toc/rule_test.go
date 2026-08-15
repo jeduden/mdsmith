@@ -126,6 +126,28 @@ func TestGenerate_InvalidParams(t *testing.T) {
 	assert.Contains(t, diags[0].Message, "min-level")
 }
 
+func TestEscapeLinkText(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"no special chars", "Getting Started", "Getting Started"},
+		{"empty string", "", ""},
+		{"backslash", `a\b`, `a\\b`},
+		{"open bracket", "a[b", `a\[b`},
+		{"close bracket", "a]b", `a\]b`},
+		{"backslash then bracket", `a\[b`, `a\\\[b`},
+		{"bracket then backslash", `a[\b`, `a\[\\b`},
+		{"all three", `[a\b]`, `\[a\\b\]`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, escapeLinkText(tc.in))
+		})
+	}
+}
+
 func TestFix_SpecialCharsInHeading(t *testing.T) {
 	// Headings with brackets and backslashes should be escaped in link text.
 	src := "<?toc?>\n<?/toc?>\n\n## A ] B\n\n## C [ D\n\n## E \\ F\n"

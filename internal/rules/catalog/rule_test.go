@@ -10,6 +10,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/jeduden/mdsmith/internal/gitignore"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rules/tablefmt"
@@ -4403,6 +4404,23 @@ func TestIsExcluded_EmptyPatternSkipped(t *testing.T) {
 
 	result2 := isExcluded("other/file.md", []string{"", ""})
 	assert.False(t, result2, "only empty patterns → no match")
+}
+
+// isExcluded: a malformed pattern (one that fails doublestar.ValidatePattern)
+// must never report a match, even though doublestar.MatchUnvalidated can
+// diverge from doublestar.Match on some malformed patterns. isExcluded can
+// be reached with an unvalidated pattern via checkInjection /
+// checkCaseMismatches, which bypass the gensection engine's Validate pass.
+func TestIsExcluded_MalformedPatternNeverMatches(t *testing.T) {
+	pattern := "{x[,a}"
+	require.False(t, doublestar.ValidatePattern(pattern),
+		"precondition: pattern must be invalid for this test to be meaningful")
+	require.True(t, doublestar.MatchUnvalidated(pattern, "a"),
+		"precondition: MatchUnvalidated must diverge from Match for this pattern, "+
+			"or this test is not exercising the guard it claims to")
+
+	assert.False(t, isExcluded("a", []string{pattern}),
+		"a malformed exclude pattern must never exclude a file")
 }
 
 // sortValue: ParseCUEPath returns nil → return ""
