@@ -315,26 +315,30 @@ func collectHeadings(f *lint.File) []heading {
 // 1-based start line and word count. Tables (which goldmark parses as
 // paragraphs when the table extension is absent) are skipped — their
 // pipe-delimited rows are not prose.
+//
+// Reuses astutil.CollectSectionParagraphs's per-File memoized walk
+// instead of re-walking the AST: MDS023 (paragraph-readability) and
+// MDS024 (paragraph-structure) both call it too, and re-walking here
+// paid for a second full traversal whenever MDS036 ran alongside
+// either (docs/development/high-performance-go.md "memoize per-input
+// computations"). The exact-length result also lets out be presized
+// instead of grown via repeated append.
 func collectParagraphs(f *lint.File) []paragraph {
-	var out []paragraph
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
+	sps := astutil.CollectSectionParagraphs(f)
+	if len(sps) == 0 {
+		return nil
+	}
+	out := make([]paragraph, len(sps))
+	for i, sp := range sps {
+		// Only the word count is needed here, never the text itself, so
+		// count straight off the AST instead of materializing and
+		// discarding an ExtractPlainText string per paragraph (docs/
+		// development/high-performance-go.md "skip work you don't need").
+		out[i] = paragraph{
+			line:  sp.Line,
+			words: mdtext.CountWordsInNode(sp.Node, f.Source),
 		}
-		p, ok := n.(*ast.Paragraph)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
-		if astutil.IsTable(p, f) {
-			return ast.WalkContinue, nil
-		}
-		text := mdtext.ExtractPlainText(p, f.Source)
-		out = append(out, paragraph{
-			line:  astutil.ParagraphLine(p, f),
-			words: mdtext.CountWords(text),
-		})
-		return ast.WalkContinue, nil
-	})
+	}
 	return out
 }
 

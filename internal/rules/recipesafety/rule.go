@@ -47,7 +47,7 @@ var reservedParamNames = []string{"inputs", "outputs"}
 // bodyTemplateReserved holds placeholder names that are only available in
 // body-template, not in recipe commands or hook commands. Mirrors
 // config.reservedParams in internal/config/build.go.
-var bodyTemplateReserved = map[string]bool{"alt": true}
+var bodyTemplateReserved = map[string]struct{}{"alt": {}}
 
 // placeholderRe matches a {name} placeholder where name is an identifier
 // ([A-Za-z_][A-Za-z0-9_]*), consistent with config validation.
@@ -387,7 +387,7 @@ func (r *Rule) checkHookPlaceholders(filePath, label, tok string, params map[str
 					label, name)))
 			continue
 		}
-		if bodyTemplateReserved[name] {
+		if _, reserved := bodyTemplateReserved[name]; reserved {
 			diags = append(diags, r.diag(filePath, lint.Error,
 				fmt.Sprintf("hook %q: command uses reserved placeholder {%s}; "+
 					"reserved placeholders are only available in body-template",
