@@ -15,6 +15,7 @@ package mdsmith
 import (
 	"bytes"
 	"hash/fnv"
+	"math"
 	"path/filepath"
 	"sync"
 
@@ -399,7 +400,11 @@ func (s *Session) FixRule(uri string, source []byte, names []string) (FixResult,
 // uri, including per-leaf provenance. It reads the file's bytes through
 // the workspace to parse its front matter (the `kinds:` list and any
 // `fields-present:` selector inputs); a missing file resolves against
-// path-pattern and override globs alone.
+// path-pattern and override globs alone. A file over the session's
+// max-input-size resolves the same lenient way: the read is capped
+// (never fully loading an oversized file just to read its leading
+// front-matter block), and front-matter-derived kinds are silently
+// skipped rather than surfacing a size error.
 func (s *Session) Kinds(uri string) (KindResolution, error) {
 	fmKinds, fmFields, err := s.frontMatterFor(uri)
 	if err != nil {
@@ -423,16 +428,66 @@ func (s *Session) ResolveFile(uri string, fmKinds []string, fmFields map[string]
 	return config.ResolveFile(s.cfg, uri, fmKinds, fmFields)
 }
 
+// boundedWorkspaceReader is the package-internal Workspace capability
+// that reads a file capped at a byte limit without first loading an
+// oversized file fully into memory. Its method is unexported, so only
+// the two disk-backed implementations declared in this package —
+// OSWorkspace and OverlayWorkspace, both via bytelimit — can satisfy
+// it; a host-supplied Workspace can never implement it and always
+// takes readBoundedFrontMatterSource's fallback path below.
+// frontMatterFor uses it through readBoundedFrontMatterSource so
+// resolving a file's kind never pulls an arbitrarily large document
+// fully resident just to read its leading front-matter block.
+type boundedWorkspaceReader interface {
+	readFileLimited(path string, max int64) ([]byte, error)
+}
+
+// Pins that the two disk-backed Workspace implementations actually
+// satisfy boundedWorkspaceReader, so a future refactor that drops or
+// renames readFileLimited on either fails to compile here instead of
+// silently falling back to readBoundedFrontMatterSource's unbounded
+// ws.ReadFile path with no test failure to catch it.
+var (
+	_ boundedWorkspaceReader = OSWorkspace{}
+	_ boundedWorkspaceReader = (*OverlayWorkspace)(nil)
+)
+
+// readBoundedFrontMatterSource reads uri from ws, capped at max bytes.
+// It prefers ws's bounded read when available (avoiding a full read of
+// an oversized file); otherwise it falls back to a plain ReadFile
+// followed by a size check, for any Workspace implementation that does
+// not satisfy boundedWorkspaceReader (every host-supplied Workspace,
+// since the interface is unexported and unimplementable from outside
+// this package; also MemWorkspace, whose bytes are already resident
+// regardless).
+func readBoundedFrontMatterSource(ws Workspace, uri string, max int64) ([]byte, error) {
+	if br, ok := ws.(boundedWorkspaceReader); ok {
+		return br.readFileLimited(uri, max)
+	}
+	data, err := ws.ReadFile(uri)
+	if err != nil {
+		return nil, err
+	}
+	if max > 0 && max != math.MaxInt64 && int64(len(data)) > max {
+		return nil, bytelimit.FileTooLargeError(int64(len(data)), max)
+	}
+	return data, nil
+}
+
 // frontMatterFor reads uri through the workspace and parses its
 // front-matter kinds and fields. A workspace miss is not an error: the
 // file may be unsaved or new, so resolution proceeds with no
-// front-matter inputs.
+// front-matter inputs. A file over the session's max-input-size is
+// treated the same lenient way — see readBoundedFrontMatterSource,
+// which caps the read so an oversized file is never fully loaded just
+// to read its leading front-matter block.
 func (s *Session) frontMatterFor(uri string) ([]string, map[string]any, error) {
-	source, err := s.ws.ReadFile(uri)
+	source, err := readBoundedFrontMatterSource(s.ws, uri, s.maxBytes)
 	if err != nil {
-		// Treat a missing file as "no front matter" rather than an
-		// error so Kinds works for unsaved buffers.
-		return nil, nil, nil //nolint:nilerr // intentional: missing file means empty front matter
+		// Treat a missing or oversized file as "no front matter" rather
+		// than an error so Kinds works for unsaved buffers and never
+		// surfaces a size error from a read-only resolution call.
+		return nil, nil, nil //nolint:nilerr // intentional: missing/oversized file means empty front matter
 	}
 	// Extract the front-matter block directly. lint.StripFrontMatter is
 	// the same extraction NewFileFromSource performs; the full document

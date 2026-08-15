@@ -5,6 +5,8 @@ package mdsmith
 import (
 	"io/fs"
 	"os"
+
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 )
 
 // FS returns os.DirFS(Root) on tinygo/wasm builds. The wasm sandbox has no
@@ -25,4 +27,10 @@ func (w OSWorkspace) FS() fs.FS {
 // guard against.
 func readFileRooted(root, relPath string) ([]byte, error) {
 	return fs.ReadFile(os.DirFS(root), relPath)
+}
+
+// readFileRootedLimited mirrors readFileRooted but caps the read via
+// bytelimit — see OSWorkspace.readFileLimited.
+func readFileRootedLimited(root, relPath string, max int64) ([]byte, error) {
+	return bytelimit.ReadFSFileLimited(os.DirFS(root), relPath, max)
 }
