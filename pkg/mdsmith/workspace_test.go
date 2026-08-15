@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/bmatcuk/doublestar/v4"
+
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 )
 
 func TestMemWorkspaceReadFile(t *testing.T) {
@@ -462,3 +464,71 @@ var (
 	_ Workspace = OSWorkspace{}
 	_ Workspace = (*MemWorkspace)(nil)
 )
+
+// TestOSWorkspaceReadFileLimitedWithinLimit verifies readFileLimited
+// returns the file's bytes when the file is at or under max, for both
+// the rooted and unrooted (absolute-path) dispatch in ReadFile.
+func TestOSWorkspaceReadFileLimitedWithinLimit(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "a.md"), []byte("hello"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	rooted := OSWorkspace{Root: root}
+	got, err := rooted.readFileLimited("a.md", 100)
+	if err != nil {
+		t.Fatalf("readFileLimited(rooted): %v", err)
+	}
+	if string(got) != "hello" {
+		t.Fatalf("readFileLimited(rooted) = %q, want %q", got, "hello")
+	}
+
+	abs := filepath.Join(root, "a.md")
+	unrooted := OSWorkspace{}
+	got, err = unrooted.readFileLimited(abs, 100)
+	if err != nil {
+		t.Fatalf("readFileLimited(absolute): %v", err)
+	}
+	if string(got) != "hello" {
+		t.Fatalf("readFileLimited(absolute) = %q, want %q", got, "hello")
+	}
+}
+
+// TestOSWorkspaceReadFileLimitedOverLimit verifies readFileLimited
+// rejects a file larger than max with a "file too large" error instead
+// of returning its full content — the bounded counterpart to ReadFile,
+// which has no such cap. Covers both the rooted and unrooted dispatch.
+func TestOSWorkspaceReadFileLimitedOverLimit(t *testing.T) {
+	content := make([]byte, 100)
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "huge.md"), content, 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	rooted := OSWorkspace{Root: root}
+	if _, err := rooted.readFileLimited("huge.md", 50); err == nil {
+		t.Fatal("readFileLimited(rooted) over limit: want error, got nil")
+	} else if !errors.Is(err, bytelimit.ErrFileTooLarge) {
+		t.Fatalf("readFileLimited(rooted) over limit: got err %v, want it to wrap bytelimit.ErrFileTooLarge", err)
+	}
+
+	abs := filepath.Join(root, "huge.md")
+	unrooted := OSWorkspace{}
+	if _, err := unrooted.readFileLimited(abs, 50); err == nil {
+		t.Fatal("readFileLimited(absolute) over limit: want error, got nil")
+	} else if !errors.Is(err, bytelimit.ErrFileTooLarge) {
+		t.Fatalf("readFileLimited(absolute) over limit: got err %v, want it to wrap bytelimit.ErrFileTooLarge", err)
+	}
+}
+
+// TestOSWorkspaceReadFileLimitedOpenRootFails mirrors
+// TestOSWorkspaceReadFileOpenRootFails for the bounded read path:
+// readFileLimited must propagate the os.OpenRoot error (e.g. a
+// non-existent Root) through readFileRootedLimited rather than panic.
+func TestOSWorkspaceReadFileLimitedOpenRootFails(t *testing.T) {
+	nonExistent := t.TempDir() + "/does-not-exist"
+	ws := OSWorkspace{Root: nonExistent}
+	if _, err := ws.readFileLimited("any.md", 100); err == nil {
+		t.Fatal("readFileLimited on a non-existent root must return an error")
+	}
+}

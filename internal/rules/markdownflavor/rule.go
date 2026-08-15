@@ -260,7 +260,14 @@ func buildAlertSkipMaps(f *lint.File) (skip, addPrefix map[int]struct{}) {
 		para := bq.FirstChild().(*ast.Paragraph)
 		lines := para.Lines()
 		seg := lines.At(0)
-		markerLine, _ := flavor.LineCol(f.Source, seg.Start)
+		// f.LineOfOffset is f's memoized, binary-search line index —
+		// flavor.LineCol recomputes with a fresh bytes.Count/LastIndexByte
+		// scan of source[:offset] on every call, so calling it once per
+		// continuation line below made this loop O(n) per line (O(n^2)
+		// over a long alert paragraph) instead of O(log n). Both share the
+		// same "newlines strictly before offset" line-1 contract, so the
+		// swap is exact, not approximate.
+		markerLine := f.LineOfOffset(seg.Start)
 		skip[markerLine] = struct{}{}
 
 		// Remaining lines of the first paragraph may use lazy continuation
@@ -268,11 +275,11 @@ func buildAlertSkipMaps(f *lint.File) (skip, addPrefix map[int]struct{}) {
 		// would no longer be inside a blockquote, so re-add the prefix.
 		for i := 1; i < lines.Len(); i++ {
 			contSeg := lines.At(i)
-			contLine, _ := flavor.LineCol(f.Source, contSeg.Start)
-			// Stay in []byte: a string(line) copy here allocates on
-			// every continuation line scanned, in the walk this
-			// function already pays for once per file (docs/
-			// development/high-performance-go.md "Stay in []byte").
+			contLine := f.LineOfOffset(contSeg.Start)
+			// bytes.TrimLeft + a first-byte check replace the earlier
+			// strings.TrimLeft(string(...), ...) + strings.HasPrefix,
+			// which copied every paragraph line in this loop just to
+			// test its first non-blank byte.
 			raw := bytes.TrimLeft(f.Lines[contLine-1], " \t")
 			if len(raw) == 0 || raw[0] != '>' {
 				addPrefix[contLine] = struct{}{}
@@ -294,28 +301,35 @@ func (r *Rule) fixGitHubAlerts(f *lint.File) []byte {
 		return f.Source
 	}
 
-	// Pre-size from f.Lines and stay in []byte: only lines needing the
-	// "> " prefix rewrite pay a copy, every other line passes through
-	// unchanged (docs/development/high-performance-go.md "Pre-size
-	// slices" / "Stay in []byte").
-	out := make([][]byte, 0, len(f.Lines))
+	// A single buffer grown to len(f.Source) — usually an overestimate
+	// since marker lines are dropped, though a heavily lazy-continuation
+	// alert (many 2-byte "> " insertions from addPrefix) can still make
+	// buf re-grow once — replaces the earlier []string+strings.Join,
+	// which cost one string() copy per surviving line plus the join's
+	// own allocation. Mirrors blockquotewhitespace's Fix, the sibling
+	// rule that already made this switch.
+	var buf bytes.Buffer
+	buf.Grow(len(f.Source))
+	wroteLine := false
 	for i, line := range f.Lines {
 		lineNum := i + 1
 		if _, ok := skip[lineNum]; ok {
 			continue
 		}
+		if wroteLine {
+			buf.WriteByte('\n')
+		}
+		wroteLine = true
 		if _, ok := addPrefix[lineNum]; ok {
 			trimmed := bytes.TrimLeft(line, " \t")
-			rewritten := make([]byte, 0, len(line)+2)
-			rewritten = append(rewritten, line[:len(line)-len(trimmed)]...)
-			rewritten = append(rewritten, "> "...)
-			rewritten = append(rewritten, trimmed...)
-			out = append(out, rewritten)
-			continue
+			buf.Write(line[:len(line)-len(trimmed)])
+			buf.WriteString("> ")
+			buf.Write(trimmed)
+		} else {
+			buf.Write(line)
 		}
-		out = append(out, line)
 	}
-	return bytes.Join(out, []byte("\n"))
+	return buf.Bytes()
 }
 
 var (

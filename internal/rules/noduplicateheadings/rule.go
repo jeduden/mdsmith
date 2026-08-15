@@ -50,7 +50,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			return ast.WalkContinue, nil
 		}
 
-		text := astutil.HeadingText(heading, f.Source)
+		text := astutil.HeadingTextCached(f, heading)
 		line := astutil.HeadingLine(heading, f)
 		if d, ok := r.verdict(f, text, line, seen); ok {
 			diags = append(diags, d)
@@ -73,7 +73,7 @@ func (r *Rule) checkFromInline(f *lint.File) []lint.Diagnostic {
 		if !ok {
 			return
 		}
-		text := astutil.HeadingTextBase(heading, f.Source, base)
+		text := astutil.HeadingTextBaseCached(f, heading, base)
 		line := astutil.HeadingLineBase(heading, f, base)
 		if d, ok := r.verdict(f, text, line, seen); ok {
 			diags = append(diags, d)

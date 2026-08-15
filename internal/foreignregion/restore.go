@@ -61,6 +61,8 @@ type byteSpan struct {
 func matchedRegionSpans(src []byte, reg config.ForeignRegion) []byteSpan {
 	start := strings.TrimSpace(reg.Start)
 	end := strings.TrimSpace(reg.End)
+	startB := []byte(start)
+	endB := []byte(end)
 	var spans []byteSpan
 	openStart := -1
 	lineStart := 0
@@ -72,12 +74,12 @@ func matchedRegionSpans(src []byte, reg config.ForeignRegion) []byteSpan {
 			lineEnd = lineStart + rel
 			next = lineEnd + 1
 		}
-		switch strings.TrimSpace(string(src[lineStart:lineEnd])) {
-		case start:
+		trimmed := bytes.TrimSpace(src[lineStart:lineEnd])
+		if bytes.Equal(trimmed, startB) {
 			if openStart < 0 {
 				openStart = lineStart
 			}
-		case end:
+		} else if bytes.Equal(trimmed, endB) {
 			if openStart >= 0 {
 				spans = append(spans, byteSpan{start: openStart, end: lineEnd})
 				openStart = -1

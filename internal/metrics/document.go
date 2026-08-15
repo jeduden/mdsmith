@@ -30,7 +30,17 @@ type Document struct {
 	headingCount      int
 	headingCountReady bool
 	headingCountErr   error
+
+	sentenceCount      int
+	sentenceCountReady bool
+	sentenceCountErr   error
 }
+
+// countSentencesFn is a package variable so tests can substitute a
+// counting stub and assert SentenceCount memoizes its result instead
+// of recounting on every call — MET006, MET009, and MET010 (see
+// registry.go) each need the sentence count for the same Document.
+var countSentencesFn = mdtext.CountSentences
 
 // NewDocument constructs a Document wrapper for metric computation.
 func NewDocument(path string, source []byte) *Document {
@@ -109,6 +119,26 @@ func (d *Document) WordCount() (int, error) {
 	d.wordCount = mdtext.CountWords(text)
 	d.wordCountReady = true
 	return d.wordCount, nil
+}
+
+// SentenceCount returns the sentence count of the extracted plain
+// text, memoized so callers that each need it (MET006, MET009,
+// MET010) share one count per Document instead of recomputing it.
+func (d *Document) SentenceCount() (int, error) {
+	if d.sentenceCountReady {
+		return d.sentenceCount, d.sentenceCountErr
+	}
+
+	text, err := d.PlainText()
+	if err != nil {
+		d.sentenceCountErr = err
+		d.sentenceCountReady = true
+		return 0, err
+	}
+
+	d.sentenceCount = countSentencesFn(text)
+	d.sentenceCountReady = true
+	return d.sentenceCount, nil
 }
 
 // HeadingCount returns number of heading nodes.
