@@ -314,7 +314,8 @@ func (r *Rule) scanFullRefs(
 			continue
 		}
 		label := source[cs2:ce2]
-		if len(r.Placeholders) > 0 && placeholders.ContainsBodyToken(string(label), r.Placeholders) {
+		if len(r.Placeholders) > 0 &&
+			placeholders.ContainsBodyToken(util.BytesToReadOnlyString(label), r.Placeholders) {
 			i = advanceBracket(brs, i, ca2)
 			continue
 		}
@@ -368,7 +369,7 @@ func (r *Rule) scanCollapsedRefs(
 			i = advanceBracket(brs, i+1, ca+2)
 			continue
 		}
-		if len(r.Placeholders) > 0 && placeholders.ContainsBodyToken(string(text), r.Placeholders) {
+		if len(r.Placeholders) > 0 && placeholders.ContainsBodyToken(util.BytesToReadOnlyString(text), r.Placeholders) {
 			i = advanceBracket(brs, i+1, ca+2)
 			continue
 		}
@@ -440,7 +441,8 @@ func (r *Rule) scanShortcutRefs(
 			i = advanceBracket(brs, i+1, ca)
 			continue
 		}
-		if len(r.Placeholders) > 0 && placeholders.ContainsBodyToken(string(label), r.Placeholders) {
+		if len(r.Placeholders) > 0 &&
+			placeholders.ContainsBodyToken(util.BytesToReadOnlyString(label), r.Placeholders) {
 			i = advanceBracket(brs, i+1, ca)
 			continue
 		}

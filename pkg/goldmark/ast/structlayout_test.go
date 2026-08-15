@@ -17,3 +17,7 @@ func TestAutoLink_PointerFieldsBeforeScalars(t *testing.T) {
 	// declared fields are checked here.
 	fieldorder.AssertPointersBeforeScalars(t, reflect.TypeOf(AutoLink{}), 1)
 }
+
+// BaseNode's own layout is pinned by
+// TestBaseNode_PointerFieldsBeforeScalars in
+// basenode_structlayout_test.go.

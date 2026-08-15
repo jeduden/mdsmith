@@ -2478,7 +2478,7 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 		// checks emitted by validateFilename / checkFilenamePattern.
 		d := schema.SchemaDiagnostic{
 			Field:     "path",
-			Actual:    fmt.Sprintf("%q", rel),
+			Actual:    strconv.Quote(rel),
 			Expected:  "path matching glob " + pp.Pattern,
 			SchemaRef: fmt.Sprintf("kinds[%s] / path-pattern", pp.Kind),
 		}
@@ -2533,7 +2533,7 @@ func checkFilenamePattern(
 		// offending pattern.
 		d := schema.SchemaDiagnostic{
 			Field:     "filename pattern",
-			Actual:    fmt.Sprintf("%q", pattern),
+			Actual:    strconv.Quote(pattern),
 			Expected:  "valid glob",
 			Hint:      err.Error(),
 			SchemaRef: buildSchemaRefForLegacy(schemaSource),
@@ -2545,7 +2545,7 @@ func checkFilenamePattern(
 		// and the path-pattern diagnostic; see the rationale there.
 		d := schema.SchemaDiagnostic{
 			Field:     "filename",
-			Actual:    fmt.Sprintf("%q", base),
+			Actual:    strconv.Quote(base),
 			Expected:  "filename matching glob " + pattern,
 			SchemaRef: buildSchemaRefForLegacy(schemaSource),
 		}

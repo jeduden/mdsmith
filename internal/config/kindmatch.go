@@ -22,15 +22,13 @@ func matchKindAssignmentEntry(entry KindAssignmentEntry, filePath string, fmFiel
 	return true, formatSelector(entry)
 }
 
-// kindAssignmentEntryMatches reports whether entry matches filePath and
-// fmFields, without building the formatSelector provenance string.
-// resolveEffectiveKinds calls this directly: it runs on every file via
-// EffectiveSignature (even on a config cache hit) and never surfaces
-// the selector, so building it for every matched entry across a
-// workspace-sized kind-assignment list is wasted work
-// (docs/development/high-performance-go.md "Skip work you don't need").
-// matchKindAssignmentEntry, used by provenance output, still returns
-// the selector for callers that need it.
+// kindAssignmentEntryMatches is matchKindAssignmentEntry's bool-only
+// verdict, with no provenance selector built. resolveEffectiveKinds
+// calls this on every workspace file for every kind-assignment entry
+// and never needs the selector text, so building and discarding it
+// there wasted an allocation per matching entry per file. Only
+// provenance.go needs the selector, so it still calls
+// matchKindAssignmentEntry directly.
 func kindAssignmentEntryMatches(entry KindAssignmentEntry, filePath string, fmFields map[string]any) bool {
 	hasGlob := len(entry.Patterns()) > 0
 	hasFields := len(entry.FieldsPresent) > 0

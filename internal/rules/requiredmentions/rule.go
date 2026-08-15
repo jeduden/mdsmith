@@ -67,10 +67,11 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		totalLines--
 	}
 
+	bodies := astutil.SectionBodies(headings, paragraphs, f.Source, totalLines)
+
 	var diags []lint.Diagnostic
 	for i, h := range headings {
-		end := astutil.SectionEnd(headings, i, totalLines)
-		body := astutil.SectionBody(paragraphs, f.Source, h.Line, end)
+		body := bodies[i]
 		for _, m := range r.Mentions {
 			if m == "" {
 				continue

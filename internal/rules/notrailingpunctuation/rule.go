@@ -46,7 +46,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			if !ok {
 				return
 			}
-			text := astutil.HeadingTextBase(heading, f.Source, base)
+			text := astutil.HeadingTextBaseCached(f, heading, base)
 			if d, ok := r.verdict(f, text, astutil.HeadingLineBase(heading, f, base)); ok {
 				diags = append(diags, d)
 			}
@@ -71,7 +71,7 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 	if !ok {
 		return nil
 	}
-	if d, ok := r.verdict(f, astutil.HeadingText(heading, f.Source), astutil.HeadingLine(heading, f)); ok {
+	if d, ok := r.verdict(f, astutil.HeadingTextCached(f, heading), astutil.HeadingLine(heading, f)); ok {
 		return []lint.Diagnostic{d}
 	}
 	return nil
