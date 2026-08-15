@@ -2,8 +2,9 @@ package flavor
 
 import (
 	"bytes"
+	"cmp"
 	"regexp"
-	"sort"
+	"slices"
 
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	extast "github.com/jeduden/mdsmith/pkg/goldmark/extension/ast"
@@ -106,10 +107,19 @@ func Detect(doc *markdown.Document, accept func(Feature) bool) []Finding {
 		out = append(out, detectGitHubAlerts(source, lineCol, doc.AST)...)
 	}
 
-	sort.SliceStable(out, func(i, j int) bool {
-		return out[i].Start < out[j].Start
-	})
+	sortFindingsByStart(out)
 	return out
+}
+
+// sortFindingsByStart orders findings by byte offset in place.
+// slices.SortStableFunc sorts the concrete Finding values directly,
+// unlike sort.SliceStable, which drives reflect.Swapper under the
+// hood — see docs/development/high-performance-go.md's "reflect in
+// hot paths" anti-pattern.
+func sortFindingsByStart(findings []Finding) {
+	slices.SortStableFunc(findings, func(a, b Finding) int {
+		return cmp.Compare(a.Start, b.Start)
+	})
 }
 
 // dualFindings runs the dual parser via the package-shared pool,

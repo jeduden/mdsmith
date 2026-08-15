@@ -11,7 +11,9 @@ package markdownflavor
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
@@ -156,10 +158,19 @@ func (r *Rule) appendLayerFindings(
 	if accept(flavor.FeatureGitHubAlerts) {
 		findings = append(findings, alertFindingsFromSpans(f)...)
 	}
-	sort.SliceStable(findings, func(i, j int) bool {
-		return findings[i].Start < findings[j].Start
-	})
+	sortFindingsByStart(findings)
 	return findings
+}
+
+// sortFindingsByStart orders findings by byte offset in place.
+// slices.SortStableFunc sorts the concrete flavor.Finding values
+// directly, unlike sort.SliceStable, which drives reflect.Swapper
+// under the hood — see docs/development/high-performance-go.md's
+// "reflect in hot paths" anti-pattern.
+func sortFindingsByStart(findings []flavor.Finding) {
+	slices.SortStableFunc(findings, func(a, b flavor.Finding) int {
+		return cmp.Compare(a.Start, b.Start)
+	})
 }
 
 // alertFindingsFromSpans returns one GitHub-alert finding per Layer 0

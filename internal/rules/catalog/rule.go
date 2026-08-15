@@ -2,11 +2,13 @@ package catalog
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
 	"io/fs"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1068,6 +1070,19 @@ func parseSort(params map[string]string) (key string, descending, numeric bool) 
 	return sortVal, descending, numeric
 }
 
+// sortable pairs a fileEntry with its pre-computed lowercase sort and
+// tiebreaker keys — or, in numeric mode, the parsed int64 — avoiding
+// O(n log n) string allocations or CUE-path re-parses inside the sort
+// comparator. allParseAsInt already parses every entry once just to
+// decide useInts; numInt carries that same parse forward instead of
+// discarding it.
+type sortable struct {
+	entry         fileEntry
+	sortKey       string // lowercase primary sort key (empty for numeric mode)
+	numInt        int64  // parsed sort value (numeric mode only)
+	tiebreakerKey string // lowercase filename for stable tiebreaker
+}
+
 // sortEntries sorts file entries by the given key. When numeric is
 // true and every entry's value parses as an int, entries are ordered
 // by the integer value; any parse failure falls back to string
@@ -1076,17 +1091,6 @@ func parseSort(params map[string]string) (key string, descending, numeric bool) 
 func sortEntries(entries []fileEntry, key string, descending, numeric bool) {
 	useInts := numeric && allParseAsInt(entries, key)
 
-	// Pre-compute lowercase keys (or, in numeric mode, the parsed
-	// int64) once per entry to avoid O(n log n) string allocations or
-	// CUE-path re-parses inside the comparator. allParseAsInt above
-	// already parses every entry once just to decide useInts; numInt
-	// carries that same parse forward instead of discarding it.
-	type sortable struct {
-		entry         fileEntry
-		sortKey       string // lowercase primary sort key (empty for numeric mode)
-		numInt        int64  // parsed sort value (numeric mode only)
-		tiebreakerKey string // lowercase filename for stable tiebreaker
-	}
 	sortables := make([]sortable, len(entries))
 	for i, e := range entries {
 		var sk string
@@ -1104,32 +1108,39 @@ func sortEntries(entries []fileEntry, key string, descending, numeric bool) {
 		}
 	}
 
-	sort.SliceStable(sortables, func(i, j int) bool {
-		var cmp int
-		if useInts {
-			switch {
-			case sortables[i].numInt < sortables[j].numInt:
-				cmp = -1
-			case sortables[i].numInt > sortables[j].numInt:
-				cmp = 1
-			}
-		} else {
-			cmp = strings.Compare(sortables[i].sortKey, sortables[j].sortKey)
-		}
-		if cmp == 0 {
-			// Tiebreaker: path ascending, case-insensitive.
-			return sortables[i].tiebreakerKey < sortables[j].tiebreakerKey
-		}
-
-		if descending {
-			return cmp > 0
-		}
-		return cmp < 0
-	})
+	sortSortables(sortables, useInts, descending)
 
 	for i, s := range sortables {
 		entries[i] = s.entry
 	}
+}
+
+// sortSortables orders sortables in place. slices.SortStableFunc sorts
+// the concrete sortable values directly, unlike sort.SliceStable,
+// which drives reflect.Swapper under the hood — see
+// docs/development/high-performance-go.md's "reflect in hot paths"
+// anti-pattern.
+//
+// The comparator reads the pre-computed sortKey/numInt off each
+// sortable rather than re-deriving them: parsing or lowercasing inside
+// the comparator would repeat that work O(n log n) times, which is the
+// cost sortEntries pre-computes once per entry to avoid.
+func sortSortables(sortables []sortable, useInts, descending bool) {
+	slices.SortStableFunc(sortables, func(a, b sortable) int {
+		var c int
+		if useInts {
+			c = cmp.Compare(a.numInt, b.numInt)
+		} else {
+			c = strings.Compare(a.sortKey, b.sortKey)
+		}
+		if c == 0 {
+			// Tiebreaker: path ascending, case-insensitive.
+			c = strings.Compare(a.tiebreakerKey, b.tiebreakerKey)
+		} else if descending {
+			c = -c
+		}
+		return c
+	})
 }
 
 // allParseAsInt reports whether every entry's value for key parses

@@ -2,6 +2,8 @@ package astutil
 
 import (
 	"bytes"
+	"cmp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -104,9 +106,7 @@ func buildSectionHeadings(f *lint.File) any {
 		})
 		return ast.WalkSkipChildren, nil
 	})
-	sort.Slice(out, func(i, j int) bool {
-		return out[i].Line < out[j].Line
-	})
+	sortSectionHeadings(out)
 	return out
 }
 
@@ -150,6 +150,17 @@ func buildHeadingNodes(f *lint.File) any {
 		return ast.WalkSkipChildren, nil
 	})
 	return out
+}
+
+// sortSectionHeadings orders headings by source line in place.
+// slices.SortFunc sorts the concrete SectionHeading values directly,
+// unlike sort.Slice, which drives reflect.Swapper under the hood —
+// see docs/development/high-performance-go.md's "reflect in hot
+// paths" anti-pattern.
+func sortSectionHeadings(headings []SectionHeading) {
+	slices.SortFunc(headings, func(a, b SectionHeading) int {
+		return cmp.Compare(a.Line, b.Line)
+	})
 }
 
 // CollectSectionParagraphs returns every non-table paragraph with its
