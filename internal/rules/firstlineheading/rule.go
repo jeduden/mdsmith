@@ -97,7 +97,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	if heading.Level != level {
 		// If the heading text matches a configured placeholder token,
 		// treat it as opaque and suppress the level diagnostic.
-		text := astutil.HeadingText(heading, f.Source)
+		text := astutil.HeadingTextCached(f, heading)
 		if placeholders.ContainsBodyToken(text, r.Placeholders) {
 			return nil
 		}
