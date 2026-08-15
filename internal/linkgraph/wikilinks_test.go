@@ -302,6 +302,23 @@ func TestExtractWikiLinks_NoNewlinesInsideBrackets(t *testing.T) {
 	assert.Empty(t, got)
 }
 
+func TestExtractWikiLinks_NoBracketsAllocBudget(t *testing.T) {
+	// The vast majority of files in a workspace contain no `[[` at
+	// all, so ExtractWikiLinks must not pay for CollectCodeBlockLines,
+	// CollectPIBlockLines, or the code-span AST walk before it has
+	// even confirmed the source can match wikilinkRE
+	// (docs/development/high-performance-go.md, "Gate expensive
+	// analyzers behind a cheap pre-check").
+	f := newFile(t, "# Doc\n\nSome ordinary prose with `a code span` and "+
+		"a [normal link](x.md), but no wikilinks at all.\n")
+	allocs := testing.AllocsPerRun(100, func() {
+		_ = ExtractWikiLinks(f)
+	})
+	if allocs > 0 {
+		t.Fatalf("ExtractWikiLinks allocs per call on bracket-free source: want 0, got %v", allocs)
+	}
+}
+
 func TestResolveWikiLink_ExactStem(t *testing.T) {
 	mfs := fstest.MapFS{
 		"notes.md": &fstest.MapFile{Data: []byte("# Notes\n")},
