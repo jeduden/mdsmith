@@ -651,14 +651,11 @@ func (f *Fixer) applyFixPasses(
 		before := current
 		var parsedFile *lint.File
 		for _, fr := range fixable {
-			if parsedFile == nil {
-				var err error
-				parsedFile, err = lint.NewFile(path, current)
-				if err != nil {
-					*errs = append(*errs, fmt.Errorf("parsing %q: %w", path, err))
-					break
-				}
-				hydrateLintFile(parsedFile, lf, dirFS, f.Config, path)
+			var err error
+			parsedFile, err = f.parsedFileForPass(path, current, parsedFile, lf, dirFS)
+			if err != nil {
+				*errs = append(*errs, fmt.Errorf("parsing %q: %w", path, err))
+				break
 			}
 
 			diags := fr.Check(parsedFile)
@@ -675,6 +672,27 @@ func (f *Fixer) applyFixPasses(
 		}
 	}
 	return current
+}
+
+// parsedFileForPass returns parsedFile unchanged when it is still
+// valid for current (the common case: most rules in most passes find
+// nothing to fix, so the bytes never move between one rule's Check
+// and the next's), or parses and hydrates a fresh *lint.File when
+// parsedFile is nil — either the first rule in a pass, or right after
+// a Fix call changed current. See applyFixPasses' doc comment for why
+// this reuse is safe.
+func (f *Fixer) parsedFileForPass(
+	path string, current []byte, parsedFile *lint.File, lf *lint.File, dirFS fs.FS,
+) (*lint.File, error) {
+	if parsedFile != nil {
+		return parsedFile, nil
+	}
+	parsedFile, err := lint.NewFile(path, current)
+	if err != nil {
+		return nil, err
+	}
+	hydrateLintFile(parsedFile, lf, dirFS, f.Config, path)
+	return parsedFile, nil
 }
 
 // disabledFixerLogger is the shared zero-value logger (*Fixer).log
