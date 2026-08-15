@@ -60,6 +60,14 @@ type Fixer struct {
 	// read-only tricks. Production callers leave it nil.
 	WriteFile func(path string, data []byte, perm os.FileMode) error
 
+	// ParseFile, when non-nil, replaces lint.NewFile for
+	// applyFixPasses' per-pass parse step. Tests inject an error-
+	// returning function to exercise the parse-failure branch —
+	// lint.NewFile itself never errors with the current
+	// implementation, so there is no real input that reaches it.
+	// Production callers leave it nil.
+	ParseFile func(path string, source []byte) (*lint.File, error)
+
 	// gitignoreCache caches gitignore matchers by directory so the
 	// matcher tree is walked once per directory across a fix run,
 	// matching the engine.Runner cache contract that catalog and
@@ -687,7 +695,11 @@ func (f *Fixer) parsedFileForPass(
 	if parsedFile != nil {
 		return parsedFile, nil
 	}
-	parsedFile, err := lint.NewFile(path, current)
+	parseFile := lint.NewFile
+	if f.ParseFile != nil {
+		parseFile = f.ParseFile
+	}
+	parsedFile, err := parseFile(path, current)
 	if err != nil {
 		return nil, err
 	}
