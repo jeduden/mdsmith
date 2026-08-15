@@ -5,6 +5,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -812,6 +814,44 @@ func TestCheck_RunCacheAppliesFrontMatterOffsetOnce(t *testing.T) {
 			"b.md's paragraph line must include its front-matter offset "+
 				"on every Check call sharing the RunCache, not just the first")
 	}
+}
+
+// TestBuildCorpusIndex_MemoizedAcrossHostFiles pins the fix for
+// buildCorpusIndex's remaining O(N) cost per host file: even after the
+// per-sibling read/parse/fingerprint (TestCheck_RunCacheReusesCorpusParseAcrossHostFiles)
+// and the corpus directory walk (TestCheck_RunCacheReusesCorpusWalkAcrossHostFiles)
+// were each memoized, buildCorpusIndex still allocated a fresh
+// fingerprint->matches map and reflect.Sort.Sliced every fingerprint's
+// matches from scratch on every host file's Check call — an O(N)
+// aggregation repeated N times across the run. Two calls with an
+// identical corpus signature sharing a RunCache must return the same
+// map instance, not two independently built ones.
+func TestBuildCorpusIndex_MemoizedAcrossHostFiles(t *testing.T) {
+	dir := t.TempDir()
+	p := longParagraph("shared paragraph text for the corpus index cache test")
+	writeFile(t, filepath.Join(dir, "a.md"), "# A\n\n"+p+"\n")
+	writeFile(t, filepath.Join(dir, "b.md"), "# B\n\n"+p+"\n")
+
+	runCache := lint.NewRunCache()
+	cfg := corpusScanConfig{
+		runCache:  runCache,
+		rootDir:   dir,
+		corpus:    os.DirFS(dir),
+		selfName:  "host.md", // not a real corpus file, so nothing is excluded
+		maxBytes:  1 << 20,
+		minChars:  defaultMinChars,
+		keySuffix: "\x00" + strconv.Itoa(defaultMinChars),
+	}
+
+	first := buildCorpusIndex(cfg)
+	second := buildCorpusIndex(cfg)
+	require.NotEmpty(t, first, "test corpus must produce at least one fingerprint")
+
+	firstPtr := reflect.ValueOf(first).Pointer()
+	secondPtr := reflect.ValueOf(second).Pointer()
+	assert.Equalf(t, firstPtr, secondPtr,
+		"buildCorpusIndex rebuilt the aggregate map on a second call with an "+
+			"identical corpus signature; expected the RunCache-backed result to be reused")
 }
 
 func TestApplySettings_RejectsBadExcludeType(t *testing.T) {

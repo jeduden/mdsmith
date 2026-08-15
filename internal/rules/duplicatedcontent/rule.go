@@ -11,7 +11,6 @@ import (
 	gopath "path"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"unicode"
@@ -389,22 +388,43 @@ type corpusScanConfig struct {
 // workspace of N files enabling MDS037 otherwise re-reads and
 // re-parses every sibling from scratch on every host file's Check, an
 // O(N^2) cost across the run.
+//
+// The aggregation itself — allocating the map and populating it from
+// every corpus file's (already-memoized) paragraphs, then sorting
+// each fingerprint's matches — is memoized on cfg.runCache.CorpusIndex
+// too: without it, that O(N)-sized rebuild still ran once per host
+// file, an O(N^2) cost even though every leaf read was already
+// cached. See docs/development/high-performance-go.md, "Memoize
+// per-input computations".
 func buildCorpusIndex(cfg corpusScanConfig) map[string][]externalMatch {
-	index := make(map[string][]externalMatch)
-	for _, path := range corpusFiles(cfg) {
-		indexFileIfEligible(index, cfg, path)
-	}
+	build := func() map[string][]externalMatch {
+		index := make(map[string][]externalMatch)
+		for _, path := range corpusFiles(cfg) {
+			indexFileIfEligible(index, cfg, path)
+		}
 
-	// Sort each fingerprint's matches so diagnostics are deterministic.
-	for fp, matches := range index {
-		sort.Slice(matches, func(i, j int) bool {
-			if matches[i].path != matches[j].path {
-				return matches[i].path < matches[j].path
-			}
-			return matches[i].line < matches[j].line
-		})
-		index[fp] = matches
+		// Sort each fingerprint's matches so diagnostics are
+		// deterministic. slices.SortFunc sorts the concrete
+		// externalMatch values directly, unlike sort.Slice, which
+		// drives reflect.Swapper under the hood — see
+		// docs/development/high-performance-go.md's "reflect in hot
+		// paths" anti-pattern.
+		for fp, matches := range index {
+			slices.SortFunc(matches, func(a, b externalMatch) int {
+				if a.path != b.path {
+					return strings.Compare(a.path, b.path)
+				}
+				return a.line - b.line
+			})
+			index[fp] = matches
+		}
+		return index
 	}
+	if cfg.runCache == nil || cfg.rootDir == "" {
+		return build()
+	}
+	v := cfg.runCache.CorpusIndex(corpusFilesKey(cfg)+cfg.keySuffix, func() any { return build() })
+	index, _ := v.(map[string][]externalMatch)
 	return index
 }
 
