@@ -7,9 +7,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// headingSortFixture has several out-of-source-order headings once
-// nested sections are accounted for, so buildSectionHeadings's sort
-// actually reorders elements.
+// headingSortFixture has enough headings (six, across three levels)
+// for sortSectionHeadings to do real comparison work. The AST walk
+// already yields them in source order, so the sort is a no-op on
+// ordering — what this fixture pins is its allocation cost, not a
+// reordering.
 const headingSortFixture = "# Title\n\n" +
 	"## A\n\nprose\n\n" +
 	"### A1\n\nprose\n\n" +
