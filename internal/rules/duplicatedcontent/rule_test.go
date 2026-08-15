@@ -816,6 +816,46 @@ func TestCheck_RunCacheAppliesFrontMatterOffsetOnce(t *testing.T) {
 	}
 }
 
+// TestCheck_SelfExclusionSurvivesSharedRunCache pins a correctness
+// bug caught on review of the RunCache.CorpusIndex memoization
+// (TestBuildCorpusIndex_MemoizedAcrossHostFiles below): the shared
+// aggregate index must never bake in "exclude this one host file"
+// at build time, because the very same cached index later serves
+// every other host file scanning an identical corpus signature. A
+// bug here previously let the first-checked file's exclusion leak
+// into every subsequent file's Check: a.md and b.md share a
+// duplicate paragraph; checking a.md first cached an index that
+// excluded a.md, so checking b.md next — reusing that same cached
+// index — incorrectly reported b.md's paragraph as "duplicated in
+// b.md" (pointing at itself) instead of "a.md", and would just as
+// wrongly report nothing at all for a file checked after two
+// self-referential entries had been baked in.
+func TestCheck_SelfExclusionSurvivesSharedRunCache(t *testing.T) {
+	dir := t.TempDir()
+	p := longParagraph("shared paragraph text for the self exclusion test")
+	writeFile(t, filepath.Join(dir, "a.md"), "# A\n\n"+p+"\n")
+	writeFile(t, filepath.Join(dir, "b.md"), "# B\n\n"+p+"\n")
+
+	runCache := lint.NewRunCache()
+
+	fa := newLintFileWithRoot(t, filepath.Join(dir, "a.md"), dir)
+	fa.RunCache = runCache
+	diagsA := (&Rule{}).Check(fa)
+	require.Len(t, diagsA, 1, "a.md must report exactly one duplicate")
+	assert.Contains(t, diagsA[0].Message, "b.md",
+		"a.md's diagnostic must name b.md, never itself")
+	assert.NotContains(t, diagsA[0].Message, "a.md")
+
+	fb := newLintFileWithRoot(t, filepath.Join(dir, "b.md"), dir)
+	fb.RunCache = runCache
+	diagsB := (&Rule{}).Check(fb)
+	require.Len(t, diagsB, 1, "b.md must report exactly one duplicate, "+
+		"even though the aggregate index was built and cached while checking a.md")
+	assert.Contains(t, diagsB[0].Message, "a.md",
+		"b.md's diagnostic must name a.md, never itself")
+	assert.NotContains(t, diagsB[0].Message, "b.md:")
+}
+
 // TestBuildCorpusIndex_MemoizedAcrossHostFiles pins the fix for
 // buildCorpusIndex's remaining O(N) cost per host file: even after the
 // per-sibling read/parse/fingerprint (TestCheck_RunCacheReusesCorpusParseAcrossHostFiles)
@@ -837,7 +877,6 @@ func TestBuildCorpusIndex_MemoizedAcrossHostFiles(t *testing.T) {
 		runCache:  runCache,
 		rootDir:   dir,
 		corpus:    os.DirFS(dir),
-		selfName:  "host.md", // not a real corpus file, so nothing is excluded
 		maxBytes:  1 << 20,
 		minChars:  defaultMinChars,
 		keySuffix: "\x00" + strconv.Itoa(defaultMinChars),

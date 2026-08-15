@@ -94,11 +94,15 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	// f.FS when RootFS is missing or rootRelative fails.
 	corpus, selfName, rootDir := resolveCorpus(f)
 
+	// index covers every corpus file, self included: it is shared and
+	// cached (via cfg.runCache.CorpusIndex) across every host file that
+	// scans this same corpus signature, so it cannot exclude any one
+	// host file's own entries at build time — the exclusion has to
+	// happen per host file, below, using this call's own selfName.
 	index := buildCorpusIndex(corpusScanConfig{
 		runCache:         f.RunCache,
 		rootDir:          rootDir,
 		corpus:           corpus,
-		selfName:         selfName,
 		maxBytes:         f.MaxInputBytes,
 		minChars:         minChars,
 		keySuffix:        "\x00" + strconv.Itoa(minChars),
@@ -114,6 +118,9 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			continue
 		}
 		for _, m := range matches {
+			if m.path == selfName {
+				continue
+			}
 			diags = append(diags, lint.Diagnostic{
 				File:     f.Path,
 				Line:     p.line,
@@ -353,13 +360,18 @@ func rootRelative(rootDir, path string) (string, bool) {
 	return slash, true
 }
 
-// corpusScanConfig bundles the settings buildCorpusIndex,
-// indexFileIfEligible, and candidateParagraphs all need to walk one
-// corpus for one host file's Check call. Building it once in Check
-// instead of re-threading each setting as its own positional
-// parameter keeps a future setting addition (RunCache and keySuffix
-// were both added this way) from growing an already-long parameter
-// list further.
+// corpusScanConfig bundles the settings buildCorpusIndex and
+// candidateParagraphs all need to walk one corpus. Building it once
+// in Check instead of re-threading each setting as its own
+// positional parameter keeps a future setting addition (RunCache and
+// keySuffix were both added this way) from growing an already-long
+// parameter list further.
+//
+// It deliberately carries no host-file-specific field (no selfName):
+// buildCorpusIndex's result is shared and cached across every host
+// file scanning the same corpus signature, so it must not depend on
+// which file is asking. Excluding the asking file's own entries from
+// the corpus is Check's job, applied to the shared result.
 type corpusScanConfig struct {
 	runCache *lint.RunCache
 	corpus   fs.FS
@@ -367,7 +379,6 @@ type corpusScanConfig struct {
 	// or "" for the FS-only fallback (no stable absolute path) —
 	// candidateParagraphs skips the RunCache in that case.
 	rootDir  string
-	selfName string
 	maxBytes int64
 	minChars int
 	// keySuffix is "\x00"+minChars, built once per Check call since
@@ -379,9 +390,20 @@ type corpusScanConfig struct {
 
 // buildCorpusIndex resolves cfg's corpus file list (via corpusFiles)
 // and returns a map from paragraph fingerprint to every occurrence
-// found across it, excluding cfg.selfName. Files that can't be read
-// or parsed are silently skipped — this rule is advisory and should
-// never fail a run because a sibling file is malformed or oversize.
+// found across every corpus file. It does NOT exclude the asking host
+// file's own entries — Check does that, after the call, using its own
+// selfName. The result is shared (via cfg.runCache.CorpusIndex) across
+// every host file that scans an identical corpus signature, and the
+// corpus signature does not include which file is asking, so an
+// exclusion baked in here would only be correct for whichever host
+// file happened to trigger the first build; every other host file
+// sharing the cache would see a stale exclusion (RunCache.CorpusIndex
+// caught this on review; TestCheck_SelfExclusionSurvivesSharedRunCache
+// pins it).
+//
+// Files that can't be read or parsed are silently skipped — this rule
+// is advisory and should never fail a run because a sibling file is
+// malformed or oversize.
 //
 // cfg.runCache and cfg.rootDir let candidateParagraphs memoize each
 // sibling's fingerprinted paragraphs on the engine's RunCache: a
@@ -400,7 +422,7 @@ func buildCorpusIndex(cfg corpusScanConfig) map[string][]externalMatch {
 	build := func() map[string][]externalMatch {
 		index := make(map[string][]externalMatch)
 		for _, path := range corpusFiles(cfg) {
-			indexFileIfEligible(index, cfg, path)
+			indexFile(index, cfg, path)
 		}
 
 		// Sort each fingerprint's matches so diagnostics are
@@ -512,16 +534,16 @@ func walkDirDecision(p string, exclude []string) error {
 	return nil
 }
 
-// indexFileIfEligible appends every paragraph fingerprint a corpus
-// candidate contains into index. corpusFiles has already applied
-// IsMarkdownPath and include/exclude filtering, so the only
-// per-host-file check left is excluding cfg.selfName. Unreadable or
-// unparseable files are silently dropped — this rule is advisory and
-// must not fail a run because of a sibling.
-func indexFileIfEligible(index map[string][]externalMatch, cfg corpusScanConfig, path string) {
-	if path == cfg.selfName {
-		return
-	}
+// indexFile appends every paragraph fingerprint a corpus file
+// contains into index. corpusFiles has already applied
+// IsMarkdownPath and include/exclude filtering, so every path this
+// is called with belongs in the aggregate — including whichever
+// file will later ask about it as the host (Check excludes the
+// asking file's own entries after the call, not here; see
+// buildCorpusIndex). Unreadable or unparseable files are silently
+// dropped — this rule is advisory and must not fail a run because of
+// a sibling.
+func indexFile(index map[string][]externalMatch, cfg corpusScanConfig, path string) {
 	for _, p := range candidateParagraphs(cfg, path) {
 		index[p.fingerprint] = append(index[p.fingerprint], externalMatch{
 			path: path,

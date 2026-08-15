@@ -92,6 +92,12 @@ func buildFileEntry(filePath string, source []byte) *FileEntry {
 	ctx := parser.NewContext()
 	root := pp.parser.Parse(text.NewReader(body), parser.WithContext(ctx))
 	lines := bytes.Split(body, []byte("\n"))
+	// Built once and shared by every line/column lookup below
+	// (collectHeadings, collectLinkRefDefs, collectDirectives) instead
+	// of each rebuilding its own — same source, same index. See
+	// docs/development/high-performance-go.md, "Memoize per-input
+	// computations".
+	nl := newlineIndex(body)
 
 	// Wrap the parsed body in a *lint.File so the linkgraph
 	// extractors (ExtractLinks / ExtractRefLinks / ExtractDirectives)
@@ -107,14 +113,14 @@ func buildFileEntry(filePath string, source []byte) *FileEntry {
 	}
 
 	// Headings drive the outline.
-	headingSyms := collectHeadings(fe.Path, root, body, lines, fmOffset, fe.LineCount)
+	headingSyms := collectHeadings(fe.Path, root, body, lines, nl, fmOffset, fe.LineCount)
 	fe.Symbols = append(fe.Symbols, headingSyms...)
 
 	// Link reference definitions (parsed by goldmark) flatten alongside.
-	fe.Symbols = append(fe.Symbols, collectLinkRefDefs(fe.Path, ctx, body, lines, fmOffset)...)
+	fe.Symbols = append(fe.Symbols, collectLinkRefDefs(fe.Path, ctx, body, lines, nl, fmOffset)...)
 
 	// Directives (PIs) at the document root.
-	fe.Symbols = append(fe.Symbols, collectDirectives(fe.Path, root, body, fmOffset)...)
+	fe.Symbols = append(fe.Symbols, collectDirectives(fe.Path, root, nl, fmOffset)...)
 
 	// Edges: anchor / file / ref-style links plus directive targets.
 	fe.Outgoing = append(fe.Outgoing, collectLinkEdges(fe.Path, lf, fmOffset)...)
@@ -138,8 +144,9 @@ func countLines(source []byte) int {
 // the line before the next heading at the same or lower level — that
 // matches how outline UIs (VS Code's symbol picker, Helix's
 // jump-to-symbol) shade the section.
-func collectHeadings(filePath string, root ast.Node, source []byte, lines [][]byte, fmOffset, totalLines int) []Symbol {
-	nl := newlineIndex(source)
+func collectHeadings(
+	filePath string, root ast.Node, source []byte, lines [][]byte, nl []int, fmOffset, totalLines int,
+) []Symbol {
 	heads, headStart := walkHeadings(root, nl)
 	syms := make([]Symbol, 0, len(heads))
 	usedAnchors := make(map[string]struct{})
@@ -494,7 +501,9 @@ func RefDefRegexpMatches(body []byte) [][]int {
 // reference definition map is stored in parser.Context (`ctx.References`)
 // — we use it to confirm a regex match really is a definition (not a
 // link inside a paragraph), then read the line/col from the source.
-func collectLinkRefDefs(filePath string, ctx parser.Context, body []byte, lines [][]byte, fmOffset int) []Symbol {
+func collectLinkRefDefs(
+	filePath string, ctx parser.Context, body []byte, lines [][]byte, nl []int, fmOffset int,
+) []Symbol {
 	refs := ctx.References()
 	wanted := make(map[string]struct{}, len(refs))
 	for _, ref := range refs {
@@ -509,7 +518,6 @@ func collectLinkRefDefs(filePath string, ctx parser.Context, body []byte, lines 
 	// would confuse the symbol picker.
 	seen := make(map[string]struct{}, len(wanted))
 	out := make([]Symbol, 0, len(wanted))
-	nl := newlineIndex(body)
 	for _, m := range refDefRE.FindAllSubmatchIndex(body, -1) {
 		raw := body[m[2]:m[3]]
 		label := string(raw)
@@ -544,9 +552,8 @@ func collectLinkRefDefs(filePath string, ctx parser.Context, body []byte, lines 
 // collectDirectives returns one Symbol per processing-instruction
 // block at the document root. Closing markers (<?/name?>) are
 // skipped; only the opener is treated as a symbol.
-func collectDirectives(filePath string, root ast.Node, source []byte, fmOffset int) []Symbol {
+func collectDirectives(filePath string, root ast.Node, nl []int, fmOffset int) []Symbol {
 	var out []Symbol
-	var nl []int
 	for n := root.FirstChild(); n != nil; n = n.NextSibling() {
 		pi, ok := n.(*piparser.ProcessingInstruction)
 		if !ok {
@@ -554,9 +561,6 @@ func collectDirectives(filePath string, root ast.Node, source []byte, fmOffset i
 		}
 		if strings.HasPrefix(pi.Name, "/") {
 			continue
-		}
-		if nl == nil {
-			nl = newlineIndex(source)
 		}
 		startLine, endLine := piLineRange(pi, nl, fmOffset)
 		out = append(out, Symbol{
