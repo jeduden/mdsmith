@@ -43,7 +43,7 @@ func (p *superscriptDelimiter) CanOpenCloser(opener, closer *parser.Delimiter) b
 	return opener.Char == '^' && closer.Char == '^'
 }
 
-func (p *superscriptDelimiter) OnMatch(consumes int) ast.Node {
+func (p *superscriptDelimiter) OnMatch(consumes int, pc parser.Context) ast.Node {
 	return &SuperscriptNode{}
 }
 

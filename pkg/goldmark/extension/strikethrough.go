@@ -22,7 +22,7 @@ func (p *strikethroughDelimiterProcessor) CanOpenCloser(opener, closer *parser.D
 	return opener.Char == closer.Char
 }
 
-func (p *strikethroughDelimiterProcessor) OnMatch(consumes int) gast.Node {
+func (p *strikethroughDelimiterProcessor) OnMatch(consumes int, pc parser.Context) gast.Node {
 	return ast.NewStrikethrough()
 }
 
