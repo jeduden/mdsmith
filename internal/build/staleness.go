@@ -23,6 +23,13 @@ var globCapFn = buildpathutil.CheckGlobMatchCap
 // hashFileFn is the hashFile implementation; tests may replace it.
 var hashFileFn = hashFile
 
+// resolveInputsFn and resolveOutputsFn are the resolveInputs/resolveOutputs
+// implementations; tests may replace them to count calls.
+var (
+	resolveInputsFn  = resolveInputs
+	resolveOutputsFn = resolveOutputs
+)
+
 // Verdict is the staleness result for one target.
 type Verdict int
 
@@ -226,10 +233,10 @@ func computeActionIDFromResolved(in StalenessInput, inputs, outputs []string) (s
 // --build-no-cache) to catch configuration errors cheaply, without the I/O
 // cost of a full staleness check.
 func ValidateInputs(in StalenessInput) error {
-	if _, err := resolveInputs(in); err != nil {
+	if _, err := resolveInputsFn(in); err != nil {
 		return err
 	}
-	_, err := resolveOutputs(in)
+	_, err := resolveOutputsFn(in)
 	return err
 }
 
@@ -239,11 +246,11 @@ func ValidateInputs(in StalenessInput) error {
 // with an outer 8-byte big-endian length; nested keys, values, and paths
 // are themselves framed. Returns "sha256-<64 lowercase hex>".
 func ComputeActionID(in StalenessInput) (string, error) {
-	inputs, err := resolveInputs(in)
+	inputs, err := resolveInputsFn(in)
 	if err != nil {
 		return "", err
 	}
-	outputs, err := resolveOutputs(in)
+	outputs, err := resolveOutputsFn(in)
 	if err != nil {
 		return "", err
 	}
@@ -272,11 +279,11 @@ type ActionExplanation struct {
 
 // Explain resolves a target's ActionID inputs and returns the breakdown.
 func Explain(in StalenessInput) (ActionExplanation, error) {
-	inputs, err := resolveInputs(in)
+	inputs, err := resolveInputsFn(in)
 	if err != nil {
 		return ActionExplanation{}, err
 	}
-	outputs, err := resolveOutputs(in)
+	outputs, err := resolveOutputsFn(in)
 	if err != nil {
 		return ActionExplanation{}, err
 	}
@@ -317,11 +324,11 @@ func hashFile(abs string) (string, error) {
 // output → stale; compute ActionID; cache miss or different ActionID →
 // stale; any output content hash mismatch → stale; otherwise fresh.
 func CheckStaleness(in StalenessInput, cache *Cache) (StalenessResult, error) {
-	inputs, err := resolveInputs(in)
+	inputs, err := resolveInputsFn(in)
 	if err != nil {
 		return StalenessResult{}, err
 	}
-	outputs, err := resolveOutputs(in)
+	outputs, err := resolveOutputsFn(in)
 	if err != nil {
 		return StalenessResult{}, err
 	}
@@ -336,8 +343,11 @@ func CheckStaleness(in StalenessInput, cache *Cache) (StalenessResult, error) {
 		}
 	}
 
-	// Step 3-4: ActionID lookup.
-	actionID, err := ComputeActionID(in)
+	// Step 3-4: ActionID lookup. Reuses the inputs/outputs already
+	// resolved above instead of calling ComputeActionID, which would
+	// re-run resolveInputsFn/resolveOutputsFn from scratch — a second
+	// glob-expansion and symlink-resolution pass over the same target.
+	actionID, err := computeActionIDFromResolved(in, inputs, outputs)
 	if err != nil {
 		return StalenessResult{}, err
 	}
@@ -371,11 +381,11 @@ func CheckStaleness(in StalenessInput, cache *Cache) (StalenessResult, error) {
 // from disk. Call after a successful Build. built-at is left empty; the
 // caller stamps it.
 func RecordBuild(in StalenessInput) (CacheEntry, error) {
-	inputs, err := resolveInputs(in)
+	inputs, err := resolveInputsFn(in)
 	if err != nil {
 		return CacheEntry{}, err
 	}
-	outputs, err := resolveOutputs(in)
+	outputs, err := resolveOutputsFn(in)
 	if err != nil {
 		return CacheEntry{}, err
 	}

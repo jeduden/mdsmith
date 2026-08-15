@@ -297,9 +297,29 @@ func (s *Segments) Unshift(v Segment) {
 
 // Value returns a string value of the collection.
 func (s *Segments) Value(buffer []byte) []byte {
-	var result []byte
+	total := 0
+	for _, v := range s.values {
+		total += v.Len()
+		if v.ForceNewline {
+			// Value appends a trailing '\n' when the segment doesn't
+			// already end with one; Len() has no buffer to check that
+			// against, so budget the extra byte unconditionally.
+			total++
+		}
+	}
+	if total == 0 {
+		return nil
+	}
+	result := make([]byte, 0, total)
 	for _, v := range s.values {
 		result = append(result, v.Value(buffer)...)
+	}
+	if len(result) == 0 {
+		// total's ForceNewline budget is an upper bound: Value only
+		// appends the newline when the segment's own bytes are
+		// non-empty, so a zero-length ForceNewline segment leaves
+		// total > 0 with nothing actually written.
+		return nil
 	}
 	return result
 }

@@ -67,7 +67,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		// Placeholder headings skip the increment diagnostic but still
 		// update prevLevel so subsequent headings track correctly.
 		isPlaceholder := len(r.Placeholders) > 0 &&
-			placeholders.ContainsBodyToken(astutil.HeadingText(heading, f.Source), r.Placeholders)
+			placeholders.ContainsBodyToken(astutil.HeadingTextCached(f, heading), r.Placeholders)
 
 		if prevLevel == 0 {
 			// First heading: should be h1

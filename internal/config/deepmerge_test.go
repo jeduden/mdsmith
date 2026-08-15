@@ -62,6 +62,44 @@ func TestMergeRuleCfgListReplacedByDefault(t *testing.T) {
 	assert.Equal(t, []any{"c"}, got.Settings["exclude"], "list defaults to replace")
 }
 
+// TestMergeAny_ListReplace_AllocBudget pins mergeAny's per-call
+// allocation count for the common list-replace path (a rule's list
+// setting with no ListMerger opt-in). mergeAny used to deep-clone the
+// discarded `earlier` side via toAnySlice even though the default
+// replace mode never uses it, and then made a second independent copy
+// of the already-independent `later` clone before returning it. See
+// docs/development/high-performance-go.md "Skip work you don't need".
+// This runs once per list-typed settings leaf present on both layers
+// being merged, on every config-signature cache miss.
+func TestMergeAny_ListReplace_AllocBudget(t *testing.T) {
+	earlier := []any{"a", "b", "c"}
+	later := []any{"d", "e"}
+	allocs := testing.AllocsPerRun(200, func() {
+		got := mergeAny("line-length", "exclude", earlier, later)
+		if len(got.([]any)) != 2 {
+			t.Fatalf("unexpected result: %v", got)
+		}
+	})
+	if allocs > 3 {
+		t.Fatalf("mergeAny (replace mode) allocs per call: want <= 3, got %v", allocs)
+	}
+}
+
+// TestMergeAny_ListReplace_EmptyLaterStaysNil pins that replacing
+// with an empty later list produces a nil []any, matching what
+// append([]any(nil), ll...) produced for a zero-length ll before
+// mergeAny started returning toAnySlice's clone directly.
+// toAnySlice returns a non-nil make([]any, 0) for an empty input, so
+// returning it unchanged would silently turn a merged nil into a
+// non-nil empty slice — observable in JSON (`null` vs `[]`) and
+// reflect, which docs/development/high-performance-go.md calls out
+// as exactly the distinction the project's nil-for-empty convention
+// exists to preserve.
+func TestMergeAny_ListReplace_EmptyLaterStaysNil(t *testing.T) {
+	got := mergeAny("line-length", "exclude", []any{"a", "b"}, []any{})
+	assert.Nil(t, got, "empty later list must merge to nil, not an empty slice")
+}
+
 func TestMergeRuleCfgListAppendedWhenRuleOptsIn(t *testing.T) {
 	earlier := RuleCfg{
 		Enabled:  true,
@@ -168,6 +206,28 @@ func TestCloneAny_IntSlice(t *testing.T) {
 
 func TestCloneSettingsNil(t *testing.T) {
 	assert.Nil(t, cloneSettings(nil))
+}
+
+// TestIsAnySliceType_AgreesWithToAnySlice pins that isAnySliceType's
+// type switch stays in sync with toAnySlice's. isAnySliceType exists
+// so mergeAny can test "is earlier slice-shaped" without paying for
+// toAnySlice's clone on the common Replace path; if a future slice
+// type (e.g. []float64) were added to toAnySlice/cloneAny without a
+// matching case here, mergeAny would silently fall through to
+// cloneAny(later) instead of merging -- a config-merge behavior
+// change with no other test to catch it. Round 3 of an xhigh-severity
+// review pass on PR #785 flagged the missing coverage.
+func TestIsAnySliceType_AgreesWithToAnySlice(t *testing.T) {
+	cases := []any{
+		[]any{"a"}, []any(nil),
+		[]string{"a"}, []string(nil),
+		[]int{1}, []int(nil),
+		"not a slice", 42, nil, map[string]any{},
+	}
+	for _, c := range cases {
+		_, wantOK := toAnySlice(c)
+		assert.Equal(t, wantOK, isAnySliceType(c), "case %#v", c)
+	}
 }
 
 func TestToAnySlice_IntSlice(t *testing.T) {

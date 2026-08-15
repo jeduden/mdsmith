@@ -143,14 +143,14 @@ func CheckConfiguredRules(
 		runBlockCheckers(f, blockCheckers)
 	}
 
-	// Pre-size the merged slice: appending each slot's diagnostics
-	// through append's geometric growth re-copies the whole set
-	// several times on a diagnostic-heavy file (high-performance-go.md,
-	// "Pre-size slices"). Mirrors the identical fix in
-	// internal/engine/runner.go's cross-file merge. total stays 0 (and
-	// diags nil) on the common clean-file path, matching the project's
-	// nil-for-empty convention.
 	total := 0
+	for _, s := range slots {
+		total += len(s.diags)
+	}
+	var diags []lint.Diagnostic
+	if total > 0 {
+		diags = make([]lint.Diagnostic, 0, total)
+	}
 	for _, s := range slots {
 		total += len(s.diags)
 	}

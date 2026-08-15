@@ -170,6 +170,9 @@ type validRefDefMatch struct {
 // def. This drops paragraph-continuation lookalikes, code-block
 // content, and PI bodies in one pass.
 func validRefDefMatches(body []byte) []validRefDefMatch {
+	if !bytes.Contains(body, []byte("]:")) {
+		return nil
+	}
 	root := lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
 	consumed := contentBlockLines(root, body)
 	var out []validRefDefMatch

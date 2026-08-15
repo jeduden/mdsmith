@@ -1076,22 +1076,30 @@ func parseSort(params map[string]string) (key string, descending, numeric bool) 
 func sortEntries(entries []fileEntry, key string, descending, numeric bool) {
 	useInts := numeric && allParseAsInt(entries, key)
 
-	// Pre-compute lowercase keys once per entry to avoid O(n log n)
-	// string allocations inside the comparator.
+	// Pre-compute lowercase keys (or, in numeric mode, the parsed
+	// int64) once per entry to avoid O(n log n) string allocations or
+	// CUE-path re-parses inside the comparator. allParseAsInt above
+	// already parses every entry once just to decide useInts; numInt
+	// carries that same parse forward instead of discarding it.
 	type sortable struct {
 		entry         fileEntry
 		sortKey       string // lowercase primary sort key (empty for numeric mode)
+		numInt        int64  // parsed sort value (numeric mode only)
 		tiebreakerKey string // lowercase filename for stable tiebreaker
 	}
 	sortables := make([]sortable, len(entries))
 	for i, e := range entries {
 		var sk string
-		if !useInts {
+		var ni int64
+		if useInts {
+			ni, _ = parseSortInt(e, key)
+		} else {
 			sk = strings.ToLower(sortValue(e, key))
 		}
 		sortables[i] = sortable{
 			entry:         e,
 			sortKey:       sk,
+			numInt:        ni,
 			tiebreakerKey: strings.ToLower(fieldinterp.Stringify(e.fields["filename"])),
 		}
 	}
@@ -1099,14 +1107,10 @@ func sortEntries(entries []fileEntry, key string, descending, numeric bool) {
 	sort.SliceStable(sortables, func(i, j int) bool {
 		var cmp int
 		if useInts {
-			// Re-parse from the moved entry — SliceStable reorders the
-			// slice during sort, so sortables[i].entry is always current.
-			ni, _ := parseSortInt(sortables[i].entry, key)
-			nj, _ := parseSortInt(sortables[j].entry, key)
 			switch {
-			case ni < nj:
+			case sortables[i].numInt < sortables[j].numInt:
 				cmp = -1
-			case ni > nj:
+			case sortables[i].numInt > sortables[j].numInt:
 				cmp = 1
 			}
 		} else {
@@ -1741,7 +1745,7 @@ func checkFieldCaseMismatches(filePath string, line int, row string, entries []f
 			// Multiple casings across files — surface the inconsistency.
 			quoted := make([]string, len(casings))
 			for i, c := range casings {
-				quoted[i] = fmt.Sprintf("%q", c)
+				quoted[i] = strconv.Quote(c)
 			}
 			message = fmt.Sprintf(
 				"field %q has inconsistent casing across matched files: %s",
