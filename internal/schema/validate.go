@@ -1684,7 +1684,7 @@ func validateFilename(
 		// offending pattern.
 		d := SchemaDiagnostic{
 			Field:     "filename pattern",
-			Actual:    fmt.Sprintf("%q", pattern),
+			Actual:    strconv.Quote(pattern),
 			Expected:  "valid glob",
 			Hint:      err.Error(),
 			SchemaRef: schemaRef(sch, ""),
@@ -1700,7 +1700,7 @@ func validateFilename(
 		// vocabulary is consistent across both surfaces.
 		d := SchemaDiagnostic{
 			Field:     "filename",
-			Actual:    fmt.Sprintf("%q", base),
+			Actual:    strconv.Quote(base),
 			Expected:  "filename matching glob " + pattern,
 			SchemaRef: schemaRef(sch, ""),
 		}

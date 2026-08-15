@@ -236,9 +236,9 @@ func cheapBounds(s string) (sentUB, words int) {
 func sentencePreview(sent string, limit int) string {
 	words := strings.Fields(strings.TrimSpace(sent))
 	if len(words) <= limit {
-		return fmt.Sprintf("%q", strings.Join(words, " "))
+		return strconv.Quote(strings.Join(words, " "))
 	}
-	return fmt.Sprintf("%q", strings.Join(words[:limit], " ")+" ...")
+	return strconv.Quote(strings.Join(words[:limit], " ") + " ...")
 }
 
 // ApplySettings implements rule.Configurable.

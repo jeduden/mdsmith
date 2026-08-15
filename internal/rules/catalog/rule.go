@@ -1745,7 +1745,7 @@ func checkFieldCaseMismatches(filePath string, line int, row string, entries []f
 			// Multiple casings across files — surface the inconsistency.
 			quoted := make([]string, len(casings))
 			for i, c := range casings {
-				quoted[i] = fmt.Sprintf("%q", c)
+				quoted[i] = strconv.Quote(c)
 			}
 			message = fmt.Sprintf(
 				"field %q has inconsistent casing across matched files: %s",
