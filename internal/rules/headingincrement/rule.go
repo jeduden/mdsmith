@@ -9,7 +9,6 @@ import (
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
-	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
 func init() {
@@ -44,7 +43,11 @@ func (r *Rule) Category() string { return "heading" }
 // back to the parse path.
 func (r *Rule) LineCapable() bool { return len(r.Placeholders) == 0 }
 
-// Check implements rule.Rule.
+// Check implements rule.Rule. The parsed path reads
+// astutil.CollectHeadingNodes instead of running its own ast.Walk: that
+// collector is memoized per File, so when no-duplicate-headings (MDS005)
+// also runs against the same File, only the first of the two rules pays
+// for the tree walk.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	if f != nil && f.AST == nil {
 		return r.checkNilAST(f)
@@ -52,15 +55,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
 	prevLevel := 0
 
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		heading, ok := n.(*ast.Heading)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
-
+	for _, heading := range astutil.CollectHeadingNodes(f) {
 		level := heading.Level
 
 		// Check if this heading's text matches a configured placeholder.
@@ -99,8 +94,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		}
 
 		prevLevel = level
-		return ast.WalkContinue, nil
-	})
+	}
 
 	return diags
 }

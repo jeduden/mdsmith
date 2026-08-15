@@ -2,9 +2,11 @@
 package discovery
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/jeduden/mdsmith/internal/gitignore"
@@ -28,8 +30,8 @@ type Options struct {
 	//
 	// Symlinks resolving to anything other than a regular file
 	// (directories, FIFOs, devices, sockets) are always skipped.
-	// filepath.Walk is Lstat-based, so symlinked directories are
-	// never descended into regardless of this flag.
+	// filepath.WalkDir reports symlinks via Lstat, so symlinked
+	// directories are never descended into regardless of this flag.
 	FollowSymlinks bool
 }
 
@@ -68,7 +70,7 @@ func Discover(opts Options) ([]string, error) {
 		seen:           make(map[string]struct{}),
 	}
 
-	if err := filepath.Walk(absBase, w.visit); err != nil {
+	if err := filepath.WalkDir(absBase, w.visit); err != nil {
 		return nil, err
 	}
 
@@ -97,8 +99,11 @@ type walker struct {
 	result         []string
 }
 
-// visit is the filepath.WalkFunc callback.
-func (w *walker) visit(path string, info os.FileInfo, walkErr error) error {
+// visit is the fs.WalkDirFunc callback. filepath.WalkDir (unlike the
+// deprecated filepath.Walk) hands us the DirEntry ReadDir already
+// produced instead of Lstat-ing every entry itself — one syscall per
+// entry instead of two, and d.Type()/d.IsDir() below never Lstat again.
+func (w *walker) visit(path string, d fs.DirEntry, walkErr error) error {
 	if walkErr != nil {
 		return walkErr
 	}
@@ -109,10 +114,10 @@ func (w *walker) visit(path string, info os.FileInfo, walkErr error) error {
 	}
 	rel = filepath.ToSlash(rel)
 
-	// Symlink entries always have Lstat-based info with
-	// IsDir()==false under filepath.Walk, so returning nil also
-	// means Walk won't try to descend.
-	if info.Mode()&os.ModeSymlink != 0 {
+	// Symlink entries always report IsDir()==false under WalkDir (same
+	// as Walk's Lstat-based info), so returning nil also means WalkDir
+	// won't try to descend.
+	if d.Type()&os.ModeSymlink != 0 {
 		if !w.followSymlinks {
 			return nil
 		}
@@ -126,22 +131,22 @@ func (w *walker) visit(path string, info os.FileInfo, walkErr error) error {
 		}
 	}
 
-	if w.isGitignored(path, info) {
-		if info.IsDir() {
+	if w.isGitignored(path, d.IsDir()) {
+		if d.IsDir() {
 			return filepath.SkipDir
 		}
 		return nil
 	}
 
-	if info.IsDir() {
+	if d.IsDir() {
 		return nil
 	}
 	// Only include regular files and opted-in symlinks whose
 	// target is regular (already verified in the symlink branch
 	// above). FIFO, device, and socket entries are skipped to
 	// avoid blocking reads during linting.
-	isSymlink := info.Mode()&os.ModeSymlink != 0
-	if !isSymlink && !info.Mode().IsRegular() {
+	isSymlink := d.Type()&os.ModeSymlink != 0
+	if !isSymlink && !d.Type().IsRegular() {
 		return nil
 	}
 
@@ -152,7 +157,7 @@ func (w *walker) visit(path string, info os.FileInfo, walkErr error) error {
 }
 
 // isGitignored returns true if the path should be skipped by .gitignore rules.
-func (w *walker) isGitignored(path string, info os.FileInfo) bool {
+func (w *walker) isGitignored(path string, isDir bool) bool {
 	if w.git == nil {
 		return false
 	}
@@ -160,19 +165,37 @@ func (w *walker) isGitignored(path string, info os.FileInfo) bool {
 	if err != nil {
 		return false
 	}
-	return w.git.IsIgnored(absPath, info.IsDir())
+	return w.git.IsIgnored(absPath, isDir)
 }
 
 // matchesAny returns true if rel matches any of the configured patterns.
-// w.patterns is already the validatePatterns-filtered set, so matching
-// uses MatchUnvalidated rather than Match: Match re-runs
-// doublestar.ValidatePattern's parse walk on every call, and that cost
-// is paid once per pattern per visited file across the whole workspace
-// walk (see internal/globpath's validPatterns cache for the same fix
-// applied to the config-driven glob surfaces).
+// w.patterns has already passed doublestar.ValidatePattern once, in
+// validatePatterns; doublestar.Match re-validates its pattern argument
+// on every call, so matching through MatchUnvalidated here skips paying
+// that cost again for every file the walk visits (see
+// internal/globpath's validPatterns cache for the same fix applied to
+// the config-driven glob surfaces).
+//
+// A pattern already passing ValidatePattern does not guarantee Match
+// and MatchUnvalidated agree: a brace alternative (e.g.
+// "{[!mdb[],docs/**/*.md}") can contain a syntax error in a non-final
+// alternative that Match's internal validation aborts on before trying
+// later alternatives, while MatchUnvalidated tries them all — a
+// divergence confirmed directly against the vendored doublestar
+// source, not assumed. That divergence requires brace syntax: a 1.3M+
+// -case differential fuzz over brace-free, ValidatePattern-accepted
+// patterns found zero disagreement. Patterns without "{" take the fast
+// MatchUnvalidated path; a pattern using brace expansion falls back to
+// the safe (slower, but provably correct) Match.
 func (w *walker) matchesAny(rel string) bool {
 	for _, p := range w.patterns {
-		if doublestar.MatchUnvalidated(p, rel) {
+		if strings.IndexByte(p, '{') < 0 {
+			if doublestar.MatchUnvalidated(p, rel) {
+				return true
+			}
+			continue
+		}
+		if matched, err := doublestar.Match(p, rel); err == nil && matched {
 			return true
 		}
 	}

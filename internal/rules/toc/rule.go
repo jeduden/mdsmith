@@ -164,12 +164,33 @@ func makeDiag(filePath string, line int, msg string) lint.Diagnostic {
 }
 
 // escapeLinkText escapes special characters in link text that would break
-// Markdown link syntax: backslash, opening bracket, closing bracket.
+// Markdown link syntax: backslash, opening bracket, closing bracket. Runs
+// once per heading captured by Generate, on every Check() call for a file
+// with a <?toc?> directive (to detect staleness), not only on Fix(). The
+// common case is a heading with none of these characters at all, so the
+// three chained strings.IndexByte probes below (SIMD-accelerated per
+// docs/development/high-performance-go.md "bytes.IndexByte over a
+// hand-rolled byte loop") skip the escaping pass entirely instead of
+// running three separate strings.ReplaceAll scans that each find nothing.
+// When escaping is needed, a single byte-at-a-time pass replaces the
+// three chained ReplaceAll calls (three copies of the whole string) with
+// one Builder pass over it.
 func escapeLinkText(s string) string {
-	s = strings.ReplaceAll(s, "\\", "\\\\")
-	s = strings.ReplaceAll(s, "[", "\\[")
-	s = strings.ReplaceAll(s, "]", "\\]")
-	return s
+	if strings.IndexByte(s, '\\') < 0 &&
+		strings.IndexByte(s, '[') < 0 &&
+		strings.IndexByte(s, ']') < 0 {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s) + 8)
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '\\', '[', ']':
+			b.WriteByte('\\')
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
 }
 
 // FixTitle implements rule.QuickFixTitler.

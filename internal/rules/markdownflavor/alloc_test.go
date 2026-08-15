@@ -1,9 +1,16 @@
 package markdownflavor
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/pkg/markdown"
+	"github.com/jeduden/mdsmith/pkg/markdown/flavor"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // allocBudgetFixGitHubAlerts is the per-call ceiling for fixGitHubAlerts
@@ -84,4 +91,120 @@ func TestFixGitHubAlertsAllocBudget(t *testing.T) {
 			"continuation-line scan in buildAlertSkipMaps must not copy each line to a string",
 			allocs, allocBudgetFixGitHubAlerts)
 	}
+}
+
+// manyAlertsSource builds a document with n GitHub-alert blockquotes,
+// each with a continuation line, so fixGitHubAlerts has real marker
+// and lazy-continuation lines to strip/re-prefix on every call.
+func manyAlertsSource(n int) []byte {
+	var src []byte
+	for i := 0; i < n; i++ {
+		src = append(src, []byte(fmt.Sprintf(
+			"> [!NOTE]\n> Alert number %d with some body text.\n> Second continuation line here.\n\n", i,
+		))...)
+	}
+	return src
+}
+
+// TestFixGitHubAlerts_PresizedAllocs pins
+// docs/development/high-performance-go.md's "pre-size slices" pattern:
+// fixGitHubAlerts knows its output has at most len(f.Lines) entries
+// (it only ever skips lines, never adds any), so out should be
+// allocated once via make([]string, 0, len(f.Lines)) instead of
+// growing from a nil slice across repeated append calls, mirroring
+// codeblockstyle.Fix's out slice in the same rule family. Combined
+// with TestBuildAlertSkipMaps_StaysInBytes below (fixGitHubAlerts
+// calls buildAlertSkipMaps first), measured baseline is 113 allocs/op
+// on this fixture, down from 169 before either fix.
+func TestFixGitHubAlerts_PresizedAllocs(t *testing.T) {
+	src := manyAlertsSource(50)
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{}
+
+	allocs := testing.AllocsPerRun(50, func() {
+		_ = r.fixGitHubAlerts(f)
+	})
+	assert.LessOrEqualf(t, allocs, 125.0,
+		"fixGitHubAlerts allocs regressed: got %v, want <= 125", allocs)
+}
+
+// TestBuildAlertSkipMaps_StaysInBytes pins
+// docs/development/high-performance-go.md's "stay in []byte" pattern:
+// buildAlertSkipMaps used to convert every lazy-continuation line to a
+// string (string(f.Lines[contLine-1])) just to strip whitespace and
+// check a '>' prefix — both doable directly on the []byte line. The
+// string conversion escapes (its result crosses the strings.HasPrefix
+// call), so each continuation line paid a full copy-and-allocate.
+// Measured baseline after the []byte rewrite: 10 allocs/op on this
+// fixture (150 continuation lines), down from 60 before.
+func TestBuildAlertSkipMaps_StaysInBytes(t *testing.T) {
+	src := manyAlertsSource(50)
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+
+	allocs := testing.AllocsPerRun(50, func() {
+		_, _ = buildAlertSkipMaps(f)
+	})
+	assert.LessOrEqualf(t, allocs, 20.0,
+		"buildAlertSkipMaps allocs regressed: got %v, want <= 20", allocs)
+}
+
+// TestSortFindingsByStart_NoReflectSort and
+// TestSortEditsByStart_NoReflectSort pin the allocation cost of the
+// two sort helpers extracted from Check and fixByteRangeFeatures.
+// sort.SliceStable drove reflect.Swapper internally (the "reflect in
+// hot paths" anti-pattern in docs/development/high-performance-go.md);
+// slices.SortStableFunc sorts the concrete values directly with no
+// reflection.
+func TestSortFindingsByStart_NoReflectSort(t *testing.T) {
+	if testing.Short() {
+		t.Skip("alloc gate skipped in -short mode")
+	}
+	base := []flavor.Finding{
+		{Feature: flavor.FeatureBareURLAutolinks, Start: 30},
+		{Feature: flavor.FeatureGitHubAlerts, Start: 10},
+		{Feature: flavor.FeatureBareURLAutolinks, Start: 20},
+	}
+
+	const runs = 200
+	allocs := testing.AllocsPerRun(runs, func() {
+		f := make([]flavor.Finding, len(base))
+		copy(f, base)
+		sortFindingsByStart(f)
+	})
+	t.Logf("sortFindingsByStart (3 findings, incl. slice copy) allocs/op = %.0f", allocs)
+	require.LessOrEqualf(t, allocs, float64(1),
+		"sortFindingsByStart allocs/op = %.0f, want <= 1 (the make() copy only, no reflect sort)", allocs)
+
+	got := make([]flavor.Finding, len(base))
+	copy(got, base)
+	sortFindingsByStart(got)
+	require.Equal(t, []int{10, 20, 30}, []int{got[0].Start, got[1].Start, got[2].Start})
+}
+
+func TestSortEditsByStart_NoReflectSort(t *testing.T) {
+	if testing.Short() {
+		t.Skip("alloc gate skipped in -short mode")
+	}
+	base := []markdown.Edit{
+		{Start: 30, End: 32},
+		{Start: 10, End: 12},
+		{Start: 20, End: 22},
+	}
+
+	const runs = 200
+	allocs := testing.AllocsPerRun(runs, func() {
+		e := make([]markdown.Edit, len(base))
+		copy(e, base)
+		sortEditsByStart(e)
+	})
+	t.Logf("sortEditsByStart (3 edits, incl. slice copy) allocs/op = %.0f", allocs)
+	require.LessOrEqualf(t, allocs, float64(1),
+		"sortEditsByStart allocs/op = %.0f, want <= 1 (the make() copy only, no reflect sort)", allocs)
+
+	got := make([]markdown.Edit, len(base))
+	copy(got, base)
+	sortEditsByStart(got)
+	require.Equal(t, []int{10, 20, 30}, []int{got[0].Start, got[1].Start, got[2].Start})
 }
