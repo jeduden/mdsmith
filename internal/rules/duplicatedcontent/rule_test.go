@@ -181,6 +181,38 @@ func TestCheck_HonorsIncludePattern(t *testing.T) {
 	assert.Contains(t, diags[0].Message, "scoped.md")
 }
 
+// TestCheck_HonorsIncludeExcludePattern_WithRunCache exercises
+// corpusFilesKey's include/exclude loops: newLintFileWithRoot leaves
+// f.RunCache nil, so TestCheck_HonorsIncludePattern and
+// TestCheck_HonorsExcludePattern above never route through
+// corpusFiles' RunCache.GlobMatches branch and never build a cache
+// key from a non-empty include/exclude list. Setting f.RunCache here
+// pins that include and exclude are still honored when corpusFiles is
+// cached, not just when it walks directly.
+func TestCheck_HonorsIncludeExcludePattern_WithRunCache(t *testing.T) {
+	dir := t.TempDir()
+	p := longParagraph("the quick brown fox jumps over the lazy dog")
+	writeFile(t, filepath.Join(dir, "a.md"), "# A\n\n"+p+"\n")
+	writeFile(t, filepath.Join(dir, "scoped.md"), "# Scoped\n\n"+p+"\n")
+	writeFile(t, filepath.Join(dir, "other.md"), "# Other\n\n"+p+"\n")
+	writeFile(t, filepath.Join(dir, "ignored.md"), "# Ignored\n\n"+p+"\n")
+
+	runCache := lint.NewRunCache()
+
+	f := newLintFileWithRoot(t, filepath.Join(dir, "a.md"), dir)
+	f.RunCache = runCache
+	rInclude := &Rule{Include: []string{"scoped.md"}}
+	diags := rInclude.Check(f)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "scoped.md")
+
+	f2 := newLintFileWithRoot(t, filepath.Join(dir, "a.md"), dir)
+	f2.RunCache = runCache
+	rExclude := &Rule{Exclude: []string{"scoped.md", "other.md", "ignored.md"}}
+	diags2 := rExclude.Check(f2)
+	assert.Empty(t, diags2, "every sibling must be excluded")
+}
+
 func TestCheck_NilASTIsNoop(t *testing.T) {
 	// An uninitialized File (no parse) must not panic.
 	f := &lint.File{Path: "x.md"}
@@ -693,6 +725,51 @@ func TestCheck_RunCacheReusesCorpusParseAcrossHostFiles(t *testing.T) {
 			"expected %s to be read from disk at most once across Check "+
 				"calls sharing a RunCache, got %d opens", name, counting.opens[name])
 	}
+}
+
+// TestCheck_RunCacheReusesCorpusWalkAcrossHostFiles pins the fix for
+// buildCorpusIndex's remaining O(N) cost per host file: even after
+// candidateParagraphs memoized each sibling's fingerprinted paragraphs
+// (TestCheck_RunCacheReusesCorpusParseAcrossHostFiles above),
+// buildCorpusIndex still re-walked the corpus directory tree with
+// fs.WalkDir from scratch on every host file's Check call. The
+// resolved corpus file list depends only on the tree shape (which
+// files exist) and the rule's include/exclude settings, not on any
+// file's content, so it belongs on RunCache.GlobMatches — the same
+// tree-shape-only cache the catalog rule and the wikilink index use.
+// A workspace of N files enabling MDS037 must walk the corpus tree at
+// most once per run, not once per host file.
+func TestCheck_RunCacheReusesCorpusWalkAcrossHostFiles(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "sub"), 0o755))
+	p := longParagraph("shared paragraph text for the corpus walk test")
+	writeFile(t, filepath.Join(dir, "a.md"), "# A\n\n"+p+"\n")
+	writeFile(t, filepath.Join(dir, "b.md"), "# B\n\n"+p+"\n")
+	writeFile(t, filepath.Join(dir, "sub", "c.md"), "# C\n\nunrelated short text\n")
+
+	counting := &countingFS{FS: os.DirFS(dir), opens: map[string]int{}}
+	runCache := lint.NewRunCache()
+
+	for _, name := range []string{"a.md", "b.md", filepath.Join("sub", "c.md")} {
+		data, err := os.ReadFile(filepath.Join(dir, name))
+		require.NoError(t, err)
+		f, err := lint.NewFile(filepath.Join(dir, name), data)
+		require.NoError(t, err)
+		f.FS = counting
+		f.RootDir = dir
+		f.RootFS = counting
+		f.RunCache = runCache
+		_ = (&Rule{}).Check(f)
+	}
+
+	// fs.WalkDir opens the root twice on a genuinely fresh walk (once
+	// for the initial fs.Stat, once for fs.ReadDir, since countingFS
+	// implements neither StatFS nor ReadDirFS) — allow that much, but
+	// no more: a per-host-file re-walk would multiply this by the
+	// number of host files checked (3).
+	assert.LessOrEqualf(t, counting.opens["."], 2,
+		"expected the corpus root directory to be walked at most once across "+
+			"Check calls sharing a RunCache, got %d opens of \".\"", counting.opens["."])
 }
 
 // TestCheck_RunCacheAppliesFrontMatterOffsetOnce pins that a corpus
