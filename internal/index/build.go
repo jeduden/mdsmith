@@ -139,7 +139,8 @@ func countLines(source []byte) int {
 // matches how outline UIs (VS Code's symbol picker, Helix's
 // jump-to-symbol) shade the section.
 func collectHeadings(filePath string, root ast.Node, source []byte, lines [][]byte, fmOffset, totalLines int) []Symbol {
-	heads, headStart := walkHeadings(root, source)
+	nl := newlineIndex(source)
+	heads, headStart := walkHeadings(root, nl)
 	syms := make([]Symbol, 0, len(heads))
 	usedAnchors := make(map[string]struct{})
 	slugCounts := make(map[string]int)
@@ -148,7 +149,7 @@ func collectHeadings(filePath string, root ast.Node, source []byte, lines [][]by
 		anchor := uniqueAnchor(mdtext.Slugify(txt), usedAnchors, slugCounts)
 		startLine := headStart[i] + fmOffset
 		endLine := headingEndLine(heads, headStart, i, fmOffset, totalLines)
-		col := columnOfLine(lines, headStart[i]-1, h.Lines().At(0).Start, source)
+		col := columnOfLineIndexed(nl, lines, headStart[i]-1, h.Lines().At(0).Start)
 		syms = append(syms, Symbol{
 			File:          filePath,
 			Kind:          SymbolHeading,
@@ -168,7 +169,7 @@ func collectHeadings(filePath string, root ast.Node, source []byte, lines [][]by
 // with its 1-based source line. Goldmark guarantees a parsed
 // heading has at least one source line; setext-style headings
 // also produce non-empty Lines().
-func walkHeadings(root ast.Node, source []byte) ([]*ast.Heading, []int) {
+func walkHeadings(root ast.Node, nl []int) ([]*ast.Heading, []int) {
 	var heads []*ast.Heading
 	var headStart []int
 	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -180,7 +181,7 @@ func walkHeadings(root ast.Node, source []byte) ([]*ast.Heading, []int) {
 			return ast.WalkContinue, nil
 		}
 		heads = append(heads, h)
-		headStart = append(headStart, lineOfOffset(source, h.Lines().At(0).Start))
+		headStart = append(headStart, lineOfOffsetIndexed(nl, h.Lines().At(0).Start))
 		return ast.WalkContinue, nil
 	})
 	return heads, headStart
@@ -508,6 +509,7 @@ func collectLinkRefDefs(filePath string, ctx parser.Context, body []byte, lines 
 	// would confuse the symbol picker.
 	seen := make(map[string]struct{}, len(wanted))
 	out := make([]Symbol, 0, len(wanted))
+	nl := newlineIndex(body)
 	for _, m := range refDefRE.FindAllSubmatchIndex(body, -1) {
 		raw := body[m[2]:m[3]]
 		label := string(raw)
@@ -522,8 +524,9 @@ func collectLinkRefDefs(filePath string, ctx parser.Context, body []byte, lines 
 		// label's first byte. Use the label position so "go to
 		// definition" highlights the label, not the bracket.
 		labelOffset := m[2]
-		line := lineOfOffset(body, labelOffset) + fmOffset
-		col := columnOfLine(lines, lineOfOffset(body, labelOffset)-1, labelOffset, body)
+		lineIdx := lineOfOffsetIndexed(nl, labelOffset)
+		line := lineIdx + fmOffset
+		col := columnOfLineIndexed(nl, lines, lineIdx-1, labelOffset)
 		out = append(out, Symbol{
 			File:          filePath,
 			Kind:          SymbolLinkRef,
@@ -543,6 +546,7 @@ func collectLinkRefDefs(filePath string, ctx parser.Context, body []byte, lines 
 // skipped; only the opener is treated as a symbol.
 func collectDirectives(filePath string, root ast.Node, source []byte, fmOffset int) []Symbol {
 	var out []Symbol
+	var nl []int
 	for n := root.FirstChild(); n != nil; n = n.NextSibling() {
 		pi, ok := n.(*piparser.ProcessingInstruction)
 		if !ok {
@@ -551,7 +555,10 @@ func collectDirectives(filePath string, root ast.Node, source []byte, fmOffset i
 		if strings.HasPrefix(pi.Name, "/") {
 			continue
 		}
-		startLine, endLine := piLineRange(pi, source, fmOffset)
+		if nl == nil {
+			nl = newlineIndex(source)
+		}
+		startLine, endLine := piLineRange(pi, nl, fmOffset)
 		out = append(out, Symbol{
 			File:          filePath,
 			Kind:          SymbolDirective,
@@ -572,12 +579,12 @@ func collectDirectives(filePath string, root ast.Node, source []byte, fmOffset i
 // gives the end; goldmark emits HasClosure() == true for every
 // well-formed PI, so the branch where Lines() spans multiple
 // segments without a closure is unreachable in practice.
-func piLineRange(pi *piparser.ProcessingInstruction, source []byte, fmOffset int) (int, int) {
+func piLineRange(pi *piparser.ProcessingInstruction, nl []int, fmOffset int) (int, int) {
 	startSeg := pi.Lines().At(0)
-	startLine := lineOfOffset(source, startSeg.Start) + fmOffset
+	startLine := lineOfOffsetIndexed(nl, startSeg.Start) + fmOffset
 	endLine := startLine
 	if pi.HasClosure() && pi.ClosureLine.Start > startSeg.Start {
-		endLine = lineOfOffset(source, pi.ClosureLine.Start) + fmOffset
+		endLine = lineOfOffsetIndexed(nl, pi.ClosureLine.Start) + fmOffset
 	}
 	return startLine, endLine
 }
