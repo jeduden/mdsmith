@@ -17,6 +17,92 @@ to [the archive](architecture-audit-archive.md)
 this cycle to stay under the file-length budget;
 every finding there is resolved.
 
+## Audit 2026-08-09 (range: 6680ff5..2ab4b29)
+
+100 commits, 148 files touched (92 Go files).
+
+New packages this cycle:
+
+- `internal/foreignregion` — foreign managed-region
+  protection for check/fix.
+- `internal/convention` — extracted convention model.
+
+New opt-in rules this cycle:
+
+- `internal/rules/occurrence` (MDS060).
+- `internal/rules/slidevstructure` (MDS073).
+
+No rule-to-rule imports. No reverse-layer imports. No
+Liskov breaks. `cmd/mdsmith/main.go` (709 lines) stayed well
+under the ~1000-line threshold, as did
+`internal/lsp/server.go`/`symbols.go` (554/511 lines).
+
+Clean surfaces, verified:
+
+- `internal/mdpath` consolidation: `IsMarkdownPath` grew into
+  a single source of truth (`Extensions`, `FileGlobs`,
+  `RecursiveGlobs`, `HasMarkdownExt`) now consumed by
+  `internal/lsp`, `internal/config`, and the merge-driver
+  include set — SRP fix per go.md's "package answers one
+  question." Every function has an exact-name test.
+- `cmd/mdsmith/init.go` split: extracted from `main.go` with
+  full dedicated-test coverage — 39 `Test*` functions cover
+  all 13 functions, including error paths.
+- `internal/rules/crossfilereferenceintegrity`'s
+  double-checked-locking memoization
+  (`cachedGlobSettingsErr`) is pinned by dedicated tests
+  following the `TestReceiver_Foo` naming convention.
+
+### blockers (2026-08-09)
+
+- `MDS073` is claimed by two unrelated, independently
+  registered diagnostics. `internal/rules/slidevstructure/rule.go:52`
+  returns `"MDS073"` for the Slidev slide-structure rule
+  (registered in `internal/rules/all/all.go`, documented at
+  `internal/rules/MDS073-slide-structure/README.md`).
+  `internal/foreignregion/scan.go:25` independently defines
+  `RuleID = "MDS073"` for the malformed-marker-pair
+  diagnostic (wired into `internal/engine/runner.go` and
+  `internal/fix/fix.go`, documented at
+  `docs/reference/foreign-regions.md:76`). Both landed the
+  same day (2026-07-19) — slide-structure was renumbered
+  `MDS072 -> MDS073` in `7e4925a` while the foreign-region
+  feature independently claimed `MDS073` in parallel commits
+  — an undetected rebase/merge collision.
+  [cross-system.md][cross] treats rule IDs as part of the
+  public `.mdsmith.yml`/CLI/docs contract; no test in
+  `internal/integration/` or `internal/rule/` enforces
+  uniqueness across `rule.All()` plus out-of-band IDs like
+  foreign-region's. Fixed by renumbering the foreign-region
+  diagnostic to the next free ID and adding a uniqueness
+  contract test — [plan/2608091910][2608091910].
+
+### tax (2026-08-09)
+
+- `internal/rules/occurrence/rule.go` has 18 non-trivial
+  private helpers with no dedicated unit test by name
+  (`countCombinedInRange`, `searchText`, `applyScope`, …).
+  All are covered indirectly by 47 behavior-level
+  `TestCheck_*`/`TestApplySettings_*` cases, but
+  [tests.md][tests] requires a test by the function's own
+  name, and the pre-existing sibling rule
+  `paragraphstructure` follows that convention for every
+  helper — [plan/2608091911][2608091911].
+- `internal/rules/slidevstructure/rule.go` has 11
+  non-trivial private helpers (`checkSlide`, `slideAnchor`,
+  `nearest`, …) in the same shape — covered behaviorally by
+  35 `Test*` cases but not by name —
+  [plan/2608091911][2608091911].
+
+[cross]: architecture/cross-system.md
+[tests]: architecture/tests.md
+[2608091910]: ../../plan/2608091910_arch-fix-mds073-collision.md
+[2608091911]: ../../plan/2608091911_arch-fix-missing-unit-tests.md
+
+### nice-to-have (2026-08-09)
+
+None found this cycle beyond the tax items above.
+
 ## Audit 2026-08-02 (range: 6680ff5..2ab4b29)
 
 148 touched files. Notable new surfaces: MDS073
@@ -95,7 +181,6 @@ is now exported and `requiredstructure` calls it directly.
   `internal/lsp/server_codeaction.go`,
   `internal/config/merge.go`, and `internal/fix/fix.go`.
 
-[tests]: architecture/tests.md
 [go]: architecture/go.md
 [audit-checklist]: architecture/audit-checklist.md
 [2608021915]: ../../plan/2608021915_arch-fix-query-subcommand-placement.md

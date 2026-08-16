@@ -14,7 +14,7 @@ independent jobs: write `.mdsmith.yml`, and scaffold
 additive `.mdsmith/` packs beside it.
 
 ```text
-mdsmith init [--starter <name>] [--from-markdownlint[=path]] [--add <pack>] [--force] [--list]
+mdsmith init [--starter <name>] [--from-markdownlint[=path]] [--apm] [--add <pack>] [--force] [--list]
 ```
 
 ## The config
@@ -46,14 +46,15 @@ one-line description, then exits without writing anything.
 
 ## Flags
 
-| Flag                        | Effect                                                       |
-| --------------------------- | ------------------------------------------------------------ |
-| `--starter=$name`           | Scaffold a ready-to-edit config for a workflow               |
-| `--from-markdownlint`       | Convert a markdownlint config found in the current directory |
-| `--from-markdownlint=$path` | Convert the markdownlint config at `$path`                   |
-| `--add=$pack`               | Also scaffold a curated `.mdsmith/` pack (repeatable)        |
-| `--force`                   | Overwrite an existing `.mdsmith.yml` instead of skipping it  |
-| `--list`                    | Print the available starters and packs, then exit            |
+| Flag                        | Effect                                                                 |
+| --------------------------- | ---------------------------------------------------------------------- |
+| `--starter=$name`           | Scaffold a ready-to-edit config for a workflow                         |
+| `--from-markdownlint`       | Convert a markdownlint config found in the current directory           |
+| `--from-markdownlint=$path` | Convert the markdownlint config at `$path`                             |
+| `--apm`                     | Scaffold the APM kind pack and write the coexistence `ignore:` posture |
+| `--add=$pack`               | Also scaffold a curated `.mdsmith/` pack (repeatable)                  |
+| `--force`                   | Overwrite an existing `.mdsmith.yml` instead of skipping it            |
+| `--list`                    | Print the available starters and packs, then exit                      |
 
 ## Starters
 
@@ -92,14 +93,33 @@ reported as notes — on stderr and as a `# Not converted:`
 comment block in the generated file. Notes do not fail the
 command.
 
+## APM coexistence
+
+`--apm` is a shorthand for two coordinated operations:
+scaffolding the APM kind pack (the same files `--add apm`
+writes) and appending a coexistence `ignore:` block to
+`.mdsmith.yml`. On a fresh repo, the block is written
+directly. On an existing config, the block is printed to
+stderr for you to merge.
+
+Entries are scoped to detected harness directories.
+A Claude-only repo gets `.claude/rules/**` but not
+`.kiro/steering/**`. Compiled root files (`AGENTS.md`,
+`CLAUDE.md`, `GEMINI.md`) and the APM module cache
+(`apm_modules/**`) are always included.
+
+See [Coexist with APM](../../guides/coexist-with-apm.md)
+for the full ownership table and CI ordering.
+
 ## Packs
 
 `--add <pack>` writes a curated bundle you own and edit.
 Available packs:
 
-| Name        | Scaffolds                                       |
-| ----------- | ----------------------------------------------- |
-| `wordlists` | The `no-llm-tells` word-lists as editable files |
+| Name        | Scaffolds                                                             |
+| ----------- | --------------------------------------------------------------------- |
+| `wordlists` | The `no-llm-tells` word-lists as editable files                       |
+| `apm`       | APM kind files for `.apm/` source (skill, prompt, instruction, agent) |
 
 The `wordlists` pack writes
 `.mdsmith/wordlists/ai-speak.yaml` and `ai-openers.yaml`
@@ -113,6 +133,14 @@ No word-list ships compiled into the binary; this pack is
 how you put the curated set on disk. An existing list file
 is left untouched, so a re-run never clobbers your edits.
 `init` does not edit `.mdsmith.yml` to reference the files.
+
+The `apm` pack writes four kind files under
+`.mdsmith/kinds/` that validate APM's frontmatter contracts
+and enforce size limits on `.apm/` source files. It is also
+applied by `--apm`, which additionally writes the
+coexistence `ignore:` posture. Prefer `--apm` over
+`--add apm` when setting up APM coexistence for the first
+time.
 
 ## Examples
 
@@ -135,6 +163,13 @@ Convert a markdownlint config:
 ```bash
 mdsmith init --from-markdownlint
 $EDITOR .mdsmith.yml
+```
+
+Set up APM coexistence (kind pack + ignore posture):
+
+```bash
+mdsmith init --apm
+$EDITOR .mdsmith.yml   # review the ignore: block
 ```
 
 Add the curated word-lists to an existing project:

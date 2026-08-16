@@ -3,8 +3,10 @@ package main
 import (
 	"bytes"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -28,6 +30,8 @@ func TestPrintInitCatalog(t *testing.T) {
 	assert.Contains(t, out, "Open Knowledge Format bundle config")
 	assert.Contains(t, out, "wordlists")
 	assert.Contains(t, out, "Curated no-llm-tells word-lists")
+	assert.Contains(t, out, "apm")
+	assert.Contains(t, out, "APM kind pack")
 }
 
 // --- setInitUsage ---
@@ -292,6 +296,193 @@ func TestRunInit_List(t *testing.T) {
 	assert.Contains(t, out, "okf")
 	assert.Contains(t, out, "Packs")
 	assert.Contains(t, out, "wordlists")
+	assert.Contains(t, out, "apm")
+}
+
+// --- --apm flag ---
+
+func TestRunInit_APM_FreshRepo_WritesKindFilesAndPosture(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	captureStderr(func() {
+		code := runInit([]string{"--apm"})
+		assert.Equal(t, 0, code)
+	})
+
+	// Config must exist with ignore: block for APM-deployed files.
+	data, err := os.ReadFile(filepath.Join(dir, ".mdsmith.yml"))
+	require.NoError(t, err)
+	body := string(data)
+	assert.Contains(t, body, "ignore:", "posture written to fresh config")
+	assert.Contains(t, body, "apm_modules/**", "APM module cache always ignored")
+	assert.Contains(t, body, "AGENTS.md", "compiled root file in ignore")
+	assert.Contains(t, body, "CLAUDE.md", "compiled root file in ignore")
+	assert.Contains(t, body, "GEMINI.md", "compiled root file in ignore")
+
+	// The default config already has "ignore: []"; the APM flag must not add
+	// a second "ignore:" key — that would produce invalid YAML.
+	assert.Equal(t, 1, strings.Count(body, "\nignore:"),
+		"exactly one ignore: key in the config (no duplicate from APM posture)")
+
+	// All four kind files must be scaffolded.
+	for _, name := range []string{"apm-skill", "apm-prompt", "apm-instruction", "apm-agent"} {
+		_, statErr := os.Stat(filepath.Join(dir, ".mdsmith", "kinds", name+".yaml"))
+		assert.NoErrorf(t, statErr, "%s.yaml must be scaffolded", name)
+	}
+}
+
+func TestRunInit_APM_ExistingConfig_PrintsMergeHint(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	require.NoError(t, os.WriteFile(".mdsmith.yml", []byte("rules: {}\n"), 0o644))
+
+	out := captureStderr(func() {
+		code := runInit([]string{"--apm"})
+		assert.Equal(t, 0, code)
+	})
+
+	// Merge hint must appear on stderr with the posture block.
+	assert.Contains(t, out, "merge", "hint message must instruct user to merge")
+	assert.Contains(t, out, "apm_modules/**", "merge hint includes ignore globs")
+	assert.Contains(t, out, "AGENTS.md", "merge hint includes compiled root files")
+
+	// Existing config must not be clobbered.
+	cfg, err := os.ReadFile(".mdsmith.yml")
+	require.NoError(t, err)
+	assert.Equal(t, "rules: {}\n", string(cfg), "existing config left unchanged")
+}
+
+func TestRunInit_APM_ExistingConfig_KindFilesStillScaffolded(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	require.NoError(t, os.WriteFile(".mdsmith.yml", []byte("rules: {}\n"), 0o644))
+
+	captureStderr(func() {
+		code := runInit([]string{"--apm"})
+		assert.Equal(t, 0, code)
+	})
+
+	// Kind files are scaffolded even when the config already exists.
+	for _, name := range []string{"apm-skill", "apm-prompt", "apm-instruction", "apm-agent"} {
+		_, statErr := os.Stat(filepath.Join(dir, ".mdsmith", "kinds", name+".yaml"))
+		assert.NoErrorf(t, statErr, "%s.yaml must be scaffolded despite existing config", name)
+	}
+}
+
+func TestRunInit_APM_ScopedToDetectedHarnessDirs(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	// Create only the .github/ harness directory.
+	require.NoError(t, os.Mkdir(".github", 0o755))
+
+	captureStderr(func() {
+		code := runInit([]string{"--apm"})
+		assert.Equal(t, 0, code)
+	})
+
+	data, err := os.ReadFile(filepath.Join(dir, ".mdsmith.yml"))
+	require.NoError(t, err)
+	body := string(data)
+
+	// .github/ is present, so GitHub harness paths must appear.
+	assert.Contains(t, body, ".github/prompts/**")
+	// .claude/ is absent, so Claude harness must not appear.
+	assert.NotContains(t, body, ".claude/rules/**")
+}
+
+func TestRunInit_APM_NoHarnessDirs_OnlyRootFilesAndModules(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	captureStderr(func() {
+		code := runInit([]string{"--apm"})
+		assert.Equal(t, 0, code)
+	})
+
+	data, err := os.ReadFile(filepath.Join(dir, ".mdsmith.yml"))
+	require.NoError(t, err)
+	body := string(data)
+
+	// Without any harness dirs, only the always-present entries must appear.
+	assert.Contains(t, body, "apm_modules/**")
+	assert.Contains(t, body, "AGENTS.md")
+	// Harness-specific paths must be absent.
+	assert.NotContains(t, body, ".github/prompts/**")
+	assert.NotContains(t, body, ".claude/rules/**")
+}
+
+func TestRunInit_APM_Force_AppendsPostureToNewConfig(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	require.NoError(t, os.WriteFile(".mdsmith.yml", []byte("rules: {}\n"), 0o644))
+
+	captureStderr(func() {
+		code := runInit([]string{"--apm", "--force"})
+		assert.Equal(t, 0, code)
+	})
+
+	// --force overwrites, so the posture is written into the new config.
+	data, err := os.ReadFile(filepath.Join(dir, ".mdsmith.yml"))
+	require.NoError(t, err)
+	body := string(data)
+	assert.Contains(t, body, "apm_modules/**",
+		"--apm --force must write posture to the new overwritten config")
+	assert.Equal(t, 1, strings.Count(body, "\nignore:"),
+		"--apm --force must not produce duplicate ignore: keys")
+}
+
+func TestRunInit_APM_WithAdd_BothApply(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	captureStderr(func() {
+		code := runInit([]string{"--apm", "--add", "wordlists"})
+		assert.Equal(t, 0, code)
+	})
+
+	// Kind files and wordlists both scaffolded.
+	for _, name := range []string{"apm-skill", "apm-prompt", "apm-instruction", "apm-agent"} {
+		_, statErr := os.Stat(filepath.Join(dir, ".mdsmith", "kinds", name+".yaml"))
+		assert.NoErrorf(t, statErr, "%s.yaml scaffolded", name)
+	}
+	_, err := os.Stat(filepath.Join(dir, ".mdsmith", "wordlists", "ai-speak.yaml"))
+	assert.NoError(t, err, "wordlists scaffolded alongside apm")
+}
+
+func TestRunInit_APM_AllHarnessDirs_AllGlobsPresent(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	// Create all six harness directories so every conditional glob is included.
+	for _, d := range []string{".github", ".claude", ".agents", ".windsurf", ".kiro", ".cursor"} {
+		require.NoError(t, os.Mkdir(d, 0o755))
+	}
+
+	captureStderr(func() {
+		code := runInit([]string{"--apm"})
+		assert.Equal(t, 0, code)
+	})
+
+	data, err := os.ReadFile(filepath.Join(dir, ".mdsmith.yml"))
+	require.NoError(t, err)
+	body := string(data)
+	assert.Contains(t, body, ".github/prompts/**")
+	assert.Contains(t, body, ".claude/rules/**")
+	assert.Contains(t, body, ".agents/skills/**")
+	assert.Contains(t, body, ".windsurf/rules/**")
+	assert.Contains(t, body, ".kiro/steering/**")
+	assert.Contains(t, body, ".cursor/rules/**")
+}
+
+func TestSetInitUsage_IncludesAPMFlag(t *testing.T) {
+	var buf bytes.Buffer
+	fs := flag.NewFlagSet("init", flag.ContinueOnError)
+	fs.BoolVar(new(bool), "apm", false, "Scaffold the APM kind pack and coexistence posture")
+	fs.BoolVar(new(bool), "force", false, "Overwrite an existing .mdsmith.yml instead of leaving it unchanged")
+	setInitUsage(fs, &buf)
+	fs.Usage()
+	out := buf.String()
+	assert.Contains(t, out, "--apm")
 }
 
 func TestRunInit_FromMarkdownlint_NoConfig_ExitsTwo(t *testing.T) {
@@ -622,4 +813,81 @@ func TestConvertedConfigBytes_ParseError(t *testing.T) {
 	_, _, err := convertedConfigBytes(path, &buf)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), ".markdownlintrc")
+}
+
+// --- appendAPMPosture ---
+
+func TestAppendAPMPosture_NoEmptyIgnore_Appends(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, ".mdsmith.yml")
+	// A config with no "ignore: []" line (e.g. a starter output).
+	require.NoError(t, os.WriteFile(cfg, []byte("rules: {}\n"), 0o644))
+
+	require.NoError(t, appendAPMPosture(cfg, []string{"apm_modules/**"}))
+
+	data, err := os.ReadFile(cfg)
+	require.NoError(t, err)
+	body := string(data)
+	assert.Contains(t, body, "rules: {}", "original content preserved")
+	assert.Contains(t, body, "apm_modules/**", "posture appended")
+}
+
+func TestAppendAPMPosture_ReadError(t *testing.T) {
+	err := appendAPMPosture(filepath.Join(t.TempDir(), "nonexistent.yml"), []string{"apm_modules/**"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "appending APM posture")
+}
+
+func TestAppendAPMPosture_OpenFileError(t *testing.T) {
+	// /proc/version is readable on Linux but rejects O_WRONLY (EINVAL) even as
+	// root. Its content has no "ignore: []", so appendAPMPosture reaches the
+	// fallback os.OpenFile call and hits the error branch (line 223).
+	if _, err := os.Stat("/proc/version"); err != nil {
+		t.Skip("/proc/version not available")
+	}
+	err := appendAPMPosture("/proc/version", []string{"apm_modules/**"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "appending APM posture")
+}
+
+func TestAppendAPMPosture_WriteError(t *testing.T) {
+	// Override openFileForAppend to return a file whose fd is already closed, so
+	// the subsequent f.Write call fails with "file already closed" — covering the
+	// write-error branch without requiring root or a full filesystem.
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(cfg, []byte("rules: {}\n"), 0o644))
+
+	orig := openFileForAppend
+	openFileForAppend = func(name string, flag int, perm fs.FileMode) (*os.File, error) {
+		f, err := orig(name, flag, perm)
+		if err != nil {
+			return nil, err
+		}
+		f.Close() //nolint:errcheck // close immediately so f.Write fails
+		return f, nil
+	}
+	t.Cleanup(func() { openFileForAppend = orig })
+
+	err := appendAPMPosture(cfg, []string{"apm_modules/**"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "appending APM posture")
+}
+
+func TestRunInit_APM_Force_Starter_AppendsPosture(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	captureStderr(func() {
+		code := runInit([]string{"--apm", "--force", "--starter", "okf"})
+		assert.Equal(t, 0, code)
+	})
+
+	// The okf starter has no "ignore: []" line, so appendAPMPosture falls
+	// back to the os.OpenFile append path rather than the in-place replace.
+	data, err := os.ReadFile(filepath.Join(dir, ".mdsmith.yml"))
+	require.NoError(t, err)
+	body := string(data)
+	assert.Contains(t, body, "required-frontmatter", "okf starter content written")
+	assert.Contains(t, body, "apm_modules/**", "APM posture appended via fallback path")
 }
