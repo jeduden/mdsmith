@@ -1,6 +1,8 @@
 package checker
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/config"
@@ -40,6 +42,37 @@ func TestCheckConfiguredRules_MatchesCheckRules(t *testing.T) {
 		assert.Equal(t, want[i].Line, got[i].Line)
 		assert.Equal(t, want[i].Column, got[i].Column)
 		assert.Equal(t, want[i].Message, got[i].Message)
+	}
+}
+
+// BenchmarkCheckConfiguredRules_ManyDiagnostics measures the per-file
+// diagnostic merge on a diagnostic-heavy file — the pre-sized slot
+// merge in CheckConfiguredRules (checker.go) avoids append's
+// geometric regrowth re-copying the accumulated slice on every growth
+// step (high-performance-go.md, "Pre-size slices").
+func BenchmarkCheckConfiguredRules_ManyDiagnostics(b *testing.B) {
+	var buf strings.Builder
+	buf.WriteString("# Title\n\n")
+	for i := 0; i < 200; i++ {
+		fmt.Fprintf(&buf, "Line %d with trailing spaces   \n", i)
+	}
+	src := []byte(buf.String())
+
+	rules := rule.All()
+	eff := map[string]config.RuleCfg{}
+	for _, r := range rules {
+		eff[r.Name()] = config.RuleCfg{Enabled: true}
+	}
+	configured, _ := ConfigureEnabledRules(rules, eff)
+
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		f, err := lint.NewFile("doc.md", src)
+		if err != nil {
+			b.Fatal(err)
+		}
+		f.RunCache = lint.NewRunCache()
+		_ = CheckConfiguredRules(f, configured, true, 1)
 	}
 }
 

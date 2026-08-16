@@ -398,8 +398,17 @@ func (r *blockReader) Value(seg Segment) []byte {
 			i = s.Start
 		}
 		ret = s.ConcatPadding(ret)
-		for ; i < seg.Stop && i < s.Stop; i++ {
-			ret = append(ret, r.source[i])
+		// Bulk-copy the line's overlap with seg in one append call
+		// instead of one append per byte — the compiler lowers a
+		// slice-to-slice append to a memmove, but does not vectorize
+		// a byte-at-a-time loop. ret is already sized to
+		// seg.Stop-seg.Start+1 above, so this never grows it.
+		end := seg.Stop
+		if s.Stop < end {
+			end = s.Stop
+		}
+		if i < end {
+			ret = append(ret, r.source[i:end]...)
 		}
 		i = -1
 		if s.Stop > seg.Stop {

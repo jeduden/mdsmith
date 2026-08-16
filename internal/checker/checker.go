@@ -143,7 +143,14 @@ func CheckConfiguredRules(
 		runBlockCheckers(f, blockCheckers)
 	}
 
+	total := 0
+	for _, s := range slots {
+		total += len(s.diags)
+	}
 	var diags []lint.Diagnostic
+	if total > 0 {
+		diags = make([]lint.Diagnostic, 0, total)
+	}
 	for _, s := range slots {
 		diags = append(diags, s.diags...)
 	}

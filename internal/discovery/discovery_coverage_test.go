@@ -1,6 +1,7 @@
 package discovery
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -24,10 +25,10 @@ func TestVisit_WalkError(t *testing.T) {
 
 // TestVisit_SkipsSymlinkDirByDefault confirms the walker returns nil
 // (no descent) for a symlinked directory entry when FollowSymlinks is
-// false. filepath.Walk reports symlinks via Lstat, so the entry's
-// info has ModeSymlink set but IsDir()==false — the test uses real
-// Lstat info rather than a synthetic fakeFileInfo so the assertion
-// reflects actual Walk semantics.
+// false. filepath.WalkDir reports symlinks via Lstat (same as Walk),
+// so the entry's DirEntry has ModeSymlink set but IsDir()==false — the
+// test wraps real Lstat info via fs.FileInfoToDirEntry rather than a
+// synthetic fake so the assertion reflects actual WalkDir semantics.
 func TestVisit_SkipsSymlinkDirByDefault(t *testing.T) {
 	skipIfSymlinkUnsupported(t)
 	dir := t.TempDir()
@@ -46,7 +47,7 @@ func TestVisit_SkipsSymlinkDirByDefault(t *testing.T) {
 		patterns: []string{"**/*.md"},
 		seen:     make(map[string]struct{}),
 	}
-	visitErr := w.visit(linked, info, nil)
+	visitErr := w.visit(linked, fs.FileInfoToDirEntry(info), nil)
 	assert.NoError(t, visitErr)
 	assert.Empty(t, w.result, "symlink must be skipped")
 }
@@ -73,7 +74,7 @@ func TestVisit_FollowsSymlinkFileWhenOptedIn(t *testing.T) {
 		followSymlinks: true,
 		seen:           make(map[string]struct{}),
 	}
-	visitErr := w.visit(linked, info, nil)
+	visitErr := w.visit(linked, fs.FileInfoToDirEntry(info), nil)
 	assert.NoError(t, visitErr)
 	assert.Len(t, w.result, 1, "symlinked file must be included under opt-in")
 }
@@ -107,7 +108,7 @@ func TestVisit_RootDirSkipped(t *testing.T) {
 	// visit the root itself (rel == ".")
 	info, err := os.Stat(dir)
 	require.NoError(t, err)
-	err = w.visit(dir, info, nil)
+	err = w.visit(dir, fs.FileInfoToDirEntry(info), nil)
 	assert.NoError(t, err)
 	assert.Empty(t, w.result, "root dir should be skipped")
 }

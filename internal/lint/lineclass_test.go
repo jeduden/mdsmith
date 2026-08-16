@@ -2,12 +2,26 @@ package lint
 
 import (
 	"fmt"
+	"reflect"
 	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/jeduden/mdsmith/internal/structlayout"
 )
+
+// TestLC0Pass_PointerFieldsFirst pins lc0Pass's layout. lc0Pass
+// itself does not escape to the heap today (ClassifyLines is a
+// default-off measurement seam, not part of the default lint path),
+// so a scalar sandwiched between pointer fields costs nothing right
+// now; this pins the layout as hygiene per
+// docs/development/high-performance-go.md "Struct layout" so it
+// stays correct if that ever changes.
+func TestLC0Pass_PointerFieldsFirst(t *testing.T) {
+	structlayout.AssertPointerFieldsFirst(t, reflect.TypeOf(lc0Pass{}))
+}
 
 // equivCases are markdown snippets whose flat-classifier code-block line
 // set must equal the AST-derived set. They cover the block shapes the

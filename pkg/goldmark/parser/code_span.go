@@ -1,6 +1,8 @@
 package parser
 
 import (
+	"bytes"
+
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 )
@@ -34,21 +36,26 @@ func (s *codeSpanParser) Parse(parent ast.Node, block text.Reader, pc Context) a
 			block.SetPosition(l, pos)
 			return ArenaForContext(pc).TextSegment(startSegment.WithStop(startSegment.Start + opener))
 		}
-		for i := 0; i < len(line); i++ {
-			c := line[i]
-			if c == '`' {
-				oldi := i
-				for ; i < len(line) && line[i] == '`'; i++ {
+		// bytes.IndexByte skips non-backtick runs in SIMD instead of
+		// testing every byte by hand (high-performance-go.md,
+		// "bytes.IndexByte over a hand-rolled byte loop").
+		for i := 0; i < len(line); {
+			rel := bytes.IndexByte(line[i:], '`')
+			if rel < 0 {
+				break
+			}
+			i += rel
+			oldi := i
+			for ; i < len(line) && line[i] == '`'; i++ {
+			}
+			closure := i - oldi
+			if closure == opener && (i >= len(line) || line[i] != '`') {
+				segment = segment.WithStop(segment.Start + i - closure)
+				if !segment.IsEmpty() {
+					node.AppendChild(node, ArenaForContext(pc).RawTextSegment(segment))
 				}
-				closure := i - oldi
-				if closure == opener && (i >= len(line) || line[i] != '`') {
-					segment = segment.WithStop(segment.Start + i - closure)
-					if !segment.IsEmpty() {
-						node.AppendChild(node, ArenaForContext(pc).RawTextSegment(segment))
-					}
-					block.Advance(i)
-					goto end
-				}
+				block.Advance(i)
+				goto end
 			}
 		}
 		node.AppendChild(node, ArenaForContext(pc).RawTextSegment(segment))
