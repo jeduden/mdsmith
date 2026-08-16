@@ -232,9 +232,9 @@ func (c *RunCache) Anchors(absPath string, build func() (map[string]struct{}, er
 // the build path returns an error and a successful build must
 // be cacheable while a failed one stays retryable.
 type anchorEntry struct {
+	anchors map[string]struct{}
 	mu      sync.Mutex
 	done    bool
-	anchors map[string]struct{}
 }
 
 // GlobMatches returns build's result for key, computed at most once

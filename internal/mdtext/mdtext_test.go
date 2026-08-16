@@ -425,6 +425,23 @@ func TestSlugify_LeadingTrailingDashes(t *testing.T) {
 	assert.Equal(t, "hello", mdtext.Slugify("---hello---"))
 }
 
+// TestSlugify_PreSizesBuilder pins Slugify's allocation count for a
+// moderately long heading. strings.Builder grows geometrically as
+// WriteRune/WriteByte calls exceed its capacity; without an upfront
+// Grow(len(s)) call — output length is always <= input length, since
+// Slugify only emits letters/digits plus single collapsed dashes — a
+// ~50-byte heading forces several successive regrows. Grow(len(s))
+// reduces that to the single upfront allocation plus the one
+// strings.ToLower copy TrimSpace/ToLower already pays for.
+func TestSlugify_PreSizesBuilder(t *testing.T) {
+	s := "This Is A Reasonably Long Heading Title For Testing"
+	allocs := testing.AllocsPerRun(50, func() {
+		_ = mdtext.Slugify(s)
+	})
+	assert.LessOrEqual(t, allocs, 2.0,
+		"Slugify should allocate at most twice (ToLower's copy + one pre-sized Builder buffer)")
+}
+
 func TestSlugify_Unicode(t *testing.T) {
 	// Unicode letters are preserved.
 	result := mdtext.Slugify("Ångström")

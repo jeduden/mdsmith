@@ -249,7 +249,7 @@ footer: |
 | 2607071642 | ✅     | sonnet | [Single-file metric extraction via `mdsmith metrics get` (readability first)](plan/2607071642_extractable-file-metrics.md)                              |
 | 2607082048 | ✅     | sonnet | [Placeholder token for APM `${input:name}` prompt parameters](plan/2607082048_apm-input-placeholder-token.md)                                           |
 | 2607082049 | ✅     | opus   | [Foreign managed-region protection for `mdsmith fix`](plan/2607082049_foreign-managed-regions.md)                                                       |
-| 2607082050 | 🔲     | sonnet | [APM coexistence: `mdsmith init --apm`, guide, and kind pack](plan/2607082050_apm-coexist-guide-and-kind-pack.md)                                       |
+| 2607082050 | ✅     | sonnet | [APM coexistence: `mdsmith init --apm`, guide, and kind pack](plan/2607082050_apm-coexist-guide-and-kind-pack.md)                                       |
 | 2607082051 | 🔲     | opus   | [Schema extensions: closed frontmatter and filename agreement](plan/2607082051_apm-schema-extensions.md)                                                |
 | 2607082052 | ✅     | sonnet | [SARIF output format for `mdsmith check`](plan/2607082052_check-sarif-output.md)                                                                        |
 | 2607121915 | ✅     | sonnet | [Resolve the internal/linkgraph purity-contract mismatch for wikilink resolution](plan/2607121915_arch-fix-linkgraph-wikilink-purity.md)                |
@@ -257,6 +257,11 @@ footer: |
 | 2607171900 | ✅     | opus   | [Slidev structure rule (MDS073) — validate layouts, slots, fields, and frontmatter keys per slide](plan/2607171900_slidev-structure-rule.md)            |
 | 2607191917 | ✅     | haiku  | [Add dedicated unit tests for printInitCatalog and setInitUsage](plan/2607191917_arch-fix-printinitcatalog-unit-test.md)                                |
 | 2607191918 | ✅     | haiku  | [Deduplicate isClaimed between internal/schema and requiredstructure](plan/2607191918_arch-fix-isclaimed-dedup.md)                                      |
-| 2607242010 | 🔲     | sonnet | [MDS072 external-link-check: SSRF and egress hardening](plan/2607242010_mds072-ssrf-network-hardening.md)                                               |
-| 2607242011 | 🔲     | haiku  | [Security hardening batch — 2026-07-24](plan/2607242011_security-hardening-batch-2026-07-24.md)                                                         |
+| 2607242010 | ✅     | sonnet | [MDS072 external-link-check: SSRF and egress hardening](plan/2607242010_mds072-ssrf-network-hardening.md)                                               |
+| 2607242011 | ✅     | haiku  | [Security hardening batch — 2026-07-24](plan/2607242011_security-hardening-batch-2026-07-24.md)                                                         |
+| 2608020650 | 🔲     | sonnet | [Convert MDS003/MDS005 to KindScopedChecker without a stale-state bug](plan/2608020650_kindscoped-heading-rules.md)                                     |
+| 2608021915 | 🔲     | haiku  | [Move list-query subcommand logic out of cmd/mdsmith/main.go into query.go](plan/2608021915_arch-fix-query-subcommand-placement.md)                     |
+| 2608021916 | 🔲     | sonnet | [Split internal/githooks by responsibility](plan/2608021916_arch-fix-githooks-package-split.md)                                                         |
+| 2608091910 | ✅     | sonnet | [Resolve the MDS073 rule-ID collision between slidevstructure and foreignregion](plan/2608091910_arch-fix-mds073-collision.md)                          |
+| 2608091911 | 🔲     | haiku  | [Add dedicated unit tests for occurrence and slidevstructure private helpers](plan/2608091911_arch-fix-missing-unit-tests.md)                           |
 <?/catalog?>

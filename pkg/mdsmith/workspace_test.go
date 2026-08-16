@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/bmatcuk/doublestar/v4"
+
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 )
 
 func TestMemWorkspaceReadFile(t *testing.T) {
@@ -300,10 +302,10 @@ func TestMemFSDirEntriesIgnoresEmptySegment(t *testing.T) {
 	// Construct memFS directly to bypass NewMemWorkspace path.Clean so the
 	// double-slash key is preserved; "a//b.md" after stripping prefix "a/"
 	// leaves "/b.md", whose first segment is "".
-	m := memFS{
+	m := newMemFS(map[string][]byte{
 		"a//b.md": []byte("b"),
 		"a/c.md":  []byte("c"),
-	}
+	})
 	ents := m.dirEntries("a")
 	for _, e := range ents {
 		if e.Name() == "" {
@@ -316,6 +318,90 @@ func TestMemFSDirEntriesIgnoresEmptySegment(t *testing.T) {
 			names[i] = e.Name()
 		}
 		t.Fatalf("dirEntries(\"a\") with double-slash key = %v, want [c.md]", names)
+	}
+}
+
+// TestMemFSDirEntriesIgnoresTrailingSlashKey verifies that a key
+// ending in "/" (no filename after the last segment, again bypassing
+// NewMemWorkspace's path.Clean) does not produce an empty-name file
+// entry. buildDirIndex's file branch (`i < 0`) passes the remainder
+// after the last "/" straight to addDirEntry as the file name; for a
+// trailing-slash key that remainder is "", so addDirEntry's `name ==
+// ""` guard must reject it the same way dirEntries' `name != ""`
+// guard rejected the analogous empty-segment case before this
+// package indexed the whole tree up front.
+func TestMemFSDirEntriesIgnoresTrailingSlashKey(t *testing.T) {
+	m := newMemFS(map[string][]byte{
+		"docs/":     []byte("x"),
+		"docs/a.md": []byte("y"),
+	})
+	ents := m.dirEntries("docs")
+	for _, e := range ents {
+		if e.Name() == "" {
+			t.Fatalf("dirEntries emitted an entry with empty name: %#v", e)
+		}
+	}
+	if len(ents) != 1 || ents[0].Name() != "a.md" {
+		names := make([]string, len(ents))
+		for i, e := range ents {
+			names[i] = e.Name()
+		}
+		t.Fatalf("dirEntries(\"docs\") with trailing-slash key = %v, want [a.md]", names)
+	}
+}
+
+// TestMemFSWalkDirAllocBudget pins the allocation cost of a full
+// fs.WalkDir traversal over a nested MemWorkspace FS view.
+// memFS.dirEntries rescanned every entry in the workspace on every
+// single ReadDir call (fs.WalkDir calls ReadDir once per directory
+// visited), so a workspace with D directories paid an O(files) scan D
+// times over instead of once
+// (docs/development/high-performance-go.md "Memoize per-input
+// computations"). This is the access pattern
+// internal/linkgraph.WikilinkIndexFor uses over a session's workspace.
+func TestMemFSWalkDirAllocBudget(t *testing.T) {
+	if testing.Short() {
+		t.Skip("alloc gate skipped in -short mode")
+	}
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race; the race detector " +
+			"adds allocation bookkeeping that perturbs the count")
+	}
+	const dirs = 50
+	const filesPerDir = 5
+	w := NewMemWorkspace(manyNestedFiles(dirs, filesPerDir))
+	root := w.FS()
+
+	walk := func() {
+		visited := 0
+		err := fs.WalkDir(root, ".", func(_ string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if !d.IsDir() {
+				visited++
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("WalkDir: %v", err)
+		}
+		if visited != dirs*filesPerDir {
+			t.Fatalf("WalkDir visited %d files, want %d", visited, dirs*filesPerDir)
+		}
+	}
+	walk() // warm-up
+
+	const runs = 20
+	allocs := testing.AllocsPerRun(runs, walk)
+	const budget = 350
+	t.Logf("fs.WalkDir allocs/op over %d dirs x %d files = %.0f (budget = %d)",
+		dirs, filesPerDir, allocs, budget)
+	if allocs > float64(budget) {
+		t.Fatalf("fs.WalkDir allocs/op = %.0f over %d dirs, budget = %d; "+
+			"memFS.dirEntries should not rescan every file on every "+
+			"ReadDir call (see docs/development/high-performance-go.md)",
+			allocs, dirs, budget)
 	}
 }
 
@@ -462,3 +548,71 @@ var (
 	_ Workspace = OSWorkspace{}
 	_ Workspace = (*MemWorkspace)(nil)
 )
+
+// TestOSWorkspaceReadFileLimitedWithinLimit verifies readFileLimited
+// returns the file's bytes when the file is at or under max, for both
+// the rooted and unrooted (absolute-path) dispatch in ReadFile.
+func TestOSWorkspaceReadFileLimitedWithinLimit(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "a.md"), []byte("hello"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	rooted := OSWorkspace{Root: root}
+	got, err := rooted.readFileLimited("a.md", 100)
+	if err != nil {
+		t.Fatalf("readFileLimited(rooted): %v", err)
+	}
+	if string(got) != "hello" {
+		t.Fatalf("readFileLimited(rooted) = %q, want %q", got, "hello")
+	}
+
+	abs := filepath.Join(root, "a.md")
+	unrooted := OSWorkspace{}
+	got, err = unrooted.readFileLimited(abs, 100)
+	if err != nil {
+		t.Fatalf("readFileLimited(absolute): %v", err)
+	}
+	if string(got) != "hello" {
+		t.Fatalf("readFileLimited(absolute) = %q, want %q", got, "hello")
+	}
+}
+
+// TestOSWorkspaceReadFileLimitedOverLimit verifies readFileLimited
+// rejects a file larger than max with a "file too large" error instead
+// of returning its full content — the bounded counterpart to ReadFile,
+// which has no such cap. Covers both the rooted and unrooted dispatch.
+func TestOSWorkspaceReadFileLimitedOverLimit(t *testing.T) {
+	content := make([]byte, 100)
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "huge.md"), content, 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	rooted := OSWorkspace{Root: root}
+	if _, err := rooted.readFileLimited("huge.md", 50); err == nil {
+		t.Fatal("readFileLimited(rooted) over limit: want error, got nil")
+	} else if !errors.Is(err, bytelimit.ErrFileTooLarge) {
+		t.Fatalf("readFileLimited(rooted) over limit: got err %v, want it to wrap bytelimit.ErrFileTooLarge", err)
+	}
+
+	abs := filepath.Join(root, "huge.md")
+	unrooted := OSWorkspace{}
+	if _, err := unrooted.readFileLimited(abs, 50); err == nil {
+		t.Fatal("readFileLimited(absolute) over limit: want error, got nil")
+	} else if !errors.Is(err, bytelimit.ErrFileTooLarge) {
+		t.Fatalf("readFileLimited(absolute) over limit: got err %v, want it to wrap bytelimit.ErrFileTooLarge", err)
+	}
+}
+
+// TestOSWorkspaceReadFileLimitedOpenRootFails mirrors
+// TestOSWorkspaceReadFileOpenRootFails for the bounded read path:
+// readFileLimited must propagate the os.OpenRoot error (e.g. a
+// non-existent Root) through readFileRootedLimited rather than panic.
+func TestOSWorkspaceReadFileLimitedOpenRootFails(t *testing.T) {
+	nonExistent := t.TempDir() + "/does-not-exist"
+	ws := OSWorkspace{Root: nonExistent}
+	if _, err := ws.readFileLimited("any.md", 100); err == nil {
+		t.Fatal("readFileLimited on a non-existent root must return an error")
+	}
+}

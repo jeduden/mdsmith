@@ -9,13 +9,23 @@ import (
 	"github.com/jeduden/mdsmith/internal/rule"
 )
 
+// disabledLogger is the shared zero-value logger (*Runner).log
+// returns when no Logger is configured — the common case, since -v is
+// off by default. Every caller only reads Enabled or calls Printf,
+// which no-ops before touching the logger's mutex when Enabled is
+// false (internal/log.Logger.Printf), so nothing ever mutates this
+// instance; sharing it instead of allocating a fresh &vlog.Logger{}
+// on every call avoids one allocation per file in the workspace walk
+// (log runs once per file via Runner.checkFile).
+var disabledLogger = &vlog.Logger{}
+
 // log returns the runner's logger. If no logger is set, it returns a
 // disabled logger so callers don't need nil checks.
 func (r *Runner) log() *vlog.Logger {
 	if r.Logger != nil {
 		return r.Logger
 	}
-	return &vlog.Logger{}
+	return disabledLogger
 }
 
 // logRules logs each enabled rule in the effective config from the provided slice.

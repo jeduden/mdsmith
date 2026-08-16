@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"os"
 	"path/filepath"
@@ -160,49 +161,82 @@ func TestSnapshotOutputs_ExistingFile(t *testing.T) {
 	}
 	snap := snapshotOutputs(bt)
 	require.Len(t, snap, 1)
-	assert.Equal(t, []byte("hello"), snap["out.txt"])
+	// hashOf is an independent oracle (sha256.Sum256 directly), not the
+	// hashOutputFile helper snapshotOutputs itself delegates to — this
+	// ties the digest to the actual file content, not just to
+	// snapshotOutputs calling hashOutputFile with the right path.
+	assert.Equal(t, hashOf("hello"), snap["out.txt"])
 }
 
-func TestSnapshotOutputs_MissingFile_ReturnsNil(t *testing.T) {
+func TestHashOutputFile_UnreadablePath_ReturnsZeroValue(t *testing.T) {
+	// os.Open succeeds on a directory; the failure surfaces on the
+	// subsequent io.Copy read, exercising hashOutputFile's second
+	// error branch (distinct from the os.Open error in the missing-
+	// file case above).
+	root := t.TempDir()
+	sub := filepath.Join(root, "a-directory")
+	require.NoError(t, os.Mkdir(sub, 0o755))
+	got := hashOutputFile(sub)
+	assert.False(t, got.ok)
+}
+
+func TestSnapshotOutputs_MissingFile_ReturnsZeroValue(t *testing.T) {
 	root := t.TempDir()
 	bt := buildTarget{
 		target: buildexec.Target{Root: root, Outputs: []string{"absent.txt"}},
 	}
 	snap := snapshotOutputs(bt)
 	require.Len(t, snap, 1)
-	assert.Nil(t, snap["absent.txt"])
+	assert.False(t, snap["absent.txt"].ok)
 }
 
 // --- outputsEqual ---
 
+func hashOf(s string) outputHash {
+	return outputHash{hash: sha256.Sum256([]byte(s)), ok: true}
+}
+
 func TestOutputsEqual_IdenticalMaps_ReturnsTrue(t *testing.T) {
-	a := map[string][]byte{"a.txt": []byte("x"), "b.txt": []byte("y")}
-	b := map[string][]byte{"a.txt": []byte("x"), "b.txt": []byte("y")}
+	a := map[string]outputHash{"a.txt": hashOf("x"), "b.txt": hashOf("y")}
+	b := map[string]outputHash{"a.txt": hashOf("x"), "b.txt": hashOf("y")}
 	assert.True(t, outputsEqual(a, b))
 }
 
 func TestOutputsEqual_DifferentContent_ReturnsFalse(t *testing.T) {
-	a := map[string][]byte{"a.txt": []byte("x")}
-	b := map[string][]byte{"a.txt": []byte("y")}
+	a := map[string]outputHash{"a.txt": hashOf("x")}
+	b := map[string]outputHash{"a.txt": hashOf("y")}
 	assert.False(t, outputsEqual(a, b))
 }
 
 func TestOutputsEqual_DifferentKeys_ReturnsFalse(t *testing.T) {
-	a := map[string][]byte{"a.txt": []byte("x")}
-	b := map[string][]byte{"b.txt": []byte("x")}
+	a := map[string]outputHash{"a.txt": hashOf("x")}
+	b := map[string]outputHash{"b.txt": hashOf("x")}
 	assert.False(t, outputsEqual(a, b))
 }
 
 func TestOutputsEqual_DifferentLength_ReturnsFalse(t *testing.T) {
-	a := map[string][]byte{"a.txt": []byte("x"), "b.txt": []byte("y")}
-	b := map[string][]byte{"a.txt": []byte("x")}
+	a := map[string]outputHash{"a.txt": hashOf("x"), "b.txt": hashOf("y")}
+	b := map[string]outputHash{"a.txt": hashOf("x")}
 	assert.False(t, outputsEqual(a, b))
 }
 
-func TestOutputsEqual_BothNilValue_ReturnsTrue(t *testing.T) {
-	a := map[string][]byte{"a.txt": nil}
-	b := map[string][]byte{"a.txt": nil}
+func TestOutputsEqual_BothMissingValue_ReturnsTrue(t *testing.T) {
+	a := map[string]outputHash{"a.txt": {}}
+	b := map[string]outputHash{"a.txt": {}}
 	assert.True(t, outputsEqual(a, b))
+}
+
+// TestOutputsEqual_MissingVsEmpty_ReturnsFalse pins the deliberate
+// tightening documented on outputHash: a first run that leaves a
+// declared output absent and a second that leaves it present-but-empty
+// (or vice versa) is real non-determinism, so it must not compare
+// equal the way bytes.Equal(nil, []byte{}) treated the pre-streaming
+// code's os.ReadFile results.
+func TestOutputsEqual_MissingVsEmpty_ReturnsFalse(t *testing.T) {
+	missing := map[string]outputHash{"a.txt": {}}
+	empty := map[string]outputHash{"a.txt": hashOf("")}
+	assert.False(t, outputsEqual(missing, empty))
+	assert.False(t, outputsEqual(empty, missing))
 }
 
 // --- printVerdict ---

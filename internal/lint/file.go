@@ -78,6 +78,39 @@ type File struct {
 	// guard block below.
 	codeBlockLines map[int]struct{}
 
+	// headingTextCache memoizes HeadingTextCache's compute result per
+	// (heading, base) key — see headingTextCacheKey; base disambiguates
+	// the AST path (always base 0) from the parse-skipped path's
+	// run-local offsets so the two never collide on one heading
+	// pointer. Unlike the caches above, it is not a single lazily-built
+	// value: entries accumulate one per heading as rules visit them,
+	// so a plain mutex-guarded map fits better than the atomic.Bool
+	// "build once" pattern (there is no single build to gate) — see
+	// headingTextCacheMu in the guard block below. A plain map beats
+	// routing through the sync.Map-backed scratch/Memo facility here:
+	// scratch's per-key Store path is tuned for a read-mostly, stable
+	// keyset, but headings are a write-once, read-a-few-times keyset
+	// per File, and sync.Map's per-insert entry/dirty-map bookkeeping
+	// cost more than it saved when benchmarked against
+	// BenchmarkCheckCorpusLarge.
+	//
+	// These two fields push unsafe.Sizeof(File{}) from 640 to 656
+	// bytes — 16 bytes of field growth — but 640 sits exactly on a Go
+	// allocator size-class boundary and 641-704 all round up to the
+	// 704-byte class (measured), so the real heap cost per *File
+	// allocation is 64 bytes, not 16. An alternative that avoids the
+	// class jump by routing the map through a single Memo-cached
+	// container (paying one scratch entry per File instead of
+	// dedicated fields) was benchmarked directly against this one: it
+	// kept File at 640 bytes but cost 2 extra small heap objects (the
+	// memo entry and the container) on every file that touches a
+	// heading, which measured worse on both allocs/op and B/op than
+	// this simpler direct-field version despite avoiding the class
+	// jump — the extra per-file object overhead outweighed the 64
+	// bytes it saved. Kept as fields for that reason; see PR #770's
+	// review discussion for the numbers.
+	headingTextCache map[headingTextCacheKey]string
+
 	// lineClass, when non-nil, is the flat Layer-0 line classifier built
 	// in place of the goldmark parse on the engine's parse-skip path
 	// (plan 2606142147, Runner.FlatLayer0). CollectCodeBlockLines and
@@ -211,6 +244,7 @@ type File struct {
 	codeSpansMu        sync.Mutex
 	lineStringsMu      sync.Mutex
 	linkRefsMu         sync.Mutex
+	headingTextCacheMu sync.Mutex
 
 	// StripFrontMatter records whether this file was parsed in
 	// front-matter-stripping mode. Rules that read other files
@@ -327,6 +361,61 @@ func (f *File) MemoFile(key string, build func(*File) any) any {
 		e.val = build(f)
 	}
 	return e.val
+}
+
+// headingTextCacheKey pairs a heading node with the base offset its
+// text was (or would be) extracted with. HeadingText and
+// HeadingTextBase agree on a heading's text only when base == 0
+// (HeadingTextBase(h, src, 0) == HeadingText(h, src), per
+// astutil_test.go's own equivalence tests), so a heading pointer
+// alone is not a safe cache key: the AST path always queries base 0,
+// and the parse-skipped path always queries its own run-local base,
+// and today the two are mutually exclusive per File (every caller
+// gates on f.AST == nil, and internal/lint's inline-block arena never
+// recycles a node pointer within one File's lifetime) — but nothing
+// in the type system enforces that invariant. Including base means a
+// future caller that queries the same heading at two different bases
+// gets two independent entries instead of the second one silently
+// reading the first one's answer.
+type headingTextCacheKey struct {
+	heading *ast.Heading
+	base    int
+}
+
+// HeadingTextCache memoizes compute's result for (heading, base),
+// keyed by the heading node's pointer identity plus base — see
+// headingTextCacheKey. A plain mutex-guarded map is used rather than
+// the sync.Map-backed scratch facility behind Memo/MemoFile: headings
+// are a write-once, read-a-few-times keyset per File (a handful of
+// headings, each queried by a handful of rules), and sync.Map's
+// per-insert entry/dirty-map bookkeeping cost more in benchmarking
+// than the redundant computation it avoided — sync.Map is tuned for a
+// stable, read-mostly keyset, not this shape.
+//
+// Several default rules read a heading's text this way — no-trailing-
+// punctuation and no-duplicate-headings for every heading;
+// heading-increment and first-line-heading too, on a subset gated by
+// their own rule-specific conditions — so more than one can
+// independently walk the same heading's children within one Check
+// pass over f. astutil.HeadingText's buf.String() alone was 28% of
+// BenchmarkCheckCorpusLarge's total allocations (68% of that from
+// HeadingText/HeadingTextBase, per docs/development/high-performance
+// -go.md's memoization guidance) — this cache lets only the first
+// caller for a given (heading, base) pay for the walk and the string
+// conversion.
+func (f *File) HeadingTextCache(heading *ast.Heading, base int, compute func() string) string {
+	key := headingTextCacheKey{heading: heading, base: base}
+	f.headingTextCacheMu.Lock()
+	defer f.headingTextCacheMu.Unlock()
+	if v, ok := f.headingTextCache[key]; ok {
+		return v
+	}
+	v := compute()
+	if f.headingTextCache == nil {
+		f.headingTextCache = make(map[headingTextCacheKey]string, 4)
+	}
+	f.headingTextCache[key] = v
+	return v
 }
 
 // Reference is a link reference definition discovered during the parse,

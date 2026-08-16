@@ -326,6 +326,21 @@ func TestBareURLFindingsInTree_NilRoot(t *testing.T) {
 	assert.Nil(t, got)
 }
 
+// TestBareURLFindingsInTree_FindsMatch exercises the exported
+// function's actual match path directly (rather than through Detect,
+// which is covered elsewhere): a real bare URL must resolve through
+// BareURLFindingsInTree's own plain-LineCol lineCol closure to the
+// correct line and column.
+func TestBareURLFindingsInTree_FindsMatch(t *testing.T) {
+	src := []byte("# Title\n\nSee https://example.com/path for details.\n")
+	root := mkDoc(t, string(src)).AST
+	got := BareURLFindingsInTree(src, root, 0)
+	require.Len(t, got, 1)
+	assert.Equal(t, FeatureBareURLAutolinks, got[0].Feature)
+	assert.Equal(t, 3, got[0].Line)
+	assert.Equal(t, 5, got[0].Column)
+}
+
 // --- detectGitHubAlerts nil-AST guard ---
 
 func TestDetect_NilDocAST_NoGitHubAlerts(t *testing.T) {

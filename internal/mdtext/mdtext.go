@@ -19,6 +19,13 @@ func Slugify(s string) string {
 		return ""
 	}
 	var b strings.Builder
+	// Output length is always <= len(s): every emitted rune consumes
+	// at least one input byte (letters/digits pass through, runs of
+	// separators collapse to a single '-'). Pre-sizing avoids the
+	// several successive regrows a bare strings.Builder would pay for
+	// on a long heading (docs/development/high-performance-go.md
+	// "pre-size a slice / Grow(n) first if you know the final size").
+	b.Grow(len(s))
 	prevDash := false
 	for _, r := range s {
 		switch {

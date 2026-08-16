@@ -53,3 +53,10 @@ rewrites hash-pinned deployed files, and awareness of APM's
 composition (`apm audit --ci` beside `mdsmith check .`). Most of
 the machinery exists; the connective config, one vocabulary token,
 and the docs do not.
+
+## Getting started
+
+`mdsmith init --apm` scaffolds both the kind pack and the
+coexistence ignore posture in one step. See
+[Coexist with APM](../../guides/coexist-with-apm.md) for the full
+ownership table, quick-start instructions, and CI ordering.

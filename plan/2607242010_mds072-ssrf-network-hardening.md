@@ -1,7 +1,7 @@
 ---
 id: 2607242010
 title: "MDS072 external-link-check: SSRF and egress hardening"
-status: "🔲"
+status: "✅"
 summary: >-
   Close S001 (Medium) and S002 (Low) from the 2026-07-24 post-audit
   diff review: MDS072 probes document-supplied URLs with no
@@ -63,16 +63,16 @@ internal targets by default and bounds total egress.
 
 ## Acceptance Criteria
 
-- [ ] A link to a loopback, link-local, private, or metadata address is
+- [x] A link to a loopback, link-local, private, or metadata address is
       not probed when `external-allow-internal` is false (the default).
-- [ ] The guard also fires on a redirect hop to such an address.
-- [ ] `external-allow-internal: true` restores internal probing, with a
+- [x] The guard also fires on a redirect hop to such an address.
+- [x] `external-allow-internal: true` restores internal probing, with a
       test.
-- [ ] A run over more than `external-max-probes` distinct URLs issues at
+- [x] A run over more than `external-max-probes` distinct URLs issues at
       most that many requests and reports the rest as unchecked.
-- [ ] MDS072 README and docs describe the guard, settings, and caveat.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run` is clean
+- [x] MDS072 README and docs describe the guard, settings, and caveat.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool -modfile=tools/go.mod golangci-lint run` is clean
 
 ## ...
 

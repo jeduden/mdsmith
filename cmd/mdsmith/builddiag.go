@@ -1,8 +1,8 @@
 package main
 
 import (
-	"bytes"
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"os"
@@ -206,31 +206,71 @@ func verifyTarget(
 	}
 }
 
-// snapshotOutputs reads every declared output of bt from disk into a
-// path→bytes map. A missing output maps to nil.
-func snapshotOutputs(bt buildTarget) map[string][]byte {
-	out := make(map[string][]byte, len(bt.target.Outputs))
+// outputHash is one declared output's verify-pass fingerprint: ok is
+// false when the file is missing or unreadable, true with hash
+// holding its sha256 otherwise. A missing output (ok == false) now
+// compares unequal to a present-but-empty one (ok == true, the sha256
+// of zero bytes) in outputsEqual — a deliberate tightening versus the
+// pre-streaming code, whose bytes.Equal(nil, []byte{}) treated the two
+// as the same "no content" case. A recipe whose first run leaves an
+// output absent and whose second leaves it present-but-empty (or vice
+// versa) is exactly the non-determinism --build-verify exists to
+// catch, so the stricter comparison is intentional (see
+// TestOutputsEqual_MissingVsEmpty_ReturnsFalse).
+type outputHash struct {
+	hash [sha256.Size]byte
+	ok   bool
+}
+
+// snapshotOutputs hashes every declared output of bt from disk into a
+// path→outputHash map. --build-verify only needs to know whether two
+// runs produced identical bytes, so each output is streamed through a
+// sha256 hash instead of read whole into memory — a declared output can
+// be an arbitrarily large binary or bundle, and holding two full copies
+// per verify pass is the "os.ReadFile on huge inputs" anti-pattern
+// (docs/development/high-performance-go.md). A missing or unreadable
+// output maps to the zero outputHash (ok == false).
+func snapshotOutputs(bt buildTarget) map[string]outputHash {
+	out := make(map[string]outputHash, len(bt.target.Outputs))
 	for _, rel := range bt.target.Outputs {
 		abs := filepath.Join(bt.target.Root, filepath.FromSlash(rel))
-		data, err := os.ReadFile(abs) //nolint:gosec // abs is an in-root declared output
-		if err != nil {
-			out[rel] = nil
-			continue
-		}
-		out[rel] = data
+		out[rel] = hashOutputFile(abs)
 	}
 	return out
 }
 
-// outputsEqual reports whether two output snapshots hold identical bytes
-// for every key.
-func outputsEqual(a, b map[string][]byte) bool {
+// hashOutputFile streams abs through sha256, never holding its full
+// content in memory. A missing or unreadable file returns the zero
+// outputHash.
+func hashOutputFile(abs string) outputHash {
+	f, err := os.Open(abs) //nolint:gosec // abs is an in-root declared output
+	if err != nil {
+		return outputHash{}
+	}
+	defer f.Close() //nolint:errcheck // best-effort close on read-only file
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return outputHash{}
+	}
+	var oh outputHash
+	oh.ok = true
+	// Sum appends to its argument; passing the fixed array's own
+	// zero-length slice fills it in place instead of allocating a new
+	// 32-byte slice to then copy from.
+	h.Sum(oh.hash[:0])
+	return oh
+}
+
+// outputsEqual reports whether two output snapshots hold identical
+// content for every key.
+func outputsEqual(a, b map[string]outputHash) bool {
 	if len(a) != len(b) {
 		return false
 	}
 	for k, av := range a {
 		bv, ok := b[k]
-		if !ok || !bytes.Equal(av, bv) {
+		if !ok || av != bv {
 			return false
 		}
 	}

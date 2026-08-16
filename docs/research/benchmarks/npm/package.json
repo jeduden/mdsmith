@@ -5,7 +5,7 @@
   "description": "Pinned markdownlint-cli2 for the mdsmith cross-tool benchmark (npm ci from this lockfile keeps the comparison reproducible).",
   "license": "MIT",
   "dependencies": {
-    "markdownlint-cli2": "0.23.1"
+    "markdownlint-cli2": "0.23.2"
   },
   "overrides": {
     "js-yaml": "4.2.0",

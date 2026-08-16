@@ -40,7 +40,7 @@ func EffectiveForeignRegions(cfg *Config, filePath string) []ForeignRegion {
 // containsForeignRegion reports whether list already holds an equivalent
 // marker pair. EffectiveForeignRegions dedups with it so a pair declared
 // both top-level and on a matching override (or repeated within a list)
-// contributes one protected span and one MDS073 diagnostic, not two —
+// contributes one protected span and one MDS074 diagnostic, not two —
 // the check path does not otherwise dedup per-file diagnostics.
 //
 // Equivalence is by trimmed markers, matching how the scanner compares a

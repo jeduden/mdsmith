@@ -149,6 +149,27 @@ func TestFixGitHubAlerts_LazyContinuation(t *testing.T) {
 	assert.Equal(t, "> This is lazy-continuation body.\n", got)
 }
 
+// TestFixGitHubAlerts_IndentedLazyContinuation covers the leading-
+// whitespace branch of the addPrefix rewrite (rule.go's
+// line[:len(line)-len(trimmed)] slice): the continuation line's
+// existing indent must be preserved ahead of the re-added "> ".
+//
+// This test is scoped to a 3-space indent, where preserving it keeps
+// the result a valid blockquote. An indented chunk cannot interrupt a
+// paragraph (CommonMark §4.4), so a continuation indented 4+ spaces is
+// still lazy continuation too — addPrefix fires for it exactly the
+// same way — but preserving 4+ spaces of indent ahead of "> " makes
+// the rewritten line parse as indented code, not a blockquote,
+// silently turning the alert body into a code block. That bug
+// predates this PR (byte-identical on origin/main) and this rewrite
+// does not change it; it is not covered by a test here because fixing
+// it is out of scope for this performance-focused change.
+func TestFixGitHubAlerts_IndentedLazyContinuation(t *testing.T) {
+	src := "> [!NOTE]\n   indented lazy continuation body.\n"
+	got := fixWith(t, "commonmark", src)
+	assert.Equal(t, "   > indented lazy continuation body.\n", got)
+}
+
 // TestRuleFixStrikethroughWithNestedInlineSkips guards the robustness
 // of delimiterPairEdits: a wrapper containing nested inline markup
 // (emphasis, link, code span) cannot be safely unwrapped without

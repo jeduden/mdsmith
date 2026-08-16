@@ -560,8 +560,14 @@ jobs:
           go-version-file: go.mod
       - name: Install tinygo (checksum-pinned .deb)
         env:
-          TINYGO_VERSION: "0.39.0"
-          TINYGO_SHA256: "775f15974e35059c8f3a141266bd9d293b5d556a3e44d5e6356c5602e9f386ab"
+          # 0.41.1, not 0.39.0: go-runewidth 0.0.27 added a precomputed
+          # width lookup table, and 0.39.0's compile-time interp pass
+          # times out trying to evaluate it ("interp: running for more
+          # than 3m0s, timing out", ~102k calls) so the wasm build fails
+          # outright. Keep this pin and the go-runewidth version in
+          # go.mod moving together.
+          TINYGO_VERSION: "0.41.1"
+          TINYGO_SHA256: "901fbccffc61adb111656d1f907dfc21b6c499ca841b115866a0d6de2d835fbe"
         run: |
           url="https://github.com/tinygo-org/tinygo/releases/download/v${TINYGO_VERSION}/tinygo_${TINYGO_VERSION}_amd64.deb"
           curl -fsSL -o /tmp/tinygo.deb "$url"
