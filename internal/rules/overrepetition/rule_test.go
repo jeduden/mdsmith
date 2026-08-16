@@ -205,6 +205,31 @@ func TestApplySettings_BadStopwords_Error(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestApplySettings_ScopeNonString_Error(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"scope": 42})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "scope must be a string")
+}
+
+func TestApplySettings_MinLengthNonInteger_Error(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"min-length": "four"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "min-length must be an integer")
+}
+
+func TestCheck_MultipleViolations_SortedByMessage(t *testing.T) {
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"scope": "paragraph", "max": 1, "min-length": 4})
+	// Both "alpha" and "bravo" exceed max=1; diagFromFreq must sort them
+	// so cmpDiagMessage is actually invoked.
+	src := "# Title\n\nalpha alpha bravo bravo.\n"
+	diags := r.Check(mustFile(t, src))
+	require.Len(t, diags, 2)
+	assert.Less(t, diags[0].Message, diags[1].Message)
+}
+
 func TestDefaultSettings(t *testing.T) {
 	defaults := (&Rule{}).DefaultSettings()
 	assert.Equal(t, "section", defaults["scope"])
