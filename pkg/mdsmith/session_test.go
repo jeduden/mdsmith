@@ -1,11 +1,16 @@
 package mdsmith
 
 import (
+	"errors"
+	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 )
 
 // newTestSession builds a session over an in-memory workspace seeded
@@ -233,6 +238,70 @@ func TestSessionKindsOversizedFileOnUnboundedWorkspaceFallback(t *testing.T) {
 			t.Fatalf("Kinds on oversized file (MemWorkspace fallback): front matter should not "+
 				"have been read, got kind %q assigned via front matter", k.Name)
 		}
+	}
+}
+
+// TestReadBoundedFrontMatterSource unit-tests readBoundedFrontMatterSource
+// directly, covering both its bounded-read fast path (OSWorkspace, which
+// satisfies boundedWorkspaceReader) and its post-read-size-check fallback
+// path (MemWorkspace, which does not), plus the missing-file and
+// unbounded-max cases neither Kinds-level test above exercises.
+func TestReadBoundedFrontMatterSource(t *testing.T) {
+	osWorkspaceWith := func(t *testing.T, data string) Workspace {
+		t.Helper()
+		root := t.TempDir()
+		if err := os.WriteFile(filepath.Join(root, "a.md"), []byte(data), 0o600); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+		return OSWorkspace{Root: root}
+	}
+
+	tests := []struct {
+		name    string
+		ws      func(t *testing.T) Workspace
+		uri     string
+		max     int64
+		want    string
+		wantErr error
+	}{
+		{"fallback within limit", func(t *testing.T) Workspace {
+			return NewMemWorkspace(map[string][]byte{"a.md": []byte("hello")})
+		}, "a.md", 10, "hello", nil},
+		{"fallback over limit", func(t *testing.T) Workspace {
+			return NewMemWorkspace(map[string][]byte{"a.md": []byte("hello world")})
+		}, "a.md", 5, "", bytelimit.ErrFileTooLarge},
+		{"fallback missing file", func(t *testing.T) Workspace {
+			return NewMemWorkspace(nil)
+		}, "missing.md", 10, "", fs.ErrNotExist},
+		{"fallback max<=0 unbounded", func(t *testing.T) Workspace {
+			return NewMemWorkspace(map[string][]byte{"a.md": []byte("hello world")})
+		}, "a.md", 0, "hello world", nil},
+		{"fallback MaxInt64 unbounded", func(t *testing.T) Workspace {
+			return NewMemWorkspace(map[string][]byte{"a.md": []byte("hello world")})
+		}, "a.md", math.MaxInt64, "hello world", nil},
+		{"bounded path over limit", func(t *testing.T) Workspace {
+			return osWorkspaceWith(t, "hello world")
+		}, "a.md", 5, "", bytelimit.ErrFileTooLarge},
+		{"bounded path within limit", func(t *testing.T) Workspace {
+			return osWorkspaceWith(t, "hello")
+		}, "a.md", 10, "hello", nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := readBoundedFrontMatterSource(tc.ws(t), tc.uri, tc.max)
+			if tc.wantErr != nil {
+				if !errors.Is(err, tc.wantErr) {
+					t.Fatalf("readBoundedFrontMatterSource: err = %v, want wrapped %v", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("readBoundedFrontMatterSource: unexpected error: %v", err)
+			}
+			if string(got) != tc.want {
+				t.Fatalf("readBoundedFrontMatterSource = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 
