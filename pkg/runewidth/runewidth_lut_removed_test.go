@@ -38,7 +38,7 @@ func TestRuneWidthEqualsNoLUT(t *testing.T) {
 // can drift.
 const (
 	// man ZWJ woman ZWJ girl ZWJ boy — one rendered glyph.
-	zwjFamily = "\U0001F468‍\U0001F469‍\U0001F467‍\U0001F466"
+	zwjFamily = "\U0001F468\u200D\U0001F469\u200D\U0001F467\u200D\U0001F466"
 	// regional indicators U + S — the flag of the United States.
 	flagUS = "\U0001F1FA\U0001F1F8"
 	// lowercase e followed by combining acute accent (U+0301).

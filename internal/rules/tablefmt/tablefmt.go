@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/mattn/go-runewidth"
+	"github.com/jeduden/mdsmith/pkg/runewidth"
 )
 
 // Violation describes a single table whose source formatting differs
