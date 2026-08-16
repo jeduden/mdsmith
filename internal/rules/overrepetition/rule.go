@@ -1,4 +1,4 @@
-// Package overrepetition implements MDS074, which flags any content
+// Package overrepetition implements MDS075, which flags any content
 // word that repeats more than a configured ceiling within a scope.
 package overrepetition
 
@@ -18,7 +18,7 @@ func init() {
 	rule.Register(&Rule{})
 }
 
-// Rule implements MDS074. It counts every content word per scope unit
+// Rule implements MDS075. It counts every content word per scope unit
 // (file, section, or paragraph) and emits a diagnostic when any word's
 // count exceeds Max. Words in Stopwords are subtracted before checking.
 // The rule is off by default and requires Max > 0 to fire.
@@ -31,7 +31,7 @@ type Rule struct {
 }
 
 // ID implements rule.Rule.
-func (r *Rule) ID() string { return "MDS074" }
+func (r *Rule) ID() string { return "MDS075" }
 
 // Name implements rule.Rule.
 func (r *Rule) Name() string { return "over-repetition" }

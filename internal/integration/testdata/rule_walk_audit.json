@@ -803,7 +803,7 @@
     "reads_file_ast": false
   },
   {
-    "id": "MDS074",
+    "id": "MDS075",
     "name": "over-repetition",
     "category": "hybrid",
     "nil_ast_safe": false,

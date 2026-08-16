@@ -63,10 +63,10 @@ func TestWordlistFileContract_ExtendsChainResolvesAndDiagnosticFires(t *testing.
 	}
 }
 
-// TestWordlistFileContract_MDS074StopwordsViaListsFile locks MDS074's
+// TestWordlistFileContract_MDS075StopwordsViaListsFile locks MDS075's
 // WordlistTarget() path: words declared in a .mdsmith/wordlists/ file
 // and referenced via lists: are excluded from repetition counting.
-func TestWordlistFileContract_MDS074StopwordsViaListsFile(t *testing.T) {
+func TestWordlistFileContract_MDS075StopwordsViaListsFile(t *testing.T) {
 	// "process" repeated 5 times in section scope with max=3 would normally
 	// flag, but the wordlist exempts it.
 	cfg := "rules:\n  over-repetition:\n    scope: section\n    max: 3\n    lists: [domain]\n"
@@ -83,6 +83,6 @@ func TestWordlistFileContract_MDS074StopwordsViaListsFile(t *testing.T) {
 	diags := runCheckOnDoc(t, dir)
 
 	assert.False(t, slices.ContainsFunc(diags, func(d diagKey) bool {
-		return d.rule == "MDS074"
-	}), "expected no MDS074 diagnostic: stopworded word should not be flagged; got %v", diags)
+		return d.rule == "MDS075"
+	}), "expected no MDS075 diagnostic: stopworded word should not be flagged; got %v", diags)
 }

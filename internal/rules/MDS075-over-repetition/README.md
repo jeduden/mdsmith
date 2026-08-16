@@ -1,5 +1,5 @@
 ---
-id: MDS074
+id: MDS075
 name: over-repetition
 status: ready
 description: >-
@@ -16,7 +16,7 @@ panache: []
 obsidian-linter: []
 gomarklint: []
 ---
-# MDS074: over-repetition
+# MDS075: over-repetition
 
 A content word must not repeat more than `max` times within the
 configured scope unit. Counts prose only; fenced and indented code
@@ -113,7 +113,7 @@ process logs results after each process step, then the process ends.
 
 ## Meta-Information
 
-- **ID**: MDS074
+- **ID**: MDS075
 - **Name**: `over-repetition`
 - **Status**: ready
 - **Default**: disabled

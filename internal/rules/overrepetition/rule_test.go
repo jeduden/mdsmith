@@ -23,7 +23,7 @@ func mustApply(t *testing.T, r *Rule, s map[string]any) {
 // --- identity ---
 
 func TestID(t *testing.T) {
-	assert.Equal(t, "MDS074", (&Rule{}).ID())
+	assert.Equal(t, "MDS075", (&Rule{}).ID())
 }
 
 func TestName(t *testing.T) {
@@ -79,7 +79,7 @@ func TestCheck_Paragraph_ExceedsMax_Diagnostic(t *testing.T) {
 	src := "# Title\n\nprocess process process process result.\n"
 	diags := r.Check(mustFile(t, src))
 	require.Len(t, diags, 1)
-	assert.Equal(t, "MDS074", diags[0].RuleID)
+	assert.Equal(t, "MDS075", diags[0].RuleID)
 	assert.Equal(t, 3, diags[0].Line)
 	assert.Contains(t, diags[0].Message, "process")
 	assert.Contains(t, diags[0].Message, "4")

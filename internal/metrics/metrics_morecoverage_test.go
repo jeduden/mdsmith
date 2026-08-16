@@ -355,7 +355,7 @@ func TestMET007_WordFrequency_HeadingConcatenation(t *testing.T) {
 	// Adjacent headings "# process ## process" produce "processprocess" (one
 	// long token), not two separate "process" tokens. This locks that behavior:
 	// heading-only repetition does NOT raise MET007 because the tokenizer
-	// never sees the words as distinct. MDS074 (which checks paragraph nodes
+	// never sees the words as distinct. MDS075 (which checks paragraph nodes
 	// directly) is consistent: it also never flags heading text.
 	def, ok := Lookup("MET007")
 	require.True(t, ok, "MET007 must be registered")

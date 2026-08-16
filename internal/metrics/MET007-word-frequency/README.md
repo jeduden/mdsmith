@@ -24,15 +24,15 @@ files that may over-repeat a single term.
 
 Use `mdsmith metrics rank --metrics word-frequency` to find the most
 repetitive files in a corpus. Pair with the `over-repetition` rule
-(MDS074) to enforce a per-scope ceiling in CI.
+(MDS075) to enforce a per-scope ceiling in CI.
 
 **Text extraction**: `ExtractPlainText` recurses into all block nodes.
 Adjacent blocks are concatenated without separators, so words at block
 boundaries merge into unrecognised tokens. Heading-only repetition
-therefore rarely raises MET007. MDS074 (which checks paragraph nodes
+therefore rarely raises MET007. MDS075 (which checks paragraph nodes
 directly) also never flags heading text, so the two agree in practice.
 
 **min-length**: The metric always applies a minimum word length of 4 runes,
-matching MDS074's default. Files where the rule is configured with a
+matching MDS075's default. Files where the rule is configured with a
 different `min-length` will observe a discrepancy between the metric value
 and the rule's findings.
