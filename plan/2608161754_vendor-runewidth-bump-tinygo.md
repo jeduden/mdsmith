@@ -130,11 +130,20 @@ every file with no tables at all. The benefit is roughly
 100 ns saved per CJK table cell. Around 127,000 such cells
 per run are needed just to offset one startup fill.
 
-ASCII content — nearly all Markdown tables — is slightly
-faster without the LUT, because the 2.1 MiB array is a cache
-liability the `r < 0x300` fast path skips. Only wide CJK
-tables are slower, and only in the width step that uax29
-grapheme clustering already dominates.
+**Optimize for English content — the deciding factor.**
+`StringWidth` has an all-ASCII fast path in both 0.0.24 and
+0.0.27: a pure-ASCII string counts printable bytes and never
+calls `RuneWidth`. So English text never reads the LUT at
+all. The LUT gives English content zero per-call benefit,
+while every run still pays its 12.7 ms startup fill. Removed,
+English `StringWidth` is measurably faster and consistently
+so (about 6.5 ns against 8.0 ns per cell across five runs).
+
+mdsmith's own corpus and most Markdown tables are English or
+otherwise ASCII, so this is the case to optimize. The only
+content the LUT helps is wide CJK tables, and only in the
+per-rune width step that uax29 grapheme clustering already
+dominates. That regression is accepted.
 
 Against the current pinned 0.0.24, the width path is
 unchanged: 0.0.24 has no LUT either. A parity test confirms
