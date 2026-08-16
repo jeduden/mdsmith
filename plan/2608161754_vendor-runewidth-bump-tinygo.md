@@ -108,6 +108,39 @@ The archived audit flags a trap to avoid.
 The LUT regression test is an ordinary untagged test in the
 default suite. It always runs, so it cannot rot.
 
+## Performance impact
+
+Removing the LUT is a net win for mdsmith's workload, not a
+regression. The numbers below were measured on this
+machine. They compare 0.0.27 as copied against the same
+code with the LUT deleted.
+
+| Path                           | With LUT | No LUT |
+| ------------------------------ | -------- | ------ |
+| Package `init` (every startup) | 12.7 ms  | 0 ms   |
+| Static array                   | 2.1 MiB  | 0      |
+| `StringWidth`, ASCII cell      | 7.8 ns   | 6.5 ns |
+| `StringWidth`, CJK cell        | 124 ns   | 222 ns |
+| `RuneWidth`, one CJK rune      | 1.4 ns   | 9.1 ns |
+
+The LUT's cost is a fixed 12.7 ms fill at every process
+start, plus 2.1 MiB resident. The CLI starts fresh on every
+invocation, so it pays that on `mdsmith version` and on
+every file with no tables at all. The benefit is roughly
+100 ns saved per CJK table cell. Around 127,000 such cells
+per run are needed just to offset one startup fill.
+
+ASCII content — nearly all Markdown tables — is slightly
+faster without the LUT, because the 2.1 MiB array is a cache
+liability the `r < 0x300` fast path skips. Only wide CJK
+tables are slower, and only in the width step that uax29
+grapheme clustering already dominates.
+
+Against the current pinned 0.0.24, the width path is
+unchanged: 0.0.24 has no LUT either. A parity test confirms
+the LUT-free fork returns identical widths across all
+1,114,112 runes and both East-Asian settings.
+
 ## Tasks
 
 1. Spike first: vendor go-runewidth 0.0.27 into
