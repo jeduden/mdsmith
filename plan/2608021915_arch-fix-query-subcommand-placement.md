@@ -3,7 +3,7 @@ id: 2608021915
 title: >-
   Move list-query subcommand logic out of
   cmd/mdsmith/main.go into query.go
-status: "🔲"
+status: "✅"
 model: haiku
 summary: >-
   parseQueryFlags, runQuery, queryFiles, and
@@ -65,10 +65,10 @@ found this placement gap:
 
 ## Acceptance Criteria
 
-- [ ] `parseQueryFlags`, `runQuery`, `queryFiles`, and
+- [x] `parseQueryFlags`, `runQuery`, `queryFiles`, and
       `readFrontMatterRaw` no longer appear in
       `cmd/mdsmith/main.go`.
-- [ ] `cmd/mdsmith/query.go` holds the relocated code
+- [x] `cmd/mdsmith/query.go` holds the relocated code
       with no behavior change.
-- [ ] `go test ./...` is green.
-- [ ] `mdsmith check .` is green.
+- [x] `go test ./...` is green.
+- [x] `mdsmith check .` is green.
