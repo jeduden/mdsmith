@@ -1051,6 +1051,51 @@ func TestDuplicateParagraphs_BuildsOncePerKey(t *testing.T) {
 	assert.Equal(t, 2, builds, "a distinct min-chars suffix builds separately")
 }
 
+func TestCorpusIndex_BuildsOncePerKey(t *testing.T) {
+	c := NewRunCache()
+	builds := 0
+	build := func() any { builds++; return map[string]int{"fp": 1} }
+	first := c.CorpusIndex("/root\x0010", build)
+	second := c.CorpusIndex("/root\x0010", build)
+	assert.Equal(t, first, second)
+	assert.Equal(t, 1, builds, "same key must build once")
+
+	_ = c.CorpusIndex("/root\x0050", build)
+	assert.Equal(t, 2, builds, "a distinct min-chars suffix builds separately")
+}
+
+func TestCorpusIndex_InvalidatePathDropsEveryKey(t *testing.T) {
+	// A content edit to any file could change what its paragraphs
+	// fingerprint to, and a corpus-index aggregate has no cheap way to
+	// know which keys summed over the edited path — so every key drops,
+	// unlike GlobMatches (which only tree-shape changes affect).
+	c := NewRunCache()
+	builds := 0
+	build := func() any { builds++; return map[string]int{"fp": 1} }
+	_ = c.CorpusIndex("/root\x0010", build)
+	_ = c.CorpusIndex("/root\x0050", build)
+	require.Equal(t, 2, builds)
+
+	c.Invalidate("/root/unrelated.md")
+
+	_ = c.CorpusIndex("/root\x0010", build)
+	_ = c.CorpusIndex("/root\x0050", build)
+	assert.Equal(t, 4, builds, "every corpus-index key must drop on any content edit")
+}
+
+func TestCorpusIndex_InvalidateGlobMatchesDropsEveryKey(t *testing.T) {
+	c := NewRunCache()
+	builds := 0
+	build := func() any { builds++; return map[string]int{"fp": 1} }
+	_ = c.CorpusIndex("/root\x0010", build)
+	require.Equal(t, 1, builds)
+
+	c.InvalidateGlobMatches()
+
+	_ = c.CorpusIndex("/root\x0010", build)
+	assert.Equal(t, 2, builds, "a tree-shape change must drop the corpus-index cache too")
+}
+
 func TestDuplicateParagraphs_InvalidateDropsEveryKeyForPath(t *testing.T) {
 	// A content edit to /root/a.md must drop every cached slot built
 	// from it, regardless of which min-chars suffix produced the key

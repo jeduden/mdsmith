@@ -400,3 +400,12 @@ func (a *Arena) ListItemsAllocated() int {
 	}
 	return a.listItems.used()
 }
+
+// EmphasesAllocated reports how many Emphasis nodes have been carved
+// from the arena since the last Reset. Nil-safe like TextsAllocated.
+func (a *Arena) EmphasesAllocated() int {
+	if a == nil {
+		return 0
+	}
+	return a.emphases.used()
+}

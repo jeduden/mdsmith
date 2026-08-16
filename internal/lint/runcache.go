@@ -28,6 +28,7 @@ type RunCache struct {
 	parsedSchema        sync.Map // string (absPath) -> *runCacheEntry
 	compiledCUE         sync.Map // string (CUE source) -> *runCacheEntry
 	duplicateParagraphs sync.Map // string (absPath+"\x00"+settings key) -> *runCacheEntry
+	corpusIndex         sync.Map // string (corpus+settings key) -> *runCacheEntry
 
 	// uniqueFieldIndex memoizes MDS069's per-scope value→first-file
 	// index. Keys encode a rule scope (field + globs), not a path.
@@ -259,6 +260,10 @@ func (c *RunCache) InvalidateGlobMatches() {
 		c.globMatches.Delete(k)
 		return true
 	})
+	// A create/delete/rename also changes which files a corpus-index
+	// aggregate summed over, on top of the content-driven drop in
+	// invalidate.
+	c.dropCorpusIndex()
 }
 
 // DuplicateParagraphs returns build's result for key, computed at
@@ -277,6 +282,41 @@ func (c *RunCache) InvalidateGlobMatches() {
 // no stable absolute path (an in-memory FS) must not use this cache.
 func (c *RunCache) DuplicateParagraphs(key string, build func() any) any {
 	return load(&c.duplicateParagraphs, key, build)
+}
+
+// CorpusIndex returns build's result for key, computed at most once
+// per key in this cache's lifetime. The canonical caller is MDS037
+// (duplicated-content): buildCorpusIndex aggregates every corpus
+// file's fingerprinted paragraphs (each already memoized via
+// DuplicateParagraphs) into one fingerprint->matches map and sorts
+// each entry's matches. Without this cache that aggregation — and its
+// reflect-driven sort.Slice — reran on every one of the workspace's N
+// host files' Check calls even though the per-file leaves were
+// already memoized, an O(N) rebuild of an O(N)-sized map repeated N
+// times across the run.
+//
+// key must encode the corpus signature (rootDir plus include/exclude)
+// and the settings that affect which paragraphs qualify (min-chars),
+// mirroring corpusFilesKey's shape — Invalidate(absPath) below drops
+// every slot unconditionally on any content edit, since any corpus
+// key's aggregate could include absPath.
+func (c *RunCache) CorpusIndex(key string, build func() any) any {
+	return load(&c.corpusIndex, key, build)
+}
+
+// dropCorpusIndex clears every cached corpus-index aggregate. Called
+// from the per-path Invalidate (unlike GlobMatches, which only cares
+// about tree shape): a content edit to any file can change what that
+// file's paragraphs fingerprint to, and the aggregate cache has no
+// cheap way to know which corpus keys included the edited path.
+// MDS037 is opt-in and a one-shot `mdsmith check` never invalidates
+// (its corpus is immutable for the run), so this only costs a rebuild
+// on the LSP's edit-driven path.
+func (c *RunCache) dropCorpusIndex() {
+	c.corpusIndex.Range(func(k, _ any) bool {
+		c.corpusIndex.Delete(k)
+		return true
+	})
 }
 
 // Wikilinks returns build's result keyed by rootKey, computed at
@@ -464,6 +504,7 @@ func (c *RunCache) invalidate(absPath string, visited map[string]struct{}) {
 	c.includes.Delete(absPath)
 	c.anchors.Delete(absPath)
 	c.dropDuplicateParagraphs(absPath)
+	c.dropCorpusIndex()
 
 	c.dropUniqueFieldIndexes(absPath)
 
