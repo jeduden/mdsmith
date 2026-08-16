@@ -22,7 +22,7 @@ import (
 // pipeline (like generated-section ranges), so the malformed check
 // rides along there rather than through the per-rule engine.
 const (
-	RuleID   = "MDS073"
+	RuleID   = "MDS074"
 	RuleName = "foreign-region"
 )
 
