@@ -42,7 +42,7 @@ const (
 	// regional indicators U + S — the flag of the United States.
 	flagUS = "\U0001F1FA\U0001F1F8"
 	// lowercase e followed by combining acute accent (U+0301).
-	combiningAcute = "é"
+	combiningAcute = "e\u0301"
 )
 
 // TestStringWidthGraphemeCases pins the widths mdsmith actually depends

@@ -9,7 +9,11 @@ import (
 	"github.com/clipperhouse/uax29/v2/graphemes"
 )
 
-//go:generate go run script/generate.go
+// Fork divergence: upstream's `//go:generate go run script/generate.go`
+// is removed. The script/ directory that regenerates the width tables
+// is not vendored, so keeping the directive would make `go generate
+// ./...` fail. A re-sync copies the regenerated tables from upstream
+// rather than running the generator here (see doc.go).
 
 var (
 	// EastAsianWidth will be set true if the current locale is CJK
@@ -549,7 +553,7 @@ func FillRight(s string, w int) string {
 	return DefaultCondition.FillRight(s, w)
 }
 
-// CreateLUT will create an in-memory lookup table of 557055 bytes for faster operation.
+// CreateLUT will create an in-memory lookup table of 557056 bytes for faster operation.
 // This should not be called concurrently with other operations.
 func CreateLUT() {
 	if len(DefaultCondition.combinedLut) > 0 {

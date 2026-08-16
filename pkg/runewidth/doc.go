@@ -31,8 +31,11 @@
 //
 // The exported API is byte-identical to upstream, and every file except
 // runewidth.go is copied verbatim, so a re-sync to a newer upstream is a
-// mechanical diff: copy the upstream files, then re-apply the LUT
-// deletion in runewidth.go (search for "LUT removed"). The fork lives
+// mechanical diff: copy the upstream files, then re-apply runewidth.go's
+// divergences — the LUT deletion (search for "LUT removed") and the
+// stripped `//go:generate` directive (search for "Fork divergence"),
+// which is dropped because the script/ generator directory is not
+// vendored and would break `go generate ./...`. The fork lives
 // under pkg/ rather than internal/ because the upstream library is a
 // public package and is part of the main module — not a nested module
 // wired via a replace directive — so `go install m@version` and
