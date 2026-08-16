@@ -2,16 +2,19 @@
 title: Telemetry and runtime network access
 summary: >-
   mdsmith collects no telemetry, no usage analytics, no error
-  reports, and no identifiers. In the default configuration,
-  the CLI and LSP make zero outbound network calls. MDS072
-  external-link-check is the one opt-in exception.
+  reports, and no identifiers. The CLI and the LSP server make
+  no outbound network calls at runtime in the default configuration.
+  The one opt-in exception is MDS072 (external-link-check), which
+  probes document URLs when explicitly enabled.
 ---
 # Telemetry and runtime network access
 
-mdsmith does not phone home. In the default configuration, the
-CLI and the LSP server make zero outbound network calls at
-runtime. No telemetry, no analytics, no error reports, no
-anonymous identifiers, no update checks.
+mdsmith does not phone home. The CLI and the LSP server make zero
+outbound network calls during normal operation. No telemetry, no
+analytics, no error reports, no anonymous identifiers, no update
+checks. The one opt-in exception is [MDS072
+external-link-check](#opt-in-network-access-mds072-external-link-check)
+(described below).
 
 ## What runs offline
 
@@ -77,29 +80,32 @@ remote scoring, no embedding lookups.
 
 ## Opt-in network access: MDS072 external-link-check
 
-One opt-in rule makes runtime network calls:
-`external-link-check` (MDS072). The rule is off by default.
-When enabled, it issues an HTTP HEAD request (with a GET fallback
-on 405 Method Not Allowed) to each http or https URL found in
-documents it lints. Results are cached per URL for the run, so
-the same URL across many files costs one request.
+MDS072 is disabled by default. When you explicitly enable it,
+`mdsmith check` issues outbound HTTP HEAD (or GET, on a 405 fallback)
+requests to every `http://` and `https://` URL found in the linted
+documents. That is the rule's purpose: probing live links.
 
-**SSRF risk.** The rule probes URLs taken from document content.
-When enabled on untrusted content, a hostile document can include
-URLs targeting internal hosts — loopback addresses, RFC 1918
-private ranges, link-local addresses, or cloud-metadata endpoints.
-External URLs can also redirect inward: the rule follows up to
-10 redirects, so a pattern in `links.external-skip` that matches
-the initial URL does not block a redirect to an internal host.
-Use `links.external-skip` to exclude internal address patterns,
-or keep the rule disabled when linting untrusted workspaces.
+**Without MDS072**: no outbound traffic, on any command or
+subcommand.
 
-With `external-link-check` disabled (the default), no outbound
-traffic is generated and the air-gapped CI claim above holds.
+**With MDS072 enabled**: one HTTP request per distinct URL, per run,
+up to `links.external-max-probes` (default 1000). Results are cached
+per URL so the same URL across many files costs one request. The SSRF
+guard blocks connections to loopback, private (RFC 1918), link-local,
+ULA, CGN, and cloud-metadata addresses by default; see [MDS072
+settings](../../internal/rules/MDS072-external-link-check/README.md#settings)
+for `external-allow-internal` and `external-max-probes`. A
+non-positive timeout falls back to 5 s.
+
+An air-gapped CI runner that does not enable MDS072 is unaffected and
+needs no firewall exception. An air-gapped runner that enables it
+will see every URL reported as unreachable (transport error), which
+may or may not be the desired outcome for that environment.
 
 ## How to verify
 
 Run `mdsmith check .` under a network-monitoring tool of your
 choice (`strace -e trace=network`, `tcpdump`, your firewall) and
-inspect the output. In the default configuration, no outbound
-traffic appears.
+inspect the output. With MDS072 disabled (the default), no outbound
+traffic appears. With MDS072 enabled, one HEAD request per distinct
+URL will be visible.

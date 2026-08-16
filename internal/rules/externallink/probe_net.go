@@ -4,53 +4,165 @@ package externallink
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/netip"
+	"syscall"
 	"time"
 )
 
-// client is the shared probing client. One client (not one per request)
-// lets the transport pool keep-alive connections across URLs on the same
-// host. Redirects are followed by default, so a URL that 30x-es to a
-// healthy target passes. The per-request timeout is applied through a
-// context, not client.Timeout, so a single shared client serves every
-// configured timeout.
-var client = &http.Client{}
+// restrictedPrefixes are the IP ranges blocked when external-allow-internal is
+// false (the default). ip.IsLoopback(), ip.IsUnspecified(), and
+// ip.IsMulticast() cover loopback (127.0.0.0/8, ::1), unspecified (0.0.0.0,
+// ::), and multicast; the prefixes below cover the remaining restricted ranges.
+var restrictedPrefixes = []netip.Prefix{
+	netip.MustParsePrefix("10.0.0.0/8"),     // private (RFC1918)
+	netip.MustParsePrefix("172.16.0.0/12"),  // private (RFC1918)
+	netip.MustParsePrefix("192.168.0.0/16"), // private (RFC1918)
+	netip.MustParsePrefix("169.254.0.0/16"), // link-local IPv4 (cloud metadata: 169.254.169.254)
+	netip.MustParsePrefix("fe80::/10"),      // link-local IPv6
+	netip.MustParsePrefix("fc00::/7"),       // ULA IPv6
+	netip.MustParsePrefix("100.64.0.0/10"),  // CGN (RFC6598; covers Alibaba metadata 100.100.100.200)
+	netip.MustParsePrefix("2002::/16"),      // 6to4 (RFC3056; embeds IPv4 in bits 16-47)
+}
+
+// isRestrictedIP reports whether ip is invalid, loopback, unspecified,
+// multicast, or in a restricted prefix. The guard applies after IPv4-in-IPv6
+// unmapping and zone-ID stripping; netip.Prefix.Contains returns false for
+// any zone-carrying Addr, so the zone must be removed before prefix checks.
+//
+// IPv4-compatible addresses (::x.x.x.x, deprecated RFC 4291 §2.5.5.1) are
+// not converted by Unmap (which only handles ::ffff: / IPv4-mapped form). The
+// check extracts the embedded IPv4 from the low 32 bits and re-runs the guard
+// against it so that, e.g., ::a9fe:a9fe (::169.254.169.254) is blocked.
+func isRestrictedIP(ip netip.Addr) bool {
+	ip = ip.Unmap()
+	ip = ip.WithZone("") // Prefix.Contains requires a zone-free Addr
+	if !ip.IsValid() || ip.IsLoopback() || ip.IsUnspecified() || ip.IsMulticast() {
+		return true
+	}
+	// Detect IPv4-compatible form: 96 zero bits followed by a 32-bit IPv4.
+	if ip.Is6() {
+		b := ip.As16()
+		if b[0]|b[1]|b[2]|b[3]|b[4]|b[5]|b[6]|b[7]|b[8]|b[9]|b[10]|b[11] == 0 {
+			v4 := netip.AddrFrom4([4]byte{b[12], b[13], b[14], b[15]})
+			if v4.IsLoopback() || v4.IsUnspecified() || v4.IsMulticast() {
+				return true
+			}
+			for _, p := range restrictedPrefixes {
+				if p.Contains(v4) {
+					return true
+				}
+			}
+		}
+	}
+	for _, prefix := range restrictedPrefixes {
+		if prefix.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// ssrfControl is a net.Dialer.Control function that refuses connections
+// whose resolved remote IP is in a restricted range. It fires on every
+// new TCP dial — initial connections and redirect hops to a new host —
+// so the guard reasserts containment on each hop.
+func ssrfControl(_ string, address string, _ syscall.RawConn) error {
+	// The dialer always passes a resolved "ip:port"; both calls are infallible.
+	host, _, _ := net.SplitHostPort(address)
+	ip, _ := netip.ParseAddr(host)
+	if isRestrictedIP(ip) {
+		return fmt.Errorf("external-link-check: connection to %s denied (SSRF guard;"+
+			" set links.external-allow-internal: true to allow)", host)
+	}
+	return nil
+}
+
+// ssrfCheckRedirect caps the redirect chain and blocks redirects to restricted
+// IP literals. Hostname-based redirect targets are checked at the TCP dial by
+// ssrfControl, so no DNS round-trip is needed here.
+func ssrfCheckRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("external-link-check: stopped after 10 redirects")
+	}
+	host := req.URL.Hostname()
+	ip, err := netip.ParseAddr(host)
+	if err != nil {
+		return nil
+	}
+	if isRestrictedIP(ip) {
+		return fmt.Errorf("external-link-check: redirect to %s denied (SSRF guard)", host)
+	}
+	return nil
+}
+
+// guardedClient blocks connections and redirects to restricted IP ranges.
+// Used when external-allow-internal is false (the default).
+var guardedClient = buildGuardedClient()
+
+// permissiveClient performs no SSRF filtering. Used only when
+// external-allow-internal is true.
+var permissiveClient = buildPermissiveClient()
+
+func buildPermissiveClient() *http.Client {
+	transport := &http.Transport{
+		Proxy:           http.ProxyFromEnvironment,
+		IdleConnTimeout: 90 * time.Second,
+	}
+	return &http.Client{Transport: transport}
+}
+
+func buildGuardedClient() *http.Client {
+	dialer := &net.Dialer{Control: ssrfControl}
+	transport := &http.Transport{
+		DialContext:     dialer.DialContext,
+		Proxy:           http.ProxyFromEnvironment,
+		IdleConnTimeout: 90 * time.Second,
+	}
+	return &http.Client{
+		Transport:     transport,
+		CheckRedirect: ssrfCheckRedirect,
+	}
+}
 
 // maxDrain caps how many bytes of a GET-fallback body are read back
 // before Close. Draining lets the connection return to the keep-alive
-// pool; capping it avoids reading a large page in full when all we need
-// is the status code.
+// pool; capping it avoids reading a large page in full.
 const maxDrain = 64 << 10
 
 // probe issues a HEAD request (falling back to GET on 405) and maps the
-// outcome to a urlResult. timeout bounds each individual request. The
-// native prober always reaches the network, so every result it returns
-// is probed=true.
-func probe(raw string, timeout time.Duration) urlResult {
-	res := do(http.MethodHead, raw, timeout)
+// outcome to a urlResult. timeout bounds each individual request.
+// allowInternal selects the guarded (SSRF-blocking) or permissive client.
+func probe(raw string, timeout time.Duration, allowInternal bool) urlResult {
+	c := guardedClient
+	if allowInternal {
+		c = permissiveClient
+	}
+	res := doWithClient(c, http.MethodHead, raw, timeout)
 	if res.err == nil && res.statusCode == http.StatusMethodNotAllowed {
-		res = do(http.MethodGet, raw, timeout)
+		res = doWithClient(c, http.MethodGet, raw, timeout)
 	}
 	return res
 }
 
-// do performs one request with the given method and a context timeout,
-// draining a bounded prefix of the body and closing it so the connection
-// can be reused.
-func do(method, raw string, timeout time.Duration) urlResult {
+// doWithClient performs one request with the given client, method, and a
+// context timeout, draining a bounded prefix of the body and closing it
+// so the connection can be reused.
+func doWithClient(c *http.Client, method, raw string, timeout time.Duration) urlResult {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, method, raw, nil)
 	if err != nil {
 		return urlResult{probed: true, err: err}
 	}
-	resp, err := client.Do(req)
+	resp, err := c.Do(req)
 	if err != nil {
 		return urlResult{probed: true, err: err}
 	}
-	// Drain a bounded prefix of the body before closing so the transport
-	// can reuse the connection; the status code is all we consume.
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxDrain))
 	_ = resp.Body.Close()
 	return urlResult{probed: true, statusCode: resp.StatusCode}
