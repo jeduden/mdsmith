@@ -16,22 +16,24 @@ import (
 
 func TestConcisenessScore_EmptyText(t *testing.T) {
 	// Empty text produces no tokens — should return 100.0.
-	score := concisenessScore("")
+	score := concisenessScore("", 0)
 	assert.Equal(t, 100.0, score)
 }
 
 func TestConcisenessScore_PunctuationOnly(t *testing.T) {
 	// Only punctuation: no token-pattern matches → returns 100.0.
-	score := concisenessScore("!!! ??? ---")
+	score := concisenessScore("!!! ??? ---", 0)
 	assert.Equal(t, 100.0, score)
 }
 
 // --- concisenessScore: sentences < 1 → set to 1 branch ---
 
 func TestConcisenessScore_NoSentenceEnding(t *testing.T) {
-	// A phrase with no sentence-ending punctuation: CountSentences may
-	// return 0, which is then clamped to 1 inside concisenessScore.
-	score := concisenessScore("hello world foo bar")
+	// The caller passes 0 directly here to drive the sentences < 1
+	// clamp inside concisenessScore; mdtext.CountSentences itself
+	// returns at least 1 for any non-empty text, so no real input
+	// produces 0 — this only exercises the clamp in isolation.
+	score := concisenessScore("hello world foo bar", 0)
 	assert.GreaterOrEqual(t, score, 0.0)
 	assert.LessOrEqual(t, score, 100.0)
 }
@@ -261,6 +263,26 @@ func TestMET008_Readability_PlainTextErrorAfterWordCountSuccess(t *testing.T) {
 	doc.wordCountErr = nil
 	doc.plainTextReady = true
 	doc.plainTextErr = sentinel
+
+	v, err := def.Compute(doc)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, sentinel)
+	assert.False(t, v.Available)
+}
+
+func TestMET006_Conciseness_SentenceCountError(t *testing.T) {
+	def, ok := Lookup("MET006")
+	require.True(t, ok, "MET006 must be registered")
+
+	doc := NewDocument("test.md", []byte("# Hello\n\nSome text.\n"))
+	sentinel := errors.New("sentence-count failure")
+	// MET006's own PlainText() call succeeds first, so the only way to
+	// reach its SentenceCount() error check is to prime SentenceCount's
+	// own cache directly: SentenceCount's internal PlainText() call
+	// would otherwise share the same already-successful PlainText()
+	// cache slot MET006 just populated.
+	doc.sentenceCountReady = true
+	doc.sentenceCountErr = sentinel
 
 	v, err := def.Compute(doc)
 	require.Error(t, err)

@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 
+	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/lint"
 )
 
@@ -42,4 +43,16 @@ func readFileRooted(root, relPath string) ([]byte, error) {
 	}
 	defer r.Close() //nolint:errcheck // best-effort close on read-only handle
 	return fs.ReadFile(r.FS(), relPath)
+}
+
+// readFileRootedLimited mirrors readFileRooted but caps the read via
+// bytelimit, so a file over max is rejected without being fully read
+// into memory — see OSWorkspace.readFileLimited.
+func readFileRootedLimited(root, relPath string, max int64) ([]byte, error) {
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close() //nolint:errcheck // best-effort close on read-only handle
+	return bytelimit.ReadFSFileLimited(r.FS(), relPath, max)
 }

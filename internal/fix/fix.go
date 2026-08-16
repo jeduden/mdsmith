@@ -658,13 +658,24 @@ func (f *Fixer) applyFixPasses(
 	return current
 }
 
+// disabledFixerLogger is the shared zero-value logger (*Fixer).log
+// returns when no Logger is configured — the common case, since -v is
+// off by default. Every caller only reads Enabled or calls Printf,
+// which no-ops before touching the logger's mutex when Enabled is
+// false (internal/log.Logger.Printf), so nothing ever mutates this
+// instance; sharing it instead of allocating a fresh &vlog.Logger{}
+// on every call avoids one allocation per file per fix pass (log runs
+// via f.log().Printf in Fix's per-file, per-pass loop). Mirrors
+// internal/engine's identical (*Runner).log fix.
+var disabledFixerLogger = &vlog.Logger{}
+
 // log returns the fixer's logger. If no logger is set, it returns a
 // disabled logger so callers don't need nil checks.
 func (f *Fixer) log() *vlog.Logger {
 	if f.Logger != nil {
 		return f.Logger
 	}
-	return &vlog.Logger{}
+	return disabledFixerLogger
 }
 
 // logRules logs each enabled fixable rule in the effective config.

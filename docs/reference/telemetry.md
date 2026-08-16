@@ -18,16 +18,19 @@ external-link-check](#opt-in-network-access-mds072-external-link-check)
 
 ## What runs offline
 
-- `mdsmith check` walks the workspace and reads files. No network.
-- `mdsmith fix` rewrites files in place. No network from mdsmith
-  itself. Its build pass runs user-declared recipes (see below).
+- `mdsmith check` walks the workspace and reads files. No network
+  by default. (`external-link-check` is the one opt-in exception;
+  see below.)
+- `mdsmith fix` rewrites files in place. No network by default.
+  (Same opt-in exception as `mdsmith check`.) Its build pass runs
+  user-declared recipes (see below).
 - `mdsmith lsp` speaks LSP over stdio to the parent editor. No
-  network.
+  network by default. (Same opt-in exception as `mdsmith check`.)
 - `mdsmith deps`, `mdsmith rename`, `mdsmith metrics`, `mdsmith query`,
   and every other subcommand stay local.
 
-A locked-down or air-gapped CI runner can run `mdsmith check .`
-with no outbound access and the run completes normally.
+In the default configuration, a locked-down or air-gapped CI
+runner can run `mdsmith check .` with no outbound access.
 
 ## Install-time network access
 
@@ -41,8 +44,8 @@ Network access only happens when the user installs the binary:
 - The VS Code Marketplace or Open VSX downloads the `.vsix`.
 
 None of these channels run a `postinstall` script that calls home.
-After install, the binary is a static Go executable; running it
-makes no network calls.
+After install, the binary is a static Go executable. In the
+default configuration, running it makes no outbound network calls.
 
 The [install guide](../guides/install.md#github-release-direct-download)
 covers the GitHub-release direct-download path for air-gapped hosts.
@@ -61,10 +64,11 @@ without running any recipe. `mdsmith check` never runs a recipe.
 ## What about the Claude Code plugin?
 
 The Claude Code plugin is an optional editor surface. mdsmith
-itself never calls an LLM or any external service at runtime. The
-plugin spawns `mdsmith lsp` as a local subprocess and feeds its
-JSON-RPC output to the editor. The diagnostics, fixes, and
-navigation all come from the local Go binary.
+itself never calls an LLM at runtime. In the default
+configuration, it contacts no external service either. The plugin
+spawns `mdsmith lsp` as a local subprocess and feeds its JSON-RPC
+output to the editor. Diagnostics, fixes, and navigation all come
+from the local Go binary.
 
 ## What about the "size and readability limits"?
 

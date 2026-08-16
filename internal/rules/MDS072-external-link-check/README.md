@@ -146,6 +146,20 @@ transport-error, and cache-hit paths.
 | URL returns 4xx or 5xx            | `external URL returned HTTP <code>: <url>`  |
 | URL unreachable (transport error) | `external URL unreachable: <url> (<error>)` |
 
+## Security
+
+This rule probes URLs from document content. When linting
+untrusted input, those URLs are attacker-controlled.
+
+**SSRF risk.** A hostile document can target internal hosts.
+These include loopback (`127.0.0.1`), RFC 1918 private ranges,
+link-local addresses, and cloud-metadata IPs (`169.254.169.254`).
+The rule also follows up to 10 redirects, so an external URL can
+bounce inward.
+
+Configure `links.external-skip` to block internal patterns.
+Keep the rule off when linting workspaces you do not control.
+
 ## See also
 
 - [MDS027 cross-file-reference-integrity](../MDS027-cross-file-reference-integrity/README.md)

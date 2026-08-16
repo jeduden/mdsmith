@@ -91,7 +91,7 @@ func TestFindHeadingIDIgnoresAttributesWithoutID(t *testing.T) {
 func TestTaskCheckBoxFindingOrphan(t *testing.T) {
 	source := []byte("body\n")
 	orphan := extast.NewTaskCheckBox(true)
-	got := inlineExtFinding(source, orphan, FeatureTaskLists)
+	got := inlineExtFinding(func(offset int) (int, int) { return LineCol(source, offset) }, orphan, FeatureTaskLists)
 	assert.Equal(t, FeatureTaskLists, got.Feature)
 	assert.Equal(t, 1, got.Line)
 	assert.Equal(t, 1, got.Column)
@@ -101,7 +101,7 @@ func TestTaskCheckBoxFindingOrphan(t *testing.T) {
 func TestInlineExtFindingOrphan(t *testing.T) {
 	source := []byte("body\n")
 	orphan := extast.NewFootnoteLink(7)
-	got := inlineExtFinding(source, orphan, FeatureFootnotes)
+	got := inlineExtFinding(func(offset int) (int, int) { return LineCol(source, offset) }, orphan, FeatureFootnotes)
 	assert.Equal(t, FeatureFootnotes, got.Feature)
 	assert.Equal(t, 1, got.Line)
 	assert.Equal(t, 1, got.Column)
@@ -113,7 +113,7 @@ func TestInlineExtFindingOrphan(t *testing.T) {
 func TestFindingFromBlockNoLines(t *testing.T) {
 	source := []byte("body\n")
 	block := ast.NewParagraph() // no Lines appended
-	got := findingFromBlock(source, block, FeatureTables)
+	got := findingFromBlock(func(offset int) (int, int) { return LineCol(source, offset) }, block, FeatureTables)
 	assert.Equal(t, FeatureTables, got.Feature)
 	assert.Equal(t, 1, got.Line)
 	assert.Equal(t, 1, got.Column)
@@ -232,7 +232,7 @@ func TestDualFindings(t *testing.T) {
 	rejectTables := func(feat Feature) bool {
 		return feat != FeatureTables
 	}
-	got := dualFindings(src, rejectTables)
+	got := dualFindings(src, newLazyLineCol(src), rejectTables)
 	for _, f := range got {
 		assert.NotEqual(t, FeatureTables, f.Feature,
 			"keep predicate must suppress FeatureTables findings")
@@ -255,7 +255,8 @@ func TestDualFindings(t *testing.T) {
 func TestFindHeadingIDHandlesMissingLines(t *testing.T) {
 	h := ast.NewHeading(1)
 	h.SetAttributeString("id", []byte("top"))
-	_, ok := findHeadingID([]byte("# Heading {#top}\n"), h)
+	src := []byte("# Heading {#top}\n")
+	_, ok := findHeadingID(src, func(offset int) (int, int) { return LineCol(src, offset) }, h)
 	assert.False(t, ok,
 		"findHeadingID must return ok=false when Lines is empty")
 }
@@ -268,7 +269,8 @@ func TestFindHeadingIDHandlesNoOpeningBrace(t *testing.T) {
 	h := ast.NewHeading(1)
 	h.SetAttributeString("id", []byte("top"))
 	h.Lines().Append(text.NewSegment(2, 15))
-	_, ok := findHeadingID([]byte("# plain heading\n"), h)
+	src := []byte("# plain heading\n")
+	_, ok := findHeadingID(src, func(offset int) (int, int) { return LineCol(src, offset) }, h)
 	assert.False(t, ok,
 		"findHeadingID must return ok=false when source line contains no '{'")
 }

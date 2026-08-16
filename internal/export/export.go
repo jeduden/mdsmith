@@ -10,7 +10,6 @@ package export
 import (
 	"bytes"
 	"sort"
-	"strings"
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -353,15 +352,19 @@ func normalizeBlankLines(src []byte, codeBlockLines map[int]struct{}) []byte {
 	if len(src) == 0 {
 		return src
 	}
-	rawLines := strings.Split(string(src), "\n")
-	// strings.Split on a non-empty input always returns at least one
+	// bytes.Split on src directly (not strings.Split(string(src), ...))
+	// avoids allocating a full copy of the file just to drive the
+	// split; the resulting sub-slices share src's backing array
+	// (docs/development/high-performance-go.md "Stay in []byte").
+	rawLines := bytes.Split(src, []byte("\n"))
+	// bytes.Split on a non-empty input always returns at least one
 	// element, so the guard reduces to a check on the final element.
-	if rawLines[len(rawLines)-1] == "" {
+	if len(rawLines[len(rawLines)-1]) == 0 {
 		rawLines = rawLines[:len(rawLines)-1]
 	}
 
 	type srcLine struct {
-		text   string
+		text   []byte
 		inCode bool
 	}
 	lines := make([]srcLine, len(rawLines))
@@ -371,7 +374,7 @@ func normalizeBlankLines(src []byte, codeBlockLines map[int]struct{}) []byte {
 	}
 
 	isBlank := func(l srcLine) bool {
-		return !l.inCode && strings.TrimSpace(l.text) == ""
+		return !l.inCode && len(bytes.TrimSpace(l.text)) == 0
 	}
 
 	for len(lines) > 0 && isBlank(lines[0]) {
@@ -381,12 +384,14 @@ func normalizeBlankLines(src []byte, codeBlockLines map[int]struct{}) []byte {
 		lines = lines[:len(lines)-1]
 	}
 
-	var out []string
+	// Pre-sized to len(lines): a blank-line run collapses to one entry,
+	// so the final count never exceeds the input line count.
+	out := make([][]byte, 0, len(lines))
 	blank := false
 	for _, l := range lines {
 		if isBlank(l) {
 			if !blank {
-				out = append(out, "")
+				out = append(out, nil)
 			}
 			blank = true
 			continue
@@ -397,6 +402,7 @@ func normalizeBlankLines(src []byte, codeBlockLines map[int]struct{}) []byte {
 	if len(out) == 0 {
 		return nil
 	}
-	result := strings.Join(out, "\n") + "\n"
-	return []byte(result)
+	result := bytes.Join(out, []byte("\n"))
+	result = append(result, '\n')
+	return result
 }

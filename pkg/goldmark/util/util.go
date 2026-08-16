@@ -576,9 +576,16 @@ func UnescapePunctuations(source []byte) []byte {
 	cob := NewCopyOnWriteBuffer(source)
 	limit := len(source)
 	n := 0
+	// bytes.IndexByte skips runs with no backslash instead of testing
+	// every byte by hand (high-performance-go.md, "bytes.IndexByte
+	// over a hand-rolled byte loop").
 	for i := 0; i < limit; {
-		c := source[i]
-		if i < limit-1 && c == '\\' && IsPunct(source[i+1]) {
+		rel := bytes.IndexByte(source[i:], '\\')
+		if rel < 0 {
+			break
+		}
+		i += rel
+		if i < limit-1 && IsPunct(source[i+1]) {
 			cob.Write(source[n:i])
 			_ = cob.WriteByte(source[i+1])
 			i += 2
