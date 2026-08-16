@@ -18,6 +18,9 @@ This archive itself hit the budget on 2026-07-19.
 Entries from 2026-07-12 through 2026-07-05 moved
 on to
 [the second archive](architecture-audit-archive-2.md).
+It hit the budget again on 2026-08-16: the
+2026-06-24 (`09f22d3..3d35b77`) and 2026-07-19
+entries moved on to the second archive too.
 
 ## Audit 2026-05-13 (range: 6af677fb..7464d273)
 

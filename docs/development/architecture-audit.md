@@ -6,7 +6,7 @@ summary: >-
   solid-architecture skill (audit mode)
   appends here; blockers are also filed as
   plans.
-audit-from: 2ab4b2949e9420b2eb73f4239091fd647c4b5e80
+audit-from: 81f0d9659e2593f225371f9277460b58fa959756
 ---
 # Architecture audit log
 
@@ -15,7 +15,92 @@ solid-architecture skill in audit mode.
 Entries from 2026-06-26 through 2026-07-12 moved
 to [the archive](architecture-audit-archive.md)
 this cycle to stay under the file-length budget;
-every finding there is resolved.
+every finding there is resolved. The 2026-07-19
+entry moved there too this cycle for the same
+reason.
+
+## Audit 2026-08-16 (range: 2ab4b29..81f0d96)
+
+185 commits, 227 files touched (187 Go files). No
+TypeScript changes.
+
+No rule-to-rule imports. No reverse-layer imports. No
+Liskov breaks. `cmd/mdsmith/main.go` and
+`internal/lsp/server.go`/`symbols.go` stayed well under
+the ~1000-line threshold. The MDS073 collision from the
+prior cycle stays resolved — `rule_id_uniqueness_test.go`
+now guards it as a contract test.
+
+Clean surfaces, verified:
+
+- Every touched `internal/rules/*` package (catalog,
+  duplicatedcontent, markdownflavor, occurrence,
+  requiredstructure, slidevstructure, externallink, and
+  17 more) imports only shared helper packages — zero
+  rule-to-rule imports.
+- `internal/engine/source_config_cache.go` (new): a
+  cache hit returns a fresh `cloneRules` copy per caller,
+  never the shared template pointer, pinned by a
+  dedicated `-race` concurrency test.
+- `internal/pack/apm.go` (new): scoped correctly, no
+  cross-layer imports, registered via the existing
+  `pack.register` plugin point.
+- `internal/rules/externallink/probe_net.go`'s SSRF
+  hardening (`isRestrictedIP`, `ssrfControl`,
+  `ssrfCheckRedirect`): 9 dedicated tests, no
+  architecture concerns.
+- The two new `links:` settings
+  (`external-allow-internal`, `external-max-probes`) live
+  in MDS072's own settings struct — not a "field reachable
+  from only one rule" violation, consistent with the
+  existing `links:` precedent.
+
+### blockers (2026-08-16)
+
+None.
+
+### tax (2026-08-16)
+
+- `pkg/mdsmith/session.go`'s `readBoundedFrontMatterSource`
+  — the bounded/fallback front-matter read path on the
+  public `pkg/mdsmith` engine API — had no dedicated unit
+  test; only exercised indirectly via
+  `TestSessionKindsOversizedFile*`.
+  [tests.md][tests] requires a test by the function's own
+  name, and `pkg/mdsmith` is the highest-blast-radius
+  surface touched this cycle. Fixed directly (not filed as
+  a plan): added `TestReadBoundedFrontMatterSource`, a
+  table-driven test in `session_test.go` covering the
+  bounded (`OSWorkspace`) and fallback (`MemWorkspace`)
+  paths, the missing-file error, and both `max<=0` and
+  `math.MaxInt64` unbounded cases. `go test ./...` and
+  `go tool golangci-lint run` are green.
+- Six more functions across `cmd/mdsmith`, `pkg/mdsmith`,
+  `internal/rules/duplicatedcontent`,
+  `internal/rules/astutil`, `internal/bytelimit`, and
+  `pkg/markdown/flavor` have no dedicated unit test by
+  name, each covered only behaviorally —
+  [plan/2608161914][2608161914].
+
+### nice-to-have (2026-08-16)
+
+- `internal/lsp/server_diagnostics.go`'s
+  `surfaceForeignDiagnostics` changed the
+  `window/logMessage` notification shape from one
+  notification per diagnostic to at most two batched
+  notifications grouped by severity — a behavior change on
+  the LSP wire surface [cross-system.md][cross] tracks.
+  Well-tested; worth a one-line changelog note per that
+  page's "breaks must be deliberate and noted" policy. No
+  plan filed.
+- `internal/engine/source_config_cache.go`'s
+  `NewSourceConfigCache` is a trivial one-line constructor
+  without the "no test by design" exemption comment
+  [tests.md][tests] asks for on untested trivial functions.
+  Documentation nit; the type it constructs is otherwise
+  exhaustively tested. No plan filed.
+
+[2608161914]: ../../plan/2608161914_arch-fix-touched-set-unit-tests.md
 
 ## Audit 2026-08-09 (range: 6680ff5..2ab4b29)
 
@@ -203,87 +288,3 @@ is now exported and `requiredstructure` calls it directly.
 - `parseCheckFlags` / `parseFixFlags` cross go.md's ~50-line
   guidance for `cmd/mdsmith` handlers, but the body is pure
   flag-registration boilerplate, not domain logic.
-
-## Audit 2026-07-19 (range: 834b560..6680ff5)
-
-89 touched files. Notable new surfaces: SARIF output,
-the `internal/pack` init-scaffold package, and a
-wasm/net-split `internal/rules/externallink` rule.
-
-No rule-to-rule imports. No reverse-layer imports. No
-Liskov breaks. No missing tests on a public surface
-(`rule.Rule` method, LSP handler, CLI subcommand entry).
-
-Clean surfaces, verified:
-
-- `internal/output/sarif.go` implements the same
-  `Formatter` interface as `JSONFormatter` and
-  `TextFormatter`. It is documented in
-  `docs/reference/cli/check.md` and `fix.md`
-  (`-f sarif`). 16 tests lock its shape.
-- `internal/pack` is a small registry package,
-  mirroring `internal/starter`.
-- `internal/rules/externallink`'s wasm/net build-tag
-  split preserves Liskov substitutability. Both
-  `probe()` implementations share one signature and
-  one documented tri-state contract. The split is
-  thoroughly tested.
-
-### blockers (2026-07-19)
-
-None.
-
-### tax (2026-07-19)
-
-- `cmd/mdsmith/main.go` crossed the project's documented
-  ~1000-line threshold (1018 lines), almost entirely from
-  the new `mdsmith init --add` pack machinery
-  (`runInit`, `printInitCatalog`, `normalizePackNames`,
-  `applyPacks`, `writeScaffolds`, `refuseSymlinkedParents`,
-  `validatePackPath`, `statTarget`).
-  `docs/development/architecture/audit-checklist.md`
-  names this exact smell: "`cmd/mdsmith/main.go` past
-  ~1000 lines — handler bodies have crept in; relocate to
-  `internal/engine` or a per-subcommand file." Fixed: moved
-  the init-subcommand logic (`setInitUsage` through
-  `convertedConfigBytes`) into a new `cmd/mdsmith/init.go`,
-  matching the existing per-subcommand file pattern
-  (`check.go`, `fix.go`, `deps.go`, …), with its tests in a
-  matching `init_unit_test.go`. `main.go` is now 678 lines.
-  No behavior change; `go test ./...` and
-  `go tool golangci-lint run` are green.
-- `printInitCatalog` and `setInitUsage`
-  (`cmd/mdsmith/init.go`) have no dedicated unit test —
-  only e2e subprocess tests (`mdsmith init --list` and
-  `--help`) exercise them.
-  [tests.md][tests]: "A new function lands together with
-  its dedicated unit test by name," and an e2e test
-  reachable without the process boundary is an inverted
-  pyramid. Neither is a public surface itself (both are
-  `runInit` helpers), so tax not blocker. The
-  `setInitUsage` half of this surfaced during this cycle's
-  3x code-review pass on the fix, not the original sweep —
-  [plan/2607191917][2607191917].
-- `internal/rules/requiredstructure/rule.go`'s `isClaimed`
-  is a byte-for-byte copy of
-  `internal/schema/validate.go`'s `isClaimed`, despite
-  `requiredstructure` already importing `internal/schema`
-  — not an import-cycle workaround, a plain copy.
-  [go.md][go] refactor-moves: "Lift a shared dependency up
-  to an interface... once two rules needed the same shape"
-  — [plan/2607191918][2607191918].
-
-[2607191917]: ../../plan/2607191917_arch-fix-printinitcatalog-unit-test.md
-[2607191918]: ../../plan/2607191918_arch-fix-isclaimed-dedup.md
-
-### nice-to-have (2026-07-19)
-
-- `runInit` (`cmd/mdsmith/init.go`) is 62 lines, over
-  go.md's "~50 lines is a smell" guidance for `cmd/mdsmith`
-  wiring — it already delegates cleanly to single-purpose
-  helpers, so no plan filed.
-- `internal/pack/pack.go`'s `Pack.Files()` and unexported
-  `register()` are trivial one-line, no-branch functions
-  with no dedicated test and no exemption comment per
-  tests.md's exemption clause; both are exercised
-  indirectly. Naming/documentation nit, not a coverage gap.

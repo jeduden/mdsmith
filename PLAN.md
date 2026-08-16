@@ -264,4 +264,5 @@ footer: |
 | 2608021916 | 🔲     | sonnet | [Split internal/githooks by responsibility](plan/2608021916_arch-fix-githooks-package-split.md)                                                         |
 | 2608091910 | ✅     | sonnet | [Resolve the MDS073 rule-ID collision between slidevstructure and foreignregion](plan/2608091910_arch-fix-mds073-collision.md)                          |
 | 2608091911 | 🔲     | haiku  | [Add dedicated unit tests for occurrence and slidevstructure private helpers](plan/2608091911_arch-fix-missing-unit-tests.md)                           |
+| 2608161914 | 🔲     | haiku  | [Add dedicated unit tests for the 2026-08-16 touched-set tax findings](plan/2608161914_arch-fix-touched-set-unit-tests.md)                              |
 <?/catalog?>

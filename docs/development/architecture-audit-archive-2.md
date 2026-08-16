@@ -13,6 +13,10 @@ links here for entries it no longer has room for.
 Entries below are moved, not summarized — nothing
 was reworded.
 
+This shard itself hit the budget on 2026-08-16.
+The 2026-06-28 and 2026-07-05 entries moved on to
+[the third archive](architecture-audit-archive-3.md).
+
 ## Audit 2026-07-12 (range: 528ce4c..834b560)
 
 66 touched production Go files. No TypeScript changes.
@@ -202,80 +206,93 @@ line-count crossings. Plans 2606260211,
 
 No blockers, tax, or nice-to-have.
 
-## Audit 2026-06-28 (range: 0ededb3..82583fc)
+## Audit 2026-06-24 (range: 09f22d3..3d35b77)
 
-Plan 219 routes `cmd/mdsmith` and the LSP
-through `pkg/mdsmith.Session`. Five perf
-hot-path commits land. Plan 233 adds a
-numeric heading-level option to `<?include?>`.
-Plan 217 ships the Obsidian plugin WASM
-runtime. VS Code and LSP TypeScript fixes.
-479 Go sources; 26 TypeScript sources outside
-fixtures.
+Plans 2606241814/2606241815 green.
+No DIP, SRP, or line-count violations.
 
-No blockers. No rule-to-rule DIP violations.
-No SRP breaches. No file crossed 1 000 lines.
-All new production functions have dedicated
-unit tests.
+## Audit 2026-07-19 (range: 834b560..6680ff5)
 
-## Audit 2026-07-05 (range: 0ededb3..528ce4c)
+89 touched files. Notable new surfaces: SARIF output,
+the `internal/pack` init-scaffold package, and a
+wasm/net-split `internal/rules/externallink` rule.
 
-Prior entry's range end (`82583fc`) predates
-`0ededb3` and isn't its ancestor — a mislabel, not
-a real rewind. Resumed from `0ededb3` instead; front
-matter now points at this audit's end commit.
+No rule-to-rule imports. No reverse-layer imports. No
+Liskov breaks. No missing tests on a public surface
+(`rule.Rule` method, LSP handler, CLI subcommand entry).
 
-91 commits; 39 touching Go/TS (word-lists,
-no-llm-tells, reflow auto-fix, perf passes).
+Clean surfaces, verified:
 
-Blocker:
+- `internal/output/sarif.go` implements the same
+  `Formatter` interface as `JSONFormatter` and
+  `TextFormatter`. It is documented in
+  `docs/reference/cli/check.md` and `fix.md`
+  (`-f sarif`). 16 tests lock its shape.
+- `internal/pack` is a small registry package,
+  mirroring `internal/starter`.
+- `internal/rules/externallink`'s wasm/net build-tag
+  split preserves Liskov substitutability. Both
+  `probe()` implementations share one signature and
+  one documented tri-state contract. The split is
+  thoroughly tested.
 
-- `linelength/reflow.go` imported `internal/punkt`
-  directly. Only `internal/mdtext` may, per
-  [go.md][go].
-- It built a second trained Punkt `Storage`, so
-  `reflow: true` parsed `english.json` twice.
-- Fixed: added `mdtext.IsAbbrevToken` in a new,
-  build-tag-independent `abbrev.go`, so both the
-  fork and upstream builds share one `Storage`.
-  `fastpunct_init.go`'s `forkTokenizer` now builds
-  from that same `Storage` too. Exported
-  `punkt.AbbrevTokenCutset` and re-exported it as
-  `mdtext.AbbrevTrimCutset`, so `reflow.go` no
-  longer keeps its own copy of that punkt-owned
-  constant. `reflow.go` calls
-  `mdtext.IsAbbrevToken` instead of loading its own
-  model.
+### blockers (2026-07-19)
 
+None.
+
+### tax (2026-07-19)
+
+- `cmd/mdsmith/main.go` crossed the project's documented
+  ~1000-line threshold (1018 lines), almost entirely from
+  the new `mdsmith init --add` pack machinery
+  (`runInit`, `printInitCatalog`, `normalizePackNames`,
+  `applyPacks`, `writeScaffolds`, `refuseSymlinkedParents`,
+  `validatePackPath`, `statTarget`).
+  `docs/development/architecture/audit-checklist.md`
+  names this exact smell: "`cmd/mdsmith/main.go` past
+  ~1000 lines — handler bodies have crept in; relocate to
+  `internal/engine` or a per-subcommand file." Fixed: moved
+  the init-subcommand logic (`setInitUsage` through
+  `convertedConfigBytes`) into a new `cmd/mdsmith/init.go`,
+  matching the existing per-subcommand file pattern
+  (`check.go`, `fix.go`, `deps.go`, …), with its tests in a
+  matching `init_unit_test.go`. `main.go` is now 678 lines.
+  No behavior change; `go test ./...` and
+  `go tool golangci-lint run` are green.
+- `printInitCatalog` and `setInitUsage`
+  (`cmd/mdsmith/init.go`) have no dedicated unit test —
+  only e2e subprocess tests (`mdsmith init --list` and
+  `--help`) exercise them.
+  [tests.md][tests]: "A new function lands together with
+  its dedicated unit test by name," and an e2e test
+  reachable without the process boundary is an inverted
+  pyramid. Neither is a public surface itself (both are
+  `runInit` helpers), so tax not blocker. The
+  `setInitUsage` half of this surfaced during this cycle's
+  3x code-review pass on the fix, not the original sweep —
+  [plan/2607191917][2607191917].
+- `internal/rules/requiredstructure/rule.go`'s `isClaimed`
+  is a byte-for-byte copy of
+  `internal/schema/validate.go`'s `isClaimed`, despite
+  `requiredstructure` already importing `internal/schema`
+  — not an import-cycle workaround, a plain copy.
+  [go.md][go] refactor-moves: "Lift a shared dependency up
+  to an interface... once two rules needed the same shape"
+  — [plan/2607191918][2607191918].
+
+[tests]: architecture/tests.md
 [go]: architecture/go.md
+[2607191917]: ../../plan/2607191917_arch-fix-printinitcatalog-unit-test.md
+[2607191918]: ../../plan/2607191918_arch-fix-isclaimed-dedup.md
 
-### tax (2026-07-05)
+### nice-to-have (2026-07-19)
 
-- `wordlist.dedup` / `config`'s `dedupStrings`, and
-  `config`'s `stringsToAny` / `convention`'s
-  `toAnySlice`, are identical pairs —
-  [plan/2607051918][2607051918].
-- New helpers with no dedicated test: `wordlist`
-  (`allNames`, `flatten`); `config/wordlist_files.go`
-  (`toWordlistMap`, `stripLists`,
-  `resolveListEntries`, `expandRuleLists`);
-  `convention/nollmtells.go` (four `llm*` builders);
-  `linelength/fix.go`+`reflow.go` (four helpers);
-  `classifier/model.go`'s `buildPhraseMarkers` —
-  [plan/2607051919][2607051919].
-
-### nice-to-have (2026-07-05)
-
-- Perf commit `39a21e63` duplicated
-  `countLeadingSpaces` and `isBlank`/`isBlankLine`
-  across `listindent`, `orderedlistnumbering`,
-  `noreferencestyle` instead of using
-  `internal/rules/astutil` —
-  [plan/2607051920][2607051920].
-- `cmd/mdsmith/runInit` (64 lines) is just past the
-  ~50-line guideline; logic already delegates
-  cleanly, so no plan filed.
-
-[2607051918]: ../../plan/2607051918_arch-fix-wordlist-config-dedup.md
-[2607051919]: ../../plan/2607051919_arch-fix-new-helper-tests.md
-[2607051920]: ../../plan/2607051920_arch-fix-rule-whitespace-helpers-astutil.md
+- `runInit` (`cmd/mdsmith/init.go`) is 62 lines, over
+  go.md's "~50 lines is a smell" guidance for `cmd/mdsmith`
+  wiring — it already delegates cleanly to single-purpose
+  helpers, so no plan filed.
+- `internal/pack/pack.go`'s `Pack.Files()` and unexported
+  `register()` are trivial one-line, no-branch functions
+  with no dedicated test and no exemption comment per
+  tests.md's exemption clause; both are exercised
+  indirectly. Naming/documentation nit, not a coverage gap.
