@@ -1,7 +1,8 @@
 package markdownflavor
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	extast "github.com/jeduden/mdsmith/pkg/goldmark/extension/ast"
@@ -52,9 +53,7 @@ func (r *Rule) fixByteRangeFeatures(f *lint.File) []byte {
 	// detection layer never produces overlapping fixes, but a dual-AST
 	// walk and a bare-URL pass merged here can land out of source order,
 	// so sort before handing off.
-	sort.SliceStable(edits, func(i, j int) bool {
-		return edits[i].Start < edits[j].Start
-	})
+	sortEditsByStart(edits)
 	return markdown.Splice(f.Source, edits)
 }
 
@@ -186,4 +185,15 @@ func wrapBareURL(source []byte, fin flavor.Finding) markdown.Edit {
 	repl = append(repl, url...)
 	repl = append(repl, '>')
 	return markdown.Edit{Start: fin.Start, End: fin.End, Repl: repl}
+}
+
+// sortEditsByStart orders edits by byte offset in place.
+// slices.SortStableFunc sorts the concrete markdown.Edit values
+// directly, unlike sort.SliceStable, which drives reflect.Swapper
+// under the hood — see docs/development/high-performance-go.md's
+// "reflect in hot paths" anti-pattern.
+func sortEditsByStart(edits []markdown.Edit) {
+	slices.SortStableFunc(edits, func(a, b markdown.Edit) int {
+		return cmp.Compare(a.Start, b.Start)
+	})
 }

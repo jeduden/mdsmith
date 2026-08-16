@@ -153,6 +153,14 @@ type Runner struct {
 	// hit, and that RunCache's Invalidate seam would be the one
 	// driving correctness — easy to get wrong, so don't mix.
 	ParseCache *lint.ParseCache
+	// SourceConfigCache memoizes checker.ConfigureEnabledRules for
+	// RunSource / RunSourceWithVersion, keyed by the effective-config
+	// signature (see SourceConfigCache's own doc comment). nil (the
+	// default) leaves RunSource configuring fresh on every call, exactly
+	// as before this field existed. A long-lived caller — the LSP session
+	// — installs one so a buffer re-linted at an unchanged effective
+	// config skips re-cloning every Configurable rule's settings.
+	SourceConfigCache *SourceConfigCache
 }
 
 // fileOutcome is one file's contribution to a run. Workers fill a
@@ -778,13 +786,38 @@ func (r *Runner) runSourceCheckRules(
 	// IntraFileConcurrency knob still overrides — set 1 to keep
 	// the LSP single-threaded for predictability.
 	intraFileCap := resolveIntraFileWorkers(r.IntraFileConcurrency, 0)
-	diags, errs := checker.CheckRulesWithIntraFile(f, mdRules, effective, r.SkipSourceContext, intraFileCap)
+	diags, errs := r.checkRulesForSource(f, mdRules, effective, path, fmKinds, fmFields, intraFileCap)
 	if r.Explain {
 		explain.Attach(diags, r.Config, path, fmKinds, fmFields)
 	}
 	res.Diagnostics = append(res.Diagnostics, diags...)
 	res.Diagnostics = append(res.Diagnostics, foreignregion.Diagnostics(f, r.Config, path)...)
 	res.Errors = append(res.Errors, errs...)
+}
+
+// checkRulesForSource configures mdRules against effective and runs them
+// against f. When r.SourceConfigCache is installed, the settings-
+// application work (rule.CloneRule's reflect.New plus two ApplySettings
+// passes) is memoized by the effective-config signature
+// (config.EffectiveSignature) so a caller that re-lints the same
+// document under an unchanged config — the LSP's per-keystroke
+// RunSourceWithVersion — skips paying it again; SourceConfigCache still
+// hands back a private per-call clone of every rule, so this stays safe
+// even when two documents that share an effective config are checked
+// concurrently (see SourceConfigCache's doc comment). nil (the default)
+// falls straight through to CheckRulesWithIntraFile, preserving the
+// exact pre-existing behavior for every other caller.
+func (r *Runner) checkRulesForSource(
+	f *lint.File, mdRules []rule.Rule, effective map[string]config.RuleCfg,
+	path string, fmKinds []string, fmFields map[string]any, intraFileCap int,
+) ([]lint.Diagnostic, []error) {
+	if r.SourceConfigCache == nil {
+		return checker.CheckRulesWithIntraFile(f, mdRules, effective, r.SkipSourceContext, intraFileCap)
+	}
+	key, _ := config.EffectiveSignature(r.Config, path, fmKinds, fmFields)
+	configured, errs := r.SourceConfigCache.configured(key, mdRules, effective)
+	diags := checker.CheckConfiguredRules(f, configured, r.SkipSourceContext, intraFileCap)
+	return diags, errs
 }
 
 // markdownRules returns the subset of rules to run against individual Markdown

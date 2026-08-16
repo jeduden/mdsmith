@@ -4,8 +4,6 @@ import (
 	"math"
 	"regexp"
 	"strings"
-
-	"github.com/jeduden/mdsmith/internal/mdtext"
 )
 
 var tokenPattern = regexp.MustCompile(`[a-z0-9']+`)
@@ -47,7 +45,7 @@ var verbosePhrases = []string{
 	"in most cases",
 }
 
-func concisenessScore(text string) float64 {
+func concisenessScore(text string, sentences int) float64 {
 	lower := strings.ToLower(text)
 	tokens := tokenPattern.FindAllString(lower, -1)
 	if len(tokens) == 0 {
@@ -68,7 +66,6 @@ func concisenessScore(text string) float64 {
 	lexicalDensity := float64(contentWords) / float64(len(tokens))
 	fillerRatio := float64(fillerCount) / float64(len(tokens))
 
-	sentences := mdtext.CountSentences(text)
 	if sentences < 1 {
 		sentences = 1
 	}

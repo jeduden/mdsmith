@@ -2,6 +2,7 @@ package mdsmith
 
 import (
 	"fmt"
+	"io/fs"
 	"strings"
 	"testing"
 )
@@ -106,6 +107,38 @@ func TestSessionCheckNoPerFileGlob(t *testing.T) {
 		t.Fatalf("MemWorkspace.Glob called %d times during cross-file "+
 			"Check; the engine must glob through the FS view, not "+
 			"Workspace.Glob", n)
+	}
+}
+
+// manyNestedFiles builds a file map with dirs directories, each holding
+// filesPerDir files, mirroring a real doc tree's nesting.
+func manyNestedFiles(dirs, filesPerDir int) map[string][]byte {
+	files := make(map[string][]byte, dirs*filesPerDir)
+	for d := 0; d < dirs; d++ {
+		for f := 0; f < filesPerDir; f++ {
+			files[fmt.Sprintf("docs/section%d/page%d.md", d, f)] = []byte("# x\n")
+		}
+	}
+	return files
+}
+
+// BenchmarkMemFS_WalkDir measures a full fs.WalkDir traversal over the
+// MemWorkspace FS view, the access pattern internal/linkgraph's
+// WikilinkIndexFor uses. Each directory visited during the walk calls
+// ReadDir, and memFS.dirEntries previously rescanned every file in the
+// workspace on every single ReadDir call, turning an O(files) index
+// build into O(files x directories)
+// (docs/development/high-performance-go.md "Memoize per-input
+// computations").
+func BenchmarkMemFS_WalkDir(b *testing.B) {
+	w := NewMemWorkspace(manyNestedFiles(50, 5))
+	root := w.FS()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = fs.WalkDir(root, ".", func(_ string, _ fs.DirEntry, err error) error {
+			return err
+		})
 	}
 }
 

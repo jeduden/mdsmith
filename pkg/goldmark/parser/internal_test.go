@@ -80,6 +80,46 @@ func TestIDs_GenerateSequenceCollision(t *testing.T) {
 	}
 }
 
+// TestIDs_Generate_AllocBudget pins the collision loop's allocation
+// cost. Generate used to build each candidate suffix with
+// fmt.Sprintf("%s-%d", ...), allocating a new string on every
+// attempted suffix — a heading collision N deep costs N allocations
+// just walking the loop, on every document with a repeated heading
+// (changelogs, release notes). The fix reuses one []byte buffer via
+// strconv.AppendInt and only allocates once the final id is decided.
+// See docs/development/high-performance-go.md "strconv over
+// fmt.Sprintf".
+func TestIDs_Generate_AllocBudget(t *testing.T) {
+	if testing.Short() {
+		t.Skip("alloc budget skipped in -short mode")
+	}
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race; the race detector " +
+			"adds allocation bookkeeping that perturbs the count")
+	}
+	const seedDepth = 30
+
+	s := newIDs().(*ids)
+	s.Put([]byte("heading"))
+	for i := 1; i <= seedDepth; i++ {
+		s.Put([]byte(fmt.Sprintf("heading-%d", i)))
+	}
+
+	allocs := testing.AllocsPerRun(10, func() {
+		_ = s.Generate([]byte("Heading"), ast.KindHeading)
+	})
+	// Each call resolves one more collision than the last (heading-31,
+	// heading-32, ...), so a per-attempt allocation would push this
+	// well past single digits by the tenth run. The bound is generous
+	// above the one genuinely necessary allocation (the winning id's
+	// final string/[]byte copy) to avoid pinning an exact count.
+	if allocs > 5 {
+		t.Errorf("Generate allocates %.1f/op walking a %d-deep collision chain (bound 5); "+
+			"want the loop to reuse one buffer instead of allocating per attempted suffix",
+			allocs, seedDepth)
+	}
+}
+
 // silenceStdout swallows fmt.Print output from a function so
 // Dump-style prints don't litter test output.
 func silenceStdout(t *testing.T, fn func()) {

@@ -119,6 +119,31 @@ func TestTable_NotATable(t *testing.T) {
 	}
 }
 
+// TestTable_BarePipeLineBeforeRealTable is a regression test: a bare
+// "|" line earlier in the same paragraph must not abort the scan for
+// a real table later in that paragraph. parseDelimiter used to return
+// a non-nil empty slice for a delimiter line with zero columns
+// (bytes.Split("|", "|") splits down to nothing after the leading/
+// trailing blank-column trim), which satisfied Transform's
+// `alignments == nil` "skip this line" sentinel by accident only
+// because it was actually nil; a pre-sized-but-empty slice broke
+// that.
+func TestTable_BarePipeLineBeforeRealTable(t *testing.T) {
+	md := goldmark.New(goldmark.WithExtensions(extension.Table))
+	src := []byte("x\n|\nA | B\n--- | ---\n1 | 2\n")
+	root := md.Parser().Parse(text.NewReader(src))
+	if !walkContains(root, extast.KindTable) {
+		t.Error("expected Table in AST for the real delimiter row after a bare '|' line")
+	}
+	var buf bytes.Buffer
+	if err := md.Convert(src, &buf); err != nil {
+		t.Fatalf("Convert: %v", err)
+	}
+	if !bytes.Contains(buf.Bytes(), []byte("<table>")) {
+		t.Errorf("HTML output missing <table>: %s", buf.String())
+	}
+}
+
 func TestDefinitionList_Parse(t *testing.T) {
 	md := goldmark.New(goldmark.WithExtensions(extension.DefinitionList))
 	src := []byte("Term 1\n: Definition 1\n\nTerm 2\n: Definition 2a\n: Definition 2b\n")
