@@ -15,6 +15,23 @@ func TestDiagnosticFieldLayout_PointerFieldsLeading(t *testing.T) {
 	structlayout.AssertPointerFieldsFirst(t, reflect.TypeOf(Explanation{}))
 }
 
+// TestAnchorEntryFieldLayout_PointerFieldsLeading guards RunCache's
+// anchorEntry against regressing to a layout where the map field trails
+// the scalar fields — see docs/development/high-performance-go.md
+// "Struct layout" and runCacheEntry's val/done/mu ordering a few lines
+// above it in this same file, which anchorEntry did not follow.
+func TestAnchorEntryFieldLayout_PointerFieldsLeading(t *testing.T) {
+	structlayout.AssertPointerFieldsFirst(t, reflect.TypeOf(anchorEntry{}))
+}
+
+// TestEmphasisParagraphFieldLayout_PointerFieldsLeading guards against
+// EmphasisParagraph's Line (scalar) trailing TextSegments ([]string,
+// pointer-ish) — see docs/development/high-performance-go.md "Struct
+// layout".
+func TestEmphasisParagraphFieldLayout_PointerFieldsLeading(t *testing.T) {
+	structlayout.AssertPointerFieldsFirst(t, reflect.TypeOf(EmphasisParagraph{}))
+}
+
 func TestDiagnosticFields(t *testing.T) {
 	d := Diagnostic{
 		File:     "README.md",

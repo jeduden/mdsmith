@@ -231,7 +231,7 @@ func formatActual(v any) string {
 	case nil:
 		return "null"
 	case string:
-		return fmt.Sprintf("%q", x)
+		return strconv.Quote(x)
 	case bool, int, int64, float64:
 		return fmt.Sprintf("%v", x)
 	}

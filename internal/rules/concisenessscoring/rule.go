@@ -2,6 +2,7 @@ package concisenessscoring
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -151,7 +152,7 @@ func formatExamples(examples []string) string {
 	}
 	values := make([]string, 0, limit)
 	for i := 0; i < limit; i++ {
-		values = append(values, fmt.Sprintf("%q", examples[i]))
+		values = append(values, strconv.Quote(examples[i]))
 	}
 	return strings.Join(values, ", ")
 }

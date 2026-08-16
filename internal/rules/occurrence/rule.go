@@ -85,17 +85,22 @@ func (r *Rule) checkFile(f *lint.File) []lint.Diagnostic {
 		return r.diagCombined(combined, 1, "file", f.Path)
 	}
 	// "each" mode: iterate paragraphs in the outer loop so each paragraph's
-	// text is lowercased at most once regardless of token count.
-	totals := make([]int, len(r.Tokens))
-	for i := range paragraphs {
-		stext := r.searchText(paragraphs[i].ExtractText(f.Source))
-		for ti := range r.Tokens {
-			totals[ti] += r.countToken(stext, ti)
-		}
-	}
+	// text is lowercased at most once regardless of token count. Skip the
+	// lowercasing entirely when r.Tokens is empty (Pattern-only config) —
+	// searchText's strings.ToLower would otherwise allocate once per
+	// paragraph for a loop that never runs.
 	var diags []lint.Diagnostic
-	for ti, tok := range r.Tokens {
-		diags = append(diags, r.diagEach(totals[ti], 1, "file", tok, f.Path)...)
+	if len(r.Tokens) > 0 {
+		totals := make([]int, len(r.Tokens))
+		for i := range paragraphs {
+			stext := r.searchText(paragraphs[i].ExtractText(f.Source))
+			for ti := range r.Tokens {
+				totals[ti] += r.countToken(stext, ti)
+			}
+		}
+		for ti, tok := range r.Tokens {
+			diags = append(diags, r.diagEach(totals[ti], 1, "file", tok, f.Path)...)
+		}
 	}
 	if r.Pattern != nil {
 		total := 0
@@ -127,19 +132,24 @@ func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 		} else {
 			// "each" mode: iterate paragraphs once, pre-lowercasing text per
 			// paragraph so case-insensitive matching allocates one string per
-			// paragraph, not one per (paragraph × token).
-			totals := make([]int, len(r.Tokens))
-			for j := range paragraphs {
-				if paragraphs[j].Line < h.Line || paragraphs[j].Line >= end {
-					continue
+			// paragraph, not one per (paragraph × token). Skip entirely when
+			// r.Tokens is empty (Pattern-only config) — searchText's
+			// strings.ToLower would otherwise allocate once per paragraph
+			// for a loop that never runs.
+			if len(r.Tokens) > 0 {
+				totals := make([]int, len(r.Tokens))
+				for j := range paragraphs {
+					if paragraphs[j].Line < h.Line || paragraphs[j].Line >= end {
+						continue
+					}
+					stext := r.searchText(paragraphs[j].ExtractText(f.Source))
+					for ti := range r.Tokens {
+						totals[ti] += r.countToken(stext, ti)
+					}
 				}
-				stext := r.searchText(paragraphs[j].ExtractText(f.Source))
-				for ti := range r.Tokens {
-					totals[ti] += r.countToken(stext, ti)
+				for ti, tok := range r.Tokens {
+					diags = append(diags, r.diagEach(totals[ti], h.Line, "section", tok, f.Path)...)
 				}
-			}
-			for ti, tok := range r.Tokens {
-				diags = append(diags, r.diagEach(totals[ti], h.Line, "section", tok, f.Path)...)
 			}
 			if r.Pattern != nil {
 				cnt := r.countPatternInRange(paragraphs, f.Source, h.Line, end)
@@ -161,10 +171,14 @@ func (r *Rule) checkParagraphs(f *lint.File) []lint.Diagnostic {
 			combined := r.countCombined(text)
 			diags = append(diags, r.diagCombined(combined, line, "paragraph", f.Path)...)
 		} else {
-			stext := r.searchText(text)
-			for ti, tok := range r.Tokens {
-				cnt := r.countToken(stext, ti)
-				diags = append(diags, r.diagEach(cnt, line, "paragraph", tok, f.Path)...)
+			// Skip searchText's strings.ToLower allocation when r.Tokens is
+			// empty (Pattern-only config) — the loop below never runs.
+			if len(r.Tokens) > 0 {
+				stext := r.searchText(text)
+				for ti, tok := range r.Tokens {
+					cnt := r.countToken(stext, ti)
+					diags = append(diags, r.diagEach(cnt, line, "paragraph", tok, f.Path)...)
+				}
 			}
 			if r.Pattern != nil {
 				cnt := r.countPattern(text)

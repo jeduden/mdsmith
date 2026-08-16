@@ -259,4 +259,5 @@ footer: |
 | 2607191918 | ✅     | haiku  | [Deduplicate isClaimed between internal/schema and requiredstructure](plan/2607191918_arch-fix-isclaimed-dedup.md)                                      |
 | 2607242010 | 🔲     | sonnet | [MDS072 external-link-check: SSRF and egress hardening](plan/2607242010_mds072-ssrf-network-hardening.md)                                               |
 | 2607242011 | ✅     | haiku  | [Security hardening batch — 2026-07-24](plan/2607242011_security-hardening-batch-2026-07-24.md)                                                         |
+| 2608020650 | 🔲     | sonnet | [Convert MDS003/MDS005 to KindScopedChecker without a stale-state bug](plan/2608020650_kindscoped-heading-rules.md)                                     |
 <?/catalog?>

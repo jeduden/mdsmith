@@ -226,8 +226,14 @@ func collectReferenceDefinitions(f *lint.File) []referenceDefinition {
 	lineStart := 0
 	for lineStart <= len(source) {
 		eol := lineStart
-		for eol < len(source) && source[eol] != '\n' {
-			eol++
+		// bytes.IndexByte is SIMD-accelerated; a hand-rolled byte loop is
+		// not vectorized. See docs/development/high-performance-go.md and
+		// internal/lint/linkrefscan.go's buildLineSegments, which scans
+		// the same whole-document source this way.
+		if i := bytes.IndexByte(source[eol:], '\n'); i >= 0 {
+			eol += i
+		} else {
+			eol = len(source)
 		}
 		labelStart, labelEnd, ok := scanRefDefLine(source, lineStart, eol)
 		if ok {

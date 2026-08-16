@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/piparser"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -1006,6 +1007,53 @@ func TestCheck_PathPattern_DoublestarWildcardMatchesNested(t *testing.T) {
 	f := newRootedFile(t, root, "docs/sub/README.md", "# Sub\n")
 	r := &Rule{PathPatterns: []PathPattern{
 		{Kind: "readme", Pattern: "**/README.md"},
+	}}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+// TestCheck_PathPattern_BraceAlternateWithSyntaxErrorUsesMatchVerdict
+// pins a regression a code review found: a path-pattern can pass
+// doublestar.ValidatePattern yet still make doublestar.Match and
+// doublestar.MatchUnvalidated disagree, when a brace alternative
+// contains a construct Match's internal validation aborts on before
+// trying a later, matching alternative — while MatchUnvalidated tries
+// every alternative regardless. checkPathPatterns must reproduce
+// doublestar.Match's verdict for such a pattern, not
+// MatchUnvalidated's.
+func TestCheck_PathPattern_BraceAlternateWithSyntaxErrorUsesMatchVerdict(t *testing.T) {
+	pattern := "{[!mdb[],docs/**/*.md}"
+	require.True(t, doublestar.ValidatePattern(pattern),
+		"precondition: pattern must pass ValidatePattern for this test to be meaningful")
+	matched, err := doublestar.Match(pattern, "docs/a.md")
+	require.Error(t, err,
+		"precondition: doublestar.Match must itself error on this pattern, "+
+			"or this test is not exercising the divergence it claims to")
+	require.False(t, matched)
+	require.True(t, doublestar.MatchUnvalidated(pattern, "docs/a.md"),
+		"precondition: Match and MatchUnvalidated must actually diverge on this pattern")
+
+	root := t.TempDir()
+	f := newRootedFile(t, root, "docs/a.md", "# A\n")
+	r := &Rule{PathPatterns: []PathPattern{
+		{Kind: "special", Pattern: pattern},
+	}}
+	diags := r.Check(f)
+	// checkPathPatterns must match doublestar.Match's verdict (no
+	// match), not MatchUnvalidated's, for a pattern using brace
+	// alternation — so this must emit exactly one diagnostic.
+	expectDiags(t, diags, 1)
+}
+
+// TestCheck_PathPattern_BraceAlternateThatMatchesSucceeds covers the
+// safe path's success branch: a well-formed brace-alternate pattern
+// that doublestar.Match matches cleanly (no syntax-error abort) must
+// still be treated as a match by checkPathPatterns' fallback.
+func TestCheck_PathPattern_BraceAlternateThatMatchesSucceeds(t *testing.T) {
+	root := t.TempDir()
+	f := newRootedFile(t, root, "docs/README.markdown", "# Docs\n")
+	r := &Rule{PathPatterns: []PathPattern{
+		{Kind: "readme", Pattern: "docs/*.{md,markdown}"},
 	}}
 	diags := r.Check(f)
 	expectDiags(t, diags, 0)

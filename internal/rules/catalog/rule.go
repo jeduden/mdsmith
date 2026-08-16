@@ -2,11 +2,13 @@ package catalog
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
 	"io/fs"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1068,6 +1070,19 @@ func parseSort(params map[string]string) (key string, descending, numeric bool) 
 	return sortVal, descending, numeric
 }
 
+// sortable pairs a fileEntry with its pre-computed lowercase sort and
+// tiebreaker keys — or, in numeric mode, the parsed int64 — avoiding
+// O(n log n) string allocations or CUE-path re-parses inside the sort
+// comparator. allParseAsInt already parses every entry once just to
+// decide useInts; numInt carries that same parse forward instead of
+// discarding it.
+type sortable struct {
+	entry         fileEntry
+	sortKey       string // lowercase primary sort key (empty for numeric mode)
+	numInt        int64  // parsed sort value (numeric mode only)
+	tiebreakerKey string // lowercase filename for stable tiebreaker
+}
+
 // sortEntries sorts file entries by the given key. When numeric is
 // true and every entry's value parses as an int, entries are ordered
 // by the integer value; any parse failure falls back to string
@@ -1076,56 +1091,56 @@ func parseSort(params map[string]string) (key string, descending, numeric bool) 
 func sortEntries(entries []fileEntry, key string, descending, numeric bool) {
 	useInts := numeric && allParseAsInt(entries, key)
 
-	// Pre-compute lowercase keys once per entry to avoid O(n log n)
-	// string allocations inside the comparator.
-	type sortable struct {
-		entry         fileEntry
-		sortKey       string // lowercase primary sort key (empty for numeric mode)
-		tiebreakerKey string // lowercase filename for stable tiebreaker
-	}
 	sortables := make([]sortable, len(entries))
 	for i, e := range entries {
 		var sk string
-		if !useInts {
+		var ni int64
+		if useInts {
+			ni, _ = parseSortInt(e, key)
+		} else {
 			sk = strings.ToLower(sortValue(e, key))
 		}
 		sortables[i] = sortable{
 			entry:         e,
 			sortKey:       sk,
+			numInt:        ni,
 			tiebreakerKey: strings.ToLower(fieldinterp.Stringify(e.fields["filename"])),
 		}
 	}
 
-	sort.SliceStable(sortables, func(i, j int) bool {
-		var cmp int
-		if useInts {
-			// Re-parse from the moved entry — SliceStable reorders the
-			// slice during sort, so sortables[i].entry is always current.
-			ni, _ := parseSortInt(sortables[i].entry, key)
-			nj, _ := parseSortInt(sortables[j].entry, key)
-			switch {
-			case ni < nj:
-				cmp = -1
-			case ni > nj:
-				cmp = 1
-			}
-		} else {
-			cmp = strings.Compare(sortables[i].sortKey, sortables[j].sortKey)
-		}
-		if cmp == 0 {
-			// Tiebreaker: path ascending, case-insensitive.
-			return sortables[i].tiebreakerKey < sortables[j].tiebreakerKey
-		}
-
-		if descending {
-			return cmp > 0
-		}
-		return cmp < 0
-	})
+	sortSortables(sortables, useInts, descending)
 
 	for i, s := range sortables {
 		entries[i] = s.entry
 	}
+}
+
+// sortSortables orders sortables in place. slices.SortStableFunc sorts
+// the concrete sortable values directly, unlike sort.SliceStable,
+// which drives reflect.Swapper under the hood — see
+// docs/development/high-performance-go.md's "reflect in hot paths"
+// anti-pattern.
+//
+// The comparator reads the pre-computed sortKey/numInt off each
+// sortable rather than re-deriving them: parsing or lowercasing inside
+// the comparator would repeat that work O(n log n) times, which is the
+// cost sortEntries pre-computes once per entry to avoid.
+func sortSortables(sortables []sortable, useInts, descending bool) {
+	slices.SortStableFunc(sortables, func(a, b sortable) int {
+		var c int
+		if useInts {
+			c = cmp.Compare(a.numInt, b.numInt)
+		} else {
+			c = strings.Compare(a.sortKey, b.sortKey)
+		}
+		if c == 0 {
+			// Tiebreaker: path ascending, case-insensitive.
+			c = strings.Compare(a.tiebreakerKey, b.tiebreakerKey)
+		} else if descending {
+			c = -c
+		}
+		return c
+	})
 }
 
 // allParseAsInt reports whether every entry's value for key parses
@@ -1575,7 +1590,26 @@ func scanIncludesForTargetAbs(
 	return false
 }
 
-// isExcluded checks whether a file path matches any of the exclude patterns.
+// isExcluded checks whether a file path matches any of the exclude
+// patterns.
+//
+// Uses doublestar.Match, not MatchUnvalidated, despite the doc's "skip
+// work you don't need" guidance: unlike discovery.matchesAny and
+// requiredstructure.checkPathPatterns (whose patterns are always
+// validated before they can reach the match call), isExcluded can be
+// reached with a pattern that never passed doublestar.ValidatePattern —
+// checkInjection and checkCaseMismatches read a directive's raw params
+// directly, bypassing the gensection engine's Validate pass
+// (validateGlob) that runs on the Generate path. For most malformed
+// patterns MatchUnvalidated safely returns false like Match's error
+// branch, but for some (e.g. an unmatched brace-alternate like
+// "{x[,a}") it returns true where Match would report false with an
+// error — confirmed directly against the vendored doublestar source,
+// not assumed. Gating MatchUnvalidated behind a cached validity check
+// (mirroring internal/globpath's patternValid) closes that gap but
+// measures identically to plain Match here (benchstat, n=10: p=0.669) —
+// the cache lookup costs about what the skipped revalidation saves, so
+// it is not a real optimization once made correct. Kept as Match.
 func isExcluded(filePath string, patterns []string) bool {
 	for _, pattern := range patterns {
 		if pattern == "" {
@@ -1675,12 +1709,15 @@ func (r *Rule) checkCaseMismatches(f *lint.File) []lint.Diagnostic {
 func extractPlaceholderFields(row string) []string {
 	all := fieldinterp.Fields(row)
 	seen := make(map[string]struct{}, len(all))
-	var fields []string
+	fields := make([]string, 0, len(all))
 	for _, name := range all {
 		if _, ok := seen[name]; !ok {
 			seen[name] = struct{}{}
 			fields = append(fields, name)
 		}
+	}
+	if len(fields) == 0 {
+		return nil
 	}
 	return fields
 }
@@ -1741,7 +1778,7 @@ func checkFieldCaseMismatches(filePath string, line int, row string, entries []f
 			// Multiple casings across files — surface the inconsistency.
 			quoted := make([]string, len(casings))
 			for i, c := range casings {
-				quoted[i] = fmt.Sprintf("%q", c)
+				quoted[i] = strconv.Quote(c)
 			}
 			message = fmt.Sprintf(
 				"field %q has inconsistent casing across matched files: %s",

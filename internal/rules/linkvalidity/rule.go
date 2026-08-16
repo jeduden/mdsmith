@@ -7,8 +7,9 @@ package linkvalidity
 
 import (
 	"bytes"
+	"cmp"
 	"regexp"
-	"sort"
+	"slices"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -45,13 +46,22 @@ const reversedMessage = "reversed link: use [text](url) instead of (text)[url]"
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	diags := r.checkEmpty(f)
 	diags = append(diags, r.checkReversed(f)...)
-	sort.SliceStable(diags, func(i, j int) bool {
-		if diags[i].Line != diags[j].Line {
-			return diags[i].Line < diags[j].Line
-		}
-		return diags[i].Column < diags[j].Column
-	})
+	sortDiagnostics(diags)
 	return diags
+}
+
+// sortDiagnostics orders diags by line then column in place.
+// slices.SortStableFunc sorts the concrete lint.Diagnostic values
+// directly, unlike sort.SliceStable, which drives reflect.Swapper
+// under the hood — see docs/development/high-performance-go.md's
+// "reflect in hot paths" anti-pattern.
+func sortDiagnostics(diags []lint.Diagnostic) {
+	slices.SortStableFunc(diags, func(a, b lint.Diagnostic) int {
+		if a.Line != b.Line {
+			return cmp.Compare(a.Line, b.Line)
+		}
+		return cmp.Compare(a.Column, b.Column)
+	})
 }
 
 // checkEmpty walks real link/image nodes and flags an empty or `#`-only
@@ -299,6 +309,13 @@ func reversedInLine(orig, masked []byte) []revMatch {
 	if idx == nil {
 		return nil
 	}
+	// idx already gives the exact upper bound on match count, but every
+	// entry can still be dropped by the guards below (e.g. an ordinary
+	// [text](url)[ref] — a link immediately followed by a reference or
+	// footnote). Allocate lazily on the first survivor so an all-filtered
+	// line costs nothing extra and returns nil, not a discarded non-nil
+	// empty slice — see docs/development/high-performance-go.md
+	// "Return nil, not []T{}."
 	var out []revMatch
 	for _, m := range idx {
 		s, e := m[0], m[1]
@@ -310,6 +327,9 @@ func reversedInLine(orig, masked []byte) []revMatch {
 		}
 		if e < len(orig) && orig[e] == '(' {
 			continue // [text](url) — a normal link, not reversed
+		}
+		if out == nil {
+			out = make([]revMatch, 0, len(idx))
 		}
 		out = append(out, revMatch{
 			col0:     s,
