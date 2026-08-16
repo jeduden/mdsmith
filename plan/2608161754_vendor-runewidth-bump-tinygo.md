@@ -141,9 +141,26 @@ so (about 6.5 ns against 8.0 ns per cell across five runs).
 
 mdsmith's own corpus and most Markdown tables are English or
 otherwise ASCII, so this is the case to optimize. The only
-content the LUT helps is wide CJK tables, and only in the
+content the LUT helps is CJK and emoji, and only in the
 per-rune width step that uax29 grapheme clustering already
-dominates. That regression is accepted.
+dominates.
+
+**Emoji specifically, since we write them.** The status
+emoji in plan front matter and the PLAN.md status column —
+`✅ 🔲 🔳 ⛔ 🤖` — measure width 2 in every variant: 0.0.24,
+0.0.27 with the LUT, and 0.0.27 without it. Removing the LUT
+changes no emoji width, which the parity test below proves
+across the whole rune range. So emoji tables do not
+re-align from this change. Per emoji cell the no-LUT path
+costs about 7 ns more, and a 250-row status column adds
+roughly 2 microseconds per format. That is accepted.
+
+One real width change does come from the version bump, not
+the LUT: regional-indicator flags such as `🇺🇸` go from
+width 1 in 0.0.24 to width 2 in 0.0.27, an upstream grapheme
+fix. Any table with flag emoji re-aligns once, by design.
+The regression test pins the status emoji and a flag so this
+behavior is locked and a future re-sync cannot regress it.
 
 Against the current pinned 0.0.24, the width path is
 unchanged: 0.0.24 has no LUT either. A parity test confirms
@@ -167,12 +184,13 @@ the LUT-free fork returns identical widths across all
 3. Write the regression test first (ordinary test, no build
    tag): for every rune in `0..0x10FFFF` and both
    `eastAsian` settings, assert `RuneWidth` equals
-   `runeWidthNoLUT` with the same arguments; add a handful
-   of `StringWidth` cases exercising the uax29 grapheme
-   path (a ZWJ emoji sequence, a regional-indicator flag, a
-   base+combining sequence). It passes on the as-copied
-   fork and must still pass after step 4 — it guards the
-   removal, it does not drive it.
+   `runeWidthNoLUT` with the same arguments; add `StringWidth`
+   cases for the emoji mdsmith actually writes — the status
+   set `✅ 🔲 🔳 ⛔ 🤖` (each expected width 2) — plus the
+   uax29 grapheme path (a ZWJ family sequence, a
+   regional-indicator flag, a base+combining sequence). It
+   passes on the as-copied fork and must still pass after
+   step 4 — it guards the removal, it does not drive it.
 4. Delete the eager LUT: remove `strictWidthLUT`, remove
    `initStrictWidthLUT`, drop its call from `init`, and
    replace every `strictWidthLUT[k][r]` read with the
