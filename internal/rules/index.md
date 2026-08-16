@@ -93,6 +93,7 @@ row: "| [{id}]({filename}) | `{name}` | {category} | {status} | {description} |"
 | [MDS071](MDS071-required-frontmatter/README.md)               | `required-frontmatter`               | structural    | ready     | Every file in the configured glob scope must declare each named front-matter field with a present, non-empty value.                                                   |
 | [MDS072](MDS072-external-link-check/README.md)                | `external-link-check`                | link          | ready     | Probe external http and https URLs; flag any returning a transport error or 4xx/5xx response.                                                                         |
 | [MDS073](MDS073-slide-structure/README.md)                    | `slide-structure`                    | structural    | ready     | Flags Slidev slide-structure errors: unknown layouts, missing or orphaned slot separators, missing layout-required fields, and misspelled per-slide frontmatter keys. |
+| [MDS074](MDS074-over-repetition/README.md)                    | `over-repetition`                    | prose         | ready     | A content word must not repeat more than `max` times within the configured scope unit. Counts prose only; fenced and indented code blocks are excluded.               |
 <?/catalog?>
 
 ## Directive rules
