@@ -169,47 +169,76 @@ the LUT-free fork returns identical widths across all
 
 ## Tasks
 
-1. Spike first: vendor go-runewidth 0.0.27 into
-   `pkg/runewidth/` (non-test `.go` files plus `LICENSE`),
-   rewrite the package path, promote uax29 to a direct
-   `require`, and confirm `tinygo build -target wasm
-   ./cmd/mdsmith-wasm` still times out — establishing the
-   reproduction inside the tree before changing anything.
-   If tinygo instead fails on uax29, stop and re-plan.
-2. Record the upstream version and commit in a package doc
-   comment. Do not copy `go.mod`, `go.sum`, or the
-   benchmark scratch files. Keep the exported API
-   byte-identical so a future re-sync stays a mechanical
-   diff.
-3. Write the regression test first (ordinary test, no build
-   tag): for every rune in `0..0x10FFFF` and both
-   `eastAsian` settings, assert `RuneWidth` equals
-   `runeWidthNoLUT` with the same arguments; add `StringWidth`
-   cases for the emoji mdsmith actually writes — the status
-   set `✅ 🔲 🔳 ⛔ 🤖` (each expected width 2) — plus the
-   uax29 grapheme path (a ZWJ family sequence, a
-   regional-indicator flag, a base+combining sequence). It
-   passes on the as-copied fork and must still pass after
-   step 4 — it guards the removal, it does not drive it.
-4. Delete the eager LUT: remove `strictWidthLUT`, remove
+The work is three phases. Phase 0 is a spike whose result
+gates the other two — do not start Phase 1 until it passes.
+
+### Phase 0 — spike (go / no-go)
+
+One question decides whether the rest of the plan holds:
+does uax29 build under tinygo? Everything else is already
+known — the LUT times out (seen on [PR #777][pr777]'s CI),
+the removal is equivalence-by-construction, and the widths
+are measured. So spend the smallest effort that answers only
+the open question, before writing any of the real change.
+
+1. Vendor go-runewidth 0.0.27 into `pkg/runewidth/` (non-test
+   `.go` files plus `LICENSE`), rewrite the package path, and
+   promote uax29 to a direct `require`.
+2. Run `tinygo build -target wasm ./cmd/mdsmith-wasm` and read
+   which package the interp pass dies in.
+
+The failure location is the gate:
+
+- Timeout in `runewidth` (expected) — the LUT reproduces
+  inside the tree and uax29 compiles. Proceed to Phase 1 on
+  this same branch.
+- Failure in `uax29` — the plan's shape is wrong. Stop.
+  uax29 then needs its own treatment (vendor and patch it
+  too, or keep grapheme clustering off the wasm path), which
+  is a different plan. Do not continue.
+
+### Phase 1 — remove the LUT
+
+3. Record the upstream version and commit in a package doc
+   comment. Do not copy `go.mod`, `go.sum`, or the benchmark
+   scratch files. Keep the exported API byte-identical so a
+   future re-sync stays a mechanical diff.
+4. Write the regression test first (ordinary test, no build
+   tag): for every rune in `0..0x10FFFF` and both `eastAsian`
+   settings, assert `RuneWidth` equals `runeWidthNoLUT` with
+   the same arguments; add `StringWidth` cases for the emoji
+   mdsmith actually writes — the status set `✅ 🔲 🔳 ⛔ 🤖`
+   (each expected width 2) — plus the uax29 grapheme path (a
+   ZWJ family sequence, a regional-indicator flag, a
+   base+combining sequence). It passes on the as-copied fork
+   and must still pass after step 5 — it guards the removal,
+   it does not drive it.
+5. Delete the eager LUT: remove `strictWidthLUT`, remove
    `initStrictWidthLUT`, drop its call from `init`, and
    replace every `strictWidthLUT[k][r]` read with the
    equivalent `runeWidthNoLUT(r, eastAsian, strictEmojiNeutral)`
    call, preserving the exact arguments each read encoded.
    Do not substitute a `sync.Once`: that keeps the 2.1 MiB
    array and only moves the fill to first call.
-5. Repoint the three call sites to `pkg/runewidth` and drop
+6. Confirm the tinygo wasm build now succeeds and
+   `TestTinyGoWASMArtifactSizeBudget` passes — the Phase 0
+   timeout is gone and the 2.1 MiB is no longer in the
+   artifact.
+
+### Phase 2 — integrate and retire the module
+
+7. Repoint the three call sites to `pkg/runewidth` and drop
    `github.com/mattn/go-runewidth` from [go.mod][gomod] and
    `go.sum`. Confirm uax29 is now a direct requirement.
-6. Regenerate the table-formatting golden fixtures if the
-   0.0.24 -> 0.0.27 width changes move any output, and
-   review the diff so the shift is understood and intended,
-   not silently absorbed.
-7. Document the fork and its single divergence (the LUT
+8. Regenerate the table-formatting golden fixtures if the
+   0.0.24 -> 0.0.27 width changes move any output, and review
+   the diff so the shift (flag emoji, say) is understood and
+   intended, not silently absorbed.
+9. Document the fork and its single divergence (the LUT
    removal) in [markdown-library.md][mdlib] or a sibling
    development page, so a re-sync knows the deletion is
    deliberate.
-8. Close [PR #777][pr777] as retired by this work.
+10. Close [PR #777][pr777] as retired by this work.
 
 ## Optional follow-up (not required by this plan)
 
