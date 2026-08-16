@@ -38,7 +38,9 @@ var (
 	widewidth       table // ambiguous + doublewidth merged for EA path
 	eastAsianWidth  widthTable
 	eastAsianWidth0 [0x300]byte
-	strictWidthLUT  [2][0x110000]byte
+	// LUT removed: upstream's strictWidthLUT [2][0x110000]byte is
+	// deleted in this fork. See doc.go — it was a pure memoization of
+	// runeWidthNoLUT whose 2.1 MiB init-time fill timed out tinygo.
 )
 
 func init() {
@@ -48,7 +50,7 @@ func init() {
 	for r := range eastAsianWidth0 {
 		eastAsianWidth0[r] = byte(runeWidthEastAsianNoCache(rune(r), true))
 	}
-	initStrictWidthLUT()
+	// LUT removed: no initStrictWidthLUT() call.
 	handleEnv()
 }
 
@@ -242,13 +244,11 @@ func runeWidthEastAsianNoCache(r rune, strictEmojiNeutral bool) int {
 	return 1
 }
 
-func initStrictWidthLUT() {
-	for i := range strictWidthLUT[0] {
-		r := rune(i)
-		strictWidthLUT[0][i] = byte(runeWidthNoLUT(r, false, true))
-		strictWidthLUT[1][i] = byte(runeWidthNoLUT(r, true, true))
-	}
-}
+// LUT removed: upstream's initStrictWidthLUT is deleted in this fork.
+// It filled strictWidthLUT[0] with runeWidthNoLUT(r, false, true) and
+// strictWidthLUT[1] with runeWidthNoLUT(r, true, true); RuneWidth now
+// calls runeWidthNoLUT directly, which is equivalent by construction
+// (guarded by TestRuneWidthEqualsNoLUT).
 
 var private = table{
 	{0x00E000, 0x00F8FF}, {0x0F0000, 0x0FFFFD}, {0x100000, 0x10FFFD},
@@ -292,12 +292,12 @@ func (c *Condition) RuneWidth(r rune) int {
 	if len(c.combinedLut) > 0 {
 		return int(c.combinedLut[r>>1]>>(uint(r&1)*4)) & 3
 	}
-	if c.StrictEmojiNeutral {
-		if c.EastAsianWidth {
-			return int(strictWidthLUT[1][r])
-		}
-		return int(strictWidthLUT[0][r])
-	}
+	// LUT removed: upstream read strictWidthLUT[k][r] here for the
+	// StrictEmojiNeutral case. Since strictWidthLUT[1][r] was
+	// runeWidthNoLUT(r, true, true) and strictWidthLUT[0][r] was
+	// runeWidthNoLUT(r, false, true), and StrictEmojiNeutral was true
+	// on that path, both branches plus the non-strict fallback collapse
+	// to this single call.
 	return runeWidthNoLUT(r, c.EastAsianWidth, c.StrictEmojiNeutral)
 }
 
