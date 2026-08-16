@@ -3,7 +3,7 @@ id: 2608161754
 title: >-
   Vendor go-runewidth as a patched fork so post-LUT
   versions build under tinygo
-status: "🔳"
+status: "✅"
 model: sonnet
 summary: >-
   go-runewidth 0.0.25+ fills a 2.1 MiB strictWidthLUT in
@@ -258,12 +258,12 @@ The two tinygo criteria are verified by CI's `tinygo-wasm`
 job (tinygo is not installable in the dev environment); the
 rest are verified locally.
 
-- [ ] `tinygo build -target wasm ./cmd/mdsmith-wasm`
+- [x] `tinygo build -target wasm ./cmd/mdsmith-wasm`
       succeeds with the vendored package, no interp timeout.
-      (CI `tinygo-wasm`.)
-- [ ] `TestTinyGoWASMArtifactSizeBudget` passes and the
+      (CI `tinygo-wasm` green, 4m59s.)
+- [x] `TestTinyGoWASMArtifactSizeBudget` passes and the
       artifact does not carry the 2.1 MiB the LUT would add.
-      (CI `tinygo-wasm`.)
+      (CI `tinygo-wasm` green.)
 - [x] The regression test proves `RuneWidth` equals
       `runeWidthNoLUT` across the full rune range and both
       `eastAsian` settings, and covers a ZWJ emoji, a flag,
