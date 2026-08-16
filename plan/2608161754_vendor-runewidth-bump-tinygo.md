@@ -3,7 +3,7 @@ id: 2608161754
 title: >-
   Vendor go-runewidth as a patched fork so post-LUT
   versions build under tinygo
-status: "🔲"
+status: "🔳"
 model: sonnet
 summary: >-
   go-runewidth 0.0.25+ fills a 2.1 MiB strictWidthLUT in
@@ -254,28 +254,36 @@ supplied at merge time per project practice.
 
 ## Acceptance Criteria
 
+The two tinygo criteria are verified by CI's `tinygo-wasm`
+job (tinygo is not installable in the dev environment); the
+rest are verified locally.
+
 - [ ] `tinygo build -target wasm ./cmd/mdsmith-wasm`
       succeeds with the vendored package, no interp timeout.
+      (CI `tinygo-wasm`.)
 - [ ] `TestTinyGoWASMArtifactSizeBudget` passes and the
       artifact does not carry the 2.1 MiB the LUT would add.
-- [ ] The regression test proves `RuneWidth` equals
+      (CI `tinygo-wasm`.)
+- [x] The regression test proves `RuneWidth` equals
       `runeWidthNoLUT` across the full rune range and both
       `eastAsian` settings, and covers a ZWJ emoji, a flag,
       and a combining sequence through `StringWidth`.
-- [ ] The regression test is untagged and runs in the
+- [x] The regression test is untagged and runs in the
       default `go test ./...`, so it cannot rot the way
       `mdtext_punkt_upstream` did.
-- [ ] `pkg/runewidth/LICENSE` is the upstream MIT license,
+- [x] `pkg/runewidth/LICENSE` is the upstream MIT license,
       unmodified, copyright intact.
-- [ ] `github.com/mattn/go-runewidth` no longer appears in
+- [x] `github.com/mattn/go-runewidth` no longer appears in
       `go.mod` or `go.sum`; `uax29/v2` is a direct require.
-- [ ] Any table-formatting output change from the
+- [x] Any table-formatting output change from the
       0.0.24 -> 0.0.27 upgrade is captured in regenerated
-      fixtures and reviewed, not silently applied.
-- [ ] `go test ./...` is green.
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run`
+      fixtures and reviewed, not silently applied. (Reviewed:
+      no golden fixture moved — no fixture holds a
+      width-changed rune — so none needed regenerating.)
+- [x] `go test ./...` is green.
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues.
-- [ ] `mdsmith check .` is green.
+- [x] `mdsmith check .` is green.
 
 [pr777]: https://github.com/jeduden/mdsmith/pull/777
 [gomod]: ../go.mod
