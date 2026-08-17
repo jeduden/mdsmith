@@ -3,7 +3,7 @@ id: 2608091911
 title: >-
   Add dedicated unit tests for occurrence and
   slidevstructure private helpers
-status: "🔲"
+status: "✅"
 model: haiku
 summary: >-
   internal/rules/occurrence and
@@ -78,14 +78,14 @@ actual `rule.Rule` methods, already have tests.
 
 ## Acceptance Criteria
 
-- [ ] Every helper named in the Background section has a
+- [x] Every helper named in the Background section has a
       test carrying its own name (or is covered by a named
       subtest under one parent test) in the package's
       `rule_test.go`.
-- [ ] `go test ./...` is green.
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run`
+- [x] `go test ./...` is green.
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues.
-- [ ] `mdsmith check .` is green.
+- [x] `mdsmith check .` is green.
 
 [audit-log]: ../docs/development/architecture-audit.md
 [occurrence]: ../internal/rules/occurrence/rule.go

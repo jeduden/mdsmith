@@ -1,9 +1,11 @@
 package occurrence
 
 import (
+	"regexp"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -427,4 +429,203 @@ func TestCheck_Section_PatternMultipleHeadings(t *testing.T) {
 	diags := r.Check(mustFile(t, src))
 	require.Len(t, diags, 1)
 	assert.Equal(t, 1, diags[0].Line)
+}
+
+// --- private helper unit tests ---
+
+func TestCountCombinedInRange(t *testing.T) {
+	r := &Rule{Tokens: []string{"foo"}, CaseSensitive: true}
+	paragraphs := []astutil.SectionParagraph{
+		{Text: "foo foo", Line: 2},
+		{Text: "bar", Line: 10},
+		{Text: "foo", Line: 3},
+	}
+	// [2, 5) covers lines 2 and 3: 2+1 = 3 matches
+	assert.Equal(t, 3, r.countCombinedInRange(paragraphs, nil, 2, 5))
+	// [10, 11) covers line 10: no "foo"
+	assert.Equal(t, 0, r.countCombinedInRange(paragraphs, nil, 10, 11))
+}
+
+func TestCountPatternInRange(t *testing.T) {
+	re := regexp.MustCompile(`foo`)
+	r := &Rule{Pattern: re, patternSource: "foo"}
+	paragraphs := []astutil.SectionParagraph{
+		{Text: "foo bar foo", Line: 2},
+		{Text: "baz", Line: 10},
+	}
+	assert.Equal(t, 2, r.countPatternInRange(paragraphs, nil, 2, 5))
+	assert.Equal(t, 0, r.countPatternInRange(paragraphs, nil, 5, 9))
+}
+
+func TestCountCombined(t *testing.T) {
+	r := &Rule{Tokens: []string{"foo"}, CaseSensitive: true}
+	assert.Equal(t, 2, r.countCombined("foo bar foo"))
+	assert.Equal(t, 0, r.countCombined("bar baz"))
+}
+
+func TestSearchText(t *testing.T) {
+	r := &Rule{CaseSensitive: false}
+	assert.Equal(t, "hello world", r.searchText("Hello World"))
+	r2 := &Rule{CaseSensitive: true}
+	assert.Equal(t, "Hello World", r2.searchText("Hello World"))
+}
+
+func TestCountToken(t *testing.T) {
+	// case-sensitive: uses Tokens directly
+	r := &Rule{Tokens: []string{"foo"}, CaseSensitive: true}
+	assert.Equal(t, 2, r.countToken("foo bar foo", 0))
+	// case-insensitive: uses lowerTokens on already-lowercased text
+	r2 := &Rule{Tokens: []string{"FOO"}, lowerTokens: []string{"foo"}, CaseSensitive: false}
+	assert.Equal(t, 2, r2.countToken("foo bar foo", 0))
+	// empty token always returns 0
+	r3 := &Rule{Tokens: []string{""}, lowerTokens: []string{""}, CaseSensitive: false}
+	assert.Equal(t, 0, r3.countToken("foo", 0))
+}
+
+func TestCountPattern(t *testing.T) {
+	re := regexp.MustCompile(`\d+`)
+	r := &Rule{Pattern: re}
+	assert.Equal(t, 3, r.countPattern("one 1 two 22 three 333"))
+	assert.Equal(t, 0, r.countPattern("no digits here"))
+}
+
+func TestDiagEach(t *testing.T) {
+	r := &Rule{Min: 1, Max: 3}
+	// within [min, max] — no diagnostic
+	assert.Empty(t, r.diagEach(2, 5, "file", "foo", "test.md"))
+	// exceeds max
+	diags := r.diagEach(5, 5, "file", "foo", "test.md")
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "max 3")
+	// below min
+	diags2 := r.diagEach(0, 5, "file", "foo", "test.md")
+	require.Len(t, diags2, 1)
+	assert.Contains(t, diags2[0].Message, "min 1")
+}
+
+func TestDiagCombined(t *testing.T) {
+	r := &Rule{Min: 1, Max: 3}
+	// within [min, max] — no diagnostic
+	assert.Empty(t, r.diagCombined(2, 1, "file", "test.md"))
+	// exceeds max
+	diags := r.diagCombined(5, 1, "file", "test.md")
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "max 3")
+	assert.Contains(t, diags[0].Message, "tokens") // label defaults to "tokens" when patternSource empty
+	// below min
+	diags2 := r.diagCombined(0, 1, "file", "test.md")
+	require.Len(t, diags2, 1)
+	assert.Contains(t, diags2[0].Message, "min 1")
+}
+
+func TestBoundMessage(t *testing.T) {
+	r := &Rule{Min: 1, Max: 3}
+	msg := r.boundMessage("foo", 5, "file")
+	assert.Contains(t, msg, "max 3")
+	msg2 := r.boundMessage("foo", 0, "file")
+	assert.Contains(t, msg2, "min 1")
+}
+
+func TestApplyScope(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.applyScope("file"))
+	assert.Equal(t, "file", r.Scope)
+	require.NoError(t, r.applyScope("section"))
+	require.NoError(t, r.applyScope("paragraph"))
+	require.Error(t, r.applyScope("block"))
+	require.Error(t, r.applyScope(42))
+}
+
+func TestApplyTokens(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.applyTokens([]any{"foo", "bar"}))
+	assert.Equal(t, []string{"foo", "bar"}, r.Tokens)
+	require.Error(t, r.applyTokens("not-a-slice"))
+}
+
+func TestExtractPattern(t *testing.T) {
+	s, err := extractPattern("foo+")
+	require.NoError(t, err)
+	assert.Equal(t, "foo+", s)
+	_, err = extractPattern(42)
+	require.Error(t, err)
+}
+
+func TestApplyMin(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.applyMin(3))
+	assert.Equal(t, 3, r.Min)
+	require.Error(t, r.applyMin(-1))
+	require.Error(t, r.applyMin("two"))
+}
+
+func TestApplyMax(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.applyMax(5))
+	assert.Equal(t, 5, r.Max)
+	require.Error(t, r.applyMax("five"))
+}
+
+func TestApplyCount(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.applyCount("each"))
+	assert.Equal(t, "each", r.Count)
+	require.NoError(t, r.applyCount("combined"))
+	require.Error(t, r.applyCount("all"))
+	require.Error(t, r.applyCount(42))
+}
+
+func TestApplyCaseSensitive(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.applyCaseSensitive(true))
+	assert.True(t, r.CaseSensitive)
+	require.NoError(t, r.applyCaseSensitive(false))
+	assert.False(t, r.CaseSensitive)
+	require.Error(t, r.applyCaseSensitive("yes"))
+}
+
+func TestFinalizeSettings(t *testing.T) {
+	// empty rawPattern, no tokens — no error
+	r := &Rule{}
+	require.NoError(t, r.finalizeSettings(""))
+
+	// valid pattern — Pattern compiled and set
+	r2 := &Rule{}
+	require.NoError(t, r2.finalizeSettings("qux+"))
+	assert.NotNil(t, r2.Pattern)
+
+	// tokens + non-empty rawPattern — mutually exclusive error
+	r3 := &Rule{Tokens: []string{"foo"}}
+	require.Error(t, r3.finalizeSettings("foo+"))
+
+	// invalid pattern — compile error
+	r4 := &Rule{}
+	require.Error(t, r4.finalizeSettings("[invalid"))
+
+	// case-insensitive tokens — lowerTokens built
+	r5 := &Rule{Tokens: []string{"FOO", "Bar"}, CaseSensitive: false}
+	require.NoError(t, r5.finalizeSettings(""))
+	assert.Equal(t, []string{"foo", "bar"}, r5.lowerTokens)
+}
+
+func TestCompileAndSetPattern(t *testing.T) {
+	// happy path — pattern compiled, source stored
+	r := &Rule{}
+	require.NoError(t, r.compileAndSetPattern("uniquehelper1+"))
+	assert.NotNil(t, r.Pattern)
+	assert.Equal(t, "uniquehelper1+", r.patternSource)
+
+	// invalid regex — error returned
+	r2 := &Rule{}
+	require.Error(t, r2.compileAndSetPattern("[bad"))
+
+	// case-sensitive: compiled string has no (?i) prefix
+	r3 := &Rule{CaseSensitive: true}
+	require.NoError(t, r3.compileAndSetPattern("exactpat1"))
+	assert.Equal(t, "exactpat1", r3.Pattern.String())
+
+	// case-insensitive: compiled string gains (?i) prefix
+	r4 := &Rule{CaseSensitive: false}
+	require.NoError(t, r4.compileAndSetPattern("lowerpat1"))
+	assert.Equal(t, "(?i)lowerpat1", r4.Pattern.String())
 }

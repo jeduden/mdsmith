@@ -354,3 +354,170 @@ func TestEditDistance_LongStrings(t *testing.T) {
 	assert.Equal(t, len(long)+1, editDistance(long, "x"))
 	assert.Equal(t, 1+len(long), editDistance("x", long))
 }
+
+// --- private helper unit tests ---
+
+func TestSortedKeys(t *testing.T) {
+	m := map[string]string{"b": "2", "a": "1", "c": "3"}
+	assert.Equal(t, []string{"a", "b", "c"}, sortedKeys(m))
+	assert.Empty(t, sortedKeys(nil))
+}
+
+func TestNearest(t *testing.T) {
+	cands := []string{"center", "cover", "default"}
+	assert.Equal(t, "center", nearest("centre", cands))
+	assert.Equal(t, "", nearest("zzztotallydifferent", cands))
+}
+
+func TestSlideAnchor(t *testing.T) {
+	r := &Rule{}
+	// fmLine has layout key — returns its line
+	s1 := &slide{startLine: 5, fmLine: map[string]int{"layout": 3}}
+	assert.Equal(t, 3, r.slideAnchor(s1))
+	// no fmLine — falls back to startLine
+	s2 := &slide{startLine: 7}
+	assert.Equal(t, 7, r.slideAnchor(s2))
+	// fmLine present but no layout key — falls back to startLine
+	s3 := &slide{startLine: 9, fmLine: map[string]int{"transition": 2}}
+	assert.Equal(t, 9, r.slideAnchor(s3))
+}
+
+func TestIsCustomLayout(t *testing.T) {
+	r := &Rule{CustomLayouts: []string{"my-layout", "other-layout"}}
+	assert.True(t, r.isCustomLayout("my-layout"))
+	assert.False(t, r.isCustomLayout("unknown"))
+	assert.False(t, (&Rule{}).isCustomLayout("anything"))
+}
+
+func TestDiag(t *testing.T) {
+	r := &Rule{}
+	f := &lint.File{Path: "slides.md"}
+	d := r.diag(f, 5, "test message")
+	assert.Equal(t, "slides.md", d.File)
+	assert.Equal(t, 5, d.Line)
+	assert.Equal(t, 1, d.Column)
+	assert.Equal(t, "MDS073", d.RuleID)
+	assert.Equal(t, "slide-structure", d.RuleName)
+	assert.Equal(t, "test message", d.Message)
+}
+
+func TestCheckUnknownLayout(t *testing.T) {
+	r := &Rule{}
+	f := &lint.File{Path: "test.md"}
+	// no layout declared — no diagnostic, returns false
+	unknown, diags := r.checkUnknownLayout(f, nil, "", false, 1)
+	assert.False(t, unknown)
+	assert.Empty(t, diags)
+	// known builtin layout — no diagnostic, returns false
+	unknown2, diags2 := r.checkUnknownLayout(f, nil, "center", true, 1)
+	assert.False(t, unknown2)
+	assert.Empty(t, diags2)
+	// unknown layout — diagnostic emitted, returns true
+	unknown3, diags3 := r.checkUnknownLayout(f, nil, "zzz-unknown-xyz", true, 1)
+	assert.True(t, unknown3)
+	require.Len(t, diags3, 1)
+	assert.Contains(t, diags3[0].Message, "unknown Slidev layout")
+}
+
+func TestCheckMissingSlots(t *testing.T) {
+	r := &Rule{}
+	f := &lint.File{Path: "test.md"}
+	// two-cols requires "right" — not present → diagnostic
+	s := &slide{startLine: 1}
+	diags := r.checkMissingSlots(s, f, nil, "two-cols", 1)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "::right::")
+	// right slot present — no diagnostic
+	s2 := &slide{startLine: 1, slots: []slotRef{{name: "right", line: 3}}}
+	diags2 := r.checkMissingSlots(s2, f, nil, "two-cols", 1)
+	assert.Empty(t, diags2)
+	// layout with no required slots — no diagnostic
+	diags3 := r.checkMissingSlots(s, f, nil, "default", 1)
+	assert.Empty(t, diags3)
+}
+
+func TestCheckOrphanedSlots(t *testing.T) {
+	r := &Rule{}
+	f := &lint.File{Path: "test.md"}
+	// slot not valid for layout — diagnostic anchored at slot line
+	s := &slide{startLine: 1, slots: []slotRef{{name: "right", line: 5}}}
+	diags := r.checkOrphanedSlots(s, f, nil, "default")
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "::right::")
+	assert.Equal(t, 5, diags[0].Line)
+	// valid slot for layout — no diagnostic
+	s2 := &slide{startLine: 1, slots: []slotRef{{name: "right", line: 5}}}
+	diags2 := r.checkOrphanedSlots(s2, f, nil, "two-cols")
+	assert.Empty(t, diags2)
+	// no slots — no diagnostic
+	assert.Empty(t, r.checkOrphanedSlots(&slide{startLine: 1}, f, nil, "default"))
+}
+
+func TestCheckRequiredField(t *testing.T) {
+	r := &Rule{}
+	f := &lint.File{Path: "test.md"}
+	// image layout requires "image" field — absent → diagnostic
+	s := &slide{startLine: 1, fm: map[string]string{"layout": "image"}}
+	diags := r.checkRequiredField(s, f, nil, "image", 1)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, `"image"`)
+	// image field present — no diagnostic
+	s2 := &slide{startLine: 1, fm: map[string]string{"layout": "image", "image": "./bg.png"}}
+	diags2 := r.checkRequiredField(s2, f, nil, "image", 1)
+	assert.Empty(t, diags2)
+	// layout with no required field — no diagnostic
+	s3 := &slide{startLine: 1, fm: map[string]string{"layout": "center"}}
+	assert.Empty(t, r.checkRequiredField(s3, f, nil, "center", 1))
+}
+
+func TestCheckUnknownFMKeys(t *testing.T) {
+	r := &Rule{}
+	f := &lint.File{Path: "test.md"}
+	// all known keys — no diagnostic
+	s := &slide{
+		startLine: 1,
+		fm:        map[string]string{"layout": "center", "transition": "fade"},
+		fmLine:    map[string]int{"layout": 2, "transition": 3},
+	}
+	assert.Empty(t, r.checkUnknownFMKeys(s, f, nil))
+	// near-miss typo — diagnostic with did-you-mean
+	s2 := &slide{
+		startLine: 1,
+		fm:        map[string]string{"transiton": "fade"},
+		fmLine:    map[string]int{"transiton": 3},
+	}
+	diags := r.checkUnknownFMKeys(s2, f, nil)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "did you mean")
+	// arbitrary data key far from any known key — no diagnostic
+	s3 := &slide{
+		startLine: 1,
+		fm:        map[string]string{"myCustomData": "hello"},
+		fmLine:    map[string]int{"myCustomData": 2},
+	}
+	assert.Empty(t, r.checkUnknownFMKeys(s3, f, nil))
+}
+
+func TestCheckSlide(t *testing.T) {
+	r := &Rule{}
+	f := &lint.File{Path: "test.md"}
+	// slide with no fm — no diagnostics (defaults to "default" layout)
+	s := &slide{startLine: 1}
+	assert.Empty(t, r.checkSlide(s, f, nil))
+	// valid builtin layout, no required field, no slots
+	s2 := &slide{
+		startLine: 1,
+		fm:        map[string]string{"layout": "center"},
+		fmLine:    map[string]int{"layout": 2},
+	}
+	assert.Empty(t, r.checkSlide(s2, f, nil))
+	// unknown layout fires a diagnostic
+	s3 := &slide{
+		startLine: 1,
+		fm:        map[string]string{"layout": "zzz-bogus-layout"},
+		fmLine:    map[string]int{"layout": 2},
+	}
+	diags := r.checkSlide(s3, f, nil)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "unknown Slidev layout")
+}
