@@ -134,6 +134,20 @@ func TestCheck_LongRunDedup_OnlyOnePerLength(t *testing.T) {
 	assert.Equal(t, 1, diags[0].Column)
 }
 
+// TestCheck_MultipleLines_SortedByLine pins the Line-tiebreak branch
+// of Check's final sort: two triggering lines produce diagnostics in
+// ascending line order. Every other Check test in this file triggers
+// at most one line per document, so this is the only test that
+// exercises the `a.Line != b.Line` comparison.
+func TestCheck_MultipleLines_SortedByLine(t *testing.T) {
+	f, err := lint.NewFile("test.md", []byte("***a***\n\n***b***\n"))
+	require.NoError(t, err)
+	diags := activeRule().Check(f)
+	require.Len(t, diags, 2)
+	assert.Equal(t, 1, diags[0].Line)
+	assert.Equal(t, 3, diags[1].Line)
+}
+
 func TestApplySettings_RejectsUnknownKey(t *testing.T) {
 	r := &Rule{}
 	err := r.ApplySettings(map[string]any{"bogus": true})
