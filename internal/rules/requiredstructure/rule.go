@@ -576,25 +576,33 @@ func (r *Rule) dispatchSingleFileSchema(
 ) []lint.Diagnostic {
 	res := r.cachedRawSchema(f, schemaPath)
 	if res.err != nil {
-		return []lint.Diagnostic{r.diag(f.Path, 1, res.err.Error())}
+		return []lint.Diagnostic{r.diag(f.Path, 1,
+			fmt.Sprintf("cannot read schema %q: %v", schemaPath, res.err))}
 	}
 	if res.extends {
 		return r.checkComposedSources(f, sources)
 	}
-	return r.checkSingleFileSchemaFromData(f, schemaPath, res.data, res.schPath)
+	return r.checkSingleFileSchemaFromData(f, schemaPath, res.data, schemaPath)
 }
 
-// rawSchemaResult bundles loadSchemaAt's return values with the
-// extends-peek schemaDataDeclaresExtends derives from them, so
+// rawSchemaResult bundles readSchemaFile's return value with the
+// extends-peek schemaDataDeclaresExtends derives from it, so
 // cachedRawSchema can memoize both behind a single RunCache slot.
+// err is the raw read error, not wrapped with a caller's schemaPath
+// string: two kinds can reference the same absolute schema file
+// through differently-spelled (but path-equivalent) schemaPath
+// strings — "docs/proto.md" vs "./docs/proto.md" both resolve to the
+// same absSchemaCacheKey — and whichever caller's spelling populated
+// the cache first must not leak into a later caller's diagnostic.
+// dispatchSingleFileSchema formats the caller-facing message from its
+// own schemaPath argument instead.
 type rawSchemaResult struct {
 	data    []byte
-	schPath string
 	err     error
 	extends bool
 }
 
-// cachedRawSchema returns loadSchemaAt's result for schemaPath plus
+// cachedRawSchema returns readSchemaFile's result for schemaPath plus
 // the schemaDataDeclaresExtends peek over that data, computed at
 // most once per absolute schema path per RunCache lifetime. Without
 // this, a schema referenced by every file under a workspace-wide
@@ -606,13 +614,12 @@ type rawSchemaResult struct {
 // pre-cache behavior for the struct-literal unit-test path.
 func (r *Rule) cachedRawSchema(f *lint.File, schemaPath string) rawSchemaResult {
 	build := func() any {
-		data, schPath, err := r.loadSchemaAt(f, schemaPath)
+		data, err := readSchemaFile(f, schemaPath)
 		if err != nil {
 			return rawSchemaResult{err: err}
 		}
 		return rawSchemaResult{
 			data:    data,
-			schPath: schPath,
 			extends: schemaDataDeclaresExtends(data),
 		}
 	}
