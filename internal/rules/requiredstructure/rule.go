@@ -574,14 +574,54 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 func (r *Rule) dispatchSingleFileSchema(
 	f *lint.File, schemaPath string, sources []SchemaSource,
 ) []lint.Diagnostic {
-	data, schPath, err := r.loadSchemaAt(f, schemaPath)
-	if err != nil {
-		return []lint.Diagnostic{r.diag(f.Path, 1, err.Error())}
+	res := r.cachedRawSchema(f, schemaPath)
+	if res.err != nil {
+		return []lint.Diagnostic{r.diag(f.Path, 1, res.err.Error())}
 	}
-	if schemaDataDeclaresExtends(data) {
+	if res.extends {
 		return r.checkComposedSources(f, sources)
 	}
-	return r.checkSingleFileSchemaFromData(f, schemaPath, data, schPath)
+	return r.checkSingleFileSchemaFromData(f, schemaPath, res.data, res.schPath)
+}
+
+// rawSchemaResult bundles loadSchemaAt's return values with the
+// extends-peek schemaDataDeclaresExtends derives from them, so
+// cachedRawSchema can memoize both behind a single RunCache slot.
+type rawSchemaResult struct {
+	data    []byte
+	schPath string
+	err     error
+	extends bool
+}
+
+// cachedRawSchema returns loadSchemaAt's result for schemaPath plus
+// the schemaDataDeclaresExtends peek over that data, computed at
+// most once per absolute schema path per RunCache lifetime. Without
+// this, a schema referenced by every file under a workspace-wide
+// kind was re-read from disk and re-unmarshalled as YAML once per
+// host file — see docs/development/high-performance-go.md's
+// "memoize per-input computations" pattern. absSchemaCacheKey
+// returning "" (no RunCache, or no stable absolute identity for
+// schemaPath) falls back to building directly, matching the
+// pre-cache behavior for the struct-literal unit-test path.
+func (r *Rule) cachedRawSchema(f *lint.File, schemaPath string) rawSchemaResult {
+	build := func() any {
+		data, schPath, err := r.loadSchemaAt(f, schemaPath)
+		if err != nil {
+			return rawSchemaResult{err: err}
+		}
+		return rawSchemaResult{
+			data:    data,
+			schPath: schPath,
+			extends: schemaDataDeclaresExtends(data),
+		}
+	}
+	if f.RunCache != nil {
+		if absPath := absSchemaCacheKey(f, schemaPath); absPath != "" {
+			return f.RunCache.RawSchemaFile(absPath, build).(rawSchemaResult)
+		}
+	}
+	return build().(rawSchemaResult)
 }
 
 // schemaDataDeclaresExtends reports whether the raw schema bytes
