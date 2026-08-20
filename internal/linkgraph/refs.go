@@ -77,8 +77,8 @@ func ExtractRefLinkTargets(f *lint.File) []Link {
 		out = append(out, Link{
 			Line:   line,
 			Column: col,
-			Text:   linkText(l, f.Source),
 			Target: target,
+			node:   l,
 		})
 		return ast.WalkContinue, nil
 	})

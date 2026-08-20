@@ -85,11 +85,34 @@ func ParseTarget(dest string) (Target, bool) {
 // because the engine applies f.LineOffset for front-matter adjustment.
 // CLI callers (like `mdsmith list backlinks`) that want file-relative line
 // numbers must add f.LineOffset themselves.
+// node is the AST node the link was extracted from, kept so Text can
+// flatten the visible label on demand. It is nil on a Link built
+// outside the walk (a zero value or a test literal), which Text
+// reports as an empty label.
 type Link struct {
 	Line   int
 	Column int
-	Text   string
 	Target Target
+	node   ast.Node
+}
+
+// Text returns the visible link text (everything between `[` and `]`),
+// with image alt text and emphasis flattened to plain text so
+// JSON/text output stays readable.
+//
+// The label is built here rather than during the walk because no rule
+// on the `check` path reads it — only `mdsmith list backlinks` does —
+// and materialising it per link cost a bytes.Buffer plus a string copy
+// for every link in every file. See
+// docs/development/high-performance-go.md#skip-work-you-dont-need.
+//
+// source must be the Source of the File the Link was extracted from;
+// the node's segments index into it.
+func (l Link) Text(source []byte) string {
+	if l.node == nil {
+		return ""
+	}
+	return mdtext.ExtractPlainText(l.node, source)
 }
 
 // Links returns every regular Markdown link in document order, memoized
@@ -166,8 +189,8 @@ func ExtractLinks(f *lint.File) []Link {
 		out = append(out, Link{
 			Line:   line,
 			Column: col,
-			Text:   linkText(l, f.Source),
 			Target: target,
+			node:   l,
 		})
 		return ast.WalkContinue, nil
 	})
@@ -200,8 +223,8 @@ func ExtractImages(f *lint.File) []Link {
 		out = append(out, Link{
 			Line:   line,
 			Column: col,
-			Text:   mdtext.ExtractPlainText(img, f.Source),
 			Target: target,
+			node:   img,
 		})
 		return ast.WalkContinue, nil
 	})
