@@ -5,7 +5,6 @@ import (
 	"github.com/jeduden/mdsmith/pkg/goldmark/util"
 
 	"github.com/jeduden/mdsmith/internal/lint"
-	"github.com/jeduden/mdsmith/internal/mdtext"
 )
 
 // RefLink is one reference-style link use (`[text][label]`,
@@ -27,27 +26,12 @@ type RefLink struct {
 	// table or matching against a `[label]: url` definition.
 	Label string
 
-	// node is the AST node the reference link was extracted from, kept
-	// so Text can flatten the visible label on demand. nil on a
-	// RefLink built outside the walk, which Text reports as empty.
-	node ast.Node
-}
-
-// Text returns the visible link text, flattened to plain text.
-//
-// Resolved on demand for the same reason as Link.Text: the only
-// production consumer of ExtractRefLinks (internal/index/build.go)
-// reads Line, Column and Label and never the label text, so building
-// it during the walk allocated a bytes.Buffer plus a string copy per
-// reference link in every file. See
-// docs/development/high-performance-go.md#skip-work-you-dont-need.
-//
-// source must be the Source of the File the RefLink came from.
-func (r RefLink) Text(source []byte) string {
-	if r.node == nil {
-		return ""
-	}
-	return mdtext.ExtractPlainText(r.node, source)
+	// The visible link text is deliberately not a field. The only
+	// consumer of ExtractRefLinks (internal/index) keys on Line,
+	// Column and Label, so materialising the text during the walk cost
+	// a bytes.Buffer plus a string copy per reference link in every
+	// file for something nothing read. See
+	// docs/development/high-performance-go.md#skip-work-you-dont-need.
 }
 
 // RefLinkTargets returns every reference-style link whose definition has
@@ -128,7 +112,6 @@ func ExtractRefLinks(f *lint.File) []RefLink {
 			Line:   line,
 			Column: col,
 			Label:  string(util.ToLinkReference(l.Reference.Value)),
-			node:   l,
 		})
 		return ast.WalkContinue, nil
 	})

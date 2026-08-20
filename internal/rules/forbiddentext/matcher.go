@@ -64,23 +64,24 @@ func cachedMatcher(needles []string) *matcher {
 		return m
 	}
 
-	// Compiled outside the lock: it is the expensive part, and building
-	// the same automaton twice under a race is wasteful but harmless
-	// (both are equivalent, and the map keeps whichever lands first).
+	// Compiled outside the lock: it is the expensive part, and two
+	// goroutines racing on the same key merely build equivalent
+	// automata. Whichever store lands last wins and the other is
+	// collected; a matcher is immutable, so a caller holding the copy
+	// that lost behaves identically.
 	m = newMatcher(needles)
 
 	matcherCacheMu.Lock()
 	defer matcherCacheMu.Unlock()
-	if existing, ok := matcherCache[key]; ok {
-		return existing
+	if len(matcherCache) < matcherCacheLimit {
+		matcherCache[key] = m
 	}
-	if len(matcherCache) >= matcherCacheLimit {
-		// Past the cap the workload is churning lists rather than
-		// repeating them, so drop everything instead of tracking
-		// recency: the next run repopulates what it actually uses.
-		clear(matcherCache)
-	}
-	matcherCache[key] = m
+	// Past the cap, serve the build without storing it. Evicting
+	// instead — clearing, or dropping an arbitrary entry — would throw
+	// away the lists that ARE repeating, so a workspace with a few more
+	// lists than the cap would miss on every call and recompile every
+	// time. Keeping the first entries keeps those hits; the overflow
+	// lists pay a rebuild, which is what the uncached code always did.
 	return m
 }
 
@@ -124,15 +125,35 @@ type matcher struct {
 	nsym int
 }
 
+// matcherMaxCells caps the DFA transition table at 4 million int32
+// (16 MB). The table is nodes x alphabet, and nodes grows with total
+// needle bytes, so a very large word-list would expand to many times
+// its own size — a 50k-entry list reaches tens of megabytes, and the
+// cache could hold several. Past the cap the automaton is declined and
+// the rule keeps its per-needle loop, which is slower but flat in
+// memory. Natural-language lists of a few thousand entries stay well
+// inside it.
+const matcherMaxCells = 4 << 20
+
 // newMatcher compiles needles into a matcher. Empty needles are
 // ignored — they match everything and the rule skips them. Returns nil
-// when no needle survives, which callers treat as "never matches".
+// when no needle survives or the table would exceed matcherMaxCells,
+// both of which callers treat as "never matches" and fall back from.
 func newMatcher(needles []string) *matcher {
 	m := &matcher{}
 	if !m.buildAlphabet(needles) {
 		return nil
 	}
-	trie, isEnd := m.buildTrie(needles)
+	// One node per needle byte is the worst case (no shared prefixes),
+	// plus the root.
+	maxNodes := 1
+	for _, s := range needles {
+		maxNodes += len(s)
+	}
+	if maxNodes*m.nsym > matcherMaxCells {
+		return nil
+	}
+	trie, isEnd := m.buildTrie(needles, maxNodes)
 	m.foldFailLinks(trie, isEnd)
 	return m
 }
@@ -182,8 +203,12 @@ func (m *matcher) buildAlphabet(needles []string) bool {
 }
 
 // buildTrie returns the flattened goto table (-1 where no edge exists)
-// and, per node, whether a needle ends there.
-func (m *matcher) buildTrie(needles []string) (trie []int32, isEnd []bool) {
+// and, per node, whether a needle ends there. maxNodes is the
+// no-shared-prefix worst case, used to size both slices once instead
+// of regrowing and copying a multi-megabyte table on the way up.
+func (m *matcher) buildTrie(needles []string, maxNodes int) (trie []int32, isEnd []bool) {
+	trie = make([]int32, 0, maxNodes*m.nsym)
+	isEnd = make([]bool, 0, maxNodes)
 	addNode := func() int32 {
 		id := int32(len(isEnd))
 		// Appended directly as -1 rather than growing by a zeroed

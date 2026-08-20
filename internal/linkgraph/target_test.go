@@ -146,7 +146,8 @@ func TestNeedsURLParse(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.want, needsURLParse([]byte(tc.dest)))
+			needs, _ := needsURLParse([]byte(tc.dest))
+			assert.Equal(t, tc.want, needs)
 		})
 	}
 }
@@ -179,4 +180,32 @@ func TestIsExternalDestination(t *testing.T) {
 			assert.Equal(t, tc.want, isExternalDestination([]byte(tc.dest)))
 		})
 	}
+}
+
+// TestNeedsURLParse_ReportsFirstHash covers the index the fused scan
+// returns alongside its verdict, which ParseTargetBytes uses to split
+// the fragment without a third pass over the destination.
+func TestNeedsURLParse_ReportsFirstHash(t *testing.T) {
+	cases := []struct {
+		dest string
+		want int
+	}{
+		{"guide.md", -1},
+		{"guide.md#sec", 8},
+		{"#sec", 0},
+		{"a#b#c", 1},
+		{"x#", 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.dest, func(t *testing.T) {
+			needs, hash := needsURLParse([]byte(tc.dest))
+			require.False(t, needs)
+			assert.Equal(t, tc.want, hash)
+		})
+	}
+
+	// A destination that needs the full parse reports no usable index.
+	needs, hash := needsURLParse([]byte("a#b%20c"))
+	assert.True(t, needs)
+	assert.Equal(t, -1, hash)
 }

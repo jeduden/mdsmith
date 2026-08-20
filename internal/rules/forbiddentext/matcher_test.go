@@ -224,7 +224,7 @@ func TestMatcher_BuildAlphabet(t *testing.T) {
 func TestMatcher_BuildTrie(t *testing.T) {
 	var m matcher
 	require.True(t, m.buildAlphabet([]string{"ab", "ac"}))
-	trie, isEnd := m.buildTrie([]string{"ab", "ac"})
+	trie, isEnd := m.buildTrie([]string{"ab", "ac"}, 5)
 
 	require.Len(t, isEnd, 4, "root, shared 'a', then 'b' and 'c'")
 	assert.False(t, isEnd[0], "the root is never a needle end")
@@ -325,6 +325,37 @@ func TestCachedMatcher_BoundedGrowth(t *testing.T) {
 		require.LessOrEqualf(t, size, matcherCacheLimit,
 			"cache grew past its cap after %d distinct lists", i+1)
 	}
+
+	// Past the cap, entries already stored must survive: evicting them
+	// would make a workspace with a few more lists than the cap miss on
+	// every call and recompile every time.
+	matcherCacheMu.Lock()
+	_, kept := matcherCache[matcherCacheKey([]string{"needle0"})]
+	matcherCacheMu.Unlock()
+	assert.True(t, kept, "overflow must not evict the entries that are hitting")
+
+	// And an overflow list still returns a working automaton.
+	overflow := cachedMatcher([]string{"overflowneedle"})
+	require.NotNil(t, overflow)
+	assert.True(t, overflow.matches("an overflowneedle here"))
+}
+
+// TestNewMatcher_DeclinesOversizedTable pins the memory bound. The DFA
+// is nodes x alphabet, so a very large word-list would expand to many
+// times its own byte size; past the cap the rule keeps its per-needle
+// loop, which is slower but flat in memory.
+func TestNewMatcher_DeclinesOversizedTable(t *testing.T) {
+	// Enough distinct needle bytes that maxNodes * nsym clears the cap.
+	needles := make([]string, 0, 20000)
+	for i := 0; i < 20000; i++ {
+		needles = append(needles, "needle-"+strconv.Itoa(i)+"-suffixpadding")
+	}
+	assert.Nil(t, newMatcher(needles),
+		"an oversized needle list must be declined, not compiled")
+
+	// A list just inside the bound still compiles.
+	small := []string{"delve", "realm", "tapestry"}
+	assert.NotNil(t, newMatcher(small))
 }
 
 // TestMatcher_BuildAlphabetDeclinesFullByteRange covers the overflow

@@ -86,13 +86,20 @@ func isExternalDestination(dest []byte) bool {
 //
 // Without any of these, url.URL's Path and Fragment are plain
 // substrings of the destination.
-func needsURLParse(dest []byte) bool {
-	for _, c := range dest {
-		if c == '%' || c == '?' || c == ':' || c < 0x20 || c == 0x7f {
-			return true
+// It also returns the index of the first '#', or -1, since the scan
+// visits every byte anyway and the caller needs it to split the
+// fragment off.
+func needsURLParse(dest []byte) (needs bool, hash int) {
+	hash = -1
+	for i, c := range dest {
+		switch {
+		case c == '%' || c == '?' || c == ':' || c < 0x20 || c == 0x7f:
+			return true, -1
+		case c == '#' && hash < 0:
+			hash = i
 		}
 	}
-	return false
+	return false, hash
 }
 
 // ParseTargetBytes parses a Markdown link destination held as bytes.
@@ -115,7 +122,8 @@ func ParseTargetBytes(dest []byte) (Target, bool) {
 	if len(trimmed) == 0 || isExternalDestination(trimmed) {
 		return Target{}, false
 	}
-	if needsURLParse(trimmed) {
+	needs, hash := needsURLParse(trimmed)
+	if needs {
 		// Pass the trimmed form: ParseTarget trims again, and Raw is
 		// the trimmed value either way, so copying the surrounding
 		// whitespace would be pure waste.
@@ -124,8 +132,8 @@ func ParseTargetBytes(dest []byte) (Target, bool) {
 
 	raw := string(trimmed)
 	path, anchor := raw, ""
-	if i := strings.IndexByte(raw, '#'); i >= 0 {
-		path, anchor = raw[:i], raw[i+1:]
+	if hash >= 0 {
+		path, anchor = raw[:hash], raw[hash+1:]
 	}
 
 	if path == "" {

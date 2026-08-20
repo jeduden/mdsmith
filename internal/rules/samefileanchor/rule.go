@@ -54,88 +54,78 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	return r.checkAST(f)
 }
 
-// checkAST walks the goldmark AST to find same-file #fragment links.
+// anchorChecker resolves same-file fragment links against the file's
+// heading slugs, building that slug set on the first fragment link
+// rather than up front.
 //
-// The slug set is built on the first fragment link rather than up
-// front. The '#' pre-filter above is satisfied by any ATX heading, so
-// it does not separate the files that need slugs from the ones that
-// do not — and a fragment link is far rarer than a heading, leaving
-// almost every file paying for a set nothing reads. Deferring the
-// build costs nothing here: slugs and built join diags in a closure
-// ast.Walk already allocates. See
+// The '#' pre-filter in Check is satisfied by any ATX heading, so it
+// does not separate the files that need slugs from the ones that do
+// not — and a fragment link is far rarer than a heading, leaving
+// almost every file paying for a set nothing reads. See
 // docs/development/high-performance-go.md#skip-work-you-dont-need.
+//
+// One checker serves both the AST and parse-skip walks, which the
+// package doc promises report identically; sharing it keeps that
+// promise structural rather than a matter of keeping two copies in
+// step.
+type anchorChecker struct {
+	r     *Rule
+	f     *lint.File
+	slugs map[string]struct{}
+	built bool
+	diags []lint.Diagnostic
+}
+
+// visit records a diagnostic when n is a same-file fragment link whose
+// target heading does not exist. base is the run-local line offset the
+// parse-skip walk supplies, and 0 on the AST walk.
+func (c *anchorChecker) visit(n ast.Node, base int) {
+	var dest []byte
+	switch v := n.(type) {
+	case *ast.Link:
+		dest = v.Destination
+	case *ast.Image:
+		dest = v.Destination
+	default:
+		return
+	}
+	fragment := sameFileFragment(dest)
+	if len(fragment) == 0 {
+		// nil/empty: not a same-file fragment, or bare # (top-of-page),
+		// which is always valid.
+		return
+	}
+	if !c.built {
+		c.slugs, c.built = collectSlugs(c.f), true
+	}
+	if _, found := c.slugs[string(fragment)]; found {
+		return
+	}
+	line := inlineNodeLine(n, c.f, base)
+	if line == 0 {
+		line = 1
+	}
+	c.diags = append(c.diags, c.r.diag(c.f, line, string(fragment)))
+}
+
+// checkAST walks the goldmark AST to find same-file #fragment links.
 func (r *Rule) checkAST(f *lint.File) []lint.Diagnostic {
-	var diags []lint.Diagnostic
-	var slugs map[string]struct{}
-	built := false
+	c := anchorChecker{r: r, f: f}
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		var dest []byte
-		switch v := n.(type) {
-		case *ast.Link:
-			dest = v.Destination
-		case *ast.Image:
-			dest = v.Destination
-		default:
-			return ast.WalkContinue, nil
-		}
-		fragment := sameFileFragment(dest)
-		if len(fragment) == 0 {
-			// nil/empty: not a same-file fragment, or bare # (top-of-page), always valid
-			return ast.WalkContinue, nil
-		}
-		if !built {
-			slugs, built = collectSlugs(f), true
-		}
-		if _, found := slugs[string(fragment)]; !found {
-			frag := string(fragment)
-			line := inlineNodeLine(n, f, 0)
-			if line == 0 {
-				line = 1
-			}
-			diags = append(diags, r.diag(f, line, frag))
+		if entering {
+			c.visit(n, 0)
 		}
 		return ast.WalkContinue, nil
 	})
-	return diags
+	return c.diags
 }
 
 // checkNilAST handles the parse-skip path by using the shared
-// InlineBlocks projection. The slug set is built lazily for the same
-// reason as checkAST.
+// InlineBlocks projection.
 func (r *Rule) checkNilAST(f *lint.File) []lint.Diagnostic {
-	var diags []lint.Diagnostic
-	var slugs map[string]struct{}
-	built := false
-	lint.WalkInlineNodes(f, func(n ast.Node, base int) {
-		var dest []byte
-		switch v := n.(type) {
-		case *ast.Link:
-			dest = v.Destination
-		case *ast.Image:
-			dest = v.Destination
-		default:
-			return
-		}
-		fragment := sameFileFragment(dest)
-		if len(fragment) == 0 {
-			return
-		}
-		if !built {
-			slugs, built = collectSlugs(f), true
-		}
-		if _, found := slugs[string(fragment)]; !found {
-			frag := string(fragment)
-			line := inlineNodeLine(n, f, base)
-			if line == 0 {
-				line = 1
-			}
-			diags = append(diags, r.diag(f, line, frag))
-		}
-	})
-	return diags
+	c := anchorChecker{r: r, f: f}
+	lint.WalkInlineNodes(f, c.visit)
+	return c.diags
 }
 
 // sameFileFragment returns the fragment portion of dest (without leading '#')
