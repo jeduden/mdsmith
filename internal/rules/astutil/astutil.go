@@ -137,7 +137,12 @@ func CollectHeadingNodes(f *lint.File) []*ast.Heading {
 // memo. Defined at package scope so the value passed to MemoFile is a
 // plain function pointer, matching buildSectionHeadings.
 func buildHeadingNodes(f *lint.File) any {
-	var out []*ast.Heading
+	// Headings are top-level blocks (the walk skips their children), so
+	// the root's child count is an exact upper bound — one allocation
+	// instead of the ~log2(n) regrowth steps append would cost, on
+	// every file in the workspace. See
+	// docs/development/high-performance-go.md#allocations.
+	out := make([]*ast.Heading, 0, f.AST.ChildCount())
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
@@ -205,7 +210,11 @@ func CollectSectionParagraphs(f *lint.File) []SectionParagraph {
 // capturing `f`), avoiding the per-call closure allocation a
 // `func() any { … }` literal would force.
 func buildSectionParagraphs(f *lint.File) any {
-	var out []SectionParagraph
+	// The root's child count scales with document length and covers
+	// every top-level paragraph; nested ones (in lists or quotes) may
+	// push past it, but it still removes the early regrowth steps this
+	// once-per-file memo would otherwise pay on every file.
+	out := make([]SectionParagraph, 0, f.AST.ChildCount())
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil

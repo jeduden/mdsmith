@@ -258,11 +258,21 @@ func buildImages(f *lint.File) any {
 // ExtractLinks walks f.AST and returns every regular Markdown link in
 // document order. Lines are body-relative (post front-matter strip);
 // see the Link doc for why.
+// inlineLinkNeedle is the two-byte sequence that opens every inline
+// link destination, so counting it bounds how many links a walk can
+// find. bytes.Count is SIMD-accelerated and the count is an
+// over-estimate at worst (it also matches images and code spans),
+// which is exactly what a capacity hint wants.
+var inlineLinkNeedle = []byte("](")
+
 func ExtractLinks(f *lint.File) []Link {
 	if f == nil || f.AST == nil {
 		return nil
 	}
-	var out []Link
+	// Pre-size so the append chain does not regrow once per doubling
+	// on every file. See
+	// docs/development/high-performance-go.md#allocations.
+	out := make([]Link, 0, bytes.Count(f.Source, inlineLinkNeedle))
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
