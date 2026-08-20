@@ -43,23 +43,31 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 
 	// Quick pre-filter: if the source contains no '#' byte there are no
 	// same-file fragment links to check and no fragment-link anchors to
-	// worry about. The early exit avoids building the slug set entirely.
+	// worry about.
 	if bytes.IndexByte(f.Source, '#') < 0 {
 		return nil
 	}
 
-	// Collect all heading slugs from the file.
-	slugs := collectSlugs(f)
-
 	if f.AST == nil {
-		return r.checkNilAST(f, slugs)
+		return r.checkNilAST(f)
 	}
-	return r.checkAST(f, slugs)
+	return r.checkAST(f)
 }
 
 // checkAST walks the goldmark AST to find same-file #fragment links.
-func (r *Rule) checkAST(f *lint.File, slugs map[string]struct{}) []lint.Diagnostic {
+//
+// The slug set is built on the first fragment link rather than up
+// front. The '#' pre-filter above is satisfied by any ATX heading, so
+// it does not separate the files that need slugs from the ones that
+// do not — and a fragment link is far rarer than a heading, leaving
+// almost every file paying for a set nothing reads. Deferring the
+// build costs nothing here: slugs and built join diags in a closure
+// ast.Walk already allocates. See
+// docs/development/high-performance-go.md#skip-work-you-dont-need.
+func (r *Rule) checkAST(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
+	var slugs map[string]struct{}
+	built := false
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
@@ -78,6 +86,9 @@ func (r *Rule) checkAST(f *lint.File, slugs map[string]struct{}) []lint.Diagnost
 			// nil/empty: not a same-file fragment, or bare # (top-of-page), always valid
 			return ast.WalkContinue, nil
 		}
+		if !built {
+			slugs, built = collectSlugs(f), true
+		}
 		if _, found := slugs[string(fragment)]; !found {
 			frag := string(fragment)
 			line := inlineNodeLine(n, f, 0)
@@ -91,9 +102,13 @@ func (r *Rule) checkAST(f *lint.File, slugs map[string]struct{}) []lint.Diagnost
 	return diags
 }
 
-// checkNilAST handles the parse-skip path by using the shared InlineBlocks projection.
-func (r *Rule) checkNilAST(f *lint.File, slugs map[string]struct{}) []lint.Diagnostic {
+// checkNilAST handles the parse-skip path by using the shared
+// InlineBlocks projection. The slug set is built lazily for the same
+// reason as checkAST.
+func (r *Rule) checkNilAST(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
+	var slugs map[string]struct{}
+	built := false
 	lint.WalkInlineNodes(f, func(n ast.Node, base int) {
 		var dest []byte
 		switch v := n.(type) {
@@ -107,6 +122,9 @@ func (r *Rule) checkNilAST(f *lint.File, slugs map[string]struct{}) []lint.Diagn
 		fragment := sameFileFragment(dest)
 		if len(fragment) == 0 {
 			return
+		}
+		if !built {
+			slugs, built = collectSlugs(f), true
 		}
 		if _, found := slugs[string(fragment)]; !found {
 			frag := string(fragment)

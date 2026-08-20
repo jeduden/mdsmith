@@ -78,8 +78,18 @@ type matcher struct {
 // when no needle survives, which callers treat as "never matches".
 func newMatcher(needles []string) *matcher {
 	m := &matcher{}
+	if !m.buildAlphabet(needles) {
+		return nil
+	}
+	trie, isEnd := m.buildTrie(needles)
+	m.foldFailLinks(trie, isEnd)
+	return m
+}
 
-	// Build the compact alphabet from the bytes the needles use.
+// buildAlphabet assigns each byte that appears in a needle its own
+// symbol index, leaving every other byte on the shared symbol 0. It
+// reports whether any usable needle was found.
+func (m *matcher) buildAlphabet(needles []string) bool {
 	var seen [256]bool
 	any := false
 	for _, s := range needles {
@@ -92,7 +102,7 @@ func newMatcher(needles []string) *matcher {
 		}
 	}
 	if !any {
-		return nil
+		return false
 	}
 	m.nsym = 1 // symbol 0 is the shared "byte in no needle" symbol
 	for b := 0; b < 256; b++ {
@@ -101,10 +111,12 @@ func newMatcher(needles []string) *matcher {
 			m.nsym++
 		}
 	}
+	return true
+}
 
-	// Build the trie. goto is -1 where no edge exists yet.
-	trie := []int32{}
-	isEnd := []bool{}
+// buildTrie returns the flattened goto table (-1 where no edge exists)
+// and, per node, whether a needle ends there.
+func (m *matcher) buildTrie(needles []string) (trie []int32, isEnd []bool) {
 	addNode := func() int32 {
 		id := int32(len(isEnd))
 		trie = append(trie, make([]int32, m.nsym)...)
@@ -131,9 +143,13 @@ func newMatcher(needles []string) *matcher {
 		}
 		isEnd[cur] = true
 	}
+	return trie, isEnd
+}
 
-	// BFS to fold fail links into the transition table, producing a
-	// DFA where every (state, symbol) pair has a direct successor.
+// foldFailLinks walks the trie breadth-first and folds each node's
+// fail link into m.next, producing a DFA where every (state, symbol)
+// pair has a direct successor and no match needs an output-chain walk.
+func (m *matcher) foldFailLinks(trie []int32, isEnd []bool) {
 	nodes := len(isEnd)
 	m.next = make([]int32, nodes*m.nsym)
 	m.terminal = make([]bool, nodes)
@@ -168,8 +184,6 @@ func newMatcher(needles []string) *matcher {
 			queue = append(queue, child)
 		}
 	}
-
-	return m
 }
 
 // matches reports whether any needle occurs in text. One table lookup
