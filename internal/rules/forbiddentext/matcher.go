@@ -6,17 +6,31 @@ import (
 	"sync"
 )
 
+// matcherCacheLimit caps how many distinct needle lists are held. A
+// workspace configures one list, or a small handful across kinds, so
+// the cache exists to serve repeats rather than variety. The cap
+// matters for `mdsmith lsp`, which is long-running: every edit to a
+// `contains:` list or a `.mdsmith/wordlists/` file recompiles config
+// and would otherwise leave its automaton — table plus key — resident
+// for the rest of the session.
+const matcherCacheLimit = 16
+
 // matcherCache memoizes compiled automata by needle list. Compiling is
 // O(total needle bytes x alphabet) and allocates the transition table,
 // while ApplySettings runs once per config signature per worker — so
-// without this the same handful of lists (usually just the one a
-// project configures) were rebuilt many times per run, which a CPU
-// profile showed costing more than the matching it saved.
+// without this the same handful of lists were rebuilt many times per
+// run, which a CPU profile showed costing more than the matching it
+// saved.
 //
 // A *matcher is immutable once built, so sharing one across rule
-// instances and goroutines is safe. Entries live for the process, which
-// is bounded by the number of distinct needle lists in a workspace.
-var matcherCache sync.Map // string -> *matcher
+// instances and goroutines is safe. A plain mutex-guarded map fits
+// better than sync.Map here: the keyset is tiny and stable, and the
+// cap needs an accurate size, which sync.Map cannot give without
+// walking every entry.
+var (
+	matcherCacheMu sync.Mutex
+	matcherCache   = make(map[string]*matcher, matcherCacheLimit)
+)
 
 // matcherCacheKey encodes needles into a string that no other list can
 // produce. Every entry is length-prefixed, so no choice of separator
@@ -42,14 +56,32 @@ func matcherCacheKey(needles []string) string {
 // at most once per distinct list.
 func cachedMatcher(needles []string) *matcher {
 	key := matcherCacheKey(needles)
-	if v, ok := matcherCache.Load(key); ok {
-		m, _ := v.(*matcher)
+
+	matcherCacheMu.Lock()
+	m, hit := matcherCache[key]
+	matcherCacheMu.Unlock()
+	if hit {
 		return m
 	}
-	m := newMatcher(needles)
-	actual, _ := matcherCache.LoadOrStore(key, m)
-	got, _ := actual.(*matcher)
-	return got
+
+	// Compiled outside the lock: it is the expensive part, and building
+	// the same automaton twice under a race is wasteful but harmless
+	// (both are equivalent, and the map keeps whichever lands first).
+	m = newMatcher(needles)
+
+	matcherCacheMu.Lock()
+	defer matcherCacheMu.Unlock()
+	if existing, ok := matcherCache[key]; ok {
+		return existing
+	}
+	if len(matcherCache) >= matcherCacheLimit {
+		// Past the cap the workload is churning lists rather than
+		// repeating them, so drop everything instead of tracking
+		// recency: the next run repopulates what it actually uses.
+		clear(matcherCache)
+	}
+	matcherCache[key] = m
+	return m
 }
 
 // matcher answers one question about a paragraph — "does any configured
@@ -123,6 +155,22 @@ func (m *matcher) buildAlphabet(needles []string) bool {
 	if !any {
 		return false
 	}
+	// All 256 byte values in use would need symbol 256, which does not
+	// fit the uint8 table and would silently alias onto symbol 0 — the
+	// shared "byte in no needle" symbol — corrupting both the trie and
+	// the root's reset edge. Unreachable through valid UTF-8 config
+	// (0xF8-0xFF never appear), but a wrong answer is worse than no
+	// automaton, so decline and let the rule use its per-needle loop.
+	distinct := 0
+	for b := 0; b < 256; b++ {
+		if seen[b] {
+			distinct++
+		}
+	}
+	if distinct > 255 {
+		return false
+	}
+
 	m.nsym = 1 // symbol 0 is the shared "byte in no needle" symbol
 	for b := 0; b < 256; b++ {
 		if seen[b] {
@@ -138,9 +186,11 @@ func (m *matcher) buildAlphabet(needles []string) bool {
 func (m *matcher) buildTrie(needles []string) (trie []int32, isEnd []bool) {
 	addNode := func() int32 {
 		id := int32(len(isEnd))
-		trie = append(trie, make([]int32, m.nsym)...)
+		// Appended directly as -1 rather than growing by a zeroed
+		// temporary and overwriting it: one write per cell, no
+		// throwaway slice per node.
 		for i := 0; i < m.nsym; i++ {
-			trie[int(id)*m.nsym+i] = -1
+			trie = append(trie, -1)
 		}
 		isEnd = append(isEnd, false)
 		return id

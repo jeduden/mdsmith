@@ -89,14 +89,14 @@ func BenchmarkCheck_NoLLMTells(b *testing.B) {
 	}
 	b.StopTimer()
 
-	nsPerParagraph := float64(b.Elapsed().Nanoseconds()) / float64(b.N) / 40
-	const budgetNs = 3000
-	if nsPerParagraph > budgetNs {
-		b.Fatalf(
-			"MDS056 costs %.0f ns/paragraph against %d needles, over the "+
-				"%d ns budget: the single-pass matcher has regressed to a "+
-				"per-needle rescan (see docs/development/high-performance-go.md)",
-			nsPerParagraph, len(needles), budgetNs,
-		)
-	}
+	// Reported, not asserted. A wall-clock threshold here could only
+	// produce false failures — on a loaded runner or an emulated
+	// builder — because CI never runs this benchmark, so it would never
+	// catch a real regression either. TestRule_CheckNodeConsultsMatcher
+	// is the gate; this number is for humans comparing before and after.
+	b.ReportMetric(
+		float64(b.Elapsed().Nanoseconds())/float64(b.N)/40,
+		"ns/paragraph",
+	)
+	b.ReportMetric(float64(len(needles)), "needles")
 }

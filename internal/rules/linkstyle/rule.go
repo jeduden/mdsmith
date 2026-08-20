@@ -160,7 +160,7 @@ func (r *Rule) checkFromInline(f *lint.File) []lint.Diagnostic {
 				if !ok || (l.Reference != nil) != isRef {
 					return ast.WalkContinue, nil
 				}
-				target, ok := linkgraph.ParseTarget(string(l.Destination))
+				target, ok := linkgraph.ParseTargetBytes(l.Destination)
 				if !ok {
 					return ast.WalkContinue, nil
 				}

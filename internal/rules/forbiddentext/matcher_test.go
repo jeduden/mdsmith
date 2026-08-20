@@ -2,6 +2,7 @@ package forbiddentext
 
 import (
 	"math/rand"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -304,4 +305,68 @@ func TestRule_CheckNodeConsultsMatcher(t *testing.T) {
 		require.Len(t, diags, 1)
 		assert.Contains(t, diags[0].Message, "delve")
 	})
+}
+
+// TestCachedMatcher_BoundedGrowth pins the cap. mdsmith lsp is
+// long-running, and every edit to a `contains:` list recompiles config;
+// without a bound each edit would leave its automaton and key resident
+// for the whole session.
+func TestCachedMatcher_BoundedGrowth(t *testing.T) {
+	matcherCacheMu.Lock()
+	clear(matcherCache)
+	matcherCacheMu.Unlock()
+
+	for i := 0; i < matcherCacheLimit*3; i++ {
+		require.NotNil(t, cachedMatcher([]string{"needle" + strconv.Itoa(i)}))
+
+		matcherCacheMu.Lock()
+		size := len(matcherCache)
+		matcherCacheMu.Unlock()
+		require.LessOrEqualf(t, size, matcherCacheLimit,
+			"cache grew past its cap after %d distinct lists", i+1)
+	}
+}
+
+// TestMatcher_BuildAlphabetDeclinesFullByteRange covers the overflow
+// guard: 256 distinct bytes would need symbol 256, which does not fit
+// the uint8 table and would alias onto the shared "not in any needle"
+// symbol, silently corrupting the automaton. Declining sends the rule
+// back to its per-needle loop, which is correct if slower.
+func TestMatcher_BuildAlphabetDeclinesFullByteRange(t *testing.T) {
+	all := make([]byte, 256)
+	for i := range all {
+		all[i] = byte(i)
+	}
+
+	var m matcher
+	assert.False(t, m.buildAlphabet([]string{string(all)}),
+		"a needle set spanning all 256 bytes must be declined")
+	assert.Nil(t, newMatcher([]string{string(all)}))
+
+	// 255 distinct bytes still fits and must compile.
+	var fits matcher
+	assert.True(t, fits.buildAlphabet([]string{string(all[:255])}))
+}
+
+// TestRule_FallsBackWhenMatcherDeclined checks the end-to-end
+// consequence of that guard: the rule still reports, via the
+// per-needle loop, when no automaton could be built.
+func TestRule_FallsBackWhenMatcherDeclined(t *testing.T) {
+	all := make([]byte, 256)
+	for i := range all {
+		all[i] = byte(i)
+	}
+	needle := string(all)
+
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{
+		"contains": []string{needle},
+	}))
+	require.Nil(t, r.ac, "the automaton must have been declined")
+
+	f := mustFile(t, "# Doc\n\n"+needle+"\n")
+	// The needle spans raw bytes that Markdown will not round-trip, so
+	// assert only that the rule runs its loop rather than crashing or
+	// short-circuiting on a nil matcher.
+	assert.NotPanics(t, func() { _ = r.Check(f) })
 }

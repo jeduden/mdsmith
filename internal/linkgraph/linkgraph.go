@@ -74,11 +74,18 @@ func isExternalDestination(dest []byte) bool {
 // needsURLParse reports whether dest contains anything that makes
 // net/url do more than split on '#': a percent-escape to decode, a
 // query string to strip, a control character it rejects outright, or
-// a colon — which, once isExternalDestination has ruled out a real
-// scheme, means net/url rejects the destination ("first path segment
-// in URL cannot contain colon") rather than accepting it as a path.
-// Without those, url.URL's Path and Fragment are plain substrings of
-// the destination.
+// a colon.
+//
+// The colon is the subtle one. net/url rejects a colon in the FIRST
+// path segment ("first path segment in URL cannot contain colon") but
+// accepts one after a slash, so `a:b` fails to parse while
+// `dir/a:b.md` parses with Path set to the whole string. Rather than
+// re-derive which side of that line a destination falls on, hand every
+// colon to ParseTarget — they are rare in local paths, and a real
+// scheme has already been ruled out by isExternalDestination.
+//
+// Without any of these, url.URL's Path and Fragment are plain
+// substrings of the destination.
 func needsURLParse(dest []byte) bool {
 	for _, c := range dest {
 		if c == '%' || c == '?' || c == ':' || c < 0x20 || c == 0x7f {
@@ -183,15 +190,17 @@ func ParseTarget(dest string) (Target, bool) {
 // because the engine applies f.LineOffset for front-matter adjustment.
 // CLI callers (like `mdsmith list backlinks`) that want file-relative line
 // numbers must add f.LineOffset themselves.
-// node is the AST node the link was extracted from, kept so Text can
-// flatten the visible label on demand. It is nil on a Link built
-// outside the walk (a zero value or a test literal), which Text
-// reports as an empty label.
 type Link struct {
 	Line   int
 	Column int
 	Target Target
-	node   ast.Node
+
+	// node is the AST node this link came from, kept so Text can
+	// flatten the visible label on demand. It is nil on any Link not
+	// produced by one of this package's walks — a zero value, a test
+	// literal, or the literals MDS068 builds on the parse-skip path
+	// (internal/rules/linkstyle) — and Text reports those as empty.
+	node ast.Node
 }
 
 // Text returns the visible link text (everything between `[` and `]`),
@@ -204,8 +213,10 @@ type Link struct {
 // for every link in every file. See
 // docs/development/high-performance-go.md#skip-work-you-dont-need.
 //
-// source must be the Source of the File the Link was extracted from;
-// the node's segments index into it.
+// source must be the Source of the File this Link was extracted from:
+// the node's segments index into it, so passing another file's source
+// reads the wrong bytes or panics. Every current caller resolves the
+// text while that File is still in scope.
 func (l Link) Text(source []byte) string {
 	if l.node == nil {
 		return ""
@@ -363,13 +374,6 @@ func NormalizeAnchor(raw string) string {
 		raw = decoded
 	}
 	return mdtext.Slugify(raw)
-}
-
-// linkText returns the visible link text (everything between `[` and
-// `]`). Image alt text and emphasis are flattened to plain text so
-// JSON/text output stays readable.
-func linkText(link *ast.Link, source []byte) string {
-	return mdtext.ExtractPlainText(link, source)
 }
 
 // linkPosition returns the 1-based source line and column of a link

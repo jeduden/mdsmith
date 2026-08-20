@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
 // growthDoc builds a document with n headings, each followed by a
@@ -112,4 +113,39 @@ func TestCollectors_NestedHeadingsStillCorrect(t *testing.T) {
 	for i := 1; i < len(nodes); i++ {
 		assert.NotSame(t, nodes[i-1], nodes[i])
 	}
+}
+
+// TestCollectors_NilWhenNothingFound pins the project convention the
+// capacity hint must not break: "Return nil, not []T{}"
+// (docs/development/high-performance-go.md#allocations). A pre-sized
+// slice is non-nil the moment make() runs, so a document that matches
+// nothing would otherwise hand callers an empty-but-non-nil slice —
+// distinguishable in tests, JSON and reflect — and pay two allocations
+// where it used to pay none.
+func TestCollectors_NilWhenNothingFound(t *testing.T) {
+	t.Run("no headings", func(t *testing.T) {
+		f := newDocFile(t, strings.Repeat("Some prose paragraph.\n\n", 40))
+
+		got, ok := buildHeadingNodes(f).([]*ast.Heading)
+		require.True(t, ok)
+		assert.Nil(t, got, "no headings must yield nil, not an empty slice")
+
+		allocs := testing.AllocsPerRun(20, func() { _ = buildHeadingNodes(f) })
+		assert.Zero(t, allocs, "a heading-free document must not allocate")
+	})
+
+	t.Run("no paragraphs", func(t *testing.T) {
+		var b strings.Builder
+		for i := 0; i < 40; i++ {
+			fmt.Fprintf(&b, "## Heading %d\n\n", i)
+		}
+		f := newDocFile(t, b.String())
+
+		got, ok := buildSectionParagraphs(f).([]SectionParagraph)
+		require.True(t, ok)
+		assert.Nil(t, got, "no paragraphs must yield nil, not an empty slice")
+
+		allocs := testing.AllocsPerRun(20, func() { _ = buildSectionParagraphs(f) })
+		assert.Zero(t, allocs, "a paragraph-free document must not allocate")
+	})
 }
