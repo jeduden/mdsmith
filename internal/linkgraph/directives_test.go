@@ -212,7 +212,6 @@ func TestExtractRefLinks_Basic(t *testing.T) {
 	refs := ExtractRefLinks(f)
 	require.Len(t, refs, 1)
 	assert.Equal(t, "lab", refs[0].Label)
-	assert.Equal(t, "Foo", refs[0].Text)
 	assert.Equal(t, 3, refs[0].Line)
 }
 

@@ -137,6 +137,18 @@ func CollectHeadingNodes(f *lint.File) []*ast.Heading {
 // memo. Defined at package scope so the value passed to MemoFile is a
 // plain function pointer, matching buildSectionHeadings.
 func buildHeadingNodes(f *lint.File) any {
+	// Sized on the first heading rather than up front, so a document
+	// with none keeps returning nil at zero allocations — the project's
+	// "Return nil, not []T{}" convention, and the shape a pre-sized
+	// slice would otherwise break.
+	//
+	// The root's child count is a capacity hint, not a bound: the walk
+	// descends into blockquotes and list items, so nested headings can
+	// still push past it and regrow. It is simply the cheapest estimate
+	// that scales with document length, and it removes the ~log2(n)
+	// regrowth steps this once-per-file memo would otherwise pay on
+	// every file. See
+	// docs/development/high-performance-go.md#allocations.
 	var out []*ast.Heading
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
@@ -145,6 +157,9 @@ func buildHeadingNodes(f *lint.File) any {
 		h, ok := n.(*ast.Heading)
 		if !ok {
 			return ast.WalkContinue, nil
+		}
+		if out == nil {
+			out = make([]*ast.Heading, 0, f.AST.ChildCount())
 		}
 		out = append(out, h)
 		return ast.WalkSkipChildren, nil
@@ -205,6 +220,9 @@ func CollectSectionParagraphs(f *lint.File) []SectionParagraph {
 // capturing `f`), avoiding the per-call closure allocation a
 // `func() any { … }` literal would force.
 func buildSectionParagraphs(f *lint.File) any {
+	// Same shape as buildHeadingNodes: sized on the first paragraph so
+	// a document with none stays nil at zero allocations, with the
+	// root's child count as the capacity hint.
 	var out []SectionParagraph
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
@@ -216,6 +234,9 @@ func buildSectionParagraphs(f *lint.File) any {
 		}
 		if IsTable(p, f) {
 			return ast.WalkContinue, nil
+		}
+		if out == nil {
+			out = make([]SectionParagraph, 0, f.AST.ChildCount())
 		}
 		out = append(out, SectionParagraph{
 			Line: ParagraphLine(p, f),
