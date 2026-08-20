@@ -69,7 +69,7 @@ func ExtractRefLinkTargets(f *lint.File) []Link {
 		if !ok || l.Reference == nil {
 			return ast.WalkContinue, nil
 		}
-		target, ok := ParseTarget(string(l.Destination))
+		target, ok := ParseTargetBytes(l.Destination)
 		if !ok {
 			return ast.WalkContinue, nil
 		}

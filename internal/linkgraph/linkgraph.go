@@ -5,6 +5,7 @@
 package linkgraph
 
 import (
+	"bytes"
 	"net/url"
 	"strings"
 
@@ -30,6 +31,100 @@ type Target struct {
 	Path        string
 	Anchor      string
 	LocalAnchor bool
+}
+
+// isExternalDestination reports whether dest certainly has a URL
+// scheme or is protocol-relative — the two shapes ParseTarget rejects
+// via u.Scheme/u.Host. dest must already be space-trimmed.
+//
+// It mirrors net/url's getScheme: a scheme is an ASCII letter followed
+// by letters, digits, '+', '-' or '.', terminated by ':', and only
+// before the first '/', '?' or '#'. Answering on the raw bytes lets
+// the common external link skip both the string copy and the url.URL
+// the full parse allocates.
+//
+// Conservative by construction: it returns true only for destinations
+// net/url would also call external, so a false answer simply falls
+// through to the full parse.
+func isExternalDestination(dest []byte) bool {
+	if len(dest) >= 2 && dest[0] == '/' && dest[1] == '/' {
+		return true
+	}
+	for i := 0; i < len(dest); i++ {
+		c := dest[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z':
+			// Still inside a candidate scheme.
+		case c >= '0' && c <= '9', c == '+', c == '-', c == '.':
+			// Legal in a scheme, but not as its first character.
+			if i == 0 {
+				return false
+			}
+		case c == ':':
+			// A scheme needs at least one leading letter.
+			return i > 0
+		default:
+			// '/', '?', '#' or anything else ends the scheme search.
+			return false
+		}
+	}
+	return false
+}
+
+// needsURLParse reports whether dest contains anything that makes
+// net/url do more than split on '#': a percent-escape to decode, a
+// query string to strip, a control character it rejects outright, or
+// a colon — which, once isExternalDestination has ruled out a real
+// scheme, means net/url rejects the destination ("first path segment
+// in URL cannot contain colon") rather than accepting it as a path.
+// Without those, url.URL's Path and Fragment are plain substrings of
+// the destination.
+func needsURLParse(dest []byte) bool {
+	for _, c := range dest {
+		if c == '%' || c == '?' || c == ':' || c < 0x20 || c == 0x7f {
+			return true
+		}
+	}
+	return false
+}
+
+// ParseTargetBytes parses a Markdown link destination held as bytes.
+// It is the form the AST walks use, and returns exactly what
+// ParseTarget returns for the same bytes — ParseTarget stays the
+// reference implementation, and the equivalence is pinned by an
+// exhaustive differential test.
+//
+// Two shapes avoid work the full parse would do. An external
+// destination is rejected straight from the bytes, with no string
+// copy at all. An ordinary local destination — no percent-escape, no
+// query, no control character — is split on '#' into substrings of
+// the one string this makes, instead of allocating a url.URL to
+// recover the same two fields.
+//
+// Applies "Stay in []byte" and "the cheapest call is the one you
+// never make" from docs/development/high-performance-go.md.
+func ParseTargetBytes(dest []byte) (Target, bool) {
+	trimmed := bytes.TrimSpace(dest)
+	if len(trimmed) == 0 || isExternalDestination(trimmed) {
+		return Target{}, false
+	}
+	if needsURLParse(trimmed) {
+		return ParseTarget(string(dest))
+	}
+
+	raw := string(trimmed)
+	path, anchor := raw, ""
+	if i := strings.IndexByte(raw, '#'); i >= 0 {
+		path, anchor = raw[:i], raw[i+1:]
+	}
+
+	if path == "" {
+		if anchor == "" {
+			return Target{}, false
+		}
+		return Target{Raw: raw, Anchor: anchor, LocalAnchor: true}, true
+	}
+	return Target{Raw: raw, Path: path, Anchor: anchor}, true
 }
 
 // ParseTarget parses a Markdown link destination into a Target.
@@ -181,7 +276,7 @@ func ExtractLinks(f *lint.File) []Link {
 		if l.Reference != nil {
 			return ast.WalkContinue, nil
 		}
-		target, ok := ParseTarget(string(l.Destination))
+		target, ok := ParseTargetBytes(l.Destination)
 		if !ok {
 			return ast.WalkContinue, nil
 		}
@@ -215,7 +310,7 @@ func ExtractImages(f *lint.File) []Link {
 		if !ok {
 			return ast.WalkContinue, nil
 		}
-		target, ok := ParseTarget(string(img.Destination))
+		target, ok := ParseTargetBytes(img.Destination)
 		if !ok {
 			return ast.WalkContinue, nil
 		}
