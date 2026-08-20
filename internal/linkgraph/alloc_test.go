@@ -6,8 +6,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/jeduden/mdsmith/internal/lint"
 )
 
 // linkDoc builds a document with n inline links whose visible label is
@@ -43,8 +41,8 @@ func linkDoc(n int, label string) string {
 func TestExtractLinks_TextNotMaterialisedDuringWalk(t *testing.T) {
 	const links = 200
 
-	short := mustFile(t, linkDoc(links, "a"))
-	long := mustFile(t, linkDoc(links,
+	short := newFile(t, linkDoc(links, "a"))
+	long := newFile(t, linkDoc(links,
 		"a *considerably* longer link label with **emphasis** inside it"))
 
 	require.Len(t, ExtractLinks(short), links)
@@ -62,7 +60,7 @@ func TestExtractLinks_TextNotMaterialisedDuringWalk(t *testing.T) {
 // dropping the eager field must not lose the text `backlinks` prints,
 // including the emphasis flattening the old linkText helper did.
 func TestLinkText_ResolvesOnDemand(t *testing.T) {
-	f := mustFile(t, "# Doc\n\nSee [the *guide* text](guide.md#intro).\n")
+	f := newFile(t, "# Doc\n\nSee [the *guide* text](guide.md#intro).\n")
 
 	got := ExtractLinks(f)
 	require.Len(t, got, 1)
@@ -73,7 +71,7 @@ func TestLinkText_ResolvesOnDemand(t *testing.T) {
 // TestImageText_ResolvesOnDemand covers the ExtractImages write site,
 // which carried the same eager field.
 func TestImageText_ResolvesOnDemand(t *testing.T) {
-	f := mustFile(t, "# Doc\n\n![a *diagram* alt](img.png)\n")
+	f := newFile(t, "# Doc\n\n![a *diagram* alt](img.png)\n")
 
 	got := ExtractImages(f)
 	require.Len(t, got, 1)
@@ -85,11 +83,4 @@ func TestImageText_ResolvesOnDemand(t *testing.T) {
 // test) that never went through the walk, so it carries no node.
 func TestLinkText_ZeroValueIsEmpty(t *testing.T) {
 	assert.Empty(t, Link{}.Text([]byte("# Doc\n")))
-}
-
-func mustFile(t *testing.T, source string) *lint.File {
-	t.Helper()
-	f, err := lint.NewFile("doc.md", []byte(source))
-	require.NoError(t, err)
-	return f
 }

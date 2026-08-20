@@ -64,11 +64,15 @@ func benchFile(tb testing.TB, paragraphs int) *lint.File {
 // the merged CPU profile of `mdsmith check .` attributed 9.4% of all
 // CPU to, nearly all of it inside strings.Contains.
 //
-// The budget below is an inline gate in the style the guideline asks
-// for ("Write benchmarks that always run… pin its budget inline with
-// b.Fatalf on overshoot"). It is set well above the measured matcher
-// cost but far below the per-needle-rescan cost, so it fails loudly if
-// the single-pass matcher is ever lost.
+// The budget below fails loudly if the single-pass matcher is ever
+// lost, but it only runs under -bench, and CI does not pass -bench for
+// internal/rules. Nor can internal/integration's per-opt-in-rule gate
+// see this: that harness measures each rule at DEFAULT settings, and
+// MDS056's default `contains` is empty, so its pinned row exercises a
+// rule that does no work. The gate CI actually relies on is
+// TestRule_CheckNodeConsultsMatcher in matcher_test.go, which pins the
+// wiring deterministically and without timing. This benchmark is for
+// measuring the win, not for guarding it.
 func BenchmarkCheck_NoLLMTells(b *testing.B) {
 	needles := benchNeedles()
 	f := benchFile(b, 40)

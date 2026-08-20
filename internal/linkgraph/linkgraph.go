@@ -109,7 +109,10 @@ func ParseTargetBytes(dest []byte) (Target, bool) {
 		return Target{}, false
 	}
 	if needsURLParse(trimmed) {
-		return ParseTarget(string(dest))
+		// Pass the trimmed form: ParseTarget trims again, and Raw is
+		// the trimmed value either way, so copying the surrounding
+		// whitespace would be pure waste.
+		return ParseTarget(string(trimmed))
 	}
 
 	raw := string(trimmed)
@@ -255,13 +258,6 @@ func buildImages(f *lint.File) any {
 	return ExtractImages(f)
 }
 
-// inlineLinkNeedle is the two-byte sequence that opens every inline
-// link destination, so counting it bounds how many links a walk can
-// find. bytes.Count is SIMD-accelerated and the count is an
-// over-estimate at worst (it also matches images), which is exactly
-// what a capacity hint wants.
-var inlineLinkNeedle = []byte("](")
-
 // ExtractLinks walks f.AST and returns every regular Markdown link in
 // document order. Lines are body-relative (post front-matter strip);
 // see the Link doc for why.
@@ -269,10 +265,15 @@ func ExtractLinks(f *lint.File) []Link {
 	if f == nil || f.AST == nil {
 		return nil
 	}
-	// Pre-size so the append chain does not regrow once per doubling
-	// on every file. See
-	// docs/development/high-performance-go.md#allocations.
-	out := make([]Link, 0, bytes.Count(f.Source, inlineLinkNeedle))
+	// Deliberately not pre-sized. A byte-needle count of "](" is the
+	// only cheap estimate available and it is systematically too high:
+	// it also matches images, reference links and code samples, while
+	// this walk keeps only local, non-reference links. That turns a
+	// link-free file from zero allocations into one, and leaves a
+	// document of external links holding a large empty array for the
+	// life of the linkgraph.links memo. The memoized collectors in
+	// astutil have tight bounds and are pre-sized; this one does not.
+	var out []Link
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil

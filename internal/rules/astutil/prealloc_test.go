@@ -43,6 +43,10 @@ func newDocFile(t *testing.T, source string) *lint.File {
 // reach n elements, so a 200-element document costs strictly more than
 // a 4-element one. A pre-sized collector allocates its backing array
 // once regardless of size.
+//
+// The capacity hint is the root's child count, which is an estimate
+// rather than a bound — see TestCollectors_NestedHeadingsStillCorrect
+// for the shape that exceeds it.
 func TestCollectors_PreSizedNotRegrown(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -86,6 +90,25 @@ func TestCollectors_ResultsUnchangedWhenPreSized(t *testing.T) {
 
 	nodes := CollectHeadingNodes(f)
 	require.Len(t, nodes, 13, "title plus one heading per section")
+	for i := 1; i < len(nodes); i++ {
+		assert.NotSame(t, nodes[i-1], nodes[i])
+	}
+}
+
+// TestCollectors_NestedHeadingsStillCorrect covers the shape the
+// capacity hint does not bound: the walk descends into blockquotes and
+// list items, so a document can hold more headings than the root has
+// children. The hint is only a hint — the result must stay complete
+// and ordered when the slice regrows past it.
+func TestCollectors_NestedHeadingsStillCorrect(t *testing.T) {
+	f := newDocFile(t, "# Top\n\n"+
+		"> ## Quoted A\n>\n> ## Quoted B\n>\n> ## Quoted C\n>\n> ## Quoted D\n")
+
+	require.Less(t, f.AST.ChildCount(), 5,
+		"this document must have fewer root children than headings")
+
+	nodes := CollectHeadingNodes(f)
+	require.Len(t, nodes, 5, "the top heading plus the four quoted ones")
 	for i := 1; i < len(nodes); i++ {
 		assert.NotSame(t, nodes[i-1], nodes[i])
 	}

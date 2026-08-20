@@ -147,3 +147,161 @@ func TestMatcher_ZeroAllocations(t *testing.T) {
 	})
 	assert.Zero(t, avg, "matcher.matches must not allocate")
 }
+
+// TestMatcherCacheKey_DistinguishesLists is the regression test for a
+// cache-key collision: the key was a NUL-joined concatenation, so a
+// single needle containing the separator byte produced the same key as
+// the two-needle list it splits into. The second list then reused the
+// first's automaton and MDS056 silently stopped reporting.
+func TestMatcherCacheKey_DistinguishesLists(t *testing.T) {
+	collisionPairs := [][2][]string{
+		{{"a\x00b"}, {"a", "b"}},
+		{{"ab"}, {"a", "b"}},
+		{{""}, {}},
+		{{"a", ""}, {"a"}},
+		{{"1:a"}, {"a"}},
+		{{"x", "yz"}, {"xy", "z"}},
+	}
+	for _, pair := range collisionPairs {
+		assert.NotEqualf(t, matcherCacheKey(pair[0]), matcherCacheKey(pair[1]),
+			"distinct needle lists %q and %q share a cache key",
+			pair[0], pair[1])
+	}
+
+	// Equal lists must still share a key, or the cache never hits.
+	assert.Equal(t,
+		matcherCacheKey([]string{"delve", "realm"}),
+		matcherCacheKey([]string{"delve", "realm"}))
+}
+
+// TestCachedMatcher_ReusesAndSeparates covers both cache paths: a
+// repeat call for the same list returns the identical instance, and a
+// different list does not.
+func TestCachedMatcher_ReusesAndSeparates(t *testing.T) {
+	first := cachedMatcher([]string{"alpha", "beta"})
+	again := cachedMatcher([]string{"alpha", "beta"})
+	require.NotNil(t, first)
+	assert.Same(t, first, again, "the same list must reuse one automaton")
+
+	other := cachedMatcher([]string{"alpha\x00beta"})
+	require.NotNil(t, other)
+	assert.NotSame(t, first, other,
+		"a needle containing the old separator must not reuse the joined list's automaton")
+
+	// The separated automaton must behave per its own list.
+	assert.True(t, first.matches("say alpha here"))
+	assert.False(t, other.matches("say alpha here"))
+	assert.True(t, other.matches("say alpha\x00beta here"))
+}
+
+// TestCachedMatcher_NilForEmptyList pins that an unusable list caches
+// and returns nil rather than an automaton that matches nothing.
+func TestCachedMatcher_NilForEmptyList(t *testing.T) {
+	assert.Nil(t, cachedMatcher(nil))
+	assert.Nil(t, cachedMatcher([]string{""}))
+}
+
+// TestMatcher_BuildAlphabet checks the compact-alphabet mapping: every
+// byte used by a needle gets its own symbol, everything else shares 0.
+func TestMatcher_BuildAlphabet(t *testing.T) {
+	var m matcher
+	require.True(t, m.buildAlphabet([]string{"ab", "bc"}))
+
+	assert.Equal(t, 4, m.nsym, "three distinct bytes plus the shared symbol")
+	assert.NotZero(t, m.symbol['a'])
+	assert.NotZero(t, m.symbol['b'])
+	assert.NotZero(t, m.symbol['c'])
+	assert.Zero(t, m.symbol['z'], "an unused byte stays on the shared symbol")
+
+	var empty matcher
+	assert.False(t, empty.buildAlphabet([]string{"", ""}),
+		"a list with no usable needle reports no alphabet")
+}
+
+// TestMatcher_BuildTrie checks the goto table: shared prefixes share
+// nodes, and only needle ends are marked terminal.
+func TestMatcher_BuildTrie(t *testing.T) {
+	var m matcher
+	require.True(t, m.buildAlphabet([]string{"ab", "ac"}))
+	trie, isEnd := m.buildTrie([]string{"ab", "ac"})
+
+	require.Len(t, isEnd, 4, "root, shared 'a', then 'b' and 'c'")
+	assert.False(t, isEnd[0], "the root is never a needle end")
+
+	a := trie[int(m.symbol['a'])]
+	require.Positive(t, a, "the root has an edge for 'a'")
+	assert.False(t, isEnd[a], "'a' alone is not a needle")
+
+	ends := 0
+	for _, e := range isEnd {
+		if e {
+			ends++
+		}
+	}
+	assert.Equal(t, 2, ends, "exactly the two needles end somewhere")
+}
+
+// TestMatcher_FoldFailLinks checks the property the fold exists to
+// give: every (state, symbol) pair has a direct successor, so matching
+// never walks a fail chain.
+func TestMatcher_FoldFailLinks(t *testing.T) {
+	m := newMatcher([]string{"ab", "bc"})
+	require.NotNil(t, m)
+
+	require.Len(t, m.next, len(m.terminal)*m.nsym)
+	for state := range m.terminal {
+		for sym := 0; sym < m.nsym; sym++ {
+			next := m.next[state*m.nsym+sym]
+			assert.GreaterOrEqualf(t, next, int32(0),
+				"state %d symbol %d has no successor", state, sym)
+			assert.Lessf(t, int(next), len(m.terminal),
+				"state %d symbol %d leaves the table", state, sym)
+		}
+	}
+
+	// A suffix match must be reachable without an output chain: "bc"
+	// is found even though the walk entered through "ab".
+	assert.True(t, m.matches("abc"))
+}
+
+// TestRule_CheckNodeConsultsMatcher pins that the single-pass gate is
+// actually wired into CheckNode, deterministically and without timing.
+//
+// The benchmark's budget only runs under -bench, which CI does not do
+// for this package, so it cannot catch the gate being removed. This
+// test can: it installs an automaton compiled from a list that does
+// NOT include the configured needle, so the gate reports "no match"
+// while the per-needle loop would report one. Diagnostics appear only
+// if the gate was skipped.
+func TestRule_CheckNodeConsultsMatcher(t *testing.T) {
+	const src = "# Doc\n\nThis paragraph mentions delve once.\n"
+
+	t.Run("gate short-circuits the per-needle loop", func(t *testing.T) {
+		r := &Rule{Contains: []string{"delve"}, ac: newMatcher([]string{"zzz"})}
+		assert.Nil(t, r.Check(mustFile(t, src)),
+			"CheckNode ignored the matcher and ran the per-needle loop")
+	})
+
+	t.Run("gate passes the paragraph through on a match", func(t *testing.T) {
+		r := &Rule{}
+		require.NoError(t, r.ApplySettings(map[string]any{
+			"contains": []string{"delve"},
+		}))
+		require.NotNil(t, r.ac, "ApplySettings must compile the matcher")
+
+		diags := r.Check(mustFile(t, src))
+		require.Len(t, diags, 1)
+		assert.Contains(t, diags[0].Message, "delve")
+	})
+
+	t.Run("an uncompiled rule still checks via the loop", func(t *testing.T) {
+		// Contains assigned directly, so ac is nil: the rule must fall
+		// back to the per-needle loop rather than silently pass.
+		r := &Rule{Contains: []string{"delve"}}
+		require.Nil(t, r.ac)
+
+		diags := r.Check(mustFile(t, src))
+		require.Len(t, diags, 1)
+		assert.Contains(t, diags[0].Message, "delve")
+	})
+}

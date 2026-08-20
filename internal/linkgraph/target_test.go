@@ -120,3 +120,63 @@ func TestIsExternalDestination_ImpliesRejected(t *testing.T) {
 	}
 	build("", 4)
 }
+
+// TestNeedsURLParse names the byte classes that must fall through to
+// the full parse: percent-escapes to decode, a query to strip, control
+// characters net/url rejects, and a colon — which, once a real scheme
+// has been ruled out, means net/url rejects the destination rather
+// than accepting it as a path.
+func TestNeedsURLParse(t *testing.T) {
+	cases := []struct {
+		name string
+		dest string
+		want bool
+	}{
+		{"plain path", "guide.md", false},
+		{"path with fragment", "guide.md#sec", false},
+		{"anchor only", "#sec", false},
+		{"relative path", "../a/b.md", false},
+		{"spaces are ordinary", "a b.md", false},
+		{"percent escape", "a%20b.md", true},
+		{"query", "file.md?q=1", true},
+		{"colon in path segment", "dir/a:b.md", true},
+		{"bare colon", ":", true},
+		{"control character", "a\x01b.md", true},
+		{"delete character", "a\x7fb.md", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, needsURLParse([]byte(tc.dest)))
+		})
+	}
+}
+
+// TestIsExternalDestination names the scheme rule directly, so the
+// scanner's contract is readable without inferring it from the
+// enumeration tests.
+func TestIsExternalDestination(t *testing.T) {
+	cases := []struct {
+		name string
+		dest string
+		want bool
+	}{
+		{"https", "https://example.com", true},
+		{"mailto", "mailto:a@b.c", true},
+		{"protocol relative", "//example.com", true},
+		{"scheme with punctuation", "a+b-c.d://x", true},
+		{"scheme with digit", "x1://y", true},
+		{"single slash is a path", "/abs/path.md", false},
+		{"plain path", "guide.md", false},
+		{"colon after slash", "dir/a:b.md", false},
+		{"colon after hash", "#a:b", false},
+		{"leading digit is no scheme", "1abc://x", false},
+		{"leading punctuation is no scheme", "-x://y", false},
+		{"colon at position zero", "://x", false},
+		{"empty", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, isExternalDestination([]byte(tc.dest)))
+		})
+	}
+}

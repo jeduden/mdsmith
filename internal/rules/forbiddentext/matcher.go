@@ -1,6 +1,7 @@
 package forbiddentext
 
 import (
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -17,12 +18,30 @@ import (
 // is bounded by the number of distinct needle lists in a workspace.
 var matcherCache sync.Map // string -> *matcher
 
+// matcherCacheKey encodes needles into a string that no other list can
+// produce. Every entry is length-prefixed, so no choice of separator
+// byte lets one list impersonate another — joining on a separator
+// would let a needle containing that byte collide with the two-needle
+// list it splits into, and a `contains:` entry can hold any byte.
+func matcherCacheKey(needles []string) string {
+	var b strings.Builder
+	size := 0
+	for _, s := range needles {
+		size += len(s) + 8
+	}
+	b.Grow(size)
+	for _, s := range needles {
+		b.WriteString(strconv.Itoa(len(s)))
+		b.WriteByte(':')
+		b.WriteString(s)
+	}
+	return b.String()
+}
+
 // cachedMatcher returns the compiled matcher for needles, building it
 // at most once per distinct list.
 func cachedMatcher(needles []string) *matcher {
-	// NUL cannot appear in a YAML scalar, so joining on it gives a
-	// key that distinguishes list contents and boundaries.
-	key := strings.Join(needles, "\x00")
+	key := matcherCacheKey(needles)
 	if v, ok := matcherCache.Load(key); ok {
 		m, _ := v.(*matcher)
 		return m
