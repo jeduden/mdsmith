@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "mdsmith-security-review",
+          "informationUri": "https://github.com/jeduden/mdsmith",
+          "rules": [
+            {
+              "id": "S001",
+              "name": "cli",
+              "shortDescription": {
+                "text": "MDS072 SSRF guard does not decode the NAT64 well-known prefix (64:ff9b::/96), so a NAT64-mapped internal IPv4 bypasses the filter"
+              },
+              "fullDescription": {
+                "text": "The SSRF guard added this window to close the prior S001/S002 findings blocks restricted\ndestinations by checking the resolved remote IP in isRestrictedIP. It carefully decodes IPv4-mapped\n(::ffff:x.x.x.x, via Unmap), IPv4-compatible (::x.x.x.x, via the Is6() high-96-bits-zero branch),\nand 6to4 (the whole 2002::/16 prefix) forms so that an embedded loopback/metadata/RFC1918 IPv4 is\ncaught. It does NOT handle the NAT64 well-known prefix 64:ff9b::/96 (RFC 6052), which embeds an IPv4\nin its low 32 bits. 64:ff9b:: has non-zero high bytes (b[1]=0x64, b[2]=0xff, b[3]=0x9b), so the\nIPv4-compatible branch (which requires the first 12 bytes to be zero) does not fire, and\n64:ff9b::/96 is absent from restrictedPrefixes. A throwaway test confirms isRestrictedIP returns\nfalse for 64:ff9b::a9fe:a9fe (NAT64-mapped 169.254.169.254 cloud metadata), 64:ff9b::7f00:1\n(127.0.0.1), and 64:ff9b::c0a8:1 (192.168.0.1). On a host on an IPv6-only network with a DNS64/NAT64\ngateway, a document URL whose hostname the attacker resolves to a 64:ff9b:: address therefore\nreaches the embedded internal IPv4 despite the guard."
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "security-severity": "3.0",
+                "tags": [
+                  "security",
+                  "CWE-918"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "S001",
+          "ruleIndex": 0,
+          "level": "note",
+          "message": {
+            "text": "MDS072 SSRF guard does not decode the NAT64 well-known prefix (64:ff9b::/96), so a NAT64-mapped internal IPv4 bypasses the filter"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/rules/externallink/probe_net.go"
+                },
+                "region": {
+                  "startLine": 41,
+                  "endLine": 68
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/rules/externallink/probe_net.go"
+                },
+                "region": {
+                  "startLine": 21,
+                  "endLine": 21
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/rules/externallink/probe_net.go"
+                },
+                "region": {
+                  "startLine": 74,
+                  "endLine": 74
+                }
+              }
+            }
+          ],
+          "properties": {
+            "confidence": "likely",
+            "severity": "low"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -265,4 +265,5 @@ footer: |
 | 2608091910 | ✅     | sonnet | [Resolve the MDS073 rule-ID collision between slidevstructure and foreignregion](plan/2608091910_arch-fix-mds073-collision.md)                          |
 | 2608091911 | 🔲     | haiku  | [Add dedicated unit tests for occurrence and slidevstructure private helpers](plan/2608091911_arch-fix-missing-unit-tests.md)                           |
 | 2608161754 | ✅     | sonnet | [Vendor go-runewidth as a patched fork so post-LUT versions build under tinygo](plan/2608161754_vendor-runewidth-bump-tinygo.md)                        |
+| 2608212013 | 🔲     | sonnet | [Security hardening batch — 2026-08-21](plan/2608212013_security-hardening-batch-2026-08-21.md)                                                         |
 <?/catalog?>
