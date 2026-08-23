@@ -208,3 +208,65 @@ func TestDiscoverFilesForInstall_FallsBackOnEmpty(t *testing.T) {
 	got := DiscoverFilesForInstall(dir, 1024*1024)
 	assert.Equal(t, []string{"PLAN.md", "README.md"}, got)
 }
+
+func TestDiscoverFilesForInstall_ReturnsRealFilesWhenPresent(t *testing.T) {
+	// When the repo already has directive-bearing files, the
+	// install-time fallback ("PLAN.md", "README.md") must not
+	// replace or augment the real discovered list.
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "real.md"),
+		[]byte("# real\n\n<?catalog?>\n<?/catalog?>\n"), 0o644))
+
+	got := DiscoverFilesForInstall(dir, 1024*1024)
+	assert.Equal(t, []string{"real.md"}, got)
+}
+
+func TestDiscoverFiles_NonexistentRepoRootYieldsNoFiles(t *testing.T) {
+	// filepath.Walk invokes the callback once with a non-nil err when
+	// it cannot stat the root; DiscoverFiles must swallow that error
+	// and return an empty list rather than panicking or propagating it.
+	got := DiscoverFiles(filepath.Join(t.TempDir(), "does-not-exist"), 1024*1024)
+	assert.Empty(t, got)
+}
+
+func TestDiscoverFiles_SkipsFilesOverMaxBytes(t *testing.T) {
+	// A file whose content ReadFileLimited refuses (over maxBytes)
+	// must be skipped rather than surfacing an error.
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "big.md"),
+		[]byte("# big\n\n<?catalog?>\n<?/catalog?>\n"), 0o644))
+
+	got := DiscoverFiles(dir, 4)
+	assert.Empty(t, got, "a file larger than maxBytes must be skipped, not surfaced")
+}
+
+func TestHasDirectiveMarker_ShortBacktickRunIsNotAFence(t *testing.T) {
+	// Fewer than three backticks never opens a fence per CommonMark,
+	// so a directive marker on the very next line still counts.
+	content := []byte("``\n<?catalog?>\n")
+	assert.True(t, hasDirectiveMarker(content, []string{"catalog"}))
+}
+
+func TestHasDirectiveMarker_ShortClosingRunDoesNotCloseFence(t *testing.T) {
+	// A closing run shorter than the opening run does not close the
+	// fence (CommonMark requires the closer to be at least as long as
+	// the opener), so the marker that follows the short "close" stays
+	// hidden inside the still-open fence.
+	content := []byte("````\n```\n<?catalog?>\n````\n")
+	assert.False(t, hasDirectiveMarker(content, []string{"catalog"}))
+}
+
+func TestHasDirectiveMarker_ClosingFenceWithLeadingIndentation(t *testing.T) {
+	// A closing fence may be preceded by up to three spaces of
+	// indentation per CommonMark and still close the block.
+	content := []byte("```\ninside\n   ```\n<?catalog?>\n")
+	assert.True(t, hasDirectiveMarker(content, []string{"catalog"}))
+}
+
+func TestHasDirectiveMarker_ClosingFenceWithTrailingWhitespace(t *testing.T) {
+	// A closing fence line may be followed by trailing whitespace
+	// (spaces/tabs) and still close the block; the marker after it
+	// must then count as real, top-level content.
+	content := []byte("```\ninside\n```  \n<?catalog?>\n")
+	assert.True(t, hasDirectiveMarker(content, []string{"catalog"}))
+}

@@ -49,7 +49,6 @@ func DiscoverFiles(repoRoot string, maxBytes int64) []string {
 		ignorePatterns = cfg.Ignore
 	}
 
-	seen := make(map[string]struct{})
 	var files []string
 	_ = filepath.Walk(repoRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -72,10 +71,10 @@ func DiscoverFiles(repoRoot string, maxBytes int64) []string {
 		if !mdpath.IsMarkdownPath(name) {
 			return nil
 		}
-		rel, err := filepath.Rel(repoRoot, path)
-		if err != nil {
-			return nil
-		}
+		// filepath.Walk always derives path by joining repoRoot with
+		// the walked subpath, so path is always repoRoot-rooted and
+		// Rel cannot fail here.
+		rel, _ := filepath.Rel(repoRoot, path) //nolint:errcheck // Walk always joins path under repoRoot
 		key := filepath.ToSlash(rel)
 		if config.IsIgnored(ignorePatterns, key) {
 			return nil
@@ -90,10 +89,6 @@ func DiscoverFiles(repoRoot string, maxBytes int64) []string {
 		if !hasDirectiveMarker(content, directiveNames) {
 			return nil
 		}
-		if _, dup := seen[key]; dup {
-			return nil
-		}
-		seen[key] = struct{}{}
 		files = append(files, key)
 		return nil
 	})
