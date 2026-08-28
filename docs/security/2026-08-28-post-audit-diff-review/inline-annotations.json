@@ -1,0 +1,10 @@
+[
+  {
+    "path": "internal/rules/externallink/probe_net.go",
+    "line": 118,
+    "side": "RIGHT",
+    "severity": "info",
+    "id": "S001",
+    "body": "**[S001 · info] SSRF guard cannot see the destination when a forward proxy is configured via the environment**\n\nThe guarded HTTP client used by MDS072 (external-link-check, opt-in, off by default) enforces its SSRF containment in ssrfControl, a net.Dialer.Control hook that inspects the resolved remote IP right before connect. That is the correct, DNS-rebinding-safe place for the check — but the same transport also sets Proxy: http.ProxyFromEnvironment. When HTTP_PROXY/HTTPS_PROXY is set in the environment, Go dials the proxy's address rather than the document URL's resolved address, so ssrfControl validates the proxy IP and never sees the true destination. The forward proxy then\nresolves and connects to the target host on the client's behalf, outside the guard. A hostile document URL pointing at an internal host or a cloud metadata endpoint (e.g. http://169.254.169.254/) would be blocked when dialed directly, but could be reached through a proxy that is itself willing to forward there. This is a known structural limitation of connect-time SSRF guards, not a coding error in isRestrictedIP (which is thorough).\n\n**Fix:** Defense in depth for the guarded (external-allow-internal:false) path: either (a) disable proxy use on guardedClient (Proxy: nil) so every dial is a direct connection the Control hook can vet, accepting that internal-corp targets behind a required proxy simply won't be probed; or (b) when a proxy is in use, additionally resolve the destination hostname up front and run isRestrictedIP on every resolved address before issuing the request, rejecting the URL if any resolves into a restricted range (belt-and-suspenders against the proxy blind spot). Document the proxy caveat\nnext to external-allow-internal either way. Because MDS072 is opt-in and off by default, this is hardening rather than a fix for an exposed default."
+  }
+]
