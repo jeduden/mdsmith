@@ -111,6 +111,15 @@ func TestName(t *testing.T) {
 	}
 }
 
+// TestInlineCapable pins that InlineCapable returns true, which tells the
+// engine to route this rule to its own Check on nil-AST files rather than
+// dropping it. This covers the single-line method added by the KindScopedChecker
+// conversion and keeps codecov/patch green for the new code.
+func TestInlineCapable(t *testing.T) {
+	r := &Rule{}
+	assert.True(t, r.InlineCapable())
+}
+
 // TestCheck_NoStateLeakAcrossFiles pins the per-file reset contract: a
 // single rule instance reused across two files (simulating engine worker
 // reuse) must produce correct diagnostics for each file independently.
