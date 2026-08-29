@@ -23,6 +23,9 @@ func DecodeFilenameField(v any) ([]string, error) {
 		if t == "" {
 			return nil, nil
 		}
+		if err := ValidateGlobInterps(t); err != nil {
+			return nil, fmt.Errorf("filename %q: %w", t, err)
+		}
 		return []string{t}, nil
 	case []any:
 		out := make([]string, 0, len(t))
@@ -37,6 +40,9 @@ func DecodeFilenameField(v any) ([]string, error) {
 				return nil, fmt.Errorf(
 					"filename list entries must be non-empty globs")
 			}
+			if err := ValidateGlobInterps(s); err != nil {
+				return nil, fmt.Errorf("filename %q: %w", s, err)
+			}
 			out = append(out, s)
 		}
 		if len(out) == 0 {
@@ -46,9 +52,13 @@ func DecodeFilenameField(v any) ([]string, error) {
 	case []string:
 		out := make([]string, 0, len(t))
 		for _, s := range t {
-			if s != "" {
-				out = append(out, s)
+			if s == "" {
+				continue
 			}
+			if err := ValidateGlobInterps(s); err != nil {
+				return nil, fmt.Errorf("filename %q: %w", s, err)
+			}
+			out = append(out, s)
 		}
 		if len(out) == 0 {
 			return nil, nil
@@ -90,6 +100,39 @@ func MatchFilename(patterns []string, base string) (matched bool, badPattern str
 		return false, firstBad, firstErr
 	}
 	return false, "", nil
+}
+
+// ResolveFilenamePatterns applies ResolveGlobPattern to every entry
+// in patterns, returning the resolved list plus a flag reporting
+// whether any entry actually changed. A list with no `\#(...)`
+// reference — every list authored before this feature — is returned
+// as-is with interpolated=false and no allocation, so the common path
+// pays nothing.
+//
+// The first unresolvable reference aborts with its error rather than
+// dropping the entry: silently skipping a pattern whose front-matter
+// field is missing would let the remaining globs decide the verdict,
+// which is not what the author asked for.
+func ResolveFilenamePatterns(
+	patterns []string, fm map[string]any,
+) (resolved []string, interpolated bool, err error) {
+	for i, p := range patterns {
+		if !PatternHasInterp(p) {
+			continue
+		}
+		r, rErr := ResolveGlobPattern(p, fm)
+		if rErr != nil {
+			return nil, false, rErr
+		}
+		if resolved == nil {
+			resolved = append([]string(nil), patterns...)
+		}
+		resolved[i] = r
+	}
+	if resolved == nil {
+		return patterns, false, nil
+	}
+	return resolved, true, nil
 }
 
 // FilenameExpected renders the "expected" clause of a filename
