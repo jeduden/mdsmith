@@ -12,6 +12,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/bytelimit"
 	fixpkg "github.com/jeduden/mdsmith/internal/fix"
+	"github.com/jeduden/mdsmith/internal/gitattributes"
 	"github.com/jeduden/mdsmith/internal/githooks"
 	"github.com/jeduden/mdsmith/internal/rule"
 )
@@ -304,7 +305,7 @@ func fixMergedContent(cleaned []byte, ours, pathname string, maxBytes int64) ([]
 //
 // git invokes the merge driver from inside `git merge`, which holds
 // `.git/index.lock` for the whole merge. A rule whose Fix runs an
-// in-process `git add` (e.g. githooks.StageGitattributes) would be a
+// in-process `git add` (e.g. gitattributes.StageGitattributes) would be a
 // second index writer racing the parent `git merge` for that lock,
 // which can leave a stale `.git/index.lock` that fails the staging
 // step and bounces the merge queue. The merge driver only needs the
@@ -477,7 +478,7 @@ func hasConflictMarkers(content []byte) bool {
 // (`*.md`, `*.markdown`) is used and the project's .mdsmith.yml
 // `ignore:` patterns become markdown-scoped exclude overrides —
 // each pattern is intersected with the markdown include extensions
-// (see githooks.GlobsFromConfig) so a `merge=text` line never
+// (see gitattributes.GlobsFromConfig) so a `merge=text` line never
 // changes git's merge for non-markdown files. Patterns that cannot appear
 // verbatim in `.gitattributes` (whitespace, leading `!`) are
 // silently dropped by `GlobsFromConfig`. Explicit args replace the
@@ -487,13 +488,13 @@ func hasConflictMarkers(content []byte) bool {
 // attribute lines on whitespace and the bad pattern would corrupt
 // the managed block. The second return is the process exit code: 0
 // on success, 2 on a user-facing error (already printed to stderr).
-func resolveManagedGlobs(_ string, args []string) (githooks.Globs, int) {
+func resolveManagedGlobs(_ string, args []string) (gitattributes.Globs, int) {
 	cfg, _, err := loadConfig("")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: loading config: %v\n", err)
-		return githooks.Globs{}, 2
+		return gitattributes.Globs{}, 2
 	}
-	globs, skipped := githooks.GlobsFromConfig(cfg)
+	globs, skipped := gitattributes.GlobsFromConfig(cfg)
 	if len(skipped) > 0 {
 		// Surface dropped ignore patterns so operators can see when
 		// the generated merge-driver scope diverges from the
@@ -509,7 +510,7 @@ func resolveManagedGlobs(_ string, args []string) (githooks.Globs, int) {
 			if strings.ContainsAny(p, " \t\n\r") {
 				fmt.Fprintf(os.Stderr,
 					"mdsmith: include pattern %q contains whitespace, which is not supported in .gitattributes\n", p)
-				return githooks.Globs{}, 2
+				return gitattributes.Globs{}, 2
 			}
 		}
 		globs.Include = append([]string{}, args...)
@@ -545,7 +546,7 @@ func runMergeDriverInstall(args []string) int {
 	}
 
 	attrPath := filepath.Join(repoRoot, ".gitattributes")
-	if err := githooks.WriteGitattributes(attrPath, globs); err != nil {
+	if err := gitattributes.WriteGitattributes(attrPath, globs); err != nil {
 		fmt.Fprintf(os.Stderr,
 			"mdsmith: updating .gitattributes: %v\n", err)
 		return 2
@@ -651,11 +652,11 @@ var osReadFile = os.ReadFile
 //
 // It rejects a symlinked or otherwise non-regular .gitattributes before
 // reading, mirroring the lstat guard install applies in
-// githooks.WriteGitattributes, to reduce the risk of following a link to
+// gitattributes.WriteGitattributes, to reduce the risk of following a link to
 // a path outside the repository. As there, a narrow TOCTOU window
 // remains between this guard and the read. A missing file (ENOENT)
 // passes the guard and is reported as "not found" below.
-func verifyGitattributes(attrPath string, expected githooks.Globs) int {
+func verifyGitattributes(attrPath string, expected gitattributes.Globs) int {
 	if err := guardFn(attrPath); err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return 2
@@ -673,7 +674,7 @@ func verifyGitattributes(attrPath string, expected githooks.Globs) int {
 		return 2
 	}
 
-	installed, ok := githooks.ExtractGlobs(string(data))
+	installed, ok := gitattributes.ExtractGlobs(string(data))
 	if !ok {
 		fmt.Fprintf(os.Stderr,
 			"mdsmith: %s has no mdsmith merge-driver managed block; run "+
@@ -682,7 +683,7 @@ func verifyGitattributes(attrPath string, expected githooks.Globs) int {
 		return 2
 	}
 
-	if !githooks.GlobsEqual(installed, expected) {
+	if !gitattributes.GlobsEqual(installed, expected) {
 		fmt.Fprintf(os.Stderr,
 			"mdsmith: committed .gitattributes is out of sync with "+
 				".mdsmith.yml; run `mdsmith merge-driver install` and commit "+

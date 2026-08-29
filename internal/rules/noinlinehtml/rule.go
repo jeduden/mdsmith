@@ -2,9 +2,10 @@ package noinlinehtml
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
@@ -146,7 +147,13 @@ func (r *Rule) checkFromLayers(f *lint.File) []lint.Diagnostic {
 	if len(found) == 0 {
 		return nil
 	}
-	sort.SliceStable(found, func(i, j int) bool { return found[i].offset < found[j].offset })
+	// slices.SortStableFunc sorts the concrete located values directly,
+	// unlike sort.SliceStable, which drives reflect.Swapper under the
+	// hood — see docs/development/high-performance-go.md's "reflect
+	// in hot paths" anti-pattern.
+	slices.SortStableFunc(found, func(a, b located) int {
+		return cmp.Compare(a.offset, b.offset)
+	})
 	diags := make([]lint.Diagnostic, len(found))
 	for i, l := range found {
 		diags[i] = l.diag
