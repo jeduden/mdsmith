@@ -31,14 +31,27 @@ import (
 // ResolveGlobPattern rejects such a value outright; see
 // globSeparator.
 //
-// One platform caveat, confined to the `filename:` surface:
-// filepath.Match disables escaping on Windows and reads `\` as a
-// separator instead, so an escaped byte never matches there. Only
-// `[` and `{` can trigger it — Windows filenames cannot contain
-// `\`, `*`, or `?` at all. doublestar (the `path-pattern:` surface)
-// always uses `/` as its separator and honours `\` escapes on every
-// platform, so it is unaffected.
+// doublestar always uses `/` as its separator and honours `\`
+// escapes on every platform, so this set is platform-independent.
+// The `filename:` surface, which feeds filepath.Match instead, needs
+// a narrower one; see filenameMetaChars.
 const globMetaChars = `\*?[{,`
+
+// filenameMetaChars is the escape set for the schema `filename:`
+// surface, whose resolved patterns are matched by filepath.Match
+// rather than doublestar.
+//
+// filepath.Match knows no brace alternatives, so `{` and `,` are
+// already literal there and escaping them buys nothing. It also
+// costs correctness on Windows: filepath.Match disables escaping on
+// that platform and compares `\` as an ordinary character, so an
+// escaped byte never matches. `\`, `*`, and `?` cannot appear in a
+// Windows filename at all, so escaping those is inert there — but
+// `,` and `{` can, and escaping them would turn a legitimate
+// basename like `a,b.md` into a guaranteed mismatch. `[` remains the
+// one unavoidable case: it is special to filepath.Match everywhere
+// and legal in a Windows filename.
+const filenameMetaChars = `\*?[`
 
 // globSeparator is the byte a resolved `fmvar(...)` value may not
 // contain at all. A reference occupies one path segment of the
@@ -82,6 +95,15 @@ func PatternHasInterp(pattern string) bool {
 // span two path segments instead of matching the one the reference
 // occupies, and no escape makes it literal (see globSeparator).
 func ResolveGlobPattern(pattern string, fm map[string]any) (string, error) {
+	return resolveGlobPattern(pattern, fm, globMetaChars)
+}
+
+// resolveGlobPattern is ResolveGlobPattern with the escape set as a
+// parameter, so the `filename:` surface can pass the narrower
+// filenameMetaChars its filepath.Match backend needs.
+func resolveGlobPattern(
+	pattern string, fm map[string]any, meta string,
+) (string, error) {
 	if !PatternHasInterp(pattern) {
 		return pattern, nil
 	}
@@ -104,7 +126,7 @@ func ResolveGlobPattern(pattern string, fm map[string]any) (string, error) {
 					"separator; an interpolated value must name a "+
 					"single path segment", name, val)
 		}
-		return escapeGlobMeta(val), nil
+		return escapeGlobMeta(val, meta), nil
 	})
 }
 
@@ -152,18 +174,18 @@ func InterpolatedGlobHint(interpolated ...string) string {
 	return "with front matter applied: " + strings.Join(interpolated, ", ")
 }
 
-// escapeGlobMeta backslash-escapes every glob metacharacter in s so
-// the string matches itself literally inside a surrounding pattern.
-// Values free of metacharacters — nearly all of them — are returned
-// unchanged with no allocation.
-func escapeGlobMeta(s string) string {
-	if !strings.ContainsAny(s, globMetaChars) {
+// escapeGlobMeta backslash-escapes every byte of s that appears in
+// meta, so the string matches itself literally inside a surrounding
+// pattern. Values free of metacharacters — nearly all of them — are
+// returned unchanged with no allocation.
+func escapeGlobMeta(s, meta string) string {
+	if !strings.ContainsAny(s, meta) {
 		return s
 	}
 	var b strings.Builder
 	b.Grow(len(s) + 4)
 	for i := 0; i < len(s); i++ {
-		if strings.IndexByte(globMetaChars, s[i]) >= 0 {
+		if strings.IndexByte(meta, s[i]) >= 0 {
 			b.WriteByte('\\')
 		}
 		b.WriteByte(s[i])

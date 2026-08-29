@@ -2660,59 +2660,22 @@ func checkFilenamePattern(
 	f *lint.File, sch *parsedSchema, schemaSource string,
 	docFM map[string]any,
 ) []lint.Diagnostic {
-	patterns := sch.Config.FilenamePatterns
-	if len(patterns) == 0 {
+	// schema.FilenameDiagnostic owns the wording, the
+	// `\#(fmvar(name))` resolution against the document's front
+	// matter, and the OR-list semantics, so the legacy proto.md path
+	// and the inline/composed path (schema.validateFilename) cannot
+	// drift apart.
+	d := schema.FilenameDiagnostic(
+		sch.Config.FilenamePatterns, filepath.Base(f.Path), docFM,
+		buildSchemaRefForLegacy(schemaSource))
+	if d == nil {
 		return nil
 	}
 	// Filename diagnostics describe the document as a whole;
 	// use the non-body anchor so filterGeneratedDiags can't
 	// drop them when body line 1 sits inside a generated
 	// section.
-	anchor := schema.NonBodyDiagLine(f)
-	base := filepath.Base(f.Path)
-	// Resolve `\#(fmvar(name))` against the document's front matter
-	// before comparing, so a proto.md can require the basename to
-	// agree with a field value. An entry whose reference will not
-	// resolve drops out of the OR list so a sibling glob can still
-	// accept the basename; its error becomes the hint only when
-	// nothing matched. See schema.validateFilename for the same
-	// wiring on the inline path.
-	resolved, interpolated, unresolved := schema.ResolveFilenamePatterns(patterns, docFM)
-	matched, badPattern, err := schema.MatchFilename(resolved, base)
-	if err != nil {
-		// Malformed glob in the schema. Surface it via the same
-		// SchemaDiagnostic shape so the message carries the
-		// schema reference and the user can jump to the
-		// offending pattern.
-		d := schema.SchemaDiagnostic{
-			Field:     "filename pattern",
-			Actual:    strconv.Quote(badPattern),
-			Expected:  "valid glob",
-			Hint:      err.Error(),
-			SchemaRef: buildSchemaRefForLegacy(schemaSource),
-		}
-		return []lint.Diagnostic{d.Emit(makeDiag, f.Path, anchor)}
-	}
-	// An empty resolved list means every entry was dropped as
-	// unresolvable; MatchFilename reads that as "no constraint", so
-	// the emptiness has to be checked here rather than trusting
-	// matched.
-	if matched && len(resolved) > 0 {
-		return nil
-	}
-	// `glob` keeps the wording aligned with schema.validateFilename
-	// and the path-pattern diagnostic; see the rationale there.
-	// With several globs configured the "expected" clause lists
-	// them all so the OR nature is visible.
-	d := schema.SchemaDiagnostic{
-		Field:    "filename",
-		Actual:   strconv.Quote(base),
-		Expected: schema.FilenameExpected(patterns),
-		Hint: schema.UnresolvedOrInterpolatedHint(
-			unresolved, interpolated),
-		SchemaRef: buildSchemaRefForLegacy(schemaSource),
-	}
-	return []lint.Diagnostic{d.Emit(makeDiag, f.Path, anchor)}
+	return []lint.Diagnostic{d.Emit(makeDiag, f.Path, schema.NonBodyDiagLine(f))}
 }
 
 // readSchemaFile reads the schema file using the file's RootFS when available,
