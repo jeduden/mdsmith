@@ -51,7 +51,6 @@ Enable with em-dash density preset (at most two per paragraph):
 ```yaml
 rules:
   occurrence:
-    enabled: true
     pattern: "—"
     scope: paragraph
     count: combined
@@ -63,7 +62,6 @@ Enable with term-density preset (buzzword list, at most twice per section):
 ```yaml
 rules:
   occurrence:
-    enabled: true
     scope: section
     count: each
     max: 2
