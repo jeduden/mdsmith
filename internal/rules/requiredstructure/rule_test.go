@@ -757,6 +757,16 @@ filename:
 		`filename: got "notes.md", expected filename matching one of globs [0-9]*_*.md, plan.md`)
 }
 
+func TestCheck_FilenamePatternBadType(t *testing.T) {
+	// A `filename:` list entry that is not a string surfaces the
+	// DecodeFilenameField error as an invalid-schema diagnostic.
+	schemaPath := writeSchema(t, "<?require\nfilename:\n  - 5\n?>\n# ?\n")
+	r := &Rule{Schema: schemaPath}
+	f := newTestFile(t, "plan.md", "# Plan\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags, "filename must be a string or list of strings")
+}
+
 func TestCheck_FilenamePatternSingleLinePI(t *testing.T) {
 	schemaPath := writeSchema(t, `<?require filename: "[0-9]*_*.md" ?>
 # ?

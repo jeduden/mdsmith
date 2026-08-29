@@ -352,6 +352,19 @@ func TestParseFile_RequireMalformedYAML(t *testing.T) {
 	assert.Contains(t, err.Error(), "invalid <?require?>")
 }
 
+func TestParseFile_RequireBadFilenameType(t *testing.T) {
+	// A well-formed YAML body whose `filename:` is neither a string
+	// nor a list of strings surfaces the DecodeFilenameField error
+	// wrapped as an invalid-directive diagnostic.
+	dir := t.TempDir()
+	p := writeFile(t, dir, "proto.md",
+		"<?require\nfilename:\n  - 5\n?>\n\n# ?\n")
+	_, err := ParseFile(&FileReader{}, p)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid <?require?>")
+	assert.Contains(t, err.Error(), "filename must be a string or list of strings")
+}
+
 func TestParseFile_FrontmatterPropagatesToSchema(t *testing.T) {
 	// Frontmatter CUE constraints declared in the proto.md surface
 	// on the parsed Schema. lint.StripFrontMatter consumes the

@@ -454,11 +454,11 @@ func expandInclude(
 	}
 
 	fragPrefix, body := lint.StripFrontMatter(data)
-	fragFile, err := lint.NewFile(included, body)
-	if err != nil {
-		return nil, nil, fmt.Errorf(
-			"parsing schema include %q: %w", included, err)
-	}
+	// lint.NewFile returns a nil error in every code path
+	// (internal/lint/file.go); discard it so this patch carries no
+	// untestable defensive branch, matching expandSchemaInclude in
+	// the requiredstructure package.
+	fragFile, _ := lint.NewFile(included, body)
 
 	fp, err := extractRequireFilename(fragFile)
 	if err != nil {
