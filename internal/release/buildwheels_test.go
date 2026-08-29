@@ -144,6 +144,20 @@ func assertWheel(t *testing.T, out string, entries []os.DirEntry, c wheelCase) {
 	meta := readZipMember(t, whl, "/WHEEL")
 	assert.Contains(t, meta, c.tagInWheelMetadata, "%s WHEEL metadata", whl)
 	assert.NotContains(t, meta, "py3-none-any", "%s still claims py3-none-any", whl)
+	// Regression guard: the pinned pypa/gh-action-pypi-publish
+	// bundles a `packaging` older than 26.0, whose twine metadata
+	// check rejects `Metadata-Version: 2.5`. Newer hatchling
+	// defaults to 2.5 — and its DEFAULT_METADATA_VERSION flip-flops
+	// across releases — so pyproject.toml pins
+	// `core-metadata-version = "2.4"` under the wheel target: the
+	// newest version that still carries the PEP 639 license fields
+	// yet is accepted by the pinned publisher. Dropping the pin
+	// reddens the whole release at publish time (it took down
+	// v0.55.0). See docs/development/release-channels/pypi.md.
+	distMeta := readZipMember(t, whl, "/METADATA")
+	assert.Contains(t, distMeta, "Metadata-Version: 2.4",
+		"%s: wheel core metadata must pin version 2.4; the pinned "+
+			"PyPI publish action rejects newer metadata versions", whl)
 	assert.Truef(t, zipHasFile(t, whl, "mdsmith/_bin/"+c.binName),
 		"%s: bundled binary mdsmith/_bin/%s missing", whl, c.binName)
 	// Regression guard: PyPI rejects wheels with duplicate local
