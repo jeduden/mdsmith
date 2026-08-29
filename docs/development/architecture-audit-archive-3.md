@@ -14,6 +14,109 @@ links here for entries it no longer has room for.
 Entries below are moved, not summarized — nothing
 was reworded.
 
+## Audit 2026-08-02 (range: 6680ff5..2ab4b29)
+
+148 touched files. Notable new surfaces: MDS073
+slide-structure and MDS060 occurrence. MDS073 was
+renamed from MDS072; no leftover duplication was
+found. Also new: foreign-managed regions and
+user-extensible wordlists.
+
+No rule-to-rule imports. No reverse-layer imports. No
+Liskov breaks. The prior cycle's `isClaimed` dedup
+(plan 2607191918) is confirmed resolved — `schema.IsClaimed`
+is now exported and `requiredstructure` calls it directly.
+
+### blockers (2026-08-02)
+
+- `cmd/mdsmith/check.go`'s `runCheck` and
+  `cmd/mdsmith/fix.go`'s `runFix` — the `check` and `fix`
+  CLI subcommand entry points — had no dedicated in-process
+  unit test; only binary-spawn e2e tests
+  (`internal/integration`, `cmd/mdsmith/e2e_*_test.go`)
+  exercised them.
+  [audit-checklist.md][audit-checklist]: "blocker if the
+  function is on a public surface ... a CLI subcommand
+  entry." Fixed: added `TestRunCheck_UnknownFlag_ExitsTwo`,
+  `TestRunCheck_Stdin_ChecksSource`,
+  `TestRunCheck_Files_ExitsOneOnDiagnostics`,
+  `TestRunCheck_Discovered_ChecksConfiguredFiles`,
+  `TestRunFix_UnknownFlag_ExitsTwo`,
+  `TestRunFix_StdinArg_ExitsTwo`,
+  `TestRunFix_Files_FixesGivenFile`, and
+  `TestRunFix_Discovered_FixesConfiguredFiles` to
+  `cmd/mdsmith/main_unit_test.go`, matching the
+  `TestRunInit_*` precedent from the 2026-07-19 cycle.
+  `go test ./cmd/mdsmith/...` and
+  `go tool golangci-lint run` are green.
+
+### tax (2026-08-02)
+
+- `cmd/mdsmith/main.go` still carries the `list query`
+  subcommand's full domain logic (`parseQueryFlags`,
+  `runQuery`, `queryFiles`, `readFrontMatterRaw`) instead
+  of a dedicated file, even though `list.go` dispatches to
+  it the same way it dispatches to `backlinks.go`.
+  [go.md][go] "Clean wiring in `cmd/mdsmith`" —
+  [plan/2608021915][2608021915].
+- `internal/githooks`'s package doc comment joins three
+  responsibilities with "and" (hook-script generation,
+  `.gitattributes` I/O, directive-file discovery) —
+  [go.md][go] refactor-moves: "Split a package by
+  question" — [plan/2608021916][2608021916].
+- `internal/lint/files.go`'s CLI-path/glob resolution
+  overlaps the question `internal/discovery` already
+  answers for config-glob-driven discovery. No plan filed
+  this cycle; flagged for the next package-boundary pass.
+- A broad set of unexported, branching helper functions
+  across the touched rule packages
+  (`requiredstructure`, `crossfilereferenceintegrity`,
+  `noreferencestyle`, `include`, `linkstyle`,
+  `slidevstructure`, `occurrence`, `tablefmt`,
+  `tocdirective`, `githooksync`, `build`) and
+  `cmd/mdsmith` (`checkFiles`, `checkBatchOptions`,
+  `batchMaxBytes`, `parseFixFlags`, `setFixUsage`,
+  `fixFiles`, `readStdinLimited`, `regenDirectiveNames`)
+  lack a dedicated `TestFuncName` symbol per
+  [tests.md][tests], though each is exercised
+  transitively through its caller's scenario tests. None
+  sit on a public surface by themselves, so tax rather
+  than blocker.
+- Trivial one-line accessors (`FixTitle` across several
+  rule packages, plus a few `rule.Rule` capability
+  predicates) carry only an "implements rule.X" comment,
+  not the exemption statement [tests.md][tests] requires
+  to distinguish "no test by design" from "no test,
+  forgotten."
+- Similar untested-but-covered helper clusters exist in
+  `internal/lsp/server_codeaction.go`,
+  `internal/config/merge.go`, and `internal/fix/fix.go`.
+
+[audit-checklist]: architecture/audit-checklist.md
+[2608021915]: ../../plan/2608021915_arch-fix-query-subcommand-placement.md
+
+### nice-to-have (2026-08-02)
+
+- Several tests covering the flagged helper clusters use
+  scenario names (e.g. `TestDriftParts_ResolvesHooksDirOnce`)
+  rather than the literal `TestReceiver_Foo` binding —
+  coverage exists, only the naming convention drifts.
+- `stagingHelperShellFunc` (`internal/githooks/githooks.go`)
+  contains "Helper" in its name — go.md flags this as a
+  smell, though the constant is well-scoped. Rename on
+  next touch.
+- `Override.Patterns()` / `KindAssignmentEntry.Patterns()`
+  (`internal/config/config.go`) are two-line branching
+  methods exercised only inside larger config tests, not by
+  a dedicated `Test*`. Low regression risk.
+- `parseCheckFlags` / `parseFixFlags` cross go.md's ~50-line
+  guidance for `cmd/mdsmith` handlers, but the body is pure
+  flag-registration boilerplate, not domain logic.
+
+[2608021916]: ../../plan/2608021916_arch-fix-githooks-package-split.md
+[go]: architecture/go.md
+[tests]: architecture/tests.md
+
 ## Audit 2026-07-12 (range: 528ce4c..834b560)
 
 66 touched production Go files. No TypeScript changes.
