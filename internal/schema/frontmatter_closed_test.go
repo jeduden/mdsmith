@@ -226,3 +226,42 @@ func TestExtend_FrontmatterClosedInheritsParent(t *testing.T) {
 	assert.False(t, out.FrontmatterIsClosed(),
 		"a child that says nothing inherits the parent's open front matter")
 }
+
+// A source that declares no `frontmatter:` map at all — a
+// filename-only or sections-only kind — has no opinion on
+// closedness. Counting FrontmatterIsClosed's default for it would
+// let such a kind cancel another kind's explicit
+// `frontmatter-closed: false` the moment both claim one file.
+func TestCompose_FrontmatterlessSourceDoesNotCloseTheComposite(t *testing.T) {
+	open := false
+	a := &Schema{
+		Frontmatter:       map[string]string{"description": "string"},
+		FrontmatterClosed: &open,
+		Source:            "kind a",
+	}
+	b := &Schema{
+		Filename: []string{"*.prompt.md"},
+		Source:   "kind b",
+	}
+	out, err := Compose(a, b)
+	require.NoError(t, err)
+	assert.False(t, out.FrontmatterIsClosed())
+
+	doc := newDocFile(t, "a.prompt.md",
+		"---\ndescription: \"x\"\nextra: 1\n---\n# T\n")
+	diags := Validate(doc, out,
+		map[string]any{"description": "x", "extra": 1},
+		false, makeDiagForTest)
+	assert.Empty(t, diags, "got %v", diagsMessages(diags))
+}
+
+// With no source declaring front matter at all the composite keeps
+// the historical closed default; it is inert because the composed
+// schema then emits no front-matter constraint.
+func TestCompose_NoFrontmatterAnywhereKeepsClosedDefault(t *testing.T) {
+	a := &Schema{Filename: []string{"*.md"}, Source: "kind a"}
+	b := &Schema{Acronyms: &AcronymRule{KnownSafe: []string{"APM"}}, Source: "kind b"}
+	out, err := Compose(a, b)
+	require.NoError(t, err)
+	assert.True(t, out.FrontmatterIsClosed())
+}

@@ -20,10 +20,13 @@ import (
 // escape: neither is special until an unescaped `[` or `{` opens the
 // construct, and both openers are escaped here.
 //
-// One platform caveat: filepath.Match disables escaping on Windows
-// and reads `\` as a separator instead. Only a frontmatter value
-// containing `{` is affected, because the other four bytes cannot
-// appear in a Windows filename at all.
+// One platform caveat, confined to the `filename:` surface:
+// filepath.Match disables escaping on Windows and reads `\` as a
+// separator instead, so an escaped byte never matches there. Only
+// `[` and `{` can trigger it — Windows filenames cannot contain
+// `\`, `*`, or `?` at all. doublestar (the `path-pattern:` surface)
+// always uses `/` as its separator and honours `\` escapes on every
+// platform, so it is unaffected.
 const globMetaChars = `\*?[{`
 
 // PatternHasInterp reports whether pattern carries at least one
@@ -45,11 +48,13 @@ func PatternHasInterp(pattern string) bool {
 // capture to read back — so it is rejected rather than silently
 // substituted.
 //
-// A reference whose field is absent from fm returns an error instead
-// of substituting an empty segment, which would otherwise let
-// `.apm/skills//SKILL.md` quietly match nothing (or, for a trailing
-// reference, match a degenerate name). Callers surface the error as a
-// diagnostic naming the missing field.
+// A reference whose field is absent from fm — or present but empty —
+// returns an error instead of substituting an empty segment, which
+// would otherwise let `.apm/skills//SKILL.md` quietly match nothing
+// (or, for a trailing reference, match a degenerate name). The two
+// cases get distinct messages because the fix differs: add the field
+// versus give it a value. Callers surface the error as a diagnostic
+// naming the field.
 func ResolveGlobPattern(pattern string, fm map[string]any) (string, error) {
 	if !PatternHasInterp(pattern) {
 		return pattern, nil
@@ -63,6 +68,10 @@ func ResolveGlobPattern(pattern string, fm map[string]any) (string, error) {
 		if !found {
 			return "", fmt.Errorf(
 				"`fmvar(%s)`: frontmatter value missing", name)
+		}
+		if val == "" {
+			return "", fmt.Errorf(
+				"`fmvar(%s)`: frontmatter value is empty", name)
 		}
 		return escapeGlobMeta(val), nil
 	})

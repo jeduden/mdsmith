@@ -1678,20 +1678,11 @@ func validateFilename(
 	base := filepath.Base(f.Path)
 	// `\#(fmvar(name))` references resolve against the document's own
 	// front matter before the basename comparison, so a schema can
-	// require the filename to agree with a field value. An
-	// unresolvable reference is the schema author's problem, not a
-	// filename mismatch, so it gets its own hint.
-	resolved, interpolated, err := ResolveFilenamePatterns(patterns, docFM)
-	if err != nil {
-		d := SchemaDiagnostic{
-			Field:     "filename",
-			Actual:    strconv.Quote(base),
-			Expected:  FilenameExpected(patterns),
-			Hint:      err.Error(),
-			SchemaRef: schemaRef(sch, ""),
-		}
-		return []lint.Diagnostic{d.Emit(mkDiag, f.Path, anchor)}
-	}
+	// require the filename to agree with a field value. An entry
+	// whose reference will not resolve drops out of the OR list so a
+	// sibling glob can still accept the basename; its error becomes
+	// the hint only when nothing matched.
+	resolved, interpolated, unresolved := ResolveFilenamePatterns(patterns, docFM)
 	matched, badPattern, err := MatchFilename(resolved, base)
 	if err != nil {
 		// Malformed glob in the schema. Surface it via the same
@@ -1707,25 +1698,44 @@ func validateFilename(
 		}
 		return []lint.Diagnostic{d.Emit(mkDiag, f.Path, anchor)}
 	}
-	if !matched {
-		// `glob` makes the constraint syntax explicit: users
-		// occasionally read `string matching <pattern>` as a regex
-		// requirement, which filepath.Match does not accept. The
-		// wording also lines up with the kind-level `path-pattern`
-		// diagnostic ("path matching glob ...") so the user
-		// vocabulary is consistent across both surfaces. With
-		// several globs configured the "expected" clause lists them
-		// all so the OR nature is visible.
-		d := SchemaDiagnostic{
-			Field:     "filename",
-			Actual:    strconv.Quote(base),
-			Expected:  FilenameExpected(patterns),
-			Hint:      InterpolatedGlobHint(interpolated, resolved...),
-			SchemaRef: schemaRef(sch, ""),
-		}
-		return []lint.Diagnostic{d.Emit(mkDiag, f.Path, anchor)}
+	// An empty resolved list means every entry was dropped as
+	// unresolvable; MatchFilename reads that as "no constraint", so
+	// the emptiness has to be checked here rather than trusting
+	// matched.
+	if matched && len(resolved) > 0 {
+		return nil
 	}
-	return nil
+	// `glob` makes the constraint syntax explicit: users
+	// occasionally read `string matching <pattern>` as a regex
+	// requirement, which filepath.Match does not accept. The
+	// wording also lines up with the kind-level `path-pattern`
+	// diagnostic ("path matching glob ...") so the user
+	// vocabulary is consistent across both surfaces. With
+	// several globs configured the "expected" clause lists them
+	// all so the OR nature is visible.
+	d := SchemaDiagnostic{
+		Field:     "filename",
+		Actual:    strconv.Quote(base),
+		Expected:  FilenameExpected(patterns),
+		Hint:      UnresolvedOrInterpolatedHint(unresolved, interpolated, resolved),
+		SchemaRef: schemaRef(sch, ""),
+	}
+	return []lint.Diagnostic{d.Emit(mkDiag, f.Path, anchor)}
+}
+
+// UnresolvedOrInterpolatedHint picks the hint for a filename
+// mismatch: an unresolvable `\#(fmvar(...))` reference is the schema
+// author's problem and outranks the substituted-pattern hint, which
+// only helps once every reference actually resolved. Exported so the
+// requiredstructure rule's legacy proto.md path renders the same
+// hint from the same rules.
+func UnresolvedOrInterpolatedHint(
+	unresolved error, interpolated bool, resolved []string,
+) string {
+	if unresolved != nil {
+		return unresolved.Error()
+	}
+	return InterpolatedGlobHint(interpolated, resolved...)
 }
 
 // ValidateFrontmatter compiles sch.Frontmatter into a CUE schema and

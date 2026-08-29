@@ -103,36 +103,54 @@ func MatchFilename(patterns []string, base string) (matched bool, badPattern str
 }
 
 // ResolveFilenamePatterns applies ResolveGlobPattern to every entry
-// in patterns, returning the resolved list plus a flag reporting
-// whether any entry actually changed. A list with no `\#(...)`
-// reference — every list authored before this feature — is returned
-// as-is with interpolated=false and no allocation, so the common path
-// pays nothing.
+// in patterns, returning the matchable list, a flag reporting whether
+// any entry actually changed, and the first reference that could not
+// be resolved. A list with no `\#(...)` reference — every list
+// authored before this feature — is returned as-is with
+// interpolated=false, unresolved=nil and no allocation, so the common
+// path pays nothing.
 //
-// The first unresolvable reference aborts with its error rather than
-// dropping the entry: silently skipping a pattern whose front-matter
-// field is missing would let the remaining globs decide the verdict,
-// which is not what the author asked for.
+// An entry whose reference cannot be resolved is DROPPED from the
+// returned list rather than aborting the whole call: `filename:` is
+// an OR list, so a basename that satisfies a sibling glob must still
+// pass. The error rides along so the caller can surface it as the
+// hint when nothing matched — including the all-entries-dropped case,
+// which the caller detects as an empty resolved list.
 func ResolveFilenamePatterns(
 	patterns []string, fm map[string]any,
-) (resolved []string, interpolated bool, err error) {
-	for i, p := range patterns {
+) (resolved []string, interpolated bool, unresolved error) {
+	if !anyPatternHasInterp(patterns) {
+		return patterns, false, nil
+	}
+	out := make([]string, 0, len(patterns))
+	for _, p := range patterns {
 		if !PatternHasInterp(p) {
+			out = append(out, p)
 			continue
 		}
 		r, rErr := ResolveGlobPattern(p, fm)
 		if rErr != nil {
-			return nil, false, rErr
+			if unresolved == nil {
+				unresolved = rErr
+			}
+			continue
 		}
-		if resolved == nil {
-			resolved = append([]string(nil), patterns...)
+		interpolated = true
+		out = append(out, r)
+	}
+	return out, interpolated, unresolved
+}
+
+// anyPatternHasInterp reports whether any entry carries a `\#(...)`
+// reference, so a plain list skips the copy ResolveFilenamePatterns
+// would otherwise make.
+func anyPatternHasInterp(patterns []string) bool {
+	for _, p := range patterns {
+		if PatternHasInterp(p) {
+			return true
 		}
-		resolved[i] = r
 	}
-	if resolved == nil {
-		return patterns, false, nil
-	}
-	return resolved, true, nil
+	return false
 }
 
 // FilenameExpected renders the "expected" clause of a filename
