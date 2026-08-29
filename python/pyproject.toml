@@ -31,4 +31,5 @@
 
         [tool.hatch.build.targets.wheel]
           artifacts = ["mdsmith/_bin/mdsmith", "mdsmith/_bin/mdsmith.exe"]
+          core-metadata-version = "2.4"
           packages = ["mdsmith"]
