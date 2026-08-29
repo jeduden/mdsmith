@@ -147,6 +147,30 @@ func TestWalkNodes_NilFileAndNilAST(t *testing.T) {
 	assert.Empty(t, stub.visits, "no nodes visited when AST is nil")
 }
 
+// fileResetterStub extends nodeCheckerStub with FileResetter so the
+// BeginFile branch in WalkNodes is reached and covered.
+type fileResetterStub struct {
+	nodeCheckerStub
+	beginCalls int
+}
+
+func (s *fileResetterStub) BeginFile(_ *lint.File) { s.beginCalls++ }
+
+var _ FileResetter = (*fileResetterStub)(nil)
+
+// TestWalkNodes_CallsBeginFileOnFileResetter pins that WalkNodes calls
+// BeginFile exactly once per Call when the rule implements FileResetter.
+// This covers the fr.BeginFile branch that plain NodeChecker stubs skip.
+func TestWalkNodes_CallsBeginFileOnFileResetter(t *testing.T) {
+	f, err := lint.NewFile("t.md", []byte("# Hello\n\ntext\n"))
+	require.NoError(t, err)
+
+	s := &fileResetterStub{}
+	_ = WalkNodes(s, f)
+
+	assert.Equal(t, 1, s.beginCalls, "BeginFile must be called once per WalkNodes call")
+}
+
 // TestBlockKindInSet pins the linear scan used by WalkBlocks to filter
 // spans: empty set returns false, present kind returns true, absent
 // kind returns false.
