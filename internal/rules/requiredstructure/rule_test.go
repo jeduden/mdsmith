@@ -725,6 +725,48 @@ filename: "[0-9]*_*.md"
 		`filename: got "my-plan.md", expected filename matching glob [0-9]*_*.md`)
 }
 
+func TestCheck_FilenamePatternListMatchesAlternative(t *testing.T) {
+	// Issue 817: a <?require?> filename list matches when the
+	// basename matches any one glob. Here the file matches the
+	// literal `plan.md`, not the id-prefixed shape.
+	schemaPath := writeSchema(t, `<?require
+filename:
+  - "[0-9]*_*.md"
+  - "plan.md"
+?>
+# ?
+`)
+	r := &Rule{Schema: schemaPath}
+	f := newTestFile(t, "plan.md", "# My Plan\n")
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestCheck_FilenamePatternListNoneMatch(t *testing.T) {
+	schemaPath := writeSchema(t, `<?require
+filename:
+  - "[0-9]*_*.md"
+  - "plan.md"
+?>
+# ?
+`)
+	r := &Rule{Schema: schemaPath}
+	f := newTestFile(t, "notes.md", "# Notes\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags,
+		`filename: got "notes.md", expected filename matching one of globs [0-9]*_*.md, plan.md`)
+}
+
+func TestCheck_FilenamePatternBadType(t *testing.T) {
+	// A `filename:` list entry that is not a string surfaces the
+	// DecodeFilenameField error as an invalid-schema diagnostic.
+	schemaPath := writeSchema(t, "<?require\nfilename:\n  - 5\n?>\n# ?\n")
+	r := &Rule{Schema: schemaPath}
+	f := newTestFile(t, "plan.md", "# Plan\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags, "filename must be a string or list of strings")
+}
+
 func TestCheck_FilenamePatternSingleLinePI(t *testing.T) {
 	schemaPath := writeSchema(t, `<?require filename: "[0-9]*_*.md" ?>
 # ?
@@ -1206,7 +1248,7 @@ func TestParseSchema_SchemaIncludeRequireMerge(t *testing.T) {
 
 	tmpl, err := parseSchema([]byte(schema), schemaPath, 0)
 	require.NoError(t, err)
-	assert.Equal(t, `[0-9]*_*.md`, tmpl.Config.FilenamePattern)
+	assert.Equal(t, []string{`[0-9]*_*.md`}, tmpl.Config.FilenamePatterns)
 	require.Len(t, tmpl.Headings, 3)
 	assert.Equal(t, "Tasks", tmpl.Headings[2].Text)
 }
@@ -1776,7 +1818,7 @@ func TestExtractRequireDirective_SingleLineEmpty(t *testing.T) {
 	f := newTestFile(t, "schema.md", src)
 	result, err := extractRequireDirective(f)
 	require.NoError(t, err)
-	assert.Equal(t, "", result)
+	assert.Empty(t, result)
 }
 
 // extractPIFileParam: single-line form
@@ -1911,7 +1953,7 @@ func TestParseSchema_SchemaIncludeNestedRequirePropagated(t *testing.T) {
 	tmpl, err := parseSchema([]byte(schema), schemaPath, 0)
 	require.NoError(t, err)
 	// The filename pattern from the nested include should propagate up.
-	assert.Equal(t, "nested-*.md", tmpl.Config.FilenamePattern)
+	assert.Equal(t, []string{"nested-*.md"}, tmpl.Config.FilenamePatterns)
 }
 
 // validateFrontMatterCUE: invalid CUE schema error

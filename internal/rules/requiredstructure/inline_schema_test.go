@@ -277,6 +277,28 @@ func TestCheck_InlineSchema_FilenamePattern(t *testing.T) {
 	expectDiagMsg(t, diags, `filename: got "draft.md"`)
 }
 
+func TestCheck_InlineSchema_FilenameListMatchesAlternative(t *testing.T) {
+	// Issue 817: an inline kind schema filename list matches when the
+	// basename matches any one glob, validated through the inline
+	// schema.Validate path.
+	r := &Rule{InlineSchema: inlineSchema(t, map[string]any{
+		"filename": []any{"[0-9]*_*.md", "plan.md"},
+	})}
+	f := newTestFile(t, "plan.md", "# My Plan\n")
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestCheck_InlineSchema_FilenameListNoneMatch(t *testing.T) {
+	r := &Rule{InlineSchema: inlineSchema(t, map[string]any{
+		"filename": []any{"[0-9]*_*.md", "plan.md"},
+	})}
+	f := newTestFile(t, "notes.md", "# Notes\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags,
+		`filename: got "notes.md", expected filename matching one of globs [0-9]*_*.md, plan.md`)
+}
+
 func TestCheck_InlineSchema_FrontmatterCUE(t *testing.T) {
 	r := &Rule{InlineSchema: inlineSchema(t, map[string]any{
 		"frontmatter": map[string]any{

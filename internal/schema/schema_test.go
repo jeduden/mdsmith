@@ -91,7 +91,18 @@ func TestParseFile_RequireFilename(t *testing.T) {
 		"<?require\nfilename: \"foo-*.md\"\n?>\n# ?\n")
 	sch, err := ParseFile(&FileReader{}, p)
 	require.NoError(t, err)
-	assert.Equal(t, "foo-*.md", sch.Filename)
+	assert.Equal(t, []string{"foo-*.md"}, sch.Filename)
+}
+
+func TestParseFile_RequireFilenameList(t *testing.T) {
+	// Issue 817: a <?require?> filename may be a YAML sequence of
+	// globs expressing an alternative naming convention.
+	dir := t.TempDir()
+	p := writeFile(t, dir, "proto.md",
+		"<?require\nfilename:\n  - \"[0-9]*_*.md\"\n  - \"plan.md\"\n?>\n# ?\n")
+	sch, err := ParseFile(&FileReader{}, p)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"[0-9]*_*.md", "plan.md"}, sch.Filename)
 }
 
 // ---- ParseInline ----
@@ -129,7 +140,7 @@ func TestParseInline_FrontmatterAndSections(t *testing.T) {
 	sch, err := ParseInline(raw, "kind rfc")
 	require.NoError(t, err)
 	assert.True(t, sch.Closed)
-	assert.Equal(t, "RFC-[0-9][0-9][0-9][0-9].md", sch.Filename)
+	assert.Equal(t, []string{"RFC-[0-9][0-9][0-9][0-9].md"}, sch.Filename)
 	require.Len(t, sch.Sections, 3)
 	assert.Equal(t, "Overview", sch.Sections[0].Heading)
 	require.NotNil(t, sch.Sections[1].Matcher)
@@ -223,6 +234,25 @@ func TestValidate_FilenameMismatch(t *testing.T) {
 	require.Len(t, diags, 1)
 	assert.Contains(t, diags[0].Message,
 		`filename: got "filename-mismatch.md", expected filename matching glob [0-9]*_*.md`)
+}
+
+func TestValidate_FilenameListMatchesAlternative(t *testing.T) {
+	// The document basename matches the second glob but not the
+	// first — issue 817's "either an id-prefixed shape or this other
+	// literal name". No diagnostic is emitted.
+	sch := &Schema{Filename: []string{"[0-9]*_*.md", "plan.md"}}
+	doc := newDocFile(t, "plan.md", "# My Doc\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	assert.Empty(t, diags)
+}
+
+func TestValidate_FilenameListNoneMatch(t *testing.T) {
+	sch := &Schema{Filename: []string{"[0-9]*_*.md", "plan.md"}}
+	doc := newDocFile(t, "notes.md", "# My Doc\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message,
+		`filename: got "notes.md", expected filename matching one of globs [0-9]*_*.md, plan.md`)
 }
 
 // ---- Validate (inline schemas) ----

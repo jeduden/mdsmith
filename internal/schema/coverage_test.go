@@ -126,6 +126,17 @@ func TestParseInline_RejectsBadFilenameType(t *testing.T) {
 	assert.Contains(t, err.Error(), "filename must be a string")
 }
 
+func TestParseInline_FilenameList(t *testing.T) {
+	// Issue 817: an inline kind schema may set `filename:` to a list
+	// of globs; the basename passes when it matches any one of them.
+	raw := map[string]any{
+		"filename": []any{"[0-9]*_*.md", "plan.md"},
+	}
+	sch, err := ParseInline(raw, "kind plan")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"[0-9]*_*.md", "plan.md"}, sch.Filename)
+}
+
 func TestParseInline_RejectsBadClosedType(t *testing.T) {
 	raw := map[string]any{"closed": "true"}
 	_, err := ParseInline(raw, "kind x")
@@ -329,7 +340,7 @@ func TestParseFile_RequireSingleLine(t *testing.T) {
 		"<?require filename: \"plan-*.md\" ?>\n\n# ?\n")
 	sch, err := ParseFile(&FileReader{}, p)
 	require.NoError(t, err)
-	assert.Equal(t, "plan-*.md", sch.Filename)
+	assert.Equal(t, []string{"plan-*.md"}, sch.Filename)
 }
 
 func TestParseFile_RequireMalformedYAML(t *testing.T) {
@@ -339,6 +350,19 @@ func TestParseFile_RequireMalformedYAML(t *testing.T) {
 	_, err := ParseFile(&FileReader{}, p)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid <?require?>")
+}
+
+func TestParseFile_RequireBadFilenameType(t *testing.T) {
+	// A well-formed YAML body whose `filename:` is neither a string
+	// nor a list of strings surfaces the DecodeFilenameField error
+	// wrapped as an invalid-directive diagnostic.
+	dir := t.TempDir()
+	p := writeFile(t, dir, "proto.md",
+		"<?require\nfilename:\n  - 5\n?>\n\n# ?\n")
+	_, err := ParseFile(&FileReader{}, p)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid <?require?>")
+	assert.Contains(t, err.Error(), "filename must be a string or list of strings")
 }
 
 func TestParseFile_FrontmatterPropagatesToSchema(t *testing.T) {
@@ -366,7 +390,7 @@ func TestParseFile_IncludeFragmentWithFilename(t *testing.T) {
 		"# ?\n\n<?include\nfile: frag.md\n?>\n")
 	sch, err := ParseFile(&FileReader{}, p)
 	require.NoError(t, err)
-	assert.Equal(t, "frag-*.md", sch.Filename,
+	assert.Equal(t, []string{"frag-*.md"}, sch.Filename,
 		"fragment's filename pattern should win when host has none")
 }
 
@@ -383,7 +407,7 @@ func TestParseFile_HostFilenameBeatsIncludeFilename(t *testing.T) {
 		"<?require\nfilename: \"plan-*.md\"\n?>\n\n# ?\n\n<?include\nfile: frag.md\n?>\n")
 	sch, err := ParseFile(&FileReader{}, p)
 	require.NoError(t, err)
-	assert.Equal(t, "plan-*.md", sch.Filename)
+	assert.Equal(t, []string{"plan-*.md"}, sch.Filename)
 }
 
 func TestParseFile_HeadingWithCodeSpan(t *testing.T) {
@@ -428,7 +452,7 @@ func TestSchema_IsEmpty(t *testing.T) {
 	assert.True(t, (*Schema)(nil).IsEmpty())
 	assert.True(t, (&Schema{}).IsEmpty())
 	assert.False(t, (&Schema{Sections: []Scope{{Heading: "X"}}}).IsEmpty())
-	assert.False(t, (&Schema{Filename: "*.md"}).IsEmpty())
+	assert.False(t, (&Schema{Filename: []string{"*.md"}}).IsEmpty())
 	assert.False(t, (&Schema{Frontmatter: map[string]string{"id": "string"}}).IsEmpty())
 }
 

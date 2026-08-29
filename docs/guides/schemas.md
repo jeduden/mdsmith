@@ -75,9 +75,9 @@ the ISO regex; see
 [Schema field types](../reference/schema-types.md)
 for the registered names and how they are matched.
 
-`filename:` is a glob the document basename must
-match. It sits at the top of the schema block (no
-`require:` wrapper).
+`filename:` is a glob — or a list of globs the
+basename may match any of — at the top of the schema
+block (no `require:` wrapper).
 
 `closed: true` makes the scope strict — unlisted
 headings produce a diagnostic. `closed: false` (the
