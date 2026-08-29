@@ -208,3 +208,26 @@ func TestProbe_AllowInternalBypassesGuard(t *testing.T) {
 	require.NoError(t, res.err)
 	assert.Equal(t, http.StatusOK, res.statusCode)
 }
+
+// TestGuardedClientHasNoProxy verifies that buildGuardedClient returns a
+// transport with Proxy set to nil.
+//
+// Background: when Proxy is http.ProxyFromEnvironment, Go's HTTP transport
+// dials the environment-configured forward proxy rather than the destination.
+// The ssrfControl hook fires at dial time, so it sees the proxy IP — not the
+// target IP.  A forward proxy on a non-restricted IP (e.g. a corporate
+// proxy on a public address) would therefore receive the request and could
+// forward it to a restricted destination (RFC1918, cloud-metadata IPs, etc.)
+// without ssrfControl ever blocking it.
+//
+// Setting Proxy: nil on the guarded transport ensures every dial is a direct
+// connection, so ssrfControl always vets the actual destination.
+func TestGuardedClientHasNoProxy(t *testing.T) {
+	c := buildGuardedClient()
+	tr, ok := c.Transport.(*http.Transport)
+	require.True(t, ok, "guarded transport must be *http.Transport")
+	assert.Nil(t, tr.Proxy,
+		"guarded transport must have Proxy: nil — a non-nil proxy function lets an "+
+			"environment-configured forward proxy bypass ssrfControl by receiving the "+
+			"request before the dialer fires on the actual destination IP")
+}

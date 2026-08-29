@@ -116,11 +116,28 @@ func buildPermissiveClient() *http.Client {
 	return &http.Client{Transport: transport}
 }
 
+// buildGuardedClient constructs the SSRF-blocking HTTP client.
+//
+// Proxy is deliberately set to nil — not http.ProxyFromEnvironment — on this
+// path.  When a proxy function is set, Go's HTTP transport dials the proxy
+// rather than the destination, so the ssrfControl hook fires on the proxy IP
+// at connect time instead of the target IP.  A forward proxy on a
+// non-restricted IP (e.g. a corporate proxy reachable over the public
+// internet) would therefore receive the request and could forward it to a
+// restricted address — an RFC1918 range, a cloud-metadata IP such as
+// 169.254.169.254, or any other range ssrfControl guards — without the hook
+// ever inspecting the final destination.
+//
+// Setting Proxy: nil forces every dial to be a direct connection so
+// ssrfControl always vets the actual destination IP.  As a consequence,
+// URLs that are only reachable through a forward proxy are not probed when
+// external-allow-internal is false; use external-allow-internal: true (which
+// uses permissiveClient with http.ProxyFromEnvironment) for those cases.
 func buildGuardedClient() *http.Client {
 	dialer := &net.Dialer{Control: ssrfControl}
 	transport := &http.Transport{
 		DialContext:     dialer.DialContext,
-		Proxy:           http.ProxyFromEnvironment,
+		Proxy:           nil, // must stay nil; see comment on buildGuardedClient
 		IdleConnTimeout: 90 * time.Second,
 	}
 	return &http.Client{

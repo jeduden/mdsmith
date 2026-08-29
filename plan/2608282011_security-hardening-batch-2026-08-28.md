@@ -1,7 +1,7 @@
 ---
 id: 2608282011
 title: "Security hardening batch — 2026-08-28"
-status: "🔲"
+status: "✅"
 summary: >-
   Close the single informational finding from the 2026-08-28 post-audit
   diff review: the MDS072 guarded HTTP client sets Proxy:
@@ -68,12 +68,12 @@ path and documents the caveat.
 
 ## Acceptance Criteria
 
-- [ ] A red-then-green test proves the guarded client no longer forwards
+- [x] A red-then-green test proves the guarded client no longer forwards
       a restricted-destination request through an environment proxy.
-- [ ] `buildGuardedClient` no longer exposes the proxy blind spot on the
+- [x] `buildGuardedClient` no longer exposes the proxy blind spot on the
       default (`external-allow-internal: false`) path, with a comment
       recording the invariant.
-- [ ] `permissiveClient` behavior (opt-in `external-allow-internal:
+- [x] `permissiveClient` behavior (opt-in `external-allow-internal:
       true`) is unchanged.
-- [ ] The MDS072 user docs state the proxy caveat.
-- [ ] `go test ./...` and `mdsmith check .` pass.
+- [x] The MDS072 user docs state the proxy caveat.
+- [x] `go test ./...` and `mdsmith check .` pass.
