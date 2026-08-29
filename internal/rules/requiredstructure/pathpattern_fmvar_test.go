@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/jeduden/mdsmith/internal/schema"
 )
 
 // The APM skill contract: `.apm/skills/<name>/SKILL.md` requires the
@@ -142,4 +144,31 @@ func writeProtoAt(t *testing.T, root, name, content string) {
 	abs := filepath.Join(root, name)
 	require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0o755))
 	require.NoError(t, os.WriteFile(abs, []byte(content), 0o644))
+}
+
+// An interpolating pattern must be matched on its raw text: on
+// Windows filepath.ToSlash rewrites every `\`, including the one
+// that opens `\#(fmvar(...))`, which would silently demote the
+// pattern to a literal glob that no file can satisfy.
+func TestCheck_PathPatternFmvar_RawPatternDrivesInterpDetection(t *testing.T) {
+	root := t.TempDir()
+	f := newRootedFile(t, root, ".apm/skills/code-review/SKILL.md",
+		"---\nname: code-review\n---\n# Code review\n")
+	r := &Rule{PathPatterns: []PathPattern{
+		{Kind: "apm-skill", Pattern: apmSkillPattern},
+	}}
+	require.True(t, schema.PatternHasInterp(r.PathPatterns[0].Pattern),
+		"the raw pattern is what PatternHasInterp must see")
+	expectDiags(t, r.Check(f), 0)
+}
+
+// A `filename:` OR list in a proto.md keeps its OR semantics when
+// one entry's `\#(fmvar(...))` reference cannot resolve.
+func TestCheck_FileSchemaFilenameFmvar_UnresolvableEntryKeepsOR(t *testing.T) {
+	root := t.TempDir()
+	writeProtoAt(t, root, "proto.md",
+		"<?require\nfilename:\n  - README.md\n  - '\\#(fmvar(id))-notes.md'\n?>\n# ?\n")
+	f := newRootedFile(t, root, "README.md", "# Notes\n")
+	r := &Rule{Schema: "proto.md", Sources: []SchemaSource{{File: "proto.md"}}}
+	expectDiags(t, r.Check(f), 0)
 }

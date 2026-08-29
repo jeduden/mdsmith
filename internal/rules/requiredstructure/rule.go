@@ -2534,9 +2534,16 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 	var docFM map[string]any
 	fmRead := false
 	for _, pp := range r.PathPatterns {
-		pat := filepath.ToSlash(pp.Pattern)
-		if !schema.PatternHasInterp(pat) {
-			if matchWorkspacePath(pat, rel) {
+		// filepath.ToSlash normalizes a pattern written with the
+		// host separator — but on Windows it rewrites every `\`,
+		// including the one that opens a `\#(fmvar(...))` reference
+		// and the ones escapeGlobMeta adds to a resolved value. An
+		// interpolating pattern therefore matches on its raw text;
+		// doublestar takes `/` on every platform anyway, and `\` in
+		// a doublestar pattern is the escape character, never a
+		// separator.
+		if !schema.PatternHasInterp(pp.Pattern) {
+			if matchWorkspacePath(filepath.ToSlash(pp.Pattern), rel) {
 				continue
 			}
 			diags = append(diags, pathPatternDiag(f, rel, pp, ""))
@@ -2550,7 +2557,7 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 			docFM, _ = readDocFrontMatterRaw(f)
 			fmRead = true
 		}
-		resolved, err := schema.ResolveGlobPattern(pat, docFM)
+		resolved, err := schema.ResolveGlobPattern(pp.Pattern, docFM)
 		if err != nil {
 			diags = append(diags, pathPatternDiag(f, rel, pp, err.Error()))
 			continue
@@ -2665,19 +2672,12 @@ func checkFilenamePattern(
 	base := filepath.Base(f.Path)
 	// Resolve `\#(fmvar(name))` against the document's front matter
 	// before comparing, so a proto.md can require the basename to
-	// agree with a field value. See schema.validateFilename for the
-	// same wiring on the inline path.
-	resolved, interpolated, err := schema.ResolveFilenamePatterns(patterns, docFM)
-	if err != nil {
-		d := schema.SchemaDiagnostic{
-			Field:     "filename",
-			Actual:    strconv.Quote(base),
-			Expected:  schema.FilenameExpected(patterns),
-			Hint:      err.Error(),
-			SchemaRef: buildSchemaRefForLegacy(schemaSource),
-		}
-		return []lint.Diagnostic{d.Emit(makeDiag, f.Path, anchor)}
-	}
+	// agree with a field value. An entry whose reference will not
+	// resolve drops out of the OR list so a sibling glob can still
+	// accept the basename; its error becomes the hint only when
+	// nothing matched. See schema.validateFilename for the same
+	// wiring on the inline path.
+	resolved, interpolated, unresolved := schema.ResolveFilenamePatterns(patterns, docFM)
 	matched, badPattern, err := schema.MatchFilename(resolved, base)
 	if err != nil {
 		// Malformed glob in the schema. Surface it via the same
@@ -2693,21 +2693,26 @@ func checkFilenamePattern(
 		}
 		return []lint.Diagnostic{d.Emit(makeDiag, f.Path, anchor)}
 	}
-	if !matched {
-		// `glob` keeps the wording aligned with schema.validateFilename
-		// and the path-pattern diagnostic; see the rationale there.
-		// With several globs configured the "expected" clause lists
-		// them all so the OR nature is visible.
-		d := schema.SchemaDiagnostic{
-			Field:     "filename",
-			Actual:    strconv.Quote(base),
-			Expected:  schema.FilenameExpected(patterns),
-			Hint:      schema.InterpolatedGlobHint(interpolated, resolved...),
-			SchemaRef: buildSchemaRefForLegacy(schemaSource),
-		}
-		return []lint.Diagnostic{d.Emit(makeDiag, f.Path, anchor)}
+	// An empty resolved list means every entry was dropped as
+	// unresolvable; MatchFilename reads that as "no constraint", so
+	// the emptiness has to be checked here rather than trusting
+	// matched.
+	if matched && len(resolved) > 0 {
+		return nil
 	}
-	return nil
+	// `glob` keeps the wording aligned with schema.validateFilename
+	// and the path-pattern diagnostic; see the rationale there.
+	// With several globs configured the "expected" clause lists
+	// them all so the OR nature is visible.
+	d := schema.SchemaDiagnostic{
+		Field:    "filename",
+		Actual:   strconv.Quote(base),
+		Expected: schema.FilenameExpected(patterns),
+		Hint: schema.UnresolvedOrInterpolatedHint(
+			unresolved, interpolated, resolved),
+		SchemaRef: buildSchemaRefForLegacy(schemaSource),
+	}
+	return []lint.Diagnostic{d.Emit(makeDiag, f.Path, anchor)}
 }
 
 // readSchemaFile reads the schema file using the file's RootFS when available,

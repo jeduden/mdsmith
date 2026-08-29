@@ -84,9 +84,11 @@ any of them.
 When two kinds claim one file, their schemas
 compose. The composed front matter accepts a key
 **either** kind declares, and stays closed unless
-every source opens it. One kind's
-`frontmatter-closed: false` cannot loosen another
-kind's contract.
+every kind that declares a `frontmatter:` map opens
+it. One kind's `frontmatter-closed: false` cannot
+loosen another kind's contract. A kind with no
+`frontmatter:` map of its own — a sections-only or
+filename-only kind — casts no vote either way.
 
 Under `extends:` the rule is different: the child's
 explicit value wins, and a child that says nothing
@@ -143,6 +145,22 @@ reference could not be resolved:
 ```text
   (`fmvar(name)`: frontmatter value missing)
 ```
+
+A `name` that is present but empty reports this
+instead:
+
+```text
+  (`fmvar(name)`: frontmatter value is empty)
+```
+
+Substituting nothing would leave the path
+`.apm/skills//SKILL.md`.
+
+A `filename:` list is still an OR list. An entry
+whose reference will not resolve drops out. A
+sibling glob may still accept the basename. The
+unresolved message shows only when no entry
+matched.
 
 A malformed reference is caught earlier, at config
 load. A non-identifier key must be quoted —

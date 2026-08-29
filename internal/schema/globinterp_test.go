@@ -153,3 +153,41 @@ func TestDecodeFilenameField_RejectsMalformedInterp(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "must be quoted")
 }
+
+// `filename:` is an OR list. One entry whose `\#(fmvar(...))`
+// reference cannot resolve must not veto a basename that satisfies
+// a sibling glob.
+func TestValidateFilename_UnresolvableEntryDoesNotVetoSiblingGlob(t *testing.T) {
+	sch := &Schema{
+		Filename: []string{"README.md", `\#(fmvar(id))-notes.md`},
+		Source:   "kind note",
+	}
+	doc := newDocFile(t, "README.md", "# T\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	assert.Empty(t, diags, "got %v", diagsMessages(diags))
+}
+
+// When nothing matches, the unresolvable reference is still what the
+// reader needs to see — it outranks the substituted-pattern hint.
+func TestValidateFilename_UnresolvableEntrySurfacesWhenNothingMatches(t *testing.T) {
+	sch := &Schema{
+		Filename: []string{"README.md", `\#(fmvar(id))-notes.md`},
+		Source:   "kind note",
+	}
+	doc := newDocFile(t, "other.md", "# T\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	require.Len(t, diags, 1, "got %v", diagsMessages(diags))
+	assert.Contains(t, diags[0].Message, "frontmatter value missing")
+}
+
+// An explicitly empty front-matter value is the degenerate
+// empty-segment case ResolveGlobPattern exists to prevent, so it
+// reports rather than substituting nothing.
+func TestResolveGlobPattern_EmptyValueErrors(t *testing.T) {
+	_, err := ResolveGlobPattern(
+		`.apm/skills/\#(fmvar(name))/SKILL.md`,
+		map[string]any{"name": ""})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "fmvar(name)")
+	assert.Contains(t, err.Error(), "empty")
+}
