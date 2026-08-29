@@ -78,6 +78,13 @@ func (r *Rule) checkFile(f *lint.File) []lint.Diagnostic {
 // Prose before the first heading is treated as an implicit preamble section
 // anchored at line 1. A single freq map is reused across sections (cleared
 // between them) to keep the active-path alloc count within the ≤10 budget.
+//
+// Paragraphs and headings are in ascending line order (document order from
+// ast.Walk). For each section we binary-search for the first paragraph at
+// or after the heading line, then iterate forward until the section end.
+// Sections can overlap (a parent heading's range includes its sub-headings),
+// so each heading runs its own binary search rather than a single two-pointer.
+// This is O(N log M + sum(k_i)) vs the naive O(N×M).
 func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 	headings := astutil.CollectSectionHeadings(f)
 	if len(headings) == 0 {
@@ -92,12 +99,15 @@ func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 	freq := make(map[string]int, 32) // 32 covers typical prose vocabulary per section
 
 	// Check preamble paragraphs (before the first heading) as one implicit section.
-	// Skip the allocation when no preamble paragraphs exist (the common case).
 	firstHeadingLine := headings[0].Line
-	for j := range paragraphs {
-		if paragraphs[j].Line < firstHeadingLine {
-			r.accum(freq, paragraphs[j].ExtractText(f.Source))
-		}
+	preambleEnd := slices.IndexFunc(paragraphs, func(p astutil.SectionParagraph) bool {
+		return p.Line >= firstHeadingLine
+	})
+	if preambleEnd < 0 {
+		preambleEnd = len(paragraphs)
+	}
+	for j := range preambleEnd {
+		r.accum(freq, paragraphs[j].ExtractText(f.Source))
 	}
 	var diags []lint.Diagnostic
 	if len(freq) > 0 {
@@ -108,16 +118,27 @@ func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 	for i, h := range headings {
 		end := astutil.SectionEnd(headings, i, totalLines)
 		clear(freq)
-		for j := range paragraphs {
-			if paragraphs[j].Line < h.Line || paragraphs[j].Line >= end {
-				continue
-			}
+		start, _ := slices.BinarySearchFunc(paragraphs, h.Line, cmpParagraphLine)
+		for j := start; j < len(paragraphs) && paragraphs[j].Line < end; j++ {
 			r.accum(freq, paragraphs[j].ExtractText(f.Source))
 		}
 		r.removeStopwords(freq)
 		diags = append(diags, r.diagFromFreq(freq, h.Line, "section", f.Path)...)
 	}
 	return diags
+}
+
+// cmpParagraphLine is a package-level comparator for slices.BinarySearchFunc
+// over []SectionParagraph keyed by line number. Defined at package scope so
+// no closure is allocated per call.
+func cmpParagraphLine(p astutil.SectionParagraph, target int) int {
+	if p.Line < target {
+		return -1
+	}
+	if p.Line > target {
+		return 1
+	}
+	return 0
 }
 
 // checkParagraphs checks word frequency per paragraph.
