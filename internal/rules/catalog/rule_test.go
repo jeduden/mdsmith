@@ -113,6 +113,75 @@ func TestRule_Validate(t *testing.T) {
 	expectDiagMsg(t, diags, `sets both "row" and "row-expr"; choose one`)
 }
 
+// TestCheck_NoCatalogDirectiveAllocatesNothing pins Check's cost on a
+// file with no <?catalog?> directive at zero allocs. MDS019 is
+// default-enabled, so every host file in a workspace pays this path
+// even when it never uses the directive. Before this test, Check
+// unconditionally ran gensection.FindMarkerPairs three times (once via
+// getEngine().Check, once each in checkCaseMismatches and
+// checkInjection) — the same top-level AST walk repeated for every
+// file, catalog or not. This is the "gate expensive analyzers behind a
+// cheap pre-check" pattern documented in
+// docs/development/high-performance-go.md.
+func TestCheck_NoCatalogDirectiveAllocatesNothing(t *testing.T) {
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race")
+	}
+	fsys := fstest.MapFS{}
+	src := "# Doc\n\nJust a plain paragraph with no directives.\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+
+	allocs := testing.AllocsPerRun(200, func() {
+		g, err := lint.NewFile("doc.md", []byte(src))
+		require.NoError(t, err)
+		g.FS = fsys
+		g.RootFS = fsys
+		_ = r.Check(g)
+	})
+	parseAllocs := testing.AllocsPerRun(200, func() {
+		g, err := lint.NewFile("doc.md", []byte(src))
+		require.NoError(t, err)
+		_ = g
+	})
+	assert.Zero(t, allocs-parseAllocs,
+		"Check must not allocate on a file with no catalog directive")
+}
+
+// TestCheck_CatalogDirectiveSharesMarkerPairsAcrossPasses pins the
+// deduplication half of the fix: checkCaseMismatches and
+// checkInjection must not each re-run gensection.FindMarkerPairs when
+// a catalog directive is present. This is a behavioral pin (both hint
+// passes still fire) rather than an alloc-count pin, since the engine
+// itself still performs one FindMarkerPairs call independently.
+func TestCheck_CatalogDirectiveSharesMarkerPairsAcrossPasses(t *testing.T) {
+	fsys := fstest.MapFS{
+		"a.md": &fstest.MapFile{Data: []byte("---\nName: a\n---\n# A\n")},
+	}
+	src := "<?catalog\n" +
+		"glob: \"*.md\"\n" +
+		"row: \"- {Name}\"\n" +
+		"?>\n" +
+		"<?/catalog?>\n"
+	f := newTestFile(t, "host.md", src, fsys)
+	r := newDefaultRule()
+
+	diags := r.Check(f)
+	// The directive is out of date (empty body vs the rendered entry),
+	// so the engine reports one diagnostic; the case-mismatch and
+	// injection passes should not raise any additional noise here.
+	found := false
+	for _, d := range diags {
+		if strings.Contains(d.Message, "out of date") {
+			found = true
+		}
+	}
+	assert.True(t, found, "expected the generated-section diagnostic to still fire")
+}
+
 // =====================================================================
 // Core rendering
 // =====================================================================

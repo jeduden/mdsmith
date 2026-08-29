@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/gitattributes"
 	"github.com/jeduden/mdsmith/internal/githooks"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/stretchr/testify/assert"
@@ -1510,7 +1511,7 @@ func TestVerifyGitattributes_NonRegularFile_ReturnsTwo(t *testing.T) {
 	require.NoError(t, os.Mkdir(attr, 0o755))
 
 	got := captureStderr(func() {
-		assert.Equal(t, 2, verifyGitattributes(attr, githooks.Globs{}))
+		assert.Equal(t, 2, verifyGitattributes(attr, gitattributes.Globs{}))
 	})
 	assert.Contains(t, got, "not a regular file")
 }
@@ -1525,7 +1526,7 @@ func TestVerifyGitattributes_ReadError_ReturnsTwo(t *testing.T) {
 	osReadFile = func(string) ([]byte, error) { return nil, fmt.Errorf("boom") }
 
 	got := captureStderr(func() {
-		assert.Equal(t, 2, verifyGitattributes(attr, githooks.Globs{}))
+		assert.Equal(t, 2, verifyGitattributes(attr, gitattributes.Globs{}))
 	})
 	// Assert the injected error is surfaced, not just the generic
 	// "reading" prefix, so a swallowed underlying error fails the test.

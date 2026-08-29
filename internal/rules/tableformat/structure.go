@@ -14,8 +14,9 @@ package tableformat
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -64,11 +65,15 @@ func structureDiagnostics(f *lint.File, style, ruleID, ruleName string) []lint.D
 		diags = append(diags, checkColumnCount(f, t, ruleID, ruleName)...)
 		diags = append(diags, checkSurroundingBlanks(f, t, ruleID, ruleName)...)
 	}
-	sort.SliceStable(diags, func(i, j int) bool {
-		if diags[i].Line != diags[j].Line {
-			return diags[i].Line < diags[j].Line
+	// slices.SortStableFunc sorts the concrete lint.Diagnostic values
+	// directly, unlike sort.SliceStable, which drives reflect.Swapper
+	// under the hood — see docs/development/high-performance-go.md's
+	// "reflect in hot paths" anti-pattern.
+	slices.SortStableFunc(diags, func(a, b lint.Diagnostic) int {
+		if a.Line != b.Line {
+			return cmp.Compare(a.Line, b.Line)
 		}
-		return diags[i].Column < diags[j].Column
+		return cmp.Compare(a.Column, b.Column)
 	})
 	return diags
 }

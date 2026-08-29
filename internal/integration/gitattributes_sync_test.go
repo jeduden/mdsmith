@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/config"
-	"github.com/jeduden/mdsmith/internal/githooks"
+	"github.com/jeduden/mdsmith/internal/gitattributes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -53,23 +53,23 @@ func findRepoRoot(t *testing.T) string {
 func TestRepoGitattributesInSyncWithConfig(t *testing.T) {
 	root := findRepoRoot(t)
 
-	// Load .mdsmith.yml with error-checking rather than githooks.LoadGlobs,
+	// Load .mdsmith.yml with error-checking rather than gitattributes.LoadGlobs,
 	// which silently falls back to default globs on a missing or
 	// unparseable config. A broken config must fail this gate loudly, not
 	// slip through comparing against defaults (or fail later with a
 	// misleading "run merge-driver install" message).
 	cfg, err := config.Load(filepath.Join(root, ".mdsmith.yml"))
 	require.NoError(t, err, "repository .mdsmith.yml must load and parse")
-	expected, _ := githooks.GlobsFromConfig(cfg)
+	expected, _ := gitattributes.GlobsFromConfig(cfg)
 
 	data, err := os.ReadFile(filepath.Join(root, ".gitattributes"))
 	require.NoError(t, err, "repository .gitattributes must exist")
 
-	installed, ok := githooks.ExtractGlobs(string(data))
+	installed, ok := gitattributes.ExtractGlobs(string(data))
 	require.True(t, ok,
 		"committed .gitattributes has no mdsmith merge-driver managed block")
 
-	assert.True(t, githooks.GlobsEqual(installed, expected),
+	assert.True(t, gitattributes.GlobsEqual(installed, expected),
 		"committed .gitattributes is out of sync with .mdsmith.yml — run "+
 			"`mdsmith merge-driver install` (or `mdsmith fix`) and commit the "+
 			"result.\n  committed: include=%v exclude=%v\n  expected:  include=%v exclude=%v",

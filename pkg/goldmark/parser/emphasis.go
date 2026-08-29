@@ -16,8 +16,8 @@ func (p *emphasisDelimiterProcessor) CanOpenCloser(opener, closer *Delimiter) bo
 	return opener.Char == closer.Char
 }
 
-func (p *emphasisDelimiterProcessor) OnMatch(consumes int) ast.Node {
-	return ast.NewEmphasis(consumes)
+func (p *emphasisDelimiterProcessor) OnMatch(consumes int, pc Context) ast.Node {
+	return ArenaForContext(pc).Emphasis(consumes)
 }
 
 var defaultEmphasisDelimiterProcessor = &emphasisDelimiterProcessor{}

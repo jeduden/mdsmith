@@ -3,7 +3,6 @@ package maxsectionlength
 import (
 	"fmt"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -288,6 +287,15 @@ type paragraph struct {
 	words int
 }
 
+// collectHeadings returns every heading in the document, in ascending
+// source-line order. That order falls out of the depth-first
+// ast.Walk itself — lint's parser config installs no extension
+// (e.g. footnotes) that relocates nodes out of document order, the
+// same guarantee astutil.CollectSectionParagraphs documents and
+// relies on — so no sort is needed after the walk. See
+// docs/development/high-performance-go.md's "reflect in hot paths"
+// anti-pattern: sort.Slice previously drove reflect.Swapper here on
+// every Check that walks headings, for no ordering benefit.
 func collectHeadings(f *lint.File) []heading {
 	var out []heading
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -304,9 +312,6 @@ func collectHeadings(f *lint.File) []heading {
 			line:  headingLine(h, f),
 		})
 		return ast.WalkSkipChildren, nil
-	})
-	sort.Slice(out, func(i, j int) bool {
-		return out[i].line < out[j].line
 	})
 	return out
 }

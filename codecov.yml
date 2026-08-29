@@ -11,15 +11,19 @@ codecov:
     # the status post until all uploads are in.
     wait_for_ci: true
 
-# Vendored third-party code that ships in-tree under pkg/goldmark/
-# (goldmark@v1.8.2 fork, part of the main module so `go install
-# m@version` works — replace directives are rejected there).
+# Vendored third-party code that ships in-tree: pkg/goldmark/
+# (goldmark@v1.8.2 fork) and pkg/runewidth/ (go-runewidth@v0.0.27
+# fork) — both part of the main module so `go install m@version`
+# works, since replace directives are rejected there.
 # mdsmith does not own these tests, so the upstream branch
 # coverage they have is irrelevant to project health; exclude them
 # from every codecov metric so the `changes` per-file gate does
-# not see them as new files to grade.
+# not see them as new files to grade. Each fork's single divergence
+# still carries its own default-suite test (goldmark's
+# equivalence_test.go, runewidth's runewidth_lut_removed_test.go).
 ignore:
   - "pkg/goldmark/**"
+  - "pkg/runewidth/**"
 
 coverage:
   status:

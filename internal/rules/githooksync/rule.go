@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/jeduden/mdsmith/internal/bytelimit"
+	"github.com/jeduden/mdsmith/internal/gitattributes"
 	"github.com/jeduden/mdsmith/internal/githooks"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -101,7 +102,7 @@ func (r *Rule) ID() string { return "MDS048" }
 func (r *Rule) Name() string { return "git-hook-sync" }
 
 // MutatesGitIndex reports that MDS048's Fix stages .gitattributes via
-// an in-process `git add` (see githooks.StageGitattributes), so the
+// an in-process `git add` (see gitattributes.StageGitattributes), so the
 // merge driver must exclude it — the driver runs inside `git merge`,
 // which holds .git/index.lock. Implements rule.GitIndexMutator.
 func (r *Rule) MutatesGitIndex() bool { return true }
@@ -221,7 +222,7 @@ func (r *Rule) driftParts(repoRoot string) []string {
 	}
 	driftMu.Unlock()
 
-	hasDriver := githooks.HasMdsmithMergeDriver(repoRoot)
+	hasDriver := gitattributes.HasMdsmithMergeDriver(repoRoot)
 	hooksDir := resolveHooksDir(repoRoot)
 	hookState := peekHookSource(hooksDir)
 	// Early-exit when the user has not opted in (no driver) and the hook
@@ -236,7 +237,7 @@ func (r *Rule) driftParts(repoRoot string) []string {
 		return nil
 	}
 
-	expectedGlobs := githooks.LoadGlobs(repoRoot)
+	expectedGlobs := gitattributes.LoadGlobs(repoRoot)
 	var parts []string
 	if msg := r.mergeDriverDrift(repoRoot, hasDriver, expectedGlobs); msg != "" {
 		parts = append(parts, msg)
@@ -264,7 +265,7 @@ func (r *Rule) driftParts(repoRoot string) []string {
 //
 // A non-ENOENT read error is surfaced as drift rather than silently
 // passing, so permission/IO failures cannot mask real misconfiguration.
-func (r *Rule) mergeDriverDrift(repoRoot string, hasDriver bool, expected githooks.Globs) string {
+func (r *Rule) mergeDriverDrift(repoRoot string, hasDriver bool, expected gitattributes.Globs) string {
 	if !hasDriver {
 		return ""
 	}
@@ -275,7 +276,7 @@ func (r *Rule) mergeDriverDrift(repoRoot string, hasDriver bool, expected githoo
 			err,
 		)
 	}
-	installed, ok := githooks.ExtractGlobs(string(data))
+	installed, ok := gitattributes.ExtractGlobs(string(data))
 	if !ok {
 		return fmt.Sprintf(
 			"merge.mdsmith.driver is registered but .gitattributes has no managed block "+
@@ -284,7 +285,7 @@ func (r *Rule) mergeDriverDrift(repoRoot string, hasDriver bool, expected githoo
 			describeGlobs(expected.Exclude),
 		)
 	}
-	if githooks.GlobsEqual(installed, expected) {
+	if gitattributes.GlobsEqual(installed, expected) {
 		return ""
 	}
 	return fmt.Sprintf(
@@ -397,11 +398,11 @@ func (r *Rule) Fix(f *lint.File) []byte {
 
 	// Only fix when the merge driver is registered. If the driver
 	// isn't set up, there's no .gitattributes to repair.
-	if !githooks.HasMdsmithMergeDriver(repoRoot) {
+	if !gitattributes.HasMdsmithMergeDriver(repoRoot) {
 		return f.Source
 	}
 
-	expected := githooks.LoadGlobs(repoRoot)
+	expected := gitattributes.LoadGlobs(repoRoot)
 	attrPath := filepath.Join(repoRoot, ".gitattributes")
 
 	// When .gitattributes is already in sync, skip the rewrite. If a
@@ -410,8 +411,8 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	// redundant write.
 	data, err := bytelimit.ReadFileLimited(attrPath, hookMaxReadBytes)
 	if err == nil {
-		installed, ok := githooks.ExtractGlobs(string(data))
-		if ok && githooks.GlobsEqual(installed, expected) {
+		installed, ok := gitattributes.ExtractGlobs(string(data))
+		if ok && gitattributes.GlobsEqual(installed, expected) {
 			if stagingError(repoRoot) != nil {
 				stage(repoRoot)
 			}
@@ -423,7 +424,7 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	// through the staging path so the index always reflects the
 	// updated working-tree content; a transient write failure simply
 	// leaves the tree unchanged so the next Fix call can retry.
-	if err := githooks.WriteGitattributes(attrPath, expected); err != nil {
+	if err := gitattributes.WriteGitattributes(attrPath, expected); err != nil {
 		return f.Source
 	}
 
@@ -452,7 +453,7 @@ func (r *Rule) PredictDryRunFix(f *lint.File) []lint.Diagnostic {
 // stage attempts to stage .gitattributes and records the outcome in
 // stagingErrors so Check can surface a persistent failure.
 func stage(repoRoot string) {
-	err := githooks.StageGitattributes(repoRoot)
+	err := gitattributes.StageGitattributes(repoRoot)
 	stagingMu.Lock()
 	defer stagingMu.Unlock()
 	if err != nil {

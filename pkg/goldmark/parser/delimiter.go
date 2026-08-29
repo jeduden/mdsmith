@@ -20,7 +20,10 @@ type DelimiterProcessor interface {
 
 	// OnMatch will be called when new matched delimiter found.
 	// OnMatch should return a new Node correspond to the matched delimiter.
-	OnMatch(consumes int) ast.Node
+	// pc is the parser Context ProcessDelimiters was called with, so an
+	// implementation can route its allocation through
+	// ArenaForContext(pc) instead of a bare ast.NewXxx constructor.
+	OnMatch(consumes int, pc Context) ast.Node
 }
 
 // A Delimiter struct represents a delimiter like '*' of the Markdown text.
@@ -215,7 +218,7 @@ func ProcessDelimiters(bottom ast.Node, pc Context) {
 		opener.ConsumeCharacters(consume)
 		closer.ConsumeCharacters(consume)
 
-		node := opener.Processor.OnMatch(consume)
+		node := opener.Processor.OnMatch(consume, pc)
 		node.(interface{ SetPos(int) }).SetPos(opener.Segment.Start)
 
 		parent := opener.Parent()
