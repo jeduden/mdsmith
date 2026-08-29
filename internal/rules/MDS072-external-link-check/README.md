@@ -76,6 +76,22 @@ unreachable"` diagnostic. The guard denies the connection rather than
 issuing a false pass. Set `links.external-allow-internal: true` only
 when you deliberately lint an internal site from a trusted network.
 
+**`HTTP_PROXY` / `HTTPS_PROXY` are ignored on the guarded path.**
+When `external-allow-internal` is `false` (the default), the guarded
+transport sets `Proxy: nil` and dials every URL directly. This is a
+deliberate safety measure. With a proxy set, Go's HTTP transport would
+dial the proxy rather than the destination. The SSRF hook fires at
+dial time, so it would see the proxy IP — not the target. A forward
+proxy on a non-restricted IP could then silently forward the request
+to a restricted address that the hook never checks.
+
+Dialing directly means every hop passes through the SSRF hook.
+As a side effect, URLs only reachable through a forward proxy are
+not probed on the guarded path. Set `external-allow-internal: true`
+to use the permissive client, which honors the environment proxy.
+Only do this from a trusted network where internal access is
+intentional.
+
 ## Egress ceiling
 
 `links.external-max-probes` (default 1000) caps the total number of

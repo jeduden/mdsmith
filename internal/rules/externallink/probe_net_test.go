@@ -3,9 +3,12 @@
 package externallink
 
 import (
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"net/url"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -207,4 +210,79 @@ func TestProbe_AllowInternalBypassesGuard(t *testing.T) {
 	res := probe(srv.URL, time.Second, true)
 	require.NoError(t, res.err)
 	assert.Equal(t, http.StatusOK, res.statusCode)
+}
+
+// TestGuardedClientHasNoProxy verifies that buildGuardedClient returns a
+// transport with Proxy set to nil.
+//
+// Background: when Proxy is http.ProxyFromEnvironment, Go's HTTP transport
+// dials the environment-configured forward proxy rather than the destination.
+// The ssrfControl hook fires at dial time, so it sees the proxy IP — not the
+// target IP.  A forward proxy on a non-restricted IP (e.g. a corporate
+// proxy on a public address) would therefore receive the request and could
+// forward it to a restricted destination (RFC1918, cloud-metadata IPs, etc.)
+// without ssrfControl ever blocking it.
+//
+// Setting Proxy: nil on the guarded transport ensures every dial is a direct
+// connection, so ssrfControl always vets the actual destination.
+func TestGuardedClientHasNoProxy(t *testing.T) {
+	c := buildGuardedClient()
+	tr, ok := c.Transport.(*http.Transport)
+	require.True(t, ok, "guarded transport must be *http.Transport")
+	assert.Nil(t, tr.Proxy,
+		"guarded transport must have Proxy: nil — a non-nil proxy function lets an "+
+			"environment-configured forward proxy bypass ssrfControl by receiving the "+
+			"request before the dialer fires on the actual destination IP")
+}
+
+// TestGuardedClientDoesNotConsultProxy demonstrates that the guarded transport
+// does not invoke a proxy function for restricted-destination requests.  It
+// constructs a client using the same components as buildGuardedClient but with
+// an explicit tracking proxy function injected, showing that a proxy function
+// IS consulted when set (the bypass vector) and then verifies buildGuardedClient
+// has Proxy: nil so no proxy function can ever intercept the request.
+func TestGuardedClientDoesNotConsultProxy(t *testing.T) {
+	// A proxy function that records whether it was called.  Returning a nil
+	// URL means "no proxy" so no actual proxied dial happens; we only care
+	// whether the transport consulted the function at all.
+	var proxyConsulted atomic.Bool
+	trackingProxyFunc := func(_ *http.Request) (*url.URL, error) {
+		proxyConsulted.Store(true)
+		return nil, nil
+	}
+
+	// Build a transport that is structurally identical to the buggy
+	// buildGuardedClient (ssrfControl dialer + Proxy function).
+	dialer := &net.Dialer{Control: ssrfControl}
+	buggyClient := &http.Client{
+		Transport: &http.Transport{
+			DialContext:     dialer.DialContext,
+			Proxy:           trackingProxyFunc, // the blind-spot field
+			IdleConnTimeout: 90 * time.Second,
+		},
+		CheckRedirect: ssrfCheckRedirect,
+	}
+
+	// Make a request to a restricted RFC1918 address.  ssrfControl blocks the
+	// dial, but the transport must have called Proxy() before dialing.
+	_ = doWithClient(buggyClient, http.MethodGet, "http://10.0.0.1/", 500*time.Millisecond)
+
+	// The tracking proxy func was consulted, proving that with Proxy set the
+	// transport can be redirected to a forward proxy before ssrfControl fires.
+	// On a real deployment the proxy function would return the proxy's public
+	// IP, which ssrfControl allows, and the proxy would forward to 10.0.0.1.
+	assert.True(t, proxyConsulted.Load(),
+		"a transport with a non-nil Proxy function consults it before dialing — "+
+			"this is the blind spot: a public-IP proxy receives the request and "+
+			"can forward it to a restricted destination that ssrfControl never sees")
+
+	// The fixed buildGuardedClient has Proxy: nil: the transport never consults
+	// any proxy function, so restricted destinations are always dialed directly
+	// and ssrfControl always vets the actual target IP.
+	fixedClient := buildGuardedClient()
+	tr, ok := fixedClient.Transport.(*http.Transport)
+	require.True(t, ok, "guarded transport must be *http.Transport")
+	assert.Nil(t, tr.Proxy,
+		"guarded transport must have Proxy: nil so no proxy function can intercept "+
+			"restricted-destination requests before ssrfControl fires on the target IP")
 }
