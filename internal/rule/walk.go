@@ -116,6 +116,23 @@ type LinesChecker interface {
 	LinesCapable() bool
 }
 
+// FileResetter is an optional capability for a NodeChecker rule that carries
+// per-file state in its struct fields. BeginFile is called once per file
+// before the walk begins, giving the rule a chance to reset any state left
+// over from the previous file. The engine's runNodeCheckers calls it before
+// dispatching any node; rule.WalkNodes calls it too so unit tests and the
+// LSP observe the same reset contract. Implementing this interface is the
+// correct way to add cross-heading (or cross-node) state to a KindScopedChecker
+// without the stale-state bug that arises from worker-instance reuse across
+// files.
+type FileResetter interface {
+	NodeChecker
+	// BeginFile is called exactly once per File, before CheckNode is first
+	// called for that File. It must reset all per-file state so no values
+	// from a previously processed File persist into this one.
+	BeginFile(f *lint.File)
+}
+
 // WalkBlocks runs r.CheckBlock over the Layer 0 block scan of f,
 // dispatching only the spans whose Kind is in r.BlockKinds(), in
 // document order. A BlockChecker's standalone Check delegates here for
@@ -155,9 +172,16 @@ func blockKindInSet(k lint.BlockKind, kinds []lint.BlockKind) bool {
 // Files with a nil AST short-circuit to no diagnostics; the engine
 // never produces such files, but unit tests construct
 // `&lint.File{}` literals to exercise rule guards.
+//
+// If r implements FileResetter, WalkNodes calls r.BeginFile(f) before
+// the walk so per-file state is reset on every standalone Check call,
+// matching the engine's runNodeCheckers contract.
 func WalkNodes(r NodeChecker, f *lint.File) []lint.Diagnostic {
 	if f == nil || f.AST == nil {
 		return nil
+	}
+	if fr, ok := r.(FileResetter); ok {
+		fr.BeginFile(f)
 	}
 	var diags []lint.Diagnostic
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {

@@ -366,7 +366,16 @@ func releaseKindTable(t *kindTable) {
 // time at one call per node on every file, and with no generic
 // checkers (the production rule set) the leaving visit dispatches
 // nothing at all. Node order matches ast.Walk's pre-order exactly.
+//
+// FileResetter rules have BeginFile called before the walk so per-file
+// state (e.g. prevLevel or a seen map) is reset for each new file,
+// matching rule.WalkNodes's contract for standalone Check callers.
 func runNodeCheckers(f *lint.File, nodeCheckers []*ruleSlot) {
+	for _, s := range nodeCheckers {
+		if fr, ok := s.nc.(rule.FileResetter); ok {
+			fr.BeginFile(f)
+		}
+	}
 	t := buildKindTable(nodeCheckers)
 	if len(t.generic) == 0 {
 		dispatchKindScoped(f.AST, f, t)

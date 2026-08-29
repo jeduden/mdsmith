@@ -110,3 +110,29 @@ func TestName(t *testing.T) {
 		t.Errorf("expected no-duplicate-headings, got %s", r.Name())
 	}
 }
+
+// TestCheck_NoStateLeakAcrossFiles pins the per-file reset contract: a
+// single rule instance reused across two files (simulating engine worker
+// reuse) must produce correct diagnostics for each file independently.
+// File A registers heading text "Shared"; without a reset, File B's
+// identical heading would be diagnosed as a duplicate even though it is
+// the first (and only) occurrence in File B.
+func TestCheck_NoStateLeakAcrossFiles(t *testing.T) {
+	r := &Rule{}
+
+	// File A: one heading "Shared". After this call, if the seen map were
+	// stored on the struct without reset, {"Shared": 1} would persist.
+	fileA, err := lint.NewFile("a.md", []byte("# Shared\n"))
+	require.NoError(t, err)
+	diagsA := r.Check(fileA)
+	assert.Empty(t, diagsA, "File A should produce no diagnostics")
+
+	// File B: also has "Shared" as its only heading. It is the first
+	// occurrence in File B, so no diagnostic should be produced.
+	// With leaked state (seen["Shared"]=1 from File A), the rule would
+	// incorrectly flag it as a duplicate — the stale-state bug.
+	fileB, err := lint.NewFile("b.md", []byte("# Shared\n"))
+	require.NoError(t, err)
+	diagsB := r.Check(fileB)
+	assert.Empty(t, diagsB, "File B must not flag 'Shared' as duplicate; state leaked from File A: %v", diagsB)
+}

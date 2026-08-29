@@ -30,40 +30,45 @@ func manyHeadingsSource(n int) []byte {
 	return src
 }
 
-// TestHeadingRulesTogether_ShareMemoizedHeadingNodes pins the actual
-// mechanism the fix relies on with a deterministic result rather than
-// a timing/allocation proxy (which ordinary noise, or an unrelated
-// per-file memo like LineOfOffset's newline index, could easily
-// confound): both heading-increment (MDS003) and no-duplicate-headings
-// (MDS005) must read headings through astutil.CollectHeadingNodes's
-// File-level memo, not their own private ast.Walk.
-//
-// f.MemoFile's contract is first-build-wins (internal/lint/file.go):
-// once a key is populated, later calls with a different builder still
-// return the original cached value. So pre-seeding
-// astutil.HeadingNodesMemoKey with an empty slice before either rule
-// runs means a rule that goes through the shared cache sees zero
-// headings and emits nothing, while a rule that still does its own
-// ast.Walk would see the real (diagnostic-triggering) headings
-// regardless of the pre-seed.
-func TestHeadingRulesTogether_ShareMemoizedHeadingNodes(t *testing.T) {
+// TestHeadingRulesTogether_CorrectDiagnostics verifies that MDS003
+// (heading-increment) and MDS005 (no-duplicate-headings) each emit the
+// expected diagnostic on a shared File. Both rules are now
+// rule.KindScopedChecker implementors that receive heading nodes from
+// the engine's single shared AST walk rather than through
+// astutil.CollectHeadingNodes's File-level memo. The previous
+// memo-seeding mechanism is no longer the relevant shared-walk
+// optimisation: the KindScopedChecker dispatch already achieves ONE
+// walk for all heading rules without per-rule full-tree traversals.
+func TestHeadingRulesTogether_CorrectDiagnostics(t *testing.T) {
 	// A level-3 first heading trips MDS003; the repeated heading text
-	// trips MDS005 — both would report a diagnostic on this file if
-	// they read the real AST.
+	// trips MDS005 — both diagnostics must appear.
 	src := []byte("### First heading\n\n### First heading\n")
 	f, err := lint.NewFile("test.md", src)
 	require.NoError(t, err)
 
-	_ = f.MemoFile(astutil.HeadingNodesMemoKey, func(*lint.File) any {
-		return []*ast.Heading(nil)
-	})
-
 	hi := &headingincrement.Rule{}
 	nd := &noduplicateheadings.Rule{}
-	assert.Empty(t, hi.Check(f),
-		"heading-increment must read headings via the pre-seeded astutil memo, not re-walk f.AST directly")
-	assert.Empty(t, nd.Check(f),
-		"no-duplicate-headings must read headings via the pre-seeded astutil memo, not re-walk f.AST directly")
+	hiDiags := hi.Check(f)
+	ndDiags := nd.Check(f)
+	require.Len(t, hiDiags, 1, "heading-increment must flag level-3 first heading")
+	assert.Equal(t, "MDS003", hiDiags[0].RuleID)
+	require.Len(t, ndDiags, 1, "no-duplicate-headings must flag the repeated heading text")
+	assert.Equal(t, "MDS005", ndDiags[0].RuleID)
+
+	// Verify that astutil.HeadingNodesMemoKey pre-seeding does not suppress
+	// either rule's diagnostics — both now walk the AST directly via
+	// CheckNode rather than through CollectHeadingNodes.
+	f2, err := lint.NewFile("test2.md", src)
+	require.NoError(t, err)
+	_ = f2.MemoFile(astutil.HeadingNodesMemoKey, func(*lint.File) any {
+		return []*ast.Heading(nil) // empty — would suppress memo-reading rules
+	})
+	hi2 := &headingincrement.Rule{}
+	nd2 := &noduplicateheadings.Rule{}
+	assert.Len(t, hi2.Check(f2), 1,
+		"heading-increment must not be suppressed by HeadingNodesMemoKey pre-seed: it now uses CheckNode directly")
+	assert.Len(t, nd2.Check(f2), 1,
+		"no-duplicate-headings must not be suppressed by HeadingNodesMemoKey pre-seed: it now uses CheckNode directly")
 }
 
 // BenchmarkHeadingRulesTogether exercises MDS003 and MDS005 back to
