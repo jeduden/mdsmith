@@ -1,7 +1,7 @@
 package notrailingpunctuation
 
 import (
-	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -102,7 +102,7 @@ func (r *Rule) verdict(f *lint.File, text string, line int) (lint.Diagnostic, bo
 		RuleID:   r.ID(),
 		RuleName: r.Name(),
 		Severity: lint.Warning,
-		Message:  fmt.Sprintf("heading should not end with punctuation %q", string(lastChar)),
+		Message:  "heading should not end with punctuation " + strconv.Quote(string(lastChar)),
 	}, true
 }
 
