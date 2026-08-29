@@ -97,16 +97,7 @@ func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 
 	// No headings: treat the entire file as one implicit preamble section.
 	if len(headings) == 0 {
-		freq := make(map[string]int, 32)
-		for i := range paragraphs {
-			r.accum(freq, paragraphs[i].ExtractText(f.Source))
-		}
-		firstLine := 1
-		if len(paragraphs) > 0 {
-			firstLine = paragraphs[0].Line
-		}
-		r.removeStopwords(freq)
-		return r.diagFromFreq(freq, firstLine, "section", f.Path)
+		return r.checkSectionsNoHeadings(f, paragraphs)
 	}
 
 	totalLines := len(f.Lines)
@@ -166,6 +157,22 @@ func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 // no closure is allocated per call.
 func cmpParagraphLine(p astutil.SectionParagraph, target int) int {
 	return cmp.Compare(p.Line, target)
+}
+
+// checkSectionsNoHeadings handles the headingless-file case for checkSections.
+// The entire file is treated as one implicit preamble section anchored at the
+// first prose paragraph.
+func (r *Rule) checkSectionsNoHeadings(f *lint.File, paragraphs []astutil.SectionParagraph) []lint.Diagnostic {
+	freq := make(map[string]int, 32)
+	for i := range paragraphs {
+		r.accum(freq, paragraphs[i].ExtractText(f.Source))
+	}
+	firstLine := 1
+	if len(paragraphs) > 0 {
+		firstLine = paragraphs[0].Line
+	}
+	r.removeStopwords(freq)
+	return r.diagFromFreq(freq, firstLine, "section", f.Path)
 }
 
 // checkParagraphs checks word frequency per paragraph.
