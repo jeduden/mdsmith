@@ -20,12 +20,18 @@ import (
 type RefLink struct {
 	Line   int
 	Column int
-	Text   string
 	// Label is the link-reference label, normalised via
 	// util.ToLinkReference (lower-cased, internal whitespace
 	// collapsed). Use this when keying into the parser-context ref
 	// table or matching against a `[label]: url` definition.
 	Label string
+
+	// The visible link text is deliberately not a field. The only
+	// consumer of ExtractRefLinks (internal/index) keys on Line,
+	// Column and Label, so materialising the text during the walk cost
+	// a bytes.Buffer plus a string copy per reference link in every
+	// file for something nothing read. See
+	// docs/development/high-performance-go.md#skip-work-you-dont-need.
 }
 
 // RefLinkTargets returns every reference-style link whose definition has
@@ -69,7 +75,7 @@ func ExtractRefLinkTargets(f *lint.File) []Link {
 		if !ok || l.Reference == nil {
 			return ast.WalkContinue, nil
 		}
-		target, ok := ParseTarget(string(l.Destination))
+		target, ok := ParseTargetBytes(l.Destination)
 		if !ok {
 			return ast.WalkContinue, nil
 		}
@@ -77,8 +83,8 @@ func ExtractRefLinkTargets(f *lint.File) []Link {
 		out = append(out, Link{
 			Line:   line,
 			Column: col,
-			Text:   linkText(l, f.Source),
 			Target: target,
+			node:   l,
 		})
 		return ast.WalkContinue, nil
 	})
@@ -105,7 +111,6 @@ func ExtractRefLinks(f *lint.File) []RefLink {
 		out = append(out, RefLink{
 			Line:   line,
 			Column: col,
-			Text:   linkText(l, f.Source),
 			Label:  string(util.ToLinkReference(l.Reference.Value)),
 		})
 		return ast.WalkContinue, nil

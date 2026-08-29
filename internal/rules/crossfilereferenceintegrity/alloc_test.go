@@ -15,16 +15,19 @@ import (
 // the read closure" so the closure only escapes when an anchor
 // check actually fires, and caching filepath.Abs at package scope.
 //
-// Raised from 10 to 12 by plan 2606130838 (memoize link extraction):
-// linkgraph.Links() calls f.MemoFile("linkgraph.links", buildLinks),
-// which on the cold path allocates one *memoEntry and boxes the
-// returned []Link slice header into any — two allocations per
-// cold-path MemoFile call. The per-File memo removes repeated AST
-// walks when multiple callers (MDS027 + MDS068 link-style) process
-// the same File in one engine Check run; the cold-path cost is the
-// documented tradeoff of using File.Memo vs the atomic.Bool+mutex
-// pattern used for built-in File caches.
-const allocBudgetMDS027 = 12
+// Plan 2606130838 (memoize link extraction) raised this to 12,
+// because linkgraph.Links() adds two cold-path allocations: the
+// *memoEntry and the boxed []Link header.
+//
+// Back down to the published ceiling now that the link walk no longer
+// materialises each link's visible text and ParseTargetBytes resolves
+// an ordinary destination without the string copy and url.URL the
+// full parse allocated. MDS027 was removed from
+// allocBudgetGrandfathered in internal/integration/alloc_budget_test.go
+// on the strength of this, and that map's contract requires this
+// per-rule gate to hold the rule at the ceiling — so the two numbers
+// have to move together.
+const allocBudgetMDS027 = 10
 
 const allocBudgetFixture = "# Document title\n" +
 	"\n" +

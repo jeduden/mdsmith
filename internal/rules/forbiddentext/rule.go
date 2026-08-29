@@ -24,6 +24,15 @@ func init() {
 // that fall inside the configured section's line range.
 type Rule struct {
 	Contains []string
+
+	// ac is the single-pass gate over Contains, compiled by
+	// ApplySettings. It answers "does this paragraph contain any
+	// needle at all?" so the per-needle loop below runs only for
+	// paragraphs that actually violate. nil means "not compiled" —
+	// a Rule whose Contains was assigned directly rather than
+	// through ApplySettings — and the rule then falls back to the
+	// per-needle loop, which is what it always did.
+	ac *matcher
 }
 
 // ID implements rule.Rule.
@@ -68,6 +77,12 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 		return nil
 	}
 	text := mdtext.ExtractPlainText(para, f.Source)
+	// One pass decides whether any needle is present; the per-needle
+	// loop below then names them. Compliant paragraphs — the common
+	// case — stop here instead of paying one full scan per needle.
+	if r.ac != nil && !r.ac.matches(text) {
+		return nil
+	}
 	line := astutil.ParagraphLine(para, f)
 	var diags []lint.Diagnostic
 	for _, sub := range r.Contains {
@@ -105,6 +120,7 @@ func (r *Rule) ApplySettings(s map[string]any) error {
 				)
 			}
 			r.Contains = ss
+			r.ac = cachedMatcher(ss)
 		default:
 			return fmt.Errorf(
 				"forbidden-text: unknown setting %q", k,

@@ -5,6 +5,7 @@
 package linkgraph
 
 import (
+	"bytes"
 	"net/url"
 	"strings"
 
@@ -30,6 +31,118 @@ type Target struct {
 	Path        string
 	Anchor      string
 	LocalAnchor bool
+}
+
+// isExternalDestination reports whether dest certainly has a URL
+// scheme or is protocol-relative — the two shapes ParseTarget rejects
+// via u.Scheme/u.Host. dest must already be space-trimmed.
+//
+// It mirrors net/url's getScheme: a scheme is an ASCII letter followed
+// by letters, digits, '+', '-' or '.', terminated by ':', and only
+// before the first '/', '?' or '#'. Answering on the raw bytes lets
+// the common external link skip both the string copy and the url.URL
+// the full parse allocates.
+//
+// Conservative by construction: it returns true only for destinations
+// net/url would also call external, so a false answer simply falls
+// through to the full parse.
+func isExternalDestination(dest []byte) bool {
+	if len(dest) >= 2 && dest[0] == '/' && dest[1] == '/' {
+		return true
+	}
+	for i := 0; i < len(dest); i++ {
+		c := dest[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z':
+			// Still inside a candidate scheme.
+		case c >= '0' && c <= '9', c == '+', c == '-', c == '.':
+			// Legal in a scheme, but not as its first character.
+			if i == 0 {
+				return false
+			}
+		case c == ':':
+			// A scheme needs at least one leading letter.
+			return i > 0
+		default:
+			// '/', '?', '#' or anything else ends the scheme search.
+			return false
+		}
+	}
+	return false
+}
+
+// needsURLParse reports whether dest contains anything that makes
+// net/url do more than split on '#': a percent-escape to decode, a
+// query string to strip, a control character it rejects outright, or
+// a colon.
+//
+// The colon is the subtle one. net/url rejects a colon in the FIRST
+// path segment ("first path segment in URL cannot contain colon") but
+// accepts one after a slash, so `a:b` fails to parse while
+// `dir/a:b.md` parses with Path set to the whole string. Rather than
+// re-derive which side of that line a destination falls on, hand every
+// colon to ParseTarget — they are rare in local paths, and a real
+// scheme has already been ruled out by isExternalDestination.
+//
+// Without any of these, url.URL's Path and Fragment are plain
+// substrings of the destination.
+// It also returns the index of the first '#', or -1, since the scan
+// visits every byte anyway and the caller needs it to split the
+// fragment off.
+func needsURLParse(dest []byte) (needs bool, hash int) {
+	hash = -1
+	for i, c := range dest {
+		switch {
+		case c == '%' || c == '?' || c == ':' || c < 0x20 || c == 0x7f:
+			return true, -1
+		case c == '#' && hash < 0:
+			hash = i
+		}
+	}
+	return false, hash
+}
+
+// ParseTargetBytes parses a Markdown link destination held as bytes.
+// It is the form the AST walks use, and returns exactly what
+// ParseTarget returns for the same bytes — ParseTarget stays the
+// reference implementation, and the equivalence is pinned by an
+// exhaustive differential test.
+//
+// Two shapes avoid work the full parse would do. An external
+// destination is rejected straight from the bytes, with no string
+// copy at all. An ordinary local destination — no percent-escape, no
+// query, no control character — is split on '#' into substrings of
+// the one string this makes, instead of allocating a url.URL to
+// recover the same two fields.
+//
+// Applies "Stay in []byte" and "the cheapest call is the one you
+// never make" from docs/development/high-performance-go.md.
+func ParseTargetBytes(dest []byte) (Target, bool) {
+	trimmed := bytes.TrimSpace(dest)
+	if len(trimmed) == 0 || isExternalDestination(trimmed) {
+		return Target{}, false
+	}
+	needs, hash := needsURLParse(trimmed)
+	if needs {
+		// Pass the trimmed form: ParseTarget trims again, and Raw is
+		// the trimmed value either way, so copying the surrounding
+		// whitespace would be pure waste.
+		return ParseTarget(string(trimmed))
+	}
+
+	raw := string(trimmed)
+	path, anchor := raw, ""
+	if hash >= 0 {
+		path, anchor = raw[:hash], raw[hash+1:]
+	}
+
+	if path == "" {
+		if anchor == "" {
+			return Target{}, false
+		}
+		return Target{Raw: raw, Anchor: anchor, LocalAnchor: true}, true
+	}
+	return Target{Raw: raw, Path: path, Anchor: anchor}, true
 }
 
 // ParseTarget parses a Markdown link destination into a Target.
@@ -88,8 +201,35 @@ func ParseTarget(dest string) (Target, bool) {
 type Link struct {
 	Line   int
 	Column int
-	Text   string
 	Target Target
+
+	// node is the AST node this link came from, kept so Text can
+	// flatten the visible label on demand. It is nil on any Link not
+	// produced by one of this package's walks — a zero value, a test
+	// literal, or the literals MDS068 builds on the parse-skip path
+	// (internal/rules/linkstyle) — and Text reports those as empty.
+	node ast.Node
+}
+
+// Text returns the visible link text (everything between `[` and `]`),
+// with image alt text and emphasis flattened to plain text so
+// JSON/text output stays readable.
+//
+// The label is built here rather than during the walk because no rule
+// on the `check` path reads it — only `mdsmith list backlinks` does —
+// and materialising it per link cost a bytes.Buffer plus a string copy
+// for every link in every file. See
+// docs/development/high-performance-go.md#skip-work-you-dont-need.
+//
+// source must be the Source of the File this Link was extracted from:
+// the node's segments index into it, so passing another file's source
+// reads the wrong bytes or panics. Every current caller resolves the
+// text while that File is still in scope.
+func (l Link) Text(source []byte) string {
+	if l.node == nil {
+		return ""
+	}
+	return mdtext.ExtractPlainText(l.node, source)
 }
 
 // Links returns every regular Markdown link in document order, memoized
@@ -144,6 +284,14 @@ func ExtractLinks(f *lint.File) []Link {
 	if f == nil || f.AST == nil {
 		return nil
 	}
+	// Deliberately not pre-sized. A byte-needle count of "](" is the
+	// only cheap estimate available and it is systematically too high:
+	// it also matches images, reference links and code samples, while
+	// this walk keeps only local, non-reference links. That turns a
+	// link-free file from zero allocations into one, and leaves a
+	// document of external links holding a large empty array for the
+	// life of the linkgraph.links memo. The memoized collectors in
+	// astutil have tight bounds and are pre-sized; this one does not.
 	var out []Link
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
@@ -158,7 +306,7 @@ func ExtractLinks(f *lint.File) []Link {
 		if l.Reference != nil {
 			return ast.WalkContinue, nil
 		}
-		target, ok := ParseTarget(string(l.Destination))
+		target, ok := ParseTargetBytes(l.Destination)
 		if !ok {
 			return ast.WalkContinue, nil
 		}
@@ -166,8 +314,8 @@ func ExtractLinks(f *lint.File) []Link {
 		out = append(out, Link{
 			Line:   line,
 			Column: col,
-			Text:   linkText(l, f.Source),
 			Target: target,
+			node:   l,
 		})
 		return ast.WalkContinue, nil
 	})
@@ -192,7 +340,7 @@ func ExtractImages(f *lint.File) []Link {
 		if !ok {
 			return ast.WalkContinue, nil
 		}
-		target, ok := ParseTarget(string(img.Destination))
+		target, ok := ParseTargetBytes(img.Destination)
 		if !ok {
 			return ast.WalkContinue, nil
 		}
@@ -200,8 +348,8 @@ func ExtractImages(f *lint.File) []Link {
 		out = append(out, Link{
 			Line:   line,
 			Column: col,
-			Text:   mdtext.ExtractPlainText(img, f.Source),
 			Target: target,
+			node:   img,
 		})
 		return ast.WalkContinue, nil
 	})
@@ -234,13 +382,6 @@ func NormalizeAnchor(raw string) string {
 		raw = decoded
 	}
 	return mdtext.Slugify(raw)
-}
-
-// linkText returns the visible link text (everything between `[` and
-// `]`). Image alt text and emphasis are flattened to plain text so
-// JSON/text output stays readable.
-func linkText(link *ast.Link, source []byte) string {
-	return mdtext.ExtractPlainText(link, source)
 }
 
 // linkPosition returns the 1-based source line and column of a link

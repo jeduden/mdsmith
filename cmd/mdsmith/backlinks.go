@@ -349,7 +349,7 @@ func extractBacklinksFromSource(
 			// that for the engine's offset-adjustment); the CLI shows
 			// file-relative line numbers, so add f.LineOffset back in.
 			Line:   link.Line + f.LineOffset,
-			Text:   link.Text,
+			Text:   link.Text(f.Source),
 			Target: t.Raw,
 		})
 	}

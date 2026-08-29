@@ -48,14 +48,14 @@ func TestExtractLinks_Basic(t *testing.T) {
 	links := ExtractLinks(f)
 	require.Len(t, links, 2)
 
-	assert.Equal(t, "guide", links[0].Text)
+	assert.Equal(t, "guide", links[0].Text(f.Source))
 	assert.Equal(t, "guide.md", links[0].Target.Path)
 	assert.Equal(t, "intro", links[0].Target.Anchor)
 	assert.False(t, links[0].Target.LocalAnchor)
 	assert.Equal(t, 3, links[0].Line)
 	assert.Greater(t, links[0].Column, 0)
 
-	assert.Equal(t, "home", links[1].Text)
+	assert.Equal(t, "home", links[1].Text(f.Source))
 	assert.Equal(t, "/", links[1].Target.Path)
 }
 
@@ -151,7 +151,7 @@ func TestExtractLinks_AgreesWithMDS027(t *testing.T) {
 	// MDS027 sees the same three direct links (one, two, three) and
 	// skips the reference-style link.
 	require.Len(t, links, 3)
-	texts := []string{links[0].Text, links[1].Text, links[2].Text}
+	texts := []string{links[0].Text(f.Source), links[1].Text(f.Source), links[2].Text(f.Source)}
 	assert.Equal(t, []string{"one", "two", "three"}, texts)
 }
 
@@ -313,7 +313,7 @@ func TestExtractImages_Basic(t *testing.T) {
 	f := newFile(t, "# Doc\n\n![diagram](diagram.png)\n")
 	imgs := ExtractImages(f)
 	require.Len(t, imgs, 1)
-	assert.Equal(t, "diagram", imgs[0].Text)
+	assert.Equal(t, "diagram", imgs[0].Text(f.Source))
 	assert.Equal(t, "diagram.png", imgs[0].Target.Path)
 	assert.Equal(t, 3, imgs[0].Line)
 	assert.Greater(t, imgs[0].Column, 0)
@@ -354,7 +354,7 @@ func TestExtractRefLinkTargets_Basic(t *testing.T) {
 	f := newFile(t, src)
 	links := ExtractRefLinkTargets(f)
 	require.Len(t, links, 1)
-	assert.Equal(t, "guide", links[0].Text)
+	assert.Equal(t, "guide", links[0].Text(f.Source))
 	assert.Equal(t, "guide.md", links[0].Target.Path)
 }
 
