@@ -140,14 +140,12 @@ Rendering strips inline emphasis, link wrappers
 (keeping contents), heading attribute lists
 (`{#id}`), and trailing ATX `#`s.
 
-**Case.** Sensitive. Use `(?i)` for
-insensitive.
+**Case.** Sensitive. Use `(?i)` for insensitive.
 
 ## Helpers
 
-Two helpers are in the `regex:` evaluation
-scope alongside the document's frontmatter
-fields.
+Two helpers are in the `regex:` evaluation scope
+alongside the document's frontmatter fields.
 
 **`digits`** — string constant
 `(?P<n>[0-9]+)`. A named numeric capture group
@@ -158,10 +156,10 @@ per pattern.
 **`fmvar(name)`** — looks up the frontmatter
 field `name`, regex-escapes its value, and
 returns it. Use it whenever the heading text
-must equal a frontmatter value. The escape is
-needed because field values can contain RE2
-metacharacters. The "At a glance" block above
-shows both helpers in a pattern.
+must equal a frontmatter value; the escape
+guards RE2 metacharacters in the value. It also
+works in `filename:` and `path-pattern:` globs —
+see [Front-matter agreement](frontmatter-agreement.md).
 
 `sequential: true` is a sibling field on the
 entry. Only meaningful with `digits` in the
@@ -231,6 +229,7 @@ schema:
   frontmatter:
     <key>: <cue-expression>
     "<key>?": <cue-expression>
+  frontmatter-closed: <bool>
   sections: [...]
   closed: <bool>
 ```
@@ -239,11 +238,13 @@ schema:
   which the basename matches. No `require:` wrapper.
 - `frontmatter:` — per-key CUE constraints.
   Trailing `?` on a key marks it optional.
+- `frontmatter-closed:` — whether an undeclared
+  front-matter key is an error. Default closed; see
+  [Front-matter agreement](frontmatter-agreement.md).
 - `sections:` — the top-level section list.
-- `closed:` — strictness for the root scope.
-  Valid only on schemas that declare
-  `sections:`. A frontmatter-only kind that
-  sets `closed:` parse-errors.
+- `closed:` — root-scope strictness. Valid only
+  alongside `sections:`; a frontmatter-only kind
+  that sets it parse-errors.
 
 ## `proto.md` file syntax
 
