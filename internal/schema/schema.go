@@ -60,6 +60,31 @@ type Schema struct {
 	// metadata.
 	FrontmatterMeta map[string]FieldMeta
 
+	// FrontmatterClosed reports whether the front-matter struct
+	// rejects keys the schema does not declare. Authors set it as a
+	// top-level `frontmatter-closed:` key on the schema.
+	//
+	// A nil pointer means the key was absent, which keeps mdsmith's
+	// historical behavior: the struct IS closed, so an undeclared
+	// key reports "not declared in schema". An explicit `true`
+	// states that intent in the config so a reader of the kind does
+	// not have to know the default; an explicit `false` opens the
+	// struct so undeclared keys pass while the declared keys keep
+	// their constraints.
+	//
+	// The pointer (rather than a plain bool) preserves the
+	// set/unset distinction that Extend needs: a child kind's
+	// explicit value overrides its parent's, while an absent one
+	// inherits. Read the effective value through
+	// FrontmatterIsClosed.
+	//
+	// Only meaningful on a schema that declares a non-empty
+	// `frontmatter:` map — FrontmatterCUE emits nothing without
+	// one, so the setting would be silently dead. The inline parser
+	// rejects that pairing, mirroring the `closed:` / `sections:`
+	// guard.
+	FrontmatterClosed *bool
+
 	// Filename is a list of globs the document basename must match —
 	// the basename passes when it matches any one of them (OR
 	// semantics). A nil or empty slice means no filename constraint.
@@ -476,6 +501,18 @@ func (s *Schema) IsEmpty() bool {
 		len(s.CrossReferences) == 0 &&
 		s.Acronyms == nil &&
 		s.Index == nil
+}
+
+// FrontmatterIsClosed reports the effective front-matter
+// closedness: true unless the schema explicitly set
+// `frontmatter-closed: false`. A nil schema is closed by the same
+// default, which costs nothing because a nil schema declares no
+// front-matter constraints for the setting to apply to.
+func (s *Schema) FrontmatterIsClosed() bool {
+	if s == nil || s.FrontmatterClosed == nil {
+		return true
+	}
+	return *s.FrontmatterClosed
 }
 
 // EffectiveRootLevel returns the heading level of the root scope
