@@ -353,3 +353,68 @@ func TestMET010_AvgWordsPerSentence_ZeroSentences(t *testing.T) {
 	assert.True(t, v.Available)
 	assert.Equal(t, 0.0, v.Number)
 }
+
+// --- MET007: word-frequency ---
+
+func TestMET007_WordFrequency_ParagraphRepetition(t *testing.T) {
+	def, ok := Lookup("MET007")
+	require.True(t, ok, "MET007 must be registered")
+
+	// ExtractPlainText concatenates heading text and paragraph text without a
+	// separator, so "Title" + "process..." runs as "Titleprocess..." — making
+	// the first "process" merge into the heading word. Only the remaining 4
+	// space-separated "process" tokens are counted as the word "process".
+	// Use a paragraph-only document (no heading) to count all 5.
+	doc := NewDocument("test.md", []byte("process process process process process.\n"))
+	v, err := def.Compute(doc)
+	require.NoError(t, err)
+	assert.True(t, v.Available)
+	assert.Equal(t, 5.0, v.Number)
+}
+
+func TestMET007_WordFrequency_HeadingConcatenation(t *testing.T) {
+	// ExtractPlainText concatenates block-level nodes without separators.
+	// Adjacent headings "# process ## process" produce "processprocess" (one
+	// long token), not two separate "process" tokens. This locks that behavior:
+	// heading-only repetition does NOT raise MET007 because the tokenizer
+	// never sees the words as distinct. MDS075 (which checks paragraph nodes
+	// directly) is consistent: it also never flags heading text.
+	def, ok := Lookup("MET007")
+	require.True(t, ok, "MET007 must be registered")
+
+	src := "# process\n\n## process\n\n### process\n\n#### process\n\n##### process\n"
+	doc := NewDocument("test.md", []byte(src))
+	v, err := def.Compute(doc)
+	require.NoError(t, err)
+	assert.True(t, v.Available)
+	// All five "process" headings concatenate into one long unrecognised token.
+	assert.Equal(t, 1.0, v.Number)
+}
+
+func TestMET007_WordFrequency_NoRepetition(t *testing.T) {
+	def, ok := Lookup("MET007")
+	require.True(t, ok, "MET007 must be registered")
+
+	// "fish" and "title" each appear once; both are < 4 runes, so max = 0?
+	// Use words >= 4 runes that each appear exactly once.
+	doc := NewDocument("test.md", []byte("This text contains unique words.\n"))
+	v, err := def.Compute(doc)
+	require.NoError(t, err)
+	assert.True(t, v.Available)
+	assert.Equal(t, 1.0, v.Number)
+}
+
+func TestMET007_WordFrequency_PlainTextError(t *testing.T) {
+	def, ok := Lookup("MET007")
+	require.True(t, ok, "MET007 must be registered")
+
+	doc := NewDocument("test.md", []byte("# Hello\n"))
+	sentinel := errors.New("plain-text error")
+	doc.plainTextReady = true
+	doc.plainTextErr = sentinel
+
+	v, err := def.Compute(doc)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, sentinel)
+	assert.False(t, v.Available)
+}

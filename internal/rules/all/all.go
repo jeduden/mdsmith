@@ -70,6 +70,7 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/nounusedlinkdefinitions"     // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/occurrence"                  // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/orderedlistnumbering"        // registers rule
+	_ "github.com/jeduden/mdsmith/internal/rules/overrepetition"              // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/paragraphreadability"        // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/paragraphstructure"          // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/propernames"                 // registers rule
