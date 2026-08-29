@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -144,4 +145,84 @@ func TestCheck_NoStateLeakAcrossFiles(t *testing.T) {
 	require.NoError(t, err)
 	diagsB := r.Check(fileB)
 	assert.Empty(t, diagsB, "File B must not flag 'Shared' as duplicate; state leaked from File A: %v", diagsB)
+}
+
+// TestEnteringKinds pins the kind scope CheckNode declares: headings only,
+// and the same backing array on every call so the engine's per-file table
+// build allocates nothing for it.
+func TestEnteringKinds(t *testing.T) {
+	r := &Rule{}
+	assert.Equal(t, []ast.NodeKind{ast.KindHeading}, r.EnteringKinds())
+	assert.Equal(t, &r.EnteringKinds()[0], &r.EnteringKinds()[0],
+		"EnteringKinds must return a package-level slice, not a fresh allocation")
+}
+
+// TestBeginFile_ReplacesSeenMap pins two properties of the reset: the
+// previous file's heading texts are gone, and the map is a NEW allocation
+// rather than a cleared one. Clearing would let two clones shallow-copied
+// from one instance keep writing through a shared backing store — a
+// concurrent map write, which is a non-recoverable fatal, not a race the
+// detector merely reports.
+func TestBeginFile_ReplacesSeenMap(t *testing.T) {
+	r := &Rule{}
+	r.BeginFile(nil)
+	first := r.seen
+	first["stale"] = 1
+
+	r.BeginFile(nil)
+	require.NotNil(t, r.seen)
+	assert.Empty(t, r.seen, "the previous file's headings must be gone")
+	assert.NotSame(t, &first, &r.seen)
+	assert.Len(t, first, 1, "the old map must be left untouched, not cleared in place")
+}
+
+// TestCheckNode_IgnoresLeavingVisitsAndNonHeadings pins CheckNode's two
+// guards directly: neither a leaving visit nor a non-heading node records
+// anything in the seen set.
+func TestCheckNode_IgnoresLeavingVisitsAndNonHeadings(t *testing.T) {
+	f, err := lint.NewFile("t.md", []byte("# Same\n\ntext\n\n# Same\n"))
+	require.NoError(t, err)
+	heading := f.AST.FirstChild()
+	require.Equal(t, ast.KindHeading, heading.Kind())
+
+	r := &Rule{}
+	r.BeginFile(f)
+	assert.Nil(t, r.CheckNode(heading, false, f), "leaving visits produce nothing")
+	assert.Nil(t, r.CheckNode(f.AST, true, f), "a non-heading node produces nothing")
+	assert.Empty(t, r.seen, "neither guard may record a heading")
+}
+
+// TestCheckNode_WithoutBeginFileDoesNotPanic pins the defensive lazy
+// initialisation of the seen map. verdict writes into the map, and a write
+// to a nil map is a non-recoverable panic that would kill the CLI or LSP
+// process, so a caller that skips BeginFile must degrade to "no headings
+// seen yet" instead.
+func TestCheckNode_WithoutBeginFileDoesNotPanic(t *testing.T) {
+	f, err := lint.NewFile("t.md", []byte("# Same\n\ntext\n\n# Same\n"))
+	require.NoError(t, err)
+	first := f.AST.FirstChild()
+	second := first.NextSibling().NextSibling()
+	require.Equal(t, ast.KindHeading, second.Kind())
+
+	r := &Rule{} // no BeginFile: r.seen is nil
+	require.Nil(t, r.seen)
+
+	assert.Nil(t, r.CheckNode(first, true, f), "the first heading is not a duplicate")
+	require.NotNil(t, r.seen, "CheckNode must initialise the map it writes into")
+
+	diags := r.CheckNode(second, true, f)
+	require.Len(t, diags, 1, "the repeat is still caught once the map exists")
+	assert.Equal(t, `duplicate heading "Same" (first defined on line 1)`, diags[0].Message)
+}
+
+// TestCheckNode_SkipsWildcardHeading pins the reserved `...` marker used by
+// required-structure prototypes: it is never recorded and never flagged,
+// however often it repeats.
+func TestCheckNode_SkipsWildcardHeading(t *testing.T) {
+	f, err := lint.NewFile("t.md", []byte("# ...\n\ntext\n\n# ...\n"))
+	require.NoError(t, err)
+
+	r := &Rule{}
+	assert.Empty(t, r.Check(f), "the wildcard heading is never a duplicate")
+	assert.Empty(t, r.seen, "the wildcard heading is never recorded")
 }

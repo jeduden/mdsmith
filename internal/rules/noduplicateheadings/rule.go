@@ -23,9 +23,11 @@ type Rule struct {
 	// files. BeginFile always allocates a fresh map (rather than clearing the
 	// existing one) so that even when two worker clones share the same initial
 	// seen pointer (from a shallow CloneInstance call on an already-walked
-	// singleton), each clone gets its own independent map once its BeginFile
+	// instance), each clone gets its own independent map once its BeginFile
 	// runs — preventing the concurrent map write data race that clear would
-	// cause on the shared backing store.
+	// cause on the shared backing store. The instance itself is never shared:
+	// checker.ConfigureEnabledRules clones every rule.FileResetter so each
+	// configured rule list owns its own.
 	seen map[string]int
 }
 
@@ -91,6 +93,14 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 	heading, ok := n.(*ast.Heading)
 	if !ok {
 		return nil
+	}
+	if r.seen == nil {
+		// Defensive: verdict writes into the map, and a nil map write is a
+		// non-recoverable runtime panic. Every engine dispatch path calls
+		// BeginFile first, but a direct CheckNode caller (a unit test, or a
+		// future dispatch path that forgets the reset) would otherwise kill
+		// the process instead of simply starting from an empty set.
+		r.seen = make(map[string]int, 4)
 	}
 	text := astutil.HeadingTextCached(f, heading)
 	line := astutil.HeadingLine(heading, f)

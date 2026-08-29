@@ -5,6 +5,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -250,4 +251,87 @@ func TestCheck_NoStateLeakAcrossFiles(t *testing.T) {
 	diagsB := r.Check(fileB)
 	require.Len(t, diagsB, 1, "File B must diagnose first-heading violation; got: %v", diagsB)
 	assert.Equal(t, "first heading level should be 1, got 3", diagsB[0].Message)
+}
+
+// TestEnteringKinds pins the kind scope CheckNode declares: headings only,
+// and the same backing array on every call so the engine's per-file table
+// build allocates nothing for it.
+func TestEnteringKinds(t *testing.T) {
+	r := &Rule{}
+	assert.Equal(t, []ast.NodeKind{ast.KindHeading}, r.EnteringKinds())
+	assert.Equal(t, &r.EnteringKinds()[0], &r.EnteringKinds()[0],
+		"EnteringKinds must return a package-level slice, not a fresh allocation")
+}
+
+// TestLinesCapable pins the marker that routes this rule to its own Check
+// on a parse-skipped File. Without it checker.classifySlot gives the rule
+// no dispatch slot at all on a nil-AST File and every heading-increment
+// diagnostic silently disappears.
+func TestLinesCapable(t *testing.T) {
+	assert.True(t, (&Rule{}).LinesCapable())
+	assert.True(t, (&Rule{Placeholders: []string{"heading-question"}}).LinesCapable(),
+		"the marker is constant; LineCapable is what gates the skip on placeholders")
+}
+
+// TestBeginFile_ResetsPrevLevel pins the reset itself, independently of a
+// walk: a stale prevLevel from a previous file must be cleared so the next
+// file's first heading is judged as a first heading.
+func TestBeginFile_ResetsPrevLevel(t *testing.T) {
+	r := &Rule{prevLevel: 4}
+	r.BeginFile(nil)
+	assert.Zero(t, r.prevLevel)
+}
+
+// TestCheckNode_IgnoresLeavingVisitsAndNonHeadings pins CheckNode's two
+// guards directly. The kind-scoped dispatch never shows it a leaving visit
+// or a non-heading node, but rule.WalkNodes' generic path and any future
+// caller might, and neither must advance prevLevel.
+func TestCheckNode_IgnoresLeavingVisitsAndNonHeadings(t *testing.T) {
+	f, err := lint.NewFile("t.md", []byte("### Third\n\ntext\n"))
+	require.NoError(t, err)
+	heading := f.AST.FirstChild()
+	require.Equal(t, ast.KindHeading, heading.Kind())
+
+	r := &Rule{}
+	assert.Nil(t, r.CheckNode(heading, false, f), "leaving visits produce nothing")
+	assert.Zero(t, r.prevLevel, "a leaving visit must not advance prevLevel")
+
+	assert.Nil(t, r.CheckNode(f.AST, true, f), "a non-heading node produces nothing")
+	assert.Zero(t, r.prevLevel, "a non-heading node must not advance prevLevel")
+}
+
+// TestCheckNode_ThreadsPrevLevelAcrossHeadings pins the per-node state
+// machine: the first heading is judged against "nothing seen yet", each
+// later heading against its predecessor, and a placeholder heading updates
+// prevLevel without emitting a diagnostic.
+func TestCheckNode_ThreadsPrevLevelAcrossHeadings(t *testing.T) {
+	f, err := lint.NewFile("t.md", []byte("# One\n\n### Three\n"))
+	require.NoError(t, err)
+	first := f.AST.FirstChild()
+	second := first.NextSibling()
+	require.Equal(t, ast.KindHeading, second.Kind())
+
+	r := &Rule{}
+	r.BeginFile(f)
+	assert.Nil(t, r.CheckNode(first, true, f), "a level-1 first heading is clean")
+	assert.Equal(t, 1, r.prevLevel)
+
+	diags := r.CheckNode(second, true, f)
+	require.Len(t, diags, 1)
+	assert.Equal(t, "heading level incremented from 1 to 3 (expected 2)", diags[0].Message)
+	assert.Equal(t, 3, r.prevLevel, "prevLevel advances even when the heading is flagged")
+}
+
+// TestCheckNode_PlaceholderHeadingAdvancesPrevLevelSilently pins that an
+// opaque placeholder heading suppresses its own diagnostic but still moves
+// the sequence forward, so the heading after it is judged against it.
+func TestCheckNode_PlaceholderHeadingAdvancesPrevLevelSilently(t *testing.T) {
+	f, err := lint.NewFile("t.md", []byte("## ?\n\ntext\n"))
+	require.NoError(t, err)
+	heading := f.AST.FirstChild()
+
+	r := &Rule{Placeholders: []string{"heading-question"}}
+	r.BeginFile(f)
+	assert.Nil(t, r.CheckNode(heading, true, f), "a placeholder heading is opaque")
+	assert.Equal(t, 2, r.prevLevel, "a placeholder heading still advances the sequence")
 }
