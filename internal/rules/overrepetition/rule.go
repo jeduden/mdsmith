@@ -124,8 +124,8 @@ func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 		r.accum(freq, paragraphs[j].ExtractText(f.Source))
 	}
 	var diags []lint.Diagnostic
+	r.removeStopwords(freq)
 	if len(freq) > 0 {
-		r.removeStopwords(freq)
 		diags = append(diags, r.diagFromFreq(freq, 1, "section", f.Path)...)
 	}
 
@@ -137,10 +137,10 @@ func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 		// the section has no prose paragraphs (heading immediately followed by
 		// another heading or end-of-file).
 		firstParaLine := h.Line
+		if start < len(paragraphs) && paragraphs[start].Line < end {
+			firstParaLine = paragraphs[start].Line
+		}
 		for j := start; j < len(paragraphs) && paragraphs[j].Line < end; j++ {
-			if j == start {
-				firstParaLine = paragraphs[j].Line
-			}
 			r.accum(freq, paragraphs[j].ExtractText(f.Source))
 		}
 		r.removeStopwords(freq)
