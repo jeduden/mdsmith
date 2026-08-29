@@ -2570,7 +2570,7 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 			continue
 		}
 		diags = append(diags, pathPatternDiag(f, rel, pp,
-			schema.InterpolatedGlobHint(true, resolved)))
+			schema.InterpolatedGlobHint(resolved)))
 	}
 	return diags
 }
@@ -2709,7 +2709,7 @@ func checkFilenamePattern(
 		Actual:   strconv.Quote(base),
 		Expected: schema.FilenameExpected(patterns),
 		Hint: schema.UnresolvedOrInterpolatedHint(
-			unresolved, interpolated, resolved),
+			unresolved, interpolated),
 		SchemaRef: buildSchemaRefForLegacy(schemaSource),
 	}
 	return []lint.Diagnostic{d.Emit(makeDiag, f.Path, anchor)}

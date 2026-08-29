@@ -14,11 +14,22 @@ import (
 //
 // The set covers both matchers the resolved pattern feeds:
 // doublestar (kind `path-pattern:`) and filepath.Match (schema
-// `filename:`). `{` is doublestar-only — filepath.Match does not
-// know brace alternatives — but escaping it is harmless there
-// because `\{` still matches a literal `{`. `]` and `}` need no
-// escape: neither is special until an unescaped `[` or `{` opens the
-// construct, and both openers are escaped here.
+// `filename:`). `{` and `,` are doublestar-only — filepath.Match
+// knows no brace alternatives — but escaping them is harmless there
+// because `\{` and `\,` still match the literal byte. `,` has to be
+// escaped even though it is inert outside braces: the SURROUNDING
+// pattern may wrap the reference in an alternative
+// (`docs/{\#(fmvar(name)),other}.md`), and an unescaped `,` in the
+// value would open a new alternative rather than matching itself.
+// `]` and `}` need no escape: neither is special until an unescaped
+// `[` or `{` opens the construct, and both openers are escaped here.
+//
+// `/` is deliberately NOT in the set — it cannot be escaped into a
+// literal. doublestar reads `\/` as the separator all the same
+// (verified against the vendored matcher), so a value carrying one
+// would span directories instead of matching a single segment.
+// ResolveGlobPattern rejects such a value outright; see
+// globSeparator.
 //
 // One platform caveat, confined to the `filename:` surface:
 // filepath.Match disables escaping on Windows and reads `\` as a
@@ -27,7 +38,18 @@ import (
 // `\`, `*`, or `?` at all. doublestar (the `path-pattern:` surface)
 // always uses `/` as its separator and honours `\` escapes on every
 // platform, so it is unaffected.
-const globMetaChars = `\*?[{`
+const globMetaChars = `\*?[{,`
+
+// globSeparator is the byte a resolved `fmvar(...)` value may not
+// contain at all. A reference occupies one path segment of the
+// surrounding glob; a value carrying a separator would silently
+// stretch across two, so `.apm/skills/\#(fmvar(name))/SKILL.md` would
+// accept `.apm/skills/a/b/SKILL.md` for `name: a/b` even though the
+// skill's directory is `b`. Escaping cannot fix it — doublestar
+// treats `\/` as a separator all the same — so the resolver reports
+// instead. On the `filename:` surface a separator could never match a
+// basename either, so the same report is the clearer outcome there.
+const globSeparator = '/'
 
 // PatternHasInterp reports whether pattern carries at least one
 // `\#(...)` interpolation reference. Callers use it to skip the
@@ -55,6 +77,10 @@ func PatternHasInterp(pattern string) bool {
 // cases get distinct messages because the fix differs: add the field
 // versus give it a value. Callers surface the error as a diagnostic
 // naming the field.
+//
+// A value carrying a `/` is rejected for the same reason: it would
+// span two path segments instead of matching the one the reference
+// occupies, and no escape makes it literal (see globSeparator).
 func ResolveGlobPattern(pattern string, fm map[string]any) (string, error) {
 	if !PatternHasInterp(pattern) {
 		return pattern, nil
@@ -66,12 +92,17 @@ func ResolveGlobPattern(pattern string, fm map[string]any) (string, error) {
 		}
 		val, found := fmvarLookup(fm, name)
 		if !found {
-			return "", fmt.Errorf(
-				"`fmvar(%s)`: frontmatter value missing", name)
+			return "", MissingFmvarErr(name)
 		}
 		if val == "" {
 			return "", fmt.Errorf(
 				"`fmvar(%s)`: frontmatter value is empty", name)
+		}
+		if strings.IndexByte(val, globSeparator) >= 0 {
+			return "", fmt.Errorf(
+				"`fmvar(%s)`: frontmatter value %q contains a path "+
+					"separator; an interpolated value must name a "+
+					"single path segment", name, val)
 		}
 		return escapeGlobMeta(val), nil
 	})
@@ -93,10 +124,7 @@ func ValidateGlobInterps(pattern string) error {
 			return unknownGlobHelperErr(expr)
 		}
 		if fieldinterp.ParseCUEPath(name) == nil {
-			return fmt.Errorf(
-				"`fmvar(%s)`: invalid frontmatter path "+
-					"(non-identifier keys must be quoted, "+
-					"e.g. `fmvar(\"my-key\")`)", name)
+			return InvalidFmvarPathErr(name)
 		}
 		return nil
 	})
@@ -114,14 +142,14 @@ func unknownGlobHelperErr(expr string) error {
 // InterpolatedGlobHint renders the diagnostic hint that shows what a
 // `\#(fmvar(...))` pattern became once the document's front matter
 // was applied — without it the reader sees only the unresolved
-// pattern and has to do the substitution in their head. It returns
-// the empty string (no hint) when nothing was interpolated, so plain
-// globs keep their historical one-line diagnostic.
-func InterpolatedGlobHint(interpolated bool, resolved ...string) string {
-	if !interpolated || len(resolved) == 0 {
+// pattern and has to do the substitution in their head. Pass only the
+// patterns that actually carried a reference; an empty list yields no
+// hint, so plain globs keep their historical one-line diagnostic.
+func InterpolatedGlobHint(interpolated ...string) string {
+	if len(interpolated) == 0 {
 		return ""
 	}
-	return "with front matter applied: " + strings.Join(resolved, ", ")
+	return "with front matter applied: " + strings.Join(interpolated, ", ")
 }
 
 // escapeGlobMeta backslash-escapes every glob metacharacter in s so

@@ -64,6 +64,35 @@ func TestResolveGlobPattern_EscapesGlobMetacharacters(t *testing.T) {
 		"the `*` in the frontmatter value must not act as a wildcard")
 }
 
+// A `,` in the value must not open a new alternative when the
+// surrounding pattern wraps the reference in a brace alternative.
+func TestResolveGlobPattern_EscapesCommaInsideBraceAlternative(t *testing.T) {
+	got, err := ResolveGlobPattern(
+		`docs/{\#(fmvar(name)),other}.md`,
+		map[string]any{"name": "a,b"})
+	require.NoError(t, err)
+	ok, err := doublestar.Match(got, "docs/a,b.md")
+	require.NoError(t, err)
+	assert.True(t, ok, "the literal value must still match")
+	ok, err = doublestar.Match(got, "docs/a.md")
+	require.NoError(t, err)
+	assert.False(t, ok,
+		"the `,` in the frontmatter value must not split the alternative")
+}
+
+// A `/` cannot be escaped into a literal: doublestar reads `\/` as
+// the separator all the same, so a value carrying one would silently
+// span directories and satisfy a single-segment reference. Report it
+// instead.
+func TestResolveGlobPattern_RejectsPathSeparatorInValue(t *testing.T) {
+	_, err := ResolveGlobPattern(
+		`.apm/skills/\#(fmvar(name))/SKILL.md`,
+		map[string]any{"name": "a/b"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "fmvar(name)")
+	assert.Contains(t, err.Error(), "path separator")
+}
+
 func TestResolveGlobPattern_EscapedValueWorksWithFilepathMatch(t *testing.T) {
 	got, err := ResolveGlobPattern(
 		`\#(fmvar(id)).md`, map[string]any{"id": "a?b"})
@@ -178,6 +207,26 @@ func TestValidateFilename_UnresolvableEntrySurfacesWhenNothingMatches(t *testing
 	diags := Validate(doc, sch, nil, false, makeDiagForTest)
 	require.Len(t, diags, 1, "got %v", diagsMessages(diags))
 	assert.Contains(t, diags[0].Message, "frontmatter value missing")
+}
+
+// The "with front matter applied" hint exists to show what an
+// interpolating glob became. A sibling plain glob was never
+// substituted, so listing it would imply a substitution that never
+// happened.
+func TestValidateFilename_HintListsOnlyInterpolatedGlobs(t *testing.T) {
+	sch := &Schema{
+		Filename: []string{"README.md", `\#(fmvar(id))-notes.md`},
+		Source:   "kind note",
+	}
+	doc := newDocFile(t, "other.md", "---\nid: rfc-7\n---\n# T\n")
+	diags := Validate(doc, sch,
+		map[string]any{"id": "rfc-7"}, false, makeDiagForTest)
+	require.Len(t, diags, 1, "got %v", diagsMessages(diags))
+	assert.Contains(t, diags[0].Message,
+		"with front matter applied: rfc-7-notes.md")
+	assert.NotContains(t, diags[0].Message,
+		"with front matter applied: README.md",
+		"a plain sibling glob was never interpolated")
 }
 
 // An explicitly empty front-matter value is the degenerate

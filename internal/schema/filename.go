@@ -3,6 +3,7 @@ package schema
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -103,12 +104,17 @@ func MatchFilename(patterns []string, base string) (matched bool, badPattern str
 }
 
 // ResolveFilenamePatterns applies ResolveGlobPattern to every entry
-// in patterns, returning the matchable list, a flag reporting whether
-// any entry actually changed, and the first reference that could not
-// be resolved. A list with no `\#(...)` reference — every list
-// authored before this feature — is returned as-is with
-// interpolated=false, unresolved=nil and no allocation, so the common
-// path pays nothing.
+// in patterns, returning the matchable list, the substituted forms of
+// just the entries that carried a `\#(...)` reference, and the first
+// reference that could not be resolved. A list with no reference —
+// every list authored before this feature — is returned as-is with a
+// nil interpolated list, unresolved=nil and no allocation, so the
+// common path pays nothing.
+//
+// interpolated is deliberately narrower than resolved: it feeds the
+// "with front matter applied" hint, and a plain sibling glob was
+// never substituted, so listing it there would claim a substitution
+// that never happened.
 //
 // An entry whose reference cannot be resolved is DROPPED from the
 // returned list rather than aborting the whole call: `filename:` is
@@ -118,9 +124,9 @@ func MatchFilename(patterns []string, base string) (matched bool, badPattern str
 // which the caller detects as an empty resolved list.
 func ResolveFilenamePatterns(
 	patterns []string, fm map[string]any,
-) (resolved []string, interpolated bool, unresolved error) {
-	if !anyPatternHasInterp(patterns) {
-		return patterns, false, nil
+) (resolved, interpolated []string, unresolved error) {
+	if !slices.ContainsFunc(patterns, PatternHasInterp) {
+		return patterns, nil, nil
 	}
 	out := make([]string, 0, len(patterns))
 	for _, p := range patterns {
@@ -135,22 +141,10 @@ func ResolveFilenamePatterns(
 			}
 			continue
 		}
-		interpolated = true
+		interpolated = append(interpolated, r)
 		out = append(out, r)
 	}
 	return out, interpolated, unresolved
-}
-
-// anyPatternHasInterp reports whether any entry carries a `\#(...)`
-// reference, so a plain list skips the copy ResolveFilenamePatterns
-// would otherwise make.
-func anyPatternHasInterp(patterns []string) bool {
-	for _, p := range patterns {
-		if PatternHasInterp(p) {
-			return true
-		}
-	}
-	return false
 }
 
 // FilenameExpected renders the "expected" clause of a filename

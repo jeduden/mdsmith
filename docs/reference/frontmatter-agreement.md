@@ -113,6 +113,12 @@ matches the directory `a*b` and not `axxb` — the
 glob analogue of the regex matcher's
 `regexp.QuoteMeta`.
 
+One byte cannot be escaped into a literal: `/`
+stays a path separator whatever precedes it. A
+reference stands for a single path segment, so a
+value containing `/` is reported rather than
+silently spanning two directories.
+
 ### Example: an APM skill
 
 APM's `.apm/skills/<name>/SKILL.md` requires the
@@ -155,6 +161,15 @@ instead:
 
 Substituting nothing would leave the path
 `.apm/skills//SKILL.md`.
+
+A `name` of `a/b` carries a path separator, which
+would let one reference cover two directories:
+
+```text
+  (`fmvar(name)`: frontmatter value "a/b" contains a
+  path separator; an interpolated value must name a
+  single path segment)
+```
 
 A `filename:` list is still an OR list. An entry
 whose reference will not resolve drops out. A

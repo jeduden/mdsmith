@@ -458,12 +458,20 @@ func stripOptionalSuffix(key string) string {
 // "inherit, then override" relationship between two kinds the author
 // wrote together, while composition merges kinds that met by
 // accident on one file and must not weaken each other.
+//
+// The winning value is copied into a fresh pointer rather than
+// aliased: sharing one *bool across the input and the output would
+// let a later write through either schema silently change the other.
 func extendFrontmatterClosed(out, parent, child *Schema) {
-	if child.FrontmatterClosed != nil {
-		out.FrontmatterClosed = child.FrontmatterClosed
+	src := child.FrontmatterClosed
+	if src == nil {
+		src = parent.FrontmatterClosed
+	}
+	if src == nil {
 		return
 	}
-	out.FrontmatterClosed = parent.FrontmatterClosed
+	closed := *src
+	out.FrontmatterClosed = &closed
 }
 
 // extendFilename picks the child's filename pattern when set, else

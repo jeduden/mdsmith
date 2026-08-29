@@ -147,6 +147,7 @@ func TestDiscoverSchemas_AcceptsAllVocabularyKeys(t *testing.T) {
 closed: true
 frontmatter:
   title: 'string'
+frontmatter-closed: false
 sections:
   - heading: "Overview"
 cross-references: []
@@ -156,6 +157,20 @@ index: {}
 	got, err := discoverSchemas(dir)
 	require.NoError(t, err)
 	require.Contains(t, got, "full")
+}
+
+// A `.mdsmith/schemas/<name>.yaml` file is the per-file split of an
+// inline `schemas.<name>:` block, so every key ParseInline reads must
+// survive the file surface too. `frontmatter-closed:` is accepted
+// inline; rejecting it here would make the two spellings disagree.
+func TestDiscoverSchemas_AcceptsFrontmatterClosed(t *testing.T) {
+	dir := mkSchemaDir(t)
+	writeSchema(t, dir, "note.yaml",
+		"frontmatter:\n  id: 'string'\nfrontmatter-closed: false\n")
+	got, err := discoverSchemas(dir)
+	require.NoError(t, err)
+	require.Contains(t, got, "note")
+	assert.Equal(t, false, got["note"].body["frontmatter-closed"])
 }
 
 // TestDiscoverSchemas_IgnoresNonYAMLFiles pins the
