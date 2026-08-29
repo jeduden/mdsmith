@@ -250,7 +250,7 @@ footer: |
 | 2607082048 | ✅     | sonnet | [Placeholder token for APM `${input:name}` prompt parameters](plan/2607082048_apm-input-placeholder-token.md)                                           |
 | 2607082049 | ✅     | opus   | [Foreign managed-region protection for `mdsmith fix`](plan/2607082049_foreign-managed-regions.md)                                                       |
 | 2607082050 | ✅     | sonnet | [APM coexistence: `mdsmith init --apm`, guide, and kind pack](plan/2607082050_apm-coexist-guide-and-kind-pack.md)                                       |
-| 2607082051 | 🔲     | opus   | [Schema extensions: closed frontmatter and filename agreement](plan/2607082051_apm-schema-extensions.md)                                                |
+| 2607082051 | 🔳     | opus   | [Schema extensions: closed frontmatter and filename agreement](plan/2607082051_apm-schema-extensions.md)                                                |
 | 2607082052 | ✅     | sonnet | [SARIF output format for `mdsmith check`](plan/2607082052_check-sarif-output.md)                                                                        |
 | 2607121915 | ✅     | sonnet | [Resolve the internal/linkgraph purity-contract mismatch for wikilink resolution](plan/2607121915_arch-fix-linkgraph-wikilink-purity.md)                |
 | 2607170527 | 🔳     | opus   | [External link checking on WASM hosts (MDS072)](plan/2607170527_wasm-external-link-check.md)                                                            |
