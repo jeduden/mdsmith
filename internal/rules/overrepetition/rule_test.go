@@ -129,6 +129,18 @@ func TestCheck_Section_PreambleCounted(t *testing.T) {
 	assert.Contains(t, diags[0].Message, "process")
 }
 
+func TestCheck_Section_AllParagraphsBeforeHeading(t *testing.T) {
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"scope": "section", "max": 3, "min-length": 4})
+	// All paragraphs are before the first heading: slices.IndexFunc returns -1,
+	// so preambleEnd falls back to len(paragraphs) and the whole file is preamble.
+	src := "word word word word.\n\n# Section\n"
+	diags := r.Check(mustFile(t, src))
+	require.Len(t, diags, 1)
+	assert.Equal(t, 1, diags[0].Line)
+	assert.Contains(t, diags[0].Message, "word")
+}
+
 // --- file scope ---
 
 func TestCheck_File_ExceedsMax_Diagnostic(t *testing.T) {
