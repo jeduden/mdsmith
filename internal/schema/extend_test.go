@@ -147,31 +147,31 @@ func TestExtend_SectionsParentFlowsThroughWhenChildEmpty(t *testing.T) {
 // TestExtend_FilenameChildWins covers the simple case: a child that
 // declares filename overrides the parent.
 func TestExtend_FilenameChildWins(t *testing.T) {
-	parent := &Schema{Filename: "*.md"}
-	child := &Schema{Filename: "RFC-*.md"}
+	parent := &Schema{Filename: []string{"*.md"}}
+	child := &Schema{Filename: []string{"RFC-*.md"}}
 	out, err := Extend(parent, child)
 	require.NoError(t, err)
-	assert.Equal(t, "RFC-*.md", out.Filename)
+	assert.Equal(t, []string{"RFC-*.md"}, out.Filename)
 }
 
 // TestExtend_FilenameInheritsFromParent verifies the missing-child
 // branch: parent's pattern flows through.
 func TestExtend_FilenameInheritsFromParent(t *testing.T) {
-	parent := &Schema{Filename: "RFC-*.md"}
+	parent := &Schema{Filename: []string{"RFC-*.md"}}
 	child := &Schema{}
 	out, err := Extend(parent, child)
 	require.NoError(t, err)
-	assert.Equal(t, "RFC-*.md", out.Filename)
+	assert.Equal(t, []string{"RFC-*.md"}, out.Filename)
 }
 
 // TestExtend_FilenameIdenticalNoConflict checks the boundary
 // condition: identical patterns on both sides are not a conflict.
 func TestExtend_FilenameIdenticalNoConflict(t *testing.T) {
-	parent := &Schema{Filename: "RFC-*.md"}
-	child := &Schema{Filename: "RFC-*.md"}
+	parent := &Schema{Filename: []string{"RFC-*.md"}}
+	child := &Schema{Filename: []string{"RFC-*.md"}}
 	out, err := Extend(parent, child)
 	require.NoError(t, err)
-	assert.Equal(t, "RFC-*.md", out.Filename)
+	assert.Equal(t, []string{"RFC-*.md"}, out.Filename)
 }
 
 // TestExtend_ClosedChildOverridesWhenSectionsPresent verifies that
@@ -280,11 +280,11 @@ func TestExtend_FrontmatterLinesMerges(t *testing.T) {
 // the parent's, so a draft- or ratified- variant can declare its
 // own filename without conflicting with the base kind.
 func TestExtend_FilenameChildOverridesDifferentParent(t *testing.T) {
-	parent := &Schema{Filename: "RFC-*.md"}
-	child := &Schema{Filename: "DRAFT-*.md"}
+	parent := &Schema{Filename: []string{"RFC-*.md"}}
+	child := &Schema{Filename: []string{"DRAFT-*.md"}}
 	out, err := Extend(parent, child)
 	require.NoError(t, err)
-	assert.Equal(t, "DRAFT-*.md", out.Filename)
+	assert.Equal(t, []string{"DRAFT-*.md"}, out.Filename)
 }
 
 func TestUnsatisfiableKeyError_Error(t *testing.T) {

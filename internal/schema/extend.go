@@ -455,7 +455,7 @@ func stripOptionalSuffix(key string) string {
 // is the kind's identity and a child variant routinely wants its
 // own pattern (a draft-* RFC, a ratified-* RFC).
 func extendFilename(out, parent, child *Schema) {
-	if child.Filename != "" {
+	if len(child.Filename) > 0 {
 		out.Filename = child.Filename
 		return
 	}

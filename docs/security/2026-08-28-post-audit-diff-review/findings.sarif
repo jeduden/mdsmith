@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "mdsmith-security-review",
+          "informationUri": "https://github.com/jeduden/mdsmith",
+          "rules": [
+            {
+              "id": "S001",
+              "name": "cli",
+              "shortDescription": {
+                "text": "SSRF guard cannot see the destination when a forward proxy is configured via the environment"
+              },
+              "fullDescription": {
+                "text": "The guarded HTTP client used by MDS072 (external-link-check, opt-in, off by default) enforces its SSRF containment in ssrfControl, a net.Dialer.Control hook that inspects the resolved remote IP right before connect. That is the correct, DNS-rebinding-safe place for the check — but the same transport also sets Proxy: http.ProxyFromEnvironment. When HTTP_PROXY/HTTPS_PROXY is set in the environment, Go dials the proxy's address rather than the document URL's resolved address, so ssrfControl validates the proxy IP and never sees the true destination. The forward proxy then\nresolves and connects to the target host on the client's behalf, outside the guard. A hostile document URL pointing at an internal host or a cloud metadata endpoint (e.g. http://169.254.169.254/) would be blocked when dialed directly, but could be reached through a proxy that is itself willing to forward there. This is a known structural limitation of connect-time SSRF guards, not a coding error in isRestrictedIP (which is thorough)."
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "security-severity": "0.0",
+                "tags": [
+                  "security",
+                  "CWE-918"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "S001",
+          "ruleIndex": 0,
+          "level": "note",
+          "message": {
+            "text": "SSRF guard cannot see the destination when a forward proxy is configured via the environment"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/rules/externallink/probe_net.go"
+                },
+                "region": {
+                  "startLine": 118,
+                  "endLine": 128
+                }
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/rules/externallink/probe_net.go"
+                },
+                "region": {
+                  "startLine": 71,
+                  "endLine": 71
+                }
+              }
+            }
+          ],
+          "properties": {
+            "confidence": "likely",
+            "severity": "info"
+          }
+        }
+      ]
+    }
+  ]
+}

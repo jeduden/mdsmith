@@ -60,11 +60,16 @@ type Schema struct {
 	// metadata.
 	FrontmatterMeta map[string]FieldMeta
 
-	// Filename is a glob the document basename must match. Empty
-	// means no filename constraint. Authors set it as a top-level
-	// `filename:` key on the schema (plan 156 dropped the
-	// `require.filename:` nesting).
-	Filename string
+	// Filename is a list of globs the document basename must match —
+	// the basename passes when it matches any one of them (OR
+	// semantics). A nil or empty slice means no filename constraint.
+	// Authors set it as a top-level `filename:` key on the schema
+	// (plan 156 dropped the `require.filename:` nesting), spelled
+	// either as a single glob string or a YAML sequence of glob
+	// strings; issue 817 added the list form so a schema can express
+	// an alternative naming convention (e.g. `[0-9]*_*.md` or
+	// `plan.md`).
+	Filename []string
 
 	// Sections holds the top-level section list at RootLevel; each
 	// Scope may itself nest further sections one heading level
@@ -466,7 +471,7 @@ func (s *Schema) IsEmpty() bool {
 		return true
 	}
 	return len(s.Frontmatter) == 0 &&
-		s.Filename == "" &&
+		len(s.Filename) == 0 &&
 		len(s.Sections) == 0 &&
 		len(s.CrossReferences) == 0 &&
 		s.Acronyms == nil &&

@@ -1,6 +1,6 @@
 //go:build tinygo
 
-package githooks
+package gitattributes
 
 import "os"
 

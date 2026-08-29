@@ -13,154 +13,9 @@ links here for entries it no longer has room for.
 Entries below are moved, not summarized — nothing
 was reworded.
 
-## Audit 2026-07-12 (range: 528ce4c..834b560)
-
-66 touched production Go files. No TypeScript changes.
-
-Scope:
-
-- Every `internal/rules/*` package modified since the
-  last checkpoint.
-- `cmd/mdsmith`, `cmd/mdsmith-release`, `cue/cuelite`.
-- A dozen core `internal/*` packages: config,
-  convention, fix, index, linkgraph, lint, mdpath,
-  mdtext, punkt, release, schema, starter,
-  structlayout, wordlist.
-- The `pkg/goldmark`, `pkg/markdown/flavor`, and
-  `pkg/mdsmith` public-API layer.
-
-No rule-to-rule imports, no reverse-layer imports,
-no circular-import tells anywhere in the touched
-set.
-
-### blockers (2026-07-12)
-
-- `internal/rules/catalog/rule.go` and
-  `internal/rules/build/rule.go` — `RuleID`,
-  `RuleName`, `Validate` (both rules), and
-  `Generate` (build) implement
-  `gensection.Directive`, a generated-markers
-  contract surface per CLAUDE.md's cross-system
-  list. None had a dedicated unit test. Tests doc
-  §"blocker if the function is on a public
-  surface." Fixed: added `TestRule_RuleID`,
-  `TestRule_RuleName`, `TestRule_Validate` (both
-  rules) and `TestRule_Generate` (build); also
-  added the same pair for `include/rule.go`'s
-  `RuleID`/`RuleName`, which had the identical gap.
-- `internal/rules/listindent/rule.go` — `ID()` and
-  `Name()` (the `rule.Rule` contract) had no
-  dedicated test. Same doc citation. Fixed: added
-  `TestID`/`TestName`.
-- `internal/index/index.go` — `File()` is the
-  LSP/rename/deps query surface's primary lookup
-  and had no dedicated test of its hit/miss,
-  path-normalization, or copy-not-alias behavior.
-  Fixed: added `TestNew`/`TestIndex_File`.
-- `internal/linkgraph/wikilinks.go` —
-  `NewWikilinkIndex`/`ResolveWikiLink` call
-  `fs.WalkDir`, contradicting go.md's "Pure (no
-  file reads, no workspace walks)" claim for
-  `internal/linkgraph`. Go arch doc §"Single
-  responsibility per package" —
-  [plan/2607121915][2607121915].
-
-[2607121915]: ../../plan/2607121915_arch-fix-linkgraph-wikilink-purity.md
-
-### tax (2026-07-12)
-
-- Widespread missing-dedicated-test debt on
-  unexported helpers across nearly every touched
-  rule package (`catalog`, `build`,
-  `crossfilereferenceintegrity`, `duplicatedcontent`,
-  `firstlineheading`, `headingincrement`, `include`,
-  `linelength`, `linkstyle`, `listindent`, `listscan`,
-  `noreferencestyle`, `orderedlistnumbering`,
-  `propernames`, `requiredfrontmatter`,
-  `requiredstructure`, `requiredtextpatterns`,
-  `tableformat`, `tokenbudget`) and in `cue/cuelite`,
-  `internal/index`, `internal/lint`, `internal/config`,
-  `internal/release`, `pkg/mdsmith`, and
-  `pkg/goldmark/{ast,internal/fieldorder}`. All are
-  exercised transitively through `Check`/`Fix`/
-  `ApplySettings` integration-style tests, so behavior
-  is covered — only the by-name unit test is missing.
-  Candidate for a batched cleanup plan next cycle.
-- `internal/release/bench.go` — `fetchTool` and
-  `installMarkdownlint` are genuinely untested (not
-  just missing a name), despite the file already
-  having the fake HTTP/runner seams needed to test
-  them.
-- `internal/mdtext/upstreampunct.go`'s
-  `mdtext_punkt_upstream` build tag is never passed
-  in any CI workflow, unlike the analogous
-  `goldmark_upstream` tag — silent bit-rot risk for
-  `neurosnap/sentences` API drift.
-- `internal/config/deepmerge.go`'s `settingMergeMode`
-  hardcodes `settingKey == "lists"` instead of going
-  through the `rule.ListMerger` extension point built
-  for this. Go arch doc §"Interface segregation."
-- Cross-cutting duplication, all doing the same
-  "recompute line count minus trailing empty split
-  element" — `maxfilelength`, `maxsectionlength`,
-  `requiredmentions`, `requiredtextpatterns`, and
-  `metrics.Document.LineCount()` each carry their own
-  copy.
-- `internal/rules/crossfilereferenceintegrity/rule.go`'s
-  `toStringSlice` is byte-for-byte identical to
-  `internal/rules/settings.ToStringSlice`.
-- `firstlineheading.headingLevelFromSpan` and
-  `headingincrement.atxLevelFromLine`/
-  `setextLevelFromSpan` duplicate the same ATX/setext
-  leading-space-cap parsing verbatim; no shared home
-  in `astutil` yet.
-- `requiredfrontmatter.extractYAMLBody` and
-  `requiredstructure.extractYAML` are near-identical
-  front-matter-fence-stripping helpers, each written
-  independently on top of `lint.StripFrontMatter`.
-- `internal/fix.Fixer.effectiveWithCategories` and
-  `internal/engine.Runner.effectiveWithCategories`
-  duplicate the same `config.EffectiveAll` +
-  `config.ApplyCategories` pattern; only `Runner`'s
-  reuses a shared lookup helper.
-- SRP file-size bloat past the point of easy review:
-  `internal/rules/requiredstructure/rule.go` (2605
-  lines, 5 concerns), `internal/rules/catalog/rule.go`
-  (1760 lines, ~6 concerns beyond what the package's
-  existing file split already covers),
-  `internal/rules/crossfilereferenceintegrity/rule.go`
-  (~1130 lines, 3 concerns), `internal/schema/validate.go`
-  (1733 lines, 5 concerns), `internal/fix/fix.go` (838
-  lines, 5 concerns), `cmd/mdsmith/mergedriver.go` (905
-  lines, 4 concerns), `cmd/mdsmith/main.go` (911 lines,
-  nearing the ~1000-line smell threshold, with real
-  domain logic that could move to `internal/*`),
-  `internal/release/bench.go` (700 lines, 5 concerns).
-  None are DIP violations; all are readability/review-cost
-  friction, split candidates along the seams each
-  finding's source agent already named.
-- `overlay.go`'s `cleanKey` path-normalizer is
-  reimplemented inline five times in `MemWorkspace`
-  (`workspace.go`) instead of shared.
-
-### nice-to-have (2026-07-12)
-
-- `pkg/mdsmith`'s `OSWorkspace.Glob` ignores `Root`
-  while `OverlayWorkspace.Glob` joins against it —
-  both documented individually, worth one line on the
-  `Workspace` interface noting `Glob`'s
-  root-relativity is implementation-defined.
-- `internal/mdtext/mdtext.go`'s `CountSentences` (fast
-  heuristic) and `SplitSentences` (trained Punkt) both
-  exist with no doc cross-reference explaining the
-  trade-off, unlike the file's other paired functions.
-- `internal/rules/catalog/rule.go`'s `isGitignored` is
-  dead in production, kept only as a test oracle for
-  `isGitignoredMemo` — undocumented as intentional.
-- `internal/rules/requiredstructure/rule.go` has two
-  same-named-in-spirit symbols, package func
-  `isSchemaFile` and method `(*Rule).isSchemaFile` —
-  naming clash, not a coverage gap.
+This archive itself hit the budget on 2026-08-23;
+the 2026-07-12 entry moved on to
+[the third archive](architecture-audit-archive-3.md).
 
 ## Audit 2026-06-26 (range: 3d35b77..fe7141b)
 
@@ -279,3 +134,71 @@ Blocker:
 [2607051918]: ../../plan/2607051918_arch-fix-wordlist-config-dedup.md
 [2607051919]: ../../plan/2607051919_arch-fix-new-helper-tests.md
 [2607051920]: ../../plan/2607051920_arch-fix-rule-whitespace-helpers-astutil.md
+
+## Audit 2026-05-13 (range: 6af677fb..7464d273)
+
+1 107 files; 425 Go/TS sources outside fixtures.
+
+Resolved:
+
+- Rule-to-rule imports —
+  [plan/154](../../plan/154_arch-fix-rule-helper-extraction.md).
+- Config-to-rule import —
+  [plan/155](../../plan/155_arch-fix-convention-config-ownership.md).
+- `internal/testutil` anti-pattern name —
+  [plan/201](../../plan/201_arch-fix-testutil-rename.md).
+- `hover.go` DIP — [plan/200][200].
+- `main.go` > 1 000 lines — [plan/202][202].
+
+Tax:
+
+- `extension.ts` SRP — [plan/205][205].
+- `internal/fix`→`internal/engine` DIP —
+  [plan/204][204].
+- `internal/lint` SRP — [plan/224][224].
+
+## Audit 2026-05-17 (range: 7464d273..b5a6d72)
+
+Covered `internal/rename`, `internal/index`,
+`mdsmith deps`, `mdsmith export`. Tax:
+`nonNegativeUTF16RuneLen` copied privately in
+three packages; export from `internal/mdtext` —
+[plan/186](../../plan/186_arch-fix-utf16-centralize.md).
+
+## Decision 2026-05-17 (plan/174)
+
+### plan/153 non-goal superseded
+
+Plan 174 moved the workspace symbol index
+from `internal/lsp/index` to `internal/index`.
+Pure `git mv`; no logic changed.
+`internal/schema` already imported it from
+outside `internal/lsp`. `mdsmith rename` and
+`mdsmith deps` need it. The layering map
+forbids `cmd/mdsmith` → `internal/lsp`.
+`internal/index` must never import `internal/lsp`.
+
+## Audit 2026-05-19 (range: 7464d273..41e61a5)
+
+131 Go files. Plans 154, 155, 174 green.
+
+### tax (2026-05-19)
+
+- `server.go` (1 536) and `symbols.go` (1 385)
+  exceed 1 000 lines — [plan/203][203].
+- Five items from 2026-05-13 now scheduled:
+  [hover][200], [testutil][201], [main.go][202],
+  [fix→engine][204], [extension.ts][205].
+
+[200]: ../../plan/200_arch-fix-hover-embed.md
+[201]: ../../plan/201_arch-fix-testutil-rename.md
+[202]: ../../plan/202_arch-fix-main-split.md
+[203]: ../../plan/203_arch-fix-lsp-server-split.md
+[204]: ../../plan/204_arch-fix-fix-engine-inversion.md
+[205]: ../../plan/205_arch-fix-extension-ts-srp.md
+[206]: ../../plan/206_arch-fix-cue-types-docs.md
+[224]: ../../plan/224_arch-fix-lint-srp.md
+
+### nice-to-have (2026-05-19)
+
+`cue/types` not in layering map — [plan/206][206].

@@ -420,6 +420,10 @@ func (r *Rule) finalizeSettings(rawPattern string) error {
 		}
 	}
 	if len(r.Tokens) > 0 && r.Pattern != nil {
+		// Clear the compiled pattern so a subsequent ApplySettings call
+		// that supplies only tokens (no pattern) does not see stale state.
+		r.Pattern = nil
+		r.patternSource = ""
 		return fmt.Errorf("occurrence: tokens and pattern are mutually exclusive")
 	}
 	if !r.CaseSensitive && len(r.Tokens) > 0 {

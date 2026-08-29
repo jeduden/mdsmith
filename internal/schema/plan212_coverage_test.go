@@ -73,7 +73,7 @@ func TestParseFile_NestedIncludeFilenamePropagatesUp(t *testing.T) {
 		"# ?\n\n<?include\nfile: mid.md\n?>\n")
 	sch, err := ParseFile(&FileReader{}, p)
 	require.NoError(t, err)
-	assert.Equal(t, "leaf-*.md", sch.Filename,
+	assert.Equal(t, []string{"leaf-*.md"}, sch.Filename,
 		"leaf require filename should propagate up through mid's include")
 }
 

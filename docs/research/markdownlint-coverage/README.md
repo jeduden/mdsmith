@@ -725,6 +725,7 @@ row-expr: |
 | [MDS058](../../../internal/rules/MDS058-required-mentions/README.md) required-mentions                   | —                                              | —                                              | —                             | —       | —                                  | —                            |
 | [MDS060](../../../internal/rules/MDS060-occurrence/README.md) occurrence                                 | —                                              | —                                              | —                             | —       | —                                  | —                            |
 | [MDS063](../../../internal/rules/MDS063-descriptive-link-text/README.md) descriptive-link-text           | MD059 ✅ descriptive-link-text                 | MD059 ✅ link-text                             | —                             | —       | —                                  | —                            |
+| [MDS075](../../../internal/rules/MDS075-over-repetition/README.md) over-repetition                       | —                                              | —                                              | —                             | —       | —                                  | —                            |
 <?/catalog?>
 
 ## Structure and cross-file

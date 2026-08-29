@@ -18,73 +18,10 @@ This archive itself hit the budget on 2026-07-19.
 Entries from 2026-07-12 through 2026-07-05 moved
 on to
 [the second archive](architecture-audit-archive-2.md).
-
-## Audit 2026-05-13 (range: 6af677fb..7464d273)
-
-1 107 files; 425 Go/TS sources outside fixtures.
-
-Resolved:
-
-- Rule-to-rule imports —
-  [plan/154](../../plan/154_arch-fix-rule-helper-extraction.md).
-- Config-to-rule import —
-  [plan/155](../../plan/155_arch-fix-convention-config-ownership.md).
-- `internal/testutil` anti-pattern name —
-  [plan/201](../../plan/201_arch-fix-testutil-rename.md).
-- `hover.go` DIP — [plan/200][200].
-- `main.go` > 1 000 lines — [plan/202][202].
-
-Tax:
-
-- `extension.ts` SRP — [plan/205][205].
-- `internal/fix`→`internal/engine` DIP —
-  [plan/204][204].
-- `internal/lint` SRP — [plan/224][224].
-
-## Audit 2026-05-17 (range: 7464d273..b5a6d72)
-
-Covered `internal/rename`, `internal/index`,
-`mdsmith deps`, `mdsmith export`. Tax:
-`nonNegativeUTF16RuneLen` copied privately in
-three packages; export from `internal/mdtext` —
-[plan/186](../../plan/186_arch-fix-utf16-centralize.md).
-
-## Decision 2026-05-17 (plan/174)
-
-### plan/153 non-goal superseded
-
-Plan 174 moved the workspace symbol index
-from `internal/lsp/index` to `internal/index`.
-Pure `git mv`; no logic changed.
-`internal/schema` already imported it from
-outside `internal/lsp`. `mdsmith rename` and
-`mdsmith deps` need it. The layering map
-forbids `cmd/mdsmith` → `internal/lsp`.
-`internal/index` must never import `internal/lsp`.
-
-## Audit 2026-05-19 (range: 7464d273..41e61a5)
-
-131 Go files. Plans 154, 155, 174 green.
-
-### tax (2026-05-19)
-
-- `server.go` (1 536) and `symbols.go` (1 385)
-  exceed 1 000 lines — [plan/203][203].
-- Five items from 2026-05-13 now scheduled:
-  [hover][200], [testutil][201], [main.go][202],
-  [fix→engine][204], [extension.ts][205].
-
-[200]: ../../plan/200_arch-fix-hover-embed.md
-[201]: ../../plan/201_arch-fix-testutil-rename.md
-[202]: ../../plan/202_arch-fix-main-split.md
-[203]: ../../plan/203_arch-fix-lsp-server-split.md
-[204]: ../../plan/204_arch-fix-fix-engine-inversion.md
-[205]: ../../plan/205_arch-fix-extension-ts-srp.md
-[206]: ../../plan/206_arch-fix-cue-types-docs.md
-
-### nice-to-have (2026-05-19)
-
-`cue/types` not in layering map — [plan/206][206].
+It hit the budget again on 2026-08-23; entries
+from 2026-05-13 through 2026-05-19 moved on to
+[the second archive](architecture-audit-archive-2.md)
+as well.
 
 ## Audit 2026-05-31 (range: 4809097..37488a7)
 
@@ -247,3 +184,90 @@ violations. No file crossed 1 000 lines.
 
 Plans 2606241814/2606241815 green.
 No DIP, SRP, or line-count violations.
+
+## Audit 2026-07-19 (range: 834b560..6680ff5)
+
+89 touched files. Notable new surfaces: SARIF output,
+the `internal/pack` init-scaffold package, and a
+wasm/net-split `internal/rules/externallink` rule.
+
+No rule-to-rule imports. No reverse-layer imports. No
+Liskov breaks. No missing tests on a public surface
+(`rule.Rule` method, LSP handler, CLI subcommand entry).
+
+Clean surfaces, verified:
+
+- `internal/output/sarif.go` implements the same
+  `Formatter` interface as `JSONFormatter` and
+  `TextFormatter`. It is documented in
+  `docs/reference/cli/check.md` and `fix.md`
+  (`-f sarif`). 16 tests lock its shape.
+- `internal/pack` is a small registry package,
+  mirroring `internal/starter`.
+- `internal/rules/externallink`'s wasm/net build-tag
+  split preserves Liskov substitutability. Both
+  `probe()` implementations share one signature and
+  one documented tri-state contract. The split is
+  thoroughly tested.
+
+### blockers (2026-07-19)
+
+None.
+
+### tax (2026-07-19)
+
+- `cmd/mdsmith/main.go` crossed the project's documented
+  ~1000-line threshold (1018 lines), almost entirely from
+  the new `mdsmith init --add` pack machinery
+  (`runInit`, `printInitCatalog`, `normalizePackNames`,
+  `applyPacks`, `writeScaffolds`, `refuseSymlinkedParents`,
+  `validatePackPath`, `statTarget`).
+  `docs/development/architecture/audit-checklist.md`
+  names this exact smell: "`cmd/mdsmith/main.go` past
+  ~1000 lines — handler bodies have crept in; relocate to
+  `internal/engine` or a per-subcommand file." Fixed: moved
+  the init-subcommand logic (`setInitUsage` through
+  `convertedConfigBytes`) into a new `cmd/mdsmith/init.go`,
+  matching the existing per-subcommand file pattern
+  (`check.go`, `fix.go`, `deps.go`, …), with its tests in a
+  matching `init_unit_test.go`. `main.go` is now 678 lines.
+  No behavior change; `go test ./...` and
+  `go tool golangci-lint run` are green.
+- `printInitCatalog` and `setInitUsage`
+  (`cmd/mdsmith/init.go`) have no dedicated unit test —
+  only e2e subprocess tests (`mdsmith init --list` and
+  `--help`) exercise them.
+  [tests.md][tests]: "A new function lands together with
+  its dedicated unit test by name," and an e2e test
+  reachable without the process boundary is an inverted
+  pyramid. Neither is a public surface itself (both are
+  `runInit` helpers), so tax not blocker. The
+  `setInitUsage` half of this surfaced during this cycle's
+  3x code-review pass on the fix, not the original sweep —
+  [plan/2607191917][2607191917].
+- `internal/rules/requiredstructure/rule.go`'s `isClaimed`
+  is a byte-for-byte copy of
+  `internal/schema/validate.go`'s `isClaimed`, despite
+  `requiredstructure` already importing `internal/schema`
+  — not an import-cycle workaround, a plain copy.
+  [go.md][go] refactor-moves: "Lift a shared dependency up
+  to an interface... once two rules needed the same shape"
+  — [plan/2607191918][2607191918].
+
+[2607191917]: ../../plan/2607191917_arch-fix-printinitcatalog-unit-test.md
+[2607191918]: ../../plan/2607191918_arch-fix-isclaimed-dedup.md
+
+### nice-to-have (2026-07-19)
+
+- `runInit` (`cmd/mdsmith/init.go`) is 62 lines, over
+  go.md's "~50 lines is a smell" guidance for `cmd/mdsmith`
+  wiring — it already delegates cleanly to single-purpose
+  helpers, so no plan filed.
+- `internal/pack/pack.go`'s `Pack.Files()` and unexported
+  `register()` are trivial one-line, no-branch functions
+  with no dedicated test and no exemption comment per
+  tests.md's exemption clause; both are exercised
+  indirectly. Naming/documentation nit, not a coverage gap.
+
+[tests]: architecture/tests.md
+[go]: architecture/go.md

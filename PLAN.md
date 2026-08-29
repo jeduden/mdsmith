@@ -238,7 +238,7 @@ footer: |
 | 2606280208 | ✅     | opus   | [External URL link checking rule (MDS072)](plan/2606280208_external-link-check.md)                                                                      |
 | 2606292015 | 🔲     | opus   | [Scope the LSP workspace singleton per client so instances coexist](plan/2606292015_lsp-multi-instance-coexistence.md)                                  |
 | 2607022118 | 🔲     | sonnet | [General occurrence rule — bound how often a pattern appears per scope](plan/2607022118_occurrence-rule.md)                                             |
-| 2607022119 | 🔲     | sonnet | [Word-frequency metric and over-repetition rule](plan/2607022119_word-frequency-metric-rule.md)                                                         |
+| 2607022119 | ✅     | sonnet | [Word-frequency metric and over-repetition rule](plan/2607022119_word-frequency-metric-rule.md)                                                         |
 | 2607022120 | 🔲     | opus   | [Substitution rule — deterministic word-choice swaps with auto-fix](plan/2607022120_substitution-rule.md)                                               |
 | 2607031500 | ✅     | sonnet | [Security hardening batch — 2026-07-03 post-audit diff review (low)](plan/2607031500_security-hardening-batch-2026-07-03.md)                            |
 | 2607040635 | ⛔     | opus   | [Add mdsmith move: move a file and rewrite every incoming reference](plan/2607040635_move-command.md)                                                   |
@@ -260,9 +260,11 @@ footer: |
 | 2607242010 | ✅     | sonnet | [MDS072 external-link-check: SSRF and egress hardening](plan/2607242010_mds072-ssrf-network-hardening.md)                                               |
 | 2607242011 | ✅     | haiku  | [Security hardening batch — 2026-07-24](plan/2607242011_security-hardening-batch-2026-07-24.md)                                                         |
 | 2608020650 | 🔲     | sonnet | [Convert MDS003/MDS005 to KindScopedChecker without a stale-state bug](plan/2608020650_kindscoped-heading-rules.md)                                     |
-| 2608021915 | 🔲     | haiku  | [Move list-query subcommand logic out of cmd/mdsmith/main.go into query.go](plan/2608021915_arch-fix-query-subcommand-placement.md)                     |
-| 2608021916 | 🔲     | sonnet | [Split internal/githooks by responsibility](plan/2608021916_arch-fix-githooks-package-split.md)                                                         |
+| 2608021915 | ✅     | haiku  | [Move list-query subcommand logic out of cmd/mdsmith/main.go into query.go](plan/2608021915_arch-fix-query-subcommand-placement.md)                     |
+| 2608021916 | ✅     | sonnet | [Split internal/githooks by responsibility](plan/2608021916_arch-fix-githooks-package-split.md)                                                         |
 | 2608091910 | ✅     | sonnet | [Resolve the MDS073 rule-ID collision between slidevstructure and foreignregion](plan/2608091910_arch-fix-mds073-collision.md)                          |
-| 2608091911 | 🔲     | haiku  | [Add dedicated unit tests for occurrence and slidevstructure private helpers](plan/2608091911_arch-fix-missing-unit-tests.md)                           |
+| 2608091911 | ✅     | haiku  | [Add dedicated unit tests for occurrence and slidevstructure private helpers](plan/2608091911_arch-fix-missing-unit-tests.md)                           |
 | 2608161754 | ✅     | sonnet | [Vendor go-runewidth as a patched fork so post-LUT versions build under tinygo](plan/2608161754_vendor-runewidth-bump-tinygo.md)                        |
+| 2608161914 | 🔲     | haiku  | [Add dedicated unit tests for the 2026-08-16 touched-set tax findings](plan/2608161914_arch-fix-touched-set-unit-tests.md)                              |
+| 2608282011 | 🔲     | sonnet | [Security hardening batch — 2026-08-28](plan/2608282011_security-hardening-batch-2026-08-28.md)                                                         |
 <?/catalog?>

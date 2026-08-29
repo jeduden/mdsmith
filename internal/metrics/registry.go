@@ -110,6 +110,24 @@ var registry = []Definition{
 		},
 	},
 	{
+		ID:           "MET007",
+		Name:         "word-frequency",
+		Description:  "Highest repeat count of any single content word in the file.",
+		Scope:        ScopeFile,
+		Kind:         KindInteger,
+		Precision:    0,
+		Default:      false,
+		DefaultOrder: OrderDesc,
+		Compute: func(doc *Document) (Value, error) {
+			text, err := doc.PlainText()
+			if err != nil {
+				return UnavailableValue(), err
+			}
+			freq := mdtext.WordFrequency(text, 4)
+			return AvailableValue(float64(mdtext.MaxWordFrequency(freq))), nil
+		},
+	},
+	{
 		ID:           "MET008",
 		Name:         "readability",
 		Description:  "Automated Readability Index (ARI) over the file's plain text. Higher means harder to read.",

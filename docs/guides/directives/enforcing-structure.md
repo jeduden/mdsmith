@@ -82,6 +82,20 @@ basename matching the glob. If they don't, `check`
 reports: `filename "foo.md" does not match required
 pattern "[0-9]*_*.md"`.
 
+`filename:` also accepts a list of globs. The basename
+then passes when it matches any one of them. This is the
+OR match that `overrides.glob` and `kind-assignment.glob`
+already give. Use it when a kind accepts more than one
+naming shape — say an id-prefixed file or a fixed name:
+
+```markdown
+<?require
+filename:
+  - "[0-9]*_*.md"
+  - "plan.md"
+?>
+```
+
 **Schema-only**: `<?require?>` is only recognized in
 schema files. Using it in a normal file emits:
 `<?require?> is only recognized in schema files; this

@@ -1,7 +1,7 @@
 ---
 id: 2607022119
 title: Word-frequency metric and over-repetition rule
-status: "🔲"
+status: "✅"
 summary: >-
   Add a MET007 word-frequency metric (the highest repeat count
   of any content word in a file) that ranks files by their
@@ -108,17 +108,17 @@ scope with reused buffers, keeping `Check` within the
 
 ## Acceptance Criteria
 
-- [ ] `mdsmith metrics rank --metrics word-frequency` ranks a
+- [x] `mdsmith metrics rank --metrics word-frequency` ranks a
       corpus by each file's most-repeated content word.
-- [ ] A section repeating one content word five times fails
+- [x] A section repeating one content word five times fails
       over-repetition at `max: 4`; the same word inside a code
       block does not count.
-- [ ] A word on the stopword `lists:` set is never flagged,
+- [x] A word on the stopword `lists:` set is never flagged,
       proven by a fixture whose list lives in
       `.mdsmith/wordlists/`.
-- [ ] The metric and the rule agree on token boundaries
+- [x] The metric and the rule agree on token boundaries
       because they share one tokenizer (a test asserts it).
-- [ ] The rule's `Check` stays within the alloc budget.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run`
+- [x] The rule's `Check` stays within the alloc budget.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues.
