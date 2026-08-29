@@ -4,8 +4,9 @@ package propernames
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 	"strconv"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -279,11 +280,15 @@ func (r *Rule) collectMatches(f *lint.File) []wrongMatch {
 // at each offset. Both Check and Fix call this so they agree on which
 // occurrences constitute a single diagnostic/replacement.
 func normalizeMatches(matches []wrongMatch) []wrongMatch {
-	sort.Slice(matches, func(i, j int) bool {
-		if matches[i].start != matches[j].start {
-			return matches[i].start < matches[j].start
+	// slices.SortFunc sorts the concrete wrongMatch values directly,
+	// unlike sort.Slice, which drives reflect.Swapper under the hood —
+	// see docs/development/high-performance-go.md's "reflect in hot
+	// paths" anti-pattern.
+	slices.SortFunc(matches, func(a, b wrongMatch) int {
+		if a.start != b.start {
+			return cmp.Compare(a.start, b.start)
 		}
-		return matches[i].length > matches[j].length
+		return cmp.Compare(b.length, a.length)
 	})
 	out := matches[:0]
 	prev := 0

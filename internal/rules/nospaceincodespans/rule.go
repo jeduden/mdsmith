@@ -4,7 +4,8 @@ package nospaceincodespans
 
 import (
 	"bytes"
-	"sort"
+	"cmp"
+	"slices"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -184,7 +185,13 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		return out
 	}
 
-	sort.Slice(cuts, func(i, j int) bool { return cuts[i].start < cuts[j].start })
+	// slices.SortFunc sorts the concrete cut values directly, unlike
+	// sort.Slice, which drives reflect.Swapper under the hood — see
+	// docs/development/high-performance-go.md's "reflect in hot
+	// paths" anti-pattern.
+	slices.SortFunc(cuts, func(a, b cut) int {
+		return cmp.Compare(a.start, b.start)
+	})
 	var out bytes.Buffer
 	prev := 0
 	for _, c := range cuts {
