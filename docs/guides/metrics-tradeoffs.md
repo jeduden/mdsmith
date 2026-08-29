@@ -113,6 +113,53 @@ If you need a single metric to minimize complexity, choose the one that best mat
 - Choose [MDS028](../../internal/rules/MDS028-token-budget/README.md) `token-budget` when context window limits are the dominant constraint and you want a file-level guardrail.
 - Choose conciseness scoring when token budget and drift are the main risks and you accept heuristic trade-offs.
 
+## Choosing a density band (MDS060 occurrence)
+
+[MDS060](../../internal/rules/MDS060-occurrence/README.md) `occurrence` bounds
+how often a token or pattern appears within a scope. Two presets cover the
+most common cases:
+
+**Em-dash density** — caps stylistic em dashes per paragraph. Three or more
+in a paragraph is a machine-writing tell.
+
+```yaml
+rules:
+  occurrence:
+    enabled: true
+    pattern: "—"
+    scope: paragraph
+    count: combined
+    max: 2
+```
+
+**Term density** — caps how often any one listed buzzword repeats within a
+section, using a named wordlist:
+
+```yaml
+rules:
+  occurrence:
+    enabled: true
+    scope: section
+    count: each
+    max: 2
+    lists:
+      - buzzwords
+```
+
+### Choosing the `max` bound
+
+Start permissive. A `max: 3` catches clear overuse without false positives on
+intentional repetition. Tighten to `max: 2` only after sampling your corpus
+and confirming the lower bound does not flag necessary emphasis. Use `combined`
+to cap total density across all tokens; use `each` (the default) to cap each
+token independently.
+
+### When to prefer MDS056 over MDS060
+
+Use [MDS056](../../internal/rules/MDS056-forbidden-text/README.md)
+`forbidden-text` when a term is outright banned. Use `occurrence` when the
+term is permitted in moderation — the author may use it, just not excessively.
+
 ## Recommendation for mdsmith users
 
 Start with [MDS023](../../internal/rules/MDS023-paragraph-readability/README.md) and [MDS024](../../internal/rules/MDS024-paragraph-structure/README.md) enabled. Use [MDS022](../../internal/rules/MDS022-max-file-length/README.md) and [MDS001](../../internal/rules/MDS001-line-length/README.md) as baseline file and line controls. Add [MDS028](../../internal/rules/MDS028-token-budget/README.md) when context limits matter, then add conciseness scoring only after calibrating its thresholds and confirming it improves signal without harming necessary precision.
