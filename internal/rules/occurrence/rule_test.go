@@ -390,6 +390,30 @@ func TestApplySettings_MinWrongType(t *testing.T) {
 	assert.Contains(t, err.Error(), "min")
 }
 
+func TestApplySettings_MaxBelowNegativeOne(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"max": -2})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "max")
+	assert.Contains(t, err.Error(), "-1")
+}
+
+func TestApplySettings_MinGreaterThanMax(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"tokens": []any{"x"}, "min": 5, "max": 2})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "min")
+	assert.Contains(t, err.Error(), "max")
+}
+
+func TestApplySettings_MinOnlyNoFalsePositive(t *testing.T) {
+	// A zero-value Rule has Max=0, but since max was never explicitly set,
+	// the min>max guard must not fire when only min is configured.
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"tokens": []any{"x"}, "min": 3})
+	require.NoError(t, err, "setting only min on a zero-value Rule must not error")
+}
+
 func TestCheck_Paragraph_EmptyToken_NoDiagnostic(t *testing.T) {
 	r := &Rule{}
 	mustApply(t, r, map[string]any{"tokens": []any{""}, "max": 1, "count": "each"})
