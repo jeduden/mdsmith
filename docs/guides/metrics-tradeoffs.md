@@ -125,7 +125,6 @@ in a paragraph is a machine-writing tell.
 ```yaml
 rules:
   occurrence:
-    enabled: true
     pattern: "—"
     scope: paragraph
     count: combined
@@ -138,7 +137,6 @@ section, using a named wordlist:
 ```yaml
 rules:
   occurrence:
-    enabled: true
     scope: section
     count: each
     max: 2
