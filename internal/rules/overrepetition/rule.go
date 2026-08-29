@@ -143,7 +143,9 @@ func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 			r.accum(freq, paragraphs[j].ExtractText(f.Source))
 		}
 		r.removeStopwords(freq)
-		diags = append(diags, r.diagFromFreq(freq, firstParaLine, "section", f.Path)...)
+		if len(freq) > 0 {
+			diags = append(diags, r.diagFromFreq(freq, firstParaLine, "section", f.Path)...)
+		}
 	}
 	return diags
 }
@@ -262,8 +264,8 @@ func (r *Rule) applyMax(v any) error {
 	if !ok {
 		return fmt.Errorf("over-repetition: max must be an integer, got %T", v)
 	}
-	if n == 0 {
-		return fmt.Errorf("over-repetition: max must be a positive integer (≥1) or -1 to disable; 0 is ambiguous")
+	if n == 0 || n < -1 {
+		return fmt.Errorf("over-repetition: max must be a positive integer (≥1) or -1 to disable; got %d", n)
 	}
 	r.Max = n
 	return nil

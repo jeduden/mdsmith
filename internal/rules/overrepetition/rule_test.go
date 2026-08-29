@@ -212,7 +212,15 @@ func TestApplySettings_MaxZero_Error(t *testing.T) {
 	r := &Rule{}
 	err := r.ApplySettings(map[string]any{"max": 0})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "ambiguous")
+	assert.Contains(t, err.Error(), "got 0")
+}
+
+func TestApplySettings_MaxNegativeOtherThanMinusOne_Error(t *testing.T) {
+	// Any negative value except -1 is undocumented; reject with a clear message.
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"max": -5})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "got -5")
 }
 
 func TestApplySettings_BadMinLength_Error(t *testing.T) {

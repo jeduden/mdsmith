@@ -173,6 +173,13 @@ func TestMatcherCacheKey_DistinguishesLists(t *testing.T) {
 	assert.Equal(t,
 		matcherCacheKey([]string{"delve", "realm"}),
 		matcherCacheKey([]string{"delve", "realm"}))
+
+	// Lists with the same elements in different order must share a key:
+	// the matcher's OR semantics make order irrelevant.
+	assert.Equal(t,
+		matcherCacheKey([]string{"foo", "bar"}),
+		matcherCacheKey([]string{"bar", "foo"}),
+		"same needles in different order must share a cache key")
 }
 
 // TestCachedMatcher_ReusesAndSeparates covers both cache paths: a
