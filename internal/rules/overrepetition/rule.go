@@ -3,6 +3,7 @@
 package overrepetition
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"strings"
@@ -154,13 +155,7 @@ func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 // over []SectionParagraph keyed by line number. Defined at package scope so
 // no closure is allocated per call.
 func cmpParagraphLine(p astutil.SectionParagraph, target int) int {
-	if p.Line < target {
-		return -1
-	}
-	if p.Line > target {
-		return 1
-	}
-	return 0
+	return cmp.Compare(p.Line, target)
 }
 
 // checkParagraphs checks word frequency per paragraph.
