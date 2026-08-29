@@ -9,6 +9,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
 func init() {
@@ -18,6 +19,13 @@ func init() {
 // Rule checks that heading levels only increment by one.
 type Rule struct {
 	Placeholders []string // placeholder tokens to treat as opaque
+
+	// prevLevel is per-file state: the level of the most recently seen
+	// heading within the current file's walk. Reset to 0 by BeginFile
+	// before each file's CheckNode sequence begins, so state never leaks
+	// from one file to the next when a worker clone processes multiple
+	// files. Zero is the correct initial value: "no heading seen yet".
+	prevLevel int
 }
 
 // ID implements rule.Rule.
@@ -43,60 +51,92 @@ func (r *Rule) Category() string { return "heading" }
 // back to the parse path.
 func (r *Rule) LineCapable() bool { return len(r.Placeholders) == 0 }
 
-// Check implements rule.Rule. The parsed path reads
-// astutil.CollectHeadingNodes instead of running its own ast.Walk: that
-// collector is memoized per File, so when no-duplicate-headings (MDS005)
-// also runs against the same File, only the first of the two rules pays
-// for the tree walk.
+// Check implements rule.Rule. On a nil-AST File it calls checkNilAST
+// (the Layer 0 parse-skip path). On a parsed File it delegates to
+// rule.WalkNodes, which calls BeginFile to reset per-file state and
+// then dispatches CheckNode for every node via a single ast.Walk.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	if f != nil && f.AST == nil {
 		return r.checkNilAST(f)
 	}
-	var diags []lint.Diagnostic
-	prevLevel := 0
+	return rule.WalkNodes(r, f)
+}
 
-	for _, heading := range astutil.CollectHeadingNodes(f) {
-		level := heading.Level
+// BeginFile implements rule.FileResetter. It resets prevLevel to 0 so the
+// first heading in each new file is evaluated as "no previous heading seen",
+// regardless of the level sequence in the file the worker processed before
+// this one. Called by rule.WalkNodes (for standalone Check callers) and by
+// the engine's runNodeCheckers (for the shared walk path) before the first
+// CheckNode call for each File.
+func (r *Rule) BeginFile(_ *lint.File) {
+	r.prevLevel = 0
+}
 
-		// Check if this heading's text matches a configured placeholder.
-		// Placeholder headings skip the increment diagnostic but still
-		// update prevLevel so subsequent headings track correctly.
-		isPlaceholder := len(r.Placeholders) > 0 &&
-			placeholders.ContainsBodyToken(astutil.HeadingTextCached(f, heading), r.Placeholders)
+// enteringKinds is the static node-kind interest CheckNode declares via
+// rule.KindScopedChecker; package-level so EnteringKinds returns it without
+// allocating.
+var enteringKinds = []ast.NodeKind{ast.KindHeading}
 
-		if prevLevel == 0 {
-			// First heading: should be h1
-			if level > 1 && !isPlaceholder {
-				line := astutil.HeadingLine(heading, f)
-				diags = append(diags, lint.Diagnostic{
-					File:     f.Path,
-					Line:     line,
-					Column:   1,
-					RuleID:   r.ID(),
-					RuleName: r.Name(),
-					Severity: lint.Warning,
-					Message:  "first heading level should be 1, got " + strconv.Itoa(level),
-				})
-			}
-		} else if level > prevLevel+1 && !isPlaceholder {
+// EnteringKinds implements rule.KindScopedChecker: CheckNode only reacts
+// to heading nodes, entering visits only.
+func (r *Rule) EnteringKinds() []ast.NodeKind { return enteringKinds }
+
+// CheckNode implements rule.NodeChecker. It processes one heading node,
+// comparing its level against r.prevLevel (the level of the previous heading
+// in this file's walk). State is threaded through r.prevLevel, which
+// BeginFile resets to 0 at the start of each file.
+func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
+	if !entering {
+		return nil
+	}
+	heading, ok := n.(*ast.Heading)
+	if !ok {
+		return nil
+	}
+	level := heading.Level
+
+	// Check if this heading's text matches a configured placeholder.
+	// Placeholder headings skip the increment diagnostic but still
+	// update prevLevel so subsequent headings track correctly.
+	isPlaceholder := len(r.Placeholders) > 0 &&
+		placeholders.ContainsBodyToken(astutil.HeadingTextCached(f, heading), r.Placeholders)
+
+	prevLevel := r.prevLevel
+	r.prevLevel = level // always update, even for placeholders
+
+	if isPlaceholder {
+		return nil
+	}
+
+	if prevLevel == 0 {
+		// First heading in the file: must be h1.
+		if level > 1 {
 			line := astutil.HeadingLine(heading, f)
-			diags = append(diags, lint.Diagnostic{
+			return []lint.Diagnostic{{
 				File:     f.Path,
 				Line:     line,
 				Column:   1,
 				RuleID:   r.ID(),
 				RuleName: r.Name(),
 				Severity: lint.Warning,
-				Message: "heading level incremented from " + strconv.Itoa(prevLevel) +
-					" to " + strconv.Itoa(level) +
-					" (expected " + strconv.Itoa(prevLevel+1) + ")",
-			})
+				Message:  "first heading level should be 1, got " + strconv.Itoa(level),
+			}}
 		}
-
-		prevLevel = level
+	} else if level > prevLevel+1 {
+		line := astutil.HeadingLine(heading, f)
+		return []lint.Diagnostic{{
+			File:     f.Path,
+			Line:     line,
+			Column:   1,
+			RuleID:   r.ID(),
+			RuleName: r.Name(),
+			Severity: lint.Warning,
+			Message: "heading level incremented from " + strconv.Itoa(prevLevel) +
+				" to " + strconv.Itoa(level) +
+				" (expected " + strconv.Itoa(prevLevel+1) + ")",
+		}}
 	}
-
-	return diags
+	return nil
 }
 
 // checkNilAST is the parse-skip path: it walks the Layer 0 block scan's
@@ -223,7 +263,9 @@ func (r *Rule) SettingMergeMode(key string) rule.MergeMode {
 }
 
 var (
-	_ rule.Configurable = (*Rule)(nil)
-	_ rule.ListMerger   = (*Rule)(nil)
-	_ rule.LineCapable  = (*Rule)(nil)
+	_ rule.Configurable     = (*Rule)(nil)
+	_ rule.ListMerger       = (*Rule)(nil)
+	_ rule.LineCapable      = (*Rule)(nil)
+	_ rule.KindScopedChecker = (*Rule)(nil)
+	_ rule.FileResetter     = (*Rule)(nil)
 )

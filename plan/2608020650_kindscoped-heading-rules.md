@@ -1,7 +1,7 @@
 ---
 id: 2608020650
 title: Convert MDS003/MDS005 to KindScopedChecker without a stale-state bug
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   headingincrement (MDS003) and noduplicateheadings
@@ -127,15 +127,60 @@ half), `codeblockstyle` (MDS065), `samefileanchor`
    needs its own plan — their per-rule logic is larger
    and riskier than the two rules headed here.
 
+## Design Chosen
+
+Option 2 — a `BeginFile` hook via the new
+`rule.FileResetter` interface. Added to `internal/rule/walk.go`;
+called by `rule.WalkNodes` (standalone Check path) and by
+`runNodeCheckers` (engine's shared walk path) before the first
+`CheckNode` call for each File.
+
+Two implementation details required care:
+
+1. **Nil-AST routing for MDS005.** After converting to
+   `NodeChecker`, `classifySlot` dropped MDS005 on
+   parse-skipped Files (not a `BlockChecker`). Fixed by
+   adding `InlineCapable() bool { return true }` so
+   `classifySlot` routes it to the existing `checkFromInline`
+   path.
+2. **Data race from shallow-copied singletons.** The alloc-budget
+   test calls `r.Check` directly on singleton rule instances,
+   which via `WalkNodes` → `BeginFile` sets `singleton.seen` to a
+   non-nil map. `cloneRules` then shallow-copies that pointer into
+   multiple worker clones; two workers calling `BeginFile`
+   (`clear`) and `verdict` (write) on the shared map caused a
+   concurrent-map data race. Fixed by making `BeginFile` always
+   allocate a fresh map (`r.seen = make(map[string]int, 4)`)
+   instead of clearing in place, so each clone gets an independent
+   map immediately on its first `BeginFile` call.
+
+## Benchmark Delta
+
+`BenchmarkHeadingRulesTogether` (51 headings, standalone
+`Check` calls, 3 × 5 s runs):
+
+| State   | ns/op | allocs/op |
+|---------|-------|-----------|
+| before  |  81 k |       151 |
+| after   |  92 k |       157 |
+
+The standalone benchmark regresses ~14 % because the old
+`CollectHeadingNodes` memo let two sequential `Check` calls share
+heading collection; the new `WalkNodes` path does an independent
+`ast.Walk` per `Check` call. In the engine's production path both
+rules join the **shared** `KindScopedChecker` dispatch — one AST
+walk for all NodeCheckers — which is the actual gain this plan
+targets. The standalone benchmark does not capture that sharing.
+
 ## Acceptance Criteria
 
-- [ ] `headingincrement` and `noduplicateheadings`
+- [x] `headingincrement` and `noduplicateheadings`
       implement `rule.KindScopedChecker`.
-- [ ] A regression test proves no state leaks between
+- [x] A regression test proves no state leaks between
       files processed by the same rule instance.
-- [ ] `go test ./...` and the corpus equivalence gates
+- [x] `go test ./...` and the corpus equivalence gates
       pass unchanged.
-- [ ] The benchmark from Task 1 is re-run. The
+- [x] The benchmark from Task 1 is re-run. The
       before/after delta is recorded in this plan or a
       linked PR.
 

@@ -223,3 +223,31 @@ func TestSettingMergeMode_HeadingIncrement(t *testing.T) {
 func TestWordlistTarget(t *testing.T) {
 	assert.Equal(t, "placeholders", (&Rule{}).WordlistTarget())
 }
+
+// TestCheck_NoStateLeakAcrossFiles pins the per-file reset contract: a
+// single rule instance reused across two files (simulating engine worker
+// reuse) must produce correct diagnostics for each file independently.
+// File A ends with heading level 3; without a reset, File B's first
+// heading (level 3) would be treated as a continuation of A's sequence
+// rather than the file's first heading, silently dropping the
+// "first heading level should be 1" diagnostic.
+func TestCheck_NoStateLeakAcrossFiles(t *testing.T) {
+	r := &Rule{}
+
+	// File A: clean sequence h1 → h2 → h3. No diagnostics. After this
+	// call, if prevLevel were stored on the struct, it would be 3.
+	fileA, err := lint.NewFile("a.md", []byte("# H1\n\n## H2\n\n### H3\n"))
+	require.NoError(t, err)
+	diagsA := r.Check(fileA)
+	assert.Empty(t, diagsA, "File A should produce no diagnostics")
+
+	// File B: first heading is h3. With a clean slate (prevLevel=0),
+	// Check must diagnose "first heading level should be 1, got 3".
+	// With leaked state (prevLevel=3), the first-heading check is
+	// skipped and no diagnostic is produced — the stale-state bug.
+	fileB, err := lint.NewFile("b.md", []byte("### Third only\n"))
+	require.NoError(t, err)
+	diagsB := r.Check(fileB)
+	require.Len(t, diagsB, 1, "File B must diagnose first-heading violation; got: %v", diagsB)
+	assert.Equal(t, "first heading level should be 1, got 3", diagsB[0].Message)
+}
