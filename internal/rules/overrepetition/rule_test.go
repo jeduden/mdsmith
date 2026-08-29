@@ -111,6 +111,18 @@ func TestCheck_Section_NoHeadings_TreatsFileAsOneSection(t *testing.T) {
 	assert.Contains(t, diags[0].Message, "word")
 }
 
+func TestCheck_Section_NoHeadings_DiagnosticAnchorsAtFirstParagraph(t *testing.T) {
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"scope": "section", "max": 2, "min-length": 4})
+	// Prose starts at line 3 (after a blank first line); diagnostic must anchor
+	// at line 3, not the hardcoded 1.
+	src := "\nword word word.\n"
+	diags := r.Check(mustFile(t, src))
+	require.Len(t, diags, 1)
+	assert.Equal(t, 2, diags[0].Line)
+	assert.Contains(t, diags[0].Message, "word")
+}
+
 func TestCheck_Section_NoHeadings_UnderMax_NoDiagnostic(t *testing.T) {
 	r := &Rule{}
 	mustApply(t, r, map[string]any{"scope": "section", "max": 3, "min-length": 4})
@@ -126,6 +138,18 @@ func TestCheck_Section_PreambleCounted(t *testing.T) {
 	diags := r.Check(mustFile(t, src))
 	require.Len(t, diags, 1)
 	assert.Equal(t, 1, diags[0].Line)
+	assert.Contains(t, diags[0].Message, "process")
+}
+
+func TestCheck_Section_PreambleDiagnosticAnchorsAtFirstParagraph(t *testing.T) {
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"scope": "section", "max": 3, "min-length": 4})
+	// Preamble paragraph starts at line 3 (blank line, then prose); diagnostic
+	// must anchor at line 3, not the hardcoded 1.
+	src := "\nprocess process process process.\n\n# Section\n\nonly once.\n"
+	diags := r.Check(mustFile(t, src))
+	require.Len(t, diags, 1)
+	assert.Equal(t, 2, diags[0].Line)
 	assert.Contains(t, diags[0].Message, "process")
 }
 

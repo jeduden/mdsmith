@@ -101,8 +101,12 @@ func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 		for i := range paragraphs {
 			r.accum(freq, paragraphs[i].ExtractText(f.Source))
 		}
+		firstLine := 1
+		if len(paragraphs) > 0 {
+			firstLine = paragraphs[0].Line
+		}
 		r.removeStopwords(freq)
-		return r.diagFromFreq(freq, 1, "section", f.Path)
+		return r.diagFromFreq(freq, firstLine, "section", f.Path)
 	}
 
 	totalLines := len(f.Lines)
@@ -120,13 +124,19 @@ func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 	if preambleEnd < 0 {
 		preambleEnd = len(paragraphs)
 	}
+	firstPreambleLine := 1
+	if preambleEnd > 0 {
+		firstPreambleLine = paragraphs[0].Line
+	}
 	for j := range preambleEnd {
 		r.accum(freq, paragraphs[j].ExtractText(f.Source))
 	}
 	var diags []lint.Diagnostic
-	r.removeStopwords(freq)
 	if len(freq) > 0 {
-		diags = append(diags, r.diagFromFreq(freq, 1, "section", f.Path)...)
+		r.removeStopwords(freq)
+		if len(freq) > 0 {
+			diags = append(diags, r.diagFromFreq(freq, firstPreambleLine, "section", f.Path)...)
+		}
 	}
 
 	for i, h := range headings {
