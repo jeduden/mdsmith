@@ -263,14 +263,15 @@ func TestEnteringKinds(t *testing.T) {
 		"EnteringKinds must return a package-level slice, not a fresh allocation")
 }
 
-// TestLinesCapable pins the marker that routes this rule to its own Check
-// on a parse-skipped File. Without it checker.classifySlot gives the rule
-// no dispatch slot at all on a nil-AST File and every heading-increment
-// diagnostic silently disappears.
+// TestLinesCapable pins the routing marker. Without it checker.classifySlot
+// gives the rule no dispatch slot on a nil-AST File. LinesCapable mirrors
+// LineCapable: it is true only when no placeholders are configured, because
+// a placeholder-configured rule reads heading inline text (AST-only) and
+// LineCapable already forces the engine to parse, so no nil-AST path exists.
 func TestLinesCapable(t *testing.T) {
-	assert.True(t, (&Rule{}).LinesCapable())
-	assert.True(t, (&Rule{Placeholders: []string{"heading-question"}}).LinesCapable(),
-		"the marker is constant; LineCapable is what gates the skip on placeholders")
+	assert.True(t, (&Rule{}).LinesCapable(), "no placeholders: skip path is available")
+	assert.False(t, (&Rule{Placeholders: []string{"heading-question"}}).LinesCapable(),
+		"with placeholders: skip path is unavailable; must parse to read inline text")
 }
 
 // TestBeginFile_ResetsPrevLevel pins the reset itself, independently of a
