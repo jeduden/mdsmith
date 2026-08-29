@@ -1717,7 +1717,7 @@ func validateFilename(
 		Field:     "filename",
 		Actual:    strconv.Quote(base),
 		Expected:  FilenameExpected(patterns),
-		Hint:      UnresolvedOrInterpolatedHint(unresolved, interpolated, resolved),
+		Hint:      UnresolvedOrInterpolatedHint(unresolved, interpolated),
 		SchemaRef: schemaRef(sch, ""),
 	}
 	return []lint.Diagnostic{d.Emit(mkDiag, f.Path, anchor)}
@@ -1730,12 +1730,12 @@ func validateFilename(
 // requiredstructure rule's legacy proto.md path renders the same
 // hint from the same rules.
 func UnresolvedOrInterpolatedHint(
-	unresolved error, interpolated bool, resolved []string,
+	unresolved error, interpolated []string,
 ) string {
 	if unresolved != nil {
 		return unresolved.Error()
 	}
-	return InterpolatedGlobHint(interpolated, resolved...)
+	return InterpolatedGlobHint(interpolated...)
 }
 
 // ValidateFrontmatter compiles sch.Frontmatter into a CUE schema and

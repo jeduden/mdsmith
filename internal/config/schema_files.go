@@ -33,13 +33,14 @@ var schemaFileBasenameRE = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 // load rather than being silently dropped. Kept in sync with the
 // keys parse_inline.go accepts.
 var schemaTopLevelKeys = map[string]bool{
-	"frontmatter":      true,
-	"filename":         true,
-	"closed":           true,
-	"sections":         true,
-	"cross-references": true,
-	"acronyms":         true,
-	"index":            true,
+	"frontmatter":        true,
+	"frontmatter-closed": true,
+	"filename":           true,
+	"closed":             true,
+	"sections":           true,
+	"cross-references":   true,
+	"acronyms":           true,
+	"index":              true,
 }
 
 // discoveredSchema pairs a parsed schema body (the raw map that

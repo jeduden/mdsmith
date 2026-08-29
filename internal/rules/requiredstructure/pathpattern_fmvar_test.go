@@ -70,6 +70,22 @@ func TestCheck_PathPatternFmvar_EscapesValueMetacharacters(t *testing.T) {
 	expectDiags(t, r.Check(f), 1)
 }
 
+// A `/` in the frontmatter value must not let one reference span two
+// directories: `.apm/skills/a/b/SKILL.md` with `name: a/b` names the
+// directory `b`, so the APM contract is violated and the kind must
+// say so rather than silently accepting the file.
+func TestCheck_PathPatternFmvar_ValueWithSeparatorDoesNotSpanDirs(t *testing.T) {
+	root := t.TempDir()
+	f := newRootedFile(t, root, ".apm/skills/a/b/SKILL.md",
+		"---\nname: a/b\n---\n# A\n")
+	r := &Rule{PathPatterns: []PathPattern{
+		{Kind: "apm-skill", Pattern: apmSkillPattern},
+	}}
+	diags := r.Check(f)
+	expectDiags(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "path separator")
+}
+
 func TestCheck_PathPatternFmvar_NestedFieldPath(t *testing.T) {
 	root := t.TempDir()
 	f := newRootedFile(t, root, "docs/install.md",
