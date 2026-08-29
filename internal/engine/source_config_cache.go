@@ -30,10 +30,13 @@ import (
 // CLI worker, and is why this is safe even though RunSourceWithVersion
 // can be called concurrently for different documents that resolve to
 // the same effective config (the LSP session doc explicitly promises
-// concurrent-safe calls) — a rule with per-Check mutable state (e.g.
-// internal/rules/include's visited/chain) never observes two Check
-// calls racing on the same instance. Only the settings-application
-// work is shared; the instances handed to Check are not.
+// concurrent-safe calls) — a rule with mutable state, whether per-Check
+// (internal/rules/include's visited/chain) or per-file (a
+// rule.FileResetter such as MDS003's prevLevel or MDS005's seen map),
+// never observes two Check calls racing on the same instance. Only the
+// settings-application work is shared; the instances handed to Check are
+// not. The cached template is never walked, so its FileResetter fields
+// stay zero and each cloneRules copy starts from a clean slate.
 //
 // A long-lived caller installs one SourceConfigCache and reuses it
 // across calls (the Session wires it the same way it wires RunCache

@@ -110,63 +110,6 @@ func buildSectionHeadings(f *lint.File) any {
 	return out
 }
 
-// HeadingNodesMemoKey is CollectHeadingNodes's MemoFile key. Exported
-// (rather than inlined at each use) so the shared-walk regression test
-// in sharedheadingwalk_bench_test.go — which lives in the external
-// astutil_test package because it exercises concrete rule packages
-// (headingincrement, noduplicateheadings) that import astutil — can
-// pre-seed the same cache entry without duplicating the string.
-const HeadingNodesMemoKey = "astutil.headingNodes"
-
-// CollectHeadingNodes returns every *ast.Heading node in the document,
-// in source order. Unlike CollectSectionHeadings (which only exposes
-// Level and Line), this keeps the node itself so a caller can extract
-// heading text via HeadingText.
-//
-// Memoized per File via lint.File.MemoFile: MDS003 (heading-increment)
-// and MDS005 (no-duplicate-headings) both previously ran their own
-// full ast.Walk to collect the same headings; sharing one walk here
-// means the second rule to run pays a cache hit instead of re-walking
-// the tree (docs/development/high-performance-go.md, "memoize
-// per-input computations").
-func CollectHeadingNodes(f *lint.File) []*ast.Heading {
-	return f.MemoFile(HeadingNodesMemoKey, buildHeadingNodes).([]*ast.Heading)
-}
-
-// buildHeadingNodes is the MemoFile-style builder for the heading-nodes
-// memo. Defined at package scope so the value passed to MemoFile is a
-// plain function pointer, matching buildSectionHeadings.
-func buildHeadingNodes(f *lint.File) any {
-	// Sized on the first heading rather than up front, so a document
-	// with none keeps returning nil at zero allocations — the project's
-	// "Return nil, not []T{}" convention, and the shape a pre-sized
-	// slice would otherwise break.
-	//
-	// The root's child count is a capacity hint, not a bound: the walk
-	// descends into blockquotes and list items, so nested headings can
-	// still push past it and regrow. It is simply the cheapest estimate
-	// that scales with document length, and it removes the ~log2(n)
-	// regrowth steps this once-per-file memo would otherwise pay on
-	// every file. See
-	// docs/development/high-performance-go.md#allocations.
-	var out []*ast.Heading
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		h, ok := n.(*ast.Heading)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
-		if out == nil {
-			out = make([]*ast.Heading, 0, f.AST.ChildCount())
-		}
-		out = append(out, h)
-		return ast.WalkSkipChildren, nil
-	})
-	return out
-}
-
 // sortSectionHeadings orders headings by source line in place.
 // slices.SortFunc sorts the concrete SectionHeading values directly,
 // unlike sort.Slice, which drives reflect.Swapper under the hood —

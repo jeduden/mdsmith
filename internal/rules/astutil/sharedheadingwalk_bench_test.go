@@ -1,9 +1,10 @@
-// Package astutil_test benchmarks cross-rule use of astutil's shared,
-// memoized AST collectors. It lives in the external test package
-// because it exercises concrete rule packages (headingincrement,
-// noduplicateheadings) rather than astutil internals — importing
-// them from an internal (non-_test-suffixed) test file would be an
-// import cycle, since those packages import astutil's production code.
+// Package astutil_test holds the cross-rule tests and benchmarks for the
+// two heading rules that read their heading text and lines through
+// astutil (headingincrement/MDS003 and noduplicateheadings/MDS005). It
+// lives in the external test package because it exercises those concrete
+// rule packages rather than astutil internals — importing them from an
+// internal (non-_test-suffixed) test file would be an import cycle, since
+// those packages import astutil's production code.
 package astutil_test
 
 import (
@@ -11,10 +12,8 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
-	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	"github.com/jeduden/mdsmith/internal/rules/headingincrement"
 	"github.com/jeduden/mdsmith/internal/rules/noduplicateheadings"
-	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -30,15 +29,12 @@ func manyHeadingsSource(n int) []byte {
 	return src
 }
 
-// TestHeadingRulesTogether_CorrectDiagnostics verifies that MDS003
-// (heading-increment) and MDS005 (no-duplicate-headings) each emit the
-// expected diagnostic on a shared File. Both rules are now
-// rule.KindScopedChecker implementors that receive heading nodes from
-// the engine's single shared AST walk rather than through
-// astutil.CollectHeadingNodes's File-level memo. The previous
-// memo-seeding mechanism is no longer the relevant shared-walk
-// optimisation: the KindScopedChecker dispatch already achieves ONE
-// walk for all heading rules without per-rule full-tree traversals.
+// TestHeadingRulesTogether_CorrectDiagnostics pins that MDS003 and MDS005
+// each still emit their own diagnostic when both run over one File. The
+// two rules are rule.KindScopedChecker implementors driven by the engine's
+// single shared AST walk, so a regression in the shared dispatch (a rule
+// dropped from the kind table, or one rule's per-file state bleeding into
+// the other's) would show up here as a missing or duplicated diagnostic.
 func TestHeadingRulesTogether_CorrectDiagnostics(t *testing.T) {
 	// A level-3 first heading trips MDS003; the repeated heading text
 	// trips MDS005 — both diagnostics must appear.
@@ -55,31 +51,26 @@ func TestHeadingRulesTogether_CorrectDiagnostics(t *testing.T) {
 	require.Len(t, ndDiags, 1, "no-duplicate-headings must flag the repeated heading text")
 	assert.Equal(t, "MDS005", ndDiags[0].RuleID)
 
-	// Verify that astutil.HeadingNodesMemoKey pre-seeding does not suppress
-	// either rule's diagnostics — both now walk the AST directly via
-	// CheckNode rather than through CollectHeadingNodes.
+	// Order must not matter: running MDS005 first on a second File gives
+	// the identical pair of verdicts, so neither rule depends on the other
+	// having populated a shared per-File cache.
 	f2, err := lint.NewFile("test2.md", src)
 	require.NoError(t, err)
-	_ = f2.MemoFile(astutil.HeadingNodesMemoKey, func(*lint.File) any {
-		return []*ast.Heading(nil) // empty — would suppress memo-reading rules
-	})
-	hi2 := &headingincrement.Rule{}
 	nd2 := &noduplicateheadings.Rule{}
-	assert.Len(t, hi2.Check(f2), 1,
-		"heading-increment must not be suppressed by HeadingNodesMemoKey pre-seed: it now uses CheckNode directly")
-	assert.Len(t, nd2.Check(f2), 1,
-		"no-duplicate-headings must not be suppressed by HeadingNodesMemoKey pre-seed: it now uses CheckNode directly")
+	hi2 := &headingincrement.Rule{}
+	assert.Len(t, nd2.Check(f2), 1, "no-duplicate-headings must not depend on run order")
+	assert.Len(t, hi2.Check(f2), 1, "heading-increment must not depend on run order")
 }
 
 // BenchmarkHeadingRulesTogether exercises MDS003 and MDS005 back to
 // back against fresh Files, mirroring how internal/checker runs every
 // enabled rule against one File per workspace file. benchstat-friendly
-// (no assertion): a prior manual benchstat comparison (10 runs each)
-// showed the shared walk cuts combined wall-clock by ~7% (mean 101.9us
-// -> 94.5us on a 201-heading document) even though allocs/op rises
-// slightly (145 -> 157, from MemoFile's map-and-interface-boxing
-// overhead) — fewer full tree walks wins on net despite the small
-// extra bookkeeping cost.
+// (no assertion): it is the guard for the standalone Check path, where
+// each rule pays its own ast.Walk. rule.WalkNodes applies the same
+// EnteringKinds scoping the engine's dispatch applies, so the walk's
+// per-node cost is a kind comparison rather than an interface call into
+// a rule that immediately returns nil. Compare with benchstat before and
+// after any change to WalkNodes or to either rule's CheckNode.
 func BenchmarkHeadingRulesTogether(b *testing.B) {
 	hi := &headingincrement.Rule{}
 	nd := &noduplicateheadings.Rule{}

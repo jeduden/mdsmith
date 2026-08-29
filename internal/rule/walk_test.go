@@ -189,3 +189,95 @@ func TestBlockKindInSet(t *testing.T) {
 		assert.False(t, blockKindInSet(lint.BlockATXHeading, kinds))
 	})
 }
+
+// kindScopedStub is a NodeChecker that also declares a kind scope, so
+// WalkNodes must feed it only entering visits of the declared kinds.
+type kindScopedStub struct {
+	nodeCheckerStub
+	kinds []ast.NodeKind
+}
+
+func (s *kindScopedStub) EnteringKinds() []ast.NodeKind { return s.kinds }
+
+var _ KindScopedChecker = (*kindScopedStub)(nil)
+
+// TestWalkNodes_ScopesToEnteringKinds pins that WalkNodes applies the
+// same scoping the engine's dispatchScoped applies: a KindScopedChecker
+// sees only entering visits of its declared kinds, never a leaving visit
+// and never an unrelated kind. Without it a standalone Check pays two
+// no-op CheckNode calls for every node in the document.
+func TestWalkNodes_ScopesToEnteringKinds(t *testing.T) {
+	f, err := lint.NewFile("t.md", []byte("# A\n\ntext\n\n## B\n"))
+	require.NoError(t, err)
+
+	s := &kindScopedStub{kinds: []ast.NodeKind{ast.KindHeading}}
+	diags := WalkNodes(s, f)
+
+	assert.Equal(t, []string{"enter:Heading", "enter:Heading"}, s.visits,
+		"only entering visits of the declared kinds reach CheckNode")
+	assert.Len(t, diags, 2, "the scoped stream still yields every heading diagnostic")
+}
+
+// TestWalkNodes_EmptyEnteringKindsDispatchesNothing pins the engine's
+// treatment of an empty kind scope: buildKindTable gives such a rule no
+// CSR row, so it is never dispatched. WalkNodes must agree rather than
+// falling back to the unscoped every-node stream.
+func TestWalkNodes_EmptyEnteringKindsDispatchesNothing(t *testing.T) {
+	f, err := lint.NewFile("t.md", []byte("# A\n\ntext\n"))
+	require.NoError(t, err)
+
+	s := &kindScopedStub{kinds: nil}
+	assert.Nil(t, WalkNodes(s, f))
+	assert.Empty(t, s.visits, "an empty kind scope means no node is dispatched")
+}
+
+// blockFileResetterStub is both a BlockChecker and a FileResetter, the
+// combination the block-span dispatch must reset before the first span.
+type blockFileResetterStub struct {
+	blockCheckerStub
+	beginCalls int
+}
+
+func (s *blockFileResetterStub) BeginFile(_ *lint.File) {
+	s.beginCalls++
+	s.seenKinds = nil
+}
+
+var (
+	_ BlockChecker = (*blockFileResetterStub)(nil)
+	_ FileResetter = (*blockFileResetterStub)(nil)
+)
+
+// TestWalkBlocks_CallsBeginFileOnFileResetter pins that the block path
+// honours FileResetter exactly as the node path does: state left over
+// from a previous File is cleared before the first span is dispatched.
+func TestWalkBlocks_CallsBeginFileOnFileResetter(t *testing.T) {
+	s := &blockFileResetterStub{}
+	s.seenKinds = []lint.BlockKind{lint.BlockParagraph} // stale from a previous File
+
+	f := lint.NewFileLines("t.md", []byte("text\n\n---\n"))
+	diags := WalkBlocks(s, f)
+
+	assert.Equal(t, 1, s.beginCalls, "BeginFile must be called once per WalkBlocks call")
+	require.Len(t, diags, 1)
+	assert.Equal(t, []lint.BlockKind{lint.BlockThematicBreak}, s.seenKinds,
+		"BeginFile must run before the first CheckBlock")
+}
+
+// TestNodeKindInSet pins the linear scan WalkNodes uses to apply a
+// rule's kind scope: empty set returns false, present kind returns true,
+// absent kind returns false.
+func TestNodeKindInSet(t *testing.T) {
+	t.Run("emptySet", func(t *testing.T) {
+		assert.False(t, nodeKindInSet(ast.KindHeading, nil))
+		assert.False(t, nodeKindInSet(ast.KindHeading, []ast.NodeKind{}))
+	})
+	t.Run("present", func(t *testing.T) {
+		kinds := []ast.NodeKind{ast.KindParagraph, ast.KindHeading}
+		assert.True(t, nodeKindInSet(ast.KindHeading, kinds))
+		assert.True(t, nodeKindInSet(ast.KindParagraph, kinds))
+	})
+	t.Run("absent", func(t *testing.T) {
+		assert.False(t, nodeKindInSet(ast.KindHeading, []ast.NodeKind{ast.KindParagraph}))
+	})
+}

@@ -48,10 +48,13 @@ exercised only indirectly through a caller's scenario test:
   `FileTooLargeError`, an exported cross-package helper.
   Covered only transitively through `TestReadFileLimited_OverLimit`
   and callers' own error-message assertions.
-- [internal/rules/astutil/astutil.go][astutil]:114-133 —
-  `buildHeadingNodes` and `sortSectionHeadings`. Covered only
-  via `TestCollectHeadingNodes_*` in
-  [astutil_test.go][astutil-test]:708-739.
+- [internal/rules/astutil/astutil.go][astutil] —
+  `sortSectionHeadings`. Covered only via
+  `TestCollectSectionHeadings_*` in
+  [astutil_test.go][astutil-test]. (`buildHeadingNodes`, the
+  other finding here, was removed with the
+  `CollectHeadingNodes` memo when MDS003 and MDS005 became
+  kind-scoped node checkers.)
 - [pkg/markdown/flavor/detect.go][detect]:461-467 —
   `newlineSearch`, the binary-search helper backing the new
   `lineIndex`. Covered only via `TestLineIndex_MatchesLineCol`
@@ -73,8 +76,8 @@ methods already have tests).
    [pkg/mdsmith/workspace_test.go][workspace-test].
 4. Add `TestFileTooLargeError` to a `bytelimit_test.go` file
    next to [bytelimit.go][bytelimit].
-5. Add `TestBuildHeadingNodes` and `TestSortSectionHeadings`
-   to [astutil/astutil_test.go][astutil-test].
+5. Add `TestSortSectionHeadings` to
+   [astutil/astutil_test.go][astutil-test].
 6. Add `TestNewlineSearch` to
    [pkg/markdown/flavor/lineindex_test.go][lineindex-test]
    (or a sibling `detect_test.go`, matching the existing

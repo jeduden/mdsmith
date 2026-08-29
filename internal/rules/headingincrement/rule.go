@@ -51,6 +51,22 @@ func (r *Rule) Category() string { return "heading" }
 // back to the parse path.
 func (r *Rule) LineCapable() bool { return len(r.Placeholders) == 0 }
 
+// LinesCapable implements rule.LinesChecker. It returns true to tell the
+// engine that this rule's own Check serves the nil-AST parse-skip path
+// (via checkNilAST, which re-derives heading levels from the Layer 0 block
+// scan of f.Lines). Without this marker checker.classifySlot would drop
+// the rule on a parse-skipped File — it is a NodeChecker, and a NodeChecker
+// that is neither a BlockChecker nor a self-serving Inline/Lines checker
+// gets no dispatch slot at all — silently losing every heading-increment
+// diagnostic on exactly the files the parse skip applies to.
+//
+// The rule is not a rule.BlockChecker even though checkNilAST reads block
+// spans: BlockChecker promises CheckBlock matches CheckNode for EVERY File,
+// and a placeholder-configured MDS003 reads heading inline text from the
+// AST, which no block span carries. LineCapable() is false in that case, so
+// no parse-skipped File ever reaches this path with placeholders set.
+func (r *Rule) LinesCapable() bool { return true }
+
 // Check implements rule.Rule. On a nil-AST File it calls checkNilAST
 // (the Layer 0 parse-skip path). On a parsed File it delegates to
 // rule.WalkNodes, which calls BeginFile to reset per-file state and
@@ -268,4 +284,5 @@ var (
 	_ rule.LineCapable       = (*Rule)(nil)
 	_ rule.KindScopedChecker = (*Rule)(nil)
 	_ rule.FileResetter      = (*Rule)(nil)
+	_ rule.LinesChecker      = (*Rule)(nil)
 )
