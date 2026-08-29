@@ -28,10 +28,18 @@ var schemaFileBasenameRE = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
 // schemaTopLevelKeys is the set of top-level keys a schema file may
 // declare. It is the per-file split of an inline `schemas.<name>:`
-// block: the same keys schema.ParseInline reads. Anything else is a
-// config error so a typo (e.g. `section:` for `sections:`) surfaces at
-// load rather than being silently dropped. Kept in sync with the
-// keys parse_inline.go accepts.
+// block, so every key here must also be one schema.ParseInline
+// accepts. Anything else is a config error so a typo (e.g. `section:`
+// for `sections:`) surfaces at load rather than being silently
+// dropped.
+//
+// The containment is one-way: parse_inline.go's inlineTopKeys is the
+// superset. `projection:` and `block-paragraphs:` are inline-only
+// (they describe an extraction projection, not a document contract)
+// and stay out of the schema-file vocabulary that
+// docs/reference/schema-files.md enumerates. Every other inline key —
+// `frontmatter-closed:` included — belongs here, or the two spellings
+// of one schema disagree.
 var schemaTopLevelKeys = map[string]bool{
 	"frontmatter":        true,
 	"frontmatter-closed": true,

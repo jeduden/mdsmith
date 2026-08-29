@@ -229,6 +229,38 @@ func TestValidateFilename_HintListsOnlyInterpolatedGlobs(t *testing.T) {
 		"a plain sibling glob was never interpolated")
 }
 
+// filepath.Match — the only matcher a `filename:` glob feeds — has
+// no brace alternatives, so `{` and `,` are already literal there.
+// Escaping them buys nothing on POSIX and breaks the match outright
+// on Windows, where filepath.Match reads `\` as an ordinary
+// character rather than an escape: `a\,b` can never match the
+// basename `a,b`. The `filename:` surface must therefore leave both
+// bytes alone.
+func TestResolveFilenamePatterns_LeavesBraceAndCommaUnescaped(t *testing.T) {
+	resolved, interpolated, unresolved := resolveFilenamePatterns(
+		[]string{`\#(fmvar(id)).md`}, map[string]any{"id": "a,b{c"})
+	require.NoError(t, unresolved)
+	assert.Equal(t, []string{"a,b{c.md"}, resolved)
+	assert.Equal(t, []string{"a,b{c.md"}, interpolated)
+	ok, err := filepath.Match(resolved[0], "a,b{c.md")
+	require.NoError(t, err)
+	assert.True(t, ok)
+}
+
+// The bytes filepath.Match itself treats as special are still
+// escaped, so a value carrying one matches literally.
+func TestResolveFilenamePatterns_EscapesFilepathMatchMetacharacters(t *testing.T) {
+	resolved, _, unresolved := resolveFilenamePatterns(
+		[]string{`\#(fmvar(id)).md`}, map[string]any{"id": "a*b"})
+	require.NoError(t, unresolved)
+	ok, err := filepath.Match(resolved[0], "a*b.md")
+	require.NoError(t, err)
+	assert.True(t, ok)
+	ok, err = filepath.Match(resolved[0], "axxb.md")
+	require.NoError(t, err)
+	assert.False(t, ok, "the `*` in the frontmatter value must not act as a wildcard")
+}
+
 // An explicitly empty front-matter value is the degenerate
 // empty-segment case ResolveGlobPattern exists to prevent, so it
 // reports rather than substituting nothing.

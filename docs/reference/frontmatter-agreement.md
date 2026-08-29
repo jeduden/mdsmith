@@ -70,7 +70,7 @@ kinds:
       frontmatter:
         "description?": nonEmpty
         "input?": string
-        "allowed-tools?": [...string]
+        "allowed-tools?": '[...string]'
         "model?": nonEmpty
         "argument-hint?": nonEmpty
 ```

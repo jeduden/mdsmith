@@ -265,3 +265,13 @@ func TestCompose_NoFrontmatterAnywhereKeepsClosedDefault(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, out.FrontmatterIsClosed())
 }
+
+// Compose returns a nil *Schema when handed no inputs, so
+// FrontmatterIsClosed guards its receiver. Drive that branch
+// directly: a nil schema declares no front-matter constraint for the
+// setting to apply to, so the historical closed default is the safe
+// answer.
+func TestFrontmatterIsClosed_NilSchema(t *testing.T) {
+	var sch *Schema
+	assert.True(t, sch.FrontmatterIsClosed())
+}
