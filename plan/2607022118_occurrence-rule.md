@@ -1,7 +1,7 @@
 ---
 id: 2607022118
 title: General occurrence rule — bound how often a pattern appears per scope
-status: "🔲"
+status: "✅"
 summary: >-
   Add one `occurrence` rule that bounds how many times a
   token or pattern may appear within a scope (file, section,
@@ -112,17 +112,17 @@ budget on representative input.
 
 ## Acceptance Criteria
 
-- [ ] A paragraph with three em dashes fails
+- [x] A paragraph with three em dashes fails
       `em-dash-density`; two pass.
-- [ ] A section repeating a listed term three times fails
+- [x] A section repeating a listed term three times fails
       `term-density` with `max: 2`; the same term in a fenced
       code block does not count.
-- [ ] `lists:` entries union into `tokens`, proven by a
+- [x] `lists:` entries union into `tokens`, proven by a
       fixture whose match set lives in `.mdsmith/wordlists/`.
-- [ ] `min` catches an under-count (a required term missing
+- [x] `min` catches an under-count (a required term missing
       from a scope) with a clear message.
-- [ ] The rule's `Check` stays within the alloc budget
+- [x] The rule's `Check` stays within the alloc budget
       (`internal/integration/alloc_budget_test.go`).
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run`
+- [x] All tests pass: `go test ./...`
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues.
