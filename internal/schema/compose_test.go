@@ -288,11 +288,11 @@ func TestComposeAcronyms_BothRestricted_UnionsScope(t *testing.T) {
 // `out.Filename != s.Filename` false branch: two schemas declaring
 // the same non-empty filename pattern must NOT error.
 func TestCompose_FilenameIdenticalNotConflict(t *testing.T) {
-	a := &Schema{Filename: "[0-9]*.md"}
-	b := &Schema{Filename: "[0-9]*.md"}
+	a := &Schema{Filename: []string{"[0-9]*.md"}}
+	b := &Schema{Filename: []string{"[0-9]*.md"}}
 	out, err := Compose(a, b)
 	require.NoError(t, err)
-	assert.Equal(t, "[0-9]*.md", out.Filename)
+	assert.Equal(t, []string{"[0-9]*.md"}, out.Filename)
 }
 
 // TestCompose_MergeScopeRulesOneSideEmpty covers the
@@ -323,16 +323,28 @@ func TestCanMergeByHeading_PreambleDirect(t *testing.T) {
 // TestCompose_FilenameFirstNonEmpty picks the first non-empty
 // filename pattern; conflicting patterns are an error.
 func TestCompose_FilenameFirstNonEmpty(t *testing.T) {
-	a := &Schema{Filename: ""}
-	b := &Schema{Filename: "[0-9]*.md"}
+	a := &Schema{Filename: nil}
+	b := &Schema{Filename: []string{"[0-9]*.md"}}
 	out, err := Compose(a, b)
 	require.NoError(t, err)
-	assert.Equal(t, "[0-9]*.md", out.Filename)
+	assert.Equal(t, []string{"[0-9]*.md"}, out.Filename)
 }
 
 func TestCompose_FilenameConflictErrors(t *testing.T) {
-	a := &Schema{Filename: "AAA*.md"}
-	b := &Schema{Filename: "BBB*.md"}
+	a := &Schema{Filename: []string{"AAA*.md"}}
+	b := &Schema{Filename: []string{"BBB*.md"}}
+	_, err := Compose(a, b)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "filename")
+}
+
+// TestCompose_FilenameListConflictOnOrder confirms two lists with the
+// same globs in a different order are treated as conflicting: the
+// composed constraint is order-significant in its diagnostic wording,
+// so identical semantics still require identical spelling.
+func TestCompose_FilenameListConflictOnDiffered(t *testing.T) {
+	a := &Schema{Filename: []string{"a-*.md", "b.md"}}
+	b := &Schema{Filename: []string{"a-*.md"}}
 	_, err := Compose(a, b)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "filename")

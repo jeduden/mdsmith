@@ -1069,8 +1069,13 @@ var (
 
 // schemaConfig holds the parsed schema frontmatter.
 type schemaConfig struct {
-	FrontMatterCUE  string
-	FilenamePattern string // glob pattern the document basename must match
+	FrontMatterCUE string
+	// FilenamePatterns are the globs the document basename must
+	// match — the basename passes when it matches any one of them
+	// (OR semantics, issue 817). A `<?require filename:?>` may spell
+	// this as a single glob string or a YAML sequence of glob
+	// strings. Empty means no filename constraint.
+	FilenamePatterns []string
 
 	// Frontmatter carries the per-key constraint expression
 	// strings. Populated alongside FrontMatterCUE so the
@@ -1159,9 +1164,11 @@ func parseSchemaFrontMatter(prefix []byte, cache *lint.RunCache) (schemaConfig, 
 }
 
 // extractRequireDirective walks the schema AST for a <?require?> PI
-// and parses its YAML body to extract constraints like filename.
-func extractRequireDirective(f *lint.File) (string, error) {
-	var filenamePattern string
+// and parses its YAML body to extract constraints like filename. The
+// `filename:` value may be a single glob string or a YAML sequence of
+// glob strings (issue 817); both decode to the returned slice.
+func extractRequireDirective(f *lint.File) ([]string, error) {
+	var filenamePatterns []string
 	for c := f.AST.FirstChild(); c != nil; c = c.NextSibling() {
 		pi, ok := c.(*piparser.ProcessingInstruction)
 		if !ok || pi.Name != "require" {
@@ -1193,16 +1200,18 @@ func extractRequireDirective(f *lint.File) (string, error) {
 				body = append(body, seg.Value(f.Source)...)
 			}
 		}
-		var params map[string]string
+		var params map[string]any
 		if err := yamlutil.UnmarshalSafe(body, &params); err != nil {
-			return "", fmt.Errorf("invalid <?require?> directive: %w", err)
+			return nil, fmt.Errorf("invalid <?require?> directive: %w", err)
 		}
-		if fn, ok := params["filename"]; ok {
-			filenamePattern = fn
+		pats, err := schema.DecodeFilenameField(params["filename"])
+		if err != nil {
+			return nil, fmt.Errorf("invalid <?require?> directive: %w", err)
 		}
+		filenamePatterns = pats
 		break
 	}
-	return filenamePattern, nil
+	return filenamePatterns, nil
 }
 
 func deriveFrontMatterCUE(yamlBytes []byte) (string, map[string]string, map[string]schema.FieldMeta, error) {
@@ -1578,7 +1587,7 @@ func parseSchemaWithRootFS(
 	f, _ := lint.NewFile("schema", content)
 
 	// Extract <?require?> directive from schema body.
-	filenamePattern, err := extractRequireDirective(f)
+	filenamePatterns, err := extractRequireDirective(f)
 	if err != nil {
 		// cfg.FrontMatterCUE was already compiled (and cached
 		// via RunCache.CompiledCUE) before extractRequireDirective
@@ -1589,7 +1598,7 @@ func parseSchemaWithRootFS(
 		// and Invalidate(schemaPath) cannot evict it.
 		return &parsedSchema{Config: cfg}, nil, err
 	}
-	cfg.FilenamePattern = filenamePattern
+	cfg.FilenamePatterns = filenamePatterns
 
 	// Extract headings, expanding <?include?> directives in the schema.
 	var headings []docHeading
@@ -1598,7 +1607,7 @@ func parseSchemaWithRootFS(
 		cleanPath := filepath.Clean(schemaPath)
 		visited := map[string]struct{}{cleanPath: {}}
 		chain := []string{cleanPath}
-		var fp string
+		var fp []string
 		headings, fp, includes, err = extractSchemaHeadings(f, schemaPath, visited, chain, maxBytes, rootFS)
 		if err != nil {
 			// Surface a partial *parsedSchema (carrying the
@@ -1611,8 +1620,8 @@ func parseSchemaWithRootFS(
 			// evicts the schema's failed-parse slot.
 			return &parsedSchema{Config: cfg}, includes, err
 		}
-		if fp != "" && cfg.FilenamePattern == "" {
-			cfg.FilenamePattern = fp
+		if len(fp) > 0 && len(cfg.FilenamePatterns) == 0 {
+			cfg.FilenamePatterns = fp
 		}
 	} else {
 		headings = extractHeadings(f)
@@ -1661,9 +1670,9 @@ func parseSchemaWithRootFS(
 func extractSchemaHeadings(
 	schemaFile *lint.File, schemaPath string,
 	visited map[string]struct{}, chain []string, maxBytes int64, rootFS fs.FS,
-) ([]docHeading, string, []string, error) {
+) ([]docHeading, []string, []string, error) {
 	var headings []docHeading
-	var filenamePattern string
+	var filenamePatterns []string
 	var includes []string
 
 	err := ast.Walk(schemaFile.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -1700,8 +1709,8 @@ func extractSchemaHeadings(
 				includes = append(includes, subIncludes...)
 				return ast.WalkStop, walkErr
 			}
-			if fp != "" && filenamePattern == "" {
-				filenamePattern = fp
+			if len(fp) > 0 && len(filenamePatterns) == 0 {
+				filenamePatterns = fp
 			}
 			headings = append(headings, fragHeadings...)
 			if fragIncluded != "" {
@@ -1719,10 +1728,10 @@ func extractSchemaHeadings(
 		// a downstream <?include?> issue must still let
 		// Invalidate(brokenFragment) evict the schema's failed-parse
 		// slot when the fragment is fixed.
-		return nil, "", includes, err
+		return nil, nil, includes, err
 	}
 
-	return headings, filenamePattern, includes, nil
+	return headings, filenamePatterns, includes, nil
 }
 
 // expandSchemaInclude resolves a single <?include?> PI in a schema file,
@@ -1763,10 +1772,10 @@ func resolveSchemaIncludePath(
 func expandSchemaInclude(
 	pi *piparser.ProcessingInstruction, source []byte,
 	schemaPath string, visited map[string]struct{}, chain []string, maxBytes int64, rootFS fs.FS,
-) ([]docHeading, string, string, []string, error) {
+) ([]docHeading, []string, string, []string, error) {
 	includedPath, err := resolveSchemaIncludePath(pi, source, schemaPath)
 	if err != nil {
-		return nil, "", "", nil, err
+		return nil, nil, "", nil, err
 	}
 
 	// Surface includedPath on every error past this point so the
@@ -1776,20 +1785,20 @@ func expandSchemaInclude(
 	// the depth limit), Invalidate(fragmentAbs) then evicts this
 	// schema's failed-parse slot and the next Check re-parses.
 	if len(chain) > maxSchemaIncludeDepth {
-		return nil, "", includedPath, nil, fmt.Errorf(
+		return nil, nil, includedPath, nil, fmt.Errorf(
 			"schema include depth exceeds maximum (%d)", maxSchemaIncludeDepth)
 	}
 	if _, ok := visited[includedPath]; ok {
 		chainCopy := make([]string, len(chain), len(chain)+1)
 		copy(chainCopy, chain)
 		chainCopy = append(chainCopy, includedPath)
-		return nil, "", includedPath, nil, fmt.Errorf(
+		return nil, nil, includedPath, nil, fmt.Errorf(
 			"cyclic include: %s", strings.Join(chainCopy, " -> "))
 	}
 
 	fragData, err := readSchemaInclude(rootFS, includedPath, maxBytes)
 	if err != nil {
-		return nil, "", includedPath, nil, fmt.Errorf(
+		return nil, nil, includedPath, nil, fmt.Errorf(
 			"cannot read schema include file %q: %w", includedPath, err)
 	}
 
@@ -1802,7 +1811,7 @@ func expandSchemaInclude(
 
 	fp, err := extractRequireDirective(fragFile)
 	if err != nil {
-		return nil, "", includedPath, nil, err
+		return nil, nil, includedPath, nil, err
 	}
 
 	visited[includedPath] = struct{}{}
@@ -1816,9 +1825,9 @@ func expandSchemaInclude(
 		// footprint (broken fragment + every successful one
 		// above it) is recorded in the cache's reverse-include
 		// index.
-		return nil, "", includedPath, subIncludes, err
+		return nil, nil, includedPath, subIncludes, err
 	}
-	if fp2 != "" && fp == "" {
+	if len(fp2) > 0 && len(fp) == 0 {
 		fp = fp2
 	}
 
@@ -2540,8 +2549,8 @@ func workspaceRelPath(f *lint.File) string {
 func checkFilenamePattern(
 	f *lint.File, sch *parsedSchema, schemaSource string,
 ) []lint.Diagnostic {
-	pattern := sch.Config.FilenamePattern
-	if pattern == "" {
+	patterns := sch.Config.FilenamePatterns
+	if len(patterns) == 0 {
 		return nil
 	}
 	// Filename diagnostics describe the document as a whole;
@@ -2550,7 +2559,7 @@ func checkFilenamePattern(
 	// section.
 	anchor := schema.NonBodyDiagLine(f)
 	base := filepath.Base(f.Path)
-	matched, err := filepath.Match(pattern, base)
+	matched, badPattern, err := schema.MatchFilename(patterns, base)
 	if err != nil {
 		// Malformed glob in the schema. Surface it via the same
 		// SchemaDiagnostic shape so the message carries the
@@ -2558,7 +2567,7 @@ func checkFilenamePattern(
 		// offending pattern.
 		d := schema.SchemaDiagnostic{
 			Field:     "filename pattern",
-			Actual:    strconv.Quote(pattern),
+			Actual:    strconv.Quote(badPattern),
 			Expected:  "valid glob",
 			Hint:      err.Error(),
 			SchemaRef: buildSchemaRefForLegacy(schemaSource),
@@ -2568,10 +2577,12 @@ func checkFilenamePattern(
 	if !matched {
 		// `glob` keeps the wording aligned with schema.validateFilename
 		// and the path-pattern diagnostic; see the rationale there.
+		// With several globs configured the "expected" clause lists
+		// them all so the OR nature is visible.
 		d := schema.SchemaDiagnostic{
 			Field:     "filename",
 			Actual:    strconv.Quote(base),
-			Expected:  "filename matching glob " + pattern,
+			Expected:  schema.FilenameExpected(patterns),
 			SchemaRef: buildSchemaRefForLegacy(schemaSource),
 		}
 		return []lint.Diagnostic{d.Emit(makeDiag, f.Path, anchor)}

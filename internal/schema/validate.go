@@ -1666,8 +1666,8 @@ func formatHeading(level int, text string) string {
 func validateFilename(
 	f *lint.File, sch *Schema, mkDiag MakeDiag,
 ) []lint.Diagnostic {
-	pattern := sch.Filename
-	if pattern == "" {
+	patterns := sch.Filename
+	if len(patterns) == 0 {
 		return nil
 	}
 	// Filename and path diagnostics describe the document as a
@@ -1676,7 +1676,7 @@ func validateFilename(
 	// document body starts with a generated section.
 	anchor := nonBodyDiagLine(f)
 	base := filepath.Base(f.Path)
-	matched, err := filepath.Match(pattern, base)
+	matched, badPattern, err := MatchFilename(patterns, base)
 	if err != nil {
 		// Malformed glob in the schema. Surface it via the same
 		// SchemaDiagnostic shape so the message carries a
@@ -1684,7 +1684,7 @@ func validateFilename(
 		// offending pattern.
 		d := SchemaDiagnostic{
 			Field:     "filename pattern",
-			Actual:    strconv.Quote(pattern),
+			Actual:    strconv.Quote(badPattern),
 			Expected:  "valid glob",
 			Hint:      err.Error(),
 			SchemaRef: schemaRef(sch, ""),
@@ -1697,11 +1697,13 @@ func validateFilename(
 		// requirement, which filepath.Match does not accept. The
 		// wording also lines up with the kind-level `path-pattern`
 		// diagnostic ("path matching glob ...") so the user
-		// vocabulary is consistent across both surfaces.
+		// vocabulary is consistent across both surfaces. With
+		// several globs configured the "expected" clause lists them
+		// all so the OR nature is visible.
 		d := SchemaDiagnostic{
 			Field:     "filename",
 			Actual:    strconv.Quote(base),
-			Expected:  "filename matching glob " + pattern,
+			Expected:  FilenameExpected(patterns),
 			SchemaRef: schemaRef(sch, ""),
 		}
 		return []lint.Diagnostic{d.Emit(mkDiag, f.Path, anchor)}

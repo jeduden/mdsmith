@@ -2,6 +2,7 @@ package schema
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -144,17 +145,17 @@ func composeFrontmatter(out *Schema, schemas []*Schema) {
 
 func composeFilename(out *Schema, schemas []*Schema) error {
 	for _, s := range schemas {
-		if s.Filename == "" {
+		if len(s.Filename) == 0 {
 			continue
 		}
-		if out.Filename == "" {
+		if len(out.Filename) == 0 {
 			out.Filename = s.Filename
 			continue
 		}
-		if out.Filename != s.Filename {
+		if !slices.Equal(out.Filename, s.Filename) {
 			return fmt.Errorf(
 				"conflicting filename patterns across "+
-					"composed schemas: %q and %q",
+					"composed schemas: %v and %v",
 				out.Filename, s.Filename)
 		}
 	}

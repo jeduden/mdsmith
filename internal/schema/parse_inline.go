@@ -199,11 +199,11 @@ func parseInlineFilename(raw map[string]any, sch *Schema) error {
 	if !ok {
 		return nil
 	}
-	s, ok := v.(string)
-	if !ok {
-		return fmt.Errorf("schema.filename must be a string, got %T", v)
+	pats, err := DecodeFilenameField(v)
+	if err != nil {
+		return fmt.Errorf("schema.%w", err)
 	}
-	sch.Filename = s
+	sch.Filename = pats
 	return nil
 }
 

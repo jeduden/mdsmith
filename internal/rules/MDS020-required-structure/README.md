@@ -58,9 +58,9 @@ file's leading comment for the vocabulary.
 Use `<?require?>` in the schema body to declare
 constraints on files validated against this schema:
 
-| Field      | Type   | Description                           |
-| ---------- | ------ | ------------------------------------- |
-| `filename` | string | Glob the document basename must match |
+| Field      | Type           | Description                                       |
+| ---------- | -------------- | ------------------------------------------------- |
+| `filename` | string or list | Glob(s) the document basename must match (any of) |
 
 ```markdown
 <?require

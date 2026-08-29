@@ -86,7 +86,7 @@ func parseFileBytes(
 	if err != nil {
 		return nil, err
 	}
-	if fp != "" {
+	if len(fp) > 0 {
 		sch.Filename = fp
 	}
 
@@ -94,7 +94,7 @@ func parseFileBytes(
 	if err != nil {
 		return nil, err
 	}
-	if sch.Filename == "" && fp2 != "" {
+	if len(sch.Filename) == 0 && len(fp2) > 0 {
 		sch.Filename = fp2
 	}
 
@@ -300,8 +300,10 @@ func stripDelimiters(fm []byte) []byte {
 }
 
 // extractRequireFilename walks the schema AST for a <?require?> PI
-// and parses its YAML body to extract the filename constraint.
-func extractRequireFilename(f *lint.File) (string, error) {
+// and parses its YAML body to extract the filename constraint. The
+// `filename:` value may be a single glob string or a YAML sequence of
+// glob strings (issue 817); both decode to the returned slice.
+func extractRequireFilename(f *lint.File) ([]string, error) {
 	for c := f.AST.FirstChild(); c != nil; c = c.NextSibling() {
 		pi, ok := c.(*piparser.ProcessingInstruction)
 		if !ok || pi.Name != "require" {
@@ -311,13 +313,17 @@ func extractRequireFilename(f *lint.File) (string, error) {
 		if body == "" {
 			continue
 		}
-		var params map[string]string
+		var params map[string]any
 		if err := yamlutil.UnmarshalSafe([]byte(body), &params); err != nil {
-			return "", fmt.Errorf("invalid <?require?> directive: %w", err)
+			return nil, fmt.Errorf("invalid <?require?> directive: %w", err)
 		}
-		return params["filename"], nil
+		pats, err := DecodeFilenameField(params["filename"])
+		if err != nil {
+			return nil, fmt.Errorf("invalid <?require?> directive: %w", err)
+		}
+		return pats, nil
 	}
-	return "", nil
+	return nil, nil
 }
 
 // parseContentDirective decodes a `<?content?>` PI body into one
@@ -369,9 +375,9 @@ func piYAMLBody(pi *piparser.ProcessingInstruction, source []byte) string {
 func collectFileHeadings(
 	f *lint.File, r *FileReader, path string, lineBase int,
 	visited map[string]bool, chain []string,
-) ([]FileHeading, string, error) {
+) ([]FileHeading, []string, error) {
 	var heads []FileHeading
-	var fp string
+	var fp []string
 	// lastOwn indexes the most recent heading contributed by this
 	// file itself. An <?include?> splices fragment headings onto
 	// heads, but a <?content?> row in the host body declares an
@@ -394,7 +400,7 @@ func collectFileHeadings(
 				if err != nil {
 					return ast.WalkStop, err
 				}
-				if fpInc != "" && fp == "" {
+				if len(fpInc) > 0 && len(fp) == 0 {
 					fp = fpInc
 				}
 				heads = append(heads, frag...)
@@ -416,7 +422,7 @@ func collectFileHeadings(
 		return ast.WalkContinue, nil
 	})
 	if err != nil {
-		return nil, "", err
+		return nil, nil, err
 	}
 	return heads, fp, nil
 }
@@ -424,39 +430,39 @@ func collectFileHeadings(
 func expandInclude(
 	pi *piparser.ProcessingInstruction, source []byte,
 	r *FileReader, schemaPath string, visited map[string]bool, chain []string,
-) ([]FileHeading, string, error) {
+) ([]FileHeading, []string, error) {
 	included, err := resolveIncludePath(pi, source, schemaPath)
 	if err != nil {
-		return nil, "", err
+		return nil, nil, err
 	}
 
 	if len(chain) > maxIncludeDepth {
-		return nil, "", fmt.Errorf(
+		return nil, nil, fmt.Errorf(
 			"schema include depth exceeds maximum (%d)", maxIncludeDepth)
 	}
 	if visited[included] {
 		chainCopy := append([]string(nil), chain...)
 		chainCopy = append(chainCopy, included)
-		return nil, "", fmt.Errorf(
+		return nil, nil, fmt.Errorf(
 			"cyclic include: %s", strings.Join(chainCopy, " -> "))
 	}
 
 	data, err := r.readPath(included)
 	if err != nil {
-		return nil, "", fmt.Errorf(
+		return nil, nil, fmt.Errorf(
 			"cannot read schema include file %q: %w", included, err)
 	}
 
 	fragPrefix, body := lint.StripFrontMatter(data)
 	fragFile, err := lint.NewFile(included, body)
 	if err != nil {
-		return nil, "", fmt.Errorf(
+		return nil, nil, fmt.Errorf(
 			"parsing schema include %q: %w", included, err)
 	}
 
 	fp, err := extractRequireFilename(fragFile)
 	if err != nil {
-		return nil, "", err
+		return nil, nil, err
 	}
 
 	visited[included] = true
@@ -465,9 +471,9 @@ func expandInclude(
 	frag, fpFrag, err := collectFileHeadings(fragFile, r, included, lint.CountLines(fragPrefix), visited, nextChain)
 	delete(visited, included)
 	if err != nil {
-		return nil, "", err
+		return nil, nil, err
 	}
-	if fpFrag != "" && fp == "" {
+	if len(fpFrag) > 0 && len(fp) == 0 {
 		fp = fpFrag
 	}
 

@@ -235,8 +235,8 @@ schema:
   closed: <bool>
 ```
 
-- `filename:` — a glob the document basename
-  must match. Top-level; no `require:` wrapper.
+- `filename:` — a glob, or list of globs any of
+  which the basename matches. No `require:` wrapper.
 - `frontmatter:` — per-key CUE constraints.
   Trailing `?` on a key marks it optional.
 - `sections:` — the top-level section list.
