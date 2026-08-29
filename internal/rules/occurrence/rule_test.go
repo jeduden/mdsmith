@@ -594,9 +594,12 @@ func TestFinalizeSettings(t *testing.T) {
 	require.NoError(t, r2.finalizeSettings("qux+"))
 	assert.NotNil(t, r2.Pattern)
 
-	// tokens + non-empty rawPattern — mutually exclusive error
+	// tokens + non-empty rawPattern — mutually exclusive error; Pattern must
+	// not be left non-nil on the Rule after the error return (a second
+	// ApplySettings call that omits "pattern" would not reset it otherwise).
 	r3 := &Rule{Tokens: []string{"foo"}}
 	require.Error(t, r3.finalizeSettings("foo+"))
+	assert.Nil(t, r3.Pattern, "Pattern must be cleared on mutual-exclusion error")
 
 	// invalid pattern — compile error
 	r4 := &Rule{}
