@@ -84,6 +84,16 @@ func TestMatchFilename_MalformedGlobReportsPattern(t *testing.T) {
 	assert.Equal(t, "[unterminated", bad)
 }
 
+func TestMatchFilename_ValidMatchWinsOverEarlierMalformedGlob(t *testing.T) {
+	// A malformed glob ahead of a matching one must not mask the
+	// match: OR matching is order-independent, so the base still
+	// passes and no error is surfaced.
+	matched, bad, err := MatchFilename([]string{"[unterminated", "plan.md"}, "plan.md")
+	require.NoError(t, err)
+	assert.True(t, matched)
+	assert.Empty(t, bad)
+}
+
 func TestFilenameExpected_SingleKeepsHistoricalWording(t *testing.T) {
 	assert.Equal(t,
 		"filename matching glob [0-9]*_*.md",

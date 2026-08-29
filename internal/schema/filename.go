@@ -62,21 +62,32 @@ func DecodeFilenameField(v any) ([]string, error) {
 
 // MatchFilename reports whether base matches any of the schema filename
 // globs. An empty patterns slice means "no constraint" and returns
-// matched=true. On the first malformed glob it returns matched=false
-// with that pattern and the filepath.Match error; on a clean non-match
-// it returns matched=false with an empty badPattern and a nil error.
+// matched=true. A valid match wins regardless of glob order, so a
+// malformed glob never masks a base that matches another glob; only
+// when no glob matches is the first malformed glob (if any) surfaced,
+// returning matched=false with that pattern and the filepath.Match
+// error. On a clean non-match it returns matched=false with an empty
+// badPattern and a nil error.
 func MatchFilename(patterns []string, base string) (matched bool, badPattern string, err error) {
 	if len(patterns) == 0 {
 		return true, "", nil
 	}
+	var firstBad string
+	var firstErr error
 	for _, p := range patterns {
-		ok, err := filepath.Match(p, base)
-		if err != nil {
-			return false, p, err
+		ok, mErr := filepath.Match(p, base)
+		if mErr != nil {
+			if firstErr == nil {
+				firstBad, firstErr = p, mErr
+			}
+			continue
 		}
 		if ok {
 			return true, "", nil
 		}
+	}
+	if firstErr != nil {
+		return false, firstBad, firstErr
 	}
 	return false, "", nil
 }
