@@ -75,9 +75,10 @@ func (r *Rule) checkFile(f *lint.File) []lint.Diagnostic {
 }
 
 // checkSections checks word frequency per heading-bounded section.
-// Prose before the first heading is treated as an implicit preamble section
-// anchored at line 1. A single freq map is reused across sections (cleared
-// between them) to keep the active-path alloc count within the ≤10 budget.
+// Prose before the first heading, and a headingless file as a whole, are
+// treated as an implicit preamble section anchored at line 1. A single freq
+// map is reused across sections (cleared between them) to keep the active-path
+// alloc count within the ≤10 budget.
 //
 // Paragraphs and headings are in ascending line order (document order from
 // ast.Walk). For each section we binary-search for the first paragraph at
@@ -85,12 +86,24 @@ func (r *Rule) checkFile(f *lint.File) []lint.Diagnostic {
 // Sections can overlap (a parent heading's range includes its sub-headings),
 // so each heading runs its own binary search rather than a single two-pointer.
 // This is O(N log M + sum(k_i)) vs the naive O(N×M).
+//
+// Each section diagnostic anchors at the first prose paragraph in the section
+// (rather than the heading itself) so editors and diff tools navigate to
+// prose, not markup.
 func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 	headings := astutil.CollectSectionHeadings(f)
-	if len(headings) == 0 {
-		return nil
-	}
 	paragraphs := astutil.CollectSectionParagraphsWithText(f)
+
+	// No headings: treat the entire file as one implicit preamble section.
+	if len(headings) == 0 {
+		freq := make(map[string]int, 32)
+		for i := range paragraphs {
+			r.accum(freq, paragraphs[i].ExtractText(f.Source))
+		}
+		r.removeStopwords(freq)
+		return r.diagFromFreq(freq, 1, "section", f.Path)
+	}
+
 	totalLines := len(f.Lines)
 	if totalLines > 0 && len(f.Lines[totalLines-1]) == 0 {
 		totalLines--
@@ -119,11 +132,18 @@ func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 		end := astutil.SectionEnd(headings, i, totalLines)
 		clear(freq)
 		start, _ := slices.BinarySearchFunc(paragraphs, h.Line, cmpParagraphLine)
+		// firstParaLine: diagnostic anchor. Falls back to the heading line when
+		// the section has no prose paragraphs (heading immediately followed by
+		// another heading or end-of-file).
+		firstParaLine := h.Line
 		for j := start; j < len(paragraphs) && paragraphs[j].Line < end; j++ {
+			if j == start {
+				firstParaLine = paragraphs[j].Line
+			}
 			r.accum(freq, paragraphs[j].ExtractText(f.Source))
 		}
 		r.removeStopwords(freq)
-		diags = append(diags, r.diagFromFreq(freq, h.Line, "section", f.Path)...)
+		diags = append(diags, r.diagFromFreq(freq, firstParaLine, "section", f.Path)...)
 	}
 	return diags
 }
@@ -241,6 +261,9 @@ func (r *Rule) applyMax(v any) error {
 	n, ok := settings.ToInt(v)
 	if !ok {
 		return fmt.Errorf("over-repetition: max must be an integer, got %T", v)
+	}
+	if n == 0 {
+		return fmt.Errorf("over-repetition: max must be a positive integer (≥1) or -1 to disable; 0 is ambiguous")
 	}
 	r.Max = n
 	return nil

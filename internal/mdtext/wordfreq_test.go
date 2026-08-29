@@ -75,3 +75,17 @@ func TestWordFrequency_SharedTokenizer(t *testing.T) {
 	assert.Equal(t, 3, freq["process"])
 	assert.Equal(t, 2, freq["result"])
 }
+
+func TestWordFrequency_LastWordAtMinLength(t *testing.T) {
+	// A word whose rune count exactly equals minLength at end-of-string must
+	// be flushed by the sentinel iteration (i == len(text)). Verify it is
+	// emitted and not dropped by the rune-counter guard.
+	freq := mdtext.WordFrequency("hello", 5)
+	assert.Equal(t, map[string]int{"hello": 1}, freq)
+}
+
+func TestWordFrequency_LastWordBelowMinLength(t *testing.T) {
+	// A word shorter than minLength at end-of-string must not be emitted.
+	freq := mdtext.WordFrequency("hi", 5)
+	assert.Empty(t, freq)
+}
