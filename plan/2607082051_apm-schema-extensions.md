@@ -1,7 +1,7 @@
 ---
 id: 2607082051
 title: "Schema extensions: closed frontmatter and filename agreement"
-status: "🔳"
+status: "✅"
 model: opus
 summary: >-
   Two MDS020 schema-engine features for APM's primitive contracts: a
@@ -81,9 +81,14 @@ adding one.
 4. Implement `\#(fmvar(...))` interpolation in the
    path/filename matcher, reusing the existing `fmvar`
    resolver.
-5. Document both keys in
+5. Document both keys with an APM example for each.
    [section-schema.md](../docs/reference/section-schema.md)
-   with an APM example for each.
+   sits at its file-length budget, so the prose lives in
+   a new
+   [front-matter agreement](../docs/reference/frontmatter-agreement.md)
+   page that section-schema.md and the
+   [MDS020 README](../internal/rules/MDS020-required-structure/README.md)
+   both link to.
 6. Run `mdsmith fix PLAN.md` and `mdsmith check .`.
 
 ## Notes
@@ -139,14 +144,14 @@ the regex matcher's `regexp.QuoteMeta`.
 - [x] A file matching two kinds accepts a key
       declared by either kind under
       `frontmatter-closed`.
-- [ ] `path-pattern: ".apm/skills/\#(fmvar(name))/SKILL.md"`
+- [x] `path-pattern: ".apm/skills/\#(fmvar(name))/SKILL.md"`
       passes when `name` equals the directory and
       fails when it does not.
-- [ ] A missing `name` field under an `fmvar` path
+- [x] A missing `name` field under an `fmvar` path
       matcher produces a clear diagnostic, not a
       panic.
-- [ ] Both keys are documented with an APM example.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool -modfile=tools/go.mod golangci-lint
+- [x] Both keys are documented with an APM example.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool -modfile=tools/go.mod golangci-lint
       run` reports no issues.
-- [ ] `mdsmith check .` — 0 failures.
+- [x] `mdsmith check .` — 0 failures.

@@ -42,7 +42,8 @@ When neither `schema` nor `inline-schema` is set the rule skips structure
 and front matter validation, but still warns on misplaced `<?require?>`
 directives. Use overrides or `kinds:` to apply schemas to specific file groups.
 
-A kind may declare its schema in either form; the config loader rejects a kind that sets both — see [file kinds](../../../docs/guides/file-kinds.md).
+A kind may declare its schema in either form. The config loader
+rejects a kind that sets both — see [file kinds](../../../docs/guides/file-kinds.md).
 
 Schema front matter may embed a CUE schema that validates
 document front matter. The rule-readme schema at
@@ -68,11 +69,10 @@ filename: "[0-9]*_*.md"
 
 ### Schema composition
 
-Schema files can use `<?include?>` to share
-structure across schemas. Included fragment
-headings are spliced into the heading list at
-the include position. Fragment front matter is
-ignored. `<?require?>` from fragments is merged.
+Schema files can use `<?include?>` to share structure across
+schemas. Included fragment headings are spliced into the heading
+list at the include position. Fragment front matter is ignored.
+`<?require?>` from fragments is merged.
 
 ```markdown
 # ?
