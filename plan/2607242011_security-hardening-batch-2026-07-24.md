@@ -1,7 +1,7 @@
 ---
 id: 2607242011
 title: "Security hardening batch — 2026-07-24"
-status: "🔲"
+status: "✅"
 summary: >-
   Batch the informational finding from the 2026-07-24 post-audit diff
   review: telemetry.md still asserts zero runtime network egress and
@@ -45,10 +45,10 @@ the rule docs need an SSRF caveat.
 
 ## Acceptance Criteria
 
-- [ ] telemetry.md names MDS072 as the one opt-in networked rule.
-- [ ] The zero-egress claim is scoped to the default configuration.
-- [ ] MDS072 docs carry an SSRF caveat.
-- [ ] `mdsmith check .` passes.
+- [x] telemetry.md names MDS072 as the one opt-in networked rule.
+- [x] The zero-egress claim is scoped to the default configuration.
+- [x] MDS072 docs carry an SSRF caveat.
+- [x] `mdsmith check .` passes.
 
 ## ...
 

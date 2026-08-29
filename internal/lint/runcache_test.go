@@ -51,6 +51,50 @@ func TestRunCache_IncludesBuildsOnce(t *testing.T) {
 		"include-adjacency build must run exactly once per absPath")
 }
 
+// TestRunCache_RawSchemaFileBuildsOnce pins the same single-build
+// guarantee for the raw-schema-bytes cache: a schema referenced by
+// many host files (the common case for a workspace-wide kind) must
+// be read and inspected once per run, not once per host file.
+func TestRunCache_RawSchemaFileBuildsOnce(t *testing.T) {
+	c := NewRunCache()
+
+	var calls int32
+	build := func() any {
+		atomic.AddInt32(&calls, 1)
+		return "schema bytes"
+	}
+
+	for i := 0; i < 3; i++ {
+		got := c.RawSchemaFile("/abs/schema.md", build)
+		require.Equal(t, "schema bytes", got)
+	}
+	assert.Equal(t, int32(1), atomic.LoadInt32(&calls),
+		"build must run exactly once per absPath")
+}
+
+// TestRunCache_RawSchemaFileInvalidateForcesRebuild pins that
+// Invalidate clears the raw-schema-bytes slot alongside the other
+// per-path caches, so an LSP edit to a schema file is picked up on
+// the next lookup instead of serving stale bytes forever.
+func TestRunCache_RawSchemaFileInvalidateForcesRebuild(t *testing.T) {
+	c := NewRunCache()
+
+	var calls int32
+	build := func(v string) func() any {
+		return func() any {
+			atomic.AddInt32(&calls, 1)
+			return v
+		}
+	}
+	c.RawSchemaFile("/abs/schema.md", build("v1"))
+	c.Invalidate("/abs/schema.md")
+	got := c.RawSchemaFile("/abs/schema.md", build("v2"))
+
+	assert.Equal(t, "v2", got, "Invalidate must clear the raw-schema slot")
+	assert.Equal(t, int32(2), atomic.LoadInt32(&calls),
+		"build must run again after Invalidate")
+}
+
 // TestRunCache_DistinctKeysDoNotShare pins that two absPaths are
 // independent: caching one must not silently serve the other.
 func TestRunCache_DistinctKeysDoNotShare(t *testing.T) {
@@ -1049,6 +1093,51 @@ func TestDuplicateParagraphs_BuildsOncePerKey(t *testing.T) {
 
 	_ = c.DuplicateParagraphs("/root/a.md\x0050", build)
 	assert.Equal(t, 2, builds, "a distinct min-chars suffix builds separately")
+}
+
+func TestCorpusIndex_BuildsOncePerKey(t *testing.T) {
+	c := NewRunCache()
+	builds := 0
+	build := func() any { builds++; return map[string]int{"fp": 1} }
+	first := c.CorpusIndex("/root\x0010", build)
+	second := c.CorpusIndex("/root\x0010", build)
+	assert.Equal(t, first, second)
+	assert.Equal(t, 1, builds, "same key must build once")
+
+	_ = c.CorpusIndex("/root\x0050", build)
+	assert.Equal(t, 2, builds, "a distinct min-chars suffix builds separately")
+}
+
+func TestCorpusIndex_InvalidatePathDropsEveryKey(t *testing.T) {
+	// A content edit to any file could change what its paragraphs
+	// fingerprint to, and a corpus-index aggregate has no cheap way to
+	// know which keys summed over the edited path — so every key drops,
+	// unlike GlobMatches (which only tree-shape changes affect).
+	c := NewRunCache()
+	builds := 0
+	build := func() any { builds++; return map[string]int{"fp": 1} }
+	_ = c.CorpusIndex("/root\x0010", build)
+	_ = c.CorpusIndex("/root\x0050", build)
+	require.Equal(t, 2, builds)
+
+	c.Invalidate("/root/unrelated.md")
+
+	_ = c.CorpusIndex("/root\x0010", build)
+	_ = c.CorpusIndex("/root\x0050", build)
+	assert.Equal(t, 4, builds, "every corpus-index key must drop on any content edit")
+}
+
+func TestCorpusIndex_InvalidateGlobMatchesDropsEveryKey(t *testing.T) {
+	c := NewRunCache()
+	builds := 0
+	build := func() any { builds++; return map[string]int{"fp": 1} }
+	_ = c.CorpusIndex("/root\x0010", build)
+	require.Equal(t, 1, builds)
+
+	c.InvalidateGlobMatches()
+
+	_ = c.CorpusIndex("/root\x0010", build)
+	assert.Equal(t, 2, builds, "a tree-shape change must drop the corpus-index cache too")
 }
 
 func TestDuplicateParagraphs_InvalidateDropsEveryKeyForPath(t *testing.T) {

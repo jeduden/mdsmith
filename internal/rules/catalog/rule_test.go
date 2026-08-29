@@ -10,6 +10,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/jeduden/mdsmith/internal/gitignore"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rules/tablefmt"
@@ -110,6 +111,75 @@ func TestRule_Validate(t *testing.T) {
 		map[string]string{"row": "{name}", "row-expr": "name"}, nil)
 	expectDiags(t, diags, 1)
 	expectDiagMsg(t, diags, `sets both "row" and "row-expr"; choose one`)
+}
+
+// TestCheck_NoCatalogDirectiveAllocatesNothing pins Check's cost on a
+// file with no <?catalog?> directive at zero allocs. MDS019 is
+// default-enabled, so every host file in a workspace pays this path
+// even when it never uses the directive. Before this test, Check
+// unconditionally ran gensection.FindMarkerPairs three times (once via
+// getEngine().Check, once each in checkCaseMismatches and
+// checkInjection) — the same top-level AST walk repeated for every
+// file, catalog or not. This is the "gate expensive analyzers behind a
+// cheap pre-check" pattern documented in
+// docs/development/high-performance-go.md.
+func TestCheck_NoCatalogDirectiveAllocatesNothing(t *testing.T) {
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race")
+	}
+	fsys := fstest.MapFS{}
+	src := "# Doc\n\nJust a plain paragraph with no directives.\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+
+	allocs := testing.AllocsPerRun(200, func() {
+		g, err := lint.NewFile("doc.md", []byte(src))
+		require.NoError(t, err)
+		g.FS = fsys
+		g.RootFS = fsys
+		_ = r.Check(g)
+	})
+	parseAllocs := testing.AllocsPerRun(200, func() {
+		g, err := lint.NewFile("doc.md", []byte(src))
+		require.NoError(t, err)
+		_ = g
+	})
+	assert.Zero(t, allocs-parseAllocs,
+		"Check must not allocate on a file with no catalog directive")
+}
+
+// TestCheck_CatalogDirectiveSharesMarkerPairsAcrossPasses pins the
+// deduplication half of the fix: checkCaseMismatches and
+// checkInjection must not each re-run gensection.FindMarkerPairs when
+// a catalog directive is present. This is a behavioral pin (both hint
+// passes still fire) rather than an alloc-count pin, since the engine
+// itself still performs one FindMarkerPairs call independently.
+func TestCheck_CatalogDirectiveSharesMarkerPairsAcrossPasses(t *testing.T) {
+	fsys := fstest.MapFS{
+		"a.md": &fstest.MapFile{Data: []byte("---\nName: a\n---\n# A\n")},
+	}
+	src := "<?catalog\n" +
+		"glob: \"*.md\"\n" +
+		"row: \"- {Name}\"\n" +
+		"?>\n" +
+		"<?/catalog?>\n"
+	f := newTestFile(t, "host.md", src, fsys)
+	r := newDefaultRule()
+
+	diags := r.Check(f)
+	// The directive is out of date (empty body vs the rendered entry),
+	// so the engine reports one diagnostic; the case-mismatch and
+	// injection passes should not raise any additional noise here.
+	found := false
+	for _, d := range diags {
+		if strings.Contains(d.Message, "out of date") {
+			found = true
+		}
+	}
+	assert.True(t, found, "expected the generated-section diagnostic to still fire")
 }
 
 // =====================================================================
@@ -3054,6 +3124,15 @@ func TestExtractPlaceholderFields_NoFields(t *testing.T) {
 	assert.Empty(t, fields)
 }
 
+// TestExtractPlaceholderFields_NoFields_ReturnsNil pins
+// docs/development/high-performance-go.md's "return nil, not []T{}"
+// convention: pre-sizing fields via make([]string, 0, len(all)) would
+// otherwise return a non-nil empty slice when row has no placeholders.
+func TestExtractPlaceholderFields_NoFields_ReturnsNil(t *testing.T) {
+	fields := extractPlaceholderFields("plain text")
+	assert.Nil(t, fields)
+}
+
 func TestCheckFieldCaseMismatches_Exact(t *testing.T) {
 	entries := []fileEntry{
 		{fields: map[string]any{"filename": "a.md", "title": "A"}},
@@ -4394,6 +4473,23 @@ func TestIsExcluded_EmptyPatternSkipped(t *testing.T) {
 
 	result2 := isExcluded("other/file.md", []string{"", ""})
 	assert.False(t, result2, "only empty patterns → no match")
+}
+
+// isExcluded: a malformed pattern (one that fails doublestar.ValidatePattern)
+// must never report a match, even though doublestar.MatchUnvalidated can
+// diverge from doublestar.Match on some malformed patterns. isExcluded can
+// be reached with an unvalidated pattern via checkInjection /
+// checkCaseMismatches, which bypass the gensection engine's Validate pass.
+func TestIsExcluded_MalformedPatternNeverMatches(t *testing.T) {
+	pattern := "{x[,a}"
+	require.False(t, doublestar.ValidatePattern(pattern),
+		"precondition: pattern must be invalid for this test to be meaningful")
+	require.True(t, doublestar.MatchUnvalidated(pattern, "a"),
+		"precondition: MatchUnvalidated must diverge from Match for this pattern, "+
+			"or this test is not exercising the guard it claims to")
+
+	assert.False(t, isExcluded("a", []string{pattern}),
+		"a malformed exclude pattern must never exclude a file")
 }
 
 // sortValue: ParseCUEPath returns nil → return ""

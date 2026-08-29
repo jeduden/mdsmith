@@ -126,6 +126,12 @@ var (
 type mockFixableRuleB struct {
 	id   string
 	name string
+	// checkCount, when non-nil, is incremented on every Check call —
+	// used to assert a later rule in the fixable list ran no more
+	// than the pre-fix CheckRules pass calls it (e.g. an earlier
+	// rule's parse error must stop applyFixPasses' own pass before
+	// this rule's Check runs a second time from inside it).
+	checkCount *int
 }
 
 func (r *mockFixableRuleB) ID() string       { return r.id }
@@ -133,6 +139,9 @@ func (r *mockFixableRuleB) Name() string     { return r.name }
 func (r *mockFixableRuleB) Category() string { return "test" }
 
 func (r *mockFixableRuleB) Check(f *lint.File) []lint.Diagnostic {
+	if r.checkCount != nil {
+		*r.checkCount++
+	}
 	var diags []lint.Diagnostic
 	for i, line := range f.Lines {
 		for j, b := range line {
@@ -1273,6 +1282,50 @@ func TestFix_WriteErrorPopulatesErrors(t *testing.T) {
 	result := fixer.Fix([]string{mdFile})
 	require.Len(t, result.Errors, 1, "expected exactly one write error")
 	assert.Contains(t, result.Errors[0].Error(), "injected write error")
+}
+
+// TestFix_ParseErrorAppendsAndStopsPass exercises applyFixPasses'
+// parse-error branch (parsedFileForPass returning a non-nil error):
+// lint.NewFile never actually errors with the current implementation,
+// so there is no real input that reaches this path — Fixer.ParseFile
+// exists specifically so tests can inject the failure, the same
+// pattern WriteFile above uses for the write step.
+//
+// A parse error on the first fixable rule in a pass must append to
+// Result.Errors and break out of that pass's rule loop: the second
+// rule's Check must run exactly twice — the pre-fix and post-fix
+// CheckRules passes (fixFile), neither of which goes through
+// ParseFile — never a third time from inside applyFixPasses itself.
+func TestFix_ParseErrorAppendsAndStopsPass(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	mdFile := filepath.Join(dir, "fixable.md")
+	require.NoError(t, os.WriteFile(mdFile, []byte("# Hello  \n"), 0o644))
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"mock-trailing":   {Enabled: true},
+			"mock-trailing-b": {Enabled: true},
+		},
+	}
+	var secondRuleCheckCount int
+	fixer := &Fixer{
+		Config: cfg,
+		Rules: []rule.Rule{
+			&mockFixableRule{id: "MDS100", name: "mock-trailing"},
+			&mockFixableRuleB{id: "MDS101", name: "mock-trailing-b", checkCount: &secondRuleCheckCount},
+		},
+		ParseFile: func(_ string, _ []byte) (*lint.File, error) {
+			return nil, fmt.Errorf("injected parse error")
+		},
+	}
+
+	result := fixer.Fix([]string{mdFile})
+	require.Len(t, result.Errors, 1, "expected exactly one parse error")
+	assert.Contains(t, result.Errors[0].Error(), "injected parse error")
+	assert.Equal(t, 2, secondRuleCheckCount,
+		"second rule's Check must run only from the pre-fix and post-fix passes; a parse "+
+			"error on the first rule must stop applyFixPasses' own pass before reaching it a third time")
 }
 
 func TestComputeWouldFix_SortsRulesByID(t *testing.T) {

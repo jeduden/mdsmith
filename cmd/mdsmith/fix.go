@@ -321,8 +321,14 @@ func orderFilesLeavesFirst(files []string, rootDir string, maxBytes int64) []str
 		rels = append(rels, rel)
 	}
 
+	// Build, not BuildSerial: the loader only reads relToAbs (built
+	// above and never mutated again) and opens its own file handle per
+	// call via bytelimit.ReadFileLimited, so it is safe for the
+	// concurrent calls Build makes — see index.Index.Build's doc comment
+	// and internal/index's benchmarks for the general ~2x speedup this
+	// call site inherits on a workspace-sized file set.
 	idx := index.New(rootDir)
-	idx.BuildSerial(rels, func(rel string) ([]byte, error) {
+	idx.Build(rels, func(rel string) ([]byte, error) {
 		return bytelimit.ReadFileLimited(relToAbs[rel], maxBytes)
 	})
 

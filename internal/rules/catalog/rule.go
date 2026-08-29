@@ -2,11 +2,13 @@ package catalog
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
 	"io/fs"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -93,25 +95,53 @@ func (r *Rule) getEngine() *gensection.Engine {
 	return r.engine
 }
 
+// catalogStartNeedle and catalogEndNeedle bound the cheap pre-check
+// mayContainCatalogDirective runs before Check pays for any AST walk.
+// Two needles are required because the end marker "<?/catalog" does
+// not contain the start marker "<?catalog" as a substring — mirrors
+// include's mayContainIncludeDirective.
+var (
+	catalogStartNeedle = []byte("<?catalog")
+	catalogEndNeedle   = []byte("<?/catalog")
+)
+
+// mayContainCatalogDirective reports whether source could contain any
+// catalog start marker, end marker, or orphaned end marker. MDS019 is
+// default-enabled, so every host file in a workspace pays Check's
+// cost — gating the AST walk behind this byte scan means the common
+// case (no catalog directive at all) costs one bytes.Contains pass
+// instead of three top-level AST walks. See
+// docs/development/high-performance-go.md's "gate expensive analyzers
+// behind a cheap pre-check" pattern.
+func mayContainCatalogDirective(source []byte) bool {
+	return bytes.Contains(source, catalogStartNeedle) ||
+		bytes.Contains(source, catalogEndNeedle)
+}
+
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
-	if f.FS == nil {
+	if f.FS == nil || !mayContainCatalogDirective(f.Source) {
 		return nil
 	}
 	diags := r.getEngine().Check(f)
+	// checkCaseMismatches and checkInjection both need the same marker
+	// pairs the engine just found; computing them once here instead of
+	// letting each pass re-walk the AST halves the remaining walk cost
+	// on files that do carry a catalog directive.
+	pairs, _ := gensection.FindMarkerPairs(f, r.Name(), r.ID(), r.Name())
 	// Case-mismatch hints run a separate pass over directives. This
 	// re-reads front-matter but avoids coupling hints to the engine's
 	// fatal-diagnostic pipeline. Acceptable for typical catalog sizes.
-	diags = append(diags, r.checkCaseMismatches(f)...)
+	diags = append(diags, r.checkCaseMismatches(f, pairs)...)
 	// Injection warnings are non-fatal and must not block generation,
 	// so they run as a separate pass outside the engine.
-	diags = append(diags, r.checkInjection(f)...)
+	diags = append(diags, r.checkInjection(f, pairs)...)
 	return diags
 }
 
 // Fix implements rule.FixableRule.
 func (r *Rule) Fix(f *lint.File) []byte {
-	if f.FS == nil {
+	if f.FS == nil || !mayContainCatalogDirective(f.Source) {
 		return f.Source
 	}
 	return r.getEngine().Fix(f)
@@ -1013,11 +1043,9 @@ func checkCatalogInjection(filePath string, line int, entries []fileEntry) []lin
 
 // checkInjection scans catalog directives for front-matter values that could
 // inject Markdown structure. Runs independently of Generate so warnings don't
-// block content generation.
-func (r *Rule) checkInjection(f *lint.File) []lint.Diagnostic {
-	pairs, _ := gensection.FindMarkerPairs(
-		f, r.Name(), r.ID(), r.Name(),
-	)
+// block content generation. pairs is shared with Check's other passes so the
+// caller only walks the AST once per Check call.
+func (r *Rule) checkInjection(f *lint.File, pairs []gensection.MarkerPair) []lint.Diagnostic {
 	var diags []lint.Diagnostic
 	for _, mp := range pairs {
 		dir, parseDiags := gensection.ParseDirective(
@@ -1068,6 +1096,19 @@ func parseSort(params map[string]string) (key string, descending, numeric bool) 
 	return sortVal, descending, numeric
 }
 
+// sortable pairs a fileEntry with its pre-computed lowercase sort and
+// tiebreaker keys — or, in numeric mode, the parsed int64 — avoiding
+// O(n log n) string allocations or CUE-path re-parses inside the sort
+// comparator. allParseAsInt already parses every entry once just to
+// decide useInts; numInt carries that same parse forward instead of
+// discarding it.
+type sortable struct {
+	entry         fileEntry
+	sortKey       string // lowercase primary sort key (empty for numeric mode)
+	numInt        int64  // parsed sort value (numeric mode only)
+	tiebreakerKey string // lowercase filename for stable tiebreaker
+}
+
 // sortEntries sorts file entries by the given key. When numeric is
 // true and every entry's value parses as an int, entries are ordered
 // by the integer value; any parse failure falls back to string
@@ -1076,56 +1117,56 @@ func parseSort(params map[string]string) (key string, descending, numeric bool) 
 func sortEntries(entries []fileEntry, key string, descending, numeric bool) {
 	useInts := numeric && allParseAsInt(entries, key)
 
-	// Pre-compute lowercase keys once per entry to avoid O(n log n)
-	// string allocations inside the comparator.
-	type sortable struct {
-		entry         fileEntry
-		sortKey       string // lowercase primary sort key (empty for numeric mode)
-		tiebreakerKey string // lowercase filename for stable tiebreaker
-	}
 	sortables := make([]sortable, len(entries))
 	for i, e := range entries {
 		var sk string
-		if !useInts {
+		var ni int64
+		if useInts {
+			ni, _ = parseSortInt(e, key)
+		} else {
 			sk = strings.ToLower(sortValue(e, key))
 		}
 		sortables[i] = sortable{
 			entry:         e,
 			sortKey:       sk,
+			numInt:        ni,
 			tiebreakerKey: strings.ToLower(fieldinterp.Stringify(e.fields["filename"])),
 		}
 	}
 
-	sort.SliceStable(sortables, func(i, j int) bool {
-		var cmp int
-		if useInts {
-			// Re-parse from the moved entry — SliceStable reorders the
-			// slice during sort, so sortables[i].entry is always current.
-			ni, _ := parseSortInt(sortables[i].entry, key)
-			nj, _ := parseSortInt(sortables[j].entry, key)
-			switch {
-			case ni < nj:
-				cmp = -1
-			case ni > nj:
-				cmp = 1
-			}
-		} else {
-			cmp = strings.Compare(sortables[i].sortKey, sortables[j].sortKey)
-		}
-		if cmp == 0 {
-			// Tiebreaker: path ascending, case-insensitive.
-			return sortables[i].tiebreakerKey < sortables[j].tiebreakerKey
-		}
-
-		if descending {
-			return cmp > 0
-		}
-		return cmp < 0
-	})
+	sortSortables(sortables, useInts, descending)
 
 	for i, s := range sortables {
 		entries[i] = s.entry
 	}
+}
+
+// sortSortables orders sortables in place. slices.SortStableFunc sorts
+// the concrete sortable values directly, unlike sort.SliceStable,
+// which drives reflect.Swapper under the hood — see
+// docs/development/high-performance-go.md's "reflect in hot paths"
+// anti-pattern.
+//
+// The comparator reads the pre-computed sortKey/numInt off each
+// sortable rather than re-deriving them: parsing or lowercasing inside
+// the comparator would repeat that work O(n log n) times, which is the
+// cost sortEntries pre-computes once per entry to avoid.
+func sortSortables(sortables []sortable, useInts, descending bool) {
+	slices.SortStableFunc(sortables, func(a, b sortable) int {
+		var c int
+		if useInts {
+			c = cmp.Compare(a.numInt, b.numInt)
+		} else {
+			c = strings.Compare(a.sortKey, b.sortKey)
+		}
+		if c == 0 {
+			// Tiebreaker: path ascending, case-insensitive.
+			c = strings.Compare(a.tiebreakerKey, b.tiebreakerKey)
+		} else if descending {
+			c = -c
+		}
+		return c
+	})
 }
 
 // allParseAsInt reports whether every entry's value for key parses
@@ -1575,7 +1616,26 @@ func scanIncludesForTargetAbs(
 	return false
 }
 
-// isExcluded checks whether a file path matches any of the exclude patterns.
+// isExcluded checks whether a file path matches any of the exclude
+// patterns.
+//
+// Uses doublestar.Match, not MatchUnvalidated, despite the doc's "skip
+// work you don't need" guidance: unlike discovery.matchesAny and
+// requiredstructure.checkPathPatterns (whose patterns are always
+// validated before they can reach the match call), isExcluded can be
+// reached with a pattern that never passed doublestar.ValidatePattern —
+// checkInjection and checkCaseMismatches read a directive's raw params
+// directly, bypassing the gensection engine's Validate pass
+// (validateGlob) that runs on the Generate path. For most malformed
+// patterns MatchUnvalidated safely returns false like Match's error
+// branch, but for some (e.g. an unmatched brace-alternate like
+// "{x[,a}") it returns true where Match would report false with an
+// error — confirmed directly against the vendored doublestar source,
+// not assumed. Gating MatchUnvalidated behind a cached validity check
+// (mirroring internal/globpath's patternValid) closes that gap but
+// measures identically to plain Match here (benchstat, n=10: p=0.669) —
+// the cache lookup costs about what the skipped revalidation saves, so
+// it is not a real optimization once made correct. Kept as Match.
 func isExcluded(filePath string, patterns []string) bool {
 	for _, pattern := range patterns {
 		if pattern == "" {
@@ -1633,11 +1693,9 @@ func parseRowTemplate(row string) error {
 // checkCaseMismatches scans catalog directives in the file for
 // case-mismatched front-matter field references and returns hint
 // diagnostics. Runs independently of the Generate/Fix path so
-// hints don't block content generation.
-func (r *Rule) checkCaseMismatches(f *lint.File) []lint.Diagnostic {
-	pairs, _ := gensection.FindMarkerPairs(
-		f, r.Name(), r.ID(), r.Name(),
-	)
+// hints don't block content generation. pairs is shared with Check's
+// other passes so the caller only walks the AST once per Check call.
+func (r *Rule) checkCaseMismatches(f *lint.File, pairs []gensection.MarkerPair) []lint.Diagnostic {
 	var diags []lint.Diagnostic
 	for _, mp := range pairs {
 		dir, parseDiags := gensection.ParseDirective(
@@ -1675,12 +1733,15 @@ func (r *Rule) checkCaseMismatches(f *lint.File) []lint.Diagnostic {
 func extractPlaceholderFields(row string) []string {
 	all := fieldinterp.Fields(row)
 	seen := make(map[string]struct{}, len(all))
-	var fields []string
+	fields := make([]string, 0, len(all))
 	for _, name := range all {
 		if _, ok := seen[name]; !ok {
 			seen[name] = struct{}{}
 			fields = append(fields, name)
 		}
+	}
+	if len(fields) == 0 {
+		return nil
 	}
 	return fields
 }
@@ -1741,7 +1802,7 @@ func checkFieldCaseMismatches(filePath string, line int, row string, entries []f
 			// Multiple casings across files — surface the inconsistency.
 			quoted := make([]string, len(casings))
 			for i, c := range casings {
-				quoted[i] = fmt.Sprintf("%q", c)
+				quoted[i] = strconv.Quote(c)
 			}
 			message = fmt.Sprintf(
 				"field %q has inconsistent casing across matched files: %s",

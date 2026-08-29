@@ -5,6 +5,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -179,6 +181,38 @@ func TestCheck_HonorsIncludePattern(t *testing.T) {
 	diags := r.Check(f)
 	require.Len(t, diags, 1)
 	assert.Contains(t, diags[0].Message, "scoped.md")
+}
+
+// TestCheck_HonorsIncludeExcludePattern_WithRunCache exercises
+// corpusFilesKey's include/exclude loops: newLintFileWithRoot leaves
+// f.RunCache nil, so TestCheck_HonorsIncludePattern and
+// TestCheck_HonorsExcludePattern above never route through
+// corpusFiles' RunCache.GlobMatches branch and never build a cache
+// key from a non-empty include/exclude list. Setting f.RunCache here
+// pins that include and exclude are still honored when corpusFiles is
+// cached, not just when it walks directly.
+func TestCheck_HonorsIncludeExcludePattern_WithRunCache(t *testing.T) {
+	dir := t.TempDir()
+	p := longParagraph("the quick brown fox jumps over the lazy dog")
+	writeFile(t, filepath.Join(dir, "a.md"), "# A\n\n"+p+"\n")
+	writeFile(t, filepath.Join(dir, "scoped.md"), "# Scoped\n\n"+p+"\n")
+	writeFile(t, filepath.Join(dir, "other.md"), "# Other\n\n"+p+"\n")
+	writeFile(t, filepath.Join(dir, "ignored.md"), "# Ignored\n\n"+p+"\n")
+
+	runCache := lint.NewRunCache()
+
+	f := newLintFileWithRoot(t, filepath.Join(dir, "a.md"), dir)
+	f.RunCache = runCache
+	rInclude := &Rule{Include: []string{"scoped.md"}}
+	diags := rInclude.Check(f)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "scoped.md")
+
+	f2 := newLintFileWithRoot(t, filepath.Join(dir, "a.md"), dir)
+	f2.RunCache = runCache
+	rExclude := &Rule{Exclude: []string{"scoped.md", "other.md", "ignored.md"}}
+	diags2 := rExclude.Check(f2)
+	assert.Empty(t, diags2, "every sibling must be excluded")
 }
 
 func TestCheck_NilASTIsNoop(t *testing.T) {
@@ -695,6 +729,51 @@ func TestCheck_RunCacheReusesCorpusParseAcrossHostFiles(t *testing.T) {
 	}
 }
 
+// TestCheck_RunCacheReusesCorpusWalkAcrossHostFiles pins the fix for
+// buildCorpusIndex's remaining O(N) cost per host file: even after
+// candidateParagraphs memoized each sibling's fingerprinted paragraphs
+// (TestCheck_RunCacheReusesCorpusParseAcrossHostFiles above),
+// buildCorpusIndex still re-walked the corpus directory tree with
+// fs.WalkDir from scratch on every host file's Check call. The
+// resolved corpus file list depends only on the tree shape (which
+// files exist) and the rule's include/exclude settings, not on any
+// file's content, so it belongs on RunCache.GlobMatches — the same
+// tree-shape-only cache the catalog rule and the wikilink index use.
+// A workspace of N files enabling MDS037 must walk the corpus tree at
+// most once per run, not once per host file.
+func TestCheck_RunCacheReusesCorpusWalkAcrossHostFiles(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "sub"), 0o755))
+	p := longParagraph("shared paragraph text for the corpus walk test")
+	writeFile(t, filepath.Join(dir, "a.md"), "# A\n\n"+p+"\n")
+	writeFile(t, filepath.Join(dir, "b.md"), "# B\n\n"+p+"\n")
+	writeFile(t, filepath.Join(dir, "sub", "c.md"), "# C\n\nunrelated short text\n")
+
+	counting := &countingFS{FS: os.DirFS(dir), opens: map[string]int{}}
+	runCache := lint.NewRunCache()
+
+	for _, name := range []string{"a.md", "b.md", filepath.Join("sub", "c.md")} {
+		data, err := os.ReadFile(filepath.Join(dir, name))
+		require.NoError(t, err)
+		f, err := lint.NewFile(filepath.Join(dir, name), data)
+		require.NoError(t, err)
+		f.FS = counting
+		f.RootDir = dir
+		f.RootFS = counting
+		f.RunCache = runCache
+		_ = (&Rule{}).Check(f)
+	}
+
+	// fs.WalkDir opens the root twice on a genuinely fresh walk (once
+	// for the initial fs.Stat, once for fs.ReadDir, since countingFS
+	// implements neither StatFS nor ReadDirFS) — allow that much, but
+	// no more: a per-host-file re-walk would multiply this by the
+	// number of host files checked (3).
+	assert.LessOrEqualf(t, counting.opens["."], 2,
+		"expected the corpus root directory to be walked at most once across "+
+			"Check calls sharing a RunCache, got %d opens of \".\"", counting.opens["."])
+}
+
 // TestCheck_RunCacheAppliesFrontMatterOffsetOnce pins that a corpus
 // candidate's front-matter line offset is baked into its cached
 // paragraphs exactly once: candidateParagraphs adds other.LineOffset
@@ -735,6 +814,83 @@ func TestCheck_RunCacheAppliesFrontMatterOffsetOnce(t *testing.T) {
 			"b.md's paragraph line must include its front-matter offset "+
 				"on every Check call sharing the RunCache, not just the first")
 	}
+}
+
+// TestCheck_SelfExclusionSurvivesSharedRunCache pins a correctness
+// bug caught on review of the RunCache.CorpusIndex memoization
+// (TestBuildCorpusIndex_MemoizedAcrossHostFiles below): the shared
+// aggregate index must never bake in "exclude this one host file"
+// at build time, because the very same cached index later serves
+// every other host file scanning an identical corpus signature. A
+// bug here previously let the first-checked file's exclusion leak
+// into every subsequent file's Check: a.md and b.md share a
+// duplicate paragraph; checking a.md first cached an index that
+// excluded a.md, so checking b.md next — reusing that same cached
+// index — incorrectly reported b.md's paragraph as "duplicated in
+// b.md" (pointing at itself) instead of "a.md", and would just as
+// wrongly report nothing at all for a file checked after two
+// self-referential entries had been baked in.
+func TestCheck_SelfExclusionSurvivesSharedRunCache(t *testing.T) {
+	dir := t.TempDir()
+	p := longParagraph("shared paragraph text for the self exclusion test")
+	writeFile(t, filepath.Join(dir, "a.md"), "# A\n\n"+p+"\n")
+	writeFile(t, filepath.Join(dir, "b.md"), "# B\n\n"+p+"\n")
+
+	runCache := lint.NewRunCache()
+
+	fa := newLintFileWithRoot(t, filepath.Join(dir, "a.md"), dir)
+	fa.RunCache = runCache
+	diagsA := (&Rule{}).Check(fa)
+	require.Len(t, diagsA, 1, "a.md must report exactly one duplicate")
+	assert.Contains(t, diagsA[0].Message, "b.md",
+		"a.md's diagnostic must name b.md, never itself")
+	assert.NotContains(t, diagsA[0].Message, "a.md")
+
+	fb := newLintFileWithRoot(t, filepath.Join(dir, "b.md"), dir)
+	fb.RunCache = runCache
+	diagsB := (&Rule{}).Check(fb)
+	require.Len(t, diagsB, 1, "b.md must report exactly one duplicate, "+
+		"even though the aggregate index was built and cached while checking a.md")
+	assert.Contains(t, diagsB[0].Message, "a.md",
+		"b.md's diagnostic must name a.md, never itself")
+	assert.NotContains(t, diagsB[0].Message, "b.md:")
+}
+
+// TestBuildCorpusIndex_MemoizedAcrossHostFiles pins the fix for
+// buildCorpusIndex's remaining O(N) cost per host file: even after the
+// per-sibling read/parse/fingerprint (TestCheck_RunCacheReusesCorpusParseAcrossHostFiles)
+// and the corpus directory walk (TestCheck_RunCacheReusesCorpusWalkAcrossHostFiles)
+// were each memoized, buildCorpusIndex still allocated a fresh
+// fingerprint->matches map and reflect.Sort.Sliced every fingerprint's
+// matches from scratch on every host file's Check call — an O(N)
+// aggregation repeated N times across the run. Two calls with an
+// identical corpus signature sharing a RunCache must return the same
+// map instance, not two independently built ones.
+func TestBuildCorpusIndex_MemoizedAcrossHostFiles(t *testing.T) {
+	dir := t.TempDir()
+	p := longParagraph("shared paragraph text for the corpus index cache test")
+	writeFile(t, filepath.Join(dir, "a.md"), "# A\n\n"+p+"\n")
+	writeFile(t, filepath.Join(dir, "b.md"), "# B\n\n"+p+"\n")
+
+	runCache := lint.NewRunCache()
+	cfg := corpusScanConfig{
+		runCache:  runCache,
+		rootDir:   dir,
+		corpus:    os.DirFS(dir),
+		maxBytes:  1 << 20,
+		minChars:  defaultMinChars,
+		keySuffix: "\x00" + strconv.Itoa(defaultMinChars),
+	}
+
+	first := buildCorpusIndex(cfg)
+	second := buildCorpusIndex(cfg)
+	require.NotEmpty(t, first, "test corpus must produce at least one fingerprint")
+
+	firstPtr := reflect.ValueOf(first).Pointer()
+	secondPtr := reflect.ValueOf(second).Pointer()
+	assert.Equalf(t, firstPtr, secondPtr,
+		"buildCorpusIndex rebuilt the aggregate map on a second call with an "+
+			"identical corpus signature; expected the RunCache-backed result to be reused")
 }
 
 func TestApplySettings_RejectsBadExcludeType(t *testing.T) {

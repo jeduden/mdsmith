@@ -5,7 +5,7 @@ summary: >-
   pairs whose spanned bytes mdsmith treats as opaque — style rules skip
   diagnostics inside a matched pair and fixers never rewrite it, while
   whole-file rules still count the bytes. Glob-scopable via `overrides:`;
-  a start with no matching end reports MDS073.
+  a start with no matching end reports MDS074.
 ---
 # Foreign regions
 
@@ -73,9 +73,9 @@ Whole-file rules read the raw source. A large foreign region still
 counts against `max-file-length` and `token-budget`. The region is
 opaque to editing, not invisible to size accounting.
 
-## Malformed regions (MDS073)
+## Malformed regions (MDS074)
 
-APM requires each marker exactly once. mdsmith reports **MDS073** on a
+APM requires each marker exactly once. mdsmith reports **MDS074** on a
 malformed region:
 
 | Condition                                       | Reported on                | Bytes protected                              |

@@ -71,7 +71,7 @@ func TestParseForeignRegionsOverrideErrorNamesOverride(t *testing.T) {
 
 // TestEffectiveForeignRegionsDedupes collapses a marker pair declared
 // both top-level and on a matching override into a single entry, so the
-// check path (which does not dedup per-file MDS073 diagnostics) does not
+// check path (which does not dedup per-file MDS074 diagnostics) does not
 // double-report or double-protect it.
 func TestEffectiveForeignRegionsDedupes(t *testing.T) {
 	cfg := &Config{
@@ -95,7 +95,7 @@ func TestEffectiveForeignRegionsDedupes(t *testing.T) {
 // TestEffectiveForeignRegionsDedupesWhitespaceVariant collapses two pairs
 // that differ only in surrounding marker whitespace into one entry: the
 // scanner compares markers by trimmed-line equality, so the variant scans
-// identically and must protect one span and report one MDS073, not two.
+// identically and must protect one span and report one MDS074, not two.
 func TestEffectiveForeignRegionsDedupesWhitespaceVariant(t *testing.T) {
 	cfg := &Config{
 		ForeignRegions: []ForeignRegion{{Start: "<!-- a -->", End: "<!-- b -->"}},

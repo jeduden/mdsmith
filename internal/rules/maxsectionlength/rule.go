@@ -3,7 +3,6 @@ package maxsectionlength
 import (
 	"fmt"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -288,6 +287,15 @@ type paragraph struct {
 	words int
 }
 
+// collectHeadings returns every heading in the document, in ascending
+// source-line order. That order falls out of the depth-first
+// ast.Walk itself — lint's parser config installs no extension
+// (e.g. footnotes) that relocates nodes out of document order, the
+// same guarantee astutil.CollectSectionParagraphs documents and
+// relies on — so no sort is needed after the walk. See
+// docs/development/high-performance-go.md's "reflect in hot paths"
+// anti-pattern: sort.Slice previously drove reflect.Swapper here on
+// every Check that walks headings, for no ordering benefit.
 func collectHeadings(f *lint.File) []heading {
 	var out []heading
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -305,9 +313,6 @@ func collectHeadings(f *lint.File) []heading {
 		})
 		return ast.WalkSkipChildren, nil
 	})
-	sort.Slice(out, func(i, j int) bool {
-		return out[i].line < out[j].line
-	})
 	return out
 }
 
@@ -315,26 +320,30 @@ func collectHeadings(f *lint.File) []heading {
 // 1-based start line and word count. Tables (which goldmark parses as
 // paragraphs when the table extension is absent) are skipped — their
 // pipe-delimited rows are not prose.
+//
+// Reuses astutil.CollectSectionParagraphs's per-File memoized walk
+// instead of re-walking the AST: MDS023 (paragraph-readability) and
+// MDS024 (paragraph-structure) both call it too, and re-walking here
+// paid for a second full traversal whenever MDS036 ran alongside
+// either (docs/development/high-performance-go.md "memoize per-input
+// computations"). The exact-length result also lets out be presized
+// instead of grown via repeated append.
 func collectParagraphs(f *lint.File) []paragraph {
-	var out []paragraph
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
+	sps := astutil.CollectSectionParagraphs(f)
+	if len(sps) == 0 {
+		return nil
+	}
+	out := make([]paragraph, len(sps))
+	for i, sp := range sps {
+		// Only the word count is needed here, never the text itself, so
+		// count straight off the AST instead of materializing and
+		// discarding an ExtractPlainText string per paragraph (docs/
+		// development/high-performance-go.md "skip work you don't need").
+		out[i] = paragraph{
+			line:  sp.Line,
+			words: mdtext.CountWordsInNode(sp.Node, f.Source),
 		}
-		p, ok := n.(*ast.Paragraph)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
-		if astutil.IsTable(p, f) {
-			return ast.WalkContinue, nil
-		}
-		text := mdtext.ExtractPlainText(p, f.Source)
-		out = append(out, paragraph{
-			line:  astutil.ParagraphLine(p, f),
-			words: mdtext.CountWords(text),
-		})
-		return ast.WalkContinue, nil
-	})
+	}
 	return out
 }
 

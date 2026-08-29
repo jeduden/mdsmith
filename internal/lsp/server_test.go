@@ -3112,10 +3112,12 @@ func TestRunLintIgnoredFile(t *testing.T) {
 	assert.Contains(t, out, `"diagnostics":[]`)
 }
 
-// Regression: surfaceForeignDiagnostics writes one
-// window/logMessage per foreign diagnostic, with a "<file>:<line>
-// <message> [<rule>]" prefix the user can use to navigate to the
-// actual config-file issue.
+// Regression: surfaceForeignDiagnostics writes a window/logMessage
+// for a foreign diagnostic, with a "<file>:<line> <message> [<rule>]"
+// line the user can use to navigate to the actual config-file issue.
+// Diagnostics of the same severity batch into one notification (see
+// TestSurfaceForeignDiagnosticsBatchesBySeverity); a single diagnostic
+// is just the one-line case of that batch.
 func TestSurfaceForeignDiagnosticsEmitsLogMessage(t *testing.T) {
 	t.Parallel()
 	var buf safeBuffer

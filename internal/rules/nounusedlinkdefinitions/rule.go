@@ -5,8 +5,9 @@ package nounusedlinkdefinitions
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -375,8 +376,14 @@ func collectDefinitions(f *lint.File) []referenceDefinition {
 	lineStart := 0
 	for lineStart <= len(source) {
 		eol := lineStart
-		for eol < len(source) && source[eol] != '\n' {
-			eol++
+		// bytes.IndexByte is SIMD-accelerated; a hand-rolled byte loop is
+		// not vectorized. See docs/development/high-performance-go.md and
+		// internal/lint/linkrefscan.go's buildLineSegments, which scans
+		// the same whole-document source this way.
+		if i := bytes.IndexByte(source[eol:], '\n'); i >= 0 {
+			eol += i
+		} else {
+			eol = len(source)
 		}
 		labelStart, labelEnd, ok := scanRefDefLine(source, lineStart, eol)
 		if ok {
@@ -550,8 +557,12 @@ type fixCut struct {
 }
 
 func applyCuts(source []byte, cuts []fixCut) []byte {
-	sort.Slice(cuts, func(i, j int) bool {
-		return cuts[i].start < cuts[j].start
+	// slices.SortFunc sorts the concrete fixCut values directly,
+	// unlike sort.Slice, which drives reflect.Swapper under the hood —
+	// see docs/development/high-performance-go.md's "reflect in hot
+	// paths" anti-pattern.
+	slices.SortFunc(cuts, func(a, b fixCut) int {
+		return cmp.Compare(a.start, b.start)
 	})
 	var out bytes.Buffer
 	prev := 0

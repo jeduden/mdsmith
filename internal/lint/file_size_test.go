@@ -18,8 +18,14 @@ import (
 // first, then the two byte-sized bools (packed alongside the other
 // 4-byte-aligned lazy-init guards), then the two 8-byte scalars last
 // — packs the struct into 640 bytes instead of 688
-// (docs/development/high-performance-go.md#struct-layout).
-const fileSizeBudget = 640
+// (docs/development/high-performance-go.md#struct-layout). 656 adds
+// headingTextCache (map header) + headingTextCacheMu (sync.Mutex),
+// both pointer-bearing-or-guard fields placed ahead of the trailing
+// scalars per the same ordering rule. 656 crosses a Go allocator
+// size-class boundary from 640's class (641-704 all round up to 704,
+// measured) — see headingTextCache's own comment in file.go for why
+// the two new fields were kept anyway.
+const fileSizeBudget = 656
 
 func TestFile_SizeBudget(t *testing.T) {
 	got := unsafe.Sizeof(File{})

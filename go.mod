@@ -10,8 +10,8 @@ go 1.25.11
 
 require (
 	github.com/bmatcuk/doublestar/v4 v4.10.0
+	github.com/clipperhouse/uax29/v2 v2.2.0
 	github.com/hexops/gotextdiff v1.0.3
-	github.com/mattn/go-runewidth v0.0.24
 	github.com/neurosnap/sentences v1.1.2
 	github.com/pelletier/go-toml v1.9.5
 	github.com/spf13/pflag v1.0.10
@@ -19,7 +19,7 @@ require (
 	github.com/tetratelabs/wazero v1.12.0
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 	golang.org/x/mod v0.38.0
-	golang.org/x/net v0.57.0
+	golang.org/x/net v0.58.0
 	golang.org/x/sync v0.22.0
 	golang.org/x/sys v0.47.0
 	golang.org/x/tools v0.48.0
@@ -27,7 +27,6 @@ require (
 )
 
 require (
-	github.com/clipperhouse/uax29/v2 v2.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect

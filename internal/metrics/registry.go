@@ -102,7 +102,11 @@ var registry = []Definition{
 			if err != nil {
 				return UnavailableValue(), err
 			}
-			return AvailableValue(concisenessScore(text)), nil
+			sentences, err := doc.SentenceCount()
+			if err != nil {
+				return UnavailableValue(), err
+			}
+			return AvailableValue(concisenessScore(text, sentences)), nil
 		},
 	},
 	{
@@ -157,11 +161,11 @@ var registry = []Definition{
 		Default:      false,
 		DefaultOrder: OrderDesc,
 		Compute: func(doc *Document) (Value, error) {
-			text, err := doc.PlainText()
+			sentences, err := doc.SentenceCount()
 			if err != nil {
 				return UnavailableValue(), err
 			}
-			return AvailableValue(float64(mdtext.CountSentences(text))), nil
+			return AvailableValue(float64(sentences)), nil
 		},
 	},
 	{
@@ -178,11 +182,10 @@ var registry = []Definition{
 			if err != nil {
 				return UnavailableValue(), err
 			}
-			text, err := doc.PlainText()
+			sentences, err := doc.SentenceCount()
 			if err != nil {
 				return UnavailableValue(), err
 			}
-			sentences := mdtext.CountSentences(text)
 			if sentences == 0 {
 				return AvailableValue(0), nil
 			}

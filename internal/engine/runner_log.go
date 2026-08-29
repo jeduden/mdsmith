@@ -1,7 +1,8 @@
 package engine
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -9,13 +10,23 @@ import (
 	"github.com/jeduden/mdsmith/internal/rule"
 )
 
+// disabledLogger is the shared zero-value logger (*Runner).log
+// returns when no Logger is configured — the common case, since -v is
+// off by default. Every caller only reads Enabled or calls Printf,
+// which no-ops before touching the logger's mutex when Enabled is
+// false (internal/log.Logger.Printf), so nothing ever mutates this
+// instance; sharing it instead of allocating a fresh &vlog.Logger{}
+// on every call avoids one allocation per file in the workspace walk
+// (log runs once per file via Runner.checkFile).
+var disabledLogger = &vlog.Logger{}
+
 // log returns the runner's logger. If no logger is set, it returns a
 // disabled logger so callers don't need nil checks.
 func (r *Runner) log() *vlog.Logger {
 	if r.Logger != nil {
 		return r.Logger
 	}
-	return &vlog.Logger{}
+	return disabledLogger
 }
 
 // logRules logs each enabled rule in the effective config from the provided slice.
@@ -55,23 +66,29 @@ func ruleCategoryLookup(rules []rule.Rule) func(string) string {
 // that produced the diagnostics: the parse-skip block-walk and the full-parse
 // node-walk can emit two same-position, same-message diagnostics from
 // different rules in different input orders, and the Layer-0 equivalence
-// assertions compare full ordered slices. sort.SliceStable then preserves
-// input order only for diagnostics equal on every compared field.
+// assertions compare full ordered slices. slices.SortStableFunc then
+// preserves input order only for diagnostics equal on every compared field.
+//
+// slices.SortStableFunc sorts the concrete lint.Diagnostic values directly,
+// unlike sort.SliceStable, which drives reflect.Swapper under the hood —
+// see docs/development/high-performance-go.md's "reflect in hot paths"
+// anti-pattern. This runs once per Runner.Run/RunSource call over the full
+// result set, so it's the one place in the codebase this fix — already
+// applied to the equivalent per-rule sortDiagnostics helpers — was missing.
 func sortDiagnostics(diags []lint.Diagnostic) {
-	sort.SliceStable(diags, func(i, j int) bool {
-		di, dj := diags[i], diags[j]
-		if di.File != dj.File {
-			return di.File < dj.File
+	slices.SortStableFunc(diags, func(a, b lint.Diagnostic) int {
+		if a.File != b.File {
+			return cmp.Compare(a.File, b.File)
 		}
-		if di.Line != dj.Line {
-			return di.Line < dj.Line
+		if a.Line != b.Line {
+			return cmp.Compare(a.Line, b.Line)
 		}
-		if di.Column != dj.Column {
-			return di.Column < dj.Column
+		if a.Column != b.Column {
+			return cmp.Compare(a.Column, b.Column)
 		}
-		if di.Message != dj.Message {
-			return di.Message < dj.Message
+		if a.Message != b.Message {
+			return cmp.Compare(a.Message, b.Message)
 		}
-		return di.RuleID < dj.RuleID
+		return cmp.Compare(a.RuleID, b.RuleID)
 	})
 }

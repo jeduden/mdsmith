@@ -38,7 +38,9 @@ func (p *subscriptDelimiter) CanOpenCloser(opener, closer *parser.Delimiter) boo
 	return opener.Char == '~' && closer.Char == '~'
 }
 
-func (p *subscriptDelimiter) OnMatch(consumes int) ast.Node { return &SubscriptNode{} }
+func (p *subscriptDelimiter) OnMatch(consumes int, pc parser.Context) ast.Node {
+	return &SubscriptNode{}
+}
 
 var defaultSubscriptDelimiter = &subscriptDelimiter{}
 

@@ -559,9 +559,16 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Install tinygo (checksum-pinned .deb)
+        # 0.41.1 for the newer toolchain and LLVM 20 — its interp pass is
+        # ~1.85x faster than 0.39.0 (measured on CI: 102,156 vs 189,515
+        # calls in the 3-minute budget). Not required by the go-runewidth
+        # vendoring (plan 2608161754): once the eager LUT is gone, 0.39.0
+        # builds the engine fine. Kept a separate bump so a toolchain
+        # regression is not mistaken for a vendoring regression.
+        # SHA256 computed from the 179,764,108-byte amd64 .deb.
         env:
-          TINYGO_VERSION: "0.39.0"
-          TINYGO_SHA256: "775f15974e35059c8f3a141266bd9d293b5d556a3e44d5e6356c5602e9f386ab"
+          TINYGO_VERSION: "0.41.1"
+          TINYGO_SHA256: "901fbccffc61adb111656d1f907dfc21b6c499ca841b115866a0d6de2d835fbe"
         run: |
           url="https://github.com/tinygo-org/tinygo/releases/download/v${TINYGO_VERSION}/tinygo_${TINYGO_VERSION}_amd64.deb"
           curl -fsSL -o /tmp/tinygo.deb "$url"

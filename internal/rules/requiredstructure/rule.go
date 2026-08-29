@@ -574,14 +574,61 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 func (r *Rule) dispatchSingleFileSchema(
 	f *lint.File, schemaPath string, sources []SchemaSource,
 ) []lint.Diagnostic {
-	data, schPath, err := r.loadSchemaAt(f, schemaPath)
-	if err != nil {
-		return []lint.Diagnostic{r.diag(f.Path, 1, err.Error())}
+	res := r.cachedRawSchema(f, schemaPath)
+	if res.err != nil {
+		return []lint.Diagnostic{r.diag(f.Path, 1,
+			fmt.Sprintf("cannot read schema %q: %v", schemaPath, res.err))}
 	}
-	if schemaDataDeclaresExtends(data) {
+	if res.extends {
 		return r.checkComposedSources(f, sources)
 	}
-	return r.checkSingleFileSchemaFromData(f, schemaPath, data, schPath)
+	return r.checkSingleFileSchemaFromData(f, schemaPath, res.data, schemaPath)
+}
+
+// rawSchemaResult bundles readSchemaFile's return value with the
+// extends-peek schemaDataDeclaresExtends derives from it, so
+// cachedRawSchema can memoize both behind a single RunCache slot.
+// err is the raw read error, not wrapped with a caller's schemaPath
+// string: two kinds can reference the same absolute schema file
+// through differently-spelled (but path-equivalent) schemaPath
+// strings — "docs/proto.md" vs "./docs/proto.md" both resolve to the
+// same absSchemaCacheKey — and whichever caller's spelling populated
+// the cache first must not leak into a later caller's diagnostic.
+// dispatchSingleFileSchema formats the caller-facing message from its
+// own schemaPath argument instead.
+type rawSchemaResult struct {
+	data    []byte
+	err     error
+	extends bool
+}
+
+// cachedRawSchema returns readSchemaFile's result for schemaPath plus
+// the schemaDataDeclaresExtends peek over that data, computed at
+// most once per absolute schema path per RunCache lifetime. Without
+// this, a schema referenced by every file under a workspace-wide
+// kind was re-read from disk and re-unmarshalled as YAML once per
+// host file — see docs/development/high-performance-go.md's
+// "memoize per-input computations" pattern. absSchemaCacheKey
+// returning "" (no RunCache, or no stable absolute identity for
+// schemaPath) falls back to building directly, matching the
+// pre-cache behavior for the struct-literal unit-test path.
+func (r *Rule) cachedRawSchema(f *lint.File, schemaPath string) rawSchemaResult {
+	build := func() any {
+		data, err := readSchemaFile(f, schemaPath)
+		if err != nil {
+			return rawSchemaResult{err: err}
+		}
+		return rawSchemaResult{
+			data:    data,
+			extends: schemaDataDeclaresExtends(data),
+		}
+	}
+	if f.RunCache != nil {
+		if absPath := absSchemaCacheKey(f, schemaPath); absPath != "" {
+			return f.RunCache.RawSchemaFile(absPath, build).(rawSchemaResult)
+		}
+	}
+	return build().(rawSchemaResult)
 }
 
 // schemaDataDeclaresExtends reports whether the raw schema bytes
@@ -2468,8 +2515,33 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 		// basename, which would let `path-pattern: README.md` pass
 		// for `docs/README.md` — defeating the documented root-
 		// anchored semantics.
-		ok, err := doublestar.Match(filepath.ToSlash(pp.Pattern), rel)
-		if err == nil && ok {
+		//
+		// MatchUnvalidated (not Match) because pp.Pattern already
+		// passed doublestar.ValidatePattern once, at config-parse
+		// time (parsePathPatterns); Match's own internal validation
+		// step re-runs on every call whenever matching reaches the
+		// end of rel before the end of the pattern — the common case
+		// for a mismatching kind, which is most kinds for most files.
+		//
+		// Passing ValidatePattern does not guarantee Match and
+		// MatchUnvalidated agree, though: a brace alternative (e.g.
+		// "{[!mdb[],docs/**/*.md}") can contain a syntax error in a
+		// non-final alternative that Match's internal validation
+		// aborts on before trying later alternatives, while
+		// MatchUnvalidated tries them all — confirmed directly against
+		// the vendored doublestar source. That divergence requires
+		// brace syntax (a 1.3M+-case differential fuzz over
+		// brace-free, ValidatePattern-accepted patterns found zero
+		// disagreement), so a pattern using "{" falls back to the
+		// safe (slower, but provably correct) Match.
+		pat := filepath.ToSlash(pp.Pattern)
+		matched := false
+		if strings.IndexByte(pat, '{') < 0 {
+			matched = doublestar.MatchUnvalidated(pat, rel)
+		} else if ok, err := doublestar.Match(pat, rel); err == nil {
+			matched = ok
+		}
+		if matched {
 			continue
 		}
 		// path-pattern checks the workspace-relative path (which may
@@ -2478,7 +2550,7 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 		// checks emitted by validateFilename / checkFilenamePattern.
 		d := schema.SchemaDiagnostic{
 			Field:     "path",
-			Actual:    fmt.Sprintf("%q", rel),
+			Actual:    strconv.Quote(rel),
 			Expected:  "path matching glob " + pp.Pattern,
 			SchemaRef: fmt.Sprintf("kinds[%s] / path-pattern", pp.Kind),
 		}
@@ -2533,7 +2605,7 @@ func checkFilenamePattern(
 		// offending pattern.
 		d := schema.SchemaDiagnostic{
 			Field:     "filename pattern",
-			Actual:    fmt.Sprintf("%q", pattern),
+			Actual:    strconv.Quote(pattern),
 			Expected:  "valid glob",
 			Hint:      err.Error(),
 			SchemaRef: buildSchemaRefForLegacy(schemaSource),
@@ -2545,7 +2617,7 @@ func checkFilenamePattern(
 		// and the path-pattern diagnostic; see the rationale there.
 		d := schema.SchemaDiagnostic{
 			Field:     "filename",
-			Actual:    fmt.Sprintf("%q", base),
+			Actual:    strconv.Quote(base),
 			Expected:  "filename matching glob " + pattern,
 			SchemaRef: buildSchemaRefForLegacy(schemaSource),
 		}

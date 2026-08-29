@@ -3,7 +3,7 @@
 // predicates and glob builders derived from that set.
 //
 // Default file discovery (config.DefaultFiles), the CLI directory
-// walk, the merge-driver include set (githooks.DefaultIncludes), the
+// walk, the merge-driver include set (gitattributes.DefaultIncludes), the
 // merge-driver discovery walk, wikilink resolution, the link-style
 // rule, and the LSP document selector all derive from Extensions here,
 // so teaching mdsmith a new extension (say ".mdx") is a one-line change

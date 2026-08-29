@@ -60,6 +60,14 @@ type Fixer struct {
 	// read-only tricks. Production callers leave it nil.
 	WriteFile func(path string, data []byte, perm os.FileMode) error
 
+	// ParseFile, when non-nil, replaces lint.NewFile for
+	// applyFixPasses' per-pass parse step. Tests inject an error-
+	// returning function to exercise the parse-failure branch —
+	// lint.NewFile itself never errors with the current
+	// implementation, so there is no real input that reaches it.
+	// Production callers leave it nil.
+	ParseFile func(path string, source []byte) (*lint.File, error)
+
 	// gitignoreCache caches gitignore matchers by directory so the
 	// matcher tree is walked once per directory across a fix run,
 	// matching the engine.Runner cache contract that catalog and
@@ -626,7 +634,21 @@ func buildPostFixFile(path string, source []byte, lf *lint.File, dirFS fs.FS, cf
 	return finalFile
 }
 
-// applyFixPasses repeatedly applies fixable rules until the content stabilizes.
+// applyFixPasses repeatedly applies fixable rules until the content
+// stabilizes.
+//
+// Within a pass, parsedFile is reused across fixable rules until a
+// Fix call actually changes current: most rules in most passes find
+// nothing to fix (the common case is a mostly-clean file, or the tail
+// of rules that never apply), so re-parsing before every single
+// rule's Check — as if every rule had just changed the content — was
+// an O(fixable-rule-count) reparse of unchanged bytes. Setting
+// parsedFile to nil right after a Fix call still forces a fresh parse
+// before the next rule's Check, so every rule keeps seeing a File
+// that reflects the bytes as of its own Check call — identical
+// results, dozens fewer parses on a file with few or no fixes. See
+// docs/development/high-performance-go.md, "Skip work you don't
+// need".
 func (f *Fixer) applyFixPasses(
 	path string, source []byte, fixable []rule.FixableRule, lf *lint.File, dirFS fs.FS, errs *[]error,
 ) []byte {
@@ -635,13 +657,14 @@ func (f *Fixer) applyFixPasses(
 	for pass := 0; pass < maxPasses; pass++ {
 		f.log().Printf("fix: pass %d on %s", pass+1, path)
 		before := current
+		var parsedFile *lint.File
 		for _, fr := range fixable {
-			parsedFile, err := lint.NewFile(path, current)
+			var err error
+			parsedFile, err = f.parsedFileForPass(path, current, parsedFile, lf, dirFS)
 			if err != nil {
 				*errs = append(*errs, fmt.Errorf("parsing %q: %w", path, err))
 				break
 			}
-			hydrateLintFile(parsedFile, lf, dirFS, f.Config, path)
 
 			diags := fr.Check(parsedFile)
 			if len(diags) == 0 {
@@ -649,6 +672,7 @@ func (f *Fixer) applyFixPasses(
 			}
 
 			current = fr.Fix(parsedFile)
+			parsedFile = nil
 		}
 		if bytes.Equal(before, current) {
 			f.log().Printf("fix: %s stable after %d passes", path, pass+1)
@@ -658,13 +682,49 @@ func (f *Fixer) applyFixPasses(
 	return current
 }
 
+// parsedFileForPass returns parsedFile unchanged when it is still
+// valid for current (the common case: most rules in most passes find
+// nothing to fix, so the bytes never move between one rule's Check
+// and the next's), or parses and hydrates a fresh *lint.File when
+// parsedFile is nil — either the first rule in a pass, or right after
+// a Fix call changed current. See applyFixPasses' doc comment for why
+// this reuse is safe.
+func (f *Fixer) parsedFileForPass(
+	path string, current []byte, parsedFile *lint.File, lf *lint.File, dirFS fs.FS,
+) (*lint.File, error) {
+	if parsedFile != nil {
+		return parsedFile, nil
+	}
+	parseFile := lint.NewFile
+	if f.ParseFile != nil {
+		parseFile = f.ParseFile
+	}
+	parsedFile, err := parseFile(path, current)
+	if err != nil {
+		return nil, err
+	}
+	hydrateLintFile(parsedFile, lf, dirFS, f.Config, path)
+	return parsedFile, nil
+}
+
+// disabledFixerLogger is the shared zero-value logger (*Fixer).log
+// returns when no Logger is configured — the common case, since -v is
+// off by default. Every caller only reads Enabled or calls Printf,
+// which no-ops before touching the logger's mutex when Enabled is
+// false (internal/log.Logger.Printf), so nothing ever mutates this
+// instance; sharing it instead of allocating a fresh &vlog.Logger{}
+// on every call avoids one allocation per file per fix pass (log runs
+// via f.log().Printf in Fix's per-file, per-pass loop). Mirrors
+// internal/engine's identical (*Runner).log fix.
+var disabledFixerLogger = &vlog.Logger{}
+
 // log returns the fixer's logger. If no logger is set, it returns a
 // disabled logger so callers don't need nil checks.
 func (f *Fixer) log() *vlog.Logger {
 	if f.Logger != nil {
 		return f.Logger
 	}
-	return &vlog.Logger{}
+	return disabledFixerLogger
 }
 
 // logRules logs each enabled fixable rule in the effective config.

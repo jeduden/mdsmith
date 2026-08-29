@@ -39,6 +39,26 @@ off. The equivalence harness in `pkg/goldmark/`
 and the `goldmark-fork-test` CI job diff both
 paths.
 
+`pkg/runewidth/` is a second vendored fork under
+the same policy. It is part of the main module,
+never a `replace` directive. The source is
+`github.com/mattn/go-runewidth@v0.0.27`. It has
+one divergence.
+
+Upstream 0.0.25 added an eager 2.1 MiB
+`strictWidthLUT`. Its package-`init` fill timed
+out tinygo's `interp` pass. The fork deletes it.
+The table was a pure memoization of
+`runeWidthNoLUT`, so `RuneWidth` now calls that
+function directly.
+
+`runewidth_lut_removed_test.go` guards the removal
+across the full rune range. It is untagged, so it
+cannot bit-rot. `doc.go` documents the fork for
+re-sync. Only the table-width rules
+(`internal/rules/tablefmt`) and the release parity
+table import it.
+
 ## Why it exists
 
 Plan 163 extracted this package. Two problems

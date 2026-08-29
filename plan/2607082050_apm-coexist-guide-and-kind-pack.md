@@ -1,7 +1,7 @@
 ---
 id: 2607082050
 title: "APM coexistence: `mdsmith init --apm`, guide, and kind pack"
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   Add an `mdsmith init --apm` template that scaffolds the APM kind
@@ -115,21 +115,21 @@ never clobbers an existing setup. `--apm` follows the
 
 ## Acceptance Criteria
 
-- [ ] `mdsmith init --apm` writes the `apm-*` kind
+- [x] `mdsmith init --apm` writes the `apm-*` kind
       files and the coexistence posture, and refuses
       to clobber an existing `.mdsmith.yml`.
-- [ ] After `mdsmith init --apm`, `mdsmith fix` does
+- [x] After `mdsmith init --apm`, `mdsmith fix` does
       not rewrite a file under `.github/prompts/`.
-- [ ] The kind pack flags a `.apm/skills/x/SKILL.md`
+- [x] The kind pack flags a `.apm/skills/x/SKILL.md`
       missing `name` or `description`.
-- [ ] The kind pack flags an `.apm/agents/x.agent.md`
+- [x] The kind pack flags an `.apm/agents/x.agent.md`
       body over 300 lines.
-- [ ] The `ignore:` set names only harness
+- [x] The `ignore:` set names only harness
       directories present in the repo.
-- [ ] `docs/guides/coexist-with-apm.md` exists, is
+- [x] `docs/guides/coexist-with-apm.md` exists, is
       reachable from the guides catalog and research
       README, and the init reference lists `--apm`.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool -modfile=tools/go.mod golangci-lint
+- [x] All tests pass: `go test ./...`
+- [x] `go tool -modfile=tools/go.mod golangci-lint
       run` reports no issues.
-- [ ] `mdsmith check .` — 0 failures.
+- [x] `mdsmith check .` — 0 failures.

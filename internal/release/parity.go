@@ -24,7 +24,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mattn/go-runewidth"
+	"github.com/jeduden/mdsmith/pkg/runewidth"
 
 	"github.com/jeduden/mdsmith/internal/convention"
 	"github.com/jeduden/mdsmith/internal/rule"
