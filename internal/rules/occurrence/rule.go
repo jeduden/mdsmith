@@ -33,7 +33,8 @@ type Rule struct {
 	patternSource string
 	Pattern       *regexp.Regexp
 	Min           int
-	Max           int // -1 means unbounded
+	Max           int  // -1 means unbounded
+	maxSet        bool // true when max was explicitly set via ApplySettings
 	Count         string
 	CaseSensitive bool
 }
@@ -388,6 +389,7 @@ func (r *Rule) applyMax(v any) error {
 		return fmt.Errorf("occurrence: max must be -1 (unbounded) or >= 0, got %d", n)
 	}
 	r.Max = n
+	r.maxSet = true
 	return nil
 }
 
@@ -425,7 +427,7 @@ func (r *Rule) finalizeSettings(rawPattern string) error {
 	if len(r.Tokens) > 0 && r.Pattern != nil {
 		return fmt.Errorf("occurrence: tokens and pattern are mutually exclusive")
 	}
-	if r.Max >= 0 && r.Min > r.Max {
+	if r.maxSet && r.Max >= 0 && r.Min > r.Max {
 		return fmt.Errorf("occurrence: min (%d) must be <= max (%d)", r.Min, r.Max)
 	}
 	if !r.CaseSensitive && len(r.Tokens) > 0 {
