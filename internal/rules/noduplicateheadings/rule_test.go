@@ -172,7 +172,6 @@ func TestBeginFile_ReplacesSeenMap(t *testing.T) {
 	r.BeginFile(nil)
 	require.NotNil(t, r.seen)
 	assert.Empty(t, r.seen, "the previous file's headings must be gone")
-	assert.NotSame(t, &first, &r.seen)
 	assert.Len(t, first, 1, "the old map must be left untouched, not cleared in place")
 }
 

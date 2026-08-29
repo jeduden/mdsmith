@@ -219,7 +219,7 @@ func TestWalkNodes_ScopesToEnteringKinds(t *testing.T) {
 }
 
 // TestWalkNodes_EmptyEnteringKindsDispatchesNothing pins the engine's
-// treatment of an empty kind scope: buildKindTable gives such a rule no
+// treatment of an empty kind scope: prepareNodeCheckers gives such a rule no
 // CSR row, so it is never dispatched. WalkNodes must agree rather than
 // falling back to the unscoped every-node stream.
 func TestWalkNodes_EmptyEnteringKindsDispatchesNothing(t *testing.T) {
