@@ -95,25 +95,53 @@ func (r *Rule) getEngine() *gensection.Engine {
 	return r.engine
 }
 
+// catalogStartNeedle and catalogEndNeedle bound the cheap pre-check
+// mayContainCatalogDirective runs before Check pays for any AST walk.
+// Two needles are required because the end marker "<?/catalog" does
+// not contain the start marker "<?catalog" as a substring — mirrors
+// include's mayContainIncludeDirective.
+var (
+	catalogStartNeedle = []byte("<?catalog")
+	catalogEndNeedle   = []byte("<?/catalog")
+)
+
+// mayContainCatalogDirective reports whether source could contain any
+// catalog start marker, end marker, or orphaned end marker. MDS019 is
+// default-enabled, so every host file in a workspace pays Check's
+// cost — gating the AST walk behind this byte scan means the common
+// case (no catalog directive at all) costs one bytes.Contains pass
+// instead of three top-level AST walks. See
+// docs/development/high-performance-go.md's "gate expensive analyzers
+// behind a cheap pre-check" pattern.
+func mayContainCatalogDirective(source []byte) bool {
+	return bytes.Contains(source, catalogStartNeedle) ||
+		bytes.Contains(source, catalogEndNeedle)
+}
+
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
-	if f.FS == nil {
+	if f.FS == nil || !mayContainCatalogDirective(f.Source) {
 		return nil
 	}
 	diags := r.getEngine().Check(f)
+	// checkCaseMismatches and checkInjection both need the same marker
+	// pairs the engine just found; computing them once here instead of
+	// letting each pass re-walk the AST halves the remaining walk cost
+	// on files that do carry a catalog directive.
+	pairs, _ := gensection.FindMarkerPairs(f, r.Name(), r.ID(), r.Name())
 	// Case-mismatch hints run a separate pass over directives. This
 	// re-reads front-matter but avoids coupling hints to the engine's
 	// fatal-diagnostic pipeline. Acceptable for typical catalog sizes.
-	diags = append(diags, r.checkCaseMismatches(f)...)
+	diags = append(diags, r.checkCaseMismatches(f, pairs)...)
 	// Injection warnings are non-fatal and must not block generation,
 	// so they run as a separate pass outside the engine.
-	diags = append(diags, r.checkInjection(f)...)
+	diags = append(diags, r.checkInjection(f, pairs)...)
 	return diags
 }
 
 // Fix implements rule.FixableRule.
 func (r *Rule) Fix(f *lint.File) []byte {
-	if f.FS == nil {
+	if f.FS == nil || !mayContainCatalogDirective(f.Source) {
 		return f.Source
 	}
 	return r.getEngine().Fix(f)
@@ -1015,11 +1043,9 @@ func checkCatalogInjection(filePath string, line int, entries []fileEntry) []lin
 
 // checkInjection scans catalog directives for front-matter values that could
 // inject Markdown structure. Runs independently of Generate so warnings don't
-// block content generation.
-func (r *Rule) checkInjection(f *lint.File) []lint.Diagnostic {
-	pairs, _ := gensection.FindMarkerPairs(
-		f, r.Name(), r.ID(), r.Name(),
-	)
+// block content generation. pairs is shared with Check's other passes so the
+// caller only walks the AST once per Check call.
+func (r *Rule) checkInjection(f *lint.File, pairs []gensection.MarkerPair) []lint.Diagnostic {
 	var diags []lint.Diagnostic
 	for _, mp := range pairs {
 		dir, parseDiags := gensection.ParseDirective(
@@ -1667,11 +1693,9 @@ func parseRowTemplate(row string) error {
 // checkCaseMismatches scans catalog directives in the file for
 // case-mismatched front-matter field references and returns hint
 // diagnostics. Runs independently of the Generate/Fix path so
-// hints don't block content generation.
-func (r *Rule) checkCaseMismatches(f *lint.File) []lint.Diagnostic {
-	pairs, _ := gensection.FindMarkerPairs(
-		f, r.Name(), r.ID(), r.Name(),
-	)
+// hints don't block content generation. pairs is shared with Check's
+// other passes so the caller only walks the AST once per Check call.
+func (r *Rule) checkCaseMismatches(f *lint.File, pairs []gensection.MarkerPair) []lint.Diagnostic {
 	var diags []lint.Diagnostic
 	for _, mp := range pairs {
 		dir, parseDiags := gensection.ParseDirective(

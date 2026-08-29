@@ -21,6 +21,7 @@ import (
 // what the next Check would read from disk.
 type RunCache struct {
 	frontMatter         sync.Map // string (absPath) -> *runCacheEntry
+	rawSchemaFile       sync.Map // string (absPath) -> *runCacheEntry
 	includes            sync.Map // string (absPath) -> *runCacheEntry
 	anchors             sync.Map // string (absPath) -> *anchorEntry
 	wikilinks           sync.Map // string (root key) -> *runCacheEntry
@@ -120,6 +121,17 @@ func NewRunCache() *RunCache {
 // same key block on the same once and observe the same value.
 func (c *RunCache) FrontMatter(absPath string, build func() any) any {
 	return load(&c.frontMatter, absPath, build)
+}
+
+// RawSchemaFile returns build's result for absPath, computed at most
+// once per absPath in this cache's lifetime. Distinct from
+// ParsedSchema: this slot memoizes a schema file's raw on-disk bytes
+// (and any lightweight peek a caller derives from them before
+// deciding how to parse) so a schema referenced by many host files —
+// the common case for a workspace-wide kind — is read and inspected
+// once per run instead of once per host file.
+func (c *RunCache) RawSchemaFile(absPath string, build func() any) any {
+	return load(&c.rawSchemaFile, absPath, build)
 }
 
 // ScopeInvalidator scopes the unique-field-index slot's response to
@@ -501,6 +513,7 @@ func (c *RunCache) invalidate(absPath string, visited map[string]struct{}) {
 	visited[absPath] = struct{}{}
 
 	c.frontMatter.Delete(absPath)
+	c.rawSchemaFile.Delete(absPath)
 	c.includes.Delete(absPath)
 	c.anchors.Delete(absPath)
 	c.dropDuplicateParagraphs(absPath)
