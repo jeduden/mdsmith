@@ -2,7 +2,7 @@
 id: 2608021916
 title: >-
   Split internal/githooks by responsibility
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   internal/githooks's package doc names three joined
@@ -52,35 +52,43 @@ found this SRP smell:
 
 ## Tasks
 
-1. Read [githooks.go](../internal/githooks/githooks.go)
+1. [x] Read [githooks.go](../internal/githooks/githooks.go)
    and its test file in full; group every exported and
    unexported symbol by the three questions above.
-2. Create `internal/gitattributes` for the
+2. [x] Create `internal/gitattributes` for the
    `.gitattributes` glob/managed-block read-write group;
    move `GlobsFromConfig`, `WriteGitattributes`,
    `ExtractGlobs`, `StageGitattributes`, and their
    dedicated tests into it.
-3. Decide which package keeps `DiscoverFiles` — the
+3. [x] Decide which package keeps `DiscoverFiles` — the
    merge-driver install path is the deciding consumer;
    read its call sites in `cmd/mdsmith/mergedriver.go`
-   before choosing.
-4. Update every import of the moved symbols across
+   before choosing. Resolved: a new leaf package,
+   `internal/directivefiles`. Folding it into
+   `internal/archetype/gensection` would have repeated
+   the exact `fs.WalkDir`-in-a-pure-package tax debt
+   go.md's audit log already flags for
+   `internal/linkgraph`, so discovery got its own
+   package instead, importing gensection's marker
+   primitives (`IsRawStartMarker` / `IsRawEndMarker`)
+   rather than the other way around.
+4. [x] Update every import of the moved symbols across
    `cmd/mdsmith` and `internal/...`.
-5. Keep `internal/githooks` scoped to hook-script
+5. [x] Keep `internal/githooks` scoped to hook-script
    generation/validation only.
-6. `go build ./...` passes.
-7. `go test ./...` passes.
-8. `go tool -modfile=tools/go.mod golangci-lint run`
+6. [x] `go build ./...` passes.
+7. [x] `go test ./...` passes.
+8. [x] `go tool -modfile=tools/go.mod golangci-lint run`
    reports no issues.
 
 ## Acceptance Criteria
 
-- [ ] `internal/githooks`'s package doc no longer needs
+- [x] `internal/githooks`'s package doc no longer needs
       "and" to describe its responsibility.
-- [ ] `.gitattributes` glob/managed-block logic lives in
+- [x] `.gitattributes` glob/managed-block logic lives in
       its own package with its own tests.
-- [ ] No behavior change: `mdsmith merge-driver install`
+- [x] No behavior change: `mdsmith merge-driver install`
       and `mdsmith pre-merge-commit install` produce
       identical output before and after the split.
-- [ ] `go test ./...` is green.
-- [ ] `mdsmith check .` is green.
+- [x] `go test ./...` is green.
+- [x] `mdsmith check .` is green.
