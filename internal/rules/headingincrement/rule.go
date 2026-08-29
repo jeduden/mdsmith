@@ -263,9 +263,9 @@ func (r *Rule) SettingMergeMode(key string) rule.MergeMode {
 }
 
 var (
-	_ rule.Configurable     = (*Rule)(nil)
-	_ rule.ListMerger       = (*Rule)(nil)
-	_ rule.LineCapable      = (*Rule)(nil)
+	_ rule.Configurable      = (*Rule)(nil)
+	_ rule.ListMerger        = (*Rule)(nil)
+	_ rule.LineCapable       = (*Rule)(nil)
 	_ rule.KindScopedChecker = (*Rule)(nil)
-	_ rule.FileResetter     = (*Rule)(nil)
+	_ rule.FileResetter      = (*Rule)(nil)
 )

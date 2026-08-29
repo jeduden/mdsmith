@@ -129,11 +129,9 @@ half), `codeblockstyle` (MDS065), `samefileanchor`
 
 ## Design Chosen
 
-Option 2 — a `BeginFile` hook via the new
-`rule.FileResetter` interface. Added to `internal/rule/walk.go`;
-called by `rule.WalkNodes` (standalone Check path) and by
-`runNodeCheckers` (engine's shared walk path) before the first
-`CheckNode` call for each File.
+Option 2 — a `BeginFile` reset hook via the new `rule.FileResetter`
+interface. It resets per-file state before each file's first
+`CheckNode`. Both `WalkNodes` and `runNodeCheckers` call it.
 
 Two implementation details required care:
 
@@ -159,18 +157,17 @@ Two implementation details required care:
 `BenchmarkHeadingRulesTogether` (51 headings, standalone
 `Check` calls, 3 × 5 s runs):
 
-| State   | ns/op | allocs/op |
-|---------|-------|-----------|
-| before  |  81 k |       151 |
-| after   |  92 k |       157 |
+| State  | ns/op | allocs/op |
+| ------ | ----- | --------- |
+| before | 81 k  | 151       |
+| after  | 92 k  | 157       |
 
-The standalone benchmark regresses ~14 % because the old
-`CollectHeadingNodes` memo let two sequential `Check` calls share
-heading collection; the new `WalkNodes` path does an independent
-`ast.Walk` per `Check` call. In the engine's production path both
-rules join the **shared** `KindScopedChecker` dispatch — one AST
-walk for all NodeCheckers — which is the actual gain this plan
-targets. The standalone benchmark does not capture that sharing.
+The standalone benchmark regresses ~14 %. Previously the
+`CollectHeadingNodes` memo shared one walk across two sequential
+`Check` calls. The new `WalkNodes` path does one `ast.Walk` per
+call instead. In production both rules share one `KindScopedChecker`
+dispatch — one walk for all NodeCheckers — and that shared walk
+is the gain this plan targets. The standalone path does not model it.
 
 ## Acceptance Criteria
 
