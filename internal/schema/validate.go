@@ -116,7 +116,7 @@ func Validate(
 	}
 	var diags []lint.Diagnostic
 
-	diags = append(diags, validateFilename(f, sch, mkDiag)...)
+	diags = append(diags, validateFilename(f, sch, docFM, mkDiag)...)
 
 	if !fmIsCUE {
 		diags = append(diags, validateFrontmatterDiags(f, sch, docFM, mkDiag)...)
@@ -1664,7 +1664,7 @@ func formatHeading(level int, text string) string {
 // the "expected" is the glob spelled out as a pattern-matching
 // constraint.
 func validateFilename(
-	f *lint.File, sch *Schema, mkDiag MakeDiag,
+	f *lint.File, sch *Schema, docFM map[string]any, mkDiag MakeDiag,
 ) []lint.Diagnostic {
 	patterns := sch.Filename
 	if len(patterns) == 0 {
@@ -1676,7 +1676,23 @@ func validateFilename(
 	// document body starts with a generated section.
 	anchor := nonBodyDiagLine(f)
 	base := filepath.Base(f.Path)
-	matched, badPattern, err := MatchFilename(patterns, base)
+	// `\#(fmvar(name))` references resolve against the document's own
+	// front matter before the basename comparison, so a schema can
+	// require the filename to agree with a field value. An
+	// unresolvable reference is the schema author's problem, not a
+	// filename mismatch, so it gets its own hint.
+	resolved, interpolated, err := ResolveFilenamePatterns(patterns, docFM)
+	if err != nil {
+		d := SchemaDiagnostic{
+			Field:     "filename",
+			Actual:    strconv.Quote(base),
+			Expected:  FilenameExpected(patterns),
+			Hint:      err.Error(),
+			SchemaRef: schemaRef(sch, ""),
+		}
+		return []lint.Diagnostic{d.Emit(mkDiag, f.Path, anchor)}
+	}
+	matched, badPattern, err := MatchFilename(resolved, base)
 	if err != nil {
 		// Malformed glob in the schema. Surface it via the same
 		// SchemaDiagnostic shape so the message carries a
@@ -1704,6 +1720,7 @@ func validateFilename(
 			Field:     "filename",
 			Actual:    strconv.Quote(base),
 			Expected:  FilenameExpected(patterns),
+			Hint:      InterpolatedGlobHint(interpolated, resolved...),
 			SchemaRef: schemaRef(sch, ""),
 		}
 		return []lint.Diagnostic{d.Emit(mkDiag, f.Path, anchor)}

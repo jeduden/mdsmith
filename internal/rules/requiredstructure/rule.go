@@ -508,6 +508,15 @@ func parsePathPatterns(v any) ([]PathPattern, error) {
 				"path-patterns[%d].pattern %q is not a valid doublestar glob",
 				i, pat)
 		}
+		// A `\#(fmvar(name))` reference resolves per document, so a
+		// typo in one cannot surface as a glob syntax error above.
+		// Check the references' shape here instead, at config time,
+		// so the message points at the pattern rather than at every
+		// file the kind claims.
+		if err := schema.ValidateGlobInterps(pat); err != nil {
+			return nil, fmt.Errorf(
+				"path-patterns[%d].pattern %q: %w", i, pat, err)
+		}
 		out = append(out, PathPattern{Kind: kind, Pattern: pat})
 	}
 	return out, nil
@@ -925,7 +934,7 @@ func (r *Rule) checkSingleFileSchemaFromData(
 	diags = append(diags, fmDiags...)
 
 	// Check filename pattern.
-	diags = append(diags, checkFilenamePattern(f, sch, r.Schema)...)
+	diags = append(diags, checkFilenamePattern(f, sch, r.Schema, docFMRaw)...)
 
 	// Check structure: required headings present and in order.
 	diags = append(diags, checkStructure(f, sch, docHeadings, r.Schema)...)
@@ -2518,54 +2527,101 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 	}
 	rel := filepath.ToSlash(workspaceRelPath(f))
 	var diags []lint.Diagnostic
+	// The document's front matter is read at most once per call, and
+	// only once some pattern actually references it. Nearly every
+	// path-pattern is a plain glob, and this runs for every file of
+	// every kind on the check hot path.
+	var docFM map[string]any
+	fmRead := false
 	for _, pp := range r.PathPatterns {
-		// Match the full workspace-relative path with doublestar
-		// directly. Going through globpath.Match would also try the
-		// basename, which would let `path-pattern: README.md` pass
-		// for `docs/README.md` — defeating the documented root-
-		// anchored semantics.
-		//
-		// MatchUnvalidated (not Match) because pp.Pattern already
-		// passed doublestar.ValidatePattern once, at config-parse
-		// time (parsePathPatterns); Match's own internal validation
-		// step re-runs on every call whenever matching reaches the
-		// end of rel before the end of the pattern — the common case
-		// for a mismatching kind, which is most kinds for most files.
-		//
-		// Passing ValidatePattern does not guarantee Match and
-		// MatchUnvalidated agree, though: a brace alternative (e.g.
-		// "{[!mdb[],docs/**/*.md}") can contain a syntax error in a
-		// non-final alternative that Match's internal validation
-		// aborts on before trying later alternatives, while
-		// MatchUnvalidated tries them all — confirmed directly against
-		// the vendored doublestar source. That divergence requires
-		// brace syntax (a 1.3M+-case differential fuzz over
-		// brace-free, ValidatePattern-accepted patterns found zero
-		// disagreement), so a pattern using "{" falls back to the
-		// safe (slower, but provably correct) Match.
 		pat := filepath.ToSlash(pp.Pattern)
-		matched := false
-		if strings.IndexByte(pat, '{') < 0 {
-			matched = doublestar.MatchUnvalidated(pat, rel)
-		} else if ok, err := doublestar.Match(pat, rel); err == nil {
-			matched = ok
-		}
-		if matched {
+		if !schema.PatternHasInterp(pat) {
+			if matchWorkspacePath(pat, rel) {
+				continue
+			}
+			diags = append(diags, pathPatternDiag(f, rel, pp, ""))
 			continue
 		}
-		// path-pattern checks the workspace-relative path (which may
-		// include directories), so the field label is "path" rather
-		// than "filename". The latter is reserved for basename-only
-		// checks emitted by validateFilename / checkFilenamePattern.
-		d := schema.SchemaDiagnostic{
-			Field:     "path",
-			Actual:    strconv.Quote(rel),
-			Expected:  "path matching glob " + pp.Pattern,
-			SchemaRef: fmt.Sprintf("kinds[%s] / path-pattern", pp.Kind),
+		if !fmRead {
+			// Front-matter parse errors are reported by the
+			// front-matter path in Check; here an unparseable block
+			// simply leaves every `fmvar` reference unresolved,
+			// which surfaces below as the missing-value hint.
+			docFM, _ = readDocFrontMatterRaw(f)
+			fmRead = true
 		}
-		diags = append(diags, d.Emit(makeDiag, f.Path, schema.NonBodyDiagLine(f)))
+		resolved, err := schema.ResolveGlobPattern(pat, docFM)
+		if err != nil {
+			diags = append(diags, pathPatternDiag(f, rel, pp, err.Error()))
+			continue
+		}
+		// A resolved pattern is no longer the string ValidatePattern
+		// accepted at config-parse time, so use the validating
+		// matcher rather than MatchUnvalidated. This branch is off
+		// the hot path — only kinds that interpolate reach it.
+		if ok, mErr := doublestar.Match(resolved, rel); mErr == nil && ok {
+			continue
+		}
+		diags = append(diags, pathPatternDiag(f, rel, pp,
+			schema.InterpolatedGlobHint(true, resolved)))
 	}
 	return diags
+}
+
+// matchWorkspacePath reports whether the workspace-relative path rel
+// satisfies the plain (non-interpolated) glob pat.
+//
+// Match the full workspace-relative path with doublestar directly.
+// Going through globpath.Match would also try the basename, which
+// would let `path-pattern: README.md` pass for `docs/README.md` —
+// defeating the documented root-anchored semantics.
+//
+// MatchUnvalidated (not Match) because pat already passed
+// doublestar.ValidatePattern once, at config-parse time
+// (parsePathPatterns); Match's own internal validation step re-runs
+// on every call whenever matching reaches the end of rel before the
+// end of the pattern — the common case for a mismatching kind, which
+// is most kinds for most files.
+//
+// Passing ValidatePattern does not guarantee Match and
+// MatchUnvalidated agree, though: a brace alternative (e.g.
+// "{[!mdb[],docs/**/*.md}") can contain a syntax error in a
+// non-final alternative that Match's internal validation aborts on
+// before trying later alternatives, while MatchUnvalidated tries them
+// all — confirmed directly against the vendored doublestar source.
+// That divergence requires brace syntax (a 1.3M+-case differential
+// fuzz over brace-free, ValidatePattern-accepted patterns found zero
+// disagreement), so a pattern using "{" falls back to the safe
+// (slower, but provably correct) Match.
+func matchWorkspacePath(pat, rel string) bool {
+	if strings.IndexByte(pat, '{') < 0 {
+		return doublestar.MatchUnvalidated(pat, rel)
+	}
+	ok, err := doublestar.Match(pat, rel)
+	return err == nil && ok
+}
+
+// pathPatternDiag builds the MDS020 diagnostic for a file whose
+// workspace-relative path does not satisfy its kind's
+// `path-pattern:`. hint, when non-empty, carries the extra line an
+// interpolated pattern needs — the pattern with front matter applied,
+// or why a `\#(fmvar(...))` reference could not be resolved.
+//
+// path-pattern checks the workspace-relative path (which may include
+// directories), so the field label is "path" rather than "filename".
+// The latter is reserved for basename-only checks emitted by
+// validateFilename / checkFilenamePattern.
+func pathPatternDiag(
+	f *lint.File, rel string, pp PathPattern, hint string,
+) lint.Diagnostic {
+	d := schema.SchemaDiagnostic{
+		Field:     "path",
+		Actual:    strconv.Quote(rel),
+		Expected:  "path matching glob " + pp.Pattern,
+		Hint:      hint,
+		SchemaRef: fmt.Sprintf("kinds[%s] / path-pattern", pp.Kind),
+	}
+	return d.Emit(makeDiag, f.Path, schema.NonBodyDiagLine(f))
 }
 
 // workspaceRelPath returns the file path relative to the workspace
@@ -2595,6 +2651,7 @@ func workspaceRelPath(f *lint.File) string {
 // schema's filename glob pattern (if configured).
 func checkFilenamePattern(
 	f *lint.File, sch *parsedSchema, schemaSource string,
+	docFM map[string]any,
 ) []lint.Diagnostic {
 	patterns := sch.Config.FilenamePatterns
 	if len(patterns) == 0 {
@@ -2606,7 +2663,22 @@ func checkFilenamePattern(
 	// section.
 	anchor := schema.NonBodyDiagLine(f)
 	base := filepath.Base(f.Path)
-	matched, badPattern, err := schema.MatchFilename(patterns, base)
+	// Resolve `\#(fmvar(name))` against the document's front matter
+	// before comparing, so a proto.md can require the basename to
+	// agree with a field value. See schema.validateFilename for the
+	// same wiring on the inline path.
+	resolved, interpolated, err := schema.ResolveFilenamePatterns(patterns, docFM)
+	if err != nil {
+		d := schema.SchemaDiagnostic{
+			Field:     "filename",
+			Actual:    strconv.Quote(base),
+			Expected:  schema.FilenameExpected(patterns),
+			Hint:      err.Error(),
+			SchemaRef: buildSchemaRefForLegacy(schemaSource),
+		}
+		return []lint.Diagnostic{d.Emit(makeDiag, f.Path, anchor)}
+	}
+	matched, badPattern, err := schema.MatchFilename(resolved, base)
 	if err != nil {
 		// Malformed glob in the schema. Surface it via the same
 		// SchemaDiagnostic shape so the message carries the
@@ -2630,6 +2702,7 @@ func checkFilenamePattern(
 			Field:     "filename",
 			Actual:    strconv.Quote(base),
 			Expected:  schema.FilenameExpected(patterns),
+			Hint:      schema.InterpolatedGlobHint(interpolated, resolved...),
 			SchemaRef: buildSchemaRefForLegacy(schemaSource),
 		}
 		return []lint.Diagnostic{d.Emit(makeDiag, f.Path, anchor)}
