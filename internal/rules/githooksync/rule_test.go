@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/gitattributes"
 	"github.com/jeduden/mdsmith/internal/githooks"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/stretchr/testify/assert"
@@ -22,8 +23,8 @@ import (
 // the rule expects when no .mdsmith.yml is present (default include
 // patterns, no exclusions).
 func canonicalManagedBlock() string {
-	g, _ := githooks.GlobsFromConfig(nil)
-	return githooks.RenderManagedBlock(g)
+	g, _ := gitattributes.GlobsFromConfig(nil)
+	return gitattributes.RenderManagedBlock(g)
 }
 
 // initTestRepo runs `git init` on dir and pins core.hooksPath to
@@ -138,8 +139,8 @@ func TestRule_Check_HonorsConfigIgnorePatterns(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"),
 		[]byte("ignore:\n  - \"demo/**\"\n  - \"vendor/**\"\n"), 0o644))
 
-	expectedBlock := githooks.RenderManagedBlock(githooks.Globs{
-		Include: githooks.DefaultIncludes(),
+	expectedBlock := gitattributes.RenderManagedBlock(gitattributes.Globs{
+		Include: gitattributes.DefaultIncludes(),
 		Exclude: []string{
 			"demo/**/*.md", "demo/**/*.markdown",
 			"vendor/**/*.md", "vendor/**/*.markdown",
@@ -567,8 +568,8 @@ func TestRule_Fix_EncodesConfigIgnoreAsExcludes(t *testing.T) {
 
 	content, err := os.ReadFile(filepath.Join(dir, ".gitattributes"))
 	require.NoError(t, err)
-	expected := githooks.RenderManagedBlock(githooks.Globs{
-		Include: githooks.DefaultIncludes(),
+	expected := gitattributes.RenderManagedBlock(gitattributes.Globs{
+		Include: gitattributes.DefaultIncludes(),
 		Exclude: []string{
 			"demo/**/*.md", "demo/**/*.markdown",
 			"vendor/**/*.md", "vendor/**/*.markdown",

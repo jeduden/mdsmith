@@ -261,7 +261,7 @@ footer: |
 | 2607242011 | ✅     | haiku  | [Security hardening batch — 2026-07-24](plan/2607242011_security-hardening-batch-2026-07-24.md)                                                         |
 | 2608020650 | 🔲     | sonnet | [Convert MDS003/MDS005 to KindScopedChecker without a stale-state bug](plan/2608020650_kindscoped-heading-rules.md)                                     |
 | 2608021915 | 🔲     | haiku  | [Move list-query subcommand logic out of cmd/mdsmith/main.go into query.go](plan/2608021915_arch-fix-query-subcommand-placement.md)                     |
-| 2608021916 | 🔲     | sonnet | [Split internal/githooks by responsibility](plan/2608021916_arch-fix-githooks-package-split.md)                                                         |
+| 2608021916 | ✅     | sonnet | [Split internal/githooks by responsibility](plan/2608021916_arch-fix-githooks-package-split.md)                                                         |
 | 2608091910 | ✅     | sonnet | [Resolve the MDS073 rule-ID collision between slidevstructure and foreignregion](plan/2608091910_arch-fix-mds073-collision.md)                          |
 | 2608091911 | ✅     | haiku  | [Add dedicated unit tests for occurrence and slidevstructure private helpers](plan/2608091911_arch-fix-missing-unit-tests.md)                           |
 | 2608161754 | ✅     | sonnet | [Vendor go-runewidth as a patched fork so post-LUT versions build under tinygo](plan/2608161754_vendor-runewidth-bump-tinygo.md)                        |
