@@ -11,8 +11,10 @@ coverage_*.out
 docs/research/conciseness/spikes/wasm-embedded-inference/classifier.wasm
 internal/rules/concisenessscoring/wasmclassifier/classifier.wasm
 # WASM engine build outputs (cmd/mdsmith-wasm/build.sh); rebuilt on
-# demand for plan 217, never committed.
+# demand for plan 217, never committed. The root-level binary is what a
+# bare `go build ./cmd/mdsmith-wasm/` (no -o) drops in the repo root.
 cmd/mdsmith-wasm/dist/
+/mdsmith-wasm
 e2e-cover/
 unit.cov
 merged.cov
