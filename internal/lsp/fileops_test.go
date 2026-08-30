@@ -90,6 +90,34 @@ func TestWillRenameFilesDestinationExistsSkips(t *testing.T) {
 	assert.Empty(t, edit.Changes)
 }
 
+// TestWillRenameFilesRewritesWikilink covers a basename-changing move:
+// guide.md's `[[api]]` wikilink follows api.md to its new stem, which
+// exercises the workspace's wikilink-edge query.
+func TestWillRenameFilesRewritesWikilink(t *testing.T) {
+	t.Parallel()
+	srcA := "# API\n"
+	srcG := "See [[api]] for details.\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{"api.md": srcA, "guide.md": srcG})
+	for _, d := range []struct{ uri, src string }{
+		{rootURI + "/api.md", srcA}, {rootURI + "/guide.md", srcG},
+	} {
+		h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+			TextDocument: textDocumentItem{URI: d.uri, LanguageID: "markdown", Version: 1, Text: d.src},
+		})
+		_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+	}
+
+	raw, errResp := h.request("workspace/willRenameFiles", renameFilesParams{
+		Files: []fileRename{{OldURI: rootURI + "/api.md", NewURI: rootURI + "/service.md"}},
+	})
+	require.Nil(t, errResp)
+	var edit workspaceEdit
+	require.NoError(t, json.Unmarshal(raw, &edit))
+	uriG := rootURI + "/guide.md"
+	require.Contains(t, edit.Changes, uriG)
+	assert.Equal(t, "service", edit.Changes[uriG][0].NewText)
+}
+
 func TestWillRenameFilesMalformedAndNoop(t *testing.T) {
 	t.Parallel()
 	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": "# A\n"})
