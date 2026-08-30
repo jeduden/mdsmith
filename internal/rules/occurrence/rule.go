@@ -159,9 +159,7 @@ func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 			// for a loop that never runs.
 			if len(r.Tokens) > 0 {
 				totals := make([]int, len(r.Tokens))
-				for tokensLo < len(paragraphs) && paragraphs[tokensLo].Line < h.Line {
-					tokensLo++
-				}
+				tokensLo = astutil.AdvancePastLine(paragraphs, tokensLo, h.Line)
 				for j := tokensLo; j < len(paragraphs) && paragraphs[j].Line < end; j++ {
 					stext := r.searchText(paragraphs[j].ExtractText(f.Source))
 					for ti := range r.Tokens {
@@ -224,9 +222,7 @@ func (r *Rule) checkParagraphs(f *lint.File) []lint.Diagnostic {
 func (r *Rule) countCombinedInRange(
 	paragraphs []astutil.SectionParagraph, source []byte, lo *int, start, end int,
 ) int {
-	for *lo < len(paragraphs) && paragraphs[*lo].Line < start {
-		*lo++
-	}
+	*lo = astutil.AdvancePastLine(paragraphs, *lo, start)
 	total := 0
 	for i := *lo; i < len(paragraphs) && paragraphs[i].Line < end; i++ {
 		total += r.countCombined(paragraphs[i].ExtractText(source))
@@ -239,9 +235,7 @@ func (r *Rule) countCombinedInRange(
 func (r *Rule) countPatternInRange(
 	paragraphs []astutil.SectionParagraph, source []byte, lo *int, start, end int,
 ) int {
-	for *lo < len(paragraphs) && paragraphs[*lo].Line < start {
-		*lo++
-	}
+	*lo = astutil.AdvancePastLine(paragraphs, *lo, start)
 	total := 0
 	for i := *lo; i < len(paragraphs) && paragraphs[i].Line < end; i++ {
 		total += r.countPattern(paragraphs[i].ExtractText(source))

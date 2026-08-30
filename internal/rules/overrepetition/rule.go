@@ -130,9 +130,7 @@ func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 	for i, h := range headings {
 		end := astutil.SectionEnd(headings, i, totalLines)
 		clear(freq)
-		for lo < len(paragraphs) && paragraphs[lo].Line < h.Line {
-			lo++
-		}
+		lo = astutil.AdvancePastLine(paragraphs, lo, h.Line)
 		for j := lo; j < len(paragraphs) && paragraphs[j].Line < end; j++ {
 			r.accum(freq, paragraphs[j].ExtractText(f.Source))
 		}

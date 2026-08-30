@@ -359,8 +359,6 @@ func collectParagraphs(f *lint.File) []paragraph {
 	return out
 }
 
-// countSection sums words and paragraphs for paragraphs whose start
-// line falls within [start, end].
 // countSection sums the words and paragraph count of every entry in
 // paragraphs whose line falls in [start, end]. paragraphs must be in
 // ascending line order (astutil.CollectSectionParagraphs guarantees
