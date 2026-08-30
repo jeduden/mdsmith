@@ -165,12 +165,38 @@ describe.skipIf(skip)("createRuntime", () => {
     rt.dispose();
   });
 
-  test("capabilities advertises check, fix, and kinds", async () => {
+  test("capabilities advertises check, fix, kinds, rename, and move", async () => {
     const rt = await makeRuntime({});
     const caps = rt.capabilities();
     expect(caps).toContain("check");
     expect(caps).toContain("fix");
     expect(caps).toContain("kinds");
+    expect(caps).toContain("rename");
+    expect(caps).toContain("move");
+    rt.dispose();
+  });
+
+  test("rename rewrites a heading and its cross-file anchors", async () => {
+    const aSrc = "# Setup\n\nBody.\n";
+    const rt = await makeRuntime({
+      "a.md": aSrc,
+      "b.md": "See [go](a.md#setup).\n",
+    });
+    const plan = await rt.rename("a.md", aSrc, "heading", "Setup", "Install");
+    expect(plan.move).toBeUndefined();
+    expect(plan.edits["a.md"][0].newText).toBe("Install");
+    expect(plan.edits["b.md"][0].newText).toBe("install");
+    rt.dispose();
+  });
+
+  test("move rewrites references and describes the file relocation", async () => {
+    const rt = await makeRuntime({
+      "a.md": "# A\n",
+      "b.md": "See [a](a.md).\n",
+    });
+    const plan = await rt.move("a.md", "docs/a.md");
+    expect(plan.move).toEqual({ from: "a.md", to: "docs/a.md" });
+    expect(plan.edits["b.md"][0].newText).toBe("docs/a.md");
     rt.dispose();
   });
 

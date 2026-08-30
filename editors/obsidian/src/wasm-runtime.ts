@@ -55,12 +55,45 @@ export interface FixResult {
   diagnostics: Diagnostic[];
 }
 
+// TextEdit is one single-file replacement in LSP coordinates
+// (zero-based line, UTF-16 character offsets), mirroring the Go
+// pkg/mdsmith.TextEdit.
+export interface TextEdit {
+  startLine: number;
+  startChar: number;
+  endLine: number;
+  endChar: number;
+  newText: string;
+}
+
+// FileMove is the file relocation a move plan asks the host to perform,
+// both paths workspace-relative. Present only for move.
+export interface FileMove {
+  from: string;
+  to: string;
+}
+
+// RefactorPlan is the neutral result of rename or move: text edits keyed
+// by workspace-relative file, plus an optional file move the host
+// performs. The engine touches no files.
+export interface RefactorPlan {
+  edits: Record<string, TextEdit[]>;
+  move?: FileMove;
+}
+
 // MdsmithRuntime is the typed facade over one Session. Methods mirror
-// the Go Session one-to-one; check and fix are async because the WASM
-// bindings return Promises.
+// the Go Session one-to-one; all are async because the WASM bindings
+// return Promises (rename and move are plan-only — the host applies the
+// edits and performs any move).
 export interface MdsmithRuntime {
   check(uri: string, source: string): Promise<Diagnostic[]>;
   fix(uri: string, source: string): Promise<FixResult>;
+  // rename rewrites a heading or link-ref label in uri; as is "heading",
+  // "label", or "" to auto-detect. Returns the edits to apply.
+  rename(uri: string, source: string, as: string, oldName: string, newName: string): Promise<RefactorPlan>;
+  // move relocates src to dst and returns the edits plus the file move
+  // the host performs.
+  move(src: string, dst: string): Promise<RefactorPlan>;
   // invalidate pushes a vault change into the session. With content it
   // rewrites uri's bytes; without content it drops the file (deleted).
   invalidate(uri: string, content?: string): void;
@@ -95,6 +128,8 @@ interface MdsmithFactory {
 interface WasmSession {
   check(uri: string, source: string): Promise<Diagnostic[]>;
   fix(uri: string, source: string): Promise<FixResult>;
+  rename(uri: string, source: string, as: string, oldName: string, newName: string): Promise<RefactorPlan>;
+  move(src: string, dst: string): Promise<RefactorPlan>;
   capabilities(): string[];
   invalidate(uri: string, content?: string): void;
   dispose(): void;
@@ -247,6 +282,16 @@ class SessionRuntime implements MdsmithRuntime {
   fix(uri: string, source: string): Promise<FixResult> {
     this.assertLive();
     return this.session.fix(uri, source);
+  }
+
+  rename(uri: string, source: string, as: string, oldName: string, newName: string): Promise<RefactorPlan> {
+    this.assertLive();
+    return this.session.rename(uri, source, as, oldName, newName);
+  }
+
+  move(src: string, dst: string): Promise<RefactorPlan> {
+    this.assertLive();
+    return this.session.move(src, dst);
   }
 
   invalidate(uri: string, content?: string): void {
