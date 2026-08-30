@@ -34,6 +34,14 @@ type Workspace interface {
 	// IncomingAnchorEdges returns every workspace edge whose target
 	// is (file, slug). file is workspace-relative.
 	IncomingAnchorEdges(file, slug string) []index.Edge
+	// IncomingPathEdges returns every edge that addresses file by a
+	// rewritable path (a file link, an include, or a resolved build
+	// input), ignoring any anchor. A file move rewrites these.
+	IncomingPathEdges(file string) []index.Edge
+	// IncomingWikilinkEdges returns every `[[stem]]` edge whose target
+	// basename stem matches stem (compared case-insensitively). A file
+	// move whose basename stem changes rewrites these.
+	IncomingWikilinkEdges(stem string) []index.Edge
 	// Files lists every workspace-relative file path the workspace
 	// knows about.
 	Files() []string

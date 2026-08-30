@@ -40,6 +40,14 @@ func (w *memWorkspace) IncomingAnchorEdges(file, slug string) []index.Edge {
 	return w.idx.IncomingEdges(file, slug)
 }
 
+func (w *memWorkspace) IncomingPathEdges(file string) []index.Edge {
+	return w.idx.IncomingPathEdges(file)
+}
+
+func (w *memWorkspace) IncomingWikilinkEdges(stem string) []index.Edge {
+	return w.idx.IncomingWikilinkEdges(stem)
+}
+
 func (w *memWorkspace) Files() []string { return w.idx.Files() }
 
 func (w *memWorkspace) Resolve(file string) (string, []byte, bool) {

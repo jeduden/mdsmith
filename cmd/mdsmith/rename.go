@@ -90,6 +90,16 @@ func (w cliRenameWorkspace) IncomingAnchorEdges(file, slug string) []index.Edge 
 }
 
 // Trivial index pass-through; no dedicated test by design.
+func (w cliRenameWorkspace) IncomingPathEdges(file string) []index.Edge {
+	return w.idx.IncomingPathEdges(file)
+}
+
+// Trivial index pass-through; no dedicated test by design.
+func (w cliRenameWorkspace) IncomingWikilinkEdges(stem string) []index.Edge {
+	return w.idx.IncomingWikilinkEdges(stem)
+}
+
+// Trivial index pass-through; no dedicated test by design.
 func (w cliRenameWorkspace) Files() []string { return w.idx.Files() }
 
 func (w cliRenameWorkspace) Resolve(file string) (string, []byte, bool) {

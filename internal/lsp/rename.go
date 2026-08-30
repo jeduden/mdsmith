@@ -441,6 +441,16 @@ func (w lspRenameWorkspace) IncomingAnchorEdges(file, slug string) []index.Edge 
 }
 
 // Trivial index pass-through; no dedicated test by design.
+func (w lspRenameWorkspace) IncomingPathEdges(file string) []index.Edge {
+	return w.idx.IncomingPathEdges(file)
+}
+
+// Trivial index pass-through; no dedicated test by design.
+func (w lspRenameWorkspace) IncomingWikilinkEdges(stem string) []index.Edge {
+	return w.idx.IncomingWikilinkEdges(stem)
+}
+
+// Trivial index pass-through; no dedicated test by design.
 func (w lspRenameWorkspace) Files() []string { return w.idx.Files() }
 
 func (w lspRenameWorkspace) Resolve(file string) (string, []byte, bool) {
