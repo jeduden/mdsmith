@@ -106,13 +106,25 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	}
 
 	var diags []lint.Diagnostic
+	// paragraphPos is a forward-only cursor into paragraphs, shared
+	// across every heading's window. Heading windows are contiguous,
+	// non-overlapping, and ascending (headings and paragraphs are both
+	// in source-line order), so a paragraph consumed — or skipped as
+	// belonging to an earlier window — by one heading can never be
+	// needed by a later one. Threading the cursor through turns the
+	// whole loop into a single O(headings + paragraphs) pass instead of
+	// re-scanning all of paragraphs from index 0 per heading. See
+	// docs/development/high-performance-go.md's "Skip work you don't
+	// need" — the same forward-cursor pattern astutil.SectionBodies
+	// already uses for MDS057/MDS058.
+	paragraphPos := 0
 	for i, h := range headings {
 		end := totalLines
 		if i+1 < len(headings) {
 			end = headings[i+1].line - 1
 		}
 		diags = append(diags, r.checkLineLimit(f, h, end)...)
-		diags = append(diags, r.checkWordAndParagraphLimits(f, h, end, paragraphs)...)
+		diags = append(diags, r.checkWordAndParagraphLimits(f, h, end, paragraphs, &paragraphPos)...)
 	}
 	return diags
 }
@@ -138,12 +150,12 @@ func (r *Rule) checkLineLimit(f *lint.File, h heading, end int) []lint.Diagnosti
 }
 
 func (r *Rule) checkWordAndParagraphLimits(
-	f *lint.File, h heading, end int, paragraphs []paragraph,
+	f *lint.File, h heading, end int, paragraphs []paragraph, paragraphPos *int,
 ) []lint.Diagnostic {
 	if r.MaxWords <= 0 && r.MinWords <= 0 && r.MaxParagraphs <= 0 {
 		return nil
 	}
-	words, paraCount := countSection(paragraphs, h.line, end)
+	words, paraCount := countSection(paragraphs, paragraphPos, h.line, end)
 	var diags []lint.Diagnostic
 	if r.MaxWords > 0 && words > r.MaxWords {
 		diags = append(diags, lint.Diagnostic{
@@ -349,14 +361,27 @@ func collectParagraphs(f *lint.File) []paragraph {
 
 // countSection sums words and paragraphs for paragraphs whose start
 // line falls within [start, end].
-func countSection(paragraphs []paragraph, start, end int) (words, count int) {
-	for _, p := range paragraphs {
-		if p.line < start || p.line > end {
-			continue
-		}
-		words += p.words
-		count++
+// countSection sums the words and paragraph count of every entry in
+// paragraphs whose line falls in [start, end]. paragraphs must be in
+// ascending line order (astutil.CollectSectionParagraphs guarantees
+// this). *pos is a forward-only cursor: callers processing a sequence
+// of non-overlapping, ascending [start, end] windows over the same
+// paragraphs slice (as Check's per-heading loop does) should thread
+// the same pos through every call, since a paragraph this call skips
+// or consumes can never belong to a later, higher-numbered window —
+// letting the whole sequence of calls run in O(len(paragraphs)) total
+// instead of O(len(headings) * len(paragraphs)).
+func countSection(paragraphs []paragraph, pos *int, start, end int) (words, count int) {
+	for *pos < len(paragraphs) && paragraphs[*pos].line < start {
+		*pos++
 	}
+	i := *pos
+	for i < len(paragraphs) && paragraphs[i].line <= end {
+		words += paragraphs[i].words
+		count++
+		i++
+	}
+	*pos = i
 	return words, count
 }
 
