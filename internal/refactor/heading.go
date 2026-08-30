@@ -78,11 +78,13 @@ func (e HeadingCollisionError) Error() string {
 // the 1-based source line of the heading; oldName the heading's
 // current visible text; newName the requested text.
 //
-// Returns an empty (non-nil) map with no error when the rename is a
-// no-op (newName equals oldName after trimming). Returns a typed
-// error — InvalidHeadingRuneError, ErrEmptyHeadingSlug, or
-// HeadingCollisionError — without producing any edit when the rename
-// is unsafe, so callers surface the failure before applying anything.
+// Returns a Plan with an empty (non-nil) Edits map and no FileOp when
+// the rename is a no-op (newName equals oldName after trimming).
+// Returns a typed error — InvalidHeadingRuneError, ErrEmptyHeadingSlug,
+// or HeadingCollisionError — with a zero Plan and no edit when the
+// rename is unsafe, so callers surface the failure before applying
+// anything. A heading rename never moves a file, so Plan.FileOp is
+// always nil.
 //
 // Algorithm (unchanged from the LSP original):
 //  1. Recompute the file's heading slug map under the new text.
@@ -93,19 +95,19 @@ func (e HeadingCollisionError) Error() string {
 func Heading(
 	ws Workspace, fileKey, file string, source []byte,
 	line int, oldName, newName string,
-) (map[string][]Edit, error) {
+) (Plan, error) {
 	if strings.TrimSpace(newName) == strings.TrimSpace(oldName) {
-		return map[string][]Edit{}, nil
+		return Plan{Edits: map[string][]Edit{}}, nil
 	}
 	if r := firstControlRune(newName); r != 0 {
-		return nil, InvalidHeadingRuneError{Rune: r}
+		return Plan{}, InvalidHeadingRuneError{Rune: r}
 	}
 	if mdtext.Slugify(newName) == "" {
-		return nil, ErrEmptyHeadingSlug
+		return Plan{}, ErrEmptyHeadingSlug
 	}
 	oldSlugs, newSlugs, conflict := computeSlugRemap(source, line, newName)
 	if conflict != "" {
-		return nil, HeadingCollisionError{Conflict: conflict}
+		return Plan{}, HeadingCollisionError{Conflict: conflict}
 	}
 	// headingTextEdit's false branch is unreachable here: the caller
 	// resolved `line` to a heading line, so the row is a heading.
@@ -116,7 +118,7 @@ func Heading(
 		appendRefDefDestEditsForHeading(changes, ws, file, old, neu)
 	}
 	stableSortEdits(changes)
-	return changes, nil
+	return Plan{Edits: changes}, nil
 }
 
 // FindHeadingLine returns the 1-based source line of the first

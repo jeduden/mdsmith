@@ -68,23 +68,25 @@ func (e LabelConflictError) Error() string {
 	return "rename would collide with link reference [" + e.Conflict + "]"
 }
 
-// LinkRef computes the in-file edits that rename a link-reference
-// label from oldLabel to newName. The rewrite is file-local: the
-// `[label]: url` definition plus every `[text][label]` and shortcut
-// `[label]` use. oldLabel is normalized internally (CommonMark
-// link-label normalization: lowercase, whitespace collapsed) so
-// callers may pass raw label text or a pre-normalized form.
+// LinkRef computes a Plan that renames a link-reference label from
+// oldLabel to newName. The rewrite is file-local — the `[label]: url`
+// definition plus every `[text][label]` and shortcut `[label]` use —
+// so every edit groups under fileKey (the CLI file path or LSP
+// document URI the caller keys the source under) and Plan.FileOp is
+// always nil. oldLabel is normalized internally (CommonMark link-label
+// normalization: lowercase, whitespace collapsed) so callers may pass
+// raw label text or a pre-normalized form.
 //
 // Returns ErrEmptyLabel, an InvalidLabelRuneError, or a
-// LabelConflictError without producing any edit when the rename is
+// LabelConflictError with a zero Plan and no edit when the rename is
 // unsafe, so callers can surface the failure before applying.
-func LinkRef(source []byte, oldLabel, newName string) ([]Edit, error) {
+func LinkRef(fileKey string, source []byte, oldLabel, newName string) (Plan, error) {
 	oldLabel = NormalizedLabel([]byte(oldLabel))
 	if strings.TrimSpace(newName) == "" {
-		return nil, ErrEmptyLabel
+		return Plan{}, ErrEmptyLabel
 	}
 	if invalid := invalidLinkRefRune(newName); invalid != 0 {
-		return nil, InvalidLabelRuneError{Rune: invalid}
+		return Plan{}, InvalidLabelRuneError{Rune: invalid}
 	}
 	// A rename that keeps the same normalized label (e.g. "docs api"
 	// → "Docs API") is allowed — it refreshes casing/spacing across
@@ -92,9 +94,10 @@ func LinkRef(source []byte, oldLabel, newName string) ([]Edit, error) {
 	// form so such a rename never collides with itself.
 	newLabel := NormalizedLabel([]byte(newName))
 	if conflict := labelConflict(source, oldLabel, newLabel); conflict != "" {
-		return nil, LabelConflictError{Conflict: conflict}
+		return Plan{}, LabelConflictError{Conflict: conflict}
 	}
-	return linkRefEdits(source, oldLabel, newName), nil
+	edits := linkRefEdits(source, oldLabel, newName)
+	return Plan{Edits: map[string][]Edit{fileKey: edits}}, nil
 }
 
 // ValidRefDefBodyLines reports the body-line indices that hold a real

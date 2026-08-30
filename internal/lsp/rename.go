@@ -457,12 +457,12 @@ func (s *Server) renameHeading(
 	source []byte, rel string, line int, res index.LocateResult, newName string,
 ) {
 	ws := lspRenameWorkspace{s: s, idx: s.ensureIndex()}
-	changes, err := refactor.Heading(ws, p.TextDocument.URI, rel, source, line, res.Name, newName)
+	plan, err := refactor.Heading(ws, p.TextDocument.URI, rel, source, line, res.Name, newName)
 	if err != nil {
 		s.writeRenameError(msg.ID, err)
 		return
 	}
-	_ = s.t.writeResponse(msg.ID, &workspaceEdit{Changes: toLSPChanges(changes)})
+	_ = s.t.writeResponse(msg.ID, &workspaceEdit{Changes: toLSPChanges(plan.Edits)})
 }
 
 // renameLinkRef adapts refactor.LinkRef to the LSP wire. The engine
@@ -473,12 +473,12 @@ func (s *Server) renameLinkRef(
 	msg *requestMessage, p renameParams,
 	source []byte, oldLabel, newName string,
 ) {
-	edits, err := refactor.LinkRef(source, oldLabel, newName)
+	plan, err := refactor.LinkRef(p.TextDocument.URI, source, oldLabel, newName)
 	if err != nil {
 		s.writeRenameError(msg.ID, err)
 		return
 	}
-	te := toTextEdits(edits)
+	te := toTextEdits(plan.Edits[p.TextDocument.URI])
 	sortTextEditsBottomUp(te)
 	_ = s.t.writeResponse(msg.ID, &workspaceEdit{
 		Changes: map[string][]textEdit{p.TextDocument.URI: te},

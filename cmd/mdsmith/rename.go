@@ -233,27 +233,27 @@ func computeRenameChanges(
 			fmt.Fprintf(os.Stderr, "mdsmith: no heading %q in %s\n", oldName, target)
 			return nil, 1
 		}
-		changes, err := refactor.Heading(ws, target, target, src, line, oldName, newName)
+		plan, err := refactor.Heading(ws, target, target, src, line, oldName, newName)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 			return nil, 2
 		}
-		if len(changes) == 0 {
+		if len(plan.Edits) == 0 {
 			fmt.Fprintf(os.Stderr, "mdsmith: nothing to rename for heading %q\n", oldName)
 			return nil, 1
 		}
-		return changes, -1
+		return plan.Edits, -1
 	}
-	edits, err := refactor.LinkRef(src, oldName, newName)
+	plan, err := refactor.LinkRef(target, src, oldName, newName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return nil, 2
 	}
-	if len(edits) == 0 {
+	if len(plan.Edits[target]) == 0 {
 		fmt.Fprintf(os.Stderr, "mdsmith: no link reference %q in %s\n", oldName, target)
 		return nil, 1
 	}
-	return map[string][]refactor.Edit{target: edits}, -1
+	return plan.Edits, -1
 }
 
 // applyAndReport writes every change to disk and prints the per-file

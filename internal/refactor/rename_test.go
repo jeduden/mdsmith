@@ -10,7 +10,7 @@ import (
 
 func TestLinkRef_DefAndShortcutUse(t *testing.T) {
 	src := []byte("# T\n\nSee [spec].\n\n[spec]: https://x.example\n")
-	edits, err := LinkRef(src, "spec", "rfc")
+	edits, err := callLinkRef(src, "spec", "rfc")
 	require.NoError(t, err)
 	require.Len(t, edits, 2)
 	// Both edits replace the label text with the new name.
@@ -20,27 +20,38 @@ func TestLinkRef_DefAndShortcutUse(t *testing.T) {
 	}
 }
 
+func TestLinkRef_PlanKeysUnderFileKeyNoFileOp(t *testing.T) {
+	src := []byte("# T\n\nSee [spec].\n\n[spec]: u\n")
+	plan, err := LinkRef("docs/a.md", src, "spec", "rfc")
+	require.NoError(t, err)
+	// A label rename is file-local: every edit groups under the file's
+	// own key and nothing else, and no file operation is planned.
+	require.Len(t, plan.Edits, 1)
+	assert.Len(t, plan.Edits["docs/a.md"], 2)
+	assert.Nil(t, plan.FileOp)
+}
+
 func TestLinkRef_DefAndFullUse(t *testing.T) {
 	src := []byte("# T\n\nSee [the spec][spec] here.\n\n[spec]: u\n")
-	edits, err := LinkRef(src, "spec", "rfc")
+	edits, err := callLinkRef(src, "spec", "rfc")
 	require.NoError(t, err)
 	require.Len(t, edits, 2)
 }
 
 func TestLinkRef_EmptyLabel(t *testing.T) {
-	_, err := LinkRef([]byte("[a]: u\n"), "a", "   ")
+	_, err := callLinkRef([]byte("[a]: u\n"), "a", "   ")
 	assert.ErrorIs(t, err, ErrEmptyLabel)
 }
 
 func TestLinkRef_InvalidRune(t *testing.T) {
-	_, err := LinkRef([]byte("[a]: u\n"), "a", "bad]label")
+	_, err := callLinkRef([]byte("[a]: u\n"), "a", "bad]label")
 	var ire InvalidLabelRuneError
 	require.True(t, errors.As(err, &ire))
 	assert.Equal(t, ']', ire.Rune)
 }
 
 func TestLinkRef_NewlineRuneRejected(t *testing.T) {
-	_, err := LinkRef([]byte("[a]: u\n"), "a", "two\nlines")
+	_, err := callLinkRef([]byte("[a]: u\n"), "a", "two\nlines")
 	var ire InvalidLabelRuneError
 	require.True(t, errors.As(err, &ire))
 	assert.Equal(t, '\n', ire.Rune)
@@ -48,7 +59,7 @@ func TestLinkRef_NewlineRuneRejected(t *testing.T) {
 
 func TestLinkRef_LabelConflict(t *testing.T) {
 	src := []byte("[a]: u1\n[Beta]: u2\n")
-	_, err := LinkRef(src, "a", "beta")
+	_, err := callLinkRef(src, "a", "beta")
 	var lce LabelConflictError
 	require.True(t, errors.As(err, &lce))
 	assert.Equal(t, "Beta", lce.Conflict)
@@ -58,7 +69,7 @@ func TestLinkRef_SameNormalizedFormRefreshesCasing(t *testing.T) {
 	// "a b" and "A  B" normalize identically; the rename is allowed
 	// and must not self-collide.
 	src := []byte("Use [a b].\n\n[a b]: u\n")
-	edits, err := LinkRef(src, "a b", "A  B")
+	edits, err := callLinkRef(src, "a b", "A  B")
 	require.NoError(t, err)
 	require.Len(t, edits, 2)
 }
@@ -67,14 +78,14 @@ func TestLinkRef_NormalizesOldLabel(t *testing.T) {
 	// LinkRef normalizes oldLabel internally, so callers may pass
 	// the raw label text without pre-normalizing it.
 	src := []byte("See [spec].\n\n[spec]: u\n")
-	edits, err := LinkRef(src, "Spec", "rfc")
+	edits, err := callLinkRef(src, "Spec", "rfc")
 	require.NoError(t, err)
 	require.Len(t, edits, 2)
 }
 
 func TestLinkRef_CodeFenceDefNotRewritten(t *testing.T) {
 	src := []byte("Use [spec].\n\n```\n[spec]: fake\n```\n\n[spec]: real\n")
-	edits, err := LinkRef(src, "spec", "rfc")
+	edits, err := callLinkRef(src, "spec", "rfc")
 	require.NoError(t, err)
 	// The fenced `[spec]: fake` is content, not a def: only the real
 	// def plus the one use are rewritten.
@@ -86,7 +97,7 @@ func TestLinkRef_CodeFenceDefNotRewritten(t *testing.T) {
 
 func TestLinkRef_WithFrontMatterLineOffset(t *testing.T) {
 	src := []byte("---\ntitle: x\n---\n# H\n\nSee [s].\n\n[s]: u\n")
-	edits, err := LinkRef(src, "s", "t")
+	edits, err := callLinkRef(src, "s", "t")
 	require.NoError(t, err)
 	require.Len(t, edits, 2)
 	// Edits land on body lines shifted by the 3-line front matter.
@@ -121,7 +132,7 @@ func TestLinkRef_OtherReferenceLabelsUntouched(t *testing.T) {
 	// A second reference use with a different label exercises the
 	// label-mismatch skip in the AST walk: only [spec] is rewritten.
 	src := []byte("See [spec] and [misc].\n\n[spec]: u\n[misc]: v\n")
-	edits, err := LinkRef(src, "spec", "rfc")
+	edits, err := callLinkRef(src, "spec", "rfc")
 	require.NoError(t, err)
 	require.Len(t, edits, 2, "only the spec def + spec use")
 }
@@ -129,7 +140,7 @@ func TestLinkRef_OtherReferenceLabelsUntouched(t *testing.T) {
 func TestLinkRef_NoMatchingLabel(t *testing.T) {
 	// Renaming a label with no def and no use yields no edits and
 	// no error (the caller decides whether that is meaningful).
-	edits, err := LinkRef([]byte("# Just a heading\n"), "ghost", "spirit")
+	edits, err := callLinkRef([]byte("# Just a heading\n"), "ghost", "spirit")
 	require.NoError(t, err)
 	assert.Empty(t, edits)
 }
