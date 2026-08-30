@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/jeduden/mdsmith/internal/rename"
+	"github.com/jeduden/mdsmith/internal/refactor"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -150,12 +150,12 @@ func TestApplyAndReport_Errors(t *testing.T) {
 
 	// A change keyed at an unreadable path → exit 2.
 	got := applyAndReport(&bytes.Buffer{}, ws,
-		map[string][]rename.Edit{"missing.md": {{NewText: "x"}}}, "text")
+		map[string][]refactor.Edit{"missing.md": {{NewText: "x"}}}, "text")
 	assert.Equal(t, 2, got)
 
 	// applyEdits fails on an out-of-range line → exit 2.
-	bad := map[string][]rename.Edit{"a.md": {{
-		Range:   rename.Range{Start: rename.Position{Line: 99}, End: rename.Position{Line: 99}},
+	bad := map[string][]refactor.Edit{"a.md": {{
+		Range:   refactor.Range{Start: refactor.Position{Line: 99}, End: refactor.Position{Line: 99}},
 		NewText: "x",
 	}}}
 	assert.Equal(t, 2, applyAndReport(&bytes.Buffer{}, ws, bad, "text"))
@@ -181,13 +181,13 @@ func TestEmitRenameSummary(t *testing.T) {
 	assert.Equal(t, 2, emitRenameSummary(ew, sums, "text"))
 }
 
-// mkEdit builds a single-line rename.Edit, keeping the table-style
+// mkEdit builds a single-line refactor.Edit, keeping the table-style
 // test cases below readable.
-func mkEdit(line, startCh, endCh int, text string) rename.Edit {
-	return rename.Edit{
-		Range: rename.Range{
-			Start: rename.Position{Line: line, Character: startCh},
-			End:   rename.Position{Line: line, Character: endCh},
+func mkEdit(line, startCh, endCh int, text string) refactor.Edit {
+	return refactor.Edit{
+		Range: refactor.Range{
+			Start: refactor.Position{Line: line, Character: startCh},
+			End:   refactor.Position{Line: line, Character: endCh},
 		},
 		NewText: text,
 	}
@@ -195,13 +195,13 @@ func mkEdit(line, startCh, endCh int, text string) rename.Edit {
 
 func TestApplyEdits(t *testing.T) {
 	t.Run("single edit", func(t *testing.T) {
-		out, err := applyEdits([]byte("# Setup\n"), []rename.Edit{mkEdit(0, 2, 7, "Install")})
+		out, err := applyEdits([]byte("# Setup\n"), []refactor.Edit{mkEdit(0, 2, 7, "Install")})
 		require.NoError(t, err)
 		assert.Equal(t, "# Install\n", string(out))
 	})
 	t.Run("two edits same line apply right-to-left", func(t *testing.T) {
 		// `[a](#x) [b](#y)` → rewrite both fragments.
-		out, err := applyEdits([]byte("[a](#x) [b](#y)\n"), []rename.Edit{
+		out, err := applyEdits([]byte("[a](#x) [b](#y)\n"), []refactor.Edit{
 			mkEdit(0, 5, 6, "X"),
 			mkEdit(0, 13, 14, "Y"),
 		})
@@ -209,23 +209,23 @@ func TestApplyEdits(t *testing.T) {
 		assert.Equal(t, "[a](#X) [b](#Y)\n", string(out))
 	})
 	t.Run("CRLF preserved", func(t *testing.T) {
-		out, err := applyEdits([]byte("# Setup\r\n"), []rename.Edit{mkEdit(0, 2, 7, "X")})
+		out, err := applyEdits([]byte("# Setup\r\n"), []refactor.Edit{mkEdit(0, 2, 7, "X")})
 		require.NoError(t, err)
 		assert.Equal(t, "# X\r\n", string(out))
 	})
 	t.Run("multi-line edit rejected", func(t *testing.T) {
-		_, err := applyEdits([]byte("a\nb\n"), []rename.Edit{{
-			Range: rename.Range{Start: rename.Position{Line: 0}, End: rename.Position{Line: 1}},
+		_, err := applyEdits([]byte("a\nb\n"), []refactor.Edit{{
+			Range: refactor.Range{Start: refactor.Position{Line: 0}, End: refactor.Position{Line: 1}},
 		}})
 		require.Error(t, err)
 	})
 	t.Run("line out of range", func(t *testing.T) {
-		_, err := applyEdits([]byte("a\n"), []rename.Edit{mkEdit(9, 0, 0, "")})
+		_, err := applyEdits([]byte("a\n"), []refactor.Edit{mkEdit(9, 0, 0, "")})
 		require.Error(t, err)
 	})
 	t.Run("offset out of range", func(t *testing.T) {
 		// Start past End after mapping → the s>en guard fires.
-		_, err := applyEdits([]byte("abcd\n"), []rename.Edit{mkEdit(0, 3, 1, "x")})
+		_, err := applyEdits([]byte("abcd\n"), []refactor.Edit{mkEdit(0, 3, 1, "x")})
 		require.Error(t, err)
 	})
 }
@@ -264,16 +264,16 @@ func TestApplyAndReport_WriteErrorAndFallback(t *testing.T) {
 	// rootDir-join fallback; the edit applies and the file is
 	// rewritten.
 	ws := cliRenameWorkspace{relToAbs: map[string]string{}, rootDir: dir}
-	edit := rename.Edit{
-		Range: rename.Range{
-			Start: rename.Position{Line: 0, Character: 2},
-			End:   rename.Position{Line: 0, Character: 7},
+	edit := refactor.Edit{
+		Range: refactor.Range{
+			Start: refactor.Position{Line: 0, Character: 2},
+			End:   refactor.Position{Line: 0, Character: 7},
 		},
 		NewText: "Install",
 	}
 	var buf bytes.Buffer
 	require.Equal(t, 0, applyAndReport(&buf, ws,
-		map[string][]rename.Edit{rel: {edit}}, "text"))
+		map[string][]refactor.Edit{rel: {edit}}, "text"))
 	got, _ := os.ReadFile(abs)
 	assert.Contains(t, string(got), "# Install")
 
@@ -285,7 +285,7 @@ func TestApplyAndReport_WriteErrorAndFallback(t *testing.T) {
 	require.NoError(t, os.Mkdir(filepath.Join(dir, "sub"), 0o755))
 	ws2 := cliRenameWorkspace{relToAbs: map[string]string{"sub": abs}, rootDir: dir}
 	code := applyAndReport(&bytes.Buffer{}, ws2,
-		map[string][]rename.Edit{"./sub": {edit}}, "text")
+		map[string][]refactor.Edit{"./sub": {edit}}, "text")
 	assert.Equal(t, 2, code)
 }
 

@@ -1,10 +1,17 @@
-// Package rename is the workspace rename engine shared by the LSP
-// server and the `mdsmith rename` CLI. It answers one question:
-// given a file's source and a rename target (a heading or a
-// link-reference label), what edits perform the rename, or what
-// typed conflict prevents it? It speaks no LSP wire types — callers
-// adapt the neutral Edit/Position/Range values to their surface.
-package rename
+// Package refactor is the workspace refactor engine shared by the LSP
+// server, the `mdsmith move` / `mdsmith rename` CLI commands, and the
+// WASM engine. It answers one question: given a workspace and an
+// identity change — a file's path, a heading's slug, or a
+// link-reference label — what edits carry that change through every
+// reference, and what file operation (if any) does the host perform?
+//
+// Every operation returns a neutral Plan: per-file Edits keyed by
+// output target (a CLI path or an LSP document URI) plus an optional
+// FileOp the host executes. The engine speaks no LSP wire types and
+// never touches the filesystem — there are no subprocesses under
+// GOOS=js GOARCH=wasm — so callers adapt the neutral values to their
+// surface and run any FileOp themselves.
+package refactor
 
 import (
 	"bytes"

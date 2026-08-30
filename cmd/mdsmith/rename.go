@@ -16,7 +16,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/mdtext"
 	"github.com/jeduden/mdsmith/internal/oscompat"
-	"github.com/jeduden/mdsmith/internal/rename"
+	"github.com/jeduden/mdsmith/internal/refactor"
 )
 
 // writeFileTempFn creates a named temp file; exposed as a variable so tests
@@ -226,14 +226,14 @@ func buildRenameWorkspace(opts renameOptions, target string) (cliRenameWorkspace
 func computeRenameChanges(
 	ws cliRenameWorkspace, target string, src []byte,
 	oldName, newName string, isHeading bool,
-) (map[string][]rename.Edit, int) {
+) (map[string][]refactor.Edit, int) {
 	if isHeading {
-		line, ok := rename.FindHeadingLine(src, oldName)
+		line, ok := refactor.FindHeadingLine(src, oldName)
 		if !ok {
 			fmt.Fprintf(os.Stderr, "mdsmith: no heading %q in %s\n", oldName, target)
 			return nil, 1
 		}
-		changes, err := rename.Heading(ws, target, target, src, line, oldName, newName)
+		changes, err := refactor.Heading(ws, target, target, src, line, oldName, newName)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 			return nil, 2
@@ -244,7 +244,7 @@ func computeRenameChanges(
 		}
 		return changes, -1
 	}
-	edits, err := rename.LinkRef(src, oldName, newName)
+	edits, err := refactor.LinkRef(src, oldName, newName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return nil, 2
@@ -253,14 +253,14 @@ func computeRenameChanges(
 		fmt.Fprintf(os.Stderr, "mdsmith: no link reference %q in %s\n", oldName, target)
 		return nil, 1
 	}
-	return map[string][]rename.Edit{target: edits}, -1
+	return map[string][]refactor.Edit{target: edits}, -1
 }
 
 // applyAndReport writes every change to disk and prints the per-file
 // summary. Returns 0 on success, 2 on a write or render failure.
 func applyAndReport(
 	w io.Writer, ws cliRenameWorkspace,
-	changes map[string][]rename.Edit, format string,
+	changes map[string][]refactor.Edit, format string,
 ) int {
 	summaries := make([]renameSummary, 0, len(changes))
 	for rel, edits := range changes {
@@ -319,9 +319,9 @@ func emitRenameSummary(w io.Writer, summaries []renameSummary, format string) in
 // byte offsets — computed against the original row — stay valid while
 // the bytes to its right are rewritten. A trailing `\r` is preserved
 // so CRLF files round-trip.
-func applyEdits(src []byte, edits []rename.Edit) ([]byte, error) {
+func applyEdits(src []byte, edits []refactor.Edit) ([]byte, error) {
 	segs := splitKeepCR(src)
-	byLine := map[int][]rename.Edit{}
+	byLine := map[int][]refactor.Edit{}
 	for _, e := range edits {
 		if e.Range.Start.Line != e.Range.End.Line {
 			return nil, errors.New("multi-line edit is not supported")
