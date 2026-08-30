@@ -33,9 +33,9 @@ func renameWorkspace(t *testing.T) string {
 }
 
 func TestParseRenameFlags(t *testing.T) {
-	opts, pos, err := parseRenameFlags([]string{"--heading", "a.md", "Old", "New"})
+	opts, pos, err := parseRenameFlags([]string{"--as", "heading", "a.md", "Old", "New"})
 	require.NoError(t, err)
-	assert.True(t, opts.heading)
+	assert.Equal(t, "heading", opts.as)
 	assert.Equal(t, []string{"a.md", "Old", "New"}, pos)
 
 	_, _, err = parseRenameFlags([]string{"--unknown"})
@@ -46,19 +46,17 @@ func TestRunRename_FlagAndArgValidation(t *testing.T) {
 	renameWorkspace(t)
 	// --help is a pflag ErrHelp: reportFlagParseErr returns 0.
 	assert.Equal(t, 0, runRename([]string{"--help"}))
-	// Neither mode flag.
-	assert.Equal(t, 2, runRename([]string{"a.md", "Old", "New"}))
-	// Both mode flags.
-	assert.Equal(t, 2, runRename([]string{"--heading", "--link-ref", "a.md", "O", "N"}))
+	// Invalid --as value.
+	assert.Equal(t, 2, runRename([]string{"--as", "bogus", "a.md", "O", "N"}))
 	// Wrong positional count.
-	assert.Equal(t, 2, runRename([]string{"--heading", "a.md", "Old"}))
+	assert.Equal(t, 2, runRename([]string{"--as", "heading", "a.md", "Old"}))
 	// Not workspace-relative.
-	assert.Equal(t, 2, runRename([]string{"--heading", "/abs/a.md", "Old", "New"}))
+	assert.Equal(t, 2, runRename([]string{"--as", "heading", "/abs/a.md", "Old", "New"}))
 }
 
 func TestRunRename_HeadingSuccess(t *testing.T) {
 	dir := renameWorkspace(t)
-	code := runRename([]string{"--heading", "a.md", "Setup", "Install"})
+	code := runRename([]string{"--as", "heading", "a.md", "Setup", "Install"})
 	assert.Equal(t, 0, code)
 	a, _ := os.ReadFile(filepath.Join(dir, "a.md"))
 	assert.Contains(t, string(a), "# Install")
@@ -66,36 +64,77 @@ func TestRunRename_HeadingSuccess(t *testing.T) {
 	assert.Contains(t, string(b), "a.md#install")
 }
 
+func TestRunRename_AutoDetects(t *testing.T) {
+	dir := renameWorkspace(t)
+	// No --as: "Setup" matches a heading in a.md, so a heading rename.
+	assert.Equal(t, 0, runRename([]string{"a.md", "Setup", "Install"}))
+	a, _ := os.ReadFile(filepath.Join(dir, "a.md"))
+	assert.Contains(t, string(a), "# Install")
+	// No --as: "docs" matches a link-ref label in b.md, so a label rename.
+	assert.Equal(t, 0, runRename([]string{"b.md", "docs", "rfc"}))
+	b, _ := os.ReadFile(filepath.Join(dir, "b.md"))
+	assert.Contains(t, string(b), "[rfc]: https://x.example")
+}
+
+func TestRunRename_MoveIntentGuard(t *testing.T) {
+	renameWorkspace(t)
+	// A path-shaped old/new that matches no symbol steers to `move`.
+	var code int
+	stderr := captureStderr(func() {
+		code = runRename([]string{"a.md", "old.md", "new.md"})
+	})
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "mdsmith move")
+}
+
+func TestRunRename_AmbiguousNeedsAs(t *testing.T) {
+	dir := renameWorkspace(t)
+	// A file where the same text is both a heading and a link-ref label.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "d.md"),
+		[]byte("# Spec\n\nSee [Spec].\n\n[Spec]: https://x.example\n"), 0o644))
+	assert.Equal(t, 2, runRename([]string{"d.md", "Spec", "Rfc"}))
+	// Forcing --as resolves it.
+	assert.Equal(t, 0, runRename([]string{"d.md", "--as", "heading", "Spec", "Rfc"}))
+}
+
 func TestRunRename_LinkRefSuccess(t *testing.T) {
 	dir := renameWorkspace(t)
-	code := runRename([]string{"--link-ref", "b.md", "docs", "rfc"})
+	code := runRename([]string{"--as", "label", "b.md", "docs", "rfc"})
 	assert.Equal(t, 0, code)
 	b, _ := os.ReadFile(filepath.Join(dir, "b.md"))
 	assert.Contains(t, string(b), "[the docs][rfc]")
 	assert.Contains(t, string(b), "[rfc]: https://x.example")
 }
 
+func TestRunRename_DryRunChangesNothing(t *testing.T) {
+	dir := renameWorkspace(t)
+	before, _ := os.ReadFile(filepath.Join(dir, "a.md"))
+	assert.Equal(t, 0, runRename([]string{"--as", "heading", "--dry-run", "a.md", "Setup", "Install"}))
+	after, _ := os.ReadFile(filepath.Join(dir, "a.md"))
+	assert.Equal(t, string(before), string(after))
+}
+
 func TestRunRename_NoMatchAndConflict(t *testing.T) {
 	dir := renameWorkspace(t)
 	// Heading text not present → exit 1.
-	assert.Equal(t, 1, runRename([]string{"--heading", "a.md", "Ghost", "X"}))
+	assert.Equal(t, 1, runRename([]string{"--as", "heading", "a.md", "Ghost", "X"}))
 	// Link-ref label not present → exit 1.
-	assert.Equal(t, 1, runRename([]string{"--link-ref", "a.md", "ghost", "x"}))
+	assert.Equal(t, 1, runRename([]string{"--as", "label", "a.md", "ghost", "x"}))
 	// Heading collision → exit 2.
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "c.md"),
 		[]byte("# Alpha\n\n## Beta\n"), 0o644))
-	assert.Equal(t, 2, runRename([]string{"--heading", "c.md", "Alpha", "Beta"}))
+	assert.Equal(t, 2, runRename([]string{"--as", "heading", "c.md", "Alpha", "Beta"}))
 	// Heading no-op (same text) → empty changes → exit 1.
-	assert.Equal(t, 1, runRename([]string{"--heading", "a.md", "Setup", "Setup"}))
+	assert.Equal(t, 1, runRename([]string{"--as", "heading", "a.md", "Setup", "Setup"}))
 	// Link-ref invalid rune → exit 2.
-	assert.Equal(t, 2, runRename([]string{"--link-ref", "b.md", "docs", "bad]label"}))
+	assert.Equal(t, 2, runRename([]string{"--as", "label", "b.md", "docs", "bad]label"}))
 }
 
 func TestRunRename_JSONFormat(t *testing.T) {
 	renameWorkspace(t)
 	var code int
 	out := captureStdout(func() {
-		code = runRename([]string{"--heading", "--format", "json", "a.md", "Setup", "Install"})
+		code = runRename([]string{"--as", "heading", "--format", "json", "a.md", "Setup", "Install"})
 	})
 	assert.Equal(t, 0, code)
 	assert.Contains(t, out, `"file": "a.md"`)
@@ -130,55 +169,62 @@ func TestBuildRenameWorkspace_DiscoveryPaths(t *testing.T) {
 	})
 }
 
-func TestComputeRenameChanges(t *testing.T) {
+func TestComputeRenamePlan(t *testing.T) {
 	renameWorkspace(t)
 	ws, src, code := buildRenameWorkspace(renameOptions{}, "a.md")
 	require.Equal(t, -1, code)
 
-	changes, c := computeRenameChanges(ws, "a.md", src, "Setup", "Install", true)
+	plan, c := computeRenamePlan(ws, "a.md", src, "Setup", "Install", "heading")
 	assert.Equal(t, -1, c)
-	assert.Contains(t, changes, "a.md")
+	assert.Contains(t, plan.Edits, "a.md")
 
-	_, c = computeRenameChanges(ws, "a.md", src, "Ghost", "X", true)
+	_, c = computeRenamePlan(ws, "a.md", src, "Ghost", "X", "heading")
 	assert.Equal(t, 1, c)
 }
 
-func TestApplyAndReport_Errors(t *testing.T) {
+func TestApplyPlan_Errors(t *testing.T) {
 	renameWorkspace(t)
 	ws, _, code := buildRenameWorkspace(renameOptions{}, "a.md")
 	require.Equal(t, -1, code)
 
-	// A change keyed at an unreadable path → exit 2.
-	got := applyAndReport(&bytes.Buffer{}, ws,
-		map[string][]refactor.Edit{"missing.md": {{NewText: "x"}}}, "text")
+	// An edit keyed at an unreadable path → exit 2.
+	got := applyPlan(&bytes.Buffer{}, ws,
+		refactor.Plan{Edits: map[string][]refactor.Edit{"missing.md": {{NewText: "x"}}}}, "text", false)
 	assert.Equal(t, 2, got)
 
 	// applyEdits fails on an out-of-range line → exit 2.
-	bad := map[string][]refactor.Edit{"a.md": {{
+	bad := refactor.Plan{Edits: map[string][]refactor.Edit{"a.md": {{
 		Range:   refactor.Range{Start: refactor.Position{Line: 99}, End: refactor.Position{Line: 99}},
 		NewText: "x",
-	}}}
-	assert.Equal(t, 2, applyAndReport(&bytes.Buffer{}, ws, bad, "text"))
+	}}}}
+	assert.Equal(t, 2, applyPlan(&bytes.Buffer{}, ws, bad, "text", false))
 }
 
-func TestEmitRenameSummary(t *testing.T) {
+func TestEmitPlanReport(t *testing.T) {
 	sums := []renameSummary{{File: "a.md", Edits: 2}}
+	op := &refactor.FileOp{From: "a.md", To: "docs/a.md"}
 
 	var buf bytes.Buffer
-	assert.Equal(t, 0, emitRenameSummary(&buf, sums, "text"))
+	assert.Equal(t, 0, emitPlanReport(&buf, sums, op, "text", false))
 	assert.Contains(t, buf.String(), "a.md: 2 edit(s)")
+	assert.Contains(t, buf.String(), "moved a.md -> docs/a.md")
 
 	buf.Reset()
-	assert.Equal(t, 0, emitRenameSummary(&buf, sums, "json"))
-	assert.Contains(t, buf.String(), `"edits": 2`)
+	assert.Equal(t, 0, emitPlanReport(&buf, sums, op, "text", true))
+	assert.Contains(t, buf.String(), "would move a.md -> docs/a.md")
 
-	assert.Equal(t, 2, emitRenameSummary(&buf, sums, "yaml"))
+	buf.Reset()
+	assert.Equal(t, 0, emitPlanReport(&buf, sums, op, "json", false))
+	assert.Contains(t, buf.String(), `"edits": 2`)
+	assert.Contains(t, buf.String(), `"to": "docs/a.md"`)
+
+	assert.Equal(t, 2, emitPlanReport(&buf, sums, nil, "yaml", false))
 
 	// A writer that always errors drives the json and text write-error
 	// arms.
 	ew := &errWriter{err: errors.New("boom")}
-	assert.Equal(t, 2, emitRenameSummary(ew, sums, "json"))
-	assert.Equal(t, 2, emitRenameSummary(ew, sums, "text"))
+	assert.Equal(t, 2, emitPlanReport(ew, sums, op, "json", false))
+	assert.Equal(t, 2, emitPlanReport(ew, sums, op, "text", false))
 }
 
 // mkEdit builds a single-line refactor.Edit, keeping the table-style
@@ -250,19 +296,18 @@ func TestRunRename_WorkspaceBuildFailure(t *testing.T) {
 	// A missing config makes buildRenameWorkspace return 2, which
 	// runRename propagates.
 	assert.Equal(t, 2, runRename([]string{
-		"--heading", "--config", "/no/such/.mdsmith.yml", "a.md", "Setup", "Install",
+		"--as", "heading", "--config", "/no/such/.mdsmith.yml", "a.md", "Setup", "Install",
 	}))
 }
 
-func TestApplyAndReport_WriteErrorAndFallback(t *testing.T) {
+func TestApplyPlan_WriteErrorAndFallback(t *testing.T) {
 	dir := t.TempDir()
 	rel := "a.md"
 	abs := filepath.Join(dir, rel)
 	require.NoError(t, os.WriteFile(abs, []byte("# Setup\n"), 0o644))
 
-	// relToAbs is empty so Resolve + applyAndReport take the
-	// rootDir-join fallback; the edit applies and the file is
-	// rewritten.
+	// relToAbs is empty so Resolve + applyPlan take the rootDir-join
+	// fallback; the edit applies and the file is rewritten.
 	ws := cliRenameWorkspace{relToAbs: map[string]string{}, rootDir: dir}
 	edit := refactor.Edit{
 		Range: refactor.Range{
@@ -272,20 +317,20 @@ func TestApplyAndReport_WriteErrorAndFallback(t *testing.T) {
 		NewText: "Install",
 	}
 	var buf bytes.Buffer
-	require.Equal(t, 0, applyAndReport(&buf, ws,
-		map[string][]refactor.Edit{rel: {edit}}, "text"))
+	require.Equal(t, 0, applyPlan(&buf, ws,
+		refactor.Plan{Edits: map[string][]refactor.Edit{rel: {edit}}}, "text", false))
 	got, _ := os.ReadFile(abs)
 	assert.Contains(t, string(got), "# Install")
 
 	// Resolve normalizes "./sub" → "sub" and reads the mapped file
-	// (ok), but applyAndReport's raw-key lookup misses and falls back
+	// (ok), but applyEditsToFile's raw-key lookup misses and falls back
 	// to rootDir/sub — a directory — so writeFilePreservingMode fails
 	// → exit 2. This drives the write-error arm without relying on
 	// permission bits (the test runs as root).
 	require.NoError(t, os.Mkdir(filepath.Join(dir, "sub"), 0o755))
 	ws2 := cliRenameWorkspace{relToAbs: map[string]string{"sub": abs}, rootDir: dir}
-	code := applyAndReport(&bytes.Buffer{}, ws2,
-		map[string][]refactor.Edit{"./sub": {edit}}, "text")
+	code := applyPlan(&bytes.Buffer{}, ws2,
+		refactor.Plan{Edits: map[string][]refactor.Edit{"./sub": {edit}}}, "text", false)
 	assert.Equal(t, 2, code)
 }
 

@@ -28,7 +28,7 @@ func setupRenameWorkspace(t *testing.T) string {
 
 func TestE2E_Rename_Heading_RewritesWorkspace(t *testing.T) {
 	dir := setupRenameWorkspace(t)
-	stdout, _, code := runBinaryInDir(t, dir, "", "rename", "a.md", "--heading", "Setup", "Install")
+	stdout, _, code := runBinaryInDir(t, dir, "", "rename", "a.md", "--as", "heading", "Setup", "Install")
 	require.Equal(t, 0, code, "stdout=%q", stdout)
 	assert.Contains(t, stdout, "a.md: 1 edit(s)")
 	assert.Contains(t, stdout, "b.md: 1 edit(s)")
@@ -42,7 +42,7 @@ func TestE2E_Rename_Heading_RewritesWorkspace(t *testing.T) {
 func TestE2E_Rename_LinkRef_JSON(t *testing.T) {
 	dir := setupRenameWorkspace(t)
 	stdout, _, code := runBinaryInDir(t, dir, "", "rename",
-		"b.md", "--link-ref", "--format", "json", "docs", "rfc")
+		"b.md", "--as", "label", "--format", "json", "docs", "rfc")
 	require.Equal(t, 0, code, "stdout=%q", stdout)
 	assert.Contains(t, stdout, `"file": "b.md"`)
 	b, _ := os.ReadFile(filepath.Join(dir, "b.md"))
@@ -53,9 +53,9 @@ func TestE2E_Rename_LinkRef_JSON(t *testing.T) {
 func TestE2E_Rename_ExitCodes(t *testing.T) {
 	dir := setupRenameWorkspace(t)
 	// No matching heading → exit 1.
-	_, _, code := runBinaryInDir(t, dir, "", "rename", "a.md", "--heading", "Ghost", "X")
+	_, _, code := runBinaryInDir(t, dir, "", "rename", "a.md", "--as", "heading", "Ghost", "X")
 	assert.Equal(t, 1, code)
-	// Missing mode flag → exit 2.
+	// Auto-detect picks the heading "Setup" and renames it → exit 0.
 	_, _, code = runBinaryInDir(t, dir, "", "rename", "a.md", "Setup", "Install")
-	assert.Equal(t, 2, code)
+	assert.Equal(t, 0, code)
 }

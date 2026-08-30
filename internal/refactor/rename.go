@@ -100,6 +100,22 @@ func LinkRef(fileKey string, source []byte, oldLabel, newName string) (Plan, err
 	return Plan{Edits: map[string][]Edit{fileKey: edits}}, nil
 }
 
+// HasLinkRef reports whether source defines a reference definition
+// whose normalized label matches label (CommonMark link-label
+// normalization). The `rename` CLI uses it to auto-detect a link-ref
+// rename when `--as` is omitted. Def-shaped lines inside code blocks
+// or paragraph continuations are excluded, matching LinkRef.
+func HasLinkRef(source []byte, label string) bool {
+	want := NormalizedLabel([]byte(label))
+	body, _ := bodyAndFMOffset(source)
+	for _, m := range validRefDefMatches(body) {
+		if m.normLabel == want {
+			return true
+		}
+	}
+	return false
+}
+
 // ValidRefDefBodyLines reports the body-line indices that hold a real
 // reference definition goldmark accepted (not a code-block
 // look-alike). The LSP prepare-rename gate consults it so the rename

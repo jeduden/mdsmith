@@ -20,6 +20,17 @@ func TestLinkRef_DefAndShortcutUse(t *testing.T) {
 	}
 }
 
+func TestHasLinkRef(t *testing.T) {
+	src := []byte("# T\n\nSee [the spec][Spec].\n\n[Spec]: u\n")
+	// Matches case-insensitively via CommonMark label normalization.
+	assert.True(t, HasLinkRef(src, "spec"))
+	assert.True(t, HasLinkRef(src, "SPEC"))
+	assert.False(t, HasLinkRef(src, "ghost"))
+	// A def-shaped line inside a code fence is not a real definition.
+	fenced := []byte("# T\n\n```\n[fake]: u\n```\n")
+	assert.False(t, HasLinkRef(fenced, "fake"))
+}
+
 func TestLinkRef_PlanKeysUnderFileKeyNoFileOp(t *testing.T) {
 	src := []byte("# T\n\nSee [spec].\n\n[spec]: u\n")
 	plan, err := LinkRef("docs/a.md", src, "spec", "rfc")
