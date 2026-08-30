@@ -374,9 +374,7 @@ func SectionBodies(headings []SectionHeading, paragraphs []SectionParagraph, sou
 	for i := range headings {
 		start := headings[i].Line
 		end := SectionEnd(headings, i, totalLines)
-		for lo < len(paragraphs) && paragraphs[lo].Line < start {
-			lo++
-		}
+		lo = AdvancePastLine(paragraphs, lo, start)
 		parts = parts[:0]
 		for j := lo; j < len(paragraphs) && paragraphs[j].Line < end; j++ {
 			parts = append(parts, paragraphs[j].ExtractText(source))
@@ -396,16 +394,18 @@ func SectionBodies(headings []SectionHeading, paragraphs []SectionParagraph, sou
 // Line below start, hence below every later, higher-or-equal start
 // too, so it can never be needed by a later call in such a sequence.
 //
-// Unlike SectionBody/SectionBodies, this only advances past the
-// skipped prefix — it does not also advance past the paragraphs a
-// caller goes on to collect from the returned index onward. A
-// hierarchical section model (see SectionEnd) lets a later, deeper
-// heading's window overlap an earlier, shallower one's, so those
-// paragraphs may need to be collected again by a later call; a caller
-// whose windows form a true non-overlapping partition (not
-// SectionEnd's) may still choose to advance its own cursor past its
-// collected range, since AdvancePastLine only handles the shared skip
-// half of that trade-off.
+// This only advances past the skipped prefix — it does not also
+// advance past the paragraphs a caller goes on to collect from the
+// returned index onward, unlike SectionBody's binary search (which
+// looks up both ends of its range independently and has no cursor to
+// share). A hierarchical section model (see SectionEnd) lets a later,
+// deeper heading's window overlap an earlier, shallower one's, so
+// those paragraphs may need to be collected again by a later call, as
+// SectionBodies (which shares this helper) relies on; a caller whose
+// windows form a true non-overlapping partition (not SectionEnd's)
+// may still choose to advance its own cursor past its collected
+// range, since AdvancePastLine only handles the shared skip half of
+// that trade-off.
 func AdvancePastLine(paragraphs []SectionParagraph, lo, start int) int {
 	for lo < len(paragraphs) && paragraphs[lo].Line < start {
 		lo++
