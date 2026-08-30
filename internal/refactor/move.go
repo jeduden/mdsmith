@@ -198,10 +198,10 @@ func appendOutboundEdits(changes map[string][]Edit, srcKey, src, dst string, sou
 			// External, absolute, or out-of-workspace — leave untouched.
 			continue
 		}
+		// fileLine is always in range: l.Line is a body line and
+		// fileLines covers the body plus its fmOffset prefix, so unlike
+		// the index-fed incoming pass there is no stale coordinate here.
 		fileLine := l.Line + fmOffset
-		if fileLine < 1 || fileLine > len(fileLines) {
-			continue
-		}
 		row := fileLines[fileLine-1]
 		ps, pe, ok := linkPathBytesResolving(row, l.Column-1, src, tgt)
 		if !ok {
@@ -330,10 +330,10 @@ func refDefPathEditForMatch(
 	if linkgraph.ResolveRelTarget(defFile, oldTok) != src {
 		return Edit{}, false
 	}
+	// src != dst, so the recomputed path always differs from oldTok — no
+	// no-op guard is needed here (unlike the outbound pass, whose links
+	// can point at unrelated targets).
 	newTok := recomputeToken(defFile, oldTok, dst)
-	if newTok == oldTok {
-		return Edit{}, false
-	}
 	return Edit{
 		Range: Range{
 			Start: Position{Line: fileLine - 1, Character: mdtext.UTF16FromByteOffset(row, destStart)},

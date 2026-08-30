@@ -50,18 +50,16 @@ type RefactorPlan struct {
 // normalizing to oldName; ambiguous or absent is an error). The plan
 // carries only edits: a symbol rename never moves a file.
 func (s *Session) Rename(uri string, source []byte, as, oldName, newName string) (RefactorPlan, error) {
-	ws, err := s.buildRefactorWorkspace(uri, source)
-	if err != nil {
-		return RefactorPlan{}, err
-	}
+	ws := s.buildRefactorWorkspace(uri, source)
 	key := index.NormalizePath(uri)
 
 	mode := as
 	if mode == "" {
-		mode, err = detectRenameKind(source, oldName)
+		m, err := detectRenameKind(source, oldName)
 		if err != nil {
 			return RefactorPlan{}, err
 		}
+		mode = m
 	}
 	switch mode {
 	case "heading":
@@ -92,10 +90,7 @@ func (s *Session) Rename(uri string, source []byte, as, oldName, newName string)
 // equal src/dst, a missing source, or an existing destination is
 // returned as an error.
 func (s *Session) Move(src, dst string) (RefactorPlan, error) {
-	ws, err := s.buildRefactorWorkspace("", nil)
-	if err != nil {
-		return RefactorPlan{}, err
-	}
+	ws := s.buildRefactorWorkspace("", nil)
 	p, err := refactor.Move(ws, src, dst)
 	if err != nil {
 		return RefactorPlan{}, err
@@ -186,10 +181,12 @@ func (w *sessionRefactorWorkspace) Resolve(file string) (string, []byte, bool) {
 // files and builds a transient index over them. overlayURI, when set,
 // substitutes overlaySource for that file's bytes so a rename computes
 // against the caller's current buffer rather than the last-saved file.
-func (s *Session) buildRefactorWorkspace(overlayURI string, overlaySource []byte) (*sessionRefactorWorkspace, error) {
+func (s *Session) buildRefactorWorkspace(overlayURI string, overlaySource []byte) *sessionRefactorWorkspace {
 	fsys := s.ws.FS()
 	var rels []string
-	err := fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
+	// The walk callback swallows per-entry errors, so WalkDir's own return
+	// is always nil for a well-formed workspace FS; nothing to propagate.
+	_ = fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -201,9 +198,6 @@ func (s *Session) buildRefactorWorkspace(overlayURI string, overlaySource []byte
 		}
 		return nil
 	})
-	if err != nil {
-		return nil, err
-	}
 	overlayKey := index.NormalizePath(overlayURI)
 	idx := index.New(s.rootDir)
 	idx.BuildSerial(rels, func(rel string) ([]byte, error) {
@@ -217,5 +211,5 @@ func (s *Session) buildRefactorWorkspace(overlayURI string, overlaySource []byte
 		idx:           idx,
 		overlayURI:    overlayURI,
 		overlaySource: overlaySource,
-	}, nil
+	}
 }

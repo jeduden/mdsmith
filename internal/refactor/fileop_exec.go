@@ -60,11 +60,7 @@ func gitMove(rootDir, from, to string) error {
 		filepath.FromSlash(from), filepath.FromSlash(to))
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		msg := bytes.TrimSpace(out)
-		if len(msg) > 0 {
-			return fmt.Errorf("git mv: %w: %s", err, msg)
-		}
-		return fmt.Errorf("git mv: %w", err)
+		return fmt.Errorf("git mv: %w: %s", err, bytes.TrimSpace(out))
 	}
 	return nil
 }

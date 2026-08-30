@@ -78,13 +78,33 @@ func TestRunRename_AutoDetects(t *testing.T) {
 
 func TestRunRename_MoveIntentGuard(t *testing.T) {
 	renameWorkspace(t)
-	// A path-shaped old/new that matches no symbol steers to `move`.
+	// A markdown-suffixed old/new that matches no symbol steers to `move`.
 	var code int
 	stderr := captureStderr(func() {
 		code = runRename([]string{"a.md", "old.md", "new.md"})
 	})
 	assert.Equal(t, 2, code)
 	assert.Contains(t, stderr, "mdsmith move")
+
+	// A slash-bearing new (path-shaped) with a plain old also steers to
+	// move — firstPathish picks the path-shaped argument for the hint.
+	stderr = captureStderr(func() {
+		code = runRename([]string{"a.md", "PlainOld", "sub/new.md"})
+	})
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "sub/new.md")
+}
+
+func TestRunRename_NeitherMatchNonPath(t *testing.T) {
+	renameWorkspace(t)
+	// Neither a heading nor a label, and not path-shaped → exit 2 naming
+	// the missing symbol and pointing at move.
+	var code int
+	stderr := captureStderr(func() {
+		code = runRename([]string{"a.md", "GhostWord", "OtherWord"})
+	})
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "no heading or link-ref label")
 }
 
 func TestRunRename_AmbiguousNeedsAs(t *testing.T) {
@@ -225,6 +245,9 @@ func TestEmitPlanReport(t *testing.T) {
 	ew := &errWriter{err: errors.New("boom")}
 	assert.Equal(t, 2, emitPlanReport(ew, sums, op, "json", false))
 	assert.Equal(t, 2, emitPlanReport(ew, sums, op, "text", false))
+	// With no file summaries the first failing write is the move line,
+	// covering that write-error arm.
+	assert.Equal(t, 2, emitPlanReport(ew, nil, op, "text", false))
 }
 
 // mkEdit builds a single-line refactor.Edit, keeping the table-style

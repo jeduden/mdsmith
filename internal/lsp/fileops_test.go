@@ -90,6 +90,45 @@ func TestWillRenameFilesDestinationExistsSkips(t *testing.T) {
 	assert.Empty(t, edit.Changes)
 }
 
+func TestWillRenameFilesMalformedAndNoop(t *testing.T) {
+	t.Parallel()
+	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": "# A\n"})
+
+	// Malformed params → InvalidParams error, no crash.
+	_, errResp := h.request("workspace/willRenameFiles", []int{1})
+	require.NotNil(t, errResp)
+
+	// old == new URI → the file is skipped, yielding an empty edit.
+	raw, errResp := h.request("workspace/willRenameFiles", renameFilesParams{
+		Files: []fileRename{{OldURI: rootURI + "/a.md", NewURI: rootURI + "/a.md"}},
+	})
+	require.Nil(t, errResp)
+	var edit workspaceEdit
+	require.NoError(t, json.Unmarshal(raw, &edit))
+	assert.Empty(t, edit.Changes)
+}
+
+func TestDidRenameFilesMalformedAndNonMarkdown(t *testing.T) {
+	t.Parallel()
+	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": "# Alpha\n"})
+	// Warm the index.
+	_, _ = h.request("workspace/symbol", workspaceSymbolParams{Query: "Alpha"})
+
+	// Malformed params are ignored (notification, no reply).
+	h.notify("workspace/didRenameFiles", []int{1})
+
+	// A rename to a non-Markdown path drops the old entry but does not
+	// index the new (non-Markdown) file.
+	h.notify("workspace/didRenameFiles", renameFilesParams{
+		Files: []fileRename{{OldURI: rootURI + "/a.md", NewURI: rootURI + "/a.txt"}},
+	})
+	raw, errResp := h.request("workspace/symbol", workspaceSymbolParams{Query: "Alpha"})
+	require.Nil(t, errResp)
+	var hits []symbolInformation
+	require.NoError(t, json.Unmarshal(raw, &hits))
+	assert.Empty(t, hits, "old path dropped, new non-Markdown path not indexed")
+}
+
 // TestDidRenameFilesSwapsIndexPath confirms the notification updates the
 // warm index: after the client renames a.md to c.md on disk and reports
 // it, a workspace symbol search finds the moved file's heading under the

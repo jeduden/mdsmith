@@ -79,6 +79,30 @@ func TestFileOpExecute_NoRepoUsesPlainRename(t *testing.T) {
 	assert.FileExists(t, filepath.Join(dir, "sub", "dir", "b.md"))
 }
 
+func TestFileOpExecute_DestinationDirIsAFileErrors(t *testing.T) {
+	dir := t.TempDir()
+	// "blocker" is a regular file, so creating "blocker/" as the
+	// destination's parent directory fails.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "blocker"), []byte("x"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.md"), []byte("# A\n"), 0o644))
+
+	err := FileOp{From: "a.md", To: "blocker/b.md"}.Execute(dir)
+	require.Error(t, err)
+	assert.FileExists(t, filepath.Join(dir, "a.md"))
+}
+
+func TestFileOpExecute_RenameOverExistingDirErrors(t *testing.T) {
+	dir := t.TempDir() // no git — the plain-rename path
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.md"), []byte("# A\n"), 0o644))
+	// The destination path already exists as a directory, so os.Rename
+	// of a file over it fails.
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "b.md"), 0o755))
+
+	err := FileOp{From: "a.md", To: "b.md"}.Execute(dir)
+	require.Error(t, err)
+	assert.FileExists(t, filepath.Join(dir, "a.md"))
+}
+
 func TestFileOpExecute_GitMvFailureAbortsNoHalfMove(t *testing.T) {
 	dir := t.TempDir()
 	gitInit(t, dir)
