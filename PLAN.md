@@ -267,4 +267,6 @@ footer: |
 | 2608161754 | ✅     | sonnet | [Vendor go-runewidth as a patched fork so post-LUT versions build under tinygo](plan/2608161754_vendor-runewidth-bump-tinygo.md)                        |
 | 2608161914 | 🔲     | haiku  | [Add dedicated unit tests for the 2026-08-16 touched-set tax findings](plan/2608161914_arch-fix-touched-set-unit-tests.md)                              |
 | 2608282011 | ✅     | sonnet | [Security hardening batch — 2026-08-28](plan/2608282011_security-hardening-batch-2026-08-28.md)                                                         |
+| 2608301918 | 🔲     | haiku  | [Add dedicated unit tests for the 2026-08-30 touched-set tax findings](plan/2608301918_arch-fix-touched-set-unit-tests-0830.md)                         |
+| 2608301919 | 🔲     | sonnet | [Relocate RunCache out of internal/lint](plan/2608301919_arch-fix-runcache-package-placement.md)                                                        |
 <?/catalog?>
