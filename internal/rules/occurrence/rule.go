@@ -124,10 +124,26 @@ func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 		totalLines--
 	}
 	var diags []lint.Diagnostic
+	// combinedPos, tokensPos, and patternPos are forward-only cursors
+	// into paragraphs, each threaded across the whole heading loop.
+	// Headings and paragraphs are both in ascending source-line order
+	// and each heading's [h.Line, end) window is non-overlapping with
+	// and after the previous one (astutil.SectionEnd is monotonic in
+	// i), so a paragraph one cursor skips or consumes can never be
+	// needed by that same cursor's later calls. This turns what would
+	// otherwise be an O(headings * paragraphs) rescan per active mode
+	// into O(headings + paragraphs) — see
+	// docs/development/high-performance-go.md's "Skip work you don't
+	// need", the same pattern maxsectionlength's countSection uses.
+	// combined/tokens/pattern never advance in the same Check call
+	// (r.Count picks exactly one branch), but each keeps its own
+	// cursor since a single heading's "each" branch can drive both the
+	// tokens loop and countPatternInRange over the same window.
+	var combinedPos, tokensPos, patternPos int
 	for i, h := range headings {
 		end := astutil.SectionEnd(headings, i, totalLines)
 		if r.Count == "combined" {
-			combined := r.countCombinedInRange(paragraphs, f.Source, h.Line, end)
+			combined := r.countCombinedInRange(paragraphs, f.Source, &combinedPos, h.Line, end)
 			diags = append(diags, r.diagCombined(combined, h.Line, "section", f.Path)...)
 		} else {
 			// "each" mode: iterate paragraphs once, pre-lowercasing text per
@@ -138,21 +154,24 @@ func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 			// for a loop that never runs.
 			if len(r.Tokens) > 0 {
 				totals := make([]int, len(r.Tokens))
-				for j := range paragraphs {
-					if paragraphs[j].Line < h.Line || paragraphs[j].Line >= end {
-						continue
-					}
+				for tokensPos < len(paragraphs) && paragraphs[tokensPos].Line < h.Line {
+					tokensPos++
+				}
+				j := tokensPos
+				for j < len(paragraphs) && paragraphs[j].Line < end {
 					stext := r.searchText(paragraphs[j].ExtractText(f.Source))
 					for ti := range r.Tokens {
 						totals[ti] += r.countToken(stext, ti)
 					}
+					j++
 				}
+				tokensPos = j
 				for ti, tok := range r.Tokens {
 					diags = append(diags, r.diagEach(totals[ti], h.Line, "section", tok, f.Path)...)
 				}
 			}
 			if r.Pattern != nil {
-				cnt := r.countPatternInRange(paragraphs, f.Source, h.Line, end)
+				cnt := r.countPatternInRange(paragraphs, f.Source, &patternPos, h.Line, end)
 				diags = append(diags, r.diagEach(cnt, h.Line, "section", r.patternSource, f.Path)...)
 			}
 		}
@@ -189,27 +208,44 @@ func (r *Rule) checkParagraphs(f *lint.File) []lint.Diagnostic {
 	return diags
 }
 
-// countCombinedInRange sums all match counts for paragraphs in [start, end).
-func (r *Rule) countCombinedInRange(paragraphs []astutil.SectionParagraph, source []byte, start, end int) int {
-	total := 0
-	for i := range paragraphs {
-		if paragraphs[i].Line < start || paragraphs[i].Line >= end {
-			continue
-		}
-		total += r.countCombined(paragraphs[i].ExtractText(source))
+// countCombinedInRange sums all match counts for paragraphs in
+// [start, end). paragraphs must be in ascending Line order; pos is a
+// forward-only cursor a caller threads across a sequence of
+// non-overlapping, ascending [start, end) windows over the same
+// paragraphs slice, so the whole sequence of calls runs in
+// O(len(paragraphs)) total instead of O(calls * len(paragraphs)). See
+// checkSections's cursor comment.
+func (r *Rule) countCombinedInRange(
+	paragraphs []astutil.SectionParagraph, source []byte, pos *int, start, end int,
+) int {
+	for *pos < len(paragraphs) && paragraphs[*pos].Line < start {
+		*pos++
 	}
+	total := 0
+	i := *pos
+	for i < len(paragraphs) && paragraphs[i].Line < end {
+		total += r.countCombined(paragraphs[i].ExtractText(source))
+		i++
+	}
+	*pos = i
 	return total
 }
 
-// countPatternInRange counts pattern matches for paragraphs in [start, end).
-func (r *Rule) countPatternInRange(paragraphs []astutil.SectionParagraph, source []byte, start, end int) int {
-	total := 0
-	for i := range paragraphs {
-		if paragraphs[i].Line < start || paragraphs[i].Line >= end {
-			continue
-		}
-		total += r.countPattern(paragraphs[i].ExtractText(source))
+// countPatternInRange counts pattern matches for paragraphs in
+// [start, end). See countCombinedInRange for the pos cursor contract.
+func (r *Rule) countPatternInRange(
+	paragraphs []astutil.SectionParagraph, source []byte, pos *int, start, end int,
+) int {
+	for *pos < len(paragraphs) && paragraphs[*pos].Line < start {
+		*pos++
 	}
+	total := 0
+	i := *pos
+	for i < len(paragraphs) && paragraphs[i].Line < end {
+		total += r.countPattern(paragraphs[i].ExtractText(source))
+		i++
+	}
+	*pos = i
 	return total
 }
 
