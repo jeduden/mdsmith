@@ -245,11 +245,12 @@ func advanceBracket(brs []bracket, i, pos int) int {
 // task 7. Empty contents (`[]`) return contentStart == contentEnd;
 // the caller decides whether that is valid for the pattern.
 func nextBracket(source []byte, pos int) (open, contentStart, contentEnd, closeAfter int, ok bool) {
-	for pos < len(source) {
-		if source[pos] != '[' {
-			pos++
-			continue
+	for {
+		idx := bytes.IndexByte(source[pos:], '[')
+		if idx < 0 {
+			return 0, 0, 0, 0, false
 		}
+		pos += idx
 		open = pos
 		contentStart = pos + 1
 		i := contentStart
@@ -263,7 +264,6 @@ func nextBracket(source []byte, pos int) (open, contentStart, contentEnd, closeA
 		// advance past the orphan `[` and keep scanning.
 		pos++
 	}
-	return 0, 0, 0, 0, false
 }
 
 // scanFullRefs walks source for `[text][label]` patterns. The byte
