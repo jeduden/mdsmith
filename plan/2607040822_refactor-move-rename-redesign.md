@@ -3,7 +3,7 @@ id: 2607040822
 title: >-
   Refactor engine redesign: unify move and rename
   behind one Plan, across CLI, LSP, and WASM hosts
-status: "🔲"
+status: "🔳"
 model: opus
 summary: >-
   Ground-up redesign of mdsmith's reference-rewriting
@@ -281,26 +281,26 @@ over the vault's `MemWorkspace`.
 
 ## Acceptance Criteria
 
-- [ ] `mdsmith move a.md b/c.md` on a tracked file stages the
+- [x] `mdsmith move a.md b/c.md` on a tracked file stages the
       git rename and rewrites every incoming reference, plus
       the outbound relative links inside the moved file.
-- [ ] The same command outside git moves the file and
+- [x] The same command outside git moves the file and
       rewrites the same references.
-- [ ] An existing destination, a traversal path, or a failed
+- [x] An existing destination, a traversal path, or a failed
       `git mv` exits 2 with nothing moved or written.
-- [ ] `mdsmith rename` renames a heading or label with `--as`
+- [x] `mdsmith rename` renames a heading or label with `--as`
       or auto-detect; conflicts exit 2 and name the collision.
-- [ ] A path-shaped `rename` (or one on a missing symbol)
+- [x] A path-shaped `rename` (or one on a missing symbol)
       exits 2 and names `mdsmith move`.
-- [ ] `--dry-run` changes nothing for both commands, and
+- [x] `--dry-run` changes nothing for both commands, and
       `mdsmith check` reports no MDS027 after a command move.
-- [ ] The LSP advertises `workspace.fileOperations.willRename`
+- [x] The LSP advertises `workspace.fileOperations.willRename`
       and answers `willRenameFiles` with a covering edit.
-- [ ] `Session` exposes `rename` and plan-only `move`,
+- [x] `Session` exposes `rename` and plan-only `move`,
       mirrored in JS and reported by `capabilities()`.
 - [ ] VS Code rewrites links on an explorer rename; Obsidian
       rewrites the references it misses on a vault rename.
-- [ ] `go test ./...`, `golangci-lint`, both WASM budgets,
+- [x] `go test ./...`, `golangci-lint`, both WASM budgets,
       and `mdsmith check .` all pass.
 
 ## Open Questions
