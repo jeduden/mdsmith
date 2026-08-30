@@ -91,25 +91,35 @@ func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 
 	freq := make(map[string]int, 32) // 32 covers typical prose vocabulary per section
 
-	// pos is a forward-only cursor into paragraphs, shared by the
-	// preamble scan below and the per-heading loop that follows.
-	// paragraphs and headings are both in ascending source-line order
-	// and each heading's [h.Line, end) window is non-overlapping with
-	// and after the previous one (astutil.SectionEnd is monotonic in
-	// i), so a paragraph pos has already skipped or consumed can never
-	// be needed again. This turns the whole pass into
-	// O(headings + paragraphs) instead of re-scanning all of
-	// paragraphs from index 0 per section — see
+	// lo is a skip-ahead-only cursor into paragraphs, shared by the
+	// preamble scan below and the per-heading loop that follows. It
+	// only ever advances past a paragraph once that paragraph's line
+	// is known to be before every remaining heading's start (headings
+	// are ascending, so a paragraph before headings[i].Line is also
+	// before headings[i+1].Line, headings[i+2].Line, ...) — matching
+	// astutil.SectionBodies's lo cursor. Crucially, lo is NOT advanced
+	// past the paragraphs a heading's own window collects: unlike
+	// maxsectionlength's flat, non-overlapping partition,
+	// astutil.SectionEnd's window for a shallow heading extends past
+	// its nested subsections, so a subsection's own iteration must
+	// still be able to collect paragraphs an ancestor heading's wider
+	// window already walked. This still turns the "skip the already-
+	// passed prefix" work into O(paragraphs) total instead of
+	// O(headings) rescans of it; the "collect this heading's window"
+	// work stays proportional to that section's own size, which is
+	// unavoidable for a hierarchical section model. See
 	// docs/development/high-performance-go.md's "Skip work you don't
-	// need", the same pattern maxsectionlength's countSection uses.
-	pos := 0
+	// need".
+	lo := 0
 
 	// Check preamble paragraphs (before the first heading) as one implicit section.
 	// Skip the allocation when no preamble paragraphs exist (the common case).
+	// Preamble paragraphs precede every heading, so unlike the per-heading
+	// window below, lo can safely advance past them for good.
 	firstHeadingLine := headings[0].Line
-	for pos < len(paragraphs) && paragraphs[pos].Line < firstHeadingLine {
-		r.accum(freq, paragraphs[pos].ExtractText(f.Source))
-		pos++
+	for lo < len(paragraphs) && paragraphs[lo].Line < firstHeadingLine {
+		r.accum(freq, paragraphs[lo].ExtractText(f.Source))
+		lo++
 	}
 	var diags []lint.Diagnostic
 	if len(freq) > 0 {
@@ -120,12 +130,11 @@ func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 	for i, h := range headings {
 		end := astutil.SectionEnd(headings, i, totalLines)
 		clear(freq)
-		for pos < len(paragraphs) && paragraphs[pos].Line < h.Line {
-			pos++
+		for lo < len(paragraphs) && paragraphs[lo].Line < h.Line {
+			lo++
 		}
-		for pos < len(paragraphs) && paragraphs[pos].Line < end {
-			r.accum(freq, paragraphs[pos].ExtractText(f.Source))
-			pos++
+		for j := lo; j < len(paragraphs) && paragraphs[j].Line < end; j++ {
+			r.accum(freq, paragraphs[j].ExtractText(f.Source))
 		}
 		r.removeStopwords(freq)
 		diags = append(diags, r.diagFromFreq(freq, h.Line, "section", f.Path)...)

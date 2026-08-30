@@ -431,6 +431,32 @@ func TestCheck_Section_PatternMultipleHeadings(t *testing.T) {
 	assert.Equal(t, 1, diags[0].Line)
 }
 
+// TestCheck_Section_NestedHeadingViolatesIndependently pins the
+// hierarchical section-window contract astutil.SectionEnd defines: a
+// shallow heading's window extends through its nested subsections (so
+// its own count legitimately includes their content), but each nested
+// subsection must still be checked, and flagged, independently against
+// its own narrower window. A cursor optimization that permanently
+// consumes paragraphs once one heading's wider window has scanned them
+// would silently lose every nested subsection's own violation — this
+// was exactly the shape of a regression caught in review. Three
+// headings (level 1, 2, 1) each carry their own violating count, so
+// all three must be reported.
+func TestCheck_Section_NestedHeadingViolatesIndependently(t *testing.T) {
+	r := &Rule{}
+	mustApply(t, r, map[string]any{
+		"tokens": []any{"process"}, "max": 3, "scope": "section", "count": "each",
+	})
+	src := "# A\n\nprocess process process process.\n\n" +
+		"## B\n\nprocess process process process.\n\n" +
+		"# C\n\nprocess process process process.\n"
+	diags := r.Check(mustFile(t, src))
+	require.Len(t, diags, 3, "expected a violation for A, B, and C independently: %+v", diags)
+	assert.Equal(t, 1, diags[0].Line, "section A")
+	assert.Equal(t, 5, diags[1].Line, "section B")
+	assert.Equal(t, 9, diags[2].Line, "section C")
+}
+
 // --- private helper unit tests ---
 
 func TestCountCombinedInRange(t *testing.T) {
