@@ -196,18 +196,35 @@ func runRename(args []string) int {
 // code means stop (0 = empty workspace, 2 = error); src is the target
 // source on the success path.
 func buildRenameWorkspace(opts renameOptions, target string) (cliRenameWorkspace, []byte, int) {
+	ws, code := buildWorkspace(opts)
+	if code >= 0 {
+		return cliRenameWorkspace{}, nil, code
+	}
+	_, src, ok := ws.Resolve(target)
+	if !ok {
+		fmt.Fprintf(os.Stderr, "mdsmith: cannot read %q\n", target)
+		return cliRenameWorkspace{}, nil, 2
+	}
+	return ws, src, -1
+}
+
+// buildWorkspace discovers the workspace and builds the transient index
+// shared by `rename` and `move`, without resolving any particular
+// target file (each command resolves its own). A non-negative return
+// code means stop (1 = empty workspace, 2 = error).
+func buildWorkspace(opts renameOptions) (cliRenameWorkspace, int) {
 	cfg, cfgPath, _, files, code := discoverFiles(opts.configPath, false, opts.walk)
 	if code >= 0 {
 		if code == 0 {
 			fmt.Fprint(os.Stderr, "mdsmith: no Markdown files in workspace\n")
-			return cliRenameWorkspace{}, nil, 1
+			return cliRenameWorkspace{}, 1
 		}
-		return cliRenameWorkspace{}, nil, code
+		return cliRenameWorkspace{}, code
 	}
 	maxBytes, err := resolveMaxInputBytes(cfg, opts.maxInputSize)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
-		return cliRenameWorkspace{}, nil, 2
+		return cliRenameWorkspace{}, 2
 	}
 	rootDir := rootDirFromConfig(cfgPath)
 	relToAbs := make(map[string]string, len(files))
@@ -221,13 +238,7 @@ func buildRenameWorkspace(opts renameOptions, target string) (cliRenameWorkspace
 	idx.BuildSerial(rels, func(rel string) ([]byte, error) {
 		return bytelimit.ReadFileLimited(relToAbs[rel], maxBytes)
 	})
-	ws := cliRenameWorkspace{idx: idx, relToAbs: relToAbs, rootDir: rootDir, maxBytes: maxBytes}
-	_, src, ok := ws.Resolve(target)
-	if !ok {
-		fmt.Fprintf(os.Stderr, "mdsmith: cannot read %q\n", target)
-		return cliRenameWorkspace{}, nil, 2
-	}
-	return ws, src, -1
+	return cliRenameWorkspace{idx: idx, relToAbs: relToAbs, rootDir: rootDir, maxBytes: maxBytes}, -1
 }
 
 // computeRenameChanges runs the rename engine for the requested mode
