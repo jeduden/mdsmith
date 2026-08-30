@@ -91,13 +91,25 @@ func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 
 	freq := make(map[string]int, 32) // 32 covers typical prose vocabulary per section
 
+	// pos is a forward-only cursor into paragraphs, shared by the
+	// preamble scan below and the per-heading loop that follows.
+	// paragraphs and headings are both in ascending source-line order
+	// and each heading's [h.Line, end) window is non-overlapping with
+	// and after the previous one (astutil.SectionEnd is monotonic in
+	// i), so a paragraph pos has already skipped or consumed can never
+	// be needed again. This turns the whole pass into
+	// O(headings + paragraphs) instead of re-scanning all of
+	// paragraphs from index 0 per section — see
+	// docs/development/high-performance-go.md's "Skip work you don't
+	// need", the same pattern maxsectionlength's countSection uses.
+	pos := 0
+
 	// Check preamble paragraphs (before the first heading) as one implicit section.
 	// Skip the allocation when no preamble paragraphs exist (the common case).
 	firstHeadingLine := headings[0].Line
-	for j := range paragraphs {
-		if paragraphs[j].Line < firstHeadingLine {
-			r.accum(freq, paragraphs[j].ExtractText(f.Source))
-		}
+	for pos < len(paragraphs) && paragraphs[pos].Line < firstHeadingLine {
+		r.accum(freq, paragraphs[pos].ExtractText(f.Source))
+		pos++
 	}
 	var diags []lint.Diagnostic
 	if len(freq) > 0 {
@@ -108,11 +120,12 @@ func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 	for i, h := range headings {
 		end := astutil.SectionEnd(headings, i, totalLines)
 		clear(freq)
-		for j := range paragraphs {
-			if paragraphs[j].Line < h.Line || paragraphs[j].Line >= end {
-				continue
-			}
-			r.accum(freq, paragraphs[j].ExtractText(f.Source))
+		for pos < len(paragraphs) && paragraphs[pos].Line < h.Line {
+			pos++
+		}
+		for pos < len(paragraphs) && paragraphs[pos].Line < end {
+			r.accum(freq, paragraphs[pos].ExtractText(f.Source))
+			pos++
 		}
 		r.removeStopwords(freq)
 		diags = append(diags, r.diagFromFreq(freq, h.Line, "section", f.Path)...)
