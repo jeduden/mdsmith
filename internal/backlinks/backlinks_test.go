@@ -55,6 +55,38 @@ func TestRelPath_EmptyRootDir(t *testing.T) {
 	assert.Equal(t, "docs/api.md", relPath("docs/api.md", ""))
 }
 
+// chdirToRemoved changes into a fresh temp dir and then deletes it, so
+// the process has no valid working directory and os.Getwd fails.
+// t.Chdir restores the original directory at cleanup. This drives the
+// filepath.Abs-error fallbacks that a normal filesystem never reaches
+// — the same pattern cmd/mdsmith's coverage100_test.go uses for the
+// sibling workspaceRelativePath this function duplicates.
+func chdirToRemoved(t *testing.T) {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "mdsmith-backlinks-nowd-*")
+	require.NoError(t, err)
+	t.Chdir(dir)
+	require.NoError(t, os.Remove(dir))
+}
+
+func TestRelPath_AbsPathError(t *testing.T) {
+	// With no valid cwd, filepath.Abs(p) fails on a relative p before
+	// rootDir is even consulted; relPath falls back to the trimmed
+	// input.
+	chdirToRemoved(t)
+	assert.Equal(t, "docs/api.md", relPath("docs/api.md", "root"))
+}
+
+func TestRelPath_AbsRootDirError(t *testing.T) {
+	// p is already absolute, so filepath.Abs(p) succeeds without a
+	// cwd; rootDir is relative, so filepath.Abs(rootDir) is the one
+	// that fails with no valid cwd. The fallback mirrors the
+	// original (absolute) p unchanged, since it never went through
+	// the rootDir-relative branch.
+	chdirToRemoved(t)
+	assert.Equal(t, "/abs/docs/api.md", relPath("/abs/docs/api.md", "root"))
+}
+
 func TestSourceMatches(t *testing.T) {
 	assert.True(t, sourceMatches("docs/api.md", nil))
 	assert.True(t, sourceMatches("docs/api.md", []string{"docs/**"}))
