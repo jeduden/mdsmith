@@ -109,17 +109,58 @@ type serverInfo struct {
 }
 
 type serverCapabilities struct {
-	TextDocumentSync        textDocumentSyncOptions `json:"textDocumentSync"`
-	CodeActionProvider      codeActionOptions       `json:"codeActionProvider"`
-	HoverProvider           bool                    `json:"hoverProvider,omitempty"`
-	DocumentSymbolProvider  bool                    `json:"documentSymbolProvider,omitempty"`
-	DefinitionProvider      bool                    `json:"definitionProvider,omitempty"`
-	ImplementationProvider  bool                    `json:"implementationProvider,omitempty"`
-	ReferencesProvider      bool                    `json:"referencesProvider,omitempty"`
-	WorkspaceSymbolProvider bool                    `json:"workspaceSymbolProvider,omitempty"`
-	CallHierarchyProvider   bool                    `json:"callHierarchyProvider,omitempty"`
-	CompletionProvider      *completionOptions      `json:"completionProvider,omitempty"`
-	RenameProvider          *renameOptions          `json:"renameProvider,omitempty"`
+	TextDocumentSync        textDocumentSyncOptions      `json:"textDocumentSync"`
+	CodeActionProvider      codeActionOptions            `json:"codeActionProvider"`
+	HoverProvider           bool                         `json:"hoverProvider,omitempty"`
+	DocumentSymbolProvider  bool                         `json:"documentSymbolProvider,omitempty"`
+	DefinitionProvider      bool                         `json:"definitionProvider,omitempty"`
+	ImplementationProvider  bool                         `json:"implementationProvider,omitempty"`
+	ReferencesProvider      bool                         `json:"referencesProvider,omitempty"`
+	WorkspaceSymbolProvider bool                         `json:"workspaceSymbolProvider,omitempty"`
+	CallHierarchyProvider   bool                         `json:"callHierarchyProvider,omitempty"`
+	CompletionProvider      *completionOptions           `json:"completionProvider,omitempty"`
+	RenameProvider          *renameOptions               `json:"renameProvider,omitempty"`
+	Workspace               *workspaceServerCapabilities `json:"workspace,omitempty"`
+}
+
+// workspaceServerCapabilities advertises workspace-level server
+// features (LSP §3.17 ServerCapabilities.workspace). mdsmith populates
+// only fileOperations, to be consulted before and after a client
+// renames a Markdown file so it can rewrite the references a move would
+// otherwise strand.
+type workspaceServerCapabilities struct {
+	FileOperations *fileOperationsServerCapabilities `json:"fileOperations,omitempty"`
+}
+
+type fileOperationsServerCapabilities struct {
+	WillRename *fileOperationRegistrationOptions `json:"willRename,omitempty"`
+	DidRename  *fileOperationRegistrationOptions `json:"didRename,omitempty"`
+}
+
+// fileOperationRegistrationOptions filters which paths trigger a file
+// operation event. The server only wants Markdown renames.
+type fileOperationRegistrationOptions struct {
+	Filters []fileOperationFilter `json:"filters"`
+}
+
+type fileOperationFilter struct {
+	Pattern fileOperationPattern `json:"pattern"`
+}
+
+type fileOperationPattern struct {
+	Glob    string `json:"glob"`
+	Matches string `json:"matches,omitempty"`
+}
+
+// renameFilesParams is the payload of workspace/willRenameFiles and
+// workspace/didRenameFiles (LSP §3.17 RenameFilesParams).
+type renameFilesParams struct {
+	Files []fileRename `json:"files"`
+}
+
+type fileRename struct {
+	OldURI string `json:"oldUri"`
+	NewURI string `json:"newUri"`
 }
 
 // renameOptions advertises textDocument/rename support. PrepareProvider
