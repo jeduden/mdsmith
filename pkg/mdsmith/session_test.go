@@ -310,7 +310,7 @@ func TestSessionCapabilities(t *testing.T) {
 
 	caps := s.Capabilities()
 	sort.Strings(caps)
-	want := []string{"check", "fix", "kinds"}
+	want := []string{"check", "fix", "kinds", "move", "rename"}
 	if len(caps) != len(want) {
 		t.Fatalf("Capabilities = %v, want %v", caps, want)
 	}
