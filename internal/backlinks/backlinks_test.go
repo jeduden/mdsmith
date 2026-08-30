@@ -1,8 +1,10 @@
 package backlinks
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -75,6 +77,23 @@ func TestRelPath_AbsPathError(t *testing.T) {
 	// input.
 	chdirToRemoved(t)
 	assert.Equal(t, "docs/api.md", relPath("docs/api.md", "root"))
+}
+
+func TestRelPath_RelError(t *testing.T) {
+	// filepath.Rel can only fail here on a Windows volume mismatch,
+	// unreachable given two paths built from filepath.Abs on the
+	// Unix runner this project's coverage gate uses. Swap relFn to
+	// drive the fallback branch directly.
+	orig := relFn
+	relFn = func(string, string) (string, error) {
+		return "", fmt.Errorf("simulated: can't relate paths")
+	}
+	t.Cleanup(func() { relFn = orig })
+
+	root := t.TempDir()
+	p := filepath.Join(root, "docs", "api.md")
+	got := relPath(p, root)
+	assert.Equal(t, strings.TrimPrefix(filepath.ToSlash(p), "./"), got)
 }
 
 func TestRelPath_AbsRootDirError(t *testing.T) {

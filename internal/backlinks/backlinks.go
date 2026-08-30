@@ -256,9 +256,17 @@ func wikilinkTargetString(wl linkgraph.WikiLink) string {
 	return wl.Target + "#" + wl.Anchor
 }
 
+// relFn computes a relative path between two absolute paths.
+// Package-level so tests can inject a failure: on a Unix CI runner,
+// filepath.Rel can only ever error given a Windows volume mismatch
+// neither input here can produce, so relPath's fallback branch is
+// otherwise untestable on the platform this project's coverage gate
+// runs on.
+var relFn = filepath.Rel
+
 // relPath returns p relative to rootDir using forward slashes. When
-// rootDir is empty or filepath.Rel cannot relate the paths, p is
-// returned as-is with separators normalized.
+// rootDir is empty or relFn cannot relate the paths, p is returned
+// as-is with separators normalized.
 //
 // This intentionally duplicates cmd/mdsmith's workspaceRelativePath
 // rather than importing it: cmd/mdsmith depends on internal/backlinks,
@@ -279,7 +287,7 @@ func relPath(p, rootDir string) string {
 	if err != nil {
 		return fallback
 	}
-	rel, err := filepath.Rel(absRoot, abs)
+	rel, err := relFn(absRoot, abs)
 	if err != nil {
 		return fallback
 	}
