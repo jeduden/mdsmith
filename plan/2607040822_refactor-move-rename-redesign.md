@@ -35,7 +35,7 @@ bolted a standalone `move` onto the side of `rename`. That
 duplicates the whole apply, atomic-write, dry-run, and
 exit-code layer, plus the path-rewrite logic already near the
 anchor rewrite in
-[internal/rename](../internal/rename/heading.go). This plan
+[internal/rename](../internal/refactor/heading.go). This plan
 treats move and rename as one operation. There is no
 backwards-compatibility constraint on the CLI or LSP.
 
@@ -75,10 +75,10 @@ subprocess, and there are none under `GOOS=js GOARCH=wasm`
 
 ## Package structure
 
-Rename [internal/rename](../internal/rename/rename.go) to
+Rename [internal/rename](../internal/refactor/rename.go) to
 `internal/refactor`. It already speaks a surface-neutral
 `Edit` / `Position` / `Range` vocabulary and owns a
-[`Workspace` seam](../internal/rename/heading.go), so this
+[`Workspace` seam](../internal/refactor/heading.go), so this
 widens scope rather than rewriting. Add:
 
 - `refactor.Plan` — `Edits` keyed by output target (CLI path
@@ -111,7 +111,7 @@ kind keyed by basename stem.
    resolvable `catalog` entries move the same way.
 2. **Ref-def destinations.** A companion pass over
    `[label]: src` definitions, mirroring the heading ref-def
-   pass in [heading.go](../internal/rename/heading.go).
+   pass in [heading.go](../internal/refactor/heading.go).
 3. **Wikilink stems.** `[[old-stem]]` becomes `[[new-stem]]`
    only when the basename stem differs. A move that keeps the
    basename thus updates path links but leaves wikilinks

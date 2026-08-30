@@ -81,7 +81,7 @@ sketch.
 | C-1 | Create typed file              | M      | a user-facing demand for scaffolding from inside mdsmith (e.g. agent loop) |
 | C-2 | Update fields from CLI         | M      | C-1 lands; consistency pulls update along                                  |
 | C-3 | Delete with broken-ref warning | S      | C-1 / C-2 ship; deletion completes the CRUD surface                        |
-| C-4 | Atomic rename + ref rewrite    | L      | rename pain shows up in real workflows (issue threads, agent retries)      |
+| C-4 | Atomic rename + ref rewrite    | L      | shipped: `mdsmith move` relocates a file and rewrites every reference      |
 | C-5 | Batch ops with `--where`       | M      | a CRUD surface (C-1..C-4) needs scoping beyond globs                       |
 | C-6 | Dry-run mode for fix           | S      | first agent or CI user asks to preview changes                             |
 
@@ -91,7 +91,7 @@ sketch.
 | --- | ------------------------------------- | ------ | ------------------------------------------------------------------------ |
 | L-1 | Wikilink awareness                    | M      | the first Obsidian-vault user files a "wikilinks aren't validated" issue |
 | L-2 | ID-field link resolution              | M      | a project imposes its own ID system and wants link-by-ID                 |
-| L-3 | Auto-rewrite incoming links on rename | L      | (covered by C-4)                                                         |
+| L-3 | Auto-rewrite incoming links on rename | L      | shipped with C-4 (`mdsmith move`)                                        |
 | L-4 | Backlinks subcommand                  | S      | first agent or doc-team request for "what links to X"                    |
 | L-5 | Multi-hop link traversal in queries   | M      | a project wants `[[A]] → asFile().status` semantics in `query`           |
 

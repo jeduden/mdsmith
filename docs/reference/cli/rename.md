@@ -1,6 +1,6 @@
 ---
 command: rename
-summary: Rename a heading or link-reference label and rewrite every dependent edit.
+summary: Retitle a heading or rename a link-reference label and rewrite every dependent edit; the kind is auto-detected or forced with `--as`, and a path-shaped request is steered to `mdsmith move`.
 ---
 # `mdsmith rename`
 
@@ -9,42 +9,64 @@ drives, so a script or agent with no editor reaches it too.
 Every dependent edit across the workspace is rewritten in
 place.
 
+`rename` changes a symbol *inside* a file — a heading slug or a
+link-reference label. To relocate a *file*, use
+[`mdsmith move`](move.md).
+
 ```text
 mdsmith rename [flags] <file> <old> <new>
 ```
 
 `<file>` is workspace-relative. Absolute paths and
-parent-traversal entries (`../foo.md`) are rejected with
-exit code 2. Exactly one of `--heading` or `--link-ref`
-is required.
+parent-traversal entries (`../foo.md`) are rejected with exit
+code 2.
 
-With `--heading`, `<old>` is the heading's current visible
-text. mdsmith rewrites the heading line. It also rewrites
-every workspace `[text](file.md#slug)` anchor link and
-every `[label]: file.md#slug` ref-def whose target resolved
-to it. Same-file `(#slug)` references are included. A
-duplicate-name disambiguator that shifts as a result is
-updated too.
+## What it rewrites
 
-With `--link-ref`, `<old>` is the label. It is matched
-after the lowercase / whitespace-collapse normalization
-links already use. The `[label]: url` definition moves
-with every `[text][label]` and shortcut `[label]` use in
-the file.
+When `<old>` names a **heading** (its current visible text),
+mdsmith rewrites the heading line. It also rewrites every
+workspace `[text](file.md#slug)` anchor link that resolved to
+it. The matching `[label]: file.md#slug` ref-defs update the
+same way. Same-file `(#slug)` references are included, and a
+shifted duplicate-name disambiguator updates too.
 
-The rename refuses to corrupt the workspace. It fails when
-the new heading slug collides with another heading. It
-fails when the label collides with another definition. It
-fails when the text slugifies to nothing, or carries a
-newline or a stray bracket. Each failure exits 2 and names
-the conflict. No partial edit is written.
+When `<old>` names a **link-reference label**, the
+`[label]: url` definition moves with every `[text][label]` and
+shortcut `[label]` use in the file. The label is matched after
+the lowercase / whitespace-collapse normalization links use.
+
+## Choosing heading vs label
+
+The kind is auto-detected from `<old>`: a heading whose visible
+text is `<old>`, or a label normalizing to `<old>`. Pass
+`--as heading` or `--as label` to force it. When both match,
+the command exits 2 and asks for `--as`.
+
+A path-shaped `<old>` or `<new>` — one with a slash or a `.md` /
+`.markdown` suffix — that matches no symbol exits 2 and points
+you at `mdsmith move`. Renaming a *file* is a move.
+
+| You want to…                                   | Command  |
+| ---------------------------------------------- | -------- |
+| Relocate or rename a *file* (path or basename) | `move`   |
+| Retitle a *heading* and fix its anchors        | `rename` |
+| Rename a *link-ref label* and its uses         | `rename` |
+
+## Safety
+
+The rename refuses to corrupt the workspace. It fails when the
+new heading slug collides with another heading, when the label
+collides with another definition, or when the text slugifies to
+nothing or carries a newline or a stray bracket. Each failure
+exits 2 and names the conflict. No partial edit is written.
+`--dry-run` prints the edits and changes nothing.
 
 ## Flags
 
 | Flag                | Default | Description                                |
 | ------------------- | ------- | ------------------------------------------ |
-| `--heading`         | false   | Rename a heading and its workspace anchors |
-| `--link-ref`        | false   | Rename a link-ref label: def + uses        |
+| `--as`              | auto    | Force the kind: `heading` or `label`       |
+| `--dry-run`         | false   | Print the edits without writing them       |
 | `-c`, `--config`    | auto    | Override config path                       |
 | `-f`, `--format`    | `text`  | Output format: `text` or `json`            |
 | `--no-gitignore`    | false   | Disable `.gitignore` filtering during walk |
@@ -57,7 +79,7 @@ the conflict. No partial edit is written.
 
 ## Output
 
-A summary of the rewritten files, one per line.
+The rewritten files, one per line.
 
 **text** (default):
 
@@ -69,47 +91,50 @@ docs/index.md: 2 edit(s)
 **json**:
 
 ```json
-[
-  {
-    "file": "docs/guide.md",
-    "edits": 1
-  }
-]
+{
+  "files": [
+    { "file": "docs/guide.md", "edits": 1 }
+  ]
+}
 ```
 
-Rows are sorted by path. Keys are stable.
+Rows are sorted by path. Keys are stable. The `move` and
+`dryRun` fields appear only for [`mdsmith move`](move.md) and a
+dry run.
 
 ## Examples
 
 Rename a heading and fix every link that pointed at it:
 
 ```bash
-mdsmith rename docs/guide.md --heading "Old Title" "New Title"
+mdsmith rename docs/guide.md "Old Title" "New Title"
 ```
 
-Rename a link-reference label:
+Force a link-reference label rename:
 
 ```bash
-mdsmith rename docs/guide.md --link-ref oldlabel newlabel
+mdsmith rename docs/guide.md --as label oldlabel newlabel
 ```
 
 JSON summary for a release script:
 
 ```bash
-mdsmith rename --format json docs/guide.md --heading "Setup" "Install"
+mdsmith rename --format json docs/guide.md --as heading "Setup" "Install"
 ```
 
 ## Exit codes
 
-| Code | Meaning                        |
-| ---- | ------------------------------ |
-| 0    | Rewritten                      |
-| 1    | No matching heading or label   |
-| 2    | Conflict, invalid input, error |
+| Code | Meaning                                                         |
+| ---- | --------------------------------------------------------------- |
+| 0    | Rewritten                                                       |
+| 1    | No matching heading or label (with an explicit `--as`)          |
+| 2    | Conflict, invalid input, ambiguous kind, or move-shaped request |
 
 ## See also
 
-- [`mdsmith deps`](deps.md) — the dependency edges the
-  rename walks to find dependent anchors.
-- [`mdsmith lsp`](lsp.md) — the editor surface for the
-  same rename engine (prepare-range, collision data).
+- [`mdsmith move`](move.md) — relocate a file and rewrite every
+  reference to it.
+- [`mdsmith deps`](deps.md) — the dependency edges the rename
+  walks to find dependent anchors.
+- [`mdsmith lsp`](lsp.md) — the editor surface for the same
+  rename engine (prepare-range, collision data).
