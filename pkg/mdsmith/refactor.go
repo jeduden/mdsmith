@@ -111,7 +111,8 @@ func detectRenameKind(source []byte, oldName string) (string, error) {
 	isLabel := refactor.HasLinkRef(source, oldName)
 	switch {
 	case isHeading && isLabel:
-		return "", fmt.Errorf("%q matches both a heading and a link-ref label; pass as=\"heading\" or as=\"label\"", oldName)
+		return "", fmt.Errorf(
+			"%q matches both a heading and a link-ref label; pass as=\"heading\" or as=\"label\"", oldName)
 	case isHeading:
 		return "heading", nil
 	case isLabel:
