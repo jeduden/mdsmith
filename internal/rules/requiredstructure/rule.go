@@ -1375,7 +1375,11 @@ func cueFieldLabel(key string) string {
 
 // collectBodySyncPoints scans body content for {field} references and
 // adds them to the syncPoints map under their nearest preceding heading.
-// Iterates over content bytes directly to avoid the bytes.Split allocation.
+// Splits lines via bytes.IndexByte rather than a hand-rolled byte-by-byte
+// scan or bytes.Split, so a line-heavy schema body pays one SIMD-accelerated
+// forward search per line instead of one branch per byte — see
+// docs/development/high-performance-go.md#strings-and-bytes — without
+// paying bytes.Split's up-front allocation of every line's slice header.
 // fieldCache is forwarded to appendBodySyncFields; see buildFieldPattern's
 // doc comment.
 func collectBodySyncPoints(
@@ -1393,13 +1397,14 @@ func collectBodySyncPoints(
 	var fenceChar byte
 	fenceLen := 0
 	start := 0
-	for i := 0; i <= len(content); i++ {
-		if i < len(content) && content[i] != '\n' {
-			continue
+	for start <= len(content) {
+		end := len(content)
+		if idx := bytes.IndexByte(content[start:], '\n'); idx >= 0 {
+			end = start + idx
 		}
-		raw := content[start:i]
+		raw := content[start:end]
 		lineB := bytes.TrimSpace(raw)
-		start = i + 1
+		start = end + 1
 		if len(lineB) == 0 {
 			continue
 		}
