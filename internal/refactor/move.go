@@ -207,9 +207,17 @@ func appendOutboundEdits(changes map[string][]Edit, srcKey, src, dst string, sou
 		if !ok {
 			continue
 		}
+		// A path link inside src that points at src itself must keep
+		// pointing at the file after it relocates, so recompute against
+		// dst — otherwise the token would be rewritten to address the
+		// old (now vacated) location.
+		recomputeTarget := tgt
+		if tgt == src {
+			recomputeTarget = dst
+		}
 		// The reference lives in the moved file, so its new spelling is
 		// computed as if from dst's directory.
-		if edit, ok := pathEdit(row, fileLine-1, ps, pe, dst, tgt); ok {
+		if edit, ok := pathEdit(row, fileLine-1, ps, pe, dst, recomputeTarget); ok {
 			changes[srcKey] = append(changes[srcKey], edit)
 		}
 	}

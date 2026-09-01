@@ -221,6 +221,32 @@ func TestAppendOutboundEdits_SameDirIsNoOp(t *testing.T) {
 	assert.Empty(t, changes["docs/a.md"])
 }
 
+// TestAppendOutboundEdits_SelfPathLinkStaysValid covers a path link inside
+// the moved file that addresses the file itself. After relocating into a
+// deeper directory the link must stay a same-directory self-reference, not
+// be rewritten to `../a.md` (which would point at the vacated old path).
+func TestAppendOutboundEdits_SelfPathLinkStaysValid(t *testing.T) {
+	changes := map[string][]Edit{}
+	// docs/a.md links to itself by path; moved to docs/sub/a.md the link
+	// resolves identically from the new directory, so no edit is emitted.
+	appendOutboundEdits(changes, "docs/a.md", "docs/a.md", "docs/sub/a.md",
+		[]byte("# A\n\nJump [self](a.md#intro).\n"))
+	assert.Empty(t, changes["docs/a.md"])
+}
+
+// TestMove_SelfPathLinkStaysValid exercises the same self-link case end to
+// end through Move: relocating a file that links to itself by path leaves
+// that link untouched rather than breaking it.
+func TestMove_SelfPathLinkStaysValid(t *testing.T) {
+	ws := newMemWorkspace(map[string]string{
+		"docs/a.md": "# A\n\nJump [self](a.md#intro).\n",
+	})
+	plan, err := Move(ws, "docs/a.md", "docs/sub/a.md")
+	require.NoError(t, err)
+	assert.Empty(t, plan.Edits["docs/a.md"])
+	require.NotNil(t, plan.FileOp)
+}
+
 func TestRefDefPathEditForMatch_DirectBranches(t *testing.T) {
 	m := []int{0, 3, 1, 2} // label bracket at body offsets 1..2
 
