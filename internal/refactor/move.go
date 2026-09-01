@@ -57,8 +57,8 @@ func (e SourceNotFoundError) Error() string {
 //     the basename stem changes; a move that keeps the basename leaves
 //     wikilinks alone because a stem still resolves (a documented
 //     asymmetry with path links);
-//   - outbound relative links inside src, recomputed so each still
-//     resolves from dst's directory.
+//   - outbound inline links inside src — every `[t](path)` recomputed
+//     so it still resolves from dst's directory.
 //
 // Spelling is preserved: an explicit `./x` keeps its prefix. Absolute
 // URLs, mailto, root-anchored `/x`, and any other out-of-workspace
@@ -70,9 +70,13 @@ func (e SourceNotFoundError) Error() string {
 // existing destination returns DestinationExistsError. Each aborts with
 // a zero Plan and no edit.
 //
-// `<?include?>`, `<?build?>`, and `<?catalog?>` directive paths are not
-// yet rewritten — a move that a directive path targets still needs a
-// manual fix; this is a tracked follow-up.
+// Two reference kinds inside src are not yet recomputed, so a
+// cross-directory move can leave them stale — both tracked follow-ups:
+//
+//   - `<?include?>`, `<?build?>`, and `<?catalog?>` directive paths;
+//   - reference-definition destinations that src itself declares
+//     (`[label]: ../other.md`) — only src's inline links are recomputed,
+//     while ref-defs elsewhere that point at src are handled above.
 func Move(ws Workspace, src, dst string) (Plan, error) {
 	src = index.NormalizePath(src)
 	dst = index.NormalizePath(dst)

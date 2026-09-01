@@ -27,8 +27,8 @@ code 2.
   its spelling — an explicit `./x` keeps the prefix.
 - **Ref-def destinations.** A `[label]: src` definition line is
   repointed the same way.
-- **Outbound relative links inside the moved file.** Each
-  relative link in `src` is recomputed so it still resolves from
+- **Outbound inline links inside the moved file.** Each inline
+  `[x](path)` in `src` is recomputed so it still resolves from
   `dst`'s directory. Moving `docs/a.md` to `guide/a.md` fixes
   its own `[x](./b.md)` as well as the links pointing at it.
 - **Wikilinks.** `[[old-stem]]` becomes `[[new-stem]]` only when
@@ -40,9 +40,13 @@ code 2.
 Absolute URLs, `mailto:`, and root-anchored `/x` paths do not
 resolve to a workspace file, so a move never touches them.
 
-`<?include?>`, `<?build?>`, and `<?catalog?>` directive paths
-are not yet rewritten; a move that a directive path targets
-still needs a manual fix.
+Some references inside the moved file are not yet recomputed. A
+cross-directory move can leave them stale. Two kinds need a
+manual fix. One is `<?include?>`, `<?build?>`, and `<?catalog?>`
+directive paths. The other is a reference definition the file
+declares itself, such as `[label]: ../other.md`. Only inline
+links are recomputed; ref-defs elsewhere that point at the file
+are still repointed.
 
 ## How the file is moved
 
