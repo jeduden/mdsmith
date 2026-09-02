@@ -211,9 +211,9 @@ func checkPipeStyle(f *lint.File, t tableBlock, style, ruleID, ruleName string) 
 
 func checkColumnCount(f *lint.File, t tableBlock, ruleID, ruleName string) []lint.Diagnostic {
 	want := t.rows[0].cells
-	//nolint:prealloc // most tables are column-count compliant; an eager
-	// make() here would allocate a slice only to discard it on that
-	// common path, so diags starts nil and grows lazily instead.
+	// Most tables are column-count compliant; an eager make() here
+	// would allocate a slice only to discard it on that common path,
+	// so diags starts nil and grows lazily instead.
 	var diags []lint.Diagnostic
 	for _, row := range t.rows[1:] {
 		if row.cells == want {
