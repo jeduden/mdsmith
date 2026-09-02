@@ -56,8 +56,8 @@ func (r *Rule) Category() string { return "structural" }
 // file line of the field, and the first path holding the value.
 type pathEntry struct {
 	value     string
-	line      int
 	firstPath string
+	line      int
 }
 
 // scopeIndex maps each in-scope file whose value repeats an earlier
