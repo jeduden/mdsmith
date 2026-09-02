@@ -94,6 +94,59 @@ func TestMove_WikilinksUntouchedWhenBasenameKept(t *testing.T) {
 	require.NotNil(t, plan.FileOp)
 }
 
+// TestMove_WikilinkAmbiguousStemLeftUntouched locks that a move whose
+// basename stem is shared by another workspace file does not rewrite
+// any wikilink: the index keys wikilink edges by stem alone and cannot
+// tell which same-stem file `[[ref/Guide]]` points at, so rewriting it
+// would break a reference to the sibling file that is not moving.
+func TestMove_WikilinkAmbiguousStemLeftUntouched(t *testing.T) {
+	src := "See [[ref/Guide]] and [[docs/Guide]].\n"
+	ws := newMemWorkspace(map[string]string{
+		"docs/Guide.md": "# Guide\n",
+		"ref/Guide.md":  "# Guide\n",
+		"index.md":      src,
+	})
+	plan, err := Move(ws, "docs/Guide.md", "docs/Manual.md")
+	require.NoError(t, err)
+	assert.Empty(t, plan.Edits["index.md"],
+		"ambiguous stem: no wikilink is rewritten")
+}
+
+// TestMove_DestinationWithSpaceIsPercentEncoded locks that relocating a
+// file to a path containing a space emits a link destination that still
+// parses: a bare space would terminate the CommonMark destination, so
+// the recomputed token percent-encodes it (and the index decodes it
+// back when resolving).
+func TestMove_DestinationWithSpaceIsPercentEncoded(t *testing.T) {
+	ws := newMemWorkspace(map[string]string{
+		"a.md":      "# A\n",
+		"link.md":   "See [a](a.md).\n",
+		"refdef.md": "[ref]: a.md\n",
+	})
+	plan, err := Move(ws, "a.md", "new file.md")
+	require.NoError(t, err)
+
+	assert.Equal(t, "See [a](new%20file.md).\n",
+		applyEditsToSource("See [a](a.md).\n", plan.Edits["link.md"]))
+	assert.Equal(t, "[ref]: new%20file.md\n",
+		applyEditsToSource("[ref]: a.md\n", plan.Edits["refdef.md"]))
+}
+
+// TestMove_SelfRefDefLeftUntouched locks that a self-referential
+// reference definition inside the moved file is not rewritten. Its
+// destination would be recomputed from the file's old directory,
+// producing a path that breaks once the file relocates; leaving it
+// alone matches the documented "src's own ref-defs are a follow-up"
+// contract and stays correct for a same-directory move.
+func TestMove_SelfRefDefLeftUntouched(t *testing.T) {
+	src := "# A\n\n[self]: a.md\n"
+	ws := newMemWorkspace(map[string]string{"a.md": src})
+	plan, err := Move(ws, "a.md", "docs/a.md")
+	require.NoError(t, err)
+	assert.Empty(t, plan.Edits["a.md"],
+		"self-referential ref-def is left to the tracked follow-up")
+}
+
 func TestMove_OutboundRelativeLinksRecomputed(t *testing.T) {
 	src := "# A\n\nSee [b](b.md), [up](../top.md), and [ext](https://x.example).\n"
 	ws := newMemWorkspace(map[string]string{

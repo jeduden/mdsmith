@@ -127,11 +127,46 @@ func workspaceRelative(p string) bool {
 // workspace file (see linkgraph.ResolveRelTarget), so a move leaves
 // those tokens untouched upstream rather than recomputing them.
 func recomputeToken(refFile, oldTok, target string) string {
-	rel := relFrom(path.Dir(refFile), target)
+	rel := encodePathToken(relFrom(path.Dir(refFile), target))
 	if strings.HasPrefix(oldTok, "./") && !strings.HasPrefix(rel, "../") {
 		return "./" + rel
 	}
 	return rel
+}
+
+// encodePathToken percent-encodes the bytes that would otherwise break
+// a bare CommonMark link destination or reference-definition URL — a
+// space or tab terminates the destination, and ASCII control bytes are
+// invalid — so a move into a path containing them still emits a link
+// that parses. Path separators and ordinary name characters are left
+// as written: the token stays readable, and the index percent-decodes
+// destinations when it resolves them, so the encoded form still points
+// at the moved file. Tokens with none of these bytes (the common case)
+// are returned unchanged.
+func encodePathToken(tok string) string {
+	needs := false
+	for i := 0; i < len(tok); i++ {
+		if b := tok[i]; b == ' ' || b == '\t' || b < 0x20 {
+			needs = true
+			break
+		}
+	}
+	if !needs {
+		return tok
+	}
+	var b strings.Builder
+	b.Grow(len(tok) + 6)
+	for i := 0; i < len(tok); i++ {
+		if c := tok[i]; c == ' ' || c == '\t' || c < 0x20 {
+			const hex = "0123456789ABCDEF"
+			b.WriteByte('%')
+			b.WriteByte(hex[c>>4])
+			b.WriteByte(hex[c&0x0f])
+			continue
+		}
+		b.WriteByte(tok[i])
+	}
+	return b.String()
 }
 
 // relFrom returns the forward-slash path from fromDir to target, both
@@ -292,6 +327,16 @@ func linkPathBytesResolving(row []byte, textStart int, refFile, want string) (in
 func appendRefDefPathEdits(changes map[string][]Edit, ws Workspace, src, dst string) {
 	src = index.NormalizePath(src)
 	for _, rel := range ws.Files() {
+		// Ref-defs the moved file itself declares are a tracked
+		// follow-up (see Move's doc comment): only src's inline links
+		// are recomputed. A self-referential `[label]: src` would
+		// otherwise be rewritten here from src's *old* directory,
+		// producing a path that breaks once the file relocates. Skip
+		// src so its own defs are left untouched, consistent with the
+		// documented contract.
+		if index.NormalizePath(rel) == src {
+			continue
+		}
 		key, source, ok := ws.Resolve(rel)
 		if !ok {
 			continue
@@ -365,6 +410,19 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, src, dst s
 	if oldStem == newStem {
 		return
 	}
+	// A wikilink resolves by basename stem, and the index keys these
+	// edges by stem alone — it cannot record which same-stem file a
+	// given `[[stem]]` actually points at. When two or more workspace
+	// files share oldStem the rewrite is ambiguous: blindly retargeting
+	// every `[[oldStem]]` would rewrite links that resolve to a sibling
+	// file that is not moving (e.g. `[[ref/Guide]]` when both
+	// docs/Guide.md and ref/Guide.md exist and only docs/Guide.md
+	// moves). Leave every such wikilink untouched in that case rather
+	// than break an unrelated reference — the moved file's own links
+	// stay resolvable by the sibling's stem.
+	if countFilesWithStem(ws, oldStem) > 1 {
+		return
+	}
 	newSpelling := dstStemSpelling(dst)
 	for _, e := range ws.IncomingWikilinkEdges(oldStem) {
 		key, source, ok := ws.Resolve(e.SourceFile)
@@ -418,6 +476,20 @@ func wikilinkStemBytes(row []byte, bracketStart int) (int, int, bool) {
 		return 0, 0, false
 	}
 	return stemStart, end, true
+}
+
+// countFilesWithStem reports how many workspace files share the given
+// lowercased basename stem. A count above one means a bare `[[stem]]`
+// is ambiguous, so the move planner cannot safely rewrite wikilinks by
+// stem alone.
+func countFilesWithStem(ws Workspace, stem string) int {
+	n := 0
+	for _, f := range ws.Files() {
+		if fileStem(f) == stem {
+			n++
+		}
+	}
+	return n
 }
 
 // fileStem returns the lowercased basename stem a file is addressed by

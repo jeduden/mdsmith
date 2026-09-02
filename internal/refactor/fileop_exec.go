@@ -33,6 +33,13 @@ func (op FileOp) Execute(rootDir string) error {
 	if gitTracked(rootDir, op.From) {
 		return gitMove(rootDir, op.From, op.To)
 	}
+	// git mv refuses an existing destination, so mirror that guard on
+	// the plain-rename path: os.Rename silently clobbers `to`, which
+	// would destroy a file the planner's collision check could not read
+	// (e.g. one over the max-input-size limit) and so did not see.
+	if _, err := os.Lstat(to); err == nil {
+		return fmt.Errorf("moving %s: destination already exists: %s", op.From, op.To)
+	}
 	from := filepath.Join(rootDir, filepath.FromSlash(op.From))
 	if err := os.Rename(from, to); err != nil {
 		return fmt.Errorf("moving %s: %w", op.From, err)

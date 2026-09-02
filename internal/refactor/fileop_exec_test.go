@@ -103,6 +103,23 @@ func TestFileOpExecute_RenameOverExistingDirErrors(t *testing.T) {
 	assert.FileExists(t, filepath.Join(dir, "a.md"))
 }
 
+func TestFileOpExecute_UntrackedRenameRefusesExistingDestination(t *testing.T) {
+	dir := t.TempDir() // no git — the plain-rename path
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.md"), []byte("# A\n"), 0o644))
+	// An existing regular file at the destination must not be clobbered:
+	// os.Rename would silently overwrite it, so Execute guards first.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.md"), []byte("keep me\n"), 0o644))
+
+	err := FileOp{From: "a.md", To: "b.md"}.Execute(dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "destination already exists")
+	assert.FileExists(t, filepath.Join(dir, "a.md"))
+	// The destination's original content is untouched.
+	got, readErr := os.ReadFile(filepath.Join(dir, "b.md"))
+	require.NoError(t, readErr)
+	assert.Equal(t, "keep me\n", string(got))
+}
+
 func TestFileOpExecute_GitMvFailureAbortsNoHalfMove(t *testing.T) {
 	dir := t.TempDir()
 	gitInit(t, dir)
