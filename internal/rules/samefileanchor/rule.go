@@ -72,8 +72,8 @@ type anchorChecker struct {
 	r     *Rule
 	f     *lint.File
 	slugs map[string]struct{}
-	built bool
 	diags []lint.Diagnostic
+	built bool
 }
 
 // visit records a diagnostic when n is a same-file fragment link whose
