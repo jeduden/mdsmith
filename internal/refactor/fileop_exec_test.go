@@ -94,13 +94,25 @@ func TestFileOpExecute_DestinationDirIsAFileErrors(t *testing.T) {
 func TestFileOpExecute_RenameOverExistingDirErrors(t *testing.T) {
 	dir := t.TempDir() // no git — the plain-rename path
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.md"), []byte("# A\n"), 0o644))
-	// The destination path already exists as a directory, so os.Rename
-	// of a file over it fails.
+	// The destination path already exists (here as a directory), so the
+	// existing-destination guard refuses the move before os.Rename runs.
 	require.NoError(t, os.Mkdir(filepath.Join(dir, "b.md"), 0o755))
 
 	err := FileOp{From: "a.md", To: "b.md"}.Execute(dir)
 	require.Error(t, err)
+	assert.Contains(t, err.Error(), "destination already exists")
 	assert.FileExists(t, filepath.Join(dir, "a.md"))
+}
+
+func TestFileOpExecute_UntrackedRenameSurfacesRenameError(t *testing.T) {
+	dir := t.TempDir() // no git — the plain-rename path
+	// The destination is free, so the existing-destination guard passes
+	// and os.Rename itself runs. With a missing source it fails, which
+	// exercises Execute's rename-error branch.
+	err := FileOp{From: "ghost.md", To: "dest.md"}.Execute(dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "moving ghost.md")
+	assert.NoFileExists(t, filepath.Join(dir, "dest.md"))
 }
 
 func TestFileOpExecute_UntrackedRenameRefusesExistingDestination(t *testing.T) {
