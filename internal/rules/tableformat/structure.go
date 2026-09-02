@@ -211,16 +211,16 @@ func checkPipeStyle(f *lint.File, t tableBlock, style, ruleID, ruleName string) 
 
 func checkColumnCount(f *lint.File, t tableBlock, ruleID, ruleName string) []lint.Diagnostic {
 	want := t.rows[0].cells
-	diags := make([]lint.Diagnostic, 0, len(t.rows)-1)
+	//nolint:prealloc // most tables are column-count compliant; an eager
+	// make() here would allocate a slice only to discard it on that
+	// common path, so diags starts nil and grows lazily instead.
+	var diags []lint.Diagnostic
 	for _, row := range t.rows[1:] {
 		if row.cells == want {
 			continue
 		}
 		diags = append(diags, structureDiag(f, row.lineNum, 1, ruleID, ruleName,
 			fmt.Sprintf("table column count; expected %d, got %d", want, row.cells)))
-	}
-	if len(diags) == 0 {
-		return nil
 	}
 	return diags
 }
