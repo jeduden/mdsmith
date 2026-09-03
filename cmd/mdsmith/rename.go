@@ -1,13 +1,14 @@
 package main
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"sync"
 
 	flag "github.com/spf13/pflag"
@@ -284,8 +285,19 @@ func applyAndReport(
 		}
 		summaries = append(summaries, renameSummary{File: rel, Edits: len(edits)})
 	}
-	sort.Slice(summaries, func(i, j int) bool { return summaries[i].File < summaries[j].File })
+	sortRenameSummaries(summaries)
 	return emitRenameSummary(w, summaries, format)
+}
+
+// sortRenameSummaries orders summaries by file path in place.
+// slices.SortFunc compares the concrete renameSummary values
+// directly, unlike sort.Slice, which drives reflect.Swapper under
+// the hood — see docs/development/high-performance-go.md's "reflect
+// in hot paths" anti-pattern.
+func sortRenameSummaries(summaries []renameSummary) {
+	slices.SortFunc(summaries, func(a, b renameSummary) int {
+		return cmp.Compare(a.File, b.File)
+	})
 }
 
 // emitRenameSummary renders the rewritten-file list. Exit code: 0 on
@@ -338,9 +350,7 @@ func applyEdits(src []byte, edits []rename.Edit) ([]byte, error) {
 		if cr {
 			row = seg[:len(seg)-1]
 		}
-		sort.SliceStable(es, func(i, j int) bool {
-			return es[i].Range.Start.Character > es[j].Range.Start.Character
-		})
+		sortEditsByCharacterDesc(es)
 		buf := append([]byte(nil), row...)
 		for _, e := range es {
 			s := mdtext.UTF16ToByteOffset(row, e.Range.Start.Character)
@@ -360,6 +370,20 @@ func applyEdits(src []byte, edits []rename.Edit) ([]byte, error) {
 		segs[line] = buf
 	}
 	return joinLF(segs), nil
+}
+
+// sortEditsByCharacterDesc orders es by descending Start.Character in
+// place (rightmost edit first), so applyEdits can splice each edit
+// into the line without its offset shifting from an earlier splice.
+// slices.SortStableFunc compares the concrete rename.Edit values
+// directly, unlike sort.SliceStable, which drives reflect.Swapper
+// under the hood — see docs/development/high-performance-go.md's
+// "reflect in hot paths" anti-pattern. Stability preserves the
+// original order among edits reported at the same offset.
+func sortEditsByCharacterDesc(es []rename.Edit) {
+	slices.SortStableFunc(es, func(a, b rename.Edit) int {
+		return cmp.Compare(b.Range.Start.Character, a.Range.Start.Character)
+	})
 }
 
 // splitKeepCR splits src on `\n`, keeping any trailing `\r` on each

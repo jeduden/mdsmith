@@ -1,13 +1,14 @@
 package main
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
@@ -289,13 +290,23 @@ func collectBacklinks(
 		}
 		records = append(records, rs...)
 	}
-	sort.SliceStable(records, func(i, j int) bool {
-		if records[i].Source != records[j].Source {
-			return records[i].Source < records[j].Source
-		}
-		return records[i].Line < records[j].Line
-	})
+	sortBacklinkRecords(records)
 	return records, errs
+}
+
+// sortBacklinkRecords orders records by source path, then line, in
+// place. slices.SortStableFunc compares the concrete backlinkRecord
+// values directly, unlike sort.SliceStable, which drives
+// reflect.Swapper under the hood — see
+// docs/development/high-performance-go.md's "reflect in hot paths"
+// anti-pattern.
+func sortBacklinkRecords(records []backlinkRecord) {
+	slices.SortStableFunc(records, func(a, b backlinkRecord) int {
+		return cmp.Or(
+			cmp.Compare(a.Source, b.Source),
+			cmp.Compare(a.Line, b.Line),
+		)
+	})
 }
 
 // extractBacklinksFromSource reads one source file, parses it, and
