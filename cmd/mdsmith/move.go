@@ -137,6 +137,23 @@ func applyPlan(w io.Writer, ws cliRenameWorkspace, plan refactor.Plan, format st
 	}
 	sort.Strings(rels)
 
+	// Pre-flight the file move before writing any reference edits.
+	// Execute refuses an existing destination (git mv does; the
+	// plain-rename path mirrors it with an Lstat guard), but by then
+	// every reference edit is already on disk, pointing at a file the
+	// move never created — corrupting the workspace with no rollback.
+	// Checking here keeps the operation all-or-nothing for the common
+	// collision the planner's read-based check cannot see (a destination
+	// over the max-input-size limit, which ws.Resolve reports as absent).
+	if !dryRun && plan.FileOp != nil {
+		dst := filepath.Join(ws.rootDir, filepath.FromSlash(plan.FileOp.To))
+		if _, err := os.Lstat(dst); err == nil {
+			fmt.Fprintf(os.Stderr,
+				"mdsmith: destination already exists: %s\n", plan.FileOp.To)
+			return 2
+		}
+	}
+
 	summaries := make([]renameSummary, 0, len(rels))
 	for _, rel := range rels {
 		edits := plan.Edits[rel]

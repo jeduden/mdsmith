@@ -109,9 +109,41 @@ func TestApplyPlan_FileOpFailureExits2(t *testing.T) {
 	renameWorkspace(t)
 	ws, code := buildWorkspace(renameOptions{})
 	require.Equal(t, -1, code)
-	// A FileOp whose destination path already exists as a directory fails
-	// at execution (os.Rename over a dir) → exit 2.
-	require.NoError(t, os.Mkdir(filepath.Join(ws.rootDir, "occupied"), 0o755))
-	plan := refactor.Plan{FileOp: &refactor.FileOp{From: "a.md", To: "occupied"}}
+	// The destination does not exist, so the pre-flight passes, but the
+	// source is missing, so FileOp.Execute's os.Rename fails → exit 2.
+	plan := refactor.Plan{FileOp: &refactor.FileOp{From: "ghost.md", To: "moved.md"}}
 	assert.Equal(t, 2, applyPlan(io.Discard, ws, plan, "text", false))
+}
+
+// TestApplyPlan_PreflightAbortsBeforeWritingEdits locks the finding-#1
+// data-safety fix: when the destination already exists on disk (a
+// collision the planner's read-based check can miss), applyPlan must
+// abort before writing any reference edit, so a move that could never
+// succeed does not leave the workspace with rewritten links pointing at
+// a file that was never created.
+func TestApplyPlan_PreflightAbortsBeforeWritingEdits(t *testing.T) {
+	dir := renameWorkspace(t)
+	ws, code := buildWorkspace(renameOptions{})
+	require.Equal(t, -1, code)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "occupied.md"), []byte("# Keep\n"), 0o644))
+	before, err := os.ReadFile(filepath.Join(dir, "b.md"))
+	require.NoError(t, err)
+
+	// The plan would rewrite b.md and move a.md onto the existing
+	// occupied.md; the pre-flight must abort first.
+	plan := refactor.Plan{
+		Edits: map[string][]refactor.Edit{"b.md": {{
+			Range: refactor.Range{
+				Start: refactor.Position{Line: 0, Character: 0},
+				End:   refactor.Position{Line: 0, Character: 3},
+			},
+			NewText: "XXX",
+		}}},
+		FileOp: &refactor.FileOp{From: "a.md", To: "occupied.md"},
+	}
+	assert.Equal(t, 2, applyPlan(io.Discard, ws, plan, "text", false))
+
+	after, err := os.ReadFile(filepath.Join(dir, "b.md"))
+	require.NoError(t, err)
+	assert.Equal(t, before, after, "no reference edit is written when the pre-flight aborts")
 }
