@@ -268,4 +268,5 @@ footer: |
 | 2608161914 | 🔲     | haiku  | [Add dedicated unit tests for the 2026-08-16 touched-set tax findings](plan/2608161914_arch-fix-touched-set-unit-tests.md)                              |
 | 2608282011 | ✅     | sonnet | [Security hardening batch — 2026-08-28](plan/2608282011_security-hardening-batch-2026-08-28.md)                                                         |
 | 2608301343 | 🔲     | sonnet | [Reduce mdsmith.dev homepage clutter and coined words](plan/2608301343_reduce-homepage-clutter.md)                                                      |
+| 2609032052 | 🔲     | opus   | [Resolve config from `pyproject.toml` under `[tool.mdsmith]`](plan/2609032052_pyproject-config-source.md)                                               |
 <?/catalog?>
