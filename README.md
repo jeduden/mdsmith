@@ -9,7 +9,7 @@
 [![Quality][grc-badge]][grc-link]
 [![Coverage][cov-badge]][cov-link]
 
-Mark*down*, smithed.
+Neat, consistent *Markdown*.
 
 <?include
 file: docs/brand/messaging.md
