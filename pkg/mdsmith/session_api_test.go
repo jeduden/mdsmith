@@ -343,7 +343,7 @@ func TestKindsFieldsParseError(t *testing.T) {
 // so any rename must update both sides; this test locks the exact names.
 func TestCapabilityList(t *testing.T) {
 	got := capabilityList()
-	want := []string{"check", "fix", "kinds"}
+	want := []string{"check", "fix", "kinds", "rename", "move"}
 	if len(got) != len(want) {
 		t.Fatalf("capabilityList() = %v, want %v", got, want)
 	}

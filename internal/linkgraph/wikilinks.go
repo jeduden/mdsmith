@@ -316,6 +316,31 @@ func ResolveWikiLink(root fs.FS, _ string, target string) (string, bool) {
 	return NewWikilinkIndex(root).Resolve(target)
 }
 
+// WikilinkStem returns the lowercased basename stem that a bare-page
+// or Markdown-extension wikilink target resolves by, with ok=true. It
+// mirrors WikilinkIndex.Resolve's stem-mode matching (lowercased stem
+// lookup), so a caller keying edges by stem matches the same files the
+// resolver would. A typed non-Markdown target (e.g. `diagram.png`)
+// returns ok=false: those resolve by exact filename, never by stem, and
+// never point at the Markdown files a move relocates. A traversal or
+// absolute target also returns ok=false.
+func WikilinkStem(target string) (string, bool) {
+	target = strings.TrimSpace(strings.ReplaceAll(target, `\`, `/`))
+	if target == "" || isDriveOrUNC(target) {
+		return "", false
+	}
+	cleaned := path.Clean(target)
+	if cleaned == "." || cleaned == ".." ||
+		strings.HasPrefix(cleaned, "/") || strings.HasPrefix(cleaned, "../") {
+		return "", false
+	}
+	_, stem, stemMode := wikilinkSearchKey(target)
+	if !stemMode || stem == "" {
+		return "", false
+	}
+	return strings.ToLower(stem), true
+}
+
 // wikilinkSearchKey splits target into the lookup parameters
 // WikilinkIndex.Resolve uses. target must already have backslashes
 // normalised to forward slashes (Resolve does this before calling).
