@@ -279,13 +279,27 @@ func skipRefLabel(text []byte, i int) int {
 
 // insertDisambiguated inserts slug into the set with GitHub-compatible
 // disambiguation: first occurrence is slug, subsequent ones are slug-1, slug-2, …
+//
+// A colliding slug builds "slug-N" candidates until one is free —
+// pathological input (many identically-named headings, e.g. a
+// changelog with repeated "Fixed" sections) can try several Ns per
+// call. slug+"-"+strconv.Itoa(n) allocated twice per attempt (once for
+// Itoa's result, once for the concatenation); writing digits directly
+// into a reused []byte buffer via strconv.AppendInt allocates the
+// buffer once and only converts to a string, the map key type, on the
+// final result (docs/development/high-performance-go.md: "Reuse
+// loop-local buffers").
 func insertDisambiguated(slugs map[string]struct{}, counts map[string]int, slug string) {
 	anchor := slug
 	if _, exists := slugs[anchor]; exists {
 		n := counts[slug]
+		buf := make([]byte, 0, len(slug)+8)
 		for {
 			n++
-			anchor = slug + "-" + strconv.Itoa(n)
+			buf = append(buf[:0], slug...)
+			buf = append(buf, '-')
+			buf = strconv.AppendInt(buf, int64(n), 10)
+			anchor = string(buf)
 			if _, exists := slugs[anchor]; !exists {
 				break
 			}
