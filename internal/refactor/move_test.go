@@ -132,6 +132,46 @@ func TestMove_DestinationWithSpaceIsPercentEncoded(t *testing.T) {
 		applyEditsToSource("[ref]: a.md\n", plan.Edits["refdef.md"]))
 }
 
+// TestMove_TitledInlineLinksRewritten locks that an inline link
+// carrying an optional CommonMark title has its path rewritten while the
+// title is preserved — both for an incoming link that points at the
+// moved file and for one of the moved file's own outbound links. A bare
+// destination ends at the first space, so the title bytes must not be
+// folded into the path token (which would leave the link resolving to
+// the vacated location and never rewrite it).
+func TestMove_TitledInlineLinksRewritten(t *testing.T) {
+	ws := newMemWorkspace(map[string]string{
+		"a.md":     "See [o](sub/o.md \"out\").\n",
+		"sub/o.md": "# O\n",
+		"b.md":     "See [a](a.md \"in\").\n",
+	})
+	plan, err := Move(ws, "a.md", "docs/a.md")
+	require.NoError(t, err)
+
+	assert.Equal(t, "See [a](docs/a.md \"in\").\n",
+		applyEditsToSource("See [a](a.md \"in\").\n", plan.Edits["b.md"]))
+	assert.Equal(t, "See [o](../sub/o.md \"out\").\n",
+		applyEditsToSource("See [o](sub/o.md \"out\").\n", plan.Edits["a.md"]))
+}
+
+// TestMove_WikilinkLeftUntouchedWhenDestStemCollides locks that a move
+// whose destination basename stem is already used by another workspace
+// file does not rewrite `[[oldStem]]`: retargeting it to `[[newStem]]`
+// would make the link resolve to that sibling (or become ambiguous)
+// rather than the moved file. It mirrors the source-side ambiguity
+// guard.
+func TestMove_WikilinkLeftUntouchedWhenDestStemCollides(t *testing.T) {
+	ws := newMemWorkspace(map[string]string{
+		"api.md":         "# API\n",
+		"other/guide.md": "# Other\n",
+		"index.md":       "See [[api]].\n",
+	})
+	plan, err := Move(ws, "api.md", "svc/guide.md")
+	require.NoError(t, err)
+	assert.Empty(t, plan.Edits["index.md"],
+		"colliding destination stem: no wikilink is rewritten")
+}
+
 // TestMove_SelfRefDefLeftUntouched locks that a self-referential
 // reference definition inside the moved file is not rewritten. Its
 // destination would be recomputed from the file's old directory,

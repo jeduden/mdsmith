@@ -305,6 +305,19 @@ func linkPathBytesResolving(row []byte, textStart int, refFile, want string) (in
 					break
 				}
 			}
+		} else {
+			// A bare CommonMark destination is terminated by the first
+			// space or tab; anything after it is an optional title, not
+			// part of the path. Without this cut, `[t](path "title")`
+			// would fold the title bytes into the path token, so it never
+			// resolves to `want` and the move silently leaves the link
+			// pointing at the vacated location.
+			for j := start; j < end; j++ {
+				if row[j] == ' ' || row[j] == '\t' {
+					end = j
+					break
+				}
+			}
 		}
 		for i := start; i < end; i++ {
 			if row[i] == '#' {
@@ -421,6 +434,15 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, src, dst s
 	// than break an unrelated reference — the moved file's own links
 	// stay resolvable by the sibling's stem.
 	if countFilesWithStem(ws, oldStem) > 1 {
+		return
+	}
+	// The destination stem must be unique too. dst does not exist in the
+	// workspace yet (Move rejected an existing destination), so any file
+	// already carrying newStem is a *different* file: retargeting
+	// `[[oldStem]]` to `[[newStem]]` would make the link resolve to that
+	// sibling (or become ambiguous) instead of the moved file. Leave the
+	// wikilinks alone, mirroring the source-side ambiguity guard above.
+	if countFilesWithStem(ws, newStem) > 0 {
 		return
 	}
 	newSpelling := dstStemSpelling(dst)
