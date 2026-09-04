@@ -77,3 +77,26 @@ file is not checked in. Hatchling drops it
 otherwise. `artifacts` lists both possible binary
 names. The wheel contains whichever one
 `build-wheels` staged.
+
+### `core-metadata-version = "2.4"`
+
+Pin the wheel's `Metadata-Version` to `2.4`.
+Hatchling's default floats. It emits `2.4` on 1.29
+and 1.31. It emits `2.5` on 1.30 and 1.32. The
+`pypi` job installs hatchling unpinned, so that
+default would leak into the wheel.
+
+The pinned `pypa/gh-action-pypi-publish` bundles a
+`packaging` older than 26.0. Its twine check treats
+`Metadata-Version: 2.5` as invalid. The rejection
+failed the v0.55.0 publish.
+
+`2.4` is deterministic. It is the newest version the
+pinned publisher accepts. It still carries the PEP
+639 `License-Expression` and `License-File` fields.
+A regression guard lives in `TestBuildWheelsLayout`
+in [`buildwheels_test.go`][bw]. Raise the pin only
+with a publisher bump whose `packaging` accepts the
+newer version.
+
+[bw]: ../../../internal/release/buildwheels_test.go
