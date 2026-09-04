@@ -374,9 +374,7 @@ func SectionBodies(headings []SectionHeading, paragraphs []SectionParagraph, sou
 	for i := range headings {
 		start := headings[i].Line
 		end := SectionEnd(headings, i, totalLines)
-		for lo < len(paragraphs) && paragraphs[lo].Line < start {
-			lo++
-		}
+		lo = AdvancePastLine(paragraphs, lo, start)
 		parts = parts[:0]
 		for j := lo; j < len(paragraphs) && paragraphs[j].Line < end; j++ {
 			parts = append(parts, paragraphs[j].ExtractText(source))
@@ -384,6 +382,35 @@ func SectionBodies(headings []SectionHeading, paragraphs []SectionParagraph, sou
 		bodies[i] = strings.Join(parts, " ")
 	}
 	return bodies
+}
+
+// AdvancePastLine returns the first index at or after lo whose entry's
+// Line is not less than start. paragraphs must be in ascending Line
+// order.
+//
+// Safe to thread lo across a sequence of calls with non-decreasing
+// start values over the same paragraphs slice (as a per-heading loop
+// over ascending headings does): a paragraph this call skips has a
+// Line below start, hence below every later, higher-or-equal start
+// too, so it can never be needed by a later call in such a sequence.
+//
+// This only advances past the skipped prefix — it does not also
+// advance past the paragraphs a caller goes on to collect from the
+// returned index onward, unlike SectionBody's binary search (which
+// looks up both ends of its range independently and has no cursor to
+// share). A hierarchical section model (see SectionEnd) lets a later,
+// deeper heading's window overlap an earlier, shallower one's, so
+// those paragraphs may need to be collected again by a later call, as
+// SectionBodies (which shares this helper) relies on; a caller whose
+// windows form a true non-overlapping partition (not SectionEnd's)
+// may still choose to advance its own cursor past its collected
+// range, since AdvancePastLine only handles the shared skip half of
+// that trade-off.
+func AdvancePastLine(paragraphs []SectionParagraph, lo, start int) int {
+	for lo < len(paragraphs) && paragraphs[lo].Line < start {
+		lo++
+	}
+	return lo
 }
 
 // HeadingLine returns the 1-based source line of a heading node.

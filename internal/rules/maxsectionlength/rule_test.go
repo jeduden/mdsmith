@@ -20,6 +20,28 @@ func mustFile(t *testing.T, src string) *lint.File {
 	return f
 }
 
+// TestCountSection_SkipsPrecedingParagraphs exercises countSection's
+// pos-advance loop directly: a paragraph strictly before the window's
+// start must be skipped (not counted), and the cursor must carry
+// forward correctly into a second call for a later, higher window —
+// the shape Check's per-heading loop drives it with.
+func TestCountSection_SkipsPrecedingParagraphs(t *testing.T) {
+	paragraphs := []paragraph{
+		{line: 2, words: 3}, // preceding paragraph, must be skipped for [5, 10]
+		{line: 6, words: 4},
+		{line: 12, words: 5},
+	}
+	var pos int
+
+	words, count := countSection(paragraphs, &pos, 5, 10)
+	assert.Equal(t, 4, words, "only the line-6 paragraph falls in [5, 10]")
+	assert.Equal(t, 1, count)
+
+	words, count = countSection(paragraphs, &pos, 11, 20)
+	assert.Equal(t, 5, words, "cursor must still reach the line-12 paragraph")
+	assert.Equal(t, 1, count)
+}
+
 func TestCheck_NoHeadings_NoDiagnostic(t *testing.T) {
 	f := mustFile(t, "just some text\nand more\n")
 	r := &Rule{Max: 5}

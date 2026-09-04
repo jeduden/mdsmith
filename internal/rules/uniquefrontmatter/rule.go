@@ -14,6 +14,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
@@ -147,9 +148,8 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		Column:   1,
 		RuleID:   r.ID(),
 		RuleName: r.Name(),
-		Message: fmt.Sprintf(
-			"front-matter %q: value %s already used by %s",
-			r.Field, e.value, e.firstPath),
+		Message: "front-matter " + strconv.Quote(r.Field) +
+			": value " + e.value + " already used by " + e.firstPath,
 	}}
 }
 
