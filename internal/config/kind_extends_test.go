@@ -450,3 +450,53 @@ func TestEffectiveRules_ExtendsParentSchemaWithoutChild(t *testing.T) {
 	inline := sources[0].(map[string]any)["inline"].(map[string]any)
 	assert.Equal(t, "RFC-*.md", inline["filename"])
 }
+
+// A kind's `extends:` merges raw schema maps through MergeRawMap
+// rather than schema.Extend, so `frontmatter-closed:` inherits from
+// the parent the way every other top-level key does: a child that
+// says nothing keeps the parent's value.
+func TestResolveKindInlineSchema_FrontmatterClosedInheritsParent(t *testing.T) {
+	kinds := map[string]KindBody{
+		"prompt-base": {Schema: inlineSchemaRef(map[string]any{
+			"frontmatter":        map[string]any{"description": "string"},
+			"frontmatter-closed": false,
+		})},
+		"prompt-strict": {
+			Extends: "prompt-base",
+			Schema: inlineSchemaRef(map[string]any{
+				"frontmatter": map[string]any{"model": "string"},
+			}),
+		},
+	}
+	out, err := ResolveKindInlineSchema(kinds, "prompt-strict")
+	require.NoError(t, err)
+	sch, err := schema.ParseInline(out, "kind prompt-strict")
+	require.NoError(t, err)
+	assert.False(t, sch.FrontmatterIsClosed(),
+		"a child that says nothing inherits the parent's open front matter")
+}
+
+// The child's explicit `frontmatter-closed:` wins over the parent's,
+// and it stays legal even though the child declares no `frontmatter:`
+// map of its own — the merged map carries the parent's, which is what
+// ParseInline's pairing guard reads.
+func TestResolveKindInlineSchema_FrontmatterClosedChildWins(t *testing.T) {
+	kinds := map[string]KindBody{
+		"prompt-base": {Schema: inlineSchemaRef(map[string]any{
+			"frontmatter":        map[string]any{"description": "string"},
+			"frontmatter-closed": false,
+		})},
+		"prompt-strict": {
+			Extends: "prompt-base",
+			Schema: inlineSchemaRef(map[string]any{
+				"frontmatter-closed": true,
+			}),
+		},
+	}
+	out, err := ResolveKindInlineSchema(kinds, "prompt-strict")
+	require.NoError(t, err)
+	sch, err := schema.ParseInline(out, "kind prompt-strict")
+	require.NoError(t, err)
+	assert.True(t, sch.FrontmatterIsClosed(),
+		"the child's explicit `frontmatter-closed:` overrides the parent's")
+}

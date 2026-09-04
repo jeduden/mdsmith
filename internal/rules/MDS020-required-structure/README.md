@@ -45,12 +45,11 @@ directives. Use overrides or `kinds:` to apply schemas to specific file groups.
 A kind may declare its schema in either form. The config loader
 rejects a kind that sets both — see [file kinds](../../../docs/guides/file-kinds.md).
 
-Schema front matter may embed a CUE schema that
-validates document front matter. The rule-readme
-schema at [internal/rules/proto.md](../proto.md)
-requires `id`, `name`, `status`, `description`, and
-`nature` (one of `directive`, `generator`,
-`content`, `style`, `structure`). See the proto
+Schema front matter may embed a CUE schema that validates
+document front matter. The rule-readme schema at
+[internal/rules/proto.md](../proto.md) requires `id`, `name`,
+`status`, `description`, and `nature` (one of `directive`,
+`generator`, `content`, `style`, `structure`). See the proto
 file's leading comment for the vocabulary.
 
 ### Require directive
@@ -70,11 +69,10 @@ filename: "[0-9]*_*.md"
 
 ### Schema composition
 
-Schema files can use `<?include?>` to share
-structure across schemas. Included fragment
-headings are spliced into the heading list at
-the include position. Fragment front matter is
-ignored. `<?require?>` from fragments is merged.
+Schema files can use `<?include?>` to share structure across
+schemas. Included fragment headings are spliced into the heading
+list at the include position. Fragment front matter is ignored.
+`<?require?>` from fragments is merged.
 
 ```markdown
 # ?
@@ -330,6 +328,7 @@ editors render it as a `relatedInformation` entry.
 | body sync            | `body does not match frontmatter field "description": expected …`     |
 | front matter schema  | `status: got "draf", expected one of: "draft", "open", "done" …`      |
 | filename mismatch    | `filename: got "foo.md", expected filename matching glob [0-9]*_*.md` |
+| undeclared fm key    | `model: got "opus", expected not declared in schema`                  |
 | misplaced require    | `<?require?> is only recognized in schema files; …`                   |
 | schema include loop  | `cyclic include: a.md -> b.md -> a.md`                                |
 | content missing      | missing required content "code-block lang=yaml" inside ## Examples    |
@@ -357,6 +356,7 @@ Other shapes get no hint.
 
 - [Placeholder grammar](../../../docs/background/concepts/placeholder-grammar.md)
 - [Schema field types](../../../docs/reference/schema-types.md)
+- [Front-matter agreement](../../../docs/reference/frontmatter-agreement.md)
 
 ## Meta-Information
 

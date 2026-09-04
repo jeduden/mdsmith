@@ -50,6 +50,7 @@ func Compose(schemas ...*Schema) (*Schema, error) {
 	}
 
 	composeFrontmatter(out, nonNil)
+	composeFrontmatterClosed(out, nonNil)
 	if err := composeFilename(out, nonNil); err != nil {
 		return nil, err
 	}
@@ -141,6 +142,45 @@ func composeFrontmatter(out *Schema, schemas []*Schema) {
 			out.FrontmatterMeta[k] = meta
 		}
 	}
+}
+
+// composeFrontmatterClosed folds each input's `frontmatter-closed:`
+// into the composed schema. The stricter setting wins, matching
+// composeRootClosed: the composite stays closed unless EVERY source
+// that declares front matter opens it, so one kind's opt-out cannot
+// silently loosen another kind's contract. Closedness applies to the
+// UNION of the composed frontmatter keys (composeFrontmatter already
+// merged them), so a key declared by any one kind is accepted.
+//
+// Only a source with a non-empty `frontmatter:` map gets a vote. A
+// sections-only kind (or a proto.md with no front matter) has no
+// opinion on closedness — the inline parser will not even let it
+// spell `frontmatter-closed:` — and counting FrontmatterIsClosed's
+// default for it would let such a kind cancel another kind's explicit
+// `frontmatter-closed: false` the moment both claim one file.
+//
+// The result is always an explicit pointer: composition has resolved
+// the question for every input, and leaving it nil would re-open it
+// for a later Extend. With no declaring source the value is the
+// historical closed default, which is inert because the composed
+// schema then emits no front-matter constraint at all.
+func composeFrontmatterClosed(out *Schema, schemas []*Schema) {
+	closed := false
+	declared := false
+	for _, s := range schemas {
+		if len(s.Frontmatter) == 0 {
+			continue
+		}
+		declared = true
+		if s.FrontmatterIsClosed() {
+			closed = true
+			break
+		}
+	}
+	if !declared {
+		closed = true
+	}
+	out.FrontmatterClosed = &closed
 }
 
 func composeFilename(out *Schema, schemas []*Schema) error {

@@ -743,3 +743,24 @@ func loadFromString(t *testing.T, yml string) *Config {
 	require.NoError(t, err)
 	return cfg
 }
+
+// A `path-pattern:` may interpolate a front-matter value with
+// `\#(fmvar(name))`. The reference resolves per document, so a
+// malformed one is invisible to the doublestar validator; ValidateKinds
+// checks its shape so the error names the kind and its pattern.
+func TestValidateKindsRejectsMalformedPathPatternInterp(t *testing.T) {
+	cfg := &Config{Kinds: map[string]KindBody{
+		"apm-skill": {PathPattern: `.apm/skills/\#(fmvar(my-key))/SKILL.md`},
+	}}
+	err := ValidateKinds(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "apm-skill")
+	assert.Contains(t, err.Error(), "must be quoted")
+}
+
+func TestValidateKindsAcceptsWellFormedPathPatternInterp(t *testing.T) {
+	cfg := &Config{Kinds: map[string]KindBody{
+		"apm-skill": {PathPattern: `.apm/skills/\#(fmvar(name))/SKILL.md`},
+	}}
+	require.NoError(t, ValidateKinds(cfg))
+}

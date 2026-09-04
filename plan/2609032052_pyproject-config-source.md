@@ -195,11 +195,13 @@ Phase B — the pyproject source:
 
 5. [ ] Red/green: add the paired `internal/config` files
    — `loadPyproject(path)` behind `//go:build !wasm`
-   (parse TOML, lift `[tool.mdsmith]`, re-marshal to YAML,
-   call `loadFromBytes` with the pyproject path as the
-   sidecar anchor and `mergeKinds` true) and a
-   `//go:build wasm` stub returning an error. Test that a
-   `[tool.mdsmith]` config and the equivalent
+   (parse TOML, lift `[tool.mdsmith]` via `tree.Get` →
+   type-assert to `*toml.Tree` → `.ToMap()` to get a
+   `map[string]interface{}` yaml.v3 can marshal, then
+   re-marshal to YAML and call `loadFromBytes` with the
+   pyproject path as the sidecar anchor and `mergeKinds`
+   true) and a `//go:build wasm` stub returning an error.
+   Test that a `[tool.mdsmith]` config and the equivalent
    `.mdsmith.yml` produce an identical `*Config` —
    including a rule-off bool, a rule sub-table, an
    `[[overrides]]` array of tables, and a kind.
@@ -212,7 +214,13 @@ Phase B — the pyproject source:
 7. [ ] Red/green: extend `Discover` to return a
    `pyproject.toml` that contains `[tool.mdsmith]`, with
    the precedence and skip rules above (probe behind the
-   same build tag). Extend the discovery tests in
+   same build tag). Place the `pyproject.toml` probe
+   **before** the `.git`-boundary check in the walk loop
+   so a `pyproject.toml` at the repo root (same directory
+   as `.git/`) is found before the walk terminates; a
+   `pyproject.toml` with no `[tool.mdsmith]` is skipped
+   and the walk continues upward as before. Extend the
+   discovery tests in
    [config_test.go](../internal/config/config_test.go).
 8. [ ] Red/green: route the native callers through the
    shared discover-plus-dispatch — the CLI in
@@ -227,10 +235,15 @@ Phase B — the pyproject source:
    value or a syntax error in `[tool.mdsmith]` produces a
    diagnostic at the right line and column in the
    `pyproject.toml`.
-10. [ ] Red/green: a `pyproject.toml` with a plural
-    `[tools.mdsmith]` table but no `[tool.mdsmith]` emits a
-    one-line hint pointing at the correct key and is not
-    used as a config source.
+10. [ ] Red/green: when `Discover` terminates (having found
+    no `.mdsmith.yml` or `[tool.mdsmith]`), if the last
+    `pyproject.toml` it encountered had `[tools.mdsmith]`
+    (plural) but no `[tool.mdsmith]`, emit one hint line
+    to stderr pointing at the correct key. Emit at most
+    one hint per `Discover` call (not once per
+    `pyproject.toml` scanned) to avoid flooding CI output
+    in monorepos where many packages have pyproject files.
+    The file is not used as a config source.
 
 Phase C — guardrails and docs:
 

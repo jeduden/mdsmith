@@ -3,6 +3,8 @@ package schema
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -23,6 +25,9 @@ func DecodeFilenameField(v any) ([]string, error) {
 		if t == "" {
 			return nil, nil
 		}
+		if err := ValidateGlobInterps(t); err != nil {
+			return nil, fmt.Errorf("filename %q: %w", t, err)
+		}
 		return []string{t}, nil
 	case []any:
 		out := make([]string, 0, len(t))
@@ -37,6 +42,9 @@ func DecodeFilenameField(v any) ([]string, error) {
 				return nil, fmt.Errorf(
 					"filename list entries must be non-empty globs")
 			}
+			if err := ValidateGlobInterps(s); err != nil {
+				return nil, fmt.Errorf("filename %q: %w", s, err)
+			}
 			out = append(out, s)
 		}
 		if len(out) == 0 {
@@ -46,9 +54,13 @@ func DecodeFilenameField(v any) ([]string, error) {
 	case []string:
 		out := make([]string, 0, len(t))
 		for _, s := range t {
-			if s != "" {
-				out = append(out, s)
+			if s == "" {
+				continue
 			}
+			if err := ValidateGlobInterps(s); err != nil {
+				return nil, fmt.Errorf("filename %q: %w", s, err)
+			}
+			out = append(out, s)
 		}
 		if len(out) == 0 {
 			return nil, nil
@@ -90,6 +102,120 @@ func MatchFilename(patterns []string, base string) (matched bool, badPattern str
 		return false, firstBad, firstErr
 	}
 	return false, "", nil
+}
+
+// resolveFilenamePatterns resolves every entry's `\#(...)` references
+// against fm, returning the matchable list, the substituted forms of
+// just the entries that carried a reference, and the first reference
+// that could not be resolved. A list with no reference — every list
+// authored before this feature — is returned as-is with a nil
+// interpolated list, unresolved=nil and no allocation, so the common
+// path pays nothing.
+//
+// interpolated is deliberately narrower than resolved: it feeds the
+// "with front matter applied" hint, and a plain sibling glob was
+// never substituted, so listing it there would claim a substitution
+// that never happened.
+//
+// An entry whose reference cannot be resolved is DROPPED from the
+// returned list rather than aborting the whole call: `filename:` is
+// an OR list, so a basename that satisfies a sibling glob must still
+// pass. The error rides along so the caller can surface it as the
+// hint when nothing matched — including the all-entries-dropped case,
+// which the caller detects as an empty resolved list.
+func resolveFilenamePatterns(
+	patterns []string, fm map[string]any,
+) (resolved, interpolated []string, unresolved error) {
+	if !slices.ContainsFunc(patterns, PatternHasInterp) {
+		return patterns, nil, nil
+	}
+	out := make([]string, 0, len(patterns))
+	for _, p := range patterns {
+		if !PatternHasInterp(p) {
+			out = append(out, p)
+			continue
+		}
+		// filenameMetaChars, not globMetaChars: MatchFilename below
+		// runs filepath.Match, which knows no brace alternatives.
+		r, rErr := resolveGlobPattern(p, fm, filenameMetaChars)
+		if rErr != nil {
+			if unresolved == nil {
+				unresolved = rErr
+			}
+			continue
+		}
+		interpolated = append(interpolated, r)
+		out = append(out, r)
+	}
+	return out, interpolated, unresolved
+}
+
+// FilenameDiagnostic reports the `filename:` verdict for base against
+// patterns, resolving each entry's `\#(fmvar(name))` references
+// against fm first so a schema can require the basename to agree with
+// a front-matter value. It returns nil when the basename satisfies
+// the constraint (including the "no constraint configured" case);
+// otherwise it returns the diagnostic the caller emits with its own
+// anchor and MakeDiag. ref names the schema source.
+//
+// Both `filename:` surfaces — the inline/composed schema path
+// (validateFilename) and the legacy proto.md path
+// (requiredstructure.checkFilenamePattern) — route through here so
+// their wording, hint selection, and OR semantics cannot drift.
+func FilenameDiagnostic(
+	patterns []string, base string, fm map[string]any, ref string,
+) *SchemaDiagnostic {
+	if len(patterns) == 0 {
+		return nil
+	}
+	resolved, interpolated, unresolved := resolveFilenamePatterns(patterns, fm)
+	matched, badPattern, err := MatchFilename(resolved, base)
+	if err != nil {
+		// Malformed glob in the schema. Surface it via the same
+		// SchemaDiagnostic shape so the message carries the schema
+		// reference and the user can jump to the offending pattern.
+		return &SchemaDiagnostic{
+			Field:     "filename pattern",
+			Actual:    strconv.Quote(badPattern),
+			Expected:  "valid glob",
+			Hint:      err.Error(),
+			SchemaRef: ref,
+		}
+	}
+	// An empty resolved list means every entry was dropped as
+	// unresolvable; MatchFilename reads that as "no constraint", so
+	// the emptiness has to be checked here rather than trusting
+	// matched.
+	if matched && len(resolved) > 0 {
+		return nil
+	}
+	// `glob` makes the constraint syntax explicit: users occasionally
+	// read `string matching <pattern>` as a regex requirement, which
+	// filepath.Match does not accept. The wording also lines up with
+	// the kind-level `path-pattern` diagnostic ("path matching glob
+	// ...") so the user vocabulary is consistent across both
+	// surfaces. With several globs configured the "expected" clause
+	// lists them all so the OR nature is visible.
+	return &SchemaDiagnostic{
+		Field:     "filename",
+		Actual:    strconv.Quote(base),
+		Expected:  FilenameExpected(patterns),
+		Hint:      unresolvedOrInterpolatedHint(unresolved, interpolated),
+		SchemaRef: ref,
+	}
+}
+
+// unresolvedOrInterpolatedHint picks the hint for a filename
+// mismatch: an unresolvable `\#(fmvar(...))` reference is the schema
+// author's problem and outranks the substituted-pattern hint, which
+// only helps once every reference actually resolved.
+func unresolvedOrInterpolatedHint(
+	unresolved error, interpolated []string,
+) string {
+	if unresolved != nil {
+		return unresolved.Error()
+	}
+	return InterpolatedGlobHint(interpolated...)
 }
 
 // FilenameExpected renders the "expected" clause of a filename
