@@ -46,9 +46,11 @@ func DecodeFilenameField(v any) ([]string, error) {
 	case []string:
 		out := make([]string, 0, len(t))
 		for _, s := range t {
-			if s != "" {
-				out = append(out, s)
+			if s == "" {
+				return nil, fmt.Errorf(
+					"filename list entries must be non-empty globs")
 			}
+			out = append(out, s)
 		}
 		if len(out) == 0 {
 			return nil, nil

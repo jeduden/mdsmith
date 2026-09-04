@@ -338,16 +338,25 @@ func TestCompose_FilenameConflictErrors(t *testing.T) {
 	assert.Contains(t, err.Error(), "filename")
 }
 
-// TestCompose_FilenameListConflictOnOrder confirms two lists with the
-// same globs in a different order are treated as conflicting: the
-// composed constraint is order-significant in its diagnostic wording,
-// so identical semantics still require identical spelling.
+// TestCompose_FilenameListConflictOnDiffered confirms genuinely different
+// glob sets (different cardinalities here) produce a conflict error.
 func TestCompose_FilenameListConflictOnDiffered(t *testing.T) {
 	a := &Schema{Filename: []string{"a-*.md", "b.md"}}
 	b := &Schema{Filename: []string{"a-*.md"}}
 	_, err := Compose(a, b)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "filename")
+}
+
+// TestCompose_FilenameListSameSetDifferentOrderNotConflict covers the
+// OR-semantics fix: the same filename globs declared in a different order
+// across two schemas must NOT produce a conflict error.
+func TestCompose_FilenameListSameSetDifferentOrderNotConflict(t *testing.T) {
+	a := &Schema{Filename: []string{"*.md", "*.txt"}}
+	b := &Schema{Filename: []string{"*.txt", "*.md"}}
+	out, err := Compose(a, b)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"*.md", "*.txt"}, out.Filename)
 }
 
 // TestCompose_DisjointCardinalityErrors drives the empty-intersection

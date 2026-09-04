@@ -1109,3 +1109,42 @@ func TestIsBlank(t *testing.T) {
 	assert.False(t, IsBlank([]byte("a")))
 	assert.False(t, IsBlank([]byte("  a")))
 }
+
+// --- buildHeadingNodes ---
+
+func TestBuildHeadingNodes_ReturnsAllHeadings(t *testing.T) {
+	src := []byte("# H1\n\n## H2\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	result := buildHeadingNodes(f)
+	nodes, ok := result.([]*ast.Heading)
+	require.True(t, ok)
+	require.Len(t, nodes, 2)
+	assert.Equal(t, 1, nodes[0].Level)
+	assert.Equal(t, 2, nodes[1].Level)
+}
+
+func TestBuildHeadingNodes_NoHeadings_ReturnsNil(t *testing.T) {
+	f, err := lint.NewFile("test.md", []byte("just text\n"))
+	require.NoError(t, err)
+	result := buildHeadingNodes(f)
+	assert.Nil(t, result)
+}
+
+// --- sortSectionHeadings ---
+
+func TestSortSectionHeadings_SortsByLine(t *testing.T) {
+	headings := []SectionHeading{
+		{Level: 2, Line: 10},
+		{Level: 1, Line: 1},
+		{Level: 3, Line: 5},
+	}
+	sortSectionHeadings(headings)
+	assert.Equal(t, 1, headings[0].Line)
+	assert.Equal(t, 5, headings[1].Line)
+	assert.Equal(t, 10, headings[2].Line)
+}
+
+func TestSortSectionHeadings_Empty_NoOp(t *testing.T) {
+	sortSectionHeadings([]SectionHeading{}) // must not panic
+}

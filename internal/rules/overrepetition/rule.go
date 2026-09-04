@@ -3,6 +3,7 @@
 package overrepetition
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"strings"
@@ -75,15 +76,30 @@ func (r *Rule) checkFile(f *lint.File) []lint.Diagnostic {
 }
 
 // checkSections checks word frequency per heading-bounded section.
-// Prose before the first heading is treated as an implicit preamble section
-// anchored at line 1. A single freq map is reused across sections (cleared
-// between them) to keep the active-path alloc count within the ≤10 budget.
+// Prose before the first heading, and a headingless file as a whole, are
+// treated as an implicit preamble section anchored at line 1. A single freq
+// map is reused across sections (cleared between them) to keep the active-path
+// alloc count within the ≤10 budget.
+//
+// Paragraphs and headings are in ascending line order (document order from
+// ast.Walk). For each section we binary-search for the first paragraph at
+// or after the heading line, then iterate forward until the section end.
+// Sections can overlap (a parent heading's range includes its sub-headings),
+// so each heading runs its own binary search rather than a single two-pointer.
+// This is O(N log M + sum(k_i)) vs the naive O(N×M).
+//
+// Each section diagnostic anchors at the first prose paragraph in the section
+// (rather than the heading itself) so editors and diff tools navigate to
+// prose, not markup.
 func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 	headings := astutil.CollectSectionHeadings(f)
-	if len(headings) == 0 {
-		return nil
-	}
 	paragraphs := astutil.CollectSectionParagraphsWithText(f)
+
+	// No headings: treat the entire file as one implicit preamble section.
+	if len(headings) == 0 {
+		return r.checkSectionsNoHeadings(f, paragraphs)
+	}
+
 	totalLines := len(f.Lines)
 	if totalLines > 0 && len(f.Lines[totalLines-1]) == 0 {
 		totalLines--
@@ -92,32 +108,71 @@ func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 	freq := make(map[string]int, 32) // 32 covers typical prose vocabulary per section
 
 	// Check preamble paragraphs (before the first heading) as one implicit section.
-	// Skip the allocation when no preamble paragraphs exist (the common case).
 	firstHeadingLine := headings[0].Line
-	for j := range paragraphs {
-		if paragraphs[j].Line < firstHeadingLine {
-			r.accum(freq, paragraphs[j].ExtractText(f.Source))
-		}
+	preambleEnd := slices.IndexFunc(paragraphs, func(p astutil.SectionParagraph) bool {
+		return p.Line >= firstHeadingLine
+	})
+	if preambleEnd < 0 {
+		preambleEnd = len(paragraphs)
+	}
+	firstPreambleLine := 1
+	if preambleEnd > 0 {
+		firstPreambleLine = paragraphs[0].Line
+	}
+	for j := range preambleEnd {
+		r.accum(freq, paragraphs[j].ExtractText(f.Source))
 	}
 	var diags []lint.Diagnostic
 	if len(freq) > 0 {
 		r.removeStopwords(freq)
-		diags = append(diags, r.diagFromFreq(freq, 1, "section", f.Path)...)
+		if len(freq) > 0 {
+			diags = append(diags, r.diagFromFreq(freq, firstPreambleLine, "section", f.Path)...)
+		}
 	}
 
 	for i, h := range headings {
 		end := astutil.SectionEnd(headings, i, totalLines)
 		clear(freq)
-		for j := range paragraphs {
-			if paragraphs[j].Line < h.Line || paragraphs[j].Line >= end {
-				continue
-			}
+		start, _ := slices.BinarySearchFunc(paragraphs, h.Line, cmpParagraphLine)
+		// firstParaLine: diagnostic anchor. Falls back to the heading line when
+		// the section has no prose paragraphs (heading immediately followed by
+		// another heading or end-of-file).
+		firstParaLine := h.Line
+		if start < len(paragraphs) && paragraphs[start].Line < end {
+			firstParaLine = paragraphs[start].Line
+		}
+		for j := start; j < len(paragraphs) && paragraphs[j].Line < end; j++ {
 			r.accum(freq, paragraphs[j].ExtractText(f.Source))
 		}
 		r.removeStopwords(freq)
-		diags = append(diags, r.diagFromFreq(freq, h.Line, "section", f.Path)...)
+		if len(freq) > 0 {
+			diags = append(diags, r.diagFromFreq(freq, firstParaLine, "section", f.Path)...)
+		}
 	}
 	return diags
+}
+
+// cmpParagraphLine is a package-level comparator for slices.BinarySearchFunc
+// over []SectionParagraph keyed by line number. Defined at package scope so
+// no closure is allocated per call.
+func cmpParagraphLine(p astutil.SectionParagraph, target int) int {
+	return cmp.Compare(p.Line, target)
+}
+
+// checkSectionsNoHeadings handles the headingless-file case for checkSections.
+// The entire file is treated as one implicit preamble section anchored at the
+// first prose paragraph.
+func (r *Rule) checkSectionsNoHeadings(f *lint.File, paragraphs []astutil.SectionParagraph) []lint.Diagnostic {
+	freq := make(map[string]int, 32)
+	for i := range paragraphs {
+		r.accum(freq, paragraphs[i].ExtractText(f.Source))
+	}
+	firstLine := 1
+	if len(paragraphs) > 0 {
+		firstLine = paragraphs[0].Line
+	}
+	r.removeStopwords(freq)
+	return r.diagFromFreq(freq, firstLine, "section", f.Path)
 }
 
 // checkParagraphs checks word frequency per paragraph.
@@ -220,6 +275,9 @@ func (r *Rule) applyMax(v any) error {
 	n, ok := settings.ToInt(v)
 	if !ok {
 		return fmt.Errorf("over-repetition: max must be an integer, got %T", v)
+	}
+	if n == 0 || n < -1 {
+		return fmt.Errorf("over-repetition: max must be a positive integer (≥1) or -1 to disable; got %d", n)
 	}
 	r.Max = n
 	return nil

@@ -3,7 +3,7 @@ id: 2608161914
 title: >-
   Add dedicated unit tests for the 2026-08-16 touched-set
   tax findings
-status: "🔲"
+status: "🔳"
 model: haiku
 summary: >-
   Six new functions across cmd/mdsmith, pkg/mdsmith,

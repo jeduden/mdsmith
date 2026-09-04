@@ -344,3 +344,13 @@ func TestReadFSFileLimited_Nonexistent(t *testing.T) {
 	_, err := bytelimit.ReadFSFileLimited(fsys, "no-such.md", 100)
 	require.Error(t, err)
 }
+
+// --- FileTooLargeError ---
+
+func TestFileTooLargeError(t *testing.T) {
+	err := bytelimit.FileTooLargeError(3000, 1000)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, bytelimit.ErrFileTooLarge)
+	assert.Contains(t, err.Error(), "3000")
+	assert.Contains(t, err.Error(), "1000")
+}

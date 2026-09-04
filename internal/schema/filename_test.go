@@ -29,7 +29,7 @@ func TestDecodeFilenameField_StringSliceList(t *testing.T) {
 }
 
 func TestDecodeFilenameField_NilAndEmptyAreNoConstraint(t *testing.T) {
-	for _, v := range []any{nil, "", []any{}, []string{}, []string{""}} {
+	for _, v := range []any{nil, "", []any{}, []string{}} {
 		pats, err := DecodeFilenameField(v)
 		require.NoError(t, err)
 		assert.Nil(t, pats)
@@ -38,6 +38,13 @@ func TestDecodeFilenameField_NilAndEmptyAreNoConstraint(t *testing.T) {
 
 func TestDecodeFilenameField_EmptyListEntryRejected(t *testing.T) {
 	_, err := DecodeFilenameField([]any{"[0-9]*_*.md", ""})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "non-empty")
+}
+
+func TestDecodeFilenameField_StringSliceEmptyEntryRejected(t *testing.T) {
+	// []string with an empty entry is rejected, consistent with the []any path.
+	_, err := DecodeFilenameField([]string{"*.md", ""})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "non-empty")
 }

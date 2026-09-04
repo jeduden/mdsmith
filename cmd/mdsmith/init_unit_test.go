@@ -891,3 +891,109 @@ func TestRunInit_APM_Force_Starter_AppendsPosture(t *testing.T) {
 	assert.Contains(t, body, "required-frontmatter", "okf starter content written")
 	assert.Contains(t, body, "apm_modules/**", "APM posture appended via fallback path")
 }
+
+// --- runInitConfig ---
+
+func TestRunInitConfig_Fresh_NoAPM_WritesConfig(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	var buf bytes.Buffer
+	err := runInitConfig(".mdsmith.yml", "", "", false, false, &buf)
+	require.NoError(t, err)
+	_, statErr := os.Stat(filepath.Join(dir, ".mdsmith.yml"))
+	assert.NoError(t, statErr)
+}
+
+func TestRunInitConfig_Fresh_WithAPM_WritesPosture(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	var buf bytes.Buffer
+	err := runInitConfig(".mdsmith.yml", "", "", false, true, &buf)
+	require.NoError(t, err)
+	data, readErr := os.ReadFile(filepath.Join(dir, ".mdsmith.yml"))
+	require.NoError(t, readErr)
+	assert.Contains(t, string(data), "apm_modules/**")
+}
+
+func TestRunInitConfig_ExistingConfig_WithAPM_PrintsMergeHint(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	require.NoError(t, os.WriteFile(".mdsmith.yml", []byte("rules: {}\n"), 0o644))
+	var buf bytes.Buffer
+	err := runInitConfig(".mdsmith.yml", "", "", false, true, &buf)
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "merge")
+	assert.Contains(t, buf.String(), "apm_modules/**")
+}
+
+// --- applyAPMPosture ---
+
+func TestApplyAPMPosture_NewConfig_AppendsPosture(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	configFile := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(configFile, []byte("\nignore: []\n"), 0o644))
+	var buf bytes.Buffer
+	err := applyAPMPosture(configFile, false, false, &buf)
+	require.NoError(t, err)
+	written, _ := os.ReadFile(configFile)
+	assert.Contains(t, string(written), "apm_modules/**")
+	assert.Empty(t, buf.String())
+}
+
+func TestApplyAPMPosture_ExistingNotForced_PrintsMergeHint(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	var buf bytes.Buffer
+	err := applyAPMPosture("irrelevant.yml", true, false, &buf)
+	require.NoError(t, err)
+	out := buf.String()
+	assert.Contains(t, out, "merge")
+	assert.Contains(t, out, "apm_modules/**")
+}
+
+// --- apmIgnoreGlobs ---
+
+func TestApmIgnoreGlobs_NoDirs_ReturnsBaseGlobs(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	globs := apmIgnoreGlobs()
+	assert.Contains(t, globs, "apm_modules/**")
+	assert.Contains(t, globs, "AGENTS.md")
+	assert.Contains(t, globs, "CLAUDE.md")
+	assert.Contains(t, globs, "GEMINI.md")
+	for _, g := range globs {
+		assert.NotEqual(t, ".github/prompts/**", g)
+	}
+}
+
+func TestApmIgnoreGlobs_WithGitHubDir_IncludesGitHubGlobs(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	require.NoError(t, os.Mkdir(".github", 0o755))
+	globs := apmIgnoreGlobs()
+	assert.Contains(t, globs, ".github/prompts/**")
+	assert.Contains(t, globs, ".github/instructions/**")
+}
+
+// --- apmPostureBlock ---
+
+func TestApmPostureBlock(t *testing.T) {
+	globs := []string{"apm_modules/**", "AGENTS.md"}
+	got := string(apmPostureBlock(globs))
+	assert.Contains(t, got, "# APM coexistence posture")
+	assert.Contains(t, got, "ignore:")
+	assert.Contains(t, got, "  - apm_modules/**")
+	assert.Contains(t, got, "  - AGENTS.md")
+}
+
+// --- printAPMMergeHint ---
+
+func TestPrintAPMMergeHint(t *testing.T) {
+	globs := []string{"apm_modules/**", "AGENTS.md"}
+	var buf bytes.Buffer
+	printAPMMergeHint(&buf, globs)
+	out := buf.String()
+	assert.Contains(t, out, "merge")
+	assert.Contains(t, out, "apm_modules/**")
+}

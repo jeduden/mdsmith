@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/bmatcuk/doublestar/v4"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/jeduden/mdsmith/internal/bytelimit"
 )
@@ -615,4 +617,57 @@ func TestOSWorkspaceReadFileLimitedOpenRootFails(t *testing.T) {
 	if _, err := ws.readFileLimited("any.md", 100); err == nil {
 		t.Fatal("readFileLimited on a non-existent root must return an error")
 	}
+}
+
+// --- buildDirIndex ---
+
+func TestBuildDirIndex_IndexesFilesAndDirs(t *testing.T) {
+	files := map[string][]byte{
+		"docs/a.md": []byte("a"),
+		"docs/b.md": []byte("b"),
+		"c.md":      []byte("c"),
+	}
+	idx := buildDirIndex(files)
+	names := func(dir string) []string {
+		ents := idx[dir]
+		out := make([]string, len(ents))
+		for i, e := range ents {
+			out[i] = e.Name()
+		}
+		sort.Strings(out)
+		return out
+	}
+	assert.Equal(t, []string{"c.md", "docs"}, names("."))
+	assert.Equal(t, []string{"a.md", "b.md"}, names("docs"))
+}
+
+func TestBuildDirIndex_SortedByName(t *testing.T) {
+	files := map[string][]byte{
+		"z.md": []byte("z"),
+		"a.md": []byte("a"),
+		"m.md": []byte("m"),
+	}
+	idx := buildDirIndex(files)
+	ents := idx["."]
+	require.Len(t, ents, 3)
+	assert.Equal(t, "a.md", ents[0].Name())
+	assert.Equal(t, "m.md", ents[1].Name())
+	assert.Equal(t, "z.md", ents[2].Name())
+}
+
+// --- addDirEntry ---
+
+func TestAddDirEntry_DeduplicatesEntries(t *testing.T) {
+	idx := make(map[string][]fs.DirEntry)
+	seen := make(map[string]struct{})
+	addDirEntry(idx, seen, ".", "a.md", false, 10)
+	addDirEntry(idx, seen, ".", "a.md", false, 10)
+	assert.Len(t, idx["."], 1)
+}
+
+func TestAddDirEntry_IgnoresEmptyName(t *testing.T) {
+	idx := make(map[string][]fs.DirEntry)
+	seen := make(map[string]struct{})
+	addDirEntry(idx, seen, ".", "", false, 0)
+	assert.Empty(t, idx["."])
 }
