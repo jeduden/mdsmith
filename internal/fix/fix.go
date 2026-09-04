@@ -148,7 +148,11 @@ func (f *Fixer) categoryLookup() func(string) string {
 // building and memoizing it on first use. Reusing a configured rule
 // across files and across fixFile's own call sites is safe for the same
 // reason checker.CheckConfiguredRules' doc comment gives: a rule's
-// Check/Fix holds no state between calls.
+// Check/Fix holds no state that outlives one file, and the one kind that
+// keeps per-file state (rule.FileResetter) is both reset at every file
+// boundary and cloned per configured list, so this Fixer's instances are
+// its own. One Fixer is still single-goroutine: fixFile runs its files
+// sequentially.
 func (f *Fixer) configuredFor(key string, effective map[string]config.RuleCfg) fixerConfigured {
 	if fc, ok := f.confCache[key]; ok {
 		return fc
