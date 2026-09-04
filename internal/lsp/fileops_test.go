@@ -136,6 +136,35 @@ func TestWillRenameFilesMalformedAndNoop(t *testing.T) {
 	assert.Empty(t, edit.Changes)
 }
 
+// TestDidRenameFilesRejectsOutOfWorkspaceTarget locks that a rename whose
+// destination resolves outside the workspace root is never read into the
+// index. workspaceRelative returns an out-of-root path unchanged (not
+// ""), so the newRel=="" guard alone did not catch it and the server
+// would read an arbitrary .md file off disk via symbolWorkspace.ReadFile;
+// the insideWorkspace check closes that gap (and refuses a symlink
+// escape the same way the symbol read path does).
+func TestDidRenameFilesRejectsOutOfWorkspaceTarget(t *testing.T) {
+	t.Parallel()
+	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": "# Alpha\n"})
+	// Warm the index.
+	_, _ = h.request("workspace/symbol", workspaceSymbolParams{Query: "Alpha"})
+
+	// A markdown file outside the workspace root, in its own temp dir, the
+	// server must not pull into the index on a client rename notification.
+	outside := filepath.Join(t.TempDir(), "secret.md")
+	require.NoError(t, os.WriteFile(outside, []byte("# SecretSymbol\n"), 0o644))
+
+	h.notify("workspace/didRenameFiles", renameFilesParams{
+		Files: []fileRename{{OldURI: rootURI + "/a.md", NewURI: pathToFileURI(t, outside)}},
+	})
+
+	raw, errResp := h.request("workspace/symbol", workspaceSymbolParams{Query: "SecretSymbol"})
+	require.Nil(t, errResp)
+	var hits []symbolInformation
+	require.NoError(t, json.Unmarshal(raw, &hits))
+	assert.Empty(t, hits, "out-of-workspace rename target must not be read into the index")
+}
+
 func TestDidRenameFilesMalformedAndNonMarkdown(t *testing.T) {
 	t.Parallel()
 	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": "# Alpha\n"})

@@ -87,7 +87,13 @@ func (s *Server) handleDidRenameFiles(params json.RawMessage) {
 		}
 		newPath := uriToPath(f.NewURI)
 		newRel := index.NormalizePath(workspaceRelative(root, newPath))
-		if newRel == "" || !isMarkdownExt(newPath) {
+		// insideWorkspace is the real containment guard: workspaceRelative
+		// returns an out-of-root path unchanged (not ""), so newRel=="" does
+		// not catch a destination outside the workspace, and
+		// symbolWorkspace.ReadFile reads an absolute path off disk with no
+		// boundary. Gate the read the same way the symbol path does — this
+		// also refuses an in-workspace symlink that escapes the root.
+		if newRel == "" || !isMarkdownExt(newPath) || !insideWorkspace(root, newPath) {
 			continue
 		}
 		if data, err := symbolWorkspace.ReadFile(newPath); err == nil {
