@@ -137,7 +137,14 @@ meaning and drops the puzzle.
 4. Tier 3 (optional, confirm first): drop `.pillar-num`, collapse
    the icon-tile tints to one, trim the hero badge row, and drop
    the two homepage section eyebrows.
-5. Rebuild the site locally, re-capture the homepage, and check
+5. Update or deliberately leave the `extract` command sample output in
+   the [extract CLI reference](../docs/reference/cli/extract.md) and
+   the [extract guide](../docs/guides/extract-markdown-as-data.md)
+   — both contain the old headline as literal sample data. Decide
+   whether to refresh them (accurate) or leave them (they illustrate
+   the command, not the brand). Do not let a bulk find-and-replace
+   update them silently; make the decision explicit and record it here.
+6. Rebuild the site locally, re-capture the homepage, and check
    the before/after side by side. Run `mdsmith check .`.
 
 ## Acceptance Criteria
