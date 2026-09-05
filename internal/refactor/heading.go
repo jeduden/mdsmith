@@ -1,10 +1,11 @@
 package refactor
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"net/url"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/index"
@@ -810,14 +811,12 @@ func refDefParseTarget(dest string) (refDefDestTarget, bool) {
 // the offsets the next edit relies on, particularly when two edits
 // share a line.
 func stableSortEdits(changes map[string][]Edit) {
-	for key, edits := range changes {
-		sort.SliceStable(edits, func(i, j int) bool {
-			a, b := edits[i].Range.Start, edits[j].Range.Start
-			if a.Line != b.Line {
-				return a.Line > b.Line
-			}
-			return a.Character > b.Character
+	for _, edits := range changes {
+		slices.SortStableFunc(edits, func(a, b Edit) int {
+			return cmp.Or(
+				cmp.Compare(b.Range.Start.Line, a.Range.Start.Line),
+				cmp.Compare(b.Range.Start.Character, a.Range.Start.Character),
+			)
 		})
-		changes[key] = edits
 	}
 }

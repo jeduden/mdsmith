@@ -1,9 +1,10 @@
 package lsp
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
-	"sort"
+	"slices"
 
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/mdtext"
@@ -555,12 +556,11 @@ func toTextEdits(edits []refactor.Edit) []textEdit {
 // this way internally; link-ref edits are sorted here so both paths
 // emit the same bottom-up order.
 func sortTextEditsBottomUp(edits []textEdit) {
-	sort.SliceStable(edits, func(i, j int) bool {
-		a, b := edits[i].Range.Start, edits[j].Range.Start
-		if a.Line != b.Line {
-			return a.Line > b.Line
-		}
-		return a.Character > b.Character
+	slices.SortStableFunc(edits, func(a, b textEdit) int {
+		return cmp.Or(
+			cmp.Compare(b.Range.Start.Line, a.Range.Start.Line),
+			cmp.Compare(b.Range.Start.Character, a.Range.Start.Character),
+		)
 	})
 }
 
