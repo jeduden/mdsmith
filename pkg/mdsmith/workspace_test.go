@@ -616,3 +616,129 @@ func TestOSWorkspaceReadFileLimitedOpenRootFails(t *testing.T) {
 		t.Fatal("readFileLimited on a non-existent root must return an error")
 	}
 }
+
+// --- buildDirIndex ---
+
+// TestBuildDirIndex verifies that buildDirIndex walks every file path exactly
+// once, populates directory entries for each ancestor, deduplicates shared
+// ancestors, and sorts each directory's entries by name.
+func TestBuildDirIndex(t *testing.T) {
+	files := map[string][]byte{
+		"docs/a.md":     []byte("alpha"),
+		"docs/b.md":     []byte("beta"),
+		"docs/sub/c.md": []byte("gamma"),
+		"root.md":       []byte("root"),
+	}
+	idx := buildDirIndex(files)
+
+	// Root "." must list "docs" (dir) and "root.md" (file).
+	rootNames := entryNames(idx["."])
+	if !containsName(rootNames, "docs") {
+		t.Errorf("root listing missing \"docs\": %v", rootNames)
+	}
+	if !containsName(rootNames, "root.md") {
+		t.Errorf("root listing missing \"root.md\": %v", rootNames)
+	}
+
+	// "docs" must list "a.md", "b.md", "sub" — sorted.
+	docsNames := entryNames(idx["docs"])
+	wantDocs := []string{"a.md", "b.md", "sub"}
+	if !equalStringSlices(docsNames, wantDocs) {
+		t.Errorf("docs listing = %v, want %v", docsNames, wantDocs)
+	}
+
+	// "docs/sub" must list only "c.md".
+	subNames := entryNames(idx["docs/sub"])
+	if !equalStringSlices(subNames, []string{"c.md"}) {
+		t.Errorf("docs/sub listing = %v, want [c.md]", subNames)
+	}
+
+	// Ancestor "docs" must not appear twice (deduplication).
+	count := 0
+	for _, e := range idx["."] {
+		if e.Name() == "docs" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("docs appears %d times in root listing, want 1", count)
+	}
+}
+
+// --- addDirEntry ---
+
+// TestAddDirEntry verifies that addDirEntry inserts a memDirEntry the first
+// time a (dir, name) pair is seen and skips it on subsequent calls.
+func TestAddDirEntry(t *testing.T) {
+	idx := make(map[string][]fs.DirEntry)
+	seen := make(map[string]struct{})
+
+	// First insertion: entry must appear.
+	addDirEntry(idx, seen, ".", "a.md", false, 5)
+	if len(idx["."]) != 1 || idx["."][0].Name() != "a.md" {
+		t.Fatalf("addDirEntry first call: got %v, want [a.md]", idx["."])
+	}
+
+	// Duplicate insertion: must be a no-op.
+	addDirEntry(idx, seen, ".", "a.md", false, 5)
+	if len(idx["."]) != 1 {
+		t.Fatalf("addDirEntry duplicate: got %d entries, want 1", len(idx["."]))
+	}
+
+	// Empty name must be rejected.
+	addDirEntry(idx, seen, ".", "", false, 0)
+	if len(idx["."]) != 1 {
+		t.Fatalf("addDirEntry empty name: got %d entries, want still 1", len(idx["."]))
+	}
+
+	// A directory entry must report IsDir() true.
+	addDirEntry(idx, seen, ".", "sub", true, 0)
+	var subEntry fs.DirEntry
+	for _, e := range idx["."] {
+		if e.Name() == "sub" {
+			subEntry = e
+			break
+		}
+	}
+	if subEntry == nil {
+		t.Fatal("addDirEntry dir entry not found")
+	}
+	info, err := subEntry.Info()
+	if err != nil {
+		t.Fatalf("Info(): %v", err)
+	}
+	if !info.IsDir() {
+		t.Error("addDirEntry dir entry: IsDir() = false, want true")
+	}
+}
+
+// entryNames extracts the Name() slice from a []fs.DirEntry (already sorted
+// by buildDirIndex).
+func entryNames(ents []fs.DirEntry) []string {
+	names := make([]string, len(ents))
+	for i, e := range ents {
+		names[i] = e.Name()
+	}
+	return names
+}
+
+func containsName(names []string, target string) bool {
+	for _, n := range names {
+		if n == target {
+			return true
+		}
+	}
+	return false
+}
+
+func equalStringSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
