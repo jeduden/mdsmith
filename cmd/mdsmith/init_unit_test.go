@@ -891,3 +891,131 @@ func TestRunInit_APM_Force_Starter_AppendsPosture(t *testing.T) {
 	assert.Contains(t, body, "required-frontmatter", "okf starter content written")
 	assert.Contains(t, body, "apm_modules/**", "APM posture appended via fallback path")
 }
+
+// --- runInitConfig ---
+
+// TestRunInitConfig pins that runInitConfig writes .mdsmith.yml and, when
+// apmFlag is true and the file did not previously exist, appends the APM
+// posture block rather than printing a merge hint.
+func TestRunInitConfig(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	cfg := filepath.Join(dir, ".mdsmith.yml")
+	var buf bytes.Buffer
+	err := runInitConfig(cfg, "", "", false, false, &buf)
+	require.NoError(t, err)
+	_, statErr := os.Stat(cfg)
+	require.NoError(t, statErr, "runInitConfig must write .mdsmith.yml")
+}
+
+// TestRunInitConfig_APM_Fresh calls runInitConfig with apmFlag=true on a
+// fresh directory and checks that the APM posture block is written into the
+// config (not just printed to w).
+func TestRunInitConfig_APM_Fresh(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	cfg := filepath.Join(dir, ".mdsmith.yml")
+	var buf bytes.Buffer
+	require.NoError(t, runInitConfig(cfg, "", "", false, true, &buf))
+	data, err := os.ReadFile(cfg)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "apm_modules/**", "APM posture written to fresh config")
+	// Merge hint must NOT appear in w when the file is fresh.
+	assert.NotContains(t, buf.String(), "merge the posture block by hand")
+}
+
+// TestRunInitConfig_APM_Existing calls runInitConfig with apmFlag=true when
+// .mdsmith.yml already exists. applyAPMPosture must print the merge hint to w
+// rather than rewriting the file.
+func TestRunInitConfig_APM_Existing(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	cfg := filepath.Join(dir, ".mdsmith.yml")
+	// Write a minimal existing config.
+	require.NoError(t, os.WriteFile(cfg, []byte("# existing\n"), 0o644))
+	var buf bytes.Buffer
+	require.NoError(t, runInitConfig(cfg, "", "", false /*force*/, true /*apm*/, &buf))
+	assert.Contains(t, buf.String(), "merge the posture block by hand",
+		"existing config without --force must print merge hint")
+}
+
+// --- applyAPMPosture ---
+
+// TestApplyAPMPosture_Fresh verifies that applyAPMPosture appends the posture
+// block when the config did not previously exist (configExisted=false).
+func TestApplyAPMPosture(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(cfg, []byte("\nignore: []\n"), 0o644))
+	var buf bytes.Buffer
+	require.NoError(t, applyAPMPosture(cfg, false /*configExisted*/, false /*force*/, &buf))
+	data, err := os.ReadFile(cfg)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "apm_modules/**")
+	assert.Empty(t, buf.String(), "no merge hint when writing fresh config")
+}
+
+// TestApplyAPMPosture_Existing verifies that applyAPMPosture prints the merge
+// hint when configExisted=true and force=false.
+func TestApplyAPMPosture_Existing(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(cfg, []byte("# existing\n"), 0o644))
+	var buf bytes.Buffer
+	require.NoError(t, applyAPMPosture(cfg, true /*configExisted*/, false /*force*/, &buf))
+	assert.Contains(t, buf.String(), "merge the posture block by hand")
+}
+
+// --- apmIgnoreGlobs ---
+
+// TestApmIgnoreGlobs verifies the always-included globs are present and that
+// per-harness globs are added only when their directory exists on disk.
+func TestApmIgnoreGlobs(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	// No harness directories present: only the four always-included entries.
+	globs := apmIgnoreGlobs()
+	assert.Contains(t, globs, "apm_modules/**")
+	assert.Contains(t, globs, "AGENTS.md")
+	assert.Contains(t, globs, "CLAUDE.md")
+	assert.Contains(t, globs, "GEMINI.md")
+	// Harness-conditional entries must be absent.
+	assert.NotContains(t, globs, ".github/prompts/**")
+	assert.NotContains(t, globs, ".claude/rules/**")
+
+	// Create one harness directory; its globs must now appear.
+	require.NoError(t, os.Mkdir(".claude", 0o755))
+	globs2 := apmIgnoreGlobs()
+	assert.Contains(t, globs2, ".claude/rules/**")
+	assert.NotContains(t, globs2, ".github/prompts/**")
+}
+
+// --- apmPostureBlock ---
+
+// TestApmPostureBlock verifies the YAML block emitted by apmPostureBlock: it
+// must contain the comment header, the "ignore:" key, and every supplied glob.
+func TestApmPostureBlock(t *testing.T) {
+	globs := []string{"apm_modules/**", "CLAUDE.md"}
+	block := apmPostureBlock(globs)
+	s := string(block)
+	assert.Contains(t, s, "# APM coexistence posture")
+	assert.Contains(t, s, "ignore:\n")
+	assert.Contains(t, s, "  - apm_modules/**\n")
+	assert.Contains(t, s, "  - CLAUDE.md\n")
+}
+
+// --- printAPMMergeHint ---
+
+// TestPrintAPMMergeHint verifies that the hint message and the posture block
+// are both written to w, and that the posture block contains the supplied globs.
+func TestPrintAPMMergeHint(t *testing.T) {
+	globs := []string{"apm_modules/**", "AGENTS.md"}
+	var buf bytes.Buffer
+	printAPMMergeHint(&buf, globs)
+	out := buf.String()
+	assert.Contains(t, out, "merge the posture block by hand")
+	assert.Contains(t, out, "ignore:\n")
+	assert.Contains(t, out, "  - apm_modules/**\n")
+	assert.Contains(t, out, "  - AGENTS.md\n")
+}
