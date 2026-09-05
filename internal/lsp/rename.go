@@ -7,7 +7,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/mdtext"
-	"github.com/jeduden/mdsmith/internal/rename"
+	"github.com/jeduden/mdsmith/internal/refactor"
 )
 
 // handlePrepareRename answers textDocument/prepareRename. The
@@ -70,16 +70,16 @@ func (s *Server) prepareRenameAt(source []byte, rel string, pos Position) (prepa
 // isValidRefDefLine reports whether a 1-based source line holds a
 // real reference definition (one goldmark accepted), translating the
 // source-coordinate line into body coordinates so the
-// rename.ValidRefDefBodyLines lookup matches. The validation logic
-// lives in internal/rename so the LSP prepare-rename gate and the
+// refactor.ValidRefDefBodyLines lookup matches. The validation logic
+// lives in internal/refactor so the LSP prepare-rename gate and the
 // rename engine agree on what counts as a real def.
 func isValidRefDefLine(source []byte, line int) bool {
-	body, fmOffset := rename.BodyAndFMOffset(source)
+	body, fmOffset := refactor.BodyAndFMOffset(source)
 	bodyLine := line - fmOffset
 	if bodyLine < 1 {
 		return false
 	}
-	_, ok := rename.ValidRefDefBodyLines(body)[bodyLine]
+	_, ok := refactor.ValidRefDefBodyLines(body)[bodyLine]
 	return ok
 }
 
@@ -224,7 +224,7 @@ func refDefPrepareRange(source []byte, line int, _ string) (prepareRenameResult,
 		return prepareRenameResult{}, false
 	}
 	row := lines[line-1]
-	m := rename.RefDefBracketBytes(row)
+	m := refactor.RefDefBracketBytes(row)
 	if m == nil {
 		return prepareRenameResult{}, false
 	}
@@ -289,7 +289,7 @@ func refUseLabelBytes(row []byte, cursorByte int, label string) (int, int, bool)
 			return start, end, true
 		}
 		// Shortcut `[label]`: this pair's content normalizes to label.
-		if rename.NormalizedLabel(row[pr.open+1:pr.close]) == label {
+		if refactor.NormalizedLabel(row[pr.open+1:pr.close]) == label {
 			return pr.open + 1, pr.close, true
 		}
 	}
@@ -310,10 +310,10 @@ func matchLeadingPair(row []byte, pairs []bracketPair, i int, label string) (int
 	if next.open != pr.close+1 {
 		return 0, 0, false
 	}
-	if rename.NormalizedLabel(row[next.open+1:next.close]) == label {
+	if refactor.NormalizedLabel(row[next.open+1:next.close]) == label {
 		return next.open + 1, next.close, true
 	}
-	if next.close == next.open+1 && rename.NormalizedLabel(row[pr.open+1:pr.close]) == label {
+	if next.close == next.open+1 && refactor.NormalizedLabel(row[pr.open+1:pr.close]) == label {
 		return pr.open + 1, pr.close, true
 	}
 	return 0, 0, false
@@ -333,10 +333,10 @@ func matchTrailingPair(row []byte, pairs []bracketPair, i int, label string) (in
 	if prev.close+1 != pr.open {
 		return 0, 0, false
 	}
-	if pr.close == pr.open+1 && rename.NormalizedLabel(row[prev.open+1:prev.close]) == label {
+	if pr.close == pr.open+1 && refactor.NormalizedLabel(row[prev.open+1:prev.close]) == label {
 		return prev.open + 1, prev.close, true
 	}
-	if rename.NormalizedLabel(row[pr.open+1:pr.close]) == label {
+	if refactor.NormalizedLabel(row[pr.open+1:pr.close]) == label {
 		return pr.open + 1, pr.close, true
 	}
 	return 0, 0, false
@@ -385,7 +385,7 @@ func bracketPairs(row []byte) []bracketPair {
 // WorkspaceEdit that covers every affected file. Heading rename
 // rewrites incoming anchor links across the workspace; link-ref
 // label rename rewrites the def and every use in the same file. The
-// edit computation lives in internal/rename — this handler resolves
+// edit computation lives in internal/refactor — this handler resolves
 // the cursor, delegates, and adapts the neutral edits / typed errors
 // to LSP wire types. Collisions return InvalidParams with
 // renameCollisionData so the client can show a meaningful error
@@ -441,13 +441,23 @@ func (w lspRenameWorkspace) IncomingAnchorEdges(file, slug string) []index.Edge 
 }
 
 // Trivial index pass-through; no dedicated test by design.
+func (w lspRenameWorkspace) IncomingPathEdges(file string) []index.Edge {
+	return w.idx.IncomingPathEdges(file)
+}
+
+// Trivial index pass-through; no dedicated test by design.
+func (w lspRenameWorkspace) IncomingWikilinkEdges(stem string) []index.Edge {
+	return w.idx.IncomingWikilinkEdges(stem)
+}
+
+// Trivial index pass-through; no dedicated test by design.
 func (w lspRenameWorkspace) Files() []string { return w.idx.Files() }
 
 func (w lspRenameWorkspace) Resolve(file string) (string, []byte, bool) {
 	return w.s.resolveURIAndSource(file)
 }
 
-// renameHeading adapts rename.Heading to the LSP wire: it delegates
+// renameHeading adapts refactor.Heading to the LSP wire: it delegates
 // the slug-remap / anchor / ref-def-destination computation to the
 // shared engine, then maps the neutral per-key Edit set to a
 // WorkspaceEdit. A no-op rename yields an empty (but non-nil)
@@ -457,15 +467,15 @@ func (s *Server) renameHeading(
 	source []byte, rel string, line int, res index.LocateResult, newName string,
 ) {
 	ws := lspRenameWorkspace{s: s, idx: s.ensureIndex()}
-	changes, err := rename.Heading(ws, p.TextDocument.URI, rel, source, line, res.Name, newName)
+	plan, err := refactor.Heading(ws, p.TextDocument.URI, rel, source, line, res.Name, newName)
 	if err != nil {
 		s.writeRenameError(msg.ID, err)
 		return
 	}
-	_ = s.t.writeResponse(msg.ID, &workspaceEdit{Changes: toLSPChanges(changes)})
+	_ = s.t.writeResponse(msg.ID, &workspaceEdit{Changes: toLSPChanges(plan.Edits)})
 }
 
-// renameLinkRef adapts rename.LinkRef to the LSP wire. The engine
+// renameLinkRef adapts refactor.LinkRef to the LSP wire. The engine
 // returns the def + use edits unordered; the handler sorts them
 // bottom-up so a naive client applying them array-order leaves the
 // buffer correct, exactly as the pre-delegation code did.
@@ -473,12 +483,12 @@ func (s *Server) renameLinkRef(
 	msg *requestMessage, p renameParams,
 	source []byte, oldLabel, newName string,
 ) {
-	edits, err := rename.LinkRef(source, oldLabel, newName)
+	plan, err := refactor.LinkRef(p.TextDocument.URI, source, oldLabel, newName)
 	if err != nil {
 		s.writeRenameError(msg.ID, err)
 		return
 	}
-	te := toTextEdits(edits)
+	te := toTextEdits(plan.Edits[p.TextDocument.URI])
 	sortTextEditsBottomUp(te)
 	_ = s.t.writeResponse(msg.ID, &workspaceEdit{
 		Changes: map[string][]textEdit{p.TextDocument.URI: te},
@@ -492,13 +502,13 @@ func (s *Server) renameLinkRef(
 // slug) surfaces its message verbatim — the engine's Error() text
 // is the same string the handler emitted before delegation.
 func (s *Server) writeRenameError(id json.RawMessage, err error) {
-	var hce rename.HeadingCollisionError
+	var hce refactor.HeadingCollisionError
 	if errors.As(err, &hce) {
 		_ = s.t.writeErrorWithData(id, codeInvalidParams,
 			hce.Error(), renameCollisionData{Conflict: hce.Conflict})
 		return
 	}
-	var lce rename.LabelConflictError
+	var lce refactor.LabelConflictError
 	if errors.As(err, &lce) {
 		_ = s.t.writeErrorWithData(id, codeInvalidParams,
 			lce.Error(), renameCollisionData{Conflict: lce.Conflict})
@@ -511,7 +521,7 @@ func (s *Server) writeRenameError(id json.RawMessage, err error) {
 // WorkspaceEdit shape. The returned map is always non-nil; with the
 // omitempty tag on Changes, both nil and empty maps are omitted on the
 // wire, so a no-op rename produces {} on the wire.
-func toLSPChanges(changes map[string][]rename.Edit) map[string][]textEdit {
+func toLSPChanges(changes map[string][]refactor.Edit) map[string][]textEdit {
 	out := make(map[string][]textEdit, len(changes))
 	for key, edits := range changes {
 		out[key] = toTextEdits(edits)
@@ -519,11 +529,11 @@ func toLSPChanges(changes map[string][]rename.Edit) map[string][]textEdit {
 	return out
 }
 
-// toTextEdits copies neutral rename.Edit values into LSP textEdits.
-// rename.Edit's Range is line + UTF-16 character, the same shape as
+// toTextEdits copies neutral refactor.Edit values into LSP textEdits.
+// refactor.Edit's Range is line + UTF-16 character, the same shape as
 // the LSP textEdit, so the conversion is a field copy and the wire
 // coordinates cannot drift.
-func toTextEdits(edits []rename.Edit) []textEdit {
+func toTextEdits(edits []refactor.Edit) []textEdit {
 	out := make([]textEdit, len(edits))
 	for i, e := range edits {
 		out[i] = textEdit{
@@ -541,7 +551,7 @@ func toTextEdits(edits []rename.Edit) []textEdit {
 // client applying them sequentially in array order doesn't shift
 // the offsets a later edit relies on. The LSP spec only forbids
 // overlap; it doesn't pin application order, and naive clients walk
-// the array top-to-bottom. rename.Heading already sorts its result
+// the array top-to-bottom. refactor.Heading already sorts its result
 // this way internally; link-ref edits are sorted here so both paths
 // emit the same bottom-up order.
 func sortTextEditsBottomUp(edits []textEdit) {

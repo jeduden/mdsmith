@@ -242,7 +242,7 @@ footer: |
 | 2607022120 | 🔲     | opus   | [Substitution rule — deterministic word-choice swaps with auto-fix](plan/2607022120_substitution-rule.md)                                               |
 | 2607031500 | ✅     | sonnet | [Security hardening batch — 2026-07-03 post-audit diff review (low)](plan/2607031500_security-hardening-batch-2026-07-03.md)                            |
 | 2607040635 | ⛔     | opus   | [Add mdsmith move: move a file and rewrite every incoming reference](plan/2607040635_move-command.md)                                                   |
-| 2607040822 | 🔲     | opus   | [Refactor engine redesign: unify move and rename behind one Plan, across CLI, LSP, and WASM hosts](plan/2607040822_refactor-move-rename-redesign.md)    |
+| 2607040822 | 🔳     | opus   | [Refactor engine redesign: unify move and rename behind one Plan, across CLI, LSP, and WASM hosts](plan/2607040822_refactor-move-rename-redesign.md)    |
 | 2607051918 | ✅     | sonnet | [Export wordlist.Dedup and remove the identical dedupStrings copy in internal/config](plan/2607051918_arch-fix-wordlist-config-dedup.md)                |
 | 2607051919 | ✅     | sonnet | [Add dedicated unit tests for helpers added by the word-list and reflow features](plan/2607051919_arch-fix-new-helper-tests.md)                         |
 | 2607051920 | ✅     | sonnet | [Consolidate duplicated leading-space/blank-line rule helpers into internal/rules/astutil](plan/2607051920_arch-fix-rule-whitespace-helpers-astutil.md) |
@@ -268,5 +268,7 @@ footer: |
 | 2608161914 | 🔲     | haiku  | [Add dedicated unit tests for the 2026-08-16 touched-set tax findings](plan/2608161914_arch-fix-touched-set-unit-tests.md)                              |
 | 2608282011 | ✅     | sonnet | [Security hardening batch — 2026-08-28](plan/2608282011_security-hardening-batch-2026-08-28.md)                                                         |
 | 2608301343 | 🔲     | sonnet | [Reduce mdsmith.dev homepage clutter and coined words](plan/2608301343_reduce-homepage-clutter.md)                                                      |
+| 2608301918 | 🔲     | haiku  | [Add dedicated unit tests for the 2026-08-30 touched-set tax findings](plan/2608301918_arch-fix-touched-set-unit-tests-0830.md)                         |
+| 2608301919 | 🔲     | sonnet | [Relocate RunCache out of internal/lint](plan/2608301919_arch-fix-runcache-package-placement.md)                                                        |
 | 2609032052 | 🔲     | opus   | [Resolve config from `pyproject.toml` under `[tool.mdsmith]`](plan/2609032052_pyproject-config-source.md)                                               |
 <?/catalog?>

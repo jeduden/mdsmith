@@ -117,6 +117,30 @@ func TestCheck_Section_PreambleCounted(t *testing.T) {
 	assert.Contains(t, diags[0].Message, "process")
 }
 
+// TestCheck_Section_NestedHeadingViolatesIndependently pins the
+// hierarchical section-window contract astutil.SectionEnd defines: a
+// shallow heading's window extends through its nested subsections (so
+// its own word-frequency count legitimately includes their content),
+// but each nested subsection must still be checked, and flagged,
+// independently against its own narrower window. A cursor optimization
+// that permanently consumes paragraphs once one heading's wider window
+// has scanned them would silently lose every nested subsection's own
+// violation — this was exactly the shape of a regression caught in
+// review. Three headings (level 1, 2, 1) each carry their own
+// violating word, so all three must be reported.
+func TestCheck_Section_NestedHeadingViolatesIndependently(t *testing.T) {
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"scope": "section", "max": 3, "min-length": 4})
+	src := "# A\n\nprocess process process process.\n\n" +
+		"## B\n\nprocess process process process.\n\n" +
+		"# C\n\nprocess process process process.\n"
+	diags := r.Check(mustFile(t, src))
+	require.Len(t, diags, 3, "expected a violation for A, B, and C independently: %+v", diags)
+	assert.Equal(t, 1, diags[0].Line, "section A")
+	assert.Equal(t, 5, diags[1].Line, "section B")
+	assert.Equal(t, 9, diags[2].Line, "section C")
+}
+
 // --- file scope ---
 
 func TestCheck_File_ExceedsMax_Diagnostic(t *testing.T) {

@@ -4,10 +4,10 @@ import (
 	"testing"
 
 	buildexec "github.com/jeduden/mdsmith/internal/build"
-	"github.com/jeduden/mdsmith/internal/rename"
+	"github.com/jeduden/mdsmith/internal/refactor"
 )
 
-// These pin the allocation cost of five CLI output sorts that used
+// These pin the allocation cost of the CLI output sorts that used
 // sort.Slice / sort.SliceStable, which drive reflect.Swapper
 // internally — the "reflect in hot paths" anti-pattern in
 // docs/development/high-performance-go.md, already fixed the same
@@ -16,34 +16,9 @@ import (
 // once per CLI invocation, not per workspace file, so the win is
 // small but free and matches the project's own established
 // convention. slices.SortFunc on the concrete result type sorts with
-// no reflection.
-
-func TestSortRenameSummaries_NoReflectSort(t *testing.T) {
-	if testing.Short() {
-		t.Skip("alloc gate skipped in -short mode")
-	}
-	if raceEnabled {
-		t.Skip("alloc gate skipped under -race")
-	}
-	summaries := []renameSummary{
-		{File: "zeta.md", Edits: 1},
-		{File: "alpha.md", Edits: 2},
-		{File: "mu.md", Edits: 3},
-	}
-	sortRenameSummaries(summaries)
-	if summaries[0].File != "alpha.md" || summaries[2].File != "zeta.md" {
-		t.Fatalf("sortRenameSummaries did not sort: %v", summaries)
-	}
-
-	const runs = 200
-	allocs := testing.AllocsPerRun(runs, func() {
-		sortRenameSummaries(summaries)
-	})
-	t.Logf("sortRenameSummaries allocs/op = %.0f", allocs)
-	if allocs > 0 {
-		t.Fatalf("sortRenameSummaries allocs/op = %.0f, want 0 (no reflection)", allocs)
-	}
-}
+// no reflection. The backlink-record sort now lives in
+// internal/backlinks (see its sortnoreflect_test.go) after that
+// algorithm moved out of cmd/mdsmith.
 
 func TestSortEditsByCharacterDesc_NoReflectSort(t *testing.T) {
 	if testing.Short() {
@@ -52,10 +27,10 @@ func TestSortEditsByCharacterDesc_NoReflectSort(t *testing.T) {
 	if raceEnabled {
 		t.Skip("alloc gate skipped under -race")
 	}
-	es := []rename.Edit{
-		{Range: rename.Range{Start: rename.Position{Character: 3}}},
-		{Range: rename.Range{Start: rename.Position{Character: 9}}},
-		{Range: rename.Range{Start: rename.Position{Character: 1}}},
+	es := []refactor.Edit{
+		{Range: refactor.Range{Start: refactor.Position{Character: 3}}},
+		{Range: refactor.Range{Start: refactor.Position{Character: 9}}},
+		{Range: refactor.Range{Start: refactor.Position{Character: 1}}},
 	}
 	sortEditsByCharacterDesc(es)
 	if es[0].Range.Start.Character != 9 || es[2].Range.Start.Character != 1 {
@@ -96,33 +71,6 @@ func TestSortDepRecords_NoReflectSort(t *testing.T) {
 	t.Logf("sortDepRecords allocs/op = %.0f", allocs)
 	if allocs > 0 {
 		t.Fatalf("sortDepRecords allocs/op = %.0f, want 0 (no reflection)", allocs)
-	}
-}
-
-func TestSortBacklinkRecords_NoReflectSort(t *testing.T) {
-	if testing.Short() {
-		t.Skip("alloc gate skipped in -short mode")
-	}
-	if raceEnabled {
-		t.Skip("alloc gate skipped under -race")
-	}
-	records := []backlinkRecord{
-		{Source: "z.md", Line: 1},
-		{Source: "a.md", Line: 5},
-		{Source: "a.md", Line: 2},
-	}
-	sortBacklinkRecords(records)
-	if records[0].Source != "a.md" || records[0].Line != 2 || records[2].Source != "z.md" {
-		t.Fatalf("sortBacklinkRecords did not sort: %v", records)
-	}
-
-	const runs = 200
-	allocs := testing.AllocsPerRun(runs, func() {
-		sortBacklinkRecords(records)
-	})
-	t.Logf("sortBacklinkRecords allocs/op = %.0f", allocs)
-	if allocs > 0 {
-		t.Fatalf("sortBacklinkRecords allocs/op = %.0f, want 0 (no reflection)", allocs)
 	}
 }
 

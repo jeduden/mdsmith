@@ -537,7 +537,7 @@ func (s *Session) Capabilities() []string {
 // stay in lock-step; a test asserts the JS session method set matches
 // it name-for-name.
 func capabilityList() []string {
-	return []string{"check", "fix", "kinds"}
+	return []string{"check", "fix", "kinds", "rename", "move"}
 }
 
 // Invalidate signals that uri changed. With a content argument it

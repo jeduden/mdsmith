@@ -43,6 +43,7 @@ Commands:
   list              Walk the workspace and emit matches (files or link records)
   deps              Show a file's dependency-graph edges (includes, links, …)
   rename            Rename a heading or link-ref label and rewrite dependents
+  move              Move a file and rewrite every reference to it
   help              Show help for rules and topics
   metrics           Show and rank shared Markdown metrics
   merge-driver      Git merge driver for regenerable sections
@@ -101,6 +102,8 @@ func dispatch(first string, args []string) int {
 		return runDeps(args)
 	case "rename":
 		return runRename(args)
+	case "move":
+		return runMove(args)
 	case "help":
 		return runHelp(args)
 	case "metrics":

@@ -122,9 +122,11 @@ func buildFileEntry(filePath string, source []byte) *FileEntry {
 	// Directives (PIs) at the document root.
 	fe.Symbols = append(fe.Symbols, collectDirectives(fe.Path, root, nl, fmOffset)...)
 
-	// Edges: anchor / file / ref-style links plus directive targets.
+	// Edges: anchor / file / ref-style links plus directive targets,
+	// then Obsidian-style wikilinks (keyed by stem for the move planner).
 	fe.Outgoing = append(fe.Outgoing, collectLinkEdges(fe.Path, lf, fmOffset)...)
 	fe.Outgoing = append(fe.Outgoing, collectDirectiveEdges(fe.Path, lf, fmOffset)...)
+	fe.Outgoing = append(fe.Outgoing, collectWikilinkEdges(fe.Path, lf, fmOffset)...)
 
 	return fe
 }
@@ -645,6 +647,33 @@ func collectLinkEdges(filePath string, f *lint.File, fmOffset int) []Edge {
 			SourceCol:   r.Column,
 			TargetLabel: r.Label,
 			Kind:        EdgeRefLink,
+		})
+	}
+	return out
+}
+
+// collectWikilinkEdges emits one EdgeWikilink per Obsidian-style
+// `[[stem]]` link that resolves by Markdown basename stem. TargetLabel
+// carries the lowercased stem (linkgraph.WikilinkStem, mirroring the
+// resolver) and the edge is Unresolved with an empty TargetFile: stem
+// resolution needs the whole workspace, so the concrete target is left
+// to the move planner, which matches by stem. Typed non-Markdown
+// embeds (`![[diagram.png]]`) resolve by exact filename, never point at
+// a Markdown file, and are skipped.
+func collectWikilinkEdges(filePath string, f *lint.File, fmOffset int) []Edge {
+	var out []Edge
+	for _, w := range linkgraph.ExtractWikiLinks(f) {
+		stem, ok := linkgraph.WikilinkStem(w.Target)
+		if !ok {
+			continue
+		}
+		out = append(out, Edge{
+			SourceFile:  filePath,
+			SourceLine:  w.Line + fmOffset,
+			SourceCol:   w.Column,
+			TargetLabel: stem,
+			Kind:        EdgeWikilink,
+			Unresolved:  true,
 		})
 	}
 	return out

@@ -36,7 +36,7 @@ statement.
 
 ## Headline
 
-Mark*down*, smithed.
+Neat, consistent *Markdown*.
 
 ## Eyebrow
 

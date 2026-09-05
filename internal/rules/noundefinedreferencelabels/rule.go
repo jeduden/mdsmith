@@ -6,6 +6,7 @@ package noundefinedreferencelabels
 import (
 	"bytes"
 	"fmt"
+	"strconv"
 	"sync"
 	"unicode"
 	"unicode/utf8"
@@ -43,6 +44,18 @@ func (r *Rule) Category() string { return "link" }
 
 // EnabledByDefault implements rule.Defaultable.
 func (r *Rule) EnabledByDefault() bool { return true }
+
+// undefinedRefMessage builds the diagnostic text shared by all three
+// bracket scanners. strconv.Quote + concatenation over fmt.Sprintf's
+// %q avoids the reflection-driven formatting path for the same
+// allocation count and result — a real broken-link workspace can carry
+// many of these, once per unresolved label
+// (docs/development/high-performance-go.md: "strconv over
+// fmt.Sprintf").
+func undefinedRefMessage(label []byte) string {
+	return "reference label " + strconv.Quote(string(label)) +
+		" has no matching link reference definition"
+}
 
 const (
 	shortcutHeuristic     = "heuristic"
@@ -245,11 +258,12 @@ func advanceBracket(brs []bracket, i, pos int) int {
 // task 7. Empty contents (`[]`) return contentStart == contentEnd;
 // the caller decides whether that is valid for the pattern.
 func nextBracket(source []byte, pos int) (open, contentStart, contentEnd, closeAfter int, ok bool) {
-	for pos < len(source) {
-		if source[pos] != '[' {
-			pos++
-			continue
+	for {
+		idx := bytes.IndexByte(source[pos:], '[')
+		if idx < 0 {
+			return 0, 0, 0, 0, false
 		}
+		pos += idx
 		open = pos
 		contentStart = pos + 1
 		i := contentStart
@@ -263,7 +277,6 @@ func nextBracket(source []byte, pos int) (open, contentStart, contentEnd, closeA
 		// advance past the orphan `[` and keep scanning.
 		pos++
 	}
-	return 0, 0, 0, 0, false
 }
 
 // scanFullRefs walks source for `[text][label]` patterns. The byte
@@ -325,8 +338,7 @@ func (r *Rule) scanFullRefs(
 			if open1 > 0 && source[open1-1] == '!' {
 				col = f.ColumnOfOffset(open1 - 1)
 			}
-			diags = append(diags, r.diag(f.Path, line, col,
-				fmt.Sprintf("reference label %q has no matching link reference definition", string(label))))
+			diags = append(diags, r.diag(f.Path, line, col, undefinedRefMessage(label)))
 		}
 		i = advanceBracket(brs, i, ca2)
 	}
@@ -379,8 +391,7 @@ func (r *Rule) scanCollapsedRefs(
 			if open > 0 && source[open-1] == '!' {
 				col = f.ColumnOfOffset(open - 1)
 			}
-			diags = append(diags, r.diag(f.Path, line, col,
-				fmt.Sprintf("reference label %q has no matching link reference definition", string(text))))
+			diags = append(diags, r.diag(f.Path, line, col, undefinedRefMessage(text)))
 		}
 		i = advanceBracket(brs, i+1, ca+2)
 	}
@@ -452,8 +463,7 @@ func (r *Rule) scanShortcutRefs(
 			if isImage {
 				col = f.ColumnOfOffset(open - 1)
 			}
-			diags = append(diags, r.diag(f.Path, line, col,
-				fmt.Sprintf("reference label %q has no matching link reference definition", string(label))))
+			diags = append(diags, r.diag(f.Path, line, col, undefinedRefMessage(label)))
 		}
 		i = advanceBracket(brs, i+1, ca)
 	}

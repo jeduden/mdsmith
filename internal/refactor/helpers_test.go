@@ -1,4 +1,4 @@
-package rename
+package refactor
 
 import (
 	"testing"
@@ -9,6 +9,27 @@ import (
 	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 	"github.com/stretchr/testify/assert"
 )
+
+// callHeading runs Heading and unwraps the Plan to its per-key Edits
+// map, so the heading tests keep asserting on the map shape they were
+// written against. A heading rename never carries a FileOp.
+func callHeading(
+	ws Workspace, fileKey, file string, source []byte,
+	line int, oldName, newName string,
+) (map[string][]Edit, error) {
+	p, err := Heading(ws, fileKey, file, source, line, oldName, newName)
+	return p.Edits, err
+}
+
+// callLinkRef runs LinkRef under a fixed file key and unwraps the Plan
+// to that file's edit slice — the shape the link-ref tests assert on.
+// The key is arbitrary because a link-ref rename is file-local; the
+// tests never inspect it.
+func callLinkRef(source []byte, oldLabel, newName string) ([]Edit, error) {
+	const key = "a.md"
+	p, err := LinkRef(key, source, oldLabel, newName)
+	return p.Edits[key], err
+}
 
 func TestInvalidLabelRuneError_Error(t *testing.T) {
 	assert.Equal(t, `label cannot contain ']'`, InvalidLabelRuneError{Rune: ']'}.Error())
@@ -174,7 +195,7 @@ func TestLinkRef_EmptyTextReferenceUseSkipped(t *testing.T) {
 	// linkTextBounds can't anchor it, so refUseEdit skips that use
 	// while the def and the normal `[spec]` use are still rewritten.
 	src := []byte("Empty [][spec] and normal [spec].\n\n[spec]: u\n")
-	edits, err := LinkRef(src, "spec", "rfc")
+	edits, err := callLinkRef(src, "spec", "rfc")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

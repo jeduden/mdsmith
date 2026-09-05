@@ -431,19 +431,51 @@ func TestCheck_Section_PatternMultipleHeadings(t *testing.T) {
 	assert.Equal(t, 1, diags[0].Line)
 }
 
+// TestCheck_Section_NestedHeadingViolatesIndependently pins the
+// hierarchical section-window contract astutil.SectionEnd defines: a
+// shallow heading's window extends through its nested subsections (so
+// its own count legitimately includes their content), but each nested
+// subsection must still be checked, and flagged, independently against
+// its own narrower window. A cursor optimization that permanently
+// consumes paragraphs once one heading's wider window has scanned them
+// would silently lose every nested subsection's own violation — this
+// was exactly the shape of a regression caught in review. Three
+// headings (level 1, 2, 1) each carry their own violating count, so
+// all three must be reported.
+func TestCheck_Section_NestedHeadingViolatesIndependently(t *testing.T) {
+	r := &Rule{}
+	mustApply(t, r, map[string]any{
+		"tokens": []any{"process"}, "max": 3, "scope": "section", "count": "each",
+	})
+	src := "# A\n\nprocess process process process.\n\n" +
+		"## B\n\nprocess process process process.\n\n" +
+		"# C\n\nprocess process process process.\n"
+	diags := r.Check(mustFile(t, src))
+	require.Len(t, diags, 3, "expected a violation for A, B, and C independently: %+v", diags)
+	assert.Equal(t, 1, diags[0].Line, "section A")
+	assert.Equal(t, 5, diags[1].Line, "section B")
+	assert.Equal(t, 9, diags[2].Line, "section C")
+}
+
 // --- private helper unit tests ---
 
 func TestCountCombinedInRange(t *testing.T) {
 	r := &Rule{Tokens: []string{"foo"}, CaseSensitive: true}
+	// Ascending Line order: countCombinedInRange's pos cursor only
+	// moves forward, matching the guarantee astutil.CollectSectionParagraphs
+	// (production's source for this slice) documents.
 	paragraphs := []astutil.SectionParagraph{
 		{Text: "foo foo", Line: 2},
-		{Text: "bar", Line: 10},
 		{Text: "foo", Line: 3},
+		{Text: "bar", Line: 10},
 	}
+	var pos int
 	// [2, 5) covers lines 2 and 3: 2+1 = 3 matches
-	assert.Equal(t, 3, r.countCombinedInRange(paragraphs, nil, 2, 5))
-	// [10, 11) covers line 10: no "foo"
-	assert.Equal(t, 0, r.countCombinedInRange(paragraphs, nil, 10, 11))
+	assert.Equal(t, 3, r.countCombinedInRange(paragraphs, nil, &pos, 2, 5))
+	// [10, 11) covers line 10: no "foo". Reuses the same cursor,
+	// mirroring how checkSections threads one cursor across a
+	// sequence of ascending, non-overlapping windows.
+	assert.Equal(t, 0, r.countCombinedInRange(paragraphs, nil, &pos, 10, 11))
 }
 
 func TestCountPatternInRange(t *testing.T) {
@@ -453,8 +485,9 @@ func TestCountPatternInRange(t *testing.T) {
 		{Text: "foo bar foo", Line: 2},
 		{Text: "baz", Line: 10},
 	}
-	assert.Equal(t, 2, r.countPatternInRange(paragraphs, nil, 2, 5))
-	assert.Equal(t, 0, r.countPatternInRange(paragraphs, nil, 5, 9))
+	var pos int
+	assert.Equal(t, 2, r.countPatternInRange(paragraphs, nil, &pos, 2, 5))
+	assert.Equal(t, 0, r.countPatternInRange(paragraphs, nil, &pos, 5, 9))
 }
 
 func TestCountCombined(t *testing.T) {
