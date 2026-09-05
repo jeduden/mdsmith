@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"testing"
 
@@ -631,25 +632,23 @@ func TestBuildDirIndex(t *testing.T) {
 	}
 	idx := buildDirIndex(files)
 
-	// Root "." must list "docs" (dir) and "root.md" (file).
+	// Root "." must list "docs" (dir) and "root.md" (file) — sorted.
 	rootNames := entryNames(idx["."])
-	if !containsName(rootNames, "docs") {
-		t.Errorf("root listing missing \"docs\": %v", rootNames)
-	}
-	if !containsName(rootNames, "root.md") {
-		t.Errorf("root listing missing \"root.md\": %v", rootNames)
+	wantRoot := []string{"docs", "root.md"}
+	if !slices.Equal(rootNames, wantRoot) {
+		t.Errorf("root listing = %v, want %v", rootNames, wantRoot)
 	}
 
 	// "docs" must list "a.md", "b.md", "sub" — sorted.
 	docsNames := entryNames(idx["docs"])
 	wantDocs := []string{"a.md", "b.md", "sub"}
-	if !equalStringSlices(docsNames, wantDocs) {
+	if !slices.Equal(docsNames, wantDocs) {
 		t.Errorf("docs listing = %v, want %v", docsNames, wantDocs)
 	}
 
 	// "docs/sub" must list only "c.md".
 	subNames := entryNames(idx["docs/sub"])
-	if !equalStringSlices(subNames, []string{"c.md"}) {
+	if !slices.Equal(subNames, []string{"c.md"}) {
 		t.Errorf("docs/sub listing = %v, want [c.md]", subNames)
 	}
 
@@ -722,23 +721,3 @@ func entryNames(ents []fs.DirEntry) []string {
 	return names
 }
 
-func containsName(names []string, target string) bool {
-	for _, n := range names {
-		if n == target {
-			return true
-		}
-	}
-	return false
-}
-
-func equalStringSlices(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
