@@ -344,3 +344,18 @@ func TestReadFSFileLimited_Nonexistent(t *testing.T) {
 	_, err := bytelimit.ReadFSFileLimited(fsys, "no-such.md", 100)
 	require.Error(t, err)
 }
+
+// --- FileTooLargeError ---
+
+// TestFileTooLargeError verifies that FileTooLargeError formats the error
+// message with both the actual size and the max cap, and that the returned
+// error wraps ErrFileTooLarge so callers can use errors.Is.
+func TestFileTooLargeError(t *testing.T) {
+	err := bytelimit.FileTooLargeError(1024, 512)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "file too large")
+	assert.Contains(t, err.Error(), "1024 bytes")
+	assert.Contains(t, err.Error(), "max 512")
+	assert.ErrorIs(t, err, bytelimit.ErrFileTooLarge,
+		"FileTooLargeError must wrap ErrFileTooLarge for errors.Is callers")
+}
