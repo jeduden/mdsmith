@@ -578,15 +578,10 @@ func sortTextEditsBottomUp(edits []textEdit) {
 func (s *Server) resolveURIAndSource(rel string) (string, []byte, bool) {
 	rel = index.NormalizePath(rel)
 	_, _, root := s.snapshotConfig()
-	for _, openURI := range s.docs.openURIs() {
-		// Combine the lookup and the path check into one
-		// short-circuit so a concurrent didClose between
-		// openURIs() and get() can't nil-deref doc, without
-		// a separate uncoverable `if !found` branch.
-		if doc, ok := s.docs.get(openURI); ok &&
-			index.NormalizePath(workspaceRelative(root, doc.path)) == rel {
-			return openURI, doc.text, true
-		}
+	if uri, doc, ok := s.docs.findByPath(func(path string) bool {
+		return index.NormalizePath(workspaceRelative(root, path)) == rel
+	}); ok {
+		return uri, doc.text, true
 	}
 	uri := s.workspaceURI(rel)
 	if uri == "" {
