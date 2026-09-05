@@ -5,9 +5,12 @@ import (
 	"testing"
 )
 
-// sortFixtureDirEntries returns a fresh, unsorted []fs.DirEntry each
-// call so a benchmark loop's Sort doesn't measure an already-sorted
-// no-op pass.
+// sortFixtureDirEntries returns an unsorted []fs.DirEntry. Built once
+// and reused for both the correctness check and the alloc-count loop
+// below: the loop deliberately re-sorts the same (by then sorted)
+// slice on every iteration, since sortDirEntries's allocation cost
+// does not depend on the input's existing order and the test wants to
+// measure the sort call itself, not fixture construction.
 func sortFixtureDirEntries() []fs.DirEntry {
 	names := []string{"zeta.md", "alpha.md", "mu.md", "beta.md", "gamma.md", "delta.md"}
 	ents := make([]fs.DirEntry, len(names))
