@@ -1109,3 +1109,48 @@ func TestIsBlank(t *testing.T) {
 	assert.False(t, IsBlank([]byte("a")))
 	assert.False(t, IsBlank([]byte("  a")))
 }
+
+// --- buildHeadingNodes ---
+
+// TestBuildHeadingNodes verifies that buildHeadingNodes returns every heading
+// node in source order and returns nil (not an empty slice) for a document
+// with no headings.
+func TestBuildHeadingNodes(t *testing.T) {
+	// No headings: must return nil, not an empty slice.
+	f, err := lint.NewFile("test.md", []byte("just prose\n"))
+	require.NoError(t, err)
+	got := buildHeadingNodes(f)
+	assert.Nil(t, got, "no headings must return nil")
+
+	// Multiple headings: must be collected in source order.
+	src := []byte("# H1\n\n## H2\n\n### H3\n")
+	f2, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	nodes := buildHeadingNodes(f2).([]*ast.Heading)
+	require.Len(t, nodes, 3)
+	assert.Equal(t, 1, nodes[0].Level)
+	assert.Equal(t, 2, nodes[1].Level)
+	assert.Equal(t, 3, nodes[2].Level)
+}
+
+// --- sortSectionHeadings ---
+
+// TestSortSectionHeadings verifies that sortSectionHeadings orders headings by
+// source line in place and is a no-op on an empty or single-element slice.
+func TestSortSectionHeadings(t *testing.T) {
+	// Already sorted: must be unchanged.
+	ordered := []SectionHeading{{Level: 1, Line: 1}, {Level: 2, Line: 3}}
+	sortSectionHeadings(ordered)
+	assert.Equal(t, 1, ordered[0].Line)
+	assert.Equal(t, 3, ordered[1].Line)
+
+	// Reverse order: must be sorted ascending.
+	reversed := []SectionHeading{{Level: 2, Line: 5}, {Level: 1, Line: 1}}
+	sortSectionHeadings(reversed)
+	assert.Equal(t, 1, reversed[0].Line)
+	assert.Equal(t, 5, reversed[1].Line)
+
+	// Empty slice: no panic.
+	sortSectionHeadings(nil)
+	sortSectionHeadings([]SectionHeading{})
+}
