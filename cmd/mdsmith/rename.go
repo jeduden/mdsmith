@@ -1,11 +1,12 @@
 package main
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 
@@ -378,9 +379,7 @@ func applyEdits(src []byte, edits []refactor.Edit) ([]byte, error) {
 		if cr {
 			row = seg[:len(seg)-1]
 		}
-		sort.SliceStable(es, func(i, j int) bool {
-			return es[i].Range.Start.Character > es[j].Range.Start.Character
-		})
+		sortEditsByCharacterDesc(es)
 		buf := append([]byte(nil), row...)
 		for _, e := range es {
 			s := mdtext.UTF16ToByteOffset(row, e.Range.Start.Character)
@@ -400,6 +399,20 @@ func applyEdits(src []byte, edits []refactor.Edit) ([]byte, error) {
 		segs[line] = buf
 	}
 	return joinLF(segs), nil
+}
+
+// sortEditsByCharacterDesc orders es by descending Start.Character in
+// place (rightmost edit first), so applyEdits can splice each edit
+// into the line without its offset shifting from an earlier splice.
+// slices.SortStableFunc compares the concrete refactor.Edit values
+// directly, unlike sort.SliceStable, which drives reflect.Swapper
+// under the hood — see docs/development/high-performance-go.md's
+// "reflect in hot paths" anti-pattern. Stability preserves the
+// original order among edits reported at the same offset.
+func sortEditsByCharacterDesc(es []refactor.Edit) {
+	slices.SortStableFunc(es, func(a, b refactor.Edit) int {
+		return cmp.Compare(b.Range.Start.Character, a.Range.Start.Character)
+	})
 }
 
 // splitKeepCR splits src on `\n`, keeping any trailing `\r` on each

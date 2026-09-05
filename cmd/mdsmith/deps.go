@@ -1,11 +1,12 @@
 package main
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
-	"sort"
+	"slices"
 
 	flag "github.com/spf13/pflag"
 
@@ -99,13 +100,22 @@ func collectDeps(idx *index.Index, target string, incoming bool) []depRecord {
 			Target: edgeTargetString(e, target),
 		})
 	}
-	sort.SliceStable(recs, func(a, b int) bool {
-		if recs[a].Line != recs[b].Line {
-			return recs[a].Line < recs[b].Line
-		}
-		return recs[a].Target < recs[b].Target
-	})
+	sortDepRecords(recs)
 	return recs
+}
+
+// sortDepRecords orders recs by line, then target, in place.
+// slices.SortStableFunc compares the concrete depRecord values
+// directly, unlike sort.SliceStable, which drives reflect.Swapper
+// under the hood — see docs/development/high-performance-go.md's
+// "reflect in hot paths" anti-pattern.
+func sortDepRecords(recs []depRecord) {
+	slices.SortStableFunc(recs, func(a, b depRecord) int {
+		return cmp.Or(
+			cmp.Compare(a.Line, b.Line),
+			cmp.Compare(a.Target, b.Target),
+		)
+	})
 }
 
 // emitDeps writes records to w. Exit code: 0 when records were

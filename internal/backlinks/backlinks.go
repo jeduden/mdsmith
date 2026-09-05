@@ -5,10 +5,11 @@
 package backlinks
 
 import (
+	"cmp"
 	"fmt"
 	"path"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/bytelimit"
@@ -109,13 +110,22 @@ func Collect(
 		}
 		records = append(records, rs...)
 	}
-	sort.SliceStable(records, func(i, j int) bool {
-		if records[i].Source != records[j].Source {
-			return records[i].Source < records[j].Source
-		}
-		return records[i].Line < records[j].Line
-	})
+	sortBacklinkRecords(records)
 	return records, errs
+}
+
+// sortBacklinkRecords orders records by source path, then line, in
+// place. slices.SortStableFunc compares the concrete Record values
+// directly, unlike sort.SliceStable, which drives reflect.Swapper
+// under the hood — see docs/development/high-performance-go.md's
+// "reflect in hot paths" anti-pattern.
+func sortBacklinkRecords(records []Record) {
+	slices.SortStableFunc(records, func(a, b Record) int {
+		return cmp.Or(
+			cmp.Compare(a.Source, b.Source),
+			cmp.Compare(a.Line, b.Line),
+		)
+	})
 }
 
 // extractBacklinksFromSource reads one source file, parses it, and

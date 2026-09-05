@@ -6,6 +6,7 @@ package listmarkerspace
 import (
 	"bytes"
 	"fmt"
+	"strconv"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -118,10 +119,8 @@ func (r *Rule) itemVerdict(f *lint.File, ordered, multi bool, line int) (lint.Di
 		RuleID:   r.ID(),
 		RuleName: r.Name(),
 		Severity: lint.Warning,
-		Message: fmt.Sprintf(
-			"list marker followed by %d %s; expected %d",
-			got, pluralSpace(got), want,
-		),
+		Message: "list marker followed by " + strconv.Itoa(got) + " " +
+			pluralSpace(got) + "; expected " + strconv.Itoa(want),
 	}, true
 }
 
