@@ -13,6 +13,9 @@ func TestStableSortEdits_NoReflectSort(t *testing.T) {
 	if testing.Short() {
 		t.Skip("alloc gate skipped in -short mode")
 	}
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race")
+	}
 	changes := map[string][]Edit{
 		"doc.md": {
 			{Range: Range{Start: Position{Line: 1, Character: 0}}, NewText: "a"},
