@@ -1151,6 +1151,55 @@ func TestRootRelative_AbsErrorWhenCWDIsRemoved(t *testing.T) {
 	assert.Empty(t, got)
 }
 
+// --- corpusFiles ---
+
+// TestCorpusFiles verifies that corpusFiles walks the filesystem, returns
+// Markdown paths, and honours include/exclude filters.
+func TestCorpusFiles(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "a.md"), "# A\n")
+	writeFile(t, filepath.Join(dir, "b.md"), "# B\n")
+	writeFile(t, filepath.Join(dir, "skip.txt"), "not markdown\n")
+
+	corpus := os.DirFS(dir)
+	cfg := corpusScanConfig{corpus: corpus}
+	files := corpusFiles(cfg)
+	// txt file must not appear; both .md files must.
+	assert.ElementsMatch(t, []string{"a.md", "b.md"}, files)
+
+	// Exclude b.md: only a.md remains.
+	cfgExcl := corpusScanConfig{corpus: corpus, exclude: []string{"b.md"}}
+	filesExcl := corpusFiles(cfgExcl)
+	assert.Equal(t, []string{"a.md"}, filesExcl)
+
+	// Include only b.md: only b.md appears.
+	cfgIncl := corpusScanConfig{corpus: corpus, include: []string{"b.md"}}
+	filesIncl := corpusFiles(cfgIncl)
+	assert.Equal(t, []string{"b.md"}, filesIncl)
+}
+
+// --- corpusFilesKey ---
+
+// TestCorpusFilesKey verifies the cache key includes rootDir, and that
+// distinct include/exclude lists produce distinct keys.
+func TestCorpusFilesKey(t *testing.T) {
+	base := corpusScanConfig{rootDir: "/repo"}
+	withInclude := corpusScanConfig{rootDir: "/repo", include: []string{"a.md"}}
+	withExclude := corpusScanConfig{rootDir: "/repo", exclude: []string{"b.md"}}
+	diffRoot := corpusScanConfig{rootDir: "/other"}
+
+	k0 := corpusFilesKey(base)
+	k1 := corpusFilesKey(withInclude)
+	k2 := corpusFilesKey(withExclude)
+	k3 := corpusFilesKey(diffRoot)
+
+	assert.Contains(t, k0, "duplicatedcontent-corpus")
+	assert.NotEqual(t, k0, k1, "include list must change the key")
+	assert.NotEqual(t, k0, k2, "exclude list must change the key")
+	assert.NotEqual(t, k1, k2, "include vs exclude must differ")
+	assert.NotEqual(t, k0, k3, "different rootDir must change the key")
+}
+
 func newLintFileWithRoot(t *testing.T, path, root string) *lint.File {
 	t.Helper()
 	data, err := os.ReadFile(path)
