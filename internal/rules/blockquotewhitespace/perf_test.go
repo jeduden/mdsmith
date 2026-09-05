@@ -24,54 +24,25 @@ func noBlockquoteDoc(sections int) string {
 	return b.String()
 }
 
-// BenchmarkCheckBlankBetween_NoBlockquote exercises checkBlankBetween's
-// gate on a file with no '>' anywhere; benchstat-friendly (no assertion),
-// consumed by TestCheckBlankBetween_NoBlockquoteBudget below for the
-// enforced gate.
+// BenchmarkCheckBlankBetween_NoBlockquote is a manual regression-detection
+// tool for the sawBlockquote gate, not a CI-enforced gate: the gate is a
+// pure CPU win (checkBlankBetween's AST/Layer-0 walk is skipped entirely,
+// but it never allocated on a no-match walk either way — see
+// markdownflavor's BenchmarkBuildAlertSkipMaps for the same rationale), so
+// ns/op is too environment-sensitive for a hard b.Fatalf budget the way
+// the allocs-based gates elsewhere in this codebase are. Run it manually
+// with `-bench` and compare via benchstat before/after a change to
+// checkBlankBetween's call site. Measured locally on a 200-section
+// no-blockquote fixture: ~7500 ns/op before the gate landed, ~600 ns/op
+// after — see the commit that introduced this benchmark.
 func BenchmarkCheckBlankBetween_NoBlockquote(b *testing.B) {
 	src := []byte(noBlockquoteDoc(200))
 	f, err := lint.NewFile("prose.md", src)
 	require.NoError(b, err)
 	r := &Rule{}
 
+	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		_ = r.Check(f)
 	}
-}
-
-// blankBetweenNoBlockquoteBudgetNs pins the gate's real effect. Without
-// the sawBlockquote gate, MDS059's MD028 half walks the full AST (or the
-// Layer 0 BlockSpan list) on every default-enabled Check call, even
-// though a file with zero blockquote-marker lines cannot contain the
-// violation. The gate reuses the MD027 line scan already run in the same
-// Check call, so the skip costs nothing extra when it fires. Gated:
-// ~600ns on the 200-section fixture below. Ungated: ~7500ns (the full
-// AST walk). The budget sits with headroom above the gated baseline
-// while staying well under the ungated cost, so a regression that drops
-// the gate trips this test.
-const blankBetweenNoBlockquoteBudgetNs = 3_000
-
-// TestCheckBlankBetween_NoBlockquoteBudget pins the ns/op regression gate
-// under a normal `go test` run. See noreferencestyle's
-// TestCheckFootnotes_NoNeedleBudget for why the assertion runs through
-// testing.Benchmark inside a Test rather than a bare Benchmark: CI's
-// bench jobs don't cover internal/rules, so a bare b.Fatalf here would
-// never execute.
-func TestCheckBlankBetween_NoBlockquoteBudget(t *testing.T) {
-	if testing.Short() {
-		t.Skip("perf gate skipped in -short mode")
-	}
-	if raceEnabled {
-		t.Skip("perf gate skipped under -race; the race detector's " +
-			"instrumentation overhead perturbs the ns/op measurement")
-	}
-	result := testing.Benchmark(BenchmarkCheckBlankBetween_NoBlockquote)
-	perOp := float64(result.NsPerOp())
-	t.Logf("Check on a 200-section no-blockquote file = %.0f ns/op (budget = %d)",
-		perOp, blankBetweenNoBlockquoteBudgetNs)
-	require.LessOrEqualf(t, perOp, float64(blankBetweenNoBlockquoteBudgetNs),
-		"Check ns/op = %.0f exceeds budget %d: checkBlankBetween must be "+
-			"gated behind the MD027 scan's sawBlockquote flag instead of "+
-			"walking the AST/Layer-0 spans on every file",
-		perOp, blankBetweenNoBlockquoteBudgetNs)
 }
