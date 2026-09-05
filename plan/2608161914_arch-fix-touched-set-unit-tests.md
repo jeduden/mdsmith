@@ -3,7 +3,7 @@ id: 2608161914
 title: >-
   Add dedicated unit tests for the 2026-08-16 touched-set
   tax findings
-status: "🔲"
+status: "✅"
 model: haiku
 summary: >-
   Six new functions across cmd/mdsmith, pkg/mdsmith,
@@ -90,11 +90,11 @@ methods already have tests).
 
 ## Acceptance Criteria
 
-- [ ] Every function named in the Background section has a
+- [x] Every function named in the Background section has a
       test carrying its own name (or a named subtest under
       one parent test, per tests.md's "sub-behaviours"
       allowance).
-- [ ] `go test ./...` is green.
+- [x] `go test ./...` is green.
 - [ ] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues.
 - [ ] `mdsmith check .` is green.
