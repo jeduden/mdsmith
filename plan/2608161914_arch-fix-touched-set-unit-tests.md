@@ -95,9 +95,9 @@ methods already have tests).
       one parent test, per tests.md's "sub-behaviours"
       allowance).
 - [x] `go test ./...` is green.
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run`
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues.
-- [ ] `mdsmith check .` is green.
+- [x] `mdsmith check .` is green.
 
 [audit-log]: ../docs/development/architecture-audit.md
 [tests]: ../docs/development/architecture/tests.md
