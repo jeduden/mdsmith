@@ -59,6 +59,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	// MD027: flag blockquote lines where the last > in the marker prefix is
 	// followed by two or more spaces. Only the leading prefix is scanned, so
 	// a > that appears in the actual content of the blockquote is not flagged.
+	sawBlockquote := false
 	for i, line := range f.Lines {
 		// Candidate gate before the per-line set lookup: only lines whose
 		// first non-blank byte is '>' carry a blockquote marker prefix.
@@ -70,6 +71,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		if j >= len(line) || line[j] != '>' {
 			continue
 		}
+		sawBlockquote = true
 		lineNum := i + 1
 		if _, ok := codeLines[lineNum]; ok {
 			continue
@@ -88,6 +90,13 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	}
 
 	// MD028: flag blank-line gaps between adjacent sibling blockquote nodes.
+	// Reuses the MD027 scan above: MD028 needs two sibling blockquotes, so a
+	// file with no blockquote-marker line at all cannot contain the
+	// violation, and the AST/Layer-0 walk below is skipped without a second
+	// scan of the source.
+	if !sawBlockquote {
+		return diags
+	}
 	if f.AST == nil {
 		diags = append(diags, r.checkBlankBetweenLayer0(f)...)
 	} else {
