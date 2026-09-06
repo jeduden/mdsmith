@@ -1,12 +1,15 @@
 package build
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -72,15 +75,47 @@ func LoadCache(root string) (*Cache, error) {
 }
 
 // outputSetKey joins a sorted set of output paths into a single
-// length-framed key so two different sets cannot collide.
+// length-framed key so two different sets cannot collide. Builds the
+// key with strconv and strings.Builder rather than fmt.Fprintf, which
+// drives reflection-based formatting on every path
+// (docs/development/high-performance-go.md, "strconv over
+// fmt.Sprintf").
 func outputSetKey(paths []string) string {
 	sorted := append([]string(nil), paths...)
 	sort.Strings(sorted)
 	var b strings.Builder
 	for _, p := range sorted {
-		fmt.Fprintf(&b, "%d:%s|", len(p), p)
+		b.WriteString(strconv.Itoa(len(p)))
+		b.WriteByte(':')
+		b.WriteString(p)
+		b.WriteByte('|')
 	}
 	return b.String()
+}
+
+// sortEntriesByOutputKey orders entries by output-set key for stable
+// diffs. Each entry's key is computed once up front rather than inside
+// the sort's comparator: outputSetKey itself sorts and joins the
+// entry's full output-path set, so recomputing it on both sides of
+// every comparison turned an O(n log n) sort into O(n log n) key
+// rebuilds (docs/development/high-performance-go.md, "memoize per-
+// input computations"). slices.SortStableFunc also drops the
+// sort.SliceStable reflect.Swapper cost ("reflect in hot paths").
+func sortEntriesByOutputKey(entries []CacheEntry) {
+	type keyedEntry struct {
+		key   string
+		entry CacheEntry
+	}
+	decorated := make([]keyedEntry, len(entries))
+	for i, e := range entries {
+		decorated[i] = keyedEntry{key: outputSetKey(e.outputPaths()), entry: e}
+	}
+	slices.SortStableFunc(decorated, func(a, b keyedEntry) int {
+		return cmp.Compare(a.key, b.key)
+	})
+	for i, d := range decorated {
+		entries[i] = d.entry
+	}
 }
 
 // Lookup returns the entry whose output-path set equals the given set
@@ -123,10 +158,7 @@ func (c *Cache) Save(root string) error {
 	if c.Version == 0 {
 		c.Version = CacheVersion
 	}
-	sort.SliceStable(c.Entries, func(i, j int) bool {
-		return outputSetKey(c.Entries[i].outputPaths()) <
-			outputSetKey(c.Entries[j].outputPaths())
-	})
+	sortEntriesByOutputKey(c.Entries)
 
 	dir := filepath.Join(root, ".mdsmith")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
