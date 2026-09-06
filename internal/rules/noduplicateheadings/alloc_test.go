@@ -64,7 +64,11 @@ func TestCheck_SeenMapAllocBudget(t *testing.T) {
 		delta = 0
 	}
 
-	const allocBudget = 91
+	// Measured 91 allocs/op after the fix (was 97 before); budgeted with
+	// headroom above the measured value so an unrelated 1-2 alloc drift
+	// elsewhere (a Go point release, a dependency bump) doesn't flip this
+	// gate, while a regression back to an unsized map (97) still fails it.
+	const allocBudget = 94
 	t.Logf("MDS005 Check allocs/op (delta over parse, %d headings) = %.0f (budget = %d)",
 		n, delta, allocBudget)
 	require.LessOrEqualf(t, delta, float64(allocBudget),
