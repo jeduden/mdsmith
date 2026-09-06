@@ -1,10 +1,11 @@
 package lsp
 
 import (
+	"cmp"
 	"encoding/json"
 	"path"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/index"
@@ -204,20 +205,25 @@ func relFromDir(dir, target string) string {
 	return filepath.ToSlash(rel)
 }
 
-// sortItems sorts items by SortText then Label.
+// sortItems sorts items by SortText then Label. slices.SortFunc compares
+// the concrete completionItem values directly, unlike sort.Slice, which
+// drives reflect.Swapper internally (see
+// docs/development/high-performance-go.md, "reflect in hot paths").
+// This runs on every textDocument/completion request the editor issues
+// as the user types.
 func sortItems(items []completionItem) {
-	sort.Slice(items, func(i, j int) bool {
-		si := items[i].SortText
-		if si == "" {
-			si = items[i].Label
+	slices.SortFunc(items, func(a, b completionItem) int {
+		sa := a.SortText
+		if sa == "" {
+			sa = a.Label
 		}
-		sj := items[j].SortText
-		if sj == "" {
-			sj = items[j].Label
+		sb := b.SortText
+		if sb == "" {
+			sb = b.Label
 		}
-		if si != sj {
-			return si < sj
-		}
-		return items[i].Label < items[j].Label
+		return cmp.Or(
+			cmp.Compare(sa, sb),
+			cmp.Compare(a.Label, b.Label),
+		)
 	})
 }
