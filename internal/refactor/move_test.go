@@ -1,41 +1,22 @@
 package refactor
 
 import (
-	"sort"
-	"strings"
 	"testing"
 
-	"github.com/jeduden/mdsmith/internal/mdtext"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// applyEditsToSource splices every single-line edit into source and
-// returns the rewritten text, so a move test can assert on the final
-// file rather than on raw ranges. Same-line edits apply right-to-left
-// so an earlier edit's offsets stay valid.
+// applyEditsToSource splices every edit into source and returns the
+// rewritten text, so a move test can assert on the final file rather
+// than on raw ranges. Delegates to the production ApplyEdits so the
+// test fixture never drifts from the splice algorithm it exercises.
 func applyEditsToSource(source string, edits []Edit) string {
-	lines := strings.Split(source, "\n")
-	byLine := map[int][]Edit{}
-	for _, e := range edits {
-		byLine[e.Range.Start.Line] = append(byLine[e.Range.Start.Line], e)
+	out, err := ApplyEdits([]byte(source), edits)
+	if err != nil {
+		panic(err)
 	}
-	for ln, es := range byLine {
-		row := []byte(lines[ln])
-		sort.SliceStable(es, func(i, j int) bool {
-			return es[i].Range.Start.Character > es[j].Range.Start.Character
-		})
-		for _, e := range es {
-			s := mdtext.UTF16ToByteOffset(row, e.Range.Start.Character)
-			en := mdtext.UTF16ToByteOffset(row, e.Range.End.Character)
-			next := append([]byte{}, row[:s]...)
-			next = append(next, e.NewText...)
-			next = append(next, row[en:]...)
-			row = next
-		}
-		lines[ln] = string(row)
-	}
-	return strings.Join(lines, "\n")
+	return string(out)
 }
 
 func TestMove_IncomingFileLinksAndFileOp(t *testing.T) {
