@@ -212,7 +212,7 @@ func TestApplyPlan_Errors(t *testing.T) {
 		refactor.Plan{Edits: map[string][]refactor.Edit{"missing.md": {{NewText: "x"}}}}, "text", false)
 	assert.Equal(t, 2, got)
 
-	// applyEdits fails on an out-of-range line → exit 2.
+	// refactor.ApplyEdits fails on an out-of-range line → exit 2.
 	bad := refactor.Plan{Edits: map[string][]refactor.Edit{"a.md": {{
 		Range:   refactor.Range{Start: refactor.Position{Line: 99}, End: refactor.Position{Line: 99}},
 		NewText: "x",
@@ -248,64 +248,6 @@ func TestEmitPlanReport(t *testing.T) {
 	// With no file summaries the first failing write is the move line,
 	// covering that write-error arm.
 	assert.Equal(t, 2, emitPlanReport(ew, nil, op, "text", false))
-}
-
-// mkEdit builds a single-line refactor.Edit, keeping the table-style
-// test cases below readable.
-func mkEdit(line, startCh, endCh int, text string) refactor.Edit {
-	return refactor.Edit{
-		Range: refactor.Range{
-			Start: refactor.Position{Line: line, Character: startCh},
-			End:   refactor.Position{Line: line, Character: endCh},
-		},
-		NewText: text,
-	}
-}
-
-func TestApplyEdits(t *testing.T) {
-	t.Run("single edit", func(t *testing.T) {
-		out, err := applyEdits([]byte("# Setup\n"), []refactor.Edit{mkEdit(0, 2, 7, "Install")})
-		require.NoError(t, err)
-		assert.Equal(t, "# Install\n", string(out))
-	})
-	t.Run("two edits same line apply right-to-left", func(t *testing.T) {
-		// `[a](#x) [b](#y)` → rewrite both fragments.
-		out, err := applyEdits([]byte("[a](#x) [b](#y)\n"), []refactor.Edit{
-			mkEdit(0, 5, 6, "X"),
-			mkEdit(0, 13, 14, "Y"),
-		})
-		require.NoError(t, err)
-		assert.Equal(t, "[a](#X) [b](#Y)\n", string(out))
-	})
-	t.Run("CRLF preserved", func(t *testing.T) {
-		out, err := applyEdits([]byte("# Setup\r\n"), []refactor.Edit{mkEdit(0, 2, 7, "X")})
-		require.NoError(t, err)
-		assert.Equal(t, "# X\r\n", string(out))
-	})
-	t.Run("multi-line edit rejected", func(t *testing.T) {
-		_, err := applyEdits([]byte("a\nb\n"), []refactor.Edit{{
-			Range: refactor.Range{Start: refactor.Position{Line: 0}, End: refactor.Position{Line: 1}},
-		}})
-		require.Error(t, err)
-	})
-	t.Run("line out of range", func(t *testing.T) {
-		_, err := applyEdits([]byte("a\n"), []refactor.Edit{mkEdit(9, 0, 0, "")})
-		require.Error(t, err)
-	})
-	t.Run("offset out of range", func(t *testing.T) {
-		// Start past End after mapping → the s>en guard fires.
-		_, err := applyEdits([]byte("abcd\n"), []refactor.Edit{mkEdit(0, 3, 1, "x")})
-		require.Error(t, err)
-	})
-}
-
-func TestSplitKeepCRAndJoinLF(t *testing.T) {
-	src := []byte("a\r\nb\nc")
-	segs := splitKeepCR(src)
-	assert.Equal(t, [][]byte{[]byte("a\r"), []byte("b"), []byte("c")}, segs)
-	assert.Equal(t, src, joinLF(segs))
-	// Trailing newline yields a trailing empty segment that round-trips.
-	assert.Equal(t, []byte("x\n"), joinLF(splitKeepCR([]byte("x\n"))))
 }
 
 func TestRunRename_FlagParseError(t *testing.T) {

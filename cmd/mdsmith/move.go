@@ -182,7 +182,7 @@ func applyEditsToFile(ws cliRenameWorkspace, rel string, edits []refactor.Edit) 
 		fmt.Fprintf(os.Stderr, "mdsmith: cannot read %q to apply edits\n", rel)
 		return 2
 	}
-	out, err := applyEdits(src, edits)
+	out, err := refactor.ApplyEdits(src, edits)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %s: %v\n", rel, err)
 		return 2
