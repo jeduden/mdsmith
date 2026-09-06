@@ -44,9 +44,10 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	}
 
 	var diags []lint.Diagnostic
-	seen := make(map[string]int) // text -> first occurrence line
+	headings := astutil.CollectHeadingNodes(f)
+	seen := make(map[string]int, len(headings)) // text -> first occurrence line
 
-	for _, heading := range astutil.CollectHeadingNodes(f) {
+	for _, heading := range headings {
 		text := astutil.HeadingText(heading, f.Source)
 		line := astutil.HeadingLine(heading, f)
 		if d, ok := r.verdict(f, text, line, seen); ok {
