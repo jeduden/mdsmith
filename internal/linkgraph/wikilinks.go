@@ -2,10 +2,11 @@ package linkgraph
 
 import (
 	"bytes"
+	"cmp"
 	"io/fs"
 	"path"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
@@ -292,14 +293,19 @@ func skipHeavyDirs(p string) error {
 	return nil
 }
 
+// sortByDepthThenName orders paths by (path-separator count, name).
+// slices.SortFunc compares the concrete string values directly, unlike
+// sort.Slice, which drives reflect.Swapper internally (see
+// docs/development/high-performance-go.md, "reflect in hot paths").
+// This runs once per basename bucket on every WikilinkIndex (re)build,
+// so real workspaces with colliding basenames (README.md, index.md)
+// pay it N times per rebuild, not once.
 func sortByDepthThenName(paths []string) {
-	sort.Slice(paths, func(i, j int) bool {
-		di := strings.Count(paths[i], "/")
-		dj := strings.Count(paths[j], "/")
-		if di != dj {
-			return di < dj
-		}
-		return paths[i] < paths[j]
+	slices.SortFunc(paths, func(a, b string) int {
+		return cmp.Or(
+			cmp.Compare(strings.Count(a, "/"), strings.Count(b, "/")),
+			cmp.Compare(a, b),
+		)
 	})
 }
 
