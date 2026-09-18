@@ -1,7 +1,7 @@
 ---
 id: 2608020650
 title: Convert MDS003/MDS005 to KindScopedChecker without a stale-state bug
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   headingincrement (MDS003) and noduplicateheadings
@@ -127,15 +127,87 @@ half), `codeblockstyle` (MDS065), `samefileanchor`
    needs its own plan — their per-rule logic is larger
    and riskier than the two rules headed here.
 
+## Design Chosen
+
+Option 2 — a `BeginFile` reset hook via the new `rule.FileResetter`
+interface. It resets per-file state before each file's first
+`CheckNode`. Both `WalkNodes` and `runNodeCheckers` call it.
+
+Four implementation details required care:
+
+1. **Nil-AST routing.** After converting to `NodeChecker`,
+   `classifySlot` drops a rule on parse-skipped Files unless it is a
+   `BlockChecker`, an `InlineChecker`, or a `LinesChecker`. MDS005
+   declares `InlineCapable() bool { return true }`, routing it to its
+   existing `checkFromInline` path; MDS003 declares
+   `LinesCapable() bool { return true }`, routing it to `checkNilAST`.
+   MDS003 cannot be a `BlockChecker`: that contract must hold for every
+   File, and a placeholder-configured MDS003 reads heading inline text
+   the block spans do not carry.
+   `TestSkipSafeNodeCheckersHaveNilASTRoute` now pins the invariant for
+   every skip-safe `NodeChecker`, and
+   `TestHeadingRules_NilASTDispatchEquivalence` drives both rules
+   through the real dispatch on both paths.
+2. **No shared instance across goroutines.** Per-file state on the rule
+   struct is only safe while one instance is never used by two
+   goroutines. `checker.ConfigureEnabledRules` now clones every
+   `rule.FileResetter` it would otherwise pass through unchanged (a
+   non-`Configurable` rule, or one with no settings, previously came
+   back as the process-wide registry singleton), so each configured rule
+   list owns its instances.
+3. **Fresh map, not `clear`.** `BeginFile` allocates a new
+   `seen` map rather than clearing in place, so two clones
+   shallow-copied from one already-walked instance never write through a
+   shared backing store. `CheckNode` also lazily initialises the map, so
+   a caller that skips `BeginFile` degrades instead of taking the
+   process down with a nil-map write.
+4. **Uniform reset contract.** `BeginFile` is honoured by every dispatch
+   path: `prepareNodeCheckers` (the AST walk), `runBlockCheckers` (the
+   Layer 0 block spans), and both `rule.WalkNodes` and
+   `rule.WalkBlocks`.
+
+## Benchmark Delta
+
+Both rules now share the engine's single `KindScopedChecker`
+dispatch. That is one walk for every NodeChecker, not one
+per rule. It is the gain this plan targets.
+
+The standalone `Check` path is measured separately. It is
+the path the LSP and the rule unit tests take.
+`rule.WalkNodes` applies the same `EnteringKinds` scoping
+the engine applies. A standalone Check therefore skips the
+two no-op `CheckNode` calls per node that an unscoped walk
+pays. Both rules ran back to back over a pre-parsed
+51-heading document (2000 iterations, 5 runs, median):
+
+| State                | ns/op  | allocs/op |
+| -------------------- | ------ | --------- |
+| unscoped `WalkNodes` | 14.5 k | 9         |
+| scoped `WalkNodes`   | 11.9 k | 9         |
+
+`BenchmarkHeadingRulesTogether` parses a fresh File each
+iteration. Goldmark dominates it, so it reports no
+measurable change (~95 k ns/op either way). It stays as
+the regression guard for the combined path.
+
+The two rules were the only callers of the
+`astutil.CollectHeadingNodes` memo. It is now dead, and
+was removed along with `HeadingNodesMemoKey`.
+
 ## Acceptance Criteria
 
-- [ ] `headingincrement` and `noduplicateheadings`
+- [x] `headingincrement` and `noduplicateheadings`
       implement `rule.KindScopedChecker`.
-- [ ] A regression test proves no state leaks between
+- [x] A regression test proves no state leaks between
       files processed by the same rule instance.
-- [ ] `go test ./...` and the corpus equivalence gates
-      pass unchanged.
-- [ ] The benchmark from Task 1 is re-run. The
+- [x] `go test ./...` and the corpus equivalence gates
+      pass unchanged, plus a new dispatch-routing gate
+      (`TestSkipSafeNodeCheckersHaveNilASTRoute`) that the
+      corpus gates could not have caught.
+- [x] A `-race` regression test proves two goroutines
+      running the same rule slice never share per-file
+      rule state.
+- [x] The benchmark from Task 1 is re-run. The
       before/after delta is recorded in this plan or a
       linked PR.
 

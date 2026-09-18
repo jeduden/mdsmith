@@ -34,10 +34,20 @@ func PanicDiagnostic(path string, rv any) lint.Diagnostic {
 // effective) — never on the File — so a caller that lints many files
 // under one config can configure once and reuse the slice across files
 // (via CheckConfiguredRules) instead of re-cloning every Configurable
-// rule per file. Reuse is safe because a rule's Check carries no state
-// across calls: the engine already shares the no-settings clones across
-// every file in a worker, so sharing the settings clones too is the same
-// contract.
+// rule per file. Reuse across FILES is safe because a rule's Check
+// carries no state across files: a rule.FileResetter — the one kind that
+// keeps per-file state in its struct — has BeginFile called before every
+// file's dispatch, so the previous file's values never survive.
+//
+// Reuse across CONCURRENT callers is what this function guarantees for
+// such a rule: a rule.FileResetter is never handed out shared. Rules
+// arrive here as process-wide registry singletons (rule.All) or as a
+// worker's clones, and ConfigureRule returns the input unchanged for a
+// rule with no settings, so without the clone below two goroutines
+// calling CheckRules with the same rule list would race on that rule's
+// per-file fields (a write/write on an int, or a fatal concurrent map
+// write on a map). Configurable rules with settings are already cloned by
+// ConfigureRule; the extra clone here covers every other case.
 func ConfigureEnabledRules(
 	rules []rule.Rule, effective map[string]config.RuleCfg,
 ) ([]rule.Rule, []error) {
@@ -53,9 +63,27 @@ func ConfigureEnabledRules(
 			errs = append(errs, err)
 			continue
 		}
-		configured = append(configured, cr)
+		configured = append(configured, isolateFileState(rl, cr))
 	}
 	return configured, errs
+}
+
+// isolateFileState returns a rule instance this configured list may own
+// exclusively. cr is ConfigureRule's result for rl: when it is a fresh
+// clone (a Configurable rule with settings) it is already private, so it
+// is returned as is. When ConfigureRule handed back rl itself and rl keeps
+// per-file state (rule.FileResetter), a shallow clone is taken so no two
+// configured lists — and therefore no two goroutines — ever write that
+// state through the same pointer. Stateless rules are returned unchanged,
+// so the common case allocates nothing.
+func isolateFileState(rl, cr rule.Rule) rule.Rule {
+	if cr != rl {
+		return cr
+	}
+	if _, ok := cr.(rule.FileResetter); !ok {
+		return cr
+	}
+	return rule.CloneInstance(cr)
 }
 
 // ConfigureRule clones a rule and applies settings from cfg if the rule
@@ -111,6 +139,14 @@ func CheckRulesWithIntraFile(
 // ApplySettings cost once per config rather than once per file. The
 // configuration errors are returned by ConfigureEnabledRules at cache
 // build time, so this function returns diagnostics only.
+//
+// One configured list may be reused across FILES freely — a rule.FileResetter
+// has BeginFile called at each file boundary — but it must not be handed to
+// two goroutines at once, because that same per-file state lives on the rule
+// instance. ConfigureEnabledRules gives every list its own FileResetter
+// clones, so separate callers are already isolated; a caller that shares one
+// cached list across goroutines (the LSP's SourceConfigCache) must keep
+// cloning it per call as it does today.
 func CheckConfiguredRules(
 	f *lint.File,
 	configured []rule.Rule,
@@ -290,11 +326,17 @@ type kindTable struct {
 
 var kindTablePool = sync.Pool{New: func() any { return new(kindTable) }}
 
-// buildKindTable partitions nodeCheckers into the kind-indexed CSR
-// buckets and the generic list. Slots appear in each bucket in input
-// (rule) order. The returned table comes from kindTablePool; the
-// caller must hand it back via releaseKindTable.
-func buildKindTable(nodeCheckers []*ruleSlot) *kindTable {
+// prepareNodeCheckers does the whole per-file preparation of the shared
+// node-checker dispatch in ONE pass over nodeCheckers: it resets the
+// per-file state of every rule.FileResetter slot (BeginFile) and
+// partitions the slots into the kind-indexed CSR buckets and the generic
+// list. Slots appear in each bucket in input (rule) order. Both jobs need
+// the same walk over the same slice with the same interface assertions on
+// the hottest per-file path, so they share it rather than each paying
+// their own (docs/development/high-performance-go.md). The returned table
+// comes from kindTablePool; the caller must hand it back via
+// releaseKindTable.
+func prepareNodeCheckers(f *lint.File, nodeCheckers []*ruleSlot) *kindTable {
 	t := kindTablePool.Get().(*kindTable)
 	n := ast.NodeKindCount()
 	if cap(t.offsets) < n+1 {
@@ -305,9 +347,13 @@ func buildKindTable(nodeCheckers []*ruleSlot) *kindTable {
 	}
 	t.generic = t.generic[:0]
 
-	// Pass 1: count interest per kind into offsets[k+1].
+	// Pass 1: reset per-file rule state and count interest per kind
+	// into offsets[k+1].
 	total := 0
 	for _, s := range nodeCheckers {
+		if fr, ok := s.nc.(rule.FileResetter); ok {
+			fr.BeginFile(f)
+		}
 		ks, ok := s.nc.(rule.KindScopedChecker)
 		if !ok {
 			t.generic = append(t.generic, s)
@@ -366,8 +412,13 @@ func releaseKindTable(t *kindTable) {
 // time at one call per node on every file, and with no generic
 // checkers (the production rule set) the leaving visit dispatches
 // nothing at all. Node order matches ast.Walk's pre-order exactly.
+//
+// FileResetter rules have BeginFile called before the walk so per-file
+// state (e.g. prevLevel or a seen map) is reset for each new file,
+// matching rule.WalkNodes's contract for standalone Check callers.
+// prepareNodeCheckers does that in the same pass that builds the table.
 func runNodeCheckers(f *lint.File, nodeCheckers []*ruleSlot) {
-	t := buildKindTable(nodeCheckers)
+	t := prepareNodeCheckers(f, nodeCheckers)
 	if len(t.generic) == 0 {
 		dispatchKindScoped(f.AST, f, t)
 	} else {
@@ -427,7 +478,18 @@ func dispatchWithGeneric(n ast.Node, f *lint.File, t *kindTable) {
 // The block-checker count is tiny (the migrated structural rules), so a
 // per-span linear scan over the slots beats building a kind-indexed
 // table and allocates nothing beyond the diagnostics themselves.
+//
+// As on the AST-walk path, a rule.FileResetter slot has BeginFile called
+// before the first span is dispatched, so a rule that threads state
+// across spans starts each file clean instead of reading whatever the
+// previous file left behind (or, for a map-valued field, writing into a
+// nil map).
 func runBlockCheckers(f *lint.File, blockCheckers []*ruleSlot) {
+	for _, s := range blockCheckers {
+		if fr, ok := s.bc.(rule.FileResetter); ok {
+			fr.BeginFile(f)
+		}
+	}
 	scan := lint.Layer0(f)
 	for _, span := range scan.BlockSpans {
 		for _, s := range blockCheckers {

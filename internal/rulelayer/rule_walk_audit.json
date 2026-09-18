@@ -28,7 +28,7 @@
     "nil_ast_safe": false,
     "code_block_sensitive": false,
     "fired": true,
-    "is_node_checker": false,
+    "is_node_checker": true,
     "uses_ast_walk": false,
     "reads_file_ast": true
   },
@@ -50,7 +50,7 @@
     "nil_ast_safe": true,
     "code_block_sensitive": false,
     "fired": true,
-    "is_node_checker": false,
+    "is_node_checker": true,
     "uses_ast_walk": false,
     "reads_file_ast": true
   },
