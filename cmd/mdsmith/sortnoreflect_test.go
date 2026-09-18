@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	buildexec "github.com/jeduden/mdsmith/internal/build"
-	"github.com/jeduden/mdsmith/internal/refactor"
 )
 
 // These pin the allocation cost of the CLI output sorts that used
@@ -17,35 +16,10 @@ import (
 // small but free and matches the project's own established
 // convention. slices.SortFunc on the concrete result type sorts with
 // no reflection. The backlink-record sort now lives in
-// internal/backlinks (see its sortnoreflect_test.go) after that
-// algorithm moved out of cmd/mdsmith.
-
-func TestSortEditsByCharacterDesc_NoReflectSort(t *testing.T) {
-	if testing.Short() {
-		t.Skip("alloc gate skipped in -short mode")
-	}
-	if raceEnabled {
-		t.Skip("alloc gate skipped under -race")
-	}
-	es := []refactor.Edit{
-		{Range: refactor.Range{Start: refactor.Position{Character: 3}}},
-		{Range: refactor.Range{Start: refactor.Position{Character: 9}}},
-		{Range: refactor.Range{Start: refactor.Position{Character: 1}}},
-	}
-	sortEditsByCharacterDesc(es)
-	if es[0].Range.Start.Character != 9 || es[2].Range.Start.Character != 1 {
-		t.Fatalf("sortEditsByCharacterDesc did not sort descending: %v", es)
-	}
-
-	const runs = 200
-	allocs := testing.AllocsPerRun(runs, func() {
-		sortEditsByCharacterDesc(es)
-	})
-	t.Logf("sortEditsByCharacterDesc allocs/op = %.0f", allocs)
-	if allocs > 0 {
-		t.Fatalf("sortEditsByCharacterDesc allocs/op = %.0f, want 0 (no reflection)", allocs)
-	}
-}
+// internal/backlinks (see its sortnoreflect_test.go), and the
+// edit-splice sort now lives in internal/refactor (see its
+// sortnoreflect_test.go), after each algorithm moved out of
+// cmd/mdsmith.
 
 func TestSortDepRecords_NoReflectSort(t *testing.T) {
 	if testing.Short() {

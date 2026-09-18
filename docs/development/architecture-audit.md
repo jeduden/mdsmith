@@ -6,7 +6,7 @@ summary: >-
   solid-architecture skill (audit mode)
   appends here; blockers are also filed as
   plans.
-audit-from: 0ca0d2f7c95ab53e3e9ed8851150af98b95088fb
+audit-from: b48e90c3f10271023efc9c491522110188b4bf08
 ---
 # Architecture audit log
 
@@ -16,6 +16,55 @@ The oldest entries have moved to the
 [archive shards](architecture-audit-archive.md) to stay
 under the file-length budget; every finding there is
 resolved.
+
+## Audit 2026-09-06 (range: 0ca0d2f..b48e90c)
+
+76 commits, ~90 files touched (~85 Go). New this cycle:
+`internal/refactor`, the rename/move engine behind
+`mdsmith rename`/`move`, the LSP rename capability, and the
+new WASM `rename`/`move` session methods.
+
+No rule-to-rule imports. No reverse-layer imports. No
+Liskov breaks. `internal/refactor` never imports
+`cmd/mdsmith` or `internal/lsp`; both consume it. The new
+WASM methods mirror `pkg/mdsmith.Session.Rename`/`.Move` 1:1
+— no bespoke WASM-side logic.
+
+### blockers (2026-09-06)
+
+None.
+
+### tax (2026-09-06)
+
+- [go.md][go]'s package list (SRP section) missed
+  `internal/backlinks` (2026-08-30) and `internal/refactor`
+  (this cycle). Fixed directly: added both.
+- `cmd/mdsmith/rename.go` carried `applyEdits` and three
+  private helpers — the edit-splice algorithm turning a
+  `refactor.Plan`'s edits into bytes — inside the CLI
+  package. [go.md][go]'s "Clean wiring in `cmd/mdsmith`":
+  domain logic belongs in a dependency, not the CLI; same
+  shape as the 2026-08-30 backlinks extraction. Fixed
+  directly: moved it to `internal/refactor` as exported
+  `ApplyEdits`, a pure in-memory transform consistent with
+  that package's "never touches the filesystem" contract;
+  `writeFilePreservingMode` (touches disk) stays CLI-host.
+- 23 functions across `internal/refactor`, `cmd/mdsmith`,
+  `internal/index`, `pkg/mdsmith`, and `cmd/mdsmith-wasm`
+  have no dedicated unit test by name, each covered only via
+  a caller's scenario test — [plan/2609061915][2609061915].
+
+### nice-to-have (2026-09-06)
+
+- `pkg/mdsmith/refactor.go`'s four `sessionRefactorWorkspace`
+  pass-throughs lack the "no test by design" comment their
+  siblings in `internal/lsp/rename.go` carry. No plan filed.
+- `internal/refactor/rename.go` defines both an exported
+  `BodyAndFMOffset` and a private `bodyAndFMOffset` doing
+  related work — a simplification question, not a boundary
+  violation. No plan filed.
+
+[2609061915]: ../../plan/2609061915_arch-fix-touched-set-unit-tests-0906.md
 
 ## Audit 2026-08-30 (range: b706d76..0ca0d2f)
 
