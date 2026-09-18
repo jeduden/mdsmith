@@ -60,12 +60,12 @@ func discoverKinds(workspaceDir string) (map[string]discoveredKind, error) {
 		return nil, fmt.Errorf("reading %s: %w", kindFilesDir, err)
 	}
 
-	// Sort so error messages and the resulting map iteration
-	// produce a deterministic order across runs and platforms.
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].Name() < entries[j].Name()
-	})
-
+	// entries is already ordered by filename: os.ReadDir "returns the
+	// entries sorted by filename" per its doc, so a second sort here
+	// (docs/development/high-performance-go.md's "skip work you don't
+	// need") is both a reflect-driven sort.Slice call and pure dead
+	// work — error messages and map iteration order below get the
+	// deterministic order for free.
 	result := make(map[string]discoveredKind, len(entries))
 	// Track which extension supplied each basename so a later
 	// `.yml` colliding with an earlier `.yaml` (or vice versa)
