@@ -43,11 +43,11 @@ func TestResolveLinkTarget(t *testing.T) {
 }
 
 func TestIsAbsOrDriveOrUNC(t *testing.T) {
-	assert.True(t, isAbsOrDriveOrUNC("/etc/passwd"))
-	assert.True(t, isAbsOrDriveOrUNC("C:/Windows"))
-	assert.True(t, isAbsOrDriveOrUNC("//server/share"))
-	assert.False(t, isAbsOrDriveOrUNC("docs/api.md"))
-	assert.False(t, isAbsOrDriveOrUNC(""))
+	assert.True(t, IsAbsOrDriveOrUNC("/etc/passwd"))
+	assert.True(t, IsAbsOrDriveOrUNC("C:/Windows"))
+	assert.True(t, IsAbsOrDriveOrUNC("//server/share"))
+	assert.False(t, IsAbsOrDriveOrUNC("docs/api.md"))
+	assert.False(t, IsAbsOrDriveOrUNC(""))
 }
 
 func TestRelPath_EmptyRootDir(t *testing.T) {

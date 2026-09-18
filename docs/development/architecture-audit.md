@@ -6,7 +6,7 @@ summary: >-
   solid-architecture skill (audit mode)
   appends here; blockers are also filed as
   plans.
-audit-from: 0ca0d2f7c95ab53e3e9ed8851150af98b95088fb
+audit-from: b48e90c3f10271023efc9c491522110188b4bf08
 ---
 # Architecture audit log
 
@@ -16,6 +16,54 @@ The oldest entries have moved to the
 [archive shards](architecture-audit-archive.md) to stay
 under the file-length budget; every finding there is
 resolved.
+
+## Audit 2026-09-13 (range: 0ca0d2f..b48e90c)
+
+~140 files touched, centered on the move/rename engine
+and its CLI/LSP/WASM surfaces.
+
+No rule-to-rule imports. `cmd/mdsmith/main.go` (566) and
+`internal/lsp/server.go` (558) stay under the 1 000-line
+threshold.
+
+Direct `internal/refactor`/`internal/index` imports from
+`cmd/mdsmith`/`internal/lsp` match [go.md][go]'s DIP
+rules.
+
+### blockers (2026-09-13)
+
+None.
+
+### tax (2026-09-13)
+
+- `isAbsOrDriveOrUNC` duplicated byte-for-byte in
+  `cmd/mdsmith/backlinks.go` and
+  `internal/backlinks/backlinks.go`
+  ([cross-system.md][cross]). Highest-priority finding;
+  fixed directly: exported `backlinks.IsAbsOrDriveOrUNC`,
+  dropped the CLI's private copy.
+- `cliRenameWorkspace`/`sessionRefactorWorkspace`
+  duplicate the same `internal/refactor.Workspace`
+  adapter — [plan/2609131911][2609131911].
+- `internal/refactor/move.go`'s `recomputeToken`,
+  `encodePathToken`, `pathEdit`, `countFilesWithStem`
+  lack tests by name ([tests.md][tests]) —
+  [plan/2609131913][2609131913].
+- `wasm-runtime.test.ts` skips the required
+  `describe(...)` wrapper ([audit-checklist.md][audit])
+  — [plan/2609131912][2609131912].
+
+### nice-to-have (2026-09-13)
+
+- `cmd/mdsmith` move/rename helpers
+  (`applyEditsToFile`, `looksLikePath`, `firstPathish`,
+  `resolveWriteMode`) lack test symbols; folded into
+  [plan/2609131913][2609131913].
+
+[audit]: architecture/audit-checklist.md
+[2609131911]: ../../plan/2609131911_arch-fix-refactor-workspace-duplication.md
+[2609131912]: ../../plan/2609131912_arch-fix-wasm-test-describe.md
+[2609131913]: ../../plan/2609131913_arch-fix-refactor-move-unit-tests.md
 
 ## Audit 2026-08-30 (range: b706d76..0ca0d2f)
 

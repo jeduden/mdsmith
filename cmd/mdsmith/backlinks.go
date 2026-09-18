@@ -217,30 +217,13 @@ func workspaceRelativePath(p, rootDir string) string {
 	return filepath.ToSlash(rel)
 }
 
-// isAbsOrDriveOrUNC reports whether p is absolute under any of the
-// schemes mdsmith targets: POSIX-style leading `/`, Windows drive
-// letters like `C:/`, or UNC prefixes like `//host`. `path.IsAbs`
-// alone misses the Windows forms because the path package is Unix-only.
-func isAbsOrDriveOrUNC(p string) bool {
-	if path.IsAbs(p) {
-		return true
-	}
-	if len(p) >= 2 && p[1] == ':' {
-		c := p[0]
-		if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') {
-			return true
-		}
-	}
-	return strings.HasPrefix(p, "//")
-}
-
 // isWorkspaceRelativeTarget reports whether target is a usable
 // workspace-relative path. Absolute paths (POSIX / Windows / UNC)
 // and parent-traversal entries are rejected so the caller can fail
 // loudly instead of silently producing an empty result set.
 func isWorkspaceRelativeTarget(target string) bool {
 	t := filepath.ToSlash(target)
-	if isAbsOrDriveOrUNC(t) {
+	if backlinks.IsAbsOrDriveOrUNC(t) {
 		return false
 	}
 	cleaned := path.Clean(t)
