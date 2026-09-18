@@ -15,9 +15,10 @@
 package index
 
 import (
+	"cmp"
 	"path/filepath"
 	"runtime"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -467,15 +468,7 @@ func (i *Index) BacklinksFor(file string) []Edge {
 		return nil
 	}
 	edges := i.IncomingEdges(file, "")
-	sort.Slice(edges, func(a, b int) bool {
-		if edges[a].SourceFile != edges[b].SourceFile {
-			return edges[a].SourceFile < edges[b].SourceFile
-		}
-		if edges[a].SourceLine != edges[b].SourceLine {
-			return edges[a].SourceLine < edges[b].SourceLine
-		}
-		return edges[a].SourceCol < edges[b].SourceCol
-	})
+	sortEdgesBySource(edges)
 	return edges
 }
 
@@ -554,15 +547,16 @@ func (i *Index) IncomingWikilinkEdges(stem string) []Edge {
 
 // sortEdgesBySource orders edges by (SourceFile, SourceLine, SourceCol)
 // so move and backlink queries return a stable, reviewable order.
+// slices.SortFunc compares the concrete Edge values directly, unlike
+// sort.Slice, which drives reflect.Swapper internally (see
+// docs/development/high-performance-go.md, "reflect in hot paths").
 func sortEdgesBySource(edges []Edge) {
-	sort.Slice(edges, func(a, b int) bool {
-		if edges[a].SourceFile != edges[b].SourceFile {
-			return edges[a].SourceFile < edges[b].SourceFile
-		}
-		if edges[a].SourceLine != edges[b].SourceLine {
-			return edges[a].SourceLine < edges[b].SourceLine
-		}
-		return edges[a].SourceCol < edges[b].SourceCol
+	slices.SortFunc(edges, func(a, b Edge) int {
+		return cmp.Or(
+			cmp.Compare(a.SourceFile, b.SourceFile),
+			cmp.Compare(a.SourceLine, b.SourceLine),
+			cmp.Compare(a.SourceCol, b.SourceCol),
+		)
 	})
 }
 

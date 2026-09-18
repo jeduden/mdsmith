@@ -67,3 +67,21 @@ func (s *documentStore) openURIs() []string {
 	}
 	return out
 }
+
+// findByPath returns a copy of the open document whose path satisfies
+// match, or (nil, false) if none does. It scans under a single read
+// lock instead of the openURIs()+get() pattern, which allocates an
+// intermediate URI slice and then re-locks and copies every candidate
+// document just to inspect its path — O(open-docs) copies on a miss.
+// findByPath copies at most the one document that actually matches.
+func (s *documentStore) findByPath(match func(path string) bool) (string, *document, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for uri, d := range s.m {
+		if match(d.path) {
+			cp := *d
+			return uri, &cp, true
+		}
+	}
+	return "", nil, false
+}
