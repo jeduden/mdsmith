@@ -54,6 +54,21 @@ func TestDecodeFilenameField_WrongTypeRejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "filename must be a string or list of strings")
 }
 
+func TestDecodeFilenameField_MalformedInterpInAnyList(t *testing.T) {
+	// A `\#(fmvar(my-key))` entry (unquoted hyphen) in the []any list
+	// must be rejected at decode time, not silently passed through.
+	_, err := DecodeFilenameField([]any{"ok.md", `.apm/\#(fmvar(my-key)).md`})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must be quoted")
+}
+
+func TestDecodeFilenameField_MalformedInterpInStringSliceList(t *testing.T) {
+	// Same check for the pre-typed []string path.
+	_, err := DecodeFilenameField([]string{"ok.md", `.apm/\#(fmvar(my-key)).md`})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must be quoted")
+}
+
 func TestMatchFilename_NoConstraint(t *testing.T) {
 	matched, bad, err := MatchFilename(nil, "anything.md")
 	require.NoError(t, err)

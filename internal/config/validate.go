@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
+	"github.com/jeduden/mdsmith/internal/schema"
 )
 
 // ValidateKinds returns an error if any kind named in a kind-assignment
@@ -115,6 +116,13 @@ func validateKindPathPattern(name string, body KindBody) error {
 		return fmt.Errorf(
 			"kind %q: path-pattern %q is not a valid doublestar glob",
 			name, body.PathPattern)
+	}
+	// A `\#(fmvar(name))` reference resolves per document, so a
+	// malformed one is invisible to the glob validator above. Check
+	// its shape here so the error names the kind and its pattern.
+	if err := schema.ValidateGlobInterps(body.PathPattern); err != nil {
+		return fmt.Errorf(
+			"kind %q: path-pattern %q: %w", name, body.PathPattern, err)
 	}
 	return nil
 }

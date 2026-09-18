@@ -1,7 +1,7 @@
 ---
 id: 2607082051
 title: "Schema extensions: closed frontmatter and filename agreement"
-status: "🔲"
+status: "✅"
 model: opus
 summary: >-
   Two MDS020 schema-engine features for APM's primitive contracts: a
@@ -64,14 +64,15 @@ adding one.
 ## Tasks
 
 1. Red/green: schema-parse and MDS020 tests for a
-   `frontmatter-closed: true` flag that emits one
+   `frontmatter-closed:` flag that emits one
    diagnostic per frontmatter key absent from the
    `frontmatter:` map. Cover the multi-kind case
    (a file matching two kinds: the key is allowed if
    any kind declares it).
 2. Implement `frontmatter-closed` on the frontmatter
-   schema, defaulting to false and composing across
-   kinds by union.
+   schema, keeping the historical closed default and
+   composing across kinds by key union; see the Notes
+   for why the default is closed, not open.
 3. Red/green: matcher tests for `\#(fmvar(name))`
    inside `path-pattern:` / `filename:`, resolving the
    token from front matter before the filename
@@ -80,28 +81,77 @@ adding one.
 4. Implement `\#(fmvar(...))` interpolation in the
    path/filename matcher, reusing the existing `fmvar`
    resolver.
-5. Document both keys in
+5. Document both keys with an APM example for each.
    [section-schema.md](../docs/reference/section-schema.md)
-   with an APM example for each.
+   sits at its file-length budget, so the prose lives in
+   a new
+   [front-matter agreement](../docs/reference/frontmatter-agreement.md)
+   page that section-schema.md and the
+   [MDS020 README](../internal/rules/MDS020-required-structure/README.md)
+   both link to.
 6. Run `mdsmith fix PLAN.md` and `mdsmith check .`.
+
+## Notes
+
+**Implementation deviation (feature a).** The
+Background's premise that mdsmith cannot reject an
+undeclared frontmatter key is wrong.
+`Schema.FrontmatterCUE` has always emitted
+`close({...})`, so every schema with a non-empty
+`frontmatter:` map already reports an undeclared key
+as `<key>: got <value>, expected not declared in
+schema`. The APM prompt contract is therefore already
+expressible: declare the five keys (optional ones with
+a trailing `?`) and closedness comes for free.
+
+What was missing is the *opposite* control plus the
+explicit spelling. `frontmatter-closed:` therefore
+ships as a tri-state toggle:
+
+- absent — closed, mdsmith's historical default; every
+  existing schema keeps its behavior (the plan's
+  Non-Goal).
+- `true` — closed, stated explicitly so a reader of the
+  kind does not have to know the default.
+- `false` — open; undeclared keys pass while the
+  declared keys keep their constraints. This is the
+  genuinely new capability.
+
+One criterion below said "stays silent when the flag
+is false **or absent**". That rests on the false
+premise. Honouring it would open front matter in every
+workspace. It is narrowed to `false`.
+
+Composition takes the strictest setting. The composite
+stays closed unless every composed kind opens. Under
+`extends:` the child wins instead. Both match how
+`closed:` already behaves.
+
+**Design decision (feature b).** A resolved
+`\#(fmvar(...))` value is substituted into the glob
+with its glob metacharacters escaped, so a frontmatter
+value containing `*` or `?` matches literally rather
+than turning into a wildcard — the glob analogue of
+the regex matcher's `regexp.QuoteMeta`.
 
 ## Acceptance Criteria
 
-- [ ] A kind with `frontmatter-closed: true` flags a
+- [x] A kind with `frontmatter-closed: true` flags a
       frontmatter key not in its `frontmatter:` map,
-      and stays silent when the flag is false or
-      absent.
-- [ ] A file matching two kinds accepts a key
+      and stays silent when the flag is false. An
+      absent flag keeps the historical closed default;
+      see the Notes.
+- [x] A file matching two kinds accepts a key
       declared by either kind under
       `frontmatter-closed`.
-- [ ] `path-pattern: ".apm/skills/\#(fmvar(name))/SKILL.md"`
+- [x] `path-pattern: ".apm/skills/\#(fmvar(name))/SKILL.md"`
       passes when `name` equals the directory and
       fails when it does not.
-- [ ] A missing `name` field under an `fmvar` path
+- [x] A missing `name` field under an `fmvar` path
       matcher produces a clear diagnostic, not a
       panic.
-- [ ] Both keys are documented with an APM example.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool -modfile=tools/go.mod golangci-lint
+- [x] Both keys are documented with an APM example.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool -modfile=tools/go.mod golangci-lint
       run` reports no issues.
-- [ ] `mdsmith check .` — 0 failures.
+- [x] `mdsmith check .` — 0 failures.

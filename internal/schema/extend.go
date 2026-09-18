@@ -322,6 +322,7 @@ func Extend(parent, child *Schema) (*Schema, error) {
 	if err := extendFrontmatter(out, parent, child); err != nil {
 		return nil, err
 	}
+	extendFrontmatterClosed(out, parent, child)
 	extendFilename(out, parent, child)
 	if err := extendProjection(out, parent, child); err != nil {
 		return nil, err
@@ -447,6 +448,30 @@ func mergeFrontmatterLines(parent, child map[string]int) map[string]int {
 // optional, but the user-facing key is the bare name.
 func stripOptionalSuffix(key string) string {
 	return strings.TrimSuffix(key, "?")
+}
+
+// extendFrontmatterClosed layers the `frontmatter-closed:` setting
+// the way inheritance layers every other scalar: the child's
+// explicit value wins, an absent one inherits the parent's, and two
+// absent values leave the effective default (closed) in place. This
+// differs from composition on purpose — `extends:` is a deliberate
+// "inherit, then override" relationship between two kinds the author
+// wrote together, while composition merges kinds that met by
+// accident on one file and must not weaken each other.
+//
+// The winning value is copied into a fresh pointer rather than
+// aliased: sharing one *bool across the input and the output would
+// let a later write through either schema silently change the other.
+func extendFrontmatterClosed(out, parent, child *Schema) {
+	src := child.FrontmatterClosed
+	if src == nil {
+		src = parent.FrontmatterClosed
+	}
+	if src == nil {
+		return
+	}
+	closed := *src
+	out.FrontmatterClosed = &closed
 }
 
 // extendFilename picks the child's filename pattern when set, else

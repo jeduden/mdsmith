@@ -116,7 +116,7 @@ func Validate(
 	}
 	var diags []lint.Diagnostic
 
-	diags = append(diags, validateFilename(f, sch, mkDiag)...)
+	diags = append(diags, validateFilename(f, sch, docFM, mkDiag)...)
 
 	if !fmIsCUE {
 		diags = append(diags, validateFrontmatterDiags(f, sch, docFM, mkDiag)...)
@@ -1664,51 +1664,18 @@ func formatHeading(level int, text string) string {
 // the "expected" is the glob spelled out as a pattern-matching
 // constraint.
 func validateFilename(
-	f *lint.File, sch *Schema, mkDiag MakeDiag,
+	f *lint.File, sch *Schema, docFM map[string]any, mkDiag MakeDiag,
 ) []lint.Diagnostic {
-	patterns := sch.Filename
-	if len(patterns) == 0 {
+	d := FilenameDiagnostic(
+		sch.Filename, filepath.Base(f.Path), docFM, schemaRef(sch, ""))
+	if d == nil {
 		return nil
 	}
 	// Filename and path diagnostics describe the document as a
 	// whole, not a body line; use the non-body anchor so the
 	// checker.FilterGeneratedDiags can't drop them when the
 	// document body starts with a generated section.
-	anchor := nonBodyDiagLine(f)
-	base := filepath.Base(f.Path)
-	matched, badPattern, err := MatchFilename(patterns, base)
-	if err != nil {
-		// Malformed glob in the schema. Surface it via the same
-		// SchemaDiagnostic shape so the message carries a
-		// schema reference and the user can jump to the
-		// offending pattern.
-		d := SchemaDiagnostic{
-			Field:     "filename pattern",
-			Actual:    strconv.Quote(badPattern),
-			Expected:  "valid glob",
-			Hint:      err.Error(),
-			SchemaRef: schemaRef(sch, ""),
-		}
-		return []lint.Diagnostic{d.Emit(mkDiag, f.Path, anchor)}
-	}
-	if !matched {
-		// `glob` makes the constraint syntax explicit: users
-		// occasionally read `string matching <pattern>` as a regex
-		// requirement, which filepath.Match does not accept. The
-		// wording also lines up with the kind-level `path-pattern`
-		// diagnostic ("path matching glob ...") so the user
-		// vocabulary is consistent across both surfaces. With
-		// several globs configured the "expected" clause lists them
-		// all so the OR nature is visible.
-		d := SchemaDiagnostic{
-			Field:     "filename",
-			Actual:    strconv.Quote(base),
-			Expected:  FilenameExpected(patterns),
-			SchemaRef: schemaRef(sch, ""),
-		}
-		return []lint.Diagnostic{d.Emit(mkDiag, f.Path, anchor)}
-	}
-	return nil
+	return []lint.Diagnostic{d.Emit(mkDiag, f.Path, nonBodyDiagLine(f))}
 }
 
 // ValidateFrontmatter compiles sch.Frontmatter into a CUE schema and

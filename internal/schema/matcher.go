@@ -179,8 +179,7 @@ func resolvePattern(pattern string, fm map[string]any) (string, error) {
 				// `id` absent. matchHeading turns the error
 				// into a non-match, surfacing the section as
 				// missing instead of silently passing.
-				return "", fmt.Errorf(
-					"`fmvar(%s)`: frontmatter value missing", name)
+				return "", MissingFmvarErr(name)
 			}
 			return regexp.QuoteMeta(val), nil
 		}
@@ -204,10 +203,7 @@ func resolvePatternForCheck(pattern string) (string, error) {
 		}
 		if name, ok := parseFmvarCall(expr); ok {
 			if fieldinterp.ParseCUEPath(name) == nil {
-				return "", fmt.Errorf(
-					"`fmvar(%s)`: invalid frontmatter path "+
-						"(non-identifier keys must be quoted, "+
-						"e.g. `fmvar(\"my-key\")`)", name)
+				return "", InvalidFmvarPathErr(name)
 			}
 			// Use a literal placeholder so the compiled regex is
 			// syntactically valid. The validator will re-resolve
@@ -238,6 +234,27 @@ func rewriteInterps(pattern string, replace func(expr string) (string, error)) (
 	}
 	b.WriteString(pattern[cursor:])
 	return b.String(), nil
+}
+
+// MissingFmvarErr is the shared message for an `fmvar(name)`
+// reference whose field does not resolve to a concrete value. Both
+// the `regex:` matcher (resolvePattern) and the glob resolver
+// (ResolveGlobPattern) surface it, so the two spellings cannot drift
+// apart.
+func MissingFmvarErr(name string) error {
+	return fmt.Errorf("`fmvar(%s)`: frontmatter value missing", name)
+}
+
+// InvalidFmvarPathErr is the shared message for an `fmvar(name)`
+// whose argument is not a parseable CUE path. Both parse-time
+// validators — resolvePatternForCheck for `regex:` and
+// ValidateGlobInterps for globs — report it, so the remedy is worded
+// once.
+func InvalidFmvarPathErr(name string) error {
+	return fmt.Errorf(
+		"`fmvar(%s)`: invalid frontmatter path "+
+			"(non-identifier keys must be quoted, "+
+			"e.g. `fmvar(\"my-key\")`)", name)
 }
 
 // fmvarLookup resolves a CUE-style field path against fm. The
