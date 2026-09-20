@@ -16,6 +16,11 @@ was reworded.
 This archive itself hit the budget on 2026-08-23;
 the 2026-07-12 entry moved on to
 [the third archive](architecture-audit-archive-3.md).
+It hit the budget again on 2026-09-20; the
+2026-05-13, 2026-05-17, and 2026-05-19 entries moved
+on to
+[the third archive](architecture-audit-archive-3.md)
+as well.
 
 ## Audit 2026-06-26 (range: 3d35b77..fe7141b)
 
@@ -135,74 +140,6 @@ Blocker:
 [2607051919]: ../../plan/2607051919_arch-fix-new-helper-tests.md
 [2607051920]: ../../plan/2607051920_arch-fix-rule-whitespace-helpers-astutil.md
 
-## Audit 2026-05-13 (range: 6af677fb..7464d273)
-
-1 107 files; 425 Go/TS sources outside fixtures.
-
-Resolved:
-
-- Rule-to-rule imports —
-  [plan/154](../../plan/154_arch-fix-rule-helper-extraction.md).
-- Config-to-rule import —
-  [plan/155](../../plan/155_arch-fix-convention-config-ownership.md).
-- `internal/testutil` anti-pattern name —
-  [plan/201](../../plan/201_arch-fix-testutil-rename.md).
-- `hover.go` DIP — [plan/200][200].
-- `main.go` > 1 000 lines — [plan/202][202].
-
-Tax:
-
-- `extension.ts` SRP — [plan/205][205].
-- `internal/fix`→`internal/engine` DIP —
-  [plan/204][204].
-- `internal/lint` SRP — [plan/224][224].
-
-## Audit 2026-05-17 (range: 7464d273..b5a6d72)
-
-Covered `internal/rename`, `internal/index`,
-`mdsmith deps`, `mdsmith export`. Tax:
-`nonNegativeUTF16RuneLen` copied privately in
-three packages; export from `internal/mdtext` —
-[plan/186](../../plan/186_arch-fix-utf16-centralize.md).
-
-## Decision 2026-05-17 (plan/174)
-
-### plan/153 non-goal superseded
-
-Plan 174 moved the workspace symbol index
-from `internal/lsp/index` to `internal/index`.
-Pure `git mv`; no logic changed.
-`internal/schema` already imported it from
-outside `internal/lsp`. `mdsmith rename` and
-`mdsmith deps` need it. The layering map
-forbids `cmd/mdsmith` → `internal/lsp`.
-`internal/index` must never import `internal/lsp`.
-
-## Audit 2026-05-19 (range: 7464d273..41e61a5)
-
-131 Go files. Plans 154, 155, 174 green.
-
-### tax (2026-05-19)
-
-- `server.go` (1 536) and `symbols.go` (1 385)
-  exceed 1 000 lines — [plan/203][203].
-- Five items from 2026-05-13 now scheduled:
-  [hover][200], [testutil][201], [main.go][202],
-  [fix→engine][204], [extension.ts][205].
-
-[200]: ../../plan/200_arch-fix-hover-embed.md
-[201]: ../../plan/201_arch-fix-testutil-rename.md
-[202]: ../../plan/202_arch-fix-main-split.md
-[203]: ../../plan/203_arch-fix-lsp-server-split.md
-[204]: ../../plan/204_arch-fix-fix-engine-inversion.md
-[205]: ../../plan/205_arch-fix-extension-ts-srp.md
-[206]: ../../plan/206_arch-fix-cue-types-docs.md
-[224]: ../../plan/224_arch-fix-lint-srp.md
-
-### nice-to-have (2026-05-19)
-
-`cue/types` not in layering map — [plan/206][206].
-
 ## Audit 2026-05-31 (range: 4809097..37488a7)
 
 Plans 200, 201, 202 green. Tax:
@@ -211,6 +148,7 @@ Plans 200, 201, 202 green. Tax:
 `linkstyle` helpers — add tests in-place.
 
 [223]: ../../plan/223_arch-fix-mdsmith-helper-tests.md
+[224]: ../../plan/224_arch-fix-lint-srp.md
 
 ### nice-to-have (2026-06-02)
 
@@ -279,3 +217,82 @@ rule-to-rule imports, or DIP violations.
 [2606211908]: ../../plan/2606211908_arch-fix-layer0-split.md
 [2606211909]: ../../plan/2606211909_arch-fix-lsp-server-split.md
 [2606211910]: ../../plan/2606211910_arch-fix-workspace-exemptions.md
+
+## Audit 2026-06-23 (range: e701b94..1599c9f)
+
+Performance + struct-alignment series;
+inline scanner refinements; benchmark
+additions. No TypeScript changes. 273 Go
+sources outside fixtures.
+
+No blockers. No rule-to-rule imports added.
+No DIP violations. New files are under 800
+lines. Struct alignment and `map[string]struct{}`
+changes are mechanical rewrites with no
+layering impact.
+
+### tax (2026-06-23)
+
+- `internal/lint/inline_scan.go` — 13
+  unexported helpers lack dedicated unit
+  tests. Tests doc §"every function by
+  name" — [plan/2606231013][2606231013].
+
+- `internal/rules/samefileanchor/rule.go`
+  — 12 unexported helpers lack dedicated
+  unit tests — [plan/2606231014][2606231014].
+
+[2606231013]: ../../plan/2606231013_arch-fix-inline-scan-helper-tests.md
+[2606231014]: ../../plan/2606231014_arch-fix-samefileanchor-helper-tests.md
+
+## Audit 2026-06-24 (range: 1599c9f..09f22d3)
+
+Perf series (struct-alignment, Sprintf→strconv,
+`[]byte` FindSubmatch, Builder). Plans 2606231013
+and 2606231014 closed. Benchmark docs and security
+SARIF retired. No TypeScript changes. 273 Go
+sources outside fixtures.
+
+No blockers. No rule-to-rule imports. No DIP
+violations. No file crossed 1 000 lines.
+
+### tax (2026-06-24)
+
+- `internal/index/locate.go` — 12 unexported
+  helpers lack dedicated unit tests. Tests doc
+  §"every function by name" —
+  [plan/2606240211][2606240211].
+
+- `internal/lsp/rename.go` — 15 unexported
+  helpers lack dedicated unit tests. Tests doc
+  §"every function by name" —
+  [plan/2606240212][2606240212].
+
+- `internal/export/export.go` — 11 unexported
+  helpers lack dedicated unit tests. Tests doc
+  §"every function by name" —
+  [plan/2606240213][2606240213].
+
+- `internal/lsp/rename.go` and
+  `internal/rename/rename.go` — `normalizedLabel`
+  and `refDefBracketBytes` are duplicated. Both
+  have identical bodies. Hub §"Anti-patterns" —
+  [plan/2606240214][2606240214].
+
+- `internal/rules/concisenessscoring/rule.go`
+  and `internal/rename/rename.go` —
+  `countClassifierTokens` and
+  `contentBlockLines` lack dedicated unit tests.
+  Batched into [plan/2606240213][2606240213].
+
+### nice-to-have (2026-06-24)
+
+- `internal/index/locate.go` —
+  `isGlobPattern` is a trivial one-liner with no
+  branch. Add "// no test by design" so the audit
+  can distinguish it from forgotten test debt.
+
+[2606240211]: ../../plan/2606240211_arch-fix-locate-helper-tests.md
+[2606240212]: ../../plan/2606240212_arch-fix-lsp-rename-helper-tests.md
+[2606240213]: ../../plan/2606240213_arch-fix-export-helper-tests.md
+[2606240214]: ../../plan/2606240214_arch-fix-rename-dedup.md

@@ -271,4 +271,6 @@ footer: |
 | 2608301918 | 🔲     | haiku  | [Add dedicated unit tests for the 2026-08-30 touched-set tax findings](plan/2608301918_arch-fix-touched-set-unit-tests-0830.md)                         |
 | 2608301919 | 🔲     | sonnet | [Relocate RunCache out of internal/lint](plan/2608301919_arch-fix-runcache-package-placement.md)                                                        |
 | 2609032052 | 🔲     | opus   | [Resolve config from `pyproject.toml` under `[tool.mdsmith]`](plan/2609032052_pyproject-config-source.md)                                               |
+| 2609201914 | 🔲     | haiku  | [Add dedicated unit tests for the 2026-09-20 touched-set tax findings](plan/2609201914_arch-fix-missing-unit-tests-0920.md)                             |
+| 2609201915 | 🔲     | haiku  | [Remove internal/index dead code kept alive only for a coverage test](plan/2609201915_arch-fix-index-dead-code.md)                                      |
 <?/catalog?>

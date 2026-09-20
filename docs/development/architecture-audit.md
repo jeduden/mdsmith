@@ -6,7 +6,7 @@ summary: >-
   solid-architecture skill (audit mode)
   appends here; blockers are also filed as
   plans.
-audit-from: 0ca0d2f7c95ab53e3e9ed8851150af98b95088fb
+audit-from: 979bb7fbfc7379d628b029336f3fc075dd16edab
 ---
 # Architecture audit log
 
@@ -16,6 +16,84 @@ The oldest entries have moved to the
 [archive shards](architecture-audit-archive.md) to stay
 under the file-length budget; every finding there is
 resolved.
+
+## Audit 2026-09-20 (range: 0ca0d2f..979bb7f)
+
+76 commits, 43 production files touched (42 Go, 1
+TypeScript).
+
+Clean surfaces, verified across all 43 files: no
+rule-to-rule imports. No reverse-layer imports. No Liskov
+breaks. `cmd/mdsmith/main.go` (566 lines),
+`internal/lsp/server.go` (558 lines), and
+`server_lifecycle.go` (142 lines) stay well under the
+~1000-line threshold. `pkg/goldmark/util` (vendored) is
+exempt from the test-coverage rule.
+
+### blockers (2026-09-20)
+
+None.
+
+### tax (2026-09-20)
+
+- `internal/lsp/rename.go` duplicated six ATX-heading
+  helpers byte-for-byte from
+  `internal/refactor/heading.go`, which `internal/lsp`
+  already imports — [go.md][go]'s "lift a shared
+  dependency" precedent applies once two packages need the
+  same shape. Fixed directly (not filed as a plan):
+  exported the six functions from `internal/refactor`,
+  deleted the `internal/lsp` copies, and merged the extra
+  edge-case coverage from the deleted LSP-side tests into
+  `internal/refactor/heading_test.go`. `go build ./...`,
+  `go test ./...`, and `golangci-lint run` are green;
+  behavior is unchanged.
+- `internal/index/build.go`'s `frontMatterSymbols`,
+  `frontMatterScalar`, and `frontMatterStringList` have
+  zero production callers — kept alive only for
+  `coverage_test.go`/`build_coverage_test.go`, per the
+  function's own doc comment. Inverts the test pyramid's
+  intent — [plan/2609201915][2609201915].
+- Three functions have no dedicated unit test by name:
+  `AdvancePastLine` in
+  [internal/rules/astutil/astutil.go][astutil],
+  `cmd/mdsmith/backlinks.go`'s `isAbsOrDriveOrUNC` and
+  `isWorkspaceRelativeTarget`, and four WASM bridge helpers
+  in `cmd/mdsmith-wasm/main.go` —
+  [plan/2609201914][2609201914].
+
+### nice-to-have (2026-09-20)
+
+- `internal/lsp/rename.go`'s `sortTextEditsBottomUp` and
+  `internal/refactor/heading.go`'s `stableSortEdits` still
+  use `sort.SliceStable`, while sibling CLI code migrated
+  to `slices.SortStableFunc` per high-performance-go.md's
+  reflect-in-hot-paths anti-pattern. No plan filed.
+- `editors/obsidian/src/wasm-runtime.test.ts` wraps every
+  case in one umbrella `describe` rather than one per
+  exported function per typescript.md's binding —
+  legitimately a boundary-contract test, so not
+  pyramid-inverted, just organized by scenario. No plan
+  filed.
+- `internal/rules/requiredstructure/rule.go` is ~2700
+  lines blending several concerns (settings, schema
+  compose, body-sync, path patterns). No line-budget
+  binding covers rule files, so this is a suggestion, not
+  a violation. No plan filed.
+- `occurrence` and `overrepetition` still independently
+  reimplement the same scope-walking dispatch shape,
+  unchanged since the 2026-08-30 audit. Still open, no
+  plan filed.
+- The [tests.md][tests] binding's literal `TestFoo` naming
+  is pervasively unused across `internal/rules/*` in favor
+  of thorough behavior-named tests (verified as real, not
+  absent, coverage) — worth a doc update acknowledging the
+  accepted house style instead of re-litigating it every
+  audit. No plan filed.
+
+[astutil]: ../../internal/rules/astutil/astutil.go
+[2609201914]: ../../plan/2609201914_arch-fix-missing-unit-tests-0920.md
+[2609201915]: ../../plan/2609201915_arch-fix-index-dead-code.md
 
 ## Audit 2026-08-30 (range: b706d76..0ca0d2f)
 
@@ -125,7 +203,6 @@ None.
 
 [go]: architecture/go.md
 [tests]: architecture/tests.md
-[cross]: architecture/cross-system.md
 [2608021916]: ../../plan/2608021916_arch-fix-githooks-package-split.md
 [2608091910]: ../../plan/2608091910_arch-fix-mds073-collision.md
 [2608301918]: ../../plan/2608301918_arch-fix-touched-set-unit-tests-0830.md
@@ -176,86 +253,3 @@ see the linked PR once opened.
 ### nice-to-have (2026-08-23)
 
 None found this cycle.
-
-## Audit 2026-08-16 (range: 2ab4b29..81f0d96)
-
-185 commits, 227 files touched (187 Go files). No
-TypeScript changes.
-
-No rule-to-rule imports. No reverse-layer imports. No
-Liskov breaks. `cmd/mdsmith/main.go` and
-`internal/lsp/server.go`/`symbols.go` stayed well under
-the ~1000-line threshold. The MDS073 collision from the
-prior cycle stays resolved — `rule_id_uniqueness_test.go`
-now guards it as a contract test.
-
-Clean surfaces, verified:
-
-- Every touched `internal/rules/*` package (catalog,
-  duplicatedcontent, markdownflavor, occurrence,
-  requiredstructure, slidevstructure, externallink, and
-  17 more) imports only shared helper packages — zero
-  rule-to-rule imports.
-- `internal/engine/source_config_cache.go` (new): a
-  cache hit returns a fresh `cloneRules` copy per caller,
-  never the shared template pointer, pinned by a
-  dedicated `-race` concurrency test.
-- `internal/pack/apm.go` (new): scoped correctly, no
-  cross-layer imports, registered via the existing
-  `pack.register` plugin point.
-- `internal/rules/externallink/probe_net.go`'s SSRF
-  hardening (`isRestrictedIP`, `ssrfControl`,
-  `ssrfCheckRedirect`): 9 dedicated tests, no
-  architecture concerns.
-- The two new `links:` settings
-  (`external-allow-internal`, `external-max-probes`) live
-  in MDS072's own settings struct — not a "field reachable
-  from only one rule" violation, consistent with the
-  existing `links:` precedent.
-
-### blockers (2026-08-16)
-
-None.
-
-### tax (2026-08-16)
-
-- `pkg/mdsmith/session.go`'s `readBoundedFrontMatterSource`
-  — the bounded/fallback front-matter read path on the
-  public `pkg/mdsmith` engine API — had no dedicated unit
-  test; only exercised indirectly via
-  `TestSessionKindsOversizedFile*`.
-  [tests.md][tests] requires a test by the function's own
-  name, and `pkg/mdsmith` is the highest-blast-radius
-  surface touched this cycle. Fixed directly (not filed as
-  a plan): added `TestReadBoundedFrontMatterSource`, a
-  table-driven test in `session_test.go` covering the
-  bounded (`OSWorkspace`) and fallback (`MemWorkspace`)
-  paths, the missing-file error, and both `max<=0` and
-  `math.MaxInt64` unbounded cases. `go test ./...` and
-  `go tool golangci-lint run` are green.
-- Six more functions across `cmd/mdsmith`, `pkg/mdsmith`,
-  `internal/rules/duplicatedcontent`,
-  `internal/rules/astutil`, `internal/bytelimit`, and
-  `pkg/markdown/flavor` have no dedicated unit test by
-  name, each covered only behaviorally —
-  [plan/2608161914][2608161914].
-
-### nice-to-have (2026-08-16)
-
-- `internal/lsp/server_diagnostics.go`'s
-  `surfaceForeignDiagnostics` changed the
-  `window/logMessage` notification shape from one
-  notification per diagnostic to at most two batched
-  notifications grouped by severity — a behavior change on
-  the LSP wire surface [cross-system.md][cross] tracks.
-  Well-tested; worth a one-line changelog note per that
-  page's "breaks must be deliberate and noted" policy. No
-  plan filed.
-- `internal/engine/source_config_cache.go`'s
-  `NewSourceConfigCache` is a trivial one-line constructor
-  without the "no test by design" exemption comment
-  [tests.md][tests] asks for on untested trivial functions.
-  Documentation nit; the type it constructs is otherwise
-  exhaustively tested. No plan filed.
-
-[2608161914]: ../../plan/2608161914_arch-fix-touched-set-unit-tests.md
