@@ -462,37 +462,6 @@ func TestRenameHeadingHandlesEmptySlugSibling(t *testing.T) {
 	assert.Equal(t, "Configuration", edit.Changes[uri][0].NewText)
 }
 
-// TestAtxHeadingTextByteRange covers the heading-line parsing used
-// for prepareRename. These cases drive the rename popup's range so
-// they need to stay tight against the documented behavior.
-func TestAtxHeadingTextByteRange(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		row                string
-		wantOK             bool
-		wantStart, wantEnd int
-	}{
-		{"# Hello", true, 2, 7},
-		{"## Hi there", true, 3, 11},
-		{"### Setup ###", true, 4, 9},
-		{"###### Six", true, 7, 10},
-		{"   ## Indented", true, 6, 14},
-		{"#NoSpace", false, 0, 0},
-		{"####### TooMany", false, 0, 0},
-		{"plain text", false, 0, 0},
-		{"## ", true, 3, 3},
-	}
-	for _, tc := range cases {
-		start, end, ok := atxHeadingTextByteRange([]byte(tc.row))
-		assert.Equal(t, tc.wantOK, ok, "row=%q", tc.row)
-		if !ok {
-			continue
-		}
-		assert.Equal(t, tc.wantStart, start, "start row=%q", tc.row)
-		assert.Equal(t, tc.wantEnd, end, "end row=%q", tc.row)
-	}
-}
-
 // TestAnchorFragmentBytes verifies the helper that finds the slug
 // portion inside a link destination on a line. The returned range
 // is what the rename's TextEdit uses to swap in the new slug.
@@ -553,90 +522,11 @@ func TestHeadingPrepareRangeATX(t *testing.T) {
 	assert.Equal(t, 7, res.Range.End.Character)
 }
 
-// TestAtxHeadingTextStart drives atxHeadingTextStart directly with
-// ATX headings, a no-space header, a too-deep header, and plain text.
-func TestAtxHeadingTextStart(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		row    string
-		wantI  int
-		wantOK bool
-	}{
-		{"# Hello", 2, true},
-		{"## Hi", 3, true},
-		{"###### Six", 7, true},
-		{"   ## Indented", 6, true},
-		{"##\tTab", 3, true},
-		{"#NoSpace", 0, false},
-		{"####### TooMany", 0, false},
-		{"plain text", 0, false},
-		{"", 0, false},
-	}
-	for _, tc := range cases {
-		i, ok := atxHeadingTextStart([]byte(tc.row))
-		assert.Equal(t, tc.wantOK, ok, "row=%q", tc.row)
-		assert.Equal(t, tc.wantI, i, "row=%q", tc.row)
-	}
-}
-
-// TestTrimTrailingHashRun drives trimTrailingHashRun with a closing
-// hash run preceded by space (stripped), a hash run without space
-// (kept), and a row with no trailing hash (unchanged).
-func TestTrimTrailingHashRun(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		row        string
-		start, end int
-		want       int
-	}{
-		{"## Setup ###", 3, 12, 8}, // trailing " ###" stripped; text ends at 8
-		{"## Setup ##", 3, 11, 8},  // trailing " ##" stripped
-		{"## Setup #", 3, 10, 8},   // trailing " #" stripped
-		{"## Setup#", 3, 9, 9},     // no preceding space — kept
-		{"## Setup", 3, 8, 8},      // no trailing hash — unchanged
-		{"## Setup   ", 3, 11, 11}, // trailing spaces only, no hash — unchanged
-	}
-	for _, tc := range cases {
-		got := trimTrailingHashRun([]byte(tc.row), tc.start, tc.end)
-		assert.Equal(t, tc.want, got, "row=%q", tc.row)
-	}
-}
-
-// TestSkipLeadingSpaces drives skipLeadingSpaces with no leading
-// spaces, fewer than max spaces, and more than max spaces.
-func TestSkipLeadingSpaces(t *testing.T) {
-	t.Parallel()
-	assert.Equal(t, 0, skipLeadingSpaces([]byte("abc"), 3))
-	assert.Equal(t, 2, skipLeadingSpaces([]byte("  abc"), 3))
-	assert.Equal(t, 3, skipLeadingSpaces([]byte("   abc"), 3))
-	assert.Equal(t, 3, skipLeadingSpaces([]byte("    abc"), 3))
-	assert.Equal(t, 0, skipLeadingSpaces([]byte(""), 3))
-}
-
-// TestTrimRightSpace drives trimRightSpace with trailing spaces,
-// trailing tab, no trailing whitespace, and all-whitespace input.
-func TestTrimRightSpace(t *testing.T) {
-	t.Parallel()
-	assert.Equal(t, 5, trimRightSpace([]byte("hello  "), 0, 7))
-	assert.Equal(t, 5, trimRightSpace([]byte("hello\t "), 0, 7))
-	assert.Equal(t, 5, trimRightSpace([]byte("hello"), 0, 5))
-	assert.Equal(t, 0, trimRightSpace([]byte("   "), 0, 3))
-}
-
-// TestTrimmedRange drives trimmedRange with leading-and-trailing
-// whitespace, no whitespace, and an all-whitespace row.
-func TestTrimmedRange(t *testing.T) {
-	t.Parallel()
-	start, end := trimmedRange([]byte("  hello  "))
-	assert.Equal(t, 2, start)
-	assert.Equal(t, 7, end)
-	start, end = trimmedRange([]byte("nospace"))
-	assert.Equal(t, 0, start)
-	assert.Equal(t, 7, end)
-	start, end = trimmedRange([]byte("   "))
-	assert.Equal(t, 3, start)
-	assert.Equal(t, 3, end)
-}
+// ATXHeadingTextStart, TrimTrailingHashRun, SkipLeadingSpaces,
+// TrimRightSpace, and TrimmedRange used to be duplicated in this
+// package with their own dedicated tests. They now live in
+// internal/refactor (heading.go / heading_test.go), which this
+// package already imports — see headingPrepareRange.
 
 // TestRefDefPrepareRangeHappy drives refDefPrepareRange with a
 // well-formed `[label]: url` line and verifies the returned
