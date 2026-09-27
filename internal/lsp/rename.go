@@ -95,13 +95,13 @@ func headingPrepareRange(source []byte, line int, name string) (prepareRenameRes
 		return prepareRenameResult{}, false
 	}
 	row := lines[line-1]
-	startCol, endCol, ok := atxHeadingTextByteRange(row)
+	startCol, endCol, ok := refactor.AtxHeadingTextByteRange(row)
 	if !ok {
 		// Not an ATX heading — must be the text line of a setext
 		// heading. Cover the full text line, excluding leading and
 		// trailing whitespace so the rename doesn't pad the new
 		// text against indented setext underlines.
-		startCol, endCol = trimmedRange(row)
+		startCol, endCol = refactor.TrimmedRange(row)
 	}
 	startCh := mdtext.UTF16FromByteOffset(row, startCol)
 	endCh := mdtext.UTF16FromByteOffset(row, endCol)
@@ -112,104 +112,6 @@ func headingPrepareRange(source []byte, line int, name string) (prepareRenameRes
 		},
 		Placeholder: name,
 	}, true
-}
-
-// atxHeadingTextByteRange returns the byte offsets of the heading
-// text inside an ATX heading line — the run between the opening
-// `#`s (and required following space) and any trailing closing `#`
-// run. Returns false when row is not an ATX heading line.
-//
-// Trailing markers are recognized only when a CommonMark-significant
-// space precedes the run, mirroring goldmark's own ATX parsing
-// behavior. A heading line with no text at all (`### `) returns a
-// zero-width range at the spot where text would begin so the editor
-// inserts there rather than rejecting the rename.
-func atxHeadingTextByteRange(row []byte) (int, int, bool) {
-	textStart, ok := atxHeadingTextStart(row)
-	if !ok {
-		return 0, 0, false
-	}
-	end := trimRightSpace(row, textStart, len(row))
-	end = trimTrailingHashRun(row, textStart, end)
-	// trimTrailingHashRun never erodes past textStart — the bounded
-	// `for k > start` loop and the explicit `k > start` guard before
-	// returning trimRightSpace(row, start, k-1) keep end >= textStart.
-	return textStart, end, true
-}
-
-// atxHeadingTextStart returns the byte offset where a heading's
-// text run begins, or false when row is not an ATX heading line.
-func atxHeadingTextStart(row []byte) (int, bool) {
-	i := skipLeadingSpaces(row, 3)
-	if i >= len(row) || row[i] != '#' {
-		return 0, false
-	}
-	hashStart := i
-	for i < len(row) && row[i] == '#' {
-		i++
-	}
-	level := i - hashStart
-	if level < 1 || level > 6 {
-		return 0, false
-	}
-	// CommonMark requires a space (or end of line) after the markers.
-	// `##foo` is paragraph content even though it starts with `#`.
-	if i < len(row) && row[i] != ' ' && row[i] != '\t' {
-		return 0, false
-	}
-	for i < len(row) && (row[i] == ' ' || row[i] == '\t') {
-		i++
-	}
-	return i, true
-}
-
-// trimTrailingHashRun strips a trailing `#` run that's preceded by
-// whitespace — the optional ATX closing markers. A `#` run with no
-// preceding whitespace is part of the heading text (e.g. `# foo#bar`).
-func trimTrailingHashRun(row []byte, start, end int) int {
-	if end <= start || row[end-1] != '#' {
-		return end
-	}
-	k := end
-	for k > start && row[k-1] == '#' {
-		k--
-	}
-	if k <= start || (row[k-1] != ' ' && row[k-1] != '\t') {
-		return end
-	}
-	return trimRightSpace(row, start, k-1)
-}
-
-// skipLeadingSpaces advances past up to `max` leading space bytes in
-// row and returns the resulting offset.
-func skipLeadingSpaces(row []byte, max int) int {
-	i := 0
-	for i < len(row) && i < max && row[i] == ' ' {
-		i++
-	}
-	return i
-}
-
-// trimRightSpace returns end shrunk past any trailing space/tab
-// bytes in row[start:end].
-func trimRightSpace(row []byte, start, end int) int {
-	for end > start && (row[end-1] == ' ' || row[end-1] == '\t') {
-		end--
-	}
-	return end
-}
-
-// trimmedRange returns the byte offsets of row stripped of leading
-// and trailing horizontal whitespace.
-func trimmedRange(row []byte) (int, int) {
-	start, end := 0, len(row)
-	for start < end && (row[start] == ' ' || row[start] == '\t') {
-		start++
-	}
-	for end > start && (row[end-1] == ' ' || row[end-1] == '\t') {
-		end--
-	}
-	return start, end
 }
 
 // refDefPrepareRange builds the rename range for a `[label]: url`

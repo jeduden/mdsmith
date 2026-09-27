@@ -25,86 +25,11 @@ as well. It hit the budget again on 2026-08-30;
 entries from 2026-05-31 through 2026-06-21 moved
 on to
 [the second archive](architecture-audit-archive-2.md)
-too.
-
-## Audit 2026-06-23 (range: e701b94..1599c9f)
-
-Performance + struct-alignment series;
-inline scanner refinements; benchmark
-additions. No TypeScript changes. 273 Go
-sources outside fixtures.
-
-No blockers. No rule-to-rule imports added.
-No DIP violations. New files are under 800
-lines. Struct alignment and `map[string]struct{}`
-changes are mechanical rewrites with no
-layering impact.
-
-### tax (2026-06-23)
-
-- `internal/lint/inline_scan.go` — 13
-  unexported helpers lack dedicated unit
-  tests. Tests doc §"every function by
-  name" — [plan/2606231013][2606231013].
-
-- `internal/rules/samefileanchor/rule.go`
-  — 12 unexported helpers lack dedicated
-  unit tests — [plan/2606231014][2606231014].
-
-[2606231013]: ../../plan/2606231013_arch-fix-inline-scan-helper-tests.md
-[2606231014]: ../../plan/2606231014_arch-fix-samefileanchor-helper-tests.md
-
-## Audit 2026-06-24 (range: 1599c9f..09f22d3)
-
-Perf series (struct-alignment, Sprintf→strconv,
-`[]byte` FindSubmatch, Builder). Plans 2606231013
-and 2606231014 closed. Benchmark docs and security
-SARIF retired. No TypeScript changes. 273 Go
-sources outside fixtures.
-
-No blockers. No rule-to-rule imports. No DIP
-violations. No file crossed 1 000 lines.
-
-### tax (2026-06-24)
-
-- `internal/index/locate.go` — 12 unexported
-  helpers lack dedicated unit tests. Tests doc
-  §"every function by name" —
-  [plan/2606240211][2606240211].
-
-- `internal/lsp/rename.go` — 15 unexported
-  helpers lack dedicated unit tests. Tests doc
-  §"every function by name" —
-  [plan/2606240212][2606240212].
-
-- `internal/export/export.go` — 11 unexported
-  helpers lack dedicated unit tests. Tests doc
-  §"every function by name" —
-  [plan/2606240213][2606240213].
-
-- `internal/lsp/rename.go` and
-  `internal/rename/rename.go` — `normalizedLabel`
-  and `refDefBracketBytes` are duplicated. Both
-  have identical bodies. Hub §"Anti-patterns" —
-  [plan/2606240214][2606240214].
-
-- `internal/rules/concisenessscoring/rule.go`
-  and `internal/rename/rename.go` —
-  `countClassifierTokens` and
-  `contentBlockLines` lack dedicated unit tests.
-  Batched into [plan/2606240213][2606240213].
-
-### nice-to-have (2026-06-24)
-
-- `internal/index/locate.go` —
-  `isGlobPattern` is a trivial one-liner with no
-  branch. Add "// no test by design" so the audit
-  can distinguish it from forgotten test debt.
-
-[2606240211]: ../../plan/2606240211_arch-fix-locate-helper-tests.md
-[2606240212]: ../../plan/2606240212_arch-fix-lsp-rename-helper-tests.md
-[2606240213]: ../../plan/2606240213_arch-fix-export-helper-tests.md
-[2606240214]: ../../plan/2606240214_arch-fix-rename-dedup.md
+too. It hit the budget again on 2026-09-27; entries
+from 2026-06-23 through 2026-06-24 (the
+`1599c9f..09f22d3` range) moved on to
+[the second archive](architecture-audit-archive-2.md)
+as well.
 
 ## Audit 2026-06-24 (range: 09f22d3..3d35b77)
 
@@ -282,3 +207,86 @@ Clean surfaces, verified:
 ### nice-to-have (2026-08-09)
 
 None found this cycle beyond the tax items above.
+
+## Audit 2026-08-16 (range: 2ab4b29..81f0d96)
+
+185 commits, 227 files touched (187 Go files). No
+TypeScript changes.
+
+No rule-to-rule imports. No reverse-layer imports. No
+Liskov breaks. `cmd/mdsmith/main.go` and
+`internal/lsp/server.go`/`symbols.go` stayed well under
+the ~1000-line threshold. The MDS073 collision from the
+prior cycle stays resolved — `rule_id_uniqueness_test.go`
+now guards it as a contract test.
+
+Clean surfaces, verified:
+
+- Every touched `internal/rules/*` package (catalog,
+  duplicatedcontent, markdownflavor, occurrence,
+  requiredstructure, slidevstructure, externallink, and
+  17 more) imports only shared helper packages — zero
+  rule-to-rule imports.
+- `internal/engine/source_config_cache.go` (new): a
+  cache hit returns a fresh `cloneRules` copy per caller,
+  never the shared template pointer, pinned by a
+  dedicated `-race` concurrency test.
+- `internal/pack/apm.go` (new): scoped correctly, no
+  cross-layer imports, registered via the existing
+  `pack.register` plugin point.
+- `internal/rules/externallink/probe_net.go`'s SSRF
+  hardening (`isRestrictedIP`, `ssrfControl`,
+  `ssrfCheckRedirect`): 9 dedicated tests, no
+  architecture concerns.
+- The two new `links:` settings
+  (`external-allow-internal`, `external-max-probes`) live
+  in MDS072's own settings struct — not a "field reachable
+  from only one rule" violation, consistent with the
+  existing `links:` precedent.
+
+### blockers (2026-08-16)
+
+None.
+
+### tax (2026-08-16)
+
+- `pkg/mdsmith/session.go`'s `readBoundedFrontMatterSource`
+  — the bounded/fallback front-matter read path on the
+  public `pkg/mdsmith` engine API — had no dedicated unit
+  test; only exercised indirectly via
+  `TestSessionKindsOversizedFile*`.
+  [tests.md][tests] requires a test by the function's own
+  name, and `pkg/mdsmith` is the highest-blast-radius
+  surface touched this cycle. Fixed directly (not filed as
+  a plan): added `TestReadBoundedFrontMatterSource`, a
+  table-driven test in `session_test.go` covering the
+  bounded (`OSWorkspace`) and fallback (`MemWorkspace`)
+  paths, the missing-file error, and both `max<=0` and
+  `math.MaxInt64` unbounded cases. `go test ./...` and
+  `go tool golangci-lint run` are green.
+- Six more functions across `cmd/mdsmith`, `pkg/mdsmith`,
+  `internal/rules/duplicatedcontent`,
+  `internal/rules/astutil`, `internal/bytelimit`, and
+  `pkg/markdown/flavor` have no dedicated unit test by
+  name, each covered only behaviorally —
+  [plan/2608161914][2608161914].
+
+### nice-to-have (2026-08-16)
+
+- `internal/lsp/server_diagnostics.go`'s
+  `surfaceForeignDiagnostics` changed the
+  `window/logMessage` notification shape from one
+  notification per diagnostic to at most two batched
+  notifications grouped by severity — a behavior change on
+  the LSP wire surface [cross-system.md][cross] tracks.
+  Well-tested; worth a one-line changelog note per that
+  page's "breaks must be deliberate and noted" policy. No
+  plan filed.
+- `internal/engine/source_config_cache.go`'s
+  `NewSourceConfigCache` is a trivial one-line constructor
+  without the "no test by design" exemption comment
+  [tests.md][tests] asks for on untested trivial functions.
+  Documentation nit; the type it constructs is otherwise
+  exhaustively tested. No plan filed.
+
+[2608161914]: ../../plan/2608161914_arch-fix-touched-set-unit-tests.md

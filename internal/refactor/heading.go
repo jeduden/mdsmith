@@ -311,9 +311,9 @@ func headingTextEdit(source []byte, line int, newName string) (Edit, bool) {
 		return Edit{}, false
 	}
 	row := lines[line-1]
-	startByte, endByte, ok := atxHeadingTextByteRange(row)
+	startByte, endByte, ok := AtxHeadingTextByteRange(row)
 	if !ok {
-		startByte, endByte = trimmedRange(row)
+		startByte, endByte = TrimmedRange(row)
 	}
 	startCh := mdtext.UTF16FromByteOffset(row, startByte)
 	endCh := mdtext.UTF16FromByteOffset(row, endByte)
@@ -326,7 +326,7 @@ func headingTextEdit(source []byte, line int, newName string) (Edit, bool) {
 	}, true
 }
 
-// atxHeadingTextByteRange returns the byte offsets of the heading text
+// AtxHeadingTextByteRange returns the byte offsets of the heading text
 // inside an ATX heading line — the run between the opening `#`s (and
 // required following space) and any trailing closing `#` run. Returns
 // false when row is not an ATX heading line.
@@ -336,20 +336,24 @@ func headingTextEdit(source []byte, line int, newName string) (Edit, bool) {
 // line with no text (`### `) returns a zero-width range where text
 // would begin so the editor inserts there rather than rejecting the
 // rename.
-func atxHeadingTextByteRange(row []byte) (int, int, bool) {
-	textStart, ok := atxHeadingTextStart(row)
+//
+// Shared by the CLI/engine rename path here and by the LSP's
+// prepareRename range (internal/lsp/rename.go) so both surfaces agree
+// on the ATX text boundary.
+func AtxHeadingTextByteRange(row []byte) (int, int, bool) {
+	textStart, ok := AtxHeadingTextStart(row)
 	if !ok {
 		return 0, 0, false
 	}
-	end := trimRightSpace(row, textStart, len(row))
-	end = trimTrailingHashRun(row, textStart, end)
+	end := TrimRightSpace(row, textStart, len(row))
+	end = TrimTrailingHashRun(row, textStart, end)
 	return textStart, end, true
 }
 
-// atxHeadingTextStart returns the byte offset where a heading's text
+// AtxHeadingTextStart returns the byte offset where a heading's text
 // run begins, or false when row is not an ATX heading line.
-func atxHeadingTextStart(row []byte) (int, bool) {
-	i := skipLeadingSpaces(row, 3)
+func AtxHeadingTextStart(row []byte) (int, bool) {
+	i := SkipLeadingSpaces(row, 3)
 	if i >= len(row) || row[i] != '#' {
 		return 0, false
 	}
@@ -372,10 +376,10 @@ func atxHeadingTextStart(row []byte) (int, bool) {
 	return i, true
 }
 
-// trimTrailingHashRun strips a trailing `#` run preceded by whitespace
+// TrimTrailingHashRun strips a trailing `#` run preceded by whitespace
 // — the optional ATX closing markers. A `#` run with no preceding
 // whitespace is part of the heading text (e.g. `# foo#bar`).
-func trimTrailingHashRun(row []byte, start, end int) int {
+func TrimTrailingHashRun(row []byte, start, end int) int {
 	if end <= start || row[end-1] != '#' {
 		return end
 	}
@@ -386,11 +390,11 @@ func trimTrailingHashRun(row []byte, start, end int) int {
 	if k <= start || (row[k-1] != ' ' && row[k-1] != '\t') {
 		return end
 	}
-	return trimRightSpace(row, start, k-1)
+	return TrimRightSpace(row, start, k-1)
 }
 
-// skipLeadingSpaces advances past up to max leading space bytes.
-func skipLeadingSpaces(row []byte, max int) int {
+// SkipLeadingSpaces advances past up to max leading space bytes.
+func SkipLeadingSpaces(row []byte, max int) int {
 	i := 0
 	for i < len(row) && i < max && row[i] == ' ' {
 		i++
@@ -398,18 +402,18 @@ func skipLeadingSpaces(row []byte, max int) int {
 	return i
 }
 
-// trimRightSpace returns end shrunk past trailing space/tab bytes in
+// TrimRightSpace returns end shrunk past trailing space/tab bytes in
 // row[start:end].
-func trimRightSpace(row []byte, start, end int) int {
+func TrimRightSpace(row []byte, start, end int) int {
 	for end > start && (row[end-1] == ' ' || row[end-1] == '\t') {
 		end--
 	}
 	return end
 }
 
-// trimmedRange returns the byte offsets of row stripped of leading and
+// TrimmedRange returns the byte offsets of row stripped of leading and
 // trailing horizontal whitespace.
-func trimmedRange(row []byte) (int, int) {
+func TrimmedRange(row []byte) (int, int) {
 	start, end := 0, len(row)
 	for start < end && (row[start] == ' ' || row[start] == '\t') {
 		start++

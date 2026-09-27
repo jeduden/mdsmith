@@ -156,34 +156,6 @@ func TestRenameLinkRefNewlineRejected(t *testing.T) {
 	assert.Equal(t, codeInvalidParams, errResp.Code)
 }
 
-// TestAtxHeadingTextByteRangeMore covers tab-prefixed spacing,
-// trailing-hash forms with spaces, and a heading with only `#`
-// and a tab so the tab branches participate in coverage.
-func TestAtxHeadingTextByteRangeMore(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		row                string
-		ok                 bool
-		startWant, endWant int
-	}{
-		{"##\tWith tab", true, 3, 11},
-		{"##  spaced", true, 4, 10},
-		{"##  spaced  ", true, 4, 10},
-		{"## foo ###", true, 3, 6},
-		{"## foo###", true, 3, 9},
-		{"##", true, 2, 2},
-	}
-	for _, tc := range cases {
-		start, end, ok := atxHeadingTextByteRange([]byte(tc.row))
-		assert.Equal(t, tc.ok, ok, "row=%q", tc.row)
-		if !ok {
-			continue
-		}
-		assert.Equal(t, tc.startWant, start, "start row=%q", tc.row)
-		assert.Equal(t, tc.endWant, end, "end row=%q", tc.row)
-	}
-}
-
 // TestRefDefBracketBytesEdgeCases covers the rejection paths:
 // missing `[`, missing `]`, missing `:`, leading-space cap.
 func TestRefDefBracketBytesEdgeCases(t *testing.T) {
@@ -958,19 +930,6 @@ func keys(m map[string][]textEdit) []string {
 		out = append(out, k)
 	}
 	return out
-}
-
-// TestTrimmedRangeStripsLeadingAndTrailing exercises the
-// trimmedRange helper directly. The setext heading rename path
-// only invokes it on text without leading whitespace, so the
-// trim loops need direct coverage to participate.
-func TestTrimmedRangeStripsLeadingAndTrailing(t *testing.T) {
-	t.Parallel()
-	start, end := trimmedRange([]byte("  text\t"))
-	assert.Equal(t, 2, start)
-	assert.Equal(t, 6, end)
-	start, end = trimmedRange([]byte("   "))
-	assert.Equal(t, start, end)
 }
 
 // TestMatchLeadingPairAdjacentNoLabelMatch covers the return-false
