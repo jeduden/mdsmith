@@ -338,16 +338,57 @@ func TestCompose_FilenameConflictErrors(t *testing.T) {
 	assert.Contains(t, err.Error(), "filename")
 }
 
-// TestCompose_FilenameListConflictOnOrder confirms two lists with the
-// same globs in a different order are treated as conflicting: the
-// composed constraint is order-significant in its diagnostic wording,
-// so identical semantics still require identical spelling.
+// TestCompose_FilenameListConflictOnDiffered confirms genuinely different
+// glob sets (different cardinalities here) produce a conflict error.
 func TestCompose_FilenameListConflictOnDiffered(t *testing.T) {
 	a := &Schema{Filename: []string{"a-*.md", "b.md"}}
 	b := &Schema{Filename: []string{"a-*.md"}}
 	_, err := Compose(a, b)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "filename")
+}
+
+// TestCompose_FilenameListSameSetDifferentOrderNotConflict covers the
+// OR-semantics fix: the same filename globs declared in a different order
+// across two schemas must NOT produce a conflict error.
+func TestCompose_FilenameListSameSetDifferentOrderNotConflict(t *testing.T) {
+	a := &Schema{Filename: []string{"*.md", "*.txt"}}
+	b := &Schema{Filename: []string{"*.txt", "*.md"}}
+	out, err := Compose(a, b)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"*.md", "*.txt"}, out.Filename)
+}
+
+func TestFilenameGlobsEqual(t *testing.T) {
+	tests := []struct {
+		name string
+		a, b []string
+		want bool
+	}{
+		{"identical", []string{"a", "b"}, []string{"a", "b"}, true},
+		{"reordered", []string{"a", "b"}, []string{"b", "a"}, true},
+		{"duplicate entry", []string{"a", "b", "a"}, []string{"b", "a"}, true},
+		{"same length different multiset", []string{"a", "a", "b"}, []string{"a", "b", "b"}, true},
+		{"subset", []string{"a", "b"}, []string{"a"}, false},
+		{"disjoint", []string{"a"}, []string{"b"}, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, filenameGlobsEqual(tc.a, tc.b))
+		})
+	}
+}
+
+func TestFilenameGlobsEqual_DoesNotMutateInputs(t *testing.T) {
+	a := []string{"b", "a"}
+	b := []string{"a", "b"}
+	require.True(t, filenameGlobsEqual(a, b))
+	assert.Equal(t, []string{"b", "a"}, a)
+}
+
+func TestSortedUniqueGlobs(t *testing.T) {
+	assert.Equal(t, []string{"a", "b"}, sortedUniqueGlobs([]string{"b", "a", "b"}))
+	assert.Empty(t, sortedUniqueGlobs(nil))
 }
 
 // TestCompose_DisjointCardinalityErrors drives the empty-intersection

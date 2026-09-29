@@ -52,7 +52,10 @@ type runResolve struct {
 	// work the allocation profile showed as per-file overhead. Reusing a
 	// configured rule across files is safe for the same reason the worker
 	// reuses its mdRules clones across files: a rule's Check holds no state
-	// between calls (see checker.ConfigureEnabledRules).
+	// that outlives one file — a rule.FileResetter has BeginFile called at
+	// each file boundary, and checker.ConfigureEnabledRules gives this
+	// worker its own clone of every such rule, so no other worker writes
+	// through the same pointer.
 	confCache map[string]configuredRules
 }
 
