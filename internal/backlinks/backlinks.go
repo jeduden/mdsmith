@@ -7,7 +7,6 @@ package backlinks
 import (
 	"cmp"
 	"fmt"
-	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -17,7 +16,6 @@ import (
 	"github.com/jeduden/mdsmith/internal/globpath"
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
-	"github.com/jeduden/mdsmith/internal/pathutil"
 )
 
 // Record is one incoming link to the queried target.
@@ -167,7 +165,7 @@ func extractBacklinksFromSource(
 		if t.LocalAnchor {
 			continue
 		}
-		resolved := resolveLinkTarget(srcRel, t.Path)
+		resolved := linkgraph.ResolveRelTarget(srcRel, t.Path)
 		if resolved == "" || resolved != wantTarget {
 			continue
 		}
@@ -303,25 +301,6 @@ func relPath(p, rootDir string) string {
 		return fallback
 	}
 	return filepath.ToSlash(rel)
-}
-
-// resolveLinkTarget joins srcRel's directory with the link's path and
-// returns the workspace-relative result. Both inputs use forward
-// slashes. Absolute paths (including Windows drive letters and UNC
-// prefixes) and ones that escape the workspace root return "" so
-// callers treat them as "outside the graph".
-func resolveLinkTarget(srcRel, linkPath string) string {
-	srcRel = strings.ReplaceAll(srcRel, `\`, `/`)
-	linkPath = strings.ReplaceAll(linkPath, `\`, `/`)
-	if pathutil.IsAbsOrDriveOrUNC(srcRel) || pathutil.IsAbsOrDriveOrUNC(linkPath) {
-		return ""
-	}
-	dir := path.Dir(srcRel)
-	cleaned := path.Clean(path.Join(dir, linkPath))
-	if cleaned == ".." || strings.HasPrefix(cleaned, "../") {
-		return ""
-	}
-	return cleaned
 }
 
 // sourceMatches reports whether src should be considered, given the

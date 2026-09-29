@@ -14,34 +14,6 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 )
 
-func TestResolveLinkTarget(t *testing.T) {
-	cases := []struct {
-		name     string
-		src      string
-		linkPath string
-		want     string
-	}{
-		{"sibling", "docs/index.md", "api.md", "docs/api.md"},
-		{"dot-prefix", "docs/index.md", "./api.md", "docs/api.md"},
-		{"parent dir", "docs/sub/index.md", "../api.md", "docs/api.md"},
-		{"two levels up", "plan/045.md", "../docs/api.md", "docs/api.md"},
-		{"escapes root", "docs/api.md", "../../etc/passwd", ""},
-		{"absolute link", "docs/api.md", "/etc/passwd", ""},
-		{"absolute source", "/abs/docs/api.md", "guide.md", ""},
-		// Windows-style absolutes — path.IsAbs alone misses these.
-		{"drive letter link", "docs/api.md", "C:/Windows/system.md", ""},
-		{"drive letter source", "C:/docs/api.md", "guide.md", ""},
-		{"UNC link", "docs/api.md", "//server/share/file.md", ""},
-		{"UNC source", "//server/share/api.md", "guide.md", ""},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := resolveLinkTarget(tc.src, tc.linkPath)
-			assert.Equal(t, tc.want, got)
-		})
-	}
-}
-
 func TestRelPath_EmptyRootDir(t *testing.T) {
 	// When rootDir is empty, the helper just strips a leading "./"
 	// and forwards the path through.
