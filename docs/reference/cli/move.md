@@ -29,8 +29,8 @@ code 2.
   repointed the same way.
 - **Outbound inline links and images inside the moved file.** Each
   inline `[x](path)` or `![x](path)` in `src` is recomputed so it
-  still resolves from `dst`'s directory. Moving `docs/a.md` to `guide/a.md` fixes
-  its own `[x](./b.md)` as well as the links pointing at it.
+  still resolves from `dst`'s directory. Moving `docs/a.md` to
+  `guide/a.md` fixes its own `[x](./b.md)` as well as the links pointing at it.
 - **Wikilinks.** `[[old-stem]]` becomes `[[new-stem]]` only when
   the basename stem changes. A move that keeps the basename
   (`docs/api.md` → `ref/api.md`) leaves wikilinks alone, because
