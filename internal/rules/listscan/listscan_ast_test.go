@@ -318,10 +318,14 @@ func lastLineOfNode(f *lint.File, n ast.Node) int {
 }
 
 // snippets returns the markdown corpus to validate against, keyed by a
-// descriptive name. It merges coreSnippets with the bad fixtures.
+// descriptive name. It merges coreSnippets and interruptSnippets with the
+// bad fixtures.
 func snippets(t *testing.T) map[string]string {
 	t.Helper()
 	m := coreSnippets()
+	for k, v := range interruptSnippets() {
+		m[k] = v
+	}
 	for k, v := range fixtureSnippets(t) {
 		m[k] = v
 	}
@@ -387,6 +391,14 @@ func coreSnippets() map[string]string {
 		"nested-then-fence-outer":     "- a\n  - b\n\n  ```\n  c\n  ```\n",
 		"para-blank-para-nested":      "- a\n\n  more\n\n  - sub\n",
 		"tilde-fence-in-item":         "- a\n\n  ~~~\n  x\n  ~~~\n\n- b\n",
+	}
+}
+
+// interruptSnippets cover which list markers interrupt a paragraph with
+// no blank line before them. CommonMark lets a list item interrupt a
+// paragraph only when it has content and, if ordered, starts at 1.
+func interruptSnippets() map[string]string {
+	return map[string]string{
 		// An ordered marker numbered other than 1 cannot interrupt a
 		// top-level paragraph: goldmark reads "2026." as lazy paragraph text,
 		// not a new list, so listscan must report zero lists here.
