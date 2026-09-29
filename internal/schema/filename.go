@@ -30,46 +30,40 @@ func DecodeFilenameField(v any) ([]string, error) {
 		}
 		return []string{t}, nil
 	case []any:
-		out := make([]string, 0, len(t))
-		for _, e := range t {
-			s, ok := e.(string)
-			if !ok {
-				return nil, fmt.Errorf(
-					"filename must be a string or list of strings, "+
-						"got %T in the list", e)
-			}
-			if s == "" {
-				return nil, fmt.Errorf(
-					"filename list entries must be non-empty globs")
-			}
-			if err := ValidateGlobInterps(s); err != nil {
-				return nil, fmt.Errorf("filename %q: %w", s, err)
-			}
-			out = append(out, s)
-		}
-		if len(out) == 0 {
-			return nil, nil
-		}
-		return out, nil
+		return decodeFilenameList(t)
 	case []string:
-		out := make([]string, 0, len(t))
-		for _, s := range t {
-			if s == "" {
-				continue
-			}
-			if err := ValidateGlobInterps(s); err != nil {
-				return nil, fmt.Errorf("filename %q: %w", s, err)
-			}
-			out = append(out, s)
-		}
-		if len(out) == 0 {
-			return nil, nil
-		}
-		return out, nil
+		return decodeFilenameList(t)
 	default:
 		return nil, fmt.Errorf(
 			"filename must be a string or list of strings, got %T", v)
 	}
+}
+
+// decodeFilenameList validates a `filename:` sequence, whether it was
+// decoded from YAML ([]any) or built in Go ([]string). Every entry must
+// be a non-empty string; an empty list yields nil (no constraint).
+func decodeFilenameList[T any](list []T) ([]string, error) {
+	if len(list) == 0 {
+		return nil, nil
+	}
+	out := make([]string, 0, len(list))
+	for _, e := range list {
+		s, ok := any(e).(string)
+		if !ok {
+			return nil, fmt.Errorf(
+				"filename must be a string or list of strings, "+
+					"got %T in the list", any(e))
+		}
+		if s == "" {
+			return nil, fmt.Errorf(
+				"filename list entries must be non-empty globs")
+		}
+		if err := ValidateGlobInterps(s); err != nil {
+			return nil, fmt.Errorf("filename %q: %w", s, err)
+		}
+		out = append(out, s)
+	}
+	return out, nil
 }
 
 // MatchFilename reports whether base matches any of the schema filename

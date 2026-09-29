@@ -1,6 +1,7 @@
 package forbiddentext
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -37,14 +38,20 @@ var (
 // byte lets one list impersonate another — joining on a separator
 // would let a needle containing that byte collide with the two-needle
 // list it splits into, and a `contains:` entry can hold any byte.
+// Needles are sorted and de-duplicated before encoding so lists with the
+// same entries in a different order, or with repeats, share a cache slot
+// (the matcher's OR semantics make order and repeats irrelevant).
 func matcherCacheKey(needles []string) string {
+	sorted := slices.Clone(needles)
+	slices.Sort(sorted)
+	sorted = slices.Compact(sorted)
 	var b strings.Builder
 	size := 0
-	for _, s := range needles {
+	for _, s := range sorted {
 		size += len(s) + 8
 	}
 	b.Grow(size)
-	for _, s := range needles {
+	for _, s := range sorted {
 		b.WriteString(strconv.Itoa(len(s)))
 		b.WriteByte(':')
 		b.WriteString(s)

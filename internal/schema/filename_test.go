@@ -29,7 +29,7 @@ func TestDecodeFilenameField_StringSliceList(t *testing.T) {
 }
 
 func TestDecodeFilenameField_NilAndEmptyAreNoConstraint(t *testing.T) {
-	for _, v := range []any{nil, "", []any{}, []string{}, []string{""}} {
+	for _, v := range []any{nil, "", []any{}, []string{}} {
 		pats, err := DecodeFilenameField(v)
 		require.NoError(t, err)
 		assert.Nil(t, pats)
@@ -42,10 +42,45 @@ func TestDecodeFilenameField_EmptyListEntryRejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "non-empty")
 }
 
+func TestDecodeFilenameField_StringSliceEmptyEntryRejected(t *testing.T) {
+	// []string with an empty entry is rejected, consistent with the []any path.
+	_, err := DecodeFilenameField([]string{"*.md", ""})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "non-empty")
+}
+
 func TestDecodeFilenameField_NonStringListEntryRejected(t *testing.T) {
 	_, err := DecodeFilenameField([]any{"ok.md", 42})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "filename must be a string or list of strings")
+}
+
+func TestDecodeFilenameList(t *testing.T) {
+	t.Run("any list", func(t *testing.T) {
+		got, err := decodeFilenameList([]any{"a.md", "b-*.md"})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"a.md", "b-*.md"}, got)
+	})
+	t.Run("string list", func(t *testing.T) {
+		got, err := decodeFilenameList([]string{"a.md"})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"a.md"}, got)
+	})
+	t.Run("empty is no constraint", func(t *testing.T) {
+		got, err := decodeFilenameList([]string{})
+		require.NoError(t, err)
+		assert.Nil(t, got)
+	})
+	t.Run("non-string entry", func(t *testing.T) {
+		_, err := decodeFilenameList([]any{42})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "got int in the list")
+	})
+	t.Run("empty entry", func(t *testing.T) {
+		_, err := decodeFilenameList([]string{""})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "non-empty")
+	})
 }
 
 func TestDecodeFilenameField_WrongTypeRejected(t *testing.T) {

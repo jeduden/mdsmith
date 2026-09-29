@@ -192,7 +192,9 @@ func composeFilename(out *Schema, schemas []*Schema) error {
 			out.Filename = s.Filename
 			continue
 		}
-		if !slices.Equal(out.Filename, s.Filename) {
+		// Filename lists use OR semantics (any matching glob passes), so
+		// order and duplicates are irrelevant: compare them as sets.
+		if !filenameGlobsEqual(out.Filename, s.Filename) {
 			return fmt.Errorf(
 				"conflicting filename patterns across "+
 					"composed schemas: %v and %v",
@@ -200,6 +202,21 @@ func composeFilename(out *Schema, schemas []*Schema) error {
 		}
 	}
 	return nil
+}
+
+// filenameGlobsEqual reports whether two filename-glob lists represent the
+// same set. Order and repeated entries are irrelevant because the lists
+// have OR semantics: {A,B}, {B,A}, and {A,B,A} all accept the same names.
+func filenameGlobsEqual(a, b []string) bool {
+	return slices.Equal(sortedUniqueGlobs(a), sortedUniqueGlobs(b))
+}
+
+// sortedUniqueGlobs returns a sorted, de-duplicated copy of globs,
+// leaving the input untouched.
+func sortedUniqueGlobs(globs []string) []string {
+	out := slices.Clone(globs)
+	slices.Sort(out)
+	return slices.Compact(out)
 }
 
 func composeRootClosed(out *Schema, schemas []*Schema) {
