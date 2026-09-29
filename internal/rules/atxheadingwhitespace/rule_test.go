@@ -275,3 +275,59 @@ func TestName(t *testing.T) {
 func TestCategory(t *testing.T) {
 	assert.Equal(t, "heading", (&Rule{}).Category())
 }
+
+// --- Paragraph continuation lines are text, not headings (issue #844) ---
+
+// continuationCases hold a `#`-led line that continues a paragraph (or,
+// for the setext case, a setext heading's content). CommonMark reads each
+// as paragraph text: `#48` is no ATX heading, and an indented line cannot
+// open a heading mid-paragraph. Rewriting any of them into a heading would
+// split the paragraph, so neither Check nor Fix may touch them.
+var continuationCases = map[string]string{
+	"link text wrapped before #48": "# Title\n\n" +
+		"Diagnostics stopped in [Issue\n#48](https://example.com/48), and more.\n",
+	"hashtag on continuation":            "# Title\n\nTagged with\n#release notes.\n",
+	"indented heading-like continuation": "# Title\n\nSome text\n    # not a heading\n",
+	"lazy list item continuation":        "# Title\n\n- item text\n#48 more text\n",
+	"lazy block quote continuation":      "# Title\n\n> quoted text\n#48 more text\n",
+	"setext heading content":             "# Title\n\nSetext\n#48 heading\n------\n",
+}
+
+func TestCheck_ParagraphContinuationNotFlagged(t *testing.T) {
+	for name, src := range continuationCases {
+		t.Run(name, func(t *testing.T) {
+			assert.Empty(t, check(t, src))
+		})
+	}
+}
+
+func TestFix_ParagraphContinuationUnchanged(t *testing.T) {
+	for name, src := range continuationCases {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, src, fix(t, src))
+		})
+	}
+}
+
+// TestCheck_ParagraphContinuationNilAST pins the parse-skipped (Layer 0)
+// path: a File built without an AST must skip the same continuation line.
+func TestCheck_ParagraphContinuationNilAST(t *testing.T) {
+	src := continuationCases["link text wrapped before #48"]
+	f := lint.NewFileLines("test.md", []byte(src))
+	require.Nil(t, f.AST)
+	assert.Empty(t, (&Rule{}).Check(f))
+}
+
+// TestCheck_ParagraphFirstLineStillFlagged pins that only continuation
+// lines are exempt: `#48` opening a paragraph, or following a heading
+// line (which a paragraph cannot continue), keeps the MD018 diagnostic.
+func TestCheck_ParagraphFirstLineStillFlagged(t *testing.T) {
+	for _, src := range []string{
+		"# Title\n\n#48 opens a paragraph\nand continues.\n",
+		"# Title\n#Heading\n",
+	} {
+		diags := check(t, src)
+		require.Len(t, diags, 1, "source %q", src)
+		assert.Equal(t, "missing space after # in heading", diags[0].Message)
+	}
+}
