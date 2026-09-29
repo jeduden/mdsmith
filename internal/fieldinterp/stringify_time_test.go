@@ -2,6 +2,7 @@ package fieldinterp
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -53,4 +54,13 @@ func TestResolvePathAndInterpolate_YAMLDate(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "2026-01-02", got)
 	assert.Equal(t, "posted 2026-01-02", Interpolate("posted {date}", m))
+}
+
+func TestFormatTime(t *testing.T) {
+	assert.Equal(t, "2026-01-02",
+		formatTime(time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)))
+	assert.Equal(t, "2026-01-02T00:00:01Z",
+		formatTime(time.Date(2026, 1, 2, 0, 0, 1, 0, time.UTC)))
+	assert.Equal(t, "2026-01-02T00:00:00+01:00",
+		formatTime(time.Date(2026, 1, 2, 0, 0, 0, 0, time.FixedZone("", 3600))))
 }

@@ -9,24 +9,26 @@ import (
 	"github.com/jeduden/mdsmith/internal/fieldinterp"
 )
 
-// globMetaEscaper escapes the bytes a resolved `fmvar(...)` value must not
-// contribute to the surrounding doublestar glob (kind
+// globMetaEscaper escapes the bytes a resolved `fmvar(...)` value
+// must not contribute to the surrounding doublestar glob (kind
 // `path-pattern:`). Escaping them makes the frontmatter value match
 // literally — the glob analogue of the `regex:` matcher's
 // regexp.QuoteMeta.
 //
 // The set is doublestar-only. The `filename:` surface feeds
 // filepath.Match, which ignores `\` escapes on Windows, and uses
-// filenameMetaEscaper instead. `,` has to be
-// escaped even though it is inert outside braces: the SURROUNDING
-// pattern may wrap the reference in an alternative
+// filenameMetaEscaper instead.
+//
+// `,` has to be escaped even though it is inert outside braces: the
+// SURROUNDING pattern may wrap the reference in an alternative
 // (`docs/{\#(fmvar(name)),other}.md`), and an unescaped `,` in the
 // value would open a new alternative rather than matching itself.
 // `}` is escaped for the same reason: inside a surrounding
 // alternative an unescaped `}` in the value would close it early
 // (`{a}b,other}` reads as the one-option `{a}` followed by literal
-// `b,other}`). `]` needs no escape: it is special only after an
-// unescaped `[`, and a reference cannot sit inside a character class.
+// `b,other}`). `]`, `!` and `^` need no escape: they are special only
+// inside a character class, and a reference there is not supported —
+// it would stand for a set of single bytes, not a value.
 //
 // `/` is deliberately NOT in the set — it cannot be escaped into a
 // literal. doublestar reads `\/` as the separator all the same
@@ -232,9 +234,9 @@ func resolveGlobPattern(
 	pattern string, fm map[string]any, esc *strings.Replacer,
 ) (string, error) {
 	return rewriteGlobRefs(pattern, func(name string) (string, error) {
-		val, found := fmvarLookup(fm, name)
-		if !found {
-			return "", MissingFmvarErr(name)
+		val, err := fmvarGlobValue(fm, name)
+		if err != nil {
+			return "", err
 		}
 		if val == "" {
 			return "", fmt.Errorf(
@@ -261,6 +263,24 @@ func WildcardGlobRefs(pattern string) string {
 		return "*", nil
 	})
 	return out
+}
+
+// fmvarGlobValue resolves a glob reference's front-matter field.
+// Unlike fmvarLookup it keeps why a present field cannot be used: a
+// list or map is reported as not a scalar rather than as missing,
+// which would send the author looking for a field they already wrote.
+// name is a valid CUE path; globRefAt only yields well-formed ones.
+func fmvarGlobValue(fm map[string]any, name string) (string, error) {
+	val, err := fieldinterp.ResolvePath(fm, fieldinterp.ParseCUEPath(name))
+	if errors.Is(err, fieldinterp.ErrCompositeValue) {
+		return "", fmt.Errorf(
+			"`fmvar(%s)`: frontmatter value is a list or map, "+
+				"not a scalar", name)
+	}
+	if err != nil {
+		return "", MissingFmvarErr(name)
+	}
+	return val, nil
 }
 
 // PathPatternSyntaxForm returns the text a kind `path-pattern:` is
@@ -308,24 +328,31 @@ func LiteralFmvarHint(pattern string) string {
 	return ""
 }
 
-// GlobMismatchHint picks the hint for a pattern mismatch on either
-// glob surface. An unresolvable reference is the schema author's
-// problem and outranks the rest; an fmvar-looking opener that stayed
-// literal comes next, since it is the likeliest reason nothing
-// matched; otherwise the hint shows what the interpolating patterns
-// became.
+// GlobMismatchHint builds the hint for a pattern mismatch on either
+// glob surface. It lists every reason the patterns can miss, most
+// actionable first, joined by "; ": an unresolvable reference (the
+// schema author's problem), then the first fmvar-looking opener that
+// stayed literal, then what the resolved patterns became. Keeping the
+// expansion next to an unresolved sibling matters for an OR list:
+// with `[\#(fmvar(id)).md, \#(fmvar(slug)).md]` and only `id` set,
+// the reader needs both the missing `slug` and the resolved `id` glob.
 func GlobMismatchHint(
 	unresolved error, patterns []string, interpolated ...string,
 ) string {
+	var parts []string
 	if unresolved != nil {
-		return unresolved.Error()
+		parts = append(parts, unresolved.Error())
 	}
 	for _, p := range patterns {
 		if h := LiteralFmvarHint(p); h != "" {
-			return h
+			parts = append(parts, h)
+			break
 		}
 	}
-	return InterpolatedGlobHint(interpolated...)
+	if h := InterpolatedGlobHint(interpolated...); h != "" {
+		parts = append(parts, h)
+	}
+	return strings.Join(parts, "; ")
 }
 
 // InterpolatedGlobHint renders the diagnostic hint that shows what a

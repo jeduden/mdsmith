@@ -275,3 +275,68 @@ func TestFrontmatterIsClosed_NilSchema(t *testing.T) {
 	var sch *Schema
 	assert.True(t, sch.FrontmatterIsClosed())
 }
+
+// ---- direct helper tests ----
+
+func TestComposeFrontmatterClosed(t *testing.T) {
+	open, closed := false, true
+	fm := map[string]string{"a": "string"}
+	cases := []struct {
+		name string
+		in   []*Schema
+		want bool
+	}{
+		{"no declaring source keeps the closed default",
+			[]*Schema{{}}, true},
+		{"every declaring source opens",
+			[]*Schema{{Frontmatter: fm, FrontmatterClosed: &open}, {}}, false},
+		{"an unset declaring source votes closed",
+			[]*Schema{{Frontmatter: fm, FrontmatterClosed: &open}, {Frontmatter: fm}}, true},
+		{"an explicit true wins",
+			[]*Schema{{Frontmatter: fm, FrontmatterClosed: &closed}, {Frontmatter: fm, FrontmatterClosed: &open}}, true},
+	}
+	for _, tc := range cases {
+		out := &Schema{}
+		composeFrontmatterClosed(out, tc.in)
+		require.NotNil(t, out.FrontmatterClosed, tc.name)
+		assert.Equal(t, tc.want, *out.FrontmatterClosed, tc.name)
+	}
+}
+
+func TestExtendFrontmatterClosed(t *testing.T) {
+	open, closed := false, true
+
+	out := &Schema{}
+	extendFrontmatterClosed(out, &Schema{}, &Schema{})
+	assert.Nil(t, out.FrontmatterClosed, "two unset values stay unset")
+
+	out = &Schema{}
+	parent := &Schema{FrontmatterClosed: &open}
+	extendFrontmatterClosed(out, parent, &Schema{})
+	require.NotNil(t, out.FrontmatterClosed)
+	assert.False(t, *out.FrontmatterClosed)
+	assert.NotSame(t, parent.FrontmatterClosed, out.FrontmatterClosed,
+		"the inherited value is copied, not aliased")
+
+	out = &Schema{}
+	extendFrontmatterClosed(out, parent, &Schema{FrontmatterClosed: &closed})
+	assert.True(t, *out.FrontmatterClosed, "the child's explicit value wins")
+}
+
+func TestParseInlineFrontmatterClosed(t *testing.T) {
+	sch := &Schema{}
+	require.NoError(t, parseInlineFrontmatterClosed(map[string]any{}, sch))
+	assert.Nil(t, sch.FrontmatterClosed)
+
+	sch = &Schema{Frontmatter: map[string]string{"a": "string"}}
+	require.NoError(t, parseInlineFrontmatterClosed(
+		map[string]any{"frontmatter-closed": false}, sch))
+	require.NotNil(t, sch.FrontmatterClosed)
+	assert.False(t, *sch.FrontmatterClosed)
+
+	assert.ErrorContains(t, parseInlineFrontmatterClosed(
+		map[string]any{"frontmatter-closed": "no"}, sch), "must be a boolean")
+	assert.ErrorContains(t, parseInlineFrontmatterClosed(
+		map[string]any{"frontmatter-closed": true}, &Schema{}),
+		"non-empty `frontmatter:` map")
+}

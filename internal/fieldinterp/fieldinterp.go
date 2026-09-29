@@ -8,6 +8,7 @@
 package fieldinterp
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -147,6 +148,10 @@ func ParseCUEPath(expr string) []string {
 	return p.Segments()
 }
 
+// ErrCompositeValue is wrapped by ResolvePath's error when the path
+// resolves to a list or map rather than a scalar.
+var ErrCompositeValue = errors.New("composite value")
+
 // ResolvePath walks data using the given path segments and returns
 // the string value at the resolved location.
 func ResolvePath(data map[string]any, path []string) (string, error) {
@@ -170,10 +175,13 @@ func ResolvePath(data map[string]any, path []string) (string, error) {
 		current = val
 	}
 
-	// Reject composite leaf values so callers can treat them as invalid paths.
+	// Reject composite leaf values so callers can treat them as invalid
+	// paths. The error wraps ErrCompositeValue so a caller can tell a
+	// present list or map apart from an absent key.
 	switch current.(type) {
 	case map[string]any, []any:
-		return "", fmt.Errorf("front-matter key %q is a composite value", strings.Join(path, "."))
+		return "", fmt.Errorf("front-matter key %q is a %w",
+			strings.Join(path, "."), ErrCompositeValue)
 	}
 
 	return Stringify(current), nil

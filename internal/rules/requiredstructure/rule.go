@@ -2579,7 +2579,7 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 		}
 		resolved, err := schema.ResolveGlobPattern(pp.Pattern, docFM)
 		if err != nil {
-			hint := err.Error()
+			hint := schema.GlobMismatchHint(err, []string{pp.Pattern})
 			if fmParseErr != "" {
 				hint = fmParseErr
 			}

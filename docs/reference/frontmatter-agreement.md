@@ -187,6 +187,14 @@ instead:
 Substituting nothing would leave the path
 `.apm/skills//SKILL.md`.
 
+A `name` that holds a list or a map is present but
+cannot name a path segment:
+
+```text
+  (`fmvar(name)`: frontmatter value is a list or map,
+  not a scalar)
+```
+
 A `name` of `a/b` carries a path separator, which
 would let one reference cover two directories:
 

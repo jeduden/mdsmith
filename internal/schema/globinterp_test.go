@@ -464,18 +464,31 @@ func TestGlobRefAt(t *testing.T) {
 	assert.Equal(t, len(`\#(fmvar(x).md`), end)
 }
 
-// GlobMismatchHint ranks an unresolvable reference over a literal
-// fmvar-looking opener, and both over the substituted-pattern hint.
+// GlobMismatchHint lists every reason a pattern set can miss, most
+// actionable first: an unresolvable reference, then an fmvar-looking
+// opener that stayed literal, then what the resolved patterns became.
 func TestGlobMismatchHint(t *testing.T) {
 	bad := `docs/\#(fmvar(my-key)).md`
-	assert.Equal(t, "boom",
+	lit := LiteralFmvarHint(bad)
+	require.NotEmpty(t, lit)
+	assert.Equal(t, "boom; "+lit+"; with front matter applied: docs/x.md",
 		GlobMismatchHint(errors.New("boom"), []string{bad}, "docs/x.md"))
-	assert.Contains(t,
-		GlobMismatchHint(nil, []string{"ok.md", bad}, "docs/x.md"),
-		"matched literally")
+	assert.Equal(t, lit,
+		GlobMismatchHint(nil, []string{"ok.md", bad}))
 	assert.Equal(t, "with front matter applied: docs/x.md",
 		GlobMismatchHint(nil, []string{"ok.md"}, "docs/x.md"))
 	assert.Empty(t, GlobMismatchHint(nil, []string{"ok.md"}))
+}
+
+// One unresolvable entry must not hide what a sibling entry resolved
+// to: both halves of the story go in the hint.
+func TestFilenameDiagnostic_UnresolvedKeepsSiblingExpansion(t *testing.T) {
+	d := FilenameDiagnostic(
+		[]string{`\#(fmvar(id)).md`, `\#(fmvar(slug)).md`}, "other.md",
+		map[string]any{"id": "rfc-7"}, false, "kind note")
+	require.NotNil(t, d)
+	assert.Contains(t, d.Hint, "`fmvar(slug)`: frontmatter value missing")
+	assert.Contains(t, d.Hint, "with front matter applied: rfc-7.md")
 }
 
 // Under the `cue-frontmatter` placeholder the front-matter values are
@@ -501,4 +514,111 @@ func TestWildcardGlobRefs(t *testing.T) {
 	assert.Equal(t, ".apm/skills/*/SKILL.md",
 		WildcardGlobRefs(`.apm/skills/\#(fmvar(name))/SKILL.md`))
 	assert.Equal(t, `notes/\#(draft)*.md`, WildcardGlobRefs(`notes/\#(draft)*.md`))
+}
+
+// A list or map value is present, so "missing" would send the author
+// looking for a field they already wrote. Say it is not a scalar.
+func TestResolveGlobPattern_NonScalarValueSaysSo(t *testing.T) {
+	for name, v := range map[string]any{
+		"list": []any{"a", "b"},
+		"map":  map[string]any{"x": 1},
+	} {
+		_, err := ResolveGlobPattern(`skills/\#(fmvar(name))/SKILL.md`,
+			map[string]any{"name": v})
+		require.Error(t, err, name)
+		assert.Contains(t, err.Error(), "fmvar(name)", name)
+		assert.Contains(t, err.Error(), "not a scalar", name)
+		assert.NotContains(t, err.Error(), "missing", name)
+	}
+}
+
+// globMetaEscaper escapes `}` everywhere, not only inside a brace
+// alternative. Outside braces the escaped form must still match the
+// literal byte.
+func TestResolveGlobPattern_ClosingBraceOutsideAlternativeMatches(t *testing.T) {
+	got, err := ResolveGlobPattern(`docs/\#(fmvar(name)).md`,
+		map[string]any{"name": "a}b"})
+	require.NoError(t, err)
+	ok, err := doublestar.Match(got, "docs/a}b.md")
+	require.NoError(t, err)
+	assert.True(t, ok)
+}
+
+// Outside a character class filepath.Match reads `]`, `!`, `^` and
+// `-` as ordinary bytes, so filenameMetaEscaper leaves them alone and
+// the value still matches literally.
+func TestResolveFilenamePatterns_ClassOnlyBytesMatchLiterally(t *testing.T) {
+	for _, v := range []string{"a]b", "!x", "^x", "a-b"} {
+		resolved, _, unresolved := resolveFilenamePatterns(
+			[]string{`\#(fmvar(id)).md`}, map[string]any{"id": v}, false)
+		require.NoError(t, unresolved, v)
+		ok, err := filepath.Match(resolved[0], v+".md")
+		require.NoError(t, err, v)
+		assert.True(t, ok, v)
+		ok, err = filepath.Match(resolved[0], "x.md")
+		require.NoError(t, err, v)
+		assert.False(t, ok, v)
+	}
+}
+
+func TestInterpolatedGlobHint(t *testing.T) {
+	assert.Empty(t, InterpolatedGlobHint())
+	assert.Equal(t, "with front matter applied: a.md, b.md",
+		InterpolatedGlobHint("a.md", "b.md"))
+}
+
+// scanGlobRefs visits only well-formed references, steps over a
+// literal opener, and stops at the first visit error.
+func TestScanGlobRefs(t *testing.T) {
+	type ref struct {
+		name       string
+		start, end int
+	}
+	var got []ref
+	pat := `\#(draft)/\#(fmvar(a))/\#(fmvar(b)).md`
+	require.NoError(t, scanGlobRefs(pat, func(name string, start, end int) error {
+		got = append(got, ref{name, start, end})
+		return nil
+	}))
+	require.Len(t, got, 2)
+	assert.Equal(t, "a", got[0].name)
+	assert.Equal(t, `\#(fmvar(a))`, pat[got[0].start:got[0].end])
+	assert.Equal(t, "b", got[1].name)
+
+	stop := errors.New("stop")
+	calls := 0
+	err := scanGlobRefs(pat, func(string, int, int) error {
+		calls++
+		return stop
+	})
+	assert.ErrorIs(t, err, stop)
+	assert.Equal(t, 1, calls)
+}
+
+func TestRewriteGlobRefs(t *testing.T) {
+	out, err := rewriteGlobRefs(`a/\#(fmvar(x))/b`,
+		func(name string) (string, error) { return "<" + name + ">", nil })
+	require.NoError(t, err)
+	assert.Equal(t, "a/<x>/b", out)
+
+	out, err = rewriteGlobRefs("plain/*.md",
+		func(string) (string, error) { return "", errors.New("unused") })
+	require.NoError(t, err)
+	assert.Equal(t, "plain/*.md", out)
+
+	_, err = rewriteGlobRefs(`\#(fmvar(x))`,
+		func(string) (string, error) { return "", errors.New("boom") })
+	assert.EqualError(t, err, "boom")
+}
+
+func TestFmvarGlobValue(t *testing.T) {
+	v, err := fmvarGlobValue(map[string]any{"a": map[string]any{"b": 7}}, "a.b")
+	require.NoError(t, err)
+	assert.Equal(t, "7", v)
+
+	_, err = fmvarGlobValue(nil, "a")
+	assert.EqualError(t, err, MissingFmvarErr("a").Error())
+
+	_, err = fmvarGlobValue(map[string]any{"a": []any{1}}, "a")
+	assert.ErrorContains(t, err, "not a scalar")
 }
