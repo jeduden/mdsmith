@@ -219,10 +219,10 @@ func isInlineNode(n ast.Node) bool {
 // --- reversed-link scan (MD011) ---
 
 type revMatch struct {
-	col0     int // 0-based byte index of '(' within the line
-	matchEnd int // exclusive byte index just past ']' within the line
 	text     []byte
 	url      []byte
+	col0     int // 0-based byte index of '(' within the line
+	matchEnd int // exclusive byte index just past ']' within the line
 }
 
 // reversedNeedle is the two-byte sequence every reversedRe match must

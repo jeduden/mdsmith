@@ -2,11 +2,13 @@ package mdsmith
 
 import (
 	"bytes"
+	"cmp"
 	"io"
 	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -333,10 +335,22 @@ func buildDirIndex(files map[string][]byte) map[string][]fs.DirEntry {
 		}
 	}
 	for dir, ents := range idx {
-		sort.Slice(ents, func(i, j int) bool { return ents[i].Name() < ents[j].Name() })
+		sortDirEntries(ents)
 		idx[dir] = ents
 	}
 	return idx
+}
+
+// sortDirEntries orders entries by name in place. slices.SortFunc
+// compares the fs.DirEntry values directly, unlike sort.Slice, which
+// drives reflect.Swapper under the hood — see
+// docs/development/high-performance-go.md's "reflect in hot paths"
+// anti-pattern. buildDirIndex runs this once per directory on every
+// NewMemWorkspace call (the WASM/Obsidian/embedded-host path).
+func sortDirEntries(ents []fs.DirEntry) {
+	slices.SortFunc(ents, func(a, b fs.DirEntry) int {
+		return cmp.Compare(a.Name(), b.Name())
+	})
 }
 
 // addDirEntry appends a name/dir entry once per (dir, name) pair,

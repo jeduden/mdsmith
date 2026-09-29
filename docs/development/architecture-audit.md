@@ -6,7 +6,7 @@ summary: >-
   solid-architecture skill (audit mode)
   appends here; blockers are also filed as
   plans.
-audit-from: b706d7618cca472108b80ccd837877fad80230b3
+audit-from: 0ca0d2f7c95ab53e3e9ed8851150af98b95088fb
 ---
 # Architecture audit log
 
@@ -16,6 +16,120 @@ The oldest entries have moved to the
 [archive shards](architecture-audit-archive.md) to stay
 under the file-length budget; every finding there is
 resolved.
+
+## Audit 2026-08-30 (range: b706d76..0ca0d2f)
+
+59 commits, ~130 files touched (~125 Go files, no
+TypeScript). New packages this cycle:
+
+- `internal/linkgraph` — link/wikilink target parsing and
+  resolution, split out of the rules that used to inline it.
+- `internal/schema` — a one-question-per-file split (compose,
+  extend, filename, parse_file, parse_inline, validate) with
+  no reverse-layer imports.
+- `internal/gitattributes` and `internal/directivefiles` —
+  the two other packages the 2026-08-23 `internal/githooks`
+  SRP split ([plan/2608021916][2608021916]) produced. That
+  plan is now fully merged (PR #815); its "picked up as this
+  cycle's fix" note from 2026-08-23 is closed.
+
+Rule-ID collisions hit this project once before
+([plan/2608091910][2608091910]). Checked for a repeat:
+
+- `internal/foreignregion` claims `MDS074`.
+- `internal/rules/overrepetition` claims `MDS075`.
+- Checked against `internal/rules/all/all.go` and
+  `internal/integration/testdata/rule_walk_audit.json`.
+- No overlap. No repeat this cycle.
+
+Clean surfaces, verified:
+
+- No rule-to-rule imports. No reverse-layer imports. No
+  Liskov breaks.
+- `internal/linkgraph`, `internal/schema`,
+  `internal/gitattributes`, `internal/directivefiles`: each
+  answers one question, each has dedicated tests, none
+  imports `internal/rules/...`.
+- `cmd/mdsmith/discover.go` is an exemplary thin shim over
+  `internal/directivefiles.DiscoverFilesForInstall` — no
+  domain logic in the handler.
+- `internal/rules/catalog/rule.go` and
+  `internal/rules/requiredstructure/rule.go`'s changes this
+  cycle are perf-only (`RunCache.RawSchemaFile`, MDS019
+  pre-check gating); no new imports, both ship dedicated
+  tests.
+
+### blockers (2026-08-30)
+
+None.
+
+### tax (2026-08-30)
+
+- `cmd/mdsmith/backlinks.go` had ~430 of 585 lines carrying
+  the backlink target-matching algorithm — link/wikilink
+  resolution, workspace-relative path math — inside the CLI
+  package. [go.md][go] §"Clean wiring in `cmd/mdsmith`":
+  "Domain logic ... belongs in `pkg/mdsmith`,
+  `internal/engine`, or their dependencies." This was the
+  newest and most self-contained instance of the pattern
+  (`mergedriver.go` carries some of the same weight but is
+  out of this cycle's touched set). Fixed directly (not
+  filed as a plan): extracted `Record`, `Collect`, and every
+  private helper the matching algorithm needs into a new
+  `internal/backlinks` package; `cmd/mdsmith/backlinks.go`
+  now only parses flags, validates arguments, calls
+  `backlinks.Collect`, and formats output —
+  `runBacklinks` stays a thin dispatcher. `workspaceRelativePath`
+  and `isAbsOrDriveOrUNC` stayed in `cmd/mdsmith` (shared by
+  `deps.go` and `rename.go` too, not backlinks-specific); the
+  new package carries its own small private duplicates for
+  the two pure predicates it needs
+  (`relPath`/`isAbsOrDriveOrUNC`) rather than importing
+  `cmd/mdsmith`, which would invert the dependency direction.
+  `go build ./...`, `go test ./...`, and
+  `go tool golangci-lint run` are green; behavior is
+  unchanged (existing unit and e2e tests moved/kept
+  untouched).
+- `internal/mdtext/wordfreq.go`'s `WordFrequencyInto` and
+  three helpers in `internal/directivefiles/directivefiles.go`
+  (`openingFence`, `isClosingFence`, `isIndentedCodeBlock`)
+  have no dedicated unit test by name, only behavior-level
+  coverage via their callers — [tests.md][tests] requires a
+  test by the function's own name —
+  [plan/2608301918][2608301918].
+- `internal/lint/runcache.go`'s `RunCache` caches state across
+  every file in a whole `engine.Run` pass, which answers a
+  different question than [go.md][go]'s stated charter for
+  `internal/lint` ("model a parsed Markdown file"). Closer to
+  `internal/engine`'s job ("orchestrate rules over files; owns
+  the run loop"). Not an import-cycle or forbidden-import
+  violation — a package-boundary tax per go.md's "Split a
+  package by question," now 676 lines and ten cache slots —
+  [plan/2608301919][2608301919].
+
+### nice-to-have (2026-08-30)
+
+- `internal/rules/overrepetition/rule.go` and
+  `internal/rules/occurrence/rule.go` independently reimplement
+  the same file/section/paragraph scope-walking dispatch shape.
+  No cross-import (clean per go.md's DIP rule); [go.md][go]'s
+  refactor-moves precedent ("lift a shared dependency up ...
+  once two rules needed the same shape") would apply to a
+  future cleanup. No plan filed.
+- `cmd/mdsmith/query.go`'s `readFrontMatterRaw` reimplements a
+  slice of front-matter parsing that overlaps
+  `internal/lint`'s charter. Worth lifting into
+  `internal/lint` (e.g. `lint.FrontMatterMap`) alongside the
+  existing `StripFrontMatter` next time that file is touched.
+  No plan filed.
+
+[go]: architecture/go.md
+[tests]: architecture/tests.md
+[cross]: architecture/cross-system.md
+[2608021916]: ../../plan/2608021916_arch-fix-githooks-package-split.md
+[2608091910]: ../../plan/2608091910_arch-fix-mds073-collision.md
+[2608301918]: ../../plan/2608301918_arch-fix-touched-set-unit-tests-0830.md
+[2608301919]: ../../plan/2608301919_arch-fix-runcache-package-placement.md
 
 ## Audit 2026-08-23 (range: 2ab4b29..b706d76)
 
@@ -62,9 +176,6 @@ see the linked PR once opened.
 ### nice-to-have (2026-08-23)
 
 None found this cycle.
-
-[go]: architecture/go.md
-[2608021916]: ../../plan/2608021916_arch-fix-githooks-package-split.md
 
 ## Audit 2026-08-16 (range: 2ab4b29..81f0d96)
 
@@ -148,89 +259,3 @@ None.
   exhaustively tested. No plan filed.
 
 [2608161914]: ../../plan/2608161914_arch-fix-touched-set-unit-tests.md
-
-## Audit 2026-08-09 (range: 6680ff5..2ab4b29)
-
-100 commits, 148 files touched (92 Go files).
-
-New packages this cycle:
-
-- `internal/foreignregion` — foreign managed-region
-  protection for check/fix.
-- `internal/convention` — extracted convention model.
-
-New opt-in rules this cycle:
-
-- `internal/rules/occurrence` (MDS060).
-- `internal/rules/slidevstructure` (MDS073).
-
-No rule-to-rule imports. No reverse-layer imports. No
-Liskov breaks. `cmd/mdsmith/main.go` (709 lines) stayed well
-under the ~1000-line threshold, as did
-`internal/lsp/server.go`/`symbols.go` (554/511 lines).
-
-Clean surfaces, verified:
-
-- `internal/mdpath` consolidation: `IsMarkdownPath` grew into
-  a single source of truth (`Extensions`, `FileGlobs`,
-  `RecursiveGlobs`, `HasMarkdownExt`) now consumed by
-  `internal/lsp`, `internal/config`, and the merge-driver
-  include set — SRP fix per go.md's "package answers one
-  question." Every function has an exact-name test.
-- `cmd/mdsmith/init.go` split: extracted from `main.go` with
-  full dedicated-test coverage — 39 `Test*` functions cover
-  all 13 functions, including error paths.
-- `internal/rules/crossfilereferenceintegrity`'s
-  double-checked-locking memoization
-  (`cachedGlobSettingsErr`) is pinned by dedicated tests
-  following the `TestReceiver_Foo` naming convention.
-
-### blockers (2026-08-09)
-
-- `MDS073` is claimed by two unrelated, independently
-  registered diagnostics. `internal/rules/slidevstructure/rule.go:52`
-  returns `"MDS073"` for the Slidev slide-structure rule
-  (registered in `internal/rules/all/all.go`, documented at
-  `internal/rules/MDS073-slide-structure/README.md`).
-  `internal/foreignregion/scan.go:25` independently defines
-  `RuleID = "MDS073"` for the malformed-marker-pair
-  diagnostic (wired into `internal/engine/runner.go` and
-  `internal/fix/fix.go`, documented at
-  `docs/reference/foreign-regions.md:76`). Both landed the
-  same day (2026-07-19) — slide-structure was renumbered
-  `MDS072 -> MDS073` in `7e4925a` while the foreign-region
-  feature independently claimed `MDS073` in parallel commits
-  — an undetected rebase/merge collision.
-  [cross-system.md][cross] treats rule IDs as part of the
-  public `.mdsmith.yml`/CLI/docs contract; no test in
-  `internal/integration/` or `internal/rule/` enforces
-  uniqueness across `rule.All()` plus out-of-band IDs like
-  foreign-region's. Fixed by renumbering the foreign-region
-  diagnostic to the next free ID and adding a uniqueness
-  contract test — [plan/2608091910][2608091910].
-
-### tax (2026-08-09)
-
-- `internal/rules/occurrence/rule.go` has 18 non-trivial
-  private helpers with no dedicated unit test by name
-  (`countCombinedInRange`, `searchText`, `applyScope`, …).
-  All are covered indirectly by 47 behavior-level
-  `TestCheck_*`/`TestApplySettings_*` cases, but
-  [tests.md][tests] requires a test by the function's own
-  name, and the pre-existing sibling rule
-  `paragraphstructure` follows that convention for every
-  helper — [plan/2608091911][2608091911].
-- `internal/rules/slidevstructure/rule.go` has 11
-  non-trivial private helpers (`checkSlide`, `slideAnchor`,
-  `nearest`, …) in the same shape — covered behaviorally by
-  35 `Test*` cases but not by name —
-  [plan/2608091911][2608091911].
-
-[cross]: architecture/cross-system.md
-[tests]: architecture/tests.md
-[2608091910]: ../../plan/2608091910_arch-fix-mds073-collision.md
-[2608091911]: ../../plan/2608091911_arch-fix-missing-unit-tests.md
-
-### nice-to-have (2026-08-09)
-
-None found this cycle beyond the tax items above.

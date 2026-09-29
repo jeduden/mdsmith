@@ -235,9 +235,9 @@ All three slices landed as their own green
 commits:
 
 - `internal/rename` holds the link-reference
-  engine ([rename.go](../internal/rename/rename.go))
+  engine ([rename.go](../internal/refactor/rename.go))
   and the heading engine
-  ([heading.go](../internal/rename/heading.go)),
+  ([heading.go](../internal/refactor/heading.go)),
   both 100% covered behind a `Workspace` seam.
 - `internal/lsp/rename.go` is a thin adapter; the
   duplicated engine is gone and the plan-131/151

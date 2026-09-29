@@ -211,16 +211,23 @@ func checkPipeStyle(f *lint.File, t tableBlock, style, ruleID, ruleName string) 
 
 func checkColumnCount(f *lint.File, t tableBlock, ruleID, ruleName string) []lint.Diagnostic {
 	want := t.rows[0].cells
-	diags := make([]lint.Diagnostic, 0, len(t.rows)-1)
+	// Most tables are column-count compliant; an eager make() here
+	// would allocate a slice only to discard it on that common path.
+	// diags starts nil and is presized to its exact upper bound
+	// (len(t.rows)-1) lazily, on the first mismatch, so a compliant
+	// table still costs nothing while a non-compliant one avoids the
+	// repeated-append regrowth a bare nil-append would pay — mirrors
+	// reversedInLine's lazy presize in internal/rules/linkvalidity.
+	var diags []lint.Diagnostic
 	for _, row := range t.rows[1:] {
 		if row.cells == want {
 			continue
 		}
+		if diags == nil {
+			diags = make([]lint.Diagnostic, 0, len(t.rows)-1)
+		}
 		diags = append(diags, structureDiag(f, row.lineNum, 1, ruleID, ruleName,
 			fmt.Sprintf("table column count; expected %d, got %d", want, row.cells)))
-	}
-	if len(diags) == 0 {
-		return nil
 	}
 	return diags
 }

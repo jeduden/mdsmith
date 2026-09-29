@@ -506,16 +506,16 @@ See the [migration log](./auth-migration-log.md).
 
 What each tool **does** with the same bytes:
 
-| Layer                                     | mdsmith                                                                                                                                                                  | mdbase                                                    |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
-| YAML front matter                         | reads it; can validate shape via CUE schema                                                                                                                              | reads it; validates against `_types/task.md`              |
-| Body content (prose, headings)            | lints line length, headings, prose, links                                                                                                                                | not in scope                                              |
-| Cross-file link                           | flags broken `./auth-migration-log.md` (MDS027); `mdsmith list backlinks` queries the link graph in reverse                                                              | flags broken link (L4) and rewrites it on rename (L5)     |
-| `status: in-progress`                     | available to `mdsmith list query`                                                                                                                                        | filterable in Bases queries; appears in backlink graphs   |
-| `due: 2026-06-01`                         | available to query                                                                                                                                                       | filterable with date arithmetic (`due <= today() + "7d"`) |
-| `mdsmith fix` runs                        | reformats tables, regenerates TOC/catalog                                                                                                                                | n/a                                                       |
-| Rename                                    | renames a heading (rewriting every workspace anchor link) or a link-ref label within one file; no file moves — after a `git mv`, MDS027 flags every broken incoming link | moves the file and rewrites every incoming link           |
-| Body readability, structure, token budget | yes (MDS023 ARI, MDS024 sentences, MDS028 token budget)                                                                                                                  | no                                                        |
+| Layer                                     | mdsmith                                                                                                                                                                                           | mdbase                                                    |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| YAML front matter                         | reads it; can validate shape via CUE schema                                                                                                                                                       | reads it; validates against `_types/task.md`              |
+| Body content (prose, headings)            | lints line length, headings, prose, links                                                                                                                                                         | not in scope                                              |
+| Cross-file link                           | flags broken `./auth-migration-log.md` (MDS027); `mdsmith list backlinks` queries the link graph in reverse                                                                                       | flags broken link (L4) and rewrites it on rename (L5)     |
+| `status: in-progress`                     | available to `mdsmith list query`                                                                                                                                                                 | filterable in Bases queries; appears in backlink graphs   |
+| `due: 2026-06-01`                         | available to query                                                                                                                                                                                | filterable with date arithmetic (`due <= today() + "7d"`) |
+| `mdsmith fix` runs                        | reformats tables, regenerates TOC/catalog                                                                                                                                                         | n/a                                                       |
+| Rename / move                             | `mdsmith rename` retitles a heading (rewriting every workspace anchor) or a link-ref label; `mdsmith move` relocates a file and rewrites every incoming link, ref-def, and outbound relative link | moves the file and rewrites every incoming link           |
+| Body readability, structure, token budget | yes (MDS023 ARI, MDS024 sentences, MDS028 token budget)                                                                                                                                           | no                                                        |
 
 The **shared** layer is the YAML front matter.
 Both tools read `status`, `priority`, `due` as
@@ -528,13 +528,15 @@ The **current surface difference** has narrowed
 on the link layer. mdsmith now renames a heading
 with every workspace anchor link rewritten, or a
 link-reference label within its own file
-(`mdsmith rename`). It lists a file's incoming
-Markdown links with `mdsmith list backlinks`, and
-its wider dependency edges — includes, catalogs,
-builds, and links — with `mdsmith deps`, outgoing
-by default or incoming with `--incoming`. mdbase
-alone still ships the file-move rename, typed
-CRUD, watch mode, and the optional SQLite index.
+(`mdsmith rename`), and moves a file with every
+reference rewritten (`mdsmith move`). It lists a
+file's incoming Markdown links with
+`mdsmith list backlinks`, and its wider dependency
+edges — includes, catalogs, builds, and links —
+with `mdsmith deps`, outgoing by default or
+incoming with `--incoming`. mdbase alone still
+ships typed CRUD, watch mode, and the optional
+SQLite index.
 mdsmith alone still ships the prose, structure,
 and generated-content rules. Either surface is a
 snapshot, not a charter — see the deep-dive for

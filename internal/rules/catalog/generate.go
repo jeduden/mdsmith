@@ -105,12 +105,38 @@ func renderTemplate(params map[string]string, entries []fileEntry, columns ...ma
 
 // renderMinimal renders a plain bullet list with basename link text
 // and relative path link targets.
+//
+// Two things are needed together, not either alone: Grow(total) avoids
+// the O(entries) reallocations an un-Grow'n Builder pays discovering
+// its final size through repeated doubling, and writing each part with
+// its own WriteString call (rather than one `+`-concatenated string
+// per entry) avoids a further one-allocation-per-entry cost that the
+// concatenated string still incurs even once the Builder no longer
+// needs to grow — confirmed with testing.AllocsPerRun, since escape
+// analysis alone did not predict it. Guideline: "strings.Builder over
+// +. Call Grow(n) first if you know the final size" (docs/development/
+// high-performance-go.md). filepath.Base and fieldinterp.Stringify are
+// cheap, allocation-free lookups for the common string-valued
+// "filename" field, so computing them twice per entry to size the
+// buffer costs no extra allocations.
 func renderMinimal(entries []fileEntry) string {
-	var buf strings.Builder
+	const linePrefix, lineMid, lineSuffix = "- [", "](", ")\n"
+	total := 0
 	for _, entry := range entries {
 		path := fieldinterp.Stringify(entry.fields["filename"])
 		basename := filepath.Base(path)
-		buf.WriteString("- [" + basename + "](" + path + ")\n")
+		total += len(linePrefix) + len(basename) + len(lineMid) + len(path) + len(lineSuffix)
+	}
+	var buf strings.Builder
+	buf.Grow(total)
+	for _, entry := range entries {
+		path := fieldinterp.Stringify(entry.fields["filename"])
+		basename := filepath.Base(path)
+		buf.WriteString(linePrefix)
+		buf.WriteString(basename)
+		buf.WriteString(lineMid)
+		buf.WriteString(path)
+		buf.WriteString(lineSuffix)
 	}
 	return buf.String()
 }

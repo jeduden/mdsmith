@@ -24,21 +24,22 @@ stdio transport. The server uses stdio either way.
 
 ## Capabilities advertised
 
-| Capability                        | Behavior                                                                           |
-| --------------------------------- | ---------------------------------------------------------------------------------- |
-| `textDocumentSync = Full`         | Full-document sync; lint trigger gated by `mdsmith.run`                            |
-| `publishDiagnostics`              | One push after each lint                                                           |
-| `codeActionProvider`              | `quickfix` per fixable diagnostic, `source.fixAll.mdsmith`                         |
-| `hoverProvider`                   | Rule docs on hover over a diagnostic; directive docs on hover inside `<?…?>`       |
-| `documentSymbolProvider`          | Hierarchical outline (headings, link refs, front matter, directives)               |
-| `definitionProvider`              | Jump-to-definition for anchor / file / ref-style links and directive arguments     |
-| `implementationProvider`          | Multi-target jump for `kind:` values and headings (every link target)              |
-| `referencesProvider`              | Workspace links pointing at the symbol under the cursor                            |
-| `workspaceSymbolProvider`         | Substring search across headings, link refs, front-matter `title:`, and kind names |
-| `callHierarchyProvider`           | File-level call graph over `<?include?>`, `<?catalog?>`, `<?build?>`, and links    |
-| `completionProvider`              | Heading anchors, link-ref labels, kind names, and directive file paths             |
-| `renameProvider`                  | Heading + link-reference label renames, with `prepareProvider: true`               |
-| `workspace/didChangeWatchedFiles` | Re-lint open buffers on `.mdsmith.yml` change; index refresh on Markdown changes   |
+| Capability                        | Behavior                                                                                        |
+| --------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `textDocumentSync = Full`         | Full-document sync; lint trigger gated by `mdsmith.run`                                         |
+| `publishDiagnostics`              | One push after each lint                                                                        |
+| `codeActionProvider`              | `quickfix` per fixable diagnostic, `source.fixAll.mdsmith`                                      |
+| `hoverProvider`                   | Rule docs on hover over a diagnostic; directive docs on hover inside `<?…?>`                    |
+| `documentSymbolProvider`          | Hierarchical outline (headings, link refs, front matter, directives)                            |
+| `definitionProvider`              | Jump-to-definition for anchor / file / ref-style links and directive arguments                  |
+| `implementationProvider`          | Multi-target jump for `kind:` values and headings (every link target)                           |
+| `referencesProvider`              | Workspace links pointing at the symbol under the cursor                                         |
+| `workspaceSymbolProvider`         | Substring search across headings, link refs, front-matter `title:`, and kind names              |
+| `callHierarchyProvider`           | File-level call graph over `<?include?>`, `<?catalog?>`, `<?build?>`, and links                 |
+| `completionProvider`              | Heading anchors, link-ref labels, kind names, and directive file paths                          |
+| `renameProvider`                  | Heading + link-reference label renames, with `prepareProvider: true`                            |
+| `workspace.fileOperations`        | `willRename` / `didRename` filtered to `**/*.{md,markdown}` — rewrite references on a file move |
+| `workspace/didChangeWatchedFiles` | Re-lint open buffers on `.mdsmith.yml` change; index refresh on Markdown changes                |
 
 `mdsmith.run` controls when the server actually re-lints:
 

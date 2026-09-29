@@ -96,6 +96,13 @@ const (
 	// literal entry is a resolved edge to the input file; a glob entry
 	// is emitted Unresolved, like a catalog edge.
 	EdgeBuild
+	// EdgeWikilink is an Obsidian-style `[[stem]]` link. Its TargetLabel
+	// holds the lowercased basename stem it resolves by; TargetFile is
+	// empty and Unresolved is set, because a stem match needs the whole
+	// workspace and cannot be resolved during the per-file build. The
+	// move planner keys these by stem via IncomingWikilinkEdges; every
+	// path-based reverse-edge query skips them like any unresolved edge.
+	EdgeWikilink
 )
 
 // Edge records one reference from a source position to a target.
@@ -484,6 +491,79 @@ func (i *Index) OutgoingEdges(file string) []Edge {
 	out := make([]Edge, len(fe.Outgoing))
 	copy(out, fe.Outgoing)
 	return out
+}
+
+// IncomingPathEdges returns every workspace edge that addresses file by
+// a rewritable path — a file link (with or without an anchor
+// fragment), an `<?include?>` path, or a resolved `<?build?>` input —
+// regardless of the anchor. It is the exact set a file move rewrites.
+//
+// Same-file anchor links (`[x](#sec)`) and label-based reference links
+// (`[x][label]`) carry no path token and are excluded (their
+// TargetFile is empty). Unresolved edges — catalog globs, glob build
+// inputs, and wikilinks — are skipped too: their target is not yet a
+// concrete file. The result is freshly allocated and sorted by
+// (SourceFile, SourceLine, SourceCol) for deterministic edits.
+func (i *Index) IncomingPathEdges(file string) []Edge {
+	if i == nil {
+		return nil
+	}
+	file = NormalizePath(file)
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	var out []Edge
+	for _, fe := range i.files {
+		for _, e := range fe.Outgoing {
+			if e.Unresolved || e.TargetFile == "" {
+				continue
+			}
+			if NormalizePath(e.TargetFile) != file {
+				continue
+			}
+			out = append(out, e)
+		}
+	}
+	sortEdgesBySource(out)
+	return out
+}
+
+// IncomingWikilinkEdges returns every `[[stem]]` edge whose target
+// basename stem matches stem, compared case-insensitively (the same
+// lowercased match the wikilink resolver uses). A file move keys these
+// by the moved file's basename stem, since a wikilink names a file by
+// stem rather than by path. The result is freshly allocated and sorted
+// by (SourceFile, SourceLine, SourceCol).
+func (i *Index) IncomingWikilinkEdges(stem string) []Edge {
+	if i == nil {
+		return nil
+	}
+	stem = strings.ToLower(stem)
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	var out []Edge
+	for _, fe := range i.files {
+		for _, e := range fe.Outgoing {
+			if e.Kind == EdgeWikilink && e.TargetLabel == stem {
+				out = append(out, e)
+			}
+		}
+	}
+	sortEdgesBySource(out)
+	return out
+}
+
+// sortEdgesBySource orders edges by (SourceFile, SourceLine, SourceCol)
+// so move and backlink queries return a stable, reviewable order.
+func sortEdgesBySource(edges []Edge) {
+	sort.Slice(edges, func(a, b int) bool {
+		if edges[a].SourceFile != edges[b].SourceFile {
+			return edges[a].SourceFile < edges[b].SourceFile
+		}
+		if edges[a].SourceLine != edges[b].SourceLine {
+			return edges[a].SourceLine < edges[b].SourceLine
+		}
+		return edges[a].SourceCol < edges[b].SourceCol
+	})
 }
 
 // DependencyOrder returns paths reordered so that a file's

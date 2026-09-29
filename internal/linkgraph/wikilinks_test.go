@@ -20,6 +20,31 @@ func TestExtractWikiLinks_NilFileReturnsNil(t *testing.T) {
 	assert.Nil(t, ExtractWikiLinks(nil))
 }
 
+func TestWikilinkStem(t *testing.T) {
+	cases := []struct {
+		name     string
+		target   string
+		wantStem string
+		wantOK   bool
+	}{
+		{"bare page", "Page", "page", true},
+		{"markdown extension", "Notes.md", "notes", true},
+		{"foldered stem uses basename", "folder/API", "api", true},
+		{"mixed case lowercased", "MyDoc", "mydoc", true},
+		{"typed non-markdown returns false", "diagram.png", "", false},
+		{"empty returns false", "", "", false},
+		{"traversal returns false", "../secret", "", false},
+		{"absolute returns false", "/etc/passwd", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			stem, ok := WikilinkStem(tc.target)
+			assert.Equal(t, tc.wantOK, ok)
+			assert.Equal(t, tc.wantStem, stem)
+		})
+	}
+}
+
 func TestExtractWikiLinks_EmptySource(t *testing.T) {
 	f := newFile(t, "")
 	assert.Nil(t, ExtractWikiLinks(f))

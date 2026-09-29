@@ -1,11 +1,12 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"io"
 	"os"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -681,13 +682,22 @@ func collectBuildTargets(
 		f, _ := lint.NewFile(path, src) // NewFile never errors; goldmark always produces an AST
 		targets = append(targets, targetsFromFile(f, root, recipeFilter)...)
 	}
-	sort.SliceStable(targets, func(i, j int) bool {
-		if targets[i].file != targets[j].file {
-			return targets[i].file < targets[j].file
-		}
-		return targets[i].line < targets[j].line
-	})
+	sortBuildTargets(targets)
 	return targets, errs
+}
+
+// sortBuildTargets orders targets by file, then line, in place.
+// slices.SortStableFunc compares the concrete buildTarget values
+// directly, unlike sort.SliceStable, which drives reflect.Swapper
+// under the hood — see docs/development/high-performance-go.md's
+// "reflect in hot paths" anti-pattern.
+func sortBuildTargets(targets []buildTarget) {
+	slices.SortStableFunc(targets, func(a, b buildTarget) int {
+		return cmp.Or(
+			cmp.Compare(a.file, b.file),
+			cmp.Compare(a.line, b.line),
+		)
+	})
 }
 
 // targetsFromFile walks one parsed file's <?build?> marker pairs and

@@ -3,12 +3,12 @@ package util
 
 import (
 	"bytes"
+	"cmp"
 	"io"
 	"math"
 	"net/url"
 	"regexp"
 	"slices"
-	"sort"
 	"strconv"
 	"unicode"
 	"unicode/utf8"
@@ -922,10 +922,14 @@ type PrioritizedValue struct {
 // PrioritizedSlice is a slice of the PrioritizedValues.
 type PrioritizedSlice []PrioritizedValue
 
-// Sort sorts the PrioritizedSlice in ascending order.
+// Sort sorts the PrioritizedSlice in ascending order. slices.SortFunc
+// compares the concrete PrioritizedValue values directly, unlike
+// sort.Slice, which drives reflect.Swapper under the hood — see
+// docs/development/high-performance-go.md's "reflect in hot paths"
+// anti-pattern.
 func (s PrioritizedSlice) Sort() {
-	sort.Slice(s, func(i, j int) bool {
-		return s[i].Priority < s[j].Priority
+	slices.SortFunc(s, func(a, b PrioritizedValue) int {
+		return cmp.Compare(a.Priority, b.Priority)
 	})
 }
 

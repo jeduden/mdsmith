@@ -31,8 +31,13 @@ func TestCheck_ConfiguredSteadyStateAllocs(t *testing.T) {
 	flagged.RunCache = rc
 	require.Len(t, r.Check(flagged), 1)
 
+	// 3, not the rule-wide ≤10 budget: fmt.Sprintf("... %q ...", ...) building
+	// the diagnostic message cost 2 extra allocations (the reflection-driven
+	// format scan plus its []byte result) that strconv.Quote plus string
+	// concatenation does not pay. See
+	// docs/development/high-performance-go.md#strings-and-bytes.
 	allocs = testing.AllocsPerRun(100, func() { _ = r.Check(flagged) })
-	assert.LessOrEqual(t, allocs, 10.0,
+	assert.LessOrEqual(t, allocs, 3.0,
 		"flagged in-scope file, warm index: %v allocs", allocs)
 }
 

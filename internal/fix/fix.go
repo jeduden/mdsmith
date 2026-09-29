@@ -2,10 +2,12 @@ package fix
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"sync"
 
@@ -160,7 +162,7 @@ func (f *Fixer) configuredFor(key string, effective map[string]config.RuleCfg) f
 			fixable = append(fixable, fr)
 		}
 	}
-	sort.Slice(fixable, func(i, j int) bool { return fixable[i].ID() < fixable[j].ID() })
+	sortFixableRulesByID(fixable)
 	fc := fixerConfigured{all: all, fixable: fixable, errs: errs}
 	if f.confCache == nil {
 		f.confCache = make(map[string]fixerConfigured)
@@ -361,16 +363,7 @@ func (f *Fixer) fixOnce(paths []string) *Result {
 	res.Failures = len(lint.DedupeDiagnostics(allBefore))
 
 	res.Diagnostics = lint.DedupeDiagnostics(res.Diagnostics)
-	sort.Slice(res.Diagnostics, func(i, j int) bool {
-		di, dj := res.Diagnostics[i], res.Diagnostics[j]
-		if di.File != dj.File {
-			return di.File < dj.File
-		}
-		if di.Line != dj.Line {
-			return di.Line < dj.Line
-		}
-		return di.Column < dj.Column
-	})
+	sortDiagnostics(res.Diagnostics)
 
 	if f.DryRun {
 		res.WouldFixFiles, res.WouldFix = computeWouldFixAggregated(
@@ -578,9 +571,7 @@ func computeWouldFix(
 	if total == 0 && !bytesChanged {
 		return nil
 	}
-	sort.Slice(rules, func(i, j int) bool {
-		return rules[i].RuleID < rules[j].RuleID
-	})
+	sortRuleFixCounts(rules)
 	return &WouldFixFile{Path: path, Count: total, Rules: rules}
 }
 
@@ -903,8 +894,43 @@ func (f *Fixer) fixableRules(effective map[string]config.RuleCfg) ([]rule.Fixabl
 			fixable = append(fixable, fr)
 		}
 	}
-	sort.Slice(fixable, func(i, j int) bool {
-		return fixable[i].ID() < fixable[j].ID()
-	})
+	sortFixableRulesByID(fixable)
 	return fixable, errs
+}
+
+// sortFixableRulesByID orders a []rule.FixableRule by ID in place.
+// slices.SortFunc compares the concrete rule.FixableRule interface
+// values directly, unlike sort.Slice, which drives reflect.Swapper
+// under the hood — see docs/development/high-performance-go.md's
+// "reflect in hot paths" anti-pattern.
+func sortFixableRulesByID(fixable []rule.FixableRule) {
+	slices.SortFunc(fixable, func(a, b rule.FixableRule) int {
+		return cmp.Compare(a.ID(), b.ID())
+	})
+}
+
+// sortDiagnostics orders diags by file, then line, then column, in
+// place. slices.SortFunc compares the concrete lint.Diagnostic values
+// directly, unlike sort.Slice, which drives reflect.Swapper under the
+// hood — see docs/development/high-performance-go.md's "reflect in
+// hot paths" anti-pattern.
+func sortDiagnostics(diags []lint.Diagnostic) {
+	slices.SortFunc(diags, func(a, b lint.Diagnostic) int {
+		return cmp.Or(
+			cmp.Compare(a.File, b.File),
+			cmp.Compare(a.Line, b.Line),
+			cmp.Compare(a.Column, b.Column),
+		)
+	})
+}
+
+// sortRuleFixCounts orders rules by RuleID in place. slices.SortFunc
+// compares the concrete RuleFixCount values directly, unlike
+// sort.Slice, which drives reflect.Swapper under the hood — see
+// docs/development/high-performance-go.md's "reflect in hot paths"
+// anti-pattern.
+func sortRuleFixCounts(rules []RuleFixCount) {
+	slices.SortFunc(rules, func(a, b RuleFixCount) int {
+		return cmp.Compare(a.RuleID, b.RuleID)
+	})
 }

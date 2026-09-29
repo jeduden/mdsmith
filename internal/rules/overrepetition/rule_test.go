@@ -91,35 +91,22 @@ func TestCheck_Paragraph_ExceedsMax_Diagnostic(t *testing.T) {
 func TestCheck_Section_ExceedsMax_Diagnostic(t *testing.T) {
 	r := &Rule{}
 	mustApply(t, r, map[string]any{"scope": "section", "max": 3, "min-length": 4})
-	// Heading is at line 1; first paragraph is at line 3. Diagnostic anchors at
-	// the first paragraph, not the heading, so editors navigate to prose.
 	src := "# Section\n\nprocess process.\n\nprocess process result.\n"
 	diags := r.Check(mustFile(t, src))
 	require.Len(t, diags, 1)
-	assert.Equal(t, 3, diags[0].Line)
+	assert.Equal(t, 1, diags[0].Line)
 	assert.Contains(t, diags[0].Message, "process")
 }
 
 func TestCheck_Section_NoHeadings_TreatsFileAsOneSection(t *testing.T) {
 	r := &Rule{}
 	mustApply(t, r, map[string]any{"scope": "section", "max": 2, "min-length": 4})
-	// A headingless file is treated as one implicit preamble section, not skipped.
-	src := "word word word.\n"
-	diags := r.Check(mustFile(t, src))
-	require.Len(t, diags, 1)
-	assert.Equal(t, 1, diags[0].Line)
-	assert.Contains(t, diags[0].Message, "word")
-}
-
-func TestCheck_Section_NoHeadings_DiagnosticAnchorsAtFirstParagraph(t *testing.T) {
-	r := &Rule{}
-	mustApply(t, r, map[string]any{"scope": "section", "max": 2, "min-length": 4})
-	// Prose starts at line 3 (after a blank first line); diagnostic must anchor
-	// at line 3, not the hardcoded 1.
+	// A headingless file is all preamble, so it is checked as one implicit
+	// section anchored at line 1, the same way prose before a first heading is.
 	src := "\nword word word.\n"
 	diags := r.Check(mustFile(t, src))
 	require.Len(t, diags, 1)
-	assert.Equal(t, 2, diags[0].Line)
+	assert.Equal(t, 1, diags[0].Line)
 	assert.Contains(t, diags[0].Message, "word")
 }
 
@@ -141,28 +128,28 @@ func TestCheck_Section_PreambleCounted(t *testing.T) {
 	assert.Contains(t, diags[0].Message, "process")
 }
 
-func TestCheck_Section_PreambleDiagnosticAnchorsAtFirstParagraph(t *testing.T) {
+// TestCheck_Section_NestedHeadingViolatesIndependently pins the
+// hierarchical section-window contract astutil.SectionEnd defines: a
+// shallow heading's window extends through its nested subsections (so
+// its own word-frequency count legitimately includes their content),
+// but each nested subsection must still be checked, and flagged,
+// independently against its own narrower window. A cursor optimization
+// that permanently consumes paragraphs once one heading's wider window
+// has scanned them would silently lose every nested subsection's own
+// violation — this was exactly the shape of a regression caught in
+// review. Three headings (level 1, 2, 1) each carry their own
+// violating word, so all three must be reported.
+func TestCheck_Section_NestedHeadingViolatesIndependently(t *testing.T) {
 	r := &Rule{}
 	mustApply(t, r, map[string]any{"scope": "section", "max": 3, "min-length": 4})
-	// Preamble paragraph starts at line 3 (blank line, then prose); diagnostic
-	// must anchor at line 3, not the hardcoded 1.
-	src := "\nprocess process process process.\n\n# Section\n\nonly once.\n"
+	src := "# A\n\nprocess process process process.\n\n" +
+		"## B\n\nprocess process process process.\n\n" +
+		"# C\n\nprocess process process process.\n"
 	diags := r.Check(mustFile(t, src))
-	require.Len(t, diags, 1)
-	assert.Equal(t, 2, diags[0].Line)
-	assert.Contains(t, diags[0].Message, "process")
-}
-
-func TestCheck_Section_AllParagraphsBeforeHeading(t *testing.T) {
-	r := &Rule{}
-	mustApply(t, r, map[string]any{"scope": "section", "max": 3, "min-length": 4})
-	// All paragraphs are before the first heading: slices.IndexFunc returns -1,
-	// so preambleEnd falls back to len(paragraphs) and the whole file is preamble.
-	src := "word word word word.\n\n# Section\n"
-	diags := r.Check(mustFile(t, src))
-	require.Len(t, diags, 1)
-	assert.Equal(t, 1, diags[0].Line)
-	assert.Contains(t, diags[0].Message, "word")
+	require.Len(t, diags, 3, "expected a violation for A, B, and C independently: %+v", diags)
+	assert.Equal(t, 1, diags[0].Line, "section A")
+	assert.Equal(t, 5, diags[1].Line, "section B")
+	assert.Equal(t, 9, diags[2].Line, "section C")
 }
 
 // --- file scope ---
@@ -243,8 +230,8 @@ func TestApplySettings_BadMax_Error(t *testing.T) {
 
 func TestApplySettings_MaxZero_Error(t *testing.T) {
 	// max:0 is ambiguous (0 is the unconfigured Go zero value; the
-	// disabled sentinel is -1). Reject it explicitly so callers get a
-	// clear error instead of silently disabled behaviour.
+	// disabled sentinel is -1). Reject it so the config fails loudly
+	// instead of silently disabling the rule.
 	r := &Rule{}
 	err := r.ApplySettings(map[string]any{"max": 0})
 	require.Error(t, err)
@@ -252,11 +239,16 @@ func TestApplySettings_MaxZero_Error(t *testing.T) {
 }
 
 func TestApplySettings_MaxNegativeOtherThanMinusOne_Error(t *testing.T) {
-	// Any negative value except -1 is undocumented; reject with a clear message.
 	r := &Rule{}
 	err := r.ApplySettings(map[string]any{"max": -5})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "got -5")
+}
+
+func TestApplySettings_MaxMinusOne_Accepted(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{"max": -1}))
+	assert.Equal(t, -1, r.Max)
 }
 
 func TestApplySettings_BadMinLength_Error(t *testing.T) {

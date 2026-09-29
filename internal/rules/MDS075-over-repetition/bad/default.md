@@ -4,7 +4,7 @@ settings:
   max: 3
   min-length: 4
 diagnostics:
-  - line: 3
+  - line: 1
     column: 1
     message: '"process" repeated 5 time(s) in section (max 3)'
 ---

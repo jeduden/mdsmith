@@ -16,6 +16,8 @@ func sessionMethodNames() []string {
 		"check",
 		"fix",
 		"kinds",
+		"rename",
+		"move",
 		"capabilities",
 		"invalidate",
 		"dispose",

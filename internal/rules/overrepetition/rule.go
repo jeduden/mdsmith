@@ -3,7 +3,6 @@
 package overrepetition
 
 import (
-	"cmp"
 	"fmt"
 	"slices"
 	"strings"
@@ -56,7 +55,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	}
 	switch r.Scope {
 	case "file":
-		return r.checkFile(f)
+		return r.checkFile(f, "file")
 	case "paragraph":
 		return r.checkParagraphs(f)
 	default:
@@ -64,42 +63,30 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	}
 }
 
-// checkFile checks word frequency across all prose in the file as one unit.
-func (r *Rule) checkFile(f *lint.File) []lint.Diagnostic {
+// checkFile checks word frequency across all prose in the file as one unit,
+// anchored at line 1. scope names the unit in the message: "file", or
+// "section" when a headingless file is checked under section scope.
+func (r *Rule) checkFile(f *lint.File, scope string) []lint.Diagnostic {
 	paragraphs := astutil.CollectSectionParagraphsWithText(f)
 	freq := make(map[string]int)
 	for i := range paragraphs {
 		r.accum(freq, paragraphs[i].ExtractText(f.Source))
 	}
 	r.removeStopwords(freq)
-	return r.diagFromFreq(freq, 1, "file", f.Path)
+	return r.diagFromFreq(freq, 1, scope, f.Path)
 }
 
 // checkSections checks word frequency per heading-bounded section.
 // Prose before the first heading, and a headingless file as a whole, are
-// treated as an implicit preamble section anchored at line 1. A single freq
-// map is reused across sections (cleared between them) to keep the active-path
-// alloc count within the ≤10 budget.
-//
-// Paragraphs and headings are in ascending line order (document order from
-// ast.Walk). For each section we binary-search for the first paragraph at
-// or after the heading line, then iterate forward until the section end.
-// Sections can overlap (a parent heading's range includes its sub-headings),
-// so each heading runs its own binary search rather than a single two-pointer.
-// This is O(N log M + sum(k_i)) vs the naive O(N×M).
-//
-// Each section diagnostic anchors at the first prose paragraph in the section
-// (rather than the heading itself) so editors and diff tools navigate to
-// prose, not markup.
+// treated as an implicit preamble section anchored at line 1. A single freq map is reused across sections (cleared
+// between them) to keep the active-path alloc count within the ≤10 budget.
 func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 	headings := astutil.CollectSectionHeadings(f)
-	paragraphs := astutil.CollectSectionParagraphsWithText(f)
-
-	// No headings: treat the entire file as one implicit preamble section.
 	if len(headings) == 0 {
-		return r.checkSectionsNoHeadings(f, paragraphs)
+		// Every paragraph is preamble: the whole file is one section.
+		return r.checkFile(f, "section")
 	}
-
+	paragraphs := astutil.CollectSectionParagraphsWithText(f)
 	totalLines := len(f.Lines)
 	if totalLines > 0 && len(f.Lines[totalLines-1]) == 0 {
 		totalLines--
@@ -107,72 +94,53 @@ func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 
 	freq := make(map[string]int, 32) // 32 covers typical prose vocabulary per section
 
+	// lo is a skip-ahead-only cursor into paragraphs, shared by the
+	// preamble scan below and the per-heading loop that follows. It
+	// only ever advances past a paragraph once that paragraph's line
+	// is known to be before every remaining heading's start (headings
+	// are ascending, so a paragraph before headings[i].Line is also
+	// before headings[i+1].Line, headings[i+2].Line, ...) — matching
+	// astutil.SectionBodies's lo cursor. Crucially, lo is NOT advanced
+	// past the paragraphs a heading's own window collects: unlike
+	// maxsectionlength's flat, non-overlapping partition,
+	// astutil.SectionEnd's window for a shallow heading extends past
+	// its nested subsections, so a subsection's own iteration must
+	// still be able to collect paragraphs an ancestor heading's wider
+	// window already walked. This still turns the "skip the already-
+	// passed prefix" work into O(paragraphs) total instead of
+	// O(headings) rescans of it; the "collect this heading's window"
+	// work stays proportional to that section's own size, which is
+	// unavoidable for a hierarchical section model. See
+	// docs/development/high-performance-go.md's "Skip work you don't
+	// need".
+	lo := 0
+
 	// Check preamble paragraphs (before the first heading) as one implicit section.
+	// Skip the allocation when no preamble paragraphs exist (the common case).
+	// Preamble paragraphs precede every heading, so unlike the per-heading
+	// window below, lo can safely advance past them for good.
 	firstHeadingLine := headings[0].Line
-	preambleEnd := slices.IndexFunc(paragraphs, func(p astutil.SectionParagraph) bool {
-		return p.Line >= firstHeadingLine
-	})
-	if preambleEnd < 0 {
-		preambleEnd = len(paragraphs)
-	}
-	firstPreambleLine := 1
-	if preambleEnd > 0 {
-		firstPreambleLine = paragraphs[0].Line
-	}
-	for j := range preambleEnd {
-		r.accum(freq, paragraphs[j].ExtractText(f.Source))
+	for lo < len(paragraphs) && paragraphs[lo].Line < firstHeadingLine {
+		r.accum(freq, paragraphs[lo].ExtractText(f.Source))
+		lo++
 	}
 	var diags []lint.Diagnostic
 	if len(freq) > 0 {
 		r.removeStopwords(freq)
-		if len(freq) > 0 {
-			diags = append(diags, r.diagFromFreq(freq, firstPreambleLine, "section", f.Path)...)
-		}
+		diags = append(diags, r.diagFromFreq(freq, 1, "section", f.Path)...)
 	}
 
 	for i, h := range headings {
 		end := astutil.SectionEnd(headings, i, totalLines)
 		clear(freq)
-		start, _ := slices.BinarySearchFunc(paragraphs, h.Line, cmpParagraphLine)
-		// firstParaLine: diagnostic anchor. Falls back to the heading line when
-		// the section has no prose paragraphs (heading immediately followed by
-		// another heading or end-of-file).
-		firstParaLine := h.Line
-		if start < len(paragraphs) && paragraphs[start].Line < end {
-			firstParaLine = paragraphs[start].Line
-		}
-		for j := start; j < len(paragraphs) && paragraphs[j].Line < end; j++ {
+		lo = astutil.AdvancePastLine(paragraphs, lo, h.Line)
+		for j := lo; j < len(paragraphs) && paragraphs[j].Line < end; j++ {
 			r.accum(freq, paragraphs[j].ExtractText(f.Source))
 		}
 		r.removeStopwords(freq)
-		if len(freq) > 0 {
-			diags = append(diags, r.diagFromFreq(freq, firstParaLine, "section", f.Path)...)
-		}
+		diags = append(diags, r.diagFromFreq(freq, h.Line, "section", f.Path)...)
 	}
 	return diags
-}
-
-// cmpParagraphLine is a package-level comparator for slices.BinarySearchFunc
-// over []SectionParagraph keyed by line number. Defined at package scope so
-// no closure is allocated per call.
-func cmpParagraphLine(p astutil.SectionParagraph, target int) int {
-	return cmp.Compare(p.Line, target)
-}
-
-// checkSectionsNoHeadings handles the headingless-file case for checkSections.
-// The entire file is treated as one implicit preamble section anchored at the
-// first prose paragraph.
-func (r *Rule) checkSectionsNoHeadings(f *lint.File, paragraphs []astutil.SectionParagraph) []lint.Diagnostic {
-	freq := make(map[string]int, 32)
-	for i := range paragraphs {
-		r.accum(freq, paragraphs[i].ExtractText(f.Source))
-	}
-	firstLine := 1
-	if len(paragraphs) > 0 {
-		firstLine = paragraphs[0].Line
-	}
-	r.removeStopwords(freq)
-	return r.diagFromFreq(freq, firstLine, "section", f.Path)
 }
 
 // checkParagraphs checks word frequency per paragraph.

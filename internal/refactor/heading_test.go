@@ -1,4 +1,4 @@
-package rename
+package refactor
 
 import (
 	"errors"
@@ -40,6 +40,14 @@ func (w *memWorkspace) IncomingAnchorEdges(file, slug string) []index.Edge {
 	return w.idx.IncomingEdges(file, slug)
 }
 
+func (w *memWorkspace) IncomingPathEdges(file string) []index.Edge {
+	return w.idx.IncomingPathEdges(file)
+}
+
+func (w *memWorkspace) IncomingWikilinkEdges(stem string) []index.Edge {
+	return w.idx.IncomingWikilinkEdges(stem)
+}
+
 func (w *memWorkspace) Files() []string { return w.idx.Files() }
 
 func (w *memWorkspace) Resolve(file string) (string, []byte, bool) {
@@ -54,7 +62,7 @@ func TestHeading_RewritesCrossFileAnchorsAndRefDef(t *testing.T) {
 		"b.md": "See [setup](a.md#setup) and [cfg](a.md#config).\n\n[ref]: a.md#setup\n",
 	})
 	src := ws.files["a.md"]
-	changes, err := Heading(ws, "a.md", "a.md", src, 1, "Setup", "Install")
+	changes, err := callHeading(ws, "a.md", "a.md", src, 1, "Setup", "Install")
 	require.NoError(t, err)
 
 	// a.md: just the heading-text edit.
@@ -72,11 +80,22 @@ func TestHeading_RewritesCrossFileAnchorsAndRefDef(t *testing.T) {
 	}
 }
 
+func TestHeading_PlanCarriesNoFileOp(t *testing.T) {
+	ws := newMemWorkspace(map[string]string{
+		"a.md": "# Setup\n\nBody.\n",
+	})
+	plan, err := Heading(ws, "a.md", "a.md", ws.files["a.md"], 1, "Setup", "Install")
+	require.NoError(t, err)
+	// A heading rename edits symbols in place; it never relocates a file.
+	assert.Nil(t, plan.FileOp)
+	assert.NotEmpty(t, plan.Edits["a.md"])
+}
+
 func TestHeading_SameFileAnchorSharesKey(t *testing.T) {
 	ws := newMemWorkspace(map[string]string{
 		"a.md": "# Top\n\nJump to [here](#top).\n",
 	})
-	changes, err := Heading(ws, "a.md", "a.md", ws.files["a.md"], 1, "Top", "Start")
+	changes, err := callHeading(ws, "a.md", "a.md", ws.files["a.md"], 1, "Top", "Start")
 	require.NoError(t, err)
 	// Heading edit + same-file anchor edit both land under "a.md".
 	require.Len(t, changes, 1)
@@ -85,7 +104,7 @@ func TestHeading_SameFileAnchorSharesKey(t *testing.T) {
 
 func TestHeading_NoOpWhenUnchanged(t *testing.T) {
 	ws := newMemWorkspace(map[string]string{"a.md": "# Title\n"})
-	changes, err := Heading(ws, "a.md", "a.md", ws.files["a.md"], 1, "Title", "  Title  ")
+	changes, err := callHeading(ws, "a.md", "a.md", ws.files["a.md"], 1, "Title", "  Title  ")
 	require.NoError(t, err)
 	assert.Empty(t, changes)
 	assert.NotNil(t, changes)
@@ -93,7 +112,7 @@ func TestHeading_NoOpWhenUnchanged(t *testing.T) {
 
 func TestHeading_ControlRuneRejected(t *testing.T) {
 	ws := newMemWorkspace(map[string]string{"a.md": "# Title\n"})
-	_, err := Heading(ws, "a.md", "a.md", ws.files["a.md"], 1, "Title", "two\nlines")
+	_, err := callHeading(ws, "a.md", "a.md", ws.files["a.md"], 1, "Title", "two\nlines")
 	var ire InvalidHeadingRuneError
 	require.True(t, errors.As(err, &ire))
 	assert.Equal(t, '\n', ire.Rune)
@@ -102,7 +121,7 @@ func TestHeading_ControlRuneRejected(t *testing.T) {
 
 func TestHeading_EmptySlugRejected(t *testing.T) {
 	ws := newMemWorkspace(map[string]string{"a.md": "# Title\n"})
-	_, err := Heading(ws, "a.md", "a.md", ws.files["a.md"], 1, "Title", "...")
+	_, err := callHeading(ws, "a.md", "a.md", ws.files["a.md"], 1, "Title", "...")
 	assert.ErrorIs(t, err, ErrEmptyHeadingSlug)
 }
 
@@ -110,7 +129,7 @@ func TestHeading_CollisionNamesConflict(t *testing.T) {
 	ws := newMemWorkspace(map[string]string{
 		"a.md": "# Alpha\n\n## Beta\n",
 	})
-	_, err := Heading(ws, "a.md", "a.md", ws.files["a.md"], 1, "Alpha", "Beta")
+	_, err := callHeading(ws, "a.md", "a.md", ws.files["a.md"], 1, "Alpha", "Beta")
 	var hce HeadingCollisionError
 	require.True(t, errors.As(err, &hce))
 	assert.Equal(t, "Beta", hce.Conflict)
@@ -121,14 +140,14 @@ func TestHeading_SameBaseSlugRefreshAllowed(t *testing.T) {
 	// "Title" → "title" keeps the same bare slug; the collision check
 	// is skipped and the heading edit still emits.
 	ws := newMemWorkspace(map[string]string{"a.md": "# Title\n"})
-	changes, err := Heading(ws, "a.md", "a.md", ws.files["a.md"], 1, "Title", "title")
+	changes, err := callHeading(ws, "a.md", "a.md", ws.files["a.md"], 1, "Title", "title")
 	require.NoError(t, err)
 	require.Len(t, changes["a.md"], 1)
 }
 
 func TestHeading_SetextHeadingLine(t *testing.T) {
 	ws := newMemWorkspace(map[string]string{"a.md": "Title\n=====\n"})
-	changes, err := Heading(ws, "a.md", "a.md", ws.files["a.md"], 1, "Title", "Renamed")
+	changes, err := callHeading(ws, "a.md", "a.md", ws.files["a.md"], 1, "Title", "Renamed")
 	require.NoError(t, err)
 	require.Len(t, changes["a.md"], 1)
 	assert.Equal(t, "Renamed", changes["a.md"][0].NewText)
@@ -138,7 +157,7 @@ func TestHeading_TargetLineNotAHeading(t *testing.T) {
 	// computeSlugRemap returns no remap when the line isn't a heading;
 	// only the (degenerate) heading-line edit is produced.
 	ws := newMemWorkspace(map[string]string{"a.md": "# Real\n\nprose\n"})
-	changes, err := Heading(ws, "a.md", "a.md", ws.files["a.md"], 3, "prose", "other")
+	changes, err := callHeading(ws, "a.md", "a.md", ws.files["a.md"], 3, "prose", "other")
 	require.NoError(t, err)
 	require.Len(t, changes, 1)
 }
@@ -151,7 +170,7 @@ func TestHeading_DisambiguatorShift(t *testing.T) {
 		"a.md": "# Dup\n\n## Dup\n",
 		"b.md": "[x](a.md#dup-1)\n",
 	})
-	changes, err := Heading(ws, "a.md", "a.md", ws.files["a.md"], 1, "Dup", "Unique")
+	changes, err := callHeading(ws, "a.md", "a.md", ws.files["a.md"], 1, "Dup", "Unique")
 	require.NoError(t, err)
 	require.Len(t, changes["b.md"], 1)
 	assert.Equal(t, "dup", changes["b.md"][0].NewText)
@@ -165,7 +184,7 @@ func TestHeading_StaleEdgeSkipped(t *testing.T) {
 		"b.md": "[x](a.md#setup)\n",
 	})
 	delete(ws.files, "b.md") // edge survives in idx; bytes vanish
-	changes, err := Heading(ws, "a.md", "a.md", ws.files["a.md"], 1, "Setup", "Install")
+	changes, err := callHeading(ws, "a.md", "a.md", ws.files["a.md"], 1, "Setup", "Install")
 	require.NoError(t, err)
 	require.Len(t, changes["a.md"], 1)
 	assert.Empty(t, changes["b.md"])
@@ -176,7 +195,7 @@ func TestHeading_AngleBracketRefDefDestination(t *testing.T) {
 		"a.md": "# Setup\n",
 		"b.md": "[ref]: <a.md#setup>\n",
 	})
-	changes, err := Heading(ws, "a.md", "a.md", ws.files["a.md"], 1, "Setup", "Install")
+	changes, err := callHeading(ws, "a.md", "a.md", ws.files["a.md"], 1, "Setup", "Install")
 	require.NoError(t, err)
 	require.Len(t, changes["b.md"], 1)
 	e := changes["b.md"][0]
@@ -190,7 +209,7 @@ func TestHeading_LocalAnchorRefDefDestination(t *testing.T) {
 	ws := newMemWorkspace(map[string]string{
 		"a.md": "# Setup\n\n[ref]: #setup\n",
 	})
-	changes, err := Heading(ws, "a.md", "a.md", ws.files["a.md"], 1, "Setup", "Install")
+	changes, err := callHeading(ws, "a.md", "a.md", ws.files["a.md"], 1, "Setup", "Install")
 	require.NoError(t, err)
 	// Heading line + the local ref-def destination.
 	require.Len(t, changes["a.md"], 2)
@@ -201,7 +220,7 @@ func TestHeading_RefDefInCodeBlockNotRewritten(t *testing.T) {
 		"a.md": "# Setup\n",
 		"b.md": "```\n[ref]: a.md#setup\n```\n",
 	})
-	changes, err := Heading(ws, "a.md", "a.md", ws.files["a.md"], 1, "Setup", "Install")
+	changes, err := callHeading(ws, "a.md", "a.md", ws.files["a.md"], 1, "Setup", "Install")
 	require.NoError(t, err)
 	assert.Empty(t, changes["b.md"])
 }
@@ -604,7 +623,7 @@ func TestHeading_ImageInLinkAnchor(t *testing.T) {
 		"b.md": "[![icon](icon.png)](a.md#setup)\n",
 	})
 	src := ws.files["a.md"]
-	changes, err := Heading(ws, "a.md", "a.md", src, 1, "Setup", "Install")
+	changes, err := callHeading(ws, "a.md", "a.md", src, 1, "Setup", "Install")
 	require.NoError(t, err)
 	bEdits := changes["b.md"]
 	require.Len(t, bEdits, 1)

@@ -70,6 +70,7 @@ func (s *Server) handleInitialize(msg *requestMessage) {
 				ResolveProvider:   false,
 			},
 			RenameProvider: &renameOptions{PrepareProvider: true},
+			Workspace:      markdownFileOperationCapabilities(),
 		},
 		ServerInfo: serverInfo{Name: "mdsmith", Version: "lsp"},
 	}

@@ -284,7 +284,30 @@ func extractTag(raw []byte) string {
 	if m == nil {
 		return ""
 	}
-	return strings.ToLower(string(m[1]))
+	return asciiLowerTag(m[1])
+}
+
+// asciiLowerTag returns the lowercased tag name for b in one
+// allocation. tagNameRe only matches [a-zA-Z][a-zA-Z0-9-]*, so b is
+// always ASCII: strings.ToLower(string(b)) allocates the string(b)
+// copy and then, for any uppercase input, a second buffer inside
+// strings.ToLower — see docs/development/high-performance-go.md's
+// allocation guidance on avoiding a redundant intermediate copy.
+func asciiLowerTag(b []byte) string {
+	for _, c := range b {
+		if 'A' <= c && c <= 'Z' {
+			var sb strings.Builder
+			sb.Grow(len(b))
+			for _, c := range b {
+				if 'A' <= c && c <= 'Z' {
+					c += 'a' - 'A'
+				}
+				sb.WriteByte(c)
+			}
+			return sb.String()
+		}
+	}
+	return string(b)
 }
 
 func isClosingTag(raw []byte) bool {

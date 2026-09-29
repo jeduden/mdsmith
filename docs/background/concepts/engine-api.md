@@ -158,23 +158,29 @@ compiled source is taken as-is.
 ## Open namespace and capabilities
 
 `Session.Capabilities()` returns the method names this build supports.
-An example is `["check", "fix", "kinds"]`. JS mirrors it as
-`session.capabilities()`. A caller feature-detects with
-`capabilities().includes("extract")` before calling a method.
+An example is `["check", "fix", "kinds", "rename", "move"]`. JS mirrors
+it as `session.capabilities()`. A caller feature-detects with
+`capabilities().includes("move")` before calling a method.
 
 The list holds method names, never rule IDs. Future plans add methods
-such as `extract`, `query`, `deps`, `rename`, `hover`, and `completion`
-to both sides without rearranging the existing methods. Each new method
-declares itself once on Go's `Session` and once on the proxied JS
-session — there is no central registry.
+such as `extract`, `query`, `deps`, `hover`, and `completion` to both
+sides without rearranging the existing methods. Each new method declares
+itself once on Go's `Session` and once on the proxied JS session — there
+is no central registry.
 
-`Capabilities()` advertises only the mirrored single-file surface
-(`check`, `fix`, `kinds`). The native-only batch ops (`checkPaths`,
-`fixPaths`) are left off, because a JS host can never call them. A
-native test ties the JS proxy method set to the Go `Session` method set
-minus an explicit native-only allowlist. A new *mirrored* method added
-on one side but not the other fails the build. A new native-only batch
-method is allowed once it joins that allowlist.
+`Capabilities()` advertises the mirrored single-file surface (`check`,
+`fix`, `kinds`) plus the refactor pair (`rename`, `move`). Each returns
+a neutral `RefactorPlan`: text edits keyed by workspace-relative file,
+plus an optional `move`. The engine touches no files. The host applies
+the edits and performs any move itself — a WASM host through its own
+API, since `git mv` is unavailable under `GOOS=js`.
+
+The native-only batch ops (`checkPaths`, `fixPaths`) are left off,
+because a JS host can never call them. A native test ties the JS proxy
+method set to the Go `Session` method set minus an explicit native-only
+allowlist. A new *mirrored* method added on one side but not the other
+fails the build. A new native-only batch method is allowed once it joins
+that allowlist.
 
 ## Caching
 

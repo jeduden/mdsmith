@@ -1,10 +1,17 @@
-// Package rename is the workspace rename engine shared by the LSP
-// server and the `mdsmith rename` CLI. It answers one question:
-// given a file's source and a rename target (a heading or a
-// link-reference label), what edits perform the rename, or what
-// typed conflict prevents it? It speaks no LSP wire types — callers
-// adapt the neutral Edit/Position/Range values to their surface.
-package rename
+// Package refactor is the workspace refactor engine shared by the LSP
+// server, the `mdsmith move` / `mdsmith rename` CLI commands, and the
+// WASM engine. It answers one question: given a workspace and an
+// identity change — a file's path, a heading's slug, or a
+// link-reference label — what edits carry that change through every
+// reference, and what file operation (if any) does the host perform?
+//
+// Every operation returns a neutral Plan: per-file Edits keyed by
+// output target (a CLI path or an LSP document URI) plus an optional
+// FileOp the host executes. The engine speaks no LSP wire types and
+// never touches the filesystem — there are no subprocesses under
+// GOOS=js GOARCH=wasm — so callers adapt the neutral values to their
+// surface and run any FileOp themselves.
+package refactor
 
 import (
 	"bytes"
@@ -61,23 +68,25 @@ func (e LabelConflictError) Error() string {
 	return "rename would collide with link reference [" + e.Conflict + "]"
 }
 
-// LinkRef computes the in-file edits that rename a link-reference
-// label from oldLabel to newName. The rewrite is file-local: the
-// `[label]: url` definition plus every `[text][label]` and shortcut
-// `[label]` use. oldLabel is normalized internally (CommonMark
-// link-label normalization: lowercase, whitespace collapsed) so
-// callers may pass raw label text or a pre-normalized form.
+// LinkRef computes a Plan that renames a link-reference label from
+// oldLabel to newName. The rewrite is file-local — the `[label]: url`
+// definition plus every `[text][label]` and shortcut `[label]` use —
+// so every edit groups under fileKey (the CLI file path or LSP
+// document URI the caller keys the source under) and Plan.FileOp is
+// always nil. oldLabel is normalized internally (CommonMark link-label
+// normalization: lowercase, whitespace collapsed) so callers may pass
+// raw label text or a pre-normalized form.
 //
 // Returns ErrEmptyLabel, an InvalidLabelRuneError, or a
-// LabelConflictError without producing any edit when the rename is
+// LabelConflictError with a zero Plan and no edit when the rename is
 // unsafe, so callers can surface the failure before applying.
-func LinkRef(source []byte, oldLabel, newName string) ([]Edit, error) {
+func LinkRef(fileKey string, source []byte, oldLabel, newName string) (Plan, error) {
 	oldLabel = NormalizedLabel([]byte(oldLabel))
 	if strings.TrimSpace(newName) == "" {
-		return nil, ErrEmptyLabel
+		return Plan{}, ErrEmptyLabel
 	}
 	if invalid := invalidLinkRefRune(newName); invalid != 0 {
-		return nil, InvalidLabelRuneError{Rune: invalid}
+		return Plan{}, InvalidLabelRuneError{Rune: invalid}
 	}
 	// A rename that keeps the same normalized label (e.g. "docs api"
 	// → "Docs API") is allowed — it refreshes casing/spacing across
@@ -85,9 +94,26 @@ func LinkRef(source []byte, oldLabel, newName string) ([]Edit, error) {
 	// form so such a rename never collides with itself.
 	newLabel := NormalizedLabel([]byte(newName))
 	if conflict := labelConflict(source, oldLabel, newLabel); conflict != "" {
-		return nil, LabelConflictError{Conflict: conflict}
+		return Plan{}, LabelConflictError{Conflict: conflict}
 	}
-	return linkRefEdits(source, oldLabel, newName), nil
+	edits := linkRefEdits(source, oldLabel, newName)
+	return Plan{Edits: map[string][]Edit{fileKey: edits}}, nil
+}
+
+// HasLinkRef reports whether source defines a reference definition
+// whose normalized label matches label (CommonMark link-label
+// normalization). The `rename` CLI uses it to auto-detect a link-ref
+// rename when `--as` is omitted. Def-shaped lines inside code blocks
+// or paragraph continuations are excluded, matching LinkRef.
+func HasLinkRef(source []byte, label string) bool {
+	want := NormalizedLabel([]byte(label))
+	body, _ := bodyAndFMOffset(source)
+	for _, m := range validRefDefMatches(body) {
+		if m.normLabel == want {
+			return true
+		}
+	}
+	return false
 }
 
 // ValidRefDefBodyLines reports the body-line indices that hold a real

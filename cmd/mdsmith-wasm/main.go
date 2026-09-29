@@ -163,6 +163,36 @@ func newSessionProxy(sess *mdsmith.Session) js.Value {
 				resolve(toJS(res))
 			})
 		}),
+		"rename": js.FuncOf(func(_ js.Value, args []js.Value) any {
+			return newPromise(func(resolve, reject func(any)) {
+				// rename(uri, source, as, oldName, newName); as may be "".
+				if len(args) < 5 || !allStrings(args[:5]) {
+					reject(jsError("rename(uri, source, as, old, new) requires five string arguments"))
+					return
+				}
+				plan, err := sess.Rename(args[0].String(), []byte(args[1].String()),
+					args[2].String(), args[3].String(), args[4].String())
+				if err != nil {
+					reject(jsError(err.Error()))
+					return
+				}
+				resolve(toJS(plan))
+			})
+		}),
+		"move": js.FuncOf(func(_ js.Value, args []js.Value) any {
+			return newPromise(func(resolve, reject func(any)) {
+				if len(args) < 2 || !allStrings(args[:2]) {
+					reject(jsError("move(src, dst) requires two string arguments"))
+					return
+				}
+				plan, err := sess.Move(args[0].String(), args[1].String())
+				if err != nil {
+					reject(jsError(err.Error()))
+					return
+				}
+				resolve(toJS(plan))
+			})
+		}),
 		"capabilities": js.FuncOf(func(_ js.Value, _ []js.Value) any {
 			caps := sess.Capabilities()
 			arr := make([]any, len(caps))
@@ -198,4 +228,15 @@ func uriAndSource(args []js.Value) (string, []byte, bool) {
 		return "", nil, false
 	}
 	return args[0].String(), []byte(args[1].String()), true
+}
+
+// allStrings reports whether every arg is a JS string, so a method that
+// takes a fixed set of string parameters can validate them in one call.
+func allStrings(args []js.Value) bool {
+	for _, a := range args {
+		if a.Type() != js.TypeString {
+			return false
+		}
+	}
+	return true
 }

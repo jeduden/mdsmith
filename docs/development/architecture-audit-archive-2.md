@@ -202,3 +202,80 @@ forbids `cmd/mdsmith` → `internal/lsp`.
 ### nice-to-have (2026-05-19)
 
 `cue/types` not in layering map — [plan/206][206].
+
+## Audit 2026-05-31 (range: 4809097..37488a7)
+
+Plans 200, 201, 202 green. Tax:
+[plan/223][223] (`pkg/mdsmith` private helpers),
+[plan/224][224] (`internal/lint` SRP, now 12 files).
+`linkstyle` helpers — add tests in-place.
+
+[223]: ../../plan/223_arch-fix-mdsmith-helper-tests.md
+
+### nice-to-have (2026-06-02)
+
+`internal/punkt` not in the layering map —
+[plan/225][225]. Separately, [plan/224][224]
+(`internal/lint` SRP) is now implemented:
+`gitignore`, `bytelimit`, and `piparser`
+split into sibling packages.
+
+[225]: ../../plan/225_arch-fix-punkt-layering.md
+
+## Audit 2026-06-07 (range: 37488a7..82583fc)
+
+Plans 203–225 green. Blocker: `Session.CheckSource`
+(public API) had no unit test. Fixed: added
+`pkg/mdsmith/checksource_test.go` with 4 tests.
+Tax: the [tablereadability dedup][2606071930] and
+[include helper test][2606071931] plans.
+
+[2606071930]: ../../plan/2606071930_arch-fix-tablereadability-dup.md
+[2606071931]: ../../plan/2606071931_arch-fix-include-helper-tests.md
+
+## Audit 2026-06-14 (range: 82583fc..aed18aa)
+
+Tax: [build→rules DIP](../../plan/2606141910_arch-fix-build-rules-dip.md),
+[engine wrappers](../../plan/2606141911_arch-fix-engine-deprecated-wrappers.md),
+[secreview tests](../../plan/2606141912_arch-fix-secreview-report-tests.md).
+
+## Audit 2026-06-16 (range: aed18aa..7793b97)
+
+Lazy-parse series (plans 2606141901–2606141904).
+Tax: [new-pkg-docs](../../plan/2606162213_arch-fix-new-pkg-docs.md),
+[helper-tests](../../plan/2606162214_arch-fix-missing-helper-tests.md).
+
+## Audit 2026-06-21 (range: 7793b97..e701b94)
+
+Parity + Layer-0 parse-skip series.
+Symlink containment; engine panic recovery.
+VS Code `kinds` and `rule-doc` commands.
+270 Go/TS sources. No blockers,
+rule-to-rule imports, or DIP violations.
+
+### tax (2026-06-21)
+
+- `internal/engine/runner.go` (1 290 lines) —
+  SRP: 7 concerns. Fixed this cycle: split into
+  `runner_layer0.go`, `runner_cache.go`,
+  `runner_log.go` — [plan/2606211907][2606211907].
+
+- `internal/lint/layer0.go` (1 203 lines) —
+  full Layer-0 block scanner. Fix: split along
+  block-type sub-parsers —
+  [plan/2606211908][2606211908].
+
+- `internal/lsp/server.go` (1 007 lines) —
+  crept back over 1 000 lines. Dispatch-group
+  split — [plan/2606211909][2606211909].
+
+### nice-to-have (2026-06-21)
+
+- `pkg/mdsmith/workspace.go` trivial methods
+  lack "// no test by design" exemptions —
+  [plan/2606211910][2606211910].
+
+[2606211907]: ../../plan/2606211907_arch-fix-runner-srp-split.md
+[2606211908]: ../../plan/2606211908_arch-fix-layer0-split.md
+[2606211909]: ../../plan/2606211909_arch-fix-lsp-server-split.md
+[2606211910]: ../../plan/2606211910_arch-fix-workspace-exemptions.md

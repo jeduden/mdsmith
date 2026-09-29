@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jeduden/mdsmith/internal/rename"
+	"github.com/jeduden/mdsmith/internal/refactor"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -200,7 +200,7 @@ func TestRefDefBracketBytesEdgeCases(t *testing.T) {
 		{"    [over]: x", nil}, // 4 leading spaces is over the limit
 	}
 	for _, tc := range cases {
-		got := rename.RefDefBracketBytes([]byte(tc.row))
+		got := refactor.RefDefBracketBytes([]byte(tc.row))
 		assert.Equal(t, tc.want, got, "row=%q", tc.row)
 	}
 }

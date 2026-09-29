@@ -5,7 +5,6 @@ package tocdirective
 
 import (
 	"bytes"
-	"fmt"
 	"regexp"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -141,10 +140,7 @@ func matchVariant(line []byte) (tocVariant, bool) {
 }
 
 func buildMessage(token string) string {
-	return fmt.Sprintf(
-		"unsupported TOC directive `%s`; use `<?toc?>` (MDS038)",
-		token,
-	)
+	return "unsupported TOC directive `" + token + "`; use `<?toc?>` (MDS038)"
 }
 
 // Fix implements rule.FixableRule. Each matched TOC directive token on its
