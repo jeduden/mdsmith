@@ -6,6 +6,7 @@ package checker
 
 import (
 	"fmt"
+	"reflect"
 	"runtime/debug"
 	"sync"
 
@@ -77,16 +78,15 @@ func ConfigureEnabledRules(
 // state through the same pointer. Stateless rules are returned unchanged,
 // so the common case allocates nothing.
 //
-// The FileResetter assertion runs first so the identity comparison only
-// ever sees a stateful rule: comparing two interface values whose dynamic
-// type is an uncomparable value-type struct (one holding a slice or map —
-// rule.CloneInstance explicitly supports value-type rules) panics at run
-// time, and every enabled rule passes through here.
+// The identity comparison runs only for pointer rules: comparing two
+// interface values whose dynamic type is an uncomparable value-type struct
+// (one holding a slice or map) panics at run time. A value-type rule needs
+// no clone anyway — rule.CloneInstance returns it unchanged.
 func isolateFileState(rl, cr rule.Rule) rule.Rule {
 	if _, ok := cr.(rule.FileResetter); !ok {
 		return cr
 	}
-	if cr != rl {
+	if reflect.ValueOf(cr).Kind() != reflect.Pointer || cr != rl {
 		return cr
 	}
 	return rule.CloneInstance(cr)

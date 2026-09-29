@@ -177,7 +177,27 @@ func TestIsolateFileState(t *testing.T) {
 		assert.NotPanics(t, func() { isolateFileState(rl, rl) },
 			"an identity comparison on an uncomparable value-type rule panics")
 	})
+	t.Run("uncomparableValueFileResetterDoesNotPanic", func(t *testing.T) {
+		rl := htValueResetRule{seen: map[string]int{}}
+		assert.NotPanics(t, func() { isolateFileState(rl, rl) },
+			"an identity comparison on an uncomparable value-type FileResetter panics")
+	})
 }
+
+// htValueResetRule is a value-type FileResetter holding a map, so the
+// identity comparison in isolateFileState must never be reached for it.
+type htValueResetRule struct{ seen map[string]int }
+
+func (htValueResetRule) ID() string                           { return "TST004" }
+func (htValueResetRule) Name() string                         { return "TST004" }
+func (htValueResetRule) Category() string                     { return "test" }
+func (htValueResetRule) Check(_ *lint.File) []lint.Diagnostic { return nil }
+func (htValueResetRule) CheckNode(_ ast.Node, _ bool, _ *lint.File) []lint.Diagnostic {
+	return nil
+}
+func (r htValueResetRule) BeginFile(_ *lint.File) { clear(r.seen) }
+
+var _ rule.FileResetter = htValueResetRule{}
 
 // htValueRule is a value-type rule holding a slice, so two interface
 // values carrying it cannot be compared with == without a run-time panic.
