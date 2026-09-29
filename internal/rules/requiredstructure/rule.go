@@ -503,19 +503,13 @@ func parsePathPatterns(v any) ([]PathPattern, error) {
 		// so an unmatched bracket or other syntax error surfaces as
 		// a config error instead of an MDS020 diagnostic on every
 		// file assigned to the kind.
-		if !doublestar.ValidatePattern(filepath.ToSlash(pat)) {
+		// PathPatternSyntaxForm swaps each `\#(fmvar(...))` reference
+		// for a literal byte, since a reference resolves per document
+		// and its own bytes are not glob syntax.
+		if !doublestar.ValidatePattern(schema.PathPatternSyntaxForm(pat)) {
 			return nil, fmt.Errorf(
 				"path-patterns[%d].pattern %q is not a valid doublestar glob",
 				i, pat)
-		}
-		// A `\#(fmvar(name))` reference resolves per document, so a
-		// typo in one cannot surface as a glob syntax error above.
-		// Check the references' shape here instead, at config time,
-		// so the message points at the pattern rather than at every
-		// file the kind claims.
-		if err := schema.ValidateGlobInterps(pat); err != nil {
-			return nil, fmt.Errorf(
-				"path-patterns[%d].pattern %q: %w", i, pat, err)
 		}
 		out = append(out, PathPattern{Kind: kind, Pattern: pat})
 	}
@@ -2552,7 +2546,8 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 			if matchWorkspacePath(filepath.ToSlash(pp.Pattern), rel) {
 				continue
 			}
-			diags = append(diags, pathPatternDiag(f, rel, pp, ""))
+			diags = append(diags, pathPatternDiag(f, rel, pp,
+				schema.LiteralFmvarHint(pp.Pattern)))
 			continue
 		}
 		if !fmRead {
@@ -2585,7 +2580,7 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 			continue
 		}
 		diags = append(diags, pathPatternDiag(f, rel, pp,
-			schema.InterpolatedGlobHint(resolved)))
+			schema.GlobMismatchHint(nil, []string{pp.Pattern}, resolved)))
 	}
 	return diags
 }

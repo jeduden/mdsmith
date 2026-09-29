@@ -246,10 +246,10 @@ func MissingFmvarErr(name string) error {
 }
 
 // InvalidFmvarPathErr is the shared message for an `fmvar(name)`
-// whose argument is not a parseable CUE path. Both parse-time
-// validators — resolvePatternForCheck for `regex:` and
-// ValidateGlobInterps for globs — report it, so the remedy is worded
-// once.
+// whose argument is not a parseable CUE path. The `regex:` parse-time
+// validator (resolvePatternForCheck) reports it as an error, and the
+// glob surfaces (LiteralFmvarHint) name it in a mismatch hint, so the
+// remedy is worded once.
 func InvalidFmvarPathErr(name string) error {
 	return fmt.Errorf(
 		"`fmvar(%s)`: invalid frontmatter path "+

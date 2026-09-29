@@ -3,6 +3,7 @@ package requiredstructure
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -114,15 +115,57 @@ func TestCheck_PathPatternFmvar_NestedFieldPath(t *testing.T) {
 	expectDiags(t, r.Check(f), 0)
 }
 
-func TestParsePathPatterns_RejectsMalformedInterp(t *testing.T) {
+// A path-pattern that loaded before fmvar interpolation existed must
+// still load: any `\#(` that is not a well-formed fmvar reference is
+// an escaped `#` followed by `(`, as it always was.
+func TestParsePathPatterns_LiteralOpenerLoads(t *testing.T) {
+	for _, pat := range []string{
+		`notes/\#(draft)*.md`,
+		`docs/\#(fmvar(my-key)).md`,
+		`step-\#(digits).md`,
+	} {
+		pp, err := parsePathPatterns([]any{
+			map[string]any{"kind": "doc", "pattern": pat},
+		})
+		require.NoError(t, err, pat)
+		require.Len(t, pp, 1)
+		assert.Equal(t, pat, pp[0].Pattern)
+	}
+}
+
+// A quoted CUE key may hold glob metacharacters. They sit inside the
+// reference, not in the glob, so they must not fail the syntax check.
+func TestParsePathPatterns_QuotedKeyWithBracketLoads(t *testing.T) {
 	_, err := parsePathPatterns([]any{
-		map[string]any{
-			"kind":    "doc",
-			"pattern": `docs/\#(fmvar(my-key)).md`,
-		},
+		map[string]any{"kind": "doc", "pattern": `sub/\#(fmvar("a[b"))/x.md`},
 	})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "must be quoted")
+	require.NoError(t, err)
+}
+
+func TestCheck_PathPatternLiteralOpenerMatchesAsBefore(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("filepath.ToSlash turns the `\\` of a literal `\\#` into a separator on Windows, as it always did")
+	}
+	root := t.TempDir()
+	f := newRootedFile(t, root, "notes/#(draft)-1.md", "# Draft\n")
+	r := &Rule{PathPatterns: []PathPattern{
+		{Kind: "note", Pattern: `notes/\#(draft)*.md`},
+	}}
+	expectDiags(t, r.Check(f), 0)
+}
+
+// A malformed fmvar opener matches literally, so the file misses the
+// kind's path-pattern; the diagnostic says why.
+func TestCheck_PathPatternMalformedFmvarHint(t *testing.T) {
+	root := t.TempDir()
+	f := newRootedFile(t, root, "docs/x.md", "---\nmy-key: x\n---\n# X\n")
+	r := &Rule{PathPatterns: []PathPattern{
+		{Kind: "doc", Pattern: `docs/\#(fmvar(my-key)).md`},
+	}}
+	diags := r.Check(f)
+	expectDiags(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "matched literally")
+	assert.Contains(t, diags[0].Message, "must be quoted")
 }
 
 func TestParsePathPatterns_AcceptsWellFormedInterp(t *testing.T) {

@@ -745,17 +745,28 @@ func loadFromString(t *testing.T, yml string) *Config {
 }
 
 // A `path-pattern:` may interpolate a front-matter value with
-// `\#(fmvar(name))`. The reference resolves per document, so a
-// malformed one is invisible to the doublestar validator; ValidateKinds
-// checks its shape so the error names the kind and its pattern.
-func TestValidateKindsRejectsMalformedPathPatternInterp(t *testing.T) {
+// `\#(fmvar(name))`. Only a well-formed reference interpolates: a
+// pattern that loaded before interpolation existed — any other `\#(`
+// is an escaped `#` followed by `(` — must still load.
+func TestValidateKindsAcceptsLiteralOpenerPathPattern(t *testing.T) {
+	for _, pat := range []string{
+		`notes/\#(draft)*.md`,
+		`.apm/skills/\#(fmvar(my-key))/SKILL.md`,
+	} {
+		cfg := &Config{Kinds: map[string]KindBody{
+			"note": {PathPattern: pat},
+		}}
+		require.NoError(t, ValidateKinds(cfg), pat)
+	}
+}
+
+// The bytes of a reference are not glob syntax, so a quoted CUE key
+// holding `[` must not fail the doublestar check.
+func TestValidateKindsAcceptsQuotedBracketKeyInPathPattern(t *testing.T) {
 	cfg := &Config{Kinds: map[string]KindBody{
-		"apm-skill": {PathPattern: `.apm/skills/\#(fmvar(my-key))/SKILL.md`},
+		"doc": {PathPattern: `sub/\#(fmvar("a[b"))/x.md`},
 	}}
-	err := ValidateKinds(cfg)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "apm-skill")
-	assert.Contains(t, err.Error(), "must be quoted")
+	require.NoError(t, ValidateKinds(cfg))
 }
 
 func TestValidateKindsAcceptsWellFormedPathPatternInterp(t *testing.T) {

@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -112,17 +111,13 @@ func validateKindPathPattern(name string, body KindBody) error {
 	if body.PathPattern == "" {
 		return nil
 	}
-	if !doublestar.ValidatePattern(filepath.ToSlash(body.PathPattern)) {
+	// PathPatternSyntaxForm swaps each `\#(fmvar(...))` reference for
+	// a literal byte: a reference resolves per document, and its own
+	// bytes are not glob syntax.
+	if !doublestar.ValidatePattern(schema.PathPatternSyntaxForm(body.PathPattern)) {
 		return fmt.Errorf(
 			"kind %q: path-pattern %q is not a valid doublestar glob",
 			name, body.PathPattern)
-	}
-	// A `\#(fmvar(name))` reference resolves per document, so a
-	// malformed one is invisible to the glob validator above. Check
-	// its shape here so the error names the kind and its pattern.
-	if err := schema.ValidateGlobInterps(body.PathPattern); err != nil {
-		return fmt.Errorf(
-			"kind %q: path-pattern %q: %w", name, body.PathPattern, err)
 	}
 	return nil
 }

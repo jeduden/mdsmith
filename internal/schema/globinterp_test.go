@@ -1,8 +1,10 @@
 package schema
 
 import (
+	"errors"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/bmatcuk/doublestar/v4"
@@ -12,9 +14,54 @@ import (
 
 func TestPatternHasInterp(t *testing.T) {
 	assert.True(t, PatternHasInterp(`.apm/skills/\#(fmvar(name))/SKILL.md`))
+	assert.True(t, PatternHasInterp(`docs/\#(fmvar("my-key")).md`))
 	assert.False(t, PatternHasInterp("docs/**/*.md"))
 	assert.False(t, PatternHasInterp("#(fmvar(name)).md"),
 		"only the `\\#(` opener starts an interpolation")
+}
+
+// Before fmvar interpolation existed, `\#(` in a glob was an escaped
+// `#` followed by `(`. Only a well-formed `\#(fmvar(<cue-path>))` is
+// a reference now; every other `\#(` keeps its literal meaning, so a
+// glob that loaded and matched before still does.
+func TestPatternHasInterp_OnlyWellFormedFmvarIsAReference(t *testing.T) {
+	for _, p := range []string{
+		`notes/\#(draft)*.md`,       // a deliberate literal
+		`step-\#(digits).md`,        // the regex-only helper
+		`docs/\#(fmvar(my-key)).md`, // not a CUE path
+		`docs/\#(fmvar(name).md`,    // unterminated
+		`docs/\#(fmvar(name) x).md`, // trailing text in the body
+		`docs/\\#(fmvar(name)).md`,  // `\\` escapes the backslash
+	} {
+		assert.False(t, PatternHasInterp(p), p)
+	}
+}
+
+func TestResolveGlobPattern_LeavesLiteralOpenerUntouched(t *testing.T) {
+	for _, p := range []string{
+		`notes/\#(draft)*.md`,
+		`step-\#(digits).md`,
+		`docs/\#(fmvar(my-key)).md`,
+	} {
+		got, err := ResolveGlobPattern(p, nil)
+		require.NoError(t, err, p)
+		assert.Equal(t, p, got)
+	}
+	ok, err := doublestar.Match(`notes/\#(draft)*.md`, "notes/#(draft)-1.md")
+	require.NoError(t, err)
+	assert.True(t, ok, "the literal glob still matches what it matched before")
+}
+
+// A literal opener and a real reference can share one pattern; only
+// the reference is substituted.
+func TestResolveGlobPattern_MixedLiteralOpenerAndReference(t *testing.T) {
+	got, err := ResolveGlobPattern(`notes/\#(draft)-\#(fmvar(id)).md`,
+		map[string]any{"id": "7"})
+	require.NoError(t, err)
+	assert.Equal(t, `notes/\#(draft)-7.md`, got)
+	ok, err := doublestar.Match(got, "notes/#(draft)-7.md")
+	require.NoError(t, err)
+	assert.True(t, ok)
 }
 
 func TestResolveGlobPattern_SubstitutesFrontmatterValue(t *testing.T) {
@@ -150,31 +197,44 @@ func TestResolveGlobPattern_LeavesPlainPatternUntouched(t *testing.T) {
 	assert.Equal(t, "plan/[0-9]*_*.md", got)
 }
 
-func TestResolveGlobPattern_RejectsUnknownHelper(t *testing.T) {
-	_, err := ResolveGlobPattern(`step-\#(digits).md`, nil)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "digits")
-	assert.Contains(t, err.Error(), "fmvar(name)")
+// PathPatternSyntaxForm is what a kind `path-pattern:` is checked
+// against doublestar's syntax with. A reference's own bytes are never
+// glob syntax — a quoted CUE key may hold `[` or `{` — so they are
+// replaced before the check.
+func TestPathPatternSyntaxForm(t *testing.T) {
+	quoted := `sub/\#(fmvar("a[b"))/x.md`
+	require.False(t, doublestar.ValidatePattern(quoted),
+		"precondition: the raw text is not a valid glob")
+	assert.True(t, doublestar.ValidatePattern(PathPatternSyntaxForm(quoted)))
+	assert.Equal(t, ".apm/skills/x/SKILL.md",
+		PathPatternSyntaxForm(`.apm/skills/\#(fmvar(name))/SKILL.md`))
+
+	// A pattern with no reference is checked as it was before
+	// interpolation existed, literal `\#(` included.
+	assert.Equal(t, "plan/[0-9]*.md", PathPatternSyntaxForm("plan/[0-9]*.md"))
+	assert.Equal(t, `notes/\#(draft)*.md`,
+		PathPatternSyntaxForm(`notes/\#(draft)*.md`))
 }
 
-func TestValidateGlobInterps(t *testing.T) {
-	require.NoError(t, ValidateGlobInterps("plan/[0-9]*.md"))
-	require.NoError(t,
-		ValidateGlobInterps(`.apm/skills/\#(fmvar(name))/SKILL.md`))
-	require.NoError(t,
-		ValidateGlobInterps(`docs/\#(fmvar("my-key")).md`))
+// A malformed `fmvar` opener is matched literally, so it can no longer
+// fail at config load. LiteralFmvarHint names it when the pattern
+// then fails to match, which is where the author notices.
+func TestLiteralFmvarHint(t *testing.T) {
+	assert.Empty(t, LiteralFmvarHint("plan/[0-9]*.md"))
+	assert.Empty(t, LiteralFmvarHint(`.apm/skills/\#(fmvar(name))/SKILL.md`))
+	assert.Empty(t, LiteralFmvarHint(`notes/\#(draft)*.md`),
+		"an opener that does not start with fmvar is a deliberate literal")
 
-	err := ValidateGlobInterps(`docs/\#(fmvar(my-key)).md`)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "must be quoted")
+	h := LiteralFmvarHint(`docs/\#(fmvar(my-key)).md`)
+	assert.Contains(t, h, "`\\#(fmvar(my-key))` is matched literally")
+	assert.Contains(t, h, "must be quoted")
 
-	err = ValidateGlobInterps(`docs/\#(fmvar(name).md`)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unterminated")
+	h = LiteralFmvarHint(`docs/\#(fmvar(name).md`)
+	assert.Contains(t, h, "`\\#(fmvar(name).md` is matched literally")
+	assert.Contains(t, h, "unterminated")
 
-	err = ValidateGlobInterps(`docs/\#(digits).md`)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "fmvar(name)")
+	h = LiteralFmvarHint(`docs/\#(fmvar name).md`)
+	assert.Contains(t, h, "only `fmvar(name)` is supported")
 }
 
 // ---- `filename:` wiring ----
@@ -216,10 +276,43 @@ func TestValidateFilename_FmvarMissingFieldReportsClearly(t *testing.T) {
 	assert.Contains(t, diags[0].Message, "frontmatter value missing")
 }
 
-func TestDecodeFilenameField_RejectsMalformedInterp(t *testing.T) {
-	_, err := DecodeFilenameField(`\#(fmvar(my-key)).md`)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "must be quoted")
+// A `filename:` glob that loaded before fmvar interpolation existed
+// must still load: a `\#(` that is not a well-formed fmvar reference
+// is a literal, not a config error.
+func TestDecodeFilenameField_KeepsLiteralOpener(t *testing.T) {
+	for _, p := range []string{
+		`notes-\#(draft)*.md`,
+		`\#(fmvar(my-key)).md`,
+		`step-\#(digits).md`,
+	} {
+		got, err := DecodeFilenameField(p)
+		require.NoError(t, err, p)
+		assert.Equal(t, []string{p}, got)
+	}
+}
+
+// The literal glob keeps matching exactly what filepath.Match matched
+// before interpolation existed, on whichever platform runs the test.
+func TestFilenameDiagnostic_LiteralOpenerMatchesAsBefore(t *testing.T) {
+	const pat, base = `notes-\#(draft)*.md`, "notes-#(draft)-1.md"
+	before, err := filepath.Match(pat, base)
+	require.NoError(t, err)
+	d := FilenameDiagnostic([]string{pat}, base, nil, "kind note")
+	assert.Equal(t, before, d == nil)
+	if runtime.GOOS != "windows" {
+		assert.Nil(t, d, "on POSIX `\\#` is an escaped `#`")
+	}
+}
+
+// A malformed fmvar opener is matched literally; when that makes the
+// basename miss, the hint says why instead of leaving the author to
+// guess that the reference never resolved.
+func TestFilenameDiagnostic_MalformedFmvarHint(t *testing.T) {
+	d := FilenameDiagnostic([]string{`\#(fmvar(my-key)).md`}, "x.md",
+		map[string]any{"my-key": "x"}, "kind note")
+	require.NotNil(t, d)
+	assert.Contains(t, d.Hint, "matched literally")
+	assert.Contains(t, d.Hint, "must be quoted")
 }
 
 // `filename:` is an OR list. One entry whose `\#(fmvar(...))`
@@ -332,11 +425,55 @@ func TestResolveGlobPattern_EmptyValueErrors(t *testing.T) {
 }
 
 func TestEscapeMeta_PlainValueDoesNotAllocate(t *testing.T) {
-	for name, esc := range map[string]func(string) string{
-		"glob":     escapeGlobMeta,
-		"filename": escapeFilenameMeta,
+	for name, esc := range map[string]*strings.Replacer{
+		"glob":     globMetaEscaper,
+		"filename": filenameMetaEscaper,
 	} {
-		allocs := testing.AllocsPerRun(100, func() { _ = esc("code-review") })
+		allocs := testing.AllocsPerRun(100, func() { _ = esc.Replace("code-review") })
 		assert.Zero(t, allocs, name)
 	}
+}
+
+// nextGlobOpener steps over `\x` escape pairs, so an escaped
+// backslash never starts an opener and a trailing escape pair ends
+// the scan.
+func TestNextGlobOpener(t *testing.T) {
+	assert.Equal(t, 2, nextGlobOpener(`a/\#(fmvar(x))`, 0))
+	assert.Equal(t, -1, nextGlobOpener(`a\b`, 0), "an escape pair is not an opener")
+	assert.Equal(t, -1, nextGlobOpener(`a\\#(x)`, 0), "`\\\\` escapes the backslash")
+	assert.Equal(t, -1, nextGlobOpener("plain", 0))
+	assert.Equal(t, -1, nextGlobOpener(`\#(`, 3))
+}
+
+func TestGlobRefAt(t *testing.T) {
+	name, end, err := globRefAt(`a/\#(fmvar(x)).md`, 2)
+	require.NoError(t, err)
+	assert.Equal(t, "x", name)
+	assert.Equal(t, len(`a/\#(fmvar(x))`), end)
+
+	_, end, err = globRefAt(`\#(draft).md`, 0)
+	assert.ErrorIs(t, err, errGlobRefNotFmvar)
+	assert.Equal(t, len(`\#(draft)`), end)
+
+	name, _, err = globRefAt(`\#(fmvar(my-key))`, 0)
+	assert.ErrorIs(t, err, errGlobRefBadPath)
+	assert.Equal(t, "my-key", name)
+
+	_, end, err = globRefAt(`\#(fmvar(x).md`, 0)
+	assert.ErrorIs(t, err, errGlobRefUnterminated)
+	assert.Equal(t, len(`\#(fmvar(x).md`), end)
+}
+
+// GlobMismatchHint ranks an unresolvable reference over a literal
+// fmvar-looking opener, and both over the substituted-pattern hint.
+func TestGlobMismatchHint(t *testing.T) {
+	bad := `docs/\#(fmvar(my-key)).md`
+	assert.Equal(t, "boom",
+		GlobMismatchHint(errors.New("boom"), []string{bad}, "docs/x.md"))
+	assert.Contains(t,
+		GlobMismatchHint(nil, []string{"ok.md", bad}, "docs/x.md"),
+		"matched literally")
+	assert.Equal(t, "with front matter applied: docs/x.md",
+		GlobMismatchHint(nil, []string{"ok.md"}, "docs/x.md"))
+	assert.Empty(t, GlobMismatchHint(nil, []string{"ok.md"}))
 }

@@ -25,9 +25,6 @@ func DecodeFilenameField(v any) ([]string, error) {
 		if t == "" {
 			return nil, nil
 		}
-		if err := ValidateGlobInterps(t); err != nil {
-			return nil, fmt.Errorf("filename %q: %w", t, err)
-		}
 		return []string{t}, nil
 	case []any:
 		return decodeFilenameList(t)
@@ -57,9 +54,6 @@ func decodeFilenameList[T any](list []T) ([]string, error) {
 		if s == "" {
 			return nil, fmt.Errorf(
 				"filename list entries must be non-empty globs")
-		}
-		if err := ValidateGlobInterps(s); err != nil {
-			return nil, fmt.Errorf("filename %q: %w", s, err)
 		}
 		out = append(out, s)
 	}
@@ -129,10 +123,10 @@ func resolveFilenamePatterns(
 			out = append(out, p)
 			continue
 		}
-		// escapeFilenameMeta, not escapeGlobMeta: MatchFilename below
-		// runs filepath.Match, which knows no brace alternatives and
-		// ignores `\` escapes on Windows.
-		r, rErr := resolveGlobPattern(p, fm, escapeFilenameMeta)
+		// filenameMetaEscaper, not globMetaEscaper: MatchFilename
+		// below runs filepath.Match, which knows no brace
+		// alternatives and ignores `\` escapes on Windows.
+		r, rErr := resolveGlobPattern(p, fm, filenameMetaEscaper)
 		if rErr != nil {
 			if unresolved == nil {
 				unresolved = rErr
@@ -195,22 +189,9 @@ func FilenameDiagnostic(
 		Field:     "filename",
 		Actual:    strconv.Quote(base),
 		Expected:  FilenameExpected(patterns),
-		Hint:      unresolvedOrInterpolatedHint(unresolved, interpolated),
+		Hint:      GlobMismatchHint(unresolved, patterns, interpolated...),
 		SchemaRef: ref,
 	}
-}
-
-// unresolvedOrInterpolatedHint picks the hint for a filename
-// mismatch: an unresolvable `\#(fmvar(...))` reference is the schema
-// author's problem and outranks the substituted-pattern hint, which
-// only helps once every reference actually resolved.
-func unresolvedOrInterpolatedHint(
-	unresolved error, interpolated []string,
-) string {
-	if unresolved != nil {
-		return unresolved.Error()
-	}
-	return InterpolatedGlobHint(interpolated...)
 }
 
 // FilenameExpected renders the "expected" clause of a filename

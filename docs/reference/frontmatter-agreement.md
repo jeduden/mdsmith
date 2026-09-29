@@ -104,14 +104,17 @@ schema's `filename:` globs and in a kind's
 `path-pattern:`. Both resolve the reference against
 the document's own front matter before matching.
 
-`digits`, the matcher's other helper, is rejected
-here: a glob has no capture group to read back.
+Only a well-formed `\#(fmvar(<path>))` is
+interpolated. Any other `\#(` keeps its old glob
+meaning: an escaped `#` followed by `(`. That covers
+`\#(digits)`, the matcher's other helper, which has
+no capture group to read back in a glob. So a glob
+written before interpolation existed still loads and
+matches the same files: `notes/\#(draft)*.md` still
+accepts `notes/#(draft)-1.md`.
 
-The `\#(` opener is now reserved in both globs. A
-pattern that used it to match a literal `#(`, such
-as `notes/\#(draft)*.md`, fails at config load with
-an unknown-helper error. Write the `#` as a
-one-byte class instead: `notes/[#](draft)*.md`.
+A pattern with a reference is matched on its raw
+text, so write its separators as `/`, not `\`.
 
 The resolved value's glob metacharacters are
 escaped, so it matches literally. A `name` of `a*b`
@@ -193,12 +196,18 @@ sibling glob may still accept the basename. The
 unresolved message shows only when no entry
 matched.
 
-A malformed reference is a configuration error,
-not a per-document diagnostic: mdsmith exits with
-status 2. A non-identifier key must be quoted —
-`fmvar("my-key")`, not `fmvar(my-key)`. The error
-quotes the offending pattern; for a `path-pattern:`
-it also names the kind.
+A malformed reference is not a config error. Take
+`fmvar(my-key)`, whose key needs quotes. The same
+text was a valid glob before, so it still loads. It
+is matched as literal text. When the path then does
+not match, the hint says why:
+
+```text
+  (`\#(fmvar(my-key))` is matched literally, not
+  interpolated: `fmvar(my-key)`: invalid frontmatter
+  path (non-identifier keys must be quoted, e.g.
+  `fmvar("my-key")`))
+```
 
 ## See also
 

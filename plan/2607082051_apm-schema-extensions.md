@@ -135,6 +135,18 @@ value containing `*` or `?` matches literally rather
 than turning into a wildcard — the glob analogue of
 the regex matcher's `regexp.QuoteMeta`.
 
+Only a well-formed `\#(fmvar(<cue-path>))` is a
+reference. Every other `\#(` keeps its old glob
+meaning, an escaped `#` then `(`. So a glob that
+loaded before this plan still loads and matches the
+same files. A malformed `fmvar` opener is therefore
+not a config error; the mismatch hint names it.
+
+An unquoted YAML date substitutes as written,
+`YYYY-MM-DD`, and a timestamp as RFC 3339. The fix
+sits in `fieldinterp.Stringify`, so catalog rows and
+heading sync render dates the same way.
+
 ## Acceptance Criteria
 
 - [x] A kind with `frontmatter-closed: true` flags a
@@ -151,6 +163,11 @@ the regex matcher's `regexp.QuoteMeta`.
 - [x] A missing `name` field under an `fmvar` path
       matcher produces a clear diagnostic, not a
       panic.
+- [x] A glob that loaded before this plan, such as
+      `notes/\#(draft)*.md`, still loads and matches
+      the same files.
+- [x] `\#(fmvar(date))` with an unquoted YAML date
+      substitutes `YYYY-MM-DD`.
 - [x] Both keys are documented with an APM example.
 - [x] All tests pass: `go test ./...`
 - [x] `go tool -modfile=tools/go.mod golangci-lint
