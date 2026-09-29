@@ -273,7 +273,10 @@ func reportCheckResultStreams(result *engine.Result, opts checkCLIOpts, logger *
 func writeCheckReport(out *bufio.Writer, result *engine.Result, opts checkCLIOpts) error {
 	// SARIF must be emitted even with zero diagnostics so the file is valid
 	// SARIF 2.1.0 (not an empty byte stream) when uploaded to Code Scanning.
-	if !opts.quiet && (len(result.Diagnostics) > 0 || opts.format == "sarif") {
+	// JSON on stdout emits `[]` for the same reason: `--stdout -f json >
+	// out.json` must leave valid JSON, not an empty file.
+	emptyDoc := opts.format == "sarif" || (opts.stdout && opts.format == "json")
+	if !opts.quiet && (len(result.Diagnostics) > 0 || emptyDoc) {
 		if err := writeDiagnostics(out, result.Diagnostics, opts.format, opts.noColor); err != nil {
 			return err
 		}

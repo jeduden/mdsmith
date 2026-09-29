@@ -123,3 +123,62 @@ func TestWriteCheckReport(t *testing.T) {
 			"write failed")
 	})
 }
+
+// A clean run must still leave a valid document in a redirected file:
+// `check --stdout -f json > out.json` on a clean tree writes `[]`,
+// matching the JSON formatter's shape, and sarif writes an empty SARIF
+// log as it always has. --quiet still suppresses all of it, and the
+// default stderr route keeps its existing empty-json behavior.
+func TestReportCheckResultStreams_CleanRunOutput(t *testing.T) {
+	tests := []struct {
+		name            string
+		opts            checkCLIOpts
+		wantOut, errOut string
+		sarifOn         string
+	}{
+		{name: "stdout json", opts: checkCLIOpts{format: "json", stdout: true}, wantOut: "[]\n"},
+		{name: "stdout sarif", opts: checkCLIOpts{format: "sarif", stdout: true}, sarifOn: "stdout"},
+		{
+			name:    "stdout text",
+			opts:    checkCLIOpts{format: "text", stdout: true},
+			wantOut: "stats: checked=1 fixed=0 failures=0 unfixed=0\n",
+		},
+		{name: "stdout json quiet", opts: checkCLIOpts{format: "json", stdout: true, quiet: true}},
+		{name: "stdout sarif quiet", opts: checkCLIOpts{format: "sarif", stdout: true, quiet: true}},
+		{name: "stderr json", opts: checkCLIOpts{format: "json"}},
+		{name: "stderr sarif", opts: checkCLIOpts{format: "sarif"}, sarifOn: "stderr"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out, errOut bytes.Buffer
+			code := reportCheckResultStreams(&engine.Result{FilesChecked: 1}, tt.opts,
+				&vlog.Logger{}, &out, &errOut)
+			assert.Equal(t, 0, code)
+			switch tt.sarifOn {
+			case "stdout":
+				assertEmptySARIF(t, out.Bytes())
+				assert.Empty(t, errOut.String())
+			case "stderr":
+				assertEmptySARIF(t, errOut.Bytes())
+				assert.Empty(t, out.String())
+			default:
+				assert.Equal(t, tt.wantOut, out.String())
+				assert.Equal(t, tt.errOut, errOut.String())
+			}
+		})
+	}
+}
+
+func assertEmptySARIF(t *testing.T, b []byte) {
+	t.Helper()
+	var log struct {
+		Version string `json:"version"`
+		Runs    []struct {
+			Results []any `json:"results"`
+		} `json:"runs"`
+	}
+	require.NoError(t, json.Unmarshal(b, &log), "sarif=%q", b)
+	assert.Equal(t, "2.1.0", log.Version)
+	require.Len(t, log.Runs, 1)
+	assert.Empty(t, log.Runs[0].Results)
+}
