@@ -7,7 +7,8 @@ summary: Move a Markdown file and rewrite every reference to it — incoming lin
 > **Unreleased.** `move` landed after v0.55.1, so the npm, PyPI,
 > and GitHub release binaries at that version answer
 > `unknown command "move"`. It ships with the next release; until
-> then, build from `main` with `go install ./cmd/mdsmith`.
+> then, build from `main` with
+> `go install github.com/jeduden/mdsmith/cmd/mdsmith@main`.
 > Delete this note when a release includes the command.
 
 Relocate a Markdown file and rewrite every reference in one
