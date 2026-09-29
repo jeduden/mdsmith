@@ -2,6 +2,7 @@ package index
 
 import (
 	"math/rand"
+	"reflect"
 	"strconv"
 	"testing"
 )
@@ -41,61 +42,80 @@ func TestSortEdgesBySource_NoReflectSort(t *testing.T) {
 	}
 }
 
-// TestSortEdgesBySource_TiesPreserveInsertionOrder pins the function's
-// own doc comment ("a stable, reviewable order"): edges that tie on
-// every sort key (SourceFile, SourceLine, SourceCol) — for example two
-// edges of different kinds recorded at one heading's declaration
-// position — must come out in the order they went in, not whatever
-// order an unstable sort's internal partitioning happens to leave
-// them. A small tied slice doesn't reliably expose instability (an
-// unstable sort can still leave a handful of equal elements
-// untouched), so this test interleaves three tied groups across 300
-// shuffled edges, large enough to reliably reorder under a plain
-// (unstable) slices.SortFunc.
-func TestSortEdgesBySource_TiesPreserveInsertionOrder(t *testing.T) {
+// TestSortEdgesBySource_DeterministicAcrossInputOrders pins the
+// function's doc comment ("a stable, reviewable order"): its callers
+// collect edges by ranging over the index's file map, so the input
+// order varies from call to call, and the output must not. Edges that
+// tie on (SourceFile, SourceLine, SourceCol) — for example two edges
+// of different kinds recorded at one position — must still land in
+// one fixed order, whatever order they arrive in. A small tied slice
+// doesn't reliably expose an order-dependent result (pdqsort falls
+// back to insertion sort below 13 elements), so this test interleaves
+// three tied groups across 300 edges and sorts two different shuffles
+// of them.
+func TestSortEdgesBySource_DeterministicAcrossInputOrders(t *testing.T) {
 	files := []string{"a.md", "b.md", "c.md"}
 	const n = 300
-	// TargetLabel carries each edge's original global index as a
-	// string, so ties on (SourceFile, SourceLine, SourceCol) — the only
-	// fields sortEdgesBySource compares — can still be traced back to
-	// their input order after the sort and the shuffle.
-	edges := make([]Edge, n)
-	for i := range edges {
-		edges[i] = Edge{
+	// Every edge ties with its group on the three source keys; Kind
+	// and TargetLabel (the edge's index as a string) keep each edge
+	// distinct so a reordering is visible.
+	base := make([]Edge, n)
+	for i := range base {
+		base[i] = Edge{
 			SourceFile:  files[i%len(files)],
 			SourceLine:  1,
 			SourceCol:   1,
+			Kind:        EdgeKind(i % 2),
 			TargetLabel: strconv.Itoa(i),
 		}
 	}
-	rand.New(rand.NewSource(1)).Shuffle(len(edges), func(i, j int) {
-		edges[i], edges[j] = edges[j], edges[i]
-	})
 
-	// wantOrder is the relative order each file's tied edges appear in
-	// right before the sort — the input a stable sort must preserve.
-	wantOrder := map[string][]string{}
-	for _, e := range edges {
-		wantOrder[e.SourceFile] = append(wantOrder[e.SourceFile], e.TargetLabel)
+	sortShuffled := func(seed int64) []Edge {
+		edges := append([]Edge(nil), base...)
+		rand.New(rand.NewSource(seed)).Shuffle(len(edges), func(i, j int) {
+			edges[i], edges[j] = edges[j], edges[i]
+		})
+		sortEdgesBySource(edges)
+		return edges
 	}
 
-	sortEdgesBySource(edges)
-
-	gotOrder := map[string][]string{}
-	for _, e := range edges {
-		gotOrder[e.SourceFile] = append(gotOrder[e.SourceFile], e.TargetLabel)
-	}
-	for _, f := range files {
-		want, got := wantOrder[f], gotOrder[f]
-		if len(want) != len(got) {
-			t.Fatalf("file %q: got %d tied edges, want %d", f, len(got), len(want))
+	first := sortShuffled(1)
+	second := sortShuffled(2)
+	for i := range first {
+		if first[i] != second[i] {
+			t.Fatalf("sortEdgesBySource output depends on input order at position %d: "+
+				"%+v after one shuffle, %+v after another", i, first[i], second[i])
 		}
-		for i := range want {
-			if want[i] != got[i] {
-				t.Fatalf("sortEdgesBySource reordered tied edges in %q at position %d: "+
-					"got TargetLabel %q, want %q (pre-sort order not preserved)",
-					f, i, got[i], want[i])
+	}
+}
+
+// TestCompareEdgesBySource_EveryFieldBreaksTies pins the comparator's
+// completeness: two edges that differ in any one Edge field must not
+// compare equal, or an unstable sort could order them differently
+// from call to call. It walks Edge's fields by reflection, so a field
+// added later without a matching tie-break fails here.
+func TestCompareEdgesBySource_EveryFieldBreaksTies(t *testing.T) {
+	typ := reflect.TypeOf(Edge{})
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		t.Run(field.Name, func(t *testing.T) {
+			var a, b Edge
+			v := reflect.ValueOf(&b).Elem().Field(i)
+			switch v.Kind() {
+			case reflect.String:
+				v.SetString("x")
+			case reflect.Int:
+				v.SetInt(1)
+			case reflect.Bool:
+				v.SetBool(true)
+			default:
+				t.Fatalf("Edge.%s has kind %s; extend this test and compareEdgesBySource",
+					field.Name, v.Kind())
 			}
-		}
+			if compareEdgesBySource(a, b) >= 0 || compareEdgesBySource(b, a) <= 0 {
+				t.Fatalf("compareEdgesBySource does not order edges that differ only in %s",
+					field.Name)
+			}
+		})
 	}
 }

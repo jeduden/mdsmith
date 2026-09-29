@@ -546,22 +546,56 @@ func (i *Index) IncomingWikilinkEdges(stem string) []Edge {
 }
 
 // sortEdgesBySource orders edges by (SourceFile, SourceLine, SourceCol)
-// so move and backlink queries return a stable, reviewable order:
-// SortStableFunc preserves each caller's original relative order for
-// edges that tie on all three keys (for example two edge kinds
-// recorded at the same heading's declaration position), rather than
-// leaving that case to an unstable sort's internal partitioning.
-// slices.SortStableFunc compares the concrete Edge values directly,
-// unlike sort.Slice, which drives reflect.Swapper internally (see
-// docs/development/high-performance-go.md, "reflect in hot paths").
+// so move and backlink queries return a stable, reviewable order. Its
+// callers collect edges by ranging over the index's file map, so the
+// input order varies between calls; compareEdgesBySource breaks every
+// remaining tie on the other Edge fields, so the output is the same
+// whatever order the edges arrive in, even though slices.SortFunc is
+// not a stable sort. slices.SortFunc compares the concrete Edge values
+// directly, unlike sort.Slice, which drives reflect.Swapper internally
+// (see docs/development/high-performance-go.md, "reflect in hot
+// paths"), and pdqsort moves the 96-byte Edge values less than a
+// stable sort's merge rotations would.
 func sortEdgesBySource(edges []Edge) {
-	slices.SortStableFunc(edges, func(a, b Edge) int {
-		return cmp.Or(
-			cmp.Compare(a.SourceFile, b.SourceFile),
-			cmp.Compare(a.SourceLine, b.SourceLine),
-			cmp.Compare(a.SourceCol, b.SourceCol),
-		)
-	})
+	slices.SortFunc(edges, compareEdgesBySource)
+}
+
+// compareEdgesBySource is sortEdgesBySource's total order: SourceFile,
+// SourceLine, SourceCol first, then Kind, TargetFile, TargetAnchor,
+// TargetLabel, and Unresolved (false first) as tie-breaks. Two edges
+// compare equal only when every field is equal, so an unstable sort
+// cannot reorder distinguishable edges. Each key returns as soon as it
+// differs, so the common case compares one string.
+func compareEdgesBySource(a, b Edge) int {
+	if c := strings.Compare(a.SourceFile, b.SourceFile); c != 0 {
+		return c
+	}
+	if a.SourceLine != b.SourceLine {
+		return cmp.Compare(a.SourceLine, b.SourceLine)
+	}
+	if a.SourceCol != b.SourceCol {
+		return cmp.Compare(a.SourceCol, b.SourceCol)
+	}
+	if a.Kind != b.Kind {
+		return cmp.Compare(a.Kind, b.Kind)
+	}
+	if c := strings.Compare(a.TargetFile, b.TargetFile); c != 0 {
+		return c
+	}
+	if c := strings.Compare(a.TargetAnchor, b.TargetAnchor); c != 0 {
+		return c
+	}
+	if c := strings.Compare(a.TargetLabel, b.TargetLabel); c != 0 {
+		return c
+	}
+	switch {
+	case a.Unresolved == b.Unresolved:
+		return 0
+	case a.Unresolved:
+		return 1
+	default:
+		return -1
+	}
 }
 
 // DependencyOrder returns paths reordered so that a file's
