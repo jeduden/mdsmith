@@ -37,6 +37,38 @@ func wordlistFileContractFixture(
 	return cfgPath
 }
 
+// TestWordlistFileContract_MDS060TokensViaListsFile locks MDS060's
+// WordlistTarget() path: tokens declared in a .mdsmith/wordlists/ file
+// and referenced via lists: are counted toward the occurrence limit.
+func TestWordlistFileContract_MDS060TokensViaListsFile(t *testing.T) {
+	// "synergy" appears 3 times in the section; max is 2, so MDS060 fires.
+	cfg := "rules:\n  occurrence:\n    scope: section\n    count: each\n    max: 2\n    lists: [buzzwords]\n"
+	cfgPath := wordlistFileContractFixture(t, cfg, map[string]string{
+		"buzzwords.yaml": "entries:\n  - synergy\n",
+	})
+	dir := filepath.Dir(cfgPath)
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "doc.md"),
+		[]byte("# Introduction\n\nWe need synergy here. Synergy drives growth. Synergy is the answer.\n"),
+		0o644))
+
+	diags := runCheckOnDoc(t, dir)
+
+	var got []diagKey
+	for _, d := range diags {
+		if d.rule == "MDS060" {
+			got = append(got, d)
+		}
+	}
+	// Exactly one diagnostic with the exact count: a wordlist entry
+	// unioned into tokens twice would double it or the diagnostic.
+	assert.Equal(t, []diagKey{{
+		rule:    "MDS060",
+		line:    1,
+		message: `"synergy" appears 3 time(s) in section (max 2)`,
+	}}, got)
+}
+
 // TestWordlistFileContract_ExtendsChainResolvesAndDiagnosticFires locks
 // plan 2606251522's acceptance criterion #1: a wordlist that extends:
 // another resolves the chain, and all three entry sources (inherited,

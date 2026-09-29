@@ -119,6 +119,31 @@ func allocBudgetFS() fstest.MapFS {
 	}
 }
 
+// allocBudgetSettings configures rules whose registered zero-value
+// instance is inert — Check returns before scanning anything until a
+// setting supplies the work — so the gate measures real per-Check cost
+// instead of an early return. Each entry is applied on top of the
+// rule's DefaultSettings, as ConfigureRule does in production.
+var allocBudgetSettings = map[string]map[string]any{
+	// occurrence: no tokens and no pattern means nothing to count.
+	"MDS060": {"tokens": []any{"prose", "section"}, "scope": "section"},
+}
+
+// configuredForAllocBudget returns r configured per
+// allocBudgetSettings, or r itself when it has no entry.
+func configuredForAllocBudget(tb testing.TB, r rule.Rule) rule.Rule {
+	tb.Helper()
+	s, ok := allocBudgetSettings[r.ID()]
+	if !ok {
+		return r
+	}
+	c := rule.CloneRule(r)
+	cfg, ok := c.(rule.Configurable)
+	require.True(tb, ok, "%s has alloc-gate settings but is not Configurable", r.ID())
+	require.NoError(tb, cfg.ApplySettings(s))
+	return c
+}
+
 // allocsForRule returns the parse-subtracted allocs/op for r.Check on
 // the shared fixture. A fresh lint.File is built per iteration so
 // per-File memos start cold, matching what the engine sees in
@@ -127,6 +152,7 @@ func allocBudgetFS() fstest.MapFS {
 // triggers, not the goldmark parse the engine already pays once.
 func allocsForRule(tb testing.TB, r rule.Rule) float64 {
 	tb.Helper()
+	r = configuredForAllocBudget(tb, r)
 	src := []byte(allocBudgetFixture)
 	mapFS := allocBudgetFS()
 	makeFile := func(name string) *lint.File {
