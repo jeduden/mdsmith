@@ -160,14 +160,7 @@ func (f *Fixer) configuredFor(key string, effective map[string]config.RuleCfg) f
 		return fc
 	}
 	all, errs := checker.ConfigureEnabledRules(f.Rules, effective)
-	fixable := make([]rule.FixableRule, 0, len(all))
-	for _, rl := range all {
-		if fr, ok := rl.(rule.FixableRule); ok {
-			fixable = append(fixable, fr)
-		}
-	}
-	sortFixableRulesByID(fixable)
-	fc := fixerConfigured{all: all, fixable: fixable, errs: errs}
+	fc := fixerConfigured{all: all, fixable: fixableSubset(all), errs: errs}
 	if f.confCache == nil {
 		f.confCache = make(map[string]fixerConfigured)
 	}
@@ -879,10 +872,18 @@ func atomicWriteFile(path string, data []byte, mode os.FileMode) error {
 // fixableRules returns enabled rules that implement FixableRule, sorted by ID.
 // Rules are configured through checker.ConfigureEnabledRules: a rule with
 // settings is cloned and configured, and a rule keeping per-file state
-// (rule.FileResetter) gets its own clone, so concurrent callers such as
-// the LSP's Session.Fix never share that state.
+// (rule.FileResetter) gets its own clone, so concurrent
+// pkg/mdsmith.Session Fix and FixRule calls (a Session is documented
+// safe for concurrent use) never share that state.
 func (f *Fixer) fixableRules(effective map[string]config.RuleCfg) ([]rule.FixableRule, []error) {
 	configured, errs := checker.ConfigureEnabledRules(f.Rules, effective)
+	return fixableSubset(configured), errs
+}
+
+// fixableSubset returns the rules in configured that implement
+// FixableRule, sorted by ID. Shared by fixableRules and configuredFor so
+// both fix paths filter and order the configured list the same way.
+func fixableSubset(configured []rule.Rule) []rule.FixableRule {
 	fixable := make([]rule.FixableRule, 0, len(configured))
 	for _, rl := range configured {
 		if fr, ok := rl.(rule.FixableRule); ok {
@@ -890,7 +891,7 @@ func (f *Fixer) fixableRules(effective map[string]config.RuleCfg) ([]rule.Fixabl
 		}
 	}
 	sortFixableRulesByID(fixable)
-	return fixable, errs
+	return fixable
 }
 
 // sortFixableRulesByID orders a []rule.FixableRule by ID in place.
