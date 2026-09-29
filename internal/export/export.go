@@ -35,9 +35,9 @@ const (
 
 // Export returns a portable, directive-free copy of f's source.
 //
-// rules carries the caller's effective ruleset (already cloned and
-// configured via checker.ConfigureRule, and filtered to enabled rules
-// only — like fix.Fixer.fixableRules). Staleness checks (Check mode)
+// rules carries the caller's effective ruleset (already configured via
+// checker.ConfigureRule, and filtered to enabled rules only, as
+// fix.Fixer.fixableRules filters). Staleness checks (Check mode)
 // and regeneration (Fix mode) only consult rules in this slice, so a
 // directive disabled in `.mdsmith.yml` neither produces a stale-body
 // refusal nor gets regenerated on `--fix`.
