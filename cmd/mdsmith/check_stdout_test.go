@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -56,4 +57,22 @@ func TestParseCheckFlags_Stdout(t *testing.T) {
 	opts, _, _, code = parseCheckFlags([]string{"a.md"})
 	require.Equal(t, -1, code)
 	assert.False(t, opts.stdout)
+}
+
+// A closed or broken stderr must not keep diagnostics off stdout, and
+// the exit code must still report the lint result (1), not a write
+// error (2).
+func TestReportCheckResultStreams_BrokenStderrStillWritesStdout(t *testing.T) {
+	opts := checkCLIOpts{format: "json", stdout: true}
+	result := &engine.Result{
+		FilesChecked: 1,
+		Diagnostics:  manyDiagnostics(1),
+		Errors:       []error{errors.New("boom")},
+	}
+	var out bytes.Buffer
+	code := reportCheckResultStreams(result, opts, &vlog.Logger{}, &out, &alwaysErrorWriter{})
+	assert.Equal(t, 1, code)
+	var diags []map[string]any
+	require.NoError(t, json.Unmarshal(out.Bytes(), &diags), "stdout=%q", out.String())
+	assert.Len(t, diags, 1)
 }

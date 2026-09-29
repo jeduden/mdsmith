@@ -244,9 +244,9 @@ func reportCheckResultStreams(result *engine.Result, opts checkCLIOpts, logger *
 	bw := ew
 	if opts.stdout {
 		// Flush errors first so ordering is preserved on a shared tty.
-		if err := ew.Flush(); err != nil {
-			return 2
-		}
+		// A failed flush is ignored, as printErrorsTo ignores its
+		// writes: a closed stderr must not keep diagnostics off stdout.
+		_ = ew.Flush()
 		bw = bufio.NewWriterSize(stdoutW, stderrBufSize)
 	}
 
