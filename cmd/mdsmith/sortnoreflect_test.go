@@ -6,19 +6,18 @@ import (
 	buildexec "github.com/jeduden/mdsmith/internal/build"
 )
 
-// These pin the allocation cost of the CLI output sorts that used
-// sort.Slice / sort.SliceStable, which drive reflect.Swapper
-// internally — the "reflect in hot paths" anti-pattern in
-// docs/development/high-performance-go.md, already fixed the same
+// These pin the allocation cost of two CLI output sorts (`deps` and
+// `build`) that used sort.Slice / sort.SliceStable, which drive
+// reflect.Swapper internally — the "reflect in hot paths" anti-pattern
+// in docs/development/high-performance-go.md, already fixed the same
 // way elsewhere in this codebase (astutil.sortSectionHeadings,
 // mdsmith.sortDirEntries). Each sorts a command-scoped result list
 // once per CLI invocation, not per workspace file, so the win is
 // small but free and matches the project's own established
 // convention. slices.SortFunc on the concrete result type sorts with
-// no reflection. The backlink-record sort now lives in
-// internal/backlinks (see its sortnoreflect_test.go), and the
-// edit-splice sort now lives in internal/refactor (see its
-// sortnoreflect_test.go), after each algorithm moved out of
+// no reflection. Sibling sorts for other cmd/mdsmith subcommands live
+// in their own package's sortnoreflect_test.go (internal/backlinks,
+// internal/refactor) once the algorithm they sort moved out of
 // cmd/mdsmith.
 
 func TestSortDepRecords_NoReflectSort(t *testing.T) {

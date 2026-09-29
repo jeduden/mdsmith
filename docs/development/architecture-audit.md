@@ -49,7 +49,7 @@ None.
   `ApplyEdits`, a pure in-memory transform consistent with
   that package's "never touches the filesystem" contract;
   `writeFilePreservingMode` (touches disk) stays CLI-host.
-- 23 functions across `internal/refactor`, `cmd/mdsmith`,
+- 27 functions across `internal/refactor`, `cmd/mdsmith`,
   `internal/index`, `pkg/mdsmith`, and `cmd/mdsmith-wasm`
   have no dedicated unit test by name, each covered only via
   a caller's scenario test — [plan/2609061915][2609061915].

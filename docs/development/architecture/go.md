@@ -44,8 +44,10 @@ question. The current production set:
 - `internal/index` — the workspace symbol / edge graph (headings, link-ref
   defs, directives, front-matter keys, reverse edges); queried by the LSP,
   schema, and the rename / deps surfaces.
-- `internal/backlinks` and `internal/refactor` — the `list backlinks`
-  matcher and the rename/move engine, shared by the CLI, LSP, and WASM.
+- `internal/backlinks` — the `mdsmith list backlinks` matcher, used
+  only by `cmd/mdsmith`.
+- `internal/refactor` — the rename/move engine, shared by the CLI,
+  LSP, and WASM.
 - `internal/lsp` — speak the Language Server Protocol; consumes the engine.
 - `pkg/markdown` — the one goldmark parse/produce surface (CommonMark+PI);
   `pkg/markdown/flavor` adds extensions. Public; see

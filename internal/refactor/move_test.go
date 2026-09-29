@@ -10,12 +10,13 @@ import (
 // applyEditsToSource splices every edit into source and returns the
 // rewritten text, so a move test can assert on the final file rather
 // than on raw ranges. Delegates to the production ApplyEdits so the
-// test fixture never drifts from the splice algorithm it exercises.
-func applyEditsToSource(source string, edits []Edit) string {
+// test fixture never drifts from the splice algorithm it exercises;
+// an ApplyEdits error fails the calling test rather than the whole
+// binary.
+func applyEditsToSource(t testing.TB, source string, edits []Edit) string {
+	t.Helper()
 	out, err := ApplyEdits([]byte(source), edits)
-	if err != nil {
-		panic(err)
-	}
+	require.NoError(t, err)
 	return string(out)
 }
 
@@ -31,7 +32,7 @@ func TestMove_IncomingFileLinksAndFileOp(t *testing.T) {
 	assert.Equal(t, "a.md", plan.FileOp.From)
 	assert.Equal(t, "docs/a.md", plan.FileOp.To)
 
-	got := applyEditsToSource("See [a](a.md) and [sec](a.md#intro).\n", plan.Edits["b.md"])
+	got := applyEditsToSource(t, "See [a](a.md) and [sec](a.md#intro).\n", plan.Edits["b.md"])
 	assert.Equal(t, "See [a](docs/a.md) and [sec](docs/a.md#intro).\n", got)
 }
 
@@ -45,7 +46,7 @@ func TestMove_RefDefDestination(t *testing.T) {
 
 	// The ref-def destination is rewritten; the [x][a] use (a label,
 	// not a path) is untouched.
-	got := applyEditsToSource("Use [x][a].\n\n[a]: a.md\n", plan.Edits["b.md"])
+	got := applyEditsToSource(t, "Use [x][a].\n\n[a]: a.md\n", plan.Edits["b.md"])
 	assert.Equal(t, "Use [x][a].\n\n[a]: sub/a.md\n", got)
 }
 
@@ -58,7 +59,7 @@ func TestMove_WikilinkStemRewrittenWhenBasenameChanges(t *testing.T) {
 	plan, err := Move(ws, "api.md", "service.md")
 	require.NoError(t, err)
 
-	got := applyEditsToSource(src, plan.Edits["guide.md"])
+	got := applyEditsToSource(t, src, plan.Edits["guide.md"])
 	assert.Equal(t, "See [[service]] and [[service#usage]] and [[service|the API]].\n", got)
 }
 
@@ -108,9 +109,9 @@ func TestMove_DestinationWithSpaceIsPercentEncoded(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "See [a](new%20file.md).\n",
-		applyEditsToSource("See [a](a.md).\n", plan.Edits["link.md"]))
+		applyEditsToSource(t, "See [a](a.md).\n", plan.Edits["link.md"]))
 	assert.Equal(t, "[ref]: new%20file.md\n",
-		applyEditsToSource("[ref]: a.md\n", plan.Edits["refdef.md"]))
+		applyEditsToSource(t, "[ref]: a.md\n", plan.Edits["refdef.md"]))
 }
 
 // TestMove_TitledInlineLinksRewritten locks that an inline link
@@ -130,9 +131,9 @@ func TestMove_TitledInlineLinksRewritten(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "See [a](docs/a.md \"in\").\n",
-		applyEditsToSource("See [a](a.md \"in\").\n", plan.Edits["b.md"]))
+		applyEditsToSource(t, "See [a](a.md \"in\").\n", plan.Edits["b.md"]))
 	assert.Equal(t, "See [o](../sub/o.md \"out\").\n",
-		applyEditsToSource("See [o](sub/o.md \"out\").\n", plan.Edits["a.md"]))
+		applyEditsToSource(t, "See [o](sub/o.md \"out\").\n", plan.Edits["a.md"]))
 }
 
 // TestMove_WikilinkLeftUntouchedWhenDestStemCollides locks that a move
@@ -178,7 +179,7 @@ func TestMove_OutboundRelativeLinksRecomputed(t *testing.T) {
 	plan, err := Move(ws, "docs/a.md", "guide/sub/a.md")
 	require.NoError(t, err)
 
-	got := applyEditsToSource(src, plan.Edits["docs/a.md"])
+	got := applyEditsToSource(t, src, plan.Edits["docs/a.md"])
 	assert.Equal(t,
 		"# A\n\nSee [b](../../docs/b.md), [up](../../top.md), and [ext](https://x.example).\n",
 		got)
@@ -204,7 +205,7 @@ func TestMove_PreservesExplicitRelativeSpelling(t *testing.T) {
 	})
 	plan, err := Move(ws, "docs/a.md", "docs/c.md")
 	require.NoError(t, err)
-	got := applyEditsToSource("See [a](./a.md).\n", plan.Edits["docs/b.md"])
+	got := applyEditsToSource(t, "See [a](./a.md).\n", plan.Edits["docs/b.md"])
 	assert.Equal(t, "See [a](./c.md).\n", got)
 }
 

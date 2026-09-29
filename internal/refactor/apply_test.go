@@ -25,11 +25,12 @@ func TestApplyEdits(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "# Install\n", string(out))
 	})
-	t.Run("two edits same line apply right-to-left", func(t *testing.T) {
-		// `[a](#x) [b](#y)` → rewrite both fragments.
+	t.Run("two edits same line apply regardless of input order", func(t *testing.T) {
+		// `[a](#x) [b](#y)` → rewrite both fragments. Passed out of
+		// order (rightmost first) to confirm ApplyEdits sorts them.
 		out, err := ApplyEdits([]byte("[a](#x) [b](#y)\n"), []Edit{
-			mkEdit(0, 5, 6, "X"),
 			mkEdit(0, 13, 14, "Y"),
+			mkEdit(0, 5, 6, "X"),
 		})
 		require.NoError(t, err)
 		assert.Equal(t, "[a](#X) [b](#Y)\n", string(out))
@@ -53,6 +54,30 @@ func TestApplyEdits(t *testing.T) {
 		// Start past End after mapping → the s>en guard fires.
 		_, err := ApplyEdits([]byte("abcd\n"), []Edit{mkEdit(0, 3, 1, "x")})
 		require.Error(t, err)
+	})
+	t.Run("overlapping edits rejected", func(t *testing.T) {
+		_, err := ApplyEdits([]byte("abcdef\n"), []Edit{
+			mkEdit(0, 0, 4, "x"),
+			mkEdit(0, 2, 6, "y"),
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "overlapping")
+	})
+	t.Run("identical-range edits rejected", func(t *testing.T) {
+		_, err := ApplyEdits([]byte("abcdef\n"), []Edit{
+			mkEdit(0, 1, 3, "x"),
+			mkEdit(0, 1, 3, "y"),
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "overlapping")
+	})
+	t.Run("adjacent non-overlapping edits both apply", func(t *testing.T) {
+		out, err := ApplyEdits([]byte("abcdef\n"), []Edit{
+			mkEdit(0, 0, 3, "X"),
+			mkEdit(0, 3, 6, "Y"),
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "XY\n", string(out))
 	})
 }
 

@@ -34,10 +34,14 @@ test). All are `tax`, not `blocker`.
 - [internal/refactor/move.go][move]:129,146,268,507 —
   `recomputeToken`, `encodePathToken`, `pathEdit`,
   `countFilesWithStem`.
-- [internal/refactor/rename.go][rename]:169,198,254,300,329,393,472,508 —
-  `labelConflict`, `validRefDefMatches`, `linkRefEdits`,
-  `refUseEditsInBody`, `refUseEdit`, `linkTextBounds`,
-  `bodyNewlineCount`, `bodyAndFMOffset`.
+- [internal/refactor/rename.go][rename]:169,254,300,329,393,472,508 —
+  `labelConflict`, `linkRefEdits`, `refUseEditsInBody`,
+  `refUseEdit`, `linkTextBounds`, `bodyNewlineCount`,
+  `bodyAndFMOffset` (a private helper distinct from the
+  exported `BodyAndFMOffset` at line 134 — see task 3's note).
+  `validRefDefMatches`, also in this file, is already covered
+  by `TestValidRefDefMatchesNoRefDefsCheapNoParse` in
+  [perf_test.go][perf-test] and is not listed here.
 - [cmd/mdsmith/move.go][cmd-move]:179 — `applyEditsToFile`.
 - [cmd/mdsmith/rename.go][cmd-rename]:215,272,300,320,337,346,356 —
   `buildWorkspace`, `detectRenameMode`, `headingPlan`,
@@ -72,11 +76,13 @@ the comment next time this file is touched.
 2. Add `TestRecomputeToken`, `TestEncodePathToken`,
    `TestPathEdit`, and `TestCountFilesWithStem` to
    `move_test.go` / `move_coverage_test.go`.
-3. Add `TestLabelConflict`, `TestValidRefDefMatches`,
-   `TestLinkRefEdits`, `TestRefUseEditsInBody`,
-   `TestRefUseEdit`, `TestLinkTextBounds`,
-   `TestBodyNewlineCount`, and `TestBodyAndFMOffset` to
-   `rename_test.go`.
+3. Add `TestLabelConflict`, `TestLinkRefEdits`,
+   `TestRefUseEditsInBody`, `TestRefUseEdit`,
+   `TestLinkTextBounds`, and `TestBodyNewlineCount` to
+   `rename_test.go`. For the private `bodyAndFMOffset`, add
+   `TestBodyAndFMOffsetPrivate` — `TestBodyAndFMOffset` already
+   exists at `rename_test.go:130` for the exported
+   `BodyAndFMOffset`, so the plain name would collide.
 4. Add `TestApplyEditsToFile` to `cmd/mdsmith`'s
    `move_unit_test.go`.
 5. Add `TestBuildWorkspace`, `TestDetectRenameMode`,
@@ -114,6 +120,7 @@ the comment next time this file is touched.
 [fileop-exec]: ../internal/refactor/fileop_exec.go
 [move]: ../internal/refactor/move.go
 [rename]: ../internal/refactor/rename.go
+[perf-test]: ../internal/refactor/perf_test.go
 [cmd-move]: ../cmd/mdsmith/move.go
 [cmd-rename]: ../cmd/mdsmith/rename.go
 [index]: ../internal/index/index.go
