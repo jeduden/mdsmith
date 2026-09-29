@@ -593,9 +593,10 @@ func FilterGeneratedDiags(diags []lint.Diagnostic, ranges []lint.LineRange) []li
 //
 // Each window is a sub-slice of the File's cached zero-copy line
 // strings (lint.(*File).LineStrings), so populating context costs no
-// allocation per diagnostic. The strings alias the source buffer —
-// see LineStrings for the immutability invariant — and stay valid
-// for as long as the diagnostics live.
+// allocation per diagnostic. The strings alias the source buffer
+// (see LineStrings), so they stay valid only as long as it does: the
+// engine copies them out before it reuses a pooled buffer, and any
+// other caller that reuses a source buffer must do the same.
 func PopulateSourceContext(f *lint.File, diags []lint.Diagnostic, context int) {
 	if len(diags) == 0 {
 		return
