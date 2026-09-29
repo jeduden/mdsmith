@@ -342,19 +342,19 @@ func headingTextEdit(source []byte, line int, newName string) (Edit, bool) {
 // package — both need the same ATX text range so the popup an editor
 // shows and the edit the CLI applies never drift apart.
 func ATXHeadingTextByteRange(row []byte) (int, int, bool) {
-	textStart, ok := ATXHeadingTextStart(row)
+	textStart, ok := atxHeadingTextStart(row)
 	if !ok {
 		return 0, 0, false
 	}
-	end := TrimRightSpace(row, textStart, len(row))
-	end = TrimTrailingHashRun(row, textStart, end)
+	end := trimRightSpace(row, textStart, len(row))
+	end = trimTrailingHashRun(row, textStart, end)
 	return textStart, end, true
 }
 
-// ATXHeadingTextStart returns the byte offset where a heading's text
+// atxHeadingTextStart returns the byte offset where a heading's text
 // run begins, or false when row is not an ATX heading line.
-func ATXHeadingTextStart(row []byte) (int, bool) {
-	i := SkipLeadingSpaces(row, 3)
+func atxHeadingTextStart(row []byte) (int, bool) {
+	i := skipLeadingSpaces(row, 3)
 	if i >= len(row) || row[i] != '#' {
 		return 0, false
 	}
@@ -377,10 +377,10 @@ func ATXHeadingTextStart(row []byte) (int, bool) {
 	return i, true
 }
 
-// TrimTrailingHashRun strips a trailing `#` run preceded by whitespace
+// trimTrailingHashRun strips a trailing `#` run preceded by whitespace
 // — the optional ATX closing markers. A `#` run with no preceding
 // whitespace is part of the heading text (e.g. `# foo#bar`).
-func TrimTrailingHashRun(row []byte, start, end int) int {
+func trimTrailingHashRun(row []byte, start, end int) int {
 	if end <= start || row[end-1] != '#' {
 		return end
 	}
@@ -391,11 +391,11 @@ func TrimTrailingHashRun(row []byte, start, end int) int {
 	if k <= start || (row[k-1] != ' ' && row[k-1] != '\t') {
 		return end
 	}
-	return TrimRightSpace(row, start, k-1)
+	return trimRightSpace(row, start, k-1)
 }
 
-// SkipLeadingSpaces advances past up to max leading space bytes.
-func SkipLeadingSpaces(row []byte, max int) int {
+// skipLeadingSpaces advances past up to max leading space bytes.
+func skipLeadingSpaces(row []byte, max int) int {
 	i := 0
 	for i < len(row) && i < max && row[i] == ' ' {
 		i++
@@ -403,9 +403,9 @@ func SkipLeadingSpaces(row []byte, max int) int {
 	return i
 }
 
-// TrimRightSpace returns end shrunk past trailing space/tab bytes in
+// trimRightSpace returns end shrunk past trailing space/tab bytes in
 // row[start:end].
-func TrimRightSpace(row []byte, start, end int) int {
+func trimRightSpace(row []byte, start, end int) int {
 	for end > start && (row[end-1] == ' ' || row[end-1] == '\t') {
 		end--
 	}

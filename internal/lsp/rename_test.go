@@ -522,12 +522,6 @@ func TestHeadingPrepareRangeATX(t *testing.T) {
 	assert.Equal(t, 7, res.Range.End.Character)
 }
 
-// ATXHeadingTextStart, TrimTrailingHashRun, SkipLeadingSpaces,
-// TrimRightSpace, and TrimmedRange used to be duplicated in this
-// package with their own dedicated tests. They now live in
-// internal/refactor (heading.go / heading_test.go), which this
-// package already imports — see headingPrepareRange.
-
 // TestRefDefPrepareRangeHappy drives refDefPrepareRange with a
 // well-formed `[label]: url` line and verifies the returned
 // placeholder and range.

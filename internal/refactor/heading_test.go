@@ -247,39 +247,22 @@ func TestHeadingTextEdit_OutOfRange(t *testing.T) {
 	assert.False(t, ok)
 }
 
+// TestAtxHeadingTextByteRange drives ATXHeadingTextByteRange across
+// the trailing-hash, level, spacing, and tab boundaries both the CLI
+// rename engine and the LSP's prepareRename handler rely on — merged
+// into one table (rather than split across two, or duplicated in
+// internal/lsp) now that both callers share this function.
 func TestAtxHeadingTextByteRange(t *testing.T) {
-	t.Run("trailing hash run", func(t *testing.T) {
-		s, e, ok := ATXHeadingTextByteRange([]byte("## Title ##"))
-		require.True(t, ok)
-		assert.Equal(t, "Title", string([]byte("## Title ##")[s:e]))
-	})
-	t.Run("not atx", func(t *testing.T) {
-		_, _, ok := ATXHeadingTextByteRange([]byte("plain text"))
-		assert.False(t, ok)
-	})
-	t.Run("empty heading", func(t *testing.T) {
-		s, e, ok := ATXHeadingTextByteRange([]byte("### "))
-		require.True(t, ok)
-		assert.Equal(t, s, e)
-	})
-	t.Run("hash#text not closing", func(t *testing.T) {
-		s, e, ok := ATXHeadingTextByteRange([]byte("# foo#bar"))
-		require.True(t, ok)
-		assert.Equal(t, "foo#bar", string([]byte("# foo#bar")[s:e]))
-	})
-}
-
-// TestATXHeadingTextByteRangeCases drives ATXHeadingTextByteRange
-// across the level, spacing, and tab boundaries the LSP's
-// prepareRename handler relies on — moved here (rather than
-// duplicated in internal/lsp) now that both callers share this
-// function.
-func TestATXHeadingTextByteRangeCases(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		row                string
 		wantOK             bool
 		wantStart, wantEnd int
 	}{
+		{"## Title ##", true, 3, 8},
+		{"plain text", false, 0, 0},
+		{"### ", true, 4, 4},
+		{"# foo#bar", true, 2, 9},
 		{"# Hello", true, 2, 7},
 		{"## Hi there", true, 3, 11},
 		{"### Setup ###", true, 4, 9},
@@ -307,27 +290,27 @@ func TestATXHeadingTextByteRangeCases(t *testing.T) {
 }
 
 func TestAtxHeadingTextStart(t *testing.T) {
-	_, ok := ATXHeadingTextStart([]byte("    # x")) // >3 leading spaces
+	_, ok := atxHeadingTextStart([]byte("    # x")) // >3 leading spaces
 	assert.False(t, ok)
-	_, ok = ATXHeadingTextStart([]byte("####### x")) // level 7
+	_, ok = atxHeadingTextStart([]byte("####### x")) // level 7
 	assert.False(t, ok)
-	_, ok = ATXHeadingTextStart([]byte("##foo")) // no space after markers
+	_, ok = atxHeadingTextStart([]byte("##foo")) // no space after markers
 	assert.False(t, ok)
-	i, ok := ATXHeadingTextStart([]byte("#\tx")) // tab separator
+	i, ok := atxHeadingTextStart([]byte("#\tx")) // tab separator
 	require.True(t, ok)
 	assert.Equal(t, 2, i)
-	_, ok = ATXHeadingTextStart([]byte("no hash"))
+	_, ok = atxHeadingTextStart([]byte("no hash"))
 	assert.False(t, ok)
 }
 
 func TestTrimTrailingHashRun(t *testing.T) {
-	assert.Equal(t, 0, TrimTrailingHashRun([]byte(""), 0, 0)) // end<=start
+	assert.Equal(t, 0, trimTrailingHashRun([]byte(""), 0, 0)) // end<=start
 	row := []byte("# abc")
-	assert.Equal(t, 5, TrimTrailingHashRun(row, 2, 5)) // no trailing #
+	assert.Equal(t, 5, trimTrailingHashRun(row, 2, 5)) // no trailing #
 	row = []byte("# a#")
-	assert.Equal(t, 4, TrimTrailingHashRun(row, 2, 4)) // # not preceded by space
+	assert.Equal(t, 4, trimTrailingHashRun(row, 2, 4)) // # not preceded by space
 	row = []byte("#  ###")
-	assert.Equal(t, 1, TrimTrailingHashRun(row, 1, 6)) // k<=start after run
+	assert.Equal(t, 1, trimTrailingHashRun(row, 1, 6)) // k<=start after run
 }
 
 func TestTrimmedRange(t *testing.T) {
@@ -421,15 +404,15 @@ func TestSlicesOfText(t *testing.T) {
 }
 
 func TestSkipLeadingSpaces(t *testing.T) {
-	assert.Equal(t, 2, SkipLeadingSpaces([]byte("  x"), 3))
-	assert.Equal(t, 3, SkipLeadingSpaces([]byte("     x"), 3)) // capped at max
-	assert.Equal(t, 0, SkipLeadingSpaces([]byte("x"), 3))
+	assert.Equal(t, 2, skipLeadingSpaces([]byte("  x"), 3))
+	assert.Equal(t, 3, skipLeadingSpaces([]byte("     x"), 3)) // capped at max
+	assert.Equal(t, 0, skipLeadingSpaces([]byte("x"), 3))
 }
 
 func TestTrimRightSpace(t *testing.T) {
 	row := []byte("ab \t ")
-	assert.Equal(t, 2, TrimRightSpace(row, 0, len(row)))
-	assert.Equal(t, 0, TrimRightSpace([]byte("   "), 0, 3))
+	assert.Equal(t, 2, trimRightSpace(row, 0, len(row)))
+	assert.Equal(t, 0, trimRightSpace([]byte("   "), 0, 3))
 }
 
 func TestInvalidHeadingRuneError_Error(t *testing.T) {

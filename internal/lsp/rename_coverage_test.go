@@ -156,10 +156,6 @@ func TestRenameLinkRefNewlineRejected(t *testing.T) {
 	assert.Equal(t, codeInvalidParams, errResp.Code)
 }
 
-// ATXHeadingTextByteRange's tab-prefixed spacing, trailing-hash, and
-// bare-`##` coverage now lives in internal/refactor (heading_test.go,
-// TestATXHeadingTextByteRangeCases) alongside the function itself.
-
 // TestRefDefBracketBytesEdgeCases covers the rejection paths:
 // missing `[`, missing `]`, missing `:`, leading-space cap.
 func TestRefDefBracketBytesEdgeCases(t *testing.T) {
@@ -935,9 +931,6 @@ func keys(m map[string][]textEdit) []string {
 	}
 	return out
 }
-
-// TrimmedRange's trim-loop coverage now lives in internal/refactor
-// (heading_test.go) alongside the function itself.
 
 // TestMatchLeadingPairAdjacentNoLabelMatch covers the return-false
 // path where the cursor sits in a leading bracket pair, the next
