@@ -39,6 +39,7 @@ warning on stderr, so the skip is never a silent no-op;
 | `-q`, `--quiet`     | false   | Suppress non-error output              |
 | `-v`, `--verbose`   | false   | Show config, files, and rules          |
 | `--explain`         | false   | Attach per-leaf rule provenance        |
+| `--stdout`          | false   | Diagnostics to stdout, not stderr      |
 
 `--follow-symlinks` is tri-state. Omitted defers to the
 config key (default: skip). `--follow-symlinks` or
@@ -59,12 +60,19 @@ the winning source for each leaf setting:
 ]}
 ```
 
+`--stdout` writes diagnostics and the text-format stats line
+to stdout instead of stderr, so a plain redirect captures
+them. Runtime errors, the verbose log, and the non-Markdown
+skip warning stay on stderr. Without the flag, output stays
+on stderr as before.
+
 ## Examples
 
 ```bash
 mdsmith check docs/                  # lint a directory
 mdsmith check -f json docs/          # JSON output
 mdsmith check -f sarif docs/         # SARIF 2.1.0 output
+mdsmith check --stdout -f json docs/ > diagnostics.json
 mdsmith check --explain README.md    # provenance trailer
 echo "# Hi" | mdsmith check -        # lint stdin
 ```

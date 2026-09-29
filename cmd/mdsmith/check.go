@@ -28,6 +28,9 @@ type checkCLIOpts struct {
 	walk         walkCLI
 	maxInputSize string
 	explain      bool
+	// stdout routes diagnostics and the stats line to stdout instead
+	// of stderr. Runtime errors always stay on stderr.
+	stdout bool
 }
 
 // runCheck implements the "check" subcommand: lint files.
@@ -55,8 +58,8 @@ func runCheck(args []string) int {
 func parseCheckFlags(args []string) (checkCLIOpts, []string, bool, int) {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	var (
-		configPath, format, maxInputSize                              string
-		noColor, quiet, verbose, noGitignore, followSymlinks, explain bool
+		configPath, format, maxInputSize                                      string
+		noColor, quiet, verbose, noGitignore, followSymlinks, explain, stdout bool
 	)
 
 	fs.StringVarP(&configPath, "config", "c", "", "Override config file path")
@@ -70,6 +73,9 @@ func parseCheckFlags(args []string) (checkCLIOpts, []string, bool, int) {
 			"=false forces skip over any config opt-in")
 	fs.StringVar(&maxInputSize, "max-input-size", "", "Maximum file size to process (e.g. 2MB, 500KB, 0=unlimited)")
 	fs.BoolVar(&explain, "explain", false, "Attach per-leaf rule provenance to each diagnostic")
+
+	fs.BoolVar(&stdout, "stdout", false,
+		"Write diagnostics to stdout instead of stderr (errors stay on stderr)")
 
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: mdsmith check [flags] [files...]\n\n"+
@@ -106,6 +112,7 @@ func parseCheckFlags(args []string) (checkCLIOpts, []string, bool, int) {
 		},
 		maxInputSize: maxInputSize,
 		explain:      explain,
+		stdout:       stdout,
 	}, fileArgs, hasStdin, -1
 }
 
@@ -205,7 +212,7 @@ func checkDiscovered(opts checkCLIOpts) int {
 // computes the exit code shared by checkFiles, checkStdin, and
 // checkDiscovered.
 func reportCheckResult(result *engine.Result, opts checkCLIOpts, logger *vlog.Logger) int {
-	return reportCheckResultTo(result, opts, logger, os.Stderr)
+	return reportCheckResultStreams(result, opts, logger, os.Stdout, os.Stderr)
 }
 
 // reportCheckResultTo is the injectable form of reportCheckResult.
@@ -221,8 +228,27 @@ func reportCheckResult(result *engine.Result, opts checkCLIOpts, logger *vlog.Lo
 // on diagnostic-heavy runs. The buffer is flushed before the verbose
 // logger line so output ordering on a shared fd is preserved.
 func reportCheckResultTo(result *engine.Result, opts checkCLIOpts, logger *vlog.Logger, stderrW io.Writer) int {
-	bw := bufio.NewWriterSize(stderrW, stderrBufSize)
-	printErrorsTo(bw, result.Errors)
+	return reportCheckResultStreams(result, opts, logger, io.Discard, stderrW)
+}
+
+// reportCheckResultStreams is reportCheckResultTo with a separate
+// stdout writer. Diagnostics and the stats line go to stdoutW when
+// opts.stdout is set and to stderrW otherwise; runtime errors always
+// go to stderrW.
+func reportCheckResultStreams(result *engine.Result, opts checkCLIOpts, logger *vlog.Logger, stdoutW, stderrW io.Writer) int {
+	if !opts.stdout {
+		stdoutW = stderrW
+	}
+	ew := bufio.NewWriterSize(stderrW, stderrBufSize)
+	printErrorsTo(ew, result.Errors)
+	bw := ew
+	if opts.stdout {
+		// Flush errors first so ordering is preserved on a shared tty.
+		if err := ew.Flush(); err != nil {
+			return 2
+		}
+		bw = bufio.NewWriterSize(stdoutW, stderrBufSize)
+	}
 
 	// SARIF must be emitted even with zero diagnostics so the file is valid
 	// SARIF 2.1.0 (not an empty byte stream) when uploaded to Code Scanning.
