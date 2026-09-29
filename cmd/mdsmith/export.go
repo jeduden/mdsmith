@@ -130,8 +130,9 @@ func doExport(path string, flags exportFlags) int {
 // resolves the effective rule config from .mdsmith.yml kinds and
 // overrides (and any front-matter `kinds:`), then returns the set of
 // directive rules to consult for staleness/regeneration. Each
-// returned rule is a clone with its per-file settings applied via
-// checker.ConfigureRule, and disabled rules are excluded — matching
+// returned rule has its per-file settings applied via
+// checker.ConfigureRule (a clone when it has settings; see
+// configuredEnabledRules), and disabled rules are excluded — matching
 // `mdsmith check`/`fix` so a directive turned off in `.mdsmith.yml`
 // neither flags a stale body nor gets regenerated on `--fix`.
 //
@@ -223,9 +224,13 @@ func exportFrontMatterFields(
 	return fields, nil
 }
 
-// configuredEnabledRules clones+configures every enabled rule via
-// checker.ConfigureRule, the same path fix.Fixer.fixableRules uses.
-// A settings-apply error short-circuits the export with a clear
+// configuredEnabledRules configures every enabled rule via
+// checker.ConfigureRule, one rule at a time, cloning only rules that
+// have settings. Unlike checker.ConfigureEnabledRules (which
+// fix.Fixer.fixableRules uses), it does not clone a rule.FileResetter
+// that has no settings: export is a one-shot, single-goroutine CLI
+// path, so no two callers share that state. A settings-apply error
+// short-circuits the export with a clear
 // message rather than silently dropping the rule.
 func configuredEnabledRules(
 	all []rule.Rule, effective map[string]config.RuleCfg,
