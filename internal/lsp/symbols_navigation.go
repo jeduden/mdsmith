@@ -10,6 +10,11 @@ import (
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 )
 
+// LSP navigation handlers: textDocument/definition, /implementation,
+// and /references, plus the target-resolution helpers they share. Split
+// out of symbols.go so each LSP dispatch group owns its own file
+// (cf. rename.go, completion.go).
+
 // sortLocationsByURIThenLine orders locs by (URI, Range.Start.Line), the
 // order every reference/navigation handler in this file wants. Using
 // slices.SortFunc compares the concrete location values directly,
@@ -26,11 +31,6 @@ func sortLocationsByURIThenLine(locs []location) {
 		)
 	})
 }
-
-// LSP navigation handlers: textDocument/definition, /implementation,
-// and /references, plus the target-resolution helpers they share. Split
-// out of symbols.go so each LSP dispatch group owns its own file
-// (cf. rename.go, completion.go).
 
 // handleDefinition resolves textDocument/definition.
 func (s *Server) handleDefinition(msg *requestMessage) {
