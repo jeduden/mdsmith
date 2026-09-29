@@ -34,10 +34,13 @@ code 2.
   its spelling — an explicit `./x` keeps the prefix.
 - **Ref-def destinations.** A `[label]: src` definition line is
   repointed the same way.
-- **Outbound inline links and images inside the moved file.** Each
-  inline `[x](path)` or `![x](path)` in `src` is recomputed so it
-  still resolves from `dst`'s directory. Moving `docs/a.md` to
-  `guide/a.md` fixes its own `[x](./b.md)` as well as the links pointing at it.
+- **Outbound inline links and images inside the moved file.**
+  Each inline `[x](path)` or `![x](path)` in `src` is recomputed
+  so it still resolves from `dst`'s directory. Moving
+  `docs/a.md` to `guide/a.md` fixes its own `[x](./b.md)` as
+  well as the links pointing at it. Link-shaped text in a code
+  span, a code block, or an HTML comment is not a link, so it
+  stays as written.
 - **Wikilinks.** `[[old-stem]]` becomes `[[new-stem]]` only when
   the basename stem changes. A move that keeps the basename
   (`docs/api.md` → `ref/api.md`) leaves wikilinks alone, because
@@ -52,8 +55,8 @@ cross-directory move can leave them stale. Two kinds need a
 manual fix. One is `<?include?>`, `<?build?>`, and `<?catalog?>`
 directive paths. The other is a reference definition the file
 declares itself, such as `[label]: ../other.md`. Only inline
-links are recomputed; ref-defs elsewhere that point at the file
-are still repointed.
+links and images are recomputed; ref-defs elsewhere that point
+at the file are still repointed.
 
 ## How the file is moved
 
