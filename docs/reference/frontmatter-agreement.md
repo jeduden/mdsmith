@@ -107,6 +107,12 @@ the document's own front matter before matching.
 `digits`, the matcher's other helper, is rejected
 here: a glob has no capture group to read back.
 
+The `\#(` opener is now reserved in both globs. A
+pattern that used it to match a literal `#(`, such
+as `notes/\#(draft)*.md`, fails at config load with
+an unknown-helper error. Write the `#` as a
+one-byte class instead: `notes/[#](draft)*.md`.
+
 The resolved value's glob metacharacters are
 escaped, so it matches literally. A `name` of `a*b`
 matches the directory `a*b` and not `axxb` — the
