@@ -35,10 +35,11 @@ var interruptingLines = []string{
 }
 
 // specOnlyInterrupting interrupt a paragraph under the CommonMark spec
-// but not under the goldmark fork, which still requires an uppercase
-// letter after "<!" (the spec before 0.30). InterruptsParagraph follows
-// the spec, so reflow never relies on the fork's narrower reading.
-var specOnlyInterrupting = []string{"<!doctype html"}
+// but not under the goldmark fork. The fork still requires an uppercase
+// letter after "<!" (the spec before 0.30), and a space rather than a tab
+// after a block tag name. InterruptsParagraph follows the spec, so reflow
+// never relies on the fork's narrower reading.
+var specOnlyInterrupting = []string{"<!doctype html", "<div\tx"}
 
 // continuingLines stay paragraph text after a paragraph line.
 var continuingLines = []string{
@@ -78,6 +79,8 @@ func TestInterruptsParagraph(t *testing.T) {
 // TestInterruptsParagraph_MatchesParser checks each table entry against
 // the canonical parser: the entry follows a paragraph line, and the
 // paragraph keeps both lines exactly when InterruptsParagraph is false.
+// The spec-only entries are the exception: the parser keeps them in the
+// paragraph.
 func TestInterruptsParagraph_MatchesParser(t *testing.T) {
 	check := func(line string, want bool) {
 		f, err := NewFile("t.md", []byte("para\n"+line+"\n"))
@@ -91,6 +94,9 @@ func TestInterruptsParagraph_MatchesParser(t *testing.T) {
 		check(line, true)
 	}
 	for _, line := range continuingLines {
+		check(line, false)
+	}
+	for _, line := range specOnlyInterrupting {
 		check(line, false)
 	}
 }

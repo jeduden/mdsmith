@@ -18,10 +18,12 @@ package lint
 // Everything else continues the paragraph, including indented code, HTML
 // type 7, an empty list item, and an ordered item that starts at another
 // number. Up to three spaces of indent are allowed, as CommonMark allows.
-// The block detectors are the Layer 0 scanner's, so this agrees with the
-// goldmark fork the scanner mirrors. Where the fork is narrower than the
-// spec (it wants an uppercase letter after "<!", and a space rather than
-// a tab after a block tag name), the spec wins, so the answer holds for
+// The block detectors are the Layer 0 scanner's, which mirrors the
+// goldmark fork. The answer is true when either the fork or the spec
+// reads the line as a block start. Where the fork is narrower (it wants
+// an uppercase letter after "<!", and a space rather than a tab after a
+// block tag name), the spec wins. Where it is broader (it allows spaces
+// between "</" and the tag name), the fork wins. So the answer holds for
 // both mdsmith's parser and other CommonMark renderers.
 func InterruptsParagraph(line []byte) bool {
 	if isBlankLine(line) || isSetextUnderline(line) || isThematicBreak(line) || isATXHeadingLine(line) {
