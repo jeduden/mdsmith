@@ -98,11 +98,22 @@ func TestCheck_Section_ExceedsMax_Diagnostic(t *testing.T) {
 	assert.Contains(t, diags[0].Message, "process")
 }
 
-func TestCheck_Section_NoHeadings_NoDiagnostic(t *testing.T) {
+func TestCheck_Section_NoHeadings_TreatsFileAsOneSection(t *testing.T) {
 	r := &Rule{}
 	mustApply(t, r, map[string]any{"scope": "section", "max": 2, "min-length": 4})
-	// Without headings, section scope finds no sections
-	src := "word word word.\n"
+	// A headingless file is all preamble, so it is checked as one implicit
+	// section anchored at line 1, the same way prose before a first heading is.
+	src := "\nword word word.\n"
+	diags := r.Check(mustFile(t, src))
+	require.Len(t, diags, 1)
+	assert.Equal(t, 1, diags[0].Line)
+	assert.Contains(t, diags[0].Message, "word")
+}
+
+func TestCheck_Section_NoHeadings_UnderMax_NoDiagnostic(t *testing.T) {
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"scope": "section", "max": 3, "min-length": 4})
+	src := "word word.\n"
 	assert.Empty(t, r.Check(mustFile(t, src)))
 }
 
@@ -215,6 +226,29 @@ func TestApplySettings_BadMax_Error(t *testing.T) {
 	r := &Rule{}
 	err := r.ApplySettings(map[string]any{"max": "not-a-number"})
 	assert.Error(t, err)
+}
+
+func TestApplySettings_MaxZero_Error(t *testing.T) {
+	// max:0 is ambiguous (0 is the unconfigured Go zero value; the
+	// disabled sentinel is -1). Reject it so the config fails loudly
+	// instead of silently disabling the rule.
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"max": 0})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "got 0")
+}
+
+func TestApplySettings_MaxNegativeOtherThanMinusOne_Error(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"max": -5})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "got -5")
+}
+
+func TestApplySettings_MaxMinusOne_Accepted(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{"max": -1}))
+	assert.Equal(t, -1, r.Max)
 }
 
 func TestApplySettings_BadMinLength_Error(t *testing.T) {

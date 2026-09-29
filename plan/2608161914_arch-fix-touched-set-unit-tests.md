@@ -3,7 +3,7 @@ id: 2608161914
 title: >-
   Add dedicated unit tests for the 2026-08-16 touched-set
   tax findings
-status: "🔲"
+status: "✅"
 model: haiku
 summary: >-
   Six new functions across cmd/mdsmith, pkg/mdsmith,
@@ -91,16 +91,31 @@ methods already have tests).
    ./internal/rules/astutil/... ./pkg/markdown/flavor/...`
    passes.
 
+## Review follow-ups
+
+PR review on this branch also changed behavior outside
+the six tax findings. Each change landed test-first:
+
+- MDS075 under `section` scope checks a headingless
+  file as one preamble section, and `max:` rejects `0`
+  and values below `-1`.
+- Schema composition compares `filename:` lists as
+  sets, so order and repeated globs do not conflict.
+- `DecodeFilenameField` rejects an empty entry in a
+  `[]string` list, the same as a YAML list.
+- MDS056's matcher cache key sorts and de-duplicates
+  needles, so equal lists share one automaton.
+
 ## Acceptance Criteria
 
-- [ ] Every function named in the Background section has a
+- [x] Every function named in the Background section has a
       test carrying its own name (or a named subtest under
       one parent test, per tests.md's "sub-behaviours"
       allowance).
-- [ ] `go test ./...` is green.
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run`
+- [x] `go test ./...` is green.
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues.
-- [ ] `mdsmith check .` is green.
+- [x] `mdsmith check .` is green.
 
 [audit-log]: ../docs/development/architecture-audit.md
 [tests]: ../docs/development/architecture/tests.md
