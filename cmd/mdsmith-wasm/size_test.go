@@ -9,6 +9,9 @@ import (
 	"testing"
 )
 
+// mib is shared by every size budget and measurement below.
+const mib = 1024 * 1024
+
 // Size budgets for the shipping standard-Go WASM artifact, built with
 // the same -trimpath -ldflags="-s -w" flags as build.sh.
 //
@@ -29,8 +32,6 @@ import (
 // regression. Bumped to 4.25 MiB, ~260 KB of headroom above the
 // measurement that prompted the bump; still well under the 14 MiB raw
 // ceiling.
-const mib = 1024 * 1024
-
 const (
 	maxWASMRawBytes  = 14 * mib      // 14 MiB (< 18 MiB plan-215 budget)
 	maxWASMGzipBytes = 4*mib + mib/4 // 4.25 MiB

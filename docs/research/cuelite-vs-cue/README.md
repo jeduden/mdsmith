@@ -76,7 +76,7 @@ positions follow from that:
 | ------------------------ | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | Dependency graph         | ~95 packages + `cockroachdb/apd` + protobuf           | standard library only                                                                                    |
 | Engine size              | full language platform                                | ~8.9 k source lines (+ ~7.9 k test lines)                                                                |
-| WASM artifact (stripped) | ~37.9 MB raw                                          | ~11.2 MB raw / ~2.8 MB gzipped                                                                           |
+| WASM artifact (stripped) | ~37.9 MB raw                                          | ~13.1 MB raw / ~4.0 MB gzipped                                                                           |
 | Validate hot path        | ~33 µs/op, ~213 allocs/op, JSON round-trip per check  | 7.9 µs/op, 85 allocs/op, `CompileMap` direct on `map[string]any`                                         |
 | Cold compile+validate    | ~63 µs/op                                             | 22.1 µs/op, 205 allocs/op                                                                                |
 | Number model             | arbitrary-precision decimal (apd)                     | int64 / float64, overflow-checked                                                                        |
