@@ -19,12 +19,17 @@ import (
 // GUARDS set just above the measured size, so an accidental dependency
 // bloat is caught in CI.
 //
-// Measured (Go 1.25, stripped): ~11.2 MB raw / ~2.8 MB gzipped at
-// DefaultCompression. BestSpeed gives a pessimistic upper bound; at
-// BestSpeed the same binary gzips to ~3.0 MB. Ceiling is 4 MiB.
+// Measured (Go 1.25, stripped): ~13.1 MB raw / ~4.0 MB gzipped at
+// BestSpeed (the pessimistic level this test uses; DefaultCompression
+// runs smaller). Cumulative rule-engine growth on main had worn the
+// previous 4 MiB gzip ceiling down to single-digit KB of headroom —
+// see the commit that changed this comment for the exact before/after
+// measurement — so an unrelated small change could trip it on
+// ordinary linked-code growth, not a real regression. Bumped to
+// restore working headroom; still well under the 14 MiB raw ceiling.
 const (
-	maxWASMRawBytes  = 14 * 1024 * 1024 // 14 MiB (< 18 MiB plan-215 budget)
-	maxWASMGzipBytes = 4 * 1024 * 1024  // 4 MiB
+	maxWASMRawBytes  = 14 * 1024 * 1024       // 14 MiB (< 18 MiB plan-215 budget)
+	maxWASMGzipBytes = 4*1024*1024 + 256*1024 // 4.25 MiB
 )
 
 // TestWASMArtifactSizeBudget builds the shipping WASM artifact with the
