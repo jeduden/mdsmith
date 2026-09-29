@@ -708,7 +708,7 @@ func (r *Rule) isAnySchemaFile(f *lint.File) bool {
 // is skipped.
 func (r *Rule) checkSingleInlineSchema(f *lint.File, sch *schema.Schema) []lint.Diagnostic {
 	diags := make([]lint.Diagnostic, 0, 8)
-	docFMRaw, fmDiags := readDocFrontMatterRaw(f)
+	docFMRaw, fmDiags := cachedDocFrontMatterRaw(f)
 	diags = append(diags, fmDiags...)
 	fmIsCUE := placeholders.HasCUEFrontmatter(r.Placeholders)
 	diags = append(diags, schema.Validate(f, sch, docFMRaw, fmIsCUE, makeDiag)...)
@@ -745,7 +745,7 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		if loadErr == nil {
 			parsedSch, parseErr := cachedParseSchema(f, schData, schPath)
 			if parseErr == nil {
-				docFMRaw, _ := readDocFrontMatterRaw(f)
+				docFMRaw, _ := cachedDocFrontMatterRaw(f)
 				return fixBodySyncIn(f, parsedSch, docFMRaw)
 			}
 		}
@@ -924,7 +924,7 @@ func (r *Rule) checkSingleFileSchemaFromData(
 	}
 
 	docHeadings := extractHeadings(f)
-	docFMRaw, fmDiags := readDocFrontMatterRaw(f)
+	docFMRaw, fmDiags := cachedDocFrontMatterRaw(f)
 	diags = append(diags, fmDiags...)
 	// The cue-frontmatter placeholder token marks the front-matter
 	// values as CUE expressions rather than concrete data.
@@ -963,7 +963,7 @@ func (r *Rule) checkSingleFileSchemaFromData(
 // file the rule is currently linting are skipped (self-validation).
 func (r *Rule) checkComposedSources(f *lint.File, sources []SchemaSource) []lint.Diagnostic {
 	var diags []lint.Diagnostic
-	docFMRaw, fmDiags := readDocFrontMatterRaw(f)
+	docFMRaw, fmDiags := cachedDocFrontMatterRaw(f)
 	diags = append(diags, fmDiags...)
 
 	parsed := make([]*schema.Schema, 0, len(sources))
@@ -2440,6 +2440,35 @@ func validateFrontMatterCUE(schema string, fm map[string]any) error {
 	return nil
 }
 
+// docFrontMatter is one readDocFrontMatterRaw result, boxed so
+// f.MemoFile can cache the (map, diagnostics) pair behind one key.
+type docFrontMatter struct {
+	raw   map[string]any
+	diags []lint.Diagnostic
+}
+
+// docFrontMatterMemoKey names the per-file memo entry holding the
+// decoded front matter.
+const docFrontMatterMemoKey = "MDS020.docFrontMatter"
+
+// cachedDocFrontMatterRaw is readDocFrontMatterRaw decoded at most
+// once per file: the kind path-pattern check and the schema check
+// both need the front matter, and without the memo a kind that has
+// both an interpolating path-pattern and a schema would pay two YAML
+// decodes per file. Every caller gets the same map and must treat it
+// as read-only.
+func cachedDocFrontMatterRaw(f *lint.File) (map[string]any, []lint.Diagnostic) {
+	v := f.MemoFile(docFrontMatterMemoKey, buildDocFrontMatter).(*docFrontMatter)
+	return v.raw, v.diags
+}
+
+// buildDocFrontMatter is cachedDocFrontMatterRaw's memo builder. It is
+// a package-level function so the memo call allocates no closure.
+func buildDocFrontMatter(f *lint.File) any {
+	raw, diags := readDocFrontMatterRaw(f)
+	return &docFrontMatter{raw: raw, diags: diags}
+}
+
 // readDocFrontMatterRaw reads YAML frontmatter from the document.
 func readDocFrontMatterRaw(f *lint.File) (map[string]any, []lint.Diagnostic) {
 	if len(f.FrontMatter) == 0 {
@@ -2571,7 +2600,7 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 			// that declares only `path-pattern:` has no schema path
 			// in Check that would report the parse error itself.
 			var fmDiags []lint.Diagnostic
-			docFM, fmDiags = readDocFrontMatterRaw(f)
+			docFM, fmDiags = cachedDocFrontMatterRaw(f)
 			if len(fmDiags) > 0 {
 				fmParseErr = fmDiags[0].Message
 			}
