@@ -1166,3 +1166,45 @@ func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
 }
+
+// --- corpusFiles ---
+
+func TestCorpusFiles_ReturnsMarkdownFiles(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.md"), []byte("# A"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.md"), []byte("# B"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "c.txt"), []byte("text"), 0o644))
+	cfg := corpusScanConfig{corpus: os.DirFS(dir)}
+	got := corpusFiles(cfg)
+	assert.ElementsMatch(t, []string{"a.md", "b.md"}, got)
+}
+
+func TestCorpusFiles_HonorsExclude(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.md"), []byte("# A"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.md"), []byte("# B"), 0o644))
+	cfg := corpusScanConfig{corpus: os.DirFS(dir), exclude: []string{"b.md"}}
+	got := corpusFiles(cfg)
+	assert.Equal(t, []string{"a.md"}, got)
+}
+
+// --- corpusFilesKey ---
+
+func TestCorpusFilesKey_ContainsRootDirAndFilters(t *testing.T) {
+	cfg := corpusScanConfig{
+		rootDir: "/project",
+		include: []string{"docs/**"},
+		exclude: []string{"vendor/**"},
+	}
+	key := corpusFilesKey(cfg)
+	assert.Contains(t, key, "duplicatedcontent-corpus")
+	assert.Contains(t, key, "/project")
+	assert.Contains(t, key, "docs/**")
+	assert.Contains(t, key, "vendor/**")
+}
+
+func TestCorpusFilesKey_DifferentPatterns_ProduceDifferentKeys(t *testing.T) {
+	cfg1 := corpusScanConfig{rootDir: "/r", include: []string{"a"}}
+	cfg2 := corpusScanConfig{rootDir: "/r", include: []string{"b"}}
+	assert.NotEqual(t, corpusFilesKey(cfg1), corpusFilesKey(cfg2))
+}
