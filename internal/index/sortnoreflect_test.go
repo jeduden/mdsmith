@@ -1,6 +1,10 @@
 package index
 
-import "testing"
+import (
+	"math/rand"
+	"strconv"
+	"testing"
+)
 
 // TestSortEdgesBySource_NoReflectSort pins the allocation cost of
 // sortEdgesBySource, which drove sort.Slice — reflect.Swapper
@@ -34,5 +38,64 @@ func TestSortEdgesBySource_NoReflectSort(t *testing.T) {
 	t.Logf("sortEdgesBySource allocs/op = %.0f", allocs)
 	if allocs > 0 {
 		t.Fatalf("sortEdgesBySource allocs/op = %.0f, want 0 (no reflection)", allocs)
+	}
+}
+
+// TestSortEdgesBySource_TiesPreserveInsertionOrder pins the function's
+// own doc comment ("a stable, reviewable order"): edges that tie on
+// every sort key (SourceFile, SourceLine, SourceCol) — for example two
+// edges of different kinds recorded at one heading's declaration
+// position — must come out in the order they went in, not whatever
+// order an unstable sort's internal partitioning happens to leave
+// them. A small tied slice doesn't reliably expose instability (an
+// unstable sort can still leave a handful of equal elements
+// untouched), so this test interleaves three tied groups across 300
+// shuffled edges, large enough to reliably reorder under a plain
+// (unstable) slices.SortFunc.
+func TestSortEdgesBySource_TiesPreserveInsertionOrder(t *testing.T) {
+	files := []string{"a.md", "b.md", "c.md"}
+	const n = 300
+	// TargetLabel carries each edge's original global index as a
+	// string, so ties on (SourceFile, SourceLine, SourceCol) — the only
+	// fields sortEdgesBySource compares — can still be traced back to
+	// their input order after the sort and the shuffle.
+	edges := make([]Edge, n)
+	for i := range edges {
+		edges[i] = Edge{
+			SourceFile:  files[i%len(files)],
+			SourceLine:  1,
+			SourceCol:   1,
+			TargetLabel: strconv.Itoa(i),
+		}
+	}
+	rand.New(rand.NewSource(1)).Shuffle(len(edges), func(i, j int) {
+		edges[i], edges[j] = edges[j], edges[i]
+	})
+
+	// wantOrder is the relative order each file's tied edges appear in
+	// right before the sort — the input a stable sort must preserve.
+	wantOrder := map[string][]string{}
+	for _, e := range edges {
+		wantOrder[e.SourceFile] = append(wantOrder[e.SourceFile], e.TargetLabel)
+	}
+
+	sortEdgesBySource(edges)
+
+	gotOrder := map[string][]string{}
+	for _, e := range edges {
+		gotOrder[e.SourceFile] = append(gotOrder[e.SourceFile], e.TargetLabel)
+	}
+	for _, f := range files {
+		want, got := wantOrder[f], gotOrder[f]
+		if len(want) != len(got) {
+			t.Fatalf("file %q: got %d tied edges, want %d", f, len(got), len(want))
+		}
+		for i := range want {
+			if want[i] != got[i] {
+				t.Fatalf("sortEdgesBySource reordered tied edges in %q at position %d: "+
+					"got TargetLabel %q, want %q (pre-sort order not preserved)",
+					f, i, got[i], want[i])
+			}
+		}
 	}
 }

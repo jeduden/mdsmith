@@ -546,12 +546,16 @@ func (i *Index) IncomingWikilinkEdges(stem string) []Edge {
 }
 
 // sortEdgesBySource orders edges by (SourceFile, SourceLine, SourceCol)
-// so move and backlink queries return a stable, reviewable order.
-// slices.SortFunc compares the concrete Edge values directly, unlike
-// sort.Slice, which drives reflect.Swapper internally (see
+// so move and backlink queries return a stable, reviewable order:
+// SortStableFunc preserves each caller's original relative order for
+// edges that tie on all three keys (for example two edge kinds
+// recorded at the same heading's declaration position), rather than
+// leaving that case to an unstable sort's internal partitioning.
+// slices.SortStableFunc compares the concrete Edge values directly,
+// unlike sort.Slice, which drives reflect.Swapper internally (see
 // docs/development/high-performance-go.md, "reflect in hot paths").
 func sortEdgesBySource(edges []Edge) {
-	slices.SortFunc(edges, func(a, b Edge) int {
+	slices.SortStableFunc(edges, func(a, b Edge) int {
 		return cmp.Or(
 			cmp.Compare(a.SourceFile, b.SourceFile),
 			cmp.Compare(a.SourceLine, b.SourceLine),
