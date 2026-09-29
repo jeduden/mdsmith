@@ -51,3 +51,37 @@ func TestFindByPathNoMatch(t *testing.T) {
 		t.Fatal("findByPath matched with an always-false predicate")
 	}
 }
+
+// TestFindByPathContinuesAfterMatchedCandidateCloses pins a review
+// finding: findByPath snapshots (uri, path) pairs, then evaluates
+// match and calls get() afterward, so a document that closes in that
+// gap makes get() report a miss for an otherwise-matching candidate.
+// The old openURIs()+get() loop would have moved on to the next open
+// document in that case; findByPath must do the same instead of
+// reporting a miss while another candidate is still open.
+//
+// The first match invocation (order is unspecified — map iteration)
+// deletes its own candidate's document right before findByPath's
+// get() call would run, simulating a concurrent close in that exact
+// window, then still reports a match. The second candidate is left
+// alone and must be the one findByPath returns.
+func TestFindByPathContinuesAfterMatchedCandidateCloses(t *testing.T) {
+	s := newDocumentStore()
+	s.set("file:///a.md", &document{uri: "file:///a.md", path: "/a.md", text: []byte("a")})
+	s.set("file:///b.md", &document{uri: "file:///b.md", path: "/b.md", text: []byte("b")})
+
+	first := true
+	uri, doc, ok := s.findByPath(func(path string) bool {
+		if first {
+			first = false
+			s.delete("file://" + path)
+		}
+		return true
+	})
+	if !ok {
+		t.Fatal("findByPath reported a miss even though one candidate was still open")
+	}
+	if uri == "" || doc == nil {
+		t.Fatalf("findByPath returned ok=true with an empty result: uri=%q doc=%v", uri, doc)
+	}
+}

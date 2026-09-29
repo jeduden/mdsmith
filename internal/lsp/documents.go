@@ -76,7 +76,12 @@ func (s *documentStore) openURIs() []string {
 // the store's lock (and so can never block a concurrent set()/delete()
 // for its own duration, however long it runs). This still avoids the
 // openURIs()+get() pattern's O(open-docs) full-document copies on a
-// miss: at most one extra locked lookup, for the single matching URI.
+// miss: at most one extra locked lookup, for each matching URI.
+//
+// A document can close in the gap between the snapshot and the
+// follow-up get(), turning a real match into a miss for that one
+// candidate; the loop continues to the next one instead of reporting
+// an overall miss, matching the old openURIs()+get() loop's behavior.
 func (s *documentStore) findByPath(match func(path string) bool) (string, *document, bool) {
 	s.mu.RLock()
 	type candidate struct{ uri, path string }
@@ -87,9 +92,11 @@ func (s *documentStore) findByPath(match func(path string) bool) (string, *docum
 	s.mu.RUnlock()
 
 	for _, c := range candidates {
-		if match(c.path) {
-			d, ok := s.get(c.uri)
-			return c.uri, d, ok
+		if !match(c.path) {
+			continue
+		}
+		if d, ok := s.get(c.uri); ok {
+			return c.uri, d, true
 		}
 	}
 	return "", nil, false

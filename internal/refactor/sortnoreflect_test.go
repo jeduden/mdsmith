@@ -48,9 +48,6 @@ func TestStableSortEdits_NoReflectSort(t *testing.T) {
 // (unlike SortStableFunc) would not guarantee this, so this test would
 // have caught the wrong choice between the two.
 func TestStableSortEdits_TieBreakAndStability(t *testing.T) {
-	if testing.Short() {
-		t.Skip("alloc gate skipped in -short mode")
-	}
 	changes := map[string][]Edit{
 		"doc.md": {
 			{Range: Range{Start: Position{Line: 5, Character: 2}}, NewText: "tie-1"},
