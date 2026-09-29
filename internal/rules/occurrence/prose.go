@@ -32,8 +32,9 @@ type prose struct {
 
 // collectProse walks the AST once and returns the paragraphs the rule
 // counts, in document order: every paragraph outside a table (fenced
-// and indented code never parse as paragraphs), the same selection as
-// astutil.CollectSectionParagraphs. With wantHeadings it also returns
+// and indented code never parse as paragraphs), as
+// astutil.CollectSectionParagraphs selects, plus each tight list
+// item's text block, which that helper skips. With wantHeadings it also returns
 // every heading, as astutil.CollectSectionHeadings would. All texts
 // are extracted into one buffer and sliced from a single string, and
 // lowercasing runs once on that string, so the cost is a fixed handful
@@ -113,7 +114,8 @@ type proseWalker struct {
 }
 
 // walk visits n's block children in document order, recording each
-// non-table paragraph's prose text and, when wanted, each heading.
+// non-table paragraph's and each tight list item's prose text and,
+// when wanted, each heading.
 func (w *proseWalker) walk(n ast.Node) {
 	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
 		switch v := c.(type) {
@@ -125,6 +127,13 @@ func (w *proseWalker) walk(n ast.Node) {
 			w.paras = append(w.paras, proseParagraph{
 				Line: astutil.ParagraphLine(v, w.f), end: len(w.buf),
 			})
+		case *ast.TextBlock:
+			// A tight list item's text: prose like a paragraph, and one
+			// paragraph-scope unit of its own.
+			w.buf = appendProse(w.buf, v, w.f.Source)
+			w.paras = append(w.paras, proseParagraph{
+				Line: textBlockLine(v, w.f), end: len(w.buf),
+			})
 		case *ast.Heading:
 			if w.wantHeadings {
 				w.headings = append(w.headings, astutil.SectionHeading{
@@ -135,6 +144,15 @@ func (w *proseWalker) walk(n ast.Node) {
 			w.walk(c)
 		}
 	}
+}
+
+// textBlockLine returns the 1-based source line a text block starts on,
+// or 1 when it has no lines, mirroring astutil.ParagraphLine.
+func textBlockLine(b *ast.TextBlock, f *lint.File) int {
+	if lines := b.Lines(); lines.Len() > 0 {
+		return f.LineOfOffset(lines.At(0).Start)
+	}
+	return 1
 }
 
 // appendProse appends n's readable text to buf. It mirrors

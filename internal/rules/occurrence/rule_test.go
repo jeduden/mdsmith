@@ -836,3 +836,37 @@ func TestCheck_LiteralPatternCaseSensitive(t *testing.T) {
 	diags := r.Check(mustFile(t, "# T\n\nFoo Foo.\n"))
 	require.Len(t, diags, 1)
 }
+
+func TestCheck_TightListItemCounted(t *testing.T) {
+	// Tight list items parse as TextBlock, not Paragraph; each still
+	// counts as one paragraph-scope unit.
+	r := &Rule{}
+	mustApply(t, r, map[string]any{
+		"pattern": "—", "scope": "paragraph", "count": "combined", "max": 2,
+	})
+	diags := r.Check(mustFile(t, "# T\n\n- a — b — c —\n- d\n"))
+	require.Len(t, diags, 1)
+	assert.Equal(t, 3, diags[0].Line)
+}
+
+func TestCheck_TightListItemsInFileScope(t *testing.T) {
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"tokens": []any{"synergy"}, "scope": "file", "max": 2})
+	diags := r.Check(mustFile(t, "# T\n\n- synergy one\n- synergy two\n\n> synergy quote\n"))
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, `"synergy" appears 3 time(s) in file`)
+}
+
+func TestApplySettings_CaseSensitiveChangeRecompilesPattern(t *testing.T) {
+	// A later call that flips case-sensitive without restating pattern
+	// must recompile it, so the regex and the literal path agree.
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"pattern": "Token"})
+	mustApply(t, r, map[string]any{"case-sensitive": true})
+	assert.False(t, r.Pattern.MatchString("token"), "regex must now be case-sensitive")
+	assert.False(t, r.literalFold)
+}
+
+func TestTextBlockLine_NoLinesFallsBackToOne(t *testing.T) {
+	assert.Equal(t, 1, textBlockLine(ast.NewTextBlock(), mustFile(t, "# T\n")))
+}

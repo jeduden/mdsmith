@@ -443,6 +443,11 @@ func (r *Rule) finalizeSettings(rawPattern string) error {
 			r.lowerTokens[i] = strings.ToLower(t)
 		}
 	}
+	if rawPattern == "" && r.Pattern != nil {
+		// Recompile a pattern set by an earlier call, so a
+		// case-sensitive change alone still reaches its (?i) flag.
+		rawPattern = r.patternSource
+	}
 	if rawPattern != "" {
 		if err := r.compileAndSetPattern(rawPattern); err != nil {
 			return err

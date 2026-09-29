@@ -24,8 +24,11 @@ code spans are excluded.
 
 The rule walks every scope unit (file, heading-bounded section, or
 paragraph) and counts non-overlapping occurrences of each token or regex
-pattern match. Fenced and indented code blocks and inline code spans
-are never counted.
+pattern match. Paragraphs, blockquotes, and list items are counted; each
+tight list item is its own paragraph unit. Fenced and indented code
+blocks, inline code spans, tables, and heading text are never counted.
+With `scope: section`, text before the first heading belongs to no
+section, and a file without headings has no section to check.
 A diagnostic is emitted at the scope unit's first line when the count
 falls below `min` or exceeds `max`.
 
