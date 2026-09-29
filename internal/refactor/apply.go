@@ -15,8 +15,7 @@ import (
 // byte offsets — computed against the original row — stay valid while
 // the bytes to its right are rewritten. A trailing `\r` is preserved
 // so CRLF files round-trip. It is a pure in-memory transform: the host
-// reads src and writes the result, so this package stays off the
-// filesystem.
+// reads src and writes the result.
 func ApplyEdits(src []byte, edits []Edit) ([]byte, error) {
 	segs := splitKeepCR(src)
 	byLine := map[int][]Edit{}

@@ -212,7 +212,7 @@ func TestApplyPlan_Errors(t *testing.T) {
 		refactor.Plan{Edits: map[string][]refactor.Edit{"missing.md": {{NewText: "x"}}}}, "text", false)
 	assert.Equal(t, 2, got)
 
-	// applyEdits fails on an out-of-range line → exit 2.
+	// refactor.ApplyEdits fails on an out-of-range line → exit 2.
 	bad := refactor.Plan{Edits: map[string][]refactor.Edit{"a.md": {{
 		Range:   refactor.Range{Start: refactor.Position{Line: 99}, End: refactor.Position{Line: 99}},
 		NewText: "x",

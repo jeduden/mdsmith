@@ -8,9 +8,12 @@
 // Every operation returns a neutral Plan: per-file Edits keyed by
 // output target (a CLI path or an LSP document URI) plus an optional
 // FileOp the host executes. The engine speaks no LSP wire types and
-// never touches the filesystem — there are no subprocesses under
-// GOOS=js GOARCH=wasm — so callers adapt the neutral values to their
-// surface and run any FileOp themselves.
+// its planners never touch the filesystem — there are no subprocesses
+// under GOOS=js GOARCH=wasm — so callers adapt the neutral values to
+// their surface and run any FileOp themselves. ApplyEdits is the
+// matching pure in-memory splice a host can use to turn a file's Edits
+// into rewritten bytes; FileOp.Execute (non-wasm only) is the one
+// helper that touches disk.
 package refactor
 
 import (

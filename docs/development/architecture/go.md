@@ -46,8 +46,9 @@ question. The current production set:
   schema, and the rename / deps surfaces.
 - `internal/backlinks` — the `mdsmith list backlinks` matcher: which
   workspace files link to a target path or anchor.
-- `internal/refactor` — the move / rename planner and its edit splicer
-  (`ApplyEdits`), shared by CLI, LSP, and `pkg/mdsmith`; no file I/O.
+- `internal/refactor` — plan a move / rename as neutral per-file edits
+  for the CLI, LSP, and `pkg/mdsmith`. `ApplyEdits` splices a plan in
+  memory for the CLI; only the non-wasm `FileOp.Execute` touches disk.
 - `internal/lsp` — speak the Language Server Protocol; consumes the engine.
 - `pkg/markdown` — the one goldmark parse/produce surface (CommonMark+PI);
   `pkg/markdown/flavor` adds extensions. Public; see
