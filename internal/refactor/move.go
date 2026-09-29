@@ -1,7 +1,6 @@
 package refactor
 
 import (
-	"bytes"
 	"errors"
 	"path"
 	"path/filepath"
@@ -224,13 +223,9 @@ func appendIncomingPathEdits(changes map[string][]Edit, ws Workspace, src, dst s
 func appendOutboundEdits(changes map[string][]Edit, srcKey, src, dst string, source []byte) {
 	body, fmOffset := bodyAndFMOffset(source)
 	root := lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
-	lf := &lint.File{
-		Path:       src,
-		Source:     body,
-		Lines:      bytes.Split(body, []byte("\n")),
-		AST:        root,
-		LineOffset: fmOffset,
-	}
+	// The locator reads only Source (for offset-to-row mapping) and the
+	// AST; file rows come from fileLines, shifted by fmOffset.
+	lf := &lint.File{Path: src, Source: body, AST: root}
 	loc := destLocator{lf: lf, fileLines: splitLines(source), fmOffset: fmOffset}
 	_ = ast.Walk(root, loc.visit)
 	for _, d := range loc.dests {
