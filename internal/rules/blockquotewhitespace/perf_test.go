@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -45,4 +46,36 @@ func BenchmarkCheckBlankBetween_NoBlockquote(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_ = r.Check(f)
 	}
+}
+
+// TestCheckBlankBetween_GateSkipsCleanDocument is the functional
+// (non-perf) regression test for the sawBlockquote gate, now that
+// nothing ns/op-based enforces it in CI (see the comment on
+// BenchmarkCheckBlankBetween_NoBlockquote above): a representative
+// multi-section document with no blockquote-marker line anywhere — the
+// exact shape the gate targets — produces no MD028 diagnostics.
+func TestCheckBlankBetween_GateSkipsCleanDocument(t *testing.T) {
+	f, err := lint.NewFile("prose.md", []byte(noBlockquoteDoc(50)))
+	require.NoError(t, err)
+	r := &Rule{}
+	assert.Empty(t, r.Check(f))
+}
+
+// TestCheckBlankBetween_GateDoesNotSuppressRealViolations is the other
+// half of the functional pin: a document with the same no-blockquote
+// prose the gate is meant to skip, PLUS two real blank-line-separated
+// blockquotes appended, must still report MD028. A gate that is wrong
+// in the unsafe direction — skipping the walk when it shouldn't —
+// would silently swallow this diagnostic instead of merely costing
+// more CPU, which is why this test matters more than the benchmark
+// above: a perf regression is slow; a correctness regression here is
+// silent.
+func TestCheckBlankBetween_GateDoesNotSuppressRealViolations(t *testing.T) {
+	src := noBlockquoteDoc(50) + "> first quote\n\n> second quote\n"
+	f, err := lint.NewFile("prose.md", []byte(src))
+	require.NoError(t, err)
+	r := &Rule{}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Equal(t, "blank line between blockquotes", diags[0].Message)
 }

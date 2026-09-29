@@ -38,3 +38,43 @@ func TestStableSortEdits_NoReflectSort(t *testing.T) {
 		t.Fatalf("stableSortEdits allocs/op = %.0f, want 0 (no reflection)", allocs)
 	}
 }
+
+// TestStableSortEdits_TieBreakAndStability pins the comparator's tie
+// break on Character within a shared Line, and its stability across
+// edits that share both Line and Character (two edits on the same
+// line and column, e.g. an insertion and an adjacent rewrite, must
+// keep their original relative order — callers rely on that to avoid
+// reordering same-position edits when applying them). slices.SortFunc
+// (unlike SortStableFunc) would not guarantee this, so this test would
+// have caught the wrong choice between the two.
+func TestStableSortEdits_TieBreakAndStability(t *testing.T) {
+	if testing.Short() {
+		t.Skip("alloc gate skipped in -short mode")
+	}
+	changes := map[string][]Edit{
+		"doc.md": {
+			{Range: Range{Start: Position{Line: 5, Character: 2}}, NewText: "tie-1"},
+			{Range: Range{Start: Position{Line: 2, Character: 0}}, NewText: "last"},
+			{Range: Range{Start: Position{Line: 5, Character: 4}}, NewText: "before-ties"},
+			{Range: Range{Start: Position{Line: 7, Character: 0}}, NewText: "first"},
+			{Range: Range{Start: Position{Line: 5, Character: 2}}, NewText: "tie-2"},
+		},
+	}
+	stableSortEdits(changes)
+	edits := changes["doc.md"]
+
+	got := make([]string, len(edits))
+	for i, e := range edits {
+		got[i] = e.NewText
+	}
+	want := []string{"first", "before-ties", "tie-1", "tie-2", "last"}
+	if len(got) != len(want) {
+		t.Fatalf("stableSortEdits order = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("stableSortEdits order = %v, want %v (tie-break on Character or "+
+				"stability among same-position edits is broken)", got, want)
+		}
+	}
+}
