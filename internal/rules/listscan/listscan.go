@@ -275,14 +275,15 @@ func (p *parser) consumeFence(open int, fence fenceInfo) int {
 }
 
 // markerIsLazyText reports whether a recognized marker must be absorbed
-// as paragraph text rather than open a list item. Per CommonMark an
-// ordered list whose first number is not 1 cannot interrupt a paragraph:
-// when the marker would nest inside (or continue) an item whose current
-// block is an open paragraph with no intervening blank line, an ordered
-// marker numbered other than 1 is lazy text, not a new sublist. Bullets
-// and ordered markers numbered 1 always interrupt.
+// as paragraph text rather than open a list item. Per CommonMark a list
+// item interrupts a paragraph only when it has content and, if ordered,
+// its number is 1: when the marker would nest inside (or continue) an
+// item whose current block is an open paragraph with no intervening
+// blank line, an empty item or an ordered marker numbered other than 1
+// is lazy text, not a new sublist. (A lone "-" there is a setext
+// underline, which is not a list either.) Other markers interrupt.
 func (p *parser) markerIsLazyText(indent int, mi markerInfo) bool {
-	if !mi.ordered || mi.number == 1 {
+	if !mi.empty && (!mi.ordered || mi.number == 1) {
 		return false
 	}
 	if p.blankRun > 0 {

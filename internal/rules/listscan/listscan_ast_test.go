@@ -394,8 +394,22 @@ func coreSnippets() map[string]string {
 		// A blank line closes the paragraph, so the same marker then starts an
 		// ordered list with Start 2.
 		"ordered-nonone-after-blank": "Some prose.\n\n2. real item\n3. another\n",
-		// An ordered marker numbered 1 always interrupts a paragraph.
+		// An ordered marker numbered 1 interrupts a paragraph when the item
+		// has content.
 		"ordered-one-interrupts-toplevel-para": "Some prose\n1. interrupts here\n",
+		// An empty item cannot interrupt a paragraph, bullet or ordered:
+		// goldmark reads a lone marker there as paragraph text (a lone
+		// "-" is a setext underline), so listscan must report no list.
+		// Reflow puts such a lone marker on a line of its own.
+		"empty-star-after-toplevel-para":      "Some prose\n*\nmore prose\n",
+		"empty-plus-after-toplevel-para":      "Some prose\n+\nmore prose\n",
+		"empty-dash-after-toplevel-para":      "Some prose\n-\n",
+		"empty-one-dot-after-toplevel-para":   "Some prose\n1.\nmore prose\n",
+		"empty-one-paren-after-toplevel-para": "Some prose\n1)\nmore prose\n",
+		"empty-star-after-item-para":          "- a\n  *\n",
+		"empty-one-dot-after-item-para":       "- a\n  1.\n",
+		// After a blank line an empty item starts a list as usual.
+		"empty-one-dot-after-blank": "Some prose\n\n1.\n",
 	}
 }
 
