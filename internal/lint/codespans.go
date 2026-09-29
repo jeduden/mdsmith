@@ -152,10 +152,12 @@ func (f *File) LineStartOffset(i int) int {
 // context windows slice it instead of allocating a fresh []string
 // with copied lines per diagnostic.
 //
-// The strings alias the source buffer via unsafe.String. Invariant:
-// the source is never mutated after the File is built — check never
-// writes it and fix builds replacement content in fresh buffers — so
-// the views stay valid for as long as any consumer holds them.
+// The strings alias the source buffer via unsafe.String. Nothing
+// writes the source while the File is in use — check never does, and
+// fix builds replacement content in fresh buffers — but the engine
+// reads files into pooled buffers and reuses them once a file is
+// linted, after copying diagnostics' SourceLines out. Any other string
+// that must outlive a pooled File has to be copied too.
 func (f *File) LineStrings() []string {
 	if f.lineStringsDone.Load() {
 		return f.lineStrings
