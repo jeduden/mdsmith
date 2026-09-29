@@ -46,7 +46,7 @@ const (
 var (
 	htmlType1Open  = regexp.MustCompile(`(?i)^[ ]{0,3}<(script|pre|style|textarea)(\s|>|/>|$)`)
 	htmlType1Close = regexp.MustCompile(`(?i)</(script|pre|style|textarea)>`)
-	htmlType6Open  = regexp.MustCompile(`^[ ]{0,3}</?([a-zA-Z][a-zA-Z0-9-]*)(\s|>|/>|$)`)
+	htmlType6Open  = regexp.MustCompile(`^[ ]{0,3}<(?:/[ ]*)?([a-zA-Z][a-zA-Z0-9-]*)(\s|>|/>|$)`)
 	htmlType7Open  = regexp.MustCompile(`^[ ]{0,3}<(/[ ]*)?[a-zA-Z][a-zA-Z0-9-]*(\s[^>]*)?[ ]*/?>[ \t\r]*$`)
 )
 

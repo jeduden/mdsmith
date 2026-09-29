@@ -1,0 +1,96 @@
+package lint
+
+import (
+	"testing"
+
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// interruptingLines end an open paragraph when they follow one of its
+// lines: a blank line, a setext underline, or a block start that
+// CommonMark (plus mdsmith's `<?name` processing instructions) lets
+// interrupt a paragraph.
+var interruptingLines = []string{
+	"", "   ",
+	// ATX heading: 1-6 '#' then a space, tab, or end of line.
+	"#", "# x", "###### x", "#\tx", "   ## x",
+	// Thematic break, spaced or not.
+	"---", "***", "___", "- - -", "* * *", "_ _ _", "-- -", "** *",
+	// Fenced code, with or without an info string.
+	"```", "````", "```go", "~~~", "~~~go", "~~~ `x`",
+	// Block quote.
+	">", ">x", "> x", "   > x",
+	// Bullet list item with content.
+	"- x", "+ x", "* x", "-\tx", "   - x",
+	// Ordered list item starting at 1, with content.
+	"1. x", "1) x", "01. x", "001) x", "1.\tx",
+	// Setext underline.
+	"=", "===", "=== ", "-", "--", "--  ",
+	// HTML blocks of types 1-6, including processing instructions.
+	"<div", "<div>", "</div>", "<DIV class=x>", "<p/>", "<script",
+	"<pre>", "<!-- c", "<?pi", "<? x", "<!DOCTYPE", "<![CDATA[x",
+	"</ div",
+}
+
+// specOnlyInterrupting interrupt a paragraph under the CommonMark spec
+// but not under the goldmark fork, which still requires an uppercase
+// letter after "<!" (the spec before 0.30). InterruptsParagraph follows
+// the spec, so reflow never relies on the fork's narrower reading.
+var specOnlyInterrupting = []string{"<!doctype html"}
+
+// continuingLines stay paragraph text after a paragraph line.
+var continuingLines = []string{
+	// '#' not followed by a space, or more than six.
+	"#48", "#48](x),", "#tag", "##x", "####### x",
+	// '=' or '-' runs with other text on the line.
+	"= y", "== x", "-- x", "--- x", "*** x", "___ x", "_ _ x",
+	// Marker characters not followed by a space.
+	"-x", "+x", "*x", "**bold**", "**", "++", "__",
+	// Empty list items cannot interrupt a paragraph.
+	"*", "+", "* ", "1.", "1)", "1. ",
+	// Ordered items that do not start at 1.
+	"2. x", "12) x", "0. x", "10. x", "1999. Then",
+	// Numbers that are not list markers.
+	"1.5", "2024",
+	// A backtick fence cannot carry a backtick in its info string.
+	"``", "``x", "```go `x`",
+	// HTML type 7 and non-block tags cannot interrupt.
+	"<span>", "<span", "<a href=x>", "<divx", "<", "< div",
+	// Four columns of indent make indented code, which cannot interrupt.
+	"    # x", "    > x", "    ```", "    - x", "\t# x", "   \t> x",
+	"plain text",
+}
+
+func TestInterruptsParagraph(t *testing.T) {
+	for _, line := range interruptingLines {
+		assert.True(t, InterruptsParagraph([]byte(line)), "%q must interrupt a paragraph", line)
+	}
+	for _, line := range continuingLines {
+		assert.False(t, InterruptsParagraph([]byte(line)), "%q must continue a paragraph", line)
+	}
+	for _, line := range specOnlyInterrupting {
+		assert.True(t, InterruptsParagraph([]byte(line)), "%q must interrupt a paragraph", line)
+	}
+}
+
+// TestInterruptsParagraph_MatchesParser checks each table entry against
+// the canonical parser: the entry follows a paragraph line, and the
+// paragraph keeps both lines exactly when InterruptsParagraph is false.
+func TestInterruptsParagraph_MatchesParser(t *testing.T) {
+	check := func(line string, want bool) {
+		f, err := NewFile("t.md", []byte("para\n"+line+"\n"))
+		require.NoError(t, err)
+		first := f.AST.FirstChild()
+		require.NotNil(t, first)
+		kept := first.Kind() == ast.KindParagraph && first.Lines().Len() == 2
+		assert.Equal(t, want, !kept, "parser disagrees on %q", line)
+	}
+	for _, line := range interruptingLines {
+		check(line, true)
+	}
+	for _, line := range continuingLines {
+		check(line, false)
+	}
+}
