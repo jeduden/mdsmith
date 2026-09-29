@@ -359,6 +359,38 @@ func TestCompose_FilenameListSameSetDifferentOrderNotConflict(t *testing.T) {
 	assert.Equal(t, []string{"*.md", "*.txt"}, out.Filename)
 }
 
+func TestFilenameGlobsEqual(t *testing.T) {
+	tests := []struct {
+		name string
+		a, b []string
+		want bool
+	}{
+		{"identical", []string{"a", "b"}, []string{"a", "b"}, true},
+		{"reordered", []string{"a", "b"}, []string{"b", "a"}, true},
+		{"duplicate entry", []string{"a", "b", "a"}, []string{"b", "a"}, true},
+		{"same length different multiset", []string{"a", "a", "b"}, []string{"a", "b", "b"}, true},
+		{"subset", []string{"a", "b"}, []string{"a"}, false},
+		{"disjoint", []string{"a"}, []string{"b"}, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, filenameGlobsEqual(tc.a, tc.b))
+		})
+	}
+}
+
+func TestFilenameGlobsEqual_DoesNotMutateInputs(t *testing.T) {
+	a := []string{"b", "a"}
+	b := []string{"a", "b"}
+	require.True(t, filenameGlobsEqual(a, b))
+	assert.Equal(t, []string{"b", "a"}, a)
+}
+
+func TestSortedUniqueGlobs(t *testing.T) {
+	assert.Equal(t, []string{"a", "b"}, sortedUniqueGlobs([]string{"b", "a", "b"}))
+	assert.Empty(t, sortedUniqueGlobs(nil))
+}
+
 // TestCompose_DisjointCardinalityErrors drives the empty-intersection
 // guard through the public Compose path: two root schemas declare the
 // same Step heading with disjoint run lengths (1..3 vs 5..10). The

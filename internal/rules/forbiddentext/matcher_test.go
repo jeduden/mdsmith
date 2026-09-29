@@ -180,6 +180,12 @@ func TestMatcherCacheKey_DistinguishesLists(t *testing.T) {
 		matcherCacheKey([]string{"foo", "bar"}),
 		matcherCacheKey([]string{"bar", "foo"}),
 		"same needles in different order must share a cache key")
+
+	// Repeated needles add nothing under OR semantics.
+	assert.Equal(t,
+		matcherCacheKey([]string{"foo", "bar"}),
+		matcherCacheKey([]string{"bar", "foo", "bar"}),
+		"repeated needles must share a cache key with the de-duplicated list")
 }
 
 // TestCachedMatcher_ReusesAndSeparates covers both cache paths: a

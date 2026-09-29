@@ -936,9 +936,24 @@ func TestApplyAPMPosture_NewConfig_AppendsPosture(t *testing.T) {
 	var buf bytes.Buffer
 	err := applyAPMPosture(configFile, false, false, &buf)
 	require.NoError(t, err)
-	written, _ := os.ReadFile(configFile)
+	written, readErr := os.ReadFile(configFile)
+	require.NoError(t, readErr)
 	assert.Contains(t, string(written), "apm_modules/**")
 	assert.Empty(t, buf.String())
+}
+
+func TestApplyAPMPosture_ExistingForced_AppendsPosture(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	configFile := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(configFile, []byte("\nignore: []\n"), 0o644))
+	var buf bytes.Buffer
+	err := applyAPMPosture(configFile, true, true, &buf)
+	require.NoError(t, err)
+	written, readErr := os.ReadFile(configFile)
+	require.NoError(t, readErr)
+	assert.Contains(t, string(written), "apm_modules/**")
+	assert.Empty(t, buf.String(), "forced run appends instead of printing the merge hint")
 }
 
 func TestApplyAPMPosture_ExistingNotForced_PrintsMergeHint(t *testing.T) {

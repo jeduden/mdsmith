@@ -4,6 +4,7 @@ package overrepetition
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 
@@ -55,7 +56,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	}
 	switch r.Scope {
 	case "file":
-		return r.checkFile(f, "file")
+		return r.checkFile(f)
 	case "paragraph":
 		return r.checkParagraphs(f)
 	default:
@@ -63,29 +64,24 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	}
 }
 
-// checkFile checks word frequency across all prose in the file as one unit,
-// anchored at line 1. scope names the unit in the message: "file", or
-// "section" when a headingless file is checked under section scope.
-func (r *Rule) checkFile(f *lint.File, scope string) []lint.Diagnostic {
+// checkFile checks word frequency across all prose in the file as one unit.
+func (r *Rule) checkFile(f *lint.File) []lint.Diagnostic {
 	paragraphs := astutil.CollectSectionParagraphsWithText(f)
 	freq := make(map[string]int)
 	for i := range paragraphs {
 		r.accum(freq, paragraphs[i].ExtractText(f.Source))
 	}
 	r.removeStopwords(freq)
-	return r.diagFromFreq(freq, 1, scope, f.Path)
+	return r.diagFromFreq(freq, 1, "file", f.Path)
 }
 
 // checkSections checks word frequency per heading-bounded section.
 // Prose before the first heading, and a headingless file as a whole, are
-// treated as an implicit preamble section anchored at line 1. A single freq map is reused across sections (cleared
-// between them) to keep the active-path alloc count within the ≤10 budget.
+// treated as an implicit preamble section anchored at line 1. A single
+// freq map is reused across sections (cleared between them) to keep the
+// active-path alloc count within the ≤10 budget.
 func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 	headings := astutil.CollectSectionHeadings(f)
-	if len(headings) == 0 {
-		// Every paragraph is preamble: the whole file is one section.
-		return r.checkFile(f, "section")
-	}
 	paragraphs := astutil.CollectSectionParagraphsWithText(f)
 	totalLines := len(f.Lines)
 	if totalLines > 0 && len(f.Lines[totalLines-1]) == 0 {
@@ -118,8 +114,12 @@ func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 	// Check preamble paragraphs (before the first heading) as one implicit section.
 	// Skip the allocation when no preamble paragraphs exist (the common case).
 	// Preamble paragraphs precede every heading, so unlike the per-heading
-	// window below, lo can safely advance past them for good.
-	firstHeadingLine := headings[0].Line
+	// window below, lo can safely advance past them for good. With no
+	// headings every paragraph is preamble: the whole file is one section.
+	firstHeadingLine := math.MaxInt
+	if len(headings) > 0 {
+		firstHeadingLine = headings[0].Line
+	}
 	for lo < len(paragraphs) && paragraphs[lo].Line < firstHeadingLine {
 		r.accum(freq, paragraphs[lo].ExtractText(f.Source))
 		lo++
