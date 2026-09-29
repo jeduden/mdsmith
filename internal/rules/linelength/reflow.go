@@ -84,83 +84,163 @@ func tokenizeParagraph(src []byte, start, end int, spans []lint.Range) []string 
 	return tokens
 }
 
-// wrapTokens greedily packs tokens into lines no wider than width runes,
-// each prefixed with indent. It first coalesces tokens into wrap units:
-// a unit is a maximal run of tokens where glue(token) holds at every
+// wrapTokens packs tokens into lines no wider than width runes, each
+// prefixed with indent. It first coalesces tokens into wrap units: a
+// unit is a maximal run of tokens where glue(token) holds at every
 // internal boundary, so an abbreviation (and its following word) stays
 // in one unit. Units are the atomic wrap elements — a unit never splits
-// across lines, and a unit wider than width still occupies its own line.
+// across lines, and a unit wider than width still occupies its own
+// line.
 //
 // Wrapping by unit (rather than gluing token by token) means a glued run
 // that does not fit breaks *before* the unit instead of overflowing past
 // width: "U. S. A." moves to the next line whole rather than dragging
-// the line over the limit. Returns nil for an empty token list.
+// the line over the limit.
+//
+// No line may read as a line that ends the paragraph
+// (lint.InterruptsParagraph): a line starting "# " would become a
+// heading, "> " a block quote, "1. " a list (issue #844). Lines are as
+// full as that allows; see linePlanner. Returns nil for an empty token
+// list, when every layout has such a line, or when every layout that
+// avoids them has a line more than maxOverflowUnits units past width.
 func wrapTokens(tokens []string, indent string, width int, glue func(prev string) bool) []string {
 	if len(tokens) == 0 {
 		return nil
 	}
-	units := buildWrapUnits(tokens, glue)
-	indentW := utf8.RuneCountInString(indent)
-	var lines []string
-	var b strings.Builder
-	b.WriteString(indent)
-	b.WriteString(units[0])
-	curW := indentW + utf8.RuneCountInString(units[0])
-	for _, u := range units[1:] {
-		uW := utf8.RuneCountInString(u)
-		if curW+1+uW <= width || startsWithBlockMarker(u) {
-			b.WriteByte(' ')
-			b.WriteString(u)
-			curW += 1 + uW
-		} else {
-			lines = append(lines, b.String())
-			b.Reset()
-			b.WriteString(indent)
-			b.WriteString(u)
-			curW = indentW + uW
-		}
+	p := linePlanner{
+		units:   buildWrapUnits(tokens, glue),
+		indent:  indent,
+		indentW: utf8.RuneCountInString(indent),
+		width:   width,
 	}
-	return append(lines, b.String())
+	return p.layout()
 }
 
-// startsWithBlockMarker reports whether a line beginning with s would
-// parse as block syntax instead of paragraph text: an ATX heading
-// ("#"), block quote (">"), bullet or ordered list marker, code fence,
-// setext underline, or thematic break. Reflow keeps such a unit on the
-// previous line (overflowing width) rather than starting a
-// continuation line with it, because that would change what the
-// paragraph renders to (issue #844). Only the first space-delimited
-// token of s is inspected.
-func startsWithBlockMarker(s string) bool {
-	tok := s
-	if i := strings.IndexByte(s, ' '); i >= 0 {
-		tok = s[:i]
+// maxOverflowUnits caps how far a line may run past width: at most this
+// many units after the last one that fits. It keeps the search linear in
+// the paragraph length. A paragraph that needs a longer line is left as
+// written.
+const maxOverflowUnits = 8
+
+// linePlanner lays wrap units out into lines. A line "fits" when it is
+// no wider than width or holds a single unit, and it is "safe" when
+// lint.InterruptsParagraph is false for it. Every line of a layout is
+// safe.
+//
+// The planner works back to front, so each choice knows what the rest
+// of the paragraph allows. For each unit s it picks the line that starts
+// there, in this order of preference:
+//
+//  1. the longest line that fits, after which every line fits;
+//  2. the longest line that fits, after which a later line runs past
+//     width;
+//  3. the shortest line past width, at most maxOverflowUnits units
+//     longer than the longest line that fits.
+//
+// A layout within width is therefore used whenever one exists. Text with
+// no block start wraps exactly as greedy packing does, and a marker that
+// greedy packing would put at the start of a line pulls the unit before
+// it down to lead that line instead.
+type linePlanner struct {
+	units   []string
+	indent  string
+	indentW int
+	width   int
+	buf     []byte // scratch for rendering one candidate line
+}
+
+// linePlan is the line picked for one start unit: it holds units[s:end].
+// end is 0 when the units from s on have no safe layout. fits reports
+// that this line and every later one fit.
+type linePlan struct {
+	end  int
+	fits bool
+}
+
+// layout returns the rendered lines, or nil when no layout is safe.
+func (p *linePlanner) layout() []string {
+	n := len(p.units)
+	p.buf = make([]byte, 0, len(p.indent)+p.width)
+	plans := make([]linePlan, n+1)
+	// The empty remainder needs no line. Its end only has to be nonzero
+	// to mark it laid out, and n is at least 1 here.
+	plans[n] = linePlan{end: n, fits: true}
+	for s := n - 1; s >= 0; s-- {
+		plans[s] = p.pick(s, plans)
 	}
-	if tok == "" {
-		return false
+	if plans[0].end == 0 {
+		return nil
 	}
-	switch c := tok[0]; c {
-	case '#', '>':
-		return true
-	case '-', '+', '*', '_', '=', '`', '~':
-		if strings.Trim(tok, string(c)) != "" {
-			return false
+	var lines []string
+	for s := 0; s < n; s = plans[s].end {
+		lines = append(lines, string(p.render(s, plans[s].end)))
+	}
+	return lines
+}
+
+// pick chooses the line that starts at unit s, given the plans of every
+// later start. See linePlanner for the order of preference.
+func (p *linePlanner) pick(s int, plans []linePlan) linePlan {
+	fit := p.fitEnd(s)
+	longest := 0
+	for e := fit; e > s; e-- {
+		if plans[e].end == 0 || p.breaks(s, e) {
+			continue
 		}
-		switch c {
-		case '-', '=':
-			return true // bullet, setext underline, or thematic break
-		case '+':
-			return len(tok) == 1
-		case '*':
-			return len(tok) == 1 || len(tok) >= 3
+		if plans[e].fits {
+			return linePlan{end: e, fits: true}
 		}
-		return len(tok) >= 3 // "___", "```", "~~~"
+		if longest == 0 {
+			longest = e
+		}
 	}
-	i := 0
-	for i < len(tok) && tok[i] >= '0' && tok[i] <= '9' {
-		i++
+	if longest > 0 {
+		return linePlan{end: longest}
 	}
-	return i > 0 && i <= 9 && i == len(tok)-1 && (tok[i] == '.' || tok[i] == ')')
+	last := min(len(p.units), fit+maxOverflowUnits)
+	for e := fit + 1; e <= last; e++ {
+		if plans[e].end != 0 && !p.breaks(s, e) {
+			return linePlan{end: e}
+		}
+	}
+	return linePlan{}
+}
+
+// fitEnd returns the largest end such that the line holding
+// units[s:end] fits: it is no wider than width, or it holds the one
+// unit units[s].
+func (p *linePlanner) fitEnd(s int) int {
+	w := p.indentW + utf8.RuneCountInString(p.units[s])
+	e := s + 1
+	for e < len(p.units) {
+		uw := utf8.RuneCountInString(p.units[e])
+		if w+1+uw > p.width {
+			break
+		}
+		w += 1 + uw
+		e++
+	}
+	return e
+}
+
+// breaks reports whether the line holding units[s:e] is unsafe: placed
+// after a paragraph line, it would end the paragraph.
+func (p *linePlanner) breaks(s, e int) bool {
+	return lint.InterruptsParagraph(p.render(s, e))
+}
+
+// render writes the line holding units[s:e], indent first, into the
+// scratch buffer and returns it. The result is valid until the next
+// render call.
+func (p *linePlanner) render(s, e int) []byte {
+	p.buf = append(p.buf[:0], p.indent...)
+	for i := s; i < e; i++ {
+		if i > s {
+			p.buf = append(p.buf, ' ')
+		}
+		p.buf = append(p.buf, p.units[i]...)
+	}
+	return p.buf
 }
 
 // buildWrapUnits coalesces tokens into space-joined units. A new token

@@ -23,8 +23,16 @@ func (r *Rule) FixTitle() string { return "Reflow long lines" }
 // paragraph that is a table, sits inside a generated section, carries a
 // hard line break, or contains inline raw HTML. Inline code spans are
 // preserved verbatim as atomic tokens. A word wider than Max — a long URL
-// or link — is left on its own over-long line, so the fixer is a true
-// fixpoint: re-running it produces identical bytes.
+// or link — is left on its own over-long line.
+//
+// No rewrapped line may start a block that would end the paragraph, such
+// as "# " (a heading) or "> " (a block quote); see lint.InterruptsParagraph.
+// The wrap moves an earlier word down to lead such a line instead. A line
+// runs past Max for this only when no layout within Max exists. A
+// paragraph is left as written when it has no safe layout, or when one
+// would need a line more than maxOverflowUnits units past Max. The output
+// is therefore the same paragraph, and the fixer is a true fixpoint:
+// re-running it produces identical bytes.
 func (r *Rule) Fix(f *lint.File) []byte {
 	if !r.Reflow || f.AST == nil {
 		return cloneBytes(f.Source)
@@ -91,8 +99,9 @@ func (r *Rule) Fix(f *lint.File) []byte {
 // returns the paragraph's 1-based start and end source lines, the
 // rewrapped lines, and whether a reflow should be applied. reflowed is
 // false when the paragraph is out of scope (not top-level, a table,
-// generated, hard-broken, raw-HTML-bearing) or has no line that the rule
-// would actually flag as too long.
+// generated, hard-broken, raw-HTML-bearing), has no line that the rule
+// would actually flag as too long, or has no layout that keeps it one
+// paragraph (see wrapTokens).
 func (r *Rule) reflowParagraph(
 	f *lint.File, para *ast.Paragraph, width int, spans []lint.Range,
 ) (startLine, endLine int, out []string, reflowed bool) {
@@ -124,9 +133,14 @@ func (r *Rule) reflowParagraph(
 
 	indent := leadingWhitespace(f.Lines[startLine-1])
 	// A flagged line carries non-whitespace content, so tokenize always
-	// yields at least one token here.
+	// yields at least one token here. wrapTokens returns nil when no
+	// layout keeps the paragraph whole within its overflow bound; the
+	// paragraph is then left as written.
 	tokens := tokenizeParagraph(f.Source, first.Start, last.Stop, spans)
 	out = wrapTokens(tokens, indent, width, r.isAbbrev)
+	if out == nil {
+		return 0, 0, nil, false
+	}
 	return startLine, endLine, out, true
 }
 
