@@ -33,6 +33,16 @@ type checkCLIOpts struct {
 	stdout bool
 }
 
+// stderrFormat is the format of the output check writes to stderr:
+// opts.format by default, and text under --stdout, where only prose
+// (runtime errors and warnings) stays on stderr.
+func (o checkCLIOpts) stderrFormat() string {
+	if o.stdout {
+		return "text"
+	}
+	return o.format
+}
+
 // runCheck implements the "check" subcommand: lint files.
 func runCheck(args []string) int {
 	opts, fileArgs, hasStdin, code := parseCheckFlags(args)
@@ -120,7 +130,7 @@ func parseCheckFlags(args []string) (checkCLIOpts, []string, bool, int) {
 func checkFiles(fileArgs []string, opts checkCLIOpts) int {
 	cfg, cfgPath, logger, files, maxBytes, code := loadAndResolve(
 		fileArgs, opts.configPath, opts.verbose, opts.walk, opts.maxInputSize,
-		nonMarkdownSkipWarner(os.Stderr, opts.format, opts.quiet),
+		nonMarkdownSkipWarner(os.Stderr, opts.stderrFormat(), opts.quiet),
 	)
 	if code >= 0 {
 		return code

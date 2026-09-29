@@ -89,6 +89,17 @@ func TestCheckStdout_E2E(t *testing.T) {
 		assert.True(t, strings.HasSuffix(stdout,
 			"stats: checked=1 fixed=0 failures=1 unfixed=1\n"), "stdout=%q", stdout)
 	})
+	t.Run("skip warning on stderr for json", func(t *testing.T) {
+		// json keeps stderr free of the prose warning only while the
+		// JSON itself is on stderr; under --stdout the warning is safe.
+		dir := stdoutWorkspace(t)
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("x\n"), 0o644))
+		stdout, stderr, code := runBinaryInDir(t, dir, "",
+			"check", "--stdout", "-f", "json", "ok.md", "notes.txt")
+		assert.Equal(t, 0, code)
+		assert.Equal(t, "[]\n", stdout)
+		assert.Contains(t, stderr, `mdsmith: skipping "notes.txt": not a Markdown file`)
+	})
 	t.Run("quiet writes nothing", func(t *testing.T) {
 		stdout, stderr, code := runBinaryInDir(t, stdoutWorkspace(t), "",
 			"check", "--stdout", "-q", "-f", "json", "long.md")

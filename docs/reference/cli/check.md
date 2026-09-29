@@ -24,7 +24,9 @@ Only Markdown files are linted. A non-Markdown path
 reaches it or you name it explicitly. Naming one
 explicitly prints a `skipping …: not a Markdown file`
 warning on stderr, so the skip is never a silent no-op;
-`--quiet` and the `json`/`sarif` formats suppress it.
+`--quiet` suppresses it. The `json`/`sarif` formats also
+suppress it, unless `--stdout` moves their output off
+stderr.
 
 ## Flags
 

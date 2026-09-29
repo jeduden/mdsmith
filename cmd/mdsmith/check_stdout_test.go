@@ -182,3 +182,10 @@ func assertEmptySARIF(t *testing.T, b []byte) {
 	require.Len(t, log.Runs, 1)
 	assert.Empty(t, log.Runs[0].Results)
 }
+
+func TestCheckCLIOpts_StderrFormat(t *testing.T) {
+	for _, format := range []string{"text", "json", "sarif"} {
+		assert.Equal(t, format, checkCLIOpts{format: format}.stderrFormat(), format)
+		assert.Equal(t, "text", checkCLIOpts{format: format, stdout: true}.stderrFormat(), format)
+	}
+}

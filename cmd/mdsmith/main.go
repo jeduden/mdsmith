@@ -301,7 +301,9 @@ func loadAndResolve(
 // text. check and fix emit their diagnostics, including `--format json`
 // and `--format sarif`, on stderr; a prose warning on the same stream
 // would corrupt that structured output, so the human notice is limited
-// to the text format. Repeated names are de-duplicated so a doubled
+// to the text format. format is the format of w's stream, so
+// `check --stdout` passes text: its structured output is on stdout.
+// Repeated names are de-duplicated so a doubled
 // argument does not double the warning.
 func nonMarkdownSkipWarner(w io.Writer, format string, quiet bool) func(string) {
 	if quiet || format != "text" {
