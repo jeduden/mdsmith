@@ -250,25 +250,34 @@ func resolveGlobPattern(
 	})
 }
 
+// WildcardGlobRefs replaces every well-formed reference in pattern
+// with `*`, which matches any single path segment on both glob
+// surfaces. It stands in for resolution when the front-matter values
+// are CUE constraints (the `cue-frontmatter` placeholder) rather than
+// data: `name: string` names a type, so there is no value to
+// substitute, yet the literal rest of the glob can still be checked.
+func WildcardGlobRefs(pattern string) string {
+	out, _ := rewriteGlobRefs(pattern, func(string) (string, error) {
+		return "*", nil
+	})
+	return out
+}
+
 // PathPatternSyntaxForm returns the text a kind `path-pattern:` is
 // syntax-checked with (doublestar.ValidatePattern) at config load.
 //
 // A pattern with no reference is slash-normalized, which is also the
 // form it is matched in. A pattern with a reference keeps its raw
 // text, as matching does — filepath.ToSlash would rewrite the
-// opener's `\` on Windows — with every reference replaced by one
-// literal byte: the reference's own bytes are not glob syntax, and a
-// quoted CUE key may hold `[` or `{`. The resolved value is escaped
-// into a literal, so a pattern whose syntax form is valid stays valid
-// once resolved.
+// opener's `\` on Windows — with every reference replaced by `*`:
+// the reference's own bytes are not glob syntax, and a quoted CUE key
+// may hold `[` or `{`. The resolved value is escaped into a literal,
+// so a pattern whose syntax form is valid stays valid once resolved.
 func PathPatternSyntaxForm(pattern string) string {
 	if !PatternHasInterp(pattern) {
 		return filepath.ToSlash(pattern)
 	}
-	out, _ := rewriteGlobRefs(pattern, func(string) (string, error) {
-		return "x", nil
-	})
-	return out
+	return WildcardGlobRefs(pattern)
 }
 
 // LiteralFmvarHint names the first opener in pattern that looks like

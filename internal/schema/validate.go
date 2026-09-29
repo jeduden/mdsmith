@@ -106,7 +106,8 @@ type MakeDiag func(file string, line int, msg string) lint.Diagnostic
 // docFM is the document's parsed front matter (nil when absent).
 // When fmIsCUE is true, the front-matter values are themselves CUE
 // expressions (the `cue-frontmatter` placeholder); the CUE check is
-// skipped because the values are not concrete data.
+// skipped because the values are not concrete data, and a
+// `\#(fmvar(...))` reference in `filename:` matches any value.
 func Validate(
 	f *lint.File, sch *Schema, docFM map[string]any, fmIsCUE bool,
 	mkDiag MakeDiag,
@@ -116,7 +117,7 @@ func Validate(
 	}
 	var diags []lint.Diagnostic
 
-	diags = append(diags, validateFilename(f, sch, docFM, mkDiag)...)
+	diags = append(diags, validateFilename(f, sch, docFM, fmIsCUE, mkDiag)...)
 
 	if !fmIsCUE {
 		diags = append(diags, validateFrontmatterDiags(f, sch, docFM, mkDiag)...)
@@ -1664,10 +1665,11 @@ func formatHeading(level int, text string) string {
 // the "expected" is the glob spelled out as a pattern-matching
 // constraint.
 func validateFilename(
-	f *lint.File, sch *Schema, docFM map[string]any, mkDiag MakeDiag,
+	f *lint.File, sch *Schema, docFM map[string]any, fmIsCUE bool,
+	mkDiag MakeDiag,
 ) []lint.Diagnostic {
-	d := FilenameDiagnostic(
-		sch.Filename, filepath.Base(f.Path), docFM, schemaRef(sch, ""))
+	d := FilenameDiagnostic(sch.Filename, filepath.Base(f.Path), docFM,
+		fmIsCUE, schemaRef(sch, ""))
 	if d == nil {
 		return nil
 	}

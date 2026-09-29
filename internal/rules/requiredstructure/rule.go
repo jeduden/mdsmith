@@ -926,17 +926,19 @@ func (r *Rule) checkSingleFileSchemaFromData(
 	docHeadings := extractHeadings(f)
 	docFMRaw, fmDiags := readDocFrontMatterRaw(f)
 	diags = append(diags, fmDiags...)
+	// The cue-frontmatter placeholder token marks the front-matter
+	// values as CUE expressions rather than concrete data.
+	fmIsCUE := placeholders.HasCUEFrontmatter(r.Placeholders)
 
 	// Check filename pattern.
-	diags = append(diags, checkFilenamePattern(f, sch, r.Schema, docFMRaw)...)
+	diags = append(diags, checkFilenamePattern(f, sch, r.Schema, docFMRaw, fmIsCUE)...)
 
 	// Check structure: required headings present and in order.
 	diags = append(diags, checkStructure(f, sch, docHeadings, r.Schema)...)
 
-	// Validate document front matter against schema-embedded CUE constraints,
-	// unless the cue-frontmatter placeholder token is configured (which marks
-	// the front-matter values as CUE expressions rather than concrete data).
-	if !placeholders.HasCUEFrontmatter(r.Placeholders) {
+	// Validate document front matter against schema-embedded CUE
+	// constraints, unless the values are CUE expressions themselves.
+	if !fmIsCUE {
 		fmSch := &schema.Schema{
 			Frontmatter:      sch.Config.Frontmatter,
 			FrontmatterLines: sch.Config.FrontmatterLines,
@@ -2550,6 +2552,18 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 				schema.LiteralFmvarHint(pp.Pattern)))
 			continue
 		}
+		if placeholders.HasCUEFrontmatter(r.Placeholders) {
+			// The front-matter values are CUE constraints
+			// (`name: string`), not data: a reference has no value
+			// to substitute, so it matches any single segment and
+			// only the literal rest of the pattern is checked.
+			if matchWorkspacePath(schema.WildcardGlobRefs(pp.Pattern), rel) {
+				continue
+			}
+			diags = append(diags, pathPatternDiag(f, rel, pp,
+				schema.LiteralFmvarHint(pp.Pattern)))
+			continue
+		}
 		if !fmRead {
 			// An unparseable block leaves every `fmvar` reference
 			// unresolved. Keep the parse failure so the hint names
@@ -2668,16 +2682,17 @@ func workspaceRelPath(f *lint.File) string {
 // schema's filename glob pattern (if configured).
 func checkFilenamePattern(
 	f *lint.File, sch *parsedSchema, schemaSource string,
-	docFM map[string]any,
+	docFM map[string]any, fmIsCUE bool,
 ) []lint.Diagnostic {
 	// schema.FilenameDiagnostic owns the wording, the
 	// `\#(fmvar(name))` resolution against the document's front
-	// matter, and the OR-list semantics, so the legacy proto.md path
-	// and the inline/composed path (schema.validateFilename) cannot
-	// drift apart.
+	// matter (a wildcard when fmIsCUE marks the values as CUE
+	// constraints), and the OR-list semantics, so the legacy proto.md
+	// path and the inline/composed path (schema.validateFilename)
+	// cannot drift apart.
 	d := schema.FilenameDiagnostic(
 		sch.Config.FilenamePatterns, filepath.Base(f.Path), docFM,
-		buildSchemaRefForLegacy(schemaSource))
+		fmIsCUE, buildSchemaRefForLegacy(schemaSource))
 	if d == nil {
 		return nil
 	}

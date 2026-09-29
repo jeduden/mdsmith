@@ -116,6 +116,12 @@ accepts `notes/#(draft)-1.md`.
 A pattern with a reference is matched on its raw
 text, so write its separators as `/`, not `\`.
 
+Under the `cue-frontmatter` placeholder, a template's
+front-matter values are CUE constraints such as
+`name: string`, not data. A reference then matches
+any single path segment, and the rest of the glob is
+still checked.
+
 The resolved value's glob metacharacters are
 escaped, so it matches literally. A `name` of `a*b`
 matches the directory `a*b` and not `axxb` — the

@@ -111,8 +111,12 @@ func MatchFilename(patterns []string, base string) (matched bool, badPattern str
 // pass. The error rides along so the caller can surface it as the
 // hint when nothing matched — including the all-entries-dropped case,
 // which the caller detects as an empty resolved list.
+//
+// When fmIsCUE is set the front-matter values are CUE constraints,
+// not data, so every reference becomes a `*` wildcard
+// (WildcardGlobRefs) and nothing counts as interpolated.
 func resolveFilenamePatterns(
-	patterns []string, fm map[string]any,
+	patterns []string, fm map[string]any, fmIsCUE bool,
 ) (resolved, interpolated []string, unresolved error) {
 	if !slices.ContainsFunc(patterns, PatternHasInterp) {
 		return patterns, nil, nil
@@ -121,6 +125,10 @@ func resolveFilenamePatterns(
 	for _, p := range patterns {
 		if !PatternHasInterp(p) {
 			out = append(out, p)
+			continue
+		}
+		if fmIsCUE {
+			out = append(out, WildcardGlobRefs(p))
 			continue
 		}
 		// filenameMetaEscaper, not globMetaEscaper: MatchFilename
@@ -145,19 +153,23 @@ func resolveFilenamePatterns(
 // a front-matter value. It returns nil when the basename satisfies
 // the constraint (including the "no constraint configured" case);
 // otherwise it returns the diagnostic the caller emits with its own
-// anchor and MakeDiag. ref names the schema source.
+// anchor and MakeDiag. ref names the schema source. fmIsCUE marks fm
+// as CUE constraints (the `cue-frontmatter` placeholder); a reference
+// then matches any single segment instead of a value.
 //
 // Both `filename:` surfaces — the inline/composed schema path
 // (validateFilename) and the legacy proto.md path
 // (requiredstructure.checkFilenamePattern) — route through here so
 // their wording, hint selection, and OR semantics cannot drift.
 func FilenameDiagnostic(
-	patterns []string, base string, fm map[string]any, ref string,
+	patterns []string, base string, fm map[string]any, fmIsCUE bool,
+	ref string,
 ) *SchemaDiagnostic {
 	if len(patterns) == 0 {
 		return nil
 	}
-	resolved, interpolated, unresolved := resolveFilenamePatterns(patterns, fm)
+	resolved, interpolated, unresolved := resolveFilenamePatterns(
+		patterns, fm, fmIsCUE)
 	matched, badPattern, err := MatchFilename(resolved, base)
 	if err != nil {
 		// Malformed glob in the schema. Surface it via the same

@@ -164,7 +164,7 @@ func TestResolveGlobPattern_RejectsPathSeparatorInValue(t *testing.T) {
 // wildcard on Windows.
 func TestResolveFilenamePatterns_EscapedQuestionMarkMatchesLiterally(t *testing.T) {
 	resolved, _, unresolved := resolveFilenamePatterns(
-		[]string{`\#(fmvar(id)).md`}, map[string]any{"id": "a?b"})
+		[]string{`\#(fmvar(id)).md`}, map[string]any{"id": "a?b"}, false)
 	require.NoError(t, unresolved)
 	require.Len(t, resolved, 1)
 	ok, err := filepath.Match(resolved[0], "a?b.md")
@@ -180,7 +180,7 @@ func TestResolveFilenamePatterns_EscapedQuestionMarkMatchesLiterally(t *testing.
 // doubled form matches one literal backslash.
 func TestResolveFilenamePatterns_EscapesBackslash(t *testing.T) {
 	resolved, _, unresolved := resolveFilenamePatterns(
-		[]string{`\#(fmvar(id)).md`}, map[string]any{"id": `a\b`})
+		[]string{`\#(fmvar(id)).md`}, map[string]any{"id": `a\b`}, false)
 	require.NoError(t, unresolved)
 	assert.Equal(t, []string{`a\\b.md`}, resolved)
 	if runtime.GOOS == "windows" {
@@ -206,7 +206,7 @@ func TestPathPatternSyntaxForm(t *testing.T) {
 	require.False(t, doublestar.ValidatePattern(quoted),
 		"precondition: the raw text is not a valid glob")
 	assert.True(t, doublestar.ValidatePattern(PathPatternSyntaxForm(quoted)))
-	assert.Equal(t, ".apm/skills/x/SKILL.md",
+	assert.Equal(t, ".apm/skills/*/SKILL.md",
 		PathPatternSyntaxForm(`.apm/skills/\#(fmvar(name))/SKILL.md`))
 
 	// A pattern with no reference is checked as it was before
@@ -297,7 +297,7 @@ func TestFilenameDiagnostic_LiteralOpenerMatchesAsBefore(t *testing.T) {
 	const pat, base = `notes-\#(draft)*.md`, "notes-#(draft)-1.md"
 	before, err := filepath.Match(pat, base)
 	require.NoError(t, err)
-	d := FilenameDiagnostic([]string{pat}, base, nil, "kind note")
+	d := FilenameDiagnostic([]string{pat}, base, nil, false, "kind note")
 	assert.Equal(t, before, d == nil)
 	if runtime.GOOS != "windows" {
 		assert.Nil(t, d, "on POSIX `\\#` is an escaped `#`")
@@ -309,7 +309,7 @@ func TestFilenameDiagnostic_LiteralOpenerMatchesAsBefore(t *testing.T) {
 // guess that the reference never resolved.
 func TestFilenameDiagnostic_MalformedFmvarHint(t *testing.T) {
 	d := FilenameDiagnostic([]string{`\#(fmvar(my-key)).md`}, "x.md",
-		map[string]any{"my-key": "x"}, "kind note")
+		map[string]any{"my-key": "x"}, false, "kind note")
 	require.NotNil(t, d)
 	assert.Contains(t, d.Hint, "matched literally")
 	assert.Contains(t, d.Hint, "must be quoted")
@@ -370,7 +370,7 @@ func TestValidateFilename_HintListsOnlyInterpolatedGlobs(t *testing.T) {
 // bytes alone.
 func TestResolveFilenamePatterns_LeavesBraceAndCommaUnescaped(t *testing.T) {
 	resolved, interpolated, unresolved := resolveFilenamePatterns(
-		[]string{`\#(fmvar(id)).md`}, map[string]any{"id": "a,b{c"})
+		[]string{`\#(fmvar(id)).md`}, map[string]any{"id": "a,b{c"}, false)
 	require.NoError(t, unresolved)
 	assert.Equal(t, []string{"a,b{c.md"}, resolved)
 	assert.Equal(t, []string{"a,b{c.md"}, interpolated)
@@ -383,7 +383,7 @@ func TestResolveFilenamePatterns_LeavesBraceAndCommaUnescaped(t *testing.T) {
 // escaped, so a value carrying one matches literally.
 func TestResolveFilenamePatterns_EscapesFilepathMatchMetacharacters(t *testing.T) {
 	resolved, _, unresolved := resolveFilenamePatterns(
-		[]string{`\#(fmvar(id)).md`}, map[string]any{"id": "a*b"})
+		[]string{`\#(fmvar(id)).md`}, map[string]any{"id": "a*b"}, false)
 	require.NoError(t, unresolved)
 	ok, err := filepath.Match(resolved[0], "a*b.md")
 	require.NoError(t, err)
@@ -399,7 +399,7 @@ func TestResolveFilenamePatterns_EscapesFilepathMatchMetacharacters(t *testing.T
 // means the same thing on every platform.
 func TestResolveFilenamePatterns_QuotesMetaWithoutBackslash(t *testing.T) {
 	resolved, _, unresolved := resolveFilenamePatterns(
-		[]string{`\#(fmvar(id))-*.md`}, map[string]any{"id": "[draft]*?"})
+		[]string{`\#(fmvar(id))-*.md`}, map[string]any{"id": "[draft]*?"}, false)
 	require.NoError(t, unresolved)
 	require.Len(t, resolved, 1)
 	assert.NotContains(t, resolved[0], `\`,
@@ -476,4 +476,29 @@ func TestGlobMismatchHint(t *testing.T) {
 	assert.Equal(t, "with front matter applied: docs/x.md",
 		GlobMismatchHint(nil, []string{"ok.md"}, "docs/x.md"))
 	assert.Empty(t, GlobMismatchHint(nil, []string{"ok.md"}))
+}
+
+// Under the `cue-frontmatter` placeholder the front-matter values are
+// CUE constraints, not data: `id: string` names a type, not the file.
+// A reference then matches any single segment, and the literal rest of
+// the glob is still checked.
+func TestValidateFilename_CUEFrontmatterReferenceMatchesAnyValue(t *testing.T) {
+	sch := &Schema{
+		Filename: []string{`\#(fmvar(id))-notes.md`},
+		Source:   "kind note",
+	}
+	fm := map[string]any{"id": "string"}
+	doc := newDocFile(t, "template-notes.md", "---\nid: string\n---\n# T\n")
+	assert.Empty(t, Validate(doc, sch, fm, true, makeDiagForTest))
+
+	doc = newDocFile(t, "template.md", "---\nid: string\n---\n# T\n")
+	diags := Validate(doc, sch, fm, true, makeDiagForTest)
+	require.Len(t, diags, 1, "got %v", diagsMessages(diags))
+	assert.NotContains(t, diags[0].Message, "with front matter applied")
+}
+
+func TestWildcardGlobRefs(t *testing.T) {
+	assert.Equal(t, ".apm/skills/*/SKILL.md",
+		WildcardGlobRefs(`.apm/skills/\#(fmvar(name))/SKILL.md`))
+	assert.Equal(t, `notes/\#(draft)*.md`, WildcardGlobRefs(`notes/\#(draft)*.md`))
 }
