@@ -32,8 +32,9 @@ const mib = 1024 * 1024
 // Widened to 4.25 MiB — a real reduction in how much bloat this guard
 // catches, accepted deliberately to restore working headroom rather
 // than trim otherwise-fine code to fit an exhausted margin — leaving
-// ~260 KiB above the measurement that prompted the change. Still well
-// under the 14 MiB raw ceiling.
+// ~260 KiB above the measurement that prompted the change. The raw
+// ceiling has real headroom by comparison: ~13.1 MiB measured against
+// the 14 MiB limit, about 0.9 MiB to spare.
 const (
 	maxWASMRawBytes  = 14 * mib      // 14 MiB (< 18 MB plan-215 budget)
 	maxWASMGzipBytes = 4*mib + mib/4 // 4.25 MiB

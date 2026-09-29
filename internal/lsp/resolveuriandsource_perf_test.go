@@ -49,10 +49,12 @@ func BenchmarkResolveURIAndSource_NoMatch(b *testing.B) {
 // docs.get(uri) for every open document — one struct-copy allocation
 // each, even for a non-matching document, since get() always copies
 // before the caller can check doc.path — measured at 64 allocs/op on
-// this fixture. findByPath's single-lock (uri, path)-pair snapshot
-// still leaves the per-candidate path-normalization cost (match runs
-// once per candidate either way), but drops the per-candidate document
-// struct copy entirely: measured at 14 allocs/op. The budget sits with
+// this fixture. findByPath takes one lock to snapshot (uri, path)
+// pairs, then calls get() (its own lock) only for a candidate that
+// already matched, so it still leaves the per-candidate
+// path-normalization cost (match runs once per candidate either way),
+// but drops the per-candidate document struct copy entirely: measured
+// at 14 allocs/op. The budget sits with
 // headroom above that for environment variance, well below the old
 // figure, so a regression that reintroduces the per-candidate copy
 // trips this test.
