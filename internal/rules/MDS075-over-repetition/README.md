@@ -24,13 +24,15 @@ blocks are excluded.
 
 The rule tokenizes prose into case-folded, punctuation-delimited words
 and counts occurrences per scope unit (file, heading-bounded section, or
-paragraph). Words shorter than `min-length` runes are excluded. Words in
+paragraph). Under `section` scope, prose before the first heading forms
+its own section anchored at line 1, and a file with no headings is one
+section. Words shorter than `min-length` runes are excluded. Words in
 the `stopwords` list (populated via `lists:`) are excluded before
 counting.
 
 A diagnostic is emitted at the scope unit's first line whenever any
-surviving word's count exceeds `max`. The rule is opt-in and requires
-`max` > 0 to fire.
+surviving word's count exceeds `max`. The rule is opt-in: `max` must be
+≥ 1 to fire, `-1` disables it, and any other value is a config error.
 
 ## Settings
 
