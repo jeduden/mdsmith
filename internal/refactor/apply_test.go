@@ -59,8 +59,10 @@ func TestApplyEdits(t *testing.T) {
 // TestApplyEdits_SameOffsetAndOverlapCharacterization pins what
 // ApplyEdits does today with edits that share a start offset or
 // overlap. It adds no checks: every edit is spliced in turn, rightmost
-// start first (ties keep input order), each against the row the
-// previous splice left behind. These cases document that contract so a
+// start first (ties keep input order). Each edit's range is mapped to
+// bytes against the original row but spliced into the row the previous
+// splice left behind, so a left edit that ends past the shrunk row
+// errors rather than clamping. These cases document that contract so a
 // refactor cannot change it silently — e.g. two identical zero-width
 // inserts both land (`abcxxdef`), they are not merged into one.
 func TestApplyEdits_SameOffsetAndOverlapCharacterization(t *testing.T) {
@@ -91,6 +93,11 @@ func TestApplyEdits_SameOffsetAndOverlapCharacterization(t *testing.T) {
 			want:  "aX\n",
 		},
 		{
+			name:  "ties keep input order past the insertion-sort cutoff",
+			edits: tiedInsertsAfterRowStart(),
+			want:  "AabcMLKJIHGFEDCBdef\n",
+		},
+		{
 			name:    "overlap whose left edit ends past the shrunk row errors",
 			edits:   []Edit{mkEdit(0, 1, 6, "X"), mkEdit(0, 2, 3, "")},
 			wantErr: "edit offset [1,6) out of range on line 1",
@@ -103,6 +110,46 @@ func TestApplyEdits_SameOffsetAndOverlapCharacterization(t *testing.T) {
 				require.EqualError(t, err, tt.wantErr)
 				return
 			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, string(out))
+		})
+	}
+}
+
+// tiedInsertsAfterRowStart returns a zero-width insert of "A" at offset
+// 0 followed by twelve tied zero-width inserts "B".."M" at offset 3.
+// Thirteen edits is past the 12-element cutoff below which
+// slices.SortFunc falls back to insertion sort and happens to keep ties
+// in order, so only a stable sort splices "B".."M" in input order.
+func tiedInsertsAfterRowStart() []Edit {
+	edits := make([]Edit, 0, 13)
+	edits = append(edits, mkEdit(0, 0, 0, "A"))
+	for c := 'B'; c <= 'M'; c++ {
+		edits = append(edits, mkEdit(0, 3, 3, string(c)))
+	}
+	return edits
+}
+
+// TestApplyEdits_UTF16Offsets pins how ApplyEdits maps an Edit's
+// UTF-16 Characters to bytes in the row: é is two bytes but one UTF-16
+// unit, and 😀 is four bytes but two units (a surrogate pair). A
+// Character past either end of the row clamps to that end instead of
+// erroring.
+func TestApplyEdits_UTF16Offsets(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		edit Edit
+		want string
+	}{
+		{"two-byte rune before the edit", "# Café Setup\n", mkEdit(0, 7, 12, "Install"), "# Café Install\n"},
+		{"surrogate pair before the edit", "a😀b\n", mkEdit(0, 3, 4, "Z"), "a😀Z\n"},
+		{"end past the row clamps to the row end", "abcd\n", mkEdit(0, 2, 99, "x"), "abx\n"},
+		{"negative start clamps to the row start", "abcd\n", mkEdit(0, -5, 1, "x"), "xbcd\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := ApplyEdits([]byte(tt.src), []Edit{tt.edit})
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, string(out))
 		})
