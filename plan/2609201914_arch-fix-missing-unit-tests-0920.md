@@ -6,11 +6,11 @@ title: >-
 status: "🔲"
 model: haiku
 summary: >-
-  AdvancePastLine in internal/rules/astutil, two path-safety
-  guards in cmd/mdsmith/backlinks.go, and four WASM bridge
-  helpers landed with only behavior-level coverage, not a
-  dedicated unit test by name. Flagged by the 2026-09-20
-  audit as tax.
+  AdvancePastLine in internal/rules/astutil, the
+  isWorkspaceRelativeTarget path-safety guard in
+  cmd/mdsmith/backlinks.go, and four WASM bridge helpers
+  landed with only behavior-level coverage, not a dedicated
+  unit test by name. Flagged by the 2026-09-20 audit as tax.
 ---
 # Add dedicated unit tests for the 2026-09-20 touched-set tax findings
 
@@ -34,11 +34,18 @@ scenario test:
   `start` over ascending, non-overlapping windows) is
   documented but only exercised as a side effect of
   `TestSectionBodies_*`.
-- [cmd/mdsmith/backlinks.go][backlinks]:224,241 —
-  `isAbsOrDriveOrUNC` and `isWorkspaceRelativeTarget`, the
-  path-traversal guards `rename`, `deps`, and `move` all
-  depend on. Covered only incidentally via
-  `TestWorkspaceRelativePath_*` and e2e paths.
+- [cmd/mdsmith/backlinks.go][backlinks] —
+  `isWorkspaceRelativeTarget`, the path-traversal guard
+  `rename`, `deps`, and `move` all depend on. Covered only
+  incidentally via `TestWorkspaceRelativePath_*` and e2e
+  paths. (Its `isAbsOrDriveOrUNC` helper turned out to be a
+  byte-identical copy of
+  `internal/backlinks.IsAbsOrDriveOrUNC` — already tested by
+  `TestIsAbsOrDriveOrUNC` in that package. A 2026-09-29
+  review caught the duplication; this PR now exports the
+  `internal/backlinks` copy and deletes the `cmd/mdsmith`
+  one, so only `isWorkspaceRelativeTarget` is left to test
+  here.)
 - [cmd/mdsmith-wasm/main.go][wasm]:44,90,226,235 —
   `resolveVersion`, `workspaceFromJS`, `uriAndSource`, and
   `allStrings`. These carry the `js`/`wasm` build constraint,
@@ -56,8 +63,7 @@ carry that surface, so all four are `tax`, not `blocker`.
    `internal/rules/astutil/astutil_test.go`, driving the
    cursor-threading contract directly: an already-passed
    prefix, a boundary exactly at `start`, and an empty slice.
-2. Add `TestIsAbsOrDriveOrUNC` and
-   `TestIsWorkspaceRelativeTarget` to
+2. Add `TestIsWorkspaceRelativeTarget` to
    `cmd/mdsmith/backlinks_unit_test.go`, table-driven over
    POSIX-absolute, drive-letter, UNC, and relative-target
    inputs.
@@ -79,8 +85,8 @@ carry that surface, so all four are `tax`, not `blocker`.
 ## Acceptance Criteria
 
 - [ ] `AdvancePastLine` has a dedicated `TestAdvancePastLine`.
-- [ ] `isAbsOrDriveOrUNC` and `isWorkspaceRelativeTarget` each
-      have a dedicated test by name.
+- [ ] `isWorkspaceRelativeTarget` has a dedicated test by
+      name.
 - [ ] Each WASM bridge helper either has a dedicated test or
       a "no test by design" exemption comment explaining why.
 - [ ] `go test ./...` is green.

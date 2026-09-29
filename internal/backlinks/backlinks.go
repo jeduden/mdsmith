@@ -312,7 +312,7 @@ func relPath(p, rootDir string) string {
 func resolveLinkTarget(srcRel, linkPath string) string {
 	srcRel = strings.ReplaceAll(srcRel, `\`, `/`)
 	linkPath = strings.ReplaceAll(linkPath, `\`, `/`)
-	if isAbsOrDriveOrUNC(srcRel) || isAbsOrDriveOrUNC(linkPath) {
+	if IsAbsOrDriveOrUNC(srcRel) || IsAbsOrDriveOrUNC(linkPath) {
 		return ""
 	}
 	dir := path.Dir(srcRel)
@@ -323,11 +323,15 @@ func resolveLinkTarget(srcRel, linkPath string) string {
 	return cleaned
 }
 
-// isAbsOrDriveOrUNC reports whether p is absolute under any of the
+// IsAbsOrDriveOrUNC reports whether p is absolute under any of the
 // schemes mdsmith targets: POSIX-style leading `/`, Windows drive
 // letters like `C:/`, or UNC prefixes like `//host`. `path.IsAbs`
 // alone misses the Windows forms because the path package is Unix-only.
-func isAbsOrDriveOrUNC(p string) bool {
+//
+// Exported so cmd/mdsmith, which already imports this package, can
+// share this check instead of carrying its own byte-identical copy —
+// the same fix this PR applies to internal/lsp's ATX-heading helpers.
+func IsAbsOrDriveOrUNC(p string) bool {
 	if path.IsAbs(p) {
 		return true
 	}
