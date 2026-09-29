@@ -44,14 +44,11 @@ func TestSortByDepthThenName_NoReflectSort(t *testing.T) {
 	}
 }
 
-// TestSortByDepthThenName_SingleOrEmptyAllocatesNothing pins that a
-// bucket of fewer than 2 paths — the common case, since most basenames
-// are unique in a real workspace — costs nothing. There's no explicit
-// early-return guard for this (measured: adding one made no difference,
-// since strings.Count never allocates and escape analysis already
-// stack-allocates the decorated slice at this size), but the property
-// still holds and is worth pinning against a future change that makes
-// the decorated slice escape.
+// TestSortByDepthThenName_SingleOrEmptyAllocatesNothing pins the early
+// return for fewer than 2 paths — the common case, since most basenames
+// are unique in a real workspace. See sortByDepthThenName's comment for
+// why that guard exists (test determinism, not a measured performance
+// win — the property already held without it).
 func TestSortByDepthThenName_SingleOrEmptyAllocatesNothing(t *testing.T) {
 	if testing.Short() {
 		t.Skip("alloc gate skipped in -short mode")

@@ -75,7 +75,12 @@ func TestSortEntriesByOutputKey_AllocBudget(t *testing.T) {
 		delta = 0
 	}
 
-	const allocBudget = 260
+	// Measured 242; budgeted with headroom since this isn't a Go-map-
+	// growth-dependent count (unlike the noduplicateheadings case
+	// elsewhere in this codebase) — a real regression (outputSetKey
+	// computed twice per comparison again) would jump to ~5914, far
+	// past any reasonable budget here.
+	const allocBudget = 300
 	t.Logf("sortEntriesByOutputKey allocs/op (%d entries, delta over the test's own "+
 		"input copy) = %.0f (budget = %d)", n, delta, allocBudget)
 	require.LessOrEqualf(t, delta, float64(allocBudget),

@@ -309,13 +309,20 @@ func skipHeavyDirs(p string) error {
 // internal/build/cache.go's sortEntriesByOutputKey uses for its own
 // comparator.
 //
-// No early return for fewer than 2 paths: unlike sortEntriesByOutputKey
-// (where skipping the per-entry outputSetKey call is a real allocation
-// win), strings.Count never allocates, and escape analysis already
-// stack-allocates `decorated` at this size since it never leaves the
-// function — measured no difference in allocs/op with or without a
-// guard here.
+// The early return below isn't a measured performance win the way
+// sortEntriesByOutputKey's is (skipping its per-entry outputSetKey call
+// saves real allocations): strings.Count never allocates, and for 0 or
+// 1 paths escape analysis already stack-allocates `decorated` since it
+// never leaves the function, measured identical allocs/op with or
+// without the guard. It's here so that invariant doesn't depend on an
+// escape-analysis threshold (keyedPath's size relative to the
+// compiler's stack-allocation limit for a non-constant-length slice)
+// that a future Go version could shift — see
+// TestSortByDepthThenName_SingleOrEmptyAllocatesNothing.
 func sortByDepthThenName(paths []string) {
+	if len(paths) < 2 {
+		return
+	}
 	type keyedPath struct {
 		depth int
 		path  string
