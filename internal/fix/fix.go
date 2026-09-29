@@ -877,24 +877,15 @@ func atomicWriteFile(path string, data []byte, mode os.FileMode) error {
 }
 
 // fixableRules returns enabled rules that implement FixableRule, sorted by ID.
-// If a rule implements Configurable and has settings, it is cloned and
-// configured before being returned.
+// Rules are configured through checker.ConfigureEnabledRules: a rule with
+// settings is cloned and configured, and a rule keeping per-file state
+// (rule.FileResetter) gets its own clone, so concurrent callers such as
+// the LSP's Session.Fix never share that state.
 func (f *Fixer) fixableRules(effective map[string]config.RuleCfg) ([]rule.FixableRule, []error) {
-	fixable := make([]rule.FixableRule, 0, len(f.Rules))
-	errs := make([]error, 0, len(f.Rules))
-	for _, rl := range f.Rules {
-		cfg, ok := effective[rl.Name()]
-		if !ok || !cfg.Enabled {
-			continue
-		}
-
-		configured, err := checker.ConfigureRule(rl, cfg)
-		if err != nil {
-			errs = append(errs, err)
-			continue
-		}
-
-		if fr, ok := configured.(rule.FixableRule); ok {
+	configured, errs := checker.ConfigureEnabledRules(f.Rules, effective)
+	fixable := make([]rule.FixableRule, 0, len(configured))
+	for _, rl := range configured {
+		if fr, ok := rl.(rule.FixableRule); ok {
 			fixable = append(fixable, fr)
 		}
 	}

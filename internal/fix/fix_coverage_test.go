@@ -12,6 +12,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -170,6 +171,50 @@ func TestFixableRules_SortedByID(t *testing.T) {
 	require.Len(t, fixable, 2)
 	assert.Equal(t, "MDS100", fixable[0].ID())
 	assert.Equal(t, "MDS200", fixable[1].ID())
+}
+
+// mockStatefulFixableRule is a fixable rule that keeps per-file state
+// (rule.FileResetter), the shape MDS003 and MDS005 have, but fixable.
+type mockStatefulFixableRule struct {
+	id, name string
+	seen     int
+}
+
+func (r *mockStatefulFixableRule) ID() string       { return r.id }
+func (r *mockStatefulFixableRule) Name() string     { return r.name }
+func (r *mockStatefulFixableRule) Category() string { return "test" }
+func (r *mockStatefulFixableRule) Check(_ *lint.File) []lint.Diagnostic {
+	return nil
+}
+func (r *mockStatefulFixableRule) Fix(f *lint.File) []byte { return f.Source }
+func (r *mockStatefulFixableRule) CheckNode(_ ast.Node, _ bool, _ *lint.File) []lint.Diagnostic {
+	r.seen++
+	return nil
+}
+func (r *mockStatefulFixableRule) BeginFile(_ *lint.File) { r.seen = 0 }
+
+var _ rule.FixableRule = (*mockStatefulFixableRule)(nil)
+var _ rule.FileResetter = (*mockStatefulFixableRule)(nil)
+
+// TestFixableRules_IsolatesFileState pins that a fixable rule keeping
+// per-file state is never handed out shared: Session.Fix can run
+// concurrently from the LSP, and each call builds its list through
+// fixableRules, so two lists must not write that state through one
+// pointer (the isolation checker.ConfigureEnabledRules gives Check).
+func TestFixableRules_IsolatesFileState(t *testing.T) {
+	tmpl := &mockStatefulFixableRule{id: "MDS400", name: "stateful"}
+	fixer := &Fixer{Config: &config.Config{}, Rules: []rule.Rule{tmpl}}
+	effective := map[string]config.RuleCfg{"stateful": {Enabled: true}}
+
+	first, errs := fixer.fixableRules(effective)
+	require.Empty(t, errs)
+	require.Len(t, first, 1)
+	second, errs := fixer.fixableRules(effective)
+	require.Empty(t, errs)
+	require.Len(t, second, 1)
+
+	assert.NotSame(t, tmpl, first[0], "fixableRules must not hand out the shared template")
+	assert.NotSame(t, first[0], second[0], "two fixableRules lists must not share a stateful rule")
 }
 
 // mockBadConfigFixableRule is a fixable rule whose ApplySettings always fails.
