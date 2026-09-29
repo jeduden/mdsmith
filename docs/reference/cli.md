@@ -131,9 +131,10 @@ Per-command exits may vary; see the per-command pages.
 ## Output
 
 Lint output goes to **stderr**. `mdsmith check --stdout` sends
-diagnostics and the stats line to **stdout** instead so
+diagnostics and the stats line to **stdout** instead, so
 `mdsmith check --stdout -f json > out.json` captures them;
-runtime errors stay on stderr. Format:
+runtime errors stay on stderr. Only `check` has the flag.
+Format:
 
 **text** (default):
 

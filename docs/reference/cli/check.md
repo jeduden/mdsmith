@@ -62,9 +62,16 @@ the winning source for each leaf setting:
 
 `--stdout` writes diagnostics and the text-format stats line
 to stdout instead of stderr, so a plain redirect captures
-them. Runtime errors, the verbose log, and the non-Markdown
-skip warning stay on stderr. Without the flag, output stays
-on stderr as before.
+them. A clean run still writes a valid document: `[]` for
+`json` and an empty log for `sarif`. `--quiet` writes
+nothing.
+
+Runtime errors stay on stderr, so they never land in the
+redirected file. That includes a failed write to stdout,
+which exits `2`. The verbose log and the non-Markdown skip
+warning stay on stderr too. Without the flag, all output
+goes to stderr as before, and a clean `json` run writes
+nothing. [`mdsmith fix`](fix.md) has no `--stdout`.
 
 ## Examples
 
