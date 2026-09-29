@@ -17,7 +17,7 @@ import (
 
 // checkCLIOpts bundles the runtime knobs threaded through the check
 // command path. Grouped because runCheck splits between explicit-file,
-// stdin, and config-discovery entry points and the same eight values
+// stdin, and config-discovery entry points and the same nine values
 // flow to all three.
 type checkCLIOpts struct {
 	configPath   string
@@ -208,49 +208,43 @@ func checkDiscovered(opts checkCLIOpts) int {
 	return reportCheckResult(result, opts, logger)
 }
 
-// reportCheckResult writes diagnostics + the run-stats line and
-// computes the exit code shared by checkFiles, checkStdin, and
-// checkDiscovered.
+// reportCheckResult writes diagnostics + the run-stats line to the
+// process streams and computes the exit code shared by checkFiles,
+// checkStdin, and checkDiscovered.
 func reportCheckResult(result *engine.Result, opts checkCLIOpts, logger *vlog.Logger) int {
-	return reportCheckResultStreams(result, opts, logger, os.Stdout, os.Stderr)
+	return reportCheckResultTo(result, opts, logger, os.Stdout, os.Stderr)
 }
 
 // reportCheckResultTo is the injectable form of reportCheckResult.
-// Tests pass an alternate stderr writer to exercise the write-error
-// branches without leaking to the real stderr; the formatter and the
-// run-stats helper both route their own write-error messages through
-// the same writer (see formatDiagnosticsTo, printRunStatsTo) so a
-// fault-injecting writer captures the full stderr surface.
+// Tests pass alternate writers to exercise the write-error branches
+// without leaking to the real streams.
 //
-// All report output goes through one buffered writer: the text
-// formatter emits several small writes per diagnostic, and issuing
-// each as its own syscall on an unbuffered stderr dominated wall time
-// on diagnostic-heavy runs. The buffer is flushed before the verbose
+// Runtime errors always go to stderrW. Diagnostics and the stats line
+// go to stdoutW under --stdout and to stderrW otherwise. A failed
+// write of those is itself a runtime error: its message goes to
+// stderrW and the exit code is 2.
+//
+// Each stream gets one buffered writer: the text formatter emits
+// several small writes per diagnostic, and issuing each as its own
+// syscall dominated wall time on diagnostic-heavy runs. Without
+// --stdout both share one buffer. With it, the error buffer is
+// flushed before any diagnostic is written, so errors print first on
+// a shared terminal. Every buffer is flushed before the verbose
 // logger line so output ordering on a shared fd is preserved.
-func reportCheckResultTo(result *engine.Result, opts checkCLIOpts, logger *vlog.Logger, stderrW io.Writer) int {
-	return reportCheckResultStreams(result, opts, logger, io.Discard, stderrW)
-}
-
-// reportCheckResultStreams is reportCheckResultTo with a separate
-// stdout writer. Diagnostics and the stats line go to stdoutW when
-// opts.stdout is set and to stderrW otherwise; runtime errors always
-// go to stderrW.
-func reportCheckResultStreams(result *engine.Result, opts checkCLIOpts, logger *vlog.Logger, stdoutW, stderrW io.Writer) int {
-	if !opts.stdout {
-		stdoutW = stderrW
-	}
+func reportCheckResultTo(
+	result *engine.Result, opts checkCLIOpts, logger *vlog.Logger, stdoutW, stderrW io.Writer,
+) int {
 	ew := bufio.NewWriterSize(stderrW, stderrBufSize)
 	printErrorsTo(ew, result.Errors)
-	bw := ew
+	out := ew
 	if opts.stdout {
-		// Flush errors first so ordering is preserved on a shared tty.
 		// A failed flush is ignored, as printErrorsTo ignores its
 		// writes: a closed stderr must not keep diagnostics off stdout.
 		_ = ew.Flush()
-		bw = bufio.NewWriterSize(stdoutW, stderrBufSize)
+		out = bufio.NewWriterSize(stdoutW, stderrBufSize)
 	}
 
-	if err := writeCheckReport(bw, result, opts); err != nil {
+	if err := writeCheckReport(out, result, opts); err != nil {
 		// A write error is a runtime error, so it goes to stderr and
 		// never into the redirected diagnostics.
 		printWriteErrorTo(ew, err)

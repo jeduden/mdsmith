@@ -422,7 +422,7 @@ func TestReportCheckResultTo_BuffersDiagnosticWrites(t *testing.T) {
 	opts := checkCLIOpts{format: "text", noColor: true}
 	result := &engine.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(100)}
 	w := &countingWriter{}
-	code := reportCheckResultTo(result, opts, &vlog.Logger{}, w)
+	code := reportCheckResultTo(result, opts, &vlog.Logger{}, io.Discard, w)
 	assert.Equal(t, 1, code)
 	assert.Contains(t, w.buf.String(), "line too long")
 	// 100 diagnostics × (header + snippet + caret) lines must not become
@@ -752,7 +752,7 @@ func TestReportCheckResultTo_DiagWriteErrorReturns2(t *testing.T) {
 				RuleName: "test-rule", Severity: lint.Warning, Message: "issue"},
 		},
 	}
-	code := reportCheckResultTo(result, opts, &vlog.Logger{}, &alwaysErrorWriter{})
+	code := reportCheckResultTo(result, opts, &vlog.Logger{}, io.Discard, &alwaysErrorWriter{})
 	assert.Equal(t, 2, code)
 }
 
@@ -1519,7 +1519,7 @@ func TestReportCheckResultTo_FlushErrorReturns2(t *testing.T) {
 	// No diagnostics: only the run-stats line sits in the buffer, so
 	// the first underlying write happens at the final Flush.
 	code := reportCheckResultTo(&engine.Result{FilesChecked: 1},
-		checkCLIOpts{format: "text"}, &vlog.Logger{}, &failAfterWriter{n: 0})
+		checkCLIOpts{format: "text"}, &vlog.Logger{}, io.Discard, &failAfterWriter{n: 0})
 	assert.Equal(t, 2, code)
 }
 
@@ -1557,7 +1557,7 @@ func TestReportCheckResultTo_LargeDiagWriteErrorReturns2(t *testing.T) {
 	// report path takes its early-return branch.
 	opts := checkCLIOpts{format: "text", noColor: true}
 	result := &engine.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(2000)}
-	code := reportCheckResultTo(result, opts, &vlog.Logger{}, &alwaysErrorWriter{})
+	code := reportCheckResultTo(result, opts, &vlog.Logger{}, io.Discard, &alwaysErrorWriter{})
 	assert.Equal(t, 2, code)
 }
 

@@ -14,7 +14,7 @@ import (
 	vlog "github.com/jeduden/mdsmith/internal/log"
 )
 
-func TestReportCheckResultStreams_StdoutFlagRoutesDiagnostics(t *testing.T) {
+func TestReportCheckResultTo_StdoutFlagRoutesDiagnostics(t *testing.T) {
 	opts := checkCLIOpts{format: "json", stdout: true}
 	result := &engine.Result{
 		FilesChecked: 1,
@@ -22,7 +22,7 @@ func TestReportCheckResultStreams_StdoutFlagRoutesDiagnostics(t *testing.T) {
 		Errors:       []error{errors.New("boom")},
 	}
 	var out, errOut bytes.Buffer
-	code := reportCheckResultStreams(result, opts, &vlog.Logger{}, &out, &errOut)
+	code := reportCheckResultTo(result, opts, &vlog.Logger{}, &out, &errOut)
 	assert.Equal(t, 1, code)
 	assert.Contains(t, out.String(), "line too long")
 	assert.NotContains(t, errOut.String(), "line too long")
@@ -30,21 +30,21 @@ func TestReportCheckResultStreams_StdoutFlagRoutesDiagnostics(t *testing.T) {
 	assert.NotContains(t, out.String(), "boom")
 }
 
-func TestReportCheckResultStreams_TextStatsFollowDiagnostics(t *testing.T) {
+func TestReportCheckResultTo_TextStatsFollowDiagnostics(t *testing.T) {
 	opts := checkCLIOpts{format: "text", noColor: true, stdout: true}
 	result := &engine.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(1)}
 	var out, errOut bytes.Buffer
-	code := reportCheckResultStreams(result, opts, &vlog.Logger{}, &out, &errOut)
+	code := reportCheckResultTo(result, opts, &vlog.Logger{}, &out, &errOut)
 	assert.Equal(t, 1, code)
 	assert.Contains(t, out.String(), "stats: checked=1")
 	assert.Empty(t, errOut.String())
 }
 
-func TestReportCheckResultStreams_DefaultKeepsStderr(t *testing.T) {
+func TestReportCheckResultTo_DefaultKeepsStderr(t *testing.T) {
 	opts := checkCLIOpts{format: "json"}
 	result := &engine.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(1)}
 	var out, errOut bytes.Buffer
-	code := reportCheckResultStreams(result, opts, &vlog.Logger{}, &out, &errOut)
+	code := reportCheckResultTo(result, opts, &vlog.Logger{}, &out, &errOut)
 	assert.Equal(t, 1, code)
 	assert.Empty(t, out.String())
 	assert.Contains(t, errOut.String(), "line too long")
@@ -63,7 +63,7 @@ func TestParseCheckFlags_Stdout(t *testing.T) {
 // A closed or broken stderr must not keep diagnostics off stdout, and
 // the exit code must still report the lint result (1), not a write
 // error (2).
-func TestReportCheckResultStreams_BrokenStderrStillWritesStdout(t *testing.T) {
+func TestReportCheckResultTo_BrokenStderrStillWritesStdout(t *testing.T) {
 	opts := checkCLIOpts{format: "json", stdout: true}
 	result := &engine.Result{
 		FilesChecked: 1,
@@ -71,7 +71,7 @@ func TestReportCheckResultStreams_BrokenStderrStillWritesStdout(t *testing.T) {
 		Errors:       []error{errors.New("boom")},
 	}
 	var out bytes.Buffer
-	code := reportCheckResultStreams(result, opts, &vlog.Logger{}, &out, &alwaysErrorWriter{})
+	code := reportCheckResultTo(result, opts, &vlog.Logger{}, &out, &alwaysErrorWriter{})
 	assert.Equal(t, 1, code)
 	var diags []map[string]any
 	require.NoError(t, json.Unmarshal(out.Bytes(), &diags), "stdout=%q", out.String())
@@ -82,21 +82,21 @@ func TestReportCheckResultStreams_BrokenStderrStillWritesStdout(t *testing.T) {
 // stderr and never into the redirected diagnostics file. 2000
 // diagnostics overflow the 64 KiB buffer, so the formatter itself
 // sees the failure.
-func TestReportCheckResultStreams_FormatterErrorGoesToStderr(t *testing.T) {
+func TestReportCheckResultTo_FormatterErrorGoesToStderr(t *testing.T) {
 	opts := checkCLIOpts{format: "text", noColor: true, stdout: true}
 	result := &engine.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(2000)}
 	var errOut bytes.Buffer
-	code := reportCheckResultStreams(result, opts, &vlog.Logger{}, &alwaysErrorWriter{}, &errOut)
+	code := reportCheckResultTo(result, opts, &vlog.Logger{}, &alwaysErrorWriter{}, &errOut)
 	assert.Equal(t, 2, code)
 	assert.Equal(t, "mdsmith: error writing output: write failed\n", errOut.String())
 }
 
 // The final flush is the first stdout write when the output fits the
 // buffer; its failure is reported on stderr too.
-func TestReportCheckResultStreams_StdoutFlushErrorGoesToStderr(t *testing.T) {
+func TestReportCheckResultTo_StdoutFlushErrorGoesToStderr(t *testing.T) {
 	opts := checkCLIOpts{format: "text", stdout: true}
 	var errOut bytes.Buffer
-	code := reportCheckResultStreams(&engine.Result{FilesChecked: 1}, opts,
+	code := reportCheckResultTo(&engine.Result{FilesChecked: 1}, opts,
 		&vlog.Logger{}, &failAfterWriter{n: 0}, &errOut)
 	assert.Equal(t, 2, code)
 	assert.Equal(t, "mdsmith: error writing output: write failed\n", errOut.String())
@@ -129,7 +129,7 @@ func TestWriteCheckReport(t *testing.T) {
 // matching the JSON formatter's shape, and sarif writes an empty SARIF
 // log as it always has. --quiet still suppresses all of it, and the
 // default stderr route keeps its existing empty-json behavior.
-func TestReportCheckResultStreams_CleanRunOutput(t *testing.T) {
+func TestReportCheckResultTo_CleanRunOutput(t *testing.T) {
 	tests := []struct {
 		name            string
 		opts            checkCLIOpts
@@ -151,7 +151,7 @@ func TestReportCheckResultStreams_CleanRunOutput(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var out, errOut bytes.Buffer
-			code := reportCheckResultStreams(&engine.Result{FilesChecked: 1}, tt.opts,
+			code := reportCheckResultTo(&engine.Result{FilesChecked: 1}, tt.opts,
 				&vlog.Logger{}, &out, &errOut)
 			assert.Equal(t, 0, code)
 			switch tt.sarifOn {
