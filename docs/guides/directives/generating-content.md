@@ -437,6 +437,9 @@ appear but are overwritten by the outer generator on
 - Case mismatch — "did you mean?" hint.
 - Non-string scalar — formatted to string. Composite
   values (maps, slices) — empty string.
+- Unquoted date (`date: 2026-01-02`) — rendered as
+  written, `2026-01-02`. A timestamp with a clock part
+  renders as RFC 3339, e.g. `2026-01-02T15:04:05Z`.
 - Literal `{` — write `{{`. Literal `}` — write `}}`.
 
 CUE paths provide nested access for structured front
