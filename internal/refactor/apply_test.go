@@ -93,6 +93,15 @@ func TestApplyEdits_Errors(t *testing.T) {
 		_, err := ApplyEdits([]byte("a\n"), []Edit{mkEdit(9, 0, 0, "")})
 		require.Error(t, err)
 	})
+	t.Run("negative Character rejected", func(t *testing.T) {
+		// Unlike a Character past end of line (deliberately clamped, see
+		// TestApplyEdits's "character past end of line clamps to EOL"),
+		// a negative Character has no valid reading and must not
+		// silently clamp to 0.
+		_, err := ApplyEdits([]byte("abcdef\n"), []Edit{mkEdit(0, -5, 3, "X")})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "negative")
+	})
 	t.Run("reversed range rejected", func(t *testing.T) {
 		_, err := ApplyEdits([]byte("abcd\n"), []Edit{mkEdit(0, 3, 1, "x")})
 		require.Error(t, err)

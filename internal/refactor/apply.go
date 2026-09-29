@@ -76,6 +76,18 @@ func applyLineEdits(seg []byte, es []Edit, line int) ([]byte, error) {
 	}
 	resolved := make([]resolvedEdit, len(es))
 	for i, e := range es {
+		// Reject a negative Character on the raw values, before
+		// UTF16ToByteOffset's target<=0 guard silently treats it the same
+		// as 0. Unlike a Character past end of line (a deliberately
+		// tolerated LSP-style position, clamped to len(row) by design —
+		// see the EOL-clamp test in apply_test.go), a negative Character
+		// has no valid interpretation: it names a position before the
+		// line even starts, so there is no permissive reading to fall
+		// back on.
+		if e.Range.Start.Character < 0 || e.Range.End.Character < 0 {
+			return nil, fmt.Errorf("edit range [%d,%d) has a negative Character on line %d",
+				e.Range.Start.Character, e.Range.End.Character, line+1)
+		}
 		// Reject a reversed Start/End pair on the raw character values,
 		// before UTF16ToByteOffset clamps them. UTF16ToByteOffset is
 		// monotonic (never returns a smaller byte offset for a larger
@@ -164,6 +176,18 @@ func sortResolvedEditsAsc(res []resolvedEdit) {
 // one range with text A, B, A leave the middle B unmerged, and the
 // conflicting-range check catches the mismatch against B before either
 // A ever needs comparing to the other.
+//
+// Deduping compares the resolved (s, en), not the caller's raw
+// Character values, deliberately: two edits that write the identical
+// text to the identical byte span produce byte-identical output
+// whether or not their raw Characters matched before clamping, so
+// merging them changes nothing about what reaches disk. The only
+// caller-visible effect is the reported edit count, which can then
+// undercount an adversarial or malformed edit list (e.g. two
+// out-of-range Characters that both clamp to end of line) — a
+// cosmetic gap in a rarely-hit edge case, not a correctness one; no
+// real Heading, LinkRef, or Move plan produces Characters outside the
+// line it was parsed from, so this never triggers on legitimate input.
 func dedupeIdenticalResolvedEdits(res []resolvedEdit) []resolvedEdit {
 	if len(res) < 2 {
 		return res
