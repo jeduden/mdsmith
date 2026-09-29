@@ -4,8 +4,8 @@ name: occurrence
 status: ready
 description: >-
   A scope must contain each configured token or pattern between `min` and
-  `max` times (inclusive). Counts prose only; fenced and indented code
-  blocks are excluded.
+  `max` times (inclusive). Counts prose only; code blocks and inline
+  code spans are excluded.
 category: prose
 nature: content
 maintainability: null
@@ -19,12 +19,13 @@ gomarklint: []
 # MDS060: occurrence
 
 A scope must contain each configured token or pattern between `min` and
-`max` times (inclusive). Counts prose only; fenced and indented code
-blocks are excluded.
+`max` times (inclusive). Counts prose only; code blocks and inline
+code spans are excluded.
 
 The rule walks every scope unit (file, heading-bounded section, or
 paragraph) and counts non-overlapping occurrences of each token or regex
-pattern match. Fenced and indented code blocks are never counted.
+pattern match. Fenced and indented code blocks and inline code spans
+are never counted.
 A diagnostic is emitted at the scope unit's first line when the count
 falls below `min` or exceeds `max`.
 

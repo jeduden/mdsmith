@@ -116,11 +116,12 @@ If you need a single metric to minimize complexity, choose the one that best mat
 ## Choosing a density band (MDS060 occurrence)
 
 [MDS060](../../internal/rules/MDS060-occurrence/README.md) `occurrence` bounds
-how often a token or pattern appears within a scope. Two presets cover the
-most common cases:
+how often a token or pattern appears in each file, section, or paragraph.
+It counts prose only: code blocks and inline code spans are skipped.
+Two starting configurations cover the common cases.
 
-**Em-dash density** — caps stylistic em dashes per paragraph. Three or more
-in a paragraph is a machine-writing tell.
+**Em-dash density.** At most two em dashes per paragraph. A paragraph with
+three or more reads as machine-written.
 
 ```yaml
 rules:
@@ -131,8 +132,10 @@ rules:
     max: 2
 ```
 
-**Term density** — caps how often any one listed buzzword repeats within a
-section, using a named wordlist:
+**Term density.** Each listed buzzword at most twice per section. The
+entries come from a word-list you declare in
+`.mdsmith/wordlists/buzzwords.yaml`; no lists ship built in (see
+[word-list files](../reference/wordlist-files.md)).
 
 ```yaml
 rules:
@@ -144,19 +147,24 @@ rules:
       - buzzwords
 ```
 
+A project runs one `occurrence` configuration per file, and `pattern` and
+`tokens` are mutually exclusive. So pick one of the two for a set of files.
+Do not combine them through kinds or overrides: the merged config would
+carry both `pattern` and `lists:`, and the rule would report a configuration
+error on every matching file.
+
 ### Choosing the `max` bound
 
-Start permissive. A `max: 3` catches clear overuse without false positives on
-intentional repetition. Tighten to `max: 2` only after sampling your corpus
-and confirming the lower bound does not flag necessary emphasis. Use `combined`
-to cap total density across all tokens; use `each` (the default) to cap each
-token independently.
+The `max: 2` above is a strict band. Before you enforce it, run the rule on
+a sample of your documents. If it flags repetition the authors meant, raise
+`max` to 3. Use `count: combined` to cap the total across all tokens, and
+`count: each` (the default) to cap each token on its own.
 
 ### When to prefer MDS056 over MDS060
 
 Use [MDS056](../../internal/rules/MDS056-forbidden-text/README.md)
-`forbidden-text` when a term is outright banned. Use `occurrence` when the
-term is permitted in moderation — the author may use it, just not excessively.
+`forbidden-text` when a term is banned outright. Use `occurrence` when the
+term is allowed in moderation: the author may use it, but not too often.
 
 ## Recommendation for mdsmith users
 

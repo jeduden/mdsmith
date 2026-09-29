@@ -70,8 +70,11 @@ walking `f.AST`, so a fenced example never trips the count.
 The diagnostic names the token, the scope, the observed
 count, and the bound.
 
-Presets (documented; a user pins them by name via the
-convention/rule config, no new Go per preset):
+Presets are documented config snippets, with no new Go per
+preset. A project copies a snippet into its rule config.
+There is no preset name to pin. One `occurrence` instance
+runs per file, and `pattern` and `tokens` exclude each
+other, so two presets could not run side by side anyway:
 
 - `em-dash-density`: `pattern: "—"`, `scope: paragraph`,
   `count: combined`, `max: 2`. The motivating case — a run
@@ -103,9 +106,11 @@ budget on representative input.
    `internal/rules/MDS060-occurrence/` with README and
    `good/`/`bad/` fixtures, including a `lists:`-driven case
    and an `em-dash-density` case.
-4. Add the `em-dash-density` and `term-density` presets to the
-   convention layer and document that a project pins them by
-   name; verify the alloc-budget test covers the rule.
+4. Document the `em-dash-density` and `term-density` presets
+   as config snippets (deviation: not added to the convention
+   layer as named presets; see Design), and make the
+   alloc-budget test measure a configured rule, not the inert
+   zero-value instance.
 5. Add `docs/reference/cli` / rules docs entries and a
    `docs/guides/metrics-tradeoffs.md` note on choosing a
    density band; regenerate catalogs with `mdsmith fix`.
@@ -122,7 +127,9 @@ budget on representative input.
 - [x] `min` catches an under-count (a required term missing
       from a scope) with a clear message.
 - [x] The rule's `Check` stays within the alloc budget
-      (`internal/integration/alloc_budget_test.go`).
+      (`internal/integration/alloc_budget_test.go`, which
+      configures MDS060 with tokens at section scope, plus a
+      per-scope gate in `internal/rules/occurrence/`).
 - [x] All tests pass: `go test ./...`
 - [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues.
